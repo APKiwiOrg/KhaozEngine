@@ -15,7 +15,7 @@ CONDITIONS = [
 ]
 for arm in ARMS:
     for condition, spot, dt, day in CONDITIONS:
-        if arm in ("noop", "show-locked") and condition != "back15":
+        if (arm == "noop" or arm.startswith("show-")) and condition != "back15":
             continue
         assert subprocess.check_output(["git", "rev-parse", "--show-toplevel"], cwd=GAME, text=True).strip() == str(GAME)
         assert subprocess.check_output(["git", "branch", "--show-current"], cwd=GAME, text=True).strip() == "probe/taa-grain-engine"

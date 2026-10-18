@@ -597,3 +597,590 @@ Final whole-tree dash, prose, file-size, instruction-budget and version guards p
 also passed. See [repository guard output](guards/repository-guards.txt) and
 [the exact measured binary provenance](runs/lock-rules/provenance.json).
 Both branches remain diagnostic archives. Neither is a shipping fix or a merge candidate.
+
+## Release-gate and lock-mechanism round
+
+This round traces which release condition keeps each dot held, then tests two lock mechanisms the resolve lacks
+and AMD FSR 2 has, a lock trust ramp and a lock kill on relative low-frequency luma change. It stays diagnosis on
+this archive. No tuning or default behavior changed.
+
+### Tokens
+
+| Token | Computation |
+| --- | --- |
+| `show-gate` | On a pixel with hold above zero that the shading release left, a flat colour for the first condition that blocked it, in the release's own order: red the `Jitter.z < ShadingMaxUpscale` gate, green the ridge or box-width gate, blue history within `(1 + ShadingResetExtents) * releaseExtent` of the box centre, yellow an upscaled pixel whose own shift stayed under its extents (`ownChanged` false, so the ring never runs), magenta the ring threshold, cyan the opposite-pair requirement, white no history. |
+| `show-gate-extent` | For the same pixels past the upscale and ridge or box-width gates, the box half-width over `ridgeStep` and whether the same evidence fires with `releaseExtent = ridgeStep`. Green at most one `ridgeStep`, so `releaseExtent` is `ridgeStep` already. Yellow one to three and fires, blue one to three and still blocked. Red over three and fires, magenta over three and still blocked. |
+| `show-lock-age` | On a locked pixel, red a ridge refreshed it this frame, else the carried lock's frames since its last ridge, green one, blue two to three, yellow four or more. Age is read from the stored lock as `round((1 - lock) / LockDecay) + 1`, exact for a still pixel, an overestimate where motion or reactive release also scaled the lock. |
+| `lock-trust-2`, `-3`, `-4` | A ridge raises the lock last frame stored by 1/K, capped at 1, in place of setting it to 1. No ridge decays by `LockDecay` as before. A pixel with no history, or one whose lock `heldFromFarther` drops, starts from zero. |
+| `lock-luma-kill-0.1`, `-0.2` | Lock and hold drop to zero where `1 - min/max` of this frame's and last frame's low-frequency luma exceeds T. This frame is the 3x3 mean weighted luma from the gathered moments. Last frame is the mean of the four `temporalHistoryRingShift` taps and a bilinear centre at the reprojected position. Runs after the motion and reactive release, only with valid history. |
+| `lock-luma-kill-wide-0.1`, `-0.2` | The same with a 5x5 footprint on both sides, 25 internal texels around the centre texel against 25 bilinear history taps one internal texel apart in display space around the reprojected position. The engine builds no luma mip for the resolve, so no mip variant was possible. |
+
+Tokens compose with commas. The combination is `lock-trust-2,lock-luma-kill-0.2`, archived as
+`lock-trust-2+lock-luma-kill-0.2`. All new GLSL sits under `#ifdef TemporalDiagnostics` in
+`ShaderSources.TemporalDiagnosticLocks.cs`, with call sites in `ShaderSources.TemporalAccumulate.cs` and the overlay
+in `ShaderSources.TemporalDebug.cs`.
+
+**State cost.** The trust ramp needs no separate trust value. It ramps the stored lock itself, which keeps the
+moved, band and followed encoding in `temporalStoreLock` as it was. A separate trust value would need a new
+target or a repacked channel, because `HistoryConfidence` is R16G16Float with both channels in use. The narrow
+kill reads only the history colour target the ring test already samples, so it costs no state either: four
+bilinear taps and a centre per locked pixel with history. The wide kill costs 25 texel fetches and 24 bilinear
+taps per locked pixel.
+
+### Unset is still the base
+
+Engine code commit `e8312813f`, packed as `21.5.0-grain.1` into the private feed and re-vendored. The engine build
+DLL, the vendored nupkg's DLL and SnapshotTool's loaded `KhaozEngine.Render3D.dll` all match SHA-256
+`a55ac5bd07aba93e508791f7edcb3f21f07f590f96ec1658fcf5315cb2d951c8`. Fresh unset captures in all four conditions are
+pixel-identical to the prior round's baselines in all 16 frames of TAA Native, TAA Quality and FXAA, with
+byte-identical `metrics.txt` ([identity](runs/lock-trust-round/baseline-identity.txt)). The prior baselines were
+pixel-identical to 21.4.0, so the unset invariant holds. `noop` measures character grain 0.014280 and 0.014124,
+the same as last round. The unset Metal guard run passes 8 of 8.
+
+### Which condition holds the dots
+
+Back-edge, dt 1/15, five-minute day, all 16 frames. Dots are `coincide.py`'s on the `noop` image. Outside the
+code colours, zero pixels differ from `noop` in any overlay, and no `noop` band pixel already equals a code colour.
+Released means locked with no gate colour, so the release fired. Full output, including the extent and age
+tables, is in [gate-histogram.md](runs/lock-trust-round/gate-histogram.md).
+
+| First blocking condition | Native band | Native dots | Quality band | Quality dots |
+| --- | ---: | ---: | ---: | ---: |
+| unlocked | 34.7% | 3.1% | 27.3% | 3.2% |
+| locked and released | 6.2% | 1.2% | 6.3% | 0.3% |
+| upscale gate | 0.0% | 0.0% | 0.0% | 0.0% |
+| ridge or box-width gate | 23.5% | 40.0% | 16.3% | 16.0% |
+| history within reset extents | 33.5% | 25.7% | 46.2% | 38.7% |
+| upscaled, `ownChanged` false | 0.0% | 0.0% | 2.0% | 13.2% |
+| ring threshold | 2.0% | 28.2% | 1.8% | 26.7% |
+| opposite pair | 0.2% | 1.8% | 0.1% | 2.0% |
+
+Band is 39873 pixels over 16 frames. Dots are 1739 at Native and 1733 at Quality.
+
+| Lock source | Native band | Native dots | Quality band | Quality dots |
+| --- | ---: | ---: | ---: | ---: |
+| ridge this frame | 5.3% | 11.6% | 10.7% | 21.1% |
+| carried, age 1 | 9.3% | 24.6% | 12.5% | 27.1% |
+| carried, age 2 to 3 | 20.1% | 38.8% | 21.6% | 32.5% |
+| carried, age 4+ | 30.5% | 22.0% | 27.9% | 16.2% |
+
+| Extent class, gates 3 to 6 | Native dots | Quality dots |
+| --- | ---: | ---: |
+| box at most `ridgeStep` | 5.1% | 2.1% |
+| box 1 to 3 `ridgeStep`, fires at `ridgeStep` | 14.0% | 23.8% |
+| box 1 to 3 `ridgeStep`, still blocked | 18.8% | 23.4% |
+| box over 3 `ridgeStep`, fires at `ridgeStep` | 8.5% | 13.8% |
+| box over 3 `ridgeStep`, still blocked | 9.3% | 17.4% |
+
+Dots by gate and age, Native (Quality in [gate-histogram.md](runs/lock-trust-round/gate-histogram.md)):
+
+| Gate | ridge this frame | age 1 | age 2 to 3 | age 4+ |
+| --- | ---: | ---: | ---: | ---: |
+| released | 20 | 0 | 0 | 1 |
+| ridge or box-width gate | 0 | 143 | 359 | 193 |
+| within reset extents | 181 | 129 | 74 | 63 |
+| ring threshold | 0 | 138 | 229 | 123 |
+| opposite pair | 0 | 18 | 12 | 2 |
+
+Readings:
+
+- The upscale gate blocks nothing at Native or Quality. Quality's internal texel is under `ShadingMaxUpscale`.
+- At Native the largest blocker is the ridge or box-width gate, 40% of dots, every one a carried lock with no ridge
+  now. A carried lock passes that gate only where the box is wider than `ShadingLockFlatShare * ridgeStep`. These
+  dots sit on a 3x3 that is flat this frame: the shadow has covered the whole neighbourhood, and the gate reads that
+  as a thin feature the jitter missed on flat ground. That is the exemption keeping their old lit luma.
+- History within the reset extents is the largest Quality blocker, 39%, and includes most ridge-this-frame dots
+  (181 Native, 243 Quality). A fresh ridge's history is not yet far from its box, so nothing releases it, and it
+  then carries a full lock into the following frames.
+- The ring threshold blocks 27% to 28% of dots, the opposite pair under 2%. That matches last round's finding that
+  dropping the pair requirement barely moved grain.
+- The `releaseExtent` hypothesis is partly right. Of all dots, 22.5% at Native and 37.6% at Quality are blocked
+  past the box gates with a box wider than `ridgeStep` and would release with `releaseExtent = ridgeStep`. That is
+  a ceiling for a release-normalisation fix, not a measured fix, and it would not reach the flat-3x3 class.
+- Lock age confirms the hold. 63% of Native dots and 60% of Quality dots are carried at age 1 to 3, the frames
+  where `hold = clamp(lock * LockHoldGain)` is still whole. The `show-lock-age` crop shows the age bands laid down
+  in the sweeping staircase's wake.
+
+Crops, Native, Quality and FXAA left to right:
+[show-gate](crops/lock-trust-back15-show-gate-character-015-4x.png),
+[show-gate-extent](crops/lock-trust-back15-show-gate-extent-character-015-4x.png),
+[show-lock-age](crops/lock-trust-back15-show-lock-age-character-015-4x.png), with ground crops beside them.
+
+### Real-scene results
+
+Change relative to each condition's baseline, Native then Quality. The measured region is the character, except
+ground15, where it is the ground.
+
+| Arm | back15 grain | back15 dots | day30 grain | back60 grain | ground15 grain | ground15 dots |
+| --- | --- | --- | --- | --- | --- | --- |
+| `locks-off` | -50% / -40% | -66% / -56% | -33% / -32% | -36% / -32% | -15% / -23% | -49% / -47% |
+| `lock-history-ridge` | -35% / -19% | -45% / -30% | -16% / -12% | -16% / -11% | -4% / -16% | -37% / -36% |
+| `lock-trust-2` | -7% / -2% | -8% / -3% | -1% / -1% | -1% / +1% | -2% / -3% | -17% / -16% |
+| `lock-trust-3` | -13% / -4% | -15% / -7% | -2% / -1% | -3% / +1% | -3% / -5% | -26% / -24% |
+| `lock-trust-4` | -17% / -5% | -22% / -8% | -3% / -2% | -6% / -0% | -3% / -8% | -28% / -27% |
+| `lock-luma-kill-0.1` | -49% / -37% | -66% / -54% | -27% / -26% | -30% / -27% | -10% / -14% | -47% / -45% |
+| `lock-luma-kill-0.2` | -35% / -29% | -40% / -41% | -12% / -9% | -14% / -14% | -3% / -4% | -7% / -6% |
+| `lock-luma-kill-wide-0.1` | -49% / -37% | -66% / -55% | -25% / -23% | -27% / -23% | -6% / -11% | -47% / -42% |
+| `lock-luma-kill-wide-0.2` | -33% / -23% | -40% / -28% | -10% / -3% | -12% / -7% | -1% / -0% | -9% / -5% |
+| `lock-trust-2+lock-luma-kill-0.2` | -37% / -30% | -44% / -44% | -12% / -8% | -16% / -14% | -5% / -8% | -24% / -22% |
+
+No token brings lag back. Every change mean in every condition and region lies within 5.3% of its baseline's, and
+the largest moves are upward, towards FXAA's. The largest is back15 Native character, 0.01889 for
+`lock-luma-kill-0.1` against baseline 0.01795 and FXAA 0.01911. The complete per-token tables follow, each next to baseline, `locks-off`, `lock-history-ridge` and
+FXAA. Baseline is this round's capture, `locks-off` and `lock-history-ridge` are last round's, which this round's
+identical baselines make directly comparable. Machine-readable values are in
+[summary.json](runs/lock-trust-round/summary.json), and every run's `metrics.txt` and `metrics.json` is under
+[runs/lock-trust-round](runs/lock-trust-round/).
+
+#### Real-scene lock-trust-2
+
+| Condition | Arm | Mode | Character grain mean | p95 | Change mean | Dots | Ground grain mean | p95 | Change mean | Dots |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| back15 | baseline | taa-native | 0.014287 | 0.07499 | 0.01795 | 1742 | 0.006708 | 0.02635 | 0.01249 | 485 |
+| back15 | baseline | taa-quality | 0.014156 | 0.07334 | 0.01757 | 1733 | 0.007330 | 0.02830 | 0.01235 | 1881 |
+| back15 | locks-off | taa-native | 0.007125 | 0.04005 | 0.01883 | 591 | 0.006238 | 0.02383 | 0.01252 | 124 |
+| back15 | locks-off | taa-quality | 0.008529 | 0.04754 | 0.01829 | 771 | 0.006368 | 0.02494 | 0.01247 | 1004 |
+| back15 | lock-history-ridge | taa-native | 0.009307 | 0.04953 | 0.01882 | 957 | 0.006253 | 0.02389 | 0.01252 | 130 |
+| back15 | lock-history-ridge | taa-quality | 0.011486 | 0.05932 | 0.01810 | 1211 | 0.006432 | 0.02573 | 0.01246 | 1025 |
+| back15 | lock-trust-2 | taa-native | 0.013303 | 0.07052 | 0.01818 | 1609 | 0.006571 | 0.02553 | 0.01253 | 364 |
+| back15 | lock-trust-2 | taa-quality | 0.013855 | 0.07109 | 0.01767 | 1679 | 0.007092 | 0.02796 | 0.01243 | 1693 |
+| back15 | fxaa | fxaa | 0.002961 | 0.01649 | 0.01911 | 0 | 0.002130 | 0.00869 | 0.01311 | 0 |
+| day30 | baseline | taa-native | 0.008413 | 0.04997 | 0.00371 | 1097 | 0.005930 | 0.02326 | 0.00234 | 310 |
+| day30 | baseline | taa-quality | 0.009148 | 0.05207 | 0.00366 | 1117 | 0.006355 | 0.02524 | 0.00238 | 906 |
+| day30 | locks-off | taa-native | 0.005653 | 0.03105 | 0.00377 | 461 | 0.005272 | 0.01965 | 0.00231 | 25 |
+| day30 | locks-off | taa-quality | 0.006261 | 0.03471 | 0.00354 | 467 | 0.005076 | 0.01934 | 0.00232 | 203 |
+| day30 | lock-history-ridge | taa-native | 0.007094 | 0.04003 | 0.00380 | 792 | 0.005293 | 0.01986 | 0.00231 | 34 |
+| day30 | lock-history-ridge | taa-quality | 0.008039 | 0.04534 | 0.00361 | 919 | 0.005126 | 0.01959 | 0.00232 | 215 |
+| day30 | lock-trust-2 | taa-native | 0.008366 | 0.04980 | 0.00370 | 1076 | 0.005790 | 0.02269 | 0.00234 | 232 |
+| day30 | lock-trust-2 | taa-quality | 0.009093 | 0.05191 | 0.00366 | 1115 | 0.006150 | 0.02460 | 0.00236 | 814 |
+| day30 | fxaa | fxaa | 0.002976 | 0.01624 | 0.00402 | 0 | 0.002071 | 0.00868 | 0.00202 | 0 |
+| back60 | baseline | taa-native | 0.009675 | 0.05484 | 0.00488 | 1355 | 0.006055 | 0.02353 | 0.00328 | 379 |
+| back60 | baseline | taa-quality | 0.010472 | 0.05966 | 0.00500 | 1535 | 0.006729 | 0.02718 | 0.00327 | 1303 |
+| back60 | locks-off | taa-native | 0.006230 | 0.03358 | 0.00482 | 619 | 0.005363 | 0.01992 | 0.00325 | 42 |
+| back60 | locks-off | taa-quality | 0.007109 | 0.03920 | 0.00487 | 724 | 0.005514 | 0.02073 | 0.00322 | 394 |
+| back60 | lock-history-ridge | taa-native | 0.008081 | 0.04534 | 0.00490 | 1057 | 0.005387 | 0.02013 | 0.00325 | 45 |
+| back60 | lock-history-ridge | taa-quality | 0.009345 | 0.05120 | 0.00497 | 1271 | 0.005586 | 0.02127 | 0.00321 | 416 |
+| back60 | lock-trust-2 | taa-native | 0.009558 | 0.05458 | 0.00490 | 1376 | 0.005844 | 0.02270 | 0.00327 | 233 |
+| back60 | lock-trust-2 | taa-quality | 0.010543 | 0.05992 | 0.00500 | 1554 | 0.006459 | 0.02603 | 0.00327 | 1011 |
+| back60 | fxaa | fxaa | 0.002955 | 0.01595 | 0.00470 | 0 | 0.002090 | 0.00868 | 0.00307 | 0 |
+| ground15 | baseline | taa-native | 0.002957 | 0.01148 | 0.00116 | 371 | 0.005274 | 0.01937 | 0.00373 | 512 |
+| ground15 | baseline | taa-quality | 0.003024 | 0.01176 | 0.00118 | 340 | 0.005695 | 0.02242 | 0.00378 | 1305 |
+| ground15 | locks-off | taa-native | 0.002877 | 0.01065 | 0.00120 | 321 | 0.004504 | 0.01713 | 0.00384 | 259 |
+| ground15 | locks-off | taa-quality | 0.002878 | 0.01148 | 0.00121 | 272 | 0.004389 | 0.01710 | 0.00387 | 686 |
+| ground15 | lock-history-ridge | taa-native | 0.002939 | 0.01077 | 0.00117 | 363 | 0.005042 | 0.01740 | 0.00373 | 323 |
+| ground15 | lock-history-ridge | taa-quality | 0.003018 | 0.01176 | 0.00119 | 340 | 0.004777 | 0.01794 | 0.00383 | 839 |
+| ground15 | lock-trust-2 | taa-native | 0.002953 | 0.01148 | 0.00117 | 370 | 0.005189 | 0.01907 | 0.00373 | 423 |
+| ground15 | lock-trust-2 | taa-quality | 0.003041 | 0.01176 | 0.00118 | 341 | 0.005518 | 0.02211 | 0.00379 | 1100 |
+| ground15 | fxaa | fxaa | 0.002280 | 0.01260 | 0.00135 | 0 | 0.002343 | 0.00784 | 0.00334 | 0 |
+
+#### Real-scene lock-trust-3
+
+| Condition | Arm | Mode | Character grain mean | p95 | Change mean | Dots | Ground grain mean | p95 | Change mean | Dots |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| back15 | baseline | taa-native | 0.014287 | 0.07499 | 0.01795 | 1742 | 0.006708 | 0.02635 | 0.01249 | 485 |
+| back15 | baseline | taa-quality | 0.014156 | 0.07334 | 0.01757 | 1733 | 0.007330 | 0.02830 | 0.01235 | 1881 |
+| back15 | locks-off | taa-native | 0.007125 | 0.04005 | 0.01883 | 591 | 0.006238 | 0.02383 | 0.01252 | 124 |
+| back15 | locks-off | taa-quality | 0.008529 | 0.04754 | 0.01829 | 771 | 0.006368 | 0.02494 | 0.01247 | 1004 |
+| back15 | lock-history-ridge | taa-native | 0.009307 | 0.04953 | 0.01882 | 957 | 0.006253 | 0.02389 | 0.01252 | 130 |
+| back15 | lock-history-ridge | taa-quality | 0.011486 | 0.05932 | 0.01810 | 1211 | 0.006432 | 0.02573 | 0.01246 | 1025 |
+| back15 | lock-trust-3 | taa-native | 0.012453 | 0.06550 | 0.01833 | 1474 | 0.006470 | 0.02496 | 0.01254 | 253 |
+| back15 | lock-trust-3 | taa-quality | 0.013643 | 0.07052 | 0.01774 | 1617 | 0.006866 | 0.02721 | 0.01246 | 1455 |
+| back15 | fxaa | fxaa | 0.002961 | 0.01649 | 0.01911 | 0 | 0.002130 | 0.00869 | 0.01311 | 0 |
+| day30 | baseline | taa-native | 0.008413 | 0.04997 | 0.00371 | 1097 | 0.005930 | 0.02326 | 0.00234 | 310 |
+| day30 | baseline | taa-quality | 0.009148 | 0.05207 | 0.00366 | 1117 | 0.006355 | 0.02524 | 0.00238 | 906 |
+| day30 | locks-off | taa-native | 0.005653 | 0.03105 | 0.00377 | 461 | 0.005272 | 0.01965 | 0.00231 | 25 |
+| day30 | locks-off | taa-quality | 0.006261 | 0.03471 | 0.00354 | 467 | 0.005076 | 0.01934 | 0.00232 | 203 |
+| day30 | lock-history-ridge | taa-native | 0.007094 | 0.04003 | 0.00380 | 792 | 0.005293 | 0.01986 | 0.00231 | 34 |
+| day30 | lock-history-ridge | taa-quality | 0.008039 | 0.04534 | 0.00361 | 919 | 0.005126 | 0.01959 | 0.00232 | 215 |
+| day30 | lock-trust-3 | taa-native | 0.008210 | 0.04871 | 0.00368 | 1063 | 0.005685 | 0.02186 | 0.00234 | 182 |
+| day30 | lock-trust-3 | taa-quality | 0.009035 | 0.05125 | 0.00367 | 1119 | 0.005889 | 0.02353 | 0.00235 | 613 |
+| day30 | fxaa | fxaa | 0.002976 | 0.01624 | 0.00402 | 0 | 0.002071 | 0.00868 | 0.00202 | 0 |
+| back60 | baseline | taa-native | 0.009675 | 0.05484 | 0.00488 | 1355 | 0.006055 | 0.02353 | 0.00328 | 379 |
+| back60 | baseline | taa-quality | 0.010472 | 0.05966 | 0.00500 | 1535 | 0.006729 | 0.02718 | 0.00327 | 1303 |
+| back60 | locks-off | taa-native | 0.006230 | 0.03358 | 0.00482 | 619 | 0.005363 | 0.01992 | 0.00325 | 42 |
+| back60 | locks-off | taa-quality | 0.007109 | 0.03920 | 0.00487 | 724 | 0.005514 | 0.02073 | 0.00322 | 394 |
+| back60 | lock-history-ridge | taa-native | 0.008081 | 0.04534 | 0.00490 | 1057 | 0.005387 | 0.02013 | 0.00325 | 45 |
+| back60 | lock-history-ridge | taa-quality | 0.009345 | 0.05120 | 0.00497 | 1271 | 0.005586 | 0.02127 | 0.00321 | 416 |
+| back60 | lock-trust-3 | taa-native | 0.009376 | 0.05385 | 0.00489 | 1339 | 0.005721 | 0.02188 | 0.00327 | 155 |
+| back60 | lock-trust-3 | taa-quality | 0.010569 | 0.06048 | 0.00499 | 1559 | 0.006250 | 0.02491 | 0.00326 | 820 |
+| back60 | fxaa | fxaa | 0.002955 | 0.01595 | 0.00470 | 0 | 0.002090 | 0.00868 | 0.00307 | 0 |
+| ground15 | baseline | taa-native | 0.002957 | 0.01148 | 0.00116 | 371 | 0.005274 | 0.01937 | 0.00373 | 512 |
+| ground15 | baseline | taa-quality | 0.003024 | 0.01176 | 0.00118 | 340 | 0.005695 | 0.02242 | 0.00378 | 1305 |
+| ground15 | locks-off | taa-native | 0.002877 | 0.01065 | 0.00120 | 321 | 0.004504 | 0.01713 | 0.00384 | 259 |
+| ground15 | locks-off | taa-quality | 0.002878 | 0.01148 | 0.00121 | 272 | 0.004389 | 0.01710 | 0.00387 | 686 |
+| ground15 | lock-history-ridge | taa-native | 0.002939 | 0.01077 | 0.00117 | 363 | 0.005042 | 0.01740 | 0.00373 | 323 |
+| ground15 | lock-history-ridge | taa-quality | 0.003018 | 0.01176 | 0.00119 | 340 | 0.004777 | 0.01794 | 0.00383 | 839 |
+| ground15 | lock-trust-3 | taa-native | 0.002947 | 0.01148 | 0.00116 | 370 | 0.005123 | 0.01876 | 0.00373 | 379 |
+| ground15 | lock-trust-3 | taa-quality | 0.003029 | 0.01176 | 0.00119 | 342 | 0.005385 | 0.02134 | 0.00380 | 989 |
+| ground15 | fxaa | fxaa | 0.002280 | 0.01260 | 0.00135 | 0 | 0.002343 | 0.00784 | 0.00334 | 0 |
+
+#### Real-scene lock-trust-4
+
+| Condition | Arm | Mode | Character grain mean | p95 | Change mean | Dots | Ground grain mean | p95 | Change mean | Dots |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| back15 | baseline | taa-native | 0.014287 | 0.07499 | 0.01795 | 1742 | 0.006708 | 0.02635 | 0.01249 | 485 |
+| back15 | baseline | taa-quality | 0.014156 | 0.07334 | 0.01757 | 1733 | 0.007330 | 0.02830 | 0.01235 | 1881 |
+| back15 | locks-off | taa-native | 0.007125 | 0.04005 | 0.01883 | 591 | 0.006238 | 0.02383 | 0.01252 | 124 |
+| back15 | locks-off | taa-quality | 0.008529 | 0.04754 | 0.01829 | 771 | 0.006368 | 0.02494 | 0.01247 | 1004 |
+| back15 | lock-history-ridge | taa-native | 0.009307 | 0.04953 | 0.01882 | 957 | 0.006253 | 0.02389 | 0.01252 | 130 |
+| back15 | lock-history-ridge | taa-quality | 0.011486 | 0.05932 | 0.01810 | 1211 | 0.006432 | 0.02573 | 0.01246 | 1025 |
+| back15 | lock-trust-4 | taa-native | 0.011814 | 0.06235 | 0.01847 | 1360 | 0.006395 | 0.02463 | 0.01253 | 206 |
+| back15 | lock-trust-4 | taa-quality | 0.013445 | 0.06859 | 0.01779 | 1587 | 0.006736 | 0.02690 | 0.01248 | 1320 |
+| back15 | fxaa | fxaa | 0.002961 | 0.01649 | 0.01911 | 0 | 0.002130 | 0.00869 | 0.01311 | 0 |
+| day30 | baseline | taa-native | 0.008413 | 0.04997 | 0.00371 | 1097 | 0.005930 | 0.02326 | 0.00234 | 310 |
+| day30 | baseline | taa-quality | 0.009148 | 0.05207 | 0.00366 | 1117 | 0.006355 | 0.02524 | 0.00238 | 906 |
+| day30 | locks-off | taa-native | 0.005653 | 0.03105 | 0.00377 | 461 | 0.005272 | 0.01965 | 0.00231 | 25 |
+| day30 | locks-off | taa-quality | 0.006261 | 0.03471 | 0.00354 | 467 | 0.005076 | 0.01934 | 0.00232 | 203 |
+| day30 | lock-history-ridge | taa-native | 0.007094 | 0.04003 | 0.00380 | 792 | 0.005293 | 0.01986 | 0.00231 | 34 |
+| day30 | lock-history-ridge | taa-quality | 0.008039 | 0.04534 | 0.00361 | 919 | 0.005126 | 0.01959 | 0.00232 | 215 |
+| day30 | lock-trust-4 | taa-native | 0.008174 | 0.04789 | 0.00369 | 1038 | 0.005590 | 0.02129 | 0.00233 | 143 |
+| day30 | lock-trust-4 | taa-quality | 0.008967 | 0.05123 | 0.00367 | 1125 | 0.005708 | 0.02298 | 0.00234 | 467 |
+| day30 | fxaa | fxaa | 0.002976 | 0.01624 | 0.00402 | 0 | 0.002071 | 0.00868 | 0.00202 | 0 |
+| back60 | baseline | taa-native | 0.009675 | 0.05484 | 0.00488 | 1355 | 0.006055 | 0.02353 | 0.00328 | 379 |
+| back60 | baseline | taa-quality | 0.010472 | 0.05966 | 0.00500 | 1535 | 0.006729 | 0.02718 | 0.00327 | 1303 |
+| back60 | locks-off | taa-native | 0.006230 | 0.03358 | 0.00482 | 619 | 0.005363 | 0.01992 | 0.00325 | 42 |
+| back60 | locks-off | taa-quality | 0.007109 | 0.03920 | 0.00487 | 724 | 0.005514 | 0.02073 | 0.00322 | 394 |
+| back60 | lock-history-ridge | taa-native | 0.008081 | 0.04534 | 0.00490 | 1057 | 0.005387 | 0.02013 | 0.00325 | 45 |
+| back60 | lock-history-ridge | taa-quality | 0.009345 | 0.05120 | 0.00497 | 1271 | 0.005586 | 0.02127 | 0.00321 | 416 |
+| back60 | lock-trust-4 | taa-native | 0.009128 | 0.05153 | 0.00490 | 1254 | 0.005633 | 0.02132 | 0.00326 | 115 |
+| back60 | lock-trust-4 | taa-quality | 0.010460 | 0.06016 | 0.00500 | 1534 | 0.006082 | 0.02436 | 0.00326 | 654 |
+| back60 | fxaa | fxaa | 0.002955 | 0.01595 | 0.00470 | 0 | 0.002090 | 0.00868 | 0.00307 | 0 |
+| ground15 | baseline | taa-native | 0.002957 | 0.01148 | 0.00116 | 371 | 0.005274 | 0.01937 | 0.00373 | 512 |
+| ground15 | baseline | taa-quality | 0.003024 | 0.01176 | 0.00118 | 340 | 0.005695 | 0.02242 | 0.00378 | 1305 |
+| ground15 | locks-off | taa-native | 0.002877 | 0.01065 | 0.00120 | 321 | 0.004504 | 0.01713 | 0.00384 | 259 |
+| ground15 | locks-off | taa-quality | 0.002878 | 0.01148 | 0.00121 | 272 | 0.004389 | 0.01710 | 0.00387 | 686 |
+| ground15 | lock-history-ridge | taa-native | 0.002939 | 0.01077 | 0.00117 | 363 | 0.005042 | 0.01740 | 0.00373 | 323 |
+| ground15 | lock-history-ridge | taa-quality | 0.003018 | 0.01176 | 0.00119 | 340 | 0.004777 | 0.01794 | 0.00383 | 839 |
+| ground15 | lock-trust-4 | taa-native | 0.002948 | 0.01148 | 0.00116 | 370 | 0.005106 | 0.01853 | 0.00373 | 370 |
+| ground15 | lock-trust-4 | taa-quality | 0.003027 | 0.01176 | 0.00119 | 342 | 0.005247 | 0.02071 | 0.00381 | 950 |
+| ground15 | fxaa | fxaa | 0.002280 | 0.01260 | 0.00135 | 0 | 0.002343 | 0.00784 | 0.00334 | 0 |
+
+#### Real-scene lock-luma-kill-0.1
+
+| Condition | Arm | Mode | Character grain mean | p95 | Change mean | Dots | Ground grain mean | p95 | Change mean | Dots |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| back15 | baseline | taa-native | 0.014287 | 0.07499 | 0.01795 | 1742 | 0.006708 | 0.02635 | 0.01249 | 485 |
+| back15 | baseline | taa-quality | 0.014156 | 0.07334 | 0.01757 | 1733 | 0.007330 | 0.02830 | 0.01235 | 1881 |
+| back15 | locks-off | taa-native | 0.007125 | 0.04005 | 0.01883 | 591 | 0.006238 | 0.02383 | 0.01252 | 124 |
+| back15 | locks-off | taa-quality | 0.008529 | 0.04754 | 0.01829 | 771 | 0.006368 | 0.02494 | 0.01247 | 1004 |
+| back15 | lock-history-ridge | taa-native | 0.009307 | 0.04953 | 0.01882 | 957 | 0.006253 | 0.02389 | 0.01252 | 130 |
+| back15 | lock-history-ridge | taa-quality | 0.011486 | 0.05932 | 0.01810 | 1211 | 0.006432 | 0.02573 | 0.01246 | 1025 |
+| back15 | lock-luma-kill-0.1 | taa-native | 0.007217 | 0.04087 | 0.01889 | 592 | 0.006338 | 0.02436 | 0.01251 | 144 |
+| back15 | lock-luma-kill-0.1 | taa-quality | 0.008852 | 0.04898 | 0.01830 | 805 | 0.006706 | 0.02685 | 0.01242 | 1036 |
+| back15 | fxaa | fxaa | 0.002961 | 0.01649 | 0.01911 | 0 | 0.002130 | 0.00869 | 0.01311 | 0 |
+| day30 | baseline | taa-native | 0.008413 | 0.04997 | 0.00371 | 1097 | 0.005930 | 0.02326 | 0.00234 | 310 |
+| day30 | baseline | taa-quality | 0.009148 | 0.05207 | 0.00366 | 1117 | 0.006355 | 0.02524 | 0.00238 | 906 |
+| day30 | locks-off | taa-native | 0.005653 | 0.03105 | 0.00377 | 461 | 0.005272 | 0.01965 | 0.00231 | 25 |
+| day30 | locks-off | taa-quality | 0.006261 | 0.03471 | 0.00354 | 467 | 0.005076 | 0.01934 | 0.00232 | 203 |
+| day30 | lock-history-ridge | taa-native | 0.007094 | 0.04003 | 0.00380 | 792 | 0.005293 | 0.01986 | 0.00231 | 34 |
+| day30 | lock-history-ridge | taa-quality | 0.008039 | 0.04534 | 0.00361 | 919 | 0.005126 | 0.01959 | 0.00232 | 215 |
+| day30 | lock-luma-kill-0.1 | taa-native | 0.006122 | 0.03414 | 0.00374 | 512 | 0.005494 | 0.02076 | 0.00230 | 49 |
+| day30 | lock-luma-kill-0.1 | taa-quality | 0.006733 | 0.03666 | 0.00352 | 497 | 0.005632 | 0.02241 | 0.00231 | 291 |
+| day30 | fxaa | fxaa | 0.002976 | 0.01624 | 0.00402 | 0 | 0.002071 | 0.00868 | 0.00202 | 0 |
+| back60 | baseline | taa-native | 0.009675 | 0.05484 | 0.00488 | 1355 | 0.006055 | 0.02353 | 0.00328 | 379 |
+| back60 | baseline | taa-quality | 0.010472 | 0.05966 | 0.00500 | 1535 | 0.006729 | 0.02718 | 0.00327 | 1303 |
+| back60 | locks-off | taa-native | 0.006230 | 0.03358 | 0.00482 | 619 | 0.005363 | 0.01992 | 0.00325 | 42 |
+| back60 | locks-off | taa-quality | 0.007109 | 0.03920 | 0.00487 | 724 | 0.005514 | 0.02073 | 0.00322 | 394 |
+| back60 | lock-history-ridge | taa-native | 0.008081 | 0.04534 | 0.00490 | 1057 | 0.005387 | 0.02013 | 0.00325 | 45 |
+| back60 | lock-history-ridge | taa-quality | 0.009345 | 0.05120 | 0.00497 | 1271 | 0.005586 | 0.02127 | 0.00321 | 416 |
+| back60 | lock-luma-kill-0.1 | taa-native | 0.006755 | 0.03676 | 0.00489 | 729 | 0.005594 | 0.02126 | 0.00324 | 61 |
+| back60 | lock-luma-kill-0.1 | taa-quality | 0.007599 | 0.04142 | 0.00487 | 756 | 0.006034 | 0.02405 | 0.00320 | 490 |
+| back60 | fxaa | fxaa | 0.002955 | 0.01595 | 0.00470 | 0 | 0.002090 | 0.00868 | 0.00307 | 0 |
+| ground15 | baseline | taa-native | 0.002957 | 0.01148 | 0.00116 | 371 | 0.005274 | 0.01937 | 0.00373 | 512 |
+| ground15 | baseline | taa-quality | 0.003024 | 0.01176 | 0.00118 | 340 | 0.005695 | 0.02242 | 0.00378 | 1305 |
+| ground15 | locks-off | taa-native | 0.002877 | 0.01065 | 0.00120 | 321 | 0.004504 | 0.01713 | 0.00384 | 259 |
+| ground15 | locks-off | taa-quality | 0.002878 | 0.01148 | 0.00121 | 272 | 0.004389 | 0.01710 | 0.00387 | 686 |
+| ground15 | lock-history-ridge | taa-native | 0.002939 | 0.01077 | 0.00117 | 363 | 0.005042 | 0.01740 | 0.00373 | 323 |
+| ground15 | lock-history-ridge | taa-quality | 0.003018 | 0.01176 | 0.00119 | 340 | 0.004777 | 0.01794 | 0.00383 | 839 |
+| ground15 | lock-luma-kill-0.1 | taa-native | 0.002926 | 0.01091 | 0.00119 | 345 | 0.004760 | 0.01877 | 0.00381 | 269 |
+| ground15 | lock-luma-kill-0.1 | taa-quality | 0.003004 | 0.01176 | 0.00120 | 335 | 0.004922 | 0.02073 | 0.00382 | 723 |
+| ground15 | fxaa | fxaa | 0.002280 | 0.01260 | 0.00135 | 0 | 0.002343 | 0.00784 | 0.00334 | 0 |
+
+#### Real-scene lock-luma-kill-0.2
+
+| Condition | Arm | Mode | Character grain mean | p95 | Change mean | Dots | Ground grain mean | p95 | Change mean | Dots |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| back15 | baseline | taa-native | 0.014287 | 0.07499 | 0.01795 | 1742 | 0.006708 | 0.02635 | 0.01249 | 485 |
+| back15 | baseline | taa-quality | 0.014156 | 0.07334 | 0.01757 | 1733 | 0.007330 | 0.02830 | 0.01235 | 1881 |
+| back15 | locks-off | taa-native | 0.007125 | 0.04005 | 0.01883 | 591 | 0.006238 | 0.02383 | 0.01252 | 124 |
+| back15 | locks-off | taa-quality | 0.008529 | 0.04754 | 0.01829 | 771 | 0.006368 | 0.02494 | 0.01247 | 1004 |
+| back15 | lock-history-ridge | taa-native | 0.009307 | 0.04953 | 0.01882 | 957 | 0.006253 | 0.02389 | 0.01252 | 130 |
+| back15 | lock-history-ridge | taa-quality | 0.011486 | 0.05932 | 0.01810 | 1211 | 0.006432 | 0.02573 | 0.01246 | 1025 |
+| back15 | lock-luma-kill-0.2 | taa-native | 0.009261 | 0.05068 | 0.01866 | 1039 | 0.006698 | 0.02632 | 0.01248 | 464 |
+| back15 | lock-luma-kill-0.2 | taa-quality | 0.010115 | 0.05459 | 0.01820 | 1030 | 0.007308 | 0.02855 | 0.01235 | 1812 |
+| back15 | fxaa | fxaa | 0.002961 | 0.01649 | 0.01911 | 0 | 0.002130 | 0.00869 | 0.01311 | 0 |
+| day30 | baseline | taa-native | 0.008413 | 0.04997 | 0.00371 | 1097 | 0.005930 | 0.02326 | 0.00234 | 310 |
+| day30 | baseline | taa-quality | 0.009148 | 0.05207 | 0.00366 | 1117 | 0.006355 | 0.02524 | 0.00238 | 906 |
+| day30 | locks-off | taa-native | 0.005653 | 0.03105 | 0.00377 | 461 | 0.005272 | 0.01965 | 0.00231 | 25 |
+| day30 | locks-off | taa-quality | 0.006261 | 0.03471 | 0.00354 | 467 | 0.005076 | 0.01934 | 0.00232 | 203 |
+| day30 | lock-history-ridge | taa-native | 0.007094 | 0.04003 | 0.00380 | 792 | 0.005293 | 0.01986 | 0.00231 | 34 |
+| day30 | lock-history-ridge | taa-quality | 0.008039 | 0.04534 | 0.00361 | 919 | 0.005126 | 0.01959 | 0.00232 | 215 |
+| day30 | lock-luma-kill-0.2 | taa-native | 0.007382 | 0.04335 | 0.00374 | 905 | 0.005920 | 0.02325 | 0.00234 | 309 |
+| day30 | lock-luma-kill-0.2 | taa-quality | 0.008329 | 0.04701 | 0.00362 | 889 | 0.006349 | 0.02542 | 0.00237 | 870 |
+| day30 | fxaa | fxaa | 0.002976 | 0.01624 | 0.00402 | 0 | 0.002071 | 0.00868 | 0.00202 | 0 |
+| back60 | baseline | taa-native | 0.009675 | 0.05484 | 0.00488 | 1355 | 0.006055 | 0.02353 | 0.00328 | 379 |
+| back60 | baseline | taa-quality | 0.010472 | 0.05966 | 0.00500 | 1535 | 0.006729 | 0.02718 | 0.00327 | 1303 |
+| back60 | locks-off | taa-native | 0.006230 | 0.03358 | 0.00482 | 619 | 0.005363 | 0.01992 | 0.00325 | 42 |
+| back60 | locks-off | taa-quality | 0.007109 | 0.03920 | 0.00487 | 724 | 0.005514 | 0.02073 | 0.00322 | 394 |
+| back60 | lock-history-ridge | taa-native | 0.008081 | 0.04534 | 0.00490 | 1057 | 0.005387 | 0.02013 | 0.00325 | 45 |
+| back60 | lock-history-ridge | taa-quality | 0.009345 | 0.05120 | 0.00497 | 1271 | 0.005586 | 0.02127 | 0.00321 | 416 |
+| back60 | lock-luma-kill-0.2 | taa-native | 0.008314 | 0.04731 | 0.00497 | 1141 | 0.006037 | 0.02353 | 0.00328 | 364 |
+| back60 | lock-luma-kill-0.2 | taa-quality | 0.009046 | 0.05095 | 0.00497 | 1245 | 0.006736 | 0.02718 | 0.00327 | 1305 |
+| back60 | fxaa | fxaa | 0.002955 | 0.01595 | 0.00470 | 0 | 0.002090 | 0.00868 | 0.00307 | 0 |
+| ground15 | baseline | taa-native | 0.002957 | 0.01148 | 0.00116 | 371 | 0.005274 | 0.01937 | 0.00373 | 512 |
+| ground15 | baseline | taa-quality | 0.003024 | 0.01176 | 0.00118 | 340 | 0.005695 | 0.02242 | 0.00378 | 1305 |
+| ground15 | locks-off | taa-native | 0.002877 | 0.01065 | 0.00120 | 321 | 0.004504 | 0.01713 | 0.00384 | 259 |
+| ground15 | locks-off | taa-quality | 0.002878 | 0.01148 | 0.00121 | 272 | 0.004389 | 0.01710 | 0.00387 | 686 |
+| ground15 | lock-history-ridge | taa-native | 0.002939 | 0.01077 | 0.00117 | 363 | 0.005042 | 0.01740 | 0.00373 | 323 |
+| ground15 | lock-history-ridge | taa-quality | 0.003018 | 0.01176 | 0.00119 | 340 | 0.004777 | 0.01794 | 0.00383 | 839 |
+| ground15 | lock-luma-kill-0.2 | taa-native | 0.002938 | 0.01120 | 0.00116 | 372 | 0.005108 | 0.01936 | 0.00378 | 478 |
+| ground15 | lock-luma-kill-0.2 | taa-quality | 0.003022 | 0.01176 | 0.00120 | 337 | 0.005449 | 0.02241 | 0.00380 | 1232 |
+| ground15 | fxaa | fxaa | 0.002280 | 0.01260 | 0.00135 | 0 | 0.002343 | 0.00784 | 0.00334 | 0 |
+
+#### Real-scene lock-luma-kill-wide-0.1
+
+| Condition | Arm | Mode | Character grain mean | p95 | Change mean | Dots | Ground grain mean | p95 | Change mean | Dots |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| back15 | baseline | taa-native | 0.014287 | 0.07499 | 0.01795 | 1742 | 0.006708 | 0.02635 | 0.01249 | 485 |
+| back15 | baseline | taa-quality | 0.014156 | 0.07334 | 0.01757 | 1733 | 0.007330 | 0.02830 | 0.01235 | 1881 |
+| back15 | locks-off | taa-native | 0.007125 | 0.04005 | 0.01883 | 591 | 0.006238 | 0.02383 | 0.01252 | 124 |
+| back15 | locks-off | taa-quality | 0.008529 | 0.04754 | 0.01829 | 771 | 0.006368 | 0.02494 | 0.01247 | 1004 |
+| back15 | lock-history-ridge | taa-native | 0.009307 | 0.04953 | 0.01882 | 957 | 0.006253 | 0.02389 | 0.01252 | 130 |
+| back15 | lock-history-ridge | taa-quality | 0.011486 | 0.05932 | 0.01810 | 1211 | 0.006432 | 0.02573 | 0.01246 | 1025 |
+| back15 | lock-luma-kill-wide-0.1 | taa-native | 0.007319 | 0.04113 | 0.01888 | 589 | 0.006380 | 0.02462 | 0.01251 | 154 |
+| back15 | lock-luma-kill-wide-0.1 | taa-quality | 0.008869 | 0.04800 | 0.01832 | 787 | 0.006776 | 0.02692 | 0.01243 | 1073 |
+| back15 | fxaa | fxaa | 0.002961 | 0.01649 | 0.01911 | 0 | 0.002130 | 0.00869 | 0.01311 | 0 |
+| day30 | baseline | taa-native | 0.008413 | 0.04997 | 0.00371 | 1097 | 0.005930 | 0.02326 | 0.00234 | 310 |
+| day30 | baseline | taa-quality | 0.009148 | 0.05207 | 0.00366 | 1117 | 0.006355 | 0.02524 | 0.00238 | 906 |
+| day30 | locks-off | taa-native | 0.005653 | 0.03105 | 0.00377 | 461 | 0.005272 | 0.01965 | 0.00231 | 25 |
+| day30 | locks-off | taa-quality | 0.006261 | 0.03471 | 0.00354 | 467 | 0.005076 | 0.01934 | 0.00232 | 203 |
+| day30 | lock-history-ridge | taa-native | 0.007094 | 0.04003 | 0.00380 | 792 | 0.005293 | 0.01986 | 0.00231 | 34 |
+| day30 | lock-history-ridge | taa-quality | 0.008039 | 0.04534 | 0.00361 | 919 | 0.005126 | 0.01959 | 0.00232 | 215 |
+| day30 | lock-luma-kill-wide-0.1 | taa-native | 0.006271 | 0.03560 | 0.00378 | 510 | 0.005581 | 0.02126 | 0.00231 | 68 |
+| day30 | lock-luma-kill-wide-0.1 | taa-quality | 0.007006 | 0.03750 | 0.00357 | 542 | 0.005858 | 0.02354 | 0.00231 | 371 |
+| day30 | fxaa | fxaa | 0.002976 | 0.01624 | 0.00402 | 0 | 0.002071 | 0.00868 | 0.00202 | 0 |
+| back60 | baseline | taa-native | 0.009675 | 0.05484 | 0.00488 | 1355 | 0.006055 | 0.02353 | 0.00328 | 379 |
+| back60 | baseline | taa-quality | 0.010472 | 0.05966 | 0.00500 | 1535 | 0.006729 | 0.02718 | 0.00327 | 1303 |
+| back60 | locks-off | taa-native | 0.006230 | 0.03358 | 0.00482 | 619 | 0.005363 | 0.01992 | 0.00325 | 42 |
+| back60 | locks-off | taa-quality | 0.007109 | 0.03920 | 0.00487 | 724 | 0.005514 | 0.02073 | 0.00322 | 394 |
+| back60 | lock-history-ridge | taa-native | 0.008081 | 0.04534 | 0.00490 | 1057 | 0.005387 | 0.02013 | 0.00325 | 45 |
+| back60 | lock-history-ridge | taa-quality | 0.009345 | 0.05120 | 0.00497 | 1271 | 0.005586 | 0.02127 | 0.00321 | 416 |
+| back60 | lock-luma-kill-wide-0.1 | taa-native | 0.007022 | 0.03838 | 0.00491 | 783 | 0.005730 | 0.02215 | 0.00324 | 106 |
+| back60 | lock-luma-kill-wide-0.1 | taa-quality | 0.008012 | 0.04367 | 0.00493 | 873 | 0.006307 | 0.02546 | 0.00323 | 756 |
+| back60 | fxaa | fxaa | 0.002955 | 0.01595 | 0.00470 | 0 | 0.002090 | 0.00868 | 0.00307 | 0 |
+| ground15 | baseline | taa-native | 0.002957 | 0.01148 | 0.00116 | 371 | 0.005274 | 0.01937 | 0.00373 | 512 |
+| ground15 | baseline | taa-quality | 0.003024 | 0.01176 | 0.00118 | 340 | 0.005695 | 0.02242 | 0.00378 | 1305 |
+| ground15 | locks-off | taa-native | 0.002877 | 0.01065 | 0.00120 | 321 | 0.004504 | 0.01713 | 0.00384 | 259 |
+| ground15 | locks-off | taa-quality | 0.002878 | 0.01148 | 0.00121 | 272 | 0.004389 | 0.01710 | 0.00387 | 686 |
+| ground15 | lock-history-ridge | taa-native | 0.002939 | 0.01077 | 0.00117 | 363 | 0.005042 | 0.01740 | 0.00373 | 323 |
+| ground15 | lock-history-ridge | taa-quality | 0.003018 | 0.01176 | 0.00119 | 340 | 0.004777 | 0.01794 | 0.00383 | 839 |
+| ground15 | lock-luma-kill-wide-0.1 | taa-native | 0.002942 | 0.01120 | 0.00116 | 369 | 0.004942 | 0.01903 | 0.00379 | 270 |
+| ground15 | lock-luma-kill-wide-0.1 | taa-quality | 0.003036 | 0.01176 | 0.00118 | 337 | 0.005086 | 0.02104 | 0.00381 | 754 |
+| ground15 | fxaa | fxaa | 0.002280 | 0.01260 | 0.00135 | 0 | 0.002343 | 0.00784 | 0.00334 | 0 |
+
+#### Real-scene lock-luma-kill-wide-0.2
+
+| Condition | Arm | Mode | Character grain mean | p95 | Change mean | Dots | Ground grain mean | p95 | Change mean | Dots |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| back15 | baseline | taa-native | 0.014287 | 0.07499 | 0.01795 | 1742 | 0.006708 | 0.02635 | 0.01249 | 485 |
+| back15 | baseline | taa-quality | 0.014156 | 0.07334 | 0.01757 | 1733 | 0.007330 | 0.02830 | 0.01235 | 1881 |
+| back15 | locks-off | taa-native | 0.007125 | 0.04005 | 0.01883 | 591 | 0.006238 | 0.02383 | 0.01252 | 124 |
+| back15 | locks-off | taa-quality | 0.008529 | 0.04754 | 0.01829 | 771 | 0.006368 | 0.02494 | 0.01247 | 1004 |
+| back15 | lock-history-ridge | taa-native | 0.009307 | 0.04953 | 0.01882 | 957 | 0.006253 | 0.02389 | 0.01252 | 130 |
+| back15 | lock-history-ridge | taa-quality | 0.011486 | 0.05932 | 0.01810 | 1211 | 0.006432 | 0.02573 | 0.01246 | 1025 |
+| back15 | lock-luma-kill-wide-0.2 | taa-native | 0.009562 | 0.05159 | 0.01868 | 1052 | 0.006704 | 0.02633 | 0.01249 | 480 |
+| back15 | lock-luma-kill-wide-0.2 | taa-quality | 0.010934 | 0.05960 | 0.01819 | 1250 | 0.007331 | 0.02830 | 0.01236 | 1883 |
+| back15 | fxaa | fxaa | 0.002961 | 0.01649 | 0.01911 | 0 | 0.002130 | 0.00869 | 0.01311 | 0 |
+| day30 | baseline | taa-native | 0.008413 | 0.04997 | 0.00371 | 1097 | 0.005930 | 0.02326 | 0.00234 | 310 |
+| day30 | baseline | taa-quality | 0.009148 | 0.05207 | 0.00366 | 1117 | 0.006355 | 0.02524 | 0.00238 | 906 |
+| day30 | locks-off | taa-native | 0.005653 | 0.03105 | 0.00377 | 461 | 0.005272 | 0.01965 | 0.00231 | 25 |
+| day30 | locks-off | taa-quality | 0.006261 | 0.03471 | 0.00354 | 467 | 0.005076 | 0.01934 | 0.00232 | 203 |
+| day30 | lock-history-ridge | taa-native | 0.007094 | 0.04003 | 0.00380 | 792 | 0.005293 | 0.01986 | 0.00231 | 34 |
+| day30 | lock-history-ridge | taa-quality | 0.008039 | 0.04534 | 0.00361 | 919 | 0.005126 | 0.01959 | 0.00232 | 215 |
+| day30 | lock-luma-kill-wide-0.2 | taa-native | 0.007540 | 0.04342 | 0.00373 | 845 | 0.005931 | 0.02326 | 0.00234 | 310 |
+| day30 | lock-luma-kill-wide-0.2 | taa-quality | 0.008887 | 0.05121 | 0.00364 | 1035 | 0.006355 | 0.02524 | 0.00238 | 906 |
+| day30 | fxaa | fxaa | 0.002976 | 0.01624 | 0.00402 | 0 | 0.002071 | 0.00868 | 0.00202 | 0 |
+| back60 | baseline | taa-native | 0.009675 | 0.05484 | 0.00488 | 1355 | 0.006055 | 0.02353 | 0.00328 | 379 |
+| back60 | baseline | taa-quality | 0.010472 | 0.05966 | 0.00500 | 1535 | 0.006729 | 0.02718 | 0.00327 | 1303 |
+| back60 | locks-off | taa-native | 0.006230 | 0.03358 | 0.00482 | 619 | 0.005363 | 0.01992 | 0.00325 | 42 |
+| back60 | locks-off | taa-quality | 0.007109 | 0.03920 | 0.00487 | 724 | 0.005514 | 0.02073 | 0.00322 | 394 |
+| back60 | lock-history-ridge | taa-native | 0.008081 | 0.04534 | 0.00490 | 1057 | 0.005387 | 0.02013 | 0.00325 | 45 |
+| back60 | lock-history-ridge | taa-quality | 0.009345 | 0.05120 | 0.00497 | 1271 | 0.005586 | 0.02127 | 0.00321 | 416 |
+| back60 | lock-luma-kill-wide-0.2 | taa-native | 0.008483 | 0.04767 | 0.00496 | 1092 | 0.006053 | 0.02353 | 0.00328 | 379 |
+| back60 | lock-luma-kill-wide-0.2 | taa-quality | 0.009703 | 0.05487 | 0.00499 | 1423 | 0.006729 | 0.02718 | 0.00327 | 1303 |
+| back60 | fxaa | fxaa | 0.002955 | 0.01595 | 0.00470 | 0 | 0.002090 | 0.00868 | 0.00307 | 0 |
+| ground15 | baseline | taa-native | 0.002957 | 0.01148 | 0.00116 | 371 | 0.005274 | 0.01937 | 0.00373 | 512 |
+| ground15 | baseline | taa-quality | 0.003024 | 0.01176 | 0.00118 | 340 | 0.005695 | 0.02242 | 0.00378 | 1305 |
+| ground15 | locks-off | taa-native | 0.002877 | 0.01065 | 0.00120 | 321 | 0.004504 | 0.01713 | 0.00384 | 259 |
+| ground15 | locks-off | taa-quality | 0.002878 | 0.01148 | 0.00121 | 272 | 0.004389 | 0.01710 | 0.00387 | 686 |
+| ground15 | lock-history-ridge | taa-native | 0.002939 | 0.01077 | 0.00117 | 363 | 0.005042 | 0.01740 | 0.00373 | 323 |
+| ground15 | lock-history-ridge | taa-quality | 0.003018 | 0.01176 | 0.00119 | 340 | 0.004777 | 0.01794 | 0.00383 | 839 |
+| ground15 | lock-luma-kill-wide-0.2 | taa-native | 0.002961 | 0.01148 | 0.00116 | 371 | 0.005240 | 0.01934 | 0.00373 | 464 |
+| ground15 | lock-luma-kill-wide-0.2 | taa-quality | 0.003024 | 0.01176 | 0.00118 | 340 | 0.005671 | 0.02242 | 0.00379 | 1237 |
+| ground15 | fxaa | fxaa | 0.002280 | 0.01260 | 0.00135 | 0 | 0.002343 | 0.00784 | 0.00334 | 0 |
+
+#### Real-scene lock-trust-2+lock-luma-kill-0.2
+
+| Condition | Arm | Mode | Character grain mean | p95 | Change mean | Dots | Ground grain mean | p95 | Change mean | Dots |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| back15 | baseline | taa-native | 0.014287 | 0.07499 | 0.01795 | 1742 | 0.006708 | 0.02635 | 0.01249 | 485 |
+| back15 | baseline | taa-quality | 0.014156 | 0.07334 | 0.01757 | 1733 | 0.007330 | 0.02830 | 0.01235 | 1881 |
+| back15 | locks-off | taa-native | 0.007125 | 0.04005 | 0.01883 | 591 | 0.006238 | 0.02383 | 0.01252 | 124 |
+| back15 | locks-off | taa-quality | 0.008529 | 0.04754 | 0.01829 | 771 | 0.006368 | 0.02494 | 0.01247 | 1004 |
+| back15 | lock-history-ridge | taa-native | 0.009307 | 0.04953 | 0.01882 | 957 | 0.006253 | 0.02389 | 0.01252 | 130 |
+| back15 | lock-history-ridge | taa-quality | 0.011486 | 0.05932 | 0.01810 | 1211 | 0.006432 | 0.02573 | 0.01246 | 1025 |
+| back15 | lock-trust-2+lock-luma-kill-0.2 | taa-native | 0.008971 | 0.04981 | 0.01873 | 971 | 0.006563 | 0.02550 | 0.01252 | 350 |
+| back15 | lock-trust-2+lock-luma-kill-0.2 | taa-quality | 0.009923 | 0.05373 | 0.01822 | 968 | 0.007089 | 0.02800 | 0.01242 | 1632 |
+| back15 | fxaa | fxaa | 0.002961 | 0.01649 | 0.01911 | 0 | 0.002130 | 0.00869 | 0.01311 | 0 |
+| day30 | baseline | taa-native | 0.008413 | 0.04997 | 0.00371 | 1097 | 0.005930 | 0.02326 | 0.00234 | 310 |
+| day30 | baseline | taa-quality | 0.009148 | 0.05207 | 0.00366 | 1117 | 0.006355 | 0.02524 | 0.00238 | 906 |
+| day30 | locks-off | taa-native | 0.005653 | 0.03105 | 0.00377 | 461 | 0.005272 | 0.01965 | 0.00231 | 25 |
+| day30 | locks-off | taa-quality | 0.006261 | 0.03471 | 0.00354 | 467 | 0.005076 | 0.01934 | 0.00232 | 203 |
+| day30 | lock-history-ridge | taa-native | 0.007094 | 0.04003 | 0.00380 | 792 | 0.005293 | 0.01986 | 0.00231 | 34 |
+| day30 | lock-history-ridge | taa-quality | 0.008039 | 0.04534 | 0.00361 | 919 | 0.005126 | 0.01959 | 0.00232 | 215 |
+| day30 | lock-trust-2+lock-luma-kill-0.2 | taa-native | 0.007426 | 0.04314 | 0.00375 | 891 | 0.005775 | 0.02244 | 0.00234 | 230 |
+| day30 | lock-trust-2+lock-luma-kill-0.2 | taa-quality | 0.008377 | 0.04701 | 0.00364 | 864 | 0.006137 | 0.02440 | 0.00236 | 815 |
+| day30 | fxaa | fxaa | 0.002976 | 0.01624 | 0.00402 | 0 | 0.002071 | 0.00868 | 0.00202 | 0 |
+| back60 | baseline | taa-native | 0.009675 | 0.05484 | 0.00488 | 1355 | 0.006055 | 0.02353 | 0.00328 | 379 |
+| back60 | baseline | taa-quality | 0.010472 | 0.05966 | 0.00500 | 1535 | 0.006729 | 0.02718 | 0.00327 | 1303 |
+| back60 | locks-off | taa-native | 0.006230 | 0.03358 | 0.00482 | 619 | 0.005363 | 0.01992 | 0.00325 | 42 |
+| back60 | locks-off | taa-quality | 0.007109 | 0.03920 | 0.00487 | 724 | 0.005514 | 0.02073 | 0.00322 | 394 |
+| back60 | lock-history-ridge | taa-native | 0.008081 | 0.04534 | 0.00490 | 1057 | 0.005387 | 0.02013 | 0.00325 | 45 |
+| back60 | lock-history-ridge | taa-quality | 0.009345 | 0.05120 | 0.00497 | 1271 | 0.005586 | 0.02127 | 0.00321 | 416 |
+| back60 | lock-trust-2+lock-luma-kill-0.2 | taa-native | 0.008147 | 0.04678 | 0.00496 | 1104 | 0.005829 | 0.02269 | 0.00327 | 219 |
+| back60 | lock-trust-2+lock-luma-kill-0.2 | taa-quality | 0.008967 | 0.05043 | 0.00500 | 1221 | 0.006468 | 0.02606 | 0.00327 | 1019 |
+| back60 | fxaa | fxaa | 0.002955 | 0.01595 | 0.00470 | 0 | 0.002090 | 0.00868 | 0.00307 | 0 |
+| ground15 | baseline | taa-native | 0.002957 | 0.01148 | 0.00116 | 371 | 0.005274 | 0.01937 | 0.00373 | 512 |
+| ground15 | baseline | taa-quality | 0.003024 | 0.01176 | 0.00118 | 340 | 0.005695 | 0.02242 | 0.00378 | 1305 |
+| ground15 | locks-off | taa-native | 0.002877 | 0.01065 | 0.00120 | 321 | 0.004504 | 0.01713 | 0.00384 | 259 |
+| ground15 | locks-off | taa-quality | 0.002878 | 0.01148 | 0.00121 | 272 | 0.004389 | 0.01710 | 0.00387 | 686 |
+| ground15 | lock-history-ridge | taa-native | 0.002939 | 0.01077 | 0.00117 | 363 | 0.005042 | 0.01740 | 0.00373 | 323 |
+| ground15 | lock-history-ridge | taa-quality | 0.003018 | 0.01176 | 0.00119 | 340 | 0.004777 | 0.01794 | 0.00383 | 839 |
+| ground15 | lock-trust-2+lock-luma-kill-0.2 | taa-native | 0.002933 | 0.01093 | 0.00117 | 371 | 0.005007 | 0.01907 | 0.00378 | 389 |
+| ground15 | lock-trust-2+lock-luma-kill-0.2 | taa-quality | 0.003033 | 0.01176 | 0.00120 | 337 | 0.005251 | 0.02188 | 0.00382 | 1015 |
+| ground15 | fxaa | fxaa | 0.002280 | 0.01260 | 0.00135 | 0 | 0.002343 | 0.00784 | 0.00334 | 0 |
+
+### Metal guards with each token
+
+One filtered `dotnet test` per token, `KE_GPU_TESTS=1`, Metal hardware, the same filter as last round: the
+synthetic textured-receiver case and the rest of `TemporalGameShadowGrainGpuTests`, `TemporalShadowEdgeLagGpuTests`,
+`TemporalMovingShadeLagGpuTests`, `TemporalStableDetailGpuTests` and `TemporalStablePeakGpuTests`, 8 facts. Values are
+the logs' printed four-decimal figures, so a printed value can sit on its bound while the unrounded one passes.
+Full logs are in [guards/lock-trust-round](guards/lock-trust-round/), the table in
+[guard-values.md](runs/lock-trust-round/guard-values.md).
+
+| Guard metric | Bound | unset | trust-2 | trust-3 | trust-4 | kill-0.1 | kill-0.2 | wide-0.1 | wide-0.2 | trust-2 + kill-0.2 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Facts passed of 8 | | 8 | 7 | 7 | 6 | 7 | 8 | 7 | 7 | 7 |
+| Quality still 1 px texture error | <= 0.005885 | 0.00548 | 0.00549 | 0.00550 | 0.00554 | 0.00554 | 0.00548 | 0.00548 | 0.00548 | 0.00549 |
+| Quality still 1 px temporal error | <= 0.001155 | 0.00112 | 0.00112 | 0.00111 | 0.00112 | 0.00112 | 0.00112 | 0.00112 | 0.00112 | 0.00112 |
+| Quality still 0.5 px texture error | <= 0.007931 | 0.00724 | 0.00735 | 0.00760 | **0.00814** | 0.00725 | 0.00724 | 0.00724 | 0.00724 | 0.00735 |
+| Quality camera pan 2 px textured band | <= 0.00605 | 0.0055 | **0.0061** | **0.0070** | **0.0078** | **0.0061** | 0.0056 | 0.0058 | 0.0055 | **0.0061** |
+| Quality camera pan 2 px textured tail | <= 0.00429 | 0.0039 | **0.0043** | **0.0053** | **0.0062** | 0.0039 | 0.0039 | 0.0039 | 0.0039 | **0.0043** |
+| Quality flat stable-peak error | <= 0.016544 | 0.01504 | 0.01511 | 0.01515 | 0.01513 | 0.01503 | 0.01504 | 0.01504 | 0.01504 | 0.01511 |
+| Quality flat stable-peak change | <= 0.002233 | 0.00203 | 0.00205 | 0.00207 | 0.00211 | 0.00203 | 0.00203 | 0.00203 | 0.00203 | 0.00205 |
+| Native S 1 px advancing textured band (lag) | lower is better | 0.0162 | 0.0153 | 0.0146 | 0.0142 | 0.0127 | 0.0136 | 0.0126 | 0.0140 | 0.0135 |
+| Quality S 1 px advancing textured band (lag) | lower is better | 0.0208 | 0.0206 | 0.0203 | 0.0200 | 0.0176 | 0.0184 | 0.0177 | 0.0193 | 0.0184 |
+| Native S 8 px advancing textured tail | <= 1.5 x 1 px tail | 0.0044 / 0.0033 | 0.0045 / 0.0033 | 0.0044 / 0.0032 | 0.0045 / 0.0031 | **0.0046 / 0.0030** | 0.0047 / 0.0031 | **0.0046 / 0.0030** | 0.0047 / 0.0032 | 0.0047 / 0.0032 |
+| Native S 8 px retreating textured tail | <= 1.5 x 1 px tail | 0.0070 / 0.0057 | 0.0072 / 0.0055 | 0.0073 / 0.0056 | 0.0075 / 0.0055 | **0.0082 / 0.0055** | 0.0083 / 0.0057 | **0.0082 / 0.0055** | 0.0082 / 0.0057 | 0.0082 / 0.0057 |
+| Quality S 8 px advancing textured tail | <= 1.5 x 1 px tail | 0.0042 / 0.0031 | 0.0042 / 0.0031 | 0.0041 / 0.0031 | 0.0042 / 0.0030 | 0.0043 / 0.0031 | 0.0043 / 0.0032 | 0.0043 / 0.0031 | **0.0043 / 0.0029** | 0.0043 / 0.0032 |
+| Synthetic textured grain, Native | diagnostic | 0.012026 | 0.012025 | 0.011883 | 0.011837 | 0.010442 | 0.010529 | 0.010444 | 0.010502 | 0.010529 |
+| Synthetic textured grain, Quality | locks-off 0.006727 | 0.010852 | 0.010849 | 0.010820 | 0.010792 | 0.006745 | 0.007110 | 0.007095 | 0.008126 | 0.007110 |
+
+Bold is a failed assertion. The tail rows show the 8 px tail over the 1 px tail it is bounded by.
+
+- The trust ramp weakens texture locks before shading ones. Every K fails the Quality 2 px camera pan, worse as K
+  grows, and K = 4 also fails Quality 0.5 px still detail. A texture ridge finer than a texel shows on only some
+  jitter phases, so it climbs slowly, while the staircase's lit texels ridge on several consecutive frames and climb
+  to a hold as fast. The synthetic case barely moves (Quality 0.010852 to 0.010792).
+- The narrow kill at 0.1 keeps every still-detail and stable-peak value at the unset run's. It fails the same two
+  Native 8 px tail ratios `locks-off` failed last round, and the Quality pan band, printed 0.0061 against 0.00605. The synthetic case
+  falls to `locks-off` (0.006745 against 0.006727).
+- The narrow kill at 0.2 passes all 8. Its Native 8 px tails sit on their bounds in print, 0.0047 against 1.5 x
+  0.0031 and 0.0083 against 1.5 x 0.0057, so it has no margin there.
+- The wide footprint does not buy the margin. At 0.1 it fixes the pan but keeps both Native tail failures, and at
+  0.2 it fails a Quality 8 px tail ratio and cuts less grain than the narrow 0.2.
+- Every kill lowers the 1 px moving-shadow band error, Native 0.0162 to between 0.0126 and 0.0140, so killing the lock on a
+  shading change also removes lag it held. The cost is the 8 px retreating textured tail, 0.0070 to 0.0082 or
+  0.0083: behind a fast shadow, texture locks are dropped as the edge crosses and that texture re-converges
+  without its hold.
+
+### Crops
+
+Panels are Native, Quality and FXAA left to right, frame 15, at 4x, `crops/lock-trust-<condition>-<arm>-<region>-015-4x.png`.
+Back15 character and ground crops exist for every token and the combination, and the other three conditions
+for `lock-luma-kill-0.2`. For example
+[baseline](crops/lock-rule-back15-baseline-character-015-4x.png),
+[kill 0.2](crops/lock-trust-back15-lock-luma-kill-0.2-character-015-4x.png),
+[kill 0.1](crops/lock-trust-back15-lock-luma-kill-0.1-character-015-4x.png),
+[trust 4](crops/lock-trust-back15-lock-trust-4-character-015-4x.png) and
+[combination](crops/lock-trust-back15-lock-trust-2+lock-luma-kill-0.2-character-015-4x.png). The kill clears most
+specks on the shadowed forearm, with a few left at Quality.
+
+### Recommendation from this round
+
+Implement the low-frequency luma kill properly and drop the trust ramp.
+
+The kill acts on the class the gate trace found. The largest Native blocker is a carried lock on a 3x3 that went
+flat because the shadow covered it, and the ridge-this-frame dots are inside the reset extents before any release
+evidence exists. A relative change in the neighbourhood's low-frequency luma catches both without asking the
+release to tell shading from texture. That it reaches those two classes is inferred from the trace and the grain, not
+traced with the overlays under the kill. `lock-luma-kill-0.1` comes within 1 to 3 points of `locks-off` grain at
+back15 and within 5 to 9 points in the other conditions, with no lag returning, and unlike `locks-off` it keeps the
+still-detail and stable-peak guards. `lock-luma-kill-0.2` passes all
+eight guards and still cuts back15 character grain 35% and 29% and dots 40% and 41%.
+
+Tuning to carry into a proper implementation: the narrow footprint, this frame's 3x3 mean against last frame's ring
+plus centre, with a threshold between 0.1 and 0.2. 0.2 is the tested safe point, 0.1 the tested effective one.
+The 8 px tail ratio decides where between them it lands, and that needs its own paired measurement, not a looser
+bound. The trust ramp gives 2% to 17% at the cost of guard failures at every K and should not be pursued in this
+form.
+
+State: none. The kill reads the history colour the ring test already samples and stores nothing. A trust value
+separate from the lock would need a channel `HistoryConfidence` does not have.
+
+Risks the guards do not cover:
+
+- The measure is relative with a 1e-4 floor. On a dark surface a small absolute change is a large relative one, so
+  night scenes, deep shade and dark materials may lose texture locks to noise. A proper version likely wants an
+  absolute floor as well, untested here.
+- Animated light on texture, a torch flicker or a moving point light, changes low-frequency luma every frame and
+  would keep that texture unlocked. No guard has a textured receiver under a flickering or moving local light.
+- Fast shadows over texture lose detail for a few frames behind the edge, which is what the 8 px tail ratio
+  measures. No guard measures how long that detail takes to return.
+- Balanced and lower presets were not measured. The upscale gate held nothing at Native or Quality, so the trace
+  says nothing about where `Jitter.z >= ShadingMaxUpscale`.
+- `lock-luma-kill-0.2`'s ground15 dots fall only 7% and 6%, against 47% and 45% at 0.1 and `locks-off`'s 49% and
+  47%. On the ground edge the threshold matters more than on the character, which a tuning pass has to measure.
+
+### Reproduce this round
+
+Engine pack and game refresh as in Commands above, then from the engine worktree:
+
+```bash
+python3 KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/scripts/capture_lock_rules.py \
+  /Users/antonio/Grimhollow/.worktrees/taa-grain-probe /tmp/grimhollow-shadowgrain/lock-trust-round \
+  baseline noop show-gate show-lock-age show-gate-extent lock-trust-2 lock-trust-3 lock-trust-4 \
+  lock-luma-kill-0.1 lock-luma-kill-0.2 lock-luma-kill-wide-0.1 lock-luma-kill-wide-0.2 \
+  lock-trust-2,lock-luma-kill-0.2
+cd KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene
+python3 scripts/gate_histogram.py /tmp/grimhollow-shadowgrain/lock-trust-round back15
+python3 scripts/lock_trust_tables.py /tmp/grimhollow-shadowgrain/lock-trust-round \
+  /tmp/grimhollow-shadowgrain/lock-rule-round runs/lock-trust-round/summary.json lock-trust-2 lock-trust-3 \
+  lock-trust-4 lock-luma-kill-0.1 lock-luma-kill-0.2 lock-luma-kill-wide-0.1 lock-luma-kill-wide-0.2 \
+  lock-trust-2+lock-luma-kill-0.2
+python3 scripts/make_crops.py /tmp/grimhollow-shadowgrain/lock-trust-round crops lock-trust back15-show-gate
+python3 scripts/guard_values.py guards/lock-trust-round/*.txt
+```
+
+The combination's capture directories were renamed from the comma form to `+` after capture. Overlays and `noop`
+capture at back15 only. Guards, one run per token, sequentially:
+
+```bash
+KE_TEMPORAL_DIAG=lock-luma-kill-0.2 KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native \
+  build-slot --heavy --label grain-guards -- dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj \
+  -c Release --no-build --filter "$grain_guard_filter" --logger 'console;verbosity=detailed'
+```
+
+All 40 captures this round exited zero ([sweep](runs/lock-trust-round/capture-sweep.txt)). Both branches remain
+diagnostic archives. Neither is a shipping fix or a merge candidate.

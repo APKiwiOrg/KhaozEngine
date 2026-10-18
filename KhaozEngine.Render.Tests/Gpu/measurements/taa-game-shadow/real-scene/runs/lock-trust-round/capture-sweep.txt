@@ -1,0 +1,80 @@
+START back15-baseline
+END back15-baseline exit 0
+START day30-baseline
+END day30-baseline exit 0
+START back60-baseline
+END back60-baseline exit 0
+START ground15-baseline
+END ground15-baseline exit 0
+START back15-noop
+END back15-noop exit 0
+START back15-show-gate
+END back15-show-gate exit 0
+START back15-show-lock-age
+END back15-show-lock-age exit 0
+START back15-show-gate-extent
+END back15-show-gate-extent exit 0
+START back15-lock-trust-2
+END back15-lock-trust-2 exit 0
+START day30-lock-trust-2
+END day30-lock-trust-2 exit 0
+START back60-lock-trust-2
+END back60-lock-trust-2 exit 0
+START ground15-lock-trust-2
+END ground15-lock-trust-2 exit 0
+START back15-lock-trust-3
+END back15-lock-trust-3 exit 0
+START day30-lock-trust-3
+END day30-lock-trust-3 exit 0
+START back60-lock-trust-3
+END back60-lock-trust-3 exit 0
+START ground15-lock-trust-3
+END ground15-lock-trust-3 exit 0
+START back15-lock-trust-4
+END back15-lock-trust-4 exit 0
+START day30-lock-trust-4
+END day30-lock-trust-4 exit 0
+START back60-lock-trust-4
+END back60-lock-trust-4 exit 0
+START ground15-lock-trust-4
+END ground15-lock-trust-4 exit 0
+START back15-lock-luma-kill-0.1
+END back15-lock-luma-kill-0.1 exit 0
+START day30-lock-luma-kill-0.1
+END day30-lock-luma-kill-0.1 exit 0
+START back60-lock-luma-kill-0.1
+END back60-lock-luma-kill-0.1 exit 0
+START ground15-lock-luma-kill-0.1
+END ground15-lock-luma-kill-0.1 exit 0
+START back15-lock-luma-kill-0.2
+END back15-lock-luma-kill-0.2 exit 0
+START day30-lock-luma-kill-0.2
+END day30-lock-luma-kill-0.2 exit 0
+START back60-lock-luma-kill-0.2
+END back60-lock-luma-kill-0.2 exit 0
+START ground15-lock-luma-kill-0.2
+END ground15-lock-luma-kill-0.2 exit 0
+START back15-lock-luma-kill-wide-0.1
+END back15-lock-luma-kill-wide-0.1 exit 0
+START day30-lock-luma-kill-wide-0.1
+END day30-lock-luma-kill-wide-0.1 exit 0
+START back60-lock-luma-kill-wide-0.1
+END back60-lock-luma-kill-wide-0.1 exit 0
+START ground15-lock-luma-kill-wide-0.1
+END ground15-lock-luma-kill-wide-0.1 exit 0
+START back15-lock-luma-kill-wide-0.2
+END back15-lock-luma-kill-wide-0.2 exit 0
+START day30-lock-luma-kill-wide-0.2
+END day30-lock-luma-kill-wide-0.2 exit 0
+START back60-lock-luma-kill-wide-0.2
+END back60-lock-luma-kill-wide-0.2 exit 0
+START ground15-lock-luma-kill-wide-0.2
+END ground15-lock-luma-kill-wide-0.2 exit 0
+START back15-lock-trust-2,lock-luma-kill-0.2
+END back15-lock-trust-2,lock-luma-kill-0.2 exit 0
+START day30-lock-trust-2,lock-luma-kill-0.2
+END day30-lock-trust-2,lock-luma-kill-0.2 exit 0
+START back60-lock-trust-2,lock-luma-kill-0.2
+END back60-lock-trust-2,lock-luma-kill-0.2 exit 0
+START ground15-lock-trust-2,lock-luma-kill-0.2
+END ground15-lock-trust-2,lock-luma-kill-0.2 exit 0

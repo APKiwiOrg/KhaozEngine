@@ -2046,6 +2046,7 @@ as the preceding round. No colour, texture contrast or thin-feature classifier e
 | `vis-centre-dq-0.1` | The same depth-qualified comparison with only offset `(0,0)`, greater than 0.1 |
 | `vis-mean-dq-large-0.1` | Release above 0.1. Also drop accumulated weight and display share above 0.5 |
 
+Every comparison requires `useHistory`, the resolve's existing valid-history gate.
 Every release clears the stored lock before computing the clip hold. The five release-only arms preserve
 accumulated weight and display share unless the resolve's independent existing shading-release rule fires.
 The two-level arm is the sole explicit exception. It addresses the measured absolute fast-tail increase, which
@@ -2057,7 +2058,7 @@ For each accepted offset, inspect the four bilinear history texels separately us
 Accept a history texel when `abs(storedDepth - expectedDepth) <= 0.02 * max(expectedDepth, 1e-5)`, where
 `expectedDepth` is the same reprojected surface depth used by history validity. Reject other surfaces before
 interpolation. Divide the current sum by accepted current count, and the history sum by the sum of accepted
-bilinear weights over those offsets. No accepted history weight means no release. The centre variant uses the
+bilinear weights over those offsets. No accepted current samples or history weight means no release. The centre variant uses the
 same four depth-qualified history texels at `h(0)`. The symmetric relative tolerance is 2% on both sides.
 
 Threshold 0.1 was selected for the depth-qualified comparison because all three mean thresholds retain the

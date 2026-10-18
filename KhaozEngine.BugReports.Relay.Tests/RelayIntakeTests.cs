@@ -292,23 +292,22 @@ public sealed class RelayIntakeTests
     }
 
     [Fact]
-    public async Task Intake_DuplicateWithin15Minutes_DoesNotEnqueue()
+    public async Task Intake_UnfinishedDuplicate_EnqueuesImmediately()
     {
         var harness = new RelayHarness();
         await harness.IntakeAsync();
         Assert.True(harness.Work.TryDequeue(out _));
-        harness.Clock.Advance(TimeSpan.FromMinutes(15));
         AssertAccepted(await harness.IntakeAsync());
-        Assert.Equal(0, harness.Work.Count);
+        Assert.Equal(1, harness.Work.Count);
     }
 
     [Fact]
-    public async Task Intake_DuplicateAfter15MinutesWithoutIssue_Enqueues()
+    public async Task Intake_OldUnfinishedDuplicate_Enqueues()
     {
         var harness = new RelayHarness();
         await harness.IntakeAsync();
         Assert.True(harness.Work.TryDequeue(out _));
-        harness.Clock.Advance(TimeSpan.FromMinutes(15) + TimeSpan.FromTicks(1));
+        harness.Clock.Advance(TimeSpan.FromHours(1));
         AssertAccepted(await harness.IntakeAsync());
         Assert.True(harness.Work.TryDequeue(out ReportWorkItem? work));
         Assert.Equal(new ReportWorkItem(ReportWorkKind.CreateIssue, Id), work);

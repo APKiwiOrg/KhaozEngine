@@ -3431,6 +3431,10 @@ to `ServerSnapshotIntakeAsync`, and the queue trigger to
 forward the `RelayResponse` status, JSON and headers, including `Retry-After`. Let worker exceptions escape
 for durable queue redelivery.
 
+Every resend of an unfinished report enqueues `CreateIssue` before returning 202, regardless of age.
+If enqueue fails, the request fails so the client keeps its bundle. Worker claims and result markers
+suppress duplicate messages.
+
 The [relay README](../KhaozEngine.BugReports.Relay/README.md) has the isolated-worker host sketch and status
 codes. Read its [Host duties](../KhaozEngine.BugReports.Relay/README.md#host-duties) for the 5-dequeue poison
 policy, visibility backoff, daily requeue and prefix-scoped retention, and its

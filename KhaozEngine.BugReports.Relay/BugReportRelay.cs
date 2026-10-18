@@ -38,7 +38,7 @@ public sealed class BugReportRelay
     /// <summary>Authenticates, quota-checks, validates and stores one client bundle, then queues issue creation.</summary>
     /// <remarks>
     /// Resending an accepted report consumes quota because quota is checked before bundle validation and idempotency.
-    /// A report without an issue is re-enqueued only after 15 minutes. See <see cref="ProcessWorkAsync"/> for the
+    /// Every resend of an unfinished report enqueues work before acceptance. See <see cref="ProcessWorkAsync"/> for the
     /// worker claim and crash-recovery behavior.
     /// </remarks>
     public Task<RelayResponse> IntakeAsync(RelayRequest request, CancellationToken cancellationToken)

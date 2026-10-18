@@ -10,7 +10,6 @@ namespace KhaozEngine.BugReports.Relay;
 /// <summary>The ordered trust boundary for client report uploads.</summary>
 internal sealed class RelayIntake
 {
-    static readonly TimeSpan ReenqueueAfter = TimeSpan.FromMinutes(15);
     readonly BugReportRelayOptions options;
     readonly IReporterAuthenticator authenticator;
     readonly IReportWorkQueue work;
@@ -57,7 +56,7 @@ internal sealed class RelayIntake
         if (!string.Equals(manifest.GameId, options.GameId, StringComparison.Ordinal)) return RelayResponses.Error(422, "game_mismatch");
 
         AcceptedReport? accepted = await records.LoadAcceptedAsync(key, ct).ConfigureAwait(false);
-        if (accepted is not null) return await AcceptedAsync(key, accepted, ct).ConfigureAwait(false);
+        if (accepted is not null) return await AcceptedAsync(key, ct).ConfigureAwait(false);
         ReportRecord? record = await records.LoadReportAsync(key, ct).ConfigureAwait(false);
         if (record is not null) return await CompleteAcceptanceAsync(record, ct).ConfigureAwait(false);
 
@@ -73,18 +72,18 @@ internal sealed class RelayIntake
         string key = record.ReportId;
         if (!await records.TryCreateAcceptedAsync(key, new AcceptedReport(record.Folder, record.Reporter.Subject, record.ReceivedAt), ct).ConfigureAwait(false))
         {
-            AcceptedReport winner = await records.LoadAcceptedAsync(key, ct).ConfigureAwait(false)
+            _ = await records.LoadAcceptedAsync(key, ct).ConfigureAwait(false)
                 ?? throw new InvalidDataException("The winning accepted index is missing.");
-            return await AcceptedAsync(key, winner, ct).ConfigureAwait(false);
+            return await AcceptedAsync(key, ct).ConfigureAwait(false);
         }
         await work.EnqueueAsync(new ReportWorkItem(ReportWorkKind.CreateIssue, key), ct).ConfigureAwait(false);
         return RelayResponses.Accepted(key);
     }
 
-    async Task<RelayResponse> AcceptedAsync(string reportId, AcceptedReport accepted, CancellationToken ct)
+    async Task<RelayResponse> AcceptedAsync(string reportId, CancellationToken ct)
     {
         ReportRecord? record = await records.LoadReportAsync(reportId, ct).ConfigureAwait(false);
-        if (record is { IssueNumber: null } && time.GetUtcNow() - accepted.ReceivedAt > ReenqueueAfter)
+        if (record is { IssueNumber: null })
             await work.EnqueueAsync(new ReportWorkItem(ReportWorkKind.CreateIssue, reportId), ct).ConfigureAwait(false);
         return RelayResponses.Accepted(reportId);
     }

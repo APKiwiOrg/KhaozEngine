@@ -13,6 +13,7 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - New opt-in `KhaozEngine.BugReports.Relay.Azure` supplies Blob media, Queue work, Table quota counters and daily poison requeueing over host-owned clients, with offline conformance tests and a gated live leg.
 - `KhaozEngine.BugReports` exposes `BugReportLogTail.FromLogSection` for the viewer and relay to share the newest captured log lines.
 - `KhaozEngine.BugReports.Relay` exposes `ReportPaths.IsValid` as the media path rule shared by every store.
+- Every unfinished relay resend enqueues issue work before acceptance, including immediate retries after a failed enqueue.
 
 ## 21.4.0
 

@@ -44,7 +44,9 @@ Quota defaults are 5 reports per UTC hour and 20 per UTC day per account, and 10
 Quota checks precede validation and idempotency, so invalid bundles and accepted resends consume quota.
 The three counters are not a transaction. A later conflict can leave an earlier increment counted even
 when intake returns 429. Five optimistic attempts fail closed with `Retry-After: 5`.
-An accepted resend whose issue number is still unset repairs a missed enqueue after more than 15 minutes.
+Every accepted resend whose issue number is still unset enqueues `CreateIssue` before returning 202,
+regardless of age. An enqueue failure fails the request so the client retains its bundle. Worker claims
+and result markers suppress duplicate work.
 
 ## Isolated-worker host sketch
 

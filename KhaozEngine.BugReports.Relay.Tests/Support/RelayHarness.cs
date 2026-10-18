@@ -35,10 +35,12 @@ internal sealed class RelayHarness
     };
 
     public RelayHarness(Func<BugReportRelayOptions, BugReportRelayOptions>? configure = null,
-        Func<InMemoryReportMediaStore, IReportMediaStore>? wrapMedia = null)
+        Func<InMemoryReportMediaStore, IReportMediaStore>? wrapMedia = null,
+        Func<InMemoryReportWorkQueue, IReportWorkQueue>? wrapWork = null)
     {
         Options = (configure?.Invoke(DefaultOptions()) ?? DefaultOptions()) with { Logger = Logger };
-        Relay = new BugReportRelay(Options, Authenticator, wrapMedia?.Invoke(Media) ?? Media, Work, Quotas, GitHub, Clock);
+        Relay = new BugReportRelay(Options, Authenticator, wrapMedia?.Invoke(Media) ?? Media,
+            wrapWork?.Invoke(Work) ?? Work, Quotas, GitHub, Clock);
     }
 
     public static RelayRequest Request(byte[]? bundle = null, string? authorization = "Bearer good", string? id = Id,

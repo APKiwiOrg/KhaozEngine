@@ -10,7 +10,10 @@ namespace KhaozEngine.Tests.Gpu
     /// Leading and trailing silhouettes of the M and MS shadow stage. Unlike its infinitely tall strips, finite
     /// strips expose real edges along their motion. The one to six display pixels inside each edge include pixels
     /// whose current 3x3 is object-only but whose reprojected history ring reaches the background. The full rim's
-    /// error, raw frame-to-frame change and temporal error are bounded against v21.2.0 on each device class.
+    /// error and temporal error are bounded against the frozen bilinear-input control on each device class. Raw
+    /// frame-to-frame change is reported alongside the reference change.
+    /// The PCF filter changed the scene input. These rows measure the unchanged 21.4.0 resolve on bilinear 3x3 PCF.
+    /// The signal is judged against this frozen input-matched control.
     /// </summary>
     public sealed class TemporalMovingShadeRimGpuTests(TemporalMovingShadeRimScene scene, ITestOutputHelper output)
         : IClassFixture<TemporalMovingShadeRimScene>

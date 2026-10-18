@@ -162,8 +162,9 @@ ruling B31). The CPU refusals are identity, capacity, command frame admission an
 origin-magnitude guard.
 
 **Origin magnitude.** Staging bounds the actor's coordinate magnitude relative to the latched frame render
-origin from its model translation and host bounds. If a conservative float32 rounding bound for that
-magnitude exceeds `Clearance x MarginFraction` for any command, the actor is uncovered for the frame.
+origin from its model transform and the actor envelope described under CPU-side bounds. If a
+conservative float32 rounding bound for that magnitude exceeds `Clearance x MarginFraction` for any
+command, the actor is uncovered for the frame.
 `Scene3D.Begin` latches the origin before it opens the coverage arena that staging requires.
 
 ### Per frame on the GPU
@@ -195,9 +196,15 @@ double-buffered GPU surface. When history is invalid, the select kernel seeds th
 current surface, matching the existing current-position seeding rule. Equipment draws are unchanged.
 
 **CPU-side bounds.** The CPU never reads the GPU surface back for drawing decisions. Culling, shadow
-caster classification, the coverage sphere and temporal rejection bounds use the existing skinned-actor
-bounds expanded by each command's `MaxWorldRecession`. Conformation only recedes the host surface
-within that budget, so these bounds are conservative for both the conformed and the fallback surface.
+caster classification, the coverage sphere, temporal rejection bounds and the origin guard use one
+conservative envelope of the current pose, expanded by the largest command `MaxWorldRecession`. The
+existing skinned-actor bound is a 1.5x rest-pose sphere, a heuristic that an arbitrary palette can
+escape, so covered actors do not use it (root ruling C1, 2026-10-19). The envelope transforms each
+bone's cold box of influenced source positions by its composed palette matrix, joins the results and
+scales them by the host's weight-total interval, with rounding enclosed. Conformation only recedes the
+host surface within the recession budget, so this bound is conservative for both the conformed and the
+fallback surface. Uncovered actors keep the heuristic, tracked by
+[#1492](https://github.com/APKiwiOrg/KhaozEngine/issues/1492).
 
 **No compute.** If `SupportsCompute` is false or the coverage kernels fail to build, every actor is
 uncovered and draws through today's vertex-shader skinning. This is reported once as a coverage

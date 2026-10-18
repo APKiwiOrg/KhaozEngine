@@ -1170,9 +1170,17 @@ implementation cannot retain all exact residual components with the device's den
 use exact integer arithmetic or a proved scaling method. Do not silently flush a needed component
 of an exact helper's representation.
 
-Part C proves for each backend that the native error bound encloses the correctly rounded result
-within the searched neighbors. Outside the stated Vulkan divisor range, obtain a proved bound by
-scaling or use an exact path. A bound for a different instruction or precision mode does not count.
+Part C proves for each backend that the searched neighbors enclose the correctly rounded result.
+Root ruling C3 (2026-10-19) fixes the method on all three backends, Metal included.
+
+- The native result is only a seed.
+- An exact integer midpoint-residual test decides the result.
+- If the seed's bracket misses, the search expands by powers of two over ordinal positive words,
+  then bisects to adjacent words.
+
+That search covers the whole positive binary32 domain in at most 31 bisections, which is the proved
+bound. Correctness then depends on no native accuracy claim, including Vulkan's inherited square-root
+accuracy and its divisor range. A bound for a different instruction or precision mode never counts.
 Handle zero, signs, invalid inputs and infinities before applying a finite-neighbor search.
 Preserve correctly rounded overflow to infinity rather than saturating to the largest finite word.
 

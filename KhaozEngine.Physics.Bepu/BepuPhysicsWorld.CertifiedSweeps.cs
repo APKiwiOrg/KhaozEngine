@@ -58,6 +58,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsCapsuleSweep
                 out _, out _, out _)) return default;
         QueryScratch scratch = operation.Scratch;
         List<CollidableReference> candidates = scratch.SweepCandidates.Take();
+        CapsuleSweepScratch general = scratch.GeneralSweeps.Take();
         try
         {
             candidates.Clear();
@@ -65,21 +66,35 @@ public sealed partial class BepuPhysicsWorld : IPhysicsCapsuleSweep
             _sim.BroadPhase.GetOverlaps(min, max, ref collector);
             if (collector.Overflow) return default;
             return CertifyCandidates(candidates, capsule, pose, halfCylinder, displacement, length,
-                representedLength);
+                representedLength, filter, general);
         }
-        finally { scratch.SweepCandidates.Restore(candidates); }
+        finally { scratch.GeneralSweeps.Restore(general); scratch.SweepCandidates.Restore(candidates); }
     }
 
     CapsuleSweepResult CertifyCandidates(List<CollidableReference> candidates, in CapsuleQueryDimensions capsule,
-        Pose pose, float halfCylinder, Vector3 displacement, double length, float representedLength)
+        Pose pose, float halfCylinder, Vector3 displacement, double length, float representedLength,
+        QueryFilter filter, CapsuleSweepScratch scratch)
     {
+        var work = new CapsuleSweepWork();
         bool hit = false;
         float lower = float.PositiveInfinity, upper = float.PositiveInfinity, error = 0;
         foreach (CollidableReference candidate in candidates)
         {
             if (!TryGetSweepLeaf(candidate, out TypedIndex shape, out RigidPose bodyPose)) return default;
-            CapsuleSweepResult leaf = CapsuleBoxSweep.Sweep(_sim.Shapes, shape, bodyPose, pose.Position,
-                capsule.Radius, halfCylinder, displacement, MaximumSweepErrorMetres, CapsuleBoxFractionSweep.MaximumCells);
+            CapsuleSweepResult leaf;
+            if (CapsuleSweepGeometry.TryReadIdentityBox(_sim.Shapes, shape, bodyPose, out _))
+            {
+                if (!work.Primitive()) return default;
+                leaf = CapsuleBoxSweep.Sweep(_sim.Shapes, shape, bodyPose, pose.Position,
+                    capsule.Radius, halfCylinder, displacement, MaximumSweepErrorMetres, CapsuleBoxFractionSweep.MaximumCells);
+            }
+            else
+            {
+                if (!TryGetInstalledSweepGeometry(candidate, out InstalledSweepGeometry? geometry) || geometry is null)
+                    return default;
+                leaf = CapsuleGeneralSweep.Sweep(_sim.Shapes, shape, bodyPose, geometry, capsule, pose.Position,
+                    displacement, filter, ref work, scratch);
+            }
             if (!leaf.IsComplete || leaf.CertifiedErrorMetres > MaximumSweepErrorMetres) return default;
             error = System.MathF.Max(error, leaf.CertifiedErrorMetres);
             if (leaf.Status == CapsuleSweepStatus.Clear)

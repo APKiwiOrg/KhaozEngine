@@ -1,8 +1,36 @@
 # Swimming Task 4 candidate coverage
 
-Status: source proposal for the next generic backend slice. No candidate implementation, public
-sweep forwarding, native adapter or complete-world certificate exists from this document.
-The single identity-box sweep is preserved at `04e38bf73`.
+Status: historical candidate proposal with the installed rotated-box extension recorded below.
+The checkpoint sections retain their original evidence. Current restrictions live in the
+[backend README](../../KhaozEngine.Physics.Bepu/README.md).
+
+## Installed rotated-box evidence
+
+Each monotonically assigned registration id owns captured immutable Bepu Box topology. Removal
+removes that binding. Native handles or typed shape indices alone never identify an installation.
+Mutation completion rechecks the native shape/dimensions and publishes its current pose operator.
+The query rereads that pose under its existing owner read interval and rejects stale evidence.
+
+Required bounds union all eight corners under the common forward operator and the pinned rounded
+point graph. An inward stored leaf is expanded through `BroadPhase.UpdateActiveBounds` or
+`UpdateStaticBounds`. In pinned Bepu 2.4.0 these call `Tree.UpdateBounds`, which refits metanode
+ancestors through `RefitForNodeBoundsChange`. Ancestor structure is checked before repair, then
+stored leaf and ancestor containment are reread before publication. A failed repair poisons the
+mutation evidence and cannot be healed by an unrelated successful registration.
+
+The original outward query aperture and both bounded tree preflights remain unchanged. Rotated boxes
+with proved far bounds can be pruned. Unsupported selected families still refuse before traversal.
+Exclusions retain their existing source meaning and cannot hide invalid stored bounds or failed
+evidence. Mutation tests cover remove/re-add, wake/sleep transfers, velocity, stepping, constraints,
+nonzero Y rebase, no-op rebase and failed or missed hooks. Owner-scoped leases and view/gate/token
+semantics are unchanged under GS-13 ruling GB-R2.
+
+Candidate aggregation completes every selected leaf after an earlier Hit(0). Cell, depth, feature,
+descendant, exact-storage and arithmetic exhaustion discard the entire result. Warm queries borrow
+private retained scratch. Nested loans and two simultaneous owner intervals keep active workspaces
+separate. The [general-sweep contract](CERTIFIED-GENERAL-SWEEPS-2026-10-18.md) fixes the unchanged
+1,000,000 m stored-coordinate ceiling and all finite work ceilings. Hull, mesh, compound and other
+primitive sweep bounds remain unproved families until their own tasks land.
 
 ## Problem
 

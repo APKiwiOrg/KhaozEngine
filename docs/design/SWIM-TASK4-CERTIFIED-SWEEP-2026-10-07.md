@@ -1,10 +1,39 @@
 # Task 4 certified capsule sweep prerequisite
 
-Status: source-audited design completion for the existing approved G1a collision prerequisite.
-The value/interface seam is implemented with eight passing contract facts. No certified backend
-implementation is claimed. This does not open native G1b or change legacy
-locomotion. The [generic plan](../superpowers/plans/2026-10-06-swimming-generic-foundations.md)
-and accepted F3 require conservative swept completeness, not only complete point contacts.
+Status: historical prerequisite design with the current rotated-box extension recorded below.
+The checkpoint sections retain the evidence and limits of their original slices. Current consumer
+use and restrictions live in the [backend README](../../KhaozEngine.Physics.Bepu/README.md).
+
+## Rotated-box family extension
+
+The [general-sweep contract](CERTIFIED-GENERAL-SWEEPS-2026-10-18.md) adds installed rotated boxes
+without changing `TryReadIdentityBox`, `CapsuleBoxSweep` or `CapsuleBoxFractionSweep`. The convex
+kernel enumerates six finite faces, twelve edges, eight vertices and solid occupancy against axis
+endpoint/interior regimes. Singular pairs reduce to boundary strata. Original-operand Gram
+elimination retains closed parameter inequalities and convex distance quadratics.
+
+Checked 4096-bit dyadics decide constrained minima and isolate the first root, including the isolated
+double root at one third and closed endpoint roots. Exact representable roots are confirmed by
+cross multiplication. Interval coefficients retain their uncertainty. Whole-cell separation precedes
+any discarded interval, and a robust witness can enclose an uncertain root across a subdivision
+boundary. Once one regime proves an upper event witness, later regimes need only establish a
+lower bound before the current bracket. Uncertain cells remain inside that aggregate bracket,
+without inventing another event or a Clear result. The final bracket still needs the real witness
+and the complete 0.001 m check. No sampled miss, inflated-plane construction or AABB certifies the box.
+
+Non-rigid poses retain the actual forward operator and separately enclose the pinned transpose-local
+capsule, including its full axis. The operational bound is
+`6 U(M) + 3 U(4 M) + 2 U(16 M) + U(2 h) + U(16 (M+h))`, where `M` outwardly bounds the complete
+relative path, `h` is the half-cylinder length and `U` is full neighboring binary32 spacing.
+The actual source coefficients must agree across the scalar/SIMD maps and the conjugate-quaternion
+operation graph. No transpose is asserted to be an inverse. Unproved correspondence or an outcome
+or bracket disagreement beyond the unchanged 0.001 m ceiling refuses atomically.
+
+`CertifiedRotatedBoxSweepTests`, `CertifiedSweepPolynomialTests`, `CertifiedSweepBoundsTests` and
+`CertifiedSweepLifetimeTests` carry this extension's geometric, exact, lifecycle and allocation gates.
+The real hidden-crate lift retains both GS-14 dimension pairs. Independent rational installed-point
+oracles check face, edge and vertex entries. Hull, mesh and compound sweeps remain refused. This
+family does not imply native G1b, movement cost-scene acceptance, navigation or consumer adoption.
 
 ## Source facts
 

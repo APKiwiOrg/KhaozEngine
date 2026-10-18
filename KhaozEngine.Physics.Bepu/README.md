@@ -235,22 +235,38 @@ The owner and restricted views also implement `IPhysicsCapsuleGeometryQueries`. 
 dimensions, identical restrictions and validation. Changing an endpoint-rounding enclosure does not
 allocate a persistent shape.
 
-The owner and restricted query views implement `IPhysicsCapsuleSweep` for an initial identity-box
-geometry domain. This development implementation is not ready for consumer adoption: numerical-domain
-acceptance, affected regressions, general geometry and final backend verification remain pending.
-The first 32 integrated fixtures passed. Two proposed coordinate-domain refusal controls remain RED.
-See [the candidate proof](../docs/design/SWIM-TASK4-CANDIDATE-COVERAGE-2026-10-07.md).
+The owner and restricted query views implement `IPhysicsCapsuleSweep` for identity boxes and
+admitted rotated boxes at their current installed static or dynamic pose. The identity-box kernel
+is unchanged. Rotated boxes use eight installed corners, six finite faces, twelve edges, capsule
+axis endpoint/interior regimes and closed solid occupancy. They are never replaced by an AABB or
+independently inflated planes. [The general sweep contract](../docs/design/CERTIFIED-GENERAL-SWEEPS-2026-10-18.md)
+defines this family and the remaining adoption gates.
 
+Queries require an upright identity-oriented capsule, positive finite radius, nonnegative finite
+cylindrical length, finite centre/displacement, `Layers == 0` and a supported mobility selection.
+Both culling flag values are retained. General installed local coordinates and translations stay
+within 2048 m, with the existing squared quaternion norm band `1 +/- 2^-20` and positive determinant.
+A rounded quaternion is never normalized. The forward finite geometry and the pinned transpose-local
+operation graph must both prove the same outcome. Hit brackets include their complete disagreement
+within 0.001 m. Unknown coefficient correspondence, ambiguous tangency and ill-conditioned transforms
+refuse. Hulls, meshes, compounds, spheres, capsules and cylinders remain unsupported sweep families.
+
+Mutation completion encloses actual installed corners and the rounded point graph, repairs inward
+bounds through Bepu's owning tree update/refit path, and validates ancestors before publishing evidence.
 Selected unproved bound families refuse even outside the raw aperture. View/mobility exclusions retain
-their exact source meaning. Unsupported query orientation/layer filters, incomplete mutation evidence
-and capacity exhaustion return Unresolved without a prefix. Failed or missed physical mutations cannot
-be healed by an unrelated successful mutation. The actual read-lease contract is unchanged.
+their source meaning and cannot hide invalid stored evidence. Failed or missed physical mutations stay
+refused after unrelated successful mutations. Leases remain owner-scoped. Each restricted view applies
+its own exclusions through the same owner interval.
 
-Current work limits are 8192 visited nodes, 4096 leaves and 128 pending branches per tree, 4096 aggregate
-examined callbacks (including filtered entries), 4096 unproved static records inspected, and 256 cells
-at depth at most 48 per admitted leaf. Hit error is capped at 1 mm. Clear encodes the whole original
-vector, not a replacement trajectory. Closed tangency can be Hit(0), and an unencodable Hit endpoint
-refuses. These limits are not native geometry/residency or navigation acceptance.
+Policy version 1 retains 8192 nodes, 4096 leaves and 128 pending branches per tree, 4096 aggregate
+examined callbacks including exclusions, and 4096 unproved registrations. General queries admit at
+most 4096 primitive descendants, 4096 feature regimes per primitive and 256 fraction cells at depth
+at most 48 per primitive. Exact predicates use checked retained 4096-bit integers and a bounded
+2048-number workspace. Every exhausted or unproved step returns the exact default Unresolved result.
+Closed quadratic minima include isolated double roots and endpoint tangency. Clear encodes the full
+original vector. Hit bounds never grant placement permission. Warm shape/value queries, exact boundary
+fallback and refusal allocate no managed bytes and retain scratch capacity. Native G1b, explicit-tick
+cost-scene acceptance and consumer adoption remain separate gates.
 
 ## Usage
 

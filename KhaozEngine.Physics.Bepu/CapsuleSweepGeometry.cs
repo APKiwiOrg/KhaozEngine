@@ -21,6 +21,28 @@ internal static class CapsuleSweepGeometry
         return true;
     }
 
+    internal static unsafe bool TryCapture(Shapes shapes, TypedIndex root, out InstalledSweepGeometry? geometry)
+    {
+        geometry = null;
+        if (!TryReadIdentityBox(shapes, root, new RigidPose(Vector3.Zero, Quaternion.Identity), out Box box)) return false;
+        Vector3 half = new(box.HalfWidth, box.HalfHeight, box.HalfLength);
+        if (!InstalledPoseOperator.Within(half, RepresentedGeometryTransforms.MaximumLocalMagnitude)) return false;
+        geometry = new(shapes, root, half);
+        return true;
+    }
+
+    internal static bool TryReadLeaf(Shapes shapes, TypedIndex root, RigidPose parent,
+        InstalledSweepGeometry geometry, int leafIndex, out InstalledSweepLeaf leaf)
+    {
+        leaf = default;
+        if (leafIndex != 0 || !ReferenceEquals(shapes, geometry.Owner) || (root.Type != geometry.Root.Type || root.Index != geometry.Root.Index) ||
+            !geometry.TryPose(parent, out InstalledPoseOperator map) ||
+            !TryReadIdentityBox(shapes, root, new RigidPose(Vector3.Zero, Quaternion.Identity), out Box box) ||
+            new Vector3(box.HalfWidth, box.HalfHeight, box.HalfLength) != geometry.Half) return false;
+        leaf = new(geometry, parent, map);
+        return true;
+    }
+
     static bool Positive(float value) => float.IsFinite(value) && value > 0f;
     static bool Finite(Vector3 value) =>
         float.IsFinite(value.X) && float.IsFinite(value.Y) && float.IsFinite(value.Z);

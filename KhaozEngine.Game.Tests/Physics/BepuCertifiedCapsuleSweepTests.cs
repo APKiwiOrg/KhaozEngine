@@ -132,11 +132,11 @@ public partial class BepuCertifiedCapsuleSweepTests
     }
 
     [Fact]
-    public void RotatedSelectedBoxesDoNotBorrowAnIdentityCertificate()
+    public void RotatedSelectedBoxesHaveIndependentFarBounds()
     {
         using var world = new BepuPhysicsWorld(Vector3.Zero);
         world.AddStatic(Box, new Pose(new(100, 0, 0), Quaternion.CreateFromAxisAngle(Vector3.UnitY, 0.5f)));
-        Refused(Read(world));
+        Clear(Read(world), 4);
     }
 
     [Fact]

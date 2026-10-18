@@ -18,7 +18,12 @@ Direct3D11 WARP with FXC (113 of 113, plus 32 FXC and struct-size checks) and Vu
 hazard lines.
 Task 2's first hosted run, 39173376064 on 7d402576c, passed Vulkan but failed FXC compilation
 and Apple Paravirtual pipeline creation. Its C6 correction below passes a zero-warning local
-Release build and all 114 focused Metal tests. Hosted verification of that correction is pending.
+Release build and all 114 focused Metal tests. Hosted run 39177040590 on 3886609c2 then passed
+every leg with no skipped facts: Apple Paravirtual 114 of 114, Direct3D11 WARP with FXC 114 of 114
+plus 32 FXC and struct-size checks, and Vulkan lavapipe 114 of 114 with clean synchronization
+validation. On Apple Paravirtual the pipelines reported maxTotalThreadsPerThreadgroup 576 for
+CoverageExactWords and 1024 for CoverageResidual and CoverageRounding, each with
+threadExecutionWidth 32.
 No timing, load, performance budget or whole-coverage correctness claim follows from this record.
 The 72 frozen cases and their 144-row `outputs.sha256` manifest are unchanged.
 
@@ -280,8 +285,8 @@ range. No uncorrected native result is published. F is applied only after the RN
 | Backend | Correction and lowering obligation |
 | --- | --- |
 | Metal | Native divide and sqrt are seeds under PreciseMath with fast math off. The exact integer midpoint check confirms or corrects them. The full-domain bracket proof applies even if the native seed is an endpoint. Local native execution checks pre-F and post-F words, including injected bad seeds. |
-| Direct3D11 | The same residual scaling, even-midpoint predicate and 31-bisection bound apply under FXC IEEE strictness. There is no one-neighbor assumption. Partial products use uint only. New modules pass the C5 SPIR-V access audit and emit HLSL for Shader Model 5.0. Native FXC/WARP execution is hosted-only and remains a root verification gate. |
-| Vulkan | The same exact proof applies, including divisors outside the native accuracy interval and sqrt with no assumed ULP bound. PreciseMath retains SignedZeroInfNanPreserve. New modules pass SPIR-V validation. Native Vulkan execution and zero-error synchronization validation are hosted-only and remain root verification gates. |
+| Direct3D11 | The same residual scaling, even-midpoint predicate and 31-bisection bound apply under FXC IEEE strictness. There is no one-neighbor assumption. Partial products use uint only. New modules pass the C5 SPIR-V access audit and emit HLSL for Shader Model 5.0. Run 39177040590 compiled it with FXC and matched every word on WARP. |
+| Vulkan | The same exact proof applies, including divisors outside the native accuracy interval and sqrt with no assumed ULP bound. PreciseMath retains SignedZeroInfNanPreserve. New modules pass SPIR-V validation. Run 39177040590 matched every word on lavapipe with zero-error synchronization validation. |
 
 ## Task 2 native evidence and reproduction
 
@@ -330,6 +335,6 @@ build-slot --label c02-fix-r1b-final-build -- dotnet build KhaozEngine.Render.Te
 build-slot --label c02-fix-r1b-final-metal -- env KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~CoverageGpuExactWordsTests|FullyQualifiedName~CoverageComputeRoundingGpuTests|FullyQualifiedName~CoverageComputeArithmeticGpuTests|FullyQualifiedName~CoverageGpuArithmeticTests|FullyQualifiedName~ShaderSourceValidationTests|FullyQualifiedName~PreciseShaderCompileTests' --logger 'console;verbosity=detailed'
 ```
 
-The root hosted filter is the same six-class expression. Direct3D11, Apple Paravirtual and Vulkan
-native results are pending until the root's hosted legs run the C6 commit. Shader compilation
-and local Metal results do not substitute for those backend executions.
+The root hosted filter is the same six-class expression. Run 39177040590 executed it on all three
+hosted legs for the C6 commit. Shader compilation and local Metal results alone would not have
+substituted for those backend executions.

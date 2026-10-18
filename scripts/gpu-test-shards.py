@@ -21,11 +21,10 @@ no rules and takes everything the earlier ones did not. Each slice's vstest filt
 the negation of every earlier slice's rules, so no test can match two slices and no test can match none. A new
 Render.Tests class or method falls into the first slice that names it, or into the last.
 
-THE BUILD. A sharded job restores and builds a derived solution containing only its test projects and
-lets ProjectReference edges build their dependencies. Render shards build Render.Tests alone. Project shards
-build their named test projects. Rest builds its non-Render test projects, plus Render.Tests on Windows for
-FXC validation and on Vulkan for shader-cache verification. Unsharded jobs still build the original solution.
-The test solutions and exactly-once guards are independent of this build selection.
+THE BUILD. Measurement option B uses rest as each OS's build producer, uploading Release output before
+its tests. Other shards restore packages, download that exact run's output and skip compilation. No extra
+Metal jobs are needed. Unsharded paths build normally. Build-solution remains the option A test-root plan.
+Test selection and the exactly-once guards do not depend on the build source.
 
 THE GUARD. `check-render` reads every Render.Tests method listed on the shard's own build output, parses the
 filter text each of the backend's slices hands to vstest, and evaluates it with the operators vstest applies

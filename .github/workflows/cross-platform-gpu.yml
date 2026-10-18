@@ -53,9 +53,10 @@
 # Windows, the debug layer and the device-evidence detector on Metal), and every evidence artifact carries the
 # shard name. Every push and pull_request path, a bake dispatch and a renderTestFilter dispatch stay one job
 # per leg.
-# Sharded jobs restore and build only their assigned test projects and their references (#1472). Rest also
-# builds Render.Tests on Windows for FXC validation and on Vulkan for shader-cache verification. Unsharded
-# paths still build KhaozEngine.slnx. The build selection does not change test selection or coverage guards.
+# Measurement option B (#1472): rest restores and builds KhaozEngine.slnx once per OS, then uploads its
+# Release bin directories before running its tests. Other shards restore packages, wait for that run's
+# artifact and extract it instead of building. No extra jobs, including on Metal. Unsharded paths build
+# the original solution. Test selection and exactly-once guards remain independent of the build source.
 #
 # CONCURRENCY. The org is on the Team plan: 60 concurrent GitHub-hosted standard jobs and 5 concurrent macOS
 # jobs (https://docs.github.com/en/actions/reference/limits). A default-input dispatch peaks at 24 jobs here
@@ -591,6 +592,9 @@ jobs:
 
   gpu-golden:
     needs: legs
+    permissions:
+      contents: read
+      actions: read
     # An unsharded leg keeps its historical name, so every push-path check reads as it did before #1438, Metal's
     # `macos-26 / metal-native` included (#1460). A shard appends its own name, for example
     # `ubuntu-latest / vulkan-native / render-3`. On the schedule and a dispatch Metal's checks are
@@ -870,26 +874,7 @@ jobs:
           restore-keys: |
             nuget-${{ runner.os }}-
 
-      - name: Select the shard build inputs
-        id: build-inputs
-        shell: bash
-        env:
-          LEG: ${{ matrix.backend }}
-          SHARD: ${{ matrix.shard }}
-        run: |
-          target=KhaozEngine.slnx
-          if [ -n "$SHARD" ]; then
-            mkdir -p TestResults
-            target=TestResults/gpu-build.slnx
-            python3 scripts/gpu-test-shards.py build-solution "$LEG" "$SHARD" KhaozEngine.slnx "$target"
-          fi
-          echo "target=$target" >> "$GITHUB_OUTPUT"
-
-      - name: Restore the shard build inputs
-        run: dotnet restore "$BUILD_TARGET"
-        shell: bash
-        env:
-          BUILD_TARGET: ${{ steps.build-inputs.outputs.target }}
+      - run: dotnet restore
 
       - name: Save the NuGet package cache
         if: runner.os == 'Windows' && matrix.primary == '1' && steps.nuget-cache.outputs.cache-hit != 'true'
@@ -900,12 +885,67 @@ jobs:
             !~/.nuget/packages/khaozengine.*
           key: ${{ steps.nuget-cache.outputs.cache-primary-key }}
 
-      # Build the shard's test roots and their references, never another shard's test projects (#1472).
-      - name: Build the shard in Release
-        run: dotnet build "$BUILD_TARGET" -c Release --no-restore
+      # Option B measurement: rest builds once per OS and publishes before its tests start.
+      # Sibling shards wait for that exact run's artifact without adding a fourth Metal job.
+      - name: Build the shared Release output
+        if: matrix.primary == '1'
+        run: dotnet build -c Release --no-restore
+
+      - name: Archive the shared Release output
+        if: matrix.shard == 'rest'
+        shell: bash
+        run: |
+          mkdir -p artifacts/gpu-build
+          python3 - <<'PYARCHIVE'
+          import pathlib, tarfile
+          paths = sorted(pathlib.Path('.').glob('**/bin/Release'))
+          with tarfile.open('artifacts/gpu-build/release.tar.gz', 'w:gz', compresslevel=1) as archive:
+              for path in paths:
+                  archive.add(path, arcname=str(path))
+          print(f"Archived {len(paths)} Release output directories")
+          print(f"Archive bytes: {pathlib.Path('artifacts/gpu-build/release.tar.gz').stat().st_size}")
+          PYARCHIVE
+
+      - name: Upload the shared Release output
+        if: matrix.shard == 'rest'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-output-${{ matrix.backend }}
+          path: artifacts/gpu-build/release.tar.gz
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Wait for the shared Release output
+        if: matrix.primary != '1'
         shell: bash
         env:
-          BUILD_TARGET: ${{ steps.build-inputs.outputs.target }}
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_NAME: release-output-${{ matrix.backend }}
+        run: |
+          set -euo pipefail
+          for attempt in {1..120}; do
+            if gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100" \
+              | jq -e --arg name "$ARTIFACT_NAME" 'any(.artifacts[]; .name == $name)' > /dev/null; then
+              exit 0
+            fi
+            echo "Waiting for $ARTIFACT_NAME ($attempt/120)"
+            sleep 5
+          done
+          echo "::error::Timed out waiting for $ARTIFACT_NAME from the rest shard"
+          exit 1
+
+      - name: Download the shared Release output
+        if: matrix.primary != '1'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-output-${{ matrix.backend }}
+          path: artifacts/gpu-build
+
+      - name: Extract the shared Release output
+        if: matrix.primary != '1'
+        shell: bash
+        run: tar -xzf artifacts/gpu-build/release.tar.gz
 
       # TRIPWIRE for the Linux native load path. Silk.NET resolves its natives through its OWN path resolver,
       # which on Linux asks for the distro rid (ubuntu.24.04-x64) and so never looks under runtimes/linux-x64,
@@ -914,7 +954,7 @@ jobs:
       # symptom is hundreds of tests failing inside a shaderc type initializer, which reads like a shader bug and
       # is not one, so assert the files are where the resolver looks instead.
       - name: Assert the host natives landed beside the assemblies (Linux)
-        if: matrix.os == 'ubuntu-latest' && matrix.shard != 'projects-1'
+        if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: |
           out=KhaozEngine.Render.Tests/bin/Release/net10.0

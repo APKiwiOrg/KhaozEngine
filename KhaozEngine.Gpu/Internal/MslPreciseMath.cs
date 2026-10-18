@@ -60,16 +60,22 @@ namespace KhaozEngine.Gpu.Internal
 
         static bool IsCall(List<Match> tokens, int index, HashSet<string> names)
         {
-            // The pinned emitter writes direct assignment/return calls with inferred template arguments.
-            // Refuse other uses, including declarations, aliases, macros and unfamiliar helper names.
-            if (!names.Contains(tokens[index].Value) || index == 0 || tokens[index - 1].Value is not ("=" or "return")
+            // Accepted helpers can be called anywhere in an expression. Declaration specifiers and
+            // macro directives are not expression prefixes, and a function body is not a call suffix.
+            if (!names.Contains(tokens[index].Value)
                 || index + 1 >= tokens.Count || tokens[index + 1].Value != "(") return false;
+            if (index > 0)
+            {
+                string previous = tokens[index - 1].Value;
+                if (previous == "#" || (previous != "return" && (char.IsLetter(previous[0]) || previous[0] == '_')))
+                    return false;
+            }
             int depth = 0;
             for (int i = index + 1; i < tokens.Count; i++)
             {
                 if (tokens[i].Value == "(") depth++;
                 else if (tokens[i].Value == ")" && --depth == 0)
-                    return i + 1 < tokens.Count && tokens[i + 1].Value == ";";
+                    return i + 1 >= tokens.Count || tokens[i + 1].Value != "{";
             }
             return false;
         }

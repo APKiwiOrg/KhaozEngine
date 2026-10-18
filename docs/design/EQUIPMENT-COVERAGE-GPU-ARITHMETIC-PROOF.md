@@ -121,10 +121,12 @@ and separate-rounding decisions on Metal rather than inferring them from those h
 Task 1A backports every multiplication-helper zero seed in pinned SPIRV-Cross 2.23.0. The recogniser
 accepts only a complete pinned helper or its corrected body, and rejects unfamiliar definitions.
 It scans every `spvFMul`-prefixed identifier independently of declaration punctuation. Outside an
-accepted definition, only the pinned emitter's direct assignment or return call to an accepted
-helper is recognised. Comment-separated declarations, aliases, macros and unknown identifiers fail
-compilation. Comments and string literals are not identifiers. Both the pinned constants and emitted
-helpers are compared with normalized line endings, while replacements preserve source line endings.
+accepted definition, calls to accepted helpers are recognised in every expression position, including
+nested calls, function arguments, arithmetic operands, ternaries and parentheses. A preceding
+identifier other than `return`, a preceding `#`, or a function body after the matching call parentheses
+prevents call recognition. Comment-separated declarations, aliases, macros and unknown identifiers
+fail compilation. Comments and string literals are not identifiers. Both the pinned constants and
+emitted helpers are compared with normalized line endings, while replacements preserve source line endings.
 CRLF-checkout controls exercise CRLF pinned constants against LF, CRLF and CR emitted helpers.
 It preserves the pinned MatrixMatrix dimensions. The separate rectangular dimension defect and
 backport removal are tracked in [#1495](https://github.com/APKiwiOrg/KhaozEngine/issues/1495).

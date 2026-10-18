@@ -51,9 +51,11 @@ namespace KhaozEngine.Tests.Gpu
                 pinned.Replace(name + "(", name + "<T>(", StringComparison.Ordinal),
                 "T " + name + "(T l, T r);",
                 "T (*" + name + ")(T, T);",
+                "T* " + name + "(T l, T r) { return nullptr; }",
                 "auto alias = " + name + ";",
                 "auto value = " + name + "Unfamiliar(a, b);",
-                "#define " + name + "(l, r) ((l) * (r))"
+                "#define " + name + "(l, r) ((l) * (r))",
+                "# " + name + "(a, b)"
             };
             foreach (string unknown in unfamiliar)
             {
@@ -85,6 +87,60 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.Equal(corrected, MslPreciseMath.Rewrite(emitted));
                 Assert.Equal(corrected, MslPreciseMath.Rewrite(corrected));
             }
+        }
+
+        [Theory]
+        [MemberData(nameof(PinnedMultiplyHelpers))]
+        public void MetalMultiplyHelpersAcceptCallsInExpressions(string pinned)
+        {
+            int start = pinned.IndexOf("spvFMul", StringComparison.Ordinal);
+            string name = pinned[start..pinned.IndexOf('(', start)];
+            string corrected = pinned.Replace("T(0)", "T(-0.0)", StringComparison.Ordinal)
+                .Replace("(0)", "(T(-0.0))", StringComparison.Ordinal);
+            string[] expressions =
+            {
+                $"{name}({name}(a, b), c)",
+                $"consume({name}(a, b), {name}(b, c))",
+                $"c + {name}(a, b)",
+                $"c - {name}(a, b)",
+                $"{name}(a, b) + c",
+                $"{name}(a, b) - c",
+                $"choose ? {name}(a, b) : {name}(b, c)",
+                $"(({name}(a, b)))"
+            };
+            foreach (string expression in expressions)
+            {
+                string call = "\nfloat result = " + expression + ";\n";
+                Assert.Equal(corrected + call, MslPreciseMath.Rewrite(pinned + call));
+                Assert.Equal(corrected + call, MslPreciseMath.Rewrite(corrected + call));
+            }
+        }
+
+        [Theory]
+        [InlineData("d.a * d.b * d.c", "spvFMul(spvFMul(d.a, d.b), d.c)")]
+        [InlineData("abs(d.a * d.b)", "abs(spvFMul(d.a, d.b))")]
+        [InlineData("d.c + d.a * d.b", "spvFAdd(d.c, spvFMul(d.a, d.b))")]
+        [InlineData("d.c - d.a * d.b", "spvFSub(d.c, spvFMul(d.a, d.b))")]
+        [InlineData("(d.a * d.b) * (d.b * d.c)", "spvFMul(spvFMul(d.a, d.b), spvFMul(d.b, d.c))")]
+        [InlineData("d.a > 0.0 ? d.a * d.b : d.b * d.c", "spvFMul(d.a, d.b)")]
+        public void MetalPreciseExpressionsCompileThroughPinnedToolchain(string expression, string emittedExpression)
+        {
+            string source = $$"""
+                #version 450
+                layout(local_size_x = 1) in;
+                layout(set = 0, binding = 0, std430) buffer Data { float a; float b; float c; float outputValue; } d;
+                void main()
+                {
+                    precise float result = {{expression}};
+                    d.outputValue = result;
+                }
+                """;
+            byte[] spirv = SpirvFrontEnd.ToSpirv(source, GpuShaderStages.Compute, "precise expression", Precise);
+            string msl = SpirvCrossCompile.ComputeToMsl(spirv, options: Precise).ComputeSource;
+            Assert.Contains("return fma(l, r, T(-0.0));", msl);
+            Assert.DoesNotContain("return fma(l, r, T(0));", msl);
+            Assert.Contains(emittedExpression, msl);
+            _output.WriteLine(msl);
         }
 
         static void DumpPreciseModule(GpuShaderStages stage, byte[] spirv)

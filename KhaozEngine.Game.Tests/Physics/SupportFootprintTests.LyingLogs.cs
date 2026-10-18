@@ -147,20 +147,27 @@ public partial class SupportFootprintTests
         Assert.InRange(maximum.Upper, maximum.Lower, 0.2501);
     }
 
-    [Fact]
-    public void LyingLogUnprovedBoundaryAtTheMaximumRefuses()
+    [Theory]
+    [InlineData(0.0, 1e-4, 0.0, -0.1, true)]
+    [InlineData(1e-5, 1e-4, 1 - 1e-5, -0.3, false)]
+    [InlineData(0.0, 1e-4, 0.0, -0.3, true)]
+    public void LyingLogUnprovedBoundaryTakesTheUntaggedCandidateRole(double lower, double upper, double x, double z, bool steep)
     {
+        // Rows: dominated by the attained crest, at the maximum with an unresolved finite axis,
+        // and the only walkable candidate with an unresolved slope.
+        double slope = steep ? Math.Sqrt(0.84) * (1 - 2.5e-9) : 0;
         var geometry = new SupportTiltedCurvedGeometry();
-        // Only z in [-1,-0.4] meets the disc, so the positive endpoint near z=-0.4 is the maximum.
-        Assert.True(geometry.Begin(LyingLogBoundaryLeaf(1e-5, 1e-4), 1 - 1e-3, -0.3, 0.2));
-        Assert.Equal(GeometrySign.Positive, geometry.SideBoundary(1, 0, out var attained));
-        Assert.Equal(GeometrySign.Positive, geometry.Side(0, out _, out var maximum));
-        Assert.InRange(maximum.Lower, 0.229, 0.2293);
-        Assert.True(maximum.Lower >= attained.Position.Y.Lower && maximum.Upper >= attained.Position.Y.Upper);
-        // Here its finite-axis sign is unresolved across the family. It stays relevant and refuses.
-        Assert.True(geometry.Begin(LyingLogBoundaryLeaf(1e-5, 1e-4), 1 - 1e-5, -0.3, 0.2));
-        Assert.Equal(GeometrySign.Unresolved, geometry.SideBoundary(1, 0, out _));
-        Assert.Equal(GeometrySign.Unresolved, geometry.Side(0, out _, out _));
+        Assert.True(geometry.Begin(LyingLogBoundaryLeaf(lower, upper), x, z, 0.2));
+        Assert.Equal(GeometrySign.Unresolved, geometry.SideBoundary(1, slope, out _));
+        var tagged = geometry.Side(slope, out var taggedWitness, out var taggedMaximum);
+        Assert.True(geometry.Begin(LyingLogBoundaryLeaf(lower, upper), x, z, 0.2));
+        var untagged = geometry.Side(slope, out var untaggedWitness, out var untaggedMaximum, equations: false);
+        Assert.Equal(untagged, tagged);
+        Assert.Equal(untaggedMaximum, taggedMaximum);
+        Assert.Equal(untaggedWitness, taggedWitness);
+        if (z == -0.1) Assert.Equal(GeometrySign.Positive, tagged);
+        // No other candidate is attained, so both paths refuse.
+        if (steep && z == -0.3) Assert.Equal(GeometrySign.Unresolved, tagged);
     }
 
     [Fact]

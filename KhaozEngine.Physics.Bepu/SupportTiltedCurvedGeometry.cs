@@ -128,7 +128,8 @@ internal sealed partial class SupportTiltedCurvedGeometry
         return true;
     }
 
-    internal GeometrySign Side(double slope, out Witness witness, out GeometryInterval maximum)
+    // With equations false, both disc-lateral endpoints are evaluated as untagged candidates.
+    internal GeometrySign Side(double slope, out Witness witness, out GeometryInterval maximum, bool equations = true)
     {
         witness = default; maximum = default;
         _count = 0;
@@ -152,8 +153,8 @@ internal sealed partial class SupportTiltedCurvedGeometry
             }
         }
         if (!Keep(I(-1)) || !Keep(I(1)) || !Keep(I(0)) ||
-            !Keep(B(Div(Sub(Neg(_disc), _q), _r)), lateral: DiscLateralBoundary.Negative) ||
-            !Keep(B(Div(Sub(_disc, _q), _r)), lateral: DiscLateralBoundary.Positive) ||
+            !Keep(B(Div(Sub(Neg(_disc), _q), _r)), lateral: equations ? DiscLateralBoundary.Negative : default) ||
+            !Keep(B(Div(Sub(_disc, _q), _r)), lateral: equations ? DiscLateralBoundary.Positive : default) ||
             !Stationary()) return GeometrySign.Unresolved;
         if (Sign(_q) == GeometrySign.Zero &&
             SidePoint(new(I(0), 0, false, false, 0), slope, out Witness crest, out bool crestCertain) == GeometrySign.Positive && crestCertain)
@@ -193,11 +194,9 @@ internal sealed partial class SupportTiltedCurvedGeometry
         double upper = lower;
         for (int i = 0; i < _count; i++)
         {
-            GeometrySign feasible = SidePoint(_candidates[i], slope, out Witness point, out bool certain);
+            GeometrySign feasible = SidePoint(_candidates[i], slope, out Witness point, out _);
             if (feasible == GeometrySign.Unresolved) return feasible;
             if (feasible != GeometrySign.Positive || point.Position.Y.Upper < lower) continue;
-            // An unproved endpoint equation that an attained point does not dominate is relevant.
-            if (_candidates[i].Lateral != DiscLateralBoundary.None && !certain) return GeometrySign.Unresolved;
             witness = any ? new(Hull(witness.Position, point.Position), Hull(witness.Normal, point.Normal),
                 witness.AtSideCrest && point.AtSideCrest) : point;
             any = true; upper = Math.Max(upper, point.Position.Y.Upper);

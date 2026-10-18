@@ -384,8 +384,10 @@ The certificate preserves the tiny signed installed Y and original normal enclos
 the maximum's lower bound while possible stationary regions retain the enclosing upper bound.
 It grants no attainment to a merely possible stationary region, clipped root or nearby pole.
 An endpoint whose domain, slope or finite-axis sign stays unresolved is neither discarded nor
-attained. It keeps the clipped candidate's possible enclosure. The side refuses when that
-enclosure reaches the attained lower bound, or when no attained lower bound exists.
+attained. It takes the untagged clipped candidate's role. Its possible enclosure can widen the
+witness hull and upper bound but never sets the attained lower bound. The half-skin error ceiling
+downstream decides whether the widened range is usable. The side refuses when no attained lower
+bound exists.
 Unproved relevant predicates still refuse atomically within the existing cell and candidate bounds.
 
 Caps enumerate their crest, the disc uphill point and both signed rim crossings. Capsule ends

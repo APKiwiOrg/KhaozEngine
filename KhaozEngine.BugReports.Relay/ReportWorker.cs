@@ -37,7 +37,7 @@ internal sealed class ReportWorker(BugReportRelayOptions options, IReportMediaSt
         {
             record = await LoadAsync(reportId, ct).ConfigureAwait(false);
             if (record is null || record.IssueNumber is not null) return;
-            await records.SaveReportAsync(record with { IssueNumber = ParseIssueNumber(reportId, result) }, ct).ConfigureAwait(false);
+            await SaveProgressAsync(reportId, ParseIssueNumber(reportId, result), ServerSnapshotState.None, ct).ConfigureAwait(false);
             return;
         }
         int? epoch = await claims.TryAcquireAsync(kind, reportId, ct).ConfigureAwait(false);
@@ -58,7 +58,7 @@ internal sealed class ReportWorker(BugReportRelayOptions options, IReportMediaSt
             {
                 await WriteSnapshotAsync(record, snapshot, ct).ConfigureAwait(false);
                 record = record with { ServerSnapshot = ServerSnapshotState.InBody };
-                await records.SaveReportAsync(record, ct).ConfigureAwait(false);
+                await SaveProgressAsync(reportId, null, ServerSnapshotState.InBody, ct).ConfigureAwait(false);
             }
             IssueInput input = await loader.LoadAsync(record, snapshot, ct).ConfigureAwait(false);
             number = await github.CreateIssueAsync(composer.ComposeIssue(input), ct).ConfigureAwait(false);
@@ -71,7 +71,7 @@ internal sealed class ReportWorker(BugReportRelayOptions options, IReportMediaSt
         // The issue exists from here on. A failure leaves the claim unreleased, so only the result marker or
         // lease expiry can move the report forward, never an immediate second create.
         await claims.CompleteAsync(kind, reportId, epoch.Value, number.ToString(CultureInfo.InvariantCulture)).ConfigureAwait(false);
-        await records.SaveReportAsync(record with { IssueNumber = number }, ct).ConfigureAwait(false);
+        await SaveProgressAsync(reportId, number, ServerSnapshotState.None, ct).ConfigureAwait(false);
     }
 
     async Task AppendSnapshotAsync(string reportId, CancellationToken ct)
@@ -86,7 +86,7 @@ internal sealed class ReportWorker(BugReportRelayOptions options, IReportMediaSt
             record = await LoadAsync(reportId, ct).ConfigureAwait(false);
             if (record is null || record.ServerSnapshot is ServerSnapshotState.InBody or ServerSnapshotState.Commented) return;
             if (result != CommentedResult) throw new InvalidDataException("The comment result marker is invalid for report " + reportId + ".");
-            await records.SaveReportAsync(record with { ServerSnapshot = ServerSnapshotState.Commented }, ct).ConfigureAwait(false);
+            await SaveProgressAsync(reportId, null, ServerSnapshotState.Commented, ct).ConfigureAwait(false);
             return;
         }
         int? epoch = await claims.TryAcquireAsync(kind, reportId, ct).ConfigureAwait(false);
@@ -113,7 +113,17 @@ internal sealed class ReportWorker(BugReportRelayOptions options, IReportMediaSt
             throw;
         }
         await claims.CompleteAsync(kind, reportId, epoch.Value, CommentedResult).ConfigureAwait(false);
-        await records.SaveReportAsync(record with { ServerSnapshot = ServerSnapshotState.Commented }, ct).ConfigureAwait(false);
+        await SaveProgressAsync(reportId, null, ServerSnapshotState.Commented, ct).ConfigureAwait(false);
+    }
+
+    async Task SaveProgressAsync(string reportId, int? issueNumber, ServerSnapshotState snapshot, CancellationToken ct)
+    {
+        ReportRecord? current = await LoadAsync(reportId, ct).ConfigureAwait(false);
+        if (current is null) return;
+        int? mergedIssue = current.IssueNumber ?? issueNumber;
+        ServerSnapshotState mergedSnapshot = current.ServerSnapshot == ServerSnapshotState.None ? snapshot : current.ServerSnapshot;
+        if (mergedIssue == current.IssueNumber && mergedSnapshot == current.ServerSnapshot) return;
+        await records.SaveReportAsync(current with { IssueNumber = mergedIssue, ServerSnapshot = mergedSnapshot }, ct).ConfigureAwait(false);
     }
 
     static int ParseIssueNumber(string reportId, string result) =>

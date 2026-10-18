@@ -9,6 +9,7 @@ namespace KhaozEngine.Tests.BugReports.Relay.Support;
 internal sealed class WorkerMediaStore(InMemoryReportMediaStore inner) : IReportMediaStore
 {
     public Func<string, Task>? BeforeWrite { get; set; }
+    public Func<string, Task>? AfterWrite { get; set; }
     public Func<string, Task>? BeforeRead { get; set; }
     public Func<string, Task>? BeforeExists { get; set; }
 
@@ -16,7 +17,9 @@ internal sealed class WorkerMediaStore(InMemoryReportMediaStore inner) : IReport
         ReportBlobHeaders headers, bool overwrite, CancellationToken cancellationToken)
     {
         if (BeforeWrite is not null) await BeforeWrite(path);
-        return await inner.PutAsync(area, path, content, headers, overwrite, cancellationToken);
+        bool written = await inner.PutAsync(area, path, content, headers, overwrite, cancellationToken);
+        if (AfterWrite is not null) await AfterWrite(path);
+        return written;
     }
 
     public async Task<ReadOnlyMemory<byte>?> GetAsync(ReportArea area, string path, int maxBytes, CancellationToken cancellationToken)

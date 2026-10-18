@@ -197,6 +197,7 @@ to public `server.json`. The subject stays in private state. Issue composition u
 
 ## Guarantees and residuals
 
+- **Record saves merge monotonic progress without compare-and-swap.** A concurrent write between reload and save can briefly leave the cache behind, but result markers prevent duplicates and the next reconcile heals it.
 - **One issue and at most one snapshot comment per report.** Epoch claims and result markers enforce this
   within the lease and saved-result limits below. A matching snapshot is included in the issue body when
   available, or appended as one comment later. A subject mismatch is dropped with a report-id-only warning

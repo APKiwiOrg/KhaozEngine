@@ -14,6 +14,9 @@ internal sealed class InstalledSweepGeometry
     readonly (int A, int B)[] _edges;
     readonly Vector3[]? _installedPoints;
     readonly HullVertexIndex[]? _installedIndices;
+    readonly InstalledSweepGeometry? _native;
+    internal InstalledSweepGeometry[]? Children { get; }
+    internal int ChildIndex { get; } = -1;
     internal Shapes Owner { get; }
     internal TypedIndex Root { get; }
     internal TypedIndex Shape { get; }
@@ -37,6 +40,19 @@ internal sealed class InstalledSweepGeometry
     RigidPose _pose;
     InstalledPoseOperator _operator;
     bool _posed;
+    int _registrationId = -1;
+    long _installationGeneration;
+    internal bool IsInstallationBound => _registrationId >= 0;
+
+    internal void BindInstallation(int registrationId, long generation)
+    {
+        if (_registrationId != -1 || registrationId < 0 || generation <= 0)
+            throw new InvalidOperationException("Sweep topology must bind once to a live installation.");
+        _registrationId = registrationId; _installationGeneration = generation;
+    }
+
+    internal bool MatchesInstallation(int registrationId, long generation) =>
+        _registrationId == registrationId && _installationGeneration == generation && generation > 0;
 
     internal InstalledSweepGeometry(Shapes owner, TypedIndex root, Vector3 half)
     {
@@ -89,17 +105,42 @@ internal sealed class InstalledSweepGeometry
         _edges = halfLength == 0 ? [] : [(0, 1)];
     }
 
+    internal InstalledSweepGeometry(Shapes owner, TypedIndex root, InstalledSweepGeometry[] children)
+    {
+        Owner = owner; Root = Shape = root; Children = children;
+        LocalPose = new(Vector3.Zero, Quaternion.Identity);
+        _vertices = []; _faces = []; _edges = [];
+    }
+
+    internal InstalledSweepGeometry(InstalledSweepGeometry native, TypedIndex root, RigidPose local, int childIndex)
+    {
+        _native = native; Owner = native.Owner; Root = root; Shape = native.Shape;
+        LocalPose = local; ChildIndex = childIndex; Half = native.Half;
+        Curved = native.Curved; Radius = native.Radius; HalfLength = native.HalfLength;
+        _vertices = native._vertices; _faces = native._faces; _edges = native._edges;
+        _installedPoints = native._installedPoints; _installedIndices = native._installedIndices;
+    }
+
     internal Vector3 Vertex(int index) => Mesh is { } mesh ? mesh.Vertex(index) : _vertices[index];
     internal int FaceVertex(int face, int index) => _faces[face][index];
     internal int InteriorFaceVertex(int face, int index) => _faces[face][index];
     internal int InteriorFaceSize(int face) => _faces[face].Length;
     internal (int A, int B) Edge(int index) => _edges[index];
     internal void PublishPose(RigidPose pose, RigidPose leafPose, InstalledPoseOperator map)
-    { _pose = pose; LeafPose = leafPose; _operator = map; _posed = true; }
+    {
+        _posed = false;
+        if (Children is { } children)
+            foreach (var child in children)
+            {
+                if (!child.TryComposePose(pose, out var composed) || !InstalledPoseOperator.TryCreate(composed, out var childMap)) return;
+                child.PublishPose(pose, composed, childMap);
+            }
+        _pose = pose; LeafPose = leafPose; _operator = map; _posed = true;
+    }
     internal bool TryComposePose(RigidPose parent, out RigidPose leaf)
     {
         leaf = parent;
-        if (Root.Type != default(Compound).TypeId) return true;
+        if (Children is not null || Root.Type != default(Compound).TypeId) return true;
         Compound.GetWorldPose(LocalPose, parent, out leaf);
         return InstalledPoseOperations.ProveComposition(LocalPose, parent, leaf);
     }
@@ -107,6 +148,22 @@ internal sealed class InstalledSweepGeometry
     internal bool Matches(Shapes shapes, TypedIndex root)
     {
         if (!ReferenceEquals(Owner, shapes) || root.Type != Root.Type || root.Index != Root.Index) return false;
+        if (Children is { } children)
+        {
+            if (root.Type != default(Compound).TypeId) return false;
+            ref Compound compound = ref shapes.GetShape<Compound>(root.Index);
+            if (!compound.Children.Allocated || compound.Children.Length != children.Length) return false;
+            foreach (var child in children) if (!child.Matches(shapes, root)) return false;
+            return true;
+        }
+        if (_native is { } native)
+        {
+            ref Compound compound = ref shapes.GetShape<Compound>(root.Index);
+            if (!compound.Children.Allocated || (uint)ChildIndex >= (uint)compound.Children.Length) return false;
+            var child = compound.Children[ChildIndex];
+            return child.ShapeIndex == Shape && child.LocalPose.Position == LocalPose.Position &&
+                child.LocalPose.Orientation == LocalPose.Orientation && native.Matches(shapes, Shape);
+        }
         if (Mesh is { } mesh) return mesh.Matches(shapes, root);
         if (Curved.HasValue) return CapsuleCurvedGeometry.Matches(this, shapes, root);
         if (!IsHull) return CapsuleSweepGeometry.TryReadIdentityBox(shapes, root,

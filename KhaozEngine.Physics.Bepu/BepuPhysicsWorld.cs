@@ -171,7 +171,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsWorld
         _reverseHandles.Remove(handle.Value);
         _sweepStaticBounds.Remove(id);
         _unprovedSweepStatics.Remove(id);
-        _installedSweepStatics.Remove(id);
+        RemoveSweepGeometry(id, dynamic: false);
     }
 
     public DynamicBodyHandle AddDynamic(PhysicsShape shape, Pose pose, DynamicBodyDescription body, PhysicsMaterial? material = null)
@@ -244,7 +244,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsWorld
             _reverseDynamics.Remove(entry.Handle.Value);
             _sweepDynamicBounds.Remove(handle.Value);
             _unprovedSweepDynamics.Remove(handle.Value);
-            _installedSweepDynamics.Remove(handle.Value);
+            RemoveSweepGeometry(handle.Value, dynamic: true);
             _restitutiveDynamics.Remove(handle.Value);
             _restitutionOf.Remove(handle.Value);
         }
@@ -482,8 +482,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsWorld
         StaticGeometryChanged();
         try
         {
-            _installedSweepStatics.Clear();
-            _installedSweepDynamics.Clear();
+            ClearSweepGeometry();
             _sim.Dispose();
             _pool.Clear();
         }

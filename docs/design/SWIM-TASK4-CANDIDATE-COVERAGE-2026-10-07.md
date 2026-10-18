@@ -1,6 +1,6 @@
 # Swimming Task 4 candidate coverage
 
-Status: historical candidate proposal with the installed rotated-box, hull and mesh extensions recorded below.
+Status: historical candidate proposal with the installed rotated-box, hull, mesh and compound extensions recorded below.
 The checkpoint sections retain their original evidence. Current restrictions live in the
 [backend README](../../KhaozEngine.Physics.Bepu/README.md).
 
@@ -29,8 +29,28 @@ Candidate aggregation completes every selected leaf after an earlier Hit(0). Cel
 descendant, exact-storage and arithmetic exhaustion discard the entire result. Warm queries borrow
 private retained scratch. Nested loans and two simultaneous owner intervals keep active workspaces
 separate. The [general-sweep contract](CERTIFIED-GENERAL-SWEEPS-2026-10-18.md) fixes the unchanged
-1,000,000 m stored-coordinate ceiling and all finite work ceilings. General compound and other primitive
-sweep bounds remain unproved families until their own tasks land.
+1,000,000 m stored-coordinate ceiling and all finite work ceilings. General compounds use the
+installed compound evidence below. Unknown installed families retain unproved bounds.
+
+## Installed compound evidence
+
+The real installer's flattened convex children retain their raw array index, typed identity and local
+pose. Bounds union every supported child's forward/rounded enclosure through the existing owning
+tree repair and ancestor proof. A proved far compound root can be pruned, but an unsupported child
+leaves the selected root unproved even outside the aperture. The query certifies all children of a
+selected root without child pruning, including after Hit(0), within 64 children per root and 4096
+descendants per query. Box, hull and curved leaf kernels remain unchanged.
+
+Each immutable capture binds once to its monotonically assigned registration id and installation
+generation. Separate live owner records authenticate both on mutation and query lookup. Removal and
+disposal destroy those records. Recycled native handles/indices with identical replacement geometry
+cannot accept the old capture. Pose refreshes, rebase, wake/sleep and constraint transfers retain the
+original installation binding under the existing generation/read-interval contract.
+
+The rounded non-rigid nested fixture retains atomic refusal for a tangent face whose enclosed
+distance cannot prove contact or separation at depth 48. Its composition and bounds succeed. The
+rigid cyclic-child sibling certifies Hit, and all unsupported or exhausted children still discard
+the entire result. Mesh children remain a public installation refusal.
 
 ## Installed hull evidence
 

@@ -9583,7 +9583,11 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   Unproved sides, degeneracy, continuation or work refuse. Sphere and capsule leaves use closed
   point/segment distance. Cylinders retain continuous side, cap-disc and rim-circle geometry and
   their exact single-child base-offset wrapper. Unproved isolated rim events refuse atomically.
-  General compounds still refuse.
+  Compounds certify every actual flattened box, hull, sphere, capsule and cylinder child atomically,
+  within 64 children per root and the shared 4096-descendant budget. Hull centering and nested seam
+  poses are retained. Mesh children remain an installation refusal. Unsupported children, stale
+  registration or installation generation, and any unproved child discard the whole query even
+  after Hit(0). Admitted non-rigid poses can still refuse on an ambiguous enclosed tangency.
   General poses require proved forward/operational correspondence and a complete bracket within
   0.001 m. The [backend domain and work ceilings](../KhaozEngine.Physics.Bepu/README.md) apply. Default is
   `Unresolved` without a usable prefix. `IsComplete` reports structural Clear/Hit status, not proof of

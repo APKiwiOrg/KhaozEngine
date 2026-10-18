@@ -94,7 +94,8 @@ public sealed partial class BepuPhysicsWorld
         _sim.Statics.Count == _handles.Count && _reverseHandles.Count == _handles.Count &&
         _reverseDynamics.Count == _dynamics.Count && _sweepStaticBounds.Count == _handles.Count &&
         _sweepDynamicBounds.Count == _dynamics.Count && _installedSweepStatics.Count == _handles.Count &&
-        _installedSweepDynamics.Count == _dynamics.Count && _sim.BroadPhase.ActiveTree.LeafCount >= 0 &&
+        _installedSweepDynamics.Count == _dynamics.Count && _sweepInstallationGenerations.Count == _handles.Count + _dynamics.Count &&
+        _sim.BroadPhase.ActiveTree.LeafCount >= 0 &&
         _sim.BroadPhase.StaticTree.LeafCount >= 0 &&
         (long)_sim.BroadPhase.ActiveTree.LeafCount + _sim.BroadPhase.StaticTree.LeafCount ==
         (long)_handles.Count + _dynamics.Count;

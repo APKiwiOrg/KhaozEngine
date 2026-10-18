@@ -69,8 +69,12 @@ internal static class CapsuleCylinderSweep
             float t = length == 0 ? 0 : (float)Math.Min(1, candidate == 1 ? ((double)lower + upper) / (2 * length) : upper / length);
             if (candidate == 2) t = MathF.BitIncrement(t);
             if (!CapsuleSweepSourceSample.TryCreate(leaf, centre, delta, t, out var sample)) continue;
-            CapsuleCylinderFrame sampled = frame with { Centre = FeaturePoint.Exact(sample.Centre),
-                Delta = FeaturePoint.Exact(Vector3.Zero), QueryAxis = FeaturePoint.Exact(sample.Axis) };
+            CapsuleCylinderFrame sampled = frame with
+            {
+                Centre = FeaturePoint.Exact(sample.Centre),
+                Delta = FeaturePoint.Exact(Vector3.Zero),
+                QueryAxis = FeaturePoint.Exact(sample.Axis)
+            };
             if (!CapsuleCylinderFeatures.TryPropose(sampled, 0, ref work, out var proposal)) return null;
             if (CapsuleCylinderFeatures.Contact(sampled, 0, proposal.AxisParameter, scratch.Exact)) return t;
         }

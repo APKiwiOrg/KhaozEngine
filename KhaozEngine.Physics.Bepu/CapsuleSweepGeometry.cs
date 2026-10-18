@@ -28,8 +28,9 @@ internal static class CapsuleSweepGeometry
         if (root.Exists && root.Type == default(Mesh).TypeId)
             return InstalledMeshSweepGeometry.TryCapture(shapes, root, out geometry);
         if (CapsuleCurvedGeometry.TryCapture(shapes, root, out geometry)) return true;
-        if (root.Exists && (root.Type == default(ConvexHull).TypeId || root.Type == default(Compound).TypeId))
-            return TryCaptureHull(shapes, root, out geometry);
+        if (root.Exists && root.Type == default(Compound).TypeId)
+            return TryCaptureHull(shapes, root, out geometry) || CapsuleCompoundSweep.TryCapture(shapes, root, out geometry);
+        if (root.Exists && root.Type == default(ConvexHull).TypeId) return TryCaptureHull(shapes, root, out geometry);
         if (!TryReadIdentityBox(shapes, root, new RigidPose(Vector3.Zero, Quaternion.Identity), out Box box)) return false;
         Vector3 half = new(box.HalfWidth, box.HalfHeight, box.HalfLength);
         if (!InstalledPoseOperator.Within(half, RepresentedGeometryTransforms.MaximumLocalMagnitude)) return false;
@@ -116,8 +117,14 @@ internal static class CapsuleSweepGeometry
         InstalledSweepGeometry geometry, int leafIndex, out InstalledSweepLeaf leaf)
     {
         leaf = default;
-        if (leafIndex != 0 || !geometry.Matches(shapes, root) ||
-            !geometry.TryPose(parent, out InstalledPoseOperator map)) return false;
+        if (!geometry.Matches(shapes, root)) return false;
+        if (geometry.Children is { } children)
+        {
+            if ((uint)leafIndex >= (uint)children.Length || !geometry.TryPose(parent, out _)) return false;
+            geometry = children[leafIndex];
+        }
+        else if (leafIndex != 0) return false;
+        if (!geometry.TryPose(parent, out InstalledPoseOperator map)) return false;
         leaf = new(geometry, geometry.LeafPose, map);
         return true;
     }

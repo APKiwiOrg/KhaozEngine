@@ -1,6 +1,6 @@
 # Task 4 certified capsule sweep prerequisite
 
-Status: historical prerequisite design with the current rotated-box, hull and mesh extensions recorded below.
+Status: historical prerequisite design with the current rotated-box, hull, mesh and compound extensions recorded below.
 The checkpoint sections retain the evidence and limits of their original slices. Current consumer
 use and restrictions live in the [backend README](../../KhaozEngine.Physics.Bepu/README.md).
 
@@ -32,7 +32,7 @@ or bracket disagreement beyond the unchanged 0.001 m ceiling refuses atomically.
 `CertifiedRotatedBoxSweepTests`, `CertifiedSweepPolynomialTests`, `CertifiedSweepBoundsTests` and
 `CertifiedSweepLifetimeTests` carry this extension's geometric, exact, lifecycle and allocation gates.
 The real hidden-crate lift retains both GS-14 dimension pairs. Independent rational installed-point
-oracles check face, edge and vertex entries. General compound sweeps remain refused. This
+oracles check face, edge and vertex entries. General compounds use the extension below. This
 family does not imply native G1b, movement cost-scene acceptance, navigation or consumer adoption.
 
 ## Installed hull family extension
@@ -55,8 +55,8 @@ The hull ceilings remain 256 faces, 508 vertices and 1524 face-index entries. Th
 48-depth, 4096-feature, 4096-descendant and checked 4096-bit work ceilings do not grow. A larger valid
 topology may still exhaust a query budget and refuse atomically. `CertifiedHullSweepTests` and
 `CertifiedHullSweepLifetimeTests` cover native reuse, centroid compensation, static/dynamic poses,
-nonzero-Y frames, bound repair, exact fallback and zero warm allocation. General compound composition,
-authored multi-hull stairs acceptance and movement adoption remain later family gates.
+nonzero-Y frames, bound repair, exact fallback and zero warm allocation. General compound composition
+uses the extension below. Authored multi-hull stairs acceptance and movement adoption remain later gates.
 
 ## Finite static mesh extension
 
@@ -68,7 +68,26 @@ back-face row. Stationary/back/crossing relationships without a proved contact a
 The exact [side/filter matrix](CERTIFIED-GENERAL-SWEEPS-2026-10-18.md#installed-mesh-implementation-and-pinned-side-policy)
 and pinned source symbols are recorded in GS-9. `CertifiedMeshSweepTests`,
 `CertifiedMeshSweepCoverageTests` and `CertifiedMeshSweepLifetimeTests` carry these gates.
-General compounds and movement acceptance remain later tasks.
+General compounds use the extension below. Movement acceptance remains a later task.
+
+## Atomic compound extension
+
+The capture reads every actual installed flat convex child, retaining raw child index, typed shape
+identity, local pose and immutable leaf topology. Nested seam flattening and hull centering come from
+`ShapeFactory`, without reconstructing descriptors or adding another centroid offset. Supported
+children reuse box, hull, sphere, capsule and cylinder proofs. Mesh children remain an installation
+refusal. Installed nested compounds and BigCompound remain unsupported.
+
+Mutation completion unions every child's proved bounds and publishes all composed poses together.
+Queries retain the existing 64-child scratch array and shared 4096-descendant account, certify every
+child without child pruning and aggregate complete brackets independently of child order. An early
+Hit(0) never bypasses a later unsupported or exhausted child. Capture lookup also authenticates the
+registration id and installation generation against independent live owner records.
+
+The rounded 60-degree nested fixture passes composition and bounds but its enclosed tangent box
+face reaches depth 48 without a robust witness. It retains exact default refusal, while the rigid
+cyclic-child sibling certifies the independently checked Hit. GS-10 records this non-rigid proof
+limitation under GB-R9. No leaf kernel, tolerance, error ceiling or work ceiling changes.
 
 ## Source facts
 

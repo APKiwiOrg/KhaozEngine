@@ -220,7 +220,7 @@ public sealed class CertifiedHullSweepTests
         Assert.False(CapsuleSweepGeometry.TryCaptureHull(Sim(world).Shapes, native.Shape, out _));
         hull.FaceVertexIndices[0] = savedIndex;
         Assert.True(CapsuleSweepGeometry.TryCaptureHull(Sim(world).Shapes, native.Shape, out _));
-        world.AddStatic(new CompoundShape([new(Tetrahedron(), Pose.Identity), new(new BoxShape(new(0.5f)), Pose.At(new(3, 0, 0)))]), Pose.At(new(100, 0, 0)));
+        world.AddStatic(new CompoundShape([new(OverFaceCapHull(), Pose.Identity), new(new BoxShape(new(0.5f)), Pose.At(new(3, 0, 0)))]), Pose.At(new(100, 0, 0)));
         Refused(Read(world, new(-2, 0.75f, 0.25f), new(4, 0, 0)));
     }
 

@@ -107,6 +107,17 @@ internal static class InstalledSweepBounds
         minimum = maximum = default;
         if (!geometry.TryComposePose(pose, out RigidPose leafPose) ||
             !InstalledPoseOperator.TryCreate(leafPose, out InstalledPoseOperator map)) return false;
+        if (geometry.Children is { } children)
+        {
+            Vector3 childMin = new(float.PositiveInfinity), childMax = new(float.NegativeInfinity);
+            foreach (var child in children)
+            {
+                if (!TryCreate(child, pose, out var lo, out var hi)) return false;
+                childMin = Vector3.Min(childMin, lo); childMax = Vector3.Max(childMax, hi);
+            }
+            minimum = childMin; maximum = childMax;
+            return children.Length > 0 && children.Length <= CapsuleGeneralSweepPolicy.MaximumChildren;
+        }
         if (geometry.Mesh is { } mesh)
         {
             if (!mesh.ProvePose(pose, map)) return false;

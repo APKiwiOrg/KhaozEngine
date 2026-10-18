@@ -271,11 +271,19 @@ represented radii. Cylinders use continuous side, cap-disc and rim-circle predic
 support bounds for separation. Numerical closest points only propose witnesses or directions.
 An unproved isolated rim event refuses atomically. Curved radii and half-lengths stay within 2048 m
 and use the same forward/operational correspondence, error and work ceilings. The public cylinder's exact
-single-child base-offset wrapper is retained. General compounds remain unsupported sweep families.
+single-child base-offset wrapper is retained. General compounds admit the installer's actual flat
+box, hull, sphere, capsule and cylinder children, including nested seam flattening and hull centering.
+Every child completes before publication, including after Hit(0), within 64 children per root and
+the shared 4096-descendant account. Children are not pruned independently. Mesh children remain an
+installation refusal, and installed nested compounds and BigCompound remain unsupported.
+Non-rigid composition must still complete the existing leaf proof. An enclosed tangent face without
+a robust witness can reach depth 48 and refuse atomically despite a forward-oracle Hit.
 
 Mutation completion encloses actual installed corners, hull vertices, curved radial sets or mesh
 descendants and the rounded point graph, repairs inward bounds through Bepu's owning tree update/refit
 path, and validates ancestors before publishing evidence.
+Each capture authenticates its registration id and installation generation against the live owner
+binding. Recycled handles and identical replacement geometry cannot authenticate a previous capture.
 Selected unproved bound families refuse even outside the raw aperture. View/mobility exclusions retain
 their source meaning and cannot hide invalid stored evidence. Failed or missed physical mutations stay
 refused after unrelated successful mutations. Leases remain owner-scoped. Each restricted view applies

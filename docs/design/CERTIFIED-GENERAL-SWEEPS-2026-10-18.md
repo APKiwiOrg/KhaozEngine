@@ -305,14 +305,25 @@ Cost if wrong: a false Clear past a round prop, or round props that keep holding
 
 Use the installer's actual flattened leaves and each stored child pose, including hull centering.
 Compose with the actual parent pose through the common installed-transform proof, not an assumed
-exact inverse. Certify each relevant box/hull descendant and union required bounds before publishing
+exact inverse. Certify each required convex descendant, including the GS-10a curved families, and union required bounds before publishing
 the parent's evidence. Preserve stable raw child/feature identity without coalescing coincident faces.
 Reverse child order must preserve the aggregate sweep result and canonical support binding.
 
 Nested seam compounds are tested through the real flattening installer. Current Bepu compound
 children must be convex. Mesh-in-compound installation remains rejected by `ShapeFactory`.
-Do not add nested installed compounds, BigCompound, sphere/capsule/cylinder leaves or a new seam
-shape merely to enlarge this task. Unsupported descendants retain atomic refusal, even after Hit(0).
+Do not add nested installed compounds, BigCompound or a new seam shape merely to enlarge this task.
+Unsupported descendants retain atomic refusal, even after Hit(0). The implementation checks every
+flat child without child pruning, within 64 children per root and the shared 4096-descendant account.
+Root captures authenticate the registration id and installation generation independently of recycled
+native handles and typed indices. Removal destroys both bindings, while posed refreshes retain them.
+
+Composition admission does not guarantee a complete non-rigid leaf certificate. The nested fixture
+with parent position `(3,2,-4)`, cyclic parent rotation, child position `(0.25,0.5,-0.125)` and rounded
+60-degree child rotation passes flattening, pose composition and bounds. Its box's tangent face has
+enclosed coefficients whose distance straddles zero at depth 48, without a robust closed-contact
+witness. It returns exact default Unresolved atomically, even though the independent forward oracle
+encloses a Hit. The rigid cyclic-child sibling certifies Hit. No tolerance, work limit or leaf kernel
+is changed to accept the ambiguous non-rigid case (GB-R9).
 Cost if wrong: one proved child hides another collider or a wrapper applies centroid compensation twice.
 
 ### GS-11. Publish only complete world results

@@ -16627,8 +16627,8 @@ The fullscreen post-process blits are **not** itemized in the draw-call count - 
 the Pass-timings **post** row instead.
 
 **The pass-timing caveat (read it).** The per-pass numbers are **CPU encode time** (wall-clock spent recording a
-pass's commands), **not** true GPU execution time, and the `KhaozEngine.Gpu` seam exposes no timestamp-query
-API to measure the latter. The full explanation, and why a whole-frame GPU-time number was rejected, is in *Per-pass frame
+pass's commands), **not** true GPU execution time. The optional `IGpuTimestampPool` seam described under
+"GPU timestamps without waiting" is separate and is not connected to this HUD. The full explanation, and why a whole-frame GPU-time number was rejected, is in *Per-pass frame
 timing* below. The turn-key HUD is the zero-config path. The two sections that follow are the manual building
 blocks (custom rows, a recorder, a bespoke overlay) for a game that wants more than the default panel.
 
@@ -16845,10 +16845,11 @@ golden stays byte-stable.
 CPU wall-clock spent *recording* (encoding) that pass's graphics-API calls into the command list - it is NOT
 true GPU execution time. The GPU pipeline runs asynchronously behind the command list the backend records into, so
 a cheap-to-encode pass can still be GPU-expensive (or vice versa) and this meter cannot see that. The
-`KhaozEngine.Gpu` seam **exposes no timestamp-query API at all** (no query pool, no per-command-list timestamp
-write/resolve), so true per-pass GPU timestamps are out of scope until the seam gains one. A whole-frame GPU-time number (Tier 2) was considered and
-rejected: the only device-level synchronization the seam exposes is `IGpuDevice.WaitForIdle()` (a full CPU/GPU
-stall) and a non-blocking fence poll - inserting a
+`KhaozEngine.Gpu` seam now defines optional timestamp pools, encoded with `BeginTimestamps`, `WriteTimestamp`
+and `EndTimestamps` and collected through non-blocking `IGpuTimestampPool.TryResolve`. Gate their use on
+`GpuCapabilities.SupportsTimestamps`, which defaults to false. The three native backends currently report
+false until their native timestamp implementations land. These CPU brackets do not use that separate API.
+A whole-frame GPU-time number (Tier 2) based on synchronization was considered and rejected: inserting a
 `WaitForIdle()` every frame to time it would destroy the CPU/GPU pipelining that gives good frame pacing (a
 "Heisenberg timer" that changes the very thing it measures), and the fence-poll alternative only yields a noisy
 lower bound, not an honest whole-frame GPU duration, so it was not shipped either. Present/blit (swapping the
@@ -22415,6 +22416,47 @@ all entries retaining that exact fence and leaves every other entry in FIFO orde
 fence is a caller error, even if that fence has not signalled yet. Abandon the list before reusing the freed
 slots. `Dispose` throws `InvalidOperationException` while entries remain, including completed entries that have
 not been consumed. After consumption or valid discard it disposes only the owned staging buffers.
+
+### GPU timestamps without waiting
+
+Gate timestamp collection on `GpuCapabilities.SupportsTimestamps`. It defaults to false, including on all
+three native backends until their timestamp implementations land. An unsupported
+`IGpuResourceFactory.CreateTimestampPool(capacity)` throws `NotSupportedException`. The optional timestamp
+command defaults also throw, so existing factories and command lists stay source compatible.
+
+Allocate a fixed caller-owned ring once, with one `IGpuTimestampPool` per retained frame and preallocated
+tick arrays and frame IDs. Each pool's `Capacity` is fixed. Poll retained pools once on later frames. Reuse a
+pool only after its `TryResolve` returns `Ready` or `Invalid`. When every pool is pending, record no
+timestamps that frame and keep rendering. Do not grow the ring, wait for a pool or estimate a missing time.
+
+In the caller's open command list, `BeginTimestamps(pool, count)` starts a batch of 1 through `Capacity`
+queries. `WriteTimestamp(pool, index)` records each index exactly once, in order from 0 to `count - 1`.
+Place writes at pass boundaries, including between a compute dispatch and a draw. `EndTimestamps(pool)`
+requires every index to have been written. These three calls only encode work. They never submit it. A pool
+retains one unresolved batch, and a new begin clears the previous batch only after its result was consumed.
+Invalid count or index bounds throw `ArgumentOutOfRangeException`. Missing, duplicate or out-of-order writes
+and invalid lifecycle operations throw `InvalidOperationException`.
+
+Submit the list containing `EndTimestamps` once with a same-device completion fence, then call
+`pool.TryResolve(completion, ticks, out double tickPeriodNanoseconds)` on later frames. Keep the pool and
+fence alive, and never reset, resubmit or dispose that fence until resolution completes and every associated
+readback ring has consumed its entries. A fence from another submission is a caller error. A never-submitted
+fence stays pending. On Direct3D 11, presenting or a caller drain hands submitted work to the driver. This
+API introduces no flush policy for a headless loop that never presents.
+
+`Pending` leaves caller ticks unchanged and sets the period to zero. `Invalid` does the same but consumes
+the batch, for example when counters are disjoint, calibration is unusable or elapsed ticks overflow.
+`Ready` writes exactly `count` elapsed ticks relative to index 0, with `ticks[0] == 0`, preserving any output
+tail. Its period is finite and positive. Multiply a difference of elapsed ticks by the period to obtain
+nanoseconds. Repeated resolution returns the same terminal status, ticks and period until the next begin.
+No positive minimum duration is promised, and equal adjacent ticks are valid.
+
+Backends fill private preallocated scratch, validate the full result and only then publish caller ticks.
+Adjacent differences use the device's valid counter bits, including wrap, with checked cumulative addition.
+Every adjacent interval must be shorter than one full counter wrap. Multiple wraps in one interval cannot
+be detected or reconstructed. No resolve drains, flushes, submits, synchronously maps or takes a blocking
+lock. A too-small output throws `ArgumentException` before polling. Null, foreign and disposed fences and
+disposed or lost devices follow the completion validation contract of `IGpuDevice.TryReadBuffer`.
 
 ### Unsigned storage-buffer atomics
 

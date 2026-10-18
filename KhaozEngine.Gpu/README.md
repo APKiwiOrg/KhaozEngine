@@ -368,6 +368,20 @@ What it owns today:
   ring has consumed its entries or discarded an unsubmitted list. A full ring skips diagnostics for that frame
   while rendering continues and the dispatched outcome stands. Direct3D 11 completion needs a `Present` or drain
   because `Submit` does not flush.
+- **GPU timestamps** - gate on `GpuCapabilities.SupportsTimestamps`, default false. All three native backends
+  currently leave it false until their native timestamp tasks land. `CreateTimestampPool(capacity)` and the
+  optional command defaults throw `NotSupportedException` without support. A fixed-capacity
+  `IGpuTimestampPool` records one batch with `BeginTimestamps(pool, count)`, increasing unique
+  `WriteTimestamp(pool, index)` calls from 0 and `EndTimestamps(pool)`. They only encode work, never submit.
+  `TryResolve(completion, ticks, out tickPeriodNanoseconds)` polls the same-device fence supplied to the
+  submission containing `EndTimestamps`. Keep it unreset and alive until every associated readback is consumed.
+  `Pending` and `Invalid` preserve caller ticks and return period zero. `Ready` publishes elapsed ticks relative
+  to index 0 with a finite positive nanosecond period, preserving any destination tail. Repeated resolution
+  returns the same terminal result until the next begin. Resolve never waits, flushes, submits or synchronously
+  maps. Native scratch is preallocated and the complete normalization is checked before publication. Each
+  adjacent interval must be shorter than one complete counter wrap. Allocate a fixed caller-owned ring with one
+  pool per retained frame. When all pools are pending, record no timestamps that frame and keep rendering.
+  The consumer guide's "GPU timestamps without waiting" gives the full lifetime and invalid-result contract.
 - **`GpuRetireQueue`** (since 17.37.0) - deferred disposal for anything a renderer frees MID-LIFE (a streamed mesh
   unloaded while the scene runs, a sprite atlas whose descriptor set fell out of the working set). `Retire(resource)`
   costs nothing at the call site, `BeginFrame()` seals the frame's retirements into one batch behind a fence and

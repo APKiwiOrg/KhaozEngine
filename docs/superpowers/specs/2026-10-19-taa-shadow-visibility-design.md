@@ -104,7 +104,9 @@ Clear visibility to 1. Shadow-disabled geometry and out-of-coverage geometry wri
 
 `GpuCapabilities.MinimumColorAttachments` is four. The motion-plus-visibility layout requires five. The split resolve's existing fallback to fused does not fix a five-output lit pass. No shipping code may attempt an unsupported framebuffer or silently use the old defective resolve.
 
-This spec does not authorize reducing the engine's supported Vulkan device floor. Before the MRT task, the owner/orchestrator must choose an exact visibility companion pass on four-attachment devices, or explicitly approve a documented AA capability fallback. The former preserves TAA support but adds pass and geometry cost. The latter is simpler but changes supported behavior. The plan stops at that decision if it remains unresolved. Either choice needs an amended layout, pixel tests and cost accounting before it can ship.
+This spec does not reduce the engine's supported Vulkan device floor.
+
+**Orchestrator ruling, 2026-10-19.** A device whose `MaxColorAttachments` is below five keeps today's four-attachment lit layout, and the visibility release is unavailable there. The bilinear filter still applies. The resolve runs without visibility evidence, and the engine reports that capability once through its existing capability logging. This follows the degrade-rather-than-fail policy `GpuCapabilities.MaxColorAttachments` already documents. Metal and Direct3D 11 allow eight on every device, and the desktop Vulkan drivers the engine ships on, lavapipe included, report eight. So the degraded path covers rare hardware rather than a shipping target. A visibility companion pass was rejected: it would add a second geometry pass and shadow lookups to serve devices outside the engine's actual targets. Packing visibility into an existing attachment was also rejected. The motion target is two-channel `R16G16Float`, linear depth is single-channel `R32Float`, normal alpha carries the dynamic-geometry mask through MSAA resolve, and colour alpha is real coverage for transparent captures. Tests describe a four-attachment device. They assert that the degraded layout is selected without pipeline failure and that its frames match the filter-only resolve.
 
 ## 6. Visibility history, validity and lifetime
 
@@ -228,4 +230,4 @@ Recommend one **minor** version for the combined package-bearing batch. Although
 
 The eventual version and matching newest changelog entry land together once, with guarded declarations updated. Neither this spec commit nor intermediate evidence-only tasks bump. Integration, release, tag, durable publication and Grimhollow adoption belong to the owning orchestrator and their separate gates. Both parts remain on the task branch until the combined fix is approved and verified.
 
-Open decisions are the four-attachment policy, final reset selection if several pass, acceptable residual real-scene noise, and fresh billed-benchmark approval. Gather support is an implementation proof question, not an assumption requiring the owner to guess.
+The four-attachment policy is settled by the ruling in section 5. Open decisions are the final reset selection if several pass, acceptable residual real-scene noise, and fresh billed-benchmark approval. Gather support is an implementation proof question, not an assumption requiring the owner to guess.

@@ -10,9 +10,6 @@ namespace KhaozEngine.MapDoc.Markers;
 /// <summary>R6-P7. Native point readouts on authored support, never on analytic terrain.</summary>
 public static class MapNativePointReadout
 {
-    // The policy version the shared seat query acquires with.
-    const int QueryPolicyVersion = 2;
-
     /// <summary>Samples the caller-named Surface owner at <paramref name="point"/> through the shared seat query that
     /// support-bound placements and markers use, with the default scoped budgets. A Surface sample takes its owner
     /// directly with no reference height or search range. Every status is returned typed, refusals included, and only
@@ -32,7 +29,7 @@ public static class MapNativePointReadout
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         {
             return new MapSupportResult(MapSupportStatus.NotRepresentable, null, 0, null, null, null, null, "overflow",
-                new MapReadWitness(resources.Digest, "", default, QueryPolicyVersion, complete: false));
+                new MapReadWitness(resources.Digest, "", default, MapScopedSurfaces.EffectiveQueryPolicyVersion, complete: false));
         }
     }
 }

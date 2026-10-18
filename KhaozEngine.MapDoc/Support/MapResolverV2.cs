@@ -74,7 +74,8 @@ public static class MapResolverV2
         float x = world.X.Subtract(new((long)frame.X * (long)WorldFrame.Grid, 1)).ToSingle();
         float z = world.Z.Subtract(new((long)frame.Z * (long)WorldFrame.Grid, 1)).ToSingle();
         var scope = new MapSurfaceScope(frame, new(x - 2, z - 2), new(x + 2, z + 2), null, null, Enum.GetValues<MapSurfaceRole>(), null, limits);
-        var view = MapScopedSurfaces.Acquire(surfaces, scope, assetSha256, 2, 2);
+        var view = MapScopedSurfaces.Acquire(surfaces, scope, assetSha256, MapScopedSurfaces.EffectiveQueryPolicyVersion,
+            MapScopedSurfaces.EffectiveBuildPolicyVersion);
         var query = new MapSupportQuery(view);
         return binding.Kind == MapSupportBindingKind.Surface ? query.SampleSurfaceExact(world, binding.SurfaceId!)
             : query.SelectExact(new(MapEffectiveGeometry.Presentation(view, world), null, binding.SpaceId, null, binding.SearchAbove!.Value, binding.SearchBelow!.Value, null), world);

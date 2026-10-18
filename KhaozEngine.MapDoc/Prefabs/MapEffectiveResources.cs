@@ -97,7 +97,8 @@ public sealed class MapEffectiveResources
     }
     public MapScopedSurfaces CompleteView() => SurfaceSource is MapComposedSurfaceSource
         ? Acquire(MapScopedSurfaces.CompleteEffective(_context).Scope) : MapScopedSurfaces.CompleteEffective(_context);
-    public MapScopedSurfaces Acquire(MapSurfaceScope scope) => MapScopedSurfaces.Acquire(SurfaceSource, scope, new[] { Digest }, 2, 2);
+    public MapScopedSurfaces Acquire(MapSurfaceScope scope) => MapScopedSurfaces.Acquire(SurfaceSource, scope, new[] { Digest },
+        MapScopedSurfaces.EffectiveQueryPolicyVersion, MapScopedSurfaces.EffectiveBuildPolicyVersion);
 }
 
 /// <summary>Owned local descriptors and unfrozen poses. Acquired views retain this captured context.</summary>

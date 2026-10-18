@@ -5,6 +5,7 @@ using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Identity;
 using KhaozEngine.MapDoc.Markers;
 using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Support;
 using KhaozEngine.MapDoc.Surfaces;
 
@@ -17,9 +18,6 @@ namespace KhaozEngine.MapEditor;
 /// <see cref="Diagnostic"/>. The caller supplies the verified closure, the roles and the Surface owner.</summary>
 internal sealed class NativeMarkerReadouts
 {
-    // The query policy the shared seat query acquires with, recorded on the typed refusals built here.
-    const int QueryPolicyVersion = 2;
-
     sealed record Snapshot(MapEffectiveResources Resources, MapMarkerRegistry Registry)
     {
         internal Dictionary<(float X, float Z), MapSupportResult> Samples { get; } = new();
@@ -31,6 +29,8 @@ internal sealed class NativeMarkerReadouts
     readonly bool _partial;
     Snapshot? _snapshot;
     string? _failure;
+    // The one unavailable answer of the current snapshot state, so a frame of unplaceable rows builds it once.
+    MapSupportResult? _unavailable;
 
     internal NativeMarkerReadouts(MapDocument document, MapAssetClosure assets, MapMarkerConsumerOptions options)
     {
@@ -67,13 +67,14 @@ internal sealed class NativeMarkerReadouts
 
     /// <summary>The caller's legacy spawn Surface owner sampled at (x, z) through the shared seat query. Every status is
     /// typed and only Supported carries a height. With no Surface owner or no snapshot the result is Invalid with a
-    /// detail saying why. Samples are kept per snapshot, so a frame never repeats a query.</summary>
+    /// detail saying why. Samples and that unavailable answer are kept per snapshot, so a frame never repeats a query
+    /// or rebuilds a result.</summary>
     internal MapSupportResult LegacySpawnHeight(float x, float z)
     {
         Snapshot? snapshot = Current();
         if (_options.LegacySpawnSurfaceId is not { } surfaceId)
-            return Unavailable(snapshot, "no legacy spawn Surface owner is configured in MapMarkerConsumerOptions");
-        if (snapshot is null) return Unavailable(null, Diagnostic ?? "no effective snapshot");
+            return _unavailable ??= Unavailable(snapshot, "no legacy spawn Surface owner is configured in MapMarkerConsumerOptions");
+        if (snapshot is null) return _unavailable ??= Unavailable(null, Diagnostic ?? "no effective snapshot");
         if (!snapshot.Samples.TryGetValue((x, z), out MapSupportResult? support))
         {
             support = MapNativePointReadout.SurfaceAt(snapshot.Resources,
@@ -88,6 +89,7 @@ internal sealed class NativeMarkerReadouts
     {
         _snapshot = null;
         _failure = null;
+        _unavailable = null;
     }
 
     Snapshot? Current()
@@ -110,5 +112,5 @@ internal sealed class NativeMarkerReadouts
 
     static MapSupportResult Unavailable(Snapshot? snapshot, string detail) =>
         new(MapSupportStatus.Invalid, null, 0, null, null, null, null, detail,
-            new MapReadWitness(snapshot?.Resources.Digest ?? "", "", default, QueryPolicyVersion, complete: false));
+            new MapReadWitness(snapshot?.Resources.Digest ?? "", "", default, MapScopedSurfaces.EffectiveQueryPolicyVersion, complete: false));
 }

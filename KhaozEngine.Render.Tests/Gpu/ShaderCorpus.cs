@@ -48,6 +48,8 @@ namespace KhaozEngine.Tests.Gpu
                 EmitGraphics(program, rows, dump);
             foreach (ShippedComputeKernel kernel in ShippedShaderPrograms.ComputeKernels())
                 EmitCompute(kernel, rows, dump);
+            foreach (ShippedComputeKernel kernel in CoverageKernels())
+                EmitCompute(kernel, rows, dump, new GpuShaderCompileOptions(PreciseMath: true));
 
             rows.Sort((a, b) => string.CompareOrdinal(a.Key, b.Key));
             return rows;
@@ -69,7 +71,7 @@ namespace KhaozEngine.Tests.Gpu
                 keys.Add($"{program.Name}.layout.msl");
                 keys.Add($"{program.Name}.layout.hlsl");
             }
-            foreach (ShippedComputeKernel kernel in ShippedShaderPrograms.ComputeKernels())
+            foreach (ShippedComputeKernel kernel in ShippedShaderPrograms.ComputeKernels().Concat(CoverageKernels()))
             {
                 keys.Add($"{kernel.Name}.compute.spirv");
                 keys.Add($"{kernel.Name}.compute.msl");
@@ -100,16 +102,23 @@ namespace KhaozEngine.Tests.Gpu
             rows.Add(LayoutRow($"{program.Name}.layout.hlsl", hlsl.Reflection));
         }
 
-        static void EmitCompute(ShippedComputeKernel kernel, List<ShaderCorpusRow> rows, Action<string, byte[]>? dump)
+        // Coverage helpers have a dynamic probe until their production entry points arrive in later tasks.
+        internal static IEnumerable<ShippedComputeKernel> CoverageKernels()
         {
-            byte[] spirv = SpirvFrontEnd.ToSpirv(kernel.ComputeGlsl, GpuShaderStages.Compute, kernel.Name);
+            yield return new(CoverageGpuArithmeticProbe.Name, CoverageGpuArithmeticProbe.Source);
+        }
+
+        static void EmitCompute(ShippedComputeKernel kernel, List<ShaderCorpusRow> rows, Action<string, byte[]>? dump,
+            GpuShaderCompileOptions options = default)
+        {
+            byte[] spirv = SpirvFrontEnd.ToSpirv(kernel.ComputeGlsl, GpuShaderStages.Compute, kernel.Name, options);
             rows.Add(Row($"{kernel.Name}.compute.spirv", spirv, dump));
 
-            CrossCompiledCompute msl = SpirvCrossCompile.ComputeToMsl(spirv, kernel.Name);
+            CrossCompiledCompute msl = SpirvCrossCompile.ComputeToMsl(spirv, kernel.Name, options);
             rows.Add(Row($"{kernel.Name}.compute.msl", msl.ComputeSource, dump));
             rows.Add(LayoutRow($"{kernel.Name}.layout.msl", msl.Reflection));
 
-            CrossCompiledCompute hlsl = SpirvCrossCompile.ComputeToHlsl(spirv, kernel.Name);
+            CrossCompiledCompute hlsl = SpirvCrossCompile.ComputeToHlsl(spirv, kernel.Name, options);
             rows.Add(Row($"{kernel.Name}.compute.hlsl", hlsl.ComputeSource, dump));
             rows.Add(LayoutRow($"{kernel.Name}.layout.hlsl", hlsl.Reflection));
         }

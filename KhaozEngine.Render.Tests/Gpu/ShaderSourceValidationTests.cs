@@ -204,6 +204,13 @@ namespace KhaozEngine.Tests.Gpu
             => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.CoverageTransitionFrag, "CoverageTransition");
 
         [Fact]
+        public void CoverageComputeKernels()
+        {
+            foreach (ShippedComputeKernel kernel in ShaderCorpus.CoverageKernels())
+                ShaderValidation.ValidateCompute(kernel.ComputeGlsl, new GpuShaderCompileOptions(PreciseMath: true), kernel.Name);
+        }
+
+        [Fact]
         public void TemporalDepthStore()
             => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.TemporalDepthStoreFrag, "TemporalDepthStore");
 

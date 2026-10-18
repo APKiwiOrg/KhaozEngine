@@ -1,8 +1,8 @@
 # KhaozEngine.CodeHealth.Analyzers
 
-Compile-time enforcement of the fleet's file-size ratchet (the god-class guard). The semantic
-authority is `scripts/check-file-size.sh` in game-template: this analyzer applies the same rules in
-the build and the IDE, where they cannot be bypassed by skipping a git hook.
+Compile-time enforcement of the fleet's file-size ratchet and attributed binary32 kernel inventory.
+The file-size rules mirror `scripts/check-file-size.sh` in game-template. The binary32 rules apply
+only to attributed code. Both run in the build and the IDE.
 
 ## Diagnostics
 
@@ -10,15 +10,42 @@ the build and the IDE, where they cannot be bypassed by skipping a git hook.
 |----|----------|------------|
 | KESIZE001 | Error | A file listed in `.filesize-baseline` exceeds its recorded line count. A baselined file may shrink freely, it may never grow. |
 | KESIZE002 | Error | A file NOT in the baseline exceeds the cap (default 800 lines). |
+| KEB32001 | Error | A kernel uses a binary, unary, increment or compound-assignment operator with a float, double or decimal operand, including comparisons and equality. Move it into the arithmetic home. |
+| KEB32002 | Error | A kernel performs a nonconstant numeric conversion from or to float, double or decimal. Move it into the arithmetic home. |
+| KEB32003 | Error | A kernel invokes Math or MathF with floating parameters, or invokes a Single, Double, BitConverter, System.Numerics or System.Runtime.Intrinsics member, including operators. Call the arithmetic home instead. |
+| KEB32004 | Error | A kernel invokes an unmarked method or accesses an unmarked computed property declared in source. Mark the callee as a kernel or move its arithmetic into the arithmetic home. |
 
 Line count is `wc -l` parity: the number of newline characters. Exclusions match the script:
 `obj/`, `bin/`, `vendor/` path segments and `.Designer.cs`, `.g.cs`, `.generated.cs`,
 `.AssemblyInfo.cs` suffixes, plus anything Roslyn marks as generated code.
 
-Both messages carry their own remediation inline rather than only in the descriptor description,
+Both file-size messages carry their own remediation inline rather than only in the descriptor description,
 because MSBuild prints the message and not the description: guidance an agent cannot see is guidance
 that does not exist. The remediation routes a legitimate case to "ask the repo owner", never to a
 split that exists only to silence the error.
+
+## Binary32 kernel attribute contract
+
+`Binary32KernelAttribute` opts a method, constructor, accessor, local function or lambda into the
+inventory rules. An attribute on a containing method or type applies to its nested kernel members.
+The attribute is recognized by simple type name in any namespace, including shared attribute
+assemblies. The analyzer does not supply the attributes. A type carrying
+`Binary32ArithmeticAttribute` is the hand-reviewed arithmetic home. Its members and nested types
+are exempt from all four rules, and kernels may call them. Kernel membership is cached per
+compilation. Compilations without a `Binary32KernelAttribute` type register no operation or syntax
+actions, even if an arithmetic-home attribute exists.
+
+Integer arithmetic and conversions, bool logic, float selection (`c ? a : b`) and compile-time
+constant numeric conversions remain legal. So do object and exception construction, fields, auto
+properties, array, span and `IReadOnlyList<T>` indexers. The trusted System array, span and memory
+APIs `AsSpan`, `Slice`, `CopyTo`, `TryCopyTo`, `Clear`, `Fill` and `Overlaps` are allowed, together
+with `object.ReferenceEquals`, `ArgumentNullException.ThrowIfNull` and integer Math overloads.
+Implicit array, span and memory storage-view conversions also remain legal.
+Unrelated methods with those names are still checked. Computed properties must mark the getter or
+setter that the kernel actually reaches. Diagnostic messages carry their own rule and remediation.
+
+The operation order and device-exactness obligations are defined in the
+[equipment coverage kernel contract](../docs/design/EQUIPMENT-COVERAGE-KERNEL-CONTRACT-2026-10-18.md).
 
 ## Exemptions (14.8.0)
 
@@ -53,7 +80,7 @@ silently wrong, but adopt exempt lines only once you are on a pin that understan
 
 Zero-touch. The package ships buildTransitive props that discover the consuming repo's
 `.filesize-baseline` by walking up from each project directory and hand it to the analyzer as an
-AdditionalFile. A repo with no baseline has not adopted the ratchet and the analyzer stays silent.
+AdditionalFile. A repo with no baseline has not adopted the ratchet and the file-size analyzer stays silent.
 Create a baseline with `scripts/check-file-size.sh --init`.
 
 Knobs, both MSBuild properties: `KhaozFileSizeCap` overrides the 800-line cap for unlisted files,

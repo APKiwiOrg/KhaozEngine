@@ -52,6 +52,33 @@ internal static class AnalyzerHarness
             .ToImmutableArray();
     }
 
+    /// <summary>Runs any analyzer on compilable sources, preserving failures outside its prefix.</summary>
+    public static async Task<ImmutableArray<Diagnostic>> RunAnalyzer(
+        DiagnosticAnalyzer analyzer, string idPrefix, params (string Path, string Content)[] sources)
+    {
+        var compilation = CreateCompilation(sources);
+        var withAnalyzers = compilation.WithAnalyzers(ImmutableArray.Create(analyzer));
+        var diagnostics = await withAnalyzers.GetAnalyzerDiagnosticsAsync();
+        var crashes = diagnostics.Where(d => d.Id == "AD0001").ToArray();
+        if (crashes.Length != 0)
+            throw new InvalidOperationException(string.Join("\n", crashes.Select(d => d.ToString())));
+        return diagnostics.Where(d => d.Id.StartsWith(idPrefix, StringComparison.Ordinal))
+            .OrderBy(d => d.Location.SourceTree?.FilePath, StringComparer.Ordinal)
+            .ThenBy(d => d.Location.SourceSpan.Start).ThenBy(d => d.Id, StringComparer.Ordinal)
+            .ToImmutableArray();
+    }
+
+    internal static CSharpCompilation CreateCompilation(params (string Path, string Content)[] sources)
+    {
+        var compilation = CSharpCompilation.Create("AnalyzerHarness",
+            sources.Select(s => CSharpSyntaxTree.ParseText(s.Content, path: s.Path)), References,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        var errors = compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();
+        if (errors.Length != 0)
+            throw new InvalidOperationException(string.Join("\n", errors.Select(d => d.ToString())));
+        return compilation;
+    }
+
     /// <summary>A compilable source with exactly <paramref name="newlines"/> newline characters
     /// (wc -l parity: the final "class C {}" line has no trailing newline and does not count).</summary>
     public static string SourceOfLines(int newlines) =>

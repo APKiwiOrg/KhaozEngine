@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Markers;
+using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.MapEditor;
 
@@ -14,8 +17,9 @@ namespace KhaozEngine.MapEditor;
 /// world that would have paid the whole-load cost the tiled format exists to remove instead opens a bounded
 /// slice of itself.</para>
 /// <para>The spawn search reads a bounded number of occupied tiles nearest the bounds center. If none of
-/// those tiles contains an enabled player spawn, the window falls back to the bounds center. Camera bookmarks
-/// remain session-only.</para></summary>
+/// those tiles contains an enabled player spawn, the window falls back to the bounds center. A caller that names
+/// its player start role anchors a native window on the nearest enabled marker of that role first. Camera
+/// bookmarks remain session-only.</para></summary>
 public static class MapDocumentWindowing
 {
     /// <summary>Default occupied-tile ceiling below which a tiled document loads whole.</summary>
@@ -41,14 +45,57 @@ public static class MapDocumentWindowing
     /// <summary>Loads a document with an explicit player-spawn search budget. Zero keeps the bounds-center
     /// anchor without reading any search tiles. The budget excludes tiles read to populate the final window.
     /// Occupied tiles are searched by squared distance from the bounds-center tile, then Z and X. Within a
-    /// tile, the first enabled spawn in ordinal ID order wins. Whole loads do not run the search.</summary>
+    /// tile, the first enabled spawn in ordinal ID order wins. Whole loads do not run the search. This overload keeps
+    /// the analytic convention for every document, native ones included.</summary>
     public static MapDocument Load(string path, MapDocumentLoadOptions options,
         int wholeWorldTileLimit, int windowRadius, int playerSpawnSearchTileLimit,
         out bool windowed, out MapTileRect? window)
+        => LoadCore(path, options, wholeWorldTileLimit, windowRadius, playerSpawnSearchTileLimit, out windowed, out window,
+            null, null);
+
+    /// <summary>Loads a document as the overload above does, except that a windowed native manifest centres its window
+    /// on the enabled marker of the caller's <paramref name="playerStartRole"/> nearest the bounds centre, chosen by
+    /// <see cref="MapMarkerAnchors.Select"/> over <paramref name="nativeAnchors"/>. The callback receives the manifest
+    /// alone and must read only root metadata and verified prefab bytes. Without a match the released fallback stands:
+    /// the bounds centre, then the bounded legacy player-spawn search. Analytic documents and whole loads are
+    /// unchanged and never call the callback. This only chooses a window. It opens no session, resolves no height and
+    /// certifies nothing.</summary>
+    public static MapDocument Load(string path, MapDocumentLoadOptions options,
+        int wholeWorldTileLimit, int windowRadius, int playerSpawnSearchTileLimit,
+        out bool windowed, out MapTileRect? window,
+        string playerStartRole, Func<MapDocument, IReadOnlyList<MapMarkerAnchor>> nativeAnchors)
+        => Load(path, options, wholeWorldTileLimit, windowRadius, playerSpawnSearchTileLimit, out windowed, out window,
+            playerStartRole, nativeAnchors, out _);
+
+    /// <summary>The overload above, also reporting the anchor its window centres on, or null when the released fallback
+    /// chose the window or the document loaded whole.</summary>
+    internal static MapDocument Load(string path, MapDocumentLoadOptions options,
+        int wholeWorldTileLimit, int windowRadius, int playerSpawnSearchTileLimit,
+        out bool windowed, out MapTileRect? window,
+        string playerStartRole, Func<MapDocument, IReadOnlyList<MapMarkerAnchor>> nativeAnchors, out MapMarkerAnchor? anchor)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(playerStartRole);
+        ArgumentNullException.ThrowIfNull(nativeAnchors);
+        return LoadCore(path, options, wholeWorldTileLimit, windowRadius, playerSpawnSearchTileLimit, out windowed, out window,
+            playerStartRole, nativeAnchors, out anchor);
+    }
+
+    static MapDocument LoadCore(string path, MapDocumentLoadOptions options,
+        int wholeWorldTileLimit, int windowRadius, int playerSpawnSearchTileLimit,
+        out bool windowed, out MapTileRect? window,
+        string? playerStartRole, Func<MapDocument, IReadOnlyList<MapMarkerAnchor>>? nativeAnchors)
+        => LoadCore(path, options, wholeWorldTileLimit, windowRadius, playerSpawnSearchTileLimit, out windowed, out window,
+            playerStartRole, nativeAnchors, out _);
+
+    static MapDocument LoadCore(string path, MapDocumentLoadOptions options,
+        int wholeWorldTileLimit, int windowRadius, int playerSpawnSearchTileLimit,
+        out bool windowed, out MapTileRect? window,
+        string? playerStartRole, Func<MapDocument, IReadOnlyList<MapMarkerAnchor>>? nativeAnchors, out MapMarkerAnchor? anchor)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(playerSpawnSearchTileLimit);
         windowed = false;
         window = null;
+        anchor = null;
 
         if (MapDocumentFile.DetectForm(path) != MapDocumentForm.Tiled)
             return MapDocumentFile.Load(path, options);
@@ -58,11 +105,15 @@ public static class MapDocumentWindowing
             return MapDocumentFile.LoadTiled(path, options);
 
         MapDocument manifest = source.Manifest;
-        MapTileCoord center = MapTileGrid.CoordOf(
-            (manifest.Bounds.MinX + manifest.Bounds.MaxX) * 0.5f,
-            (manifest.Bounds.MinZ + manifest.Bounds.MaxZ) * 0.5f,
-            manifest.TileSize);
-        center = FindSpawnTile(source, center, playerSpawnSearchTileLimit);
+        float centerX = (manifest.Bounds.MinX + manifest.Bounds.MaxX) * 0.5f;
+        float centerZ = (manifest.Bounds.MinZ + manifest.Bounds.MaxZ) * 0.5f;
+        anchor = manifest.ResolverIdentity is not null && nativeAnchors is not null
+            ? MapMarkerAnchors.Select(nativeAnchors(manifest), playerStartRole!,
+                new MapExactXz(MapExactValue.FromSingle(centerX), MapExactValue.FromSingle(centerZ)))
+            : null;
+        MapTileCoord center = anchor is not null
+            ? MapMarkerAnchors.TileOf(anchor.Position, manifest.TileSize)
+            : FindSpawnTile(source, MapTileGrid.CoordOf(centerX, centerZ, manifest.TileSize), playerSpawnSearchTileLimit);
         var rect = new MapTileRect(
             new MapTileCoord(center.X - windowRadius, center.Z - windowRadius),
             new MapTileCoord(center.X + windowRadius, center.Z + windowRadius));

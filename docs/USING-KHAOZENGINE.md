@@ -3403,9 +3403,56 @@ var reports = new BugReportService(app,
 - **Shutdown.** `reports.Dispose()` removes the overlay, waits up to 3 s for sends to reach the offline queue,
   cancels sends and flushes, disposes the recorder and detaches the log ring. Dispose it before the app.
 
+### Server snapshot
+
 A game server registers its own sections on `BugReportServerCapture`, checks `ReportIds.IsValid` and `TryAccept`
 with the subject it authenticated before it calls `Capture` on the simulation thread, and posts with
-`ServerSnapshotPoster` off that thread. The package READMEs carry the full examples.
+`ServerSnapshotPoster` off that thread. `TryAccept(subject)` defaults to 5 requests per rolling hour per
+account. The game carries the report id from `ReportCaptured` to the server over its own authenticated
+protocol. Never accept a subject from that message.
+
+`ServerSnapshotPoster(http, relayBase, serviceKey, redactor)` finishes sections off the simulation thread,
+redacts and truncates within the 1 MiB snapshot cap, and posts with `X-Report-Service-Key` to
+`bug-reports/{reportId}/server`. The optional redactor defaults to the engine rules. `PostAsync` returns false
+with one warning on failure, except caller cancellation, which throws. Snapshot failure does not discard
+the client report. See the [server example](../KhaozEngine.BugReports/README.md#server-snapshot).
+
+### Relay host
+
+E1 capture and the E2 report client ship in 21.4.0. E3 adds `KhaozEngine.BugReports.Relay` and
+`KhaozEngine.BugReports.Relay.Azure` for staged 21.5.0. Both are opt-in, outside every umbrella, and target
+`net10.0`. The first consumer uses .NET 10 isolated on Functions Flex Consumption.
+
+The host supplies an `IReporterAuthenticator` over its verified game token and constructs `BugReportRelay`
+with media, queue, quota and GitHub seams plus a `TimeProvider`. Only the authenticator's returned subject
+is authoritative. Map HTTP POST `bug-reports` to `IntakeAsync`, HTTP POST `bug-reports/{reportId}/server`
+to `ServerSnapshotIntakeAsync`, and the queue trigger to
+`ProcessWorkAsync(ReportWorkItemJson.Parse(message), cancellationToken)`. Pass request bodies unread and
+forward the `RelayResponse` status, JSON and headers, including `Retry-After`. Let worker exceptions escape
+for durable queue redelivery.
+
+Every resend of an unfinished report enqueues `CreateIssue` before returning 202, regardless of age.
+If enqueue fails, the request fails so the client keeps its bundle. Worker claims and result markers
+suppress duplicate messages.
+
+To revoke a report:
+
+1. Call `BugReportRelay.RevokeAsync(reportId, cancellationToken)`.
+2. Delete its public capability folder.
+3. Delete it again after the 10-minute claim lease. A holder that passed its check before the call can
+   still finish a write inside its lease. Holders running beyond that lease are outside the guarantee.
+
+Retain the private `revoked/` tombstone and idempotency state for at least the report retention and the
+client queue's 7-day maximum age. A missing public manifest is also treated as revoked. Late snapshots
+and full-bundle resends return 202 without enqueueing revoked work.
+
+The [relay README](../KhaozEngine.BugReports.Relay/README.md) has the isolated-worker host sketch and status
+codes. Read its [Host duties](../KhaozEngine.BugReports.Relay/README.md#host-duties) for the 5-dequeue poison
+policy, visibility backoff, daily requeue and prefix-scoped retention, and its
+[Guarantees and residuals](../KhaozEngine.BugReports.Relay/README.md#guarantees-and-residuals) for claims,
+crash windows, unfenced leases and operator recovery. The
+[Azure backend README](../KhaozEngine.BugReports.Relay.Azure/README.md) covers caller-built clients,
+`ReportQueueClientOptions.Create(logger)`, RBAC roles and the separately gated live storage tests.
 
 ---
 
@@ -8474,7 +8521,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.4.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.5.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -8875,7 +8922,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.4.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.5.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9640,7 +9687,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.4.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.5.0" />
 ```
 
 ```csharp
@@ -10886,15 +10933,20 @@ version or the load fails. The engine's own steps are pre-registered: v1 to v2 d
 (512 m), v3 to v4 adds `playableBounds` from `bounds` when it is absent, and v4 to v5 stamps the
 `LegacyXzCallbackV1` support recipe. The v5 to v6 step (`MapWaterMigration.Upgrade`) adds no member.
 The v6 to v7 step (`MapPrefabMigration.Upgrade`) clones input and changes only `formatVersion`.
-`MapDocumentFile.CurrentFormatVersion` is 7, and saving always writes it. Version and layout are independent
+The v7 to v8 step (`MapMarkerMigration.Upgrade`) clones input and changes only `formatVersion`.
+`MapDocumentFile.CurrentFormatVersion` is 8, and saving always writes it. Version and layout are independent
 axes, so a monolithic file at the current version is legal. Format 5 and the v4 to v5 step arrived in
-20.30.0. Format 6 adds optional bounded water in 20.32.0, and format 7 adds rigid prefabs and building intent
-in 20.40.0. Releases up to 20.29.1 write format 4.
+20.30.0. Format 6 adds optional bounded water in 20.32.0, format 7 adds rigid prefabs and building intent
+in 20.40.0, and format 8 adds general markers in 21.5.0. Releases up to 20.29.1 write format 4.
 
 Format 6 moves every native root digest and every resolver-2 authored identity once, including documents
 without water. Rebuild caches and navigation captures keyed on them. Documents without water keep their
 document hash. Loading now refuses a repeated or case-variant JSON member anywhere in a document, manifest
 or tile, including open feature payloads, where the last value previously won.
+
+Format 7 moves every native root digest and resolver-2 authored identity once, including documents without
+prefabs. Format 8 is another pure version-only migration and moves every native identity once again. Rebuild
+identity-keyed caches and navigation captures after either migration.
 
 From 20.30.0, a format-4 document migrates on load with no action from the game. Its authored
 identity token changes exactly once at that format advance, with no continuity to the old token, so
@@ -10945,6 +10997,25 @@ Unpack transfers live children with their IDs and precise poses, retaining remov
 materialized support/light pins. Extraction preserves explicit parent context and the requested origin.
 `PrefabService` edits detached assets, then publishes immutable bytes and a verified replacement closure before
 one accepted switch of every referring instance in the open complete map. Other maps retain their pins.
+
+### General markers
+
+Format 8 keeps marker payload 1 byte for byte and adds payload 2 for world markers and prefab Marker children.
+Payload 2 requires `heightMode`. `Explicit` keeps `Position.Y`, while `Support` carries a `MapSupportBinding`,
+stores `Position.Y` as zero and resolves through the shared seat query after support-bound placements are seated.
+`HeightProvenance` is value-only. Witness-bearing support answers are carried by `MarkerSupports`. Payload-1
+markers retain annotation digest scheme `/1`, while any payload-2 marker selects `/2`.
+
+Effective marker IDs and names are global, ordinal and case-sensitive. Duplicate IDs or names refuse before patch,
+support or static reads. Repeated prefab marker names require an explicit replace override on each repeated instance.
+`MapPlacePrefab.InitialOverrides` applies those overrides atomically. `MapMarkerRegistry` looks up markers by ID,
+name, caller role and tag, and by a half-open XZ rectangle. `MapMarkerProjection` supplies typed player-start,
+spawn and landmark views, while `MapMarkerSpaces.Query` reports occupied space and its parent chain by point
+membership.
+
+`MapMarkerAnchors` reads metadata-only start anchors without resolving support or terrain. A caller supplies role
+vocabulary through `MapMarkerConsumerOptions`. Native editor and tool consumers use the same named support readout,
+so they do not invent a role or fall back to the analytic terrain field.
 
 Doors remain AuthoredOpen. `MapRoofPolicy` returns separate colour, shadow, camera-boom and sky-picking flags.
 Auto concealment uses occupied rooms and explicit links/groups, and leaves unlinked shelters visible. Hidden
@@ -11250,7 +11321,7 @@ patch keys and semantic digests, the effective resource policy and query policy 
 the builder ID and version, the options hash and the resolver version. The content digest
 (`kemap/native-content/1`) covers placements, including explicit `Y`
 and `SupportBinding`, spawns, player spawns and sculpt tiles, normalized as scheme 1 normalizes them with
-placement display names stripped. `MapSurfaceSemantics.RootDigest` covers native globals, including format-7
+placement display names stripped. `MapSurfaceSemantics.RootDigest` covers native globals, including format-8
 prefab and building intent,
 and surface metadata, never tile content. Scoped identity covers its acquired effective facts and policies.
 Repacking, embedding and incident bookkeeping do not change the token.
@@ -12652,6 +12723,13 @@ undo step (place-then-drag-into-position is one undo). The inspector groups Iden
 `SetPlayerSpawnEnabledCommand`, plus the standard Visible row). Player spawn ids are unique only within the
 `playerSpawns` section, so an NPC spawn and a player spawn may share the same id string with no collision.
 
+**Native markers.** Resolver-2 editor starts use `MapMarkerAnchors` to choose an enabled start from the caller's
+role vocabulary using root metadata and verified prefab bytes only. The selected anchor chooses the window and
+camera start without resolving support or terrain. Spawn billboards, picking and focus then use the named native
+Surface support readout from the same effective snapshot. A legacy native spawn whose readout is not Supported is
+not drawn, picked or focused. Public `EditorPicking.Pick` overloads omit resolver-2 legacy spawn boxes when no
+readouts are supplied.
+
 **Selection sync.** Picking an object in the viewport (or any other selection change: an outline tap, a
 select-on-add) highlights and scrolls to the matching row in the outline tree, via `TreeView.FindByTag`
 (matching on the outline's kind/id tag) and `TreeView.ScrollTo`. It runs on every selection change and again
@@ -13071,13 +13149,24 @@ This is not geometry or navigation certification. `WholeWorldChecked`, `WholeWor
 on-disk check, which does not replace validation of unsaved loaded edits. A failed requested whole-world
 check makes the overall `Valid` result false.
 
+**Native marker consumers.** `map_open(path, manifestPaths?, markerOptionsJson?)` accepts caller role vocabulary and
+the Surface owner used to read unadopted legacy spawns. `map_summary.markers` reports the effective marker total,
+enabled count, configured roles and selected start IDs on a complete resolver-2 document. `marker_list` returns
+resolved markers in ordinal ID order and accepts an optional half-open rectangle. `placements_in_rect` reads actual
+native placement resolution and reports seated support heights. It refuses an unadopted legacy spawn unless its
+configured Surface owner returns Supported, naming `spawns_adopt` and `marker_set` as the remedies.
+
+On native documents, legacy `spawn_*` and `player_spawn_*` mutations refuse and name the marker verbs. The
+`prefab_place` verb accepts `overridesJson` so repeated marker names can be replaced atomically. Query vectors use
+the lossless MapDoc vector converter when serialized over MCP.
+
 **Features and shapes cross the wire as JSON.** Terrain features (`featureJson`) and
 exclusion/region/override shapes (`shapeJson`) are registry-open or polymorphic unions, so they cross
 the MCP boundary as raw JSON strings parsed with the open document's own serializer options rather than
 typed parameters. A lake feature: `{"type": "lake", "centerX": 34, "centerZ": -14, "radius": 22,
 "depth": 6}`. A disc shape: `{"type": "disc", "centerX": 0, "centerZ": 0, "radius": 26}`.
 
-**Verb surface (92 tools).**
+**Verb surface (96 tools).**
 
 | Group | Verbs |
 |---|---|
@@ -13094,6 +13183,7 @@ typed parameters. A lake feature: `{"type": "lake", "centerX": 34, "centerZ": -1
 | Renders | `render_topdown`, `render_view` |
 | Prefabs | `prefab_open`, `prefab_edit`, `prefab_save`, `prefab_extract`, `prefab_place`, `prefab_list`, `prefab_override`, `prefab_unpack`, `prefab_undo`, `prefab_redo` |
 | Interiors | `interior_volume_add`, `interior_volume_set`, `interior_volume_remove`, `roof_link_set` |
+| Markers | `marker_set`, `marker_remove`, `marker_list`, `spawns_adopt` |
 
 `sculpt_apply(brush, x, z, radius, strength, dt, targetHeight?)` applies one terrain-sculpt brush dab
 (`raise`/`lower`/`smooth`/`flatten`/`set_height`) at a world point as a single `TerrainSculptStrokeCommand`
@@ -17424,7 +17514,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.4.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.5.0" />
 ```
 
 ```csharp
@@ -17460,7 +17550,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.4.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.5.0" />
 ```
 
 ```csharp
@@ -17704,7 +17794,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.4.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.5.0" />
 ```
 
 ```csharp
@@ -22064,7 +22154,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.4.1" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.5.0" />
 </ItemGroup>
 ```
 

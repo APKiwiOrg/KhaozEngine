@@ -12,14 +12,22 @@ and .github/workflows/cross-platform-gpu.yml reads it through the subcommands be
 THE SPLIT. Shard `rest` runs every test project in KhaozEngine.slnx except KhaozEngine.Render.Tests and
 the named projects in PROJECT_SLICES, through a solution derived from the current one at run time, so a new
 test project lands in it with no edit. Vulkan's `projects-1` takes MapEditor.Tests, Game.Tests and
-Movement.Tests, and Windows' takes Catalog.Tests (#1458). Only `rest` is primary and runs the once-per-leg
-steps. The unsharded Windows isolation pass still takes every non-Render project. Every `render-N` shard runs one slice of
+Movement.Tests. Windows' `projects-1` takes Catalog.Tests and its `projects-2` takes MapEditor.Tests and
+Server.Tests (#1458, #1471). Only `rest` is primary and runs the once-per-leg steps. The unsharded Windows isolation pass still takes every non-Render project. Every `render-N` shard runs one slice of
 KhaozEngine.Render.Tests. Each backend has its own slice table,
 because the three rasterizers disagree about what is expensive (below). Within a table the slices are an
 ORDERED FIRST-MATCH partition: a test belongs to the first slice whose rules match it, and the last slice has
 no rules and takes everything the earlier ones did not. Each slice's vstest filter is its own rules ANDed with
 the negation of every earlier slice's rules, so no test can match two slices and no test can match none. A new
 Render.Tests class or method falls into the first slice that names it, or into the last.
+
+THE BUILD. A sharded job restores and builds a derived solution containing only its test projects and
+lets ProjectReference edges build their dependencies. Render shards build Render.Tests alone. Project shards
+build their named test projects. Rest builds its non-Render test projects, plus Render.Tests on Windows for
+FXC validation and on Vulkan for shader-cache verification. Unsharded jobs still build the original solution.
+scripts/gpu-shard-build.sh keeps Configuration=Release on references absent from the derived solution,
+instead of MSBuild's Debug fallback, and rejects Debug output on the fresh CI checkout. The test solutions
+and exactly-once guards are independent of this build selection.
 
 THE GUARD. `check-render` reads every Render.Tests method listed on the shard's own build output, parses the
 filter text each of the backend's slices hands to vstest, and evaluates it with the operators vstest applies
@@ -35,7 +43,8 @@ THE BALANCE comes from the per-test durations in the TRX files of dispatch runs 
 A job's runner factor is the geometric mean of its repeated methods' duration ratios to their
 across-run geometric means. Divide durations by that factor, then take each method's geometric mean over
 the runs. Hosted speed varies uniformly across a job, so balancing raw times would move work toward the
-last run's fast hosts. Every job also spends about 4 minutes on setup and build before its tests start.
+last run's fast hosts. Those measurement runs spent about 4 minutes per job on setup and the original
+full-solution build.
 The shapes differ by backend:
   * vulkan-native runs serialised, so a slice costs the sum of its tests, about 123.7 minutes for
     Render.Tests. TemporalFollowPhaseGpuTests' orthographic Native and Quality
@@ -50,7 +59,10 @@ The shapes differ by backend:
     ShadowCascadeCullPerfGpuTests took about 15 minutes there against 1 on Metal, has a slice to itself
     and sets that backend's floor. The rest jobs took 14m24s and 18m55s, then 22m54s in 39074411898.
     Catalog.Tests took 16.30 minutes there against 13.01 for MapEditor.Tests, so Catalog.Tests moves to
-    projects-1 on its own host. Every other non-Render project stays on rest. TemporalFollowPhaseGpuTests'
+    projects-1 on its own host. Windows then runs its non-Render projects one assembly at a time (#1471),
+    because four test hosts at once on the 4 vCPU runner starved a loopback Kestrel host past its 20 s
+    HttpClient timeout. Serial, rest took 20.0 test-minutes in 39085526893, MapEditor.Tests 5.68 and
+    Server.Tests 5.32 of them, so those two move to projects-2 and leave about 9 on rest. TemporalFollowPhaseGpuTests'
     methods are spread over two slices so that class is no longer a 16-minute serial chain. The other three slices sum 29 to
     35 minutes each.
   * metal-native has the same parallel shape on a real (paravirtual) GPU at about a third of the cost.
@@ -124,6 +136,8 @@ RENDER_PROJECT = f"{RENDER_ASSEMBLY}/{RENDER_ASSEMBLY}.csproj"
 PROJECT_SLICES = {
     "direct3d11-native": [
         ("projects-1", ("KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj",)),
+        ("projects-2", tuple(f"{name}/{name}.csproj" for name in (
+            "KhaozEngine.MapEditor.Tests", "KhaozEngine.Server.Tests"))),
     ],
     "vulkan-native": [
         ("projects-1", tuple(f"{name}/{name}.csproj" for name in (
@@ -172,6 +186,33 @@ def cmd_solution(args):
                 continue
             path = project.attrib["Path"]
             if path == RENDER_PROJECT or (shard and project_shard(backend, path) != shard):
+                parent.remove(project)
+            else:
+                project.set("Path", os.path.relpath(source_dir / path, destination_dir).replace(os.sep, "/"))
+    solution.write(destination, encoding="unicode")
+
+
+def cmd_build_solution(args):
+    """Build test roots for one shard, plus the primary leg's Render.Tests instrumentation."""
+    backend, shard, source, destination = args
+    if shard not in shards(backend):
+        fail(f"'{shard}' is not a {backend} shard")
+    tests = set(solution_test_projects(source).values())
+    if RENDER_PROJECT not in tests:
+        fail("expected a Render.Tests test project")
+    selected = {RENDER_PROJECT} if shard.startswith("render-") else {
+        path for path in tests if path != RENDER_PROJECT and project_shard(backend, path) == shard
+    }
+    if shard == REST and backend in ("direct3d11-native", "vulkan-native"):
+        selected.add(RENDER_PROJECT)
+    solution = ET.parse(source)
+    source_dir, destination_dir = Path(source).resolve().parent, Path(destination).resolve().parent
+    for parent in solution.iter():
+        for project in list(parent):
+            if project.tag != "Project":
+                continue
+            path = project.attrib["Path"]
+            if path not in selected:
                 parent.remove(project)
             else:
                 project.set("Path", os.path.relpath(source_dir / path, destination_dir).replace(os.sep, "/"))
@@ -494,6 +535,7 @@ COMMANDS = {
     "expand": cmd_expand,
     "filter": cmd_filter,
     "solution": cmd_solution,
+    "build-solution": cmd_build_solution,
     "check-render": cmd_check_render,
     "report": cmd_report,
     "summarize": cmd_summarize,

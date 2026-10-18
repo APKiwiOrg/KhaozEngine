@@ -279,15 +279,9 @@ public partial class MapEditorScene : GameScene, IGameScene3D
             IsVisible = _visibility.IsElementVisible,
             PlacementKindVisible = PropKindVisible,
             PlacementDrawnAt = PlacementDrawnAt,
+            SpawnFrame = SpawnFrame,
         };
-        _viewport = new ViewportWorld(_scene, _options.ManifestPaths)
-        {
-            ScatterLayerVisible = _visibility.GetLayer,
-            RenderDistance = _options.RenderDistance,
-            TexturedPropsEnabled = () => _options.TexturedProps,
-            PropCategoryResolver = _options.ResolvePropCategory,
-            PropKindVisible = PropKindVisible,
-        };
+        _viewport = CreateViewport(_options.RenderDistance);
         _camera = CreateInitialCamera();
         InitializeNavigation();
         ApplyRenderDistance();   // the persisted multiplier, before the first BuildWorld primes a ring from it

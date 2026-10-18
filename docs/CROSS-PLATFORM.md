@@ -299,7 +299,13 @@ below). Each sharded leg runs as jobs named `<os> / <backend> / <shard>`:
 - `rest` runs every test project in `KhaozEngine.slnx` except `KhaozEngine.Render.Tests` and any named projects
   taken by another shard, through a solution derived at run time. A new test project defaults to `rest` with
   no edit. It also runs the once-per-leg steps (the FXC validation on Windows, the Vulkan device limits and
-  the shader cache verification).
+  the shader cache verification). On Windows every non-Render pass, sharded or not, runs one test project at
+  a time with MSBuild `-m:1`, preserving parallel collections within each assembly. Even after Catalog moved
+  out, four concurrent hosts
+  let MapDoc, MapEditor and Movement overlap Exchange's loopback HTTP tests in run `39078676061`.
+  The seven-request log disclosure test took 114.42 seconds and timed out on the final malformed request,
+  against 0.055 and 0.107 seconds in runs `39081283982` and `39082956923`, where Exchange finished before
+  those assemblies started ([#1471](https://github.com/APKiwiOrg/KhaozEngine/issues/1471)).
 - `projects-1` on Vulkan runs exactly `KhaozEngine.MapEditor.Tests`, `KhaozEngine.Game.Tests` and
   `KhaozEngine.Movement.Tests`. Their assemblies took 8.55 and 8.03 of the serial non-Render suite's 15.25 and
   14.99 minutes in runs `39039926687` and `39072468288`, whose `rest` jobs reached 20m03s and 20m00s.
@@ -308,6 +314,9 @@ below). Each sharded leg runs as jobs named `<os> / <backend> / <shard>`:
   runs, then 22m54s in the Windows-only control `39074411898`. Catalog.Tests took 16.30 minutes there against
   13.01 for MapEditor.Tests. Isolating the longest assembly gives it its own host, while every other Windows
   test project defaults to `rest`. The unsharded Windows isolation pass still includes every non-Render project.
+- `projects-2` on Windows runs `KhaozEngine.MapEditor.Tests` and `KhaozEngine.Server.Tests`. With one assembly
+  at a time, Windows `rest` took 20.0 test-minutes in run `39085526893`, 5.68 of them MapEditor.Tests and 5.32
+  Server.Tests, so those two move out and leave about 9 minutes on `rest`.
 - `render-1` to `render-N` each run one slice of `KhaozEngine.Render.Tests`. Each backend has its own slice
   table in `scripts/gpu-test-shards.py`, because the three rasterizers disagree about what is expensive:
   `metal-native` has 2 slices, `direct3d11-native` 4 and `vulkan-native` 12. Every table is an ordered first-match
@@ -321,9 +330,21 @@ below). Each sharded leg runs as jobs named `<os> / <backend> / <shard>`:
   `ShadowCascadeCullPerfGpuTests` takes 13 to 15 minutes on WARP and has a Windows slice to itself. Each shard
   uploads its TRX files as `shard-trx-<backend>-<shard>`, which carry the per-test durations to re-balance from.
 
-So a default-input dispatch is 3 Metal, 6 Windows and 14 Linux jobs plus the `sync` job. The org's Team plan
+Each shard restores and builds a solution containing only its assigned test projects and their project
+references ([#1472](https://github.com/APKiwiOrg/KhaozEngine/issues/1472)). A render shard builds
+`KhaozEngine.Render.Tests`, a `projects-N` shard builds its named projects, and `rest` builds its non-Render
+test projects. Windows and Vulkan `rest` also build `Render.Tests` for the FXC and shader-cache checks.
+Unsharded paths still restore and build `KhaozEngine.slnx`. Build selection leaves test selection and both
+coverage guards unchanged. Reduced solutions explicitly preserve Release on their project references with
+`ShouldUnsetParentConfigurationAndPlatform=false`. Otherwise MSBuild resets unlisted references to their
+default configuration, which is Debug. A build guard rejects any Debug output on the fresh CI checkout.
+The Windows-only NuGet cache still excludes every KhaozEngine extraction. The
+[measurement record](verification/2026-10-18-gpu-shard-build-cost-1472.md) compares scoped builds with per-OS
+output sharing.
+
+So a default-input dispatch is 3 Metal, 7 Windows and 14 Linux jobs plus the `sync` job. The org's Team plan
 allows 60 concurrent hosted jobs and 5 concurrent macOS jobs
-([GitHub Actions limits](https://docs.github.com/en/actions/reference/limits)), so the 24 jobs of the dispatch
+([GitHub Actions limits](https://docs.github.com/en/actions/reference/limits)), so the 25 jobs of the dispatch
 and the 4 of the `ci` dispatch the pre-tag gate runs beside it all start at once. The macOS cap is the one that
 binds: every `push` and `pull_request` runs the Metal full suite too, so overlapping runs share 5 macOS slots.
 Metal stops at 3 jobs because its slowest shard is already well under the Vulkan floor, and a fourth would only
@@ -764,7 +785,7 @@ cross-backend reference family.
 
 **A sharded full suite appends the shard to every per-run artifact name**
 ([#1438](https://github.com/APKiwiOrg/KhaozEngine/issues/1438)): `golden-deltas-vulkan-native-render-3`,
-`pool-watch-direct3d11-native-rest`, `vulkan-validation-strict-vulkan-native-render-1`, and likewise for the
+`pool-watch-direct3d11-native-projects-2`, `vulkan-validation-strict-vulkan-native-render-1`, and likewise for the
 golden, HLSL and crash evidence. On Metal that includes `metal-validation-debug-layer-metal-native-render-2` and
 `device-evidence-metal-native-rest`: every shard is its own boot, so each records its own device and runs the
 device-loss detector over its own log. Each artifact holds that shard's tests alone, so a full reading is every

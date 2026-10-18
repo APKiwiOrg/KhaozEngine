@@ -44,6 +44,8 @@ public static class MapPrefabSupportBounds
         }
     }
 
+    /// <summary>Render, LOD and light extents of resolved placements and effective light radii, which join the world
+    /// bounds. Effective markers are excluded.</summary>
     internal static IEnumerable<MapBox3> OtherBounds(MapEffectiveResources resources, MapAssetClosure assets)
     {
         foreach (MapResolvedPlacement placement in resources.Placements)
@@ -59,7 +61,8 @@ public static class MapPrefabSupportBounds
                 }
         }
         foreach (var light in MapEffectiveAnnotations.Lights(resources)) yield return MapEffectiveAnnotations.Bounds(light);
-        foreach (var marker in MapEffectiveAnnotations.Markers(resources)) yield return MapEffectiveAnnotations.Bounds(marker);
+        // Markers are points, not geometry. Their residency entries cover them, and they never widen the world extent that
+        // sets navigation tile heights, so a marker-only edit leaves every capture identity unchanged.
     }
 
     internal static void RefuseCoincidentFloors(MapScopedSurfaces view, IReadOnlyList<MapPlacementGeometry> placements)

@@ -39,6 +39,10 @@ public readonly record struct MapBox3(double MinX, double MinY, double MinZ, dou
 }
 public sealed record MapDigestChange(string Key, string? Before, string? After);
 
+/// <summary>One effective marker name change. A created marker has a null <paramref name="Before"/> and a deleted
+/// marker a null <paramref name="After"/>.</summary>
+public sealed record MapMarkerNameChange(string MarkerId, string? Before, string? After);
+
 /// <summary>Reported consequences of one accepted native document edit.</summary>
 public sealed record MapNativeEditEffects(MapBox3? OldBounds, MapBox3? NewBounds,
     IReadOnlyList<MapPatchKey> Patches, IReadOnlyList<string> SpaceIds, IReadOnlyList<string> DependencyIds,
@@ -71,8 +75,12 @@ public sealed record MapNativeEditEffects(MapBox3? OldBounds, MapBox3? NewBounds
     public IReadOnlyList<string> LightIds { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> MarkerIds { get; init; } = Array.Empty<string>();
 
+    /// <summary>The effective marker name changes of the edit, empty when no name changes.</summary>
+    public IReadOnlyList<MapMarkerNameChange> MarkerNameChanges { get; init; } = Array.Empty<MapMarkerNameChange>();
+
     /// <summary>Compact canonical JSON with fixed field order, ordinal IDs and invariant numbers. <c>waterBodyIds</c>
-    /// follows <c>dependencyIds</c> only when <see cref="WaterBodyIds"/> is not empty. Spatial bounds follow the reported
+    /// follows <c>dependencyIds</c> only when <see cref="WaterBodyIds"/> is not empty, and <c>markerNameChanges</c>
+    /// follows <c>markerIds</c> only when <see cref="MarkerNameChanges"/> is not empty. Spatial bounds follow the reported
     /// bounds only when they differ, preserving descriptions whose extents already agree.</summary>
     public string Describe()
     {
@@ -103,6 +111,20 @@ public sealed record MapNativeEditEffects(MapBox3? OldBounds, MapBox3? NewBounds
             if (RoofIds.Count != 0) WriteIds(writer, "roofIds", RoofIds);
             if (LightIds.Count != 0) WriteIds(writer, "lightIds", LightIds);
             if (MarkerIds.Count != 0) WriteIds(writer, "markerIds", MarkerIds);
+            if (MarkerNameChanges.Count != 0)
+            {
+                writer.WriteStartArray("markerNameChanges");
+                foreach (MapMarkerNameChange change in MarkerNameChanges.OrderBy(c => c.MarkerId, StringComparer.Ordinal)
+                    .ThenBy(c => c.Before, StringComparer.Ordinal).ThenBy(c => c.After, StringComparer.Ordinal))
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("markerId", change.MarkerId);
+                    writer.WriteString("before", change.Before);
+                    writer.WriteString("after", change.After);
+                    writer.WriteEndObject();
+                }
+                writer.WriteEndArray();
+            }
             writer.WriteStartArray("digestChanges");
             foreach (MapDigestChange change in DigestChanges.OrderBy(c => c.Key, StringComparer.Ordinal)
                 .ThenBy(c => c.Before, StringComparer.Ordinal).ThenBy(c => c.After, StringComparer.Ordinal))

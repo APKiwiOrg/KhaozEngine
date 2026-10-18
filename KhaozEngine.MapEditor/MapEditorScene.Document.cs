@@ -18,11 +18,14 @@ public partial class MapEditorScene
     /// directory at or under <see cref="MapEditorOptions.WholeWorldTileLimit"/> occupied tiles loads whole. A
     /// larger tiled directory opens windowed (<see cref="MapDocumentWindowing"/>) at
     /// <see cref="EffectiveWindowRadius"/>, which is the head's configured radius scaled by the operator's
-    /// render-distance multiplier so the loaded slice keeps up with the visible horizon. A seam so a headless test
-    /// can inject a document without touching the file system.</summary>
+    /// render-distance multiplier so the loaded slice keeps up with the visible horizon. With the caller's marker
+    /// options, a windowed native document centres on its player start instead (see
+    /// <see cref="MapEditorOptions.MarkerOptions"/>). A seam so a headless test can inject a document without touching
+    /// the file system.</summary>
     protected virtual MapDocument CreateDocument(MapDocRegistry registry)
     {
         _window = null;
+        _windowAnchor = null;
         if (string.IsNullOrWhiteSpace(_options.DocumentPath) ||
             MapDocumentFile.DetectForm(_options.DocumentPath) == MapDocumentForm.None)
         {
@@ -33,10 +36,7 @@ public partial class MapEditorScene
             };
         }
 
-        MapDocument doc = MapDocumentWindowing.Load(_options.DocumentPath,
-            new MapDocumentLoadOptions { Registry = registry },
-            _options.WholeWorldTileLimit, EffectiveWindowRadius, _options.PlayerSpawnSearchTileLimit,
-            out _, out MapTileRect? window);
+        MapDocument doc = LoadEditorDocument(registry, out MapTileRect? window, out _windowAnchor);
         _window = window;
         return doc;
     }

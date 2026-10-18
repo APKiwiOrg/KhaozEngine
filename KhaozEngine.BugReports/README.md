@@ -45,6 +45,9 @@ do not validate. `BugReportBundleWriter.Write(draft)` checks every field, writes
 its SHA-256 hashes, and throws when a field or a limit is broken. Every bundle it writes passes
 `BundleValidator.Validate`.
 
+The viewer and relay share `BugReportLogTail.FromLogSection(json)` with a default limit of 50 lines. It reads the newest string
+lines in their original order. Missing or malformed log data gives an empty tail.
+
 ## Sinks
 
 An `IBugReportSink` delivers one bundle. Every delivery outcome is a `BugReportSubmitResult` (`Sent`, `Queued` or

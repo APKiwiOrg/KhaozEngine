@@ -328,7 +328,11 @@ no external scripts or styles.
 ### Media access
 
 GitHub's image proxy and the viewer both fetch anonymously, so media is served at capability URLs: the 128-bit path
-token, per-blob read access and no container listing. Revoking a report means deleting its folder.
+token, per-blob read access and no container listing. To revoke a report, call `BugReportRelay.RevokeAsync`,
+delete its public folder, then delete it again after the 10-minute claim lease. Retain the private
+`revoked/<reportId>.json` tombstone and idempotency state. A missing public manifest also means revoked.
+A holder that passed its check before the call can still finish a write inside its lease, and a holder
+running beyond the lease is outside the guarantee.
 
 ### Seams and backends
 

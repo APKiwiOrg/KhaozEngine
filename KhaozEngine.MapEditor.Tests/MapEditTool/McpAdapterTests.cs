@@ -29,7 +29,7 @@ namespace KhaozEngine.Tests.MapEditTool
     [Collection(McpWireCollection.Name)]
     public partial class McpAdapterTests
     {
-        /// <summary>All 92 verb names, spelled exactly as the plan header's verb table: the original 39 (including
+        /// <summary>All 96 verb names, spelled exactly as the plan header's verb table: the original 39 (including
         /// the two render verbs added in Task 6) plus the Task 5 naming, layer-targeting, and procedural-setup
         /// verbs (feature/exclusion rename, exclusion layer targeting, the biome band and scatter/companion layer
         /// triads plus their rename verbs, and the procedural_info read verb), the scatter_rule
@@ -95,6 +95,8 @@ namespace KhaozEngine.Tests.MapEditTool
             "prefab_open", "prefab_edit", "prefab_save", "prefab_extract", "prefab_place", "prefab_list",
             "prefab_override", "prefab_unpack", "prefab_undo", "prefab_redo",
             "interior_volume_add", "interior_volume_set", "interior_volume_remove", "roof_link_set",
+            // R6 general markers: set and remove by immutable ID, and the filtered list.
+            "marker_set", "marker_remove", "marker_list", "spawns_adopt",
         };
 
         [Fact]

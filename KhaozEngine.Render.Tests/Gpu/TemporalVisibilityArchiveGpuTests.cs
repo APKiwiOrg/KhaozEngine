@@ -10,7 +10,7 @@ namespace KhaozEngine.Tests.Gpu;
 /// The workflow has no environment input. Normal runs and the engine library never select a token here.</summary>
 public sealed class TemporalVisibilityArchiveGpuTests(ITestOutputHelper output)
 {
-    internal const string HostedToken = "vis-release-0.1";
+    internal const string HostedToken = "shadow-bilinear-3x3,vis-release-0.1";
     static bool ArchiveDispatch => Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true"
         && Environment.GetEnvironmentVariable("GITHUB_WORKFLOW") == "cross-platform-gpu"
         && Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME") == "workflow_dispatch"
@@ -30,7 +30,7 @@ public sealed class TemporalVisibilityArchiveGpuTests(ITestOutputHelper output)
             + $"startup mask {TemporalResolveDiagnostics.InitialMask}, MRT enabled {TemporalVisibilityDiagnostics.Enabled}");
         if (!ArchiveDispatch) return;
         Assert.Equal(HostedToken, Environment.GetEnvironmentVariable("KE_TEMPORAL_DIAG"));
-        Assert.Equal(16777216, TemporalResolveDiagnostics.InitialMask);
+        Assert.Equal(20971520, TemporalResolveDiagnostics.InitialMask);
         Assert.True(TemporalVisibilityDiagnostics.Enabled);
     }
 }

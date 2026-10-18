@@ -94,8 +94,7 @@ engine guide, and tested on all three CI devices.
    `CoverageRefinement` and its inverse binds and owns its scratch. `TryCheck(palette, model, commands,
    out certificate, out failure)` skins and constructs with the reference, then runs the exact
    `CoverageCertification.ValidateGeometry` at the approved clearance. A failure states its stage:
-   construction with its guard code, device exactness with the first subnormal operation, or
-   certification with its predicate code, command and count. Warm checks allocate no managed memory.
+   construction with its guard code, or certification with its predicate code, command and count. Warm checks allocate no managed memory.
 3. **Device exactness (owner ruling NC2).** Every coverage kernel computes the same binary32 bits as the
    reference. Add, subtract and multiply are correctly rounded on Vulkan, on Metal with fast maths off and
    on Direct3D11, and kernels compile in precise mode (GLSL `precise`, Metal fast maths off for these
@@ -104,10 +103,11 @@ engine guide, and tested on all three CI devices.
    the correctly rounded value with an exact residual check built from correctly rounded multiply and add.
    Exact predicates follow item 6. Every value is then a function of the uploaded binary32 inputs and the
    pinned operation order, so a conforming device reproduces the reference bit for bit. Subnormals are
-   the one place backends may differ, because Direct3D11 flushes them and Vulkan and Metal may. The oracle
-   therefore fails a sample with a device-exactness code if any reference operand or result in it is
-   nonzero with magnitude at most the smallest normal, `2^-126`, so every certified sample is identical on
-   every conforming device. Construction still
+   the one place backends may differ, because Direct3D11 flushes them and Vulkan and Metal may. Real
+   fixtures do produce them, so the reference and every kernel flush deterministically instead: each
+   operand and result of magnitude at most the smallest normal, `2^-126`, becomes a zero of the same sign,
+   uploaded inputs included (root ruling B38). Behaviour is then independent of a device's hardware
+   denormal mode, and no sample is rejected for subnormals. Construction still
    reserves `MarginFraction x Clearance` in the receding direction, as margin against a driver that breaks
    its precision rules. Native equivalence tests on all three CI backends assert bit equality on every
    fixture. A mismatch fails, and nothing is loosened to pass.

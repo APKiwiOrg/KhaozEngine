@@ -27,7 +27,7 @@ public static class InteriorHeightFieldBuilder
             InteriorFieldRasterizer.Validate(volume.Outline);
             if (!float.IsFinite(volume.FloorY) || !float.IsFinite(volume.CeilingY) || volume.CeilingY < volume.FloorY)
                 throw new ArgumentException("Interior heights must be finite and ordered.", nameof(volumes));
-            if (volume.CeilingY == volume.FloorY) continue;
+            if (volume.CeilingY == volume.FloorY && volume.Roofs.Count == 0) continue;
             int floor = Pack(volume.FloorY, encoding), ceiling = Pack(volume.CeilingY, encoding);
             Vector2 min = new(float.PositiveInfinity), max = new(float.NegativeInfinity);
             foreach (Vector2 point in volume.Outline)

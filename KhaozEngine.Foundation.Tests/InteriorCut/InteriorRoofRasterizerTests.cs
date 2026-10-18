@@ -75,6 +75,22 @@ public class InteriorRoofRasterizerTests
     }
 
     [Fact]
+    public void EqualFallbackEndpointsStillUseRoofSamples()
+    {
+        var roof = new InteriorRoof(ClearanceSamples.Build(Plane(0f, 0f, 0.5f, 0.5f, 0f), 0.125f), Matrix4x4.CreateTranslation(0f, 3f, 0f));
+        var volume = Rect(0f, 0f, 2f, 2f, floor: 0f, top: 0f) with { Roofs = [roof] };
+        var field = Build([volume], new InteriorWindow(Vector2.Zero, 0.25f, 8));
+
+        Assert.True(field.TryGetSpan(0, 0, out float floor, out float top));
+        Assert.Equal(0f, floor);
+        Assert.Equal(3f, top);
+        Assert.True(field.Contains(new Vector3(0.125f, 0f, 0.125f)));
+        Assert.False(field.Contains(new Vector3(0.125f, 3f, 0.125f)));
+        Assert.False(field.TryGetSpan(6, 6, out _, out _));
+        Assert.False(field.Contains(new Vector3(1.625f, 0f, 1.625f)));
+    }
+
+    [Fact]
     public void EavesCannotFillAnOutdoorCell()
     {
         var roof = new InteriorRoof(ClearanceSamples.Build(Plane(-0.5f, -0.5f, 2.5f, 2.5f, 2f), 0.125f), Matrix4x4.Identity);

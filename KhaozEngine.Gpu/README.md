@@ -435,16 +435,21 @@ What it owns today:
     silently wrong on Metal, the only backend that reads it). Do declare it: omitting the layout is legal GLSL and
     compiles in the 1x1x1 default, which dispatches one invocation per group rather than failing.
   - **Ordering rules, since there is no barrier call.** Compute writes a storage texture that a graphics pass then
-    samples: record BOTH in the SAME command list and create the texture `Storage | Sampled`. A dispatch that reads
-    what an earlier dispatch wrote: separate them with `End` + `Submit` + `WaitForIdle`. Full reasoning per backend
-    is on `IGpuCommandList`, in `docs/USING-KHAOZENGINE.md`, and in `docs/design/GPU-COMPUTE-DESIGN-2026-07-26.md`.
+    samples: record BOTH in the SAME command list and create the texture `Storage | Sampled`. A dispatch or a draw
+    that reads a storage buffer an earlier dispatch in the SAME command list wrote sees the write, with no drain
+    between them. That covers a dependent dispatch chain and a draw whose vertex stage pulls its vertices from a
+    compute-written buffer. Bind a buffer a command only reads as `StructuredBufferReadOnly` and one a dispatch
+    writes as `StructuredBufferReadWrite`. Ordering between two command lists stays explicit: `End`, `Submit` and
+    a wait before the second list reads. A pulled draw starts at vertex 0 and base vertex 0 and adds any storage
+    base from a uniform, because `gl_VertexIndex` does not carry the draw's bases on Direct3D 11. Full reasoning
+    per backend is on `IGpuCommandList`, in `docs/USING-KHAOZENGINE.md`, and in
+    `docs/design/GPU-COMPUTE-DESIGN-2026-07-26.md`.
   - **A compute-written texture that also needs a mip chain is TWO textures.** A storage-image binding must cover
     exactly one mip level, and resource sets bind whole textures rather than views, so the compute target stays
     single-mip and a second `Sampled | GenerateMipmaps` texture carries the chain.
     `IGpuCommandList.CopyTextureSubresource(src, srcMip, srcLayer, dst, dstMip, dstLayer, w, h)` seeds the second
     one's base level per array layer; `GenerateMipmaps` then fills the rest. Both go in the same list as the
-    dispatch and cost no extra drain - the ordering rule above is about a dispatch reading a dispatch, and a
-    transfer is where every backend synchronises anyway.
+    dispatch and cost no extra drain - a transfer is where every backend synchronises anyway.
 - **`ShaderValidation`** - `ValidatePair(vertexGlsl, fragmentGlsl, label?)` compiles a GLSL 450 vertex/fragment
   pair to SPIR-V and cross-compiles it to every backend target (HLSL, MSL, GLSL, ESSL) with NO `GraphicsDevice`,
   so a shader syntax error or a backend miscompile is caught in a fast GPU-free test loop instead of at first run

@@ -17318,10 +17318,10 @@ index binds, both `Draw` overloads, `DrawIndexed`, `Dispatch`, both texture copi
 `GpuCapabilities.MaxMsaaSampleCount` is a real reading rather than a conservative 1. Two behaviours are worth
 knowing before you record against it. **Compute rule 1 is satisfied by a real image barrier at the sampled
 bind**, so a storage texture a dispatch wrote and a later draw samples needs no help from you beyond what the
-rule already says (both in one list, the texture created `Storage | Sampled`). **Compute rule 2 is unchanged and
-you must still honour it**: this backend additionally orders a dependent-dispatch chain inside one list, which is
-a backend property and not a contract change, and code that drops the `End` plus `Submit` plus `WaitForIdle`
-because it works here breaks on Metal. **Since 17.40.0 the Linux default IS `GpuBackendKind.VulkanNative`**, and since 18.0.0 it is the only Vulkan
+rule already says (both in one list, the texture created `Storage | Sampled`). **Compute rule 2 is satisfied by
+one global memory barrier**, emitted before the first dispatch or draw that binds a storage buffer an earlier
+dispatch in the same recording wrote, with an open rendering scope ended first when that command is a draw. A
+read-only binding of a buffer no dispatch wrote costs nothing. **Since 17.40.0 the Linux default IS `GpuBackendKind.VulkanNative`**, and since 18.0.0 it is the only Vulkan
 implementation the engine has. The umbrellas carry the package and `AppWindow` registers it, so a Linux head
 boots on it with no call of its own. `KE_GRAPHICS_BACKEND=vulkan` names the retired incumbent and resolves here
 with a WARN.
@@ -22298,10 +22298,9 @@ byte[] mip = GpuReadback.ToRgbaMip(gd, mipped, 2, 0, w / 4, h / 4);   // one lev
 
 ### Ordering: two rules, because there is no barrier call
 
-There is no barrier method on this seam, because the backend layer has none. What ordering exists comes from
-each backend's implicit handling, and Metal, Vulkan and Direct3D11 do not agree, so the seam guarantees exactly
-two patterns. Both are proved by `[GpuFact]` tests on all three backends
-(`KhaozEngine.Render.Tests/Gpu/Compute*GpuTests.cs`).
+There is no barrier method on this seam. Inside one command list each backend orders what the bound sets name, by
+its own mechanism, and the seam guarantees exactly two patterns. Both are proved by `[GpuFact]` tests on all three
+backends (`KhaozEngine.Render.Tests/Gpu/Compute*GpuTests.cs`).
 
 **1. Compute writes a storage texture, then a graphics pass samples it: same command list, `Storage | Sampled`.**
 
@@ -22328,29 +22327,52 @@ split across two command lists silently skips the barrier. Metal ends the comput
 begins. Direct3D11 unbinds the UAV as the SRV is bound. You do not need to unbind the compute set or switch
 pipeline first; all three cope.
 
-**2. A dispatch that reads what an earlier dispatch wrote: `End` + `Submit` + `WaitForIdle` between them.**
+**2. A dispatch or a draw that reads a storage buffer an earlier dispatch wrote: same command list, nothing
+between them.**
 
 ```csharp
-foreach (var stage in stages)      // e.g. the log2(N) stages of an FFT
+cl.Begin();
+cl.SetComputePipeline(pipeline);
+foreach (var stage in stages)      // e.g. the log2(N) stages of an FFT, each reading the previous one's output
 {
-    using IGpuCommandList cl = f.CreateCommandList();
-    cl.Begin();
-    cl.SetComputePipeline(pipeline);
     cl.SetComputeResourceSet(0, stage.Set);
     cl.Dispatch(groups, 1, 1);
-    cl.End();
-    gd.Submit(cl);
-    gd.WaitForIdle();              // the only cross-dispatch ordering the seam guarantees
 }
+
+cl.SetFramebuffer(fb);             // a draw that reads the last stage's output, still the same list
+cl.SetPipeline(graphicsPipeline);
+cl.SetGraphicsResourceSet(0, drawSet);   // binds the result as StructuredBufferReadOnly
+cl.Draw(3);
+cl.End();
+gd.Submit(cl);
 ```
 
-Chaining dependent dispatches inside one command list is NOT safe. On Vulkan no memory barrier is emitted
-between them at all (storage buffers are not hazard-tracked, and a storage image stays in the same layout so the
-transition is a no-op), and dispatches inside a command buffer may overlap. Independent dispatches that do not
-read each other's output can share one command list freely; it is only the read-after-write chain that needs the
-boundary. This costs a GPU stall per dependent stage, which is real, and it is the current ceiling on a
-multi-pass compute chain. Rationale and the per-backend evidence:
-`docs/design/GPU-COMPUTE-DESIGN-2026-07-26.md`.
+The reader may be any stage. A later dispatch, a vertex shader and a fragment shader all see what an earlier
+dispatch in the same list wrote. Declare each binding's direction honestly: `StructuredBufferReadWrite` where a
+dispatch writes the buffer and `StructuredBufferReadOnly` where a command only reads it. The kind is what lets a
+backend skip a barrier between two commands that only read, and a read-only binding of a buffer no dispatch wrote
+costs nothing. The native Vulkan backend emits one global memory barrier before the first command that binds what
+an earlier dispatch wrote. Direct3D11 unbinds the UAV as the SRV is bound. Metal dispatches on a serial compute
+encoder and its buffers are hazard-tracked.
+
+**Ordering between command lists stays explicit.** A second list that reads what the first wrote needs `End` +
+`Submit` on the first and a wait before the second is submitted: `WaitForIdle`, or a completion fence when the
+device supports one. Nothing a backend does inside a list carries across that boundary.
+
+**Vertex pulling.** A draw can fetch its own vertices from a read-only storage buffer by `gl_VertexIndex`, with no
+vertex layout and no vertex buffer bound:
+
+```glsl
+layout(set = 0, binding = 0) uniform Params { uvec4 Base; };
+layout(std430, set = 0, binding = 1) readonly buffer EntryBuf { Entry E[]; };
+void main() { Entry e = E[Base.x + uint(gl_VertexIndex)]; /* ... */ }
+```
+
+Issue a pulled draw with first vertex 0, and a pulled `DrawIndexed` with base vertex 0 as well, and pass any
+storage base as an explicit per-draw uniform the shader adds to the index. The vertex index does not carry the
+draw's bases portably: Vulkan's `gl_VertexIndex` includes them and Direct3D11's `SV_VertexID` leaves them out,
+which is the same gap `SV_InstanceID` has for the first instance. `ComputeVertexPullingGpuTests` pins both draws
+reading from a uniform base of 3, before and after a dispatch in the same list rewrites the entries.
 
 Validate compute sources device-free in your fast test lane, the same way as a graphics pair:
 

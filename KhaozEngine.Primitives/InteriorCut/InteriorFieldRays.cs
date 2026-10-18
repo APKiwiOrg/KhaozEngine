@@ -5,7 +5,7 @@ namespace KhaozEngine.Primitives;
 
 public sealed partial class InteriorHeightField
 {
-    /// <summary>Walk the ray's XZ cells and solve each linear height interval. Outside the window is uncut.</summary>
+    /// <summary>Walk the ray's XZ cells and solve each q-space height interval. Outside the window is uncut.</summary>
     public bool FirstUncut(Vector3 origin, Vector3 direction, float tStart, float tEnd, out float t)
     {
         if (!Finite(origin) || !Finite(direction) || !float.IsFinite(tStart) || !float.IsFinite(tEnd) || tEnd < tStart)
@@ -14,23 +14,27 @@ public sealed partial class InteriorHeightField
         while (true)
         {
             Vector3 point = origin + direction * t;
-            if (!TryCell(point, out int x, out int z) || !TryGetSpan(x, z, out float floor, out float top) || point.Y < floor || point.Y >= top)
+            if (!TryCell(point, out int x, out int z) || !TryGetCodes(x, z, out int floor, out int top) || !ContainsHeight(point.Y, floor, top))
                 return true;
             if (t == tEnd) return false;
             // A 2D DDA: advance to the earliest cell edge or height exit, including coincident grid corners.
             float tx = FirstCrossing(origin.X, direction.X, Window.Min.X, Window.CellSize, direction.X > 0f ? x + 1 : x, t, tEnd);
             float tz = FirstCrossing(origin.Z, direction.Z, Window.Min.Y, Window.CellSize, direction.Z > 0f ? z + 1 : z, t, tEnd);
-            float ty = FirstCrossing(origin.Y, direction.Y, 0f, 1f, direction.Y > 0f ? top : floor, t, tEnd);
+            float ty = FirstCrossing(origin.Y, direction.Y, BaseY, 1f / StepY,
+                direction.Y > 0f ? top : floor, t, tEnd, codeSpace: true);
             float next = Math.Min(tx, Math.Min(tz, ty));
             if (float.IsPositiveInfinity(next)) return false;
             t = next;
         }
     }
 
-    static float FirstCrossing(float origin, float direction, float offset, float scale, float boundary, float start, float end)
+    static float FirstCrossing(float origin, float direction, float offset, float scale, float boundary,
+        float start, float end, bool codeSpace = false)
     {
         if (direction == 0f || !Crossed(end)) return float.PositiveInfinity;
-        double exact = ((double)offset + (double)scale * boundary - origin) / direction;
+        double exact = codeSpace
+            ? (boundary - ((double)origin - offset) * scale) / ((double)direction * scale)
+            : ((double)offset + (double)scale * boundary - origin) / direction;
         float candidate = Math.Clamp((float)exact, start, end);
         if (Crossed(candidate))
         {
@@ -55,7 +59,8 @@ public sealed partial class InteriorHeightField
 
         bool Crossed(float time)
         {
-            float value = (origin + direction * time - offset) / scale;
+            float shifted = origin + direction * time - offset;
+            float value = codeSpace ? shifted * scale : shifted / scale;
             return direction > 0f ? value >= boundary : value < boundary;
         }
     }

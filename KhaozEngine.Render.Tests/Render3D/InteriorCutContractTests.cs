@@ -132,11 +132,17 @@ public sealed class InteriorCutContractTests
     [Fact]
     public void RebasedBoundaryMatchesCpu()
     {
-        InteriorHeightField field = Field(10000f);
-        Vector3 origin = new(10000f, 10000f, 10000f);
+        InteriorHeightField field = InteriorHeightFieldBuilder.Build([new InteriorVolume
+        {
+            Outline = [new(10000f), new(10002f, 10000f), new(10002f), new(10000f, 10002f)],
+            FloorY = .1525f,
+            CeilingY = .4025f,
+        }], new InteriorWindow(new Vector2(10000f), .25f, 8), InteriorEncoding.For(0f, 1f));
+        Vector3 origin = new(10000f, 0f, 10000f);
         InteriorCutUniforms uniforms = InteriorCutUniforms.From(field, origin);
         Assert.Equal(new Vector4(0f, 0f, 4f, 8f), uniforms.Window);
-        Assert.Equal(-1f, uniforms.Heights.X);
+        Assert.Equal(0f, uniforms.Heights.X);
+        Assert.Equal(new byte[] { 0, 15, 0, 40 }, field.Texels.Span[..4].ToArray());
         Assert.True(field.TryGetSpan(2, 2, out float floor, out float top));
         foreach (float height in new[] { MathF.BitDecrement(floor), floor, MathF.BitIncrement(floor),
             MathF.BitDecrement(top), top, MathF.BitIncrement(top) })

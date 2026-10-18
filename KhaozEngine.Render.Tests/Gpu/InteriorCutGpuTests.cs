@@ -41,11 +41,45 @@ public sealed class InteriorCutGpuTests : IClassFixture<InteriorCutGpuTests.Stag
     [GpuFact]
     public void ReusedSceneMatchesFreshSceneAfterFieldAndModeChanges()
     {
+        _stage.BoundaryFrame(Stage.BoundaryField, .25f);
         _stage.Frame(Stage.Field, true, temporal: true);
         _stage.Frame(null, true);
         byte[] reused = _stage.Frame(Stage.Field, false);
         using var fresh = new Stage();
         Assert.Equal(fresh.Frame(Stage.Field, false), reused);
+    }
+
+    [GpuFact]
+    public void RebasedBoundaryMatchesCpu()
+    {
+        _stage.Frame(null, false);
+        InteriorHeightField field = Stage.BoundaryField;
+        Assert.Equal(new byte[] { 0, 15, 0, 40 }, field.Texels.Span[..4].ToArray());
+        Assert.True(field.TryGetSpan(8, 8, out float floor, out float top));
+        byte[] background = _stage.BoundaryFrame(null, .25f, draw: false);
+        byte[] solid = _stage.BoundaryFrame(null, .25f);
+        int cutProbes = 0, visibleProbes = 0;
+        foreach (float height in new[] { MathF.BitDecrement(floor), floor, MathF.BitIncrement(floor),
+            MathF.BitDecrement(top), top, MathF.BitIncrement(top) })
+        {
+            byte[] pixels = _stage.BoundaryFrame(field, height);
+            Assert.Equal(new Vector3(10000f, 0f, 10000f), _stage.Scene.CurrentFrameView.RenderOrigin);
+            bool cpuInside = field.Contains(new Vector3(10000f, height, 10000f));
+            float q = (height - field.BaseY) * (1f / field.StepY);
+            bool shaderInside = 40f > 15f && q >= 15f && q < 40f;
+            for (int y = 70; y < 90; y++)
+                for (int x = 70; x < 90; x++)
+                {
+                    int at = (y * Stage.W + x) * 4;
+                    Assert.NotEqual(background.AsSpan(at, 4).ToArray(), solid.AsSpan(at, 4).ToArray());
+                    bool gpuBackground = pixels.AsSpan(at, 4).SequenceEqual(background.AsSpan(at, 4));
+                    Assert.Equal(shaderInside, gpuBackground);
+                    Assert.Equal(cpuInside, gpuBackground);
+                    if (!cpuInside) Assert.Equal(solid.AsSpan(at, 4).ToArray(), pixels.AsSpan(at, 4).ToArray());
+                }
+            if (cpuInside) cutProbes++; else visibleProbes++;
+        }
+        Assert.True(cutProbes > 0 && visibleProbes > 0);
     }
 
     static void AssertPixels(Stage stage, byte[] background, byte[] solid, byte[] cut, bool temporal)
@@ -88,8 +122,16 @@ public sealed class InteriorCutGpuTests : IClassFixture<InteriorCutGpuTests.Stag
                 CeilingY = 1,
             },
         }, new InteriorWindow(new Vector2(-2), .25f, 16), InteriorEncoding.For(-1, 1));
+        internal static readonly InteriorHeightField BoundaryField = InteriorHeightFieldBuilder.Build([new InteriorVolume
+        {
+            Outline = [new(9998f), new(10002f, 9998f), new(10002f), new(9998f, 10002f)],
+            FloorY = .1525f,
+            CeilingY = .4025f,
+        }], new InteriorWindow(new Vector2(9998f), .25f, 16), InteriorEncoding.For(0f, 1f));
         TemporalFixture? _fixture;
         MeshHandle _box;
+        MeshHandle _boundaryPlane;
+        bool _boundaryPlaneLoaded;
         internal Scene3D Scene => Fixture.Scene;
         TemporalFixture Fixture => _fixture ??= Create();
 
@@ -111,6 +153,9 @@ public sealed class InteriorCutGpuTests : IClassFixture<InteriorCutGpuTests.Stag
 
         internal byte[] Frame(InteriorHeightField? field, bool optIn, bool draw = true, bool temporal = false)
         {
+            Scene.RenderOrigin = Vector3.Zero;
+            Scene.Camera.Target = Vector3.Zero;
+            Scene.Camera.Elevation = 0f;
             Scene.InteriorCut = field;
             Scene.ForceTemporalForTests = temporal;
             return Fixture.Frame((s, _) =>
@@ -119,6 +164,29 @@ public sealed class InteriorCutGpuTests : IClassFixture<InteriorCutGpuTests.Stag
                 {
                     CutInsideInteriors = optIn,
                     Tint = new Color(.8f, .5f, .2f, 1),
+                });
+            });
+        }
+
+        internal byte[] BoundaryFrame(InteriorHeightField? field, float height, bool draw = true)
+        {
+            if (!_boundaryPlaneLoaded)
+            {
+                _boundaryPlane = Scene.LoadMesh(MeshPrimitives.Plane(2f, 2f));
+                _boundaryPlaneLoaded = true;
+            }
+            Scene.RenderOrigin = new Vector3(10000f, 0f, 10000f);
+            Scene.Camera.Target = new Vector3(10000f, .25f, 10000f);
+            Scene.Camera.Elevation = MathF.PI * .45f;
+            Scene.InteriorCut = field;
+            Scene.ForceTemporalForTests = false;
+            return Fixture.Frame((s, _) =>
+            {
+                if (draw) s.Draw(new RigidInstanceDraw(_boundaryPlane,
+                    Matrix4x4.CreateTranslation(10000f, height, 10000f))
+                {
+                    CutInsideInteriors = true,
+                    Tint = new Color(.8f, .5f, .2f, 1f),
                 });
             });
         }

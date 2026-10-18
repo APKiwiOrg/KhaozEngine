@@ -93,7 +93,9 @@ public class InteriorHeightFieldTests
         Assert.True(field.TryGetSpan(0, 0, out float floor, out float top));
         Assert.Equal(-7.43f, floor, 5);
         Assert.Equal(-4.87f, top, 5);
-        Assert.True(field.Contains(new Vector3(0.5f, floor, 0.5f)));
+        // The decoded floor rounds below code 257. Its next represented value reaches the code-space span.
+        Assert.False(field.Contains(new Vector3(0.5f, floor, 0.5f)));
+        Assert.True(field.Contains(new Vector3(0.5f, MathF.BitIncrement(floor), 0.5f)));
         Assert.False(field.Contains(new Vector3(0.5f, top, 0.5f)));
 
         var centimetreField = InteriorHeightFieldBuilder.Build([], window, InteriorEncoding.For(0f, 655.35f));

@@ -7,6 +7,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 21.5.1
 
+- `BugReportService.ReportConfirmed` is raised when the player presses Send, so a server-backed game releases its
+  server snapshot only after the player confirms.
 - Contact controller ground support covers more props. Players can stand on planks pitched 3 to 6 degrees at any
   yaw, climb onto lying logs and pipes up to the step height, and walk where a sloped edge crosses joined mesh
   triangles or statics without a pacing hitch or a false step signal (#1429, #1455, #1454). Log ends and capsule caps
@@ -19,7 +21,6 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-10-18
 
-- `BugReportService.ReportConfirmed` is raised when the player presses Send, so a server-backed game releases its server snapshot only after the player confirms.
 - New opt-in `KhaozEngine.BugReports.Relay` authenticates and validates uploads, stores capability-linked media and queues GitHub issues and server snapshot comments with epoch claims and result markers.
 - New opt-in `KhaozEngine.BugReports.Relay.Azure` supplies Blob media, Queue work, Table quota counters and daily poison requeueing over host-owned clients, with offline conformance tests and a gated live leg.
 - `KhaozEngine.BugReports` exposes `BugReportLogTail.FromLogSection` for the viewer and relay to share the newest captured log lines.

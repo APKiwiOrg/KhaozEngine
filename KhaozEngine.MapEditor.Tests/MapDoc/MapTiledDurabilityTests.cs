@@ -297,6 +297,7 @@ namespace KhaozEngine.Tests.MapDoc
 
             // Thread-local, so a parallel test's allocations cannot bleed into either reading, and a counter
             // of bytes handed out rather than bytes still held, so no collection can move it.
+            // No allocation region applies: the save hands out hundreds of megabytes, past any no-GC reservation.
             long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
             long phase = 0, bytes = 0;
             TiledDocFixture.InDirectory(directory =>

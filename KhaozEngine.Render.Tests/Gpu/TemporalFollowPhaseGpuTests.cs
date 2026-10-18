@@ -140,19 +140,27 @@ namespace KhaozEngine.Tests.Gpu
                 bounds.Select(b => b!.Value).ToArray());
         }
 
-        /// <summary>Every orthographic follow walk at Native and Quality (<see cref="TemporalFollowCameraRuns"/>) over its
-        /// start phases, the trail near the edge against the bound of <see cref="TemporalFollowCameraGpuTests.Walks"/>,
-        /// and beside it on Quality the trail past the reconstruction's reach against acceptance 3 of its region. By
-        /// default the walk at 1 display pixel a frame at Native and Quality, and at half a pixel at Quality.</summary>
+        /// <summary>Every orthographic follow walk at Native (<see cref="TemporalFollowCameraRuns"/>) over its start
+        /// phases, the trail near the edge against the bound of <see cref="TemporalFollowCameraGpuTests.Walks"/>.
+        /// By default the walk at 1 display pixel a frame. Split from Quality so the GPU matrix can schedule the
+        /// presets on different shards (#1458).</summary>
         [GpuFact]
-        public void The_orthographic_follow_holds_its_bounds_from_every_start_phase_at_Native_and_Quality() =>
-            OrthographicTable(N, Q);
+        public void The_orthographic_follow_holds_its_bounds_from_every_start_phase_at_Native() =>
+            OrthographicTable(N);
+
+        /// <summary>Every orthographic follow walk at Quality over its start phases, the trail near the edge against
+        /// the bound of <see cref="TemporalFollowCameraGpuTests.Walks"/>, and beside it the trail past the
+        /// reconstruction's reach against acceptance 3 of its region. By default the walks at half a display pixel
+        /// and 1 display pixel a frame. Each preset's table holds its own cells within their bounds (#1458).</summary>
+        [GpuFact]
+        public void The_orthographic_follow_holds_its_bounds_from_every_start_phase_at_Quality() =>
+            OrthographicTable(Q);
 
         /// <summary>The same at Performance and UltraPerformance, the trail past the reconstruction's reach against
         /// acceptance 3 of its region on Performance and against <see cref="TemporalFollowCameraGpuTests.SpillWalks"/>
-        /// on UltraPerformance. By default the walk at 1 display pixel a frame on Performance. Split from the Native and
-        /// Quality half so the whole sweep is not one test (#1438): it was the longest single test in the suite, and
-        /// the GPU matrix runs each half in its own shard.</summary>
+        /// on UltraPerformance. By default the walk at 1 display pixel a frame on Performance. Split from the Native
+        /// and Quality presets so the whole sweep is not one test (#1438), allowing the GPU matrix to schedule the
+        /// preset groups on different shards.</summary>
         [GpuFact]
         public void The_orthographic_follow_holds_its_bounds_from_every_start_phase_at_Performance_and_Ultra() =>
             OrthographicTable(P, U);

@@ -63,6 +63,7 @@ public sealed partial class ContactLifetimeAllocationTests
         MovementAvailability swept = lease.QuerySolidSweepFiltered(next, nextDelta, out var sweep, QueryFilter.StaticsOnly);
         MovementAvailability contacted = lease.QuerySolidContactsFiltered(next, 0, contacts, out var contact, QueryFilter.StaticsOnly);
         long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        region.Dispose();
         output.WriteLine($"Changed rounded dimensions. Radius {first.Radius:R} -> {next.Radius:R}, allocation {bytes} B.");
         Assert.Equal(MovementAvailability.Known, swept);
         Assert.Equal(MovementAvailability.Known, contacted);
@@ -75,10 +76,9 @@ public sealed partial class ContactLifetimeAllocationTests
     [Fact]
     public void AllocationRegionStillCountsFreshShapes()
     {
-        using var region = SupportAllocationRegion.Start();
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        var shape = new CapsuleShape(0.4f, 1);
-        long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        CapsuleShape? shape = null;
+        long bytes = AllocationMeasurement.Measure(nameof(AllocationRegionStillCountsFreshShapes), () =>
+            shape = new CapsuleShape(0.4f, 1));
         GC.KeepAlive(shape);
         output.WriteLine($"Positive allocation control. Fresh capsule {bytes} B.");
         Assert.True(bytes > 0);

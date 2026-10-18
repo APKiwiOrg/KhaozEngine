@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.BugReports.Relay.Azure</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <Description>Opt-in Azure Storage backend for the bug report relay, with Blob media, Queue work, Table quota counters and poison requeueing. Hosts supply ready clients and own credentials.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.BugReports.Relay/KhaozEngine.BugReports.Relay.csproj" />
+    <PackageReference Include="Azure.Storage.Blobs" />
+    <PackageReference Include="Azure.Storage.Queues" />
+    <PackageReference Include="Azure.Data.Tables" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <InternalsVisibleTo Include="KhaozEngine.BugReports.Relay.Azure.Tests" />
+  </ItemGroup>
+</Project>

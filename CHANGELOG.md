@@ -5,6 +5,39 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.5.0
+
+2026-10-18
+
+- New opt-in `KhaozEngine.BugReports.Relay` authenticates and validates uploads, stores capability-linked media and queues GitHub issues and server snapshot comments with epoch claims and result markers.
+- New opt-in `KhaozEngine.BugReports.Relay.Azure` supplies Blob media, Queue work, Table quota counters and daily poison requeueing over host-owned clients, with offline conformance tests and a gated live leg.
+- `KhaozEngine.BugReports` exposes `BugReportLogTail.FromLogSection` for the viewer and relay to share the newest captured log lines.
+- `KhaozEngine.BugReports.Relay` exposes `ReportPaths.IsValid` as the media path rule shared by every store.
+- Every unfinished relay resend enqueues issue work before acceptance, including immediate retries after a failed enqueue.
+- `BugReportRelay.RevokeAsync` durably revokes reports, and missing public manifests stop late work from republishing deleted media.
+- The bug report viewer plays the full recorded interval between clip frames, including gaps longer than one second.
+- `MapPlacement` in `KhaozEngine.MapDoc` counts reads of its lookup keys (`Id`, `Kind`, `X`, `Z`) internally,
+  so the viewport pick linearity test in `KhaozEngine.MapEditor` also catches a per-element scan through a
+  captured document or the viewport's own copy, with the viewport's pick state built (#1453). Public behaviour
+  and the serialized document are unchanged.
+- `GameStorage` in `KhaozEngine.Persistence` gains an internal drain scheduling seam for tests, the same one
+  `PersistenceQueue` has. Public behaviour is unchanged. The Foundation tests that waited on thread-pool work
+  under a short bound now run it on test-owned threads (#1467).
+- `MapDocument` and `MapPlacement` in `KhaozEngine.MapDoc` give every persisted member an explicit
+  `JsonPropertyOrder`, so moving a partial part to another file can no longer reorder saved documents, tile
+  files or tile content hashes. Saved bytes are unchanged (#1469).
+- `ReportRedactor` in `KhaozEngine.Diagnostics` runs its secret rules on the linear-time regex engine and checks
+  each rule with `IsMatch` before replacing, so clean text no longer allocates after a full collection and no
+  player-influenced log line can force a whole-report mask. Building the default rules allocates about 11.8 MB
+  once per process, and the first report spends about 70 ms preparing the matchers (#1475).
+- Contact controller support reads cost less on stairs and boxes. Exactly horizontal axis-aligned rectangular
+  faces take an exact path through support extrema and contact height, axis-aligned rectangular faces certify
+  their contact sign directly, and installed faces keep their query-independent edge, normal and plane facts.
+  Results stay bit-identical to the reference evaluator. The
+  [phase 3 hosted verdict](docs/verification/2026-10-18-support-cost-hosted-1334-phase3.md) passes 135 of 139
+  ordinary rows. The stairs mesh and hidden crate rows that still miss SG-12 are judged against the aggregate
+  actor budget before a consumer pin (#1334).
+
 ## 21.4.0
 
 - New in-game bug reports. A player presses F10 on any screen (title, login or in game). The frame that saw

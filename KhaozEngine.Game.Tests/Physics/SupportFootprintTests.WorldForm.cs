@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
+using System.Text.Json;
 using System.Threading;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Locomotion.Contacts;
@@ -18,6 +19,194 @@ namespace KhaozEngine.Tests.Physics;
 
 public partial class SupportFootprintTests
 {
+    [Theory]
+    [InlineData("flat box")]
+    [InlineData("flat hull")]
+    [InlineData("flat mesh")]
+    [InlineData("rotated")]
+    public void SharedMemberFactsMatchRecomputation(string name)
+    {
+        using var counters = new WorldFormCounters();
+        using var scene = name == "rotated"
+            ? new WorldFormScene(MixedWorld(), new(Vector2.Zero, 0, 0.2f, 0.4f, 0.4f, 0.7f))
+            : new WorldFormScene(CostRows().Single(row => row.Name == name));
+        scene.Find();
+        var request = FootSupport.DescribeFootprint(scene.Query);
+        InstalledSupportWorldFace[] faces = name == "flat mesh"
+            ? [((InstalledSupportMeshWorldForm)MeshForm(MeshForms(scene.World), scene.Owners().Single(), 0)).Face!,
+                ((InstalledSupportMeshWorldForm)MeshForm(MeshForms(scene.World), scene.Owners().Single(), 1)).Face!]
+            : [.. scene.Owners().SelectMany(owner => scene.Form(owner)!.Leaves.ToArray())
+                .SelectMany(leaf => leaf.Faces.ToArray())];
+        Assert.NotEmpty(faces);
+        foreach (InstalledSupportWorldFace face in faces)
+        {
+            InstalledSupportMemberFacts facts = face.MemberFacts;
+            GeometryVector normalBounds = GeometryVectorOperations.Normalize(face.Normal.Bounds);
+            AssertMemberFactInterval(normalBounds.X, facts.NormalBounds.X);
+            AssertMemberFactInterval(normalBounds.Y, facts.NormalBounds.Y);
+            AssertMemberFactInterval(normalBounds.Z, facts.NormalBounds.Z);
+            AssertMemberFactOutput(GeometryVectorOperations.Publish(normalBounds), facts.PublishedNormal);
+            AssertMemberFactOutput(GeometryVectorOperations.Publish(face.Vertices[0].Bounds), facts.PublishedPlane);
+            AssertMemberFactNumber(SupportFootprintProposalGeometry.Root(FeaturePoint.Dot(face.Normal, face.Normal)),
+                facts.ProposalNormalLength);
+            var polygon = new SupportPolygon();
+            polygon.Bind(scene.Owners()[0], face);
+            foreach (float shift in new[] { 0f, 0.007f, -0.011f })
+            {
+                var moved = request with { Axis = request.Axis + new Vector2(shift, -shift) };
+                polygon.BeginFootprintOperands(moved);
+                var axis = FeaturePoint.Exact(new(moved.Axis.X, 0, moved.Axis.Y));
+                SupportQueryDiagnostics.Reset();
+                for (int i = 0; i < polygon.Edges.Length; i++)
+                {
+                    FeatureNumber actual = polygon.FootprintOperands(i, axis).LengthSquared;
+                    FeatureNumber expected;
+                    using (SupportReferenceEvaluation.Begin())
+                        expected = polygon.FootprintOperands(i, axis, share: false).LengthSquared;
+                    AssertMemberFactNumber(expected, actual);
+                    AssertMemberFactNumber(expected, facts.ProjectedEdgeLengthsSquared[i]);
+                }
+                Assert.True(SharedMemberFactHits() > 0, $"{name} edge constants were recomputed.");
+                SupportQueryDiagnostics.Reset();
+                GeometrySign measured = SupportFootprintPolygon.Measure(polygon, moved, out var member);
+                int measureHits = SharedMemberFactHits();
+                GeometrySign reference;
+                SupportFootprintMember expectedMember;
+                using (SupportReferenceEvaluation.Begin())
+                    reference = SupportFootprintPolygon.Measure(polygon, moved, out expectedMember);
+                Assert.Equal(reference, measured);
+                Assert.Equal(JsonSerializer.Serialize(expectedMember, new JsonSerializerOptions { IncludeFields = true }),
+                    JsonSerializer.Serialize(member, new JsonSerializerOptions { IncludeFields = true }));
+                if (measured == GeometrySign.Positive) Assert.True(measureHits >= 3);
+                Assert.Equal(measureHits, SharedMemberFactHits());
+                SupportQueryDiagnostics.Reset();
+                GeometrySign proposal = SupportFootprintProposalGeometry.LowestExhaustive(polygon,
+                    moved.FootProposal, out GeometryInterval lowest);
+                int proposalHits = SharedMemberFactHits();
+                GeometrySign expectedProposal;
+                GeometryInterval expectedLowest;
+                using (SupportReferenceEvaluation.Begin())
+                    expectedProposal = SupportFootprintProposalGeometry.LowestExhaustive(polygon,
+                        moved.FootProposal, out expectedLowest);
+                Assert.Equal(expectedProposal, proposal);
+                AssertMemberFactInterval(expectedLowest, lowest);
+                Assert.Equal(proposalHits, SharedMemberFactHits());
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("flat box")]
+    [InlineData("flat hull")]
+    [InlineData("flat mesh")]
+    public void SharedMemberFactsNeverCrossAPoseOrVersion(string name)
+    {
+        using var counters = new WorldFormCounters();
+        using var scene = new WorldFormScene(CostRows().Single(row => row.Name == name));
+        SupportSample before = scene.Checked("facts published", out _);
+        StaticHandle owner = scene.Owners().Single();
+        scene.SetPose(owner, pose => pose with { Position = pose.Position with { Y = pose.Position.Y - 0.125f } });
+        SupportQueryDiagnostics.Reset();
+        SupportSample moved = scene.Find();
+        Assert.Equal(0, SharedMemberFactHits());
+        Assert.Equal(0, SupportQueryDiagnostics.Snapshot().WorldFormBuilds);
+        scene.Checked("facts pose mismatch", out _);
+        Assert.NotEqual(before.Height, moved.Height);
+        scene.World.Rebase(new(0, 0.125f, 0));
+        scene.Checked("facts version rebuilt", out int builds);
+        Assert.True(builds > 0);
+        SupportQueryDiagnostics.Reset();
+        scene.Find();
+        Assert.True(SharedMemberFactHits() > 0);
+        Assert.Equal(0, SupportQueryDiagnostics.Snapshot().WorldFormBuilds);
+        scene.World.RemoveStatic(owner);
+        scene.World.AddStatic(new BoxShape(new(2, 1, 2)), Pose.At(new(0, -1.375f, 0)));
+        scene.Checked("facts reinstalled", out builds);
+        Assert.Equal(1, builds);
+        SupportQueryDiagnostics.Reset();
+        scene.Find();
+        Assert.True(SharedMemberFactHits() > 0);
+    }
+
+    [Fact]
+    public void SlopeAdjustedNormalIsNeverShared()
+    {
+        using var counters = new WorldFormCounters();
+        var world = new BepuPhysicsWorld(Vector3.Zero);
+        world.AddStatic(new BoxShape(new(1, 0.2f, 1)),
+            new(new(0, -0.1f, 0), Quaternion.CreateFromAxisAngle(Vector3.UnitY, 0.37f)));
+        using var scene = new WorldFormScene(world, new(Vector2.Zero, 0, 0.2f, 0.4f, 0.4f, 0.7f));
+        scene.Find();
+        InstalledSupportWorldFace top = scene.Form(scene.Owners().Single())!.Leaves[0].Faces.ToArray()
+            .Single(face => face.Orientation == GeometrySign.Positive);
+        GeometryVector unadjusted = GeometryVectorOperations.Normalize(top.Normal.Bounds);
+        Assert.True(unadjusted.Y.Lower < 1 && unadjusted.Y.Upper >= 1);
+        var polygon = new SupportPolygon();
+        polygon.Bind(scene.Owners().Single(), top);
+        foreach (float cosine in new[] { 1f, 0.7f, 1f })
+        {
+            var request = FootSupport.DescribeFootprint(scene.Query) with { CosMaxSlope = cosine };
+            Assert.Equal(GeometrySign.Zero, polygon.SourcePredicates.NormalSlope(polygon, 1));
+            SupportQueryDiagnostics.Reset();
+            Assert.Equal(GeometrySign.Positive, SupportFootprintPolygon.Measure(polygon, request, out var member));
+            int hits = SharedMemberFactHits();
+            Assert.True(hits > 0);
+            Assert.Equal(BitConverter.DoubleToInt64Bits(cosine == 1 ? 1 : unadjusted.Y.Lower),
+                BitConverter.DoubleToInt64Bits(member.UpwardLower));
+            using (SupportReferenceEvaluation.Begin())
+            {
+                Assert.Equal(GeometrySign.Positive, SupportFootprintPolygon.Measure(polygon, request, out var reference));
+                Assert.Equal(reference, member);
+            }
+            Assert.Equal(hits, SharedMemberFactHits());
+        }
+    }
+
+    static void AssertMemberFactInterval(GeometryInterval expected, GeometryInterval actual)
+    {
+        Assert.Equal(expected.IsResolved, actual.IsResolved);
+        Assert.Equal(BitConverter.DoubleToInt64Bits(expected.Lower), BitConverter.DoubleToInt64Bits(actual.Lower));
+        Assert.Equal(BitConverter.DoubleToInt64Bits(expected.Upper), BitConverter.DoubleToInt64Bits(actual.Upper));
+    }
+
+    static void AssertMemberFactNumber(FeatureNumber expected, FeatureNumber actual)
+    {
+        Assert.Equal(expected.IsResolved, actual.IsResolved);
+        Assert.Equal(expected.IsExact, actual.IsExact);
+        Assert.Equal(BitConverter.DoubleToInt64Bits(expected.Value), BitConverter.DoubleToInt64Bits(actual.Value));
+        AssertMemberFactInterval(expected.Bounds, actual.Bounds);
+    }
+
+    static void AssertMemberFactOutput(GeometryVectorOutput expected, GeometryVectorOutput actual)
+    {
+        Assert.Equal(expected.IsResolved, actual.IsResolved);
+        Assert.Equal(BitConverter.SingleToInt32Bits(expected.Value.X), BitConverter.SingleToInt32Bits(actual.Value.X));
+        Assert.Equal(BitConverter.SingleToInt32Bits(expected.Value.Y), BitConverter.SingleToInt32Bits(actual.Value.Y));
+        Assert.Equal(BitConverter.SingleToInt32Bits(expected.Value.Z), BitConverter.SingleToInt32Bits(actual.Value.Z));
+        Assert.Equal(BitConverter.SingleToInt32Bits(expected.Error), BitConverter.SingleToInt32Bits(actual.Error));
+    }
+
+    static int SharedMemberFactHits() => SupportQueryDiagnostics.Snapshot().SharedMemberFacts;
+
+    [Fact]
+    public void SharedMemberFactsCountersSurviveThreadStateSubtractionAndMerge()
+    {
+        var prior = SupportQueryDiagnostics.Exchange(SupportQueryDiagnostics.ThreadState.Fresh(true));
+        try
+        {
+            SupportQueryDiagnostics.Record(SupportQueryCounter.SharedMemberFacts, 3);
+            SupportQueryCounts first = SupportQueryDiagnostics.Snapshot();
+            SupportQueryDiagnostics.Record(SupportQueryCounter.SharedMemberFacts, 2);
+            SupportQueryCounts delta = SupportQueryDiagnostics.Snapshot() - first;
+            SupportQueryDiagnostics.Reset();
+            SupportQueryDiagnostics.Merge(delta, default);
+            Assert.Equal(2, SharedMemberFactHits());
+            SupportQueryDiagnostics.Merge(first, default);
+            Assert.Equal(5, SharedMemberFactHits());
+        }
+        finally { SupportQueryDiagnostics.Exchange(prior); }
+    }
+
     [Fact]
     public void WorldFormMatchesReferenceOnEveryCostScene()
     {
@@ -36,6 +225,21 @@ public partial class SupportFootprintTests
             scene.Checked($"{row.Name} interleaved", out builds);
             Assert.Equal(0, builds);
             scene.CheckedFootprint($"{row.Name} raw members");
+            SupportQueryDiagnostics.Reset();
+            scene.Find();
+            int shared = SharedMemberFactHits();
+            _output.WriteLine($"SharedMemberFacts {row.Name}: {shared}");
+            if (row.Name is "flat box" or "flat hull" or "flat mesh" or "stairs box" or "stairs hull" or "stairs mesh")
+                Assert.True(shared > 0, $"{row.Name} did not read stored member facts.");
+            SupportQueryDiagnostics.Reset();
+            using (SupportReferenceEvaluation.Begin()) scene.Find();
+            Assert.Equal(0, SharedMemberFactHits());
+            if (row.Name == "stairs box")
+            {
+                SupportQueryDiagnostics.Reset();
+                scene.Find();
+                Assert.True(SupportQueryDiagnostics.Snapshot().StairStratum > 0);
+            }
             if (row.Name.StartsWith("flat ", StringComparison.Ordinal) ||
                 row.Name.StartsWith("stairs ", StringComparison.Ordinal))
                 scene.CheckedSubstep($"{row.Name} substep");
@@ -255,14 +459,9 @@ public partial class SupportFootprintTests
         SupportQueryDiagnostics.Reset();
         Assert.Equal(cold.ToString(), scene.Find(lease).ToString());
         Assert.Equal(0, SupportQueryDiagnostics.Snapshot().WorldFormBuilds);
-        SupportSample warm;
-        long bytes;
-        using (SupportAllocationRegion.Start())
-        {
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            warm = scene.Find(lease);
-            bytes = GC.GetAllocatedBytesForCurrentThread() - before;
-        }
+        SupportSample warm = default;
+        long bytes = AllocationMeasurement.Measure($"{nameof(WarmFindWithWorldFormAllocatesNothing)} {name}", () =>
+            warm = scene.Find(lease));
         Assert.Equal(0, bytes);
         Assert.Equal(0, SupportQueryDiagnostics.Snapshot().WorldFormBuilds);
         Assert.Equal(cold.ToString(), warm.ToString());

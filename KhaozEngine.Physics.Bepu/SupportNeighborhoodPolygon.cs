@@ -37,6 +37,7 @@ internal sealed class SupportPolygon
     internal SupportPolygonSourceMap SourceMap { get; private set; }
     internal ReadOnlySpan<Vector3> SourceVertices => _sourceVertices.AsSpan(0, _count);
     internal SupportFootprintSourcePredicates SourcePredicates => _sourcePredicates ??= new();
+    internal InstalledSupportMemberFacts? SharedMemberFacts => SupportReferenceEvaluation.Active ? null : _face?.MemberFacts;
     internal void BeginFootprintOperands(in SupportFootprintRequest request) => _footprintEdges.Begin(request);
     internal bool SharesFootprintOperands(in SupportFootprintProposal proposal) => _footprintEdges.Shares(proposal);
     internal SupportFootprintEdgeOperands FootprintOperands(int index, FeaturePoint axis, bool share = true) =>

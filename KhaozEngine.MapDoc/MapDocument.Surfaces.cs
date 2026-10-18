@@ -9,6 +9,7 @@ namespace KhaozEngine.MapDoc;
 
 public sealed partial class MapDocument
 {
+    [JsonPropertyOrder(MapDocumentOrder.SupportRecipe)]
     public MapSupportRecipe SupportRecipe { get; set; } = MapSupportRecipe.LegacyXzCallbackV1;
 
     /// <summary>Surface metadata and resident payloads. Persistence serializes metadata separately.</summary>
@@ -18,6 +19,7 @@ public sealed partial class MapDocument
     // Keep the resident container out of JSON while sharing the metadata shape with the manifest writer.
     [JsonInclude]
     [JsonPropertyName("surfaces")]
+    [JsonPropertyOrder(MapDocumentOrder.Surfaces)]
     internal List<MapSurfaceRef> SurfaceRefs
     {
         get => Surfaces.Refs;
@@ -32,6 +34,7 @@ public sealed partial class MapDocument
     [JsonInclude]
     [JsonPropertyName("surfacePatches")]
     [JsonConverter(typeof(MapSurfaceEmbeddingConverter))]
+    [JsonPropertyOrder(MapDocumentOrder.SurfacePatches)]
     internal List<MapSurfacePatch>? SurfacePatches
     {
         get => Surfaces.Patches.Count == 0 ? null : Surfaces.Patches.Values.ToList();
@@ -48,5 +51,6 @@ public sealed partial class MapDocument
 public sealed partial class MapPlacement
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyOrder(MapPlacementOrder.SupportBinding)]
     public MapSupportBinding? SupportBinding { get; set; }
 }

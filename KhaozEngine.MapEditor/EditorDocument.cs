@@ -61,9 +61,9 @@ public sealed class EditorDocument
         }
     }
 
-    /// <summary>How many times <see cref="Doc"/> has been read. The scene and the tool controller read the document
-    /// through <see cref="Doc"/>, so a per-element pick filter that searches it shows up here once per element, which
-    /// is how the pick linearity test sees a quadratic pick without a clock.</summary>
+    /// <summary>How many times <see cref="Doc"/> has been read. Exposes per-element pick filters that reacquire
+    /// the document on each call. <see cref="MapPlacement.LookupReads"/> also observes scans through captured
+    /// documents and other collections holding the same placements.</summary>
     internal long DocReads { get; private set; }
 
     /// <summary>The feature registry used to interpret and serialize the document.</summary>

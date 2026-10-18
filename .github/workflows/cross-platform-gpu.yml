@@ -38,29 +38,39 @@
 # and direct3d11-native spent 46m in Render.Tests alone in run 39010325116. The pre-tag release gate is a
 # dispatch of this workflow, so the slowest job sets the release time. Once the two software legs were split,
 # that job was Metal's unsharded full suite (a 26-minute test step in run 39022823501), so Metal is sharded
-# too. A leg is sharded whenever it runs its full suite and the run neither bakes nor sets renderTestFilter:
-# every trigger for metal-native, the schedule and workflow_dispatch for the other two. Each sharded leg runs
-# as `rest` (every test project except Render.Tests) plus `render-1` to `render-N` (Render.Tests in slices):
+# too. A leg is sharded when it runs its full suite on the schedule or a workflow_dispatch and the run neither
+# bakes nor sets renderTestFilter. metal-native also runs its full suite on push and pull_request, as one job
+# there (#1460, CONCURRENCY below). Each sharded leg runs as `rest` plus `render-1` to `render-N`
+# (Render.Tests in slices). The software legs also move named non-Render projects to `projects-N` shards
+# (#1458, #1471):
 #   metal-native        rest + 2 render slices = 3 jobs
-#   direct3d11-native   rest + 4 render slices = 5 jobs
-#   vulkan-native       rest + 9 render slices = 10 jobs
+#   direct3d11-native   rest + projects-1 + projects-2 + 4 render slices = 7 jobs
+#   vulkan-native       rest + projects-1 + 12 render slices = 14 jobs
 # Each backend has its own slice table, balanced from that backend's measured per-test times. The split lives
 # in scripts/gpu-test-shards.py, which is also the coverage guard: every render shard checks that its
 # backend's slices partition the listed Render.Tests methods exactly once before it runs, and the per-backend
 # `full suite` job fails when a shard is missing or red or when a test assembly ran on no shard or on two.
 # Each shard keeps its leg's instruments (strict validation and serialisation on Vulkan, the pool watch on
 # Windows, the debug layer and the device-evidence detector on Metal), and every evidence artifact carries the
-# shard name. The two software legs' push path, a bake dispatch and a renderTestFilter dispatch stay one job
-# per leg, exactly as before.
+# shard name. Every push and pull_request path, a bake dispatch and a renderTestFilter dispatch stay one job
+# per leg.
+# Sharded jobs restore and build only their assigned test projects and their references (#1472). Rest also
+# builds Render.Tests on Windows for FXC validation and on Vulkan for shader-cache verification. Unsharded
+# paths still build KhaozEngine.slnx. Reduced solutions explicitly preserve Release on project references
+# and reject Debug output. The build selection does not change test selection or coverage guards.
 #
 # CONCURRENCY. The org is on the Team plan: 60 concurrent GitHub-hosted standard jobs and 5 concurrent macOS
-# jobs (https://docs.github.com/en/actions/reference/limits). A default-input dispatch peaks at 19 jobs here
-# (3 Metal, 5 Windows, 10 Linux, the sync job), 23 with the `ci` dispatch the pre-tag gate runs beside it.
+# jobs (https://docs.github.com/en/actions/reference/limits). A default-input dispatch peaks at 25 jobs here
+# (3 Metal, 7 Windows, 14 Linux, the sync job), 29 with the `ci` dispatch the pre-tag gate runs beside it.
 # Metal takes no more than 3 because its slowest shard is already well under the Vulkan floor, so a fourth
 # macOS job would only spend the shared macOS allowance. That allowance is the one that binds in practice:
-# every push and pull_request runs Metal's full suite too, so overlapping runs share 5 macOS slots, and in
-# run 39030778010 one Metal shard queued 4 minutes behind three other runs' Metal jobs. On the Free plan's 20
-# total the gate would also queue three Linux or Windows jobs until the first shards finish.
+# every push and pull_request runs Metal's full suite too, so overlapping runs share 5 macOS slots. While
+# Metal was sharded on every trigger, two overlapping runs needed 6. A push run on main that started 18 s
+# before the gate dispatch (run 39041774821) held 3 slots, and the dispatch's render-1 shard queued 13 minutes
+# (run 39041795759 took 27.3 minutes against 21.3 uncontended at the same commit). So push and pull_request
+# run Metal's full suite as one job, about half an hour that nothing waits on, and a push run beside the gate
+# needs 4 macOS slots (#1460). On the Free plan's 20 total the gate would also queue three Linux or Windows
+# jobs until the first shards finish.
 #
 # What this does (suite split by leg + trigger, decided from measured cost + lavapipe stability):
 #   * The Metal NATIVE leg runs the engine's own KhaozEngine.Gpu.Metal backend
@@ -218,9 +228,10 @@
 #     grows a paravirtual adapter cannot silently change the rasterizer under the golden gate. The variable
 #     is read only by the native backend's adapter selection.
 #
-# Job setup: every matrix job and the sync job restore the NuGet global packages folder from the Actions
-# cache before `dotnet restore`, and each leg's primary entry saves it. KhaozEngine packages are excluded
-# from the cache because a same-version re-pack would otherwise restore stale engine bytes (the restore step
+# Job setup: Windows matrix jobs restore the NuGet global packages folder from the Actions cache before
+# `dotnet restore`, and the Windows primary entry saves it. Linux and macOS restore from NuGet directly.
+# KhaozEngine packages are excluded from the cache because a same-version re-pack would otherwise restore
+# stale engine bytes (the restore step
 # in the matrix job carries the reasoning). Build outputs are never cached.
 #
 # The headless golden tests use Render2D/3D Snapshot -> CreateHeadless (offscreen, NO window), so SDL2 is
@@ -574,9 +585,8 @@ jobs:
           fi
 
           echo "selected legs: $(jq -r '[.[].backend] | join(", ")' <<<"$picked")"
-          # SHARDING (#1438). A leg on one of its full-suite triggers (every trigger for metal-native, the
-          # schedule and a dispatch for the other two) that neither bakes nor filters becomes one matrix entry
-          # per shard, each carrying `shard` (`rest` or `render-N`) and `primary` (`1` on the
+          # SHARDING (#1438). A leg running its full suite on the schedule or a dispatch that neither bakes nor
+          # filters becomes one matrix entry per shard, each carrying `shard` (`rest` or `render-N`) and `primary` (`1` on the
           # one entry per leg that runs the once-per-leg steps). Every other leg stays one entry with an empty
           # `shard` and `primary: 1`, which is exactly the shape it had before.
           python3 scripts/gpu-test-shards.py expand <<<"$picked" >> "$GITHUB_OUTPUT"
@@ -584,10 +594,11 @@ jobs:
 
   gpu-golden:
     needs: legs
-    # An unsharded leg keeps its historical name, so the software legs' push-path checks read exactly as before.
-    # A shard appends its own name, for example `ubuntu-latest / vulkan-native / render-3`. Metal is sharded on
-    # every trigger, so its checks are `macos-26 / metal-native / rest`, `/ render-1`, `/ render-2` and the
-    # `macos-26 / metal-native / full suite` job that answers for them.
+    # An unsharded leg keeps its historical name, so every push-path check reads as it did before #1438, Metal's
+    # `macos-26 / metal-native` included (#1460). A shard appends its own name, for example
+    # `ubuntu-latest / vulkan-native / render-3`. On the schedule and a dispatch Metal's checks are
+    # `macos-26 / metal-native / rest`, `/ render-1`, `/ render-2` and the `macos-26 / metal-native / full suite`
+    # job that answers for them.
     name: ${{ matrix.os }} / ${{ matrix.backend }}${{ matrix.shard != '' && format(' / {0}', matrix.shard) || '' }}
     runs-on: ${{ matrix.runner }}
     # All three legs are blocking, with no continue-on-error on any of them. Each verifies its OWN golden
@@ -862,7 +873,26 @@ jobs:
           restore-keys: |
             nuget-${{ runner.os }}-
 
-      - run: dotnet restore
+      - name: Select the shard build inputs
+        id: build-inputs
+        shell: bash
+        env:
+          LEG: ${{ matrix.backend }}
+          SHARD: ${{ matrix.shard }}
+        run: |
+          target=KhaozEngine.slnx
+          if [ -n "$SHARD" ]; then
+            mkdir -p TestResults
+            target=TestResults/gpu-build.slnx
+            python3 scripts/gpu-test-shards.py build-solution "$LEG" "$SHARD" KhaozEngine.slnx "$target"
+          fi
+          echo "target=$target" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the shard build inputs
+        run: dotnet restore "$BUILD_TARGET"
+        shell: bash
+        env:
+          BUILD_TARGET: ${{ steps.build-inputs.outputs.target }}
 
       - name: Save the NuGet package cache
         if: runner.os == 'Windows' && matrix.primary == '1' && steps.nuget-cache.outputs.cache-hit != 'true'
@@ -873,8 +903,18 @@ jobs:
             !~/.nuget/packages/khaozengine.*
           key: ${{ steps.nuget-cache.outputs.cache-primary-key }}
 
-      # Build outputs are not cached: obj and bin are what this job exists to produce from the commit under test.
-      - run: dotnet build -c Release --no-restore
+      # Build the shard's test roots and their references, never another shard's test projects (#1472).
+      - name: Build the shard in Release
+        run: |
+          if [ -n "$SHARD" ]; then
+            sh scripts/gpu-shard-build.sh "$BUILD_TARGET"
+          else
+            dotnet build "$BUILD_TARGET" -c Release --no-restore
+          fi
+        shell: bash
+        env:
+          BUILD_TARGET: ${{ steps.build-inputs.outputs.target }}
+          SHARD: ${{ matrix.shard }}
 
       # TRIPWIRE for the Linux native load path. Silk.NET resolves its natives through its OWN path resolver,
       # which on Linux asks for the distro rid (ubuntu.24.04-x64) and so never looks under runtimes/linux-x64,
@@ -883,7 +923,7 @@ jobs:
       # symptom is hundreds of tests failing inside a shaderc type initializer, which reads like a shader bug and
       # is not one, so assert the files are where the resolver looks instead.
       - name: Assert the host natives landed beside the assemblies (Linux)
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest' && !startsWith(matrix.shard, 'projects-')
         shell: bash
         run: |
           out=KhaozEngine.Render.Tests/bin/Release/net10.0
@@ -1103,8 +1143,8 @@ jobs:
         id: suite
         env:
           # Which shard of a sharded full suite this entry runs (#1438), empty on every unsharded run. `rest`
-          # is the solution without Render.Tests, `render-N` is one Render.Tests slice from
-          # scripts/gpu-test-shards.py. See the run script below.
+          # is the solution without Render.Tests or the named projects on the `projects-N` shards. Each of those
+          # runs only its named projects, and `render-N` is one Render.Tests slice from scripts/gpu-test-shards.py.
           KE_TEST_SHARD: ${{ matrix.shard }}
           KE_GPU_TESTS: '1'
           KE_GRAPHICS_BACKEND: ${{ matrix.backend }}
@@ -1332,8 +1372,9 @@ jobs:
         # `shell: bash` here, and a gating command whose exit code depends on an implicit shell option is one
         # runner-image change away from a suite that fails green.
         #
-        # SHARDS (#1438). `rest` runs the generated solution without Render.Tests, the same one the Windows
-        # isolation pass has always used, so a new test project lands in it with no edit. `render-N` first
+        # SHARDS (#1438, #1458). `rest` runs the generated solution without Render.Tests or the named projects
+        # on the `projects-N` shards, so a new test project lands in rest with no edit. The unsharded Windows isolation
+        # pass keeps every non-Render project. `render-N` first
         # lists every Render.Tests method on this build and runs the coverage guard over this backend's whole
         # slice table (each listed method in exactly one slice, or the shard fails before running anything),
         # then runs Render.Tests under this trigger's filter ANDed with its own slice's filter.
@@ -1342,6 +1383,14 @@ jobs:
           mkdir -p TestResults
           : > TestResults/suite-output.log
           read -r -a build_args <<< "$KE_TEST_BUILD_ARGS"
+          # ONE NON-RENDER ASSEMBLY AT A TIME ON WINDOWS (#1471). Four test hosts at once on the 4 vCPU runner
+          # starved a loopback Kestrel host until its 20 s HttpClient timeout fired, the way WARP once starved
+          # Server.Tests (#1396). Collections inside each assembly stay parallel. The serial time is spread over
+          # rest and the projects-N shards instead (scripts/gpu-test-shards.py), so no job grows past the gate.
+          non_render_args=()
+          if [ "$KE_GRAPHICS_BACKEND" = "direct3d11-native" ]; then
+            non_render_args=(-m:1)
+          fi
           read -r -a logger_args <<< "$KE_TEST_LOGGER_ARGS"
           read -r -a extra_args <<< "$KE_TEST_EXTRA_ARGS"
           suite_filter="$KE_TEST_FILTER"
@@ -1350,27 +1399,13 @@ jobs:
           }
           write_non_render_solution() {
             # The root keeps exactly one solution. Rebase project paths into the generated solution's directory.
-            python3 - <<'PY'
-          import xml.etree.ElementTree as ET
-          solution = ET.parse("KhaozEngine.slnx")
-          excluded = 0
-          for parent in solution.iter():
-              for project in list(parent):
-                  if project.tag != "Project":
-                      continue
-                  if project.attrib["Path"] == "KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj":
-                      parent.remove(project)
-                      excluded += 1
-                  else:
-                      project.set("Path", "../" + project.attrib["Path"])
-          assert excluded == 1, "Expected exactly one Render.Tests project"
-          solution.write("TestResults/KhaozEngine.NonRender.slnx", encoding="unicode")
-          PY
+            python3 scripts/gpu-test-shards.py solution "$KE_GRAPHICS_BACKEND" "$KE_TEST_SHARD" \
+              KhaozEngine.slnx TestResults/KhaozEngine.NonRender.slnx
           }
           status=0
-          if [ "$KE_TEST_SHARD" = "rest" ]; then
+          if [ "$KE_TEST_SHARD" = "rest" ] || [ "${KE_TEST_SHARD#projects-}" != "$KE_TEST_SHARD" ]; then
             write_non_render_solution
-            run_suite TestResults/KhaozEngine.NonRender.slnx || status=$?
+            run_suite TestResults/KhaozEngine.NonRender.slnx "${non_render_args[@]}" || status=$?
             rm TestResults/KhaozEngine.NonRender.slnx
           elif [ -n "$KE_TEST_SHARD" ]; then
             render=KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj
@@ -1384,7 +1419,7 @@ jobs:
           elif [ "$KE_TEST_ISOLATE_RENDER" = "1" ]; then
             write_non_render_solution
             # Run both passes even after a test failure, and retain either failure as the step's exit status.
-            run_suite TestResults/KhaozEngine.NonRender.slnx || status=$?
+            run_suite TestResults/KhaozEngine.NonRender.slnx "${non_render_args[@]}" || status=$?
             run_suite KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj || status=$?
             rm TestResults/KhaozEngine.NonRender.slnx
           else
@@ -1640,6 +1675,9 @@ jobs:
       # episode lines are as much a reading as a red run's. The watch directory holds one log per armed test host
       # (an armed line, then one line per episode), and the trx files give every test's start and end from both
       # passes. The directory also carries dumps from explicit diagnostic runs, never the default full tier.
+      # A shard's trx files are already its `shard-trx-<backend>-<shard>` artifact below, kept longer, so they
+      # ride here only on an unsharded run (#1461). Only a shard that runs Server.Tests or MapEditor.Tests arms a
+      # watchdog, so a shard with no watch directory uploads nothing and says nothing.
       - name: Upload thread pool watch evidence
         if: always() && env.POOL_WATCH_ARMED != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -1647,9 +1685,9 @@ jobs:
           name: pool-watch-${{ matrix.backend }}${{ env.SHARD_SUFFIX }}
           path: |
             TestResults/pool-watch/
-            TestResults/*.trx
+            ${{ matrix.shard == '' && 'TestResults/*.trx' || '' }}
           retention-days: 3
-          if-no-files-found: warn
+          if-no-files-found: ${{ matrix.shard == '' && 'warn' || 'ignore' }}
 
       # On a host crash: surface the --blame Sequence.xml (names the last-started test on the dead host).
       # Kilobytes, failure-only, no dumps.
@@ -1750,7 +1788,7 @@ jobs:
           if-no-files-found: ignore
 
   # ONE CHECK PER SHARDED BACKEND (#1438), named `<os> / <backend> / full suite`. A sharded full suite is three to
-  # ten jobs per leg, and this is the one that answers for all of them: it is red when any shard is red, missing
+  # fourteen jobs per leg, and this is the one that answers for all of them: it is red when any shard is red, missing
   # or cancelled, and when the shards' own reports show a test assembly that ran on no shard, on two shards,
   # or Render.Tests outside its slices. Its job summary carries the per-assembly totals summed across the
   # shards, which is the reading to compare against an unsharded run. It runs on always() because a red shard

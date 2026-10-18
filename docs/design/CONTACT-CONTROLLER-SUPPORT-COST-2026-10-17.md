@@ -282,6 +282,24 @@ No limit is raised and the legacy-relative term still binds every row where it c
 complex tick that is slow but under 1 ms passes without a legacy comparison, which the SG-21 aggregate budget at
 phase 6 still judges.
 
+**Ruling SC-19. Rows no lossless lever reaches are judged at phase 6.**
+Owner decision 2026-10-18, after research 3. Four ordinary rows have no evaluated lossless route to their SG-12 limit:
+the hidden crate `Find`, the hidden crate and pushed seat `DryTick`, and the stairs mesh `DryTick`. Their remaining
+cost is the complete-footprint support work itself, and the only identified changes that close any of them alter
+support, climb or collision results. These rows, and any phase 3 row that still misses its limit when phase 3 ends,
+are judged at phase 6 against the SG-21 aggregate actor CPU budget measured on real Hollowmere actors. SG-12 still
+measures and records their time and margin, and the #1334 record lists them as judged by SG-21 rather than as
+SG-12 passes. No limit is raised. Cost if wrong: a deliberately adversarial scene runs slower than legacy on the
+server, which SG-21 bounds in aggregate before any pin.
+
+**Ruling SC-20. Phase 3 opens with one gated prototype of the exact stair stratum.**
+Owner decision 2026-10-18. Research 3's lever L3 is the only evaluated lossless change large enough to matter, but its
+saving is an estimate. Task 1 builds the stratum for exactly horizontal faces whose represented double vertices form
+an axis-aligned rectangle, bit-identical to the reference evaluator (SC-9), and measures the stairs box `Find` with
+two one-shot local artifact runs, base then head. Phase 3 continues to the other reachable rows only if that `Find`
+saves at least 6 us M2-equivalent of its 60 us. A fourth hosted run needs its own owner approval. A failed gate
+keeps the prototype on a `probe/*` branch, and the remaining misses fall under SC-19.
+
 ## Out of scope
 
 Dense-row time (SC-1), cross-tick or cross-body result caching (SG-15

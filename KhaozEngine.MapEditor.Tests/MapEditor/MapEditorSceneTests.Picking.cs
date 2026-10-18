@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.Game;
 using KhaozEngine.MapDoc;
@@ -14,24 +15,25 @@ public partial class MapEditorSceneTests
     static EditorFrameInput DownwardPress(float x, float z) =>
         new(new Vector3(x, 100f, z), -Vector3.UnitY, pointerPressed: true, pointerDown: true, dt: 0.016f);
 
-    // A viewport click runs the pick filters once per placement, so each filter has to resolve nothing from the
-    // document. Resolving each placement's kit through an id lookup once made one click quadratic: about half a
-    // second on a 17,000-placement island. The scene and the tool controller, which own the pick filters, read the
-    // document through EditorDocument.Doc, so a filter that searches it reads Doc once per placement. A linear pick
-    // reads it a fixed number of times whatever the placement count. A read count rather than a stopwatch, so a
-    // loaded machine cannot fail it (#1444).
+    // Each filter must be constant-time. Count the maximum lookup-key reads on any one placement, so a scan
+    // through a captured document or another collection still shows repeated visits to its placements. The
+    // viewport's CPU pick state is ready too, so PlacementDrawnAt cannot short-circuit at the unbuilt guard.
+    // Read counts rather than a stopwatch, so a loaded machine cannot fail it (#1444, #1453).
     [Fact]
     public void ViewportPick_StaysLinearAcrossALargeAuthoredDocument()
     {
-        long small = DocumentReadsForOnePick(200);
-        long large = DocumentReadsForOnePick(20_000);
+        var small = ReadsForOnePick(200);
+        var large = ReadsForOnePick(20_000);
 
-        Assert.True(small > 0, "The read probe did not see the pick reach the document.");
-        Assert.Equal(small, large);
+        Assert.True(small.DocumentReads > 0, "The read probe did not see the pick reach the document.");
+        Assert.Equal(small.DocumentReads, large.DocumentReads);
+        Assert.True(small.PlacementReads > 0, "The placement lookup probe did not see the pick reach a placement.");
+        Assert.True(small.PlacementReads == large.PlacementReads,
+            $"Placement lookup reads per pick grew with document size: {small.PlacementReads} versus {large.PlacementReads}.");
     }
 
-    // Document reads during one Select-mode press over count far placements plus one target under the ray.
-    static long DocumentReadsForOnePick(int count)
+    // Reads during one Select-mode press over count far placements plus one target under the ray.
+    static (long DocumentReads, long PlacementReads) ReadsForOnePick(int count)
     {
         var scene = new FieldDocScene(() =>
         {
@@ -47,13 +49,19 @@ public partial class MapEditorSceneTests
         });
         new SceneManager().Push(scene);
         scene.Document.Selection.Clear();
+        using var viewport = new HeadlessPickViewport(scene);
+        Assert.True(scene.Controller.PlacementDrawnAt(0f, 0f));
+        Assert.False(scene.Controller.PlacementDrawnAt(5000f, 5000f));
+        MapPlacement[] placements = scene.Document.Doc.Placements.ToArray();
+        long[] placementReadsBefore = placements.Select(p => p.LookupReads).ToArray();
 
         long before = scene.Document.DocReads;
         scene.Controller.Update(DownwardPress(0f, 0f));
         long reads = scene.Document.DocReads - before;
+        long placementReads = placements.Select((p, i) => p.LookupReads - placementReadsBefore[i]).Max();
 
         Assert.Equal("target", scene.Document.Selection.Id);
-        return reads;
+        return (reads, placementReads);
     }
 
     [Fact]

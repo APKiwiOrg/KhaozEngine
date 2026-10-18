@@ -98,12 +98,15 @@ public sealed partial class ContactLifetimeAllocationTests(ITestOutputHelper out
         using var lease = (MovementQueryLease)execution.Producer.Acquire().Lease!;
         var request = new MovementSupportRequest(new(row.Input.Position, 0.4f, 0.9f, new("world", "room"), null),
             0.4f, 0.4f, MathF.PI / 4, new(new("world", "room"), row.Feet));
-        using var region = SupportAllocationRegion.Start();
         Assert.Equal(MovementAvailability.Known, lease.FindContactSupport(request, row.Query, out var support, out _));
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        MovementAvailability sampled = lease.SampleAnalyticGround(request, out var ground);
-        MovementAvailability bound = lease.BindContactSupport(request, support, out var binding);
-        long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        MovementAvailability sampled = default, bound = default;
+        MovementAnalyticGround? ground = null;
+        MovementContactSupportBinding binding = default;
+        long bytes = AllocationMeasurement.Measure(nameof(BorrowedSampleAndBindingAllocateNothing), () =>
+        {
+            sampled = lease.SampleAnalyticGround(request, out ground);
+            bound = lease.BindContactSupport(request, support, out binding);
+        });
         Assert.Equal(MovementAvailability.Known, sampled);
         Assert.Equal(MovementAvailability.Known, bound);
         Assert.Equal(ground!.Value.Owner, binding.Owner);

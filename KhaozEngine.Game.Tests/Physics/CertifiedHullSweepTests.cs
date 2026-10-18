@@ -262,6 +262,111 @@ public sealed class CertifiedHullSweepTests
         }
     }
 
+    [Theory]
+    [InlineData("faces", 256, 257)]
+    [InlineData("vertices", 508, 509)]
+    [InlineData("indices", 1524, 1525)]
+    public void HullInstalledCapBoundariesRefuseWithoutPublishingAPrefix(string member, int cap, int over)
+    {
+        WithCapHull(member, false, (world, shape, hull) =>
+        {
+            Assert.Equal(cap, CapCount(hull, member));
+            Assert.True(CapsuleSweepGeometry.TryCaptureHull(Sim(world).Shapes, shape, out _));
+            Refused(Read(world, new(-10, 0, 0), new(20, 0, 0)));
+        });
+        WithCapHull(member, true, (world, shape, hull) =>
+        {
+            Assert.Equal(over, CapCount(hull, member));
+            Assert.False(CapsuleSweepGeometry.TryCaptureHull(Sim(world).Shapes, shape, out _));
+            Refused(Read(world, new(-10, 0, 0), new(20, 0, 0)));
+        });
+    }
+
+    internal static int CapCount(in ConvexHull hull, string member)
+    {
+        if (member == "faces") return hull.FaceToVertexIndicesStart.Length;
+        if (member == "indices") return hull.FaceVertexIndices.Length;
+        var vertices = new HashSet<int>();
+        for (int i = 0; i < hull.FaceVertexIndices.Length; i++)
+            vertices.Add(hull.FaceVertexIndices[i].BundleIndex * Vector<float>.Count + hull.FaceVertexIndices[i].InnerIndex);
+        return vertices.Count;
+    }
+
+    internal static void WithCapHull(string member, bool over,
+        Action<BepuPhysicsWorld, TypedIndex, ConvexHull> inspect)
+    {
+        // A closed n-prism has n+2 faces, 2n vertices and 6n face indices.
+        // n=254 attains all three policy caps without malformed topology.
+        var points = new Vector3[508];
+        for (int i = 0; i < 254; i++)
+        {
+            float angle = i * (2 * MathF.PI / 254);
+            float x = 8 * MathF.Cos(angle), z = 8 * MathF.Sin(angle);
+            points[i * 2] = new(x, -1, z);
+            points[i * 2 + 1] = new(x, 1, z);
+        }
+        using var world = new BepuPhysicsWorld(Vector3.Zero);
+        StaticHandle handle = world.AddStatic(new ConvexHullShape(points), Pose.Identity);
+        var shapes = Sim(world).Shapes;
+        TypedIndex root = Static(world, handle).Shape;
+        TypedIndex leaf = shapes.GetShape<Compound>(root.Index).Children[0].ShapeIndex;
+        ref ConvexHull hull = ref shapes.GetShape<ConvexHull>(leaf.Index);
+        ConvexHull saved = hull;
+        var pool = (BepuUtilities.Memory.BufferPool)Field(world, "_pool");
+        BepuUtilities.Memory.Buffer<int> starts = default;
+        BepuUtilities.Memory.Buffer<HullVertexIndex> indices = default;
+        BepuUtilities.Memory.Buffer<BepuUtilities.Vector3Wide> vertices = default;
+        try
+        {
+            Assert.Equal(256, saved.FaceToVertexIndicesStart.Length);
+            Assert.Equal(508, CapCount(saved, "vertices"));
+            Assert.Equal(1524, saved.FaceVertexIndices.Length);
+            if (over && member == "faces")
+            {
+                pool.Take<int>(257, out starts);
+                saved.FaceToVertexIndicesStart.CopyTo(0, starts, 0, 256);
+                starts[256] = 1524;
+                hull.FaceToVertexIndicesStart = starts.Slice(257);
+            }
+            else if (over && member == "indices")
+            {
+                pool.Take<HullVertexIndex>(1525, out indices);
+                saved.FaceVertexIndices.CopyTo(0, indices, 0, 1524);
+                indices[1524] = indices[0];
+                hull.FaceVertexIndices = indices.Slice(1525);
+            }
+            else if (over)
+            {
+                int bundles = (509 + Vector<float>.Count - 1) / Vector<float>.Count;
+                pool.Take<BepuUtilities.Vector3Wide>(bundles, out vertices);
+                saved.Points.CopyTo(0, vertices, 0, saved.Points.Length);
+                vertices[bundles - 1] = saved.Points[saved.Points.Length - 1];
+                hull.Points = vertices.Slice(bundles);
+                pool.Take<HullVertexIndex>(1524, out indices);
+                saved.FaceVertexIndices.CopyTo(0, indices, 0, 1524);
+                // Replace one repeated incidence, retaining every original vertex identity.
+                var seen = new HashSet<int>();
+                for (int i = 0; i < 1524; i++)
+                {
+                    int key = indices[i].BundleIndex * Vector<float>.Count + indices[i].InnerIndex;
+                    if (seen.Add(key)) continue;
+                    indices[i] = new HullVertexIndex
+                    { BundleIndex = (ushort)(508 / Vector<float>.Count), InnerIndex = (ushort)(508 % Vector<float>.Count) };
+                    break;
+                }
+                hull.FaceVertexIndices = indices.Slice(1524);
+            }
+            inspect(world, root, hull);
+        }
+        finally
+        {
+            hull = saved;
+            if (starts.Allocated) pool.Return(ref starts);
+            if (indices.Allocated) pool.Return(ref indices);
+            if (vertices.Allocated) pool.Return(ref vertices);
+        }
+    }
+
     static int[] CapturedVertexBits(InstalledSweepGeometry geometry)
     {
         var bits = new List<int>();

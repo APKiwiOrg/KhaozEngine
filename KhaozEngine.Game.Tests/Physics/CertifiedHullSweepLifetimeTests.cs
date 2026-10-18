@@ -12,6 +12,32 @@ namespace KhaozEngine.Tests.Physics;
 [Collection("AllocSensitive")]
 public sealed class CertifiedHullSweepLifetimeTests
 {
+    [Theory]
+    [InlineData("faces", false)]
+    [InlineData("faces", true)]
+    [InlineData("vertices", false)]
+    [InlineData("vertices", true)]
+    [InlineData("indices", false)]
+    [InlineData("indices", true)]
+    public void HullCapBoundaryWarmRefusalAllocatesNothing(string member, bool over)
+    {
+        CertifiedHullSweepTests.WithCapHull(member, over, (world, shape, hull) =>
+        {
+            using IPhysicsQueryLease lease = world.AcquireQueryReadLease();
+            var dimensions = new CapsuleQueryDimensions(0.25f, 1);
+            Pose start = Pose.At(new(-10, 0, 0));
+            Vector3 delta = new(20, 0, 0);
+            Refused(world.SweepCapsuleCertified(dimensions, start, delta));
+            Refused(world.SweepCapsuleCertified(dimensions, start, delta));
+            CapsuleSweepResult measured = default;
+            long bytes = AllocationMeasurement.Measure(nameof(HullCapBoundaryWarmRefusalAllocatesNothing), () =>
+                measured = world.SweepCapsuleCertified(dimensions, start, delta));
+            Refused(measured);
+            Assert.Equal(0, bytes);
+            lease.AssertCurrent();
+        });
+    }
+
     [Fact]
     public void HullMutationDimensionAndExactFallbackAllocateNothing()
     {

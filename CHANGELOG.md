@@ -5,6 +5,16 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.5.1
+
+- Contact controller ground support covers more props. Players can stand on planks pitched 3 to 6 degrees at any
+  yaw, climb onto lying logs and pipes up to the step height, and walk where a sloped edge crosses joined mesh
+  triangles or statics without a pacing hitch or a false step signal (#1429, #1455, #1454). Log ends and capsule caps
+  can still refuse support, and authoritative ticks over rotated, hull, mesh and round props still wait on certified
+  shell sweeps (#1355).
+- Contact controller bodies walking off a tall lying log fall to the floor instead of hanging beside its steep
+  lower flank. A slide whose next seat fails shell clearance hands its unspent motion to the air pass (#1486).
+
 ## 21.5.0
 
 2026-10-18
@@ -24,6 +34,13 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - `GameStorage` in `KhaozEngine.Persistence` gains an internal drain scheduling seam for tests, the same one
   `PersistenceQueue` has. Public behaviour is unchanged. The Foundation tests that waited on thread-pool work
   under a short bound now run it on test-owned threads (#1467).
+- `MapDocument` and `MapPlacement` in `KhaozEngine.MapDoc` give every persisted member an explicit
+  `JsonPropertyOrder`, so moving a partial part to another file can no longer reorder saved documents, tile
+  files or tile content hashes. Saved bytes are unchanged (#1469).
+- `ReportRedactor` in `KhaozEngine.Diagnostics` runs its secret rules on the linear-time regex engine and checks
+  each rule with `IsMatch` before replacing, so clean text no longer allocates after a full collection and no
+  player-influenced log line can force a whole-report mask. Building the default rules allocates about 11.8 MB
+  once per process, and the first report spends about 70 ms preparing the matchers (#1475).
 - Contact controller support reads cost less on stairs and boxes. Exactly horizontal axis-aligned rectangular
   faces take an exact path through support extrema and contact height, axis-aligned rectangular faces certify
   their contact sign directly, and installed faces keep their query-independent edge, normal and plane facts.
@@ -31,6 +48,30 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   [phase 3 hosted verdict](docs/verification/2026-10-18-support-cost-hosted-1334-phase3.md) passes 135 of 139
   ordinary rows. The stairs mesh and hidden crate rows that still miss SG-12 are judged against the aggregate
   actor budget before a consumer pin (#1334).
+- `KhaozEngine.MapDoc` adds general world-authoring markers. Payload 2 requires `heightMode`: `Explicit` keeps
+  `Position.Y`, while `Support` binds a `MapSupportBinding` and resolves through the shared seat query. The
+  value-only `HeightProvenance` and witness-bearing `MarkerSupports` channel keep support evidence separate.
+  Payload-1 bytes and annotation digest scheme `/1` stay unchanged, while any payload-2 marker selects `/2`.
+- MapDoc format 8 is a pure version-only migration from format 7. Every native identity moves once, as it did for
+  format 7, so identity-keyed caches and navigation captures rebuild after migration.
+- Effective marker names and IDs are globally unique and refuse before any read. Repeated prefab marker names now
+  refuse until each repeat carries a marker replace override, and `MapPlacePrefab.InitialOverrides` carries those
+  overrides atomically.
+- `MapMarkerRegistry` adds lookup by ID, name, caller role and tag plus half-open rectangles. Typed player-start,
+  spawn and landmark projections and `MapMarkerSpaces` point membership expose the effective marker view.
+- Native marker editing adds one diff across every transaction, `MarkerNameChanges`, support edits that reseat or
+  remove a bound marker or refuse, `MarkerEditCommand` and `AdoptSpawnsCommand`.
+- `KhaozEngine.MapEdit.Tool` adds `marker_set`, `marker_remove`, `marker_list` and `spawns_adopt`, bringing the
+  surface to 96 tools. Native open, summary and placement queries accept marker options and native resolution,
+  while legacy spawn mutations refuse with marker guidance. `prefab_place` accepts `overridesJson`, and vector
+  queries serialize losslessly.
+- Native editor starts select a window and camera anchor from caller-supplied roles, while spawn billboards,
+  picking and focus use named native support. Public `EditorPicking.Pick` overloads omit legacy spawn boxes when
+  readouts are absent.
+- Support-bound placements and markers on sparse native floors now resolve instead of refusing missing geometry.
+  Markers stay out of `MapBuiltWorld.Bounds`, and post-staging session callbacks publish one snapshot with matching
+  document, undo and redo effects.
+- The private oracle harness adds marker comparison and `KhaozEngine.TileWorld.Netcode` as its sixth reference.
 
 ## 21.4.0
 

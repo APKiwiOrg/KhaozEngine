@@ -6,7 +6,7 @@ namespace KhaozEngine.Physics.Bepu;
 /// <summary>Closed-stratum signs over the captured local vertices and their one shared coefficient box.
 /// Squared radical comparisons are polynomials of degree at most eight. The outward path calls this owner
 /// only when its sign is undecided. No rounded vertex or coefficient midpoint defines the source.</summary>
-internal sealed class SupportFootprintSourcePredicates
+internal sealed partial class SupportFootprintSourcePredicates
 {
     readonly SupportSourcePolynomialWorkspace _work = new();
     readonly SupportSourcePolynomial[] _map = new SupportSourcePolynomial[9];

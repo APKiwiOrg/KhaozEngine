@@ -57,7 +57,13 @@ internal static partial class PrefabFixtures
             var asset = assets.GetPrefab(resource);
             var extra = new MapPrefabPlacementChild(new(MapPrefabChildKind.Placement, "extra-furniture"), new MapPlacement
             { Id = "extra-furniture", Kind = "item", AssetId = "item", X = 2.5f, Y = 0, Z = -2.5f, Scale = 1 });
-            MapPrefabOverride[] overrides = id == "a" ? new MapPrefabOverride[] { new MapPrefabAddOverride(extra.Key, extra) } : [];
+            // Marker names are globally unique, so the repeated hut and the tower built from the same hut rename theirs.
+            MapPrefabOverride[] overrides = id switch
+            {
+                "a" => new MapPrefabOverride[] { new MapPrefabAddOverride(extra.Key, extra) },
+                "b" or "tower" => MarkerNames(asset, id),
+                _ => [],
+            };
             var bindings = asset.Children.Concat(id == "a" ? new[] { extra } : Array.Empty<MapPrefabChild>())
                 .Select(c => new MapPrefabBinding(c.Key, id + "/" + c.Key.Key,
                     c.Key.Kind == MapPrefabChildKind.Placement ? ++document.NumericIdHighWaterMark : null, false)).ToArray();
@@ -70,6 +76,12 @@ internal static partial class PrefabFixtures
         }
         return new(document, assets);
     }
+
+    /// <summary>One explicit replace override per Marker child, naming it after <paramref name="instanceId"/>. A repeated
+    /// marker-bearing instance needs these, because effective marker names are globally unique and never suffixed.</summary>
+    internal static MapPrefabOverride[] MarkerNames(MapPrefabAsset asset, string instanceId) =>
+        asset.Children.OfType<MapPrefabMarkerChild>().Select(m => (MapPrefabOverride)new MapPrefabReplaceOverride(m.Key,
+            m with { Value = m.Value with { Name = m.Value.Name + " " + instanceId } })).ToArray();
 
     static MapPrefabAsset VillageHut(MapPrefabAsset original)
     {

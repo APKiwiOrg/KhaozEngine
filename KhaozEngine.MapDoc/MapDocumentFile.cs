@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using KhaozEngine.MapDoc.Markers;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Storage;
@@ -40,6 +41,7 @@ public sealed class MapDocumentLoadOptions
         RegisterMigration(4, MapSurfaceMigration.Upgrade);
         RegisterMigration(5, MapWaterMigration.Upgrade);
         RegisterMigration(6, MapPrefabMigration.Upgrade);
+        RegisterMigration(7, MapMarkerMigration.Upgrade);
     }
 
     /// <summary>Registers the transform from <paramref name="fromVersion"/> to fromVersion + 1. The step does
@@ -89,8 +91,9 @@ public static class MapDocumentFile
     /// <see cref="MapDocument.TileSize"/>, which per-tile hashing needs even for a monolithic document or a
     /// monolithic and a tiled copy of the same world would hash differently. Version and layout are
     /// independent axes. v4 adds native metadata and separate playable bounds. v5 adds the support recipe
-    /// and authored surface metadata. v6 adds bounded water. v7 adds rigid prefabs and standalone building intent.</summary>
-    public const int CurrentFormatVersion = 7;
+    /// and authored surface metadata. v6 adds bounded water. v7 adds rigid prefabs and standalone building intent. v8
+    /// adds marker payload 2 with its height mode, support binding and archetype.</summary>
+    public const int CurrentFormatVersion = 8;
 
     /// <summary>The document tile edge, in world meters, a document gets when it does not declare one (and
     /// what the v2 to v3 migration stamps). At a heavily authored density a fully authored 512 m tile is

@@ -115,10 +115,11 @@ public sealed class NativeGenericHistoryTests
         });
         session.ConvertToTiled(dir);
         var before = PrefabEditorFixtures.State(session);
-        session.Mutate((candidate, _) => { candidate.PlayerSpawns.Add(new() { Id = "native-start", X = 2, Z = -2 }); return 0; }, false);
+        var leaf = session.WithNativeAssets(c => KhaozEngine.MapDoc.Prefabs.MapPrefabResolver.Expand(c.Document, c.Assets).Placements.First());
+        session.Mutate((candidate, _) => { candidate.Placements.Add(new() { Id = "generic-item", Kind = leaf.Kind, AssetId = leaf.AssetId, X = 2, Z = -2, Y = 0 }); return 0; }, false);
         Assert.Equal((1, 1, before.EventCount + 1), session.NativeHistoryState);
-        Assert.Single(PrefabEditorFixtures.Document(session).PlayerSpawns);
-        Assert.NotNull(session.UndoNative()); Assert.Empty(PrefabEditorFixtures.Document(session).PlayerSpawns);
+        Assert.Single(PrefabEditorFixtures.Document(session).Placements, p => p.Id == "generic-item");
+        Assert.NotNull(session.UndoNative()); Assert.DoesNotContain(PrefabEditorFixtures.Document(session).Placements, p => p.Id == "generic-item");
     }
 
 }

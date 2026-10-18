@@ -27,8 +27,9 @@ internal static class PrefabEditorFixtures
         {
             var f = PrefabFixtures.Create("all-resources");
             f.Document.Placements.Add(new() { Id = "collider-control", Kind = "roof", AssetId = "roof", X = 12, Y = 0, Z = -12 });
+            // The repeated hut names its marker in the same placement, because marker names are globally unique.
             var placed = MapPrefabEdits.Prepare(f.Document, f.Assets,
-                new MapPlacePrefab("b", "hut", new(new(8, 0, 0), 0, 1), ParentRef(f))).After;
+                new MapPlacePrefab("b", "hut", new(new(8, 0, 0), 0, 1), ParentRef(f)) { InitialOverrides = PrefabFixtures.MarkerNames(f.Assets.GetPrefab("hut"), "b") }).After;
             if (variant == "two-instances") return new(placed, f.Assets);
             return new(MapPrefabEdits.Prepare(placed, f.Assets, new MapUnpackPrefab("b")).After, f.Assets);
         }

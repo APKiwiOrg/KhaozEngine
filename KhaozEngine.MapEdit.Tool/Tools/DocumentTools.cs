@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using KhaozEngine.MapDoc.Prefabs;
 using ModelContextProtocol.Server;
 
 namespace KhaozEngine.MapEdit.Tools;
@@ -10,11 +11,20 @@ namespace KhaozEngine.MapEdit.Tools;
 [McpServerToolType]
 public sealed class DocumentTools(MapEditSession session)
 {
-    [McpServerTool(Name = "map_open"), Description("Opens a map document (.map.json), replacing any open document. Optional asset manifest paths enable kind-aware rendering.")]
-    public OpenResult MapOpen(
-        [Description("Absolute or working-directory-relative path to the .map.json file.")] string path,
-        [Description("Asset manifest json paths (props and buildings) used to resolve kinds for renders. Null when none.")] string[]? manifestPaths = null)
+    /// <summary>The released C# entry point, kept for callers. The wire verb is <see cref="MapOpenWithMarkers"/>.</summary>
+    public OpenResult MapOpen(string path, string[]? manifestPaths = null)
         => ToolGuard.Guard(() => session.Open(path, manifestPaths));
+
+    [McpServerTool(Name = "map_open"), Description("Opens a map document (.map.json), replacing any open document. Optional asset manifest paths enable kind-aware rendering. " +
+        "Optional markerOptionsJson is the caller's closed marker configuration, {roles?:{playerStartRole,spawnRole,landmarkRole}, legacySpawnSurfaceId?}. " +
+        "The player start role anchors a windowed native document, and legacySpawnSurfaceId is the one Surface owner unadopted native spawns are read on. Nothing is defaulted.")]
+    public OpenResult MapOpenWithMarkers(
+        [Description("Absolute or working-directory-relative path to the .map.json file.")] string path,
+        [Description("Asset manifest json paths (props and buildings) used to resolve kinds for renders. Null when none.")] string[]? manifestPaths = null,
+        [Description("Closed marker options JSON. Null opens with no roles and no Surface owner.")] string? markerOptionsJson = null)
+        => ToolGuard.Guard(() => markerOptionsJson is null
+            ? session.Open(path, manifestPaths)
+            : session.Open(path, manifestPaths, MapPrefabJson.ReadMarkerOptions(markerOptionsJson)));
 
     [McpServerTool(Name = "map_create"), Description("Creates a fresh map document with one default open Meadow biome band, validates and saves it, then keeps it open.")]
     public OpenResult MapCreate(
@@ -40,7 +50,8 @@ public sealed class DocumentTools(MapEditSession session)
         [Description("When true, also runs whole-world tiled verification against every tile on disk without loading them into the session. Requires a tiled document. Defaults to false.")] bool verifyWholeWorld = false)
         => ToolGuard.Guard(() => session.Validate(verifyWholeWorld));
 
-    [McpServerTool(Name = "map_summary"), Description("Returns a flat summary of the open document: identity, bounds, terrain seed and water level, feature types in fold order, layer and companion names, section counts, player spawn ids, region names, and the dirty flag.")]
+    [McpServerTool(Name = "map_summary"), Description("Returns a flat summary of the open document: identity, bounds, terrain seed and water level, feature types in fold order, layer and companion names, section counts, legacy player spawn ids, region names, and the dirty flag. " +
+        "A whole native document also reports its effective marker counts and the player start IDs of the role given at map_open.")]
     public MapSummary MapSummary()
         => ToolGuard.Guard(session.Summary);
 

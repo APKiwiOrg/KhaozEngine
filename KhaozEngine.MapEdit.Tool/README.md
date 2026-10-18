@@ -130,7 +130,7 @@ These are service APIs. Water MCP registrations remain with R10, so the register
 
 ## Prefab assets and native history
 
-The 20.40.0 native surface uses MapDoc format 7 and prefab payload 1. Rebuild identity-keyed caches/captures
+The 21.5.0 native surface uses MapDoc format 8 and prefab payload 1. Rebuild identity-keyed caches/captures
 when adopting its effective resource policy. Light and Support resources require the `resourceSchema`
 discriminant documented in the [MapDoc reference](../KhaozEngine.MapDoc/README.md#rigid-prefab-payloads-and-building-intent).
 Unmarked bytes retain their released opaque meaning, and typed consumers refuse them clearly.
@@ -168,7 +168,9 @@ and R10.
 `PrefabVillageWorkflowTests` drives the invented public village through these shared services and
 real MCP calls. A tool author opens an immutable definition with `prefab_open`, makes keyed local
 water, paint or marker edits with `prefab_edit`, then publishes with `prefab_save`. `prefab_place`
-accepts non-grid XYZ, yaw 0.371 and scales 0.8 or 1.2. Whole-building moves use
+accepts non-grid XYZ, yaw 0.371 and scales 0.8 or 1.2. Its optional `overridesJson` is a JSON array
+of closed keyed overrides that the new instance starts with, validated in the same placement, so a repeated
+marker-bearing prefab gives its marker a unique name in one accepted placement. Whole-building moves use
 `MutationService.PrefabApply(new MapMovePrefab(...))`. Overrides and unpack use `prefab_override`
 and `prefab_unpack`. Undo/redo restore matching roots, bindings, closure and effective resources.
 Save/reopen preserves leaf IDs and the digest-addressed versions. Other maps retain their pins.
@@ -178,6 +180,76 @@ Its `Mutation` carries `Verb`, `Detail` and `WorldChanged`, and `Effects` carrie
 invalidation flags and affected typed IDs. The same response shape comes from `PrefabApply` and
 `InteriorApply`. The [MapDoc handoff table](../KhaozEngine.MapDoc/README.md#public-synthetic-village-acceptance)
 records the remaining GUI input, rendering, controller and whole verb-map parity gates.
+
+## Markers
+
+`marker_set(markerJson)`, `marker_remove(id)` and `marker_list(...)` are additive verbs over
+`MutationService.MarkerApply` and `QueryService.MarkerList`, the same command and list the GUI uses. `markerJson` is
+one closed local marker in world terms, read by `MapPrefabJson.ReadMarker`. Payload 1 keeps its height in
+`Position.Y`. Payload 2 requires `heightMode`. Explicit keeps `Position.Y` as the height, and Support carries a
+`supportBinding` with `Position.Y` exactly 0. The marker ID is the upsert key. A set with a new name renames the
+marker and keeps its ID. A framed standalone marker stores the frame-local equivalent of the world values. A live
+prefab marker refuses with `prefab_override` guidance, and an ID held by a retained prefab reservation refuses. Both
+edit verbs return `MapPrefabMutationResult`, whose `Mutation.Verb` is the verb name, `Mutation.Id` the marker ID and
+`Mutation.WorldChanged` false. `Effects` is the shared marker diff: metadata edits carry the marker ID and rename row
+with no invalidation, and spatial edits add both point boxes with Residency only. Undo and redo use `prefab_undo` and
+`prefab_redo`.
+
+`marker_list(name?, role?, tag?, enabledOnly = false, minX?, minZ?, maxX?, maxZ?)` returns effective markers in
+ordinal ID order with resolved heights. Every given filter must match. The name is an exact optional filter, never a
+key. The rectangle is half-open, minima included and maxima excluded, and its four bounds are given together or not
+at all. A document with neither building intent nor prefabs returns an empty list without expansion. A resolver
+(1, 1) native document refuses `marker_set` and `marker_remove` and names resolver adoption through
+`MapResolverAdoption.ConvertToAuthoredSupport` as the prerequisite.
+
+`spawns_adopt(choicesJson)` calls `MutationService.SpawnsAdopt` through the shared `AdoptSpawnsCommand`. It returns
+`MapPrefabMutationResult` with `Mutation.Verb` `spawns_adopt`, `WorldChanged` false and the shared marker effects.
+Undo and redo use `prefab_undo` and `prefab_redo`. The closed JSON array gives exactly one row for every source in
+both legacy lists. Each row has `kind` (`Spawn` or `PlayerSpawn`), `id`, `markerId`, `name`, `role`, `height` and
+optional `yawRadians`. Height is either `{"explicitY":12.25}` or `{"supportBinding":{"kind":"Surface","surfaceId":"floor"}}`.
+Space bindings use the same closed shape as marker_set. Unknown or duplicate fields, explicit nulls and duplicate
+source keys refuse before constructing the choice dictionary. Destination IDs and names must be distinct, and IDs
+cannot reuse live markers or retained reservations. NPC yaw defaults to 0 and player yaw is copied unless chosen.
+
+Both legacy lists clear together only after every marker and its support validates. Old native lists still load,
+save and survive unrelated edits. Every native legacy spawn mutation, element duplication and generic callback
+that changes either list refuses with marker and adoption guidance. Only the accepted adoption command and its
+exact undo restoration can change those lists. Resolver (1, 1) requires resolver adoption first. The eleven analytic
+`spawn_*` and `player_spawn_*` verbs keep their released behavior.
+
+`MarkerVillageWorkflowTests` drives the invented marker village through `MutationService` on one session and the
+real MCP verbs on another, with one 60 s timeout per request. Creation, a duplicate-name refusal, a local replace
+override through `prefab_override`, `prefab_unpack`, world-terms `marker_set` edits of a transferred and a standalone
+marker, `spawns_adopt`, `prefab_undo`, `prefab_redo`, `map_save`, reopen through `map_open` and a half-open
+`marker_list` rectangle give identical documents, effects, refusals and history. Whole-building moves have no wire
+verb, so both sessions use `MutationService.PrefabApply(new MapMovePrefab(...))`, at yaw 0.371 and scales 0.8 and 1.2.
+Whole verb-map parity remains R10 work.
+
+### Marker consumers
+
+`map_open(path, manifestPaths?, markerOptionsJson?)` takes the caller's closed marker configuration,
+`{"roles":{"playerStartRole":"start-role","spawnRole":"spawn-role","landmarkRole":"landmark-role"},"legacySpawnSurfaceId":"floor"}`, read by
+`MapPrefabJson.ReadMarkerOptions`. Both members are optional, all three role names are required when `roles` is
+given, and unknown members, repeated members and explicit nulls refuse. The tool defines no role and no Surface owner.
+`MapEditSession.Open(path, manifestPaths, markerOptions)` stages these options together with the document, so a refused
+open keeps the prior document, options and history. The released C# `Open(path, manifestPaths)` and
+`DocumentTools.MapOpen` remain and stage no options.
+
+With a player start role, a windowed native manifest centres its window on the nearest enabled marker of that role,
+read from root metadata and verified prefab bytes. The released complete native validation still runs, so a windowed
+native open keeps its released refusal and windowed native editing stays out of scope. On a whole resolver-2 native
+document, `map_summary.markers` reports the effective marker total and enabled count from the same complete
+validation as `native`, plus the configured role and its player start IDs, all and enabled. Analytic documents omit
+it. `spawnCount`, `playerSpawnCount` and `playerSpawnIds` stay legacy list counts.
+
+`placements_in_rect` keeps its signature and inclusive rectangle, unlike the half-open `marker_list` rectangle. On a
+resolver-2 native document, placements come from the actual native resolution, prefab placements included, and a
+support-bound placement reports its seated height. Unadopted legacy spawns sample `legacySpawnSurfaceId` at their XZ and
+carry the Supported `support` answer, with `groundY` its height. Any other status refuses the query, naming each spawn,
+its status and the Surface owner. Without that owner, a rectangle holding a legacy spawn refuses. Both refusals give
+`spawns_adopt` and `marker_set` guidance. The `support` normal crosses the wire as `x`, `y` and `z` through MapDoc's
+vector converter on the query tool options. Analytic and resolver (1, 1) documents keep their released field readouts
+and omit `support`.
 
 ## Native colliders
 
@@ -248,7 +320,8 @@ or under `MapEditSession.WholeWorldTileLimit` occupied tiles (default 512) loads
 `map_open` windows instead: the manifest plus the tiles inside a square around a nearby enabled player spawn,
 radius `EditorWindowRadius` tiles (default 2, `MapDocumentWindowing.DefaultEditorWindowRadius`). The shared
 `MapDocumentWindowing` policy searches at most 32 occupied tiles nearest the bounds center, with deterministic
-coordinate ordering, and falls back to the bounds center if that search finds no enabled spawn.
+coordinate ordering, and falls back to the bounds center if that search finds no enabled spawn. A native
+document opened with a player start role anchors on its nearest enabled start marker first (see Marker consumers).
 `map_save` always writes back in the form and directory the document came from
 (`MapDocumentFile.SaveAuto`), never converting implicitly. `window_status` reports the loaded window's
 tile and world rect plus the occupied/loaded tile counts, `Tiled` false for a monolithic or in-memory
@@ -308,7 +381,7 @@ GPU with a scatter-free document (flat terrain and a single marker placement), a
 to 1.4 s (the higher figure includes first device start-up) and a capped 2 km square about 0.9 s. A document with
 dense scatter layers pays for every scattered prop inside the widened ring as well, so expect longer renders.
 
-## Verb surface (92 tools)
+## Verb surface (96 tools)
 
 | Group | Verbs |
 |---|---|
@@ -325,6 +398,7 @@ dense scatter layers pays for every scattered prop inside the widened ring as we
 | Renders | `render_topdown`, `render_view` |
 | Prefabs | `prefab_open`, `prefab_edit`, `prefab_save`, `prefab_extract`, `prefab_place`, `prefab_list`, `prefab_override`, `prefab_unpack`, `prefab_undo`, `prefab_redo` |
 | Interiors | `interior_volume_add`, `interior_volume_set`, `interior_volume_remove`, `roof_link_set` |
+| Markers | `marker_set`, `marker_remove`, `marker_list`, `spawns_adopt` |
 
 `scatter_override_rename(index, name?)` renames the scatter override at `index`, a null or empty name
 clearing it back to unnamed. `scatter_override_reorder(fromIndex, toIndex)` moves a scatter override

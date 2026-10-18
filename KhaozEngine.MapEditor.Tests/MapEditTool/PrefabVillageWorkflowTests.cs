@@ -82,8 +82,10 @@ public sealed class PrefabVillageWorkflowTests
         EqualDocuments();
         var change = new MapPrefabPlacementOverride(new(MapPrefabChildKind.Placement, "item"), null, null, new[] { "furnished", "first", "second" });
         EqualMutation(mutation.PrefabApply(new MapSetPrefabOverride("a", change)), tools.PrefabOverride("a", Json<MapPrefabOverride>(change)));
-        EqualMutation(mutation.PrefabApply(new MapPlacePrefab("tool-canopy", "canopy", new(new(32.25f, 5, -18.125f), 0.371f, 1.2f))),
-            tools.PrefabPlace("tool-canopy", "canopy", 32.25f, 5, -18.125f, 0.371f, 1.2f));
+        // A second canopy names its marker in the same placement, because marker names are globally unique.
+        var names = PrefabFixtures.MarkerNames(direct.WithNativeAssets(c => c.Assets.GetPrefab("canopy")), "tool-canopy");
+        EqualMutation(mutation.PrefabApply(new MapPlacePrefab("tool-canopy", "canopy", new(new(32.25f, 5, -18.125f), 0.371f, 1.2f)) { InitialOverrides = names }),
+            tools.PrefabPlaceWithOverrides("tool-canopy", "canopy", 32.25f, 5, -18.125f, 0.371f, 1.2f, overridesJson: Json(names)));
         string packed = Bytes(direct);
         var before = PrefabEditorFixtures.Document(direct).Prefabs!.Instances.Single(i => i.Id == "a");
         EqualMutation(mutation.PrefabApply(new MapUnpackPrefab("a")), tools.PrefabUnpack("a"));
@@ -134,7 +136,9 @@ public sealed class PrefabVillageWorkflowTests
         Assert.Equal(effective.Digest, reload.Digest);
         Assert.Equal(effective.Placements.Select(p => (p.PlacementId, p.NumericId)), reload.Placements.Select(p => (p.PlacementId, p.NumericId)));
         Assert.Equal(0.75f, new PrefabService(reopened).Open(bathA.Resource.Id).Children.OfType<MapPrefabWaterChild>().Single().Value.SurfaceY);
-        Assert.All(MapEffectiveAnnotations.Markers(effective).Where(m => m.InstanceId is "a" or "b"), m => Assert.Equal("Village arrival", m.Name));
+        // The asset edit renames a's marker. Repeated instance b keeps its explicit replace override name.
+        Assert.Equal(new[] { ("a", "Village arrival"), ("b", "Entry b") },
+            MapEffectiveAnnotations.Markers(effective).Where(m => m.InstanceId is "a" or "b").Select(m => (m.InstanceId!, m.Name)));
         Assert.All(effective.PaintRegions["exterior"].Regions, r => Assert.Equal((ushort)8, r.Material.Underlay));
 
         void Edit(MapPrefabChild child)
@@ -210,6 +214,95 @@ public sealed class PrefabVillageWorkflowTests
         {
             var result = await harness.Client.CallAsync(name, args);
             Assert.False(result.IsError == true, name + ": " + string.Join("\n", result.Content.OfType<TextContentBlock>().Select(c => c.Text)));
+            return result;
+        }
+    }
+
+    [Fact]
+    public async Task SecondInstance_InitialNameOverridePlacesAtomically()
+    {
+        var f = PrefabFixtures.Village();
+        var direct = PrefabEditorFixtures.Session(f);
+        var mutation = new MutationService(direct);
+        var seed = PrefabEditorFixtures.Session(f);
+        await using var harness = await McpWire.StartAsync();
+        Assert.False((await harness.Client.CallAsync("map_open", new Dictionary<string, object?> { ["path"] = seed.DocumentPath })).IsError == true);
+        var live = harness.Services.GetRequiredService<MapEditSession>();
+        var place = Assert.Single(await harness.Client.ListAsync(), t => t.Name == "prefab_place");
+        Assert.True(place.JsonSchema.GetProperty("properties").TryGetProperty("overridesJson", out _));
+        byte[] Canopy(MapEditSession session) => session.WithNativeAssets(c => c.Assets.CapturedResources.Single(r => r.Reference.Id == "canopy").Bytes.ToArray());
+        byte[] canopyBytes = Canopy(direct);
+        var entry = direct.WithNativeAssets(c => c.Assets.GetPrefab("canopy")).Children.OfType<MapPrefabMarkerChild>().Single();
+        MapPrefabOverride Named(string name) => new MapPrefabReplaceOverride(entry.Key, entry with { Value = entry.Value with { Name = name } });
+        MapPlacePrefab Request(string id, float x, float z, params MapPrefabOverride[] overrides) =>
+            new(id, "canopy", new(new(x, 5, z), 0.371f, 1.2f)) { InitialOverrides = overrides };
+
+        var first = Request("canopy-a", 32.25f, -18.125f, Named("arrival-a"));
+        Assert.True(mutation.PrefabApply(first).Mutation.WorldChanged);
+        await Place(first, true);
+        string afterFirst = Bytes(direct);
+        Assert.Equal(afterFirst, Bytes(live));
+        var history = direct.NativeHistoryState;
+        var liveHistory = live.NativeHistoryState;
+
+        // The same second request without its override, and one with duplicate initial keys, refuse without any trace.
+        var second = Request("canopy-b", 28.25f, -26.125f);
+        foreach (var (request, fault) in new[] { (second, "duplicate marker name 'Canopy entry'"),
+            (second with { InitialOverrides = new[] { Named("arrival-b"), Named("arrival-c") } }, "Duplicate initial override") })
+        {
+            var refused = Assert.Throws<MapDocumentException>(() => mutation.PrefabApply(request));
+            Assert.Contains(fault, refused.Message, StringComparison.Ordinal);
+            Assert.Contains(fault, Text(await Place(request, false)), StringComparison.Ordinal);
+            Assert.Equal(afterFirst, Bytes(direct)); Assert.Equal(afterFirst, Bytes(live));
+            Assert.Equal(history, direct.NativeHistoryState); Assert.Equal(liveHistory, live.NativeHistoryState);
+            Assert.DoesNotContain(PrefabEditorFixtures.Document(direct).Prefabs!.Instances, i => i.Id == "canopy-b");
+        }
+
+        var accepted = second with { InitialOverrides = new[] { Named("arrival-b") } };
+        Assert.True(mutation.PrefabApply(accepted).Mutation.WorldChanged);
+        await Place(accepted, true);
+        string afterSecond = Bytes(direct);
+        Assert.Equal(afterSecond, Bytes(live));
+        var instances = PrefabEditorFixtures.Document(direct).Prefabs!.Instances.Where(i => i.Id is "canopy-a" or "canopy-b").ToArray();
+        Assert.Equal(2, instances.Length);
+        Assert.All(instances, i => Assert.False(i.Removed));
+        var markers = MapEffectiveAnnotations.Markers(Effective(direct));
+        Assert.Equal(new[] { ("canopy/entry", "Canopy entry"), ("prefab/canopy-a/Marker/entry", "arrival-a"), ("prefab/canopy-b/Marker/entry", "arrival-b") },
+            markers.Where(m => m.InstanceId is "canopy" or "canopy-a" or "canopy-b").Select(m => (m.Id, m.Name)));
+        Assert.Equal(markers.Count, markers.Select(m => m.Name).Distinct(StringComparer.Ordinal).Count());
+        var bindings = instances.Single(i => i.Id == "canopy-b").Bindings.Entries.ToArray();
+        Assert.Equal(new MapPrefabOverride[] { Named("arrival-b") }.Select(o => Json(o)), instances.Single(i => i.Id == "canopy-b").Overrides.Select(o => Json(o)));
+
+        Assert.NotNull(direct.UndoNative());
+        Assert.False((await harness.Client.CallAsync("prefab_undo", new Dictionary<string, object?>())).IsError == true);
+        // Undo keeps the second instance's reservations as a removed tombstone, and its marker leaves the world.
+        Assert.Equal(Bytes(direct), Bytes(live));
+        var tombstone = Assert.Single(PrefabEditorFixtures.Document(direct).Prefabs!.Instances, i => i.Id == "canopy-b");
+        Assert.True(tombstone.Removed);
+        Assert.Equal(bindings.Select(b => (b.Child, b.WorldId, b.NumericId)), tombstone.Bindings.Entries.Select(b => (b.Child, b.WorldId, b.NumericId)));
+        Assert.DoesNotContain(MapEffectiveAnnotations.Markers(Effective(direct)), m => m.InstanceId == "canopy-b");
+        Assert.NotNull(direct.RedoNative());
+        Assert.False((await harness.Client.CallAsync("prefab_redo", new Dictionary<string, object?>())).IsError == true);
+        Assert.Equal(afterSecond, Bytes(direct)); Assert.Equal(afterSecond, Bytes(live));
+        Assert.Equal(bindings, PrefabEditorFixtures.Document(direct).Prefabs!.Instances.Single(i => i.Id == "canopy-b").Bindings.Entries.ToArray());
+        Assert.Equal(canopyBytes, Canopy(direct));
+        Assert.Equal(canopyBytes, Canopy(live));
+
+        async Task<CallToolResult> Place(MapPlacePrefab request, bool succeeds)
+        {
+            var args = new Dictionary<string, object?>
+            {
+                ["instanceId"] = request.InstanceId,
+                ["resourceId"] = request.ResourceId,
+                ["x"] = request.Transform.Position.X,
+                ["y"] = request.Transform.Position.Y,
+                ["z"] = request.Transform.Position.Z,
+                ["yaw"] = request.Transform.YawRadians,
+                ["scale"] = request.Transform.Scale,
+            };
+            if (request.InitialOverrides.Count != 0) args["overridesJson"] = Json(request.InitialOverrides.ToArray());
+            var result = await harness.Client.CallAsync("prefab_place", args);
+            Assert.Equal(!succeeds, result.IsError == true);
             return result;
         }
     }

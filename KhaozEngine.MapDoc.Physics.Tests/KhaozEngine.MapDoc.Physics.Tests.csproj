@@ -19,6 +19,6 @@
     <ProjectReference Include="../KhaozEngine.Sharding/KhaozEngine.Sharding.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="../KhaozEngine.MapDoc.Tests/Prefabs/*Fixtures.cs" Link="Prefabs/%(Filename)%(Extension)" />
+    <Compile Include="../KhaozEngine.MapDoc.Tests/**/*Fixtures.cs" Link="MapDocFixtures/%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

@@ -68,7 +68,8 @@ internal static partial class PrefabFixtures
             string id = i == 0 ? "a" : "copy" + i;
             var bindings = asset.Children.Select(c => new MapPrefabBinding(c.Key, id + "/" + c.Key.Key,
                 c.Key.Kind == MapPrefabChildKind.Placement ? ++document.NumericIdHighWaterMark : null, false)).ToArray();
-            var instance = new MapPrefabInstance(id, "hut", sha, poses[i], parent, new(bindings), []);
+            // Every copy after the first renames its marker, because marker names are globally unique.
+            var instance = new MapPrefabInstance(id, "hut", sha, poses[i], parent, new(bindings), i == 0 ? [] : MarkerNames(asset, id));
             document.Prefabs = new(1, 1, document.Prefabs.Instances.Append(instance).ToArray(), []);
             var plan = MapPrefabBindingPlanner.Plan(document, asset, assets, id, instance.Bindings);
             document.Prefabs = new(1, 1, document.Prefabs.Instances.Select(p => p.Id == id ? p with { Bindings = plan.Bindings } : p).ToArray(), []);

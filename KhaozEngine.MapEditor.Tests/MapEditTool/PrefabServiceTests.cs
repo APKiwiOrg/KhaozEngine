@@ -53,7 +53,9 @@ public sealed class PrefabServiceTests
         Assert.NotNull(session.UndoNative());
         Assert.Equal(before.Identity, PrefabEditorFixtures.State(session).Identity);
         Assert.NotNull(session.RedoNative());
-        Assert.All(session.WithNativeAssets(c => MapEffectiveAnnotations.Markers(MapPrefabResolver.Expand(c.Document, c.Assets))), m => Assert.Equal("Changed", m.Name));
+        // The asset edit renames a's marker. Repeated instance b keeps its explicit replace override name.
+        Assert.Equal(new[] { ("a", "Changed"), ("b", "Entry b") }, session.WithNativeAssets(c =>
+            MapEffectiveAnnotations.Markers(MapPrefabResolver.Expand(c.Document, c.Assets))).Select(m => (m.InstanceId!, m.Name)));
     }
     [Fact]
     public void RejectedOrCancelledEdit_LeavesHistoryIdentityAndDirtyUntouched()

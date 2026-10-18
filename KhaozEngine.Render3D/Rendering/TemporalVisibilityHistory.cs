@@ -51,6 +51,9 @@ internal sealed class TemporalVisibilityHistory : IDisposable
             var white = new byte[checked((int)(w * h * 4))];
             for (int i = 0; i < white.Length; i += 4) { white[i + 2] = 0x80; white[i + 3] = 0x3f; }
             _gd.UpdateTexture(_fallback, white, 0, 0, w, h);
+            // Synthetic callers may seed already-valid colour history before their first resolve.
+            // Both sides of their constant fully lit signal must agree on that first frame too.
+            for (int i = 0; i < 2; i++) _gd.UpdateTexture(_history[i]!, white, 0, 0, w, h);
         }
         _current = inputs.KeyVisibility ?? _fallback
             ?? throw new InvalidOperationException("The visibility diagnostic needs its lit-pass attachment.");

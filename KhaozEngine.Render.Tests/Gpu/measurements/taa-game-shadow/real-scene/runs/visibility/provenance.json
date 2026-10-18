@@ -6,13 +6,102 @@
   "initial_hosted_run": {
     "id": 39131215312,
     "source": "e62236e561120669f6ca6be4c237c8cb46d50554",
-    "token": "vis-release-0.1"
+    "token": "vis-release-0.1",
+    "status": "completed",
+    "conclusion": "cancelled",
+    "mask": 16777216,
+    "filter": "point PCF",
+    "results": "hosted/39131215312/results.json",
+    "failures": "hosted/39131215312/failures.md",
+    "backends": {
+      "direct3d11-native": {
+        "counts": {
+          "Total tests": "Unknown",
+          "Passed": 893,
+          "Failed": 312,
+          "Skipped": null
+        },
+        "aborted": true,
+        "token_stamp": [
+          "Visibility archive token vis-release-0.1, startup mask 16777216, MRT enabled True"
+        ]
+      },
+      "metal-native": {
+        "counts": {
+          "Total tests": 1360,
+          "Passed": 1350,
+          "Failed": 10,
+          "Skipped": null
+        },
+        "aborted": false,
+        "token_stamp": [
+          "Visibility archive token vis-release-0.1, startup mask 16777216, MRT enabled True"
+        ]
+      },
+      "vulkan-native": {
+        "counts": {
+          "Total tests": 1360,
+          "Passed": 1355,
+          "Failed": 5,
+          "Skipped": null
+        },
+        "aborted": false,
+        "token_stamp": [
+          "Visibility archive token vis-release-0.1, startup mask 16777216, MRT enabled True"
+        ]
+      }
+    },
+    "note": "All backend artifacts saved before cancelling orphaned Windows cleanup. Fully terminal before corrected dispatch."
   },
   "corrected_hosted_run": {
     "id": 39139863925,
     "source": "50c8c6f3657e23df28fe33fffea845691169f0e1",
-    "status": "in_progress",
-    "token": "shadow-bilinear-3x3,vis-release-0.1"
+    "status": "completed",
+    "token": "shadow-bilinear-3x3,vis-release-0.1",
+    "conclusion": "failure",
+    "mask": 20971520,
+    "filter": "shadow-bilinear-3x3",
+    "results": "hosted/39139863925/results.json",
+    "failures": "hosted/39139863925/failures.md",
+    "backends": {
+      "direct3d11-native": {
+        "counts": {
+          "Total tests": 1360,
+          "Passed": 1352,
+          "Failed": 8,
+          "Skipped": null
+        },
+        "aborted": false,
+        "token_stamp": [
+          "Visibility archive token shadow-bilinear-3x3,vis-release-0.1, startup mask 20971520, MRT enabled True"
+        ]
+      },
+      "metal-native": {
+        "counts": {
+          "Total tests": 1360,
+          "Passed": 1354,
+          "Failed": 6,
+          "Skipped": null
+        },
+        "aborted": false,
+        "token_stamp": [
+          "Visibility archive token shadow-bilinear-3x3,vis-release-0.1, startup mask 20971520, MRT enabled True"
+        ]
+      },
+      "vulkan-native": {
+        "counts": {
+          "Total tests": 1360,
+          "Passed": 1358,
+          "Failed": 2,
+          "Skipped": null
+        },
+        "aborted": false,
+        "token_stamp": [
+          "Visibility archive token shadow-bilinear-3x3,vis-release-0.1, startup mask 20971520, MRT enabled True"
+        ]
+      }
+    },
+    "note": "All backends completed 1360 tests. Six D3D11 count-probe facts blocked by FXC X4555. No third dispatch or retry."
   },
   "capture_conditions": [
     "back15",
@@ -21,5 +110,8 @@
     "ground15"
   ],
   "start_time": 0.49777777777777776,
-  "note": "Initial higher-threshold main captures are reused only after final-package image identity checks. Main resolve and lit visibility shader calculations are unchanged by the fully lit fallback, CRLF and transparent-output corrections."
+  "note": "Initial higher-threshold main captures are reused only after final-package image identity checks. Main resolve and lit visibility shader calculations are unchanged by the fully lit fallback, CRLF and transparent-output corrections.",
+  "hosted_dispatches": 2,
+  "monitor": "deleted after corrected matrix completed",
+  "hosted_reading": "Both selections fail shadow acceptance. Corrected Metal reproduces local counts. Bilinear pinned-reference changes are expected filter movement. D3D11 count-probe compilation is not a numeric visibility measurement and its baseline status is unmeasured."
 }

@@ -1951,3 +1951,73 @@ The corrected matrix is [39139863925](https://github.com/APKiwiOrg/KhaozEngine/a
 `50c8c6f3657e23df28fe33fffea845691169f0e1`, token `shadow-bilinear-3x3,vis-release-0.1`.
 It is the one additional matrix the owner approved. Its results are recorded separately from the first point-PCF
 run, because both the source and selected filter differ.
+
+
+The corrected run is now fully terminal with conclusion `failure`. All three backends completed 1360 tests,
+with no test-host abort. Each artifact stamps `shadow-bilinear-3x3,vis-release-0.1`, startup mask 20971520 and
+MRT enabled. The monitor was deleted after completion. No tests or workflows were retried.
+
+| Run and selection | Backend | Passed | Failed | Total | Reading |
+| --- | --- | ---: | ---: | ---: | --- |
+| 39131215312, point, release 0.1 | Metal | 1350 | 10 | 1360 | 4 inherited identity, 3 fixed seeded-history, 2 shadow, 1 invalid no-GC window |
+| 39131215312, point, release 0.1 | Vulkan | 1355 | 5 | 1360 | 3 fixed seeded-history and 2 shadow |
+| 39131215312, point, release 0.1 | D3D11 | 893 | 312 | unknown | CRLF constructor failures, later host abort |
+| 39139863925, bilinear 3x3, release 0.1 | Metal | 1354 | 6 | 1360 | 4 inherited identity and 2 shadow facts |
+| 39139863925, bilinear 3x3, release 0.1 | Vulkan | 1358 | 2 | 1360 | 2 shadow facts |
+| 39139863925, bilinear 3x3, release 0.1 | D3D11 | 1352 | 8 | 1360 | 2 shadow facts and 6 blocked count-probe facts |
+
+The first source is `e62236e561120669f6ca6be4c237c8cb46d50554`, token `vis-release-0.1`, mask 16777216.
+The corrected source is `50c8c6f3657e23df28fe33fffea845691169f0e1`, token
+`shadow-bilinear-3x3,vis-release-0.1`, mask 20971520. Both synchronization-validation jobs pass. This does not
+waive any correctness failure. Source, token, job status and full failure messages remain separate for each run
+in [provenance](runs/visibility/provenance.json), the
+[first bounds report](runs/visibility/hosted/39131215312/failures.md) and the
+[corrected bounds report](runs/visibility/hosted/39139863925/failures.md).
+
+Corrected-run shadow regressions are below. A failing fact can report several metrics. Bounds use the printed
+precision, including the rim baseline rounding allowance. No bound was relaxed.
+
+| Backend | Metric | Value | Bound |
+| --- | --- | ---: | ---: |
+| Metal | Native S 8 advancing textured tail | 0.004590698 | 0.004294647 |
+| Metal | Native S 8 retreating textured tail | 0.008260028 | 0.008205018 |
+| Metal | Quality M 0.5 leading flat error | 0.010466 | 0.01023825 |
+| Metal | Quality M 1 trailing textured temporal error | 0.010086 | 0.00886655 |
+| Vulkan | Native S 8 advancing textured tail | 0.004587868 | 0.004376754 |
+| Vulkan | Quality M 0.5 leading flat error | 0.010496 | 0.01031745 |
+| Vulkan | Quality M 1 trailing textured temporal error | 0.009544 | 0.00888635 |
+| D3D11 | Native S 8 advancing textured tail | 0.004592178 | 0.0042527325 |
+| D3D11 | Native S 8 retreating textured tail | 0.008249826 | 0.0081778425 |
+| D3D11 | Quality M 0.5 leading flat error | 0.010531 | 0.01029765 |
+| D3D11 | Quality M 1 trailing textured temporal error | 0.009788 | 0.00918115 |
+
+The bilinear filter also changes the pinned spatial references in the rim fact on all three backends. The
+largest absolute change is 0.000336 against the unchanged 0.000001 identity bound. These expected filter
+movements are listed individually in the bounds report, separately from the temporal regressions above.
+Metal's four inherited entry-identity failures match the original archive noop control, including maximum
+color difference 0.010253906 and maximum lock difference 0.00048828125 against exact identity. Vulkan passes its existing
+bounded-color and exact-state policy. D3D11 passes the exact-identity policy.
+
+The corrected D3D11 count-probe shader `adc057aa1373` fails FXC validation with X4555, cannot use casts on
+l-values, at emitted fragment line 82. Five `TemporalCountProbeGpuTests` and the count-probe allocation fact
+are blocked by this same exception. These six facts have no numeric measurement. Their baseline status is
+unmeasured, so they are not claimed as either visibility regressions or inherited failures. The full suite
+continues and records all 1360 outcomes. The CRLF splice and seeded-history failures from the first run are
+absent. No infrastructure retry or third matrix was dispatched. This backend compatibility finding is
+reported without widening the archive implementation.
+
+The hosted result agrees with the local rejection. Exact lit visibility is useful evidence, but this raw
+reprojected footprint does not meet the requirement that every detail guard retain its reference value.
+The combination is the next prototype direction after correcting visibility correspondence and confidence,
+not a shipping fix. Both archives remain unmerged.
+
+To collect these existing runs again, download only their saved measurement artifacts and run the collector.
+This does not launch tests or dispatch another workflow.
+
+~~~bash
+gh run download 39139863925 --repo APKiwiOrg/KhaozEngine \
+  --pattern 'filtered-render-measurements-*' --dir "$HOST_DOWNLOAD"
+python3 KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/scripts/hosted_visibility_report.py \
+  "$HOST_DOWNLOAD" KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/runs/visibility/hosted/39139863925 \
+  39139863925 50c8c6f3657e23df28fe33fffea845691169f0e1
+~~~

@@ -4417,7 +4417,7 @@ KhaozEngine.Render.Tests\bin\Release\net10.0\KhaozEngine.Render.Tests.dll
    at KhaozEngine.Tests.Gpu.TemporalDisocclusionGpuTests.ARevealedBackgroundCarriesNoHistoryFromItsOccluder(Boolean textured, TemporalUpscale preset) in KhaozEngine.Render.Tests\Gpu\TemporalDisocclusionGpuTests.cs:line 55
    at InvokeStub_TemporalDisocclusionGpuTests.ARevealedBackgroundCarriesNoHistoryFromItsOccluder(Object, Span`1)
    at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
-Silhouette evidence: C:\Users\runneradmin\AppData\Local\Temp\khaoz-outline-evidence\silhouette_continuity.png
+Silhouette evidence: scratch/khaoz-outline-evidence\silhouette_continuity.png
 [xUnit.net 00:02:12.13]     KhaozEngine.Tests.Gpu.TemporalDisocclusionGpuTests.TheRevealTableCoversEveryPreset [FAIL]
 [xUnit.net 00:02:12.13]       System.InvalidOperationException : The shader anchor '    vec4 Params;
 };' is missing, so a variant built on it would lose its insertion.

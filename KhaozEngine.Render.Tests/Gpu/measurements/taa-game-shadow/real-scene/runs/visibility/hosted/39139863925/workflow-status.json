@@ -1,0 +1,46 @@
+{
+  "conclusion": "failure",
+  "id": 39139863925,
+  "jobs": [
+    {
+      "completedAt": "2026-10-18T15:18:20Z",
+      "conclusion": "success",
+      "name": "select legs",
+      "status": "completed"
+    },
+    {
+      "completedAt": "2026-10-18T15:23:37Z",
+      "conclusion": "success",
+      "name": "ubuntu-latest / vulkan-native (sync validation)",
+      "status": "completed"
+    },
+    {
+      "completedAt": "2026-10-18T15:56:17Z",
+      "conclusion": "failure",
+      "name": "windows-latest / direct3d11-native",
+      "status": "completed"
+    },
+    {
+      "completedAt": "2026-10-18T15:32:13Z",
+      "conclusion": "failure",
+      "name": "macos-26 / metal-native",
+      "status": "completed"
+    },
+    {
+      "completedAt": "2026-10-18T17:03:12Z",
+      "conclusion": "failure",
+      "name": "ubuntu-latest / vulkan-native",
+      "status": "completed"
+    },
+    {
+      "completedAt": "2026-10-18T17:03:12Z",
+      "conclusion": "skipped",
+      "name": "${{ matrix.os }} / ${{ matrix.backend }} / full suite",
+      "status": "completed"
+    }
+  ],
+  "mask": 20971520,
+  "source": "50c8c6f3657e23df28fe33fffea845691169f0e1",
+  "status": "completed",
+  "token": "shadow-bilinear-3x3,vis-release-0.1"
+}

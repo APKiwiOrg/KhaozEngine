@@ -1,0 +1,772 @@
+{
+  "run_id": "39139863925",
+  "source_commit": "50c8c6f3657e23df28fe33fffea845691169f0e1",
+  "backends": {
+    "direct3d11-native": {
+      "counts": {
+        "Total tests": 1360,
+        "Passed": 1352,
+        "Failed": 8,
+        "Skipped": null
+      },
+      "aborted": false,
+      "token_stamp": [
+        "Visibility archive token shadow-bilinear-3x3,vis-release-0.1, startup mask 20971520, MRT enabled True"
+      ],
+      "failures": [
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalCountProbeGpuTests.AStillFrameCountsAlmostNothing",
+          "reason": "D3D11 shader validation blocks this fact, baseline status unmeasured",
+          "message": "KhaozEngine.Gpu.ShaderValidationException : d3d11 program adc057aa1373 [fragment]: FXC rejected the cross-compiled HLSL for profile ps_5_0 (HRESULT 0x80004005). This is HLSL that SPIRV-Cross emitted, so the line numbers below are the EMITTED source, not the GLSL. FXC said: KhaozEngine.Render.Tests\\bin\\Release\\net10.0\\d3d11 program adc057aa1373 [fragment](82,58-63): error X4555: cannot use casts on l-values",
+          "measurements": [
+            {
+              "message": "KhaozEngine.Gpu.ShaderValidationException : d3d11 program adc057aa1373 [fragment]: FXC rejected the cross-compiled HLSL for profile ps_5_0 (HRESULT 0x80004005). This is HLSL that SPIRV-Cross emitted, so the line numbers below are the EMITTED source, not the GLSL. FXC said: KhaozEngine.Render.Tests\\bin\\Release\\net10.0\\d3d11 program adc057aa1373 [fragment](82,58-63): error X4555: cannot use casts on l-values",
+              "classification": "D3D11 shader validation blocks this fact, baseline status unmeasured"
+            }
+          ]
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalCountProbeGpuTests.ARequestIsReadBackOnceAtTheNextPrepareFrame",
+          "reason": "D3D11 shader validation blocks this fact, baseline status unmeasured",
+          "message": "KhaozEngine.Gpu.ShaderValidationException : d3d11 program adc057aa1373 [fragment]: FXC rejected the cross-compiled HLSL for profile ps_5_0 (HRESULT 0x80004005). This is HLSL that SPIRV-Cross emitted, so the line numbers below are the EMITTED source, not the GLSL. FXC said: KhaozEngine.Render.Tests\\bin\\Release\\net10.0\\d3d11 program adc057aa1373 [fragment](82,58-63): error X4555: cannot use casts on l-values",
+          "measurements": [
+            {
+              "message": "KhaozEngine.Gpu.ShaderValidationException : d3d11 program adc057aa1373 [fragment]: FXC rejected the cross-compiled HLSL for profile ps_5_0 (HRESULT 0x80004005). This is HLSL that SPIRV-Cross emitted, so the line numbers below are the EMITTED source, not the GLSL. FXC said: KhaozEngine.Render.Tests\\bin\\Release\\net10.0\\d3d11 program adc057aa1373 [fragment](82,58-63): error X4555: cannot use casts on l-values",
+              "classification": "D3D11 shader validation blocks this fact, baseline status unmeasured"
+            }
+          ]
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalCountProbeGpuTests.TheDisoccludedCountIsTheResolvesOwnDecisionAtEverySample",
+          "reason": "D3D11 shader validation blocks this fact, baseline status unmeasured",
+          "message": "KhaozEngine.Gpu.ShaderValidationException : d3d11 program adc057aa1373 [fragment]: FXC rejected the cross-compiled HLSL for profile ps_5_0 (HRESULT 0x80004005). This is HLSL that SPIRV-Cross emitted, so the line numbers below are the EMITTED source, not the GLSL. FXC said: KhaozEngine.Render.Tests\\bin\\Release\\net10.0\\d3d11 program adc057aa1373 [fragment](82,58-63): error X4555: cannot use casts on l-values",
+          "measurements": [
+            {
+              "message": "KhaozEngine.Gpu.ShaderValidationException : d3d11 program adc057aa1373 [fragment]: FXC rejected the cross-compiled HLSL for profile ps_5_0 (HRESULT 0x80004005). This is HLSL that SPIRV-Cross emitted, so the line numbers below are the EMITTED source, not the GLSL. FXC said: KhaozEngine.Render.Tests\\bin\\Release\\net10.0\\d3d11 program adc057aa1373 [fragment](82,58-63): error X4555: cannot use casts on l-values",
+              "classification": "D3D11 shader validation blocks this fact, baseline status unmeasured"
+            }
+          ]
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalCountProbeGpuTests.ARevealedBackgroundIsCountedAsDisoccluded",
+          "reason": "D3D11 shader validation blocks this fact, baseline status unmeasured",
+          "message": "KhaozEngine.Gpu.ShaderValidationException : d3d11 program adc057aa1373 [fragment]: FXC rejected the cross-compiled HLSL for profile ps_5_0 (HRESULT 0x80004005). This is HLSL that SPIRV-Cross emitted, so the line numbers below are the EMITTED source, not the GLSL. FXC said: KhaozEngine.Render.Tests\\bin\\Release\\net10.0\\d3d11 program adc057aa1373 [fragment](82,58-63): error X4555: cannot use casts on l-values",
+          "measurements": [
+            {
+              "message": "KhaozEngine.Gpu.ShaderValidationException : d3d11 program adc057aa1373 [fragment]: FXC rejected the cross-compiled HLSL for profile ps_5_0 (HRESULT 0x80004005). This is HLSL that SPIRV-Cross emitted, so the line numbers below are the EMITTED source, not the GLSL. FXC said: KhaozEngine.Render.Tests\\bin\\Release\\net10.0\\d3d11 program adc057aa1373 [fragment](82,58-63): error X4555: cannot use casts on l-values",
+              "classification": "D3D11 shader validation blocks this fact, baseline status unmeasured"
+            }
+          ]
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalCountProbeGpuTests.ASharpChangeOfColourIsCountedAsClipped",
+          "reason": "D3D11 shader validation blocks this fact, baseline status unmeasured",
+          "message": "KhaozEngine.Gpu.ShaderValidationException : d3d11 program adc057aa1373 [fragment]: FXC rejected the cross-compiled HLSL for profile ps_5_0 (HRESULT 0x80004005). This is HLSL that SPIRV-Cross emitted, so the line numbers below are the EMITTED source, not the GLSL. FXC said: KhaozEngine.Render.Tests\\bin\\Release\\net10.0\\d3d11 program adc057aa1373 [fragment](82,58-63): error X4555: cannot use casts on l-values",
+          "measurements": [
+            {
+              "message": "KhaozEngine.Gpu.ShaderValidationException : d3d11 program adc057aa1373 [fragment]: FXC rejected the cross-compiled HLSL for profile ps_5_0 (HRESULT 0x80004005). This is HLSL that SPIRV-Cross emitted, so the line numbers below are the EMITTED source, not the GLSL. FXC said: KhaozEngine.Render.Tests\\bin\\Release\\net10.0\\d3d11 program adc057aa1373 [fragment](82,58-63): error X4555: cannot use casts on l-values",
+              "classification": "D3D11 shader validation blocks this fact, baseline status unmeasured"
+            }
+          ]
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalMovingShadeRimGpuTests.Moving_shadow_receivers_keep_their_leading_and_trailing_rims",
+          "reason": "acceptance failure",
+          "message": "Quality M 0.5 leading flat: error 0.010531 above v21.2.0 0.009361 plus a tenth\nQuality M 0.5 trailing textured: reference changed from 0.018941 to 0.018955\nQuality M 1.0 trailing textured: temporal error 0.009788 above v21.2.0 0.008346 plus a tenth\nQuality M 1.0 trailing textured: reference changed from 0.035613 to 0.035635\nQuality M 2.0 leading flat: reference changed from 0.006865 to 0.006928\nQuality M 2.0 trailing textured: reference changed from 0.056161 to 0.056221\nQuality M 4.0 leading flat: reference changed from 0.031935 to 0.032271\nQuality M 4.0 trailing textured: reference changed from 0.066151 to 0.066177\nQuality M 8.0 leading flat: reference changed from 0.088200 to 0.088301\nQuality M 8.0 trailing textured: reference changed from 0.063139 to 0.063187\nQuality MS 1.0 leading flat: reference changed from 0.008146 to 0.008074\nQuality MS 1.0 trailing textured: reference changed from 0.038602 to 0.038644\nQuality MS 2.0 leading flat: reference changed from 0.013942 to 0.014041\nQuality MS 2.0 trailing textured: reference changed from 0.058590 to 0.058529\nNative M 0.5 trailing textured: reference changed from 0.018941 to 0.018955\nNative M 1.0 trailing textured: reference changed from 0.035613 to 0.035635\nNative M 2.0 leading flat: reference changed from 0.006865 to 0.006928\nNative M 2.0 trailing textured: reference changed from 0.056161 to 0.056221\nNative M 4.0 leading flat: reference changed from 0.031935 to 0.032271\nNative M 4.0 trailing textured: reference changed from 0.066151 to 0.066177\nNative M 8.0 leading flat: reference changed from 0.088200 to 0.088301\nNative M 8.0 trailing textured: reference changed from 0.063139 to 0.063187\nNative MS 1.0 leading flat: reference changed from 0.008146 to 0.008074\nNative MS 1.0 trailing textured: reference changed from 0.038602 to 0.038644\nNative MS 2.0 leading flat: reference changed from 0.013942 to 0.014041\nNative MS 2.0 trailing textured: reference changed from 0.058590 to 0.058529",
+          "measurements": [
+            {
+              "message": "Quality M 0.5 leading flat: error 0.010531 above v21.2.0 0.009361 plus a tenth",
+              "classification": "acceptance failure",
+              "actual": 0.010531,
+              "bound": 0.01029765
+            },
+            {
+              "message": "Quality M 0.5 trailing textured: reference changed from 0.018941 to 0.018955",
+              "classification": "expected bilinear reference movement",
+              "actual": 1.4000000000000123e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality M 1.0 trailing textured: temporal error 0.009788 above v21.2.0 0.008346 plus a tenth",
+              "classification": "acceptance failure",
+              "actual": 0.009788,
+              "bound": 0.00918115
+            },
+            {
+              "message": "Quality M 1.0 trailing textured: reference changed from 0.035613 to 0.035635",
+              "classification": "expected bilinear reference movement",
+              "actual": 2.2000000000001185e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality M 2.0 leading flat: reference changed from 0.006865 to 0.006928",
+              "classification": "expected bilinear reference movement",
+              "actual": 6.300000000000056e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality M 2.0 trailing textured: reference changed from 0.056161 to 0.056221",
+              "classification": "expected bilinear reference movement",
+              "actual": 5.9999999999997555e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality M 4.0 leading flat: reference changed from 0.031935 to 0.032271",
+              "classification": "expected bilinear reference movement",
+              "actual": 0.00033600000000000296,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality M 4.0 trailing textured: reference changed from 0.066151 to 0.066177",
+              "classification": "expected bilinear reference movement",
+              "actual": 2.5999999999998247e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality M 8.0 leading flat: reference changed from 0.088200 to 0.088301",
+              "classification": "expected bilinear reference movement",
+              "actual": 0.00010100000000000386,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality M 8.0 trailing textured: reference changed from 0.063139 to 0.063187",
+              "classification": "expected bilinear reference movement",
+              "actual": 4.799999999999249e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality MS 1.0 leading flat: reference changed from 0.008146 to 0.008074",
+              "classification": "expected bilinear reference movement",
+              "actual": 7.200000000000088e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality MS 1.0 trailing textured: reference changed from 0.038602 to 0.038644",
+              "classification": "expected bilinear reference movement",
+              "actual": 4.200000000000037e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality MS 2.0 leading flat: reference changed from 0.013942 to 0.014041",
+              "classification": "expected bilinear reference movement",
+              "actual": 9.900000000000013e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality MS 2.0 trailing textured: reference changed from 0.058590 to 0.058529",
+              "classification": "expected bilinear reference movement",
+              "actual": 6.1000000000005494e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native M 0.5 trailing textured: reference changed from 0.018941 to 0.018955",
+              "classification": "expected bilinear reference movement",
+              "actual": 1.4000000000000123e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native M 1.0 trailing textured: reference changed from 0.035613 to 0.035635",
+              "classification": "expected bilinear reference movement",
+              "actual": 2.2000000000001185e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native M 2.0 leading flat: reference changed from 0.006865 to 0.006928",
+              "classification": "expected bilinear reference movement",
+              "actual": 6.300000000000056e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native M 2.0 trailing textured: reference changed from 0.056161 to 0.056221",
+              "classification": "expected bilinear reference movement",
+              "actual": 5.9999999999997555e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native M 4.0 leading flat: reference changed from 0.031935 to 0.032271",
+              "classification": "expected bilinear reference movement",
+              "actual": 0.00033600000000000296,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native M 4.0 trailing textured: reference changed from 0.066151 to 0.066177",
+              "classification": "expected bilinear reference movement",
+              "actual": 2.5999999999998247e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native M 8.0 leading flat: reference changed from 0.088200 to 0.088301",
+              "classification": "expected bilinear reference movement",
+              "actual": 0.00010100000000000386,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native M 8.0 trailing textured: reference changed from 0.063139 to 0.063187",
+              "classification": "expected bilinear reference movement",
+              "actual": 4.799999999999249e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native MS 1.0 leading flat: reference changed from 0.008146 to 0.008074",
+              "classification": "expected bilinear reference movement",
+              "actual": 7.200000000000088e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native MS 1.0 trailing textured: reference changed from 0.038602 to 0.038644",
+              "classification": "expected bilinear reference movement",
+              "actual": 4.200000000000037e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native MS 2.0 leading flat: reference changed from 0.013942 to 0.014041",
+              "classification": "expected bilinear reference movement",
+              "actual": 9.900000000000013e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native MS 2.0 trailing textured: reference changed from 0.058590 to 0.058529",
+              "classification": "expected bilinear reference movement",
+              "actual": 6.1000000000005494e-05,
+              "bound": 1e-06
+            }
+          ]
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalMovingShadeLagGpuTests.Shadow_edge_lag_on_moving_pixels_and_fast_shadows_stays_within_its_bounds",
+          "reason": "acceptance failure",
+          "message": "Native S 8.0 px advancing: textured tail 0.004592178 above 1.5 times the 1 px tail 0.002835155\nNative S 8.0 px retreating: textured tail 0.008249826 above 1.5 times the 1 px tail 0.005451895",
+          "measurements": [
+            {
+              "message": "Native S 8.0 px advancing: textured tail 0.004592178 above 1.5 times the 1 px tail 0.002835155",
+              "classification": "acceptance failure",
+              "actual": 0.004592178,
+              "bound": 0.0042527325
+            },
+            {
+              "message": "Native S 8.0 px retreating: textured tail 0.008249826 above 1.5 times the 1 px tail 0.005451895",
+              "classification": "acceptance failure",
+              "actual": 0.008249826,
+              "bound": 0.008177842500000001
+            }
+          ]
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalCountProbeAllocationGpuTests.A_steady_frame_without_a_request_allocates_nothing_and_reads_nothing_back",
+          "reason": "D3D11 shader validation blocks this fact, baseline status unmeasured",
+          "message": "KhaozEngine.Gpu.ShaderValidationException : d3d11 program adc057aa1373 [fragment]: FXC rejected the cross-compiled HLSL for profile ps_5_0 (HRESULT 0x80004005). This is HLSL that SPIRV-Cross emitted, so the line numbers below are the EMITTED source, not the GLSL. FXC said: KhaozEngine.Render.Tests\\bin\\Release\\net10.0\\d3d11 program adc057aa1373 [fragment](82,58-63): error X4555: cannot use casts on l-values",
+          "measurements": [
+            {
+              "message": "KhaozEngine.Gpu.ShaderValidationException : d3d11 program adc057aa1373 [fragment]: FXC rejected the cross-compiled HLSL for profile ps_5_0 (HRESULT 0x80004005). This is HLSL that SPIRV-Cross emitted, so the line numbers below are the EMITTED source, not the GLSL. FXC said: KhaozEngine.Render.Tests\\bin\\Release\\net10.0\\d3d11 program adc057aa1373 [fragment](82,58-63): error X4555: cannot use casts on l-values",
+              "classification": "D3D11 shader validation blocks this fact, baseline status unmeasured"
+            }
+          ]
+        }
+      ]
+    },
+    "metal-native": {
+      "counts": {
+        "Total tests": 1360,
+        "Passed": 1354,
+        "Failed": 6,
+        "Skipped": null
+      },
+      "aborted": false,
+      "token_stamp": [
+        "Visibility archive token shadow-bilinear-3x3,vis-release-0.1, startup mask 20971520, MRT enabled True"
+      ],
+      "failures": [
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalMovingShadeRimGpuTests.Moving_shadow_receivers_keep_their_leading_and_trailing_rims",
+          "reason": "acceptance failure",
+          "message": "Quality M 0.5 leading flat: error 0.010466 above v21.2.0 0.009307 plus a tenth\nQuality M 0.5 trailing textured: reference changed from 0.018943 to 0.018951\nQuality M 1.0 trailing textured: temporal error 0.010086 above v21.2.0 0.008060 plus a tenth\nQuality M 1.0 trailing textured: reference changed from 0.035586 to 0.035615\nQuality M 2.0 leading flat: reference changed from 0.006865 to 0.006928\nQuality M 2.0 trailing textured: reference changed from 0.056131 to 0.056194\nQuality M 4.0 leading flat: reference changed from 0.031935 to 0.032271\nQuality M 4.0 trailing textured: reference changed from 0.066148 to 0.066177\nQuality M 8.0 leading flat: reference changed from 0.088200 to 0.088301\nQuality M 8.0 trailing textured: reference changed from 0.063109 to 0.063160\nQuality MS 1.0 leading flat: reference changed from 0.008146 to 0.008074\nQuality MS 1.0 trailing textured: reference changed from 0.038593 to 0.038637\nQuality MS 2.0 leading flat: reference changed from 0.013942 to 0.014041\nQuality MS 2.0 trailing textured: reference changed from 0.058579 to 0.058518\nNative M 0.5 trailing textured: reference changed from 0.018943 to 0.018951\nNative M 1.0 trailing textured: reference changed from 0.035586 to 0.035615\nNative M 2.0 leading flat: reference changed from 0.006865 to 0.006928\nNative M 2.0 trailing textured: reference changed from 0.056131 to 0.056194\nNative M 4.0 leading flat: reference changed from 0.031935 to 0.032271\nNative M 4.0 trailing textured: reference changed from 0.066148 to 0.066177\nNative M 8.0 leading flat: reference changed from 0.088200 to 0.088301\nNative M 8.0 trailing textured: reference changed from 0.063109 to 0.063160\nNative MS 1.0 leading flat: reference changed from 0.008146 to 0.008074\nNative MS 1.0 trailing textured: reference changed from 0.038593 to 0.038637\nNative MS 2.0 leading flat: reference changed from 0.013942 to 0.014041\nNative MS 2.0 trailing textured: reference changed from 0.058579 to 0.058518",
+          "measurements": [
+            {
+              "message": "Quality M 0.5 leading flat: error 0.010466 above v21.2.0 0.009307 plus a tenth",
+              "classification": "acceptance failure",
+              "actual": 0.010466,
+              "bound": 0.01023825
+            },
+            {
+              "message": "Quality M 0.5 trailing textured: reference changed from 0.018943 to 0.018951",
+              "classification": "expected bilinear reference movement",
+              "actual": 7.999999999997592e-06,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality M 1.0 trailing textured: temporal error 0.010086 above v21.2.0 0.008060 plus a tenth",
+              "classification": "acceptance failure",
+              "actual": 0.010086,
+              "bound": 0.00886655
+            },
+            {
+              "message": "Quality M 1.0 trailing textured: reference changed from 0.035586 to 0.035615",
+              "classification": "expected bilinear reference movement",
+              "actual": 2.9000000000001247e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality M 2.0 leading flat: reference changed from 0.006865 to 0.006928",
+              "classification": "expected bilinear reference movement",
+              "actual": 6.300000000000056e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality M 2.0 trailing textured: reference changed from 0.056131 to 0.056194",
+              "classification": "expected bilinear reference movement",
+              "actual": 6.300000000000056e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality M 4.0 leading flat: reference changed from 0.031935 to 0.032271",
+              "classification": "expected bilinear reference movement",
+              "actual": 0.00033600000000000296,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality M 4.0 trailing textured: reference changed from 0.066148 to 0.066177",
+              "classification": "expected bilinear reference movement",
+              "actual": 2.9000000000001247e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality M 8.0 leading flat: reference changed from 0.088200 to 0.088301",
+              "classification": "expected bilinear reference movement",
+              "actual": 0.00010100000000000386,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality M 8.0 trailing textured: reference changed from 0.063109 to 0.063160",
+              "classification": "expected bilinear reference movement",
+              "actual": 5.099999999999549e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality MS 1.0 leading flat: reference changed from 0.008146 to 0.008074",
+              "classification": "expected bilinear reference movement",
+              "actual": 7.200000000000088e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality MS 1.0 trailing textured: reference changed from 0.038593 to 0.038637",
+              "classification": "expected bilinear reference movement",
+              "actual": 4.399999999999543e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality MS 2.0 leading flat: reference changed from 0.013942 to 0.014041",
+              "classification": "expected bilinear reference movement",
+              "actual": 9.900000000000013e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality MS 2.0 trailing textured: reference changed from 0.058579 to 0.058518",
+              "classification": "expected bilinear reference movement",
+              "actual": 6.0999999999998555e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native M 0.5 trailing textured: reference changed from 0.018943 to 0.018951",
+              "classification": "expected bilinear reference movement",
+              "actual": 7.999999999997592e-06,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native M 1.0 trailing textured: reference changed from 0.035586 to 0.035615",
+              "classification": "expected bilinear reference movement",
+              "actual": 2.9000000000001247e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native M 2.0 leading flat: reference changed from 0.006865 to 0.006928",
+              "classification": "expected bilinear reference movement",
+              "actual": 6.300000000000056e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native M 2.0 trailing textured: reference changed from 0.056131 to 0.056194",
+              "classification": "expected bilinear reference movement",
+              "actual": 6.300000000000056e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native M 4.0 leading flat: reference changed from 0.031935 to 0.032271",
+              "classification": "expected bilinear reference movement",
+              "actual": 0.00033600000000000296,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native M 4.0 trailing textured: reference changed from 0.066148 to 0.066177",
+              "classification": "expected bilinear reference movement",
+              "actual": 2.9000000000001247e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native M 8.0 leading flat: reference changed from 0.088200 to 0.088301",
+              "classification": "expected bilinear reference movement",
+              "actual": 0.00010100000000000386,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native M 8.0 trailing textured: reference changed from 0.063109 to 0.063160",
+              "classification": "expected bilinear reference movement",
+              "actual": 5.099999999999549e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native MS 1.0 leading flat: reference changed from 0.008146 to 0.008074",
+              "classification": "expected bilinear reference movement",
+              "actual": 7.200000000000088e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native MS 1.0 trailing textured: reference changed from 0.038593 to 0.038637",
+              "classification": "expected bilinear reference movement",
+              "actual": 4.399999999999543e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native MS 2.0 leading flat: reference changed from 0.013942 to 0.014041",
+              "classification": "expected bilinear reference movement",
+              "actual": 9.900000000000013e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native MS 2.0 trailing textured: reference changed from 0.058579 to 0.058518",
+              "classification": "expected bilinear reference movement",
+              "actual": 6.0999999999998555e-05,
+              "bound": 1e-06
+            }
+          ]
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(preset: Performance)",
+          "reason": "entry identity, original noop control fails this class locally",
+          "message": "the entry points stored different state:\ncolour: 596 values differ on 17 frames from frame 31, the largest by 0.010253906 (21 half-float steps)\nconfidence: none differ\nlock: 8 values differ on 3 frames from frame 27, the largest by 0.00024414062 (2 half-float steps)\nmark: none differ",
+          "measurements": [
+            {
+              "message": "the entry points stored different state:",
+              "classification": "entry identity, original noop control fails this class locally"
+            },
+            {
+              "message": "colour: 596 values differ on 17 frames from frame 31, the largest by 0.010253906 (21 half-float steps)",
+              "classification": "entry identity, original noop control fails this class locally",
+              "actual": 0.010253906,
+              "bound": 0.0
+            },
+            {
+              "message": "confidence: none differ",
+              "classification": "entry identity, original noop control fails this class locally"
+            },
+            {
+              "message": "lock: 8 values differ on 3 frames from frame 27, the largest by 0.00024414062 (2 half-float steps)",
+              "classification": "entry identity, original noop control fails this class locally",
+              "actual": 0.00024414062,
+              "bound": 0.0
+            },
+            {
+              "message": "mark: none differ",
+              "classification": "entry identity, original noop control fails this class locally"
+            }
+          ]
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(preset: Quality)",
+          "reason": "entry identity, original noop control fails this class locally",
+          "message": "the entry points stored different state:\ncolour: none differ\nconfidence: none differ\nlock: 15 values differ on 8 frames from frame 22, the largest by 0.00048828125 (4 half-float steps)\nmark: none differ",
+          "measurements": [
+            {
+              "message": "the entry points stored different state:",
+              "classification": "entry identity, original noop control fails this class locally"
+            },
+            {
+              "message": "colour: none differ",
+              "classification": "entry identity, original noop control fails this class locally"
+            },
+            {
+              "message": "confidence: none differ",
+              "classification": "entry identity, original noop control fails this class locally"
+            },
+            {
+              "message": "lock: 15 values differ on 8 frames from frame 22, the largest by 0.00048828125 (4 half-float steps)",
+              "classification": "entry identity, original noop control fails this class locally",
+              "actual": 0.00048828125,
+              "bound": 0.0
+            },
+            {
+              "message": "mark: none differ",
+              "classification": "entry identity, original noop control fails this class locally"
+            }
+          ]
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(preset: Native)",
+          "reason": "entry identity, original noop control fails this class locally",
+          "message": "the entry points stored different state:\ncolour: none differ\nconfidence: none differ\nlock: 34 values differ on 18 frames from frame 17, the largest by 0.00048828125 (2 half-float steps)\nmark: none differ",
+          "measurements": [
+            {
+              "message": "the entry points stored different state:",
+              "classification": "entry identity, original noop control fails this class locally"
+            },
+            {
+              "message": "colour: none differ",
+              "classification": "entry identity, original noop control fails this class locally"
+            },
+            {
+              "message": "confidence: none differ",
+              "classification": "entry identity, original noop control fails this class locally"
+            },
+            {
+              "message": "lock: 34 values differ on 18 frames from frame 17, the largest by 0.00048828125 (2 half-float steps)",
+              "classification": "entry identity, original noop control fails this class locally",
+              "actual": 0.00048828125,
+              "bound": 0.0
+            },
+            {
+              "message": "mark: none differ",
+              "classification": "entry identity, original noop control fails this class locally"
+            }
+          ]
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_with_the_edge_outline_on",
+          "reason": "entry identity, original noop control fails this class locally",
+          "message": "the entry points stored different state:\ncolour: none differ\nconfidence: none differ\nlock: 15 values differ on 8 frames from frame 22, the largest by 0.00048828125 (4 half-float steps)\nmark: none differ",
+          "measurements": [
+            {
+              "message": "the entry points stored different state:",
+              "classification": "entry identity, original noop control fails this class locally"
+            },
+            {
+              "message": "colour: none differ",
+              "classification": "entry identity, original noop control fails this class locally"
+            },
+            {
+              "message": "confidence: none differ",
+              "classification": "entry identity, original noop control fails this class locally"
+            },
+            {
+              "message": "lock: 15 values differ on 8 frames from frame 22, the largest by 0.00048828125 (4 half-float steps)",
+              "classification": "entry identity, original noop control fails this class locally",
+              "actual": 0.00048828125,
+              "bound": 0.0
+            },
+            {
+              "message": "mark: none differ",
+              "classification": "entry identity, original noop control fails this class locally"
+            }
+          ]
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalMovingShadeLagGpuTests.Shadow_edge_lag_on_moving_pixels_and_fast_shadows_stays_within_its_bounds",
+          "reason": "acceptance failure",
+          "message": "Native S 8.0 px advancing: textured tail 0.004590698 above 1.5 times the 1 px tail 0.002863098\nNative S 8.0 px retreating: textured tail 0.008260028 above 1.5 times the 1 px tail 0.005470012",
+          "measurements": [
+            {
+              "message": "Native S 8.0 px advancing: textured tail 0.004590698 above 1.5 times the 1 px tail 0.002863098",
+              "classification": "acceptance failure",
+              "actual": 0.004590698,
+              "bound": 0.004294647
+            },
+            {
+              "message": "Native S 8.0 px retreating: textured tail 0.008260028 above 1.5 times the 1 px tail 0.005470012",
+              "classification": "acceptance failure",
+              "actual": 0.008260028,
+              "bound": 0.008205018
+            }
+          ]
+        }
+      ]
+    },
+    "vulkan-native": {
+      "counts": {
+        "Total tests": 1360,
+        "Passed": 1358,
+        "Failed": 2,
+        "Skipped": null
+      },
+      "aborted": false,
+      "token_stamp": [
+        "Visibility archive token shadow-bilinear-3x3,vis-release-0.1, startup mask 20971520, MRT enabled True"
+      ],
+      "failures": [
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalMovingShadeLagGpuTests.Shadow_edge_lag_on_moving_pixels_and_fast_shadows_stays_within_its_bounds",
+          "reason": "acceptance failure",
+          "message": "Native S 8.0 px advancing: textured tail 0.004587868 above 1.5 times the 1 px tail 0.002917836",
+          "measurements": [
+            {
+              "message": "Native S 8.0 px advancing: textured tail 0.004587868 above 1.5 times the 1 px tail 0.002917836",
+              "classification": "acceptance failure",
+              "actual": 0.004587868,
+              "bound": 0.004376754
+            }
+          ]
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalMovingShadeRimGpuTests.Moving_shadow_receivers_keep_their_leading_and_trailing_rims",
+          "reason": "acceptance failure",
+          "message": "Quality M 0.5 leading flat: error 0.010496 above v21.2.0 0.009379 plus a tenth\nQuality M 0.5 trailing textured: reference changed from 0.018923 to 0.018925\nQuality M 1.0 trailing textured: temporal error 0.009544 above v21.2.0 0.008078 plus a tenth\nQuality M 1.0 trailing textured: reference changed from 0.035582 to 0.035597\nQuality M 2.0 leading flat: reference changed from 0.006865 to 0.006928\nQuality M 2.0 trailing textured: reference changed from 0.056094 to 0.056137\nQuality M 4.0 leading flat: reference changed from 0.031935 to 0.032271\nQuality M 4.0 trailing textured: reference changed from 0.066060 to 0.066091\nQuality M 8.0 leading flat: reference changed from 0.088200 to 0.088301\nQuality M 8.0 trailing textured: reference changed from 0.063028 to 0.063070\nQuality MS 1.0 leading flat: reference changed from 0.008145 to 0.008075\nQuality MS 1.0 trailing textured: reference changed from 0.038604 to 0.038654\nQuality MS 2.0 leading flat: reference changed from 0.013941 to 0.014041\nQuality MS 2.0 trailing textured: reference changed from 0.058566 to 0.058497\nNative M 0.5 trailing textured: reference changed from 0.018923 to 0.018925\nNative M 1.0 trailing textured: reference changed from 0.035582 to 0.035597\nNative M 2.0 leading flat: reference changed from 0.006865 to 0.006928\nNative M 2.0 trailing textured: reference changed from 0.056094 to 0.056137\nNative M 4.0 leading flat: reference changed from 0.031935 to 0.032271\nNative M 4.0 trailing textured: reference changed from 0.066060 to 0.066091\nNative M 8.0 leading flat: reference changed from 0.088200 to 0.088301\nNative M 8.0 trailing textured: reference changed from 0.063028 to 0.063070\nNative MS 1.0 leading flat: reference changed from 0.008145 to 0.008075\nNative MS 1.0 trailing textured: reference changed from 0.038604 to 0.038654\nNative MS 2.0 leading flat: reference changed from 0.013941 to 0.014041\nNative MS 2.0 trailing textured: reference changed from 0.058566 to 0.058497",
+          "measurements": [
+            {
+              "message": "Quality M 0.5 leading flat: error 0.010496 above v21.2.0 0.009379 plus a tenth",
+              "classification": "acceptance failure",
+              "actual": 0.010496,
+              "bound": 0.010317450000000002
+            },
+            {
+              "message": "Quality M 0.5 trailing textured: reference changed from 0.018923 to 0.018925",
+              "classification": "expected bilinear reference movement",
+              "actual": 2.000000000002e-06,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality M 1.0 trailing textured: temporal error 0.009544 above v21.2.0 0.008078 plus a tenth",
+              "classification": "acceptance failure",
+              "actual": 0.009544,
+              "bound": 0.008886350000000001
+            },
+            {
+              "message": "Quality M 1.0 trailing textured: reference changed from 0.035582 to 0.035597",
+              "classification": "expected bilinear reference movement",
+              "actual": 1.4999999999994185e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality M 2.0 leading flat: reference changed from 0.006865 to 0.006928",
+              "classification": "expected bilinear reference movement",
+              "actual": 6.300000000000056e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality M 2.0 trailing textured: reference changed from 0.056094 to 0.056137",
+              "classification": "expected bilinear reference movement",
+              "actual": 4.300000000000137e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality M 4.0 leading flat: reference changed from 0.031935 to 0.032271",
+              "classification": "expected bilinear reference movement",
+              "actual": 0.00033600000000000296,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality M 4.0 trailing textured: reference changed from 0.066060 to 0.066091",
+              "classification": "expected bilinear reference movement",
+              "actual": 3.100000000000325e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality M 8.0 leading flat: reference changed from 0.088200 to 0.088301",
+              "classification": "expected bilinear reference movement",
+              "actual": 0.00010100000000000386,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality M 8.0 trailing textured: reference changed from 0.063028 to 0.063070",
+              "classification": "expected bilinear reference movement",
+              "actual": 4.200000000000037e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality MS 1.0 leading flat: reference changed from 0.008145 to 0.008075",
+              "classification": "expected bilinear reference movement",
+              "actual": 6.999999999999888e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality MS 1.0 trailing textured: reference changed from 0.038604 to 0.038654",
+              "classification": "expected bilinear reference movement",
+              "actual": 5.000000000000143e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality MS 2.0 leading flat: reference changed from 0.013941 to 0.014041",
+              "classification": "expected bilinear reference movement",
+              "actual": 9.99999999999994e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Quality MS 2.0 trailing textured: reference changed from 0.058566 to 0.058497",
+              "classification": "expected bilinear reference movement",
+              "actual": 6.899999999999962e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native M 0.5 trailing textured: reference changed from 0.018923 to 0.018925",
+              "classification": "expected bilinear reference movement",
+              "actual": 2.000000000002e-06,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native M 1.0 trailing textured: reference changed from 0.035582 to 0.035597",
+              "classification": "expected bilinear reference movement",
+              "actual": 1.4999999999994185e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native M 2.0 leading flat: reference changed from 0.006865 to 0.006928",
+              "classification": "expected bilinear reference movement",
+              "actual": 6.300000000000056e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native M 2.0 trailing textured: reference changed from 0.056094 to 0.056137",
+              "classification": "expected bilinear reference movement",
+              "actual": 4.300000000000137e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native M 4.0 leading flat: reference changed from 0.031935 to 0.032271",
+              "classification": "expected bilinear reference movement",
+              "actual": 0.00033600000000000296,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native M 4.0 trailing textured: reference changed from 0.066060 to 0.066091",
+              "classification": "expected bilinear reference movement",
+              "actual": 3.100000000000325e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native M 8.0 leading flat: reference changed from 0.088200 to 0.088301",
+              "classification": "expected bilinear reference movement",
+              "actual": 0.00010100000000000386,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native M 8.0 trailing textured: reference changed from 0.063028 to 0.063070",
+              "classification": "expected bilinear reference movement",
+              "actual": 4.200000000000037e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native MS 1.0 leading flat: reference changed from 0.008145 to 0.008075",
+              "classification": "expected bilinear reference movement",
+              "actual": 6.999999999999888e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native MS 1.0 trailing textured: reference changed from 0.038604 to 0.038654",
+              "classification": "expected bilinear reference movement",
+              "actual": 5.000000000000143e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native MS 2.0 leading flat: reference changed from 0.013941 to 0.014041",
+              "classification": "expected bilinear reference movement",
+              "actual": 9.99999999999994e-05,
+              "bound": 1e-06
+            },
+            {
+              "message": "Native MS 2.0 trailing textured: reference changed from 0.058566 to 0.058497",
+              "classification": "expected bilinear reference movement",
+              "actual": 6.899999999999962e-05,
+              "bound": 1e-06
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

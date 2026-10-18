@@ -27625,7 +27625,7 @@ Actual:   0
 [2026-10-18 15:06:34.872] [INFO] [VulkanGpuDevice] The native Vulkan allocator is up: 64 MiB chunks pooled by (memory type, tiling), dedicated at or above 16 MiB or on driver preference, 1 memory types reported, nonCoherentAtomSize 64, maxMemoryAllocationCount 4294967295.
 [2026-10-18 15:06:34.872] [INFO] [VulkanMemoryAllocator] The native Vulkan allocator opened a pool for memory type 0 (DeviceLocal, HostVisible, HostCoherent, HostCached) with Optimal tiling, chosen at rung 1 of the DeviceLocal ladder. Linear and optimal tiling never share a chunk, which is how bufferImageGranularity is satisfied here without any granularity arithmetic.
 [2026-10-18 15:06:34.873] [INFO] [VulkanMemoryAllocator] The native Vulkan allocator opened a pool for memory type 0 (DeviceLocal, HostVisible, HostCoherent, HostCached) with Linear tiling, chosen at rung 0 of the Ring ladder. Linear and optimal tiling never share a chunk, which is how bufferImageGranularity is satisfied here without any granularity arithmetic.
-Silhouette evidence: /tmp/khaoz-outline-evidence/silhouette_continuity.png
+Silhouette evidence: scratch/khaoz-outline-evidence/silhouette_continuity.png
 [xUnit.net 01:39:56.14]   Finished:    KhaozEngine.Render.Tests
   Passed KhaozEngine.Tests.Terrain.GroundCoverGpuOptionsTests.CpuQueuePreservesFadeAndShadowPolicyWhenGpuBatchesAreRequested(mode: HeightScale, shadows: True) [3 ms]
   Passed KhaozEngine.Tests.Terrain.GroundCoverGpuOptionsTests.CpuQueuePreservesFadeAndShadowPolicyWhenGpuBatchesAreRequested(mode: Dissolve, shadows: False) [< 1 ms]

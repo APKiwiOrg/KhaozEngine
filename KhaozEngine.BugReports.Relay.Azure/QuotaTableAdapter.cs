@@ -51,7 +51,7 @@ internal sealed class QuotaTableAdapter : IQuotaTable
             await table.UpdateEntityAsync(Entity(key, count, expiresAt), new ETag(etag), TableUpdateMode.Replace, ct).ConfigureAwait(false);
             return true;
         }
-        catch (RequestFailedException failure) when (failure.Status == 412)
+        catch (RequestFailedException failure) when (failure.Status is 404 or 412)
         {
             return false;
         }

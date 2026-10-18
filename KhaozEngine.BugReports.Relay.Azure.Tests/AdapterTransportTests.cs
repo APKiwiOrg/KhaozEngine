@@ -169,10 +169,25 @@ public sealed class AdapterTransportTests
             Assert.False(await adapter.AddAsync("key", 1, DateTimeOffset.UtcNow, default));
         else
             Assert.Equal(status, (await Assert.ThrowsAsync<RequestFailedException>(() => adapter.AddAsync("key", 1, DateTimeOffset.UtcNow, default))).Status);
-        if (status == 412)
+        if (status is 404 or 412)
             Assert.False(await adapter.ReplaceAsync("key", 1, "\"version\"", DateTimeOffset.UtcNow, default));
         else
             Assert.Equal(status, (await Assert.ThrowsAsync<RequestFailedException>(() => adapter.ReplaceAsync("key", 1, "\"version\"", DateTimeOffset.UtcNow, default))).Status);
+    }
+
+    [Fact]
+    public async Task TableReplace_MissingCounter_AgreesWithInMemoryStores()
+    {
+        using var http = Http(_ => Task.FromResult(Response(HttpStatusCode.NotFound)));
+        var expiry = new DateTimeOffset(2026, 10, 19, 0, 0, 0, TimeSpan.Zero);
+        var stores = new IReportQuotaStore[]
+        {
+            new TableReportQuotaStore(Table(http)),
+            new TableReportQuotaStore(new InMemoryQuotaTable()),
+            new InMemoryReportQuotaStore(),
+        };
+        foreach (IReportQuotaStore store in stores)
+            Assert.False(await store.TryWriteAsync("deleted", 2, "\"old-version\"", expiry, default));
     }
 
     [Fact]

@@ -678,6 +678,17 @@ An existing row's expectation changes only by geometric derivation, recorded in 
 the changelog. Phase 5 bakes navigation from the complete rule. Cost if wrong: the owner disagrees
 with one class, and that class alone is reverted with its rows.
 
+CF-1 and CF-2 add the derived #1429 disposition. An obliquely yawed plate pitched 0.05 or 0.1 radians,
+or 3 or 6 degrees, changes from Refused to Walkable in floating, bottom-corner resting and intersecting
+placements, for compounds, split statics and standalone installations. Its installed top-face height
+is `min(own plane, closed-disc maximum, directly joined same-kind planes)`. A face disappears only
+after every projected source vertex is proved strictly beyond a separating halfplane's entire
+expanded-disc support bound. Closed tangency and ring-only context remain. An axis or disc extremum
+proved outside the finite face needs no plane height. Relevant unresolved orientation, retained
+membership, plane divisors and proposal guards still refuse atomically. This changes certification
+completeness only, with no join, guard, selection, tolerance or cost-gate change. The final follow-up
+task records the player-facing changelog entry under CF-7.
+
 **Ruling SG-24. The hosted proof is plumbed, normalized and approved before it gates #1334.** The
 repository's stress caller (`.github/workflows/stress-test.yml`) now forwards support-cost mode to the
 pinned shared workflow, which sets `KHAOZ_SUPPORT_COST_ARTIFACT` and `DOTNET_TieredCompilation=0`,

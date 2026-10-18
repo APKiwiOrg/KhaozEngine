@@ -27,7 +27,7 @@ internal static partial class SupportFootprintPolygon
 
     // The collector certifies these identical request operands once, before traversing any static. The certified
     // bounds and column reject runs before any per-query operand is begun, reading the polygon's derived normal
-    // signs. The area and resolution checks keep their place ahead of it, so every verdict is unchanged.
+    // signs. Area and shape validity remain ahead of the orientation-independent projected exclusion.
     internal static GeometrySign Measure(SupportPolygon polygon, in SupportFootprintRequest request,
         in SupportFootprintBounds bounds, double bottom, double top, out SupportFootprintMember member)
     {
@@ -43,10 +43,18 @@ internal static partial class SupportFootprintPolygon
             polygon.High[2] < bounds.Minimum.Z || polygon.Low[2] > bounds.Maximum.Z) return GeometrySign.Negative;
         if (!reference) BeginOperands(polygon, request);
         FeatureNumber expanded = FeatureNumber.Exact(request.Radius).Add(FeatureNumber.Exact(request.ContactBand));
+        // Exact horizontal faces have a resolved orientation after the validity checks. Keep their complete
+        // rectangle stratum and generic candidate order, including a query whose disc misses the rectangle.
+        bool horizontal = polygon.Normal.X.IsExact && polygon.Normal.X.Value == 0 &&
+            polygon.Normal.Z.IsExact && polygon.Normal.Z.Value == 0;
         GeometrySign certified = SupportVerticalAdmission.Admit(polygon, request, expanded, bottom, top);
         if (certified == GeometrySign.Negative) return certified;
         if (certified == GeometrySign.Unresolved)
         {
+            // The existing vertical certificate already decides its exact domain without a refusal. The new
+            // whole-face proof precedes the fallback kernel's orientation requirement in both evaluators.
+            if (!horizontal && SupportProjectedPolygonSeparation.Certify(polygon, FeatureNumber.Exact(request.Axis.X),
+                FeatureNumber.Exact(request.Axis.Y), expanded) == GeometrySign.Positive) return GeometrySign.Negative;
             GeometrySign admission = Extrema(polygon, request, expanded, out Range column);
             if (admission != GeometrySign.Positive) return admission;
             if (column.Minimum.Lower > top || column.Maximum.Upper < bottom) return GeometrySign.Negative;
@@ -136,13 +144,19 @@ internal static partial class SupportFootprintPolygon
             out GeometrySign stair)) return stair;
         FeaturePoint axis = new(FeatureNumber.Exact(request.Axis.X), Zero, FeatureNumber.Exact(request.Axis.Y));
         GeometrySign orientation = Orientation(polygon);
-        if (orientation == GeometrySign.Unresolved) return orientation;
+        if (orientation == GeometrySign.Unresolved)
+            return SupportProjectedPolygonSeparation.Certify(polygon, axis.X, axis.Z, radius) == GeometrySign.Positive
+                ? GeometrySign.Negative : orientation;
         if (orientation != GeometrySign.Zero)
         {
-            FeaturePoint centre = OnPlane(polygon, axis);
             GeometrySign inside = Interior(polygon, axis, new(Zero, Zero, Zero), radius, One, One, orientation);
             if (inside == GeometrySign.Unresolved) return inside;
-            if (inside != GeometrySign.Negative) range.Add(centre);
+            if (inside != GeometrySign.Negative)
+            {
+                FeaturePoint centre = OnPlane(polygon, axis);
+                if (!centre.IsResolved) return GeometrySign.Unresolved;
+                range.Add(centre);
+            }
         }
         for (int i = 0; i < polygon.Vertices.Length; i++)
         {
@@ -186,13 +200,14 @@ internal static partial class SupportFootprintPolygon
                 {
                     FeaturePoint directionPoint = FeaturePoint.Scale(uphill, FeatureNumber.Exact(sign), exactZeroProducts: true);
                     FeatureNumber root = Sqrt(squared);
-                    FeaturePoint point = OnPlane(polygon, FeaturePoint.Add(axis,
-                        FeaturePoint.Scale(directionPoint, radius.Divide(root), exactZeroProducts: true)));
-                    if (!point.IsResolved) return GeometrySign.Unresolved;
                     GeometrySign inside = Interior(polygon, axis, directionPoint, radius, squared, root, orientation,
                         sign * (orientation == GeometrySign.Positive ? -1 : 1));
                     if (inside == GeometrySign.Unresolved) return inside;
-                    if (inside != GeometrySign.Negative) range.Add(point);
+                    if (inside == GeometrySign.Negative) continue;
+                    FeaturePoint point = OnPlane(polygon, FeaturePoint.Add(axis,
+                        FeaturePoint.Scale(directionPoint, radius.Divide(root), exactZeroProducts: true)));
+                    if (!point.IsResolved) return GeometrySign.Unresolved;
+                    range.Add(point);
                 }
         }
         return range.HasPoint ? GeometrySign.Positive : GeometrySign.Negative;

@@ -191,13 +191,14 @@ public sealed class AdapterTransportTests
     }
 
     [Fact]
-    public async Task QueueSender_LetsSdkEncodeExactlyOnce()
+    public async Task WorkQueue_LetsSdkEncodeExactlyOnce_AndRetainsReceiptForLiveCleanup()
     {
+        var item = new ReportWorkItem(ReportWorkKind.CreateIssue, "01900000000070008000000000000001");
         using var http = Http(async request =>
         {
             string xml = await request.Content!.ReadAsStringAsync();
             var document = System.Xml.Linq.XDocument.Parse(xml);
-            Assert.Equal("unencoded text", Encoding.UTF8.GetString(Convert.FromBase64String(document.Root!.Element("MessageText")!.Value)));
+            Assert.Equal(item, ReportWorkItemJson.Parse(Encoding.UTF8.GetString(Convert.FromBase64String(document.Root!.Element("MessageText")!.Value))));
             var response = Response(HttpStatusCode.Created);
             response.Content = new StringContent("<QueueMessagesList><QueueMessage><MessageId>id</MessageId><InsertionTime>Sun, 18 Oct 2026 00:00:00 GMT</InsertionTime><ExpirationTime>Sun, 25 Oct 2026 00:00:00 GMT</ExpirationTime><PopReceipt>receipt</PopReceipt><TimeNextVisible>Sun, 18 Oct 2026 00:00:00 GMT</TimeNextVisible></QueueMessage></QueueMessagesList>");
             return response;
@@ -205,7 +206,11 @@ public sealed class AdapterTransportTests
         QueueClientOptions options = ReportQueueClientOptions.Create();
         options.Transport = new HttpClientTransport(http);
         options.Retry.MaxRetries = 0;
-        await new QueueSenderAdapter(new QueueClient(new Uri("https://unused.invalid/work"), options)).SendAsync("unencoded text", default);
+        var queue = new ReceiptTrackingQueueClient(new Uri("https://unused.invalid/work"), options);
+        await new StorageQueueReportWorkQueue(queue).EnqueueAsync(item, default);
+        Assert.NotNull(queue.Sent);
+        Assert.Equal("id", queue.Sent.MessageId);
+        Assert.Equal("receipt", queue.Sent.PopReceipt);
     }
 
     static BlobContainerClient Blob(HttpClient http)

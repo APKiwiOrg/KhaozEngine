@@ -52,7 +52,7 @@ public sealed class AzureLiveTests
     [BugReportsAzureFact]
     public async Task Live_Queue_RoundTripsWorkItem()
     {
-        var queue = new QueueClient(ResourceUri("queue", WorkQueue), new DefaultAzureCredential(),
+        var queue = new ReceiptTrackingQueueClient(ResourceUri("queue", WorkQueue), new DefaultAzureCredential(),
             ReportQueueClientOptions.Create());
         Assert.Empty((await queue.PeekMessagesAsync(1)).Value);
         var item = new ReportWorkItem(ReportWorkKind.CreateIssue, Guid.CreateVersion7().ToString("N"));
@@ -60,10 +60,9 @@ public sealed class AzureLiveTests
         string? receipt = null;
         try
         {
-            // Keep the send receipt so a failing receive still leaves a removable message.
-            SendReceipt sent = (await queue.SendMessageAsync(ReportWorkItemJson.Serialize(item))).Value;
-            messageId = sent.MessageId;
-            receipt = sent.PopReceipt;
+            await new StorageQueueReportWorkQueue(queue).EnqueueAsync(item, default);
+            messageId = queue.Sent!.MessageId;
+            receipt = queue.Sent.PopReceipt;
             QueueMessage received = (await queue.ReceiveMessageAsync()).Value;
             Assert.Equal(messageId, received.MessageId);
             receipt = received.PopReceipt;

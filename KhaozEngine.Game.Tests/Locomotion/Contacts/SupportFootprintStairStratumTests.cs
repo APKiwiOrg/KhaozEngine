@@ -152,6 +152,12 @@ public sealed class SupportFootprintStairStratumTests
         finally { SupportQueryDiagnostics.Exchange(prior); }
     }
 
+    // Optimized Extrema counts before the stratum, for the scenes whose reference skips SC-14 certificates.
+    static readonly Dictionary<string, int> PreStratumExtrema = new()
+    {
+        ["stairs box"] = 18, ["stairs hull"] = 18, ["hidden crate"] = 23,
+    };
+
     [Fact]
     public void StairStratumMatchesReferenceOnEveryCostScene()
     {
@@ -176,9 +182,14 @@ public sealed class SupportFootprintStairStratumTests
                 }, row.Name);
                 if (row.Name == "stairs box") Assert.True(runs[0].StairStratum > 0);
                 // The stratum adds every candidate the generic path adds. The vertical admission certificate (SC-14)
-                // skips the reference's admission extrema of the faces it decides, so those scenes cannot compare.
+                // skips the reference's admission extrema of the faces it decides, so those scenes compare against
+                // the optimized count recorded before the stratum existed (976c487d7 and the research 3 trace).
                 if (runs[0].AdmissionCertificates == 0) Assert.Equal(runs[1].Extrema, runs[0].Extrema);
-                else Assert.True(runs[0].Extrema < runs[1].Extrema, row.Name);
+                else
+                {
+                    Assert.True(PreStratumExtrema.TryGetValue(row.Name, out int golden), row.Name);
+                    Assert.Equal(golden, runs[0].Extrema);
+                }
                 SupportFootprintEquivalence.AssertMatchesReference(scene.World, lease,
                     FootSupport.DescribeFootprint(row.Query), row.Name);
             }

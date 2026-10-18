@@ -77,12 +77,17 @@ public sealed class ReportRedactor
         if (text is null) throw new ArgumentNullException(nameof(text));
         if (text.Length == 0) return text;
 
+        // A rule replaces only after it has matched. A regex holds its parsed replacement only weakly, so a
+        // replace on clean text after a full collection would parse it again and allocate.
         try
         {
             string result = text;
             foreach (Rule rule in rules)
-                result = rule.Pattern.Replace(result, rule.Replacement);
-            if (home is not null)
+            {
+                if (rule.Pattern.IsMatch(result))
+                    result = rule.Pattern.Replace(result, rule.Replacement);
+            }
+            if (home is not null && home.IsMatch(result))
                 result = home.Replace(result, "~");
             return result;
         }

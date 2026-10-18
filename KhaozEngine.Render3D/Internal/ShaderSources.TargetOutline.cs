@@ -3,7 +3,10 @@ namespace KhaozEngine.Render3D.Internal;
 internal static partial class ShaderSources
 {
     public const string TargetOutlineMaskVert = @"#version 450
-layout(set=0, binding=0) uniform Draw { mat4 ViewProj; mat4 World; vec4 Params; vec4 RenderOrigin; };
+layout(set=0, binding=0) uniform Draw {
+    mat4 ViewProj; mat4 World; vec4 Params; vec4 RenderOrigin;
+    vec4 InteriorCutWindow; vec4 InteriorCutHeights;
+};
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
 layout(location=2) in vec4 Color;
@@ -99,6 +102,22 @@ void main() {
     // test against the scene depth takes a constant plus a slope-scaled bias. The composite keeps the true depth.
     gl_FragDepth = gl_FragCoord.z - (2.5e-7 + fwidth(gl_FragCoord.z));
 }";
+
+    public static readonly string TargetOutlineRigidFullMaskFrag = RigidOutlineFragment(TargetOutlineFullMaskFrag);
+    public static readonly string TargetOutlineRigidVisibleMaskFrag = RigidOutlineFragment(TargetOutlineVisibleMaskFrag);
+
+    static string RigidOutlineFragment(string fragment)
+    {
+        // Keep the shared helper verbatim. The material sampler gets a distinct name in the rigid pair.
+        fragment = fragment.Replace("uniform sampler Samp;", "uniform sampler AlbedoSamp;")
+            .Replace("Albedo, Samp", "Albedo, AlbedoSamp");
+        fragment = ShaderText.After(fragment, "vec4 RenderOrigin;", " vec4 InteriorCutWindow; vec4 InteriorCutHeights;");
+        fragment = ShaderText.After(fragment, "uniform sampler AlbedoSamp;", @"
+layout(set=2, binding=0) uniform texture2D InteriorCut;
+layout(set=2, binding=1) uniform sampler Samp;");
+        fragment = ShaderText.After(fragment, "void main() {", "\n    if (Params.w > 0.5 && interiorCut(vWorldPos - RenderOrigin.xyz)) discard;");
+        return ShaderText.After(fragment, "layout(location=1) in vec3 vWorldPos;", InteriorCutGlsl);
+    }
 
     public const string TargetOutlineCompositeFrag = @"#version 450
 layout(set=0, binding=0) uniform texture2D FullCoverage;

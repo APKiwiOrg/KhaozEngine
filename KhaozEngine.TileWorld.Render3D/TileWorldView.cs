@@ -579,8 +579,9 @@ public sealed partial class TileWorldView : IDisposable
         if (dx * dx + dz * dz > _options.PropDrawRadius * _options.PropDrawRadius) return;
         Matrix4x4 world = Matrix4x4.CreateRotationY(TileObjectProps.YawRadians(archetype, o.Rotation))
             * Matrix4x4.CreateTranslation(at);
+        bool cutInsideInteriors = CutArchetypeIds.Contains(archetypeId);
         for (int i = 0; i < parts.Count; i++)
-            _scene.DrawMeshSilhouette(parts[i], world, _silhouetteColor, _silhouetteWidth);
+            _scene.DrawMeshSilhouette(parts[i], world, _silhouetteColor, _silhouetteWidth, cutInsideInteriors);
     }
 
     /// <summary>The ground materials every region-plane mesh of this view is drawn with, which is also the slot

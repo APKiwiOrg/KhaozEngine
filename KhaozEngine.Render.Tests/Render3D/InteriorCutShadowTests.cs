@@ -131,7 +131,7 @@ public sealed class InteriorCutShadowTests
         FakeResourceSet[] Borrowers(FakeTexture texture) => factory.ResourceSets.Where(set => !set.Disposed
             && set.Resources.Contains(texture)).ToArray();
         FakeTexture first = Texture();
-        Assert.Equal(2, Borrowers(first).Count(set => set.Resources.Length == 2));
+        Assert.Equal(4, Borrowers(first).Count(set => set.Resources.Length == 2));
         int sets = factory.ResourceSets.Count;
         stage.Frame();
         Assert.Equal(sets, factory.ResourceSets.Count);
@@ -146,7 +146,7 @@ public sealed class InteriorCutShadowTests
         Assert.True(first.Disposed);
         Assert.Equal(0, factory.LiveSetsNamingAFreedTexture);
         FakeTexture resized = Texture();
-        Assert.Equal(2, Borrowers(resized).Count(set => set.Resources.Length == 2));
+        Assert.Equal(4, Borrowers(resized).Count(set => set.Resources.Length == 2));
         FakeResourceSet[] lastBorrowers = Borrowers(resized);
         resized.OnDispose = () => Assert.All(lastBorrowers, set => Assert.True(set.Disposed));
         stage.Dispose();

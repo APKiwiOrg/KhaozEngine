@@ -33,7 +33,7 @@ internal sealed partial class TargetOutlineRenderer
         int poseStart = _gpuPaletteBones.Count;
         for (int i = 0; i < composedBones.Length; i++) _gpuPaletteBones.Add(composedBones[i]);
         int paletteSlot = _nextGpuPaletteSlot++;
-        WriteDrawPayload(drawIndex, world, alphaCutoff, dissolve, dissolveComplement, renderOrigin);
+        WriteDrawPayload(drawIndex, world, alphaCutoff, dissolve, dissolveComplement, renderOrigin, false);
         _queue.Add(new QueuedDraw(QueuedGeometry.GpuSkinned, restVertexBuffer, indexBuffer, indexCount,
             indexFormat, materialSet ?? _defaultMaterialSet, drawIndex, paletteSlot, 0,
             poseStart, composedBones.Length));
@@ -56,7 +56,7 @@ internal sealed partial class TargetOutlineRenderer
         int baseVertex = _cpuVertices.Count;
         for (int i = 0; i < sourceVertices.Length; i++)
             _cpuVertices.Add(SkinningMath.SkinVertex(sourceVertices[i], composedBones));
-        WriteDrawPayload(drawIndex, world, alphaCutoff, dissolve, dissolveComplement, renderOrigin);
+        WriteDrawPayload(drawIndex, world, alphaCutoff, dissolve, dissolveComplement, renderOrigin, false);
         _queue.Add(new QueuedDraw(QueuedGeometry.CpuSkinned, null, indexBuffer, indexCount,
             indexFormat, materialSet ?? _defaultMaterialSet, drawIndex, -1, baseVertex, 0, 0));
     }
@@ -112,19 +112,6 @@ internal sealed partial class TargetOutlineRenderer
                 throw new InvalidOperationException(
                     "CPU-skinned outline vertices were not prepared before mask rendering.");
         }
-    }
-
-    void WriteDrawPayload(int drawIndex, Matrix4x4 world, float alphaCutoff,
-        float dissolve, bool dissolveComplement, Vector3 renderOrigin)
-    {
-        var payload = new DrawUbo
-        {
-            ViewProj = _viewProj,
-            World = world,
-            Params = new Vector4(alphaCutoff, dissolve, dissolveComplement ? 1f : 0f, 0f),
-            RenderOrigin = new Vector4(renderOrigin, 0f),
-        };
-        MemoryMarshal.Write(_drawImage.AsSpan(drawIndex * DrawSlotBytes, DrawSlotBytes), in payload);
     }
 
     IGpuPipeline BuildSkinnedMaskPipeline(IGpuResourceFactory factory, IGpuShaderSet shaders,

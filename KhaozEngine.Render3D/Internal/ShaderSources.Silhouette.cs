@@ -13,9 +13,13 @@ namespace KhaozEngine.Render3D.Internal
         //      stream built at mesh load, so authored hard-edge shading normals stay untouched while coincident
         //      vertices extrude together. The two inputs remain contiguous for D3D11/FXC.
         public const string SilhouetteVert = @"#version 450
-layout(set=0, binding=0) uniform Draw { mat4 ViewProj; mat4 World; vec4 Color; vec4 Params; };
+layout(set=0, binding=0) uniform Draw {
+    mat4 ViewProj; mat4 World; vec4 Color; vec4 Params;
+    vec4 InteriorCutWindow; vec4 InteriorCutHeights;
+};
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
+layout(location=0) out vec3 vWorldPos;
 void main() {
     // Push along the WORLD-space normal so the shell's width is in metres whatever the mesh's local scale.
     // The props use uniform scale, so the rotation part of World carries the normal faithfully after a
@@ -23,15 +27,24 @@ void main() {
     vec3 worldNormal = normalize(mat3(World) * Normal);
     vec4 world = World * vec4(Position, 1.0);
     world.xyz += worldNormal * Params.x;
+    vWorldPos = world.xyz;
     gl_Position = ViewProj * world;
 }";
 
         public const string SilhouetteFrag = @"#version 450
-layout(set=0, binding=0) uniform Draw { mat4 ViewProj; mat4 World; vec4 Color; vec4 Params; };
+layout(set=0, binding=0) uniform Draw {
+    mat4 ViewProj; mat4 World; vec4 Color; vec4 Params;
+    vec4 InteriorCutWindow; vec4 InteriorCutHeights;
+};
+layout(set=1, binding=0) uniform texture2D InteriorCut;
+layout(set=1, binding=1) uniform sampler Samp;
+layout(location=0) in vec3 vWorldPos;
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
+" + InteriorCutGlsl + @"
 void main() {
+    if (Params.y > 0.5 && interiorCut(vWorldPos)) discard;
     oColor = Color;        // flat, alpha via the AlphaBlend attachment on target 0
     oNormal = vec4(0.0);   // discarded (PreserveDestination blend on attachment 1)
     oDepth  = vec4(0.0);   // discarded (PreserveDestination blend on attachment 2)

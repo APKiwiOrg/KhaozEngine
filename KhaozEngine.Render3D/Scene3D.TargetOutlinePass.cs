@@ -52,20 +52,23 @@ public sealed partial class Scene3D
 
     /// <summary>Adds one mesh part to a group returned by <see cref="BeginMeshOutline(Color, float, MeshOutlineOcclusion)"/> this frame.</summary>
     public void DrawMeshOutline(MeshOutlineGroup group, MeshHandle mesh, Matrix4x4 world)
-        => AddMeshOutlinePart(group, mesh, world, 0f, false);
+        => AddMeshOutlinePart(group, mesh, world, 0f, false, false);
 
     public void DrawMeshOutlineDissolved(MeshOutlineGroup group, MeshHandle mesh, Matrix4x4 world,
         float dissolve, bool dissolveComplement)
-    {
-        AddMeshOutlinePart(group, mesh, world, dissolve, dissolveComplement);
-    }
+        => DrawMeshOutlineDissolved(group, mesh, world, dissolve, dissolveComplement, false);
+
+    /// <summary>Adds one rigid part whose coverage follows the model's dissolve and optional interior cut.</summary>
+    public void DrawMeshOutlineDissolved(MeshOutlineGroup group, MeshHandle mesh, Matrix4x4 world,
+        float dissolve, bool dissolveComplement, bool cutInsideInteriors)
+        => AddMeshOutlinePart(group, mesh, world, dissolve, dissolveComplement, cutInsideInteriors);
 
     void AddMeshOutlinePart(MeshOutlineGroup group, MeshHandle mesh, Matrix4x4 world,
-        float dissolve, bool dissolveComplement)
+        float dissolve, bool dissolveComplement, bool cutInsideInteriors)
     {
         MeshOutlineDrawGroup drawGroup = RequireMeshOutlineGroup(group);
         drawGroup.Parts.Add(MeshOutlinePart.Rigid(mesh, world,
-            Math.Clamp(dissolve, 0f, 1f), dissolveComplement));
+            Math.Clamp(dissolve, 0f, 1f), dissolveComplement, cutInsideInteriors));
         _meshOutlinePartCount++;
     }
 
@@ -132,17 +135,18 @@ public sealed partial class Scene3D
         Matrix4x4 World,
         float Dissolve,
         bool DissolveComplement,
+        bool CutInsideInteriors,
         int BoneStart,
         int BoneCount)
     {
         public static MeshOutlinePart Rigid(
-            MeshHandle mesh, Matrix4x4 world, float dissolve, bool complement) =>
-            new(MeshOutlinePartKind.Rigid, mesh, default, world, dissolve, complement, 0, 0);
+            MeshHandle mesh, Matrix4x4 world, float dissolve, bool complement, bool cutInsideInteriors) =>
+            new(MeshOutlinePartKind.Rigid, mesh, default, world, dissolve, complement, cutInsideInteriors, 0, 0);
 
         public static MeshOutlinePart Skinned(
             SkinnedMeshHandle mesh, Matrix4x4 world, float dissolve, bool complement,
             int boneStart, int boneCount) =>
-            new(MeshOutlinePartKind.Skinned, default, mesh, world, dissolve, complement,
+            new(MeshOutlinePartKind.Skinned, default, mesh, world, dissolve, complement, false,
                 boneStart, boneCount);
     }
 
@@ -168,7 +172,7 @@ public sealed partial class Scene3D
                     if (_meshes[part.Mesh.Index] is not { } mesh) continue;
                     _targetOutlines.EnqueueRigid(mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat,
                         mesh.OutlineMaterialSet, drawIndex++, ToRender(part.World), mesh.AlphaCutoff,
-                        part.Dissolve, part.DissolveComplement, _frameOrigin);
+                        part.Dissolve, part.DissolveComplement, _frameOrigin, part.CutInsideInteriors);
                     groupDraws++;
                     continue;
                 }

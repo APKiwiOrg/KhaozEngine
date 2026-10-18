@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Primitives;
+using KhaozEngine.Render3D;
 using KhaozEngine.TileWorld;
 
 namespace KhaozEngine.Tests.TileWorld;
@@ -13,6 +15,22 @@ public sealed partial class RecordingTileWorldScene
     public InteriorHeightField? InteriorCut { get; private set; }
     public List<InteriorHeightField?> InteriorPublications { get; } = new();
     public Action<InteriorHeightField?>? OnInteriorPublication { get; set; }
+    public List<(MeshHandle Mesh, bool Complement, bool Cut)> InteriorOutlineParts { get; } = new();
+    public List<(MeshHandle Mesh, bool Cut)> InteriorSilhouettes { get; } = new();
+
+    public void DrawMeshOutlineDissolved(MeshOutlineGroup group, MeshHandle mesh, Matrix4x4 world,
+        float dissolve, bool complement, bool cutInsideInteriors)
+    {
+        InteriorOutlineParts.Add((mesh, complement, cutInsideInteriors));
+        DrawMeshOutlineDissolved(group, mesh, world, dissolve, complement);
+    }
+
+    public void DrawMeshSilhouette(MeshHandle mesh, Matrix4x4 world, Color color, float widthMetres,
+        bool cutInsideInteriors)
+    {
+        InteriorSilhouettes.Add((mesh, cutInsideInteriors));
+        DrawMeshSilhouette(mesh, world, color, widthMetres);
+    }
 
     public void SetInteriorCut(InteriorHeightField? field)
     {

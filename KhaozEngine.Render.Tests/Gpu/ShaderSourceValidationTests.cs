@@ -48,6 +48,17 @@ namespace KhaozEngine.Tests.Gpu
     public sealed class ShaderSourceValidationTests
     {
         [Fact]
+        public void InteriorHighlightPairs()
+        {
+            foreach (string fragment in new[] { ShaderSources.TargetOutlineRigidFullMaskFrag, ShaderSources.TargetOutlineRigidVisibleMaskFrag })
+                ShaderValidation.ValidatePair(ShaderSources.TargetOutlineMaskVert, fragment, "RigidOutline");
+            foreach (string fragment in new[] { ShaderSources.TargetOutlineFullMaskFrag, ShaderSources.TargetOutlineVisibleMaskFrag })
+                ShaderValidation.ValidatePair(ShaderSources.TargetOutlineSkinnedMaskVert, fragment, "SkinnedOutline");
+            ShaderValidation.ValidatePair(ShaderSources.SilhouetteVert, ShaderSources.SilhouetteFrag, "Silhouette");
+            ShaderValidation.ValidatePair(ShaderSources.SilhouetteVert, ShaderSources.SilhouetteMotionFrag, "SilhouetteMotion");
+        }
+
+        [Fact]
         public void InteriorShadowPairs()
         {
             foreach (var (vertex, fragment, _) in KhaozEngine.Tests.Render3D.InteriorCutShadowTests.RigidPairs())

@@ -35,6 +35,8 @@ public sealed partial class Scene3D
         else _model.SetInteriorCut(resources.Texture, uniforms);
         _model.ShadowMap.SetInteriorCut(resources.Texture, uniforms);
         _pointShadows?.SetInteriorCut(resources.Texture, uniforms);
+        _targetOutlines.SetInteriorCut(resources.Texture, uniforms);
+        _silhouettes.SetInteriorCut(resources.Texture, uniforms);
         resources.CommitBindings();
     }
 }

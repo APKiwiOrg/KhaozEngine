@@ -12,6 +12,47 @@ namespace KhaozEngine.Tests.TileWorld;
 
 public sealed class TileWorldTargetOutlineLodTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void IndividualOutlineAndSilhouettePassTheLayerFlag(bool cut)
+    {
+        TileWorldDocument document = TileRenderTestData.HouseWorld();
+        TileObject tree = document.AddObject("tree", 25, 25, 0, 0);
+        var scene = new RecordingTileWorldScene();
+        using var view = new TileWorldView(scene, document, TileRenderTestData.Catalogs, new LodResolver(),
+            new TileWorldViewOptions { PropLayers = new[] { TreeLayer() with { CutInsideInteriors = cut } } },
+            new TileWorldBuildQueueOptions(), new ImmediateDispatcher());
+        view.LoadRegion(TileRenderTestData.Region);
+        view.SetOutlinedObject(tree.Id, KhaozEngine.Primitives.Color.White);
+        view.SetSilhouettedObject(tree.Id, KhaozEngine.Primitives.Color.White);
+
+        view.Draw(new Vector3(25.5f, 0, -25.5f));
+
+        Assert.Equal(cut, Assert.Single(scene.InteriorOutlineParts).Cut);
+        Assert.Equal(cut, Assert.Single(scene.InteriorSilhouettes).Cut);
+        Assert.Equal(.05f, Assert.Single(scene.Silhouettes).Width);
+    }
+
+    [Fact]
+    public void MergedOutlineNeverCuts()
+    {
+        TileWorldDocument document = TileRenderTestData.HouseWorld();
+        TileObject tree = document.AddObject("tree", 25, 25, 0, 0);
+        var scene = new RecordingTileWorldScene();
+        using var view = new TileWorldView(scene, document, TileRenderTestData.Catalogs, new LodResolver(),
+            new TileWorldViewOptions { PropLayers = new[] { TreeLayer() with { CutInsideInteriors = true } } },
+            new TileWorldBuildQueueOptions { MaxHlodAppliesPerPump = 4 }, new ImmediateDispatcher());
+        view.LoadRegion(TileRenderTestData.Region);
+        view.SetOutlinedObject(tree.Id, KhaozEngine.Primitives.Color.White);
+
+        view.Draw(new Vector3(32 + 192, 0, -32));
+
+        Assert.Contains(scene.InteriorOutlineParts, part => !part.Complement && part.Cut);
+        Assert.Contains(scene.InteriorOutlineParts, part => part.Complement && !part.Cut);
+        Assert.All(scene.InteriorOutlineParts.Where(part => part.Complement), part => Assert.False(part.Cut));
+    }
+
     [Fact]
     public void Selected_tree_outline_follows_the_live_Lod_and_Hlod_dissolve_representations()
     {

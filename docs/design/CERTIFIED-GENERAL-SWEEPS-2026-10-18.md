@@ -255,9 +255,14 @@ Cost if wrong: new geometric success adds per-actor garbage or unsafe reused lea
 
 ### GS-13. Retain one selected read interval and frame
 
-Owner and restricted views read through their own authenticated physics lease and exclusions.
-Reject wrong receiver/source/thread, expired/disposed tokens, generation changes and origin mismatch.
-Validate before and after. Immutable topology may be shared, active scratch may not. Concurrent and
+Owner and restricted views read through the owner's authenticated read interval and their own exclusions.
+Leases are owner-scoped by contract (`IPhysicsQueryLeaseSource.SourceWorld`), and the parameterless sweep
+APIs take no token, so two views over one owner share that owner's interval by design. A view applies its
+own exclusions to every general family exactly as it does for identity boxes. Where an API receives a
+token (the leased movement compositions), wrong receiver, source or thread, expired or disposed tokens,
+generation changes and origin mismatch are rejected as today. Sweep geometry evidence is rejected when its
+installation or mutation generation is stale. Validate before and after. No lease, gate, view or token
+semantics change in this program (ruling GB-R2, 2026-10-18). Immutable topology may be shared, active scratch may not. Concurrent and
 nested queries use the existing scratch-loan protocol. No unrestricted source-world escape, extra
 lease, implicit scope expansion or new registration/acquisition scan is permitted.
 Prove translated frames, nonzero Y origins, rebase, handle reuse and wake/sleep transfers for each

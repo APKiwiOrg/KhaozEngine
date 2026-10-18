@@ -2,7 +2,8 @@
 # Exercises scripts/gpu-test-shards.py, the shard plan and coverage guard of the GPU matrix's full suites
 # (#1438): which legs a trigger shards, that every backend's slice filters partition a listing exactly once,
 # that a shard report reads its totals from TRX files, and that the per-backend summary fails a missing shard,
-# a red shard and an assembly that ran twice.
+# a red shard and an assembly that ran twice. A small SDK fixture also proves transitive references stay
+# in Release when their projects are absent from the derived solution.
 #
 # Fixture-only: every listing, TRX file, report and solution below is written under mktemp.
 #
@@ -47,8 +48,8 @@ PY
 echo "expand: which triggers shard which legs"
 check "push keeps Metal's full suite on one job" "3 none"    "$(expand push false '')"
 check "pull_request matches push"           "3 none"          "$(expand pull_request false '')"
-check "dispatch shards all three"           "23 metal-native,direct3d11-native,vulkan-native" "$(expand workflow_dispatch false '')"
-check "schedule matches dispatch"           "23 metal-native,direct3d11-native,vulkan-native" "$(expand schedule false '')"
+check "dispatch shards all three"           "24 metal-native,direct3d11-native,vulkan-native" "$(expand workflow_dispatch false '')"
+check "schedule matches dispatch"           "24 metal-native,direct3d11-native,vulkan-native" "$(expand schedule false '')"
 check "a bake shards nothing"               "3 none"          "$(expand workflow_dispatch true '')"
 check "a render filter shards nothing"      "3 none"          "$(expand workflow_dispatch false 'FullyQualifiedName~Golden')"
 
@@ -162,7 +163,8 @@ python3 - "$S" <<'PY'
 import pathlib, sys, xml.etree.ElementTree as ET
 base = pathlib.Path(sys.argv[1])
 solution = ET.parse(base / "Fixture.slnx")
-for name in ("KhaozEngine.MapEditor.Tests", "KhaozEngine.Game.Tests", "KhaozEngine.Movement.Tests", "KhaozEngine.Catalog.Tests"):
+for name in ("KhaozEngine.MapEditor.Tests", "KhaozEngine.Game.Tests", "KhaozEngine.Movement.Tests", "KhaozEngine.Catalog.Tests",
+             "KhaozEngine.Server.Tests"):
     path = base / name / (name + ".csproj")
     path.parent.mkdir()
     override = "<AssemblyName>Fixture.Editor.Tests</AssemblyName>" if "MapEditor" in name else ""
@@ -182,6 +184,8 @@ check "Windows rest excludes the named projects" 0 \
   "$(run solution direct3d11-native rest "$S/Fixture.slnx" "$S/output/windows.slnx")"
 check "the Windows named project solution is generated" 0 \
   "$(run solution direct3d11-native projects-1 "$S/Fixture.slnx" "$S/output/windows-projects.slnx")"
+check "the second Windows named project solution is generated" 0 \
+  "$(run solution direct3d11-native projects-2 "$S/Fixture.slnx" "$S/output/windows-projects-2.slnx")"
 check "Render slices cannot generate a project solution" 1 \
   "$(run solution vulkan-native render-1 "$S/Fixture.slnx" "$S/output/invalid.slnx")"
 _rc=0
@@ -192,18 +196,63 @@ def paths(name):
     return {p.get("Path") for p in ET.parse(base / "output" / (name + ".slnx")).iter("Project")}
 rest = {"../A.Tests/A.Tests.csproj", "../Lib/Lib.csproj"}
 catalog = {"../KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj"}
+server = {"../KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj"}
+editor = {"../KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj"}
 named = {f"../{name}/{name}.csproj" for name in
          ("KhaozEngine.MapEditor.Tests", "KhaozEngine.Game.Tests", "KhaozEngine.Movement.Tests")}
-assert paths("rest") == rest | catalog, paths("rest")
+assert paths("rest") == rest | catalog | server, paths("rest")
 assert paths("projects") == named, paths("projects")
-assert paths("all") == rest | named | catalog, paths("all")
-assert paths("windows") == rest | named, paths("windows")
+assert paths("all") == rest | named | catalog | server, paths("all")
+assert paths("windows") == rest | (named - editor), paths("windows")
 assert paths("windows-projects") == catalog, paths("windows-projects")
+assert paths("windows-projects-2") == editor | server, paths("windows-projects-2")
 assert not paths("rest") & paths("projects"), "project shards overlap"
-assert not paths("windows") & paths("windows-projects"), "Windows project shards overlap"
+for a, b in (("windows", "windows-projects"), ("windows", "windows-projects-2"), ("windows-projects", "windows-projects-2")):
+    assert not paths(a) & paths(b), f"Windows shards {a} and {b} overlap"
 assert all((base / "output" / p).exists() for p in paths("all")), "paths were not rebased"
 PY
 check "derived solutions partition projects and rebase paths" 0 "$_rc"
+
+echo "build solutions: only shard test roots and required instrumentation"
+for backend in metal-native direct3d11-native vulkan-native; do
+  for shard in rest render-1; do
+    check "$backend $shard build solution" 0 \
+      "$(run build-solution "$backend" "$shard" "$S/Fixture.slnx" "$S/output/build-$backend-$shard.slnx")"
+  done
+done
+for backend in direct3d11-native vulkan-native; do
+  check "$backend projects-1 build solution" 0 \
+    "$(run build-solution "$backend" projects-1 "$S/Fixture.slnx" "$S/output/build-$backend-projects-1.slnx")"
+done
+check "direct3d11-native projects-2 build solution" 0 \
+  "$(run build-solution direct3d11-native projects-2 "$S/Fixture.slnx" "$S/output/build-direct3d11-native-projects-2.slnx")"
+_rc=0
+python3 - "$S" > "$OUTFILE" 2>&1 <<'PYBUILD' || _rc=$?
+import pathlib, sys, xml.etree.ElementTree as ET
+base = pathlib.Path(sys.argv[1])
+def paths(backend, shard):
+    return {p.get("Path") for p in ET.parse(base / "output" / f"build-{backend}-{shard}.slnx").iter("Project")}
+render = {"../KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj"}
+catalog = {"../KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj"}
+server = {"../KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj"}
+editor = {"../KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj"}
+named = {f"../{n}/{n}.csproj" for n in
+         ("KhaozEngine.MapEditor.Tests", "KhaozEngine.Game.Tests", "KhaozEngine.Movement.Tests")}
+for backend in ("metal-native", "direct3d11-native", "vulkan-native"):
+    assert paths(backend, "render-1") == render
+    rest = paths(backend, "rest")
+    assert "../Lib/Lib.csproj" not in rest, "standalone library roots are unnecessary"
+    assert "../A.Tests/A.Tests.csproj" in rest, "new test projects must default to rest"
+    assert (render <= rest) == (backend != "metal-native"), "once-per-leg checks need Render.Tests"
+assert paths("metal-native", "rest") == {"../A.Tests/A.Tests.csproj"} | named | catalog | server
+assert paths("direct3d11-native", "rest") == {"../A.Tests/A.Tests.csproj"} | (named - editor) | render
+assert paths("vulkan-native", "rest") == {"../A.Tests/A.Tests.csproj"} | catalog | server | render
+assert paths("direct3d11-native", "projects-1") == catalog
+assert paths("direct3d11-native", "projects-2") == editor | server
+assert paths("vulkan-native", "projects-1") == named
+PYBUILD
+check "build roots preserve coverage and instrumentation" 0 "$_rc"
+check "an unknown build shard fails" 1 "$(run build-solution metal-native render-3 "$S/Fixture.slnx" "$S/output/no.slnx")"
 
 project_reports() { # mutation, backend. Applied to an otherwise complete software backend
   rm -rf "$TMPROOT/reports"; mkdir -p "$TMPROOT/reports"
@@ -214,10 +263,13 @@ plan = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(plan)
 out, mutation, backend = sys.argv[2:]
 one = {"total": 2, "passed": 2, "failed": 0, "skipped": 0, "runs": 1}
-world = ["projects-1"] if backend == "vulkan-native" else ["rest"]
-where = {"a.tests": ["rest"], "Fixture.Editor.Tests": world.copy(),
+if backend == "vulkan-native":
+    editor, world, server, catalog = ["projects-1"], ["projects-1"], ["rest"], ["rest"]
+else:
+    editor, world, server, catalog = ["projects-2"], ["rest"], ["projects-2"], ["projects-1"]
+where = {"a.tests": ["rest"], "Fixture.Editor.Tests": editor,
          "KhaozEngine.Game.Tests": world.copy(), "KhaozEngine.Movement.Tests": world.copy(),
-         "KhaozEngine.Catalog.Tests": ["projects-1"] if backend == "direct3d11-native" else ["rest"],
+         "KhaozEngine.Server.Tests": server, "KhaozEngine.Catalog.Tests": catalog,
          "KhaozEngine.Render.Tests": [name for name, _ in plan.render_slices(backend)]}
 moved = "Fixture.Editor.Tests" if backend == "vulkan-native" else "KhaozEngine.Catalog.Tests"
 if mutation == "duplicate":
@@ -230,7 +282,7 @@ elif mutation == "new project moved":
     where["a.tests"] = ["projects-1"]
 elif mutation == "render moved":
     where["KhaozEngine.Render.Tests"].append("projects-1")
-for shard in ["rest", "projects-1"] + where["KhaozEngine.Render.Tests"]:
+for shard in [name for name in plan.shards(backend) if not name.startswith("render-")] + where["KhaozEngine.Render.Tests"]:
     assemblies = {name: dict(one) for name, shards in where.items() if shard in shards}
     if mutation == "twice on one" and shard == "projects-1":
         assemblies[moved]["runs"] = 2
@@ -247,6 +299,11 @@ for backend in direct3d11-native vulkan-native; do
     check "$backend project coverage refuses $mutation" 1 "$(run summarize "$backend" "$TMPROOT/reports" "$S/Fixture.slnx")"
   done
 done
+
+echo "build configuration: transitive references must stay in Release"
+_rc=0
+sh "$here/gpu-shard-build.test.sh" > "$OUTFILE" 2>&1 || _rc=$?
+check "the root and transitive references build in Release" 0 "$_rc"
 
 echo "gpu-test-shards.test: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

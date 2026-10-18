@@ -22,21 +22,33 @@ internal sealed class ManualTimeProvider : TimeProvider
 
     public override DateTimeOffset GetUtcNow() => Start.AddTicks(GetTimestamp());
 
-    /// <summary>The timers created and not yet disposed.</summary>
-    internal int ActiveTimers
+    /// <summary>The timers armed to fire exactly when the clock moves on by <paramref name="by"/>.</summary>
+    internal int TimersDueIn(TimeSpan by)
     {
-        get
+        lock (_gate)
         {
-            lock (_gate) return _timers.Count;
+            long dueAt = GetTimestamp() + by.Ticks;
+            int count = 0;
+            foreach (ManualTimer timer in _timers)
+                if (timer.DueAt == dueAt) count++;
+            return count;
         }
     }
+
+    /// <summary>Runs on the creating thread once a new timer counts in <see cref="TimersDueIn"/>. A test seam.</summary>
+    internal Action? TimerVisible { get; set; }
 
     public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
     {
         ArgumentNullException.ThrowIfNull(callback);
         var timer = new ManualTimer(this, callback, state);
-        lock (_gate) _timers.Add(timer);
-        timer.Change(dueTime, period);
+        // Armed before it is listed, so a test that sees it counted and moves the clock cannot push its due time on.
+        lock (_gate)
+        {
+            timer.Change(dueTime, period);
+            _timers.Add(timer);
+        }
+        TimerVisible?.Invoke();
         return timer;
     }
 
@@ -70,6 +82,9 @@ internal sealed class ManualTimeProvider : TimeProvider
             }
             return true;
         }
+
+        // Read under the owner's gate.
+        internal long DueAt => _dueAt;
 
         // Called under the owner's gate. Re-arms a periodic timer, disarms a one-shot.
         internal bool TakeIfDue(long now)

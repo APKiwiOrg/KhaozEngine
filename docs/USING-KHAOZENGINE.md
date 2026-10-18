@@ -3403,9 +3403,56 @@ var reports = new BugReportService(app,
 - **Shutdown.** `reports.Dispose()` removes the overlay, waits up to 3 s for sends to reach the offline queue,
   cancels sends and flushes, disposes the recorder and detaches the log ring. Dispose it before the app.
 
+### Server snapshot
+
 A game server registers its own sections on `BugReportServerCapture`, checks `ReportIds.IsValid` and `TryAccept`
 with the subject it authenticated before it calls `Capture` on the simulation thread, and posts with
-`ServerSnapshotPoster` off that thread. The package READMEs carry the full examples.
+`ServerSnapshotPoster` off that thread. `TryAccept(subject)` defaults to 5 requests per rolling hour per
+account. The game carries the report id from `ReportCaptured` to the server over its own authenticated
+protocol. Never accept a subject from that message.
+
+`ServerSnapshotPoster(http, relayBase, serviceKey, redactor)` finishes sections off the simulation thread,
+redacts and truncates within the 1 MiB snapshot cap, and posts with `X-Report-Service-Key` to
+`bug-reports/{reportId}/server`. The optional redactor defaults to the engine rules. `PostAsync` returns false
+with one warning on failure, except caller cancellation, which throws. Snapshot failure does not discard
+the client report. See the [server example](../KhaozEngine.BugReports/README.md#server-snapshot).
+
+### Relay host
+
+E1 capture and the E2 report client ship in 21.4.0. E3 adds `KhaozEngine.BugReports.Relay` and
+`KhaozEngine.BugReports.Relay.Azure` for staged 21.5.0. Both are opt-in, outside every umbrella, and target
+`net10.0`. The first consumer uses .NET 10 isolated on Functions Flex Consumption.
+
+The host supplies an `IReporterAuthenticator` over its verified game token and constructs `BugReportRelay`
+with media, queue, quota and GitHub seams plus a `TimeProvider`. Only the authenticator's returned subject
+is authoritative. Map HTTP POST `bug-reports` to `IntakeAsync`, HTTP POST `bug-reports/{reportId}/server`
+to `ServerSnapshotIntakeAsync`, and the queue trigger to
+`ProcessWorkAsync(ReportWorkItemJson.Parse(message), cancellationToken)`. Pass request bodies unread and
+forward the `RelayResponse` status, JSON and headers, including `Retry-After`. Let worker exceptions escape
+for durable queue redelivery.
+
+Every resend of an unfinished report enqueues `CreateIssue` before returning 202, regardless of age.
+If enqueue fails, the request fails so the client keeps its bundle. Worker claims and result markers
+suppress duplicate messages.
+
+To revoke a report:
+
+1. Call `BugReportRelay.RevokeAsync(reportId, cancellationToken)`.
+2. Delete its public capability folder.
+3. Delete it again after the 10-minute claim lease. A holder that passed its check before the call can
+   still finish a write inside its lease. Holders running beyond that lease are outside the guarantee.
+
+Retain the private `revoked/` tombstone and idempotency state for at least the report retention and the
+client queue's 7-day maximum age. A missing public manifest is also treated as revoked. Late snapshots
+and full-bundle resends return 202 without enqueueing revoked work.
+
+The [relay README](../KhaozEngine.BugReports.Relay/README.md) has the isolated-worker host sketch and status
+codes. Read its [Host duties](../KhaozEngine.BugReports.Relay/README.md#host-duties) for the 5-dequeue poison
+policy, visibility backoff, daily requeue and prefix-scoped retention, and its
+[Guarantees and residuals](../KhaozEngine.BugReports.Relay/README.md#guarantees-and-residuals) for claims,
+crash windows, unfenced leases and operator recovery. The
+[Azure backend README](../KhaozEngine.BugReports.Relay.Azure/README.md) covers caller-built clients,
+`ReportQueueClientOptions.Create(logger)`, RBAC roles and the separately gated live storage tests.
 
 ---
 
@@ -8474,7 +8521,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.4.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.5.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -8875,7 +8922,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.4.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.5.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9640,7 +9687,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.4.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.5.0" />
 ```
 
 ```csharp
@@ -17424,7 +17471,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.4.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.5.0" />
 ```
 
 ```csharp
@@ -17460,7 +17507,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.4.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.5.0" />
 ```
 
 ```csharp
@@ -17704,7 +17751,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.4.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.5.0" />
 ```
 
 ```csharp
@@ -22064,7 +22111,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.4.1" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.5.0" />
 </ItemGroup>
 ```
 

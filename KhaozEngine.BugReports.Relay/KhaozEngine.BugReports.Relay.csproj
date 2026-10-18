@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>KhaozEngine.BugReports.Relay</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>The host-agnostic in-game bug report relay (opt-in, NOT in any umbrella). It turns an authenticated client bundle and an optional server snapshot into a GitHub issue through a durable work queue. Storage, the work queue, quota counters, reporter authentication and GitHub sit behind seams, with in-memory implementations for tests and local runs. Pure .NET with no web framework and no third-party package, so any host adapts it in a few lines.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.BugReports/KhaozEngine.BugReports.csproj" />
+    <ProjectReference Include="../KhaozEngine.BugReports.Contracts/KhaozEngine.BugReports.Contracts.csproj" />
+    <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
+    <ProjectReference Include="../KhaozEngine.Http/KhaozEngine.Http.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.BugReports.Relay.Tests" />
+  </ItemGroup>
+
+</Project>

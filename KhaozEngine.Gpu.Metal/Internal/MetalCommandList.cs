@@ -134,10 +134,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// is the third of the uncounted emission seams and carries exactly one member. Separate from
         /// <paramref name="render"/> because a compute encoder is a different protocol, and separate from
         /// <paramref name="sink"/> because nothing about a pipeline-state bind scales with dispatch count.</param>
+        /// <param name="timestampTimeline">The device identity used to validate timestamp pool ownership.</param>
         internal MetalCommandList(IMetalCommandBufferSource buffers, MetalUncommittedBuffers uncommitted,
             IMetalEncoderSink sink, object owner, MetalRingAllocator rings, MetalStagingArena arena,
             IMetalBlitApi blit, IDeviceLiveness liveness, IMetalRenderApi render, IMetalComputeApi compute,
-            uint bufferOffsetAlignment, MetalClearMode clearMode = MetalClearMode.PerAttachment)
+            uint bufferOffsetAlignment, MetalClearMode clearMode = MetalClearMode.PerAttachment,
+            MetalTimeline? timestampTimeline = null)
         {
             ArgumentNullException.ThrowIfNull(buffers);
             ArgumentNullException.ThrowIfNull(uncommitted);
@@ -162,6 +164,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _liveness = liveness;
             _render = render;
             _compute = compute;
+            _timestampTimeline = timestampTimeline;
 
             // The two bind arms, which cannot be field initialisers because they need the device's alignment.
             // MetalCommandList.Binds.cs declares them.

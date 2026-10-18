@@ -234,7 +234,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 // M-A2's POSITION, CAPTURED PER LIST so a recording cannot straddle two policies. It is the
                 // per-attachment fix for every caller the engine has: the switch that could ask for the other
                 // position is gone, and what remains is a test seam. See MetalClearPolicy.
-                clearMode);
+                clearMode, _timeline);
 
         /// <inheritdoc/>
         /// <remarks>M-G2's <c>softwareAdapter</c> is ALWAYS false with confidence rather than null, because Apple

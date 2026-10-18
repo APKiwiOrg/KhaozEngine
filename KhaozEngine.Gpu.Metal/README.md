@@ -266,7 +266,7 @@ than unbuilt: it presents no frames, so there is no frame to capture.
 
 ## The timeline, and why a fence here is two fields (M-F1 to M-F5)
 
-One device-wide `MTLSharedEvent` is the whole synchronisation story. Every submission encodes
+One device-wide `MTLSharedEvent` owns submission completion. Every submission encodes
 `encodeSignalEvent:value:` with the next value before committing, a fence is a remembered value on that
 counter, and `IGpuFence.Signaled` is one non-blocking `signaledValue` read. There is no Metal object behind a
 fence at all.
@@ -297,6 +297,38 @@ liveness token from Metal's own completion thread. A single unbounded wait canno
 counts one entry into `GpuDeviceCounters.DrainCount` and `DrainMs` per call that actually blocked. The slice has
 one observable cost, which is up to 250ms of extra teardown latency after a device loss, since a waiter already
 blocked inside the native call keeps blocking until its current slice expires.
+
+## GPU timestamps
+
+`SupportsTimestamps` requires `MTLCommonCounterSetTimestamp`, stage-boundary or blit-command sampling,
+and a successful trial sample-buffer allocation. The probe releases that buffer immediately. Stage
+boundaries are preferred, including on Apple GPUs that do not support the blit sample command.
+
+`CreateTimestampPool` allocates fixed counter samples, a shared result buffer, two four-byte marker
+buffers, a private shared event and one blit-pass descriptor per sample in stage mode. Every write ends
+the current encoder through `EnsureNoEncoder`. The stage marker attaches the requested index at the
+end of a dedicated nonempty blit pass, with `MTLCounterDontSample` at the start. The command marker
+copies four bytes and calls `sampleCountersInBuffer:atSampleIndex:withBarrier:YES`. Both close the
+marker encoder before returning. Epoch changes invalidate encoder state while preserving pending clears.
+
+Each marker is surrounded by private-event signal/wait pairs with lifetime-monotonic values. These
+GPU dependencies order unrelated work as well as shared resources. They never wait on the CPU or
+advance the device completion timeline. End encodes
+`resolveCounters:inRange:destinationBuffer:destinationOffset:` into the fixed shared result buffer.
+It does not call the allocating CPU `resolveCounterRange:` selector.
+
+Begin samples the correlated CPU nanosecond and GPU clocks. Once the completion fence signals,
+resolve samples them again and derives nanoseconds per tick from the two deltas. Both terminal status
+and calibrated results remain cached until Begin. Invalid clock spans, out-of-interval or reversed
+counters, zero and `MTLCounterErrorValue` never publish ticks. Pending and Invalid return period zero.
+No fixed tick period, command-buffer duration estimate or CPU timer replaces hardware counters.
+
+Marker cost is part of instrumented GPU time and is never subtracted. Descriptors and native resources
+are reused only after the previous batch resolves. The caller keeps pools alive through completion.
+Metal retains encoded resources and disposal adds no drain. `MetalTimestampTests` covers device-free
+policy and `ComputeTimestampGpuTests` logs the native probe, branch and calibrated period. Apple
+Paravirtual may run the explicit unsupported branch. Real-hardware budget measurements require
+separate owner approval and a chosen device.
 
 ## Resources, and the one creation this backend refuses
 
@@ -506,6 +538,7 @@ rather than discovering it as a frame-loop stall with nothing attached.
 
 **Exactly one encoder is open at a time, which is Metal's rule rather than a policy this backend invents.**
 Three helpers own every transition and each ends the outgoing encoder before opening the incoming one.
+Timestamp markers first close that scope and report their dedicated blit encoder boundaries back to it.
 
 **Ending an encoder discards EVERYTHING it held**, and this backend acts on all of it: the bound pipeline, the
 whole argument table, the viewport, the scissor, every vertex stream and the index buffer. The incumbent

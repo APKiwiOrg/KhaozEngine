@@ -317,6 +317,12 @@ dropped about 63 minutes of runner time from a full dispatch.
   other two legs own theirs, so it verifies the committed `.metal-native.txt` grids on the same real GPU and
   bakes them on a bake dispatch. **This is the strongest regression net in the program**: the other two legs
   run golden-only on push, on software rasterizers, and this one runs everything on a real GPU every time.
+  `ComputeTimestampGpuTests` logs the timestamp counter-set, stage and blit boundary probes, trial-buffer
+  success, branch and calibrated period. Apple Paravirtual may report unsupported, which must execute
+  the negative pool-creation branch and leaves that GPU gate unmeasurable. Supported real Apple GPUs
+  must run the positive compute/draw path. Metal uses fixed marker passes, GPU event dependencies and
+  GPU-side counter resolve, then calibrates ticks from correlated hardware clocks. Marker cost stays
+  in instrumented GPU time and is never subtracted. Budget timing requires separate owner approval.
   Three things were this leg's rather than the incumbent Metal leg's and are simply this leg's now. It sets
   `KE_METAL_REQUIRED=1`, for the reason the Vulkan leg sets its own equivalent below. It arms `MTL_DEBUG_LAYER=1` on every run and `MTL_SHADER_VALIDATION=1` on the
   deep tier, which are Metal's two validation tiers. And it arms `MTL_CAPTURE_ENABLED=1` on the `capture`

@@ -370,7 +370,9 @@ What it owns today:
   because `Submit` does not flush.
 - **GPU timestamps** - gate on `GpuCapabilities.SupportsTimestamps`, default false. Native Vulkan probes
   the selected queue's counter bits and the device period. Direct3D 11 probes timestamp and disjoint
-  query creation on the actual device. Metal currently leaves it false.
+  query creation on the actual device. Metal probes the timestamp counter set, supported sampling
+  boundaries and sample-buffer creation. Its tick period comes from correlated CPU/GPU hardware clocks.
+  Marker cost is part of instrumented GPU time and is never subtracted.
   `CreateTimestampPool(capacity)` and the
   optional command defaults throw `NotSupportedException` without support. A fixed-capacity
   `IGpuTimestampPool` records one batch with `BeginTimestamps(pool, count)`, increasing unique

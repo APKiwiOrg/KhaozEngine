@@ -22422,7 +22422,8 @@ not been consumed. After consumption or valid discard it disposes only the owned
 
 Gate timestamp collection on `GpuCapabilities.SupportsTimestamps`. It defaults to false. Native Vulkan
 reports the selected graphics queue's counter support. Direct3D 11 probes both native query kinds on
-the actual device without timing a workload. Metal currently leaves it false. An unsupported
+the actual device without timing a workload. Metal probes the timestamp counter set, supported sampling
+boundaries and sample-buffer creation. An unsupported
 `IGpuResourceFactory.CreateTimestampPool(capacity)` throws `NotSupportedException`. The optional timestamp
 command defaults also throw, so existing factories and command lists stay source compatible.
 
@@ -22481,6 +22482,27 @@ then makes one `vkGetQueryPoolResults` call with exactly `64_BIT | WITH_AVAILABI
 16 bytes, with no `WAIT` or `PARTIAL`. Every availability word must be nonzero before normalization.
 Destruction uses the resource owner's timeline retirement. Adjacent intervals must each be shorter than
 `2^timestampValidBits * timestampPeriod` nanoseconds. Multiple wraps cannot be detected or reconstructed.
+
+Native Metal prefers stage-boundary sampling when available. Each write closes the current encoder,
+then records a dedicated nonempty blit pass with an end-of-encoder counter attachment and a fixed
+four-byte marker copy. On command-boundary-only devices it records the copy followed by
+`sampleCountersInBuffer:atSampleIndex:withBarrier:YES`. A pool-private shared event signals and waits
+around each marker, ordering even work with no resource in common. These are GPU dependencies and
+never CPU waits. The device completion timeline is unchanged. Pending clears remain deferred and
+encoder epochs force graphics and compute bindings to be re-emitted.
+
+End records `resolveCounters:inRange:destinationBuffer:destinationOffset:` into a preallocated shared
+buffer. Descriptors, sample and result buffers, marker buffers and the private event are fixed per
+pool and reused only after resolution. There is no allocating CPU counter resolve. Begin samples the
+correlated CPU nanoseconds and GPU ticks. The first completed resolve samples them once more and
+caches the result. The period is the CPU nanoseconds delta divided by the GPU ticks delta, with no
+fixed period or CPU duration fallback. Equal or reversed clock spans, counters outside the calibration
+interval, reversed counters, zero samples and `MTLCounterErrorValue` make the batch Invalid.
+
+Marker cost counts as part of instrumented GPU time and is never subtracted. Hosted Apple Paravirtual
+may report unsupported. Its negative branch must execute and that GPU gate is unmeasurable there.
+Native correctness is required on supported Apple hardware. Budget timing remains a separate,
+owner-approved measurement on a chosen device.
 
 ### Unsigned storage-buffer atomics
 

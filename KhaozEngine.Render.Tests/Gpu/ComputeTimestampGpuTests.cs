@@ -4,6 +4,7 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.D3D11.Internal;
+using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using KhaozEngine.Primitives;
 using Xunit;
@@ -64,6 +65,8 @@ void main() {
             IGpuDevice device = gpu.GpuDevice;
             IGpuResourceFactory factory = device.Factory;
             output.WriteLine($"backend: {device.Backend} ({device.Capabilities.DeviceName})");
+            if (device is MetalGpuDevice metal && metal.TimestampApi is { } timestampApi)
+                output.WriteLine($"timestamp probe: counterSet={timestampApi.HasTimestampCounterSet}, stageBoundary={timestampApi.SupportsStageBoundary}, blitBoundary={timestampApi.SupportsBlitBoundary}, sampleBufferCreated={timestampApi.SupportsTimestampCounters}");
             if (device is VulkanGpuDevice vulkan)
                 output.WriteLine(FormattableString.Invariant($"timestamp probe: validBits={vulkan.TimestampSupport.ValidBits}, periodNanoseconds={vulkan.TimestampSupport.TickPeriodNanoseconds:R}"));
             if (!device.Capabilities.SupportsTimestamps)
@@ -154,6 +157,7 @@ void main() {
             device.Submit(commands, completion);
             device.WaitForIdle(); // The test alone drains once. D3D11 Submit does not flush.
             Assert.Equal(GpuTimestampStatus.Ready, ResolveChecked(pool, completion, ticks, out period));
+            output.WriteLine(FormattableString.Invariant($"timestamp branch: supported, periodNanoseconds={period:R}"));
             if (pool is D3D11TimestampPool d3d11)
                 output.WriteLine(FormattableString.Invariant($"timestamp branch: supported, frequency={d3d11.Frequency}, periodNanoseconds={period:R}"));
             Assert.Equal(0ul, ticks[0]);

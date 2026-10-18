@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Markers;
 using KhaozEngine.MapEditor;
 using Xunit;
 
@@ -204,6 +206,39 @@ public sealed class MapDocumentWindowingSpawnTests
             finally { scene.OnExit(); }
         });
     }
+
+    [Fact]
+    public void Native_anchor_overload_keeps_the_analytic_search_and_never_reads_anchors()
+    {
+        WithWorld(doc => doc.PlayerSpawns.Add(Spawn("start", 3)), directory =>
+        {
+            MapDocument loaded = MapDocumentWindowing.Load(directory, new MapDocumentLoadOptions(), 1, 0,
+                MapDocumentWindowing.DefaultPlayerSpawnSearchTileLimit, out bool windowed, out MapTileRect? window,
+                "start-role", NoAnchors);
+            Assert.True(windowed);
+            Assert.Equal(new MapTileCoord(3, 0), window!.Value.Min);
+            Assert.Equal("start", Assert.Single(loaded.PlayerSpawns).Id);
+
+            MapDocument whole = MapDocumentWindowing.Load(directory, new MapDocumentLoadOptions(), 2, 0,
+                MapDocumentWindowing.DefaultPlayerSpawnSearchTileLimit, out bool wholeWindowed, out MapTileRect? none,
+                "start-role", NoAnchors);
+            Assert.False(wholeWindowed);
+            Assert.Null(none);
+            Assert.False(whole.Tiles!.IsPartial);
+        });
+    }
+
+    [Fact]
+    public void Native_anchor_overload_requires_a_role_and_a_callback()
+    {
+        Assert.Throws<ArgumentException>(() => MapDocumentWindowing.Load("unused", new MapDocumentLoadOptions(), 1, 0, 0,
+            out _, out _, " ", NoAnchors));
+        Assert.Throws<ArgumentNullException>(() => MapDocumentWindowing.Load("unused", new MapDocumentLoadOptions(), 1, 0, 0,
+            out _, out _, "start-role", null!));
+    }
+
+    static IReadOnlyList<MapMarkerAnchor> NoAnchors(MapDocument manifest) =>
+        throw new InvalidOperationException("An analytic or whole load must not read native anchors.");
 
     sealed class HeadlessScene : MapEditorScene
     {

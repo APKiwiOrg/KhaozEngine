@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Spaces;
@@ -9,7 +10,13 @@ namespace KhaozEngine.MapDoc.Editing;
 
 public abstract record MapPrefabEdit(string Label);
 public sealed record MapPlacePrefab(string InstanceId, string ResourceId, MapTransform Transform,
-    Surfaces.MapRecordRef? ParentSpace = null, bool NumericLeaves = true) : MapPrefabEdit("Place prefab");
+    Surfaces.MapRecordRef? ParentSpace = null, bool NumericLeaves = true) : MapPrefabEdit("Place prefab")
+{
+    /// <summary>Keyed overrides the new instance starts with, such as a marker replace override that names a repeated
+    /// instance's marker. Request data only. They are detached, planned and validated with the placement, and persist
+    /// as the instance's Overrides.</summary>
+    public IReadOnlyList<MapPrefabOverride> InitialOverrides { get; init; } = [];
+}
 public sealed record MapMovePrefab(string InstanceId, MapTransform Transform) : MapPrefabEdit("Move prefab");
 public sealed record MapSetPrefabOverride(string InstanceId, MapPrefabOverride Override) : MapPrefabEdit("Set prefab override");
 public sealed record MapRestorePrefabChild(string InstanceId, MapPrefabChildKey Child) : MapPrefabEdit("Restore prefab child");
@@ -44,9 +51,11 @@ public static class MapPrefabEdits
         if (edit is MapPlacePrefab place)
         {
             if (instance is not null) throw new MapDocumentException($"Prefab instance '{id}' is already reserved.");
+            var initial = InitialOverrides(place);
             var resource = assets.GetResource(place.ResourceId);
             if (resource.Kind != MapResourceKind.Prefab) throw new MapDocumentException("Placement requires a Prefab resource.");
-            instance = new(id, place.ResourceId, resource.Reference.Sha256, place.Transform, place.ParentSpace, new([]), []);
+            // The instance starts with its overrides, so bindings, names and every other rule see them before publication.
+            instance = new(id, place.ResourceId, resource.Reference.Sha256, place.Transform, place.ParentSpace, new([]), initial);
             Set(after, instance);
             Plan(after, assets, instance, before, place.NumericLeaves);
         }
@@ -121,6 +130,20 @@ public static class MapPrefabEdits
         }
         return MapPrefabEditPreparation.Finish(after, afterAssets, before, instances.Select(i => i.Id).ToArray(), bindings,
             nativeAssets: true);
+    }
+
+    // Duplicate keys refuse before any binding or numeric ID is allocated. The closed override codec detaches the request.
+    static IReadOnlyList<MapPrefabOverride> InitialOverrides(MapPlacePrefab place)
+    {
+        var values = place.InitialOverrides ?? throw new MapDocumentException("Initial overrides must not be null.");
+        if (values.Count == 0) return [];
+        var keys = new HashSet<MapPrefabChildKey>();
+        foreach (MapPrefabOverride value in values)
+        {
+            if (value is null) throw new MapDocumentException("Initial overrides must not contain null.");
+            if (!keys.Add(value.Child)) throw new MapDocumentException($"Duplicate initial override for {value.Child.Kind} '{value.Child.Key}'.");
+        }
+        return MapPrefabJson.ReadOverrides(Encoding.UTF8.GetString(MapPrefabJson.Bytes(values.ToArray())));
     }
 
     internal static void Set(MapDocument document, MapPrefabInstance instance)

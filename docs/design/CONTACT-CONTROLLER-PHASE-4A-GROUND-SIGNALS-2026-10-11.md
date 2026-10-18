@@ -65,7 +65,10 @@ errors, where the gate is the tick's traction gate. Then `d` is `e` with the sig
 contact skin, else `d = 0`. A rise or a drop within walkable grade is silent, and a drop beyond it is a step down,
 as a drop between members is. One member is one convex polygon or curved part, so its certified height is continuous
 in the axis, but a disc reaching up or leaving a curved flank can still change height faster than any walkable
-slope. Analytic terrain has no member and never takes this rule.
+slope. Analytic terrain has no member and never takes this rule. Two different walkable members take the same rule
+when either endpoint's complete footprint directly joins the selected pair (CF-4, CF-5), since the disc maximum over
+directly joined convex members is continuous too. Look-ahead compares each accepted walkable sample with the last
+one, so each read carries its own certified row.
 
 Each plane is the support's own plane only where its height field follows it. A certified height is the least of
 the support's plane at the axis, its witness height and its joined polygons' planes. When the height lies below the
@@ -85,7 +88,9 @@ walkable slopes: a footprint reaching up a 0.15 m radius curved prop rises 0.217
 rise a walkable grade explains, plus the certified errors, is free and the excess is a step. A drop beyond that
 grade is a step down for the signals and still charges no climb. Cost if wrong: a member whose walkable-grade rise
 is still a felt step, which is the definition of walkable, and a sloped overhung edge split between members reports
-one step where the support crosses members.
+one step where the support crosses members. CF-5 removes that step where either endpoint certifies the direct join
+(#1454), so a look-ahead window crossing such a seam no longer reports a rise and no false ascent run starts there
+(ClimbRate and EWMA 1.47 before, zero after, in the SG-23 row). Only an unjoined crossing still reports it.
 
 **Ruling 4a-1.** Steps are classified by plane agreement above the contact skin, not by the legacy
 `GroundedEpsilon` dead zone or by `StepPart` alone. `StepPart` alone reports millimetre events on every tick over

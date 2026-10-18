@@ -180,6 +180,29 @@ public sealed class ShippedBuildingInputGuardTests
     }
 
     [Fact]
+    public void AcceptedFormatSevenBuilding_LoadsCurrentWithoutRewritingScaffold()
+    {
+        using var fixture = ShippedBuildingGuardFixtures.Create("valid");
+        var environment = fixture.Environment.ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal);
+        string native = Path.Combine(environment["KHAOZ_R2_SHIPPED_SOURCE"]!, "native.json");
+        var scaffold = JsonNode.Parse(File.ReadAllText(native))!;
+        scaffold["formatVersion"] = 7;
+        File.WriteAllText(native, scaffold.ToJsonString());
+        string provenancePath = environment["KHAOZ_R2_ORACLE_PROVENANCE"]!;
+        var provenance = JsonNode.Parse(File.ReadAllText(provenancePath))!;
+        provenance["paths"]!.AsArray().Single(p => p!["path"]!.GetValue<string>() == "native.json")!["sha256"] = AssertFixtures.Sha256(native);
+        var typed = JsonSerializer.Deserialize<ShippedSourceProvenance>(provenance.ToJsonString(), ShippedSourceProvenance.JsonOptions)!;
+        provenance["aggregateSha256"] = typed.ComputeAggregate();
+        File.WriteAllText(provenancePath, provenance.ToJsonString());
+        environment["KHAOZ_R2_ORACLE_PROVENANCE_SHA256"] = AssertFixtures.Sha256(provenancePath);
+        var inputs = ShippedBuildingInputs.Read(PrivateOracleInputs.Require(environment));
+        Assert.Equal(MapDocumentFile.CurrentFormatVersion, inputs.NativeDocument.FormatVersion);
+        // The migration happened in memory. The retained attested bytes still declare format seven.
+        using var retained = JsonDocument.Parse(inputs.Bytes("native.json"));
+        Assert.Equal(7, retained.RootElement.GetProperty("formatVersion").GetInt32());
+    }
+
+    [Fact]
     public void ColliderTopology_WithUnchangedVertexAndNormalBagsIsRefused()
     {
         using var fixture = ShippedBuildingGuardFixtures.Create("collider-topology");

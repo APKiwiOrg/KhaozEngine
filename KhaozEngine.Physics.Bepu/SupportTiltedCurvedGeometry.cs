@@ -9,7 +9,9 @@ namespace KhaozEngine.Physics.Bepu;
 internal sealed partial class SupportTiltedCurvedGeometry
 {
     internal readonly record struct Witness(GeometryVector Position, GeometryVector Normal, bool AtSideCrest = false);
-    readonly record struct Candidate(GeometryInterval Parameter, double End, bool AtEnd, bool Slope, int Rim);
+    enum DiscLateralBoundary : byte { None, Negative, Positive }
+    readonly record struct Candidate(GeometryInterval Parameter, double End, bool AtEnd, bool Slope, int Rim,
+        DiscLateralBoundary Lateral = DiscLateralBoundary.None);
     readonly SupportCurvedSourceArithmetic _arithmetic = new();
     readonly SupportCurvedRootRegions _roots = new();
     readonly Candidate[] _candidates = new Candidate[32];
@@ -70,13 +72,17 @@ internal sealed partial class SupportTiltedCurvedGeometry
         return _axis.IsResolved && _w.IsResolved && B(_u).Lower > 0;
     }
 
-    bool Keep(GeometryInterval z, double end = 0, bool atEnd = false, bool slope = false, int rim = 0)
+    bool Keep(GeometryInterval z, double end = 0, bool atEnd = false, bool slope = false, int rim = 0,
+        DiscLateralBoundary lateral = DiscLateralBoundary.None)
     {
         if (!z.IsResolved || z.Lower > 1 || z.Upper < -1) return true;
         if (_count == _candidates.Length) return false;
-        _candidates[_count++] = new(GeometryInterval.Enclose(Math.Max(-1, z.Lower), Math.Min(1, z.Upper)), end, atEnd, slope, rim);
+        // A tagged quotient must prove its original source domain before any clipping.
+        _candidates[_count++] = new(lateral == DiscLateralBoundary.None ? Clip(z) : z, end, atEnd, slope, rim, lateral);
         return true;
     }
+
+    static GeometryInterval Clip(GeometryInterval z) => GeometryInterval.Enclose(Math.Max(-1, z.Lower), Math.Min(1, z.Upper));
 
     bool Boundaries(double end, int rim = 0)
     {
@@ -112,17 +118,23 @@ internal sealed partial class SupportTiltedCurvedGeometry
         GeometryInterval other = B(Div(Neg(_q), _r));
         double low = Math.Max(-1, Math.Min(0, other.Lower)), high = Math.Min(1, Math.Max(0, other.Upper));
         if (!SolveRoots(_polynomial, low, high)) return false;
+        // A source-proved nonzero constant term -k*k*Q*Q excludes a root at z=0 for every source.
+        // A root cell closed at zero then has the strict sign of its open side.
+        bool origin = Sign(_polynomial[0]) is GeometrySign.Positive or GeometrySign.Negative;
         for (int i = 0; i < _roots.Count; i++)
         {
             GeometryInterval z = _roots.Get(i), lateral = B(_q).Add(B(_r).Multiply(z));
-            if (z.Lower > 0 && lateral.Lower > 0 || z.Upper < 0 && lateral.Upper < 0) continue;
-            if ((z.Lower <= 0 && z.Upper >= 0) || (lateral.Lower <= 0 && lateral.Upper >= 0)) return false;
+            bool positive = z.Lower > 0 || origin && z.Lower == 0 && z.Upper > 0;
+            bool negative = z.Upper < 0 || origin && z.Upper == 0 && z.Lower < 0;
+            if (positive && lateral.Lower > 0 || negative && lateral.Upper < 0) continue;
+            if (!positive && !negative || (lateral.Lower <= 0 && lateral.Upper >= 0)) return false;
             if (!Keep(z)) return false;
         }
         return true;
     }
 
-    internal GeometrySign Side(double slope, out Witness witness, out GeometryInterval maximum)
+    // With equations false, both disc-lateral endpoints are evaluated as untagged candidates.
+    internal GeometrySign Side(double slope, out Witness witness, out GeometryInterval maximum, bool equations = true)
     {
         witness = default; maximum = default;
         _count = 0;
@@ -146,7 +158,8 @@ internal sealed partial class SupportTiltedCurvedGeometry
             }
         }
         if (!Keep(I(-1)) || !Keep(I(1)) || !Keep(I(0)) ||
-            !Keep(B(Div(Sub(Neg(_disc), _q), _r))) || !Keep(B(Div(Sub(_disc, _q), _r))) ||
+            !Keep(B(Div(Sub(Neg(_disc), _q), _r)), lateral: equations ? DiscLateralBoundary.Negative : default) ||
+            !Keep(B(Div(Sub(_disc, _q), _r)), lateral: equations ? DiscLateralBoundary.Positive : default) ||
             !Stationary()) return GeometrySign.Unresolved;
         if (Sign(_q) == GeometrySign.Zero &&
             SidePoint(new(I(0), 0, false, false, 0), slope, out Witness crest, out bool crestCertain) == GeometrySign.Positive && crestCertain)
@@ -199,6 +212,15 @@ internal sealed partial class SupportTiltedCurvedGeometry
 
     GeometrySign SidePoint(Candidate candidate, double slope, out Witness point, out bool certain)
     {
+        if (candidate.Lateral != DiscLateralBoundary.None)
+        {
+            GeometrySign proved = SideBoundary(candidate.Lateral == DiscLateralBoundary.Positive ? 1 : -1, slope, out point);
+            certain = proved == GeometrySign.Positive;
+            if (proved != GeometrySign.Unresolved) return proved;
+            // An unproved equation falls back to the clipped untagged candidate, with exactly its own certainty.
+            return SidePoint(new(Clip(candidate.Parameter), candidate.End, candidate.AtEnd, candidate.Slope,
+                candidate.Rim), slope, out point, out certain);
+        }
         point = default; certain = false;
         GeometryInterval z = candidate.Parameter, v = z.Lower == z.Upper && z.Lower == 0 ? I(1) :
             z.Lower == z.Upper && (z.Lower == -1 || z.Lower == 1) ? I(0) : PositiveRoot(I(1).Subtract(z.Square()));
@@ -230,6 +252,41 @@ internal sealed partial class SupportTiltedCurvedGeometry
         if (slope > 0) normalY = GeometryInterval.Enclose(Math.Max(slope, normalY.Lower), normalY.Upper);
         normal = new(normal.X, normalY, normal.Z);
         point = new(Add(Add(_centre, Scale(_axis, t)), Scale(normal, B(_r))), normal, z.Lower == 0 && z.Upper == 0);
+        return point.Position.IsResolved && normal.IsResolved ? GeometrySign.Positive : GeometrySign.Unresolved;
+    }
+
+    /// <summary>Certifies the side endpoint where Q+R*z equals sign*disc, after Begin. Positive is attained, Negative
+    /// is proved absent and Unresolved leaves the source equation unproved.</summary>
+    internal GeometrySign SideBoundary(int sign, double slope, out Witness point)
+    {
+        int checkpoint = _arithmetic.Checkpoint;
+        try { return SideLateralPoint(sign > 0, slope, out point); }
+        finally { _arithmetic.Restore(checkpoint); }
+    }
+
+    GeometrySign SideLateralPoint(bool positive, double slope, out Witness point)
+    {
+        point = default;
+        Number numerator = Sub(positive ? _disc : Neg(_disc), _q);
+        GeometrySign left = Sign(Add(numerator, _r)), right = Sign(Sub(_r, numerator));
+        if (left == GeometrySign.Negative || right == GeometrySign.Negative) return GeometrySign.Negative;
+        if (left == GeometrySign.Unresolved || right == GeometrySign.Unresolved) return GeometrySign.Unresolved;
+        Number parameter = Div(numerator, _r);
+        Number vertical = left == GeometrySign.Zero || right == GeometrySign.Zero ? C(0) : Root(Sub(C(1), Sq(parameter)));
+        Number upward = Mul(_u, vertical);
+        GeometrySign walkable = Sign(Sub(upward, C(slope)));
+        if (walkable is GeometrySign.Negative or GeometrySign.Unresolved) return walkable;
+        // Q+R*z is the signed disc radius by construction. Its transverse extent is zero.
+        // Clear the positive u denominator to certify this unique axial point for every source.
+        Number offset = Sub(Mul(Mul(_r, _k), vertical), _p), half = Mul(_u, _h);
+        GeometrySign low = Sign(Add(offset, half)), high = Sign(Sub(half, offset));
+        if (low == GeometrySign.Negative || high == GeometrySign.Negative) return GeometrySign.Negative;
+        if (low == GeometrySign.Unresolved || high == GeometrySign.Unresolved) return GeometrySign.Unresolved;
+        GeometryInterval z = B(parameter), v = B(vertical), t = B(Div(offset, _u));
+        GeometryVector normal = Add(Scale(_w, v), Scale(_f, z));
+        normal = new(normal.X, walkable == GeometrySign.Zero ? I(slope) :
+            GeometryInterval.Enclose(Math.Max(slope, B(upward).Lower), B(upward).Upper), normal.Z);
+        point = new(Add(Add(_centre, Scale(_axis, t)), Scale(normal, B(_r))), normal);
         return point.Position.IsResolved && normal.IsResolved ? GeometrySign.Positive : GeometrySign.Unresolved;
     }
 }

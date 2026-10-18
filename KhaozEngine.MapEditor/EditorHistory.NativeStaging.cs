@@ -11,9 +11,9 @@ public sealed partial class EditorHistory
         _nativeAssets = assets;
         _placementBounds = bounds;
     }
-    internal NativeStagedPublication StageExecute(MapDocument document, IEditorCommand command)
+    internal NativeStagedPublication StageExecute(MapDocument document, IEditorCommand command, string? liveLists = null)
     {
-        var staged = NativeDocumentTransaction.Stage(document, command, false, _nativeAssets, Registry, placementBounds: _placementBounds);
+        var staged = NativeDocumentTransaction.Stage(document, command, false, _nativeAssets, Registry, placementBounds: _placementBounds, liveLists: liveLists);
         Action? adopt = !_mergeBarrier && _undo.Count != 0 && _undo[^1] is INativePlacementHistoryMerge merge
             ? merge.PrepareMerge(command, staged) : null;
         _undo.EnsureCapacity(_undo.Count + 1);
@@ -27,11 +27,11 @@ public sealed partial class EditorHistory
             AcceptBinding(staged);
         });
     }
-    internal NativeStagedPublication? StageUndo(MapDocument document)
+    internal NativeStagedPublication? StageUndo(MapDocument document, string? liveLists = null)
     {
         if (_undo.Count == 0) return null;
         IEditorCommand command = _undo[^1];
-        var staged = NativeDocumentTransaction.Stage(document, command, true, _nativeAssets, Registry, placementBounds: _placementBounds);
+        var staged = NativeDocumentTransaction.Stage(document, command, true, _nativeAssets, Registry, placementBounds: _placementBounds, liveLists: liveLists);
         _redo.EnsureCapacity(_redo.Count + 1);
         return WithAcceptance(staged, () =>
         {
@@ -42,11 +42,11 @@ public sealed partial class EditorHistory
             AcceptBinding(staged);
         });
     }
-    internal NativeStagedPublication? StageRedo(MapDocument document)
+    internal NativeStagedPublication? StageRedo(MapDocument document, string? liveLists = null)
     {
         if (_redo.Count == 0) return null;
         IEditorCommand command = _redo[^1];
-        var staged = NativeDocumentTransaction.Stage(document, command, false, _nativeAssets, Registry, placementBounds: _placementBounds);
+        var staged = NativeDocumentTransaction.Stage(document, command, false, _nativeAssets, Registry, placementBounds: _placementBounds, liveLists: liveLists);
         _undo.EnsureCapacity(_undo.Count + 1);
         return WithAcceptance(staged, () =>
         {

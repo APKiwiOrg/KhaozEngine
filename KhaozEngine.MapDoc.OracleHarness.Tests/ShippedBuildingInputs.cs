@@ -47,8 +47,12 @@ internal sealed class ShippedBuildingInputs
     }
 
     internal static ShippedBuildingInputs Read(PrivateOracleInputs inputs)
+        => Read(inputs, inputs.Provenance.Comparison);
+
+    // Marker inputs may retain the accepted building correspondence as an attested JSON dependency.
+    internal static ShippedBuildingInputs Read(PrivateOracleInputs inputs, JsonElement buildingComparison)
     {
-        JsonElement comparison = inputs.Provenance.Comparison.Clone();
+        JsonElement comparison = buildingComparison.Clone();
         RejectDuplicateMembers(comparison);
         Shape(comparison, "schemaVersion", "nativeDocumentPath", "sourceCollisionOptions", "expectations", "definitions",
             "selectedLeafIds", "buildings", "leaves", "floors", "rooms", "groups", "roofs", "lights", "doorwayRecords", "doorways", "probes");
@@ -75,10 +79,11 @@ internal sealed class ShippedBuildingInputs
         }
         string nativePath = Text(comparison, "nativeDocumentPath");
         using (var json = JsonDocument.Parse(source.Bytes(nativePath)))
-            Require(json.RootElement.GetProperty("formatVersion").GetInt32() == 7, "native scaffold must declare format seven");
+            Require(json.RootElement.GetProperty("formatVersion").GetInt32() is 7 or MapDocumentFile.CurrentFormatVersion,
+                "native scaffold must declare format seven or the current format");
         MapDocument native = MapDocumentFile.LoadText(Encoding.UTF8.GetString(source.Bytes(nativePath)));
-        Require(native.FormatVersion == 7 && native.NativeAssets.Count != 0 && native.Prefabs is not null,
-            "building comparison requires format seven native roots and instances");
+        Require(native.FormatVersion == MapDocumentFile.CurrentFormatVersion && native.NativeAssets.Count != 0 && native.Prefabs is not null,
+            "building comparison requires current native roots and instances");
         var assets = MapAssetClosure.Load(native.NativeAssets, source);
         var result = new ShippedBuildingInputs(world, catalogs, prefabs, comparison, native, source, assets);
         result.Validate();

@@ -35,23 +35,27 @@ internal static class SupportFootprintTiltedOracle
         P delta = Add(new(E(request.Axis.X), part.Centre.Y, E(request.Axis.Y)), Scale(part.Centre, -R.One));
         if (part.Tangent.Surface == OracleSurface.Round)
         {
-            double along = OracleVector.Dot(locator.Normal, axis.Middle);
-            // The numerical oracle locates a stratum. Its reference is then rebuilt from
-            // rational installed inputs, with hemisphere and finite-domain certificates.
-            if (Math.Abs(along) > 1e-6 || part.Half == R.Zero)
+            // A hemisphere-certified nearest point on an end sphere also satisfies the
+            // core segment's endpoint optimality condition. It is the capsule maximum.
+            // Test both source ends, including normals too close to a seam for a locator.
+            foreach (int sign in new[] { -1, 1 })
             {
-                B end = part.Half == R.Zero ? E(0) : along > 0 ? (B)part.Half : -(B)part.Half;
+                B end = E(sign) * (B)part.Half;
                 P centre = Add(part.Centre, Scale(axis, end));
                 B dx = E(request.Axis.X) - centre.X, dz = E(request.Axis.Y) - centre.Z;
                 B distance = Root(Square(dx) + Square(dz));
+                if (!axisRole && distance.Lower < R.From(request.Radius) && distance.Upper > R.From(request.Radius))
+                    continue;
                 B factor = axisRole ? E(1) : distance.Upper <= R.From(request.Radius) ? E(0) :
                     (distance - E(request.Radius)) / distance;
                 dx *= factor; dz *= factor;
-                B dy = Root((B)part.Radius.Square() - Square(dx) - Square(dz));
+                B square = (B)part.Radius.Square() - Square(dx) - Square(dz);
+                if (square.Lower < R.Zero) continue;
+                B dy = Root(square);
                 P radial = new(dx, dy, dz), normal = Scale(radial, (B)R.One / (B)part.Radius);
                 B hemisphere = Dot(normal, axis);
-                if (part.Half != R.Zero && (along > 0 ? hemisphere.Lower < R.Zero : hemisphere.Upper > R.Zero))
-                    throw new InvalidOperationException("Oracle hemisphere is not certified.");
+                if (part.Half != R.Zero && (sign > 0 ? hemisphere.Lower < R.Zero : hemisphere.Upper > R.Zero)) continue;
+                if (!axisRole && restricted && normal.Y.Lower < R.From(request.CosMaxSlope)) continue;
                 return new(Add(centre, radial), normal);
             }
         }
@@ -60,8 +64,8 @@ internal static class SupportFootprintTiltedOracle
         P w = new(-k * e.X, u, -k * e.Z);
         B p = -Dot(delta, e), q = -Dot(delta, f), radius = part.Radius, disc = E(request.Radius);
         double parameter = OracleVector.Dot(locator.Normal, f.Middle);
-        double axial = OracleVector.Dot(locator.Position - part.Centre.Middle, axis.Middle);
-        bool finiteEnd = !axisRole && Math.Abs(Math.Abs(axial) - part.Tangent.HalfLength) < 1e-6;
+        bool finiteEnd = false;
+        B finite = E(0);
         bool boundary = !axisRole && restricted && u.Lower >= R.From(request.CosMaxSlope) &&
             Math.Abs(locator.Normal.Y - request.CosMaxSlope) < 1e-10;
         B z;
@@ -72,33 +76,29 @@ internal static class SupportFootprintTiltedOracle
             if (parameter < 0) z = -z;
         }
         else if (q.Lower == R.Zero && q.Upper == R.Zero || k.Lower == R.Zero && k.Upper == R.Zero) z = E(0);
-        else if (finiteEnd)
-        {
-            B end = axial > 0 ? (B)part.Half : -(B)part.Half;
-            B parallel = p + u * end;
-            B crestDistance = Square(parallel - radius * k) + Square(q);
-            if (crestDistance.Upper <= Square(disc).Lower) z = E(0);
-            else
-            {
-                B Value(B a) => Square(parallel - radius * k * Root(E(1) - Square(a))) +
-                    Square(q + radius * a) - Square(disc);
-                B Derivative(B a) => E(2) * radius * (q + radius * a) +
-                    E(2) * radius * k * a * (parallel - radius * k * Root(E(1) - Square(a))) / Root(E(1) - Square(a));
-                z = Isolate(parameter, Value, Derivative);
-            }
-        }
         else
         {
             B Value(B a) => a / Root(E(1) - Square(a)) + k * (q + radius * a) /
                 Root(Square(disc) - Square(q + radius * a));
-            B Derivative(B a) => E(1) / (Root(E(1) - Square(a)) * (E(1) - Square(a))) +
-                k * radius * Square(disc) / (Root(Square(disc) - Square(q + radius * a)) *
-                    (Square(disc) - Square(q + radius * a)));
-            z = Isolate(parameter, Value, Derivative);
+            z = IsolateSide(q, radius, disc, k, Value);
+            B axial = (radius * k * Root(E(1) - Square(z)) - p +
+                Root(Square(disc) - Square(q + radius * z))) / u;
+            if (axial.Lower > part.Half || axial.Upper < -part.Half)
+            {
+                finiteEnd = true;
+                finite = axial.Lower > part.Half ? (B)part.Half : -(B)part.Half;
+                B parallel = p + u * finite;
+                B crestDistance = Square(parallel - radius * k) + Square(q);
+                B EndValue(B a) => Square(parallel - radius * k * Root(E(1) - Square(a))) +
+                    Square(q + radius * a) - Square(disc);
+                B EndDerivative(B a) => E(2) * radius * (q + radius * a) +
+                    E(2) * radius * k * a * (parallel - radius * k * Root(E(1) - Square(a))) / Root(E(1) - Square(a));
+                z = crestDistance.Upper <= Square(disc).Lower ? E(0) : Isolate(parameter, EndValue, EndDerivative);
+            }
         }
         B v = boundary ? E(request.CosMaxSlope) / u : Root(E(1) - Square(z));
         B centreT = (radius * k * v - p) / u;
-        B t = axisRole ? centreT : finiteEnd ? axial > 0 ? (B)part.Half : -(B)part.Half :
+        B t = axisRole ? centreT : finiteEnd ? finite :
             Min(part.Half, centreT + Root(Square(disc) - Square(q + radius * z)) / u);
         if (t.Lower < -part.Half || t.Upper > part.Half)
             throw new InvalidOperationException("Oracle finite side domain is not certified.");
@@ -137,6 +137,28 @@ internal static class SupportFootprintTiltedOracle
             v = Min(Root(E(1) - Square(z)), (p + disc) / (radius * k));
         }
         return new(Add(centre, Scale(Add(Scale(w, v), Scale(f, z)), radius)), normal);
+    }
+
+    static B IsolateSide(B q, B radius, B disc, B k, Func<B, B> value)
+    {
+        B left = (-disc - q) / radius, right = (disc - q) / radius;
+        R low = left.Upper > -R.One ? left.Upper : -R.One;
+        R high = right.Lower < R.One ? right.Lower : R.One;
+        R inset = (high - low) * R.From(Math.ScaleB(1, -80));
+        low += inset; high -= inset;
+        // Exact rational endpoint signs and the positive derivative of z/v+k*lateral/extent
+        // certify the root. The inset only locates a strict bracket inside the closed domain.
+        if (k.Lower <= R.Zero || value(low).Upper >= R.Zero || value(high).Lower <= R.Zero)
+            throw new InvalidOperationException("Oracle side root has no common smooth bracket.");
+        while (high - low > R.From(1e-30))
+        {
+            R middle = (low + high) / new R(2, 1);
+            B at = value(middle);
+            if (at.Lower > R.Zero) high = middle;
+            else if (at.Upper < R.Zero) low = middle;
+            else break;
+        }
+        return new(low, high);
     }
 
     static B Isolate(double locator, Func<B, B> value, Func<B, B> derivative)

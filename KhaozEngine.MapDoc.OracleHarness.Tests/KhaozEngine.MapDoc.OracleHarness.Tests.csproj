@@ -12,6 +12,7 @@
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.MapDoc/KhaozEngine.MapDoc.csproj" />
     <ProjectReference Include="../KhaozEngine.TileWorld/KhaozEngine.TileWorld.csproj" />
+    <ProjectReference Include="../KhaozEngine.TileWorld.Netcode/KhaozEngine.TileWorld.Netcode.csproj" />
     <ProjectReference Include="../KhaozEngine.MapDoc.Physics/KhaozEngine.MapDoc.Physics.csproj" />
     <ProjectReference Include="../KhaozEngine.TileWorld.Physics/KhaozEngine.TileWorld.Physics.csproj" />
     <ProjectReference Include="../KhaozEngine.Physics.Bepu/KhaozEngine.Physics.Bepu.csproj" />

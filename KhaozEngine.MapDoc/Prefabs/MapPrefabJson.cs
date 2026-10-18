@@ -11,6 +11,7 @@ using System.Text.Json.Serialization.Metadata;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Water;
+using KhaozEngine.MapDoc.Markers;
 
 namespace KhaozEngine.MapDoc.Prefabs;
 
@@ -47,6 +48,13 @@ internal static class MapPrefabJson
                 }
                 if (property.Name is "attachments" or "roofs" or "storeys" or "materializedAttachments")
                     property.ShouldSerialize = (_, value) => value is IEnumerable items && items.Cast<object>().Any();
+                // Payload-2 marker members are omitted when absent, which keeps payload-1 bytes as released.
+                if (info.Type == typeof(MapLocalMarkerDoc) && property.Name is "heightMode" or "supportBinding" or "archetypeId")
+                {
+                    property.IsRequired = false;
+                    property.ShouldSerialize = (_, value) => value is not null;
+                    if (property.Name == "supportBinding") property.CustomConverter = new MarkerBindingConverter();
+                }
             }
         });
         var options = new JsonSerializerOptions
@@ -88,11 +96,80 @@ internal static class MapPrefabJson
 
     internal static MapPrefabChild ReadChild(string json) => ReadText<MapPrefabChild>(json);
     internal static MapPrefabOverride ReadOverride(string json) => ReadText<MapPrefabOverride>(json);
+    /// <summary>A JSON array of closed keyed overrides, through the same codec as one override.</summary>
+    internal static IReadOnlyList<MapPrefabOverride> ReadOverrides(string json)
+    {
+        MapPrefabOverride[] values = ReadText<MapPrefabOverride[]>(json);
+        if (values.Any(v => v is null)) throw new MapDocumentException("Prefab override lists must not contain null.");
+        return Array.AsReadOnly(values);
+    }
     internal static IReadOnlyList<MapPrefabReference> ReadReferences(string json) => ReadText<MapPrefabReference[]>(json);
     internal static MapRecordRef ReadRecordRef(string json) => ReadText<MapRecordRef>(json);
     internal static MapPrismDomain ReadDomain(string json) => ReadText<MapTopologyRecord>(json) as MapPrismDomain
         ?? throw new MapDocumentException("Interior volume JSON requires a prism domain.");
     internal static MapRoofLinkDoc ReadRoofLink(string json) => ReadText<MapRoofLinkDoc>(json);
+    /// <summary>One closed local marker through the same codec and binding converter as prefab marker children, then
+    /// the shared payload rules.</summary>
+    internal static MapLocalMarkerDoc ReadMarker(string json)
+    {
+        MapLocalMarkerDoc marker = ReadText<MapLocalMarkerDoc>(json);
+        Markers.MapMarkerValidation.Require(marker);
+        return marker;
+    }
+    /// <summary>A closed exhaustive adoption choice array. Reject malformed rows and repeated source keys before
+    /// constructing a dictionary, so no JSON member or source record silently wins over another.</summary>
+    internal static IReadOnlyDictionary<MapLegacySpawnKey, MapMarkerAdoptionChoice> ReadMarkerAdoption(string json)
+    {
+        JsonElement value = ReadText<JsonElement>(json);
+        RequireNonNull(value);
+        var rows = Read<MarkerAdoptionRow[]>(value);
+        var keys = new HashSet<MapLegacySpawnKey>();
+        foreach (var row in rows)
+        {
+            if (string.IsNullOrWhiteSpace(row.Id) || string.IsNullOrWhiteSpace(row.MarkerId) ||
+                string.IsNullOrWhiteSpace(row.Name) || string.IsNullOrWhiteSpace(row.Role))
+                throw new MapDocumentException("spawns_adopt requires a source ID, marker ID, name and role.");
+            if (!keys.Add(new(row.Kind, row.Id))) throw new MapDocumentException($"Duplicate spawns_adopt source {row.Kind} '{row.Id}'.");
+            if ((row.Height.ExplicitY is null) == (row.Height.SupportBinding is null) ||
+                row.Height.ExplicitY is { } y && !float.IsFinite(y) || row.YawRadians is { } yaw && !float.IsFinite(yaw))
+                throw new MapDocumentException("spawns_adopt requires exactly one finite explicitY or supportBinding, and a finite optional yawRadians.");
+        }
+        return rows.ToDictionary(r => new MapLegacySpawnKey(r.Kind, r.Id),
+            r => new MapMarkerAdoptionChoice(r.MarkerId, r.Name, r.Role, new(r.Height.ExplicitY, r.Height.SupportBinding), r.YawRadians));
+
+        static void RequireNonNull(JsonElement element)
+        {
+            if (element.ValueKind == JsonValueKind.Null) throw new MapDocumentException("spawns_adopt choices must not contain explicit nulls.");
+            if (element.ValueKind == JsonValueKind.Object)
+                foreach (var property in element.EnumerateObject()) RequireNonNull(property.Value);
+            else if (element.ValueKind == JsonValueKind.Array)
+                foreach (var item in element.EnumerateArray()) RequireNonNull(item);
+        }
+    }
+    /// <summary>Closed caller marker options: an optional <c>roles</c> object with all three role names, and an optional
+    /// <c>legacySpawnSurfaceId</c>, the only support member. Explicit nulls, unknown and repeated members refuse.</summary>
+    internal static MapMarkerConsumerOptions ReadMarkerOptions(string json)
+    {
+        JsonElement value = ReadText<JsonElement>(json);
+        if (value.ValueKind != JsonValueKind.Object) throw new MapDocumentException("Marker options must be a JSON object.");
+        foreach (JsonProperty member in value.EnumerateObject())
+        {
+            if (member.Value.ValueKind == JsonValueKind.Null) throw new MapDocumentException("Marker option '" + member.Name + "' must not be null.");
+            if (member.Value.ValueKind == JsonValueKind.Object)
+                foreach (JsonProperty role in member.Value.EnumerateObject())
+                    if (role.Value.ValueKind == JsonValueKind.Null) throw new MapDocumentException("Marker role '" + role.Name + "' must not be null.");
+        }
+        var row = Read<MarkerOptionsRow>(value);
+        var options = new MapMarkerConsumerOptions(row.Roles, row.LegacySpawnSurfaceId);
+        options.Require();
+        return options;
+    }
+    sealed record MarkerOptionsRow(MapMarkerConsumerRoles? Roles = null, string? LegacySpawnSurfaceId = null);
+    sealed record MarkerAdoptionRow(MapLegacySpawnKind Kind, string Id, string MarkerId, string Name, string Role,
+        MarkerAdoptionHeight Height, float? YawRadians = null);
+    sealed record MarkerAdoptionHeight(float? ExplicitY = null,
+        [property: JsonConverter(typeof(MarkerBindingConverter))] MapSupportBinding? SupportBinding = null);
+
     static T ReadText<T>(string json)
     {
         ArgumentNullException.ThrowIfNull(json);
@@ -198,6 +275,12 @@ internal static class MapPrefabJson
                     geometry += (x + 1) * (z + 1) + x * z;
                     if (geometry > Limits.MaxGeometryElements) throw new MapDocumentException("Prefab geometry limit exceeded.");
                 }
+                // A marker binding has no null members. The placement binding keeps its released null allowance below.
+                if (node.TryGetProperty("heightMode", out _) && node.TryGetProperty("supportBinding", out var markerBinding) &&
+                    markerBinding.ValueKind == JsonValueKind.Object)
+                    foreach (JsonProperty member in markerBinding.EnumerateObject())
+                        if (member.Value.ValueKind == JsonValueKind.Null)
+                            throw new MapDocumentException("Marker support binding member '" + member.Name + "' must not be null.");
                 var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (JsonProperty p in node.EnumerateObject())
                 {
@@ -418,6 +501,69 @@ internal static class MapPrefabJson
             return MapWaterJson.Read(set.RootElement).Bodies.Single();
         }
         public override void Write(Utf8JsonWriter w, MapWaterBodyDoc value, JsonSerializerOptions options) => MapWaterJson.WriteBody(w, value);
+    }
+
+    /// <summary>The closed marker binding codec. It writes kind first and then only that kind's members, and reads
+    /// exactly those members with exact names, refusing nulls, duplicates and foreign members.</summary>
+    internal sealed class MarkerBindingConverter : JsonConverter<MapSupportBinding>
+    {
+        static readonly string[] SurfaceMembers = ["kind", "surfaceId"];
+        static readonly string[] SpaceMembers = ["kind", "spaceId", "referenceY", "searchBelow", "searchAbove"];
+
+        public override MapSupportBinding Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            using JsonDocument json = JsonDocument.ParseValue(ref reader);
+            JsonElement root = json.RootElement;
+            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("kind", out JsonElement kind) || kind.ValueKind != JsonValueKind.String)
+                throw new JsonException("A marker support binding requires a kind.");
+            bool surface = kind.GetString() switch
+            {
+                "Surface" => true,
+                "Space" => false,
+                _ => throw new JsonException("Unsupported marker support binding kind."),
+            };
+            string[] members = surface ? SurfaceMembers : SpaceMembers;
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (JsonProperty p in root.EnumerateObject())
+            {
+                if (!members.Contains(p.Name, StringComparer.Ordinal) || !seen.Add(p.Name))
+                    throw new JsonException("Unknown or duplicate marker support binding member '" + p.Name + "'.");
+                if (p.Value.ValueKind == JsonValueKind.Null) throw new JsonException("Marker support binding member '" + p.Name + "' must not be null.");
+            }
+            if (seen.Count != members.Length) throw new JsonException("A marker support binding is missing a member of its kind.");
+            if (surface) return new(MapSupportBindingKind.Surface, Text(root, "surfaceId"), null, null, null, null);
+            return new(MapSupportBindingKind.Space, null, Text(root, "spaceId"), Finite(root, "referenceY"), Finite(root, "searchBelow"), Finite(root, "searchAbove"));
+        }
+
+        public override void Write(Utf8JsonWriter w, MapSupportBinding value, JsonSerializerOptions options)
+        {
+            w.WriteStartObject();
+            switch (value.Kind)
+            {
+                case MapSupportBindingKind.Surface when value.SurfaceId is { } surface && value.SpaceId is null &&
+                    value.ReferenceY is null && value.SearchBelow is null && value.SearchAbove is null:
+                    w.WriteString("kind", "Surface");
+                    w.WriteString("surfaceId", surface);
+                    break;
+                case MapSupportBindingKind.Space when value.SpaceId is { } space && value.SurfaceId is null &&
+                    value.ReferenceY is { } y && value.SearchBelow is { } below && value.SearchAbove is { } above:
+                    w.WriteString("kind", "Space");
+                    w.WriteString("spaceId", space);
+                    w.WriteNumber("referenceY", y);
+                    w.WriteNumber("searchBelow", below);
+                    w.WriteNumber("searchAbove", above);
+                    break;
+                default: throw new JsonException("A marker support binding carries exactly the members of its kind.");
+            }
+            w.WriteEndObject();
+        }
+
+        static string Text(JsonElement root, string name) => root.GetProperty(name) is { ValueKind: JsonValueKind.String } value
+            ? value.GetString()! : throw new JsonException("Marker support binding member '" + name + "' must be a string.");
+
+        static float Finite(JsonElement root, string name) =>
+            root.GetProperty(name) is { ValueKind: JsonValueKind.Number } value && value.TryGetSingle(out float number) && float.IsFinite(number)
+                ? number : throw new JsonException("Marker support binding member '" + name + "' must be a finite number.");
     }
 
     sealed class InvalidationConverter : JsonConverter<Editing.MapNativeInvalidation>

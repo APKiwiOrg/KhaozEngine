@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using KhaozEngine.MapDoc.Markers;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
@@ -72,33 +73,9 @@ public static class MapPrefabReferences
         ArgumentNullException.ThrowIfNull(asset);
         ArgumentNullException.ThrowIfNull(bindings);
         MapPrefabValidation.RequireAsset(asset);
-        string World(MapPrefabChildKind kind, string id) => bindings.TryGetValue(new(kind, id), out string? world) && !string.IsNullOrWhiteSpace(world)
-            ? world : throw new MapDocumentException($"No binding for local {kind} '{id}'.");
-        MapPrefabReference Annotation(MapPrefabReference r) => r.Scope == MapPrefabReferenceScope.World ? r : new(MapPrefabReferenceScope.World, r.Kind, World(r.Kind, r.Id));
-        var children = new List<MapPrefabChild>();
-        foreach (MapPrefabChild child in asset.Children)
-        {
-            var map = new LocalToWorld(child.References, World, parentSpace);
-            var (walked, occurrences) = MapPrefabReferenceWalker.Child(child, map);
-            string id = World(child.Key.Kind, child.Key.Key);
-            MapPrefabChild defined = walked switch
-            {
-                MapPrefabPlacementChild p => p with { Value = MapPrefabReferenceWalker.Copy(p.Value, id, p.Value.SupportBinding) },
-                MapPrefabSurfaceChild s => s with { Surface = s.Surface with { Id = id } },
-                MapPrefabRecordChild r => r with { Value = r.Value with { Id = id } },
-                MapPrefabMediumChild m => m with { Value = m.Value with { Key = id } },
-                MapPrefabWaterChild w => w with { Value = w.Value with { Id = id } },
-                MapPrefabLightChild l => l with { Value = l.Value with { Id = id, Owner = l.Value.Owner is { } owner ? Annotation(owner) : null } },
-                MapPrefabMarkerChild m => m with { Value = m.Value with { Id = id, Tags = m.Value.Tags.ToArray() } },
-                MapPrefabRoofChild r => r with
-                {
-                    Value = r.Value with { Id = id, Roof = Annotation(r.Value.Roof), Rooms = r.Value.Rooms.Select(Annotation).ToArray(), Groups = r.Value.Groups.Select(Annotation).ToArray() },
-                },
-                MapPrefabRoofGroupChild g => g with { Value = g.Value with { Id = id, Rooms = g.Value.Rooms.Select(Annotation).ToArray() } },
-                _ => walked,
-            };
-            children.Add(defined with { References = Slots(occurrences, MapPrefabReferenceScope.World) });
-        }
+        var world = WorldIds(bindings);
+        MapPrefabReference Annotation(MapPrefabReference r) => r.Scope == MapPrefabReferenceScope.World ? r : new(MapPrefabReferenceScope.World, r.Kind, world(r.Kind, r.Id));
+        var children = asset.Children.Select(child => RemapChild(child, world, parentSpace)).ToList();
         return asset with
         {
             Children = children,
@@ -111,9 +88,44 @@ public static class MapPrefabReferences
         };
     }
 
+    /// <summary>One child of <see cref="Remap"/>, without validating the rest of its asset. Marker capture remaps a
+    /// verified payload's marker children through it.</summary>
+    internal static MapPrefabChild RemapChild(MapPrefabChild child, IReadOnlyDictionary<MapPrefabChildKey, string> bindings, MapRecordRef? parentSpace) =>
+        RemapChild(child, WorldIds(bindings), parentSpace);
+
+    static Func<MapPrefabChildKind, string, string> WorldIds(IReadOnlyDictionary<MapPrefabChildKey, string> bindings) => (kind, id) =>
+        bindings.TryGetValue(new(kind, id), out string? world) && !string.IsNullOrWhiteSpace(world)
+            ? world : throw new MapDocumentException($"No binding for local {kind} '{id}'.");
+
+    static MapPrefabChild RemapChild(MapPrefabChild child, Func<MapPrefabChildKind, string, string> world, MapRecordRef? parentSpace)
+    {
+        MapPrefabReference Annotation(MapPrefabReference r) => r.Scope == MapPrefabReferenceScope.World ? r : new(MapPrefabReferenceScope.World, r.Kind, world(r.Kind, r.Id));
+        var map = new LocalToWorld(child.References, world, parentSpace);
+        var (walked, occurrences) = MapPrefabReferenceWalker.Child(child, map);
+        string id = world(child.Key.Kind, child.Key.Key);
+        MapPrefabChild defined = walked switch
+        {
+            MapPrefabPlacementChild p => p with { Value = MapPrefabReferenceWalker.Copy(p.Value, id, p.Value.SupportBinding) },
+            MapPrefabSurfaceChild s => s with { Surface = s.Surface with { Id = id } },
+            MapPrefabRecordChild r => r with { Value = r.Value with { Id = id } },
+            MapPrefabMediumChild m => m with { Value = m.Value with { Key = id } },
+            MapPrefabWaterChild w => w with { Value = w.Value with { Id = id } },
+            MapPrefabLightChild l => l with { Value = l.Value with { Id = id, Owner = l.Value.Owner is { } owner ? Annotation(owner) : null } },
+            MapPrefabMarkerChild m => m with { Value = m.Value with { Id = id, Tags = m.Value.Tags.ToArray() } },
+            MapPrefabRoofChild r => r with
+            {
+                Value = r.Value with { Id = id, Roof = Annotation(r.Value.Roof), Rooms = r.Value.Rooms.Select(Annotation).ToArray(), Groups = r.Value.Groups.Select(Annotation).ToArray() },
+            },
+            MapPrefabRoofGroupChild g => g with { Value = g.Value with { Id = id, Rooms = g.Value.Rooms.Select(Annotation).ToArray() } },
+            _ => walked,
+        };
+        return defined with { References = Slots(occurrences, MapPrefabReferenceScope.World) };
+    }
+
     /// <summary>Renames one World identity of <paramref name="kind"/> in every typed World reference held by the
-    /// document's prefab, building-intent and standalone-transform roots. Local occurrences and plain text are
-    /// untouched. The input document is not modified.</summary>
+    /// document's prefab, building-intent and standalone-transform roots. A Support marker's active binding owner is
+    /// such a reference: a Surface binding names a Surface and a Space binding names a Record. Local occurrences, plain
+    /// text and every other marker member are untouched. The input document is not modified.</summary>
     public static MapDocument RemapWorld(MapDocument document, MapPrefabChildKind kind, string oldId, string newId)
     {
         ArgumentNullException.ThrowIfNull(document);
@@ -124,6 +136,12 @@ public static class MapPrefabReferences
         MapPrefabReference Ref(MapPrefabReference r) => r.Scope == MapPrefabReferenceScope.World ? r with { Id = Id(r.Kind, r.Id) } : r;
         MapRecordRef Record(MapRecordRef r) => new(Id(MapPrefabChildKind.Record, r.Id), Key(r.Anchor));
         MapPatchKey Key(MapPatchKey k) => k with { SurfaceId = Id(MapPrefabChildKind.Surface, k.SurfaceId) };
+        MapSupportBinding MarkerOwner(MapSupportBinding b) => b.Kind switch
+        {
+            MapSupportBindingKind.Surface when b.SurfaceId is { } surface => b with { SurfaceId = Id(MapPrefabChildKind.Surface, surface) },
+            MapSupportBindingKind.Space when b.SpaceId is { } space => b with { SpaceId = Id(MapPrefabChildKind.Record, space) },
+            _ => b,
+        };
         MapDocument copy = MapTiledFile.GlobalsOnly(document);
         copy.Placements = document.Placements.ToList();
         copy.Spawns = document.Spawns.ToList();
@@ -151,7 +169,8 @@ public static class MapPrefabReferences
                 intent.RoofLinks.Select(r => r with { Roof = Ref(r.Roof), Rooms = r.Rooms.Select(Ref).ToArray(), Groups = r.Groups.Select(Ref).ToArray() }).ToArray(),
                 intent.RoofGroups.Select(g => g with { Rooms = g.Rooms.Select(Ref).ToArray() }).ToArray(),
                 intent.Lights.Select(l => l with { Owner = l.Owner is { } owner ? Ref(owner) : null }).ToArray(),
-                intent.Markers.ToArray())
+                intent.Markers.Select(m => m is { HeightMode: MapMarkerHeightMode.Support, SupportBinding: { } binding }
+                    ? m with { SupportBinding = MarkerOwner(binding) } : m).ToArray())
             { Roofs = intent.Roofs.Select(Ref).ToArray(), Storeys = intent.Storeys.Select(s => s with { Id = Id(MapPrefabChildKind.Storey, s.Id) }).ToArray() };
         if (copy.NativeResourceTransforms is { } poses)
             copy.NativeResourceTransforms = poses.Select(p => p with { OwnerId = Id(p.Kind, p.OwnerId) }).ToArray();
@@ -323,19 +342,12 @@ internal static class MapPrefabReferenceWalker
         switch (child)
         {
             case MapPrefabPlacementChild p when p.Value.SupportBinding is { } binding:
-                var occurrences = new List<MapPrefabOccurrence>();
-                MapSupportBinding mapped = binding;
-                if (binding.Kind == MapSupportBindingKind.Surface && binding.SurfaceId is { } surface)
-                {
-                    var (id, o) = Text(surface, "/value/supportBinding/surfaceId", map, MapPrefabChildKind.Surface, MapPrefabOccurrenceRole.SurfaceText, false);
-                    mapped = binding with { SurfaceId = id }; occurrences.AddRange(Prefix("/value/supportBinding/surfaceId", o));
-                }
-                else if (binding.Kind == MapSupportBindingKind.Space && binding.SpaceId is { } space)
-                {
-                    var (id, o) = Text(space, "/value/supportBinding/spaceId", map, MapPrefabChildKind.Record, MapPrefabOccurrenceRole.SpaceText, true);
-                    mapped = binding with { SpaceId = id }; occurrences.AddRange(Prefix("/value/supportBinding/spaceId", o));
-                }
+                var (mapped, occurrences) = Binding(binding, map);
                 return (p with { Value = Copy(p.Value, p.Value.Id, mapped) }, occurrences);
+            // A Support marker's active binding owner is its one typed occurrence, at the placement binding's slots.
+            case MapPrefabMarkerChild m when m.Value.SupportBinding is { } binding:
+                var (owner, markerOccurrences) = Binding(binding, map);
+                return (m with { Value = m.Value with { SupportBinding = owner } }, markerOccurrences);
             case MapPrefabSurfaceChild s:
                 var (surfaceRef, so) = SurfaceRef(s.Surface, "/surface", map);
                 var (patches, po) = List(s.Patches, "/patches", (patch, path) => Patch(patch, path, map), ByKey);
@@ -352,6 +364,21 @@ internal static class MapPrefabReferenceWalker
             default:
                 return (child, Array.Empty<MapPrefabOccurrence>());
         }
+    }
+
+    static (MapSupportBinding Binding, IReadOnlyList<MapPrefabOccurrence> Occurrences) Binding(MapSupportBinding binding, MapPrefabReferenceMap map)
+    {
+        if (binding.Kind == MapSupportBindingKind.Surface && binding.SurfaceId is { } surface)
+        {
+            var (id, o) = Text(surface, "/value/supportBinding/surfaceId", map, MapPrefabChildKind.Surface, MapPrefabOccurrenceRole.SurfaceText, false);
+            return (binding with { SurfaceId = id }, Prefix("/value/supportBinding/surfaceId", o));
+        }
+        if (binding.Kind == MapSupportBindingKind.Space && binding.SpaceId is { } space)
+        {
+            var (id, o) = Text(space, "/value/supportBinding/spaceId", map, MapPrefabChildKind.Record, MapPrefabOccurrenceRole.SpaceText, true);
+            return (binding with { SpaceId = id }, Prefix("/value/supportBinding/spaceId", o));
+        }
+        return (binding, Array.Empty<MapPrefabOccurrence>());
     }
 
     internal static (MapSupportResource Resource, IReadOnlyList<MapPrefabOccurrence> Occurrences) Resource(MapSupportResource resource, MapPrefabReferenceMap map)

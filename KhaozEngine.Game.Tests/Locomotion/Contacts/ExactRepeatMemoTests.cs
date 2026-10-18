@@ -179,8 +179,11 @@ public sealed class ExactRepeatMemoTests(ITestOutputHelper output)
             SupportRequestMemo? memo = SupportRequestMemo.OpenDry(lease);
             Assert.NotNull(memo);
             Assert.Equal(0, memo.Count);
-            // A tick nested on the same thread reads uncached rather than sharing the open memo.
-            Assert.Null(SupportRequestMemo.OpenDry(lease));
+            // A nested tick has its own memo and evidence arena.
+            SupportRequestMemo? nested = SupportRequestMemo.OpenDry(lease);
+            Assert.NotNull(nested);
+            Assert.NotSame(memo, nested);
+            nested.Close();
             memo.Close();
         }
 
@@ -357,6 +360,8 @@ public sealed class ExactRepeatMemoTests(ITestOutputHelper output)
         }
         foreach (FieldInfo field in type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
         {
+            // CF-4 interval evidence is not geometric state. JoinedEdgeContinuityTests compares it explicitly.
+            if (field.FieldType == typeof(SupportContinuityHandle)) continue;
             object? left = field.GetValue(expected), right = field.GetValue(actual);
             if (left is null) Assert.Null(right);
             else AssertSameBits(left, right!, path + "." + field.Name);

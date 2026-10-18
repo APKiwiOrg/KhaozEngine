@@ -32,10 +32,13 @@ public static class EditorPicking
     /// the world-space box height (from the game's AssetManifest HeightMeters times the placement scale), the pick
     /// box is therefore 0.6*h wide, and groundY is the placement's explicit Y or, when null, the terrain height
     /// sampled at (X, Z). Each NPC spawn and each player spawn is boxed as a fixed 1.5-tall, 1.0-wide box based at
-    /// the sampled ground. The terrain is raycast for a fallback ground hit. Placements and spawns beat terrain at
-    /// equal T, and the smallest
+    /// the ground its drawn billboard stands on (<see cref="SpawnBillboards"/>). The terrain is raycast for a fallback
+    /// ground hit. Placements and spawns beat terrain at equal T, and the smallest
     /// entry T wins overall. Returns false when nothing is hit within <paramref name="maxDistance"/> (T units).
     /// Direction normalization is the caller's job.
+    /// <para>The public overloads take no native marker readouts. On a resolver-2 native document a legacy spawn has no
+    /// height without them, so these overloads omit its box rather than stand it on the analytic terrain. The editor's
+    /// own Select pick passes the frame its viewport draws.</para>
     /// <para><paramref name="visible"/>, when supplied, filters out unpickable elements: a placement or spawn for
     /// which <c>visible(kind, id)</c> is false is skipped (the editor hides it from the viewport, so a hidden thing
     /// is not selectable by clicking, though the terrain under it still hits). Null means every element is
@@ -49,7 +52,8 @@ public static class EditorPicking
     /// <c>placementKindVisible(kind)</c> is false is skipped, which is how a hidden prop category (trees, rocks)
     /// stops being clickable. It reads the kind from the placement already in hand. Both filters run once per
     /// element inside the pick loop, so each must be constant-time: a filter that searches the document per call
-    /// makes one click quadratic in the placement count.</summary>
+    /// makes one click quadratic in the placement count. Like the overload above, it omits resolver-2 native legacy
+    /// spawn boxes, as it takes no native marker readouts.</summary>
     public static bool Pick(MapDocument doc, TerrainField field, Vector3 origin, Vector3 direction,
         float maxDistance, Func<string, float> heightOf, out PickResult result,
         Func<SelectionKind, string, bool>? visible, Func<string, bool>? placementKindVisible) =>
@@ -59,11 +63,12 @@ public static class EditorPicking
     /// <summary>The pick above with a third placement filter over the whole placement. A placement for which
     /// <c>placementDrawn(placement)</c> is false is skipped, which is how the editor keeps a placement its viewport
     /// does not draw (outside the streamed ring or the prop cull) from being clicked through visible terrain. Runs
-    /// once per placement, so it must be constant-time like the other filters.</summary>
+    /// once per placement, so it must be constant-time like the other filters. <paramref name="spawns"/> is the frame the
+    /// viewport draws. Null builds it from <paramref name="field"/> with no native readouts.</summary>
     internal static bool Pick(MapDocument doc, TerrainField field, Vector3 origin, Vector3 direction,
         float maxDistance, Func<string, float> heightOf, out PickResult result,
         Func<SelectionKind, string, bool>? visible, Func<string, bool>? placementKindVisible,
-        Func<MapPlacement, bool>? placementDrawn)
+        Func<MapPlacement, bool>? placementDrawn, SpawnBillboardFrame? spawns = null)
     {
         ArgumentNullException.ThrowIfNull(doc);
         ArgumentNullException.ThrowIfNull(field);
@@ -94,34 +99,20 @@ public static class EditorPicking
             }
         }
 
-        foreach (MapSpawn s in doc.Spawns)
+        // Spawn boxes stand on the ground of the billboards the viewport draws, so draw and pick share one height source.
+        spawns ??= SpawnBillboards.Build(doc, new EditorVisibility(), field.SampleHeight, null);
+        foreach (SpawnBillboard s in spawns.Billboards)
         {
-            if (visible is not null && !visible(SelectionKind.Spawn, s.Id)) continue;   // hidden: not pickable
-            float groundY = field.SampleHeight(s.X, s.Z);
-            var min = new Vector3(s.X - SpawnHalfWidth, groundY, s.Z - SpawnHalfWidth);
-            var max = new Vector3(s.X + SpawnHalfWidth, groundY + SpawnHeight, s.Z + SpawnHalfWidth);
+            if (visible is not null && !visible(s.Kind, s.Id)) continue;   // hidden: not pickable
+            float groundY = s.Position.Y - SpawnBillboards.Lift;
+            var min = new Vector3(s.Position.X - SpawnHalfWidth, groundY, s.Position.Z - SpawnHalfWidth);
+            var max = new Vector3(s.Position.X + SpawnHalfWidth, groundY + SpawnHeight, s.Position.Z + SpawnHalfWidth);
             if (RayMath.IntersectAabb(origin, direction, min, max, out float tNear) && tNear <= maxDistance
                 && (!haveBest || tNear < bestT))
             {
                 haveBest = true;
                 bestT = tNear;
-                bestKind = SelectionKind.Spawn;
-                bestId = s.Id;
-            }
-        }
-
-        foreach (MapPlayerSpawn s in doc.PlayerSpawns)
-        {
-            if (visible is not null && !visible(SelectionKind.PlayerSpawn, s.Id)) continue;   // hidden: not pickable
-            float groundY = field.SampleHeight(s.X, s.Z);
-            var min = new Vector3(s.X - SpawnHalfWidth, groundY, s.Z - SpawnHalfWidth);
-            var max = new Vector3(s.X + SpawnHalfWidth, groundY + SpawnHeight, s.Z + SpawnHalfWidth);
-            if (RayMath.IntersectAabb(origin, direction, min, max, out float tNear) && tNear <= maxDistance
-                && (!haveBest || tNear < bestT))
-            {
-                haveBest = true;
-                bestT = tNear;
-                bestKind = SelectionKind.PlayerSpawn;
+                bestKind = s.Kind;
                 bestId = s.Id;
             }
         }

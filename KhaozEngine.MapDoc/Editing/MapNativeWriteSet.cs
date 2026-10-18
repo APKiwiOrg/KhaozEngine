@@ -22,6 +22,8 @@ public sealed record MapNativeWriteSet(IReadOnlyList<MapPatchKey> Patches, IRead
     public bool BuildingIntent { get; init; }
     public bool NativeResourceTransforms { get; init; }
     public bool NumericReservations { get; init; }
+    /// <summary>Replaces both legacy spawn lists together. Native admission permits only explicit adoption or its undo.</summary>
+    public bool LegacySpawns { get; init; }
 
     public static MapNativeWriteSet PlacementsOnly { get; } = new(Array.Empty<MapPatchKey>(),
         Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>(), Array.Empty<MapCornerOwnerChange>(),

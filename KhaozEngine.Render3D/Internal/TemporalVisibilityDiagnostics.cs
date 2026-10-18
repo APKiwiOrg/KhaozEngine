@@ -25,6 +25,7 @@ internal static class TemporalVisibilityDiagnostics
     internal static string ResolveFragment(string program)
     {
         if (!Enabled) return program;
+        program = program.Replace("\r\n", "\n", StringComparison.Ordinal);
         bool split = program.Contains("uniform texture2D PreparedEdge;", StringComparison.Ordinal);
         int binding = split ? 12 : 9;
         string declarations = $"#define TemporalVisibility\nlayout(set=0, binding={binding}) uniform texture2D KeyVisibility;\n"

@@ -427,7 +427,7 @@ namespace KhaozEngine.Tests.Render3D
         public void The_thin_feature_lock_decays_the_same_at_every_preset_follows_its_history_and_releases_at_moving_edges()
         {
             // A lock that decayed by one over the jitter cycle, 72 frames at UltraPerformance, held a moving line's
-            // trail, so the decay is a constant and Params.x is reserved. The lock is the largest of the state texels
+            // trail, so the decay is a constant. Params.x now carries only the compiled visibility diagnostic. The lock is the largest of the state texels
             // that carry bilinear weight, because a bilinear lock under motion ran out early. The release is the centre
             // texel's motion against the dilated one, which is zero for a surface moving as a whole, not the surface's
             // own travel, which released a swaying blade and an avatar the camera follows. At a moving edge whose four
@@ -454,7 +454,8 @@ namespace KhaozEngine.Tests.Render3D
             int refresh = core.IndexOf("if (ridge) lockValue = 1.0;", StringComparison.Ordinal);
             Assert.True(edge >= 0 && fetch > edge && refresh > fetch,
                 "the edge signal must come before the stored depths it gates, and the drop before the ridge refresh");
-            Assert.DoesNotMatch(@"\bParams\.x", core);
+            Assert.DoesNotMatch(@"\bParams\.x", Regex.Replace(core,
+                @"#ifdef TemporalVisibility\b.*?#endif", "", RegexOptions.Singleline));
             Assert.Contains("vec4 carried = step(vec4(1.0e-3), bilinear);", core, StringComparison.Ordinal);
             Assert.Contains("max(max(carried.x * s00.y, carried.y * s10.y), max(carried.z * s01.y, carried.w * s11.y)));", core,
                 StringComparison.Ordinal);

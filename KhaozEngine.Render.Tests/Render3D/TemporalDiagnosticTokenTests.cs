@@ -83,4 +83,20 @@ public sealed class TemporalDiagnosticTokenTests
         finally { TemporalResolveDiagnostics.OverrideMaskForMeasurement(saved); }
     }
 
+    [Theory]
+    [InlineData("\n")]
+    [InlineData("\r\n")]
+    public void VisibilityBindingsAcceptCheckoutLineEndings(string newline)
+    {
+        string program = string.Join(newline, "#version 450", "layout(set=0, binding=8) uniform Resolve {",
+            "    vec4 Params;", "};", "void main() {}");
+        string result = TemporalVisibilityDiagnostics.ResolveFragment(program);
+        if (TemporalVisibilityDiagnostics.Enabled)
+        {
+            Assert.Contains("};\n#define TemporalVisibility\n", result, StringComparison.Ordinal);
+            Assert.Contains("layout(set=0, binding=9) uniform texture2D KeyVisibility;", result, StringComparison.Ordinal);
+        }
+        else Assert.Same(program, result);
+    }
+
 }

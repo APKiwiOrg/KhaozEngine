@@ -9,6 +9,8 @@ namespace KhaozEngine.TileWorld;
 
 public sealed partial class TileWorldView
 {
+    Func<TileObject, Vector3, bool>? _walkSurfacePointFilter;
+
     // The document and catalogs this view reads, for the camera probe that resolves object hits and roof rules
     // against the same world the view draws.
     internal TileWorldDocument Document => _doc;
@@ -16,12 +18,14 @@ public sealed partial class TileWorldView
 
     /// <summary>Names the full authored objects intersected by a ray inside Gameplay regions. Decor HLOD is a
     /// render representation only and never contributes a target. The bounds source remains the full resolved
-    /// object mesh, so entering Gameplay changes eligibility rather than click shape.</summary>
+    /// object mesh, so entering Gameplay changes eligibility rather than click shape. Opted-in archetypes
+    /// report their first uncut point against the field currently published to the scene.</summary>
     public int PickObjects(int plane, Vector3 origin, Vector3 direction, float maxDistance,
                            TileObjectRaycast.BoundsSource bounds, List<TileObjectHit> hits)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        int count = TileObjectRaycast.Pick(_doc, _catalogs, plane, origin, direction, maxDistance, bounds, hits);
+        int count = TileObjectRaycast.Pick(_doc, _catalogs, plane, origin, direction, maxDistance, bounds, hits,
+            new TileObjectCut(AppliedInteriorCut, CutArchetypeIds));
         int kept = 0;
         for (int i = 0; i < count; i++)
         {
@@ -88,7 +92,7 @@ public sealed partial class TileWorldView
             ? nearestWater
             : terrain;
         TileHit? surface = TileWalkSurfaces.Raycast(_doc, _catalogs, plane, origin, ray, maxDistance,
-            _walkSurfacePickFilter);
+            _walkSurfacePickFilter, _walkSurfacePointFilter ??= AcceptWalkSurfacePoint);
         return surface is { } deck && (nearest is null || deck.Distance <= nearest.Value.Distance)
             ? deck
             : nearest;
@@ -97,6 +101,9 @@ public sealed partial class TileWorldView
     bool IsGameplayObject(TileObject o) =>
         _loaded.TryGetValue(RegionCoord.Of(o.X, o.Z), out RegionHandles? handles)
         && handles.Residency == TileRegionResidencyState.Gameplay;
+
+    bool AcceptWalkSurfacePoint(TileObject o, Vector3 point) =>
+        AppliedInteriorCut is not { } field || !CutArchetypeIds.Contains(o.ArchetypeId) || !field.Contains(point);
 
     bool IsRenderedTerrain(int x, int z, int plane) =>
         _loaded.TryGetValue(RegionCoord.Of(x, z), out RegionHandles? handles)

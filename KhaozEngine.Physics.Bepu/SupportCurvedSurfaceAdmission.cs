@@ -6,6 +6,9 @@ namespace KhaozEngine.Physics.Bepu;
 /// The reusable live cell pool certifies absence by outward boxes and presence by attained points.</summary>
 internal sealed class SupportCurvedSurfaceAdmission
 {
+    readonly SupportCurvedWork _work;
+    internal SupportCurvedSurfaceAdmission(SupportCurvedWork work) => _work = work;
+
     internal const int MaximumLiveCells = 1024;
     readonly record struct Cell(double A0, double A1, double B0, double B1, byte Kind);
     Cell[] _live = new Cell[MaximumLiveCells], _next = new Cell[MaximumLiveCells];
@@ -24,7 +27,9 @@ internal sealed class SupportCurvedSurfaceAdmission
     internal GeometrySign Measure(SupportTiltedCurvedGeometry geometry, SupportCurvedShape shape, int capKind,
         double x, double z, GeometryInterval radius, double bottom, double top, bool requireUpward = false)
     {
+        if (_work.Failed) return GeometrySign.Unresolved;
         bool uniformlyUp = !requireUpward || geometry.CapUniformlyUp(capKind);
+        if (_work.Failed) return GeometrySign.Unresolved;
         int live = 0;
         if (shape == SupportCurvedShape.Cylinder && capKind >= 0) _live[live++] = new(-1, 1, -1, 1, (byte)capKind);
         else
@@ -36,12 +41,14 @@ internal sealed class SupportCurvedSurfaceAdmission
         }
         LiveHighWater = live; EvaluatedCells = 0; CapacityRefused = false;
         FrontierHighWater = Math.Max(FrontierHighWater, live);
+        _work.ObserveStorage(0, LiveHighWater);
         GeometryInterval r2 = radius.Square();
         while (live > 0)
         {
             int next = 0;
             for (int i = 0; i < live; i++)
             {
+                if (!_work.TryCharge(SupportCurvedWorkKind.AdmissionCell)) return GeometrySign.Unresolved;
                 Cell cell = _live[i];
                 EvaluatedCells++;
                 TotalCells++;
@@ -54,7 +61,9 @@ internal sealed class SupportCurvedSurfaceAdmission
                     .Add(bounds.Z.Subtract(GeometryInterval.Exact(z)).Square());
                 if (bounds.Y.Lower > top || bounds.Y.Upper < bottom || distance.Lower > r2.Upper) continue;
                 double am = cell.A0 + (cell.A1 - cell.A0) * 0.5, bm = cell.B0 + (cell.B1 - cell.B0) * 0.5;
-                if (uniformlyUp && geometry.SurfacePointInside(cell.Kind, am, bm, x, z, radius.Lower, bottom, top)) return GeometrySign.Positive;
+                if (uniformlyUp && geometry.SurfacePointInside(cell.Kind, am, bm, x, z, radius.Lower, bottom, top) && !_work.Failed)
+                    return GeometrySign.Positive;
+                if (_work.Failed) return GeometrySign.Unresolved;
                 bool splitA = cell.A1 - cell.A0 >= cell.B1 - cell.B0;
                 if (splitA && !(am > cell.A0 && am < cell.A1) || !splitA && !(bm > cell.B0 && bm < cell.B1))
                     return GeometrySign.Unresolved;
@@ -62,6 +71,8 @@ internal sealed class SupportCurvedSurfaceAdmission
                 {
                     LiveHighWater = Math.Max(LiveHighWater, next);
                     FrontierHighWater = Math.Max(FrontierHighWater, next);
+                    _work.ObserveStorage(0, LiveHighWater);
+                    _work.Fail(SupportCurvedWorkFailure.AdmissionStorage);
                     CapacityRefused = true;
                     return GeometrySign.Unresolved;
                 }
@@ -75,9 +86,13 @@ internal sealed class SupportCurvedSurfaceAdmission
                     _next[next++] = cell with { B1 = bm };
                     _next[next++] = cell with { B0 = bm };
                 }
+                LiveHighWater = Math.Max(LiveHighWater, next);
+                FrontierHighWater = Math.Max(FrontierHighWater, next);
+                _work.ObserveStorage(0, LiveHighWater);
             }
             LiveHighWater = Math.Max(LiveHighWater, next);
             FrontierHighWater = Math.Max(FrontierHighWater, next);
+            _work.ObserveStorage(0, LiveHighWater);
             (_live, _next) = (_next, _live); live = next;
         }
         return GeometrySign.Negative;

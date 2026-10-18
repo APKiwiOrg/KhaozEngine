@@ -15,6 +15,9 @@ internal interface ISupportCurvedRootFunction
 /// exhaustive interval subdivision. An uncertified coefficient enclosure refuses at the live storage bound.</summary>
 internal sealed class SupportCurvedRootRegions
 {
+    readonly SupportCurvedWork _work;
+    internal SupportCurvedRootRegions(SupportCurvedWork work) => _work = work;
+
     internal const int MaximumLiveCells = 1024;
     internal const int MaximumTerminalCells = 12;
     readonly record struct Cell(double Low, double High);
@@ -45,6 +48,8 @@ internal sealed class SupportCurvedRootRegions
         Count = 0; LiveHighWater = 1; EvaluatedCells = 0; CapacityRefused = false;
         _arithmetic = arithmetic;
         _function = null;
+        if (_work.Failed) return Refuse();
+        _work.ObserveStorage(1, 0);
         if (coefficients.Length is < 2 or > 5 || low > high) return false;
         _degree = coefficients.Length - 1;
         _terminalLimit = _degree;
@@ -55,6 +60,7 @@ internal sealed class SupportCurvedRootRegions
             if (!_coefficients[i].IsResolved) return false;
         }
         while (_degree > 0 && arithmetic.Sign(_sourceCoefficients[_degree]) == GeometrySign.Zero) _degree--;
+        if (_work.Failed) return Refuse();
         if (_degree == 0)
         {
             GeometrySign constant = arithmetic.Sign(_sourceCoefficients[0]);
@@ -64,13 +70,14 @@ internal sealed class SupportCurvedRootRegions
         }
         int zeros = 0;
         while (zeros < _degree && arithmetic.Sign(_sourceCoefficients[zeros]) == GeometrySign.Zero) zeros++;
+        if (_work.Failed) return Refuse();
         if (zeros > 0)
         {
             if (low <= 0 && high >= 0) _roots[Count++] = GeometryInterval.Exact(0);
             for (int i = zeros; i <= _degree; i++)
             { _sourceCoefficients[i - zeros] = _sourceCoefficients[i]; _coefficients[i - zeros] = _coefficients[i]; }
             _degree -= zeros;
-            if (_degree == 0) return true;
+            if (_degree == 0) return !_work.Failed;
         }
         return Traverse(low, high);
     }
@@ -86,6 +93,8 @@ internal sealed class SupportCurvedRootRegions
 
     bool Traverse(double low, double high)
     {
+        if (_work.Failed) return Refuse();
+        _work.ObserveStorage(1, 0);
         _live[0] = new(low, high);
         int live = 1;
         while (live > 0)
@@ -93,22 +102,26 @@ internal sealed class SupportCurvedRootRegions
             int next = 0;
             for (int i = 0; i < live; i++)
             {
+                if (!_work.TryCharge(SupportCurvedWorkKind.RootCell)) return Refuse();
                 Cell cell = _live[i];
                 EvaluatedCells++;
                 GeometryInterval range = GeometryInterval.Enclose(cell.Low, cell.High);
                 GeometryInterval value = Evaluate(range, false);
+                if (_work.Failed) return Refuse();
                 if (StrictSign(value) != 0) continue;
                 int a = EndpointSign(cell.Low), b = EndpointSign(cell.High);
                 GeometryInterval derivative = Evaluate(range, true);
                 int slope = StrictSign(derivative);
                 if (slope == 0 && _function is { } function)
                     slope = function.DerivativeSign(range) switch { GeometrySign.Positive => 1, GeometrySign.Negative => -1, _ => 0 };
+                if (_work.Failed) return Refuse();
                 if (slope != 0)
                 {
                     if (a == 0 || b == 0 || (a != 2 && b != 2 && a != b))
                     {
                         GeometryInterval root = a == 0 ? GeometryInterval.Exact(cell.Low) :
                             b == 0 ? GeometryInterval.Exact(cell.High) : Refine(range, slope);
+                        if (_work.Failed) return Refuse();
                         if (!Keep(root)) return Refuse();
                         continue;
                     }
@@ -124,16 +137,21 @@ internal sealed class SupportCurvedRootRegions
                     if (left > cell.Low && left < cell.High && EndpointSign(left) != 2) middle = left;
                     else if (right > cell.Low && right < cell.High && EndpointSign(right) != 2) middle = right;
                 }
+                if (_work.Failed) return Refuse();
                 if (!(middle > cell.Low && middle < cell.High)) return Refuse();
                 if (next + 2 > MaximumLiveCells)
                 {
                     LiveHighWater = Math.Max(LiveHighWater, next);
-                    return Refuse();
+                    _work.ObserveStorage(LiveHighWater, 0);
+                    return Refuse(SupportCurvedWorkFailure.RootStorage);
                 }
                 _next[next++] = new(cell.Low, middle);
                 _next[next++] = new(middle, cell.High);
+                LiveHighWater = Math.Max(LiveHighWater, next);
+                _work.ObserveStorage(LiveHighWater, 0);
             }
             LiveHighWater = Math.Max(LiveHighWater, next);
+            _work.ObserveStorage(LiveHighWater, 0);
             (_live, _next) = (_next, _live);
             live = next;
         }
@@ -148,8 +166,9 @@ internal sealed class SupportCurvedRootRegions
         return true;
     }
 
-    bool Refuse()
+    bool Refuse(SupportCurvedWorkFailure reason = SupportCurvedWorkFailure.None)
     {
+        _work.Fail(reason);
         CapacityRefused = true;
         Count = 0;
         return false;
@@ -165,7 +184,7 @@ internal sealed class SupportCurvedRootRegions
                     return true;
                 return false;
             }
-        if (Count == _terminalLimit) return false;
+        if (Count == _terminalLimit) { _work.Fail(SupportCurvedWorkFailure.TerminalRoots); return false; }
         _roots[Count++] = root;
         return true;
     }
@@ -176,10 +195,12 @@ internal sealed class SupportCurvedRootRegions
         // contraction ends at the nonzero source width rather than an adjacent binary64 pair.
         while (true)
         {
+            if (!_work.TryCharge(SupportCurvedWorkKind.Refine)) return default;
             double middle = region.Lower + (region.Upper - region.Lower) * 0.5;
             if (!(middle > region.Lower && middle < region.Upper)) return region;
             GeometryInterval newton = GeometryInterval.Exact(middle).Subtract(
                 Evaluate(GeometryInterval.Exact(middle), false).Divide(Evaluate(region, true)));
+            if (_work.Failed) return default;
             if (!newton.IsResolved)
             {
                 int sign = EndpointSign(middle);
@@ -197,6 +218,7 @@ internal sealed class SupportCurvedRootRegions
 
     GeometryInterval Evaluate(GeometryInterval x, bool derivative)
     {
+        if (_work.Failed) return default;
         if (_function is { } function) return function.Evaluate(x, derivative);
         GeometryInterval value = derivative ? _coefficients[_degree].Multiply(GeometryInterval.Exact(_degree)) :
             _coefficients[_degree];
@@ -208,6 +230,7 @@ internal sealed class SupportCurvedRootRegions
 
     int EndpointSign(double x)
     {
+        if (_work.Failed) return 2;
         int sign = StrictSign(Evaluate(GeometryInterval.Exact(x), false));
         if (sign != 0) return sign;
         if (_function is { } function)

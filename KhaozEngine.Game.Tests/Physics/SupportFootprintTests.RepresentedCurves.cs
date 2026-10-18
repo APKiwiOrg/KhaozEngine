@@ -208,7 +208,7 @@ public partial class SupportFootprintTests
         Vector3 column = new(BitConverter.Int32BitsToSingle(bits[0]), BitConverter.Int32BitsToSingle(bits[1]),
             BitConverter.Int32BitsToSingle(bits[2]));
         Assert.NotEqual(0f, column.Y);
-        var arithmetic = new SupportCurvedSourceArithmetic();
+        var arithmetic = new SupportCurvedSourceArithmetic(NewCurvedWork());
         arithmetic.Reset(column);
         var x = arithmetic.X; var y = arithmetic.Y;
         var squared = arithmetic.Add(arithmetic.Square(x), arithmetic.Square(y));

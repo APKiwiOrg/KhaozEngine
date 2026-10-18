@@ -35,12 +35,14 @@ internal sealed partial class SupportTiltedCurvedGeometry
     }
     internal bool CapUniformlyUp(int kind)
     {
+        if (_work.Failed) return false;
         GeometrySign sign = Sign(Mul(_k, C(kind == 2 ? 1 : -1)));
-        return sign is GeometrySign.Positive or GeometrySign.Zero || CapUpward(kind).Lower >= 0;
+        return !_work.Failed && (sign is GeometrySign.Positive or GeometrySign.Zero || CapUpward(kind).Lower >= 0);
     }
 
     internal GeometryVector Surface(int kind, GeometryInterval a, GeometryInterval b)
     {
+        if (_work.Failed) return default;
         if (kind is 2 or 3)
             return Add(Add(_centre, Scale(_axis, B(_h).Multiply(I(kind == 2 ? 1 : -1)))),
                 Scale(Add(Scale(_w, a), Scale(_f, b)), B(_r)));
@@ -57,6 +59,7 @@ internal sealed partial class SupportTiltedCurvedGeometry
     internal bool SurfacePointInside(int kind, double a, double b, double x, double z, double radius,
         double bottom, double top)
     {
+        if (_work.Failed) return false;
         if (kind is 2 or 3 && BoundedGeometryArithmetic.CompareSumOfFourSquares(a, b, 0, 0, 1) == GeometrySign.Positive)
             return false;
         GeometryVector position = Surface(kind, I(a), I(b));

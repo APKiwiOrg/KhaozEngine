@@ -27,7 +27,7 @@ public partial class SupportFootprintTests
         foreach (float y in new[] { MathF.BitDecrement(component), component, MathF.BitIncrement(component) })
         {
             var column = new Vector3(component, y, 0);
-            var kernel = new SupportTiltedCurved();
+            var kernel = new SupportTiltedCurved(NewCurvedWork());
             GeometrySign result = kernel.Measure(new(1), ColumnLeaf(column), SupportNeighborhoodCurved.Side, request,
                 out var member);
             var part = ColumnPart(column, Vector3.Zero, OracleSurface.CylinderSide, 0);
@@ -49,7 +49,7 @@ public partial class SupportFootprintTests
         foreach (float y in new[] { MathF.BitDecrement(component), MathF.BitIncrement(component) })
         {
             var column = new Vector3(component, y, 0);
-            var kernel = new SupportTiltedCurved();
+            var kernel = new SupportTiltedCurved(NewCurvedWork());
             Assert.Equal(GeometrySign.Positive, kernel.Measure(new(1), ColumnLeaf(column), SupportNeighborhoodCurved.TopCap,
                 request, out var member));
             var part = ColumnPart(column, Vector3.Zero, OracleSurface.CylinderTop, 1);
@@ -63,7 +63,7 @@ public partial class SupportFootprintTests
     [InlineData(true)]
     public void CurvedTiltedSignedZeroYKeepsCertifiedComponentEquality(bool negative)
     {
-        var kernel = new SupportTiltedCurvedGeometry();
+        var kernel = new SupportTiltedCurvedGeometry(NewCurvedWork());
         Assert.True(kernel.Begin(ColumnLeaf(new(1, negative ? -0f : 0f, 0)), 0, 0, 0.2f));
         Assert.True(kernel.CapUniformlyUp(2));
         Assert.Equal(0, kernel.CapUpward(2).Lower);
@@ -83,7 +83,7 @@ public partial class SupportFootprintTests
             Assert.NotNull(reference);
             Assert.True(reference.Admitted);
             Assert.Equal(y > 0, reference.HasDiscMaximum);
-            var kernel = new SupportTiltedCurved();
+            var kernel = new SupportTiltedCurved(NewCurvedWork());
             Assert.Equal(GeometrySign.Positive, kernel.Measure(new(1), ColumnLeaf(column), SupportNeighborhoodCurved.TopCap,
                 request, out var member));
             Assert.False((bool)Property(ObjectField(kernel, "_admission"), "CapacityRefused"));
@@ -101,7 +101,7 @@ public partial class SupportFootprintTests
         foreach (float y in new[] { -1e-8f, 1e-8f })
         {
             var column = new Vector3(1, y, 0);
-            var kernel = new SupportTiltedCurvedGeometry();
+            var kernel = new SupportTiltedCurvedGeometry(NewCurvedWork());
             Assert.True(kernel.Begin(ColumnLeaf(column, centre), 0, 0, 0.2f));
             GeometrySign axis = kernel.Axis(false, 0, out _);
             _output.WriteLine($"y={y:R} axis={axis} live={kernel.RootLiveHighWater}");
@@ -123,7 +123,7 @@ public partial class SupportFootprintTests
         foreach (float sy in signed ? new[] { -1e-8f, 1e-8f } : new[] { 0.5f })
         {
             var column = new Vector3(1, sy, 0);
-            var kernel = new SupportTiltedCurvedGeometry();
+            var kernel = new SupportTiltedCurvedGeometry(NewCurvedWork());
             Assert.True(kernel.Begin(ColumnLeaf(column), x, 0.1, 0.2));
             Assert.Equal(GeometrySign.Positive, kernel.Cap(SupportNeighborhoodCurved.BottomCap, false, out var witness, out var maximum));
             var part = ColumnPart(column, Vector3.Zero, OracleSurface.CylinderBottom, 1);
@@ -152,7 +152,7 @@ public partial class SupportFootprintTests
         foreach (float y in new[] { -1e-8f, 1e-8f })
         {
             var column = new Vector3(1, y, 0);
-            var kernel = new SupportTiltedCurvedGeometry();
+            var kernel = new SupportTiltedCurvedGeometry(NewCurvedWork());
             Assert.True(kernel.Begin(ColumnLeaf(column, centre), 0, z, 0.2f));
             Assert.Equal(GeometrySign.Positive, kernel.Side(0, out var witness, out var maximum));
             var part = ColumnPart(column, centre, OracleSurface.CylinderSide, 0);
@@ -202,7 +202,7 @@ public partial class SupportFootprintTests
         var centre = installed.Centre.Middle;
         pose.Position = new((float)centre.X, (float)centre.Y, (float)centre.Z);
         var leaf = RepresentedLeaf(SupportCurvedShape.Cylinder, pose, 0.3f, 1);
-        var kernel = new SupportTiltedCurvedGeometry();
+        var kernel = new SupportTiltedCurvedGeometry(NewCurvedWork());
         Assert.True(kernel.Begin(leaf, x, z, 0.2f));
         GeometrySign status = kernel.Side(cosine, out var witness, out var maximum);
         _output.WriteLine($"status={status} root cells={kernel.RootCellCount} frontier={kernel.RootLiveHighWater} terminal={kernel.RootTerminalHighWater}");
@@ -231,11 +231,12 @@ public partial class SupportFootprintTests
     [Fact]
     public void CurvedRootRegionsCoverAnEnclosedCoefficientWithoutScalarExhaustion()
     {
-        var arithmetic = new SupportCurvedSourceArithmetic();
+        var work = NewCurvedWork();
+        var arithmetic = new SupportCurvedSourceArithmetic(work);
         arithmetic.Reset(Vector3.UnitY);
         Number square = arithmetic.Divide(arithmetic.One, arithmetic.Constant(3.99999996));
         Assert.True(arithmetic.Bounds(square).Lower < arithmetic.Bounds(square).Upper);
-        var regions = new SupportCurvedRootRegions();
+        var regions = new SupportCurvedRootRegions(work);
         Number[] polynomial = [arithmetic.Negate(square), arithmetic.Zero, arithmetic.One];
         Assert.True(regions.Solve(arithmetic, polynomial, -1, 1));
         Assert.Equal(2, regions.Count);
@@ -258,11 +259,12 @@ public partial class SupportFootprintTests
     [Fact]
     public void CurvedUncertifiedDoubleRootRefusesAtStaticCellBound()
     {
-        var arithmetic = new SupportCurvedSourceArithmetic();
+        var work = NewCurvedWork();
+        var arithmetic = new SupportCurvedSourceArithmetic(work);
         arithmetic.Reset(Vector3.UnitY);
         // (t - sqrt(2)/4)^2 = t^2 - (sqrt(2)/2) t + 1/8.
         Number linear = arithmetic.Multiply(arithmetic.Constant(-0.5), arithmetic.Root(arithmetic.Constant(2)));
-        var regions = new SupportCurvedRootRegions();
+        var regions = new SupportCurvedRootRegions(work);
         Number[] polynomial = [arithmetic.Constant(0.125), linear, arithmetic.One];
         Assert.False(regions.Solve(arithmetic, polynomial, -1, 1));
         Assert.True(regions.CapacityRefused);

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
@@ -439,6 +440,8 @@ public partial class SupportFootprintTests
         Assert.Equal(SupportStatus.Walkable, expected.Status);
 
         var samples = new SupportSample[Readers];
+        var curvedWork = new SupportCurvedWorkObservation[Readers];
+        var observedWork = new int[Readers];
         var builds = new int[Readers];
         using (var barrier = new Barrier(Readers))
         {
@@ -452,17 +455,30 @@ public partial class SupportFootprintTests
                     BoundedThread.Arrive(barrier);
                 });
                 using var readerCounters = new WorldFormCounters();
+                SupportQueryDiagnostics.SetCurvedWorkObserver(observation =>
+                { curvedWork[slot] = observation; observedWork[slot]++; });
                 try
                 {
                     using IPhysicsQueryLease lease = world.AcquireQueryReadLease();
                     samples[slot] = FootSupport.Find(null, world, lease, query);
                     builds[slot] = SupportQueryDiagnostics.Snapshot().WorldFormBuilds;
                 }
-                finally { ContactAllocationDiagnostics.SetObserver(null); }
+                finally
+                {
+                    ContactAllocationDiagnostics.SetObserver(null);
+                    SupportQueryDiagnostics.SetCurvedWorkObserver(null);
+                }
             }))];
             foreach (BoundedThread reader in readers) reader.Join();
         }
         Assert.All(samples, sample => Assert.Equal(expected.ToString(), sample.ToString()));
+        Assert.All(observedWork, count => Assert.Equal(1, count));
+        Assert.All(curvedWork, observation =>
+        {
+            Assert.Equal(CapsuleFeatureStatus.Complete, observation.FootprintStatus);
+            Assert.Equal(SupportCurvedWorkFailure.None, observation.Failure);
+            Assert.Equal(observation.Consumed, SupportCurvedWorkTests.Sum(observation));
+        });
         StaticHandle[] owners = scene.Owners();
         Assert.Equal(owners.Length, builds.Sum());
         Assert.All(owners, owner => Assert.NotNull(scene.Form(owner)));
@@ -481,6 +497,7 @@ public partial class SupportFootprintTests
         StaticHandle owner = scene.Owners()[0];
         SupportSample? nested = null;
         InstalledSupportWorldForm? first = null;
+        var curvedWork = new List<SupportCurvedWorkObservation>();
         SupportSample outer;
         using (IPhysicsQueryLease lease = scene.World.AcquireQueryReadLease())
         {
@@ -489,11 +506,29 @@ public partial class SupportFootprintTests
                 // The outer build of this static's form is running when the same thread misses the same form again.
                 if (nested is not null || !entering || phase != ContactAllocationPhase.SupportMaterialization) return;
                 nested = default(SupportSample);
-                nested = FootSupport.Find(null, scene.World, lease, scene.Query);
+                var prior = SupportQueryDiagnostics.Exchange(SupportQueryDiagnostics.ThreadState.Fresh(true) with
+                { CurvedWork = curvedWork.Add });
+                SupportQueryCounts counts;
+                SupportRouteCounts routes;
+                try
+                {
+                    nested = FootSupport.Find(null, scene.World, lease, scene.Query);
+                    counts = SupportQueryDiagnostics.Snapshot();
+                    routes = SupportQueryDiagnostics.Routes;
+                }
+                finally { SupportQueryDiagnostics.Exchange(prior); }
+                SupportQueryDiagnostics.Merge(counts, routes);
                 first = scene.Form(owner);
             });
+            SupportQueryDiagnostics.SetCurvedWorkObserver(curvedWork.Add);
             try { outer = FootSupport.Find(null, scene.World, lease, scene.Query); }
-            finally { ContactAllocationDiagnostics.SetObserver(null); }
+            finally
+            {
+                ContactAllocationDiagnostics.SetObserver(null);
+                SupportQueryDiagnostics.SetCurvedWorkObserver(null);
+            }
+            Assert.Equal(2, curvedWork.Count);
+            Assert.All(curvedWork, observation => Assert.Equal(CapsuleFeatureStatus.Complete, observation.FootprintStatus));
         }
         int builds = SupportQueryDiagnostics.Snapshot().WorldFormBuilds;
         SupportSample reference;

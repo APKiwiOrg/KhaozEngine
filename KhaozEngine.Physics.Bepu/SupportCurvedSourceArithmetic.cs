@@ -8,13 +8,16 @@ namespace KhaozEngine.Physics.Bepu;
 /// polynomials decide the remaining signs exactly. Storage is reused, including fallback scratch.</summary>
 internal sealed class SupportCurvedSourceArithmetic
 {
+    readonly SupportCurvedWork _curvedWork;
+    internal SupportCurvedSourceArithmetic(SupportCurvedWork work) => _curvedWork = work;
+
     // Handles stay valid until Reset. Enclosures live in the graph rather than recursive stack frames.
     internal readonly record struct Number(int Id);
     enum Operation : byte { Constant, Add, Multiply, Divide, Root }
     readonly record struct Node(Operation Op, Number Left, Number Right, int Root, double Constant, FeatureNumber Value);
     readonly record struct Fraction(Number A, Number B, Number D);
     readonly record struct Polynomial(SupportSourcePolynomial N, SupportSourcePolynomial D);
-    const int MaximumNodes = 4096;
+    internal const int MaximumNodes = 4096;
     readonly Node[] _nodes = new Node[MaximumNodes];
     readonly SupportSourcePolynomialWorkspace _work = new();
     readonly Polynomial?[] _compiled = new Polynomial?[MaximumNodes];
@@ -31,36 +34,41 @@ internal sealed class SupportCurvedSourceArithmetic
     internal void Restore(int checkpoint)
     {
         _count = checkpoint;
-        _resolved = true;
+        _resolved = !_curvedWork.Failed;
     }
 
     internal void Reset(Vector3 source)
     {
-        _count = 0; _resolved = true;
+        _count = 0; _resolved = !_curvedWork.Failed;
+        if (!_resolved) return;
         Zero = Constant(0); One = Constant(1);
         X = Constant(source.X); Y = Constant(source.Y); Z = Constant(source.Z);
     }
 
-    FeatureNumber Value(Number number) => _resolved ? _nodes[number.Id].Value : default;
+    FeatureNumber Value(Number number) => _resolved && !_curvedWork.Failed ? _nodes[number.Id].Value : default;
     internal GeometryInterval Bounds(Number number) => Value(number).Bounds;
 
     internal Number Constant(double value) => New(Operation.Constant, default, default, FeatureNumber.Exact(value), value);
     internal Number Add(Number a, Number b)
     {
+        if (!_resolved || _curvedWork.Failed) return default;
         if (a.Id == Zero.Id) return b;
         if (b.Id == Zero.Id) return a;
         return New(Operation.Add, a, b, Value(a).Add(Value(b)));
     }
     internal Number Negate(Number a)
     {
+        if (!_resolved || _curvedWork.Failed) return default;
         Node node = _nodes[a.Id];
         if (node.Op == Operation.Multiply && Value(node.Left).IsExact && Value(node.Left).Value == -1)
             return node.Right;
         return Multiply(Constant(-1), a);
     }
-    internal Number Subtract(Number a, Number b) => a.Id == b.Id ? Zero : Add(a, Negate(b));
+    internal Number Subtract(Number a, Number b) =>
+        !_resolved || _curvedWork.Failed ? default : a.Id == b.Id ? Zero : Add(a, Negate(b));
     internal Number Multiply(Number a, Number b)
     {
+        if (!_resolved || _curvedWork.Failed) return default;
         if (a.Id == Zero.Id || b.Id == Zero.Id) return Zero;
         if (a.Id == One.Id) return b;
         if (b.Id == One.Id) return a;
@@ -72,6 +80,7 @@ internal sealed class SupportCurvedSourceArithmetic
     internal Number Square(Number a) => Multiply(a, a);
     internal Number Divide(Number a, Number b)
     {
+        if (!_resolved || _curvedWork.Failed) return default;
         if (b.Id == One.Id) return a;
         if (a.Id == b.Id && Value(b).Sign is GeometrySign.Positive or GeometrySign.Negative) return One;
         return New(Operation.Divide, a, b, Value(a).Divide(Value(b)));
@@ -101,6 +110,7 @@ internal sealed class SupportCurvedSourceArithmetic
     };
     internal Number Max(Number a, Number b)
     {
+        if (!_resolved || _curvedWork.Failed) return default;
         Number difference = Subtract(a, b);
         GeometrySign sign = Sign(difference);
         if (sign == GeometrySign.Negative) return b;
@@ -123,6 +133,7 @@ internal sealed class SupportCurvedSourceArithmetic
 
     Number New(Operation op, Number a, Number b, FeatureNumber value, double constant = 0)
     {
+        if (!_curvedWork.TryCharge(SupportCurvedWorkKind.New)) { _resolved = false; return default; }
         if (!value.IsResolved) { _resolved = false; return default; }
         if (value.IsExact) { op = Operation.Constant; constant = value.Value; a = b = default; }
         if (!_resolved || _count == MaximumNodes) { _resolved = false; return default; }
@@ -138,6 +149,7 @@ internal sealed class SupportCurvedSourceArithmetic
 
     internal GeometrySign Sign(Number number)
     {
+        if (!_curvedWork.TryCharge(SupportCurvedWorkKind.Sign)) return GeometrySign.Unresolved;
         if (!_resolved || !Value(number).IsResolved) return GeometrySign.Unresolved;
         GeometrySign sign = Value(number).Sign;
         if (sign != GeometrySign.Unresolved) return sign;
@@ -172,6 +184,7 @@ internal sealed class SupportCurvedSourceArithmetic
 
     Fraction Split(Number number, int root)
     {
+        if (!_curvedWork.TryCharge(SupportCurvedWorkKind.Split)) { _resolved = false; return default; }
         if (number.Id == root) return new(Zero, One, One);
         Node node = _nodes[number.Id];
         if (node.Root < root) return new(number, Zero, One);
@@ -196,6 +209,7 @@ internal sealed class SupportCurvedSourceArithmetic
 
     GeometrySign PolynomialSign(Number number)
     {
+        if (_curvedWork.Failed) return GeometrySign.Unresolved;
         _work.Reset(); Array.Clear(_compiled); _compiledCount = 0;
         _onePolynomial = _work.Constant(1);
         Polynomial? value = Compile(number);
@@ -221,6 +235,7 @@ internal sealed class SupportCurvedSourceArithmetic
 
     Polynomial? Compile(Number number)
     {
+        if (!_curvedWork.TryCharge(SupportCurvedWorkKind.Compile)) return null;
         if (_compiled[number.Id] is { } cached) return cached;
         Node node = _nodes[number.Id];
 

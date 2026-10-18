@@ -18,7 +18,8 @@ public partial class SupportFootprintTests
     public void CurvedPolynomialFallbackRetainsNormalizedSourceIdentity()
     {
         using var diagnostics = new SourceDiagnosticScope();
-        var arithmetic = new SupportCurvedSourceArithmetic();
+        var work = NewCurvedWork();
+        var arithmetic = new SupportCurvedSourceArithmetic(work);
         arithmetic.Reset(new(0.6f, 0, 0.8f));
         var square = arithmetic.Add(arithmetic.Square(arithmetic.X), arithmetic.Square(arithmetic.Z));
         var root = arithmetic.Root(square);
@@ -61,7 +62,8 @@ public partial class SupportFootprintTests
     public void CurvedRadicalFallbackKeepsUnsquaredSignsAndExactTies()
     {
         using var diagnostics = new SourceDiagnosticScope();
-        var arithmetic = new SupportCurvedSourceArithmetic();
+        var work = NewCurvedWork();
+        var arithmetic = new SupportCurvedSourceArithmetic(work);
         arithmetic.Reset(Vector3.UnitY);
         var two = arithmetic.Root(arithmetic.Constant(2)); var eight = arithmetic.Root(arithmetic.Constant(8));
         var tied = arithmetic.Subtract(arithmetic.Multiply(two, eight), arithmetic.Constant(4));
@@ -78,7 +80,7 @@ public partial class SupportFootprintTests
     {
         var pose = new RigidPose(new(0, -0.25f, 0), new Quaternion(0.5f, y, 0.5f, w));
         var leaf = RepresentedLeaf(SupportCurvedShape.Cylinder, pose, 0.25, half);
-        var kernel = new SupportFootprintCurved();
+        var kernel = new SupportFootprintCurved(NewCurvedWork());
         var request = Request(x: x, z: z, lower: -2, upper: 2);
         GeometrySign result = kernel.Measure(default, leaf, 0, request, out var member);
         Assert.Equal(GeometrySign.Positive, result);
@@ -152,7 +154,7 @@ public partial class SupportFootprintTests
         { ExactAxis = exactAxis }, centre, exactAxis,
             R.From(0.25), R.From(half));
         var exact = SupportFootprintClosedFormOracle.Measure(exactPart, request);
-        var kernel = new SupportFootprintCurved();
+        var kernel = new SupportFootprintCurved(NewCurvedWork());
         Assert.Equal(GeometrySign.Positive, kernel.Measure(default, leaf, part, request, out var member));
         GeometrySign warm = default;
         SupportFootprintMember repeated = default;

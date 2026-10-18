@@ -8,12 +8,20 @@ namespace KhaozEngine.Physics.Bepu;
 /// projected domain. Source-uniform root regions enclose every stationary and boundary stratum.</summary>
 internal sealed partial class SupportTiltedCurvedGeometry
 {
+    readonly SupportCurvedWork _work;
+    internal SupportTiltedCurvedGeometry(SupportCurvedWork work)
+    {
+        _work = work;
+        _arithmetic = new(work);
+        _roots = new(work);
+    }
+
     internal readonly record struct Witness(GeometryVector Position, GeometryVector Normal, bool AtSideCrest = false);
     enum DiscLateralBoundary : byte { None, Negative, Positive }
     readonly record struct Candidate(GeometryInterval Parameter, double End, bool AtEnd, bool Slope, int Rim,
         DiscLateralBoundary Lateral = DiscLateralBoundary.None);
-    readonly SupportCurvedSourceArithmetic _arithmetic = new();
-    readonly SupportCurvedRootRegions _roots = new();
+    readonly SupportCurvedSourceArithmetic _arithmetic;
+    readonly SupportCurvedRootRegions _roots;
     readonly Candidate[] _candidates = new Candidate[32];
     readonly Number[] _polynomial = new Number[5];
     Number _u, _k, _p, _q, _r, _h, _disc;
@@ -45,6 +53,7 @@ internal sealed partial class SupportTiltedCurvedGeometry
 
     internal bool Begin(in SupportCurvedLeaf leaf, double x, double z, double disc)
     {
+        if (_work.Failed) return false;
         _arithmetic.Reset(leaf.SourceColumn);
         _axisMode = false;
         Number sx = _arithmetic.X, sy = _arithmetic.Y, sz = _arithmetic.Z;
@@ -75,6 +84,7 @@ internal sealed partial class SupportTiltedCurvedGeometry
     bool Keep(GeometryInterval z, double end = 0, bool atEnd = false, bool slope = false, int rim = 0,
         DiscLateralBoundary lateral = DiscLateralBoundary.None)
     {
+        if (_work.Failed) return false;
         if (!z.IsResolved || z.Lower > 1 || z.Upper < -1) return true;
         if (_count == _candidates.Length) return false;
         // A tagged quotient must prove its original source domain before any clipping.
@@ -137,6 +147,7 @@ internal sealed partial class SupportTiltedCurvedGeometry
     internal GeometrySign Side(double slope, out Witness witness, out GeometryInterval maximum, bool equations = true)
     {
         witness = default; maximum = default;
+        if (_work.Failed) return GeometrySign.Unresolved;
         _count = 0;
         if (slope > 0)
         {
@@ -222,6 +233,7 @@ internal sealed partial class SupportTiltedCurvedGeometry
                 candidate.Rim), slope, out point, out certain);
         }
         point = default; certain = false;
+        if (_work.Failed) return GeometrySign.Unresolved;
         GeometryInterval z = candidate.Parameter, v = z.Lower == z.Upper && z.Lower == 0 ? I(1) :
             z.Lower == z.Upper && (z.Lower == -1 || z.Lower == 1) ? I(0) : PositiveRoot(I(1).Subtract(z.Square()));
         GeometryInterval normalY = B(_u).Multiply(v);
@@ -267,6 +279,7 @@ internal sealed partial class SupportTiltedCurvedGeometry
     GeometrySign SideLateralPoint(bool positive, double slope, out Witness point)
     {
         point = default;
+        if (_work.Failed) return GeometrySign.Unresolved;
         Number numerator = Sub(positive ? _disc : Neg(_disc), _q);
         GeometrySign left = Sign(Add(numerator, _r)), right = Sign(Sub(_r, numerator));
         if (left == GeometrySign.Negative || right == GeometrySign.Negative) return GeometrySign.Negative;

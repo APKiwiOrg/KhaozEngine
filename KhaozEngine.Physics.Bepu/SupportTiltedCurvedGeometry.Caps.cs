@@ -16,6 +16,7 @@ internal sealed partial class SupportTiltedCurvedGeometry
     internal GeometrySign Axis(bool cap, int part, out Witness witness)
     {
         witness = default;
+        if (_work.Failed) return GeometrySign.Unresolved;
         if (cap)
         {
             int direction = (part == SupportNeighborhoodCurved.TopCap ? 1 : -1) * _direction;
@@ -69,6 +70,7 @@ internal sealed partial class SupportTiltedCurvedGeometry
     internal GeometrySign Cap(int part, bool minimum, out Witness witness, out GeometryInterval maximum)
     {
         witness = default; maximum = default;
+        if (_work.Failed) return GeometrySign.Unresolved;
         _count = 0;
         double end = (part == SupportNeighborhoodCurved.TopCap ? 1 : -1) * _direction * B(_h).Lower;
         GeometryVector normal = CapNormal(part);

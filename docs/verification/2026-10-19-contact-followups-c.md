@@ -312,3 +312,93 @@ also exited 0 with one passed. Both test commands built Release successfully wit
 All original six stair boundary rows pass ordinary Complete/Advanced acceptance and arrival.
 No CLI test or build remains running. Full solution build, full Game.Tests and full format verification
 remain Task 7 work. No timing or load evidence was collected.
+
+## Task 4 cumulative curved certification work
+
+CC-6, CC-7 and acceptance F use one `SupportCurvedWork` per collector scratch. The fixed
+1,048,576-event ceiling is 256 existing raw-member slots times 4,096 existing source-graph
+slots. It is a pooled allowance, independent of the existing graph, compile and storage limits.
+No tolerance, band, arrival rule or storage limit changed.
+
+`SupportFootprintCollector.Begin` begins the account once for the complete request. Both arithmetic
+families, tilted geometry, roots and surface admission share it. Source Reset, PolynomialSign,
+checkpoint Restore, later leaves/parts, both proposal contexts and the below-band pass cannot refund
+work. New, Sign, recursive Split and Compile, root cells, Refine iterations and admission cells charge
+before their event, including predicate and graph cache hits. A denied event latches WorkLimit and
+later arithmetic reads and cached geometry shortcuts cannot succeed. Publish checks the owner before
+either caller span is written. Direct footprint callers have independent owners, and memo hits never
+enter this backend path.
+
+The owner snapshot keeps FootprintStatus Unresolved. Only the completed backend query observation
+sets it to the actual returned status, before returning its scratch. The opt-in thread-local observer
+is captured and restored by ThreadState. Fresh clears it, Reset retains it like the Find observer,
+and disabled diagnostics do not affect enforcement or accounting. Nested callback queries borrow
+independent scratch. Existing nested form-build and concurrent-reader fixtures also observe it.
+
+### Behavioral red and focused verification
+
+The inert owner compiled, then all six initial work tests failed behaviorally. The eighth event ran,
+Sign returned Positive after exhaustion, root storage high water and both storage reasons were absent,
+invalid limits were accepted, and the limit-32 collector returned Complete instead of Unsupported.
+The historical 3,301,460-event query was not run.
+
+The final required `fu-c-work-green` selection exited 0 with 709 passed, zero failed and zero skipped.
+It builds the referenced Release projects without compiler warnings. This includes the complete
+SupportFootprintTests and SupportNeighborhoodEquivalenceTests selections, 256/257 member atomicity,
+exact represented controls, and the new failure and observer proofs. The final command adds only the
+console detailed logger to retain counter evidence. All builds/tests ran serially through build-slot.
+No full suite, timing, load, capture, cost artifact or hosted workflow ran.
+
+### Fixed certified corpus
+
+`CertifiedCurvedStrataFitTheCumulativeQueryCeiling` checks 42 fixed rows, each optimized and reference.
+The rows cover sphere/upright, exact-horizontal, finite ends, compounds, tilted side/cap/round,
+slope-boundary neighbours, both proposal contacts, a real below-band second pass, and the maximum
+256 admitted raw members with 512 witnesses. Every observation is Complete, has Failure None,
+Consumed at most 1,048,576, and a category sum equal to Consumed. Public members, witnesses, verdicts
+and joins match reference output. Totals below include both modes, 84 observations.
+
+| Event | Accepted events |
+| --- | --- |
+| New | 109,584 |
+| Sign | 20,832 |
+| Split | 0 |
+| Compile | 116 |
+| RootCell | 944 |
+| Refine | 516 |
+| AdmissionCell | 106 |
+| Total | 132,098 |
+
+The maximum row is `maximum-raw`, consuming 48,896 in each mode. Its categories are New 40,960,
+Sign 7,936, and zero in the other five categories. The exact-horizontal and represented corpus
+requires no Split events. `CurvedWorkPredicateRecursionChargesBeforeEachEntry` separately exercises
+real radical Split and rational Compile recursion, denies the next recursive event at 64, proves no
+refund after Restore, and proves the same expressions resolve to Zero in a fresh account.
+
+### Failure and allocation proofs
+
+- WorkLimit. Limit 7 accepts exactly one event in each category and rejects the eighth before its
+  body. Failed charges and later failures leave the snapshot unchanged. Disabled diagnostics, nested
+  checkpoints, source Reset, PolynomialSign, later roots, leaves/parts, both proposal contacts and
+  BeginBelowBandPass cannot resume or refund work. A new request and nested owner are independent.
+- Atomicity. A represented tilted cylinder with injected collector limit 32 refuses as Unsupported,
+  Members 0 and Witnesses 0. Complete member copies, joins filled with 73UL and unused tails remain
+  untouched. Find maps the actual backend refusal to Refused. Every storage reason also discards an
+  already retained prefix before publication.
+- RootStorage. The unresolved root-function seam reaches the unchanged 1,024 live-cell high water
+  with Consumed below Limit, reports RootStorage and clears its output. Restore and later charges
+  cannot replace it with WorkLimit.
+- TerminalRoots. A quadratic with two roots and the existing per-solve one-root seam reports
+  TerminalRoots with unexhausted work and zero roots returned. Later solves cannot replace the reason.
+- AdmissionStorage. A closed zero-height slice through a tilted cylinder reaches the unchanged
+  1,024 admission-cell high water, reports AdmissionStorage and returns Unresolved before WorkLimit.
+- Warm allocation. The observed complete footprint query allocates zero bytes. The existing curved
+  pose, uncertified storage, 256-member/512-witness and represented-control allocation assertions all
+  remain green. Enforcement and diagnostic publication add no object per warm Find.
+
+Full solution build, full Game.Tests, format verification and final living-contract publication remain
+Task 7 work. Task 5 owns the original seam measurements and traversal failure gate.
+
+Self-review also exercised a denied Sign inside `CapUniformlyUp`. Its cached upward bound originally
+returned true after that denial. The added regression failed False versus True, then passed after
+the shortcut checked the sticky owner again. The caller's existing refusal remains unchanged.

@@ -13,6 +13,7 @@ internal sealed partial class SupportTiltedCurvedGeometry : ISupportCurvedRootFu
         out GeometryInterval lowest)
     {
         lowest = default;
+        if (_work.Failed) return GeometrySign.Unresolved;
         _contactShape = shape; _contactPart = part; _probe = probe;
         _boundaryMode = false;
         _stationaryMode = false;
@@ -84,6 +85,7 @@ internal sealed partial class SupportTiltedCurvedGeometry : ISupportCurvedRootFu
 
     GeometrySign SignContact(double y)
     {
+        if (_work.Failed) return GeometrySign.Unresolved;
         // Unit-axis surface extents enclose the whole raw part. Here vertical separation
         // is at least two probe radii, so the contact objective is strictly positive.
         if (y <= _contactLow || y >= _contactHigh) return GeometrySign.Positive;

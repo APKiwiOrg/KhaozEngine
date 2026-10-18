@@ -7,8 +7,16 @@ namespace KhaozEngine.Physics.Bepu;
 /// <summary>Independent attained SG-19 roles for curved strata. Tilted parts use certified regions.</summary>
 internal sealed partial class SupportFootprintCurved
 {
-    readonly SupportCurvedSourceArithmetic _arithmetic = new();
-    readonly SupportTiltedCurved _tilted = new();
+    readonly SupportCurvedWork _work;
+    internal SupportFootprintCurved(SupportCurvedWork work)
+    {
+        _work = work;
+        _arithmetic = new(work);
+        _tilted = new(work);
+    }
+
+    readonly SupportCurvedSourceArithmetic _arithmetic;
+    readonly SupportTiltedCurved _tilted;
     internal void ResetStatistics() => _tilted.ResetStatistics();
     readonly record struct Point(Number X, Number Y, Number Z)
     {
@@ -39,6 +47,7 @@ internal sealed partial class SupportFootprintCurved
 
     bool Begin(in SupportCurvedLeaf leaf, double x, double z)
     {
+        if (_work.Failed) return false;
         _arithmetic.Reset(leaf.SourceColumn);
         _centre = new(C(leaf.Centre.X.Lower), C(leaf.Centre.Y.Lower), C(leaf.Centre.Z.Lower));
         _radius = C(leaf.Radius); _half = C(leaf.HalfLength);
@@ -51,7 +60,7 @@ internal sealed partial class SupportFootprintCurved
         {
             _axisSign = leaf.SourceColumn.Y < 0 ? -1 : 1;
             _p = C(0); _q = C(0); _e = Up; _f = new(C(1), C(0), C(0));
-            return true;
+            return !_work.Failed;
         }
         if (Sign(_arithmetic.Y) != GeometrySign.Zero || vertical != GeometrySign.Positive) return false;
         Number length = Root(Add(Sq(_arithmetic.X), Sq(_arithmetic.Z)));
@@ -66,6 +75,7 @@ internal sealed partial class SupportFootprintCurved
         in SupportFootprintRequest request, out SupportFootprintMember member)
     {
         member = default;
+        if (_work.Failed) return GeometrySign.Unresolved;
         if (!SupportFootprintBounds.TryColumn(request, out double bottom, out double top)) return GeometrySign.Unresolved;
         GeometryInterval reach = GeometryInterval.Exact(leaf.Radius).Add(GeometryInterval.Exact(leaf.HalfLength));
         GeometryInterval expanded = GeometryInterval.Exact(request.Radius).Add(GeometryInterval.Exact(request.ContactBand));
@@ -99,7 +109,7 @@ internal sealed partial class SupportFootprintCurved
             default, 0, first.Normal, first.NormalError, first.UpwardLower, footprint == GeometrySign.Positive,
             footprint == GeometrySign.Positive ? height.Lower : 0, footprint == GeometrySign.Positive ? height.Upper : 0,
             0, count, first, second);
-        return GeometrySign.Positive;
+        return _work.Failed ? GeometrySign.Unresolved : GeometrySign.Positive;
     }
 
     bool Publish(Witness point, SupportWitnessRole role, double cosine, out SupportFootprintWitness witness)

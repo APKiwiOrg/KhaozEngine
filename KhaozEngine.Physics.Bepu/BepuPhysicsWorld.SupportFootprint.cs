@@ -58,6 +58,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprint
         {
             SupportFootprintResult result = CollectFootprint(collector, receiver, lease, request, members, joins, filter,
                 exclusions, certificationJoins);
+            SupportQueryDiagnostics.ObserveCurvedWork(collector.CurvedWork with { FootprintStatus = result.Status });
             SupportQueryDiagnostics.Refusal(result.Status);
             return result;
         }

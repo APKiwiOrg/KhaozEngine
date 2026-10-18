@@ -6,6 +6,8 @@ internal sealed partial class SupportTiltedCurvedGeometry
 {
     internal GeometrySign Round(bool axis, double slope, out Witness witness, out GeometryInterval maximum)
     {
+        witness = default; maximum = default;
+        if (_work.Failed) return GeometrySign.Unresolved;
         GeometrySign side = axis ? Axis(false, 0, out witness) : Side(slope, out witness, out _);
         maximum = side == GeometrySign.Positive ? witness.Position.Y : default;
         if (side == GeometrySign.Unresolved) return side;

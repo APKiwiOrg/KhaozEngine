@@ -11,6 +11,7 @@ internal sealed partial class SupportFootprintCurved
         double bandLower, double bandUpper, out GeometryInterval lowest)
     {
         lowest = default;
+        if (_work.Failed) return GeometrySign.Unresolved;
         if (!Begin(leaf, proposal.Start.Position.X, proposal.Start.Position.Z))
             return _tilted.Lowest(leaf, part, proposal, bandLower, bandUpper, out lowest);
         Number probe = C(proposal.Probe.Radius), y = _centre.Y, square;

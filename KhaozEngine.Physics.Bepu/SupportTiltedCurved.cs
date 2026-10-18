@@ -6,14 +6,23 @@ namespace KhaozEngine.Physics.Bepu;
 /// Every refusal is returned before the collector publishes either caller span.</summary>
 internal sealed class SupportTiltedCurved
 {
-    readonly SupportTiltedCurvedGeometry _geometry = new();
-    readonly SupportCurvedSurfaceAdmission _admission = new();
+    readonly SupportCurvedWork _work;
+    internal SupportTiltedCurved(SupportCurvedWork work)
+    {
+        _work = work;
+        _geometry = new(work);
+        _admission = new(work);
+    }
+
+    readonly SupportTiltedCurvedGeometry _geometry;
+    readonly SupportCurvedSurfaceAdmission _admission;
     internal void ResetStatistics() { _geometry.ResetStatistics(); _admission.ResetStatistics(); }
 
     internal GeometrySign Measure(StaticHandle owner, in SupportCurvedLeaf leaf, int part,
         in SupportFootprintRequest request, out SupportFootprintMember member)
     {
         member = default;
+        if (_work.Failed) return GeometrySign.Unresolved;
         if (!SupportFootprintBounds.TryColumn(request, out double bottom, out double top) ||
             !_geometry.Begin(leaf, request.Axis.X, request.Axis.Y, request.Radius)) return GeometrySign.Unresolved;
         GeometryInterval expanded = GeometryInterval.Exact(request.Radius).Add(GeometryInterval.Exact(request.ContactBand));
@@ -69,7 +78,7 @@ internal sealed class SupportTiltedCurved
             default, 0, first.Normal, first.NormalError, first.UpwardLower, footprint == GeometrySign.Positive,
             footprint == GeometrySign.Positive ? height.Lower : 0, footprint == GeometrySign.Positive ? height.Upper : 0,
             0, count, first, second);
-        return GeometrySign.Positive;
+        return _work.Failed ? GeometrySign.Unresolved : GeometrySign.Positive;
     }
 
     GeometrySign Maximum(in SupportCurvedLeaf leaf, int part, bool axis, double slope,
@@ -88,6 +97,7 @@ internal sealed class SupportTiltedCurved
         double bandLower, double bandUpper, out GeometryInterval lowest)
     {
         lowest = default;
+        if (_work.Failed) return GeometrySign.Unresolved;
         if (!_geometry.Begin(leaf, proposal.Start.Position.X, proposal.Start.Position.Z, proposal.Probe.Radius))
             return GeometrySign.Unresolved;
         return _geometry.Contact(leaf.Shape, part, proposal.Probe.Radius, bandLower, bandUpper, out lowest);

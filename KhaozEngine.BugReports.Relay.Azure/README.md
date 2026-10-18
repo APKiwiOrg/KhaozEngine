@@ -4,7 +4,11 @@ Opt-in Azure Storage implementations of the bug report relay's media, work queue
 plus a poison queue requeuer. Add this package explicitly, outside every umbrella. The host supplies
 ready clients and owns credentials. Hosts must build every work and poison `QueueClient` with
 `ReportQueueClientOptions.Create()`, which sets `MessageEncoding = QueueMessageEncoding.Base64`
-to match the Azure Functions queue trigger default. The package never takes an
+to match the Azure Functions queue trigger default. Pass an optional engine logger to the factory
+to route decoding warnings, or leave it null to use `Log.Get("BugReports.Relay")`. An undecodable
+message stays in its queue until its visibility lease expires. The handler logs one warning per
+encounter naming the queue and message id, never the body, and receiving continues with valid messages.
+The package never takes an
 `Azure.Identity` dependency or provisions a container, queue or table.
 
 `BlobReportMediaStore` maps Public and Pending to separate containers. Uploads carry the supplied

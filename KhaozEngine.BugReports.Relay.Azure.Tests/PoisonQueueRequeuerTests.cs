@@ -162,7 +162,7 @@ public sealed class PoisonQueueRequeuerTests
         }
     }
 
-    sealed class RecordingLogger : ILogger
+    internal sealed class RecordingLogger : ILogger
     {
         public List<string> Warnings { get; } = new();
         public string Category => "test";

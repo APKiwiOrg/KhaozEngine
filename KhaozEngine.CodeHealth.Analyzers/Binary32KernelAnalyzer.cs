@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Linq;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
@@ -18,11 +19,12 @@ namespace KhaozEngine.CodeHealth.Analyzers
 
         public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(
             Binary32KernelDiagnostics.FloatingOperator, Binary32KernelDiagnostics.FloatingConversion,
-            Binary32KernelDiagnostics.PlatformArithmetic, Binary32KernelDiagnostics.UnmarkedCall);
+            Binary32KernelDiagnostics.PlatformArithmetic, Binary32KernelDiagnostics.UnmarkedCall,
+            Binary32KernelDiagnostics.UnlistedOperation);
 
         public override void Initialize(AnalysisContext context)
         {
-            context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
+            context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.Analyze | GeneratedCodeAnalysisFlags.ReportDiagnostics);
             context.EnableConcurrentExecution();
             context.RegisterCompilationStartAction(OnCompilationStart);
         }
@@ -38,10 +40,10 @@ namespace KhaozEngine.CodeHealth.Analyzers
                 return;
 
             var state = new CompilationState();
+            // Register every kind, including unknown/invalid nodes. The switch below is the only
+            // allow-list, so adding a Roslyn operation never silently broadens the inventory.
             context.RegisterOperationAction(state.Analyze,
-                OperationKind.Binary, OperationKind.Unary, OperationKind.Increment, OperationKind.Decrement,
-                OperationKind.CompoundAssignment, OperationKind.Conversion, OperationKind.Invocation,
-                OperationKind.PropertyReference);
+                ((OperationKind[])Enum.GetValues(typeof(OperationKind))).Distinct().ToArray());
         }
 
         private enum Membership { Unmarked, Kernel, Home }
@@ -53,79 +55,178 @@ namespace KhaozEngine.CodeHealth.Analyzers
 
             public void Analyze(OperationAnalysisContext context)
             {
-                var owner = context.ContainingSymbol;
+                // Attribute metadata belongs to the declaration, not its executable kernel body.
+                for (var node = context.Operation; node != null; node = node.Parent)
+                    if (node is IAttributeOperation) return;
+                var owner = context.Operation is ILocalFunctionOperation localOwner ? localOwner.Symbol
+                    : context.Operation is IAnonymousFunctionOperation lambdaOwner ? lambdaOwner.Symbol
+                    : context.ContainingSymbol;
                 // Operation callbacks can name the outer method for a local function or lambda.
                 // Its own attribute still counts, even when the outer method is not attributed.
-                for (var parent = context.Operation.Parent; parent != null; parent = parent.Parent)
+                for (var parent = context.Operation is ILocalFunctionOperation || context.Operation is IAnonymousFunctionOperation
+                    ? null : context.Operation.Parent; parent != null; parent = parent.Parent)
                 {
                     if (parent is IAnonymousFunctionOperation lambda) { owner = lambda.Symbol; break; }
                     if (parent is ILocalFunctionOperation local) { owner = local.Symbol; break; }
                 }
                 if (!(owner is IMethodSymbol) || GetMembership(owner) != Membership.Kernel) return;
 
-                switch (context.Operation)
+                var operation = context.Operation;
+                if (operation.Type?.TypeKind == TypeKind.Dynamic || IsPointer(operation.Type)
+                    || IsUnsafeBody(operation))
                 {
-                    case IBinaryOperation binary:
+                    Reject(context);
+                    return;
+                }
+
+                switch (operation.Kind)
+                {
+                    case OperationKind.Literal:
+                    case OperationKind.DefaultValue:
+                    case OperationKind.LocalReference:
+                    case OperationKind.ParameterReference:
+                    case OperationKind.FieldReference:
+                    case OperationKind.InstanceReference:
+                    case OperationKind.ArrayElementReference:
+                    case OperationKind.SimpleAssignment:
+                    case OperationKind.ObjectCreation:
+                    case OperationKind.Block:
+                    case OperationKind.MethodBodyOperation:
+                    case OperationKind.ConstructorBodyOperation:
+                    case OperationKind.Return:
+                    case OperationKind.Throw:
+                    case OperationKind.VariableDeclarationGroup:
+                    case OperationKind.VariableDeclaration:
+                    case OperationKind.VariableInitializer:
+                    case OperationKind.ExpressionStatement:
+                    case OperationKind.Argument:
+                    case OperationKind.LocalFunction:
+                    case OperationKind.AnonymousFunction:
+                    case OperationKind.Empty:
+                        return;
+                    case OperationKind.VariableDeclarator:
+                        var variable = (IVariableDeclaratorOperation)operation;
+                        if (variable.Symbol.Type.TypeKind == TypeKind.Dynamic || IsPointer(variable.Symbol.Type))
+                            Reject(context);
+                        return;
+                    case OperationKind.Binary:
+                        var binary = (IBinaryOperation)operation;
                         CheckOperator(context, binary.OperatorKind.ToString(), binary.OperatorMethod,
                             binary.LeftOperand.Type, binary.RightOperand.Type);
-                        break;
-                    case IUnaryOperation unary:
+                        return;
+                    case OperationKind.Unary:
+                        var unary = (IUnaryOperation)operation;
                         CheckOperator(context, unary.OperatorKind.ToString(), unary.OperatorMethod, unary.Operand.Type);
-                        break;
-                    case IIncrementOrDecrementOperation increment:
-                        CheckOperator(context, increment.Kind.ToString(), increment.OperatorMethod, increment.Target.Type);
-                        break;
-                    case ICompoundAssignmentOperation compound:
+                        return;
+                    case OperationKind.Increment:
+                    case OperationKind.Decrement:
+                        var increment = (IIncrementOrDecrementOperation)operation;
+                        CheckOperator(context, operation.Kind.ToString(), increment.OperatorMethod, increment.Target.Type,
+                            integralOnly: true);
+                        return;
+                    case OperationKind.CompoundAssignment:
+                        var compound = (ICompoundAssignmentOperation)operation;
                         CheckOperator(context, compound.OperatorKind.ToString(), compound.OperatorMethod,
-                            compound.Target.Type, compound.Value.Type);
-                        break;
-                    case IConversionOperation conversion:
-                        if (IsNumericConversion(conversion) && !conversion.ConstantValue.HasValue
-                            && !conversion.Operand.ConstantValue.HasValue
-                            && (IsFloating(conversion.Operand.Type) || IsFloating(conversion.Type)))
-                            Report(context, Binary32KernelDiagnostics.FloatingConversion,
-                                conversion.Operand.Type?.ToDisplayString() ?? "?", conversion.Type?.ToDisplayString() ?? "?");
-                        else if (conversion.OperatorMethod != null)
-                            CheckCall(context, conversion.OperatorMethod);
-                        break;
-                    case IInvocationOperation invocation:
-                        CheckCall(context, invocation.TargetMethod);
-                        break;
-                    case IPropertyReferenceOperation property:
-                        CheckProperty(context, property);
-                        break;
+                            compound.Target.Type, compound.Value.Type, integralOnly: true);
+                        return;
+                    case OperationKind.Conversion:
+                        CheckConversion(context, (IConversionOperation)operation);
+                        return;
+                    case OperationKind.Invocation:
+                        var invocation = (IInvocationOperation)operation;
+                        CheckCall(context, invocation.TargetMethod, invocation.IsVirtual);
+                        return;
+                    case OperationKind.PropertyReference:
+                        CheckProperty(context, (IPropertyReferenceOperation)operation);
+                        return;
+                    case OperationKind.Conditional:
+                        if (((IConditionalOperation)operation).Condition.Type?.SpecialType != SpecialType.System_Boolean)
+                            Reject(context);
+                        return;
+                    case OperationKind.Loop:
+                        if (!IsAllowedLoop((ILoopOperation)operation)) Reject(context);
+                        return;
+                    case OperationKind.Branch:
+                        var branch = (IBranchOperation)operation;
+                        if (branch.BranchKind != BranchKind.Break && branch.BranchKind != BranchKind.Continue)
+                            Reject(context);
+                        return;
+                    case OperationKind.DelegateCreation:
+                        Report(context, Binary32KernelDiagnostics.UnmarkedCall, "delegate creation");
+                        return;
+                    default:
+                        Reject(context);
+                        return;
                 }
             }
 
             private void CheckOperator(OperationAnalysisContext context, string name, IMethodSymbol? method,
-                ITypeSymbol? left, ITypeSymbol? right = null)
+                ITypeSymbol? left, ITypeSymbol? right = null, bool integralOnly = false)
             {
                 if (IsFloating(left) || IsFloating(right))
                     Report(context, Binary32KernelDiagnostics.FloatingOperator, name);
-                else if (method != null)
-                    CheckCall(context, method);
+                else if (method != null && IsPlatformArithmetic(method))
+                    Report(context, Binary32KernelDiagnostics.PlatformArithmetic, method.ToDisplayString());
+                else if (method != null && !IsClosedCall(method))
+                    Report(context, Binary32KernelDiagnostics.UnmarkedCall, method.ToDisplayString());
+                else if (!IsIntegralOrBool(left, integralOnly) || (right != null && !IsIntegralOrBool(right, integralOnly)))
+                    Reject(context);
             }
 
-            private void CheckCall(OperationAnalysisContext context, IMethodSymbol method)
+            private void CheckConversion(OperationAnalysisContext context, IConversionOperation conversion)
+            {
+                if (conversion.Operand.Type?.TypeKind == TypeKind.Dynamic || IsPointer(conversion.Operand.Type))
+                    Reject(context);
+                else if (IsNumericConversion(conversion) && !conversion.ConstantValue.HasValue
+                    && !conversion.Operand.ConstantValue.HasValue
+                    && (IsFloating(conversion.Operand.Type) || IsFloating(conversion.Type)))
+                    Report(context, Binary32KernelDiagnostics.FloatingConversion,
+                        conversion.Operand.Type?.ToDisplayString() ?? "?", conversion.Type?.ToDisplayString() ?? "?");
+                else if (conversion.OperatorMethod != null)
+                {
+                    var method = conversion.OperatorMethod;
+                    if (IsPlatformArithmetic(method) || !IsClosedCall(method) || IsAllowedApi(method))
+                        CheckCall(context, method);
+                    else
+                        Reject(context);
+                }
+                else if (!IsStorageOrConstantConversion(conversion))
+                    Reject(context);
+            }
+
+            private void CheckCall(OperationAnalysisContext context, IMethodSymbol method, bool virtualDispatch = false)
             {
                 if (IsPlatformArithmetic(method))
                     Report(context, Binary32KernelDiagnostics.PlatformArithmetic, method.ToDisplayString());
-                else if (GetMembership(method) == Membership.Unmarked && !IsAllowedApi(method))
+                else if (virtualDispatch || !IsClosedCall(method))
                     Report(context, Binary32KernelDiagnostics.UnmarkedCall, method.ToDisplayString());
             }
+
+            private bool IsClosedCall(IMethodSymbol method) =>
+                !method.IsVirtual && !method.IsAbstract && !method.IsOverride
+                && method.ContainingType?.TypeKind != TypeKind.Interface
+                && method.MethodKind != MethodKind.DelegateInvoke
+                && (GetMembership(method) != Membership.Unmarked || IsAllowedApi(method));
 
             private void CheckProperty(OperationAnalysisContext context, IPropertyReferenceOperation reference)
             {
                 var property = reference.Property;
-                if (property.DeclaringSyntaxReferences.Length == 0 || IsAutoProperty(property) || IsStorageIndexer(property))
+                // Storage indexers are the deliberate interface-dispatch exception in the brief.
+                if (IsStorageIndexer(property)) return;
+                if (property.IsVirtual || property.IsAbstract || property.IsOverride
+                    || property.ContainingType.TypeKind == TypeKind.Interface)
+                {
+                    Report(context, Binary32KernelDiagnostics.UnmarkedCall, property.ToDisplayString());
                     return;
+                }
+                if (IsAutoProperty(property)) return;
 
-                // Reading a property reaches its getter, writing reaches its setter. Updates reach both.
+                // Ref-return writes mutate the storage supplied by the getter, never a setter.
                 var write = reference.Parent is ISimpleAssignmentOperation assignment && assignment.Target == reference;
                 var update = reference.Parent is ICompoundAssignmentOperation || reference.Parent is IIncrementOrDecrementOperation;
-                var getterAllowed = property.GetMethod != null && GetMembership(property.GetMethod) != Membership.Unmarked;
-                var setterAllowed = property.SetMethod != null && GetMembership(property.SetMethod) != Membership.Unmarked;
-                if (property.ReturnsByRef || property.ReturnsByRefReadonly) write = false;
+                if (property.ReturnsByRef || property.ReturnsByRefReadonly) { write = false; update = false; }
+                var getterAllowed = property.GetMethod != null && IsClosedCall(property.GetMethod);
+                var setterAllowed = property.SetMethod != null && IsClosedCall(property.SetMethod);
                 if ((update && (!getterAllowed || !setterAllowed)) || (!update && !(write ? setterAllowed : getterAllowed)))
                     Report(context, Binary32KernelDiagnostics.UnmarkedCall, property.ToDisplayString());
             }
@@ -163,7 +264,8 @@ namespace KhaozEngine.CodeHealth.Analyzers
 
         private static bool IsNumericConversion(IConversionOperation conversion)
         {
-            if (conversion.Conversion.IsNumeric) return true;
+            if (conversion.Conversion.IsNumeric || UnwrapNullable(conversion.Operand.Type)?.TypeKind == TypeKind.Enum
+                || UnwrapNullable(conversion.Type)?.TypeKind == TypeKind.Enum) return true;
             if (!conversion.Conversion.IsNullable) return false;
             var source = UnwrapNullable(conversion.Operand.Type)?.SpecialType ?? SpecialType.None;
             var target = UnwrapNullable(conversion.Type)?.SpecialType ?? SpecialType.None;
@@ -171,6 +273,72 @@ namespace KhaozEngine.CodeHealth.Analyzers
             // unwrapping an unchanged value is storage, so only a change of numeric type counts.
             return source != SpecialType.None && target != SpecialType.None && source != target;
         }
+
+        private static bool IsIntegralOrBool(ITypeSymbol? type, bool integralOnly = false)
+        {
+            type = UnwrapNullable(type);
+            if (type?.TypeKind == TypeKind.Enum) return true;
+            switch (type?.SpecialType)
+            {
+                case SpecialType.System_SByte:
+                case SpecialType.System_Byte:
+                case SpecialType.System_Int16:
+                case SpecialType.System_UInt16:
+                case SpecialType.System_Int32:
+                case SpecialType.System_UInt32:
+                case SpecialType.System_Int64:
+                case SpecialType.System_UInt64:
+                case SpecialType.System_IntPtr:
+                case SpecialType.System_UIntPtr:
+                case SpecialType.System_Char: return true;
+                case SpecialType.System_Boolean: return !integralOnly;
+                default: return false;
+            }
+        }
+
+        private static bool IsStorageOrConstantConversion(IConversionOperation conversion)
+        {
+            var source = UnwrapNullable(conversion.Operand.Type);
+            var target = UnwrapNullable(conversion.Type);
+            // Existing inventory exceptions preserve storage without performing numeric work.
+            var csharp = conversion.GetConversion();
+            return conversion.Conversion.IsIdentity || conversion.ConstantValue.HasValue
+                || (conversion.Operand.ConstantValue.HasValue && IsNumericConversion(conversion))
+                || (IsIntegralOrBool(source, true) && IsIntegralOrBool(target, true))
+                || csharp.IsReference || csharp.IsBoxing || csharp.IsUnboxing
+                || (csharp.IsNullable && SymbolEqualityComparer.Default.Equals(source, target));
+        }
+
+        private static bool IsAllowedLoop(ILoopOperation loop)
+        {
+            if (loop is IForLoopOperation || loop is IWhileLoopOperation) return true;
+            if (!(loop is IForEachLoopOperation each) || each.IsAsynchronous
+                || !(each.Syntax is CommonForEachStatementSyntax syntax)) return false;
+            var collection = each.Collection;
+            while (collection is IConversionOperation conversion && conversion.IsImplicit)
+                collection = conversion.Operand;
+            var type = collection.Type;
+            var storage = type is IArrayTypeSymbol || (type is INamedTypeSymbol named
+                && named.ContainingNamespace.ToDisplayString() == "System"
+                && (named.Name == "Span" || named.Name == "ReadOnlySpan"));
+            return storage && (each.SemanticModel?.GetForEachStatementInfo(syntax).ElementConversion.IsIdentity ?? false);
+        }
+
+        private static bool IsPointer(ITypeSymbol? type) =>
+            type?.TypeKind == TypeKind.Pointer || type?.TypeKind == TypeKind.FunctionPointer;
+
+        private static bool IsUnsafeBody(IOperation operation)
+        {
+            if (operation is IBlockOperation && operation.Syntax.Parent is UnsafeStatementSyntax) return true;
+            if (!(operation is IMethodBodyOperation) && !(operation is IConstructorBodyOperation)
+                && !(operation is ILocalFunctionOperation)) return false;
+            return operation.Syntax.AncestorsAndSelf().Any(node =>
+                (node is MemberDeclarationSyntax member && member.Modifiers.Any(SyntaxKind.UnsafeKeyword))
+                || (node is LocalFunctionStatementSyntax local && local.Modifiers.Any(SyntaxKind.UnsafeKeyword)));
+        }
+
+        private static void Reject(OperationAnalysisContext context) =>
+            Report(context, Binary32KernelDiagnostics.UnlistedOperation, context.Operation.Kind.ToString());
 
         private static bool IsPlatformArithmetic(IMethodSymbol method)
         {

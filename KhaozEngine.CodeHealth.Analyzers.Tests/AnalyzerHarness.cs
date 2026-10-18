@@ -72,7 +72,7 @@ internal static class AnalyzerHarness
     {
         var compilation = CSharpCompilation.Create("AnalyzerHarness",
             sources.Select(s => CSharpSyntaxTree.ParseText(s.Content, path: s.Path)), References,
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: true));
         var errors = compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();
         if (errors.Length != 0)
             throw new InvalidOperationException(string.Join("\n", errors.Select(d => d.ToString())));

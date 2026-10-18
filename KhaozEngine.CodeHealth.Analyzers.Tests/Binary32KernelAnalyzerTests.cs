@@ -196,7 +196,6 @@ public class Binary32KernelAnalyzerTests
     [InlineData("float P { [Binary32Kernel] get => 1f + 2f; }")]
     [InlineData("float field; float P { [Binary32Kernel] set { field = value * value; } }")]
     [InlineData("static float F(float a) { [Binary32Kernel] float L(float x) => x * x; return L(a); }")]
-    [InlineData("[Binary32Kernel] static Func<float, float> F() => x => x * x;")]
     [InlineData("static Func<float, float> F() => [Binary32Kernel] (float x) => x * x;")]
     [InlineData("[Binary32Kernel] class K { float P => 1f + 2f; }")]
     public async Task Kernel_membership_follows_symbols_including_nested_functions(string members)
@@ -289,4 +288,157 @@ public class Binary32KernelAnalyzerTests
         var driver = compilation.WithAnalyzers(ImmutableArray.Create<DiagnosticAnalyzer>(new Binary32KernelAnalyzer()));
         Assert.Equal("KEB32004", Assert.Single(await driver.GetAnalyzerDiagnosticsAsync()).Id);
     }
+
+    [Theory]
+    [InlineData("[Binary32Kernel] static bool Positive(float x) => x is > 0f;", "RelationalPattern")]
+    [InlineData("[Binary32Kernel] static bool Zero(float x) => x is 0f;", "ConstantPattern")]
+    [InlineData("[Binary32Kernel] static float Select(float x) => x switch { > 0f => 1f, _ => 0f };", "SwitchExpression")]
+    [InlineData("[Binary32Kernel] static float Select(float x) => x switch { 0f => 1f, _ => 0f };", "ConstantPattern")]
+    public async Task R1_floating_patterns_fail_closed(string members, string kind)
+    {
+        Assert.Contains(await Analyze(members), d => d.Id == "KEB32005" && d.GetMessage().Contains(kind));
+    }
+
+    [Theory]
+    [InlineData("[Binary32Kernel] static float Narrow(double[] values) { foreach (float value in values) return value; return 0f; }", "Loop")]
+    [InlineData("[Binary32Kernel] static double[] Widen(float[] values) => [.. values];", "Spread")]
+    [InlineData("[Binary32Kernel] static float[] Values() => [1f];", "CollectionExpression")]
+    [InlineData("[Binary32Kernel] static float First(IEnumerable<float> values) { foreach (float value in values) return value; return 0f; }", "Loop")]
+    [InlineData("sealed class Values { public Cursor GetEnumerator() => new Cursor(); } sealed class Cursor { public bool MoveNext() => true; public float Current => MathF.Sqrt(2f); } [Binary32Kernel] static float First(Values values) { foreach (float value in values) return value; return 0f; }", "Loop")]
+    public async Task R2_implicit_enumeration_work_fails_closed(string members, string kind)
+    {
+        Assert.Contains(await Analyze(members), d => d.Id == "KEB32005" && d.GetMessage().Contains(kind));
+    }
+
+    [Theory]
+    [InlineData("enum Bits : long { } [Binary32Kernel] static float Convert(Bits value) => (float)value;")]
+    [InlineData("enum Bits : long { } [Binary32Kernel] static Bits Convert(float value) => (Bits)value;")]
+    [InlineData("enum Bits : long { } [Binary32Kernel] static double Convert(Bits value) => (double)value;")]
+    [InlineData("enum Bits : long { } [Binary32Kernel] static Bits Convert(double value) => (Bits)value;")]
+    public async Task R3_enum_floating_conversions_require_the_arithmetic_home(string members)
+    {
+        Assert.Equal("KEB32002", Assert.Single(await Analyze(members)).Id);
+    }
+
+    [Theory]
+    [InlineData("float result; float? P { [Binary32Kernel] get => null; set { result = MathF.Sqrt(value.GetValueOrDefault()); } } [Binary32Kernel] void Assign(float value) { P ??= value; }", "CoalesceAssignment")]
+    [InlineData("float result; float P { [Binary32Kernel] get => result; set { result = MathF.Sqrt(value); } } [Binary32Kernel] void Assign(float value) { (P, _) = (value, 0); }", "DeconstructionAssignment")]
+    [InlineData("[Binary32Kernel] static float F(float? value) => value ?? 0f;", "Coalesce")]
+    [InlineData("[Binary32Kernel] static (float, int) F(float value) => (value, 0);", "Tuple")]
+    [InlineData("[Binary32Kernel] static float F((float, int) pair) { var (value, count) = pair; return value; }", "DeconstructionAssignment")]
+    public async Task R4_conditional_and_tuple_writes_fail_closed(string members, string kind)
+    {
+        Assert.Contains(await Analyze(members), d => d.Id == "KEB32005" && d.GetMessage().Contains(kind));
+    }
+
+    [Theory]
+    [InlineData("int count; ref int Counter { [Binary32Kernel] get => ref count; } [Binary32Kernel] void Increment() { Counter++; }")]
+    [InlineData("int count; ref int Counter { [Binary32Kernel] get => ref count; } [Binary32Kernel] void Increment() { Counter += 2; }")]
+    [InlineData("int count; ref int Counter { [Binary32Kernel] get => ref count; } [Binary32Kernel] void Assign() { Counter = 2; }")]
+    public async Task R5_ref_return_integer_updates_only_reach_the_getter(string members)
+    {
+        Assert.Empty(await Analyze(members));
+    }
+
+    [Theory]
+    [InlineData("[Binary32Kernel] abstract class KernelBase { public abstract float Eval(float value); } sealed class PlatformImpl : KernelBase { public override float Eval(float value) => MathF.Sqrt(value); } [Binary32Kernel] static float Run(KernelBase kernel, float value) => kernel.Eval(value);")]
+    [InlineData("[Binary32Kernel] delegate float KernelOp(float value); [Binary32Kernel] static float Run(KernelOp op, float value) => op(value); static float Outside(float value) => Run(x => MathF.Sqrt(x), value);")]
+    [InlineData("[Binary32Kernel] class K { public virtual float Eval(float value) => value; } [Binary32Kernel] static float Run(K kernel, float value) => kernel.Eval(value);")]
+    [InlineData("[Binary32Kernel] interface K { float Eval(float value); } [Binary32Kernel] static float Run(K kernel, float value) => kernel.Eval(value);")]
+    [InlineData("[Binary32Kernel] static float Identity(float value) => value; [Binary32Kernel] static Func<float, float> F() => Identity;")]
+    [InlineData("[Binary32Kernel] static Func<float, float> F() => x => x;")]
+    [InlineData("[Binary32Kernel] class K { public virtual float Value => 0f; } [Binary32Kernel] static float Run(K kernel) => kernel.Value;")]
+    [InlineData("[Binary32Kernel] interface K { float Value { get; } } [Binary32Kernel] static float Run(K kernel) => kernel.Value;")]
+    [InlineData("[Binary32Kernel] class K { public virtual float Value { get; set; } } [Binary32Kernel] static void Run(K kernel) { kernel.Value = 0f; }")]
+    public async Task R6_unresolved_dispatch_and_delegate_creation_break_closure(string members)
+    {
+        Assert.Contains(await Analyze(members), d => d.Id == "KEB32004");
+    }
+
+    [Fact]
+    public async Task Kernel_lambda_bodies_are_checked_even_when_delegate_creation_is_rejected()
+    {
+        var diagnostics = await Analyze("[Binary32Kernel] static Func<float, float> F() => x => x * x;");
+        Assert.Equal(new[] { "KEB32004", "KEB32001" }, diagnostics.Select(d => d.Id));
+    }
+
+    [Theory]
+    [InlineData("[Binary32Kernel] static float Add(dynamic value) => value + value;")]
+    [InlineData("[Binary32Kernel] static float Call(dynamic helper) => helper.Eval();")]
+    [InlineData("[Binary32Kernel] static dynamic F(dynamic helper) => helper.Value;")]
+    [InlineData("[Binary32Kernel] static dynamic F(dynamic values) => values[0];")]
+    [InlineData("[Binary32Kernel] static dynamic F(dynamic value) => value;")]
+    [InlineData("[Binary32Kernel] static void F() { dynamic value; }")]
+    [InlineData("[Binary32Kernel] static object F(dynamic value) => (object)value;")]
+    public async Task R7_dynamic_operations_fail_closed(string members)
+    {
+        Assert.Contains(await Analyze(members), d => d.Id == "KEB32005");
+    }
+
+    [Fact]
+    public async Task R8_generated_kernel_bodies_are_analyzed_and_reported()
+    {
+        var diagnostics = await KhaozEngine.CodeHealth.Analyzers.Tests.AnalyzerHarness.RunAnalyzer(
+            new Binary32KernelAnalyzer(), "KEB32",
+            ("/repo/GeneratedKernel.g.cs", "using System; using Marks; [Binary32Kernel] static class GeneratedKernel { public static float Eval(float value) => MathF.Sqrt(value); }"),
+            ("/repo/Kernel.cs", Source("[Binary32Kernel] static float Run(float value) => GeneratedKernel.Eval(value);")));
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal("KEB32003", diagnostic.Id);
+        Assert.Equal("/repo/GeneratedKernel.g.cs", diagnostic.Location.SourceTree!.FilePath);
+    }
+
+    [Theory]
+    [InlineData("[Binary32Kernel] static void F() { goto done; done: return; }")]
+    [InlineData("[Binary32Kernel] static unsafe void F() { }")]
+    [InlineData("static void F() { [Binary32Kernel] static unsafe void Local() { } }")]
+    [InlineData("struct Value { [Binary32Kernel] public static implicit operator int(Value value) => 0; } [Binary32Kernel] static int F(Value value) => value;")]
+    [InlineData("[Binary32Kernel] static void F() { unsafe { } }")]
+    [InlineData("[Binary32Kernel] static unsafe int F(int* value) => *value;")]
+    [InlineData("[Binary32Kernel] static Span<int> F() { Span<int> value = stackalloc int[1]; return default; }")]
+    [InlineData("[Binary32Kernel] static unsafe int* F() => null;")]
+    [InlineData("[Binary32Kernel] static string F(float value) => $\"{value}\";")]
+    [InlineData("[Binary32Kernel] static int F(object value) => value.GetHashCode();")]
+    [InlineData("[Binary32Kernel] static int F() { try { return 0; } catch { return 1; } }")]
+    public async Task Unlisted_operation_forms_fail_closed(string members)
+    {
+        Assert.Contains(await Analyze(members), d => d.Id == "KEB32005" || d.Id == "KEB32004");
+    }
+
+    [Theory]
+    [InlineData("[Binary32Kernel] static float F(ref int value) => System.Runtime.CompilerServices.Unsafe.As<int, float>(ref value);")]
+    [InlineData("[Binary32Kernel] static Span<float> F(Span<int> values) => System.Runtime.InteropServices.MemoryMarshal.Cast<int, float>(values);")]
+    public async Task Reinterpretation_APIs_break_the_closed_call_graph(string members)
+    {
+        Assert.Equal("KEB32004", Assert.Single(await Analyze(members)).Id);
+    }
+
+    [Theory]
+    [InlineData("[Binary32Kernel] static float F(float[] values) { foreach (float value in values) return value; return default; }")]
+    [InlineData("[Binary32Kernel] static float F(Span<float> values) { foreach (float value in values) return value; return default; }")]
+    [InlineData("[Binary32Kernel] static float F(ReadOnlySpan<float> values) { foreach (float value in values) return value; return default; }")]
+    [InlineData("[Binary32Kernel] static float F(Span<float> values) { foreach (ref float value in values) return value; return default; }")]
+    [InlineData("[Binary32Kernel] static int F(int count) { int total = 0; for (int i = 0; i < count; i++) { if (i == 1) continue; total += i; if (i == 3) break; } while (total < 10) total++; do { total--; } while (total > 8); return total; }")]
+    [InlineData("[Binary32Kernel] static float F(float value) { float Local(float x) => x; return Local(value); }")]
+    [InlineData("enum Bits : long { One = 1 } [Binary32Kernel] static long F(Bits value) => (long)value;")]
+    [InlineData("enum Bits : long { One = 1 } [Binary32Kernel] static float F() => (float)Bits.One;")]
+    [InlineData("[Binary32Kernel] static float F() => default;")]
+    public async Task Explicitly_allowed_control_flow_and_storage_stay_legal(string members)
+    {
+        Assert.Empty(await Analyze(members));
+    }
+
+    [Fact]
+    public async Task Unlisted_diagnostic_names_the_operation_and_remedy()
+    {
+        var diagnostic = Assert.Single(await Analyze("[Binary32Kernel] static float F(float? value) => value ?? 0f;"));
+        Assert.Equal("KEB32005", diagnostic.Id);
+        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        Assert.Equal("KhaozEngine.CodeHealth", diagnostic.Descriptor.Category);
+        Assert.Contains("Coalesce", diagnostic.GetMessage());
+        Assert.Contains("Binary32Arithmetic", diagnostic.GetMessage());
+        Assert.Contains("operation not permitted in a binary32 kernel", diagnostic.GetMessage());
+        Assert.EndsWith("EQUIPMENT-COVERAGE-KERNEL-CONTRACT-2026-10-18.md", diagnostic.Descriptor.HelpLinkUri);
+        Assert.Equal("/repo/Kernel.cs", diagnostic.Location.SourceTree!.FilePath);
+    }
+
 }

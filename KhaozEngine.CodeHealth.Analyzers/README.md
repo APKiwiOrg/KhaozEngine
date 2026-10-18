@@ -11,11 +11,12 @@ only to attributed code. Both run in the build and the IDE.
 | KESIZE001 | Error | A file listed in `.filesize-baseline` exceeds its recorded line count. A baselined file may shrink freely, it may never grow. |
 | KESIZE002 | Error | A file NOT in the baseline exceeds the cap (default 800 lines). |
 | KEB32001 | Error | A kernel uses a binary, unary, increment or compound-assignment operator with a float, double or decimal operand, including comparisons and equality. Move it into the arithmetic home. |
-| KEB32002 | Error | A kernel performs a nonconstant numeric conversion from or to float, double or decimal. Move it into the arithmetic home. |
+| KEB32002 | Error | A kernel performs a nonconstant numeric or enum conversion from or to float, double or decimal. Move it into the arithmetic home. |
 | KEB32003 | Error | A kernel invokes Math or MathF with floating parameters, or invokes a Single, Double, BitConverter, System.Numerics or System.Runtime.Intrinsics member, including operators. Call the arithmetic home instead. |
-| KEB32004 | Error | A kernel invokes an unmarked method or accesses an unmarked computed property declared in source. Mark the callee as a kernel or move its arithmetic into the arithmetic home. |
+| KEB32004 | Error | A kernel reaches an unmarked method or computed accessor, creates a delegate, or uses virtual, abstract, interface or delegate dispatch. Use a statically bound non-virtual kernel or arithmetic-home member. Storage indexers are the deliberate dispatch exception. |
+| KEB32005 | Error | A kernel contains an operation outside the explicit allow-list. The message names its IOperation kind. Use a permitted operation or move the work into the arithmetic home. |
 
-Line count is `wc -l` parity: the number of newline characters. Exclusions match the script:
+File-size line count is `wc -l` parity: the number of newline characters. Exclusions match the script:
 `obj/`, `bin/`, `vendor/` path segments and `.Designer.cs`, `.g.cs`, `.generated.cs`,
 `.AssemblyInfo.cs` suffixes, plus anything Roslyn marks as generated code.
 
@@ -31,18 +32,42 @@ inventory rules. An attribute on a containing method or type applies to its nest
 The attribute is recognized by simple type name in any namespace, including shared attribute
 assemblies. The analyzer does not supply the attributes. A type carrying
 `Binary32ArithmeticAttribute` is the hand-reviewed arithmetic home. Its members and nested types
-are exempt from all four rules, and kernels may call them. Kernel membership is cached per
-compilation. Compilations without a `Binary32KernelAttribute` type register no operation or syntax
+are exempt from all five rules, and kernels may call their statically bound non-virtual members.
+Kernel membership is cached per compilation. Compilations without a `Binary32KernelAttribute` type register no operation or syntax
 actions, even if an arithmetic-home attribute exists.
 
-Integer arithmetic and conversions, bool logic, float selection (`c ? a : b`) and compile-time
-constant numeric conversions remain legal. So do object and exception construction, fields, auto
-properties, array, span and `IReadOnlyList<T>` indexers. The trusted System array, span and memory
-APIs `AsSpan`, `Slice`, `CopyTo`, `TryCopyTo`, `Clear`, `Fill` and `Overlaps` are allowed, together
-with `object.ReferenceEquals`, `ArgumentNullException.ThrowIfNull` and integer Math overloads.
-Implicit array, span and memory storage-view conversions also remain legal.
-Unrelated methods with those names are still checked. Computed properties must mark the getter or
-setter that the kernel actually reaches. Diagnostic messages carry their own rule and remediation.
+The inventory fails closed. Every executable `IOperation` kind in a kernel body is checked,
+including compiler-generated implicit operations. Anything outside the following allow-list gets
+KEB32005. Attribute metadata is outside the executable body. Generated source is analyzed and its
+diagnostics are reported, including `.g.cs` files.
+
+- Literals, default values, local, parameter, field, instance and array-element references.
+- Simple assignments, integral compound assignments and integral increment or decrement.
+- Integral and bool binary or unary operators, and selection with a bool condition (`c ? a : b`).
+- Identity, integral and compile-time constant conversions. Existing storage exceptions allow
+  reference, boxing, unboxing, same-type nullable lifting or unwrapping, and the trusted implicit
+  array, span and memory storage views. Nonconstant numeric and enum conversions involving a
+  floating type get KEB32002.
+- Statically bound non-virtual calls and computed property accesses to kernel or home members.
+- Object and exception construction, fields, auto properties, and array, span and
+  `IReadOnlyList<T>` indexers. The listed storage indexers may use interface dispatch.
+- The trusted System array, span and memory APIs `AsSpan`, `Slice`, `CopyTo`, `TryCopyTo`, `Clear`,
+  `Fill` and `Overlaps`, plus `object.ReferenceEquals`, `ArgumentNullException.ThrowIfNull` and
+  integer Math overloads. Unrelated methods with those names are checked.
+- Blocks, if, for, while, do, return, break, continue, throw, local declarations, expression
+  statements and their structural body, argument and initializer nodes. Empty statements are legal.
+- Local functions and lambdas, whose bodies are analyzed as kernel members. Creating or invoking
+  a delegate remains prohibited even when its target body is checked.
+- Foreach over arrays, `Span<T>` and `ReadOnlySpan<T>` with an identity element conversion only.
+
+Computed properties must mark the accessor actually reached. Integral writes and updates through a
+ref-return property reach its getter only. Virtual, abstract, interface and delegate calls, including
+calls to marked declarations, get KEB32004. Ordinary auto properties must also be non-virtual.
+
+Patterns, switch expressions and statements, collection expressions and spreads, other enumeration,
+coalesce, coalesce-assignment, tuples, deconstruction, dynamic operations, goto, unsafe bodies,
+pointers and stackalloc are outside the allow-list. Reinterpretation APIs such as `Unsafe` and
+`MemoryMarshal` break the closed call graph. Diagnostic messages carry their own rule and remediation.
 
 The operation order and device-exactness obligations are defined in the
 [equipment coverage kernel contract](../docs/design/EQUIPMENT-COVERAGE-KERNEL-CONTRACT-2026-10-18.md).

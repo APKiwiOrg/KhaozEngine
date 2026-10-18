@@ -41,9 +41,20 @@ namespace KhaozEngine.CodeHealth.Analyzers
 
         public static readonly DiagnosticDescriptor UnmarkedCall = new DiagnosticDescriptor(
             id: "KEB32004",
-            title: "Kernel call graph reaches an unmarked member",
+            title: "Kernel call graph is not statically closed",
             messageFormat: "KEB32004: call or computed-property access to '{0}' leaves the binary32 kernel call graph. " +
-                           "Mark the callee Binary32Kernel so it is checked, or move its arithmetic into " +
+                           "Use a statically bound non-virtual Binary32Kernel callee, or move its arithmetic into " +
+                           "the hand-reviewed Binary32Arithmetic home.",
+            category: Category,
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true,
+            helpLinkUri: HelpLink);
+
+        public static readonly DiagnosticDescriptor UnlistedOperation = new DiagnosticDescriptor(
+            id: "KEB32005",
+            title: "Operation not permitted in a binary32 kernel",
+            messageFormat: "KEB32005: operation not permitted in a binary32 kernel: '{0}'. " +
+                           "Use an explicitly permitted operation or move the work into " +
                            "the hand-reviewed Binary32Arithmetic home.",
             category: Category,
             defaultSeverity: DiagnosticSeverity.Error,

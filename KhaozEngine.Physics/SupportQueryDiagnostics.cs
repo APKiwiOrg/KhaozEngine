@@ -56,6 +56,9 @@ internal enum SupportQueryCounter
     /// <summary>Contact member verdicts and contact heights the exact axis-aligned rectangle certificates decided
     /// without the contact kernel or the complete lowest-height evaluator.</summary>
     RectangleContact,
+    /// <summary>Face-only arithmetic values read from installed world faces. Each projected edge length, normalized
+    /// normal, normal publication, plane publication and exhaustive proposal normal length counts once per read.</summary>
+    SharedMemberFacts,
 }
 
 internal readonly record struct SupportQueryCounts(
@@ -93,7 +96,8 @@ internal readonly record struct SupportQueryCounts(
     int FindMemoHits,
     int AdmissionCertificates,
     int StairStratum,
-    int RectangleContact)
+    int RectangleContact,
+    int SharedMemberFacts)
 {
     public static SupportQueryCounts operator -(SupportQueryCounts a, SupportQueryCounts b) => new(
         a.Find - b.Find,
@@ -130,7 +134,8 @@ internal readonly record struct SupportQueryCounts(
         a.FindMemoHits - b.FindMemoHits,
         a.AdmissionCertificates - b.AdmissionCertificates,
         a.StairStratum - b.StairStratum,
-        a.RectangleContact - b.RectangleContact);
+        a.RectangleContact - b.RectangleContact,
+        a.SharedMemberFacts - b.SharedMemberFacts);
 }
 
 /// <summary>Opt-in counters owned by the executing thread. Installation is outside measured intervals.</summary>
@@ -201,7 +206,7 @@ internal static class SupportQueryDiagnostics
         t_enabled = enabled;
     }
 
-    const int CounterCount = 35;
+    const int CounterCount = 36;
 
     /// <summary>Every thread-local counter, observation and callback of one thread.</summary>
     internal readonly record struct ThreadState(bool Enabled, int[]? Counts, Action? Begin, Action? End,
@@ -267,6 +272,7 @@ internal static class SupportQueryDiagnostics
         c[(int)SupportQueryCounter.AdmissionCertificates] += counts.AdmissionCertificates;
         c[(int)SupportQueryCounter.StairStratum] += counts.StairStratum;
         c[(int)SupportQueryCounter.RectangleContact] += counts.RectangleContact;
+        c[(int)SupportQueryCounter.SharedMemberFacts] += counts.SharedMemberFacts;
         t_routes = new(t_routes.WallRetries + routes.WallRetries, t_routes.PushedPlacements + routes.PushedPlacements,
             t_routes.MediumResolves + routes.MediumResolves, Math.Max(t_routes.MaximumMediumRetries, routes.MaximumMediumRetries),
             t_routes.GroundSegments + routes.GroundSegments, t_routes.SlideSegments + routes.SlideSegments,
@@ -323,7 +329,8 @@ internal static class SupportQueryDiagnostics
             c[31],
             c[32],
             c[33],
-            c[34]);
+            c[34],
+            c[35]);
     }
 
     internal static void SetGroundSubstepObserver(Action? begin, Action? end)

@@ -52,13 +52,23 @@ internal static partial class SupportFootprintPolygon
             if (column.Minimum.Lower > top || column.Maximum.Upper < bottom) return GeometrySign.Negative;
             if (column.Minimum.Upper > top || column.Maximum.Lower < bottom) return GeometrySign.Unresolved;
         }
-        GeometryVector normalBounds = GeometryVectorOperations.Normalize(polygon.Normal.Bounds);
+        InstalledSupportMemberFacts? facts = polygon.SharedMemberFacts;
+        GeometryVector normalBounds = facts is null
+            ? GeometryVectorOperations.Normalize(polygon.Normal.Bounds) : facts.NormalBounds;
+        if (facts is not null) SupportQueryDiagnostics.Record(SupportQueryCounter.SharedMemberFacts, 2);
+        bool adjusted = false;
         if (normalBounds.IsResolved && normalBounds.Y.Lower < request.CosMaxSlope &&
             normalBounds.Y.Upper >= request.CosMaxSlope && Orientation(polygon) == GeometrySign.Positive &&
             polygon.HasSource && polygon.SourcePredicates.NormalSlope(polygon, request.CosMaxSlope) == GeometrySign.Zero)
+        {
             normalBounds = new(normalBounds.X, GeometryInterval.Exact(request.CosMaxSlope), normalBounds.Z);
-        GeometryVectorOutput normal = GeometryVectorOperations.Publish(normalBounds);
-        GeometryVectorOutput plane = GeometryVectorOperations.Publish(polygon.Vertices[0].Bounds);
+            adjusted = true;
+        }
+        GeometryVectorOutput normal = facts is null || adjusted
+            ? GeometryVectorOperations.Publish(normalBounds) : facts.PublishedNormal;
+        GeometryVectorOutput plane = facts is null
+            ? GeometryVectorOperations.Publish(polygon.Vertices[0].Bounds) : facts.PublishedPlane;
+        if (facts is not null && !adjusted) SupportQueryDiagnostics.Record(SupportQueryCounter.SharedMemberFacts);
         if (!normal.IsResolved || !plane.IsResolved) return GeometrySign.Unresolved;
         Range disc = default;
         GeometrySign orientation = Orientation(polygon);

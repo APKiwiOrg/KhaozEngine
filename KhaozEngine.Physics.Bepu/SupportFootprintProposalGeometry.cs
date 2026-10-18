@@ -38,7 +38,10 @@ internal static class SupportFootprintProposalGeometry
         for (int i = 0; i < polygon.Edges.Length; i++)
             if (!Edge(polygon, i, axis, radius, share, ref range)) return GeometrySign.Unresolved;
 
-        FeatureNumber length = Root(FeaturePoint.Dot(polygon.Normal, polygon.Normal));
+        InstalledSupportMemberFacts? facts = polygon.SharedMemberFacts;
+        FeatureNumber length = facts is null
+            ? Root(FeaturePoint.Dot(polygon.Normal, polygon.Normal)) : facts.ProposalNormalLength;
+        if (facts is not null) SupportQueryDiagnostics.Record(SupportQueryCounter.SharedMemberFacts);
         FeatureNumber scale = radius.Divide(length);
         FeatureNumber x = axis.X.Subtract(polygon.Normal.X.Multiply(scale, exactZeroProducts: true));
         FeatureNumber z = axis.Z.Subtract(polygon.Normal.Z.Multiply(scale, exactZeroProducts: true));
@@ -214,7 +217,7 @@ internal static class SupportFootprintProposalGeometry
         return true;
     }
 
-    static FeatureNumber Root(FeatureNumber value)
+    internal static FeatureNumber Root(FeatureNumber value)
     {
         if (!value.IsResolved || value.Bounds.Upper < 0) return default;
         if (value.IsExact)

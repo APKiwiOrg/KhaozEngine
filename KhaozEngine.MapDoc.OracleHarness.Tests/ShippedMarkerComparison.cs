@@ -12,7 +12,7 @@ using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Support;
 using KhaozEngine.TileWorld;
-using KhaozEngine.TileWorld.Netcode;
+using KhaozEngine.TileWorld.Physics;
 
 namespace KhaozEngine.Tests.MapDocOracle;
 
@@ -29,11 +29,12 @@ internal static class ShippedMarkerComparison
     internal static ShippedMarkerReport Compare(ShippedMarkerInputs inputs)
     {
         var evidence = new Evidence();
-        var terrain = new TileDocumentGroundHeight(inputs.World);
-        var standing = new TileDocumentGroundHeight(inputs.World, inputs.Catalogs);
-        var expected = inputs.SourceMarkers.Select(marker => Expected(inputs, marker, terrain, standing)).ToArray();
+        // The authoritative server stands bodies on its collider ground and on walk surfaces. The ground sampler reads
+        // terrain only, so it is built from a view without objects, which no unrelated archetype can refuse.
+        var ground = TileWorldColliders.Build(ObjectView(inputs.World, null), inputs.Catalogs).Ground;
+        var expected = inputs.SourceMarkers.Select(marker => Expected(inputs, marker, ground)).ToArray();
         var owners = inputs.Supports.Values.Where(s => s.ObjectId is not null).ToDictionary(s => s.Name,
-            s => OwnerWorld(inputs.World, s.ObjectId!.Value), StringComparer.Ordinal);
+            s => ObjectView(inputs.World, s.ObjectId!.Value), StringComparer.Ordinal);
         foreach (var point in expected)
         {
             var support = inputs.Supports[point.Role.SupportName];
@@ -81,13 +82,19 @@ internal static class ShippedMarkerComparison
 
     sealed record ExpectedPoint(MarkerSourcePoint Source, MarkerRoleRule Role, Vector3 Position);
 
-    static ExpectedPoint Expected(ShippedMarkerInputs inputs, MarkerSourcePoint marker, TileDocumentGroundHeight terrain, TileDocumentGroundHeight standing)
+    // Terrain is the server's ground triangle under the point. Standing is the higher of that and the walk surfaces on
+    // the marker's plane. The bilinear TileDocumentGroundHeight is the client presenter's drawing rule and differs
+    // from the drawn triangles on a twisted tile.
+    static ExpectedPoint Expected(ShippedMarkerInputs inputs, MarkerSourcePoint marker, TileGroundSampler ground)
     {
         var role = inputs.Roles[marker.Name];
         float tileX = (float)(marker.X + role.OffsetX), tileZ = (float)(marker.Z + role.OffsetZ);
         ShippedMarkerInputs.Require(float.IsFinite(tileX) && float.IsFinite(tileZ), "marker offset exceeds source coordinate range");
-        float height = (role.HeightRule == "terrain" ? terrain : standing).HeightAt(tileX, tileZ, marker.Plane);
-        return new(marker, role, new(TileWorldSpace.WorldX(tileX, inputs.World.TileSize), height, TileWorldSpace.WorldZ(tileZ, inputs.World.TileSize)));
+        float worldX = TileWorldSpace.WorldX(tileX, inputs.World.TileSize), worldZ = TileWorldSpace.WorldZ(tileZ, inputs.World.TileSize);
+        float height = ground.HeightAt(worldX, worldZ);
+        if (role.HeightRule == "standing" && TileWalkSurfaces.TryHeightAt(inputs.World, inputs.Catalogs, worldX, worldZ, marker.Plane, out float surface) &&
+            surface > height) height = surface;
+        return new(marker, role, new(worldX, height, worldZ));
     }
 
     static void CompareHead(ShippedMarkerInputs inputs, MapBuiltWorld world, ExpectedPoint[] expected, Evidence evidence, int head)
@@ -171,13 +178,18 @@ internal static class ShippedMarkerComparison
             }
         foreach (var point in expected)
         {
-            // Both axes include their lower edge and exclude their upper edge, even west of the origin.
-            double x = point.Position.X, z = point.Position.Z;
+            // The engine filters exact native positions, so the edges and the expected set use this head's own native
+            // points. Source fidelity is the separate marker-position check. Both axes include their lower edge and
+            // exclude their upper edge, even west of the origin.
+            if (registry.FindById(point.Role.Id) is not { } anchor) continue;
+            double x = anchor.Position.X.ToDouble(), z = anchor.Position.Z.ToDouble();
             foreach (bool enabledOnly in new[] { false, true })
                 foreach (var rect in new[] { new MapMarkerRect(x, z, x + 0.25, z + 0.25), new MapMarkerRect(x - 0.25, z - 0.25, x, z) })
                 {
-                    var ids = expected.Where(p => (!enabledOnly || p.Role.Enabled) && p.Position.X >= rect.MinX && p.Position.X < rect.MaxX &&
-                        p.Position.Z >= rect.MinZ && p.Position.Z < rect.MaxZ).Select(p => p.Role.Id).Order(StringComparer.Ordinal).ToArray();
+                    var ids = expected.Where(p => !enabledOnly || p.Role.Enabled).Select(p => registry.FindById(p.Role.Id)).OfType<MapEffectiveMarker>()
+                        .Where(m => m.Position.X.ToDouble() >= rect.MinX && m.Position.X.ToDouble() < rect.MaxX &&
+                            m.Position.Z.ToDouble() >= rect.MinZ && m.Position.Z.ToDouble() < rect.MaxZ)
+                        .Select(m => m.Id).Order(StringComparer.Ordinal).ToArray();
                     var found = registry.InRect(rect, enabledOnly, m => MapMarkerSpaces.Query(world.Surfaces, m));
                     evidence.Check("rectangle-query", ids.SequenceEqual(found.Select(p => p.Marker.Id)), new { head, point.Role.Id, rect, enabledOnly });
                     foreach (var row in found)
@@ -209,9 +221,9 @@ internal static class ShippedMarkerComparison
                 new { name, expected = inputs.Expectations.GetProperty(name).GetInt32(), actual = count });
     }
 
-    // Share the frozen terrain as read-only data, with a separate object list containing only the named source owner.
-    // Both owner coverage and its height still go through the released source sampler, never a copied algorithm.
-    static TileWorldDocument OwnerWorld(TileWorldDocument source, long objectId)
+    // Share the frozen terrain as read-only data, with a separate object list holding only the named source owner, or
+    // no object at all. Ground, owner coverage and owner height still go through released samplers, never a copy.
+    static TileWorldDocument ObjectView(TileWorldDocument source, long? objectId)
     {
         var result = new TileWorldDocument { TileSize = source.TileSize, PlaneCount = source.PlaneCount, PlaneHeight = source.PlaneHeight };
         foreach (var region in source.Regions.Values)

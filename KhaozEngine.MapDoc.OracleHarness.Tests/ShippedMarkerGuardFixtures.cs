@@ -19,6 +19,7 @@ using KhaozEngine.MapDoc.Water;
 using KhaozEngine.Tests.MapDoc;
 using KhaozEngine.Tests.MapDocCompatibility;
 using KhaozEngine.TileWorld;
+using KhaozEngine.TileWorld.Netcode;
 
 namespace KhaozEngine.Tests.MapDocOracle;
 
@@ -39,6 +40,9 @@ internal sealed class ShippedMarkerGuardFixture : IDisposable
 internal static class ShippedMarkerGuardFixtures
 {
     internal const string Sentinel = "PUBLIC-INVENTED-MARKER-SECRET";
+    internal const string PrefabMarkerId = "kit/kit-marker";
+    internal const float TwistedTileX = 6.5f, TwistedTileZ = 5.5f;
+    internal static readonly MapTransform KitFrame = new(new(-0.75f, 0, -4.25f), 0.371f, 1.2f);
 
     internal static ShippedMarkerGuardFixture Create(string variant)
     {
@@ -117,23 +121,34 @@ internal static class ShippedMarkerGuardFixtures
 
     static JsonObject Write(string root, string variant)
     {
+        JsonObject? building = variant == "building-manifest" ? CopyBuilding(root) : null;
         foreach (string directory in new[] { "world", "assets", "definitions", "generator" }) Directory.CreateDirectory(Path.Combine(root, directory));
-        var world = new TileWorldDocument { Id = "invented-marker-world" };
-        world.CatalogPaths.Add("../catalog.json");
+        var world = building is null ? new TileWorldDocument { Id = "invented-marker-world" } : TileWorldFile.Load(Path.Combine(root, "world"));
+        if (building is null) world.CatalogPaths.Add("../catalog.json");
+        if (variant == "tile-size") world.TileSize = 2;
         world.GetOrCreateRegion(new(-1, 0)); world.GetOrCreateRegion(new(0, 0));
         for (int z = 0; z < 8; z++)
             for (int x = -4; x < 8; x++) world.SetUnderlay(x, z, 0, 1);
-        world.AddObject("platform", 2, 2, 0, 0);
-        if (variant == "wrong-support-owner") world.AddObject("platform", 6, 6, 0, 0);
+        // A twisted tile. Its centre lies on the drawn triangles' shared diagonal, a quarter metre off the bilinear centre.
+        world.SetCornerHeightCm((int)TwistedTileX + 1, (int)TwistedTileZ + 1, 0, 100);
+        var platform = world.AddObject("platform", 2, 2, 0, 0);
+        var supportOwner = variant == "wrong-support-owner" ? world.AddObject("platform", 6, 6, 0, 0) : platform;
         string[] names = [Sentinel, "moth", "beacon", "caption", "sleeper", "caption-two"];
         int[] xs = [-2, 2, 4, 5, 3, 6], zs = [1, 2, 3, 4, 2, 5];
-        for (int i = 0; i < names.Length; i++) world.SetMarker(names[i], xs[i], zs[i], 0, ["first", "second", "first"]);
-        TileWorldFile.Save(world, Path.Combine(root, "world"));
-        File.WriteAllText(Path.Combine(root, "catalog.json"), """
-            {"materials":[{"id":1,"name":"Invented ground","color":"#888888"}],
-             "archetypes":[{"id":"platform","name":"Platform","meshRef":"assets/public.mesh",
-             "walkSurfaces":[{"height":2}]}]}
-            """);
+        for (int i = 0; i < names.Length; i++) world.SetMarker(names[i], xs[i], zs[i], variant == "upper-plane" && i == 4 ? 1 : 0, ["first", "second", "first"]);
+        // The source point of the prefab-expanded marker.
+        world.SetMarker("relay", 1, 6, 0, ["first", "second", "first"]);
+        TileWorldFile.Save(world, Path.Combine(root, "world"), force: building is not null);
+        const string Platform = """{"id":"platform","name":"Platform","meshRef":"assets/public.mesh","walkSurfaces":[{"height":2}]}""";
+        if (building is null)
+            File.WriteAllText(Path.Combine(root, "catalog.json"), """{"materials":[{"id":1,"name":"Invented ground","color":"#888888"}],"archetypes":[""" + Platform + "]}");
+        else
+        {
+            var merged = JsonNode.Parse(File.ReadAllText(Path.Combine(root, "catalog.json")))!;
+            merged["archetypes"]!.AsArray().Add(JsonNode.Parse(Platform));
+            File.WriteAllText(Path.Combine(root, "catalog.json"), merged.ToJsonString());
+            File.WriteAllText(Path.Combine(root, "building.json"), building.ToJsonString());
+        }
         if (variant == "support-only")
         {
             var catalog = JsonNode.Parse(File.ReadAllText(Path.Combine(root, "catalog.json")))!;
@@ -154,20 +169,31 @@ internal static class ShippedMarkerGuardFixtures
         byte[] mesh = Encoding.UTF8.GetBytes("invented public mesh bytes");
         File.WriteAllBytes(Path.Combine(root, "assets/public.mesh"), mesh);
         var meshRef = new MapAssetRef("public-mesh", "assets/public.mesh", Hash(mesh), 1);
+        // A prefab-local marker on the world terrain, expanded through a non-identity frame.
+        var terrainBinding = new MapSupportBinding(MapSupportBindingKind.Surface, "plane-0", null, null, null, null);
+        var kitMarker = MapMarkerHeights.Apply(new(1, "kit-marker", "relay", KitLocal(1.5, -6.5), 0.25f, "landmark-role", true,
+            ["first", "second", "first"]), new(null, terrainBinding));
+        var kit = new MapPrefabAsset(1, "marker-kit", [new MapPrefabMarkerChild(new(MapPrefabChildKind.Marker, "kit-marker"), kitMarker)
+        { References = [new("/value/supportBinding/surfaceId", new(MapPrefabReferenceScope.World, MapPrefabChildKind.Surface, "plane-0"))] }]);
+        byte[] kitBytes = MapPrefabFile.Write(kit);
+        File.WriteAllBytes(Path.Combine(root, "assets/marker-kit"), kitBytes);
+        var kitRef = new MapAssetRef("marker-kit", "assets/marker-kit", Hash(kitBytes), 1);
         byte[] manifest = Encoding.UTF8.GetBytes(new JsonObject
         {
             ["payloadVersion"] = 1,
             ["assets"] = new JsonArray(),
-            ["resources"] = new JsonArray(NativeAssetFixtures.Resource(meshRef, "Mesh")),
+            ["resources"] = new JsonArray(NativeAssetFixtures.Resource(meshRef, "Mesh"), NativeAssetFixtures.Resource(kitRef, "Prefab")),
         }.ToJsonString());
-        File.WriteAllBytes(Path.Combine(root, "assets/manifest.json"), manifest);
+        File.WriteAllBytes(Path.Combine(root, "assets/markers.json"), manifest);
         var document = MapDocumentFile.LoadText("""
             {"formatVersion":8,"id":"invented-marker-native","tileSize":16,
              "bounds":{"minX":-64,"minZ":-64,"maxX":64,"maxZ":0},
              "playableBounds":{"minX":-64,"minZ":-64,"maxX":64,"maxZ":0},"terrain":{},
              "resolverIdentity":{"payloadVersion":1,"resolverVersion":2},"supportRecipe":"AuthoredBindingsV2"}
             """);
-        document.NativeAssets.Add(new("marker-assets", "assets/manifest.json", Hash(manifest), 1));
+        document.NativeAssets.Add(new("marker-assets", "assets/markers.json", Hash(manifest), 1));
+        document.Prefabs = new(1, 1, [new MapPrefabInstance("kit", kitRef.Id, kitRef.Sha256, KitFrame, null,
+            new([new(new(MapPrefabChildKind.Marker, "kit-marker"), PrefabMarkerId, null, false)]), [])], []);
         foreach (var region in world.Regions.Keys)
         {
             var converted = LegacyOracleConverter.ToNative(world, region, 0);
@@ -237,10 +263,41 @@ internal static class ShippedMarkerGuardFixtures
                 ["parents"] = i == 1 ? new JsonArray("exterior") : new JsonArray(),
             });
         }
+        roleRows.Add(new JsonObject
+        {
+            ["sourceName"] = "relay",
+            ["id"] = PrefabMarkerId,
+            ["role"] = kitMarker.Role,
+            ["projection"] = "landmark",
+            ["offsetX"] = 0.5,
+            ["offsetZ"] = 0.5,
+            ["supportName"] = "terrain",
+            ["heightMode"] = "Support",
+            ["heightRule"] = "terrain",
+            ["yaw"] = (float)(kitMarker.YawRadians + MapEffectiveTransform.From(KitFrame).YawRadians),
+            ["enabled"] = true,
+            ["archetype"] = null,
+        });
+        markerRows.Add(new JsonObject
+        {
+            ["sourceName"] = "relay",
+            ["x"] = 1,
+            ["z"] = 6,
+            ["plane"] = 0,
+            ["regionX"] = 0,
+            ["regionZ"] = 0,
+            ["supportName"] = "terrain",
+            ["spaceId"] = "exterior",
+            ["parents"] = new JsonArray(),
+        });
         var supports = new JsonArray();
         supports.Add(Support("terrain", "plane-0", "terrain", null));
-        supports.Add(Support("platform-top", "deck", "object", world.AllObjects().First().Id));
-        if (variant == "wrong-support-owner") supports[1]!["source"]!["objectId"] = world.AllObjects().Last().Id;
+        supports.Add(Support("platform-top", "deck", "object", variant switch
+        {
+            "absent-owner" => world.AllObjects().Max(o => o.Id) + 1,
+            "nonpositive-owner" => 0,
+            _ => supportOwner.Id,
+        }));
         if (variant == "space-binding")
         {
             var binding = new MapSupportBinding(MapSupportBindingKind.Space, null, "platform-room", 2.1f, 0.2f, 0.2f);
@@ -252,7 +309,7 @@ internal static class ShippedMarkerGuardFixtures
             ["schemaVersion"] = 1,
             ["generator"] = new JsonObject { ["path"] = "generator/build-scaffold.py", ["helpers"] = new JsonArray("generator/helper.py") },
             ["sourcePrefabs"] = new JsonArray("definitions/platform.json"),
-            ["buildingManifestPath"] = null,
+            ["buildingManifestPath"] = building is null ? null : "building.json",
             ["supports"] = supports,
             ["markers"] = roleRows,
         };
@@ -265,14 +322,14 @@ internal static class ShippedMarkerGuardFixtures
             ["markerManifestPath"] = "markers.json",
             ["expectations"] = new JsonObject
             {
-                ["total"] = 6,
+                ["total"] = 7,
                 ["playerStart"] = 1,
                 ["spawn"] = 2,
-                ["landmark"] = 1,
+                ["landmark"] = 2,
                 ["label"] = 2,
                 ["negativeX"] = 1,
-                ["supportBound"] = variant == "all-bound" ? 6 : 5,
-                ["enabled"] = 5,
+                ["supportBound"] = variant == "all-bound" ? 7 : 6,
+                ["enabled"] = 6,
             },
         };
         switch (variant)
@@ -294,13 +351,18 @@ internal static class ShippedMarkerGuardFixtures
             case "extra-native": nativeMarkers.Add(nativeMarkers[3] with { Id = "extra", Name = "extra" }); break;
             case "expectation": comparison["expectations"]!["total"] = 5; break;
             case "standing-rule": roleRows[1]!["heightRule"] = "terrain"; break;
-            case "wrong-source-count": nativeMarkers.RemoveAt(5); comparison["expectations"]!["total"] = 5; break;
-            case "claimed-bound": roleRows[3]!["heightMode"] = "Support"; comparison["expectations"]!["supportBound"] = 6; break;
+            case "wrong-source-count": nativeMarkers.RemoveAt(5); comparison["expectations"]!["total"] = 6; break;
+            case "claimed-bound": roleRows[3]!["heightMode"] = "Support"; comparison["expectations"]!["supportBound"] = 7; break;
+            case "twisted-bilinear":
+                // The client presenter's bilinear height, which a server body never stands at on this tile.
+                float bilinear = new TileDocumentGroundHeight(world).HeightAt(TwistedTileX, TwistedTileZ, 0);
+                nativeMarkers[5] = MapMarkerHeights.Apply(nativeMarkers[5], new(bilinear, null));
+                break;
             case "duplicate-destination": roleRows[1]!["id"] = roleRows[0]!["id"]!.DeepClone(); break;
             case "missing-role": roleRows.RemoveAt(5); break;
-            case "extra-role": roleRows.Add(roleRows[5]!.DeepClone()); roleRows[6]!["sourceName"] = "extra-source"; break;
+            case "extra-role": roleRows.Add(Renamed(roleRows[5]!, "extra-source")); break;
             case "missing-marker-row": markerRows.RemoveAt(5); break;
-            case "extra-marker-row": markerRows.Add(markerRows[5]!.DeepClone()); markerRows[6]!["sourceName"] = "extra-source"; break;
+            case "extra-marker-row": markerRows.Add(Renamed(markerRows[5]!, "extra-source")); break;
             case "unknown-role-field": roleRows[0]!["unknown"] = true; break;
             case "unknown-height-rule": roleRows[0]!["heightRule"] = "guess"; break;
             case "unsupported-schema": comparison["schemaVersion"] = 2; break;
@@ -323,6 +385,7 @@ internal static class ShippedMarkerGuardFixtures
         string rolesText = roles.ToJsonString();
         if (variant == "duplicate-role-field") rolesText = rolesText.Replace("\"offsetX\":0.5", "\"offsetX\":0.5,\"offsetX\":0.5", StringComparison.Ordinal);
         if (variant == "case-role-field") rolesText = rolesText.Replace("\"offsetX\":0.5", "\"OffsetX\":0.5", StringComparison.Ordinal);
+        if (variant == "case-duplicate-role-field") rolesText = rolesText.Replace("\"offsetX\":0.5", "\"offsetX\":0.5,\"OffsetX\":0.5", StringComparison.Ordinal);
         File.WriteAllText(Path.Combine(root, "roles.json"), rolesText);
         File.WriteAllText(Path.Combine(root, "markers.json"), markers.ToJsonString());
         if (variant is "duplicate-source" or "duplicate-index" or "wrong-index-tags" or "wrong-region-owner")
@@ -347,6 +410,59 @@ internal static class ShippedMarkerGuardFixtures
         ["binding"] = new JsonObject { ["kind"] = "Surface", ["surfaceId"] = surface },
         ["source"] = new JsonObject { ["kind"] = kind, ["plane"] = 0, ["objectId"] = objectId },
     };
+
+    static JsonNode Renamed(JsonNode row, string sourceName)
+    {
+        var copy = row.DeepClone();
+        copy["sourceName"] = sourceName;
+        return copy;
+    }
+
+    // A local point whose expansion through KitFrame lands one or two exact quanta west of the world target, inside the
+    // source tolerance but never on the source float. Only the released frame kernel decides where it lands.
+    internal static Vector3 KitLocal(double worldX, double worldZ)
+    {
+        var kernel = new MapResourceTransform(MapEffectiveTransform.From(KitFrame));
+        var pose = kernel.Transform;
+        var (s, c) = Math.SinCos(pose.YawRadians);
+        double dx = (worldX - pose.X) / pose.Scale, dz = (worldZ - pose.Z) / pose.Scale;
+        float x = (float)(c * dx - s * dz), z = (float)(s * dx + c * dz);
+        for (int i = -16; i <= 16; i++)
+            for (int j = -16; j <= 16; j++)
+            {
+                float lx = Step(x, i), lz = Step(z, j);
+                var point = kernel.Point(new(MapExactValue.FromSingle(lx), MapExactValue.FromSingle(0), MapExactValue.FromSingle(lz)));
+                double px = point.X.ToDouble(), pz = point.Z.ToDouble();
+                if (px < worldX && worldX - px < 0.000002 && Math.Abs(pz - worldZ) < 0.000002) return new(lx, 0, lz);
+            }
+        throw new InvalidOperationException("no local point expands just west of the target");
+    }
+
+    static float Step(float value, int steps)
+    {
+        for (; steps > 0; steps--) value = MathF.BitIncrement(value);
+        for (; steps < 0; steps++) value = MathF.BitDecrement(value);
+        return value;
+    }
+
+    // Reuses the invented R5 building extraction as this world's retained building correspondence. Its world, catalog,
+    // definitions and native resources become part of the marker extraction, and its scaffold moves aside.
+    static JsonObject CopyBuilding(string root)
+    {
+        using var building = ShippedBuildingGuardFixtures.Create("valid");
+        string source = building.Environment["KHAOZ_R2_SHIPPED_SOURCE"]!;
+        foreach (string file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+        {
+            string relative = Path.GetRelativePath(source, file);
+            string target = Path.Combine(root, relative == "native.json" ? "building-native.json" : relative);
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(file, target);
+        }
+        var provenance = JsonNode.Parse(File.ReadAllText(building.Environment["KHAOZ_R2_ORACLE_PROVENANCE"]!))!;
+        var comparison = provenance["comparison"]!.DeepClone().AsObject();
+        comparison["nativeDocumentPath"] = "building-native.json";
+        return comparison;
+    }
 
     static string Hash(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
 }

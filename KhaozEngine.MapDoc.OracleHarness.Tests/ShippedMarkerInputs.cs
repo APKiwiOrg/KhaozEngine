@@ -74,6 +74,8 @@ internal sealed class ShippedMarkerInputs
         }
         var (world, catalogs) = ShippedSourceInventory.ReadWorld(inputs);
         Require(world.TileSize == 1, "marker source terrain conversion requires metre tiles");
+        // The authoritative server ground and walk surfaces describe plane 0 only, so no other plane has a server height.
+        Require(sourceMarkers.All(m => m.Plane == 0), "server marker height covers plane 0 only");
         Require(SameSource(sourceMarkers, world.AllMarkers().Select(m => new MarkerSourcePoint(m.Name, m.X, m.Z, m.Plane, (m.Tags ?? []).AsReadOnly())).ToArray()),
             "loaded marker inventory differs from captured regions");
         var supports = ReadSupports(rolesJson, world, catalogs);
@@ -187,7 +189,9 @@ internal sealed class ShippedMarkerInputs
             if (kind == "terrain") Require(objectId is null, "terrain support cannot name an object");
             else
             {
-                var owner = world.AllObjects().Single(o => o.Id == objectId);
+                var owners = world.AllObjects().Where(o => o.Id == objectId).ToArray();
+                Require(objectId > 0 && owners.Length == 1, "unknown source support owner");
+                var owner = owners[0];
                 Require(owner.Plane == plane && catalogs.Archetype(owner.ArchetypeId)?.WalkSurfaces is { Count: > 0 }, "source owner has no standing surface");
             }
             string name = Text(row, "name");

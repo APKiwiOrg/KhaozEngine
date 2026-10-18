@@ -429,6 +429,12 @@ Expectations are nonnegative integer counts. `total` is checked against the inde
 inventory, not the number of generated native rows. Other counts come from exhaustive source-to-role
 correspondences and standing points. Disabled markers remain in the inventory.
 
+The source world must use tile size 1, and every source marker must lie on plane 0. The reader refuses
+any other tile size, and any marker on another plane, because the server ground and walk surfaces
+describe plane 0 only. At tile size 1 a standing point's world X is `TileWorldSpace.WorldX(tileX, 1)`,
+which equals tile X, the source integer X plus `offsetX`. Its world Z is `TileWorldSpace.WorldZ(tileZ, 1)`,
+which equals minus tile Z, the source integer Z plus `offsetZ`.
+
 The role manifest has exactly `schemaVersion`, `generator`, `sourcePrefabs`, `buildingManifestPath`,
 `supports` and `markers`. `schemaVersion` is 1. `generator` has exactly `path` and `helpers`. Its path is
 `generator/build-scaffold.py`, and `helpers` lists unique attested helper paths. `sourcePrefabs` lists
@@ -452,7 +458,8 @@ The kind is `Surface` or `Space`, IDs are nonempty strings, reference Y is finit
 are finite, nonnegative and at most 1000000 metres. Null or foreign binding members refuse. These are
 world-owner bindings in the Task 1 shape, including when authored markers expand from local bindings.
 `source.kind` is `terrain` or `object`. Terrain uses null `objectId`. Object uses the positive original
-source object ID, whose catalog archetype must declare standing surfaces on the named plane.
+ID of exactly one source object, whose catalog archetype must declare standing surfaces on the named
+plane. An absent or nonpositive ID refuses.
 
 Each role `markers` row has exactly these fields:
 
@@ -468,9 +475,15 @@ Each role `markers` row has exactly these fields:
 `role` is caller vocabulary. `projection` is exactly `player-start`, `spawn`, `landmark` or `label` for
 category counts. Offsets are finite tile-unit offsets from the recorded source tile, including footprint
 and role policy. Yaw is finite radians. Enabled is a Boolean. Archetype is null for tag-driven identity,
-otherwise a nonempty authored string. `heightRule` is exactly `terrain` or `standing`, selecting the
-terrain-only or catalog-aware released `TileDocumentGroundHeight` constructor. There are no inferred
-roles, offsets, yaws, enabled flags, archetypes, bindings or height rules.
+otherwise a nonempty authored string. There are no inferred roles, offsets, yaws, enabled flags,
+archetypes, bindings or height rules.
+
+`heightRule` is exactly `terrain` or `standing` and names the authoritative server rule. `terrain` is the
+`Ground` sampler of the released `TileWorldColliders`, built from the source terrain alone. It reads the
+drawn tile triangles. `standing` is the higher of that ground and the released `TileWalkSurfaces.TryHeightAt`
+on the marker's plane. The server stands bodies on the collider ground plus walk surfaces. The bilinear
+`TileDocumentGroundHeight` is the client presenter's drawing rule. It differs from the drawn triangles on a
+twisted tile, so it is not the comparison rule.
 
 `heightMode` is `Support` for every actual private import. The shipped entry calls `RequireBoundImports`
 before comparison and refuses any other mode. `Explicit` exists only to exercise comparator diagnostics
@@ -498,7 +511,10 @@ be present in the scaffold. A binding must never reassign a home to an owner exc
 The comparator checks exhaustive identity, name, tag sequence, role, enabled state, archetype, standing
 XZ, height, yaw, binding, value provenance, witness-bearing support, occupied owner and parent chain.
 It also checks role, tag, typed projection and half-open rectangle queries, including disabled rows and
-negative X. Object support is queried separately with only the named original owner, through the
+negative X. The engine filters exact native positions, so each head's rectangle edges and expected set
+come from that head's own native points. A native point inside the source tolerance can still lie a
+quantum below its source float, as a prefab-expanded marker can. Source fidelity stays the separate
+position check. Object support is queried separately with only the named original owner, through the
 released source sampler. This prevents another object's higher floor from concealing a wrong owner.
 
 All XYZ and height components use 0.00001 metre tolerance. Wrapped yaw uses

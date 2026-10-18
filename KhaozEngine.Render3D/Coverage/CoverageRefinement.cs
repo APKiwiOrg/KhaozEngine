@@ -55,7 +55,7 @@ public sealed class CoverageRefinement
     public CoverageSourceTopology Source => source;
     /// <summary>The immutable host map this topology was compiled from. Region indices index Map.Regions.</summary>
     public HostCoverageMap Map { get; }
-    public string HostIdentity => source.Identity;
+    public string HostIdentity { [Binary32Kernel] get => source.Identity; }
     public int SourceVertexCount => source.Vertices.Count;
     public int VertexCount => Vertices.Count;
     public int TriangleCount => Triangles.Count;

@@ -5,10 +5,7 @@ namespace KhaozEngine.Render3D;
 
 /// <summary>The exact sign and round-to-nearest, ties-to-even binary32 value of a predicate on binary32 inputs.
 /// The sign remains exact when the rounded value underflows to zero. Nonfinite inputs produce an invalid value.</summary>
-internal readonly record struct CoverageReferenceScalar(int Sign, float Value)
-{
-    internal bool IsFinite => float.IsFinite(Value);
-}
+internal readonly record struct CoverageReferenceScalar(int Sign, float Value);
 
 /// <summary>Exact two-dimensional predicates on binary32 inputs, with correctly rounded binary32 values.</summary>
 internal static class CoverageReferencePredicates
@@ -38,12 +35,13 @@ internal static class CoverageReferencePredicates
 
     /// <summary>B30's common power-of-two normalization precedes either RN32 conversion, so flushing cannot
     /// turn two subnormal exact sides into a zero divisor. Float constructions retain the pinned order.</summary>
-    internal static float CrossingParameter(Vector3 s, Vector3 t, Vector3 a, Vector3 b)
+    internal static bool TryScaledSides(Vector3 s, Vector3 t, Vector3 a, Vector3 b, out float x, out float y)
     {
-        if (!Finite(s) || !Finite(t) || !Finite(a) || !Finite(b)) return float.NaN;
+        x = y = float.NaN;
+        if (!Finite(s) || !Finite(t) || !Finite(a) || !Finite(b)) return false;
         Span<double> first = stackalloc double[8], second = stackalloc double[8];
         int na = EdgeExpansion(s, t, a, first), nb = EdgeExpansion(s, t, b, second);
-        if (na == 0 || nb == 0 || Math.Sign(first[na - 1]) == Math.Sign(second[nb - 1])) return float.NaN;
+        if (na == 0 || nb == 0 || Math.Sign(first[na - 1]) == Math.Sign(second[nb - 1])) return false;
         var ca = first[..na]; var cb = second[..nb];
         int sa = Math.Sign(ca[^1]), sb = Math.Sign(cb[^1]);
         int exponent = Math.Max(Math.ILogB(Math.Abs(ca[^1])), Math.ILogB(Math.Abs(cb[^1])));
@@ -52,9 +50,8 @@ internal static class CoverageReferencePredicates
         else if (CompareMagnitude(ca, sa, 2 * binade) >= 0 || CompareMagnitude(cb, sb, 2 * binade) >= 0) exponent++;
         for (int i = 0; i < na; i++) ca[i] = Math.ScaleB(ca[i], -exponent);
         for (int i = 0; i < nb; i++) cb[i] = Math.ScaleB(cb[i], -exponent);
-        float x = Scalar(ca).Value, y = Scalar(cb).Value;
-        float denominator = x - y;
-        return x / denominator;
+        x = Scalar(ca).Value; y = Scalar(cb).Value;
+        return true;
     }
 
     /// <summary>Returns the exact sign and RN32 value of (b.X-a.X)*(d.X-c.X)+(b.Y-a.Y)*(d.Y-c.Y),

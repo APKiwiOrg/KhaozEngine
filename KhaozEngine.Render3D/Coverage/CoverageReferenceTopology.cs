@@ -1,8 +1,11 @@
 using System;
+using System.Collections.Generic;
 
 namespace KhaozEngine.Render3D;
 
 internal readonly record struct CoveragePositionRecipe(int A, int B, int C, int WeightA, int WeightB, int WeightC, int Denominator);
+
+internal readonly record struct CoverageReferenceWeights(float A, float B, float C);
 
 /// <summary>Cold canonical recipes and sorted gathers. Arrays are owned here and never changed after compilation.</summary>
 internal sealed class CoverageReferenceTopology
@@ -11,13 +14,37 @@ internal sealed class CoverageReferenceTopology
     {
         ArgumentNullException.ThrowIfNull(topology);
         Topology = topology;
+        VertexCount = topology.VertexCount;
+        TriangleCount = topology.TriangleCount;
+        PositionGroupCount = topology.PositionGroupCount;
+        SourceVertexCount = topology.SourceVertexCount;
+        AliasCount = topology.SourceAliases.Count;
+        Vertices = topology.Vertices;
+        Triangles = topology.Triangles;
+        SourceTriangles = topology.Source.Triangles;
+        SourceAliases = topology.SourceAliases;
+        Indices = topology.Indices.ToArray();
+        GroupWeights = new CoverageReferenceWeights[PositionGroupCount];
+        EdgeParameters = new float[PositionGroupCount];
+        VertexWeights = new CoverageReferenceWeights[VertexCount];
         Recipes = new CoveragePositionRecipe[topology.PositionGroupCount];
         GroupRepresentatives = new int[Recipes.Length];
         Array.Fill(GroupRepresentatives, -1);
-        for (int g = 0; g < Recipes.Length; g++) Recipes[g] = topology.GetPositionRecipe(g);
+        for (int g = 0; g < Recipes.Length; g++)
+        {
+            var recipe = Recipes[g] = topology.GetPositionRecipe(g);
+            GroupWeights[g] = new(recipe.WeightA, recipe.WeightB, recipe.WeightC);
+            int a, b, numerator;
+            if (recipe.WeightC == 0) { a = recipe.A; b = recipe.B; numerator = recipe.WeightB; }
+            else if (recipe.WeightB == 0) { a = recipe.A; b = recipe.C; numerator = recipe.WeightC; }
+            else { a = recipe.B; b = recipe.C; numerator = recipe.WeightC; }
+            EdgeParameters[g] = (a > b ? 12 - numerator : numerator) / 12f;
+        }
         for (int v = 0; v < topology.VertexCount; v++)
         {
-            int g = topology.Vertices[v].PositionGroup;
+            var record = topology.Vertices[v];
+            VertexWeights[v] = new(record.A, record.B, record.C);
+            int g = record.PositionGroup;
             if (GroupRepresentatives[g] < 0) GroupRepresentatives[g] = v;
         }
         CoreFaceOffsets = new int[Recipes.Length + 1];
@@ -44,6 +71,19 @@ internal sealed class CoverageReferenceTopology
         }
     }
 
+    internal int VertexCount { get; }
+    internal int TriangleCount { get; }
+    internal int PositionGroupCount { get; }
+    internal int SourceVertexCount { get; }
+    internal int AliasCount { get; }
+    internal IReadOnlyList<CoverageRefinedVertex> Vertices { get; }
+    internal IReadOnlyList<CoverageRefinedTriangle> Triangles { get; }
+    internal IReadOnlyList<CoverageSourceTriangle> SourceTriangles { get; }
+    internal IReadOnlyList<CoverageSourceAlias> SourceAliases { get; }
+    internal uint[] Indices { get; }
+    internal CoverageReferenceWeights[] GroupWeights { get; }
+    internal CoverageReferenceWeights[] VertexWeights { get; }
+    internal float[] EdgeParameters { get; }
     internal CoverageRefinement Topology { get; }
     internal CoveragePositionRecipe[] Recipes { get; }
     internal int[] GroupRepresentatives { get; }

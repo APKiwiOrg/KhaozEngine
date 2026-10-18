@@ -84,7 +84,7 @@ public sealed class CoverageReferencePredicateTests
         foreach (int face in new[] { 459, 463 })
         {
             Vector3[] host = new Vector3[3];
-            for (int i = 0; i < 3; i++) host[i] = CoverageReferenceMath.Point(
+            for (int i = 0; i < 3; i++) host[i] = CoverageReferenceMath.Point(new CoverageReferenceArithmetic(),
                 scratch.After[(int)c.Topology.Indices[face * 3 + i]].Position, frame.HostToCoverage);
             CheckEdge(host[0], host[1], host[2]);
             CheckEdge(sheet[0], sheet[1], sheet[2]);

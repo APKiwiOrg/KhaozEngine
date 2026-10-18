@@ -49,19 +49,19 @@ public sealed class CoverageReferencePrimitiveTests
         Assert.Contains(Enumerable.Range(0, topology.ShadingGroupCount), g =>
             data.ShadingCorners[data.ShadingCornerOffsets[g]..data.ShadingCornerOffsets[g + 1]].Select(c => indices[c]).Distinct().Count() > 1);
         // Cancellation distinguishes the written left-associated graph from a reassociated dot.
-        Assert.Equal(1f, M.Dot3(new(MathF.ScaleB(1, 25), -MathF.ScaleB(1, 25), 1), Vector3.One));
+        Assert.Equal(1f, M.Dot3(new CoverageReferenceArithmetic(), new(MathF.ScaleB(1, 25), -MathF.ScaleB(1, 25), 1), Vector3.One));
         float step = MathF.ScaleB(1, -23);
-        Assert.Equal(0f, M.Dot3(new(1 + step, -1, 0), new(1 - step, 1, 0)));
-        Assert.Equal(Vector3.Zero, M.Cross(new(0, 1 + step, 1), new(0, 1, 1 - step)));
-        Assert.Equal(11f, M.Dot2(new(1, 2), new(3, 4)));
-        Assert.Equal(new Vector3(-3, 6, -3), M.Cross(new(1, 2, 3), new(4, 5, 6)));
+        Assert.Equal(0f, M.Dot3(new CoverageReferenceArithmetic(), new(1 + step, -1, 0), new(1 - step, 1, 0)));
+        Assert.Equal(Vector3.Zero, M.Cross(new CoverageReferenceArithmetic(), new(0, 1 + step, 1), new(0, 1, 1 - step)));
+        Assert.Equal(11f, M.Dot2(new CoverageReferenceArithmetic(), new(1, 2), new(3, 4)));
+        Assert.Equal(new Vector3(-3, 6, -3), M.Cross(new CoverageReferenceArithmetic(), new(1, 2, 3), new(4, 5, 6)));
         var matrix = new Matrix4x4(1, 2, 3, 0, 4, 5, 6, 0, 7, 8, 9, 0, 10, 11, 12, 1);
-        Assert.Equal(new Vector3(30, 36, 42), M.Linear(new(1, 2, 3), matrix));
-        Assert.Equal(new Vector3(40, 47, 54), M.Point(new(1, 2, 3), matrix));
+        Assert.Equal(new Vector3(30, 36, 42), M.Linear(new CoverageReferenceArithmetic(), new(1, 2, 3), matrix));
+        Assert.Equal(new Vector3(40, 47, 54), M.Point(new CoverageReferenceArithmetic(), new(1, 2, 3), matrix));
         var cancellationMatrix = new Matrix4x4(1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1);
         Vector3 cancellation = new(MathF.ScaleB(1, 25), -MathF.ScaleB(1, 25), 1);
-        Assert.Equal(Vector3.One, M.Linear(cancellation, cancellationMatrix));
-        Assert.Equal(new Vector3(2), M.Point(cancellation, cancellationMatrix));
+        Assert.Equal(Vector3.One, M.Linear(new CoverageReferenceArithmetic(), cancellation, cancellationMatrix));
+        Assert.Equal(new Vector3(2), M.Point(new CoverageReferenceArithmetic(), cancellation, cancellationMatrix));
         var scratch = new CoverageReferenceScratch(topology, 2);
         Assert.Equal(topology.VertexCount, scratch.Before.Length);
         Assert.Equal(topology.VertexCount, scratch.After.Length);
@@ -76,8 +76,8 @@ public sealed class CoverageReferencePrimitiveTests
     public void Skinny_triangle_heights_differ_by_half_between_adjacent_queries()
     {
         Vector3 a = Vector3.Zero, b = new(1, 1, 0), c = new(1, 1 + MathF.ScaleB(1, -23), 1);
-        Assert.Equal(0f, M.Height(a, b, c, new(.5f, .5f)));
-        Assert.Equal(.5f, M.Height(a, b, c, new(.5f, .5f + MathF.ScaleB(1, -24))));
+        Assert.Equal(0f, M.Height(new CoverageReferenceArithmetic(), a, b, c, new(.5f, .5f)));
+        Assert.Equal(.5f, M.Height(new CoverageReferenceArithmetic(), a, b, c, new(.5f, .5f + MathF.ScaleB(1, -24))));
         Assert.Equal(MathF.ScaleB(1, -23), CoverageReferencePredicates.Edge(a, b, c).Value);
     }
 
@@ -91,23 +91,23 @@ public sealed class CoverageReferencePrimitiveTests
         Assert.Equal(support.BoundarySourceVertices.ToArray(), data.BoundarySourceVertices);
         foreach (Vector2 p in new[] { new Vector2(0, 0), new Vector2(1, 1), new Vector2(-1, -1), new Vector2(1, -1) })
         {
-            Assert.True(data.TryHeight(p, out float height, out int sourceTriangle));
+            Assert.True(data.TryHeight(new CoverageReferenceArithmetic(), p, out float height, out int sourceTriangle));
             Assert.Equal(p.X, height);
             Assert.Equal(0, sourceTriangle);
         }
         // Edge zero is the bottom rim. The square centre ties all four edges, so bottom wins.
         Assert.Equal(0, data.BoundarySourceVertices[0]);
-        Assert.True(data.TryBoundary(Vector2.Zero, out float boundaryHeight, out float distance));
+        Assert.True(data.TryBoundary(new CoverageReferenceArithmetic(), Vector2.Zero, out float boundaryHeight, out float distance));
         Assert.Equal(0f, boundaryHeight);
         Assert.Equal(1f, distance);
-        Assert.True(data.TryBoundary(new(2, 0), out _, out distance));
+        Assert.True(data.TryBoundary(new CoverageReferenceArithmetic(), new(2, 0), out _, out distance));
         Assert.Equal(1f, distance);
         float collarWidth = 1;
         float spatial = Math.Clamp(1 - distance / collarWidth, 0, 1);
         Assert.Equal(0f, spatial * spatial * (3 - 2 * spatial));
-        Assert.False(data.TryHeight(new(1.0001f, 0), out _));
-        Assert.False(data.TryHeight(new(float.NaN, 0), out _));
-        Assert.False(data.TryBoundary(new(float.MaxValue, float.MaxValue), out _, out _));
+        Assert.False(data.TryHeight(new CoverageReferenceArithmetic(), new(1.0001f, 0), out _));
+        Assert.False(data.TryHeight(new CoverageReferenceArithmetic(), new(float.NaN, 0), out _));
+        Assert.False(data.TryBoundary(new CoverageReferenceArithmetic(), new(float.MaxValue, float.MaxValue), out _, out _));
         // The outer maxima are cell 15, and every cell retains original source order.
         Assert.Equal(257, data.CellOffsets.Length);
         Assert.True(EachRowIsStrictlySortedAndDuplicateFree(data.CellOffsets, data.CellTriangles));
@@ -116,7 +116,7 @@ public sealed class CoverageReferencePrimitiveTests
             for (int x = 0; x <= 16; x++)
             {
                 Vector2 p = new(-1 + x / 8f, -1 + y / 8f);
-                Assert.True(data.TryHeight(p, out float h));
+                Assert.True(data.TryHeight(new CoverageReferenceArithmetic(), p, out float h));
                 Assert.Equal(p.X, h);
             }
     }
@@ -150,11 +150,26 @@ public sealed class CoverageReferencePrimitiveTests
             void Check(Vector2 point)
             {
                 bool expected = ScanBounds(support, point, out float expectedHeight, out int expectedSource);
-                Assert.Equal(expected, support.TryHeight(point, out float actualHeight, out int actualSource));
+                Assert.Equal(expected, support.TryHeight(new CoverageReferenceArithmetic(), point, out float actualHeight, out int actualSource));
                 Assert.Equal(expectedSource, actualSource);
                 Assert.Equal(BitConverter.SingleToInt32Bits(expectedHeight), BitConverter.SingleToInt32Bits(actualHeight));
             }
         }
+    }
+
+    [Fact]
+    public void Tiny_grid_query_coordinates_are_flushed_before_source_order_selection()
+    {
+        var support = GridSupport([0f, 1f]);
+        Vector2 point = new(-float.Epsilon, 0);
+        Assert.False(support.Support.TryGetHeight(point, out _));
+        var f = new CoverageReferenceArithmetic();
+        Assert.True(support.TryHeight(f, point, out float height, out int source));
+        Assert.Equal(0, source);
+        Assert.Equal(0u, BitConverter.SingleToUInt32Bits(height));
+        Assert.True(f.EventCount > 0);
+        Assert.Equal(CoverageExactnessOperation.FiniteTest, f.FirstSite.Operation);
+        Assert.Equal(0x80000001u, f.FirstSite.ValueBits);
     }
 
     [Theory]
@@ -175,7 +190,7 @@ public sealed class CoverageReferencePrimitiveTests
         Assert.Equal(0f, RoundedEdge(a, b, p));
         Assert.True(point.X > b.X);
         Assert.False(support.Support.TryGetHeight(point, out _));
-        Assert.False(support.TryHeight(point, out float height, out int source));
+        Assert.False(support.TryHeight(new CoverageReferenceArithmetic(), point, out float height, out int source));
         Assert.Equal(0f, height);
         Assert.Equal(-1, source);
     }
@@ -335,13 +350,14 @@ public sealed class CoverageReferencePrimitiveTests
 
     static bool ScanBounds(ReferenceSupport support, Vector2 point, out float height, out int source)
     {
+        point = new(FlushInput(point.X), FlushInput(point.Y));
         height = 0;
         source = -1;
         if (!float.IsFinite(point.X) || !float.IsFinite(point.Y)) return false;
         for (int i = 0; i < support.Triangles.Length; i++)
         {
             var triangle = support.Triangles[i];
-            Vector3 a = support.Positions[triangle.A], b = support.Positions[triangle.B], c = support.Positions[triangle.C];
+            Vector3 a = Input(support.Positions[triangle.A]), b = Input(support.Positions[triangle.B]), c = Input(support.Positions[triangle.C]);
             if (OutsideBounds(point.X, a.X, b.X, c.X) || OutsideBounds(point.Y, a.Y, b.Y, c.Y)) continue;
             Vector3 p = new(point, 0);
             CoverageAffinePoint Exact(Vector3 v) => CoverageAffinePoint.FromDouble(v.X, v.Y, v.Z);
@@ -351,13 +367,22 @@ public sealed class CoverageReferencePrimitiveTests
             var w = CoverageGeometry.Edge(Exact(a), Exact(b), Exact(p));
             if (!area.IsFinite || area.Sign == 0 || !u.IsFinite || !v.IsFinite || !w.IsFinite) return false;
             if (u.Sign * area.Sign < 0 || v.Sign * area.Sign < 0 || w.Sign * area.Sign < 0) continue;
-            height = M.Height(a, b, c, point);
+            height = M.Height(new CoverageReferenceArithmetic(), a, b, c, point);
             if (!float.IsFinite(height)) return false;
             source = support.SourceIndices[i];
             return true;
         }
         return false;
     }
+
+    // Independent B38 upload rule for the brute-force candidate oracle.
+    static float FlushInput(float value)
+    {
+        uint bits = BitConverter.SingleToUInt32Bits(value);
+        return (bits & 0x7fffffffu) <= 0x00800000u ? BitConverter.UInt32BitsToSingle(bits & 0x80000000u) : value;
+    }
+
+    static Vector3 Input(Vector3 value) => new(FlushInput(value.X), FlushInput(value.Y), FlushInput(value.Z));
 
     static bool EachRowIsStrictlySortedAndDuplicateFree(int[] offsets, int[] values)
     {

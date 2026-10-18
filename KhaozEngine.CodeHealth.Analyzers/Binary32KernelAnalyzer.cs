@@ -204,6 +204,10 @@ namespace KhaozEngine.CodeHealth.Analyzers
                     && (IsFloating(conversion.Operand.Type) || IsFloating(conversion.Type)))
                     Report(context, Binary32KernelDiagnostics.FloatingConversion,
                         conversion.Operand.Type?.ToDisplayString() ?? "?", conversion.Type?.ToDisplayString() ?? "?");
+                else if (conversion.GetConversion().IsSpan || IsSpanViewOperator(conversion.OperatorMethod))
+                {
+                    if (!IsIdenticalSpanView(conversion)) Reject(context);
+                }
                 else if (conversion.OperatorMethod != null)
                 {
                     var method = conversion.OperatorMethod;
@@ -316,6 +320,26 @@ namespace KhaozEngine.CodeHealth.Analyzers
                 case SpecialType.System_Boolean: return !integralOnly;
                 default: return false;
             }
+        }
+
+        private static bool IsSpanViewOperator(IMethodSymbol? method) => method != null
+            && method.Name == "op_Implicit" && method.ContainingNamespace.ToDisplayString() == "System"
+            && (method.ContainingType.Name == "Span" || method.ContainingType.Name == "ReadOnlySpan");
+
+        private static bool IsIdenticalSpanView(IConversionOperation conversion)
+        {
+            if (!(conversion.Type is INamedTypeSymbol target)
+                || target.ContainingNamespace.ToDisplayString() != "System" || target.TypeArguments.Length != 1
+                || (target.Name != "Span" && target.Name != "ReadOnlySpan")) return false;
+            IOperation source = conversion.Operand;
+            while (source is IConversionOperation view && view.IsImplicit && view.Conversion.IsReference)
+                source = view.Operand;
+            ITypeSymbol? element = null;
+            if (source.Type is IArrayTypeSymbol array && array.Rank == 1) element = array.ElementType;
+            else if (target.Name == "ReadOnlySpan" && source.Type is INamedTypeSymbol span
+                && span.Name == "Span" && span.ContainingNamespace.ToDisplayString() == "System"
+                && span.TypeArguments.Length == 1) element = span.TypeArguments[0];
+            return element != null && SymbolEqualityComparer.Default.Equals(element, target.TypeArguments[0]);
         }
 
         private static bool IsStorageOrConstantConversion(IConversionOperation conversion)

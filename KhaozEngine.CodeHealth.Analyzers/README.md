@@ -51,7 +51,10 @@ diagnostics are reported, including `.g.cs` files.
 - Integral and bool binary or unary operators, and selection with a bool condition (`c ? a : b`).
 - Identity, integral and compile-time constant conversions. Existing storage exceptions allow
   reference, boxing, unboxing, same-type nullable lifting or unwrapping, and the trusted implicit
-  array, span and memory storage views. Nonconstant numeric and enum conversions involving a
+  array, span and memory storage views. Implicit span views require identical element types:
+  `T[]` to `Span<T>` or `ReadOnlySpan<T>`, and `Span<T>` to `ReadOnlySpan<T>`, for any T.
+  The explicit-cast spelling of these same-element views stays legal. Covariant views with
+  differing element types get KEB32005. Nonconstant numeric and enum conversions involving a
   floating type get KEB32002.
 - Statically bound non-virtual calls and computed property accesses to kernel or home members.
 - Object and exception construction, fields, auto properties, and array, span and

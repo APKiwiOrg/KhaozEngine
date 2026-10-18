@@ -114,10 +114,10 @@ public sealed class CoverageReferenceCorrectionTests(ITestOutputHelper output)
             int v = (int)c.Topology.Indices[face * 3 + corner];
             Assert.Equal(1f, c.Topology.Vertices[v].Strength);
             Vector3 p = scratch.After[v].Position;
-            Vector3 actual = CoverageReferenceMath.Point(p, frame.HostToActualSheet);
-            host[corner] = CoverageReferenceMath.Point(p, frame.HostToCoverage);
-            Assert.True(support.TryHeight(new(actual.X, actual.Y), out _));
-            Assert.True(support.TryHeight(new(host[corner].X, host[corner].Y), out _));
+            Vector3 actual = CoverageReferenceMath.Point(new CoverageReferenceArithmetic(), p, frame.HostToActualSheet);
+            host[corner] = CoverageReferenceMath.Point(new CoverageReferenceArithmetic(), p, frame.HostToCoverage);
+            Assert.True(support.TryHeight(new CoverageReferenceArithmetic(), new(actual.X, actual.Y), out _));
+            Assert.True(support.TryHeight(new CoverageReferenceArithmetic(), new(host[corner].X, host[corner].Y), out _));
         }
         var triangle = support.Triangles[1];
         Vector3[] sheet = [support.Positions[triangle.A], support.Positions[triangle.B], support.Positions[triangle.C]];
@@ -129,9 +129,9 @@ public sealed class CoverageReferenceCorrectionTests(ITestOutputHelper output)
         Assert.Equal(-1, CoverageGeometry.Edge(Exact(sheet[1]), Exact(sheet[2]), Exact(host[touch])).Sign);
         Assert.True(CoverageFaceOverlay.TryMaximum(host.Select(Exact).ToArray(), sheet.Select(Exact).ToArray(), out double exactPair));
         Assert.Equal(double.NegativeInfinity, exactPair);
-        Assert.True(Triangle(sheet).TryOverlayMaximum(host, out float pair));
+        Assert.True(Triangle(sheet).TryOverlayMaximum(new CoverageReferenceArithmetic(), host, out float pair));
         Assert.Equal(float.NegativeInfinity, pair);
-        Assert.True(support.TryOverlayMaximum(host, out float maximum));
+        Assert.True(support.TryOverlayMaximum(new CoverageReferenceArithmetic(), host, out float maximum));
         Assert.True(maximum + (float)capture.CorrectionClearance[1] < 0);
         Assert.True(CoverageReferenceCorrection.TryApply(c.Topology, c.Commands, scratch, out var failure,
             capture.CorrectionClearance, capture.CorrectionConversion), failure.ToString());
@@ -163,7 +163,7 @@ public sealed class CoverageReferenceCorrectionTests(ITestOutputHelper output)
         Assert.Equal(-1, CoverageGeometry.Edge(Exact(sheet[1]), Exact(sheet[2]), Exact(host[0])).Sign);
         Assert.Equal(-1, CoverageGeometry.Edge(Exact(host[0]), Exact(host[1]), Exact(sheet[1])).Sign);
         Assert.True(CoverageFaceOverlay.TryMaximum(host.Select(Exact).ToArray(), sheet.Select(Exact).ToArray(), out double exactPair));
-        Assert.True(Triangle(sheet).TryOverlayMaximum(host, out float pair));
+        Assert.True(Triangle(sheet).TryOverlayMaximum(new CoverageReferenceArithmetic(), host, out float pair));
         Assert.Equal(exactPair, pair);
         Assert.Equal(float.NegativeInfinity, pair);
     }
@@ -182,7 +182,7 @@ public sealed class CoverageReferenceCorrectionTests(ITestOutputHelper output)
         Assert.Equal(.5, ca.Estimate / (ca.Estimate - cb.Estimate));
         Assert.True(CoverageFaceOverlay.TryMaximum(host.Select(Exact).ToArray(), sheet.Select(Exact).ToArray(), out double exact));
         Assert.InRange(exact, -.026000001, -.025999998);
-        Assert.True(Triangle(sheet).TryOverlayMaximum(host, out float reference));
+        Assert.True(Triangle(sheet).TryOverlayMaximum(new CoverageReferenceArithmetic(), host, out float reference));
         output.WriteLine($"N1 exact={exact:R} reference={reference:R}");
         Assert.InRange(Math.Abs(reference - exact), 0, 1e-8);
     }
@@ -194,7 +194,7 @@ public sealed class CoverageReferenceCorrectionTests(ITestOutputHelper output)
         Vector2 point = new(.0625f, MathF.BitIncrement(.0625f));
         var support = Triangle(sheet);
         Assert.False(support.Support.TryGetHeight(point, out _));
-        Assert.False(support.TryHeight(point, out _));
+        Assert.False(support.TryHeight(new CoverageReferenceArithmetic(), point, out _));
     }
 
     [Theory]
@@ -270,11 +270,11 @@ public sealed class CoverageReferenceCorrectionTests(ITestOutputHelper output)
         Assert.All(host, p => Assert.False(Inside(sheet, p)));
         Assert.All(sheet, p => Assert.False(Inside(host, p)));
         float cornerOnly = float.NegativeInfinity;
-        Assert.True(support.TryOverlayMaximum(host, out float maximum));
+        Assert.True(support.TryOverlayMaximum(new CoverageReferenceArithmetic(), host, out float maximum));
         // The sheet is z=.05*x, host z=.2+.05*x-.075*y. The overlap reaches y=0.
         Assert.Equal(.2f, maximum, 6);
         Assert.True(cornerOnly < maximum);
-        Assert.True(support.TryOverlayMaximum([host[0], host[2], host[1]], out float reversed));
+        Assert.True(support.TryOverlayMaximum(new CoverageReferenceArithmetic(), [host[0], host[2], host[1]], out float reversed));
         Assert.Equal(maximum, reversed, 6);
     }
 
@@ -282,15 +282,15 @@ public sealed class CoverageReferenceCorrectionTests(ITestOutputHelper output)
     public void Float_overlay_handles_included_corners_collinear_touches_and_invalid_arithmetic()
     {
         var support = Triangle([new(0, 0, 0), new(2, 0, 0), new(0, 2, 0)]);
-        Assert.True(support.TryOverlayMaximum([new(0, 0, .25f), new(1, 0, .5f), new(0, 1, .125f)], out float maximum));
+        Assert.True(support.TryOverlayMaximum(new CoverageReferenceArithmetic(), [new(0, 0, .25f), new(1, 0, .5f), new(0, 1, .125f)], out float maximum));
         Assert.Equal(.5f, maximum);
-        Assert.True(support.TryOverlayMaximum([new(1, 0, .25f), new(3, 0, .75f), new(2, -1, 0)], out maximum));
+        Assert.True(support.TryOverlayMaximum(new CoverageReferenceArithmetic(), [new(1, 0, .25f), new(3, 0, .75f), new(2, -1, 0)], out maximum));
         Assert.Equal(.5f, maximum);
-        Assert.True(support.TryOverlayMaximum([new(3, 3, 0), new(4, 3, 0), new(3, 4, 0)], out maximum));
+        Assert.True(support.TryOverlayMaximum(new CoverageReferenceArithmetic(), [new(3, 3, 0), new(4, 3, 0), new(3, 4, 0)], out maximum));
         Assert.Equal(float.NegativeInfinity, maximum);
-        Assert.False(support.TryOverlayMaximum([Vector3.Zero, Vector3.One, Vector3.One * 2], out _));
-        Assert.False(support.TryOverlayMaximum([new(0, 0, float.NaN), new(1, 0, 0), new(0, 1, 0)], out _));
-        Assert.False(support.TryOverlayMaximum([new(-float.MaxValue, 0, 0), new(float.MaxValue, 0, 0), new(0, 1, 0)], out _));
+        Assert.False(support.TryOverlayMaximum(new CoverageReferenceArithmetic(), [Vector3.Zero, Vector3.One, Vector3.One * 2], out _));
+        Assert.False(support.TryOverlayMaximum(new CoverageReferenceArithmetic(), [new(0, 0, float.NaN), new(1, 0, 0), new(0, 1, 0)], out _));
+        Assert.False(support.TryOverlayMaximum(new CoverageReferenceArithmetic(), [new(-float.MaxValue, 0, 0), new(float.MaxValue, 0, 0), new(0, 1, 0)], out _));
     }
 
     [Fact]

@@ -64,12 +64,12 @@ public sealed class CoverageReferenceFidelityTests(ITestOutputHelper output)
             maxReserve = Math.Max(maxReserve, reserveShift);
             if (slot < 0 || scratch.Corrections[record.PositionGroup] > 0 || reserve.Corrections[record.PositionGroup] > 0) continue;
             var frame = scratch.Frames[slot];
-            Vector3 q = CoverageReferenceMath.Point(scratch.Before[v].Position, frame.HostToCoverage);
+            Vector3 q = CoverageReferenceMath.Point(new CoverageReferenceArithmetic(), scratch.Before[v].Position, frame.HostToCoverage);
             float spatial = 1;
             var support = command.Support.ReferenceData;
-            if (!support.TryHeight(new(q.X, q.Y), out _))
+            if (!support.TryHeight(new CoverageReferenceArithmetic(), new(q.X, q.Y), out _))
             {
-                Assert.True(support.TryBoundary(new(q.X, q.Y), out _, out float boundaryDistance));
+                Assert.True(support.TryBoundary(new CoverageReferenceArithmetic(), new(q.X, q.Y), out _, out float boundaryDistance));
                 float u = Math.Clamp(1 - (boundaryDistance / command.CollarWidth), 0, 1);
                 spatial = (u * u) * (3 - (2 * u));
             }

@@ -2,15 +2,17 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
 using KhaozEngine.Render3D;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests.Render3D;
 
-public sealed class CoverageReferenceOutputTests
+public sealed class CoverageReferenceOutputTests(ITestOutputHelper output)
 {
     const string WriterGate = "KE_WRITE_COVERAGE_REFERENCE_HASHES";
     const string DirectoryName = "coverage-reference-v1";
@@ -53,6 +55,54 @@ public sealed class CoverageReferenceOutputTests
         TryWriteManifest(Environment.GetEnvironmentVariable(WriterGate), SourceFixtureDirectory());
     }
 
+    [Fact]
+    public void Fixture_reference_constructions_report_flush_events()
+    {
+        var expected = File.ReadAllLines(Path.Combine(AppContext.BaseDirectory, "Fixtures", DirectoryName, ManifestName))
+            .Select(line => line.Split(' ', 2)).ToDictionary(parts => parts[1], parts => parts[0]);
+        var rows = CoverageReferenceOutputs.ComputeAll().ToArray();
+        Assert.Equal(144, rows.Length);
+        foreach (var row in rows)
+        {
+            output.WriteLine($"{row.Name}: flushes={row.Events}, first={row.FirstSite}, slot={row.FirstSlot}, before={expected[row.Name]}, after={row.Hash}");
+            Assert.True(row.Failure.IsSuccess, $"{row.Name}: {row.Failure}");
+        }
+        Assert.All(rows, row => Assert.True(expected[row.Name] == row.Hash,
+            $"{row.Name}: before {expected[row.Name]}, after {row.Hash}, flushes {row.Events}, first {row.FirstSite}"));
+    }
+
+    [Fact]
+    public void Subnormal_source_attribute_reports_its_first_consuming_operation()
+    {
+        var c = CoverageReferenceCases.All().Single(c => c.Id == "curved-ordinary-seams-l2-w1");
+        var posed = (ModelVertex[])c.Posed.Clone();
+        posed[0].Color.X = MathF.ScaleB(1, -130);
+        var scratch = new CoverageReferenceScratch(c.Topology);
+        var output = new ModelVertex[c.Topology.VertexCount];
+        Assert.True(CoverageReferenceConstructor.TryConstruct(c.Topology, posed, c.Model, c.Commands, scratch, output, out var failure), failure.ToString());
+        Assert.Equal(new CoverageExactnessSite(CoverageExactnessPhase.SourceValidation, 0, CoverageExactnessOperation.FiniteTest,
+            BitConverter.SingleToUInt32Bits(posed[0].Color.X)), scratch.Arithmetic.FirstSite);
+        Assert.Equal(-1, scratch.Arithmetic.FirstSlot);
+        int original = Enumerable.Range(0, c.Topology.VertexCount).First(v => c.Topology.Vertices[v].SourceVertex == 0);
+        Assert.Equal(0u, BitConverter.SingleToUInt32Bits(output[original].Color.X));
+    }
+
+    [Fact]
+    public void Tracing_does_not_change_outputs()
+    {
+        var c = CoverageReferenceCases.All().First();
+        var scratch = new CoverageReferenceScratch(c.Topology);
+        var output = new ModelVertex[c.Topology.VertexCount];
+        scratch.Arithmetic.At(CoverageExactnessPhase.Skinning, 17, 2);
+        _ = scratch.Arithmetic.Mul(float.Epsilon, 1);
+        Assert.True(CoverageReferenceConstructor.TryConstruct(c.Topology, c.Posed, c.Model, c.Commands, scratch, output, out _));
+        string hash = CoverageReferenceOutputs.Hash(output);
+        var trace = (scratch.Arithmetic.EventCount, scratch.Arithmetic.FirstSite, scratch.Arithmetic.FirstSlot);
+        Assert.True(CoverageReferenceConstructor.TryConstruct(c.Topology, c.Posed, c.Model, c.Commands, scratch, output, out _));
+        Assert.Equal(hash, CoverageReferenceOutputs.Hash(output));
+        Assert.Equal(trace, (scratch.Arithmetic.EventCount, scratch.Arithmetic.FirstSite, scratch.Arithmetic.FirstSlot));
+    }
+
     static bool TryWriteManifest(string? gate, string directory)
     {
         if (gate != "1") return false;
@@ -80,7 +130,7 @@ internal static class CoverageReferenceOutputs
         return Convert.ToHexStringLower(SHA256.HashData(bytes.ToArray()));
     }
 
-    internal static IEnumerable<(string Name, string Hash, CoverageFailure Failure)> ComputeAll()
+    internal static IEnumerable<(string Name, string Hash, CoverageFailure Failure, int Events, CoverageExactnessSite FirstSite, int FirstSlot)> ComputeAll()
     {
         foreach (var c in CoverageReferenceCases.All().OrderBy(c => c.Id, StringComparer.Ordinal))
         {
@@ -93,7 +143,7 @@ internal static class CoverageReferenceOutputs
                 CoverageReferenceConstructor.TryConstruct(c.Topology, c.Posed, c.Model, c.Commands,
                     scratch, result, out var failure, target, mode == 0 ? [] : capture.CorrectionClearance,
                     mode == 0 ? [] : capture.CorrectionConversion);
-                yield return ($"{c.Id}-{mode}.bin", Hash(result), failure);
+                yield return ($"{c.Id}-{mode}.bin", Hash(result), failure, scratch.Arithmetic.EventCount, scratch.Arithmetic.FirstSite, scratch.Arithmetic.FirstSlot);
             }
         }
     }

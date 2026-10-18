@@ -17,6 +17,18 @@ internal static class CoverageReferenceCorrection
         bool reverseGroupsForTests = false)
     {
         Validate(topology, commands, scratch);
+        return TryApplyPrepared(topology, commands, scratch, out failure,
+            CoverageReferenceConstructor.RoundOverrides(correctionClearanceOverride, scratch.CorrectionClearanceOverrides),
+            CoverageReferenceConstructor.RoundOverrides(correctionConversionOverride, scratch.CorrectionConversionOverrides),
+            observerForTests, reverseGroupsForTests);
+    }
+
+    internal static bool TryApplyPrepared(CoverageRefinement topology, ReadOnlySpan<CoverageCommandPose> commands,
+        CoverageReferenceScratch scratch, out CoverageFailure failure, ReadOnlySpan<float> correctionClearanceOverride,
+        ReadOnlySpan<float> correctionConversionOverride, Action<CoverageReferenceCorrectionWork>? observerForTests = null,
+        bool reverseGroupsForTests = false)
+    {
+        Validate(topology, commands, scratch);
         if (correctionClearanceOverride.IsEmpty != correctionConversionOverride.IsEmpty
             || !correctionClearanceOverride.IsEmpty && (correctionClearanceOverride.Length != scratch.ActiveCommands
                 || correctionConversionOverride.Length != scratch.ActiveCommands))
@@ -29,39 +41,27 @@ internal static class CoverageReferenceCorrection
         {
             var frame = scratch.Frames[slot];
             var command = commands[frame.Command];
-            float clearance = correctionClearanceOverride.IsEmpty ? frame.ActualClearanceCoverage : (float)correctionClearanceOverride[slot];
-            float conversion = correctionConversionOverride.IsEmpty ? 0 : (float)correctionConversionOverride[slot];
+            float clearance = correctionClearanceOverride.IsEmpty ? frame.ActualClearanceCoverage : correctionClearanceOverride[slot];
+            float conversion = correctionConversionOverride.IsEmpty ? 0 : correctionConversionOverride[slot];
             for (int t = 0; t < topology.TriangleCount; t++)
             {
+                float correction;
                 var face = topology.Triangles[t];
                 if (face.Role != CoverageTriangleRole.Core || face.RegionIndex != command.RegionIndex) continue;
-                scratch.FaceGuards[t] = TryFace(topology, scratch, t, slot, command.Support.ReferenceData, frame,
-                    clearance, conversion, ref tally, out float correction);
+                scratch.FaceGuards[t] = TryFace(scratch.Arithmetic, scratch, t, slot, command.Support.ReferenceData, frame,
+                    clearance, conversion, ref tally, out correction);
                 scratch.FaceCorrections[t] = correction;
-                observerForTests?.Invoke(new(CoverageReferenceCorrectionPhase.Faces, t, -1, -1));
+                observerForTests?.Invoke(new CoverageReferenceCorrectionWork(CoverageReferenceCorrectionPhase.Faces, t, -1, -1));
             }
         }
         if (!tally.Succeeded(topology, commands, scratch.Order, out failure)) return false;
-        var gathers = scratch.ReferenceTopology;
         for (int index = 0; index < topology.PositionGroupCount; index++)
         {
             int g = reverseGroupsForTests ? topology.PositionGroupCount - 1 - index : index;
             int representative = scratch.ActiveGroupRepresentatives[g];
             if (representative < 0) continue;
-            float correction = 0;
-            for (int i = gathers.CoreFaceOffsets[g]; i < gathers.CoreFaceOffsets[g + 1]; i++)
-                correction = MathF.Max(correction, scratch.FaceCorrections[gathers.CoreFaces[i]]);
-            scratch.Corrections[g] = correction;
-            float total = correction == 0 ? scratch.FullRecessions[g] : scratch.FullRecessions[g] + correction;
-            scratch.FullRecessions[g] = total;
-            if (correction != 0)
-            {
-                var record = topology.Vertices[representative];
-                Vector3 before = scratch.Before[representative].Position;
-                Vector3 d = scratch.Frames[scratch.RegionCommands[record.RegionIndex]].Recess;
-                scratch.GroupPositions[g] = new(before.X - (total * d.X), before.Y - (total * d.Y), before.Z - (total * d.Z));
-            }
-            observerForTests?.Invoke(new(CoverageReferenceCorrectionPhase.Groups, -1, g, -1));
+            GatherGroup(scratch.Arithmetic, scratch, g, representative);
+            observerForTests?.Invoke(new CoverageReferenceCorrectionWork(CoverageReferenceCorrectionPhase.Groups, -1, g, -1));
         }
         // Guard reduction is independent of the group evaluation order and command submission order.
         for (int v = 0; v < topology.VertexCount; v++)
@@ -70,7 +70,7 @@ internal static class CoverageReferenceCorrection
             int g = record.PositionGroup;
             if (scratch.ActiveGroupRepresentatives[g] != v) continue;
             int slot = scratch.RegionCommands[record.RegionIndex];
-            CheckFullTarget(scratch.Before[v].Position, scratch.GroupPositions[g], scratch.FullRecessions[g], slot,
+            CheckFullTarget(scratch.Arithmetic, v, scratch.Before[v].Position, scratch.GroupPositions[g], scratch.FullRecessions[g], slot,
                 commands, scratch, ref tally);
         }
         if (!tally.Succeeded(topology, commands, scratch.Order, out failure)) return false;
@@ -79,75 +79,124 @@ internal static class CoverageReferenceCorrection
             int g = topology.Vertices[v].PositionGroup;
             if (scratch.ActiveGroupRepresentatives[g] < 0) continue;
             scratch.After[v].Position = scratch.GroupPositions[g];
-            observerForTests?.Invoke(new(CoverageReferenceCorrectionPhase.Positions, -1, g, v));
+            observerForTests?.Invoke(new CoverageReferenceCorrectionWork(CoverageReferenceCorrectionPhase.Positions, -1, g, v));
         }
         return true;
     }
 
-    static bool TryFace(CoverageRefinement topology, CoverageReferenceScratch scratch, int triangle, int slot,
+    [Binary32Kernel]
+    static void GatherGroup(CoverageReferenceArithmetic f, CoverageReferenceScratch scratch, int g, int representative)
+    {
+        var gathers = scratch.ReferenceTopology;
+        var record = gathers.Vertices[representative];
+        int slot = scratch.RegionCommands[record.RegionIndex];
+        f.At(CoverageExactnessPhase.GroupCorrection, g, slot);
+        float correction = 0;
+        for (int i = gathers.CoreFaceOffsets[g]; i < gathers.CoreFaceOffsets[g + 1]; i++)
+            correction = f.Max(correction, scratch.FaceCorrections[gathers.CoreFaces[i]]);
+        scratch.Corrections[g] = correction;
+        float total = f.Equal(correction, 0) ? scratch.FullRecessions[g] : f.Add(scratch.FullRecessions[g], correction);
+        scratch.FullRecessions[g] = total;
+        if (f.NotEqual(correction, 0))
+        {
+            Vector3 before = scratch.Before[representative].Position;
+            Vector3 d = scratch.Frames[scratch.RegionCommands[record.RegionIndex]].Recess;
+            scratch.GroupPositions[g] = new Vector3(f.Sub(before.X, (f.Mul(total, d.X))), f.Sub(before.Y, (f.Mul(total, d.Y))), f.Sub(before.Z, (f.Mul(total, d.Z))));
+        }
+    }
+
+    static bool TryFace(CoverageReferenceArithmetic f, CoverageReferenceScratch scratch, int triangle, int slot,
         CoverageReferenceSupport support, in CoverageReferenceFrame frame, float clearance, float conversion,
         ref CoverageTally tally, out float correction)
     {
+        float discrepancy;
+        float maximum;
         correction = 0;
-        if (!(frame.CorrectionRate > 0) || !float.IsFinite(frame.CorrectionRate)
-            || !float.IsFinite(clearance) || clearance < 0 || !float.IsFinite(conversion) || conversion < 0)
-        { tally.Note(CoverageFailureCode.UnsupportedTransform, slot); return false; }
         Span<Vector3> host = stackalloc Vector3[3];
-        float discrepancy = 0;
+        if (!PrepareFace(f, scratch.ReferenceTopology, scratch, triangle, slot, support, frame, clearance, conversion,
+            host, ref tally, out discrepancy)) return false;
+        if (!support.TryOverlayMaximum(f, host, out maximum))
+        { tally.Note(CoverageFailureCode.UnsupportedTransform, slot); return false; }
+        return FinishFace(f, scratch.ReferenceTopology, triangle, slot, frame, clearance, conversion, maximum, discrepancy,
+            ref tally, out correction);
+    }
+
+    [Binary32Kernel]
+    static bool PrepareFace(CoverageReferenceArithmetic f, CoverageReferenceTopology data, CoverageReferenceScratch scratch,
+        int triangle, int slot, CoverageReferenceSupport support, in CoverageReferenceFrame frame, float clearance, float conversion,
+        Span<Vector3> host, ref CoverageTally tally, out float discrepancy)
+    {
+        f.At(CoverageExactnessPhase.FaceCorrection, triangle, slot);
+        discrepancy = 0;
+        if (!(f.Greater(frame.CorrectionRate, 0)) || !f.IsFinite(frame.CorrectionRate)
+            || !f.IsFinite(clearance) || f.Less(clearance, 0) || !f.IsFinite(conversion) || f.Less(conversion, 0))
+        { tally.Note(CoverageFailureCode.UnsupportedTransform, slot); return false; }
         bool valid = true;
         for (int corner = 0; corner < 3; corner++)
         {
-            int vertex = (int)topology.Indices[triangle * 3 + corner];
+            float ignored1;
+            float ignored2;
+            int vertex = (int)data.Indices[triangle * 3 + corner];
             Vector3 position = scratch.After[vertex].Position;
-            Vector3 actual = CoverageReferenceMath.Point(position, frame.HostToActualSheet),
-                nominal = CoverageReferenceMath.Point(position, frame.HostToCoverage);
-            if (!CoverageRefinement.Finite(actual) || !CoverageRefinement.Finite(nominal))
+            Vector3 actual = CoverageReferenceMath.Point(f, position, frame.HostToActualSheet),
+                nominal = CoverageReferenceMath.Point(f, position, frame.HostToCoverage);
+            if (!CoverageReferenceMath.IsFinite3(f, actual) || !CoverageReferenceMath.IsFinite3(f, nominal))
             { tally.Note(CoverageFailureCode.UnsupportedTransform, slot); valid = false; continue; }
-            if (!support.TryHeight(new(actual.X, actual.Y), out _) || !support.TryHeight(new(nominal.X, nominal.Y), out _))
+            if (!support.TryHeight(f, new Vector2(actual.X, actual.Y), out ignored1) || !support.TryHeight(f, new Vector2(nominal.X, nominal.Y), out ignored2))
             { tally.Note(CoverageFailureCode.CoreEscaped, slot); valid = false; continue; }
             host[corner] = nominal;
-            float x = actual.X - nominal.X, y = actual.Y - nominal.Y, z = actual.Z - nominal.Z;
-            float loss = MathF.Abs(z) + (support.MaxSlope * MathF.Sqrt((x * x) + (y * y)));
-            if (!float.IsFinite(loss))
+            float x = f.Sub(actual.X, nominal.X), y = f.Sub(actual.Y, nominal.Y), z = f.Sub(actual.Z, nominal.Z);
+            float loss = f.Add(f.Abs(z), (f.Mul(support.MaxSlope, f.Sqrt(f.Add((f.Mul(x, x)), (f.Mul(y, y)))))));
+            if (!f.IsFinite(loss))
             { tally.Note(CoverageFailureCode.UnsupportedTransform, slot); valid = false; continue; }
-            discrepancy = MathF.Max(discrepancy, loss);
+            discrepancy = f.Max(discrepancy, loss);
         }
         if (!valid) return false;
-        if (!support.TryOverlayMaximum(host, out float maximum))
+        return true;
+    }
+
+    [Binary32Kernel]
+    static bool FinishFace(CoverageReferenceArithmetic f, CoverageReferenceTopology data, int triangle, int slot,
+        in CoverageReferenceFrame frame, float clearance, float conversion, float maximum, float discrepancy,
+        ref CoverageTally tally, out float correction)
+    {
+        correction = 0;
+        float deficit = f.Add((f.Add(maximum, clearance)), discrepancy);
+        if (!f.IsFinite(deficit))
         { tally.Note(CoverageFailureCode.UnsupportedTransform, slot); return false; }
-        float deficit = (maximum + clearance) + discrepancy;
-        if (!float.IsFinite(deficit))
-        { tally.Note(CoverageFailureCode.UnsupportedTransform, slot); return false; }
-        if (deficit <= 0) return true;
-        correction = (deficit + conversion) / frame.CorrectionRate;
-        if (!float.IsFinite(correction))
+        if (f.LessOrEqual(deficit, 0)) return true;
+        correction = f.Div((f.Add(deficit, conversion)), frame.CorrectionRate);
+        if (!f.IsFinite(correction))
         { tally.Note(CoverageFailureCode.UnsupportedTransform, slot); correction = 0; return false; }
+        bool valid = true;
         // As in the exact path, only a correcting face needs every corner at full strength.
         for (int corner = 0; corner < 3; corner++)
-            if (topology.Vertices[(int)topology.Indices[triangle * 3 + corner]].Strength != 1f)
+            if (f.NotEqual(data.Vertices[(int)data.Indices[triangle * 3 + corner]].Strength, 1f))
             { tally.Note(CoverageFailureCode.FoldedPatch, slot); valid = false; }
         if (valid) return true;
         correction = 0;
         return false;
     }
 
-    static void CheckFullTarget(Vector3 before, Vector3 full, float total, int slot,
+    [Binary32Kernel]
+    static void CheckFullTarget(CoverageReferenceArithmetic f, int vertex, Vector3 before, Vector3 full, float total, int slot,
         ReadOnlySpan<CoverageCommandPose> commands, CoverageReferenceScratch scratch, ref CoverageTally tally)
     {
+        f.At(CoverageExactnessPhase.FullTarget, vertex, slot);
         var frame = scratch.Frames[slot];
         var command = commands[frame.Command];
-        if (!float.IsFinite(total) || !CoverageRefinement.Finite(full))
+        if (!f.IsFinite(total) || !CoverageReferenceMath.IsFinite3(f, full))
         { tally.Note(CoverageFailureCode.UnsupportedTransform, slot); return; }
-        Vector3 delta = new(full.X - before.X, full.Y - before.Y, full.Z - before.Z);
-        Vector3 world = CoverageReferenceMath.Linear(delta, frame.ActorLinear);
-        float distance = MathF.Sqrt(CoverageReferenceMath.Dot3(world, world));
-        Vector3 q = CoverageReferenceMath.Point(full, frame.HostToCoverage);
-        float lower = command.MinZ + frame.CapMargin, upper = command.MaxZ - frame.CapMargin;
-        if (!CoverageRefinement.Finite(delta) || !CoverageRefinement.Finite(world) || !float.IsFinite(distance)
-            || !CoverageRefinement.Finite(q) || !float.IsFinite(lower) || !float.IsFinite(upper))
+        Vector3 delta = new Vector3(f.Sub(full.X, before.X), f.Sub(full.Y, before.Y), f.Sub(full.Z, before.Z));
+        Vector3 world = CoverageReferenceMath.Linear(f, delta, frame.ActorLinear);
+        float distance = f.Sqrt(CoverageReferenceMath.Dot3(f, world, world));
+        Vector3 q = CoverageReferenceMath.Point(f, full, frame.HostToCoverage);
+        float lower = f.Add(command.MinZ, frame.CapMargin), upper = f.Sub(command.MaxZ, frame.CapMargin);
+        if (!CoverageReferenceMath.IsFinite3(f, delta) || !CoverageReferenceMath.IsFinite3(f, world) || !f.IsFinite(distance)
+            || !CoverageReferenceMath.IsFinite3(f, q) || !f.IsFinite(lower) || !f.IsFinite(upper))
         { tally.Note(CoverageFailureCode.UnsupportedTransform, slot); return; }
-        if (distance > command.MaxWorldRecession) tally.Note(CoverageFailureCode.RecessionExceeded, slot);
-        if (q.Z < lower || q.Z > upper) tally.Note(CoverageFailureCode.CapContact, slot);
+        if (f.Greater(distance, command.MaxWorldRecession)) tally.Note(CoverageFailureCode.RecessionExceeded, slot);
+        if (f.Less(q.Z, lower) || f.Greater(q.Z, upper)) tally.Note(CoverageFailureCode.CapContact, slot);
     }
 
     /// <summary>Blend the full scalar once. Pure copies preserve Before at zero and validated full bits at one.</summary>
@@ -159,27 +208,45 @@ internal static class CoverageReferenceCorrection
         {
             int representative = scratch.ActiveGroupRepresentatives[g];
             if (representative < 0) continue;
-            var record = topology.Vertices[representative];
-            var frame = scratch.Frames[scratch.RegionCommands[record.RegionIndex]];
-            float weight = commands[frame.Command].TransitionWeight;
-            Vector3 before = scratch.Before[representative].Position;
-            if (weight == 0) scratch.GroupPositions[g] = before;
-            else if (weight != 1)
-            {
-                float applied = weight * scratch.FullRecessions[g];
-                scratch.GroupPositions[g] = new(before.X - (applied * frame.Recess.X), before.Y - (applied * frame.Recess.Y),
-                    before.Z - (applied * frame.Recess.Z));
-            }
+            TransitionGroup(scratch.Arithmetic, commands, scratch, g, representative);
         }
         for (int v = 0; v < topology.VertexCount; v++)
         {
             int g = topology.Vertices[v].PositionGroup, representative = scratch.ActiveGroupRepresentatives[g];
             if (representative < 0) continue;
-            var record = topology.Vertices[representative];
-            int slot = scratch.RegionCommands[record.RegionIndex];
-            if (commands[scratch.Frames[slot].Command].TransitionWeight == 0) scratch.After[v] = scratch.Before[v];
-            else scratch.After[v].Position = scratch.GroupPositions[g];
+            StoreTransition(scratch.Arithmetic, commands, scratch, v, g, representative);
         }
+    }
+
+    [Binary32Kernel]
+    static void TransitionGroup(CoverageReferenceArithmetic f, ReadOnlySpan<CoverageCommandPose> commands,
+        CoverageReferenceScratch scratch, int g, int representative)
+    {
+        var data = scratch.ReferenceTopology;
+        var record = data.Vertices[representative];
+        var frame = scratch.Frames[scratch.RegionCommands[record.RegionIndex]];
+        f.At(CoverageExactnessPhase.Transition, g, scratch.RegionCommands[record.RegionIndex]);
+        float weight = commands[frame.Command].TransitionWeight;
+        Vector3 before = scratch.Before[representative].Position;
+        if (f.Equal(weight, 0)) scratch.GroupPositions[g] = before;
+        else if (f.NotEqual(weight, 1))
+        {
+            float applied = f.Mul(weight, scratch.FullRecessions[g]);
+            scratch.GroupPositions[g] = new Vector3(f.Sub(before.X, (f.Mul(applied, frame.Recess.X))), f.Sub(before.Y, (f.Mul(applied, frame.Recess.Y))),
+                f.Sub(before.Z, (f.Mul(applied, frame.Recess.Z))));
+        }
+    }
+
+    [Binary32Kernel]
+    static void StoreTransition(CoverageReferenceArithmetic f, ReadOnlySpan<CoverageCommandPose> commands,
+        CoverageReferenceScratch scratch, int v, int g, int representative)
+    {
+        var data = scratch.ReferenceTopology;
+        var record = data.Vertices[representative];
+        int slot = scratch.RegionCommands[record.RegionIndex];
+        f.At(CoverageExactnessPhase.Transition, g, slot);
+        if (f.Equal(commands[scratch.Frames[slot].Command].TransitionWeight, 0)) scratch.After[v] = scratch.Before[v];
+        else scratch.After[v].Position = scratch.GroupPositions[g];
     }
 
     static void Validate(CoverageRefinement topology, ReadOnlySpan<CoverageCommandPose> commands, CoverageReferenceScratch scratch)

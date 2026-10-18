@@ -203,6 +203,7 @@ internal struct CoverageTally
 
     internal readonly bool Failed => code != CoverageFailureCode.None;
 
+    [Binary32Kernel]
     internal void Note(CoverageFailureCode failure, int commandSlot)
     {
         if (code == CoverageFailureCode.None) { code = failure; slot = commandSlot; count = 1; }
@@ -217,6 +218,7 @@ internal struct CoverageTally
         return Succeeded(topology, commands, slotCommands, out failure);
     }
 
+    [Binary32Kernel]
     internal readonly bool Succeeded(CoverageRefinement topology, ReadOnlySpan<CoverageCommandPose> commands,
         ReadOnlySpan<int> slotCommands, out CoverageFailure failure)
     {

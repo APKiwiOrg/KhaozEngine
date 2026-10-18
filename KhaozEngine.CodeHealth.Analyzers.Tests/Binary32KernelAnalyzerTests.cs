@@ -567,4 +567,37 @@ public class Binary32KernelAnalyzerTests
         Assert.Equal("/repo/Kernel.cs", diagnostic.Location.SourceTree!.FilePath);
     }
 
+    [Theory]
+    [InlineData("[Binary32Kernel] static Span<int> F(int[] values) => values;")]
+    [InlineData("[Binary32Kernel] static ReadOnlySpan<float> F(float[] values) => values;")]
+    [InlineData("[Binary32Kernel] static ReadOnlySpan<float> F(Span<float> values) => values;")]
+    [InlineData("[Binary32Kernel] static Span<T> F<T>(T[] values) => values;")]
+    [InlineData("[Binary32Kernel] static ReadOnlySpan<T> F<T>(T[] values) => values;")]
+    [InlineData("[Binary32Kernel] static ReadOnlySpan<T> F<T>(Span<T> values) => values;")]
+    [InlineData("[Binary32Kernel] static ReadOnlySpan<float> F(float[] values) => (ReadOnlySpan<float>)values;")]
+    public async Task B36_identical_element_implicit_span_views_stay_legal(string members)
+    {
+        Assert.Empty(await AnalyzeSpan(members));
+    }
+
+    [Theory]
+    [InlineData("[Binary32Kernel] static ReadOnlySpan<object> F(string[] values) => values;")]
+    [InlineData("[Binary32Kernel] static ReadOnlySpan<object> F(Span<string> values) => values;")]
+    [InlineData("[Binary32Kernel] static ReadOnlySpan<object> F(string[] values) => (ReadOnlySpan<object>)values;")]
+    public async Task B36_differing_element_implicit_span_views_are_rejected(string members)
+    {
+        Assert.Contains(await AnalyzeSpan(members), diagnostic => diagnostic.Id == "KEB32005");
+    }
+
+    private static async Task<ImmutableArray<Diagnostic>> AnalyzeSpan(string members)
+    {
+        var compilation = KhaozEngine.CodeHealth.Analyzers.Tests.AnalyzerHarness.CreateCompilation()
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(Source(members), new CSharpParseOptions(LanguageVersion.Preview)));
+        Assert.DoesNotContain(compilation.GetDiagnostics(), d => d.Severity == DiagnosticSeverity.Error);
+        var diagnostics = await compilation.WithAnalyzers(ImmutableArray.Create<DiagnosticAnalyzer>(new Binary32KernelAnalyzer()))
+            .GetAnalyzerDiagnosticsAsync();
+        Assert.DoesNotContain(diagnostics, d => d.Id == "AD0001");
+        return diagnostics;
+    }
+
 }

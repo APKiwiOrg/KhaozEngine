@@ -17,6 +17,7 @@ internal static class CoverageReferenceFrames
             return CoverageFrames.Refuse(topology, CoverageFailureCode.IdentityMismatch, 0, 0, 0, 0, out failure);
         if (!CoverageFrameAdmission.TryBegin(topology, commands, scratch.CommandCapacity, scratch.Order, scratch.RegionCommands, out failure)) return false;
         Span<int> order = scratch.Order.AsSpan(0, commands.Length);
+        scratch.UniformArithmetic.Reset();
         scratch.ActiveCommands = commands.Length;
         if (commands.Length == 0) return true;
         bool actorValid = CoverageFrameAdmission.TryActor(model, out var actor);
@@ -25,13 +26,13 @@ internal static class CoverageReferenceFrames
             CoverageCommandPose command = commands[order[slot]];
             if (!CoverageFrameAdmission.TryCommand(topology, commands, order, scratch.RegionCommands, slot, actorValid,
                 out var equipment, out var coverage, out failure)) return false;
-            if (!Derive(actor, equipment, coverage, command, order[slot], out scratch.Frames[slot]))
+            if (!Derive(scratch.UniformArithmetic, actor, equipment, coverage, command, order[slot], out scratch.Frames[slot]))
                 return CoverageFrames.Refuse(topology, CoverageFailureCode.UnsupportedTransform, command, out failure);
         }
         return true;
     }
 
-    static bool Derive(in CoverageAffine actor, in CoverageAffine equipment, in CoverageAffine coverage, in CoverageCommandPose command,
+    static bool Derive(CoverageReferenceArithmetic f, in CoverageAffine actor, in CoverageAffine equipment, in CoverageAffine coverage, in CoverageCommandPose command,
         int commandIndex, out CoverageReferenceFrame frame)
     {
         frame = default;
@@ -44,16 +45,16 @@ internal static class CoverageReferenceFrames
         CoverageVector direction = actorInverse.ApplyLinear(coverage.Row(2));
         Vector3 recess = new((float)direction.X, (float)direction.Y, (float)direction.Z);
         Vector3 z = new(command.CoverageWorld.M31, command.CoverageWorld.M32, command.CoverageWorld.M33);
-        float zScale = MathF.Sqrt(CoverageReferenceMath.Dot3(z, z));
+        float zScale = MathF.Sqrt(CoverageReferenceMath.Dot3(f, z, z));
         Vector3 column = new(inverseCoverage.M13, inverseCoverage.M23, inverseCoverage.M33);
-        float capMargin = command.Clearance * MathF.Sqrt(CoverageReferenceMath.Dot3(column, column));
+        float capMargin = command.Clearance * MathF.Sqrt(CoverageReferenceMath.Dot3(f, column, column));
         float slope = command.Support.ReferenceData.MaxSlope;
         float delta = command.Clearance * .25f;
         float reserved = command.Clearance + delta;
         float steepness = MathF.Sqrt(1 + (slope * slope));
-        float clearance = (reserved * steepness) * SpectralUpper(inverseCoverage);
-        float actualClearance = (reserved * steepness) * SpectralUpper(inverseActual);
-        Vector3 d = CoverageReferenceMath.Linear(recess, j);
+        float clearance = (reserved * steepness) * SpectralUpper(f, inverseCoverage);
+        float actualClearance = (reserved * steepness) * SpectralUpper(f, inverseActual);
+        Vector3 d = CoverageReferenceMath.Linear(f, recess, j);
         float correctionRate = d.Z - (slope * MathF.Sqrt((d.X * d.X) + (d.Y * d.Y)));
         if (!Finite(h) || !Finite(j) || !Finite(linear) || !CoverageRefinement.Finite(recess) || !float.IsFinite(zScale)
             || !float.IsFinite(capMargin) || !float.IsFinite(clearance) || !float.IsFinite(actualClearance)
@@ -62,12 +63,12 @@ internal static class CoverageReferenceFrames
         return true;
     }
 
-    static float SpectralUpper(in Matrix4x4 m)
+    static float SpectralUpper(CoverageReferenceArithmetic f, in Matrix4x4 m)
     {
         Vector3 r1 = new(m.M11, m.M12, m.M13), r2 = new(m.M21, m.M22, m.M23), r3 = new(m.M31, m.M32, m.M33);
-        float g11 = CoverageReferenceMath.Dot3(r1, r1), g22 = CoverageReferenceMath.Dot3(r2, r2), g33 = CoverageReferenceMath.Dot3(r3, r3);
-        float g12 = MathF.Abs(CoverageReferenceMath.Dot3(r1, r2)), g13 = MathF.Abs(CoverageReferenceMath.Dot3(r1, r3)),
-            g23 = MathF.Abs(CoverageReferenceMath.Dot3(r2, r3));
+        float g11 = CoverageReferenceMath.Dot3(f, r1, r1), g22 = CoverageReferenceMath.Dot3(f, r2, r2), g33 = CoverageReferenceMath.Dot3(f, r3, r3);
+        float g12 = MathF.Abs(CoverageReferenceMath.Dot3(f, r1, r2)), g13 = MathF.Abs(CoverageReferenceMath.Dot3(f, r1, r3)),
+            g23 = MathF.Abs(CoverageReferenceMath.Dot3(f, r2, r3));
         return MathF.Sqrt(MathF.Max((g11 + g12) + g13, MathF.Max((g12 + g22) + g23, (g13 + g23) + g33)));
     }
 

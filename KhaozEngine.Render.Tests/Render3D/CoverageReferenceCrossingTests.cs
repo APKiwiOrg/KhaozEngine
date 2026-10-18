@@ -16,8 +16,8 @@ public sealed class CoverageReferenceCrossingTests
         // and 2/3. Exponent -74 gives representable subnormals, -75 also tests underflow before normalization.
         float unit = MathF.ScaleB(1, exponent);
         Vector3 s = Vector3.Zero, t = new(unit, 0, 0), a = new(0, unit, 0), b = new(unit, -2 * unit, 0);
-        Assert.Equal(BitConverter.Int32BitsToSingle(0x3eaaaaab), CoverageReferencePredicates.CrossingParameter(s, t, a, b));
-        Assert.Equal(BitConverter.Int32BitsToSingle(0x3f2aaaab), CoverageReferencePredicates.CrossingParameter(s, t, b, a));
+        Assert.Equal(BitConverter.Int32BitsToSingle(0x3eaaaaab), new CoverageReferenceArithmetic().CrossingParameter(s, t, a, b));
+        Assert.Equal(BitConverter.Int32BitsToSingle(0x3f2aaaab), new CoverageReferenceArithmetic().CrossingParameter(s, t, b, a));
     }
 
     [Theory]
@@ -34,16 +34,16 @@ public sealed class CoverageReferenceCrossingTests
         Assert.True(ca.Sign * cb.Sign < 0);
         float expected = ca.Value / (ca.Value - cb.Value);
         Assert.Equal(BitConverter.SingleToInt32Bits(expected),
-            BitConverter.SingleToInt32Bits(CoverageReferencePredicates.CrossingParameter(s, t, a, b)));
+            BitConverter.SingleToInt32Bits(new CoverageReferenceArithmetic().CrossingParameter(s, t, a, b)));
     }
 
     [Fact]
     public void Crossing_parameter_rejects_zero_and_same_sign_sides()
     {
         foreach (var (first, second) in new[] { (0f, 1f), (1f, 0f), (1f, 2f), (-1f, -2f) })
-            Assert.True(float.IsNaN(CoverageReferencePredicates.CrossingParameter(Vector3.Zero, Vector3.UnitX,
+            Assert.True(float.IsNaN(new CoverageReferenceArithmetic().CrossingParameter(Vector3.Zero, Vector3.UnitX,
                 new(0, first, 0), new(0, second, 0))));
-        Assert.True(float.IsNaN(CoverageReferencePredicates.CrossingParameter(Vector3.Zero, Vector3.Zero,
+        Assert.True(float.IsNaN(new CoverageReferenceArithmetic().CrossingParameter(Vector3.Zero, Vector3.Zero,
             Vector3.UnitY, -Vector3.UnitY)));
         foreach (float nonfinite in new[] { float.NaN, float.PositiveInfinity, float.NegativeInfinity })
             for (int input = 0; input < 4; input++)
@@ -51,7 +51,7 @@ public sealed class CoverageReferenceCrossingTests
                 {
                     Vector3[] points = [Vector3.Zero, Vector3.UnitX, Vector3.UnitY, -Vector3.UnitY];
                     points[input] = point;
-                    Assert.True(float.IsNaN(CoverageReferencePredicates.CrossingParameter(points[0], points[1], points[2], points[3])));
+                    Assert.True(float.IsNaN(new CoverageReferenceArithmetic().CrossingParameter(points[0], points[1], points[2], points[3])));
                 }
     }
 }

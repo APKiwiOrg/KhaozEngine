@@ -11,6 +11,7 @@ internal sealed class CoverageReferenceScratch
         ArgumentNullException.ThrowIfNull(topology);
         if (commandCapacity is < 1 or > CoverageScratch.MaxCommands) throw new ArgumentOutOfRangeException(nameof(commandCapacity));
         ReferenceTopology = new(topology);
+        FlushedSource = new ModelVertex[topology.SourceVertexCount];
         Before = new ModelVertex[topology.VertexCount];
         After = new ModelVertex[topology.VertexCount];
         Published = new ModelVertex[topology.VertexCount];
@@ -25,9 +26,18 @@ internal sealed class CoverageReferenceScratch
         Frames = new CoverageReferenceFrame[commandCapacity];
         Order = new int[commandCapacity];
         RegionCommands = new int[topology.Map.Regions.Count];
+        ClearanceOverrides = new float[commandCapacity];
+        CorrectionClearanceOverrides = new float[commandCapacity];
+        CorrectionConversionOverrides = new float[commandCapacity];
     }
 
+    internal float[] ClearanceOverrides { get; }
+    internal float[] CorrectionClearanceOverrides { get; }
+    internal float[] CorrectionConversionOverrides { get; }
+    internal CoverageReferenceArithmetic Arithmetic { get; } = new();
+    internal CoverageReferenceArithmetic UniformArithmetic { get; } = new();
     internal CoverageReferenceTopology ReferenceTopology { get; }
+    internal ModelVertex[] FlushedSource { get; }
     internal ModelVertex[] Before { get; }
     internal ModelVertex[] After { get; }
     internal ModelVertex[] Published { get; }

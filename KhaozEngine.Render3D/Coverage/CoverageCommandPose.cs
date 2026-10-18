@@ -226,13 +226,15 @@ internal static class CoverageFrames
         return double.IsFinite(consumed) && double.IsFinite(frame.ClearanceCoverage) && consumed <= command.Clearance * MarginFraction;
     }
 
+    [Binary32Kernel]
     internal static bool Refuse(CoverageRefinement topology, CoverageFailureCode code, in CoverageCommandPose command, out CoverageFailure failure) =>
         Refuse(topology, code, command.EquipmentInstanceId, command.Id, 0, 0, out failure);
 
+    [Binary32Kernel]
     internal static bool Refuse(CoverageRefinement topology, CoverageFailureCode code, ulong equipment, uint id, int count, int limit,
         out CoverageFailure failure)
     {
-        failure = new(code, topology.HostIdentity, equipment, id, count, limit);
+        failure = new CoverageFailure(code, topology.HostIdentity, equipment, id, count, limit);
         return false;
     }
 }

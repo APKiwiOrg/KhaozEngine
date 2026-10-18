@@ -388,6 +388,132 @@ public class Binary32KernelAnalyzerTests
     }
 
     [Theory]
+    [InlineData("[Binary32Kernel] static float Convert(int[] source, float[] destination) { source.CopyTo(destination, 0); return destination[0]; }")]
+    [InlineData("[Binary32Kernel] static void Copy(float[] source, double[] destination) => source.CopyTo(destination, 0);")]
+    [InlineData("[Binary32Kernel] static void Copy(Array source, Array destination) => source.CopyTo(destination, 0);")]
+    [InlineData("[Binary32Kernel] static void Copy(Array source, float[] destination) => source.CopyTo(destination, 0);")]
+    [InlineData("[Binary32Kernel] static void Copy(float[] source, Array destination) => source.CopyTo(destination, 0);")]
+    [InlineData("[Binary32Kernel] static void Copy(float[] source, float[] destination) => ((Array)source).CopyTo(destination, 0);")]
+    public async Task R9_copy_APIs_require_identical_static_element_types(string members)
+    {
+        var diagnostic = Assert.Single(await Analyze(members));
+        Assert.Equal("KEB32005", diagnostic.Id);
+        Assert.Contains("Invocation", diagnostic.GetMessage());
+    }
+
+    [Theory]
+    [InlineData("[Binary32Kernel] static void Copy(Memory<float> source, Memory<float> destination) => source.CopyTo(destination);")]
+    [InlineData("[Binary32Kernel] static bool Copy(ReadOnlyMemory<float> source, Memory<float> destination) => source.TryCopyTo(destination);")]
+    [InlineData("[Binary32Kernel] static void Copy(float[] source, Span<float> destination) => source.CopyTo(destination);")]
+    [InlineData("[Binary32Kernel] static void Copy(float[] source, Span<float> destination) => MemoryExtensions.CopyTo(destination: destination, source: source);")]
+    [InlineData("[Binary32Kernel] static void Copy<T>(T[] source, T[] destination) => source.CopyTo(destination, 0);")]
+    public async Task R9_representation_preserving_copies_stay_legal(string members)
+    {
+        Assert.Empty(await Analyze(members));
+    }
+
+    [Fact]
+    public async Task R10_overlapping_fields_cannot_reinterpret_float_bits()
+    {
+        var diagnostics = await Analyze("""
+            [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Explicit)]
+            struct FloatBits
+            {
+                [System.Runtime.InteropServices.FieldOffset(0)] public float Value;
+                [System.Runtime.InteropServices.FieldOffset(0)] public int Bits;
+            }
+            [Binary32Kernel]
+            static float Negate(float value)
+            {
+                FloatBits original = default;
+                original.Value = value;
+                FloatBits copy = original;
+                copy.Bits ^= int.MinValue;
+                return copy.Value;
+            }
+            """);
+        Assert.Equal(3, diagnostics.Length);
+        Assert.All(diagnostics, diagnostic =>
+        {
+            Assert.Equal("KEB32005", diagnostic.Id);
+            Assert.Contains("FieldReference", diagnostic.GetMessage());
+        });
+    }
+
+    [Fact]
+    public async Task R10_explicit_layout_field_references_are_rejected_without_FieldOffset()
+    {
+        var diagnostic = Assert.Single(await Analyze("""
+            [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Explicit)]
+            struct Storage { public static float Value; }
+            [Binary32Kernel] static float Read() => Storage.Value;
+            """));
+        Assert.Equal("KEB32005", diagnostic.Id);
+    }
+
+    [Theory]
+    [InlineData("[System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Explicit)] public struct FloatBits { [System.Runtime.InteropServices.FieldOffset(0)] public float Value; [System.Runtime.InteropServices.FieldOffset(0)] public int Bits; }", "[Binary32Kernel] static float Read(FloatBits value) => value.Value;", true)]
+    [InlineData("public class Holder { [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Explicit)] public struct Storage { public static float Value; } }", "[Binary32Kernel] static float Read() => Holder.Storage.Value;", true)]
+    [InlineData("public class Holder<T> { [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)] public struct Storage { public float Value; } }", "[Binary32Kernel] static float Read(Holder<int>.Storage value) => value.Value;", false)]
+    public async Task R10_referenced_layout_fields_are_checked(string declaration, string members, bool rejected)
+    {
+        var layout = KhaozEngine.CodeHealth.Analyzers.Tests.AnalyzerHarness.CreateCompilation(
+            ("/repo/Layout.cs", declaration)).WithAssemblyName("Layout");
+        using var image = new MemoryStream();
+        Assert.True(layout.Emit(image).Success);
+        var compilation = layout.WithAssemblyName("Consumer").RemoveAllSyntaxTrees()
+            .AddReferences(MetadataReference.CreateFromImage(image.ToArray()))
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(Source(members)));
+        Assert.DoesNotContain(compilation.GetDiagnostics(), d => d.Severity == DiagnosticSeverity.Error);
+        var driver = compilation.WithAnalyzers(ImmutableArray.Create<DiagnosticAnalyzer>(new Binary32KernelAnalyzer()));
+        var diagnostics = await driver.GetAnalyzerDiagnosticsAsync();
+        if (rejected) Assert.Equal("KEB32005", Assert.Single(diagnostics).Id);
+        else Assert.Empty(diagnostics);
+    }
+
+    [Fact]
+    public async Task R10_sequential_struct_fields_and_copies_stay_legal()
+    {
+        Assert.Empty(await Analyze("""
+            [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+            struct Storage { public float Value; public int Count; }
+            [Binary32Kernel] static float Copy(float value)
+            {
+                Storage original = default;
+                original.Value = value;
+                Storage copy = original;
+                copy.Count++;
+                return copy.Value;
+            }
+            """));
+    }
+
+    [Theory]
+    [InlineData("[Binary32Kernel] struct KernelValue(int input) { public float Value = input; public float Read() => Value; } [Binary32Kernel] static float Convert(int input) => new KernelValue(input).Read();", "KEB32002")]
+    [InlineData("[Binary32Kernel] struct KernelValue(int input) { public float Value { get; } = input; }", "KEB32002")]
+    [InlineData("[Binary32Kernel] struct KernelValue(float input) { public float Value = input * input; }", "KEB32001")]
+    [InlineData("[Binary32Kernel] struct KernelValue(float input) { public float Value { get; } = input * input; }", "KEB32001")]
+    [InlineData("class KernelValue { static int Input = 16777217; public float Value = Input; [Binary32Kernel] public KernelValue() { } }", "KEB32002")]
+    [InlineData("class KernelValue { static int Input = 16777217; public float Value { get; } = Input; [Binary32Kernel] public KernelValue() { } }", "KEB32002")]
+    [InlineData("[method: Binary32Kernel] struct KernelValue(int input) { public float Value = input; }", "KEB32002")]
+    [InlineData("class KernelValue { static float Input = 2f; public static float Value { get; } = Input * Input; [Binary32Kernel] static KernelValue() { } }", "KEB32001")]
+    public async Task R11_kernel_type_and_constructor_initializers_are_checked(string members, string id)
+    {
+        Assert.Equal(id, Assert.Single(await Analyze(members)).Id);
+    }
+
+    [Theory]
+    [InlineData("[Binary32Kernel] struct KernelValue(float input) { public float Value = input; public float Copy { get; } = input; public float Constant = 1; }")]
+    [InlineData("class KernelValue { static float Input = 2f; public float Value = Input; public float Copy { get; } = Input; [Binary32Kernel] public KernelValue() { } }")]
+    [InlineData("[Binary32Kernel] struct KernelValue(float input) { public float Value = Home.Add(input, input); }")]
+    [InlineData("[Binary32Kernel, Binary32Arithmetic] struct KernelValue(int input) { public float Value = input; }")]
+    [InlineData("struct Ordinary(int input) { public float Value = input; public float Copy { get; } = input; }")]
+    public async Task R11_permitted_initializers_and_unmarked_types_stay_legal(string members)
+    {
+        Assert.Empty(await Analyze(members));
+    }
+
+    [Theory]
     [InlineData("[Binary32Kernel] static void F() { goto done; done: return; }")]
     [InlineData("[Binary32Kernel] static unsafe void F() { }")]
     [InlineData("static void F() { [Binary32Kernel] static unsafe void Local() { } }")]

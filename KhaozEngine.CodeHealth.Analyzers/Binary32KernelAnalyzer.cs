@@ -52,12 +52,20 @@ namespace KhaozEngine.CodeHealth.Analyzers
         {
             private readonly ConcurrentDictionary<ISymbol, Membership> _membership =
                 new ConcurrentDictionary<ISymbol, Membership>(SymbolEqualityComparer.Default);
+            private readonly Binary32FieldLayout _fieldLayouts = new Binary32FieldLayout();
 
             public void Analyze(OperationAnalysisContext context)
             {
                 // Attribute metadata belongs to the declaration, not its executable kernel body.
+                ISymbol? initializedMember = null;
                 for (var node = context.Operation; node != null; node = node.Parent)
+                {
                     if (node is IAttributeOperation) return;
+                    if (node is IFieldInitializerOperation field && !field.InitializedFields.IsEmpty)
+                        initializedMember = field.InitializedFields[0];
+                    if (node is IPropertyInitializerOperation property && !property.InitializedProperties.IsEmpty)
+                        initializedMember = property.InitializedProperties[0];
+                }
                 var owner = context.Operation is ILocalFunctionOperation localOwner ? localOwner.Symbol
                     : context.Operation is IAnonymousFunctionOperation lambdaOwner ? lambdaOwner.Symbol
                     : context.ContainingSymbol;
@@ -69,7 +77,13 @@ namespace KhaozEngine.CodeHealth.Analyzers
                     if (parent is IAnonymousFunctionOperation lambda) { owner = lambda.Symbol; break; }
                     if (parent is ILocalFunctionOperation local) { owner = local.Symbol; break; }
                 }
-                if (!(owner is IMethodSymbol) || GetMembership(owner) != Membership.Kernel) return;
+                var membership = GetMembership(owner);
+                if (membership == Membership.Unmarked && initializedMember != null
+                    && initializedMember.ContainingType.InstanceConstructors
+                        .Concat(initializedMember.ContainingType.StaticConstructors)
+                        .Any(constructor => GetMembership(constructor) == Membership.Kernel))
+                    membership = Membership.Kernel;
+                if (membership != Membership.Kernel || (!(owner is IMethodSymbol) && initializedMember == null)) return;
 
                 var operation = context.Operation;
                 if (operation.Type?.TypeKind == TypeKind.Dynamic || IsPointer(operation.Type)
@@ -85,7 +99,6 @@ namespace KhaozEngine.CodeHealth.Analyzers
                     case OperationKind.DefaultValue:
                     case OperationKind.LocalReference:
                     case OperationKind.ParameterReference:
-                    case OperationKind.FieldReference:
                     case OperationKind.InstanceReference:
                     case OperationKind.ArrayElementReference:
                     case OperationKind.SimpleAssignment:
@@ -98,11 +111,17 @@ namespace KhaozEngine.CodeHealth.Analyzers
                     case OperationKind.VariableDeclarationGroup:
                     case OperationKind.VariableDeclaration:
                     case OperationKind.VariableInitializer:
+                    case OperationKind.FieldInitializer:
+                    case OperationKind.PropertyInitializer:
                     case OperationKind.ExpressionStatement:
                     case OperationKind.Argument:
                     case OperationKind.LocalFunction:
                     case OperationKind.AnonymousFunction:
                     case OperationKind.Empty:
+                        return;
+                    case OperationKind.FieldReference:
+                        if (_fieldLayouts.IsReinterpreted(context.Compilation, ((IFieldReferenceOperation)operation).Field,
+                            context.CancellationToken)) Reject(context);
                         return;
                     case OperationKind.VariableDeclarator:
                         var variable = (IVariableDeclaratorOperation)operation;
@@ -134,7 +153,10 @@ namespace KhaozEngine.CodeHealth.Analyzers
                         return;
                     case OperationKind.Invocation:
                         var invocation = (IInvocationOperation)operation;
-                        CheckCall(context, invocation.TargetMethod, invocation.IsVirtual);
+                        if (IsCopyApi(invocation.TargetMethod) && !HasIdenticalCopyElements(invocation))
+                            Reject(context);
+                        else
+                            CheckCall(context, invocation.TargetMethod, invocation.IsVirtual);
                         return;
                     case OperationKind.PropertyReference:
                         CheckProperty(context, (IPropertyReferenceOperation)operation);
@@ -302,7 +324,7 @@ namespace KhaozEngine.CodeHealth.Analyzers
             var target = UnwrapNullable(conversion.Type);
             // Existing inventory exceptions preserve storage without performing numeric work.
             var csharp = conversion.GetConversion();
-            return conversion.Conversion.IsIdentity || conversion.ConstantValue.HasValue
+            return conversion.Conversion.IsIdentity || csharp.IsDefaultLiteral || conversion.ConstantValue.HasValue
                 || (conversion.Operand.ConstantValue.HasValue && IsNumericConversion(conversion))
                 || (IsIntegralOrBool(source, true) && IsIntegralOrBool(target, true))
                 || csharp.IsReference || csharp.IsBoxing || csharp.IsUnboxing
@@ -377,6 +399,37 @@ namespace KhaozEngine.CodeHealth.Analyzers
                 case "Overlaps": return true;
                 default: return false;
             }
+        }
+
+        private static bool IsCopyApi(IMethodSymbol method) =>
+            (method.Name == "CopyTo" || method.Name == "TryCopyTo") && IsAllowedApi(method);
+
+        private static bool HasIdenticalCopyElements(IInvocationOperation invocation)
+        {
+            // Extension calls expose the receiver as argument zero. Bind by parameter ordinal
+            // because named arguments need not occur in declaration order.
+            var source = invocation.Instance ?? invocation.Arguments.FirstOrDefault(
+                argument => argument.Parameter?.Ordinal == 0)?.Value;
+            var destinationOrdinal = invocation.Instance == null ? 1 : 0;
+            var destination = invocation.Arguments.FirstOrDefault(
+                argument => argument.Parameter?.Ordinal == destinationOrdinal)?.Value;
+            var sourceElement = StorageElementType(source);
+            var destinationElement = StorageElementType(destination);
+            return sourceElement != null && destinationElement != null
+                && SymbolEqualityComparer.Default.Equals(sourceElement, destinationElement);
+        }
+
+        private static ITypeSymbol? StorageElementType(IOperation? operation)
+        {
+            // Recover an array's static type before its implicit upcast to System.Array.
+            // Explicit casts and erased Array parameters carry no element-type proof.
+            while (operation is IConversionOperation conversion && conversion.IsImplicit && conversion.Conversion.IsReference)
+                operation = conversion.Operand;
+            if (operation?.Type is IArrayTypeSymbol array) return array.ElementType;
+            if (!(operation?.Type is INamedTypeSymbol named) || named.TypeArguments.Length != 1
+                || named.ContainingNamespace.ToDisplayString() != "System") return null;
+            return named.Name == "Span" || named.Name == "ReadOnlySpan" || named.Name == "Memory" || named.Name == "ReadOnlyMemory"
+                ? named.TypeArguments[0] : null;
         }
 
         private static bool IsAutoProperty(IPropertySymbol property)

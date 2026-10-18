@@ -1,6 +1,8 @@
 using System;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Gpu;
@@ -12,6 +14,53 @@ namespace KhaozEngine.Tests.Gpu
 {
     public sealed class D3D11TimestampTests
     {
+        [D3D11TimestampGpuFact]
+        public void FeatureLevel10OrAboveGuaranteesNativeTimestampBatch()
+        {
+            if (!OperatingSystem.IsWindows())
+                throw new InvalidOperationException("The running Direct3D 11 backend requires Windows.");
+            VerifyNativeTimestampBatchWindows();
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        [SupportedOSPlatform("windows")]
+        static void VerifyNativeTimestampBatchWindows()
+        {
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+            Assert.Equal(GpuBackendKind.Direct3D11Native, gpu.GpuDevice.Backend);
+            var device = Assert.IsType<D3D11GpuDevice>(gpu.GpuDevice);
+            uint featureLevel = device.NativeFeatureLevel;
+            Assert.True(featureLevel >= 0xa000u,
+                $"The Direct3D 11 feature level 0x{featureLevel:X4} is below the 10_0 timestamp guarantee.");
+            Assert.True(device.Capabilities.SupportsTimestamps,
+                $"Direct3D 11 guarantees timestamp and disjoint queries at feature level 10_0 and above (actual 0x{featureLevel:X4}).");
+
+            IGpuResourceFactory factory = device.Factory;
+            using IGpuTimestampPool pool = factory.CreateTimestampPool(2);
+            using IGpuFence completion = factory.CreateFence();
+            using IGpuComputeShader shader = factory.CreateComputeShaderFromSpirv(@"#version 450
+layout(local_size_x = 1) in;
+void main() { }");
+            using IGpuComputePipeline pipeline = factory.CreateComputePipeline(new GpuComputePipelineDescription(shader));
+            using IGpuCommandList commands = factory.CreateCommandList();
+            commands.Begin();
+            commands.SetComputePipeline(pipeline);
+            commands.BeginTimestamps(pool, 2);
+            commands.WriteTimestamp(pool, 0);
+            commands.Dispatch(1, 1, 1);
+            commands.WriteTimestamp(pool, 1);
+            commands.EndTimestamps(pool);
+            commands.End();
+            device.Submit(commands, completion);
+            device.WaitForIdle(); // This native correctness proof drains once, outside the timestamp interval.
+
+            Span<ulong> ticks = stackalloc ulong[2];
+            Assert.Equal(GpuTimestampStatus.Ready, pool.TryResolve(completion, ticks, out double period));
+            Assert.Equal(0ul, ticks[0]);
+            Assert.True(ticks[1] >= ticks[0]);
+            Assert.True(double.IsFinite(period) && period > 0d);
+        }
+
         [Fact]
         public void DisjointAndUnavailableQueriesNeverProduceMeasuredTime()
         {

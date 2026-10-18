@@ -22460,7 +22460,8 @@ be detected or reconstructed. No resolve drains, flushes, submits, synchronously
 lock. A too-small output throws `ArgumentException` before polling. Null, foreign and disposed fences and
 disposed or lost devices follow the completion validation contract of `IGpuDevice.TryReadBuffer`.
 
-Native Direct3D 11 creates fixed timestamp queries and one disjoint query per pool. Begin records
+Native Direct3D 11 creates fixed timestamp queries and one disjoint query per pool.
+Timestamp and timestamp-disjoint queries are guaranteed from feature level 10_0. Begin records
 `Begin(disjoint)`, each write records `End(timestamp[index])`, and End records `End(disjoint)` through
 both recording drivers, including deferred stream replay. Use one disjoint batch per frame or less and
 one outstanding batch per pool. Resolve uses `Monitor.TryEnter` on the immediate-context lock, polls the

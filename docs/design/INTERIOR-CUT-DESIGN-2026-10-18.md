@@ -1,9 +1,8 @@
 # Interior cut for props inside buildings
 
 Status: design for [#1470](https://github.com/APKiwiOrg/KhaozEngine/issues/1470), written 2026-10-18 under owner
-rulings IC1 to IC6. Not built. It ships as one engine minor after 21.4.0, and this document picks no version
-number. Items marked **Open for owner or orchestrator** are decisions this design had to make beyond its brief.
-Each carries options and a recommendation, and the build waits on them.
+rulings IC1 to IC6, revised the same day under the orchestrator's rulings OC1 to OC10. Not built. It ships as one
+engine minor after 21.4.0, and this document picks no version number. One item, OC8, stays open for the owner.
 
 ## The problem
 
@@ -38,13 +37,11 @@ time, is therefore not the fix. That check stays available as an optional author
 
 ## Orchestrator calls approved with the design
 
-These are recorded as approved. Two are questioned below with evidence, and neither is changed without a ruling.
-
-- **Cells of 25 cm.** See Open item OC3 for snapping the cell to the tile lattice.
-- **A window of about 384 m square centred on the observer**, covering the full-detail tree range (Grimhollow
-  trees go HLOD at 192 m). Re-centre when the observer moves about 64 m from the centre. Rebuild when the world's
-  interiors change. Build on the CPU off the render thread and upload as one texture. See Open item OC1, which
-  shows the drift leaves only 128 m of cover on the far side.
+- **Cells of 25 cm**, snapped to the tile lattice under OC3.
+- **A window centred on the observer**, built on the CPU off the render thread and uploaded as one texture,
+  re-centred when the observer moves 64 m from the centre and rebuilt when the world's interiors change. The
+  approved size was about 384 m. OC1 replaced it with 512 m so the full 192 m tree range stays covered through the
+  drift.
 - **One span per cell**, from the lowest indoor floor up to the roof's top surface. The roof surface is the
   LOWEST roof sample in the cell, so the cut never rises above the roof. A sliver of leaves just under the roof
   may remain, visible only with the roof hidden. Stacked storeys under one roof are one span. An indoor area with
@@ -54,26 +51,45 @@ These are recorded as approved. Two are questioned below with evidence, and neit
   a lowest-sample `ClearanceSolid` and a separate rasterizer is made in [Roof surface sampling](#roof-surface-sampling).
 - **A scene in which no layer opts in renders byte-identical**, so every existing GPU golden holds. The precedent
   is the instanced dissolve's appended field and gated branch ([design](INSTANCED-DISSOLVE-DESIGN-2026-07-20.md)).
-- **A GPU cost budget of 0.1 ms** on a tree-heavy village view.
+- **A GPU cost budget of 0.1 ms** on a tree-heavy village view, covering the colour pass and the shadow pass
+  together.
 - **One engine minor after 21.4.0.** No version is chosen here.
+
+## Orchestrator rulings on the open items (2026-10-18)
+
+- **OC1 (c)** A 512 m window, 2048 cells per side, re-centred at 64 m. The window is twice the 192 m cut range
+  plus the drift, so full-detail trees stay covered on every side between re-centres.
+- **OC2 (a)** Cascade and point shadows both cut.
+- **OC3 (a)** The TileWorld adapter picks the largest cell at or below 25 cm that divides the tile size exactly.
+- **OC4 (a)** Interiors that share a cell merge to the lowest floor and highest top, and the build counts merges.
+- **OC5 (a)** A roof with no readable mesh falls back to the flat ceiling and reports `interior.roof-mesh`.
+- **OC6 (a)** Adapter issues are returned and logged once by the view in this minor. Surfacing them in
+  ke-tileedit's `world_validate` is tracked in #1473.
+- **OC7 (a)** Packed `R8G8B8A8UNorm` texels.
+- **OC8** Open for the owner. See [Open for owner](#open-for-owner).
+- **OC9 (a)** The window centres on the prop draw focus.
+- **OC10 reversed to (b) and widened.** A cut part is not there for the player, so everything in this round that
+  reacts to an opted-in prop's pixels honours the cut: object picking and the camera boom that uses it, walk
+  surface picking, the target outline and the silhouette. See
+  [Cut-aware picking, outlines and silhouettes](#cut-aware-picking-outlines-and-silhouettes).
 
 ## Shape of the solution
 
 Three layers, each in the package that already owns its concern:
 
 1. **Core, `KhaozEngine.Primitives`, namespace `KhaozEngine.Primitives`, folder `InteriorCut`.** Interior
-   volumes in, a packed height field out. It knows polygons, heights and roof samples, never a document type. It
-   sits beside the `Clearance` core for the same reason that core sits there: `KhaozEngine.TileWorld` and a later
-   MapDoc adapter both reach it without a reference cycle, and it reuses `ClearanceMesh` and `ClearanceSamples`
-   directly.
+   volumes in, a packed height field out, plus the CPU queries picking needs. It knows polygons, heights and roof
+   samples, never a document type. It sits beside the `Clearance` core for the same reason that core sits there:
+   `KhaozEngine.TileWorld` and a later MapDoc adapter both reach it without a reference cycle, and it reuses
+   `ClearanceMesh` and `ClearanceSamples` directly.
 2. **Adapters.** `TileWorldInteriors` in `KhaozEngine.TileWorld` turns a TileWorld document into volumes. A MapDoc
    adapter does the same in R8.
 3. **Render, `KhaozEngine.Render3D`.** `Scene3D.InteriorCut` takes a built field, uploads it and binds it. A
-   per-instance flag opts a draw in. The colour, temporal, cascade shadow and point shadow passes discard cut
-   fragments.
+   per-instance flag opts a draw in. The colour, temporal, cascade shadow, point shadow, target outline and
+   silhouette passes discard cut fragments.
 
 `KhaozEngine.TileWorld.Render3D` drives it: it owns the window, re-centring, change detection and the background
-build, and it carries the layer opt-in down to the draws.
+build, carries the layer opt-in down to the draws, and applies the same field to its picks.
 
 ## The interior description and the producer seam
 
@@ -108,8 +124,8 @@ public interface IInteriorSource
   TileWorld building on a slope FloorY is the lowest floor corner under the volume. Cutting below a floor removes
   only geometry the floor already hides.
 - **CeilingY** is the top wherever no roof sample lands in a cell. It covers the courtyard rule, a roof mesh that
-  failed to load and the cells a sampled roof misses at its edges. It is never above the roof, because a roof
-  stands on the plane whose floor is CeilingY.
+  failed to load (OC5) and the cells a sampled roof misses at its edges. It is never above the roof, because a
+  roof stands on the plane whose floor is CeilingY.
 - **Roofs** carry `ClearanceSamples`, the public 21.2.0 sample set, so the core never loads a mesh and each format
   brings its own mesh reader.
 
@@ -121,7 +137,7 @@ One 2D texture, one texel per cell, rows along +world Z and columns along +world
 corner. Each texel holds one span as two 16-bit quantized heights, floor and top, measured in steps above the
 field's base height.
 
-The texel format is `R8G8B8A8UNorm` with the floor's high and low bytes in R and G and the top's in B and A.
+The texel format is `R8G8B8A8UNorm` (OC7) with the floor's high and low bytes in R and G and the top's in B and A.
 `GpuPixelFormat` (`KhaozEngine.Gpu/GpuEnums.cs`) offers `R8G8B8A8UNorm`, `R32Float`, `R8UNorm`,
 `R16G16B16A16Float` and `R16G16Float`, and nothing with two 16-bit integer or normalized channels.
 
@@ -131,10 +147,10 @@ The texel format is `R8G8B8A8UNorm` with the floor's high and low bytes in R and
   address calculation for no gain over 16 bits.
 - Adding `R16G16UNorm` to the GPU seam is engine work on three backends for a format only this feature uses.
 - Packed `R8G8B8A8UNorm` is exact: each byte decodes as `round(v * 255)`, so the shader rebuilds both integers
-  bit for bit on every backend. That is Open item OC7.
+  bit for bit on every backend.
 
 The step is 1 cm, giving 655.35 m of vertical range inside one window, which covers any plausible set of
-interiors within 384 m. When a window's spans need more, the step grows to `range / 65534` and the build reports
+interiors within 512 m. When a window's spans need more, the step grows to `range / 65534` and the build reports
 it. Heights are quantized conservatively: the floor rounds down (the cut reaches at most one step below a floor,
 where nothing is visible) and the top rounds down (the cut never rises above the roof).
 
@@ -143,18 +159,24 @@ default both cut nothing.
 
 The field is read with `texelFetch`. Filtering would blend a span with an empty neighbour into a height that
 belongs to neither, so the read is unfiltered by construction. The engine's shaders write a fetch as
-`texelFetch(sampler2D(Tex, Samp), coord, 0)` (`ShaderSources.Decal.cs`), and the colour pass reuses its shared
-sampler for that.
+`texelFetch(sampler2D(Tex, Samp), coord, 0)` (`ShaderSources.Decal.cs`), and each pass pairs the texture with a
+sampler it already binds or one bound beside the texture.
+
+### Cell size
+
+The core takes any cell size. The TileWorld adapter picks the largest cell at or below 25 cm that divides the
+document's `TileSize` exactly (OC3): 25 cm for a 1 m tile (`TileWorldDocument.DefaultTileSize`), and for example
+`1.5 / 6 = 25 cm` or `1.2 / 5 = 24 cm`. Tile edges then fall on cell edges and a TileWorld outline is exact.
 
 ### Window and re-centring
 
-- The window is square, `Cells` cells per side, and its minimum corner snaps to the cell lattice anchored at
-  world origin. Re-centring therefore never moves a cell boundary in the world. Where the old and new windows
+- The window is square, 2048 cells per side at 25 cm, 512 m (OC1). Its minimum corner snaps to the cell lattice
+  anchored at world origin, so re-centring never moves a cell boundary in the world. Where the old and new windows
   overlap the new field is identical, so a re-centre never pops the cut.
-- With the approved figures the window is 384 m, 1536 cells per side.
 - The centre is the focus the prop draw radius uses (`ITileWorldScene.DrawProps` takes `focus`), so the cut and
-  the full-detail draw share one centre. That is Open item OC9.
-- Re-centre when the focus is 64 m or more from the centre along either axis.
+  the full-detail draw share one centre (OC9).
+- Re-centre when the focus is 64 m or more from the centre along either axis. The window's half-width of 256 m is
+  the 192 m tree range plus that drift, so trees at full detail stay inside the window on every side.
 
 ### Threading
 
@@ -163,28 +185,31 @@ sampler for that.
   the document is mutable under an editor.
 - A new `TileWorldBuildKind.InteriorCut` on the existing `TileWorldBuildQueue` runs collection and rasterization
   off the render thread. At most one interior build is in flight, and a newer request supersedes a queued one.
-- The finished field is applied on the view thread through `ITileWorldScene`, and `Scene3D` uploads it once at
-  the next frame with one `UpdateTexture` of the whole texture.
-- Until the first build lands, nothing is cut. A late field leaves branches visible for a few frames, never cuts
-  the wrong thing.
+- The finished field is applied on the view thread through `ITileWorldScene`. `Scene3D` uploads it once at the
+  next frame with one `UpdateTexture` of the whole texture, and the view's picks switch to the same field at the
+  same moment, so a click never disagrees with the picture.
+- Until the first build lands, nothing is cut and nothing is skipped by picking. A late field leaves branches
+  visible for a few frames, never cuts the wrong thing.
 
-### Memory
+### Memory and upload
 
-- GPU: `Cells * Cells * 4` bytes, 9 MiB at 1536 cells (16 MiB at 2048, see OC1).
-- CPU: the applied field stays resident for upload and for `InteriorHeightField.Contains`, plus one buffer under
-  construction, so twice the GPU figure at peak.
+- GPU: `2048 * 2048 * 4` bytes, 16 MiB.
+- CPU: the applied field stays resident for upload and for picking, plus one buffer under construction, so
+  32 MiB at peak.
+- Each re-centre and each interior rebuild uploads the whole 16 MiB in one frame.
 - A scene with no field allocates only the 1x1 default.
 
 ### Rasterization
 
 For each volume, the builder fills every cell that lies wholly inside the outline. A cell straddling an edge is
 left uncut. Cutting it would remove branch pixels outside the wall, which IC2 forbids, so the error always falls
-inside. With an outline on the cell lattice (the TileWorld case under OC3) there is no error at all. A free-yaw
-MapDoc edge leaves at most one cell diagonal, 35 cm at 25 cm cells, inside the outline uncut.
+inside. With the cell snapped to the tile (OC3) a TileWorld outline has no error at all. A free-yaw MapDoc edge
+leaves at most one cell diagonal, 35 cm at 25 cm cells, inside the outline uncut.
 
 Each filled cell takes `[FloorY, top]`, where top is the lowest roof sample in that cell or `CeilingY` when no
-sample landed. Where two volumes fill one cell, the spans merge to the lowest floor and the highest top (Open
-item OC4).
+sample landed. Where two volumes fill one cell, the spans merge to the lowest floor and the highest top, and the
+build result counts the merged cells (OC4). One span per texel stays the format. A second span per texel waits
+until a world needs it.
 
 ## Roof surface sampling
 
@@ -201,7 +226,7 @@ point through the roof's `LocalToWorld` and lowers the top of the cell it lands 
 - `ClearanceSolid` also computes a chamfer distance and a base the cut never reads. Changing its top rule, or
   adding a mode flag, would put a second contract on a shipped type to save about thirty lines.
 - The rasterizer keeps the solid's sampling density: `ClearanceSolid.Build` samples at half its cell size
-  (`mesh.ForEachSample(cellSize / 2f, solid.Mark)`), and the cut samples roofs at half the field's cell, 12.5 cm.
+  (`mesh.ForEachSample(cellSize / 2f, solid.Mark)`), and the cut samples roofs at half the field's cell.
 - Samples are built once per roof mesh and cached by the adapter, so a re-centre only re-transforms them.
 
 Error band of the roof surface, with c the cell size:
@@ -280,10 +305,13 @@ Issues reuse `TileWorldIssue`, as the clearance check does:
 
 - `interior.wall-inner-edge` and `interior.diagonal-wall`, above.
 - `interior.roof-mesh`: a roof archetype in the window has no `MeshRef`, or its mesh cannot be read. Reported once
-  per archetype. Its volumes keep their `CeilingY` top (Open item OC5).
+  per archetype. Its volumes keep their `CeilingY` top and the build goes on (OC5), which matches the clearance
+  check's per-archetype mesh issue and fails toward leaving branches.
 - `interior.step`: a window's spans exceed 655.35 m and the step grew.
 
-The view logs each new issue once. Surfacing them in ke-tileedit is Open item OC6.
+The adapter returns its issues and the view logs each new one once (OC6). Surfacing them in ke-tileedit's
+`world_validate` is tracked in #1473. A save is never refused over them, because a cut that falls back
+to nothing is safe.
 
 ### Change detection
 
@@ -330,24 +358,30 @@ its CPU path sets the flag, so they are never cut by construction, which is IC5'
 
 | Value | Where | Notes |
 |---|---|---|
-| Window minimum (x, z), render-relative | Frame UBO tail, `InteriorCutWindow.xy` | Computed on the CPU in double against `RenderOrigin` |
+| Window minimum (x, z), render-relative | `InteriorCutWindow.xy` | Computed on the CPU in double against `RenderOrigin` |
 | 1 / cell size | `InteriorCutWindow.z` | |
 | Cells per side, 0 when no field | `InteriorCutWindow.w` | 0 turns the test off in every pass |
 | Base height, render-relative | `InteriorCutHeights.x` | |
 | 1 / step | `InteriorCutHeights.y` | |
 
-- The colour and temporal passes read the frame block `U`. The two vec4 append after the cluster tail, which is
-  how every tail since the shadow tail was added: `UboBytes` goes from 1344 to 1376 and every existing offset is
-  unchanged (`ModelRenderer.cs`, `ClusterTailOffset`). This spends no new uniform buffer, and the heaviest shipped
-  pipeline stays at six of the eight dynamic uniform descriptors Vulkan guarantees
-  (`VulkanDescriptorLimitTests.TheHeaviestShippedPipeline_SpendsSixDynamicUniformDescriptors`).
-- The cascade shadow pass reads its own 256-byte slot per cascade: the matrix at 0, `RenderOrigin` at 64 and
-  `DissolveParams` at 80 (`ShadowMapRenderer.cs`, `CascadeSlotBytes`). The two vec4 go at 96 and 112.
-- The point shadow pass reads a 256-byte slot per light face with a 144-byte payload (`PointShadowRenderer.cs`,
-  `FaceSlotBytes`). The two vec4 go at 144 and 160.
+The two vec4 ride in each pass's existing per-frame or per-draw uniform block:
 
-All positions are render-relative, like every GPU-bound position, so the test runs on `vWorldPos` directly and
-precision follows camera-relative rendering.
+- **Colour and temporal.** The frame block `U`. The two vec4 append after the cluster tail, which is how every
+  tail since the shadow tail was added: `UboBytes` goes from 1344 to 1376 and every existing offset is unchanged
+  (`ModelRenderer.cs`, `ClusterTailOffset`). This spends no new uniform buffer, and the heaviest shipped pipeline
+  stays at six of the eight dynamic uniform descriptors Vulkan guarantees
+  (`VulkanDescriptorLimitTests.TheHeaviestShippedPipeline_SpendsSixDynamicUniformDescriptors`).
+- **Cascade shadow.** The 256-byte slot per cascade holds the matrix at 0, `RenderOrigin` at 64 and
+  `DissolveParams` at 80 (`ShadowMapRenderer.cs`, `CascadeSlotBytes`). The two vec4 go at 96 and 112.
+- **Point shadow.** The 256-byte slot per light face has a 144-byte payload (`PointShadowRenderer.cs`,
+  `FaceSlotBytes`). The two vec4 go at 144 and 160.
+- **Target outline.** The 256-byte draw slot holds `ViewProj` at 0, `World` at 64, `Params` at 128 and
+  `RenderOrigin` at 144 (`TargetOutlineRenderer.DrawUbo`, `DrawSlotBytes`). The two vec4 go at 160 and 176.
+- **Silhouette.** The 160-byte payload in a 256-byte slot (`SilhouetteRenderer.cs`, `PayloadBytes`, `SlotBytes`)
+  grows to 192 with the two vec4 at 160 and 176.
+
+All positions are render-relative, like every GPU-bound position, so the test runs on the render-relative world
+position and precision follows camera-relative rendering.
 
 ### Bindings
 
@@ -362,18 +396,23 @@ precision follows camera-relative rendering.
   one t register. Vulkan adds one sampled image to the fragment stage. Both shipped-layout sweep tables gain the
   element.
 - **Material sets.** Set 0 is built per material, like the shadow atlas binding. The texture handle is stable
-  between rebuilds and only its contents change. The first non-empty field, and any later change of `Cells`,
-  allocates the texture and rebuilds every live material set through the existing transaction in
-  `ModelRenderer.ShadowLayoutReplacement.cs`, which already swaps the cascade and point atlases into the same
-  sets. Until then every set binds the 1x1 zero default.
+  between rebuilds and only its contents change. The first non-empty field allocates the texture and rebuilds every
+  live material set through the existing transaction in `ModelRenderer.ShadowLayoutReplacement.cs`, which already
+  swaps the cascade and point atlases into the same sets. Until then every set binds the 1x1 zero default.
 - **Cascade shadow casters.** The dissolve and cutout depth pipelines gain one set after their existing ones,
   holding the cut texture and a sampler: set 1 for the dissolve pair, set 2 for the cutout pair, whose set 1 is
   the albedo. The opaque depth pipeline does not change.
-- **Point shadow casters.** The rigid dissolve pair gains the same set, under Open item OC2.
+- **Point shadow casters.** The rigid dissolve pair gains the same set after its existing ones (OC2).
+- **Target outline.** The rigid mask pipelines gain set 2 with the cut texture and a sampler (see below). The
+  skinned mask pipelines keep their layouts.
+- **Silhouette.** The pipeline gains set 1 with the cut texture and a sampler.
+- The outline, silhouette and shadow cut sets are one set object per renderer, rebuilt when the texture is
+  allocated, never per mesh.
 
 ### The discard
 
-One GLSL helper, `InteriorCutGlsl`, shared by every fragment that cuts:
+One GLSL helper, `InteriorCutGlsl`, shared by every fragment that cuts. Each pass splices it with its own names for
+the texture, sampler and the two vec4:
 
 ```glsl
 bool interiorCut(vec3 p) {                            // p render-relative
@@ -396,7 +435,9 @@ bool interiorCut(vec3 p) {                            // p render-relative
   the fragment. They add a `vCut` varying (`vec4(world.xyz, ISpecParams.w)`), and each of the four fragments
   (`ShadowDepthDissolveFrag`, its inverted twin, `ShadowDepthCutoutFrag` and its inverted twin) adds the same gated
   discard before writing depth. Varyings stay affine in world space, so interpolating the position is exact.
-- **Point shadow.** `PointShadowRigidDissolveFrag` and its inverted twin, the same way.
+- **Point shadow.** `PointShadowRigidDissolveFrag` and its inverted twin, the same way. A lantern inside a building
+  therefore throws no shadow from a cut branch onto its floor.
+- **Target outline and silhouette.** See the next section.
 
 ### Caster routing
 
@@ -412,6 +453,7 @@ alternative is four new rigid depth pipelines and two point ones (opaque cut, an
 variant), each needing its own `ShadowDepthVariant` member, shader pair and caster-signature case. Folding costs a
 cut tree trunk the move from the depth-only pipeline to the dissolve one, which samples nothing when the gate is
 off and discards only cut fragments. The plain `ShadowDepthFrag` path and every non-opted caster are untouched.
+The cost of that move is a stated risk with its own measurement, below.
 
 ### Combinations
 
@@ -438,6 +480,93 @@ overlapping cells are unchanged still dirties once, which costs one pass.
 - Skinned meshes: their packers write `w = 0`, and IC5 covers prop layers only.
 - Ordinary TileWorld props outside an opt-in layer, roofs included.
 
+## Cut-aware picking, outlines and silhouettes
+
+A cut part is not there for the player, so every path that reacts to an opted-in prop's pixels reads the same
+field as the colour pass (OC10). Three were found, and all three reach opted-in props.
+
+### What reaches opted-in props
+
+- **Object picking.** `TileObjectRaycast.Pick` (`KhaozEngine.TileWorld.Render3D/TileObjectRaycast.cs`) tests a ray
+  against every object's model box, carried into the object's frame and slab-tested with `RayMath.IntersectObbY`,
+  and returns the entry distance. `TileWorldView.PickObjects` (`TileWorldView.Picking.cs`) wraps it for Gameplay
+  regions, and it reads every object on the plane whatever its layer, so a tree in an opted-in layer is picked
+  like any prop. Grimhollow's woodcutting click reaches trees this way.
+- **The camera boom.** `TileWorldCameraProbe` stops a boom at the first object hit from `PickObjects` that the
+  consumer's filter accepts, with every box grown by the boom radius. It already skips hidden roofs, "because an
+  invisible ceiling must never stop a camera". A cut branch is the same case.
+- **Walk surface picking.** `TileWorldView.PickSurface` includes object walk surfaces through
+  `TileWalkSurfaces.Raycast` (`KhaozEngine.TileWorld/TileWalkSurfaces.cs`), which reads every archetype carrying
+  `WalkSurfaces`. Nothing stops an opted-in archetype from carrying one.
+- **The target outline.** `TileWorldView.SetOutlinedObject` draws through `TileWorldPropClusters.DrawOutline`
+  (`TileWorldPropClusters.Outline.cs`) for a layer object. It outlines the individual parts with
+  `Scene3D.DrawMeshOutlineDissolved` and, past the HLOD distance, a placement mesh built from the merged sources. The
+  mask pass is `TargetOutlineMaskVert` with `TargetOutlineFullMaskFrag` and `TargetOutlineVisibleMaskFrag`
+  (`ShaderSources.TargetOutline.cs`), and `TargetOutlineRenderer` composites the border from those coverage
+  targets.
+- **The silhouette.** `TileWorldView.SetSilhouettedObject` draws the object's parts from the view's `_propMeshes`,
+  which holds every archetype including the layer ones (`TileWorldView.cs`, where `TileWorldPropClusters` takes
+  its full meshes from the same dictionary), as an inverted hull through `Scene3D.DrawMeshSilhouette`
+  (`SilhouetteVert`, `SilhouetteFrag`, `SilhouetteRenderer`).
+
+`EditorPicking`, `MapWorldQueries` and the physics raycasts serve MapDoc, the editor and collision, not TileWorld
+prop pixels, and are out of this round.
+
+### Rays
+
+The core answers rays exactly, in the same cells and spans the shader reads:
+
+- `InteriorHeightField.FirstUncut(origin, direction, tStart, tEnd, out t)` walks the cells the segment crosses in
+  the window (a 2D digital differential analyser over the cell lattice). In each cell the ray's height is linear
+  in t, so the part inside that cell's span is one interval, solved exactly. It returns the first t in
+  `[tStart, tEnd]` that is outside every span, or false when the whole segment is cut. Points outside the window
+  are uncut.
+- `RayMath.IntersectObbY` gains an overload with `out float tFar`. The existing slab test already computes the far
+  distance and drops it.
+
+`TileObjectRaycast.Pick` gains an optional `TileObjectCut` argument, the applied field and the set of opted-in
+archetype ids. For an object whose archetype is in the set, the box segment `[tNear, min(tFar, maxDistance))` goes
+through `FirstUncut`. A segment that is wholly cut drops the hit. Otherwise the hit's distance becomes the first
+uncut t, so nearest-first ordering stays honest: a ray through a doorway that crosses cut branches and then meets
+the floor reports the floor first, and a ray that continues through the back wall to the crown outside reports the
+wall first. Picking stays box-based, exactly as coarse as before outside the cut.
+
+`TileWorldView.PickObjects` passes the view's applied field and the union of the archetype ids of its layers that
+set `CutInsideInteriors`. The camera boom inherits it through `PickObjects`, so a cut branch inside a building
+never shortens a boom.
+
+`TileWalkSurfaces.Raycast` gains an optional point filter, consulted before a candidate replaces the best hit.
+`PickSurface` passes one that rejects a point `InteriorHeightField.Contains` reports inside, for an opted-in
+archetype only, so the next candidate wins.
+
+### Target outline
+
+- The rigid mask fragments gain the gated cut. The skinned mask pipelines bind the bone palette at set 2 and share
+  today's fragments, so the rigid pair becomes two new fragment constants, the existing ones plus the cut, and the
+  skinned pair keeps the existing ones unchanged.
+- `Params.w` in the draw slot is the flag. The skinned writer already puts 0 there
+  (`TargetOutlineRenderer.Skinned.cs`, `WriteDrawPayload`), and the rigid writer does too until a cut part asks.
+- `vWorldPos` in the mask vertex is absolute (`world.xyz + RenderOrigin.xyz`), so the fragment calls
+  `interiorCut(vWorldPos - RenderOrigin.xyz)`. That subtraction rounds at the scale of the absolute coordinate,
+  about a millimetre at 10 km, which is far inside one cell.
+- Both coverage targets cut. A cut part is absent, so neither the through-geometry border nor the visible border
+  traces it.
+- `Scene3D.DrawMeshOutlineDissolved` gains an overload with `cutInsideInteriors`, carried on the queued part.
+  `TileWorldPropClusters.DrawIndividualOutline` passes the layer's `CutsInsideInteriors`. `DrawMergedOutline`
+  passes false, because the merged mesh is never cut in colour and the outline follows the drawn picture.
+
+### Silhouette
+
+- `SilhouetteVert` hands the fragment the extruded render-relative position, and `SilhouetteFrag` adds the gated
+  cut. `SilhouetteMotionFrag` is built from `SilhouetteFrag` (`ShaderSources.MotionPreserve.cs`), so the temporal
+  variant follows.
+- `Params.y` in the draw payload is the flag. `Params.x` is the width today.
+- `Scene3D.DrawMeshSilhouette` gains an overload with `cutInsideInteriors`. `TileWorldView.DrawSilhouettedObject`
+  passes true when the object's archetype is in an opted-in layer.
+- The view's own comment explains why this matters: "a hull whose model is not drawn has nothing to eat its middle
+  and reads as a solid blob". The hull is cut by the same field at its own extruded position, so it disappears with
+  the model, offset at most by the hull width (5 cm by default) at the interior's boundary.
+
 ## The MapDoc adapter contract for R8
 
 R8 implements `IInteriorSource` over the effective MapDoc scope. Nothing below is built in this round.
@@ -451,11 +580,12 @@ R8 implements `IInteriorSource` over the effective MapDoc scope. Nothing below i
   `Rooms` and `Groups` it covers, with groups expanding through `MapRoofGroupDoc.Rooms`. R8 resolves the roof's mesh
   and world transform and adds one `InteriorRoof` to each covered room's volume. Whether the link's `AboveY` bears
   on the cut is for R8 to settle from its definition.
-- **Storeys.** One prism per storey. Stacked prisms in one column merge to one span in the field (OC4).
+- **Storeys.** One prism per storey. Stacked prisms in one column merge to one span in the field, as in OC4.
 - **Mesh reading.** R8 supplies `ClearanceSamples` for prefab meshes. The MapDoc clearance adapter
   ([#1433](https://github.com/APKiwiOrg/KhaozEngine/issues/1433)) needs the same reader, and the two should share it.
 - **Edges off the lattice.** A rotated room's walls do not fall on cell edges, so the inward rule leaves up to one
   cell diagonal uncut inside the outline. R8 may want a finer cell for MapDoc worlds and can choose one per window.
+- **Picking.** R8's prop picks take the same `FirstUncut` and `Contains` queries.
 - **Issues.** R8 reports its own codes through `InteriorSourceResult`.
 
 ## Public API sketch
@@ -476,19 +606,33 @@ public sealed class InteriorHeightField
     public InteriorWindow Window { get; }
     public float BaseY { get; }
     public float StepY { get; }
+    public int MergedCells { get; }                              // OC4
     public ReadOnlyMemory<byte> Texels { get; }                 // RGBA8, rows along +z
     public long Version { get; }
     public bool TryGetSpan(int cellX, int cellZ, out float floorY, out float topY);
     public bool Contains(Vector3 world);                         // the shader's test, on the CPU
+    public bool FirstUncut(Vector3 origin, Vector3 direction, float tStart, float tEnd, out float t);
 }
 public static class InteriorHeightFieldBuilder
 {
     public static InteriorHeightField Build(IReadOnlyList<InteriorVolume> volumes, InteriorWindow window);
 }
+public static class RayMath   // existing
+{
+    public static bool IntersectObbY(Vector3 origin, Vector3 direction, Vector3 center, float yaw,
+        Vector3 min, Vector3 max, out float tNear, out float tFar);   // new overload
+}
 
 // KhaozEngine.Render3D
 public readonly struct RigidInstanceDraw { public bool CutInsideInteriors { get; init; } /* default false */ }
-public sealed partial class Scene3D { public InteriorHeightField? InteriorCut { get; set; } }
+public sealed partial class Scene3D
+{
+    public InteriorHeightField? InteriorCut { get; set; }
+    public void DrawMeshOutlineDissolved(MeshOutlineGroup group, MeshHandle mesh, Matrix4x4 world,
+        float dissolve, bool dissolveComplement, bool cutInsideInteriors);
+    public void DrawMeshSilhouette(MeshHandle mesh, Matrix4x4 world, Color color, float widthMetres,
+        bool cutInsideInteriors);
+}
 
 // KhaozEngine.Terrain.Render3D
 public sealed class PropLayer { public bool CutsInsideInteriors { get; } }  // plus the factory parameter
@@ -500,16 +644,40 @@ public sealed class TileWorldInteriors : IInteriorSource
     public TileWorldInteriors(TileWorldDocument detached, TileWorldCatalogs catalogs, ITileMeshGeometry meshes);
     public IReadOnlyList<TileWorldIssue> LastIssues { get; }
 }
+public static class TileWalkSurfaces   // existing
+{
+    public static TileHit? Raycast(TileWorldDocument doc, TileWorldCatalogs catalogs, int plane, Vector3 origin,
+        Vector3 direction, float maxDistance, Func<TileObject, bool>? include = null,
+        Func<TileObject, Vector3, bool>? acceptPoint = null);    // new optional filter
+}
 
 // KhaozEngine.TileWorld.Render3D
 public sealed record TilePropLayerDefinition { public bool CutInsideInteriors { get; init; } }
-public interface ITileWorldScene { void SetInteriorCut(InteriorHeightField? field) { } }  // default no-op
-public sealed partial class TileWorldView { public ITileMeshGeometry? InteriorMeshes { get; set; } }
+public readonly record struct TileObjectCut(InteriorHeightField? Field, IReadOnlySet<string> ArchetypeIds);
+public static class TileObjectRaycast  // existing
+{
+    public static int Pick(TileWorldDocument document, TileWorldCatalogs catalogs, int plane, Vector3 origin,
+        Vector3 direction, float maxDistance, BoundsSource bounds, List<TileObjectHit> hits, TileObjectCut cut);
+}
+public interface ITileWorldScene
+{
+    void SetInteriorCut(InteriorHeightField? field) { }                                    // default no-op
+    void DrawMeshOutlineDissolved(MeshOutlineGroup group, MeshHandle handle, Matrix4x4 world,
+        float dissolve, bool complement, bool cutInsideInteriors) { /* forwards */ }
+    void DrawMeshSilhouette(MeshHandle handle, Matrix4x4 world, Color color, float widthMetres,
+        bool cutInsideInteriors) { /* forwards */ }
+}
+public sealed partial class TileWorldView
+{
+    public ITileMeshGeometry? InteriorMeshes { get; set; }
+    public InteriorHeightField? AppliedInteriorCut { get; }   // the field the picture and the picks share
+}
 ```
 
 `Scene3D.InteriorCut = null` turns the cut off, binds the default and sets `Cells` to 0. Assigning a field
-uploads it at the next frame. `InteriorHeightField.Contains` is the shader's test on the CPU. Tests use it as the
-oracle, and a later picking change can use it to stop clicks landing on cut branches.
+uploads it at the next frame. `TileWorldView.PickObjects`, `PickSurface`, the outline and the silhouette apply the
+cut themselves, so a consumer that opts a layer in needs no other call. The new overloads default to no cut where
+an existing overload forwards to them.
 
 ## Tests
 
@@ -522,25 +690,31 @@ oracle, and a later picking change can use it to stop clicks landing on cut bran
   at cell centres, and no cell outside the polygon is filled.
 - A gable roof read back: a two-slope mesh over a rect gives per-cell tops at or below the analytic roof height,
   within one cell's slope drop of it, and never above it. The gable-end row stops at eave height.
-- Stacked storeys: two volumes in one column merge to one span from the lower floor to the higher top.
+- Stacked storeys: two volumes in one column merge to one span from the lower floor to the higher top, and
+  `MergedCells` counts the cell.
 - A roofless volume tops out at `CeilingY`.
 - Re-centring: a field built at one window and one built after a 64 m shift agree texel for texel over their
   overlap, and the window minimum snaps to the lattice.
 - Quantization: floor and top round down, a 655.35 m range keeps 1 cm steps, a larger one grows the step, and the
   RGBA8 pack decodes bit for bit.
 - An empty world, and a window with no volumes, produce an all-zero field that cuts nothing.
+- `FirstUncut` agrees with `Contains` sampled densely along random rays, returns false for a segment wholly inside
+  a span, and treats the window's outside as uncut.
+- `RayMath.IntersectObbY` with `tFar` agrees with the existing overload's `tNear` and with an exit point on the box.
 
 `KhaozEngine.TileWorld.Tests`:
 
 - One-plane building: volumes, FloorY, CeilingY and roof assignment from a small fixture.
 - A two-storey building under one roof is one span, and a roof on an unrelated plane is not assigned.
 - Eave samples outside the indoor rect never reach the field.
+- The cell size divides the tile size: 25 cm at 1 m, 24 cm at 1.2 m.
 - **Wall-edge check.** A boundary wall on the inner edge of its tile reports `interior.wall-inner-edge` and its
   tile leaves the volumes. The same building with the wall on the outer edge reports nothing. The test asserts the
   issue, so a regression fails loudly instead of cutting outside.
 - A diagonal boundary wall reports `interior.diagonal-wall`.
 - A roof with an unreadable mesh reports `interior.roof-mesh` once and keeps its `CeilingY` top.
 - Change detection: an Indoors flag edit queues a rebuild and a tree move does not.
+- A walk surface of an opted-in archetype whose hit point lies in the field is skipped, and a lower candidate wins.
 
 `KhaozEngine.Render.Tests`, GPU-free:
 
@@ -550,9 +724,22 @@ oracle, and a later picking change can use it to stop clicks landing on cut bran
 - `UboLayoutTests` pins the new tail offsets and the 1376-byte size.
 - `VulkanDescriptorLimitTests` and `D3D11RegisterNumberingTests` carry the new elements, and the heaviest pipeline
   still spends six dynamic uniform descriptors.
-- Shader contract tests assert the gated discard line in `ModelFrag` and the six shadow fragments, as
-  `ShadowShaderContractTests` does for the cutout. `ShaderValidation.ValidatePair` compiles every changed pair.
+- Shader contract tests assert the gated discard line in `ModelFrag`, the six shadow fragments, the two rigid
+  outline mask fragments and `SilhouetteFrag`, as `ShadowShaderContractTests` does for the cutout, and that the
+  skinned outline mask fragments are unchanged. `ShaderValidation.ValidatePair` compiles every changed pair.
 - A field version change dirties the cascade pass and the point caster signatures.
+- The outline and silhouette payload writers put the flag and the two vec4 at their offsets.
+
+`KhaozEngine.TileWorld.Render3D` tests, through the recording scene:
+
+- **A ray through a doorway at a cut branch.** A building with an open doorway, an opted-in tree box reaching
+  inside, and a field applied to the view. A ray through the doorway that meets the tree's box only inside the
+  interior and then the floor: `PickObjects` drops the tree, and `PickSurface` returns the floor. A ray that
+  crosses the cut branches and continues to the back wall reports the wall before the tree. The same rays with the
+  layer not opted in still name the tree.
+- The camera boom inside the building is not shortened by the cut branch.
+- `DrawIndividualOutline` and `DrawSilhouettedObject` pass the flag for an opted-in layer, and the merged outline
+  passes false.
 
 ### GPU, on Metal, Direct3D 11 and Vulkan
 
@@ -562,56 +749,82 @@ Pixel-presence `GpuFact`s, not goldens, run on the three legs of the cross-platf
   through `Scene3D.InteriorCut` with no building drawn. The pixels whose world position `Contains` reports inside
   show the background, every other box pixel shows the box, within one pixel at the boundary.
 - **Shadow.** The same box under a sun straight above, half of it inside a rect interior that reaches past its
-  top. The ground shadow covers exactly the outside half, within the PCF kernel at the edge.
-- **No opt-in.** The same scene with the flag off is pixel-identical to the scene with no field set, and the full
-  golden suite runs with zero drift.
+  top. The ground shadow covers exactly the outside half, within the PCF kernel at the edge. A point light under
+  the same interior shows the same split, in the shape `AlphaCutoutShadowGpuTests` uses for the cutout.
+- **Outline.** The same box outlined in both occlusion modes. The full and visible coverage targets hold no pixel
+  inside the interior's projection, and the composited border runs along the cut boundary rather than around the
+  whole box.
+- **Silhouette.** The same box silhouetted. No hull pixel lies inside the interior's projection.
+- **No opt-in.** The same scenes with the flag off are pixel-identical to the scenes with no field set, and the
+  full golden suite runs with zero drift.
 
 ### GPU timing
 
 One capture, `InteriorCutCostPerfGpuTests` with `RequiresRealGpu`, in the shape of
-`TemporalResolveCostPerfGpuTests`: a tree-heavy village view (cutout trees around box buildings), blocks with the
-cut off and on in rotating order, the median block difference printed against the 0.1 ms budget and not asserted.
+`TemporalResolveCostPerfGpuTests` and `ShadowCascadeCullPerfGpuTests`: a tree-heavy village view of cutout trees
+around box buildings, the sun advancing every frame so the cascade pass is dirty and the dirty-skip cannot hide it,
+and four modes in rotating order:
+
+1. Shadows off, the baseline that isolates the shadow pass, as `ShadowCascadeCullPerfGpuTests` does.
+2. Shadows on, no layer opted in.
+3. Shadows on, the layer opted in with an empty field, so every tree caster moves to the dissolve or cutout
+   pipeline and nothing is cut. Mode 3 minus mode 2 is the routing cost alone, which is where an early-depth loss
+   shows.
+4. Shadows on, opted in, with the village's interiors.
+
+Mode 4 minus mode 2 is the feature's cost, colour plus shadow, printed against the 0.1 ms budget and not asserted.
 The engine's GPU seam has no timestamp queries (`KhaozEngine.Diagnostics/PassTimings.cs`), so frame blocks are the
-measure, as in the temporal record. It runs once through `gpu-hosted-bench` on the hosted T4 (Direct3D 11 and
-Vulkan). That workflow is billed per minute, so the dispatch waits for owner approval (OC8).
+measure, as in the temporal record. It runs through `gpu-hosted-bench` on the hosted T4 (Direct3D 11 and Vulkan),
+which waits on OC8.
 
 ## Docs and release notes
 
 At build time, in the same change:
 
-- `CHANGELOG.md`: one minor entry describing the cut, the opt-in, the shadow behaviour and the exclusions.
-- `docs/USING-KHAOZENGINE.md`: the Tile world section (opt-in, `InteriorMeshes`, the issues) and the
-  `Scene3D.DrawProps` section (the flag).
-- Package READMEs: `KhaozEngine.Primitives`, `KhaozEngine.Render3D`, `KhaozEngine.Terrain.Render3D`,
-  `KhaozEngine.TileWorld` and `KhaozEngine.TileWorld.Render3D`.
+- `CHANGELOG.md`: one minor entry describing the cut, the opt-in, the shadow behaviour, cut-aware picking, outline
+  and silhouette, and the exclusions.
+- `docs/USING-KHAOZENGINE.md`: the Tile world section (opt-in, `InteriorMeshes`, the issues, the picks honouring
+  the cut), the `Scene3D.DrawProps` section (the flag), and wherever target outlines, silhouettes and the camera
+  boom probe are described.
+- Package READMEs: `KhaozEngine.Primitives` (the field and its ray queries, `RayMath`'s new overload),
+  `KhaozEngine.Render3D`, `KhaozEngine.Terrain.Render3D`, `KhaozEngine.TileWorld` (`TileWalkSurfaces`'s filter)
+  and `KhaozEngine.TileWorld.Render3D` (`TileObjectRaycast`, `PickObjects`, `PickSurface`, outlines, silhouettes).
 - `docs/INDEX.md`: this row's status.
-- A full Markdown sweep for `SpecParams`, the frame UBO size and the Model layout's binding list, which several
-  design records quote.
+- A full Markdown sweep for `SpecParams`, the frame UBO size, the Model layout's binding list, and the outline and
+  silhouette payload layouts, which several design records quote.
 
 ## Risks
 
-- **Coverage at the window edge.** With 64 m of drift a 384 m window covers only 128 m on the far side, short of
-  the 192 m HLOD distance (OC1).
+- **Early depth on every tree's shadow draw.** Routing opted-in casters through the dissolve and cutout depth
+  pipelines puts a fragment that can discard on every tree's shadow draw, trunks included, which today take the
+  depth-only pipeline. On hardware that disables early depth testing for a discarding shader, every shadow
+  fragment of every tree is shaded before its depth test, including the ones a nearer caster hides. Leaf cards
+  already take the cutout pipeline and pay this now, so the new cost is on trunks and solid branch meshes. No
+  existing GPU test measures it: `AlphaCutoutShadowGpuTests` and the shadow policy tests check pixels, and
+  `ShadowCascadeCullPerfGpuTests` times culling with the cut absent. Mode 3 of the timing capture measures it, and
+  the 0.1 ms budget covers colour and shadow together. If mode 3 alone breaks the budget, the remedy is a cut-only
+  opaque caster variant that reads no albedo, trading one pipeline for the loss.
+- **Upload hitch.** A re-centre or a rebuild uploads 16 MiB in one frame. If it shows, the lattice snap already
+  allows a toroidal window that uploads only the strip the re-centre exposes.
 - **Courtyards.** An Indoors-flagged courtyard with a tree in it is cut up to the top of its storey, trunk
   included, as approved. Content that wants a courtyard tree leaves those tiles outdoors, which also keeps the
   roof rule honest.
 - **The leaf sliver and the gable row.** Leaves under the roof surface stay visible with roofs hidden, worst at the
   gable ends. If the owner look (IC6) finds it noticeable, the fix is a finer cell or reading the top surface
   rather than the lowest sample, which risks cutting above the roof.
-- **Shadow pipeline cost.** Opted-in trunks move from the depth-only pipeline to one with a discard, which can
-  lose early depth on some hardware. The timing capture measures the shadow pass inside the frame block.
-- **Upload hitch.** A re-centre uploads 9 MiB in one frame. If it shows, the lattice snap already allows a
-  toroidal window that uploads only the new strip.
 - **Animated foliage.** A tree moved into the animated foliage path is not cut, because that path writes `w = 0`.
 - **Disjoint storeys.** Two interiors stacked in one column with outdoor space between them merge into one span
-  and cut the space between (OC4).
+  and cut the space between (OC4). `MergedCells` makes it visible.
+- **Hull at an open cut.** Looking along a cut branch into its open end from inside, the silhouette hull's own
+  back faces just outside the interior can show through the opening, a rim no wider than the hull width.
 
 ## Out of scope
 
 - Authoring-time prevention. `TileWorldClearance` is unchanged and optional.
 - The MapDoc adapter, beyond its contract.
 - Cutting HLOD merged meshes, grass, foliage, skinned meshes or ordinary props.
-- Picking, the target outline and the silhouette pass, which still see uncut meshes (OC10).
+- MapDoc, editor and physics ray queries (`EditorPicking`, `MapWorldQueries`, `BepuPhysicsWorld.Raycast`), which do
+  not serve TileWorld prop pixels.
 - Dissolving the cut edge, or any soft transition at the wall.
 - Interiors the observer is in deciding anything. The cut is static.
 
@@ -619,8 +832,8 @@ At build time, in the same change:
 
 Owner scores from the IC3 ruling.
 
-- **Interior height field (40, chosen).** CPU-built, one texture, testable headless through a CPU mirror, and the
-  same shape for TileWorld and MapDoc.
+- **Interior height field (40, chosen).** CPU-built, one texture, testable headless through a CPU mirror, the
+  same shape for TileWorld and MapDoc, and the same field answers picking exactly.
 - **Top-down GPU roof depth map (35).** Render roofs from above each time interiors change and cut below that
   depth inside the outline. It needs a new pass on three backends, its result is only observable on a GPU, and
   the outline still has to come from the CPU.
@@ -628,40 +841,9 @@ Owner scores from the IC3 ruling.
   pitched roof: set to the ridge it cuts the crown above a sloped roof, set to the eaves it leaves branches under
   the slope.
 
-## Open for owner or orchestrator
+## Open for owner
 
-- **OC1 Window size against re-centre drift.** The approved 384 m window centred on the focus covers 192 m in
-  every direction only at the moment of a re-centre. After 64 m of travel it covers 128 m ahead, so trees between
-  128 and 192 m on that side are drawn at full detail but not cut. Options: (a) keep 384 m and 64 m and accept it,
-  (b) re-centre at 32 m, doubling builds, (c) size the window to twice the cut range plus the drift, 512 m and
-  2048 cells, 16 MiB. **Recommendation: (c).** Memory is modest and builds stay rare.
-- **OC2 Point-light shadows.** IC5 says the shadow pass cuts. The cascade pass is certain. A lantern inside a
-  building would otherwise throw a cut branch's shadow onto its floor. Options: (a) cut cascade and point shadows,
-  (b) cascade only. **Recommendation: (a).** It is the same fold into the point dissolve pair, two fragments.
-- **OC3 Snap the cell to the tile.** At 25 cm cells and a tile size that is a multiple of 25 cm, tile edges fall on
-  cell edges and a TileWorld outline is exact. Options: (a) the TileWorld adapter picks the largest cell at or
-  below 25 cm that divides the tile size, (b) a fixed 25 cm everywhere, which loses up to a cell inside the wall
-  on any other tile size. **Recommendation: (a).** It is 25 cm itself for a 1 m tile.
-- **OC4 Disjoint interiors in one column.** The field holds one span per cell. Options: (a) merge to the lowest
-  floor and highest top and count merges in the build result, (b) keep the lower interior only, (c) a second span
-  per texel, doubling memory. **Recommendation: (a)** this round, with (c) only if a world needs it.
-- **OC5 A roof with no readable mesh.** Options: (a) fall back to `CeilingY` and report `interior.roof-mesh`,
-  (b) refuse to build the field. **Recommendation: (a).** It matches the clearance check, which reports a mesh
-  issue and keeps going, and it fails toward leaving branches.
-- **OC6 Where the adapter's issues surface.** Options: (a) returned and logged once by the view only, (b) also
-  appended by ke-tileedit's `world_validate`, (c) also refusing a save. **Recommendation: (a)** in this minor
-  and (b) as a follow-up, since an inner-edge wall is a content defect the author should see. Not (c): a cut
-  falling back to nothing is safe.
-- **OC7 Texel format.** Options: (a) packed `R8G8B8A8UNorm`, (b) add `R16G16UNorm` to the GPU seam on three
-  backends, (c) `R16G16Float`. **Recommendation: (a).** Exact and free. (c) loses centimetres with height.
-- **OC8 The timing capture.** The hosted bench is billed and runs on dispatch. Options: (a) one dispatch of the
-  cost test filter on the T4 legs after build approval, (b) also a native Metal run on the dev Mac.
-  **Recommendation: (a)** only. (b) adds GPU load on the shared Mac and Metal correctness is already proven by the
-  GPU workflow.
-- **OC9 The window's centre.** The brief says the observer. Options: (a) the prop draw focus, (b) the observer's
-  tile. **Recommendation: (a).** The cut range and the full-detail draw range then share one centre by
-  construction. In Grimhollow the two differ only by the camera's orbit.
-- **OC10 Picking through a cut.** A click through a doorway can still pick a cut tree, because
-  `TileObjectRaycast` picks against each model's drawn body and knows nothing of the cut. Options: (a) leave it and file a backlog issue, (b) test picks against
-  `InteriorHeightField.Contains` in this round. **Recommendation: (a).** It is separate behaviour with its own
-  tests, and this design cannot file the issue itself.
+- **OC8 The timing capture.** `gpu-hosted-bench` runs on dispatch on larger GPU runners billed per minute. Options:
+  (a) one dispatch of the `InteriorCutCostPerfGpuTests` filter on the T4 legs once the build is approved, (b) also
+  a native Metal run on the dev Mac. **Recommendation: (a)** only. (b) adds GPU load on the shared Mac, and Metal
+  correctness is already proven by the cross-platform GPU workflow.

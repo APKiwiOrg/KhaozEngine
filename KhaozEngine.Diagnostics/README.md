@@ -178,8 +178,15 @@ IReadOnlyList<TelemetryHeaderValue> env = redactor.SelectEnvironment(pairs);
 - The home directory becomes `~`, matched case-insensitively with either separator and only where the path ends,
   so `/Users/anna` survives a home of `/Users/ann`. Trailing separators on the home are ignored, and a home
   shorter than three characters turns the rule off.
-- Every rule runs in linear time on the backtracking engine. A JWT may start only at the first character of a
-  token run, which is what keeps a run of repeated `eyJ` starts from rescanning itself.
+- Every secret rule runs on the non-backtracking engine, so it is linear in the input by construction. A JWT
+  may start only at the start of the text or after a character that cannot be in a token, and that character is
+  kept. The home rule stays on the backtracking engine for its look-ahead, and its body is an escaped literal
+  path.
+- The linear guarantee has a one-time cost. The engine turns each pattern into an automaton, so building the
+  shared default rules allocates about 11.8 MB once per process, when the first redactor is constructed.
+  `BugReportService` builds its redactor at construction, so that lands at game startup. The automaton grows
+  lazily as it meets new input, so the first report pays about 70 ms of matcher setup. Redaction runs over
+  log text a player can influence, and linear time keeps that bounded whatever the text holds.
 - Every pattern also has a 250 ms match timeout as a backstop. A timeout fails closed: the whole string comes
   back as `[redacted]`.
 - Thread-safe. Clean text is returned as the same instance without allocating.

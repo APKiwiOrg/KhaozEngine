@@ -37,7 +37,7 @@ public partial class ArchitectureTests
         Assert.Equal(new[]
         {
             "KhaozEngine.MapDoc", "KhaozEngine.MapDoc.Physics", "KhaozEngine.Physics.Bepu",
-            "KhaozEngine.TileWorld", "KhaozEngine.TileWorld.Physics",
+            "KhaozEngine.TileWorld", "KhaozEngine.TileWorld.Netcode", "KhaozEngine.TileWorld.Physics",
         }, graph[Harness].ProjectRefs.OrderBy(name => name, StringComparer.Ordinal));
         Assert.Contains(XDocument.Load(Path.Combine(RepoRoot(), Harness, Harness + ".csproj")).Root!.Descendants("IsPackable"),
             e => string.Equals((string?)e, "false", StringComparison.OrdinalIgnoreCase));

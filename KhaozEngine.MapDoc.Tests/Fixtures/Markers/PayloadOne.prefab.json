@@ -1,0 +1,1 @@
+{"payloadVersion":1,"id":"golden-marker","children":[{"type":"Marker","key":{"kind":"Marker","key":"entry"},"value":{"payloadVersion":1,"id":"entry","name":"arrival-a","position":{"x":1,"y":2,"z":-1},"yawRadians":0.371,"role":"entry-role","enabled":true,"tags":["first","second"]},"localTransform":{"position":{"x":0,"y":0,"z":0},"yawRadians":0,"scale":1},"references":[]}]}

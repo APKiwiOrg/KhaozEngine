@@ -113,15 +113,8 @@ public partial class MapEditorScene
                     radius = MathF.Max(1f, height * 0.6f);
                     return FiniteFrame(pivot, radius);
                 }
-            case SelectionKind.Spawn when Spawn(selection.Id) is MapSpawn spawn:
-                pivot = new Vector3(spawn.X, GroundHeight(field, spawn.X, spawn.Z) + 0.75f, spawn.Z);
-                radius = 1f;
-                return FiniteFrame(pivot, radius);
-            case SelectionKind.PlayerSpawn when PlayerSpawn(selection.Id) is MapPlayerSpawn playerSpawn:
-                pivot = new Vector3(playerSpawn.X, GroundHeight(field, playerSpawn.X, playerSpawn.Z) + 0.75f,
-                    playerSpawn.Z);
-                radius = 1f;
-                return FiniteFrame(pivot, radius);
+            case SelectionKind.Spawn or SelectionKind.PlayerSpawn:
+                return TrySpawnFrame(selection, field, out pivot, out radius);
             case SelectionKind.Feature when FeatureAt(SelectedIndex(selection.Id)) is MapFeature feature
                 && FeatureGeometry.TryCenter(feature, out float featureX, out float featureZ):
                 pivot = new Vector3(featureX, GroundHeight(field, featureX, featureZ), featureZ);

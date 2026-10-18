@@ -30,7 +30,12 @@ internal sealed record NativeDocumentPreparation(MapNativeWriteSet WriteSet, Map
     internal MapNativePublicationMode Mode { get; init; } = MapNativePublicationMode.NamedWriteSet;
 }
 internal sealed record NativeStagedPublication(MapDocument Candidate, MapNativeWriteSet WriteSet,
-    MapNativePublicationMode Mode, MapAssetClosure? Assets, MapNativeEditEffects Effects, Action Accept);
+    MapNativePublicationMode Mode, MapAssetClosure? Assets, MapNativeEditEffects Effects, Action Accept)
+{
+    /// <summary>The candidate's complete expansion against <see cref="Assets"/>, when staging built one.</summary>
+    internal Lazy<MapEffectiveResources>? Expansion { get; init; }
+    internal NativeLegacySpawnPermit? LegacySpawns { get; init; }
+}
 
 /// <summary>Validates and publishes exactly one native document write set.</summary>
 internal static class NativeDocumentTransaction
@@ -51,19 +56,26 @@ internal static class NativeDocumentTransaction
         return staged.Effects;
     }
 
-    internal static void Publish(MapDocument document, NativeStagedPublication staged)
+    internal static void Publish(MapDocument document, NativeStagedPublication staged, string? liveLists = null)
     {
+        NativeLegacySpawnAdmission.RequireAdmitted(document, staged.Candidate, staged.LegacySpawns, liveLists);
         if (staged.Mode == MapNativePublicationMode.CompleteSnapshot) NativeDocumentSnapshot.Publish(document, staged.Candidate);
         else NativeDocumentSnapshot.PublishWriteSet(document, staged.Candidate, staged.WriteSet);
+        // Only an expansion already built during staging is a snapshot of what was published. Anything else clears it.
+        if (staged is { Assets: { } assets, Expansion: { IsValueCreated: true } expansion }) NativeAcceptedExpansions.Remember(document, assets, expansion);
+        else NativeAcceptedExpansions.Forget(document);
     }
 
+    /// <summary>Stages <paramref name="command"/> against <paramref name="document"/>. <paramref name="liveLists"/> is
+    /// the document's legacy list canonical when the caller already computed it for this transaction.</summary>
     internal static NativeStagedPublication Stage(MapDocument document, IEditorCommand command, bool undo,
         MapAssetClosure? assets, MapDocRegistry? registry = null, bool localOnly = false,
-        INativePlacementBounds? placementBounds = null)
+        INativePlacementBounds? placementBounds = null, string? liveLists = null)
     {
         ArgumentNullException.ThrowIfNull(document);
         if (document.Tiles is { IsPartial: true })
             throw new MapDocumentException("Native editing requires a complete document, not a windowed document.");
+        NativeLegacySpawnAdmission.RequireMarkerCommand(document, command);
         MapAssetClosure? selected = command is INativeAssetClosureCommand closures ? closures.Closure(undo) : assets;
         if (command is INativeBoundDocumentCommand && selected is null)
             throw new MapDocumentException("Prefab editing requires a verified asset closure.");
@@ -71,8 +83,10 @@ internal static class NativeDocumentTransaction
             throw new MapDocumentException("Native editing requires an explicit asset closure binding.");
         registry ??= MapDocRegistry.CreateDefault();
         MapDocument candidate = NativeDocumentSnapshot.Clone(document, registry);
+        NativeLegacySpawnPermit? permit = null;
         NativeDocumentPreparation preparation = command switch
         {
+            AdoptSpawnsCommand adoption => adoption.PrepareAdoption(candidate, undo, selected!, out permit),
             INativeBoundDocumentCommand bound => bound.Prepare(candidate, undo, selected!),
             TerrainEditCommand terrain => terrain.Prepare(candidate, undo, selected, registry),
             INativeDocumentCommand native => native.Prepare(candidate, undo),
@@ -86,12 +100,20 @@ internal static class NativeDocumentTransaction
             publication = NativeDocumentSnapshot.Clone(document, registry);
             NativeDocumentSnapshot.PublishWriteSet(publication, candidate, preparation.WriteSet);
         }
+        if (permit is not null)
+        {
+            liveLists ??= NativeLegacySpawnAdmission.LiveLists(document);
+            if (permit.BeforeLists != liveLists || permit.AfterLists != NativeLegacySpawnAdmission.Canonical(publication)) permit = null;
+        }
+        NativeLegacySpawnAdmission.RequireAdmitted(document, publication, permit, liveLists);
         if (localOnly) MapBoundDocumentValidation.ValidateLocal(publication, registry);
         else MapBoundDocumentValidation.Validate(publication, selected!, registry);
         var beforeAssets = command is INativeAssetClosureCommand pair ? pair.Closure(!undo) : assets;
         // Validation and effects read one complete expansion of each document, built on first use.
         var expanded = selected is null ? null : Expansion(publication, selected);
-        var expandedBefore = (beforeAssets ?? selected) is { } closure ? Expansion(document, closure) : null;
+        // The accepted expansion of the live document is its before side, when it was expanded against the same closure.
+        var expandedBefore = (beforeAssets ?? selected) is { } closure
+            ? NativeAcceptedExpansions.TryBefore(document, closure, out var accepted) ? accepted : Expansion(document, closure) : null;
         ValidateSurfaces(publication, preparation.WriteSet, preparation.Mode, selected, expanded);
         if (expanded is not null && (publication.Prefabs is not null || publication.NativeResourceTransforms is not null || publication.BuildingIntent is not null))
         {
@@ -103,7 +125,23 @@ internal static class NativeDocumentTransaction
         var named = NativePlacementEffects.NameResources(preparation.Effects, document, publication, preparation.WriteSet);
         effects = NativePlacementEffects.Combine(named, effects,
             document, publication, beforeAssets, selected, preparation.WriteSet, preparation.Mode, expandedBefore, expanded);
-        return new(publication, preparation.WriteSet, preparation.Mode, selected, effects, preparation.Accept);
+        if (expandedBefore is not null && expanded is not null && (HoldsMarkers(document) || HoldsMarkers(publication)))
+            effects = MarkerEffects(effects, expandedBefore, expanded);
+        return new(publication, preparation.WriteSet, preparation.Mode, selected, effects, preparation.Accept) { Expansion = expanded, LegacySpawns = permit };
+    }
+
+    static bool HoldsMarkers(MapDocument document) => document.Prefabs is not null || document.BuildingIntent is { Markers.Count: > 0 };
+
+    // One diff of the complete before and after expansions, whatever the write set. A marker whose support the edit
+    // removed refuses with the after expansion, before publication. An old document that no longer resolves keeps the
+    // released effects, including the preparation's marker list, as a repair cannot know its old markers. This is the
+    // one case where marker IDs do not come from the diff.
+    static MapNativeEditEffects MarkerEffects(MapNativeEditEffects effects, Lazy<MapEffectiveResources> before, Lazy<MapEffectiveResources> after)
+    {
+        MapEffectiveResources old;
+        try { old = before.Value; }
+        catch (MapDocumentException) { return effects; }
+        return NativeMarkerEffects.Combine(effects, old, after.Value);
     }
 
     static NativeDocumentPreparation PreparePlacement(MapDocument before, MapDocument candidate,

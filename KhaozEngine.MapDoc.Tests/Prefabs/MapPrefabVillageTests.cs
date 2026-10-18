@@ -20,8 +20,10 @@ public sealed class MapPrefabVillageTests
     public void OffsiteSupportOwners_ContributeKnownEmptyWitnesses()
     {
         var f = PrefabFixtures.Create("support-resource");
+        // The repeated hut names its marker in the same placement, because marker names are globally unique.
         var document = MapPrefabEdits.Prepare(f.Document, f.Assets, new MapPlacePrefab("b", "hut",
-            new(new(8, 0, 0), 0.371f, 1.2f), new("exterior", new("exterior", 0, 0)))).After;
+            new(new(8, 0, 0), 0.371f, 1.2f), new("exterior", new("exterior", 0, 0)))
+        { InitialOverrides = PrefabFixtures.MarkerNames(f.Assets.GetPrefab("hut"), "b") }).After;
         var resources = MapPrefabResolver.Expand(document, f.Assets);
         var scope = resources.CompleteView().Scope with { LocalMin = new(0.5f, -1.5f), LocalMax = new(1.5f, -0.5f) };
         var view = resources.Acquire(scope);

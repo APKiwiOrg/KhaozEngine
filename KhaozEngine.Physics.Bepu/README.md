@@ -265,8 +265,10 @@ at most 48 per primitive. Exact predicates use checked retained 4096-bit integer
 2048-number workspace. Every exhausted or unproved step returns the exact default Unresolved result.
 Closed quadratic minima include isolated double roots and endpoint tangency. Clear encodes the full
 original vector. Hit bounds never grant placement permission. Warm shape/value queries, exact boundary
-fallback and refusal allocate no managed bytes and retain scratch capacity. Native G1b, explicit-tick
-cost-scene acceptance and consumer adoption remain separate gates.
+fallback and refusal allocate no managed bytes and retain scratch capacity. Each reader retains up to
+four general-sweep workspaces for nested loans. First use provisions each depth once, warmed nesting
+allocates zero bytes, and a fifth simultaneous loan returns default Unresolved without allocation.
+Native G1b, explicit-tick cost-scene acceptance and consumer adoption remain separate gates.
 
 ## Usage
 

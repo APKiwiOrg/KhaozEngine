@@ -246,6 +246,13 @@ Exact expansion is reused inside its proved degree/exponent domain. Additional e
 work uses bounded retained integer storage under the same arithmetic owner, not allocating dyadics.
 Cold provisioning is bounded and never hides per-query growth after warmup.
 
+Each reader interval's general-sweep scratch retains at most four simultaneous workspaces, one
+per nesting depth. The first loan at a depth provisions it once. Later loans at that warmed depth
+allocate zero bytes, and restoration never discards an inner workspace. A fifth simultaneous loan
+returns default Unresolved without allocation or a usable prefix. Four retained workspaces permit
+nested queries while bounding each reader's exact-number storage. Refusing at the cap preserves
+GS-12's bounded provisioning and zero-allocation contracts.
+
 Acquired authoritative ticks allocate only the named one-use movement/release binding, physics
 ReadLease and producer pin tokens, including acquisition and disposal. The existing arm64 inventory
 is 192 + 64 + 56 = 312 bytes. Derive the ceiling from the live inventory on other runtimes, without

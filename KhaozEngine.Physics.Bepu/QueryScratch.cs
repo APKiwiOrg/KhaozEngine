@@ -22,7 +22,7 @@ internal sealed class QueryScratch : IDisposable
     internal BufferPool Pool { get; } = new();
     internal Slot<List<CollidableReference>> Overlaps;
     internal Slot<List<CollidableReference>> SweepCandidates;
-    internal Slot<CapsuleSweepScratch> GeneralSweeps;
+    internal CapsuleSweepScratchSlot GeneralSweeps;
     internal Slot<ContactSet> Contacts;
     internal Slot<SupportFootprintCollector> Footprints;
     internal Slot<SupportNeighborhoodCollector> Neighborhoods;

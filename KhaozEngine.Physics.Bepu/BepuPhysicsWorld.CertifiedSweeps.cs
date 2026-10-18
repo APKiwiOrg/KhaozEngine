@@ -57,8 +57,9 @@ public sealed partial class BepuPhysicsWorld : IPhysicsCapsuleSweep
                 CapsuleTreePreflight.MaximumNodes, CapsuleTreePreflight.MaximumLeaves, CapsuleTreePreflight.MaximumPending,
                 out _, out _, out _)) return default;
         QueryScratch scratch = operation.Scratch;
+        CapsuleSweepScratch? general = scratch.GeneralSweeps.Take();
+        if (general is null) return default;
         List<CollidableReference> candidates = scratch.SweepCandidates.Take();
-        CapsuleSweepScratch general = scratch.GeneralSweeps.Take();
         try
         {
             candidates.Clear();

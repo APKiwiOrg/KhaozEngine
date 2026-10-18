@@ -129,9 +129,14 @@ public sealed class CertifiedSweepLifetimeTests
                 Assert.True(boundary.IsComplete);
                 CapsuleSweepResult refused = world.SweepCapsuleCertified(dimensions, Pose.At(Start), Delta, new(QueryMobility.All, 1));
                 Refused(refused);
-                CapsuleSweepResult measuredShape = default, measuredValue = default, measuredBoundary = default, measuredRefusal = default;
                 QueryScratch retained = ConcurrentReadGateTests.Gate(world).ScratchPool.Constructed()[0];
                 CapsuleSweepScratch retainedGeneral = retained.GeneralSweeps.Idle!;
+                CapsuleSweepResult nested = NestedQuery(world, retained, dimensions, out CapsuleSweepScratch? retainedNested);
+                SameBits(shapeResult, nested);
+                Assert.NotNull(retainedNested);
+                Assert.NotSame(retainedGeneral, retainedNested);
+                CapsuleSweepResult measuredShape = default, measuredValue = default, measuredBoundary = default, measuredRefusal = default, measuredNested = default;
+                CapsuleSweepScratch? measuredNestedScratch = null;
                 int capacity = retained.SweepCandidates.Idle!.Capacity;
                 long bytes = AllocationMeasurement.Measure(nameof(RotatedBoxDimensionAndWarmQueryParity), () =>
                 {
@@ -139,24 +144,18 @@ public sealed class CertifiedSweepLifetimeTests
                     measuredValue = world.SweepCapsuleCertified(dimensions, Pose.At(Start), Delta);
                     measuredBoundary = world.SweepCapsuleCertified(dimensions, tangent, Vector3.Zero);
                     measuredRefusal = world.SweepCapsuleCertified(dimensions, Pose.At(Start), Delta, new(QueryMobility.All, 1));
+                    measuredNested = NestedQuery(world, retained, dimensions, out measuredNestedScratch);
                 });
                 Assert.Equal(0, bytes);
                 SameBits(shapeResult, measuredShape);
                 SameBits(shapeResult, measuredValue);
                 SameBits(boundary, measuredBoundary);
                 Refused(measuredRefusal);
+                SameBits(shapeResult, measuredNested);
+                Assert.Same(retainedNested, measuredNestedScratch);
                 Assert.Same(retainedGeneral, retained.GeneralSweeps.Idle);
                 Assert.Equal(capacity, retained.SweepCandidates.Idle!.Capacity);
             }
-            QueryScratch scratch = ConcurrentReadGateTests.Gate(world).ScratchPool.Constructed()[0];
-            CapsuleSweepScratch outer = scratch.GeneralSweeps.Take();
-            try
-            {
-                HitContains(Query(world), 1.625, 1.625);
-                Assert.NotSame(outer, scratch.GeneralSweeps.Idle);
-            }
-            finally { scratch.GeneralSweeps.Restore(outer); }
-            HitContains(Query(world), 1.625, 1.625);
         }
         using var barrier = new Barrier(2);
         CapsuleSweepResult[] results = new CapsuleSweepResult[2];
@@ -175,6 +174,56 @@ public sealed class CertifiedSweepLifetimeTests
         QueryScratch[] readers = ConcurrentReadGateTests.Gate(world).ScratchPool.Constructed();
         Assert.True(readers.Length >= 2);
         Assert.NotSame(readers[0].GeneralSweeps.Idle, readers[1].GeneralSweeps.Idle);
+    }
+
+    [Fact]
+    public void RotatedBoxNestedScratchBoundRefusesWithoutSharingOrGrowing()
+    {
+        using var world = new BepuPhysicsWorld(Vector3.Zero);
+        world.AddStatic(Box, new Pose(Vector3.Zero, Cyclic));
+        using IPhysicsQueryLease lease = world.AcquireQueryReadLease();
+        HitContains(Query(world), 1.625, 1.625);
+        QueryScratch scratch = ConcurrentReadGateTests.Gate(world).ScratchPool.Constructed()[0];
+        var loans = new CapsuleSweepScratch[4];
+        var results = new CapsuleSweepResult[5];
+        void ReadNested(int depth)
+        {
+            results[depth] = Query(world);
+            if (depth == loans.Length) return;
+            CapsuleSweepScratch loan = scratch.GeneralSweeps.Take()!;
+            loans[depth] = loan;
+            try { ReadNested(depth + 1); }
+            finally { scratch.GeneralSweeps.Restore(loan); }
+        }
+        ReadNested(0);
+        for (int depth = 0; depth < loans.Length; depth++) HitContains(results[depth], 1.625, 1.625);
+        Refused(results[4]);
+        var retained = (CapsuleSweepScratch[])loans.Clone();
+        long bytes = AllocationMeasurement.Measure(nameof(RotatedBoxNestedScratchBoundRefusesWithoutSharingOrGrowing), () => ReadNested(0));
+        Assert.Equal(0, bytes);
+        for (int depth = 0; depth < loans.Length; depth++)
+        {
+            HitContains(results[depth], 1.625, 1.625);
+            Assert.Same(retained[depth], loans[depth]);
+            for (int outer = 0; outer < depth; outer++) Assert.NotSame(loans[outer], loans[depth]);
+        }
+        Refused(results[4]);
+        Assert.Same(retained[0], scratch.GeneralSweeps.Idle);
+        HitContains(Query(world), 1.625, 1.625);
+        lease.AssertCurrent();
+    }
+
+    static CapsuleSweepResult NestedQuery(BepuPhysicsWorld world, QueryScratch scratch,
+        CapsuleQueryDimensions dimensions, out CapsuleSweepScratch? nested)
+    {
+        CapsuleSweepScratch outer = scratch.GeneralSweeps.Take()!;
+        try
+        {
+            CapsuleSweepResult result = world.SweepCapsuleCertified(dimensions, Pose.At(Start), Delta);
+            nested = scratch.GeneralSweeps.Idle;
+            return result;
+        }
+        finally { scratch.GeneralSweeps.Restore(outer); }
     }
 
     static CapsuleSweepResult Query(object receiver) => ((IPhysicsCapsuleSweep)receiver).SweepCapsuleCertified(Capsule, Pose.At(Start), Delta);

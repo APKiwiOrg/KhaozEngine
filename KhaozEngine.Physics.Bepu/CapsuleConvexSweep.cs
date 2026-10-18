@@ -21,10 +21,13 @@ internal static class CapsuleConvexSweep
         double width = length > 0 && maximumErrorMetres > 0 ? Math.Min(1, maximumErrorMetres / (4 * length)) : 1;
         CapsuleSweepResult forward = Prove(leaf, centre, radius, halfCylinderLength, displacement,
             maximumErrorMetres, length, width, ref work, scratch);
-        if (!forward.IsComplete || leaf.Map.IsExactlyRigid) return forward;
+        if (!forward.IsComplete) return forward;
         InstalledSweepLeaf operational = new(leaf.Geometry, leaf.Pose, leaf.Map, operational: true);
+        double? witness = CapsuleSweepSourceWitness.Find(operational, centre, radius, halfCylinderLength,
+            displacement, length, forward, ref work, scratch);
+        if (work.Exhausted) return default;
         CapsuleSweepResult local = Prove(operational, centre, radius, halfCylinderLength, displacement,
-            maximumErrorMetres, length, width, ref work, scratch);
+            maximumErrorMetres, length, width, ref work, scratch, witness);
         if (!local.IsComplete || local.Status != forward.Status) return default;
         if (forward.Status == CapsuleSweepStatus.Clear) return forward;
         if (forward.ImpactDistance is not float a || local.ImpactDistance is not float b) return default;
@@ -37,10 +40,10 @@ internal static class CapsuleConvexSweep
 
     static CapsuleSweepResult Prove(in InstalledSweepLeaf leaf, Vector3 centre, float radius, float halfCylinderLength,
         Vector3 displacement, float maximumError, double length, double width,
-        ref CapsuleSweepWork work, CapsuleSweepScratch scratch)
+        ref CapsuleSweepWork work, CapsuleSweepScratch scratch, double? witness = null)
     {
-        double lower = double.PositiveInfinity, upper = double.PositiveInfinity;
-        bool hit = false;
+        double lower = witness ?? double.PositiveInfinity, upper = lower;
+        bool hit = witness.HasValue;
         for (int feature = 0; feature < leaf.Geometry.FeatureCount; feature++)
             for (int axis = 0; axis < 3; axis++)
             {

@@ -101,14 +101,8 @@ internal sealed class InstalledMeshSweepGeometry
     {
         if (!Matches(_owner, _root)) return false;
         ref Mesh mesh = ref _owner.GetShape<Mesh>(_root.Index);
+        if (_posed && pose.Position == _lastPose.Position && pose.Orientation == _lastPose.Orientation && MatchesProof(mesh)) return true;
         if (!ProveTree(ref mesh)) return false;
-        bool unchanged = _posed && pose.Position == _lastPose.Position && pose.Orientation == _lastPose.Orientation;
-        if (unchanged)
-        {
-            for (int i = 0; i < _nodes.Length; i++)
-                unchanged &= ReadNode(mesh, i, out _);
-            if (unchanged) return true;
-        }
         bool identity = pose.Orientation == Quaternion.Identity;
         for (int i = 0; i < Count; i++)
         {
@@ -193,6 +187,29 @@ internal sealed class InstalledMeshSweepGeometry
         var first = _posedBounds[0];
         RootBounds = Count == 1 ? first : (Vector3.Min(first.Min, _posedBounds[1].Min), Vector3.Max(first.Max, _posedBounds[1].Max));
         _lastPose = pose; _posed = true;
+        return true;
+    }
+
+    bool MatchesProof(in Mesh mesh)
+    {
+        ref readonly Tree tree = ref mesh.Tree;
+        if (!tree.Metanodes.Allocated || tree.Metanodes.Length < _nodes.Length || tree.Metanodes[0].Parent != -1) return false;
+        // Matching the complete proved graph needs one linear pass, with no reachability
+        // rebuild or repair. Raw identities and every backlink remain part of the cache key.
+        for (int i = 0; i < _nodes.Length; i++)
+        {
+            if (!ReadNode(mesh, i, out Node node)) return false;
+            for (int slot = 0; slot < (Count == 1 ? 1 : 2); slot++)
+            {
+                NodeChild child = slot == 0 ? node.A : node.B;
+                if (child.Index < 0)
+                {
+                    int leaf = Tree.Encode(child.Index);
+                    if (tree.Leaves[leaf].NodeIndex != i || tree.Leaves[leaf].ChildIndex != slot || !TriangleMatches(mesh, leaf)) return false;
+                }
+                else if (tree.Metanodes[child.Index].Parent != i || tree.Metanodes[child.Index].IndexInParent != slot) return false;
+            }
+        }
         return true;
     }
 

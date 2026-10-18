@@ -22,7 +22,7 @@ internal static class CapsuleSweepFeatureDistance
 
     internal static bool TryBuild(in InstalledSweepLeaf leaf, int featureIndex, int axisRegime,
         Vector3 centre, float radius, float halfCylinderLength, Vector3 displacement,
-        CapsuleSweepScratch scratch, out SweepFeatureRegime regime)
+        CapsuleSweepScratch scratch, out SweepFeatureRegime regime, CapsuleSweepSourceSample? sourceSample = null)
     {
         regime = default;
         SweepExactWorkspace w = scratch.Exact;
@@ -46,9 +46,28 @@ internal static class CapsuleSweepFeatureDistance
             Point relative = Sub(c, translation, w);
             c = new(Dot(relative, rx, w), Dot(relative, ry, w), Dot(relative, rz, w));
             d = new(Dot(d, rx, w), Dot(d, ry, w), Dot(d, rz, w));
-            if (!InstalledSweepBounds.TryOperationalError(leaf, centre, displacement, halfCylinderLength, out double error)) return false;
-            int uncertainty = w.Enclosed(GeometryInterval.Enclose(-error, error));
-            c = new(w.Add(c.X, uncertainty), w.Add(c.Y, uncertainty), w.Add(c.Z, uncertainty));
+            if (sourceSample is { } sample)
+            {
+                if (!sample.IsResolved) return false;
+                c = Literal(sample.Centre, w); axis = Literal(sample.Axis, w);
+            }
+            else
+            {
+                if (!InstalledSweepBounds.TryOperationalError(leaf, centre, displacement, halfCylinderLength, out double error)) return false;
+                int uncertainty = w.Enclosed(GeometryInterval.Enclose(-error, error));
+                if (CapsuleSweepSourceSample.TryCreate(leaf, centre, displacement, 0, out var initial))
+                {
+                    // Each signed-permutation output depends on exactly one world coordinate.
+                    // With zero motion in that coordinate, the actual rounded source value
+                    // is constant for the whole closed path. Retain it exactly, even when it
+                    // disagrees with the forward model. Other coordinates keep the full bound.
+                    c = new(w.Sign(d.X) == GeometrySign.Zero ? w.Constant(initial.Centre.X) : w.Add(c.X, uncertainty),
+                        w.Sign(d.Y) == GeometrySign.Zero ? w.Constant(initial.Centre.Y) : w.Add(c.Y, uncertainty),
+                        w.Sign(d.Z) == GeometrySign.Zero ? w.Constant(initial.Centre.Z) : w.Add(c.Z, uncertainty));
+                    axis = Literal(initial.Axis, w);
+                }
+                else c = new(w.Add(c.X, uncertainty), w.Add(c.Y, uncertainty), w.Add(c.Z, uncertainty));
+            }
             x = Literal(Vector3.UnitX, w); y = Literal(Vector3.UnitY, w); z = Literal(Vector3.UnitZ, w);
             translation = Literal(Vector3.Zero, w);
         }

@@ -156,6 +156,22 @@ Arbitrary non-rigid or ill-conditioned operational disagreements remain Unresolv
 show how the installed forward geometry and pinned backend local-map/contact semantics agree
 within the existing error ceiling. Transform uncertainty cannot be erased by exact scalar fallback.
 
+Exactly rigid maps also require the operational proof. Identity and cyclic rotations do not make
+the source's rounded root-offset subtraction and later child-offset addition exact. The child
+order enclosure applies to hull centroid wrappers as well as recentered triangles. For a proved
+signed permutation, each stationary local coordinate retains its actual rounded source value
+throughout the whole path, including any disagreement with the forward model. Moving coordinates
+retain the full operational enclosure.
+
+A rigid source sample can supply a genuine contact witness through the same finite feature
+predicate. The forward bracket's upper endpoint, midpoint and entering binary32 neighbor are
+bounded proposals. A feature quadratic minimum can also propose an isolated-tangency sample.
+Neither a proposal nor a sampled miss proves anything. The pinned root-relative path, child add,
+conjugate transform and full capsule axis must produce an actual eligible closed contact. Every
+operational feature still proves its complete earlier interval and the published bracket still
+contains the union of both models within 0.001 m. These attempts consume the unchanged primitive
+feature, cell and exact-storage account. No rigid-map shortcut remains in the general convex route.
+
 Left-first bounded refinement covers every required closed fraction cell. Refuse atomically on
 cell, depth, feature, exact-storage or arithmetic exhaustion. Zero displacement distinguishes
 complete stationary separation from contact/overlap. Initial overlap, start tangency and tangential
@@ -212,7 +228,7 @@ Cost if wrong: a mesh allows passage through a front face, blocks its open back 
 separate rounded `Mesh.GetPosedLocalChild` continuation, retaining each raw triangle index. The
 latter subtracts a binary32 centroid and is composed through the existing scalar/SIMD pose proof.
 The operational enclosure also covers the different order of the original root-relative path and
-rotated centroid addition. It bounds intermediate root offset M, rotated centroid H and root-position
+rotated centroid addition, also used by hull wrappers. It bounds intermediate root offset M, rotated centroid H and root-position
 magnitude P independently of the final leaf offset, retaining cancellation. The extra offset error is
 `U(M) + U(2M) + U(4M) + U(4M+H) + U(P+H)`, propagated through the actual absolute transpose row sums
 with outward accumulation. Here U is the full neighboring binary32 spacing. It is numerical evidence
@@ -238,6 +254,9 @@ is `1e-6f`. Certification does not repurpose either as a distance tolerance. A r
 outside the proved nondegenerate domain refuses. Initial contact admission proves the complete axis
 on the front with `InstalledMeshSides.Agree`, including its pinned contact-centering operation graph.
 An unproved back, crossing axis or operational side relationship refuses rather than becoming Clear.
+A directionally culled triangle proves the complete stationary initial query in both representations
+before returning Clear. This preserves initial front contact without requiring an excluded later
+boundary event to complete a distance proof.
 
 | Closed path situation | `CullBackFaces=false` | `CullBackFaces=true` |
 | --- | --- | --- |

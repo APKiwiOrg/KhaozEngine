@@ -21,7 +21,7 @@ lower bound before the current bracket. Uncertain cells remain inside that aggre
 without inventing another event or a Clear result. The final bracket still needs the real witness
 and the complete 0.001 m check. No sampled miss, inflated-plane construction or AABB certifies the box.
 
-Non-rigid poses retain the actual forward operator and separately enclose the pinned transpose-local
+General poses, including exactly rigid maps, retain the actual forward operator and separately enclose the pinned transpose-local
 capsule, including its full axis. The operational bound is
 `6 U(M) + 3 U(4 M) + 2 U(16 M) + U(2 h) + U(16 (M+h))`, where `M` outwardly bounds the complete
 relative path, `h` is the half-cylinder length and `U` is full neighboring binary32 spacing.

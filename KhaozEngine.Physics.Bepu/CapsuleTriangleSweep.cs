@@ -15,10 +15,15 @@ internal static class CapsuleTriangleSweep
     {
         if (!work.Primitive() || !triangle.Geometry.IsTriangle || !Nondegenerate(triangle.Geometry) ||
             triangle.Geometry.SweepCompanion is not { } companion || !Nondegenerate(companion) || filter.Layers != 0) return default;
+        bool culled = false;
+        bool directionProved = displacement == Vector3.Zero || !filter.CullBackFaces || Direction(triangle, displacement, out culled);
+        // A directionally excluded triangle only needs complete initial exclusion. Prove
+        // that closed stationary query in both models before publishing a culled Clear.
+        Vector3 requiredDelta = culled ? Vector3.Zero : displacement;
         // Complete distance already distinguishes an initial closed event from later
         // contact. Reusing that proof avoids spending the primitive cell account twice.
         CapsuleSweepResult distance = Distance(triangle, centre, radius, halfCylinderLength,
-            displacement, maximumErrorMetres, ref work, scratch);
+            requiredDelta, maximumErrorMetres, ref work, scratch);
         if (!distance.IsComplete) return default;
         if (distance.Status == CapsuleSweepStatus.Hit && distance.ClearThroughDistance == 0)
         {
@@ -28,13 +33,8 @@ internal static class CapsuleTriangleSweep
                 return FrontAxis(triangle, centre, halfCylinderLength) ? distance : default;
         }
         if (displacement == Vector3.Zero) return distance;
-        if (filter.CullBackFaces)
-        {
-            if (!Direction(triangle, displacement, out bool culled)) return default;
-            if (culled) return distance.Status == CapsuleSweepStatus.Hit && distance.ClearThroughDistance == 0
-                ? default : Clear(displacement);
-        }
-        return distance;
+        if (!directionProved) return default;
+        return culled ? Clear(displacement) : distance;
     }
 
     static CapsuleSweepResult Distance(in InstalledSweepLeaf triangle, Vector3 centre, float radius,

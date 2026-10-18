@@ -48,9 +48,9 @@ internal static class InstalledSweepBounds
         GeometryInterval bound = Term(6, Spacing(extent)).Add(Term(3, Spacing(4 * extent)))
             .Add(Term(2, Spacing(16 * extent))).Add(Term(1, Spacing(2d * halfCylinderLength)))
             .Add(Term(1, Spacing(16 * (extent + halfCylinderLength))));
-        if (leaf.Geometry.IsTriangle && leaf.Geometry.LocalPose.Position != Vector3.Zero)
+        if (leaf.Geometry.LocalPose.Position != Vector3.Zero)
         {
-            // Mesh recentering adds the rotated child offset after the original relative
+            // Mesh and hull recentering add the rotated child offset after the original relative
             // root path in ConvexSweepTaskCommon.ConstructSamples. A composed world pose
             // adds it before subtracting the query. Cancellation can make those intermediate
             // magnitudes much larger than the final leaf offset, so account for them explicitly.

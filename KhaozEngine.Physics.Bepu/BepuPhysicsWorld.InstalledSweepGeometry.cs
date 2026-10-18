@@ -39,16 +39,16 @@ public sealed partial class BepuPhysicsWorld
         if (geometry is not null && !geometry.Matches(_sim.Shapes, shape)) return false;
         proved = IdentityBoxSweepBounds(shape, pose, min, max);
         if (geometry is null || proved || (!geometry.IsHull && geometry.Mesh is null && pose.Orientation == Quaternion.Identity)) return true;
-        if (!InstalledSweepBounds.TryCreate(geometry, pose, out _, out _)) return geometry.Mesh is null;
-        if (!ProveOrExpandSweepBounds(reference, geometry, pose)) return false;
+        if (!InstalledSweepBounds.TryCreate(geometry, pose, out Vector3 requiredMin, out Vector3 requiredMax)) return geometry.Mesh is null;
+        if (!ProveOrExpandSweepBounds(reference, geometry, pose, requiredMin, requiredMax)) return false;
         proved = true;
         return true;
     }
 
-    bool ProveOrExpandSweepBounds(CollidableReference reference, InstalledSweepGeometry geometry, RigidPose pose)
+    bool ProveOrExpandSweepBounds(CollidableReference reference, InstalledSweepGeometry geometry, RigidPose pose,
+        Vector3 requiredMin, Vector3 requiredMax)
     {
-        if (!InstalledSweepBounds.TryCreate(geometry, pose, out Vector3 requiredMin, out Vector3 requiredMax) ||
-            !geometry.TryComposePose(pose, out RigidPose leafPose) ||
+        if (!geometry.TryComposePose(pose, out RigidPose leafPose) ||
             !InstalledPoseOperator.TryCreate(leafPose, out InstalledPoseOperator map)) return false;
         bool active = reference.Mobility != CollidableMobility.Static && _sim.Bodies[reference.BodyHandle].Awake;
         int index = reference.Mobility == CollidableMobility.Static

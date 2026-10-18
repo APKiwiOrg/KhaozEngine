@@ -391,7 +391,9 @@ public sealed class CertifiedHullSweepTests
             HitContains(Read(world, new(-0.25f, 0.5f, 0.5f), delta, length: 0), 0, 0);
             HitContains(Read(world, new(-0.25f, 0.5f, 0.5f), delta, length: 0, filter: QueryFilter.All with { CullBackFaces = true }), 0, 0);
         }
-        Clear(Read(world, new(MathF.BitDecrement(-0.25f), 0.5f, 0.5f), new(0, 0.125f, 0), length: 0), 0.125f);
+        // The source adds the 0.5 centroid after subtracting the query. That rounded
+        // sum loses this separated neighbor, so forward/source disagreement must refuse.
+        Refused(Read(world, new(MathF.BitDecrement(-0.25f), 0.5f, 0.5f), new(0, 0.125f, 0), length: 0));
         HitContains(Read(world, new(-1.25f, 0.5f, 0.5f), Vector3.UnitX, length: 0), 1, 1);
     }
 

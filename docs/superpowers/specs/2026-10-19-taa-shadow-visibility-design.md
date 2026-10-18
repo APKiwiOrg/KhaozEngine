@@ -1,0 +1,231 @@
+# TAA shadow visibility production design
+
+**Status:** Proposed production specification for owner and orchestrator review. This document authorizes no implementation, GPU run, billed benchmark, release or consumer adoption.
+
+**Decision basis:** Owner ruling of 2026-10-19. Hold for the full fix. Bilinear 3x3 PCF and a lit visibility signal ship together in one engine release. A filter-only release or another colour-only lock heuristic does not satisfy the ruling.
+
+**Baseline:** `a1e826635`, with `KhaozEngineVersion` at the already tagged `21.5.1`. This documentation change does not bump the version. The implementation plan is [2026-10-19-taa-shadow-visibility.md](../plans/2026-10-19-taa-shadow-visibility.md).
+
+## 1. Problem and success
+
+TAA retains isolated bright pixels on moving sun-shadow edges, especially at low frame rates. Grimhollow reproduces them at Native and Quality, while its FXAA control does not. The consumer issue is [Grimhollow #558](https://github.com/APKiwiOrg/Grimhollow/issues/558). The fix belongs in the shared lighting and temporal renderer.
+
+Success requires all of the following together:
+
+- Continuous comparison filtering preserves the existing shadow softness and cascade behavior.
+- A change in the key-light visibility used to shade a surface releases inappropriate thin-feature history without sacrificing real missed thin features, dark texture or animated local lighting.
+- Fast-shadow absolute tails and leading and trailing silhouette rims pass on the same filtered scene input as their control. An improved ratio denominator does not excuse an increased absolute tail.
+- Fused and split execution make identical visibility decisions and write identical visibility histories. Existing exact state and hardware colour identity remain exact.
+- Every lit family, transparent writer, motion/dissolve variant and MSAA layout is covered. Lifecycle changes preserve reset, resize, repeated-render and zero steady managed-allocation contracts.
+- Real-scene reports cover all four conditions at Native, Quality and own FXAA. Correctness on all three native backends precedes any separate cost decision.
+
+Residual noise is not automatically a failed implementation, nor does the archive establish an FXAA-parity promise. The owner must accept the final measured look. No archive arm is itself accepted production code.
+
+## 2. Evidence and limitations
+
+Read-only sources, pinned to immutable archive commits:
+
+- [Full real-scene record at 3ca76f11b](https://github.com/APKiwiOrg/KhaozEngine/blob/3ca76f11b/KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/README.md), especially “Lit visibility signal diagnostic” and “Low-pass visibility comparison diagnostic”.
+- [Visibility comparison tables](https://github.com/APKiwiOrg/KhaozEngine/blob/3ca76f11b/KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/runs/visibility-mean/comparison-tables.md), [absolute tails](https://github.com/APKiwiOrg/KhaozEngine/blob/3ca76f11b/KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/runs/visibility-mean/absolute-tails.md) and [individual local failures](https://github.com/APKiwiOrg/KhaozEngine/blob/3ca76f11b/KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/runs/visibility-mean/local-failures.md).
+- [Blocked colour-only attempt at 264bbc11c](https://github.com/APKiwiOrg/KhaozEngine/blob/264bbc11c/KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/lock-luma-kill/README.md). Port its guards, never its release rule. The final local run failed 11 tests, and hosted run `39119425055` failed 11 on each of Metal, Direct3D 11 and Vulkan. The failures include thin-feature, detail, flicker and fast-tail regressions. Counting failing facts differs from counting their failed measurements.
+
+About 97% of the diagnosed dots coincide with stored thin-feature locks. Those locks keep lit history luma out of the clip after a shadow arrives. The point-compare 3x3 PCF seeds some locks. Continuous filtering reduces the seeds but does not remove the history mechanism. Colour statistics alone cannot distinguish a shadow change from a real thin feature missed by jitter.
+
+At back15, baseline character grain is `0.014287 / 0.014156` at Native / Quality, with `1742 / 1733` pooled dots. Bilinear-only gives `0.008027 / 0.011053`, with `851 / 1166` dots. Useful signal arms reach roughly `0.0054 / 0.0085` with hundreds of dots, still above bilinear own FXAA grain `0.002607`. These rounded signal figures summarize candidates, not a new acceptance bound. Exact per-arm rows remain in the tables.
+
+The selected filter measured character FXAA width `12.33` against `12.41` pixels and stayed within all 58 grid golden tolerances. It nevertheless changes the input to temporal acceptance tests. Bilinear-only misses Quality M 0.5 leading-flat error at `0.010485` against `0.01023825` and moves pinned spatial references. That is addressed by a controlled rebaseline, not by pretending the old scene input is unchanged.
+
+The depth-qualified mean release-only arm increases Native 8-pixel advancing and retreating tails to `0.004627341 / 0.008277088`, from unset `0.004441862 / 0.006978498`. The large-change reset reduces them to `0.003520131 / 0.004718931`. It also adds trailing-flat rim misses, including Quality M 1 error `0.000273` against `0.00024585`, and temporal error `0.000297` against the same bound. Across the reported flat rims the errors are around `0.0003` to `0.001`, sometimes 10% to 30% over their bounds. The reset is a tuning basis, not permission to waive these misses.
+
+Four inherited archive entry-identity facts fail. A typical stored-lock difference is `0.00048828125`, with colour as much as `0.010253906` apart. Production must fix the arithmetic and wiring, not import diagnostic tolerances. Jitter invariance and quantization equivalence remain proof obligations.
+
+### Alternatives rejected or retained only as controls
+
+| Alternative | Disposition and reason |
+| --- | --- |
+| Filter-only shipping fix | Rejected by the owner. Bilinear-only leaves 851 / 1166 back15 character dots and the lock mechanism remains |
+| Colour-only mean/luma release | Rejected. Missed thin features and shadow changes can have identical statistics, and the production attempt fails the full suite |
+| Disable or globally weaken thin-feature locks | Rejected. It removes the protection that the existing subpixel line and stable-detail tests require |
+| Single bilinear comparison tap | Rejected. It leaves more dots and sharpens the ground edge from 6.27 to 4.68 pixels, changing the authored softness |
+| Maximum of nine per-offset visibility differences | Control only. It compares individual offsets rather than the chosen low-pass means and retains the diagnostic's identity and shadow-guard failures |
+| Release-only mean without a large-change response | Control only. Its absolute 8-pixel tails regress even where a ratio happens to pass |
+| Unqualified mean or centre-only visibility | Control only. The owner selected depth-qualified 3x3 means to reject other surfaces while retaining neighborhood evidence |
+| R32Float shipping storage | Matched numerical control only. It costs four times the R8 payload. The R8 proof must still isolate quantization rather than assume equivalence |
+
+## 3. Grounded code boundaries
+
+All paths below are relative to the engine repository.
+
+| Existing owner | Change it owns |
+| --- | --- |
+| `KhaozEngine.Render3D/Internal/ShaderSources.Lighting.cs`, `pcfCascade` | Continuous comparison filter. `sampleKeyShadow` retains bias, normal offset, strength, selection, coverage fallback and cascade blend |
+| `Internal/ShaderSources.Model.cs`, `ShaderSources.Terrain.cs`, `ShaderSources.TileGround.cs` under `KhaozEngine.Render3D/` | Base lit fragments. Skinned and foliage variants reuse these bodies, with motion construction in `ShaderSources.Motion*.cs` |
+| `KhaozEngine.Render3D/Internal/RenderResources.cs`, `Scene3D.RenderTargets.cs`, `Scene3D.ResolveTargets.cs` | Optional R8 attachment, clear, MSAA resolve, target generation, framebuffer/pipeline rebuild and retirement |
+| `KhaozEngine.Render3D/Rendering/ModelTargetBlends.cs`, `ModelRenderer*.cs`, transparent renderers | Correct attachment layout and destination preservation |
+| `KhaozEngine.Render3D/Rendering/TemporalResolveRenderer*.cs`, `TemporalSplitResolve.cs` | Resolve inputs, bindings, history copy and previous-jitter publication |
+| `KhaozEngine.Render3D/Internal/ShaderSources.TemporalAccumulate.cs`, `ShaderSources.TemporalSplit.cs`, `ShaderSources.TemporalAtDisplaySize.cs` | One shared comparison and release operation, called by fused, split and Native specialization |
+| `KhaozEngine.Render3D/Internal/TemporalResolveTuning.cs`, `TemporalResolveMath.cs` | Named constants and CPU reference contract |
+| `KhaozEngine.Render.Tests/Gpu/TemporalReviewBaseline.cs`, `TemporalMovingShadeRimGpuTests.cs` | Device-class control measurements and pinned spatial reference checks |
+
+Create cohesive `ShaderSources.ShadowVisibility.cs`, `ShadowVisibilityTargets.cs`, `ShaderSources.TemporalVisibility.cs`, `TemporalResolveRenderer.Visibility.cs` and `TemporalVisibilityHistory.cs` for their new concerns. Do not paste the archive switch framework into shipping code or increase file-size baselines. Existing canonical owners retain their responsibilities.
+
+## 4. Bilinear 3x3 comparison PCF
+
+Keep nine comparison-filter taps at offsets `{-1,0,1}²`. Each tap bilinearly interpolates four point depth-comparison results. Never interpolate stored depths before comparing. Share the overlap as a 4x4 footprint, requiring 16 raw depth comparisons per cascade lookup instead of nine.
+
+For texel fraction `f`, the shared one-dimensional weights are `[1-f, 1, 1, f]`. Multiply X and Y weights, sum the 16 comparison results, then divide by nine. Clamp every sampled texel centre inside its own cascade column. Preserve the same coordinate convention, depth comparison, bias, normal displacement, coverage, cascade strength and handoff blend. A blended receiver can require two footprints, or 32 comparisons.
+
+Start with the explicit point-fetch implementation as the readable oracle. Evaluate `textureGather` through the actual GLSL to SPIR-V toolchain, SPIRV-Cross MSL and HLSL, and FXC validation. Four suitably placed 2x2 gathers can express the shared 4x4 footprint, but component ordering, sample placement and atlas-edge clamping must be proved with readback. A source gather operation is not proof of four physical memory transactions or a speedup.
+
+Use gathers only if all three native backends compile and produce the oracle's comparisons and interpolated result, including cascade edges and half-texel cases. Otherwise ship the 16-fetch path. No new dependency or assumed hardware comparison-sampler feature is needed. Point-light shadow filtering is outside this change.
+
+## 5. Lit visibility attachment
+
+The signal is the exact local `keyShadow` returned by the existing `sampleKeyShadow` call, after all its strength, coverage and cascade operations. Assign that variable directly to an `R8UNorm` output. There is no second shadow lookup and no reconstruction from scene colour, normal or depth. “Exact” refers to the variable before the intentional UNorm quantization.
+
+| Lit path | Required variants and semantics |
+| --- | --- |
+| Rigid models | Plain, keyed motion, alpha cutout, dissolve and inverted dissolve |
+| GPU-skinned models | Skinning and motion palettes, cutout and dissolve |
+| CPU-skinned models | Current/previous streamed vertices, cutout and dissolve |
+| Foliage | Displaced geometry, motion, cutout and applicable dissolve variants |
+| Splat terrain | Plain and motion variants, same lit visibility as its colour |
+| Tile ground | Plain and motion variants, same lit visibility as its colour |
+| MSAA layouts | Matched sample count, plus explicit single-sample R8 resolve before temporal sampling |
+| Transparent model, billboard, beam, trail, overlay and silhouette writers | Explicit harmless output, `PreserveDestination` on visibility. Never erase the opaque receiver's signal |
+
+Visibility occupies location 3 in a visibility-only layout and location 4 when motion already occupies location 3. All output and blend arrays must name their actual framebuffer slots. Colour-only passes use colour-only framebuffers. Audit shader-generated variants rather than searching only the base fragment strings.
+
+Clear visibility to 1. Shadow-disabled geometry and out-of-coverage geometry write 1. A discarded cutout or dissolve fragment writes nothing and therefore preserves the revealed surface's signal. A frame without temporal use owns no visibility targets unless a test explicitly requests a visibility-only layout. Non-temporal pixels still change with the intended new PCF filter.
+
+`MotionMath.IsTemporal` currently detects any fourth attachment. Adding R8 in that position without motion would misclassify it. Replace that inference with an explicit layout/format check, retain the motion slot and format, and test three, four and five attachment descriptions.
+
+### Attachment-capacity decision before implementation
+
+`GpuCapabilities.MinimumColorAttachments` is four. The motion-plus-visibility layout requires five. The split resolve's existing fallback to fused does not fix a five-output lit pass. No shipping code may attempt an unsupported framebuffer or silently use the old defective resolve.
+
+This spec does not authorize reducing the engine's supported Vulkan device floor. Before the MRT task, the owner/orchestrator must choose an exact visibility companion pass on four-attachment devices, or explicitly approve a documented AA capability fallback. The former preserves TAA support but adds pass and geometry cost. The latter is simpler but changes supported behavior. The plan stops at that decision if it remains unresolved. Either choice needs an amended layout, pixel tests and cost accounting before it can ship.
+
+## 6. Visibility history, validity and lifetime
+
+`TemporalResolveRenderer` owns a `TemporalVisibilityHistory` pair of internal-resolution R8 textures. It follows the same `TemporalHistory.ReadIndex`, `WriteIndex`, owner, device and target generation as colour and previous depth. It does not independently flip indices. Include the lit input's identity in `SameInputs` and in both fused and split binding caches.
+
+After either entry point completes, one shared finish path copies the current lit signal into the visibility write texture with `CopyTexture`. Keep the read texture untouched through debug/count re-evaluation. Do not add a third fullscreen pass or change either entry point's two draw count just to store visibility.
+
+Store previous jitter in a separate 16-byte uniform buffer, with XY in internal pixels. Keep the existing 256-byte resolve uniform contract intact. Update saved jitter only after a completed resolving render, with the same frame ownership as the copied visibility. Later renders in the same frame must not advance either. Reset, first use, changed owner/device, resized or recreated targets, AA/preset changes and camera cuts invalidate visibility wherever colour is invalid. Also gate a newly created or unseeded visibility generation even if the colour owner was valid.
+
+Release sets before retiring the resources they name. Use the existing `GpuRetireQueue`, never free an in-flight texture directly. Retire both histories on TAA off or scene disposal. Steady frames create no resources and allocate zero managed bytes. Standalone synthetic resolves that omit a lit input bind an owned fully lit R8 fallback and copy it through the same path, preserving their previous behavior without null bindings.
+
+R8 has a `1/255` step. Its maximum nearest conversion error is `1/510`, but backend conversion rules must be measured rather than assumed. Add a matched R32Float evidence control with the identical mean algorithm and thresholds. Compare threshold decisions and image metrics at R8 rounding boundaries. There is no single-channel R16Float format in the current GPU seam. Do not expand the seam merely to avoid this proof.
+
+## 7. Depth-qualified mean comparison
+
+Use the archive's `vis-mean-dq-0.1` basis in one shared GLSL helper. Let:
+
+- `c` be the current internal centre texel, `o` an offset in `{-1,0,1}²`, `a = clamp(c+o, 0, S-1)`.
+- `S` be internal size, `J` current jitter and `Jp` previous resolved jitter, both in internal pixels.
+- `u` be current display UV and `up` the resolve's existing reprojected UV.
+- `V` and `Vp` be current and previous visibility. Use the same existing expected previous surface depth as history validity, without inventing a second motion or depth rule.
+
+The history position for each offset is:
+
+```text
+h(o) = up + (a + 0.5 - J) / S - u + Jp / S
+```
+
+Accept a current sample only when:
+
+```text
+abs(currentLinearDepth(a) - currentCentreLinearDepth)
+    <= 0.02 * max(currentCentreLinearDepth, 1e-5)
+```
+
+For each accepted offset, expand history bilinear sampling into its four texel weights. Accept each history texel independently only when:
+
+```text
+abs(storedPreviousDepth - expectedDepth) <= 0.02 * max(expectedDepth, 1e-5)
+```
+
+Reject other surfaces before interpolation. Accumulate current visibility and its accepted count. Separately accumulate accepted previous visibility times bilinear weight and accepted history weight across those same offsets. Divide each sum by its own denominator. Do not normalize each history offset separately, pair unrelated extrema, or use a max-of-nine difference. Clamped duplicate offsets retain their normal footprint multiplicity.
+
+If current count or previous weight is zero, make no visibility decision. If history is invalid, off screen or unseeded, perform no visibility release. Keep background on the existing temporal background path. Otherwise define signed `d = meanCurrent - meanPrevious` and absolute change `D = abs(d)`.
+
+For `D > 0.1`, clear stored lock before hold is computed and set clip hold to zero. Do this regardless of ridge status or surface speed. At exactly 0.1, this signal does not release. Preserve the existing colour-based shading release for its other responsibilities. Visibility release alone must not be folded into its `released` Boolean, because that would also reset accumulation and display share unconditionally.
+
+### Large-change response
+
+The starting experimental rule for `D > 0.5` also sets accumulated weight and display share to zero. At exactly 0.5 it does not. This fixes the archive's absolute fast tails but has known rim regressions. It cannot ship until tuned against the controlled filter baseline.
+
+Run a bounded comparison of the symmetric reset, falling-only reset (`d < 0`), rising-only reset (`d > 0`), partial scaling of accumulated weight and display share, and the large-change threshold. The plan fixes a finite candidate list. The `0.1` lock-release threshold and `0.02` depth tolerance stay fixed in that round. No public tuning API or permanent diagnostic token matrix is added. If no candidate meets all gates, stop and amend the design with evidence.
+
+## 8. Test methodology and acceptance
+
+### Rebaseline the changed scene input first
+
+The invariant is “the resolve is no worse than before on the same input”. An old point-PCF input and a new bilinear-PCF input are not the same experiment.
+
+1. Freeze the 21.4.0 resolve behavior and shader/tuning source identities. At `a1e826635`, its accumulation, preparation, display reconstruction and tuning files are unchanged from `v21.4.0`. Confirm this again at execution. No visibility resources, helper or reset may be present in this control.
+2. Measure old point-PCF plus that resolve, then bilinear-only plus that same resolve, with identical fixture settings, seeds, phase, frame counts, dimensions and device class. Capture spatial references again with the new filter and the existing non-temporal supersampled reference procedure.
+3. Save raw figures for every affected rim row at hardware, WARP and lavapipe. Re-record the pinned spatial-reference values and re-measure the temporal acceptance baseline on the bilinear input. A local Metal number cannot stand in for WARP or lavapipe.
+4. Commit these measurements and the new filter-specific rim baseline separately, before any signal implementation lands. Write in the test why the input changed. Keep the existing tolerance `0.1`, rounding `0.0000005`, reference-identity tolerance `0.000001`, metric definitions, masks and case inventory. The derived acceptance remains `(baseline + 0.0000005) * 1.1`.
+5. Preserve the historical v21.2.0 tables for unrelated diagonal and other tests. Update only measured filter-affected rows and their provenance, not the shared helper's margin. Judge all later signal/reset changes against the frozen bilinear control.
+
+This is not loosening a bound. It preserves its meaning on the same input. The signal cannot supply its own baseline. No other bound may change without a measured absolute value that did not regress and a written rationale. A ratio passing is insufficient. Do not rebake a golden to conceal a changed look or incorporate a failed signal into the control.
+
+### Regression and identity gates
+
+Port the textured receiver, dark surface and flickering/moving local light guards from `264bbc11c`. Retain Native textured grain `<= 0.0113` and Quality `<= 0.008`, dark non-black proof, and the paired error/grain/temporal-error detail bounds. Collect per-device controls where needed, without using candidate output to raise them. Report Balanced and exercise every existing preset in the full suite.
+
+Add actual R8 pixel readbacks for every lit path and preserved transparent path, shadow-disabled and cutout cases, MSAA resolve, strength/cascade handoff and four-attachment capability handling. Add deterministic tests for jitter-only motion, reprojection, near/far rejection, no accepted weights, image edges, reset lifecycle and unchanged visibility over a missed thin feature. CPU arithmetic tests complement, never replace, the rendered result.
+
+Run every `Temporal*GpuTests` correctness class, excluding only temporal timing-cost benchmarks, plus `TemporalMovingShadeRimGpuTests`, `TemporalEntryIdentityGpuTests` and the shadow/golden selection. Inventory discovered tests and TRX outcomes, with zero skipped selected GPU facts. Never use the archive's original eight-test shortlist as the production gate. Keep absolute 1-pixel and 8-pixel tails, both directions and presets, alongside ratio and rim figures.
+
+Local Metal correctness comes first. Then dispatch `cross-platform-gpu.yml` on the exact candidate for Metal, Direct3D 11 and Vulkan. A filtered correctness run excludes timing, retains compiler/validation checks and records device-class outputs. The ordinary full default-input workflow remains the later release gate under the release ritual. New or changed goldens and shader-corpus baselines follow the relevant hosted bake procedure, with reviewed deltas and no tolerance changes.
+
+Identity must be exact for lock, confidence, marks, visibility bytes and release/reset decisions. Hardware and WARP colour remains exact. Main already allows a measured software-Vulkan colour exception in `TemporalEntryIdentityGpuTests`. Preserve only that pre-existing exception, without widening it or extending it to visibility or state. Report it explicitly rather than claiming all main colour comparisons are currently zero-tolerance.
+
+### Real-scene acceptance
+
+Use the headless `shadowgrain` capture introduced on [Grimhollow 06601de4](https://github.com/APKiwiOrg/Grimhollow/commit/06601de4), from a separately authorized disposable consumer probe. Read the archive's private-feed and probe instructions. Never repin a shipping game branch for this evidence.
+
+Use a unique private-feed prerelease for each changed package set. Record source SHA, package identity/hash, vendored and loaded renderer hashes, capture settings, region masks and control identities. Capture-only instrumentation may expose stored locks and release decisions after history. It must not change shipping resolve arithmetic or enter normal measurements. Keep instrumentation/probe commits separate and prove normal frames match the uninstrumented candidate.
+
+| Condition | Spot | Frame time | Day length |
+| --- | --- | --- | --- |
+| back15 | back-edge | `1/15` | 5 minutes |
+| day30 | back-edge | `1/15` | 30 minutes |
+| back60 | back-edge | `1/60` | 5 minutes |
+| ground15 | ground-edge | `1/15` | 5 minutes |
+
+All use start time `0.49777777777777776`, 80 warm-up frames and 16 measured frames, TAA Native, TAA Quality and each build's own FXAA. Report character and ground grain mean/p95, change mean, dots and locked share for the unchanged-resolve control and final candidate, with old point-filter results for context. FXAA locked share is not applicable.
+
+Keep the archive's dot definition, luma more than `0.05` above both the local 3x3 median and own FXAA, pooled over pixel-frames. Overlay pixels never contribute to normal metrics. Retain full tables and crops, not only favourable back15 character rows. Back15 character grain and dots must improve over bilinear-only at both presets. Any other regional grain, change or dot regression needs an explicit owner decision after seeing absolute values and images. Lower locked share alone is not quality. The owner accepts the remaining sparkle after all correctness gates pass.
+
+## 9. Cost and risks
+
+At a 2560x1440 display, Native is 2560x1440 internally and Quality is 1707x960.
+
+| R8 resource | Native MiB | Quality MiB |
+| --- | ---: | ---: |
+| Lit attachment | 3.515625 | 1.562805 |
+| One history | 3.515625 | 1.562805 |
+| Both histories | 7.031250 | 3.125610 |
+| Signal plus history pair | 10.546875 | 4.688416 |
+
+These are logical non-MSAA payloads, excluding alignment, retirement overlap, fallback and the 16-byte previous-jitter buffer. MSAA adds a multisampled R8 attachment. A four-attachment companion pass, if chosen, needs separate accounting.
+
+Lighting adds a scalar store and no repeated shadow lookup. PCF adds seven raw comparisons/fetches per unblended lookup in the explicit implementation. The comparison examines nine current visibility/depth samples and up to four previous visibility/depth texels per accepted offset. History copy reads and writes one byte per internal pixel. Cache behavior, render-target compression, bandwidth, frame cost and gather benefit are unmeasured.
+
+Material risks are five-attachment support, per-sample R8 MSAA support/resolve behavior, threshold quantization, depth qualification on moving silhouettes, doubled jitter correction, stale history generations, and fused/split compiler reassociation. The finite tuning round may fail to remove both tail and rim regressions. A failed round blocks shipment and requires evidence-led design revision.
+
+The billed T4 `gpu-hosted-bench.yml` is a separate stop. After correctness and real-scene proof, present exact refs, device legs, test filter, paired run count, expected duration and estimated bill to the owner. Obtain fresh explicit approval before dispatch. No local timing/load loop substitutes for it. This plan does not authorize any timing or load run.
+
+## 10. Amendment, version and handoff
+
+This becomes **amendment 35** in `docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md`, which ends at amendment 34 at the design baseline. At implementation, append the shared visibility-release contract, history/format/lifetime rules, controlled rebaseline rationale, chosen reset and measured evidence. Mark only superseded key-shadow lock decisions from amendments 33/34. Their non-shadow shading behavior remains. Update the algorithm steps, target/memory tables, relevant living docs and `docs/INDEX.md`. If another branch has used 35, allocate the next amendment and update this spec and plan in the same reviewed commit.
+
+Recommend one **minor** version for the combined package-bearing batch. Although consumer calls need not change, a new lit MRT, persistent history pair and resolve input materially extend rendering resource and capability contracts. From the current tagged baseline this would be `21.6.0`, subject to fresh main/tag reconciliation. Do not reserve that number across concurrent work. Ride an appropriate staged unreleased version if one exists at finishing, or choose the next free minor. A patch classification instead needs an orchestrator/owner decision explaining why the resource contract counts only as an internal fix.
+
+The eventual version and matching newest changelog entry land together once, with guarded declarations updated. Neither this spec commit nor intermediate evidence-only tasks bump. Integration, release, tag, durable publication and Grimhollow adoption belong to the owning orchestrator and their separate gates. Both parts remain on the task branch until the combined fix is approved and verified.
+
+Open decisions are the four-attachment policy, final reset selection if several pass, acceptable residual real-scene noise, and fresh billed-benchmark approval. Gather support is an implementation proof question, not an assumption requiring the owner to guess.

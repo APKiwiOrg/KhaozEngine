@@ -1,0 +1,328 @@
+# TAA Shadow Visibility Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use subagent-driven-development or executing-plans to implement this plan task-by-task after owner/orchestrator approval. Steps use checkbox (`- [ ]`) syntax for tracking. This planning handoff does not select or start execution.
+
+**Goal:** Ship bilinear 3x3 key-shadow comparison filtering and visibility-informed temporal history release together, eliminating held bright shadow-edge history without regressing detail, tails, rims or entry identity.
+
+**Architecture:** The existing lit passes export their exact `keyShadow` variable to an optional R8 MRT. The resolve owns two internal-resolution R8 visibility histories and compares depth-qualified current and reprojected previous 3x3 means in shared GLSL. A separately measured large-change response controls accumulated weight and display share. Establish the unchanged 21.4.0 resolve's bilinear-input baselines before introducing any visibility behavior.
+
+**Tech Stack:** C# / .NET 10, xUnit, GLSL 450, the existing shaderc/SPIRV-Cross/FXC pipeline, native Metal, Direct3D 11 and Vulkan, `KhaozEngine.Render3D`, `KhaozEngine.Render.Tests`.
+
+**Spec:** [2026-10-19-taa-shadow-visibility-design.md](../specs/2026-10-19-taa-shadow-visibility-design.md). Read it with the pinned archive links before execution. This plan starts at `a1e826635`, with tagged `21.5.1` and no version staged on this branch.
+
+## Global Constraints
+
+- Owner ruling. Both parts ship together in one engine release. Do not integrate or release the filter alone.
+- Work only in the supplied `taa-shadow-visibility` worktree on `fix/taa-shadow-visibility`. Before every write, check `git rev-parse --show-toplevel` against the supplied worktree and `git branch --show-current` against that branch. Run `git status --short` and preserve unrelated changes. All committed paths and evidence locations are repository-relative.
+- Treat `fix/taa-grain-switches` at `3ca76f11b` and `fix/taa-game-shadow` at `264bbc11c` as read-only archives. Do not merge or cherry-pick their renderer or diagnostic framework wholesale. The real-scene record is `KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/README.md` on the former.
+- The design-only handoff changes two Markdown files, commits and pushes the named branch, then stops. Tasks below are future implementation, not permission to execute them now.
+- New visibility storage is `GpuPixelFormat.R8UNorm`. Release is strictly `D > 0.1`. Current and previous depth qualification is `0.02 * max(referenceDepth, 1e-5)`. Large-change reference reset is strictly `D > 0.5` and requires tuning before shipment.
+- Five lit attachments exceed the guaranteed four-attachment capability. Obtain the capability decision in spec section 5 before Task 4. Do not assume switching split to fused fixes this.
+- No colour-only luma kill. Preserve all unrelated temporal, local-light, point-shadow and thin-feature behavior. No fallback to the defective resolve on supported devices.
+- Rebaseline the filter input with the unchanged 21.4.0 resolve in its own commit before any signal implementation. Keep tolerance `0.1`, rounding `0.0000005` and pinned-reference tolerance `0.000001`. No other bound changes without a measured absolute value that did not regress and a written rationale.
+- All local builds, tests, packs and captures use `build-slot --label <task> -- <command>`. Use `--heavy` for wide GPU selections, captures, packs and final full suites. One command at a time, no retry loop, stress or timing run. Focused RED/GREEN checks run per changed task. The final local broad gate runs once, after integration of the tasks.
+- Tests precede behavior. A missing API compile failure is setup evidence, not a behavioral RED. Introduce the compilable contract first where necessary, then prove the intended assertion fails before implementing it. An expected baseline regression is recorded, never hidden with skip or a raised bound.
+- Keep CPU and GPU evidence distinct. Plain `dotnet test` skips GPU facts. Every selected GPU run sets `KE_GPU_TESTS=1`, records device/backend, and proves zero skipped selected GPU facts from TRX.
+- Do not grow file-size baselines, change golden tolerances, broaden the software-Vulkan identity exception, or hide warnings. A new cohesive concern gets its own partial/type.
+- Only Task 9 changes the package version/changelog, once for the batch. Reconcile with current main/tags at that point. No automatic tags, release, shared-feed pack, consumer repin or main integration by task workers.
+- Billed T4 cost verification is an explicit stop in Task 12. Fresh owner approval is required. Ordinary hosted correctness and baseline collection are future orchestrator steps, not authorized by this design-only request.
+- Before every commit stage explicit paths, run `sh scripts/check-dashes.sh staged`, `sh scripts/check-prose.sh staged`, `sh scripts/check-file-size.sh staged` and `bash scripts/check-doc-versions.sh`. Use an explicit commit pathspec and `area(scope): summary`, without attribution. Do not bypass hooks.
+
+## Review Focus
+
+1. R8 at location 3 looks like motion to the current count-only check. A visibility-only framebuffer must stay motionless, and a four-attachment device must take only its approved supported policy (`VisibilityLayoutDoesNotImpersonateMotion`, `FourAttachmentDeviceUsesApprovedVisibilityPolicy`, Task 4).
+2. A transparent or discarded fragment crosses an opaque shadow receiver. Visibility must remain the opaque surface's value (`TransparentAndDiscardedWritersPreserveOpaqueVisibility`, Task 4).
+3. Jitter changes while light, receiver and camera are still. The visibility signal must not release a missed real thin feature (`JitterOnlyVisibilityDoesNotReleaseThinDetail`, Task 6).
+4. A nearer moving silhouette changes the footprint or leaves no qualified history texels. Reject cross-surface history before interpolation, and avoid divide-by-zero or false release (`OtherSurfaceAndEmptyFootprintsDoNotRelease`, Task 6).
+5. AA, size, device or entry changes after a completed resolve, including a second render in the same frame. Visibility and previous jitter must keep the colour history's generation and frame ownership (`VisibilityGenerationAndRepeatedRenderStayAligned`, Task 5, `EntryFlipKeepsVisibilityBytesExact`, Task 8).
+
+---
+
+## File structure and shared interfaces
+
+Existing files are extended only at their integration seams. New files below have one responsibility.
+
+| File | Responsibility |
+| --- | --- |
+| `KhaozEngine.Render3D/Internal/ShaderSources.ShadowVisibility.cs` | Shared comparison-filter GLSL, included by `LightingGlsl` |
+| `KhaozEngine.Render3D/Internal/ShadowVisibilityTargets.cs` | Format and actual attachment-layout facts, distinct from motion |
+| `KhaozEngine.Render3D/Rendering/TemporalVisibilityHistory.cs` | R8 history allocation, copy and retirement keyed to the colour owner |
+| `KhaozEngine.Render3D/Rendering/TemporalResolveRenderer.Visibility.cs` | Visibility binding lifecycle, fully lit fallback and previous-jitter buffer |
+| `KhaozEngine.Render3D/Internal/ShaderSources.TemporalVisibility.cs` | Shared depth-qualified mean and signed change |
+| `KhaozEngine.Render.Tests/Gpu/TemporalShadowFilterBaseline.cs` | Bilinear-input rim baseline and provenance, leaving historical diagonal baselines intact |
+| `KhaozEngine.Render.Tests/Gpu/TemporalVisibilityReference.cs` | Test-only CPU mean/qualification oracle, including explicit history weights |
+| `KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/` | Relative-path manifests, raw measurements, comparisons and reviewed proof |
+
+New internal contracts, defined by their owning tasks:
+
+```csharp
+// Task 4, Internal/ShadowVisibilityTargets.cs
+internal const GpuPixelFormat Format = GpuPixelFormat.R8UNorm;
+internal static int Attachment(bool motion); // 3 without motion, 4 with motion
+internal static bool HasVisibility(in GpuOutputDescription outputs);
+
+// Task 5, extend the existing internal record. Null is the standalone fully lit case.
+internal readonly record struct TemporalResolveInputs(IGpuTexture SceneColor,
+    IGpuTexture OpaqueColor, IGpuTexture SceneDepth, IGpuTexture Motion,
+    IGpuTexture? KeyShadowVisibility = null);
+
+// Task 5, Rendering/TemporalVisibilityHistory.cs
+internal bool Ensure(IGpuDevice device, TemporalHistory owner, GpuRetireQueue? retired);
+internal IGpuTexture Texture(int index);
+internal void Store(IGpuCommandList commands, IGpuTexture source, int writeIndex);
+internal void Release(GpuRetireQueue? retired);
+```
+
+`Ensure` returns true on generation replacement, causing visibility validity to reset. `Store` copies only, without flipping indices. The owner remains `TemporalHistory`. Helpers outside these signatures are private implementation choices. An approved four-attachment policy may add one narrowly specified companion-pass interface before Task 4 starts.
+
+The shared GLSL contract for Task 6 is:
+
+```glsl
+bool temporalVisibilityChange(vec2 uv, ivec2 centre, ivec2 last,
+    vec2 previousUv, float expectedDepth, out float signedChange);
+```
+
+It returns false for empty qualified samples and otherwise returns current mean minus previous mean. The caller gates history/background validity. One helper and reduction order serve fused, split, Native specialization, debug and count evaluation.
+
+## Verification commands used by tasks
+
+`FOCUS` below is the task's explicit filter. From the guarded task root, focused CPU runs use:
+
+```bash
+build-slot --label taa-focus -- dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter "$FOCUS"
+```
+
+Focused Metal readback runs use this command after a Release build:
+
+```bash
+build-slot --label taa-focus-gpu -- env KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "$FOCUS" --logger 'console;verbosity=detailed'
+```
+
+Before GPU verification after a source change:
+
+```bash
+build-slot --label taa-render-build -- dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release
+```
+
+Task 11 owns the one final wide local gate. Do not repeat it for every tuning arm. Each task records actual assertion failures, command exit codes, device identity and its commit.
+
+### Task 1: Port useful guards without the failed release rule
+
+**Files:**
+- Create from the tested source at `264bbc11c`: `KhaozEngine.Render.Tests/Gpu/GameShadowGrainScene.cs`, `GameShadowGrainMeasure.cs`, `TexturedShadowGrainCase.cs`, `TemporalGameShadowGrainGpuTests.cs`, `TemporalTextureLightGpuTests.cs`.
+- Create: `KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/guards.md`.
+- Read only: archive `TemporalResolveLumaLockGpuTests.cs` and `TemporalShadeEvidence.cs`. Do not port implementation-specific luma-rule assertions.
+
+**Interfaces:** Consumes existing `TemporalFixture`, `TemporalAcceptance` and `TemporalDeviceClass`. Produces the textured receiver assertion and dark/flicker/moving-light fixture used by later tasks, with a shared-scene parity fact.
+
+- [ ] Read the source guard and its baseline measurement record. Copy only deterministic fixture, measurement and useful assertions. Remove environment switches, release-mask assumptions and diagnostic token dependencies. Preserve local-light state reset and fresh-scene parity.
+- [ ] Verify `Texture_ridges_under_a_coarse_moving_shadow_do_not_hold_bright_grain` fails on unchanged behavior at Native `0.0113` or Quality `0.008`. Record the absolute result. Balanced remains report-only for this added guard, with existing Balanced coverage retained elsewhere.
+- [ ] Verify dark mean luma is between `0.001` and `0.08`. Retain the paired `1.1 * before` error, error-image grain and temporal-error bounds for dark, flicker and moving local lights. Hardware controls come from the archive. Before gating another device class, obtain its unchanged-resolve controls, never candidate controls.
+- [ ] Run the focused filters `FullyQualifiedName~TemporalGameShadowGrainGpuTests|FullyQualifiedName~TemporalTextureLightGpuTests`. Non-shadow guard and scene-parity facts pass. The textured-grain RED is an explicitly tracked open prerequisite, not a passing-suite claim. Do not merge the intermediate branch to main.
+- [ ] Commit `test(taa): preserve shadow grain and local light guards` with the outcome record.
+
+**Definition of done:** The relevant RED is reproducible and retained, non-shadow guards are green, and no renderer or bound changed.
+
+### Task 2: Implement bilinear 3x3 PCF and evaluate gather portability
+
+**Files:**
+- Modify: `KhaozEngine.Render3D/Internal/ShaderSources.Lighting.cs`.
+- Create: `KhaozEngine.Render3D/Internal/ShaderSources.ShadowVisibility.cs`.
+- Create: `KhaozEngine.Render.Tests/Gpu/TemporalShadowFilterGpuTests.cs`, `TemporalShadowGatherCompileTests.cs`.
+- Extend as needed: `KhaozEngine.Render.Tests/Render3D/ShadowShaderContractTests.cs`, `KhaozEngine.Render.Tests/Gpu/ShaderCorpus.cs`, `SpirvCrossCompileTests.cs`, `D3D11FxcValidationTests.cs`.
+- Evidence: `KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/filter.md`.
+
+**Interfaces:** Preserve `pcfCascade(texture2D, sampler, int cascade, int count, vec2 uv, float depth, float texelStep)`. It now implements 16 compare-first samples weighted as nine bilinear taps. `sampleKeyShadow` call sites do not change.
+
+- [ ] Add a fractional-texel readback against a CPU 16-comparison oracle. Include lit/occluded atlas texels, clear holes, exact depth equality, negative and positive offsets, all cascade borders and cascade blending. Prove the point path fails fractional cases. Pin `[1-f, 1, 1, f]` weights and `/9` normalization.
+- [ ] Add a compile-only gather test with the real cross-compiler, and an asymmetric 2x2 component-order/readback case. Inspect MSL, HLSL/FXC and SPIR-V. No external assumption of gather availability counts as proof.
+- [ ] Implement explicit shared 4x4 comparison PCF, clamping inside the selected column. Keep bias, normal offset, strength, selection and blend untouched. If gathers compile everywhere, prove four non-overlapping gathers reproduce the explicit footprint at interior and borders before choosing them. Retain explicit fetches if proof fails. Report source operation counts without a timing claim.
+- [ ] Run CPU `FOCUS='FullyQualifiedName~TemporalShadowGatherCompileTests|FullyQualifiedName~ShadowShaderContractTests|FullyQualifiedName~SpirvCrossCompileTests'`, then GPU `FOCUS='FullyQualifiedName~TemporalShadowFilterGpuTests|FullyQualifiedName~CascadeHandoffBlendGoldenTests'`. Defer Windows FXC and backend readback confirmation to hosted correctness, retaining the explicit oracle until then.
+- [ ] Compare the archive's softness procedure and the existing shadow/golden selection without rebaking. Record known old-input rim/reference failures as the reason for Task 3. Do not touch their assertions here.
+- [ ] Commit `fix(shadows): interpolate the shared 3x3 comparison footprint`.
+
+**Definition of done:** Continuous PCF matches the comparison oracle, shadow semantics are unchanged, gather has a documented proved or rejected disposition, and no resolve behavior changed.
+
+### Task 3: Freeze bilinear-input references in a separate baseline commit
+
+**Files:**
+- Create: `KhaozEngine.Render.Tests/Gpu/TemporalShadowFilterBaseline.cs`.
+- Modify: `KhaozEngine.Render.Tests/Gpu/TemporalReviewBaseline.cs`, `TemporalMovingShadeRimGpuTests.cs`.
+- Evidence: `KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/filter-baseline.md` and raw per-device control outputs.
+
+**Interfaces:** `TemporalReviewBaseline.Check` keeps its public-to-tests signature. Route only `kind == "rim"` to a new filter-specific measured table. Preserve historical diagonal checks. Missing device/case evidence fails rather than borrowing a different class's numbers.
+
+- [ ] Pin the control source and verify resolve/tuning files still match `v21.4.0`. No visibility helper, input, storage or reset is allowed. Record source hashes, filter commit and test inventory.
+- [ ] Capture both point-PCF and bilinear-PCF controls with the unchanged resolve, using matching settings and deterministic frame phases. Use the existing supersampled non-temporal reference path. Record old/new absolute reference and temporal error for every affected row, including leading/trailing, flat/textured, M/MS, speed and preset.
+- [ ] Measure local Metal with `FOCUS='FullyQualifiedName~TemporalMovingShadeRimGpuTests|FullyQualifiedName~TemporalMovingShadeLagGpuTests|FullyQualifiedName~TemporalTextureLightGpuTests'`. Retain raw six-decimal output and the exact derived bounds. This is a measurement round, not an attempt to make old-input assertions pass.
+- [ ] Have the orchestrator collect matching control rows through filtered `cross-platform-gpu.yml` for `metal-native`, `direct3d11-native` and `vulkan-native`. Retain both source refs and artifacts. Use hardware, WARP and lavapipe rows separately. Finish this control collection before proceeding to signal code. A hosted dispatch is not performed by the design writer.
+- [ ] Re-record pinned spatial-reference values and the bilinear-input rim acceptance baselines from those controls. Keep reference tolerance `0.000001`, baseline tolerance `0.1`, rounding `0.0000005` and formula `(baseline + 0.0000005) * 1.1` unchanged. Keep case inventory, sample-count assertions and metric definitions unchanged.
+- [ ] Write this reason in the test and proof: “The PCF filter changed the scene input. These rows measure the unchanged 21.4.0 resolve on bilinear 3x3 PCF. The signal is judged against this frozen input-matched control.” Preserve old measurements as history, without rewriting unrelated baselines.
+- [ ] Verify the control passes its new reference and rim checks on each measured class. Confirm the Quality M 0.5 `0.010485` versus old `0.01023825` miss is recorded as input movement, not used as a signal improvement. Review every changed table row against its raw value.
+- [ ] Commit only baseline tests and measurement evidence as `test(taa): freeze unchanged resolve on bilinear shadow input`. This commit must precede every signal implementation commit. Do not merge the filter-only branch.
+
+**Definition of done:** A reviewed, reproducible per-device control exists in its own commit. Later tasks cannot re-record it to fit themselves. The Task 1 textured-grain RED remains an explicit pending fix if bilinear alone does not satisfy it.
+
+### Task 4: Export R8 key-shadow visibility across lit and preserving passes
+
+**Files:**
+- Create: `KhaozEngine.Render3D/Internal/ShadowVisibilityTargets.cs`.
+- Modify target seams: `KhaozEngine.Render3D/Internal/RenderResources.cs`, `MotionMath.cs`, `KhaozEngine.Render3D/Scene3D.RenderTargets.cs`, `Scene3D.ResolveTargets.cs` and the existing model-target clear call site.
+- Modify shader seams: `KhaozEngine.Render3D/Internal/ShaderSources.Model.cs`, `ShaderSources.Terrain.cs`, `ShaderSources.TileGround.cs`, `ShaderSources.Motion.cs`, `ShaderSources.MotionPreserve.cs`, and generated foliage/skinned variants where their construction requires it.
+- Modify pipeline seams: `KhaozEngine.Render3D/Rendering/ModelRenderer.cs`, `ModelRenderer.Motion.cs`, `ModelRenderer.Foliage.cs`, `ModelRenderer.Splat.cs`, `ModelRenderer.TileGround.cs`, `ModelTargetBlends.cs`, `TexturedBillboardRenderer.cs`, `BeamRenderer.cs`, `TrailRenderer.cs`, `OverlayMeshRenderer.cs`, `SilhouetteRenderer.cs`.
+- Create tests: `KhaozEngine.Render.Tests/Render3D/TemporalVisibilityLayoutTests.cs`, `KhaozEngine.Render.Tests/Gpu/TemporalLitVisibilityGpuTests.cs`.
+
+**Interfaces:** Produce `ShadowVisibilityTargets` as above and an optional lit visibility texture on `RenderResources`. Append a visibility-request argument to target creation/resize with a false default for existing standalone callers. Treat motion and visibility as separate layout facts. No resolve behavior changes in this task.
+
+- [ ] Obtain and record the spec section 5 four-attachment decision. If it requires a companion pass, amend this task with its exact pass/interface/tests before writing it. If it reduces AA support, obtain explicit owner approval for that behavior. Stop this task if neither is authorized.
+- [ ] Write CPU layout tests for three attachments, four with RG16 motion, four with R8 visibility, and five with both. Write GPU pixel tests for all six lit families, motion, cutout, dissolve/inverted dissolve, background clear, shadows disabled, shadow strength, cascade handoff and applicable MSAA layouts.
+- [ ] Add `TransparentAndDiscardedWritersPreserveOpaqueVisibility`, including transparent model, billboard, beam, trail, overlay, silhouette and later colour-only draws. Assert opaque R8 values survive, not merely that the pipeline creates. Assert the approved max-four policy is selected on a fake four-attachment device before pipeline creation.
+- [ ] Implement attachment 3 without motion or 4 with motion. Assign the exact existing `keyShadow` to it, without a new sample. Clear to 1. Match all output/blend arrays. Preserve destination for transparent writers and leave discarded pixels untouched. Explicitly resolve MSAA R8 before sampling. Keep off/FXAA layouts free of unused signal allocations.
+- [ ] Run CPU `FOCUS='FullyQualifiedName~TemporalVisibilityLayoutTests|FullyQualifiedName~ModelMotionPipelineTests|FullyQualifiedName~TransparentMotionPipelineTests'`, then GPU `FOCUS='FullyQualifiedName~TemporalLitVisibilityGpuTests|FullyQualifiedName~MsaaResolveTargetGoldenTests'`. Force all existing MSAA-supported sample counts in the parametrized fixture and assert nontrivial visibility.
+- [ ] Commit `feat(render): export lit key shadow visibility to R8` with the supported capability policy and shader inventory.
+
+**Definition of done:** Every actual writer has pixel evidence and correct slot semantics, target generations/rebuilds include visibility, and no supported layout creates an over-limit framebuffer.
+
+### Task 5: Align visibility histories and previous jitter with both entries
+
+**Files:**
+- Create: `KhaozEngine.Render3D/Rendering/TemporalVisibilityHistory.cs`, `TemporalResolveRenderer.Visibility.cs`.
+- Modify: `KhaozEngine.Render3D/Rendering/TemporalResolveRenderer.cs`, `TemporalResolveRenderer.Entry.cs`, `TemporalSplitResolve.cs`, `KhaozEngine.Render3D/Scene3D.TemporalResolve.cs`.
+- Create: `KhaozEngine.Render.Tests/Render3D/TemporalVisibilityHistoryTests.cs`, `KhaozEngine.Render.Tests/Gpu/TemporalVisibilityHistoryGpuTests.cs`.
+- Extend: `KhaozEngine.Render.Tests/Render3D/TemporalHistoryWiringTests.cs`, `TemporalUboLayoutTests.cs`, `KhaozEngine.Render.Tests/Gpu/TemporalSteadyFrameAllocationTests.cs`, `TemporalEntryFlipMemoryGpuTests.cs`.
+
+**Interfaces:** Produce the `TemporalResolveInputs` extension and `TemporalVisibilityHistory` methods above. Add a distinct std140 16-byte previous-jitter buffer. Existing resolve uniforms remain 256 bytes. Both entries bind the same read history and current signal.
+
+- [ ] Write tests for same-size replacement, owner/device change, AA off/on, resize/preset/camera reset and repeated frame index. Assert history texture bytes follow the colour read/write indices, previous jitter comes from the last completed resolve and a second render never advances them.
+- [ ] Write stale-binding tests where only the visibility input changes, plus R8 fallback tests for standalone rigs without lit input. Assert steady-frame allocation remains zero and retired generations are drained through the existing queue.
+- [ ] Implement the owner/size/generation keyed pair and common post-entry `CopyTexture`. Preserve the read texture for debug/count re-evaluation. Publish saved jitter only after the copy. Guard comparison readiness independently until a generation has been seeded. Avoid an early split return that skips visibility storage.
+- [ ] Run CPU `FOCUS='FullyQualifiedName~TemporalVisibilityHistoryTests|FullyQualifiedName~TemporalHistoryWiringTests|FullyQualifiedName~TemporalUboLayoutTests'`, then GPU `FOCUS='FullyQualifiedName~TemporalVisibilityHistoryGpuTests|FullyQualifiedName~TemporalSteadyFrameAllocationTests|FullyQualifiedName~TemporalEntryFlipMemoryGpuTests'`.
+- [ ] Commit `feat(taa): retain aligned visibility history and jitter`.
+
+**Definition of done:** R8 storage, bindings and lifecycle are proved for fused and split, with unchanged colour output before the comparison is enabled.
+
+### Task 6: Add the depth-qualified mean and lock release
+
+**Files:**
+- Create: `KhaozEngine.Render3D/Internal/ShaderSources.TemporalVisibility.cs`.
+- Modify: `KhaozEngine.Render3D/Internal/ShaderSources.TemporalAccumulate.cs`, `ShaderSources.TemporalResolve.cs`, `ShaderSources.TemporalSplit.cs`, `ShaderSources.TemporalAtDisplaySize.cs`, `ShaderSources.TemporalDebug.cs`, `TemporalResolveTuning.cs`.
+- Modify binding seams from Task 5 where the shared helper adds resources, including debug/count re-evaluation.
+- Create: `KhaozEngine.Render.Tests/Gpu/TemporalVisibilityReference.cs`, `TemporalVisibilityComparisonGpuTests.cs`, `KhaozEngine.Render.Tests/Render3D/TemporalVisibilityComparisonTests.cs`.
+- Extend: `KhaozEngine.Render.Tests/Render3D/TemporalResolveShaderTests.cs`, `TemporalResolveWiringTests.cs`.
+
+**Interfaces:** Produce `temporalVisibilityChange` from the shared-interface section. Named C#/GLSL constants are `VisibilityReleaseThreshold = 0.1f` and `VisibilityDepthTolerance = 0.02f`. The CPU oracle is test-only. Release-only changes lock/hold, never implicitly the existing `released` flag or accumulation policy.
+
+- [ ] Write CPU and GPU oracle cases for exact 0.1 and its neighbours, rise/fall sign, current depth exactly at 2%, rejected previous bilinear corners, empty current/history denominators, border-clamped duplicate offsets, offscreen history, background and unmatched depth.
+- [ ] Write `JitterOnlyVisibilityDoesNotReleaseThinDetail` and `OtherSurfaceAndEmptyFootprintsDoNotRelease`. Include current-to-previous motion and previous jitter independently, then together. A constant visible surface with a changing jitter phase must preserve lock and detail. An actual visibility change must release a carried lock even without a current ridge.
+- [ ] Implement the spec formula `h(o)`, separate current count and aggregate accepted previous weights, and strict threshold. Use existing reprojection/expected depth, not a second motion classifier. Clear lock before hold, also ensuring hold is zero after any later release block. Keep unrelated shading release behavior.
+- [ ] Add a test-only matched R32Float format control using the same shader math. Read R8 conversion boundaries and compare release decisions, signed differences and rendered metrics. Report discrepancies rather than treating R8 equivalence as established by the archive. Retain R8 unless evidence forces an owner-reviewed design amendment.
+- [ ] Run CPU `FOCUS='FullyQualifiedName~TemporalVisibilityComparisonTests|FullyQualifiedName~TemporalResolveShaderTests|FullyQualifiedName~TemporalResolveWiringTests'`, then GPU `FOCUS='FullyQualifiedName~TemporalVisibilityComparisonGpuTests|FullyQualifiedName~TemporalGameShadowGrainGpuTests|FullyQualifiedName~TemporalTextureLightGpuTests|FullyQualifiedName~TemporalResolveLockGpuTests'`.
+- [ ] Record release-only absolute 1/8-pixel tails with `TemporalMovingShadeLagGpuTests`, including any known RED for Task 7. Do not change the frozen baseline or call release-only shippable. Commit `fix(taa): release held locks on qualified visibility changes`.
+
+**Definition of done:** Mean/reprojection/format semantics match their oracles, useful grain/detail guards pass, and any tail/reset work remains explicitly open for the next task.
+
+### Task 7: Tune the large-change response against absolute tails and rims
+
+**Files:**
+- Modify shared response only: `KhaozEngine.Render3D/Internal/ShaderSources.TemporalAccumulate.cs`, `ShaderSources.TemporalVisibility.cs`, `TemporalResolveTuning.cs`.
+- Extend: `KhaozEngine.Render.Tests/Gpu/TemporalVisibilityComparisonGpuTests.cs`, `TemporalMovingShadeLagGpuTests.cs`, `TemporalMovingShadeRimGpuTests.cs`.
+- Evidence: `KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/reset-tuning.md`.
+
+**Interfaces:** Visibility lock release stays fixed. A qualifying large-change policy supplies a scalar `historyScale` applied to accumulated history weight and to computed display share. Existing independent shading release still overrides both to zero. Default reference is symmetric scale zero for `abs(d) > 0.5`.
+
+- [ ] Add a rendered large-step assertion for advancing and retreating fast shadows, plus flat trailing rims behind a moving strip. Retain the existing 1.5 tail ratio and every frozen rim bound. Add absolute fast-tail comparisons to the bilinear-only control per device/preset/direction, including the 1-pixel denominator values in output.
+- [ ] Run one purposeful focused measurement per changed candidate, not repeated stress runs. Candidate list, eight arms maximum including release-only: no reset, symmetric zero at 0.5, falling-only zero at 0.5, rising-only zero at 0.5, symmetric scale 0.25 at 0.5, symmetric scale 0.5 at 0.5, symmetric scale 0.25 at 0.35, symmetric scale 0.25 at 0.65. Sign means current visibility minus previous visibility. Do not take a cross-product or silently widen this round.
+- [ ] For partial scaling, apply the scale once to accumulated weight and once to the display share that would otherwise be used. Do not multiply the old `released` flag into this path. Assert strict threshold boundaries and both signs in the oracle/readback tests.
+- [ ] Use GPU `FOCUS='FullyQualifiedName~TemporalMovingShadeLagGpuTests|FullyQualifiedName~TemporalMovingShadeRimGpuTests|FullyQualifiedName~TemporalVisibilityComparisonGpuTests'` for measured variants, with `--heavy`. Run the non-shadow guard filter for a shortlisted changed candidate. Keep complete failed metrics, not only failing-fact counts.
+- [ ] Reject a candidate if absolute 8-pixel tails worsen from the frozen bilinear-only control even when its ratio passes, or if any leading/trailing flat/textured rim fails. Record the old unset values `0.004441862 / 0.006978498` and archive reset values `0.003520131 / 0.004718931` as context, never portable hard-coded bounds for all devices.
+- [ ] Select the simplest passing policy for Task 10's real-scene confirmation. If none passes, stop implementation and return the complete table for a design amendment. Do not weaken bounds or ship release-only. Remove unselected shipping branches/constants before committing `fix(taa): preserve fast shadow tracking without rim regressions`.
+
+**Definition of done:** One production policy passes absolute tails, ratios, rims, detail and non-shadow guards. Its chosen sign, threshold and scale are stated exactly in the evidence and amended spec. No timing or full-suite-per-arm run occurred.
+
+### Task 8: Prove exact entry identity and integration edges
+
+**Files:**
+- Extend: `KhaozEngine.Render.Tests/Gpu/TemporalEntryIdentityGpuTests.cs`, `TemporalEntryFlipMemoryGpuTests.cs`, `TemporalVisibilityHistoryGpuTests.cs` and `TemporalVisibilityComparisonGpuTests.cs`.
+- Modify only the shared arithmetic/binding seams implicated by a reproduced difference, including `ShaderSources.TemporalAccumulate.cs`, `ShaderSources.TemporalVisibility.cs`, `ShaderSources.TemporalAtDisplaySize.cs` and `TemporalSplitResolve.cs`.
+- Evidence: `KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/entry-identity.md`.
+
+**Interfaces:** Both entries call one helper with identical inputs and reduction order. Visibility histories, lock/confidence/marks and release/reset decisions are exact. Hardware/WARP colour is exact. Preserve only main's existing measured software-Vulkan colour exception, with no new epsilon.
+
+- [ ] Add a moving-shadow entry comparison which actually fires visibility release and the chosen weight response. Compare stored R8 bytes, previous jitter, colour, confidence and locks every resolving frame. Include Native, Quality, Performance and the outlined Quality path already covered by main.
+- [ ] Add `EntryFlipKeepsVisibilityBytesExact`, interleaving entries, resolution changes and a repeated render. Verify shared debug/count evaluation reads the same pre-write history the resolve used.
+- [ ] Prove the test fails with the reproduced archive arithmetic discrepancy. Fix shared operation ordering and precision boundaries rather than adding entry-specific rules. Preserve main's existing half-rounding construction. If `precise` is needed, constrain it to the affected shared calculation and document why.
+- [ ] Run GPU `FOCUS='FullyQualifiedName~TemporalEntryIdentityGpuTests|FullyQualifiedName~TemporalEntryFlipMemoryGpuTests|FullyQualifiedName~TemporalVisibilityHistoryGpuTests|FullyQualifiedName~TemporalVisibilityComparisonGpuTests'` with `--heavy`.
+- [ ] Commit `test(taa): require exact visibility decisions across entries` with any demonstrated arithmetic repair.
+
+**Definition of done:** No inherited archive state or hardware-colour identity discrepancy remains. Hosted confirmation is still required, especially FXC and software Vulkan.
+
+### Task 9: Document amendment 35 and stage one engine version
+
+**Files:**
+- Modify: `docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md`, `docs/INDEX.md`, this spec and plan with measured decisions.
+- Sweep/update relevant descriptions in `docs/USING-KHAOZENGINE.md`, `KhaozEngine.Render3D/README.md`, `docs/CROSS-PLATFORM.md` and `README.md`.
+- Modify together: `Directory.Build.props`, `CHANGELOG.md` and every version declaration named by `scripts/check-doc-versions.sh`.
+
+**Interfaces:** Amendment 35 is the new visibility rule, with only the affected key-shadow decisions of 33/34 superseded. One release version contains both filter and signal. There is no new public tuning API.
+
+- [ ] Re-read current main, tags and version. Check whether amendment 35 or proposed `21.6.0` has been taken concurrently. Allocate the next amendment and appropriate staged/free minor consistently. The minor recommendation reflects the new MRT/history/resolve-input resource contract. Do not bump twice or append this behavior to an already tagged version.
+- [ ] Append the amendment with exact chosen reset, R8 qualification math, lifecycle, capability policy, baseline rationale and links to measured proof. Update algorithm and memory sections, living target/capability descriptions and the index. Preserve historical measurements as history.
+- [ ] Write one changelog entry explaining the shadow stability fix and any approved capability change. Put the version bump and newest entry in the same commit. Update guarded versions and do the full Markdown name/behavior sweep.
+- [ ] Verify `sh scripts/check-dashes.sh --tree`, `sh scripts/check-prose.sh --tree`, `sh scripts/check-file-size.sh --tree`, `sh scripts/check-agent-instructions.sh --tree` and `bash scripts/check-doc-versions.sh`. Run `git diff --check`. These are documentation checks, not a GPU proof.
+- [ ] Commit `docs(taa): record visibility release and its resource contract`, with the selected version/changelog change included or as the immediately associated `release(<version>): ...` commit under the engine convention.
+
+**Definition of done:** Canonical design and living documentation describe the measured implementation, amendment numbering is reconciled, and one untagged version contains the batch. No release is started.
+
+### Task 10: Confirm the full fix in the Grimhollow capture
+
+**Files:**
+- Create evidence: `KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/real-scene.md`, relative-path source/package/capture manifest and comparison tables. Create `KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/verify_capture_manifest.py` to validate source/package/loaded-binary hashes, required conditions/modes/regions and normal/overlay pairing without rendering.
+- Read only: Grimhollow `fix/shadow-grain-capture` at `06601de4` and the archive's probe/private-feed instructions.
+- Any consumer probe changes belong to a separately authorized probe worktree and durable probe commit. Do not modify Grimhollow main or its existing capture branch.
+
+**Interfaces:** Consume `shadowgrain` headless captures and the archive's analysis definitions. Evidence-only overlays expose actual stored locks after the post chain. They never enter history or normal-image metrics. A diagnostic private build must prove its normal images match the shipping candidate.
+
+- [ ] Obtain the orchestrator's consumer-probe authorization and actual isolated probe location. Give each changed package set a unique private prerelease/feed. Do not overwrite the shared feed or reuse a stale same-version extraction. Record source SHA, package hashes and loaded renderer hash before interpreting images.
+- [ ] Prepare point-PCF historical context, the frozen bilinear-only/21.4.0-resolve control and the final candidate. Use the archive `shadowgrain` command shape, `--start-time 0.49777777777777776`, 80 warm-up and 16 measured frames. Each capture runs through `build-slot --heavy`.
+- [ ] Capture `back15` (back-edge, `1/15`, 5-minute day), `day30` (back-edge, `1/15`, 30-minute day), `back60` (back-edge, `1/60`, 5-minute day) and `ground15` (ground-edge, `1/15`, 5-minute day). Each condition gets Native, Quality and own FXAA, plus matching locked overlays for both TAA presets.
+- [ ] Run the preserved analysis definitions on saved normal frames. Report character and ground grain mean/p95, change mean, dots and locked share in every row. Retain the `0.05` dot threshold above both median and own FXAA. FXAA locked share is not applicable. Retain crops and complete metrics, including regressions.
+- [ ] Require lower back15 character grain and dots than bilinear-only at both presets. Present every other region/condition regression with absolute values and images for an owner decision. If the owner rejects the remaining sparkle or the reset trades away too much stability, amend the design and return to the owning code task. Never rebaseline against that candidate.
+- [ ] Verify manifests with `python3 KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/verify_capture_manifest.py KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/manifest.json`. Require exit zero, matching hashes, all four conditions, three modes and both regions per build, and paired lock overlays for TAA. Rebuild tables from saved captures with the preserved archive report helper through `build-slot --heavy`, without rendering again. Commit `test(taa): record real scene visibility acceptance` with owner acceptance or an explicit blocked outcome. Do not mark this task done without the acceptance.
+
+**Definition of done:** All four conditions and both regions have provenance-complete metrics, the owner has accepted the look, and game shipping branches remain untouched.
+
+### Task 11: Run the complete local and hosted correctness gate
+
+**Files:**
+- Create evidence: `KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/verification.md`, test inventory and per-backend result summaries.
+- Update only reviewed shader-corpus hash/golden artifacts required by the actual changed programs, using the documented relevant backend bake procedure.
+- Read: `.github/workflows/cross-platform-gpu.yml`, `scripts/gpu-test-shards.py`, `docs/CROSS-PLATFORM.md`.
+
+**Interfaces:** Consume the final candidate and immutable Task 3 controls. Compiler validation, real-scene acceptance, temporal correctness and golden checks are independent gates.
+
+- [ ] Reconcile current main into the task branch through the orchestrator before final proof. Resolve there and review source/test baseline identities again. If reconciliation changes the frozen filter/control semantics, remeasure the affected controls explicitly. Never resolve on main or overwrite another worktree.
+- [ ] Run `build-slot --label taa-final-build -- dotnet build KhaozEngine.slnx -c Release`, then `build-slot --heavy --label taa-final-headless -- env KE_GPU_TESTS=0 dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket"`. Require zero failures and warnings. GPU skips in this headless pass are expected and do not satisfy the GPU gate. Run the single final broad Metal correctness process below through `build-slot --heavy`. Inventory discovered names before execution. It includes every temporal correctness GPU class, not only classes ending exactly in `GpuTests`, plus shadows/goldens. Only the two named temporal timing classes are excluded from the temporal branch.
+
+```bash
+TAA_CORRECTNESS='((FullyQualifiedName~KhaozEngine.Tests.Gpu.Temporal&FullyQualifiedName!~TemporalResolveCostPerfGpuTests&FullyQualifiedName!~TemporalOutlineCostPerfGpuTests)|((FullyQualifiedName~Shadow|FullyQualifiedName~Golden)&FullyQualifiedName!~Perf&FullyQualifiedName!~Bench))'
+build-slot --heavy --label taa-final-metal -- env KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "$TAA_CORRECTNESS" --logger 'console;verbosity=detailed' --logger 'trx;LogFileName=taa-final-metal.trx' --results-directory artifacts/taa-shadow-visibility/local-metal
+```
+
+- [ ] Check explicitly that `TemporalMovingShadeRimGpuTests` and `TemporalEntryIdentityGpuTests` are in the TRX, all expected temporal facts are discovered, and no selected GPU fact is skipped. Check every pass/failure and absolute tail/rim value. Re-run only after a source or test correction that justifies it. Do not retry unchanged failures.
+- [ ] After local acceptance, the orchestrator dispatches `cross-platform-gpu.yml` on the exact candidate with `renderTestFilter` equal to that selection and all native backends. Retain run URL, commit, device class, validation, compiler output, per-class absolute results and zero-skip inventories for Metal, Direct3D 11 and Vulkan. A push's golden-only Windows/Vulkan coverage is insufficient.
+- [ ] For filter/gather and visibility pixel tests, require all backend results. Preserve per-device controls and exact entry-state identity. If shader corpus hashes changed, verify emitted source deltas and update only the relevant backend artifacts. Goldens already within tolerance need no rebake. Any necessary golden bake is reviewed against the prior image before acceptance.
+- [ ] Run whole-tree governance and doc-version guards, required Release checks and `git diff --check`. Commit `test(taa): record cross backend visibility correctness`. Keep the later full default-input `ci` and `cross-platform-gpu` release gates separate under the engine release ritual.
+
+**Definition of done:** Every selected correctness fact and shadow/golden check passes on all three backends with evidence, the Task 1 RED is closed, entry identity meets main's exact contract, and no result depends on raised bounds. Nothing has been tagged or published.
+
+### Task 12: Stop for fresh owner approval of the billed T4 bench
+
+**Files:** Evidence request only in `KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/benchmark-request.md`. Read `.github/workflows/gpu-hosted-bench.yml`, `TemporalResolveCostPerfGpuTests.cs` and `TemporalOutlineCostPerfGpuTests.cs`. Do not change or dispatch them yet.
+
+**Interfaces:** Consume the passing final candidate, frozen bilinear-only resolve control and historical point-PCF context. Report logical R8 payloads separately from measured future timing.
+
+- [ ] Report current correctness/real-scene evidence and memory: signal plus two histories `10.546875 MiB` Native and `4.688416 MiB` Quality at 1440p, excluding alignment, retirement and MSAA. Add approved fallback-pass overhead if applicable. State that gather speed, bandwidth and frame cost remain unmeasured.
+- [ ] Prepare a concrete paired benchmark proposal with immutable base/head refs, actual workflow `legs`, exact cost-test filter, resolutions/presets, run count, approximate duration and estimated bill from current runner rates. Cover the whole lit frame, including PCF, MRT traffic and history copy, as well as the existing resolve timers. If the existing cost fixtures omit those stages, propose the required isolated cost case for separate approval rather than claiming resolve-only timing measures the whole fix. Use no stress loop and no local timing substitute. Do not invent a cost acceptance budget if the owner has not set one.
+- [ ] Verify the request with `git diff --check -- KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/benchmark-request.md` and a readback against the workflow input names. Require clean diff output and refs/filters/legs that exist, with no dispatched run. Present that proposal as its own approval request and stop. The wording must name what will run, where, how many runs and roughly how long. No dispatch until fresh explicit owner approval. If approval is declined, record the hold and leave integration/release with the orchestrator.
+
+**Definition of done:** The owner has a reviewable cost request and the plan has stopped before billed work. Approval, a benchmark result, release, tag, publication and consumer adoption are separate follow-on actions.

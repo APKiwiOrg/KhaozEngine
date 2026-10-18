@@ -704,6 +704,15 @@ continue to refuse atomically. Above-band and invalid starts, steep-only climbs,
 closed-disc and ring protections are unchanged. No timing, adoption, navigation or release
 acceptance follows from this certification change. CF-7's final task records the changelog entry.
 
+The crest-region follow-up changes 128 more query rows of
+`LyingLogCrestRegionSupportsWithInstalledPoseOracle` from Refused to Walkable. These queries have feet
+on the crest, cylinder or capsule, either turn, and across offsets from -0.2 to 0.2 m in 1/60 m
+steps. For radius 0.1 they are the 32 queries at |across| 7/60 to 10/60 m. For radius 0.15 they are
+the 96 queries at every nonzero offset. Their stationary root region was closed at z=0 and refused
+before the source-proved nonzero constant term excluded that root. The radius-0.15 rim tangency
+queries at |across| 0.2 m are Walkable with HeightError near 0.00054 m. Their containment holds, and
+SG-16 keeps the half-skin ceiling for the interior rows only.
+
 The changed rows are exactly the 24 `LyingLogFlankSupportsWithInstalledPoseOracle` rows. They cover
 cylinder and capsule, radius 0.1, 0.15 and 0.3 m, a `MathF.PI/2` turn about X or Z, and a query
 0.25 m across the barrel on either side. Each was Refused before this change and is now Walkable

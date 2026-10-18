@@ -118,11 +118,16 @@ internal sealed partial class SupportTiltedCurvedGeometry
         GeometryInterval other = B(Div(Neg(_q), _r));
         double low = Math.Max(-1, Math.Min(0, other.Lower)), high = Math.Min(1, Math.Max(0, other.Upper));
         if (!SolveRoots(_polynomial, low, high)) return false;
+        // A source-proved nonzero constant term -k*k*Q*Q excludes a root at z=0 for every source.
+        // A root cell closed at zero then has the strict sign of its open side.
+        bool origin = Sign(_polynomial[0]) is GeometrySign.Positive or GeometrySign.Negative;
         for (int i = 0; i < _roots.Count; i++)
         {
             GeometryInterval z = _roots.Get(i), lateral = B(_q).Add(B(_r).Multiply(z));
-            if (z.Lower > 0 && lateral.Lower > 0 || z.Upper < 0 && lateral.Upper < 0) continue;
-            if ((z.Lower <= 0 && z.Upper >= 0) || (lateral.Lower <= 0 && lateral.Upper >= 0)) return false;
+            bool positive = z.Lower > 0 || origin && z.Lower == 0 && z.Upper > 0;
+            bool negative = z.Upper < 0 || origin && z.Upper == 0 && z.Lower < 0;
+            if (positive && lateral.Lower > 0 || negative && lateral.Upper < 0) continue;
+            if (!positive && !negative || (lateral.Lower <= 0 && lateral.Upper >= 0)) return false;
             if (!Keep(z)) return false;
         }
         return true;

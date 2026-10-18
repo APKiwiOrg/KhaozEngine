@@ -311,6 +311,10 @@ z and `Q+R*z` to have opposite signs, so the squared equation's other roots cann
 points of the original branch. The displayed strictly negative second derivative proves uniqueness
 of a disc-branch stationary maximum on its smooth domain. Source-uniform endpoint signs and a
 nonzero derivative enclosure certify existence and coverage of each retained root region.
+The squared polynomial's constant term is `-k*k*Q*Q`. When its source sign is proved nonzero, no
+source has a root at z=0. A root region closed at zero then holds its root strictly on its open
+side, which fixes the sign of z for the opposite-sign test. Without that proof, a region touching
+zero still refuses. This is what lets a lying log's crest region resolve when Q is nonzero.
 
 When Y includes zero, the disc branch uses `|k|` and its unsquared stationary function is
 `z/sqrt(1-z*z) + |k|*(Q+R*z)/sqrt(disc*disc-(Q+R*z)^2)`. Its derivative is strictly positive

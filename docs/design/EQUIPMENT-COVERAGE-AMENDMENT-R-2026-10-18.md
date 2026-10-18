@@ -127,8 +127,14 @@ engine guide, and tested on all three CI devices.
    are facts of the inputs, not of the method, so a kernel matches the reference bit for bit with any
    exact device method. Part C proves its method on all three backends: float error-free expansions only
    where correctly rounded add, subtract and multiply without contraction are verified, otherwise 32-bit
-   integer multiword arithmetic. The per-sample enclosure treats a sign whose determinant enclosure
-   contains zero as both branches, so ε covers either decision.
+   integer multiword arithmetic. A crossing parameter divides the two exact side values after scaling
+   both by the common power of two that puts the larger magnitude in [1, 2). The result is bit-identical
+   whenever the values are normal, and a device that flushes subnormals never divides zero by zero. The
+   per-sample enclosure takes a sign from the exact determinant's range over the input boxes, never from a
+   widened stored value, and evaluates both branches only when that range contains zero, so ε covers
+   either decision. A joined crossing encloses its parameter by the set the device's own parameter
+   provably lies in (the unit interval, the quotient bound and the projected overlap), not by an
+   unbounded quotient (root ruling B30).
 
 ## Part C: GPU coverage path in Render3D
 

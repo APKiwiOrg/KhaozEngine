@@ -20,6 +20,10 @@ internal sealed class InstalledSweepGeometry
     internal RigidPose LocalPose { get; }
     internal InstalledMeshSweepGeometry? Mesh { get; }
     internal bool IsTriangle { get; }
+    internal SupportCurvedShape? Curved { get; }
+    internal float Radius { get; }
+    internal float HalfLength { get; }
+    internal bool IsRound => Curved is SupportCurvedShape.Sphere or SupportCurvedShape.Capsule;
     internal InstalledSweepGeometry? SweepCompanion { get; set; }
     internal bool IsHull => _installedPoints is not null;
     internal Vector3 Half { get; }
@@ -27,7 +31,7 @@ internal sealed class InstalledSweepGeometry
     internal int FaceCount => _faces.Length;
     internal int SurfaceCount => _faces.Length;
     internal int EdgeCount => _edges.Length;
-    internal int FeatureCount => SurfaceCount + EdgeCount + VertexCount + (IsTriangle ? 0 : 1);
+    internal int FeatureCount => SurfaceCount + EdgeCount + VertexCount + (IsTriangle || Curved.HasValue ? 0 : 1);
     internal RigidPose LeafPose { get; private set; }
     internal RigidPose ParentPose => _pose;
     RigidPose _pose;
@@ -75,6 +79,16 @@ internal sealed class InstalledSweepGeometry
         _faces = [[0, 1, 2]]; _edges = [(0, 1), (1, 2), (2, 0)];
     }
 
+    internal InstalledSweepGeometry(Shapes owner, TypedIndex root, TypedIndex shape, RigidPose local,
+        SupportCurvedShape curved, float radius, float halfLength)
+    {
+        Owner = owner; Root = root; Shape = shape; LocalPose = local;
+        Curved = curved; Radius = radius; HalfLength = halfLength;
+        _faces = [];
+        _vertices = halfLength == 0 ? [Vector3.Zero] : [new(0, -halfLength, 0), new(0, halfLength, 0)];
+        _edges = halfLength == 0 ? [] : [(0, 1)];
+    }
+
     internal Vector3 Vertex(int index) => Mesh is { } mesh ? mesh.Vertex(index) : _vertices[index];
     internal int FaceVertex(int face, int index) => _faces[face][index];
     internal int InteriorFaceVertex(int face, int index) => _faces[face][index];
@@ -94,6 +108,7 @@ internal sealed class InstalledSweepGeometry
     {
         if (!ReferenceEquals(Owner, shapes) || root.Type != Root.Type || root.Index != Root.Index) return false;
         if (Mesh is { } mesh) return mesh.Matches(shapes, root);
+        if (Curved.HasValue) return CapsuleCurvedGeometry.Matches(this, shapes, root);
         if (!IsHull) return CapsuleSweepGeometry.TryReadIdentityBox(shapes, root,
             new RigidPose(Vector3.Zero, Quaternion.Identity), out Box box) &&
             new Vector3(box.HalfWidth, box.HalfHeight, box.HalfLength) == Half;

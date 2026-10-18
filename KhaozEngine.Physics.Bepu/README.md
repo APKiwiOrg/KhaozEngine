@@ -236,9 +236,9 @@ dimensions, identical restrictions and validation. Changing an endpoint-rounding
 allocate a persistent shape.
 
 The owner and restricted query views implement `IPhysicsCapsuleSweep` for identity boxes and
-admitted rotated boxes and convex hulls at their current installed static or dynamic pose, plus
-finite static triangle meshes with strictly positive finite installed scale. The identity-box kernel
-is unchanged. Rotated boxes use eight installed corners, six finite faces, twelve edges, capsule
+admitted rotated boxes, convex hulls, spheres, capsules and cylinders at their current installed
+static or dynamic pose, plus finite static triangle meshes with strictly positive finite installed
+scale. The identity-box kernel is unchanged. Rotated boxes use eight installed corners, six finite faces, twelve edges, capsule
 axis endpoint/interior regimes and closed solid occupancy. They are never replaced by an AABB or
 independently inflated planes. [The general sweep contract](../docs/design/CERTIFIED-GENERAL-SWEEPS-2026-10-18.md)
 defines this family and the remaining adoption gates.
@@ -266,10 +266,16 @@ retains initial closed front contact before directional culling, raw back-face s
 culling, and culling of perpendicular faces. Unproved initial side agreement, degeneracy, scale,
 continuation, tree structure or work refuses atomically. Inner-tree bounds are proved at mutation,
 with closed checked traversal at query time. Sparse large meshes use pruning rather than a total
-triangle cap. General compounds, spheres, capsules and cylinders remain unsupported sweep families.
+triangle cap. Sphere and capsule leaves use closed point/segment distance with the exact sum of
+represented radii. Cylinders use continuous side, cap-disc and rim-circle predicates, with whole-cell
+support bounds for separation. Numerical closest points only propose witnesses or directions.
+An unproved isolated rim event refuses atomically. Curved radii and half-lengths stay within 2048 m
+and use the same forward/operational correspondence, error and work ceilings. The public cylinder's exact
+single-child base-offset wrapper is retained. General compounds remain unsupported sweep families.
 
-Mutation completion encloses actual installed corners, hull vertices or mesh descendants and the rounded point graph, repairs inward
-bounds through Bepu's owning tree update/refit path, and validates ancestors before publishing evidence.
+Mutation completion encloses actual installed corners, hull vertices, curved radial sets or mesh
+descendants and the rounded point graph, repairs inward bounds through Bepu's owning tree update/refit
+path, and validates ancestors before publishing evidence.
 Selected unproved bound families refuse even outside the raw aperture. View/mobility exclusions retain
 their source meaning and cannot hide invalid stored evidence. Failed or missed physical mutations stay
 refused after unrelated successful mutations. Leases remain owner-scoped. Each restricted view applies

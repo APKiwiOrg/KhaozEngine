@@ -27,6 +27,7 @@ internal static class CapsuleSweepGeometry
         geometry = null;
         if (root.Exists && root.Type == default(Mesh).TypeId)
             return InstalledMeshSweepGeometry.TryCapture(shapes, root, out geometry);
+        if (CapsuleCurvedGeometry.TryCapture(shapes, root, out geometry)) return true;
         if (root.Exists && (root.Type == default(ConvexHull).TypeId || root.Type == default(Compound).TypeId))
             return TryCaptureHull(shapes, root, out geometry);
         if (!TryReadIdentityBox(shapes, root, new RigidPose(Vector3.Zero, Quaternion.Identity), out Box box)) return false;

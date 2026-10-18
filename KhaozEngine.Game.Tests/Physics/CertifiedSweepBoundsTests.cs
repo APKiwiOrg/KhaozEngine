@@ -15,16 +15,17 @@ public sealed class CertifiedSweepBoundsTests
         using var world = new BepuPhysicsWorld(Vector3.Zero);
         world.AddStatic(new BoxShape(new(0.5f)), new Pose(new(100, 0, 0), new(0.5f, 0.5f, 0.5f, 0.5f)));
         Clear(Read(world, new(-2, 0, 0), new(4, 0, 0)), 4);
-        StaticHandle sphere = world.AddStatic(new SphereShape(0.5f), Pose.At(new(100, 0, 0)));
+        // A 257-face hull stays unsupported under GS-3 as more leaf families are admitted.
+        StaticHandle hull = AddOverFaceCapHull(world, Pose.At(new(100, 0, 0)));
         Refused(Read(world, new(-2, 0, 0), new(4, 0, 0)));
-        Clear(Read(world, new(-2, 0, 0), new(4, 0, 0), exclusions: [sphere]), 4);
+        Clear(Read(world, new(-2, 0, 0), new(4, 0, 0), exclusions: [hull]), 4);
         Mutate(world, simulation =>
         {
-            var native = Static(world, sphere);
+            var native = Static(world, hull);
             int index = simulation.Statics[simulation.Statics.HandleToIndex[native.Handle.Value]].BroadPhaseIndex;
             simulation.BroadPhase.UpdateStaticBounds(index, new(float.NaN), new(101));
-        }, sphere.Value);
-        Refused(Read(world, new(-2, 0, 0), new(4, 0, 0), exclusions: [sphere]));
+        }, hull.Value);
+        Refused(Read(world, new(-2, 0, 0), new(4, 0, 0), exclusions: [hull]));
     }
 
     [Fact]

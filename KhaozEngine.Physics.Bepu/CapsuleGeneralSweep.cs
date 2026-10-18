@@ -21,6 +21,9 @@ internal static class CapsuleGeneralSweep
                 displacement, CapsuleGeneralSweepPolicy.MaximumErrorMetres, CapsuleBoxFractionSweep.MaximumCells);
         }
         if (!CapsuleSweepGeometry.TryReadLeaf(shapes, root, pose, geometry, 0, out InstalledSweepLeaf leaf)) return default;
+        if (geometry.IsRound) return CapsuleRoundSweep.Sweep(leaf, centre, capsule, displacement, ref work, scratch);
+        if (geometry.Curved == SupportCurvedShape.Cylinder)
+            return CapsuleCylinderSweep.Sweep(leaf, centre, capsule, displacement, ref work, scratch);
         return CapsuleConvexSweep.Sweep(leaf, centre, capsule.Radius, capsule.Length * 0.5f, displacement,
             CapsuleGeneralSweepPolicy.MaximumErrorMetres, ref work, scratch);
     }

@@ -58,7 +58,8 @@ internal readonly struct CapsuleSweepSourceSample
 internal static class CapsuleSweepSourceWitness
 {
     internal static double? Find(in InstalledSweepLeaf leaf, Vector3 centre, float radius, float half,
-        Vector3 delta, double length, in CapsuleSweepResult forward, ref CapsuleSweepWork work, CapsuleSweepScratch scratch)
+        Vector3 delta, double length, in CapsuleSweepResult forward, ref CapsuleSweepWork work, CapsuleSweepScratch scratch,
+        bool cylindricalSide = false)
     {
         if (!leaf.Map.IsExactlyRigid || forward.Status != CapsuleSweepStatus.Hit || forward.ImpactDistance is not float impact) return null;
         float upper = length == 0 ? 0 : (float)Math.Min(1, impact / length);
@@ -70,12 +71,12 @@ internal static class CapsuleSweepSourceWitness
             float fraction = candidate == 0 ? upper : candidate == 1 ? middle : MathF.BitIncrement(upper);
             if (fraction > 1 || (candidate > 0 && fraction == upper)) continue;
             if (!CapsuleSweepSourceSample.TryCreate(leaf, centre, delta, fraction, out var sample)) return null;
-            for (int feature = 0; feature < leaf.Geometry.FeatureCount; feature++)
+            for (int feature = 0; feature < (cylindricalSide ? 1 : leaf.Geometry.FeatureCount); feature++)
                 for (int axis = 0; axis < 3; axis++)
                 {
                     if (!work.Feature()) return null;
                     if (!CapsuleSweepFeatureDistance.TryBuild(leaf, feature, axis, centre, radius, half,
-                        Vector3.Zero, scratch, out var regime, sample) || regime.Empty) continue;
+                        Vector3.Zero, scratch, out var regime, sample, cylindricalSide) || regime.Empty) continue;
                     if (CapsuleSweepFeaturePolynomial.TryFirstContact(regime, 0, 0, 1, ref work, scratch.Exact,
                         out _, out double? contact) && contact == 0) return fraction;
                     if (work.Exhausted) return null;
@@ -84,12 +85,12 @@ internal static class CapsuleSweepSourceWitness
         }
         if (length == 0) return null;
         InstalledSweepLeaf forwardLeaf = new(leaf.Geometry, leaf.Pose, leaf.Map);
-        for (int feature = 0; feature < leaf.Geometry.FeatureCount; feature++)
+        for (int feature = 0; feature < (cylindricalSide ? 1 : leaf.Geometry.FeatureCount); feature++)
             for (int axis = 0; axis < 3; axis++)
             {
                 if (!work.Feature()) return null;
                 if (!CapsuleSweepFeatureDistance.TryBuild(forwardLeaf, feature, axis, centre, radius, half,
-                    delta, scratch, out var regime) || regime.Empty) continue;
+                    delta, scratch, out var regime, cylindricalSide: cylindricalSide) || regime.Empty) continue;
                 GeometryInterval a = scratch.Exact.Bounds(regime.A), b = scratch.Exact.Bounds(regime.B);
                 if (!a.IsResolved || a.Lower <= 0) continue;
                 // A quadratic minimum proposes a sample for an isolated tangency. Its
@@ -101,7 +102,7 @@ internal static class CapsuleSweepSourceWitness
                 if (!CapsuleSweepSourceSample.TryCreate(leaf, centre, delta, fraction, out var sample)) continue;
                 if (!work.Feature()) return null;
                 if (CapsuleSweepFeatureDistance.TryBuild(leaf, feature, axis, centre, radius, half,
-                    Vector3.Zero, scratch, out var source, sample) && !source.Empty &&
+                    Vector3.Zero, scratch, out var source, sample, cylindricalSide) && !source.Empty &&
                     CapsuleSweepFeaturePolynomial.TryFirstContact(source, 0, 0, 1, ref work, scratch.Exact,
                         out _, out double? contact) && contact == 0) return fraction;
                 if (work.Exhausted) return null;

@@ -22,7 +22,8 @@ internal static class CapsuleSweepFeatureDistance
 
     internal static bool TryBuild(in InstalledSweepLeaf leaf, int featureIndex, int axisRegime,
         Vector3 centre, float radius, float halfCylinderLength, Vector3 displacement,
-        CapsuleSweepScratch scratch, out SweepFeatureRegime regime, CapsuleSweepSourceSample? sourceSample = null)
+        CapsuleSweepScratch scratch, out SweepFeatureRegime regime, CapsuleSweepSourceSample? sourceSample = null,
+        bool cylindricalSide = false)
     {
         regime = default;
         SweepExactWorkspace w = scratch.Exact;
@@ -30,11 +31,21 @@ internal static class CapsuleSweepFeatureDistance
         InstalledSweepGeometry geometry = leaf.Geometry;
         if ((uint)featureIndex >= geometry.FeatureCount || (uint)axisRegime > 2) return false;
         int zero = w.Constant(0), one = w.Constant(1), radiusSquared = w.Square(w.Constant(radius));
+        if (geometry.IsRound || cylindricalSide) radiusSquared = w.Square(w.Add(w.Constant(radius), w.Constant(geometry.Radius)));
         if (halfCylinderLength == 0 && axisRegime != 0)
         { regime = new(zero, zero, zero, scratch.Eligibility, 0, true); return w.IsResolved; }
         Point c = Literal(centre, w), d = Literal(displacement, w), axis = Literal(Vector3.UnitY, w);
         Point x = Source(leaf.Map.X, w), y = Source(leaf.Map.Y, w), z = Source(leaf.Map.Z, w);
         Point translation = Literal(leaf.Pose.Position, w);
+        if (geometry.IsRound && !leaf.Operational)
+        {
+            if (!CapsuleCurvedCorrespondence.TryForwardError(leaf, out double forwardError)) return false;
+            if (forwardError != 0)
+            {
+                int uncertainty = w.Enclosed(GeometryInterval.Enclose(-forwardError, forwardError));
+                c = new(w.Add(c.X, uncertainty), w.Add(c.Y, uncertainty), w.Add(c.Z, uncertainty));
+            }
+        }
         if (leaf.Operational)
         {
             // Pinned local-map arithmetic is a transpose, never an inverse. The offset error
@@ -85,7 +96,7 @@ internal static class CapsuleSweepFeatureDistance
             if (count >= scratch.Eligibility.Length) { w.Refuse(); return; }
             scratch.Eligibility[count++] = new(constant, slope);
         }
-        if (!geometry.IsTriangle && featureIndex == geometry.FeatureCount - 1)
+        if (!geometry.IsTriangle && !geometry.Curved.HasValue && featureIndex == geometry.FeatureCount - 1)
         {
             if (axisRegime == 2)
             { regime = new(zero, zero, zero, scratch.Eligibility, 0, true); return w.IsResolved; }
@@ -145,7 +156,7 @@ internal static class CapsuleSweepFeatureDistance
         if (invertible == GeometrySign.Zero)
         { regime = new(zero, zero, zero, scratch.Eligibility, 0, true); return w.IsResolved; }
         if (invertible != GeometrySign.Positive) return false;
-        bool endpointRegion = geometry.IsTriangle && axisRegime != 2 && halfCylinderLength > 0;
+        bool endpointRegion = (geometry.IsTriangle || geometry.IsRound) && axisRegime != 2 && halfCylinderLength > 0;
         Point residual0 = endpointRegion ? Scale(offset, denominator, w) : default;
         Point residual1 = endpointRegion ? Scale(d, denominator, w) : default;
         Span<int> parameters = stackalloc int[4];

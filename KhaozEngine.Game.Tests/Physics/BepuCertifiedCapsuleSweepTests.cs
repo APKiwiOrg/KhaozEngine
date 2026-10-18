@@ -127,7 +127,8 @@ public partial class BepuCertifiedCapsuleSweepTests
     public void UnsupportedSelectedBoundsRefuseEvenOutsideTheRawAperture()
     {
         using var world = new BepuPhysicsWorld(Vector3.Zero);
-        world.AddStatic(new SphereShape(0.5f), Pose.At(new(100, 0, 0)));
+        // A 257-face hull stays unsupported under GS-3 as more leaf families are admitted.
+        CertifiedGeneralSweepFixture.AddOverFaceCapHull(world, Pose.At(new(100, 0, 0)));
         Refused(Read(world));
     }
 

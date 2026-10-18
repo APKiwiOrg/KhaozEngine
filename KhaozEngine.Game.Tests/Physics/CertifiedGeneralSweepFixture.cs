@@ -12,6 +12,30 @@ namespace KhaozEngine.Tests.Physics;
 
 internal static class CertifiedGeneralSweepFixture
 {
+    internal static ConvexHullShape OverFaceCapHull()
+    {
+        // A closed 255-prism has 257 faces, beyond the fixed GS-3 face cap.
+        var points = new Vector3[510];
+        for (int i = 0; i < 255; i++)
+        {
+            float angle = i * (2 * MathF.PI / 255);
+            float y = 8 * MathF.Cos(angle), z = 8 * MathF.Sin(angle);
+            points[i * 2] = new(-1, y, z);
+            points[i * 2 + 1] = new(1, y, z);
+        }
+        return new(points);
+    }
+
+    internal static StaticHandle AddOverFaceCapHull(BepuPhysicsWorld world, Pose pose)
+    {
+        StaticHandle handle = world.AddStatic(OverFaceCapHull(), pose);
+        var shapes = Sim(world).Shapes;
+        var root = Static(world, handle).Shape;
+        var leaf = shapes.GetShape<Compound>(root.Index).Children[0].ShapeIndex;
+        Assert.Equal(257, shapes.GetShape<ConvexHull>(leaf.Index).FaceToVertexIndicesStart.Length);
+        return handle;
+    }
+
     internal static CapsuleSweepResult Read(BepuPhysicsWorld world, Vector3 centre, Vector3 delta,
         float radius = 0.25f, float length = 1f, QueryFilter filter = default,
         bool useDimensions = false, StaticHandle[]? exclusions = null)

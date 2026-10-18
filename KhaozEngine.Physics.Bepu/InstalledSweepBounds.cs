@@ -115,6 +115,30 @@ internal static class InstalledSweepBounds
                 InstalledPoseOperator.Within(maximum, CapsuleGeneralSweepPolicy.MaximumStoredCoordinate);
         }
         Vector3 min = new(float.PositiveInfinity), max = new(float.NegativeInfinity);
+        if (geometry.Curved.HasValue)
+        {
+            // A local box encloses the full circular radial set, without replacing the
+            // leaf's distance geometry. Also enclose the unscaled spherical skin used by
+            // the round segment metric. These are broad-phase bounds only.
+            float extent = Up((double)geometry.Radius + geometry.HalfLength);
+            for (int corner = 0; corner < 8; corner++)
+            {
+                Vector3 point = new((corner & 1) == 0 ? -extent : extent,
+                    (corner & 2) == 0 ? -extent : extent, (corner & 4) == 0 ? -extent : extent);
+                if (!TryPoint(map, leafPose, point, out var lo, out var hi)) return false;
+                min = Vector3.Min(min, lo); max = Vector3.Max(max, hi);
+            }
+            Vector3 r = new(geometry.Radius);
+            for (int i = 0; i < geometry.VertexCount; i++)
+            {
+                if (!TryPoint(map, leafPose, geometry.Vertex(i), out var lo, out var hi)) return false;
+                min = Vector3.Min(min, new(Down((double)lo.X - r.X), Down((double)lo.Y - r.Y), Down((double)lo.Z - r.Z)));
+                max = Vector3.Max(max, new(Up((double)hi.X + r.X), Up((double)hi.Y + r.Y), Up((double)hi.Z + r.Z)));
+            }
+            minimum = min; maximum = max;
+            return InstalledPoseOperator.Within(min, CapsuleGeneralSweepPolicy.MaximumStoredCoordinate) &&
+                InstalledPoseOperator.Within(max, CapsuleGeneralSweepPolicy.MaximumStoredCoordinate);
+        }
         for (int i = 0; i < geometry.VertexCount; i++)
         {
             Vector3 point = geometry.Vertex(i);

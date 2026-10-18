@@ -16,6 +16,76 @@ namespace KhaozEngine.Tests.Physics;
 // All allocation and exact rational root isolation belong outside allocation measurement windows.
 internal static class CertifiedSweepExactOracle
 {
+    // Independent rational predicates for point probes. The entry fixtures use a signed
+    // permutation and a path whose midpoint is inside the solid. Convexity then makes
+    // bisection on the initial half-path an independent first-event oracle.
+    internal static (double Lower, double Upper) CurvedEntry(BepuPhysicsWorld world, StaticHandle handle,
+        Vector3 centre, float radius, Vector3 delta)
+    {
+        using IPhysicsQueryLease lease = world.AcquireQueryReadLease();
+        var simulation = CertifiedGeneralSweepFixture.Sim(world);
+        var entry = CertifiedGeneralSweepFixture.Static(world, handle);
+        simulation.Statics.GetDescription(entry.Handle, out var installed);
+        var pose = installed.Pose;
+        TypedIndex index = entry.Shape;
+        if (index.Type == default(Compound).TypeId)
+        {
+            ref Compound wrapper = ref simulation.Shapes.GetShape<Compound>(index.Index);
+            Assert.Equal(1, wrapper.Children.Length);
+            var child = wrapper.Children[0];
+            Compound.GetWorldPose(child.LocalPose, pose, out var composed);
+            pose = composed;
+            index = child.ShapeIndex;
+        }
+        M map = Real(pose.Orientation);
+        Assert.Equal(R.One, V.Dot(map.X, map.X));
+        Assert.Equal(R.One, V.Dot(map.Y, map.Y));
+        Assert.Equal(R.One, V.Dot(map.Z, map.Z));
+        Assert.Equal(R.Zero, V.Dot(map.X, map.Y));
+        Assert.Equal(R.Zero, V.Dot(map.X, map.Z));
+        Assert.Equal(R.Zero, V.Dot(map.Y, map.Z));
+        R leafRadius, half;
+        bool cylinder = index.Type == default(Cylinder).TypeId;
+        if (cylinder)
+        {
+            ref Cylinder shape = ref simulation.Shapes.GetShape<Cylinder>(index.Index);
+            leafRadius = R.From(shape.Radius); half = R.From(shape.HalfLength);
+        }
+        else if (index.Type == default(Capsule).TypeId)
+        {
+            ref Capsule shape = ref simulation.Shapes.GetShape<Capsule>(index.Index);
+            leafRadius = R.From(shape.Radius); half = R.From(shape.HalfLength);
+        }
+        else
+        {
+            Assert.Equal(default(Sphere).TypeId, index.Type);
+            leafRadius = R.From(simulation.Shapes.GetShape<Sphere>(index.Index).Radius); half = R.Zero;
+        }
+        V start = map.Transpose.Apply(V.From(centre) - V.From(pose.Position));
+        V motion = map.Transpose.Apply(V.From(delta));
+        bool Contact(R t)
+        {
+            V p = start + motion * t;
+            R axial = Abs(p.Y) > half ? Abs(p.Y) - half : R.Zero;
+            R radial = p.X.Square() + p.Z.Square(), r = R.From(radius);
+            if (!cylinder) return radial + axial.Square() <= (r + leafRadius).Square();
+            if (radial <= leafRadius.Square()) return axial.Square() <= r.Square();
+            R difference = radial + leafRadius.Square() + axial.Square() - r.Square();
+            return difference <= R.Zero || difference.Square() <= new R(4, 1) * leafRadius.Square() * radial;
+        }
+        R lo = R.Zero, hi = new(1, 2);
+        Assert.False(Contact(lo));
+        Assert.True(Contact(hi));
+        for (int depth = 0; depth < 52; depth++)
+        {
+            R middle = (lo + hi) / new R(2, 1);
+            if (Contact(middle)) hi = middle;
+            else lo = middle;
+        }
+        I length = Root(V.From(delta).LengthSquared);
+        return (Down(lo * length.Lower), Up(hi * length.Upper));
+    }
+
     internal static (double Lower, double Upper) BoxEntry(BepuPhysicsWorld world, StaticHandle handle,
         Vector3 centre, float radius, float halfCylinderLength, Vector3 delta)
     {

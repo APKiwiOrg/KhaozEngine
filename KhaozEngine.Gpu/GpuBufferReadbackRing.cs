@@ -17,6 +17,11 @@ namespace KhaozEngine.Gpu
     /// reset, resubmit or dispose a fence until every associated ring has consumed its entries, or discarded
     /// them if the list was never submitted. The ring never resets or disposes a caller fence.
     /// </para>
+    /// <para>
+    /// The device is borrowed and must stay usable while entries are pending. Every command list, source
+    /// buffer and fence passed to the ring must belong to that device. A foreign fence is retained by
+    /// <see cref="TryRecord"/> and refused later by the device's read.
+    /// </para>
     /// </summary>
     public sealed class GpuBufferReadbackRing : IDisposable
     {

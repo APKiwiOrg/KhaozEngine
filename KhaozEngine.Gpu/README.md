@@ -363,8 +363,11 @@ What it owns today:
   removes only that fence's entries for an abandoned list that was never submitted. Using it for submitted work
   is a caller error. The ring never resets or disposes a fence. `Dispose` refuses while entries remain and then
   frees only its owned staging buffers. Equipment coverage copies one aggregate actor-result payload per frame,
-  tagged with the frame ID, with actor IDs and offsets in the payload. Direct3D 11 completion needs a `Present`
-  or drain because `Submit` does not flush. The consumer guide covers shared fences and full-ring handling.
+  tagged with the frame ID, with actor IDs and offsets in the payload. Optional surface verification may share
+  that stable frame fence. Submit once with it, and never reset, resubmit or dispose it until every associated
+  ring has consumed its entries or discarded an unsubmitted list. A full ring skips diagnostics for that frame
+  while rendering continues and the dispatched outcome stands. Direct3D 11 completion needs a `Present` or drain
+  because `Submit` does not flush.
 - **`GpuRetireQueue`** (since 17.37.0) - deferred disposal for anything a renderer frees MID-LIFE (a streamed mesh
   unloaded while the scene runs, a sprite atlas whose descriptor set fell out of the working set). `Retire(resource)`
   costs nothing at the call site, `BeginFrame()` seals the frame's retirements into one batch behind a fence and

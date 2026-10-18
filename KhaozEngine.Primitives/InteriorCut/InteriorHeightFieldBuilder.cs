@@ -14,6 +14,7 @@ public static class InteriorHeightFieldBuilder
         window.Validate();
         encoding.Validate();
         var texels = new byte[window.Cells * window.Cells * 4];
+        var occupied = new BitArray(window.Cells * window.Cells);
         var merged = new BitArray(window.Cells * window.Cells);
         var outOfRange = new BitArray(window.Cells * window.Cells);
         int mergedCells = 0, outOfRangeCells = 0;
@@ -46,11 +47,12 @@ public static class InteriorHeightFieldBuilder
                         outOfRange[cell] = true;
                         outOfRangeCells++;
                     }
-                    if (top <= floor) continue;
                     int oldFloor = (texels[offset] << 8) | texels[offset + 1];
                     int oldTop = (texels[offset + 2] << 8) | texels[offset + 3];
                     int mergedFloor = floor, mergedTop = top;
-                    if (oldTop > oldFloor)
+                    // Collapsed endpoints still contribute to a later union. Span lookup applies the
+                    // empty-span rule only after all positive-height contributions have been merged.
+                    if (occupied[cell])
                     {
                         mergedFloor = Math.Min(floor, oldFloor);
                         mergedTop = Math.Max(top, oldTop);
@@ -60,6 +62,7 @@ public static class InteriorHeightFieldBuilder
                             mergedCells++;
                         }
                     }
+                    occupied[cell] = true;
                     texels[offset] = (byte)(mergedFloor >> 8);
                     texels[offset + 1] = (byte)mergedFloor;
                     texels[offset + 2] = (byte)(mergedTop >> 8);

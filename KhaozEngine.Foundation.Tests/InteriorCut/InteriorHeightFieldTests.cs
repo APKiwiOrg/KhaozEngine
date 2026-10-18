@@ -65,6 +65,24 @@ public class InteriorHeightFieldTests
         Assert.True(merged.Contains(new Vector3(0.5f, 5f, 0.5f)));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void QuantizedEmptyStoreyStillContributesToMergedSpan(bool thinFirst)
+    {
+        var lower = Rect(0f, 0f, 1f, 1f, 0f, 3f);
+        var thin = Rect(0f, 0f, 1f, 1f, 6.001f, 6.009f);
+        var merged = Build(thinFirst ? [thin, lower] : [lower, thin], new InteriorWindow(Vector2.Zero, 1f, 1));
+
+        Assert.True(merged.TryGetSpan(0, 0, out float floor, out float top));
+        Assert.Equal(0f, floor);
+        Assert.Equal(6f, top);
+        Assert.Equal(1, merged.MergedCells);
+        Assert.Equal(new byte[] { 0, 0, 2, 88 }, merged.Texels.ToArray());
+        Assert.True(merged.Contains(new Vector3(0.5f, 5.999f, 0.5f)));
+        Assert.False(merged.Contains(new Vector3(0.5f, 6f, 0.5f)));
+    }
+
     [Fact]
     public void QuantizationRoundsDownAndPacksExactly()
     {

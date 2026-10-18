@@ -77,6 +77,28 @@ The planner raised D1 to D3. Root resolved them as rulings C1 to C3, recorded in
 - When the seed's bracket misses, the search expands by powers of two over ordinal positive words and then bisects. That bounds the search by the whole positive binary32 domain, at most 31 bisections.
 - That domain bound is the proved searched-neighbor bound section 6 requires. Correctness does not depend on any native accuracy claim, including Vulkan's inherited square-root accuracy.
 
+## Preflight rulings
+
+The preflight scan found two ordering blockers and four ownership gaps. Root ruled on them as P1 to P6, recorded in the plan ledger. They override the task text below where they differ.
+
+- **P1.** Task 9 adds DispatchedHostPreparationCount and keeps CoveredHostPreparationCount until Task 15 deletes its last writer and test caller, so every intermediate commit builds.
+- **P2.** Execution order is Tasks 1 to 11, then 13, then 12, then 14 to 17.
+  - Task 13 lands GpuFrameSubmission, both interfaces, host wiring, participant callbacks and the outcome ring.
+  - Task 12 then registers the scene's history participant and commits history on Submitted. It also takes Task 13's two history assertions.
+- **P3.** Replace RecordThrough with internal `RecordPhases(IGpuCommandList commands, CoverageGpuBatch batch, CoverageGpuPhase firstPhase, CoverageGpuPhase lastPhase)`.
+  - Reset always records first, and phases before firstPhase are skipped.
+  - Production Record calls it with Skin to Select.
+  - Task 5 creates it, CoverageGpuTestSession.cs and CoverageGpuGuardGlsl.cs. Task 7 extends the test session.
+- **P4.** Task 13 makes GpuBufferReadbackRing implement IGpuFrameCompletionConsumer, with teardown, abandonment and fence-retention tests. The timestamp pool adapter comes with the GPU timing harness before the first approved pilot.
+- **P5.** Recording fixtures assert commands, bindings, metadata and recording allocations only.
+  - Every numeric GPU word, refusal, recovery and completed readback comes from a native executing fixture.
+  - Each task that changes a route migrates its own focused tests.
+  - Task 16 measures the full warm path, including completed readback, natively. A headless recording-only allocation test stays for staging and encoding.
+- **P6.** Task 10 owns the main-pass insertion (Scene3D.cs:1512-1533) and the outline call.
+  - Task 11 adds covered actors to CountSkinnedCasters (Scene3D.SkinnedCasters.cs:50-57).
+  - Task 11 also extends the skinned point-face owner (Scene3D.SkinnedPointShadows.cs:97-148).
+  - Both tasks test scenes whose ordinary skinned lists are empty.
+
 ## File-structure map
 
 All paths are repository-relative. In task file lists, Coverage/, Rendering/, Internal/ and an unprefixed Scene3D or Render3D filename are under KhaozEngine.Render3D/. Test prefixes Render3D/ and Gpu/ are under KhaozEngine.Render.Tests/. Attachments.Render3D/ means KhaozEngine.Attachments.Render3D/. New shader files contain GLSL string fragments, matching the existing shader-source approach, rather than adding a second build tool.

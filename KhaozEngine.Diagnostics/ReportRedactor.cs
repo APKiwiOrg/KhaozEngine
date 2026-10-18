@@ -8,8 +8,9 @@ namespace KhaozEngine.Diagnostics;
 /// The backstop every bug report string passes through before it leaves the machine. Masks private key
 /// blocks, JWTs, well-known provider tokens, Bearer and Basic credentials, secret URL query values and secret
 /// key and value pairs with <see cref="Mask"/>, then replaces the user's home directory with <c>~</c>. Rules
-/// run in that fixed order and each runs in linear time. Every pattern also has a 250 ms match timeout as a
-/// backstop, and a timeout fails closed, so a string the rules cannot finish with comes back as
+/// run in that fixed order. Every secret rule runs on the non-backtracking engine, so it is linear in the input
+/// by construction, and the home rule is an escaped literal path. Every pattern also has a 250 ms match timeout
+/// as a backstop, and a timeout fails closed, so a string the rules cannot finish with comes back as
 /// <see cref="Mask"/> whole. Thread-safe, and a string with nothing to mask is returned as the same instance
 /// without allocating.
 /// </summary>
@@ -22,6 +23,9 @@ public sealed class ReportRedactor
     const int MinimumHomeLength = 3;
 
     const RegexOptions Options = RegexOptions.CultureInvariant;
+
+    /// <summary>The secret rules' options. The engine scans in time linear in the input whatever the pattern.</summary>
+    const RegexOptions RuleOptions = Options | RegexOptions.NonBacktracking;
 
     static readonly TimeSpan DefaultMatchTimeout = TimeSpan.FromMilliseconds(250);
 
@@ -43,7 +47,7 @@ public sealed class ReportRedactor
     {
     }
 
-    /// <summary>A redactor whose rules use <paramref name="matchTimeout"/>, so a test can force a timeout.</summary>
+    /// <summary>A redactor whose rules use <paramref name="matchTimeout"/>, so a test can force a timeout or turn it off.</summary>
     internal ReportRedactor(string? homeDirectory, TimeSpan matchTimeout)
         : this(homeDirectory, BuildRules(matchTimeout), matchTimeout)
     {
@@ -56,6 +60,12 @@ public sealed class ReportRedactor
             .TrimEnd('/', '\\');
         if (path.Length >= MinimumHomeLength) home = BuildHomePattern(path, matchTimeout);
     }
+
+    /// <summary>The secret rules in the order they run, for tests that check how they are built.</summary>
+    internal IReadOnlyList<Rule> Rules => rules;
+
+    /// <summary>The home rule, or null when the home is too short to replace.</summary>
+    internal Regex? HomePattern => home;
 
     /// <summary>
     /// <paramref name="text"/> with every rule applied in order. Returns the same instance when nothing
@@ -115,9 +125,9 @@ public sealed class ReportRedactor
     [
         // PEM private key block.
         new(@"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[A-Za-z0-9+/=\s]*-----END [A-Z0-9 ]*PRIVATE KEY-----", Mask, timeout),
-        // JWT. The look-behind lets only the first character of a token run start a match. With a word
-        // boundary instead, every "eyJ" after a dash restarts a scan of the whole run, which is quadratic.
-        new(@"(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}", Mask, timeout),
+        // JWT, only at the start of a token run: the start of the text or after a character that cannot be in a
+        // token, kept by the replacement. The non-backtracking engine has no look-behind, so the prefix is captured.
+        new(@"(^|[^A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}", "$1" + Mask, timeout),
         // GitHub, Slack, AWS access key id and OpenAI style tokens.
         new(@"\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9_-]{20,})\b", Mask, timeout),
         // Bearer and Basic credentials keep the scheme and its spacing.
@@ -134,6 +144,7 @@ public sealed class ReportRedactor
     /// </summary>
     static Regex BuildHomePattern(string path, TimeSpan timeout)
     {
+        // Backtracking for the look-ahead, and linear anyway because the body is an escaped literal path.
         string native = Regex.Escape(path);
         string alternate = Regex.Escape(SwapSeparators(path));
         string body = native == alternate ? native : "(?:" + native + "|" + alternate + ")";
@@ -151,9 +162,9 @@ public sealed class ReportRedactor
         return new string(chars);
     }
 
-    readonly struct Rule(string pattern, string replacement, TimeSpan timeout)
+    internal readonly struct Rule(string pattern, string replacement, TimeSpan timeout)
     {
-        public Regex Pattern { get; } = new(pattern, Options, timeout);
+        public Regex Pattern { get; } = new(pattern, RuleOptions, timeout);
 
         public string Replacement { get; } = replacement;
     }

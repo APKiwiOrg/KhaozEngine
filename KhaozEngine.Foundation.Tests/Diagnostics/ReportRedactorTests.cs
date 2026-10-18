@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using KhaozEngine.Diagnostics;
 using Xunit;
 
@@ -15,6 +16,9 @@ public sealed class ReportRedactorTests
     const string Mask = ReportRedactor.Mask;
 
     static readonly ReportRedactor NoHome = new(homeDirectory: "");
+
+    /// <summary>No home and no match timeout, so a loaded machine cannot turn a result into the mask.</summary>
+    static readonly ReportRedactor Unbounded = new("", Regex.InfiniteMatchTimeout);
 
     [Fact]
     public void Home_becomes_tilde()
@@ -221,11 +225,17 @@ public sealed class ReportRedactorTests
     [Fact]
     public void Catastrophic_input_is_redacted_in_linear_time()
     {
-        // A 2 s backstop instead of 250 ms keeps the exact results independent of machine load. Every shape
-        // here is 200,000 characters, is linear and takes milliseconds, while a quadratic rule on that length
-        // takes seconds, as the old JWT start did, so a regression still times out and fails on the mask.
+        // Linear time is a property of how the rules are built, not of a clock: every secret rule runs on the
+        // non-backtracking engine, which scans in time linear in the input whatever the pattern. The home rule
+        // keeps backtracking for its look-ahead and is an escaped literal path. The exact results below run with
+        // no match timeout, so no backstop firing on a loaded machine can replace a result with the mask.
         const int Length = 200_000;
-        var redactor = new ReportRedactor("/Users/ann", TimeSpan.FromSeconds(2));
+        var redactor = new ReportRedactor("/Users/ann", Regex.InfiniteMatchTimeout);
+
+        Assert.Equal(6, redactor.Rules.Count);
+        Assert.All(redactor.Rules, rule =>
+            Assert.True((rule.Pattern.Options & RegexOptions.NonBacktracking) != 0, rule.Pattern.ToString()));
+        Assert.Equal(RegexOptions.None, redactor.HomePattern!.Options & RegexOptions.NonBacktracking);
 
         // Keys with no terminator: the first value takes the rest.
         Assert.Equal("password=" + Mask, redactor.Redact(Repeat("password=", Length)));
@@ -276,6 +286,95 @@ public sealed class ReportRedactorTests
         Assert.Equal("\"" + Mask + "\"", NoHome.Redact("\"" + jwt + "\""));
         Assert.Equal("id " + Mask, NoHome.Redact("id " + jwt));
         Assert.Equal("x_" + jwt, NoHome.Redact("x_" + jwt));
+    }
+
+    [Fact]
+    public void Jwt_rule_matches_the_look_behind_form()
+    {
+        // The rule it replaced. A JWT may start only where no token character precedes it.
+        var lookBehind = new Regex(
+            @"(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}",
+            RegexOptions.CultureInvariant);
+        ReportRedactor.Rule jwtRule = Unbounded.Rules[1];
+        const string jwt = "eyJhbGciOi.eyJzdWIiOi.c2lnbmF0dXJl";
+
+        (string Input, string Expected)[] cases =
+        [
+            (jwt, Mask),
+            (jwt + " tail", Mask + " tail"),
+            ("lead " + jwt, "lead " + Mask),
+            (jwt + " " + jwt, Mask + " " + Mask),
+            (jwt + "." + jwt, Mask + "." + Mask),
+            (jwt + "," + jwt + "\n" + jwt, Mask + "," + Mask + "\n" + Mask),
+            ("." + jwt + "." + jwt, "." + Mask + "." + Mask),
+            ("-" + jwt, "-" + jwt),
+            ("a-" + jwt, "a-" + jwt),
+            ("x_" + jwt, "x_" + jwt),
+            ("\"" + jwt + "\"", "\"" + Mask + "\""),
+            ("=" + jwt + "&", "=" + Mask + "&"),
+            ("eyJaaaa.bbbbb.ccccc", "eyJaaaa.bbbbb.ccccc"),
+            ("eyJaaaaa.bbbbb", "eyJaaaaa.bbbbb"),
+            (Repeat("eyJ-", 2_000), Repeat("eyJ-", 2_000)),
+            (Repeat(".eyJaaaaa", 54), string.Concat(Enumerable.Repeat("." + Mask, 2))),
+            (Repeat("eyJaaaaa.", 54), string.Concat(Enumerable.Repeat(Mask + ".", 2))),
+        ];
+
+        foreach ((string input, string expected) in cases)
+        {
+            Assert.Equal(expected, lookBehind.Replace(input, Mask));
+            Assert.Equal(expected, jwtRule.Pattern.Replace(input, jwtRule.Replacement));
+            Assert.Equal(expected, Unbounded.Redact(input));
+        }
+    }
+
+    [Fact]
+    public void Secret_rules_match_their_backtracking_form()
+    {
+        // The non-backtracking engine reports the same matches and captures as the backtracking one, so every
+        // replacement, including the kept scheme, spacing, parameter name, key, quotes and JWT prefix, is unchanged.
+        string[] corpus =
+        [
+            "Authorization: Bearer abc.def-123456",
+            "Authorization: basic  dXNlcjpwYXNz",
+            "BEARER\t\tAbCdEfGh12 and basic\nzzzzzzzz9",
+            "bearer short",
+            "t=eyJhbGciOi.eyJzdWIiOi.c2lnbmF0dXJl",
+            "password=hunter22",
+            "\"apiKey\": \"abcd1234\"",
+            "AccountKey=abc==;",
+            "client_secret : s3cr3t, next",
+            "PWD='x y' Private-Key = \"k\" connection_string:Server=a;",
+            "passwordtoken=x secretsecret: y",
+            "https://x/b?sv=1&sig=AbC%2B&se=2",
+            "https://x/cb?code=abc123#state",
+            "?TOKEN=a&Signature=b&api_key=c&id_token=d&refresh_token=e&client_secret=f&password=g",
+            "?signature&sig=&key=?k",
+            "key AKIAABCDEFGHIJKLMNOP end",
+            "ghp_" + new string('a', 36),
+            "xoxb-1234567890-abcdef",
+            "sk-" + new string('Z', 24) + " sk-short",
+            "github_pat_" + new string('1', 22),
+            "key:\n-----BEGIN RSA PRIVATE KEY-----\nMIIBOg+/=\n-----END RSA PRIVATE KEY-----\ndone",
+            "-----BEGIN PRIVATE KEY-----A-----END PRIVATE KEY",
+            "Loaded 12 tiles in 3.2 ms from /Users/anna with tokenizer=fast",
+            Repeat("password=", 2_000),
+            Repeat("?token=&", 2_000),
+            Repeat("bearer ", 2_000),
+            Repeat(".eyJaaaaa", 2_000),
+            Repeat("sk-", 2_000),
+            Repeat("-sk", 2_000),
+        ];
+
+        foreach (ReportRedactor.Rule rule in Unbounded.Rules)
+        {
+            var backtracking = new Regex(
+                rule.Pattern.ToString(), rule.Pattern.Options & ~RegexOptions.NonBacktracking);
+            foreach (string text in corpus)
+            {
+                Assert.Equal(
+                    backtracking.Replace(text, rule.Replacement), rule.Pattern.Replace(text, rule.Replacement));
+            }
+        }
     }
 
     [Fact]

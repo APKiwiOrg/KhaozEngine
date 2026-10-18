@@ -4,6 +4,7 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using KhaozEngine.Attachments.Render3D;
 using KhaozEngine.Gpu;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Render3D.Rendering;
@@ -21,6 +22,10 @@ public sealed class InteriorCutAttachmentTests
     {
         using var fixture = new MixedAttachmentSubmissionFixture();
         Scene3D scene = fixture.Scene;
+        scene.InteriorCut = InteriorHeightFieldBuilder.Build([new InteriorVolume
+        {
+            Outline = [new(8, -2), new(14, -2), new(14, 2), new(8, 2)], FloorY = -1, CeilingY = 4,
+        }], new InteriorWindow(new Vector2(6, -4), .25f, 64), InteriorEncoding.For(-1, 4));
         scene.UseGpuSkinning = gpuSkinning;
         scene.FrustumCulling = false;
         scene.Post.Starfield = false;

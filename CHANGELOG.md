@@ -8,6 +8,7 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 ## 21.6.0
 
 - Static interior cuts hide opted-in individual rigid props inside building outlines and below their roofs.
+  Only props whose drawn bounds can reach an interior take the cut path.
   The shared height field cuts colour, temporal motion, cascaded and point shadows, object and walk-surface
   picks, camera probes, target outlines and silhouettes. TileWorld builds the field off-thread and publishes
   it with picks on the view thread.

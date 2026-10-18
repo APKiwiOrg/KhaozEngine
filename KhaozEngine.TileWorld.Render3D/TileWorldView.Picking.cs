@@ -24,6 +24,8 @@ public sealed partial class TileWorldView
                            TileObjectRaycast.BoundsSource bounds, List<TileObjectHit> hits)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        // Picks keep the archetype-set route. Relevance only removes render flags from instances whose
+        // drawn bounds cannot overlap an interior, so their existing pick result is unchanged.
         int count = TileObjectRaycast.Pick(_doc, _catalogs, plane, origin, direction, maxDistance, bounds, hits,
             new TileObjectCut(AppliedInteriorCut, CutArchetypeIds, _scene.InteriorCutFrame));
         int kept = 0;

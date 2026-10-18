@@ -50,6 +50,10 @@ public sealed class PropLayerInteriorCutTests
     {
         using var rig = new MotionTestScene();
         Scene3D scene = rig.Scene;
+        scene.InteriorCut = InteriorHeightFieldBuilder.Build([new InteriorVolume
+        {
+            Outline = [new(19, -2), new(22, -2), new(22, 2), new(19, 2)], FloorY = -1, CeilingY = 3,
+        }], new InteriorWindow(new Vector2(-32), .25f, 256), InteriorEncoding.For(-1, 3));
         MeshHandle full = scene.LoadMesh(MeshPrimitives.Box());
         MeshHandle lod = scene.LoadMesh(MeshPrimitives.Box());
         var meshes = new Dictionary<string, MeshHandle> { ["tree"] = full };
@@ -85,8 +89,10 @@ public sealed class PropLayerInteriorCutTests
     public void TerminalOverloadsOptInAndConvenienceOverloadsStayUncut()
     {
         using var rig = new MotionTestScene();
-        var single = new Dictionary<string, MeshHandle> { ["tree"] = new(1) };
-        var parts = new Dictionary<string, IReadOnlyList<MeshHandle>> { ["tree"] = new[] { new MeshHandle(2) } };
+        rig.Scene.InteriorCut = InteriorCutShadowTests.Field();
+        var single = new Dictionary<string, MeshHandle> { ["tree"] = rig.Scene.LoadMesh(MeshPrimitives.Box()) };
+        var parts = new Dictionary<string, IReadOnlyList<MeshHandle>>
+        { ["tree"] = new[] { rig.Scene.LoadMesh(MeshPrimitives.Box()) } };
         PropPlacement[] placements = [new("tree", 0f, 0f, 0f, 1f, 0f, 0)];
         rig.Scene.Begin();
         rig.Scene.DrawProps(placements, single, Vector3.Zero, 10f, 2f, layerIdentity: "trees", cutInsideInteriors: true);

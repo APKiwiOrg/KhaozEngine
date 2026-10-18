@@ -68,7 +68,8 @@ public sealed partial class Scene3D
     {
         MeshOutlineDrawGroup drawGroup = RequireMeshOutlineGroup(group);
         drawGroup.Parts.Add(MeshOutlinePart.Rigid(mesh, world,
-            Math.Clamp(dissolve, 0f, 1f), dissolveComplement, cutInsideInteriors));
+            Math.Clamp(dissolve, 0f, 1f), dissolveComplement, cutInsideInteriors) with
+        { CutInsideInteriors = cutInsideInteriors && RelevantInteriorCut(mesh, world) });
         _meshOutlinePartCount++;
     }
 
@@ -139,9 +140,12 @@ public sealed partial class Scene3D
         int BoneStart,
         int BoneCount)
     {
+        public bool InteriorCutRequested { get; init; }
+
         public static MeshOutlinePart Rigid(
             MeshHandle mesh, Matrix4x4 world, float dissolve, bool complement, bool cutInsideInteriors) =>
-            new(MeshOutlinePartKind.Rigid, mesh, default, world, dissolve, complement, cutInsideInteriors, 0, 0);
+            new(MeshOutlinePartKind.Rigid, mesh, default, world, dissolve, complement, cutInsideInteriors, 0, 0)
+            { InteriorCutRequested = cutInsideInteriors };
 
         public static MeshOutlinePart Skinned(
             SkinnedMeshHandle mesh, Matrix4x4 world, float dissolve, bool complement,

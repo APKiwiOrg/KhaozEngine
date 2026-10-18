@@ -7993,8 +7993,9 @@ scene.DrawProps(placements, meshes, focus: character.Position, drawRadius: 192f,
 Only the two terminal single-mesh and multi-part overloads expose the trailing flag, after `drawFilter` and
 `layerIdentity`. Supplying `lodCrossfadeWidth` selects that form. The four convenience overloads, `Queue` and
 `DrawShadowOnlyProps` keep forwarding false. `PropLayer` factories take `cutInsideInteriors: true` and expose
-`CutsInsideInteriors` on the readonly struct, preserving it through copies. Full and authored LOD parts cut,
-while merged HLOD never does. Grass, ground cover, animated foliage and skinned paths remain excluded.
+`CutsInsideInteriors` on the readonly struct, preserving it through copies. Only full and authored LOD parts
+whose drawn bounds can reach an interior take the cut path. Misses keep their original rendering and caster
+route. Merged HLOD, grass, ground cover, animated foliage and skinned paths stay uncut.
 
 `PropRenderer.Queue(SceneInstances, ...)` is the same logic against a raw instance queue (headless-testable).
 `DrawProps`/`Queue` also overload on `IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>` (one-or-many
@@ -11687,7 +11688,12 @@ An unsafe wall leaves affected tiles uncut. An unreadable roof keeps its ceiling
 
 `CutArchetypeIds` is the view's internal union of opted-in layer archetypes, refreshed when `PropLayers`
 change. It drives object and walk-surface picks, camera probes, individual target outlines and silhouettes.
-Full and authored LOD parts cut in colour, temporal motion and both cascaded and point-light shadows.
+Only full and authored LOD parts whose drawn bounds can reach an interior take the cut path in colour,
+temporal motion and both cascaded and point-light shadows. One relevance cache also serves outlines and
+silhouettes, keyed by mesh, world transform, field version and render origin. Static placements reuse their
+answer across frames. A field or transform change re-evaluates. Misses keep `SpecParams.w` zero, and solid
+casters keep the opaque depth-only pipeline without a cut texture read. Picks retain their archetype-set
+route, since a missed instance cannot overlap a cut interior.
 Merged HLOD, roofs, unflagged ordinary props, grass, ground cover, animated foliage and skinned meshes stay
 uncut. Physics and editor rays are unchanged. MapDoc and world validation integration remain
 [#1474](https://github.com/APKiwiOrg/KhaozEngine/issues/1474) and
@@ -11699,6 +11705,9 @@ already forwards both. Without the view, build an `InteriorHeightField` through
 `InteriorHeightFieldBuilder.Build(volumes, window, sourceEncoding)`, set `scene.InteriorCut`, and submit
 `RigidInstanceDraw` with `CutInsideInteriors = true`. Null disables the field. A field uploads once at the
 next render, and a version change invalidates shadow caches. No opted-in draws preserves existing rendering.
+`field.MayIntersect(worldMin, worldMax)` conservatively tests a world box against an 8 by 8 cell summary.
+The overload taking `InteriorCutFrame` shares the visible shader's frame arithmetic. Both allow false
+positives, expand the XZ footprint by a cell and compare packed-code height ranges with outward rounding.
 
 **Picking object models.** `TileRaycast` answers the GROUND. For the objects standing on it,
 `TileObjectRaycast.Pick(doc, catalogs, plane, origin, direction, maxDistance, bounds, hits)` (in

@@ -25,6 +25,12 @@ namespace KhaozEngine.Render3D
         /// standalone queue is never recorded.</summary>
         public void Add(in RigidInstanceDraw draw) => _items.Add(new Instance(in draw));
 
+        internal void Add(in RigidInstanceDraw draw, bool relevantCut) =>
+            _items.Add(new Instance(in draw) with { CutInsideInteriors = relevantCut });
+
+        internal void SetInteriorCut(int index, bool relevantCut) =>
+            _items[index] = _items[index] with { CutInsideInteriors = relevantCut };
+
         /// <summary>Queue one instance with rigid-dissolve params (issue #253). Mirrors the
         /// <see cref="SkinnedSceneInstances"/> dissolve overload: <paramref name="dissolveThreshold"/> 0 = fully
         /// drawn (the byte-identical old path), &gt; 0 folds the noise discard + emissive edge into ModelFrag, with
@@ -111,7 +117,8 @@ namespace KhaozEngine.Render3D
             /// </summary>
             public MotionKey Motion { get; }
             /// <summary>Whether the rigid draw cuts pixels inside the scene's interior spans.</summary>
-            public bool CutInsideInteriors { get; }
+            public bool CutInsideInteriors { get; internal init; }
+            internal bool InteriorCutRequested { get; }
             public Instance(MeshHandle mesh, Matrix4x4 world, Color tint) : this(mesh, world, tint, Material.None) { }
             public Instance(MeshHandle mesh, Matrix4x4 world, Color tint, Material material,
                 float dissolveThreshold = 0f, float dissolveEdgeWidth = 0f, Vector4 dissolveEdge = default,
@@ -146,6 +153,7 @@ namespace KhaozEngine.Render3D
                 CastsShadows = castsShadows; InvertShadowDissolve = invertShadowDissolve;
                 DissolveComplement = dissolveComplement; ShadowOnly = shadowOnly; Motion = motion;
                 CutInsideInteriors = cutInsideInteriors;
+                InteriorCutRequested = cutInsideInteriors;
             }
 
             /// <summary>True when this draw carries a dissolve (routes through the gated ModelFrag term).</summary>

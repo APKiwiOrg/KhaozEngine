@@ -212,7 +212,8 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   multi-part submission and before blob registration.
   Static interior cuts opt in through `cutInsideInteriors: true` on `PropLayer` factories, exposed as
   `CutsInsideInteriors` on the readonly struct and preserved by its copy helpers. Individual full and authored
-  LOD parts carry the flag. Merged HLOD never does. Set `Scene3D.InteriorCut` to the shared height field.
+  LOD parts carry the flag only when their drawn bounds can reach an interior. Misses keep their original
+  rendering and caster route. Merged HLOD never does. Set `Scene3D.InteriorCut` to the shared height field.
   Direct submission uses only the two terminal filtered `DrawProps` overloads, single-mesh or multi-part,
   with trailing `cutInsideInteriors = false` after `drawFilter` and `layerIdentity`. Pass `lodCrossfadeWidth`
   explicitly to select that overload. The four convenience overloads forward false, as do `Queue` and

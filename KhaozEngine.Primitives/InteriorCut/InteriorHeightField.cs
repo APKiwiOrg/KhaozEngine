@@ -9,6 +9,7 @@ public sealed partial class InteriorHeightField
 {
     static long _nextVersion;
     readonly byte[] _texels;
+    readonly InteriorOverlapSummary _overlap;
 
     internal InteriorHeightField(InteriorWindow window, InteriorEncoding encoding, byte[] texels, int mergedCells, int outOfRangeCells)
     {
@@ -16,6 +17,7 @@ public sealed partial class InteriorHeightField
         BaseY = encoding.BaseY;
         StepY = encoding.StepY;
         _texels = texels;
+        _overlap = new InteriorOverlapSummary(window.Cells, texels);
         MergedCells = mergedCells;
         OutOfRangeCells = outOfRangeCells;
         Version = Interlocked.Increment(ref _nextVersion);

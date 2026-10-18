@@ -2,7 +2,8 @@
 
 Status: implemented, backend correctness and timing evidence pending for
 [#1470](https://github.com/APKiwiOrg/KhaozEngine/issues/1470). Approved on 2026-10-18 under owner rulings
-IC1 to IC6, orchestrator calls OC1 to OC10 and OC8 (a). Consumer captures remain the IC6 adoption gate.
+IC1 to IC6, amended by IC7 on 2026-10-19, orchestrator calls OC1 to OC10 and OC8 (a).
+Consumer captures remain the IC6 adoption gate.
 
 ## As built
 
@@ -72,6 +73,11 @@ time, is therefore not the fix. That check stays available as an optional author
 - **IC6 Owner look before the Grimhollow adoption lands.** Before and after captures on the Grimhollow world from
   before its four trees moved (the chapel oak through the chapel roof), with roofs hidden, roofs on and a doorway
   view. That is consumer work. The engine release enables it.
+- **IC7 Gate by per-instance relevance (2026-10-19).** Hosted T4 run 39160690665 measured 0.73 to 0.84 ms
+  per frame against 0.1 ms, with routing accounting for the entire cut cost. Only opted-in instances whose
+  drawn bounds can reach an interior take the cut path. Cache by world transform and field version. The
+  0.1 ms budget applies to TypicalVillage, with 3600 trees, 49 buildings and about 2 percent reaching trees.
+  DenseVillage retains the original layout and is recorded without a budget gate.
 
 ## Orchestrator calls approved with the design
 
@@ -240,7 +246,7 @@ document's `TileSize` exactly (OC3): 25 cm for a 1 m tile (`TileWorldDocument.De
 
 - GPU: `2048 * 2048 * 4` bytes, 16 MiB.
 - CPU: the applied field stays resident for upload and for picking, plus one buffer under construction, so
-  32 MiB at peak.
+  32 MiB of packed texels at peak, plus a 0.25 MiB coarse overlap summary per 2048-cell field.
 - Each re-centre and each interior rebuild uploads the whole 16 MiB in one frame.
 - A scene with no field allocates only the 1x1 default.
 
@@ -375,11 +381,27 @@ moved, a ground material) queues nothing.
 
 ## Render integration
 
+**As built (IC7).** `Scene3D` gates an opted-in rigid submission through one shared relevance function,
+also used by rigid outlines and silhouettes. It tests the same transformed mesh sphere as the prop cull
+against `InteriorHeightField.MayIntersect`. Rigid meshes have no sway displacement, and animated foliage
+stays excluded. The immutable field builds minimum-floor and maximum-top code spans per 8 by 8 cells.
+The query expands its footprint by one cell and bounds height in the shader's float32 code space using
+`InteriorCutFrame`, widening endpoints by one represented code value. It checks blocks instead of cells.
+Answers are cached by mesh generation and world transform for the field version and render origin.
+Static placements retain their answer across absent frames. Unloading a mesh removes its cached placements.
+Requests are retained separately from effective flags. Replacing the field after submission refreshes all
+three queues before packing, preserving the setter's next-render contract. An unchanged field and origin
+do not walk those queues again.
+No field or a missed field leaves `SpecParams.w` zero and opaque casters on their original depth-only path.
+Colour, cascaded and point shadows consume that same gated submission. Highlights reuse its cached query.
+Picks keep the archetype-set route, since an instance whose drawn bounds miss cannot lose a picked point.
+
 ### The opt-in route
 
 `TilePropLayerDefinition.CutInsideInteriors` flows to `PropLayer.CutsInsideInteriors` in
 `KhaozEngine.Terrain.Render3D`, which `PropClusterRenderer.SceneBackend.DrawProps` passes into `Scene3D.DrawProps`,
-which sets `RigidInstanceDraw.CutInsideInteriors` on every queued instance, the authored LOD parts included. The
+which requests `RigidInstanceDraw.CutInsideInteriors` for individual instances, the authored LOD parts included.
+The scene keeps the flag only where the drawn bounds may reach the applied field. The
 merged HLOD draw (`SceneBackend.DrawMerged`) never sets it.
 
 **Decision: the flag rides in `InstanceData.SpecParams.w`.** Options weighed:
@@ -664,6 +686,8 @@ public sealed class InteriorHeightField
     public long Version { get; }
     public bool TryGetSpan(int cellX, int cellZ, out float floorY, out float topY);
     public bool Contains(Vector3 world);                         // the shader's test, on the CPU
+    public bool MayIntersect(Vector3 worldMin, Vector3 worldMax);
+    public bool MayIntersect(Vector3 worldMin, Vector3 worldMax, InteriorCutFrame frame);
     public bool FirstUncut(Vector3 origin, Vector3 direction, float tStart, float tEnd, out float t);
 }
 public static class InteriorHeightFieldBuilder
@@ -820,12 +844,13 @@ and four modes in rotating order:
 
 1. Shadows off, the baseline that isolates the shadow pass, as `ShadowCascadeCullPerfGpuTests` does.
 2. Shadows on, no layer opted in.
-3. Shadows on, the layer opted in with an empty field, so every tree caster moves to the dissolve or cutout
-   pipeline and nothing is cut. Mode 3 minus mode 2 is the routing cost alone, which is where an early-depth loss
-   shows.
+3. Shadows on, the layer opted in with an empty field. Relevance rejects every instance, so casters retain
+   their original pipelines and nothing is cut. Mode 3 minus mode 2 records the empty-field gate overhead.
 4. Shadows on, opted in, with the village's interiors.
 
-Mode 4 minus mode 2 is the feature's cost, colour plus shadow, printed against the 0.1 ms budget and not asserted.
+Both DenseVillage (the original dense scatter) and TypicalVillage (72 of 3600 trees reach the 49 interiors)
+use this rotating four-mode order. Mode 4 minus mode 2 is the feature's cost, colour plus shadow, printed
+against the 0.1 ms budget only for TypicalVillage and never asserted. DenseVillage is recorded without a budget.
 The engine's GPU seam has no timestamp queries (`KhaozEngine.Diagnostics/PassTimings.cs`), so frame blocks are the
 measure, as in the temporal record. It runs through `gpu-hosted-bench` on the hosted T4 (Direct3D 11 and Vulkan),
 once, as OC8 approves.
@@ -848,15 +873,10 @@ At build time, in the same change:
 
 ## Risks
 
-- **Early depth on every tree's shadow draw.** Routing opted-in casters through the dissolve and cutout depth
-  pipelines puts a fragment that can discard on every tree's shadow draw, trunks included, which today take the
-  depth-only pipeline. On hardware that disables early depth testing for a discarding shader, every shadow
-  fragment of every tree is shaded before its depth test, including the ones a nearer caster hides. Leaf cards
-  already take the cutout pipeline and pay this now, so the new cost is on trunks and solid branch meshes. No
-  existing GPU test measures it: `AlphaCutoutShadowGpuTests` and the shadow policy tests check pixels, and
-  `ShadowCascadeCullPerfGpuTests` times culling with the cut absent. Mode 3 of the timing capture measures it, and
-  the 0.1 ms budget covers colour and shadow together. If mode 3 alone breaks the budget, the remedy is a cut-only
-  opaque caster variant that reads no albedo, trading one pipeline for the loss.
+- **Early depth on reaching casters.** Discard-capable pipelines can lose early depth, including for solid
+  trunks. Hosted run 39160690665 measured this routing cost at about seven times the budget when every tree
+  opted in. IC7 keeps missed instances on their original path. The next hosted record measures TypicalVillage
+  against 0.1 ms for colour and shadows together, with DenseVillage recorded without that budget gate.
 - **Upload hitch.** A re-centre or a rebuild uploads 16 MiB in one frame. If it shows, the lattice snap already
   allows a toroidal window that uploads only the strip the re-centre exposes.
 - **Courtyards.** An Indoors-flagged courtyard with a tree in it is cut up to the top of its storey, trunk

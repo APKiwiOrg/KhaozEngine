@@ -53,7 +53,15 @@ public sealed class InteriorCutCostPerfGpuTests(ITestOutputHelper output)
             return;
         }
 
-        var inputs = InteriorCutCostScene.Create();
+        var fields = InteriorCutCostScene.Create();
+        foreach (InteriorCutCostScene.Layout layout in Enum.GetValues<InteriorCutCostScene.Layout>())
+            MeasureLayout(fixture, layout, fields);
+    }
+
+    void MeasureLayout(TemporalFixture fixture, InteriorCutCostScene.Layout layout, InteriorCutCostScene fields)
+    {
+        var inputs = layout == InteriorCutCostScene.Layout.DenseVillage ? fields
+            : InteriorCutCostScene.Create(layout, fields);
         Scene3D scene = fixture.Scene;
         scene.EnableTiming = true;
         scene.Post.Starfield = false;
@@ -102,7 +110,7 @@ public sealed class InteriorCutCostPerfGpuTests(ITestOutputHelper output)
 
         var wall = Enum.GetValues<Mode>().ToDictionary(m => m, _ => new List<double>());
         var submit = Enum.GetValues<Mode>().ToDictionary(m => m, _ => new List<double>());
-        output.WriteLine($"{Width}x{Height}, {Cascades} cascades at {Resolution}, 3600 trees with solid trunks and "
+        output.WriteLine($"{layout}: {Width}x{Height}, {Cascades} cascades at {Resolution}, 3600 trees with solid trunks and "
             + $"cutout cards, 49 box buildings over 500 m, sun advancing 0.2/60 degrees per frame, "
             + $"{Rounds} rounds, {Warm} warm and {Block} measured frames per block");
         for (int round = 0; round < Rounds; round++)
@@ -133,26 +141,29 @@ public sealed class InteriorCutCostPerfGpuTests(ITestOutputHelper output)
                 Assert.Equal(mode == Mode.ShadowsOff ? ShadowMode.Off : ShadowMode.ShadowMap, scene.ResolvedShadowMode);
                 Assert.Equal(Width, fixture.DisplayWidth);
                 Assert.Equal(Height, fixture.DisplayHeight);
-                output.WriteLine($"round {round + 1} {mode}: frame {F(elapsed)} ms, submit and drain {F(submitted / Block)} ms");
+                output.WriteLine($"{layout} round {round + 1} {mode}: frame {F(elapsed)} ms, submit and drain {F(submitted / Block)} ms");
                 if (mode != Mode.ShadowsOff)
                     output.WriteLine($"  candidates {scene.ShadowCasterCandidateCount}, per-cascade instances "
                         + $"[{string.Join(", ", Enumerable.Range(0, Cascades).Select(scene.ShadowCascadeCasterCount))}]");
             }
         foreach (Mode mode in Enum.GetValues<Mode>())
-            output.WriteLine($"{mode}: median frame {F(Median(wall[mode]))} ms, "
+            output.WriteLine($"{layout} {mode}: median frame {F(Median(wall[mode]))} ms, "
                 + $"median submit and drain {F(Median(submit[mode]))} ms, blocks {string.Join(" ", wall[mode].Select(F))}");
-        PrintPair("shadow pass, mode 2 minus mode 1", wall[Mode.NoOptIn], wall[Mode.ShadowsOff]);
-        PrintPair("routing cost, mode 3 minus mode 2", wall[Mode.EmptyField], wall[Mode.NoOptIn]);
-        PrintPair("total cost, mode 4 minus mode 2", wall[Mode.VillageInteriors], wall[Mode.NoOptIn]);
+        PrintPair($"{layout} shadow pass, mode 2 minus mode 1", wall[Mode.NoOptIn], wall[Mode.ShadowsOff]);
+        PrintPair($"{layout} empty-field relevance overhead, mode 3 minus mode 2", wall[Mode.EmptyField], wall[Mode.NoOptIn]);
+        PrintPair($"{layout} total cost, mode 4 minus mode 2", wall[Mode.VillageInteriors], wall[Mode.NoOptIn],
+            budgetApplies: layout == InteriorCutCostScene.Layout.TypicalVillage);
     }
 
-    void PrintPair(string label, List<double> mode, List<double> baseline)
+    void PrintPair(string label, List<double> mode, List<double> baseline, bool budgetApplies = false)
     {
         double difference = Median(mode) - Median(baseline);
         double[] paired = mode.Zip(baseline, (m, b) => m - b).ToArray();
         output.WriteLine($"{label}: {F(difference)} ms, paired median {F(Median(paired))}, min {F(paired.Min())}, "
-            + $"max {F(paired.Max())}, paired blocks {string.Join(" ", paired.Select(F))}, budget {F(BudgetMs)} ms "
-            + $"({(difference <= BudgetMs ? "within" : "over")}, reported only)");
+            + $"max {F(paired.Max())}, paired blocks {string.Join(" ", paired.Select(F))}");
+        if (budgetApplies)
+            output.WriteLine($"{label}: budget {F(BudgetMs)} ms "
+                + $"({(difference <= BudgetMs ? "within" : "over")}, reported only)");
     }
 
     static double Median(IEnumerable<double> values)

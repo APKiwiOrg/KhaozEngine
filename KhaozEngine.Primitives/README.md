@@ -99,6 +99,10 @@ automatically, so this is transparent to every other package.
   multiplies by the rounded reciprocal cell size. `Contains(world, frame)` and the overload
   `FirstUncut(origin, direction, tStart, tEnd, frame, out t)` share that frame, including represented ray crossings.
   Overloads without a frame use origin zero.
+  `MayIntersect(worldMin, worldMax)` and its frame-taking overload conservatively test a box against
+  packed-code summaries of 8 by 8 cells. They expand XZ by a cell and round height bounds outwards.
+  False positives are allowed. The renderer caches this query so only opted-in props whose drawn bounds
+  can reach an interior take the cut path.
   `FirstUncut(origin, direction, tStart, tEnd, out t)` finds the first uncut point in ray-parameter units,
   treating empty cells and points outside the window as uncut. It returns false for a wholly cut segment.
   `RayMath.IntersectObbY(..., out tNear, out tFar)` supplies the matching box entry and exit, including

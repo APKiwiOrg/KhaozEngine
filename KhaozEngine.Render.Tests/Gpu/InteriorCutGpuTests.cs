@@ -39,6 +39,14 @@ public sealed class InteriorCutGpuTests : IClassFixture<InteriorCutGpuTests.Stag
     }
 
     [GpuFact]
+    public void OptedInMissIsByteIdentical()
+    {
+        byte[] baseline = _stage.Frame(null, false);
+        Assert.Equal(baseline, _stage.Frame(null, true));
+        Assert.Equal(baseline, _stage.Frame(Stage.BoundaryField, true));
+    }
+
+    [GpuFact]
     public void ReusedSceneMatchesFreshSceneAfterFieldAndModeChanges()
     {
         _stage.BoundaryFrame(Stage.BoundaryField, .25f);

@@ -8,7 +8,18 @@ namespace KhaozEngine.Render3D;
 public sealed partial class Scene3D
 {
     /// <summary>The interior spans requested for the next render, or null to disable cutting.</summary>
-    public InteriorHeightField? InteriorCut { get; set; }
+    public InteriorHeightField? InteriorCut
+    {
+        get => _interiorCut;
+        set
+        {
+            if (ReferenceEquals(_interiorCut, value)) return;
+            _interiorCut = value;
+            _interiorRelevanceDirty = true;
+        }
+    }
+
+    InteriorHeightField? _interiorCut;
 
     long _interiorTextureGeneration;
 
@@ -22,6 +33,7 @@ public sealed partial class Scene3D
 
     void PrepareInteriorCut()
     {
+        RefreshInteriorRelevance();
         InteriorCutResources resources = _model.InteriorResources;
         resources.Apply(InteriorCut);
         InteriorCutUniforms uniforms = InteriorCutUniforms.From(InteriorCut, _currentFrameView.RenderOrigin);

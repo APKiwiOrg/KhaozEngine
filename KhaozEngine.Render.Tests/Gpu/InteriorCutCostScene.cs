@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Primitives;
@@ -8,21 +9,29 @@ namespace KhaozEngine.Tests.Gpu;
 /// <summary>GPU-free village inputs shared by the hosted capture and its deterministic source tests.</summary>
 internal sealed class InteriorCutCostScene
 {
+    internal enum Layout { DenseVillage, TypicalVillage }
     readonly InteriorHeightField _empty, _village;
     internal IReadOnlyList<PropPlacement> Trees { get; }
     internal IReadOnlyList<InteriorVolume> Interiors { get; }
 
-    InteriorCutCostScene(PropPlacement[] trees, InteriorVolume[] interiors)
+    InteriorCutCostScene(PropPlacement[] trees, InteriorVolume[] interiors, InteriorCutCostScene? sharedFields)
     {
         Trees = trees;
         Interiors = interiors;
+        // Both layouts have identical buildings. The hosted capture retains only these two packed fields.
+        if (sharedFields is not null)
+        {
+            _empty = sharedFields._empty;
+            _village = sharedFields._village;
+            return;
+        }
         var window = InteriorWindow.Centred(Vector2.Zero, .25f, InteriorWindow.CellsFor(512f, .25f));
         var encoding = InteriorEncoding.For(0f, 9f);
         _empty = InteriorHeightFieldBuilder.Build([], window, encoding);
         _village = InteriorHeightFieldBuilder.Build(interiors, window, encoding);
     }
 
-    internal static InteriorCutCostScene Create()
+    internal static InteriorCutCostScene Create(Layout layout = Layout.DenseVillage, InteriorCutCostScene? sharedFields = null)
     {
         var trees = new PropPlacement[3600];
         uint seed = 0x1C07_5EED;
@@ -44,7 +53,31 @@ internal sealed class InteriorCutCostScene
                     CeilingY = 9f,
                 };
             }
-        return new InteriorCutCostScene(trees, interiors);
+        if (layout == Layout.TypicalVillage)
+            for (int i = 0; i < trees.Length; i++)
+            {
+                PropPlacement tree = trees[i];
+                // Exactly one in fifty trees reaches an interior. The remainder keep their deterministic
+                // scatter except where their largest drawn cull sphere could reach a building. Those trees
+                // move to the centre of the 36 m lane, clear of the 8-cell summary's conservative fringe.
+                float x = tree.X, z = tree.Z;
+                if (i % 50 == 0)
+                {
+                    Vector2 centre = (interiors[(i / 50) % interiors.Length].Outline[0]
+                        + interiors[(i / 50) % interiors.Length].Outline[2]) * .5f;
+                    x = centre.X;
+                    z = centre.Y;
+                }
+                else
+                {
+                    float cx = Math.Clamp(MathF.Round(x / 60f), -3f, 3f) * 60f;
+                    float cz = Math.Clamp(MathF.Round(z / 60f), -3f, 3f) * 60f;
+                    if (MathF.Abs(x - cx) < 29f && MathF.Abs(z - cz) < 29f)
+                        x = cx + (x < cx ? -30f : 30f);
+                }
+                trees[i] = new PropPlacement(tree.Id, x, tree.Y, z, tree.Scale, tree.Yaw, tree.Variant);
+            }
+        return new InteriorCutCostScene(trees, interiors, sharedFields);
     }
 
     internal float SunAngleFor(int frame) => frame * (.2f / 60f);

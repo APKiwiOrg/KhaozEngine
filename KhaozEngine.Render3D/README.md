@@ -972,7 +972,10 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   before the pixel post.
 - `Scene3D.InteriorCut` accepts an immutable `InteriorHeightField`, uploaded once at the next render.
   Null binds the zero default and disables the field. `RigidInstanceDraw.CutInsideInteriors` defaults false.
-  Opted-in static rigid draws discard only inside the field, in colour and temporal motion together and in
+  Only opted-in static rigid draws whose cull bounds can reach an interior take the cut path. One cached
+  query serves colour, shadows, outlines and silhouettes, invalidated by field, world transform or render
+  origin changes. Misses keep the original rendering and depth-only caster route with no cut texture read.
+  Reaching draws discard only inside the field, in colour and temporal motion together and in
   both cascaded and point-light shadows. A field version change invalidates the shadow caches. Ordinary
   unflagged draws, roofs, skinned meshes, animated foliage, grass and ground cover keep their existing path.
   `InstanceData` stays 128 bytes, with `SpecParams.xyz` unchanged and `w` the 0/1 cut flag.

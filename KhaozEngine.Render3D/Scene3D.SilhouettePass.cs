@@ -14,7 +14,12 @@ namespace KhaozEngine.Render3D
     {
         // Per-entity silhouette draws (inverted hulls): queued in submission order, flushed into the model FB
         // right after the overlay meshes. Cleared each Begin().
-        readonly List<(MeshHandle Mesh, Matrix4x4 World, Color Color, float Width, bool CutInsideInteriors)> _silhouetteDraws = new();
+        readonly List<SilhouetteDraw> _silhouetteDraws = new();
+
+        readonly record struct SilhouetteDraw(MeshHandle Mesh, Matrix4x4 World, Color Color, float Width, bool CutInsideInteriors)
+        {
+            public bool InteriorCutRequested { get; init; }
+        }
 
         /// <summary>Queue one per-entity SILHOUETTE: the mesh re-drawn as an inverted hull, vertices pushed
         /// along welded geometric normals by <paramref name="widthMetres"/>, front faces culled, in a flat
@@ -31,7 +36,9 @@ namespace KhaozEngine.Render3D
         /// <summary>Queues an inverted hull optionally cut at its extruded position by the interior field.</summary>
         public void DrawMeshSilhouette(MeshHandle mesh, Matrix4x4 world, Color color, float widthMetres,
             bool cutInsideInteriors) =>
-            _silhouetteDraws.Add((mesh, world, color, widthMetres, cutInsideInteriors));
+            _silhouetteDraws.Add(new SilhouetteDraw(mesh, world, color, widthMetres,
+                cutInsideInteriors && RelevantInteriorCut(mesh, world))
+            { InteriorCutRequested = cutInsideInteriors });
 
         /// <summary>Count of silhouette draws queued this frame. Internal: lets tests assert <see cref="Begin"/>
         /// clears the queue and <see cref="DrawMeshSilhouette(MeshHandle, Matrix4x4, Color, float)"/> enqueues.</summary>

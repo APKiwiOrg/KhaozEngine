@@ -1,8 +1,9 @@
 # Interior cut for props inside buildings
 
 Status: design for [#1470](https://github.com/APKiwiOrg/KhaozEngine/issues/1470), written 2026-10-18 under owner
-rulings IC1 to IC6, revised the same day under the orchestrator's rulings OC1 to OC10. Not built. It ships as one
-engine minor after 21.4.0, and this document picks no version number. One item, OC8, stays open for the owner.
+rulings IC1 to IC6, revised the same day under the orchestrator's rulings OC1 to OC10, and approved by the owner
+on 2026-10-18 together with OC8 (a). Not built. It ships as one engine minor after 21.4.0, and this document picks
+no version number.
 
 ## The problem
 
@@ -66,7 +67,7 @@ time, is therefore not the fix. That check stays available as an optional author
 - **OC6 (a)** Adapter issues are returned and logged once by the view in this minor. Surfacing them in
   ke-tileedit's `world_validate` is tracked in #1473.
 - **OC7 (a)** Packed `R8G8B8A8UNorm` texels.
-- **OC8** Open for the owner. See [Open for owner](#open-for-owner).
+- **OC8 (a)** Approved by the owner. See [Owner decision on OC8](#owner-decision-on-oc8-2026-10-18).
 - **OC9 (a)** The window centres on the prop draw focus.
 - **OC10 reversed to (b) and widened.** A cut part is not there for the player, so everything in this round that
   reacts to an opted-in prop's pixels honours the cut: object picking and the camera boom that uses it, walk
@@ -775,7 +776,7 @@ and four modes in rotating order:
 Mode 4 minus mode 2 is the feature's cost, colour plus shadow, printed against the 0.1 ms budget and not asserted.
 The engine's GPU seam has no timestamp queries (`KhaozEngine.Diagnostics/PassTimings.cs`), so frame blocks are the
 measure, as in the temporal record. It runs through `gpu-hosted-bench` on the hosted T4 (Direct3D 11 and Vulkan),
-which waits on OC8.
+once, as OC8 approves.
 
 ## Docs and release notes
 
@@ -841,9 +842,9 @@ Owner scores from the IC3 ruling.
   pitched roof: set to the ridge it cuts the crown above a sloped roof, set to the eaves it leaves branches under
   the slope.
 
-## Open for owner
+## Owner decision on OC8 (2026-10-18)
 
-- **OC8 The timing capture.** `gpu-hosted-bench` runs on dispatch on larger GPU runners billed per minute. Options:
+- **OC8 (a) approved.** `gpu-hosted-bench` runs on dispatch on larger GPU runners billed per minute. Options:
   (a) one dispatch of the `InteriorCutCostPerfGpuTests` filter on the T4 legs once the build is approved, (b) also
   a native Metal run on the dev Mac. **Recommendation: (a)** only. (b) adds GPU load on the shared Mac, and Metal
   correctness is already proven by the cross-platform GPU workflow.

@@ -19,8 +19,8 @@ internal sealed class SupportRequestMemo
 {
     internal const int Capacity = 16;
 
-    // The dry door's memo for this thread, provisioned once. Thread-static storage is never shared between threads.
-    [ThreadStatic] static SupportRequestMemo? t_dry;
+    // The dry door provisions all nesting slots together, so a warm nested interval never allocates its evidence.
+    [ThreadStatic] static DrySupportMemoPool? t_dry;
     [ThreadStatic] static bool t_bypass;
 
     readonly Entry[] _entries = new Entry[Capacity];
@@ -50,16 +50,13 @@ internal sealed class SupportRequestMemo
         public void Dispose() => t_bypass = previous;
     }
 
-    /// <summary>Opens this thread's dry memo for one tick's <paramref name="lease"/>. Null without a lease, or when
-    /// the memo is already open, which only a tick nested on the same thread finds. The nested tick then reads
-    /// uncached.</summary>
+    /// <summary>Opens one independent dry memo for <paramref name="lease"/>. Null only without a lease. Up to four
+    /// simultaneous intervals on this thread have preprovisioned storage, including nested ticks. Exceeding that
+    /// bound throws rather than silently dropping continuity evidence.</summary>
     internal static SupportRequestMemo? OpenDry(IPhysicsQueryLease? lease)
     {
         if (lease is null) return null;
-        SupportRequestMemo memo = t_dry ??= new SupportRequestMemo();
-        if (memo.Lease is not null) return null;
-        memo.Open(lease);
-        return memo;
+        return (t_dry ??= new DrySupportMemoPool()).Open(lease);
     }
 
     internal void Open(IPhysicsQueryLease lease)

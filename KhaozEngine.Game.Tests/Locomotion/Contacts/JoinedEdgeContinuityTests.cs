@@ -462,7 +462,7 @@ public sealed partial class JoinedEdgeContinuityTests(ITestOutputHelper output)
     static int Bits(float value) => BitConverter.SingleToInt32Bits(value);
 
     // A flat fan of up-facing triangles meeting at the origin with a rim of radius 1.
-    static FootSupportScene Fan(int triangles)
+    internal static FootSupportScene Fan(int triangles)
     {
         Vector3 Rim(int i) => new(MathF.Cos(2 * MathF.PI * (i % triangles) / triangles), 0,
             MathF.Sin(2 * MathF.PI * (i % triangles) / triangles));

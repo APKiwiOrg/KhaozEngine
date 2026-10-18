@@ -93,6 +93,14 @@ the interval closes. It is never a per-Find managed allocation. Do not replace a
 neighbor prefix or a wider capacity limit. Amended 2026-10-18 (ruling FA-R5): the first implementation
 embedded the 2,048-byte row inline, which grew every support sample from about 48 to 2,256 bytes and
 every seat, placement and tick result to about 2.3 KB on the per-tick path.
+Amended 2026-10-18 (ruling FA-R10): each arena retains at most 64 rows and 1,024 joined keys,
+preserving the existing 21,040-byte memo provision while allowing four times the 16-entry repeat
+memo's row count and four complete maximum-neighbor rows plus four keys. These are retention
+budgets, not limits on support queries. If a complete new row exceeds either budget, its sample
+carries no handle and uses the unjoined rule on both heads, without growing storage or truncating
+the row. The dry door provisions four independent memo arenas together on first use, for an ordinary
+tick and three nested intervals without warm allocation. A fifth simultaneous dry interval throws
+`InvalidOperationException` before execution rather than silently changing continuity accounting.
 Bind the selected key and its direct neighbor keys to the exact source query, receiver, source,
 lease identity, origin and geometry generation. A later Find must not overwrite them. Exact-repeat
 memoization copies the evidence with its sample and retains its existing exact query key.

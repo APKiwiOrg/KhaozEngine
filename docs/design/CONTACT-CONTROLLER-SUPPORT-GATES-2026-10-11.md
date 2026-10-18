@@ -756,14 +756,18 @@ negative discrete step with no climb charge, and owed debt, placement and the cl
 wider than the 0.1 mm band, or a transitive A-B-C chain without a direct A-C join, keeps the level residual
 (`JoinedEdgeNeedsTheDirectSelectedPair`). Curved parts and analytic terrain carry no joins. An unresolved relevant
 join still refuses the whole footprint. Evidence from a disposed, rebased or rebuilt interval, another receiver or
-another thread throws rather than excusing a rise. No selection, tolerance, band, bound or cost gate changes. Per
+another thread throws rather than excusing a rise. No selection, tolerance, band, raw-member bound or cost gate changes. Per
 FA-R5 the rows live in an arena the support memo owns for its interval, and a supported physics sample carries
 only a 16-byte handle (arena, slot and epoch). A stale handle from a closed interval throws, even after the arena
 reuses its slots. Measured on the 64-bit layout, a sample is 64 bytes, a seat result and a placement 96 and a
 ground step result 120, pinned by `JoinedEdgeEvidenceIsAnIntervalHandleThatAllocatesNothing`. One support memo
-with its arena provisions 21,040 bytes once and grows only past its previous high-water mark. Warm support reads,
-their row capture and copies still allocate nothing. A support read outside an open interval, such as a nested
-tick whose memo is already open, carries no handle and keeps the unjoined rule. No timing is claimed for the larger copies.
+with its arena provisions 21,040 bytes once. FA-R10 fixes retention at 64 rows and 1,024 keys. A complete row
+that would exceed either budget gets no handle and keeps the unjoined rule, identically on both heads, without
+truncating earlier evidence or allocating in Find. Warm support reads, their row capture and copies allocate
+nothing. The dry door preprovisions four independent memo arenas on first use, so an ordinary tick and three
+nested intervals keep the same certified joins. A fifth simultaneous dry interval throws InvalidOperationException
+before execution. A support read outside an open interval carries no handle and keeps the unjoined rule.
+No timing is claimed for the larger copies.
 
 CF-6's headless traversal adds no further result change. `ContactFollowupTraversalTests` drives the dry ground
 core through each tick's own lease and open support memo, with the default tuning at 1 m/s and 60 Hz. Planks

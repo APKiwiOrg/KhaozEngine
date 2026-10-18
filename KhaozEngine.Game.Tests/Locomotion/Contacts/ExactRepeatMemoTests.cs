@@ -179,8 +179,11 @@ public sealed class ExactRepeatMemoTests(ITestOutputHelper output)
             SupportRequestMemo? memo = SupportRequestMemo.OpenDry(lease);
             Assert.NotNull(memo);
             Assert.Equal(0, memo.Count);
-            // A tick nested on the same thread reads uncached rather than sharing the open memo.
-            Assert.Null(SupportRequestMemo.OpenDry(lease));
+            // A nested tick has its own memo and evidence arena.
+            SupportRequestMemo? nested = SupportRequestMemo.OpenDry(lease);
+            Assert.NotNull(nested);
+            Assert.NotSame(memo, nested);
+            nested.Close();
             memo.Close();
         }
 

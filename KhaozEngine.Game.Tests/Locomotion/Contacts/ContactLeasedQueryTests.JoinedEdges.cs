@@ -34,6 +34,63 @@ public partial class ContactLeasedQueryTests
     }
 
     [Fact]
+    public void JoinedEdgeNestedDryTickMatchesNormalSeatClimbAndSignals()
+    {
+        using FootSupportScene geometry = JoinedEdgeContinuityTests.Partition("split-statics");
+        using FootSupportScene tickGeometry = JoinedEdgeContinuityTests.Partition("split-statics");
+        var normal = DryCrossing();
+        SupportRequestMemo? outer = SupportRequestMemo.OpenDry(geometry.Lease);
+        Assert.NotNull(outer);
+        try
+        {
+            var nested = DryCrossing();
+            AssertBits(normal.Seat, nested.Seat);
+            Assert.Equal(normal.Signals, nested.Signals);
+            AssertBits(normal.Tick, nested.Tick);
+            Assert.Same(geometry.Lease, outer.Lease);
+            Assert.True(outer.Arena.IsOpen);
+        }
+        finally { outer.Close(); }
+        Assert.Equal(SeatOutcome.Seated, normal.Seat.Outcome);
+        Assert.Equal(geometry["b"], normal.Seat.Support.Static);
+        Assert.Equal(0f, normal.Seat.StepPart);
+        Assert.Equal(0f, normal.Seat.DiscreteStep);
+        Assert.Equal((0f, 0f, 0.02f), normal.Signals);
+
+        (GroundSeatResult Seat, (float, float, float) Signals, MoveState Tick) DryCrossing()
+        {
+            Vector2 from = new(0.1f, -0.125f), to = new(0.1f, -0.025f);
+            float feet = (float)JoinedOracle(geometry, from).Height;
+            var initial = new MoveState
+            {
+                Position = new(from.X, feet + Tuning.CapsuleHalfHeight, from.Y),
+                Grounded = true,
+            };
+            MoveState tick;
+            using (GroundSignals.AlwaysSample())
+                tick = ContactController.Step(initial, Vector2.UnitY, 0.5f, false, false, 1f / 30,
+                    static (_, _) => -1000, Tuning, null, tickGeometry.World, null, null);
+            SupportRequestMemo? memo = SupportRequestMemo.OpenDry(geometry.Lease);
+            try
+            {
+                ContactQueryContext queries = new DryContactQueryContext(null, null, geometry.World,
+                    geometry.Lease, Tuning, null, memo);
+                SupportSample start = queries.FindSupport(Query(new(from.X, feet, from.Y)));
+                GroundSeatResult seat = GroundSeat.Resolve(queries, start, from, feet, to, Vector2.UnitY,
+                    JoinedFoot, Tuning, JoinedGate);
+                Vector2 axis = new(0.1f, -0.3f);
+                float y = (float)JoinedOracle(geometry, axis).Height;
+                SupportSample support = queries.FindSupport(Query(new(axis.X, y, axis.Y)));
+                using (GroundSignals.AlwaysSample())
+                    return (seat, GroundSignals.Resolve(new MoveState(), 0.02f, 0.07f, true, false, 0,
+                        new(0, 0.1f), new(axis.X, y, axis.Y), support, true, 1f / 30, Tuning,
+                        JoinedFoot, JoinedGate, queries), tick);
+            }
+            finally { memo?.Close(); }
+        }
+    }
+
+    [Fact]
     public void JoinedEdgeLeasedSeatAndLookAheadKeepThePair()
     {
         using FootSupportScene geometry = JoinedEdgeContinuityTests.Partition("split-statics");

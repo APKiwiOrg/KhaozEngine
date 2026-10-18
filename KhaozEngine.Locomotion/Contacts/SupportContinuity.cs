@@ -38,13 +38,12 @@ internal readonly struct SupportContinuityHandle
 /// <summary>Interval-owned storage for the selected member's direct joined walkable row (CF-4). The support memo owns
 /// one arena and opens and closes it with its read interval. Rows are appended, never changed, until the interval
 /// closes, when every row and its references are cleared and the epoch advances, so no earlier handle resolves again.
-/// Storage is provisioned with the arena and grows only past its previous high-water mark, so a warm interval
-/// allocates nothing. A row keeps every direct neighbour, up to the raw bound of 255.</summary>
+/// Fixed storage holds 64 rows and 1,024 keys, preserving the original provision (FA-R10). A row keeps every direct
+/// neighbour, up to the raw bound of 255, or gets no handle if the complete row cannot fit. Find never grows it.</summary>
 internal sealed class SupportContinuityArena
 {
-    const int MaximumRows = 1 << SupportContinuityHandle.SlotBits;
-    Row[] _rows = new Row[64];
-    SupportMemberKey[] _keys = new SupportMemberKey[4 * SupportFootprintResult.MaximumElements];
+    readonly Row[] _rows = new Row[64];
+    readonly SupportMemberKey[] _keys = new SupportMemberKey[4 * SupportFootprintResult.MaximumElements];
     int _rowCount, _keyCount;
     long _epoch;
 
@@ -76,19 +75,15 @@ internal sealed class SupportContinuityArena
         IsOpen = false;
     }
 
-    /// <summary>Writes one row and returns its handle, or an empty handle when the interval already holds the most rows
-    /// a handle can name, so the sample keeps the unjoined rule.</summary>
+    /// <summary>Writes one complete row and returns its handle, or an empty handle when either fixed retention budget
+    /// would be exceeded, so the sample keeps the unjoined rule. Existing rows remain immutable.</summary>
     internal SupportContinuityHandle Write(in SupportFootprintResult result, in FootSupportQuery query,
         ReadOnlySpan<SupportFootprintMember> members, ReadOnlySpan<ulong> joins, int selectedMember)
     {
         if (!IsOpen) throw new InvalidOperationException("The continuity arena is closed.");
-        if (_rowCount == MaximumRows) return default;
-        if (_rowCount == _rows.Length) Array.Resize(ref _rows, 2 * _rows.Length);
-        // A row holds at most every other raw member.
-        if (_keys.Length - _keyCount < SupportFootprintResult.MaximumElements)
-            Array.Resize(ref _keys, 2 * _keys.Length);
+        if (_rowCount == _rows.Length) return default;
         SupportFootprintMember selected = members[selectedMember];
-        int start = _keyCount;
+        int start = _keyCount, end = start;
         if (Walkable(selected, query.CosMaxSlope))
         {
             int stride = result.JoinWordsPerRow;
@@ -97,7 +92,10 @@ internal sealed class SupportContinuityArena
             {
                 if (j == selectedMember || (row[j / 64] & (1UL << (j % 64))) == 0 ||
                     !Walkable(members[j], query.CosMaxSlope)) continue;
-                _keys[_keyCount++] = new(members[j].Static, members[j].ElementId);
+                // Only the unused suffix is touched. Publish its end after the whole row fits, so an overflow
+                // retains neither a prefix nor a slot and cannot invalidate any earlier handle.
+                if (end == _keys.Length) return default;
+                _keys[end++] = new(members[j].Static, members[j].ElementId);
             }
         }
         _rows[_rowCount] = new Row
@@ -105,8 +103,9 @@ internal sealed class SupportContinuityArena
             Source = new(result, query),
             Selected = new(selected.Static, selected.ElementId),
             Start = start,
-            Count = _keyCount - start,
+            Count = end - start,
         };
+        _keyCount = end;
         return new(this, _epoch, _rowCount++);
     }
 

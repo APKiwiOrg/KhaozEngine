@@ -177,5 +177,10 @@ The initial three-fact baseline filter covered the new textured case, `TemporalT
 
 [verification.json](verification.json) records every local exit code and count. The whole-solution format failure
 is pre-existing and separate from the candidate's GPU failures. This branch remains blocked from integration.
-Hosted run [39119425055](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39119425055) tests candidate commit `507f0d135`. Its results will be appended when it finishes. No private-feed package, real-scene
+Hosted run [39119425055](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39119425055) tests candidate commit `507f0d135`. It completed with 908 passed, 11 failed and zero skipped on each of the three main backends. [The backend comparison](backend-comparison.md) records every result, the failure-set differences and the absolute before/after tails. No private-feed package, real-scene
 capture or game repin is justified by these red correctness guards.
+
+The hosted run exposes one further mechanism risk: Native Vulkan stores one different lock between the fused
+and split entry points at frame 47. Metal and WARP keep entry identity, but the current arithmetic is not yet a
+cross-platform solution. The full before/after tail table proves absolute 8 px regressions on each device class.
+[Backend comparison and handoff](backend-comparison.md) is the final report. This checkpoint must not be integrated.

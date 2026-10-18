@@ -11689,10 +11689,11 @@ An unsafe wall leaves affected tiles uncut. An unreadable roof keeps its ceiling
 `CutArchetypeIds` is the view's internal union of opted-in layer archetypes, refreshed when `PropLayers`
 change. It drives object and walk-surface picks, camera probes, individual target outlines and silhouettes.
 Only full and authored LOD parts whose drawn bounds can reach an interior take the cut path in colour,
-temporal motion and both cascaded and point-light shadows. One relevance cache also serves outlines and
-silhouettes, keyed by mesh, world transform, field version and render origin. Static placements reuse their
-answer across frames. A field or transform change re-evaluates. Misses keep `SpecParams.w` zero, and solid
-casters keep the opaque depth-only pipeline without a cut texture read. Picks retain their archetype-set
+temporal motion and both cascaded and point-light shadows. Those draws and outlines share a zero-margin
+relevance cache, keyed by mesh, world transform, field version and render origin. Static placements reuse their
+answer across frames. A field or transform change re-evaluates. Silhouettes query separately with their
+world-metre hull width added to the bounds, including after a field replacement. Missed model instances keep
+`SpecParams.w` zero, and solid casters keep the opaque depth-only pipeline without a cut texture read. Picks retain their archetype-set
 route, since a missed instance cannot overlap a cut interior.
 Merged HLOD, roofs, unflagged ordinary props, grass, ground cover, animated foliage and skinned meshes stay
 uncut. Physics and editor rays are unchanged. MapDoc and world validation integration remain

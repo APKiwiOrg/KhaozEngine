@@ -186,6 +186,36 @@ public sealed class InteriorCutRelevanceTests
         SameSubmission(Submit(InteriorCutShadowTests.Field(), true));
     }
 
+    [Theory]
+    [InlineData(.001f, false, false)]
+    [InlineData(.05f, true, false)]
+    [InlineData(.001f, false, true)]
+    [InlineData(.05f, true, true)]
+    public void SilhouetteRelevanceIncludesHullWidth(float width, bool reaches, bool replaceAfterSubmission)
+    {
+        using var rig = new MotionTestScene();
+        Scene3D scene = rig.Scene;
+        scene.RenderOrigin = Vector3.Zero;
+        InteriorHeightField field = InteriorCutShadowTests.Field();
+        scene.InteriorCut = replaceAfterSubmission ? null : field;
+        MeshHandle mesh = scene.LoadMesh(MeshPrimitives.Box(.02f));
+        Matrix4x4 world = Matrix4x4.CreateTranslation(1, 3.02f, 0);
+        scene.Begin();
+        scene.Draw(new RigidInstanceDraw(mesh, world) { CutInsideInteriors = true });
+        scene.DrawMeshOutlineDissolved(scene.BeginMeshOutline(Color.White, 1), mesh, world, 0, false, true);
+        scene.DrawMeshSilhouette(mesh, world, Color.White, width, true);
+        if (!replaceAfterSubmission) Assert.Equal(reaches, SilhouetteCut(scene));
+        else scene.InteriorCut = field;
+
+        rig.Render();
+
+        Assert.False(Assert.Single(scene.QueuedInstancesForTests).CutInsideInteriors);
+        Assert.Equal(ShadowCastKind.Opaque, Scene3D.ClassifyCaster(Assert.Single(scene.QueuedInstancesForTests)));
+        Assert.False(OutlineCut(scene));
+        Assert.Equal(reaches, SilhouetteCut(scene));
+        Assert.Equal(1, Evaluations(scene));
+    }
+
     static bool SilhouetteCut(Scene3D scene) => CutOf(Assert.Single(
         HighlightTestAccess.Field<IList>(scene, "_silhouetteDraws").Cast<object>()));
 

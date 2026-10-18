@@ -388,12 +388,14 @@ stays excluded. The immutable field builds minimum-floor and maximum-top code sp
 The query expands its footprint by one cell and bounds height in the shader's float32 code space using
 `InteriorCutFrame`, widening endpoints by one represented code value. It checks blocks instead of cells.
 Answers are cached by mesh generation and world transform for the field version and render origin.
+Colour, shadows and outlines use zero outward margin. Silhouettes expand the transformed sphere by their
+world-metre hull width and query separately without caching, since the shader cuts at the extruded position.
 Static placements retain their answer across absent frames. Unloading a mesh removes its cached placements.
 Requests are retained separately from effective flags. Replacing the field after submission refreshes all
 three queues before packing, preserving the setter's next-render contract. An unchanged field and origin
 do not walk those queues again.
 No field or a missed field leaves `SpecParams.w` zero and opaque casters on their original depth-only path.
-Colour, cascaded and point shadows consume that same gated submission. Highlights reuse its cached query.
+Colour, cascaded and point shadows consume that same gated submission. Outlines reuse its cached query.
 Picks keep the archetype-set route, since an instance whose drawn bounds miss cannot lose a picked point.
 
 ### The opt-in route

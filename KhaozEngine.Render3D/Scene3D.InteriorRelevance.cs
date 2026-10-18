@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D.Rendering;
@@ -10,12 +11,18 @@ public sealed partial class Scene3D
     bool _interiorRelevanceDirty;
     InteriorCutFrame _interiorRelevanceFrame;
 
-    bool RelevantInteriorCut(MeshHandle handle, in Matrix4x4 world)
+    bool RelevantInteriorCut(MeshHandle handle, in Matrix4x4 world, float outwardMargin = 0f)
     {
         if (InteriorCut is not { } field || !_slots.IsValid(handle.Index, handle.Generation)
             || _meshes[handle.Index] is not { } mesh) return false;
-        return _interiorRelevance.MayIntersect(field, new InteriorCutFrame(_frameOrigin),
-            handle, world, mesh.Bounds);
+        var frame = new InteriorCutFrame(_frameOrigin);
+        if (outwardMargin == 0f)
+            return _interiorRelevance.MayIntersect(field, frame, handle, world, mesh.Bounds);
+        // Silhouettes cut at their extruded positions. Their world-metre displacement must expand the
+        // drawn sphere, independently of mesh scale and the cached zero-margin answer for the model.
+        mesh.Bounds.WorldSphere(world, out Vector3 centre, out float radius);
+        var extent = new Vector3(radius + MathF.Abs(outwardMargin));
+        return field.MayIntersect(centre - extent, centre + extent, frame);
     }
 
     void RefreshInteriorRelevance()
@@ -40,7 +47,7 @@ public sealed partial class Scene3D
         {
             SilhouetteDraw draw = _silhouetteDraws[i];
             if (draw.InteriorCutRequested)
-                _silhouetteDraws[i] = draw with { CutInsideInteriors = RelevantInteriorCut(draw.Mesh, draw.World) };
+                _silhouetteDraws[i] = draw with { CutInsideInteriors = RelevantInteriorCut(draw.Mesh, draw.World, draw.Width) };
         }
         _interiorRelevanceDirty = false;
         _interiorRelevanceFrame = frame;

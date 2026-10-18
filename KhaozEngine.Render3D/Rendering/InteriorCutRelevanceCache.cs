@@ -4,7 +4,7 @@ using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Render3D.Rendering;
 
-/// <summary>Shares one bounds query across a rigid placement's colour, shadow and highlight submissions.</summary>
+/// <summary>Shares zero-margin bounds queries across a rigid placement's colour, shadow and outline submissions.</summary>
 internal sealed class InteriorCutRelevanceCache
 {
     readonly Dictionary<(int Index, int Generation), Dictionary<Matrix4x4, bool>> _placements = new();

@@ -37,7 +37,7 @@ namespace KhaozEngine.Render3D
         public void DrawMeshSilhouette(MeshHandle mesh, Matrix4x4 world, Color color, float widthMetres,
             bool cutInsideInteriors) =>
             _silhouetteDraws.Add(new SilhouetteDraw(mesh, world, color, widthMetres,
-                cutInsideInteriors && RelevantInteriorCut(mesh, world))
+                cutInsideInteriors && RelevantInteriorCut(mesh, world, widthMetres))
             { InteriorCutRequested = cutInsideInteriors });
 
         /// <summary>Count of silhouette draws queued this frame. Internal: lets tests assert <see cref="Begin"/>

@@ -55,23 +55,23 @@ internal static class MapMarkerExpansion
 
     /// <summary>R6-P3 and T4-R2. Refuses duplicate effective marker IDs and names across world markers and every
     /// prefab-derived marker after current overrides. Disabled markers take part and removed children do not. This
-    /// reads metadata only, so it refuses before any support, geometry or callback work.</summary>
-    internal static void RequireUnique(MapDocument document, MapAssetClosure assets) => RequireUnique(Capture(document, assets));
-
-    /// <summary>Names compare ordinally and case-sensitively, with no normalization or suffixing. Every collision is
-    /// reported, IDs first, each in ordinal order.</summary>
-    internal static void RequireUnique(IReadOnlyList<MapMarkerCandidate> candidates)
+    /// reads metadata only, so it refuses before any support, geometry or callback work. Names compare ordinally and
+    /// case-sensitively, with no normalization or suffixing. Every collision is reported, IDs first, each in ordinal
+    /// order, and a name collision names its remedy.</summary>
+    internal static void RequireUnique(MapDocument document, MapAssetClosure assets)
     {
-        ArgumentNullException.ThrowIfNull(candidates);
+        IReadOnlyList<MapMarkerCandidate> candidates = Capture(document, assets);
         var errors = new List<string>();
-        Duplicates(candidates, c => c.Value.Id, "ID", errors);
-        Duplicates(candidates, c => c.Value.Name, "name", errors);
+        Duplicates(candidates, c => c.Value.Id, "ID", "", errors);
+        Duplicates(candidates, c => c.Value.Name, "name",
+            " Give a prefab marker an explicit marker replace override with a new name, or rename the world marker.", errors);
         if (errors.Count != 0) throw new MapDocumentException(string.Join("\n", errors));
     }
 
-    static void Duplicates(IReadOnlyList<MapMarkerCandidate> candidates, Func<MapMarkerCandidate, string> key, string what, List<string> errors)
+    static void Duplicates(IReadOnlyList<MapMarkerCandidate> candidates, Func<MapMarkerCandidate, string> key, string what, string remedy,
+        List<string> errors)
     {
         foreach (var group in candidates.GroupBy(key, StringComparer.Ordinal).Where(g => g.Skip(1).Any()).OrderBy(g => g.Key, StringComparer.Ordinal))
-            errors.Add($"Markers {string.Join(", ", group.Select(c => "'" + c.Value.Id + "'").Order(StringComparer.Ordinal))} have duplicate marker {what} '{group.Key}'.");
+            errors.Add($"Markers {string.Join(", ", group.Select(c => "'" + c.Value.Id + "'").Order(StringComparer.Ordinal))} have duplicate marker {what} '{group.Key}'.{remedy}");
     }
 }

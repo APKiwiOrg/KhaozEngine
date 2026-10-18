@@ -250,7 +250,7 @@ public sealed class PrefabVillageWorkflowTests
         foreach (var (request, fault) in new[] { (second, "duplicate marker name 'Canopy entry'"),
             (second with { InitialOverrides = new[] { Named("arrival-b"), Named("arrival-c") } }, "Duplicate initial override") })
         {
-            var refused = Assert.ThrowsAny<Exception>(() => mutation.PrefabApply(request));
+            var refused = Assert.Throws<MapDocumentException>(() => mutation.PrefabApply(request));
             Assert.Contains(fault, refused.Message, StringComparison.Ordinal);
             Assert.Contains(fault, Text(await Place(request, false)), StringComparison.Ordinal);
             Assert.Equal(afterFirst, Bytes(direct)); Assert.Equal(afterFirst, Bytes(live));

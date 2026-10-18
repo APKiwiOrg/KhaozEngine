@@ -28,7 +28,8 @@ public sealed class MapMarkerRegistryTests
         _ = AcceptBothPaths(MarkerFixtures.WithEntryOverride(child, new MapPrefabRemoveOverride(MarkerFixtures.EntryKey)));
         string[] errorsAfterRestore = RefuseBothPaths(MarkerFixtures.WithEntryOverride(renamedChild, null));
 
-        Assert.Contains(errorsBeforeRename, e => e.Contains("duplicate marker name", StringComparison.Ordinal));
+        Assert.Contains(errorsBeforeRename, e => e.Contains("duplicate marker name", StringComparison.Ordinal) &&
+            e.EndsWith("explicit marker replace override with a new name, or rename the world marker.", StringComparison.Ordinal));
         Assert.Equal(new[] { "arrival", "arrival-child" }, childRenamed.All.Select(m => m.Name).Order(StringComparer.Ordinal));
         Assert.Equal("w", childRenamed.FindByName("arrival")!.Id);
         Assert.Equal("a/entry", childRenamed.FindByName("arrival-child")!.Id);
@@ -131,11 +132,35 @@ public sealed class MapMarkerRegistryTests
         var markers = Enumerable.Range(0, 24).Select(k => Point($"p{k:00}", k < 3 ? third : new MapExactValue(3L * k + 1, 3), new(k % 3, 1))).ToArray();
         var registry = new MapMarkerRegistry(markers);
         var rect = new MapMarkerRect(0, -1, maxX, 3);
-        var hits = registry.InRect(rect, false, Outside(), out MapMarkerQueryWork work);
+        var hits = registry.InRect(rect, false, GeometryFreeMembership(), out MapMarkerQueryWork work);
 
         Assert.Equal(new[] { "p00", "p01", "p02" }, hits.Select(h => h.Marker.Id));
         Assert.Equal(Exhaustive(markers, rect), hits.Select(h => h.Marker.Id));
         Assert.True(work.PointsTested >= 3);
+    }
+
+    /// <summary>The maximum side of the boundary test above. The nearest double to 5/6 lies above it, and the nearest
+    /// float below it. A rectangle whose minimum is the largest double below 5/6 keeps the boundary points through
+    /// outward node maxima, and one whose minimum is the nearest double excludes them by the exact comparison.</summary>
+    [Fact]
+    public void RectangleIndex_OutwardMaximaKeepBoundaryPoints()
+    {
+        var fiveSixths = new MapExactValue(5, 6);
+        var exact = MapWideRational.From(fiveSixths);
+        double nearest = fiveSixths.ToDouble();
+        Assert.True(MapWideRational.FromDouble(nearest).CompareTo(exact) > 0);
+        Assert.True(MapWideRational.FromDouble((float)nearest).CompareTo(exact) < 0);
+        double below = Math.BitDecrement(nearest);
+
+        var markers = Enumerable.Range(0, 24).Select(k => Point($"p{k:00}", k < 3 ? fiveSixths : new MapExactValue(-3L * k - 1, 3), new(k % 3, 1))).ToArray();
+        var registry = new MapMarkerRegistry(markers);
+        foreach (var (minX, expected) in new[] { (below, new[] { "p00", "p01", "p02" }), (nearest, Array.Empty<string>()) })
+        {
+            var rect = new MapMarkerRect(minX, -1, 3, 3);
+            var hits = registry.InRect(rect, false, GeometryFreeMembership(), out _);
+            Assert.Equal(expected, hits.Select(h => h.Marker.Id));
+            Assert.Equal(Exhaustive(markers, rect), hits.Select(h => h.Marker.Id));
+        }
     }
 
     [Fact]
@@ -144,7 +169,7 @@ public sealed class MapMarkerRegistryTests
         var markers = Enumerable.Range(0, 257).Select(i => Point($"q{i:000}", new(4L * (i % 16) + 1, 2), new(4L * (i / 16) + 1, 2))).ToArray();
         var registry = new MapMarkerRegistry(markers);
         int calls = 0;
-        var outside = Outside();
+        var outside = GeometryFreeMembership();
         var rect = new MapMarkerRect(8.25, 12.25, 8.75, 12.75);
         var hits = registry.InRect(rect, false, m => { calls++; return outside(m); }, out MapMarkerQueryWork work);
 
@@ -186,8 +211,8 @@ public sealed class MapMarkerRegistryTests
             .Select(m => m.Id).Order(StringComparer.Ordinal).ToArray();
     }
 
-    // Real membership over a geometry-free authored world.
-    static Func<MapEffectiveMarker, MapMembershipResult> Outside()
+    // Real membership over a geometry-free authored world, so every answer is MissingGeometry.
+    static Func<MapEffectiveMarker, MapMembershipResult> GeometryFreeMembership()
     {
         MapScopedSurfaces view = MarkerFixtures.Effective(MarkerFixtures.Create()).CompleteView();
         return m => MapMarkerSpaces.Query(view, m);

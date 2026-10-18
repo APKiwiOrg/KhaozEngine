@@ -117,6 +117,18 @@ engine guide, and tested on all three CI devices.
    0, 0.25, 0.5, 0.75 and 1, with clip pairs sampled together at each authored frame of normalised phase.
    Poses come from the game's actual locomotion sampler. A failure fails CI and reports asset, clip,
    frame, weights, stage, code and command.
+6. **Exact predicates, float constructions (root ruling B27).** Every 2D edge determinant whose exact-path
+   counterpart drives a decision or a construction (overlay inside and side tests, triangle areas, support
+   projection and barycentric interpolation) returns two values computed from its binary32 inputs: the
+   exact sign, and the exact value rounded once to binary32, to nearest with ties to even. Control flow
+   follows the exact overlay on those signs. Crossing parameters, points and heights stay binary32 with a
+   pinned operation order. Plain binary32 determinants rounded near-degenerate signs to zero or the wrong
+   sign, and bounds heuristics on top of them traded a false contact for a lost crossing. Both values
+   are facts of the inputs, not of the method, so a kernel matches the reference bit for bit with any
+   exact device method. Part C proves its method on all three backends: float error-free expansions only
+   where correctly rounded add, subtract and multiply without contraction are verified, otherwise 32-bit
+   integer multiword arithmetic. The per-sample enclosure treats a sign whose determinant enclosure
+   contains zero as both branches, so ε covers either decision.
 
 ## Part C: GPU coverage path in Render3D
 

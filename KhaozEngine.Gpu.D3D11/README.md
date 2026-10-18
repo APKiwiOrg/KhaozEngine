@@ -627,6 +627,31 @@ every fence reads signalled, since a destroyed device has no outstanding work to
 The fence poll does NOT flush, deliberately. Only the drain has decided to wait, so only the drain pays to have
 the work handed over, and `IGpuFence.Signaled` stays as cheap as the seam's contract expects.
 
+## Timestamp batches
+
+`SupportsTimestamps` probes creation of timestamp and timestamp-disjoint queries on the actual device.
+It times no workload and does not exclude WARP. Unsupported creation reports false and releases every
+successful probe object. Removal and other device faults follow the existing failure path.
+
+A fixed pool owns its timestamp queries, one disjoint query and preallocated result scratch. Use one
+batch per frame or less and one outstanding batch per pool. The shipped recorder validates the batch,
+then the immediate emitter calls `Begin(disjoint)`, `End(timestamp[index])` for each write and
+`End(disjoint)`. The deferred driver stores these same operations and retains the pool in the stream's
+reference list until reset or recorder disposal. It makes no native query call before replay. Counting
+and trace emitters preserve the operations and their order too.
+
+`TryResolve` uses `Monitor.TryEnter` on the device's immediate-context lock. Contention returns Pending.
+It polls the supplied completion fence before issuing one non-flushing `GetData` per required query,
+with `D3D11_ASYNC_GETDATA_DONOTFLUSH` (1). Unavailable queries remain Pending. Disjoint data or zero
+frequency is Invalid. Both leave caller ticks untouched with period zero. Ready normalizes elapsed ticks
+and reports exactly `1_000_000_000d / frequency`. Terminal results remain repeatable until the next begin.
+Invalid samples never enter the GPU gate. Resolve never waits, maps, drains or flushes.
+
+Submit does not flush either. A headless loop reaches Ready only after a Present or caller drain hands
+work to the driver. The native correctness test drains once, outside the timestamp interval.
+Keep the pool alive through completion. Query release uses the same COM lifetime path as other submitted
+D3D11 resources, skips a dead device and adds no drain. Device errors use the existing loss latch.
+
 ## What a telemetry session carries, and why it is cumulative
 
 This is the only backend that answers `IGpuDevice.Counters` with anything but the default, because it is the only
@@ -1183,6 +1208,8 @@ its boundary W5.
   a consumer's walk over the pixels. This clause is TESTED rather than asserted in prose: the four native calls
   sit behind `ID3D11StagingMemory`, and a fake recording `Monitor.IsEntered` per call pins both halves of it off
   Windows. See the compute section for the seam.
+- **Timestamp resolve tries the immediate-context lock without waiting.** Contention returns Pending.
+  Fence polling and every non-flushing query read occur under the same lock. See "Timestamp batches".
 - **Nothing waits under the submit lock, with ONE knowingly paid exception**, and exactly two members CAN block
   unboundedly, both of which refuse a caller who holds it, by name: `WaitForIdle` (which signals and flushes
   under the lock and then releases it to wait, so the submission it is waiting for can still be made) and the

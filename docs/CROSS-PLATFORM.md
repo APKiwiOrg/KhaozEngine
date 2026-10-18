@@ -440,6 +440,12 @@ dropped about 63 minutes of runner time from a full dispatch.
   family. That variable is read only by the native backend's adapter selection. It is also the leg that runs
   the device-free FXC shader validation step, which is the only thing in this repo that puts a real HLSL
   compiler over the shipped programs.
+  `ComputeTimestampGpuTests` exercises the supported timestamp branch on pinned WARP, including compute
+  output and A18's green draw-pixel probe after replacing the bound framebuffer. Its test-output helper
+  records the branch and resolved disjoint frequency in the TRX artifact even with summary console logging.
+  D3D11 uses timestamp queries inside a disjoint batch, with non-flushing `GetData` reads after completion.
+  Invalid disjoint data and zero frequency never produce measured time. The native correctness test drains
+  once because Submit and resolve never flush. Use one disjoint batch per frame or less.
 - **GitHub-hosted Vulkan native leg (1x)**: the engine's own `KhaozEngine.Gpu.Vulkan` backend
   (`KE_GRAPHICS_BACKEND=vulkan-native`), golden tests only on `push`/`pull_request` and the WHOLE suite on the
   weekly `schedule` and on `workflow_dispatch`, with the full-suite runs serializing xUnit test collections

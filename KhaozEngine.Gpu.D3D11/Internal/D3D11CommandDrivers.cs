@@ -29,15 +29,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// of a cache that describes the shared device context. See the seam for the full reasoning.
         /// </para>
         /// </summary>
-        internal static IGpuCommandList Create<TEmitter>(D3D11RecordMode mode, TEmitter emitter)
+        internal static IGpuCommandList Create<TEmitter>(D3D11RecordMode mode, TEmitter emitter, D3D11FenceSubsystem? timestampFences = null)
             where TEmitter : struct, ID3D11Emitter
             => mode == D3D11RecordMode.Immediate
-                ? new D3D11CommandRecorder<TEmitter>(emitter)
-                : CreateDeferred();
+                ? new D3D11CommandRecorder<TEmitter>(emitter, timestampFences)
+                : CreateDeferred(timestampFences);
 
         /// <summary>Create a command list on the deferred driver explicitly.</summary>
-        internal static D3D11CommandRecorder<D3D11StreamEmitter> CreateDeferred()
-            => new(new D3D11StreamEmitter(new D3D11CommandStream()));
+        internal static D3D11CommandRecorder<D3D11StreamEmitter> CreateDeferred(D3D11FenceSubsystem? timestampFences = null)
+            => new(new D3D11StreamEmitter(new D3D11CommandStream()), timestampFences);
 
         /// <summary>
         /// Section 5.1's submit, verbatim: take the submit lock, replay, release. The lock is a PARAMETER because

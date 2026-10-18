@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.D3D11.Internal;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using KhaozEngine.Primitives;
 using Xunit;
@@ -153,6 +154,8 @@ void main() {
             device.Submit(commands, completion);
             device.WaitForIdle(); // The test alone drains once. D3D11 Submit does not flush.
             Assert.Equal(GpuTimestampStatus.Ready, ResolveChecked(pool, completion, ticks, out period));
+            if (pool is D3D11TimestampPool d3d11)
+                output.WriteLine(FormattableString.Invariant($"timestamp branch: supported, frequency={d3d11.Frequency}, periodNanoseconds={period:R}"));
             Assert.Equal(0ul, ticks[0]);
             Assert.True(ticks[1] >= ticks[0]);
             Assert.True(ticks[2] >= ticks[1]);

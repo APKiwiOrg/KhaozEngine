@@ -22,7 +22,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// the same reason: a static initializer would resolve them on first touch of ANY member.
     /// </para>
     /// <para>
-    /// DEFENSIVE ON EVERY QUERY, and that matched the incumbent rather than being extra caution.
+    /// DEFENSIVE ON FORMAT QUERIES, matching the incumbent. Timestamp-query creation preserves device faults.
     /// <c>VeldridMap.MaxMsaaSampleCount</c> and <c>VeldridMap.SupportsShadowMaps</c> (both deleted in 18.0.0)
     /// swallowed and degraded, because a capability read that throws would fail device creation over a question
     /// whose answer only decides how pretty the frame is. Section 11 says the same in as many words: any
@@ -39,10 +39,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <param name="adapter">The adapter it was created on, which the device row already holds.</param>
         /// <param name="supportsCompletionFences"><see cref="D3D11FenceSubsystem.SupportsCompletionFences"/>, so
         /// the capability and the fence path cannot disagree.</param>
+        /// <param name="timestamps">The actual device query adapter to probe, or no timestamp support.</param>
         [MethodImpl(MethodImplOptions.NoInlining)]
         [SupportedOSPlatform("windows")]
         internal static GpuCapabilities ReadCapabilitiesWindows(ID3D11Device device, IDXGIAdapter adapter,
-            bool supportsCompletionFences)
+            bool supportsCompletionFences, ID3D11TimestampApi? timestamps = null)
         {
             ArgumentNullException.ThrowIfNull(device);
             ArgumentNullException.ThrowIfNull(adapter);
@@ -51,7 +52,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 AdapterNameWindows(adapter),
                 MaxMsaaSampleCountWindows(device),
                 SupportsShadowMapsWindows(device),
-                supportsCompletionFences);
+                supportsCompletionFences, timestamps is not null && D3D11TimestampApi.Probe(timestamps));
         }
 
         /// <summary>The adapter description, exactly as DXGI gives it.

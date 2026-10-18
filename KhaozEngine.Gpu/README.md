@@ -369,7 +369,8 @@ What it owns today:
   while rendering continues and the dispatched outcome stands. Direct3D 11 completion needs a `Present` or drain
   because `Submit` does not flush.
 - **GPU timestamps** - gate on `GpuCapabilities.SupportsTimestamps`, default false. Native Vulkan probes
-  the selected queue's counter bits and the device period. Metal and Direct3D 11 currently leave it false.
+  the selected queue's counter bits and the device period. Direct3D 11 probes timestamp and disjoint
+  query creation on the actual device. Metal currently leaves it false.
   `CreateTimestampPool(capacity)` and the
   optional command defaults throw `NotSupportedException` without support. A fixed-capacity
   `IGpuTimestampPool` records one batch with `BeginTimestamps(pool, count)`, increasing unique

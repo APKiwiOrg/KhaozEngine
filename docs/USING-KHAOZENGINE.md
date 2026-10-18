@@ -22394,7 +22394,8 @@ actor IDs and offsets are fields in that copied payload. Optional surface verifi
 stable frame fence. The caller submits once with that fence and cannot reset, resubmit or dispose it until
 every associated ring has consumed its entries, or discarded them if the list was never submitted. If the
 ring is full, skip diagnostics for that frame, keep rendering and preserve the dispatched outcome. On Direct3D
-11, a `TryReadBuffer` poll completes only after a `Present` or drain, because `Submit` does not flush. The ring
+11, a `TryReadBuffer` or timestamp `TryResolve` poll completes only after a `Present` or drain, because
+`Submit` does not flush. Both polls remain non-flushing. A headless correctness test drains once. The ring
 does not introduce a flush policy for headless consumers.
 
 `TryRecord(commands, source, sourceOffsetBytes, sizeInBytes, tag, completion)` copies into offset zero of the next
@@ -22420,7 +22421,8 @@ not been consumed. After consumption or valid discard it disposes only the owned
 ### GPU timestamps without waiting
 
 Gate timestamp collection on `GpuCapabilities.SupportsTimestamps`. It defaults to false. Native Vulkan
-reports the selected graphics queue's counter support. Metal and Direct3D 11 currently leave it false. An unsupported
+reports the selected graphics queue's counter support. Direct3D 11 probes both native query kinds on
+the actual device without timing a workload. Metal currently leaves it false. An unsupported
 `IGpuResourceFactory.CreateTimestampPool(capacity)` throws `NotSupportedException`. The optional timestamp
 command defaults also throw, so existing factories and command lists stay source compatible.
 
@@ -22457,6 +22459,16 @@ Every adjacent interval must be shorter than one full counter wrap. Multiple wra
 be detected or reconstructed. No resolve drains, flushes, submits, synchronously maps or takes a blocking
 lock. A too-small output throws `ArgumentException` before polling. Null, foreign and disposed fences and
 disposed or lost devices follow the completion validation contract of `IGpuDevice.TryReadBuffer`.
+
+Native Direct3D 11 creates fixed timestamp queries and one disjoint query per pool. Begin records
+`Begin(disjoint)`, each write records `End(timestamp[index])`, and End records `End(disjoint)` through
+both recording drivers, including deferred stream replay. Use one disjoint batch per frame or less and
+one outstanding batch per pool. Resolve uses `Monitor.TryEnter` on the immediate-context lock, polls the
+completion fence and makes one `GetData` per required query with `D3D11_ASYNC_GETDATA_DONOTFLUSH` (1).
+Contention or unavailable data returns Pending. Disjoint data or zero frequency returns Invalid.
+A valid batch's period is exactly `1_000_000_000d / frequency`. Invalid samples never enter a GPU gate.
+Keep queries alive through completion as with other submitted resources. Disposal follows the backend's
+COM resource release path and adds no drain. Device faults retain the existing removal handling.
 
 Native Vulkan allocates one fixed `VK_QUERY_TYPE_TIMESTAMP` query pool per wrapper, with private
 preallocated value, availability and interleaved native scratch. Support requires the selected graphics

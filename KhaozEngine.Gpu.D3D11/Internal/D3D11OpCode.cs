@@ -82,5 +82,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         SetComputeResourceSetDynamic = 23,
         /// <summary><see cref="IGpuCommandList.Dispatch"/>.</summary>
         Dispatch = 24,
+        BeginTimestamps = 25,
+        WriteTimestamp = 26,
+        EndTimestamps = 27,
     }
 }

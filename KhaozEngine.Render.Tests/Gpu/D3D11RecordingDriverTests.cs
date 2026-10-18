@@ -23,7 +23,7 @@ namespace KhaozEngine.Tests.Gpu
     /// which are exactly the rows M1 was said to block.
     /// </para>
     /// </summary>
-    public sealed class D3D11RecordingDriverTests
+    public sealed partial class D3D11RecordingDriverTests
     {
         // ---- Decision X1: the emitter cannot create anything ----
 
@@ -70,7 +70,7 @@ namespace KhaozEngine.Tests.Gpu
         public void OnTheDeferredDriver_EveryEmitterCallHappensInsideTheReplay()
         {
             var log = new D3D11EmitterCallLog();
-            using D3D11CommandRecorder<D3D11StreamEmitter> list = D3D11CommandDrivers.CreateDeferred();
+            using D3D11CommandRecorder<D3D11StreamEmitter> list = CreateDeferred();
 
             RecordOneOfEverything(list, new Fixtures());
 
@@ -93,7 +93,7 @@ namespace KhaozEngine.Tests.Gpu
         public void OnTheImmediateDriver_TheEmitterIsReachedAtRecordTime_WithNoStream()
         {
             var log = new D3D11EmitterCallLog();
-            using IGpuCommandList list = D3D11CommandDrivers.Create(
+            using IGpuCommandList list = CreateRecording(
                 D3D11RecordMode.Immediate, new D3D11CountingEmitter(log));
 
             list.Begin();
@@ -134,7 +134,7 @@ namespace KhaozEngine.Tests.Gpu
             var fixtures = new Fixtures();
 
             var deferredLog = new D3D11EmitterCallLog();
-            using (IGpuCommandList deferred = D3D11CommandDrivers.CreateDeferred())
+            using (IGpuCommandList deferred = CreateDeferred())
             {
                 RecordOneOfEverything(deferred, fixtures);
                 var emitter = new D3D11CountingEmitter(deferredLog);
@@ -142,7 +142,7 @@ namespace KhaozEngine.Tests.Gpu
             }
 
             var immediateLog = new D3D11EmitterCallLog();
-            using (IGpuCommandList immediate = D3D11CommandDrivers.Create(
+            using (IGpuCommandList immediate = CreateRecording(
                 D3D11RecordMode.Immediate, new D3D11CountingEmitter(immediateLog)))
             {
                 RecordOneOfEverything(immediate, fixtures);
@@ -166,7 +166,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             var log = new D3D11EmitterCallLog();
             var fixtures = new Fixtures();
-            using IGpuCommandList list = D3D11CommandDrivers.CreateDeferred();
+            using IGpuCommandList list = CreateDeferred();
             RecordOneOfEverything(list, fixtures);
 
             var emitter = new D3D11CountingEmitter(log);
@@ -184,7 +184,7 @@ namespace KhaozEngine.Tests.Gpu
         public void TheRecordedFrame_ExercisesEverySeamCommand()
         {
             var log = new D3D11EmitterCallLog();
-            using IGpuCommandList list = D3D11CommandDrivers.CreateDeferred();
+            using IGpuCommandList list = CreateDeferred();
             RecordOneOfEverything(list, new Fixtures());
             var emitter = new D3D11CountingEmitter(log);
             D3D11CommandDrivers.Replay(list, ref emitter);
@@ -209,7 +209,7 @@ namespace KhaozEngine.Tests.Gpu
         public void EachReplay_OpensExactlyOneScope()
         {
             var log = new D3D11EmitterCallLog();
-            using IGpuCommandList list = D3D11CommandDrivers.CreateDeferred();
+            using IGpuCommandList list = CreateDeferred();
             list.Begin();
             list.Draw(3);
             list.End();
@@ -236,8 +236,8 @@ namespace KhaozEngine.Tests.Gpu
         public void TwoInterleavedRecordings_ReplayWholeAndInSubmitOrder()
         {
             var log = new D3D11EmitterCallLog();
-            using IGpuCommandList first = D3D11CommandDrivers.CreateDeferred();
-            using IGpuCommandList second = D3D11CommandDrivers.CreateDeferred();
+            using IGpuCommandList first = CreateDeferred();
+            using IGpuCommandList second = CreateDeferred();
 
             first.Begin();
             second.Begin();
@@ -271,7 +271,7 @@ namespace KhaozEngine.Tests.Gpu
             var log = new D3D11EmitterCallLog();
             var buffer = new FakeBuffer(64);
             byte[] scratch = { 1, 2, 3, 4 };
-            using IGpuCommandList list = D3D11CommandDrivers.CreateDeferred();
+            using IGpuCommandList list = CreateDeferred();
 
             list.Begin();
             list.UpdateBuffer<byte>(buffer, 0, scratch);
@@ -291,7 +291,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             var log = new D3D11EmitterCallLog();
             var buffer = new FakeBuffer(64);
-            using IGpuCommandList list = D3D11CommandDrivers.CreateDeferred();
+            using IGpuCommandList list = CreateDeferred();
 
             list.Begin();
             list.UpdateBuffer(buffer, 16, in Sixteen);
@@ -320,7 +320,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void ASecondBegin_ThrowsRatherThanSilentlyDiscardingTheRecording()
         {
-            using IGpuCommandList list = D3D11CommandDrivers.CreateDeferred();
+            using IGpuCommandList list = CreateDeferred();
             list.Begin();
 
             Assert.Throws<InvalidOperationException>(list.Begin);
@@ -331,7 +331,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void EndWithoutBegin_Throws()
         {
-            using IGpuCommandList list = D3D11CommandDrivers.CreateDeferred();
+            using IGpuCommandList list = CreateDeferred();
 
             Assert.Throws<InvalidOperationException>(list.End);
         }
@@ -347,7 +347,7 @@ namespace KhaozEngine.Tests.Gpu
             var log = new D3D11EmitterCallLog();
             var emitter = new D3D11CountingEmitter(log);
 
-            using (IGpuCommandList deferred = D3D11CommandDrivers.CreateDeferred())
+            using (IGpuCommandList deferred = CreateDeferred())
             {
                 deferred.Begin();
                 deferred.Draw(3);
@@ -358,7 +358,7 @@ namespace KhaozEngine.Tests.Gpu
                 });
             }
 
-            using IGpuCommandList immediate = D3D11CommandDrivers.Create(D3D11RecordMode.Immediate, emitter);
+            using IGpuCommandList immediate = CreateRecording(D3D11RecordMode.Immediate, emitter);
             immediate.Begin();
             immediate.Draw(3);
             Assert.Throws<InvalidOperationException>(() =>
@@ -393,7 +393,7 @@ namespace KhaozEngine.Tests.Gpu
         public void RecordingDoesNotTakeTheSubmitLock()
         {
             object submitLock = new();
-            using IGpuCommandList list = D3D11CommandDrivers.CreateDeferred();
+            using IGpuCommandList list = CreateDeferred();
             using var recorded = new ManualResetEventSlim();
             var recorder = new Thread(() =>
             {
@@ -419,7 +419,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             var log = new D3D11EmitterCallLog();
             object submitLock = new();
-            using IGpuCommandList list = D3D11CommandDrivers.CreateDeferred();
+            using IGpuCommandList list = CreateDeferred();
             list.Begin();
             list.Draw(3);
             list.End();
@@ -457,7 +457,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void DisposingAList_ReleasesTheResourcesItsRecordingHeld()
         {
-            D3D11CommandRecorder<D3D11StreamEmitter> list = D3D11CommandDrivers.CreateDeferred();
+            D3D11CommandRecorder<D3D11StreamEmitter> list = CreateDeferred();
             D3D11CommandStream stream = list.Emitter.Stream;
             RecordOneOfEverything(list, new Fixtures());
             Assert.True(stream.ReferenceCount > 0);
@@ -474,7 +474,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void ADisposedList_IsIdempotentAndRefusesToRecordAgain()
         {
-            IGpuCommandList list = D3D11CommandDrivers.CreateDeferred();
+            IGpuCommandList list = CreateDeferred();
             list.Dispose();
             list.Dispose();
 
@@ -564,9 +564,9 @@ namespace KhaozEngine.Tests.Gpu
         {
             var log = new D3D11EmitterCallLog();
 
-            using IGpuCommandList deferred = D3D11CommandDrivers.Create(
+            using IGpuCommandList deferred = CreateRecording(
                 D3D11RecordMode.Deferred, new D3D11CountingEmitter(log));
-            using IGpuCommandList immediate = D3D11CommandDrivers.Create(
+            using IGpuCommandList immediate = CreateRecording(
                 D3D11RecordMode.Immediate, new D3D11CountingEmitter(log));
 
             Assert.IsType<D3D11CommandRecorder<D3D11StreamEmitter>>(deferred);
@@ -579,6 +579,7 @@ namespace KhaozEngine.Tests.Gpu
         /// drivers so their traces name the same resources.</summary>
         internal sealed class Fixtures
         {
+            internal IGpuTimestampPool Timestamps { get; set; } = null!;
             internal FakeFramebuffer Framebuffer { get; } =
                 new(new GpuOutputDescription(GpuPixelFormat.D32FloatS8UInt, GpuPixelFormat.R8G8B8A8UNorm), 640, 480);
             internal FakePipeline Pipeline { get; } = new();
@@ -600,9 +601,12 @@ namespace KhaozEngine.Tests.Gpu
         /// comparison and the coverage check, so all three describe the same frame and a new seam member only has
         /// to be added once.
         /// </summary>
-        static void RecordOneOfEverything(IGpuCommandList list, Fixtures f)
+        void RecordOneOfEverything(IGpuCommandList list, Fixtures f)
         {
             list.Begin();
+            f.Timestamps = CreateFrameTimestamps();
+            list.BeginTimestamps(f.Timestamps, 2);
+            list.WriteTimestamp(f.Timestamps, 0);
             list.SetFramebuffer(f.Framebuffer);
             list.ClearColorTarget(0, new Color(0.1f, 0.2f, 0.3f, 1f));
             list.ClearDepthStencil(1f);
@@ -628,6 +632,8 @@ namespace KhaozEngine.Tests.Gpu
             list.SetComputeResourceSet(0, f.Set);
             list.SetComputeResourceSet(1, f.Set, 256);
             list.Dispatch(8, 4, 1);
+            list.WriteTimestamp(f.Timestamps, 1);
+            list.EndTimestamps(f.Timestamps);
             list.End();
         }
 
@@ -642,6 +648,8 @@ namespace KhaozEngine.Tests.Gpu
         static IEnumerable<string> ExpectedTrace(D3D11EmitterCallLog log, Fixtures f) => new[]
         {
             "Begin()",
+            $"BeginTimestamps({log.Id(f.Timestamps)},2)",
+            $"WriteTimestamp({log.Id(f.Timestamps)},0)",
             $"SetFramebuffer({log.Id(f.Framebuffer)})",
             "ClearColorTarget(0,0.1,0.2,0.3,1)",
             "ClearDepthStencil(1)",
@@ -667,6 +675,8 @@ namespace KhaozEngine.Tests.Gpu
             $"SetComputeResourceSet(0,{log.Id(f.Set)})",
             $"SetComputeResourceSetDynamic(1,{log.Id(f.Set)},256)",
             "Dispatch(8,4,1)",
+            $"WriteTimestamp({log.Id(f.Timestamps)},1)",
+            $"EndTimestamps({log.Id(f.Timestamps)})",
             "End()",
         };
 
@@ -734,6 +744,9 @@ namespace KhaozEngine.Tests.Gpu
                 => _inner.SetComputeResourceSet(slot, set);
             public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset)
                 => _inner.SetComputeResourceSet(slot, set, dynamicOffset);
+            public void BeginTimestamps(IGpuTimestampPool pool, uint count) => _inner.BeginTimestamps(pool, count);
+            public void WriteTimestamp(IGpuTimestampPool pool, uint index) => _inner.WriteTimestamp(pool, index);
+            public void EndTimestamps(IGpuTimestampPool pool) => _inner.EndTimestamps(pool);
             public void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ)
                 => _inner.Dispatch(groupCountX, groupCountY, groupCountZ);
         }

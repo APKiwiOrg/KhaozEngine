@@ -460,7 +460,15 @@ What it owns today:
   Author GLSL `precise` on the arithmetic whose operation order matters. The option preserves that dataflow
   with shaderc optimization Zero and SPIR-V `NoContraction`, HLSL `precise` and FXC IEEE strictness, and MSL
   invariant arithmetic helpers with Metal fast math off for the requested compute or vertex stage. Fragment
-  compilation stays at its default policy. Every compiler cache separates default and precise requests.
+  compilation stays at its default policy. Precise Metal emission backports the negative-zero seeds in
+  SPIRV-Cross 2.23.0 multiplication helpers. It recognises only the pinned and already-corrected bodies,
+  and refuses a changed helper. Removal is tracked in [#1495](https://github.com/APKiwiOrg/KhaozEngine/issues/1495).
+  Precise SPIR-V declares `SignedZeroInfNanPreserve 32` with `SPV_KHR_float_controls` on every entry point.
+  Vulkan float controls are core below the backend's Vulkan 1.3 floor, with no device enable bit.
+  `GpuCapabilities.SupportsShaderFloatControls` reports the Vulkan property
+  `shaderSignedZeroInfNanPreserveFloat32`. Vulkan shader creation refuses a precise request without it.
+  Other APIs leave this Vulkan-specific capability false. Every compiler cache separates default and precise
+  requests, including the revised IEEE-preservation policy identity.
   Validation accepts the same options through `ShaderValidation.ValidateCompute` and `ValidatePair`.
   The option adds no source qualifiers and promises no cross-device transcendental or denormal equivalence.
   Factories without precision support throw `NotSupportedException` for precise requests.

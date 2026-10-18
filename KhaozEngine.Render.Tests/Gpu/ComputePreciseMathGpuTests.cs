@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Gpu;
@@ -8,6 +9,53 @@ namespace KhaozEngine.Tests.Gpu
 {
     public sealed class ComputePreciseMathGpuTests
     {
+        [GpuFact]
+        public void DynamicArithmeticPreservesIeeeZeroNaNAndInfinity()
+        {
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+            IGpuDevice device = gpu.GpuDevice;
+            IGpuResourceFactory factory = device.Factory;
+            var words = new uint[PreciseMathShaders.IeeeRows.Length * 3];
+            var poison = new uint[PreciseMathShaders.IeeeRows.Length];
+            Array.Fill(poison, 0xdeadbeefu);
+            for (int i = 0; i < poison.Length; i++)
+            {
+                var row = PreciseMathShaders.IeeeRows[i];
+                words[i * 3] = row.Op;
+                words[i * 3 + 1] = row.Left;
+                words[i * 3 + 2] = row.Right;
+            }
+            using IGpuBuffer inputs = factory.CreateBuffer(new GpuBufferDescription(
+                (uint)words.Length * sizeof(uint), GpuBufferUsage.StructuredBufferReadOnly, sizeof(uint)));
+            using IGpuBuffer results = factory.CreateBuffer(new GpuBufferDescription(
+                (uint)poison.Length * sizeof(uint), GpuBufferUsage.StructuredBufferReadWrite, sizeof(uint)));
+            device.UpdateBuffer(inputs, 0, words);
+            device.UpdateBuffer(results, 0, poison);
+            using IGpuResourceLayout layout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
+                new GpuResourceLayoutElement("InputBuf", GpuResourceKind.StructuredBufferReadOnly, GpuShaderStages.Compute),
+                new GpuResourceLayoutElement("ResultBuf", GpuResourceKind.StructuredBufferReadWrite, GpuShaderStages.Compute)));
+            using IGpuResourceSet set = factory.CreateResourceSet(new GpuResourceSetDescription(layout, inputs, results));
+            using IGpuComputeShader shader = factory.CreateComputeShaderFromSpirv(
+                PreciseMathShaders.IeeeCompute, new GpuShaderCompileOptions(PreciseMath: true));
+            using IGpuComputePipeline pipeline = factory.CreateComputePipeline(new GpuComputePipelineDescription(shader, layout));
+            using IGpuCommandList commands = factory.CreateCommandList();
+            commands.Begin();
+            commands.SetComputePipeline(pipeline);
+            commands.SetComputeResourceSet(0, set);
+            commands.Dispatch((uint)poison.Length, 1, 1);
+            commands.End();
+            device.Submit(commands);
+            device.WaitForIdle();
+            uint[] actual = GpuReadback.ReadBuffer<uint>(device, results, poison.Length);
+            for (int i = 0; i < actual.Length; i++)
+            {
+                uint? expected = PreciseMathShaders.IeeeRows[i].Result;
+                Assert.True(expected.HasValue ? actual[i] == expected.Value
+                    : (actual[i] & 0x7f800000u) == 0x7f800000u && (actual[i] & 0x007fffffu) != 0,
+                    $"IEEE row {i}: expected {expected?.ToString("x8") ?? "NaN"}, actual {actual[i]:x8}");
+            }
+        }
+
         [GpuFact]
         public void ComputeAndVertexKeepSeparateMultiplyAdd()
         {

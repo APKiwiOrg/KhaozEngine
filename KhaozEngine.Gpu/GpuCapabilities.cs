@@ -74,6 +74,11 @@ namespace KhaozEngine.Gpu
         /// so a caller omits GPU timing rather than estimating it.</summary>
         public bool SupportsTimestamps { get; init; }
 
+        /// <summary>Vulkan binary32 SignedZeroInfNanPreserve execution-mode support, queried from
+        /// shaderSignedZeroInfNanPreserveFloat32. Other APIs do not use SPIR-V float-control declarations
+        /// and leave this Vulkan-specific capability false.</summary>
+        public bool SupportsShaderFloatControls { get; init; }
+
         /// <summary>True if a fence handed to <see cref="IGpuDevice.Submit(IGpuCommandList,IGpuFence)"/> is signaled
         /// by GPU COMPLETION rather than by the CPU-side submit call returning. Only a fence with that property can
         /// stand in for <see cref="IGpuDevice.WaitForIdle"/>, which is what deferred GPU-resource destruction needs.

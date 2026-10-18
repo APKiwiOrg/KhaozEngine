@@ -22237,7 +22237,15 @@ using IGpuShaderSet pair = factory.CreateShadersFromSpirv(vertexGlsl, fragmentGl
 
 For example, `precise float p = a * b; precise float q = p + c;` preserves the authored operations. Precise
 mode selects shaderc optimization Zero while retaining Vulkan 1.0, SPIR-V 1.0 and entry point `main`.
+The compiler declares `SignedZeroInfNanPreserve 32` with `SPV_KHR_float_controls` on precise entry points.
+Vulkan requires `shaderSignedZeroInfNanPreserveFloat32` and reports it through the Vulkan-specific
+`GpuCapabilities.SupportsShaderFloatControls`. A precise shader request without support fails with
+`ShaderValidationException`. Float controls are core below the backend's Vulkan 1.3 floor, with no device
+enable bit. Other APIs leave that Vulkan-specific capability false.
 The resulting `NoContraction` decorations survive into HLSL `precise` and MSL `spvFMul` and `spvFAdd` helpers.
+Metal's guarded SPIRV-Cross 2.23.0 backport uses `T(-0.0)` multiplication-helper seeds so negative-zero
+products keep their sign. An unfamiliar helper fails compilation, tracked for removal in
+[#1495](https://github.com/APKiwiOrg/KhaozEngine/issues/1495).
 FXC adds IEEE strictness to compute and vertex compilation. Metal disables fast math for those precise stages
 while retaining MSL language 3.2 and the existing preserve-invariance policy. Graphics fragments still compile
 with their default options. The process memo and SPIR-V, DXBC and MSL disk caches keep the two policies separate,

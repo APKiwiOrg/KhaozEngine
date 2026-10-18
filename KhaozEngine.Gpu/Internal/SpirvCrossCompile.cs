@@ -175,6 +175,7 @@ namespace KhaozEngine.Gpu.Internal
                 // A resource binding is marked used as the emitter consumes it, so asking first answers false for
                 // everything and every element would read as unreferenced by both stages.
                 string vertexSource = Emit(context, vertex, tag);
+                if (backend == Backend.Msl && options.PreciseMath) vertexSource = MslPreciseMath.Rewrite(vertexSource);
                 string fragmentSource = Emit(context, fragment, tag);
                 RequireNoHelperBuffers(backend, vertex, "vertex", tag);
                 RequireNoHelperBuffers(backend, fragment, "fragment", tag);
@@ -204,6 +205,7 @@ namespace KhaozEngine.Gpu.Internal
                 Compiler* compute = CreateCompiler(context, computeSpirv, backend, tag, options);
                 MslIndexAssignment[] msl = RemapResourceBindings(context, backend, tag, compute);
                 string computeSource = Emit(context, compute, tag);
+                if (backend == Backend.Msl && options.PreciseMath) computeSource = MslPreciseMath.Rewrite(computeSource);
                 RequireNoHelperBuffers(backend, compute, "compute", tag);
 
                 return new CrossCompiledCompute(computeSource,

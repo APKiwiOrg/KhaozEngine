@@ -152,7 +152,7 @@ namespace KhaozEngine.Gpu.Internal
                 nuint length = _shaderc.ResultGetLength(result);
                 var spirv = new byte[(int)length];
                 new ReadOnlySpan<byte>(_shaderc.ResultGetBytes(result), spirv.Length).CopyTo(spirv);
-                return spirv;
+                return compileOptions.PreciseMath ? SpirvPreciseMath.Declare(spirv) : spirv;
             }
             finally
             {

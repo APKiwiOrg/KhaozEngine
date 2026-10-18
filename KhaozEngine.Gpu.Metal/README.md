@@ -614,7 +614,11 @@ cross-compiler's output
 `GpuShaderCompileOptions(PreciseMath: true)` selects invariant MSL arithmetic helpers and disables fast math
 only for the requested compute or vertex stage. Author the corresponding GLSL arithmetic as `precise` too.
 Fragment compilation, language version and preserve-invariance policy retain their defaults. The program cache
-identity includes the option before lookup, so default and precise programs never share an emission entry.
+identity includes the option and IEEE-preservation revision before lookup, so default and precise programs
+never share an emission entry. The guarded SPIRV-Cross 2.23.0 backport changes every multiplication-helper
+zero seed to `T(-0.0)`. It accepts only the pinned helper or the already-corrected form and preserves the
+pinned matrix dimensions. A changed helper fails compilation. Removal is tracked in
+[#1495](https://github.com/APKiwiOrg/KhaozEngine/issues/1495).
 
 **The disk cache holds the EMISSION, not a `.metallib`.** macOS already caches the MSL-to-library compile across
 processes (0.02 ms for a source it has seen before, against 68 to 98 ms cold, both taken with the compiler

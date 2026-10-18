@@ -12,7 +12,7 @@ using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests.Gpu
 {
-    public sealed class PreciseShaderCompileTests
+    public sealed partial class PreciseShaderCompileTests
     {
         static readonly GpuShaderCompileOptions Precise = new(PreciseMath: true);
         readonly ITestOutputHelper _output;
@@ -30,6 +30,8 @@ namespace KhaozEngine.Tests.Gpu
                 byte[] defaultSpirv = SpirvFrontEnd.ToSpirv(source, stage, "authored precise default observation");
                 _output.WriteLine($"{stage} default compile of authored precise: {NoContractionResults(defaultSpirv).Count} NoContraction decorations (observation only)");
                 byte[] spirv = SpirvFrontEnd.ToSpirv(source, stage, "precise probe", Precise);
+                AssertSignedZeroMode(spirv);
+                DumpPreciseModule(stage, spirv);
                 AssertSeparateOperations(spirv);
                 string hlsl = stage == GpuShaderStages.Compute
                     ? SpirvCrossCompile.ComputeToHlsl(spirv, options: Precise).ComputeSource
@@ -38,7 +40,7 @@ namespace KhaozEngine.Tests.Gpu
                     ? SpirvCrossCompile.ComputeToMsl(spirv, options: Precise).ComputeSource
                     : SpirvCrossCompile.VertexFragmentToMsl(spirv, FragmentSpirv(), vertexOptions: Precise).VertexSource;
                 Assert.Contains("precise", hlsl);
-                Assert.Contains("spvFMul", msl);
+                Assert.Contains("return fma(l, r, T(-0.0));", msl);
                 Assert.Contains("spvFAdd", msl);
                 _output.WriteLine(stage + " HLSL\n" + hlsl + "\nMSL\n" + msl);
                 AssertFrontEndCache(stage, source);
@@ -190,6 +192,40 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Throws<NotSupportedException>(() => factory.CreateShadersFromSpirv(
                 PreciseMathShaders.Vertex, PreciseMathShaders.Fragment, Precise));
             Assert.Throws<NotSupportedException>(() => factory.CreateComputeShaderFromSpirv(PreciseMathShaders.Compute, Precise));
+        }
+
+        [Fact]
+        public void VulkanFactoryRefusesPreciseShadersWithoutFloatControls()
+        {
+            var fixture = new VulkanResourceFixture();
+            Assert.Contains("shaderSignedZeroInfNanPreserveFloat32", Assert.Throws<ShaderValidationException>(
+                () => fixture.Factory.CreateComputeShaderFromSpirv(PreciseMathShaders.Compute, Precise)).Message);
+            Assert.Contains("shaderSignedZeroInfNanPreserveFloat32", Assert.Throws<ShaderValidationException>(
+                () => fixture.Factory.CreateShadersFromSpirv(PreciseMathShaders.Vertex, PreciseMathShaders.Fragment, Precise)).Message);
+            using IGpuComputeShader ordinary = fixture.Factory.CreateComputeShaderFromSpirv(PreciseMathShaders.Compute);
+        }
+
+        static void AssertSignedZeroMode(byte[] spirv)
+        {
+            ReadOnlySpan<uint> words = MemoryMarshal.Cast<byte, uint>(spirv);
+            uint entry = 0;
+            bool capability = false, extension = false, mode = false;
+            for (int offset = 5; offset < words.Length;)
+            {
+                int length = (int)(words[offset] >> 16);
+                uint opcode = words[offset] & 0xffffu;
+                if (opcode == 15u) entry = words[offset + 2];
+                if (opcode == 17u && words[offset + 1] == 4466u) capability = true;
+                if (opcode == 10u)
+                    extension |= System.Text.Encoding.UTF8.GetString(
+                        MemoryMarshal.AsBytes(words.Slice(offset + 1, length - 1))).TrimEnd('\0') == "SPV_KHR_float_controls";
+                if (opcode == 16u && length == 4 && words[offset + 1] == entry
+                    && words[offset + 2] == 4461u && words[offset + 3] == 32u) mode = true;
+                offset += length;
+            }
+            Assert.True(capability, "Missing SignedZeroInfNanPreserve capability");
+            Assert.True(extension || words[1] >= 0x00010400u, "Float controls need their SPIR-V extension before 1.4");
+            Assert.True(mode, "Missing SignedZeroInfNanPreserve 32 execution mode on entry point");
         }
 
         static HashSet<uint> NoContractionResults(byte[] spirv)

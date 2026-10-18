@@ -274,7 +274,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         /// <inheritdoc/>
         public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl, GpuShaderCompileOptions vertexOptions)
-            => new VulkanShaderSet(_modules, vertGlsl, fragGlsl, bytesCache: _spirvBytes, options: vertexOptions);
+        {
+            RequireFloatControls(vertexOptions);
+            return new VulkanShaderSet(_modules, vertGlsl, fragGlsl, bytesCache: _spirvBytes, options: vertexOptions);
+        }
 
         /// <inheritdoc/>
         /// <remarks>The compute twin, with the workgroup size read out of the module itself rather than taken
@@ -288,7 +291,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         /// <inheritdoc/>
         public IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl, GpuShaderCompileOptions options)
-            => new VulkanComputeShader(_modules, computeGlsl, bytesCache: _spirvBytes, options: options);
+        {
+            RequireFloatControls(options);
+            return new VulkanComputeShader(_modules, computeGlsl, bytesCache: _spirvBytes, options: options);
+        }
+
+        void RequireFloatControls(GpuShaderCompileOptions options)
+        {
+            if (options.PreciseMath && !_capabilities.SupportsShaderFloatControls)
+                throw new ShaderValidationException("Vulkan precise shaders require shaderSignedZeroInfNanPreserveFloat32, "
+                    + "which this device does not report.");
+        }
 
         /// <inheritdoc/>
         /// <remarks>

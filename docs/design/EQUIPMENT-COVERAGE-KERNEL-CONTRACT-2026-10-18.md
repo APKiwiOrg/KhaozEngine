@@ -1135,8 +1135,8 @@ on the host before calling `CoverageReferenceSupport.OverlayMaximum`.
 
 | Backend | Required compilation and lowering |
 | --- | --- |
-| Vulkan | GLSL `precise` on every intermediate in these numerical kernels, including called helper intermediates. Preserve no-contraction and evaluation dependencies in emitted SPIR-V. |
-| Metal | Fast maths off for the entire coverage library, including correction and predicate helpers. Use correctly rounded operations under that mode and retain scalar dependencies. |
+| Vulkan | GLSL `precise` on every intermediate in these numerical kernels, including called helper intermediates. Preserve no-contraction and evaluation dependencies in emitted SPIR-V. PreciseMath declares `SignedZeroInfNanPreserve 32` through `SPV_KHR_float_controls`. Require the device property `shaderSignedZeroInfNanPreserveFloat32`, reported as `GpuCapabilities.SupportsShaderFloatControls`. Float controls are core under the backend's Vulkan 1.3 floor and have no device feature enable bit. |
+| Metal | Fast maths off for the entire coverage library, including correction and predicate helpers. Use correctly rounded operations under that mode and retain scalar dependencies. The guarded SPIRV-Cross 2.23.0 backport replaces every multiplication-helper zero seed with `T(-0.0)`, preserving pinned matrix dimensions. Only pinned or already-corrected helpers are accepted. Removal is tracked in [#1495](https://github.com/APKiwiOrg/KhaozEngine/issues/1495). |
 | Direct3D11 | FXC with `D3DCOMPILE_IEEE_STRICTNESS`. Preserve scalar add/subtract/multiply order. No relaxed `rcp` or `rsq` substitution for `/` or `sqrt`. |
 
 Part C inspects emitted code and records that the compiler kept the operation graph and explicit

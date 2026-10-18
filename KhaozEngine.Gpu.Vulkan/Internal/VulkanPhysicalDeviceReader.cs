@@ -40,6 +40,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <param name="MaxColorAttachments">The smaller of <c>VkPhysicalDeviceLimits.maxColorAttachments</c> and
     /// <c>maxFragmentOutputAttachments</c> (<see cref="VulkanCapabilityRead.ColorAttachmentLimit"/>), each at least 4
     /// by the specification, which <see cref="GpuCapabilities.MaxColorAttachments"/> carries.</param>
+    /// <param name="SignedZeroInfNanPreserveFloat32">The core float-controls property for precise shaders.</param>
     /// <param name="TimestampValidBits">The selected graphics queue family's counter width.</param>
     /// <param name="TimestampPeriodNanoseconds">The physical device's limits.timestampPeriod.</param>
     internal readonly record struct VulkanPhysicalDeviceRead(
@@ -55,7 +56,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         string ReportedDeviceName,
         uint MaxColorAttachments,
         int TimestampValidBits = 0,
-        double TimestampPeriodNanoseconds = 0d);
+        double TimestampPeriodNanoseconds = 0d,
+        bool SignedZeroInfNanPreserveFloat32 = false);
 
     /// <summary>
     /// The one place a <c>VkPhysicalDevice</c> is turned into plain data, shared by the support probe and by
@@ -131,7 +133,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 reportedName,
                 VulkanCapabilityRead.ColorAttachmentLimit(properties.Limits.MaxColorAttachments,
                     properties.Limits.MaxFragmentOutputAttachments),
-                timestampValidBits, properties.Limits.TimestampPeriod);
+                timestampValidBits, properties.Limits.TimestampPeriod,
+                clearsVersionFloor && ReadFloatControls(vk, device));
         }
 
         /// <summary>
@@ -166,6 +169,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             return string.IsNullOrWhiteSpace(name)
                 ? "unnamed device 0x" + properties->DeviceID.ToString("x8", CultureInfo.InvariantCulture)
                 : name;
+        }
+
+        // VK_KHR_shader_float_controls is core in 1.2, below this backend's 1.3 floor.
+        // There is no enable bit in VkDeviceCreateInfo. The execution mode opts in per entry point.
+        static bool ReadFloatControls(Vk vk, PhysicalDevice device)
+        {
+            var controls = new PhysicalDeviceFloatControlsProperties(
+                sType: StructureType.PhysicalDeviceFloatControlsProperties);
+            var properties = new PhysicalDeviceProperties2(
+                sType: StructureType.PhysicalDeviceProperties2, pNext: &controls);
+            vk.GetPhysicalDeviceProperties2(device, &properties);
+            return controls.ShaderSignedZeroInfNanPreserveFloat32;
         }
 
         // Every feature bit, off ONE chained query. Asked only of a device that already clears the version floor,

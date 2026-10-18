@@ -123,13 +123,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="supportedMsaaSampleCounts">Sample counts shared by every engine MRT attachment.</param>
         /// <param name="maxColorAttachments">The device's colour attachment limit
         /// (<see cref="ColorAttachmentLimit"/>).</param>
+        /// <param name="signedZeroInfNanPreserveFloat32">The core binary32 float-controls property.</param>
         /// <param name="timestamps">The selected queue's valid bits and the device's timestamp period.</param>
         internal static GpuCapabilities Assemble(
             string? deviceName,
             bool samplerAnisotropy,
             bool supportsShadowMaps,
             GpuSampleCounts supportedMsaaSampleCounts,
-            int maxColorAttachments, VulkanTimestampSupport timestamps = default)
+            int maxColorAttachments, VulkanTimestampSupport timestamps = default,
+            bool signedZeroInfNanPreserveFloat32 = false)
             => GpuCapabilities.FromSupportedMsaaSampleCounts(
                 clipSpaceYInverted: ClipSpaceYInverted,
                 depthRangeZeroToOne: DepthRangeZeroToOne,
@@ -140,6 +142,6 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 supportsShadowMaps: supportsShadowMaps,
                 supportsCompute: SupportsCompute,
                 supportsCompletionFences: SupportsCompletionFences) with
-            { MaxColorAttachments = maxColorAttachments, SupportsTimestamps = timestamps.IsSupported };
+            { MaxColorAttachments = maxColorAttachments, SupportsTimestamps = timestamps.IsSupported, SupportsShaderFloatControls = signedZeroInfNanPreserveFloat32 };
     }
 }

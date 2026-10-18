@@ -35,6 +35,8 @@ internal sealed class ReportWorker(BugReportRelayOptions options, IReportMediaSt
         if (record is null || record.IssueNumber is not null) return;
         if (await claims.FindResultAsync(kind, reportId, ct).ConfigureAwait(false) is { } result)
         {
+            record = await LoadAsync(reportId, ct).ConfigureAwait(false);
+            if (record is null || record.IssueNumber is not null) return;
             await records.SaveReportAsync(record with { IssueNumber = ParseIssueNumber(reportId, result) }, ct).ConfigureAwait(false);
             return;
         }
@@ -81,6 +83,8 @@ internal sealed class ReportWorker(BugReportRelayOptions options, IReportMediaSt
         if (record.IssueNumber is null) throw new ReportNotReadyException(reportId);
         if (await claims.FindResultAsync(kind, reportId, ct).ConfigureAwait(false) is { } result)
         {
+            record = await LoadAsync(reportId, ct).ConfigureAwait(false);
+            if (record is null || record.ServerSnapshot is ServerSnapshotState.InBody or ServerSnapshotState.Commented) return;
             if (result != CommentedResult) throw new InvalidDataException("The comment result marker is invalid for report " + reportId + ".");
             await records.SaveReportAsync(record with { ServerSnapshot = ServerSnapshotState.Commented }, ct).ConfigureAwait(false);
             return;

@@ -26,8 +26,10 @@ so the host redelivers it. A holder that fails before its GitHub call succeeds w
 is cancelled. The next delivery can claim the next epoch immediately. A holder whose GitHub call succeeds
 writes `claims/<kind>-<reportId>-<epoch>.done` with create-if-absent, holding the issue number or `commented`,
 and only then saves the record. Every delivery reads result markers before claiming and reconciles the record
-from one without calling GitHub. A crash without a release marker requires lease expiry. There are at most 64
-claims per operation. Keep claims, release markers and result markers with the report state. A one-day
+from one without calling GitHub. Reconciliation reloads the record after finding the marker, preserves its
+current snapshot state and skips a record already completed by another delivery. A crash without a release
+marker requires lease expiry. There are at most 64 claims per operation. Keep claims, release markers and
+result markers with the report state. A one-day
 snapshot lifecycle rule must target `snapshots/` only.
 
 GitHub failures and storage faults propagate to the host. If writing the release marker also fails, recovery

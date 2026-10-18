@@ -1071,7 +1071,6 @@ has an End state. Blocked is a local edge result, not globally unreachable. Quer
 frame and budget exhaustion retain their own outcomes and expose no state prefix. Area permission,
 complete search scope and native bake/seam certification remain the navigation producer's work.
 This API adds no native sampler, tiled bake or legacy bake-format change. Adoption still waits on
-[#1494](https://github.com/APKiwiOrg/KhaozEngine/issues/1494) exact-edge support,
 [#1334](https://github.com/APKiwiOrg/KhaozEngine/issues/1334) support cost,
 [#1347](https://github.com/APKiwiOrg/KhaozEngine/issues/1347) hidden support and
 [#1344](https://github.com/APKiwiOrg/KhaozEngine/issues/1344) small bodies. Generic tests cover dry and

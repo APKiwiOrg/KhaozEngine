@@ -859,7 +859,7 @@ policy.
 | R9 and #1349 | GUI closure/bounds binding, prefab mode, inspectors and real pointer/key input |
 | R10 | Whole verb-map wire parity beyond the registered prefab, interior and marker commands |
 | R11 and G2 | Private lossless importer, exhaustive source comparison, actual source freeze and import-time acceptance of target, distance, occlusion and stance changes |
-| G1b, #1494 and #438 phase 5 | Native controller walking, body certificates and complete layered routes |
+| G1b and #438 phase 5 | Native controller walking, body certificates and complete layered routes |
 | #1363 | Live door state and generation-fenced collision, navigation and water swaps |
 | #1327 | Compound contact provenance beyond canonical support surfaces |
 | #1301 and #1358 to #1362 | Runtime residency and water indexing, huge exterior coverage and medium-aware seam capture |

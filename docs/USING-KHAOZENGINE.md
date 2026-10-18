@@ -8531,7 +8531,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.5.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.5.2" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -8932,7 +8932,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.5.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.5.2" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9598,9 +9598,10 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   the backend certificate. Validate the whole request extent, error budget, scope and read lifetime.
   Closed endpoints and stationary requests are included. Hit bounds do not authorize placement.
   [Captured player-scale hull stairs](design/CERTIFIED-GENERAL-SWEEPS-2026-10-18.md#task-6-captured-content-evidence-and-gb-r13)
-  prove acquired split/compound ascent and descent within the unchanged 1 mm arrival ball. Exact
-  quarter-turn tread-edge footprint tangency still refuses support (#1494) despite Clear shell
-  sweeps. Native G1b, SG-12/#1334 cost, navigation and consumer adoption remain separate gates.
+  prove acquired split/compound ascent and descent within the unchanged Euclidean 1 mm arrival ball.
+  [Lane C](design/CONTACT-CONTROLLER-FOLLOWUPS-C-2026-10-19.md) resolves #1494 exact quarter-turn
+  tread-edge support using the represented installed transform. Historical GB-R13 results remain.
+  Native G1b, SG-12/#1334 cost, navigation and consumer adoption remain separate gates.
 - Optional `IPhysicsCapsuleGeometryQueries` offers the same complete sweep and contact queries with
   `CapsuleQueryDimensions` value inputs. Exact represented radius and cylindrical length reach the same
   Bepu query core without constructing a shape. Restricted views retain their exclusions and read gates.
@@ -9617,7 +9618,16 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   parts carry axis and footprint roles without changing raw IDs. The raw cap is 256, with atomic
   refusal at 257. `SupportFootprintBounds.TryCreate` encloses both proposal paths and the admission
   column for pre-query scope guards. Contact-controller footprints require radius at least 0.01 m.
-  See [Complete support footprints](#complete-support-footprints) for storage, witness and lifetime use.
+  Bepu support uses one represented affine source per installed leaf. Circular primitives exactly
+  normalize its represented Y column, retaining circular radius and length. Feature/sweep factories
+  keep their dual contract. A complete Find shares a sticky 1,048,576-event curved certification
+  ceiling (256 raw slots times 4,096 graph nodes). WorkLimit, RootStorage, TerminalRoots and
+  AdmissionStorage remain visible with work categories and cell high water. Failure refuses
+  atomically with untouched spans, including after checkpoint restores. The capsule crown and
+  nearest-point cylinder admission witness resolve #1487 without bypassing full admission, roof,
+  proposal, axis or lowest-contact proofs. A declined certificate retains complete traversal.
+  See the [backend source/work contract](../KhaozEngine.Physics.Bepu/README.md#support-source-and-curved-work-contract)
+  and [Complete support footprints](#complete-support-footprints) for storage, witness and lifetime use.
 - `IPhysicsWorld` static bodies + queries: `AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null) -> StaticHandle`,
   `RemoveStatic(StaticHandle handle)`, `Step(float dt)`,
   `Raycast(Vector3 origin, Vector3 direction, float maxDistance, out RayHit hit, QueryFilter filter = default) -> bool`,
@@ -9721,7 +9731,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.5.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.5.2" />
 ```
 
 ```csharp
@@ -11055,7 +11065,7 @@ Doors remain AuthoredOpen. `MapRoofPolicy` returns separate colour, shadow, came
 Auto concealment uses occupied rooms and explicit links/groups, and leaves unlinked shelters visible. Hidden
 roofs still cast shadows and block sky picking, and never change physics statics. R8 owns rendering, cameras
 and local-light pixels. Live door state waits for [#1363](https://github.com/APKiwiOrg/KhaozEngine/issues/1363).
-Native controller walking and layered routes remain gated by G1b, #1494 and #438. Physical doorway clearance
+Native controller walking and layered routes remain gated by G1b and #438. Physical doorway clearance
 is headless R5 evidence. R9 owns the GUI host and real input, and R10 owns the remaining verb-map parity.
 
 See the [MapDoc reference](../KhaozEngine.MapDoc/README.md#rigid-prefab-payloads-and-building-intent),
@@ -17548,7 +17558,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.5.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.5.2" />
 ```
 
 ```csharp
@@ -17584,7 +17594,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.5.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.5.2" />
 ```
 
 ```csharp
@@ -17828,7 +17838,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.5.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.5.2" />
 ```
 
 ```csharp
@@ -22188,7 +22198,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.5.1" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.5.2" />
 </ItemGroup>
 ```
 

@@ -5,6 +5,16 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.5.2
+
+2026-10-19
+
+- Contact support uses Bepu's represented installed transform, so exact tread-edge tangency on quarter-turn
+  stairs now supports without changing the feature or sweep contract (#1494).
+- Curved support certification has a cumulative per-Find work ceiling with visible work and storage exhaustion
+  reasons and atomic refusal. A whole-capsule crown certificate and nearest-point cylinder admission witness
+  keep end-seam queries bounded without changing roof guards, footprint protections or arrival rules (#1487).
+
 ## 21.5.1
 
 - `IPhysicsCapsuleSweep` certifies rotated boxes, convex hulls, one-sided mesh triangles and supported

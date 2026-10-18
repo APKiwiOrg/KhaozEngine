@@ -8,7 +8,8 @@ Status: implemented on `fix/contact-followups` per the [implementation plan](../
 and verified headless in the dry head. #1429 landed at 4ecf2669b, #1455 at 6dfd94eba to 488952a58 with the crest
 region at d32762c9a, and #1454 at ff9bfbb7d and 39e920072. `ContactFollowupTraversalTests` pins the CF-6 movement
 proof. [General sweeps and acquired movement evidence](CERTIFIED-GENERAL-SWEEPS-2026-10-18.md)
-complete #1355 for admitted families. Exact quarter-turn tread-edge support refusal remains #1494.
+complete #1355 for admitted families. [Lane C](CONTACT-CONTROLLER-FOLLOWUPS-C-2026-10-19.md)
+resolves #1494 exact-edge support and #1487 bounded curved work. The historical evidence below is retained.
 No timing, #1334, navigation, adoption or release
 acceptance follows. Research B in the owning checkout's
 `.superpowers/sdd/contact-followups/research-b.md` traces both geometry refusals at this baseline.
@@ -166,7 +167,8 @@ step height, so its approach from the floor is a blocked wall with no climb and 
 body seated on that crest walks along it and down its walkable flank within the arrival ball instead.
 The original proof runs the dry head. The
 [general-sweep acceptance](CERTIFIED-GENERAL-SWEEPS-2026-10-18.md) adds acquired ticks over admitted
-rotated, hull, mesh and curved props. Exact tread-edge support refusal remains #1494.
+rotated, hull, mesh and curved props. Lane C resolves the former #1494 tread-edge refusal
+using the represented installed support source, with the original questions unchanged.
 Cost if wrong: matching two implementations hides the same missing certificate from both.
 
 **Ruling CF-7. Name every changed result under SG-23.**

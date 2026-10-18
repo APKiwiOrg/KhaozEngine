@@ -678,6 +678,36 @@ An existing row's expectation changes only by geometric derivation, recorded in 
 the changelog. Phase 5 bakes navigation from the complete rule. Cost if wrong: the owner disagrees
 with one class, and that class alone is reverted with its rows.
 
+Lane C resolves #1494 and #1487. Before accepting the changed answers, CC-9 classified six
+expectation groups: the six captured stair boundary rows, coefficient-boundary refusal,
+contact-band ambiguity, source-correction box-variable/wall assumptions, the mesh sliver and
+rotated poly/mesh/curved digests. Identity mesh/fan and all feature digests are unchanged controls.
+The [frozen proof record](../verification/2026-10-19-contact-followups-c.md) retains original query
+bits and scene identities, the original red and independent real/represented discriminants.
+All six original stair boundary rows now complete and advance with the 240-tick bound and
+Euclidean 1 mm arrival unchanged. Independent represented rational derivations explain all
+1,032 changed digests (605 poly, 130 mesh, 297 curved), with zero protected or underivable rows.
+The descending Box ramp also retains exact zero height and the floor normal after a direct join
+caps both contributions. The floor's exact zero disc maximum clips only its upper bound, while
+the ramp's positive disc maximum retains the joined plane's symmetric enclosure. Its midpoint is
+higher, so the released midpoint rule preserves the ramp raw owner. The Mesh row keeps the floor
+owner. Independent rational geometry and exact outward-enclosure proofs are in the final record.
+The former coefficient-box ambiguities become exact represented decisions. Genuine arithmetic,
+capacity and roof refusals remain, including sentinel tails and no lower-floor fallback.
+
+Support now has one represented affine source, with circular primitives defined by its normalized
+represented Y. Feature/sweep dual admission is retained. The cumulative 1,048,576-event work ceiling
+is 256 raw slots times 4,096 graph slots, independent of existing storage bounds. First failure
+WorkLimit, RootStorage, TerminalRoots or AdmissionStorage is visible and sticky through Restore
+and every success exit. A failed request writes neither caller span. Both conditional repairs
+were implemented: the footprint-only whole-capsule crown and FC-R11 nearest-point cylinder
+admission witness. The latter preserves Walkable/None/None public bits and keeps seam work at
+1,109/1,216/774 against the fixed 10 * 762 bound from a251a3bf4, with interior 588 <= 762.
+Capsule counts are 636/635/1,006. Declined certificates retain the complete general proof.
+The [curved contract](CONTACT-CONTROLLER-SUPPORT-CURVED-PROOFS-2026-10-11.md#represented-support-source-and-bounded-certification)
+records exact source, attainment and accounting obligations. Historical results above and below
+remain evidence at their named baselines. No timing measurement is rewritten.
+
 CF-1 and CF-2 add the derived #1429 disposition. An obliquely yawed plate pitched 0.05 or 0.1 radians,
 or 3 or 6 degrees, changes from Refused to Walkable in floating, bottom-corner resting and intersecting
 placements, for compounds, split statics and standalone installations. Its installed top-face height
@@ -688,6 +718,10 @@ proved outside the finite face needs no plane height. Relevant unresolved orient
 membership, plane divisors and proposal guards still refuse atomically. This changes certification
 completeness only, with no join, guard, selection, tolerance or cost-gate change. The final follow-up
 task records the player-facing changelog entry under CF-7.
+
+The following CF-3 counts retain lane A baseline evidence. Lane C removes the transform-box
+ambiguity from all 28 former end-seam refusal rows, which now have Complete footprints. Genuine
+work/storage uncertainty still refuses atomically. No baseline measurement below is rewritten.
 
 CF-3 and CF-6 add the derived #1455 disposition. Ordinary float quarter turns about X and Z,
 with radii 0.1, 0.15 and 0.3 m and either approach sign, change from Refused to Walkable when
@@ -782,9 +816,10 @@ row replays bit for bit. Those ground-core rows stop before the steep lower flan
 the leased head's traversal over rotated, hull, mesh and curved props was deferred to #1355.
 The [general-sweep acceptance record](CERTIFIED-GENERAL-SWEEPS-2026-10-18.md#task-6-captured-content-evidence-and-gb-r13)
 now proves acquired cost scenes and captured split/compound stairs with unchanged 1 mm arrival,
-roof and installed-footprint checks. Exact quarter-turn tread-edge support refusal remains #1494
-even with Clear shell sweeps. SG-1, SG-6 to SG-8, SG-22 and SG-23 remain unchanged, as do native
-G1b, SG-12/#1334 cost, navigation and consumer adoption gates.
+roof and installed-footprint checks. Lane C now resolves the former #1494 exact-edge refusal
+under represented support, with the original historical GB-R13 evidence retained. The source/work
+dispositions above amend SG-23 without weakening SG-1, SG-6 to SG-8 or SG-22. Native
+G1b, SG-12/#1334 cost, navigation and consumer adoption remain separate gates.
 
 The #1486 walk-off adds four full dry controller rows in `ContactCurvedFlankLandingTests`: cylinder and capsule,
 radius 0.3 m, both lying turns, starting on the 0.6 m crest and walking across the flank toward the floor.

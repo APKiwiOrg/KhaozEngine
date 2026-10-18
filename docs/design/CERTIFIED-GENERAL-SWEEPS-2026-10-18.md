@@ -15,8 +15,9 @@ The complete zero-margin contact query and acquisition succeeded, and borrowing 
 did not change the refusal. `SelectedSweepBoundsProved` rejected the selected hulls, meshes
 and tilted crate before aperture construction. Behind it, `CapsuleBoxFractionSweep` also
 required an identity box. Both sweep proof gaps are now closed for the admitted families.
-A separate complete-footprint refusal at exact quarter-turn tread tangency remains
-[#1494](https://github.com/APKiwiOrg/KhaozEngine/issues/1494), as recorded under GB-R13 below.
+The separate #1494 complete-footprint refusal at exact quarter-turn tread tangency is resolved
+by [lane C](CONTACT-CONTROLLER-FOLLOWUPS-C-2026-10-19.md), which also resolves #1487 curved work.
+The GB-R13 results below remain historical evidence from the general-sweep baseline.
 
 This extends [the original sweep design](SWIM-TASK4-CERTIFIED-SWEEP-2026-10-07.md) and
 [candidate coverage](SWIM-TASK4-CANDIDATE-COVERAGE-2026-10-07.md). It preserves
@@ -662,13 +663,14 @@ Ascent and descent use the unchanged 240-tick bound and exact dyadic Euclidean 0
 including closed-radius acceptance and rejection of the per-axis cube. The 0.001 m placement offset
 is removed before comparing support feet with the absolute target.
 
-GB-R13 keeps all six zero-origin quarter-turn exact-edge rows. Their actual upward shell lift and
+At the general-sweep baseline, GB-R13 kept all six zero-origin quarter-turn exact-edge rows. Their actual upward shell lift and
 both horizontal sweeps certify Clear, while the complete footprint returns Unsupported and the
 controller returns Blocked. The initial-tick edge/disc discriminants expose opposite exact signs
 for the real polynomial of the stored quaternion and the represented matrix, about 1e-9 apart.
 The traversal refusals retain their independently checked near-tangent edges. The lower
-raw face remains part of the proof. This is the open support-contract decision
-[#1494](https://github.com/APKiwiOrg/KhaozEngine/issues/1494), not a missing sweep certificate.
+raw face remains part of the proof. Lane C resolves this #1494 support-source decision using
+represented support and retains these historical discriminants. All six unchanged rows now
+complete and advance. The feature and sweep contract is unchanged.
 
 Additional quarter-turn rows offset start and target along the walk axis by one whole millimetre.
 Both representations, both physics origins and both traversal directions advance every tick,

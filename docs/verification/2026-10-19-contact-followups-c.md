@@ -620,3 +620,67 @@ CylinderAdmissionWitness, CylinderEndTangency, RepresentedEndTangencyCounterGate
 FootSupportBoundaryTests, CapsuleCrown, RepresentedCapsuleRoundedEndTraversal, CurvedWork and
 CertifiedCurvedStrataFitTheCumulativeQueryCeiling. All local test invocations used build-slot,
 synchronously and one at a time. No full suite, timing, stress or repeated load proof ran.
+
+## Task 7 contract publication and final verification
+
+FC-R12 supersedes the original staged-version instruction. Version 21.5.1 is
+tagged at a1e826635. This task cuts patch 21.5.2, updates guarded package examples
+and adds a new CHANGELOG entry dated 2026-10-19. The full released 21.5.1 suffix
+is byte-identical to v21.5.1. No release, tag, tool or consumer pin follows.
+
+Living contracts resolve #1494 and #1487, distinguish point-valued represented
+support from retained feature/sweep sources, and publish bounded curved work and
+its visible refusal reasons. CC-8, acceptance G and plan Task 6 match the shipped
+FC-R11 nearest-point candidates and fixed 762/7620 cost bounds. Historical source
+discriminants, golden evidence, timing and earlier counters remain unchanged.
+Both conditional repairs ran. The capsule crown remains required, and cylinder
+admission preserves every public output bit with full traversal on a miss.
+
+The initial full Game.Tests run discovered 6,206 tests, with 6 failures, 6,199
+passes and one pre-existing skip. Five failures came from stale test geometry.
+TopHeightAt still used real-quaternion corners, and two direct-kernel helpers
+used the dual factory before BeginSource. The helpers now use the independent
+represented rational oracle or explicit support factory. Assertions, scene
+inputs and production code are unchanged. Their necessary changed checks pass.
+
+The sixth failure was DescendingRampAheadKeepsTheFlat(Box). Independent rational
+geometry proves the exact-zero floor plane, positive ramp disc maximum and direct
+whole-face join. The floor contribution is [-5 binary64 subnormal steps,0]. The
+joined ramp contribution is symmetric [-5 steps,+5 steps], so its midpoint wins
+under the existing selector before witness distance is compared. The selected
+raw owner is the ramp, while published height and normal remain exactly 0 and
+UnitY. The Mesh row keeps the floor owner. The renamed
+DescendingRampAheadKeepsTheFlatHeight test asserts the independently derived
+enclosures and their order, selected owner, exact float height and exact normal.
+FC-R13 explicitly reserves this owner transition for whole-branch review.
+
+After these test-side corrections, FC-R13 authorized one second full Game.Tests
+run. The successor ran the following commands synchronously through build-slot,
+once each on the final code. No test loops, timing, load or stress proof ran.
+
+| Command | Exit | Result |
+| --- | --- | --- |
+| `build-slot --label fu-c-final-build-2 -- dotnet build KhaozEngine.slnx -c Release` | 0 | Build succeeded, 0 warnings, 0 errors |
+| `build-slot --heavy --label fu-c-final-suite-2 -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-build` | 0 | 6,206 total, 6,205 passed, 0 failed, 1 pre-existing skip |
+| `build-slot --heavy --label fu-c-final-format -- dotnet format KhaozEngine.slnx --verify-no-changes --no-restore --verbosity diagnostic` | 0 | Formatted 0 of 8,400 files |
+
+The skipped test remains
+WallContactOwnColumnTests.The_perturbation_control_for_every_sensitivity_claim_in_this_chain.
+The orchestrator separately verified all other 168 solution projects on this
+source, exit 0, in task-7-other-suites.log. The successor did not rerun them.
+
+Under FC-R8, diagnostic format output identifies the workspace message as
+`Found project reference without a matching metadata reference` for
+KhaozEngine.Localization.Analyzers.csproj. The existing Showcase project reference
+is analyzer-only, with OutputItemType=Analyzer and ReferenceOutputAssembly=false.
+The analyzer targets netstandard2.0 and ships under analyzers/dotnet/cs. This
+dependency wiring is unchanged. Diagnostic verbosity exposes the underlying
+message without suppressing it. All branch-changed code projects loaded their
+configuration and ran both analysis passes. Game.Tests ran 5 code-style and 233
+analyzer-reference analyzers, Physics.Bepu ran 5 and 154, and Physics ran 5 and 154.
+No changed project was omitted. The complete output is retained in the owning
+workspace's task-7-format.log.
+
+No tolerance, band, limit, roof or footprint protection, raw identity, Euclidean
+1 mm arrival or production source changed in Task 7. Native G1b, SG-12/#1334,
+navigation, adoption and release remain separate gates.

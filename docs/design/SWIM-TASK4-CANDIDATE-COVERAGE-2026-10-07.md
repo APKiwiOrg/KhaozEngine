@@ -12,9 +12,10 @@ spheres, capsules, cylinders and supported flat compound descendants. It adds ac
 cost-scene ticks and player-scale captured Grimhollow stairs. Both split and eight-hull compound
 installations retain installed vertex/centroid identity. Off-tangency quarter-turn ascent/descent
 advances every tick and reaches the exact Euclidean 1 mm arrival ball at both physics origins.
-The six exact-edge rows retain Clear shell sweeps and Unsupported footprints with Blocked movement.
-The independent real-quaternion/represented-matrix edge disagreement remains the open support
-boundary #1494. No support, roof, raw identity, reach or lifetime rule changes. GS-3 ceilings,
+At the general-sweep baseline, the six exact-edge rows retained Clear shell sweeps and Unsupported
+footprints with Blocked movement. [Lane C](CONTACT-CONTROLLER-FOLLOWUPS-C-2026-10-19.md) resolves
+#1494 using represented support. Those unchanged rows now complete and advance, with the historical
+real-quaternion/represented-matrix discriminants retained. No support, roof, raw identity, reach or lifetime rule changes. GS-3 ceilings,
 GS-9 sidedness/culling, GS-10 non-rigid seam refusal and whole-query atomic refusal remain binding.
 Native G1b, SG-12/#1334 timing/cost, navigation, release and consumer adoption remain separate.
 

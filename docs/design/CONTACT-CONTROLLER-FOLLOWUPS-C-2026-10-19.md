@@ -5,7 +5,9 @@ Design for [#1494](https://github.com/APKiwiOrg/KhaozEngine/issues/1494) and
 [lane A](CONTACT-CONTROLLER-FOLLOWUPS-2026-10-18.md) and
 [lane B](CERTIFIED-GENERAL-SWEEPS-2026-10-18.md).
 Source baseline: `a1e82663567bda9301ad4eaceb7ebad40ee19f17`.
-Status: design only. The [implementation plan](../superpowers/plans/2026-10-19-contact-followups-c.md)
+Status: implemented in lane C, resolving #1494 and #1487 with represented support, bounded curved
+certification, the capsule crown and cylinder admission witness. The [verification record](../verification/2026-10-19-contact-followups-c.md)
+retains the original reds, fixed questions, golden derivations and deterministic counters. The [implementation plan](../superpowers/plans/2026-10-19-contact-followups-c.md)
 does not authorize release, adoption, timing or navigation work.
 
 The design evidence is the owning checkout's
@@ -31,7 +33,9 @@ as Unsupported. The cylinder outside-end sibling also exhausted a diagnostic cou
 admission, so its interrupted count is not a completed-query total.
 
 Research #1487 proposed a crown certificate as the primary repair under the old source box.
-FU-R4 deliberately gates it after FU-R2. No evidence yet establishes the post-FU-R2 branch.
+FU-R4 gated it after FU-R2. Task 5 selected and implemented the crown branch. FC-R10 retained
+it and corrected the cylinder statuses from the independent oracle. Task 6 then repaired cylinder
+admission cost with bit-identical public outputs. The measurements above remain historical evidence.
 The report refutes an infinite loop for its exact input. It does not justify a timeout or a retry.
 
 The existing SG-1 to SG-24, SC-9, SC-17, CF-1 to CF-7 and GS-1 to GS-16 remain binding except
@@ -47,7 +51,7 @@ for the explicitly derived support-source and work-policy dispositions here.
 - SC-9 optimized/reference equality stays bit-exact. Identity, exact signed-permutation and exact cyclic installs stay bit-identical.
 - The legacy feature and sweeps factory keeps its dual contract unchanged.
 - No timing, load, repeated test invocation, consumer launch, navigation bake, release or tag belongs to this lane.
-- Ride staged 21.5.1 without a version bump. Only the final implementation task appends its CHANGELOG entry and rolls its date.
+- FC-R12: 21.5.1 is tagged at a1e826635. The final task cuts one patch to 21.5.2, updates guarded version declarations and adds its dated CHANGELOG entry. Released 21.5.1 history stays unchanged.
 
 ## Binding orchestrator rulings
 
@@ -60,6 +64,10 @@ The following rulings are quoted from the dispatch. They are decisions, not alte
 > FU-R4: the capsule global-crown certificate from research-1487 is a gated task placed after the FU-R2 work. Its first step measures the exact #1487 Find (and the cylinder outside-end tangency sibling) with deterministic work counters on the new contract. If both complete Walkable within ten times the work of their adjacent binary32 neighbours, the task records that result as a test and stops without building the certificate. Otherwise it builds the certificate as research-1487 describes. Write both branches into the plan so the implementer needs no further decision.
 
 > FC-R10: cylinder gate statuses come from the independent exact oracle per row (Walkable, None, None), asserted separately from an integer cost bound. Task 6 is a cost repair, never a status change. Certify barrel and cap admission membership from a finite attained witness before subdivision. All three cylinder seam rows must publish bit-identical outputs to a251a3bf4, and each row must consume at most ten times the same fixture's interior cylinder row at x = -0.25f. If the witness set does not reach that bound, report the counters and stop without changing any limit. The capsule crown selected under FU-R4 remains required.
+
+> FC-R11: offer nearest-point candidates first. Project the foot centre onto the barrel top line's own XZ path and clamp to its finite axial interval. Offer the nearest cap point, using the projected disc point or the centre-directed rim point. A decline-only interval prefilter may reject an offered point before source work. Exact source evaluation at the offered dyadic parameters alone certifies membership. A miss retains the complete traversal. Pin the pre-Task-6 interior reference to 762 events at a251a3bf4, with interior at most 762 and every seam row at most 10 * 762 = 7620. Public outputs stay bit-identical and no certified corpus row may rise above its a251a3bf4 count.
+
+> FC-R12: v21.5.1 is already tagged at a1e826635. Cut one patch to 21.5.2 with a new entry dated 2026-10-19 and every guarded declaration in the same commit. Preserve the released 21.5.1 entry. No release or tag follows from this task.
 
 ## Requirements
 
@@ -187,7 +195,8 @@ Assert Complete footprints and Failure None in every row. Capsule statuses are a
 Cylinder statuses are independently derived from exact represented geometry, respectively Walkable,
 None and None. Assert these statuses separately from cost. The capsule critical work must be at
 most ten times each adjacent neighbor, `critical <= 10*min(left,right)`. Each cylinder seam row
-must consume at most ten times the same fixture's interior cylinder row at x = -0.25f.
+must consume at most 10 * 762 = 7620 events, using the fixed interior x = -0.25f count
+measured at a251a3bf4. The interior itself must stay at or below 762 (FC-R11).
 Use integer comparisons, never elapsed time. FC-R10 corrects the earlier all-Walkable premise
 without undoing the capsule crown selected under FU-R4.
 
@@ -201,8 +210,14 @@ Failure to prove the certificate continues into the unchanged complete general p
 evaluating hemispheres first, choosing a sampled maximum or reusing it for axis/lowest roles is insufficient.
 
 The cylinder has no capsule crown. Its public statuses already agree with the independent exact
-oracle. Task 6 repairs admission cost with finite attained points while preserving every public
-result bit. Failure to meet the interior-row cost bound requires counters and investigation,
+oracle. Task 6 repairs admission cost with one nearest-point candidate per part while preserving every public
+result bit. The barrel candidate is the foot centre projected onto the top line's XZ path, clamped
+at both finite ends. The matching cap offers the projected disc point or centre-directed rim point.
+These binary64 parameters are candidates only. A decline-only interval prefilter can reject them
+before source work, then exact inclusive SurfacePointInside source expressions prove membership.
+CapUniformlyUp still gates upward caps. A miss retains the complete original traversal and owner.
+FC-R11 pins the gate at 10 * 762 = 7620 from a251a3bf4, never a post-change reference.
+Failure to meet the interior-row cost bound requires counters and investigation,
 never a status change or a larger limit.
 Whole-surface admission, axis witnesses, contact-height/roof checks and every other raw member remain required.
 
@@ -254,9 +269,11 @@ Source-map sharing or coincident geometry never establishes raw identity or a tr
 
 Update SG-23 with these derived source/work dispositions and the living backend support contract.
 Keep historical cost artifacts and reference-376971dda evidence unchanged. The final task alone
-adds the 21.5.1 CHANGELOG bullet, dates that staged entry 2026-10-19 and corrects its superseded
-exact-edge refusal statement. Run the full Release solution build, full Game.Tests project and
-solution format verification once at that finish. This design commit changes neither version nor history.
+cuts 21.5.2 with its new CHANGELOG entry dated 2026-10-19 and updates every guarded version
+declaration under FC-R12. The released 21.5.1 entry, including its historical refusal, is unchanged.
+Run the full Release solution build, full Game.Tests project and
+solution format verification once at that finish. Release, adoption, navigation and
+SG-12/#1334 timing acceptance remain separate.
 
 ## Acceptance
 
@@ -268,7 +285,7 @@ solution format verification once at that finish. This design commit changes nei
 | D. All support doors | Scalar/all SIMD lanes, signed-zero/identity/cyclic/general quaternions, actual composed poses, determinant/Gram/inverse and domain rejection. Boxes, hull wrappers, reordered children, meshes and every curved orientation, first form/hit/pose miss/reference/nested/concurrent paths. No private cache injection. |
 | E. Safety and lifetime | Retain existing protection/capacity/uncertainty suites. Add rotated lower tread under an independent roof, coincident raw statics/children, direct-only joins, exact memo hits/misses, stale/foreign leases, exclusions, mutation/rebase and handle reuse. Zero warm allocation and bit-exact SC-9. |
 | F. Cumulative work | Assert the exact budget derivation, all seven event classes, exhaustion with diagnostics off, restore/Reset/sub-solve/below-band persistence, independent nested owners, root-storage reason without WorkLimit, sentinel atomicity and certified-strata/max-capacity fit. |
-| G. End-seam gate | Assert independent per-row statuses (capsule all Walkable, cylinder Walkable, None, None), Complete footprints and Failure None separately from cost. Retain the FU-R4 crown and capsule smaller-neighbor bound. Each cylinder seam row must fit ten times its interior x = -0.25f reference with bit-identical public outputs. Negative certificate controls, independent low roof and bounded rounded-end traversal retain the unchanged arrival rule. |
+| G. End-seam gate | Assert independent per-row statuses (capsule all Walkable, cylinder Walkable, None, None), Complete footprints and Failure None separately from cost. Retain the FU-R4 crown and capsule smaller-neighbor bound. Each cylinder seam row must fit the fixed 10 * 762 = 7620 bound from a251a3bf4, with the interior x = -0.25f at most 762 and bit-identical public outputs. Nearest top-line/cap candidates, decline-only interval pruning and unchanged traversal on a miss follow FC-R11. Negative certificate controls, independent low roof and bounded rounded-end traversal retain the unchanged arrival rule. |
 
 ## Explicit non-goals
 

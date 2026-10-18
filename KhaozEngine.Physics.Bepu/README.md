@@ -317,10 +317,33 @@ four general-sweep workspaces for nested loans. First use provisions each depth 
 allocates zero bytes, and a fifth simultaneous loan returns default Unresolved without allocation.
 Acquired explicit cost scenes and captured player-scale hull stairs are covered by the
 [general sweep acceptance record](../docs/design/CERTIFIED-GENERAL-SWEEPS-2026-10-18.md#task-6-captured-content-evidence-and-gb-r13).
-Exact quarter-turn tread-edge footprint tangency still returns Unsupported and blocks the controller
-even when the shell sweeps certify Clear (#1494). Off-tangency split/compound stairs advance and
-reach the unchanged 1 mm arrival ball at both physics origins. Native G1b, SG-12/#1334 timing and
+Lane C resolves #1494: exact quarter-turn tread-edge footprints now complete under represented
+support and the original split/compound stair rows advance and reach the unchanged Euclidean
+1 mm arrival ball at both physics origins. Historical GB-R13 refusals are retained in that record.
+Native G1b, SG-12/#1334 timing and
 aggregate actor cost, navigation, release and consumer adoption remain separate gates.
+
+## Support source and curved work contract
+
+Support admits the represented binary32 Bepu matrix on each actual installed leaf, composed with
+Compound.GetWorldPose before capture. Planar vertices, normals and mesh preimages derive from
+that point-valued affine map. Circular primitives use its exactly normalized represented Y column
+with outward arithmetic bounds, preserving radius and half length. Legacy feature/sweep factories
+retain their dual contract. Scalar/SIMD correspondence, finite domains and determinant guards remain.
+
+A complete Find or direct footprint shares one sticky 1,048,576-event account, derived from
+256 raw-member slots times 4,096 source nodes. New, Sign, recursive Split/Compile, root cells,
+Refine iterations and admission cells charge before execution, including cache-hit entries.
+Reset, Restore, later parts, proposals and the below-band pass never refund work. Diagnostics
+expose category counts, cell high water and first failure WorkLimit, RootStorage, TerminalRoots
+or AdmissionStorage. Every failed request refuses atomically with untouched spans and no prefix.
+
+The footprint-only whole-capsule crown certifies the attained global maximum by source identity.
+Cylinder admission first offers a clamped nearest top-line XZ point or nearest cap point, with
+only a decline from interval pruning and exact source proof for acceptance. A miss retains full
+traversal. Neither certificate bypasses axis/lowest roles, full admission, proposal/roof guards,
+other members or raw identity. The [lane C record](../docs/verification/2026-10-19-contact-followups-c.md)
+resolves #1494 and #1487 while retaining historical results and every safety/arrival rule.
 
 ## Usage
 

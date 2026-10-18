@@ -20,7 +20,7 @@
 - SC-9 optimized/reference equality stays bit-exact. Identity, exact signed-permutation and exact cyclic installs stay bit-identical.
 - The legacy feature and sweeps factory keeps its dual contract unchanged.
 - No timing, load, repeated test invocation, consumer launch, navigation bake, release or tag belongs to this lane.
-- Ride staged 21.5.1 without a version bump. Only the final implementation task appends its CHANGELOG entry and rolls its date.
+- FC-R12: 21.5.1 is tagged at a1e826635. The final task cuts one patch to 21.5.2, updates guarded version declarations and adds its dated CHANGELOG entry. Released 21.5.1 history stays unchanged.
 - Work only in `/Users/antonio/KhaozEngine/.worktrees/contact-followups-c` on `fix/contact-followups-c`, based on `a1e82663567bda9301ad4eaceb7ebad40ee19f17` plus the design commit. Never reset accepted work.
 - Before each task, require `git rev-parse --show-toplevel` to equal that path, the branch to match and status to be clean. Stop on unexplained edits. One writer owns shared files at a time.
 - Every build/test uses build-slot, synchronously, one command at a time. Wide focused selections use `--heavy`. Full solution build, full Game.Tests run and format verification occur once, in Task 7 only.
@@ -561,7 +561,8 @@ that branch and corrects the final gate. Capsule rows are all Walkable. Cylinder
 are independently derived as Walkable, None, None. Every row asserts Complete footprint
 and Failure None. Status assertions are separate from integer cost. The capsule bound is
 `critical.Consumed <= 10L * Math.Min(left.Consumed,right.Consumed)`.
-The cylinder bound is per seam row against ten times its same-test interior x = -0.25f row.
+The cylinder bound is per seam row against ten times the fixed pre-Task-6 interior x = -0.25f
+count, 762 at a251a3bf4 (FC-R11), with the interior itself at most 762.
 
 - [ ] **Step 2: Retain the crown branch selected under FU-R4.**
 
@@ -635,7 +636,7 @@ No-certificate commit `test(support): pin represented end tangency work bounds`.
 Required-branch commit `fix(support): certify attained whole-capsule crowns before side isolation`.
 Record which branch ran and its exact six-row evidence. No owner choice is required.
 
-### Task 6: Repair cylinder admission cost without changing exact statuses (CC-8, G, FC-R10)
+### Task 6: Repair cylinder admission cost without changing exact statuses (CC-8, G, FC-R10, FC-R11)
 
 **Files:**
 - Modify: `KhaozEngine.Physics.Bepu/SupportCurvedSurfaceAdmission.cs`, `KhaozEngine.Physics.Bepu/SupportTiltedCurvedGeometry.Admission.cs`
@@ -656,7 +657,8 @@ passes of 846 barrel search cells and one cell for each cap. Add
 `CylinderEndTangencyHasAnAttainedFiniteAdmissionWitness`. Before production edits, serialize
 all public result bits at a251a3bf4, including both roles, witnesses, normals, heights/errors,
 XZ, owner and joins. Require each seam row's Consumed to be at most ten times the same
-fixture's interior cylinder row at x = -0.25f, measured in the same test. Status and cost
+fixture's pre-Task-6 interior cylinder row at x = -0.25f, fixed at 762 from a251a3bf4. The
+interior must stay at or below 762 and each seam row at or below 7620 (FC-R11). Status and cost
 assertions are separate. Capsule statuses and the smaller-adjacent-neighbor bound stay unchanged.
 
 - [ ] **Step 2: Add safety tests and run the focused regression red for this cost repair.**
@@ -672,7 +674,8 @@ Assert.False(outsideColumnCertified);
 Assert.False(downwardCapAcceptedForUpwardCoverage);
 Assert.Equal(SupportStatus.Refused, independentRoofSample.Status);
 Assert.Equal(independentOracleStatus, row.Sample.Status);
-Assert.True(row.Work.Consumed <= 10L * interior.Work.Consumed);
+Assert.True(interior.Work.Consumed <= ContactFollowupEndWorkTests.PreAdmissionWitnessInteriorConsumed);
+Assert.True(row.Work.Consumed <= 10L * ContactFollowupEndWorkTests.PreAdmissionWitnessInteriorConsumed);
 ```
 
 ```bash
@@ -684,14 +687,17 @@ declaration first if needed, never a compiler error as evidence.
 
 - [ ] **Step 3: Certify finite surface membership before subdivision.**
 
-For the barrel, offer the four actual source-surface points with kinds 0/1, axial a -1/+1
-and lateral b 0. For an individual cap, offer only that cap's centre and four cardinal rim
-points `(a,b)=(0,0),(1,0),(-1,0),(0,1),(0,-1)`. Use existing SurfacePointInside source
-expressions and exact inclusive inequalities, checking CapUniformlyUp for requireUpward.
-Accept only a proved attained point inside the requested radius and vertical column.
-These are sufficient existence certificates, never sampled absence, coverage or maximum claims.
-If none proves membership, retain the complete original cell traversal and its work/refusal
-policy. Charge all source work to the existing owner. No tolerance or new storage is needed.
+FC-R11 replaces the initial fixed set with one nearest-point candidate per part. For the barrel,
+offer kind 0, b = 0 at the foot centre's projection onto the top line's own XZ path, with axial
+parameter `(r*k-along)/(h*u)` clamped to [-1,1] (NaN gives 0). For the matching cap, project the
+foot centre into disc coordinates. Offer that point if it lies in the disc, otherwise the
+centre-directed rim point, with the existing rounding-safe inward adjustment when needed.
+Parameters are binary64 candidates only. A decline-only interval prefilter rejects candidates
+whose enclosures miss the column before source work. Existing SurfacePointInside source expressions
+prove exact inclusive membership at each offered dyadic point. CapUniformlyUp gates requireUpward.
+True proves attained membership only, never absence, coverage or a maximum. A miss retains the
+complete original cell traversal, storage and refusal policy. Charge all source work to the
+existing owner and preserve FC-R9 success guards. No tolerance or new storage is needed.
 
 If this evidence-grounded candidate set does not repair the captured sibling, preserve the
 exact failing request and stop acceptance for proper geometric investigation. It is not permission
@@ -705,7 +711,9 @@ build-slot --heavy --label fu-c-cylinder-green -- dotnet test KhaozEngine.Game.T
 
 Expected: exit 0, every footprint Complete with Failure None. Independent statuses are capsule
 all Walkable and cylinder Walkable, None, None. Each cylinder seam row consumes at most ten
-times the same-test interior reference, and all public bits equal the pre-edit capture. Capsule
+times the fixed 762-event a251a3bf4 interior reference (7620), the interior stays at or below
+762, and all public bits equal the pre-edit capture. Report the certified corpus before and after,
+with no row above its a251a3bf4 count. Capsule
 smaller-neighbor cost, source/member/tail safety, zero warm allocation and SC-9 remain exact.
 Record before/after counters. If the bound fails, report the subdividing part and stop without
 changing any limit.
@@ -715,7 +723,7 @@ changing any limit.
 Commit `fix(support): certify finite cylinder admission before surface subdivision`.
 Record before/after costs, frozen public bits, safety controls and exact test commands in the proof record.
 
-### Task 7: Publish contract dispositions and finish staged 21.5.1 verification (CC-12)
+### Task 7: Publish contract dispositions and finish 21.5.2 verification (CC-12, FC-R12)
 
 **Files:**
 - Modify: `docs/design/CONTACT-CONTROLLER-SUPPORT-GATES-2026-10-11.md` (SG-23 dispositions)
@@ -723,11 +731,11 @@ Record before/after costs, frozen public bits, safety controls and exact test co
 - Modify: `docs/design/CONTACT-CONTROLLER-FOLLOWUPS-2026-10-18.md`, `docs/design/CERTIFIED-GENERAL-SWEEPS-2026-10-18.md` (current #1494 status, historical evidence retained)
 - Modify: `KhaozEngine.Physics.Bepu/README.md`, `docs/USING-KHAOZENGINE.md`
 - Modify: `docs/design/CONTACT-CONTROLLER-FOLLOWUPS-C-2026-10-19.md`, `docs/INDEX.md`, `docs/verification/2026-10-19-contact-followups-c.md`
-- Modify: `CHANGELOG.md` (existing 21.5.1 entry and date only)
+- Modify: `Directory.Build.props`, `README.md`, `CHANGELOG.md` (21.5.2 and guarded declarations, released 21.5.1 unchanged)
 
 **Interfaces:**
 - Consumes accepted Task 1 to 6 commits, the completed 51-site audit, per-row golden derivations and the final integer gate.
-- Produces the living represented-support contract, SG-23 derived dispositions, honest staged history and once-only full verification record. No production API, version, tag or integration action.
+- Produces the living represented-support contract, SG-23 derived dispositions, honest staged history and once-only full verification record. No production API, tag or integration action. FC-R12 requires the 21.5.2 patch bump.
 
 - [ ] **Step 1: Run the final focused integration gate if Task 6 did not already run it after the last code change.**
 
@@ -749,13 +757,14 @@ navigation and release separate. Search all Markdown for `real quaternion`, `sou
 `SourceColumn`, `#1494`, `#1487`, `quarter-turn` and `curved` and correct invalid living claims.
 List any additional affected living doc explicitly before staging it. Historical measurements stay.
 
-- [ ] **Step 3: Append the 21.5.1 history and roll its date without a version bump.**
+- [ ] **Step 3: Cut the 21.5.2 patch and its matching history under FC-R12.**
 
-Re-read Directory.Build.props and newest tag. Expected staged version is 21.5.1. Preserve that
-pin and every existing entry. Add the date line `2026-10-19` beneath its heading and one bullet
-about represented-transform exact-edge support and bounded curved certification (#1494, #1487).
-Replace the superseded staged bullet sentence that still calls exact tread tangency open.
-Describe a crown only if it was actually implemented. No release/tag action follows.
+Re-read Directory.Build.props, main and newest tag. Version 21.5.1 is tagged at a1e826635.
+Set KhaozEngineVersion and every check-doc-versions declaration to 21.5.2. Add a new
+`## 21.5.2` entry dated `2026-10-19`, describing represented-transform exact-edge support,
+bounded curved certification with visible exhaustion reasons, the implemented whole-capsule
+crown and nearest-point cylinder admission witness (#1494, #1487). Preserve released 21.5.1
+byte for byte. No ke-tileedit or consumer pin change and no release/tag action follows.
 
 - [ ] **Step 4: Run the full Release build, full Game.Tests project and format verification once.**
 
@@ -764,6 +773,10 @@ build-slot --label fu-c-final-build -- dotnet build KhaozEngine.slnx -c Release
 build-slot --heavy --label fu-c-final-suite -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-build
 build-slot --heavy --label fu-c-final-format -- dotnet format KhaozEngine.slnx --verify-no-changes --no-restore
 ```
+
+FC-R8 requires diagnostic format verbosity to capture any workspace-load warning and prove every
+changed project, including Game.Tests, loads and is checked. Never suppress a warning. Run the
+other solution test projects required by AGENTS.md once without repeating Game.Tests.
 
 Expected: zero warnings/errors, full discovered Game.Tests selection with no failures and format
 exit 0 without changes. Record actual counts/skips and exits. No test loop or retry of an unchanged

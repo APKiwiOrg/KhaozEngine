@@ -41,7 +41,7 @@ internal static class CapsuleConvexSweep
     {
         double lower = double.PositiveInfinity, upper = double.PositiveInfinity;
         bool hit = false;
-        for (int feature = 0; feature < CapsuleSweepFeatureDistance.FeatureCount; feature++)
+        for (int feature = 0; feature < leaf.Geometry.FeatureCount; feature++)
             for (int axis = 0; axis < 3; axis++)
             {
                 if (!work.Feature() || !CapsuleSweepFeatureDistance.TryBuild(leaf, feature, axis, centre, radius,

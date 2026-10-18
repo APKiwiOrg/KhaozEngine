@@ -9,8 +9,6 @@ namespace KhaozEngine.Physics.Bepu;
 internal static class CapsuleSweepFeatureDistance
 {
     internal readonly record struct Point(int X, int Y, int Z);
-    internal const int FeatureCount = 27;
-
     static Point Add(Point a, Point b, SweepExactWorkspace w) => new(w.Add(a.X, b.X), w.Add(a.Y, b.Y), w.Add(a.Z, b.Z));
     static Point Sub(Point a, Point b, SweepExactWorkspace w) => new(w.Subtract(a.X, b.X), w.Subtract(a.Y, b.Y), w.Subtract(a.Z, b.Z));
     static Point Scale(Point a, int b, SweepExactWorkspace w) => new(w.Multiply(a.X, b), w.Multiply(a.Y, b), w.Multiply(a.Z, b));
@@ -29,8 +27,8 @@ internal static class CapsuleSweepFeatureDistance
         regime = default;
         SweepExactWorkspace w = scratch.Exact;
         w.Reset();
-        if ((uint)featureIndex >= FeatureCount || (uint)axisRegime > 2) return false;
         InstalledSweepGeometry geometry = leaf.Geometry;
+        if ((uint)featureIndex >= geometry.FeatureCount || (uint)axisRegime > 2) return false;
         int zero = w.Constant(0), one = w.Constant(1), radiusSquared = w.Square(w.Constant(radius));
         if (halfCylinderLength == 0 && axisRegime != 0)
         { regime = new(zero, zero, zero, scratch.Eligibility, 0, true); return w.IsResolved; }
@@ -63,32 +61,37 @@ internal static class CapsuleSweepFeatureDistance
         Point query = axisRegime == 2 ? c : Add(c, Scale(axis,
             w.Constant(axisRegime == 0 ? -halfCylinderLength : halfCylinderLength), w), w);
         int count = 0;
-        void Bound(int constant, int slope) => scratch.Eligibility[count++] = new(constant, slope);
-        if (featureIndex == 26)
+        void Bound(int constant, int slope)
+        {
+            if (count >= scratch.Eligibility.Length) { w.Refuse(); return; }
+            scratch.Eligibility[count++] = new(constant, slope);
+        }
+        if (featureIndex == geometry.FeatureCount - 1)
         {
             if (axisRegime == 2)
             { regime = new(zero, zero, zero, scratch.Eligibility, 0, true); return w.IsResolved; }
-            for (int face = 0; face < 6; face++)
+            for (int face = 0; face < geometry.FaceCount; face++)
             {
-                Point a = Vertex(geometry.FaceVertex(face, 0));
-                Point normal = Cross(Sub(Vertex(geometry.FaceVertex(face, 1)), a, w),
-                    Sub(Vertex(geometry.FaceVertex(face, 3)), a, w), w);
+                Point a = Vertex(geometry.InteriorFaceVertex(face, 0));
+                Point normal = Cross(Sub(Vertex(geometry.InteriorFaceVertex(face, 1)), a, w),
+                    Sub(Vertex(geometry.InteriorFaceVertex(face, geometry.InteriorFaceSize(face) - 1)), a, w), w);
                 Bound(w.Negate(Dot(normal, Sub(query, a, w), w)), w.Negate(Dot(normal, d, w)));
             }
             regime = new(zero, zero, w.Negate(radiusSquared), scratch.Eligibility, count);
             return w.IsResolved;
         }
-        int dimension = featureIndex < 6 ? 2 : featureIndex < 18 ? 1 : 0;
+        int edgeStart = geometry.SurfaceCount, vertexStart = edgeStart + geometry.EdgeCount;
+        int dimension = featureIndex < edgeStart ? 2 : featureIndex < vertexStart ? 1 : 0;
         int anchor = dimension == 2 ? geometry.FaceVertex(featureIndex, 0) : dimension == 1
-            ? geometry.Edge(featureIndex - 6).A : featureIndex - 18;
+            ? geometry.Edge(featureIndex - edgeStart).A : featureIndex - vertexStart;
         Point originPoint = Vertex(anchor), offset = Sub(query, originPoint, w);
         Span<Point> columns = stackalloc Point[3];
         if (dimension == 2)
         {
             columns[0] = Sub(Vertex(geometry.FaceVertex(featureIndex, 1)), originPoint, w);
-            columns[1] = Sub(Vertex(geometry.FaceVertex(featureIndex, 3)), originPoint, w);
+            columns[1] = Sub(Vertex(geometry.FaceVertex(featureIndex, geometry.InteriorFaceSize(featureIndex) - 1)), originPoint, w);
         }
-        else if (dimension == 1) columns[0] = Sub(Vertex(geometry.Edge(featureIndex - 6).B), originPoint, w);
+        else if (dimension == 1) columns[0] = Sub(Vertex(geometry.Edge(featureIndex - edgeStart).B), originPoint, w);
         int rank = dimension;
         if (axisRegime == 2) columns[rank++] = Scale(axis, w.Constant(-1), w);
         Span<int> gram = stackalloc int[9], adjugate = stackalloc int[9];
@@ -123,6 +126,7 @@ internal static class CapsuleSweepFeatureDistance
         if (invertible == GeometrySign.Zero)
         { regime = new(zero, zero, zero, scratch.Eligibility, 0, true); return w.IsResolved; }
         if (invertible != GeometrySign.Positive) return false;
+        Span<int> parameters = stackalloc int[4];
         for (int row = 0; row < rank; row++)
         {
             int p0 = zero, p1 = zero;
@@ -133,14 +137,36 @@ internal static class CapsuleSweepFeatureDistance
             }
             if (row < dimension)
             {
-                Bound(p0, p1);
-                Bound(w.Subtract(denominator, p0), w.Negate(p1));
+                if (geometry.IsHull && dimension == 2)
+                { parameters[row * 2] = p0; parameters[row * 2 + 1] = p1; }
+                else
+                {
+                    Bound(p0, p1);
+                    Bound(w.Subtract(denominator, p0), w.Negate(p1));
+                }
             }
             else
             {
                 int h = w.Multiply(w.Constant(halfCylinderLength), denominator);
                 Bound(w.Add(h, p0), p1);
                 Bound(w.Subtract(h, p0), w.Negate(p1));
+            }
+        }
+        if (geometry.IsHull && dimension == 2)
+        {
+            // Test the original polygon, without artificial fan diagonals. Gram parameters
+            // describe its projected closest point with a proved positive denominator.
+            // Each wound finite edge contributes one closed linear inequality on that point.
+            Point projected0 = Add(Scale(columns[0], parameters[0], w), Scale(columns[1], parameters[2], w), w);
+            Point projected1 = Add(Scale(columns[0], parameters[1], w), Scale(columns[1], parameters[3], w), w);
+            Point normal = Cross(columns[0], columns[1], w);
+            int vertices = geometry.InteriorFaceSize(featureIndex);
+            for (int i = 0; i < vertices; i++)
+            {
+                Point a = Vertex(geometry.FaceVertex(featureIndex, i));
+                Point edge = Sub(Vertex(geometry.FaceVertex(featureIndex, (i + 1) % vertices)), a, w);
+                Point offset0 = Sub(projected0, Scale(Sub(a, originPoint, w), denominator, w), w);
+                Bound(Dot(Cross(edge, offset0, w), normal, w), Dot(Cross(edge, projected1, w), normal, w));
             }
         }
         int coefficientA, coefficientB, coefficientC;

@@ -1,6 +1,6 @@
 # Task 4 certified capsule sweep prerequisite
 
-Status: historical prerequisite design with the current rotated-box extension recorded below.
+Status: historical prerequisite design with the current rotated-box and hull extensions recorded below.
 The checkpoint sections retain the evidence and limits of their original slices. Current consumer
 use and restrictions live in the [backend README](../../KhaozEngine.Physics.Bepu/README.md).
 
@@ -32,8 +32,31 @@ or bracket disagreement beyond the unchanged 0.001 m ceiling refuses atomically.
 `CertifiedRotatedBoxSweepTests`, `CertifiedSweepPolynomialTests`, `CertifiedSweepBoundsTests` and
 `CertifiedSweepLifetimeTests` carry this extension's geometric, exact, lifecycle and allocation gates.
 The real hidden-crate lift retains both GS-14 dimension pairs. Independent rational installed-point
-oracles check face, edge and vertex entries. Hull, mesh and compound sweeps remain refused. This
+oracles check face, edge and vertex entries. Mesh and general compound sweeps remain refused. This
 family does not imply native G1b, movement cost-scene acceptance, navigation or consumer adoption.
+
+## Installed hull family extension
+
+`TryCaptureHull` reads actual installed face loops and point lanes, including the exact single-hull
+centroid wrapper produced by `ShapeFactory`. The child typed index, local offset, source face indices
+and vertex bits are retained and checked against the current installation. No descriptor or AABB
+substitutes for the installed solid. The existing exact convex topology validator proves planar strict
+convex faces, opposite edge pairing, Euler closure, connected face neighborhoods and cyclic vertex links.
+Every padded support lane must alias an admitted vertex. Invalid or ambiguous topology refuses.
+
+Finite polygon faces use their original wound edge inequalities on the Gram-eliminated closest
+point. No fan diagonal introduces an artificial uncertain boundary inside a face. Original edges,
+vertices and all interior halfspaces complete the endpoint/interior axis regimes. A tetrahedron has
+four surface triangles, six edges, four vertices and one interior feature. Isolated vertex tangency
+at fraction one third, stationary face/edge/vertex contact, interior overlap, closed endpoints and
+one-binary32-neighbor separation use the same exact polynomial contract as boxes.
+
+The hull ceilings remain 256 faces, 508 vertices and 1524 face-index entries. The shared 256-cell,
+48-depth, 4096-feature, 4096-descendant and checked 4096-bit work ceilings do not grow. A larger valid
+topology may still exhaust a query budget and refuse atomically. `CertifiedHullSweepTests` and
+`CertifiedHullSweepLifetimeTests` cover native reuse, centroid compensation, static/dynamic poses,
+nonzero-Y frames, bound repair, exact fallback and zero warm allocation. General compound composition,
+authored multi-hull stairs acceptance and movement adoption remain later family gates.
 
 ## Source facts
 

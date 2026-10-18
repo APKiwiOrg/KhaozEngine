@@ -65,13 +65,14 @@ internal static class InstalledSweepBounds
         out Vector3 minimum, out Vector3 maximum)
     {
         minimum = maximum = default;
-        if (!InstalledPoseOperator.TryCreate(pose, out InstalledPoseOperator map)) return false;
+        if (!geometry.TryComposePose(pose, out RigidPose leafPose) ||
+            !InstalledPoseOperator.TryCreate(leafPose, out InstalledPoseOperator map)) return false;
         Vector3 min = new(float.PositiveInfinity), max = new(float.NegativeInfinity);
-        for (int i = 0; i < 8; i++)
+        for (int i = 0; i < geometry.VertexCount; i++)
         {
             Vector3 point = geometry.Vertex(i);
             FeaturePoint affine = map.Point(point, exactZeroProducts: true);
-            GeometryVector rounded = RepresentedGeometryTransforms.PosePoint(new Pose(pose.Position, pose.Orientation), point);
+            GeometryVector rounded = RepresentedGeometryTransforms.PosePoint(new Pose(leafPose.Position, leafPose.Orientation), point);
             if (!affine.IsResolved || !rounded.IsResolved) return false;
             min = Vector3.Min(min, new(Down(Math.Min(affine.X.Bounds.Lower, rounded.X.Lower)),
                 Down(Math.Min(affine.Y.Bounds.Lower, rounded.Y.Lower)), Down(Math.Min(affine.Z.Bounds.Lower, rounded.Z.Lower))));

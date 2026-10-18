@@ -37,6 +37,55 @@ internal static class CertifiedSweepExactOracle
         return (Math.Min(exact.Lower, represented.Lower), Math.Max(exact.Upper, represented.Upper));
     }
 
+    internal static (double Lower, double Upper) HullEntry(BepuPhysicsWorld world, StaticHandle handle,
+        Vector3 centre, float radius, float halfCylinderLength, Vector3 delta)
+    {
+        using IPhysicsQueryLease lease = world.AcquireQueryReadLease();
+        var simulation = CertifiedGeneralSweepFixture.Sim(world);
+        var entry = CertifiedGeneralSweepFixture.Static(world, handle);
+        simulation.Statics.GetDescription(entry.Handle, out var installed);
+        var pose = installed.Pose;
+        TypedIndex index = entry.Shape;
+        if (index.Type == default(Compound).TypeId)
+        {
+            ref Compound compound = ref simulation.Shapes.GetShape<Compound>(index.Index);
+            Assert.Equal(1, compound.Children.Length);
+            var child = compound.Children[0];
+            Compound.GetWorldPose(child.LocalPose, pose, out var worldPose);
+            pose = worldPose;
+            index = child.ShapeIndex;
+        }
+        Assert.Equal(default(ConvexHull).TypeId, index.Type);
+        ref ConvexHull hull = ref simulation.Shapes.GetShape<ConvexHull>(index.Index);
+        var points = new HashSet<V>();
+        for (int face = 0; face < hull.FaceToVertexIndicesStart.Length; face++)
+        {
+            hull.GetVertexIndicesForFace(face, out var indices);
+            for (int i = 0; i < indices.Length; i++)
+            {
+                hull.GetPoint(indices[i], out Vector3 point);
+                points.Add(V.From(point));
+            }
+        }
+        (double Lower, double Upper) Evaluate(M map)
+        {
+            var vertices = new V[points.Count * 2];
+            int i = 0;
+            foreach (V point in points)
+            {
+                V worldPoint = map.Apply(point) + V.From(pose.Position);
+                V shift = V.UnitY * R.From(halfCylinderLength);
+                vertices[i++] = worldPoint - shift;
+                vertices[i++] = worldPoint + shift;
+            }
+            return Entry(vertices, centre, radius, delta);
+        }
+        var exact = Evaluate(Real(pose.Orientation));
+        var represented = Evaluate(Represented(pose.Orientation));
+        lease.AssertCurrent();
+        return (Math.Min(exact.Lower, represented.Lower), Math.Max(exact.Upper, represented.Upper));
+    }
+
     static (double Lower, double Upper) Entry(M map, V translation, Box box, Vector3 centre,
         float radius, float halfCylinderLength, Vector3 delta)
     {
@@ -49,6 +98,11 @@ internal static class CertifiedSweepExactOracle
             V shift = V.UnitY * R.From((i & 8) == 0 ? -halfCylinderLength : halfCylinderLength);
             vertices[i] = map.Apply(local) + translation + shift;
         }
+        return Entry(vertices, centre, radius, delta);
+    }
+
+    static (double Lower, double Upper) Entry(V[] vertices, Vector3 centre, float radius, Vector3 delta)
+    {
         V start = V.From(centre), motion = V.From(delta);
         R radiusSquared = R.From(radius).Square();
         R? bestLower = null, bestUpper = null;
@@ -137,6 +191,9 @@ internal static class CertifiedSweepExactOracle
                     if (Evaluate(middle) > R.Zero) lo = middle;
                     else hi = middle;
                 }
+                // A rational zero attained on the decreasing branch is the exact first
+                // event. Do not turn that exact answer into a wider oracle-only bracket.
+                if (Evaluate(hi) == R.Zero) lo = hi;
             }
             else hi = lo;
             if (bestLower is not R lower || lo < lower) bestLower = lo;

@@ -36,12 +36,10 @@ public sealed partial class BepuPhysicsWorld
     {
         proved = false;
         if (!TryGetInstalledSweepGeometry(reference, out InstalledSweepGeometry? geometry)) return false;
-        if (geometry is not null && (!ReferenceEquals(geometry.Owner, _sim.Shapes) ||
-            !SameSweepShape(geometry.Root, shape) ||
-            !CapsuleSweepGeometry.TryReadIdentityBox(_sim.Shapes, shape, new RigidPose(Vector3.Zero, Quaternion.Identity), out Box box) ||
-            new Vector3(box.HalfWidth, box.HalfHeight, box.HalfLength) != geometry.Half)) return false;
+        if (geometry is not null && !geometry.Matches(_sim.Shapes, shape)) return false;
         proved = IdentityBoxSweepBounds(shape, pose, min, max);
-        if (pose.Orientation == Quaternion.Identity || proved || geometry is null || !InstalledSweepBounds.TryCreate(geometry, pose, out _, out _)) return true;
+        if (geometry is null || proved || (!geometry.IsHull && pose.Orientation == Quaternion.Identity) ||
+            !InstalledSweepBounds.TryCreate(geometry, pose, out _, out _)) return true;
         if (!ProveOrExpandSweepBounds(reference, geometry, pose)) return false;
         proved = true;
         return true;
@@ -50,7 +48,8 @@ public sealed partial class BepuPhysicsWorld
     bool ProveOrExpandSweepBounds(CollidableReference reference, InstalledSweepGeometry geometry, RigidPose pose)
     {
         if (!InstalledSweepBounds.TryCreate(geometry, pose, out Vector3 requiredMin, out Vector3 requiredMax) ||
-            !InstalledPoseOperator.TryCreate(pose, out InstalledPoseOperator map)) return false;
+            !geometry.TryComposePose(pose, out RigidPose leafPose) ||
+            !InstalledPoseOperator.TryCreate(leafPose, out InstalledPoseOperator map)) return false;
         bool active = reference.Mobility != CollidableMobility.Static && _sim.Bodies[reference.BodyHandle].Awake;
         int index = reference.Mobility == CollidableMobility.Static
             ? _sim.Statics[_sim.Statics.HandleToIndex[reference.StaticHandle.Value]].BroadPhaseIndex : _sim.Bodies[reference.BodyHandle].Collidable.BroadPhaseIndex;
@@ -68,7 +67,7 @@ public sealed partial class BepuPhysicsWorld
         if (!ReadSweepStoredBounds(tree, index, out min, out max) ||
             !ContainsSweepBounds(min, max, requiredMin, requiredMax) ||
             !SweepAncestorPath(tree, index, min, max, true)) return false;
-        geometry.PublishPose(pose, map);
+        geometry.PublishPose(pose, leafPose, map);
         return true;
     }
 

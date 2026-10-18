@@ -4,6 +4,6 @@ namespace KhaozEngine.Physics.Bepu;
 internal sealed class CapsuleSweepScratch
 {
     internal SweepExactWorkspace Exact { get; } = new();
-    internal SweepLinear[] Eligibility { get; } = new SweepLinear[16];
+    internal SweepLinear[] Eligibility { get; } = new SweepLinear[CapsuleGeneralSweepPolicy.MaximumFaces];
     internal InstalledSweepLeaf[] Pending { get; } = new InstalledSweepLeaf[CapsuleGeneralSweepPolicy.MaximumChildren];
 }

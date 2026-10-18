@@ -9515,8 +9515,11 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   Bepu preserves child constraints before final manifold reduction and refuses unsupported layer masks.
   Its [backend limits](../KhaozEngine.Physics.Bepu/README.md) can refuse otherwise valid mesh inputs.
 - Optional `IPhysicsCapsuleSweep.SweepCapsuleCertified(capsule, pose, displacement, filter)` returns
-  a validated `CapsuleSweepResult` value. Bepu certifies identity boxes and admitted rotated boxes
-  using their installed finite geometry. Hulls, meshes, compounds and other primitives still refuse.
+  a validated `CapsuleSweepResult` value. Bepu certifies identity boxes, admitted rotated boxes and
+  installed convex hulls, including `ShapeFactory`'s exact single-hull centroid wrapper. Hull topology
+  and installed vertex identity must be proved within 256 faces, 508 vertices and 1524 face-index
+  entries. The child offset is preserved. A hull is never replaced by its AABB. Meshes, general
+  compounds and other primitives still refuse.
   General poses require proved forward/operational correspondence and a complete bracket within
   0.001 m. The [backend domain and work ceilings](../KhaozEngine.Physics.Bepu/README.md) apply. Default is
   `Unresolved` without a usable prefix. `IsComplete` reports structural Clear/Hit status, not proof of

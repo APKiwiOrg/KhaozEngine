@@ -1,6 +1,6 @@
 # Swimming Task 4 candidate coverage
 
-Status: historical candidate proposal with the installed rotated-box extension recorded below.
+Status: historical candidate proposal with the installed rotated-box and hull extensions recorded below.
 The checkpoint sections retain their original evidence. Current restrictions live in the
 [backend README](../../KhaozEngine.Physics.Bepu/README.md).
 
@@ -29,8 +29,23 @@ Candidate aggregation completes every selected leaf after an earlier Hit(0). Cel
 descendant, exact-storage and arithmetic exhaustion discard the entire result. Warm queries borrow
 private retained scratch. Nested loans and two simultaneous owner intervals keep active workspaces
 separate. The [general-sweep contract](CERTIFIED-GENERAL-SWEEPS-2026-10-18.md) fixes the unchanged
-1,000,000 m stored-coordinate ceiling and all finite work ceilings. Hull, mesh, compound and other
+1,000,000 m stored-coordinate ceiling and all finite work ceilings. Mesh, general compound and other
 primitive sweep bounds remain unproved families until their own tasks land.
+
+## Installed hull evidence
+
+The same registration lifetime now captures installed hull face loops, point identities and the exact
+single-hull centroid-compensating Compound wrapper. Removal destroys the binding. Recycled native
+handles and typed indices cannot substitute for the old topology or child offset. Exact local
+validation proves a closed strict convex solid before publication, within 256 faces, 508 vertices
+and 1524 face-index entries. Every SIMD support lane must alias a proved face vertex.
+
+Mutation completion uses the actual composed child pose, preserving its represented offset and
+orientation. Scalar/SIMD composition must agree. Bounds enclose every hull vertex under both the
+common forward operator and pinned rounded point graph, then use the existing owning tree repair
+and ancestor checks. A far certified hull no longer poisons Clear. Invalid topology, failed bounds,
+stale pose or exhausted work still discards the whole query, including an earlier identity-box Hit(0).
+Restricted views and mobility use the unchanged owner-scoped interval and selected set.
 
 ## Problem
 

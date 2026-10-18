@@ -450,3 +450,74 @@ No timing, load, release, tag, consumer pin, native G1b, navigation or #1334 cos
 The full Release solution build and full Game.Tests suite run once at each task's finish through
 build-slot. A changed failure gets investigation, not retries of unchanged tests.
 Cost if wrong: documentation advertises consumer readiness before its separate gates pass.
+
+## Task 5 acquired explicit evidence
+
+The mandatory four cost rows now run through `EnvironmentAcquisitionFixture.Acquire` and
+`ExplicitCharacterMovement.StepTowards`, with `Explicit=true` and `MustPass=true` local to these
+tests. `SupportCostExecution.LastAcquisitionStatus` observes the actual acquisition result.
+The advisory cost rows, SG-12 artifacts and production movement owners are unchanged.
+
+At dt `1f/30f`, stairs feet `(0.525,0.5,0)` and crate feet `(0,0,0)`, every acquisition is Known,
+every tick is Advanced and non-refused, and every support read agrees with the independent oracle.
+The final footprint and roof checks pass without changing the height or pacing allowances.
+
+| Scene | Motion X | Motion Y | Ground substeps | Find reads | Raw final static / element | Final support height |
+| --- | --- | --- | --- | --- | --- | --- |
+| stairs box | 0.20000005 | 0.116666675 | 2 | 4 | 3 / 3 | 0.75 |
+| stairs hull | 0.20000005 | 0.116666675 | 2 | 4 | 3 / 1 | 0.75 |
+| stairs mesh | 0.20000005 | 0.116666675 | 2 | 4 | 3 / 1 | 0.75 |
+| hidden crate | 0.20000002 | 0.116666615 | 2 | 7 | 2 / 1 | 0.33660255029224206 |
+
+No roof binds in these four rows. Each stays within `MaxStepClimbSpeed * dt`. A separately acquired
+composed lease, borrowed by `ExplicitTickBorrowed`, matches the full MoveState, outcome, motion,
+raw support binding requests, support reads and query counters. Only acquisition-token counters
+differ because the borrowed leg acquires before its tick capture.
+
+GB-R11 preserves shipped SC-13 behavior. The original stairs inputs carry ClimbRate and
+ClimbRateEwma 1, so their decided ascent consumes zero look-ahead reads. Three additional rows
+clear only those two fields, retaining StepDeltaY 0.1 and the rest of the input. Each advances,
+completes all three forward-axis look-ahead reads without refusal and has seven total Find reads.
+Their ClimbRate, ClimbRateEwma and StepDeltaY equal the dry route exactly
+(`2.4499989`, `2.4499989`, `0`). No AlwaysSample control or GroundSignals change is used.
+
+Both first-lift dimension pairs `(0.4,0.59999996)` and `(0.40000007,0.6000001)` return complete
+Clear through exactly 0.4 m, with no impact and certified error at most 0.001 m. The centres are
+`(0.525,1.6010002,0)` for all three stairs families and `(0,1.1010001,0)` for the crate, with delta
+`(0,0.4,0)`. Owner and actual empty-exclusion restricted views exercise both shape and value
+overloads. The original pair's zero-margin contacts are complete with Written and RequiredCapacity 0.
+
+The deferred FA-R9 plank proof has 16 acquired explicit traversal rows, using the existing
+`ContactFollowupScenes.Plate` installations at pitches `0.05235988` and `0.10471976`, split and
+compound geometry, both travel directions, and stop-on-plank or cross-plank targets. The default
+tuning and existing 240-tick bound remain. All rows arrive within the 0.001 m Euclidean ball,
+in 45 ticks for a stop and 90 ticks for a crossing. The independent oracle and final leased read
+agree on height, raw static/element identity and canonical plate/floor ownership.
+
+SG-22 allocation uses the checked shared `AllocationMeasurement` region in `AllocSensitive`.
+One cold and one priming invocation precede one measured invocation per route, including fresh
+acquisition and disposal on the acquired leg. Geometry and full cold/prime/measured output equality
+are checked before the allocation verdict. On .NET 10.0.13 arm64, the independent live inventory is
+192 bytes for movement/release binding, 64 for the physics ReadLease and 56 for the producer pin.
+All four acquired scenes allocate exactly that 312-byte sum. Every borrowed leg allocates zero.
+
+An additional stairs-hull input with direction `(0.25,0)` varies the query workload while retaining
+successful geometry. Its Find/shell sweep/contact/body-sample/substep counts are `3/4/4/7/1`,
+compared with `4/6/6/9/2` for the full-speed stairs and `7/6/6/9/2` for the crate. Acquired bytes
+remain 312 and borrowed bytes remain zero. No timing sampler, stopwatch or load run is involved.
+
+The new atomic guards preserve whole-tick hold behavior for an undersized scope, stale producer
+pin and missing canonical binding. A wrong frame retains FrameMismatch. Scope, stale and frame
+failures make zero backend, analytic or contact-binding calls. SG-6 physical refusals, SG-7 raw
+capacity sentinels and SG-8 leased/raw binding rows retain their existing assertions.
+
+The focused Release selection passed 268/268 tests, including the 36 new acceptance rows,
+FootSupportNeighborhoodTests, FootSupportBoundaryTests, FootSupportCompletenessTests,
+ContactLeasedQueryTests, ContactSupportBindingTests and the 96/256/257/300 raw-capacity rows.
+The Release solution build passed with zero warnings and zero errors. The full Game.Tests suite
+ran once, with 5,901 passed, one existing intentional measurement-only skip and zero failures.
+Its results include both `CurvedRawCapacityUsesTwoSlots` rows at 256/257, every named SG-6 refusal
+and the pushed-axis raw-support rebind. No existing expectation changed.
+Final solution format verification passed, with zero of 8,366 files changed. Diagnostic project
+coverage includes all 169 solution projects, with both target frameworks for the four multi-target
+projects. Staged dash, prose and file-size guards and the doc-version check pass.

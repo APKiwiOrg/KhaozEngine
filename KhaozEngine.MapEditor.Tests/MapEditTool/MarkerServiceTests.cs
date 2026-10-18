@@ -37,8 +37,16 @@ public sealed class MarkerServiceTests
             Assert.Equal(history, session.NativeHistoryState);
             Assert.False(session.IsDirty);
         }
+        // The resolver's expansion counter shows the empty list is the prerequisite's answer, not an empty expansion.
+        long expansions = MapPrefabResolver.ThreadExpansions;
         Assert.Empty(tools.MarkerList());
         Assert.Empty(new QueryService(session).MarkerList(null, null, null, false, null));
+        Assert.Empty(tools.MarkerList(minX: -1, minZ: -1, maxX: 1, maxZ: 1));
+        Assert.Equal(expansions, MapPrefabResolver.ThreadExpansions);
+        // Control: the same counter sees a resolver-2 list expand.
+        MapEditSession adopted = MarkerEditorFixtures.Session(MarkerFixtures.Create());
+        Assert.Single(new QueryService(adopted).MarkerList(null, null, null, false, null));
+        Assert.NotEqual(expansions, MapPrefabResolver.ThreadExpansions);
     }
 
     [Fact]

@@ -183,6 +183,31 @@ public sealed class NativeMarkerCommandTests
         Assert.Equal(afterRebind, MapDocumentFile.SaveText(doc));
     }
 
+    /// <summary>A world-terms yaw change on a framed marker stores the world yaw less the frame yaw, keeps the stored
+    /// point, height carrier and binding bits, and expands back to the requested yaw through the frame once.</summary>
+    [Fact]
+    public void TransferredSpaceBoundMarkerYaw_StoresFrameLocalYaw()
+    {
+        const string id = "a/space-marker";
+        MarkerFixture packed = MarkerFixtures.TransferredSpace();
+        MapDocument doc = MapPrefabEdits.Prepare(packed.Document, packed.Assets, new MapUnpackPrefab("a")).After;
+        var history = PrefabEditorFixtures.History(doc, packed.Assets);
+        MapEffectiveTransform frame = FrameOf(doc, id);
+        MapLocalMarkerDoc local = Authored(doc, id);
+        string binding = BindingJson(local);
+
+        MapLocalMarkerDoc world = MarkerEditorFixtures.WorldEntry(doc, packed.Assets, id);
+        float yaw = world.YawRadians + 0.25f;
+        history.Execute(doc, new MarkerEditCommand(new MapSetMarker(world with { YawRadians = yaw })));
+        MapLocalMarkerDoc stored = Authored(doc, id);
+        Assert.Equal((float)(yaw - frame.YawRadians), stored.YawRadians);
+        Assert.Equal((Bits(local).X, Bits(local).Y, Bits(local).Z), (Bits(stored).X, Bits(stored).Y, Bits(stored).Z));
+        Assert.Equal(binding, BindingJson(stored));
+        Assert.Equal(frame, FrameOf(doc, id));
+        Assert.InRange(Math.Abs(Math.IEEERemainder(Marker(doc, packed.Assets, id).YawRadians - yaw, 2 * Math.PI)), 0, 0.000001);
+        Assert.Equal(new[] { id }, history.LastNativeEffects!.MarkerIds);
+    }
+
     [Fact]
     public void RenameConflict_WritesNothing()
     {

@@ -91,6 +91,51 @@ public sealed class MarkerWireTests
         AssertSame(gui, history, fixture.Assets, direct, live);
     }
 
+    /// <summary>Review Focus 2 continued through the service and the wire. A world-terms metadata set and a move of the
+    /// transferred Space-bound marker publish the same document on every path, keep the stored frame-local binding
+    /// bytes, height carrier and yaw, and change only the moved point.</summary>
+    [Fact]
+    public async Task TransferredSpaceBoundMarker_WireSetAndMoveMatchGui()
+    {
+        const string id = "a/space-marker";
+        MarkerFixture packed = MarkerFixtures.TransferredSpace();
+        MarkerFixture fixture = packed with { Document = MapPrefabEdits.Prepare(packed.Document, packed.Assets, new MapUnpackPrefab("a")).After };
+        MapDocument gui = MapDocumentFile.LoadText(MapDocumentFile.SaveText(fixture.Document));
+        var history = PrefabEditorFixtures.History(gui, fixture.Assets);
+        MapEditSession direct = MarkerEditorFixtures.Session(fixture);
+        var mutation = new MutationService(direct);
+        MapEditSession seed = MarkerEditorFixtures.Session(fixture);
+        await using var harness = await McpWire.StartAsync();
+        await Call(harness, "map_open", new() { ["path"] = seed.DocumentPath });
+        var live = harness.Services.GetRequiredService<MapEditSession>();
+        AssertSame(gui, history, fixture.Assets, direct, live);
+        MapLocalMarkerDoc local = Stored(live, id);
+
+        MapLocalMarkerDoc world = MarkerEditorFixtures.WorldEntry(gui, fixture.Assets, id) with { Name = "space-renamed" };
+        var steps = new MapMarkerEdit[]
+        {
+            new MapSetMarker(world),
+            new MapSetMarker(world with { Position = world.Position with { X = world.Position.X + 0.5f } }),
+        };
+        for (int step = 0; step < steps.Length; step++)
+        {
+            history.Execute(gui, new MarkerEditCommand(steps[step]));
+            MapPrefabMutationResult service = mutation.MarkerApply(steps[step]);
+            JsonNode wire = Node(await Call(harness, "marker_set", Args(steps[step])));
+            AssertEffects(history.LastNativeEffects!, service.Effects, wire["effects"]);
+            AssertSame(gui, history, fixture.Assets, direct, live);
+            MapLocalMarkerDoc stored = Stored(live, id);
+            Assert.Equal(MapPrefabJson.Bytes(local.SupportBinding), MapPrefabJson.Bytes(stored.SupportBinding));
+            Assert.Equal(0u, BitConverter.SingleToUInt32Bits(stored.Position.Y));
+            Assert.Equal(BitConverter.SingleToUInt32Bits(local.YawRadians), BitConverter.SingleToUInt32Bits(stored.YawRadians));
+            Assert.Equal(step == 0, BitConverter.SingleToUInt32Bits(local.Position.X) == BitConverter.SingleToUInt32Bits(stored.Position.X));
+            if (step == 0) Assert.Equal(BitConverter.SingleToUInt32Bits(local.Position.Z), BitConverter.SingleToUInt32Bits(stored.Position.Z));
+        }
+    }
+
+    static MapLocalMarkerDoc Stored(MapEditSession session, string id) =>
+        PrefabEditorFixtures.Document(session).BuildingIntent!.Markers.Single(m => m.Id == id);
+
     [Fact]
     public async Task MarkerListRect_WireMatchesService()
     {

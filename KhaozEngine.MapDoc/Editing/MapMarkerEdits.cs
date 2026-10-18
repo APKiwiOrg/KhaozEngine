@@ -75,7 +75,6 @@ public static class MapMarkerEdits
         // Every other building-intent member is kept as authored.
         after.BuildingIntent = new(intent.PayloadVersion, intent.RoofLinks, intent.RoofGroups, intent.Lights, markers)
         { Roofs = intent.Roofs, Storeys = intent.Storeys };
-        after = MapPrefabEditPreparation.Copy(after);
         // IDs, names, payloads and bindings are validated, and every support-bound height resolves, before the result exists.
         MapBoundDocumentValidation.Validate(after, assets);
         var resources = MapPrefabResolver.Expand(after, assets);

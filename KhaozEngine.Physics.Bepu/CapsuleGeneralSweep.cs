@@ -12,6 +12,8 @@ internal static class CapsuleGeneralSweep
         Vector3 displacement, QueryFilter filter, ref CapsuleSweepWork work, CapsuleSweepScratch scratch)
     {
         if (filter.Layers != 0) return default;
+        if (geometry.Mesh is not null)
+            return CapsuleMeshSweep.Sweep(shapes, root, pose, geometry, capsule, centre, displacement, filter, ref work, scratch);
         if (CapsuleSweepGeometry.TryReadIdentityBox(shapes, root, pose, out _))
         {
             if (!work.Primitive()) return default;

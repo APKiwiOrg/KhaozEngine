@@ -206,6 +206,77 @@ An unresolved side, degenerate relevant triangle, missing member or inner-tree o
 the whole result. A thin interior triangle cannot disappear after a near triangle is found.
 Cost if wrong: a mesh allows passage through a front face, blocks its open back incorrectly or loses seams.
 
+#### Installed mesh implementation and pinned side policy
+
+`InstalledMeshSweepGeometry` captures the actual scaled `Mesh.GetLocalChild` triangle and the
+separate rounded `Mesh.GetPosedLocalChild` continuation, retaining each raw triangle index. The
+latter subtracts a binary32 centroid and is composed through the existing scalar/SIMD pose proof.
+The operational enclosure also covers the different order of the original root-relative path and
+rotated centroid addition. It bounds intermediate root offset M, rotated centroid H and root-position
+magnitude P independently of the final leaf offset, retaining cancellation. The extra offset error is
+`U(M) + U(2M) + U(4M) + U(4M+H) + U(P+H)`, propagated through the actual absolute transpose row sums
+with outward accumulation. Here U is the full neighboring binary32 spacing. It is numerical evidence
+inside the existing bracket ceiling, not a collision margin.
+These representations must both complete the shared finite feature kernel. A different event status
+or a bracket union above 0.001 m refuses. Recentered boundary disagreements are not repaired by
+changing the radius. Seven triangle features (one face, three edges and three vertices) reuse the
+convex feature elimination and exact polynomial workspace. No interior occupancy feature is added. Triangle endpoint regimes also retain the closed necessary
+axis-distance derivative sign, nonnegative at the lower endpoint and nonpositive at the upper.
+The interior-axis regime covers the remaining minima. Removing these redundant endpoint candidates
+preserves completeness while keeping both source representations inside the existing cell budget.
+Box and hull eligibility and result calculations are unchanged.
+
+Pinned Bepu 2.4.0 source symbols are `DefaultTypes.CreateDefaultSweepTaskRegistry`,
+`ConvexHomogeneousCompoundSweepTask.PreorderedTypeSweep`, `Mesh.GetLocalChild`,
+`Mesh.GetPosedLocalChild`, `GJKDistanceTester`, `TriangleSupportFinder`,
+`CapsuleTriangleTester.Test`, `TriangleWide.ComputeNondegenerateTriangleMask` and the engine's
+`SweepHitHandler.IsMeshBackFace`. The default capsule/triangle sweep is registered with GJK support.
+It does not use the one-sided contact tester. The contact tester selects face or edge normals,
+requires `collidingWithSolidSide` and a nondegenerate triangle, and separately gates face contacts
+with `capsuleOffsetAlongNormal >= 0`. Its backface-normal threshold is `-1e-2f` and degeneracy scale
+is `1e-6f`. Certification does not repurpose either as a distance tolerance. A relevant triangle
+outside the proved nondegenerate domain refuses. Initial contact admission proves the complete axis
+on the front with `InstalledMeshSides.Agree`, including its pinned contact-centering operation graph.
+An unproved back, crossing axis or operational side relationship refuses rather than becoming Clear.
+
+| Closed path situation | `CullBackFaces=false` | `CullBackFaces=true` |
+| --- | --- | --- |
+| Stationary, complete finite separation | Clear(0) | Clear(0) |
+| Admitted initial front contact, tangency or overlap | Hit(0) | Hit(0) |
+| That initial contact with tangential or departing motion | Hit(0) | Hit(0) |
+| Initial geometric contact without proved front/contact agreement | Unresolved | Unresolved |
+| Initially separated, front normal opposes motion | Complete raw finite-triangle result | Same result |
+| Initially separated, front normal follows or is perpendicular to motion | Complete raw finite-triangle result, including a back-face Hit | Clear after complete initial exclusion and directional agreement |
+| Unknown side, transform, continuation or work proof | Unresolved | Unresolved |
+
+The initial event check precedes direction-based culling. A bracket that merely starts at zero is
+not a stationary witness. It cannot authorize a culled Clear. Closed endpoints remain events.
+The raw public sweep and contact implementations are unchanged. Source references are the pinned
+[Mesh child getters](https://github.com/bepu/bepuphysics2/blob/v2.4.0/BepuPhysics/Collidables/Mesh.cs),
+[capsule/triangle contact tester](https://github.com/bepu/bepuphysics2/blob/v2.4.0/BepuPhysics/CollisionDetection/CollisionTasks/CapsuleTriangleTester.cs),
+[triangle domain and support](https://github.com/bepu/bepuphysics2/blob/v2.4.0/BepuPhysics/Collidables/Triangle.cs),
+[default registrations](https://github.com/bepu/bepuphysics2/blob/v2.4.0/BepuPhysics/DefaultTypes.cs) and
+[homogeneous compound sweep](https://github.com/bepu/bepuphysics2/blob/v2.4.0/BepuPhysics/CollisionDetection/SweepTasks/ConvexHomogeneousCompoundSweepTask.cs).
+
+Mutation proof validates the inner tree's unique nodes and leaves, exact raw triangle identities,
+leaf back-links, metanode parents, child counts and complete root reachability. Finite inward leaf
+bounds are expanded through `Tree.UpdateBounds` and ancestors are verified. Nonfinite or structural
+failure invalidates owner evidence even for an excluded mesh. Each posed inner bound encloses its
+positive-scaled raw box and the actual recentered continuation, then includes all descendant bounds
+bottom-up. The rounded continuation's additional envelope stays in these posed certificates, so
+valid raw Bepu triangle bounds and pruning remain unchanged. Exact identity rotation uses direct
+translation enclosures and reuses proved rotation data. An unchanged posed certificate is reused
+only after raw geometry, structure and node snapshots are revalidated. The outer broad-phase bound
+encloses the root union. Cached snapshots bind this proof
+to the current installation and mutation pose.
+
+A query checks each examined node against that snapshot, uses closed world-bound overlap and visits
+A first with B pending. Every pruned branch therefore retains a proved descendant enclosure. Node,
+leaf and pending ceilings remain 8192, 4096 and 128. Relevant triangles consume the shared 4096
+primitive account even after Hit(0). All required triangles must complete before publication.
+Installation and mutation may scan the mesh. Warm queries traverse its existing tree and allocate
+nothing. There is no total-mesh triangle cap or replacement spatial index.
+
 ### GS-10. Aggregate every supported compound descendant
 
 Use the installer's actual flattened leaves and each stored child pose, including hull centering.

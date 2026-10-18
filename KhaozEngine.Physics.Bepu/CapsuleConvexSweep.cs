@@ -9,12 +9,12 @@ internal static class CapsuleConvexSweep
 {
     internal static CapsuleSweepResult Sweep(in InstalledSweepLeaf leaf, Vector3 centre,
         float radius, float halfCylinderLength, Vector3 displacement, float maximumErrorMetres,
-        ref CapsuleSweepWork work, CapsuleSweepScratch scratch)
+        ref CapsuleSweepWork work, CapsuleSweepScratch scratch, bool admitted = false)
     {
         if (!leaf.Map.IsResolved || !float.IsFinite(radius) || radius <= 0 ||
             !float.IsFinite(halfCylinderLength) || halfCylinderLength < 0 ||
             !float.IsFinite(maximumErrorMetres) || maximumErrorMetres < 0 ||
-            !CapsuleSweepPath.Point(centre, displacement, 0).IsResolved || !work.Primitive()) return default;
+            !CapsuleSweepPath.Point(centre, displacement, 0).IsResolved || (!admitted && !work.Primitive())) return default;
         double length = Math.Sqrt((double)displacement.X * displacement.X +
             (double)displacement.Y * displacement.Y + (double)displacement.Z * displacement.Z);
         if (!float.IsFinite((float)length)) return default;

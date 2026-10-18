@@ -18,14 +18,18 @@ internal sealed class InstalledSweepGeometry
     internal TypedIndex Root { get; }
     internal TypedIndex Shape { get; }
     internal RigidPose LocalPose { get; }
+    internal InstalledMeshSweepGeometry? Mesh { get; }
+    internal bool IsTriangle { get; }
+    internal InstalledSweepGeometry? SweepCompanion { get; set; }
     internal bool IsHull => _installedPoints is not null;
     internal Vector3 Half { get; }
-    internal int VertexCount => _vertices.Length;
+    internal int VertexCount => Mesh is { } mesh ? mesh.Count * 3 : _vertices.Length;
     internal int FaceCount => _faces.Length;
     internal int SurfaceCount => _faces.Length;
     internal int EdgeCount => _edges.Length;
-    internal int FeatureCount => SurfaceCount + EdgeCount + VertexCount + 1;
+    internal int FeatureCount => SurfaceCount + EdgeCount + VertexCount + (IsTriangle ? 0 : 1);
     internal RigidPose LeafPose { get; private set; }
+    internal RigidPose ParentPose => _pose;
     RigidPose _pose;
     InstalledPoseOperator _operator;
     bool _posed;
@@ -56,7 +60,22 @@ internal sealed class InstalledSweepGeometry
         for (int i = 0; i < _edges.Length; i++) _edges[i] = (topology.Edges[i].A, topology.Edges[i].B);
     }
 
-    internal Vector3 Vertex(int index) => _vertices[index];
+    internal InstalledSweepGeometry(Shapes owner, TypedIndex root, InstalledMeshSweepGeometry mesh)
+    {
+        Owner = owner; Root = Shape = root; Mesh = mesh;
+        LocalPose = new(Vector3.Zero, Quaternion.Identity);
+        _vertices = []; _faces = []; _edges = [];
+    }
+
+    internal InstalledSweepGeometry(Shapes owner, TypedIndex root, in Triangle triangle, RigidPose? local = null)
+    {
+        Owner = owner; Root = Shape = root; IsTriangle = true;
+        LocalPose = local ?? new RigidPose(Vector3.Zero, Quaternion.Identity);
+        _vertices = [triangle.A, triangle.B, triangle.C];
+        _faces = [[0, 1, 2]]; _edges = [(0, 1), (1, 2), (2, 0)];
+    }
+
+    internal Vector3 Vertex(int index) => Mesh is { } mesh ? mesh.Vertex(index) : _vertices[index];
     internal int FaceVertex(int face, int index) => _faces[face][index];
     internal int InteriorFaceVertex(int face, int index) => _faces[face][index];
     internal int InteriorFaceSize(int face) => _faces[face].Length;
@@ -74,6 +93,7 @@ internal sealed class InstalledSweepGeometry
     internal bool Matches(Shapes shapes, TypedIndex root)
     {
         if (!ReferenceEquals(Owner, shapes) || root.Type != Root.Type || root.Index != Root.Index) return false;
+        if (Mesh is { } mesh) return mesh.Matches(shapes, root);
         if (!IsHull) return CapsuleSweepGeometry.TryReadIdentityBox(shapes, root,
             new RigidPose(Vector3.Zero, Quaternion.Identity), out Box box) &&
             new Vector3(box.HalfWidth, box.HalfHeight, box.HalfLength) == Half;

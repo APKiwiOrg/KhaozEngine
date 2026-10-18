@@ -1,6 +1,6 @@
 # Task 4 certified capsule sweep prerequisite
 
-Status: historical prerequisite design with the current rotated-box and hull extensions recorded below.
+Status: historical prerequisite design with the current rotated-box, hull and mesh extensions recorded below.
 The checkpoint sections retain the evidence and limits of their original slices. Current consumer
 use and restrictions live in the [backend README](../../KhaozEngine.Physics.Bepu/README.md).
 
@@ -32,7 +32,7 @@ or bracket disagreement beyond the unchanged 0.001 m ceiling refuses atomically.
 `CertifiedRotatedBoxSweepTests`, `CertifiedSweepPolynomialTests`, `CertifiedSweepBoundsTests` and
 `CertifiedSweepLifetimeTests` carry this extension's geometric, exact, lifecycle and allocation gates.
 The real hidden-crate lift retains both GS-14 dimension pairs. Independent rational installed-point
-oracles check face, edge and vertex entries. Mesh and general compound sweeps remain refused. This
+oracles check face, edge and vertex entries. General compound sweeps remain refused. This
 family does not imply native G1b, movement cost-scene acceptance, navigation or consumer adoption.
 
 ## Installed hull family extension
@@ -57,6 +57,18 @@ topology may still exhaust a query budget and refuse atomically. `CertifiedHullS
 `CertifiedHullSweepLifetimeTests` cover native reuse, centroid compensation, static/dynamic poses,
 nonzero-Y frames, bound repair, exact fallback and zero warm allocation. General compound composition,
 authored multi-hull stairs acceptance and movement adoption remain later family gates.
+
+## Finite static mesh extension
+
+Finite scaled triangle faces, edges and vertices now use the shared distance/root kernel without
+solid occupancy. The captured original triangle and Bepu's rounded centroid continuation both complete
+before a result is published. Their complete bracket union must fit the unchanged 0.001 m ceiling.
+Initial closed front contact is distinct from directional culling. Default raw sweeps retain their
+back-face row. Stationary/back/crossing relationships without a proved contact agreement refuse.
+The exact [side/filter matrix](CERTIFIED-GENERAL-SWEEPS-2026-10-18.md#installed-mesh-implementation-and-pinned-side-policy)
+and pinned source symbols are recorded in GS-9. `CertifiedMeshSweepTests`,
+`CertifiedMeshSweepCoverageTests` and `CertifiedMeshSweepLifetimeTests` carry these gates.
+General compounds and movement acceptance remain later tasks.
 
 ## Source facts
 

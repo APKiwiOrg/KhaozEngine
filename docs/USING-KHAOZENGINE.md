@@ -9518,8 +9518,13 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   a validated `CapsuleSweepResult` value. Bepu certifies identity boxes, admitted rotated boxes and
   installed convex hulls, including `ShapeFactory`'s exact single-hull centroid wrapper. Hull topology
   and installed vertex identity must be proved within 256 faces, 508 vertices and 1524 face-index
-  entries. The child offset is preserved. A hull is never replaced by its AABB. Meshes, general
-  compounds and other primitives still refuse.
+  entries. The child offset is preserved. A hull is never replaced by its AABB. Finite static triangle
+  meshes now retain positive installed scale, raw triangle identity, sidedness and closed boundaries.
+  Their inner traversal and separate recentered sweep continuation must be proved. The
+  [side/filter matrix](design/CERTIFIED-GENERAL-SWEEPS-2026-10-18.md#installed-mesh-implementation-and-pinned-side-policy)
+  distinguishes initial front contact from direction-based culling and raw back-face blocking.
+  Unproved sides, degeneracy, continuation or work refuse. General compounds and other primitives
+  still refuse.
   General poses require proved forward/operational correspondence and a complete bracket within
   0.001 m. The [backend domain and work ceilings](../KhaozEngine.Physics.Bepu/README.md) apply. Default is
   `Unresolved` without a usable prefix. `IsComplete` reports structural Clear/Hit status, not proof of

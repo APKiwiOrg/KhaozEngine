@@ -51,6 +51,16 @@ internal readonly struct InstalledPoseOperator
             EqualsExact(xdy, 0) && EqualsExact(xdz, 0) && EqualsExact(ydz, 0) && EqualsExact(Determinant, 1);
     }
 
+    InstalledPoseOperator(in InstalledPoseOperator source, Vector3 position)
+    {
+        this = source;
+        Translation = FeaturePoint.Exact(position);
+    }
+
+    // Translation changes none of the already proved rotation, determinant or Gram data.
+    internal InstalledPoseOperator WithTranslation(Vector3 position) => IsResolved &&
+        Within(position, RepresentedGeometryTransforms.MaximumPositionMagnitude) ? new(this, position) : default;
+
     internal static bool TryCreate(in RigidPose pose, out InstalledPoseOperator result)
     {
         result = default;

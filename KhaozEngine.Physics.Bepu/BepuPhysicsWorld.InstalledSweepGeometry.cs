@@ -38,8 +38,8 @@ public sealed partial class BepuPhysicsWorld
         if (!TryGetInstalledSweepGeometry(reference, out InstalledSweepGeometry? geometry)) return false;
         if (geometry is not null && !geometry.Matches(_sim.Shapes, shape)) return false;
         proved = IdentityBoxSweepBounds(shape, pose, min, max);
-        if (geometry is null || proved || (!geometry.IsHull && pose.Orientation == Quaternion.Identity) ||
-            !InstalledSweepBounds.TryCreate(geometry, pose, out _, out _)) return true;
+        if (geometry is null || proved || (!geometry.IsHull && geometry.Mesh is null && pose.Orientation == Quaternion.Identity)) return true;
+        if (!InstalledSweepBounds.TryCreate(geometry, pose, out _, out _)) return geometry.Mesh is null;
         if (!ProveOrExpandSweepBounds(reference, geometry, pose)) return false;
         proved = true;
         return true;

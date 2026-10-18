@@ -66,7 +66,7 @@ internal static class CapsuleSweepFeatureDistance
             if (count >= scratch.Eligibility.Length) { w.Refuse(); return; }
             scratch.Eligibility[count++] = new(constant, slope);
         }
-        if (featureIndex == geometry.FeatureCount - 1)
+        if (!geometry.IsTriangle && featureIndex == geometry.FeatureCount - 1)
         {
             if (axisRegime == 2)
             { regime = new(zero, zero, zero, scratch.Eligibility, 0, true); return w.IsResolved; }
@@ -126,6 +126,9 @@ internal static class CapsuleSweepFeatureDistance
         if (invertible == GeometrySign.Zero)
         { regime = new(zero, zero, zero, scratch.Eligibility, 0, true); return w.IsResolved; }
         if (invertible != GeometrySign.Positive) return false;
+        bool endpointRegion = geometry.IsTriangle && axisRegime != 2 && halfCylinderLength > 0;
+        Point residual0 = endpointRegion ? Scale(offset, denominator, w) : default;
+        Point residual1 = endpointRegion ? Scale(d, denominator, w) : default;
         Span<int> parameters = stackalloc int[4];
         for (int row = 0; row < rank; row++)
         {
@@ -135,9 +138,14 @@ internal static class CapsuleSweepFeatureDistance
                 p0 = w.Add(p0, w.Multiply(adjugate[row * 3 + column], Dot(columns[column], offset, w)));
                 p1 = w.Add(p1, w.Multiply(adjugate[row * 3 + column], Dot(columns[column], d, w)));
             }
+            if (endpointRegion)
+            {
+                residual0 = Sub(residual0, Scale(columns[row], p0, w), w);
+                residual1 = Sub(residual1, Scale(columns[row], p1, w), w);
+            }
             if (row < dimension)
             {
-                if (geometry.IsHull && dimension == 2)
+                if ((geometry.IsHull || geometry.IsTriangle) && dimension == 2)
                 { parameters[row * 2] = p0; parameters[row * 2 + 1] = p1; }
                 else
                 {
@@ -152,7 +160,18 @@ internal static class CapsuleSweepFeatureDistance
                 Bound(w.Subtract(h, p0), w.Negate(p1));
             }
         }
-        if (geometry.IsHull && dimension == 2)
+        if (endpointRegion)
+        {
+            // At the lower axis endpoint the distance derivative into the segment is
+            // nonnegative. At the upper endpoint it is nonpositive. The eliminated
+            // target parameters leave this derivative linear in the original fraction.
+            // Every global closest pair satisfies one of these closed endpoint regions
+            // or the existing interior-axis regime. This avoids proving redundant cap
+            // events without changing the distance, path or any numerical/work ceiling.
+            int side0 = Dot(residual0, axis, w), side1 = Dot(residual1, axis, w);
+            Bound(axisRegime == 0 ? side0 : w.Negate(side0), axisRegime == 0 ? side1 : w.Negate(side1));
+        }
+        if ((geometry.IsHull || geometry.IsTriangle) && dimension == 2)
         {
             // Test the original polygon, without artificial fan diagonals. Gram parameters
             // describe its projected closest point with a proved positive denominator.

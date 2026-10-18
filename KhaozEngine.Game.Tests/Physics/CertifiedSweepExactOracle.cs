@@ -86,6 +86,32 @@ internal static class CertifiedSweepExactOracle
         return (Math.Min(exact.Lower, represented.Lower), Math.Max(exact.Upper, represented.Upper));
     }
 
+    internal static (double Lower, double Upper) TriangleEntry(BepuPhysicsWorld world, StaticHandle handle,
+        int triangleIndex, Vector3 centre, float radius, float halfCylinderLength, Vector3 delta)
+    {
+        using IPhysicsQueryLease lease = world.AcquireQueryReadLease();
+        var simulation = CertifiedGeneralSweepFixture.Sim(world);
+        var entry = CertifiedGeneralSweepFixture.Static(world, handle);
+        simulation.Statics.GetDescription(entry.Handle, out var installed);
+        ref Mesh mesh = ref simulation.Shapes.GetShape<Mesh>(entry.Shape.Index);
+        mesh.GetLocalChild(triangleIndex, out Triangle triangle);
+        (double Lower, double Upper) Evaluate(M map)
+        {
+            var vertices = new List<V>();
+            foreach (Vector3 point in new[] { triangle.A, triangle.B, triangle.C })
+            {
+                V transformed = map.Apply(V.From(point)) + V.From(installed.Pose.Position);
+                V shift = V.UnitY * R.From(halfCylinderLength);
+                vertices.Add(transformed - shift); vertices.Add(transformed + shift);
+            }
+            return Entry(vertices.ToArray(), centre, radius, delta);
+        }
+        var exact = Evaluate(Real(installed.Pose.Orientation));
+        var represented = Evaluate(Represented(installed.Pose.Orientation));
+        lease.AssertCurrent();
+        return (Math.Min(exact.Lower, represented.Lower), Math.Max(exact.Upper, represented.Upper));
+    }
+
     static (double Lower, double Upper) Entry(M map, V translation, Box box, Vector3 centre,
         float radius, float halfCylinderLength, Vector3 delta)
     {
@@ -107,6 +133,7 @@ internal static class CertifiedSweepExactOracle
         R radiusSquared = R.From(radius).Square();
         R? bestLower = null, bestUpper = null;
         var planes = new List<(V Normal, V Anchor)>();
+        bool fullDimensional = false;
         for (int i = 0; i < vertices.Length; i++)
             for (int j = i + 1; j < vertices.Length; j++)
                 for (int k = j + 1; k < vertices.Length; k++)
@@ -121,6 +148,7 @@ internal static class CertifiedSweepExactOracle
                         positive |= side > R.Zero;
                         negative |= side < R.Zero;
                     }
+                    fullDimensional |= positive || negative;
                     if (positive && negative) continue;
                     planes.Add((positive ? normal * new R(-1, 1) : normal, a));
                     R uu = u.LengthSquared, uv = V.Dot(u, v), vv = v.LengthSquared;
@@ -152,7 +180,7 @@ internal static class CertifiedSweepExactOracle
                     [(p0, p1), (denominator - p0, -p1)]);
             }
         }
-        bool inside = true;
+        bool inside = fullDimensional;
         foreach (var plane in planes)
             inside &= V.Dot(start - plane.Anchor, plane.Normal) <= R.Zero;
         if (inside) bestLower = bestUpper = R.Zero;

@@ -1,6 +1,6 @@
 # Swimming Task 4 candidate coverage
 
-Status: historical candidate proposal with the installed rotated-box and hull extensions recorded below.
+Status: historical candidate proposal with the installed rotated-box, hull and mesh extensions recorded below.
 The checkpoint sections retain their original evidence. Current restrictions live in the
 [backend README](../../KhaozEngine.Physics.Bepu/README.md).
 
@@ -29,8 +29,8 @@ Candidate aggregation completes every selected leaf after an earlier Hit(0). Cel
 descendant, exact-storage and arithmetic exhaustion discard the entire result. Warm queries borrow
 private retained scratch. Nested loans and two simultaneous owner intervals keep active workspaces
 separate. The [general-sweep contract](CERTIFIED-GENERAL-SWEEPS-2026-10-18.md) fixes the unchanged
-1,000,000 m stored-coordinate ceiling and all finite work ceilings. Mesh, general compound and other
-primitive sweep bounds remain unproved families until their own tasks land.
+1,000,000 m stored-coordinate ceiling and all finite work ceilings. General compound and other primitive
+sweep bounds remain unproved families until their own tasks land.
 
 ## Installed hull evidence
 
@@ -46,6 +46,19 @@ common forward operator and pinned rounded point graph, then use the existing ow
 and ancestor checks. A far certified hull no longer poisons Clear. Invalid topology, failed bounds,
 stale pose or exhausted work still discards the whole query, including an earlier identity-box Hit(0).
 Restricted views and mobility use the unchanged owner-scoped interval and selected set.
+
+## Installed mesh evidence
+
+Mesh capture retains actual raw triangle indices, strictly positive scale and both original and
+recentered sweep geometry. Mutation proof validates every tree member and link, repairs finite inward
+leaf bounds through the owning update/refit path, then proves scaled/posed ancestor enclosures.
+Invalid inner structure or nonfinite bounds invalidate owner evidence even under view exclusion.
+Queries compare examined nodes with that proof, prune only closed proved bounds and complete every
+relevant triangle. The inner limits remain 8192 nodes, 4096 leaves and 128 pending branches, with
+4096 primitive descendants across the whole query. No earlier Hit(0) can hide exhaustion or a late
+unresolved triangle. Sparse large meshes retain tree pruning and have no total triangle cap.
+The [GS-9 source/side audit](CERTIFIED-GENERAL-SWEEPS-2026-10-18.md#installed-mesh-implementation-and-pinned-side-policy)
+also records the source-derived stationary and directional eligibility rules.
 
 ## Problem
 

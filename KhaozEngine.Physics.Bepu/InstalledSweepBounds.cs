@@ -48,6 +48,46 @@ internal static class InstalledSweepBounds
         GeometryInterval bound = Term(6, Spacing(extent)).Add(Term(3, Spacing(4 * extent)))
             .Add(Term(2, Spacing(16 * extent))).Add(Term(1, Spacing(2d * halfCylinderLength)))
             .Add(Term(1, Spacing(16 * (extent + halfCylinderLength))));
+        if (leaf.Geometry.IsTriangle && leaf.Geometry.LocalPose.Position != Vector3.Zero)
+        {
+            // Mesh recentering adds the rotated child offset after the original relative
+            // root path in ConvexSweepTaskCommon.ConstructSamples. A composed world pose
+            // adds it before subtracting the query. Cancellation can make those intermediate
+            // magnitudes much larger than the final leaf offset, so account for them explicitly.
+            RigidPose root = leaf.Geometry.ParentPose;
+            if (!InstalledPoseOperator.TryCreate(root, out var rootMap)) return false;
+            GeometryVector offset = rootMap.RoundedDirection(FeaturePoint.Exact(leaf.Geometry.LocalPose.Position).Bounds);
+            if (!offset.IsResolved) return false;
+            double h = Math.Max(Math.Max(Math.Abs(offset.X.Lower), Math.Abs(offset.X.Upper)),
+                Math.Max(Math.Max(Math.Abs(offset.Y.Lower), Math.Abs(offset.Y.Upper)), Math.Max(Math.Abs(offset.Z.Lower), Math.Abs(offset.Z.Upper))));
+            double m = 0, p = 0;
+            for (int component = 0; component < 3; component++)
+            {
+                double start = component == 0 ? centre.X : component == 1 ? centre.Y : centre.Z;
+                double delta = component == 0 ? displacement.X : component == 1 ? displacement.Y : displacement.Z;
+                double origin = component == 0 ? root.Position.X : component == 1 ? root.Position.Y : root.Position.Z;
+                GeometryInterval first = GeometryInterval.Exact(origin).Subtract(GeometryInterval.Exact(start));
+                GeometryInterval last = first.Subtract(GeometryInterval.Exact(delta));
+                if (!first.IsResolved || !last.IsResolved) return false;
+                m = Math.Max(m, Math.Max(Math.Max(Math.Abs(first.Lower), Math.Abs(first.Upper)), Math.Max(Math.Abs(last.Lower), Math.Abs(last.Upper))));
+                p = Math.Max(p, Math.Abs(origin));
+            }
+            // One initial subtraction, one displacement product, one path sum, one
+            // child sum and the composed-pose sum. Propagate that offset error through
+            // the actual absolute transpose row sums, retaining outward accumulation.
+            GeometryInterval extra = Term(1, Spacing(m)).Add(Term(1, Spacing(2 * m)))
+                .Add(Term(1, Spacing(4 * m))).Add(Term(1, Spacing(4 * m + h))).Add(Term(1, Spacing(p + h)));
+            double norm = 0;
+            for (int rowIndex = 0; rowIndex < 3; rowIndex++)
+            {
+                FeaturePoint row = rowIndex == 0 ? map.RepresentedX : rowIndex == 1 ? map.RepresentedY : map.RepresentedZ;
+                GeometryInterval sum = GeometryInterval.Exact(Math.Abs(row.X.Value)).Add(GeometryInterval.Exact(Math.Abs(row.Y.Value)))
+                    .Add(GeometryInterval.Exact(Math.Abs(row.Z.Value)));
+                if (!sum.IsResolved) return false;
+                norm = Math.Max(norm, sum.Upper);
+            }
+            bound = bound.Add(extra.Multiply(GeometryInterval.Exact(norm)));
+        }
         if (!bound.IsResolved) return false;
         error = bound.Upper;
         return double.IsFinite(error);
@@ -67,6 +107,13 @@ internal static class InstalledSweepBounds
         minimum = maximum = default;
         if (!geometry.TryComposePose(pose, out RigidPose leafPose) ||
             !InstalledPoseOperator.TryCreate(leafPose, out InstalledPoseOperator map)) return false;
+        if (geometry.Mesh is { } mesh)
+        {
+            if (!mesh.ProvePose(pose, map)) return false;
+            (minimum, maximum) = mesh.RootBounds;
+            return InstalledPoseOperator.Within(minimum, CapsuleGeneralSweepPolicy.MaximumStoredCoordinate) &&
+                InstalledPoseOperator.Within(maximum, CapsuleGeneralSweepPolicy.MaximumStoredCoordinate);
+        }
         Vector3 min = new(float.PositiveInfinity), max = new(float.NegativeInfinity);
         for (int i = 0; i < geometry.VertexCount; i++)
         {
@@ -85,12 +132,27 @@ internal static class InstalledSweepBounds
         return true;
     }
 
-    static float Down(double value)
+    internal static bool TryPoint(InstalledPoseOperator map, RigidPose pose, Vector3 point,
+        out Vector3 minimum, out Vector3 maximum)
+    {
+        minimum = maximum = default;
+        FeaturePoint affine = map.Point(point, exactZeroProducts: true);
+        GeometryVector rounded = RepresentedGeometryTransforms.PosePoint(new Pose(pose.Position, pose.Orientation), point);
+        if (!affine.IsResolved || !rounded.IsResolved) return false;
+        minimum = new(Down(Math.Min(affine.X.Bounds.Lower, rounded.X.Lower)),
+            Down(Math.Min(affine.Y.Bounds.Lower, rounded.Y.Lower)), Down(Math.Min(affine.Z.Bounds.Lower, rounded.Z.Lower)));
+        maximum = new(Up(Math.Max(affine.X.Bounds.Upper, rounded.X.Upper)),
+            Up(Math.Max(affine.Y.Bounds.Upper, rounded.Y.Upper)), Up(Math.Max(affine.Z.Bounds.Upper, rounded.Z.Upper)));
+        return InstalledPoseOperator.Within(minimum, CapsuleGeneralSweepPolicy.MaximumStoredCoordinate) &&
+            InstalledPoseOperator.Within(maximum, CapsuleGeneralSweepPolicy.MaximumStoredCoordinate);
+    }
+
+    internal static float Down(double value)
     {
         float result = (float)value;
         return result > value ? MathF.BitDecrement(result) : result;
     }
-    static float Up(double value)
+    internal static float Up(double value)
     {
         float result = (float)value;
         return result < value ? MathF.BitIncrement(result) : result;

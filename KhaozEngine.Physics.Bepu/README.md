@@ -236,7 +236,8 @@ dimensions, identical restrictions and validation. Changing an endpoint-rounding
 allocate a persistent shape.
 
 The owner and restricted query views implement `IPhysicsCapsuleSweep` for identity boxes and
-admitted rotated boxes and convex hulls at their current installed static or dynamic pose. The identity-box kernel
+admitted rotated boxes and convex hulls at their current installed static or dynamic pose, plus
+finite static triangle meshes with strictly positive finite installed scale. The identity-box kernel
 is unchanged. Rotated boxes use eight installed corners, six finite faces, twelve edges, capsule
 axis endpoint/interior regimes and closed solid occupancy. They are never replaced by an AABB or
 independently inflated planes. [The general sweep contract](../docs/design/CERTIFIED-GENERAL-SWEEPS-2026-10-18.md)
@@ -256,9 +257,17 @@ installed by `ShapeFactory` retains its child typed index and offset. Finite pol
 vertices and closed interior share the box convex kernel. A tetrahedron has four faces, four vertices,
 six edges and four surface triangles. Its empty AABB corners remain clear. Topology caps are 256 faces,
 508 vertices and 1524 face-index entries. A cap is not a promise that every query fits the work budget.
-Meshes, general compounds, spheres, capsules and cylinders remain unsupported sweep families.
+Mesh triangles reuse finite face, edge and vertex distance without solid occupancy. Raw triangle
+identities are retained across seams. Installed scaled geometry and Bepu's separately recentered
+sweep continuation must agree within the same complete bracket. The source-derived
+[side/filter matrix](../docs/design/CERTIFIED-GENERAL-SWEEPS-2026-10-18.md#installed-mesh-implementation-and-pinned-side-policy)
+retains initial closed front contact before directional culling, raw back-face sweep hits without
+culling, and culling of perpendicular faces. Unproved initial side agreement, degeneracy, scale,
+continuation, tree structure or work refuses atomically. Inner-tree bounds are proved at mutation,
+with closed checked traversal at query time. Sparse large meshes use pruning rather than a total
+triangle cap. General compounds, spheres, capsules and cylinders remain unsupported sweep families.
 
-Mutation completion encloses actual installed corners or hull vertices and the rounded point graph, repairs inward
+Mutation completion encloses actual installed corners, hull vertices or mesh descendants and the rounded point graph, repairs inward
 bounds through Bepu's owning tree update/refit path, and validates ancestors before publishing evidence.
 Selected unproved bound families refuse even outside the raw aperture. View/mobility exclusions retain
 their source meaning and cannot hide invalid stored evidence. Failed or missed physical mutations stay

@@ -113,7 +113,8 @@ internal static class MapDocumentMembers
                 if (expected is not null &&
                     (!TryGetProperty(obj, "type", out JsonNode? actual) || !JsonNode.DeepEquals(expected, actual))) continue;
                 first ??= candidate;
-                if (ConstantsMatch(obj, fields)) { matched = candidate; break; }
+                // A type-discriminated union admits exactly one alternative, so only an untyped shape compares consts.
+                if (expected is null && ConstantsMatch(obj, fields)) { matched = candidate; break; }
             }
             else
             {

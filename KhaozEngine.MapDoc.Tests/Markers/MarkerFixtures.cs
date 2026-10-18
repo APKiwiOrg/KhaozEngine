@@ -16,7 +16,8 @@ namespace KhaozEngine.Tests.MapDoc.Markers;
 
 internal sealed record MarkerFixture(MapDocument Document, MapAssetClosure Assets);
 
-/// <summary>Public invented marker fixtures. Linked into other test projects, so nothing here reads files.</summary>
+/// <summary>Public invented marker fixtures. Linked into other test projects, so nothing here reads a committed fixture
+/// file. Reload writes and reads back its own temporary storage.</summary>
 internal static partial class MarkerFixtures
 {
     internal const string GoldenResource = "golden-marker";

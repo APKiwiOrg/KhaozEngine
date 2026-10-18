@@ -28,7 +28,9 @@ public static class MapMarkerValidation
                 if (!float.IsFinite(marker.Position.Y)) errors.Add(at + "the explicit height must be finite.");
                 break;
             case 2:
-                if (marker.ArchetypeId is { Length: 0 }) errors.Add(at + "archetypeId must be nonempty when present.");
+                // Blank like the ID, name and role rules above and the released spawn archetype rule.
+                if (marker.ArchetypeId is not null && string.IsNullOrWhiteSpace(marker.ArchetypeId))
+                    errors.Add(at + "archetypeId must be nonblank when present.");
                 Height(marker, at, errors);
                 break;
             default:

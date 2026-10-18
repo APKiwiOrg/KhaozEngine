@@ -180,6 +180,7 @@ public sealed class MapMarkerFormatTests
     [InlineData("null-tags")]
     [InlineData("null-tag")]
     [InlineData("empty-archetype")]
+    [InlineData("blank-archetype")]
     [InlineData("null-archetype")]
     [InlineData("unknown-height-mode")]
     [InlineData("unknown-binding-kind")]
@@ -201,25 +202,78 @@ public sealed class MapMarkerFormatTests
         var root = JsonNode.Parse(MapDocumentFile.SaveText(fixture.Document))!.AsObject();
         Assert.NotNull(MapDocumentFile.LoadText(root.ToJsonString()));
         mutate(DocumentMarker(root, "w-" + form));
-        Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText(Duplicated(root.ToJsonString(), duplicate)));
+        var (documentRefusal, prefabRefusal, writeRefusal) = Refusal(variant);
+        Assert.Contains(documentRefusal, Assert.Throws<MapDocumentException>(() =>
+            MapDocumentFile.LoadText(Duplicated(root.ToJsonString(), duplicate))).Message, StringComparison.Ordinal);
 
         // The prefab payload path runs Preflight, the closed codec and asset validation.
         var asset = JsonNode.Parse(fixture.Assets.GetResource(MarkerFixtures.PayloadTwoResource).Bytes.ToArray())!.AsObject();
         Assert.NotNull(MapPrefabFile.Read(Encoding.UTF8.GetBytes(asset.ToJsonString()), MarkerFixtures.PayloadTwoResource));
         mutate(PrefabMarker(asset, form));
-        Assert.Throws<MapDocumentException>(() => MapPrefabFile.Read(Encoding.UTF8.GetBytes(Duplicated(asset.ToJsonString(), duplicate)), MarkerFixtures.PayloadTwoResource));
+        Assert.Contains(prefabRefusal, Assert.Throws<MapDocumentException>(() =>
+            MapPrefabFile.Read(Encoding.UTF8.GetBytes(Duplicated(asset.ToJsonString(), duplicate)), MarkerFixtures.PayloadTwoResource)).Message, StringComparison.Ordinal);
 
         // The same rule refuses the typed value before any write.
         if (Typed(variant, MarkerFixtures.PayloadTwoMarkers("").Single(m => m.Id == form)) is { } typed)
         {
-            Assert.NotEmpty(MapMarkerValidation.Validate(typed));
+            Assert.NotNull(writeRefusal);
+            Assert.Contains(MapMarkerValidation.Validate(typed), e => e.Contains(writeRefusal, StringComparison.Ordinal));
             var invalid = MarkerFixtures.PayloadTwoAsset() with
             {
                 Children = [new MapPrefabMarkerChild(new(MapPrefabChildKind.Marker, typed.Id), typed)],
             };
-            Assert.Throws<MapDocumentException>(() => MapPrefabFile.Write(invalid));
+            Assert.Contains(writeRefusal, Assert.Throws<MapDocumentException>(() => MapPrefabFile.Write(invalid)).Message, StringComparison.Ordinal);
         }
+        else Assert.Null(writeRefusal);
     }
+
+    // The refusal each path names: the document member gate or codec, the prefab codec, and the typed rule. Each path
+    // names the first rule the case violates there, so a member with the wrong case refuses as an unmapped member.
+    static (string Document, string Prefab, string? Write) Refusal(string variant) => variant switch
+    {
+        "future-payload" => ("unknown property 'heightMode'", "unsupported local marker payload version", "unsupported local marker payload version"),
+        "unknown-member" => ("unknown property 'extra'", "'extra' could not be mapped", null),
+        "case-member" => ("'HeightMode' could not be mapped", "'HeightMode' could not be mapped", null),
+        "duplicate-member" => ("duplicate property", "Duplicate prefab member 'heightMode'", null),
+        "binding-unknown-member" => ("unknown property 'extra'", "support binding member 'extra'", null),
+        "binding-case-member" => ("support binding member 'SurfaceId'", "support binding member 'SurfaceId'", null),
+        "binding-duplicate-member" => ("duplicate property", "Duplicate prefab member 'surfaceId'", null),
+        "payload-two-missing-height" => ("required native member 'heightMode' is missing", PayloadTwoHeight, PayloadTwoHeight),
+        "payload-two-null-height" => ("heightMode: native member must not be null", "Prefab member 'heightMode' must not be null", PayloadTwoHeight),
+        "payload-one-height" => ("unknown property 'heightMode'", PayloadOneMembers, PayloadOneMembers),
+        "payload-one-binding" => ("unknown property 'supportBinding'", PayloadOneMembers, PayloadOneMembers),
+        "payload-one-archetype" => ("unknown property 'archetypeId'", PayloadOneMembers, PayloadOneMembers),
+        "explicit-binding" => Same("an Explicit height has no support binding"),
+        "support-without-binding" => Same(SupportBinding),
+        "support-null-binding" => ("supportBinding: native member must not be null", "Prefab member 'supportBinding' must not be null", SupportBinding),
+        "support-y-one" or "support-negative-zero" => Same("a Support height stores Position.Y exactly +0"),
+        "nonfinite-y" => ("vector components must be finite", "vector components must be finite", "the explicit height must be finite"),
+        "nonfinite-yaw" => Same("yaw must be finite"),
+        "null-tags" => ("tags: native member must not be null", NullTags, NullTags),
+        "null-tag" => ("tags[1]: native member must not be null", NullTags, NullTags),
+        "empty-archetype" or "blank-archetype" => Same("archetypeId must be nonblank when present"),
+        "null-archetype" => ("archetypeId: native member must not be null", "Prefab member 'archetypeId' must not be null", null),
+        "unknown-height-mode" => ("Unsupported exact enum name", "Unsupported exact enum name", PayloadTwoHeight),
+        "unknown-binding-kind" => ("Unsupported marker support binding kind", "Unsupported marker support binding kind", "unsupported support binding kind"),
+        "surface-reference-y" => ("unknown property 'referenceY'", "support binding member 'referenceY'", SurfaceOnly),
+        "surface-search-below" => ("unknown property 'searchBelow'", "support binding member 'searchBelow'", SurfaceOnly),
+        "surface-space-id" => ("unknown property 'spaceId'", "support binding member 'spaceId'", SurfaceOnly),
+        "space-missing-reference-y" => ("required native member 'referenceY' is missing", "missing a member of its kind", SpaceRange),
+        "space-surface-id" => ("unknown property 'surfaceId'", "support binding member 'surfaceId'", "a Space binding names a spaceId and no surfaceId"),
+        "binding-null-member" => ("unknown property 'spaceId'", "binding member 'spaceId' must not be null", null),
+        "space-null-search" => ("searchAbove: native member must not be null", "binding member 'searchAbove' must not be null", SpaceRange),
+        "negative-search" => Same(SpaceRange),
+        "nonfinite-search" => ("'searchAbove' must be a finite number", "'searchAbove' must be a finite number", SpaceRange),
+        _ => throw new ArgumentException("Unknown marker case " + variant),
+    };
+
+    const string PayloadTwoHeight = "payload 2 requires heightMode Explicit or Support";
+    const string PayloadOneMembers = "payload 1 carries no heightMode, supportBinding or archetypeId";
+    const string SupportBinding = "a Support height requires a support binding";
+    const string NullTags = "tags must not be null";
+    const string SurfaceOnly = "a Surface binding names only a surfaceId";
+    const string SpaceRange = "a Space binding requires a finite referenceY and finite nonnegative searchBelow and searchAbove";
+    static (string, string, string?) Same(string message) => (message, message, message);
 
     static (string Form, Action<JsonObject> Mutate, string? Duplicate) Case(string variant)
     {
@@ -249,6 +303,7 @@ public sealed class MapMarkerFormatTests
             "null-tags" => ("explicit", m => m["tags"] = null, null),
             "null-tag" => ("explicit", m => m["tags"] = new JsonArray("first", null), null),
             "empty-archetype" => ("surface", m => m["archetypeId"] = "", null),
+            "blank-archetype" => ("surface", m => m["archetypeId"] = " \t", null),
             "null-archetype" => ("surface", m => m["archetypeId"] = null, null),
             "unknown-height-mode" => ("explicit", m => m["heightMode"] = "Floating", null),
             "unknown-binding-kind" => ("surface", m => Binding(m)["kind"] = "Volume", null),
@@ -282,6 +337,7 @@ public sealed class MapMarkerFormatTests
         "null-tags" => m with { Tags = null! },
         "null-tag" => m with { Tags = new[] { "first", null! } },
         "empty-archetype" => m with { ArchetypeId = "" },
+        "blank-archetype" => m with { ArchetypeId = " \t" },
         "unknown-height-mode" => m with { HeightMode = (MapMarkerHeightMode)7 },
         "unknown-binding-kind" => m with { SupportBinding = m.SupportBinding! with { Kind = (MapSupportBindingKind)9 } },
         "surface-reference-y" => m with { SupportBinding = m.SupportBinding! with { ReferenceY = 1 } },

@@ -136,7 +136,10 @@ public sealed class TrackedPersistenceTests
         using var files = new TestFiles();
         File.WriteAllText(files.Path, "blocker");
         string badPath = System.IO.Path.Combine(files.Path, "save.json");
-        using var queue = new PersistenceQueue(maxAttempts: 2, retryDelay: TimeSpan.Zero);
+        var drains = new DedicatedDrainScheduler();
+        drains.Start();
+        using var queue = new PersistenceQueue(AtomicJsonWriter.WriteText, maxAttempts: 2, retryDelay: TimeSpan.Zero,
+            scheduleDrain: drains.Schedule);
         var notification = new TaskCompletionSource<PersistenceWriteFailedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
         queue.WriteFailed += (_, args) => notification.TrySetResult(args);
 
@@ -190,13 +193,16 @@ public sealed class TrackedPersistenceTests
         try
         {
             Task<PersistenceWriteResult> task = queue.EnqueueTracked(files.Path, "payload");
-            // Attached while the drain is held, so it runs as the completion's continuation.
+            // Attached while the drain is held, so it runs as the completion's continuation. ExecuteSynchronously
+            // would run it on the drain thread, where Flush deadlocks, if the completion ever ran its continuations
+            // inline. The owned scheduler allows that inline run and queues the asynchronous one to a test-owned
+            // thread, so the hang guard below never waits on the pool.
             Task continuation = task.ContinueWith(_ =>
             {
                 queue.Enqueue(files.OtherPath, "followup");
                 queue.Flush();
                 queue.Dispose();
-            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, new OwnedThreadScheduler());
             Assert.False(task.IsCompleted);
             drains.Start();
 
@@ -337,7 +343,8 @@ public sealed class TrackedPersistenceTests
     {
         using var hold = new ControlledHold("unused", Timeout);
         hold.Release();
-        await Task.Run(() => Assert.Throws<InvalidOperationException>(hold.Hold)).WaitAsync(Timeout);
+        // The pool is intentional here: ControlledHold must reject a pool thread.
+        await Task.Run(() => Assert.Throws<InvalidOperationException>(hold.Hold));
         await DedicatedThread.Run(hold.Hold).WaitAsync(Timeout);
     }
 
@@ -348,8 +355,10 @@ public sealed class TrackedPersistenceTests
     {
         using var files = new TestFiles();
         var encoder = new SaveEncoder(new byte[] { 1, 2, 3, 4 }, "TRACKED");
+        var drains = new DedicatedDrainScheduler();
+        drains.Start();
         using var storage = new GameStorage(files.Paths, SaveEncoding.Encoded(encoder),
-            new GameStorageOptions { GameVersion = "test-build" });
+            new GameStorageOptions { GameVersion = "test-build" }, scheduleDrain: drains.Schedule);
         var options = new SaveWriteOptions { Encode = plaintext ? false : null, Summary = "summary" };
         PersistenceWriteResult result = await storage.SaveTracked("save.json", new GameStorageTests.TestSave { Score = 42 }, options).WaitAsync(Timeout);
         string path = files.Paths.GetFilePath("save.json");
@@ -372,7 +381,9 @@ public sealed class TrackedPersistenceTests
     public async Task SaveTracked_plaintext_default_writes_serialized_bytes()
     {
         using var files = new TestFiles();
-        using var storage = new GameStorage(files.Paths, SaveEncoding.Plaintext);
+        var drains = new DedicatedDrainScheduler();
+        drains.Start();
+        using var storage = new GameStorage(files.Paths, SaveEncoding.Plaintext, options: null, scheduleDrain: drains.Schedule);
         PersistenceWriteResult result = await storage.SaveTracked("save.json", new GameStorageTests.TestSave { Score = 42 }).WaitAsync(Timeout);
 
         Assert.Equal(PersistenceWriteOutcome.Saved, result.Outcome);

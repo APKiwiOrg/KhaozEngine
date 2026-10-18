@@ -197,7 +197,8 @@ internal sealed partial class SupportFootprintCollector
         (_contactStarts[index], _contactDirections[index]);
 
     // A certified separation decides Negative before the kernel only where the kernel's verdict is a resolved
-    // Negative. The reference evaluator always runs the kernel.
+    // Negative, and the rectangle certificate only the kernel's own resolved verdict. The reference evaluator always
+    // runs the kernel.
     internal GeometrySign ContactMember(SupportPolygon polygon, int index)
     {
         SupportFootprintProposal proposal = index == 0 ? _request.AxisProposal : _request.FootProposal;
@@ -216,6 +217,9 @@ internal sealed partial class SupportFootprintCollector
         GeometrySign neighbour = SupportPlanarNeighbour.Contact(polygon, _contactStarts[index], _contactDirections[index],
             proposal.Probe.Radius, _request.ContactBand);
         if (neighbour != GeometrySign.Unresolved) return neighbour;
+        GeometrySign rectangle = SupportRectangleContact.Sign(polygon, _contactStarts[index], _contactDirections[index],
+            proposal.Probe.Radius, _request.ContactBand);
+        if (rectangle != GeometrySign.Unresolved) return rectangle;
         SupportDistance distance = _kernel.MeasureFootprintContact(_contactStarts[index], _contactDirections[index],
             polygon, _request.ContactBand);
         if (!distance.IsResolved) return GeometrySign.Unresolved;
@@ -228,7 +232,10 @@ internal sealed partial class SupportFootprintCollector
     bool ContactHeight(SupportPolygon polygon, int index, bool sourceHeight = false)
     {
         SupportFootprintProposal proposal = index == 0 ? _request.AxisProposal : _request.FootProposal;
-        GeometrySign height = SupportFootprintProposalGeometry.Lowest(polygon, proposal, out GeometryInterval bounds, sourceHeight);
+        // The rectangle certificate reproduces the source-height evaluation only.
+        if (!sourceHeight || !SupportRectangleContact.TryLowest(polygon, proposal, out GeometrySign height,
+            out GeometryInterval bounds))
+            height = SupportFootprintProposalGeometry.Lowest(polygon, proposal, out bounds, sourceHeight);
         if (height == GeometrySign.Unresolved) return false;
         if (height != GeometrySign.Positive) return true;
         _contactLow[index] = _hasContactGeometry[index] ? Math.Max(_contactLow[index], bounds.Lower) : bounds.Lower;

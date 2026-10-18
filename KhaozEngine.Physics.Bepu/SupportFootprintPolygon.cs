@@ -5,7 +5,7 @@ namespace KhaozEngine.Physics.Bepu;
 
 /// <summary>Complete convex polygon/disc extrema. Admission uses the connected height interval over the expanded
 /// disc, then support measures the original disc on the whole polygon. No clipping or sweep witness is used.</summary>
-internal static class SupportFootprintPolygon
+internal static partial class SupportFootprintPolygon
 {
     static readonly FeatureNumber Zero = FeatureNumber.Exact(0), One = FeatureNumber.Exact(1);
 
@@ -52,13 +52,23 @@ internal static class SupportFootprintPolygon
             if (column.Minimum.Lower > top || column.Maximum.Upper < bottom) return GeometrySign.Negative;
             if (column.Minimum.Upper > top || column.Maximum.Lower < bottom) return GeometrySign.Unresolved;
         }
-        GeometryVector normalBounds = GeometryVectorOperations.Normalize(polygon.Normal.Bounds);
+        InstalledSupportMemberFacts? facts = polygon.SharedMemberFacts;
+        GeometryVector normalBounds = facts is null
+            ? GeometryVectorOperations.Normalize(polygon.Normal.Bounds) : facts.NormalBounds;
+        if (facts is not null) SupportQueryDiagnostics.Record(SupportQueryCounter.SharedMemberFacts, 2);
+        bool adjusted = false;
         if (normalBounds.IsResolved && normalBounds.Y.Lower < request.CosMaxSlope &&
             normalBounds.Y.Upper >= request.CosMaxSlope && Orientation(polygon) == GeometrySign.Positive &&
             polygon.HasSource && polygon.SourcePredicates.NormalSlope(polygon, request.CosMaxSlope) == GeometrySign.Zero)
+        {
             normalBounds = new(normalBounds.X, GeometryInterval.Exact(request.CosMaxSlope), normalBounds.Z);
-        GeometryVectorOutput normal = GeometryVectorOperations.Publish(normalBounds);
-        GeometryVectorOutput plane = GeometryVectorOperations.Publish(polygon.Vertices[0].Bounds);
+            adjusted = true;
+        }
+        GeometryVectorOutput normal = facts is null || adjusted
+            ? GeometryVectorOperations.Publish(normalBounds) : facts.PublishedNormal;
+        GeometryVectorOutput plane = facts is null
+            ? GeometryVectorOperations.Publish(polygon.Vertices[0].Bounds) : facts.PublishedPlane;
+        if (facts is not null && !adjusted) SupportQueryDiagnostics.Record(SupportQueryCounter.SharedMemberFacts);
         if (!normal.IsResolved || !plane.IsResolved) return GeometrySign.Unresolved;
         Range disc = default;
         GeometrySign orientation = Orientation(polygon);
@@ -122,6 +132,8 @@ internal static class SupportFootprintPolygon
         out Range range)
     {
         range = default;
+        if (!SupportReferenceEvaluation.Active && TryStairExtrema(polygon, request, radius, ref range,
+            out GeometrySign stair)) return stair;
         FeaturePoint axis = new(FeatureNumber.Exact(request.Axis.X), Zero, FeatureNumber.Exact(request.Axis.Y));
         GeometrySign orientation = Orientation(polygon);
         if (orientation == GeometrySign.Unresolved) return orientation;

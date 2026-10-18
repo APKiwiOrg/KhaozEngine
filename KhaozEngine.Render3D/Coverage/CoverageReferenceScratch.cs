@@ -15,6 +15,7 @@ internal sealed class CoverageReferenceScratch
         After = new ModelVertex[topology.VertexCount];
         Published = new ModelVertex[topology.VertexCount];
         GroupPositions = new Vector3[topology.PositionGroupCount];
+        ActiveGroupRepresentatives = new int[topology.PositionGroupCount];
         FullRecessions = new float[topology.PositionGroupCount];
         Corrections = new float[topology.PositionGroupCount];
         FaceCorrections = new float[topology.TriangleCount];
@@ -31,6 +32,7 @@ internal sealed class CoverageReferenceScratch
     internal ModelVertex[] After { get; }
     internal ModelVertex[] Published { get; }
     internal Vector3[] GroupPositions { get; }
+    internal int[] ActiveGroupRepresentatives { get; }
     internal float[] FullRecessions { get; }
     internal float[] Corrections { get; }
     internal float[] FaceCorrections { get; }

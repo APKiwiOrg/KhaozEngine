@@ -129,7 +129,7 @@ public partial class SupportFootprintTests
     }
 
     [Fact]
-    public void SlopeAdjustedNormalIsNeverShared()
+    public void RepresentedHorizontalNormalKeepsEverySlopeQueryIndependent()
     {
         using var counters = new WorldFormCounters();
         var world = new BepuPhysicsWorld(Vector3.Zero);
@@ -140,7 +140,9 @@ public partial class SupportFootprintTests
         InstalledSupportWorldFace top = scene.Form(scene.Owners().Single())!.Leaves[0].Faces.ToArray()
             .Single(face => face.Orientation == GeometrySign.Positive);
         GeometryVector unadjusted = GeometryVectorOperations.Normalize(top.Normal.Bounds);
-        Assert.True(unadjusted.Y.Lower < 1 && unadjusted.Y.Upper >= 1);
+        Assert.Equal(GeometryInterval.Exact(1), unadjusted.Y);
+        Assert.Equal(GeometryInterval.Exact(0), unadjusted.X);
+        Assert.Equal(GeometryInterval.Exact(0), unadjusted.Z);
         var polygon = new SupportPolygon();
         polygon.Bind(scene.Owners().Single(), top);
         foreach (float cosine in new[] { 1f, 0.7f, 1f })

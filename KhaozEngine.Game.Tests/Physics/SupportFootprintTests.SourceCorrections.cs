@@ -30,14 +30,18 @@ public partial class SupportFootprintTests
         Assert.Equal(SupportProposalStatus.Contact, result.FootVerdict.Status);
         Assert.Contains(members.Take(result.Members), m => !m.HasDiscMaximum);
         Assert.Contains(members.Take(result.Members), m => m.HasDiscMaximum && m.DiscHeightLower <= 0.25 && m.DiscHeightUpper >= 0.25);
-        AssertSourceFallbacks();
-        var walls = CapturedPolygons(scene, request).Where(p => p.Normal.Y.Sign == GeometrySign.Unresolved).ToArray();
+        var walls = CapturedPolygons(scene, request).Where(p =>
+        {
+            OracleFace face = scene.Faces.Single(f => f.Static == p.Static && f.ElementId == p.ElementId);
+            return SupportFootprintExactOracle.Normal(SupportFootprintExactOracle.Vertices(face)).Y == InstalledPoseOracle.R.Zero;
+        }).ToArray();
         Assert.NotEmpty(walls);
         foreach (SupportPolygon wall in walls)
         {
             SupportQueryDiagnostics.Reset();
             Assert.Equal(GeometrySign.Negative, SupportFootprintProposalGeometry.Lowest(wall, request.FootProposal, out _));
-            AssertSourceFallbacks();
+            Assert.Equal(GeometrySign.Zero, wall.SourcePredicates.NormalComponent(wall, 1));
+            Assert.Equal(GeometrySign.Zero, wall.Orientation);
         }
     }
 
@@ -63,16 +67,16 @@ public partial class SupportFootprintTests
             .Add(polygon.Normal.Z.Multiply(first.Z.Subtract(z), exactZeroProducts: true)).Divide(polygon.Normal.Y));
         var point = new FeaturePoint(x, y, z);
         for (int i = 0; i < polygon.Edges.Length; i++)
-            Assert.Equal(boundary && i == 0 ? GeometrySign.Unresolved : GeometrySign.Positive, polygon.EdgeSide(point, i));
+            Assert.Equal(boundary && i == 0 ? GeometrySign.Zero : GeometrySign.Positive, polygon.EdgeSide(point, i));
         Assert.Equal(boundary ? GeometrySign.Zero : GeometrySign.Positive,
             polygon.SourcePredicates.ProposalInterior(polygon, point, axis, radius));
-        Assert.Equal(boundary ? 1 : 0, SupportQueryDiagnostics.Snapshot().ExactFallbacks);
+        Assert.Equal(0, SupportQueryDiagnostics.Snapshot().ExactFallbacks);
     }
 
     [Theory]
-    [InlineData(false, 4)]
-    [InlineData(true, 9)]
-    public void WarmEnclosedSourceInteriorKeepsScratchBounded(bool general, int variables)
+    [InlineData(false)]
+    [InlineData(true)]
+    public void WarmRepresentedSourceInteriorKeepsScratchBounded(bool general)
     {
         using var diagnostics = new SourceDiagnosticScope();
         using var scene = new SupportFootprintScene();
@@ -84,8 +88,10 @@ public partial class SupportFootprintTests
         var request = Request();
         var polygon = Assert.Single(CapturedMesh(scene, request));
         var map = polygon.SourceMap;
-        Assert.Equal(variables, new[] { map.X.X, map.X.Y, map.X.Z, map.Y.X, map.Y.Y, map.Y.Z,
-            map.Z.X, map.Z.Y, map.Z.Z }.Count(c => GeometryInterval.Exact(c).Lower != GeometryInterval.Exact(c).Upper));
+        var represented = InstalledPoseOracle.Represented(rotation);
+        Assert.Equal(represented.X, InstalledPoseOracle.V.From(map.X));
+        Assert.Equal(represented.Y, InstalledPoseOracle.V.From(map.Y));
+        Assert.Equal(represented.Z, InstalledPoseOracle.V.From(map.Z));
         var axis = FeaturePoint.Exact(Vector3.Zero);
         var radius = FeatureNumber.Exact(request.Radius);
         // Include cold sparse terms and the structural scratch inspection before the warm window.
@@ -94,8 +100,12 @@ public partial class SupportFootprintTests
         GeometrySign cold = polygon.SourcePredicates.Interior(polygon, 1, axis, radius, -1, spatial: true);
         long coldBytes = GC.GetAllocatedBytesForCurrentThread() - coldBefore;
         Assert.Equal(GeometrySign.Positive, cold);
+        var constants = (SupportSourcePolynomial[])typeof(SupportFootprintSourcePredicates)
+            .GetField("_map", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(polygon.SourcePredicates)!;
+        Assert.Equal(9, constants.Length);
+        Assert.All(constants, coefficient => Assert.Equal(0, coefficient.Degree));
         long payload = SourceScratchPayload(polygon.SourcePredicates);
-        _output.WriteLine($"Enclosed source variables={variables} coldBytes={coldBytes} scratchPayloadBytes={payload}");
+        _output.WriteLine($"Represented source constants={constants.Length} coldBytes={coldBytes} scratchPayloadBytes={payload}");
         Assert.True(payload < 4 * 1024 * 1024, $"Retained source scratch is {payload} bytes");
         SupportQueryDiagnostics.Reset();
         var recorder = new SupportCostAttributionTests.PhaseRecorder(false);
@@ -119,7 +129,7 @@ public partial class SupportFootprintTests
         Assert.Equal(0, warmBytes);
         AssertSourceFallbacks();
         Assert.Equal(payload, SourceScratchPayload(polygon.SourcePredicates));
-        _output.WriteLine($"Enclosed source variables={variables} warmBytes={warmBytes}");
+        _output.WriteLine($"Represented source constants={constants.Length} warmBytes={warmBytes}");
     }
 
     static long SourceScratchPayload(object scratch) => (long)typeof(KhaozEngine.Tests.Locomotion.Contacts.SupportCostScratch)

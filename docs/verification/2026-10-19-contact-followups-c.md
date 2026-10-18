@@ -38,61 +38,61 @@ rounded diagnostics. The original test probe sizes and tuning remain unchanged.
 
 The numbered table below follows the 51-site audit in research-1494 sections 1 to 4.
 Task 1 covers the planar doors. Task 2 records sites 35 to 42 and the curved paths of sites 43 and 44.
-Curved line references are at the Task 2 commit.
+Curved line references are at the Task 2 commit. Task 3 closes every site with the acceptance key below.
 
-| Site | Audited source | Disposition | Evidence and retained obligation |
-| --- | --- | --- | --- |
-| 1 | `InstalledPoseOperator.cs:64`, `:93`, `:112`, `:141` | changed | Explicit support door directly certifies represented columns. Legacy TryCreate, RealCoefficients and union remain. Scalar and SIMD capture is shared. |
-| 2 | `InstalledPoseOperations.cs:55` | changed | Separate support admission feeds the same rounded composition enclosure and actual SIMD continuation. |
-| 3 | `RepresentedGeometryTransforms.cs:40`, `:77` | legacy-retained | PosePoint stays in legacy wrappers. Planar support and its query/proposal domain gates no longer call it. |
-| 4 | `CapsuleFeatureGeometry.cs:65`, `:147`, `:169` | changed | Operator-accepting capture and transform cores retain coordinate checks and expression order. Legacy wrappers retain correspondence. |
-| 5 | `CapsuleFeaturePolyhedra.cs:48`, `:55`, `:169` | derived-unchanged | Vertices, edges, winding and cross normals derive from the support operator before validation. |
-| 6 | `SupportNeighborhoodPolyhedra.cs:20`, `:63`, `:106` | changed | Both planar capture doors admit represented installed/composed leaf poses and pass their operator to the shared core. |
-| 7 | `InstalledSupportGeometry.cs:39`, `:119` | changed | Cached local topology materializes vertices and normals from the represented operator. Compound composition uses support admission. |
-| 8 | `InstalledSupportGeometryCache.cs:89`, `:100` | changed | Identity local-topology capture and child-pose admission use the support door. Cache keys and publication are unchanged. |
-| 9 | `SupportNeighborhoodMesh.cs:32`, `:49`, `:80`, `:132`, `:176` | changed | Both mesh query doors and triangle materialization use the represented map. Local bounds use its actual inverse. |
-| 10 | `InstalledSupportMeshWorldForm.cs:84`, `:148`, `:181` | derived-unchanged | Immutable triangle forms receive the new represented operator from traversal. Pose-bit keys, triangle ids and publication remain. |
-| 11 | `SupportNeighborhoodPolygon.cs:112`, `:162`, `:217` | changed | Point-valued source map. BeginSource rejects non-point or mismatched columns before extracting exact binary32 entries. |
-| 12 | `InstalledSupportWorldForm.cs:31`, `:104`, `:153` | derived-unchanged | World forms snapshot one represented leaf and its derived polygons and meetings. No source is patched after validation. |
-| 13 | `InstalledSupportMemberFacts.cs:17` | derived-unchanged | Cached member facts are rebuilt from the represented polygons in the original operation order. |
-| 14 | `SupportSourceMapComparer.cs:11` | changed | Source sharing hashes and compares all twelve binary32 patterns, including signed zeros. |
-| 15 | `SupportSourcePolynomial.cs:46`, `:114`, `:130` | derived-unchanged | Production planar callers install nine constants. Generic box-coefficient support remains for synthetic arithmetic. |
-| 16 | `SupportSourceCoefficient.cs:31`, `:74`, `:89` | derived-unchanged | Exact expansion arithmetic and its 128-part refusal remain. |
-| 17 | `SupportFootprintSourcePredicates.cs:19`, `:52`, `:84`, `:139`, `:145`, `:165`, `:191` | changed | Nine exact constants and twelve-bit source reuse. Local subtraction, translation/axis subtraction, lifecycle and all formulas remain. |
-| 18 | `SupportFootprintSourcePredicates.ProjectedSeparation.cs:10` | derived-unchanged | Same projected-separation expression and strict exclusion rule. Its source entries are now exact constants. |
-| 19 | `SupportFootprintEdgeOperands.cs:26`, `:36`, `:63` | derived-unchanged | Edge operands and shared lengths derive from the represented polygon. Request reuse is unchanged. |
-| 20 | `SupportFootprintPolygon.cs:32`, `:141`, `:267`, `:374` | derived-unchanged | Admission, extrema and closed strata consume the represented polygon/source. No formulas or bands changed. |
-| 21 | `SupportFootprintPolygon.StairStratum.cs:12`, `:57` | derived-unchanged | Rectangle exactness remains literal. A trigonometric quarter-turn is not snapped. |
-| 22 | `SupportFootprintProposalGeometry.cs:13`, `:24`, `:71`, `:117` | derived-unchanged | Proposal contacts use the same represented source. Exhaustive order and attained guards remain. |
-| 23 | `SupportPlanarProposal.cs:13`, `:32`, `:52` | changed | Identity qualification reads Vector3 components directly. Exactness, lattice and range protections remain. |
-| 24 | `SupportPlanarNeighbour.cs:10` | derived-unchanged | Sufficient contact certificate retains its conditions and receives represented derived operands. |
-| 25 | `SupportRectangleContact.cs:34`, `:76`, `:117` | derived-unchanged | Rectangle and lowest shortcuts retain their exactness and finite-domain checks. |
-| 26 | `SupportContactPrefilter.cs:46`, `:58`, `:92`, `:143` | derived-unchanged | Contact pruning retains arithmetic-error and chord requirements. Exact inputs do not erase arithmetic error. |
-| 27 | `SupportVerticalAdmission.cs:58`, `:85` | derived-unchanged | Vertical admission keeps its separation margins and exhaustive fallback. |
-| 28 | `SupportProjectedPolygonSeparation.cs:10`, `:54` | derived-unchanged | Projected pruning still requires strict source-certified separation. Equality cannot exclude a polygon. |
-| 29 | `SupportNeighborhoodPolygon.cs:259`, `:271` | derived-unchanged | Closest-pair strata receive represented vertices, edges and cross normals with the same error arithmetic. |
-| 30 | `SupportSegmentPolygon.Footprint.cs:8` | derived-unchanged | Independent proposal approach/front guards and contact band remain. |
-| 31 | `SupportSourceIncidence.cs:24`, `:70` | derived-unchanged | Incidence uses the twelve-bit comparer. Every raw polygon link remains separate. |
-| 32 | `SupportJoinIncidence.cs:13`, `:71` | derived-unchanged | Same-plane and common-vertex certificates retain their bounds and raw rows. |
-| 33 | `SupportMeetingDomain.cs:15`, `:34` | derived-unchanged | Meeting denominator and rate domains remain. |
-| 34 | `SupportNeighborhoodJoins.cs:21`, `:39`, `:66`, `:80` | derived-unchanged | Whole joins and mutual-below tests remain. Equal source maps never replace raw identity. |
-| 35 | `SupportNeighborhoodCurved.cs:22`, `:49`, `:57`, `:60`, `:72`, `:104`, `:116`, `:354` | changed | Compound root, child pose and composition gates use the support door (Task 1 fix round 1). Both Leaf doors (`:72`, `:104`) now admit through TryCreateSupport. `SourceColumn` (`:22`) is the represented binary32 Y column, extracted only from exact, bit-matching represented entries. Axis (`:116`) is the outward normalization of that same point, and Across derives from Axis, so the tangent kernel (`:354`) and every footprint stratum read one column. Radius, half length, part ids and the circular primitive are unchanged. |
-| 36 | `SupportCurvedSourceArithmetic.cs:37`, `:197`, `:222` | changed | `Reset(Vector3)` installs the column as exact constants. The Source operation, `_column` interval storage, source-polynomial coefficients and their compile branch are removed. The node graph, denominator signs, radical elimination, 4,096-node and 54-rent compile ceilings, degree-eight bound and Checkpoint/Restore are unchanged. Constant polynomials still decide undecided interval signs exactly. |
-| 37 | `SupportCurvedRootRegions.cs:42`, `:78`, `:216` | derived-unchanged | Root isolation, endpoint exact signs, 1,024 live and 12 terminal cells are unchanged. Irrational coefficients still arrive as enclosures, so whole-region certificates remain necessary. Only the class comment now names a coefficient enclosure instead of a source family. |
-| 38 | `SupportFootprintCurved.cs:42`, `:52`, `SupportFootprintCurved.Admission.cs:29`, `SupportFootprintCurved.Proposal.cs:28` | changed (source only) | Begin resets from the represented column. `_axisSign` reads the binary32 Y sign. Spherical, upright and horizontal strata, admission and lowest proposal contacts use the same constants. Finite-end clipping and inclusive equalities are unchanged. A represented column with exact zero Y now takes the closed-form horizontal stratum where the old box was tilted. |
-| 39 | `SupportTiltedCurved.cs:13`, `:87` | derived-unchanged | Tilted coordination consumes the geometry owner below. Full-part admission and atomic refusal remain. |
-| 40 | `SupportTiltedCurvedGeometry.cs:48` and partials listed below | derived-unchanged (source switched through site 36) | Begin resets from the represented column and keeps algebraic normalization, the axial and radial frame and every guarded boundary, stationary, contact and surface equation. The weak-sign clipping in NormalizedYBounds stays, and it is now exact for a signed zero column. |
-| 41 | `SupportCurvedSurfaceAdmission.cs:24` | derived-unchanged | All coverage cells, maxima, caps and atomic refusal remain even where the point column resolves more signs. |
-| 42 | `GeometryVectorOperations.cs:42`, `:77`, `SupportFootprintPublication.cs:8` | derived-unchanged | Normalization and binary32 publication still enclose arithmetic and conversion error. An irrational unit axis from a point column publishes a nonzero error, proved by RepresentedCurvedRadicalsRemainGuardedAfterPointSources. |
-| 43 | `SupportFootprintCollector.cs:103`, `:135`, `:202`, `:277`, `SupportFootprintCollector.Geometry.cs:12`, `SupportFootprintCollector.Relevance.cs:21` | derived-unchanged | Cached, fallback and reference planar materialization now share represented capture. Collector formulas and build-before-copy remain. Curved leaves reach the support door through `InstalledSupportGeometry.Materialize` and its cache identity leaf (`InstalledSupportGeometryCache.cs:111`), with no dual admission on either public query. |
-| 44 | `SupportNeighborhoodCollector.cs:118`, `:162`, `:194` | derived-unchanged | Uncached planar neighborhoods receive the same represented source. Curved capture at `:131` uses the represented column and support door. |
-| 45 | `BepuPhysicsWorld.SupportFootprint.cs:13`, `:66`, `:114` | changed | Proposal pose-domain admission uses the support factory. Raw sweeps, lease, selections, versions and publication remain. |
-| 46 | `BepuPhysicsWorld.SupportNeighborhood.cs:30`, `:78` | changed | Probe pose-domain admission uses the support factory. Static-only selection and query limits remain. |
-| 47 | `KhaozEngine.Locomotion/Contacts/SupportCertification.Footprint.cs:27`, `:52`, `:79`, `:118` | derived-unchanged | Locomotion footprint certification receives represented published bounds. Provenance, steep suppression and direct joins remain. |
-| 48 | `KhaozEngine.Locomotion/Contacts/SupportCertification.FootprintScope.cs:9` | derived-unchanged | Scope containment obligations are unchanged. |
-| 49 | `KhaozEngine.Locomotion/Contacts/FootSupport.cs:101`, `:180`, `:214`, `:273` | derived-unchanged | FootSupport selection, reach, invalid-start guards and 1 mm rules are unchanged. |
-| 50 | `KhaozEngine.Locomotion/Contacts/SupportContinuity.cs:80`, `:175`, `:204` | derived-unchanged | Raw continuity identities, direct joins and lease lifetime remain unchanged. |
-| 51 | `KhaozEngine.Locomotion/Contacts/SupportRequestMemo.cs:80`, `:94`, `:98` | derived-unchanged | Exact query memo keys, reference bypass and epoch invalidation remain unchanged. |
+| Site | Audited source | Disposition | Evidence and retained obligation | Task 3 acceptance |
+| --- | --- | --- | --- | --- |
+| 1 | `InstalledPoseOperator.cs:64`, `:93`, `:112`, `:141` | changed | Explicit support door directly certifies represented columns. Legacy TryCreate, RealCoefficients and union remain. Scalar and SIMD capture is shared. | G, X, A |
+| 2 | `InstalledPoseOperations.cs:55` | changed | Separate support admission feeds the same rounded composition enclosure and actual SIMD continuation. | G, X, A |
+| 3 | `RepresentedGeometryTransforms.cs:40`, `:77` | legacy-retained | PosePoint stays in legacy wrappers. Planar support and its query/proposal domain gates no longer call it. | G, X, A |
+| 4 | `CapsuleFeatureGeometry.cs:65`, `:147`, `:169` | changed | Operator-accepting capture and transform cores retain coordinate checks and expression order. Legacy wrappers retain correspondence. | G, X, A |
+| 5 | `CapsuleFeaturePolyhedra.cs:48`, `:55`, `:169` | derived-unchanged | Vertices, edges, winding and cross normals derive from the support operator before validation. | G, X, A |
+| 6 | `SupportNeighborhoodPolyhedra.cs:20`, `:63`, `:106` | changed | Both planar capture doors admit represented installed/composed leaf poses and pass their operator to the shared core. | G, X, A |
+| 7 | `InstalledSupportGeometry.cs:39`, `:119` | changed | Cached local topology materializes vertices and normals from the represented operator. Compound composition uses support admission. | G, X, A |
+| 8 | `InstalledSupportGeometryCache.cs:89`, `:100` | changed | Identity local-topology capture and child-pose admission use the support door. Cache keys and publication are unchanged. | G, X, A |
+| 9 | `SupportNeighborhoodMesh.cs:32`, `:49`, `:80`, `:132`, `:176` | changed | Both mesh query doors and triangle materialization use the represented map. Local bounds use its actual inverse. | G, X, A |
+| 10 | `InstalledSupportMeshWorldForm.cs:84`, `:148`, `:181` | derived-unchanged | Immutable triangle forms receive the new represented operator from traversal. Pose-bit keys, triangle ids and publication remain. | G, X, A |
+| 11 | `SupportNeighborhoodPolygon.cs:112`, `:162`, `:217` | changed | Point-valued source map. BeginSource rejects non-point or mismatched columns before extracting exact binary32 entries. | G, X, A |
+| 12 | `InstalledSupportWorldForm.cs:31`, `:104`, `:153` | derived-unchanged | World forms snapshot one represented leaf and its derived polygons and meetings. No source is patched after validation. | G, X, A |
+| 13 | `InstalledSupportMemberFacts.cs:17` | derived-unchanged | Cached member facts are rebuilt from the represented polygons in the original operation order. | G, X, A |
+| 14 | `SupportSourceMapComparer.cs:11` | changed | Source sharing hashes and compares all twelve binary32 patterns, including signed zeros. | S, G, X |
+| 15 | `SupportSourcePolynomial.cs:46`, `:114`, `:130` | derived-unchanged | Production planar callers install nine constants. Generic box-coefficient support remains for synthetic arithmetic. | S, G, X |
+| 16 | `SupportSourceCoefficient.cs:31`, `:74`, `:89` | derived-unchanged | Exact expansion arithmetic and its 128-part refusal remain. | S, G, X |
+| 17 | `SupportFootprintSourcePredicates.cs:19`, `:52`, `:84`, `:139`, `:145`, `:165`, `:191` | changed | Nine exact constants and twelve-bit source reuse. Local subtraction, translation/axis subtraction, lifecycle and all formulas remain. | S, G, X |
+| 18 | `SupportFootprintSourcePredicates.ProjectedSeparation.cs:10` | derived-unchanged | Same projected-separation expression and strict exclusion rule. Its source entries are now exact constants. | S, G, X |
+| 19 | `SupportFootprintEdgeOperands.cs:26`, `:36`, `:63` | derived-unchanged | Edge operands and shared lengths derive from the represented polygon. Request reuse is unchanged. | S, G, X |
+| 20 | `SupportFootprintPolygon.cs:32`, `:141`, `:267`, `:374` | derived-unchanged | Admission, extrema and closed strata consume the represented polygon/source. No formulas or bands changed. | S, G, X |
+| 21 | `SupportFootprintPolygon.StairStratum.cs:12`, `:57` | derived-unchanged | Rectangle exactness remains literal. A trigonometric quarter-turn is not snapped. | S, G, X |
+| 22 | `SupportFootprintProposalGeometry.cs:13`, `:24`, `:71`, `:117` | derived-unchanged | Proposal contacts use the same represented source. Exhaustive order and attained guards remain. | S, G, X |
+| 23 | `SupportPlanarProposal.cs:13`, `:32`, `:52` | changed | Identity qualification reads Vector3 components directly. Exactness, lattice and range protections remain. | S, G, X |
+| 24 | `SupportPlanarNeighbour.cs:10` | derived-unchanged | Sufficient contact certificate retains its conditions and receives represented derived operands. | S, G, X |
+| 25 | `SupportRectangleContact.cs:34`, `:76`, `:117` | derived-unchanged | Rectangle and lowest shortcuts retain their exactness and finite-domain checks. | S, G, X |
+| 26 | `SupportContactPrefilter.cs:46`, `:58`, `:92`, `:143` | derived-unchanged | Contact pruning retains arithmetic-error and chord requirements. Exact inputs do not erase arithmetic error. | S, G, X |
+| 27 | `SupportVerticalAdmission.cs:58`, `:85` | derived-unchanged | Vertical admission keeps its separation margins and exhaustive fallback. | S, G, X |
+| 28 | `SupportProjectedPolygonSeparation.cs:10`, `:54` | derived-unchanged | Projected pruning still requires strict source-certified separation. Equality cannot exclude a polygon. | S, G, X |
+| 29 | `SupportNeighborhoodPolygon.cs:259`, `:271` | derived-unchanged | Closest-pair strata receive represented vertices, edges and cross normals with the same error arithmetic. | S, G, X |
+| 30 | `SupportSegmentPolygon.Footprint.cs:8` | derived-unchanged | Independent proposal approach/front guards and contact band remain. | S, G, X |
+| 31 | `SupportSourceIncidence.cs:24`, `:70` | derived-unchanged | Incidence uses the twelve-bit comparer. Every raw polygon link remains separate. | J, G |
+| 32 | `SupportJoinIncidence.cs:13`, `:71` | derived-unchanged | Same-plane and common-vertex certificates retain their bounds and raw rows. | J, G |
+| 33 | `SupportMeetingDomain.cs:15`, `:34` | derived-unchanged | Meeting denominator and rate domains remain. | J, G |
+| 34 | `SupportNeighborhoodJoins.cs:21`, `:39`, `:66`, `:80` | derived-unchanged | Whole joins and mutual-below tests remain. Equal source maps never replace raw identity. | J, G |
+| 35 | `SupportNeighborhoodCurved.cs:22`, `:49`, `:57`, `:60`, `:72`, `:104`, `:116`, `:354` | changed | Compound root, child pose and composition gates use the support door (Task 1 fix round 1). Both Leaf doors (`:72`, `:104`) now admit through TryCreateSupport. `SourceColumn` (`:22`) is the represented binary32 Y column, extracted only from exact, bit-matching represented entries. Axis (`:116`) is the outward normalization of that same point, and Across derives from Axis, so the tangent kernel (`:354`) and every footprint stratum read one column. Radius, half length, part ids and the circular primitive are unchanged. | C, G, X |
+| 36 | `SupportCurvedSourceArithmetic.cs:37`, `:197`, `:222` | changed | `Reset(Vector3)` installs the column as exact constants. The Source operation, `_column` interval storage, source-polynomial coefficients and their compile branch are removed. The node graph, denominator signs, radical elimination, 4,096-node and 54-rent compile ceilings, degree-eight bound and Checkpoint/Restore are unchanged. Constant polynomials still decide undecided interval signs exactly. | C, G, X |
+| 37 | `SupportCurvedRootRegions.cs:42`, `:78`, `:216` | derived-unchanged | Root isolation, endpoint exact signs, 1,024 live and 12 terminal cells are unchanged. Irrational coefficients still arrive as enclosures, so whole-region certificates remain necessary. Only the class comment now names a coefficient enclosure instead of a source family. | C, G, X |
+| 38 | `SupportFootprintCurved.cs:42`, `:52`, `SupportFootprintCurved.Admission.cs:29`, `SupportFootprintCurved.Proposal.cs:28` | changed (source only) | Begin resets from the represented column. `_axisSign` reads the binary32 Y sign. Spherical, upright and horizontal strata, admission and lowest proposal contacts use the same constants. Finite-end clipping and inclusive equalities are unchanged. A represented column with exact zero Y now takes the closed-form horizontal stratum where the old box was tilted. | C, G, X |
+| 39 | `SupportTiltedCurved.cs:13`, `:87` | derived-unchanged | Tilted coordination consumes the geometry owner below. Full-part admission and atomic refusal remain. | C, G, X |
+| 40 | `SupportTiltedCurvedGeometry.cs:48` and partials listed below | derived-unchanged (source switched through site 36) | Begin resets from the represented column and keeps algebraic normalization, the axial and radial frame and every guarded boundary, stationary, contact and surface equation. The weak-sign clipping in NormalizedYBounds stays, and it is now exact for a signed zero column. | C, G, X |
+| 41 | `SupportCurvedSurfaceAdmission.cs:24` | derived-unchanged | All coverage cells, maxima, caps and atomic refusal remain even where the point column resolves more signs. | C, G, X |
+| 42 | `GeometryVectorOperations.cs:42`, `:77`, `SupportFootprintPublication.cs:8` | derived-unchanged | Normalization and binary32 publication still enclose arithmetic and conversion error. An irrational unit axis from a point column publishes a nonzero error, proved by RepresentedCurvedRadicalsRemainGuardedAfterPointSources. | C, G, X |
+| 43 | `SupportFootprintCollector.cs:103`, `:135`, `:202`, `:277`, `SupportFootprintCollector.Geometry.cs:12`, `SupportFootprintCollector.Relevance.cs:21` | derived-unchanged | Cached, fallback and reference planar materialization now share represented capture. Collector formulas and build-before-copy remain. Curved leaves reach the support door through `InstalledSupportGeometry.Materialize` and its cache identity leaf (`InstalledSupportGeometryCache.cs:111`), with no dual admission on either public query. | A, E, G, X |
+| 44 | `SupportNeighborhoodCollector.cs:118`, `:162`, `:194` | derived-unchanged | Uncached planar neighborhoods receive the same represented source. Curved capture at `:131` uses the represented column and support door. | A, E, G, X |
+| 45 | `BepuPhysicsWorld.SupportFootprint.cs:13`, `:66`, `:114` | changed | Proposal pose-domain admission uses the support factory. Raw sweeps, lease, selections, versions and publication remain. | A, E, G, X |
+| 46 | `BepuPhysicsWorld.SupportNeighborhood.cs:30`, `:78` | changed | Probe pose-domain admission uses the support factory. Static-only selection and query limits remain. | A, E, G, X |
+| 47 | `KhaozEngine.Locomotion/Contacts/SupportCertification.Footprint.cs:27`, `:52`, `:79`, `:118` | derived-unchanged | Locomotion footprint certification receives represented published bounds. Provenance, steep suppression and direct joins remain. | A, E, G, X |
+| 48 | `KhaozEngine.Locomotion/Contacts/SupportCertification.FootprintScope.cs:9` | derived-unchanged | Scope containment obligations are unchanged. | A, E, G, X |
+| 49 | `KhaozEngine.Locomotion/Contacts/FootSupport.cs:101`, `:180`, `:214`, `:273` | derived-unchanged | FootSupport selection, reach, invalid-start guards and 1 mm rules are unchanged. | A, E, G, X |
+| 50 | `KhaozEngine.Locomotion/Contacts/SupportContinuity.cs:80`, `:175`, `:204` | derived-unchanged | Raw continuity identities, direct joins and lease lifetime remain unchanged. | J, E |
+| 51 | `KhaozEngine.Locomotion/Contacts/SupportRequestMemo.cs:80`, `:94`, `:98` | derived-unchanged | Exact query memo keys, reference bypass and epoch invalidation remain unchanged. | M, E |
 
 
 ## Task 1 proof coverage
@@ -180,3 +180,135 @@ again at unchanged production `9e63657a7`, never at lane HEAD. Both captures hav
 from the trailing separators. There was no expected-row edit, loop, timing run or full suite. Production and
 legacy tests are unchanged, so the accepted 15 Task 1 and 9 Task 2 FC-R1 failures remain assigned to
 Task 3. They were not rerun in this fix round.
+
+## Task 3 acceptance key
+
+Every source site above now has an explicit Task 3 proof disposition. No production source changed in
+Task 3. The retained formulas, caps, direct raw identity and arithmetic guards are exercised through
+the changed represented source rather than replaced.
+
+- A: `CapturedStairExplicitSweepTests`. All original installations and traversals remain. The two
+  initial and four traversal boundary rows use ordinary acceptance, 240 ticks and the exact 3D 1 mm
+  arrival ball. Initial rows retain independent raw and certified shell controls. Traversals retain
+  near-tangency evidence. `CapturedStairEdgeOracle.AssertRepresentedDisagreement` proves real D < 0,
+  represented D > 0 and the production Positive edge sign on the same installed raw face and edge.
+  The literal yaw independently pins c `33800000`, s `3F7FFFFF`, negative s `BF7FFFFF`.
+- S: `InstalledRepresentedCoefficientBoundaryIsExactlyOnTheDisc` and
+  `RepresentedVertexDiscKeepsClosedBoundaryAndAdjacentRadii` prove the exact zero and adjacent signs.
+  `RepresentedSourceContactBandMatchesIndependentRationalVerdict` preserves the old legacy-box
+  question but derives the verdict from represented rational geometry. The independent
+  `UncertainContactBandSignRefusesBothSpans` retains genuine unresolved-height sentinel refusal.
+  Walls are selected by exact zero upward source orientation. Nine degree-zero source constants,
+  cold scratch bounds and zero warm allocation replace the old four/nine variable assumptions.
+  Existing exact fallback tests remain. The sliver's represented doubled area is exactly
+  `4 * binary32(1e-9f) * (X.X * Z.Z - X.Z * Z.X)`, positive under its installed yaw. Raw triangle 1
+  remains. Exact degeneracy still skips, without a small-normal threshold.
+- J: `RepresentedCoincidenceKeepsRawKeysAndIntervalAuthentication` retains both admitted top faces
+  and all raw join words for separate statics and two compound children. Unequal statics establish
+  separate-static identity, unequal element ids establish child identity. Each selected direct row
+  contains exactly its raw neighbour. The existing `JoinedEdgeNeedsTheDirectSelectedPair` fixtures
+  retain the non-transitive negative proof. Geometry equality does not revive interval evidence.
+- C: `LyingLogSupportsItsTopLine` reads the actual installed composed centre through the independent
+  represented curved oracle. The eight former horizontal source-box rows retain their exact poses
+  and queries, assert represented Y is exactly zero and use the closed-form role proof. Finite ends,
+  both role orders, curved radical and root-storage refusals remain in the acceptance selection.
+- X: `RepresentedExactInstallsKeepBaselineBits` reads the frozen 24 planar and 72 curved rows. It
+  compares status, roles, witness/normal, height/error, XZ, raw owners, joins and both zero signs.
+  Cold, warm, interleaved and rebuilt public queries match reference results bit for bit. Warm
+  allocation is zero. Existing nested and concurrent fixtures remain in the selection.
+- E: `RepresentedRotatedTreadStillRejectsIndependentRoof` retains an accepted quarter-turn tread
+  control, then checks both original raw proposals report InvalidStart under the independent roof.
+  Find refuses without lower-floor fallback. The selection also retains hidden support, ring-only
+  context, 256/257 capacity, 512 witness slots, sentinel tails, endpoint slopes/bands and invalid starts.
+- M: The coincidence regression checks exact-repeat memo hits in the original lease and misses for
+  changed signed-zero query bits, scope, analytic fact, view, exclusion, reacquisition, mutation,
+  rebase and a recycled Bepu handle. The public static key stays different after handle reuse.
+  Expired reads reject, and old arena handles reject after interval closure. Existing memo, direct
+  continuity and leased-query fixtures retain their full authentication matrix.
+- G: The generated per-row independent proof and the frozen bit comparison are described below.
+
+## Task 3 frozen golden fields and represented derivation
+
+FC-R7 field baseline commit `9e63657a70b2643059ffe09e6acc1b10a423fa78` has unchanged production.
+A detached scratch worktree contained the byte-identical test-only field serializer, historical
+question generator and installed geometry oracle. The latter two supply the same historical scene
+and frozen questions, never a production answer. Only these test sources differed from baseline.
+The single capture asserted every serialized row re-hashed to its original `support-equivalence.txt`
+answer before writing the field baseline. No baseline was captured at HEAD. All three source `cmp`
+checks exited 0 before scratch removal.
+
+- Baseline `Locomotion/Contacts/Fixtures/support-equivalence-fields.jsonl`, 1,952 rows, 14,247,486 bytes.
+- Baseline SHA-256 `67da85ebb30678c4168299a33115385c70546ca5b4a7a726b19749102d468fba`.
+- Serializer SHA-256 `ff87db34457fc9bb41af2648d81e5c64fedbe22111f751ba29bdd55ce1781679`.
+- The file-size guard applies to C# structure. This data fixture passes without a baseline change.
+- Original anchor and exact-install control files are unchanged. Their hashes above still apply.
+
+Exact reproduction, from the detached scratch worktree after copying the three byte-identical test
+sources named above and creating `local-feed`:
+
+```bash
+env -u KHAOZ_SUPPORT_COST_ARTIFACT -u KHAOZENGINE_SUPPORT_EQUIVALENCE_CAPTURE -u KHAOZENGINE_SUPPORT_CONTROL_CAPTURE -u KHAOZENGINE_SUPPORT_CURVED_CONTROL_CAPTURE -u KHAOZENGINE_SUPPORT_ANCHOR_CAPTURE KHAOZENGINE_SUPPORT_FIELD_BASELINE_CAPTURE=/Users/antonio/KhaozEngine/.worktrees/contact-followups-c/KhaozEngine.Game.Tests/Locomotion/Contacts/Fixtures/support-equivalence-fields.jsonl build-slot --heavy --label fu-c-golden-freeze -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter 'FullyQualifiedName~FrozenEquivalenceFieldsRehashTheOriginalDigests'
+```
+
+`RepresentedGoldenChangesHaveIndependentPerRowDerivations` compares old and current raw field
+patterns under the exact frozen question and scene digest. Its expected geometry comes from
+`InstalledPoseOracle.Represented`, `SupportNeighborhoodOracle`, `SupportFootprintExactOracle` and
+`SupportFootprintCurvedProofOracle`, not production predicates, cached results or the field baseline.
+It checks independently reconstructed membership, raw identities, all joins, geometric witness and
+normal errors, both slope classifications and rational contribution-height containment. Witness and
+normal assertions use the published errors without an extra epsilon. The selected contribution
+normal must come from an independently minimal joined plane.
+
+The test-generated [per-row table](2026-10-19-contact-followups-c-golden-rows.md) records every old/new
+digest, unchanged scene and frozen-question digests, changed field classes and independent derivation. Each baseline row
+also holds the complete frozen question bits. Changed rows are 605 poly, 130 rotated mesh and 297
+curved, totaling 1,032. The other 920 answers are unchanged. No identity mesh, fan or feature row
+changed. There are zero underivable rows. Individual reviewed digest substitutions were applied from
+that table without enabling the digest capture variable.
+
+| Changed field class | Rows |
+| --- | --- |
+| Enclosure | 1,032 |
+| Height | 561 |
+| Normal | 693 |
+| Witness | 537 |
+| Eligibility, joins, raw identity | 0 |
+
+Counts overlap because a row can change more than one class. Removed transform ambiguity narrows
+numeric enclosures and can change the rounded witness/normal and derived height. It does not change
+any recorded member, join or eligibility decision in these frozen questions. Exact fallback coverage
+for genuine arithmetic and capacity uncertainty remains.
+
+### Additional acceptance-selection reconciliations
+
+The first complete Task 3 selection exposed seven older expectations beyond the inherited 24. All
+are test-side transform-contract assumptions, not production failures. Original inputs remain.
+
+- Three `PitchedPlateDiscardsOutsideExtremumBeforePlaneHeight` rows now compare the represented
+  rational orientation and exact normal enclosure instead of demanding an interval straddling zero.
+  The outside-edge radical proof remains. A resolved candidate plane encloses the independent
+  rational/root derivation. An unresolved one must have a genuinely unresolved arithmetic divisor.
+- `PitchedPlateSeparatesOutsideFaceBeforeOrientation` compares the represented rational orientation.
+  Its strict projected-separation proof and complete-query control remain unchanged.
+- `ProposalInteriorKeepsEveryDecidedFastEdge(true)` now expects the exact Zero fast edge and zero
+  fallback calls. The real exact-fallback strata tests remain in the selection.
+- `InstalledLocalGeometryOwnsArraysAndMatchesTheUncachedInstalledOperator` now explicitly supplies
+  the represented support factory to its uncached control with null scratch, preserving the original
+  independently owned arrays. Its private-array ownership assertions and bit-exact comparisons remain.
+  An intermediate scratch-backed version corrupted read-only shared box topology when this test
+  deliberately mutated the returned faces. The failing broad run exposed this test harness mistake,
+  which was corrected at the caller without changing production.
+- `SlopeAdjustedNormalIsNeverShared` becomes
+  `RepresentedHorizontalNormalKeepsEverySlopeQueryIndependent`. This original horizontal yawed
+  face now normalizes to exact `(0,1,0)`, so no transform-box slope correction exists. The test pins
+  that exact normal and retains per-slope shared-fact hits and reference equality.
+
+### Task 3 verification result
+
+The required `fu-c-acceptance-green` selection exited 0 with 992 passed, zero failed and zero skipped.
+It includes every inherited reconciliation, the generated independent golden derivations, exact
+controls and all retained safety/lifetime fixtures. The capture-disabled frozen-field baseline reader
+also exited 0 with one passed. Both test commands built Release successfully with no compiler warnings.
+All original six stair boundary rows pass ordinary Complete/Advanced acceptance and arrival.
+No CLI test or build remains running. Full solution build, full Game.Tests and full format verification
+remain Task 7 work. No timing or load evidence was collected.

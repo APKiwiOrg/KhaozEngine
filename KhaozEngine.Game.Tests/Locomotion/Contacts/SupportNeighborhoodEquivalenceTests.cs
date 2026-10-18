@@ -22,7 +22,7 @@ using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests.Locomotion.Contacts;
 
-public class SupportNeighborhoodEquivalenceTests(ITestOutputHelper output)
+public partial class SupportNeighborhoodEquivalenceTests(ITestOutputHelper output)
 {
     const int Capacity = SupportNeighborhoodResult.MaximumElements;
     // Names a file to write the recorded digests to instead of comparing. Used once, on the code before the change.

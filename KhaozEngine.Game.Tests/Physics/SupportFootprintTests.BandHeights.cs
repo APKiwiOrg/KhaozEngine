@@ -97,27 +97,27 @@ public partial class SupportFootprintTests
     }
 
     [Fact]
-    public void SourceCoefficientUncertainContactBandRefusesAtomically()
+    public void RepresentedSourceContactBandMatchesIndependentRationalVerdict()
     {
         using var diagnostics = new SourceDiagnosticScope();
         using var scene = new SupportFootprintScene();
         Quaternion rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, 0.65f);
         scene.Install(new TriangleMeshShape([new(-2, 0, -2), new(2, 0, -2), new(2, 0, 2), new(-2, 0, 2)],
             [0, 1, 2, 0, 2, 3]), new(new(0, 0.125f, 0), rotation));
-        var map = CapturedMesh(scene, Request())[0].SourceMap;
-        Assert.True(GeometryInterval.Exact(map.X.Y).Lower < GeometryInterval.Exact(map.X.Y).Upper);
+        // Preserve the historical question derived between the legacy coefficient-box endpoint contacts.
+        Assert.True(InstalledPoseOperator.TryCreate(new BepuPhysics.RigidPose(new(0, 0.125f, 0), rotation), out var legacy));
         OracleFace Sample(double xy)
         {
-            V Transform(float x, float z) => new(R.From(map.X.X) * R.From(x) + R.From(map.Z.X) * R.From(z),
-                R.From(xy) * R.From(x) + R.From(map.Z.Y) * R.From(z) + R.From(0.125),
-                R.From(map.X.Z) * R.From(x) + R.From(map.Z.Z) * R.From(z));
+            V Transform(float x, float z) => new(R.From(legacy.X.X.Bounds.Lower) * R.From(x) + R.From(legacy.Z.X.Bounds.Lower) * R.From(z),
+                R.From(xy) * R.From(x) + R.From(legacy.Z.Y.Bounds.Lower) * R.From(z) + R.From(0.125),
+                R.From(legacy.X.Z.Bounds.Lower) * R.From(x) + R.From(legacy.Z.Z.Bounds.Lower) * R.From(z));
             V[] exact = [Transform(-2, -2), Transform(-2, 2), Transform(2, 2), Transform(2, -2)];
             return new(default, 0, exact.Select(v => new OracleVector(SupportFootprintExactOracle.AsDouble(v.X),
                 SupportFootprintExactOracle.AsDouble(v.Y), SupportFootprintExactOracle.AsDouble(v.Z))).ToArray())
             { ExactVertices = exact };
         }
-        var low = SupportFootprintExactOracle.Contact(Sample(map.X.Y), Request().FootProposal)!.Value;
-        var high = SupportFootprintExactOracle.Contact(Sample(map.X.Y), Request().FootProposal)!.Value;
+        var low = SupportFootprintExactOracle.Contact(Sample(legacy.X.Y.Bounds.Lower), Request().FootProposal)!.Value;
+        var high = SupportFootprintExactOracle.Contact(Sample(legacy.X.Y.Bounds.Upper), Request().FootProposal)!.Value;
         double boundary = SupportFootprintExactOracle.AsDouble((low.Upper + high.Lower) / new R(2, 1));
         Assert.True(low.Upper < R.From(boundary));
         Assert.True(high.Lower > R.From(boundary));
@@ -126,12 +126,11 @@ public partial class SupportFootprintTests
         var members = MemberSentinels(256);
         var before = (SupportFootprintMember[])members.Clone();
         var joins = Enumerable.Repeat(79UL, 1024).ToArray();
-        SupportQueryDiagnostics.Reset();
-        Assert.Equal(CapsuleFeatureStatus.Unsupported,
-            Capability(scene.World).QuerySupportFootprint(lease, request, members, joins).Status);
-        Assert.Equal(before, members);
-        Assert.All(joins, word => Assert.Equal(79UL, word));
-        AssertSourceFallbacks();
+        var result = Capability(scene.World).QuerySupportFootprint(lease, request, members, joins);
+        CheckQueryOracle(scene, request, result, members, joins);
+        Assert.Equal(CapsuleFeatureStatus.Complete, result.Status);
+        Assert.Equal(before.Skip(result.Members), members.Skip(result.Members));
+        Assert.All(joins.Skip(result.Members * result.JoinWordsPerRow), word => Assert.Equal(79UL, word));
     }
 
     [Theory]

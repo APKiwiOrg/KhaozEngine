@@ -9,18 +9,8 @@ namespace KhaozEngine.Tests.Locomotion.Contacts;
 
 public sealed partial class CapturedStairExplicitSweepTests
 {
-    static void AssertSupportBoundary(CapturedStairSweepFixture fixture, FramedMovementState before,
-        MovementStepResult result, TickCapture capture)
+    static void AssertShellClear(CapturedStairSweepFixture fixture, TickCapture capture)
     {
-        // #1494 retains the exact tread-edge footprint refusal independently of the certified shell path.
-        Assert.Equal(MovementAvailability.Known, fixture.LastAcquisitionStatus);
-        Assert.Equal(MovementStepOutcome.Blocked, result.Outcome);
-        Assert.True(result.State.State.Grounded || result.State.State.SupportGranted);
-        Assert.NotEmpty(fixture.Bindings);
-        AssertReadEvidence(fixture, capture.Reads.Where(read => (SupportStatus)read.Status != SupportStatus.Refused));
-        AssertPlacement(fixture, before, result);
-        Assert.Throws<System.ObjectDisposedException>(fixture.LastLease!.AssertCurrent);
-        Assert.True(capture.Counts.GroundSubsteps > 0);
         Assert.True(capture.Sweeps.Count >= 3);
         var sweeps = capture.Sweeps;
         Assert.Equal(new Vector3(0, fixture.Tuning.StepHeight, 0), sweeps[0].Delta);
@@ -36,11 +26,5 @@ public sealed partial class CapturedStairExplicitSweepTests
             Assert.False(fixture.World.SweepCapsule(new CapsuleShape(0.3f, 0.5f), sweep.Pose,
                 Vector3.Normalize(sweep.Delta), sweep.Delta.Length(), out _, QueryFilter.StaticsOnly));
         }
-        var refused = Assert.Single(capture.Footprints, f => f.Result.Status == CapsuleFeatureStatus.Unsupported);
-        Assert.Equal(0, refused.Result.Members);
-        Assert.Equal(0, refused.Result.Witnesses);
-        Assert.Equal(0.15f, refused.Request.Radius);
-        Assert.Contains(capture.Reads, read => (SupportStatus)read.Status == SupportStatus.Refused && read.Axis == refused.Request.Axis);
-        new CapturedStairEdgeOracle(fixture).AssertNearTangency(refused.Request);
     }
 }

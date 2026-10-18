@@ -30,7 +30,7 @@ public sealed partial class CapturedStairExplicitSweepTests
         SupportFootprintRequest boundary = capture.Footprints[1].Request;
         Assert.Equal(unchecked((int)0xbe199999), BitConverter.SingleToInt32Bits(boundary.Axis.X));
         Assert.Equal(0x3e19999a, BitConverter.SingleToInt32Bits(boundary.Radius));
-        new CapturedStairEdgeOracle(fixture).AssertMapDisagreement(boundary);
+        new CapturedStairEdgeOracle(fixture).AssertRepresentedDisagreement(boundary);
         AssertRepresentedDiscriminantWins(fixture, boundary);
         Assert.All(capture.Footprints, f => Assert.Equal(CapsuleFeatureStatus.Complete, f.Result.Status));
         AssertAccepted(fixture, state, result, capture.Reads);

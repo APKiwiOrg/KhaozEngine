@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 """Shard plan and coverage guard for the GPU matrix's full suites (#1438).
 
-Every leg's full suite runs across several hosted jobs whenever that leg runs its full suite and the run
-neither bakes nor sets renderTestFilter. For metal-native (`fullSuite: always`) that is every trigger, push and
-pull_request included. For direct3d11-native and vulkan-native (`fullSuite: scheduled`) it is the schedule and
-workflow_dispatch. This file is the single source of the split, and .github/workflows/cross-platform-gpu.yml
-reads it through the subcommands below.
+Every leg's full suite runs across several hosted jobs on the schedule and workflow_dispatch, when the run
+neither bakes nor sets renderTestFilter. Those are the only triggers on which direct3d11-native and
+vulkan-native (`fullSuite: scheduled`) run their full suites at all. metal-native (`fullSuite: always`) also
+runs its full suite on push and pull_request, but as one job there (#1460): the org runs at most 5 macOS jobs
+at once, and three shards on every trigger let a push run starve the gate dispatch of macOS slots. One job
+on push and three on the gate keep two overlapping runs at 4. This file is the single source of the split,
+and .github/workflows/cross-platform-gpu.yml reads it through the subcommands below.
 
-THE SPLIT. Shard `rest` runs every test project in KhaozEngine.slnx except KhaozEngine.Render.Tests,
-through a solution derived from the current one at run time, so a new test project lands in it with no
-edit. Every other shard runs one slice of KhaozEngine.Render.Tests. Each backend has its own slice table,
+THE SPLIT. Shard `rest` runs every test project in KhaozEngine.slnx except KhaozEngine.Render.Tests and
+the named projects in PROJECT_SLICES, through a solution derived from the current one at run time, so a new
+test project lands in it with no edit. Vulkan's `projects-1` takes MapEditor.Tests, Game.Tests and
+Movement.Tests, and Windows' takes Catalog.Tests (#1458). Only `rest` is primary and runs the once-per-leg
+steps. The unsharded Windows isolation pass still takes every non-Render project. Every `render-N` shard runs one slice of
+KhaozEngine.Render.Tests. Each backend has its own slice table,
 because the three rasterizers disagree about what is expensive (below). Within a table the slices are an
 ORDERED FIRST-MATCH partition: a test belongs to the first slice whose rules match it, and the last slice has
 no rules and takes everything the earlier ones did not. Each slice's vstest filter is its own rules ANDed with
@@ -25,25 +30,31 @@ report per shard and fails the backend when a shard is missing, a shard's suite 
 assembly ran on two shards or twice on one, Render.Tests ran outside its slices, or a test project in the
 solution ran nowhere.
 
-THE BALANCE comes from the per-test durations in the TRX files of dispatch runs 39030778010 and
-39036919036. The same tests ran 0.6 to 1.6 times as long from one hosted runner to the next, uniformly
-across a job, so each job's runner speed is factored out and a test's cost is its geometric mean over the
-runs. Every job also spends about 4 minutes on setup and build before its tests start (2.5 to 5.5 in
-39036919036, with the NuGet cache on Windows and the package-list lavapipe lookup on Linux), so a slice of
-about 15 minutes is a job of about 19 on a runner of average speed. The shapes differ by backend:
-  * vulkan-native runs serialised, so a slice costs the sum of its tests, about 111 minutes for
-    Render.Tests. TemporalFollowPhaseGpuTests' orthographic sweep took 22 minutes as one method, so it is
-    split by preset like the perspective sweep beside it. Its Native and Quality half, about 11 minutes, is
-    the heaviest method and leads a slice of its own. The nine slices cost 11.7 to 13.2 minutes each. Eight
-    would cost about 14 minutes each and pass 20 minutes a job on a slow runner.
+THE BALANCE comes from the per-test durations in the TRX files of dispatch runs 39039926687 and
+39072468288, with the Windows project split also reading assembly durations from 39074411898.
+A job's runner factor is the geometric mean of its repeated methods' duration ratios to their
+across-run geometric means. Divide durations by that factor, then take each method's geometric mean over
+the runs. Hosted speed varies uniformly across a job, so balancing raw times would move work toward the
+last run's fast hosts. Every job also spends about 4 minutes on setup and build before its tests start.
+The shapes differ by backend:
+  * vulkan-native runs serialised, so a slice costs the sum of its tests, about 123.7 minutes for
+    Render.Tests. TemporalFollowPhaseGpuTests' orthographic Native and Quality
+    sweep took 12.5 minutes in 39039926687, so Native and Quality now run separately. Their initial estimates
+    use the 8 Native and 36 Quality rendered phases, whose individual walks cost about the same. Twelve
+    slices replace nine to leave room for hosted speed variation, at 10.2 to 10.5 normalized minutes each,
+    with the cascade-cull method alone. The non-Render assemblies totalled 15.25 and 14.99 minutes and the
+    rest jobs reached 20m03s and 20m00s. Its three named projects move 8.55 and 8.03 minutes to projects-1,
+    leaving 6.70 and 6.96 on rest plus its once-per-leg steps.
   * direct3d11-native runs classes in parallel on WARP but the methods of one class in series, so a slice
     costs its slowest class or about a third of its summed time, whichever is more. The one method of
-    ShadowCascadeCullPerfGpuTests took 9 to 15 minutes there against 1 on Metal, has a slice to itself
-    and sets that backend's floor with the `rest` shard. TemporalFollowPhaseGpuTests' methods are spread
-    over two slices so that class is no longer a 16-minute serial chain. The other three slices sum 29 to
-    41 minutes each.
+    ShadowCascadeCullPerfGpuTests took about 15 minutes there against 1 on Metal, has a slice to itself
+    and sets that backend's floor. The rest jobs took 14m24s and 18m55s, then 22m54s in 39074411898.
+    Catalog.Tests took 16.30 minutes there against 13.01 for MapEditor.Tests, so Catalog.Tests moves to
+    projects-1 on its own host. Every other non-Render project stays on rest. TemporalFollowPhaseGpuTests'
+    methods are spread over two slices so that class is no longer a 16-minute serial chain. The other three slices sum 29 to
+    35 minutes each.
   * metal-native has the same parallel shape on a real (paravirtual) GPU at about a third of the cost.
-    Render.Tests is about 37 summed minutes in two slices of 8 to 9 minutes of wall time each.
+    Render.Tests is about 32 summed minutes in two slices of 7 to 9 minutes of wall time each.
 Every run uploads each shard's TRX files as `shard-trx-<backend>-<shard>`, which carry the per-test durations
 to re-balance from. Re-balance by moving rules between slices. Coverage cannot drift whatever the rules say.
 """
@@ -58,7 +69,8 @@ RENDER_ASSEMBLY = "KhaozEngine.Render.Tests"
 GPU = "KhaozEngine.Tests.Gpu."
 PHASE = GPU + "TemporalFollowPhaseGpuTests."
 
-ORTHO_NQ = PHASE + "The_orthographic_follow_holds_its_bounds_from_every_start_phase_at_Native_and_Quality"
+ORTHO_N = PHASE + "The_orthographic_follow_holds_its_bounds_from_every_start_phase_at_Native"
+ORTHO_Q = PHASE + "The_orthographic_follow_holds_its_bounds_from_every_start_phase_at_Quality"
 ORTHO_PU = PHASE + "The_orthographic_follow_holds_its_bounds_from_every_start_phase_at_Performance_and_Ultra"
 PERSPECTIVE_NQ = PHASE + "The_perspective_follow_holds_its_bounds_from_every_start_phase_at_Native_and_Quality"
 PERSPECTIVE_PU = PHASE + "The_perspective_follow_holds_its_bounds_from_every_start_phase_at_Performance_and_Ultra"
@@ -82,27 +94,42 @@ RENDER_SLICES = {
     ],
     "direct3d11-native": [
         ("render-1", gpu("ShadowCascadeCullPerfGpuTests.")),
-        ("render-2", [("=", ORTHO_NQ), ("=", PERSPECTIVE_NQ), ("=", STOP)]
+        ("render-2", [("=", ORTHO_N), ("=", ORTHO_Q), ("=", PERSPECTIVE_NQ), ("=", STOP)]
          + gpu("TemporalFollowCameraGpuTests.", "TemporalFollowStopGpuTests.", "TemporalG", "TemporalR",
                "TemporalS")),
         ("render-3", gpu("Temporal")),
         ("render-4", []),
     ],
     "vulkan-native": [
-        ("render-1", [("=", ORTHO_NQ)] + gpu("M")),
-        ("render-2", gpu("ShadowCascadeCullPerfGpuTests.") + [("=", STOP)]),
-        ("render-3", [("=", PERSPECTIVE_PU)] + gpu("TemporalFollowLinesGpuTests.")),
-        ("render-4", [("=", ORTHO_PU)] + gpu("TemporalFollowStopGpuTests.")),
-        ("render-5", gpu("TemporalLongHoldFollowGpuTests.", "TemporalA", "TemporalC", "TemporalD", "TemporalE")),
-        ("render-6", [("=", PERSPECTIVE_NQ)] + gpu("TemporalFollowCameraGpuTests.")),
-        ("render-7", [("=", LINES)] + gpu("TemporalF", "TemporalH", "TemporalM", "TemporalN", "TemporalO",
-                                          "TemporalP", "TemporalR")),
-        ("render-8", gpu("Temporal", "S")),
-        ("render-9", []),
+        ("render-1", [("=", ORTHO_Q)] + gpu("I")),
+        ("render-2", gpu("ShadowCascadeCullPerfGpuTests.")),
+        ("render-3", [("=", PERSPECTIVE_PU)] + gpu("B")),
+        ("render-4", [("=", ORTHO_PU)] + gpu("G", "D")),
+        ("render-5", gpu("TemporalLongHoldFollowGpuTests.", "R", "TemporalC", "C")),
+        ("render-6", [("=", LINES), ("=", ORTHO_N)] + gpu("A", "TemporalM")),
+        ("render-7", [("=", PERSPECTIVE_NQ)] + gpu("TemporalFastEdge", "TemporalFollowedHistory", "P",
+                                                   "TemporalE", "TemporalU")),
+        ("render-8", gpu("TemporalS", "TemporalR", "M", "TemporalH")),
+        ("render-9", [("=", STOP)] + gpu("S", "Tab", "Target", "Telegraph", "Terrain", "Text", "Tile",
+                                       "Tool", "H", "L", "N")),
+        ("render-10", gpu("TemporalFollowCameraGpuTests.", "TemporalP", "O", "W", "V")),
+        ("render-11", gpu("TemporalG", "TemporalFollowLinesGpuTests.", "F", "TemporalN", "TemporalO")),
+        ("render-12", []),
     ],
 }
 
 REST = "rest"
+RENDER_PROJECT = f"{RENDER_ASSEMBLY}/{RENDER_ASSEMBLY}.csproj"
+# Only these named projects leave rest. Future test projects default to rest on every backend.
+PROJECT_SLICES = {
+    "direct3d11-native": [
+        ("projects-1", ("KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj",)),
+    ],
+    "vulkan-native": [
+        ("projects-1", tuple(f"{name}/{name}.csproj" for name in (
+            "KhaozEngine.MapEditor.Tests", "KhaozEngine.Game.Tests", "KhaozEngine.Movement.Tests"))),
+    ],
+}
 NEGATE = {"=": "!=", "~": "!~"}
 
 
@@ -118,7 +145,37 @@ def render_slices(backend):
 
 
 def shards(backend):
-    return [REST] + [name for name, _ in render_slices(backend)]
+    return [REST] + [name for name, _ in PROJECT_SLICES.get(backend, [])] + [name for name, _ in render_slices(backend)]
+
+
+def project_shard(backend, path):
+    return next((name for name, projects in PROJECT_SLICES.get(backend, []) if path in projects), REST)
+
+
+def cmd_solution(args):
+    """Derive a project shard's solution. An empty shard keeps every non-Render project for isolation."""
+    backend, shard, source, destination = args
+    if shard not in [""] + [name for name in shards(backend) if not name.startswith("render-")]:
+        fail(f"'{shard}' is not a {backend} project shard")
+    solution = ET.parse(source)
+    source_dir, destination_dir = Path(source).resolve().parent, Path(destination).resolve().parent
+    paths = [p.attrib["Path"] for p in solution.iter("Project")]
+    if paths.count(RENDER_PROJECT) != 1:
+        fail("expected exactly one Render.Tests project")
+    for name, projects in PROJECT_SLICES.get(backend, []):
+        for path in projects:
+            if paths.count(path) != 1:
+                fail(f"{backend} {name} expects exactly one {path} project in {source}")
+    for parent in solution.iter():
+        for project in list(parent):
+            if project.tag != "Project":
+                continue
+            path = project.attrib["Path"]
+            if path == RENDER_PROJECT or (shard and project_shard(backend, path) != shard):
+                parent.remove(project)
+            else:
+                project.set("Path", os.path.relpath(source_dir / path, destination_dir).replace(os.sep, "/"))
+    solution.write(destination, encoding="unicode")
 
 
 def slice_index(backend, name):
@@ -211,6 +268,11 @@ def parse_filter(text):
     return predicate
 
 
+# The triggers whose full suites are sharded: the weekly sweep and the pre-tag gate dispatch. A push or
+# pull_request full suite (metal-native only) stays one job, so it holds one macOS slot (#1460).
+SHARD_EVENTS = ("schedule", "workflow_dispatch")
+
+
 def full_suite_trigger(leg, event):
     """Whether this leg runs its full suite on this trigger, as the workflow's KE_TEST_FILTER decides it."""
     return leg["fullSuite"] == "always" or (leg["fullSuite"] == "scheduled" and event in ("schedule", "workflow_dispatch"))
@@ -225,7 +287,7 @@ def cmd_expand(_args):
     entries, summaries = [], []
     for leg in legs:
         sharded = (leg["backend"] in RENDER_SLICES and full_suite_trigger(leg, event)
-                   and not bake and not render_filter)
+                   and event in SHARD_EVENTS and not bake and not render_filter)
         if not sharded:
             entries.append(dict(leg, shard="", primary="1"))
             continue
@@ -340,17 +402,17 @@ def cmd_report(args):
     print(json.dumps(report, indent=1, sort_keys=True))
 
 
-def solution_test_assemblies(solution):
+def solution_test_projects(solution):
     """Test projects in the solution: every project that references Microsoft.NET.Test.Sdk."""
-    names = []
+    names = {}
     base = Path(solution).parent
     for project in ET.parse(solution).getroot().iter("Project"):
         path = base / project.attrib["Path"]
         text = path.read_text(encoding="utf-8") if path.exists() else ""
         if "Microsoft.NET.Test.Sdk" in text:
             override = re.search(r"<AssemblyName>([^<]+)</AssemblyName>", text)
-            names.append(override.group(1).strip() if override else path.stem)
-    return sorted(names)
+            names[override.group(1).strip() if override else path.stem] = project.attrib["Path"]
+    return names
 
 
 def cmd_summarize(args):
@@ -373,7 +435,8 @@ def cmd_summarize(args):
         if shard not in expected_shards:
             errors.append(f"report for unknown shard {shard}")
 
-    expected = solution_test_assemblies(solution)
+    projects = solution_test_projects(solution)
+    expected = sorted(projects)
     # TRX names an assembly by its dll path, which arrives lower-cased from Windows.
     canonical = {name.casefold(): name for name in expected}
     where, combined = {}, {}
@@ -389,16 +452,15 @@ def cmd_summarize(args):
     for name in expected:
         ran_on = where.get(name, [])
         if name == RENDER_ASSEMBLY:
-            if REST in ran_on:
-                errors.append(f"{name} ran on shard {REST}, outside its slices")
-            if not ran_on:
-                errors.append(f"{name} ran on no shard")
+            slices = {slice_name for slice_name, _ in render_slices(backend)}
+            if set(ran_on) != slices:
+                errors.append(f"{name} ran on {sorted(ran_on)}, expected its slices {sorted(slices)}")
         elif not ran_on:
             errors.append(f"test project {name} is in {solution} and ran on no shard")
         elif len(ran_on) > 1:
             errors.append(f"{name} ran on {len(ran_on)} shards: {', '.join(sorted(ran_on))}")
-        elif ran_on != [REST]:
-            errors.append(f"{name} ran on {ran_on[0]} instead of {REST}")
+        elif ran_on != [project_shard(backend, projects[name])]:
+            errors.append(f"{name} ran on {ran_on[0]} instead of {project_shard(backend, projects[name])}")
     for name in sorted(set(where) - set(expected)):
         print(f"::warning title=GPU full-suite shards::{name} ran on {', '.join(where[name])} but is not a "
               f"test project in {solution}")
@@ -431,6 +493,7 @@ def cmd_summarize(args):
 COMMANDS = {
     "expand": cmd_expand,
     "filter": cmd_filter,
+    "solution": cmd_solution,
     "check-render": cmd_check_render,
     "report": cmd_report,
     "summarize": cmd_summarize,

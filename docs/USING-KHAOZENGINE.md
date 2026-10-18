@@ -4420,8 +4420,8 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   final image with each pixel's screen motion since the last frame: hue for direction (rightward cyan, leftward red,
   downward violet, upward yellow-green), brightness for length (full at 16 internal pixels), and black where nothing
   opaque drew or nothing moved. The screen overlays drawn after the post chain (target outlines, fills, lines,
-  billboards and the screen transition) still draw over it. `History` (black just after a reset and where a still
-  pixel's shading changed, white at the full history, green where thin feature retention holds a pixel's lock),
+  billboards and the screen transition) still draw over it. `History` (black just after a reset and where a pixel's
+  shading changed, white at the full history, green where thin feature retention holds a pixel's lock),
   `Disocclusion` (red where history was rejected) and `Reactive` (yellow where transparent content lowered the
   history weight) show the resolve's own decisions and take effect only under `AntiAliasing.Temporal`.
 - **Diagnostics.** `scene.LastTemporalDiagnostics` reports the frame index, the jitter phase and offset, the keyed
@@ -8474,7 +8474,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.4.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.4.1" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -8875,7 +8875,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.4.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.4.1" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9640,7 +9640,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.4.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.4.1" />
 ```
 
 ```csharp
@@ -17424,7 +17424,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.4.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.4.1" />
 ```
 
 ```csharp
@@ -17460,7 +17460,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.4.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.4.1" />
 ```
 
 ```csharp
@@ -17704,7 +17704,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.4.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.4.1" />
 ```
 
 ```csharp
@@ -22064,7 +22064,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.4.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.4.1" />
 </ItemGroup>
 ```
 

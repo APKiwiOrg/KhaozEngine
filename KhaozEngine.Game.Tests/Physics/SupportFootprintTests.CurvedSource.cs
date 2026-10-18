@@ -28,13 +28,11 @@ public partial class SupportFootprintTests
         var root = arithmetic.Root(square);
         var x = arithmetic.Divide(arithmetic.X, root); var z = arithmetic.Divide(arithmetic.Z, root);
         var identity = arithmetic.Subtract(arithmetic.Add(arithmetic.Square(x), arithmetic.Square(z)), arithmetic.One);
-        using var region = SupportAllocationRegion.Start();
         Assert.Equal(GeometrySign.Zero, arithmetic.Sign(identity));
         AssertSourceFallbacks();
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        GeometrySign warm = arithmetic.Sign(identity);
-        long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
-        region.Dispose();
+        GeometrySign warm = default;
+        long bytes = AllocationMeasurement.Measure(nameof(CurvedPolynomialFallbackRetainsNormalizedSourceIdentity), () =>
+            warm = arithmetic.Sign(identity));
         Assert.Equal(GeometrySign.Zero, warm);
         Assert.Equal(0, bytes);
     }
@@ -65,7 +63,6 @@ public partial class SupportFootprintTests
             axis, 0.25, half, default, default, default, map.Y);
         var kernel = new SupportFootprintCurved();
         var request = Request(x: x, z: z, lower: -2, upper: 2);
-        using var region = SupportAllocationRegion.Start();
         GeometrySign result = kernel.Measure(default, leaf, 0, request, out var member);
         Assert.Equal(GeometrySign.Positive, result);
         Assert.Equal(2, member.WitnessCount);
@@ -75,10 +72,9 @@ public partial class SupportFootprintTests
         Assert.Equal(0, member.DiscHeightUpper);
         Assert.Equal(Vector3.UnitY, member.Second.Normal);
         Assert.Equal(0, member.Second.NormalError);
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        GeometrySign warm = kernel.Measure(default, leaf, 0, request, out _);
-        long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
-        region.Dispose();
+        GeometrySign warm = default;
+        long bytes = AllocationMeasurement.Measure(nameof(CurvedFiniteAxisOnCoreBoundingCircleKeepsBothRoles), () =>
+            warm = kernel.Measure(default, leaf, 0, request, out _));
         Assert.Equal(GeometrySign.Positive, warm);
         Assert.Equal(0, bytes);
 
@@ -142,12 +138,11 @@ public partial class SupportFootprintTests
             R.From(0.25), R.From(half));
         var exact = SupportFootprintClosedFormOracle.Measure(exactPart, request);
         var kernel = new SupportFootprintCurved();
-        using var region = SupportAllocationRegion.Start();
         Assert.Equal(GeometrySign.Positive, kernel.Measure(default, leaf, part, request, out var member));
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        GeometrySign warm = kernel.Measure(default, leaf, part, request, out var repeated);
-        long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
-        region.Dispose();
+        GeometrySign warm = default;
+        SupportFootprintMember repeated = default;
+        long bytes = AllocationMeasurement.Measure(nameof(CheckCurvedCoreLine), () =>
+            warm = kernel.Measure(default, leaf, part, request, out repeated));
         Assert.Equal(exact.Witnesses.Count, member.WitnessCount);
         Assert.Equal(SupportWitnessRole.Footprint, member.WitnessCount == 2 ? member.Second.Role : member.First.Role);
         if (surface != OracleSurface.CylinderSide)

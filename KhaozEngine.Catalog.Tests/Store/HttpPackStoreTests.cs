@@ -252,6 +252,7 @@ public class HttpPackStoreTests
             var store = new HttpPackStore(client, origin.BaseAddress);
             Assert.NotNull(await store.GetAsync(control));
 
+            // The awaited HTTP request spans threads, so a synchronous allocation region does not apply.
             long before = GC.GetTotalAllocatedBytes(precise: true);
             ReadOnlyMemory<byte>? bytes = await store.GetAsync(oversize);
             long allocated = GC.GetTotalAllocatedBytes(precise: true) - before;

@@ -459,14 +459,9 @@ public partial class SupportFootprintTests
         SupportQueryDiagnostics.Reset();
         Assert.Equal(cold.ToString(), scene.Find(lease).ToString());
         Assert.Equal(0, SupportQueryDiagnostics.Snapshot().WorldFormBuilds);
-        SupportSample warm;
-        long bytes;
-        using (SupportAllocationRegion.Start())
-        {
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            warm = scene.Find(lease);
-            bytes = GC.GetAllocatedBytesForCurrentThread() - before;
-        }
+        SupportSample warm = default;
+        long bytes = AllocationMeasurement.Measure($"{nameof(WarmFindWithWorldFormAllocatesNothing)} {name}", () =>
+            warm = scene.Find(lease));
         Assert.Equal(0, bytes);
         Assert.Equal(0, SupportQueryDiagnostics.Snapshot().WorldFormBuilds);
         Assert.Equal(cold.ToString(), warm.ToString());

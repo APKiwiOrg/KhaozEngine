@@ -84,7 +84,7 @@ public sealed class LocalizationScopeTests
             using var parent = LocalizationContext.Use(Catalog("parent"));
             var changed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var observed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            Task first = Task.Run(async () =>
+            Task first = DedicatedThread.Run(async () =>
             {
                 Assert.Equal("parent", Text.Resolve());
                 parent.Dispose();
@@ -95,7 +95,7 @@ public sealed class LocalizationScopeTests
                 await observed.Task.WaitAsync(TimeSpan.FromSeconds(10));
                 Assert.Equal("first", Text.Resolve());
             });
-            Task second = Task.Run(async () =>
+            Task second = DedicatedThread.Run(async () =>
             {
                 await changed.Task.WaitAsync(TimeSpan.FromSeconds(10));
                 Assert.Equal("parent", Text.Resolve());
@@ -124,7 +124,7 @@ public sealed class LocalizationScopeTests
             LocalizationContext.Catalog = Catalog("process");
             using var parent = LocalizationContext.Use(Catalog("parent"));
             var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            Task child = Task.Run(async () =>
+            Task child = DedicatedThread.Run(async () =>
             {
                 await release.Task.WaitAsync(TimeSpan.FromSeconds(10));
                 Assert.Equal("parent", Text.Resolve());
@@ -166,7 +166,7 @@ public sealed class LocalizationScopeTests
             using var parent = LocalizationContext.Use(Catalog("parent"));
             Task child;
             using (ExecutionContext.SuppressFlow())
-                child = Task.Run(() =>
+                child = DedicatedThread.Run(() =>
                 {
                     parent.Dispose();
                     Assert.Equal("process", Text.Resolve());

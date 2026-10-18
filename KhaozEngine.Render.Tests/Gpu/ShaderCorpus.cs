@@ -106,6 +106,8 @@ namespace KhaozEngine.Tests.Gpu
         internal static IEnumerable<ShippedComputeKernel> CoverageKernels()
         {
             yield return new(CoverageGpuArithmeticProbe.Name, CoverageGpuArithmeticProbe.Source);
+            yield return new(CoverageGpuExactWordsProbe.Name, CoverageGpuExactWordsProbe.Source);
+            yield return new(CoverageGpuRoundingProbe.Name, CoverageGpuRoundingProbe.Source);
         }
 
         static void EmitCompute(ShippedComputeKernel kernel, List<ShaderCorpusRow> rows, Action<string, byte[]>? dump,

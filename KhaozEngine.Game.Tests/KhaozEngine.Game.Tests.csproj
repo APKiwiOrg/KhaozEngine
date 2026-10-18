@@ -42,6 +42,7 @@
          allocation free. SupportNeighborhoodEquivalenceTests proves every result is still bit-identical. -->
     <None Include="Locomotion/Contacts/Fixtures/support-equivalence-queries.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Locomotion/Contacts/Fixtures/support-exact-install-controls.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Locomotion/Contacts/Fixtures/support-exact-curved-install-controls.txt" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Locomotion/Contacts/Fixtures/support-equivalence.txt" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Locomotion/Contacts/Fixtures/grimhollow-stairs-collision.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

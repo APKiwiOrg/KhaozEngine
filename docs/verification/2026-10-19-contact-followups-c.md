@@ -148,3 +148,35 @@ Changed curved expectations, each against the represented exact or closed-form o
   Historical anchor callbacks are unchanged.
 
 No tolerance, band, limit, storage bound or fallback-count assertion changed. No timing conclusion follows.
+
+### Fix round 1 exact curved baseline
+
+Ruling FC-R5 closes the CC-10 raw comparison gap. `ExactCurvedInstallControlsMatchBaseline` freezes
+the complete public footprint and neighborhood outputs, using the existing raw-bit serializer and
+unchanged result types. It never serializes `SupportCurvedLeaf` or its changed source-column fields.
+The test includes raw static and element ownership, ordered witness roles, positions, normals, heights,
+errors, request XZ, both proposal verdicts, all published join words and floating zero signs. Cached
+and reference footprints must also match bit for bit.
+
+- Baseline commit `9e63657a70b2643059ffe09e6acc1b10a423fa78`, unchanged production with Task 1's freeze harness.
+- Detached scratch worktree `.worktrees/fu-c-curved-freeze` captured the final source once, then was removed with
+  `git worktree remove --force` after copying the fixture and comparing the test source byte for byte.
+- Fixture `KhaozEngine.Game.Tests/Locomotion/Contacts/Fixtures/support-exact-curved-install-controls.txt`.
+- Rows 72, comprising sphere, capsule, cylinder and a translated second compound capsule child, each
+  at identity, `(0,1,0,0)` and cyclic `(0.5f,0.5f,0.5f,0.5f)`, with both planar-control zero signs and
+  three XZ queries. Centre, offset and outside-axis overlap queries exercise both roles and proposal
+  Contact and Miss verdicts. Compound output retains raw element id 256.
+- Fixture SHA-256 `c860b3fd9169649a06cb9de81a2bf92fe9cfc11af10bc66543796b3cf178ded9`.
+- Identical test-source SHA-256 `ccffcc571d2a3ca81c47b3763356c3685060db3bd5f6974f88f1bed8a5b39341`.
+- Capture-disabled comparison at lane HEAD `d0a65bf36` passed all 72 rows without any production fix.
+  The following `ExactInstallControlsMatchBaseline|RepresentedCurved` selection passed 28 tests.
+- The original 24-row planar fixture remains byte-identical, SHA-256
+  `ecda8a376cadedf630c0e39d48e0a7914ba3be4c1b570b1e84820b244b917e75`.
+
+The final capture, comparison and focused check ran synchronously through build-slot, once each, with exit 0.
+An initial sequence also passed, then the staged whitespace guard found trailing separators on empty
+neighborhood rows. The serializer now trims only those separators. Its corrected source was captured
+again at unchanged production `9e63657a7`, never at lane HEAD. Both captures have identical data apart
+from the trailing separators. There was no expected-row edit, loop, timing run or full suite. Production and
+legacy tests are unchanged, so the accepted 15 Task 1 and 9 Task 2 FC-R1 failures remain assigned to
+Task 3. They were not rerun in this fix round.

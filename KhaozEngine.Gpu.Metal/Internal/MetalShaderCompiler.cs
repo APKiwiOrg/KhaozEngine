@@ -89,15 +89,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <exception cref="ShaderValidationException">A source failed to compile to SPIR-V, the pair failed to
         /// cross-compile, its emission could not be read, or Metal rejected the emitted MSL.</exception>
         [SupportedOSPlatform("macos")]
-        internal MetalShaderSet CreateShaderSet(string vertexGlsl, string fragmentGlsl)
+        internal MetalShaderSet CreateShaderSet(string vertexGlsl, string fragmentGlsl, GpuShaderCompileOptions options = default)
         {
-            MetalMslProgram program = MetalShaderBuild.Pair(vertexGlsl, fragmentGlsl, _cache);
+            MetalMslProgram program = MetalShaderBuild.Pair(vertexGlsl, fragmentGlsl, _cache, options: options);
 
             // THE TABLE IS CANONICALISED AFTER THE COMPILE RATHER THAN BEFORE IT, so a program Metal rejects
             // leaves nothing in the cache. The cache is never evicted, so an entry made for a shader set that was
             // never handed out would sit there for the device's life. A table rebuilt from the DISK cache arrives
             // here through this same call, so it deduplicates exactly as a freshly emitted one does (M-R9).
-            return new MetalShaderSet(_liveness, CompileOnMacOs(program), _tables.Canonical(program.Table));
+            return new MetalShaderSet(_liveness, CompileOnMacOs(program, options), _tables.Canonical(program.Table));
         }
 
         /// <summary>Emit a GLSL 450 compute source to MSL and compile it.</summary>
@@ -105,10 +105,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// cross-compile, declares no resolvable workgroup size, its emission could not be read, or Metal
         /// rejected the emitted MSL.</exception>
         [SupportedOSPlatform("macos")]
-        internal MetalComputeShader CreateComputeShader(string computeGlsl)
+        internal MetalComputeShader CreateComputeShader(string computeGlsl, GpuShaderCompileOptions options = default)
         {
-            (MetalMslProgram program, uint x, uint y, uint z) = MetalShaderBuild.Compute(computeGlsl, _cache);
-            MetalCompiledStage[] stages = CompileOnMacOs(program);
+            (MetalMslProgram program, uint x, uint y, uint z) = MetalShaderBuild.Compute(computeGlsl, _cache, options: options);
+            MetalCompiledStage[] stages = CompileOnMacOs(program, options);
             return new MetalComputeShader(_liveness, stages[0], _tables.Canonical(program.Table), x, y, z);
         }
 
@@ -129,16 +129,19 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </summary>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal MetalCompiledStage[] CompileOnMacOs(MetalMslProgram program)
+        internal MetalCompiledStage[] CompileOnMacOs(MetalMslProgram program, GpuShaderCompileOptions options = default)
         {
             using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
 
-            MTLCompileOptions options = NewPinnedOptions();
             var compiled = new List<MetalCompiledStage>(program.Stages.Count);
             try
             {
                 foreach (MetalMslStage stage in program.Stages)
-                    compiled.Add(CompileStage(stage, options));
+                {
+                    MTLCompileOptions nativeOptions = NewPinnedOptions(stage.Stage, options);
+                    try { compiled.Add(CompileStage(stage, nativeOptions)); }
+                    finally { nativeOptions.Release(); }
+                }
 
                 return compiled.ToArray();
             }
@@ -150,10 +153,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     stage.Library.Release();
                 }
                 throw;
-            }
-            finally
-            {
-                options.Release();
             }
         }
 
@@ -194,7 +193,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // mutable and a shared instance is a shared mutable object on a path M-W8 says is free-threaded.
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static MTLCompileOptions NewPinnedOptions()
+        static MTLCompileOptions NewPinnedOptions(MetalShaderStage stage, GpuShaderCompileOptions compileOptions)
         {
             MTLCompileOptions options = MTLCompileOptions.New();
             if (options.IsNull)
@@ -205,7 +204,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             }
 
             options.SetLanguageVersion(MslCompilePin.LanguageVersion);
-            options.SetFastMathEnabled(MslCompilePin.FastMathEnabled);
+            options.SetFastMathEnabled(MslCompilePin.FastMathEnabledFor(stage, compileOptions));
             options.SetPreserveInvariance(MslCompilePin.PreserveInvariance);
             return options;
         }

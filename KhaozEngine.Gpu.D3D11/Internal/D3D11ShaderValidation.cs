@@ -33,13 +33,17 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <exception cref="ShaderValidationException">A source failed to compile to SPIR-V, the pair failed to
         /// cross-compile, FXC rejected the emitted HLSL, or the vertex input signature is holed.</exception>
         internal static void ValidatePair(string vertexGlsl, string fragmentGlsl, string? label = null)
+            => ValidatePair(vertexGlsl, fragmentGlsl, default, label);
+
+        internal static void ValidatePair(string vertexGlsl, string fragmentGlsl, GpuShaderCompileOptions vertexOptions,
+            string? label = null)
         {
             ArgumentNullException.ThrowIfNull(vertexGlsl);
             ArgumentNullException.ThrowIfNull(fragmentGlsl);
             if (!KhaozEngineD3D11.IsPlatformSupported) throw NotOnThisPlatform();
 
             _ = D3D11ShaderBuild.Pair(vertexGlsl, fragmentGlsl, D3D11ShaderDebug.Optimized, cache: null,
-                label ?? "shader pair");
+                label ?? "shader pair", vertexOptions);
         }
 
         /// <summary>Validate a GLSL 450 compute source through the real shader path.</summary>
@@ -47,12 +51,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <exception cref="ShaderValidationException">The source failed to compile to SPIR-V, failed to
         /// cross-compile, declares no resolvable workgroup size, or FXC rejected the emitted HLSL.</exception>
         internal static void ValidateCompute(string computeGlsl, string? label = null)
+            => ValidateCompute(computeGlsl, default, label);
+
+        internal static void ValidateCompute(string computeGlsl, GpuShaderCompileOptions options, string? label = null)
         {
             ArgumentNullException.ThrowIfNull(computeGlsl);
             if (!KhaozEngineD3D11.IsPlatformSupported) throw NotOnThisPlatform();
 
             _ = D3D11ShaderBuild.Compute(computeGlsl, D3D11ShaderDebug.Optimized, cache: null,
-                label ?? "compute shader");
+                label ?? "compute shader", options);
         }
 
         // Not D3D11PlatformGuard's wording: that one is for a Windows-only OBJECT reached off Windows, which is

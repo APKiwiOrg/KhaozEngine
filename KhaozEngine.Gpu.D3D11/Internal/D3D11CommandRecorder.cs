@@ -46,14 +46,20 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// list that was never ended.
     /// </para>
     /// </summary>
-    internal sealed class D3D11CommandRecorder<TEmitter> : IGpuCommandList
+    internal sealed partial class D3D11CommandRecorder<TEmitter> : IGpuCommandList
         where TEmitter : struct, ID3D11Emitter
     {
         TEmitter _emitter;
         bool _recording;
         bool _disposed;
 
-        internal D3D11CommandRecorder(TEmitter emitter) => _emitter = emitter;
+        readonly D3D11FenceSubsystem? _timestampFences;
+
+        internal D3D11CommandRecorder(TEmitter emitter, D3D11FenceSubsystem? timestampFences = null)
+        {
+            _emitter = emitter;
+            _timestampFences = timestampFences;
+        }
 
         /// <summary>
         /// The emitter this list drives, by READONLY reference. An <see cref="ID3D11Emitter"/> implementation is

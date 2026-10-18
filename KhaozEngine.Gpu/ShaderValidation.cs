@@ -4,8 +4,8 @@ using KhaozEngine.Gpu.Internal;
 namespace KhaozEngine.Gpu
 {
     /// <summary>
-    /// Device-free validation of a GLSL 450 vertex/fragment shader pair (<see cref="ValidatePair"/>) or a single
-    /// compute shader (<see cref="ValidateCompute"/>). Compiles the sources to SPIR-V and cross-compiles them to
+    /// Device-free validation of a GLSL 450 vertex/fragment shader pair (<see cref="ValidatePair(string, string, string?)"/>) or a single
+    /// compute shader (<see cref="ValidateCompute(string, string?)"/>). Compiles the sources to SPIR-V and cross-compiles them to
     /// every backend shading language the engine targets (HLSL and MSL), entirely on the CPU via shaderc and
     /// SPIRV-Cross. No device is created, so this runs in a fast, GPU-free test loop and on CI machines with no
     /// graphics device at all.
@@ -74,20 +74,25 @@ namespace KhaozEngine.Gpu
         /// resource layout's (see <see cref="Internal.MslBindingOrder"/>). The message names the label and the
         /// failing stage/target.</exception>
         public static void ValidatePair(string vertexGlsl, string fragmentGlsl, string? label = null)
+            => ValidatePair(vertexGlsl, fragmentGlsl, default, label);
+
+        /// <summary>Validate a graphics pair with the shipped per-vertex arithmetic policy.</summary>
+        public static void ValidatePair(string vertexGlsl, string fragmentGlsl, GpuShaderCompileOptions vertexOptions,
+            string? label = null)
         {
             if (vertexGlsl is null) throw new ArgumentNullException(nameof(vertexGlsl));
             if (fragmentGlsl is null) throw new ArgumentNullException(nameof(fragmentGlsl));
 
             string tag = label ?? "shader pair";
 
-            byte[] vertSpirv = CompileToSpirv(vertexGlsl, GpuShaderStages.Vertex, tag);
+            byte[] vertSpirv = CompileToSpirv(vertexGlsl, GpuShaderStages.Vertex, tag, vertexOptions);
             byte[] fragSpirv = CompileToSpirv(fragmentGlsl, GpuShaderStages.Fragment, tag);
 
             // Both emitters run through the SAME seat the shipped shader path uses, so what is validated is what
             // the backends will actually compile, under the same pinned options. Each throws its own named
             // ShaderValidationException naming the tag and the target, which is why neither call is wrapped here.
-            SpirvCrossCompile.VertexFragmentToHlsl(vertSpirv, fragSpirv, tag);
-            CrossCompiledPair msl = SpirvCrossCompile.VertexFragmentToMsl(vertSpirv, fragSpirv, tag);
+            SpirvCrossCompile.VertexFragmentToHlsl(vertSpirv, fragSpirv, tag, vertexOptions);
+            CrossCompiledPair msl = SpirvCrossCompile.VertexFragmentToMsl(vertSpirv, fragSpirv, tag, vertexOptions);
 
             // One check per stage, and nothing pair-wide any more: the prefix property retired with the
             // one-uniform-buffer rule it served (issue #604).
@@ -98,7 +103,7 @@ namespace KhaozEngine.Gpu
         /// <summary>
         /// Validates a GLSL 450 COMPUTE shader without a graphics device: compiles the source to SPIR-V (entry
         /// point <c>main</c>, the same convention as the runtime path
-        /// <see cref="IGpuResourceFactory.CreateComputeShaderFromSpirv"/>), then cross-compiles the single stage to
+        /// <see cref="IGpuResourceFactory.CreateComputeShaderFromSpirv(string)"/>), then cross-compiles the single stage to
         /// HLSL and MSL. The compute sibling of
         /// <see cref="ValidatePair(string, string, string?)"/>, and the same reason to use it: a compute shader that
         /// miscompiles on one backend otherwise only blows up at first dispatch on a real device of that backend,
@@ -110,16 +115,20 @@ namespace KhaozEngine.Gpu
         /// <exception cref="ShaderValidationException">The source failed to compile to SPIR-V, or failed to
         /// cross-compile to one of the backend targets. The message names the label and the failing stage/target.</exception>
         public static void ValidateCompute(string computeGlsl, string? label = null)
+            => ValidateCompute(computeGlsl, default, label);
+
+        /// <summary>Validate a compute shader with the shipped per-shader arithmetic policy.</summary>
+        public static void ValidateCompute(string computeGlsl, GpuShaderCompileOptions options, string? label = null)
         {
             if (computeGlsl is null) throw new ArgumentNullException(nameof(computeGlsl));
 
             string tag = label ?? "compute shader";
-            byte[] spirv = CompileToSpirv(computeGlsl, GpuShaderStages.Compute, tag);
+            byte[] spirv = CompileToSpirv(computeGlsl, GpuShaderStages.Compute, tag, options);
 
             // Same seat as the shipped compute path, for the same reason the pair validator uses it, and each
             // emitter throws its own named failure naming the tag and the target.
-            SpirvCrossCompile.ComputeToHlsl(spirv, tag);
-            CrossCompiledCompute msl = SpirvCrossCompile.ComputeToMsl(spirv, tag);
+            SpirvCrossCompile.ComputeToHlsl(spirv, tag, options);
+            CrossCompiledCompute msl = SpirvCrossCompile.ComputeToMsl(spirv, tag, options);
 
             // The id join first, because it is exact and sees a same-kind swap. The kind comparison below is
             // the fallback for the one case the join cannot answer: an index space carrying an argument whose
@@ -242,8 +251,8 @@ namespace KhaozEngine.Gpu
         // 18.0.0 the incumbent VeldridGpuDevice compiled under the library defaults, deliberately, and the two
         // sets were asserted equal by VulkanSpirvIncumbentParityTests rather than by construction. Both went with
         // the incumbent.
-        static byte[] CompileToSpirv(string glsl, GpuShaderStages stage, string tag)
-            => Internal.SpirvFrontEnd.ToSpirv(glsl, stage, tag);
+        static byte[] CompileToSpirv(string glsl, GpuShaderStages stage, string tag, GpuShaderCompileOptions options = default)
+            => Internal.SpirvFrontEnd.ToSpirv(glsl, stage, tag, options);
     }
 
     /// <summary>

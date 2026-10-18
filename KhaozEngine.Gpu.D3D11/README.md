@@ -518,14 +518,13 @@ backend does, so a steady cost on a set no renderer writes is the better of the 
 cross-arm case is unaffected: the other arm's next flush puts the register back and the slot goes clean. A
 device-free test pins the repeating trace, so a change here has to be a decision rather than an accident.
 
-**Rule 2 is honoured as written and adds no barrier member.** A dispatch that reads an earlier dispatch's writes
-is separated by `End` plus `Submit` plus `WaitForIdle`, which is the cross-backend contract stated on
-`IGpuCommandList` itself, and the ocean's `PrimeRowPass` is the shipped consumer of it. Worth naming so it is not
-rediscovered: Direct3D 11 tracks hazards itself and inserts that synchronisation between dependent dispatches on
-one context, so rule 2 is a Vulkan-shaped requirement being paid on a backend that does not need it. The right
-resolution is a seam capability letting a consumer skip the drain where hazards are tracked, which is a seam
-change plus a renderer change and is therefore outside this backend's "zero renderer changes by construction"
-scope. A device-free test asserts that neither seam grew a barrier member, so the decision cannot drift quietly.
+**Compute rule 2 guarantees in-list storage-buffer ordering without a barrier member.** A dispatch or draw
+reading a storage buffer an earlier dispatch wrote sees the write without an intermediate `End`, `Submit` or
+`WaitForIdle`. The SRV/UAV conflict tracker unbinds a buffer's UAV before binding its graphics or compute SRV,
+and invalidates the reader's graphics binding when a later compute UAV takes ownership. The Direct3D 11 runtime
+orders dependent accesses on the context, including successive dispatches that keep a UAV bound. Ordering
+across command lists still requires a submit boundary and a wait. The production ocean keeps its existing
+submission pattern. A device-free test asserts that neither seam grew a barrier member.
 
 **Structured buffers keep the RAW byte-address treatment**, created by the resource path and consumed unchanged
 here. SPIRV-Cross emits a GLSL storage block as a `ByteAddressBuffer` or an `RWByteAddressBuffer`, never a
@@ -627,6 +626,31 @@ every fence reads signalled, since a destroyed device has no outstanding work to
 
 The fence poll does NOT flush, deliberately. Only the drain has decided to wait, so only the drain pays to have
 the work handed over, and `IGpuFence.Signaled` stays as cheap as the seam's contract expects.
+
+## Timestamp batches
+
+`SupportsTimestamps` probes creation of timestamp and timestamp-disjoint queries on the actual device.
+It times no workload and does not exclude WARP. Unsupported creation reports false and releases every
+successful probe object. Removal and other device faults follow the existing failure path.
+
+A fixed pool owns its timestamp queries, one disjoint query and preallocated result scratch. Use one
+batch per frame or less and one outstanding batch per pool. The shipped recorder validates the batch,
+then the immediate emitter calls `Begin(disjoint)`, `End(timestamp[index])` for each write and
+`End(disjoint)`. The deferred driver stores these same operations and retains the pool in the stream's
+reference list until reset or recorder disposal. It makes no native query call before replay. Counting
+and trace emitters preserve the operations and their order too.
+
+`TryResolve` uses `Monitor.TryEnter` on the device's immediate-context lock. Contention returns Pending.
+It polls the supplied completion fence before issuing one non-flushing `GetData` per required query,
+with `D3D11_ASYNC_GETDATA_DONOTFLUSH` (1). Unavailable queries remain Pending. Disjoint data or zero
+frequency is Invalid. Both leave caller ticks untouched with period zero. Ready normalizes elapsed ticks
+and reports exactly `1_000_000_000d / frequency`. Terminal results remain repeatable until the next begin.
+Invalid samples never enter the GPU gate. Resolve never waits, maps, drains or flushes.
+
+Submit does not flush either. A headless loop reaches Ready only after a Present or caller drain hands
+work to the driver. The native correctness test drains once, outside the timestamp interval.
+Keep the pool alive through completion. Query release uses the same COM lifetime path as other submitted
+D3D11 resources, skips a dead device and adds no drain. Device errors use the existing loss latch.
 
 ## What a telemetry session carries, and why it is cumulative
 
@@ -1184,6 +1208,8 @@ its boundary W5.
   a consumer's walk over the pixels. This clause is TESTED rather than asserted in prose: the four native calls
   sit behind `ID3D11StagingMemory`, and a fake recording `Monitor.IsEntered` per call pins both halves of it off
   Windows. See the compute section for the seam.
+- **Timestamp resolve tries the immediate-context lock without waiting.** Contention returns Pending.
+  Fence polling and every non-flushing query read occur under the same lock. See "Timestamp batches".
 - **Nothing waits under the submit lock, with ONE knowingly paid exception**, and exactly two members CAN block
   unboundedly, both of which refuse a caller who holds it, by name: `WaitForIdle` (which signals and flushes
   under the lock and then releases it to wait, so the submission it is waiting for can still be made) and the
@@ -1196,7 +1222,10 @@ its boundary W5.
   to wait until the GPU is done with that resource, which is exactly what makes a readback correct without an
   explicit drain, and the wait is bounded by the work already submitted against that one resource rather than
   by a frame. The alternative, mapping with `DO_NOT_WAIT` and spinning outside the lock, trades a bounded wait
-  for a spin that can starve.
+  for a spin that can starve. `TryReadBuffer` is the non-blocking read and the one place that waits on neither:
+  it TRIES the lock with `Monitor.TryEnter`, polls the completion fence inside it and maps with `DO_NOT_WAIT`,
+  answering `false` at any step that would have waited (`DXGI_ERROR_WAS_STILL_DRAWING` included), then copies
+  and unmaps before releasing the lock. It never spins, because the caller polls again on a later frame.
 - The process-wide `GpuDeviceContext._lifecycleGate` is unchanged, and still serializes device creation and
   disposal across every backend.
 

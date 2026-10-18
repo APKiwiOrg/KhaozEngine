@@ -266,7 +266,7 @@ than unbuilt: it presents no frames, so there is no frame to capture.
 
 ## The timeline, and why a fence here is two fields (M-F1 to M-F5)
 
-One device-wide `MTLSharedEvent` is the whole synchronisation story. Every submission encodes
+One device-wide `MTLSharedEvent` owns submission completion. Every submission encodes
 `encodeSignalEvent:value:` with the next value before committing, a fence is a remembered value on that
 counter, and `IGpuFence.Signaled` is one non-blocking `signaledValue` read. There is no Metal object behind a
 fence at all.
@@ -297,6 +297,38 @@ liveness token from Metal's own completion thread. A single unbounded wait canno
 counts one entry into `GpuDeviceCounters.DrainCount` and `DrainMs` per call that actually blocked. The slice has
 one observable cost, which is up to 250ms of extra teardown latency after a device loss, since a waiter already
 blocked inside the native call keeps blocking until its current slice expires.
+
+## GPU timestamps
+
+`SupportsTimestamps` requires `MTLCommonCounterSetTimestamp`, stage-boundary or blit-command sampling,
+and a successful trial sample-buffer allocation. The probe releases that buffer immediately. Stage
+boundaries are preferred, including on Apple GPUs that do not support the blit sample command.
+
+`CreateTimestampPool` allocates fixed counter samples, a shared result buffer, two four-byte marker
+buffers, a private shared event and one blit-pass descriptor per sample in stage mode. Every write ends
+the current encoder through `EnsureNoEncoder`. The stage marker attaches the requested index at the
+end of a dedicated nonempty blit pass, with `MTLCounterDontSample` at the start. The command marker
+copies four bytes and calls `sampleCountersInBuffer:atSampleIndex:withBarrier:YES`. Both close the
+marker encoder before returning. Epoch changes invalidate encoder state while preserving pending clears.
+
+Each marker is surrounded by private-event signal/wait pairs with lifetime-monotonic values. These
+GPU dependencies order unrelated work as well as shared resources. They never wait on the CPU or
+advance the device completion timeline. End encodes
+`resolveCounters:inRange:destinationBuffer:destinationOffset:` into the fixed shared result buffer.
+It does not call the allocating CPU `resolveCounterRange:` selector.
+
+Begin samples the correlated CPU nanosecond and GPU clocks. Once the completion fence signals,
+resolve samples them again and derives nanoseconds per tick from the two deltas. Both terminal status
+and calibrated results remain cached until Begin. Invalid clock spans, out-of-interval or reversed
+counters, zero and `MTLCounterErrorValue` never publish ticks. Pending and Invalid return period zero.
+No fixed tick period, command-buffer duration estimate or CPU timer replaces hardware counters.
+
+Marker cost is part of instrumented GPU time and is never subtracted. Descriptors and native resources
+are reused only after the previous batch resolves. The caller keeps pools alive through completion.
+Metal retains encoded resources and disposal adds no drain. `MetalTimestampTests` covers device-free
+policy and `ComputeTimestampGpuTests` logs the native probe, branch and calibrated period. Apple
+Paravirtual may run the explicit unsupported branch. Real-hardware budget measurements require
+separate owner approval and a chosen device.
 
 ## Resources, and the one creation this backend refuses
 
@@ -337,6 +369,11 @@ convention rather than on the backend. Here a read mapping drains, and it commit
 first, so a texture uploaded and immediately read back sees the uploaded bytes. That drain is the QUEUE
 drain rather than the timeline's, because a setup batch signals no timeline value and only a completed
 empty buffer covers one. A write mapping does not drain, because the caller is the producer.
+
+**`TryReadBuffer` does not wait at all.** It polls the completion fence and copies from the staging buffer's
+`contents()` pointer, calling neither `Map` nor `WaitForIdle`, the setup flush, a submit or the submit lock. A
+Shared buffer a blit wrote is visible to the CPU once that command buffer has completed, which is what the fence
+reports, and the copy is recorded in the submitted list rather than the setup batch.
 
 **A device-level `UpdateTexture` records into a device-owned setup command buffer rather than issuing its own
 queue submit.** The incumbent created a staging texture, a command list and a whole `SubmitCommands` per call.
@@ -501,6 +538,7 @@ rather than discovering it as a frame-loop stall with nothing attached.
 
 **Exactly one encoder is open at a time, which is Metal's rule rather than a policy this backend invents.**
 Three helpers own every transition and each ends the outgoing encoder before opening the incoming one.
+Timestamp markers first close that scope and report their dedicated blit encoder boundaries back to it.
 
 **Ending an encoder discards EVERYTHING it held**, and this backend acts on all of it: the bound pipeline, the
 whole argument table, the viewport, the scissor, every vertex stream and the index buffer. The incumbent
@@ -564,7 +602,7 @@ anything to see them by. All of it happens with no device involved, so a shader 
 on a CI leg that has no GPU rather than as a wrong pixel on one that does.
 
 **The emission is pinned twice and neither pin covers the numbering.** One pin freezes the cross-compile options
-and one freezes `MTLCompileOptions` (`languageVersion` 3.2, fast math on, `preserveInvariance` off, all measured
+and one freezes default `MTLCompileOptions` (`languageVersion` 3.2, fast math on, `preserveInvariance` off, all measured
 rather than assumed). Neither reaches the cross-compiler's naming or index assignment, which the binding table
 depends on. What freezes those is the exact `Silk.NET.Shaderc` and `Silk.NET.SPIRV.Cross` versions the engine
 pins, so that drift arrives on a deliberate package bump and lands as a red device-free test rather than as a
@@ -572,6 +610,11 @@ wrong frame. Those versions are in the emission cache's key as well, read off th
 rather than out of the props file, so a bump partitions the cache instead of serving the previous
 cross-compiler's output
 ([#610](https://github.com/APKiwiOrg/KhaozEngine/issues/610)).
+
+`GpuShaderCompileOptions(PreciseMath: true)` selects invariant MSL arithmetic helpers and disables fast math
+only for the requested compute or vertex stage. Author the corresponding GLSL arithmetic as `precise` too.
+Fragment compilation, language version and preserve-invariance policy retain their defaults. The program cache
+identity includes the option before lookup, so default and precise programs never share an emission entry.
 
 **The disk cache holds the EMISSION, not a `.metallib`.** macOS already caches the MSL-to-library compile across
 processes (0.02 ms for a source it has seen before, against 68 to 98 ms cold, both taken with the compiler
@@ -901,12 +944,12 @@ block, the viewport, the scissor) is encoder state and is re-issued after any bo
 ARGUMENT here too, where Direct3D 11 sets it on the input assembler and Vulkan bakes it into the pipeline, so
 the pipeline resolves it once at creation and nothing is mapped per draw.
 
-**Two dependent dispatches inside one recording are ordered, and that is a BACKEND PROPERTY rather than a
-contract.** The compute encoder is opened with the SERIAL dispatch type, so dispatches inside it do not overlap
-and a read-after-write between them needs no barrier, which is why this backend carries no barrier batch, no
-layout tracker and no dependency analysis at all. **The GPU seam's compute rule 2 is unchanged**: chaining
-dependent dispatches still needs `End`, `Submit` and `WaitForIdle` in portable code, because the other backends
-need the drain and code that drops it because THIS one tolerates the chain breaks on them.
+**Compute rule 2 guarantees in-list storage-buffer ordering without a barrier member.** The compute encoder
+uses the SERIAL dispatch type, and buffers use hazard-tracked resource options. A dispatch or draw reading a
+storage buffer an earlier dispatch wrote sees the write without an intermediate `End`, `Submit` or
+`WaitForIdle`. The encoder boundary and tracked resources order the compute-to-graphics handoff. This backend
+needs no barrier batch, layout tracker or dependency analysis for that contract. Ordering across command lists
+still requires a submit boundary and a wait.
 
 **`ResolveTexture` DESTROYS the source texture's contents, and that is deliberate.** The resolve is a
 standalone render pass whose one colour attachment is the multisampled source at `loadAction = Load` and

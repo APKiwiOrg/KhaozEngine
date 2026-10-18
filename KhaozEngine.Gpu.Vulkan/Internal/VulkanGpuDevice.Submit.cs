@@ -99,7 +99,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             var transfers = new VulkanTransferSink(instance.Api);
 
             return new VulkanCommandList(
-                ring, _retired, uploads, assertBoundSetLayouts, render, bindPipeline, layouts, draws, transfers);
+                ring, _retired, uploads, assertBoundSetLayouts, render, bindPipeline, layouts, draws, transfers,
+                timestampTimeline: Capabilities.SupportsTimestamps ? _timeline : null);
         }
 
         /// <summary>How many frames this device pipelines at (MV3), resolved once at creation from

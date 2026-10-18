@@ -61,18 +61,18 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary>Compile a GLSL 450 vertex and fragment pair into a bound shader set.</summary>
         /// <exception cref="ShaderValidationException">A source failed to compile, FXC rejected the emitted HLSL,
         /// or the vertex input signature is holed (decision S5).</exception>
-        internal ID3D11ShaderSet CreateShaderSet(string vertexGlsl, string fragmentGlsl)
+        internal ID3D11ShaderSet CreateShaderSet(string vertexGlsl, string fragmentGlsl, GpuShaderCompileOptions options = default)
         {
-            D3D11CompiledPair compiled = D3D11ShaderBuild.Pair(vertexGlsl, fragmentGlsl, _flags, _cache);
+            D3D11CompiledPair compiled = D3D11ShaderBuild.Pair(vertexGlsl, fragmentGlsl, _flags, _cache, options: options);
             return CreateShaderSetWindows(_device, _liveness, compiled);
         }
 
         /// <summary>Compile a GLSL 450 compute source into a bound compute module.</summary>
         /// <exception cref="ShaderValidationException">The source failed to compile, declares no resolvable
         /// workgroup size, or FXC rejected the emitted HLSL.</exception>
-        internal IGpuComputeShader CreateComputeShader(string computeGlsl)
+        internal IGpuComputeShader CreateComputeShader(string computeGlsl, GpuShaderCompileOptions options = default)
         {
-            D3D11CompiledCompute compiled = D3D11ShaderBuild.Compute(computeGlsl, _flags, _cache);
+            D3D11CompiledCompute compiled = D3D11ShaderBuild.Compute(computeGlsl, _flags, _cache, options: options);
             return CreateComputeShaderWindows(_device, _liveness, compiled);
         }
 

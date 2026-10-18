@@ -147,5 +147,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         /// <summary>Dispatch workgroups of the bound compute pipeline.</summary>
         void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ);
+
+        /// <summary>Start a disjoint query interval.</summary>
+        void BeginTimestamps(IGpuTimestampPool pool, uint count);
+        /// <summary>End the selected timestamp query at this point in the stream.</summary>
+        void WriteTimestamp(IGpuTimestampPool pool, uint index);
+        /// <summary>End the disjoint query interval.</summary>
+        void EndTimestamps(IGpuTimestampPool pool);
     }
 }

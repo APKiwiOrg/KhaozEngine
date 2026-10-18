@@ -102,6 +102,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
         public IGpuFence CreateFence() => _device.Timeline.CreateFence();
 
         /// <inheritdoc/>
+        public IGpuTimestampPool CreateTimestampPool(uint capacity)
+            => new MetalTimestampPool(_device.TimestampApi
+                ?? throw new NotSupportedException("This Metal device has no timestamp counter API."),
+                _device.Timeline, _device.Liveness, capacity);
+
+        /// <inheritdoc/>
         /// <remarks>
         /// AN AGGREGATE OF BORROWED TEXTURE HANDLES AND NOTHING ELSE. It creates no native object, takes no lock
         /// and issues no command buffer, because a Metal render pass is a descriptor built per pass rather than a
@@ -159,18 +165,26 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <see cref="MetalShaderIndexTable"/>.
         /// </remarks>
         public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl)
+            => CreateShadersFromSpirv(vertGlsl, fragGlsl, default);
+
+        /// <inheritdoc/>
+        public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl, GpuShaderCompileOptions vertexOptions)
         {
             if (!KhaozEngineMetal.IsPlatformSupported) throw OffMacOs("A GPU shader set");
-            return CreateShaderSetOnMacOs(vertGlsl, fragGlsl);
+            return CreateShaderSetOnMacOs(vertGlsl, fragGlsl, vertexOptions);
         }
 
         /// <inheritdoc/>
         /// <remarks>The compute sibling, with the workgroup size read out of the SPIR-V module rather than taken
         /// from a description nothing validates.</remarks>
         public IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl)
+            => CreateComputeShaderFromSpirv(computeGlsl, default);
+
+        /// <inheritdoc/>
+        public IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl, GpuShaderCompileOptions options)
         {
             if (!KhaozEngineMetal.IsPlatformSupported) throw OffMacOs("A GPU compute shader");
-            return CreateComputeShaderOnMacOs(computeGlsl);
+            return CreateComputeShaderOnMacOs(computeGlsl, options);
         }
 
         /// <inheritdoc/>
@@ -245,13 +259,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // part and holding a pool across four seconds of glslang and SPIRV-Cross would be holding it for nothing.
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        IGpuShaderSet CreateShaderSetOnMacOs(string vertGlsl, string fragGlsl)
-            => Shaders.CreateShaderSet(vertGlsl, fragGlsl);
+        IGpuShaderSet CreateShaderSetOnMacOs(string vertGlsl, string fragGlsl, GpuShaderCompileOptions options)
+            => Shaders.CreateShaderSet(vertGlsl, fragGlsl, options);
 
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        IGpuComputeShader CreateComputeShaderOnMacOs(string computeGlsl)
-            => Shaders.CreateComputeShader(computeGlsl);
+        IGpuComputeShader CreateComputeShaderOnMacOs(string computeGlsl, GpuShaderCompileOptions options)
+            => Shaders.CreateComputeShader(computeGlsl, options);
 
         // NO POOL AT EITHER OF THESE TWO, for the same reason the shader pair above has none: the pipeline opens
         // one around its own native half, and the device-free resolution in front of it (the ownership checks,

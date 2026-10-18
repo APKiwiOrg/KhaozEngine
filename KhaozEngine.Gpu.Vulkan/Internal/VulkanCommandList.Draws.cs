@@ -76,7 +76,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         /// <inheritdoc/>
         /// <remarks>
-        /// <c>vkCmdDraw</c>, behind <see cref="VulkanDrawRecorder"/>'s four-step pre-command order: the bound
+        /// <c>vkCmdDraw</c>, behind <see cref="VulkanDrawRecorder"/>'s four-step pre-command order: the buffer
+        /// dependency on an earlier dispatch's storage writes when one is owed (compute rule 2) and the bound
         /// sets' images into the layouts their bindings need (the compute rule 1 barrier, V-C1), then
         /// <see cref="PrepareDraw"/>'s deferred begin and dynamic state, then the vertex and index binds, then the
         /// descriptor flush and the command as one monomorphized pair.
@@ -106,11 +107,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// read-after-write barrier emitted when an earlier dispatch in this recording wrote something this one
         /// binds (V-C2).
         /// <para>
-        /// THAT BARRIER IS NOT A CONTRACT CHANGE AND MUST NOT BE READ AS ONE. The seam's compute rule 2 is
-        /// honoured as written: chaining dependent dispatches inside one list still needs <c>End</c>,
-        /// <c>Submit</c> and <c>WaitForIdle</c> on the PORTABLE contract, because the drain is what the seam
-        /// guarantees rather than what any one backend needs, and a consumer that drops it is relying on a
-        /// backend property the seam never promised. See <see cref="VulkanComputeHazards"/>.
+        /// THAT BARRIER IS THIS BACKEND'S HALF OF THE SEAM'S COMPUTE RULE 2. A dispatch or a draw that reads a
+        /// storage buffer an earlier dispatch in the same list wrote sees the write with no drain between them,
+        /// and the draw arm asks the same <see cref="VulkanComputeHazards"/> question before its begin. Ordering
+        /// between two lists is still the caller's, through a submit boundary and a wait.
         /// </para>
         /// </remarks>
         public void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ)

@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.D3D11;
+using KhaozEngine.Gpu.D3D11.Internal;
 using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Render3D.Internal;
 using Xunit;
@@ -110,6 +112,52 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.True(failures.Count == 0,
                 "FXC rejected a cross-compiled compute kernel.\n" + string.Join("\n", failures));
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void UnsignedStorageAtomics_SurviveFxc(bool returnOldValue)
+        {
+            if (!KhaozEngineD3D11.IsPlatformSupported) return;
+
+            string source = returnOldValue ? ComputeAtomicShaders.ReturnOldValue : ComputeAtomicShaders.UnsignedOrMax;
+            string label = returnOldValue ? nameof(ComputeAtomicShaders.ReturnOldValue) : nameof(ComputeAtomicShaders.UnsignedOrMax);
+            D3D11ShaderValidation.ValidateCompute(source, label);
+        }
+
+        [Fact]
+        public void PreciseComputeAndVertexSurviveFxcAndPartitionTheDiskCache()
+        {
+            if (!KhaozEngineD3D11.IsPlatformSupported) return;
+
+            var precise = new GpuShaderCompileOptions(true);
+            D3D11ShaderValidation.ValidatePair(PreciseMathShaders.Vertex, PreciseMathShaders.Fragment, precise);
+            D3D11ShaderValidation.ValidateCompute(PreciseMathShaders.Compute, precise);
+            string directory = Path.Combine(Path.GetTempPath(), "ke-precise-dxbc-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var cache = new D3D11DxbcCache(directory);
+                var compute = new List<byte[]>();
+                var vertex = new List<byte[]>();
+                foreach (GpuShaderCompileOptions options in new[] { default, precise, default, precise })
+                {
+                    compute.Add(D3D11ShaderBuild.Compute(PreciseMathShaders.Compute, D3D11ShaderDebug.Optimized,
+                        cache, options: options).Dxbc);
+                    vertex.Add(D3D11ShaderBuild.Pair(PreciseMathShaders.Vertex, PreciseMathShaders.Fragment,
+                        D3D11ShaderDebug.Optimized, cache, options: options).VertexDxbc);
+                }
+                Assert.Equal(compute[0], compute[2]);
+                Assert.Equal(compute[1], compute[3]);
+                Assert.Equal(vertex[0], vertex[2]);
+                Assert.Equal(vertex[1], vertex[3]);
+                Assert.Equal(6, Directory.GetFiles(directory).Length);
+                Assert.NotNull(cache.TryRead(D3D11ShaderKey.For(D3D11ShaderStage.Compute,
+                    D3D11ShaderDebug.Optimized, precise, PreciseMathShaders.Compute)));
+                Assert.NotNull(cache.TryRead(D3D11ShaderKey.For(D3D11ShaderStage.Fragment,
+                    D3D11ShaderDebug.Optimized, precise, PreciseMathShaders.Vertex, PreciseMathShaders.Fragment)));
+            }
+            finally { if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true); }
         }
 
         /// <summary>

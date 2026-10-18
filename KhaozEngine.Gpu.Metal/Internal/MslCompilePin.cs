@@ -9,7 +9,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <c>metal</c> goldens were baked under whichever defaults were in force.
     ///
     /// <para>
-    /// <b><c>fastMathEnabled</c> is pinned ON.</b> Fast math changes floating-point results, so flipping it moves
+    /// <b><c>fastMathEnabled</c> defaults ON.</b> Precise compute and vertex stages opt out. Fast math changes floating-point results, so flipping it moves
     /// every pixel with no other symptom, which is exactly the kind of change that arrives as an unexplainable
     /// golden diff months later. The default is on and the goldens were baked with it on, so pinning it is a no-op
     /// today and a guard forever.
@@ -65,6 +65,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <summary>Fast math ON, which is the default the goldens were baked under.</summary>
         internal const bool FastMathEnabled = true;
+
+        /// <summary>Precise compute and vertex stages disable fast math. Fragment policy stays at the pin.</summary>
+        internal static bool FastMathEnabledFor(MetalShaderStage stage, GpuShaderCompileOptions options)
+            => FastMathEnabled && !(options.PreciseMath && stage is MetalShaderStage.Vertex or MetalShaderStage.Compute);
 
         /// <summary>Invariant position computation OFF, matching the incumbent.</summary>
         internal const bool PreserveInvariance = false;

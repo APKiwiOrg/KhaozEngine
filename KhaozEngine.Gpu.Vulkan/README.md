@@ -290,6 +290,32 @@ frame-boundary drain arrives with row 17's `Present` path, which is the only thi
 conventionally avoided. The engine's own `WaitForIdle` calls stay where they are, because they are the seam's
 contract.
 
+## GPU timestamp query pools
+
+`SupportsTimestamps` requires the selected graphics queue family's `timestampValidBits` to be nonzero and
+`limits.timestampPeriod` to be finite and positive. There is no software timestamp fallback. Each wrapper
+owns one fixed `VK_QUERY_TYPE_TIMESTAMP` pool and preallocated private scratch, including the native
+interleaved value and availability pairs. Create a fixed caller-owned ring and skip collection when full.
+
+`BeginTimestamps` ends rendering through `EndRenderingBeforeIllegalCommand` and records
+`vkCmdResetQueryPool` on the requested range before any writes. Each `WriteTimestamp` ends rendering
+through the same schedule and records `vkCmdWriteTimestamp2` with `ALL_COMMANDS`. `EndTimestamps` only
+closes the batch. No timestamp command submits, and resolve never drains, flushes or waits.
+
+Resolve polls the supplied same-device completion fence first, then makes one `vkGetQueryPoolResults`
+call with exactly `64_BIT | WITH_AVAILABILITY` (flags 5), stride 16 bytes, with no `WAIT` or `PARTIAL`.
+Every availability word must be nonzero before normalization through `GpuTimestampResults.TryNormalize`.
+Pending and Invalid preserve caller ticks and return period zero. Ready and Invalid are cached until the
+next begin. Differences are masked to the probed valid bits and accumulated with overflow checking.
+Each adjacent interval must be shorter than `2^timestampValidBits * timestampPeriod` nanoseconds.
+Multiple wraps in one interval cannot be detected or reconstructed.
+
+Result-returning calls check the existing device-loss latch before their ordinary error check. Reset and
+write commands return void, refuse a dead device and use the existing validation pump. Disposal queues
+one terminal destroy through the resource owner's timeline retirement and skips native destruction on a
+dead device. `VulkanTimestampTests` drives the adapter through stub entry points without a device.
+`ComputeTimestampGpuTests` logs the branch and probed bits and period on native Vulkan.
+
 ## The memory allocator, and the condition attached to declining VMA
 
 **An engine-owned block suballocator.** Chunks of 64 MiB, one `vkAllocateMemory` each, pooled by
@@ -667,6 +693,14 @@ mapped into went with the device, so the pointer would dangle and the read path'
 call against released memory. Every destroy is already a no-op by then, which is what leaves a map as the last
 live route into that memory. The refusal is the first thing either overload does, ahead of the setup flush and
 the drain.
+
+**`TryReadBuffer` reads a completed copy without that drain.** It polls the completion fence, invalidates the read
+window on a non-coherent memory type and copies from the persistently mapped pointer, calling neither `Map` nor
+`WaitForIdle`, the setup flush, a submit or the submit lock. Visibility comes from the copy itself: the barrier
+after every `CopyBuffer` names the HOST stage and `HOST_READ`, because `ALL_COMMANDS` covers only stages that run on
+the queue and a completed timeline value alone does not make a device write visible to a CPU read. A
+`CopyTexture` or `CopyTextureSubresource` into a staging texture takes the same barrier once after its last region,
+so a staging texture read after its fence has the same HOST dependency.
 
 **Disposal is one TERMINAL retire per resource.** The single held entry destroys a texture's views inline, then
 its image, then its memory, and never re-retires a child. A destroy that retired another destroy that then freed
@@ -1283,22 +1317,23 @@ than a partial overlap it would refuse. The walk covers every DECLARED slot rath
 set bound before a dispatch is still bound at the draw after it, and it costs no native call at all in the common
 frame: a texture already in the layout it is asked for emits nothing.
 
-**Compute rule 2 is honoured AS WRITTEN and the backend additionally orders a chain.** A dispatch that binds a
-resource an earlier dispatch in the same list WROTE gets one read-after-write barrier before it, driven by a set
-of written resources rather than by a barrier per dispatch, so a run of independent dispatches is not serialised.
-**That is not a contract change.** The seam's rule 2 still says a portable consumer separates dependent dispatches
-with `End`, `Submit` and `WaitForIdle`, because the drain is what the SEAM guarantees and the ordering here is a
-BACKEND PROPERTY. It is evidence for the automatic-hazard seam capability
-([#461](https://github.com/APKiwiOrg/KhaozEngine/issues/461)), which is still a proposal rather than a member of
-`GpuCapabilities`: since the native Metal backend joined by its serial compute encoder, three of three
-engine-owned backends order a dependent chain natively.
+**Compute rule 2 guarantees in-list storage-buffer ordering without a barrier member.** A dispatch or draw
+reading a storage buffer an earlier dispatch wrote sees the write, with no intermediate `End`, `Submit` or
+`WaitForIdle`. Vulkan records storage accesses after both draw forms and dispatches. A later reader or writer
+of an earlier write, or a writer of an earlier read, gets one global dependency barrier outside rendering.
+Its source and destination stages include compute and all graphics stages, so it also orders graphics reads
+before compute overwrites and publishes fragment-stage writable-buffer accesses. Read-only buffer bindings
+count as reads, not writes. Independent commands and successive readers owe no barrier. Graphics sampled
+images keep their separate draw-time layout transition. Ordering across command lists still requires a submit
+boundary and a wait. Fragment writes additionally require the native device's `fragmentStoresAndAtomics`
+feature, which this backend does not currently enable. These ordering records do not enable that capability.
 
 **Both halves of that set stop at the declared set count too**
 ([#632](https://github.com/APKiwiOrg/KhaozEngine/issues/632)), which was the last walk over the bind records left
-unbounded and the only one whose bound decides whether a barrier is EMITTED. The storage-binding rule that makes
-every storage bind count as a write is about DIRECTION, not reach: it assumes a write because the seam cannot
-express a read-only storage binding, and it says nothing about a set at an index the bound layout has no entry
-for, which no shader on the pipeline can name at all. A switch to a shorter compute layout used to leave those
+unbounded and the only one whose bound decides whether a barrier is EMITTED. A storage image has no read-only
+kind and is conservatively recorded as a write. Storage buffers have explicit read-only and read-write kinds.
+Neither classification makes a set reachable at an index the bound layout has no entry for, which no shader
+on the pipeline can name at all. A switch to a shorter compute layout used to leave those
 slots recording resources as written, and a later independent dispatch that merely bound one was answered yes.
 Both errors ran the safe way, an extra global memory barrier and never a missing one, so no picture was ever
 wrong. What it cost is the serialisation the written set exists to avoid, put back by a slot the dispatch cannot

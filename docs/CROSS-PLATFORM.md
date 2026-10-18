@@ -317,6 +317,12 @@ dropped about 63 minutes of runner time from a full dispatch.
   other two legs own theirs, so it verifies the committed `.metal-native.txt` grids on the same real GPU and
   bakes them on a bake dispatch. **This is the strongest regression net in the program**: the other two legs
   run golden-only on push, on software rasterizers, and this one runs everything on a real GPU every time.
+  `ComputeTimestampGpuTests` logs the timestamp counter-set, stage and blit boundary probes, trial-buffer
+  success, branch and calibrated period. Apple Paravirtual may report unsupported, which must execute
+  the negative pool-creation branch and leaves that GPU gate unmeasurable. Supported real Apple GPUs
+  must run the positive compute/draw path. Metal uses fixed marker passes, GPU event dependencies and
+  GPU-side counter resolve, then calibrates ticks from correlated hardware clocks. Marker cost stays
+  in instrumented GPU time and is never subtracted. Budget timing requires separate owner approval.
   Three things were this leg's rather than the incumbent Metal leg's and are simply this leg's now. It sets
   `KE_METAL_REQUIRED=1`, for the reason the Vulkan leg sets its own equivalent below. It arms `MTL_DEBUG_LAYER=1` on every run and `MTL_SHADER_VALIDATION=1` on the
   deep tier, which are Metal's two validation tiers. And it arms `MTL_CAPTURE_ENABLED=1` on the `capture`
@@ -440,6 +446,12 @@ dropped about 63 minutes of runner time from a full dispatch.
   family. That variable is read only by the native backend's adapter selection. It is also the leg that runs
   the device-free FXC shader validation step, which is the only thing in this repo that puts a real HLSL
   compiler over the shipped programs.
+  `ComputeTimestampGpuTests` exercises the supported timestamp branch on pinned WARP, including compute
+  output and A18's green draw-pixel probe after replacing the bound framebuffer. Its test-output helper
+  records the branch and resolved disjoint frequency in the TRX artifact even with summary console logging.
+  D3D11 uses timestamp queries inside a disjoint batch, with non-flushing `GetData` reads after completion.
+  Invalid disjoint data and zero frequency never produce measured time. The native correctness test drains
+  once because Submit and resolve never flush. Use one disjoint batch per frame or less.
 - **GitHub-hosted Vulkan native leg (1x)**: the engine's own `KhaozEngine.Gpu.Vulkan` backend
   (`KE_GRAPHICS_BACKEND=vulkan-native`), golden tests only on `push`/`pull_request` and the WHOLE suite on the
   weekly `schedule` and on `workflow_dispatch`, with the full-suite runs serializing xUnit test collections
@@ -463,6 +475,13 @@ dropped about 63 minutes of runner time from a full dispatch.
   run them a loader regression would empty them into passes that assert nothing and the zero-skipped gate
   could not see it. With the variable set, that refusal throws and names what the probe objected to. And its
   full suite runs under **`KE_VULKAN_VALIDATION=strict`**, the first tier of the validation gate.
+  `ComputeTimestampGpuTests` runs its supported branch on every Vulkan device whose selected graphics
+  queue has timestamp bits and a finite positive period, including lavapipe when it reports support.
+  Each native fact logs the branch, `timestampValidBits` as `validBits` and `timestampPeriod` as
+  `periodNanoseconds`. The unsupported branch asserts pool creation refuses. Query pools reset and write
+  outside rendering, with `vkCmdWriteTimestamp2` at `ALL_COMMANDS`. Resolve polls the completion fence
+  before one `vkGetQueryPoolResults`, flags 5, stride 16, without `WAIT` or `PARTIAL`. Every availability
+  word is checked. Each adjacent interval must be shorter than one wrap of the probed counter.
 - **Vulkan sync-validation job (1x, `gpu-vulkan-sync`)**: the second tier. Core validation PLUS
   synchronisation validation over the golden subset and the compute suite
   (`FullyQualifiedName~Golden|FullyQualifiedName~Compute`) on the native backend, on the `schedule` and on a
@@ -850,7 +869,9 @@ in the `ShaderSources.cs` source comments; this is the consolidated checklist.)
 - **A read map drains the device on Metal and Vulkan and not on Direct3D 11.** `Map` of a staging resource for
   reading waits for the whole device on Metal and on Vulkan, and only for the mapped resource on Direct3D 11, so no
   readback on the seam is free of a stall on every backend. That is why the temporal counts are sampled on request
-  (`Scene3D.RequestTemporalCounts()`) rather than every frame.
+  (`Scene3D.RequestTemporalCounts()`) rather than every frame. The one read that never stalls is
+  `IGpuDevice.TryReadBuffer`, which collects a recorded staging copy only after its fence reports completion and
+  answers `false` until then on all three backends (`ComputeAsyncReadbackGpuTests`).
 - **One uniform buffer per pipeline, RETIRED.** The rule was written against the Veldrid Metal
   backend, where a STAGE referencing fewer buffers than the declared layout array puts before them made
   Veldrid's per-kind declaration count and SPIRV-Cross's emission disagree: a fragment function reading set 1

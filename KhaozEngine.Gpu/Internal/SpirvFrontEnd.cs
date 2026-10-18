@@ -55,10 +55,12 @@ namespace KhaozEngine.Gpu.Internal
         /// </summary>
         /// <param name="glsl">The shader source, GLSL <c>#version 450</c>.</param>
         /// <param name="stage">Which stage the source is. Exactly one stage flag.</param>
+        /// <param name="options">Per-shader arithmetic policy. For graphics pairs it applies to the vertex stage.</param>
         /// <param name="label">Optional name for the shader, included in any error message.</param>
         /// <exception cref="ShaderValidationException">The source failed to compile to SPIR-V. The message names
         /// the label and the stage.</exception>
-        internal static byte[] ToSpirv(string glsl, GpuShaderStages stage, string? label = null)
+        internal static byte[] ToSpirv(string glsl, GpuShaderStages stage, string? label = null,
+            GpuShaderCompileOptions options = default)
         {
             if (glsl is null) throw new ArgumentNullException(nameof(glsl));
 
@@ -81,8 +83,8 @@ namespace KhaozEngine.Gpu.Internal
                 // flipped, which is the run where a reader most needs the names to be right. Every call site names
                 // one source, so carrying it costs no entries.
                 return SpirvCompileCache.Shared.GetOrCompile(
-                    OptionsIdentity(tag), stage, glsl,
-                    () => Compile(glsl, kind, $"{tag}.{stage}"));
+                    OptionsIdentity(tag, options), stage, glsl,
+                    () => Compile(glsl, kind, $"{tag}.{stage}", options));
             }
             catch (Exception ex)
             {
@@ -91,10 +93,11 @@ namespace KhaozEngine.Gpu.Internal
         }
 
         /// <summary>The complete front-end option identity for one labelled compile.</summary>
-        internal static string OptionsIdentity(string label)
+        internal static string OptionsIdentity(string label, GpuShaderCompileOptions options = default)
         {
             ArgumentNullException.ThrowIfNull(label);
-            return SpirvFrontEndPin.Identity + ";label=" + label;
+            return SpirvFrontEndPin.IdentityFor(options) + ";label=" + label
+                + (options.PreciseMath ? ";precise=1" : "");
         }
 
         /// <summary>
@@ -111,7 +114,7 @@ namespace KhaozEngine.Gpu.Internal
         /// would have moved every shipped module for a reason no pin recorded.
         /// </para>
         /// </summary>
-        static unsafe byte[] Compile(string glsl, ShaderKind kind, string fileName)
+        static unsafe byte[] Compile(string glsl, ShaderKind kind, string fileName, GpuShaderCompileOptions compileOptions)
         {
             Compiler* compiler = _shaderc.CompilerInitialize();
             if (compiler is null) throw new InvalidOperationException("shaderc_compiler_initialize returned null.");
@@ -127,7 +130,7 @@ namespace KhaozEngine.Gpu.Internal
                 _shaderc.CompileOptionsSetTargetEnv(options, SpirvFrontEndPin.TargetEnvironment,
                     SpirvFrontEndPin.TargetEnvironmentVersion);
                 _shaderc.CompileOptionsSetTargetSpirv(options, SpirvFrontEndPin.SpirvTarget);
-                _shaderc.CompileOptionsSetOptimizationLevel(options, SpirvFrontEndPin.Optimization);
+                _shaderc.CompileOptionsSetOptimizationLevel(options, SpirvFrontEndPin.OptimizationFor(compileOptions));
                 if (SpirvFrontEndPin.Debug) _shaderc.CompileOptionsSetGenerateDebugInfo(options);
 
                 byte[] source = Encoding.UTF8.GetBytes(glsl);

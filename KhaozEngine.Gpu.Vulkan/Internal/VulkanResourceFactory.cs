@@ -60,6 +60,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly ulong _minUniformBufferOffsetAlignment;
         readonly bool _samplerAnisotropy;
         readonly GpuCapabilities _capabilities;
+        readonly Func<IVulkanTimestampApi>? _createTimestampApi;
+        readonly VulkanTimestampSupport _timestamps;
 
         /// <param name="owner">The device's resource seam, allocator, timeline and retire list.</param>
         /// <param name="rings">The device's ONE ring allocator, which a uniform buffer cuts a ring out of.</param>
@@ -85,12 +87,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// change.</param>
         /// <param name="minUniformBufferOffsetAlignment">The device limit the ring stride is rounded to.</param>
         /// <param name="spirvBytes">The opened front-end disk cache, or null for no cache.</param>
+        /// <param name="createTimestampApi">Creates a separate native adapter and scratch for each pool.</param>
+        /// <param name="timestamps">The selected queue's timestamp probe.</param>
         internal VulkanResourceFactory(VulkanResourceOwner owner, VulkanRingAllocator rings,
             VulkanSetupCommands setup, VulkanDescriptors descriptors, VulkanShaderModuleCache modules,
             VulkanPipelines pipelines, Func<IGpuCommandList> createCommandList, Func<IGpuFence> createFence,
             in GpuCapabilities capabilities,
             ulong minUniformBufferOffsetAlignment = VulkanRingStride.OffsetAlignmentFloor,
-            SpirvBytesCache? spirvBytes = null)
+            SpirvBytesCache? spirvBytes = null, Func<IVulkanTimestampApi>? createTimestampApi = null,
+            VulkanTimestampSupport timestamps = default)
         {
             ArgumentNullException.ThrowIfNull(owner);
             ArgumentNullException.ThrowIfNull(rings);
@@ -113,6 +118,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _minUniformBufferOffsetAlignment = minUniformBufferOffsetAlignment;
             _samplerAnisotropy = capabilities.SamplerAnisotropy;
             _capabilities = capabilities;
+            _createTimestampApi = createTimestampApi;
+            _timestamps = timestamps;
         }
 
         /// <inheritdoc/>
@@ -185,6 +192,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         public IGpuFence CreateFence() => _createFence();
 
         /// <inheritdoc/>
+        public IGpuTimestampPool CreateTimestampPool(uint capacity)
+        {
+            if (!_capabilities.SupportsTimestamps || !_timestamps.IsSupported || _createTimestampApi is null)
+                throw new NotSupportedException("This Vulkan queue has no usable timestamp counter.");
+            return new VulkanTimestampPool(_createTimestampApi(), _owner.Timeline, _owner, capacity,
+                _timestamps.ValidBits, _timestamps.TickPeriodNanoseconds);
+        }
+
+        /// <inheritdoc/>
         /// <remarks>
         /// IT CREATES NOTHING NATIVE, which is decision V-A1 arriving at the seam. There is no
         /// <c>VkFramebuffer</c> and no <c>VkRenderPass</c> in this backend, so a framebuffer is an aggregate of
@@ -254,7 +270,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </remarks>
         /// <exception cref="ShaderValidationException">A source failed to compile to SPIR-V.</exception>
         public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl)
-            => new VulkanShaderSet(_modules, vertGlsl, fragGlsl, bytesCache: _spirvBytes);
+            => CreateShadersFromSpirv(vertGlsl, fragGlsl, default);
+
+        /// <inheritdoc/>
+        public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl, GpuShaderCompileOptions vertexOptions)
+            => new VulkanShaderSet(_modules, vertGlsl, fragGlsl, bytesCache: _spirvBytes, options: vertexOptions);
 
         /// <inheritdoc/>
         /// <remarks>The compute twin, with the workgroup size read out of the module itself rather than taken
@@ -264,7 +284,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <exception cref="ShaderValidationException">The source failed to compile to SPIR-V, or declares no
         /// resolvable workgroup size.</exception>
         public IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl)
-            => new VulkanComputeShader(_modules, computeGlsl, bytesCache: _spirvBytes);
+            => CreateComputeShaderFromSpirv(computeGlsl, default);
+
+        /// <inheritdoc/>
+        public IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl, GpuShaderCompileOptions options)
+            => new VulkanComputeShader(_modules, computeGlsl, bytesCache: _spirvBytes, options: options);
 
         /// <inheritdoc/>
         /// <remarks>

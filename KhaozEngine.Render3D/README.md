@@ -535,8 +535,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
 - Per-pass timing: `Scene3D.EnableTiming` (default `false`, no cost when off - a single `bool` check, no
   `Stopwatch` call, no allocation) brackets each render pass with a CPU `Stopwatch` and exposes the result as
   `Scene3D.PassTimingsMs` (a `Scene3DPassTimingsMs`: `ShadowDepthMs`/`ModelMs`/`TransparentsMs`/`PostMs`). This is
-  CPU time spent RECORDING each pass's commands, NOT true GPU execution time - the `KhaozEngine.Gpu` seam
-  exposes no timestamp-query API, so true per-pass GPU timing is out of scope until it gains one. See `docs/USING-KHAOZENGINE.md` for the full explanation and why a whole-frame GPU-time number was
+  CPU time spent RECORDING each pass's commands. The optional `KhaozEngine.Gpu` timestamp-pool seam
+  separately measures GPU execution on supported devices. `Scene3D.EnableTiming` still reports CPU time. See `docs/USING-KHAOZENGINE.md` for the full explanation and why a whole-frame GPU-time number was
   considered and rejected (it would need a per-frame `WaitForIdle`, which breaks frame pacing). `Scene3D` has no
   dependency on `KhaozEngine.Diagnostics`, so feed these numbers into a `KhaozEngine.Diagnostics.PassTimings`
   meter yourself (one `Sample(name, ms)` call per pass per frame) to get rolling avg/min/max and a

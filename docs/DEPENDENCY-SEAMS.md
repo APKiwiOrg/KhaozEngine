@@ -1498,16 +1498,14 @@ they meant. **And the seam's compute rule 1 and rule 2 comment named a mechanism
 is the failure mode a second implementation of one API creates: rule 1 is satisfied here by a real image barrier
 at the sampled bind rather than by the queued layout restore that comment described, and a dependent-dispatch
 chain inside one list IS ordered here. Both sentences were true of Veldrid's Vulkan backend and false of this
-one. The comment now names the implementation each mechanism belongs to, and says outright that the mechanism is
-the part that differs between two implementations of one API, while rule 2's portable requirement is unchanged
-and a consumer that drops the drain is writing to one backend rather than to the seam
-([#529](https://github.com/APKiwiOrg/KhaozEngine/issues/529)). The native Metal backend later joined the
-permissive side by a third mechanism, its compute encoder's serial dispatch type, which is what makes three of
-three engine-owned backends honour rule 2 natively
-([#585](https://github.com/APKiwiOrg/KhaozEngine/issues/585)). Since 18.0.0 those three are the only backends
-there are, so nothing the engine ships needs the drain for rule 2 at all. That is the quorum
-[#461](https://github.com/APKiwiOrg/KhaozEngine/issues/461) has been waiting for, and it is evidence rather than
-a contract change: the drain stays in the seam contract because a FOURTH backend may need it. It registers under `GpuBackendKind.VulkanNative`, which landed in
+one. The comment names each mechanism separately from the portable rule
+([#529](https://github.com/APKiwiOrg/KhaozEngine/issues/529)). Rule 2 now guarantees in-list storage-buffer
+visibility on every backend. A dispatch or draw reading an earlier dispatch's writes needs no intermediate
+submit or drain. Vulkan emits a global dependency barrier, Direct3D 11 uses SRV/UAV conflict tracking and runtime
+ordering, and Metal uses a serial compute encoder and hazard-tracked buffers
+([#585](https://github.com/APKiwiOrg/KhaozEngine/issues/585)). Ordering between command lists still requires a
+submit boundary and a wait. The ordering contract adds no explicit barrier member or capability flag.
+It registers under `GpuBackendKind.VulkanNative`, which landed in
 `17.32.0`, so the backend is selectable by name (`KE_GRAPHICS_BACKEND=vulkan-native`) and a machine that cannot
 run it arrives through the reported fallback. **Since 17.40.0 the OS probe selects it on Linux**, and since
 18.0.0 there is nothing behind it: a process that has not referenced the package has no provider to select and
@@ -1846,11 +1844,11 @@ than any backend's, and the distinction is the whole point of writing a seam con
   three that tolerate concurrent recording natively, and it went on refusing after the only backend that
   punished a nested `Begin` was deleted. A rule that binds only where a backend punishes you is a backend
   property with a rule's name on it.
-- **The pre-record phase is where the refused work legally goes.** The seam has no dispatch-to-dispatch barrier
-  call (see the compute ordering contract on `IGpuCommandList`), so a dependent dispatch chain is ordered only
-  by `End` + `Submit` + a device wait, which means a command list of its own. Inside the frame's recording there
-  is nowhere to open one. Deleting the phase would leave the engine's own FFT ocean with no legal place to run
-  on a windowed frame, on all three native backends.
+- **The pre-record phase is where work needing its own list legally goes.** The shipped FFT ocean retains its
+  separate submissions and explicit waits, so it must prepare before the frame's recording begins. The seam now
+  orders dependent storage-buffer dispatches inside one list without a barrier call or intermediate wait.
+  That contract does not make nested recording legal or change the ocean's submission pattern. Deleting the
+  pre-record phase would still leave that consumer with no legal place to open its lists on a windowed frame.
 - **The residual is a refusal and nothing else.** A host driving a `Render3DSurface` off a raw
   `AppWindow.Run(onFrame)` without passing `onPrepare` still nests, and gets `GpuNestedRecordingException`
   naming the fix. Under the fork that same case had a second, backend-specific exception under it. Nothing

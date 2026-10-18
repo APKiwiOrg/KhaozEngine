@@ -150,6 +150,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <summary>True once disposed, whether or not the deferred destroy has run yet.</summary>
         internal bool IsDisposed => _disposed;
 
+        /// <summary>The creating device's resource owner, which is that device's identity for a reference
+        /// comparison. A staging read refuses a buffer whose owner is not the reading device's.</summary>
+        internal VulkanResourceOwner Owner => _owner;
+
         /// <summary>
         /// The mapped address of the buffer's first byte, or zero when its memory is not host-visible. Stable for
         /// the buffer's whole life (V-M3): host-visible chunks are mapped once at creation and never unmapped, so

@@ -155,7 +155,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         }
 
         /// <summary>
-        /// THE WHOLE CAPABILITY SET, assembled from the four facts a device supplies plus the five constants
+        /// THE WHOLE CAPABILITY SET, assembled from the live facts a device supplies and the constants
         /// above. This is the single source both <c>GpuDeviceContext.Capabilities</c> and
         /// <c>IGpuDevice.Capabilities</c> come from on this backend, exactly as
         /// <c>VeldridMap.ReadCapabilities</c> was on the incumbent, and section 11 says so for the same reason the
@@ -172,8 +172,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// on both fence mechanisms, so this is true in practice, and taking it from the subsystem is what stops
         /// the capability and the fence path being able to disagree.
         /// </param>
+        /// <param name="supportsTimestamps">Both native timestamp query kinds were created successfully.</param>
         internal static GpuCapabilities Assemble(string adapterName, int maxMsaaSampleCount,
-            bool supportsShadowMaps, bool supportsCompletionFences)
+            bool supportsShadowMaps, bool supportsCompletionFences, bool supportsTimestamps = false)
             => new(
                 ClipSpaceYInverted,
                 DepthRangeZeroToOne,
@@ -184,7 +185,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 supportsShadowMaps,
                 SupportsCompute,
                 supportsCompletionFences)
-            { MaxColorAttachments = SimultaneousRenderTargets };
+            { MaxColorAttachments = SimultaneousRenderTargets, SupportsTimestamps = supportsTimestamps };
 
         /// <summary>
         /// DECISION C4's THROW: a requested sample count above what the device supports is a fault, not something

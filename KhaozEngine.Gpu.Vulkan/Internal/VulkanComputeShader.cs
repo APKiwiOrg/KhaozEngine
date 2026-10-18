@@ -24,11 +24,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="modules">The device's ONE module cache, asked here and never held.</param>
         /// <param name="computeGlsl">The compute source, GLSL <c>#version 450</c>.</param>
         /// <param name="label">Optional name, included in a compile failure's message.</param>
+        /// <param name="options">Per-shader arithmetic policy. For graphics pairs it applies to the vertex stage.</param>
         /// <param name="bytesCache">Optional disk cache checked before the front end.</param>
         /// <exception cref="ShaderValidationException">The source failed to compile to SPIR-V, or the module
         /// declares no resolvable workgroup size.</exception>
         internal VulkanComputeShader(VulkanShaderModuleCache modules, string computeGlsl, string? label = null,
-            SpirvBytesCache? bytesCache = null)
+            SpirvBytesCache? bytesCache = null, GpuShaderCompileOptions options = default)
         {
             ArgumentNullException.ThrowIfNull(modules);
             ArgumentNullException.ThrowIfNull(computeGlsl);
@@ -36,9 +37,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             string tag = label ?? "compute shader";
 
             byte[] spirv = bytesCache?.GetOrCompile(
-                    SpirvFrontEnd.OptionsIdentity(tag), GpuShaderStages.Compute, computeGlsl,
-                    () => SpirvFrontEnd.ToSpirv(computeGlsl, GpuShaderStages.Compute, tag))
-                ?? SpirvFrontEnd.ToSpirv(computeGlsl, GpuShaderStages.Compute, tag);
+                    SpirvFrontEnd.OptionsIdentity(tag, options), GpuShaderStages.Compute, computeGlsl,
+                    () => SpirvFrontEnd.ToSpirv(computeGlsl, GpuShaderStages.Compute, tag, options))
+                ?? SpirvFrontEnd.ToSpirv(computeGlsl, GpuShaderStages.Compute, tag, options);
             (uint x, uint y, uint z) = SpirvLocalSize.Parse(spirv, tag);
 
             ThreadGroupSizeX = x;

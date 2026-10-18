@@ -124,6 +124,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// for a test, never consulted to decide anything outside <see cref="CreateCommandList"/>.</summary>
         internal D3D11RecordMode RecordMode => _recordMode;
 
+        /// <summary>The actual native device feature level, exposed numerically without an interop type.</summary>
+        internal uint NativeFeatureLevel => (uint)_device.FeatureLevel;
+
         /// <summary>The device's one state object. Every emitter value this device hands out addresses it, which
         /// is the invariant issue #476 exists for.</summary>
         internal D3D11DeviceState State => _state;

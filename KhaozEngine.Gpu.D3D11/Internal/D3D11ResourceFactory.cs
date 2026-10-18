@@ -61,6 +61,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         readonly Func<IGpuFence>? _createFence;
         readonly D3D11DeviceLossLatch? _loss;
         readonly int _maxMsaaSampleCount;
+        readonly ID3D11TimestampApi? _timestamps;
+        readonly D3D11FenceSubsystem? _timestampFences;
+        readonly object? _submitLock;
+        readonly bool _supportsTimestamps;
 
         /// <summary>
         /// <paramref name="createCommandList"/> comes from the device rather than being built here, because which
@@ -74,10 +78,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// ring allocator.
         /// </para>
         /// <para>
-        /// <paramref name="capabilities"/> is the device's own capability set, and exactly one member of it is
-        /// read here: <see cref="GpuCapabilities.MaxMsaaSampleCount"/>, for decision C4's throw on
-        /// <see cref="CreateTexture"/>. The WHOLE set is taken rather than that one number because a factory that
-        /// has to validate against a second capability later should not need a signature change to see it.
+        /// <paramref name="capabilities"/> is the device's own capability set. Its MSAA limit gates
+        /// <see cref="CreateTexture"/> and its timestamp support gates <see cref="CreateTimestampPool"/>.
         /// </para>
         /// <para>
         /// <paramref name="creation"/> is the device's too, and null means the device did not read the threading
@@ -97,10 +99,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// (https://github.com/APKiwiOrg/KhaozEngine/issues/500). Null skips the attribution and still throws.
         /// </para>
         /// </summary>
+        /// <remarks>The timestamp adapter, fences and submit lock belong to the same device.</remarks>
         internal D3D11ResourceFactory(ID3D11Device device, ID3D11DeviceContext context,
             DeviceLiveness liveness, D3D11RingAllocator rings, Func<IGpuCommandList> createCommandList,
             in GpuCapabilities capabilities, D3D11CreationGate? creation = null,
-            Func<IGpuFence>? createFence = null, D3D11DeviceLossLatch? loss = null)
+            Func<IGpuFence>? createFence = null, D3D11DeviceLossLatch? loss = null,
+            ID3D11TimestampApi? timestamps = null, D3D11FenceSubsystem? timestampFences = null, object? submitLock = null)
         {
             ArgumentNullException.ThrowIfNull(device);
             ArgumentNullException.ThrowIfNull(context);
@@ -117,6 +121,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _creation = creation ?? D3D11CreationGate.For(null);
             _createFence = createFence;
             _loss = loss;
+            _timestamps = timestamps;
+            _timestampFences = timestampFences;
+            _submitLock = submitLock;
+            _supportsTimestamps = capabilities.SupportsTimestamps;
             // Built here rather than passed in, because a shader compiler is a pure function of the device plus
             // two environment levers it reads ONCE (the FXC flags and the disk cache location, decisions S1 and
             // S4). Threading it through every construction path would put a session-level setting in a signature.
@@ -206,14 +214,22 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         /// <inheritdoc/>
         public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl)
+            => CreateShadersFromSpirv(vertGlsl, fragGlsl, default);
+
+        /// <inheritdoc/>
+        public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl, GpuShaderCompileOptions vertexOptions)
         {
-            using (_creation.Enter()) return _shaders.CreateShaderSet(vertGlsl, fragGlsl);
+            using (_creation.Enter()) return _shaders.CreateShaderSet(vertGlsl, fragGlsl, vertexOptions);
         }
 
         /// <inheritdoc/>
         public IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl)
+            => CreateComputeShaderFromSpirv(computeGlsl, default);
+
+        /// <inheritdoc/>
+        public IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl, GpuShaderCompileOptions options)
         {
-            using (_creation.Enter()) return _shaders.CreateComputeShader(computeGlsl);
+            using (_creation.Enter()) return _shaders.CreateComputeShader(computeGlsl, options);
         }
 
         /// <inheritdoc/>
@@ -241,6 +257,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// has no device behind it. Every shipped path has one.</exception>
         public IGpuFence CreateFence()
             => (_createFence ?? throw NotBuiltYet("Completion fences"))();
+
+        public IGpuTimestampPool CreateTimestampPool(uint capacity)
+        {
+            if (!_supportsTimestamps || _timestamps is null || _timestampFences is null || _submitLock is null)
+                throw new NotSupportedException("This Direct3D 11 device has no timestamp query support.");
+            using (_creation.Enter()) return new D3D11TimestampPool(_timestamps, _timestampFences, _submitLock, capacity);
+        }
 
         static D3D11Texture Require(IGpuTexture texture, string what)
             => texture as D3D11Texture

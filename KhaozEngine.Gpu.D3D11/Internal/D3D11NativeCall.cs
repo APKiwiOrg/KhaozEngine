@@ -170,5 +170,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// name for the same reason.
         /// </summary>
         VertexBufferPending = 47,
+        /// <summary>Begin an asynchronous query interval.</summary>
+        Begin = 48,
+        /// <summary>End an asynchronous query or write a timestamp.</summary>
+        End = 49,
     }
 }

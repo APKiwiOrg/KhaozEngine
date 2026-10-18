@@ -1,6 +1,7 @@
 using System;
 using System.Reflection;
 using System.Reflection.Emit;
+using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.D3D11.Internal;
 using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal;
@@ -154,6 +155,27 @@ namespace KhaozEngine.Tests.Gpu
         {
             Assert.Equal("khaozengine-metal-program-v3", MetalShaderKey.Schema);
             Assert.Equal("khaozengine-d3d11-dxbc-v3", D3D11ShaderKey.Schema);
+        }
+
+        [Fact]
+        public void PrecisionPartitionsEveryProgramKeyAndKeepsDefaultIdentities()
+        {
+            var precise = new GpuShaderCompileOptions(true);
+            string defaultKey = MetalShaderKey.For(Program);
+            string preciseKey = MetalShaderKey.For(precise, Program);
+            Assert.Equal(defaultKey, MetalShaderKey.For(default(GpuShaderCompileOptions), Program));
+            Assert.NotEqual(defaultKey, preciseKey);
+            Assert.Equal(preciseKey, MetalShaderKey.For(precise, Program));
+            Assert.NotEqual(MetalShaderKey.For(PreciseMathShaders.Compute), MetalShaderKey.For(precise, PreciseMathShaders.Compute));
+
+            foreach (D3D11ShaderStage stage in new[] { D3D11ShaderStage.Vertex, D3D11ShaderStage.Fragment, D3D11ShaderStage.Compute })
+            {
+                defaultKey = D3D11ShaderKey.For(stage, 0u, Program);
+                preciseKey = D3D11ShaderKey.For(stage, 0u, precise, Program);
+                Assert.Equal(defaultKey, D3D11ShaderKey.For(stage, 0u, default(GpuShaderCompileOptions), Program));
+                Assert.NotEqual(defaultKey, preciseKey);
+                Assert.Equal(preciseKey, D3D11ShaderKey.For(stage, 0u, precise, Program));
+            }
         }
     }
 }

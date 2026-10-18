@@ -35,7 +35,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// construction rather than by a second rule.
     /// </para>
     /// </summary>
-    internal readonly struct D3D11NativeTraceEmitter : ID3D11Emitter, ID3D11BindSink
+    internal readonly partial struct D3D11NativeTraceEmitter : ID3D11Emitter, ID3D11BindSink
     {
         readonly D3D11DeviceState _state;
         readonly D3D11NativeCallLog _log;

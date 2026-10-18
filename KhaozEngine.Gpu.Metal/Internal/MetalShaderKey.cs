@@ -121,7 +121,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </summary>
         /// <returns>Lowercase hex SHA-256, 64 characters, safe as a file name on every platform.</returns>
         internal static string For(params string[] programSources)
-            => For(MetalModuleId, GpuModuleId, SpirvToolchainVersion.Identity, programSources);
+            => For(default(GpuShaderCompileOptions), programSources);
+
+        internal static string For(GpuShaderCompileOptions options, params string[] programSources)
+            => For(MetalModuleId, GpuModuleId, SpirvToolchainVersion.Identity, programSources, options);
 
         /// <summary>
         /// The same key with every producer identity passed in, so each one's contribution is testable without
@@ -136,9 +139,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <param name="metalModuleId">Stands in for <see cref="MetalModuleId"/>.</param>
         /// <param name="gpuModuleId">Stands in for <see cref="GpuModuleId"/>.</param>
         /// <param name="spirvToolchain">Stands in for <see cref="SpirvToolchainVersion.Identity"/>.</param>
+        /// <param name="options">Per-shader arithmetic policy. For graphics pairs it applies to the vertex stage.</param>
         /// <param name="programSources">Every GLSL source of the program, in declared order.</param>
         internal static string For(Guid metalModuleId, Guid gpuModuleId, string spirvToolchain,
-            string[] programSources)
+            string[] programSources, GpuShaderCompileOptions options = default)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(spirvToolchain);
             ArgumentNullException.ThrowIfNull(programSources);
@@ -155,10 +159,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 .Append(metalModuleId.ToString("N", CultureInfo.InvariantCulture)).Append('\n')
                 .Append(gpuModuleId.ToString("N", CultureInfo.InvariantCulture)).Append('\n')
                 .Append(spirvToolchain).Append('\n')
-                .Append(SpirvFrontEndPin.Identity).Append('\n')
+                .Append(SpirvFrontEndPin.IdentityFor(options)).Append('\n')
                 .Append(MslCrossCompilePin.Identity).Append('\n')
                 .Append(MslCompilePin.Identity).Append('\n')
                 .Append(programSources.Length.ToString(CultureInfo.InvariantCulture)).Append('\n');
+
+            if (options.PreciseMath) text.Append("precise=1\n");
 
             // Each source is LENGTH-PREFIXED, so two sources cannot be confused for one longer one by moving the
             // boundary between them. A plain separator would be forgeable by a source containing the separator.

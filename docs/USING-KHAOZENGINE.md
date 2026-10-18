@@ -16627,8 +16627,8 @@ The fullscreen post-process blits are **not** itemized in the draw-call count - 
 the Pass-timings **post** row instead.
 
 **The pass-timing caveat (read it).** The per-pass numbers are **CPU encode time** (wall-clock spent recording a
-pass's commands), **not** true GPU execution time, and the `KhaozEngine.Gpu` seam exposes no timestamp-query
-API to measure the latter. The full explanation, and why a whole-frame GPU-time number was rejected, is in *Per-pass frame
+pass's commands), **not** true GPU execution time. The optional `IGpuTimestampPool` seam described under
+"GPU timestamps without waiting" is separate and is not connected to this HUD. The full explanation, and why a whole-frame GPU-time number was rejected, is in *Per-pass frame
 timing* below. The turn-key HUD is the zero-config path. The two sections that follow are the manual building
 blocks (custom rows, a recorder, a bespoke overlay) for a game that wants more than the default panel.
 
@@ -16845,10 +16845,11 @@ golden stays byte-stable.
 CPU wall-clock spent *recording* (encoding) that pass's graphics-API calls into the command list - it is NOT
 true GPU execution time. The GPU pipeline runs asynchronously behind the command list the backend records into, so
 a cheap-to-encode pass can still be GPU-expensive (or vice versa) and this meter cannot see that. The
-`KhaozEngine.Gpu` seam **exposes no timestamp-query API at all** (no query pool, no per-command-list timestamp
-write/resolve), so true per-pass GPU timestamps are out of scope until the seam gains one. A whole-frame GPU-time number (Tier 2) was considered and
-rejected: the only device-level synchronization the seam exposes is `IGpuDevice.WaitForIdle()` (a full CPU/GPU
-stall) and a non-blocking fence poll - inserting a
+`KhaozEngine.Gpu` seam now defines optional timestamp pools, encoded with `BeginTimestamps`, `WriteTimestamp`
+and `EndTimestamps` and collected through non-blocking `IGpuTimestampPool.TryResolve`. Gate their use on
+`GpuCapabilities.SupportsTimestamps`, which defaults to false and reports the native backend's counter
+support. These CPU brackets do not use that separate API.
+A whole-frame GPU-time number (Tier 2) based on synchronization was considered and rejected: inserting a
 `WaitForIdle()` every frame to time it would destroy the CPU/GPU pipelining that gives good frame pacing (a
 "Heisenberg timer" that changes the very thing it measures), and the fence-poll alternative only yields a noisy
 lower bound, not an honest whole-frame GPU duration, so it was not shipped either. Present/blit (swapping the
@@ -17318,10 +17319,10 @@ index binds, both `Draw` overloads, `DrawIndexed`, `Dispatch`, both texture copi
 `GpuCapabilities.MaxMsaaSampleCount` is a real reading rather than a conservative 1. Two behaviours are worth
 knowing before you record against it. **Compute rule 1 is satisfied by a real image barrier at the sampled
 bind**, so a storage texture a dispatch wrote and a later draw samples needs no help from you beyond what the
-rule already says (both in one list, the texture created `Storage | Sampled`). **Compute rule 2 is unchanged and
-you must still honour it**: this backend additionally orders a dependent-dispatch chain inside one list, which is
-a backend property and not a contract change, and code that drops the `End` plus `Submit` plus `WaitForIdle`
-because it works here breaks on Metal. **Since 17.40.0 the Linux default IS `GpuBackendKind.VulkanNative`**, and since 18.0.0 it is the only Vulkan
+rule already says (both in one list, the texture created `Storage | Sampled`). **Compute rule 2 is satisfied by
+one global memory barrier**, emitted before the first dispatch or draw that binds a storage buffer an earlier
+dispatch in the same recording wrote, with an open rendering scope ended first when that command is a draw. A
+read-only binding of a buffer no dispatch wrote costs nothing. **Since 17.40.0 the Linux default IS `GpuBackendKind.VulkanNative`**, and since 18.0.0 it is the only Vulkan
 implementation the engine has. The umbrellas carry the package and `AppWindow` registers it, so a Linux head
 boots on it with no call of its own. `KE_GRAPHICS_BACKEND=vulkan` names the retired incumbent and resolves here
 with a WARN.
@@ -22129,6 +22130,32 @@ shader fails CI instead of surfacing only when a player on that backend loads th
 `ShaderValidation.ValidateCompute(computeGlsl, label?)` is the single-stage sibling for a compute shader
 (see the next section).
 
+### Precise compute and vertex arithmetic
+
+Use both authored GLSL `precise` qualifiers and the per-shader compile option when an algorithm depends on
+separate multiply and add operations:
+
+```csharp
+var precise = new GpuShaderCompileOptions(PreciseMath: true);
+ShaderValidation.ValidateCompute(computeGlsl, precise, "coverage kernel");
+ShaderValidation.ValidatePair(vertexGlsl, fragmentGlsl, precise, "coverage pair");
+using IGpuComputeShader compute = factory.CreateComputeShaderFromSpirv(computeGlsl, precise);
+using IGpuShaderSet pair = factory.CreateShadersFromSpirv(vertexGlsl, fragmentGlsl, precise);
+```
+
+For example, `precise float p = a * b; precise float q = p + c;` preserves the authored operations. Precise
+mode selects shaderc optimization Zero while retaining Vulkan 1.0, SPIR-V 1.0 and entry point `main`.
+The resulting `NoContraction` decorations survive into HLSL `precise` and MSL `spvFMul` and `spvFAdd` helpers.
+FXC adds IEEE strictness to compute and vertex compilation. Metal disables fast math for those precise stages
+while retaining MSL language 3.2 and the existing preserve-invariance policy. Graphics fragments still compile
+with their default options. The process memo and SPIR-V, DXBC and MSL disk caches keep the two policies separate,
+including the whole paired-program identity where stages are emitted together.
+
+The default overloads retain optimized compilation. The option does not insert GLSL qualifiers or establish
+identical transcendental or denormal behavior across devices. Coverage kernels must opt in and author their
+position arithmetic as `precise`. External factories that have not implemented precision reject a precise
+request with `NotSupportedException` rather than silently ignoring it.
+
 ### A shader source is compiled to SPIR-V once per process (17.37.0)
 
 Nothing to call and nothing to configure, but worth knowing about if you have ever wondered why standing up a
@@ -22296,12 +22323,210 @@ byte[] bad = GpuReadback.ToRgba(gd, swapchainBgra, w, h);       // throws: B8G8R
 byte[] mip = GpuReadback.ToRgbaMip(gd, mipped, 2, 0, w / 4, h / 4);   // one level of a mip chain
 ```
 
+### Reading a completed staging copy without waiting
+
+`IGpuDevice.TryReadBuffer(staging, completion, offsetBytes, destination)` copies bytes that a recorded
+`IGpuCommandList.CopyBuffer` wrote into a `GpuBufferUsage.Staging` buffer, once the submission that carried the copy
+has completed. It is a separate path from `GpuReadback` and the synchronous `Map`. A read `Map` drains the device
+on Metal and Vulkan and waits on the resource on Direct3D 11, so every `GpuReadback` call stalls. `TryReadBuffer`
+never drains, flushes, submits or blocks on a lock, on any of the three native backends. Use it when a small GPU
+result can arrive a few frames late.
+
+- It answers `false`, with `destination` untouched, while the fence is unsignalled or the backend's native access
+  is busy. A fence that was never submitted is unsignalled, so a read before `Submit` answers `false` too. Poll
+  again on a later frame.
+- It answers `true` once the bytes are copied, and any native mapping is closed before it returns.
+- The fence comes from `IGpuResourceFactory.CreateFence` on the same device (so `SupportsCompletionFences` must be
+  true) and is handed to `IGpuDevice.Submit(cl, fence)` with the list that recorded the copy.
+- Keep the copy's source, the staging buffer and the fence alive until the read succeeds. Do not `Reset` or
+  resubmit the fence before then. A reset or reused fence is a caller error, not a new completion.
+- It refuses, before any poll or native access, a disposed or lost device, a fence or buffer from another device or
+  backend, a disposed fence or buffer, a buffer without `GpuBufferUsage.Staging`, an `offsetBytes` that is not a
+  multiple of four, and a `destination` that runs past the end of the buffer.
+- Do not hold a synchronous `Map` of the same staging buffer while polling. Direct3D 11 refuses the read with the
+  double-map `InvalidOperationException`, and Metal and Vulkan do not detect it.
+- On Direct3D 11 a `Submit` does not flush the immediate context. The next `Present` or drain hands the work to the
+  driver, which in a presenting frame loop is the frame boundary. A headless loop that neither presents nor drains
+  can read `false` indefinitely.
+- A device outside the three native backends takes the default implementation, which throws
+  `NotSupportedException` rather than hide a wait.
+
+```csharp
+cl.Begin();
+cl.SetComputePipeline(pipeline);
+cl.SetComputeResourceSet(0, set);
+cl.Dispatch(1, 1, 1);
+cl.CopyBuffer(results, 4, staging, 4, 12);     // the slice to collect, same offset on both sides here
+cl.End();
+gd.Submit(cl, fence);
+
+// On each later frame until it answers true:
+if (gd.TryReadBuffer(staging, fence, 4, bytes))
+    fence.Reset();                              // only now may the fence be reused
+```
+
+#### Fixed staging slots with retained frame identity
+
+`GpuBufferReadbackRing` owns a fixed set of staging buffers, allocated once in its constructor. Use it from one
+thread, with a device that supports completion fences and `TryReadBuffer`. `Capacity` never grows, and
+`PendingCount` includes copies recorded in lists that have not yet been submitted. Its warmed `TryRecord` and
+`TryRead` paths allocate nothing. It never waits, flushes, submits, synchronously maps or takes a blocking lock.
+
+```csharp
+// Create once, before opening a frame list. Reuse a caller-owned destination as well.
+using var outcomes = new GpuBufferReadbackRing(gd, slotCount: 3, slotSizeInBytes: resultCapacityBytes);
+byte[] outcomeBytes = new byte[resultCapacityBytes];
+
+// After dispatching in the caller's open frame list:
+bool recorded = outcomes.TryRecord(cl, actorResults, 0, resultBytes, frameId, frameFence);
+cl.End();
+gd.Submit(cl, frameFence);                       // the caller submits the frame once
+
+// On a later frame, try the oldest entry once. No entry is consumed while pending or busy.
+if (outcomes.TryRead(outcomeBytes, out ulong completedFrameId, out uint sizeInBytes))
+{
+    // Consume outcomeBytes[0..sizeInBytes] using completedFrameId, not the current frame ID.
+}
+```
+
+Equipment coverage (Part C) records one aggregate actor-result copy per frame. The tag is the frame ID, and
+actor IDs and offsets are fields in that copied payload. Optional surface verification can share the same
+stable frame fence. The caller submits once with that fence and cannot reset, resubmit or dispose it until
+every associated ring has consumed its entries, or discarded them if the list was never submitted. If the
+ring is full, skip diagnostics for that frame, keep rendering and preserve the dispatched outcome. On Direct3D
+11, a `TryReadBuffer` or timestamp `TryResolve` poll completes only after a `Present` or drain, because
+`Submit` does not flush. Both polls remain non-flushing. A headless correctness test drains once. The ring
+does not introduce a flush policy for headless consumers.
+
+`TryRecord(commands, source, sourceOffsetBytes, sizeInBytes, tag, completion)` copies into offset zero of the next
+free staging slot in the caller's open list. Validate the request before asking for space: the source offset
+must be a multiple of four, and the nonzero copy must fit both the source and a slot. A copy cannot exceed
+`int.MaxValue` bytes, since the complete entry must fit in one destination span. Null arguments are refused.
+Full returns `false` before recording anything. The source and caller-owned completion fence must stay alive
+until the entry is consumed. The ring never resets or disposes a fence.
+
+`TryRead(destination, out tag, out sizeInBytes)` attempts only the oldest pending entry through `TryReadBuffer`.
+It preserves FIFO order even when a later fence completes first. Empty, pending and busy reads return `false`,
+set both outputs to zero and leave the destination untouched. A successful read copies only the recorded byte
+count, preserves any destination tail and releases that slot. A too-small destination throws `ArgumentException`
+without consuming or polling the entry. Nonpositive `slotCount`, zero `slotSizeInBytes`, and an invalid copy
+offset or size throw `ArgumentOutOfRangeException` before a slot is reserved.
+
+Call `DiscardUnsubmitted(completion)` only when abandoning a list that was never submitted. It stably removes
+all entries retaining that exact fence and leaves every other entry in FIFO order. Using it with a submitted
+fence is a caller error, even if that fence has not signalled yet. Abandon the list before reusing the freed
+slots. `Dispose` throws `InvalidOperationException` while entries remain, including completed entries that have
+not been consumed. After consumption or valid discard it disposes only the owned staging buffers.
+
+### GPU timestamps without waiting
+
+Gate timestamp collection on `GpuCapabilities.SupportsTimestamps`. It defaults to false. Native Vulkan
+reports the selected graphics queue's counter support. Direct3D 11 probes both native query kinds on
+the actual device without timing a workload. Metal probes the timestamp counter set, supported sampling
+boundaries and sample-buffer creation. An unsupported
+`IGpuResourceFactory.CreateTimestampPool(capacity)` throws `NotSupportedException`. The optional timestamp
+command defaults also throw, so existing factories and command lists stay source compatible.
+
+Allocate a fixed caller-owned ring once, with one `IGpuTimestampPool` per retained frame and preallocated
+tick arrays and frame IDs. Each pool's `Capacity` is fixed. Poll retained pools once on later frames. Reuse a
+pool only after its `TryResolve` returns `Ready` or `Invalid`. When every pool is pending, record no
+timestamps that frame and keep rendering. Do not grow the ring, wait for a pool or estimate a missing time.
+
+In the caller's open command list, `BeginTimestamps(pool, count)` starts a batch of 1 through `Capacity`
+queries. `WriteTimestamp(pool, index)` records each index exactly once, in order from 0 to `count - 1`.
+Place writes at pass boundaries, including between a compute dispatch and a draw. `EndTimestamps(pool)`
+requires every index to have been written. These three calls only encode work. They never submit it. A pool
+retains one unresolved batch, and a new begin clears the previous batch only after its result was consumed.
+Invalid count or index bounds throw `ArgumentOutOfRangeException`. Missing, duplicate or out-of-order writes
+and invalid lifecycle operations throw `InvalidOperationException`.
+
+Submit the list containing `EndTimestamps` once with a same-device completion fence, then call
+`pool.TryResolve(completion, ticks, out double tickPeriodNanoseconds)` on later frames. Keep the pool and
+fence alive, and never reset, resubmit or dispose that fence until resolution completes and every associated
+readback ring has consumed its entries. A fence from another submission is a caller error. A never-submitted
+fence stays pending. On Direct3D 11, presenting or a caller drain hands submitted work to the driver. This
+API introduces no flush policy for a headless loop that never presents.
+
+`Pending` leaves caller ticks unchanged and sets the period to zero. `Invalid` does the same but consumes
+the batch, for example when counters are disjoint, calibration is unusable or elapsed ticks overflow.
+`Ready` writes exactly `count` elapsed ticks relative to index 0, with `ticks[0] == 0`, preserving any output
+tail. Its period is finite and positive. Multiply a difference of elapsed ticks by the period to obtain
+nanoseconds. Repeated resolution returns the same terminal status, ticks and period until the next begin.
+No positive minimum duration is promised, and equal adjacent ticks are valid.
+
+Backends fill private preallocated scratch, validate the full result and only then publish caller ticks.
+Adjacent differences use the device's valid counter bits, including wrap, with checked cumulative addition.
+Every adjacent interval must be shorter than one full counter wrap. Multiple wraps in one interval cannot
+be detected or reconstructed. No resolve drains, flushes, submits, synchronously maps or takes a blocking
+lock. A too-small output throws `ArgumentException` before polling. Null, foreign and disposed fences and
+disposed or lost devices follow the completion validation contract of `IGpuDevice.TryReadBuffer`.
+
+Native Direct3D 11 creates fixed timestamp queries and one disjoint query per pool.
+Timestamp and timestamp-disjoint queries are guaranteed from feature level 10_0. Begin records
+`Begin(disjoint)`, each write records `End(timestamp[index])`, and End records `End(disjoint)` through
+both recording drivers, including deferred stream replay. Use one disjoint batch per frame or less and
+one outstanding batch per pool. Resolve uses `Monitor.TryEnter` on the immediate-context lock, polls the
+completion fence and makes one `GetData` per required query with `D3D11_ASYNC_GETDATA_DONOTFLUSH` (1).
+Contention or unavailable data returns Pending. Disjoint data or zero frequency returns Invalid.
+A valid batch's period is exactly `1_000_000_000d / frequency`. Invalid samples never enter a GPU gate.
+Keep queries alive through completion as with other submitted resources. Disposal follows the backend's
+COM resource release path and adds no drain. Device faults retain the existing removal handling.
+
+Native Vulkan allocates one fixed `VK_QUERY_TYPE_TIMESTAMP` query pool per wrapper, with private
+preallocated value, availability and interleaved native scratch. Support requires the selected graphics
+queue family's `timestampValidBits` to be nonzero and `limits.timestampPeriod` to be finite and positive.
+`BeginTimestamps` records `vkCmdResetQueryPool` for the requested range before any writes.
+`WriteTimestamp` records `vkCmdWriteTimestamp2` at `ALL_COMMANDS`. Both end active rendering through the
+existing command-list schedule. End only closes the batch. Resolve first polls the completion fence,
+then makes one `vkGetQueryPoolResults` call with exactly `64_BIT | WITH_AVAILABILITY` (flags 5), stride
+16 bytes, with no `WAIT` or `PARTIAL`. Every availability word must be nonzero before normalization.
+Destruction uses the resource owner's timeline retirement. Adjacent intervals must each be shorter than
+`2^timestampValidBits * timestampPeriod` nanoseconds. Multiple wraps cannot be detected or reconstructed.
+
+Native Metal prefers stage-boundary sampling when available. Each write closes the current encoder,
+then records a dedicated nonempty blit pass with an end-of-encoder counter attachment and a fixed
+four-byte marker copy. On command-boundary-only devices it records the copy followed by
+`sampleCountersInBuffer:atSampleIndex:withBarrier:YES`. A pool-private shared event signals and waits
+around each marker, ordering even work with no resource in common. These are GPU dependencies and
+never CPU waits. The device completion timeline is unchanged. Pending clears remain deferred and
+encoder epochs force graphics and compute bindings to be re-emitted.
+
+End records `resolveCounters:inRange:destinationBuffer:destinationOffset:` into a preallocated shared
+buffer. Descriptors, sample and result buffers, marker buffers and the private event are fixed per
+pool and reused only after resolution. There is no allocating CPU counter resolve. Begin samples the
+correlated CPU nanoseconds and GPU ticks. The first completed resolve samples them once more and
+caches the result. The period is the CPU nanoseconds delta divided by the GPU ticks delta, with no
+fixed period or CPU duration fallback. Equal or reversed clock spans, counters outside the calibration
+interval, reversed counters, zero samples and `MTLCounterErrorValue` make the batch Invalid.
+
+Marker cost counts as part of instrumented GPU time and is never subtracted. Hosted Apple Paravirtual
+may report unsupported. Its negative branch must execute and that GPU gate is unmeasurable there.
+Native correctness is required on supported Apple hardware. Budget timing remains a separate,
+owner-approved measurement on a chosen device.
+
+### Unsigned storage-buffer atomics
+
+GLSL `uint atomicOr(inout uint word, uint value)` and `uint atomicMax(inout uint word, uint value)` operate on
+std430 `uint` storage-buffer words on Metal, Direct3D11 and Vulkan. Create a buffer with
+`GpuBufferUsage.StructuredBufferReadWrite`, a four-byte `uint` stride and the matching
+`GpuResourceKind.StructuredBufferReadWrite` binding. No separate atomic resource kind is needed.
+
+Each operation atomically updates one 32-bit word across invocations and workgroups, and returns the value
+that word held immediately before the update. `atomicOr` combines bits. `atomicMax` uses unsigned comparison,
+so `0x80000000u` wins over `0x7fffffffu`. Starting at `0x20u`, OR with `4u` returns `0x20u` and leaves `0x24u`.
+A following MAX with `0x80000000u` returns `0x24u` and leaves `0x80000000u`. This contract covers unsigned
+integer words only, with no floating-point atomic accumulation.
+
+An atomic word update does not order workgroups, finish other invocations or publish unrelated words. Do not
+rely on workgroup execution order. To consume the completed result, record a later dispatch in the same command
+list. The inter-dispatch visibility rule below makes preceding dispatch writes visible to that reader.
+Atomicity within a dispatch and visibility between dispatches are separate guarantees.
+
 ### Ordering: two rules, because there is no barrier call
 
-There is no barrier method on this seam, because the backend layer has none. What ordering exists comes from
-each backend's implicit handling, and Metal, Vulkan and Direct3D11 do not agree, so the seam guarantees exactly
-two patterns. Both are proved by `[GpuFact]` tests on all three backends
-(`KhaozEngine.Render.Tests/Gpu/Compute*GpuTests.cs`).
+There is no barrier method on this seam. Inside one command list each backend orders what the bound sets name, by
+its own mechanism, and the seam guarantees exactly two patterns. Both are proved by `[GpuFact]` tests on all three
+backends (`KhaozEngine.Render.Tests/Gpu/Compute*GpuTests.cs`).
 
 **1. Compute writes a storage texture, then a graphics pass samples it: same command list, `Storage | Sampled`.**
 
@@ -22322,35 +22547,59 @@ cl.End();
 gd.Submit(cl);
 ```
 
-Vulkan queues a layout restore when the dispatch binds the texture and drains it before the next draw, but that
-queue is per-command-list state and is armed only by the `Sampled` usage flag, so a `Storage`-only texture or a
-split across two command lists silently skips the barrier. Metal ends the compute encoder as the render encoder
-begins. Direct3D11 unbinds the UAV as the SRV is bound. You do not need to unbind the compute set or switch
-pipeline first; all three cope.
+The native Vulkan backend tracks layouts per command list. A dispatch leaves the storage image in `GENERAL`,
+and the draw transitions each bound sampled image to `SHADER_READ_ONLY_OPTIMAL` before rendering begins.
+An open rendering scope ends before that transition. The walk covers every set the current pipeline declares,
+including sets bound before the dispatch. Create the texture with `Storage | Sampled` and keep both commands
+in the same list. Metal ends the compute encoder as the render encoder begins. Direct3D11 unbinds the UAV as
+the SRV is bound. You do not need to unbind the compute set or switch pipeline first.
 
-**2. A dispatch that reads what an earlier dispatch wrote: `End` + `Submit` + `WaitForIdle` between them.**
+**2. A dispatch or a draw that reads a storage buffer an earlier dispatch wrote: same command list, nothing
+between them.**
 
 ```csharp
-foreach (var stage in stages)      // e.g. the log2(N) stages of an FFT
+cl.Begin();
+cl.SetComputePipeline(pipeline);
+foreach (var stage in stages)      // e.g. the log2(N) stages of an FFT, each reading the previous one's output
 {
-    using IGpuCommandList cl = f.CreateCommandList();
-    cl.Begin();
-    cl.SetComputePipeline(pipeline);
     cl.SetComputeResourceSet(0, stage.Set);
     cl.Dispatch(groups, 1, 1);
-    cl.End();
-    gd.Submit(cl);
-    gd.WaitForIdle();              // the only cross-dispatch ordering the seam guarantees
 }
+
+cl.SetFramebuffer(fb);             // a draw that reads the last stage's output, still the same list
+cl.SetPipeline(graphicsPipeline);
+cl.SetGraphicsResourceSet(0, drawSet);   // binds the result as StructuredBufferReadOnly
+cl.Draw(3);
+cl.End();
+gd.Submit(cl);
 ```
 
-Chaining dependent dispatches inside one command list is NOT safe. On Vulkan no memory barrier is emitted
-between them at all (storage buffers are not hazard-tracked, and a storage image stays in the same layout so the
-transition is a no-op), and dispatches inside a command buffer may overlap. Independent dispatches that do not
-read each other's output can share one command list freely; it is only the read-after-write chain that needs the
-boundary. This costs a GPU stall per dependent stage, which is real, and it is the current ceiling on a
-multi-pass compute chain. Rationale and the per-backend evidence:
-`docs/design/GPU-COMPUTE-DESIGN-2026-07-26.md`.
+The reader may be any stage. A later dispatch, a vertex shader and a fragment shader all see what an earlier
+dispatch in the same list wrote. Declare each binding's direction honestly: `StructuredBufferReadWrite` where a
+dispatch writes the buffer and `StructuredBufferReadOnly` where a command only reads it. The kind is what lets a
+backend skip a barrier between two commands that only read, and a read-only binding of a buffer no dispatch wrote
+costs nothing. The native Vulkan backend emits one global memory barrier before the first command that binds what
+an earlier dispatch wrote. Direct3D11 unbinds the UAV as the SRV is bound. Metal dispatches on a serial compute
+encoder and its buffers are hazard-tracked.
+
+**Ordering between command lists stays explicit.** A second list that reads what the first wrote needs `End` +
+`Submit` on the first and a wait before the second is submitted: `WaitForIdle`, or a completion fence when the
+device supports one. Nothing a backend does inside a list carries across that boundary.
+
+**Vertex pulling.** A draw can fetch its own vertices from a read-only storage buffer by `gl_VertexIndex`, with no
+vertex layout and no vertex buffer bound:
+
+```glsl
+layout(set = 0, binding = 0) uniform Params { uvec4 Base; };
+layout(std430, set = 0, binding = 1) readonly buffer EntryBuf { Entry E[]; };
+void main() { Entry e = E[Base.x + uint(gl_VertexIndex)]; /* ... */ }
+```
+
+Issue a pulled draw with first vertex 0, and a pulled `DrawIndexed` with base vertex 0 as well, and pass any
+storage base as an explicit per-draw uniform the shader adds to the index. The vertex index does not carry the
+draw's bases portably: Vulkan's `gl_VertexIndex` includes them and Direct3D11's `SV_VertexID` leaves them out,
+which is the same gap `SV_InstanceID` has for the first instance. `ComputeVertexPullingGpuTests` pins both draws
+reading from a uniform base of 3, before and after a dispatch in the same list rewrites the entries.
 
 Validate compute sources device-free in your fast test lane, the same way as a graphics pair:
 

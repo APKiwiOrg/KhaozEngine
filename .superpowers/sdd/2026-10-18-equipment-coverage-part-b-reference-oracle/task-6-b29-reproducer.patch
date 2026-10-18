@@ -1,0 +1,114 @@
+diff --git a/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs b/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs
+new file mode 100644
+index 000000000..517602d34
+--- /dev/null
++++ b/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs
+@@ -0,0 +1,108 @@
++using System;
++using System.Numerics;
++using KhaozEngine.Render3D;
++using Xunit;
++using Xunit.Abstractions;
++using I = KhaozEngine.Render3D.CoverageFloatInterval;
++using F = KhaozEngine.Render3D.CoverageFloatIntervals;
++using D = KhaozEngine.Render3D.CoverageScalarBounds;
++
++namespace KhaozEngine.Tests.Render3D;
++
++public sealed class CoverageReferenceEnclosureTests(ITestOutputHelper output)
++{
++    public static TheoryData<string> Cases => CoverageExactCaptureTests.Cases;
++
++    [Theory]
++    [MemberData(nameof(Cases))]
++    public void Frozen_fixture_B29_crossing_enclosures_have_finite_denominators(string id)
++    {
++        var c = CoverageReferenceCases.Get(id);
++        var scratch = new CoverageReferenceScratch(c.Topology);
++        Assert.True(CoverageReferenceFrames.TryPrepare(c.Topology, c.Model, c.Commands, scratch, out var failure), failure.ToString());
++        Assert.True(CoverageReferenceConstructor.TryInterpolate(c.Topology, c.Posed, scratch, out failure), failure.ToString());
++        // B9 production reserve, no captured-clearance override and no transition shortcut.
++        Assert.True(CoverageReferenceConstructor.TryConformGroups(c.Topology, c.Commands, scratch, out failure), failure.ToString());
++        int unbounded = 0;
++        string? first = null;
++        var host = new Vector3[3];
++        for (int slot = 0; slot < scratch.ActiveCommands && first is null; slot++)
++        {
++            var frame = scratch.Frames[slot];
++            var command = c.Commands[frame.Command];
++            var support = command.Support.ReferenceData;
++            for (int face = 0; face < c.Topology.TriangleCount && first is null; face++)
++            {
++                var record = c.Topology.Triangles[face];
++                if (record.Role != CoverageTriangleRole.Core || record.RegionIndex != command.RegionIndex) continue;
++                for (int corner = 0; corner < 3; corner++)
++                    host[corner] = CoverageReferenceMath.Point(scratch.After[(int)c.Topology.Indices[face * 3 + corner]].Position,
++                        frame.HostToCoverage);
++                foreach (var triangle in support.Triangles)
++                {
++                    Vector3[] sheet = [support.Positions[triangle.A], support.Positions[triangle.B], support.Positions[triangle.C]];
++                    for (int i = 0; i < 3 && first is null; i++)
++                        for (int j = 0; j < 3 && first is null; j++)
++                        {
++                            Vector3 a = host[i], b = host[(i + 1) % 3], s = sheet[j], t = sheet[(j + 1) % 3];
++                            I ca = Edge(s, t, a), cb = Edge(s, t, b), ac = Edge(a, b, s), ad = Edge(a, b, t);
++                            // Skip only when every allowed sign takes the same-side skip. Otherwise B29 joins
++                            // the reachable crossing, collinear and endpoint alternatives, not the CPU branch.
++                            if (SameStrictSign(ca, cb) || SameStrictSign(ac, ad)) continue;
++                            I denominator = F.Subtract(ca, cb), quotient = F.Divide(ca, denominator);
++                            if (quotient.IsFinite) continue;
++                            unbounded++;
++                            first = $"slot={slot} command={command.Id} face={face} sheet={triangle.Triangle} hostEdge={i} sheetEdge={j} "
++                                + $"a={a} b={b} s={s} t={t} ca={ca} cb={cb} ac={ac} ad={ad} denominator={denominator} quotient={quotient} "
++                                + $"exactSigns=({CoverageReferencePredicates.Edge(s, t, a).Sign},{CoverageReferencePredicates.Edge(s, t, b).Sign},"
++                                + $"{CoverageReferencePredicates.Edge(a, b, s).Sign},{CoverageReferencePredicates.Edge(a, b, t).Sign})";
++                        }
++                    if (first is not null) break;
++                }
++            }
++        }
++        output.WriteLine($"B29 {id} unboundedCrossings={unbounded} delta={.25 * c.Commands[0].Clearance:R} first={first ?? "none"}");
++        Assert.True(unbounded == 0, $"{id}: {unbounded} unbounded B29 crossing quotients. First {first}");
++    }
++
++    [Fact]
++    public void B29_uncertain_side_joins_the_crossing_and_endpoint_alternative()
++    {
++        // Side x=0, a.X in [-.25,.25], b.X=1. Exact crossing for a.X=-.25 has z=.2.
++        // For a.X=0 the endpoint alternative has z=0. These are independent analytic values.
++        I ca = F.Store32(new(-.5, .5)), cb = F.Store32(new(-2, -2));
++        Assert.True(ca.Contains(0));
++        I parameter = F.Clamp(F.Divide(ca, F.Subtract(ca, cb)), 0, 1);
++        I crossingZ = F.Add(F.Point(0), F.Multiply(parameter, F.Subtract(F.Point(1), F.Point(0))));
++        I joinedZ = F.Hull(crossingZ, F.Point(0));
++        Assert.True(joinedZ.IsFinite);
++        Assert.True(joinedZ.Contains(.2));
++        Assert.True(joinedZ.Contains(0));
++        I collinearA = Edge(new(0, 0, 0), new(1, 0, 0), new(.25f, 0, 0));
++        I collinearB = Edge(new(0, 0, 0), new(1, 0, 0), new(.75f, 0, 0));
++        Assert.True(collinearA.Contains(0) && collinearB.Contains(0));
++        Assert.False(F.Divide(collinearA, F.Subtract(collinearA, collinearB)).IsFinite);
++    }
++
++    static bool SameStrictSign(I a, I b) => a.Min > 0 && b.Min > 0 || a.Max < 0 && b.Max < 0;
++
++    // The exact predicate has no intermediate device arithmetic. Only its RN32 hull and final store widen.
++    // Deliberately start from CPU point boxes, a subset of every sound upstream interval enclosure.
++    static I Edge(Vector3 a, Vector3 b, Vector3 p)
++    {
++        D dx = Subtract(new(b.X, b.X), new(a.X, a.X)), dy = Subtract(new(b.Y, b.Y), new(a.Y, a.Y)),
++            x = Subtract(new(p.X, p.X), new(a.X, a.X)), y = Subtract(new(p.Y, p.Y), new(a.Y, a.Y));
++        D determinant = Subtract(Multiply(dx, y), Multiply(dy, x));
++        // RN32 is monotone. Rounding both outward binary64 endpoints encloses its binary32 image.
++        return F.Store32(new((float)determinant.Min, (float)determinant.Max));
++    }
++
++    static D Subtract(D a, D b) => new(Math.BitDecrement(a.Min - b.Max), Math.BitIncrement(a.Max - b.Min));
++
++    static D Multiply(D a, D b)
++    {
++        double p0 = a.Min * b.Min, p1 = a.Min * b.Max, p2 = a.Max * b.Min, p3 = a.Max * b.Max;
++        return new(Math.BitDecrement(Math.Min(Math.Min(p0, p1), Math.Min(p2, p3))),
++            Math.BitIncrement(Math.Max(Math.Max(p0, p1), Math.Max(p2, p3))));
++    }
++}

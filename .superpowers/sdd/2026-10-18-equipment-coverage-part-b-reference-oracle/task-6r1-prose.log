@@ -1,0 +1,7 @@
+COMMAND sh scripts/check-prose.sh --tree
+check-prose: these files now carry fewer prose semicolons than their baseline:
+  KhaozEngine.Gui/README.md: 18 prose semicolons, baseline is 19
+  docs/USING-KHAOZENGINE.md: 273 prose semicolons, baseline is 274
+            Run 'scripts/check-prose.sh --update' to ratchet the baseline down.
+
+EXIT 0

@@ -1,0 +1,3 @@
+COMMAND sh scripts/check-dashes.sh --tree
+
+EXIT 0

@@ -1,0 +1,6 @@
+COMMAND sh scripts/check-file-size.sh --tree
+check-file-size: these files are now smaller than their baseline:
+  KhaozEngine.Render3D/Scene3D.cs: 2188 lines, baseline is 2228
+            Run 'scripts/check-file-size.sh --update' to ratchet the baseline down.
+
+EXIT 0

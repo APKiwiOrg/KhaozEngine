@@ -119,7 +119,7 @@ internal sealed class CoverageReferenceSupport
     }
 
     /// <summary>Analytic overlay vertices in source order. Exact signs on binary32 inputs choose the same inside,
-    /// collinear, endpoint and crossing branches as CoverageFaceOverlay. Crossing parameters use RN32 side values.</summary>
+    /// collinear, endpoint and crossing branches as CoverageFaceOverlay. Crossing parameters use B30's scaled RN32 sides.</summary>
     internal bool TryOverlayMaximum(ReadOnlySpan<Vector3> host, out float maximum)
     {
         maximum = float.NegativeInfinity;
@@ -164,9 +164,7 @@ internal sealed class CoverageReferenceSupport
                 else if (cb.Sign == 0) p = b;
                 else
                 {
-                    float denominator = ca.Value - cb.Value;
-                    if (denominator == 0 || !float.IsFinite(denominator)) return false;
-                    float quotient = ca.Value / denominator;
+                    float quotient = CoverageReferencePredicates.CrossingParameter(sheet[j], sheet[nextJ], a, b);
                     if (!float.IsFinite(quotient)) return false;
                     float u = Math.Clamp(quotient, 0, 1);
                     p = new(a.X + (u * (b.X - a.X)), a.Y + (u * (b.Y - a.Y)), a.Z + (u * (b.Z - a.Z)));

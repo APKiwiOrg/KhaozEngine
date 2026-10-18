@@ -1,0 +1,30 @@
+{
+  "final-build": {
+    "command": "build-slot --label ec-b6r1-final-build -- dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-restore",
+    "exit": 0
+  },
+  "final-tests": {
+    "command": "build-slot --heavy --label ec-b6r1-final-tests -- dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~CoverageReference|FullyQualifiedName~CoverageExactCaptureTests' --logger 'trx;LogFileName=task-6r1-final-tests.trx' --results-directory .superpowers/sdd/2026-10-18-equipment-coverage-part-b-reference-oracle",
+    "exit": 1
+  },
+  "final-format": {
+    "command": "build-slot --label ec-b6r1-final-format -- dotnet format whitespace KhaozEngine.slnx --verify-no-changes --no-restore --include KhaozEngine.Render3D/Coverage/CoverageReferencePredicates.cs KhaozEngine.Render3D/Coverage/CoverageReferenceSupport.cs KhaozEngine.Render3D/Coverage/CoverageEnclosureCorrection.cs KhaozEngine.Render3D/Coverage/CoverageEnclosureMath.cs KhaozEngine.Render3D/Coverage/CoverageEnclosureNormals.cs KhaozEngine.Render3D/Coverage/CoverageEnclosureOverlay.cs KhaozEngine.Render3D/Coverage/CoverageEnclosurePose.cs KhaozEngine.Render3D/Coverage/CoverageEnclosurePredicates.cs KhaozEngine.Render3D/Coverage/CoverageEnclosureSupport.cs KhaozEngine.Render3D/Coverage/CoverageReferenceEnclosure.cs KhaozEngine.Render3D/Coverage/CoverageReferenceEnclosureScratch.cs KhaozEngine.Render.Tests/Render3D/CoverageReferenceCrossingTests.cs KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureDiagnosticTests.cs",
+    "exit": 0
+  },
+  "diff-check": {
+    "command": "git diff --check",
+    "exit": 0
+  },
+  "dashes": {
+    "command": "sh scripts/check-dashes.sh --tree",
+    "exit": 0
+  },
+  "prose": {
+    "command": "sh scripts/check-prose.sh --tree",
+    "exit": 0
+  },
+  "size": {
+    "command": "sh scripts/check-file-size.sh --tree",
+    "exit": 0
+  }
+}

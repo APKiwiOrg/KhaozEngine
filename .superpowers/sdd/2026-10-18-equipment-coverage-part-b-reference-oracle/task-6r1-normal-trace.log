@@ -1,0 +1,79 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  KhaozEngine.CodeHealth.Analyzers -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.CodeHealth.Analyzers/bin/Release/netstandard2.0/KhaozEngine.CodeHealth.Analyzers.dll
+  KhaozEngine.Imaging -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Imaging/bin/Release/net10.0/KhaozEngine.Imaging.dll
+  KhaozEngine.Netcode.Abstractions -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Netcode.Abstractions/bin/Release/net10.0/KhaozEngine.Netcode.Abstractions.dll
+  KhaozEngine.Physics -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Physics/bin/Release/net10.0/KhaozEngine.Physics.dll
+  KhaozEngine.Platform -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Platform/bin/Release/net10.0/KhaozEngine.Platform.dll
+  KhaozEngine.Diagnostics -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Diagnostics/bin/Release/net10.0/KhaozEngine.Diagnostics.dll
+  KhaozEngine.Collision -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Collision/bin/Release/net10.0/KhaozEngine.Collision.dll
+  KhaozEngine.Serialization -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Serialization/bin/Release/net10.0/KhaozEngine.Serialization.dll
+  KhaozEngine.Attachments -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Attachments/bin/Release/net10.0/KhaozEngine.Attachments.dll
+  KhaozEngine.Physics.Bepu -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Physics.Bepu/bin/Release/net10.0/KhaozEngine.Physics.Bepu.dll
+  KhaozEngine.Primitives -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Primitives/bin/Release/net10.0/KhaozEngine.Primitives.dll
+  KhaozEngine.TestSupport -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.TestSupport/bin/Release/net10.0/KhaozEngine.TestSupport.dll
+  KhaozEngine.Terrain -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Terrain/bin/Release/net10.0/KhaozEngine.Terrain.dll
+  KhaozEngine.App -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.App/bin/Release/net10.0/KhaozEngine.App.dll
+  KhaozEngine.Particles -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Particles/bin/Release/net10.0/KhaozEngine.Particles.dll
+  KhaozEngine.Determinism -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Determinism/bin/Release/net10.0/KhaozEngine.Determinism.dll
+  KhaozEngine.Netcode -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Netcode/bin/Release/net10.0/KhaozEngine.Netcode.dll
+  KhaozEngine.Gpu -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Gpu/bin/Release/net10.0/KhaozEngine.Gpu.dll
+  KhaozEngine.Content -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Content/bin/Release/net10.0/KhaozEngine.Content.dll
+  KhaozEngine.Locomotion -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Locomotion/bin/Release/net10.0/KhaozEngine.Locomotion.dll
+  KhaozEngine.Updates -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Updates/bin/Release/net10.0/KhaozEngine.Updates.dll
+  KhaozEngine.TileWorld -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.TileWorld/bin/Release/net10.0/KhaozEngine.TileWorld.dll
+  KhaozEngine.Gpu.Metal -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Gpu.Metal/bin/Release/net10.0/KhaozEngine.Gpu.Metal.dll
+  KhaozEngine.MapDoc -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.MapDoc/bin/Release/net10.0/KhaozEngine.MapDoc.dll
+  KhaozEngine.Simulation -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Simulation/bin/Release/net10.0/KhaozEngine.Simulation.dll
+  KhaozEngine.Navigation -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Navigation/bin/Release/net10.0/KhaozEngine.Navigation.dll
+  KhaozEngine.Gpu.D3D11 -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Gpu.D3D11/bin/Release/net10.0/KhaozEngine.Gpu.D3D11.dll
+  KhaozEngine.Gpu.Vulkan -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Gpu.Vulkan/bin/Release/net10.0/KhaozEngine.Gpu.Vulkan.dll
+  KhaozEngine.Ecs -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Ecs/bin/Release/net10.0/KhaozEngine.Ecs.dll
+  KhaozEngine.Gpu.TestKit -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Gpu.TestKit/bin/Release/net10.0/KhaozEngine.Gpu.TestKit.dll
+  KhaozEngine.Dungeon -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Dungeon/bin/Release/net10.0/KhaozEngine.Dungeon.dll
+  KhaozEngine.Windowing -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Windowing/bin/Release/net10.0/KhaozEngine.Windowing.dll
+  KhaozEngine.Render2D -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render2D/bin/Release/net10.0/KhaozEngine.Render2D.dll
+  KhaozEngine.Snapshot -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Snapshot/bin/Release/net10.0/KhaozEngine.Snapshot.dll
+  KhaozEngine.Telegraphs -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Telegraphs/bin/Release/net10.0/KhaozEngine.Telegraphs.dll
+  KhaozEngine.Gui -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Gui/bin/Release/net10.0/KhaozEngine.Gui.dll
+  KhaozEngine.TestSupport.Windowing -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.TestSupport.Windowing/bin/Release/net10.0/KhaozEngine.TestSupport.Windowing.dll
+  KhaozEngine.TestSupport.Gpu -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.TestSupport.Gpu/bin/Release/net10.0/KhaozEngine.TestSupport.Gpu.dll
+  KhaozEngine.Render3D -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render3D/bin/Release/net10.0/KhaozEngine.Render3D.dll
+  KhaozEngine.ServerStatus -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.ServerStatus/bin/Release/net10.0/KhaozEngine.ServerStatus.dll
+  KhaozEngine.Particles.Render3D -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Particles.Render3D/bin/Release/net10.0/KhaozEngine.Particles.Render3D.dll
+  KhaozEngine.Terrain.Render3D -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Terrain.Render3D/bin/Release/net10.0/KhaozEngine.Terrain.Render3D.dll
+  KhaozEngine.Attachments.Render3D -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Attachments.Render3D/bin/Release/net10.0/KhaozEngine.Attachments.Render3D.dll
+  KhaozEngine.Render3D.Ecs -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render3D.Ecs/bin/Release/net10.0/KhaozEngine.Render3D.Ecs.dll
+  KhaozEngine.Snapshot.Render3D -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Snapshot.Render3D/bin/Release/net10.0/KhaozEngine.Snapshot.Render3D.dll
+  KhaozEngine.Telegraphs.Render3D -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Telegraphs.Render3D/bin/Release/net10.0/KhaozEngine.Telegraphs.Render3D.dll
+  KhaozEngine.TileWorld.Render3D -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.TileWorld.Render3D/bin/Release/net10.0/KhaozEngine.TileWorld.Render3D.dll
+  SnapshotTool -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/SnapshotTool/bin/Release/net10.0/SnapshotTool.dll
+  KhaozEngine.Game -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Game/bin/Release/net10.0/KhaozEngine.Game.dll
+  KhaozEngine.Game.Render3D -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Game.Render3D/bin/Release/net10.0/KhaozEngine.Game.Render3D.dll
+  KhaozEngine.Render.Tests -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render.Tests/bin/Release/net10.0/KhaozEngine.Render.Tests.dll
+Test run for /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render.Tests/bin/Release/net10.0/KhaozEngine.Render.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+/Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render.Tests/bin/Release/net10.0/KhaozEngine.Render.Tests.dll
+[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.8.2+699d445a1a (64-bit .NET 10.0.13)
+[xUnit.net 00:00:06.57]   Discovering: KhaozEngine.Render.Tests
+[xUnit.net 00:00:32.92]   Discovered:  KhaozEngine.Render.Tests
+[xUnit.net 00:00:33.03]   Starting:    KhaozEngine.Render.Tests
+[xUnit.net 00:00:53.03]   Finished:    KhaozEngine.Render.Tests
+  Passed KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureDiagnosticTests.Trace_the_first_unbounded_normal_basis_without_changing_the_enclosure [19 s]
+  Standard Output Messages:
+ VERTEX 546 before=CoverageVertexEnclosure { X = CoverageFloatInterval { Min = -1.0250013066456587, Max = -1.0249987581745126 }, Y = CoverageFloatInterval { Min = -1.0896477016519916E-07, Max = 1.0896477009581021E-07 }, Z = CoverageFloatInterval { Min = -0.05000004637986694, Max = -0.0499999547377244 } } after=CoverageVertexEnclosure { X = CoverageFloatInterval { Min = -1.0250014258549487, Max = -1.0249986389652226 }, Y = CoverageFloatInterval { Min = -1.0896477727062655E-07, Max = 1.0896477720123759E-07 }, Z = CoverageFloatInterval { Min = -0.07755538449723771, Max = -0.04999994169920834 } } referenceBefore=<-1.0250001, -3.7252903E-09, -0.05> referenceAfter=<-1.0250001, -3.7252903E-09, -0.050000004> referenceMoved=True
+ VERTEX 212 before=CoverageVertexEnclosure { X = CoverageFloatInterval { Min = -1.0500010725111162, Max = -1.0499991018324726 }, Y = CoverageFloatInterval { Min = -1.0896474945953918E-07, Max = 1.0896474939015024E-07 }, Z = CoverageFloatInterval { Min = -0.05000003688037446, Max = -0.04999996609985784 } } after=CoverageVertexEnclosure { X = CoverageFloatInterval { Min = -1.0500011917204062, Max = -1.0499989826231826 }, Y = CoverageFloatInterval { Min = -1.0896475656496657E-07, Max = 1.0896475649557763E-07 }, Z = CoverageFloatInterval { Min = -0.07755537499774523, Max = -0.04999995306134178 } } referenceBefore=<-1.0500001, 0, -0.05> referenceAfter=<-1.0500001, 0, -0.05> referenceMoved=False
+ VERTEX 186 before=CoverageVertexEnclosure { X = CoverageFloatInterval { Min = -1.0500010725111162, Max = -1.0499991018324726 }, Y = CoverageFloatInterval { Min = -0.05000016447157023, Max = -0.04999984595924285 }, Z = CoverageFloatInterval { Min = -0.05000003688037446, Max = -0.04999996609985784 } } after=CoverageVertexEnclosure { X = CoverageFloatInterval { Min = -1.0500010725111162, Max = -1.0499991018324726 }, Y = CoverageFloatInterval { Min = -0.05000016447157023, Max = -0.04999984595924285 }, Z = CoverageFloatInterval { Min = -0.05000003688037446, Max = -0.04999996609985784 } } referenceBefore=<-1.0500001, -0.050000004, -0.05> referenceAfter=<-1.0500001, -0.050000004, -0.05> referenceMoved=False
+ NORMAL before=CoverageVertexEnclosure { X = CoverageFloatInterval { Min = -4.107174414400491E-09, Max = 4.01404185058788E-09 }, Y = CoverageFloatInterval { Min = -4.060943925789061E-09, Max = 4.060943925789061E-09 }, Z = CoverageFloatInterval { Min = 0.0012498773169523835, Max = 0.0012501284212193663 } } after=CoverageVertexEnclosure { X = CoverageFloatInterval { Min = -0.0013777856333400103, Max = 0.0013777855402074463 }, Y = CoverageFloatInterval { Min = -0.0006889556003749072, Max = 0.0013779091206707768 }, Z = CoverageFloatInterval { Min = 0.0012498653960604654, Max = 0.0012501403422409585 } }
+ LENGTH before=CoverageFloatInterval { Min = 0.001249874842042364, Max = 0.0012501308966037423 } after=CoverageFloatInterval { Min = 0.0012498613524126983, Max = 0.002315124001149477 } beforeUnit=CoverageVertexEnclosure { X = CoverageFloatInterval { Min = -3.286069463118154E-06, Max = 3.211555951300901E-06 }, Y = CoverageFloatInterval { Min = -3.249081368745531E-06, Max = 3.249081368745531E-06 }, Z = CoverageFloatInterval { Min = 0.999796680682868, Max = 1.0002033604927636 } } afterUnit=CoverageVertexEnclosure { X = CoverageFloatInterval { Min = -1.1023512541296723, Max = 1.1023511796153562 }, Y = CoverageFloatInterval { Min = -0.5512260980190328, Max = 1.1024500549530822 }, Z = CoverageFloatInterval { Min = 0.5398692646712435, Max = 1.0002236934585236 } }
+ BASIS alignment=CoverageFloatInterval { Min = 1.5621669259870787E-06, Max = 1.5628474541413146E-06 } beforeDet=CoverageFloatInterval { Min = 0.0012496228877958253, Max = 0.0012503829506285236 } afterDet=CoverageFloatInterval { Min = -0.0019832744196597086, Max = 0.004288300800300323 } beforeScale=CoverageFloatInterval { Min = 0.0013973853856489684, Max = 0.0013977071743966286 } afterScale=CoverageFloatInterval { Min = 0, Max = 0.002319002433724151 } beforeThreshold=CoverageFloatInterval { Min = 1.3973852741861731E-15, Max = 1.3977072746907851E-15 } afterThreshold=CoverageFloatInterval { Min = -2.117582368135752E-22, Max = 2.3190026362161122E-15 }
+ RECIPROCALS before=CoverageFloatInterval { Min = 799.7547425195297, Max = 800.2416687866414 } after=CoverageFloatInterval { Min = -∞, Max = ∞ }
+ FINAL_BASIS bu=CoverageVertexEnclosure { X = CoverageFloatInterval { Min = -40.02045116941175, Max = -39.97938455754862 }, Y = CoverageFloatInterval { Min = 19.988034475452764, Max = 20.011968559672766 }, Z = CoverageFloatInterval { Min = -0.00019649053209601394, Max = 0.00019350907562659802 } } au=CoverageVertexEnclosure { X = CoverageFloatInterval { Min = -∞, Max = ∞ }, Y = CoverageFloatInterval { Min = -∞, Max = ∞ }, Z = CoverageFloatInterval { Min = -∞, Max = ∞ } }
+
+
+
+Test Run Successful.
+Total tests: 1
+     Passed: 1
+ Total time: 1.0966 Minutes
+build-slot: exit=0 waited=0.059s ran=383.421s

@@ -1,0 +1,35 @@
+{
+  "total": 497,
+  "passed": 486,
+  "failed": 11,
+  "unchanged_existing_tests_passed": 418,
+  "fixture_rows": 72,
+  "fixture_rows_equal_to_gate_run": true,
+  "byte_and_rational_tests": [
+    {
+      "test": "KhaozEngine.Tests.Render3D.CoverageReferenceCrossingTests.Every_fixture_reference_output_is_compared_byte_for_byte_when_requested",
+      "outcome": "Passed"
+    },
+    {
+      "test": "KhaozEngine.Tests.Render3D.CoverageReferenceCrossingTests.Subnormal_opposite_determinants_use_the_scaled_rational_parameter(exponent: -75)",
+      "outcome": "Passed"
+    },
+    {
+      "test": "KhaozEngine.Tests.Render3D.CoverageReferenceCrossingTests.Subnormal_opposite_determinants_use_the_scaled_rational_parameter(exponent: -74)",
+      "outcome": "Passed"
+    }
+  ],
+  "failures": [
+    "KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: \"cost-limit-l2-lifted-w1\")",
+    "KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: \"cost-typical-l2-lifted-w1\")",
+    "KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: \"cost-limit-l2-lifted-w05\")",
+    "KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: \"cost-limit-l3-lifted-w1\")",
+    "KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: \"cost-limit-l4-lifted-w05\")",
+    "KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: \"cost-typical-l4-lifted-w1\")",
+    "KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: \"cost-typical-l2-lifted-w05\")",
+    "KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: \"cost-limit-l2-bent-w1\")",
+    "KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: \"cost-limit-l3-lifted-w05\")",
+    "KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: \"cost-typical-l4-lifted-w05\")",
+    "KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: \"cost-limit-l4-lifted-w1\")"
+  ]
+}

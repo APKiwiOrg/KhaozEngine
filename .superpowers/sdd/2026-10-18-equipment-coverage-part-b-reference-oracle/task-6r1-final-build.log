@@ -1,0 +1,61 @@
+COMMAND build-slot --label ec-b6r1-final-build -- dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-restore
+  KhaozEngine.CodeHealth.Analyzers -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.CodeHealth.Analyzers/bin/Release/netstandard2.0/KhaozEngine.CodeHealth.Analyzers.dll
+  KhaozEngine.Netcode.Abstractions -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Netcode.Abstractions/bin/Release/net10.0/KhaozEngine.Netcode.Abstractions.dll
+  KhaozEngine.Imaging -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Imaging/bin/Release/net10.0/KhaozEngine.Imaging.dll
+  KhaozEngine.Physics -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Physics/bin/Release/net10.0/KhaozEngine.Physics.dll
+  KhaozEngine.Primitives -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Primitives/bin/Release/net10.0/KhaozEngine.Primitives.dll
+  KhaozEngine.Collision -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Collision/bin/Release/net10.0/KhaozEngine.Collision.dll
+  KhaozEngine.Attachments -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Attachments/bin/Release/net10.0/KhaozEngine.Attachments.dll
+  KhaozEngine.Serialization -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Serialization/bin/Release/net10.0/KhaozEngine.Serialization.dll
+  KhaozEngine.Diagnostics -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Diagnostics/bin/Release/net10.0/KhaozEngine.Diagnostics.dll
+  KhaozEngine.Platform -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Platform/bin/Release/net10.0/KhaozEngine.Platform.dll
+  KhaozEngine.Determinism -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Determinism/bin/Release/net10.0/KhaozEngine.Determinism.dll
+  KhaozEngine.Netcode -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Netcode/bin/Release/net10.0/KhaozEngine.Netcode.dll
+  KhaozEngine.App -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.App/bin/Release/net10.0/KhaozEngine.App.dll
+  KhaozEngine.Terrain -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Terrain/bin/Release/net10.0/KhaozEngine.Terrain.dll
+  KhaozEngine.Physics.Bepu -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Physics.Bepu/bin/Release/net10.0/KhaozEngine.Physics.Bepu.dll
+  KhaozEngine.Particles -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Particles/bin/Release/net10.0/KhaozEngine.Particles.dll
+  KhaozEngine.Locomotion -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Locomotion/bin/Release/net10.0/KhaozEngine.Locomotion.dll
+  KhaozEngine.Gpu -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Gpu/bin/Release/net10.0/KhaozEngine.Gpu.dll
+  KhaozEngine.Content -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Content/bin/Release/net10.0/KhaozEngine.Content.dll
+  KhaozEngine.TestSupport -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.TestSupport/bin/Release/net10.0/KhaozEngine.TestSupport.dll
+  KhaozEngine.Simulation -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Simulation/bin/Release/net10.0/KhaozEngine.Simulation.dll
+  KhaozEngine.Updates -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Updates/bin/Release/net10.0/KhaozEngine.Updates.dll
+  KhaozEngine.Gpu.Vulkan -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Gpu.Vulkan/bin/Release/net10.0/KhaozEngine.Gpu.Vulkan.dll
+  KhaozEngine.Gpu.Metal -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Gpu.Metal/bin/Release/net10.0/KhaozEngine.Gpu.Metal.dll
+  KhaozEngine.Navigation -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Navigation/bin/Release/net10.0/KhaozEngine.Navigation.dll
+  KhaozEngine.Gpu.D3D11 -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Gpu.D3D11/bin/Release/net10.0/KhaozEngine.Gpu.D3D11.dll
+  KhaozEngine.Ecs -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Ecs/bin/Release/net10.0/KhaozEngine.Ecs.dll
+  KhaozEngine.MapDoc -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.MapDoc/bin/Release/net10.0/KhaozEngine.MapDoc.dll
+  KhaozEngine.TileWorld -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.TileWorld/bin/Release/net10.0/KhaozEngine.TileWorld.dll
+  KhaozEngine.Windowing -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Windowing/bin/Release/net10.0/KhaozEngine.Windowing.dll
+  KhaozEngine.Dungeon -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Dungeon/bin/Release/net10.0/KhaozEngine.Dungeon.dll
+  KhaozEngine.Gpu.TestKit -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Gpu.TestKit/bin/Release/net10.0/KhaozEngine.Gpu.TestKit.dll
+  KhaozEngine.Render2D -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render2D/bin/Release/net10.0/KhaozEngine.Render2D.dll
+  KhaozEngine.TestSupport.Windowing -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.TestSupport.Windowing/bin/Release/net10.0/KhaozEngine.TestSupport.Windowing.dll
+  KhaozEngine.Telegraphs -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Telegraphs/bin/Release/net10.0/KhaozEngine.Telegraphs.dll
+  KhaozEngine.TestSupport.Gpu -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.TestSupport.Gpu/bin/Release/net10.0/KhaozEngine.TestSupport.Gpu.dll
+  KhaozEngine.Snapshot -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Snapshot/bin/Release/net10.0/KhaozEngine.Snapshot.dll
+  KhaozEngine.Render3D -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render3D/bin/Release/net10.0/KhaozEngine.Render3D.dll
+  KhaozEngine.Particles.Render3D -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Particles.Render3D/bin/Release/net10.0/KhaozEngine.Particles.Render3D.dll
+  KhaozEngine.Telegraphs.Render3D -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Telegraphs.Render3D/bin/Release/net10.0/KhaozEngine.Telegraphs.Render3D.dll
+  KhaozEngine.Terrain.Render3D -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Terrain.Render3D/bin/Release/net10.0/KhaozEngine.Terrain.Render3D.dll
+  KhaozEngine.Attachments.Render3D -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Attachments.Render3D/bin/Release/net10.0/KhaozEngine.Attachments.Render3D.dll
+  KhaozEngine.Gui -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Gui/bin/Release/net10.0/KhaozEngine.Gui.dll
+  KhaozEngine.Snapshot.Render3D -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Snapshot.Render3D/bin/Release/net10.0/KhaozEngine.Snapshot.Render3D.dll
+  KhaozEngine.Render3D.Ecs -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render3D.Ecs/bin/Release/net10.0/KhaozEngine.Render3D.Ecs.dll
+  SnapshotTool -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/SnapshotTool/bin/Release/net10.0/SnapshotTool.dll
+  KhaozEngine.ServerStatus -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.ServerStatus/bin/Release/net10.0/KhaozEngine.ServerStatus.dll
+  KhaozEngine.TileWorld.Render3D -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.TileWorld.Render3D/bin/Release/net10.0/KhaozEngine.TileWorld.Render3D.dll
+  KhaozEngine.Game -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Game/bin/Release/net10.0/KhaozEngine.Game.dll
+  KhaozEngine.Game.Render3D -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Game.Render3D/bin/Release/net10.0/KhaozEngine.Game.Render3D.dll
+  KhaozEngine.Render.Tests -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render.Tests/bin/Release/net10.0/KhaozEngine.Render.Tests.dll
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:12.14
+build-slot: exit=0 waited=0.023s ran=12.409s
+
+EXIT 0

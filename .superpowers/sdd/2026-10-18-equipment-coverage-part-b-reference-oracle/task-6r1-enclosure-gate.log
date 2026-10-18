@@ -1,0 +1,192 @@
+build-slot: queued position=1 waiting=1, held by: ability-bar (quick, 66.3s), flightline-release-build-tests (heavy, 36.5s), cf-traversal-probe (quick, 283.9s), shadowgrain (quick, 6.7s), wa-r6-gate-format (quick, 214.0s), hardpoint-sync-node (quick, 1.4s), a5-guards-complete (quick, 1022.4s), interior-highlights-guards (quick, 1095.6s)
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  KhaozEngine.CodeHealth.Analyzers -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.CodeHealth.Analyzers/bin/Release/netstandard2.0/KhaozEngine.CodeHealth.Analyzers.dll
+  KhaozEngine.Physics -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Physics/bin/Release/net10.0/KhaozEngine.Physics.dll
+  KhaozEngine.Platform -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Platform/bin/Release/net10.0/KhaozEngine.Platform.dll
+  KhaozEngine.Diagnostics -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Diagnostics/bin/Release/net10.0/KhaozEngine.Diagnostics.dll
+  KhaozEngine.Imaging -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Imaging/bin/Release/net10.0/KhaozEngine.Imaging.dll
+  KhaozEngine.Serialization -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Serialization/bin/Release/net10.0/KhaozEngine.Serialization.dll
+  KhaozEngine.Attachments -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Attachments/bin/Release/net10.0/KhaozEngine.Attachments.dll
+  KhaozEngine.Primitives -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Primitives/bin/Release/net10.0/KhaozEngine.Primitives.dll
+  KhaozEngine.Netcode.Abstractions -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Netcode.Abstractions/bin/Release/net10.0/KhaozEngine.Netcode.Abstractions.dll
+  KhaozEngine.Collision -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Collision/bin/Release/net10.0/KhaozEngine.Collision.dll
+  KhaozEngine.Physics.Bepu -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Physics.Bepu/bin/Release/net10.0/KhaozEngine.Physics.Bepu.dll
+  KhaozEngine.Content -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Content/bin/Release/net10.0/KhaozEngine.Content.dll
+  KhaozEngine.Terrain -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Terrain/bin/Release/net10.0/KhaozEngine.Terrain.dll
+  KhaozEngine.Particles -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Particles/bin/Release/net10.0/KhaozEngine.Particles.dll
+  KhaozEngine.Gpu -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Gpu/bin/Release/net10.0/KhaozEngine.Gpu.dll
+  KhaozEngine.Updates -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Updates/bin/Release/net10.0/KhaozEngine.Updates.dll
+  KhaozEngine.Locomotion -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Locomotion/bin/Release/net10.0/KhaozEngine.Locomotion.dll
+  KhaozEngine.Navigation -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Navigation/bin/Release/net10.0/KhaozEngine.Navigation.dll
+  KhaozEngine.TestSupport -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.TestSupport/bin/Release/net10.0/KhaozEngine.TestSupport.dll
+  KhaozEngine.Determinism -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Determinism/bin/Release/net10.0/KhaozEngine.Determinism.dll
+  KhaozEngine.TileWorld -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.TileWorld/bin/Release/net10.0/KhaozEngine.TileWorld.dll
+  KhaozEngine.Gpu.D3D11 -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Gpu.D3D11/bin/Release/net10.0/KhaozEngine.Gpu.D3D11.dll
+  KhaozEngine.Netcode -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Netcode/bin/Release/net10.0/KhaozEngine.Netcode.dll
+  KhaozEngine.App -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.App/bin/Release/net10.0/KhaozEngine.App.dll
+  KhaozEngine.MapDoc -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.MapDoc/bin/Release/net10.0/KhaozEngine.MapDoc.dll
+  KhaozEngine.Gpu.Vulkan -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Gpu.Vulkan/bin/Release/net10.0/KhaozEngine.Gpu.Vulkan.dll
+  KhaozEngine.Simulation -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Simulation/bin/Release/net10.0/KhaozEngine.Simulation.dll
+  KhaozEngine.Gpu.Metal -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Gpu.Metal/bin/Release/net10.0/KhaozEngine.Gpu.Metal.dll
+  KhaozEngine.Ecs -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Ecs/bin/Release/net10.0/KhaozEngine.Ecs.dll
+  KhaozEngine.Gpu.TestKit -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Gpu.TestKit/bin/Release/net10.0/KhaozEngine.Gpu.TestKit.dll
+  KhaozEngine.Windowing -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Windowing/bin/Release/net10.0/KhaozEngine.Windowing.dll
+  KhaozEngine.Dungeon -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Dungeon/bin/Release/net10.0/KhaozEngine.Dungeon.dll
+  KhaozEngine.Render2D -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render2D/bin/Release/net10.0/KhaozEngine.Render2D.dll
+  KhaozEngine.TestSupport.Windowing -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.TestSupport.Windowing/bin/Release/net10.0/KhaozEngine.TestSupport.Windowing.dll
+  KhaozEngine.Snapshot -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Snapshot/bin/Release/net10.0/KhaozEngine.Snapshot.dll
+  KhaozEngine.Telegraphs -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Telegraphs/bin/Release/net10.0/KhaozEngine.Telegraphs.dll
+  KhaozEngine.TestSupport.Gpu -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.TestSupport.Gpu/bin/Release/net10.0/KhaozEngine.TestSupport.Gpu.dll
+  KhaozEngine.Render3D -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render3D/bin/Release/net10.0/KhaozEngine.Render3D.dll
+  KhaozEngine.Particles.Render3D -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Particles.Render3D/bin/Release/net10.0/KhaozEngine.Particles.Render3D.dll
+  KhaozEngine.Snapshot.Render3D -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Snapshot.Render3D/bin/Release/net10.0/KhaozEngine.Snapshot.Render3D.dll
+  KhaozEngine.Render3D.Ecs -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render3D.Ecs/bin/Release/net10.0/KhaozEngine.Render3D.Ecs.dll
+  KhaozEngine.Gui -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Gui/bin/Release/net10.0/KhaozEngine.Gui.dll
+  KhaozEngine.Terrain.Render3D -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Terrain.Render3D/bin/Release/net10.0/KhaozEngine.Terrain.Render3D.dll
+  SnapshotTool -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/SnapshotTool/bin/Release/net10.0/SnapshotTool.dll
+  KhaozEngine.Telegraphs.Render3D -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Telegraphs.Render3D/bin/Release/net10.0/KhaozEngine.Telegraphs.Render3D.dll
+  KhaozEngine.ServerStatus -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.ServerStatus/bin/Release/net10.0/KhaozEngine.ServerStatus.dll
+  KhaozEngine.Attachments.Render3D -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Attachments.Render3D/bin/Release/net10.0/KhaozEngine.Attachments.Render3D.dll
+  KhaozEngine.Game -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Game/bin/Release/net10.0/KhaozEngine.Game.dll
+  KhaozEngine.Game.Render3D -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Game.Render3D/bin/Release/net10.0/KhaozEngine.Game.Render3D.dll
+  KhaozEngine.TileWorld.Render3D -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.TileWorld.Render3D/bin/Release/net10.0/KhaozEngine.TileWorld.Render3D.dll
+  KhaozEngine.Render.Tests -> /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render.Tests/bin/Release/net10.0/KhaozEngine.Render.Tests.dll
+Test run for /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render.Tests/bin/Release/net10.0/KhaozEngine.Render.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:46.70]     KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-limit-l2-lifted-w05") [FAIL]
+  Failed KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-limit-l2-lifted-w05") [5 s]
+  Error Message:
+   cost-limit-l2-lifted-w05 vertex=0 unbounded model
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(String id) in /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs:line 39
+   at InvokeStub_CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(Object, Span`1)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Standard Output Messages:
+ ENCLOSURE cost-limit-l2-lifted-w05 epsilon=∞ delta=0.004999999888241291 site=None vertex=-1 firstUnbounded=Normals index=360 triangle=-1
+
+
+[xUnit.net 00:01:05.76]     KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-limit-l3-lifted-w1") [FAIL]
+  Failed KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-limit-l3-lifted-w1") [9 s]
+  Error Message:
+   cost-limit-l3-lifted-w1 vertex=0 unbounded model
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(String id) in /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs:line 39
+   at InvokeStub_CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(Object, Span`1)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Standard Output Messages:
+ ENCLOSURE cost-limit-l3-lifted-w1 epsilon=∞ delta=0.004999999888241291 site=None vertex=-1 firstUnbounded=Normals index=360 triangle=-1
+
+
+[xUnit.net 00:01:26.57]     KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-typical-l4-lifted-w05") [FAIL]
+  Failed KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-typical-l4-lifted-w05") [9 s]
+  Error Message:
+   cost-typical-l4-lifted-w05 vertex=0 unbounded model
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(String id) in /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs:line 39
+   at InvokeStub_CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(Object, Span`1)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Standard Output Messages:
+ ENCLOSURE cost-typical-l4-lifted-w05 epsilon=∞ delta=0.004999999888241291 site=None vertex=-1 firstUnbounded=Normals index=375 triangle=-1
+
+
+[xUnit.net 00:01:34.48]     KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-limit-l4-lifted-w1") [FAIL]
+  Failed KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-limit-l4-lifted-w1") [2 s]
+  Error Message:
+   cost-limit-l4-lifted-w1 vertex=0 unbounded model
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(String id) in /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs:line 39
+   at InvokeStub_CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(Object, Span`1)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Standard Output Messages:
+ ENCLOSURE cost-limit-l4-lifted-w1 epsilon=∞ delta=0.004999999888241291 site=None vertex=-1 firstUnbounded=Normals index=360 triangle=-1
+
+
+[xUnit.net 00:01:35.06]     KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-typical-l2-lifted-w1") [FAIL]
+  Failed KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-typical-l2-lifted-w1") [585 ms]
+  Error Message:
+   cost-typical-l2-lifted-w1 vertex=0 unbounded model
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(String id) in /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs:line 39
+   at InvokeStub_CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(Object, Span`1)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Standard Output Messages:
+ ENCLOSURE cost-typical-l2-lifted-w1 epsilon=∞ delta=0.004999999888241291 site=None vertex=-1 firstUnbounded=Normals index=369 triangle=-1
+
+
+[xUnit.net 00:01:39.16]     KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-limit-l4-lifted-w05") [FAIL]
+  Failed KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-limit-l4-lifted-w05") [2 s]
+  Error Message:
+   cost-limit-l4-lifted-w05 vertex=0 unbounded model
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(String id) in /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs:line 39
+   at InvokeStub_CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(Object, Span`1)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Standard Output Messages:
+ ENCLOSURE cost-limit-l4-lifted-w05 epsilon=∞ delta=0.004999999888241291 site=None vertex=-1 firstUnbounded=Normals index=360 triangle=-1
+
+
+[xUnit.net 00:01:59.23]     KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-limit-l2-bent-w1") [FAIL]
+  Failed KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-limit-l2-bent-w1") [441 ms]
+  Error Message:
+   cost-limit-l2-bent-w1 vertex=0 unbounded model
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(String id) in /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs:line 39
+   at InvokeStub_CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(Object, Span`1)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Standard Output Messages:
+ ENCLOSURE cost-limit-l2-bent-w1 epsilon=∞ delta=0.004999999888241291 site=None vertex=-1 firstUnbounded=Normals index=251 triangle=-1
+
+
+[xUnit.net 00:02:02.23]     KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-typical-l4-lifted-w1") [FAIL]
+  Failed KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-typical-l4-lifted-w1") [2 s]
+  Error Message:
+   cost-typical-l4-lifted-w1 vertex=0 unbounded model
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(String id) in /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs:line 39
+   at InvokeStub_CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(Object, Span`1)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Standard Output Messages:
+ ENCLOSURE cost-typical-l4-lifted-w1 epsilon=∞ delta=0.004999999888241291 site=None vertex=-1 firstUnbounded=Normals index=375 triangle=-1
+
+
+[xUnit.net 00:02:10.37]     KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-limit-l3-lifted-w05") [FAIL]
+  Failed KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-limit-l3-lifted-w05") [3 s]
+  Error Message:
+   cost-limit-l3-lifted-w05 vertex=0 unbounded model
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(String id) in /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs:line 39
+   at InvokeStub_CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(Object, Span`1)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Standard Output Messages:
+ ENCLOSURE cost-limit-l3-lifted-w05 epsilon=∞ delta=0.004999999888241291 site=None vertex=-1 firstUnbounded=Normals index=360 triangle=-1
+
+
+[xUnit.net 00:02:20.16]     KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-limit-l2-lifted-w1") [FAIL]
+  Failed KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-limit-l2-lifted-w1") [2 s]
+  Error Message:
+   cost-limit-l2-lifted-w1 vertex=0 unbounded model
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(String id) in /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs:line 39
+   at InvokeStub_CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(Object, Span`1)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Standard Output Messages:
+ ENCLOSURE cost-limit-l2-lifted-w1 epsilon=∞ delta=0.004999999888241291 site=None vertex=-1 firstUnbounded=Normals index=360 triangle=-1
+
+
+[xUnit.net 00:02:22.97]     KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-typical-l2-lifted-w05") [FAIL]
+  Failed KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-typical-l2-lifted-w05") [408 ms]
+  Error Message:
+   cost-typical-l2-lifted-w05 vertex=0 unbounded model
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(String id) in /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs:line 39
+   at InvokeStub_CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(Object, Span`1)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Standard Output Messages:
+ ENCLOSURE cost-typical-l2-lifted-w05 epsilon=∞ delta=0.004999999888241291 site=None vertex=-1 firstUnbounded=Normals index=369 triangle=-1
+
+
+Results File: /Users/antonio/KhaozEngine/.worktrees/ec-oracle/.superpowers/sdd/2026-10-18-equipment-coverage-part-b-reference-oracle/task-6r1-enclosure-gate.trx
+
+Failed!  - Failed:    11, Passed:    66, Skipped:     0, Total:    77, Duration: 2 m 38 s - KhaozEngine.Render.Tests.dll (net10.0)
+build-slot: exit=1 waited=34.244s ran=510.063s

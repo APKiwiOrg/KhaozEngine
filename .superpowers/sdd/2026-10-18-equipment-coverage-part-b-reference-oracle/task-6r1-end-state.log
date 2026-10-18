@@ -1,0 +1,44 @@
+[
+  {
+    "command": [
+      "git",
+      "branch",
+      "--show-current"
+    ],
+    "exit": 0,
+    "stdout": "feature/equipment-coverage-oracle\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "git",
+      "rev-parse",
+      "--short",
+      "HEAD"
+    ],
+    "exit": 0,
+    "stdout": "8765a4c27\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "git",
+      "status",
+      "--short"
+    ],
+    "exit": 0,
+    "stdout": " M KhaozEngine.Render3D/Coverage/CoverageReferencePredicates.cs\n M KhaozEngine.Render3D/Coverage/CoverageReferenceSupport.cs\n?? KhaozEngine.Render.Tests/Render3D/CoverageReferenceCrossingTests.cs\n?? KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureDiagnosticTests.cs\n?? KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs\n?? KhaozEngine.Render3D/Coverage/CoverageEnclosureCorrection.cs\n?? KhaozEngine.Render3D/Coverage/CoverageEnclosureMath.cs\n?? KhaozEngine.Render3D/Coverage/CoverageEnclosureNormals.cs\n?? KhaozEngine.Render3D/Coverage/CoverageEnclosureOverlay.cs\n?? KhaozEngine.Render3D/Coverage/CoverageEnclosurePose.cs\n?? KhaozEngine.Render3D/Coverage/CoverageEnclosurePredicates.cs\n?? KhaozEngine.Render3D/Coverage/CoverageEnclosureSupport.cs\n?? KhaozEngine.Render3D/Coverage/CoverageReferenceEnclosure.cs\n?? KhaozEngine.Render3D/Coverage/CoverageReferenceEnclosureScratch.cs\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "git",
+      "diff",
+      "--cached",
+      "--name-only"
+    ],
+    "exit": 0,
+    "stdout": "",
+    "stderr": ""
+  }
+]

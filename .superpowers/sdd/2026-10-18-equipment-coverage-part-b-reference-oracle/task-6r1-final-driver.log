@@ -1,0 +1,14 @@
+RUN final-build
+EXIT final-build 0
+RUN final-tests
+EXIT final-tests 1
+RUN final-format
+EXIT final-format 0
+RUN diff-check
+EXIT diff-check 0
+RUN dashes
+EXIT dashes 0
+RUN prose
+EXIT prose 0
+RUN size
+EXIT size 0

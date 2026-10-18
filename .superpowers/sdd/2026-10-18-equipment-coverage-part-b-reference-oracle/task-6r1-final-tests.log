@@ -1,0 +1,141 @@
+COMMAND build-slot --heavy --label ec-b6r1-final-tests -- dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~CoverageReference|FullyQualifiedName~CoverageExactCaptureTests' --logger 'trx;LogFileName=task-6r1-final-tests.trx' --results-directory .superpowers/sdd/2026-10-18-equipment-coverage-part-b-reference-oracle
+Test run for /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render.Tests/bin/Release/net10.0/KhaozEngine.Render.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:09.87]     KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-limit-l2-lifted-w05") [FAIL]
+[xUnit.net 00:00:10.66]     KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-limit-l3-lifted-w1") [FAIL]
+  Failed KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-limit-l2-lifted-w05") [197 ms]
+  Error Message:
+   cost-limit-l2-lifted-w05 vertex=0 unbounded model
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(String id) in /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs:line 39
+   at InvokeStub_CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(Object, Span`1)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Standard Output Messages:
+ ENCLOSURE cost-limit-l2-lifted-w05 epsilon=∞ delta=0.004999999888241291 site=None vertex=-1 firstUnbounded=Normals index=360 triangle=-1
+
+
+  Failed KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-limit-l3-lifted-w1") [260 ms]
+  Error Message:
+   cost-limit-l3-lifted-w1 vertex=0 unbounded model
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(String id) in /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs:line 39
+   at InvokeStub_CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(Object, Span`1)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Standard Output Messages:
+ ENCLOSURE cost-limit-l3-lifted-w1 epsilon=∞ delta=0.004999999888241291 site=None vertex=-1 firstUnbounded=Normals index=360 triangle=-1
+
+
+[xUnit.net 00:00:11.60]     KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-typical-l4-lifted-w05") [FAIL]
+  Failed KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-typical-l4-lifted-w05") [398 ms]
+  Error Message:
+   cost-typical-l4-lifted-w05 vertex=0 unbounded model
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(String id) in /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs:line 39
+   at InvokeStub_CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(Object, Span`1)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Standard Output Messages:
+ ENCLOSURE cost-typical-l4-lifted-w05 epsilon=∞ delta=0.004999999888241291 site=None vertex=-1 firstUnbounded=Normals index=375 triangle=-1
+
+
+[xUnit.net 00:00:12.38]     KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-limit-l4-lifted-w1") [FAIL]
+[xUnit.net 00:00:12.52]     KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-typical-l2-lifted-w1") [FAIL]
+[xUnit.net 00:00:13.01]     KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-limit-l4-lifted-w05") [FAIL]
+  Failed KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-limit-l4-lifted-w1") [402 ms]
+  Error Message:
+   cost-limit-l4-lifted-w1 vertex=0 unbounded model
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(String id) in /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs:line 39
+   at InvokeStub_CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(Object, Span`1)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Standard Output Messages:
+ ENCLOSURE cost-limit-l4-lifted-w1 epsilon=∞ delta=0.004999999888241291 site=None vertex=-1 firstUnbounded=Normals index=360 triangle=-1
+
+
+  Failed KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-typical-l2-lifted-w1") [135 ms]
+  Error Message:
+   cost-typical-l2-lifted-w1 vertex=0 unbounded model
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(String id) in /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs:line 39
+   at InvokeStub_CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(Object, Span`1)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Standard Output Messages:
+ ENCLOSURE cost-typical-l2-lifted-w1 epsilon=∞ delta=0.004999999888241291 site=None vertex=-1 firstUnbounded=Normals index=369 triangle=-1
+
+
+  Failed KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-limit-l4-lifted-w05") [414 ms]
+  Error Message:
+   cost-limit-l4-lifted-w05 vertex=0 unbounded model
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(String id) in /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs:line 39
+   at InvokeStub_CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(Object, Span`1)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Standard Output Messages:
+ ENCLOSURE cost-limit-l4-lifted-w05 epsilon=∞ delta=0.004999999888241291 site=None vertex=-1 firstUnbounded=Normals index=360 triangle=-1
+
+
+[xUnit.net 00:00:14.52]     KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-limit-l2-bent-w1") [FAIL]
+[xUnit.net 00:00:14.92]     KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-typical-l4-lifted-w1") [FAIL]
+  Failed KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-limit-l2-bent-w1") [73 ms]
+  Error Message:
+   cost-limit-l2-bent-w1 vertex=0 unbounded model
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(String id) in /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs:line 39
+   at InvokeStub_CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(Object, Span`1)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Standard Output Messages:
+ ENCLOSURE cost-limit-l2-bent-w1 epsilon=∞ delta=0.004999999888241291 site=None vertex=-1 firstUnbounded=Normals index=251 triangle=-1
+
+
+  Failed KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-typical-l4-lifted-w1") [399 ms]
+  Error Message:
+   cost-typical-l4-lifted-w1 vertex=0 unbounded model
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(String id) in /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs:line 39
+   at InvokeStub_CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(Object, Span`1)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Standard Output Messages:
+ ENCLOSURE cost-typical-l4-lifted-w1 epsilon=∞ delta=0.004999999888241291 site=None vertex=-1 firstUnbounded=Normals index=375 triangle=-1
+
+
+[xUnit.net 00:00:15.93]     KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-limit-l3-lifted-w05") [FAIL]
+  Failed KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-limit-l3-lifted-w05") [316 ms]
+  Error Message:
+   cost-limit-l3-lifted-w05 vertex=0 unbounded model
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(String id) in /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs:line 39
+   at InvokeStub_CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(Object, Span`1)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Standard Output Messages:
+ ENCLOSURE cost-limit-l3-lifted-w05 epsilon=∞ delta=0.004999999888241291 site=None vertex=-1 firstUnbounded=Normals index=360 triangle=-1
+
+
+[xUnit.net 00:00:16.96]     KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-limit-l2-lifted-w1") [FAIL]
+[xUnit.net 00:00:17.49]     KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-typical-l2-lifted-w05") [FAIL]
+  Failed KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-limit-l2-lifted-w1") [209 ms]
+  Error Message:
+   cost-limit-l2-lifted-w1 vertex=0 unbounded model
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(String id) in /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs:line 39
+   at InvokeStub_CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(Object, Span`1)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Standard Output Messages:
+ ENCLOSURE cost-limit-l2-lifted-w1 epsilon=∞ delta=0.004999999888241291 site=None vertex=-1 firstUnbounded=Normals index=360 triangle=-1
+
+
+  Failed KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(id: "cost-typical-l2-lifted-w05") [150 ms]
+  Error Message:
+   cost-typical-l2-lifted-w05 vertex=0 unbounded model
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(String id) in /Users/antonio/KhaozEngine/.worktrees/ec-oracle/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs:line 39
+   at InvokeStub_CoverageReferenceEnclosureTests.Every_fixture_float_vertex_is_inside_its_pose_enclosure(Object, Span`1)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Standard Output Messages:
+ ENCLOSURE cost-typical-l2-lifted-w05 epsilon=∞ delta=0.004999999888241291 site=None vertex=-1 firstUnbounded=Normals index=369 triangle=-1
+
+
+Results File: /Users/antonio/KhaozEngine/.worktrees/ec-oracle/.superpowers/sdd/2026-10-18-equipment-coverage-part-b-reference-oracle/task-6r1-final-tests.trx
+
+Failed!  - Failed:    11, Passed:   486, Skipped:     0, Total:   497, Duration: 18 s - KhaozEngine.Render.Tests.dll (net10.0)
+build-slot: exit=1 waited=0.025s ran=20.309s
+
+EXIT 1

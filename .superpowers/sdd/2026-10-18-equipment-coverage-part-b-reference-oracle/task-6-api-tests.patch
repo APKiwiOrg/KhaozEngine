@@ -1,0 +1,75 @@
+diff --git a/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs b/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs
+new file mode 100644
+index 000000000..bdb53dd3b
+--- /dev/null
++++ b/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs
+@@ -0,0 +1,69 @@
++using System;
++using System.Numerics;
++using KhaozEngine.Render3D;
++using Xunit;
++using Xunit.Abstractions;
++using I = KhaozEngine.Render3D.CoverageFloatInterval;
++
++namespace KhaozEngine.Tests.Render3D;
++
++public sealed class CoverageReferenceEnclosureTests(ITestOutputHelper output)
++{
++    public static TheoryData<string> Cases => CoverageExactCaptureTests.Cases;
++
++    [Theory]
++    [MemberData(nameof(Cases))]
++    public void Every_fixture_float_vertex_is_inside_its_pose_enclosure(string id)
++    {
++        var c = CoverageReferenceCases.Get(id);
++        var reference = new CoverageReferenceScratch(c.Topology);
++        var final = new ModelVertex[c.Topology.VertexCount];
++        // B9 requires the production reserve and an empty clearance override.
++        Assert.True(CoverageReferenceConstructor.TryConstruct(c.Topology, c.Posed, c.Model, c.Commands,
++            reference, final, out var failure), $"{id}: {failure}");
++        var palette = new Matrix4x4[c.Palette.Length];
++        for (int i = 0; i < palette.Length; i++) palette[i] = SkinningMath.Compose(c.Palette[i], c.InverseBind[i]);
++        var enclosure = new CoverageReferenceEnclosureScratch(c.Topology);
++        CoverageReferenceEnclosure.Evaluate(c.Topology, palette, final, c.Model, c.Commands, reference, enclosure);
++        output.WriteLine($"ENCLOSURE {id} epsilon={enclosure.DeviceTolerance:R} delta={.25 * c.Commands[0].Clearance:R}");
++        Assert.Equal(c.Topology.VertexCount, enclosure.HostModelBounds.Length);
++        Assert.Equal(c.Topology.VertexCount, enclosure.HostWorldBounds.Length);
++        for (int i = 0; i < final.Length; i++)
++        {
++            Assert.True(enclosure.HostModelBounds[i].Contains(final[i].Position), $"{id} vertex={i} model containment");
++            var model = enclosure.HostModelBounds[i];
++            var world = enclosure.HostWorldBounds[i];
++            Assert.True(model.X.IsFinite && model.Y.IsFinite && model.Z.IsFinite, $"{id} vertex={i} unbounded model");
++            Assert.True(world.X.IsFinite && world.Y.IsFinite && world.Z.IsFinite, $"{id} vertex={i} unbounded world");
++            var center = IndependentCenter(final[i].Position, c.Model);
++            Assert.True(world.X.Contains(center.X.Min) && world.X.Contains(center.X.Max)
++                && world.Y.Contains(center.Y.Min) && world.Y.Contains(center.Y.Max)
++                && world.Z.Contains(center.Z.Min) && world.Z.Contains(center.Z.Max), $"{id} vertex={i} exact world center");
++        }
++        Assert.True(double.IsFinite(enclosure.DeviceTolerance), $"{id} unbounded epsilon");
++    }
++
++    [Fact]
++    public void World_tolerance_sums_host_and_full_equipment_bounds()
++    {
++        var host = new CoverageVertexEnclosure(new(-3, 3), new(-4, 4), new(0, 0));
++        var zero = new CoverageVertexEnclosure(new(0, 0), new(0, 0), new(0, 0));
++        double radius = CoverageReferencePrecision.Radius(host, zero);
++        Assert.InRange(radius, 5, Math.BitIncrement(Math.BitIncrement(Math.BitIncrement(5))));
++        Assert.InRange(CoverageReferencePrecision.ComposeTolerance(radius, 12), 17,
++            Math.BitIncrement(Math.BitIncrement(Math.BitIncrement(17))));
++    }
++
++    static CoverageVertexEnclosure IndependentCenter(Vector3 p, Matrix4x4 m) => new(
++        Coordinate(p, m.M11, m.M21, m.M31, m.M41), Coordinate(p, m.M12, m.M22, m.M32, m.M42),
++        Coordinate(p, m.M13, m.M23, m.M33, m.M43));
++
++    static I Coordinate(Vector3 p, float x, float y, float z, float t)
++    {
++        double lo = Math.BitDecrement(Math.BitDecrement(Math.BitDecrement((double)p.X * x)
++            + Math.BitDecrement((double)p.Y * y)) + Math.BitDecrement((double)p.Z * z));
++        double hi = Math.BitIncrement(Math.BitIncrement(Math.BitIncrement((double)p.X * x)
++            + Math.BitIncrement((double)p.Y * y)) + Math.BitIncrement((double)p.Z * z));
++        return new(Math.BitDecrement(lo + t), Math.BitIncrement(hi + t));
++    }
++}

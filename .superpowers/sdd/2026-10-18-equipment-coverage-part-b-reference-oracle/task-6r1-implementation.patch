@@ -1,0 +1,1419 @@
+diff --git a/KhaozEngine.Render3D/Coverage/CoverageReferencePredicates.cs b/KhaozEngine.Render3D/Coverage/CoverageReferencePredicates.cs
+index f2b4ad6c7..199ee4a61 100644
+--- a/KhaozEngine.Render3D/Coverage/CoverageReferencePredicates.cs
++++ b/KhaozEngine.Render3D/Coverage/CoverageReferencePredicates.cs
+@@ -19,6 +19,12 @@ internal static class CoverageReferencePredicates
+     {
+         if (!Finite(a) || !Finite(b) || !Finite(p)) return new(0, float.NaN);
+         Span<double> expansion = stackalloc double[8];
++        int length = EdgeExpansion(a, b, p, expansion);
++        return Scalar(expansion[..length]);
++    }
++
++    static int EdgeExpansion(Vector3 a, Vector3 b, Vector3 p, Span<double> expansion)
++    {
+         int length = 0;
+         // A binary32 product is exact in binary64. Expand before subtracting coordinates so no difference is rounded.
+         CoverageGeometry.Grow(expansion, ref length, (double)b.X * p.Y);
+@@ -27,7 +33,28 @@ internal static class CoverageReferencePredicates
+         CoverageGeometry.Grow(expansion, ref length, -(double)b.Y * p.X);
+         CoverageGeometry.Grow(expansion, ref length, (double)b.Y * a.X);
+         CoverageGeometry.Grow(expansion, ref length, (double)a.Y * p.X);
+-        return Scalar(expansion[..length]);
++        return length;
++    }
++
++    /// <summary>B30's common power-of-two normalization precedes either RN32 conversion, so flushing cannot
++    /// turn two subnormal exact sides into a zero divisor. Float constructions retain the pinned order.</summary>
++    internal static float CrossingParameter(Vector3 s, Vector3 t, Vector3 a, Vector3 b)
++    {
++        if (!Finite(s) || !Finite(t) || !Finite(a) || !Finite(b)) return float.NaN;
++        Span<double> first = stackalloc double[8], second = stackalloc double[8];
++        int na = EdgeExpansion(s, t, a, first), nb = EdgeExpansion(s, t, b, second);
++        if (na == 0 || nb == 0 || Math.Sign(first[na - 1]) == Math.Sign(second[nb - 1])) return float.NaN;
++        var ca = first[..na]; var cb = second[..nb];
++        int sa = Math.Sign(ca[^1]), sb = Math.Sign(cb[^1]);
++        int exponent = Math.Max(Math.ILogB(Math.Abs(ca[^1])), Math.ILogB(Math.Abs(cb[^1])));
++        double binade = Math.ScaleB(1, exponent);
++        if (CompareMagnitude(ca, sa, binade) < 0 && CompareMagnitude(cb, sb, binade) < 0) exponent--;
++        else if (CompareMagnitude(ca, sa, 2 * binade) >= 0 || CompareMagnitude(cb, sb, 2 * binade) >= 0) exponent++;
++        for (int i = 0; i < na; i++) ca[i] = Math.ScaleB(ca[i], -exponent);
++        for (int i = 0; i < nb; i++) cb[i] = Math.ScaleB(cb[i], -exponent);
++        float x = Scalar(ca).Value, y = Scalar(cb).Value;
++        float denominator = x - y;
++        return x / denominator;
+     }
+ 
+     /// <summary>Returns the exact sign and RN32 value of (b.X-a.X)*(d.X-c.X)+(b.Y-a.Y)*(d.Y-c.Y),
+diff --git a/KhaozEngine.Render3D/Coverage/CoverageReferenceSupport.cs b/KhaozEngine.Render3D/Coverage/CoverageReferenceSupport.cs
+index f7be9c92c..b0312b670 100644
+--- a/KhaozEngine.Render3D/Coverage/CoverageReferenceSupport.cs
++++ b/KhaozEngine.Render3D/Coverage/CoverageReferenceSupport.cs
+@@ -119,7 +119,7 @@ internal sealed class CoverageReferenceSupport
+     }
+ 
+     /// <summary>Analytic overlay vertices in source order. Exact signs on binary32 inputs choose the same inside,
+-    /// collinear, endpoint and crossing branches as CoverageFaceOverlay. Crossing parameters use RN32 side values.</summary>
++    /// collinear, endpoint and crossing branches as CoverageFaceOverlay. Crossing parameters use B30's scaled RN32 sides.</summary>
+     internal bool TryOverlayMaximum(ReadOnlySpan<Vector3> host, out float maximum)
+     {
+         maximum = float.NegativeInfinity;
+@@ -164,9 +164,7 @@ internal sealed class CoverageReferenceSupport
+                 else if (cb.Sign == 0) p = b;
+                 else
+                 {
+-                    float denominator = ca.Value - cb.Value;
+-                    if (denominator == 0 || !float.IsFinite(denominator)) return false;
+-                    float quotient = ca.Value / denominator;
++                    float quotient = CoverageReferencePredicates.CrossingParameter(sheet[j], sheet[nextJ], a, b);
+                     if (!float.IsFinite(quotient)) return false;
+                     float u = Math.Clamp(quotient, 0, 1);
+                     p = new(a.X + (u * (b.X - a.X)), a.Y + (u * (b.Y - a.Y)), a.Z + (u * (b.Z - a.Z)));
+diff --git a/KhaozEngine.Render3D/Coverage/CoverageEnclosureCorrection.cs b/KhaozEngine.Render3D/Coverage/CoverageEnclosureCorrection.cs
+new file mode 100644
+index 000000000..e03fe696c
+--- /dev/null
++++ b/KhaozEngine.Render3D/Coverage/CoverageEnclosureCorrection.cs
+@@ -0,0 +1,97 @@
++using System;
++using I = KhaozEngine.Render3D.CoverageFloatInterval;
++using F = KhaozEngine.Render3D.CoverageFloatIntervals;
++using V = KhaozEngine.Render3D.CoverageVertexEnclosure;
++using M = KhaozEngine.Render3D.CoverageEnclosureMath;
++using S = KhaozEngine.Render3D.CoverageEnclosureSupport;
++
++namespace KhaozEngine.Render3D;
++
++/// <summary>Immutable interval faces, group maxima, full-target guards and scalar transition.</summary>
++internal static class CoverageEnclosureCorrection
++{
++    internal static bool Apply(CoverageRefinement topology, ReadOnlySpan<CoverageCommandPose> commands,
++        CoverageReferenceScratch reference, CoverageReferenceEnclosureScratch scratch)
++    {
++        Span<V> host = stackalloc V[3];
++        for (int slot = 0; slot < reference.ActiveCommands; slot++)
++        {
++            var frame = reference.Frames[slot];
++            var command = commands[frame.Command];
++            var support = command.Support.ReferenceData;
++            for (int t = 0; t < topology.TriangleCount; t++)
++            {
++                var face = topology.Triangles[t];
++                if (face.Role != CoverageTriangleRole.Core || face.RegionIndex != command.RegionIndex) continue;
++                I discrepancy = F.Point(0);
++                for (int corner = 0; corner < 3; corner++)
++                {
++                    int vertex = (int)topology.Indices[t * 3 + corner];
++                    V position = scratch.After[vertex];
++                    V actual = M.Transform(position, frame.HostToActualSheet), nominal = M.Transform(position, frame.HostToCoverage);
++                    bool a = S.Query(support, actual, out I ah, out bool ac), n = S.Query(support, nominal, out I nh, out bool nc);
++                    if (a && !ah.IsFinite || n && !nh.IsFinite)
++                    { scratch.Unbounded(CoverageEnclosureSite.QueryHeight, vertex, t); return false; }
++                    if (!ac || !nc) scratch.MayRefuse = true;
++                    host[corner] = nominal;
++                    V delta = M.Subtract(actual, nominal);
++                    I loss = F.Add(F.Abs(delta.Z), F.Multiply(F.Point(support.MaxSlope), M.Length2(delta.X, delta.Y)));
++                    discrepancy = F.Max(discrepancy, loss);
++                }
++                I maximum = CoverageEnclosureOverlay.Maximum(support, host, out int sheet);
++                if (!maximum.IsFinite) { scratch.Unbounded(CoverageEnclosureSite.OverlayHeight, t, sheet); return false; }
++                I deficit = F.Add(F.Add(maximum, F.Point(frame.ActualClearanceCoverage)), discrepancy);
++                I correction = F.Point(0);
++                if (deficit.Max > 0)
++                {
++                    correction = S.Correction(new(Math.Max(0, deficit.Min), deficit.Max), frame.CorrectionRate);
++                    if (deficit.Min <= 0) correction = F.Hull(correction, F.Point(0));
++                    for (int c = 0; c < 3; c++)
++                        if (topology.Vertices[(int)topology.Indices[t * 3 + c]].Strength != 1) scratch.MayRefuse = true;
++                }
++                if (!deficit.IsFinite || !correction.IsFinite) { scratch.Unbounded(CoverageEnclosureSite.Correction, t); return false; }
++                scratch.Faces[t] = correction; scratch.FaceGuards[t] = true;
++            }
++        }
++        for (int g = 0; g < scratch.Groups.Length; g++)
++        {
++            int v = scratch.Representatives[g];
++            if (v < 0) continue;
++            I correction = F.Point(0);
++            for (int i = scratch.Rows.CoreFaceOffsets[g]; i < scratch.Rows.CoreFaceOffsets[g + 1]; i++)
++                correction = F.Max(correction, scratch.Faces[scratch.Rows.CoreFaces[i]]);
++            var record = topology.Vertices[v];
++            var frame = reference.Frames[reference.RegionCommands[record.RegionIndex]];
++            var command = commands[frame.Command];
++            I total = scratch.Full[g];
++            if (correction.Min != 0 || correction.Max != 0)
++            {
++                I added = F.Add(total, correction);
++                total = correction.Contains(0) ? F.Hull(total, added) : added;
++                V moved = CoverageEnclosurePose.Move(scratch.Before[v], total, frame.Recess);
++                scratch.Groups[g] = correction.Contains(0) ? M.Hull(scratch.Groups[g], moved) : moved;
++                if (Width(correction) > Width(scratch.Full[g])) scratch.GroupSites[g] = CoverageEnclosureSite.Correction;
++            }
++            scratch.Full[g] = total;
++            V delta = M.Subtract(scratch.Groups[g], scratch.Before[v]);
++            I distance = M.Length(M.Transform(delta, frame.ActorLinear, true));
++            if (!distance.IsFinite || !total.IsFinite) { scratch.Unbounded(CoverageEnclosureSite.FullTarget, v); return false; }
++            if (distance.Max > command.MaxWorldRecession) scratch.MayRefuse = true;
++            CoverageEnclosurePose.Caps(M.Transform(scratch.Groups[g], frame.HostToCoverage), command, frame, scratch);
++            if (command.TransitionWeight == 0) scratch.Groups[g] = scratch.Before[v];
++            else if (command.TransitionWeight != 1)
++                scratch.Groups[g] = CoverageEnclosurePose.Move(scratch.Before[v], F.Multiply(F.Point(command.TransitionWeight), total), frame.Recess);
++        }
++        for (int v = 0; v < topology.VertexCount; v++)
++        {
++            int g = topology.Vertices[v].PositionGroup;
++            int representative = scratch.Representatives[g];
++            if (representative < 0) continue;
++            int slot = reference.RegionCommands[topology.Vertices[representative].RegionIndex];
++            scratch.After[v] = commands[reference.Frames[slot].Command].TransitionWeight == 0 ? scratch.Before[v] : scratch.Groups[g];
++        }
++        return true;
++    }
++
++    static double Width(I x) => x.Max - x.Min;
++}
+diff --git a/KhaozEngine.Render3D/Coverage/CoverageEnclosureMath.cs b/KhaozEngine.Render3D/Coverage/CoverageEnclosureMath.cs
+new file mode 100644
+index 000000000..dd4d4b1ef
+--- /dev/null
++++ b/KhaozEngine.Render3D/Coverage/CoverageEnclosureMath.cs
+@@ -0,0 +1,125 @@
++using System;
++using System.Numerics;
++using I = KhaozEngine.Render3D.CoverageFloatInterval;
++using F = KhaozEngine.Render3D.CoverageFloatIntervals;
++using V = KhaozEngine.Render3D.CoverageVertexEnclosure;
++
++namespace KhaozEngine.Render3D;
++
++/// <summary>Vector expansions of the pinned scalar graph. Copies are exact, arithmetic uses NC1.</summary>
++internal static class CoverageEnclosureMath
++{
++    internal static V Point(Vector3 p) => new(F.Point(p.X), F.Point(p.Y), F.Point(p.Z));
++    internal static V Unbounded => new(F.Unbounded, F.Unbounded, F.Unbounded);
++    internal static bool Finite(V p) => p.X.IsFinite && p.Y.IsFinite && p.Z.IsFinite;
++    internal static V Add(V a, V b) => new(F.Add(a.X, b.X), F.Add(a.Y, b.Y), F.Add(a.Z, b.Z));
++    internal static V Subtract(V a, V b) => new(F.Subtract(a.X, b.X), F.Subtract(a.Y, b.Y), F.Subtract(a.Z, b.Z));
++    internal static V Multiply(V a, I b) => new(F.Multiply(a.X, b), F.Multiply(a.Y, b), F.Multiply(a.Z, b));
++    internal static V Divide(V a, I b) => new(F.Divide(a.X, b), F.Divide(a.Y, b), F.Divide(a.Z, b));
++    internal static V Hull(V a, V b) => new(F.Hull(a.X, b.X), F.Hull(a.Y, b.Y), F.Hull(a.Z, b.Z));
++    internal static V Store(V a) => new(F.Store32(a.X), F.Store32(a.Y), F.Store32(a.Z));
++    internal static I Dot(V a, V b) => F.Add(F.Add(F.Multiply(a.X, b.X), F.Multiply(a.Y, b.Y)), F.Multiply(a.Z, b.Z));
++    internal static V Cross(V a, V b) => new(
++        F.Subtract(F.Multiply(a.Y, b.Z), F.Multiply(a.Z, b.Y)),
++        F.Subtract(F.Multiply(a.Z, b.X), F.Multiply(a.X, b.Z)),
++        F.Subtract(F.Multiply(a.X, b.Y), F.Multiply(a.Y, b.X)));
++
++    // A square, a sum of squares and its square root are mathematically nonnegative, including flushing.
++    internal static I Square(I x)
++    {
++        I product = F.Multiply(x, x);
++        return product.IsFinite ? new(Math.Max(0, product.Min), product.Max) : F.Unbounded;
++    }
++
++    internal static I Length(V a) => Root(F.Add(F.Add(Square(a.X), Square(a.Y)), Square(a.Z)));
++    internal static I Length2(I x, I y) => Root(F.Add(Square(x), Square(y)));
++    internal static I Root(I squared) => squared.IsFinite ? F.Sqrt(new(Math.Max(0, squared.Min), squared.Max)) : F.Unbounded;
++
++    internal static V Transform(V p, in Matrix4x4 m, bool direction = false) => new(
++        Coordinate(p, m.M11, m.M21, m.M31, m.M41, direction),
++        Coordinate(p, m.M12, m.M22, m.M32, m.M42, direction),
++        Coordinate(p, m.M13, m.M23, m.M33, m.M43, direction));
++
++    static I Coordinate(V p, float x, float y, float z, float translation, bool direction)
++    {
++        I linear = F.Add(F.Add(F.Multiply(p.X, F.Point(x)), F.Multiply(p.Y, F.Point(y))), F.Multiply(p.Z, F.Point(z)));
++        return direction ? linear : F.Add(linear, F.Point(translation));
++    }
++
++    internal static V ExactCenter(Vector3 p, in Matrix4x4 m) => new(
++        ExactCoordinate(p, m.M11, m.M21, m.M31, m.M41), ExactCoordinate(p, m.M12, m.M22, m.M32, m.M42),
++        ExactCoordinate(p, m.M13, m.M23, m.M33, m.M43));
++
++    static I ExactCoordinate(Vector3 p, float x, float y, float z, float t)
++    {
++        // Float products fit exactly in binary64. Outward endpoints also cover an independent rounded evaluation.
++        var a = new CoverageScalarBounds(Math.BitDecrement((double)p.X * x), Math.BitIncrement((double)p.X * x));
++        var b = new CoverageScalarBounds(Math.BitDecrement((double)p.Y * y), Math.BitIncrement((double)p.Y * y));
++        var c = new CoverageScalarBounds(Math.BitDecrement((double)p.Z * z), Math.BitIncrement((double)p.Z * z));
++        var result = CoverageIntervals.Add(CoverageIntervals.Add(CoverageIntervals.Add(a, b), c), new(t, t));
++        return new(result.Min, result.Max);
++    }
++
++    internal static V Skin(in SkinnedVertex v, ReadOnlySpan<Matrix4x4> palette, bool direction = false, Vector3 input = default)
++    {
++        I total = F.Add(F.Add(F.Add(F.Point(v.BoneWeights.X), F.Point(v.BoneWeights.Y)), F.Point(v.BoneWeights.Z)), F.Point(v.BoneWeights.W));
++        V p = Point(direction ? input : v.Position);
++        V identity = Transform(p, Matrix4x4.Identity, direction);
++        if (total.Max < 1e-8f) return identity;
++        V result = new(SkinCoordinate(p, v, palette, 0, direction), SkinCoordinate(p, v, palette, 1, direction),
++            SkinCoordinate(p, v, palette, 2, direction));
++        return total.Min < 1e-8f ? Hull(identity, result) : result;
++    }
++
++    static I SkinCoordinate(V p, in SkinnedVertex v, ReadOnlySpan<Matrix4x4> palette, int column, bool direction)
++    {
++        I linear = F.Add(F.Add(F.Multiply(p.X, Blend(v, palette, column)), F.Multiply(p.Y, Blend(v, palette, 4 + column))),
++            F.Multiply(p.Z, Blend(v, palette, 8 + column)));
++        return direction ? linear : F.Add(linear, Blend(v, palette, 12 + column));
++    }
++
++    static I Blend(in SkinnedVertex v, ReadOnlySpan<Matrix4x4> palette, int component)
++    {
++        I result = F.Point(0);
++        for (int i = 0; i < 4; i++)
++            result = F.Add(result, F.Multiply(F.Point(Element(palette[(int)v.BoneIndices[i]], component)), F.Point(v.BoneWeights[i])));
++        return result;
++    }
++
++    static float Element(in Matrix4x4 m, int i) => i switch
++    {
++        0 => m.M11,
++        1 => m.M12,
++        2 => m.M13,
++        4 => m.M21,
++        5 => m.M22,
++        6 => m.M23,
++        8 => m.M31,
++        9 => m.M32,
++        10 => m.M33,
++        12 => m.M41,
++        13 => m.M42,
++        14 => m.M43,
++        _ => throw new ArgumentOutOfRangeException(nameof(i))
++    };
++
++    internal static V Interpolate(in CoveragePositionRecipe r, ReadOnlySpan<V> source)
++    {
++        if (r.WeightA == 12) return source[r.A];
++        if (r.WeightB == 12) return source[r.B];
++        if (r.WeightC == 12) return source[r.C];
++        if (r.WeightC == 0) return Edge(r.A, r.B, r.WeightB, source);
++        if (r.WeightB == 0) return Edge(r.A, r.C, r.WeightC, source);
++        if (r.WeightA == 0) return Edge(r.B, r.C, r.WeightC, source);
++        return Divide(Add(Add(Multiply(source[r.A], F.Point(r.WeightA)), Multiply(source[r.B], F.Point(r.WeightB))),
++            Multiply(source[r.C], F.Point(r.WeightC))), F.Point(12));
++    }
++
++    static V Edge(int a, int b, int numerator, ReadOnlySpan<V> source)
++    {
++        if (a > b) { (a, b) = (b, a); numerator = 12 - numerator; }
++        // The ratio is a compiled constant, emitted once as binary32, not a device division.
++        I t = F.Point(numerator / 12f);
++        return Add(Multiply(source[a], F.Subtract(F.Point(1), t)), Multiply(source[b], t));
++    }
++}
+diff --git a/KhaozEngine.Render3D/Coverage/CoverageEnclosureNormals.cs b/KhaozEngine.Render3D/Coverage/CoverageEnclosureNormals.cs
+new file mode 100644
+index 000000000..ae556562f
+--- /dev/null
++++ b/KhaozEngine.Render3D/Coverage/CoverageEnclosureNormals.cs
+@@ -0,0 +1,118 @@
++using System;
++using System.Numerics;
++using I = KhaozEngine.Render3D.CoverageFloatInterval;
++using F = KhaozEngine.Render3D.CoverageFloatIntervals;
++using V = KhaozEngine.Render3D.CoverageVertexEnclosure;
++using M = KhaozEngine.Render3D.CoverageEnclosureMath;
++
++namespace KhaozEngine.Render3D;
++
++internal readonly record struct CoverageEnclosureBasis(V U, V V, V N, V S, V T, V M, V Bu, V Bv, V Bn, V Au, V Av, V An);
++
++/// <summary>Normal arithmetic is a position-selection guard even though it never displaces a vertex.</summary>
++internal static class CoverageEnclosureNormals
++{
++    internal static bool Evaluate(CoverageRefinement topology, ReadOnlySpan<CoverageCommandPose> commands,
++        CoverageReferenceScratch reference, CoverageReferenceEnclosureScratch scratch)
++    {
++        Span<int> signs = stackalloc int[CoverageScratch.MaxCommands];
++        signs.Clear();
++        for (int t = 0; t < topology.TriangleCount; t++)
++        {
++            int a = (int)topology.Indices[t * 3], b = (int)topology.Indices[t * 3 + 1], c = (int)topology.Indices[t * 3 + 2];
++            if (Moved(a, topology, commands, reference, scratch) || Moved(b, topology, commands, reference, scratch) || Moved(c, topology, commands, reference, scratch))
++            {
++                if (!Basis(a, b, c, scratch, out var basis)) { scratch.Unbounded(CoverageEnclosureSite.Normals, t); return false; }
++                scratch.Bases[t] = basis;
++            }
++            int region = topology.Triangles[t].RegionIndex;
++            int slot = region < 0 || commands.Length == 0 ? -1 : reference.RegionCommands[region];
++            if (slot < 0) continue;
++            var frame = reference.Frames[slot];
++            V x = M.Transform(scratch.After[a], frame.HostToCoverage), y = M.Transform(scratch.After[b], frame.HostToCoverage),
++                z = M.Transform(scratch.After[c], frame.HostToCoverage), u = M.Subtract(y, x), v = M.Subtract(z, x);
++            I area = F.Subtract(F.Multiply(u.X, v.Y), F.Multiply(u.Y, v.X)), scale = F.Multiply(M.Length(u), M.Length(v));
++            var orientation = CoverageEnclosurePredicates.Edge(x, y, z);
++            if (!area.IsFinite || !scale.IsFinite || !orientation.Value.IsFinite)
++            { scratch.Unbounded(CoverageEnclosureSite.Normals, t); return false; }
++            if (F.Abs(area).Min <= F.Multiply(F.Point(1e-9f), scale).Max || orientation.Zero || orientation.MinSign != orientation.MaxSign)
++                scratch.MayRefuse = true;
++            else
++            {
++                if (signs[slot] != 0 && signs[slot] != orientation.MinSign) scratch.MayRefuse = true;
++                signs[slot] = orientation.MinSign;
++            }
++        }
++        for (int vertex = 0; vertex < topology.VertexCount; vertex++)
++        {
++            if (!Moved(vertex, topology, commands, reference, scratch)) continue;
++            int shading = topology.Vertices[vertex].ShadingGroup;
++            if (!Absent(scratch.Normals[vertex]) && !Gather(scratch.Rows.ShadingCorners.AsSpan(scratch.Rows.ShadingCornerOffsets[shading],
++                scratch.Rows.ShadingCornerOffsets[shading + 1] - scratch.Rows.ShadingCornerOffsets[shading]), false, topology, commands, reference, scratch))
++            { scratch.Unbounded(CoverageEnclosureSite.Normals, vertex); return false; }
++            if (!Absent(scratch.Tangents[vertex]) && !Gather(scratch.Rows.VertexCorners.AsSpan(scratch.Rows.VertexFaceOffsets[vertex],
++                scratch.Rows.VertexFaceOffsets[vertex + 1] - scratch.Rows.VertexFaceOffsets[vertex]), true, topology, commands, reference, scratch))
++            { scratch.Unbounded(CoverageEnclosureSite.Normals, vertex); return false; }
++        }
++        return true;
++    }
++
++    static bool Moved(int v, CoverageRefinement topology, ReadOnlySpan<CoverageCommandPose> commands,
++        CoverageReferenceScratch reference, CoverageReferenceEnclosureScratch scratch)
++    {
++        int representative = scratch.Representatives[topology.Vertices[v].PositionGroup];
++        if (representative < 0) return false;
++        int slot = reference.RegionCommands[topology.Vertices[representative].RegionIndex];
++        return commands[reference.Frames[slot].Command].TransitionWeight != 0;
++    }
++
++    static bool Gather(ReadOnlySpan<int> corners, bool tangent, CoverageRefinement topology,
++    ReadOnlySpan<CoverageCommandPose> commands, CoverageReferenceScratch reference, CoverageReferenceEnclosureScratch scratch)
++    {
++        V sum = M.Point(Vector3.Zero);
++        foreach (int corner in corners)
++        {
++            int vertex = (int)topology.Indices[corner];
++            if (!Moved(vertex, topology, commands, reference, scratch)) continue;
++            V authored = tangent ? scratch.Tangents[vertex] : scratch.Normals[vertex];
++            if (Absent(authored)) continue;
++            var b = scratch.Bases[corner / 3];
++            V transformed = tangent
++                ? Combine(b.S, M.Dot(b.Bu, authored), b.T, M.Dot(b.Bv, authored), b.M, M.Dot(b.Bn, authored))
++                : Combine(b.Au, M.Dot(b.U, authored), b.Av, M.Dot(b.V, authored), b.An, M.Dot(b.N, authored));
++            if (!Unit(transformed, scratch, out var unit)) return false;
++            sum = M.Add(sum, unit);
++        }
++        return Unit(sum, scratch, out _);
++    }
++
++    static bool Basis(int a, int b, int c, CoverageReferenceEnclosureScratch scratch, out CoverageEnclosureBasis basis)
++    {
++        basis = default;
++        V u = M.Subtract(scratch.Before[b], scratch.Before[a]), v = M.Subtract(scratch.Before[c], scratch.Before[a]),
++            s = M.Subtract(scratch.After[b], scratch.After[a]), t = M.Subtract(scratch.After[c], scratch.After[a]);
++        V normal = M.Cross(u, v), final = M.Cross(s, t);
++        if (!Unit(normal, scratch, out V n) || !Unit(final, scratch, out V m)) return false;
++        I alignment = M.Dot(normal, final), before = M.Dot(u, M.Cross(v, n)), after = M.Dot(s, M.Cross(t, m));
++        I beforeScale = M.Root(F.Multiply(M.Dot(u, u), M.Dot(v, v))), afterScale = M.Root(F.Multiply(M.Dot(s, s), M.Dot(t, t)));
++        if (!alignment.IsFinite || !before.IsFinite || !after.IsFinite || !beforeScale.IsFinite || !afterScale.IsFinite) return false;
++        if (alignment.Min <= 0 || before.Min <= 0 || after.Min <= 0
++            || before.Min <= F.Multiply(beforeScale, F.Point(1e-12f)).Max || after.Min <= F.Multiply(afterScale, F.Point(1e-12f)).Max)
++            scratch.MayRefuse = true;
++        basis = new(u, v, n, s, t, m, M.Divide(M.Cross(v, n), before), M.Divide(M.Cross(n, u), before),
++            M.Divide(normal, before), M.Divide(M.Cross(t, m), after), M.Divide(M.Cross(m, s), after), M.Divide(final, after));
++        return M.Finite(basis.Bu) && M.Finite(basis.Bv) && M.Finite(basis.Bn)
++            && M.Finite(basis.Au) && M.Finite(basis.Av) && M.Finite(basis.An);
++    }
++
++    static bool Unit(V value, CoverageReferenceEnclosureScratch scratch, out V unit)
++    {
++        I length = M.Length(value);
++        if (length.Min <= 0) scratch.MayRefuse = true;
++        unit = M.Divide(value, length);
++        return M.Finite(unit);
++    }
++
++    static bool Absent(V v) => v == M.Point(Vector3.Zero);
++    static V Combine(V a, I x, V b, I y, V c, I z) => M.Add(M.Add(M.Multiply(a, x), M.Multiply(b, y)), M.Multiply(c, z));
++}
+diff --git a/KhaozEngine.Render3D/Coverage/CoverageEnclosureOverlay.cs b/KhaozEngine.Render3D/Coverage/CoverageEnclosureOverlay.cs
+new file mode 100644
+index 000000000..6bdd683b4
+--- /dev/null
++++ b/KhaozEngine.Render3D/Coverage/CoverageEnclosureOverlay.cs
+@@ -0,0 +1,124 @@
++using System;
++using I = KhaozEngine.Render3D.CoverageFloatInterval;
++using F = KhaozEngine.Render3D.CoverageFloatIntervals;
++using V = KhaozEngine.Render3D.CoverageVertexEnclosure;
++using D = KhaozEngine.Render3D.CoverageScalarBounds;
++using M = KhaozEngine.Render3D.CoverageEnclosureMath;
++using P = KhaozEngine.Render3D.CoverageEnclosurePredicates;
++using S = KhaozEngine.Render3D.CoverageEnclosureSupport;
++
++namespace KhaozEngine.Render3D;
++
++/// <summary>Analytic face overlay, joining possible accepted vertices without enumerating branch histories.</summary>
++internal static class CoverageEnclosureOverlay
++{
++    static readonly double crossingError = CrossingError();
++
++    internal static I Maximum(CoverageReferenceSupport support, ReadOnlySpan<V> host, out int unboundedTriangle)
++    {
++        unboundedTriangle = -1;
++        var maximum = new MaximumSet();
++        Span<V> sheet = stackalloc V[3];
++        for (int triangle = 0; triangle < support.Triangles.Length; triangle++)
++        {
++            var t = support.Triangles[triangle];
++            sheet[0] = M.Point(support.Positions[t.A]); sheet[1] = M.Point(support.Positions[t.B]); sheet[2] = M.Point(support.Positions[t.C]);
++            for (int i = 0; i < 3; i++)
++            {
++                if (P.InsidePossible(sheet[0], sheet[1], sheet[2], host[i], out bool certain))
++                    Accumulate(host, sheet, host[i], certain, ref maximum);
++                if (P.InsidePossible(host[0], host[1], host[2], sheet[i], out certain))
++                    Accumulate(host, sheet, sheet[i], certain, ref maximum);
++            }
++            for (int i = 0; i < 3; i++)
++                for (int j = 0; j < 3; j++)
++                {
++                    V a = host[i], b = host[(i + 1) % 3], s = sheet[j], u = sheet[(j + 1) % 3];
++                    var ca = P.Edge(s, u, a); var cb = P.Edge(s, u, b);
++                    var ac = P.Edge(a, b, s); var ad = P.Edge(a, b, u);
++                    if (P.SameStrictSide(ca, cb) || P.SameStrictSide(ac, ad)) continue;
++                    if (ca.MinSign == 0 && ca.MaxSign == 0 && cb.MinSign == 0 && cb.MaxSign == 0) continue;
++                    V otherHull = M.Hull(s, u);
++                    // A device endpoint branch requires that endpoint to lie on the other finite segment.
++                    if (ca.Zero && S.Overlap(a, otherHull)) Accumulate(host, sheet, a, false, ref maximum);
++                    if (cb.Zero && S.Overlap(b, otherHull)) Accumulate(host, sheet, b, false, ref maximum);
++                    if (P.OppositePossible(ca, cb) && Crossing(a, b, s, u, ca.Exact, cb.Exact, out I parameter))
++                    {
++                        V point = M.Add(a, M.Multiply(M.Subtract(b, a), parameter));
++                        bool certain = !ca.Zero && !cb.Zero && !ac.Zero && !ad.Zero;
++                        Accumulate(host, sheet, point, certain, ref maximum);
++                    }
++                }
++            if (!maximum.Finite) { unboundedTriangle = t.Triangle; return F.Unbounded; }
++        }
++        return maximum.Result;
++    }
++
++    static void Accumulate(ReadOnlySpan<V> host, ReadOnlySpan<V> sheet, V p, bool certain, ref MaximumSet result)
++    {
++        I h = S.Height(host[0], host[1], host[2], p), s = S.Height(sheet[0], sheet[1], sheet[2], p);
++        result.Include(F.Subtract(h, s), certain);
++    }
++
++    internal static bool Crossing(V a, V b, V s, V t, I ca, I cb, out I parameter)
++    {
++        D set = new(0, 1);
++        D quotient = CoverageIntervals.Divide(new(ca.Min, ca.Max),
++            CoverageIntervals.Subtract(new(ca.Min, ca.Max), new(cb.Min, cb.Max)));
++        if (quotient.IsFinite) set = Intersect(set, quotient);
++        D dx = CoverageIntervals.Subtract(B(b.X), B(a.X)), dy = CoverageIntervals.Subtract(B(b.Y), B(a.Y));
++        D length = CoverageIntervals.Add(CoverageIntervals.Square(dx), CoverageIntervals.Square(dy));
++        if (length.IsFinite && length.Min > 0)
++        {
++            D first = Project(s), second = Project(t);
++            if (first.IsFinite && second.IsFinite)
++                set = Intersect(set, new(Math.Min(first.Min, second.Min), Math.Max(first.Max, second.Max)));
++        }
++        parameter = default;
++        if (!set.IsFinite) return false;
++        // B30 bounds the exact intersection by geometry. The device's own scaled parameter lies in that set
++        // enlarged by its NC1 store/subtract/divide error. This never clamps an unbounded quotient finite.
++        parameter = new(Math.Max(0, Math.BitDecrement(set.Min - crossingError)), Math.Min(1, Math.BitIncrement(set.Max + crossingError)));
++        return true;
++        D Project(V p) => CoverageIntervals.Divide(CoverageIntervals.Add(
++            CoverageIntervals.Multiply(CoverageIntervals.Subtract(B(p.X), B(a.X)), dx),
++            CoverageIntervals.Multiply(CoverageIntervals.Subtract(B(p.Y), B(a.Y)), dy)), length);
++    }
++
++    // Uniform local formula error, not a world-space tolerance. Normalization puts the larger exact side in [1,2).
++    // RN32 contributes at most 2^-24, stores use NC1 k=1, subtraction k=1, and Divide retains its expansion hull.
++    static double CrossingError()
++    {
++        double store = Math.BitIncrement(Math.ScaleB(1, -24) + Math.BitIncrement(F.Store32(new(-2, 2)).Max - 2));
++        double sum = Math.BitIncrement(2 * store);
++        double subtract = Math.BitIncrement(F.Subtract(new(0, 2 + store), new(-2 - store, 0)).Max - (4 + sum));
++        double denominator = Math.BitIncrement(sum + subtract);
++        D ideal = CoverageIntervals.Divide(new(0, 2 + store), new(1 - denominator, 4 + denominator));
++        I division = F.Divide(new(0, 2 + store), new(1 - denominator, 4 + denominator));
++        double divisionError = Math.Max(Math.BitIncrement(division.Max - ideal.Max), Math.BitIncrement(ideal.Min - division.Min));
++        D propagated = CoverageIntervals.Divide(CoverageIntervals.Add(new(store, store), new(denominator, denominator)),
++            CoverageIntervals.Subtract(new(1, 1), new(denominator, denominator)));
++        return Math.BitIncrement(propagated.Max + divisionError);
++    }
++
++    static D Intersect(D a, D b) => new(Math.Max(a.Min, b.Min), Math.Min(a.Max, b.Max));
++    static D B(I a) => new(a.Min, a.Max);
++
++    struct MaximumSet
++    {
++        bool any, certain, invalid;
++        double minimum, guaranteed, maximum;
++        internal readonly bool Finite => !invalid;
++        internal readonly I Result => any && !invalid ? new(certain ? guaranteed : minimum, maximum) : F.Unbounded;
++        internal void Include(I candidate, bool required)
++        {
++            if (!candidate.IsFinite) { invalid = true; return; }
++            minimum = any ? Math.Min(minimum, candidate.Min) : candidate.Min;
++            maximum = any ? Math.Max(maximum, candidate.Max) : candidate.Max;
++            any = true;
++            if (!required) return;
++            guaranteed = certain ? Math.Max(guaranteed, candidate.Min) : candidate.Min;
++            certain = true;
++        }
++    }
++}
+diff --git a/KhaozEngine.Render3D/Coverage/CoverageEnclosurePose.cs b/KhaozEngine.Render3D/Coverage/CoverageEnclosurePose.cs
+new file mode 100644
+index 000000000..71d73c858
+--- /dev/null
++++ b/KhaozEngine.Render3D/Coverage/CoverageEnclosurePose.cs
+@@ -0,0 +1,160 @@
++using System;
++using System.Numerics;
++using I = KhaozEngine.Render3D.CoverageFloatInterval;
++using F = KhaozEngine.Render3D.CoverageFloatIntervals;
++using V = KhaozEngine.Render3D.CoverageVertexEnclosure;
++using M = KhaozEngine.Render3D.CoverageEnclosureMath;
++using S = KhaozEngine.Render3D.CoverageEnclosureSupport;
++
++namespace KhaozEngine.Render3D;
++
++/// <summary>Skinning, canonical interpolation and pointwise full-target conformation.</summary>
++internal static class CoverageEnclosurePose
++{
++    internal static bool Prepare(CoverageRefinement topology, ReadOnlySpan<Matrix4x4> palette, CoverageReferenceEnclosureScratch scratch)
++    {
++        var source = topology.Source;
++        for (int v = 0; v < source.Positions.Length; v++)
++        {
++            if (source.SkinVertices.IsEmpty)
++            {
++                scratch.Source[v] = M.Point(source.Positions[v]);
++                scratch.SourceNormals[v] = scratch.SourceTangents[v] = M.Point(Vector3.Zero);
++            }
++            else
++            {
++                var vertex = source.SkinVertices[v];
++                scratch.Source[v] = M.Skin(vertex, palette);
++                V normal = M.Skin(vertex, palette, true, vertex.Normal);
++                scratch.SourceNormals[v] = SkinDirection(normal, vertex.Normal);
++                Vector3 tangent = new(vertex.Tangent.X, vertex.Tangent.Y, vertex.Tangent.Z);
++                I squared = M.Dot(M.Point(tangent), M.Point(tangent));
++                scratch.SourceTangents[v] = squared.Max <= 1e-12f ? M.Point(Vector3.Zero)
++                    : SkinDirection(M.Skin(vertex, palette, true, tangent), tangent);
++                if (squared.Min <= 1e-12f) scratch.SourceTangents[v] = M.Hull(scratch.SourceTangents[v], M.Point(Vector3.Zero));
++            }
++            if (!M.Finite(scratch.Source[v]) || !M.Finite(scratch.SourceNormals[v]) || !M.Finite(scratch.SourceTangents[v]))
++            { scratch.Unbounded(CoverageEnclosureSite.Skinning, v); return false; }
++        }
++        for (int g = 0; g < scratch.Groups.Length; g++) scratch.Groups[g] = M.Interpolate(scratch.Rows.Recipes[g], scratch.Source);
++        for (int v = 0; v < topology.VertexCount; v++)
++        {
++            var record = topology.Vertices[v];
++            if (record.SourceVertex >= 0)
++            {
++                scratch.Before[v] = scratch.Source[record.SourceVertex];
++                scratch.Normals[v] = scratch.SourceNormals[record.SourceVertex];
++                scratch.Tangents[v] = scratch.SourceTangents[record.SourceVertex];
++            }
++            else
++            {
++                scratch.Before[v] = scratch.Groups[record.PositionGroup];
++                var t = source.Triangles[record.SourceTriangle];
++                scratch.Normals[v] = Direction(scratch.SourceNormals[t.A], scratch.SourceNormals[t.B], scratch.SourceNormals[t.C], record, scratch);
++                scratch.Tangents[v] = Direction(scratch.SourceTangents[t.A], scratch.SourceTangents[t.B], scratch.SourceTangents[t.C], record, scratch);
++            }
++            if (!M.Finite(scratch.Before[v]) || !M.Finite(scratch.Normals[v]) || !M.Finite(scratch.Tangents[v]))
++            { scratch.Unbounded(CoverageEnclosureSite.Interpolation, v); return false; }
++        }
++        return true;
++    }
++
++    static V SkinDirection(V value, Vector3 fallback)
++    {
++        I length = M.Length(value);
++        if (!length.IsFinite) return M.Unbounded;
++        if (length.Max <= 1e-8f) return M.Point(fallback);
++        V unit = M.Divide(value, new(Math.Max(length.Min, 1e-8f), length.Max));
++        return length.Min <= 1e-8f ? M.Hull(unit, M.Point(fallback)) : unit;
++    }
++
++    static V Direction(V a, V b, V c, in CoverageRefinedVertex record, CoverageReferenceEnclosureScratch scratch)
++    {
++        V zero = M.Point(Vector3.Zero);
++        // The absent-field path is exact: products and sums of finite zeros are zeros under every backend.
++        if (a == zero && b == zero && c == zero) return zero;
++        V x = M.Multiply(a, F.Point(record.A)), y = M.Multiply(b, F.Point(record.B)), z = M.Multiply(c, F.Point(record.C));
++        V sum = M.Add(M.Add(x, y), z);
++        V magnitude = M.Add(M.Add(Abs(x), Abs(y)), Abs(z));
++        I length = M.Length(sum), bound = F.Multiply(M.Dot(magnitude, magnitude), F.Point(1f / (1L << 50)));
++        if (!length.IsFinite || !bound.IsFinite) return M.Unbounded;
++        if (M.Dot(sum, sum).Min <= bound.Max) scratch.MayRefuse = true;
++        return M.Divide(sum, length);
++    }
++
++    static V Abs(V v) => new(F.Abs(v.X), F.Abs(v.Y), F.Abs(v.Z));
++
++    internal static bool Conform(CoverageRefinement topology, ReadOnlySpan<CoverageCommandPose> commands,
++        CoverageReferenceScratch reference, CoverageReferenceEnclosureScratch scratch)
++    {
++        for (int g = 0; g < scratch.Groups.Length; g++) scratch.Groups[g] = scratch.Before[scratch.Rows.GroupRepresentatives[g]];
++        for (int v = 0; v < topology.VertexCount; v++)
++        {
++            var r = topology.Vertices[v];
++            if (r.Strength > 0 && r.RegionIndex >= 0 && reference.RegionCommands[r.RegionIndex] >= 0 && scratch.Representatives[r.PositionGroup] < 0)
++                scratch.Representatives[r.PositionGroup] = v;
++        }
++        for (int v = 0; v < topology.VertexCount; v++)
++        {
++            var r = topology.Vertices[v];
++            int g = r.PositionGroup;
++            if (scratch.Representatives[g] != v) continue;
++            var frame = reference.Frames[reference.RegionCommands[r.RegionIndex]];
++            var command = commands[frame.Command];
++            V before = scratch.Before[v], q = M.Transform(before, frame.HostToCoverage);
++            bool core = scratch.Rows.CoreFaceOffsets[g] != scratch.Rows.CoreFaceOffsets[g + 1];
++            Caps(q, command, frame, scratch);
++            bool hit = S.Query(command.Support.ReferenceData, q, out I height, out bool certain);
++            if (hit && !height.IsFinite) { scratch.Unbounded(CoverageEnclosureSite.QueryHeight, v); return false; }
++            I full = default;
++            bool any = false;
++            if (hit) S.Join(ref full, ref any, Request(height, F.Point(1)));
++            if (!certain)
++            {
++                if (core) scratch.MayRefuse = true;
++                else
++                {
++                    S.Boundary(command.Support.ReferenceData, q, out I boundaryHeight, out I distance);
++                    if (!boundaryHeight.IsFinite || !distance.IsFinite)
++                    { scratch.Unbounded(CoverageEnclosureSite.Boundary, v); return false; }
++                    if (distance.Max >= command.CollarWidth) S.Join(ref full, ref any, F.Point(0));
++                    if (distance.Min < command.CollarWidth)
++                    {
++                        I u = F.Clamp(F.Subtract(F.Point(1), F.Divide(distance, F.Point(command.CollarWidth))), 0, 1);
++                        I spatial = F.Multiply(F.Multiply(u, u), F.Subtract(F.Point(3), F.Multiply(F.Point(2), u)));
++                        S.Join(ref full, ref any, Request(boundaryHeight, spatial));
++                    }
++                }
++            }
++            if (!any || !full.IsFinite) { scratch.Unbounded(CoverageEnclosureSite.Conformation, v); return false; }
++            scratch.Full[g] = full;
++            scratch.Groups[g] = Move(before, full, frame.Recess);
++            if (full.Contains(0)) scratch.Groups[g] = M.Hull(scratch.Groups[g], before);
++            scratch.GroupSites[g] = CoverageEnclosureSite.Conformation;
++            I world = F.Multiply(full, F.Point(frame.ZScale));
++            if (!world.IsFinite || !M.Finite(scratch.Groups[g])) { scratch.Unbounded(CoverageEnclosureSite.Conformation, v); return false; }
++            if (world.Max > command.MaxWorldRecession) scratch.MayRefuse = true;
++            Caps(M.Transform(scratch.Groups[g], frame.HostToCoverage), command, frame, scratch);
++            I Request(I h, I spatial)
++            {
++                I target = F.Subtract(h, F.Point(frame.ClearanceCoverage));
++                I request = F.Max(F.Point(0), F.Subtract(q.Z, target));
++                return F.Multiply(F.Multiply(F.Point(core ? 1 : r.Strength), spatial), request);
++            }
++        }
++        for (int v = 0; v < topology.VertexCount; v++)
++        {
++            int g = topology.Vertices[v].PositionGroup;
++            scratch.After[v] = scratch.Representatives[g] < 0 ? scratch.Before[v] : scratch.Groups[g];
++        }
++        return true;
++    }
++
++    internal static V Move(V before, I scalar, Vector3 recess) => M.Subtract(before, M.Multiply(M.Point(recess), scalar));
++
++    internal static void Caps(V q, in CoverageCommandPose command, in CoverageReferenceFrame frame, CoverageReferenceEnclosureScratch scratch)
++    {
++        I lower = F.Add(F.Point(command.MinZ), F.Point(frame.CapMargin)), upper = F.Subtract(F.Point(command.MaxZ), F.Point(frame.CapMargin));
++        if (!M.Finite(q) || !lower.IsFinite || !upper.IsFinite || q.Z.Min < lower.Max || q.Z.Max > upper.Min) scratch.MayRefuse = true;
++    }
++}
+diff --git a/KhaozEngine.Render3D/Coverage/CoverageEnclosurePredicates.cs b/KhaozEngine.Render3D/Coverage/CoverageEnclosurePredicates.cs
+new file mode 100644
+index 000000000..0d69f7fb4
+--- /dev/null
++++ b/KhaozEngine.Render3D/Coverage/CoverageEnclosurePredicates.cs
+@@ -0,0 +1,102 @@
++using System;
++using I = KhaozEngine.Render3D.CoverageFloatInterval;
++using F = KhaozEngine.Render3D.CoverageFloatIntervals;
++using V = KhaozEngine.Render3D.CoverageVertexEnclosure;
++using D = KhaozEngine.Render3D.CoverageScalarBounds;
++
++namespace KhaozEngine.Render3D;
++
++internal readonly record struct CoverageEnclosurePredicate(I Exact, I Value, int MinSign, int MaxSign)
++{
++    internal bool Zero => MinSign <= 0 && MaxSign >= 0;
++    internal bool Positive => MaxSign > 0;
++    internal bool Negative => MinSign < 0;
++}
++
++/// <summary>B30 separates an exact sign range from the stored RN32 arithmetic value.</summary>
++internal static class CoverageEnclosurePredicates
++{
++    internal static CoverageEnclosurePredicate Edge(V a, V b, V p)
++    {
++        if (!CoverageEnclosureMath.Finite(a) || !CoverageEnclosureMath.Finite(b) || !CoverageEnclosureMath.Finite(p))
++            return new(F.Unbounded, F.Unbounded, -1, 1);
++        if (Point(a) && Point(b) && Point(p))
++        {
++            // Exact on point boxes, even when a determinant rounds to zero. No store or flush term touches its sign.
++            var exact = CoverageGeometry.Edge(CoverageAffinePoint.FromDouble(a.X.Min, a.Y.Min),
++                CoverageAffinePoint.FromDouble(b.X.Min, b.Y.Min), CoverageAffinePoint.FromDouble(p.X.Min, p.Y.Min));
++            if (!exact.IsFinite) return new(F.Unbounded, F.Unbounded, -1, 1);
++            I range = new(exact.Bounds.Min, exact.Bounds.Max);
++            return new(range, Rounded(range), exact.Sign, exact.Sign);
++        }
++        // An outward bilinear range is sound for boxes. This costs four differences, two interval products and
++        // one difference per site, with no device widening inside the exact predicate. No vertex enumeration.
++        D dx = CoverageIntervals.Subtract(B(b.X), B(a.X)), dy = CoverageIntervals.Subtract(B(b.Y), B(a.Y));
++        D px = CoverageIntervals.Subtract(B(p.X), B(a.X)), py = CoverageIntervals.Subtract(B(p.Y), B(a.Y));
++        D determinant = CoverageIntervals.Subtract(CoverageIntervals.Multiply(dx, py), CoverageIntervals.Multiply(dy, px));
++        I result = new(determinant.Min, determinant.Max);
++        if (result.Contains(0)) return Vertices(a, b, p);
++        return new(result, Rounded(result), Math.Sign(result.Min), Math.Sign(result.Max));
++    }
++
++    static CoverageEnclosurePredicate Vertices(V a, V b, V p)
++    {
++        ReadOnlySpan<I> coordinates = stackalloc I[6] { a.X, a.Y, b.X, b.Y, p.X, p.Y };
++        Span<int> varying = stackalloc int[6];
++        Span<double> values = stackalloc double[6];
++        int count = 0;
++        for (int i = 0; i < 6; i++)
++        {
++            values[i] = coordinates[i].Min;
++            if (coordinates[i].Min != coordinates[i].Max) varying[count++] = i;
++        }
++        double min = double.PositiveInfinity, max = double.NegativeInfinity;
++        int minSign = 1, maxSign = -1;
++        // Multilinearity makes the box vertices exact extrema. Resolve cancellation only when the cheap range
++        // contains zero. At most 64 exact determinants, fewer when any coordinate is a point input.
++        for (int mask = 0; mask < 1 << count; mask++)
++        {
++            for (int i = 0; i < count; i++)
++            {
++                int coordinate = varying[i];
++                values[coordinate] = (mask & 1 << i) == 0 ? coordinates[coordinate].Min : coordinates[coordinate].Max;
++            }
++            var exact = CoverageGeometry.Edge(CoverageAffinePoint.FromDouble(values[0], values[1]),
++                CoverageAffinePoint.FromDouble(values[2], values[3]), CoverageAffinePoint.FromDouble(values[4], values[5]));
++            if (!exact.IsFinite) return new(F.Unbounded, F.Unbounded, -1, 1);
++            min = Math.Min(min, exact.Bounds.Min); max = Math.Max(max, exact.Bounds.Max);
++            minSign = Math.Min(minSign, exact.Sign); maxSign = Math.Max(maxSign, exact.Sign);
++        }
++        I range = new(min, max);
++        return new(range, Rounded(range), minSign, maxSign);
++    }
++
++    internal static I Dot(V a, V b, V c, V d)
++    {
++        D dx = CoverageIntervals.Subtract(B(b.X), B(a.X)), dy = CoverageIntervals.Subtract(B(b.Y), B(a.Y));
++        D x = CoverageIntervals.Subtract(B(d.X), B(c.X)), y = CoverageIntervals.Subtract(B(d.Y), B(c.Y));
++        D exact = CoverageIntervals.Add(CoverageIntervals.Multiply(dx, x), CoverageIntervals.Multiply(dy, y));
++        return Rounded(new(exact.Min, exact.Max));
++    }
++
++    internal static bool SameStrictSide(CoverageEnclosurePredicate a, CoverageEnclosurePredicate b) =>
++        a.MinSign > 0 && b.MinSign > 0 || a.MaxSign < 0 && b.MaxSign < 0;
++
++    internal static bool OppositePossible(CoverageEnclosurePredicate a, CoverageEnclosurePredicate b) =>
++        a.Positive && b.Negative || a.Negative && b.Positive;
++
++    internal static bool InsidePossible(V a, V b, V c, V p, out bool certain)
++    {
++        var area = Edge(a, b, c);
++        var u = Edge(a, b, p); var v = Edge(b, c, p); var w = Edge(c, a, p);
++        bool positive = area.Positive && u.MaxSign >= 0 && v.MaxSign >= 0 && w.MaxSign >= 0;
++        bool negative = area.Negative && u.MinSign <= 0 && v.MinSign <= 0 && w.MinSign <= 0;
++        certain = area.MinSign > 0 && u.MinSign >= 0 && v.MinSign >= 0 && w.MinSign >= 0
++            || area.MaxSign < 0 && u.MaxSign <= 0 && v.MaxSign <= 0 && w.MaxSign <= 0;
++        return positive || negative;
++    }
++
++    static bool Point(V p) => p.X.Min == p.X.Max && p.Y.Min == p.Y.Max;
++    static D B(I x) => new(x.Min, x.Max);
++    static I Rounded(I exact) => exact.IsFinite ? F.Store32(new((float)exact.Min, (float)exact.Max)) : F.Unbounded;
++}
+diff --git a/KhaozEngine.Render3D/Coverage/CoverageEnclosureSupport.cs b/KhaozEngine.Render3D/Coverage/CoverageEnclosureSupport.cs
+new file mode 100644
+index 000000000..c2e1f689f
+--- /dev/null
++++ b/KhaozEngine.Render3D/Coverage/CoverageEnclosureSupport.cs
+@@ -0,0 +1,150 @@
++using System;
++using I = KhaozEngine.Render3D.CoverageFloatInterval;
++using F = KhaozEngine.Render3D.CoverageFloatIntervals;
++using V = KhaozEngine.Render3D.CoverageVertexEnclosure;
++using M = KhaozEngine.Render3D.CoverageEnclosureMath;
++using P = KhaozEngine.Render3D.CoverageEnclosurePredicates;
++
++namespace KhaozEngine.Render3D;
++
++/// <summary>Source-ordered support alternatives, including every interval grid cell and nearest-edge tie.</summary>
++internal static class CoverageEnclosureSupport
++{
++    internal static I Height(V a, V b, V c, V p)
++    {
++        I result = default;
++        bool any = false;
++        if (SamePoint(a, p)) return a.Z;
++        if (SamePoint(b, p)) return b.Z;
++        if (SamePoint(c, p)) return c.Z;
++        if (Overlap(a, p)) Join(ref result, ref any, a.Z);
++        if (Overlap(b, p)) Join(ref result, ref any, b.Z);
++        if (Overlap(c, p)) Join(ref result, ref any, c.Z);
++        var u = P.Edge(b, c, p); var v = P.Edge(c, a, p); var w = P.Edge(a, b, p);
++        if (u.Zero) Join(ref result, ref any, EdgeHeight(b, c, p));
++        if (v.Zero) Join(ref result, ref any, EdgeHeight(c, a, p));
++        if (w.Zero) Join(ref result, ref any, EdgeHeight(a, b, p));
++        if ((u.Positive || u.Negative) && (v.Positive || v.Negative) && (w.Positive || w.Negative))
++        {
++            I numerator = F.Add(F.Add(F.Multiply(u.Value, a.Z), F.Multiply(v.Value, b.Z)), F.Multiply(w.Value, c.Z));
++            // B30 leaves height's genuine zero-containing area divisor unbounded.
++            Join(ref result, ref any, F.Divide(numerator, P.Edge(a, b, c).Value));
++        }
++        return any ? result : F.Unbounded;
++    }
++
++    static I EdgeHeight(V a, V b, V p)
++    {
++        // Endpoint order is lexicographic in the reference. Join both orders when boxes cannot establish it.
++        if (a.X.Max < b.X.Min || a.X.Min == a.X.Max && a.X == b.X && a.Y.Max < b.Y.Min) return OrderedEdgeHeight(a, b, p);
++        if (b.X.Max < a.X.Min || a.X.Min == a.X.Max && a.X == b.X && b.Y.Max < a.Y.Min) return OrderedEdgeHeight(b, a, p);
++        return F.Hull(OrderedEdgeHeight(a, b, p), OrderedEdgeHeight(b, a, p));
++    }
++
++    static I OrderedEdgeHeight(V a, V b, V p)
++    {
++        I dx = F.Subtract(b.X, a.X), dy = F.Subtract(b.Y, a.Y), x = F.Abs(dx), y = F.Abs(dy);
++        I value = default;
++        bool any = false;
++        if (x.Max >= y.Min) Join(ref value, ref any, Along(p.X, a.X, dx));
++        if (x.Min < y.Max) Join(ref value, ref any, Along(p.Y, a.Y, dy));
++        return any ? value : F.Unbounded;
++        I Along(I q, I start, I delta)
++        {
++            I t = F.Divide(F.Subtract(q, start), delta);
++            return F.Add(F.Multiply(F.Subtract(F.Point(1), t), a.Z), F.Multiply(t, b.Z));
++        }
++    }
++
++    internal static bool Query(CoverageReferenceSupport support, V point, out I height, out bool certain)
++    {
++        height = default;
++        certain = false;
++        bool any = false;
++        if (!M.Finite(point) || point.X.Max < support.GridMin.X || point.X.Min > support.GridMax.X
++            || point.Y.Max < support.GridMin.Y || point.Y.Min > support.GridMax.Y) return false;
++        Span<bool> candidates = stackalloc bool[1024];
++        candidates.Clear();
++        Cells(point.X, support.GridMin.X, support.GridMax.X, out int x0, out int x1);
++        Cells(point.Y, support.GridMin.Y, support.GridMax.Y, out int y0, out int y1);
++        for (int y = y0; y <= y1; y++)
++            for (int x = x0; x <= x1; x++)
++            {
++                int cell = y * CoverageReferenceSupport.GridSize + x;
++                for (int i = support.CellOffsets[cell]; i < support.CellOffsets[cell + 1]; i++) candidates[support.CellTriangles[i]] = true;
++            }
++        for (int i = 0; i < support.Triangles.Length; i++)
++        {
++            if (!candidates[i]) continue;
++            var t = support.Triangles[i];
++            V a = M.Point(support.Positions[t.A]), b = M.Point(support.Positions[t.B]), c = M.Point(support.Positions[t.C]);
++            V hull = Hull(a, b, c);
++            if (!Overlap(hull, point) || !P.InsidePossible(a, b, c, point, out bool inside)) continue;
++            Join(ref height, ref any, Height(a, b, c, point));
++            // An exact inside point is in this triangle's AABB and its binned grid range (B16).
++            // If the device can miss that range because of cell arithmetic, retain the miss alternative.
++            if (inside && Encloses(hull, point) && GridCertain(support, i, x0, x1, y0, y1))
++            { certain = true; break; }
++        }
++        return any;
++    }
++
++    static bool GridCertain(CoverageReferenceSupport support, int triangle, int x0, int x1, int y0, int y1)
++    {
++        for (int y = y0; y <= y1; y++)
++            for (int x = x0; x <= x1; x++)
++            {
++                int cell = y * CoverageReferenceSupport.GridSize + x;
++                bool found = false;
++                for (int i = support.CellOffsets[cell]; i < support.CellOffsets[cell + 1]; i++)
++                    if (support.CellTriangles[i] == triangle) { found = true; break; }
++                if (!found) return false;
++            }
++        return true;
++    }
++
++    static void Cells(I point, float min, float max, out int first, out int last)
++    {
++        I value = F.Multiply(F.Divide(F.Subtract(point, F.Point(min)), F.Subtract(F.Point(max), F.Point(min))), F.Point(16));
++        first = value.IsFinite ? (int)Math.Clamp(value.Min, 0, 15) : 0;
++        last = value.IsFinite ? (int)Math.Clamp(value.Max, 0, 15) : 15;
++    }
++
++    internal static void Boundary(CoverageReferenceSupport support, V point, out I height, out I distance)
++    {
++        Span<I> squared = stackalloc I[256], heights = stackalloc I[256];
++        int count = support.BoundarySourceVertices.Length;
++        double best = double.PositiveInfinity, lower = double.PositiveInfinity;
++        for (int i = 0; i < count; i++)
++        {
++            V a = M.Point(support.Positions[support.BoundarySourceVertices[i]]),
++                b = M.Point(support.Positions[support.BoundarySourceVertices[(i + 1) % count]]);
++            I t = F.Clamp(F.Divide(P.Dot(a, point, a, b), P.Dot(a, b, a, b)), 0, 1);
++            I x = F.Subtract(point.X, F.Add(a.X, F.Multiply(t, F.Subtract(b.X, a.X)))),
++                y = F.Subtract(point.Y, F.Add(a.Y, F.Multiply(t, F.Subtract(b.Y, a.Y))));
++            squared[i] = F.Add(M.Square(x), M.Square(y));
++            heights[i] = F.Add(a.Z, F.Multiply(t, F.Subtract(b.Z, a.Z)));
++            if (!squared[i].IsFinite || !heights[i].IsFinite) { height = distance = F.Unbounded; return; }
++            best = Math.Min(best, squared[i].Max); lower = Math.Min(lower, squared[i].Min);
++        }
++        height = default;
++        bool any = false;
++        for (int i = 0; i < count; i++) if (squared[i].Min <= best) Join(ref height, ref any, heights[i]);
++        distance = M.Root(new(lower, best));
++        if (!any) height = distance = F.Unbounded;
++    }
++
++    internal static I Correction(I deficit, float rate) => F.Divide(F.Add(deficit, F.Point(0)), F.Point(rate));
++
++    internal static V Hull(V a, V b, V c) => M.Hull(M.Hull(a, b), c);
++    internal static bool Overlap(V a, V b) => Intersects(a.X, b.X) && Intersects(a.Y, b.Y);
++    static bool Intersects(I a, I b) => a.Min <= b.Max && b.Min <= a.Max;
++    static bool Encloses(V a, V b) => a.X.Min <= b.X.Min && a.X.Max >= b.X.Max && a.Y.Min <= b.Y.Min && a.Y.Max >= b.Y.Max;
++    static bool SamePoint(V a, V p) => a.X.Min == a.X.Max && a.Y.Min == a.Y.Max && p.X == a.X && p.Y == a.Y;
++
++    internal static void Join(ref I value, ref bool any, I candidate)
++    {
++        value = any ? F.Hull(value, candidate) : candidate;
++        any = true;
++    }
++}
+diff --git a/KhaozEngine.Render3D/Coverage/CoverageReferenceEnclosure.cs b/KhaozEngine.Render3D/Coverage/CoverageReferenceEnclosure.cs
+new file mode 100644
+index 000000000..bb7fad2e5
+--- /dev/null
++++ b/KhaozEngine.Render3D/Coverage/CoverageReferenceEnclosure.cs
+@@ -0,0 +1,79 @@
++using System;
++using System.Numerics;
++using V = KhaozEngine.Render3D.CoverageVertexEnclosure;
++using M = KhaozEngine.Render3D.CoverageEnclosureMath;
++
++namespace KhaozEngine.Render3D;
++
++/// <summary>A separate NC1 evaluation of the reference operation graph, never a constructor or budget decision.</summary>
++internal static class CoverageReferenceEnclosure
++{
++    internal static void Evaluate(CoverageRefinement topology, ReadOnlySpan<Matrix4x4> composedPalette,
++        ReadOnlySpan<ModelVertex> referenceFinal, in Matrix4x4 model, ReadOnlySpan<CoverageCommandPose> commands,
++        CoverageReferenceScratch referenceScratch, CoverageReferenceEnclosureScratch scratch)
++    {
++        Validate(topology, composedPalette, referenceFinal, commands, referenceScratch, scratch);
++        scratch.Reset(commands.Length);
++        if (!CoverageEnclosurePose.Prepare(topology, composedPalette, scratch)
++            || !CoverageEnclosurePose.Conform(topology, commands, referenceScratch, scratch)
++            || !CoverageEnclosureCorrection.Apply(topology, commands, referenceScratch, scratch)
++            || !CoverageEnclosureNormals.Evaluate(topology, commands, referenceScratch, scratch)) return;
++        double hostMaximum = 0, equipmentMaximum = 0;
++        for (int v = 0; v < topology.VertexCount; v++)
++        {
++            V final = scratch.MayRefuse ? M.Hull(scratch.After[v], scratch.Before[v]) : scratch.After[v];
++            scratch.Model[v] = M.Store(final);
++            scratch.World[v] = M.Transform(scratch.Model[v], model);
++            double radius = CoverageReferencePrecision.Radius(scratch.World[v], M.ExactCenter(referenceFinal[v].Position, model));
++            if (!double.IsFinite(radius)) { scratch.Unbounded(CoverageEnclosureSite.HostWorld, v); return; }
++            if (radius > hostMaximum)
++            {
++                hostMaximum = radius; scratch.WorstVertex = v;
++                int group = topology.Vertices[v].PositionGroup;
++                scratch.DominantSite = scratch.Representatives[group] < 0 ? CoverageEnclosureSite.HostWorld : scratch.GroupSites[group];
++            }
++        }
++        // Sorted frame slots make both maxima and diagnostics independent of command submission order.
++        for (int slot = 0; slot < commands.Length; slot++)
++        {
++            var command = commands[referenceScratch.Frames[slot].Command];
++            var source = command.Support.Source;
++            for (int v = 0; v < source.Positions.Length; v++)
++            {
++                V device = EquipmentWorldVertex(source, v, command.EquipmentWorld);
++                double radius = CoverageReferencePrecision.Radius(device, M.ExactCenter(source.Positions[v], command.EquipmentWorld));
++                if (!double.IsFinite(radius)) { scratch.Unbounded(CoverageEnclosureSite.EquipmentWorld, v); return; }
++                equipmentMaximum = Math.Max(equipmentMaximum, radius);
++            }
++        }
++        if (equipmentMaximum > hostMaximum) scratch.DominantSite = CoverageEnclosureSite.EquipmentWorld;
++        scratch.DeviceTolerance = CoverageReferencePrecision.ComposeTolerance(hostMaximum, equipmentMaximum);
++    }
++
++    internal static V EquipmentWorldVertex(CoverageSourceTopology source, int vertex, in Matrix4x4 equipmentWorld)
++    {
++        ArgumentNullException.ThrowIfNull(source);
++        if ((uint)vertex >= (uint)source.Positions.Length) throw new ArgumentOutOfRangeException(nameof(vertex));
++        return M.Transform(M.Point(source.Positions[vertex]), equipmentWorld);
++    }
++
++    static void Validate(CoverageRefinement topology, ReadOnlySpan<Matrix4x4> palette, ReadOnlySpan<ModelVertex> final,
++        ReadOnlySpan<CoverageCommandPose> commands, CoverageReferenceScratch reference, CoverageReferenceEnclosureScratch scratch)
++    {
++        ArgumentNullException.ThrowIfNull(topology);
++        ArgumentNullException.ThrowIfNull(reference);
++        ArgumentNullException.ThrowIfNull(scratch);
++        if (!ReferenceEquals(topology, reference.ReferenceTopology.Topology) || !ReferenceEquals(topology, scratch.Rows.Topology))
++            throw new ArgumentException("Enclosure workspaces must belong to this topology instance.");
++        if (final.Length != topology.VertexCount || commands.Length > scratch.CommandCapacity || commands.Length > reference.CommandCapacity
++            || commands.Length != reference.ActiveCommands)
++            throw new ArgumentException("Enclosures require exact final lengths and prepared command frames within both capacities.");
++        for (int slot = 0; slot < commands.Length; slot++)
++            if ((uint)reference.Frames[slot].Command >= (uint)commands.Length)
++                throw new ArgumentException("Reference command frames must be prepared before enclosure evaluation.");
++        foreach (var vertex in topology.Source.SkinVertices)
++            for (int i = 0; i < 4; i++)
++                if ((uint)(int)vertex.BoneIndices[i] >= (uint)palette.Length)
++                    throw new ArgumentException("Composed palette must contain every source joint read.", nameof(palette));
++    }
++}
+diff --git a/KhaozEngine.Render3D/Coverage/CoverageReferenceEnclosureScratch.cs b/KhaozEngine.Render3D/Coverage/CoverageReferenceEnclosureScratch.cs
+new file mode 100644
+index 000000000..e4d5c6fcf
+--- /dev/null
++++ b/KhaozEngine.Render3D/Coverage/CoverageReferenceEnclosureScratch.cs
+@@ -0,0 +1,76 @@
++using System;
++using V = KhaozEngine.Render3D.CoverageVertexEnclosure;
++using I = KhaozEngine.Render3D.CoverageFloatInterval;
++
++namespace KhaozEngine.Render3D;
++
++internal enum CoverageEnclosureSite { None, Skinning, Interpolation, QueryHeight, Boundary, Conformation, OverlayHeight, Correction, FullTarget, Normals, FinalStore, HostWorld, EquipmentWorld }
++
++/// <summary>Fixed pose workspace. Published spans remain valid until the next evaluation.</summary>
++internal sealed class CoverageReferenceEnclosureScratch
++{
++    internal CoverageReferenceEnclosureScratch(CoverageRefinement topology, int commandCapacity = CoverageScratch.MaxCommands)
++    {
++        ArgumentNullException.ThrowIfNull(topology);
++        if (commandCapacity is < 1 or > CoverageScratch.MaxCommands) throw new ArgumentOutOfRangeException(nameof(commandCapacity));
++        Rows = new(topology);
++        CommandCapacity = commandCapacity;
++        Source = new V[topology.SourceVertexCount];
++        SourceNormals = new V[Source.Length]; SourceTangents = new V[Source.Length];
++        Before = new V[topology.VertexCount]; After = new V[Before.Length];
++        Normals = new V[Before.Length]; Tangents = new V[Before.Length];
++        Model = new V[Before.Length]; World = new V[Before.Length];
++        Groups = new V[topology.PositionGroupCount];
++        Full = new I[Groups.Length]; Representatives = new int[Groups.Length];
++        Faces = new I[topology.TriangleCount]; FaceGuards = new bool[Faces.Length];
++        Bases = new CoverageEnclosureBasis[Faces.Length];
++        GroupSites = new CoverageEnclosureSite[Groups.Length];
++    }
++
++    internal CoverageReferenceTopology Rows { get; }
++    internal int CommandCapacity { get; }
++    internal V[] Source { get; }
++    internal V[] SourceNormals { get; }
++    internal V[] SourceTangents { get; }
++    internal V[] Before { get; }
++    internal V[] After { get; }
++    internal V[] Normals { get; }
++    internal V[] Tangents { get; }
++    internal V[] Groups { get; }
++    internal I[] Full { get; }
++    internal I[] Faces { get; }
++    internal bool[] FaceGuards { get; }
++    internal CoverageEnclosureBasis[] Bases { get; }
++    internal int[] Representatives { get; }
++    internal CoverageEnclosureSite[] GroupSites { get; }
++    internal V[] Model { get; }
++    internal V[] World { get; }
++    internal bool MayRefuse { get; set; }
++    internal CoverageEnclosureSite FirstUnboundedSite { get; set; }
++    internal int FirstUnboundedIndex { get; set; }
++    internal int FirstUnboundedTriangle { get; set; }
++    internal CoverageEnclosureSite DominantSite { get; set; }
++    internal int WorstVertex { get; set; }
++    internal double DeviceTolerance { get; set; }
++    internal int ActiveVertices { get; set; }
++    internal int ActiveCommands { get; set; }
++    internal ReadOnlySpan<V> HostModelBounds => Model.AsSpan(0, ActiveVertices);
++    internal ReadOnlySpan<V> HostWorldBounds => World.AsSpan(0, ActiveVertices);
++
++    internal void Reset(int commands)
++    {
++        ActiveVertices = Model.Length; ActiveCommands = commands;
++        MayRefuse = false; DeviceTolerance = 0; DominantSite = CoverageEnclosureSite.None; WorstVertex = -1;
++        FirstUnboundedSite = CoverageEnclosureSite.None; FirstUnboundedIndex = FirstUnboundedTriangle = -1;
++        Array.Clear(Full); Array.Clear(Faces); Array.Clear(FaceGuards); Array.Clear(GroupSites);
++        Array.Fill(Representatives, -1);
++    }
++
++    internal void Unbounded(CoverageEnclosureSite site, int index, int triangle = -1)
++    {
++        if (FirstUnboundedSite == CoverageEnclosureSite.None)
++        { FirstUnboundedSite = site; FirstUnboundedIndex = index; FirstUnboundedTriangle = triangle; }
++        Array.Fill(Model, CoverageEnclosureMath.Unbounded); Array.Fill(World, CoverageEnclosureMath.Unbounded);
++        DeviceTolerance = double.PositiveInfinity;
++    }
++}
+diff --git a/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureDiagnosticTests.cs b/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureDiagnosticTests.cs
+new file mode 100644
+index 000000000..801bc7ad4
+--- /dev/null
++++ b/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureDiagnosticTests.cs
+@@ -0,0 +1,58 @@
++using System;
++using System.Numerics;
++using KhaozEngine.Render3D;
++using Xunit;
++using Xunit.Abstractions;
++using M = KhaozEngine.Render3D.CoverageEnclosureMath;
++using F = KhaozEngine.Render3D.CoverageFloatIntervals;
++
++namespace KhaozEngine.Tests.Render3D;
++
++/// <summary>Continuation evidence only. This diagnostic is not a replacement for the failing fixture gate.</summary>
++public sealed class CoverageReferenceEnclosureDiagnosticTests(ITestOutputHelper output)
++{
++    [Fact]
++    public void Trace_the_first_unbounded_normal_basis_without_changing_the_enclosure()
++    {
++        var c = CoverageReferenceCases.Get("cost-limit-l2-lifted-w05");
++        var reference = new CoverageReferenceScratch(c.Topology);
++        var final = new ModelVertex[c.Topology.VertexCount];
++        Assert.True(CoverageReferenceConstructor.TryConstruct(c.Topology, c.Posed, c.Model, c.Commands,
++            reference, final, out var failure), failure.ToString());
++        var palette = new Matrix4x4[c.Palette.Length];
++        for (int i = 0; i < palette.Length; i++) palette[i] = SkinningMath.Compose(c.Palette[i], c.InverseBind[i]);
++        var scratch = new CoverageReferenceEnclosureScratch(c.Topology);
++        scratch.Reset(c.Commands.Length);
++        Assert.True(CoverageEnclosurePose.Prepare(c.Topology, palette, scratch));
++        Assert.True(CoverageEnclosurePose.Conform(c.Topology, c.Commands, reference, scratch));
++        Assert.True(CoverageEnclosureCorrection.Apply(c.Topology, c.Commands, reference, scratch));
++        const int face = 360;
++        int a = (int)c.Topology.Indices[face * 3], b = (int)c.Topology.Indices[face * 3 + 1], d = (int)c.Topology.Indices[face * 3 + 2];
++        foreach (int vertex in new[] { a, b, d })
++        {
++            output.WriteLine($"VERTEX {vertex} before={scratch.Before[vertex]} after={scratch.After[vertex]} "
++                + $"referenceBefore={reference.Before[vertex].Position} referenceAfter={reference.After[vertex].Position} "
++                + $"referenceMoved={reference.Before[vertex].Position != reference.After[vertex].Position}");
++        }
++        var u = M.Subtract(scratch.Before[b], scratch.Before[a]);
++        var v = M.Subtract(scratch.Before[d], scratch.Before[a]);
++        var s = M.Subtract(scratch.After[b], scratch.After[a]);
++        var t = M.Subtract(scratch.After[d], scratch.After[a]);
++        var normal = M.Cross(u, v); var afterNormal = M.Cross(s, t);
++        var beforeLength = M.Length(normal); var afterLength = M.Length(afterNormal);
++        var n = M.Divide(normal, beforeLength); var m = M.Divide(afterNormal, afterLength);
++        output.WriteLine($"NORMAL before={normal} after={afterNormal}");
++        output.WriteLine($"LENGTH before={beforeLength} after={afterLength} beforeUnit={n} afterUnit={m}");
++        var beforeDet = M.Dot(u, M.Cross(v, n)); var afterDet = M.Dot(s, M.Cross(t, m));
++        var beforeScale = M.Root(F.Multiply(M.Dot(u, u), M.Dot(v, v)));
++        var afterScale = M.Root(F.Multiply(M.Dot(s, s), M.Dot(t, t)));
++        output.WriteLine($"BASIS alignment={M.Dot(normal, afterNormal)} beforeDet={beforeDet} afterDet={afterDet} "
++            + $"beforeScale={beforeScale} afterScale={afterScale} "
++            + $"beforeThreshold={F.Multiply(beforeScale, F.Point(1e-12f))} afterThreshold={F.Multiply(afterScale, F.Point(1e-12f))}");
++        output.WriteLine($"RECIPROCALS before={F.Divide(F.Point(1), beforeDet)} after={F.Divide(F.Point(1), afterDet)}");
++        output.WriteLine($"FINAL_BASIS bu={M.Divide(M.Cross(v, n), beforeDet)} au={M.Divide(M.Cross(t, m), afterDet)}");
++        Assert.False(CoverageEnclosureNormals.Evaluate(c.Topology, c.Commands, reference, scratch));
++        Assert.Equal(CoverageEnclosureSite.Normals, scratch.FirstUnboundedSite);
++        Assert.Equal(face, scratch.FirstUnboundedIndex);
++    }
++}
+diff --git a/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs b/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs
+new file mode 100644
+index 000000000..ffc829215
+--- /dev/null
++++ b/KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs
+@@ -0,0 +1,135 @@
++using System;
++using System.Numerics;
++using KhaozEngine.Render3D;
++using Xunit;
++using Xunit.Abstractions;
++using I = KhaozEngine.Render3D.CoverageFloatInterval;
++
++namespace KhaozEngine.Tests.Render3D;
++
++[Collection("AllocSensitive")]
++public sealed class CoverageReferenceEnclosureTests(ITestOutputHelper output)
++{
++    public static TheoryData<string> Cases => CoverageExactCaptureTests.Cases;
++
++    [Theory]
++    [MemberData(nameof(Cases))]
++    public void Every_fixture_float_vertex_is_inside_its_pose_enclosure(string id)
++    {
++        var c = CoverageReferenceCases.Get(id);
++        var reference = new CoverageReferenceScratch(c.Topology);
++        var final = new ModelVertex[c.Topology.VertexCount];
++        // B9 requires the production reserve and an empty clearance override.
++        Assert.True(CoverageReferenceConstructor.TryConstruct(c.Topology, c.Posed, c.Model, c.Commands,
++            reference, final, out var failure), $"{id}: {failure}");
++        var palette = new Matrix4x4[c.Palette.Length];
++        for (int i = 0; i < palette.Length; i++) palette[i] = SkinningMath.Compose(c.Palette[i], c.InverseBind[i]);
++        var enclosure = new CoverageReferenceEnclosureScratch(c.Topology);
++        CoverageReferenceEnclosure.Evaluate(c.Topology, palette, final, c.Model, c.Commands, reference, enclosure);
++        output.WriteLine($"ENCLOSURE {id} epsilon={enclosure.DeviceTolerance:R} delta={.25 * c.Commands[0].Clearance:R} "
++            + $"site={enclosure.DominantSite} vertex={enclosure.WorstVertex} firstUnbounded={enclosure.FirstUnboundedSite} "
++            + $"index={enclosure.FirstUnboundedIndex} triangle={enclosure.FirstUnboundedTriangle}");
++        Assert.Equal(c.Topology.VertexCount, enclosure.HostModelBounds.Length);
++        Assert.Equal(c.Topology.VertexCount, enclosure.HostWorldBounds.Length);
++        for (int i = 0; i < final.Length; i++)
++        {
++            Assert.True(enclosure.HostModelBounds[i].Contains(final[i].Position), $"{id} vertex={i} model containment");
++            var model = enclosure.HostModelBounds[i];
++            var world = enclosure.HostWorldBounds[i];
++            Assert.True(model.X.IsFinite && model.Y.IsFinite && model.Z.IsFinite, $"{id} vertex={i} unbounded model");
++            Assert.True(world.X.IsFinite && world.Y.IsFinite && world.Z.IsFinite, $"{id} vertex={i} unbounded world");
++            var center = IndependentCenter(final[i].Position, c.Model);
++            Assert.True(world.X.Contains(center.X.Min) && world.X.Contains(center.X.Max)
++                && world.Y.Contains(center.Y.Min) && world.Y.Contains(center.Y.Max)
++                && world.Z.Contains(center.Z.Min) && world.Z.Contains(center.Z.Max), $"{id} vertex={i} exact world center");
++        }
++        Assert.True(double.IsFinite(enclosure.DeviceTolerance), $"{id} unbounded epsilon");
++    }
++
++    [Fact]
++    public void World_tolerance_sums_host_and_full_equipment_bounds()
++    {
++        var host = new CoverageVertexEnclosure(new(-3, 3), new(-4, 4), new(0, 0));
++        var zero = new CoverageVertexEnclosure(new(0, 0), new(0, 0), new(0, 0));
++        double radius = CoverageReferencePrecision.Radius(host, zero);
++        Assert.InRange(radius, 5, Math.BitIncrement(Math.BitIncrement(Math.BitIncrement(5))));
++        Assert.InRange(CoverageReferencePrecision.ComposeTolerance(radius, 12), 17,
++            Math.BitIncrement(Math.BitIncrement(Math.BitIncrement(17))));
++    }
++
++    [Fact]
++    public void Enclosures_propagate_conditioning_flushing_and_branch_alternatives()
++    {
++        var a = CoverageEnclosureMath.Point(Vector3.Zero);
++        var b = CoverageEnclosureMath.Point(new(1, 1, 0));
++        var c = CoverageEnclosureMath.Point(new(1, MathF.BitIncrement(1), 1));
++        var query = new CoverageVertexEnclosure(new(.5, .5), new(.5, .5 + Math.ScaleB(1, -24)), new(0, 0));
++        var height = CoverageEnclosureSupport.Height(a, b, c, query);
++        Assert.True(height.Contains(0) && height.Contains(.5));
++        var wide = CoverageEnclosureSupport.Height(a, b,
++            new(new(1, 1), new(1, MathF.BitIncrement(1)), new(1, 1)), query);
++        Assert.False(wide.IsFinite);
++        var fast = CoverageEnclosureSupport.Correction(new(.9, 1.1), MathF.ScaleB(1, -10));
++        var slow = CoverageEnclosureSupport.Correction(new(.9, 1.1), MathF.ScaleB(1, -20));
++        Assert.True(slow.Max - slow.Min > fast.Max - fast.Min);
++        var stored = CoverageEnclosureMath.Store(CoverageEnclosureMath.Point(Vector3.One));
++        Assert.True(stored.X.Contains(MathF.BitDecrement(1)) && stored.X.Contains(MathF.BitIncrement(1)));
++        var zeroSign = CoverageEnclosurePredicates.Edge(a, b, CoverageEnclosureMath.Point(new(.5f, .5f, 0)));
++        Assert.Equal(0, zeroSign.MinSign);
++        Assert.Equal(0, zeroSign.MaxSign);
++        var tiny = CoverageEnclosurePredicates.Edge(a, CoverageEnclosureMath.Point(new(float.Epsilon, 0, 0)),
++            CoverageEnclosureMath.Point(new(0, .25f, 0)));
++        Assert.Equal(1, tiny.MinSign);
++        Assert.Equal(1, tiny.MaxSign);
++        Assert.True(tiny.Value.Contains(0));
++    }
++
++    [Fact]
++    public void Reordered_commands_reset_and_invalid_arguments_preserve_the_workspace_contract()
++    {
++        var c = CoverageReferenceCases.Get("cost-limit-l2-lifted-w1");
++        var reference = new CoverageReferenceScratch(c.Topology);
++        var final = new ModelVertex[c.Topology.VertexCount];
++        Assert.True(CoverageReferenceConstructor.TryConstruct(c.Topology, c.Posed, c.Model, c.Commands,
++            reference, final, out var failure), failure.ToString());
++        var palette = new Matrix4x4[c.Palette.Length];
++        for (int i = 0; i < palette.Length; i++) palette[i] = SkinningMath.Compose(c.Palette[i], c.InverseBind[i]);
++        var scratch = new CoverageReferenceEnclosureScratch(c.Topology);
++        CoverageReferenceEnclosure.Evaluate(c.Topology, palette, final, c.Model, c.Commands, reference, scratch);
++        var first = scratch.HostModelBounds.ToArray();
++        double epsilon = scratch.DeviceTolerance;
++        Assert.Throws<ArgumentException>(() => CoverageReferenceEnclosure.Evaluate(c.Topology, palette,
++            final.AsSpan(1), c.Model, c.Commands, reference, scratch));
++        Assert.Equal(first, scratch.HostModelBounds.ToArray());
++        var invalid = c.Model; invalid.M41 = float.PositiveInfinity;
++        CoverageReferenceEnclosure.Evaluate(c.Topology, palette, final, invalid, c.Commands, reference, scratch);
++        Assert.Equal(double.PositiveInfinity, scratch.DeviceTolerance);
++        CoverageReferenceEnclosure.Evaluate(c.Topology, palette, final, c.Model, c.Commands, reference, scratch);
++        Assert.Equal(first, scratch.HostModelBounds.ToArray());
++        Assert.Equal(epsilon, scratch.DeviceTolerance);
++        var reversed = (CoverageCommandPose[])c.Commands.Clone();
++        Array.Reverse(reversed);
++        Assert.True(CoverageReferenceConstructor.TryConstruct(c.Topology, c.Posed, c.Model, reversed,
++            reference, final, out failure), failure.ToString());
++        CoverageReferenceEnclosure.Evaluate(c.Topology, palette, final, c.Model, reversed, reference, scratch);
++        Assert.Equal(first, scratch.HostModelBounds.ToArray());
++        Assert.Equal(epsilon, scratch.DeviceTolerance);
++        long start = GC.GetAllocatedBytesForCurrentThread();
++        CoverageReferenceEnclosure.Evaluate(c.Topology, palette, final, c.Model, reversed, reference, scratch);
++        long allocated = GC.GetAllocatedBytesForCurrentThread() - start;
++        Assert.Equal(0, allocated);
++    }
++
++    static CoverageVertexEnclosure IndependentCenter(Vector3 p, Matrix4x4 m) => new(
++        Coordinate(p, m.M11, m.M21, m.M31, m.M41), Coordinate(p, m.M12, m.M22, m.M32, m.M42),
++        Coordinate(p, m.M13, m.M23, m.M33, m.M43));
++
++    static I Coordinate(Vector3 p, float x, float y, float z, float t)
++    {
++        double lo = Math.BitDecrement(Math.BitDecrement(Math.BitDecrement((double)p.X * x)
++            + Math.BitDecrement((double)p.Y * y)) + Math.BitDecrement((double)p.Z * z));
++        double hi = Math.BitIncrement(Math.BitIncrement(Math.BitIncrement((double)p.X * x)
++            + Math.BitIncrement((double)p.Y * y)) + Math.BitIncrement((double)p.Z * z));
++        return new(Math.BitDecrement(lo + t), Math.BitIncrement(hi + t));
++    }
++}
+diff --git a/KhaozEngine.Render.Tests/Render3D/CoverageReferenceCrossingTests.cs b/KhaozEngine.Render.Tests/Render3D/CoverageReferenceCrossingTests.cs
+new file mode 100644
+index 000000000..df0fa5031
+--- /dev/null
++++ b/KhaozEngine.Render.Tests/Render3D/CoverageReferenceCrossingTests.cs
+@@ -0,0 +1,52 @@
++using System;
++using System.IO;
++using System.Linq;
++using System.Numerics;
++using KhaozEngine.Render3D;
++using Xunit;
++
++namespace KhaozEngine.Tests.Render3D;
++
++public sealed class CoverageReferenceCrossingTests
++{
++    [Theory]
++    [InlineData(-74)]
++    [InlineData(-75)]
++    public void Subnormal_opposite_determinants_use_the_scaled_rational_parameter(int exponent)
++    {
++        // Exact sides are unit squared and minus twice that value. The independent rational quotients are 1/3
++        // and 2/3. Exponent -74 gives representable subnormals, -75 also tests underflow before normalization.
++        float unit = MathF.ScaleB(1, exponent);
++        Vector3 s = Vector3.Zero, t = new(unit, 0, 0), a = new(0, unit, 0), b = new(unit, -2 * unit, 0);
++        Assert.Equal(BitConverter.Int32BitsToSingle(0x3eaaaaab), CoverageReferencePredicates.CrossingParameter(s, t, a, b));
++        Assert.Equal(BitConverter.Int32BitsToSingle(0x3f2aaaab), CoverageReferencePredicates.CrossingParameter(s, t, b, a));
++    }
++
++    [Fact]
++    public void Every_fixture_reference_output_is_compared_byte_for_byte_when_requested()
++    {
++        string? directory = Environment.GetEnvironmentVariable("COVERAGE_REFERENCE_SNAPSHOT");
++        if (directory is null) return;
++        Directory.CreateDirectory(directory);
++        foreach (var c in CoverageReferenceCases.All())
++        {
++            var scratch = new CoverageReferenceScratch(c.Topology);
++            var result = new ModelVertex[c.Topology.VertexCount];
++            var capture = CoverageExactCaptureTests.Read(c.Id);
++            for (int mode = 0; mode < 2; mode++)
++            {
++                double[] target = mode == 0 ? [] : capture.ClearanceCoverage.Zip(capture.SlackCoverage, (a, b) => a + b).ToArray();
++                Assert.True(CoverageReferenceConstructor.TryConstruct(c.Topology, c.Posed, c.Model, c.Commands,
++                    scratch, result, out var failure, target, mode == 0 ? [] : capture.CorrectionClearance,
++                    mode == 0 ? [] : capture.CorrectionConversion), failure.ToString());
++                using var bytes = new MemoryStream();
++                using (var writer = new BinaryWriter(bytes, System.Text.Encoding.UTF8, true))
++                    foreach (var vertex in result)
++                        foreach (float field in CoverageReferenceBits.Fields(vertex)) writer.Write(field);
++                string path = Path.Combine(directory, $"{c.Id}-{mode}.bin");
++                if (File.Exists(path)) Assert.Equal(File.ReadAllBytes(path), bytes.ToArray());
++                else File.WriteAllBytes(path, bytes.ToArray());
++            }
++        }
++    }
++}

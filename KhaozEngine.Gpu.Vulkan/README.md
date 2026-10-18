@@ -290,6 +290,32 @@ frame-boundary drain arrives with row 17's `Present` path, which is the only thi
 conventionally avoided. The engine's own `WaitForIdle` calls stay where they are, because they are the seam's
 contract.
 
+## GPU timestamp query pools
+
+`SupportsTimestamps` requires the selected graphics queue family's `timestampValidBits` to be nonzero and
+`limits.timestampPeriod` to be finite and positive. There is no software timestamp fallback. Each wrapper
+owns one fixed `VK_QUERY_TYPE_TIMESTAMP` pool and preallocated private scratch, including the native
+interleaved value and availability pairs. Create a fixed caller-owned ring and skip collection when full.
+
+`BeginTimestamps` ends rendering through `EndRenderingBeforeIllegalCommand` and records
+`vkCmdResetQueryPool` on the requested range before any writes. Each `WriteTimestamp` ends rendering
+through the same schedule and records `vkCmdWriteTimestamp2` with `ALL_COMMANDS`. `EndTimestamps` only
+closes the batch. No timestamp command submits, and resolve never drains, flushes or waits.
+
+Resolve polls the supplied same-device completion fence first, then makes one `vkGetQueryPoolResults`
+call with exactly `64_BIT | WITH_AVAILABILITY` (flags 5), stride 16 bytes, with no `WAIT` or `PARTIAL`.
+Every availability word must be nonzero before normalization through `GpuTimestampResults.TryNormalize`.
+Pending and Invalid preserve caller ticks and return period zero. Ready and Invalid are cached until the
+next begin. Differences are masked to the probed valid bits and accumulated with overflow checking.
+Each adjacent interval must be shorter than `2^timestampValidBits * timestampPeriod` nanoseconds.
+Multiple wraps in one interval cannot be detected or reconstructed.
+
+Result-returning calls check the existing device-loss latch before their ordinary error check. Reset and
+write commands return void, refuse a dead device and use the existing validation pump. Disposal queues
+one terminal destroy through the resource owner's timeline retirement and skips native destruction on a
+dead device. `VulkanTimestampTests` drives the adapter through stub entry points without a device.
+`ComputeTimestampGpuTests` logs the branch and probed bits and period on native Vulkan.
+
 ## The memory allocator, and the condition attached to declining VMA
 
 **An engine-owned block suballocator.** Chunks of 64 MiB, one `vkAllocateMemory` each, pooled by

@@ -463,6 +463,13 @@ dropped about 63 minutes of runner time from a full dispatch.
   run them a loader regression would empty them into passes that assert nothing and the zero-skipped gate
   could not see it. With the variable set, that refusal throws and names what the probe objected to. And its
   full suite runs under **`KE_VULKAN_VALIDATION=strict`**, the first tier of the validation gate.
+  `ComputeTimestampGpuTests` runs its supported branch on every Vulkan device whose selected graphics
+  queue has timestamp bits and a finite positive period, including lavapipe when it reports support.
+  Each native fact logs the branch, `timestampValidBits` as `validBits` and `timestampPeriod` as
+  `periodNanoseconds`. The unsupported branch asserts pool creation refuses. Query pools reset and write
+  outside rendering, with `vkCmdWriteTimestamp2` at `ALL_COMMANDS`. Resolve polls the completion fence
+  before one `vkGetQueryPoolResults`, flags 5, stride 16, without `WAIT` or `PARTIAL`. Every availability
+  word is checked. Each adjacent interval must be shorter than one wrap of the probed counter.
 - **Vulkan sync-validation job (1x, `gpu-vulkan-sync`)**: the second tier. Core validation PLUS
   synchronisation validation over the golden subset and the compute suite
   (`FullyQualifiedName~Golden|FullyQualifiedName~Compute`) on the native backend, on the `schedule` and on a

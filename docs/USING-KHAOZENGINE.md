@@ -16847,8 +16847,8 @@ true GPU execution time. The GPU pipeline runs asynchronously behind the command
 a cheap-to-encode pass can still be GPU-expensive (or vice versa) and this meter cannot see that. The
 `KhaozEngine.Gpu` seam now defines optional timestamp pools, encoded with `BeginTimestamps`, `WriteTimestamp`
 and `EndTimestamps` and collected through non-blocking `IGpuTimestampPool.TryResolve`. Gate their use on
-`GpuCapabilities.SupportsTimestamps`, which defaults to false. The three native backends currently report
-false until their native timestamp implementations land. These CPU brackets do not use that separate API.
+`GpuCapabilities.SupportsTimestamps`, which defaults to false and reports the native backend's counter
+support. These CPU brackets do not use that separate API.
 A whole-frame GPU-time number (Tier 2) based on synchronization was considered and rejected: inserting a
 `WaitForIdle()` every frame to time it would destroy the CPU/GPU pipelining that gives good frame pacing (a
 "Heisenberg timer" that changes the very thing it measures), and the fence-poll alternative only yields a noisy
@@ -22419,8 +22419,8 @@ not been consumed. After consumption or valid discard it disposes only the owned
 
 ### GPU timestamps without waiting
 
-Gate timestamp collection on `GpuCapabilities.SupportsTimestamps`. It defaults to false, including on all
-three native backends until their timestamp implementations land. An unsupported
+Gate timestamp collection on `GpuCapabilities.SupportsTimestamps`. It defaults to false. Native Vulkan
+reports the selected graphics queue's counter support. Metal and Direct3D 11 currently leave it false. An unsupported
 `IGpuResourceFactory.CreateTimestampPool(capacity)` throws `NotSupportedException`. The optional timestamp
 command defaults also throw, so existing factories and command lists stay source compatible.
 
@@ -22457,6 +22457,17 @@ Every adjacent interval must be shorter than one full counter wrap. Multiple wra
 be detected or reconstructed. No resolve drains, flushes, submits, synchronously maps or takes a blocking
 lock. A too-small output throws `ArgumentException` before polling. Null, foreign and disposed fences and
 disposed or lost devices follow the completion validation contract of `IGpuDevice.TryReadBuffer`.
+
+Native Vulkan allocates one fixed `VK_QUERY_TYPE_TIMESTAMP` query pool per wrapper, with private
+preallocated value, availability and interleaved native scratch. Support requires the selected graphics
+queue family's `timestampValidBits` to be nonzero and `limits.timestampPeriod` to be finite and positive.
+`BeginTimestamps` records `vkCmdResetQueryPool` for the requested range before any writes.
+`WriteTimestamp` records `vkCmdWriteTimestamp2` at `ALL_COMMANDS`. Both end active rendering through the
+existing command-list schedule. End only closes the batch. Resolve first polls the completion fence,
+then makes one `vkGetQueryPoolResults` call with exactly `64_BIT | WITH_AVAILABILITY` (flags 5), stride
+16 bytes, with no `WAIT` or `PARTIAL`. Every availability word must be nonzero before normalization.
+Destruction uses the resource owner's timeline retirement. Adjacent intervals must each be shorter than
+`2^timestampValidBits * timestampPeriod` nanoseconds. Multiple wraps cannot be detected or reconstructed.
 
 ### Unsigned storage-buffer atomics
 

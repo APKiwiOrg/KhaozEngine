@@ -70,6 +70,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly VulkanCommandPoolRing _ring;
         readonly VulkanRetireList _retired;
         readonly IVulkanRecordUploads? _uploads;
+        readonly VulkanTimeline? _timestampTimeline;
 
         // ONE PER BIND POINT, because the seam's graphics and compute bindings are separate and Vulkan's are too.
         // Row 11's whole schedule lives in these two objects, which hold no set, no layout object and nothing that
@@ -146,11 +147,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// every list gets the same one.</param>
         /// <param name="transfers">Row 15's six transfer calls (the copies, the blit chain and the resolve), or
         /// null with no device behind this list.</param>
+        /// <param name="timestampTimeline">The owning timeline, or null when timestamps are unsupported.</param>
         internal VulkanCommandList(VulkanCommandPoolRing ring, VulkanRetireList retired,
             IVulkanRecordUploads? uploads = null, bool assertBoundSetLayouts = false,
             IVulkanRenderApi? render = null, IVulkanPipelineBinder? pipelines = null,
             VulkanLayoutTracker? layouts = null, IVulkanDrawEmitter? draws = null,
-            IVulkanTransferSink? transfers = null)
+            IVulkanTransferSink? transfers = null, VulkanTimeline? timestampTimeline = null)
         {
             ArgumentNullException.ThrowIfNull(ring);
             ArgumentNullException.ThrowIfNull(retired);
@@ -158,6 +160,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _ring = ring;
             _retired = retired;
             _uploads = uploads;
+            _timestampTimeline = timestampTimeline;
             _graphicsBinds = new VulkanBindRecords(PipelineBindPoint.Graphics, assertBoundSetLayouts);
             _computeBinds = new VulkanBindRecords(PipelineBindPoint.Compute, assertBoundSetLayouts);
             _rendering = render is null ? null : new VulkanRenderingSchedule(render, layouts);

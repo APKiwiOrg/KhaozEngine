@@ -368,8 +368,9 @@ What it owns today:
   ring has consumed its entries or discarded an unsubmitted list. A full ring skips diagnostics for that frame
   while rendering continues and the dispatched outcome stands. Direct3D 11 completion needs a `Present` or drain
   because `Submit` does not flush.
-- **GPU timestamps** - gate on `GpuCapabilities.SupportsTimestamps`, default false. All three native backends
-  currently leave it false until their native timestamp tasks land. `CreateTimestampPool(capacity)` and the
+- **GPU timestamps** - gate on `GpuCapabilities.SupportsTimestamps`, default false. Native Vulkan probes
+  the selected queue's counter bits and the device period. Metal and Direct3D 11 currently leave it false.
+  `CreateTimestampPool(capacity)` and the
   optional command defaults throw `NotSupportedException` without support. A fixed-capacity
   `IGpuTimestampPool` records one batch with `BeginTimestamps(pool, count)`, increasing unique
   `WriteTimestamp(pool, index)` calls from 0 and `EndTimestamps(pool)`. They only encode work, never submit.

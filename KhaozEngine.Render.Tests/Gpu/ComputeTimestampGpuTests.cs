@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Vulkan.Internal;
 using KhaozEngine.Primitives;
 using Xunit;
 using Xunit.Abstractions;
@@ -62,6 +63,8 @@ void main() {
             IGpuDevice device = gpu.GpuDevice;
             IGpuResourceFactory factory = device.Factory;
             output.WriteLine($"backend: {device.Backend} ({device.Capabilities.DeviceName})");
+            if (device is VulkanGpuDevice vulkan)
+                output.WriteLine(FormattableString.Invariant($"timestamp probe: validBits={vulkan.TimestampSupport.ValidBits}, periodNanoseconds={vulkan.TimestampSupport.TickPeriodNanoseconds:R}"));
             if (!device.Capabilities.SupportsTimestamps)
             {
                 output.WriteLine("timestamp branch: unsupported (pool creation must throw)");

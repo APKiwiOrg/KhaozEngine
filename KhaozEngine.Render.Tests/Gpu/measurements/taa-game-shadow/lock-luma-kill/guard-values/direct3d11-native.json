@@ -1,0 +1,3605 @@
+{
+  "metadata": {
+    "backend": "direct3d11-native",
+    "deviceClass": "WARP",
+    "codeCommit": "507f0d1357c10a8712aef46ce596547dbebac79d",
+    "counts": {
+      "Passed": 908,
+      "Failed": 11,
+      "Skipped": 0,
+      "Total tests": 919
+    },
+    "synthetic": [
+      {
+        "preset": "Native",
+        "grain": 0.010814,
+        "errorGrain": 0.006586,
+        "referenceGrain": 0.009659,
+        "change": 0.008928
+      },
+      {
+        "preset": "Quality",
+        "grain": 0.009231,
+        "errorGrain": 0.008982,
+        "referenceGrain": 0.009659,
+        "change": 0.008732
+      },
+      {
+        "preset": "Balanced",
+        "grain": 0.010511,
+        "errorGrain": 0.006299,
+        "referenceGrain": 0.009659,
+        "change": 0.001633
+      }
+    ],
+    "lightCases": 6,
+    "movingCases": 38,
+    "stableDetailCases": 6,
+    "stablePeakCases": 4,
+    "shadowCases": 14,
+    "reviewCases": 80,
+    "guards": 394,
+    "failedCases": [
+      "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_on_a_swaying_surface_holds_like_a_still_one(preset: Native, speed: 0.5)",
+      "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_on_a_swaying_surface_holds_like_a_still_one(preset: Native, speed: 0.300000012)",
+      "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_surface_edge_the_jitter_crosses_holds_like_a_still_one(preset: Quality, side: -1)",
+      "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_still_nearer_surface_holds_like_a_still_one(preset: Quality, side: -1)",
+      "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_against_the_sky_beside_a_still_nearer_surface_holds_away_from_the_centre_as_at_it(preset: Quality)",
+      "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_blade_narrower_than_a_texel_swaying_over_still_ground_holds_like_a_still_one(preset: Quality)",
+      "KhaozEngine.Tests.Gpu.TemporalMovingShadeLagGpuTests.Shadow_edge_lag_on_moving_pixels_and_fast_shadows_stays_within_its_bounds",
+      "KhaozEngine.Tests.Gpu.TemporalTextureLightGpuTests.Dark_texture_and_animated_local_light_keep_detail_stable",
+      "KhaozEngine.Tests.Gpu.TemporalGameShadowGrainGpuTests.Texture_ridges_under_a_coarse_moving_shadow_do_not_hold_bright_grain",
+      "KhaozEngine.Tests.Gpu.TemporalUpscalingGoldenTests.QualityUpscalingBeatsABilinearUpscaleOfTheSameFrame",
+      "KhaozEngine.Tests.Gpu.TemporalFollowPhaseGpuTests.The_follow_stop_holds_its_bounds_from_every_start_phase"
+    ],
+    "note": "Comparisons use printed values. Borderline rows defer to the test's unrounded assertion."
+  },
+  "rows": [
+    {
+      "case": "synthetic Native",
+      "metric": "output grain",
+      "comparison": "<=",
+      "actual": 0.010814,
+      "bound": 0.0113,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "synthetic Quality",
+      "metric": "output grain",
+      "comparison": "<=",
+      "actual": 0.009231,
+      "bound": 0.008,
+      "baseline": null,
+      "printedComparison": "fail"
+    },
+    {
+      "case": "light dark Native",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.000363,
+      "bound": 0.00039600000000000003,
+      "baseline": 0.00036,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "light dark Native",
+      "metric": "error grain",
+      "comparison": "<=",
+      "actual": 0.00036,
+      "bound": 0.00039160000000000003,
+      "baseline": 0.000356,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "light dark Native",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 4.6e-05,
+      "bound": 4.9500000000000004e-05,
+      "baseline": 4.5e-05,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "light dark Native",
+      "metric": "reference mean luma upper",
+      "comparison": "<=",
+      "actual": 0.004201,
+      "bound": 0.08,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "light dark Native",
+      "metric": "reference mean luma lower",
+      "comparison": ">=",
+      "actual": 0.004201,
+      "bound": 0.001,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "light dark Quality",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.001003,
+      "bound": 0.0011033,
+      "baseline": 0.001003,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "light dark Quality",
+      "metric": "error grain",
+      "comparison": "<=",
+      "actual": 0.000873,
+      "bound": 0.0009647000000000001,
+      "baseline": 0.000877,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "light dark Quality",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 8.5e-05,
+      "bound": 9.350000000000001e-05,
+      "baseline": 8.5e-05,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "light dark Quality",
+      "metric": "reference mean luma upper",
+      "comparison": "<=",
+      "actual": 0.004201,
+      "bound": 0.08,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "light dark Quality",
+      "metric": "reference mean luma lower",
+      "comparison": ">=",
+      "actual": 0.004201,
+      "bound": 0.001,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "light flicker Native",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.016217,
+      "bound": 0.0161535,
+      "baseline": 0.014685,
+      "printedComparison": "fail"
+    },
+    {
+      "case": "light flicker Native",
+      "metric": "error grain",
+      "comparison": "<=",
+      "actual": 0.006532,
+      "bound": 0.0060533,
+      "baseline": 0.005503,
+      "printedComparison": "fail"
+    },
+    {
+      "case": "light flicker Native",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.011176,
+      "bound": 0.011757900000000002,
+      "baseline": 0.010689,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "light flicker Quality",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.017856,
+      "bound": 0.017653900000000004,
+      "baseline": 0.016049,
+      "printedComparison": "fail"
+    },
+    {
+      "case": "light flicker Quality",
+      "metric": "error grain",
+      "comparison": "<=",
+      "actual": 0.006124,
+      "bound": 0.005874000000000001,
+      "baseline": 0.00534,
+      "printedComparison": "fail"
+    },
+    {
+      "case": "light flicker Quality",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.011593,
+      "bound": 0.012690700000000001,
+      "baseline": 0.011537,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "light moving Native",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.010698,
+      "bound": 0.011763400000000002,
+      "baseline": 0.010694,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "light moving Native",
+      "metric": "error grain",
+      "comparison": "<=",
+      "actual": 0.00383,
+      "bound": 0.0042042,
+      "baseline": 0.003822,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "light moving Native",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.00329,
+      "bound": 0.0036190000000000003,
+      "baseline": 0.00329,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "light moving Quality",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.012534,
+      "bound": 0.013708200000000002,
+      "baseline": 0.012462,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "light moving Quality",
+      "metric": "error grain",
+      "comparison": "<=",
+      "actual": 0.004572,
+      "bound": 0.0048630999999999995,
+      "baseline": 0.004421,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "light moving Quality",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.003303,
+      "bound": 0.0036223,
+      "baseline": 0.003293,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality S 2.0 px advancing",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.018353,
+      "bound": 0.022838999999999998,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality S 2.0 px advancing",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.002883,
+      "bound": 0.0047025,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality S 2.0 px retreating",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.019467,
+      "bound": 0.022482,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality S 2.0 px retreating",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.006629,
+      "bound": 0.0114435,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality S 4.0 px advancing",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.017689,
+      "bound": 0.0229245,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality S 4.0 px advancing",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.003456,
+      "bound": 0.0047025,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality S 4.0 px retreating",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.018258,
+      "bound": 0.022329,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality S 4.0 px retreating",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.006185,
+      "bound": 0.0114435,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality S 8.0 px advancing",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.017705,
+      "bound": 0.023126999999999998,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality S 8.0 px advancing",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.00451,
+      "bound": 0.0047025,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality S 8.0 px retreating",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.018223,
+      "bound": 0.0223275,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality S 8.0 px retreating",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.006659,
+      "bound": 0.0114435,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality C pan 1.0 px",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.016214,
+      "bound": 0.022626,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality C pan 1.0 px",
+      "metric": "band error",
+      "comparison": "<=",
+      "actual": 0.010509,
+      "bound": 0.011550000000000001,
+      "baseline": 0.0105,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality C pan 1.0 px",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.007611,
+      "bound": 0.008360000000000001,
+      "baseline": 0.0076,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality C pan 2.0 px",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.01316,
+      "bound": 0.022626,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality C pan 2.0 px",
+      "metric": "band error",
+      "comparison": "<=",
+      "actual": 0.005844,
+      "bound": 0.00605,
+      "baseline": 0.0055,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality C pan 2.0 px",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.003879,
+      "bound": 0.00429,
+      "baseline": 0.0039,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality C pan 4.0 px",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.009241,
+      "bound": 0.022626,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality C pan 4.0 px",
+      "metric": "band error",
+      "comparison": "<=",
+      "actual": 0.015253,
+      "bound": 0.01683,
+      "baseline": 0.0153,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality C pan 4.0 px",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.01209,
+      "bound": 0.01331,
+      "baseline": 0.0121,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality C pan 8.0 px",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.008955,
+      "bound": 0.0225645,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality C pan 8.0 px",
+      "metric": "band error",
+      "comparison": "<=",
+      "actual": 0.013818,
+      "bound": 0.01518,
+      "baseline": 0.0138,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality C pan 8.0 px",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.010455,
+      "bound": 0.011550000000000001,
+      "baseline": 0.0105,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality M object 1.0 px",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.017476,
+      "bound": 0.022551,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality M object 1.0 px",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.002709,
+      "bound": 0.007814999999999999,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality M object 2.0 px",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.017053,
+      "bound": 0.0229575,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality M object 2.0 px",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.007168,
+      "bound": 0.012152,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality M object 4.0 px",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.012427,
+      "bound": 0.0230295,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality M object 4.0 px",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.011034,
+      "bound": 0.01466,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality M object 8.0 px",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.013531,
+      "bound": 0.022998,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality M object 8.0 px",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.012799,
+      "bound": 0.014466999999999999,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality MS object 1.0 px, shadow 1.0 px",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.017575,
+      "bound": 0.0227985,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality MS object 1.0 px, shadow 1.0 px",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.002818,
+      "bound": 0.007596,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality MS object 2.0 px, shadow 1.0 px",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.016131,
+      "bound": 0.022938,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality MS object 2.0 px, shadow 1.0 px",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.006774,
+      "bound": 0.012105,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native S 2.0 px advancing",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.01811,
+      "bound": 0.022838999999999998,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native S 2.0 px advancing",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.003193,
+      "bound": 0.004794,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native S 2.0 px retreating",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.018071,
+      "bound": 0.022482,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native S 2.0 px retreating",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.005421,
+      "bound": 0.0081855,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native S 4.0 px advancing",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.017549,
+      "bound": 0.0229245,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native S 4.0 px advancing",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.003786,
+      "bound": 0.004794,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native S 4.0 px retreating",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.017962,
+      "bound": 0.022329,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native S 4.0 px retreating",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.006494,
+      "bound": 0.0081855,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native S 8.0 px advancing",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.017623,
+      "bound": 0.023126999999999998,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native S 8.0 px advancing",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.004724,
+      "bound": 0.004794,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native S 8.0 px retreating",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.017806,
+      "bound": 0.0223275,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native S 8.0 px retreating",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.00824,
+      "bound": 0.0081855,
+      "baseline": null,
+      "printedComparison": "fail"
+    },
+    {
+      "case": "Native C pan 1.0 px",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.016214,
+      "bound": 0.022626,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native C pan 1.0 px",
+      "metric": "band error",
+      "comparison": "<=",
+      "actual": 0.004495,
+      "bound": 0.00495,
+      "baseline": 0.0045,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native C pan 1.0 px",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.003647,
+      "bound": 0.00396,
+      "baseline": 0.0036,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native C pan 2.0 px",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.01558,
+      "bound": 0.022626,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native C pan 2.0 px",
+      "metric": "band error",
+      "comparison": "<=",
+      "actual": 0.004539,
+      "bound": 0.00495,
+      "baseline": 0.0045,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native C pan 2.0 px",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.003524,
+      "bound": 0.0038500000000000006,
+      "baseline": 0.0035,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native C pan 4.0 px",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.012787,
+      "bound": 0.022626,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native C pan 4.0 px",
+      "metric": "band error",
+      "comparison": "<=",
+      "actual": 0.006024,
+      "bound": 0.006600000000000001,
+      "baseline": 0.006,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native C pan 4.0 px",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.004412,
+      "bound": 0.0048400000000000006,
+      "baseline": 0.0044,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native C pan 8.0 px",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.013062,
+      "bound": 0.0225645,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native C pan 8.0 px",
+      "metric": "band error",
+      "comparison": "<=",
+      "actual": 0.005558,
+      "bound": 0.0061600000000000005,
+      "baseline": 0.0056,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native C pan 8.0 px",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.003819,
+      "bound": 0.0041800000000000006,
+      "baseline": 0.0038,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native M object 1.0 px",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.017476,
+      "bound": 0.022551,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native M object 1.0 px",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.003083,
+      "bound": 0.009235,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native M object 2.0 px",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.016735,
+      "bound": 0.0229575,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native M object 2.0 px",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.003207,
+      "bound": 0.00903,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native M object 4.0 px",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.014909,
+      "bound": 0.0230295,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native M object 4.0 px",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.00513,
+      "bound": 0.008919999999999999,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native M object 8.0 px",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.01491,
+      "bound": 0.022998,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native M object 8.0 px",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.00668,
+      "bound": 0.008801999999999999,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native MS object 1.0 px, shadow 1.0 px",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.017605,
+      "bound": 0.0227985,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native MS object 1.0 px, shadow 1.0 px",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.003018,
+      "bound": 0.009094999999999999,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native MS object 2.0 px, shadow 1.0 px",
+      "metric": "band grain",
+      "comparison": "<=",
+      "actual": 0.016745,
+      "bound": 0.022938,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native MS object 2.0 px, shadow 1.0 px",
+      "metric": "tail error",
+      "comparison": "<=",
+      "actual": 0.003424,
+      "bound": 0.009017,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality still",
+      "metric": "shadow band error",
+      "comparison": "<=",
+      "actual": 0.0058,
+      "bound": 0.00627,
+      "baseline": 0.0057,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality still",
+      "metric": "shadow control error",
+      "comparison": "<=",
+      "actual": 0.0052,
+      "bound": 0.00572,
+      "baseline": 0.0052,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality still",
+      "metric": "band textured grain lower",
+      "comparison": ">=",
+      "actual": 0.0168,
+      "bound": 0.01386,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality still",
+      "metric": "far textured grain lower",
+      "comparison": ">=",
+      "actual": 0.0171,
+      "bound": 0.014310000000000002,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality 1.00 px advancing",
+      "metric": "shadow tail error",
+      "comparison": "<=",
+      "actual": 0.0031,
+      "bound": 0.00805,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality 1.00 px advancing",
+      "metric": "shadow band error",
+      "comparison": "<=",
+      "actual": 0.0186,
+      "bound": 0.038,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality 1.00 px retreating",
+      "metric": "shadow tail error",
+      "comparison": "<=",
+      "actual": 0.0076,
+      "bound": 0.011025,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Quality 1.00 px retreating",
+      "metric": "shadow band error",
+      "comparison": "<=",
+      "actual": 0.0228,
+      "bound": 0.038,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native still",
+      "metric": "shadow band error",
+      "comparison": "<=",
+      "actual": 0.0044,
+      "bound": 0.0048400000000000006,
+      "baseline": 0.0044,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native still",
+      "metric": "shadow control error",
+      "comparison": "<=",
+      "actual": 0.0039,
+      "bound": 0.00429,
+      "baseline": 0.0039,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native still",
+      "metric": "band textured grain lower",
+      "comparison": ">=",
+      "actual": 0.0168,
+      "bound": 0.01386,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native still",
+      "metric": "far textured grain lower",
+      "comparison": ">=",
+      "actual": 0.0172,
+      "bound": 0.014310000000000002,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native 1.00 px advancing",
+      "metric": "shadow tail error",
+      "comparison": "<=",
+      "actual": 0.0032,
+      "bound": 0.006125,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "Native 1.00 px retreating",
+      "metric": "shadow tail error",
+      "comparison": "<=",
+      "actual": 0.0055,
+      "bound": 0.0075250000000000004,
+      "baseline": null,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "stable detail Quality pan 0.3 px",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.01444,
+      "bound": 0.015928,
+      "baseline": 0.01448,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "stable detail Quality pan 0.3 px",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.00608,
+      "bound": 0.006699,
+      "baseline": 0.00609,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "stable detail Quality pan 0.8 px",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.01345,
+      "bound": 0.014795,
+      "baseline": 0.01345,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "stable detail Quality pan 0.8 px",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.01413,
+      "bound": 0.015543000000000001,
+      "baseline": 0.01413,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "stable detail Native pan 0.3 px",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.01156,
+      "bound": 0.012738000000000001,
+      "baseline": 0.01158,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "stable detail Native pan 0.3 px",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.00526,
+      "bound": 0.005786,
+      "baseline": 0.00526,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "stable detail Native pan 0.8 px",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.01059,
+      "bound": 0.011649000000000001,
+      "baseline": 0.01059,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "stable detail Native pan 0.8 px",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.01187,
+      "bound": 0.013057000000000001,
+      "baseline": 0.01187,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "stable detail Quality still, 1 px texels",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.0055,
+      "bound": 0.005874000000000001,
+      "baseline": 0.00534,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "stable detail Quality still, 1 px texels",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.00112,
+      "bound": 0.001155,
+      "baseline": 0.00105,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "stable detail Quality still, 0.5 px texels",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.00723,
+      "bound": 0.00792,
+      "baseline": 0.0072,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "stable detail Quality still, 0.5 px texels",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.00097,
+      "bound": 0.001034,
+      "baseline": 0.00094,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "stable peak Quality flat",
+      "metric": "change",
+      "comparison": "<=",
+      "actual": 0.00204,
+      "bound": 0.0022440000000000003,
+      "baseline": 0.00204,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "stable peak Quality flat",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.01502,
+      "bound": 0.016522000000000002,
+      "baseline": 0.01502,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "stable peak Quality textured",
+      "metric": "change",
+      "comparison": "<=",
+      "actual": 0.00237,
+      "bound": 0.0026070000000000004,
+      "baseline": 0.00237,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "stable peak Quality textured",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.01544,
+      "bound": 0.01694,
+      "baseline": 0.0154,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "stable peak Native flat",
+      "metric": "change",
+      "comparison": "<=",
+      "actual": 0.00134,
+      "bound": 0.0014740000000000003,
+      "baseline": 0.00134,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "stable peak Native flat",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.01149,
+      "bound": 0.012639000000000001,
+      "baseline": 0.01149,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "stable peak Native textured",
+      "metric": "change",
+      "comparison": "<=",
+      "actual": 0.0015,
+      "bound": 0.001628,
+      "baseline": 0.00148,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "stable peak Native textured",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.01278,
+      "bound": 0.014102000000000002,
+      "baseline": 0.01282,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 45deg 2h pan0.0",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.002314,
+      "bound": 0.0025459500000000004,
+      "baseline": 0.002314,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 45deg 2h pan0.0",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.0003,
+      "bound": 0.00033055,
+      "baseline": 0.0003,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 45deg 2h pan0.0",
+      "metric": "change",
+      "comparison": "<=",
+      "actual": 0.0003,
+      "bound": 0.00033055,
+      "baseline": 0.0003,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 45deg 2h pan0.0",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "diagonal Quality 45deg 2h pan0.3",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.00547,
+      "bound": 0.00601865,
+      "baseline": 0.005471,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 45deg 2h pan0.3",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.003125,
+      "bound": 0.0034380500000000007,
+      "baseline": 0.003125,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 45deg 2h pan0.3",
+      "metric": "change",
+      "comparison": "<=",
+      "actual": 0.001025,
+      "bound": 0.0011280500000000002,
+      "baseline": 0.001025,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 45deg 2h pan0.3",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.003729,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "diagonal Quality 45deg 5h pan0.0",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.004358,
+      "bound": 0.004791050000000001,
+      "baseline": 0.004355,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 45deg 5h pan0.0",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.000803,
+      "bound": 0.00088165,
+      "baseline": 0.000801,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 45deg 5h pan0.0",
+      "metric": "change",
+      "comparison": "<=",
+      "actual": 0.000803,
+      "bound": 0.00088165,
+      "baseline": 0.000801,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 45deg 5h pan0.0",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "diagonal Quality 45deg 5h pan0.3",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.011523,
+      "bound": 0.012675850000000002,
+      "baseline": 0.011523,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 45deg 5h pan0.3",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.007444,
+      "bound": 0.00818895,
+      "baseline": 0.007444,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 45deg 5h pan0.3",
+      "metric": "change",
+      "comparison": "<=",
+      "actual": 0.001805,
+      "bound": 0.00198605,
+      "baseline": 0.001805,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 45deg 5h pan0.3",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.008811,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "diagonal Quality 45deg 10h pan0.0",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.010566,
+      "bound": 0.010770650000000001,
+      "baseline": 0.009791,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 45deg 10h pan0.0",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.002294,
+      "bound": 0.0025096500000000004,
+      "baseline": 0.002281,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 45deg 10h pan0.0",
+      "metric": "change",
+      "comparison": "<=",
+      "actual": 0.002294,
+      "bound": 0.0025096500000000004,
+      "baseline": 0.002281,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 45deg 10h pan0.0",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "diagonal Quality 45deg 10h pan0.3",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.022999,
+      "bound": 0.025253250000000005,
+      "baseline": 0.022957,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 45deg 10h pan0.3",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.014955,
+      "bound": 0.01643785,
+      "baseline": 0.014943,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 45deg 10h pan0.3",
+      "metric": "change",
+      "comparison": "<=",
+      "actual": 0.003408,
+      "bound": 0.0037658500000000003,
+      "baseline": 0.003423,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 45deg 10h pan0.3",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.017454,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "diagonal Quality 30deg 2h pan0.0",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.0021,
+      "bound": 0.00231055,
+      "baseline": 0.0021,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 30deg 2h pan0.0",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.000292,
+      "bound": 0.00032175000000000004,
+      "baseline": 0.000292,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 30deg 2h pan0.0",
+      "metric": "change",
+      "comparison": "<=",
+      "actual": 0.000292,
+      "bound": 0.00032175000000000004,
+      "baseline": 0.000292,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 30deg 2h pan0.0",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "diagonal Quality 30deg 2h pan0.3",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.004778,
+      "bound": 0.00525635,
+      "baseline": 0.004778,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 30deg 2h pan0.3",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.001986,
+      "bound": 0.0021851500000000003,
+      "baseline": 0.001986,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 30deg 2h pan0.3",
+      "metric": "change",
+      "comparison": "<=",
+      "actual": 0.001098,
+      "bound": 0.0012083500000000002,
+      "baseline": 0.001098,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 30deg 2h pan0.3",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.002704,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "diagonal Quality 30deg 5h pan0.0",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.004084,
+      "bound": 0.00449295,
+      "baseline": 0.004084,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 30deg 5h pan0.0",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.000696,
+      "bound": 0.0007661500000000001,
+      "baseline": 0.000696,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 30deg 5h pan0.0",
+      "metric": "change",
+      "comparison": "<=",
+      "actual": 0.000696,
+      "bound": 0.0007661500000000001,
+      "baseline": 0.000696,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 30deg 5h pan0.0",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "diagonal Quality 30deg 5h pan0.3",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.009815,
+      "bound": 0.010797050000000002,
+      "baseline": 0.009815,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 30deg 5h pan0.3",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.004616,
+      "bound": 0.00507815,
+      "baseline": 0.004616,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 30deg 5h pan0.3",
+      "metric": "change",
+      "comparison": "<=",
+      "actual": 0.002106,
+      "bound": 0.00231715,
+      "baseline": 0.002106,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 30deg 5h pan0.3",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.006273,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "diagonal Quality 30deg 10h pan0.0",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.007766,
+      "bound": 0.008543150000000001,
+      "baseline": 0.007766,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 30deg 10h pan0.0",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.001385,
+      "bound": 0.00152405,
+      "baseline": 0.001385,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 30deg 10h pan0.0",
+      "metric": "change",
+      "comparison": "<=",
+      "actual": 0.001385,
+      "bound": 0.00152405,
+      "baseline": 0.001385,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 30deg 10h pan0.0",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "diagonal Quality 30deg 10h pan0.3",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.018766,
+      "bound": 0.020642050000000002,
+      "baseline": 0.018765,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 30deg 10h pan0.3",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.009141,
+      "bound": 0.010055650000000001,
+      "baseline": 0.009141,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 30deg 10h pan0.3",
+      "metric": "change",
+      "comparison": "<=",
+      "actual": 0.004049,
+      "bound": 0.0044544499999999996,
+      "baseline": 0.004049,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Quality 30deg 10h pan0.3",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.012444,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "diagonal Native 45deg 2h pan0.0",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.001124,
+      "bound": 0.0012369500000000001,
+      "baseline": 0.001124,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 45deg 2h pan0.0",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.000219,
+      "bound": 0.00024145000000000004,
+      "baseline": 0.000219,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 45deg 2h pan0.0",
+      "metric": "change",
+      "comparison": "<=",
+      "actual": 0.000219,
+      "bound": 0.00024145000000000004,
+      "baseline": 0.000219,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 45deg 2h pan0.0",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "diagonal Native 45deg 2h pan0.3",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.003265,
+      "bound": 0.0035920500000000003,
+      "baseline": 0.003265,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 45deg 2h pan0.3",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.001942,
+      "bound": 0.00213675,
+      "baseline": 0.001942,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 45deg 2h pan0.3",
+      "metric": "change",
+      "comparison": "<=",
+      "actual": 0.001058,
+      "bound": 0.00116435,
+      "baseline": 0.001058,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 45deg 2h pan0.3",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.002513,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "diagonal Native 45deg 5h pan0.0",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.001656,
+      "bound": 0.00182215,
+      "baseline": 0.001656,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 45deg 5h pan0.0",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.000519,
+      "bound": 0.00057145,
+      "baseline": 0.000519,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 45deg 5h pan0.0",
+      "metric": "change",
+      "comparison": "<=",
+      "actual": 0.000519,
+      "bound": 0.00057145,
+      "baseline": 0.000519,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 45deg 5h pan0.0",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "diagonal Native 45deg 5h pan0.3",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.006092,
+      "bound": 0.00670175,
+      "baseline": 0.006092,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 45deg 5h pan0.3",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.004392,
+      "bound": 0.00483175,
+      "baseline": 0.004392,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 45deg 5h pan0.3",
+      "metric": "change",
+      "comparison": "<=",
+      "actual": 0.001464,
+      "bound": 0.0016109500000000003,
+      "baseline": 0.001464,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 45deg 5h pan0.3",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.005409,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "diagonal Native 45deg 10h pan0.0",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.003332,
+      "bound": 0.0033511500000000007,
+      "baseline": 0.003046,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 45deg 10h pan0.0",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.001047,
+      "bound": 0.00113575,
+      "baseline": 0.001032,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 45deg 10h pan0.0",
+      "metric": "change",
+      "comparison": "<=",
+      "actual": 0.001047,
+      "bound": 0.00113575,
+      "baseline": 0.001032,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 45deg 10h pan0.0",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "diagonal Native 45deg 10h pan0.3",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.011386,
+      "bound": 0.012485550000000002,
+      "baseline": 0.01135,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 45deg 10h pan0.3",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.008615,
+      "bound": 0.00947155,
+      "baseline": 0.00861,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 45deg 10h pan0.3",
+      "metric": "change",
+      "comparison": "<=",
+      "actual": 0.002525,
+      "bound": 0.0027769500000000007,
+      "baseline": 0.002524,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 45deg 10h pan0.3",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0106,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "diagonal Native 30deg 2h pan0.0",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.001098,
+      "bound": 0.0012083500000000002,
+      "baseline": 0.001098,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 30deg 2h pan0.0",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.000193,
+      "bound": 0.00021285000000000002,
+      "baseline": 0.000193,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 30deg 2h pan0.0",
+      "metric": "change",
+      "comparison": "<=",
+      "actual": 0.000193,
+      "bound": 0.00021285000000000002,
+      "baseline": 0.000193,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 30deg 2h pan0.0",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "diagonal Native 30deg 2h pan0.3",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.002818,
+      "bound": 0.0031003500000000004,
+      "baseline": 0.002818,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 30deg 2h pan0.3",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.001216,
+      "bound": 0.0013381500000000002,
+      "baseline": 0.001216,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 30deg 2h pan0.3",
+      "metric": "change",
+      "comparison": "<=",
+      "actual": 0.00108,
+      "bound": 0.0011885500000000002,
+      "baseline": 0.00108,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 30deg 2h pan0.3",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.001929,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "diagonal Native 30deg 5h pan0.0",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.002095,
+      "bound": 0.0023050500000000003,
+      "baseline": 0.002095,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 30deg 5h pan0.0",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.000483,
+      "bound": 0.00053185,
+      "baseline": 0.000483,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 30deg 5h pan0.0",
+      "metric": "change",
+      "comparison": "<=",
+      "actual": 0.000483,
+      "bound": 0.00053185,
+      "baseline": 0.000483,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 30deg 5h pan0.0",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "diagonal Native 30deg 5h pan0.3",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.004927,
+      "bound": 0.00542025,
+      "baseline": 0.004927,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 30deg 5h pan0.3",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.002486,
+      "bound": 0.0027351500000000004,
+      "baseline": 0.002486,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 30deg 5h pan0.3",
+      "metric": "change",
+      "comparison": "<=",
+      "actual": 0.001647,
+      "bound": 0.0018122500000000003,
+      "baseline": 0.001647,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 30deg 5h pan0.3",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.003716,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "diagonal Native 30deg 10h pan0.0",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.004231,
+      "bound": 0.004654650000000001,
+      "baseline": 0.004231,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 30deg 10h pan0.0",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.000965,
+      "bound": 0.0010620500000000001,
+      "baseline": 0.000965,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 30deg 10h pan0.0",
+      "metric": "change",
+      "comparison": "<=",
+      "actual": 0.000965,
+      "bound": 0.0010620500000000001,
+      "baseline": 0.000965,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 30deg 10h pan0.0",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "diagonal Native 30deg 10h pan0.3",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.009083,
+      "bound": 0.009991850000000002,
+      "baseline": 0.009083,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 30deg 10h pan0.3",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.004849,
+      "bound": 0.00533445,
+      "baseline": 0.004849,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 30deg 10h pan0.3",
+      "metric": "change",
+      "comparison": "<=",
+      "actual": 0.002943,
+      "bound": 0.00323785,
+      "baseline": 0.002943,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "diagonal Native 30deg 10h pan0.3",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.007189,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Quality M 0.5 leading textured",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.015263,
+      "bound": 0.01679755,
+      "baseline": 0.01527,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 0.5 leading textured",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.010982,
+      "bound": 0.012097250000000002,
+      "baseline": 0.010997,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 0.5 leading textured",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.018493,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Quality M 0.5 leading flat",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.009361,
+      "bound": 0.01029765,
+      "baseline": 0.009361,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 0.5 leading flat",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.006199,
+      "bound": 0.0068194499999999995,
+      "baseline": 0.006199,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 0.5 leading flat",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Quality M 0.5 trailing textured",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.025585,
+      "bound": 0.03042875,
+      "baseline": 0.027662,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 0.5 trailing textured",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.016679,
+      "bound": 0.017824950000000003,
+      "baseline": 0.016204,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 0.5 trailing textured",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.018941,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Quality M 0.5 trailing flat",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.007445,
+      "bound": 0.00819005,
+      "baseline": 0.007445,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 0.5 trailing flat",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.005805,
+      "bound": 0.006386050000000001,
+      "baseline": 0.005805,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 0.5 trailing flat",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Quality M 1.0 leading textured",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.002667,
+      "bound": 0.00347875,
+      "baseline": 0.003162,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 1.0 leading textured",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.004144,
+      "bound": 0.0054224500000000005,
+      "baseline": 0.004929,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 1.0 leading textured",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.031805,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Quality M 1.0 leading flat",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.008298,
+      "bound": 0.00912835,
+      "baseline": 0.008298,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 1.0 leading flat",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.007899,
+      "bound": 0.008689450000000001,
+      "baseline": 0.007899,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 1.0 leading flat",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Quality M 1.0 trailing textured",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.008816,
+      "bound": 0.01092355,
+      "baseline": 0.00993,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 1.0 trailing textured",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.009033,
+      "bound": 0.00918115,
+      "baseline": 0.008346,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 1.0 trailing textured",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.035613,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Quality M 1.0 trailing flat",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.000223,
+      "bound": 0.00024585000000000004,
+      "baseline": 0.000223,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 1.0 trailing flat",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.000223,
+      "bound": 0.00024585000000000004,
+      "baseline": 0.000223,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 1.0 trailing flat",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Quality M 2.0 leading textured",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.008376,
+      "bound": 0.04732915000000001,
+      "baseline": 0.043026,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 2.0 leading textured",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.013691,
+      "bound": 0.052844550000000004,
+      "baseline": 0.04804,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 2.0 leading textured",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.062251,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Quality M 2.0 leading flat",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.006845,
+      "bound": 0.01201255,
+      "baseline": 0.01092,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 2.0 leading flat",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.007635,
+      "bound": 0.008905050000000001,
+      "baseline": 0.008095,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 2.0 leading flat",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.006865,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Quality M 2.0 trailing textured",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.013114,
+      "bound": 0.023002650000000003,
+      "baseline": 0.020911,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 2.0 trailing textured",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.017322,
+      "bound": 0.01982145,
+      "baseline": 0.018019,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 2.0 trailing textured",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.056161,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Quality M 2.0 trailing flat",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.00097,
+      "bound": 0.00106755,
+      "baseline": 0.00097,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 2.0 trailing flat",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.000974,
+      "bound": 0.0010719500000000001,
+      "baseline": 0.000974,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 2.0 trailing flat",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Quality M 4.0 leading textured",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.012196,
+      "bound": 0.023595550000000003,
+      "baseline": 0.02145,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 4.0 leading textured",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.020961,
+      "bound": 0.030488150000000006,
+      "baseline": 0.027716,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 4.0 leading textured",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.064964,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Quality M 4.0 leading flat",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.004934,
+      "bound": 0.007975550000000001,
+      "baseline": 0.00725,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 4.0 leading flat",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.01515,
+      "bound": 0.018791850000000002,
+      "baseline": 0.017083,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 4.0 leading flat",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.031935,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Quality M 4.0 trailing textured",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.014435,
+      "bound": 0.01911855,
+      "baseline": 0.01738,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 4.0 trailing textured",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.02264,
+      "bound": 0.027266250000000002,
+      "baseline": 0.024787,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 4.0 trailing textured",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.066151,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Quality M 4.0 trailing flat",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.000272,
+      "bound": 0.00029975000000000005,
+      "baseline": 0.000272,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 4.0 trailing flat",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.000295,
+      "bound": 0.00032505000000000007,
+      "baseline": 0.000295,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 4.0 trailing flat",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Quality M 8.0 leading textured",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.013075,
+      "bound": 0.024300650000000003,
+      "baseline": 0.022091,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 8.0 leading textured",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.013844,
+      "bound": 0.024101550000000003,
+      "baseline": 0.02191,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 8.0 leading textured",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.066298,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Quality M 8.0 leading flat",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.002919,
+      "bound": 0.00486695,
+      "baseline": 0.004424,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 8.0 leading flat",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.002939,
+      "bound": 0.00515295,
+      "baseline": 0.004684,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 8.0 leading flat",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0882,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Quality M 8.0 trailing textured",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.01236,
+      "bound": 0.018250650000000004,
+      "baseline": 0.016591,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 8.0 trailing textured",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.019832,
+      "bound": 0.026311450000000004,
+      "baseline": 0.023919,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 8.0 trailing textured",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.063139,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Quality M 8.0 trailing flat",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.000966,
+      "bound": 0.00106315,
+      "baseline": 0.000966,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 8.0 trailing flat",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.00097,
+      "bound": 0.00106755,
+      "baseline": 0.00097,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality M 8.0 trailing flat",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Quality MS 1.0 leading textured",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.00254,
+      "bound": 0.005171650000000001,
+      "baseline": 0.004701,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality MS 1.0 leading textured",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.004942,
+      "bound": 0.009511150000000001,
+      "baseline": 0.008646,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality MS 1.0 leading textured",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.031809,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Quality MS 1.0 leading flat",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.007375,
+      "bound": 0.00811305,
+      "baseline": 0.007375,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality MS 1.0 leading flat",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.010596,
+      "bound": 0.01165615,
+      "baseline": 0.010596,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality MS 1.0 leading flat",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.008146,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Quality MS 1.0 trailing textured",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.007276,
+      "bound": 0.01196195,
+      "baseline": 0.010874,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality MS 1.0 trailing textured",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.009682,
+      "bound": 0.014418250000000002,
+      "baseline": 0.013107,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality MS 1.0 trailing textured",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.038602,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Quality MS 1.0 trailing flat",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.000292,
+      "bound": 0.00032175000000000004,
+      "baseline": 0.000292,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality MS 1.0 trailing flat",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.000382,
+      "bound": 0.00042075000000000006,
+      "baseline": 0.000382,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality MS 1.0 trailing flat",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Quality MS 2.0 leading textured",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.007294,
+      "bound": 0.06440995000000001,
+      "baseline": 0.058554,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality MS 2.0 leading textured",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.01293,
+      "bound": 0.06783535,
+      "baseline": 0.061668,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality MS 2.0 leading textured",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.062246,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Quality MS 2.0 leading flat",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.004954,
+      "bound": 0.010067750000000002,
+      "baseline": 0.009152,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality MS 2.0 leading flat",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.006983,
+      "bound": 0.01034605,
+      "baseline": 0.009405,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality MS 2.0 leading flat",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.013942,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Quality MS 2.0 trailing textured",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.012344,
+      "bound": 0.026587550000000005,
+      "baseline": 0.02417,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality MS 2.0 trailing textured",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.016819,
+      "bound": 0.02507065,
+      "baseline": 0.022791,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality MS 2.0 trailing textured",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.05859,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Quality MS 2.0 trailing flat",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.001078,
+      "bound": 0.00118635,
+      "baseline": 0.001078,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality MS 2.0 trailing flat",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.001088,
+      "bound": 0.0011973500000000002,
+      "baseline": 0.001088,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Quality MS 2.0 trailing flat",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Native M 0.5 leading textured",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.012528,
+      "bound": 0.013858350000000002,
+      "baseline": 0.012598,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 0.5 leading textured",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.009781,
+      "bound": 0.010794850000000002,
+      "baseline": 0.009813,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 0.5 leading textured",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.018493,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Native M 0.5 leading flat",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.007559,
+      "bound": 0.011118250000000001,
+      "baseline": 0.010107,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 0.5 leading flat",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.005717,
+      "bound": 0.00641025,
+      "baseline": 0.005827,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 0.5 leading flat",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Native M 0.5 trailing textured",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.0178,
+      "bound": 0.02232725,
+      "baseline": 0.020297,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 0.5 trailing textured",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.013478,
+      "bound": 0.014878050000000002,
+      "baseline": 0.013525,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 0.5 trailing textured",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.018941,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Native M 0.5 trailing flat",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.000904,
+      "bound": 0.00099495,
+      "baseline": 0.000904,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 0.5 trailing flat",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.000991,
+      "bound": 0.00109065,
+      "baseline": 0.000991,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 0.5 trailing flat",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Native M 1.0 leading textured",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.003469,
+      "bound": 0.00421465,
+      "baseline": 0.003831,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 1.0 leading textured",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.003691,
+      "bound": 0.0046403500000000006,
+      "baseline": 0.004218,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 1.0 leading textured",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.031805,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Native M 1.0 leading flat",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.006172,
+      "bound": 0.00766975,
+      "baseline": 0.006972,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 1.0 leading flat",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.005585,
+      "bound": 0.00776985,
+      "baseline": 0.007063,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 1.0 leading flat",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Native M 1.0 trailing textured",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.007513,
+      "bound": 0.009713550000000001,
+      "baseline": 0.00883,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 1.0 trailing textured",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.007945,
+      "bound": 0.010597950000000002,
+      "baseline": 0.009634,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 1.0 trailing textured",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.035613,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Native M 1.0 trailing flat",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 5.7e-05,
+      "bound": 6.325e-05,
+      "baseline": 5.7e-05,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 1.0 trailing flat",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 5.7e-05,
+      "bound": 6.325e-05,
+      "baseline": 5.7e-05,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 1.0 trailing flat",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Native M 2.0 leading textured",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.003117,
+      "bound": 0.014941850000000001,
+      "baseline": 0.013583,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 2.0 leading textured",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.005055,
+      "bound": 0.020229550000000002,
+      "baseline": 0.01839,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 2.0 leading textured",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.062251,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Native M 2.0 leading flat",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.004518,
+      "bound": 0.01111055,
+      "baseline": 0.0101,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 2.0 leading flat",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.005149,
+      "bound": 0.009194350000000002,
+      "baseline": 0.008358,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 2.0 leading flat",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.006865,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Native M 2.0 trailing textured",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.006576,
+      "bound": 0.013686750000000001,
+      "baseline": 0.012442,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 2.0 trailing textured",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.00901,
+      "bound": 0.013906750000000002,
+      "baseline": 0.012642,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 2.0 trailing textured",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.056161,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Native M 2.0 trailing flat",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 5.7e-05,
+      "bound": 6.325e-05,
+      "baseline": 5.7e-05,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 2.0 trailing flat",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 5.7e-05,
+      "bound": 6.325e-05,
+      "baseline": 5.7e-05,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 2.0 trailing flat",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Native M 4.0 leading textured",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.005152,
+      "bound": 0.009741050000000001,
+      "baseline": 0.008855,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 4.0 leading textured",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.007818,
+      "bound": 0.011386650000000002,
+      "baseline": 0.010351,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 4.0 leading textured",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.064964,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Native M 4.0 leading flat",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.003686,
+      "bound": 0.005869050000000001,
+      "baseline": 0.005335,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 4.0 leading flat",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.004113,
+      "bound": 0.00588555,
+      "baseline": 0.00535,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 4.0 leading flat",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.031935,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Native M 4.0 trailing textured",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.006478,
+      "bound": 0.009052450000000002,
+      "baseline": 0.008229,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 4.0 trailing textured",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.009546,
+      "bound": 0.011122650000000001,
+      "baseline": 0.010111,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 4.0 trailing textured",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.066151,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Native M 4.0 trailing flat",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 2.8e-05,
+      "bound": 3.135e-05,
+      "baseline": 2.8e-05,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 4.0 trailing flat",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 2.4e-05,
+      "bound": 2.695e-05,
+      "baseline": 2.4e-05,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 4.0 trailing flat",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Native M 8.0 leading textured",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.006634,
+      "bound": 0.01220615,
+      "baseline": 0.011096,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 8.0 leading textured",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.007483,
+      "bound": 0.012197350000000003,
+      "baseline": 0.011088,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 8.0 leading textured",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.066298,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Native M 8.0 leading flat",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.003057,
+      "bound": 0.00484165,
+      "baseline": 0.004401,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 8.0 leading flat",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.003117,
+      "bound": 0.005158449999999999,
+      "baseline": 0.004689,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 8.0 leading flat",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0882,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Native M 8.0 trailing textured",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.00624,
+      "bound": 0.009183350000000002,
+      "baseline": 0.008348,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 8.0 trailing textured",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.009097,
+      "bound": 0.011284350000000002,
+      "baseline": 0.010258,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 8.0 trailing textured",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.063139,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Native M 8.0 trailing flat",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 7.7e-05,
+      "bound": 8.525000000000001e-05,
+      "baseline": 7.7e-05,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 8.0 trailing flat",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 5.7e-05,
+      "bound": 6.325e-05,
+      "baseline": 5.7e-05,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native M 8.0 trailing flat",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Native MS 1.0 leading textured",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.003239,
+      "bound": 0.00459195,
+      "baseline": 0.004174,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native MS 1.0 leading textured",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.003857,
+      "bound": 0.00585695,
+      "baseline": 0.005324,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native MS 1.0 leading textured",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.031809,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Native MS 1.0 leading flat",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.004805,
+      "bound": 0.0059625500000000005,
+      "baseline": 0.00542,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native MS 1.0 leading flat",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.007491,
+      "bound": 0.009005150000000002,
+      "baseline": 0.008186,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native MS 1.0 leading flat",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.008146,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Native MS 1.0 trailing textured",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.006261,
+      "bound": 0.010483550000000001,
+      "baseline": 0.00953,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native MS 1.0 trailing textured",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.008651,
+      "bound": 0.014038750000000003,
+      "baseline": 0.012762,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native MS 1.0 trailing textured",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.038602,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Native MS 1.0 trailing flat",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.00014,
+      "bound": 0.00015455000000000002,
+      "baseline": 0.00014,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native MS 1.0 trailing flat",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.000128,
+      "bound": 0.00014135000000000002,
+      "baseline": 0.000128,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native MS 1.0 trailing flat",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Native MS 2.0 leading textured",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.003379,
+      "bound": 0.025439150000000004,
+      "baseline": 0.023126,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native MS 2.0 leading textured",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.00558,
+      "bound": 0.03286855,
+      "baseline": 0.02988,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native MS 2.0 leading textured",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.062246,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Native MS 2.0 leading flat",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.003808,
+      "bound": 0.010470350000000002,
+      "baseline": 0.009518,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native MS 2.0 leading flat",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.006276,
+      "bound": 0.011729850000000002,
+      "baseline": 0.010663,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native MS 2.0 leading flat",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.013942,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Native MS 2.0 trailing textured",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.005989,
+      "bound": 0.016442250000000002,
+      "baseline": 0.014947,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native MS 2.0 trailing textured",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.009372,
+      "bound": 0.018532250000000004,
+      "baseline": 0.016847,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native MS 2.0 trailing textured",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.05859,
+      "printedComparison": "borderline"
+    },
+    {
+      "case": "rim Native MS 2.0 trailing flat",
+      "metric": "error",
+      "comparison": "<=",
+      "actual": 0.00014,
+      "bound": 0.00015455000000000002,
+      "baseline": 0.00014,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native MS 2.0 trailing flat",
+      "metric": "temporal error",
+      "comparison": "<=",
+      "actual": 0.000128,
+      "bound": 0.00014135000000000002,
+      "baseline": 0.000128,
+      "printedComparison": "pass"
+    },
+    {
+      "case": "rim Native MS 2.0 trailing flat",
+      "metric": "reference change",
+      "comparison": "<=",
+      "actual": 0.0,
+      "bound": 1e-06,
+      "baseline": 0.0,
+      "printedComparison": "borderline"
+    }
+  ]
+}

@@ -102,7 +102,7 @@ should be designed against all temporal correctness tests before accepting a thr
 The final Metal correctness run selected all temporal facts except the resolve and outline timing benchmarks.
 It ran 918 tests with zero skips, 907 passed and 11 failed. In addition to the focused filter's nine failures,
 Quality upscaling loses 1.2-pixel bar contrast (0.413 against 0.500) and the Quality M 1 trailing textured rim
-has temporal error 0.008895 against 0.008060 plus a tenth (0.008866). No assertion was loosened.
+has temporal error 0.008895 against 0.008060 plus a tenth (0.00886655, including its existing rounding allowance). No assertion was loosened.
 The complete list is [local-gpu-failures.json](local-gpu-failures.json), with all metrics and assertions in
 [the Metal log](logs/full-temporal-metal.txt).
 
@@ -121,6 +121,21 @@ that these candidate failures are regressions. No fourth candidate was introduce
 Metal run (SHA-256 in [verification.json](verification.json)). A 74-fact follow-up passed all tuning mirrors,
 entry identity, direct luma-lock cases and the added shared-scene parity fact. The added parity fact passed
 with both the original and candidate shaders. The final added-test format check also exits zero.
+
+## Historical backend comparison
+
+The successful [21.4.0 release gate 39076952301](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39076952301)
+ran at exact tag commit `4e05462bec95cd49e47c5592c1ce8c0fcb004f4d`. Its passed moving-shading fact retains all 38
+cases on each backend in the TRX artifacts. [before-21.4-moving.json](before-21.4-moving.json) preserves their
+summary rows, and the `before-21.4-*-moving.txt` logs preserve the full measurement output. The archived values
+have four decimal places. They are independent release measurements, not a rerun or a new workflow dispatch.
+
+The [guard-value exports](guard-values/) list each printed measurement against its bound, including per-device
+baselines where the tests already distinguish hardware, WARP and lavapipe. Each backend has 394 quality-guard
+rows covering synthetic grain, new lighting cases, moving shadow bands and tails, the original shadow-edge test,
+stable detail, stable peaks, diagonal detail and moving rims. Printed borderline rows defer to the test's
+unrounded assertions. The raw grain metric includes legitimate texture grain, so it is reviewed alongside the
+error-image grain and the fidelity guards, not used as a sole acceptance signal.
 
 ## Texture fetch cost
 
@@ -156,12 +171,11 @@ KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native build-slot --heavy --label grain
 The initial three-fact baseline filter covered the new textured case, `TemporalTextureLightGpuTests` and
 `TemporalMovingShadeLagGpuTests`. The candidate filter added `TemporalStableDetailGpuTests`,
 `TemporalStablePeakGpuTests`, `TemporalResolveShaderTests`, `TemporalEntryIdentityGpuTests`,
-`TemporalResolveLockGpuTests` and `TemporalResolveLumaLockGpuTests`. Full commands, assertions and metrics are in
-[logs](logs/). The full temporal correctness filter excludes the separately timed resolve and outline cost benchmarks.
+`TemporalResolveLockGpuTests` and `TemporalResolveLumaLockGpuTests`. The [command record](commands.md) lists the invocations, and [logs](logs/) retain assertions and metrics. The full temporal correctness filter excludes the separately timed resolve and outline cost benchmarks.
 
 ## Verification record
 
 [verification.json](verification.json) records every local exit code and count. The whole-solution format failure
 is pre-existing and separate from the candidate's GPU failures. This branch remains blocked from integration.
-The hosted matrix result will be appended after pushing the checkpoint. No private-feed package, real-scene
+Hosted run [39119425055](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39119425055) tests candidate commit `507f0d135`. Its results will be appended when it finishes. No private-feed package, real-scene
 capture or game repin is justified by these red correctness guards.

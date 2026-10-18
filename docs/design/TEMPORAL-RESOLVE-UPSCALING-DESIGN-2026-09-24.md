@@ -1204,7 +1204,7 @@ and changed these details. Its contract amendment blocks carry the evidence.
     retains the mechanism, all measured candidates, full guard logs and archive real-scene reference values.
     The full local Metal correctness run subsequently passed 907 of 918 facts with zero skips, adding failures
     in Quality 1.2-pixel bar contrast (0.413 against 0.500) and the Quality M 1 trailing textured rim's temporal
-    error (0.008895 against 0.008866). Timing benchmark classes were excluded. The full headless suite passed
+    error (0.008895 against 0.00886655). Timing benchmark classes were excluded. The full headless suite passed
     35,343 facts with 1,426 skips and no failures. No candidate was packed or adopted by a consumer after these failures. A revised shading-evidence design
     must preserve missed thin features, reject another surface's evidence near depth boundaries, and avoid the
     retreating-shadow texture reconvergence cost before a fourth candidate or production adoption. The earlier

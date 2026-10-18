@@ -67,6 +67,36 @@
   "probeRepin": "not performed",
   "probeExistingCommit": "8cfdd814a92940b78e982c1bfb6e8fc8bef67755",
   "probeExistingCommitMatchesRemote": true,
-  "hostedGpu": "pending branch push",
+  "hostedGpu": {
+    "runId": 39119425055,
+    "status": "in_progress",
+    "url": "https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39119425055",
+    "commit": "507f0d1357c10a8712aef46ce596547dbebac79d",
+    "dispatchCount": 1,
+    "backends": {
+      "metal-native": {
+        "status": "failure",
+        "deviceClass": "hardware",
+        "counts": {
+          "Passed": 908,
+          "Failed": 11,
+          "Skipped": 0,
+          "Total tests": 919
+        },
+        "qualityGuardRows": 394
+      },
+      "direct3d11-native": {
+        "status": "failure",
+        "deviceClass": "WARP",
+        "counts": {
+          "Passed": 908,
+          "Failed": 11,
+          "Skipped": 0,
+          "Total tests": 919
+        },
+        "qualityGuardRows": 394
+      }
+    }
+  },
   "timingBenchmarks": "not run"
 }

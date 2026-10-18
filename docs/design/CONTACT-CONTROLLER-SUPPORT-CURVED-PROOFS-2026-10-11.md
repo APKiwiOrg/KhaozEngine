@@ -366,6 +366,25 @@ remain in the published hull. The original maximum and the walkable replacement 
 The member's maximum bounds the unrestricted height. The footprint role carries the replacement
 when the certified walkable region is nonempty, retaining an exact normal Y at the slope boundary.
 
+CF-3 retains a signed source identity for each original disc-lateral endpoint. For sign s equal
+to -1 or +1, the candidate is created only by `z=(s*disc-Q)/R` and retains `Q+R*z=s*disc`.
+Its original quotient enclosure is not clipped into the circle domain. Since R is positive,
+source signs of `s*disc-Q+R` and `R-(s*disc-Q)` certify `-1 <= z <= 1` for every represented
+source. A strictly outside root is absent. An undecided domain does not establish attainment.
+The defining equation proves `disc*disc-(Q+R*z)^2=0`, hence transverse extent is exactly zero.
+Reconstructing the quotient with independent intervals and subtracting two enclosures of the
+same squared quantity would lose this identity and cannot be used as an absence proof.
+
+For a proved endpoint, evaluate `v=sqrt(1-z*z)` through source arithmetic. Its only possible
+axial coordinate is `t=(R*k*v-P)/u`, with positive u. Source signs of
+`R*k*v-P+u*H` and `u*H-(R*k*v-P)` certify the two finite-axis bounds. The original source
+normal is `w*v+f*z`, with Y equal to `u*v`. A source sign of `u*v-c` certifies slope, including
+equality. Only the joint domain, finite-axis and slope certificate makes this endpoint attained.
+The certificate preserves the tiny signed installed Y and original normal enclosures. It supplies
+the maximum's lower bound while possible stationary regions retain the enclosing upper bound.
+It grants no attainment to a merely possible stationary region, clipped root or nearby pole.
+Unproved relevant predicates still refuse atomically within the existing cell and candidate bounds.
+
 Caps enumerate their crest, the disc uphill point and both signed rim crossings. Capsule ends
 keep the sphere's nearest-point solve and its original hemisphere predicate. The finite barrel
 covers the seams. Axis parameters clear the common normalization denominator before testing the

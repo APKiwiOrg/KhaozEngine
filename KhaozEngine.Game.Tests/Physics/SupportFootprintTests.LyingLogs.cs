@@ -1,0 +1,279 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
+using KhaozEngine.Locomotion.Contacts;
+using KhaozEngine.Physics;
+using KhaozEngine.Physics.Bepu;
+using Xunit;
+using Proof = KhaozEngine.Tests.Physics.SupportFootprintCurvedProofOracle;
+using R = KhaozEngine.Tests.Physics.InstalledPoseOracle.R;
+
+namespace KhaozEngine.Tests.Physics;
+
+public partial class SupportFootprintTests
+{
+    public static IEnumerable<object[]> LyingLogRows()
+    {
+        foreach (bool capsule in new[] { false, true })
+            foreach (float radius in new[] { 0.1f, 0.15f, 0.3f })
+                foreach (bool aboutX in new[] { false, true })
+                    foreach (int sign in new[] { -1, 1 })
+                        yield return [capsule, radius, aboutX, sign];
+    }
+
+    [Theory]
+    [MemberData(nameof(LyingLogRows))]
+    public void LyingLogFlankSupportsWithInstalledPoseOracle(bool capsule, float radius, bool aboutX, int sign)
+    {
+        for (int rebuild = 0; rebuild < 2; rebuild++)
+        {
+            using var scene = new SupportFootprintScene();
+            scene.Install(new BoxShape(new(2, 0.1f, 2)), Pose.At(new(0, -0.1f, 0)));
+            Quaternion rotation = Quaternion.CreateFromAxisAngle(aboutX ? Vector3.UnitX : Vector3.UnitZ, MathF.PI / 2);
+            StaticHandle owner = InstallLyingLog(scene, capsule, radius, rotation);
+            var query = LyingLogQuery(radius, aboutX, sign * 0.25f);
+            var request = FootSupport.DescribeFootprint(query);
+            var source = Proof.Installed(scene.World, owner)[0];
+            Assert.NotEqual(R.Zero, source.Axis.Y.Lower);
+            Assert.InRange(Math.Abs(source.Tangent.Axis.Y), 0, 1e-6);
+            var expected = SupportFootprintOracle.Select(Members(scene, request), request);
+            Assert.Equal(owner, expected.Static);
+            using var lease = scene.World.AcquireQueryReadLease();
+            foreach (bool reference in new[] { false, true })
+            {
+                using IDisposable? evaluation = reference ? SupportReferenceEvaluation.Begin() : null;
+                Check(FootSupport.Find(null, scene.World, lease, query));
+                Check(FootSupport.Find(null, scene.World, lease, query));
+                FootSupport.Find(null, scene.World, lease, query with { Axis = new(0.07f, -0.03f) });
+                Check(FootSupport.Find(null, scene.World, lease, query));
+                CheckLyingLogParts(scene, owner, request, lease: lease);
+            }
+
+            void Check(SupportSample sample)
+            {
+                Assert.Equal(SupportStatus.Walkable, sample.Status);
+                Assert.Equal(owner, sample.Static);
+                Assert.Equal(expected.ElementId, sample.FeatureId);
+                Assert.True((double)sample.Height - sample.HeightError <= expected.HeightLower);
+                Assert.True((double)sample.Height + sample.HeightError >= expected.HeightUpper);
+                Assert.InRange(sample.HeightError, 0f, 0.0005f);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void LyingLogExactHorizontalAndSphereControls(int shape)
+    {
+        using var scene = new SupportFootprintScene();
+        StaticHandle owner = shape == 2 ? scene.Install(new SphereShape(0.15f), Pose.At(new(0, 0.15f, 0))) :
+            InstallLyingLog(scene, shape == 1, 0.15f, new Quaternion(0.5f, 0.5f, 0.5f, 0.5f));
+        var query = LyingLogQuery(0.15f, true, 0.25f);
+        var request = FootSupport.DescribeFootprint(query);
+        var expected = SupportFootprintOracle.Select(Members(scene, request), request);
+        Assert.InRange(expected.Height, 0.22071069, 0.22071072);
+        using var lease = scene.World.AcquireQueryReadLease();
+        var sample = FootSupport.Find(null, scene.World, lease, query);
+        Assert.Equal(SupportStatus.Walkable, sample.Status);
+        Assert.Equal(owner, sample.Static);
+        Assert.True((double)sample.Height - sample.HeightError <= expected.HeightLower);
+        Assert.True((double)sample.Height + sample.HeightError >= expected.HeightUpper);
+        CheckLyingLogParts(scene, owner, request, horizontal: true, lease: lease);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void LyingLogBoundaryIdentityDoesNotCertifyAClippedOrUnprovedRoot(bool aboutX)
+    {
+        foreach (float angle in new[] { MathF.PI / 2, MathF.BitDecrement(MathF.PI / 2),
+            MathF.BitIncrement(MathF.PI / 2), MathF.PI / 2 - 0.000001f, MathF.PI / 2 + 0.000001f })
+        {
+            using var scene = new SupportFootprintScene();
+            Quaternion rotation = Quaternion.CreateFromAxisAngle(aboutX ? Vector3.UnitX : Vector3.UnitZ, angle);
+            StaticHandle owner = InstallLyingLog(scene, false, 0.15f, rotation);
+            var simulation = SimulationOf(scene.World);
+            simulation.Statics.GetDescription(HandlesOf(scene.World)[owner.Value].Handle, out var description);
+            var leaves = new List<SupportCurvedLeaf>();
+            Assert.Equal(CapsuleFeatureStatus.Complete,
+                SupportNeighborhoodCurved.Capture(simulation, description.Shape, description.Pose, leaves));
+            foreach (int sign in new[] { -1, 1 })
+            {
+                var query = LyingLogQuery(0.15f, aboutX, sign * 0.25f);
+                var request = FootSupport.DescribeFootprint(query);
+                var geometry = new SupportTiltedCurvedGeometry();
+                Assert.True(geometry.Begin(Assert.Single(leaves), query.Axis.X, query.Axis.Y, 0.2f));
+                Assert.Equal(GeometrySign.Positive, geometry.Side(query.CosMaxSlope, out _, out var maximum));
+                Assert.True(maximum.IsResolved && double.IsFinite(maximum.Lower) && double.IsFinite(maximum.Upper));
+                var source = Proof.Installed(scene.World, owner)[0];
+                var reference = SupportFootprintOracle.Curved(source.Tangent, request)!;
+                var reading = SupportFootprintTiltedOracle.Enclose(source, reference.GeometricMaximum!.Value, request, false);
+                ContainsCurvedBounds(maximum.Lower, maximum.Upper, reading.Position.Y);
+                // Both lateral roots are outside the barrel here. Clipping one to a pole
+                // must not confer the source equation or invent a feasible side point.
+                Assert.True(geometry.Begin(leaves[0], aboutX ? sign : 0, aboutX ? 0 : sign, 0.2f));
+                Assert.Equal(GeometrySign.Negative, geometry.Side(query.CosMaxSlope, out _, out _));
+            }
+        }
+        var uncertain = new FeaturePoint(FeatureNumber.Exact(1), FeatureNumber.Exact(1e-8),
+            FeatureNumber.Enclosed(GeometryInterval.Enclose(-1e-8, 1e-8)));
+        var family = new SupportCurvedLeaf(0, SupportCurvedShape.Cylinder,
+            FeaturePoint.Exact(Vector3.Zero).Bounds, default, 0.25, 0.5, default, default, default, uncertain);
+        var unproved = new SupportTiltedCurvedGeometry();
+        Assert.True(unproved.Begin(family, 0.5, 0.5, 0.25));
+        Assert.Equal(GeometrySign.Unresolved, unproved.Side(0, out _, out _));
+    }
+
+    public static IEnumerable<object[]> LyingLogSeamRows()
+    {
+        foreach (bool capsule in new[] { false, true })
+            foreach (float radius in new[] { 0.15f, 0.3f })
+                foreach (bool aboutX in new[] { false, true })
+                    foreach (float across in new[] { 0f, -0.25f, 0.25f })
+                        foreach (float along in new[] { -0.5f, MathF.BitDecrement(-0.5f), MathF.BitIncrement(-0.5f),
+                            0.5f, MathF.BitDecrement(0.5f), MathF.BitIncrement(0.5f) })
+                            yield return [capsule, radius, aboutX, across, along];
+    }
+
+    [Theory]
+    [MemberData(nameof(LyingLogSeamRows))]
+    public void LyingLogRolesAndEndSeamsKeepRawParts(bool capsule, float radius, bool aboutX, float across, float along)
+    {
+        // Positive longitudinal coordinates point along the source's upward core axis.
+        float longitudinal = aboutX ? along : -along;
+        bool refused = capsule ?
+            across == 0 ? longitudinal == -0.5f || radius == 0.3f && longitudinal == MathF.BitDecrement(0.5f) :
+                radius == 0.15f ? longitudinal == MathF.BitDecrement(0.5f) : longitudinal <= -0.5f :
+            longitudinal == 0.5f && (radius == 0.3f || across == 0) ||
+                radius == 0.3f && across == 0 && longitudinal == MathF.BitDecrement(0.5f);
+        for (int rebuild = 0; rebuild < 2; rebuild++)
+        {
+            using var scene = new SupportFootprintScene();
+            scene.Install(new BoxShape(new(2, 0.1f, 2)), Pose.At(new(0, -0.1f, 0)));
+            StaticHandle owner = InstallLyingLog(scene, capsule, radius,
+                Quaternion.CreateFromAxisAngle(aboutX ? Vector3.UnitX : Vector3.UnitZ, MathF.PI / 2));
+            var query = LyingLogQuery(radius, aboutX, across);
+            query = query with { Axis = aboutX ? new(across, along) : new(along, across) };
+            using var lease = scene.World.AcquireQueryReadLease();
+            foreach (bool reference in new[] { false, true })
+            {
+                using IDisposable? evaluation = reference ? SupportReferenceEvaluation.Begin() : null;
+                if (refused) CheckLyingLogRefusal(scene, owner, query, lease);
+                else CheckLyingLogParts(scene, owner, FootSupport.DescribeFootprint(query), lease: lease);
+                FootSupport.Find(null, scene.World, lease, LyingLogQuery(radius, aboutX, across));
+                if (refused) CheckLyingLogRefusal(scene, owner, query, lease);
+                else CheckLyingLogParts(scene, owner, FootSupport.DescribeFootprint(query), lease: lease);
+            }
+        }
+    }
+
+    void CheckLyingLogRefusal(SupportFootprintScene scene, StaticHandle owner, FootSupportQuery query, IPhysicsQueryLease lease)
+    {
+        var request = FootSupport.DescribeFootprint(query);
+        Assert.Contains(Members(scene, request), m => m.Static == owner && m.HasDiscMaximum);
+        var members = MemberSentinels(256);
+        var before = (SupportFootprintMember[])members.Clone();
+        var joins = Enumerable.Repeat(73UL, 1024).ToArray();
+        var result = Capability(scene.World).QuerySupportFootprint(lease, request, members, joins);
+        Assert.Equal(CapsuleFeatureStatus.Unsupported, result.Status);
+        Assert.Equal(0, result.Members);
+        Assert.Equal(0, result.Witnesses);
+        Assert.Equal(before, members);
+        Assert.All(joins, word => Assert.Equal(73UL, word));
+        Assert.Equal(SupportStatus.Refused, FootSupport.Find(null, scene.World, lease, query).Status);
+        var simulation = SimulationOf(scene.World);
+        simulation.Statics.GetDescription(HandlesOf(scene.World)[owner.Value].Handle, out var description);
+        var leaves = new List<SupportCurvedLeaf>();
+        SupportNeighborhoodCurved.Capture(simulation, description.Shape, description.Pose, leaves);
+        var geometry = new SupportTiltedCurvedGeometry();
+        Assert.True(geometry.Begin(Assert.Single(leaves), query.Axis.X, query.Axis.Y, query.FootRadius));
+        var axis = geometry.Axis(false, 0, out _);
+        var side = geometry.Side(0, out _, out _);
+        _output.WriteLine($"axis={axis} side={side}");
+        if (leaves[0].Shape == SupportCurvedShape.Capsule)
+            _output.WriteLine($"round-axis={geometry.Round(true, 0, out _, out _)} round-disc={geometry.Round(false, 0, out _, out _)}");
+        else
+            _output.WriteLine($"cap-axis={geometry.Axis(true, 1, out _)} cap-disc={geometry.Cap(1, false, out _, out _)}");
+    }
+
+    [Fact]
+    public void LyingLogUnprovedSourceFamilyRefusesWithoutLowerFloorFallback()
+    {
+        using var scene = new SupportFootprintScene();
+        scene.Install(new BoxShape(new(2, 0.1f, 2)), Pose.At(new(0, -0.1f, 0)));
+        StaticHandle owner = scene.Install(new CylinderShape(0.25f, 1),
+            new(new(0.08349365f, -0.25f, 0), Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 6)));
+        var source = Proof.Installed(scene.World, owner)[0];
+        var crest = SupportFootprintTiltedOracle.Crest(source, false).Position;
+        var query = new FootSupportQuery(new((float)(crest.X.Middle + 0.2f), 0), 0, 0.2f, 2, 2, 0.4f);
+        var request = FootSupport.DescribeFootprint(query);
+        using var lease = scene.World.AcquireQueryReadLease();
+        var members = MemberSentinels(256);
+        var before = (SupportFootprintMember[])members.Clone();
+        var joins = Enumerable.Repeat(73UL, 1024).ToArray();
+        var result = Capability(scene.World).QuerySupportFootprint(lease, request, members, joins);
+        Assert.Equal(CapsuleFeatureStatus.Unsupported, result.Status);
+        Assert.Equal(0, result.Members);
+        Assert.Equal(0, result.Witnesses);
+        Assert.Equal(before, members);
+        Assert.All(joins, word => Assert.Equal(73UL, word));
+        Assert.Equal(SupportStatus.Refused, FootSupport.Find(null, scene.World, lease, query).Status);
+    }
+
+    static StaticHandle InstallLyingLog(SupportFootprintScene scene, bool capsule, float radius, Quaternion rotation)
+    {
+        Vector3 centre = new(0, radius, 0);
+        return scene.Install(capsule ? new CapsuleShape(radius, 1) : new CylinderShape(radius, 1),
+            new(capsule ? centre : centre - Vector3.Transform(new Vector3(0, 0.5f, 0), rotation), rotation));
+    }
+
+    static FootSupportQuery LyingLogQuery(float radius, bool aboutX, float across) =>
+        new(aboutX ? new(across, 0) : new(0, across), radius == 0.3f ? 0.3f : 0f,
+            0.2f, 0.4f, 0.4f, MathF.Cos(MathF.PI / 4));
+
+    void CheckLyingLogParts(SupportFootprintScene scene, StaticHandle owner,
+        SupportFootprintRequest request, bool horizontal = false, IPhysicsQueryLease? lease = null)
+    {
+        var parts = Proof.Installed(scene.World, owner);
+        var expected = parts.Select(p => SupportFootprintOracle.Curved(p.Tangent, request))
+            .OfType<FootprintOracleMember>().OrderBy(m => m.ElementId).ToArray();
+        using var ownedLease = lease is null ? scene.World.AcquireQueryReadLease() : null;
+        var members = new SupportFootprintMember[256];
+        var result = Capability(scene.World).QuerySupportFootprint(lease ?? ownedLease!, request, members, new ulong[1024]);
+        if (result.Status != CapsuleFeatureStatus.Complete)
+        {
+            var simulation = SimulationOf(scene.World);
+            simulation.Statics.GetDescription(HandlesOf(scene.World)[owner.Value].Handle, out var description);
+            var leaves = new List<SupportCurvedLeaf>();
+            SupportNeighborhoodCurved.Capture(simulation, description.Shape, description.Pose, leaves);
+            foreach (var leaf in leaves)
+                for (int part = 0; part < leaf.Parts; part++)
+                    _output.WriteLine($"axis={request.Axis} part={part} result={new SupportTiltedCurved().Measure(owner, leaf, part, request, out _)}");
+        }
+        Assert.Equal(CapsuleFeatureStatus.Complete, result.Status);
+        var actual = members.Take(result.Members).Where(m => m.Static == owner).OrderBy(m => m.ElementId).ToArray();
+        Assert.Equal(expected.Select(m => m.ElementId), actual.Select(m => m.ElementId));
+        for (int i = 0; i < actual.Length; i++)
+        {
+            Assert.Equal(owner, actual[i].Static);
+            Assert.InRange(actual[i].WitnessCount, 0, 2);
+            var source = parts.Single(p => p.Tangent.ElementId == actual[i].ElementId);
+            if (!horizontal) CheckTiltedMember(actual[i], expected[i], source, request);
+            else
+            {
+                var exact = SupportFootprintClosedFormOracle.Measure(source, request);
+                Assert.Equal(exact.Witnesses.Count, actual[i].WitnessCount);
+                for (int j = 0; j < actual[i].WitnessCount; j++)
+                {
+                    var witness = j == 0 ? actual[i].First : actual[i].Second;
+                    Assert.Equal(exact.Witnesses[j].Role, witness.Role);
+                    ContainsCurvedVector(witness.Position, witness.PositionErrorMetres, exact.Witnesses[j].Position);
+                    ContainsCurvedVector(witness.Normal, witness.NormalError, exact.Witnesses[j].Normal);
+                }
+            }
+        }
+    }
+}

@@ -9,7 +9,9 @@ namespace KhaozEngine.Physics.Bepu;
 internal sealed partial class SupportTiltedCurvedGeometry
 {
     internal readonly record struct Witness(GeometryVector Position, GeometryVector Normal, bool AtSideCrest = false);
-    readonly record struct Candidate(GeometryInterval Parameter, double End, bool AtEnd, bool Slope, int Rim);
+    enum DiscLateralBoundary : byte { None, Negative, Positive }
+    readonly record struct Candidate(GeometryInterval Parameter, double End, bool AtEnd, bool Slope, int Rim,
+        DiscLateralBoundary Lateral = DiscLateralBoundary.None);
     readonly SupportCurvedSourceArithmetic _arithmetic = new();
     readonly SupportCurvedRootRegions _roots = new();
     readonly Candidate[] _candidates = new Candidate[32];
@@ -70,11 +72,15 @@ internal sealed partial class SupportTiltedCurvedGeometry
         return _axis.IsResolved && _w.IsResolved && B(_u).Lower > 0;
     }
 
-    bool Keep(GeometryInterval z, double end = 0, bool atEnd = false, bool slope = false, int rim = 0)
+    bool Keep(GeometryInterval z, double end = 0, bool atEnd = false, bool slope = false, int rim = 0,
+        DiscLateralBoundary lateral = DiscLateralBoundary.None)
     {
         if (!z.IsResolved || z.Lower > 1 || z.Upper < -1) return true;
         if (_count == _candidates.Length) return false;
-        _candidates[_count++] = new(GeometryInterval.Enclose(Math.Max(-1, z.Lower), Math.Min(1, z.Upper)), end, atEnd, slope, rim);
+        // A tagged quotient must prove its original source domain before any clipping.
+        GeometryInterval parameter = lateral == DiscLateralBoundary.None ?
+            GeometryInterval.Enclose(Math.Max(-1, z.Lower), Math.Min(1, z.Upper)) : z;
+        _candidates[_count++] = new(parameter, end, atEnd, slope, rim, lateral);
         return true;
     }
 
@@ -146,7 +152,8 @@ internal sealed partial class SupportTiltedCurvedGeometry
             }
         }
         if (!Keep(I(-1)) || !Keep(I(1)) || !Keep(I(0)) ||
-            !Keep(B(Div(Sub(Neg(_disc), _q), _r))) || !Keep(B(Div(Sub(_disc, _q), _r))) ||
+            !Keep(B(Div(Sub(Neg(_disc), _q), _r)), lateral: DiscLateralBoundary.Negative) ||
+            !Keep(B(Div(Sub(_disc, _q), _r)), lateral: DiscLateralBoundary.Positive) ||
             !Stationary()) return GeometrySign.Unresolved;
         if (Sign(_q) == GeometrySign.Zero &&
             SidePoint(new(I(0), 0, false, false, 0), slope, out Witness crest, out bool crestCertain) == GeometrySign.Positive && crestCertain)
@@ -199,6 +206,12 @@ internal sealed partial class SupportTiltedCurvedGeometry
 
     GeometrySign SidePoint(Candidate candidate, double slope, out Witness point, out bool certain)
     {
+        if (candidate.Lateral != DiscLateralBoundary.None)
+        {
+            int checkpoint = _arithmetic.Checkpoint;
+            try { return SideLateralPoint(candidate.Lateral, slope, out point, out certain); }
+            finally { _arithmetic.Restore(checkpoint); }
+        }
         point = default; certain = false;
         GeometryInterval z = candidate.Parameter, v = z.Lower == z.Upper && z.Lower == 0 ? I(1) :
             z.Lower == z.Upper && (z.Lower == -1 || z.Lower == 1) ? I(0) : PositiveRoot(I(1).Subtract(z.Square()));
@@ -231,5 +244,32 @@ internal sealed partial class SupportTiltedCurvedGeometry
         normal = new(normal.X, normalY, normal.Z);
         point = new(Add(Add(_centre, Scale(_axis, t)), Scale(normal, B(_r))), normal, z.Lower == 0 && z.Upper == 0);
         return point.Position.IsResolved && normal.IsResolved ? GeometrySign.Positive : GeometrySign.Unresolved;
+    }
+
+    GeometrySign SideLateralPoint(DiscLateralBoundary boundary, double slope, out Witness point, out bool certain)
+    {
+        point = default; certain = false;
+        Number numerator = Sub(boundary == DiscLateralBoundary.Positive ? _disc : Neg(_disc), _q);
+        GeometrySign left = Sign(Add(numerator, _r)), right = Sign(Sub(_r, numerator));
+        if (left == GeometrySign.Negative || right == GeometrySign.Negative) return GeometrySign.Negative;
+        if (left == GeometrySign.Unresolved || right == GeometrySign.Unresolved) return GeometrySign.Unresolved;
+        Number parameter = Div(numerator, _r);
+        Number vertical = left == GeometrySign.Zero || right == GeometrySign.Zero ? C(0) : Root(Sub(C(1), Sq(parameter)));
+        Number upward = Mul(_u, vertical);
+        GeometrySign walkable = Sign(Sub(upward, C(slope)));
+        if (walkable is GeometrySign.Negative or GeometrySign.Unresolved) return walkable;
+        // Q+R*z is the signed disc radius by construction. Its transverse extent is zero.
+        // Clear the positive u denominator to certify this unique axial point for every source.
+        Number offset = Sub(Mul(Mul(_r, _k), vertical), _p), half = Mul(_u, _h);
+        GeometrySign low = Sign(Add(offset, half)), high = Sign(Sub(half, offset));
+        if (low == GeometrySign.Negative || high == GeometrySign.Negative) return GeometrySign.Negative;
+        if (low == GeometrySign.Unresolved || high == GeometrySign.Unresolved) return GeometrySign.Unresolved;
+        GeometryInterval z = B(parameter), v = B(vertical), t = B(Div(offset, _u));
+        GeometryVector normal = Add(Scale(_w, v), Scale(_f, z));
+        normal = new(normal.X, walkable == GeometrySign.Zero ? I(slope) :
+            GeometryInterval.Enclose(Math.Max(slope, B(upward).Lower), B(upward).Upper), normal.Z);
+        point = new(Add(Add(_centre, Scale(_axis, t)), Scale(normal, B(_r))), normal);
+        certain = point.Position.IsResolved && normal.IsResolved;
+        return certain ? GeometrySign.Positive : GeometrySign.Unresolved;
     }
 }

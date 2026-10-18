@@ -689,6 +689,47 @@ membership, plane divisors and proposal guards still refuse atomically. This cha
 completeness only, with no join, guard, selection, tolerance or cost-gate change. The final follow-up
 task records the player-facing changelog entry under CF-7.
 
+CF-3 and CF-6 add the derived #1455 disposition. Ordinary float quarter turns about X and Z,
+with radii 0.1, 0.15 and 0.3 m and either approach sign, change from Refused to Walkable when
+their installed geometry, proposal guards and band permit support. Their small nonzero installed
+Y remains tilted. The two signed closed-disc lateral endpoints retain their defining source
+equations. Source-proved parameter, finite-axis and slope membership establish an attained lower
+bound without subtracting independently enclosed equal squared quantities. Possible stationary
+regions still enclose the maximum above that bound and are not promoted to attained points.
+The selected contribution remains SG-19's tangent capped by witness height, with independent Axis
+and Footprint roles and original raw leaf and part identity. The exact horizontal radius-0.15 flank
+control contributes about 0.22071071 m, rather than the 0.3 m crest. Tilted poses use their own
+installed-geometry oracle. Unproved source families, including the original cell-bound fixture,
+continue to refuse atomically. Above-band and invalid starts, steep-only climbs, raw capacity,
+closed-disc and ring protections are unchanged. No timing, adoption, navigation or release
+acceptance follows from this certification change. CF-7's final task records the changelog entry.
+
+The changed rows are exactly the 24 `LyingLogFlankSupportsWithInstalledPoseOracle` rows. They cover
+cylinder and capsule, radius 0.1, 0.15 and 0.3 m, a `MathF.PI/2` turn about X or Z, and a query
+0.25 m across the barrel on either side. Each was Refused before this change and is now Walkable
+with a Complete footprint. The 144-row `LyingLogRolesAndEndSeamsKeepRawParts` matrix pins 116
+Complete footprints with their raw parts and roles. Its results before this change were not
+measured, so it records no further change. Its other 28 rows still refuse atomically. Write t for
+the longitudinal query coordinate along the upward source core axis and a for the across-barrel
+coordinate. Counts include both rotations.
+
+| Shape | Radius | Across a | Longitudinal t | Rows |
+| --- | --- | --- | --- | --- |
+| Cylinder | 0.15 | 0 | 0.5 | 2 |
+| Cylinder | 0.3 | 0, -0.25, +0.25 | 0.5 | 6 |
+| Cylinder | 0.3 | 0 | BitDecrement(0.5) | 2 |
+| Capsule | 0.15 | 0 | -0.5 | 2 |
+| Capsule | 0.15 | -0.25, +0.25 | BitDecrement(0.5) | 4 |
+| Capsule | 0.3 | 0 | -0.5, BitDecrement(0.5) | 4 |
+| Capsule | 0.3 | -0.25, +0.25 | -0.5, BitDecrement(-0.5) | 8 |
+
+Each of these rows has a source-proved side, but an end or hemisphere certificate that this change
+leaves untouched is unresolved. All 10 cylinder rows have an unresolved cap Axis. Ten capsule rows
+have an unresolved round Axis. Four radius-0.3 rows outside the lower end have a proved round Axis
+and an unresolved round disc maximum. Four radius-0.15 rows inside the upper end have no round Axis
+and an unresolved round disc maximum. Each returns Unsupported with unchanged member spans and join
+words, and Find returns Refused with no lower-floor fallback.
+
 **Ruling SG-24. The hosted proof is plumbed, normalized and approved before it gates #1334.** The
 repository's stress caller (`.github/workflows/stress-test.yml`) now forwards support-cost mode to the
 pinned shared workflow, which sets `KHAOZ_SUPPORT_COST_ARTIFACT` and `DOTNET_TieredCompilation=0`,

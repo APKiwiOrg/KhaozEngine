@@ -2,7 +2,8 @@
 # Exercises scripts/gpu-test-shards.py, the shard plan and coverage guard of the GPU matrix's full suites
 # (#1438): which legs a trigger shards, that every backend's slice filters partition a listing exactly once,
 # that a shard report reads its totals from TRX files, and that the per-backend summary fails a missing shard,
-# a red shard and an assembly that ran twice.
+# a red shard and an assembly that ran twice. A small SDK fixture also proves transitive references stay
+# in Release when their projects are absent from the derived solution.
 #
 # Fixture-only: every listing, TRX file, report and solution below is written under mktemp.
 #
@@ -283,6 +284,11 @@ for backend in direct3d11-native vulkan-native; do
     check "$backend project coverage refuses $mutation" 1 "$(run summarize "$backend" "$TMPROOT/reports" "$S/Fixture.slnx")"
   done
 done
+
+echo "build configuration: transitive references must stay in Release"
+_rc=0
+sh "$here/gpu-shard-build.test.sh" > "$OUTFILE" 2>&1 || _rc=$?
+check "the root and transitive references build in Release" 0 "$_rc"
 
 echo "gpu-test-shards.test: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

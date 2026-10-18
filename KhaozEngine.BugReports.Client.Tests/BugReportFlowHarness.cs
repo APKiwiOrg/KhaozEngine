@@ -165,10 +165,13 @@ public abstract class BugReportFlowHarness : IAsyncLifetime
 
     private protected IEnumerable<LogEntry> Warnings => _logs.Entries.Where(e => e.Level == LogLevel.Warn);
 
-    /// <summary>Waits until <paramref name="count"/> timers wait on the manual clock.</summary>
+    /// <summary>
+    /// Waits until <paramref name="count"/> screenshot waits are armed on the manual clock to time out exactly
+    /// <see cref="BugReportFlow.ScreenshotWait"/> from now, the instant a fact advances to.
+    /// </summary>
     private protected async Task WaitForTimers(int count)
     {
-        for (int i = 0; _time.ActiveTimers < count; i++)
+        for (int i = 0; _time.TimersDueIn(BugReportFlow.ScreenshotWait) < count; i++)
         {
             Assert.True(i < 3000, "The flow never armed its screenshot timers.");
             await Task.Delay(10);

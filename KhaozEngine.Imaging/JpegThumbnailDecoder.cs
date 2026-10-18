@@ -138,8 +138,19 @@ public static class JpegThumbnailDecoder
                         foreach (Component component in _components)
                             if (!component.Decoded) throw Invalid("Missing component scan.");
                         return Thumbnail();
-                    case 0xC2: case 0xC3: case 0xC5: case 0xC6: case 0xC7: case 0xC8:
-                    case 0xC9: case 0xCA: case 0xCB: case 0xCC: case 0xCD: case 0xCE: case 0xCF:
+                    case 0xC2:
+                    case 0xC3:
+                    case 0xC5:
+                    case 0xC6:
+                    case 0xC7:
+                    case 0xC8:
+                    case 0xC9:
+                    case 0xCA:
+                    case 0xCB:
+                    case 0xCC:
+                    case 0xCD:
+                    case 0xCE:
+                    case 0xCF:
                         throw new NotSupportedException("Only sequential Huffman JPEG is supported.");
                     default:
                         if (marker is >= 0xE0 and <= 0xEF or 0xFE) { Segment(); break; }

@@ -177,7 +177,8 @@ public sealed class SupportCostUncomparableVerdictTests
             string original = cells[verdictColumn];
             if (original != "PASS" && !original.StartsWith("FAIL ", StringComparison.Ordinal)) continue;
             SupportCostSample sample = samples.Single(sample => sample.Scene == cells[0] && sample.Operation == operation)
-                with { WarmMicroseconds = candidate };
+                with
+            { WarmMicroseconds = candidate };
             string pairedOperation = operation == "Find" ? "LegacyDownPass" : "LegacyTick";
             SupportCostSample legacy = samples.Single(sample => sample.Scene == cells[0] && sample.Operation == pairedOperation);
             legacy = legacy with { WarmMicroseconds = double.Parse(cells[3], CultureInfo.InvariantCulture) };
@@ -212,9 +213,14 @@ public sealed class SupportCostUncomparableVerdictTests
 
     static string LongOperation(string operation) => operation switch
     {
-        "B0" => "GroundSubstep/GroundTickBorrowed/0", "B1" => "GroundSubstep/GroundTickBorrowed/1",
-        "D0" => "GroundSubstep/DryTick/0", "D1" => "GroundSubstep/DryTick/1",
-        "E0" => "GroundSubstep/ExplicitTick/0", "E1" => "GroundSubstep/ExplicitTick/1",
-        "Dry" => "DryTick", "Explicit" => "ExplicitTick", _ => operation,
+        "B0" => "GroundSubstep/GroundTickBorrowed/0",
+        "B1" => "GroundSubstep/GroundTickBorrowed/1",
+        "D0" => "GroundSubstep/DryTick/0",
+        "D1" => "GroundSubstep/DryTick/1",
+        "E0" => "GroundSubstep/ExplicitTick/0",
+        "E1" => "GroundSubstep/ExplicitTick/1",
+        "Dry" => "DryTick",
+        "Explicit" => "ExplicitTick",
+        _ => operation,
     };
 }

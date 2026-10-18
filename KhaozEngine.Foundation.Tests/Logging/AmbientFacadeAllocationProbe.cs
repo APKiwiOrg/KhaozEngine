@@ -23,7 +23,7 @@ internal static class AmbientFacadeAllocationProbe
             if (includeScopes)
             {
                 using var manager = new LogManager(new LoggerOptions
-                    { Synchronous = true, MinimumLevel = LogLevel.Info, DefaultCategory = "scoped" });
+                { Synchronous = true, MinimumLevel = LogLevel.Info, DefaultCategory = "scoped" });
                 using (LocalizationContext.Use(new DictionaryCatalog().Add("scope.key", "scoped")))
                 using (Log.Use(manager))
                     Measure(2, "scoped");

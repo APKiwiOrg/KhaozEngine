@@ -234,26 +234,38 @@ namespace KhaozEngine.Tests.Gpu
         // amendment leaves every one of them as it was on Metal.
         static readonly Dictionary<string, (double Band, double Tail)> HardwareControl = new()
         {
-            ["Quality C pan 1.0 px"] = (0.0105, 0.0076), ["Quality C pan 2.0 px"] = (0.0055, 0.0039),
-            ["Quality C pan 4.0 px"] = (0.0152, 0.0120), ["Quality C pan 8.0 px"] = (0.0138, 0.0105),
-            ["Native C pan 1.0 px"] = (0.0046, 0.0037), ["Native C pan 2.0 px"] = (0.0046, 0.0035),
-            ["Native C pan 4.0 px"] = (0.0061, 0.0044), ["Native C pan 8.0 px"] = (0.0055, 0.0038),
+            ["Quality C pan 1.0 px"] = (0.0105, 0.0076),
+            ["Quality C pan 2.0 px"] = (0.0055, 0.0039),
+            ["Quality C pan 4.0 px"] = (0.0152, 0.0120),
+            ["Quality C pan 8.0 px"] = (0.0138, 0.0105),
+            ["Native C pan 1.0 px"] = (0.0046, 0.0037),
+            ["Native C pan 2.0 px"] = (0.0046, 0.0035),
+            ["Native C pan 4.0 px"] = (0.0061, 0.0044),
+            ["Native C pan 8.0 px"] = (0.0055, 0.0038),
         };
 
         static readonly Dictionary<string, (double Band, double Tail)> WarpControl = new()
         {
-            ["Quality C pan 1.0 px"] = (0.0105, 0.0076), ["Quality C pan 2.0 px"] = (0.0055, 0.0039),
-            ["Quality C pan 4.0 px"] = (0.0153, 0.0121), ["Quality C pan 8.0 px"] = (0.0138, 0.0105),
-            ["Native C pan 1.0 px"] = (0.0045, 0.0036), ["Native C pan 2.0 px"] = (0.0045, 0.0035),
-            ["Native C pan 4.0 px"] = (0.0060, 0.0044), ["Native C pan 8.0 px"] = (0.0056, 0.0038),
+            ["Quality C pan 1.0 px"] = (0.0105, 0.0076),
+            ["Quality C pan 2.0 px"] = (0.0055, 0.0039),
+            ["Quality C pan 4.0 px"] = (0.0153, 0.0121),
+            ["Quality C pan 8.0 px"] = (0.0138, 0.0105),
+            ["Native C pan 1.0 px"] = (0.0045, 0.0036),
+            ["Native C pan 2.0 px"] = (0.0045, 0.0035),
+            ["Native C pan 4.0 px"] = (0.0060, 0.0044),
+            ["Native C pan 8.0 px"] = (0.0056, 0.0038),
         };
 
         static readonly Dictionary<string, (double Band, double Tail)> LavapipeControl = new()
         {
-            ["Quality C pan 1.0 px"] = (0.0105, 0.0076), ["Quality C pan 2.0 px"] = (0.0056, 0.0040),
-            ["Quality C pan 4.0 px"] = (0.0150, 0.0120), ["Quality C pan 8.0 px"] = (0.0139, 0.0105),
-            ["Native C pan 1.0 px"] = (0.0046, 0.0036), ["Native C pan 2.0 px"] = (0.0045, 0.0034),
-            ["Native C pan 4.0 px"] = (0.0060, 0.0045), ["Native C pan 8.0 px"] = (0.0055, 0.0038),
+            ["Quality C pan 1.0 px"] = (0.0105, 0.0076),
+            ["Quality C pan 2.0 px"] = (0.0056, 0.0040),
+            ["Quality C pan 4.0 px"] = (0.0150, 0.0120),
+            ["Quality C pan 8.0 px"] = (0.0139, 0.0105),
+            ["Native C pan 1.0 px"] = (0.0046, 0.0036),
+            ["Native C pan 2.0 px"] = (0.0045, 0.0034),
+            ["Native C pan 4.0 px"] = (0.0060, 0.0045),
+            ["Native C pan 8.0 px"] = (0.0055, 0.0038),
         };
 
         static Dictionary<string, (double Band, double Tail)> Control => TemporalDeviceClass.Warp ? WarpControl
@@ -358,8 +370,11 @@ namespace KhaozEngine.Tests.Gpu
                 double tail = r["tail textured"].Mean;
                 if (c.Kind == MovingShadeKind.Shadow && MathF.Abs(c.Shadow) > 1f)
                 {
-                    Case slow = c with { Name = c.Name.Replace($"{MathF.Abs(c.Shadow):0.0} px", "1.0 px"),
-                        Shadow = c.Sign };
+                    Case slow = c with
+                    {
+                        Name = c.Name.Replace($"{MathF.Abs(c.Shadow):0.0} px", "1.0 px"),
+                        Shadow = c.Sign
+                    };
                     double slowTail = measured[slow]["tail textured"].Mean;
                     Check(tail <= FastTailRatio * slowTail,
                         $"{c.Name}: textured tail {tail:0.0000} above {FastTailRatio} times the 1 px tail {slowTail:0.0000}");

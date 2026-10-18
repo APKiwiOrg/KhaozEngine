@@ -155,7 +155,9 @@ public sealed class SupportFootprintStairStratumTests
     // Optimized Extrema counts before the stratum, for the scenes whose reference skips SC-14 certificates.
     static readonly Dictionary<string, int> PreStratumExtrema = new()
     {
-        ["stairs box"] = 18, ["stairs hull"] = 18, ["hidden crate"] = 23,
+        ["stairs box"] = 18,
+        ["stairs hull"] = 18,
+        ["hidden crate"] = 23,
     };
 
     [Fact]

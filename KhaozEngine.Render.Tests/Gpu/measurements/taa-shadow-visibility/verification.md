@@ -400,3 +400,13 @@ rate hold mode bandErr p95 grainOut grainRef grainFXAA grainError change changeR
 TRX and full process logs remain under `/tmp/grimhollow-taa-final/alloc-fix`. Only the compact inventory and this result record are committed. Local Metal passed. Hosted Direct3D 11, Vulkan and hosted Metal on this fixed commit remain for the orchestrator. No workflow, main merge, tag or release was started.
 
 ## Hosted
+
+Run [39265183977](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39265183977) tested `058eaea98295a529b9f98cafdff92dbb51f40886` with `legs=all` and `renderTestFilter` equal to the Metal selection above, including `MotionTargetLifecycleGpuTests`. The run concluded success.
+
+| Leg | Device class | Selected facts | Passed | Failed | Skipped | Quality grain | Bound |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| macos-26 metal-native | hardware | 1555 | 1555 | 0 | 0 | 0.008031 | 0.008032 |
+| windows-latest direct3d11-native | WARP | 1555 | 1555 | 0 | 0 | 0.008013 | 0.008014 |
+| ubuntu-latest vulkan-native | lavapipe | 1555 | 1555 | 0 | 0 | 0.008040 | 0.008040 |
+
+The Vulkan synchronization validation job also passed. Every backend executed the same 1555 selected facts as the local Metal inventory, so no selected GPU fact was skipped on any backend. The earlier run [39238918090](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39238918090) on `df821a2ad` passed the same plan selection on all legs before the allocation correction.

@@ -4,6 +4,11 @@ namespace KhaozEngine.Render3D.Internal;
 internal static partial class ShaderSources
 {
     internal const string TemporalVisibilityGlsl = @"
+// Integer exponent bits retain the non-finite rejection when FXC optimizes negated ordered comparisons.
+bool temporalVisibilityFiniteDepth(float depth) {
+    return (floatBitsToUint(depth) & 0x7f800000u) != 0x7f800000u;
+}
+
 // Current and history means have independent denominators. Reject other surfaces before interpolation,
 // retaining clamped offsets and bilinear corners with their ordinary footprint multiplicity.
 bool temporalVisibilityChange(vec2 uv, ivec2 centre, ivec2 last,
@@ -11,6 +16,7 @@ bool temporalVisibilityChange(vec2 uv, ivec2 centre, ivec2 last,
     signedChange = 0.0;
     float centreDepth = temporalViewDepth(texelFetch(sampler2D(MotionTex, LinearClamp), centre, 0).rg,
         texelFetch(sampler2D(SceneDepth, LinearClamp), centre, 0).r);
+    if (!temporalVisibilityFiniteDepth(centreDepth) || !temporalVisibilityFiniteDepth(expectedDepth)) return false;
     float currentTolerance = VisibilityDepthTolerance * max(centreDepth, 1.0e-5);
     float previousTolerance = VisibilityDepthTolerance * max(expectedDepth, 1.0e-5);
     float currentSum = 0.0;
@@ -22,7 +28,7 @@ bool temporalVisibilityChange(vec2 uv, ivec2 centre, ivec2 last,
             ivec2 at = clamp(centre + ivec2(x, y), ivec2(0), last);
             float depth = temporalViewDepth(texelFetch(sampler2D(MotionTex, LinearClamp), at, 0).rg,
                 texelFetch(sampler2D(SceneDepth, LinearClamp), at, 0).r);
-            if (!(abs(depth - centreDepth) <= currentTolerance)) continue;
+            if (!temporalVisibilityFiniteDepth(depth) || !(abs(depth - centreDepth) <= currentTolerance)) continue;
             currentSum += texelFetch(sampler2D(KeyShadowVisibility, LinearClamp), at, 0).r;
             currentCount += 1.0;
             // h(o) = up + (a + 0.5 - J) / S - u + Jp / S.
@@ -37,7 +43,8 @@ bool temporalVisibilityChange(vec2 uv, ivec2 centre, ivec2 last,
                     float weight = (i == 0 ? 1.0 - fraction.x : fraction.x)
                         * (j == 0 ? 1.0 - fraction.y : fraction.y);
                     float storedDepth = texelFetch(sampler2D(PrevDepth, LinearClamp), corner, 0).r;
-                    if (!(abs(storedDepth - expectedDepth) <= previousTolerance)) continue;
+                    if (!temporalVisibilityFiniteDepth(storedDepth)
+                        || !(abs(storedDepth - expectedDepth) <= previousTolerance)) continue;
                     previousSum += texelFetch(sampler2D(PreviousKeyShadowVisibility, LinearClamp), corner, 0).r * weight;
                     previousWeight += weight;
                 }

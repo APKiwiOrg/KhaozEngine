@@ -48,7 +48,7 @@ internal sealed class InstallationTokenCache : IDisposable
             string jwt = GitHubAppJwt.Create(credentials.AppId, key, time.GetUtcNow());
             string path = "app/installations/" + credentials.InstallationId.ToString(CultureInfo.InvariantCulture) + "/access_tokens";
             using HttpResponseMessage response = await HttpRetry.SendAsync(http,
-                () => GitHubAppIssueClient.CreateRequest(path, jwt), policy, ct).ConfigureAwait(false);
+                () => GitHubAppIssueClient.CreateRequest(HttpMethod.Post, path, jwt), policy, ct).ConfigureAwait(false);
             if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
                 Invalidate();
             var error = GitHubResponseClassifier.Classify(response, time.GetUtcNow(), jwt, credentials.PrivateKeyPem);

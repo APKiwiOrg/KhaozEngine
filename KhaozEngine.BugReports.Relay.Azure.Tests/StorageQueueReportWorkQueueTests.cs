@@ -39,8 +39,10 @@ public sealed class StorageQueueReportWorkQueueTests
         Assert.All(sender.Messages, message => Assert.Equal(item, ReportWorkItemJson.Parse(message)));
     }
 
-    [Fact]
-    public async Task StorageQueue_DelayedEnqueue_SendsSdkVisibilityTimeout()
+    [Theory]
+    [InlineData(720, 605520)]
+    [InlineData(604800, 1209600)]
+    public async Task StorageQueue_DelayedEnqueue_SendsSdkVisibilityTimeoutAndTimeToLive(int delaySeconds, int timeToLiveSeconds)
     {
         using var handler = new VisibilityTimeoutHandler();
         using var http = new HttpClient(handler);
@@ -51,10 +53,30 @@ public sealed class StorageQueueReportWorkQueueTests
         var queue = new StorageQueueReportWorkQueue(client);
 
         await queue.EnqueueAsync(new ReportWorkItem(ReportWorkKind.CreateIssue, "01900000000070008000000000000001"),
-            TimeSpan.FromMinutes(12), default);
+            TimeSpan.FromSeconds(delaySeconds), default);
 
         Assert.NotNull(handler.RequestUri);
-        Assert.Contains("visibilitytimeout=720", handler.RequestUri.Query);
+        string[] queryParameters = handler.RequestUri.Query.TrimStart('?').Split('&');
+        Assert.Contains($"visibilitytimeout={delaySeconds}", queryParameters);
+        Assert.Contains($"messagettl={timeToLiveSeconds}", queryParameters);
+    }
+
+    [Fact]
+    public async Task StorageQueue_ImmediateEnqueue_OmitsSdkVisibilityTimeoutAndTimeToLive()
+    {
+        using var handler = new VisibilityTimeoutHandler();
+        using var http = new HttpClient(handler);
+        QueueClientOptions options = ReportQueueClientOptions.Create();
+        options.Transport = new HttpClientTransport(http);
+        options.Retry.MaxRetries = 0;
+        var client = new QueueClient(new Uri("https://unused.invalid/work"), options);
+        var queue = new StorageQueueReportWorkQueue(client);
+
+        await queue.EnqueueAsync(new ReportWorkItem(ReportWorkKind.CreateIssue, "01900000000070008000000000000001"), default);
+
+        Assert.NotNull(handler.RequestUri);
+        Assert.DoesNotContain("visibilitytimeout=", handler.RequestUri.Query);
+        Assert.DoesNotContain("messagettl=", handler.RequestUri.Query);
     }
 
     [Theory]

@@ -30,8 +30,13 @@ internal sealed class ContactNavigationReuseFixture : IDisposable
     internal static ContactNavigationBaselineTests.BaselineBake Build(string fixture, ContactNavigationReuseMode mode, int degree)
     {
         using var hooks = ContactNavigationBuildHooks.Install(Hooks(mode));
-        return ContactNavigationBaselineTests.BuildFixture(fixture, new NavBakeExecution(degree)
-        { UseStableContactHoldReuse = mode == ContactNavigationReuseMode.Combined });
+        var execution = new NavBakeExecution(degree) { UseStableContactHoldReuse = mode == ContactNavigationReuseMode.Combined };
+        return fixture switch
+        {
+            "wide-lip-576" => ContactNavigationReuseWorkFixtures.WideLip(execution),
+            "single-flat" => ContactNavigationReuseWorkFixtures.SingleFlat(execution),
+            _ => ContactNavigationBaselineTests.BuildFixture(fixture, execution),
+        };
     }
 
     internal byte[] ProveInOrder(bool reverseSources, bool reverseDirections)

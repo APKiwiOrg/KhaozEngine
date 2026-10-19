@@ -785,3 +785,217 @@ build-slot --label bake-b-design -- dotnet test KhaozEngine.Movement.Tests/Khaoz
 
 Exit 0, eight passed, zero failed or skipped. There is no production change or new golden.
 The complete Task 5 proof set now has 135 distinct Movement cases and 75 geometry/oracle cases.
+
+## Task 6. Actual saved work and bounded retained payload
+
+Status: DONE. No target shortfall and no production correction.
+
+The seven pinned fixtures retain their original factories and hashes. WideLip uses the same
+low-lip floor and 25 mm lip on the recorded 12 by 48 grid, X [-1.7, 1.3), Z [-6, 6), cell
+0.25 m, radius 0.3 m, DryOnly, 160 edge steps and 1/30 second slices. Its capture provisions
+576 cells and 2,304 layer cells for that larger grid. SingleFlat uses the existing LoadMatrix
+floor/options, X/Z [-0.5, 0.5), cell 1 m, radius 0.2 m, half-height 0.75 m, no water,
+64 edge steps and 1/30 second slices. No existing fixture or production bound changed.
+
+There are 44 distinct fixture/degree configurations and three modes, or 132 unique builds per
+work selection. The two target theories share immutable observations through one class fixture,
+so they do not rebuild a named configuration. Only file bytes, counter values and Find-trace
+digests survive measurement. No physics object, producer, lease or session is retained there.
+Find traces preserve every original numeric bit and result. Degree 1 also compares their order.
+Parallel traces compare canonical multisets. Both analytic-support and physics-support wins
+retain the exact ordered live callback trace in separate real-provider controls.
+
+### Actual footprint work against projections
+
+All counts include admission and Stair evaluations. Off disables only this lane. Existing
+FindMemoHits stay enabled and are not booked as new savings. The table uses actual Volumes,
+which equal complete footprint evaluations in these fixtures. Combined and Footprints have
+the same remaining geometry count. Their reductions are not added to Hold percentages.
+
+| Fixture | Off evaluations | Projected avoided | Actual avoided | Footprints remaining | Combined remaining | Projected / actual reduction | Shortfall |
+| --- | ---: | ---: | ---: | ---: | ---: | --- | ---: |
+| low-lip-bank | 8,108 | 2,386 | 2,386 | 5,722 | 5,722 | 29.43% / 29.43% | 0 |
+| deck-over-ground | 16,024 | 7,944 | 7,944 | 8,080 | 8,080 | 49.58% / 49.58% | 0 |
+| wade-only-pool | 24,752 | 12,308 | 12,308 | 12,444 | 12,444 | 49.73% / 49.73% | 0 |
+| rebased-origin | 8,108 | 3,940 | 3,940 | 4,168 | 4,168 | 48.59% / 48.59% | 0 |
+| mixed-legacy-contact | 8,012 | 3,972 | 3,972 | 4,040 | 4,040 | 49.58% / 49.58% | 0 |
+| stair-accepted-refused | 4,116 | 1,259 | 1,259 | 2,857 | 2,857 | 30.59% / 30.59% | 0 |
+| multi-layer-row-bands | 10,379 | 5,286 | 5,286 | 5,093 | 5,093 | 50.93% / 50.93% | 0 |
+| wide-lip-576 | 69,532 | 29,234 | 29,234 | 40,298 | 40,298 | 42.04% / 42.04% | 0 |
+| single-flat | 5 | 0 | 0 | 5 | 5 | 0.00% / 0.00% | 0 |
+| Seven pinned totals | 79,499 | 37,095 | 37,095 | 42,404 | 42,404 | 46.66% / 46.66% | 0 |
+
+### Real edge steps and saved initial Holds
+
+EdgeSteps excludes admission Holds and includes Stair calls. Combined eliminates exactly one
+real controller call for each certified redundant source Hold. The first Hold, admissions,
+Stairs and every travel step remain real. These are controller work counts, not timing claims.
+
+| Fixture | Off edge steps | Projected saved Holds | Actual saved Holds | Combined edge steps | Projected / actual reduction | Shortfall |
+| --- | ---: | ---: | ---: | ---: | --- | ---: |
+| low-lip-bank | 4,032 | 328 | 328 | 3,704 | 8.13% / 8.13% | 0 |
+| deck-over-ground | 8,064 | 656 | 656 | 7,408 | 8.13% / 8.13% | 0 |
+| wade-only-pool | 12,416 | 548 | 548 | 11,868 | 4.41% / 4.41% | 0 |
+| rebased-origin | 4,032 | 328 | 328 | 3,704 | 8.13% / 8.13% | 0 |
+| mixed-legacy-contact | 4,032 | 328 | 328 | 3,704 | 8.13% / 8.13% | 0 |
+| stair-accepted-refused | 1,686 | 17 | 17 | 1,669 | 1.01% / 1.01% | 0 |
+| multi-layer-row-bands | 6,076 | 80 | 80 | 5,996 | 1.32% / 1.32% | 0 |
+| wide-lip-576 | 34,992 | 2,888 | 2,888 | 32,104 | 8.25% / 8.25% | 0 |
+| single-flat | 0 | 0 | 0 | 0 | 0.00% / 0.00% | 0 |
+| Seven pinned totals | 40,338 | 2,285 | 2,285 | 38,053 | 5.66% / 5.66% | 0 |
+
+### Complete counter and retention disposition per fixture and degree
+
+Every displayed counter and retention value was independently recorded at every listed degree.
+The records are identical across those degrees, verified while extracting all 132 unique rows
+from the retained TRX outputs. Duplicate output from the two assertion theories also agrees.
+Setup lease counters are intentionally not presented as degree-invariant work metrics.
+
+| Fixture | Recorded degrees |
+| --- | --- |
+| low-lip-bank | 1, 2, 3, 8, 9 |
+| deck-over-ground | 1, 2, 3, 8, 17 |
+| wade-only-pool | 1, 2, 3, 8, 13 |
+| rebased-origin | 1, 2, 3, 8, 9 |
+| mixed-legacy-contact | 1, 2, 3, 8, 9 |
+| stair-accepted-refused | 1, 2, 3, 7, 8 |
+| multi-layer-row-bands | 1, 2, 3, 8, 21 |
+| wide-lip-576 | 1, 2, 3, 8, 49 |
+| single-flat | 1, 2, 3, 8 |
+
+Single-flat's degree greater than its one layer-row is 2, already present in the requested
+positive-degree set. It runs once rather than duplicating that configuration.
+
+| Fixture | Mode | Find | FindMemoHits | Volumes | Proposals | Hits | Misses | Stores | Budget skips | EdgeSteps | Hold hits | Peak keys | Peak bytes |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| low-lip-bank | Off | 12,200 | 4,092 | 8,108 | 16,216 | 0 | 0 | 0 | 0 | 4,032 | 0 | 0 | 0 |
+| low-lip-bank | Footprints | 12,200 | 4,092 | 5,722 | 11,444 | 2,386 | 5,386 | 5,386 | 0 | 4,032 | 0 | 145 | 228,032 |
+| low-lip-bank | Combined | 11,544 | 3,764 | 5,722 | 11,444 | 2,058 | 5,386 | 5,386 | 0 | 3,704 | 328 | 145 | 228,032 |
+| deck-over-ground | Off | 24,208 | 8,184 | 16,024 | 32,048 | 0 | 0 | 0 | 0 | 8,064 | 0 | 0 | 0 |
+| deck-over-ground | Footprints | 24,208 | 8,184 | 8,080 | 16,160 | 7,944 | 7,408 | 7,408 | 0 | 8,064 | 0 | 77 | 136,064 |
+| deck-over-ground | Combined | 22,896 | 7,528 | 8,080 | 16,160 | 7,288 | 7,408 | 7,408 | 0 | 7,408 | 656 | 77 | 136,064 |
+| wade-only-pool | Off | 37,276 | 12,524 | 24,752 | 49,504 | 0 | 0 | 0 | 0 | 12,416 | 0 | 0 | 0 |
+| wade-only-pool | Footprints | 37,276 | 12,524 | 12,444 | 24,888 | 12,308 | 11,868 | 11,868 | 0 | 12,416 | 0 | 149 | 180,608 |
+| wade-only-pool | Combined | 36,180 | 11,976 | 12,444 | 24,888 | 11,760 | 11,868 | 11,868 | 0 | 11,868 | 548 | 149 | 180,608 |
+| rebased-origin | Off | 12,200 | 4,092 | 8,108 | 16,216 | 0 | 0 | 0 | 0 | 4,032 | 0 | 0 | 0 |
+| rebased-origin | Footprints | 12,200 | 4,092 | 4,168 | 8,336 | 3,940 | 3,832 | 3,832 | 0 | 4,032 | 0 | 89 | 175,040 |
+| rebased-origin | Combined | 11,544 | 3,764 | 4,168 | 8,336 | 3,612 | 3,832 | 3,832 | 0 | 3,704 | 328 | 89 | 175,040 |
+| mixed-legacy-contact | Off | 12,104 | 4,092 | 8,012 | 16,024 | 0 | 0 | 0 | 0 | 4,032 | 0 | 0 | 0 |
+| mixed-legacy-contact | Footprints | 12,104 | 4,092 | 4,040 | 8,080 | 3,972 | 3,704 | 3,704 | 0 | 4,032 | 0 | 77 | 136,064 |
+| mixed-legacy-contact | Combined | 11,448 | 3,764 | 4,040 | 8,080 | 3,644 | 3,704 | 3,704 | 0 | 3,704 | 328 | 77 | 136,064 |
+| stair-accepted-refused | Off | 5,827 | 1,711 | 4,116 | 8,232 | 0 | 0 | 0 | 0 | 1,686 | 0 | 0 | 0 |
+| stair-accepted-refused | Footprints | 5,827 | 1,711 | 2,857 | 5,714 | 1,259 | 1,584 | 1,584 | 0 | 1,686 | 0 | 330 | 275,840 |
+| stair-accepted-refused | Combined | 5,793 | 1,694 | 2,857 | 5,714 | 1,242 | 1,584 | 1,584 | 0 | 1,669 | 17 | 330 | 275,840 |
+| multi-layer-row-bands | Off | 20,612 | 10,233 | 10,379 | 20,758 | 0 | 0 | 0 | 0 | 6,076 | 0 | 0 | 0 |
+| multi-layer-row-bands | Footprints | 20,612 | 10,233 | 5,093 | 10,186 | 5,286 | 2,775 | 2,775 | 0 | 6,076 | 0 | 146 | 186,368 |
+| multi-layer-row-bands | Combined | 20,452 | 10,153 | 5,093 | 10,186 | 5,206 | 2,775 | 2,775 | 0 | 5,996 | 80 | 146 | 186,368 |
+| wide-lip-576 | Off | 104,984 | 35,452 | 69,532 | 139,064 | 0 | 0 | 0 | 0 | 34,992 | 0 | 0 | 0 |
+| wide-lip-576 | Footprints | 104,984 | 35,452 | 40,298 | 80,596 | 29,234 | 37,882 | 37,882 | 0 | 34,992 | 0 | 145 | 245,696 |
+| wide-lip-576 | Combined | 99,208 | 32,564 | 40,298 | 80,596 | 26,346 | 37,882 | 37,882 | 0 | 32,104 | 2,888 | 145 | 245,696 |
+| single-flat | Off | 6 | 1 | 5 | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| single-flat | Footprints | 6 | 1 | 5 | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| single-flat | Combined | 6 | 1 | 5 | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+
+All 132 rows have zero live keys and bytes after the build. All budget-skip counts are zero.
+Every miss/store is shown above. Nontrivial source groups retain actual complete keys and
+owned payloads, with no ineligible-domain or budget shortfall. The maximum is 330 keys and
+275,840 retained bytes, below the unchanged 512-key and 2 MiB limits. Peaks are maxima per
+session, including worker merges. They are not sums across workers. These are retained element
+capacities including the fixed table, not managed allocation or process-memory measurements.
+Find equals existing memo hits plus actual Volumes in Off. In both reuse modes, it equals
+existing memo hits plus actual Volumes plus new footprint hits. Combined removes the redundant
+Holds' own Finds and callbacks, while Footprints leaves those paths unchanged.
+
+### Curved certification work and refusal enforcement
+
+All seven categories compare against one actual uncached evaluation. Two successive lease
+hits add zero events and no historical work is replayed. Payload bits remain identical.
+The category order is New, Sign, Split, Compile, RootCell, Refine, AdmissionCell.
+
+| Fixture | One evaluation's seven event counts | Total actual events after seed plus two hits | Volumes / proposals | Hits | Peak keys / bytes | Final live keys / bytes |
+| --- | --- | ---: | --- | ---: | --- | --- |
+| capsule-crown | 166, 31, 0, 0, 0, 0, 0 | 197 | 1 / 2 | 2 | 1 / 106,688 | 0 / 0 |
+| tilted-cylinder | 514, 82, 0, 0, 96, 36, 1 | 729 | 1 / 2 | 2 | 1 / 106,880 | 0 / 0 |
+
+Source reset and disposal each report zero live keys and bytes. An independently repeated
+work-limited cylinder refusal consumes 32 real events per request, 28 New and four Sign,
+and remains Unsupported with untouched caller spans and zero stores or hits. With diagnostics
+off, observer totals and counters are zero, but each collector still consumes exactly 32 events
+and records WorkLimit. Its second independent lease query performs the work again. No curved
+percentage target is invented. The cumulative production ceiling remains 1,048,576 events.
+
+### Commands and evidence
+
+```bash
+build-slot --heavy --label bake-b-design -- dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release --filter 'FullyQualifiedName~ContactNavigationProofReuseWorkTests' --logger 'console;verbosity=normal'
+```
+
+Exit 0, 90 passed, zero failed or skipped. The normal logger suppresses successful test output,
+so this invocation did not retain the counter table. Self-review then added explicit Off-mode
+zero-counter and hit/miss/store bookkeeping assertions, and applied targeted whitespace changes.
+The final changed selection retained the same console logger and added a TRX evidence logger.
+
+```bash
+build-slot --heavy --label bake-b-design -- dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release --filter 'FullyQualifiedName~ContactNavigationProofReuseWorkTests' --logger 'console;verbosity=normal' --logger 'trx;LogFileName=task-6-movement.trx' --results-directory /tmp/khaozengine-bake-proof-reuse
+```
+
+Exit 0, all 90 passed, zero failed or skipped. The 44 rows of each target theory and two real
+provider-trace rows passed. The tables above are extracted from this run's actual output.
+No failing target, substituted denominator, fixture replacement or tolerance adjustment exists.
+There was no behavioral red or production change in Task 6. Tests preceded every measurement.
+
+```bash
+build-slot --label bake-b-design -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter 'FullyQualifiedName~SupportFootprintProofReuseWorkTests' --logger 'trx;LogFileName=task-6-game.trx' --results-directory /tmp/khaozengine-bake-proof-reuse
+```
+
+Exit 0, four passed, zero failed or skipped. Both curved successes, diagnostics-on refusal and
+diagnostics-off refusal passed on the first invocation. Both dependency builds emitted no
+compiler warnings or errors. The four-path targeted dotnet format whitespace command through
+build-slot exited 0, with the same generic workspace-loading warning noted in Task 5.
+Full format verification remains Task 7. The additional TRX loggers preserve deterministic
+counters only. Incidental test-runner timestamps and elapsed time were not measurement inputs.
+
+The Task 5 byte matrix remains green, 70 theory rows over all seven pins and five degrees in
+all three modes, with both reverse orders and their combination. Its complete actual bytes,
+hashes, semantic assertions and graph bits passed. Task 5 has 135 distinct Movement proofs
+including the three additional real-hit forced-failure rows, and 75 geometry/oracle proofs.
+No production source changed between those proofs and these work measurements.
+
+### Disposition, self-review and concerns
+
+The author reviewed all Task 6 code and extracted every counter from actual test output.
+The test fixture cache contains immutable observations only. Production sessions are neither
+shared across workers nor retained between measurements. All target and retention assertions
+passed without changing a fixture, key, tolerance, band, ceiling, identity or storage limit.
+No production defect was exposed and no fix commit was required. There is no shortfall or
+unresolved concern for Tasks 5 and 6. No manual validation is needed for these headless proofs.
+
+Candidate 3, certified flat-ground specialization, books zero savings because no complete
+geometric and arithmetic certificate was implemented. Candidate 4, translated full-edge reuse,
+also books zero. The full dependency and numeric translation certificates remain unproved.
+Candidate 5, reverse-verdict sharing, remains rejected by four Stair and 28 row-band opposite
+pairs with different verdicts. Candidate 6, reachable-only pruning, changes the requested raw
+layers/nodes/exits and has no approved start-set or byte-equivalence certificate.
+
+#1401 world-scale cost and #1334 timing acceptance remain open. These deterministic work counts
+are not a world bake, wall-clock speedup or timing acceptance. Task 7 owns full solution build,
+full test selection, full format verification, living API contracts and staged release history.
+There was no load, stress, benchmark, allocation, consumer, world bake, workflow, pack, release,
+tag, push, merge, branch change, GitHub comment or agent/reviewer dispatch. Every build/test ran
+synchronously through build-slot, one at a time. Logs and extracted raw counters remain under
+/tmp/khaozengine-bake-proof-reuse. Both SDD reports follow the existing ignored report lifecycle.
+
+### Task 6 self-review. Independent refusal work with diagnostics off
+
+Self-review strengthened the second refusal query with a fresh 32-event collector whose
+consumed count is asserted zero before the new lease. Both requests must independently reach
+32 and WorkLimit. A stale count from the first refusal can no longer satisfy the diagnostics-off
+assertion. This changes no geometry, policy bound, retained payload or recorded savings.
+
+```bash
+build-slot --label bake-b-design -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter 'FullyQualifiedName~WorkLimitedRefusalConsumesItsRealWorkAgainAndDoesNotDependOnDiagnostics'
+```
+
+Exit 0, both diagnostics rows passed, zero failed or skipped, no compiler warnings or errors.
+The four-case work selection and the strengthened two-case subset are green. The counter tables
+remain the actual observations from the retained full selection. No production defect appeared.

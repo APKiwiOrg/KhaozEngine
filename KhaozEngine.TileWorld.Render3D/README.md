@@ -12,13 +12,21 @@ render-free document so a server or tool never drags in `Render3D`. In the `Game
 ## Static interior cuts
 
 Set `TilePropLayerDefinition.CutInsideInteriors = true` only for static rigid layers such as trees, then give
-`TileWorldView.InteriorMeshes` a dedicated `ITileMeshGeometry`. A `GltfTileMeshGeometry` reader is single-threaded,
-so do not share it with capture, other jobs or view-thread reads. No reader or no opted-in layer means no cut.
+`TileWorldViewOptions.InteriorMeshes` a dedicated `ITileMeshGeometry`. The constructor seeds the view's
+`InteriorMeshes` from it. A `GltfTileMeshGeometry` reader is single-threaded, so do not share it with another
+view, capture, job or view-thread read. No reader or no opted-in layer means no cut.
 The view snapshots mutable inputs, collects and rasterizes on one background worker, and pumps the newest
 result at `Draw(focus)`. A newer queued request supersedes an older generation. Publication sets the scene's
 field and `AppliedInteriorCut` together, so picture and picks share it. Before the first result both are uncut.
 Replacing `InteriorMeshes` or changing layers clears stale fields. Re-centres retain the previous field
 until replacement.
+
+Snapshot callers pass that same options object to `TileWorldSnapshot.CaptureTopDown`, `CapturePerspective`
+or `CapturePerspectiveSequence`. Captures finish and publish the interior build before drawing, including
+the first sequence frame and a camera re-centre within an unchanged region ring. Settling completes actual
+work without frame-count waits. `TileWorldViewOptions.RoofMode` seeds the roof rule and defaults to
+`RoofVisibility.Interior`. Use `AlwaysHidden` or `AlwaysVisible` for comparison captures. Runtime changes
+still use the view's `InteriorMeshes` and `RoofMode` setters. Unset options preserve existing capture output.
 
 The window covers 512 m, snapped to the cell lattice, and re-centres after 64 m along either focus axis.
 Cells are at most 25 cm and divide `TileSize`. A 4096-cell cap logs `interior.window` once if it reduces coverage.

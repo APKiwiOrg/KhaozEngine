@@ -11783,16 +11783,29 @@ foreach (TileWaterBody body in TileWaterBodies.Collect(doc, catalogs, region, pl
 ```
 
 **Static interior cuts for prop layers.** Opt a tree layer into render-time cutting inside buildings by
-setting `TilePropLayerDefinition.CutInsideInteriors = true`. Give `view.InteriorMeshes` a dedicated
+setting `TilePropLayerDefinition.CutInsideInteriors = true`. Give `TileWorldViewOptions.InteriorMeshes` a dedicated
 `ITileMeshGeometry` reader, such as a separate `GltfTileMeshGeometry`, used only by this serialized driver.
-That reader is single-threaded, so never share it with capture, another job or view-thread geometry reads.
+That reader is single-threaded, so never share it with another view, capture, job or view-thread geometry read.
 For an existing definition, its required identity, archetypes and LOD distances stay in the definition:
 
 ```csharp
 TilePropLayerDefinition cutTrees = treeLayer with { CutInsideInteriors = true };
-// Supply cutTrees in TileWorldViewOptions.PropLayers when constructing the view.
-view.InteriorMeshes = dedicatedInteriorMeshes;
+var options = new TileWorldViewOptions
+{
+    PropLayers = [cutTrees],
+    InteriorMeshes = dedicatedInteriorMeshes,
+    RoofMode = RoofVisibility.AlwaysHidden,
+};
+// Pass options to the view constructor or a TileWorldSnapshot capture.
 ```
+
+The constructor seeds `InteriorMeshes` and `RoofMode` from options. Runtime changes still use the view's
+setters. The default reader is null and the default roof mode is `RoofVisibility.Interior`.
+`CaptureTopDown`, `CapturePerspective` and `CapturePerspectiveSequence` finish and publish configured
+interior builds before drawing. The first sequence frame is already cut, and moving the camera settles a
+re-centre even within the same region ring. This offline settle completes the requested work without
+frame-count waits or sleeps. With no reader or no opted-in layer there is no field. Unset options preserve
+existing capture output. Use `AlwaysVisible` and `AlwaysHidden` roof modes for before and after captures.
 
 `TileWorldInteriors` derives simple polygons from indoor tiles, safe wall boundaries and roof meshes.
 A column keeps its lowest contiguous run of retained indoor planes, so no cut crosses an excluded storey or

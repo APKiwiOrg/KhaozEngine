@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Render3D.Rendering;
@@ -21,24 +23,36 @@ internal sealed class InteriorCutRelevanceCache
 
     internal void BeginFrame() => _submission = 0;
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal bool MayIntersect(InteriorHeightField field, InteriorCutFrame frame,
         MeshHandle mesh, in Matrix4x4 world, in MeshBounds bounds, float outwardMargin = 0f)
     {
         if (_version != field.Version || _frame != frame)
-        {
-            _placements.Clear();
-            _submissions.Clear();
-            _submission = 0;
-            _version = field.Version;
-            _frame = frame;
-        }
+            ChangeField(field.Version, frame);
         int submission = _submission++;
         if (submission < _submissions.Count)
         {
-            Placement previous = _submissions[submission];
-            if (previous.Mesh.Equals(mesh) && previous.World == world && previous.Margin == outwardMargin)
+            // Read the retained matrix in place. MeshHandle's inherited Equals would box both handles.
+            ref readonly Placement previous = ref CollectionsMarshal.AsSpan(_submissions)[submission];
+            if (previous.Mesh.Index == mesh.Index && previous.Mesh.Generation == mesh.Generation
+                && previous.World == world && previous.Margin == outwardMargin)
                 return previous.Relevant;
         }
+        return EvaluatePlacement(field, frame, mesh, world, bounds, outwardMargin, submission);
+    }
+
+    void ChangeField(long version, InteriorCutFrame frame)
+    {
+        _placements.Clear();
+        _submissions.Clear();
+        _submission = 0;
+        _version = version;
+        _frame = frame;
+    }
+
+    bool EvaluatePlacement(InteriorHeightField field, InteriorCutFrame frame,
+        MeshHandle mesh, in Matrix4x4 world, in MeshBounds bounds, float outwardMargin, int submission)
+    {
         // Static draws keep the previous publication's flag in their submission slot. Only a changed slot
         // hashes its transform. The placement map retains answers when culling or submission order changes.
         Lookups++;
@@ -67,6 +81,6 @@ internal sealed class InteriorCutRelevanceCache
     internal void Forget(MeshHandle mesh)
     {
         _placements.Remove((mesh.Index, mesh.Generation));
-        _submissions.RemoveAll(placement => placement.Mesh.Equals(mesh));
+        _submissions.RemoveAll(placement => placement.Mesh.Index == mesh.Index && placement.Mesh.Generation == mesh.Generation);
     }
 }

@@ -26,7 +26,7 @@ namespace KhaozEngine.Render3D
         public void Add(in RigidInstanceDraw draw) => _items.Add(new Instance(in draw));
 
         internal void Add(in RigidInstanceDraw draw, bool relevantCut) =>
-            _items.Add(new Instance(in draw) with { CutInsideInteriors = relevantCut });
+            _items.Add(new Instance(in draw, relevantCut));
 
         internal void SetInteriorCut(int index, bool relevantCut) =>
             _items[index] = _items[index] with { CutInsideInteriors = relevantCut };
@@ -135,6 +135,11 @@ namespace KhaozEngine.Render3D
                     draw.DissolveEdgeColor, draw.CastsShadows, draw.InvertShadowDissolve, draw.DissolveComplement,
                     draw.ShadowOnly, draw.Motion, draw.CutInsideInteriors)
             { }
+
+            internal Instance(in RigidInstanceDraw draw, bool relevantCut) : this(in draw)
+            {
+                CutInsideInteriors = relevantCut;
+            }
 
             Instance(MeshHandle mesh, Matrix4x4 world, Color tint, Material material, float dissolveThreshold,
                 float dissolveEdgeWidth, Vector4 dissolveEdge, bool castsShadows, bool invertShadowDissolve,

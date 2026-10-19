@@ -10,6 +10,25 @@ namespace KhaozEngine.Tests.Render3D;
 public sealed class InteriorCutPlacementSlotTests
 {
     [Fact]
+    public void SubmissionSlotsMatchBothMeshIdentityComponents()
+    {
+        var cache = new InteriorCutRelevanceCache();
+        InteriorHeightField field = InteriorCutShadowTests.Field();
+        Matrix4x4 world = Matrix4x4.CreateTranslation(1, 0, 0);
+        MeshBounds bounds = MeshBounds.Empty;
+        foreach (var mesh in new[] { new MeshHandle(1, 1), new MeshHandle(2, 1), new MeshHandle(1, 2) })
+        {
+            cache.BeginFrame();
+            Assert.True(cache.MayIntersect(field, default, mesh, world, bounds));
+        }
+        Assert.Equal(3, cache.Evaluations);
+        Assert.Equal(3, cache.Lookups);
+        cache.BeginFrame();
+        Assert.True(cache.MayIntersect(field, default, new MeshHandle(1, 2), world, bounds));
+        Assert.Equal(3, cache.Lookups);
+    }
+
+    [Fact]
     public void ChangedTransformsReevaluateOnlyTheirPlacement()
     {
         using var rig = new MotionTestScene();

@@ -1226,8 +1226,10 @@ and changed these details. Its contract amendment blocks carry the evidence.
     **Owner choice D, 2026-10-19.** Set `d = meanCurrent - meanPrevious`. Strict `abs(d) > 0.1` clears the stored
     lock before hold is computed and makes clip hold zero, for either sign at any ridge status, speed or preset.
     The threshold applies to means of stored R8 values, not the unquantized lighting variable. R8 steps by `1/255`,
-    with nearest conversion error at most `1/510`. An exact input 0.1 stores as `26/255`, so its comparison against
-    stored zero exceeds 0.1 and releases. An exact difference of 0.1 in the comparison domain does not release.
+    with round-to-nearest conversion error at most `1/510`. Under round-to-nearest UNORM conversion, an exact
+    input 0.1 stores as `26/255`, so its comparison against stored zero exceeds 0.1 and releases. A driver that
+    truncates stores `25/255` instead. Release compares stored values, so that exact boundary case differs.
+    An exact difference of 0.1 in the comparison domain does not release.
     R8/R32 evidence preserves that format distinction rather than promising decision equality at quantization
     boundaries. There is no new public tuning API.
 
@@ -1276,11 +1278,22 @@ and changed these details. Its contract amendment blocks carry the evidence.
     **Baseline and accepted costs.** The signal is judged against bilinear PCF with the frozen 21.4.0 resolve,
     not against the changed point-PCF input or its own output. Re-captured spatial references and per-driver rim
     controls preserve `(baseline + 0.0000005) * 1.1`, reference tolerance `0.000001`, masks and case inventory.
+    The [rim GPU test](../../KhaozEngine.Render.Tests/Gpu/TemporalMovingShadeRimGpuTests.cs#L37) applies that
+    reference tolerance through [TemporalReviewBaseline.Check](../../KhaozEngine.Render.Tests/Gpu/TemporalReviewBaseline.cs#L283)
+    as `2 * Rounding`, with `Rounding = 0.0000005`.
     Historical point-PCF measurements remain history. The owner accepted these measured costs after D's clips.
     WARP and lavapipe each received a separate acceptance after hosted run 39215298727 because they showed the
     same lock-release costs. Each driver's own measurement sets its bound, never another driver's result.
 
-    | Driver and accepted cost | Measured D | Previous bound | Accepted bound |
+    The previous enforced tail bounds already include the paired control plus `0.0000005`, as applied by
+    the [absolute-tail check](../../KhaozEngine.Render.Tests/Gpu/TemporalMovingShadeLagGpuTests.cs#L415).
+    The [recorded paired controls](../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/owner-release-only.md#L14)
+    are `0.007138470657410495` for hardware and
+    [`0.007152403227222303 / 0.00716773283842791`](../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/owner-release-only.md#L35)
+    for WARP/lavapipe. Previous rim bounds also include their unchanged allowance and tolerance through
+    `(baseline + 0.0000005) * 1.1`.
+
+    | Driver and accepted cost | Measured D | Previous enforced bound | Accepted bound |
     | --- | ---: | ---: | ---: |
     | Hardware Native 8 px retreating textured tail | 0.007221076276167364 | 0.007138970657410495 | 0.007221576276167364 |
     | WARP Native 8 px retreating textured tail | 0.007222797931709032 | 0.007152903227222303 | 0.007223297931709032 |

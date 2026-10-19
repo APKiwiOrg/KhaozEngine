@@ -38,7 +38,9 @@ six decimal places. The reference figure is the reference sequence's frame-to-fr
 
 Only `kind == "rim"` routes to `TemporalShadowFilterBaseline`. Error and temporal error use the unchanged
 `(baseline + 0.0000005) * 1.1` formula. The baseline tolerance is `0.1`, rounding is `0.0000005` and reference
-identity tolerance remains `0.000001`. Raw rim change remains report-only. Historical diagonal checks still
+identity tolerance remains `0.000001`. The [rim GPU test](../../TemporalMovingShadeRimGpuTests.cs#L37) applies it
+through [TemporalReviewBaseline.Check](../../TemporalReviewBaseline.cs#L283) as `2 * Rounding`.
+Raw rim change remains report-only. Historical diagonal checks still
 bound error, temporal error and raw change. An unmeasured device or case fails without a fallback.
 
 ## Controls and input movement

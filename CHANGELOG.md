@@ -12,7 +12,7 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Fixed grainy and sparkling sun-shadow edges under TAA, especially at low frame rates, with filtered key-shadow
   visibility and a visibility-driven lock release that preserves accumulated weight and display share. Lit R8
   visibility and its history pair extend the rendering resource contract. Devices with fewer than five colour
-  attachments keep bilinear filtering without visibility release. Fused and split entry identity is fixed (#1501).
+  attachments keep bilinear filtering without visibility release.
 
 ## 21.7.1
 

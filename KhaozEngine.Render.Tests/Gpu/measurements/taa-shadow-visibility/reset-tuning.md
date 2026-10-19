@@ -10,7 +10,7 @@ The signed change is d = current qualified visibility mean minus previous qualif
 
 The paired bilinear-only control leaves visibility history unseeded each frame while retaining valid colour history, the same input scene, light hold, jitter and original non-visibility resolve. It uses the existing test-visible renderer and test-only reflection on the visibility seed. The helper asserts comparison readiness is zero and colour history remains valid. Its eight exact tail values are identical in all eight arms and reproduce the frozen Task 3 four-decimal tail output. No reference, tolerance or frozen rim row was replaced.
 
-Absolute 8 px textured and flat tails must not exceed that paired control plus the existing 0.0000005 rounding unit. The 1.5 fast/slow ratio and all moving, pan, band-grain and rim gates remain. Rim bounds are (frozen value + 0.0000005) * 1.1. Reference tolerance remains 0.000001. Native textured grain is bounded by 0.0113 and Quality by 0.008. Balanced remains report-only.
+Absolute 8 px textured and flat tails must not exceed that paired control plus the existing 0.0000005 rounding unit. The 1.5 fast/slow ratio and all moving, pan, band-grain and rim gates remain. Rim bounds are (frozen value + 0.0000005) * 1.1. Reference tolerance remains 0.000001, applied as `2 * Rounding` by [TemporalReviewBaseline.Check](../../TemporalReviewBaseline.cs#L283) from the [rim GPU test](../../TemporalMovingShadeRimGpuTests.cs#L37). Native textured grain is bounded by 0.0113 and Quality by 0.008. Balanced remains report-only.
 
 Archive context only: old unset Native advancing/retreating 8 px tails were 0.004441862 / 0.006978498 and archive reset values were 0.003520131 / 0.004718931. They are not portable bounds or the matched bilinear control.
 

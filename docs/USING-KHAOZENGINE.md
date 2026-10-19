@@ -4476,7 +4476,9 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   be finite, and non-finite samples contribute nothing. A stored-value difference strictly above 0.1 clears the
   thin-feature lock and clip hold for either sign at every preset. It retains accumulated weight and display
   reconstruction share. The independent colour-based shading release still has its existing reset behavior.
-  The threshold uses quantized R8 values: an input 0.1 stores as 26/255. There is no public tuning knob.
+  The threshold uses stored R8 values. Under round-to-nearest UNORM conversion, an exact input 0.1 stores as
+  26/255. A driver that truncates stores 25/255 instead, so the exact boundary case differs because release
+  compares stored values. There is no public tuning knob.
   Motion plus visibility needs five colour attachments. Below five, the engine logs the capability once and keeps
   the supported four-attachment layout with bilinear filtering and no visibility release.
 - **Transparent content.** Particles, billboards, beams, trails, decals and water draw no motion. The resolve lowers

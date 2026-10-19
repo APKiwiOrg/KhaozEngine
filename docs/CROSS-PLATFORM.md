@@ -924,7 +924,9 @@ in the `ShaderSources.cs` source comments; this is the consolidated checklist.)
   raise the Vulkan device floor. Matched-sample MSAA visibility layouts explicitly resolve R8 before sampling.
   The shared mean uses finite current-centre/expected-history depths and finite samples, with relative tolerance
   0.02. Integer exponent tests preserve non-finite rejection under optimized FXC. Strict `abs(d) > 0.1` compares
-  stored R8 means, so exact input 0.1 becomes 26/255. Release clears lock/hold only and retains weight/display share.
+  stored R8 means. Under round-to-nearest UNORM conversion, an exact input 0.1 stores as 26/255. A driver that
+  truncates stores 25/255 instead, so the exact boundary case differs because release compares stored values.
+  Release clears lock/hold only and retains weight/display share.
   Both entries preserve exact visibility bytes, jitter and state decisions. Hardware/WARP colour is exact, with
   only the existing software-Vulkan colour exception. Histories follow colour lifetime and copy once per frame.
   The [amendment 35 proof](design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md#plan-amendments) records per-driver

@@ -297,7 +297,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   means use relative tolerance 0.02 and finite reference/sample depths. A stored R8 difference strictly above 0.1
   releases the thin-feature lock and hold without changing accumulated weight or display share. This applies to
   either sign at every preset, independently of the existing colour-based shading release. The threshold is on
-  stored values, so input 0.1 stores as 26/255. No public tuning API is added.
+  stored values. Under round-to-nearest UNORM conversion, an exact input 0.1 stores as 26/255. A driver that
+  truncates stores 25/255 instead, so the exact boundary case differs because release compares stored values.
+  No public tuning API is added.
   The signal and two R8 histories cost three bytes per internal texel, plus a 16-byte previous-jitter buffer.
   Histories follow colour indices, resets and target generations, copy once per resolving frame, and retire with
   TAA off or scene disposal. Repeated renders retain read history and jitter. Standalone resolves without lit

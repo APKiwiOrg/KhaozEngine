@@ -156,9 +156,11 @@ For `D > 0.1`, clear stored lock before hold is computed and set clip hold to ze
 
 ### Large-change response
 
-The starting experimental rule for `D > 0.5` also sets accumulated weight and display share to zero. At exactly 0.5 it does not. This fixes the archive's absolute fast tails but has known rim regressions. It cannot ship until tuned against the controlled filter baseline.
+The Task 7b orchestrator amendment selects Task 7 arm 3 as the single production response. For qualified signed `d = meanCurrent - meanPrevious` strictly greater than `0.5`, visibility rose and light is arriving. Scale accumulated history weight and the display share that would otherwise be used to `0`. Apply the scale once to each. At exactly `0.5`, below it, or for any falling change, retain scale `1`. Keep the response separate from the old `released` flag. Existing independent shading release still overrides both values to zero.
 
-Run a bounded comparison of the symmetric reset, falling-only reset (`d < 0`), rising-only reset (`d > 0`), partial scaling of accumulated weight and display share, and the large-change threshold. The plan fixes a finite candidate list. The `0.1` lock-release threshold and `0.02` depth tolerance stay fixed in that round. No public tuning API or permanent diagnostic token matrix is added. If no candidate meets all gates, stop and amend the design with evidence.
+Use named C# constants with pinned GLSL twins for threshold `0.5`, rising-only sign `+1` and scale `0`. Lock release remains strictly `abs(d) > 0.1`, with depth tolerance `0.02`. Invalid, unseeded, offscreen, background or empty qualified history makes no visibility response. Both entries, Native specialization, debug and count evaluation use the shared rule. No public tuning API or permanent experimental branches are added.
+
+The bounded eight-arm comparison is preserved in `KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/reset-tuning.md`. Arm 3 passes the lag fact and every absolute fast-tail gate, with zero absolute-tail failures. It adds no rim failures beyond the two assertions shared by every arm. Its Native grain is `0.010346`, Quality grain is `0.008031`, and Quality M 1.0 leading textured error / temporal error is `0.0030106876217401947 / 0.004819472651560228`. Arm 3 is the simplest response that passes every gate this response can influence. This selection does not approve the remaining grain and rim regressions.
 
 ## 8. Test methodology and acceptance
 
@@ -186,6 +188,10 @@ Local Metal correctness comes first. Then dispatch `cross-platform-gpu.yml` on t
 
 Identity must be exact for lock, confidence, marks, visibility bytes and release/reset decisions. Hardware and WARP colour remains exact. Main already allows a measured software-Vulkan colour exception in `TemporalEntryIdentityGpuTests`. Preserve only that pre-existing exception, without widening it or extending it to visibility or state. Report it explicitly rather than claiming all main colour comparisons are currently zero-tolerance.
 
+The Task 7b amendment carries two residual gates to the owner with real-scene images in Task 10. Quality textured grain is `0.008031` against `0.008`. Quality M 1.0 leading textured rim error is `0.0030106876217401947` against `0.00271205`, and temporal error is `0.004819472651560228` against `0.00432135`. Both residual failures are present across all eight arms because they arise from Task 6 lock release itself. Changing the large-change response does not remove them. Keep their bounds unchanged and their tests RED, with no skips, until the owner decides after seeing absolute values and images.
+
+Exact fused/split identity is a separate correctness blocker, tracked in #1501 and owned by Task 8. The amended order is Task 7b, Task 8, Task 10 including the owner's residual trade-off decision, Task 9 docs/version, Task 11 full gate, then Task 12 bench request. No release or version change follows from selecting arm 3 alone.
+
 ### Real-scene acceptance
 
 Use the headless `shadowgrain` capture introduced on [Grimhollow 06601de4](https://github.com/APKiwiOrg/Grimhollow/commit/06601de4), from a separately authorized disposable consumer probe. Read the archive's private-feed and probe instructions. Never repin a shipping game branch for this evidence.
@@ -201,7 +207,7 @@ Use a unique private-feed prerelease for each changed package set. Record source
 
 All use start time `0.49777777777777776`, 80 warm-up frames and 16 measured frames, TAA Native, TAA Quality and each build's own FXAA. Report character and ground grain mean/p95, change mean, dots and locked share for the unchanged-resolve control and final candidate, with old point-filter results for context. FXAA locked share is not applicable.
 
-Keep the archive's dot definition, luma more than `0.05` above both the local 3x3 median and own FXAA, pooled over pixel-frames. Overlay pixels never contribute to normal metrics. Retain full tables and crops, not only favourable back15 character rows. Back15 character grain and dots must improve over bilinear-only at both presets. Any other regional grain, change or dot regression needs an explicit owner decision after seeing absolute values and images. Lower locked share alone is not quality. The owner accepts the remaining sparkle after all correctness gates pass.
+Keep the archive's dot definition, luma more than `0.05` above both the local 3x3 median and own FXAA, pooled over pixel-frames. Overlay pixels never contribute to normal metrics. Retain full tables and crops, not only favourable back15 character rows. Back15 character grain and dots must improve over bilinear-only at both presets. Any other regional grain, change or dot regression needs an explicit owner decision after seeing absolute values and images. Lower locked share alone is not quality. The owner decides the two residual gates above from these real-scene images and accepts the remaining sparkle. Exact entry identity and all other correctness gates remain required.
 
 ## 9. Cost and risks
 
@@ -230,4 +236,4 @@ Recommend one **minor** version for the combined package-bearing batch. Although
 
 The eventual version and matching newest changelog entry land together once, with guarded declarations updated. Neither this spec commit nor intermediate evidence-only tasks bump. Integration, release, tag, durable publication and Grimhollow adoption belong to the owning orchestrator and their separate gates. Both parts remain on the task branch until the combined fix is approved and verified.
 
-The four-attachment policy is settled by the ruling in section 5. Open decisions are the final reset selection if several pass, acceptable residual real-scene noise, and fresh billed-benchmark approval. Gather support is an implementation proof question, not an assumption requiring the owner to guess.
+The four-attachment policy is settled by the ruling in section 5. Arm 3 is selected by the Task 7b amendment. Open decisions are the two residual gates and acceptable residual real-scene noise after images, and fresh billed-benchmark approval. Gather support is an implementation proof question, not an assumption requiring the owner to guess.

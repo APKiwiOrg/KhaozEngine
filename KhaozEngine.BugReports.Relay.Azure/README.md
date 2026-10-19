@@ -74,11 +74,15 @@ content type and cache policy. Every media store enforces the relay's public `Re
 rule. Create-only uploads use `If-None-Match: *`. Downloads reject a declared
 length over the caller's cap before reading the body. Only a 404 with `BlobNotFound` reads as absent.
 `ContainerNotFound` and other failures
-propagate so queue work can be redelivered.
+propagate so queue work can be redelivered. `ListAsync` returns all full blob paths under a validated
+folder prefix in ordinal order. `DeleteAsync` returns false for an absent blob and propagates other faults.
 
 `StorageQueueReportWorkQueue` sends `ReportWorkItemJson` unchanged to the SDK, which performs the one
-base64 encoding. `TableReportQuotaStore` uses the quota key as PartitionKey, RowKey `q`, a long `Count`
-and `ExpiresAt`. Creates use add and updates use a matching ETag with replace. The host owns expired
+base64 encoding. Its delayed `EnqueueAsync` accepts zero to seven days, sets that visibility timeout
+and sets the time to live to the delay plus seven days. The item retains a full seven-day delivery
+window after it becomes visible.
+
+`TableReportQuotaStore` uses the quota key as PartitionKey, RowKey `q`, a long `Count` and `ExpiresAt`. Creates use add and updates use a matching ETag with replace. The host owns expired
 entity cleanup, since Azure Table Storage does not expire entities from an `ExpiresAt` property.
 
 ## Poison recovery

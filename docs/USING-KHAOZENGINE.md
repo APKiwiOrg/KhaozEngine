@@ -3458,14 +3458,24 @@ suppress duplicate messages.
 
 To revoke a report:
 
-1. Call `BugReportRelay.RevokeAsync(reportId, cancellationToken)`.
-2. Delete its public capability folder.
-3. Delete it again after the 10-minute claim lease. A holder that passed its check before the call can
-   still finish a write inside its lease. Holders running beyond that lease are outside the guarantee.
+1. Call `BugReportRelay.RevokeReportAsync(idOrReference, cancellationToken)`, or forward an authorized
+   operator request to `RevokeRequestAsync(request, cancellationToken)`. Use the intake request adapter,
+   an Admin-level HTTP trigger and a body of `{"report":"<code or id>"}` capped at 1024 bytes.
+2. Delete the returned issue with an identity that may delete issues, following a moved issue's new URL.
+   The relay redacts and closes it, but only deletion removes its original title and body history.
 
-Retain the private `revoked/` tombstone and idempotency state for at least the report retention and the
-client queue's 7-day maximum age. A missing public manifest is also treated as revoked. Late snapshots
-and full-bundle resends return 202 without enqueueing revoked work.
+Nothing else is manual. The relay deletes public media immediately and schedules `PurgeRevoked` twelve
+minutes later. The purge repeats public cleanup and issue redaction, then removes private state and
+claim files. The non-personal tombstone and `references/<lowercase code>/<reportId>.json` index remain
+until lifecycle expiry. Keep both for the report retention, 180 days for the first consumer.
+
+`RevokeRequestAsync` maps `Revoked` and `AlreadyRevoked` to 200, `NotFound` to 404, `Ambiguous` to 409,
+and `Invalid` or malformed JSON to 400. Oversized bodies return 413. Forward its JSON and headers.
+The host authenticates the operator. The engine request method does not do so.
+A holder that passed its check can still write inside the ten-minute lease. The purge removes those
+writes, but holders running beyond their lease remain outside the guarantee. A late issue discovered
+by the purge is redacted and logged for operator deletion. A missing public manifest is also treated
+as revoked. Late snapshots and full-bundle resends return 202 without enqueueing revoked work.
 
 The [relay README](../KhaozEngine.BugReports.Relay/README.md) has the isolated-worker host sketch and status
 codes. Read its [Host duties](../KhaozEngine.BugReports.Relay/README.md#host-duties) for the 5-dequeue poison
@@ -8556,7 +8566,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.7.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.8.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -8981,7 +8991,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.7.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.8.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9780,7 +9790,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.7.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.8.0" />
 ```
 
 ```csharp
@@ -17735,7 +17745,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.7.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.8.0" />
 ```
 
 ```csharp
@@ -17771,7 +17781,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.7.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.8.0" />
 ```
 
 ```csharp
@@ -18015,7 +18025,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.7.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.8.0" />
 ```
 
 ```csharp
@@ -22386,7 +22396,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.7.1" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.8.0" />
 </ItemGroup>
 ```
 

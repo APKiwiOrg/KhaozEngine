@@ -1,7 +1,7 @@
 # Bug report revoke: design
 
 - **Date:** 2026-10-19
-- **Status:** design approved in conversation, written spec awaiting owner review
+- **Status:** design approved and implemented for 21.8.0
 - **Base design:** [In-game bug reports](2026-10-17-bug-reports-design.md), section Media access
 - **Related:** https://github.com/APKiwiOrg/KhaozEngine/issues/1510 (this change), Grimhollow
   https://github.com/APKiwiOrg/Grimhollow/issues/588 (the consumer gap)
@@ -12,8 +12,8 @@ A player asks for a report to be deleted, usually by quoting the reference code 
 one command. The report then disappears from every public link, its private record goes, its issue is redacted and
 deleted, and no late relay work can publish it again.
 
-Today `BugReportRelay.RevokeAsync` writes the private tombstone and nothing calls it. The public folder deletions
-and the issue are manual, the folder cannot be found from the reference code, and no host exposes an operator path.
+Before 21.8.0, `BugReportRelay.RevokeAsync` only wrote the private tombstone. Public folder deletion and issue
+cleanup were manual, and no reference index or host operator path existed.
 
 ## Owner rulings
 
@@ -26,7 +26,7 @@ and the issue are manual, the folder cannot be found from the reference code, an
 | RV5 | No new Azure resource, SKU or always-on component. Implementation stops and asks if that changes. |
 | RV6 | The relay redacts and closes the issue. The operator script then deletes it with the operator's own `gh` login, because an edit leaves the original title and body in the issue's history. The GitHub App keeps Issues write only. |
 
-## Current state
+## State before 21.8.0
 
 - One public folder per report, `<gameId>/<yyyy-mm>/<reportId>-<token>/`, with a 128-bit token. Its path is held
   only in the private `accepted/<reportId>.json` and `records/<reportId>.json` and in the issue's links.
@@ -56,10 +56,11 @@ The call runs these steps in order. Each is idempotent.
    report id validation, otherwise the call returns `Invalid`. A valid id with no accepted index, record or
    tombstone gives `NotFound`.
 2. **Tombstone.** Write `revoked/<reportId>.json` through the existing primitive. A report whose tombstone already
-   exists and whose private record is gone answers `AlreadyRevoked` and does nothing more.
+   exists and whose private record and accepted index are gone answers `AlreadyRevoked` and does nothing more.
 3. **Delete the public folder.** The folder comes from the record, or from the accepted index when the record does
    not exist yet. Every blob under it is listed and deleted.
-4. **Redact the issue.** When the record carries an issue number, update the issue: title
+4. **Redact the issue.** Use the record's `IssueNumber`, or else the `CreateIssue` claim result marker. When a
+   positive number exists, update the issue: title
    `Revoked bug report R-XXXXXX`, body `This report was revoked at the reporter's request. Its files and private
    record are being deleted.`, state closed with reason not planned. Labels are kept.
 5. **Schedule the purge.** Enqueue `ReportWorkItem(ReportWorkKind.PurgeRevoked, reportId)` visible after the claim
@@ -69,25 +70,29 @@ The call runs these steps in order. Each is idempotent.
 
 ### Purge
 
-`ProcessWorkAsync` handles `PurgeRevoked` under the existing claim rules.
+`ProcessWorkAsync` handles `PurgeRevoked` without a work claim. Every purge step is idempotent, so concurrent
+deliveries are harmless and no purge claim files exist.
 
 1. If the tombstone does not exist, complete without touching anything. A purge can never remove an unrevoked
    report.
 2. Delete every blob under the public folder again.
-3. Reload the record. If it carries an issue number, redact that issue again as in step 4 above. This covers a
-   worker that passed its revocation check before the call and created the issue inside the lease. An issue the
-   operator already deleted answers `Gone`.
+3. Reload the record. Use its `IssueNumber`, or else the `CreateIssue` claim result marker, and redact that issue
+   again as in step 4 above. This covers a worker that passed its revocation check before the call and created
+   the issue inside the lease. An issue the operator already deleted answers `Gone`.
 4. Delete the private files for the id: `records/<id>.json`, `accepted/<id>.json`, `snapshots/<id>.json` and the
-   claim files of the `CreateIssue` and `AppendServerSnapshot` kinds.
+   claim files of the `CreateIssue` and `AppendServerSnapshot` kinds. `WorkClaim.DeleteAllAsync` counts the
+   contiguous epochs and deletes from the highest down, with each epoch's result and release markers before its
+   claim. It does not list claims because their names are not folder-shaped. Interrupted cleanup can resume.
 
 Retained, all non-personal, and aged out by the existing 180-day lifecycle rules: the tombstone, the reference
-index entry (so a repeat by code answers `AlreadyRevoked` rather than `NotFound`) and the purge's own claim files.
+index entry (so a repeat by code answers `AlreadyRevoked` rather than `NotFound`).
 
 ### Reference index
 
-Intake writes an empty blob at `references/<code>/<reportId>` in the pending area before it creates the accepted
-index. Writing it first keeps it present when acceptance loses a race or fails after the write, and a duplicate
-intake of the same id rewrites the same name. `ReportLayout` owns the path and the code validation.
+Intake writes a JSON blob holding `{}` at `references/<lowercase code>/<reportId>.json` in the pending area before
+it creates the accepted index. Lowercase paths and the `.json` extension satisfy the media path and header rules.
+Writing it first keeps it present when acceptance loses a race or fails after the write, and a duplicate intake
+of the same id rewrites the same name. `ReportLayout` owns the path and the code validation.
 
 ### Issue outcomes
 
@@ -116,7 +121,7 @@ Any other failure throws `GitHubApiException` as the existing calls do. The resu
 | Seam | New member | Engine implementations |
 | --- | --- | --- |
 | `IReportMediaStore` | `ListAsync(ReportArea, string prefix, CancellationToken)` and `DeleteAsync(ReportArea, string path, CancellationToken)` | in-memory, Azure Blob |
-| `IReportWorkQueue` | `EnqueueAsync(ReportWorkItem, TimeSpan visibleAfter, CancellationToken)` | in-memory honours `TimeProvider`, Azure Queue sets the visibility timeout |
+| `IReportWorkQueue` | `EnqueueAsync(ReportWorkItem, TimeSpan visibleAfter, CancellationToken)` | in-memory honours `TimeProvider`, Azure Queue sets the visibility timeout and a time to live of the delay plus seven days, preserving a full delivery window |
 | `IGitHubIssueClient` | `UpdateIssueAsync` as above | `GitHubAppIssueClient` |
 | `ReportWorkKind` | `PurgeRevoked` | the worker |
 
@@ -131,8 +136,12 @@ them exactly.
 
 - **Trigger.** `BugReportRevoke` is an HTTP POST at `bug-reports/revoke` with `AuthorizationLevel.Admin`. The body is
   `{"report": "<code or id>"}`, capped at 1 KB. It answers 200 for `Revoked` and `AlreadyRevoked`, 404 for
-  `NotFound`, 409 for `Ambiguous` and 400 for `Invalid` or a malformed body, each with the result as JSON. It goes
-  into the game-template seed first and Grimhollow mirrors it.
+  `NotFound`, 409 for `Ambiguous` and 400 for `Invalid`. The trigger forwards the unread request through the
+  host's intake request adapter to `BugReportRelay.RevokeRequestAsync(RelayRequest, CancellationToken)` and
+  forwards its status, JSON and headers. The engine parses exactly one string property named `report`, returns
+  400 for malformed bodies and 413 above 1024 bytes, and maps the revocation result to those status codes. The
+  host must authorize the operator before calling it. It goes into the game-template seed first and Grimhollow
+  mirrors it.
 - **Operator script.** `scripts/revoke-bug-report.sh <code-or-id>` reads the master key into a variable with
   `az functionapp keys list`, never prints it, posts the request and prints the result. When the result carries an
   issue URL, or the new URL of a `Moved` issue, it deletes that issue with `gh issue delete --yes`, whatever the
@@ -177,8 +186,9 @@ sleeps:
 Azure backend in `KhaozEngine.BugReports.Relay.Azure.Tests`: list and delete paths and the queue visibility timeout.
 GitHub App client: the PATCH request shape and the `Gone` and `Moved` mapping through a fake HTTP handler.
 
-Host tests in the consumer repositories pin the Admin authorization level and route by attribute, the request
-parsing and the status mapping. The script passes `bash -n` and shellcheck, and a test asserts it never echoes the key.
+Relay core tests pin `RevokeRequestAsync` parsing, the 1024-byte cap and status mapping. Host tests in the consumer
+repositories pin the Admin authorization level, route by attribute and forwarding to the engine request API.
+The script passes `bash -n` and shellcheck, and a test asserts it never echoes the key.
 A live revoke against a deployed relay belongs to the consumer's deployment task.
 
 ## Non-goals

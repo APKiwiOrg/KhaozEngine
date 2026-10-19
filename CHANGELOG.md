@@ -5,6 +5,24 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.8.0
+
+2026-10-20
+
+- `BugReportRelay.RevokeReportAsync` resolves a report id or reference, writes its tombstone, deletes public
+  media, redacts and closes its issue, and returns `ReportRevocationResult` for operator issue deletion (#1510).
+- `BugReportRelay.RevokeRequestAsync` reuses the host's intake request plumbing with a 1024-byte JSON cap
+  and status mapping. Hosts authorize operators before forwarding the request (#1510).
+- Intake writes the reference index at `references/<lowercase code>/<reportId>.json` before acceptance.
+  The delayed `PurgeRevoked` job repeats cleanup after twelve minutes, then deletes private state and claim
+  files. The non-personal tombstone and reference index remain for repeat revokes (#1510).
+- Default-implemented seam additions support revocation without breaking third-party implementers:
+  `IReportMediaStore.ListAsync` and `DeleteAsync`, the delayed `IReportWorkQueue.EnqueueAsync`, and
+  `IGitHubIssueClient.UpdateIssueAsync`. Defaults throw a named `NotSupportedException`, while engine
+  implementations provide each operation (#1510).
+- Delayed Azure queue sends use a time to live of the delay plus seven days, keeping a full seven-day
+  delivery window after the visibility delay (#1510).
+
 ## 21.7.1
 
 2026-10-19

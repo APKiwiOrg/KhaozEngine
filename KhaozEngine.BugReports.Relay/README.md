@@ -23,8 +23,10 @@ least 32 characters. `Logger` is an optional engine `ILogger`, defaulting to `Lo
 | --- | --- | --- |
 | `IntakeAsync(request, cancellationToken)` | HTTP POST `bug-reports` | Authenticates the bearer token, checks blocked subjects and quota before reading the body, validates and stores the bundle, then enqueues `CreateIssue`. |
 | `ServerSnapshotIntakeAsync(reportId, request, cancellationToken)` | HTTP POST `bug-reports/{reportId}/server` | Checks `X-Report-Service-Key` before reading the body, stores the first snapshot and enqueues `AppendServerSnapshot` for an accepted report. |
-| `RevokeAsync(reportId, cancellationToken)` | Host administration | Writes a create-only private tombstone. Follow the folder deletion procedure in Host duties. |
-| `ProcessWorkAsync(item, cancellationToken)` | Queue trigger | Creates an issue or appends a late snapshot. Completed work returns normally. Failures throw for host redelivery. |
+| `RevokeReportAsync(idOrReference, cancellationToken)` | Host administration | Resolves an id or reference, tombstones the report, deletes public media, redacts and closes the issue, then schedules a private purge. Returns `ReportRevocationResult`. |
+| `RevokeRequestAsync(request, cancellationToken)` | Operator-only HTTP POST `bug-reports/revoke` | Parses the capped JSON request and maps the revocation result to a `RelayResponse`. The host must authorize operators first. |
+| `RevokeAsync(reportId, cancellationToken)` | Host administration primitive | Writes only a create-only private tombstone. Use `RevokeReportAsync` for full cleanup. |
+| `ProcessWorkAsync(item, cancellationToken)` | Queue trigger | Creates an issue, appends a late snapshot or handles `PurgeRevoked`. Completed work returns normally. Failures throw for host redelivery. |
 
 `RelayRequest` carries headers, the unread body stream and an optional content length. Forward
 `RelayResponse.StatusCode`, `JsonBody` and every response header unchanged. Do not buffer, deserialize or
@@ -143,6 +145,7 @@ HTTP client and disposes the GitHub client at shutdown. Grant the app issue writ
   | `records/` | The report retention, 180 days for the first consumer. |
   | `claims/` | The report retention, 180 days for the first consumer, including release and result markers. |
   | `revoked/` | At least the report retention and the client queue's 7-day maximum age. |
+  | `references/` | The report retention, 180 days for the first consumer. Retained after purge for repeat revokes by code. |
 
   Keep public report folders for the report retention too. Removing the accepted index or private state
   early can break retry deduplication. The one-day rule covers `snapshots/` only.
@@ -155,13 +158,30 @@ HTTP client and disposes the GitHub client at shutdown. Grant the app issue writ
 
 To revoke a report:
 
-1. Call `BugReportRelay.RevokeAsync(reportId, cancellationToken)` to create its durable private tombstone.
-2. Delete its public capability folder.
-3. Delete the folder again after the 10-minute claim lease. A holder that passed its check before
-   revocation can still finish a write inside its lease.
+1. Call `BugReportRelay.RevokeReportAsync(idOrReference, cancellationToken)`, or forward an authorized operator
+   request to `RevokeRequestAsync(request, cancellationToken)` using the intake request adapter. Its body is
+   `{"report":"<code or id>"}` with exactly one string property and at most 1024 bytes. Bind the HTTP trigger
+   at `AuthorizationLevel.Admin`. The engine method does not authenticate the operator.
+2. Delete the returned issue with an identity that may delete issues. An edit leaves the original title and
+   body in GitHub history. Follow a `Moved` result's new URL. The relay's GitHub App keeps Issues write only.
 
-Keep the tombstone and idempotency state. A missing public `manifest.json` also means revoked, and
-the relay writes a tombstone when it discovers that deletion.
+Nothing else is manual. The call deletes public media and redacts and closes any issue found through the
+record's `IssueNumber` or the `CreateIssue` result marker. It schedules `PurgeRevoked` twelve minutes later,
+after the ten-minute claim lease plus two minutes. The purge repeats public cleanup and redaction before
+removing the private record, accepted index, snapshot and issue or comment claim files. It takes no claim.
+Only the non-personal tombstone and reference index remain until their lifecycle expiry.
+
+`ReportRevocationResult` carries `Status`, `ReportId`, `Reference`, `CandidateIds`, `DeletedPublicBlobs`,
+`Issue`, `IssueNumber`, `IssueUrl` and `PurgeAt`. An ambiguous reference needs one of the returned ids.
+`RevokeRequestAsync` returns 200 for `Revoked` or `AlreadyRevoked`, 404 for `NotFound`, 409 for `Ambiguous`,
+400 for `Invalid` or malformed JSON, and 413 for an oversized body. Forward its JSON and headers unchanged.
+Issue outcomes are `NotCreated`, `Redacted`, `Gone`, `Moved` or `Failed`. A redaction failure is reported
+as `Failed` and retried by the purge. Other storage or queue faults propagate for host retry.
+
+A holder that passed its check before revocation can still finish a write inside its lease. The delayed
+purge removes that write. A holder running beyond the lease remains outside the guarantee. A late issue
+found by the purge is redacted and logged with its number for operator deletion. A missing public
+`manifest.json` also means revoked, and the relay writes a tombstone when it discovers that deletion.
 
 The relevant `host.json` settings are:
 
@@ -193,7 +213,8 @@ merges. The relay-private report record, including reporter identity and the iss
 
 Pending also holds `accepted/<reportId>.json` (folder, subject and received time),
 `snapshots/<reportId>.json` (the first raw snapshot), `revoked/<reportId>.json` (the first revocation time),
-and the `claims/` files described below.
+`references/<lowercase code>/<reportId>.json` (a `{}` index entry), and the `claims/` files described below.
+Intake writes the reference entry before the accepted index, so retries and lost acceptance races retain it.
 Every media store enforces the public `ReportPaths.IsValid(path)` rule. It allows one or more
 `/`-separated segments of `[a-z0-9._-]`, with no leading or trailing slash, empty segment, `.` or `..` segment.
 
@@ -224,12 +245,17 @@ to public `server.json`. The subject stays in private state. Issue composition u
 - **Revocation is durable.** Tombstones and missing public manifests stop new issue, comment and public
   snapshot or viewer writes. Snapshot POSTs and bundle resends return 202 without enqueueing revoked work.
   A holder that passed its check before revocation can still finish a write inside its 10-minute lease.
-  Follow the two deletions in Host duties. A holder running beyond the lease is the unfenced residual above.
+  The delayed purge repeats cleanup after twelve minutes. A holder running beyond the lease is the unfenced
+  residual above.
 - **A transport timeout can hide a POST that succeeded.** The failure releases the claim, so redelivery can
   repeat that write. Issue and comment POSTs are sent once per attempt, with no `HttpRetry`.
 - **Exhausting the 64 claim epochs needs operator recovery.** It throws the internal
   `ReportClaimExhaustedException`, which names the report and the work kind. An operator must inspect and
   clear the report's claims before it can run again. Redelivery alone cannot recover it.
+
+Purge work takes no claim. `WorkClaim.DeleteAllAsync` counts contiguous issue and comment claim epochs and
+deletes from the highest down, removing each result and release marker before its claim. Claim names are
+not folder-shaped, so cleanup does not use listing and can resume after interruption.
 
 Issue and comment writes take separate create-only claims in Pending at
 `claims/<kind>-<reportId>-<epoch>.json`, holding `claimedAt`. Completed work returns normally. An active,

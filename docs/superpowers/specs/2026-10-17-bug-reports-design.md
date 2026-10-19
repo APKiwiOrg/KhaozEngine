@@ -258,7 +258,9 @@ from client to server, because protocols are game-owned.
 | --- | --- | --- |
 | `IntakeAsync` | client upload | authenticate, quota, validate, store, enqueue `CreateIssue`, return the reference |
 | `ServerSnapshotIntakeAsync` | server post | check the service key, store the snapshot in the private pending area keyed by report id, enqueue `AppendServerSnapshot` if the issue already exists |
-| `ProcessWorkAsync` | queue message | create the issue or append the snapshot comment |
+| `RevokeReportAsync` | operator call | resolve the id or reference, tombstone, delete public media, redact and close the issue, schedule the private purge |
+| `RevokeRequestAsync` | authorized operator HTTP request | parse the capped body and map the revocation status to a relay response |
+| `ProcessWorkAsync` | queue message | create the issue, append the snapshot comment or purge a revoked report |
 
 ### Intake
 
@@ -328,9 +330,12 @@ no external scripts or styles.
 ### Media access
 
 GitHub's image proxy and the viewer both fetch anonymously, so media is served at capability URLs: the 128-bit path
-token, per-blob read access and no container listing. To revoke a report, call `BugReportRelay.RevokeAsync`,
-delete its public folder, then delete it again after the 10-minute claim lease. Retain the private
-`revoked/<reportId>.json` tombstone and idempotency state. A missing public manifest also means revoked.
+token, per-blob read access and no container listing. To revoke a report, call `BugReportRelay.RevokeReportAsync`
+with its id or reference, or forward an authorized operator request to `RevokeRequestAsync`. Delete the returned
+issue with an identity that may delete issues. The relay deletes public media, redacts and closes the issue, and
+schedules a purge after twelve minutes to repeat cleanup and delete private state. Retain the non-personal
+tombstone and reference index until lifecycle expiry. A missing public manifest also means revoked. See the
+[implemented revoke design](2026-10-19-bug-report-revoke-design.md) for status mapping and purge recovery.
 A holder that passed its check before the call can still finish a write inside its lease, and a holder
 running beyond the lease is outside the guarantee.
 
@@ -339,11 +344,14 @@ running beyond the lease is outside the guarantee.
 | Seam | Purpose | Azure backend |
 | --- | --- | --- |
 | `IReporterAuthenticator` | token to identity | none (the game supplies it) |
-| `IReportMediaStore` | write and read report blobs, existence checks | Blob Storage |
-| `IReportWorkQueue` | at-least-once work items with dequeue count | Storage Queue |
+| `IReportMediaStore` | write and read report blobs, existence checks, recursive `ListAsync` and idempotent `DeleteAsync` | Blob Storage |
+| `IReportWorkQueue` | at-least-once work items, including delayed `EnqueueAsync` | Storage Queue, with a time to live of the delay plus seven days |
 | `IReportQuotaStore` | fixed-window counters with optimistic concurrency | Table Storage |
 
-Every seam has an in-memory implementation in the relay core for tests and local runs.
+The media, queue and quota seams have in-memory implementations for tests and local runs.
+`IGitHubIssueClient` creates issues, adds comments and redacts and closes issues through `UpdateIssueAsync`.
+The new list, delete, delayed enqueue and issue update members have default implementations that throw
+`NotSupportedException` naming the member. Engine backends override them.
 
 ## Security
 

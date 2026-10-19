@@ -15,6 +15,11 @@ internal sealed class QueueSenderAdapter : IReportQueueSender
         this.queue = queue;
     }
 
-    public async Task SendAsync(string text, CancellationToken ct)
-        => await queue.SendMessageAsync(text, cancellationToken: ct).ConfigureAwait(false);
+    public async Task SendAsync(string text, TimeSpan? visibilityTimeout, CancellationToken ct)
+    {
+        if (visibilityTimeout is null)
+            await queue.SendMessageAsync(text, cancellationToken: ct).ConfigureAwait(false);
+        else
+            await queue.SendMessageAsync(text, visibilityTimeout: visibilityTimeout, cancellationToken: ct).ConfigureAwait(false);
+    }
 }

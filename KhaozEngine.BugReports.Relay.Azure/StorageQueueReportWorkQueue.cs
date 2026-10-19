@@ -26,6 +26,15 @@ public sealed class StorageQueueReportWorkQueue : IReportWorkQueue
     public Task EnqueueAsync(ReportWorkItem item, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return sender.SendAsync(ReportWorkItemJson.Serialize(item), cancellationToken);
+        return sender.SendAsync(ReportWorkItemJson.Serialize(item), null, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task EnqueueAsync(ReportWorkItem item, TimeSpan visibleAfter, CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(visibleAfter, TimeSpan.Zero);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(visibleAfter, TimeSpan.FromDays(7));
+        cancellationToken.ThrowIfCancellationRequested();
+        return sender.SendAsync(ReportWorkItemJson.Serialize(item), visibleAfter, cancellationToken);
     }
 }

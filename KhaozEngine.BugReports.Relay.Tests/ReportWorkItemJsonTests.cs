@@ -27,6 +27,17 @@ public sealed class ReportWorkItemJsonTests
     }
 
     [Fact]
+    public void WorkItemJson_PurgeRevoked_RoundTrips()
+    {
+        var item = new ReportWorkItem(ReportWorkKind.PurgeRevoked, Id);
+
+        string json = ReportWorkItemJson.Serialize(item);
+
+        Assert.Equal("{\"kind\":\"purgeRevoked\",\"reportId\":\"" + Id + "\",\"requeues\":0}", json);
+        Assert.Equal(item, ReportWorkItemJson.Parse(json));
+    }
+
+    [Fact]
     public void Parse_MissingRequeues_IsZero()
     {
         ReportWorkItem item = ReportWorkItemJson.Parse("{\"kind\":\"createIssue\",\"reportId\":\"" + Id + "\"}");

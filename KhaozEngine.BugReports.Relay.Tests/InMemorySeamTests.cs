@@ -88,6 +88,99 @@ public sealed class InMemorySeamTests
         Assert.Equal(0, queue.Count);
     }
 
+    [Fact]
+    public async Task InMemoryQueue_DelayedItem_IsHiddenUntilItsTime()
+    {
+        var clock = new ManualClock(new DateTimeOffset(2026, 10, 19, 0, 0, 0, TimeSpan.Zero));
+        var queue = new InMemoryReportWorkQueue(clock);
+        var first = new ReportWorkItem(ReportWorkKind.PurgeRevoked, FirstId);
+        var second = new ReportWorkItem(ReportWorkKind.CreateIssue, SecondId);
+
+        await queue.EnqueueAsync(first, TimeSpan.FromMinutes(12), CancellationToken.None);
+        await queue.EnqueueAsync(second, CancellationToken.None);
+
+        Assert.Equal(2, queue.Count);
+        Assert.True(queue.TryDequeue(out ReportWorkItem? immediate));
+        Assert.Equal(second, immediate);
+        Assert.False(queue.TryDequeue(out ReportWorkItem? hidden));
+        Assert.Null(hidden);
+        Assert.Equal(1, queue.Count);
+        clock.Advance(TimeSpan.FromMinutes(12) - TimeSpan.FromTicks(1));
+        Assert.False(queue.TryDequeue(out _));
+        clock.Advance(TimeSpan.FromTicks(1));
+        Assert.True(queue.TryDequeue(out ReportWorkItem? delayed));
+        Assert.Equal(first, delayed);
+        Assert.Equal(0, queue.Count);
+    }
+
+    [Theory]
+    [InlineData(-1L)]
+    [InlineData(6048000000001L)]
+    public async Task InMemoryQueue_RejectsNegativeOrOverSevenDayDelay(long ticks)
+    {
+        var queue = new InMemoryReportWorkQueue();
+        var item = new ReportWorkItem(ReportWorkKind.CreateIssue, FirstId);
+
+        ArgumentOutOfRangeException error = await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            queue.EnqueueAsync(item, TimeSpan.FromTicks(ticks), CancellationToken.None));
+
+        Assert.Equal("visibleAfter", error.ParamName);
+        Assert.Equal(0, queue.Count);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(7)]
+    public async Task InMemoryQueue_AcceptsZeroAndSevenDayDelays(int days)
+    {
+        var clock = new ManualClock(new DateTimeOffset(2026, 10, 19, 0, 0, 0, TimeSpan.Zero));
+        var queue = new InMemoryReportWorkQueue(clock);
+        var item = new ReportWorkItem(ReportWorkKind.CreateIssue, FirstId);
+
+        await queue.EnqueueAsync(item, TimeSpan.FromDays(days), CancellationToken.None);
+        if (days > 0)
+            Assert.False(queue.TryDequeue(out _));
+        clock.Advance(TimeSpan.FromDays(days));
+
+        Assert.True(queue.TryDequeue(out ReportWorkItem? visible));
+        Assert.Equal(item, visible);
+    }
+
+    [Fact]
+    public async Task InMemoryQueue_TakesOldestEnqueuedVisibleItem()
+    {
+        var clock = new ManualClock(new DateTimeOffset(2026, 10, 19, 0, 0, 0, TimeSpan.Zero));
+        var queue = new InMemoryReportWorkQueue(clock);
+        var first = new ReportWorkItem(ReportWorkKind.CreateIssue, FirstId);
+        var second = new ReportWorkItem(ReportWorkKind.CreateIssue, SecondId);
+        await queue.EnqueueAsync(first, TimeSpan.FromMinutes(12), CancellationToken.None);
+        await queue.EnqueueAsync(second, TimeSpan.FromMinutes(6), CancellationToken.None);
+        clock.Advance(TimeSpan.FromMinutes(12));
+
+        Assert.True(queue.TryDequeue(out ReportWorkItem? a));
+        Assert.True(queue.TryDequeue(out ReportWorkItem? b));
+        Assert.Equal(first, a);
+        Assert.Equal(second, b);
+        Assert.False(queue.TryDequeue(out _));
+    }
+
+    [Fact]
+    public async Task QueueWithoutDelay_ThrowsNotSupportedNamingTheMember()
+    {
+        IReportWorkQueue queue = new QueueWithoutDelay();
+        var item = new ReportWorkItem(ReportWorkKind.CreateIssue, FirstId);
+
+        NotSupportedException error = await Assert.ThrowsAsync<NotSupportedException>(() =>
+            queue.EnqueueAsync(item, TimeSpan.FromMinutes(12), CancellationToken.None));
+
+        Assert.Contains("IReportWorkQueue.EnqueueAsync", error.Message);
+    }
+
+    sealed class QueueWithoutDelay : IReportWorkQueue
+    {
+        public Task EnqueueAsync(ReportWorkItem item, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
     sealed class MediaStoreWithoutListOrDelete : IReportMediaStore
     {
         public Task<bool> PutAsync(ReportArea area, string path, ReadOnlyMemory<byte> content, ReportBlobHeaders headers,

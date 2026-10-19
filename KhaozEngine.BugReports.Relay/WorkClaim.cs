@@ -76,7 +76,7 @@ internal sealed class WorkClaim(IReportMediaStore media, TimeProvider time)
             overwrite: false, CancellationToken.None).ConfigureAwait(false);
     }
 
-    static string Prefix(ReportWorkKind kind, string reportId) => "claims/" + KindName(kind) + "-" + reportId + "-";
+    internal static string Prefix(ReportWorkKind kind, string reportId) => "claims/" + KindName(kind) + "-" + reportId + "-";
     static string Path(string prefix, int epoch, string extension = ".json") => prefix + epoch.ToString(CultureInfo.InvariantCulture) + extension;
 
     static string KindName(ReportWorkKind kind) => kind switch

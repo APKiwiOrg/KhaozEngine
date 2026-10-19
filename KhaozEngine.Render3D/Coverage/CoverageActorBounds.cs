@@ -159,38 +159,119 @@ internal sealed class CoverageActorBounds
 
     internal MeshBounds ExpandWorld(in MeshBounds skin, in Matrix4x4 model, ReadOnlySpan<CoverageCommandPose> commands)
     {
-        var refined = FromMesh(BoundRefinement(skin));
-        double recession = MaxRecession(commands);
-        if (!refined.IsFinite || !double.IsFinite(recession) || !CoverageAffine.TryFrom(model, out var affine)) return InvalidMesh;
+        var local = ConformedLocal(skin, model, commands, out var world);
+        if (!local.IsFinite || !CoverageAffine.TryFrom(model, out var affine)) return InvalidMesh;
         var matrix = CoverageBoundedAffine.From(affine);
-        var world = matrix.Apply(refined);
         Span<CoverageScalarBounds> axes = stackalloc CoverageScalarBounds[3];
         for (int axis = 0; axis < 3; axis++)
         {
-            var products = ProductSum(refined, matrix, axis);
+            var products = ProductSum(local, matrix, axis);
             var error = Add(Multiply(Gamma(7), products), Point(7 * FlushLimit));
             if (!Round32Envelope(Add(products, error)).IsFinite) return InvalidMesh;
-            error = Add(error, FieldError(refined, model, axis));
-            axes[axis] = Expand(Axis(world, axis), Add(error, Point(recession)).Max);
+            error = Add(error, FieldError(local, model, axis));
+            axes[axis] = Expand(Axis(world, axis), error.Max);
         }
         return ToMesh(new(axes[0], axes[1], axes[2]));
+    }
+
+    CoverageBoundedVector ConformedLocal(in MeshBounds skin, in Matrix4x4 model, ReadOnlySpan<CoverageCommandPose> commands,
+        out CoverageBoundedVector world)
+    {
+        world = InvalidBox;
+        var refined = FromMesh(BoundRefinement(skin));
+        double recession = MaxRecession(commands);
+        if (!refined.IsFinite || !double.IsFinite(recession) || !CoverageAffine.TryFrom(model, out var affine)) return InvalidBox;
+        var matrix = CoverageBoundedAffine.From(affine);
+        var worldBefore = matrix.Apply(refined);
+        if (commands.IsEmpty) { world = worldBefore; return refined; }
+        if (!CoverageFrameAdmission.TryActor(model, out var actor) || !actor.TryInverse(out var actorInverse)
+            || !CoverageBoundedAffine.From(actor).TryInverse(out var inverse)) return InvalidBox;
+        Span<CoverageScalarBounds> domain = stackalloc CoverageScalarBounds[3];
+        Span<CoverageScalarBounds> worldAxes = stackalloc CoverageScalarBounds[3];
+        Span<CoverageScalarBounds> moveErrors = stackalloc CoverageScalarBounds[3];
+        for (int axis = 0; axis < 3; axis++)
+        {
+            var column = new CoverageBoundedVector(Axis(inverse.R1, axis), Axis(inverse.R2, axis), Axis(inverse.R3, axis));
+            // Keep C1's direction-independent inverse-column domain as well as the actual rounded moves.
+            domain[axis] = Join(Axis(refined, axis), Round32Envelope(Expand(Axis(refined, axis), Multiply(Point(recession), column.Length).Max)));
+            worldAxes[axis] = Expand(Axis(worldBefore, axis), recession);
+        }
+        var linear = Matrix(model with { M41 = 0, M42 = 0, M43 = 0 });
+        foreach (var command in commands)
+        {
+            if (!CoverageAffine.TryFrom(command.CoverageWorld, out var coverage)) return InvalidBox;
+            // Match Derive's binary64 inverse/application and round-once upload, then enclose the
+            // device field read's F. The ideal inverse direction alone does not enclose these words.
+            var direction = actorInverse.ApplyLinear(coverage.Row(2));
+            var recess = Read(new Vector3((float)direction.X, (float)direction.Y, (float)direction.Z));
+            double maximum = RecessionScalar(refined, linear, recess, command);
+            if (!recess.IsFinite || !double.IsFinite(maximum)) return InvalidBox;
+            for (int axis = 0; axis < 3; axis++)
+            {
+                var move = Mul32(new(0, maximum), Axis(recess, axis));
+                var conformed = Round32Envelope(Subtract(Axis(refined, axis), move));
+                domain[axis] = Join(domain[axis], conformed);
+                var error = Add(Multiply(Gamma(2), Multiply(Point(maximum), Point(Abs(Axis(recess, axis))))),
+                    Divide(Add(Multiply(Point(U), Point(Abs(Axis(refined, axis)))), Point(2 * FlushLimit)), Point(1 - 2 * U)));
+                moveErrors[axis] = new(-error.Max, error.Max);
+            }
+            // Preserve the common scalar through the exact model map. Transforming the independent
+            // local axis intervals would lose inverse/shear cancellation and needlessly inflate culling.
+            var worldDirection = matrix.ApplyLinear(recess);
+            var worldError = matrix.ApplyLinear(new(moveErrors[0], moveErrors[1], moveErrors[2]));
+            for (int axis = 0; axis < 3; axis++)
+            {
+                var moved = Add(Axis(worldBefore, axis), Multiply(new(-maximum, 0), Axis(worldDirection, axis)));
+                worldAxes[axis] = Join(worldAxes[axis], Add(moved, Axis(worldError, axis)));
+            }
+        }
+        world = new(worldAxes[0], worldAxes[1], worldAxes[2]);
+        return new(domain[0], domain[1], domain[2]);
+    }
+
+    static double RecessionScalar(CoverageBoundedVector refined, CoverageBoundedAffine linear,
+        CoverageBoundedVector recess, in CoverageCommandPose command)
+    {
+        var cap = Read(command.MaxWorldRecession);
+        var z = Read(new Vector3(command.CoverageWorld.M31, command.CoverageWorld.M32, command.CoverageWorld.M33));
+        var zScale = Round32Envelope(Sqrt(Add32(Add32(Mul32(z.X, z.X), Mul32(z.Y, z.Y)), Mul32(z.Z, z.Z))));
+        if (!zScale.IsFinite || zScale.Min <= 0) return double.PositiveInfinity;
+        // Conform admits F(RN32(full * ZScale)) <= cap. Include multiplication rounding and F.
+        var nominal = Divide(Add(cap, Point(FlushLimit)), Multiply(Point(1 - U), zScale));
+
+        // Corrections recompute before - total*Recess and validate the rounded world delta's norm.
+        // If B bounds the delta's absolute errors and A its errors per scalar unit, then
+        // total * (|Recess*L| - |A|) <= admittedNorm + |B|. All bounds round outward.
+        Span<CoverageScalarBounds> baseErrors = stackalloc CoverageScalarBounds[3];
+        for (int axis = 0; axis < 3; axis++)
+            baseErrors[axis] = Divide(Add(Multiply(Point(U), Point(Abs(Axis(refined, axis)))), Point(3 * FlushLimit)), Point(1 - 3 * U));
+        var deltaBase = new CoverageBoundedVector(baseErrors[0], baseErrors[1], baseErrors[2]);
+        Span<CoverageScalarBounds> relative = stackalloc CoverageScalarBounds[3];
+        Span<CoverageScalarBounds> absolute = stackalloc CoverageScalarBounds[3];
+        for (int axis = 0; axis < 3; axis++)
+        {
+            relative[axis] = Multiply(Gamma(8), ProductSum(recess, linear, axis));
+            absolute[axis] = Add(Multiply(Add(One, Gamma(5)), ProductSum(deltaBase, linear, axis)), Point(5 * FlushLimit));
+        }
+        var relativeNorm = new CoverageBoundedVector(relative[0], relative[1], relative[2]).Length;
+        var absoluteNorm = new CoverageBoundedVector(absolute[0], absolute[1], absolute[2]).Length;
+        var gain = linear.ApplyLinear(recess).Length;
+        var denominator = Subtract(gain, relativeNorm);
+        if (!denominator.IsFinite || denominator.Min <= 0) return double.PositiveInfinity;
+        // Reverse the final sqrt, three nonnegative squares and two additions, including each F.
+        var sqrtLimit = Divide(Add(cap, Point(FlushLimit)), Point(1 - U));
+        var norm = Sqrt(Divide(Add(Square(sqrtLimit), Point(5 * FlushLimit)),
+            Multiply(Multiply(Point(1 - U), Point(1 - U)), Point(1 - U))));
+        var corrected = Divide(Add(norm, absoluteNorm), denominator);
+        return Math.Max(nominal.Max, corrected.Max);
     }
 
     /// <summary>Magnitude guard for the model dot relative to the latched origin. This is not the retired
     /// render-pass certificate and makes no claim about rasterization, depth, equipment or temporal arithmetic.</summary>
     internal double OriginError(in MeshBounds skin, in Matrix4x4 model, Vector3 renderOrigin, ReadOnlySpan<CoverageCommandPose> commands)
     {
-        var local = FromMesh(BoundRefinement(skin));
-        double recession = MaxRecession(commands);
-        if (!local.IsFinite || !double.IsFinite(recession) || !CoverageFrameAdmission.TryActor(model, out var actor)
-            || !CoverageBoundedAffine.From(actor).TryInverse(out var inverse)) return double.PositiveInfinity;
-        Span<CoverageScalarBounds> domain = stackalloc CoverageScalarBounds[3];
-        for (int axis = 0; axis < 3; axis++)
-        {
-            var column = new CoverageBoundedVector(Axis(inverse.R1, axis), Axis(inverse.R2, axis), Axis(inverse.R3, axis));
-            domain[axis] = Expand(Axis(local, axis), Multiply(Point(recession), column.Length).Max);
-        }
-        var expanded = new CoverageBoundedVector(domain[0], domain[1], domain[2]);
+        var local = ConformedLocal(skin, model, commands, out _);
+        if (!local.IsFinite || !CoverageFrameAdmission.TryActor(model, out _)) return double.PositiveInfinity;
         CoverageScalarBounds residualSquared = Zero;
         double maximumSum = 0;
         for (int axis = 0; axis < 3; axis++)
@@ -203,9 +284,9 @@ internal sealed class CoverageActorBounds
             for (int row = 0; row < 3; row++)
             {
                 var coefficient = Point(model[row, axis]);
-                sum = Add(sum, Point(Abs(Multiply(domain[row], coefficient))));
+                sum = Add(sum, Point(Abs(Multiply(Axis(local, row), coefficient))));
                 // Also enclose a copied coefficient's F if the consuming graph flushes uploaded fields.
-                residual = Add(residual, Point(Abs(Multiply(domain[row], Subtract(coefficient, Round32Envelope(coefficient))))));
+                residual = Add(residual, Point(Abs(Multiply(Axis(local, row), Subtract(coefficient, Round32Envelope(coefficient))))));
             }
             residualSquared = Add(residualSquared, Square(residual));
             maximumSum = Math.Max(maximumSum, sum.Max);
@@ -213,7 +294,7 @@ internal sealed class CoverageActorBounds
         var dotError = Add(Multiply(Gamma(7), Point(maximumSum)), Point(7 * FlushLimit));
         if (!Round32Envelope(Add(Point(maximumSum), dotError)).IsFinite) return double.PositiveInfinity;
         double error = Add(Sqrt(residualSquared), Multiply(Sqrt(Point(3)), dotError)).Max;
-        return expanded.IsFinite && double.IsFinite(error) ? error : double.PositiveInfinity;
+        return double.IsFinite(error) ? error : double.PositiveInfinity;
     }
 
     /// <summary>Runs after identity/capacity/frame admission. The first failing ID in sorted order owns the refusal.</summary>

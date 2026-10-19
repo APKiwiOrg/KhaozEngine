@@ -59,9 +59,40 @@ edge/interior graphs fit this six-operation relative and flush allowance. There 
 recipe loop. Tests use separate integer RN32 skinning, edge and integer-barycentric interpolation,
 including shear, unnormalized and signed weights, identity, subnormals and near-limit magnitudes.
 
-ExpandWorld and OriginError both start from the refined envelope. World bounds enclose the model
-dot and add the maximum command recession, never its sum. Origin admission first expands the
-local domain by that recession times outward column lengths of the interval inverse model.
+ExpandWorld and OriginError share one conformed local envelope. It starts with the refined box
+and the maximum command recession times outward column lengths of the interval inverse model,
+including RN32-then-F of the resulting local endpoints. It also joins every command's actual
+rounded conformation graph. Commands do not accumulate because their regions are disjoint.
+The Recess field is produced with Derive's binary64 actor inverse and direction application,
+rounded once to binary32, then passed through F at its device read. Each local move encloses
+F(RN32(before - F(RN32(scalar * Recess)))) with outward interval operations.
+
+The scalar ceiling includes both the nominal Conform check and the corrected full-target check.
+The nominal check admits F(RN32(full*ZScale)) <= cap, so
+full <= (cap+eta)/((1-u)*ZScale). ZScale itself is enclosed through its pinned square/add/root
+graph. For a corrected total t, let d be the flushed Recess, L the flushed actor linear map,
+P_i the refined coordinate magnitude and b_i=(u*P_i+3*eta)/(1-3*u). The rounded local delta is
+-t*d plus coordinate error at most gamma3*t*abs(d_i)+b_i. Its rounded linear transform has
+coordinate error at most t*A_j+B_j, where
+A_j=gamma8*sum_i(abs(d_i*L_ij)) and
+B_j=(1+gamma5)*sum_i(b_i*abs(L_ij))+5*eta.
+Reversing the full-target distance graph gives an upper bound N on the norm of its rounded
+world delta. With q=(cap+eta)/(1-u), N=sqrt((q*q+5*eta)/(1-u)^3).
+The triangle inequality gives t <= (N+norm(B))/(norm(d*L)-norm(A)). The denominator uses its
+outward lower endpoint and must be positive. The larger of the nominal and corrected ceilings
+feeds the local move enclosure. A transition's rounded applied scalar lies between zero and t,
+so the same enclosure contains its recomputed move and the exact zero/one copies. Invalid
+directions, scalar ceilings or local endpoints refuse. No source or recipe loop runs per frame.
+
+World bounds retain the common scalar when transforming the recession direction. The exact
+image of before-t*d is enclosed by worldBefore-[0,tMax]*(d*model). The local multiply/subtract
+rounding adds a symmetric coordinate allowance of
+gamma2*tMax*abs(d_i)+(u*P_i+2*eta)/(1-2*u), transformed through the model as well. These command
+boxes are joined with the nominal world sphere expansion, never accumulated. Keeping the scalar
+correlated avoids inflating the world box through independent inverse/shear coordinate extrema.
+The final model-dot error is evaluated over the larger conformed local box and includes copied-field
+flush residuals. An ideal scalar world budget alone is never the drawing envelope.
+Origin admission uses the same conformed local box.
 It adds the Euclidean origin-subtraction/upload residual to sqrt(3) times
 (gamma7*maximumAbsoluteProductSum+7*eta). Copied-coefficient flush residuals are included as well.
 Nonfinite intervals and potential dot overflow refuse. Allows uses error <= (double)clearance*.25d.

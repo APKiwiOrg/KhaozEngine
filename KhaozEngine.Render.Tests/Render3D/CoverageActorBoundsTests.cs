@@ -76,6 +76,87 @@ public sealed class CoverageActorBoundsTests
         Assert.Equal(joinedFormBound.Max, actual.Max);
     }
 
+    [Theory]
+    [InlineData(-1, false, true)]
+    [InlineData(0, false, false)]
+    [InlineData(1, false, false)]
+    [InlineData(-1, true, false)]
+    public void Identity_cutoff_uses_the_rounded_total_and_a_strict_comparison(int neighbor, bool multiple, bool identity)
+    {
+        float first = Bits((uint)(0x322bcc77 + neighbor)); // 1e-8f and its immediate binary32 neighbors.
+        float second = multiple ? 3 * MathF.ScaleB(1, -52) : 0;
+        if (multiple)
+        {
+            Assert.True((double)first + second < 1e-8f);
+            Assert.Equal(1e-8f, Add(first, second));
+        }
+        var vertex = Vertex(new(3, 5, 7), new(first, second, 0, 0)) with { BoneIndices = Vector4.Zero };
+        Matrix4x4[] palette = [Matrix4x4.CreateTranslation(1e10f, 0, 0)];
+        var actual = Skin(vertex, palette);
+        var bound = new CoverageActorBounds(Source(vertex)).BoundSkin(palette);
+        Inside(bound, actual);
+        if (identity) Assert.Equal(vertex.Position, actual);
+        else
+        {
+            Assert.InRange(actual.X, 99, 101);
+            Assert.True(bound.Min.X > 99); // An erroneous identity join exposes the source point at X=3.
+            Assert.InRange(bound.Max.X - bound.Min.X, 0, .001f);
+        }
+    }
+
+    [Fact]
+    public void World_envelope_is_finite_and_tight_under_scale_shear_and_recession()
+    {
+        var fixture = CoverageFixture.CurvedPanel();
+        var topology = CoverageRefinement.Build(fixture.Source, fixture.Map);
+        var command = CoverageCommands.Poses(fixture, topology, CoverageCommands.Plate(fixture), Matrix4x4.Identity)[0]
+            with
+        { MaxWorldRecession = 1 };
+        var producer = new CoverageActorBounds(Source(Vertex(Vector3.Zero, Vector4.Zero)));
+        Matrix4x4 model = new(2, .5f, 0, 0, 0, 1, .25f, 0, 0, 0, .5f, 0, 17, -9, 4, 1);
+        var world = producer.ExpandWorld(new(Vector3.Zero, Vector3.Zero), model, [command]);
+        for (int axis = 0; axis < 3; axis++)
+        {
+            Assert.True(float.IsFinite(world.Min[axis]) && float.IsFinite(world.Max[axis]));
+            Assert.InRange(world.Max[axis] - world.Min[axis], 2, 3);
+            Assert.InRange(world.Min[axis], model.Translation[axis] - 1.5f, model.Translation[axis]);
+            Assert.InRange(world.Max[axis], model.Translation[axis], model.Translation[axis] + 1.5f);
+        }
+    }
+
+    [Fact]
+    public void Rounded_recession_and_final_model_dot_fit_the_world_envelope_for_an_admitted_ill_conditioned_actor()
+    {
+        var fixture = CoverageFixture.CurvedPanel();
+        var topology = CoverageRefinement.Build(fixture.Source, fixture.Map);
+        Matrix4x4 model = new(1.3f, .7f, 0, 0, 2.6f, 1.4001f, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
+        Matrix4x4 coverage = new(0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1);
+        var command = CoverageCommands.Poses(fixture, topology, CoverageCommands.Plate(fixture), Matrix4x4.Identity)[0]
+            with
+        { EquipmentWorld = coverage, CoverageWorld = coverage, MaxWorldRecession = 1, Clearance = 1 };
+        var scratch = new CoverageReferenceScratch(topology);
+        Assert.True(CoverageFrameAdmission.TryActor(model, out _));
+        Assert.True(CoverageReferenceFrames.TryPrepare(topology, model, [command], scratch, out var failure), failure.ToString());
+        var frame = scratch.Frames[0];
+        Assert.Equal(new Vector3(10768.2138671875f, -5383.72216796875f, 0), frame.Recess);
+        Assert.True(Mul(1, frame.ZScale) <= command.MaxWorldRecession);
+        // Independent integer RN32 operations follow section 4's Conform and final point-dot graphs.
+        Vector3 moved = new(Sub(0, Mul(1, frame.Recess.X)), Sub(0, Mul(1, frame.Recess.Y)), Sub(0, Mul(1, frame.Recess.Z)));
+        var drawn = DrawPoint(moved, model);
+        Assert.Equal(-1.0009765625f, drawn.X);
+        var producer = new CoverageActorBounds(Source(Vertex(Vector3.Zero, Vector4.Zero)));
+        var skin = new MeshBounds(Vector3.Zero, Vector3.Zero);
+        Assert.True(producer.TryAdmitOrigin(skin, model, Vector3.Zero, [command], out _));
+        var world = producer.ExpandWorld(skin, model, [command]);
+        Inside(world, drawn);
+        InsideWorld(world, moved, model, Vector3.Zero);
+        for (int axis = 0; axis < 3; axis++)
+        {
+            Assert.True(float.IsFinite(world.Min[axis]) && float.IsFinite(world.Max[axis]));
+            Assert.InRange(world.Max[axis] - world.Min[axis], 2, 3);
+        }
+    }
+
     [Fact]
     public void Rounding_envelope_includes_ties_signed_zero_and_the_inclusive_flush_threshold()
     {
@@ -147,12 +228,18 @@ public sealed class CoverageActorBoundsTests
     public void Nonfinite_palette_or_bound_refuses_and_warm_bounds_allocate_nothing()
     {
         var producer = new CoverageActorBounds(Source(Vertex(Vector3.One, new(1, 0, 0, 0)) with { BoneIndices = Vector4.Zero }));
+        var fixture = CoverageFixture.CurvedPanel();
+        var topology = CoverageRefinement.Build(fixture.Source, fixture.Map);
+        var commands = CoverageCommands.Poses(fixture, topology, CoverageCommands.Plate(fixture), Matrix4x4.Identity);
         Matrix4x4[] palette = [Matrix4x4.Identity];
         var skin = producer.BoundSkin(palette);
-        producer.ExpandWorld(skin, Matrix4x4.Identity, []);
+        producer.ExpandWorld(skin, Matrix4x4.Identity, commands);
+        producer.OriginError(skin, Matrix4x4.Identity, Vector3.Zero, commands);
         long before = GC.GetAllocatedBytesForCurrentThread();
-        var result = producer.ExpandWorld(producer.BoundSkin(palette), Matrix4x4.Identity, []);
+        var result = producer.ExpandWorld(producer.BoundSkin(palette), Matrix4x4.Identity, commands);
+        double error = producer.OriginError(skin, Matrix4x4.Identity, Vector3.Zero, commands);
         Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Assert.True(double.IsFinite(error));
         Inside(result, Vector3.One);
         Assert.False(float.IsFinite(producer.BoundSkin([Matrix4x4.Identity with { M41 = float.NaN }]).Max.X));
         Assert.False(double.IsFinite(producer.OriginError(new(new(float.NaN), Vector3.One), Matrix4x4.Identity, Vector3.Zero, [])));

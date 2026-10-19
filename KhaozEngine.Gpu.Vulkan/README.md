@@ -962,13 +962,18 @@ constructor, because the list owns both ends of that cycle and wiring it anywher
 forget the call. A forgotten call is silent rather than loud: the scope is nullable, and null reads as "there is
 no pass to end".
 
-**Staged upload sources also need device-memory visibility.** A new staging buffer can reuse a retired
-buffer's allocation from the shared memory-type/tiling pool. A destination buffer range barrier or image
-transition cannot order reads through that other buffer. Recorded buffer uploads, setup buffer uploads and
-setup texture uploads therefore include a global `ALL_COMMANDS/MEMORY_WRITE` to
-`ALL_TRANSFER/TRANSFER_READ` dependency in their existing pre-copy barrier call. Destination ranges and
-post-copy consumers keep their narrowed dependencies. Uniform-ring writes do not use this path. No wait,
-extra submission or extra barrier call is introduced.
+**Pooled reuse needs a shared release before completion.** A retired storage allocation can become a
+staging source, a mapped uniform ring or another resource reference. A dependency narrowed to the old buffer
+and its usage cannot cover those aliases. Every command-list seal and setup-batch seal therefore records one
+global `ALL_COMMANDS/MEMORY_WRITE` to `ALL_COMMANDS|HOST/MEMORY_READ|MEMORY_WRITE|HOST_READ|HOST_WRITE`
+dependency before native end and the existing timeline signal. The host destination supplies a device-to-host
+domain operation before completion polling allows CPU overwrite. Coherent host writes become available
+automatically, and queue submission publishes them to the device. Retirement still gates reuse on completion.
+There is no shared recorded-state flag for an abandoned list to consume. Empty sealed recordings use the same
+release, while empty setup flushes and discarded batches issue nothing. Per-copy destination dependencies keep
+their ranges and usage masks. The earlier staged-source-only global dependencies are subsumed by this release.
+No wait or submission is added. One global dependency per sealed recording can constrain overlap between
+submissions. Its performance cost has not been measured.
 
 **`SetFramebuffer` emits a viewport and a scissor ON A CHANGE ONLY, and the viewport's height is NEGATIVE.**
 There is no `SetViewport` on the seam: the engine gets a viewport because Veldrid's base

@@ -33,10 +33,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// generic form allocates nothing.</para>
     ///
     /// <para><b>DESTINATION DEPENDENCIES COVER THE WRITTEN RANGE.</b> They retain the buffer's usage-specific
-    /// masks. The pre-copy call also carries a global memory dependency for the staging source, whose allocation
-    /// can reuse memory previously written through another buffer. A destination range barrier cannot order
-    /// accesses through that staging alias. The global dependency ends at transfer reads, while the ranged
-    /// dependency ends at the destination's transfer write.</para>
+    /// masks. Pooled aliases are released at the shared command-buffer seal through
+    /// <see cref="VulkanMemoryRelease"/>, before completion permits reuse.</para>
     ///
     /// <para><b>NO BATCHING, AND THAT IS A CHOICE THIS ROW MAKES CHEAPLY REVERSIBLE.</b> Two uploads in a row
     /// produce two copies and four barrier calls. Coalescing them into one <c>vkCmdPipelineBarrier2</c> carrying N
@@ -87,9 +85,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             // BEFORE. Nothing else orders this write against the reads a previous submission is still making out
             // of the same range, and a buffer has no layout for the tracker to have ordered it through (#618).
-            // The same call orders reads through staging memory recycled from another device-written buffer.
             RecordBarrier(sink, VulkanUploadBarrier.Before(
-                destination.DeviceBuffer, destinationOffsetBytes, sizeBytes, destination.UploadUsage), stagingRead: true);
+                destination.DeviceBuffer, destinationOffsetBytes, sizeBytes, destination.UploadUsage));
 
             copies.CopyBuffer(lease.Buffer, lease.OffsetBytes, destination.DeviceBuffer, destinationOffsetBytes,
                 sizeBytes);
@@ -103,14 +100,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // upload. A VkDependencyInfo carries raw pointer arrays as a matter of ABI, which is why this package is
         // unsafe by construction (V-P1's note) rather than by choice. The barrier arrives BY VALUE so its address
         // is this frame's rather than the caller's, which is what lets one helper serve both halves.
-        static unsafe void RecordBarrier<TSink>(TSink sink, BufferMemoryBarrier2 barrier, bool stagingRead = false)
+        static unsafe void RecordBarrier<TSink>(TSink sink, BufferMemoryBarrier2 barrier)
             where TSink : struct, IVkCmdSink
         {
-            MemoryBarrier2 source = VulkanStagingReadBarrier.BeforeCopy;
             var dependency = new DependencyInfo(
                 sType: StructureType.DependencyInfo,
-                memoryBarrierCount: stagingRead ? 1u : 0u,
-                pMemoryBarriers: stagingRead ? &source : null,
                 bufferMemoryBarrierCount: 1,
                 pBufferMemoryBarriers: &barrier);
 

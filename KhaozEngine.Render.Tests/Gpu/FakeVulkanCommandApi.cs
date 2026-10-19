@@ -29,7 +29,7 @@ namespace KhaozEngine.Tests.Gpu
     /// https://github.com/APKiwiOrg/KhaozEngine/issues/529). The boundary is deliberate, not an omission.
     /// </para>
     /// </summary>
-    internal sealed class FakeVulkanCommandApi : IVulkanCommandApi
+    internal sealed partial class FakeVulkanCommandApi : IVulkanCommandApi
     {
         readonly object _gate = new();
         readonly List<Event> _log = new();

@@ -69,7 +69,7 @@ Task 7 writes these back into the spec.
 - [ ] **Step 3: Add the live counterparts** `Live_Media_<FactName>` for every new fact to `AzureLiveTests` under `[BugReportsAzureFact]`, and make `PrefixedMedia` forward both calls through its prefix (strip the prefix from listed paths, record nothing for delete).
 - [ ] **Step 4: Run** the Relay.Tests filter `ReportMediaStoreConformance|InMemorySeamTests` and the Azure.Tests filter `BlobReportMediaStoreConformanceTests|LiveConformanceCoverageTests`. Expected: FAIL to compile or FAIL on the new facts.
 - [ ] **Step 5: Implement** the two default members, the in-memory store (filter keys by area and ordinal `StartsWith`), and the Azure adapter (`GetBlobsAsync(prefix: prefix)` enumerated to the end of every page, `DeleteIfExistsAsync` answering its `Value`). `BlobReportMediaStore` validates the same way the in-memory store does. `WorkerMediaStore` and `HookedMediaStore` forward both calls to `inner`. `InMemoryReportBlobContainer` implements both.
-- [ ] **Step 6: Run** the same filters. Expected: PASS, live facts skipped without `KE_BUGREPORTS_AZURE`.
+- [ ] **Step 6: Run** the same filters. Expected: PASS, live facts skipped without `KE_BUGREPORTS_STORAGE`.
 - [ ] **Step 7: Commit** `feat(bug-reports): list and delete report media`.
 
 ### Task 2: Delayed enqueue and the purge work kind

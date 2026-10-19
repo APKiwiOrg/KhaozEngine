@@ -917,6 +917,19 @@ in the `ShaderSources.cs` source comments; this is the consolidated checklist.)
   `MslIndexRemap`. The higher-binding-first conditional pixel-readback case in
   `MetalConditionalTextureOrderGpuTests` verifies both runtime branches. Samples can be conditional
   and ordered as the shader needs. Existing shipped shaders may keep their historical sequence.
+- **TAA key-shadow visibility is a format and capability contract.** Key shadows use the same explicit 16-fetch
+  bilinear 3x3 comparison PCF on Metal, Direct3D 11 and Vulkan. Lit variants export final visibility as R8 and
+  transparent writers preserve it. Motion plus visibility requires five colour attachments. Below five, retain
+  the supported four-attachment layout and filter-only resolve, with a one-time capability report. This does not
+  raise the Vulkan device floor. Matched-sample MSAA visibility layouts explicitly resolve R8 before sampling.
+  The shared mean uses finite current-centre/expected-history depths and finite samples, with relative tolerance
+  0.02. Integer exponent tests preserve non-finite rejection under optimized FXC. Strict `abs(d) > 0.1` compares
+  stored R8 means, so exact input 0.1 becomes 26/255. Release clears lock/hold only and retains weight/display share.
+  Both entries preserve exact visibility bytes, jitter and state decisions. Hardware/WARP colour is exact, with
+  only the existing software-Vulkan colour exception. Histories follow colour lifetime and copy once per frame.
+  The [amendment 35 proof](design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md#plan-amendments) records per-driver
+  accepted tail, rim and grain costs. A Vulkan zero-message count is not independent validation evidence when
+  the loader could not create a `VK_EXT_debug_utils` messenger, even if a status line says ACTIVE and STRICT.
 - **A texture LOD bias that must hold on every backend is a shader argument, never sampler state.** Metal samplers
   carry no LOD bias (`GpuCapabilities.SamplerLodBias` is false there), so a sampler's `mipLodBias` applies on
   Direct3D 11 and Vulkan and is dropped on Metal (`SamplerLodBiasGpuTests` builds one on every backend).

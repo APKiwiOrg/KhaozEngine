@@ -292,6 +292,17 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   a material mip bias (`Post.Temporal.MipBiasOffset`). It is single-sample and never combines with MSAA. Moving draws
   pass a `MotionKey` through `RigidInstanceDraw` or `SkinnedInstanceDraw`, camera jumps call `Scene3D.CameraCut()`,
   and `Scene3D.DebugView`, `Scene3D.RequestTemporalCounts()` and `LastTemporalDiagnostics` show what the resolve did.
+  Lit rigid/skinned, foliage and ground paths export final key-shadow visibility to an R8 attachment. Transparent
+  writers preserve it and cutout/dissolve discards expose the receiver below. Depth-qualified current/history
+  means use relative tolerance 0.02 and finite reference/sample depths. A stored R8 difference strictly above 0.1
+  releases the thin-feature lock and hold without changing accumulated weight or display share. This applies to
+  either sign at every preset, independently of the existing colour-based shading release. The threshold is on
+  stored values, so input 0.1 stores as 26/255. No public tuning API is added.
+  The signal and two R8 histories cost three bytes per internal texel, plus a 16-byte previous-jitter buffer.
+  Histories follow colour indices, resets and target generations, copy once per resolving frame, and retire with
+  TAA off or scene disposal. Repeated renders retain read history and jitter. Standalone resolves without lit
+  input bind a fully lit fallback. Motion plus visibility needs five colour attachments. Below five, the engine
+  logs the capability once and keeps bilinear filtering without visibility release on its supported layout.
   See docs/USING-KHAOZENGINE.md for the presets, the edge outline, cost, memory and known limits.
 - Shadows: `PixelPostProcessSettings.Quality.Shadows` (a `ShadowSettings`) picks the shadow tier via `Shadows.Mode`
   - `ShadowMode.Off` (default, byte-stable), `ShadowMode.Blob` (soft dark ground blob under each caster), or
@@ -324,7 +335,7 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   not a fixed-radius circle around a focus point, so shadow sharpness no longer depends on where the camera looks and
   there is no gaze-ground-ray jump on a pan), texel-snapped per cascade to kill shimmer. The slices run from the tight
   near cascade (`ShadowNearDistance`) out to `ShadowMaxDistance`. The shared lighting block picks the tightest cascade
-  per fragment and PCF-samples it (3x3 + slope-scaled bias) to shadow the KEY light's diffuse+spec only for BOTH
+  per fragment and samples it with bilinear 3x3 comparison PCF plus slope-scaled bias to shadow the KEY light's diffuse+spec only for BOTH
   models and terrain, cross-fading toward the next cascade inside a `ShadowCascadeBlend` UV border band so a cascade
   hand-off is invisible instead of a visible square seam, and fading the outermost cascade's term to lit at its border
   so the coverage limit is invisible (no hard box, no sliding coverage). Caster visibility for the shadow pass unions

@@ -1,6 +1,6 @@
 # TAA shadow visibility production design
 
-**Status:** Proposed production specification for owner and orchestrator review. This document authorizes no implementation, GPU run, billed benchmark, release or consumer adoption.
+**Status:** Implemented on the task branch and staged for 21.8.0 as temporal-resolve amendment 35. The owner selected D on 2026-10-19. Final integration, correctness gates, billed benchmark approval, release and consumer adoption remain separate steps.
 
 **Decision basis:** Owner ruling of 2026-10-19. Hold for the full fix. Bilinear 3x3 PCF and a lit visibility signal ship together in one engine release. A filter-only release or another colour-only lock heuristic does not satisfy the ruling.
 
@@ -135,14 +135,16 @@ The history position for each offset is:
 h(o) = up + (a + 0.5 - J) / S - u + Jp / S
 ```
 
-Accept a current sample only when:
+Both reference depths, current centre and expected history, must be finite. Otherwise there is no visibility decision. Non-finite current samples and stored history samples never contribute to either mean or denominator. The shared helper enforces this with integer exponent tests, including under optimized FXC (see [non-finite-depth proof](../../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/non-finite-depths.md)).
+
+Accept a finite current sample only when:
 
 ```text
 abs(currentLinearDepth(a) - currentCentreLinearDepth)
     <= 0.02 * max(currentCentreLinearDepth, 1e-5)
 ```
 
-For each accepted offset, expand history bilinear sampling into its four texel weights. Accept each history texel independently only when:
+For each accepted offset, expand history bilinear sampling into its four texel weights. Accept each finite stored history texel independently only when:
 
 ```text
 abs(storedPreviousDepth - expectedDepth) <= 0.02 * max(expectedDepth, 1e-5)
@@ -152,7 +154,7 @@ Reject other surfaces before interpolation. Accumulate current visibility and it
 
 If current count or previous weight is zero, make no visibility decision. If history is invalid, off screen or unseeded, perform no visibility release. Keep background on the existing temporal background path. Otherwise define signed `d = meanCurrent - meanPrevious` and absolute change `D = abs(d)`.
 
-For `D > 0.1`, clear stored lock before hold is computed and set clip hold to zero. Do this regardless of ridge status or surface speed. At exactly 0.1, this signal does not release. Preserve the existing colour-based shading release for its other responsibilities. Visibility release alone must not be folded into its `released` Boolean, because that would also reset accumulation and display share unconditionally.
+For `D > 0.1`, clear stored lock before hold is computed and set clip hold to zero. Do this regardless of ridge status or surface speed. The threshold applies to means of stored R8 values. An exact input 0.1 stores as `26/255`, so its change from stored zero exceeds the threshold. An exact difference of 0.1 in the comparison domain does not release. This format quantization ruling preserves the measured R8/R32 boundary distinction. Preserve the existing colour-based shading release for its other responsibilities. Visibility release alone must not be folded into its `released` Boolean, because that would also reset accumulation and display share unconditionally.
 
 ### Owner selection, lock release only
 
@@ -271,10 +273,10 @@ The billed T4 `gpu-hosted-bench.yml` is a separate stop. After correctness and r
 
 ## 10. Amendment, version and handoff
 
-This becomes **amendment 35** in `docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md`, which ends at amendment 34 at the design baseline. At implementation, append the shared visibility-release contract, history/format/lifetime rules, controlled rebaseline rationale, owner-selected lock release and measured evidence. Mark only superseded key-shadow lock decisions from amendments 33/34. Their non-shadow shading behavior remains. Update the algorithm steps, target/memory tables, relevant living docs and `docs/INDEX.md`. If another branch has used 35, allocate the next amendment and update this spec and plan in the same reviewed commit.
+This is **amendment 35** in [the canonical temporal-resolve design](../../design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md). Task 9 reconciled main and the document before allocation. The amendment records the shared visibility-release contract, history/format/lifetime rules, controlled rebaseline rationale, owner-selected lock release and measured evidence. Only the affected key-shadow decisions from amendments 33/34 are superseded. Their independent colour-based shading behavior remains. Algorithm and memory sections, living docs and `docs/INDEX.md` carry the current contract.
 
-Recommend one **minor** version for the combined package-bearing batch. Although consumer calls need not change, a new lit MRT, persistent history pair and resolve input materially extend rendering resource and capability contracts. From the current tagged baseline this would be `21.6.0`, subject to fresh main/tag reconciliation. Do not reserve that number across concurrent work. Ride an appropriate staged unreleased version if one exists at finishing, or choose the next free minor. A patch classification instead needs an orchestrator/owner decision explaining why the resource contract counts only as an internal fix.
+Task 9 stages one **minor**, `21.8.0`, for the combined package-bearing batch. Fresh reconciliation found main at `6c6529589` with version `21.7.1` and newest tag `v21.7.1`, so no version was staged. The contributor rule is additive minor, fix patch and breaking major. Although consumer calls need not change, the new lit MRT, persistent history pair and resolve input add a rendering resource and capability contract. The original `21.6.0` proposal was already released by concurrent work and is historical, not a second bump.
 
-The eventual version and matching newest changelog entry land together once, with guarded declarations updated. Neither this spec commit nor intermediate evidence-only tasks bump. Integration, release, tag, durable publication and Grimhollow adoption belong to the owning orchestrator and their separate gates. Both parts remain on the task branch until the combined fix is approved and verified.
+The version and matching newest changelog entry land together once in Task 9, with guarded declarations updated. The original spec and intermediate evidence-only commits did not bump. Integration, release, tag, durable publication and Grimhollow adoption belong to the owning orchestrator and their separate gates. Both parts remain on the task branch until the combined fix is approved and verified.
 
 The four-attachment policy is settled by the ruling in section 5. Candidate D and the three synthetic costs are accepted by the owner on 2026-10-19. Fresh billed-benchmark approval remains open. Gather support is an implementation proof question, not an assumption requiring the owner to guess.

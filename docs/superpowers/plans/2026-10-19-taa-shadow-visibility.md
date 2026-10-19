@@ -268,11 +268,11 @@ Task 7b's rising-only zero response was provisional. Task 7c and the final real-
 
 **Interfaces:** Amendment 35 is the new visibility rule, with only the affected key-shadow decisions of 33/34 superseded. One release version contains both filter and signal. There is no new public tuning API.
 
-- [ ] Re-read current main, tags and version. Check whether amendment 35 or proposed `21.6.0` has been taken concurrently. Allocate the next amendment and appropriate staged/free minor consistently. The minor recommendation reflects the new MRT/history/resolve-input resource contract. Do not bump twice or append this behavior to an already tagged version.
-- [ ] Append the amendment with the owner-selected lock release only, R8 qualification math, lifecycle, capability policy, baseline rationale and links to measured proof. Update algorithm and memory sections, living target/capability descriptions and the index. Preserve historical measurements as history.
-- [ ] Write one changelog entry explaining the shadow stability fix and any approved capability change. Put the version bump and newest entry in the same commit. Update guarded versions and do the full Markdown name/behavior sweep.
-- [ ] Verify `sh scripts/check-dashes.sh --tree`, `sh scripts/check-prose.sh --tree`, `sh scripts/check-file-size.sh --tree`, `sh scripts/check-agent-instructions.sh --tree` and `bash scripts/check-doc-versions.sh`. Run `git diff --check`. These are documentation checks, not a GPU proof.
-- [ ] Commit `docs(taa): record visibility release and its resource contract`, with the selected version/changelog change included or as the immediately associated `release(<version>): ...` commit under the engine convention.
+- [x] Re-read current main, tags and version. Confirmed main `6c6529589`, version/tag `21.7.1` and free amendment 35. Staged `21.8.0` under the additive-minor rule for the new MRT/history/resolve-input contract. The original `21.6.0` proposal was already released. One bump contains the batch.
+- [x] Append the amendment with the owner-selected lock release only, R8 qualification math, lifecycle, capability policy, baseline rationale and links to measured proof. Update algorithm and memory sections, living target/capability descriptions and the index. Preserve historical measurements as history.
+- [x] Write one changelog entry explaining the shadow stability fix and any approved capability change. Put the version bump and newest entry in the same commit. Update guarded versions and do the full Markdown name/behavior sweep.
+- [x] Verify `sh scripts/check-dashes.sh --tree`, `sh scripts/check-prose.sh --tree`, `sh scripts/check-file-size.sh --tree`, `sh scripts/check-agent-instructions.sh --tree` and `bash scripts/check-doc-versions.sh`. Run `git diff --check`. These are documentation checks, not a GPU proof.
+- [x] Commit `docs(taa): record visibility release and its resource contract`, with the selected version/changelog change included or as the immediately associated `release(<version>): ...` commit under the engine convention.
 
 **Definition of done:** Canonical design and living documentation describe the measured implementation, amendment numbering is reconciled, and one untagged version contains the batch. No release is started.
 

@@ -77,6 +77,10 @@ The output excerpts retain raw six-decimal figures with trailing whitespace remo
 [hosted paired point Metal](point-metal-hosted.txt), [paired point WARP](point-d3d11.txt) and
 [paired point lavapipe](point-vulkan.txt).
 
+The [bilinear lavapipe log](bilinear-vulkan.txt) reports no `VK_EXT_debug_utils` entry points and no debug
+messenger before it announces validation as ACTIVE and STRICT. Those status labels do not establish message
+capture. Its pixel readbacks remain measurement evidence, but validation coverage for that run is unproven.
+
 The corresponding WARP Quality M 0.5 leading-flat error is `0.010531`, above its historical bound
 `0.01029765`, with new bound `0.01158465`. Its temporal error is `0.005862`, with new bound `0.00644875`.
 Lavapipe error is `0.010496`, above its historical bound `0.01031745`, with new bound `0.01154615`.

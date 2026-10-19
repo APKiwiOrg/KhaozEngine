@@ -59,6 +59,12 @@ internal enum SupportQueryCounter
     /// <summary>Face-only arithmetic values read from installed world faces. Each projected edge length, normalized
     /// normal, normal publication, plane publication and exhaustive proposal normal length counts once per read.</summary>
     SharedMemberFacts,
+    FootprintReuseHits,
+    FootprintReuseMisses,
+    FootprintReuseStores,
+    FootprintReuseBudgetSkips,
+    EdgeSteps,
+    InitialHoldReuseHits,
 }
 
 internal readonly record struct SupportQueryCounts(
@@ -97,7 +103,13 @@ internal readonly record struct SupportQueryCounts(
     int AdmissionCertificates,
     int StairStratum,
     int RectangleContact,
-    int SharedMemberFacts)
+    int SharedMemberFacts,
+    int FootprintReuseHits,
+    int FootprintReuseMisses,
+    int FootprintReuseStores,
+    int FootprintReuseBudgetSkips,
+    int EdgeSteps,
+    int InitialHoldReuseHits)
 {
     public static SupportQueryCounts operator -(SupportQueryCounts a, SupportQueryCounts b) => new(
         a.Find - b.Find,
@@ -135,7 +147,13 @@ internal readonly record struct SupportQueryCounts(
         a.AdmissionCertificates - b.AdmissionCertificates,
         a.StairStratum - b.StairStratum,
         a.RectangleContact - b.RectangleContact,
-        a.SharedMemberFacts - b.SharedMemberFacts);
+        a.SharedMemberFacts - b.SharedMemberFacts,
+        a.FootprintReuseHits - b.FootprintReuseHits,
+        a.FootprintReuseMisses - b.FootprintReuseMisses,
+        a.FootprintReuseStores - b.FootprintReuseStores,
+        a.FootprintReuseBudgetSkips - b.FootprintReuseBudgetSkips,
+        a.EdgeSteps - b.EdgeSteps,
+        a.InitialHoldReuseHits - b.InitialHoldReuseHits);
 }
 
 /// <summary>Opt-in counters owned by the executing thread. Installation is outside measured intervals.</summary>
@@ -153,7 +171,7 @@ internal readonly record struct SupportRouteCounts(int WallRetries, int PushedPl
     int MaximumMediumRetries, int GroundSegments, int SlideSegments, int AirSegments, int WaterSegments,
     int RoundedReads, int MediumHandoffs);
 
-internal static class SupportQueryDiagnostics
+internal static partial class SupportQueryDiagnostics
 {
     [ThreadStatic] static bool t_enabled;
     [ThreadStatic] static int[]? t_counts;
@@ -212,12 +230,12 @@ internal static class SupportQueryDiagnostics
         t_enabled = enabled;
     }
 
-    const int CounterCount = 36;
+    const int CounterCount = 42;
 
     /// <summary>Every thread-local counter, observation and callback of one thread.</summary>
     internal readonly record struct ThreadState(bool Enabled, int[]? Counts, Action? Begin, Action? End,
         SupportGroundObservation Ground, Action<SupportFindObservation>? Find, SupportRouteCounts Routes,
-        Action<SupportCurvedWorkObservation>? CurvedWork = null)
+        Action<SupportCurvedWorkObservation>? CurvedWork = null, SupportProofReuseRetention Retention = default)
     {
         /// <summary>An empty recorder with the given enablement and no callbacks.</summary>
         internal static ThreadState Fresh(bool enabled) =>
@@ -227,7 +245,7 @@ internal static class SupportQueryDiagnostics
     /// <summary>Installs <paramref name="next"/> on this thread and returns the state it replaced.</summary>
     internal static ThreadState Exchange(in ThreadState next)
     {
-        var prior = new ThreadState(t_enabled, t_counts, t_begin, t_end, t_ground, t_find, t_routes, t_curvedWork);
+        var prior = new ThreadState(t_enabled, t_counts, t_begin, t_end, t_ground, t_find, t_routes, t_curvedWork, t_retention);
         t_enabled = next.Enabled;
         t_counts = next.Counts;
         t_begin = next.Begin;
@@ -236,6 +254,7 @@ internal static class SupportQueryDiagnostics
         t_find = next.Find;
         t_curvedWork = next.CurvedWork;
         t_routes = next.Routes;
+        t_retention = next.Retention;
         return prior;
     }
 
@@ -281,6 +300,12 @@ internal static class SupportQueryDiagnostics
         c[(int)SupportQueryCounter.StairStratum] += counts.StairStratum;
         c[(int)SupportQueryCounter.RectangleContact] += counts.RectangleContact;
         c[(int)SupportQueryCounter.SharedMemberFacts] += counts.SharedMemberFacts;
+        c[(int)SupportQueryCounter.FootprintReuseHits] += counts.FootprintReuseHits;
+        c[(int)SupportQueryCounter.FootprintReuseMisses] += counts.FootprintReuseMisses;
+        c[(int)SupportQueryCounter.FootprintReuseStores] += counts.FootprintReuseStores;
+        c[(int)SupportQueryCounter.FootprintReuseBudgetSkips] += counts.FootprintReuseBudgetSkips;
+        c[(int)SupportQueryCounter.EdgeSteps] += counts.EdgeSteps;
+        c[(int)SupportQueryCounter.InitialHoldReuseHits] += counts.InitialHoldReuseHits;
         t_routes = new(t_routes.WallRetries + routes.WallRetries, t_routes.PushedPlacements + routes.PushedPlacements,
             t_routes.MediumResolves + routes.MediumResolves, Math.Max(t_routes.MaximumMediumRetries, routes.MaximumMediumRetries),
             t_routes.GroundSegments + routes.GroundSegments, t_routes.SlideSegments + routes.SlideSegments,
@@ -292,6 +317,7 @@ internal static class SupportQueryDiagnostics
     {
         if (t_counts is { } counts) Array.Clear(counts);
         t_routes = default;
+        if (t_retention.Keys == 0) t_retention = default;
     }
 
     internal static void Record(SupportQueryCounter counter, int count = 1)
@@ -338,7 +364,13 @@ internal static class SupportQueryDiagnostics
             c[32],
             c[33],
             c[34],
-            c[35]);
+            c[35],
+            c[36],
+            c[37],
+            c[38],
+            c[39],
+            c[40],
+            c[41]);
     }
 
     internal static void SetGroundSubstepObserver(Action? begin, Action? end)

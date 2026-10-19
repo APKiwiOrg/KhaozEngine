@@ -12,6 +12,12 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Bug reports can mask game-supplied reporter identity terms, such as a display name or account subject, in
   every section before a report leaves the machine. `BugReportServiceOptions.ReporterIdentityTerms` is read
   once per report, matches are literal and case-insensitive, and any failure masks the whole section (#1504).
+- Contact navigation bakes reuse exact completed footprints within one raw source and share certified
+  successful initial Holds under stable providers (#1401 option B). Footprint evaluations fall 46.66 percent
+  across the seven pinned fixtures and 42.04 percent on the 576-column fixture. Separately, real edge
+  controller steps fall 5.66 percent and 8.25 percent. Complete bake bytes and protection rules are unchanged.
+- Serial callers can assert stable providers with `NavBakeExecution.UseStableContactHoldReuse`. Its default
+  false preserves historical Hold callbacks. Parallel contact builds already require stable providers.
 
 ## 21.6.0
 

@@ -615,9 +615,11 @@ swept movement or water transitions required to reach it.
 The [2026-10-09 owner amendment](../docs/design/SWIM-STEP-SUPPORT-DEPENDENCY-2026-10-09.md)
 assigns all ground movement to #438, including this explicit path. Explicit land ticks now use the
 shared contact controller's ground, slide and air passes, knee-height shell and certified footprint
-support. Every Find requires `IPhysicsSupportFootprint` and runs the two retained proposal sweeps
-inside one complete-volume query under the tick's selected lease. Missing capability, incomplete
-certification or a required witness outside the admitted scope refuses. The foot radius must be at
+support. Every Find requires `IPhysicsSupportFootprint` and requests both retained proposals
+inside one complete-volume query under the tick's selected lease. An explicitly opened exact
+[completed-footprint session](../docs/USING-KHAOZENGINE.md#exact-completed-footprint-reuse) may
+copy certified geometry into a fresh result. Tick memo and continuity evidence stay interval-owned.
+Missing capability, incomplete certification or a required witness outside the admitted scope refuses. The foot radius must be at
 least 0.01 m, including analytic-only paths. Swimming retains medium proofs, water motion/policies and leased admission/transport.
 The unchanged bank-step regression passes. The
 [phase 4b handoff](../docs/design/CONTACT-CONTROLLER-PHASE-4B-SWIMMING-HANDOFF-2026-10-11.md)

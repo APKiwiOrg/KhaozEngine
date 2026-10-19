@@ -8895,7 +8895,7 @@ On the dev Mac a 36,864-column flat world wrote 664,689 bytes and loaded in abou
 ### Parallel contact bake (`NavBakeExecution`)
 
 Contact profiles cost far more to bake than legacy ones, so a content pipeline can spread one contact profile over
-worker threads. This is implemented in staged 20.40.0:
+worker threads. Scheduling shipped in 20.40.0:
 
 ```csharp
 var execution = new NavBakeExecution(Environment.ProcessorCount);
@@ -8927,6 +8927,30 @@ Wall-clock speedup on a shared machine follows each worker's CPU share, so bake 
 otherwise idle. See the [cost record](superpowers/plans/proofs/2026-10-14-parallel-contact-bake-cost.md) and the
 [slowdown record](superpowers/plans/proofs/2026-10-14-parallel-proof-slowdown.md) for the metrics and the Hollowmere
 extrapolation.
+
+### Stable contact initial Holds
+
+A serial content pipeline can explicitly assert stable providers to share the same source's
+successful initial Hold across its outgoing same-layer directions:
+
+```csharp
+var execution = new NavBakeExecution(1) { UseStableContactHoldReuse = true };
+GroundNavigationBake bake = GroundNavigationBake.Create(capture, sources, profiles, execution);
+```
+
+The flag defaults false. True asserts deterministic analytic ground/normal, medium, water,
+registration, boundary and area providers, independent of call order and fixed through capture
+and build. Fields may vary with the supplied inputs. Above degree 1 the existing stable,
+thread-safe provider obligation already permits this sharing. Null execution and degree 1
+without the assertion preserve all historical Hold callbacks. Legacy profiles ignore the flag.
+
+Only the first successful initial Hold's numeric state, frame, outcome and feet are copied.
+Each edge retains its prechecks, current-basis authentication, consumed slice zero, travel and
+Euclidean 1 mm arrival rule. Rejected, admission and Stair Holds are never shared. No selection,
+binding, support or interval evidence survives. Provider or water changes still refuse the
+build, including after its last hit. Reference evaluation bypasses both Hold and completed-footprint
+reuse. These execution choices do not enter bake identity or alter the complete serialized file.
+See the [Movement contract](../KhaozEngine.Movement/README.md#contact-source-proof-reuse).
 
 ### Stable legacy profile reads
 
@@ -10013,7 +10037,10 @@ if (world is IPhysicsCapsuleFeatures features && world is IPhysicsQueryLeaseSour
 from features and neighborhoods. Bepu owners and selected views provide it. A caller supplies the
 closed disc, inclusive band, cosine slope gate, represented `0.0001f` contact band and two original
 upright downward proposal paths in one `SupportFootprintRequest`. No prior sweep hit is trusted.
-The backend authenticates the exact receiver and lease before executing both proposals.
+The backend authenticates the exact receiver and lease before executing both proposals on a full
+evaluation. An open completed-footprint reuse session (see `IPhysicsSupportFootprintReuseSource`
+below) may republish the exact completed payload of a bit-identical request with fresh lease metadata
+instead, so a reused result executes no proposal sweep.
 
 For axis `a`, radius `r`, band `[L, U]` and slope cosine `c`, the admission column covers the disc
 expanded by the contact band from `L - max(r * sqrt(1 - c*c) / c, 0.001) - 0.0001` to
@@ -10072,6 +10099,49 @@ Continuously varying capsule enclosures use `IPhysicsCapsuleGeometryQueries` val
 quantization. These bytes are runtime/adapter specific, not a promise for every backend. #1334 stays
 open with 96 local time rejections pending owner-approved normalized hosted repeat proof. Phase 5
 navigation capture and phase 6 game adoption/aggregate CPU remain separate.
+
+### Exact completed-footprint reuse
+
+Discover `IPhysicsSupportFootprintReuseSource` separately on the exact selected query receiver,
+including a restricted view. Do not infer it from an underlying owner. Bepu owners and selected
+views implement it. `TryOpenSupportFootprintReuse(lease, out session)` authenticates an ordinary
+current lease and can decline. A successful session is thread-affine and non-owning. It borrows
+the opening lease only for authentication and neither retains nor acquires another explicit
+lease. The caller owns each ordinary lease and the source/view lifetime.
+
+Call `ResetSource(new SupportFootprintReuseDomain(profileToken, rawSourceToken))` with immutable,
+non-null identity tokens. A reset always discards all entries, even for the same tokens. Then
+continue using `IPhysicsSupportFootprint.QuerySupportFootprint` with each authenticated current
+lease. `session.AssertCurrent(lease)` checks the unchanged view and domain. Dispose the session
+at source-group end, including on failure. An opening lease may end before later queries.
+Nested opens decline without disturbing the active session. Unsupported receivers retain the
+original query path. Never carry a mutable session across threads or source domains.
+
+The exact key binds receiver/source/selected-view and immutable exclusions, installed/static/lease
+generations, every binary32 origin bit, both domain identities, axis/radius/slope/contact-band bits,
+binary64 band bounds, each proposal's probe radius/length, position/quaternion and distance bits,
+filter fields and the join mode consumed at backend entry. Float equality, rounded coordinates,
+probe identity and hash equality alone are insufficient. Raw `(StaticHandle, ElementId)` pairs
+and their order remain distinct. Movement retains original raw ordinals before resting-height
+replacement and opens the session lazily through its first already-required Step lease.
+
+Only Complete results are remembered, including empty results. Owned payloads preserve all
+ordered members, witnesses, proposal verdicts and join words. Hits authenticate the current basis
+and prepare fresh receiver/lease metadata before touching either caller span. Unused tails stay
+untouched, and `AssertFootprintCurrent` accepts only the new result under its current lease.
+The old result remains expired. Analytic sampling, selection, binding, medium and shell checks
+still execute, with fresh current-arena continuity evidence. Tick-local `SupportRequestMemo`
+and interval-owned support evidence never escape their original lifetime.
+
+Each Bepu source session retains at most 512 keys and 2 MiB, with no eviction. It charges all
+fixed entry capacity and actual member/join buffer capacities by element size. Saturation or
+budget exhaustion keeps the full path. Exceptions, Unsupported, Ambiguous, CapacityExceeded
+and work-limit refusals never seed a payload. Original lease/probe/filter/span validation and
+untouched-output refusals remain in force. Stale bases keep their authentication failures.
+Reference evaluation and non-default diagnostic work policies bypass lookup and publication.
+Volumes, Proposals and curved-work counters count actual evaluation, never replayed hits.
+[Measured work](verification/2026-10-19-bake-proof-reuse.md) separates footprint savings from
+stable initial Holds and the existing tick memo. Neither is a new wall-clock speedup claim.
 
 ### Support neighborhoods
 

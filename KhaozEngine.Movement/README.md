@@ -323,6 +323,7 @@ and is not fixed in this release. Check routes over sloped physics ground in the
 public sealed record NavBakeExecution(int MaxDegreeOfParallelism)
 {
     public bool UseStableLegacyReadScope { get; init; } // default false
+    public bool UseStableContactHoldReuse { get; init; } // default false
 }
 ```
 
@@ -335,6 +336,41 @@ Above degree 1 an ordinary contact profile proves admissions, edges and Stair li
 `MaxDegreeOfParallelism` worker threads. Each phase splits its rows into `min(rows, workers * 4)` contiguous bands,
 workers claim bands in ascending order, and the build never starts more workers than bands. Layering stays serial.
 Legacy profiles always build serially, including in an all-legacy bake above degree 1.
+
+### Contact source proof reuse
+
+Contact bakes discover `IPhysicsSupportFootprintReuseSource` on their exact selected query receiver.
+One accepted raw source's same-layer outgoing direction loop opens a session lazily through its
+first already-required movement lease. No extra lease or producer pin opens it. The immutable domain
+retains capture column, original surface ordinal and raw height bits separately from the derived layer,
+so equal resting anchors never merge raw identities. No mutable session crosses sources, profiles,
+worker bands or phase threads. Admission and Stair proofs retain their original paths.
+
+Only exact completed physics geometry is reused. Every Find still performs its analytic sampling,
+selection, binding, medium, footprint and shell checks with fresh interval evidence. The optional
+backend session is bounded to 512 keys and 2 MiB and declines safely when unsupported or saturated.
+A source's initial Hold can be shared separately under the stable-provider assertion below.
+
+```csharp
+var execution = new NavBakeExecution(1) { UseStableContactHoldReuse = true };
+GroundNavigationBake bake = GroundNavigationBake.Create(capture, sources, profiles, execution);
+```
+
+`UseStableContactHoldReuse` defaults false. True asserts that analytic ground/normal, medium, water,
+registration, boundary and area providers answer deterministically from inputs, independent of call
+order, and stay fixed through capture and build. They need not be constant fields. Degree greater
+than one already has this obligation plus concurrent-read safety, so it already permits Hold reuse.
+Null execution and degree 1 without the assertion preserve every historical Hold callback, including
+stateful callbacks. Exact footprint reuse still runs those callbacks. Legacy profiles ignore the flag.
+
+The first eligible direction executes a real successful initial Hold. Later eligible directions can
+copy only its complete numeric state, outcome, frame and feet, after current-basis authentication and
+all per-edge prechecks. Logical slice zero stays consumed. No selection, lease, binding, support or
+continuity handle escapes. Travel, arrival and directional verdicts are recomputed. Rejected Holds,
+admission and Stair Holds are never shared. Reference evaluation bypasses both reuse layers without
+seeding them. The execution choices do not enter bake identity or change KENB bytes. See the
+[verification record](../docs/verification/2026-10-19-bake-proof-reuse.md) for counter reductions,
+full-file comparisons and provider/failure controls.
 
 ### Stable legacy read scope
 

@@ -4,6 +4,7 @@ namespace KhaozEngine.Physics.Bepu;
 internal sealed class CapsuleSweepScratch
 {
     internal int[] MeshPending { get; } = new int[CapsuleGeneralSweepPolicy.MaximumPending];
+    internal InstalledMeshSweepTriangle MeshTriangle { get; } = new();
     internal SweepExactWorkspace Exact { get; } = new();
     internal SweepLinear[] Eligibility { get; } = new SweepLinear[CapsuleGeneralSweepPolicy.MaximumFaces];
     internal InstalledSweepLeaf[] Pending { get; } = new InstalledSweepLeaf[CapsuleGeneralSweepPolicy.MaximumChildren];

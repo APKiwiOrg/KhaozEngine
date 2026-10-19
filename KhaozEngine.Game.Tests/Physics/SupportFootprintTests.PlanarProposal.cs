@@ -50,7 +50,7 @@ public partial class SupportFootprintTests
         Assert.False(SupportPlanarProposal.Lowest(polygon, proposal, true, out _));
         proposal = proposal with { Start = new Pose(new(0, 1, 0), Quaternion.Identity) };
         Assert.False(SupportPlanarProposal.Lowest(polygon, proposal, false, out _));
-        Assert.True(InstalledPoseOperator.TryCreate(new BepuPhysics.RigidPose(Vector3.Zero,
+        Assert.True(InstalledPoseOperator.TryCreateSupport(new BepuPhysics.RigidPose(Vector3.Zero,
             Quaternion.CreateFromAxisAngle(Vector3.UnitY, 0.37f)), out var map));
         polygon.BeginSource(map);
         Assert.False(SupportPlanarProposal.Lowest(polygon, proposal, true, out _));
@@ -93,7 +93,7 @@ public partial class SupportFootprintTests
     static SupportPolygon PlanarSource(Vector3[] vertices)
     {
         SupportPolygon polygon = Polygon(vertices, out _);
-        Assert.True(InstalledPoseOperator.TryCreate(new BepuPhysics.RigidPose(Vector3.Zero, Quaternion.Identity), out var map));
+        Assert.True(InstalledPoseOperator.TryCreateSupport(new BepuPhysics.RigidPose(Vector3.Zero, Quaternion.Identity), out var map));
         polygon.BeginSource(map);
         // Polygon normalizes the winding to upward before storing it.
         for (int i = 0; i < polygon.Vertices.Length; i++)

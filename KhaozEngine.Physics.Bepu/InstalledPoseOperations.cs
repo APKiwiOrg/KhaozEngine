@@ -56,6 +56,19 @@ internal static class InstalledPoseOperations
     {
         if (!InstalledPoseOperator.TryCreate(root, out InstalledPoseOperator rootOperator) ||
             !InstalledPoseOperator.TryCreate(child, out _) || !InstalledPoseOperator.TryCreate(world, out _)) return false;
+        return ProveComposition(child, root, world, rootOperator);
+    }
+
+    internal static bool ProveSupportComposition(in RigidPose child, in RigidPose root, in RigidPose world)
+    {
+        if (!InstalledPoseOperator.TryCreateSupport(root, out InstalledPoseOperator rootOperator) ||
+            !InstalledPoseOperator.TryCreateSupport(child, out _) || !InstalledPoseOperator.TryCreateSupport(world, out _)) return false;
+        return ProveComposition(child, root, world, rootOperator);
+    }
+
+    static bool ProveComposition(in RigidPose child, in RigidPose root, in RigidPose world,
+        in InstalledPoseOperator rootOperator)
+    {
         Quaternion a = child.Orientation, b = root.Orientation;
         GeometryInterval ax = GeometryInterval.Exact(a.X), ay = GeometryInterval.Exact(a.Y);
         GeometryInterval az = GeometryInterval.Exact(a.Z), aw = GeometryInterval.Exact(a.W);

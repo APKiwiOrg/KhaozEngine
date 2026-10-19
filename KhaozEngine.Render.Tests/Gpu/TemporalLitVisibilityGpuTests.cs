@@ -20,12 +20,18 @@ public sealed class TemporalLitVisibilityGpuTests(LitVisibilityGpuScene stage, I
     }
 
     [GpuTheory]
-    [InlineData(0, false)] [InlineData(0, true)]
-    [InlineData(1, false)] [InlineData(1, true)]
-    [InlineData(2, false)] [InlineData(2, true)]
-    [InlineData(3, false)] [InlineData(3, true)]
-    [InlineData(4, false)] [InlineData(4, true)]
-    [InlineData(5, false)] [InlineData(5, true)]
+    [InlineData(0, false)]
+    [InlineData(0, true)]
+    [InlineData(1, false)]
+    [InlineData(1, true)]
+    [InlineData(2, false)]
+    [InlineData(2, true)]
+    [InlineData(3, false)]
+    [InlineData(3, true)]
+    [InlineData(4, false)]
+    [InlineData(4, true)]
+    [InlineData(5, false)]
+    [InlineData(5, true)]
     public void AllLitFamiliesExportTheSampledShadow(int family, bool motion)
     {
         Identity();
@@ -36,7 +42,8 @@ public sealed class TemporalLitVisibilityGpuTests(LitVisibilityGpuScene stage, I
     }
 
     [GpuTheory]
-    [InlineData(false)] [InlineData(true)]
+    [InlineData(false)]
+    [InlineData(true)]
     public void BackgroundDisabledShadowsAndStrengthHaveTheSpecifiedVisibility(bool motion)
     {
         Identity();
@@ -53,8 +60,12 @@ public sealed class TemporalLitVisibilityGpuTests(LitVisibilityGpuScene stage, I
     }
 
     [GpuTheory]
-    [InlineData(0)] [InlineData(1)] [InlineData(2)]
-    [InlineData(3)] [InlineData(4)] [InlineData(5)]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
     public void AllSupportedMsaaCountsExplicitlyResolveNontrivialR8(int family)
     {
         Identity();
@@ -69,7 +80,8 @@ public sealed class TemporalLitVisibilityGpuTests(LitVisibilityGpuScene stage, I
     }
 
     [GpuTheory]
-    [InlineData(false)] [InlineData(true)]
+    [InlineData(false)]
+    [InlineData(true)]
     public void TransparentAndDiscardedWritersPreserveOpaqueVisibility(bool motion)
     {
         Identity();
@@ -131,9 +143,12 @@ public sealed class TemporalLitVisibilityGpuTests(LitVisibilityGpuScene stage, I
     }
 
     [GpuTheory]
-    [InlineData(0, false)] [InlineData(0, true)]
-    [InlineData(1, false)] [InlineData(1, true)]
-    [InlineData(2, false)] [InlineData(2, true)]
+    [InlineData(0, false)]
+    [InlineData(0, true)]
+    [InlineData(1, false)]
+    [InlineData(1, true)]
+    [InlineData(2, false)]
+    [InlineData(2, true)]
     public void DissolveAndItsComplementLeaveRevealedVisibilityUntouched(int family, bool motion)
     {
         stage.Configure(motion);
@@ -184,10 +199,14 @@ public sealed class TemporalLitVisibilityGpuTests(LitVisibilityGpuScene stage, I
     }
 
     [GpuTheory]
-    [InlineData(0, false)] [InlineData(0, true)]
-    [InlineData(1, false)] [InlineData(1, true)]
-    [InlineData(2, false)] [InlineData(2, true)]
-    [InlineData(3, false)] [InlineData(3, true)]
+    [InlineData(0, false)]
+    [InlineData(0, true)]
+    [InlineData(1, false)]
+    [InlineData(1, true)]
+    [InlineData(2, false)]
+    [InlineData(2, true)]
+    [InlineData(3, false)]
+    [InlineData(3, true)]
     public void AlphaCutoutWritersLeaveTheRevealedOpaqueSignal(int family, bool motion)
     {
         stage.Configure(motion);

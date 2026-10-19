@@ -62,7 +62,7 @@ public class ParallelContactBakeTests
         WorkerDiagnostics.SetObserverFactory(worker => (workerRecorders[worker] = new PhaseRecorder()).Observe);
         try
         {
-            GroundNavigation serial = scene.Build(null);
+            GroundNavigation serial = scene.Build(new(1) { UseStableContactHoldReuse = true });
             SupportQueryCounts serialCounts = SupportQueryDiagnostics.Snapshot();
             SupportRouteCounts serialRoutes = SupportQueryDiagnostics.Routes;
             Assert.All(workerRecorders, recorder => Assert.Null(recorder));

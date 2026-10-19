@@ -1,8 +1,10 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using BepuPhysics.Collidables;
 using KhaozEngine.Physics;
+using KhaozEngine.Physics.Bepu;
 using KhaozEngine.Tests.Physics;
 using Xunit;
 using static KhaozEngine.Tests.Physics.InstalledPoseOracle;
@@ -13,7 +15,8 @@ namespace KhaozEngine.Tests.Locomotion.Contacts;
 /// <summary>Exact edge/disc discriminants from installed source operands under both actual transform readings.</summary>
 internal sealed class CapturedStairEdgeOracle
 {
-    readonly List<(V[] Real, V[] Represented)> faces = [];
+    readonly List<(V[] Real, V[] Represented, SupportPolygon Raw)> faces = [];
+    readonly List<SupportPolygon> raw = [];
 
     internal CapturedStairEdgeOracle(CapturedStairSweepFixture fixture)
     {
@@ -23,6 +26,12 @@ internal sealed class CapturedStairEdgeOracle
         {
             var entry = CertifiedGeneralSweepFixture.Static(fixture.World, handle);
             sim.Statics.GetDescription(entry.Handle, out var installed);
+            var scratch = new CapsuleFeatureCaptureScratch();
+            var leaves = new List<CapsuleFeaturePolyhedron>();
+            Assert.Equal(CapsuleFeatureStatus.Complete, SupportNeighborhoodPolyhedra.Capture(sim, entry.Shape,
+                installed.Pose, scratch, leaves));
+            var pool = new SupportPolygonPool();
+            foreach (var leaf in leaves) SupportNeighborhoodPolyhedra.Polygons(handle, leaf, pool, raw, footprint: true);
             if (entry.Shape.Type == default(Compound).TypeId)
             {
                 ref Compound compound = ref sim.Shapes.GetShape<Compound>(entry.Shape.Index);
@@ -30,20 +39,20 @@ internal sealed class CapturedStairEdgeOracle
                 {
                     var part = compound.Children[child];
                     Compound.GetWorldPose(part.LocalPose, installed.Pose, out var pose);
-                    Capture(part.ShapeIndex, pose);
+                    Capture(part.ShapeIndex, pose, handle, child);
                 }
             }
-            else Capture(entry.Shape, installed.Pose);
+            else Capture(entry.Shape, installed.Pose, handle, 0);
         }
         Assert.NotEmpty(faces);
 
-        void Capture(TypedIndex shape, BepuPhysics.RigidPose pose)
+        void Capture(TypedIndex shape, BepuPhysics.RigidPose pose, KhaozEngine.Physics.StaticHandle owner, int leaf)
         {
             if (shape.Type == default(Box).TypeId)
             {
                 ref Box box = ref sim.Shapes.GetShape<Box>(shape.Index);
                 Add([new(-box.HalfWidth, box.HalfHeight, -box.HalfLength), new(-box.HalfWidth, box.HalfHeight, box.HalfLength),
-                    new(box.HalfWidth, box.HalfHeight, box.HalfLength), new(box.HalfWidth, box.HalfHeight, -box.HalfLength)], pose);
+                    new(box.HalfWidth, box.HalfHeight, box.HalfLength), new(box.HalfWidth, box.HalfHeight, -box.HalfLength)], pose, owner, leaf * SupportNeighborhoodPolyhedra.FaceStride + 3);
                 return;
             }
             Assert.Equal(default(ConvexHull).TypeId, shape.Type);
@@ -53,17 +62,19 @@ internal sealed class CapturedStairEdgeOracle
                 hull.GetVertexIndicesForFace(face, out var indices);
                 var points = new Vector3[indices.Length];
                 for (int i = 0; i < points.Length; i++) hull.GetPoint(indices[i], out points[i]);
-                Add(points, pose);
+                Add(points, pose, owner, leaf * SupportNeighborhoodPolyhedra.FaceStride + face);
             }
         }
     }
 
-    void Add(Vector3[] local, BepuPhysics.RigidPose pose)
+    void Add(Vector3[] local, BepuPhysics.RigidPose pose, KhaozEngine.Physics.StaticHandle owner, int id)
     {
         V[] Transform(M map) => local.Select(p => map.Apply(V.From(p)) + V.From(pose.Position)).ToArray();
         V[] real = Transform(Real(pose.Orientation));
         if (V.Cross(real[1] - real[0], real[2] - real[0]).Y <= R.Zero) return;
-        faces.Add((real, Transform(Represented(pose.Orientation))));
+        var polygon = Assert.Single(raw, p => p.Static == owner && p.ElementId == id);
+        Assert.Equal(local, polygon.SourceVertices.ToArray());
+        faces.Add((real, Transform(Represented(pose.Orientation)), polygon));
     }
 
     internal void AssertSeparated(IEnumerable<SupportFootprintRequest> requests)
@@ -81,14 +92,31 @@ internal sealed class CapturedStairEdgeOracle
                 }
     }
 
-    internal void AssertMapDisagreement(SupportFootprintRequest request) => Assert.Contains(faces, face =>
+    internal bool HasMapDisagreement(SupportFootprintRequest request) => faces.Any(face =>
         Enumerable.Range(0, face.Real.Length).Any(edge =>
             Residual(face.Real, edge, request) < R.Zero && Residual(face.Represented, edge, request) > R.Zero));
 
-    internal void AssertNearTangency(SupportFootprintRequest request) => Assert.Contains(faces, face =>
+    internal void AssertRepresentedDisagreement(SupportFootprintRequest request)
+    {
+        Quaternion literal = new(0, 0.70710677f, 0, 0.70710677f);
+        Assert.Equal(new[] { 0x33800000, 0, unchecked((int)0xbf7fffff), 0, 0x3f800000, 0,
+            0x3f7fffff, 0, 0x33800000 }, InstalledSupportPoseTests.CoefficientBits(literal));
+        var disagreement = faces.SelectMany(face => Enumerable.Range(0, face.Real.Length)
+            .Select(edge => (face, edge))).First(pair => Residual(pair.face.Real, pair.edge, request) < R.Zero &&
+                Residual(pair.face.Represented, pair.edge, request) > R.Zero);
+        Assert.True(Residual(disagreement.face.Real, disagreement.edge, request) < R.Zero);
+        Assert.True(Residual(disagreement.face.Represented, disagreement.edge, request) > R.Zero);
+        Assert.Equal(GeometrySign.Positive, disagreement.face.Raw.SourcePredicates.EdgeDiscriminant(
+            disagreement.face.Raw, disagreement.edge, FeaturePoint.Exact(new Vector3(request.Axis.X, 0, request.Axis.Y)),
+            FeatureNumber.Exact(request.Radius)));
+    }
+
+    internal bool IsNearTangency(SupportFootprintRequest request) => faces.Any(face =>
         Enumerable.Range(0, face.Real.Length).Any(edge =>
             Abs(Residual(face.Real, edge, request)) < new R(1, 10_000_000) &&
             Abs(Residual(face.Represented, edge, request)) < new R(1, 10_000_000)));
+
+    internal void AssertNearTangency(SupportFootprintRequest request) => Assert.True(IsNearTangency(request));
 
     static R Residual(V[] vertices, int edge, SupportFootprintRequest request)
     {

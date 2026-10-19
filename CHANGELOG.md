@@ -5,6 +5,54 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.7.1
+
+2026-10-19
+
+- TileWorld captures can show interior cuts. `TileWorldViewOptions.InteriorMeshes` and `RoofMode` seed the view,
+  including every `TileWorldSnapshot` path, and capture settling builds and publishes the interior field before
+  the first captured frame. Views and captures that leave both options unset are unchanged (#1470).
+
+## 21.7.0
+
+2026-10-19
+
+- Bug reports can mask game-supplied reporter identity terms, such as a display name or account subject, in
+  every section before a report leaves the machine. `BugReportServiceOptions.ReporterIdentityTerms` is read
+  once per report, matches are literal and case-insensitive, and any failure masks the whole section (#1504).
+- Contact navigation bakes reuse exact completed footprints within one raw source and share certified
+  successful initial Holds under stable providers (#1401 option B). Footprint evaluations fall 46.66 percent
+  across the seven pinned fixtures and 42.04 percent on the 576-column fixture. Separately, real edge
+  controller steps fall 5.66 percent and 8.25 percent. Complete bake bytes and protection rules are unchanged.
+- Serial callers can assert stable providers with `NavBakeExecution.UseStableContactHoldReuse`. Its default
+  false preserves historical Hold callbacks. Parallel contact builds already require stable providers.
+
+## 21.6.0
+
+2026-10-19
+
+- Static interior cuts hide opted-in individual rigid props inside building outlines and below their roofs.
+  Only props whose drawn bounds can reach an interior take the cut path.
+  The shared height field cuts colour, temporal motion, cascaded and point shadows, object and walk-surface
+  picks, camera probes, target outlines and silhouettes. TileWorld builds the field off-thread and publishes
+  it with picks on the view thread.
+  Ordinary props, roofs, merged HLOD geometry, grass, ground cover, animated foliage and skinned meshes stay
+  uncut by default or by their excluded draw paths. MapDoc and world validation integration remain follow-ups.
+  On hosted T4 runners a typical village with 10,800 opted-in instances costs 0.08 to 0.20 ms per frame, almost
+  all of it CPU, with Direct3D 11 the highest (#1502).
+
+## 21.5.2
+
+2026-10-19
+
+- Installed mesh capsule sweeps keep compact mutation evidence, share triangle topology and build traversal
+  bounds on first use, avoiding per-triangle geometry objects when installing large worlds (#1500).
+- Contact support uses Bepu's represented installed transform, so exact tread-edge tangency on quarter-turn
+  stairs now supports without changing the feature or sweep contract (#1494).
+- Curved support certification has a cumulative per-Find work ceiling with visible work and storage exhaustion
+  reasons and atomic refusal. A whole-capsule crown certificate and nearest-point cylinder admission witness
+  keep end-seam queries bounded without changing roof guards, footprint protections or arrival rules (#1487).
+
 ## 21.5.1
 
 - `IPhysicsCapsuleSweep` certifies rotated boxes, convex hulls, one-sided mesh triangles and supported

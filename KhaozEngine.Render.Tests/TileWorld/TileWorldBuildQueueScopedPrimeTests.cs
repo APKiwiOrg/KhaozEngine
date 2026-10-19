@@ -233,6 +233,34 @@ public class TileWorldBuildQueueScopedPrimeTests
         Assert.Equal(0, queue.InFlightCount);
     }
 
+    [Fact]
+    public void Capture_prime_finishes_superseded_interior_work_before_the_current_build()
+    {
+        var dispatcher = new ManualTileBuildDispatcher();
+        var built = new List<int>();
+        var applied = new List<TileWorldBuildResult<int>>();
+        using var queue = new TileWorldBuildQueue<int, int>(request =>
+        {
+            built.Add(request.Input);
+            return request.Input;
+        }, applied.Add, new TileWorldBuildQueueOptions
+        {
+            MaxConcurrentBuilds = 1,
+            MaxInteriorCutAppliesPerPump = 0,
+        }, dispatcher);
+        var key = new TileWorldBuildKey(default, -1, TileWorldBuildKind.InteriorCut);
+        queue.Request(new TileWorldBuildRequest<int>(key, 1, 1));
+        queue.Request(new TileWorldBuildRequest<int>(key, 2, 2));
+
+        queue.PrimeForCapture(default);
+
+        Assert.Equal(new[] { 1, 2 }, built);
+        Assert.Equal(2, Assert.Single(applied).Payload);
+        Assert.Equal(0, queue.InFlightCount);
+        dispatcher.RunAll();
+        Assert.Equal(new[] { 1, 2 }, built);
+    }
+
     static TileWorldBuildRequest<int> Request(int x, TileWorldBuildKind kind) =>
         new(new TileWorldBuildKey(new RegionCoord(x, 0), kind == TileWorldBuildKind.Cover ? -1 : 0, kind), 1, x);
 }

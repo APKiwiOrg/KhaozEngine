@@ -150,6 +150,55 @@ namespace KhaozEngine.Tests
         }
 
         [Fact]
+        public void ObbExitPreservesEntryAndRayUnits()
+        {
+            var center = new Vector3(3f, 2f, -7f);
+            const float yaw = 0.7f;
+            Matrix4x4 rotation = Matrix4x4.CreateRotationY(yaw);
+            foreach (float speed in new[] { 1f, 2f })
+            {
+                foreach (float start in new[] { -5f, 0f })
+                {
+                    Vector3 origin = center + Vector3.Transform(new Vector3(start, 0f, 0f), rotation);
+                    Vector3 direction = Vector3.Transform(Vector3.UnitX * speed, rotation);
+                    Assert.True(RayMath.IntersectObbY(origin, direction, center, yaw, LongMin, LongMax, out float oldNear));
+                    Assert.True(RayMath.IntersectObbY(origin, direction, center, yaw, LongMin, LongMax,
+                        out float newNear, out float far));
+                    Assert.Equal(oldNear, newNear);
+                    Assert.Equal(start < 0f ? 3f / speed : 0f, newNear, 4);
+                    Assert.Equal((2f - start) / speed, far, 4);
+                    Vector3 exit = Vector3.Transform(origin + direction * far - center,
+                        Matrix4x4.CreateRotationY(-yaw));
+                    Assert.Equal(LongMax.X, exit.X, 4);
+                    Assert.InRange(exit.Y, LongMin.Y, LongMax.Y);
+                    Assert.InRange(exit.Z, LongMin.Z, LongMax.Z);
+                }
+            }
+        }
+
+        [Fact]
+        public void ObbExitPreservesZeroDirectionAndNaNMisses()
+        {
+            Assert.True(RayMath.IntersectObbY(Vector3.Zero, Vector3.Zero, Vector3.Zero, 0.7f,
+                Min, Max, out float near, out float far));
+            Assert.Equal(0f, near);
+            Assert.Equal(float.PositiveInfinity, far);
+            foreach (var (origin, direction) in new[]
+            {
+                (new Vector3(5f, 0f, 0f), Vector3.Zero),
+                (new Vector3(float.NaN, 0f, 0f), Vector3.UnitY),
+                (Vector3.Zero, new Vector3(0f, float.NaN, 0f)),
+                (Vector3.Zero, new Vector3(0f, 0f, float.NaN)),
+            })
+            {
+                Assert.False(RayMath.IntersectObbY(origin, direction, Vector3.Zero, 0.7f, Min, Max, out float oldNear));
+                Assert.False(RayMath.IntersectObbY(origin, direction, Vector3.Zero, 0.7f, Min, Max,
+                    out float newNear, out _));
+                Assert.Equal(oldNear, newNear);
+            }
+        }
+
+        [Fact]
         public void NaNOriginComponent_Misses()
         {
             float nan = float.NaN;

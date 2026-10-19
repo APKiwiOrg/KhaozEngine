@@ -615,9 +615,11 @@ swept movement or water transitions required to reach it.
 The [2026-10-09 owner amendment](../docs/design/SWIM-STEP-SUPPORT-DEPENDENCY-2026-10-09.md)
 assigns all ground movement to #438, including this explicit path. Explicit land ticks now use the
 shared contact controller's ground, slide and air passes, knee-height shell and certified footprint
-support. Every Find requires `IPhysicsSupportFootprint` and runs the two retained proposal sweeps
-inside one complete-volume query under the tick's selected lease. Missing capability, incomplete
-certification or a required witness outside the admitted scope refuses. The foot radius must be at
+support. Every Find requires `IPhysicsSupportFootprint` and requests both retained proposals
+inside one complete-volume query under the tick's selected lease. An explicitly opened exact
+[completed-footprint session](../docs/USING-KHAOZENGINE.md#exact-completed-footprint-reuse) may
+copy certified geometry into a fresh result. Tick memo and continuity evidence stay interval-owned.
+Missing capability, incomplete certification or a required witness outside the admitted scope refuses. The foot radius must be at
 least 0.01 m, including analytic-only paths. Swimming retains medium proofs, water motion/policies and leased admission/transport.
 The unchanged bank-step regression passes. The
 [phase 4b handoff](../docs/design/CONTACT-CONTROLLER-PHASE-4B-SWIMMING-HANDOFF-2026-10-11.md)
@@ -632,7 +634,8 @@ On the recorded .NET 10 arm64 route, acquired explicit ticks allocate 312 bytes 
 (movement/release binding 192, physics ReadLease 64, producer pin 56), borrowed support reads allocate
 zero bytes and acquired dry ticks use 64 bytes. Continuously varying certified capsule dimensions use
 the optional value-input physics capability. Other backends need their own allocation inventory.
-Native adoption still waits on #1494 exact-edge support, #1334 support cost and #1344 small bodies.
+Lane C resolves #1494 exact-edge support. Native adoption still waits on #1334 support cost and
+#1344 small bodies.
 #1347 is closable only after all geometric rows pass and the orchestrator pushes the verified commit.
 The cost gate retains 96 local time rejections and an owner-approved normalized hosted repeat proof
 at the phase 6 stop. Phase 5 navigation and phase 6 aggregate actor CPU remain separate obligations.

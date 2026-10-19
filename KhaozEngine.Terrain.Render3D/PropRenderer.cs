@@ -26,7 +26,7 @@ namespace KhaozEngine.Terrain
     /// <c>blobRadii</c> (issue #388), registers a <see cref="ShadowBlob"/> per surviving placement whose kit id has
     /// a per-kit radius entry, scaled by the placement's scale, but only while the scene's resolved shadow tier is
     /// <see cref="ShadowMode.Blob"/> - null (the default) never registers anything.</para>
-    /// The headless <see cref="Queue(SceneInstances, IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, Vector3, float, Color?, float, IReadOnlyDictionary{string, MeshHandle}, float, float, bool)"/> overload is testable without a GPU; <see cref="DrawProps(Scene3D, IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, Vector3, float, Color?, float, IReadOnlyDictionary{string, MeshHandle}, float, float, bool, IReadOnlyDictionary{string, float})"/> is the Scene3D
+    /// The headless <see cref="Queue(SceneInstances, IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, Vector3, float, Color?, float, IReadOnlyDictionary{string, MeshHandle}, float, float, bool)"/> overload is testable without a GPU. <c>DrawProps</c> is the Scene3D
     /// convenience a consumer with <c>using KhaozEngine.Terrain;</c> gets in scope.</summary>
     public static class PropRenderer
     {
@@ -40,8 +40,9 @@ namespace KhaozEngine.Terrain
             public readonly Scene3D Scene;
             public readonly Color Tint;
             public readonly bool CastsShadows;
-            public DrawState(Scene3D scene, Color tint, bool castsShadows)
-            { Scene = scene; Tint = tint; CastsShadows = castsShadows; }
+            public readonly bool CutInsideInteriors;
+            public DrawState(Scene3D scene, Color tint, bool castsShadows, bool cutInsideInteriors)
+            { Scene = scene; Tint = tint; CastsShadows = castsShadows; CutInsideInteriors = cutInsideInteriors; }
         }
 
         readonly struct QueueState
@@ -53,15 +54,18 @@ namespace KhaozEngine.Terrain
             { Instances = instances; Tint = tint; CastsShadows = castsShadows; }
         }
 
-        // One submission. Identical to the closures these replaced, including the fast path that skips the long
-        // overload when nothing about the draw is non-default.
+        // One descriptor carries coverage and layer policy through the shared scene queue.
         static readonly Action<DrawState, MeshHandle, Matrix4x4, float, float> DrawSink =
             static (s, handle, world, dissolve, complement) =>
         {
-            if (dissolve > 0f || complement > 0f || !s.CastsShadows)
-                s.Scene.Draw(handle, world, s.Tint, Material.None, dissolve, 0f, default, s.CastsShadows,
-                    invertShadowDissolve: false, dissolveComplement: complement);
-            else s.Scene.Draw(handle, world, s.Tint);
+            s.Scene.Draw(new RigidInstanceDraw(handle, world)
+            {
+                Tint = s.Tint,
+                Dissolve = dissolve,
+                DissolveComplement = complement,
+                CastsShadows = s.CastsShadows,
+                CutInsideInteriors = s.CutInsideInteriors,
+            });
         };
 
         static readonly Action<DrawState, Vector3, float> DrawBlobSink = static (s, groundPos, radius) =>
@@ -135,7 +139,7 @@ namespace KhaozEngine.Terrain
                                     float dissolveFloor = 0f, bool castsShadows = true,
                                     IReadOnlyDictionary<string, float>? blobRadii = null)
             => DrawProps(scene, placements, meshes, focus, drawRadius, 0f, tint,
-                fadeBandWidth, lodMeshes, lodDistance, dissolveFloor, castsShadows, blobRadii);
+                fadeBandWidth, lodMeshes, lodDistance, dissolveFloor, castsShadows, blobRadii, null, null, cutInsideInteriors: false);
 
         public static int DrawProps(this Scene3D scene, IReadOnlyList<PropPlacement> placements,
                                     IReadOnlyDictionary<string, MeshHandle> meshes, Vector3 focus, float drawRadius,
@@ -144,7 +148,7 @@ namespace KhaozEngine.Terrain
                                     float dissolveFloor = 0f, bool castsShadows = true,
                                     IReadOnlyDictionary<string, float>? blobRadii = null)
             => DrawProps(scene, placements, meshes, focus, drawRadius, lodCrossfadeWidth, tint, fadeBandWidth,
-                lodMeshes, lodDistance, dissolveFloor, castsShadows, blobRadii, null, null);
+                lodMeshes, lodDistance, dissolveFloor, castsShadows, blobRadii, null, null, cutInsideInteriors: false);
 
         /// <summary>Draw-time filtered single-mesh prop submission. A null filter preserves all placements.</summary>
         public static int DrawProps(this Scene3D scene, IReadOnlyList<PropPlacement> placements,
@@ -153,13 +157,13 @@ namespace KhaozEngine.Terrain
                                     IReadOnlyDictionary<string, MeshHandle>? lodMeshes = null, float lodDistance = 0f,
                                     float dissolveFloor = 0f, bool castsShadows = true,
                                     IReadOnlyDictionary<string, float>? blobRadii = null,
-                                    PropDrawFilter? drawFilter = null, string? layerIdentity = null)
+                                    PropDrawFilter? drawFilter = null, string? layerIdentity = null, bool cutInsideInteriors = false)
         {
             if (scene == null) throw new ArgumentNullException(nameof(scene));
             Color t = tint ?? Color.White;
             bool emitBlobs = blobRadii != null && scene.ResolvedShadowMode == ShadowMode.Blob;
             return Emit(placements, meshes, lodMeshes, lodDistance, focus, drawRadius, fadeBandWidth, dissolveFloor,
-                new DrawState(scene, t, castsShadows), DrawSink,
+                new DrawState(scene, t, castsShadows, cutInsideInteriors), DrawSink,
                 emitBlobs ? blobRadii : null,
                 emitBlobs ? DrawBlobSink : null,
                 lodCrossfadeWidth, drawFilter, layerIdentity);
@@ -195,7 +199,7 @@ namespace KhaozEngine.Terrain
                 lodCrossfadeWidth: lodCrossfadeWidth);
         }
 
-        /// <summary>Scene3D convenience: multi-part variant of <see cref="DrawProps(Scene3D,IReadOnlyList{PropPlacement},IReadOnlyDictionary{string,MeshHandle},Vector3,float,Color?,float,IReadOnlyDictionary{string,MeshHandle},float,float,bool,IReadOnlyDictionary{string,float})"/>.
+        /// <summary>Scene3D convenience: multi-part variant of <c>DrawProps</c>.
         /// Queues every part of each in-range prop at the placement transform (same cull + matrix + fade band + LOD as
         /// the headless <see cref="Queue(SceneInstances,IReadOnlyList{PropPlacement},IReadOnlyDictionary{string,IReadOnlyList{MeshHandle}},Vector3,float,Color?,float,IReadOnlyDictionary{string,IReadOnlyList{MeshHandle}},float,float,bool)"/>).
         /// <paramref name="blobRadii"/> (default null, issue #388) registers ONE <see cref="ShadowBlob"/> per
@@ -209,7 +213,7 @@ namespace KhaozEngine.Terrain
                                     float dissolveFloor = 0f, bool castsShadows = true,
                                     IReadOnlyDictionary<string, float>? blobRadii = null)
             => DrawProps(scene, placements, parts, focus, drawRadius, 0f, tint,
-                fadeBandWidth, lodParts, lodDistance, dissolveFloor, castsShadows, blobRadii);
+                fadeBandWidth, lodParts, lodDistance, dissolveFloor, castsShadows, blobRadii, null, null, cutInsideInteriors: false);
 
         public static int DrawProps(this Scene3D scene, IReadOnlyList<PropPlacement> placements,
                                     IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts, Vector3 focus,
@@ -219,7 +223,7 @@ namespace KhaozEngine.Terrain
                                     float lodDistance = 0f, float dissolveFloor = 0f, bool castsShadows = true,
                                     IReadOnlyDictionary<string, float>? blobRadii = null)
             => DrawProps(scene, placements, parts, focus, drawRadius, lodCrossfadeWidth, tint, fadeBandWidth,
-                lodParts, lodDistance, dissolveFloor, castsShadows, blobRadii, null, null);
+                lodParts, lodDistance, dissolveFloor, castsShadows, blobRadii, null, null, cutInsideInteriors: false);
 
         /// <summary>Draw-time filtered multi-part prop submission. A null filter preserves all placements.</summary>
         public static int DrawProps(this Scene3D scene, IReadOnlyList<PropPlacement> placements,
@@ -229,13 +233,13 @@ namespace KhaozEngine.Terrain
                                     IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lodParts = null,
                                     float lodDistance = 0f, float dissolveFloor = 0f, bool castsShadows = true,
                                     IReadOnlyDictionary<string, float>? blobRadii = null,
-                                    PropDrawFilter? drawFilter = null, string? layerIdentity = null)
+                                    PropDrawFilter? drawFilter = null, string? layerIdentity = null, bool cutInsideInteriors = false)
         {
             if (scene == null) throw new ArgumentNullException(nameof(scene));
             Color t = tint ?? Color.White;
             bool emitBlobs = blobRadii != null && scene.ResolvedShadowMode == ShadowMode.Blob;
             return EmitParts(placements, parts, lodParts, lodDistance, focus, drawRadius, fadeBandWidth, dissolveFloor,
-                new DrawState(scene, t, castsShadows), DrawSink,
+                new DrawState(scene, t, castsShadows, cutInsideInteriors), DrawSink,
                 emitBlobs ? blobRadii : null,
                 emitBlobs ? DrawBlobSink : null,
                 lodCrossfadeWidth, drawFilter, layerIdentity);
@@ -244,7 +248,7 @@ namespace KhaozEngine.Terrain
         /// <summary>Scene3D convenience: queue every part of each in-range prop into the SHADOW depth pass ALONE
         /// (issue #974), so the placements record depth for the key light and draw nothing in the colour pass. The
         /// horizontal cull and the scale/yaw/translation transform are the multi-part
-        /// <see cref="DrawProps(Scene3D,IReadOnlyList{PropPlacement},IReadOnlyDictionary{string,IReadOnlyList{MeshHandle}},Vector3,float,Color?,float,IReadOnlyDictionary{string,IReadOnlyList{MeshHandle}},float,float,bool,IReadOnlyDictionary{string,float})"/>
+        /// <c>DrawProps</c>
         /// path's exactly, and everything that is presentation is absent on purpose: no fade band, no LOD swap, no
         /// ground blobs and no tint, because none of them can change a shadow that is the only thing being drawn.
         /// For geometry a view hides from the eye while the world still contains it, the tile world's hidden roof

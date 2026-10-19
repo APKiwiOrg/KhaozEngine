@@ -738,24 +738,37 @@ view origin and captured geometry without acquiring a nested lease. Providers mu
 read-only, with no mutation or incompatible explicit lease in a callback. Contact profiles ignore the property.
 Default callers retain their existing path. No backend dependency, new seam or bake identity field is added.
 
+Contact proof reuse adds the optional public `IPhysicsSupportFootprintReuseSource` and
+`IPhysicsSupportFootprintReuseSession` in Physics. Locomotion's internal `MovementQueryLease`
+bridge discovers the exact selected receiver and authenticates its current producer pin before
+borrowing its physics lease. Movement groups same-layer edges by immutable profile and original
+raw-source identity. Bepu owns bounded exact payload storage and fresh current-lease publication,
+so neither Movement nor Locomotion gains a backend reference. The stable serial assertion is
+`NavBakeExecution.UseStableContactHoldReuse`, default false. Parallel providers already assert
+stability. No old result, selection or arena evidence crosses intervals. The
+[consumer contract](USING-KHAOZENGINE.md#exact-completed-footprint-reuse) owns lifetime and key details.
+
 `GroundNavigationBake` writes one capture's columns and named profiles as a versioned `KENB` file and loads them
 without physics, rebuilding layer grids through `NavGrid.FromBlockedSurfaces`. Hashing uses the base library's
 `IncrementalHash` and encoding uses `BinaryPrimitives`, so the bake adds no reference or package.
 
 `KhaozEngine.Physics` grants `InternalsVisibleTo` to `KhaozEngine.Movement` for the per-worker diagnostics of a
-parallel contact bake, and for nothing else. Movement uses exactly these members:
+parallel contact bake and its reference/diagnostic controls. Movement uses these internal members:
 
-- `WorkerDiagnostics.Plan()`, which copies the calling thread's enablement and per-worker observer factory, never its
-  observer delegates.
+- `WorkerDiagnostics.Plan()`, which copies diagnostic enablement, the allocation-observer factory and a separately
+  opted-in test Find observer. Ordinary caller ThreadState observers are never inherited.
 - `WorkerDiagnostics.Merge(...)`, which adds worker records to the calling thread's recorder after the join.
 - `WorkerDiagnosticsPlan.Observer(int)`, which gives one worker its own allocation observer during setup.
-- `WorkerDiagnosticsRecord`, the counts and routes one worker hands back.
+- `WorkerDiagnosticsRecord`, the counts, routes and per-session retention maxima one worker hands back.
 - `WorkerDiagnosticsScope.Enter` and `Exit`, which swap a fresh recorder onto a worker thread and restore every prior
   thread value.
 - `ContactAllocationPhase`, the argument type of the allocation observer delegate.
+- `SupportQueryDiagnostics.Record` for actual EdgeSteps and separately reused initial Holds.
+- `SupportReferenceEvaluation.Active` and `Begin` to bypass both reuse layers, including on workers.
 
 None of them is safe as public API. They read and replace thread-local diagnostic state, and a public form would let
 any caller swap another subsystem's recorder or observer. `WorkerDiagnostics.SetObserverFactory`,
+`WorkerDiagnostics.ExchangeFindObserver`,
 `SupportQueryDiagnostics.ThreadState` and `SupportQueryDiagnostics.Exchange` are used only by tests, through the
 existing test assembly grants. The two packages ship together under one `KhaozEngineVersion`, so the grant cannot
 skew across versions.
@@ -1133,6 +1146,12 @@ edge, so a headless server can take the core and an independent host can take th
 `BugReports` edge is the shared viewer page, its `BugReports.Contracts` edge is validation and wire
 records, its `Diagnostics` edge is the engine `ILogger`, and its `Http` edge retries the GitHub App
 token exchange. Issue and comment POSTs are never retried in-process.
+
+`BugReportServiceOptions.ReporterIdentityTerms` is a game-owned `Func<IEnumerable<string>>`, called once on the
+background finish thread for each report. `ReportRedactor.WithReporterIdentityTerms` snapshots that source through
+the existing Diagnostics edge. No account, authentication or game dependency is added. The game supplies identity
+spellings and the redactor masks them in every section. Source and pattern construction failures mask every section
+string instead of sending identity unmasked.
 
 `Relay.Azure` implements only the media, queue and quota seams. Its three SDK references are declared
 there, with no `Azure.Identity` reference. Hosts supply built clients and own credentials, provisioning,

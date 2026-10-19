@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 
 namespace KhaozEngine.TileWorld.Render3D;
@@ -96,6 +97,13 @@ public sealed class TileWorldCameraProbe : ICameraBoomProbe
             if (hit.Distance <= 0f) continue;
             if (doc.FindObject(hit.ObjectId) is not { } o) continue;
             if (catalogs.Archetype(o.ArchetypeId) is not { } archetype || !_blocks(archetype)) continue;
+            // A cut can advance entry beyond zero even though the pivot starts inside the grown box.
+            // Test containment without the cut so that branch exit cannot become a new obstruction.
+            if (_view.AppliedInteriorCut is not null && _view.CutArchetypeIds.Contains(archetype.Id) &&
+                Inflated(archetype, out Vector3 min, out Vector3 max) &&
+                RayMath.IntersectObbY(origin, Vector3.Zero, TileObjectProps.AnchorPosition(doc, archetype, o),
+                    TileObjectProps.YawRadians(archetype, o.Rotation), min, max, out _))
+                continue;
             if (archetype.IsRoof && _view.IsRoofHidden(TileFootprint.Of(archetype, o.X, o.Z, o.Rotation), o.Plane))
                 continue;
             return hit.Distance;

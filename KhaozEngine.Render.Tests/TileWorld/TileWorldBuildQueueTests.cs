@@ -371,6 +371,36 @@ public class TileWorldBuildQueueTests
         Assert.Throws<ObjectDisposedException>(() => queue.Request(Request(3, TileWorldBuildKind.FullGround, 1)));
     }
 
+    [Fact]
+    public void Interior_cut_has_an_independent_apply_budget_and_is_never_gameplay_primed_inline()
+    {
+        var dispatcher = new ManualTileBuildDispatcher();
+        var applied = new List<TileWorldBuildResult<int>>();
+        using var queue = new TileWorldBuildQueue<int, int>(request => request.Input, applied.Add,
+            new TileWorldBuildQueueOptions
+            {
+                MaxConcurrentBuilds = 5,
+                MaxInteriorCutAppliesPerPump = 1,
+                MaxHlodAppliesPerPump = 0
+            }, dispatcher);
+        queue.Request(Request(0, TileWorldBuildKind.InteriorCut, 1));
+        queue.Request(Request(1, TileWorldBuildKind.InteriorCut, 1));
+        queue.Request(Request(2, TileWorldBuildKind.Hlod, 1));
+        queue.PrimeGameplay(default, new HashSet<RegionCoord> { new(0, 0) });
+        Assert.Empty(applied);
+        dispatcher.RunAll();
+        queue.Pump(default);
+        Assert.Equal(TileWorldBuildKind.InteriorCut, Assert.Single(applied).Key.Kind);
+        Assert.Equal(2, queue.ReadyCount);
+    }
+
+    [Fact]
+    public void Negative_interior_cap_is_rejected()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new TileWorldBuildQueue<int, int>(
+            request => request.Input, _ => { }, new TileWorldBuildQueueOptions { MaxInteriorCutAppliesPerPump = -1 }));
+    }
+
     static TileWorldBuildQueue<int, int> Queue(ManualTileBuildDispatcher dispatcher,
                                                 List<TileWorldBuildResult<int>> applied,
                                                 int maxConcurrency) =>

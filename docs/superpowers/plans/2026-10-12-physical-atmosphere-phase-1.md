@@ -1,5 +1,10 @@
 # Physical Atmosphere Phase 1 Implementation Plan
 
+Current layout note after interior cut. The shared frame UBO is now 1376 bytes, with interior vec4 tails
+at 1344 and 1360. Model set 0 binding 14 follows the unchanged atmosphere bindings 11 to 13 and reuses
+sampler binding 6. No existing offsets or the six dynamic uniform descriptors changed. The quoted
+1344-byte frame contract below records the atmosphere implementation at that time.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add an opt-in physical atmosphere that supplies a coherent sky, scene lighting, reflected sky and analytic distance fog.

@@ -118,13 +118,12 @@ public sealed partial class CapturedStairExplicitSweepTests(ITestOutputHelper ou
         Vector3 along = fixture.Rotate(Vector3.UnitZ);
         var capture = new TickCapture(fixture);
         MovementStepResult result = capture.Step(state, new(along.X, along.Z));
+        Assert.All(capture.Footprints, f => Assert.Equal(CapsuleFeatureStatus.Complete, f.Result.Status));
         if (rotated && !translated && !offTangency)
         {
-            AssertSupportBoundary(fixture, state, result, capture);
-            new CapturedStairEdgeOracle(fixture).AssertMapDisagreement(
-                Assert.Single(capture.Footprints, f => f.Result.Status == CapsuleFeatureStatus.Unsupported).Request);
-            Assert.Equal(new MovementSupportKey("world", "stairs"), result.State.Selection!.Value.Support);
-            return;
+            AssertShellClear(fixture, capture);
+            var edge = new CapturedStairEdgeOracle(fixture);
+            edge.AssertRepresentedDisagreement(capture.Footprints.First(f => edge.HasMapDisagreement(f.Request)).Request);
         }
         if (offTangency) new CapturedStairEdgeOracle(fixture).AssertSeparated(capture.Footprints.Select(f => f.Request));
         AssertAccepted(fixture, state, result, capture.Reads);
@@ -161,7 +160,7 @@ public sealed partial class CapturedStairExplicitSweepTests(ITestOutputHelper ou
         var capture = new TickCapture(fixture);
         var edges = offTangency ? new CapturedStairEdgeOracle(fixture) : null;
         var steps = new List<MovementStepResult>();
-        bool sawStairs = false;
+        bool sawStairs = false, sawNearTangency = false;
         int ticks = 0;
         for (; ticks < 240;)
         {
@@ -171,11 +170,11 @@ public sealed partial class CapturedStairExplicitSweepTests(ITestOutputHelper ou
             if (command.LengthSquared() > 1) command = Vector2.Normalize(command);
             var result = capture.Step(state, command);
             ticks++;
-            if (rotated && !translated && !offTangency && result.Outcome == MovementStepOutcome.Blocked)
+            Assert.All(capture.Footprints, f => Assert.Equal(CapsuleFeatureStatus.Complete, f.Result.Status));
+            if (rotated && !translated && !offTangency)
             {
-                Assert.All(steps, step => Assert.Equal(MovementStepOutcome.Advanced, step.Outcome));
-                AssertSupportBoundary(fixture, state, result, capture);
-                return;
+                var edge = new CapturedStairEdgeOracle(fixture);
+                sawNearTangency |= capture.Footprints.Any(f => edge.IsNearTangency(f.Request));
             }
             edges?.AssertSeparated(capture.Footprints.Select(f => f.Request));
             AssertAccepted(fixture, state, result, capture.Reads);
@@ -185,7 +184,7 @@ public sealed partial class CapturedStairExplicitSweepTests(ITestOutputHelper ou
             if (CertifiedSweepExactOracle.WithinArrivalBall(fixture.SupportFeet(state), target, 0.001f)) break;
         }
         Assert.True(ticks <= 240);
-        Assert.False(rotated && !translated && !offTangency, "The retained exact-edge row must exercise its support refusal.");
+        if (rotated && !translated && !offTangency) Assert.True(sawNearTangency);
         Assert.True(sawStairs);
         Vector3 finalSupportFeet = fixture.SupportFeet(state);
         Assert.True(CertifiedSweepExactOracle.WithinArrivalBall(finalSupportFeet, target, 0.001f),

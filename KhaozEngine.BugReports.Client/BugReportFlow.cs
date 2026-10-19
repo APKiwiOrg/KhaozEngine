@@ -531,8 +531,10 @@ internal sealed class BugReportFlow
                 ? await WaitForScreenshotAsync(report.Screenshot, logFailure: false, _stopping.Token).ConfigureAwait(false)
                 : null;
             FinishStarting?.Invoke();
+            ReportRedactor redactor = _options.ReporterIdentityTerms is { } identityTerms
+                ? _redactor.WithReporterIdentityTerms(identityTerms) : _redactor;
             IReadOnlyList<CapturedSection> sections =
-                BugReportSectionSet.Finish(report.Raw, _redactor, BugReportSectionSet.DefaultFinishBudget);
+                BugReportSectionSet.Finish(report.Raw, redactor, BugReportSectionSet.DefaultFinishBudget);
             bundle = ReportBundleBuilder.Write(new ReportBundleBuilder.Request(report.Id, _options.GameId, report.CapturedAt,
                 sections, choices.Description, choices.Category, screenshot, choices.IncludeClip ? report.Clip : null));
         }

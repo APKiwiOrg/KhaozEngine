@@ -125,6 +125,28 @@ either value shifts the bit-exact result legitimately.
   Cost is O(statics + bodies) pose writes plus refits on the calling thread, budgeted at less than one physics step
   on the same world.
 
+## Exact completed-footprint reuse
+
+Bepu owners and selected views implement the optional `IPhysicsSupportFootprintReuseSource`.
+A session authenticates its exact receiver, owner, selected view/exclusions, installed/static/lease
+geometry generations and all origin bits. Immutable profile and original raw-source token identities
+select one domain. Reset discards every entry, and source-group disposal releases all owned storage.
+The session is thread-affine, non-owning and never retains or opens a second explicit read lease.
+
+Requests use the full bitwise disc/band/slope/contact-band, both proposal dimensions/poses/distances,
+filter and consumed join mode. Complete-empty and full ordered member/witness/proposal/join payloads
+can hit. Every hit authenticates the current basis and publishes new receiver/lease metadata before
+copying only occupied output ranges. An old result never becomes current. Refusals, exceptions,
+unsupported views and changed bases keep the original validation and evaluator path.
+
+Each source session has at most 512 keys and 2 MiB of retained storage, with no eviction. Accounting
+charges the entire fixed entry-array capacity by `Unsafe.SizeOf<Entry>()`, plus exact member-array
+capacity by `Unsafe.SizeOf<SupportFootprintMember>()` and join-array capacity by `sizeof(ulong)`.
+Entry size includes key, witness count, both proposal verdicts and buffer references. This deterministic
+capacity charge is separate from measured runtime allocation. Saturation declines new publication.
+Reference evaluation and non-default curved-work policies bypass lookup and publication. Hits do
+not replay Volumes, Proposals or curved-work events. See the [consumer contract](../docs/USING-KHAOZENGINE.md#exact-completed-footprint-reuse).
+
 ## Joints
 
 Each seam `ConstraintKind` maps to Bepu 2.4 constraint types (verified against the assembly, never from memory):
@@ -317,10 +339,33 @@ four general-sweep workspaces for nested loans. First use provisions each depth 
 allocates zero bytes, and a fifth simultaneous loan returns default Unresolved without allocation.
 Acquired explicit cost scenes and captured player-scale hull stairs are covered by the
 [general sweep acceptance record](../docs/design/CERTIFIED-GENERAL-SWEEPS-2026-10-18.md#task-6-captured-content-evidence-and-gb-r13).
-Exact quarter-turn tread-edge footprint tangency still returns Unsupported and blocks the controller
-even when the shell sweeps certify Clear (#1494). Off-tangency split/compound stairs advance and
-reach the unchanged 1 mm arrival ball at both physics origins. Native G1b, SG-12/#1334 timing and
+Lane C resolves #1494: exact quarter-turn tread-edge footprints now complete under represented
+support and the original split/compound stair rows advance and reach the unchanged Euclidean
+1 mm arrival ball at both physics origins. Historical GB-R13 refusals are retained in that record.
+Native G1b, SG-12/#1334 timing and
 aggregate actor cost, navigation, release and consumer adoption remain separate gates.
+
+## Support source and curved work contract
+
+Support admits the represented binary32 Bepu matrix on each actual installed leaf, composed with
+Compound.GetWorldPose before capture. Planar vertices, normals and mesh preimages derive from
+that point-valued affine map. Circular primitives use its exactly normalized represented Y column
+with outward arithmetic bounds, preserving radius and half length. Legacy feature/sweep factories
+retain their dual contract. Scalar/SIMD correspondence, finite domains and determinant guards remain.
+
+A complete Find or direct footprint shares one sticky 1,048,576-event account, derived from
+256 raw-member slots times 4,096 source nodes. New, Sign, recursive Split/Compile, root cells,
+Refine iterations and admission cells charge before execution, including cache-hit entries.
+Reset, Restore, later parts, proposals and the below-band pass never refund work. Diagnostics
+expose category counts, cell high water and first failure WorkLimit, RootStorage, TerminalRoots
+or AdmissionStorage. Every failed request refuses atomically with untouched spans and no prefix.
+
+The footprint-only whole-capsule crown certifies the attained global maximum by source identity.
+Cylinder admission first offers a clamped nearest top-line XZ point or nearest cap point, with
+only a decline from interval pruning and exact source proof for acceptance. A miss retains full
+traversal. Neither certificate bypasses axis/lowest roles, full admission, proposal/roof guards,
+other members or raw identity. The [lane C record](../docs/verification/2026-10-19-contact-followups-c.md)
+resolves #1494 and #1487 while retaining historical results and every safety/arrival rule.
 
 ## Usage
 

@@ -115,13 +115,27 @@ void main() {
         //      being a dither: the depth pass scatters surviving fragments into isolated texels with no shape left
         //      for the receiver's 3x3 kernel. So the light UBO carries that cascade's scale beside the origin (see
         //      ShadowDissolveNoise.ScaleForCascade), and the vertex hands the fragment a pre-SCALED noise position -
-        //      which also keeps the UBO vertex-only, since scaling before interpolation is the same as after. ----
-        public const string ShadowDepthDissolveVert = @"#version 450
-layout(set=0, binding=0) uniform U {
+        //      since scaling before interpolation is the same as after. ----
+        const string ShadowInteriorUniformBlock = @"layout(set=0, binding=0) uniform U {
     mat4 LightViewProj;
     vec4 RenderOrigin;
-    vec4 DissolveParams;                          // x = this cascade's dissolve noise scale (1/x = cell size, world units)
+    vec4 DissolveParams;
+    vec4 InteriorCutWindow;
+    vec4 InteriorCutHeights;
 };
+";
+        const string ShadowInteriorBindings = @"layout(set=1, binding=0) uniform texture2D InteriorCut;
+layout(set=1, binding=1) uniform sampler Samp;
+layout(location=4) in vec4 vCut;
+";
+        const string ShadowCutoutInteriorBindings = @"layout(set=2, binding=0) uniform texture2D InteriorCut;
+layout(set=2, binding=1) uniform sampler InteriorSamp;
+layout(location=6) in vec4 vCut;
+#define Samp InteriorSamp
+";
+
+        public const string ShadowDepthDissolveVert = @"#version 450
+" + ShadowInteriorUniformBlock + @"
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
 layout(location=2) in vec4 Color;
@@ -141,6 +155,7 @@ layout(location=0) out float vLightDepth;
 layout(location=1) out vec3 vNoisePos;            // ABSOLUTE world position pre-scaled by this cascade's noise scale
 layout(location=2) out vec2 vDissolve;
 layout(location=3) out float vDissolveComplement;
+layout(location=4) out vec4 vCut;
 void main() {
     mat4 Model = mat4(IModel0, IModel1, IModel2, IModel3);
     vec4 world = Model * vec4(Position, 1.0);
@@ -155,6 +170,7 @@ void main() {
     vNoisePos = (world.xyz + RenderOrigin.xyz) * DissolveParams.x;
     vDissolve = IDissolve;
     vDissolveComplement = IDissolveComplement;
+    vCut = vec4(world.xyz, ISpecParams.w);
 }";
 
         // The dissolve depth fragments' shared prologue: the interpolants plus the SAME hash/noise as ModelFrag's
@@ -179,8 +195,22 @@ float dnoise(vec3 p) {
 }
 ";
 
-        public const string ShadowDepthDissolveFrag = ShadowDissolveFragPrologue + @"
+        public const string SkinnedShadowDepthDissolveFrag = ShadowDissolveFragPrologue + @"
 void main() {
+    // Gated exactly like ModelFrag: threshold 0 writes depth unconditionally, so an instance carrying no dissolve
+    // records the same depth this pipeline's plain sibling would.
+    if (vDissolve.x > 0.0 || vDissolveComplement > 0.5) {
+        float threshold = clamp(vDissolve.x, 0.0, 1.0);
+        float mask = dnoise(vNoisePos);
+        bool keep = vDissolveComplement > 0.5 ? mask < threshold : mask >= threshold;
+        if (!keep) discard;
+    }
+    oDepth = vec4(max(vLightDepth, 0.0), 0.0, 0.0, 1.0);   // near-plane pancake, as ShadowDepthFrag
+}";
+
+        public const string ShadowDepthDissolveFrag = ShadowDissolveFragPrologue + ShadowInteriorUniformBlock + ShadowInteriorBindings + InteriorCutGlsl + @"
+void main() {
+    if (vCut.w > 0.5 && interiorCut(vCut.xyz)) discard;
     // Gated exactly like ModelFrag: threshold 0 writes depth unconditionally, so an instance carrying no dissolve
     // records the same depth this pipeline's plain sibling would.
     if (vDissolve.x > 0.0 || vDissolveComplement > 0.5) {
@@ -207,7 +237,7 @@ void main() {
         //      Only the SHADOW half is inverted. The colour pass keeps both halves on the plain rule: they are
         //      different geometry at different positions, so their colour dithers do not have to complement, and
         //      inverting one there would change what the crossfade looks like. ----
-        public const string ShadowDepthDissolveInvertedFrag = ShadowDissolveFragPrologue + @"
+        public const string SkinnedShadowDepthDissolveInvertedFrag = ShadowDissolveFragPrologue + @"
 void main() {
     if (vDissolve.x > 0.0) {
         float threshold = clamp(vDissolve.x, 0.0, 1.0);
@@ -215,6 +245,18 @@ void main() {
         if (mask >= 1.0 - threshold) discard;     // keep the complement of the plain half's keep-set
     }
     oDepth = vec4(max(vLightDepth, 0.0), 0.0, 0.0, 1.0);   // near-plane pancake, as ShadowDepthFrag
+}";
+
+        // Keep location 3 live below vCut at location 4, like ShadowDepthCutoutInvertedFrag.
+        public const string ShadowDepthDissolveInvertedFrag = ShadowDissolveFragPrologue + ShadowInteriorUniformBlock + ShadowInteriorBindings + InteriorCutGlsl + @"
+void main() {
+    if (vCut.w > 0.5 && interiorCut(vCut.xyz)) discard;
+    if (vDissolve.x > 0.0) {
+        float threshold = clamp(vDissolve.x, 0.0, 1.0);
+        float mask = dnoise(vNoisePos);
+        if (mask >= 1.0 - threshold) discard;     // keep the complement of the plain half's keep-set
+    }
+    oDepth = vec4(max(vLightDepth, 0.0), 0.0, 0.0, 1.0 + vDissolveComplement * 1e-30);   // near-plane pancake, as ShadowDepthFrag
 }";
 
         // ---- Alpha-cutout depth pass (issue #15). A MASK caster (a leaf card) records depth only where its albedo
@@ -230,11 +272,7 @@ void main() {
         //      signature stays contiguous (TEXCOORD0..14). The fragment reads every interpolant it declares, so its
         //      pixel-input signature is gap-free from location 0 as well. ----
         public const string ShadowDepthCutoutVert = @"#version 450
-layout(set=0, binding=0) uniform U {
-    mat4 LightViewProj;
-    vec4 RenderOrigin;
-    vec4 DissolveParams;                          // x = this cascade's dissolve noise scale (1/x = cell size, world units)
-};
+" + ShadowInteriorUniformBlock + @"
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
 layout(location=2) in vec4 Color;
@@ -256,6 +294,7 @@ layout(location=2) out vec2 vDissolve;
 layout(location=3) out float vDissolveComplement;
 layout(location=4) out vec2 vUv;
 layout(location=5) out float vCutoff;
+layout(location=6) out vec4 vCut;
 void main() {
     mat4 Model = mat4(IModel0, IModel1, IModel2, IModel3);
     vec4 world = Model * vec4(Position, 1.0);
@@ -269,6 +308,7 @@ void main() {
     vNoisePos = (world.xyz + RenderOrigin.xyz) * DissolveParams.x;
     vDissolve = IDissolve;
     vDissolveComplement = IDissolveComplement;
+    vCut = vec4(world.xyz, ISpecParams.w);
     vUv = TexCoord;
     vCutoff = ISpecParams.z;
 }";
@@ -285,7 +325,9 @@ layout(set=1, binding=1) uniform sampler Samp;
         // The albedo is sampled FIRST and unconditionally, before either discard, so the implicit-LOD derivatives
         // stay well-defined (the ordering ModelFrag keeps for the same reason). The alpha test is ModelFrag's,
         // byte for byte, so the shadow and the mesh cut out the same texels.
-        public const string ShadowDepthCutoutFrag = ShadowDissolveFragPrologue + ShadowCutoutFragDeclarations + @"
+        public const string ShadowDepthCutoutFrag = ShadowDissolveFragPrologue + ShadowCutoutFragDeclarations + ShadowInteriorUniformBlock
+            + ShadowCutoutInteriorBindings + InteriorCutGlsl + @"
+#undef Samp
 void main() {
     float alpha = texture(sampler2D(Albedo, Samp), vUv).a;
     if (vDissolve.x > 0.0 || vDissolveComplement > 0.5) {
@@ -294,16 +336,19 @@ void main() {
         bool keep = vDissolveComplement > 0.5 ? mask < threshold : mask >= threshold;
         if (!keep) discard;
     }
+    if (vCut.w > 0.5 && interiorCut(vCut.xyz)) discard;
     if (vCutoff > 0.0 && alpha < vCutoff) discard;
     oDepth = vec4(max(vLightDepth, 0.0), 0.0, 0.0, 1.0);   // near-plane pancake, as ShadowDepthFrag
 }";
 
         // The cutout fragment for a MASK caster that is the inverted half of an HLOD crossfade (issue #391): the
         // ShadowDepthDissolveInvertedFrag dither plus the alpha test. That fragment never reads
-        // vDissolveComplement, which is harmless there because location 3 is its LAST input. Here locations 4 and 5
+        // vDissolveComplement except for its sink. Here locations 4, 5 and 6
         // follow it, so dropping it would hole the D3D11 pixel-input signature, and the 1e-30 sink keeps it live
         // without moving the test (it rounds away against any representable cutoff).
-        public const string ShadowDepthCutoutInvertedFrag = ShadowDissolveFragPrologue + ShadowCutoutFragDeclarations + @"
+        public const string ShadowDepthCutoutInvertedFrag = ShadowDissolveFragPrologue + ShadowCutoutFragDeclarations + ShadowInteriorUniformBlock
+            + ShadowCutoutInteriorBindings + InteriorCutGlsl + @"
+#undef Samp
 void main() {
     float alpha = texture(sampler2D(Albedo, Samp), vUv).a;
     if (vDissolve.x > 0.0) {
@@ -311,6 +356,7 @@ void main() {
         float mask = dnoise(vNoisePos);
         if (mask >= 1.0 - threshold) discard;     // keep the complement of the plain half's keep-set
     }
+    if (vCut.w > 0.5 && interiorCut(vCut.xyz)) discard;
     if (vCutoff > 0.0 && alpha < vCutoff + vDissolveComplement * 1e-30) discard;
     oDepth = vec4(max(vLightDepth, 0.0), 0.0, 0.0, 1.0);   // near-plane pancake, as ShadowDepthFrag
 }";

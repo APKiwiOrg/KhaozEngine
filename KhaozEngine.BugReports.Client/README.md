@@ -17,7 +17,13 @@ Create the service once, on the frame thread, after the `GameApp` is constructed
 using KhaozEngine.BugReports;
 using KhaozEngine.BugReports.Client;
 
-var options = new BugReportServiceOptions { GameId = "grimhollow", GameDisplayName = "Grimhollow", SessionLogPath = logPath };
+var options = new BugReportServiceOptions
+{
+    GameId = "grimhollow",
+    GameDisplayName = "Grimhollow",
+    SessionLogPath = logPath,
+    ReporterIdentityTerms = () => new[] { displayName ?? "", subject ?? "" },
+};
 var sink = new HttpRelaySink(http, relay, () => token);
 var queue = new BugReportOfflineQueue(Path.Combine(stateDir, "bug-reports", "pending"), TimeProvider.System);
 var reports = new BugReportService(app, options, sink, queue, () => subject);
@@ -32,6 +38,20 @@ never stops reports: the last known account stays, or signed out when none was e
 memory for the session. A report made while signed out is queued and goes with the first account that signs in.
 Use `new LocalFolderSink(folder, openViewer: true)` in development builds to see every report in the browser
 without a relay.
+
+`ReporterIdentityTerms` is optional. It is called once per report on the background finish thread, after Send,
+so sign-in and account changes after startup take effect. Keep the callback thread-safe and prompt. Its snapshot
+masks complete literal terms, including occurrences inside longer text, in every section's property names and
+string values, after secret rules and before home replacement. Matching is invariant case-insensitive so a log's
+case changes cannot expose the identity. Null, blank and terms shorter than three characters are ignored to avoid
+masking ordinary text for short names. Supply every identity spelling the game logs.
+
+Matches use `[redacted]`, the existing privacy mask, so a diagnostic never distinguishes which private value stood
+there. The matcher is non-backtracking with the redactor's 250 ms timeout. A throwing callback or enumeration,
+an unsupported pattern, or a combined escaped pattern above 4096 characters masks every section string. A timeout
+masks the whole current string. The callback is not called at startup, on capture, on Cancel or when queued bundles
+are retried. The submission subject used for delivery is unchanged. This covers section text, not screenshots,
+clips or text the player writes in the confirmation screen.
 
 F10 opens a report by default. In the trigger frame the service freezes the clip, arms the screenshot and captures
 every section, then raises `ReportCaptured`. The confirmation screen opens once the screenshot is taken, usually the

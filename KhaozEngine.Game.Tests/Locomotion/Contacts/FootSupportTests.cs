@@ -1,10 +1,12 @@
 // Every expectation below is derived from the installed geometry, never from a stepper run. Each physics case
 // runs on boxes and on the equivalent two-triangle meshes with the same expected values.
 using System;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.Locomotion.Contacts;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
+using KhaozEngine.Tests.Physics;
 using Xunit;
 using static KhaozEngine.Tests.Locomotion.Contacts.FootSupportScenes;
 
@@ -138,10 +140,49 @@ public class FootSupportTests
     [Theory]
     [InlineData(SceneVariant.Box)]
     [InlineData(SceneVariant.Mesh)]
-    public void DescendingRampAheadKeepsTheFlat(SceneVariant variant)
+    public void DescendingRampAheadKeepsTheFlatHeight(SceneVariant variant)
     {
         using FootSupportScene scene = Ramp(variant, -0.5f);
-        AssertWalkable(0, scene["floor"], Find(scene, Query(-0.1f)));
+        FootSupportQuery query = Query(-0.1f);
+        StaticHandle owner = scene["floor"];
+        if (variant == SceneVariant.Box)
+        {
+            SupportFootprintRequest request = FootSupport.DescribeFootprint(query);
+            var floor = SupportFootprintOracle.Polygon(scene.InstalledFaces("floor")
+                .Single(face => face.ElementId == SupportNeighborhoodOracle.BoxTop), request)!;
+            var ramp = SupportFootprintOracle.Polygon(scene.InstalledFaces("ramp")
+                .Single(face => face.ElementId == SupportNeighborhoodOracle.BoxTop), request)!;
+            Assert.Equal(0, floor.Plane);
+            Assert.True(ramp.Plane > 0 && ramp.Maximum > 0);
+            Assert.True(SupportFootprintOracle.Joined(floor.Face!, ramp.Face!, request.ContactBand));
+            // The exact floor maximum clips its contribution's upper bound to zero. The ramp's
+            // positive maximum leaves the joined floor plane's symmetric enclosure intact, so its
+            // midpoint is higher. Five outward binary64 steps enclose that exact horizontal plane.
+            var raw = new SupportFootprintMember[256];
+            var joins = new ulong[1024];
+            SupportFootprintResult result = scene.World.QuerySupportFootprint(scene.Lease, request, raw, joins);
+            Assert.Equal(CapsuleFeatureStatus.Complete, result.Status);
+            var contributions = new FootprintContribution[512];
+            int count = SupportCertification.CertifyFootprint(scene.World, scene.Lease, result, raw, joins,
+                query.Axis, query.CosMaxSlope, contributions);
+            Assert.True(count > 0);
+            var flat = contributions.Take(count).Single(c => raw[c.MemberIndex].Static == scene["floor"] &&
+                c.Contribution.FeatureId == SupportNeighborhoodOracle.BoxTop).Contribution;
+            var capped = contributions.Take(count).Single(c => raw[c.MemberIndex].Static == scene["ramp"] &&
+                c.Contribution.FeatureId == SupportNeighborhoodOracle.BoxTop).Contribution;
+            double outward = BitConverter.Int64BitsToDouble(5);
+            Assert.Equal(-outward, flat.Lower);
+            Assert.Equal(0, flat.Upper);
+            Assert.Equal(-outward, capped.Lower);
+            Assert.Equal(outward, capped.Upper);
+            Assert.True((capped.Lower + capped.Upper) / 2 > (flat.Lower + flat.Upper) / 2);
+            owner = scene["ramp"];
+        }
+        SupportSample sample = Find(scene, query);
+        AssertWalkable(0, owner, sample);
+        // The direct join preserves the flat floor's exact height and normal.
+        Assert.Equal(0f, sample.Height);
+        Assert.Equal(Vector3.UnitY, sample.Normal);
     }
 
     [Theory]

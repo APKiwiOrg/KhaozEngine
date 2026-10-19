@@ -167,27 +167,28 @@ public partial class SupportFootprintTests
     }
 
     [Fact]
-    public void InstalledCoefficientBoundaryRefusesAtomically()
+    public void InstalledRepresentedCoefficientBoundaryIsExactlyOnTheDisc()
     {
-        using var diagnostics = new SourceDiagnosticScope();
         Quaternion rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, 0.65f);
-        Assert.True(InstalledPoseOperator.TryCreate(new RigidPose(Vector3.Zero, rotation), out var map));
-        float radius = (float)map.RepresentedX.X.Value;
-        Assert.True(map.X.X.Bounds.Lower < map.X.X.Bounds.Upper);
-        Assert.InRange((double)radius, map.X.X.Bounds.Lower, map.X.X.Bounds.Upper);
+        var represented = InstalledPoseOracle.Represented(rotation);
+        float radius = represented.X.X.AsSingle();
         using var scene = new SupportFootprintScene();
         scene.Install(new TriangleMeshShape([new(1, 0, 0), new(1.125f, 0, -0.125f), new(1.125f, 0, 0.125f)],
             [0, 1, 2]), new(Vector3.Zero, rotation));
         var request = Request(radius: radius, upper: 1);
+        var polygon = Assert.Single(CapturedMesh(scene, request));
+        Assert.Equal(InstalledPoseOracle.R.Zero, represented.X.X.Square() - InstalledPoseOracle.R.From(radius).Square());
+        Assert.Equal(GeometrySign.Zero, polygon.SourcePredicates.VertexDisc(polygon, 0,
+            FeaturePoint.Exact(Vector3.Zero), FeatureNumber.Exact(radius)));
         using var lease = scene.World.AcquireQueryReadLease();
         var members = MemberSentinels(256);
         var before = (SupportFootprintMember[])members.Clone();
         var joins = Enumerable.Repeat(73UL, 1024).ToArray();
-        Assert.Equal(CapsuleFeatureStatus.Unsupported,
-            Capability(scene.World).QuerySupportFootprint(lease, request, members, joins).Status);
-        Assert.Equal(before, members);
-        Assert.All(joins, word => Assert.Equal(73UL, word));
-        AssertSourceFallbacks();
+        var result = Capability(scene.World).QuerySupportFootprint(lease, request, members, joins);
+        CheckQueryOracle(scene, request, result, members, joins);
+        Assert.True(Assert.Single(members.Take(result.Members)).HasDiscMaximum);
+        Assert.Equal(before.Skip(result.Members), members.Skip(result.Members));
+        Assert.All(joins.Skip(result.Members * result.JoinWordsPerRow), word => Assert.Equal(73UL, word));
     }
 
     [Theory]

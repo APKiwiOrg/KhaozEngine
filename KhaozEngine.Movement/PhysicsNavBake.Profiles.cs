@@ -64,23 +64,29 @@ public sealed partial class PhysicsNavBake
         bool aquatic = check.Aquatic;
         PhysicsNavColumns columns = check.Columns;
         NavAreaFootprint footprint = check.Footprint;
+        ContactNavigationReusePolicy reuse = ContactNavigationReusePolicy.Capture(execution);
         if (degree > 1 && kind == EffectiveMovementBindingKind.OrdinaryContact)
         {
             RequireConcurrentReads(context);
             return BuildContactProfileInParallel(context, source!, tuning, footprint, height,
-                Options.MaxSurfacesPerColumn, degree);
+                Options.MaxSurfacesPerColumn, degree, reuse);
         }
         using LegacyNavigationReadScope? stable = kind == EffectiveMovementBindingKind.Legacy &&
             execution?.UseStableLegacyReadScope == true ? LegacyNavigationReadScope.Acquire(context, Basis, Origin) : null;
         using ContactNavigationProof? contact = kind == EffectiveMovementBindingKind.OrdinaryContact
-            ? new(this, context, source!, footprint) : null;
-        var candidates = new CandidateColumns(this, context, tuning, footprint, columns, contact);
+            ? new(this, context, source!, footprint, reuse) : null;
+        var sources = new ContactNavigationSources();
+        var candidates = new CandidateColumns(this, context, tuning, footprint, columns, contact, sources);
         // A swim-deep column with no surface below the water gains one surface.
         int maxSurfaces = aquatic ? Options.MaxSurfacesPerColumn + 1 : Options.MaxSurfacesPerColumn;
         NavSpace space = NavLayerBaker.BakeGroundedLayered(candidates,
             Options.MinX, Options.MinZ, Options.MaxX, Options.MaxZ, Options.CellSize,
             tuning.StepHeight, height, maxSurfaces, maxLayerCells: Options.MaxLayerCells);
-        if (contact is not null) space = contact.WithRestingHeights(space);
+        if (contact is not null)
+        {
+            sources.BindLayers(space);
+            space = contact.WithRestingHeights(space);
+        }
 
         var nodes = new bool[space.Layers.Count][];
         var exits = new byte[space.Layers.Count][];
@@ -109,6 +115,8 @@ public sealed partial class PhysicsNavBake
                 for (int x = 0; x < grid.Width; x++)
                 {
                     if (!nodes[layer][z * grid.Width + x]) continue;
+                    using IDisposable? group = contact is not null && sources.TryGet(layer, x, z, out var address)
+                        ? contact.BeginSource(address) : null;
                     for (int direction = 0; direction < ProfileNeighbors.Length; direction++)
                     {
                         int nx = x + ProfileNeighbors[direction].X, nz = z + ProfileNeighbors[direction].Z;
@@ -136,6 +144,7 @@ public sealed partial class PhysicsNavBake
                     Feet(toGrid, link.ToX, link.ToZ), toFloats, footprint)) links.Add(link);
         }
         _ = Context;
+        contact?.AssertCurrent();
         stable?.AssertCurrent();
         var graph = new NavTraversalGraph(space, tuning.CapsuleRadius, height, layers, links);
         return new GroundNavigation(graph, tuning, footprint, aquatic);
@@ -231,7 +240,7 @@ public sealed partial class PhysicsNavBake
 
     private sealed class CandidateColumns(PhysicsNavBake bake, GroundMoveContext context,
         MoveTuning tuning, NavAreaFootprint footprint, PhysicsNavColumns columns,
-        ContactNavigationProof? contact) : INavColumnProvider
+        ContactNavigationProof? contact, ContactNavigationSources sources) : INavColumnProvider
     {
         public int SampleColumn(float x, float z, Span<NavSurfaceSample> surfaces)
         {
@@ -244,7 +253,14 @@ public sealed partial class PhysicsNavBake
                 bool floats = columns.IsFloatAt(x, z, i);
                 float next = i + 1 < count ? surfaces[i + 1].Height : float.PositiveInfinity;
                 if (contact is not null ? contact.Admit(feet, surface.Headroom, next) :
-                    bake.Prove(context, tuning, feet, floats, feet, floats, footprint)) surfaces[accepted++] = surface;
+                    bake.Prove(context, tuning, feet, floats, feet, floats, footprint))
+                {
+                    if (contact is not null)
+                        sources.Record(feet, new((int)MathF.Floor((x - bake.Options.MinX) / bake.Options.CellSize),
+                            (int)MathF.Floor((z - bake.Options.MinZ) / bake.Options.CellSize), i,
+                            BitConverter.SingleToInt32Bits(surface.Height)));
+                    surfaces[accepted++] = surface;
+                }
             }
             return accepted;
         }

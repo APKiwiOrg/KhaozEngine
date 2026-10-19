@@ -37,6 +37,7 @@ layout(set=0, binding=0) uniform U {
     vec4 PointShadowTransientAtlas;
     vec4 ClusterDepth;            // x=near, y=far, z=log(far/near), w=1 perspective, 0 orthographic, -1 invalid
     vec4 ClusterCamera;           // xyz = camera forward in the render frame
+    vec4 InteriorCutWindow; vec4 InteriorCutHeights;
 };
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
@@ -113,6 +114,7 @@ layout(set=0, binding=0) uniform U {
     vec4 PointShadowTransientAtlas;
     vec4 ClusterDepth;            // x=near, y=far, z=log(far/near), w=1 perspective, 0 orthographic, -1 invalid
     vec4 ClusterCamera;           // xyz = camera forward in the render frame
+    vec4 InteriorCutWindow; vec4 InteriorCutHeights;
 };
 " + PointLightBufferGlsl + PointLightClusterBufferGlsl + @"
 // The material's own uniforms, written ONCE at load and never re-uploaded. Declared here and NOT in SplatVert,

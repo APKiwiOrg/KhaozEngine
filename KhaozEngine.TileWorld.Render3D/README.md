@@ -9,6 +9,41 @@ render-free document so a server or tool never drags in `Render3D`. In the `Game
 [docs/design/TILE-WORLD-DESIGN-2026-08-15.md](../docs/design/TILE-WORLD-DESIGN-2026-08-15.md), extended by
 [docs/design/TILEWORLD-LARGE-WORLD-LOD-DESIGN-2026-09-08.md](../docs/design/TILEWORLD-LARGE-WORLD-LOD-DESIGN-2026-09-08.md).
 
+## Static interior cuts
+
+Set `TilePropLayerDefinition.CutInsideInteriors = true` only for static rigid layers such as trees, then give
+`TileWorldViewOptions.InteriorMeshes` a dedicated `ITileMeshGeometry`. The constructor seeds the view's
+`InteriorMeshes` from it. A `GltfTileMeshGeometry` reader is single-threaded, so do not share it with another
+view, capture, job or view-thread read. No reader or no opted-in layer means no cut.
+The view snapshots mutable inputs, collects and rasterizes on one background worker, and pumps the newest
+result at `Draw(focus)`. A newer queued request supersedes an older generation. Publication sets the scene's
+field and `AppliedInteriorCut` together, so picture and picks share it. Before the first result both are uncut.
+Replacing `InteriorMeshes` or changing layers clears stale fields. Re-centres retain the previous field
+until replacement.
+
+Snapshot callers pass that same options object to `TileWorldSnapshot.CaptureTopDown`, `CapturePerspective`
+or `CapturePerspectiveSequence`. Captures finish and publish the interior build before drawing, including
+the first sequence frame and a camera re-centre within an unchanged region ring. Settling completes actual
+work without frame-count waits. `TileWorldViewOptions.RoofMode` seeds the roof rule and defaults to
+`RoofVisibility.Interior`. Use `AlwaysHidden` or `AlwaysVisible` for comparison captures. Runtime changes
+still use the view's `InteriorMeshes` and `RoofMode` setters. Unset options preserve existing capture output.
+
+The window covers 512 m, snapped to the cell lattice, and re-centres after 64 m along either focus axis.
+Cells are at most 25 cm and divide `TileSize`. A 4096-cell cap logs `interior.window` once if it reduces coverage.
+`TileWorldViewOptions.Log` receives each source issue once, including wall, roof and `interior.step` diagnostics.
+`ITileWorldScene.SetInteriorCut` defaults to a no-op, with forwarding in `Scene3DTileWorldScene`.
+
+The internal `CutArchetypeIds` is the union of opted-in layer archetypes, refreshed when `PropLayers` change.
+It drives object picks, walk-surface point rejection, camera probes and individual highlights. Full and authored
+LOD parts take the cut path only when their drawn bounds can reach an interior, including both shadow kinds.
+Outlines share the models' cached zero-margin relevance query. Stable submissions reuse the stored flag.
+Silhouettes cache a separate answer with their world-metre hull width added to the bounds and cache key.
+Reaching instances stay contiguous within each mesh. Missed models preserve their original rendering, and picks keep
+the archetype-set route. Merged HLOD, roofs, unflagged ordinary props, grass, ground cover,
+animated foliage and skinned meshes stay uncut. This changes presentation and picks, not physics or authoring.
+MapDoc adoption remains [#1474](https://github.com/APKiwiOrg/KhaozEngine/issues/1474), and world validation remains
+[#1473](https://github.com/APKiwiOrg/KhaozEngine/issues/1473).
+
 ## World z is minus tile z
 
 The document's convention is x east, z NORTH, y up. The engine renders right handed with y up, where a camera
@@ -277,12 +312,21 @@ view draws through, greybox fallback included.
 The candidate walk allocates nothing. Reuse the hit list with enough capacity and a warmed bounds cache for
 allocation-free repeated picks.
 
+The overload with trailing `TileObjectCut(field, archetypeIds)` clips each opted-in object's OBB interval
+against `InteriorHeightField.FirstUncut`. A wholly cut interval is omitted, and a partial interval reports its
+first visible point. The original overload is inactive. `view.PickObjects` supplies the applied field and
+opted-in union itself. `PickSurface` rejects an opted-in walk-surface point inside the same field, allowing
+farther terrain, water or walk surfaces to win.
+
 ### Camera boom probe (`TileWorldCameraProbe`)
 
 `new TileWorldCameraProbe(view, bounds, blocks)` is the `ICameraBoomProbe` for a tile world. Hand it to
 `FollowCamera3D.BoomProbe` and the camera boom stops at what the view draws instead of passing through walls and
 roofs. `bounds` is normally `TileObjectBoundsCache.TryGetBounds` over the resolver the view draws with. `blocks`
 is the consumer's rule for which archetypes stop the camera. Tags are game content, so the engine names none.
+
+The probe tests opted-in object intervals against the applied cut after expanding their OBBs by its radius.
+Cut branches cannot shorten the boom, including when its origin starts inside the inflated box.
 
 - **Terrain.** `PickSurface` on the observer's plane, so drawn terrain, water and walk surfaces stop the boom and
   undrawn tiles do not. The hit distance is reduced by the sphere radius. Planes above the observer are not tested
@@ -437,7 +481,9 @@ water, no rims, and a solid body where a dissolve was requested. The view's own 
 frame, resolved by id per frame from the loaded regions, and an id nothing loaded holds is a quiet no-op that
 self-corrects when its region streams in. The hull reads the per-object archetype override below, since one built
 on the authored archetype while the prop draws an overridden one sits on a different anchor and floats beside the
-mesh it is outlining.
+mesh it is outlining. Individual outlines and silhouettes also forward the layer's cut flag and applied
+field, so their border follows visible geometry. Merged outlines explicitly remain uncut. The new trailing
+cut-flag overloads on `ITileWorldScene` forward to the existing methods by default for compatibility.
 `TileWorldView.SetOutlinedObject(long objectId, Color color, float widthPixels = 1.25f)` and
 `ClearOutlinedObject()` use the pixel-width grouped path. Every active part shares one group, so part overlap
 cannot produce interior borders. Clustered objects follow the same full-to-LOD1 dissolve decisions as the
@@ -681,8 +727,8 @@ The first shared one-metre-tile profile is:
 Configure it with draw radius 576 m, LOD distance 64 m with 16 m crossfade, HLOD distance 192 m with
 32 m crossfade, HLOD weld cell 1.5 m, gameplay radius 4 regions, decor radius 10 regions and unload radius
 12 regions. The defaults remain the legacy synchronous ring and ordinary 96 m prop draws. HLOD never supplies a
-pick identity. `PickSurface`, `TileObjectRaycast`, collision and interaction continue to use full authored data
-inside the gameplay ring.
+pick identity. Picks use individual authored objects inside the gameplay ring, with the applied interior
+field filtering opted-in object and walk-surface hits. Collision and interaction retain full authored data.
 
 ## Headless capture (`TileWorldSnapshot`)
 
@@ -735,3 +781,7 @@ the same shot renders the channel as a flat blue ground strip). All four pass a 
 procedural sky. Golden images live in `KhaozEngine.Render.Tests/Gpu/goldens/`, one file per backend, and a new or
 rebaked golden must be baked on D3D11 and Vulkan through the `cross-platform-gpu.yml` `bake=true` dispatch before
 it can gate, or a Metal-only bake turns `main` red on every other backend.
+
+Cut-aware object and walk-surface picks use `ITileWorldScene.InteriorCutFrame` from the current picture.
+`Scene3DTileWorldScene` supplies the live scene origin. A custom scene supplies the same frame it used for
+its interior cut uniforms. The default frame and the frameless core query overloads use origin zero.

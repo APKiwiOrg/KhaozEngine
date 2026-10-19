@@ -4,6 +4,8 @@ using System.Numerics;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using KhaozEngine.Tests.Physics;
+using R = KhaozEngine.Tests.Physics.InstalledPoseOracle.R;
+using V = KhaozEngine.Tests.Physics.InstalledPoseOracle.V;
 
 namespace KhaozEngine.Tests.Locomotion.Contacts;
 
@@ -16,7 +18,7 @@ internal sealed class FootSupportScene : IDisposable
 {
     readonly SceneVariant _variant;
     readonly Dictionary<string, StaticHandle> _statics = [];
-    readonly Dictionary<string, Point[]> _tops = [];
+    readonly Dictionary<string, V[]> _tops = [];
     readonly Dictionary<string, Pose> _poses = [];
     readonly Dictionary<string, Func<List<OracleFace>>> _faces = [];
     IPhysicsQueryLease? _lease;
@@ -55,33 +57,35 @@ internal sealed class FootSupportScene : IDisposable
             StaticHandle box = World.AddStatic(new BoxShape(half), new Pose(centre, tilt));
             _statics.Add(name, box);
             _faces.Add(name, () => SupportNeighborhoodOracle.Box(box, half, new Pose(centre, tilt)));
-            // The installed top face, from the float pose and half extents, evaluated in double.
-            Point BoxCorner(float x, float z) => Point.Rotate(tilt, x * half.X, half.Y, z * half.Z) + centre;
+            // Support uses the represented binary32 matrix, followed by exact affine arithmetic.
+            var matrix = InstalledPoseOracle.Represented(tilt);
+            V BoxCorner(float x, float z) => matrix.Apply(V.From(new Vector3(x * half.X, half.Y, z * half.Z))) +
+                V.From(centre);
             _tops.Add(name, [BoxCorner(1, -1), BoxCorner(1, 1), BoxCorner(-1, 1)]);
             return this;
         }
         Vector3 Corner(float x, float z) => top + Vector3.Transform(new Vector3(x, 0, z), tilt);
         Vector3[] quad = Quad(Corner(-halfLength, -halfWidth), Corner(halfLength, -halfWidth),
             Corner(-halfLength, halfWidth), Corner(halfLength, halfWidth));
-        _tops.Add(name, [new(quad[3]), new(quad[4]), new(quad[5])]);
+        _tops.Add(name, [V.From(quad[3]), V.From(quad[4]), V.From(quad[5])]);
         return Mesh(name, quad);
     }
 
-    /// <summary>The installed top plane of slab <paramref name="name"/> at (x, z), evaluated in double through
-    /// the slab's float vertices as installed. For a mesh that is the high X triangle of its quad.</summary>
+    /// <summary>The installed represented top plane at (x, z), evaluated rationally before binary64 publication.
+    /// For a mesh that is the high X triangle of its quad.</summary>
     internal double TopHeightAt(string name, double x, double z)
     {
-        Point[] p = _tops[name];
-        Point u = p[1] - p[0], v = p[2] - p[0];
-        double nx = u.Y * v.Z - u.Z * v.Y, ny = u.Z * v.X - u.X * v.Z, nz = u.X * v.Y - u.Y * v.X;
-        return p[0].Y - (nx * (x - p[0].X) + nz * (z - p[0].Z)) / ny;
+        V[] p = _tops[name];
+        V normal = V.Cross(p[1] - p[0], p[2] - p[0]);
+        return SupportFootprintExactOracle.AsDouble(p[0].Y -
+            (normal.X * (R.From(x) - p[0].X) + normal.Z * (R.From(z) - p[0].Z)) / normal.Y);
     }
 
     /// <summary>Records the plane through three installed float vertices as the top of <paramref name="name"/>,
     /// for a static whose builder does not record one.</summary>
     internal FootSupportScene Top(string name, Vector3 p0, Vector3 p1, Vector3 p2)
     {
-        _tops.Add(name, [new(p0), new(p1), new(p2)]);
+        _tops.Add(name, [V.From(p0), V.From(p1), V.From(p2)]);
         return this;
     }
 

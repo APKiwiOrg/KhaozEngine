@@ -100,28 +100,23 @@ namespace KhaozEngine.Tests.Gpu
                 ["SilhouetteVisibility"] = "SilhouetteRenderer",
                 ["SilhouetteMotionVisibility"] = "SilhouetteRenderer",
 
-                // All three depth variants are built into the same single-set pipeline: the dissolve fragment
-                // shaders read the instance's dissolve amount out of the SAME uniform block rather than adding a
-                // resource of their own.
+                // Rigid dissolve adds the cut set, while opaque and excluded skinned depth keep their layouts.
                 ["FoliageDepth"] = "FoliageShadowRenderer depth",
                 ["FoliageDepthCutout"] = "FoliageShadowRenderer cutout depth",
                 ["ShadowDepth"] = "ShadowMapRenderer depth",
-                ["ShadowDepthDissolve"] = "ShadowMapRenderer depth",
-                ["ShadowDepthDissolveInverted"] = "ShadowMapRenderer depth",
+                ["ShadowDepthDissolve"] = "ShadowMapRenderer dissolve depth",
+                ["ShadowDepthDissolveInverted"] = "ShadowMapRenderer dissolve depth",
                 ["SkinnedShadowDepth"] = "ShadowMapRenderer skinned depth",
                 ["SkinnedShadowDepthDissolve"] = "ShadowMapRenderer skinned depth",
                 ["SkinnedShadowDepthDissolveInverted"] = "ShadowMapRenderer skinned depth",
-                // The cutout pair adds the caster's albedo as a set of its own, so it is a pipeline shape of its
-                // own: the depth light block at set 0 and { Albedo, Samp } at set 1.
+                // Rigid cutout keeps albedo at set 1 and appends the interior cut at set 2.
                 ["ShadowDepthCutout"] = "ShadowMapRenderer cutout depth",
                 ["ShadowDepthCutoutInverted"] = "ShadowMapRenderer cutout depth",
 
-                // The point-light pass's four, all built into the one single-set pipeline shape: the dissolve
-                // fragments and the clear quad read the SAME uniform block the caster does rather than adding a
-                // resource of their own, exactly as the cascade variants do.
+                // Point-light rigid dissolve also appends the cut set. Opaque, clear and skinned stay uncut.
                 ["PointShadowRigid"] = "PointShadowRenderer",
-                ["PointShadowRigidDissolve"] = "PointShadowRenderer",
-                ["PointShadowRigidDissolveInverted"] = "PointShadowRenderer",
+                ["PointShadowRigidDissolve"] = "PointShadowRenderer dissolve",
+                ["PointShadowRigidDissolveInverted"] = "PointShadowRenderer dissolve",
                 ["PointShadowSkinned"] = "PointShadowRenderer skinned",
                 ["PointShadowSkinnedDissolve"] = "PointShadowRenderer skinned dissolve",
                 ["PointShadowSkinnedDissolveInverted"] = "PointShadowRenderer skinned dissolve inverted",
@@ -231,7 +226,10 @@ namespace KhaozEngine.Tests.Gpu
                     new(0, prefix + 1, GpuResourceKind.TextureReadOnly, "AtmoSkyView"),
                     new(0, prefix + 2, GpuResourceKind.Sampler, "AtmoSkySampler"),
                 ];
-                Assert.Equal(atmosphere, Parse(program.FragmentGlsl).Where(d => d.Set == 0 && d.Binding >= prefix).ToArray());
+                if (prefix == 11)
+                    atmosphere = [.. atmosphere, new(0, 14, GpuResourceKind.TextureReadOnly, "InteriorCut")];
+                Assert.Equal(atmosphere, Parse(program.FragmentGlsl)
+                    .Where(d => d.Set == 0 && d.Binding >= prefix).OrderBy(d => d.Binding).ToArray());
             }
         }
 

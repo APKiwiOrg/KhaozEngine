@@ -62,7 +62,7 @@ internal static class SupportFootprintExactOracle
 
     internal static V[] Transform(Vector3[] local, Pose pose)
     {
-        var matrix = InstalledPoseOracle.Real(pose.Orientation);
+        var matrix = InstalledPoseOracle.Represented(pose.Orientation);
         V translation = V.From(pose.Position);
         return local.Select(p => matrix.Apply(V.From(p)) + translation).ToArray();
     }

@@ -38,9 +38,9 @@ the SG-12 budget, any hosted or local load run, engine release, tag, game pin, G
 
 #1355 is complete for the admitted families in the
 [general-sweep acceptance record](CERTIFIED-GENERAL-SWEEPS-2026-10-18.md#task-6-captured-content-evidence-and-gb-r13),
-including acquired cost-scene ticks and captured player-scale split/compound hull stairs. Exact
-quarter-turn tread-edge footprint support remains an open boundary (#1494) despite Clear shell
-sweeps. Native G1b, SG-12/#1334 cost, navigation and adoption remain separate. P5A-2, P5A-9 and
+including acquired cost-scene ticks and captured player-scale split/compound hull stairs.
+[Lane C](CONTACT-CONTROLLER-FOLLOWUPS-C-2026-10-19.md) resolves #1494 exact quarter-turn
+tread-edge support using represented installed geometry. Historical GB-R13 evidence is retained. Native G1b, SG-12/#1334 cost, navigation and adoption remain separate. P5A-2, P5A-9 and
 P5A-14, including A2, A3 and A5, retain their original obligations. The baseline observations below
 remain historical evidence, not the current backend domain.
 

@@ -12,11 +12,7 @@ namespace KhaozEngine.Terrain
     /// generation). Each layer carries its own mesh set and draw radius - the short radius on a dense layer is what
     /// keeps it affordable, and each layer sets its own dissolve fade band (<see cref="FadeBandWidth"/>) and optional
     /// far LOD variants (<see cref="LodMeshes"/> / <see cref="LodPartMeshes"/> at <see cref="LodDistance"/>). Build
-    /// one with
-    /// <see cref="ScatterLayer(ScatterConfig, IReadOnlyDictionary{string, MeshHandle}, float, float, IReadOnlyDictionary{string, MeshHandle}, float, bool, IReadOnlyDictionary{string, float})"/>,
-    /// <see cref="CompanionLayer(int, CompanionConfig, IReadOnlyDictionary{string, MeshHandle}, float, float, IReadOnlyDictionary{string, MeshHandle}, float, bool, IReadOnlyDictionary{string, float})"/>, or
-    /// <see cref="PlacementLayer(IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, float, float, IReadOnlyDictionary{string, MeshHandle}, float, bool, bool, IReadOnlyDictionary{string, float})"/>
-    /// (or their multi-part overloads).</summary>
+    /// one with the scatter, companion or placement factories, in single or multi-part form.</summary>
     public readonly struct PropLayer
     {
         public ScatterConfig? Scatter { get; }
@@ -49,6 +45,8 @@ namespace KhaozEngine.Terrain
         /// shadows, they just stop casting. Applies to the layer's individual props AND to its merged HLOD mesh, so
         /// the policy does not change at the HLOD swap.</summary>
         public bool CastsShadows { get; }
+        /// <summary>Cut individual full and authored LOD draws inside the scene interior field.</summary>
+        public bool CutsInsideInteriors { get; }
         /// <summary>Optional per-kit blob-shadow radius table (issue #388): the ground-footprint radius (at
         /// placement <see cref="PropPlacement.Scale"/> 1) a kit contributes at <see cref="ShadowMode.Blob"/>. Null
         /// (the default on every factory) means this layer never registers a <see cref="ShadowBlob"/>, so the whole
@@ -147,7 +145,7 @@ namespace KhaozEngine.Terrain
                   IReadOnlyList<PropPlacement>? placements = null, bool registerColliders = true,
                   IPlacementSource? placementSource = null, bool castsShadows = true,
                   IReadOnlyDictionary<string, float>? blobRadii = null, float lodCrossfadeWidth = 0f,
-                  string? identity = null)
+                  string? identity = null, bool cutInsideInteriors = false)
         {
             Scatter = scatter;
             Companions = companions;
@@ -170,6 +168,7 @@ namespace KhaozEngine.Terrain
             CastsShadows = castsShadows;
             BlobRadii = blobRadii;
             Identity = identity;
+            CutsInsideInteriors = cutInsideInteriors;
         }
 
         /// <summary>This layer with HLOD turned on: a copy carrying the per-kit flat <paramref name="sourceMeshes"/> to
@@ -184,7 +183,7 @@ namespace KhaozEngine.Terrain
             if (sourceMeshes == null) throw new ArgumentNullException(nameof(sourceMeshes));
             return new PropLayer(Scatter, Companions, HostLayerIndex, Meshes, PartMeshes, DrawRadius, FadeBandWidth,
                 LodMeshes, LodPartMeshes, LodDistance, sourceMeshes, hlodDistance, weldCell, crossfadeWidth,
-                Placements, RegisterColliders, PlacementSource, CastsShadows, BlobRadii, LodCrossfadeWidth, Identity);
+                Placements, RegisterColliders, PlacementSource, CastsShadows, BlobRadii, LodCrossfadeWidth, Identity, CutsInsideInteriors);
         }
 
         /// <summary>This layer with an opt-in complementary LOD0 to LOD1 crossfade of
@@ -193,7 +192,7 @@ namespace KhaozEngine.Terrain
             new(Scatter, Companions, HostLayerIndex, Meshes, PartMeshes, DrawRadius, FadeBandWidth,
                 LodMeshes, LodPartMeshes, LodDistance, HlodSourceMeshes, HlodDistance, HlodWeldCell,
                 HlodCrossfadeWidth, Placements, RegisterColliders, PlacementSource, CastsShadows, BlobRadii,
-                crossfadeWidth, Identity);
+                crossfadeWidth, Identity, CutsInsideInteriors);
 
         /// <summary>This layer with a stable producer-assigned draw identity.</summary>
         public PropLayer WithIdentity(string identity)
@@ -202,7 +201,7 @@ namespace KhaozEngine.Terrain
             return new PropLayer(Scatter, Companions, HostLayerIndex, Meshes, PartMeshes, DrawRadius, FadeBandWidth,
                 LodMeshes, LodPartMeshes, LodDistance, HlodSourceMeshes, HlodDistance, HlodWeldCell,
                 HlodCrossfadeWidth, Placements, RegisterColliders, PlacementSource, CastsShadows, BlobRadii,
-                LodCrossfadeWidth, identity);
+                LodCrossfadeWidth, identity, CutsInsideInteriors);
         }
 
         /// <summary>This layer with only its generation configs replaced and every other field kept, including the
@@ -213,7 +212,7 @@ namespace KhaozEngine.Terrain
             new(scatter, companions, HostLayerIndex, Meshes, PartMeshes, DrawRadius, FadeBandWidth,
                 LodMeshes, LodPartMeshes, LodDistance, HlodSourceMeshes, HlodDistance, HlodWeldCell,
                 HlodCrossfadeWidth, Placements, RegisterColliders, PlacementSource, CastsShadows, BlobRadii,
-                LodCrossfadeWidth, Identity);
+                LodCrossfadeWidth, Identity, CutsInsideInteriors);
 
         /// <summary>A scatter layer driven by its own <see cref="ScatterConfig"/> (single-handle mesh set).
         /// <paramref name="fadeBandWidth"/> (default 0 = hard cut) is the dissolve fade band just inside
@@ -226,12 +225,12 @@ namespace KhaozEngine.Terrain
         public static PropLayer ScatterLayer(ScatterConfig scatter,
             IReadOnlyDictionary<string, MeshHandle> meshes, float drawRadius, float fadeBandWidth = 0f,
             IReadOnlyDictionary<string, MeshHandle>? lodMeshes = null, float lodDistance = 0f, bool castsShadows = true,
-            IReadOnlyDictionary<string, float>? blobRadii = null)
+            IReadOnlyDictionary<string, float>? blobRadii = null, bool cutInsideInteriors = false)
         {
             if (scatter == null) throw new ArgumentNullException(nameof(scatter));
             if (meshes == null) throw new ArgumentNullException(nameof(meshes));
             return new PropLayer(scatter, null, -1, meshes, null, drawRadius, fadeBandWidth, lodMeshes, null, lodDistance,
-                castsShadows: castsShadows, blobRadii: blobRadii);
+                castsShadows: castsShadows, blobRadii: blobRadii, cutInsideInteriors: cutInsideInteriors);
         }
 
         /// <summary>A scatter layer whose kits are MULTI-PART (each id one-or-many <see cref="MeshHandle"/>s, one
@@ -245,12 +244,12 @@ namespace KhaozEngine.Terrain
         public static PropLayer ScatterLayer(ScatterConfig scatter,
             IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> partMeshes, float drawRadius, float fadeBandWidth = 0f,
             IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lodPartMeshes = null, float lodDistance = 0f,
-            bool castsShadows = true, IReadOnlyDictionary<string, float>? blobRadii = null)
+            bool castsShadows = true, IReadOnlyDictionary<string, float>? blobRadii = null, bool cutInsideInteriors = false)
         {
             if (scatter == null) throw new ArgumentNullException(nameof(scatter));
             if (partMeshes == null) throw new ArgumentNullException(nameof(partMeshes));
             return new PropLayer(scatter, null, -1, EmptyMeshes, partMeshes, drawRadius, fadeBandWidth, null, lodPartMeshes,
-                lodDistance, castsShadows: castsShadows, blobRadii: blobRadii);
+                lodDistance, castsShadows: castsShadows, blobRadii: blobRadii, cutInsideInteriors: cutInsideInteriors);
         }
 
         /// <summary>A companion layer: rings the placements of the scatter layer at <paramref name="hostLayerIndex"/>
@@ -262,13 +261,13 @@ namespace KhaozEngine.Terrain
         public static PropLayer CompanionLayer(int hostLayerIndex, CompanionConfig companions,
             IReadOnlyDictionary<string, MeshHandle> meshes, float drawRadius, float fadeBandWidth = 0f,
             IReadOnlyDictionary<string, MeshHandle>? lodMeshes = null, float lodDistance = 0f, bool castsShadows = true,
-            IReadOnlyDictionary<string, float>? blobRadii = null)
+            IReadOnlyDictionary<string, float>? blobRadii = null, bool cutInsideInteriors = false)
         {
             if (companions == null) throw new ArgumentNullException(nameof(companions));
             if (meshes == null) throw new ArgumentNullException(nameof(meshes));
             if (hostLayerIndex < 0) throw new ArgumentOutOfRangeException(nameof(hostLayerIndex));
             return new PropLayer(null, companions, hostLayerIndex, meshes, null, drawRadius, fadeBandWidth, lodMeshes, null,
-                lodDistance, castsShadows: castsShadows, blobRadii: blobRadii);
+                lodDistance, castsShadows: castsShadows, blobRadii: blobRadii, cutInsideInteriors: cutInsideInteriors);
         }
 
         /// <summary>A companion layer whose kits are MULTI-PART (additive companion to the single-handle overload).
@@ -280,13 +279,13 @@ namespace KhaozEngine.Terrain
         public static PropLayer CompanionLayer(int hostLayerIndex, CompanionConfig companions,
             IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> partMeshes, float drawRadius, float fadeBandWidth = 0f,
             IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lodPartMeshes = null, float lodDistance = 0f,
-            bool castsShadows = true, IReadOnlyDictionary<string, float>? blobRadii = null)
+            bool castsShadows = true, IReadOnlyDictionary<string, float>? blobRadii = null, bool cutInsideInteriors = false)
         {
             if (companions == null) throw new ArgumentNullException(nameof(companions));
             if (partMeshes == null) throw new ArgumentNullException(nameof(partMeshes));
             if (hostLayerIndex < 0) throw new ArgumentOutOfRangeException(nameof(hostLayerIndex));
             return new PropLayer(null, companions, hostLayerIndex, EmptyMeshes, partMeshes, drawRadius, fadeBandWidth, null,
-                lodPartMeshes, lodDistance, castsShadows: castsShadows, blobRadii: blobRadii);
+                lodPartMeshes, lodDistance, castsShadows: castsShadows, blobRadii: blobRadii, cutInsideInteriors: cutInsideInteriors);
         }
 
         /// <summary>A placement layer: a frozen, author-supplied list of exact <paramref name="placements"/>
@@ -303,12 +302,12 @@ namespace KhaozEngine.Terrain
         public static PropLayer PlacementLayer(IReadOnlyList<PropPlacement> placements,
             IReadOnlyDictionary<string, MeshHandle> meshes, float drawRadius, float fadeBandWidth = 0f,
             IReadOnlyDictionary<string, MeshHandle>? lodMeshes = null, float lodDistance = 0f, bool colliders = true,
-            bool castsShadows = true, IReadOnlyDictionary<string, float>? blobRadii = null)
+            bool castsShadows = true, IReadOnlyDictionary<string, float>? blobRadii = null, bool cutInsideInteriors = false)
         {
             if (placements == null) throw new ArgumentNullException(nameof(placements));
             if (meshes == null) throw new ArgumentNullException(nameof(meshes));
             return new PropLayer(null, null, -1, meshes, null, drawRadius, fadeBandWidth, lodMeshes, null, lodDistance,
-                placements: placements, registerColliders: colliders, castsShadows: castsShadows, blobRadii: blobRadii);
+                placements: placements, registerColliders: colliders, castsShadows: castsShadows, blobRadii: blobRadii, cutInsideInteriors: cutInsideInteriors);
         }
 
         /// <summary>A placement layer whose kits are MULTI-PART (additive companion to the single-handle overload):
@@ -323,13 +322,13 @@ namespace KhaozEngine.Terrain
         public static PropLayer PlacementLayer(IReadOnlyList<PropPlacement> placements,
             IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> partMeshes, float drawRadius, float fadeBandWidth = 0f,
             IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lodPartMeshes = null, float lodDistance = 0f,
-            bool colliders = true, bool castsShadows = true, IReadOnlyDictionary<string, float>? blobRadii = null)
+            bool colliders = true, bool castsShadows = true, IReadOnlyDictionary<string, float>? blobRadii = null, bool cutInsideInteriors = false)
         {
             if (placements == null) throw new ArgumentNullException(nameof(placements));
             if (partMeshes == null) throw new ArgumentNullException(nameof(partMeshes));
             return new PropLayer(null, null, -1, EmptyMeshes, partMeshes, drawRadius, fadeBandWidth, null, lodPartMeshes,
                 lodDistance, placements: placements, registerColliders: colliders, castsShadows: castsShadows,
-                blobRadii: blobRadii);
+                blobRadii: blobRadii, cutInsideInteriors: cutInsideInteriors);
         }
 
         /// <summary>A placement layer backed by a LIVE <paramref name="source"/> instead of a frozen list: the
@@ -346,12 +345,12 @@ namespace KhaozEngine.Terrain
         public static PropLayer PlacementLayer(IPlacementSource source,
             IReadOnlyDictionary<string, MeshHandle> meshes, float drawRadius, float fadeBandWidth = 0f,
             IReadOnlyDictionary<string, MeshHandle>? lodMeshes = null, float lodDistance = 0f, bool colliders = true,
-            bool castsShadows = true, IReadOnlyDictionary<string, float>? blobRadii = null)
+            bool castsShadows = true, IReadOnlyDictionary<string, float>? blobRadii = null, bool cutInsideInteriors = false)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             if (meshes == null) throw new ArgumentNullException(nameof(meshes));
             return new PropLayer(null, null, -1, meshes, null, drawRadius, fadeBandWidth, lodMeshes, null, lodDistance,
-                registerColliders: colliders, placementSource: source, castsShadows: castsShadows, blobRadii: blobRadii);
+                registerColliders: colliders, placementSource: source, castsShadows: castsShadows, blobRadii: blobRadii, cutInsideInteriors: cutInsideInteriors);
         }
 
         /// <summary>A live-source placement layer whose kits are MULTI-PART (additive companion to the
@@ -364,13 +363,13 @@ namespace KhaozEngine.Terrain
         public static PropLayer PlacementLayer(IPlacementSource source,
             IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> partMeshes, float drawRadius, float fadeBandWidth = 0f,
             IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lodPartMeshes = null, float lodDistance = 0f,
-            bool colliders = true, bool castsShadows = true, IReadOnlyDictionary<string, float>? blobRadii = null)
+            bool colliders = true, bool castsShadows = true, IReadOnlyDictionary<string, float>? blobRadii = null, bool cutInsideInteriors = false)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             if (partMeshes == null) throw new ArgumentNullException(nameof(partMeshes));
             return new PropLayer(null, null, -1, EmptyMeshes, partMeshes, drawRadius, fadeBandWidth, null, lodPartMeshes,
                 lodDistance, registerColliders: colliders, placementSource: source, castsShadows: castsShadows,
-                blobRadii: blobRadii);
+                blobRadii: blobRadii, cutInsideInteriors: cutInsideInteriors);
         }
     }
 }

@@ -101,6 +101,14 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
   0.01 m, `ContactBand` is exactly `0.0001f` and a zero cosine slope gate returns `Unsupported`.
   The released neighborhood capability remains independent. See
   [complete footprint use](../docs/USING-KHAOZENGINE.md#complete-support-footprints).
+- **`IPhysicsSupportFootprintReuseSource` / `IPhysicsSupportFootprintReuseSession`** - discover this optional
+  capability on the exact selected receiver. A thread-affine session borrows its opening current lease only
+  for authentication and never owns or prolongs a lease. Reset it with immutable profile/raw-source identity
+  tokens, query through the existing footprint API with each current lease, and dispose at source-group end.
+  Reset always releases prior payloads, including with the same tokens. Nested or unsupported opens decline
+  without replacing the ordinary path. Complete geometry can be copied across unchanged authenticated leases,
+  with fresh receiver/lease metadata. Old results and arena evidence stay expired. The backend owns the exact
+  key, payload bounds and refusal policy. See [proof reuse](../docs/USING-KHAOZENGINE.md#exact-completed-footprint-reuse).
 - **Static handle provenance for query views** - the factory rejects invalid, missing and stale handles at
   creation. Handles are numeric identities local to their source world, so equal values from different worlds
   are not interchangeable. Use handles returned by that source, and do not reuse removed exclusions to infer

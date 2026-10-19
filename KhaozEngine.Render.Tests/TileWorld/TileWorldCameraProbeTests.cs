@@ -286,6 +286,39 @@ public class TileWorldCameraProbeTests
     }
 
     [Fact]
+    public void BoomIgnoresOnlyTheCutBranch()
+    {
+        using var rig = new TileWorldInteriorPickingTests.Rig(true);
+        var probe = new TileWorldCameraProbe(rig.View, rig.Bounds, a => a.Id == "tree");
+        Assert.Equal(2f, probe.Reach(new Vector3(10.5f, 1f, -10.5f), Vector3.UnitX, 2f, Radius));
+        // At crown height the field is clear, and the radius grows the branch box toward the pivot.
+        float visible = probe.Reach(new Vector3(10.5f, 4f, -10.5f), Vector3.UnitX, 2f, Radius);
+        Assert.Equal(0.35f, visible, 4);
+        Assert.True(visible < 2f);
+        using var uncut = new TileWorldInteriorPickingTests.Rig(false);
+        var original = new TileWorldCameraProbe(uncut.View, uncut.Bounds, a => a.Id == "tree");
+        Assert.Equal(0.35f, original.Reach(new Vector3(10.5f, 1f, -10.5f), Vector3.UnitX, 2f, Radius), 4);
+    }
+
+    [Fact]
+    public void CutEntryAboveZeroStillSkipsABoxContainingThePivot()
+    {
+        using var rig = new TileWorldInteriorPickingTests.Rig(true);
+        var origin = new Vector3(11.5f, 1f, -10.5f);
+        var hits = new List<TileObjectHit>();
+        rig.View.PickObjects(0, origin, Vector3.UnitY, Length, rig.Bounds, hits);
+        Assert.True(hits.Find(h => h.ObjectId == rig.Tree.Id).Distance > 0f);
+        var probe = new TileWorldCameraProbe(rig.View, rig.Bounds, a => a.Id == "tree");
+        Assert.Equal(Length, probe.Reach(origin, Vector3.UnitY, Length, Radius));
+
+        rig.View.RoofMode = RoofVisibility.AlwaysHidden;
+        var roofs = new TileWorldCameraProbe(rig.View, rig.Bounds, a => a.IsRoof);
+        Assert.Equal(Length, roofs.Reach(origin, Vector3.UnitY, Length, Radius));
+        rig.View.RoofMode = RoofVisibility.AlwaysVisible;
+        Assert.Equal(1.75f, roofs.Reach(origin, Vector3.UnitY, Length, Radius), 4);
+    }
+
+    [Fact]
     public void A_box_containing_the_origin_is_skipped()
     {
         TileWorldDocument doc = TileRenderTestData.HouseWorld();

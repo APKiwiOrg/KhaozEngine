@@ -157,6 +157,7 @@ public sealed class SkinnedDrawFlagTests
         Assert.Equal(casting ? 6 : 0, scene.LastShadowPassDiagnostics.PointDynamicSkinnedDrawCalls);
         if (!casting) return;
         string cascadeFragment = !dissolving ? ShaderSources.ShadowDepthFrag
+            : gpuSkinning ? inverted ? ShaderSources.SkinnedShadowDepthDissolveInvertedFrag : ShaderSources.SkinnedShadowDepthDissolveFrag
             : inverted ? ShaderSources.ShadowDepthDissolveInvertedFrag : ShaderSources.ShadowDepthDissolveFrag;
         RecordingGpuCommandList.DrawBindings[] cascades = commands.Bindings.Where(b => Fragment(b) == cascadeFragment).ToArray();
         Assert.Equal(scene.LastShadowPassDiagnostics.CascadeCount, cascades.Length);
@@ -172,6 +173,7 @@ public sealed class SkinnedDrawFlagTests
             else if (!gpuSkinning) Assert.Equal(complement, CpuInstance(commands, cascade).DissolveComplement);
         }
         string pointFragment = !dissolving ? ShaderSources.PointShadowRigidFrag
+            : gpuSkinning ? inverted ? ShaderSources.PointShadowSkinnedDissolveInvertedFrag : ShaderSources.PointShadowSkinnedDissolveFrag
             : inverted ? ShaderSources.PointShadowRigidDissolveInvertedFrag : ShaderSources.PointShadowRigidDissolveFrag;
         RecordingGpuCommandList.DrawBindings[] faces = commands.Bindings.Where(b => Fragment(b) == pointFragment).ToArray();
         Assert.Equal(6, faces.Length);
@@ -267,7 +269,8 @@ public sealed class SkinnedDrawFlagTests
         Assert.Equal(staticLight ? 0 : 6, scene.LastShadowPassDiagnostics.PointDynamicSkinnedDrawCalls);
         Assert.DoesNotContain(commands.Bindings, b => IsMainFragment(Fragment(b)));
         RecordingGpuCommandList.DrawBindings[] faces = commands.Bindings
-            .Where(b => Fragment(b) == ShaderSources.PointShadowRigidDissolveFrag).ToArray();
+            .Where(b => Fragment(b) == (gpuSkinning ? ShaderSources.PointShadowSkinnedDissolveFrag
+                : ShaderSources.PointShadowRigidDissolveFrag)).ToArray();
         Assert.Equal(6, faces.Length);
         foreach (RecordingGpuCommandList.DrawBindings face in faces)
         {

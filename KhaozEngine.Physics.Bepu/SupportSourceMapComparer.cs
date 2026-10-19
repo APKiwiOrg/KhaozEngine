@@ -1,9 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 
 namespace KhaozEngine.Physics.Bepu;
 
-/// <summary>Exact coefficient endpoint and represented translation keys, without boxed interval equality.</summary>
+/// <summary>Exact represented coefficient and translation bit keys, without boxed interval equality.</summary>
 internal sealed class SupportSourceMapComparer : IEqualityComparer<SupportPolygonSourceMap>
 {
     internal static readonly SupportSourceMapComparer Instance = new();
@@ -26,22 +27,14 @@ internal sealed class SupportSourceMapComparer : IEqualityComparer<SupportPolygo
         return hash.ToHashCode();
     }
 
-    static bool Same(GeometryVector a, GeometryVector b) => Same(a.X, b.X) && Same(a.Y, b.Y) && Same(a.Z, b.Z);
-    static bool Same(GeometryInterval a, GeometryInterval b) => a.IsResolved == b.IsResolved &&
-        BitConverter.DoubleToInt64Bits(a.Lower) == BitConverter.DoubleToInt64Bits(b.Lower) &&
-        BitConverter.DoubleToInt64Bits(a.Upper) == BitConverter.DoubleToInt64Bits(b.Upper);
+    static bool Same(Vector3 a, Vector3 b) => BitConverter.SingleToInt32Bits(a.X) == BitConverter.SingleToInt32Bits(b.X) &&
+        BitConverter.SingleToInt32Bits(a.Y) == BitConverter.SingleToInt32Bits(b.Y) &&
+        BitConverter.SingleToInt32Bits(a.Z) == BitConverter.SingleToInt32Bits(b.Z);
 
-    static void Add(ref HashCode hash, GeometryVector vector)
+    static void Add(ref HashCode hash, Vector3 vector)
     {
-        Add(ref hash, vector.X);
-        Add(ref hash, vector.Y);
-        Add(ref hash, vector.Z);
-    }
-
-    static void Add(ref HashCode hash, GeometryInterval interval)
-    {
-        hash.Add(interval.IsResolved);
-        hash.Add(BitConverter.DoubleToInt64Bits(interval.Lower));
-        hash.Add(BitConverter.DoubleToInt64Bits(interval.Upper));
+        hash.Add(BitConverter.SingleToInt32Bits(vector.X));
+        hash.Add(BitConverter.SingleToInt32Bits(vector.Y));
+        hash.Add(BitConverter.SingleToInt32Bits(vector.Z));
     }
 }

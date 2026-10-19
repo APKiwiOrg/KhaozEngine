@@ -52,8 +52,12 @@ public sealed class LitVisibilityGpuScene : IDisposable
         _cutout = _scene.LoadMesh(plane, new Scene3D.SurfaceMaps(clear, alphaCutoff: .5f));
         var vertices = plane.Vertices.Select(v => new SkinnedVertex
         {
-            Position = v.Position, Normal = v.Normal, Color = v.Color, Uv = v.Uv,
-            Tangent = v.Tangent, BoneWeights = new Vector4(1, 0, 0, 0),
+            Position = v.Position,
+            Normal = v.Normal,
+            Color = v.Color,
+            Uv = v.Uv,
+            Tangent = v.Tangent,
+            BoneWeights = new Vector4(1, 0, 0, 0),
         }).ToArray();
         var skinMesh = new SkinnedGltfMesh(vertices, plane.Indices32, [Matrix4x4.Identity], [Matrix4x4.Identity]);
         _skin = _scene.LoadSkinnedMesh(skinMesh);
@@ -105,19 +109,28 @@ public sealed class LitVisibilityGpuScene : IDisposable
         s.UseGpuSkinning = family != 2;
         if (family is 1 or 2)
             s.DrawSkinned(new SkinnedInstanceDraw(cutout ? _skinCutout : _skin, Matrix4x4.CreateTranslation(0, height, 0))
-            { CastsShadows = false, Dissolve = dissolve, DissolveComplement = complement,
-                Motion = MotionKey.From(1) }, [Matrix4x4.Identity]);
+            {
+                CastsShadows = false,
+                Dissolve = dissolve,
+                DissolveComplement = complement,
+                Motion = MotionKey.From(1)
+            }, [Matrix4x4.Identity]);
         else if (family == 3)
             Assert.Equal(1, s.DrawFoliage(cutout ? _foliageCutout! : _foliage!, Vector3.Zero,
                 new FoliageRenderSettings { DrawRadius = 100f, DistantDensity = 1f, WindStrength = .1f }));
         else
             s.Draw(new RigidInstanceDraw(family == 4 ? _splat : family == 5 ? _tile : cutout ? _cutout : _plane, Matrix4x4.CreateTranslation(0, height, 0))
-            { CastsShadows = false, Dissolve = dissolve, DissolveComplement = complement,
-                Motion = MotionKey.From(1) });
+            {
+                CastsShadows = false,
+                Dissolve = dissolve,
+                DissolveComplement = complement,
+                Motion = MotionKey.From(1)
+            });
     }
 
     internal void Caster() => Scene.Draw(new RigidInstanceDraw(_box,
-        Matrix4x4.CreateScale(3, 1, 3) * Matrix4x4.CreateTranslation(0, 2, 0)) { ShadowOnly = true });
+        Matrix4x4.CreateScale(3, 1, 3) * Matrix4x4.CreateTranslation(0, 2, 0))
+    { ShadowOnly = true });
 
     internal void Handoff()
     {
@@ -134,18 +147,22 @@ public sealed class LitVisibilityGpuScene : IDisposable
         {
             case 0: s.DrawBillboard(_white, above, 4f, new Color(1f, 0f, 0f, .5f)); break;
             case 1: s.DrawBeam(new Vector3(-4, 1, 0), new Vector3(4, 1, 0), 2f, Color.White); break;
-            case 2: s.DrawTrail([new TrailSample(new Vector3(-4, 1, 0), 2, 1),
+            case 2:
+                s.DrawTrail([new TrailSample(new Vector3(-4, 1, 0), 2, 1),
                 new TrailSample(new Vector3(4, 1, 0), 2, 1)], TrailStyle.Default); break;
             case 3: s.DrawOverlayMesh(_plane, Matrix4x4.CreateTranslation(above)); break;
             case 4: s.DrawMeshSilhouette(_box, Matrix4x4.CreateTranslation(0, 1, 0), Color.White, .4f); break;
             case 5: s.DrawBillboard(above, 4, Color.White); break;
             case 6: s.Draw(_cutout, Matrix4x4.CreateTranslation(above), Color.White, Material.None, false); break;
-            case 7: s.Draw(new RigidInstanceDraw(_plane, Matrix4x4.CreateTranslation(above))
+            case 7:
+                s.Draw(new RigidInstanceDraw(_plane, Matrix4x4.CreateTranslation(above))
                 { Dissolve = 1f, CastsShadows = false }); break;
-            case 8: s.Draw(new RigidInstanceDraw(_plane, Matrix4x4.CreateTranslation(above))
+            case 8:
+                s.Draw(new RigidInstanceDraw(_plane, Matrix4x4.CreateTranslation(above))
                 { Dissolve = 0f, DissolveComplement = 1f, CastsShadows = false }); break;
             case 9: s.DrawBillboard(_white, above, 4f, Color.White, BillboardBlend.Additive); break;
-            case 10: s.DrawTrail([new TrailSample(new Vector3(-4, 1, 0), 2, 1),
+            case 10:
+                s.DrawTrail([new TrailSample(new Vector3(-4, 1, 0), 2, 1),
                 new TrailSample(new Vector3(4, 1, 0), 2, 1)], TrailStyle.Default with { Blend = TrailBlend.Alpha }); break;
         }
     }

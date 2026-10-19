@@ -293,6 +293,10 @@ Bundles, descriptions, sections, media and server snapshot bodies are untrusted 
   use HTTPS off loopback and apply the prefix-scoped retention in the relay's Host duties. Reporter identity
   and issue state stay in private `records/` and `accepted/` documents. Public server snapshots omit the
   authenticated subject. Games must still keep their own secrets out of custom sections and captured media.
+  Configure `BugReportServiceOptions.ReporterIdentityTerms` with the display name, subject and every other logged
+  identity spelling. It is read once per report at finish time and masks literal terms in every section. Direct
+  capture callers can supply a `ReportRedactor.WithReporterIdentityTerms` snapshot. Short terms under three
+  characters are ignored, and a source or pattern construction failure masks every section string.
 - **Separate server authentication.** Snapshot intake checks a service key before reading its capped 1 MiB
   body. The key must hold at least 32 characters. `ServiceKeyCheck` compares SHA-256 hashes of both UTF-8
   values with `CryptographicOperations.FixedTimeEquals`, equalizing comparison lengths. A snapshot merges

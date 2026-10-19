@@ -41,10 +41,12 @@ public sealed class InteriorCutPlacementSlotTests
         using var rig = new MotionTestScene();
         Scene3D scene = rig.Scene;
         scene.InteriorCut = InteriorCutShadowTests.Field();
-        MeshHandle old = scene.LoadMesh(MeshPrimitives.Box(.02f));
+        MeshHandle old = scene.LoadMesh(MeshPrimitives.Box(100));
         var world = Matrix4x4.CreateTranslation(20, 0, 0);
         scene.Begin();
         scene.Draw(new RigidInstanceDraw(old, world) { CutInsideInteriors = true });
+        // Warm a relevant answer, so a slot that survived the unload would wrongly report it again.
+        Assert.True(scene.QueuedInstancesForTests[0].CutInsideInteriors);
         scene.Begin();
         scene.UnloadMesh(old);
         MeshHandle replacement = scene.LoadMesh(MeshPrimitives.Box(100));

@@ -84,7 +84,10 @@ internal sealed class CoverageGpuBatch : IDisposable
                     Math.Max(frameWords[f + 6], Math.Max(checked(frameWords[f + 7] * 3), checked(frameWords[f + 8] * 2))))),
                 CoverageGpuPhase.Skin or CoverageGpuPhase.ValidateSource => frameWords[f + 5],
                 CoverageGpuPhase.ValidateAliases => frameWords[f + 9],
-                CoverageGpuPhase.InterpolateGroups => frameWords[f + 8],
+                CoverageGpuPhase.InterpolateGroups or CoverageGpuPhase.ConformGroups or CoverageGpuPhase.GatherCorrections
+                    or CoverageGpuPhase.ConformBoundary or CoverageGpuPhase.ConformResume
+                    or CoverageGpuPhase.CheckFullTargets or CoverageGpuPhase.TransitionGroups => frameWords[f + 8],
+                CoverageGpuPhase.CorrectFaces or CoverageGpuPhase.CorrectFacesOverlay or CoverageGpuPhase.CorrectFacesFinish => frameWords[f + 7],
                 _ => frameWords[f + 6]
             };
             maximum = Math.Max(maximum, count);

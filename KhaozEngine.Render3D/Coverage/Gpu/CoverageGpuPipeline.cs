@@ -7,7 +7,10 @@ namespace KhaozEngine.Render3D;
 internal enum CoverageGpuPhase
 {
     Reset, Skin, ReduceSkin, ValidateSource, ReduceSource, ValidateAliases, ReduceAliases,
-    InterpolateGroups, ReduceGroups, ValidateAttributes, ReduceAttributes, FillBefore
+    InterpolateGroups, ReduceGroups, ValidateAttributes, ReduceAttributes, FillBefore,
+    ConformGroups, ConformBoundary, ConformResume, CopyPointAliases, ReduceConform,
+    CorrectFaces, CorrectFacesOverlay, CorrectFacesFinish, ReduceFaces, GatherCorrections,
+    CheckFullTargets, ReduceFullTargets, CopyCorrectedAliases, TransitionGroups, StoreTransition
 }
 
 /// <summary>Standalone batched coverage phases. The caller owns recording and submission completion.</summary>
@@ -47,12 +50,12 @@ internal sealed class CoverageGpuPipeline : IDisposable
     }
 
     internal void Record(IGpuCommandList commands, CoverageGpuBatch batch) =>
-        RecordPhases(commands, batch, CoverageGpuPhase.Skin, CoverageGpuPhase.FillBefore);
+        RecordPhases(commands, batch, CoverageGpuPhase.Skin, CoverageGpuPhase.StoreTransition);
 
     internal void RecordPhases(IGpuCommandList commands, CoverageGpuBatch batch, CoverageGpuPhase firstPhase, CoverageGpuPhase lastPhase)
     {
         ArgumentNullException.ThrowIfNull(commands); ArgumentNullException.ThrowIfNull(batch);
-        if (firstPhase < CoverageGpuPhase.Skin || lastPhase < firstPhase || lastPhase > CoverageGpuPhase.FillBefore)
+        if (firstPhase < CoverageGpuPhase.Skin || lastPhase < firstPhase || lastPhase > CoverageGpuPhase.StoreTransition)
             throw new ArgumentOutOfRangeException(nameof(firstPhase));
         if (batch.Count == 0) return;
         IGpuResourceSet set = batch.Bind(layout);

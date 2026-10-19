@@ -13,6 +13,7 @@ internal static class CoverageGpuLayout
     internal const int MaxCommands = 4, MaxRegions = 32;
     internal const int FailureCode = 26, FailureSlot = 27, FailureCount = 28, FailureStage = 29, Refused = 30, BeforePublished = 31;
     internal const int AttributeCandidates = 32;
+    internal const int ConformContinuations = 34, FaceContinuations = 36;
 
     internal static uint FrameWords(int boneCount) => Words(ActorHeaderWords + (long)boneCount * MatrixWords + MaxCommands * CommandWords + MaxCommands + MaxRegions);
     internal static uint SurfaceWords(CoverageGpuHostUpload host) => Words(FinalHeaderWords + ((long)host.SourceCount + host.VertexCount) * ModelWords);
@@ -22,9 +23,11 @@ internal static class CoverageGpuLayout
         long events = Math.Max(Math.Max(h.SourceCount, h.AliasCount), Math.Max(Math.Max(h.PositionGroupCount, h.VertexCount),
             Math.Max(3L * h.TriangleCount, 2L * h.PositionGroupCount)));
         // Posed and flushed source, four refined rows and a private generated-attribute candidate,
-        // one XYZ and three scalar group rows, face scalar/validation rows and six words per event.
+        // one XYZ and three scalar group rows, face scalar/validation rows, six words per event,
+        // and typed group/face continuations for the split query phases.
         return Words(WorkHeaderWords + 2L * h.SourceCount * ModelWords + 5L * h.VertexCount * ModelWords
-            + 6L * h.PositionGroupCount + 3L * h.TriangleCount + 6L * events);
+            + (6L + CoverageGpuQueryWorkLayout.ConformWords) * h.PositionGroupCount
+            + (3L + CoverageGpuQueryWorkLayout.FaceWords) * h.TriangleCount + 6L * events);
     }
 
     internal static uint[] WorkHeader(CoverageGpuHostUpload h)
@@ -39,6 +42,8 @@ internal static class CoverageGpuLayout
         int events = Math.Max(Math.Max(h.SourceCount, h.AliasCount), Math.Max(Math.Max(h.PositionGroupCount, h.VertexCount),
             Math.Max(checked(3 * h.TriangleCount), checked(2 * h.PositionGroupCount))));
         Row(24, events, 6); Row(AttributeCandidates, h.VertexCount, ModelWords);
+        Row(ConformContinuations, h.PositionGroupCount, CoverageGpuQueryWorkLayout.ConformWords);
+        Row(FaceContinuations, h.TriangleCount, CoverageGpuQueryWorkLayout.FaceWords);
         if (cursor != WorkWords(h)) throw new InvalidOperationException("Coverage work layout disagrees with its allocation.");
         return header;
         void Row(int pair, int count, int stride)

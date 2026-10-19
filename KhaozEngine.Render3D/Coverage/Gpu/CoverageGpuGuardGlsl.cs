@@ -1,6 +1,6 @@
 namespace KhaozEngine.Render3D;
 
-/// <summary>Shared word ABI and deterministic source/refinement event reduction.</summary>
+/// <summary>Shared word ABI, first-failure reduction and reference-key tally attribution.</summary>
 internal static class CoverageGpuGuardGlsl
 {
     internal const string Bindings = """
@@ -32,6 +32,49 @@ internal static class CoverageGpuGuardGlsl
             if (code != 0u) atomicOr(CovWorkWords[work+30u],1u);
         }
         bool covCompletedFailure(uint work) { return CovWorkWords[work+26u] != 0u; }
+        void covNote(uint work, uint row, uint code, int slot, uint element, uint localOrder, uint count) {
+            uint event = covRow(work,24u)+row*6u;
+            CovWorkWords[event] = code; CovWorkWords[event+1u] = uint(slot);
+            CovWorkWords[event+2u] = element; CovWorkWords[event+3u] = localOrder;
+            CovWorkWords[event+4u] = count; CovWorkWords[event+5u] = 0u;
+            if (code != 0u) atomicOr(CovWorkWords[work+30u],1u);
+        }
+        """;
+
+    internal static string ReduceTally(int countWord, int notes, int stage, bool slotFirst) => $$"""
+        void main() {
+            uint f = covFrame(), w = CovFrameWords[f+1u];
+            if (covCompletedFailure(w)) return;
+            uint events = covRow(w,24u), count = CovFrameWords[f+{{countWord}}u]*{{notes}}u;
+            uint code = 0u, slot = 0xffffffffu, element = 0xffffffffu, localOrder = 0xffffffffu;
+            [[dont_unroll]] for (uint i = 0u; i < count; i++) {
+                uint e = events+i*6u, candidate = CovWorkWords[e], s = CovWorkWords[e+1u], v = CovWorkWords[e+2u], l = CovWorkWords[e+3u];
+                if (candidate == 0u) continue;
+                bool earlier = v < element || v == element && l < localOrder;
+                {{(slotFirst ? "earlier = s < slot || s == slot && earlier;" : "")}}
+                if (code == 0u || earlier) { code = candidate; slot = s; element = v; localOrder = l; }
+            }
+            if (code == 0u) return;
+            uint matching = 0u;
+            [[dont_unroll]] for (uint i = 0u; i < count; i++) {
+                uint e = events+i*6u;
+                if (CovWorkWords[e] == code && CovWorkWords[e+1u] == slot)
+                    matching += min(CovWorkWords[e+4u],2147483647u-matching);
+            }
+            CovWorkWords[w+26u] = code; CovWorkWords[w+27u] = slot;
+            CovWorkWords[w+28u] = matching; CovWorkWords[w+29u] = {{stage}}u;
+            uint original = CovFrameWords[covCommands(f)+320u+slot], command = covCommand(f,slot);
+            // Order is the original submission index. Find its packed frame before attributing the failure.
+            [[dont_unroll]] for (uint i = 0u; i < CovFrameWords[f+12u]; i++) {
+                uint c = covCommand(f,i);
+                if (CovFrameWords[c+56u] == original) { command = c; break; }
+            }
+            uint r = CovFrameWords[f+4u];
+            CovResultWords[r+8u] = code;
+            CovResultWords[r+9u] = CovFrameWords[command+64u]; CovResultWords[r+10u] = CovFrameWords[command+65u];
+            CovResultWords[r+11u] = CovFrameWords[command+63u]; CovResultWords[r+12u] = matching;
+            CovResultWords[r+13u] = 0u; CovResultWords[r+14u] = CovWorkWords[w+30u];
+        }
         """;
 
     internal const string Reset = """

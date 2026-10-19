@@ -209,13 +209,22 @@ Keep legacy private fields/types until Task 15 when their final source consumers
 | Setup | Reset | Clear actor flag, notes, group/face scalars and current result without touching retained previous state |
 | 1, skin | Skin, ReduceSkin | Source-index first failure, complete source pose |
 | 2, refine | ValidateSource, ReduceSource, ValidateAliases, ReduceAliases, InterpolateGroups, ReduceGroups, ValidateAttributes, ReduceAttributes, FillBefore | Before is filled only after all source, alias, group and generated-attribute checks pass |
-| 3, conform | ConformGroups, CopyPointAliases, ReduceConform | Pointwise After immutable before face work |
-| 4, correction | CorrectFaces, ReduceFaces, GatherCorrections, CheckFullTargets, ReduceFullTargets, CopyCorrectedAliases | All faces finish before group gather, all full targets pass before alias publication |
+| 3, conform | ConformGroups, ConformBoundary, ConformResume, CopyPointAliases, ReduceConform | Pointwise After immutable before face work |
+| 4, correction | CorrectFaces, CorrectFacesOverlay, CorrectFacesFinish, ReduceFaces, GatherCorrections, CheckFullTargets, ReduceFullTargets, CopyCorrectedAliases | All faces finish before group gather, all full targets pass before alias publication |
 | 5, transition | TransitionGroups, StoreTransition | Full-target checks occur even at transition weight 0 |
 | 6, normals | ValidateVertices, ReduceVertices, ValidateFaces, ReduceFacesOrientation, GatherAttributes, ReduceAttributesFinal | Triangle-order orientation validation precedes any publishable normal/tangent |
 | 7, select | Select | One outcome controls the complete surface, history seed and asynchronous payload |
 
 Physical phase names are the exact CoverageGpuPhase members. Numerical phases port contract section 4. Reducers reproduce section 9, rather than selecting the first atomic writer. This deliberately spends dispatches on global dependencies. Fusing independent lanes inside a phase is allowed only after the native proof stays exact, without changing these task interfaces.
+
+Task 6 applies C8 option D after the combined ConformGroups and CorrectFaces modules exceeded the
+caps. Work header pairs 34/35 and 36/37 name checked, invocation-owned group and face continuation
+tables. Their strides are six and twelve words. Group records contain query XYZ, height, spatial
+weight and state. Face records contain the nominal triangle, discrepancy, overlay maximum and state.
+Each producer initializes its record before any dependent dispatch. Dispatch barriers separate height,
+boundary and conformation completion, and face preparation, overlay and final correction. All face
+notes remain private to their face rows until ReduceFaces. Completed failure substages remain 1 to 5
+for skin and refinement, with conformation 6, face correction 7 and full-target validation 8.
 
 ## Verification commands used by every task
 

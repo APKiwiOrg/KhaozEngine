@@ -556,7 +556,9 @@ build-slot --label coverage-inline-sizes -- python3 KhaozEngine.Render.Tests/Gpu
 Tasks 4 to 7 compose Arithmetic, ExactWords.WorkerSource, Rounding, Predicates and Support in that
 order. Static support words are unchanged. The `cov*Begin`/`cov*Step`/`Cov*Done` interfaces are the
 shared seam. A combined physical phase must advance its graphs through one common worker call,
-rather than calling several synchronous query wrappers. Any future spill uses invocation-owned
-Work words with checked layout reservations. Future CorrectFaces/Gather/ValidateFaces modules must
-enter the same size manifest and native gates. These isolated queries do not establish a complete
+rather than calling several synchronous query wrappers. Task 6 splits conformation into height,
+boundary and completion phases, and correction into membership/discrepancy, overlay and finish phases.
+Its typed continuations use invocation-owned Work records with checked layout reservations.
+Every physical module enters the same size manifest and native gates. Future Gather/ValidateFaces
+modules must enter those gates too. These isolated queries do not establish a complete
 construction or a future combined phase's feasibility.

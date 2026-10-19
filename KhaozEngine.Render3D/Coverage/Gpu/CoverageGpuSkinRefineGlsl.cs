@@ -6,14 +6,15 @@ namespace KhaozEngine.Render3D;
 internal static class CoverageGpuSkinRefineGlsl
 {
     internal static bool IsReducer(CoverageGpuPhase phase) => phase is CoverageGpuPhase.ReduceSkin or CoverageGpuPhase.ReduceSource
-        or CoverageGpuPhase.ReduceAliases or CoverageGpuPhase.ReduceGroups or CoverageGpuPhase.ReduceAttributes;
+        or CoverageGpuPhase.ReduceAliases or CoverageGpuPhase.ReduceGroups or CoverageGpuPhase.ReduceAttributes
+        or CoverageGpuPhase.ReduceConform or CoverageGpuPhase.ReduceFaces or CoverageGpuPhase.ReduceFullTargets;
 
     internal static string Name(CoverageGpuPhase phase) => "Coverage" + phase;
 
     internal static string Source(CoverageGpuPhase phase) => "#version 450\nlayout(local_size_x = " + (IsReducer(phase) ? "1" : "64") + ") in;\n"
         + CoverageGpuGuardGlsl.Bindings + CoverageGpuArithmeticGlsl.Source + CoverageGpuExactWordsGlsl.WorkerSource
         + CoverageGpuRoundingGlsl.Source + CoverageGpuPredicatesGlsl.Source + CoverageGpuSupportGlsl.Source
-        + CoverageGpuGuardGlsl.Source + (phase switch
+        + CoverageGpuGuardGlsl.Source + CoverageGpuConformGlsl.Helpers + CoverageGpuQueryWorkLayout.Source + (phase switch
         {
             CoverageGpuPhase.Reset => CoverageGpuGuardGlsl.Reset,
             CoverageGpuPhase.Skin => Unit + SkinHelpers + Skin,
@@ -27,6 +28,21 @@ internal static class CoverageGpuSkinRefineGlsl
             CoverageGpuPhase.ValidateAttributes => Unit + CoverageGpuAttributesGlsl.Source,
             CoverageGpuPhase.ReduceAttributes => CoverageGpuGuardGlsl.Reduce(6, 5),
             CoverageGpuPhase.FillBefore => CoverageGpuGuardGlsl.FillBefore,
+            CoverageGpuPhase.ConformGroups => CoverageGpuConformGlsl.ConformGroups,
+            CoverageGpuPhase.ConformBoundary => CoverageGpuConformGlsl.ConformBoundary,
+            CoverageGpuPhase.ConformResume => CoverageGpuConformGlsl.ConformResume,
+            CoverageGpuPhase.CopyPointAliases => CoverageGpuConformGlsl.CopyPointAliases,
+            CoverageGpuPhase.ReduceConform => CoverageGpuGuardGlsl.ReduceTally(8, 1, 6, false),
+            CoverageGpuPhase.CorrectFaces => CoverageGpuCorrectionGlsl.CorrectFaces,
+            CoverageGpuPhase.CorrectFacesOverlay => CoverageGpuCorrectionGlsl.CorrectFacesOverlay,
+            CoverageGpuPhase.CorrectFacesFinish => CoverageGpuCorrectionGlsl.CorrectFacesFinish,
+            CoverageGpuPhase.ReduceFaces => CoverageGpuGuardGlsl.ReduceTally(7, 3, 7, true),
+            CoverageGpuPhase.GatherCorrections => CoverageGpuCorrectionGlsl.GatherCorrections,
+            CoverageGpuPhase.CheckFullTargets => CoverageGpuCorrectionGlsl.CheckFullTargets,
+            CoverageGpuPhase.ReduceFullTargets => CoverageGpuGuardGlsl.ReduceTally(8, 2, 8, false),
+            CoverageGpuPhase.CopyCorrectedAliases => CoverageGpuCorrectionGlsl.CopyCorrectedAliases,
+            CoverageGpuPhase.TransitionGroups => CoverageGpuCorrectionGlsl.TransitionGroups,
+            CoverageGpuPhase.StoreTransition => CoverageGpuCorrectionGlsl.StoreTransition,
             _ => throw new ArgumentOutOfRangeException(nameof(phase))
         });
 

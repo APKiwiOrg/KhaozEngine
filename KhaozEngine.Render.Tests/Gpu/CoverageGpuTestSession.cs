@@ -15,20 +15,25 @@ internal sealed class CoverageGpuTestSession : IDisposable
     readonly IGpuBuffer staging;
     readonly uint[] captured;
     readonly int workWordCount;
+    readonly uint[][] commandSupports;
 
-    internal CoverageGpuTestSession(IGpuDevice device, CoverageRefinement[] topologies, Matrix4x4[][] palettes)
+    internal CoverageGpuTestSession(IGpuDevice device, CoverageRefinement[] topologies, Matrix4x4[][] palettes,
+        CoverageCommandPose[][]? commands = null, CoverageReferenceScratch[]? scratch = null)
     {
         if (topologies.Length != palettes.Length) throw new ArgumentException("One palette is required per actor.");
         this.device = device;
         hosts = topologies.Select((t, i) => CoverageGpuUpload.Host(t, palettes[i].Length)).ToArray();
         headers = hosts.Select(CoverageGpuLayout.WorkHeader).ToArray();
+        commandSupports = hosts.Select(_ => new uint[4]).ToArray();
         int frames = checked((int)hosts.Sum(h => (long)CoverageGpuLayout.FrameWords(h.BoneCount)));
         int workWords = checked((int)hosts.Sum(h => (long)CoverageGpuLayout.WorkWords(h)));
         workWordCount = workWords;
         int surfaces = checked((int)hosts.Sum(h => (long)CoverageGpuLayout.SurfaceWords(h)));
         Batch = new(device);
         Batch.Reserve(hosts.Length, frames, workWords, surfaces);
-        uint[] cold = new uint[checked(17 + hosts.Sum(h => h.Words.Length))];
+        int supportWords = commands is null ? 0 : commands.Sum(c => c.Sum(p => CoverageGpuUpload.Support(p.Support).Words.Length));
+        uint[] cold = new uint[checked(17 + hosts.Sum(h => h.Words.Length) + supportWords)];
+        uint supportBase = checked((uint)(17 + hosts.Sum(h => h.Words.Length)));
         uint staticBase = 17, frameBase = (uint)hosts.Length, workBase = 0, surfaceBase = 0;
         Batch.BeginFrame();
         for (int actor = 0; actor < hosts.Length; actor++)
@@ -42,6 +47,19 @@ internal sealed class CoverageGpuTestSession : IDisposable
             frame[8] = (uint)h.PositionGroupCount; frame[9] = (uint)h.AliasCount; frame[10] = (uint)h.ShadingGroupCount; frame[11] = (uint)h.BoneCount;
             for (int bone = 0; bone < h.BoneCount; bone++) CoverageGpuUpload.WriteMatrix(palettes[actor][bone], frame.AsSpan(16 + bone * 16));
             Array.Fill(frame, uint.MaxValue, 16 + h.BoneCount * 16 + 4 * 80 + 4, 32);
+            if (commands is not null && scratch is not null)
+            {
+                for (int slot = 0; slot < commands[actor].Length; slot++)
+                {
+                    var reference = scratch[actor].Frames[slot];
+                    var command = commands[actor][reference.Command];
+                    uint[] support = CoverageGpuUpload.Support(command.Support).Words;
+                    support.CopyTo(cold, (int)supportBase);
+                    commandSupports[actor][slot] = supportBase;
+                    supportBase += (uint)support.Length;
+                }
+                WriteCommands(frame, actor, commands[actor], scratch[actor]);
+            }
             Batch.Add(reservation, frame);
             device.UpdateBuffer(Batch.Work, CoverageGpuLayout.Bytes(workBase), headers[actor]);
             staticBase += (uint)h.Words.Length; frameBase += (uint)frame.Length;
@@ -54,6 +72,37 @@ internal sealed class CoverageGpuTestSession : IDisposable
     }
 
     internal CoverageGpuBatch Batch { get; }
+
+    void WriteCommands(Span<uint> frame, int actor, CoverageCommandPose[] commands, CoverageReferenceScratch scratch)
+    {
+        frame[12] = (uint)commands.Length;
+        int start = 16 + hosts[actor].BoneCount * 16;
+        for (int slot = 0; slot < commands.Length; slot++)
+        {
+            var reference = scratch.Frames[slot];
+            CoverageGpuUpload.WriteCommand(reference, commands[reference.Command], commandSupports[actor][slot], frame[(start + slot * 80)..]);
+            frame[start + 320 + slot] = (uint)scratch.Order[slot];
+        }
+        frame.Slice(start + 324, 32).Fill(uint.MaxValue);
+        for (int region = 0; region < scratch.RegionCommands.Length; region++) frame[start + 324 + region] = unchecked((uint)scratch.RegionCommands[region]);
+    }
+
+    internal void UploadCommands(int actor, CoverageCommandPose[] commands, CoverageReferenceScratch scratch)
+    {
+        uint[] frame = new uint[CoverageGpuLayout.FrameWords(hosts[actor].BoneCount)];
+        WriteCommands(frame, actor, commands, scratch);
+        uint start = 16u + (uint)hosts[actor].BoneCount * 16u;
+        uint f = Batch.Actors[actor].FrameBase;
+        device.UpdateBuffer(Batch.FrameData, CoverageGpuLayout.Bytes(f + 12u), frame.AsSpan(12, 1));
+        device.UpdateBuffer(Batch.FrameData, CoverageGpuLayout.Bytes(f + start), frame.AsSpan((int)start));
+    }
+
+    internal uint[] ReadWords(int actor, int pair)
+    {
+        int stride = pair switch { 0 or 2 or 4 or 6 or 8 or 10 or 32 => 16, 12 => 3, 22 => 2, 24 => 6, _ => 1 };
+        int start = checked((int)(Batch.Actors[actor].WorkBase + headers[actor][pair]));
+        return captured.AsSpan(start, checked((int)headers[actor][pair + 1] * stride)).ToArray();
+    }
 
     internal void UploadPosed(ReadOnlySpan<ModelVertex> posed, int actorSlot)
     {

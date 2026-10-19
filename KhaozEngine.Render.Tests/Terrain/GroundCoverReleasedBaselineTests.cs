@@ -4,14 +4,13 @@ using System.Linq;
 using System.Numerics;
 using KhaozEngine.Terrain;
 using Xunit;
-using Xunit.Abstractions;
 using static KhaozEngine.Tests.Terrain.GroundCoverTraceFixtures;
 
 namespace KhaozEngine.Tests.Terrain;
 
 /// <summary>Pins the released public generator against an independent channel oracle. Uses only the released
 /// Generate entry point, so it holds before and after the additive trace seam.</summary>
-public sealed class GroundCoverReleasedBaselineTests(ITestOutputHelper output)
+public sealed class GroundCoverReleasedBaselineTests
 {
     [Fact]
     public void ReleasedGenerator_MatchesIndependentChannels()
@@ -38,7 +37,6 @@ public sealed class GroundCoverReleasedBaselineTests(ITestOutputHelper output)
         Assert.Contains(released, p => p.ModelId == "reed-a");
         Assert.Contains(released, p => p.ModelId == "reed-b");
 
-        output.WriteLine(Literal(rows));
         Assert.Equal(ReleasedBits.Count, rows.Count);
         for (int i = 0; i < rows.Count; i++)
         {

@@ -1,30 +1,50 @@
 namespace KhaozEngine.Terrain;
 
-/// <summary>One ground-cover lattice candidate and its seven stateless channel values. The channels depend only on
-/// the lattice address and seed, so reading them never changes another candidate or the surface call order.</summary>
-/// <param name="X">Lattice address column.</param>
-/// <param name="Z">Lattice address row.</param>
-/// <param name="WorldX">Jittered world X, which may lie outside the cell's generation area.</param>
-/// <param name="WorldZ">Jittered world Z.</param>
-/// <param name="JitterX">X jitter channel in the range 0 up to but excluding 1.</param>
-/// <param name="JitterZ">Z jitter channel.</param>
-/// <param name="DensityPick">Density channel. A sample keeps the candidate only when this is below its density.</param>
-/// <param name="ModelPick">Weighted model channel.</param>
-/// <param name="ScalePick">Uniform scale channel.</param>
-/// <param name="YawPick">Yaw channel, a fraction of one full turn.</param>
-/// <param name="Rank">Stable thinning rank channel.</param>
-public readonly record struct GroundCoverCandidate(
-    int X,
-    int Z,
-    float WorldX,
-    float WorldZ,
-    float JitterX,
-    float JitterZ,
-    float DensityPick,
-    float ModelPick,
-    float ScalePick,
-    float YawPick,
-    float Rank);
+/// <summary>One ground-cover lattice candidate. Every channel is a pure function of the lattice address and seed.
+/// The jitter channels are computed with the candidate because its world point needs them. The other five are
+/// hashed only when read, so the generator pays for exactly the channels its decision uses and reading any of
+/// them never changes another candidate or the surface call order. Channel values lie in the range 0 up to but
+/// excluding 1.</summary>
+public readonly record struct GroundCoverCandidate
+{
+    readonly int _seed;
+
+    internal GroundCoverCandidate(int x, int z, int seed, float spacing)
+    {
+        X = x;
+        Z = z;
+        _seed = seed;
+        JitterX = GroundCoverCandidateEvaluator.Channel(x, z, seed, GroundCoverCandidateEvaluator.JitterXChannel);
+        JitterZ = GroundCoverCandidateEvaluator.Channel(x, z, seed, GroundCoverCandidateEvaluator.JitterZChannel);
+        WorldX = (x + JitterX - 0.5f) * spacing;
+        WorldZ = (z + JitterZ - 0.5f) * spacing;
+    }
+
+    /// <summary>Lattice address column.</summary>
+    public int X { get; }
+    /// <summary>Lattice address row.</summary>
+    public int Z { get; }
+    /// <summary>Jittered world X, which may lie outside the cell's generation area.</summary>
+    public float WorldX { get; }
+    /// <summary>Jittered world Z.</summary>
+    public float WorldZ { get; }
+    /// <summary>X jitter channel.</summary>
+    public float JitterX { get; }
+    /// <summary>Z jitter channel.</summary>
+    public float JitterZ { get; }
+    /// <summary>Density channel. A sample keeps the candidate only when this is below its density.</summary>
+    public float DensityPick => Read(GroundCoverCandidateEvaluator.DensityChannel);
+    /// <summary>Weighted model channel.</summary>
+    public float ModelPick => Read(GroundCoverCandidateEvaluator.ModelChannel);
+    /// <summary>Uniform scale channel.</summary>
+    public float ScalePick => Read(GroundCoverCandidateEvaluator.ScaleChannel);
+    /// <summary>Yaw channel, a fraction of one full turn.</summary>
+    public float YawPick => Read(GroundCoverCandidateEvaluator.YawChannel);
+    /// <summary>Stable thinning rank channel.</summary>
+    public float Rank => Read(GroundCoverCandidateEvaluator.RankChannel);
+
+    float Read(int channel) => GroundCoverCandidateEvaluator.Channel(X, Z, _seed, channel);
+}
 
 /// <summary>What a traced surface reports for one candidate. A null sample is a known outside-domain rejection,
 /// never a zero-height floor. A surface that cannot answer throws instead.</summary>
@@ -46,14 +66,14 @@ public enum GroundCoverDecisionKind
     Accepted,
 }
 
-/// <summary>One traced candidate decision. Scale and yaw are the candidate's channel-derived values whatever the
-/// kind. Rows are provisional until the enclosing generation or query result is complete.</summary>
+/// <summary>One traced candidate decision. Rows are provisional until the enclosing generation or query result is
+/// complete.</summary>
 /// <param name="Candidate">The candidate and its channels.</param>
 /// <param name="Kind">The decision.</param>
 /// <param name="Sample">The surface sample as reported, null for outside-area and outside-surface rows.</param>
 /// <param name="Instance">The produced instance, only for accepted rows.</param>
-/// <param name="Scale">Uniform scale from the scale channel.</param>
-/// <param name="YawRadians">Yaw in radians from the yaw channel.</param>
+/// <param name="Scale">Uniform scale from the scale channel for accepted rows, zero otherwise.</param>
+/// <param name="YawRadians">Yaw in radians from the yaw channel for accepted rows, zero otherwise.</param>
 public readonly record struct GroundCoverDecision(
     GroundCoverCandidate Candidate,
     GroundCoverDecisionKind Kind,

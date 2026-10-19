@@ -108,7 +108,7 @@ public static class GroundCoverDistribution
                 float z = candidate.WorldZ;
                 if (x < area.MinX || x >= area.MaxX || z < area.MinZ || z >= area.MaxZ)
                 {
-                    observe?.Invoke(evaluator.OutsideArea(candidate));
+                    observe?.Invoke(GroundCoverCandidateEvaluator.OutsideArea(candidate));
                     continue;
                 }
 

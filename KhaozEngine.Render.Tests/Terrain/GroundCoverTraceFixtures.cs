@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Numerics;
-using System.Text;
 using KhaozEngine.Terrain;
 
 namespace KhaozEngine.Tests.Terrain;
@@ -198,27 +196,6 @@ public static class GroundCoverTraceFixtures
     /// <summary>An exact text key over model, pose and rank bits, for multiset comparisons.</summary>
     public static string Key(in GroundCoverInstance instance) =>
         instance.ModelId + "|" + string.Join(",", PoseBits(instance)) + "|" + Bits(instance.ThinningRank);
-
-    /// <summary>Formats rows as C# literals for freezing in <see cref="ReleasedBits"/>.</summary>
-    public static string Literal(IEnumerable<GroundCoverReleasedRow> rows)
-    {
-        var text = new StringBuilder();
-        foreach (GroundCoverReleasedRow row in rows)
-        {
-            text.Append(CultureInfo.InvariantCulture, $"        new({row.X}, {row.Z}, \"{row.Model}\",\n");
-            text.Append("            [").Append(Hex(row.Channels)).Append("],\n");
-            text.Append("            [").Append(Hex(row.Pose[..7])).Append(",\n");
-            text.Append("             ").Append(Hex(row.Pose[7..])).Append("]),\n");
-        }
-        return text.ToString();
-    }
-
-    static string Hex(uint[] bits)
-    {
-        var parts = new string[bits.Length];
-        for (int i = 0; i < bits.Length; i++) parts[i] = "0x" + bits[i].ToString("X8", CultureInfo.InvariantCulture) + "u";
-        return string.Join(", ", parts);
-    }
 
     /// <summary>Released Generate rows for <see cref="Basic"/> over <see cref="BasicArea"/> on <see cref="Flat"/>,
     /// captured once from the released generator at b12a5977c before any kernel edit and frozen here. Never

@@ -18,6 +18,17 @@ public sealed class GroundCoverCandidateEvaluator
     const ulong YawSalt = 0x3D17F0A58C6B42E9UL;
     const ulong RankSalt = 0xE2A86149B7D30C5FUL;
 
+    internal const int JitterXChannel = 0;
+    internal const int JitterZChannel = 1;
+    internal const int DensityChannel = 2;
+    internal const int ModelChannel = 3;
+    internal const int ScaleChannel = 4;
+    internal const int YawChannel = 5;
+    internal const int RankChannel = 6;
+
+    /// <summary>Per-thread hash counts indexed by channel, a test hook. Null, the default, counts nothing.</summary>
+    [ThreadStatic] internal static long[]? HashCounts;
+
     readonly GroundCoverModel[] _models;
     readonly float _totalWeight;
 
@@ -34,33 +45,20 @@ public sealed class GroundCoverCandidateEvaluator
     }
 
     /// <summary>Content seed mixed into every channel.</summary>
-    public int Seed { get; }
+    internal int Seed { get; }
     /// <summary>World-space distance between lattice addresses.</summary>
-    public float Spacing { get; }
+    internal float Spacing { get; }
     /// <summary>Smallest uniform instance scale.</summary>
-    public float ScaleMin { get; }
+    internal float ScaleMin { get; }
     /// <summary>Largest uniform instance scale.</summary>
-    public float ScaleMax { get; }
+    internal float ScaleMax { get; }
     /// <summary>Distance along the sampled normal from the surface to the model root.</summary>
-    public float RootOffset { get; }
+    internal float RootOffset { get; }
     /// <summary>Weighted models in their pick order.</summary>
-    public IReadOnlyList<GroundCoverModel> Models { get; }
+    internal IReadOnlyList<GroundCoverModel> Models { get; }
 
-    /// <summary>The candidate at one lattice address with all seven channels.</summary>
-    public GroundCoverCandidate Candidate(int x, int z)
-    {
-        float jitterX = Hash01(x, z, Seed, JitterXSalt);
-        float jitterZ = Hash01(x, z, Seed, JitterZSalt);
-        return new GroundCoverCandidate(x, z,
-            (x + jitterX - 0.5f) * Spacing,
-            (z + jitterZ - 0.5f) * Spacing,
-            jitterX, jitterZ,
-            Hash01(x, z, Seed, DensitySalt),
-            Hash01(x, z, Seed, ModelSalt),
-            Hash01(x, z, Seed, ScaleSalt),
-            Hash01(x, z, Seed, YawSalt),
-            Hash01(x, z, Seed, RankSalt));
-    }
+    /// <summary>The candidate at one lattice address. Channels beyond the jitter pair are hashed when read.</summary>
+    public GroundCoverCandidate Candidate(int x, int z) => new(x, z, Seed, Spacing);
 
     /// <summary>Decides one lattice address over the caller's surface, calling it exactly once. A surface that
     /// cannot answer throws to the caller rather than reporting a sample.</summary>
@@ -71,32 +69,30 @@ public sealed class GroundCoverCandidateEvaluator
         return Decide(candidate, surface(candidate));
     }
 
-    internal GroundCoverDecision OutsideArea(in GroundCoverCandidate candidate) => new(candidate,
-        GroundCoverDecisionKind.OutsideArea, null, null, Scale(candidate), Yaw(candidate));
+    internal static GroundCoverDecision OutsideArea(in GroundCoverCandidate candidate) => new(candidate,
+        GroundCoverDecisionKind.OutsideArea, null, null, 0f, 0f);
 
+    // Reads only the channels each outcome needs, which keeps the released hash count: two for outside area or
+    // zero density, three for a density rejection and seven for an accepted instance.
     internal GroundCoverDecision Decide(in GroundCoverCandidate candidate, GroundCoverSurfaceInput input)
     {
-        float scale = Scale(candidate);
-        float yaw = Yaw(candidate);
         if (input.Sample is not { } sample)
-            return new(candidate, GroundCoverDecisionKind.OutsideSurface, null, null, scale, yaw);
+            return new(candidate, GroundCoverDecisionKind.OutsideSurface, null, null, 0f, 0f);
 
         Vector3 normal = ValidateSample(sample);
         if (sample.Density == 0f)
-            return new(candidate, GroundCoverDecisionKind.ZeroDensity, sample, null, scale, yaw);
+            return new(candidate, GroundCoverDecisionKind.ZeroDensity, sample, null, 0f, 0f);
         if (candidate.DensityPick >= sample.Density)
-            return new(candidate, GroundCoverDecisionKind.DensityRejected, sample, null, scale, yaw);
+            return new(candidate, GroundCoverDecisionKind.DensityRejected, sample, null, 0f, 0f);
 
         GroundCoverModel model = PickModel(candidate.ModelPick);
+        float scale = ScaleMin + candidate.ScalePick * (ScaleMax - ScaleMin);
+        float yaw = candidate.YawPick * MathF.Tau;
         Vector3 position = new Vector3(candidate.WorldX, sample.Height, candidate.WorldZ) + normal * RootOffset;
         Matrix4x4 transform = SurfaceTransform(position, normal, scale, yaw);
         var instance = new GroundCoverInstance(model.Id, position, transform, candidate.Rank);
         return new(candidate, GroundCoverDecisionKind.Accepted, sample, instance, scale, yaw);
     }
-
-    float Scale(in GroundCoverCandidate candidate) => ScaleMin + candidate.ScalePick * (ScaleMax - ScaleMin);
-
-    static float Yaw(in GroundCoverCandidate candidate) => candidate.YawPick * MathF.Tau;
 
     static Vector3 ValidateSample(GroundCoverSample sample)
     {
@@ -131,6 +127,23 @@ public sealed class GroundCoverCandidateEvaluator
             if (target < running) return _models[i];
         }
         return _models[^1];
+    }
+
+    /// <summary>One stateless channel value for a lattice address and seed.</summary>
+    internal static float Channel(int x, int z, int seed, int channel)
+    {
+        if (HashCounts is { } counts) counts[channel]++;
+        return Hash01(x, z, seed, channel switch
+        {
+            JitterXChannel => JitterXSalt,
+            JitterZChannel => JitterZSalt,
+            DensityChannel => DensitySalt,
+            ModelChannel => ModelSalt,
+            ScaleChannel => ScaleSalt,
+            YawChannel => YawSalt,
+            RankChannel => RankSalt,
+            _ => throw new ArgumentOutOfRangeException(nameof(channel)),
+        });
     }
 
     static float Hash01(int x, int z, int seed, ulong salt)

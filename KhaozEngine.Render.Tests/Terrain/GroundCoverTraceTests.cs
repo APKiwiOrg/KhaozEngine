@@ -48,8 +48,9 @@ public sealed class GroundCoverTraceTests
         {
             GroundCoverChannels want = expected[i].Channels;
             Assert.Equal(ChannelText(want, settings.Spacing), CandidateText(owned[i].Candidate));
-            Assert.Equal(Bits(Scale(settings, want.Scale)), Bits(owned[i].Scale));
-            Assert.Equal(Bits(Yaw(want.Yaw)), Bits(owned[i].YawRadians));
+            bool accepted = owned[i].Kind == GroundCoverDecisionKind.Accepted;
+            Assert.Equal(accepted ? Bits(Scale(settings, want.Scale)) : 0u, Bits(owned[i].Scale));
+            Assert.Equal(accepted ? Bits(Yaw(want.Yaw)) : 0u, Bits(owned[i].YawRadians));
             Assert.Equal(expected[i].Instance is null ? "-" : Key(expected[i].Instance!.Value),
                 owned[i].Instance is null ? "-" : Key(owned[i].Instance!.Value));
             Assert.Equal(ExpectedKind(owned[i].Sample, want), owned[i].Kind);
@@ -231,8 +232,9 @@ public sealed class GroundCoverTraceTests
             d => d.Candidate.X == x && d.Candidate.Z == z && d.Kind != GroundCoverDecisionKind.OutsideArea);
 
         Assert.Equal(DecisionText(owned), DecisionText(single));
-        Assert.Equal(Bits(Scale(settings, want.Scale)), Bits(single.Scale));
-        Assert.Equal(Bits(Yaw(want.Yaw)), Bits(single.YawRadians));
+        bool accepted = single.Kind == GroundCoverDecisionKind.Accepted;
+        Assert.Equal(accepted ? Bits(Scale(settings, want.Scale)) : 0u, Bits(single.Scale));
+        Assert.Equal(accepted ? Bits(Yaw(want.Yaw)) : 0u, Bits(single.YawRadians));
         float worldX = WorldX(want, spacing);
         float worldZ = WorldZ(want, spacing);
         GroundCoverSample sample = Rolling(worldX, worldZ);
@@ -241,6 +243,57 @@ public sealed class GroundCoverTraceTests
             ? Key(Instance(settings, want, worldX, worldZ, sample))
             : "-";
         Assert.Equal(expectedInstance, single.Instance is null ? "-" : Key(single.Instance!.Value));
+    }
+
+    [Theory]
+    [InlineData("basic")]
+    [InlineData("zero-density")]
+    [InlineData("threshold-equal")]
+    [InlineData("noncoplanar")]
+    [InlineData("spacing-0.3")]
+    public void Generate_KeepsReleasedHashCountPerOutcome(string input)
+    {
+        (RectArea area, GroundCoverSettings settings, Func<float, float, GroundCoverSample> surface) = Input(input);
+        (int xLo, int xHi, int zLo, int zHi) = Bounds(area, settings.Spacing);
+        long scanned = (long)(xHi - xLo + 1) * (zHi - zLo + 1);
+        List<GroundCoverExpectedRow> owned = Expected(area, settings, surface);
+        long accepted = owned.Count(r => r.Instance is not null);
+        long zero = owned.Count(r => r.Instance is null && surface(r.WorldX, r.WorldZ).Density == 0f);
+        long rejected = owned.Count - accepted - zero;
+        long outside = scanned - owned.Count;
+        long[] want = [scanned, scanned, rejected + accepted, accepted, accepted, accepted, accepted];
+
+        long[] legacy = Counted(() => GroundCoverDistribution.Generate(area, settings, surface));
+        long[] traced = Counted(() => GroundCoverDistribution.GenerateTraced(area, settings,
+            c => new GroundCoverSurfaceInput(surface(c.WorldX, c.WorldZ))));
+
+        Assert.Equal(want, legacy);
+        Assert.Equal(2 * outside + 2 * zero + 3 * rejected + 7 * accepted, legacy.Sum());
+        Assert.Equal(want, traced);
+    }
+
+    [Fact]
+    public void SingleAddressEvaluator_HashesOnlyWhatItsOutcomeReads()
+    {
+        GroundCoverCandidateEvaluator evaluator = GroundCoverDistribution.Prepare(Basic());
+        long[] outside = Counted(() => evaluator.Evaluate(3, -2, static _ => new GroundCoverSurfaceInput(null)));
+        long[] zero = Counted(() => evaluator.Evaluate(3, -2,
+            static _ => new GroundCoverSurfaceInput(new GroundCoverSample(1f, Vector3.UnitY, 0f))));
+        long[] accepted = Counted(() => evaluator.Evaluate(3, -2,
+            static _ => new GroundCoverSurfaceInput(new GroundCoverSample(1f, Vector3.UnitY, 1f))));
+
+        Assert.Equal(new long[] { 1, 1, 0, 0, 0, 0, 0 }, outside);
+        Assert.Equal(new long[] { 1, 1, 0, 0, 0, 0, 0 }, zero);
+        Assert.Equal(new long[] { 1, 1, 1, 1, 1, 1, 1 }, accepted);
+    }
+
+    static long[] Counted(Action run)
+    {
+        var counts = new long[7];
+        GroundCoverCandidateEvaluator.HashCounts = counts;
+        try { run(); }
+        finally { GroundCoverCandidateEvaluator.HashCounts = null; }
+        return counts;
     }
 
     [Fact]

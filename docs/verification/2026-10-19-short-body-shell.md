@@ -15,6 +15,9 @@ controller adoption, navigation, the full suite and release acceptance remain la
 | Represented banded-angle clearance and required duck/cow surplus | RequiredBodyPlaneSurplusIsProved |
 | Default refusal and empty selection are distinct from usable evidence | DefaultsRefuseWithoutUsableFields, DistanceDistinguishesEmptySeparatedAndOverlapWithRawIdentity |
 | Ordered impact bounds and an operational hit, without a partial clear prefix | SweepCarriesAnOrderedBracketAndOperationalHit |
+| SS-R5 raw sweep identity distinguishes dynamic bodies with identical operational hits | SweepHitsDistinguishTwoDynamicBodiesWithIdenticalOperationalHits |
+| SS-R5 raw sweep identity distinguishes coincident triangles and compound children under one static | SweepHitsDistinguishTwoCoincidentMeshTrianglesUnderOneStatic, SweepHitsDistinguishTwoCoincidentCompoundChildrenUnderOneStatic |
+| SS-R5 zero identity on Clear and Unresolved | SweepWithoutHitRejectsEveryNonzeroIdentityComponent |
 | Complete contact counts, atomic refusal, separate penetration proposal | ContactCapacityRefusalIsAtomicAndPenetrationIsSeparate |
 | Finite evidence and unchanged encoded spatial error ceiling | NonfiniteResultEvidenceRejects, EvidenceCannotExceedTheExistingBudgetOrLeakPartialFields |
 | Optional capability with immutable shape passed by readonly reference and existing filter | OptionalCapabilityUsesValueShapeByReadonlyReference |
@@ -102,3 +105,33 @@ Staged guards all exit 0: `sh scripts/check-dashes.sh staged`,
 `sh scripts/check-prose.sh staged`, `sh scripts/check-file-size.sh staged` and
 `git diff --cached --check`. The full solution build, full suites and format verification
 remain Task 12, as required by the plan.
+
+## Task 1 fix round 1, SS-R5
+
+ConvexSweepResult now retains the supplied ConvexContactIdentity beside its existing SweepHit.
+Clear and Unresolved require zero identity. Equal operational hits retain distinct raw dynamic
+body handles, coincident mesh triangle feature IDs and coincident compound child indices.
+The three provenance controls compare the full raw identities and the resulting value equality.
+The no-hit control rejects each nonzero identity component independently for both statuses.
+These are value-contract tests. Installed-target publication remains later backend work.
+
+The same focused command above produced the following fix-round evidence:
+
+- Missing-API red, exit 1. CS1061 and CS1729 identify the absent Identity property and six-argument
+  constructor. No tests executed. Log task-1-fix-r1-red.log.
+- Behavioral red, exit 1. After adding the field and constructor but before no-hit validation,
+  SweepWithoutHitRejectsEveryNonzeroIdentityComponent failed for Clear and Unresolved because
+  no ArgumentException was thrown. Fifteen passed, two failed, zero skipped.
+  Log task-1-fix-r1-behavior-red.log.
+- Focused green, exit 0. Seventeen passed, zero failed, zero skipped after requiring zero
+  identity on both no-hit statuses. Log task-1-fix-r1-green.log.
+- The SS-R2 Game.Tests selection above, with the freshly built binaries and without detailed
+  logging, exited 0. All 263 passed, zero failed, zero skipped.
+  Log task-1-fix-r1-game-regressions.log.
+- The same seven serial navigation baselines above exited 0. Seven passed, zero failed,
+  zero skipped. Log task-1-fix-r1-navigation-regressions.log.
+
+All successful build/test logs contain no compiler warnings or errors. Every command ran
+synchronously through build-slot, one at a time. No tolerance, capsule source or capsule API
+changed. The plan's producing and consuming interfaces and SB-4 now record SS-R5. Physics has
+no configured PublicAPI baseline to update. Full solution verification remains Task 12.

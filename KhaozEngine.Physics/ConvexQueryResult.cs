@@ -11,7 +11,8 @@ public readonly record struct ConvexContactIdentity(bool Dynamic, int BodyHandle
 
 /// <summary>Structural sweep evidence in metres. Construction validates fields, not geometric proof.
 /// ClearThroughDistance must cover the full request for Clear. For Hit it is the lower impact bound,
-/// not an inclusive safe placement. The bracket and reported error cannot exceed the existing 1 mm budget.</summary>
+/// not an inclusive safe placement. The bracket and reported error cannot exceed the existing 1 mm budget.
+/// Identity retains the exact raw target provenance on Hit and must be zero on Clear or Unresolved.</summary>
 public readonly record struct ConvexSweepResult
 {
     public ConvexSweepStatus Status { get; }
@@ -19,16 +20,17 @@ public readonly record struct ConvexSweepResult
     public float? ImpactDistance { get; }
     public float CertifiedErrorMetres { get; }
     public SweepHit? Hit { get; }
+    public ConvexContactIdentity Identity { get; }
 
     public ConvexSweepResult(ConvexSweepStatus status, float clearThroughDistance,
-        float? impactDistance, float certifiedErrorMetres, SweepHit? hit)
+        float? impactDistance, float certifiedErrorMetres, SweepHit? hit, ConvexContactIdentity identity)
     {
         bool valid = ConvexResultValidation.Nonnegative(clearThroughDistance) &&
             ConvexResultValidation.Error(certifiedErrorMetres) && (status switch
             {
                 ConvexSweepStatus.Unresolved => clearThroughDistance == 0 && impactDistance is null &&
-                    certifiedErrorMetres == 0 && hit is null,
-                ConvexSweepStatus.Clear => impactDistance is null && hit is null,
+                    certifiedErrorMetres == 0 && hit is null && identity == default,
+                ConvexSweepStatus.Clear => impactDistance is null && hit is null && identity == default,
                 ConvexSweepStatus.Hit => impactDistance is float upper &&
                     ConvexResultValidation.Bracket(clearThroughDistance, upper, certifiedErrorMetres) &&
                     hit is SweepHit operational && float.IsFinite(operational.Distance) &&
@@ -42,6 +44,7 @@ public readonly record struct ConvexSweepResult
         ImpactDistance = impactDistance;
         CertifiedErrorMetres = certifiedErrorMetres;
         Hit = hit;
+        Identity = identity;
     }
 }
 

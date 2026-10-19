@@ -146,9 +146,15 @@ It is not a rounded replacement for the base shell or permission to move the bod
 
 The capability includes certified sweep, distance, complete contacts and penetration. Results
 distinguish unavailable evidence from Clear, empty selection and genuine contact. A sweep
-returns an enclosing earliest-impact bracket plus its proved operational hit/normal. A distance
-result encloses the nearest nonnegative separation and carries both attained witnesses and raw
-identity, or an explicit empty-selection result. Complete contacts retain every relevant raw
+returns an enclosing earliest-impact bracket plus its proved operational hit/normal. Under SS-R5,
+`ConvexSweepResult(Status, ClearThroughDistance, ImpactDistance, CertifiedErrorMetres, Hit, Identity)`
+carries `SweepHit? Hit` alongside `ConvexContactIdentity Identity`. Clear and Unresolved require
+zero Identity. Hit retains the exact raw `(Dynamic, BodyHandle, ChildIndex, FeatureId)` of its
+target, so distinct dynamic bodies, coincident mesh triangles and coincident compound children
+remain distinguishable even when their operational hits are equal. Existing SweepHit and every
+capsule API remain unchanged. A distance result encloses the nearest nonnegative separation and
+carries both attained witnesses and raw identity, or an explicit empty-selection result.
+Complete contacts retain every relevant raw
 constraint and separation bound. Penetration supplies the deepest member's certified minimum
 translation proposal, with deterministic raw-ID tie breaking. It is not a global-union MTV.
 Recovery must requery and validate each placement, including after the final allowed correction.

@@ -14,6 +14,7 @@
 
 - Preserve the Euclidean 0.001 m arrival ball, roof and footprint protections and raw layer identity.
 - Raw physics identity remains `(StaticHandle, ElementId)`. Coincident members never coalesce.
+- SS-R5: `ConvexSweepResult` carries `ConvexContactIdentity Identity` alongside `SweepHit? Hit`. Clear and Unresolved require zero identity. Hit retains the exact raw Dynamic, BodyHandle, ChildIndex and FeatureId, including coincident members.
 - No tolerance, skin, band, epsilon, reach or existing work/storage ceiling may be widened or added to obtain acceptance.
 - Preserve the independent 0.001 m placement offset, 0.0001 m contact/join band and 0.0005 m HeightError ceiling.
 - Preserve 256 raw support members, 512 support witness slots and the cumulative 1,048,576-event curved Find ceiling.
@@ -95,7 +96,7 @@ required proper correction receives its own deterministic regression in the owni
 **Interfaces:**
 - Produces `ConvexQueryKind.ConeCylinder = 1` and immutable `ConvexQueryShape(ConvexQueryKind Kind, float Radius, float LowerY, float RingY, float UpperY, float Margin = 0)` with `WithMargin(float margin) -> ConvexQueryShape`.
 - Produces `ConvexSweepStatus` values Unresolved = 0, Clear = 1, Hit = 2, and `ConvexContactIdentity(bool Dynamic, int BodyHandle, int ChildIndex, int FeatureId)` preserving raw provenance.
-- Produces `ConvexSweepResult(Status, ClearThroughDistance, ImpactDistance, CertifiedErrorMetres, Hit)` with field types `ConvexSweepStatus`, `float`, `float?`, `float`, `SweepHit?`. Unresolved has zero/null fields, Clear covers the full request and has no hit, Hit has ordered bounds and its proved operational hit.
+- Produces `ConvexSweepResult(Status, ClearThroughDistance, ImpactDistance, CertifiedErrorMetres, Hit, Identity)` with field types `ConvexSweepStatus`, `float`, `float?`, `float`, `SweepHit?`, `ConvexContactIdentity`. Unresolved has zero/null fields, Clear covers the full request and has no hit, and both require zero Identity. Hit has ordered bounds, its proved operational hit and the exact raw target Identity under SS-R5. Existing SweepHit and capsule APIs are unchanged.
 - Produces `ConvexDistanceResult(bool Complete, bool HasTarget, float LowerDistance, float UpperDistance, Vector3 QueryWitness, Vector3 TargetWitness, Vector3 Normal, ConvexContactIdentity Identity)`. Empty selection is Complete with HasTarget false and zero remaining fields. Separated witnesses enclose nonnegative nearest distance. Overlap distance is zero and penetration is a separate query.
 - Produces `ConvexContact(Vector3 Normal, float LowerSeparation, float UpperSeparation, ConvexContactIdentity Identity)`, `ConvexContactResult(bool Complete, int Written, int RequiredCapacity, float CertifiedErrorMetres)` and `ConvexPenetrationResult(bool Complete, bool Overlapping, Vector3 Translation, float LowerDepth, float UpperDepth, ConvexContactIdentity Identity)`.
 - Produces `IPhysicsConvexQueries.SweepConvexCertified(in ConvexQueryShape shape, Pose pose, Vector3 displacement, QueryFilter filter = default) -> ConvexSweepResult`, `DistanceConvex(in ConvexQueryShape shape, Pose pose, QueryFilter filter = default) -> ConvexDistanceResult`, `QueryConvexContacts(in ConvexQueryShape shape, Pose pose, Span<ConvexContact> destination, QueryFilter filter = default) -> ConvexContactResult`, and `ComputeConvexPenetration(in ConvexQueryShape shape, Pose pose, QueryFilter filter = default) -> ConvexPenetrationResult`.
@@ -149,7 +150,7 @@ Commit `feat(physics): define continuous short-shell query contracts`.
 - Modify: `KhaozEngine.Game.Tests/Physics/ShortBodyShellOracle.cs`, `docs/verification/2026-10-19-short-body-shell.md`
 
 **Interfaces:**
-- Consumes Task 1's exact shape and result values, existing InstalledSweepLeaf and installed represented geometry readers.
+- Consumes Task 1's exact shape and result values, including `ConvexSweepResult.Identity` under SS-R5, existing InstalledSweepLeaf and installed represented geometry readers.
 - Produces internal `ConvexQueryOperation` values Sweep, Distance, Contacts, Penetration and `ConvexQueryRequest(ConvexQueryShape Shape, Pose Pose, Vector3 Displacement, ConvexQueryOperation Operation)`.
 - Produces `ConvexQueryWork` with sticky descendant/cell/feature accounts under SB-7 and `ConvexQueryScratch` owning bounded exact arithmetic, interval cells and proposal simplex storage.
 - Produces `ConvexFeatureKernel.TryEvaluate(in ConvexQueryRequest request, in InstalledSweepLeaf leaf, ref ConvexQueryWork work, ConvexQueryScratch scratch, out ConvexLeafEvidence evidence) -> bool`. Evidence owns ordered brackets, attained witnesses, normal-cone certificate and raw leaf identity. False yields default evidence.
@@ -210,10 +211,10 @@ Commit `feat(physics): certify continuous cone-cylinder feature distance`.
 - Modify: `KhaozEngine.Game.Tests/Physics/ConvexQueryFixture.cs`, `docs/verification/2026-10-19-short-body-shell.md`
 
 **Interfaces:**
-- Consumes Tasks 1/2. Produces IPhysicsConvexQueries on BepuPhysicsWorld and its exact selected QueryView.
+- Consumes Tasks 1/2, including `ConvexSweepResult.Identity` under SS-R5. Produces IPhysicsConvexQueries on BepuPhysicsWorld and its exact selected QueryView.
 - Produces `ConvexQueryBounds.TryCreate(in ConvexQueryRequest request, out Vector3 minimum, out Vector3 maximum) -> bool` with a proof of the operational aperture and installed-tree pruning pad.
-- World entry points match Task 1 exactly. Owner cores take immutable StaticQueryExclusions and the exact receiver, using EnterQuery and its current read interval. Unsupported target families refuse until their following tasks land.
-- Produces test-only `ConvexQueryFixture.SkinShortenedAdvanceIsInside(in ConvexSweepResult result, Vector3 displacement) -> bool`, evaluating the spec's original displacement length, operational hit distance and certified lower bound with outward exact arithmetic.
+- World entry points match Task 1 exactly, publishing the exact raw Identity on Hit and zero Identity on Clear or Unresolved under SS-R5. Owner cores take immutable StaticQueryExclusions and the exact receiver, using EnterQuery and its current read interval. Unsupported target families refuse until their following tasks land.
+- Produces test-only `ConvexQueryFixture.SkinShortenedAdvanceIsInside(in ConvexSweepResult result, Vector3 displacement) -> bool`, consuming the SS-R5 result with Identity and evaluating the spec's original displacement length, operational hit distance and certified lower bound with outward exact arithmetic.
 
 - [ ] **Step 1: Write world capability, agreement and complete-publication reds.**
 
@@ -265,7 +266,7 @@ Commit `feat(physics): publish certified moving-convex world queries`.
 - Modify: `KhaozEngine.Game.Tests/Physics/ShortBodyShellOracle.cs`, `KhaozEngine.Game.Tests/Physics/ConvexQueryFixture.cs`, `docs/verification/2026-10-19-short-body-shell.md`
 
 **Interfaces:**
-- Consumes Task 2's one TryEvaluate contract and Task 3's unchanged public entry points.
+- Consumes Task 2's one TryEvaluate contract and Task 3's unchanged public entry points, including the exact raw `ConvexSweepResult.Identity` under SS-R5.
 - Produces `ConvexCurvedFeatures.TryEvaluate(in ConvexQueryRequest request, in InstalledSweepLeaf leaf, ref ConvexQueryWork work, ConvexQueryScratch scratch, out ConvexLeafEvidence evidence) -> bool` for sphere, capsule and cylinder targets.
 
 - [ ] **Step 1: Write the curved-family matrix red.**
@@ -317,7 +318,7 @@ Commit `feat(physics): certify short-shell queries against curved targets`.
 - Modify: `KhaozEngine.Game.Tests/Physics/ConvexQueryFixture.cs`, `docs/verification/2026-10-19-short-body-shell.md`
 
 **Interfaces:**
-- Consumes the installed immutable mesh/tree/compound geometry and Task 2's leaf evidence.
+- Consumes the installed immutable mesh/tree/compound geometry and Task 2's leaf evidence, preserving distinct coincident members in `ConvexSweepResult.Identity` under SS-R5.
 - Produces internal mesh/compound `TryEvaluate(in ConvexQueryRequest request, InstalledSweepGeometry geometry, ref ConvexQueryWork work, ConvexQueryScratch scratch, out ConvexLeafEvidence evidence) -> bool` on ConvexMeshQueries and ConvexCompoundQueries. Traversal supplies the authenticated installed root and composed leaves through geometry, without reparsing authored shapes.
 
 - [ ] **Step 1: Write mesh/compound completion and coverage reds.**
@@ -367,7 +368,7 @@ Commit `feat(physics): certify convex queries over meshes and compounds`.
 - Modify: `docs/verification/2026-10-19-short-body-shell.md`
 
 **Interfaces:**
-- Consumes the existing current-view/read-interval authentication and Tasks 2/3's bounded owners.
+- Consumes the existing current-view/read-interval authentication and Tasks 2/3's bounded owners, including zero `ConvexSweepResult.Identity` on Clear and Unresolved under SS-R5.
 - Produces `ConvexQueryCounts(long Queries, long Candidates, long Descendants, long Features, long Cells, long Refusals, int PeakScratchLoans)` and `ConvexQueryDiagnostics.Capture() -> IDisposable`, `ConvexQueryDiagnostics.Current -> ConvexQueryCounts`, integrated with worker exchange/merge/restoration. Events sum, scratch high water takes maximum.
 - Produces internal budget injection that can only lower SB-7 ceilings. It cannot alter production policy or bypass enforcement. Existing capsule/support diagnostics and CounterCount remain correct.
 
@@ -421,7 +422,7 @@ Commit `test(physics): prove convex query lifetime and bounded atomic refusal`.
 - Modify: `KhaozEngine.Game.Tests/Physics/ConvexQueryFixture.cs`, `docs/verification/2026-10-19-short-body-shell.md`
 
 **Interfaces:**
-- Consumes Tasks 1 to 6's complete contacts, per-member penetration and current selected query.
+- Consumes Tasks 1 to 6's complete contacts, per-member penetration and current selected query, including the SS-R5 `ConvexSweepResult.Identity` contract.
 - Produces `ConvexRecovery.TrySelect(ReadOnlySpan<ConvexContact> contacts, ReadOnlySpan<ConvexLeafEvidence> members, out ConvexPenetrationResult result) -> bool`. Select the deepest certified member MTV with raw-ID tie break. The result is a correction proposal, not proof that the obstacle union clears.
 
 - [ ] **Step 1: Write true Minkowski-touch and recovery reds.**
@@ -532,6 +533,7 @@ Commit `feat(locomotion): select certified full-width short-body shells`.
 - Modify: `docs/verification/2026-10-19-short-body-shell.md`
 
 **Interfaces:**
+- Consumes the certified `ConvexSweepResult` with exact raw Identity on Hit and zero Identity on Clear or Unresolved under SS-R5 before presenting its operational SweepHit.
 - Produces internal `MovementShellQuery(ContactShellDescription Shell, Pose Pose, MovementBodyQuery Envelope)`. Envelope supplies scope only, never a collision shape.
 - Produces `MovementShellBounds.TryCreate(in MovementShellQuery shell, Vector3 displacement, out Vector3 minimum, out Vector3 maximum) -> bool`, enclosing the actual shape, grown probe and original mapping error.
 - Produces MovementQueryLease overloads `SweepContactShell(in MovementShellQuery shell, Vector3 direction, float distance, QueryFilter filter, out bool blocked, out SweepHit hit) -> MovementAvailability`, `PenetrateContactShell(in MovementShellQuery shell, out bool overlapping, out Vector3 mtv) -> MovementAvailability` and `QueryContactShell(in MovementShellQuery shell, Span<ConvexContact> contacts, out ConvexContactResult result) -> MovementAvailability`.
@@ -658,7 +660,7 @@ Commit `feat(navigation): persist certified short-shell identity in format three
 - Modify: `docs/verification/2026-10-19-short-body-shell.md`
 
 **Interfaces:**
-- Consumes all prior public/immutable interfaces, existing raw-source mapping and proof-reuse modes.
+- Consumes all prior public/immutable interfaces, including `ConvexSweepResult.Identity` under SS-R5, existing raw-source mapping and proof-reuse modes.
 - Produces test fixture `ShortBodyNavigationFixture.Build(string scene, string mode, int degree) -> byte[]`, using production serialization and modes Off, Footprints, Combined. Existing stable-provider assertion governs Hold sharing.
 - Produces immutable scenes for duck/cow, mixed legacy/player/short profiles, hidden support, forbidden corner, roof/lip, stacked layers and exact-arrival boundaries. Degree matrix is 1, 2, 3, 8 and greater than total layer-row count, distinct rows only. This is one finite theory selection, not repeated stress.
 
@@ -723,7 +725,7 @@ Commit `test(navigation): prove short-shell protections and deterministic bakes`
 - Modify only if the staged version has released: `Directory.Build.props` and every guarded version declaration reported by `scripts/check-doc-versions.sh`
 
 **Interfaces:**
-- Consumes accepted Task 1 to 11 commits, observed reds/greens, target-family matrix, exact identity/protection evidence and deterministic counters.
+- Consumes accepted Task 1 to 11 commits, observed reds/greens, target-family matrix, exact identity/protection evidence including `ConvexSweepResult.Identity` under SS-R5, and deterministic counters.
 - Produces living API/compatibility contracts and a once-only full Release verification record. This final task changes no production behavior, so it audits preceding reds rather than inventing a docs-only failing test.
 
 - [ ] **Step 1: Audit spec coverage and final premises before broad verification.**

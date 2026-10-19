@@ -117,6 +117,7 @@ public class ConvexQueryContractTests(ITestOutputHelper output)
         Assert.Null(sweep.ImpactDistance);
         Assert.Equal(0f, sweep.CertifiedErrorMetres);
         Assert.Null(sweep.Hit);
+        Assert.Equal(default, sweep.Identity);
         Assert.Equal(new ConvexDistanceResult(false, false, 0, 0, default, default, default, default), default);
         Assert.Equal(new ConvexContactResult(false, 0, 0, 0), default);
         Assert.Equal(new ConvexPenetrationResult(false, false, default, 0, 0, default), default);
@@ -127,22 +128,84 @@ public class ConvexQueryContractTests(ITestOutputHelper output)
     [Fact]
     public void SweepCarriesAnOrderedBracketAndOperationalHit()
     {
-        var clear = new ConvexSweepResult(ConvexSweepStatus.Clear, 2, null, 0, null);
+        var clear = new ConvexSweepResult(ConvexSweepStatus.Clear, 2, null, 0, null, default);
         Assert.Equal(2f, clear.ClearThroughDistance);
         Assert.Null(clear.Hit);
-        var hit = new ConvexSweepResult(ConvexSweepStatus.Hit, 1, 1.0005f, 0.001f, Hit(1.00025f));
+        Assert.Equal(default, clear.Identity);
+        var hit = new ConvexSweepResult(ConvexSweepStatus.Hit, 1, 1.0005f, 0.001f, Hit(1.00025f), default);
         Assert.Equal(Hit(1.00025f), hit.Hit);
-        Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Clear, 1, null, 0, Hit(1)));
-        Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Clear, 1, 1, 0, null));
-        Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Hit, 1, null, 0, Hit(1)));
-        Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Hit, 1, 1, 0, null));
-        Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Hit, 2, 1, 0.001f, Hit(1)));
-        Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Hit, 1, 2, 0.001f, Hit(1)));
-        Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Hit, 1, 1, 0, Hit(2)));
-        Assert.Throws<ArgumentException>(() => new ConvexSweepResult((ConvexSweepStatus)3, 0, null, 0, null));
-        Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Unresolved, 1, null, 0, null));
-        Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Unresolved, 0, null, 0, Hit(0)));
-        Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Unresolved, 0, null, 0.001f, null));
+        Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Clear, 1, null, 0, Hit(1), default));
+        Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Clear, 1, 1, 0, null, default));
+        Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Hit, 1, null, 0, Hit(1), default));
+        Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Hit, 1, 1, 0, null, default));
+        Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Hit, 2, 1, 0.001f, Hit(1), default));
+        Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Hit, 1, 2, 0.001f, Hit(1), default));
+        Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Hit, 1, 1, 0, Hit(2), default));
+        Assert.Throws<ArgumentException>(() => new ConvexSweepResult((ConvexSweepStatus)3, 0, null, 0, null, default));
+        Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Unresolved, 1, null, 0, null, default));
+        Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Unresolved, 0, null, 0, Hit(0), default));
+        Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Unresolved, 0, null, 0.001f, null, default));
+    }
+
+    [Fact]
+    public void SweepHitsDistinguishTwoDynamicBodiesWithIdenticalOperationalHits()
+    {
+        SweepHit operational = new(1, Vector3.Zero, Vector3.UnitX, null);
+        var firstIdentity = new ConvexContactIdentity(true, 7, -1, 11);
+        var secondIdentity = new ConvexContactIdentity(true, 8, -1, 11);
+        var first = new ConvexSweepResult(ConvexSweepStatus.Hit, 1, 1, 0, operational, firstIdentity);
+        var second = new ConvexSweepResult(ConvexSweepStatus.Hit, 1, 1, 0, operational, secondIdentity);
+        Assert.Equal(first.Hit, second.Hit);
+        Assert.Null(first.Hit!.Value.Body);
+        Assert.Equal(firstIdentity, first.Identity);
+        Assert.Equal(secondIdentity, second.Identity);
+        Assert.NotEqual(first, second);
+    }
+
+    [Fact]
+    public void SweepHitsDistinguishTwoCoincidentMeshTrianglesUnderOneStatic()
+    {
+        SweepHit operational = Hit(1);
+        var firstIdentity = new ConvexContactIdentity(false, 7, -1, 0);
+        var secondIdentity = new ConvexContactIdentity(false, 7, -1, 1);
+        var first = new ConvexSweepResult(ConvexSweepStatus.Hit, 1, 1, 0, operational, firstIdentity);
+        var second = new ConvexSweepResult(ConvexSweepStatus.Hit, 1, 1, 0, operational, secondIdentity);
+        Assert.Equal(first.Hit, second.Hit);
+        Assert.Equal(new StaticHandle(7), first.Hit!.Value.Body);
+        Assert.Equal(firstIdentity, first.Identity);
+        Assert.Equal(secondIdentity, second.Identity);
+        Assert.NotEqual(first, second);
+    }
+
+    [Fact]
+    public void SweepHitsDistinguishTwoCoincidentCompoundChildrenUnderOneStatic()
+    {
+        SweepHit operational = Hit(1);
+        var firstIdentity = new ConvexContactIdentity(false, 7, 0, 11);
+        var secondIdentity = new ConvexContactIdentity(false, 7, 1, 11);
+        var first = new ConvexSweepResult(ConvexSweepStatus.Hit, 1, 1, 0, operational, firstIdentity);
+        var second = new ConvexSweepResult(ConvexSweepStatus.Hit, 1, 1, 0, operational, secondIdentity);
+        Assert.Equal(first.Hit, second.Hit);
+        Assert.Equal(new StaticHandle(7), first.Hit!.Value.Body);
+        Assert.Equal(firstIdentity, first.Identity);
+        Assert.Equal(secondIdentity, second.Identity);
+        Assert.NotEqual(first, second);
+    }
+
+    [Theory]
+    [InlineData(ConvexSweepStatus.Clear)]
+    [InlineData(ConvexSweepStatus.Unresolved)]
+    public void SweepWithoutHitRejectsEveryNonzeroIdentityComponent(ConvexSweepStatus status)
+    {
+        Assert.Equal(default, new ConvexSweepResult(status, 0, null, 0, null, default).Identity);
+        foreach (ConvexContactIdentity identity in new[]
+        {
+            new ConvexContactIdentity(true, 0, 0, 0),
+            new ConvexContactIdentity(false, 1, 0, 0),
+            new ConvexContactIdentity(false, 0, 1, 0),
+            new ConvexContactIdentity(false, 0, 0, 1)
+        })
+            Assert.Throws<ArgumentException>(() => new ConvexSweepResult(status, 0, null, 0, null, identity));
     }
 
     [Fact]
@@ -203,11 +266,11 @@ public class ConvexQueryContractTests(ITestOutputHelper output)
         foreach (float invalid in new[] { float.NaN, float.PositiveInfinity, float.NegativeInfinity })
         {
             Vector3 vector = new(invalid, 0, 0);
-            Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Clear, invalid, null, 0, null));
-            Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Clear, 1, null, invalid, null));
-            Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Hit, 1, 1, 0, Hit(invalid)));
-            Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Hit, 1, 1, 0, new(1, vector, Vector3.UnitY, null)));
-            Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Hit, 1, 1, 0, new(1, default, vector, null)));
+            Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Clear, invalid, null, 0, null, default));
+            Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Clear, 1, null, invalid, null, default));
+            Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Hit, 1, 1, 0, Hit(invalid), default));
+            Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Hit, 1, 1, 0, new(1, vector, Vector3.UnitY, null), default));
+            Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Hit, 1, 1, 0, new(1, default, vector, null), default));
             Assert.Throws<ArgumentException>(() => new ConvexDistanceResult(true, true, invalid, 1, default, default, Vector3.UnitX, default));
             Assert.Throws<ArgumentException>(() => new ConvexDistanceResult(true, true, 1, invalid, default, default, Vector3.UnitX, default));
             Assert.Throws<ArgumentException>(() => new ConvexDistanceResult(true, true, 1, 1, vector, default, Vector3.UnitX, default));
@@ -228,13 +291,13 @@ public class ConvexQueryContractTests(ITestOutputHelper output)
     {
         foreach (float invalid in new[] { -1f, MathF.BitIncrement(0.001f) })
         {
-            Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Clear, 1, null, invalid, null));
+            Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Clear, 1, null, invalid, null, default));
             Assert.Throws<ArgumentException>(() => new ConvexContactResult(true, 1, 1, invalid));
         }
-        Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Clear, -1, null, 0, null));
-        Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Hit, 0, float.NaN, 0, Hit(0)));
-        Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Hit, 0, 0, 0, new(0, default, default, null)));
-        Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Unresolved, 0, 0, 0, null));
+        Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Clear, -1, null, 0, null, default));
+        Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Hit, 0, float.NaN, 0, Hit(0), default));
+        Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Hit, 0, 0, 0, new(0, default, default, null), default));
+        Assert.Throws<ArgumentException>(() => new ConvexSweepResult(ConvexSweepStatus.Unresolved, 0, 0, 0, null, default));
         Assert.Throws<ArgumentException>(() => new ConvexDistanceResult(true, true, 0, 1, default, default, Vector3.UnitX, default));
         Assert.Throws<ArgumentException>(() => new ConvexDistanceResult(false, false, 1, 1, default, default, default, default));
         Assert.Throws<ArgumentException>(() => new ConvexDistanceResult(true, false, 0, 0, Vector3.UnitX, default, default, default));

@@ -109,6 +109,8 @@ namespace KhaozEngine.Tests.Gpu
             yield return new(CoverageGpuExactWordsProbe.Name, CoverageGpuExactWordsProbe.Source);
             yield return new(CoverageGpuResidualProbe.Name, CoverageGpuResidualProbe.Source);
             yield return new(CoverageGpuRoundingProbe.Name, CoverageGpuRoundingProbe.Source);
+            yield return new(CoverageGpuPredicateProbe.Name, CoverageGpuPredicateProbe.Source);
+            yield return new(CoverageGpuSupportProbe.Name, CoverageGpuSupportProbe.Source);
         }
 
         static void EmitCompute(ShippedComputeKernel kernel, List<ShaderCorpusRow> rows, Action<string, byte[]>? dump,

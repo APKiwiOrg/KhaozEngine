@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Render3D;
 using Xunit;
@@ -69,6 +70,21 @@ public sealed class CoverageReferencePredicateTests
     [Fact]
     public void Both_frozen_group_224_incident_faces_match_the_integer_oracle()
     {
+        foreach (var (host, sheet) in FrozenGroup224Fixtures())
+        {
+            CheckEdge(host[0], host[1], host[2]);
+            CheckEdge(sheet[0], sheet[1], sheet[2]);
+            for (int i = 0; i < 3; i++)
+                for (int j = 0; j < 3; j++)
+                {
+                    CheckEdge(sheet[j], sheet[(j + 1) % 3], host[i]);
+                    CheckEdge(host[i], host[(i + 1) % 3], sheet[j]);
+                }
+        }
+    }
+
+    internal static IEnumerable<(Vector3[] Host, Vector3[] Sheet)> FrozenGroup224Fixtures()
+    {
         var c = CoverageReferenceCases.Get("cost-limit-l2-lifted-w1");
         var capture = CoverageExactCaptureTests.Read(c.Id);
         var scratch = new CoverageReferenceScratch(c.Topology);
@@ -86,14 +102,7 @@ public sealed class CoverageReferencePredicateTests
             Vector3[] host = new Vector3[3];
             for (int i = 0; i < 3; i++) host[i] = CoverageReferenceMath.Point(new CoverageReferenceArithmetic(),
                 scratch.After[(int)c.Topology.Indices[face * 3 + i]].Position, frame.HostToCoverage);
-            CheckEdge(host[0], host[1], host[2]);
-            CheckEdge(sheet[0], sheet[1], sheet[2]);
-            for (int i = 0; i < 3; i++)
-                for (int j = 0; j < 3; j++)
-                {
-                    CheckEdge(sheet[j], sheet[(j + 1) % 3], host[i]);
-                    CheckEdge(host[i], host[(i + 1) % 3], sheet[j]);
-                }
+            yield return (host, sheet);
         }
     }
 
@@ -115,7 +124,7 @@ public sealed class CoverageReferencePredicateTests
     }
 
     // Integer units of 2^-149. Products and determinants therefore have units of 2^-298.
-    static BigInteger Integer(float value)
+    internal static BigInteger Integer(float value)
     {
         uint bits = BitConverter.SingleToUInt32Bits(value);
         int exponent = (int)((bits >> 23) & 255);
@@ -124,11 +133,11 @@ public sealed class CoverageReferencePredicateTests
         return (bits & 0x80000000) == 0 ? significand : -significand;
     }
 
-    static BigInteger Edge(Vector3 a, Vector3 b, Vector3 p) =>
+    internal static BigInteger Edge(Vector3 a, Vector3 b, Vector3 p) =>
         ((Integer(b.X) - Integer(a.X)) * (Integer(p.Y) - Integer(a.Y)))
         - ((Integer(b.Y) - Integer(a.Y)) * (Integer(p.X) - Integer(a.X)));
 
-    static float Round(BigInteger exact)
+    internal static float Round(BigInteger exact)
     {
         BigInteger magnitude = BigInteger.Abs(exact);
         int shift = Math.Max(149, (int)magnitude.GetBitLength() - 24);

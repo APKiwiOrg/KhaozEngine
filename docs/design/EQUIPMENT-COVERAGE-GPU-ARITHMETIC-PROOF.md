@@ -1,9 +1,9 @@
 # Equipment coverage GPU arithmetic proof
 
-This records Part C Tasks 1 and 2 against sections 3, 5, 6 and 8 of the
+This records Part C Tasks 1 to 3 against sections 3 to 9 of the
 [kernel contract](EQUIPMENT-COVERAGE-KERNEL-CONTRACT-2026-10-18.md).
 It covers the scalar inventory, shared vector graphs, exact integers, corrected division and square
-root. Exact predicates and complete construction equivalence belong to later tasks.
+root, exact predicates, B30 crossings and support queries. Complete construction equivalence belongs to later tasks.
 
 ## Evidence status
 
@@ -338,3 +338,103 @@ build-slot --label c02-fix-r1b-final-metal -- env KE_GPU_TESTS=1 KE_GRAPHICS_BAC
 The root hosted filter is the same six-class expression. Run 39177040590 executed it on all three
 hosted legs for the C6 commit. Shader compilation and local Metal results alone would not have
 substituted for those backend executions.
+
+
+## Task 3 determinant bounds and conversion
+
+`CoverageGpuPredicatesGlsl` expands each determinant into signed products of original XY
+coordinates. It flushes each coordinate before decoding it. Z never participates in a predicate.
+A finite coordinate in integer units of `2^-149` has magnitude strictly below `2^277`.
+An exact difference is therefore below `2^278`, a difference product below `2^556`, and
+an edge or two-dimensional dot determinant below `2^557`. The expansion also has a safe
+partial-sum bound. Edge has six products and dot has eight, each strictly below `2^554`.
+Every intermediate absolute sum is strictly below `8*2^554 = 2^557`. Eighteen uint limbs
+provide 576 bits, with 19 spare bits. There is no overflow truncation or range heuristic.
+
+Each individual product decodes two at-most-24-bit significands and multiplies them with
+`covExactMul32`. Its exact unsigned magnitude is below `2^48`, so only two product words
+are needed. A normal binary32 encoded exponent E contributes a shift of E-1 in integer
+units. The combined product shift is between 0 and 506, so the shifted product is below
+`2^554`. Flushed zeros return the zero accumulator before hidden-bit decoding. A 48-bit product shifted by r bits within a word occupies at most three adjacent words.
+The placement generator emits 18 literal destination assignments selecting those three scalar
+words, including the r=0 case without a shift by 32. No generic 18-word shift is needed.
+Signed accumulation places those words in the wide result. The general
+18-by-18 multiply is never called by the predicate or support query modules.
+
+`covEdge` and `covDot` retain the exact integer sign and apply the existing RN-even conversion
+at exponent -298 followed by F. Exact cancellation has sign zero and positive-zero bits.
+A negative nonzero determinant that rounds or flushes to zero retains sign -1 and `80000000`.
+Invalid XY inputs return sign zero and NaN, which the query guards reject.
+
+For B30 let L be the maximum of the two exact side bit lengths. This is also the bit length
+of their maximum magnitude. With `k = 299-L`, that maximum times `2^(k-298)` lies in `[1,2)`.
+`covCrossing` passes k-298 directly to `covRound32`, so scaling is exact and precedes conversion.
+Only opposite, nonzero signs enter this path. The larger rounded side remains at least one,
+so F cannot erase the denominator. The final subtract and corrected divide retain the pinned
+inventory tree. Endpoint and collinear overlay branches never call the crossing division.
+
+## Task 3 support layout and order
+
+The composing kernel supplies readonly `uint CovStaticWords[]`. A support argument is the
+absolute word offset of its 16-word header. Its six table offsets are relative to that header,
+so Task 4 can relocate a cold upload without changing any table word. Positions are XYZ words.
+Source indices, boundary indices, the 257 cell offsets and candidate indices are uint words.
+Each triangle stores all eight source fields in Mesh, Primitive, Triangle, Node, MaterialSlice,
+A, B, C order. Reserved header words 13 to 15 stay zero. The sole temporary packer is test-only
+`CoverageGpuTestSupportPacking.Append`. Task 4's production packer must reproduce these words
+and replace that helper. No second production packer is introduced here.
+
+`covHeight` uses only the point's 16-by-16 cell list. It checks inclusive global and triangle
+AABBs, retains candidate order, and aborts on a candidate's invalid predicate or height.
+The first accepted candidate returns its stored source index. `covCell` uses the pinned
+subtract, corrected divide and multiply followed by the threshold comparison count.
+It does not cast a float to an integer. Boundary queries retain strict less-than updates,
+so the first edge wins ties. Height keeps the corner, canonical edge and barycentric trees.
+Overlay visits each sheet triangle in order, then each host/sheet corner pair, then the nine
+edge pairs in reference order. It uses exact signs for all discrete branches and retains
+both height trees and the binary32 crossing point graph. No B22/B24 heuristic is restored.
+
+Overlay retains the three-corner and nine-edge-pair loops, selecting named whole-vector and
+scalar fields through branches. Its side cache uses three named three-sign records rather than
+an indexed array. This avoids expanding nine forced-inline intersection graphs while retaining
+reference visit order. There are no shader arrays for overlay vertices or sides, no dynamic
+vector or matrix component accesses and no dynamic private-array writes. Both new probes are registered in the coverage
+shader corpus. Their native tests additionally run `CoverageSpirvAccessAudit` with constant
+private-array indices required, validate precise compilation and retain SPIR-V/HLSL/MSL artifacts
+when `KE_SHADER_CORPUS_DUMP` is set. Every native Metal pipeline logs its thread ceiling and
+execution width and asserts a ceiling of at least the 64-thread workgroup.
+
+
+## Task 3 native evidence and reproduction
+
+The RED invocation failed with CS0103 for the missing predicate module. The completed Release
+build has zero warnings and zero errors. All 18 tests in the required four-class selection
+passed on MetalNative with Apple M2 Max, with zero skipped tests. The two native probes matched
+755 predicate/crossing/grid rows and 2,314 support-query rows. Predicate rows compare all 18
+magnitude limbs, exact signs, bit lengths and RN32/F words against the shared independent
+BigInteger oracle from `CoverageReferencePredicateTests`. Both frozen group-224 incident-face
+fixtures are shared directly, with every existing assertion retained. B30 expectations use independent scaled integer rounding and rational division.
+Support rows compare every accepted word with the reference and separately pin the first source
+triangle, boundary tie, reserved header words and relocated header layout. Invalid NaN results
+are checked by class, as in Task 2, because they are rejected intermediates with no accepted payload.
+
+Both modules passed the strict C5/C6 compiled access audit. Their emitted SPIR-V contains only
+32-bit numerical types and no dynamic private-array accesses. Exact arithmetic is integer-only.
+The predicate HLSL/MSL emissions contain no generic wide multiply or generic wide shift.
+The support emission retains reference corner and edge-pair loops with named-field selection.
+Native pipeline limits are 512 threads for predicates and 384 for support, with execution width
+32 for both, above the required group size of 64. An earlier explicit nine-call overlay expansion
+was cancelled before support completion and is not counted as a successful native proof.
+The final lowering replaces that expansion and uses the proved three-word product placement.
+
+```bash
+build-slot --label c03-shared-fixtures-build -- dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release
+build-slot --label c03-shared-fixtures-tests -- env KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~CoverageComputePredicateGpuTests|FullyQualifiedName~CoverageComputeSupportGpuTests|FullyQualifiedName~CoverageReferencePredicateTests|FullyQualifiedName~CoverageReferenceCrossingTests' --logger 'console;verbosity=detailed'
+```
+
+Set `KE_SHADER_CORPUS_DUMP` to retain both new modules' SPIR-V, HLSL, MSL and five corpus rows.
+Only their ten new rows are added to the committed corpus. Existing shader hashes and frozen
+coverage outputs are unchanged. Native Direct3D11 WARP with FXC cs_5_0, Vulkan lavapipe with clean
+synchronization validation, and Apple Paravirtual pipeline creation remain root-owned hosted
+checks using that same four-class filter. Local Apple M2 Max limits do not establish Paravirtual
+limits. This task makes no timing, load, stress, performance-budget or full-construction claim.

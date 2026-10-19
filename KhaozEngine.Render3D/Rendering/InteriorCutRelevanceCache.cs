@@ -18,27 +18,48 @@ internal sealed class InteriorCutRelevanceCache
 
     internal int Evaluations { get; private set; }
     internal int Lookups { get; private set; }
+    internal int ContextChecks { get; private set; }
 
     readonly record struct Placement(MeshHandle Mesh, Matrix4x4 World, float Margin, bool Relevant);
 
     internal void BeginFrame() => _submission = 0;
 
+    internal void SetContext(InteriorHeightField? field, InteriorCutFrame frame)
+    {
+        ContextChecks++;
+        // Disabling a field does not discard static answers. Re-enabling it still checks its version and frame.
+        if (field is null) return;
+        if (_version != field.Version || _frame != frame)
+            ChangeField(field.Version, frame);
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool TryGet(MeshHandle mesh, in Matrix4x4 world, float outwardMargin, out bool relevant)
+    {
+        ReadOnlySpan<Placement> submissions = CollectionsMarshal.AsSpan(_submissions);
+        int submission = _submission;
+        if ((uint)submission < (uint)submissions.Length)
+        {
+            // Read the retained matrix in place. MeshHandle's inherited Equals would box both handles.
+            ref readonly Placement previous = ref submissions[submission];
+            if (previous.Mesh.Index == mesh.Index && previous.Mesh.Generation == mesh.Generation
+                && previous.World == world && previous.Margin == outwardMargin)
+            {
+                _submission++;
+                relevant = previous.Relevant;
+                return true;
+            }
+        }
+        relevant = false;
+        return false;
+    }
+
     internal bool MayIntersect(InteriorHeightField field, InteriorCutFrame frame,
         MeshHandle mesh, in Matrix4x4 world, in MeshBounds bounds, float outwardMargin = 0f)
     {
-        if (_version != field.Version || _frame != frame)
-            ChangeField(field.Version, frame);
-        int submission = _submission++;
-        if (submission < _submissions.Count)
-        {
-            // Read the retained matrix in place. MeshHandle's inherited Equals would box both handles.
-            ref readonly Placement previous = ref CollectionsMarshal.AsSpan(_submissions)[submission];
-            if (previous.Mesh.Index == mesh.Index && previous.Mesh.Generation == mesh.Generation
-                && previous.World == world && previous.Margin == outwardMargin)
-                return previous.Relevant;
-        }
-        return EvaluatePlacement(field, frame, mesh, world, bounds, outwardMargin, submission);
+        SetContext(field, frame);
+        if (TryGet(mesh, world, outwardMargin, out bool relevant)) return relevant;
+        return EvaluatePlacement(field, frame, mesh, world, bounds, outwardMargin, _submission++);
     }
 
     void ChangeField(long version, InteriorCutFrame frame)

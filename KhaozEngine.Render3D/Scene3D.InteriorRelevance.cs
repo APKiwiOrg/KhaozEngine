@@ -13,6 +13,7 @@ public sealed partial class Scene3D
     bool _interiorRelevanceDirty;
     InteriorCutFrame _interiorRelevanceFrame;
     InteriorCutFrame _interiorSubmissionFrame;
+    internal int InteriorMeshReads { get; private set; }
     internal int InteriorMarginEvaluations => _silhouetteRelevance.Evaluations;
     internal int InteriorMarginLookups => _silhouetteRelevance.Lookups;
 
@@ -22,16 +23,34 @@ public sealed partial class Scene3D
         _interiorSubmissionFrame = new InteriorCutFrame(_frameOrigin);
         _interiorRelevance.BeginFrame();
         _silhouetteRelevance.BeginFrame();
+        PrepareInteriorRelevanceContext();
+    }
+
+    void PrepareInteriorRelevanceContext()
+    {
+        _interiorRelevance.SetContext(InteriorCut, _interiorSubmissionFrame);
+        _silhouetteRelevance.SetContext(InteriorCut, _interiorSubmissionFrame);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     bool RelevantInteriorCut(MeshHandle handle, in Matrix4x4 world, float outwardMargin = 0f)
     {
-        if (InteriorCut is not { } field || !_slots.IsValid(handle.Index, handle.Generation)
-            || _meshes[handle.Index] is not { } mesh) return false;
+        if (InteriorCut is not { } field) return false;
         InteriorCutRelevanceCache cache = outwardMargin == 0f ? _interiorRelevance : _silhouetteRelevance;
         // Silhouettes cut at their extruded positions. Their world-metre displacement must expand the
         // drawn sphere, independently of mesh scale and the cached zero-margin answer for the model.
+        // UnloadMesh forgets every slot for its handle before that slot can be reused.
+        if (cache.TryGet(handle, world, outwardMargin, out bool relevant)) return relevant;
+        return EvaluateInteriorRelevance(cache, field, handle, world, outwardMargin);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    bool EvaluateInteriorRelevance(InteriorCutRelevanceCache cache, InteriorHeightField field,
+        MeshHandle handle, in Matrix4x4 world, float outwardMargin)
+    {
+        // Keep nullable Mesh extraction and its full struct copies off the unchanged submission path.
+        if (!_slots.IsValid(handle.Index, handle.Generation) || _meshes[handle.Index] is not { } mesh) return false;
+        InteriorMeshReads++;
         return cache.MayIntersect(field, _interiorSubmissionFrame, handle, world, mesh.Bounds, outwardMargin);
     }
 

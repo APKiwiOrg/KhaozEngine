@@ -15,6 +15,7 @@ public sealed partial class Scene3D
         {
             if (ReferenceEquals(_interiorCut, value)) return;
             _interiorCut = value;
+            PrepareInteriorRelevanceContext();
             _interiorRelevanceDirty = true;
         }
     }

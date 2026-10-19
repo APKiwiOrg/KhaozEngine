@@ -10,6 +10,72 @@ namespace KhaozEngine.Tests.Render3D;
 public sealed class InteriorCutPlacementSlotTests
 {
     [Fact]
+    public void UnchangedSubmissionsCheckContextOnceAndDoNotReadMeshSlots()
+    {
+        using var rig = new MotionTestScene();
+        Scene3D scene = rig.Scene;
+        scene.InteriorCut = InteriorCutShadowTests.Field();
+        MeshHandle mesh = scene.LoadMesh(MeshPrimitives.Box());
+        var cache = HighlightTestAccess.Field<InteriorCutRelevanceCache>(scene, "_interiorRelevance");
+        void Submit()
+        {
+            scene.Begin();
+            foreach (float x in new[] { 1f, 20f, 40f })
+                scene.Draw(new RigidInstanceDraw(mesh, Matrix4x4.CreateTranslation(x, 0, 0)) { CutInsideInteriors = true });
+        }
+        Submit();
+        int checks = cache.ContextChecks, reads = scene.InteriorMeshReads;
+
+        Submit();
+
+        Assert.Equal(checks + 1, cache.ContextChecks);
+        Assert.Equal(reads, scene.InteriorMeshReads);
+        Assert.True(scene.QueuedInstancesForTests[0].CutInsideInteriors);
+        Assert.False(scene.QueuedInstancesForTests[1].CutInsideInteriors);
+        Assert.False(scene.QueuedInstancesForTests[2].CutInsideInteriors);
+    }
+
+    [Fact]
+    public void WarmSlotsDoNotSurviveAMeshUnloadedBetweenFrames()
+    {
+        using var rig = new MotionTestScene();
+        Scene3D scene = rig.Scene;
+        scene.InteriorCut = InteriorCutShadowTests.Field();
+        MeshHandle old = scene.LoadMesh(MeshPrimitives.Box(.02f));
+        var world = Matrix4x4.CreateTranslation(20, 0, 0);
+        scene.Begin();
+        scene.Draw(new RigidInstanceDraw(old, world) { CutInsideInteriors = true });
+        scene.Begin();
+        scene.UnloadMesh(old);
+        MeshHandle replacement = scene.LoadMesh(MeshPrimitives.Box(100));
+        scene.Draw(new RigidInstanceDraw(old, world) { CutInsideInteriors = true });
+        scene.Draw(new RigidInstanceDraw(replacement, world) { CutInsideInteriors = true });
+
+        Assert.Equal(old.Index, replacement.Index);
+        Assert.NotEqual(old.Generation, replacement.Generation);
+        Assert.False(scene.QueuedInstancesForTests[0].CutInsideInteriors);
+        Assert.True(scene.QueuedInstancesForTests[1].CutInsideInteriors);
+    }
+
+    [Fact]
+    public void AReplacementFieldRefreshesEarlierAndLaterSubmissions()
+    {
+        using var rig = new MotionTestScene();
+        Scene3D scene = rig.Scene;
+        scene.InteriorCut = InteriorCutShadowTests.Field();
+        MeshHandle mesh = scene.LoadMesh(MeshPrimitives.Box());
+        var draw = new RigidInstanceDraw(mesh, Matrix4x4.CreateTranslation(1, 0, 0)) { CutInsideInteriors = true };
+        scene.Begin();
+        scene.Draw(in draw);
+        scene.InteriorCut = InteriorHeightFieldBuilder.Build([], new InteriorWindow(new Vector2(-2), .25f, 32), InteriorEncoding.For(-1, 3));
+        scene.Draw(in draw);
+        rig.Render();
+
+        Assert.Equal(2, scene.QueuedInstancesForTests.Count);
+        Assert.All(scene.QueuedInstancesForTests, item => Assert.False(item.CutInsideInteriors));
+    }
+
+    [Fact]
     public void SubmissionSlotsMatchBothMeshIdentityComponents()
     {
         var cache = new InteriorCutRelevanceCache();

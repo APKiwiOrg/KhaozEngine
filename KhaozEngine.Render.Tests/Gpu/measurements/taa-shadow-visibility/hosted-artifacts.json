@@ -15,7 +15,9 @@
       "sha256": "56c839f13e0c861743a4daa8a79c45de093fdab9cd86bfe07448cc038e4a5010",
       "results": {
         "Passed": 1097,
-        "Failed": 2
+        "Failed": 2,
+        "Skipped": 0,
+        "Total": 1099
       },
       "selectedControlFacts": 5,
       "selectedControlSkips": 0,
@@ -173,6 +175,13 @@
           "outcome": "Passed",
           "test": "KhaozEngine.Tests.Gpu.D3D11HlslByteEqualityTests.EveryShippedProgramsEmittedHlsl_MatchesItsPinnedHash"
         }
+      ],
+      "summaryLines": [
+        "Test Run Failed.",
+        "Total tests: 1099",
+        "     Passed: 1097",
+        "     Failed: 2",
+        " Total time: 2.7446 Minutes"
       ]
     },
     {
@@ -186,7 +195,9 @@
       "sha256": "b2ee152c1b9cbd37947708a7702dacfba8df12b6f07ff894aa920b4c27917ce2",
       "results": {
         "Passed": 1097,
-        "Failed": 2
+        "Failed": 2,
+        "Skipped": 0,
+        "Total": 1099
       },
       "selectedControlFacts": 5,
       "selectedControlSkips": 0,
@@ -344,6 +355,13 @@
           "outcome": "Passed",
           "test": "KhaozEngine.Tests.Gpu.TemporalShadowFilterGpuTests.The_cascade_filter_matches_the_sixteen_comparison_oracle"
         }
+      ],
+      "summaryLines": [
+        "Test Run Failed.",
+        "Total tests: 1099",
+        "     Passed: 1097",
+        "     Failed: 2",
+        " Total time: 36.1169 Minutes"
       ]
     },
     {
@@ -357,7 +375,9 @@
       "sha256": "1af0e126b17fd7a662ab3bf693e05733d74d9c2b9a81f53fc68976ba66cb81ce",
       "results": {
         "Passed": 1097,
-        "Failed": 2
+        "Failed": 2,
+        "Skipped": 0,
+        "Total": 1099
       },
       "selectedControlFacts": 5,
       "selectedControlSkips": 0,
@@ -515,6 +535,13 @@
           "outcome": "Passed",
           "test": "KhaozEngine.Tests.Gpu.TemporalShadowGatherCompileTests.The_gather_candidate_compiles_to_a_spirv_image_gather"
         }
+      ],
+      "summaryLines": [
+        "Test Run Failed.",
+        "Total tests: 1099",
+        "     Passed: 1097",
+        "     Failed: 2",
+        " Total time: 33.4115 Minutes"
       ]
     }
   ]

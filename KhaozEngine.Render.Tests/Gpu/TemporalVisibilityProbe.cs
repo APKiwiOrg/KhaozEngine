@@ -18,7 +18,6 @@ internal sealed class TemporalVisibilityProbe : IDisposable
     readonly IGpuBuffer _uniforms;
     readonly IGpuTexture _output;
     internal IGpuDevice Device => _gpu.GpuDevice;
-    internal float HistoryScale { get; private set; }
 
     const string Header = @"
 layout(set=0,binding=0) uniform texture2D SceneDepth;
@@ -48,7 +47,7 @@ void main() {
     int channel = int(gl_FragCoord.x);
     Result = channel == 0 ? change : channel == 1 ? (valid ? 1.0 : 0.0)
         : channel == 2 ? (valid && abs(change) > 0.1 ? 1.0 : 0.0)
-        : (valid ? temporalVisibilityHistoryScale(change) : 1.0) + sink * 1e-30;
+        : sink * 1e-30;
 }
 ";
 
@@ -108,7 +107,6 @@ void main() {
         Device.Submit(commands);
         Device.WaitForIdle();
         float[] values = TemporalTextureIo.Read(Device, _output);
-        HistoryScale = values[3];
         return new(values[0], values[1], values[2]);
     }
 

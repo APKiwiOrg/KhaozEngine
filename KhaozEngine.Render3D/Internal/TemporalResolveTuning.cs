@@ -24,12 +24,6 @@ namespace KhaozEngine.Render3D.Internal
     {
         /// <summary>Qualified visibility changes release locks strictly above this magnitude.</summary>
         public const float VisibilityReleaseThreshold = 0.1f;
-        /// <summary>Large visibility rises drop history strictly above this signed threshold.</summary>
-        public const float VisibilityLargeChangeThreshold = 0.5f;
-        /// <summary>Positive current minus previous visibility means light is arriving.</summary>
-        public const float VisibilityLargeChangeSign = 1f;
-        /// <summary>Retained accumulated weight and display share on a qualifying rise.</summary>
-        public const float VisibilityLargeChangeScale = 0f;
         /// <summary>Relative current and previous surface depth qualification.</summary>
         public const float VisibilityDepthTolerance = 0.02f;
         /// <summary>Step 1. The motion target clears both channels to <see cref="MotionMath.Sentinel"/> where no opaque

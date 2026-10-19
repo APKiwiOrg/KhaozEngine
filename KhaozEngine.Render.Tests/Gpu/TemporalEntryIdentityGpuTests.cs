@@ -165,7 +165,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         // Uploaded shadow edges isolate the visibility response from shadow-map rasterization. The outlined row
-        // runs the production edge pass on both scene inputs before the same release and response assertions.
+        // runs the production edge pass on both scene inputs before the same release and retained-history assertions.
         [GpuTheory]
         [InlineData(TemporalUpscale.Native, 8, false)]
         [InlineData(TemporalUpscale.Quality, 12, false)]
@@ -178,6 +178,7 @@ namespace KhaozEngine.Tests.Gpu
             SetupOutline(settings, outline);
             using var fused = new TemporalResolveRig(N, N, display, display, SceneNdc, outline ? settings : null);
             using var split = new TemporalResolveRig(N, N, display, display, SceneNdc, outline ? settings : null);
+            using var unlocked = new TemporalResolveRig(N, N, display, display, SceneNdc, outline ? settings : null);
             using GpuRetireQueue retired = GpuRetireQueue.Create(split.Device);
             split.Renderer.SelectEntry(TemporalResolveEntry.Split, retired);
             using IGpuTexture a = VisibilitySignal(fused.Device);
@@ -189,8 +190,6 @@ namespace KhaozEngine.Tests.Gpu
             Vector2 previousJitter = default;
             int rises = 0, falls = 0;
             int pixel = (display / 2 * display + display / 4) * 2;
-            float freshConfidence = 0;
-            float[] freshColour = [];
             for (int frame = 0; frame < edges.Length; frame++)
             {
                 byte[] bytes = Enumerable.Range(0, N * N).Select(i => i % N >= edges[frame] ? (byte)255 : (byte)0).ToArray();
@@ -223,15 +222,23 @@ namespace KhaozEngine.Tests.Gpu
                             rig.Renderer.VisibilityHistory.Texture(rig.History.ReadIndex)));
                     rig.History.MarkValidAfterFrame();
                 }
+                // A matched-jitter control has full history with no lock or visibility signal. It isolates
+                // retained weight and display reconstruction from the clipping change caused by lock release.
+                float[] controlCurrent = Grey((x, _) => x == 1 ? 0.7f : 0.2f);
+                unlocked.Fill(controlCurrent, controlCurrent, Motion((_, _) => Vector2.Zero));
+                unlocked.BeginFrame();
+                if (frame > 0)
+                    unlocked.FillHistory(Grey(display, display, (_, _) => 0.4f),
+                        Pairs(display, display, (_, _) => new Vector2(1, 0)), SceneLinear);
+                unlocked.Resolve(uniforms);
+                unlocked.History.MarkValidAfterFrame();
                 Assert.Equal(MemoryMarshal.AsBytes(fused.ReadState().AsSpan()).ToArray(),
                     MemoryMarshal.AsBytes(split.ReadState().AsSpan()).ToArray());
                 Assert.Equal(MemoryMarshal.AsBytes(fused.ReadColor().AsSpan()).ToArray(),
                     MemoryMarshal.AsBytes(split.ReadColor().AsSpan()).ToArray());
                 if (frame == 0)
                 {
-                    freshConfidence = fused.ReadState()[pixel];
-                    freshColour = fused.ReadColor();
-                    Assert.InRange(freshConfidence, 0.01f, 0.15f);
+                    Assert.InRange(fused.ReadState()[pixel], 0.01f, 0.15f);
                 }
                 if (frame == 1)
                 {
@@ -242,14 +249,12 @@ namespace KhaozEngine.Tests.Gpu
                 {
                     float[] state = fused.ReadState();
                     Assert.Equal(0, state[pixel + 1]);
-                    if (edges[frame] == 8) { Assert.Equal(1, state[pixel]); falls++; }
-                    else
-                    {
-                        Assert.Equal(freshConfidence, state[pixel]);
-                        float[] colour = fused.ReadColor();
-                        for (int c = 0; c < 4; c++) Assert.Equal(freshColour[pixel * 2 + c], colour[pixel * 2 + c]);
-                        rises++;
-                    }
+                    Assert.Equal(1, state[pixel]);
+                    Assert.Equal(1, unlocked.ReadState()[pixel]);
+                    float[] colour = fused.ReadColor(), retained = unlocked.ReadColor();
+                    for (int c = 0; c < 4; c++) Assert.Equal(retained[pixel * 2 + c], colour[pixel * 2 + c]);
+                    if (edges[frame] == 8) falls++;
+                    else rises++;
                     output.WriteLine($"  frame {frame}: confidence {state[pixel]:R}, lock {state[pixel + 1]:R}");
                 }
                 previous = bytes;

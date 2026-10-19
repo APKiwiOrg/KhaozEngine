@@ -1268,3 +1268,19 @@ is retained. No consumer, timing, load, world bake, push, main integration or re
 No manual client validation is required for this CPU-only lane. The remaining verification
 concern is the unchanged tracked catalog deadline failure #1462. The original red full-test
 and format results remain visible beside their necessary focused corrections.
+
+## Release merge and 21.6.1 finishing verification
+
+After v21.6.0 was tagged at b5f3a4e74, origin/main was merged into the lane at e6ee3f9ef under BR-R6. Every
+engine-version declaration moved to 21.6.1 and the lane's CHANGELOG entry became `## 21.6.1` above the released
+21.6.0 entry, which is unchanged. `bash scripts/check-doc-versions.sh` passed. The Task 7 section above records
+the earlier 21.5.3 staging as it was verified.
+
+| Check | Result |
+| --- | --- |
+| `dotnet build KhaozEngine.slnx -c Release` | exit 0, 0 warnings, 0 errors |
+| `dotnet test KhaozEngine.Game.Tests` (Release, no build) | 6,329 passed, 0 failed, 1 skipped |
+| `dotnet test KhaozEngine.Movement.Tests` (Release, no build) | 1,418 passed, 0 failed, 3 skipped |
+| `dotnet format KhaozEngine.slnx --verify-no-changes --no-restore` | exit 2, 14 whitespace errors, all in five interior cut files already on main, none in a file this lane changed, tracked as #1505 |
+
+The engine has no format gate in CI. This lane's own files carry no format error.

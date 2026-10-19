@@ -99,7 +99,7 @@ internal sealed class CoverageGpuTestSession : IDisposable
 
     internal uint[] ReadWords(int actor, int pair)
     {
-        int stride = pair switch { 0 or 2 or 4 or 6 or 8 or 10 or 32 => 16, 12 => 3, 22 => 2, 24 => 6, _ => 1 };
+        int stride = pair switch { 0 or 2 or 4 or 6 or 8 or 10 or 32 => 16, 12 => 3, 22 => 2, 24 or 34 => 6, 36 => 12, _ => 1 };
         int start = checked((int)(Batch.Actors[actor].WorkBase + headers[actor][pair]));
         return captured.AsSpan(start, checked((int)headers[actor][pair + 1] * stride)).ToArray();
     }
@@ -120,6 +120,17 @@ internal sealed class CoverageGpuTestSession : IDisposable
             uint[] words = new uint[hosts[actor].VertexCount * 16]; Array.Fill(words, word);
             device.UpdateBuffer(Batch.Work, CoverageGpuLayout.Bytes(Batch.Actors[actor].WorkBase + headers[actor][4]), words);
         }
+    }
+
+    internal void PoisonContinuations(uint word)
+    {
+        for (int actor = 0; actor < hosts.Length; actor++)
+            foreach (var (pair, stride) in new[] { (34, 6), (36, 12) })
+            {
+                uint[] words = new uint[headers[actor][pair + 1] * stride];
+                Array.Fill(words, word);
+                device.UpdateBuffer(Batch.Work, CoverageGpuLayout.Bytes(Batch.Actors[actor].WorkBase + headers[actor][pair]), words);
+            }
     }
 
     internal void RecordReadback(IGpuCommandList commands)

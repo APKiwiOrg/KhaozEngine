@@ -69,8 +69,8 @@ internal static class CoverageGpuCorrectionGlsl
             uint f = covFrame(), w = CovFrameWords[f+1u], t = gl_GlobalInvocationID.x;
             if (t >= CovFrameWords[f+7u] || covCompletedFailure(w)) return;
             uint continuation = covRow(w,36u)+t*12u;
+            if (CovWorkWords[continuation+11u] != 1u) return;
             CovFaceWork next = covFaceWorkRead(continuation);
-            if (next.state != 1u) return;
             uint h = CovFrameWords[f], face = covTable(h,14u)+t*3u;
             int slot = covRegionSlot(f,int(CovStaticWords[face+1u])); uint command = covCommand(f,uint(slot));
             CovOverlayGraph overlay = covOverlayBegin(CovFrameWords[command+67u],next.host.a,next.host.b,next.host.c);
@@ -86,8 +86,9 @@ internal static class CoverageGpuCorrectionGlsl
         void main() {
             uint f = covFrame(), w = CovFrameWords[f+1u], t = gl_GlobalInvocationID.x;
             if (t >= CovFrameWords[f+7u] || covCompletedFailure(w)) return;
-            CovFaceWork next = covFaceWorkRead(covRow(w,36u)+t*12u);
-            if (next.state != 2u) return;
+            uint continuation = covRow(w,36u)+t*12u;
+            if (CovWorkWords[continuation+11u] != 2u) return;
+            CovFaceWork next = covFaceWorkRead(continuation);
             uint h = CovFrameWords[f], face = covTable(h,14u)+t*3u, indices = covTable(h,20u)+t*3u;
             int slot = covRegionSlot(f,int(CovStaticWords[face+1u])); uint command = covCommand(f,uint(slot));
             float deficit = covAdd(covAdd(next.maximum,covRead(CovFrameWords[command+54u])),next.discrepancy);

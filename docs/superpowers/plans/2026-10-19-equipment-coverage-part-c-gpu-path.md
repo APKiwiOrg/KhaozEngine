@@ -221,7 +221,10 @@ Task 6 applies C8 option D after the combined ConformGroups and CorrectFaces mod
 caps. Work header pairs 34/35 and 36/37 name checked, invocation-owned group and face continuation
 tables. Their strides are six and twelve words. Group records contain query XYZ, height, spatial
 weight and state. Face records contain the nominal triangle, discrepancy, overlay maximum and state.
-Each producer initializes its record before any dependent dispatch. Dispatch barriers separate height,
+ConformGroups initializes all six group words, including idle and failed records. CorrectFaces always
+initializes the face state word. Idle face payloads are unspecified and must not be read. State 1
+publishes a complete face payload for overlay, and state 2 publishes it for finish. Each face consumer
+checks its required state before loading the payload. Dispatch barriers separate height,
 boundary and conformation completion, and face preparation, overlay and final correction. All face
 notes remain private to their face rows until ReduceFaces. Completed failure substages remain 1 to 5
 for skin and refinement, with conformation 6, face correction 7 and full-target validation 8.

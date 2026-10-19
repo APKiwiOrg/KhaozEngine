@@ -10,7 +10,7 @@ using static KhaozEngine.Tests.Gpu.CoverageGpuConformTestData;
 
 namespace KhaozEngine.Tests.Gpu;
 
-public sealed class CoverageComputeConformGpuTests(ITestOutputHelper output)
+public sealed partial class CoverageComputeConformGpuTests(ITestOutputHelper output)
 {
     [GpuFact]
     public void Conformation_and_correction_preserve_reference_order()

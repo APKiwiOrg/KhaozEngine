@@ -64,7 +64,7 @@ public sealed partial class PhysicsNavBake
         bool aquatic = check.Aquatic;
         PhysicsNavColumns columns = check.Columns;
         NavAreaFootprint footprint = check.Footprint;
-        ContactNavigationReusePolicy reuse = ContactNavigationReusePolicy.Capture();
+        ContactNavigationReusePolicy reuse = ContactNavigationReusePolicy.Capture(execution);
         if (degree > 1 && kind == EffectiveMovementBindingKind.OrdinaryContact)
         {
             RequireConcurrentReads(context);
@@ -144,6 +144,7 @@ public sealed partial class PhysicsNavBake
                     Feet(toGrid, link.ToX, link.ToZ), toFloats, footprint)) links.Add(link);
         }
         _ = Context;
+        contact?.AssertCurrent();
         stable?.AssertCurrent();
         var graph = new NavTraversalGraph(space, tuning.CapsuleRadius, height, layers, links);
         return new GroundNavigation(graph, tuning, footprint, aquatic);

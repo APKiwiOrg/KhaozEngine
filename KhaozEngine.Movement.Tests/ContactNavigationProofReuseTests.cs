@@ -42,11 +42,12 @@ public class ContactNavigationProofReuseTests(ITestOutputHelper output)
     [MemberData(nameof(PinnedDegrees))]
     public void PinnedContactBaselinesAtSerialAndParallelDegrees(string fixture, string hash, int degree)
     {
+        using var footprintOnly = ContactNavigationBuildHooks.Install(new() { DisableInitialHoldReuse = true });
         var prior = SupportQueryDiagnostics.Exchange(SupportQueryDiagnostics.ThreadState.Fresh(true));
         try
         {
             ContactNavigationBaselineTests.BaselineBake reference;
-            using (ContactNavigationBuildHooks.Install(new() { DisableFootprintReuse = true }))
+            using (ContactNavigationBuildHooks.Install(new() { DisableFootprintReuse = true, DisableInitialHoldReuse = true }))
                 reference = ContactNavigationBaselineTests.BuildFixture(fixture, new NavBakeExecution(degree));
             SupportQueryCounts off = SupportQueryDiagnostics.Snapshot();
             SupportQueryDiagnostics.Reset();

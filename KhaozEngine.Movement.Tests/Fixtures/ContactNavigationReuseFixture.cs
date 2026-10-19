@@ -21,22 +21,27 @@ internal sealed class ContactNavigationReuseFixture : IDisposable
     internal readonly GroundMoveContext Context;
     internal readonly PhysicsNavBake Bake;
     internal readonly Vector3 From, To;
+    internal readonly TracedWater Water;
+    internal readonly ConcurrentQueue<FramedMovementState> StepInputs = new();
     internal bool FailProvider;
+    internal float HeightValue;
     internal Action<float, float>? OnHeight;
     readonly IPhysicsWorldQueryView? _unsupported;
 
-    internal ContactNavigationReuseFixture(bool physicsWins = false, bool unsupported = false, bool skippedFloor = false)
+    internal ContactNavigationReuseFixture(bool physicsWins = false, bool unsupported = false, bool skippedFloor = false,
+        int maxSteps = 160)
     {
         float top = skippedFloor ? 1 : physicsWins ? 0.125f : 0;
         From = new(-0.075f, top, 0.125f);
         To = From + new Vector3(0.25f, 0, 0);
-        var water = new TracedWater(this);
+        Water = new(this);
+        var water = Water;
         Scene = new(Tuning, (x, z) =>
         {
             Trace.Enqueue(("height", BitConverter.SingleToInt32Bits(x), BitConverter.SingleToInt32Bits(z)));
             OnHeight?.Invoke(x, z);
             if (FailProvider && x > 0) throw new ProviderFailure();
-            return 0;
+            return HeightValue;
         }, (x, z) =>
         {
             Trace.Enqueue(("normal", BitConverter.SingleToInt32Bits(x), BitConverter.SingleToInt32Bits(z)));
@@ -49,19 +54,19 @@ internal sealed class ContactNavigationReuseFixture : IDisposable
         _unsupported = unsupported ? new UnsupportedView(Scene.Physics.CreateQueryViewExcludingStatics([])) : null;
         Context = new(Scene.Height, Scene.Normal, Scene.Physics, null, null, _unsupported,
             water, Scene.Registration, MovementBoundary.Rectangle(-20, -20, 20, 20));
-        Bake = PhysicsNavBake.Capture(Context, Options, _ => 0);
+        Bake = PhysicsNavBake.Capture(Context, Options with { MaxEdgeProbeSteps = maxSteps }, _ => 0);
         Trace.Clear();
     }
 
-    internal ContactNavigationProof Proof(bool reuse = true)
+    internal ContactNavigationProof Proof(bool reuse = true, bool holds = false)
     {
         using var source = Context.CreateNavigationBinding(Tuning);
         const BindingFlags fields = BindingFlags.Instance | BindingFlags.NonPublic;
         var context = (MovementEnvironmentContext)typeof(EffectiveMovementBinding).GetField("_context", fields)!.GetValue(source)!;
         FieldInfo provider = typeof(MovementEnvironmentContext).GetField("_provider", fields)!;
         provider.SetValue(context, new TracedProvider((IMovementEnvironmentProvider)provider.GetValue(context)!, this));
-        return new(Bake, Context, source, new NavAreaFootprint(Bake.Columns, Options, Tuning, default),
-            new ContactNavigationReusePolicy(reuse, false, false));
+        return new(Bake, Context, source, new NavAreaFootprint(Bake.Columns, Bake.Options, Tuning, default),
+            new ContactNavigationReusePolicy(reuse, holds, false));
     }
 
     internal static ContactNavigationSource Source(int ordinal = 0, int layer = 0) =>
@@ -110,12 +115,26 @@ internal sealed class ContactNavigationReuseFixture : IDisposable
         Scene.Dispose();
     }
 
-    sealed class TracedWater(ContactNavigationReuseFixture owner) : IMovementWaterField
+    internal sealed class TracedWater(ContactNavigationReuseFixture owner) : IMovementWaterField
     {
         readonly IMovementWaterField _inner = MovementWaterField.Level("world", -3, -4);
-        public string SemanticIdentity => _inner.SemanticIdentity;
-        public long Generation => _inner.Generation;
-        public MovementWaterExtent Extent => _inner.Extent;
+        long _generation;
+        internal int GenerationReads;
+        internal Action? BeforeGenerationRead;
+        internal string? IdentityOverride;
+        internal MovementWaterExtent? ExtentOverride;
+        internal void Advance() => System.Threading.Interlocked.Increment(ref _generation);
+        public string SemanticIdentity => IdentityOverride ?? _inner.SemanticIdentity;
+        public long Generation
+        {
+            get
+            {
+                System.Threading.Interlocked.Increment(ref GenerationReads);
+                BeforeGenerationRead?.Invoke();
+                return System.Threading.Interlocked.Read(ref _generation);
+            }
+        }
+        public MovementWaterExtent Extent => ExtentOverride ?? _inner.Extent;
         public MovementWaterPoint SampleCentreWater(in MovementBodyQuery body, Vector3 origin)
         {
             owner.Trace.Enqueue(("water", body, origin));
@@ -158,8 +177,11 @@ internal sealed class ContactNavigationReuseFixture : IDisposable
             inner.EnumerateSupport(request, candidates);
         public MovementCoverageResult TraceWater(in MovementMediumSweepQuery query, Span<MovementCoverageSpan> spans,
             Span<MovementDomainContact> contacts) => inner.TraceWater(query, spans, contacts);
-        public MovementAvailability RebuildSelection(in FramedMovementState state, out MovementSelection selection) =>
-            inner.RebuildSelection(state, out selection);
+        public MovementAvailability RebuildSelection(in FramedMovementState state, out MovementSelection selection)
+        {
+            owner.StepInputs.Enqueue(state);
+            return inner.RebuildSelection(state, out selection);
+        }
         public MovementAvailability SampleAnalyticGround(in MovementSupportRequest request, out MovementAnalyticGround? ground)
         {
             var status = ((IMovementContactSupportPin)inner).SampleAnalyticGround(request, out ground);

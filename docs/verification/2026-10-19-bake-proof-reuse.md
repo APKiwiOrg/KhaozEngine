@@ -513,3 +513,115 @@ All build/test commands ran synchronously through build-slot, one at a time. Log
 /tmp/khaozengine-bake-proof-reuse/task-3-*.log. No cost or timing harness, full suite, stress,
 load, consumer, world bake, workflow, pack, release or tag ran. No branch switch, push, merge,
 GitHub write or agent/reviewer dispatch occurred.
+
+## Task 4. Stable-provider initial Hold reuse
+
+The public init-only `NavBakeExecution.UseStableContactHoldReuse` defaults false. Serial
+contact callers opt in to the full BB-8 stable-provider obligation. Parallel contact builds
+already have that obligation. Legacy profiles ignore the property. Null and degree-1 builds
+without it retain their original callbacks, including call-count-sensitive values and refusals.
+Neither the property nor the captured reuse policy enters navigation identity or baked bytes.
+
+Each original same-layer source owns one successful numeric Hold memo. Profile and provider
+snapshot tokens bind immutable composition, footprint, registration, selected view and producer
+identities. The key compares all state and effective tuning fields by exact bits, logical scope,
+frame, lease basis, original raw source address, dt and step budget. A small internal MoveState
+accessor exposes private speed-scale storage bits, since the public addition can erase a signed
+zero or round a small bias. The state itself is copied by assignment, including private storage.
+No Selection, support, lease, binding or continuity is retained.
+
+Every edge keeps finite and endpoint footprint checks first. Both real and reused initial Holds
+acquire and dispose the normal current movement lease. Reused Holds authenticate the snapshot,
+including bit-exact water extent and frame, even for immediate arrival. Successful real Holds
+are remembered only after the unchanged Accepted and Near checks. Travel still begins at slice
+one and clears Selection before every real controller call. Admission and Stair Holds are never
+seeded or shared. EdgeSteps counts actual edge controller calls, including Stair but excluding
+admission. Hold reuse works independently of the footprint reuse capability.
+
+The serial snapshot owner is checked at final publication. Parallel checks retain the existing
+joined-worker and failure-cutoff flow. Existing Task 3 worker and scheduler policy plumbing
+already carries eligibility, so it needed no further edit. The prior footprint-only baseline
+test now explicitly disables Hold reuse in both modes. Diagnostic equality compares stable
+serial against parallel and still compares every counter, including both new counters.
+
+### Behavioral reds and test corrections
+
+The required parallel red ran before the API and recurrence changed. After fixing one missing
+namespace import, the file equality passed and the positive InitialHoldReuseHits assertion
+failed because the count was zero. Exit 1.
+
+The first focused selection had 32 passed and two failed. A rejected-Hold fixture at 2 m was
+rejected by the endpoint footprint before any Hold. At 0.1 m the controller still granted support.
+The final 0.8 m fixture passes footprint reach but fails the actual Hold, with two real Steps and
+zero hits. A duplicate serial basis check introduced while adding the snapshot made a physics
+lease diagnostic differ. The stable constructor now uses its full snapshot validation, while
+the historical constructor retains its original basis check. The diagnostic test is green.
+
+An additional key red independently changed 85 inputs. Exactly the private speed-scale signed
+zero falsely matched through the rounded public SpeedScale property. The internal storage-bit
+accessor fixed this red. The final key coverage also changes the source world, every scope
+identity component and each frame-origin signed zero. No tolerance or identity was weakened.
+
+The first broader selection had 137 passed and one failed when a call-count-sensitive analytic
+fixture returned inconsistent positive support heights. The original path itself refuses that
+surface as Unresolved. The final test compares both successful signed-zero callback traces and
+that original refusal, including exception type, message and exact ordered trace. A focused
+four-test trace and arrival selection passed after this test correction.
+
+### Final focused verification and BR-R2
+
+```bash
+build-slot --heavy --label bake-b-design -- dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release --filter 'FullyQualifiedName~ContactNavigationInitialHoldReuseTests|FullyQualifiedName~ContactNavigationProofReuseTests|FullyQualifiedName~ContactNavigationBaselineTests|FullyQualifiedName~ParallelContactBakeTests|FullyQualifiedName~ParallelContactBakeFailureTests|FullyQualifiedName~ContactNavigationAdmissionTests|FullyQualifiedName~ContactNavigationBasisTests|FullyQualifiedName~ContactNavigationPlacementAdmissionTests|FullyQualifiedName~ContactNavigationTraversalTests|FullyQualifiedName~ContactNavigationWaterTests' --logger 'console;verbosity=detailed'
+```
+
+Exit 0. All 139 tests passed, with zero failed or skipped and no compiler warnings or errors.
+This selection includes the brief's Hold/provider selection, the prior footprint/source proofs,
+all pinned baselines, parallel scheduling and failure proofs, admission, placement, traversal,
+water and basis checks. It is not the full suite reserved for Task 7.
+
+All fourteen explicit combined-mode rows passed at degrees 1 and 3. Degree 1 sets the new
+assertion. Degree 3 uses its existing parallel provider contract. Each compares the actual file
+to the same-degree real-Hold reference, then the unchanged normalized hash and fixture graph
+semantics. These are the observed counters and hashes at both degrees.
+
+| Fixture | Degrees | InitialHoldReuseHits | EdgeSteps | Real-Hold reference EdgeSteps | Normalized SHA-256 |
+| --- | --- | ---: | ---: | ---: | --- |
+| low-lip-bank | 1 and 3 | 328 | 3704 | 4032 | `494ab0951ab46de04665351bf1e39ad9156f30aefa73cb43b34f4ecaba72e922` |
+| deck-over-ground | 1 and 3 | 656 | 7408 | 8064 | `77addcbc9c054f85e1a14f916bd95af75d02f105c54ad8e56a3a25716b0d44cc` |
+| wade-only-pool | 1 and 3 | 548 | 11868 | 12416 | `a735ea5a41a1adb58666219b053197ed457b3c7edd830e18f29c7c5c8a1a1635` |
+| rebased-origin | 1 and 3 | 328 | 3704 | 4032 | `e5c86385e4141a289d41d8efbb66766e5ac7c942f825521fff91dede8e9b4eee` |
+| mixed-legacy-contact | 1 and 3 | 328 | 3704 | 4032 | `94fc16f1dee6cfa4c99db7ce490443271a0eb2fe3d9f0906312a836c5cd9a856` |
+| stair-accepted-refused | 1 and 3 | 17 | 1669 | 1686 | `62a061314987a1b8243f9eb8da639cd0239ec200f8f62f11e69e62f5db20959a` |
+| multi-layer-row-bands | 1 and 3 | 80 | 5996 | 6076 | `ae89cde4394002043b200b5e25e4eb0ef778ced4438cd7e985bde8dd96de811a` |
+
+The seven fixtures save 2,285 real edge controller calls from 40,338, leaving 38,053, at each
+reported degree. The multi-direction flat degree-2 red fixture observes 328 Hold hits and
+3,704 actual EdgeSteps against 4,032 with real Holds. No timing or allocation claim is made.
+
+The named immediate-arrival test authenticates a changed water generation even when no travel
+lease follows. At budgets 1 and 2 it compares real and copied Holds at zero, exact 1 mm and its
+adjacent floats, longer targets and a 3D point outside the Euclidean ball. It asserts independent
+verdicts and preserves the consumed zero slice. Separate cases reject changed water semantic
+identity, generation, extent and a signed-zero extent. Final-check controls mutate after the
+last Hold hit and require the snapshot refusal in serial and after the last parallel link band.
+
+Complete output-state checks include every numeric field, private storage, nonzero frame and
+signed-zero feet. The next real Steps receive null Selection and perform fresh binding calls.
+Rejected Holds never seed the memo. Unsupported footprint reuse can still yield Hold hits.
+Reference evaluation continues to bypass both layers and retains zero live footprint storage.
+
+### Scope, self-review and handoff
+
+Self-review inspected the complete production and test diff. The memo contains only numeric
+outputs and immutable key identities, resets per source, authenticates before any hit is counted
+and leaves the recurrence, geometric protections and failure ordering intact. No unresolved
+Task 4 concern remains. The two additional owned files are MoveState for the exact private-bit
+accessor and the prior footprint-only test for explicit equivalent-mode coverage.
+
+The final dependency build is performed by the focused Release test command. This repository
+has no Movement PublicAPI files and its build requested no PublicAPI analyzer update. Full
+solution build, full tests, format verification, living API documentation and staged release
+history remain with Task 7. No golden, version, raw physics identity, tolerance, band, work
+ceiling, storage limit or baked schema changed. No cost harness, wall-clock measurement, load,
+stress, consumer launch, world bake, workflow, release, tag, push, merge, branch change, GitHub
+write or agent/reviewer dispatch occurred. All test commands ran one at a time through build-slot.

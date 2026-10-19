@@ -98,7 +98,7 @@ namespace KhaozEngine.Render3D.Rendering
                 ResourceLayouts = new[] { _layout, _interiorCutLayout },
                 ShaderSet = _visibilityShaders.Select(f, modelOutputs, ShaderSources.SilhouetteVert,
                     MotionMath.IsTemporal(modelOutputs) ? ShaderSources.SilhouetteMotionFrag : ShaderSources.SilhouetteFrag,
-                    MotionMath.IsTemporal(modelOutputs)
+                    () => MotionMath.IsTemporal(modelOutputs)
                         ? _motionShaders ??= f.CreateShadersFromSpirv(ShaderSources.SilhouetteVert, ShaderSources.SilhouetteMotionFrag)
                         : _shaders, preserve: true),
                 VertexLayouts = new List<GpuVertexLayoutDescription> { positionLayout, normalLayout },

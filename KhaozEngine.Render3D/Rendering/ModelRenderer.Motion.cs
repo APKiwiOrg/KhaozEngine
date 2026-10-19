@@ -59,7 +59,7 @@ internal sealed partial class ModelRenderer
         GpuVertexLayoutDescription vertexLayout, GpuVertexLayoutDescription instanceLayout)
     {
         ModelMotionResources motion = RequireMotion();
-        return OpaqueMotionPipeline(factory, outputs, _visibilityShaders.Select(factory, outputs, ShaderSources.ModelMotionVert, ShaderSources.ModelMotionFrag, motion.RigidShaders), new[] { _layout, motion.RigidLayout },
+        return OpaqueMotionPipeline(factory, outputs, _visibilityShaders.Select(factory, outputs, ShaderSources.ModelMotionVert, ShaderSources.ModelMotionFrag, () => motion.RigidShaders), new[] { _layout, motion.RigidLayout },
             new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout, ModelMotionResources.SlotLayout });
     }
 
@@ -71,7 +71,7 @@ internal sealed partial class ModelRenderer
         ModelMotionResources motion = RequireMotion();
         return OpaqueMotionPipeline(factory, outputs, _visibilityShaders.Select(factory, outputs, ShaderSources.SkinnedModelMotionVert,
                 dissolve ? ShaderSources.SkinnedModelDissolveMotionFrag : ShaderSources.SkinnedModelMotionFrag,
-                dissolve ? motion.SkinnedDissolveShaders : motion.SkinnedShaders),
+                () => dissolve ? motion.SkinnedDissolveShaders : motion.SkinnedShaders),
             new[] { _skinnedMainLayout, _skinnedFragLayout, _bonePalette.Layout, motion.SkinnedPalette.Layout },
             new List<GpuVertexLayoutDescription> { skinnedVertexLayout });
     }
@@ -90,7 +90,7 @@ internal sealed partial class ModelRenderer
         return OpaqueMotionPipeline(factory, outputs,
             _visibilityShaders.Select(factory, outputs, ShaderSources.ModelCpuSkinnedMotionVert,
                 dissolve ? ShaderSources.ModelDissolveMotionFrag : ShaderSources.ModelMotionFrag,
-                dissolve ? motion.CpuSkinnedDissolveShaders : motion.CpuSkinnedShaders),
+                () => dissolve ? motion.CpuSkinnedDissolveShaders : motion.CpuSkinnedShaders),
             new[] { _layout, motion.FrameLayout },
             new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout, ModelMotionResources.CpuPreviousLayout });
     }

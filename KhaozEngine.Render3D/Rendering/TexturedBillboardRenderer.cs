@@ -110,7 +110,7 @@ namespace KhaozEngine.Render3D.Rendering
                 ResourceLayouts = new[] { _layout },
                 ShaderSet = _visibilityShaders.Select(factory, modelOutputs, ShaderSources.BillboardVert,
                     MotionMath.IsTemporal(modelOutputs) ? ShaderSources.TexturedBillboardMotionFrag : ShaderSources.TexturedBillboardFrag,
-                    MotionMath.IsTemporal(modelOutputs)
+                    () => MotionMath.IsTemporal(modelOutputs)
                         ? _motionShaders ??= factory.CreateShadersFromSpirv(ShaderSources.BillboardVert, ShaderSources.TexturedBillboardMotionFrag)
                         : _shaders, preserve: true),
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout },

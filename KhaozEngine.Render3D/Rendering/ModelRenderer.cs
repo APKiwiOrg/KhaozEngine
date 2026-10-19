@@ -416,7 +416,7 @@ namespace KhaozEngine.Render3D.Rendering
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },
-                ShaderSet = _visibilityShaders.Select(factory, modelOutputs, ShaderSources.ModelVert, ShaderSources.ModelFrag, _shaders),
+                ShaderSet = _visibilityShaders.Select(factory, modelOutputs, ShaderSources.ModelVert, ShaderSources.ModelFrag, () => _shaders),
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout },
                 Outputs = modelOutputs,
             });
@@ -433,7 +433,7 @@ namespace KhaozEngine.Render3D.Rendering
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },
-                ShaderSet = _visibilityShaders.Select(factory, modelOutputs, ShaderSources.ModelVert, ShaderSources.ModelDissolveFrag, _dissolveShaders),
+                ShaderSet = _visibilityShaders.Select(factory, modelOutputs, ShaderSources.ModelVert, ShaderSources.ModelDissolveFrag, () => _dissolveShaders),
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout },
                 Outputs = modelOutputs,
             });
@@ -465,7 +465,7 @@ namespace KhaozEngine.Render3D.Rendering
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _skinnedMainLayout, _skinnedFragLayout, _bonePalette.Layout },
-                ShaderSet = _visibilityShaders.Select(factory, modelOutputs, ShaderSources.SkinnedModelVert, ShaderSources.SkinnedModelFrag, _skinnedShaders),
+                ShaderSet = _visibilityShaders.Select(factory, modelOutputs, ShaderSources.SkinnedModelVert, ShaderSources.SkinnedModelFrag, () => _skinnedShaders),
                 VertexLayouts = new List<GpuVertexLayoutDescription> { skinnedVertexLayout },
                 Outputs = modelOutputs,
             });
@@ -478,7 +478,7 @@ namespace KhaozEngine.Render3D.Rendering
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _skinnedMainLayout, _skinnedFragLayout, _bonePalette.Layout },
-                ShaderSet = _visibilityShaders.Select(factory, modelOutputs, ShaderSources.SkinnedModelVert, ShaderSources.SkinnedModelDissolveFrag, _skinnedDissolveShaders),
+                ShaderSet = _visibilityShaders.Select(factory, modelOutputs, ShaderSources.SkinnedModelVert, ShaderSources.SkinnedModelDissolveFrag, () => _skinnedDissolveShaders),
                 VertexLayouts = new List<GpuVertexLayoutDescription> { skinnedVertexLayout },
                 Outputs = modelOutputs,
             });

@@ -11,12 +11,12 @@ internal sealed class ModelVisibilityShaders : IDisposable
     readonly Dictionary<(string Vertex, string Fragment, bool Motion, bool Preserve), IGpuShaderSet> _sets = new();
 
     internal IGpuShaderSet Select(IGpuResourceFactory factory, in GpuOutputDescription outputs,
-        string vertex, string fragment, IGpuShaderSet fallback, bool preserve = false)
+        string vertex, string fragment, Func<IGpuShaderSet> fallback, bool preserve = false)
     {
         if (!ShadowVisibilityTargets.HasVisibility(outputs))
         {
             Dispose();
-            return fallback;
+            return fallback();
         }
         var key = (vertex, fragment, MotionMath.IsTemporal(outputs), preserve);
         if (_sets.TryGetValue(key, out IGpuShaderSet? found)) return found;

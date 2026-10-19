@@ -242,10 +242,12 @@ public sealed class MotionTargetWiringTests
         Assert.Contains(off, p => p.FragmentGlsl == ShaderSources.TexturedBillboardFrag);
     }
 
-    [Fact]
-    public void TheTransparentPassesFreeTheirTemporalProgramsWhenTemporalRenderingTurnsOff()
+    [Theory]
+    [InlineData(4)]
+    [InlineData(8)]
+    public void TheTransparentPassesFreeTheirTemporalProgramsWhenTemporalRenderingTurnsOff(int maxColorAttachments)
     {
-        using var harness = new MotionTestScene();
+        using var harness = new MotionTestScene(maxColorAttachments);
         var factory = (FakeGpuResourceFactory)harness.Device.Factory;
         MeshHandle box = harness.Scene.LoadMesh(MeshPrimitives.Box(1f));
         void Queue(Scene3D s) => s.Draw(box, Matrix4x4.Identity);
@@ -254,10 +256,12 @@ public sealed class MotionTargetWiringTests
 
         harness.Scene.ForceTemporalForTests = true;
         Frame(harness, Queue).Dispose();
-        Assert.True(harness.Scene.TransparentMotionShadersHeldForTests);
+        bool visibility = maxColorAttachments >= 5;
+        Assert.Equal(!visibility, harness.Scene.TransparentMotionShadersHeldForTests);
         string[] preserving = { ShaderSources.TexturedBillboardMotionFrag, ShaderSources.BeamMotionFrag,
             ShaderSources.TrailMotionFrag, ShaderSources.OverlayUnlitMotionFrag, ShaderSources.SilhouetteMotionFrag };
-        FakeShaderSet[] programs = factory.ShaderSets.Where(s => preserving.Contains(s.FragmentGlsl)).ToArray();
+        string[] fragments = preserving.Select(p => visibility ? ShadowVisibilityTargets.Fragment(p, motion: true, preserve: true) : p).ToArray();
+        FakeShaderSet[] programs = factory.ShaderSets.Where(s => fragments.Contains(s.FragmentGlsl)).ToArray();
         Assert.Equal(5, programs.Length);
 
         harness.Scene.ForceTemporalForTests = false;

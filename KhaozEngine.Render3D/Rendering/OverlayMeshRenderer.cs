@@ -130,7 +130,7 @@ namespace KhaozEngine.Render3D.Rendering
                 ResourceLayouts = new[] { _layout },
                 ShaderSet = _visibilityShaders.Select(f, modelOutputs, ShaderSources.OverlayUnlitVert,
                     MotionMath.IsTemporal(modelOutputs) ? ShaderSources.OverlayUnlitMotionFrag : ShaderSources.OverlayUnlitFrag,
-                    MotionMath.IsTemporal(modelOutputs)
+                    () => MotionMath.IsTemporal(modelOutputs)
                         ? _motionShaders ??= f.CreateShadersFromSpirv(ShaderSources.OverlayUnlitVert, ShaderSources.OverlayUnlitMotionFrag)
                         : _shaders, preserve: true),
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout },

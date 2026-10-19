@@ -110,7 +110,7 @@ namespace KhaozEngine.Render3D.Rendering
                 ResourceLayouts = new[] { _layout },
                 ShaderSet = _visibilityShaders.Select(factory, modelOutputs, ShaderSources.TrailVert,
                     MotionMath.IsTemporal(modelOutputs) ? ShaderSources.TrailMotionFrag : ShaderSources.TrailFrag,
-                    MotionMath.IsTemporal(modelOutputs)
+                    () => MotionMath.IsTemporal(modelOutputs)
                         ? _motionShaders ??= factory.CreateShadersFromSpirv(ShaderSources.TrailVert, ShaderSources.TrailMotionFrag)
                         : _shaders, preserve: true),
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout },

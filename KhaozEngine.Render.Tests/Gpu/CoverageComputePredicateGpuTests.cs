@@ -15,8 +15,8 @@ public sealed class CoverageComputePredicateGpuTests(ITestOutputHelper output)
     public void Exact_predicates_and_grid_preserve_discrete_decisions_on_device()
     {
         var cases = CoverageGpuPredicateProbe.Cases();
-        uint[] words = CoverageGpuQueryProbe.Run(output, CoverageGpuPredicateProbe.Name, CoverageGpuPredicateProbe.Source,
-            CoverageGpuPredicateProbe.Inputs(cases), cases.Length * CoverageGpuPredicateProbe.OutputWords);
+        uint[] words = CoverageGpuQueryProbe.RunOperations(output, CoverageGpuPredicateProbe.Kernels(),
+            CoverageGpuPredicateProbe.Inputs(cases), CoverageGpuPredicateProbe.InputWords, CoverageGpuPredicateProbe.OutputWords);
         Assert.Equal(unchecked((uint)-1), words[0]);
         Assert.Equal(0x80000000u, words[1]);
         Assert.Equal(0u, words[21]); Assert.Equal(0u, words[22]);

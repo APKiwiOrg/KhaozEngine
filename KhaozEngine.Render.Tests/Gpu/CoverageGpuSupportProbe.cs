@@ -12,26 +12,33 @@ internal static class CoverageGpuSupportProbe
 {
     internal const string Name = "CoverageSupport";
     internal const int InputWords = 11, OutputWords = 4;
-    internal static string Source => """
+    internal static IEnumerable<ShippedComputeKernel> Kernels()
+    {
+        for (int op = 0; op < 3; op++) yield return new(Name + new[] { "Height", "Boundary", "Overlay" }[op], Source(op));
+    }
+    internal static string Source(int operation) => """
         #version 450
         layout(local_size_x = 64) in;
         layout(std430, set = 0, binding = 0) readonly buffer InputBuf { uint Inputs[]; };
         layout(std430, set = 0, binding = 1) buffer ResultBuf { uint Results[]; };
         layout(std430, set = 0, binding = 2) readonly buffer StaticBuf { uint CovStaticWords[]; };
-        """ + CoverageGpuArithmeticGlsl.Source + CoverageGpuExactWordsGlsl.Source + CoverageGpuRoundingGlsl.Source
+        """ + CoverageGpuArithmeticGlsl.Source + CoverageGpuExactWordsGlsl.WorkerSource + CoverageGpuRoundingGlsl.Source
         + CoverageGpuPredicatesGlsl.Source + CoverageGpuSupportGlsl.Source + """
         vec3 probePoint(uint offset) { return vec3(uintBitsToFloat(Inputs[offset]),uintBitsToFloat(Inputs[offset+1u]),uintBitsToFloat(Inputs[offset+2u])); }
         void main() {
             uint row = gl_GlobalInvocationID.x;
             if (row >= Inputs[0]) return;
             uint s = 1u + row * 11u, d = row * 4u;
+        """ + $"if (Inputs[s] != {operation}u) return;\n" + """
             float first = 0.0, second = 0.0;
             int sourceTriangle = -1;
             vec3 a = probePoint(s+2u), b = probePoint(s+5u), c = probePoint(s+8u);
-            bool ok;
-            if (Inputs[s] == 0u) ok = covHeight(Inputs[s+1u],a.xy,first,sourceTriangle);
-            else if (Inputs[s] == 1u) ok = covBoundary(Inputs[s+1u],a.xy,first,second);
-            else ok = covOverlay(Inputs[s+1u],a,b,c,first);
+        """ + (operation switch
+        {
+            0 => "bool ok = covHeight(Inputs[s+1u],a.xy,first,sourceTriangle);",
+            1 => "bool ok = covBoundary(Inputs[s+1u],a.xy,first,second);",
+            _ => "bool ok = covOverlay(Inputs[s+1u],a,b,c,first);",
+        }) + """
             Results[d] = uint(ok); Results[d+1u] = floatBitsToUint(first);
             Results[d+2u] = floatBitsToUint(second); Results[d+3u] = uint(sourceTriangle);
         }

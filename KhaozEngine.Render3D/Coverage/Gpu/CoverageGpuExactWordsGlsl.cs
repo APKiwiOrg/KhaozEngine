@@ -24,7 +24,8 @@ internal static class CoverageGpuExactWordsGlsl
 
         """;
 
-    internal static readonly string Source = BuildSource();
+    internal static readonly string WorkerSource = BuildSource();
+    internal static string Source => WorkerSource + CoverageGpuWideDiagnosticGlsl.Source;
 
     const string Template = """
 
@@ -104,15 +105,6 @@ internal static class CoverageGpuExactWordsGlsl
             return covExactAdd(a, b, overflow);
         }
         CovExact covExactSub(CovExact a, CovExact b) { uint overflow; return covExactSub(a, b, overflow); }
-        CovExact covExactProduct(CovExact a, CovExact b, out uint overflow) {
-            CovExact result = covExactZero();
-            overflow = 0u;
-            /* PRODUCT */
-            overflow = uint(overflow != 0u);
-            result.sign = covExactBitLength(result) == 0 ? 0 : a.sign * b.sign;
-            return result;
-        }
-        CovExact covExactProduct(CovExact a, CovExact b) { uint overflow; return covExactProduct(a, b, overflow); }
         uint covExactRightWord(CovExact a, int shift) {
             int index = shift / 32, part = shift % 32;
             if (index >= 18) return 0u;
@@ -175,22 +167,7 @@ internal static class CoverageGpuExactWordsGlsl
                   if (bits >= 32) { if (a.limb[{{i}}] != 0u) return true; }
                   else return (a.limb[{{i}}] & ((1u << bits)-1u)) != 0u; }
                 """));
-        var product = new StringBuilder();
-        for (int i = 0; i < 18; i++)
-        {
-            product.AppendLine($"if (a.limb[{i}] != 0u) {{ uint carry = 0u;");
-            for (int j = 0; j < 18 - i; j++)
-                product.AppendLine($$"""
-                    { uint low, high; covExactMul32(a.limb[{{i}}], b.limb[{{j}}], low, high);
-                      uint sum = result.limb[{{i + j}}] + low; uint next = sum + carry;
-                      carry = high + uint(sum < low) + uint(next < sum); result.limb[{{i + j}}] = next; }
-                    """);
-            product.AppendLine("overflow |= carry;");
-            for (int j = 18 - i; j < 18; j++)
-                product.AppendLine($"overflow |= b.limb[{j}];");
-            product.AppendLine("}");
-        }
-        return WordProductSource + source.Replace("/* PRODUCT */", product.ToString());
+        return WordProductSource + source;
     }
 
     static string Limbs(Func<int, string> emit, bool reverse = false)

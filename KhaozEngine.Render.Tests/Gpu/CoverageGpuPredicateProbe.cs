@@ -11,25 +11,32 @@ internal static class CoverageGpuPredicateProbe
 {
     internal const string Name = "CoveragePredicates";
     internal const int InputWords = 13, OutputWords = 21;
-    internal static string Source => """
+    internal static IEnumerable<ShippedComputeKernel> Kernels()
+    {
+        for (int op = 0; op < 4; op++) yield return new(Name + new[] { "Edge", "Dot", "Crossing", "Cell" }[op], Source(op));
+    }
+    internal static string Source(int operation) => """
         #version 450
         layout(local_size_x = 64) in;
         layout(std430, set = 0, binding = 0) readonly buffer InputBuf { uint Inputs[]; };
         layout(std430, set = 0, binding = 1) buffer ResultBuf { uint Results[]; };
-        """ + CoverageGpuArithmeticGlsl.Source + CoverageGpuExactWordsGlsl.Source + CoverageGpuRoundingGlsl.Source
+        """ + CoverageGpuArithmeticGlsl.Source + CoverageGpuExactWordsGlsl.WorkerSource + CoverageGpuRoundingGlsl.Source
         + CoverageGpuPredicatesGlsl.Source + """
         vec3 probePoint(uint offset) { return vec3(uintBitsToFloat(Inputs[offset]), uintBitsToFloat(Inputs[offset+1u]), uintBitsToFloat(Inputs[offset+2u])); }
         void main() {
             uint row = gl_GlobalInvocationID.x;
             if (row >= Inputs[0]) return;
             uint s = 1u + row * 13u, d = row * 21u;
+        """ + $"if (Inputs[s] != {operation}u) return;\n" + """
             vec3 a = probePoint(s+1u), b = probePoint(s+4u), c = probePoint(s+7u), e = probePoint(s+10u);
-            CovPredicate result;
-            CovExact exact = covExactZero();
-            if (Inputs[s] == 0u) { result = covEdge(a,b,c); if (covPredicateFinite(a) && covPredicateFinite(b) && covPredicateFinite(c)) exact = covEdgeExact(a,b,c); }
-            else if (Inputs[s] == 1u) { result = covDot(a,b,c,e); if (covPredicateFinite(a) && covPredicateFinite(b) && covPredicateFinite(c) && covPredicateFinite(e)) exact = covDotExact(a,b,c,e); }
-            else if (Inputs[s] == 2u) { result.sign = 0; result.value = covCrossing(a,b,c,e); }
-            else { result.sign = covCell(a.x,b.x,c.x); result.value = 0.0; }
+            CovExact exact = covExactZero(); CovPredicate result;
+        """ + (operation switch
+        {
+            0 => "CovExactResult r = covExactWorker(covEdgeJob(a,b,c)); result = r.predicate; exact = r.exact;",
+            1 => "CovExactResult r = covExactWorker(covDotJob(a,b,c,e)); result = r.predicate; exact = r.exact;",
+            2 => "result = CovPredicate(0,covCrossing(a,b,c,e));",
+            _ => "result = CovPredicate(covCell(a.x,b.x,c.x),0.0);",
+        }) + """
             Results[d] = uint(result.sign); Results[d+1u] = floatBitsToUint(result.value);
         """ + StoreLimbs() + """
             Results[d+20u] = uint(covExactBitLength(exact));

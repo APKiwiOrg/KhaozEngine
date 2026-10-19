@@ -25,8 +25,7 @@ internal static class CoverageGpuExactWordsProbe
         """ + LoadLimbs() + """
             uint overflow = 0u;
             CovExact result = a;
-            if (Inputs[s] == 0u) result = covExactAdd(a, b, overflow);
-            if (Inputs[s] == 1u) result = covExactSub(a, b, overflow);
+            if (Inputs[s] <= 1u) { CovExact term = b; if (Inputs[s] == 1u) term.sign = -term.sign; result = covExactAdd(a,term,overflow); }
             if (Inputs[s] == 2u) result = covExactProduct(a, b, overflow);
             if (Inputs[s] == 3u) result = covExactFromWord(a.limb[0]);
         """ + StoreLimbs() + """

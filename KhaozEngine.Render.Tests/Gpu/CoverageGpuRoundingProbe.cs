@@ -19,19 +19,15 @@ internal static class CoverageGpuRoundingProbe
             if (row >= Inputs[0]) return;
             uint s = 1u + row * 5u, d = row * 4u, count;
             float a = uintBitsToFloat(Inputs[s+1u]), b = uintBitsToFloat(Inputs[s+2u]);
-            uint before;
-            if (Inputs[s] == 0u) {
-                if (Inputs[s+3u] == 0u) before = covDivRn32(a, b, count);
-                else before = covDivSeeded(a, b, Inputs[s+4u], count);
-                Results[d+3u] = floatBitsToUint(covDiv(a, b));
-            } else {
-                if (Inputs[s+3u] == 0u) before = covSqrtRn32(a, count);
-                else before = covSqrtSeeded(a, Inputs[s+4u], count);
-                Results[d+3u] = floatBitsToUint(covSqrt(a));
+            // Requested seed and native comparison are two jobs at the same worker site.
+            [[dont_unroll]] for (uint job = 0u; job < 2u; job++) {
+                uint before = covRoundOperation(a,b,Inputs[s] != 0u,job == 0u && Inputs[s+3u] != 0u,Inputs[s+4u],count);
+                if (job == 0u) {
+                    Results[d] = before;
+                    Results[d+1u] = floatBitsToUint(covF(uintBitsToFloat(before)));
+                    Results[d+2u] = count;
+                } else Results[d+3u] = floatBitsToUint(covF(uintBitsToFloat(before)));
             }
-            Results[d] = before;
-            Results[d+1u] = floatBitsToUint(covF(uintBitsToFloat(before)));
-            Results[d+2u] = count;
         }
         """;
 

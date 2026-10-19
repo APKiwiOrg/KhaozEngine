@@ -186,18 +186,19 @@ sign. Signed add, subtract, product, comparison and bit length operate on these 
 Finite binary32 words decode to a signed integer times `2^-149`. A maximum finite coordinate
 uses 277 bits, a coordinate difference fits below `2^278`, and a two-product determinant and its
 sum fit below `2^557`. The 576-bit representation therefore covers the admitted predicate domain.
-Checked add and product overloads expose overflow to the native probe. The production overloads
-use the same implementation under the proved domain bound.
+Checked add and diagnostic product overloads expose overflow to the native probe. Production
+composition uses `WorkerSource`, which omits the general schoolbook product entirely.
 
-Under C6 the C# generator emits every limb operation as straight-line GLSL with literal indices.
-There is no shader limb loop, dynamic private-array read or dynamic private-array write, including
-in the probe. A requested word is selected through 18 constant-index branches. Multiplication
-emits the 171 partial products whose destination is inside the representation. For each nonzero
-outer limb it records the outgoing carry and any nonzero multiplier limbs beyond the retained
-window as overflow. All terms are nonnegative, so discarded terms cannot cancel. Within the
-window each row adds its partial product and carry to the prior rows rather than overwriting a
-carry slot. This retains the checked full-width product while removing FXC's X3550/X3511 pattern.
-The compiled SPIR-V audit requires constant private-array indices for all exact-word probes.
+Under C6 the C# generator emits limb operations with literal indices. There is no dynamic
+private-array read or write. A requested word is selected through 18 constant-index branches.
+`CoverageGpuWideDiagnosticGlsl` supplies the general multiply only to the independent diagnostic
+probe. Its explicitly rolled outer and inner loops share one 32-bit product site. A constant-index
+store selector writes each destination. For each nonzero outer limb it records the outgoing carry
+and any nonzero multiplier limbs beyond the retained window as overflow. All terms are nonnegative,
+so discarded terms cannot cancel. Within the window each row adds its partial product and carry
+to the prior rows rather than overwriting a carry slot. The arithmetic and checked full-width
+result are unchanged. The compiled SPIR-V audit requires constant private-array indices for
+all exact-word probes.
 
 The wide `CovExact` interface stays in Task 2 for Task 3, with its existing 576-bit storage and
 `covRound32` scale parameter. Its fixed accesses meet C6 without coupling rounding to determinant
@@ -342,8 +343,8 @@ substituted for those backend executions.
 
 ## Task 3 determinant bounds and conversion
 
-`CoverageGpuPredicatesGlsl` expands each determinant into signed products of original XY
-coordinates. It flushes each coordinate before decoding it. Z never participates in a predicate.
+`CoverageGpuExactJobsGlsl`, composed by `CoverageGpuPredicatesGlsl`, expands each determinant
+into signed products of original XY coordinates. It flushes each coordinate before decoding it. Z never participates in a predicate.
 A finite coordinate in integer units of `2^-149` has magnitude strictly below `2^277`.
 An exact difference is therefore below `2^278`, a difference product below `2^556`, and
 an edge or two-dimensional dot determinant below `2^557`. The expansion also has a safe
@@ -368,7 +369,7 @@ Invalid XY inputs return sign zero and NaN, which the query guards reject.
 
 For B30 let L be the maximum of the two exact side bit lengths. This is also the bit length
 of their maximum magnitude. With `k = 299-L`, that maximum times `2^(k-298)` lies in `[1,2)`.
-`covCrossing` passes k-298 directly to `covRound32`, so scaling is exact and precedes conversion.
+The crossing continuation submits k-298 to the shared RN32 job, so scaling is exact and precedes conversion.
 Only opposite, nonzero signs enter this path. The larger rounded side remains at least one,
 so F cannot erase the denominator. The final subtract and corrected divide retain the pinned
 inventory tree. Endpoint and collinear overlay branches never call the crossing division.
@@ -394,18 +395,21 @@ Overlay visits each sheet triangle in order, then each host/sheet corner pair, t
 edge pairs in reference order. It uses exact signs for all discrete branches and retains
 both height trees and the binary32 crossing point graph. No B22/B24 heuristic is restored.
 
-Overlay retains the three-corner and nine-edge-pair loops, selecting named whole-vector and
-scalar fields through branches. Its side cache uses three named three-sign records rather than
-an indexed array. This avoids expanding nine forced-inline intersection graphs while retaining
-reference visit order. There are no shader arrays for overlay vertices or sides, no dynamic
-vector or matrix component accesses and no dynamic private-array writes. Both new probes are registered in the coverage
-shader corpus. Their native tests additionally run `CoverageSpirvAccessAudit` with constant
+Overlay retains the three-corner and nine-edge-pair traversal in typed continuation indices,
+selecting named whole-vector and scalar fields through branches. Its side cache uses three named
+three-sign records rather than an indexed array. This avoids expanding nine forced-inline
+intersection graphs while retaining reference visit order. There are no shader arrays for overlay
+vertices or sides, no dynamic vector or matrix component accesses and no dynamic private-array
+writes. Separate physical predicate and query probes are registered in the coverage shader corpus. Their native tests additionally run `CoverageSpirvAccessAudit` with constant
 private-array indices required, validate precise compilation and retain SPIR-V/HLSL/MSL artifacts
 when `KE_SHADER_CORPUS_DUMP` is set. Every native Metal pipeline logs its thread ceiling and
 execution width and asserts a ceiling of at least the 64-thread workgroup.
 
 
-## Task 3 native evidence and reproduction
+## Task 3 initial native evidence and reproduction
+
+This section records the initial f16a90107 implementation. Its hosted compile and pipeline
+failures are superseded by the C8 fix below.
 
 The RED invocation failed with CS0103 for the missing predicate module. The completed Release
 build has zero warnings and zero errors. All 18 tests in the required four-class selection
@@ -438,3 +442,112 @@ coverage outputs are unchanged. Native Direct3D11 WARP with FXC cs_5_0, Vulkan l
 synchronization validation, and Apple Paravirtual pipeline creation remain root-owned hosted
 checks using that same four-class filter. Local Apple M2 Max limits do not establish Paravirtual
 limits. This task makes no timing, load, stress, performance-budget or full-construction claim.
+
+
+## C8 shared exact workers and artifact gates
+
+The finite `CovExactJob` tags are Edge, Dot, Round, Div and Root. `CovExactResult` owns the
+same exact accumulator used for the returned sign and rounded value. Edge's six terms and Dot's
+eight terms keep their original signs and order. One rolled term loop has one product-placement
+site and one checked signed-add site. The worker has one RN32 site and one `covRoundOperation`
+site. No exact diagnostics recompute a predicate. Production `WorkerSource` omits the diagnostic
+wide schoolbook multiply, and a compiled call-graph check forbids it in every other coverage module.
+
+`covRoundOperation` shares special-value handling and one whole-domain C3 search between division
+and square root. The search continuation tests its seed, predecessor, expanding bracket and
+bisection at one midpoint-residual site. The root/division factor is selected before one compact
+residual product site. The two-word residual representation, exact comparisons and 31-bisection
+bound are unchanged. The rounding probe sends injected and native seeds through this same site.
+Its existing pre-flush, post-flush, native-comparison and search-count assertions remain intact.
+
+Height, boundary, triangle height, crossing and overlay have specific typed continuation records.
+Each step requests one exact/scalar job or advances without one. Each physical query's rolled pump
+calls `covExactWorker` at one syntactic site. Continuations retain inclusive AABBs, cell-only
+source order, the first bad-candidate abort, strict boundary ties, endpoint and collinear order,
+and both pinned height trees. Overlay's corner, edge-pair and source-triangle indices advance in
+reference order. B30 keeps both unrounded 18-limb sides until their common normalization is known.
+No peer flag, new domain restriction or approximate early-out is introduced.
+
+The four predicate modules replace the old combined predicate probe. The three support modules
+replace the old combined support probe. The diagnostic wide probe also uses rolled schoolbook
+loops with constant-index word selectors, preserving every existing integer row. All worker,
+threshold and traversal loops carry `DontUnroll`, emitted as `[loop]` in HLSL. The C5/C6 audit
+continues to require constant private-array accesses and forbids dynamic vector/matrix components.
+
+`CoverageShaderSizeTests` and the coverage branch of `ShaderCorpus.EmitCompute` enforce:
+
+- At most 30,000 exhaustively inlined instructions and 100,000 LF-normalized UTF-8 bytes per
+  ordinary HLSL/MSL target.
+- Exactly one expanded call site for each retained heavy worker, including nested midpoint work.
+- `DontUnroll` on every retained loop and no forbidden C5/C6 access.
+- An exhaustive-inline measurement bound to the input module's SHA-256 in
+  [coverage-sizes.csv](../../KhaozEngine.Render.Tests/Gpu/shader-corpus/coverage-sizes.csv).
+  A changed module fails until remeasured. An additional structural call-tree bound retains
+  function/parameter/call bookkeeping and allows eight scaffold instructions per extra return.
+  Every measured exhaustive count is also checked against this conservative bound.
+
+The measurement tool runs `spirv-opt --merge-return --inline-entry-points-exhaustive
+--eliminate-dead-functions`, validates the result, requires exactly one function and zero calls,
+and counts binary instructions after the header. It refuses any cap violation before replacing
+the manifest. The gate therefore checks actual exhaustive counts without requiring the native
+optimizer on every CI host. The original investigation's reader, artifacts and measurements were
+reused to record the before/after table. These are instruction and byte counts, not timings.
+
+Before C8, from the retained Task 2/3 artifacts:
+
+| Pipeline | Raw SPIR-V | Exhaustive inline | HLSL bytes | MSL bytes |
+| --- | ---: | ---: | ---: | ---: |
+| CoveragePredicates | 6,395 | 172,018 | 51,611 | 57,136 |
+| CoverageSupport | 9,884 | 1,362,517 | 86,685 | 94,784 |
+| CoverageArithmetic | 2,151 | 8,920 | 17,911 | 20,791 |
+| CoverageExactWords | 14,633 | 37,693 | 120,765 | 122,839 |
+| CoverageResidual | 513 | 551 | 3,726 | 4,130 |
+| CoverageRounding | 1,451 | 20,926 | 12,399 | 13,604 |
+
+After C8, from the final emitted modules:
+
+| Pipeline | Raw SPIR-V | Exhaustive inline | Structural bound | HLSL bytes | MSL bytes |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| CoverageArithmetic | 2,151 | 8,920 | 10,114 | 17,911 | 20,791 |
+| CoverageExactWords | 5,197 | 17,260 | 23,521 | 37,828 | 39,886 |
+| CoveragePredicatesCell | 1,963 | 2,395 | 2,863 | 16,910 | 20,581 |
+| CoveragePredicatesCrossing | 6,312 | 10,933 | 13,422 | 54,436 | 58,341 |
+| CoveragePredicatesDot | 5,824 | 9,132 | 11,193 | 48,884 | 52,270 |
+| CoveragePredicatesEdge | 5,818 | 9,128 | 11,187 | 48,850 | 52,225 |
+| CoverageResidual | 513 | 551 | 626 | 3,726 | 4,130 |
+| CoverageRounding | 1,257 | 1,399 | 1,620 | 11,675 | 12,588 |
+| CoverageSupportBoundary | 6,664 | 11,855 | 14,390 | 57,409 | 63,314 |
+| CoverageSupportHeight | 8,081 | 17,168 | 20,474 | 75,446 | 81,901 |
+| CoverageSupportOverlay | 8,952 | 19,589 | 23,467 | 84,512 | 91,470 |
+
+The largest physical module is Overlay, at 19,589/30,000 inline instructions,
+84,512/100,000 HLSL bytes and 91,470/100,000 MSL bytes. No cap was raised. No additional
+producer/worker dispatch split was needed for these query entry points.
+
+The zero-warning Release build passed. The focused native Metal selection passed 144 tests,
+including all 38 wide-integer rows, 29 residual rows, 315 rounding rows, 755 predicate rows,
+2,314 support rows and the unchanged 144-hash reference manifest. The maximum observed search
+count remains 30 bisections. After binding the exact measurements, 14 headless size/corpus tests
+passed. All 34 original/inlined before-and-after coverage modules passed SPIR-V validation.
+
+On Apple M2 Max, exact diagnostics retain a ceiling of 576 threads. Rounding and residuals report
+1,024. Edge, Dot, Crossing and Cell report 768, 704, 384 and 1,024. Height, Boundary and Overlay
+report 384, 512 and 384. Every queried pipeline reports execution width 32 and clears the
+64-thread workgroup floor. Native FXC/WARP, Apple Paravirtual and Vulkan acceptance still belongs
+to root's hosted correctness run. No timing or performance claim is made.
+
+To refresh measurements after an intentional coverage shader change, first dump all size-test
+modules with `KE_COVERAGE_SIZE_DUMP`. The changed-module test is expected to fail until the new
+measurement is recorded. Run the following tool through build-slot, then rerun the headless gates:
+
+```bash
+build-slot --label coverage-inline-sizes -- python3 KhaozEngine.Render.Tests/Gpu/shader-corpus/measure-coverage-sizes.py <dump-directory> KhaozEngine.Render.Tests/Gpu/shader-corpus/coverage-sizes.csv
+```
+
+Tasks 4 to 7 compose Arithmetic, ExactWords.WorkerSource, Rounding, Predicates and Support in that
+order. Static support words are unchanged. The `cov*Begin`/`cov*Step`/`Cov*Done` interfaces are the
+shared seam. A combined physical phase must advance its graphs through one common worker call,
+rather than calling several synchronous query wrappers. Any future spill uses invocation-owned
+Work words with checked layout reservations. Future CorrectFaces/Gather/ValidateFaces modules must
+enter the same size manifest and native gates. These isolated queries do not establish a complete
+construction or a future combined phase's feasibility.

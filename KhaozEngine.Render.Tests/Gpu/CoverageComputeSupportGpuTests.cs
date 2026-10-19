@@ -11,8 +11,8 @@ public sealed class CoverageComputeSupportGpuTests(ITestOutputHelper output)
     public void Packed_support_queries_preserve_grid_source_order_boundary_ties_and_overlay_words()
     {
         var data = CoverageGpuSupportProbe.Data();
-        uint[] actual = CoverageGpuQueryProbe.Run(output, CoverageGpuSupportProbe.Name, CoverageGpuSupportProbe.Source,
-            data.Inputs, data.Expected.Length, data.Static);
+        uint[] actual = CoverageGpuQueryProbe.RunOperations(output, CoverageGpuSupportProbe.Kernels(),
+            data.Inputs, CoverageGpuSupportProbe.InputWords, CoverageGpuSupportProbe.OutputWords, data.Static);
         Assert.Equal(1u, actual[0]); Assert.Equal(0u, actual[1]); Assert.Equal(0u, actual[3]);
         Assert.Equal(1u, actual[4]); Assert.Equal(0u, actual[5]); Assert.Equal(0x3f800000u, actual[6]);
         for (int i = 0; i < actual.Length; i++)

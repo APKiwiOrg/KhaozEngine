@@ -13,6 +13,26 @@ namespace KhaozEngine.Tests.Gpu;
 
 internal static class CoverageGpuQueryProbe
 {
+    internal static uint[] RunOperations(ITestOutputHelper output, IEnumerable<ShippedComputeKernel> kernels,
+        uint[] inputs, int inputWords, int outputWords, uint[]? staticWords = null)
+    {
+        var combined = new uint[inputs[0] * outputWords];
+        int operation = 0;
+        foreach (var kernel in kernels)
+        {
+            uint[] actual = Run(output, kernel.Name, kernel.ComputeGlsl, inputs, combined.Length, staticWords);
+            int rows = 0;
+            for (int row = 0; row < inputs[0]; row++)
+            {
+                if (inputs[1 + row * inputWords] != operation) continue;
+                Array.Copy(actual, row * outputWords, combined, row * outputWords, outputWords); rows++;
+            }
+            Assert.True(rows > 0, $"{kernel.Name}: empty physical probe");
+            operation++;
+        }
+        return combined;
+    }
+
     internal static uint[] Run(ITestOutputHelper output, string name, string text, uint[] inputs, int count, uint[]? staticWords = null)
     {
         using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();

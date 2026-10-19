@@ -109,8 +109,7 @@ namespace KhaozEngine.Tests.Gpu
             yield return new(CoverageGpuExactWordsProbe.Name, CoverageGpuExactWordsProbe.Source);
             yield return new(CoverageGpuResidualProbe.Name, CoverageGpuResidualProbe.Source);
             yield return new(CoverageGpuRoundingProbe.Name, CoverageGpuRoundingProbe.Source);
-            yield return new(CoverageGpuPredicateProbe.Name, CoverageGpuPredicateProbe.Source);
-            yield return new(CoverageGpuSupportProbe.Name, CoverageGpuSupportProbe.Source);
+            foreach (var kernel in CoverageGpuPredicateProbe.Kernels().Concat(CoverageGpuSupportProbe.Kernels())) yield return kernel;
         }
 
         static void EmitCompute(ShippedComputeKernel kernel, List<ShaderCorpusRow> rows, Action<string, byte[]>? dump,
@@ -124,6 +123,8 @@ namespace KhaozEngine.Tests.Gpu
             rows.Add(LayoutRow($"{kernel.Name}.layout.msl", msl.Reflection));
 
             CrossCompiledCompute hlsl = SpirvCrossCompile.ComputeToHlsl(spirv, kernel.Name, options);
+            if (options.PreciseMath)
+                CoverageShaderSizeAudit.Validate(spirv, hlsl.ComputeSource, msl.ComputeSource, kernel.Name);
             rows.Add(Row($"{kernel.Name}.compute.hlsl", hlsl.ComputeSource, dump));
             rows.Add(LayoutRow($"{kernel.Name}.layout.hlsl", hlsl.Reflection));
         }

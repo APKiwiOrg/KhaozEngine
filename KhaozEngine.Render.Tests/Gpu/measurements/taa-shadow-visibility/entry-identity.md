@@ -213,3 +213,98 @@ An earlier format workspace load emitted a warning. Diagnostic output identifies
 project reference without matching metadata for
 `KhaozEngine.Localization.Analyzers/KhaozEngine.Localization.Analyzers.csproj` in the formatter's
 Debug workspace. The Release builds and solution CPU selection remain clean.
+
+## Fix round 1
+
+Added outlined Quality to `MovingShadowEntriesKeepVisibilityDecisionsAndHistoryExact` as a fourth
+row. It uses the same six-frame moving-shadow loop and release, rising reset, falling confidence and
+exact identity assertions as the three plain presets. `SetupOutline` shares the existing magenta
+outline settings with the `PerspectiveFollowLines` setup from `TemporalFollowLinesRuns.cs`.
+
+The optional test-rig path runs the production `PixelPostProcess.RunTemporalOutline` pass before
+each resolve. Its outlined scene and opaque outputs feed the resolve through `PingA` and `PingB`,
+as in `Scene3D`. A right-hand normal edge produces the outline while leaving the left-hand response
+probe's colour footprint alone. Grayscale current and reseeded grayscale history inputs contain no
+magenta, so asserting magenta resolved pixels in both entries on every frame proves contribution.
+Only test code and this evidence change. Runtime code, shader arithmetic and tolerances do not change.
+
+### RED and GREEN
+
+For the negative control, only the outlined row temporarily held all six edge positions at 8,
+keeping uploaded visibility zero instead of moving it. The outline still contributed 84, 60 and
+48 history pixels in each entry on frames 0, 1 and 2. R8 storage, previous jitter, colour and state
+identity all agreed through frame 2. The required release assertion then failed exactly as intended.
+
+```text
+MovingShadowEntriesKeepVisibilityDecisionsAndHistoryExact(preset: Quality, display: 12, outline: True)
+Assert.Equal() Failure: Values differ
+Expected: 0
+Actual:   0.875
+Total tests: 4
+Passed: 3
+Failed: 1
+Exit: 1
+```
+
+Removing only that stationary-edge test override restored `[8, 8, 2, 8, 0, 8]` and made the complete
+identity class pass. This is a no-release fixture counterfactual, not a runtime mutation.
+The outlined row observed the following values in both entries.
+
+| Frame | Outline history pixels per entry | Probe confidence | Probe lock | Response |
+| --- | --- | --- | --- | --- |
+| 0 | 84 | 0.06286621 | Not asserted | Cold history |
+| 1 | 60 | 1 | 0.875 | Unchanged visibility retains seeded history |
+| 2 | 72 | 0.06286621 | 0 | Rising change resets to cold history |
+| 3 | 60 | 1 | 0 | Falling change retains confidence |
+| 4 | 84 | 0.06286621 | 0 | Rising change resets to cold history |
+| 5 | 60 | 1 | 0 | Falling change retains confidence |
+
+Both rises also match the cold-history colour exactly at the probe. Both falls release the lock
+without resetting confidence. Every resolving frame compares the stored R8 visibility bytes,
+previous R8 history when valid, previous jitter and the bit representations of all colour,
+confidence and lock/mark values. Six frames resolve through each entry, with two rising resets and
+two falling retained-confidence observations. No comparison is conditional on a release occurring.
+
+### Covering commands and outputs
+
+Commands ran sequentially after the required worktree and branch identity checks. GPU runs used
+MetalNative on Apple M2 Max. Completed TRX counters confirm zero skipped GPU facts. The original
+six-class non-shadow filter was recovered from the previous run's TRX class list.
+`$EVIDENCE_DIR` below abbreviates the external scratch directory used for logs and TRX outputs.
+Shell log redirection is omitted. No frame images were produced.
+
+```bash
+build-slot --label taa-task8-fix1-red-build -- dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release
+build-slot --heavy --label taa-task8-fix1-red -- env KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~MovingShadowEntriesKeepVisibilityDecisionsAndHistoryExact' --logger 'console;verbosity=detailed' --logger 'trx;LogFileName=red.trx' --results-directory "$EVIDENCE_DIR"
+build-slot --label taa-task8-fix1-green-build -- dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release
+build-slot --heavy --label taa-task8-fix1-identity -- env KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~TemporalEntryIdentityGpuTests' --logger 'console;verbosity=detailed' --logger 'trx;LogFileName=identity.trx' --results-directory "$EVIDENCE_DIR"
+build-slot --heavy --label taa-task8-fix1-entry-flip -- env KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~TemporalEntryFlipMemoryGpuTests' --logger 'console;verbosity=detailed' --logger 'trx;LogFileName=entry-flip.trx' --results-directory "$EVIDENCE_DIR"
+build-slot --heavy --label taa-task8-fix1-nonshadow -- env KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~TemporalEntryIdentityGpuTests|FullyQualifiedName~TemporalNarrowCrossingGpuTests|FullyQualifiedName~TemporalResolveLockGpuTests|FullyQualifiedName~TemporalStableDetailGpuTests|FullyQualifiedName~TemporalStablePeakGpuTests|FullyQualifiedName~TemporalTextureLightGpuTests' --logger 'console;verbosity=detailed' --logger 'trx;LogFileName=nonshadow.trx' --results-directory "$EVIDENCE_DIR"
+build-slot --heavy --label taa-task8-fix1-cpu -- env -u KE_GPU_TESTS dotnet test KhaozEngine.slnx -c Release --filter 'FullyQualifiedName~Temporal|FullyQualifiedName~Shader' --logger trx --results-directory "$EVIDENCE_DIR/cpu"
+```
+
+| Run | Total | Passed | Failed | Skipped | Exit |
+| --- | --- | --- | --- | --- | --- |
+| Stationary outlined visibility RED | 4 | 3 | 1 | 0 | 1 |
+| Entry identity GREEN | 8 | 8 | 0 | 0 | 0 |
+| Entry flip memory | 2 | 2 | 0 | 0 | 0 |
+| Non-shadow guard | 62 | 62 | 0 | 0 | 0 |
+| CPU Temporal or Shader selection | 1184 | 946 | 0 | 238 | 0 |
+
+Both Release render-test builds succeeded with zero warnings and zero errors. The three requested
+final GPU runs total 72 passing test executions and zero skips. The non-shadow filter includes the
+identity class, so this is a count of executions rather than distinct facts.
+
+The CPU selection built the solution and passed 946 tests from 1184 selected results, with 238
+env-gated GPU skips and no failures. Every skipped result belongs to a GPU class. No CPU fact was
+skipped, and the completed solution command exited zero without compiler warnings or errors.
+
+```text
+Passed!  - Failed: 0, Passed: 2, Skipped: 0, Total: 2 - KhaozEngine.Tests.dll
+Passed!  - Failed: 0, Passed: 944, Skipped: 238, Total: 1182 - KhaozEngine.Render.Tests.dll
+build-slot: exit=0
+```
+
+Hosted Direct3D 11 FXC/WARP and Vulkan pixel confirmation remains with the orchestrator. The existing
+two appearance gates were not rerun in this test-only round. No hosted workflow, stress run, release,
+version change, consumer adoption or main integration was performed.

@@ -164,21 +164,26 @@ namespace KhaozEngine.Tests.Gpu
             return outlinePixels;
         }
 
-        // Uploaded shadow edges isolate the visibility response from shadow-map rasterization. The normal walk
-        // above also covers the actual outlined scene inputs, while this sequence forces both release thresholds.
+        // Uploaded shadow edges isolate the visibility response from shadow-map rasterization. The outlined row
+        // runs the production edge pass on both scene inputs before the same release and response assertions.
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native, 8)]
-        [InlineData(TemporalUpscale.Quality, 12)]
-        [InlineData(TemporalUpscale.Performance, 16)]
-        public void MovingShadowEntriesKeepVisibilityDecisionsAndHistoryExact(TemporalUpscale preset, int display)
+        [InlineData(TemporalUpscale.Native, 8, false)]
+        [InlineData(TemporalUpscale.Quality, 12, false)]
+        [InlineData(TemporalUpscale.Performance, 16, false)]
+        [InlineData(TemporalUpscale.Quality, 12, true)]
+        public void MovingShadowEntriesKeepVisibilityDecisionsAndHistoryExact(TemporalUpscale preset, int display,
+            bool outline)
         {
-            using var fused = new TemporalResolveRig(N, N, display, display, SceneNdc);
-            using var split = new TemporalResolveRig(N, N, display, display, SceneNdc);
+            var settings = new PixelPostProcessSettings();
+            SetupOutline(settings, outline);
+            using var fused = new TemporalResolveRig(N, N, display, display, SceneNdc, outline ? settings : null);
+            using var split = new TemporalResolveRig(N, N, display, display, SceneNdc, outline ? settings : null);
             using GpuRetireQueue retired = GpuRetireQueue.Create(split.Device);
             split.Renderer.SelectEntry(TemporalResolveEntry.Split, retired);
             using IGpuTexture a = VisibilitySignal(fused.Device);
             using IGpuTexture b = VisibilitySignal(split.Device);
-            output.WriteLine($"{fused.Device.Backend} on {fused.Device.Capabilities.DeviceName}, moving shadow {preset}");
+            output.WriteLine($"{fused.Device.Backend} on {fused.Device.Capabilities.DeviceName}, moving shadow {preset}, "
+                + $"outline {outline}");
             int[] edges = [8, 8, 2, 8, 0, 8];
             byte[] previous = [];
             Vector2 previousJitter = default;
@@ -201,6 +206,14 @@ namespace KhaozEngine.Tests.Gpu
                         rig.FillHistory(Grey(display, display, (_, _) => 0.4f),
                             Pairs(display, display, (_, _) => Vector2.One), SceneLinear);
                     rig.Resolve(uniforms, signal);
+                    Assert.Equal(outline, rig.OutlineBuilt);
+                    if (outline)
+                    {
+                        float[] outlined = rig.ReadColor();
+                        int outlinePixels = Enumerable.Range(0, display * display).Count(i => IsOutline(outlined, i * 4));
+                        Assert.True(outlinePixels > 0, $"frame {frame}: the outline contributed no history pixels");
+                        output.WriteLine($"  {rig.Renderer.LastEntry} frame {frame}: {outlinePixels} outline history pixels");
+                    }
                     Assert.Equal(bytes, TemporalVisibilityHistoryGpuTests.Read(rig.Device,
                         rig.Renderer.VisibilityHistory.Texture(rig.History.WriteIndex)));
                     Assert.Equal(new Vector4(previousJitter, frame > 0 ? 1f : 0f, 0f),
@@ -253,8 +266,13 @@ namespace KhaozEngine.Tests.Gpu
         static void Setup(Scene3D s, PerspectiveFollowLines walk, TemporalUpscale preset, bool outline)
         {
             walk.Setup(s, preset);
-            s.Post.Outline = outline;
-            s.Post.OutlineColor = OutlineColour;
+            SetupOutline(s.Post, outline);
+        }
+
+        static void SetupOutline(PixelPostProcessSettings settings, bool outline)
+        {
+            settings.Outline = outline;
+            settings.OutlineColor = OutlineColour;
         }
 
         // The walk's last frame is its last step, so the frames after it hold the box and the camera still. The pole

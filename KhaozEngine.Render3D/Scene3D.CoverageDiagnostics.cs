@@ -9,27 +9,11 @@ internal sealed record CoverageTargetReadback(int Width, int Height, int Channel
     internal int SourceRow { get; init; } = -1;
 }
 
-/// <summary>CPU stages for optional cost attribution. GeometryEvaluation is the whole evaluator call. Scene staging
-/// constructs the candidate and its normals there and certifies nothing. A public evaluator given an observed scratch
-/// brackets GeometryCertification inside it (each full certification pass, and in the render-aware evaluator the
-/// following disjoint render-margin separation recheck). RenderCertification is the late validation only,
-/// nested inside render resolution. SkinnedPreparation is the whole skinned draw preparation after resolution: it
-/// contains surface append, OrdinarySkinning (the uncovered draw loop, CPU vertex skinning or GPU draw records),
-/// coverage motion history recording and SkinnedUpload (the shared skinned frame uploads). MotionCommit covers
-/// history publication in the successful submission callback.</summary>
-internal enum CoverageStageSpan
-{
-    Skinning, GeometryEvaluation, GeometryCertification, RenderCertification, SkinnedPreparation, OrdinarySkinning, SkinnedUpload,
-    MotionCommit,
-}
-
 public sealed partial class Scene3D
 {
     // Groups whose target outlines this frame actually rendered and composed, distinct from retained mask storage.
     int _targetOutlineGroupsRendered;
     internal int TargetOutlineGroupsRenderedForTests => _targetOutlineGroupsRendered;
-    /// <summary>Null in ordinary use, so the coverage path pays one null check per bracket and calls nothing.</summary>
-    internal Action<CoverageStageSpan, bool>? CoverageStageObserverForTests { get; set; }
     internal (int Preparations, int EquipmentStages) CoverageArenaCapacityForTests =>
         (_coverageArena.Preparations.Capacity, _coverageArena.Equipment.Capacity);
     /// <summary>Uncovered source vertices skinned on the CPU route in the last skinned preparation.</summary>
@@ -37,8 +21,6 @@ public sealed partial class Scene3D
     /// <summary>True only while the token's frame, scene and host are current, so diagnostics never read stale state.</summary>
     internal bool CoverageFrameCurrentForTests(SkinnedCoverageFrame frame) =>
         TryFrozenCoverage(frame, out var p) && !_coverageDisposed && !p.Owner.Disposed && CoverageHostLive(p);
-    internal ReadOnlySpan<System.Numerics.Matrix4x4> CoveragePointMatricesForTests =>
-        CollectionsMarshal.AsSpan(_coveragePointMatrices);
     internal bool CoverageMainVisibleForTests(SkinnedCoverageFrame frame)
     {
         var actor = RequireCoverage(frame).Actor;

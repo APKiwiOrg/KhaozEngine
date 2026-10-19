@@ -1,5 +1,10 @@
 # Equipment Coverage Implementation Plan
 
+Historical construction and display APIs in this document are superseded by the GPU path in
+[Amendment R](../../design/EQUIPMENT-COVERAGE-AMENDMENT-R-2026-10-18.md). The exact geometry certifier and pinned
+reference remain offline evidence. The CPU cost authorization is retired and cannot start a workload.
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use subagent-driven-development (recommended) or executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Keep a closed skinned host behind close-fitting rigid equipment through bounded, authored host conformation, with the same final surface in every render pass.

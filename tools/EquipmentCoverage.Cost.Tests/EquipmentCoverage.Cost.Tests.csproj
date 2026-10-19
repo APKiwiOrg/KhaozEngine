@@ -1,7 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Opt-in equipment coverage cost measurements. Deliberately outside KhaozEngine.slnx and every CI test
-       selection, so ordinary builds and tests never start a workload. Run it only through the hosted stress
-       workflow with an owner-authorized manifest committed under authorized/ and an exact case filter. -->
+  <!-- Historical CPU authorization files remain packaged for inspection. Every measurement entry rejects.
+       GPU measurement requires fresh approval and a separate harness. This project is build-only in Part C. -->
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <OutputType>Library</OutputType>

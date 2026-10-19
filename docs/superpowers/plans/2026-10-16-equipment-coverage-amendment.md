@@ -1,5 +1,10 @@
 # Equipment Coverage Amendment Implementation Plan
 
+Historical construction and display APIs in this document are superseded by the GPU path in
+[Amendment R](../../design/EQUIPMENT-COVERAGE-AMENDMENT-R-2026-10-18.md). The exact geometry certifier and pinned
+reference remain offline evidence. The CPU cost authorization is retired and cannot start a workload.
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use subagent-driven-development. Continue the owner's approved execution method, with a fresh implementer and independent review for each unit below.
 
 **Goal:** Complete Task 4 with useful whole-face conformation and a certificate grounded in actual rendering transforms.

@@ -92,7 +92,7 @@ public sealed class CoverageSafetyRegressionTests
         command = command with { CoverageWorld = drifted };
         var sentinel = Vertex(new(7, 7, 7));
         var output = Enumerable.Repeat(sentinel, topology.VertexCount).ToArray();
-        Assert.False(CoverageEvaluator.TryEvaluateGeometry(topology, fixture.Posed, actor, [command], new CoverageScratch(topology), output, out var failure));
+        Assert.False(CoverageGeometryTestRun.TryEvaluate(topology, fixture.Posed, actor, [command], new CoverageScratch(topology), output, out var failure));
         Assert.Equal(CoverageFailureCode.StaleFrame, failure.Code);
         Assert.All(output, v => Assert.Equal(sentinel, v));
     }
@@ -220,7 +220,7 @@ public sealed class CoverageSafetyRegressionTests
     }
 
     [Fact]
-    public void Runtime_boundary_bounds_refuses_an_uncertifiable_nearest_edge()
+    public void Exact_boundary_bounds_refuses_an_uncertifiable_nearest_edge()
     {
         const float s = float.Epsilon;
         Vector3[] points = [new(0, 0, 0), new(s, 0, 0), new(s, s, 0), new(0, s, 0),
@@ -243,9 +243,11 @@ public sealed class CoverageSafetyRegressionTests
         Assert.False(support.TryGetBoundaryBounds(CoverageAffinePoint.FromDouble(q.X, q.Y), out _));
         var sentinel = Vertex(new(7, 7, 7));
         var output = Enumerable.Repeat(sentinel, topology.VertexCount).ToArray();
-        Assert.False(CoverageEvaluator.TryEvaluateGeometry(topology, posed, Matrix4x4.Identity, [command], scratch, output, out var certificate, out failure));
-        Assert.Equal(CoverageFailureCode.UnsupportedSupport, failure.Code);
-        Assert.Equal(default, certificate);
+        // The exact nearest-boundary refusal above is independent of binary32 input admission. The pinned
+        // reference rejects this extreme transform before querying that boundary, and still publishes nothing.
+        Assert.False(CoverageReferenceConstructor.TryConstruct(topology, posed, Matrix4x4.Identity, [command],
+            new CoverageReferenceScratch(topology), output, out failure));
+        Assert.Equal(CoverageFailureCode.UnsupportedTransform, failure.Code);
         Assert.All(output, v => Assert.Equal(sentinel, v));
     }
 

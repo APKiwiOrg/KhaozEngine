@@ -1,5 +1,10 @@
 # Equipment coverage construction and render-error amendment
 
+Historical construction and display APIs in this document are superseded by the GPU path in
+[Amendment R](EQUIPMENT-COVERAGE-AMENDMENT-R-2026-10-18.md). The exact geometry certifier and pinned
+reference remain offline evidence. The CPU cost authorization is retired and cannot start a workload.
+
+
 Status: owner approved. Implementation is pending and no release is authorized.
 It amends sections 4, 7, 9, 10 and 12 of the
 [approved design](EQUIPMENT-COVERAGE-DESIGN-2026-10-16.md).

@@ -1,5 +1,10 @@
 # Equipment coverage Part B: CPU float reference and exact oracle Implementation Plan
 
+Historical construction and display APIs in this document are superseded by the GPU path in
+[Amendment R](../../design/EQUIPMENT-COVERAGE-AMENDMENT-R-2026-10-18.md). The exact geometry certifier and pinned
+reference remain offline evidence. The CPU cost authorization is retired and cannot start a workload.
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Preserve the exact construction evidence and provide a headless float reference and exact coverage oracle for asset CI and the Part C kernels.

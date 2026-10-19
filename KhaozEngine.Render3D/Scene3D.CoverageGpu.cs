@@ -1,10 +1,15 @@
 using System;
+using System.Threading;
 using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Render3D;
 
 public sealed partial class Scene3D
 {
+    static long s_coverageScene;
+    readonly ulong _coverageIdentity = (ulong)Interlocked.Increment(ref s_coverageScene);
+    ulong _coverageView;
+    internal Action<bool>? CoverageAllocationObserverForTests { get; set; }
     CoverageGpuResources? _coverageGpu;
     internal CoverageGpuBatch? CoverageGpuBatchForTests => _coverageGpu?.Batch;
 
@@ -48,7 +53,6 @@ public sealed partial class Scene3D
             _pointShadows?.ReserveCoverage(batch, coveredDraws);
         }
         draws = checked(draws + coveredDraws);
-        _coveragePointMatrices.EnsureCapacity(checked(_lights.Count * 12));
         _model.EnsureSkinnedMainCapacity((uint)draws);
         _model.EnsureSkinnedBonePaletteCapacity((uint)draws);
         _model.EnsureSkinnedShadowCapacity((uint)draws * ShadowSettings.MaxCascades);

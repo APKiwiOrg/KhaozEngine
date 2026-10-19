@@ -223,40 +223,20 @@ public sealed class CoverageReferenceCorrectionTests(ITestOutputHelper output)
         int[] partial = Enumerable.Range(0, topology.TriangleCount).Where(t => topology.Triangles[t].Role == CoverageTriangleRole.Core
             && Enumerable.Range(0, 3).Any(k => topology.Vertices[(int)topology.Indices[t * 3 + k]].Strength != 1)).ToArray();
         Assert.NotEmpty(partial);
-        var exactScratch = new CoverageScratch(topology);
-        bool exact = CoverageEvaluator.TryConstructCandidate(topology, fixture.Posed, Matrix4x4.Identity, commands,
-            exactScratch, new ModelVertex[topology.VertexCount], out var exactFailure);
-        var frame = exactScratch.Frames[0];
-        Assert.True(CoverageCoreCorrection.TryTerms(exactScratch.Before, Matrix4x4.Identity, commands[frame.Command], frame,
-            out double clearance, out _, out double conversion));
         var c = new CoverageReferenceCase("strength", topology, [], [], fixture.Posed, Matrix4x4.Identity, commands);
-        // Like-for-like conform and correction terms decide the same faces as the exact path. The reserve's larger
-        // clearance may add faces, but never changes the refusal code.
-        var scratch = Pointwise(c, [frame.ClearanceCoverage + frame.Slack]);
-        bool reference = CoverageReferenceCorrection.TryApply(topology, commands, scratch, out var referenceFailure,
-            new[] { clearance }, new[] { conversion });
         var reserved = Pointwise(c);
         bool reserve = CoverageReferenceCorrection.TryApply(topology, commands, reserved, out var reserveFailure);
-        output.WriteLine($"STRENGTH positive={positive} partialFaces={partial.Length} exact={exactFailure} reference={referenceFailure} reserve={reserveFailure}");
+        output.WriteLine($"STRENGTH positive={positive} partialFaces={partial.Length} reserve={reserveFailure}");
         if (positive)
         {
-            Assert.False(exact);
-            Assert.False(reference);
             Assert.False(reserve);
-            Assert.Equal(CoverageFailureCode.FoldedPatch, exactFailure.Code);
-            Assert.Equal(exactFailure, referenceFailure);
             Assert.Equal(CoverageFailureCode.FoldedPatch, reserveFailure.Code);
         }
         else
         {
-            Assert.True(exact, exactFailure.ToString());
-            Assert.True(reference, referenceFailure.ToString());
             Assert.True(reserve, reserveFailure.ToString());
-            foreach (var result in new[] { scratch, reserved })
-            {
-                Assert.All(partial, t => Assert.True(result.FaceGuards[t]));
-                Assert.All(partial, t => Assert.Equal(0f, result.FaceCorrections[t]));
-            }
+            Assert.All(partial, t => Assert.True(reserved.FaceGuards[t]));
+            Assert.All(partial, t => Assert.Equal(0f, reserved.FaceCorrections[t]));
         }
     }
 

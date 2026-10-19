@@ -44,11 +44,6 @@ public readonly record struct CoverageCommandPose
 public readonly record struct CoverageGeometryCertificate(bool FullCoreClearance, double MinimumCoreClearance,
     double ConstructionErrorBound, int DisplacedVertices);
 
-/// <summary>Geometry and actual render-position arithmetic proof bound to one owned capture. WorldErrorBound is the
-/// combined host/equipment world displacement allowance. Native raster, depth and temporal gates remain separate.</summary>
-public readonly record struct CoverageCertificate(bool FullCoreClearance, double MinimumCoreClearance,
-    double WorldErrorBound, int DisplacedVertices, CoverageRenderStamp RenderStamp);
-
 /// <summary>Double affine map for row vectors, p' = p * L + T, built only from finite affine float matrices.</summary>
 internal readonly struct CoverageAffine
 {
@@ -151,7 +146,7 @@ internal struct CoverageCommandFrame
     internal CoverageVector Recess;
     internal CoverageBoundedAffine BoundedHostToCoverage, BoundedActor, HostToActualSheet;
     internal double CapMarginUpper;
-    internal double ZScale, SigmaMin, ClearanceCoverage, Slack, Uncertainty, ConstructionErrorBound, RenderErrorBound, CapMargin, Clearance;
+    internal double ZScale, SigmaMin, ClearanceCoverage, Slack, Uncertainty, ConstructionErrorBound, CapMargin, Clearance;
     internal bool Full;
 }
 

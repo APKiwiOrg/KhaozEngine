@@ -88,7 +88,7 @@ public sealed partial class CoverageComputeShadowGpuTests(ITestOutputHelper outp
         }
         Assert.DoesNotContain(scene.Bindings.Draws, d => d.Pass == "main");
         Assert.Equal(0, scene.Scene.OrdinaryCpuSkinnedVerticesForTests);
-        Assert.Equal(0, scene.Scene.CoverageDiagnosticsForTests.UncoveredGpuDraws);
+        Assert.Equal(0, scene.Scene.UncoveredGpuDrawsForTests);
         Assert.Equal(10, scene.Scene.DispatchedHostPreparationCount);
         string stem = $"shadow-static{staticLight}-refused{refusal}-effects{effects}";
         string path = EvidencePath;

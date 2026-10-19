@@ -136,10 +136,9 @@ public sealed partial class CoverageGpuScene : IDisposable
         }
         if (row.ExpectRefusal)
             Assert.Contains(submitted, actor => scene.GetCoverageOutcome(actor.Frame).Presentation == CoveragePresentation.UncoveredFallback);
-        var diagnostics = scene.CoverageDiagnosticsForTests;
-        Assert.Equal(0, diagnostics.CoveredCpuPreparations);
+        int uncovered = scene.UncoveredGpuDrawsForTests;
         if (!row.ExpectRefusal) Assert.Equal(route == 1 ? submitted.Count : 0, scene.DispatchedHostPreparationCount);
-        if (route == 0) Assert.Equal(gpuSkinning ? submitted.Count : 0, diagnostics.UncoveredGpuDraws);
+        if (route == 0) Assert.Equal(gpuSkinning ? submitted.Count : 0, uncovered);
         var outlines = row.Outlines ? scene.ReadCoverageOutlinesForTests() : default;
         var capture = new CoverageCapture(colour, scene.ReadCoverageDepthForTests(), scene.ReadCoverageNormalForTests(),
             row.Shadows ? scene.ReadCoverageCascadesForTests() : null,

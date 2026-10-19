@@ -1328,13 +1328,13 @@ canonicalize protected zero sign bits merely because another alias has a differe
 
 ### Guard reduction and first-code attribution
 
-`CoverageEvaluator.cs`, `CoverageTally.Note` and the `ReadOnlySpan<int>` overload of
+`CoverageTally.cs`, `CoverageTally.Note` and the `ReadOnlySpan<int>` overload of
 `CoverageTally.Succeeded`, define the reduction below. The `CoverageScratch` overload is an
 unmarked exact-path host wrapper, not the reference entry point. Reference calls pass `Order`.
 The first noted code and sorted slot win. Count only later notes with that exact code and slot,
 saturating at `int.MaxValue`. Other codes/slots do not replace the first or increase its count.
 
-**`CoverageTally.Note`** from `CoverageEvaluator.cs`.
+**`CoverageTally.Note`** from `CoverageTally.cs`.
 
 ```csharp
 internal void Note(CoverageFailureCode failure, int commandSlot)
@@ -1344,7 +1344,7 @@ internal void Note(CoverageFailureCode failure, int commandSlot)
 }
 ```
 
-**`CoverageTally.Succeeded`** from `CoverageEvaluator.cs`.
+**`CoverageTally.Succeeded`** from `CoverageTally.cs`.
 
 ```csharp
 internal readonly bool Succeeded(CoverageRefinement topology, ReadOnlySpan<CoverageCommandPose> commands,

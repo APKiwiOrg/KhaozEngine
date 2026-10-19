@@ -22579,6 +22579,13 @@ report the same-frame CPU admission or `Dispatched` result. Diagnostic availabil
 history. A full ring drops only the new diagnostic copy. On Direct3D11 the normal Present boundary makes completion
 visible. A headless correctness test may drain once before polling, while production polling never flushes.
 
+The public offline surface validator is `CoverageCertification.ValidateGeometry`, with and without a
+`CoverageGeometryCertificate` output. It retains exact geometry checks and grants no draw permission.
+The CPU constructor, render certificate, captured pass API and CPU preparation counters are retired.
+Frozen exact captures and the pinned reference manifest remain immutable oracle evidence. Historical CPU
+cost authorizations reject before parsing, clocks, devices, fixtures or report creation. Their report models
+and fake accounting tests remain historical evidence. GPU timing needs fresh approval and separate instrumentation.
+
 ### Sampled equipment coverage verification
 
 Developer construction diagnostics default to off. Select one explicit stable actor key before opening the

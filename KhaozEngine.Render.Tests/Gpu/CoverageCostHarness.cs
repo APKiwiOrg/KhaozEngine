@@ -65,42 +65,20 @@ internal delegate ICoverageCostSession CoverageCostSessionFactory(CoverageCostMa
 /// <summary>Entry points for the separately selected cost project. Ordinary tests never call them.</summary>
 internal static class CoverageCostHarness
 {
-    static CoverageCostSessionFactory Factory(CoverageCostManifest manifest) =>
-        manifest.Recording ? CoverageCostRecordingSession.Open : CoverageCostNativeSession.Open;
+    static InvalidOperationException RetiredAuthorization(string? name = null) =>
+        new($"CPU coverage cost authorization '{name ?? "unspecified"}' is retired. GPU measurements require fresh approval.");
 
-    /// <summary>One diagnostic case on the manifest's exact native backend, with no fallback, or on the recording
-    /// device. A single case never carries an added-cost verdict.</summary>
+    internal static void RejectRetiredAuthorization(string name) => throw RetiredAuthorization(name);
+
     internal static CoverageCostReport Measure(CoverageCostManifest manifest, Action<CoverageCostReport>? publish = null) =>
-        CoverageCostDriver.Run(manifest, Factory(manifest), CoverageCostClock.Stopwatch, publish: publish);
+        throw RetiredAuthorization();
 
-    /// <summary>One authorized on and off unit, both conditions in order in this process under one unit deadline.</summary>
     internal static CoverageCostPairReport MeasurePair(CoverageCostPairManifest pair, Action<CoverageCostReport>? publish = null) =>
-        CoverageCostDriver.RunPair(pair, Factory(pair.Conditions[0]), CoverageCostClock.Stopwatch, publish: publish);
+        throw RetiredAuthorization();
 
-    /// <summary>Measures one authorized file of either schema. Each finished condition's report JSON goes to
-    /// <paramref name="publish"/> as soon as it exists, so a later hang or job kill cannot lose it. The returned JSON
-    /// is the final unit report. The unit deadline ends once the last condition report has been published. Building and
-    /// serializing the final unit report, and writing its -unit JSON, are outside the deadline.</summary>
-    internal static (string Json, bool Completed, string Reason) MeasureUnit(byte[] utf8, string expectedName, Action<string> publish)
-    {
-        ArgumentNullException.ThrowIfNull(publish);
-        void Sink(CoverageCostReport report) => publish(report.ToJson());
-        string schema;
-        using (var document = JsonDocument.Parse(utf8))
-            schema = document.RootElement.ValueKind == JsonValueKind.Object && document.RootElement.TryGetProperty("schema", out var value)
-                && value.ValueKind == JsonValueKind.String ? value.GetString()! : "";
-        if (schema == CoverageCostPairManifest.Schema)
-        {
-            var pair = CoverageCostPairManifest.Parse(utf8);
-            if (pair.Unit != expectedName) throw new InvalidDataException($"Pair unit {pair.Unit} does not match its file {expectedName}.");
-            var report = MeasurePair(pair, Sink);
-            return (report.ToJson(), report.Status == CoverageCostRunStatus.Completed, report.Reason);
-        }
-        var manifest = CoverageCostManifest.Parse(utf8);
-        if (manifest.Case != expectedName) throw new InvalidDataException($"Case {manifest.Case} does not match its file {expectedName}.");
-        var single = Measure(manifest, Sink);
-        return (single.ToJson(), single.Status == CoverageCostRunStatus.Completed, single.Reason);
-    }
+    internal static (string Json, bool Completed, string Reason) MeasureUnit(byte[] utf8, string expectedName, Action<string> publish) =>
+        throw RetiredAuthorization();
+
 }
 
 /// <summary>Identity of the process that produced a report. Values that cannot be read stay "unavailable".</summary>

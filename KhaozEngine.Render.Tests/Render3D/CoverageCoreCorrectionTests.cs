@@ -54,10 +54,10 @@ public sealed class CoverageCoreCorrectionTests
         var topology = CoverageRefinement.Build(fixture.Source, fixture.Map);
         var commands = CoverageCommands.Poses(fixture, topology, CoverageCommands.Plate(fixture), Matrix4x4.Identity);
         var before = CoverageCommands.Surface(topology, fixture.Posed);
-        var pointwise = Pointwise(topology, before, commands);
+        var pointwise = ReferencePointwise(topology, fixture.Posed, commands);
         var scratch = new CoverageScratch(topology);
         var final = Evaluate(fixture, topology, commands, scratch);
-        Assert.All(scratch.Corrections, extra => Assert.Equal(0, extra));
+        Assert.All(CoverageGeometryTestRun.Reference(scratch).FaceCorrections, extra => Assert.Equal(0, extra));
         Assert.Equal(pointwise.Select(v => v.Position), final.Select(v => v.Position));
         for (int i = 0; i < final.Length; i++)
             if (before[i].Position == final[i].Position) Assert.Equal(before[i], final[i]);
@@ -73,7 +73,7 @@ public sealed class CoverageCoreCorrectionTests
         var topology = CoverageRefinement.Build(fixture.Source, fixture.Map);
         var commands = CoverageCommands.Poses(fixture, topology, CoverageCommands.Plate(fixture), Matrix4x4.Identity);
         var before = CoverageCommands.Surface(topology, fixture.Posed);
-        var pointwise = Pointwise(topology, before, commands);
+        var pointwise = ReferencePointwise(topology, fixture.Posed, commands);
         var final = Evaluate(fixture, topology, commands);
         Assert.Contains(Enumerable.Range(0, final.Length), i => topology.IsCoreVertex(i)
             && pointwise[i].Position == before[i].Position && final[i].Position.Z < before[i].Position.Z);
@@ -129,7 +129,7 @@ public sealed class CoverageCoreCorrectionTests
             m * Matrix4x4.CreateRotationZ(-MathF.PI / 2), .5f)).ToArray();
         var invalid = fixture.Source.SkinVertices.ToArray().Select(v => SkinningMath.SkinVertex(v, collapsed)).ToArray();
         var output = new ModelVertex[topology.VertexCount];
-        Assert.False(CoverageEvaluator.TryEvaluateGeometry(topology, invalid, Matrix4x4.Identity,
+        Assert.False(CoverageGeometryTestRun.TryEvaluate(topology, invalid, Matrix4x4.Identity,
             [commands[0] with { TransitionWeight = .5f }], new CoverageScratch(topology), output, out var failure));
         Assert.Equal(CoverageFailureCode.FoldedPatch, failure.Code);
 
@@ -137,7 +137,7 @@ public sealed class CoverageCoreCorrectionTests
         {
             var sentinel = new ModelVertex(new(7, 8, 9), Vector3.UnitY, Vector4.One);
             var result = Enumerable.Repeat(sentinel, topology.VertexCount).ToArray();
-            Assert.False(CoverageEvaluator.TryEvaluateGeometry(topology, fixture.Posed, Matrix4x4.Identity, submitted,
+            Assert.False(CoverageGeometryTestRun.TryEvaluate(topology, fixture.Posed, Matrix4x4.Identity, submitted,
                 new CoverageScratch(topology), result, out var certificate, out var failure));
             Assert.Equal(expected, failure.Code);
             Assert.Equal(default, certificate);
@@ -167,9 +167,9 @@ public sealed class CoverageCoreCorrectionTests
         Assert.NotEqual(commands[0].EquipmentWorld, commands[0].CoverageWorld);
         var scratch = new CoverageScratch(topology);
         var final = new ModelVertex[topology.VertexCount];
-        Assert.True(CoverageEvaluator.TryEvaluateGeometry(topology, fixture.Posed, actor, commands, scratch, final,
+        Assert.True(CoverageGeometryTestRun.TryEvaluate(topology, fixture.Posed, actor, commands, scratch, final,
             out var failure), failure.ToString());
-        Assert.Contains(scratch.Corrections, extra => extra > 0);
+        Assert.Contains(CoverageGeometryTestRun.Reference(scratch).FaceCorrections, extra => extra > 0);
         var before = CoverageCommands.Surface(topology, fixture.Posed);
         var world = CoverageCommands.World(fixture, actor);
         var witness = CoverageCommands.Witness(world, topology, CoverageCommands.Place(before, actor), CoverageCommands.Place(final, actor));
@@ -184,10 +184,19 @@ public sealed class CoverageCoreCorrectionTests
         CoverageScratch? scratch = null)
     {
         var final = new ModelVertex[topology.VertexCount];
-        Assert.True(CoverageEvaluator.TryEvaluateGeometry(topology, fixture.Posed, Matrix4x4.Identity, commands,
+        Assert.True(CoverageGeometryTestRun.TryEvaluate(topology, fixture.Posed, Matrix4x4.Identity, commands,
             scratch ?? new CoverageScratch(topology), final, out var certificate, out var failure), failure.ToString());
         Assert.Equal(commands.All(c => c.TransitionWeight == 1), certificate.FullCoreClearance);
         return final;
+    }
+
+    static ModelVertex[] ReferencePointwise(CoverageRefinement topology, ModelVertex[] posed, CoverageCommandPose[] commands)
+    {
+        var scratch = new CoverageReferenceScratch(topology);
+        Assert.True(CoverageReferenceFrames.TryPrepare(topology, Matrix4x4.Identity, commands, scratch, out var failure), failure.ToString());
+        Assert.True(CoverageReferenceConstructor.TryInterpolate(topology, posed, scratch, out failure), failure.ToString());
+        Assert.True(CoverageReferenceConstructor.TryConformGroups(topology, commands, scratch, out failure), failure.ToString());
+        return scratch.After.ToArray();
     }
 
     // Independently construct the previous pointwise request. No face correction or production constructor is used.

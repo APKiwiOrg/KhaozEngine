@@ -156,6 +156,10 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   Warm checks allocate no managed memory. Flush events are diagnostic, and partial transitions do not prove
   full-weight core clearance. Its geometry certificate grants no drawable permission. See the
   [headless oracle contract](../docs/USING-KHAOZENGINE.md#headless-equipment-coverage-oracle).
+  `CoverageCertification.ValidateGeometry` validates supplied offline surfaces. The retired CPU constructor,
+  display certificate, pass capture and CPU preparation counters are absent. Frozen exact captures remain immutable.
+  Historical CPU cost authorizations reject before clocks, devices, fixtures or report creation. Fake report
+  accounting remains available. GPU timing requires fresh approval and separate instrumentation.
   After `Begin`, `TryStageCoverageEquipment` verifies a complete rigid source against uploaded position and
   index fingerprints and returns frozen descriptors without queuing them. Submit those descriptors through
   `Draw` and the descriptor `DrawMeshOutline` overload. Asset-byte verification is still the caller's job.

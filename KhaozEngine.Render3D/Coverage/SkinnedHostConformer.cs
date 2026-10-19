@@ -12,7 +12,6 @@ public sealed class SkinnedHostConformer : IDisposable
     internal readonly CoverageCommandUniforms Uniforms;
     internal readonly SkinnedMeshHandle[] Meshes;
     internal readonly IGpuBuffer[] Indices;
-    internal readonly CoverageScratch Scratch;
     internal readonly CoveragePreparation Request;
     internal readonly Matrix4x4[] InverseBind;
     internal readonly int Thread = Environment.CurrentManagedThreadId;
@@ -27,7 +26,6 @@ public sealed class SkinnedHostConformer : IDisposable
     {
         Scene = scene; Meshes = meshes; Topology = topology; InverseBind = inverseBind; Indices = indices;
         Gpu = gpu; Uniforms = new(topology, inverseBind.Length);
-        Scratch = new(topology);
         Request = new(this, inverseBind.Length, meshes.Length);
     }
     public CoverageRefinement Topology { get; }

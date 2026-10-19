@@ -48,9 +48,8 @@ public sealed partial class CoverageComputePullingGpuTests(ITestOutputHelper out
         Assert.Contains(actual.Full.Values, v => v > 0);
         Assert.Contains(actual.Visible.Values, v => v > 0);
         Assert.Equal(2, scene.Scene.DispatchedHostPreparationCount);
-        Assert.Equal(0, scene.Scene.CoverageDiagnosticsForTests.UncoveredGpuDraws);
+        Assert.Equal(0, scene.Scene.UncoveredGpuDrawsForTests);
         Assert.Equal(0, scene.Scene.OrdinaryCpuSkinnedVerticesForTests);
-        Assert.Equal(0, scene.Scene.CoveredHostPreparationCount);
         var batch = scene.Scene.CoverageGpuBatchForTests!;
         uint[] words = Read(gpu, batch.Current);
         uint[] work = Read(gpu, batch.Work);

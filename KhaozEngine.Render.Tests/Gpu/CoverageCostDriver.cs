@@ -271,7 +271,7 @@ internal static class CoverageCostDriver
         Add("encode.total", f => f.EncodeTicks * ms, session.NativeDevice
             ? "Scene3D.RenderInternal CPU recording, with Scene3D.EnableTiming on"
             : "Scene3D.RenderInternal into a null command list on the recording device, not a native backend encode");
-        Add("encode.resolution", f => f.ResolutionTicks * ms, "PrepareCoverageRendering: pass capture, spheres and render certification");
+        Add("encode.resolution", f => f.ResolutionTicks * ms, "Historical CPU resolution accounting");
         Add("encode.renderCertification", f => f.CertificationTicks * ms, "CoverageCertification.Validate per complete preparation", coverage);
         Add("encode.resolutionOther", f => (f.ResolutionTicks - f.CertificationTicks) * ms, "resolution less render certification",
             coverage, true);

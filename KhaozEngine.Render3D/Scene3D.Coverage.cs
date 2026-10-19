@@ -5,16 +5,11 @@ namespace KhaozEngine.Render3D;
 
 public sealed partial class Scene3D
 {
-    /// <summary>Canonical covered surfaces resolved in the last rendered frame.</summary>
-    public int CoveredHostPreparationCount { get; private set; }
     /// <summary>CPU-admitted complete hosts whose GPU coverage commands were encoded in the last view.</summary>
     public int DispatchedHostPreparationCount { get; private set; }
-    internal (int CoveredCpuPreparations, int UncoveredGpuDraws) CoverageDiagnosticsForTests =>
-        (CoveredHostPreparationCount, _gpuSkinnedDraws.Count);
-    internal ReadOnlySpan<ModelVertex> CoverageVerticesForTests(SkinnedCoverageFrame frame) => RequireCoverage(frame).Final;
+    internal int UncoveredGpuDrawsForTests => _gpuSkinnedDraws.Count;
 
     internal int CoverageSphereEvaluationsForTests { get; private set; }
-    internal long CoverageSurfaceScansForTests { get; private set; }
     internal (int List, uint Gpu, KhaozEngine.Gpu.IGpuBuffer? Buffer) CoverageMotionReserveForTests =>
         (_cpuSkinnedPrevious.Capacity, _model.CpuPreviousReservationForTests.Capacity, _model.CpuPreviousReservationForTests.Buffer);
     internal CoverageFrameOutcome CoverageOutcomeForTests(SkinnedCoverageFrame frame) =>
@@ -36,18 +31,6 @@ public sealed partial class Scene3D
                 if (_meshes[draw.Mesh.Index] is { } mesh && ReferenceEquals(mesh.Ib, buffer)) return true;
         return false;
     }
-    internal ReadOnlySpan<CoverageRenderPass> CoveragePassesForTests(SkinnedCoverageFrame frame) =>
-        System.Runtime.InteropServices.CollectionsMarshal.AsSpan(RequireCoverage(frame).Passes);
-    internal (KhaozEngine.Gpu.IGpuBuffer Vertices, KhaozEngine.Gpu.IGpuBuffer Indices, int BaseVertex, int IndexCount)
-        CoverageSliceForTests(SkinnedCoverageFrame frame, int slice)
-    {
-        var p = RequireCoverage(frame);
-        foreach (var draw in _cpuSkinnedDraws)
-            if (ReferenceEquals(draw.Ib, p.Owner.Indices[slice]) && draw.BaseVertex == p.BaseVertices[slice])
-                return (_model.CpuSkinnedVertexBuffer!, draw.Ib, draw.BaseVertex, draw.IndexCount);
-        throw new InvalidOperationException("No covered route was recorded.");
-    }
-
     /// <summary>Returns the owned staging or resolved presentation result. Foreign and stale tokens throw.</summary>
     public CoverageFrameOutcome GetCoverageOutcome(SkinnedCoverageFrame frame) => RequireCoverage(frame).Outcome;
 
@@ -100,7 +83,7 @@ public sealed partial class Scene3D
         p.Model = model; p.Actor = actor; p.CommandCount = commands.Length;
         commands.CopyTo(p.Commands);
         p.Generation = _coverageArena.Generation; p.Id = ++_coverageArena.NextPreparation; p.View = 0;
-        p.Outcome = default; p.Certificate = default; p.Passes.Clear(); Array.Clear(p.PassRoles); p.Sphere = default; p.SphereView = 0;
+        p.Outcome = default; p.Sphere = default; p.SphereView = 0;
         Array.Clear(p.Draws); Array.Clear(p.Outlines);
         conformer.Actor = actor;
         _coverageArena.Preparations.Add(p);

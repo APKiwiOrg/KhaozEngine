@@ -69,7 +69,7 @@ public sealed class CoverageCoreOverlayEquivalenceTests
     [InlineData("grid", true, true)]
     [InlineData("two-commands", true, false)]
     [InlineData("recession", true, false)]
-    public void Core_faces_match_the_frozen_pair_loop(string scene, bool seams, bool placed)
+    public void Reference_core_faces_preserve_affine_and_correction_only_budget_cases(string scene, bool seams, bool placed)
     {
         var fixture = CoverageFixture.CurvedPanel(seams: seams, level: 3, secondRegion: scene == "two-commands");
         if (scene == "framed")
@@ -93,40 +93,22 @@ public sealed class CoverageCoreOverlayEquivalenceTests
             commands = [commands[0] with { MaxWorldRecession = (pointBudget + fullBudget) * .5f, TransitionWeight = 0 }];
         }
 
-        var plain = new ModelVertex[topology.VertexCount];
-        var plainScratch = new CoverageScratch(topology);
-        bool plainResult = CoverageEvaluator.TryEvaluateGeometry(topology, fixture.Posed, actor, commands, plainScratch, plain,
-            out var plainCertificate, out var plainFailure);
-
-        var work = new List<CoverageCoreOverlayWork>();
-        var scratch = new CoverageScratch(topology) { CoreOverlayWitnessForTests = work.Add };
-        var witnessed = new ModelVertex[topology.VertexCount];
-        bool result = CoverageEvaluator.TryEvaluateGeometry(topology, fixture.Posed, actor, commands, scratch, witnessed,
+        var scratch = new CoverageScratch(topology);
+        var final = new ModelVertex[topology.VertexCount];
+        bool result = CoverageGeometryTestRun.TryEvaluate(topology, fixture.Posed, actor, commands, scratch, final,
             out var certificate, out var failure);
-        Assert.Equal((plainResult, plainFailure, plainCertificate), (result, failure, certificate));
-        Assert.Equal(plain, witnessed);
-        Assert.Equal(plainScratch.Corrections, scratch.Corrections);
         Assert.Equal(scene != "recession", result);
-        if (scene == "recession") Assert.Equal(CoverageFailureCode.RecessionExceeded, failure.Code);
-        Assert.Contains(scratch.Corrections, extra => extra > 0);
-
-        Assert.NotEmpty(work);
-        Assert.Equal(work.Count, work.Select(w => w.Triangle).Distinct().Count());
-        foreach (var face in work)
+        Assert.Contains(CoverageGeometryTestRun.Reference(scratch).FaceCorrections, extra => extra > 0);
+        if (scene == "recession")
         {
-            int region = topology.Triangles[face.Triangle].RegionIndex;
-            Assert.Equal(CoverageTriangleRole.Core, topology.Triangles[face.Triangle].Role);
-            var faceSupport = commands.Single(c => c.RegionIndex == region).Support;
-            var expected = CoverageFaceOverlayReference.TrySupportMaximum([face.Host0, face.Host1, face.Host2], faceSupport);
-            Assert.True(expected.Succeeded == face.Succeeded, $"{scene} face {face.Triangle}: {expected}");
-            Assert.Equal(BitConverter.DoubleToInt64Bits(expected.Maximum), BitConverter.DoubleToInt64Bits(face.Maximum));
-            int count = faceSupport.InwardTriangles.Count;
-            Assert.True(expected.Succeeded, $"{scene} face {face.Triangle}: {expected}");
-            Assert.Equal(56 * count, expected.EdgeEvaluations);
-            Assert.True(1 + 18 * count == face.EdgeEvaluations,
-                $"{scene} face {face.Triangle}: {face.EdgeEvaluations} Edge evaluations, expected {1 + 18 * count} ({expected.EdgeEvaluations} before)");
+            Assert.Equal(CoverageFailureCode.RecessionExceeded, failure.Code);
+            Assert.Equal(default, certificate);
         }
-        if (scene == "two-commands") Assert.Equal(2, work.Select(w => topology.Triangles[w.Triangle].RegionIndex).Distinct().Count());
+        else
+        {
+            var before = CoverageCommands.Surface(topology, fixture.Posed);
+            Assert.True(CoverageCertification.ValidateGeometry(topology, before, final, actor, commands, scratch, out failure), failure.ToString());
+        }
     }
 
     static void AssertSupport(CoverageAffinePoint[] host, CoverageSupportSurface support,

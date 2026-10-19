@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Linq;
 using System.Runtime.InteropServices;
 using KhaozEngine.Attachments.Render3D;
 using KhaozEngine.Primitives;
@@ -54,13 +55,11 @@ public sealed class CoverageAllocationTests(ITestOutputHelper output)
         var template = f.Template;
         var scratchDraws = new AttachmentDraw[equipment.Set.DrawCount];
 
-        // Every frame swaps the poses and reverses the actor order. The second warm-up frame is required by the
-        // double-buffered CoverageMotionHistory: its previous bank first holds committed surfaces after frame one,
-        // so PrepareFrame grows the transition mask once to cover current conformers plus previous surfaces.
+        // Swap poses and actor order, warming both GPU history generations before allocation checks.
         WarmFrame(f, a, lifted, b, bent, palette, template);
         WarmFrame(f, b, lifted, a, bent, palette, template);
-        var warmA = f.Scene.CoverageVerticesForTests(a.Frame).ToArray();
-        var warmB = f.Scene.CoverageVerticesForTests(b.Frame).ToArray();
+        var warmA = a.Frame.Preparation!.Palette.ToArray();
+        var warmB = b.Frame.Preparation!.Palette.ToArray();
 
         // Measured frame. A returns to the lifted pose and B to the bent pose.
         SubmitFrame(f, a, lifted, b, bent, palette, template);
@@ -96,29 +95,29 @@ public sealed class CoverageAllocationTests(ITestOutputHelper output)
             $"B(prepare={b.Prepared - b.Start} submit={b.Submitted - b.Prepared}) " +
             $"reserve={reserve} resolution={resolution}/{resolutions} surface={surface}/{surfaces}");
 
-        // Accepted covered presentation, decided by render-time certification for both actors.
+        // Both actors retain complete admitted inputs for GPU dispatch.
         Assert.True(a.Accepted, a.Failure.ToString());
         Assert.True(b.Accepted, b.Failure.ToString());
         Assert.Equal(CoveragePresentation.Pending, pendingA);
         Assert.Equal(CoveragePresentation.Pending, pendingB);
-        Assert.Equal(CoveragePresentation.Covered, f.Scene.GetCoverageOutcome(a.Frame).Presentation);
-        Assert.Equal(CoveragePresentation.Covered, f.Scene.GetCoverageOutcome(b.Frame).Presentation);
-        Assert.Equal((2, 0), f.Scene.CoverageDiagnosticsForTests);
+        Assert.Equal(CoveragePresentation.Dispatched, f.Scene.GetCoverageOutcome(a.Frame).Presentation);
+        Assert.Equal(CoveragePresentation.Dispatched, f.Scene.GetCoverageOutcome(b.Frame).Presentation);
+        Assert.Equal(2, f.Scene.DispatchedHostPreparationCount);
+        Assert.Equal(0, f.Scene.UncoveredGpuDrawsForTests);
         Assert.Equal(1, resolutions);
         Assert.Equal(1, surfaces);
 
-        // Changed final geometry. Each actor now matches the surface the other actor produced for the same pose
-        // and model in the previous frame, and no longer matches its own previous surface.
-        var finalA = f.Scene.CoverageVerticesForTests(a.Frame).ToArray();
-        var finalB = f.Scene.CoverageVerticesForTests(b.Frame).ToArray();
+        // Uploaded palettes follow the actors after the input buffers have been reused.
+        var finalA = a.Frame.Preparation!.Palette.ToArray();
+        var finalB = b.Frame.Preparation!.Palette.ToArray();
         Assert.Equal(warmB, finalA);
         Assert.Equal(warmA, finalB);
         Assert.NotEqual(warmA, finalA);
         Assert.NotEqual(finalA, finalB);
-        AssertSubmittedSurface(f, a.Frame, finalA);
-        AssertSubmittedSurface(f, b.Frame, finalB);
+        AssertSubmittedSurface(f, a.Frame);
+        AssertSubmittedSurface(f, b.Frame);
 
-        // Both actor identities survive the switch, with their own equipment instances in the captured passes.
+        // Actor identities and equipment membership survive the switch in the frozen command snapshots.
         Assert.NotSame(a.Frame.Preparation, b.Frame.Preparation);
         Assert.Equal(MotionKey.From(a.Key), a.Frame.Preparation!.Actor);
         Assert.Equal(MotionKey.From(b.Key), b.Frame.Preparation!.Actor);
@@ -138,8 +137,8 @@ public sealed class CoverageAllocationTests(ITestOutputHelper output)
         f.Render();
         Assert.True(first.Accepted, first.Failure.ToString());
         Assert.True(second.Accepted, second.Failure.ToString());
-        Assert.Equal(CoveragePresentation.Covered, f.Scene.GetCoverageOutcome(first.Frame).Presentation);
-        Assert.Equal(CoveragePresentation.Covered, f.Scene.GetCoverageOutcome(second.Frame).Presentation);
+        Assert.Equal(CoveragePresentation.Dispatched, f.Scene.GetCoverageOutcome(first.Frame).Presentation);
+        Assert.Equal(CoveragePresentation.Dispatched, f.Scene.GetCoverageOutcome(second.Frame).Presentation);
     }
 
     static void SubmitFrame(CoverageAttachmentFixture f, Actor first, in Pose firstPose, Actor second, in Pose secondPose,
@@ -162,26 +161,23 @@ public sealed class CoverageAllocationTests(ITestOutputHelper output)
         actor.Submitted = GC.GetAllocatedBytesForCurrentThread();
     }
 
-    static void AssertSubmittedSurface(CoverageAttachmentFixture f, SkinnedCoverageFrame frame, ModelVertex[] final)
+    static void AssertSubmittedSurface(CoverageAttachmentFixture f, SkinnedCoverageFrame frame)
     {
-        var topology = frame.Preparation!.Owner.Topology;
-        for (int slice = 0; slice < f.Hosts.Length; slice++)
-        {
-            var range = topology.MaterialRanges[slice];
-            var route = f.Scene.CoverageSliceForTests(frame, slice);
-            Assert.Contains(f.Record.IndexedDraws, d => ReferenceEquals(d.IndexBuffer, route.Indices)
-                && ReferenceEquals(d.VertexBuffer, route.Vertices) && d.VertexOffset == route.BaseVertex);
-            var upload = Assert.Single(f.Record.Uploads, u => ReferenceEquals(u.Buffer, route.Vertices));
-            Assert.Equal(final.AsSpan(range.FirstVertex, range.VertexCount).ToArray(),
-                MemoryMarshal.Cast<byte, ModelVertex>(upload.Data).Slice(route.BaseVertex, range.VertexCount).ToArray());
-        }
+        var p = frame.Preparation!;
+        var batch = f.Scene.CoverageGpuBatchForTests!;
+        Assert.Contains(batch.Actors.ToArray(), r => r == p.GpuReservation);
+        var upload = Assert.Single(f.Record.Uploads, u => ReferenceEquals(u.Buffer, batch.FrameData));
+        var words = MemoryMarshal.Cast<byte, uint>(upload.Data).Slice((int)p.GpuReservation.FrameBase + 16, p.Palette.Length * 16);
+        Assert.Equal(MemoryMarshal.Cast<Matrix4x4, uint>(p.Palette).ToArray(), words.ToArray());
+        Assert.DoesNotContain(f.Record.IndexedDraws, d => p.Owner.Indices.Contains(d.IndexBuffer));
     }
 
     static void AssertPassInstances(CoverageAttachmentFixture f, SkinnedCoverageFrame frame, ulong own, ulong other)
     {
-        var passes = f.Scene.CoveragePassesForTests(frame).ToArray();
-        Assert.Contains(passes, p => p.EquipmentInstanceId == own);
-        Assert.DoesNotContain(passes, p => p.EquipmentInstanceId == other);
+        var p = frame.Preparation!;
+        var commands = p.Commands.AsSpan(0, p.CommandCount).ToArray();
+        Assert.Contains(commands, c => c.EquipmentInstanceId == own);
+        Assert.DoesNotContain(commands, c => c.EquipmentInstanceId == other);
     }
 
     readonly record struct Pose(Matrix4x4[] Palette, Matrix4x4 Model);
@@ -258,8 +254,8 @@ public sealed class CoverageAllocationTests(ITestOutputHelper output)
         Assert.True(equipment, equipmentFailure.ToString());
         Assert.True(host, hostFailure.ToString());
         if (points) Assert.Equal(1, h.Scene.PointShadowedLights);
-        if (coverage && points) Assert.True(h.Scene.CoveragePassesForTests(frame).Length >= 16);
-        if (coverage) Assert.Equal(fallback ? CoveragePresentation.UncoveredFallback : CoveragePresentation.Covered,
+        if (coverage && points) Assert.Equal(1, h.Scene.DispatchedHostPreparationCount);
+        if (coverage) Assert.Equal(fallback ? CoveragePresentation.UncoveredFallback : CoveragePresentation.Dispatched,
             h.Scene.GetCoverageOutcome(frame).Presentation);
         return new(afterEquipment - before, afterPreparation - afterEquipment, afterSubmission - afterPreparation,
             afterReserve - afterSubmission, resolution, surface, afterRender - afterReserve);

@@ -133,7 +133,6 @@ namespace KhaozEngine.Render3D
         internal void BeginPointShadowFrame(int slotCount)
         {
             _packedPointSlots.Clear();
-            _coveragePointMatrices.Clear();
             _pointShadows?.EnsureFaceCapacity(slotCount);
         }
 
@@ -182,7 +181,6 @@ namespace KhaozEngine.Render3D
                 Matrix4x4 vp = GpuClip.Correct(
                     PointShadowMath.FaceViewProjection(face, slot, atlas.Rows, lightRender, radius),
                     _gd.Capabilities);
-                _coveragePointMatrices.Add(vp);
                 renderer.PackFace(packedSlotIndex * PointShadowMath.FaceCount + face, vp, lightRender, radius,
                     noiseScale, _frameOrigin, nearRadius, exclusionMinRender, exclusionMaxRender);
             }

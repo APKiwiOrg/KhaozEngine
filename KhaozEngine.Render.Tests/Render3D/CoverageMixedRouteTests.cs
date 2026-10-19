@@ -24,7 +24,7 @@ public sealed class CoverageMixedRouteTests
         h.SubmitEquipment();
         h.Render();
         Assert.Equal(CoveragePresentation.UncoveredFallback, h.Scene.GetCoverageOutcome(frame).Presentation);
-        Assert.Equal(1, h.Scene.CoverageDiagnosticsForTests.UncoveredGpuDraws);
+        Assert.Equal(1, h.Scene.UncoveredGpuDrawsForTests);
         Assert.DoesNotContain(h.Factory.ShaderRequests, s => s.VertexGlsl == ShaderSources.CoverageModelVert
             || s.VertexGlsl == ShaderSources.CoverageOutlineVert);
     }
@@ -47,8 +47,7 @@ public sealed class CoverageMixedRouteTests
         h.Outline(uncovered);
         h.Render();
         Assert.Equal(1, h.Scene.DispatchedHostPreparationCount);
-        Assert.Equal(0, h.Scene.CoverageDiagnosticsForTests.CoveredCpuPreparations);
-        Assert.Equal(1, h.Scene.CoverageDiagnosticsForTests.UncoveredGpuDraws);
+        Assert.Equal(1, h.Scene.UncoveredGpuDrawsForTests);
         h.AssertCanonicalDraws(frame);
     }
 
@@ -71,8 +70,7 @@ public sealed class CoverageMixedRouteTests
         h.Outline(uncovered);
         h.Render();
         Assert.Equal(1, h.Scene.DispatchedHostPreparationCount);
-        Assert.Equal(0, h.Scene.CoverageDiagnosticsForTests.CoveredCpuPreparations);
-        Assert.Equal(0, h.Scene.CoverageDiagnosticsForTests.UncoveredGpuDraws);
+        Assert.Equal(0, h.Scene.UncoveredGpuDrawsForTests);
         h.AssertCanonicalDraws(frame);
         var mesh = h.UncoveredMesh;
         Assert.Equal(mesh.Vertices.Length, h.Scene.OrdinaryCpuSkinnedVerticesForTests);

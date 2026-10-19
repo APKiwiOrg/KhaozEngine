@@ -63,7 +63,7 @@ public sealed partial class Scene3D
             if (draw.Coverage.Stage is not null || !_slots.IsValid(draw.Mesh.Index, draw.Mesh.Generation)
                 || !_coverageUploads.TryGetValue((draw.Mesh.Index, draw.Mesh.Generation), out var upload)
                 || !evidence.Slices.TryGetValue(slice, out var fingerprint) || upload.Fingerprint != fingerprint
-                || !double.IsFinite(upload.AttributeSum) || draw.ShadowOnly && !draw.CastsShadows
+                || draw.ShadowOnly && !draw.CastsShadows
                 || draw.World != draws[0].World || _meshes[draw.Mesh.Index] is not { SplatMaterial: < 0, TileGroundMaterial: < 0, AlphaCutoff: 0 })
                 return Refuse(CoverageFailureCode.IdentityMismatch, out failure);
         }

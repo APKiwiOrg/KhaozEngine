@@ -19,7 +19,7 @@ public sealed class CoverageNormalTests
         var after = before.ToArray();
         var transform = new Matrix4x4(1.2f, .1f, .3f, 0, 0, .9f, -.2f, 0, .2f, 0, 1.4f, 0, 0, 0, 0, 1);
         foreach (ref var v in after.AsSpan()) v.Position = Vector3.Transform(v.Position, transform);
-        Assert.True(CoverageSurfaceNormals.Update(topology, before, after, new(topology), out var failure));
+        Assert.True(CoverageGeometryTestRun.UpdateNormals(topology, before, after, new(topology), out var failure));
         Assert.True(failure.IsSuccess);
         // Each face has its own unit-normal extension, rather than an arbitrary 3D affine extension.
         int index = 0;
@@ -44,10 +44,10 @@ public sealed class CoverageNormalTests
         var fixture = CoverageFixture.CurvedPanel(); var topology = CoverageRefinement.Build(fixture.Source, fixture.Map);
         var before = new ModelVertex[topology.VertexCount]; topology.Interpolate(fixture.Posed, before);
         var after = before.ToArray();
-        Assert.True(CoverageSurfaceNormals.Update(topology, before, after, new(topology), out _));
+        Assert.True(CoverageGeometryTestRun.UpdateNormals(topology, before, after, new(topology), out _));
         Assert.Equal(MemoryMarshal.AsBytes(before.AsSpan()).ToArray(), MemoryMarshal.AsBytes(after.AsSpan()).ToArray());
         for (int i = 0; i < before.Length; i++) { before[i].Tangent = Vector4.Zero; after[i].Tangent = Vector4.Zero; after[i].Position.Z -= after[i].Position.X * .1f; }
-        Assert.True(CoverageSurfaceNormals.Update(topology, before, after, new(topology), out _));
+        Assert.True(CoverageGeometryTestRun.UpdateNormals(topology, before, after, new(topology), out _));
         Assert.All(after, v => Assert.Equal(Vector4.Zero, v.Tangent));
     }
 
@@ -59,7 +59,7 @@ public sealed class CoverageNormalTests
         var after = before.ToArray();
         foreach (ref var v in after.AsSpan()) v.Position = Vector3.Zero;
         var expected = MemoryMarshal.AsBytes(after.AsSpan()).ToArray();
-        Assert.False(CoverageSurfaceNormals.Update(topology, before, after, new(topology), out var failure));
+        Assert.False(CoverageGeometryTestRun.UpdateNormals(topology, before, after, new(topology), out var failure));
         Assert.Equal(CoverageFailureCode.FoldedPatch, failure.Code);
         Assert.Equal(expected, MemoryMarshal.AsBytes(after.AsSpan()).ToArray());
     }
@@ -71,7 +71,7 @@ public sealed class CoverageNormalTests
         var before = new ModelVertex[topology.VertexCount]; topology.Interpolate(fixture.Posed, before);
         var after = before.ToArray();
         for (int i = 0; i < after.Length; i++) after[i].Position.Z -= topology.Vertices[i].Strength * .05f;
-        Assert.True(CoverageSurfaceNormals.Update(topology, before, after, new(topology), out var failure));
+        Assert.True(CoverageGeometryTestRun.UpdateNormals(topology, before, after, new(topology), out var failure));
         Assert.True(failure.IsSuccess);
         for (int i = 0; i < after.Length; i++)
             if (topology.Vertices[i].Strength == 0)
@@ -84,7 +84,7 @@ public sealed class CoverageNormalTests
         var fixture = CoverageFixture.CurvedPanel(degenerateFace: true); var topology = CoverageRefinement.Build(fixture.Source, fixture.Map);
         var before = new ModelVertex[topology.VertexCount]; topology.Interpolate(fixture.Posed, before);
         var after = before.ToArray();
-        Assert.True(CoverageSurfaceNormals.Update(topology, before, after, new(topology), out _));
+        Assert.True(CoverageGeometryTestRun.UpdateNormals(topology, before, after, new(topology), out _));
         Assert.Equal(MemoryMarshal.AsBytes(before.AsSpan()).ToArray(), MemoryMarshal.AsBytes(after.AsSpan()).ToArray());
     }
 
@@ -98,7 +98,7 @@ public sealed class CoverageNormalTests
         int moved = Enumerable.Range(0, topology.VertexCount).Single(i => topology.Vertices[i].SourceVertex == fixture.Source.Vertices.Count - 1);
         after[moved].Position.X = .25f; // Still exactly collinear.
         var expected = MemoryMarshal.AsBytes(after.AsSpan()).ToArray();
-        Assert.False(CoverageSurfaceNormals.Update(topology, before, after, new(topology), out var failure));
+        Assert.False(CoverageGeometryTestRun.UpdateNormals(topology, before, after, new(topology), out var failure));
         Assert.Equal(CoverageFailureCode.FoldedPatch, failure.Code);
         Assert.Equal(expected, MemoryMarshal.AsBytes(after.AsSpan()).ToArray());
     }
@@ -110,7 +110,7 @@ public sealed class CoverageNormalTests
         var before = new ModelVertex[topology.VertexCount]; topology.Interpolate(fixture.Posed, before);
         var after = before.ToArray(); after[^1].Position.Y = float.PositiveInfinity;
         var expected = MemoryMarshal.AsBytes(after.AsSpan()).ToArray();
-        Assert.False(CoverageSurfaceNormals.Update(topology, before, after, new(topology), out var failure));
+        Assert.False(CoverageGeometryTestRun.UpdateNormals(topology, before, after, new(topology), out var failure));
         Assert.Equal(CoverageFailureCode.UnsupportedTransform, failure.Code);
         Assert.Equal(expected, MemoryMarshal.AsBytes(after.AsSpan()).ToArray());
     }
@@ -126,12 +126,12 @@ public sealed class CoverageNormalTests
         var expected = MemoryMarshal.AsBytes(after.AsSpan()).ToArray();
         // Equal sized storage compiled for another topology is still the wrong workspace.
         Assert.Equal(twin.VertexCount, topology.VertexCount);
-        Assert.Throws<ArgumentException>(() => CoverageSurfaceNormals.Update(topology, before, after, new(twin), out _));
+        Assert.Throws<ArgumentException>(() => CoverageGeometryTestRun.UpdateNormals(topology, before, after, new(twin), out _));
         Assert.Equal(expected, MemoryMarshal.AsBytes(after.AsSpan()).ToArray());
         // Capacity-owned buffers pass their exact active prefix.
         var larger = new ModelVertex[topology.VertexCount + 1]; after.CopyTo(larger, 0);
-        Assert.Throws<ArgumentException>(() => CoverageSurfaceNormals.Update(topology, before, larger, new(topology), out _));
-        Assert.True(CoverageSurfaceNormals.Update(topology, before, larger.AsSpan(0, topology.VertexCount), new(topology), out _));
+        Assert.Throws<ArgumentException>(() => CoverageGeometryTestRun.UpdateNormals(topology, before, larger, new(topology), out _));
+        Assert.True(CoverageGeometryTestRun.UpdateNormals(topology, before, larger.AsSpan(0, topology.VertexCount), new(topology), out _));
     }
 
     [Fact]
@@ -155,7 +155,7 @@ public sealed class CoverageNormalTests
         double[] ax = [a[0][0], a[1][0], a[2][0]], ay = [a[0][1], a[1][1], a[2][1]];
         var normal = Unit([ax[1] * ay[2] - ax[2] * ay[1], ax[2] * ay[0] - ax[0] * ay[2], ax[0] * ay[1] - ax[1] * ay[0]]);
         var tangent = Unit(ax);
-        Assert.True(CoverageSurfaceNormals.Update(topology, before, after, new(topology), out _));
+        Assert.True(CoverageGeometryTestRun.UpdateNormals(topology, before, after, new(topology), out _));
         for (int i = 0; i < after.Length; i++)
         {
             Assert.NotEqual(before[i].Position, after[i].Position);
@@ -177,7 +177,7 @@ public sealed class CoverageNormalTests
         var before = new ModelVertex[topology.VertexCount]; topology.Interpolate(fixture.Posed, before);
         var after = before.ToArray();
         for (int i = 0; i < after.Length; i++) after[i].Position.Z -= topology.Vertices[i].Strength * .05f;
-        Assert.True(CoverageSurfaceNormals.Update(topology, before, after, new(topology), out _));
+        Assert.True(CoverageGeometryTestRun.UpdateNormals(topology, before, after, new(topology), out _));
         for (int i = 0; i < after.Length; i++)
             if (topology.Vertices[i].Strength == 0) Assert.Equal(before[i], after[i]);
     }
@@ -187,13 +187,13 @@ public sealed class CoverageNormalTests
     {
         var fixture = CoverageFixture.CurvedPanel(); var topology = CoverageRefinement.Build(fixture.Source, fixture.Map);
         var before = new ModelVertex[topology.VertexCount]; var after = new ModelVertex[topology.VertexCount];
-        var scratch = new CoverageScratch(topology);
+        var scratch = new CoverageReferenceScratch(topology);
         topology.Interpolate(fixture.Posed, before); before.CopyTo(after, 0);
         for (int i = 0; i < after.Length; i++) after[i].Position.Z -= topology.Vertices[i].Strength * .05f;
-        Assert.True(CoverageSurfaceNormals.Update(topology, before, after, scratch, out _));
+        Assert.True(CoverageGeometryTestRun.UpdateNormals(topology, before, after, scratch, out _));
         long start = GC.GetAllocatedBytesForCurrentThread();
         bool interpolated = topology.TryInterpolate(fixture.Posed, before, out _);
-        bool updated = CoverageSurfaceNormals.Update(topology, before, after, scratch, out _);
+        bool updated = CoverageGeometryTestRun.UpdateNormals(topology, before, after, scratch, out _);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - start;
         Assert.True(interpolated && updated);
         Assert.Equal(0, allocated);
@@ -206,7 +206,7 @@ public sealed class CoverageNormalTests
         var before = new ModelVertex[topology.VertexCount]; topology.Interpolate(fixture.Posed, before);
         before[0].Position.X = 0;
         var after = before.ToArray(); after[0].Position.X = BitConverter.Int32BitsToSingle(int.MinValue);
-        Assert.True(CoverageSurfaceNormals.Update(topology, before, after, new(topology), out _));
+        Assert.True(CoverageGeometryTestRun.UpdateNormals(topology, before, after, new(topology), out _));
         Assert.Equal(MemoryMarshal.AsBytes(before.AsSpan()).ToArray(), MemoryMarshal.AsBytes(after.AsSpan()).ToArray());
     }
 
@@ -234,7 +234,7 @@ public sealed class CoverageNormalTests
             var before = new ModelVertex[topology.VertexCount]; topology.Interpolate(posed, before);
             var after = before.ToArray();
             foreach (ref var v in after.AsSpan()) v.Position.Z -= .1f + .06f * v.Position.X * v.Position.Y + .03f * v.Position.X * v.Position.X;
-            Assert.True(CoverageSurfaceNormals.Update(topology, before, after, new(topology), out _));
+            Assert.True(CoverageGeometryTestRun.UpdateNormals(topology, before, after, new(topology), out _));
             var seams = Enumerable.Range(0, after.Length).GroupBy(i => topology.Vertices[i].PositionGroup).Where(g => g.Count() > 1).ToArray();
             Assert.NotEmpty(seams);
             foreach (var seam in seams)

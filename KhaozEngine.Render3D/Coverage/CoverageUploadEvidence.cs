@@ -12,28 +12,11 @@ internal sealed class CoverageUploadEvidence
 {
     internal readonly string Fingerprint;
     internal readonly MeshBounds Bounds;
-    internal readonly double AttributeSum, OutlineAttributeSum;
 
     internal CoverageUploadEvidence(GltfMesh mesh)
     {
         Fingerprint = Hash(mesh.Vertices.Select(v => v.Position).ToArray(), mesh.Indices32);
         Bounds = MeshBounds.FromVertices(mesh.Vertices);
-        AttributeSum = Attributes(mesh.Vertices);
-        OutlineAttributeSum = Attributes(mesh.Vertices, true);
-    }
-
-    internal static double Attributes(ReadOnlySpan<ModelVertex> vertices, bool outline = false)
-    {
-        double maximum = 0;
-        foreach (ref readonly ModelVertex v in vertices)
-        {
-            double sum = CoverageShaderPosition.Sum(Math.Abs((double)v.Normal.X), Math.Abs((double)v.Color.X));
-            if (!outline) sum = CoverageShaderPosition.Sum(sum,
-                CoverageShaderPosition.Sum(Math.Abs((double)v.Uv.X), Math.Abs((double)v.Tangent.X)));
-            if (!double.IsFinite(sum)) return double.PositiveInfinity;
-            maximum = Math.Max(maximum, sum);
-        }
-        return maximum;
     }
 
     internal static string Hash(Vector3[] positions, uint[] indices)

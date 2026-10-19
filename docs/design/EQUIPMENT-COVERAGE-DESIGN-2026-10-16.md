@@ -1,5 +1,10 @@
 # Equipment coverage design
 
+Historical construction and display APIs in this document are superseded by the GPU path in
+[Amendment R](EQUIPMENT-COVERAGE-AMENDMENT-R-2026-10-18.md). The exact geometry certifier and pinned
+reference remain offline evidence. The CPU cost authorization is retired and cannot start a workload.
+
+
 Status: **Owner approved the written design and visible collar implication on 2026-10-16.**
 
 Date: 2026-10-16. Source audit: `0bd787b5ccf25ea5a79afadc1bcfe315a2886016`.

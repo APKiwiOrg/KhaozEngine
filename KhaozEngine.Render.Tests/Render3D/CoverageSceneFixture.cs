@@ -61,7 +61,7 @@ internal sealed partial class CoverageSceneFixture : IDisposable
             new ModelVertex(p, Vector3.UnitZ, Vector4.One)).ToArray(), data.RigidIndices);
         equipment = Scene.LoadMesh(RigidMesh);
         Expected = new ModelVertex[conformer.Topology.VertexCount];
-        Assert.True(CoverageEvaluator.TryEvaluateGeometry(conformer.Topology, data.Posed, Matrix4x4.Identity,
+        Assert.True(CoverageGeometryTestRun.TryEvaluate(conformer.Topology, data.Posed, Matrix4x4.Identity,
             Commands(), new CoverageScratch(conformer.Topology), Expected, out var failure), failure.ToString());
     }
 
@@ -154,12 +154,8 @@ internal sealed partial class CoverageSceneFixture : IDisposable
     internal bool IsHostIndexBuffer(IGpuBuffer? buffer) => conformer.Indices.Contains(buffer);
     internal void AssertCapturedMatricesUploaded(SkinnedCoverageFrame frame)
     {
-        foreach (var pass in Scene.CoveragePassesForTests(frame))
-        {
-            Matrix4x4 matrix = pass.ViewProjection;
-            byte[] bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in matrix, 1)).ToArray();
-            Assert.Contains(Record.Uploads, upload => upload.Data is not null && upload.Data.AsSpan().IndexOf(bytes) >= 0);
-        }
+        AssertCoverageDispatch(frame);
+        Assert.Contains(Record.Uploads, u => ReferenceEquals(u.Buffer, Scene.CoverageGpuBatchForTests!.FrameData));
     }
 
     public void AssertFallbackDraws(SkinnedCoverageFrame frame)
@@ -173,7 +169,6 @@ internal sealed partial class CoverageSceneFixture : IDisposable
             Assert.Equal(0, d.VertexOffset);
             Assert.Equal((uint)HostMesh.Indices32.Length, d.IndexCount);
         });
-        Assert.Equal(0, Scene.CoveredHostPreparationCount);
     }
     internal void AssertLegacyOutline((IGpuBuffer Vertices, IGpuBuffer Indices) route)
     {

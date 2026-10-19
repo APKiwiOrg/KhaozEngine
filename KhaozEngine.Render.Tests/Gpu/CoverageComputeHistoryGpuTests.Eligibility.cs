@@ -49,7 +49,6 @@ public sealed partial class CoverageComputeHistoryGpuTests
         _ = VerifySelection(h, drawReturned);
         Assert.DoesNotContain(h.Record.Uploads, u => ReferenceEquals(u.Buffer, drawReturned.Surface.Current)
             || ReferenceEquals(u.Buffer, drawReturned.Surface.Previous));
-        Assert.Equal(0, h.Scene.CoverageSurfaceScansForTests);
     }
 
     [GpuFact]
@@ -80,7 +79,6 @@ public sealed partial class CoverageComputeHistoryGpuTests
         h.Render(96, 72);
         var mask = h.Mask();
         Assert.Contains(1f, mask); Assert.Equal(0f, mask[0]); Assert.Equal(0f, mask[^1]);
-        Assert.Equal(0, h.Scene.CoverageSurfaceScansForTests);
         Assert.True(h.Scene.TemporalHistory.IsValid);
     }
 

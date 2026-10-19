@@ -188,7 +188,6 @@ public sealed partial class Scene3D
     internal void CommitCoverageMotion()
     {
         if (!_coverageEncodingComplete || _coverageMotionCommitted || _coverageMotionFrame != CurrentFrameView.FrameIndex) return;
-        CoverageStageObserverForTests?.Invoke(CoverageStageSpan.MotionCommit, true);
         foreach (var p in _coverageArena.Preparations)
         {
             if (!p.MotionPresented) continue;
@@ -204,7 +203,6 @@ public sealed partial class Scene3D
         _coverageMotion.Commit();
         _coverageEncodingComplete = false;
         _coverageMotionCommitted = true;
-        CoverageStageObserverForTests?.Invoke(CoverageStageSpan.MotionCommit, false);
     }
 
     static bool Finite(Matrix4x4 matrix)

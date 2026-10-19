@@ -299,6 +299,7 @@ namespace KhaozEngine.Tests.Gpu
             var references = new Dictionary<(MovingShadeKind, float, float), byte[][]>();
             var summary = new List<string>();
             var measured = new Dictionary<Case, Dictionary<string, ShadowEdgeRegion>>();
+            var controls = new Dictionary<Case, Dictionary<string, ShadowEdgeRegion>>();
             foreach (Case c in Cases())
             {
                 var stage = new MovingShadeStage(W, H, c.Kind, c.Shadow, c.Motion, FirstMeasured);
@@ -331,6 +332,23 @@ namespace KhaozEngine.Tests.Gpu
                     r[name] = region;
                 }
                 measured[c] = r;
+                output.WriteLine($"LAG|{TemporalDeviceClass.Name}|{c.Name}|{r["band textured"].Mean:R}"
+                    + $"|{r["tail textured"].Mean:R}|{r["far textured"].Mean:R}|{r["band flat"].Mean:R}"
+                    + $"|{r["tail flat"].Mean:R}|{r["far flat"].Mean:R}|{r["band textured"].GrainOut:R}"
+                    + $"|{r["band textured"].GrainRef:R}|{r["band textured"].ChangeError:R}");
+                if (c.Kind == MovingShadeKind.Shadow && (MathF.Abs(c.Shadow) == 1f || MathF.Abs(c.Shadow) == 8f))
+                {
+                    byte[][] control = TemporalBilinearShadowControl.Sequence(W, H,
+                        s => stage.Setup(s, AntiAliasing.Temporal, c.Preset, holdTexels: 1f), stage.Draw,
+                        FirstMeasured, Measured);
+                    var baseline = new ShadowEdgeMeasure(W, H, stage.Receiver(), c.Sign, control, reference, FirstMeasured);
+                    var controlRegions = new Dictionary<string, ShadowEdgeRegion>();
+                    foreach ((string name, ShadowEdgeRegion region) in baseline.Regions) controlRegions[name] = region;
+                    controls[c] = controlRegions;
+                    output.WriteLine($"TAIL|{TemporalDeviceClass.Name}|{c.Name}|{r["tail textured"].Mean:R}"
+                        + $"|{controlRegions["tail textured"].Mean:R}|{r["tail flat"].Mean:R}"
+                        + $"|{controlRegions["tail flat"].Mean:R}");
+                }
                 int span = ShadowEdgeMeasure.ProfileBins * ShadowEdgeMeasure.ProfileBin;
                 string bins = $"{ShadowEdgeMeasure.ProfileBin} px bins of travel from "
                     + $"{ShadowEdgeMeasure.ProfileAhead - span} (behind) to {ShadowEdgeMeasure.ProfileAhead} (ahead)";
@@ -354,10 +372,11 @@ namespace KhaozEngine.Tests.Gpu
                 + "chgT   chRefT chErrT  chgF   chRefF chErrF");
             foreach (string line in summary) output.WriteLine(line);
             output.WriteLine($"device class {TemporalDeviceClass.Name}");
-            AssertBounds(measured);
+            AssertBounds(measured, controls);
         }
 
-        static void AssertBounds(Dictionary<Case, Dictionary<string, ShadowEdgeRegion>> measured)
+        static void AssertBounds(Dictionary<Case, Dictionary<string, ShadowEdgeRegion>> measured,
+            Dictionary<Case, Dictionary<string, ShadowEdgeRegion>> controls)
         {
             var failures = new List<string>();
             foreach ((Case c, Dictionary<string, ShadowEdgeRegion> r) in measured)
@@ -376,6 +395,14 @@ namespace KhaozEngine.Tests.Gpu
                         Shadow = c.Sign
                     };
                     double slowTail = measured[slow]["tail textured"].Mean;
+                    if (MathF.Abs(c.Shadow) == 8f)
+                        foreach (string region in new[] { "tail textured", "tail flat" })
+                        {
+                            double actual = r[region].Mean, before = controls[c][region].Mean;
+                            Check(double.IsFinite(actual) && actual <= before + 0.0000005,
+                                $"{c.Name}: absolute {region} {actual:R} above paired bilinear control {before:R}, "
+                                + $"1 px denominator {measured[slow][region].Mean:R}, control {controls[slow][region].Mean:R}");
+                        }
                     Check(tail <= FastTailRatio * slowTail,
                         $"{c.Name}: textured tail {tail:0.0000} above {FastTailRatio} times the 1 px tail {slowTail:0.0000}");
                 }

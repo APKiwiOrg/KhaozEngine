@@ -32,6 +32,8 @@ namespace KhaozEngine.Tests.Gpu
                         foreach ((string rim, TemporalReviewFigures figures) in Measure(frames, reference, motion))
                         {
                             output.WriteLine($"RIM {TemporalDeviceClass.Name}|{name} {rim}|{figures}");
+                            output.WriteLine($"RIM-EXACT|{TemporalDeviceClass.Name}|{name} {rim}|{figures.Error:R}"
+                                + $"|{figures.Change:R}|{figures.Temporal:R}|{figures.Reference:R}");
                             TemporalReviewBaseline.Check("rim", $"{name} {rim}", figures, failures);
                         }
                     }

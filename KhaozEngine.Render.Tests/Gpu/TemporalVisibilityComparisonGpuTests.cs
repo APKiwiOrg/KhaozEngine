@@ -8,8 +8,12 @@ using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests.Gpu;
 
-public sealed class TemporalVisibilityComparisonGpuTests(ITestOutputHelper output) : TemporalResolveGpuFacts
+public sealed class TemporalVisibilityComparisonGpuTests(GameShadowGrainScene grainScene, ITestOutputHelper output)
+    : TemporalResolveGpuFacts, IClassFixture<GameShadowGrainScene>
 {
+    [GpuFact]
+    public void TexturedRidgesMeetTaskOneGrainGuard() => TexturedShadowGrainCase.AssertGrain(grainScene, output);
+
     [GpuFact]
     public void SharedHelperMatchesScalarFootprintsAndStrictReleaseBoundaries()
     {

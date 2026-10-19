@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.BugReports.Contracts;
@@ -13,6 +15,7 @@ public sealed class BugReportRelay
     readonly ServerSnapshotIntake snapshots;
     readonly ReportWorker worker;
     readonly ReportRevocation revocation;
+    readonly ReportRevoker revoker;
 
     /// <summary>Creates a relay over host-provided authentication, storage, queue and GitHub seams.</summary>
     /// <exception cref="ArgumentException">An option is outside the relay's supported limits.</exception>
@@ -35,6 +38,7 @@ public sealed class BugReportRelay
             new ReportQuotaGate(quotas, options, time, logger), new ReportBundleStorer(media, viewer), time, revocation);
         snapshots = new ServerSnapshotIntake(options, records, work, logger, revocation);
         worker = new ReportWorker(options, media, records, viewer, github, time, logger, revocation);
+        revoker = new ReportRevoker(media, records, revocation, work, github, time, logger);
     }
 
     /// <summary>Authenticates, quota-checks, validates and stores one client bundle, then queues issue creation.</summary>
@@ -50,10 +54,42 @@ public sealed class BugReportRelay
     public Task<RelayResponse> ServerSnapshotIntakeAsync(string reportId, RelayRequest request, CancellationToken cancellationToken)
         => snapshots.RunAsync(reportId, request, cancellationToken);
 
-    /// <summary>Durably revokes a report. Repeated calls retain the first revocation time.</summary>
-    /// <remarks>Delete the public folder after this call and again after the ten-minute claim lease.</remarks>
+    /// <summary>Writes only the durable tombstone. Repeated calls retain the first revocation time.</summary>
+    /// <remarks>Use <see cref="RevokeReportAsync"/> to remove public media, redact the issue and schedule the purge.</remarks>
     /// <exception cref="ArgumentException">The report id is not a canonical version 7 id.</exception>
     public Task RevokeAsync(string reportId, CancellationToken ct) => revocation.RevokeAsync(reportId, ct);
+
+    /// <summary>Revokes a report by id or reference, removes its public media and schedules private cleanup.</summary>
+    public Task<ReportRevocationResult> RevokeReportAsync(string idOrReference, CancellationToken cancellationToken)
+        => revoker.RevokeAsync(idOrReference, cancellationToken);
+
+    /// <summary>Parses a revoke request under a 1024-byte cap and maps its result to a relay response.</summary>
+    /// <remarks>The host must restrict access to authorized operators before calling this method.</remarks>
+    public async Task<RelayResponse> RevokeRequestAsync(RelayRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        using MemoryStream? body = await CappedBody.ReadAsync(request.Body, request.ContentLength, 1024, cancellationToken)
+            .ConfigureAwait(false);
+        if (body is null) return RelayResponses.Error(413, "too_large");
+        string? report = null;
+        try
+        {
+            using JsonDocument json = JsonDocument.Parse(body.GetBuffer().AsMemory(0, (int)body.Length));
+            if (json.RootElement.ValueKind != JsonValueKind.Object) return RelayResponses.Error(400, "bad_request");
+            foreach (JsonProperty property in json.RootElement.EnumerateObject())
+            {
+                if (report is not null || property.Name != "report" || property.Value.ValueKind != JsonValueKind.String)
+                    return RelayResponses.Error(400, "bad_request");
+                report = property.Value.GetString();
+            }
+        }
+        catch (JsonException)
+        {
+            return RelayResponses.Error(400, "bad_request");
+        }
+        if (report is null) return RelayResponses.Error(400, "bad_request");
+        return RelayResponses.Revocation(await RevokeReportAsync(report, cancellationToken).ConfigureAwait(false));
+    }
 
     /// <summary>Processes durable issue work using create-only, ten-minute claims.</summary>
     /// <remarks>

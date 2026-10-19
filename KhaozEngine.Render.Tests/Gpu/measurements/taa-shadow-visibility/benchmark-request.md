@@ -133,3 +133,5 @@ Roughly how long: 40 to 55 minutes a dispatch, 75 to 90 minutes for both, ceilin
 Roughly what it costs: about $4.40 to $11.64 for the pair, about $9 typical, ceiling $30.72. Estimated from GitHub's published $0.102 a minute Windows 4-core GPU and $0.052 a minute Linux 4-core GPU rates applied to earlier runs of the same fixture.
 Not covered: the bilinear PCF and a real shadow signal. Those need a separate shadowed whole-frame cost case, a later approval.
 ```
+
+Result: [benchmark-result.md](benchmark-result.md) records the paired run.

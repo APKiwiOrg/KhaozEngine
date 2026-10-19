@@ -58,7 +58,7 @@ public sealed partial class CoverageGpuScene : IDisposable
     {
         var result = new TemporalFixture(Width, Height, Configure);
         actors = new CoverageGpuActor[14];
-        for (int i = 0; i < actors.Length; i++) actors[i] = new(result.Scene, i, mapped: i is 2 or 3);
+        for (int i = 0; i < actors.Length; i++) actors[i] = new(result.Scene, result.Device, i, mapped: i is 2 or 3);
         occluder = result.Scene.LoadMesh(MeshPrimitives.Box(.6f));
         return result;
     }
@@ -120,7 +120,7 @@ public sealed partial class CoverageGpuScene : IDisposable
         });
         if (route == 1 && !row.ExpectRefusal)
         {
-            var words = CoverageSelectedReadback.Read(Fixture.Device, scene.CoverageGpuBatchForTests!.Current);
+            var words = CoverageSelectedReadback.Read(Fixture.Device, scene.CoverageGpuBatchForTests!.Previous);
             foreach (var actor in submitted) actor.AssertSelected(words);
             if (row.Shadows)
                 for (int i = 0; i < submitted.Count; i++)

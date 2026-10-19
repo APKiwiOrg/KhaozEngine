@@ -60,6 +60,8 @@ namespace KhaozEngine.Tests.Gpu
             yield return new("ModelDissolve", ShaderSources.ModelVert, ShaderSources.ModelDissolveFrag);
             yield return new("CoverageModel", ShaderSources.CoverageModelVert, ShaderSources.SkinnedModelFrag);
             yield return new("CoverageModelDissolve", ShaderSources.CoverageModelVert, ShaderSources.SkinnedModelDissolveFrag);
+            yield return new("CoverageModelMotion", ShaderSources.CoverageModelMotionVert, ShaderSources.SkinnedModelMotionFrag);
+            yield return new("CoverageModelDissolveMotion", ShaderSources.CoverageModelMotionVert, ShaderSources.SkinnedModelDissolveMotionFrag);
             yield return new("CoverageCascade", ShaderSources.CoverageCascadeVert, ShaderSources.ShadowDepthFrag);
             yield return new("CoverageCascadeDissolve", ShaderSources.CoverageCascadeDissolveVert, ShaderSources.ShadowDepthDissolveFrag);
             yield return new("CoverageCascadeDissolveInverted", ShaderSources.CoverageCascadeDissolveVert, ShaderSources.ShadowDepthDissolveInvertedFrag);
@@ -196,6 +198,7 @@ namespace KhaozEngine.Tests.Gpu
             // Render3D temporal resolve and its depth store, sharing FullscreenVert.
             yield return new("TemporalResolve", ShaderSources.FullscreenVert, ShaderSources.TemporalResolveFrag);
             yield return new("CoverageTransition", ShaderSources.FullscreenVert, ShaderSources.CoverageTransitionFrag);
+            yield return new("CoverageTransitionConditional", ShaderSources.CoverageTransitionVert, ShaderSources.CoverageTransitionFrag);
             yield return new("TemporalDepthStore", ShaderSources.FullscreenVert, ShaderSources.TemporalDepthStoreFrag);
             // The resolve's History, Disocclusion and Reactive debug views, one program over the resolve's own core.
             yield return new("TemporalDebugView", ShaderSources.FullscreenVert, ShaderSources.TemporalDebugFrag);

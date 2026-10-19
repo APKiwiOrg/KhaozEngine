@@ -13,7 +13,9 @@ internal readonly record struct CoverageChangedBounds(CoverageSurfaceBounds? Cur
 internal sealed class CoverageTransitionMask : IDisposable
 {
     readonly IGpuDevice device;
-    readonly List<CoverageChangedBounds> changes = new();
+    readonly List<Change> changes = new();
+    readonly record struct Change(CoverageChangedBounds Bounds, IGpuBuffer? State, uint Offset);
+    CoverageTransitionGpu? gpu;
     readonly List<Rectangle> rectangles = new();
     IGpuTexture? texture;
     IGpuFramebuffer? framebuffer;
@@ -29,7 +31,19 @@ internal sealed class CoverageTransitionMask : IDisposable
     internal void AddChangedBounds(in CoverageChangedBounds bounds)
     {
         if (changes.Count == changes.Capacity) throw new InvalidOperationException("Prepare coverage mask capacity before recording.");
-        changes.Add(bounds);
+        changes.Add(new(bounds, null, 0));
+    }
+
+    internal void ReserveGpu(CoverageGpuBatch batch, int count, GpuRetireQueue retired)
+    {
+        gpu ??= new(device, retired);
+        gpu.Reserve(batch, count);
+    }
+
+    internal void AddGpuChangedBounds(in CoverageChangedBounds bounds, IGpuBuffer state, uint transitionWordOffset)
+    {
+        if (changes.Count == changes.Capacity) throw new InvalidOperationException("Prepare coverage mask capacity before recording.");
+        changes.Add(new(bounds, state, transitionWordOffset));
     }
 
     internal void EnsureSize(int width, int height, GpuRetireQueue? retired)
@@ -47,6 +61,7 @@ internal sealed class CoverageTransitionMask : IDisposable
             replacement = device.Factory.CreateTexture(GpuTextureDescription.Texture2D((uint)width, (uint)height,
                 GpuPixelFormat.R8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
             target = device.Factory.CreateFramebuffer(null, replacement);
+            gpu?.Build(target.Outputs);
             if (pipeline is null)
             {
                 program = device.Factory.CreateShadersFromSpirv(ShaderSources.FullscreenVert, ShaderSources.CoverageTransitionFrag);
@@ -84,8 +99,10 @@ internal sealed class CoverageTransitionMask : IDisposable
         rectangles.Clear();
         commands.SetFramebuffer(framebuffer!);
         commands.ClearColorTarget(0, Color.Transparent);
-        foreach (var changed in changes)
+        int slot = 0;
+        foreach (var change in changes)
         {
+            var changed = change.Bounds;
             Rectangle? rectangle = null;
             bool uncertain = changed.NearPlaneUncertain;
             Project(changed.Current, current, ref rectangle, ref uncertain);
@@ -93,7 +110,8 @@ internal sealed class CoverageTransitionMask : IDisposable
             if (uncertain) rectangle = new(0, 0, current.Width, current.Height);
             if (rectangle is not { } r) continue;
             rectangles.Add(r);
-            commands.SetPipeline(pipeline!);
+            if (change.State is { } state) gpu!.Bind(commands, state, change.Offset, slot++);
+            else commands.SetPipeline(pipeline!);
             commands.SetScissorRect(0, (uint)r.X, (uint)r.Y, (uint)(r.Right - r.X), (uint)(r.Bottom - r.Y));
             commands.Draw(3);
         }
@@ -163,6 +181,7 @@ internal sealed class CoverageTransitionMask : IDisposable
 
     public void Dispose()
     {
+        gpu?.Dispose();
         framebuffer?.Dispose(); texture?.Dispose(); pipeline?.Dispose(); shaders?.Dispose();
     }
 }

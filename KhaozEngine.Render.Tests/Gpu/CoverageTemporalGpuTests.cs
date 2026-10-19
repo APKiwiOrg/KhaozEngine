@@ -14,7 +14,7 @@ namespace KhaozEngine.Tests.Gpu;
 public sealed class CoverageTemporalGpuTests
 {
     [GpuFact]
-    public void Point_projection_arithmetic_refusal_presents_the_current_pose_in_every_pass()
+    public void Gpu_recession_refusal_presents_the_current_pose_in_every_pass()
     {
         using var scene = new CoverageGpuScene();
         scene.AssertArithmeticRefusal();
@@ -142,6 +142,7 @@ public sealed class CoverageTemporalGpuTests
             host = scene.LoadSkinnedMesh(covered);
             conformer = scene.CreateHostConformer(skeleton, [host]);
             support = CoverageCommands.Plate(data);
+            conformer.ReserveSupports([support]);
             rigid = scene.LoadMesh(new GltfMesh(data.RigidPositions.Select(p =>
                 new ModelVertex(p, Vector3.UnitZ, Vector4.One)).ToArray(), data.RigidIndices));
         }

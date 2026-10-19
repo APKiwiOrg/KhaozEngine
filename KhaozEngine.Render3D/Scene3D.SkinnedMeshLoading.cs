@@ -77,6 +77,7 @@ public sealed partial class Scene3D
                 _skinnedCpuVerts.Add(mesh.Vertices);
             }
             if (mesh.Coverage is not null) _coverageHostUploads.Add((index, generation), mesh);
+            CacheCoveragePaletteBounds(index, generation, mesh);
             return new SkinnedMeshHandle(index, generation);
         }
         catch

@@ -6414,6 +6414,29 @@ The frozen absolute current-palette bound schedules camera-culled and shadow-onl
 put their current skinned poses in transient rows, while dynamic lights use base rows. Ordinary skinning
 remains the CPU admission and capability fallback. Rendering never reads back the numerical outcome.
 
+Covered motion uses two GPU final allocations and metadata only on the CPU. A complete visible main surface becomes
+pending after successful encoding and commits through the shared submission owner's `Submitted` callback.
+`Abandoned` discards pending state, and diagnostic capacity never controls publication. Reuse requires the same
+camera object, consecutive frame, actor incarnation and equipment identity. Shadow-only, outline-only,
+missing-material and fully dissolved hosts do not supply presented history. The shared conservative anchored box
+must also project to finite prior clip components. Shared interval bounds refuse binary32 product or partial-sum
+overflow before cancellation. A rejected prior projection uses current-data seeding and local transition rejection.
+
+Select compares the current and prior GPU outcomes. First use, identity changes, refusal and recovery mark a local
+transition. The motion consumer then selects current positions and the current model as its effective previous
+surface, including the matching source/refined header. Otherwise it reads the previous actually submitted final
+surface and rebases its stored absolute model to the current origin. Encoding never overwrites the committed
+buffer. Submission swaps the two allocations and their precreated bindings. A cold replacement copies prior GPU
+storage by actor window and retains that source through the copy's completion, including abandoned retries.
+
+The common conservative current-palette envelope is stored relative to its origin anchor. Existing culling,
+shadow and sphere consumers receive an outward absolute box from that same envelope. Local temporal rectangles
+retain the anchored coordinates. GPU transitions draw those rectangles before resolve only when
+`TransitionChanged` is set. CPU-known removals reject their bounds directly. Near-plane uncertainty rejects the
+viewport for that transition. Ordinary replacement meshes have cold palette bounds too, so restoration needs no
+vertex scan. Unavailable or unrepresentable bounds use uncertainty for one removal transition. Global temporal
+history stays valid through these local changes.
+
 #### Headless equipment coverage oracle
 
 `CoverageOracle` in `KhaozEngine.Render3D` checks a sampled pose without a scene, render context,

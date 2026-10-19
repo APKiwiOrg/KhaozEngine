@@ -6,7 +6,8 @@ internal static partial class ShaderSources
     internal const string CoveragePulling = @"
 layout(std430, set=2, binding=0) readonly buffer CoverageCurrent { uint coverageCurrent[]; };
 layout(std430, set=2, binding=1) readonly buffer CoverageStatic { uint coverageStatic[]; };
-layout(set=2, binding=2) uniform CoverageDraw { uvec4 coverageDraw; };
+layout(set=2, binding=2) uniform CoverageDraw { uvec4 coverageDraw; mat4 coveragePreviousModel; };
+layout(std430, set=2, binding=3) readonly buffer CoveragePrevious { uint coveragePrevious[]; };
 struct CoverageVertex { vec3 position; vec3 normal; vec4 color; vec2 uv; vec4 tangent; };
 float coverageDot4(vec4 a, vec4 b) {
     precise float x = a.x * b.x;
@@ -24,6 +25,17 @@ vec4 coverageTransform(mat4 m, vec4 v) {
     float z = coverageDot4(vec4(m[0][2], m[1][2], m[2][2], m[3][2]), v);
     float w = coverageDot4(vec4(m[0][3], m[1][3], m[2][3], m[3][3]), v);
     return vec4(x, y, z, w);
+}
+bool coverageSeedPrevious() { return coverageCurrent[coverageDraw.x + 15u] != 0u; }
+vec3 coveragePreviousPosition() {
+    bool seed = coverageSeedPrevious();
+    uint previousBase = seed ? coverageDraw.x : coverageDraw.w;
+    bool fallback = seed ? coverageCurrent[previousBase + 14u] != 0u : coveragePrevious[previousBase + 14u] != 0u;
+    uint table = coverageStatic[coverageDraw.y + (fallback ? 50u : 48u)];
+    uint index = coverageStatic[coverageDraw.y + table + uint(gl_VertexIndex) + coverageDraw.z];
+    uint base = previousBase + 16u + (fallback ? 0u : coverageStatic[coverageDraw.y] * 16u) + index * 16u;
+    if (seed) return vec3(uintBitsToFloat(coverageCurrent[base]), uintBitsToFloat(coverageCurrent[base+1u]), uintBitsToFloat(coverageCurrent[base+2u]));
+    return vec3(uintBitsToFloat(coveragePrevious[base]), uintBitsToFloat(coveragePrevious[base+1u]), uintBitsToFloat(coveragePrevious[base+2u]));
 }
 CoverageVertex coverageVertex() {
     uint currentBase = coverageDraw.x, staticBase = coverageDraw.y;

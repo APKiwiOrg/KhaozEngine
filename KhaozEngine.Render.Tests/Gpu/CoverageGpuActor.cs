@@ -4,6 +4,7 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using KhaozEngine.Primitives;
+using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
 using KhaozEngine.Tests.Render3D;
 using Xunit;
@@ -13,6 +14,7 @@ namespace KhaozEngine.Tests.Gpu;
 internal sealed class CoverageGpuActor : IDisposable
 {
     readonly Scene3D scene;
+    readonly IGpuDevice device;
     readonly CoverageFixture data;
     readonly SkinnedHostConformer conformer;
     readonly SkinnedMeshHandle host, reference, blendedReference, removed;
@@ -28,15 +30,14 @@ internal sealed class CoverageGpuActor : IDisposable
     internal Matrix4x4[] Palette => palette;
     internal CoverageFixture Data => data;
     internal SkinnedCoverageFrame Frame;
-    Matrix4x4 currentWorld;
     internal string Signature { get; private set; }
     internal ModelVertex[] Final { get; }
     internal CoverageGeometryOracle.Result Oracle { get; }
     internal CoverageGeometryOracle.Result Baseline { get; }
 
-    internal CoverageGpuActor(Scene3D scene, int actor, bool mapped)
+    internal CoverageGpuActor(Scene3D scene, IGpuDevice device, int actor, bool mapped)
     {
-        this.scene = scene;
+        this.scene = scene; this.device = device;
         key = MotionKey.From((ulong)(100 + actor));
         data = CoverageFixture.CurvedPanel(seams: false);
         palette = CoverageFixture.Pose;
@@ -121,10 +122,9 @@ internal sealed class CoverageGpuActor : IDisposable
     }
 
     internal void Draw(CoverageCase row, int route, Matrix4x4 world, ulong instance = 1, float weight = 1,
-        bool submitEquipment = true, float dissolve = 0, bool complement = false, bool invertShadow = false, bool blended = false)
+        bool submitEquipment = true, float dissolve = 0, bool complement = false, bool invertShadow = false, bool blended = false, float? recession = null)
     {
         Frame = default;
-        currentWorld = world;
         var selectedPalette = blended ? blendedPalette : palette;
         Signature = blended ? blendedSignature : normalSignature;
         var rigidDraw = new RigidInstanceDraw(rigid, world)
@@ -138,7 +138,7 @@ internal sealed class CoverageGpuActor : IDisposable
         if (route == 1)
         {
             var commands = CoverageCommands.Poses(data, conformer.Topology, support, world)
-                .Select(c => c with { EquipmentInstanceId = instance, TransitionWeight = weight }).ToArray();
+                .Select(c => c with { EquipmentInstanceId = instance, TransitionWeight = weight, MaxWorldRecession = recession ?? c.MaxWorldRecession }).ToArray();
             Assert.True(scene.TryStageCoverageEquipment(key, 1, instance, support,
                 [rigidDraw], equipment, out var failure), failure.ToString());
             Assert.True(conformer.TryPrepare(selectedPalette, world, commands, key,
@@ -167,19 +167,12 @@ internal sealed class CoverageGpuActor : IDisposable
 
     internal void AssertCovered()
     {
-        var outcome = scene.GetCoverageOutcome(Frame);
-        if (outcome.Presentation != CoveragePresentation.Covered)
-        {
-            Console.WriteLine($"coverage refusal actor={key} world={currentWorld} outcome={outcome}");
-            int index = 0;
-            foreach (var pass in scene.CoveragePassesForTests(Frame))
-            {
-                bool bounded = CoverageRenderArithmetic.TryBound(pass, currentWorld, scene.CurrentFrameView.RenderOrigin, out double bound);
-                Console.WriteLine($"coverage pass={index++} command={pass.CommandId} bounded={bounded} error={bound:R} vp={pass.ViewProjection}");
-            }
-        }
-        Assert.True(outcome.Presentation == CoveragePresentation.Covered, outcome.ToString());
-        Assert.Equal(Signature, Hash(scene.CoverageVerticesForTests(Frame).ToArray()));
+        Assert.Equal(CoveragePresentation.Dispatched, scene.GetCoverageOutcome(Frame).Presentation);
+        var words = CoverageNativeSurface.Read(device, scene, Frame);
+        var r = Frame.Preparation!.GpuReservation;
+        Assert.Equal(0u, words[r.CurrentBase + 8]);
+        Assert.Equal(0u, words[r.CurrentBase + 14]);
+        Assert.Equal(Signature, CoverageNativeSurface.Signature(words, r));
     }
 
     internal void AssertSelected(uint[] words)

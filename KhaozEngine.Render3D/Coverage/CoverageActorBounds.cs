@@ -18,20 +18,26 @@ internal sealed class CoverageActorBounds
     readonly bool nonnegative = true, identity, rigid;
 
     internal CoverageActorBounds(CoverageSourceTopology source)
+        : this((source ?? throw new ArgumentNullException(nameof(source))).Identity, source.Positions, source.SkinVertices) { }
+
+    internal CoverageActorBounds(ReadOnlySpan<SkinnedVertex> vertices) : this("ordinary-skinned-mesh", [], vertices) { }
+
+    CoverageActorBounds(string identityName, ReadOnlySpan<Vector3> positions, ReadOnlySpan<SkinnedVertex> skin)
     {
-        ArgumentNullException.ThrowIfNull(source);
-        hostIdentity = source.Identity;
+        hostIdentity = identityName;
         sourceBox = EmptyBox;
-        foreach (Vector3 p in source.Positions) sourceBox = Join(sourceBox, Read(p));
-        if (source.Positions.IsEmpty) sourceBox = default;
-        rigid = source.SkinVertices.IsEmpty;
+        foreach (Vector3 p in positions) sourceBox = Join(sourceBox, Read(p));
+        if (positions.IsEmpty)
+            foreach (ref readonly var vertex in skin) sourceBox = Join(sourceBox, Read(vertex.Position));
+        if (positions.IsEmpty && skin.IsEmpty) sourceBox = default;
+        rigid = skin.IsEmpty;
         int bones = 0;
-        foreach (ref readonly var v in source.SkinVertices)
+        foreach (ref readonly var v in skin)
             for (int slot = 0; slot < 4; slot++)
             {
                 float index = v.BoneIndices[slot];
                 if (!float.IsFinite(index) || index < 0 || index >= int.MaxValue || index != MathF.Truncate(index)
-                    || !float.IsFinite(v.BoneWeights[slot])) throw new ArgumentException("Bounds require validated skin influences.", nameof(source));
+                    || !float.IsFinite(v.BoneWeights[slot])) throw new ArgumentException("Bounds require validated skin influences.", nameof(skin));
                 bones = Math.Max(bones, checked((int)index + 1));
             }
         boneBoxes = new CoverageBoundedVector[bones];
@@ -40,7 +46,7 @@ internal sealed class CoverageActorBounds
         Array.Fill(boneBoxes, EmptyBox);
         Array.Fill(slotWeights, Empty);
         totals = Empty;
-        foreach (ref readonly var v in source.SkinVertices)
+        foreach (ref readonly var v in skin)
         {
             CoverageScalarBounds total = Zero;
             float roundedTotal = 0;

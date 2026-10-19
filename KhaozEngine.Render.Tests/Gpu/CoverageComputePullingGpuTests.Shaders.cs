@@ -18,6 +18,8 @@ public sealed partial class CoverageComputePullingGpuTests
     [Theory]
     [InlineData("CoverageModel")]
     [InlineData("CoverageModelDissolve")]
+    [InlineData("CoverageModelMotion")]
+    [InlineData("CoverageModelDissolveMotion")]
     [InlineData("CoverageOutlineFull")]
     [InlineData("CoverageOutlineVisible")]
     public void Pulled_programs_have_no_IA_inputs_and_precise_gap_free_interpolants(string name)

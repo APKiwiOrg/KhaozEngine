@@ -51,7 +51,7 @@ internal sealed class CoverageOriginalPoseControl : IDisposable
             var draw = bindings.Draws.First(d => d.Pass == pass);
             Assert.NotSame(batch.Current, current); Assert.NotSame(batch.StaticData, staticData);
             return device.Factory.CreateResourceSet(new(tracker.ResourcesOf(draw.Set).Layout,
-                current, staticData, new GpuBufferRange(draw.Uniform, draw.RangeOffset, draw.RangeBytes)));
+                current, staticData, new GpuBufferRange(draw.Uniform, draw.RangeOffset, draw.RangeBytes), current));
         }
     }
 

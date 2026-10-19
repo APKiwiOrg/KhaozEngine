@@ -1,7 +1,6 @@
 using System.Linq;
-using System.Numerics;
-using System.Runtime.InteropServices;
 using KhaozEngine.Render3D;
+using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Tests.Gpu;
 using Xunit;
 
@@ -10,100 +9,80 @@ namespace KhaozEngine.Tests.Render3D;
 public sealed class CoverageTemporalReservationTests
 {
     [Fact]
-    public void Late_debug_view_uses_the_buffer_reserved_before_recording() => AssertLateActivation(debugView: true);
+    public void Late_debug_view_uses_the_buffer_reserved_before_recording() => AssertLateActivation(true);
 
     [Fact]
-    public void Late_temporal_aa_uses_the_buffer_reserved_before_recording() => AssertLateActivation(debugView: false);
+    public void Late_temporal_aa_uses_the_buffer_reserved_before_recording() => AssertLateActivation(false);
 
     static void AssertLateActivation(bool debugView)
     {
         using var h = new CoverageSceneFixture();
         h.Scene.Post.Pixelated = false;
-        h.Begin();
-        var frame = h.Stage();
-        h.Scene.DrawSkinned(h.HostDraw(frame), h.Palette);
-        h.SubmitEquipment();
+        h.Begin(); var frame = h.Stage();
+        h.Scene.DrawSkinned(h.HostDraw(frame), h.Palette); h.SubmitEquipment();
         Assert.False(h.Scene.TemporalActive);
         Assert.Null(h.Scene.MotionResourcesForTests);
-        h.Scene.PrepareFrame();
-        int vertices = h.Conformer.Topology.VertexCount;
-        var reserved = h.Scene.CoverageMotionReserveForTests;
-        Assert.True(reserved.List >= vertices);
-        Assert.Equal((uint)vertices, reserved.Gpu);
-        var buffer = Assert.IsType<FakeBuffer>(reserved.Buffer);
-        Assert.Equal((uint)vertices * 12, buffer.SizeInBytes);
-        Assert.Contains(buffer, h.Factory.Buffers);
-        Assert.False(buffer.Disposed);
+        h.Scene.PrepareFrame(32, 24);
+        var batch = h.Scene.CoverageGpuBatchForTests!;
+        var current = Assert.IsType<FakeBuffer>(batch.Current);
+        var previous = Assert.IsType<FakeBuffer>(batch.Previous);
+        Assert.NotSame(current, previous);
+        Assert.Equal(current.SizeInBytes, previous.SizeInBytes);
+        Assert.True(current.SizeInBytes >= 64 + h.Conformer.Topology.VertexCount * 64);
+        Assert.Null(h.Scene.CoverageMotionReserveForTests.Buffer);
         Assert.Null(h.Scene.MotionResourcesForTests);
-        Assert.False(h.Scene.TemporalActive);
-
         if (debugView) h.Scene.DebugView = SceneDebugView.MotionVectors;
         else h.Scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
-        Assert.True(h.Scene.TemporalActive);
+        h.Scene.PrepareFrame(32, 24);
+        Assert.Same(current, batch.Current); Assert.Same(previous, batch.Previous);
         Assert.Null(h.Scene.MotionResourcesForTests);
-        h.Scene.PrepareFrame();
-        Assert.Same(buffer, h.Scene.CoverageMotionReserveForTests.Buffer);
+        bool boundMotion = false;
+        h.BeforeNonIndexedDraw = draw => boundMotion |= draw.Pipeline is FakePipeline { Request: { } request }
+            && request.VertexGlsl == ShaderSources.CoverageModelMotionVert && draw.Sets.Values.Any(bound =>
+                bound.Set is FakeResourceSet set && ReferenceEquals(set.Resources[0], current)
+                && ReferenceEquals(set.Resources[^1], previous));
         h.Render();
-
-        Assert.True(h.Scene.TemporalActive);
+        Assert.True(boundMotion);
         Assert.NotNull(h.Scene.MotionResourcesForTests);
         if (debugView) Assert.True(h.Scene.MotionVectorsViewBuiltForTests);
         else Assert.NotNull(h.Scene.TemporalResolveRendererForTests);
-        Assert.Equal(CoveragePresentation.Covered, h.Scene.GetCoverageOutcome(frame).Presentation);
-        var after = h.Scene.CoverageMotionReserveForTests;
-        Assert.Equal(reserved.List, after.List);
-        Assert.Equal(reserved.Gpu, after.Gpu);
-        Assert.Same(buffer, after.Buffer);
-        Assert.False(buffer.Disposed);
-        var upload = Assert.Single(h.Record.Uploads, u => ReferenceEquals(u.Buffer, buffer));
-        Assert.Equal(h.Expected.Select(v => v.Position).ToArray(), MemoryMarshal.Cast<byte, Vector3>(upload.Data).ToArray());
-        Assert.Contains(h.Record.Bindings, b => b.VertexBuffers.TryGetValue(2, out var bound) && ReferenceEquals(bound, buffer));
+        Assert.Equal(CoveragePresentation.Dispatched, h.Scene.GetCoverageOutcome(frame).Presentation);
+        Assert.Same(current, batch.Previous); Assert.Same(previous, batch.Current);
+        Assert.False(current.Disposed); Assert.False(previous.Disposed);
+        Assert.Null(h.Scene.CoverageMotionReserveForTests.Buffer);
+        Assert.DoesNotContain(h.Record.Uploads, upload => ReferenceEquals(upload.Buffer, current) || ReferenceEquals(upload.Buffer, previous));
+
     }
 
     [Fact]
     public void Non_temporal_coverage_frames_reuse_the_inactive_reserve()
     {
         var h = new CoverageSceneFixture();
-        FakeBuffer? buffer = null;
+        FakeBuffer? first = null, second = null;
         try
         {
-            h.Begin();
-            h.Render();
+            h.Begin(); h.Render();
             Assert.Null(h.Scene.CoverageMotionReserveForTests.Buffer);
             Assert.Null(h.Scene.MotionResourcesForTests);
-
-            h.Begin();
-            var frame = h.Stage();
-            h.Scene.DrawSkinned(h.HostDraw(frame), h.Palette);
-            h.SubmitEquipment();
-            h.Scene.PrepareFrame();
-            var reserved = h.Scene.CoverageMotionReserveForTests;
-            buffer = Assert.IsType<FakeBuffer>(reserved.Buffer);
-            h.Render();
-            Assert.Same(buffer, h.Scene.CoverageMotionReserveForTests.Buffer);
-            Assert.Null(h.Scene.MotionResourcesForTests);
-            Assert.DoesNotContain(h.Record.Uploads, u => ReferenceEquals(u.Buffer, buffer));
-            Assert.DoesNotContain(h.Record.Bindings, b => b.VertexBuffers.TryGetValue(2, out var bound) && ReferenceEquals(bound, buffer));
-
-            h.Begin();
-            frame = h.Stage();
-            h.Scene.DrawSkinned(h.HostDraw(frame), h.Palette);
-            h.SubmitEquipment();
-            int buffers = h.Factory.Buffers.Count;
-            h.Scene.PrepareFrame();
-            var reused = h.Scene.CoverageMotionReserveForTests;
-            Assert.Equal(buffers, h.Factory.Buffers.Count);
-            Assert.Equal(reserved.List, reused.List);
-            Assert.Equal(reserved.Gpu, reused.Gpu);
-            Assert.Same(buffer, reused.Buffer);
-            h.Render();
-            Assert.Same(buffer, h.Scene.CoverageMotionReserveForTests.Buffer);
-            Assert.False(buffer.Disposed);
-            Assert.Null(h.Scene.MotionResourcesForTests);
-            Assert.DoesNotContain(h.Record.Uploads, u => ReferenceEquals(u.Buffer, buffer));
-            Assert.DoesNotContain(h.Record.Bindings, b => b.VertexBuffers.TryGetValue(2, out var bound) && ReferenceEquals(bound, buffer));
+            for (int frameIndex = 0; frameIndex < 2; frameIndex++)
+            {
+                h.Begin(); var frame = h.Stage();
+                h.Scene.DrawSkinned(h.HostDraw(frame), h.Palette); h.SubmitEquipment();
+                h.Scene.PrepareFrame(32, 24);
+                var batch = h.Scene.CoverageGpuBatchForTests!;
+                first ??= Assert.IsType<FakeBuffer>(batch.Current);
+                second ??= Assert.IsType<FakeBuffer>(batch.Previous);
+                Assert.True(ReferenceEquals(batch.Current, first) || ReferenceEquals(batch.Current, second));
+                Assert.True(ReferenceEquals(batch.Previous, first) || ReferenceEquals(batch.Previous, second));
+                Assert.NotSame(batch.Current, batch.Previous);
+                h.Render();
+                Assert.Null(h.Scene.MotionResourcesForTests);
+                Assert.Null(h.Scene.CoverageMotionReserveForTests.Buffer);
+                Assert.False(first.Disposed); Assert.False(second.Disposed);
+                Assert.DoesNotContain(h.Record.Uploads, upload => ReferenceEquals(upload.Buffer, first) || ReferenceEquals(upload.Buffer, second));
+            }
         }
         finally { h.Dispose(); }
-        Assert.True(buffer!.Disposed);
+        Assert.True(first!.Disposed); Assert.True(second!.Disposed);
     }
 }

@@ -73,14 +73,16 @@ internal static class CoverageGpuBindingProof
                 s.DrawSkinnedOutline(group, draw, actor.Palette);
                 foreach (var equipment in binding.PreparedEquipmentDraws.Span) s.Draw(equipment.Rigid);
             });
-            Assert.Equal(CoveragePresentation.Covered, scene.GetCoverageOutcome(frame).Presentation);
-            var passes = scene.CoveragePassesForTests(frame).ToArray();
-            Assert.Contains(passes, p => p.EquipmentInstanceId == expectedInstance);
-            Assert.DoesNotContain(passes, p => p.EquipmentInstanceId != 0 && p.EquipmentInstanceId != expectedInstance);
+            Assert.Equal(CoveragePresentation.Dispatched, scene.GetCoverageOutcome(frame).Presentation);
+            var words = CoverageNativeSurface.Read(fixture.Fixture.Device, scene, frame);
+            Assert.Equal(0u, words[frame.Preparation!.GpuReservation.CurrentBase + 8]);
+            var commands = frame.Preparation.Commands.AsSpan(0, frame.Preparation.CommandCount).ToArray();
+            Assert.Contains(commands, command => command.EquipmentInstanceId == expectedInstance);
+            Assert.DoesNotContain(commands, command => command.EquipmentInstanceId != expectedInstance);
             var outline = scene.ReadCoverageOutlinesForTests();
             CoverageArtifacts.Write(new(colour, scene.ReadCoverageDepthForTests(), scene.ReadCoverageNormalForTests(),
                 null, null, null, outline.Full, outline.Visible,
-                CoverageGpuActor.Hash(scene.CoverageVerticesForTests(frame).ToArray()), fixture.Fixture.Device.Backend,
+                CoverageNativeSurface.Signature(words, frame.Preparation.GpuReservation), fixture.Fixture.Device.Backend,
                 fixture.Fixture.Device.Capabilities.DeviceName, $"coverage-binding-{Guid.NewGuid():N}-instance{expectedInstance}"));
             return colour;
         }

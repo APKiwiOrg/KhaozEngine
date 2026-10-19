@@ -231,7 +231,11 @@ asynchronously and never block drawing. No compute or a kernel-build failure use
 independently of `UseGpuSkinning`, with one capability report per scene. Finish all submissions before
 `PrepareFrame(displayWidth, displayHeight)`, outside the frame recording.
 A new `Begin` requires fresh preparation. Failed replacement keeps the active equipment identity.
-GPU final-buffer drawing, temporal history and asynchronous diagnostics are subsequent Part C tasks. Independent equipment fading must change `TransitionWeight` or disable its coverage.
+Host passes pull the GPU-selected final surface. Motion uses the previous actually submitted final surface,
+with GPU-selected current-position seeding and local rejection on replacement, refusal and recovery.
+A failed replacement keeps the previous equipment identity and its motion correspondence.
+The shared submission owner commits history independently of asynchronous diagnostic availability.
+Independent equipment fading must change `TransitionWeight` or disable its coverage.
 Whole-actor dissolve keeps conformation and ordinary, complementary and inverted-shadow dissolve behavior.
 
 `IAttachmentCoverageScene` is a separate opt-in interface. It adds conformer creation, single-command and
@@ -246,8 +250,8 @@ returns `UnsupportedAdapter`, and uncovered submission keeps its existing behavi
 
 Dispose the actor binding before the cache and scene. Binding disposal retires only its conformer and
 leaves shared equipment uploads owned by the cache. Cache disposal invalidates borrowed coverage,
-bound sets and their actor bindings. Both disposals are idempotent. Previous final coverage motion
-history and native rendering acceptance are separate work.
+bound sets and their actor bindings. Both disposals are idempotent. Pending history is discarded on abandonment.
+Submitted GPU history and cold migration sources retain their storage until their final use completes.
 
 For the version-21 set-level rename and its rationale, see the
 [skinned attachment design](../docs/design/SKINNED-ATTACHMENT-PARTS-DESIGN-2026-10-15.md).

@@ -41,13 +41,16 @@ public sealed partial class CoverageGpuScene
         var actor = Actors[0];
         int route = stream switch { CoverageStream.Accumulated => 1, CoverageStream.HostBefore => 2, _ => 0 };
         bool equipment = stream is CoverageStream.Accumulated or CoverageStream.CurrentOnly;
+        bool refusedFrame = false;
         void Draw(Scene3D current, int unused)
         {
             current.AddLight(Vector3.Zero, Color.White, 6, 1, LightShadow.Static(8001));
-            actor.Draw(row, route, Matrix4x4.Identity, submitEquipment: equipment);
+            actor.Draw(row, route, Matrix4x4.Identity, submitEquipment: equipment,
+                recession: stream == CoverageStream.Accumulated && refusedFrame ? .0001f : null);
         }
         Fixture.Frame(Draw);
         if (stream == CoverageStream.Accumulated) actor.AssertCovered();
+        refusedFrame = true;
         scene.RenderOrigin = new(128, 0, 0);
         if (stream == CoverageStream.CurrentOnly) scene.CameraCut();
         observe(Fixture.Frame(Draw));
@@ -69,9 +72,12 @@ public sealed partial class CoverageGpuScene
             bool accumulated = stream == CoverageStream.Accumulated;
             if (accumulated)
             {
-                var outcome = scene.GetCoverageOutcome(Actors[0].Frame);
-                Assert.Equal(CoveragePresentation.UncoveredFallback, outcome.Presentation);
-                Assert.Equal(CoverageFailureCode.UnsupportedTransform, outcome.Failure.Code);
+                var actor = Actors[0];
+                Assert.Equal(CoveragePresentation.Dispatched, scene.GetCoverageOutcome(actor.Frame).Presentation);
+                var words = CoverageNativeSurface.Read(Fixture.Device, scene, actor.Frame);
+                uint offset = actor.Frame.Preparation!.GpuReservation.CurrentBase;
+                Assert.Equal((uint)CoverageFailureCode.RecessionExceeded, words[offset + 8]);
+                Assert.Equal(1u, words[offset + 14]);
                 AssertRejectedConfidence();
                 CoverageTemporalCurrentProbe.AssertRejectedPixelsMatchCurrent(this);
             }

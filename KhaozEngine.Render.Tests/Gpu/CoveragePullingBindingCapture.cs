@@ -39,7 +39,7 @@ internal sealed class CoveragePullingBindingCapture(UniformBufferTrackingGpuDevi
         var bound = bindings.Sets[setIndex];
         var resources = tracker.ResourcesOf(bound.Set);
         Assert.Same(program.Layouts[setIndex], resources.Layout);
-        Assert.Equal(3, resources.Resources.Length);
+        Assert.Equal(4, resources.Resources.Length);
         var current = Assert.IsAssignableFrom<IGpuBuffer>(resources.Resources[0]);
         var staticData = Assert.IsAssignableFrom<IGpuBuffer>(resources.Resources[1]);
         var range = Assert.IsType<GpuBufferRange>(resources.Resources[2]);
@@ -47,7 +47,7 @@ internal sealed class CoveragePullingBindingCapture(UniformBufferTrackingGpuDevi
         Assert.True(window.Dynamic);
         Assert.Same(range.Buffer, window.Buffer);
         Assert.Equal(range.Offset, window.Offset);
-        Assert.Equal(16u, window.Bytes);
+        Assert.Equal(80u, window.Bytes);
         uint address = window.Rebased(bound.DynamicOffset).Offset;
         var upload = commands.Uploads.Last(u => ReferenceEquals(u.Buffer, range.Buffer)
             && u.Offset <= address && (ulong)u.Offset + u.Bytes >= (ulong)address + 16);
@@ -76,7 +76,7 @@ internal sealed class CoveragePullingBindingCapture(UniformBufferTrackingGpuDevi
                 Assert.Same(batch.StaticData, draw.Static);
                 Assert.Equal((uint)i * 256, draw.DynamicOffset);
                 Assert.Equal(0u, draw.RangeOffset);
-                Assert.Equal(16u, draw.RangeBytes);
+                Assert.Equal(80u, draw.RangeBytes);
                 Assert.Equal(new[] { reservation.CurrentBase, reservation.StaticBase, (uint)range.FirstIndex,
                     reservation.PreviousBase }, draw.Words);
                 Assert.Equal((uint)range.IndexCount, draw.Corners);

@@ -117,13 +117,6 @@ public sealed partial class Scene3D
         }
     }
 
-    bool CoverageHostLive(CoveragePreparation p)
-    {
-        foreach (var handle in p.Owner.Meshes)
-            if (!_skinnedSlots.IsValid(handle.Index, handle.Generation)) return false;
-        return true;
-    }
-
     void CaptureEquipmentPasses(CoveragePreparation p, CoverageEquipmentStage stage, in CoverageCommandPose command, int slice, bool shadows)
     {
         RigidInstanceDraw draw = stage.Draws[slice];

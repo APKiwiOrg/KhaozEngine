@@ -16,9 +16,8 @@ public sealed partial class Scene3D
 
     void ReserveCoverageMotion()
     {
-        int vertices = 0;
-        foreach (var conformer in _coverageConformers) vertices = checked(vertices + conformer.Topology.VertexCount);
-        _coverageMotion.Reserve(_coverageConformers.Count, vertices);
+        _coverageMotion.Reserve(_coverageConformers.Count);
+        _coverageSubmissionState.Scene = this;
         if (_coverageConformers.Count + _coverageMotion.PreviousSurfaces.Length == 0) return;
         _coverageTransition ??= new(_gd);
         _coverageTransition.Reserve(checked(_coverageConformers.Count + _coverageMotion.PreviousSurfaces.Length));
@@ -29,6 +28,7 @@ public sealed partial class Scene3D
         if (_coverageMotionFrame == CurrentFrameView.FrameIndex) return;
         _coverageMotionFrame = CurrentFrameView.FrameIndex;
         _coverageMotionCommitted = false;
+        _coverageEncodingComplete = false;
         _coverageMotion.Begin(_coverageMotionFrame, ActiveCamera,
             PreviousFrameView is { } prior && prior.FrameIndex == _coverageMotionFrame - 1
             && Finite(prior.ViewProjection) && Finite(CurrentFrameView.ViewProjection));
@@ -55,92 +55,78 @@ public sealed partial class Scene3D
         return true;
     }
 
-    // Called after stream construction. Pending storage copies only the exact main-pass upload slices.
+    // The GPU decision controls correspondence. CPU metadata only admits complete main participation.
     void PrepareCoverageMotion()
     {
         if (_coverageMotionCommitted) return;
         foreach (var p in _coverageArena.Preparations)
         {
-            p.MotionReusable = p.MotionPresented = false;
-            if (p.Outcome.Presentation != CoveragePresentation.Covered || p.Owner.Disposed || !_frameHasDisplayArea) continue;
-            bool presented = true;
-            for (int slice = 0; slice < p.Owner.Meshes.Length; slice++)
+            p.MotionPresented = p.MotionEligible = false;
+            if (p.Outcome.Presentation != CoveragePresentation.Dispatched) continue;
+            bool presented = _frameHasDisplayArea;
+            for (int slice = 0; slice < p.Draws.Length; slice++)
             {
                 bool found = false;
                 if (p.Draws[slice] is not { } submitted || !CoverageHasMainFragments(submitted.Dissolve, submitted.DissolveComplement))
                 { presented = false; continue; }
-                foreach (var draw in _cpuSkinnedDraws)
-                    found |= draw.MeshIndex < 0 && draw.VisibleMain && draw.Motion == p.Actor
-                        && ReferenceEquals(draw.Ib, p.Owner.Indices[slice]) && draw.BaseVertex == p.BaseVertices[slice];
+                var range = p.Owner.Topology.MaterialRanges[slice];
+                foreach (var draw in _coverageDraws)
+                    found |= draw.Actor == p.Actor && draw.FirstCorner == range.FirstIndex && draw.VisibleMain;
                 presented &= found;
             }
-            if (!presented)
-            {
-                if (VisibleCoverageBounds(p) is { } visible)
-                    _coverageTransition?.AddChangedBounds(new(visible, PreviousCoverageBounds(p.Actor), false));
-                continue;
-            }
-            p.MotionRevision = SameCoverageIdentity(p) ? p.Owner.MotionRevision : ++_coverageMotionRevision;
-            p.MotionReusable = ValidCoveragePrevious(p);
-            ReadOnlySpan<ModelVertex> uploaded = CollectionsMarshal.AsSpan(_cpuSkinnedVerts)
-                .Slice(p.BaseVertices[0], p.Owner.Topology.VertexCount);
-            _coverageMotion.RecordVertices(p.Actor, p.MotionRevision, uploaded, p.Model, p.Certificate.WorldErrorBound,
-                CurrentFrameView.RenderOrigin);
-            p.MotionPresented = true;
-            if (!p.MotionReusable)
-                _coverageTransition?.AddChangedBounds(new(_coverageMotion.PendingSurfaces[^1].Bounds,
-                    PreviousCoverageBounds(p.Actor), false));
+            p.MotionEligible = presented;
+            var bounds = p.WorldEnvelope;
+            if (presented)
+                _coverageTransition?.AddGpuChangedBounds(new(bounds, PreviousCoverageBounds(p.Actor), false),
+                    _coverageGpu!.Batch!.Current, p.GpuReservation.CurrentBase + 15);
+            else if (VisibleCoverageBounds(p))
+                _coverageTransition?.AddChangedBounds(new(bounds, PreviousCoverageBounds(p.Actor), false));
         }
         foreach (ref readonly var previous in _coverageMotion.PreviousSurfaces)
         {
             bool replaced = false;
-            foreach (var p in _coverageArena.Preparations) replaced |= p.MotionPresented && p.Actor == previous.Actor;
+            foreach (var p in _coverageArena.Preparations) replaced |= p.MotionEligible && p.Actor == previous.Actor;
             if (!replaced) _coverageTransition?.AddChangedBounds(new(UncoveredCoverageBounds(previous.Actor), previous.Bounds, false));
         }
     }
 
-    bool ValidCoveragePrevious(CoveragePreparation p)
+    bool VisibleCoverageBounds(CoveragePreparation p)
     {
-        if (!MotionHistoryValid || !_coverageMotion.TryGetPrevious(p.Actor, p.MotionRevision, out var previous)
-            || previous.Positions.Length != p.Owner.Topology.VertexCount) return false;
-        return previous.TryRebase(CurrentFrameView.RenderOrigin, PreviousFrameView!.Value.ViewProjection, out _);
-    }
-
-    bool AppendCoveragePrevious(in CpuSkinnedDraw draw)
-    {
-        foreach (var p in _coverageArena.Preparations)
-        {
-            if (!p.MotionReusable || draw.Motion != p.Actor) continue;
-            for (int slice = 0; slice < p.Owner.Meshes.Length; slice++)
-            {
-                if (draw.BaseVertex != p.BaseVertices[slice] || !ReferenceEquals(draw.Ib, p.Owner.Indices[slice])) continue;
-                var range = p.Owner.Topology.MaterialRanges[slice];
-                if (!_coverageMotion.TryGetPrevious(p.Actor, p.MotionRevision, out var previous)) return false;
-                Matrix4x4 model = ToRender(previous.AbsoluteModel);
-                foreach (Vector3 position in previous.Positions.Slice(range.FirstVertex, range.VertexCount))
-                    _cpuSkinnedPrevious.Add(Vector3.Transform(position, model));
-                return true;
-            }
-        }
+        foreach (var draw in _coverageDraws)
+            if (draw.Actor == p.Actor && draw.VisibleMain) return true;
         return false;
     }
 
-    CoverageSurfaceBounds? VisibleCoverageBounds(CoveragePreparation p)
+    void StageCoverageHistory(CoveragePreparation p, KhaozEngine.Gpu.IGpuCommandList commands, Span<uint> frame)
     {
-        var bounds = new CoverageSurfaceBoundsBuilder(_frameOrigin);
-        Matrix4x4 renderModel = ToRender(p.Model);
-        for (int slice = 0; slice < p.Owner.Meshes.Length; slice++)
+        p.MotionPresented = p.MotionReusable = false;
+        bool main = _frameHasDisplayArea;
+        foreach (var submitted in p.Draws)
+            main &= submitted is { } draw && !draw.ShadowOnly && CoverageHasMainFragments(draw.Dissolve, draw.DissolveComplement);
+        if (FrustumCulling)
         {
-            if (p.Draws[slice] is not { } submitted || !CoverageHasMainFragments(submitted.Dissolve, submitted.DissolveComplement)) continue;
-            foreach (var draw in _cpuSkinnedDraws)
-            {
-                if (draw.MeshIndex >= 0 || !draw.VisibleMain || draw.Motion != p.Actor
-                    || !ReferenceEquals(p.Owner.Indices[slice], draw.Ib)) continue;
-                foreach (var vertex in CollectionsMarshal.AsSpan(_cpuSkinnedVerts).Slice(draw.BaseVertex, draw.VertexCount))
-                    bounds.Add(CoverageShaderPosition.Transform(renderModel, CoveragePositionBounds.From(vertex.Position)));
-            }
+            var absoluteVp = Matrix4x4.CreateTranslation(-CurrentFrameView.RenderOrigin) * CurrentFrameView.ViewProjection;
+            main &= FrustumPlanes.Extract(absoluteVp).IntersectsSphere(p.Sphere.Center, p.Sphere.Radius);
         }
-        return bounds.Build(p.Certificate.WorldErrorBound);
+        frame[13] = main ? 2u : 0u;
+        p.MotionRevision = SameCoverageIdentity(p) ? p.Owner.MotionRevision : ++_coverageMotionRevision;
+        frame[14] = (uint)p.MotionRevision; frame[15] = (uint)(p.MotionRevision >> 32);
+        if (!main || !MotionHistoryValid || !_coverageMotion.TryGetPrevious(p.Actor, p.MotionRevision, out var previous)
+            || previous.Reservation.SourceCount != p.GpuReservation.SourceCount
+            || previous.Reservation.VertexCount != p.GpuReservation.VertexCount
+            || !previous.TryRebase(CurrentFrameView.RenderOrigin, PreviousFrameView!.Value.ViewProjection, out _)
+            || p.Owner.Gpu.HistoryBatch is null) return;
+        p.Owner.Gpu.CopyHistory(commands, _coverageGpu!.Batch!, p.GpuReservation);
+        p.MotionReusable = true;
+        frame[13] |= 1;
+    }
+
+    Matrix4x4 CoveragePreviousModel(MotionKey actor, Matrix4x4 current)
+    {
+        foreach (var p in _coverageArena.Preparations)
+            if (p.Actor == actor && p.MotionReusable && _coverageMotion.TryGetPrevious(actor, p.MotionRevision, out var previous))
+                return ToRender(previous.Model);
+        return current;
     }
 
     // A submitted draw can encode successfully while its colour shader discards every fragment.
@@ -164,41 +150,61 @@ public sealed partial class Scene3D
         {
             var item = items[i];
             if (item.Motion != actor || item.ShadowOnly || !_skinnedSlots.IsValid(item.Mesh.Index, item.Mesh.Generation)
-                || _skinnedCpuVerts[item.Mesh.Index] is not { } source
                 || !CoverageHasMainFragments(item.DissolveThreshold, item.DissolveComplement)) continue;
             if (TryFrozenCoverage(item.Coverage, out var preparation)
-                && preparation.Outcome.Presentation == CoveragePresentation.Covered) continue;
-            var bones = CollectionsMarshal.AsSpan(_boneMatrices).Slice(i * SkinningMath.MaxBonesPerDraw, SkinningMath.MaxBonesPerDraw);
+                && preparation.Outcome.Presentation == CoveragePresentation.Dispatched) continue;
+            if (!_coveragePaletteBounds.TryGetValue((item.Mesh.Index, item.Mesh.Generation), out var envelope))
+                return CoverageSurfaceBounds.FromHomogeneousRender(default, _frameOrigin, CoverageIntervals.Invalid);
+            int count = _skinnedMeshes[item.Mesh.Index]!.InverseBind.Length;
+            var bones = CollectionsMarshal.AsSpan(_boneMatrices).Slice(i * SkinningMath.MaxBonesPerDraw, count);
             Matrix4x4 renderModel = ToRender(item.World);
-            foreach (var vertex in source)
-                bounds.Add(UseGpuSkinning ? CoverageShaderPosition.Skinned(vertex, bones, renderModel)
-                    : CoverageShaderPosition.Transform(renderModel,
-                        CoveragePositionBounds.From(SkinningMath.SkinVertex(vertex, bones).Position)));
+            bounds.AddBounds(CoverageSurfaceBounds.FromRender(envelope.ExpandWorld(envelope.BoundSkin(bones),
+                renderModel, ReadOnlySpan<CoverageCommandPose>.Empty), _frameOrigin));
         }
         return bounds.Build();
     }
 
-    // This observes successful scene command encoding. The caller still owns End, Submit and Present.
-    // The whole completion, bracketed for optional cost observation. Its single caller ends RenderInternal.
+    // Encoding only marks readiness. The stable submission participant publishes history.
     void CompleteCoverageEncoding()
     {
-        CoverageStageObserverForTests?.Invoke(CoverageStageSpan.MotionCommit, true);
-        CommitCoverageMotion();
-        CoverageStageObserverForTests?.Invoke(CoverageStageSpan.MotionCommit, false);
+        foreach (var p in _coverageArena.Preparations)
+        {
+            if (!p.MotionEligible) continue;
+            _coverageMotion.Record(new(p.Actor, p.MotionRevision, p.GpuReservation, p.Model, p.WorldEnvelope, true));
+            p.MotionPresented = true;
+        }
+        _coverageEncodingComplete = true;
     }
 
-    void CommitCoverageMotion()
+    bool _coverageEncodingComplete;
+
+    internal void AbandonCoverageMotion()
     {
-        if (_coverageMotionCommitted || _coverageMotionFrame != CurrentFrameView.FrameIndex) return;
+        _coverageEncodingComplete = false;
+        _coverageMotion.DiscardPending();
+        foreach (var p in _coverageArena.Preparations) p.MotionPresented = false;
+    }
+
+    internal void CommitCoverageMotion()
+    {
+        if (!_coverageEncodingComplete || _coverageMotionCommitted || _coverageMotionFrame != CurrentFrameView.FrameIndex) return;
+        CoverageStageObserverForTests?.Invoke(CoverageStageSpan.MotionCommit, true);
         foreach (var p in _coverageArena.Preparations)
         {
             if (!p.MotionPresented) continue;
+            p.Owner.Gpu.CommitHistory(_coverageGpu!.Batch!, p.GpuReservation);
             p.Owner.MotionRevision = p.MotionRevision;
             p.Owner.MotionCommandCount = p.CommandCount;
             p.Commands.AsSpan(0, p.CommandCount).CopyTo(p.Owner.MotionCommands);
         }
+        foreach (var owner in _coverageConformers)
+            if (owner.Gpu.HistoryBatch is not null && !ReferenceEquals(owner.Gpu.HistoryBatch, _coverageGpu?.Batch))
+                owner.Gpu.ReleaseHistory();
+        _coverageGpu?.Batch?.CommitFinals();
         _coverageMotion.Commit();
+        _coverageEncodingComplete = false;
         _coverageMotionCommitted = true;
+        CoverageStageObserverForTests?.Invoke(CoverageStageSpan.MotionCommit, false);
     }
 
     static bool Finite(Matrix4x4 matrix)

@@ -91,7 +91,9 @@ public sealed partial class Scene3D
         var bounds = conformer.Gpu.Host.Bounds;
         MeshBounds skin = bounds.BoundSkin(conformer.Uniforms.ComposedPalette);
         if (!bounds.TryAdmitOrigin(skin, model, _frameOrigin, commands, out failure)) return false;
-        p.WorldBounds = bounds.ExpandWorld(skin, model, commands);
+        Matrix4x4 relativeModel = model; relativeModel.Translation -= _frameOrigin;
+        p.WorldEnvelope = CoverageSurfaceBounds.FromRender(bounds.ExpandWorld(skin, relativeModel, commands), _frameOrigin);
+        p.WorldBounds = p.WorldEnvelope.ToWorld();
         if (!CoverageRefinement.Finite(p.WorldBounds.Min) || !CoverageRefinement.Finite(p.WorldBounds.Max))
             return Refuse(CoverageFailureCode.UnsupportedTransform, out failure);
         palette.CopyTo(p.Palette);
@@ -107,6 +109,13 @@ public sealed partial class Scene3D
 
         bool Refuse(CoverageFailureCode code, out CoverageFailure refused)
         { refused = new(code, conformer.Topology.HostIdentity, 0, 0, 0, 0); return false; }
+    }
+
+    bool CoverageHostLive(CoveragePreparation p)
+    {
+        foreach (var handle in p.Owner.Meshes)
+            if (!_skinnedSlots.IsValid(handle.Index, handle.Generation)) return false;
+        return true;
     }
 
     CoveragePreparation RequireCoverage(SkinnedCoverageFrame frame)

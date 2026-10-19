@@ -23,7 +23,8 @@ internal sealed class CoverageCaptureDevice : IGpuDevice
             recordingFactory = new(RecordingInner, failCoverageBuild);
         }
         Capabilities = nativeDevice?.Capabilities ?? new GpuCapabilities(false, true, deviceName: "CoverageRecordingDevice",
-            supportsCompute: supportsCompute);
+            supportsCompute: supportsCompute)
+        { MaxColorAttachments = 8 };
     }
     internal readonly Dictionary<IGpuBuffer, byte[]> Uploads = new();
     public GpuBackendKind Backend => Inner.Backend;
@@ -52,6 +53,8 @@ internal sealed class CoverageCaptureDevice : IGpuDevice
     public MappedData Map(IGpuBuffer buffer, GpuMapMode mode) => Inner.Map(buffer, mode);
     public void Unmap(IGpuTexture texture) => Inner.Unmap(texture);
     public void Unmap(IGpuBuffer buffer) => Inner.Unmap(buffer);
+    public bool TryReadBuffer(IGpuBuffer staging, IGpuFence completion, uint offsetBytes, Span<byte> destination)
+        => Inner.TryReadBuffer(staging, completion, offsetBytes, destination);
     public void ResizeSwapchain(uint w, uint h) => Inner.ResizeSwapchain(w, h);
     public void Present() => Inner.Present();
     public void Dispose() { if (RecordingInner is not null) Inner.Dispose(); }

@@ -4,13 +4,16 @@ using KhaozEngine.Gpu;
 namespace KhaozEngine.Render3D;
 
 /// <summary>Cold-reserved coverage storage and an allocation-free actor frame directory.</summary>
-internal sealed class CoverageGpuBatch : IDisposable
+internal sealed partial class CoverageGpuBatch : IDisposable
 {
     readonly IGpuDevice device;
     CoverageGpuReservation[] actors = [];
     uint[] frameWords = [];
     IGpuBuffer? staticData, frameData, work, current, previous, results;
-    IGpuResourceSet? resources;
+    IGpuResourceSet? resources, reverseResources;
+    bool reversed;
+    int historyOwners;
+    bool retired;
     bool recording, disposed;
 
     internal CoverageGpuBatch(IGpuDevice device) => this.device = device ?? throw new ArgumentNullException(nameof(device));
@@ -19,8 +22,8 @@ internal sealed class CoverageGpuBatch : IDisposable
     internal IGpuBuffer StaticData => staticData ?? throw new InvalidOperationException("Reserve coverage storage first.");
     internal IGpuBuffer FrameData => frameData ?? throw new InvalidOperationException("Reserve coverage storage first.");
     internal IGpuBuffer Work => work ?? throw new InvalidOperationException("Reserve coverage storage first.");
-    internal IGpuBuffer Current => current ?? throw new InvalidOperationException("Reserve coverage storage first.");
-    internal IGpuBuffer Previous => previous ?? throw new InvalidOperationException("Reserve coverage storage first.");
+    internal IGpuBuffer Current => (reversed ? previous : current) ?? throw new InvalidOperationException("Reserve coverage storage first.");
+    internal IGpuBuffer Previous => (reversed ? current : previous) ?? throw new InvalidOperationException("Reserve coverage storage first.");
     internal IGpuBuffer Results => results ?? throw new InvalidOperationException("Reserve coverage storage first.");
 
     // The frame buffer starts with actor-capacity frame offsets. Actor headers themselves retain the pinned ABI.
@@ -101,13 +104,18 @@ internal sealed class CoverageGpuBatch : IDisposable
     internal void Prepare(IGpuResourceLayout layout)
     {
         if (recording) throw new InvalidOperationException("Coverage bindings must be prepared before recording.");
-        resources ??= device.Factory.CreateResourceSet(new(layout, StaticData, FrameData, Work, Current, Previous, Results));
+        if (resources is not null) return;
+        var forward = device.Factory.CreateResourceSet(new(layout, StaticData, FrameData, Work, current!, previous!, Results));
+        try { reverseResources = device.Factory.CreateResourceSet(new(layout, StaticData, FrameData, Work, previous!, current!, Results)); }
+        catch { forward.Dispose(); throw; }
+        resources = forward;
     }
 
     internal IGpuResourceSet Bind(IGpuResourceLayout layout)
     {
+        if (resources is null) Prepare(layout);
         recording = true;
-        return resources ??= device.Factory.CreateResourceSet(new(layout, StaticData, FrameData, Work, Current, Previous, Results));
+        return (reversed ? reverseResources : resources) ?? throw new InvalidOperationException("Prepare coverage bindings before recording.");
     }
 
     void Grow(ref IGpuBuffer? buffer, int words, GpuBufferUsage usage)
@@ -118,12 +126,20 @@ internal sealed class CoverageGpuBatch : IDisposable
         buffer = device.Factory.CreateBuffer(new(bytes, usage, 4));
     }
 
+    internal void CommitFinals() => reversed = !reversed;
+    internal void RetainHistory() => historyOwners++;
+    internal void ReleaseHistory()
+    {
+        if (--historyOwners == 0 && retired) Dispose();
+    }
+
     // The submission owner retires this batch only after its final submitted use completes.
     public void Dispose()
     {
-        if (disposed) return;
+        retired = true;
+        if (disposed || historyOwners != 0) return;
         disposed = true;
-        resources?.Dispose();
+        resources?.Dispose(); reverseResources?.Dispose();
         staticData?.Dispose(); frameData?.Dispose(); work?.Dispose();
         current?.Dispose(); previous?.Dispose(); results?.Dispose();
     }

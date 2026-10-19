@@ -76,6 +76,8 @@ namespace KhaozEngine.Tests.Gpu
         public void Submit(IGpuCommandList cl) => _inner.Submit(cl);
         public void Submit(IGpuCommandList cl, IGpuFence fence) => _inner.Submit(cl, fence);
         public void WaitForIdle() => _inner.WaitForIdle();
+        public bool TryReadBuffer(IGpuBuffer staging, IGpuFence completion, uint offsetBytes, Span<byte> destination)
+            => _inner.TryReadBuffer(staging, completion, offsetBytes, destination);
 
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged
             => _inner.UpdateBuffer(b, offsetBytes, data);

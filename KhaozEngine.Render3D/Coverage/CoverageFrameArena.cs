@@ -67,6 +67,7 @@ internal sealed class CoveragePreparation
     internal int CommandCount;
     internal MeshBounds UnionBounds, CandidateBounds, WorldBounds;
     internal CoverageGpuReservation GpuReservation;
+    internal CoverageSurfaceBounds WorldEnvelope;
     internal readonly uint[] ResultIdentity = new uint[8];
     internal double CandidateAttributes, CandidateOutlineAttributes;
     internal PointShadowCasterSphere Sphere;
@@ -74,7 +75,7 @@ internal sealed class CoveragePreparation
     internal CoverageFrameOutcome Outcome;
     internal CoverageCertificate Certificate;
     internal ulong MotionRevision;
-    internal bool MotionReusable, MotionPresented;
+    internal bool MotionReusable, MotionPresented, MotionEligible;
     internal CoveragePreparation(SkinnedHostConformer owner, int bones, int materials)
     {
         Owner = owner;

@@ -192,12 +192,23 @@ existing failure codes.
 Main, motion, outline, cascade and point-face passes read the actor's current final buffer through
 vertex pulling. The motion pass also reads the previous buffer. Previous actually presented FINAL
 vertices, current-origin rebasing, per-view history identity and local transition rejection move to the
-double-buffered GPU surface. When history is invalid, the select kernel seeds the previous buffer from the
-current surface, matching the existing current-position seeding rule. Equipment draws are unchanged.
+double-buffered GPU surface. Under storage ruling C12, select marks invalid correspondence or a changed GPU
+outcome with `TransitionChanged`. The motion consumer then reads the current selected positions, matching
+selected-kind header and current model as its effective previous surface. Otherwise it reads the committed
+previous positions and rebased previous model. This preserves current-position seeding without overwriting the
+committed allocation during encoding or copying a whole previous surface each frame. `Submitted` swaps the two
+allocations and precreated bindings. `Abandoned` leaves the committed allocation intact. Cold migration retains
+its source through the final copy's retirement. Equipment draws are unchanged.
+
+History reuse also projects the conservative anchored envelope with the shared binary32 interval bounds.
+All four prior clip components must remain finite, including products and partial sums before cancellation.
+Unsafe prior projection follows the same current-data seeding and local transition rejection path.
 
 **CPU-side bounds.** The CPU never reads the GPU surface back for drawing decisions. Culling, shadow
 caster classification, the coverage sphere, temporal rejection bounds and the origin guard use one
-conservative envelope of the current pose, expanded by the largest command `MaxWorldRecession`. The
+conservative envelope of the current pose, expanded by the largest command `MaxWorldRecession`. Preparation
+retains its origin anchor before outward absolute conversion for culling and shadow consumers. Temporal projection
+uses that same anchored envelope, preserving locality at large origins. The
 existing skinned-actor bound is a 1.5x rest-pose sphere, a heuristic that an arbitrary palette can
 escape, so covered actors do not use it (root ruling C1, 2026-10-19). The envelope transforms each
 bone's cold box of influenced source positions by its composed palette matrix, joins the results and

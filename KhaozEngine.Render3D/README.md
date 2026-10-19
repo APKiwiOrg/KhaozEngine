@@ -196,7 +196,24 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   before either shadow pass. Covered casters retain their frozen absolute current-palette bound for scheduling,
   including camera-culled and shadow-only actors. Static point lights use transient current-pose rows and dynamic
   lights use base rows. Every face and cascade retains the same material corner range and GPU fallback decision.
-  GPU final history and asynchronous outcome diagnostics follow in the remaining Part C tasks.
+  Motion pulls the previous actually submitted final surface. CPU history stores identity, reservation, model,
+  anchored conservative bounds and main participation only. Reuse requires a consecutive frame, the same camera
+  object, actor incarnation and equipment revision, and complete visible main participation. The shared anchored
+  envelope must bound finite prior clip components, including binary32 products and partial sums before cancellation.
+  Unsafe prior projection seeds current data and rejects the transition bounds. Shadow-only,
+  outline-only, missing-material and fully dissolved hosts never supply presented history.
+  Select compares the prior GPU outcome directly. On first use, replacement, refusal or recovery it marks
+  `TransitionChanged`, and motion reads the current selected positions, selected-kind header and current model.
+  Steady motion reads the committed previous positions with the prior absolute model rebased to the current origin.
+  This effective seeding leaves the committed buffer untouched during encoding. The stable submission participant
+  swaps the two final buffers only on `Submitted`. `Abandoned` discards pending metadata. Full diagnostic rings
+  do not affect these decisions. Cold migration retains its source through the final submitted copy's retirement.
+  The R8 temporal mask draws conservative current/previous rectangles only when the GPU transition predicate is set.
+  Unequip and removal reject their bounds unconditionally. Near-plane uncertainty rejects the viewport for that
+  transition. The common prepared palette envelope retains an origin anchor before outward absolute conversion,
+  so culling and shadow scheduling share the bound while temporal projection preserves large-origin locality.
+  Ordinary restoration uses cold per-mesh palette bounds. An unavailable or unrepresentable bound uses viewport
+  uncertainty for that removal transition. None of these transitions resets global temporal history.
   Before opening the frame list, call `PrepareFrame(displayWidth, displayHeight)` after all submissions.
   It reserves the temporal mask at the configured prospective temporal size, including when AA is initially off.
   Call it again before recording after changing display or temporal sizing. A missing or wrong-sized reservation

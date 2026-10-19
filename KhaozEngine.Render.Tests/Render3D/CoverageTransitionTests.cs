@@ -75,7 +75,8 @@ public sealed class CoverageTransitionTests
         Assert.Same(mask, Assert.IsType<FakeResourceSet>(resolve.CurrentSet).Resources[^1]);
         if (split)
         {
-            Assert.Contains(h.Factory.ResourceSets, set => set.Resources.Length == 13 && ReferenceEquals(mask, set.Resources[^1]));
+            Assert.Same(mask, Assert.IsType<FakeResourceSet>(resolve.SplitResolveForTests!
+                .CoverageAccumulateSetForTests(h.Scene.TemporalHistory.ReadIndex)).Resources[^1]);
             Assert.Equal(!upscale, resolve.SplitResolveForTests!.AtDisplaySizeBuiltForTests);
         }
         Assert.NotEmpty(h.Scene.CoverageTransitionForTests.Rectangles);
@@ -101,7 +102,8 @@ public sealed class CoverageTransitionTests
         Assert.Same(initial, set.Resources[^1]);
         Draw(h, weight: .5f);
         h.Render();
-        Assert.Empty(h.Scene.CoverageTransitionForTests.Rectangles);
+        // Recording proves a conditional rectangle was encoded. Native tests prove its zero mask on steady frames.
+        Assert.NotEmpty(h.Scene.CoverageTransitionForTests.Rectangles);
         Assert.Same(initial, h.Scene.CoverageTransitionForTests.Texture);
         Draw(h, instance: 2);
         h.Scene.PrepareFrame(48, 36);

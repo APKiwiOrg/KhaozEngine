@@ -9,6 +9,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Render3D;
 
+[Collection("NativeDeviceLifecycle")]
 public sealed class CoverageMotionTests
 {
     static SkinnedCoverageFrame Draw(CoverageSceneFixture h, ulong instance = 1, float weight = 1)
@@ -20,7 +21,9 @@ public sealed class CoverageMotionTests
         return frame;
     }
 
-    static Vector3[] UploadedPrevious(CoverageSceneFixture h)
+    static Vector3[] UploadedPrevious(CoverageSceneFixture h) => h.FinalPositions(previous: true);
+
+    static Vector3[] UploadedOrdinaryPrevious(CoverageSceneFixture h)
     {
         var buffer = h.Scene.CoverageMotionReserveForTests.Buffer;
         return MemoryMarshal.Cast<byte, Vector3>(Assert.Single(h.Record.Uploads,
@@ -49,7 +52,7 @@ public sealed class CoverageMotionTests
         { Coverage = next, Motion = MotionKey.From(10) }, h.Palette);
         h.Render();
         if (fallback) Assert.Equal(CoveragePresentation.UncoveredFallback, h.Scene.GetCoverageOutcome(next).Presentation);
-        if (gpu)
+        if (gpu || fallback)
         {
             var resources = h.Scene.MotionResourcesForTests!;
             var range = (GpuBufferRange)Assert.IsType<FakeResourceSet>(resources.SkinnedPalette.Set).Resources[1];
@@ -65,93 +68,94 @@ public sealed class CoverageMotionTests
             var current = Assert.Single(h.Record.Uploads, u => ReferenceEquals(u.Buffer, draw.VertexBuffers[0]));
             var expected = MemoryMarshal.Cast<byte, ModelVertex>(current.Data).ToArray()
                 .Select(v => v.Position + new Vector3(-254, 0, 0)).ToArray();
-            Assert.Equal(expected, UploadedPrevious(h));
+            Assert.Equal(expected, UploadedOrdinaryPrevious(h));
         }
     }
 
-    [Fact]
+    [GpuFact]
     public void Reset_seeds_current_final_surface()
     {
-        using var h = new CoverageSceneFixture();
+        using var h = new CoverageSceneFixture(executeNative: true);
         h.Scene.DebugView = SceneDebugView.MotionVectors;
         Draw(h); h.Render();
         h.Scene.CameraCut();
         var next = Draw(h, weight: .5f); h.Render();
         Assert.Null(h.Scene.PreviousFrameView);
-        Assert.Equal(h.Scene.CoverageVerticesForTests(next).ToArray().Select(v => v.Position), UploadedPrevious(h));
+        Assert.Equal(h.FinalPositions(), UploadedPrevious(h));
     }
 
-    [Fact]
+    [GpuFact]
     public void Alternating_camera_objects_never_reuse_a_different_views_surface()
     {
-        using var h = new CoverageSceneFixture();
+        using var h = new CoverageSceneFixture(executeNative: true);
         h.Scene.DebugView = SceneDebugView.MotionVectors;
         Draw(h); h.Render();
         var other = new IsoCamera3D();
         other.Frame(Vector3.Zero, new Vector3(4, 3, 4));
         h.Scene.CameraOverride = other;
         var next = Draw(h, weight: .5f); h.Render();
-        Assert.Equal(h.Scene.CoverageVerticesForTests(next).ToArray().Select(v => v.Position), UploadedPrevious(h));
+        Assert.Equal(h.FinalPositions(), UploadedPrevious(h));
         h.Scene.CameraOverride = null;
         next = Draw(h, weight: .25f); h.Render();
-        Assert.Equal(h.Scene.CoverageVerticesForTests(next).ToArray().Select(v => v.Position), UploadedPrevious(h));
-        Vector3[] prior = h.Scene.CoverageVerticesForTests(next).ToArray().Select(v => v.Position).ToArray();
+        Assert.Equal(h.FinalPositions(), UploadedPrevious(h));
+        Vector3[] prior = h.FinalPositions();
         Draw(h, weight: .75f); h.Render();
         Assert.Equal(prior, UploadedPrevious(h));
         Assert.Throws<System.InvalidOperationException>(() => h.Render());
     }
 
-    [Fact]
+    [GpuFact]
     public void Equipment_identity_change_seeds_the_actual_current_final_upload()
     {
-        using var h = new CoverageSceneFixture();
+        using var h = new CoverageSceneFixture(executeNative: true);
         h.Scene.DebugView = SceneDebugView.MotionVectors;
         Draw(h); h.Render();
         var next = Draw(h, instance: 2, weight: .5f); h.Render();
-        Assert.Equal(h.Scene.CoverageVerticesForTests(next).ToArray().Select(v => v.Position), UploadedPrevious(h));
+        Assert.Equal(h.FinalPositions(), UploadedPrevious(h));
     }
 
-    [Fact]
+    [GpuFact]
     public void Failed_encoding_and_skipped_frames_cannot_commit_staged_candidates()
     {
-        using var h = new CoverageSceneFixture();
+        using var h = new CoverageSceneFixture(executeNative: true);
         h.Scene.DebugView = SceneDebugView.MotionVectors;
         Draw(h); h.Render();
-        Draw(h, weight: .5f);
+        var failed = Draw(h, weight: .5f);
         h.BeforeDraw = _ => throw new System.InvalidOperationException("synthetic encoding failure");
         Assert.Throws<System.InvalidOperationException>(() => h.Render());
+        Assert.False(failed.Preparation!.MotionPresented);
         h.BeforeDraw = null;
         var next = Draw(h, weight: .25f); h.Render();
-        Assert.Equal(h.Scene.CoverageVerticesForTests(next).ToArray().Select(v => v.Position), UploadedPrevious(h));
+        Assert.Equal(h.FinalPositions(), UploadedPrevious(h));
         h.Begin();
         next = Draw(h, weight: .75f); h.Render();
-        Assert.Equal(h.Scene.CoverageVerticesForTests(next).ToArray().Select(v => v.Position), UploadedPrevious(h));
+        Assert.Equal(h.FinalPositions(), UploadedPrevious(h));
     }
 
-    [Fact]
+    [GpuFact]
     public void Missing_frame_and_shadow_only_presentation_cannot_supply_previous_final_positions()
     {
-        using var h = new CoverageSceneFixture();
+        using var h = new CoverageSceneFixture(executeNative: true);
         h.Scene.DebugView = SceneDebugView.MotionVectors;
         Draw(h); h.Render();
         h.Begin(); h.Render();
         var next = Draw(h, weight: .5f); h.Render();
-        Assert.Equal(h.Scene.CoverageVerticesForTests(next).ToArray().Select(v => v.Position), UploadedPrevious(h));
+        Assert.Equal(h.FinalPositions(), UploadedPrevious(h));
         h.Begin();
         var shadow = h.Stage(weight: .25f);
         h.Scene.DrawSkinned(h.HostDraw(shadow, shadowOnly: true), h.Palette);
         h.SubmitEquipment(); h.Render();
         next = Draw(h, weight: .75f); h.Render();
-        Assert.Equal(h.Scene.CoverageVerticesForTests(next).ToArray().Select(v => v.Position), UploadedPrevious(h));
+        Assert.Equal(h.FinalPositions(), UploadedPrevious(h));
     }
 
-    [Fact]
+    [GpuFact]
     public void Staging_refusal_cannot_overwrite_committed_surface_storage()
     {
-        using var h = new CoverageSceneFixture();
+        using var h = new CoverageSceneFixture(executeNative: true);
         h.Scene.DebugView = SceneDebugView.MotionVectors;
         var first = Draw(h); h.Render();
-        Vector3[] last = h.Scene.CoverageVerticesForTests(first).ToArray().Select(v => v.Position).ToArray();
+        Vector3[] last = h.FinalPositions();
         h.Begin();
         h.Stage(weight: .5f);
         Assert.False(h.Conformer.TryPrepare(h.Palette, Matrix4x4.Identity, h.CommandPoses,
@@ -159,21 +163,21 @@ public sealed class CoverageMotionTests
         // A discarded Begin is a history gap even though it never reached the renderer.
         var next = Draw(h, weight: .25f); h.Render();
         Assert.NotEqual(last, UploadedPrevious(h));
-        Assert.Equal(h.Scene.CoverageVerticesForTests(next).ToArray().Select(v => v.Position), UploadedPrevious(h));
+        Assert.Equal(h.FinalPositions(), UploadedPrevious(h));
     }
 
-    [Fact]
+    [GpuFact]
     public void Failed_geometry_overwrite_then_retry_preserves_the_committed_final_surface()
     {
-        using var h = new CoverageSceneFixture();
+        using var h = new CoverageSceneFixture(executeNative: true);
         h.Scene.DebugView = SceneDebugView.MotionVectors;
         var first = Draw(h); h.Render();
-        Vector3[] last = h.Scene.CoverageVerticesForTests(first).ToArray().Select(v => v.Position).ToArray();
+        Vector3[] last = h.FinalPositions();
         h.Begin();
         var frozen = new RigidInstanceDraw[1];
         Assert.True(h.Scene.TryStageCoverageEquipment(MotionKey.From(10), 1, 1, h.Support,
             [new RigidInstanceDraw(h.RigidHandle, Matrix4x4.Identity)], frozen, out var failure), failure.ToString());
-        var refused = h.CommandPoses.Select(c => c with { MaxWorldRecession = 0 }).ToArray();
+        var refused = h.CommandPoses.Select(c => c with { RegionIndex = 31 }).ToArray();
         Assert.False(h.Conformer.TryPrepare(h.Palette, Matrix4x4.Identity, refused, MotionKey.From(10),
             CoverageFallback.UncoveredCurrentPose, out _, out failure));
         Assert.NotEqual(CoverageFailureCode.None, failure.Code);
@@ -183,13 +187,13 @@ public sealed class CoverageMotionTests
         h.Scene.DrawSkinned(h.HostDraw(next), h.Palette);
         h.Scene.Draw(frozen[0]); h.Render();
         Assert.Equal(last, UploadedPrevious(h));
-        Assert.NotEqual(h.Scene.CoverageVerticesForTests(next).ToArray().Select(v => v.Position).ToArray(), UploadedPrevious(h));
+        Assert.NotEqual(h.FinalPositions(), UploadedPrevious(h));
     }
 
-    [Fact]
+    [GpuFact]
     public void Uploaded_motion_keeps_final_deformation_and_prior_model_in_current_origin()
     {
-        using var h = new CoverageSceneFixture();
+        using var h = new CoverageSceneFixture(executeNative: true);
         h.Scene.DebugView = SceneDebugView.MotionVectors;
         h.Scene.RenderOrigin = new(128, 0, 0);
         h.Begin();
@@ -197,8 +201,8 @@ public sealed class CoverageMotionTests
         h.Scene.DrawSkinned(h.HostDraw(first), h.Palette);
         h.SubmitEquipment();
         h.Render();
-        Assert.Equal(CoveragePresentation.Covered, h.Scene.GetCoverageOutcome(first).Presentation);
-        Vector3[] last = h.Scene.CoverageVerticesForTests(first).ToArray().Select(v => v.Position + new Vector3(1 - 256, 0, 0)).ToArray();
+        Assert.Equal(CoveragePresentation.Dispatched, h.Scene.GetCoverageOutcome(first).Presentation);
+        Vector3[] last = h.FinalPositions().Select(v => v + new Vector3(1 - 256, 0, 0)).ToArray();
         h.Scene.RenderOrigin = new(256, 0, 0);
         h.Begin();
         var next = h.Stage(Matrix4x4.CreateTranslation(2, 0, 0), weight: .5f);
@@ -206,107 +210,86 @@ public sealed class CoverageMotionTests
         h.SubmitEquipment();
         h.Render();
         Assert.NotNull(h.Scene.PreviousFrameView);
-        var previousBuffer = h.Scene.CoverageMotionReserveForTests.Buffer;
-        var upload = Assert.Single(h.Record.Uploads, u => ReferenceEquals(u.Buffer, previousBuffer));
-        Assert.Equal(last, MemoryMarshal.Cast<byte, Vector3>(upload.Data).ToArray());
+        Assert.Equal(last, UploadedPrevious(h));
+        Assert.All(h.NativeDraws, draw => Assert.Equal(new Vector3(-255, 0, 0), draw.PreviousModel.Translation));
     }
+
+    static CoverageMotionHistory.Surface Surface(MotionKey key, ulong revision, Matrix4x4? model = null, bool presented = true) =>
+        new(key, revision, new(0, 0, 0, 0, 0, 0, 3, 3, 1), model ?? Matrix4x4.Identity,
+            new(new(-1, -1, -1), new(1, 1, 1)), presented);
 
     [Fact]
     public void Motion_uses_previous_final_vertices_after_rebase()
     {
-        var history = new CoverageMotionHistory();
-        history.Reserve(2, 8);
-        object view = new();
-        var key = MotionKey.From(7);
-        Vector3[] final = [new(1, 2, 3), new(2, 4, 6), new(3, 6, 9)];
+        var history = new CoverageMotionHistory(); history.Reserve(2);
+        object view = new(); var key = MotionKey.From(7);
         history.Begin(1, view, true);
-        history.Record(key, 9, final, Matrix4x4.CreateTranslation(256, 5, 0));
-        history.Commit();
-        final[0] = new(999);
+        history.Record(Surface(key, 9, Matrix4x4.CreateTranslation(256, 5, 0))); history.Commit();
         history.Begin(2, view, true);
         Assert.True(history.TryGetPrevious(key, 9, out var previous));
-        Assert.Equal(3, previous.Positions.Length);
-        Assert.True(previous.TryRebase(new Vector3(384, 0, 0), Matrix4x4.Identity, out var model));
-        Assert.Equal(new Vector3(-127, 7, 3), Vector3.Transform(previous.Positions[0], model));
-        Assert.Equal(new Vector3(-126, 9, 6), Vector3.Transform(previous.Positions[1], model));
+        Assert.True(previous.TryRebase(new(384, 0, 0), Matrix4x4.Identity, out var model));
+        Assert.Equal(new Vector3(-127, 7, 3), Vector3.Transform(new(1, 2, 3), model));
+        Assert.Equal(new Vector3(-126, 9, 6), Vector3.Transform(new(2, 4, 6), model));
     }
 
     [Fact]
     public void Invalid_actual_prior_positions_models_and_view_inputs_refuse_reuse()
     {
-        var nonfinite = new CoveragePreviousSurface([new(float.NaN, 0, 0)], Matrix4x4.Identity);
-        Assert.False(nonfinite.TryRebase(Vector3.Zero, Matrix4x4.Identity, out _));
-        var mirror = new CoveragePreviousSurface([Vector3.One], Matrix4x4.CreateScale(-1, 1, 1));
-        Assert.False(mirror.TryRebase(Vector3.Zero, Matrix4x4.Identity, out _));
-        var singular = new CoveragePreviousSurface([Vector3.One], Matrix4x4.CreateScale(0));
-        Assert.False(singular.TryRebase(Vector3.Zero, Matrix4x4.Identity, out _));
-        var valid = new CoveragePreviousSurface([Vector3.One], Matrix4x4.Identity);
-        Assert.False(valid.TryRebase(Vector3.Zero, default, out _));
-        Assert.False(valid.TryRebase(new(float.PositiveInfinity), Matrix4x4.Identity, out _));
+        var key = MotionKey.From(7);
+        Assert.False(Surface(key, 1, Matrix4x4.CreateTranslation(float.NaN, 0, 0)).TryRebase(Vector3.Zero, Matrix4x4.Identity, out _));
+        Assert.False(Surface(key, 1, Matrix4x4.CreateScale(-1, 1, 1)).TryRebase(Vector3.Zero, Matrix4x4.Identity, out _));
+        Assert.False(Surface(key, 1, Matrix4x4.CreateScale(0)).TryRebase(Vector3.Zero, Matrix4x4.Identity, out _));
+        Assert.False(Surface(key, 1).TryRebase(Vector3.Zero, default, out _));
+        Assert.False(Surface(key, 1).TryRebase(new(float.PositiveInfinity), Matrix4x4.Identity, out _));
     }
 
     [Fact]
     public void Only_committed_consecutive_same_view_surfaces_are_reusable()
     {
-        var h = new CoverageMotionHistory();
-        h.Reserve(1, 4);
-        object view = new(), otherView = new();
-        var key = MotionKey.From(7);
-        h.Begin(1, view, true);
-        h.Record(key, 2, [Vector3.One], Matrix4x4.Identity);
-        h.Begin(2, view, true);
-        Assert.False(h.TryGetPrevious(key, 2, out _));
-        h.Record(key, 2, [new(2)], Matrix4x4.Identity);
-        h.Commit();
-        h.Begin(3, otherView, true);
-        Assert.False(h.TryGetPrevious(key, 2, out _));
-        h.Begin(4, view, true);
-        Assert.False(h.TryGetPrevious(key, 2, out _));
-        h.Record(key, 3, [new(3)], Matrix4x4.Identity);
-        h.Commit();
-        h.Begin(5, view, true);
-        Assert.False(h.TryGetPrevious(key, 2, out _));
-        Assert.True(h.TryGetPrevious(key, 3, out var p));
-        Assert.Equal(new Vector3(3), p.Positions[0]);
-        h.Commit();
-        h.Begin(6, view, true);
-        Assert.False(h.TryGetPrevious(key, 3, out _));
+        var h = new CoverageMotionHistory(); h.Reserve(1);
+        object view = new(), otherView = new(); var key = MotionKey.From(7);
+        h.Begin(1, view, true); h.Record(Surface(key, 2));
+        h.Begin(2, view, true); Assert.False(h.TryGetPrevious(key, 2, out _));
+        h.Record(Surface(key, 2)); h.Commit();
+        h.Begin(3, otherView, true); Assert.False(h.TryGetPrevious(key, 2, out _));
+        h.Begin(4, view, true); Assert.False(h.TryGetPrevious(key, 2, out _));
+        h.Record(Surface(key, 3)); h.Commit();
+        h.Begin(5, view, true); Assert.False(h.TryGetPrevious(key, 2, out _));
+        Assert.True(h.TryGetPrevious(key, 3, out _)); h.Commit();
+        h.Begin(6, view, true); Assert.False(h.TryGetPrevious(key, 3, out _));
+        h.Record(Surface(key, 3, presented: false)); h.Commit();
+        h.Begin(7, view, true); Assert.False(h.TryGetPrevious(key, 3, out _));
     }
 
     [Fact]
     public void Warm_history_copy_lookup_and_commit_allocate_zero_bytes()
     {
-        var h = new CoverageMotionHistory();
-        h.Reserve(2, 8);
-        object view = new();
-        Vector3[] positions = [new(1, 2, 3), new(2, 4, 6)];
-        var key = MotionKey.From(8);
-        h.Begin(1, view, true); h.Record(key, 4, positions, Matrix4x4.Identity); h.Commit();
-        h.Begin(2, view, true); h.Record(key, 4, positions, Matrix4x4.Identity); h.Commit();
-        long before = System.GC.GetAllocatedBytesForCurrentThread();
-        h.Begin(3, view, true);
-        bool found = h.TryGetPrevious(key, 4, out var previous);
-        Vector3 witness = previous.Positions[0];
-        h.Record(key, 4, positions, Matrix4x4.Identity); h.Commit();
-        long allocated = System.GC.GetAllocatedBytesForCurrentThread() - before;
-        Assert.True(found);
-        Assert.Equal(new Vector3(1, 2, 3), witness);
-        Assert.Equal(0, allocated);
+        var h = new CoverageMotionHistory(); h.Reserve(2);
+        object view = new(); var key = MotionKey.From(8); var surface = Surface(key, 4);
+        h.Begin(1, view, true); h.Record(surface); h.Commit();
+        h.Begin(2, view, true); h.Record(surface); h.Commit();
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        h.Begin(3, view, true); bool found = h.TryGetPrevious(key, 4, out var previous);
+        h.Record(surface); h.Commit();
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.True(found); Assert.Equal(surface, previous); Assert.Equal(0, allocated);
     }
 
-    [Fact]
+    [GpuFact]
     public void Replacing_host_topology_seeds_the_new_incarnation()
     {
-        using var h = new CoverageSceneFixture();
+        using var h = new CoverageSceneFixture(executeNative: true);
         h.Scene.DebugView = SceneDebugView.MotionVectors;
         Draw(h); h.Render();
         using var replacement = h.Scene.CreateHostConformer(h.HostMesh.Skeleton!, h.Host);
+        replacement.ReserveSupports([h.Support]);
         h.Begin(); h.Stage();
         var commands = h.CommandPoses.Select(c => c with { Topology = replacement.Topology, TransitionWeight = .5f }).ToArray();
         Assert.True(replacement.TryPrepare(h.Palette, Matrix4x4.Identity, commands, MotionKey.From(10),
             CoverageFallback.UncoveredCurrentPose, out var next, out var failure), failure.ToString());
+        h.LastCoverageFrame = next;
         h.Scene.DrawSkinned(h.HostDraw(next), h.Palette);
         h.SubmitEquipment(); h.Render();
-        Assert.Equal(h.Scene.CoverageVerticesForTests(next).ToArray().Select(v => v.Position), UploadedPrevious(h));
+        Assert.Equal(h.FinalPositions(), UploadedPrevious(h));
     }
 }

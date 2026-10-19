@@ -10,6 +10,7 @@ public sealed partial class Scene3D
 {
     readonly Dictionary<(int, int), CoverageUploadEvidence> _coverageUploads = new();
     readonly Dictionary<(int, int), SkinnedGltfMesh> _coverageHostUploads = new();
+    readonly Dictionary<(int, int), CoverageActorBounds> _coveragePaletteBounds = new();
     readonly List<SkinnedHostConformer> _coverageConformers = new();
     readonly CoverageFrameArena _coverageArena = new();
     bool _coverageDisposed;
@@ -62,6 +63,7 @@ public sealed partial class Scene3D
         var topology = gpu.Host.Topology;
         var handles = topology.MaterialRanges.Select(range => meshes[Array.FindIndex(uploaded,
             m => m.Coverage!.MaterialSlice == range.MaterialSlice)]).ToArray();
+        foreach (var handle in handles) _coveragePaletteBounds.TryAdd((handle.Index, handle.Generation), gpu.Host.Bounds);
         var indices = new KhaozEngine.Gpu.IGpuBuffer[handles.Length];
         try
         {
@@ -106,6 +108,6 @@ public sealed partial class Scene3D
             foreach (var buffer in conformer.Indices) buffer.Dispose();
         }
         _coverageConformers.Clear();
-        _coverageUploads.Clear(); _coverageHostUploads.Clear();
+        _coverageUploads.Clear(); _coverageHostUploads.Clear(); _coveragePaletteBounds.Clear();
     }
 }

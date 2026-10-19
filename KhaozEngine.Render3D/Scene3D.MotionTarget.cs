@@ -157,7 +157,6 @@ public sealed partial class Scene3D
         for (int d = 0; d < _cpuSkinnedDraws.Count; d++)
         {
             CpuSkinnedDraw dr = _cpuSkinnedDraws[d];
-            if (dr.MeshIndex < 0 && AppendCoveragePrevious(dr)) continue;
             SkinnedVertex[]? source = dr.MeshIndex < 0 ? null : _skinnedCpuVerts[dr.MeshIndex];
             int bones = dr.MeshIndex < 0 ? -1 : _skinnedMeshes[dr.MeshIndex]?.InverseBind.Length ?? -1;
             if (history is not null && source is not null && !dr.Motion.IsNone && !RestoringCoverageSurface(dr.Motion)

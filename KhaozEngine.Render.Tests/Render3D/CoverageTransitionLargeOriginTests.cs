@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
@@ -34,7 +35,7 @@ public sealed class CoverageTransitionLargeOriginTests
         }
         h.SubmitEquipment();
         h.Render(100, 100);
-        Assert.Equal(CoveragePresentation.Covered, h.Scene.GetCoverageOutcome(frame).Presentation);
+        Assert.Equal(CoveragePresentation.Dispatched, h.Scene.GetCoverageOutcome(frame).Presentation);
         return frame;
     }
 
@@ -59,10 +60,10 @@ public sealed class CoverageTransitionLargeOriginTests
         h.Scene.DrawSkinned(new SkinnedInstanceDraw(h.Host[0], Model()) { Motion = MotionKey.From(10) }, h.Palette);
         h.Render(100, 100);
         Assert.True(h.Scene.TemporalHistory.IsValid);
-        Assert.True(Rejects(h, 32, 50));
-        Assert.True(Rejects(h, 64, 50));
+        Assert.True(Rejects(h, 41, 50));
+        Assert.True(Rejects(h, 57, 50));
         Assert.False(Rejects(h, 95, 50));
-        Assert.Contains(h.Record.Scissors, r => r.X <= 32 && r.X + r.Width > 64 && r.Width < 90);
+        Assert.Contains(h.Record.Scissors, r => r.X <= 41 && r.X + r.Width > 57 && r.Width < 90);
     }
 
     [Fact]
@@ -73,9 +74,9 @@ public sealed class CoverageTransitionLargeOriginTests
         Submit(h, offset: 32);
         Assert.Empty(h.Scene.CoverageTransitionForTests.Rectangles);
         Submit(h, partial: true);
-        Assert.True(Rejects(h, 32, 50));
+        Assert.True(Rejects(h, 41, 50));
         Assert.False(Rejects(h, 95, 50));
-        Assert.Contains(h.Record.Scissors, r => r.X <= 32 && r.X + r.Width > 32 && r.Width < 90);
+        Assert.Contains(h.Record.Scissors, r => r.X <= 41 && r.X + r.Width > 41 && r.Width < 90);
     }
 
     [Fact]
@@ -85,8 +86,8 @@ public sealed class CoverageTransitionLargeOriginTests
         Configure(h);
         Submit(h);
         h.Begin(); h.Render(100, 100);
-        Assert.True(Rejects(h, 32, 50));
-        Assert.True(Rejects(h, 64, 50));
+        Assert.True(Rejects(h, 41, 50));
+        Assert.True(Rejects(h, 57, 50));
         Assert.False(Rejects(h, 95, 50));
     }
 
@@ -111,11 +112,31 @@ public sealed class CoverageTransitionLargeOriginTests
         Assert.Contains(record.Scissors, r => r.X <= 25 && r.X + r.Width > 75 && r.Width < 90);
     }
 
+    [Fact]
+    public void Absolute_float_expansion_negative_still_rejects_unrelated_pixels_in_the_wider_view()
+    {
+        using var h = new CoverageSceneFixture();
+        Configure(h);
+        var frame = Submit(h);
+        Assert.False(Rejects(h, 95, 50));
+        var bounds = h.Conformer.Gpu.Host.Bounds;
+        var skin = bounds.BoundSkin(h.Conformer.Uniforms.ComposedPalette);
+        var oldAbsolute = bounds.ExpandWorld(skin, frame.Preparation!.Model,
+            frame.Preparation.Commands.AsSpan(0, frame.Preparation.CommandCount));
+        using var device = new FakeGpuDevice();
+        using var oldMask = new CoverageTransitionMask(device);
+        oldMask.Reserve(1); oldMask.EnsureSize(100, 100, null);
+        oldMask.AddChangedBounds(new(CoverageSurfaceBounds.FromWorld(oldAbsolute, h.Scene.CurrentFrameView.RenderOrigin), null, false));
+        using var commands = new NullGpuCommandList();
+        oldMask.Prepare(commands, h.Scene.CurrentFrameView);
+        Assert.True(oldMask.Rejects(95, 50));
+    }
+
     sealed class RelativeCamera : IIsoCamera3D, IRenderOriginAware
     {
         public Vector3 RenderOrigin { get; set; }
         public Matrix4x4 View => Matrix4x4.CreateTranslation(0, 0, -2);
-        public Matrix4x4 Projection => Matrix4x4.CreateOrthographic(2, 2, .1f, 10);
+        public Matrix4x4 Projection => Matrix4x4.CreateOrthographic(4, 4, .1f, 10);
         public Matrix4x4 ViewProjection => View * Projection;
         public Matrix4x4 AbsoluteViewProjection => Matrix4x4.CreateTranslation(-RenderOrigin) * ViewProjection;
         public Vector3 Eye => RenderOrigin + new Vector3(0, 0, 2);

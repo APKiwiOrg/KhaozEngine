@@ -4,142 +4,96 @@ using System.Runtime.InteropServices;
 
 namespace KhaozEngine.Render3D;
 
-/// <summary>Owned final surfaces. Begin discards uncommitted writes. Only a completed scene encoding commits.</summary>
+/// <summary>CPU identity and conservative bounds only. Submission owns the commit boundary.</summary>
 internal sealed class CoverageMotionHistory
 {
-    internal readonly record struct Surface(MotionKey Actor, ulong Revision, int Start, int Count,
-        Matrix4x4 Model, CoverageSurfaceBounds Bounds);
-
-    sealed class Generation
+    internal readonly record struct Surface(MotionKey Actor, ulong Revision, CoverageGpuReservation Reservation,
+        Matrix4x4 Model, CoverageSurfaceBounds Bounds, bool Presented)
     {
-        internal Vector3[] Positions = [];
-        internal Surface[] Surfaces = [];
-        internal int Count, Used;
-        internal void Reserve(int actors, int vertices)
+        internal bool TryRebase(Vector3 origin, in Matrix4x4 previousViewProjection, out Matrix4x4 renderModel)
         {
-            if (Surfaces.Length < actors) Array.Resize(ref Surfaces, actors);
-            if (Positions.Length < vertices) Array.Resize(ref Positions, vertices);
+            renderModel = Model;
+            renderModel.Translation -= origin;
+            if (!CoverageAffine.TryFrom(renderModel, out var affine) || !(affine.Determinant > 0)
+                || !affine.TryInverse(out var inverse) || affine.SpectralBound * inverse.SpectralBound > 1e6
+                || !Matrix4x4.Invert(previousViewProjection, out var inverseView)
+                || !Finite(previousViewProjection) || !Finite(inverseView) || !Bounds.Weight.IsFinite) return false;
+            var bounds = Bounds;
+            if (bounds.Weight.Min < -float.MaxValue || bounds.Weight.Max > float.MaxValue) return false;
+            var position = new CoveragePositionBounds(
+                RebaseAxis(bounds.Relative.Min.X, bounds.Relative.Max.X, bounds.Origin.X, origin.X, bounds.Weight),
+                RebaseAxis(bounds.Relative.Min.Y, bounds.Relative.Max.Y, bounds.Origin.Y, origin.Y, bounds.Weight),
+                RebaseAxis(bounds.Relative.Min.Z, bounds.Relative.Max.Z, bounds.Origin.Z, origin.Z, bounds.Weight), bounds.Weight);
+            // The shared dot bound also refuses overflowing binary32 products and partial sums before cancellation.
+            return CoverageShaderPosition.Transform(previousViewProjection, position).IsFinite;
         }
-        internal void Clear() { Count = Used = 0; }
+
+        static CoverageScalarBounds RebaseAxis(float min, float max, float anchor, float origin, CoverageScalarBounds weight) =>
+            CoverageIntervals.Add(new(min, max), CoverageIntervals.Multiply(
+                CoverageIntervals.Subtract(new(anchor, anchor), new(origin, origin)), weight));
     }
 
-    Generation previous = new(), pending = new();
+    Surface[] previous = [], pending = [];
+    int previousCount, pendingCount;
     long committedFrame = -1, frame;
     object? committedView, view;
     bool valid, committed;
-    internal ReadOnlySpan<Surface> PreviousSurfaces => previous.Surfaces.AsSpan(0, previous.Count);
-    internal ReadOnlySpan<Surface> PendingSurfaces => pending.Surfaces.AsSpan(0, pending.Count);
+    internal ReadOnlySpan<Surface> PreviousSurfaces => previous.AsSpan(0, previousCount);
+    internal ReadOnlySpan<Surface> PendingSurfaces => pending.AsSpan(0, pendingCount);
 
-    internal void Reserve(int actors, int vertices)
+    internal void Reserve(int actors)
     {
-        previous.Reserve(actors, vertices);
-        pending.Reserve(actors, vertices);
+        if (previous.Length < actors) Array.Resize(ref previous, actors);
+        if (pending.Length < actors) Array.Resize(ref pending, actors);
     }
 
     internal void Begin(long frameIndex, object viewIdentity, bool compatible)
     {
         frame = frameIndex; view = viewIdentity;
         valid = compatible && committedFrame == frameIndex - 1 && ReferenceEquals(viewIdentity, committedView);
-        pending.Clear();
+        pendingCount = 0;
         committed = false;
     }
 
-    internal void DiscardPending()
-    {
-        pending.Clear();
-        valid = false;
-    }
+    internal void DiscardPending() { pendingCount = 0; valid = false; }
 
-    internal bool TryGetPrevious(MotionKey actorKey, ulong revision, out CoveragePreviousSurface surface)
+    internal bool TryGetPrevious(MotionKey actor, ulong revision, out Surface surface)
     {
         foreach (ref readonly var entry in PreviousSurfaces)
-            if (valid && !actorKey.IsNone && entry.Actor == actorKey && entry.Revision == revision)
-            {
-                surface = new(previous.Positions.AsSpan(entry.Start, entry.Count), entry.Model);
-                return true;
-            }
+            if (valid && !actor.IsNone && entry.Actor == actor && entry.Revision == revision && entry.Presented)
+            { surface = entry; return true; }
         surface = default;
         return false;
     }
 
-    internal void Record(MotionKey actorKey, ulong revision, ReadOnlySpan<Vector3> finalPositions,
-        in Matrix4x4 absoluteModel)
+    internal void Record(in Surface surface)
     {
-        int start = Start(actorKey, finalPositions.Length);
-        finalPositions.CopyTo(pending.Positions.AsSpan(start));
-        Finish(actorKey, revision, start, finalPositions.Length, absoluteModel);
-    }
-
-    internal void RecordVertices(MotionKey actorKey, ulong revision, ReadOnlySpan<ModelVertex> finalVertices,
-        in Matrix4x4 absoluteModel, double worldError = 0, Vector3? boundsOrigin = null)
-    {
-        int start = Start(actorKey, finalVertices.Length);
-        for (int i = 0; i < finalVertices.Length; i++) pending.Positions[start + i] = finalVertices[i].Position;
-        Finish(actorKey, revision, start, finalVertices.Length, absoluteModel, worldError, boundsOrigin);
-    }
-
-    int Start(MotionKey actor, int count)
-    {
-        if (committed || actor.IsNone || count < 1 || count > HostCoverageMap.MaxSurfaceVertices
-            || pending.Count == pending.Surfaces.Length || count > pending.Positions.Length - pending.Used)
+        if (committed || surface.Actor.IsNone || pendingCount == pending.Length)
             throw new InvalidOperationException("Coverage history requires pre-record capacity and one live actor surface.");
         foreach (ref readonly var entry in PendingSurfaces)
-            if (entry.Actor == actor) throw new InvalidOperationException("Coverage motion keys must be unique within a view.");
-        return pending.Used;
-    }
-
-    void Finish(MotionKey actor, ulong revision, int start, int count, Matrix4x4 model, double worldError = 0,
-        Vector3? boundsOrigin = null)
-    {
-        Vector3 origin = boundsOrigin ?? model.Translation;
-        Matrix4x4 relative = model;
-        relative.Translation -= origin;
-        var bounds = new CoverageSurfaceBoundsBuilder(origin);
-        for (int i = 0; i < count; i++)
-            bounds.Add(CoverageShaderPosition.Transform(relative, CoveragePositionBounds.From(pending.Positions[start + i])));
-        pending.Surfaces[pending.Count++] = new(actor, revision, start, count, model, bounds.Build(worldError)!.Value);
-        pending.Used += count;
+            if (entry.Actor == surface.Actor) throw new InvalidOperationException("Coverage motion keys must be unique within a view.");
+        pending[pendingCount++] = surface;
     }
 
     internal void Commit()
     {
         if (committed) throw new InvalidOperationException("Coverage history commits once per rendered view.");
         (previous, pending) = (pending, previous);
+        previousCount = pendingCount; pendingCount = 0;
         committedFrame = frame; committedView = view;
         committed = true;
     }
 
     internal void Reset()
     {
-        previous.Clear(); pending.Clear();
+        previousCount = pendingCount = 0;
         committedFrame = -1; committedView = null; valid = false;
     }
-}
 
-/// <summary>Borrowed owned storage, valid until the next history commit or reset.</summary>
-internal readonly ref struct CoveragePreviousSurface(ReadOnlySpan<Vector3> positions, Matrix4x4 absoluteModel)
-{
-    internal ReadOnlySpan<Vector3> Positions { get; } = positions;
-    internal Matrix4x4 AbsoluteModel { get; } = absoluteModel;
-
-    internal bool TryRebase(Vector3 origin, in Matrix4x4 previousViewProjection, out Matrix4x4 renderModel)
+    static bool Finite(Matrix4x4 matrix)
     {
-        renderModel = AbsoluteModel;
-        renderModel.Translation -= origin;
-        if (!CoverageAffine.TryFrom(renderModel, out var affine) || !(affine.Determinant > 0)
-            || !affine.TryInverse(out var inverse) || affine.SpectralBound * inverse.SpectralBound > 1e6
-            || !Matrix4x4.Invert(previousViewProjection, out var inverseView)) return false;
-        foreach (float value in MemoryMarshal.Cast<Matrix4x4, float>(MemoryMarshal.CreateReadOnlySpan(in previousViewProjection, 1)))
+        foreach (float value in MemoryMarshal.Cast<Matrix4x4, float>(MemoryMarshal.CreateReadOnlySpan(in matrix, 1)))
             if (!float.IsFinite(value)) return false;
-        foreach (float value in MemoryMarshal.Cast<Matrix4x4, float>(MemoryMarshal.CreateReadOnlySpan(in inverseView, 1)))
-            if (!float.IsFinite(value)) return false;
-        foreach (Vector3 position in Positions)
-        {
-            Vector3 render = Vector3.Transform(position, renderModel);
-            Vector4 clip = Vector4.Transform(new Vector4(render, 1), previousViewProjection);
-            if (!float.IsFinite(render.X) || !float.IsFinite(render.Y) || !float.IsFinite(render.Z)
-                || !float.IsFinite(clip.X) || !float.IsFinite(clip.Y) || !float.IsFinite(clip.Z) || !float.IsFinite(clip.W)) return false;
-        }
         return true;
     }
 }

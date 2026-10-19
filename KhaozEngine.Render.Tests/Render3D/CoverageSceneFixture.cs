@@ -11,7 +11,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Render3D;
 
-internal sealed class CoverageSceneFixture : IDisposable
+internal sealed partial class CoverageSceneFixture : IDisposable
 {
     readonly CoverageCaptureDevice device;
     readonly UniformBufferTrackingGpuDevice tracker;
@@ -37,8 +37,9 @@ internal sealed class CoverageSceneFixture : IDisposable
     public ModelVertex[] Posed => data.Posed;
 
     public CoverageSceneFixture(bool seams = false, GpuBackendKind backend = GpuBackendKind.Vulkan,
-        bool supportsCompute = true, bool failCoverageBuild = false, IGpuDevice? nativeDevice = null)
+        bool supportsCompute = true, bool failCoverageBuild = false, IGpuDevice? nativeDevice = null, bool executeNative = false)
     {
+        if (executeNative) nativeDevice = (nativeContext = GpuDeviceContext.CreateHeadless()).GpuDevice;
         device = new(backend, supportsCompute, failCoverageBuild, nativeDevice);
         data = CoverageFixture.CurvedPanel(seams: seams, level: 2);
         tracker = new(device);
@@ -105,10 +106,11 @@ internal sealed class CoverageSceneFixture : IDisposable
             MaxWorldRecession = recession ?? commands[i].MaxWorldRecession
         };
         Assert.True(Scene.TryStageCoverageEquipment(MotionKey.From(10), 1, instance, support,
-            [new RigidInstanceDraw(equipment, world)], stagedEquipment, out var failure), failure.ToString());
+            [new RigidInstanceDraw(equipment, world) { ShadowOnly = NativeEquipmentShadowOnly }], stagedEquipment, out var failure), failure.ToString());
         Assert.True(conformer.TryPrepare(Palette, world, commands, MotionKey.From(10),
             CoverageFallback.UncoveredCurrentPose, out var frame, out failure), failure.ToString());
         Assert.Equal(CoveragePresentation.Pending, Scene.GetCoverageOutcome(frame).Presentation);
+        LastCoverageFrame = frame;
         return frame;
     }
     public SkinnedInstanceDraw HostDraw(SkinnedCoverageFrame frame, bool shadowOnly = false, int slice = 0) =>
@@ -119,11 +121,21 @@ internal sealed class CoverageSceneFixture : IDisposable
         Scene.DrawSkinnedOutline(Scene.BeginMeshOutline(Color.White, 1.25f), draw, Palette);
     public void Render(int width = 32, int height = 24, bool prepare = true)
     {
+        if (nativeContext is not null) { RenderNative(width, height, prepare); return; }
         if (prepare) Scene.PrepareFrame(width, height);
         Record?.Dispose();
         Record = new RecordingGpuCommandList(new NullGpuCommandList())
         { CapturePayloads = true, CaptureBindings = true, UniformWindowsOfSet = tracker.WindowsOf, BeforeIndexedDraw = BeforeDraw };
-        Scene.RenderInternal(Record, width, height, target);
+        Record.BeforeNonIndexedDraw = (bindings, _, _, _, _) => BeforeNonIndexedDraw?.Invoke(bindings);
+        nativeSubmission ??= new(device);
+        nativeSubmission.Begin();
+        try
+        {
+            Scene.RenderInternal(Record, width, height, target);
+            Scene.RecordCoverageReadbacks(Record, nativeSubmission);
+            nativeSubmission.Submit(Record);
+        }
+        catch { nativeSubmission.Abandon(); throw; }
     }
     internal void RenderUncaptured(IGpuCommandList cl)
     { Scene.PrepareFrame(32, 24); Scene.RenderInternal(cl, 32, 24, target); }
@@ -186,11 +198,13 @@ internal sealed class CoverageSceneFixture : IDisposable
     internal CoverageCommandPose[] CommandPoses => Commands();
     public void Dispose()
     {
+        nativeSubmission?.Dispose();
         Record?.Dispose();
         conformer.Dispose();
         Scene.Dispose();
         target.Dispose();
         targetTexture.Dispose();
         device.Dispose();
+        nativeContext?.Dispose();
     }
 }

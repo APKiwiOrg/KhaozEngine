@@ -56,6 +56,7 @@ internal sealed partial class ModelRenderer
         _coverageOutputs = outputs;
         if (_coveragePull is null) return;
         _coveragePipeline?.Dispose(); _coverageDissolvePipeline?.Dispose();
+        BuildCoverageMotionPipelines(factory, outputs);
         _coveragePipeline = Create(_coverageShaders); _coverageDissolvePipeline = Create(_coverageDissolveShaders);
         IGpuPipeline Create(IGpuShaderSet shaders) => factory.CreateGraphicsPipeline(new()
         {
@@ -73,6 +74,7 @@ internal sealed partial class ModelRenderer
     void DisposeCoveragePulling()
     {
         DisposeCoverageShadows();
+        DisposeCoverageMotion();
         _coveragePipeline?.Dispose(); _coverageDissolvePipeline?.Dispose();
         _coverageShaders?.Dispose(); _coverageDissolveShaders?.Dispose(); _coveragePull?.Dispose();
     }

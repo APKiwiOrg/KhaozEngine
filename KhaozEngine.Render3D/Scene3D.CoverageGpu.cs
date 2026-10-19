@@ -42,6 +42,7 @@ public sealed partial class Scene3D
         if (_coverageGpu is { Available: true, Batch: { } batch })
         {
             _model.ReserveCoverage(batch, coveredDraws);
+            _coverageTransition?.ReserveGpu(batch, coveredDraws, _retired);
             _targetOutlines.ReserveCoverage(batch, _meshOutlinePartCount);
             _pointShadows?.ReserveCoverage(batch, coveredDraws);
         }
@@ -127,6 +128,7 @@ public sealed partial class Scene3D
             frame[start + 320 + slot] = (uint)uniforms.Order[slot];
         }
         for (int region = 0; region < 32; region++) frame[start + 324 + region] = unchecked((uint)uniforms.RegionCommands[region]);
+        StageCoverageHistory(p, commands, frame);
         batch.Add(r, frame);
         Pair(0, p.Generation); Pair(2, p.View); Pair(4, p.Actor.Value); Pair(6, p.Id);
         commands.UpdateBuffer(batch.Results, (uint)r.ActorSlot * 64, p.ResultIdentity);

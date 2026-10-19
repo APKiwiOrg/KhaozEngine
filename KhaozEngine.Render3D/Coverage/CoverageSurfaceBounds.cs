@@ -27,6 +27,17 @@ internal readonly struct CoverageSurfaceBounds
         }
         return new(low, high, origin, CoverageIntervals.One);
     }
+    internal MeshBounds ToWorld()
+    {
+        Vector3 low = default, high = default;
+        for (int axis = 0; axis < 3; axis++)
+        {
+            var absolute = CoverageIntervals.Add(new(Relative.Min[axis], Relative.Max[axis]), new(Origin[axis], Origin[axis]));
+            low[axis] = CoverageActorBounds.Lower(absolute.Min); high[axis] = CoverageActorBounds.Upper(absolute.Max);
+        }
+        return new(low, high);
+    }
+
     internal static CoverageSurfaceBounds FromHomogeneousRender(MeshBounds relative, Vector3 origin, CoverageScalarBounds weight) =>
         new(relative.Min, relative.Max, origin, weight);
     public static implicit operator CoverageSurfaceBounds(MeshBounds absolute) => new(absolute.Min, absolute.Max);
@@ -39,6 +50,16 @@ internal struct CoverageSurfaceBoundsBuilder(Vector3 origin)
     bool any;
     double minW = double.PositiveInfinity, maxW = double.NegativeInfinity;
     bool uncertain;
+
+    internal void AddBounds(in CoverageSurfaceBounds bounds)
+    {
+        var ox = CoverageIntervals.Subtract(new(bounds.Origin.X, bounds.Origin.X), new(origin.X, origin.X));
+        var oy = CoverageIntervals.Subtract(new(bounds.Origin.Y, bounds.Origin.Y), new(origin.Y, origin.Y));
+        var oz = CoverageIntervals.Subtract(new(bounds.Origin.Z, bounds.Origin.Z), new(origin.Z, origin.Z));
+        Add(new(CoverageIntervals.Add(new(bounds.Relative.Min.X, bounds.Relative.Max.X), ox),
+            CoverageIntervals.Add(new(bounds.Relative.Min.Y, bounds.Relative.Max.Y), oy),
+            CoverageIntervals.Add(new(bounds.Relative.Min.Z, bounds.Relative.Max.Z), oz), bounds.Weight));
+    }
 
     internal void Add(CoveragePositionBounds position)
     {

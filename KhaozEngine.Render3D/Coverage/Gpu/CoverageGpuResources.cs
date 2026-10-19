@@ -63,6 +63,7 @@ internal sealed class CoverageGpuResources : IDisposable
     {
         if (!actor.Live) return;
         actor.Live = false;
+        actor.ReleaseHistory();
         actors.Remove(actor);
         PruneHosts();
         dirty = true;
@@ -110,6 +111,7 @@ internal sealed class CoverageGpuResources : IDisposable
         foreach (var pair in supports) pair.Value.Upload.Words.CopyTo(words, (int)pair.Value.Offset);
         var reservations = new CoverageGpuReservation[actors.Count];
         var supportOffsets = new uint[actors.Count][];
+        var leases = new CoverageGpuHistoryLease[actors.Count];
         var next = new CoverageGpuBatch(device);
         try
         {
@@ -119,6 +121,7 @@ internal sealed class CoverageGpuResources : IDisposable
             for (int i = 0; i < actors.Count; i++)
             {
                 var actor = actors[i]; var h = actor.Host.Upload;
+                leases[i] = new(next, retired);
                 reservations[i] = CoverageGpuLayout.CreateReservation(i, hostOffsets[actor.Host], frameBase,
                     workBase, surfaceBase, surfaceBase, h);
                 var requested = ReferenceEquals(actor, replacing) ? replacement! : actor.Supports;
@@ -134,6 +137,7 @@ internal sealed class CoverageGpuResources : IDisposable
         for (int i = 0; i < actors.Count; i++)
         {
             actors[i].Reservation = reservations[i]; actors[i].SupportOffsets = supportOffsets[i];
+            actors[i].FrameHistoryLease = leases[i];
         }
         supportUploads.Clear();
         foreach (var pair in supports) supportUploads.Add(pair.Key, pair.Value.Upload);
@@ -142,13 +146,13 @@ internal sealed class CoverageGpuResources : IDisposable
 
     static uint Add(uint a, uint b) => CoverageGpuLayout.Words((long)a + b);
     internal void Record(IGpuCommandList commands) => pipeline!.Record(commands, Batch!);
-    public void Dispose() { Batch?.Dispose(); pipeline?.Dispose(); actors.Clear(); hosts.Clear(); supportUploads.Clear(); }
+    public void Dispose() { foreach (var actor in actors) actor.ReleaseHistory(); Batch?.Dispose(); pipeline?.Dispose(); actors.Clear(); hosts.Clear(); supportUploads.Clear(); }
 }
 
 internal sealed record CoverageGpuHost(CoverageRefinement Topology, CoverageGpuHostUpload Upload, CoverageActorBounds Bounds);
 
 /// <summary>One actor's cold reservation. Frame words contain inputs only, never CPU-constructed vertices.</summary>
-internal sealed class CoverageGpuActor(CoverageGpuHost host)
+internal sealed partial class CoverageGpuActor(CoverageGpuHost host)
 {
     internal readonly CoverageGpuHost Host = host;
     internal readonly uint[] Frame = new uint[CoverageGpuLayout.FrameWords(host.Upload.BoneCount)];

@@ -15,8 +15,8 @@ internal sealed record CoverageTargetReadback(int Width, int Height, int Channel
 /// following disjoint render-margin separation recheck). RenderCertification is the late validation only,
 /// nested inside render resolution. SkinnedPreparation is the whole skinned draw preparation after resolution: it
 /// contains surface append, OrdinarySkinning (the uncovered draw loop, CPU vertex skinning or GPU draw records),
-/// coverage motion history recording and SkinnedUpload (the shared skinned frame uploads). MotionCommit is the whole
-/// coverage encoding completion at the end of the render.</summary>
+/// coverage motion history recording and SkinnedUpload (the shared skinned frame uploads). MotionCommit covers
+/// history publication in the successful submission callback.</summary>
 internal enum CoverageStageSpan
 {
     Skinning, GeometryEvaluation, GeometryCertification, RenderCertification, SkinnedPreparation, OrdinarySkinning, SkinnedUpload,

@@ -17,12 +17,14 @@ public sealed partial class Scene3D
     CoverageOutcomeReadbacks? _coverageOutcomes, _coverageOutcomesTail;
     readonly CoverageSubmissionState _coverageSubmissionState = new();
     CoverageOutcomeIdentity[] _coverageOutcomeIdentities = [];
+    internal bool CoverageDiagnosticCompletionHeldForTests { get; set; }
 
     /// <summary>Poll completed coverage diagnostics without waiting. Availability never changes rendering or history.
     /// On Direct3D11 completion becomes visible after the host's normal Present boundary.</summary>
     public bool TryReadCoverageOutcome(out CoverageGpuOutcome outcome)
     {
         RequireCoverageThread();
+        if (CoverageDiagnosticCompletionHeldForTests) { outcome = default; return false; }
         while (_coverageOutcomes is { } state)
         {
             if (state.TryRead(out outcome))

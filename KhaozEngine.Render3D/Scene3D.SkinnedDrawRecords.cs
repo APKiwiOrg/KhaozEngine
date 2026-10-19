@@ -28,7 +28,11 @@ public sealed partial class Scene3D
         {
             var draw = _coverageDraws[i];
             if (!draw.VisibleMain) continue;
-            _model.DrawCoverage(commands, draw, _coverageMaterials[i]);
+            if (_res.MotionAllocated)
+            {
+                _model.DrawCoverageMotion(commands, draw, CoveragePreviousModel(draw.Actor, _coverageInstances[i].Model), _coverageMaterials[i]);
+            }
+            else _model.DrawCoverage(commands, draw, _coverageMaterials[i]);
             CountSkinnedDraw(draw.CornerCount);
         }
     }

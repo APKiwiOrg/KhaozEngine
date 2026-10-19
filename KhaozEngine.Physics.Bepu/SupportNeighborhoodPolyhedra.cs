@@ -7,8 +7,8 @@ using KhaozEngine.Physics;
 
 namespace KhaozEngine.Physics.Bepu;
 
-/// <summary>Box and convex hull leaves of one installed static, captured and admitted exactly as the feature
-/// query captures them, with each face published as a polygon. Mesh statics and curved leaves have their own
+/// <summary>Box and convex hull leaves of one installed static, captured through the shared topology cores
+/// with a represented support operator and each face published as a polygon. Mesh and curved leaves have their own
 /// owners. They are skipped here, and a curved leaf never refuses the polyhedral leaves beside it.</summary>
 internal static class SupportNeighborhoodPolyhedra
 {
@@ -27,7 +27,7 @@ internal static class SupportNeighborhoodPolyhedra
         CapsuleFeatureStatus status;
         if (compound)
         {
-            if (!CapsuleFeatureGeometry.ProveInstalledPose(pose)) return CapsuleFeatureStatus.Unsupported;
+            if (!InstalledPoseOperator.TryCreateSupport(pose, out _)) return CapsuleFeatureStatus.Unsupported;
             ref Compound installed = ref simulation.Shapes.GetShape<Compound>(shape.Index);
             if (installed.Children.Length is 0 or > CapsuleFeatureGeometry.MaximumLeaves)
                 return CapsuleFeatureStatus.Unsupported;
@@ -35,21 +35,22 @@ internal static class SupportNeighborhoodPolyhedra
             {
                 ref var child = ref installed.Children[i];
                 if (!Polyhedral(child.ShapeIndex)) continue;
-                if (!CapsuleFeatureGeometry.ProveInstalledPose(child.LocalPose)) return CapsuleFeatureStatus.Unsupported;
+                if (!InstalledPoseOperator.TryCreateSupport(child.LocalPose, out _)) return CapsuleFeatureStatus.Unsupported;
                 // Exactly the pinned backend's composition, including its represented rounding.
                 Compound.GetWorldPose(child.LocalPose, pose, out RigidPose worldPose);
-                if (!InstalledPoseOperations.ProveComposition(child.LocalPose, pose, worldPose))
+                if (!InstalledPoseOperations.ProveSupportComposition(child.LocalPose, pose, worldPose))
                     return CapsuleFeatureStatus.Unsupported;
+                if (!InstalledPoseOperator.TryCreateSupport(worldPose, out var transform)) return CapsuleFeatureStatus.Unsupported;
                 status = CapsuleFeatureGeometry.CaptureLeaf(simulation, child.ShapeIndex, worldPose, child.LocalPose,
-                    i, scratch, out leaf);
+                    i, transform, scratch, out leaf);
                 if (status != CapsuleFeatureStatus.Complete) return Admission(status);
                 leaves.Add(leaf!);
             }
             return CapsuleFeatureStatus.Complete;
         }
-        // CaptureLeaf proves this same pose first and refuses it as Unsupported, which Admission keeps.
+        if (!InstalledPoseOperator.TryCreateSupport(pose, out var singleTransform)) return CapsuleFeatureStatus.Unsupported;
         status = CapsuleFeatureGeometry.CaptureLeaf(simulation, shape, pose,
-            new RigidPose(Vector3.Zero, Quaternion.Identity), 0, scratch, out leaf);
+            new RigidPose(Vector3.Zero, Quaternion.Identity), 0, singleTransform, scratch, out leaf);
         if (status != CapsuleFeatureStatus.Complete) return Admission(status);
         leaves.Add(leaf!);
         return CapsuleFeatureStatus.Complete;
@@ -66,15 +67,15 @@ internal static class SupportNeighborhoodPolyhedra
         if (shape.Type != default(Compound).TypeId)
             return CaptureFootprintLeaf(simulation, shape, pose, new RigidPose(Vector3.Zero, Quaternion.Identity),
                 0, bounds, scratch, leaves, curved);
-        if (!CapsuleFeatureGeometry.ProveInstalledPose(pose)) return CapsuleFeatureStatus.Unsupported;
+        if (!InstalledPoseOperator.TryCreateSupport(pose, out _)) return CapsuleFeatureStatus.Unsupported;
         ref Compound installed = ref simulation.Shapes.GetShape<Compound>(shape.Index);
         if (installed.Children.Length == 0) return CapsuleFeatureStatus.Unsupported;
         for (int i = 0; i < installed.Children.Length; i++)
         {
             ref var child = ref installed.Children[i];
-            if (!CapsuleFeatureGeometry.ProveInstalledPose(child.LocalPose)) return CapsuleFeatureStatus.Unsupported;
+            if (!InstalledPoseOperator.TryCreateSupport(child.LocalPose, out _)) return CapsuleFeatureStatus.Unsupported;
             Compound.GetWorldPose(child.LocalPose, pose, out RigidPose worldPose);
-            if (!InstalledPoseOperations.ProveComposition(child.LocalPose, pose, worldPose))
+            if (!InstalledPoseOperations.ProveSupportComposition(child.LocalPose, pose, worldPose))
                 return CapsuleFeatureStatus.Unsupported;
             CapsuleFeatureStatus status = CaptureFootprintLeaf(simulation, child.ShapeIndex, worldPose,
                 child.LocalPose, i, bounds, scratch, leaves, curved);
@@ -89,8 +90,9 @@ internal static class SupportNeighborhoodPolyhedra
     {
         if (Polyhedral(shape))
         {
+            if (!InstalledPoseOperator.TryCreateSupport(pose, out var transform)) return CapsuleFeatureStatus.Unsupported;
             CapsuleFeatureStatus status = CapsuleFeatureGeometry.CaptureLeaf(simulation, shape, pose, local, id,
-                scratch, out CapsuleFeaturePolyhedron? leaf);
+                transform, scratch, out CapsuleFeaturePolyhedron? leaf);
             if (status != CapsuleFeatureStatus.Complete) return Admission(status);
             leaves.Add(leaf!);
             return CapsuleFeatureStatus.Complete;

@@ -7,6 +7,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 21.6.0
 
+2026-10-19
+
 - Static interior cuts hide opted-in individual rigid props inside building outlines and below their roofs.
   Only props whose drawn bounds can reach an interior take the cut path.
   The shared height field cuts colour, temporal motion, cascaded and point shadows, object and walk-surface
@@ -14,11 +16,22 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   it with picks on the view thread.
   Ordinary props, roofs, merged HLOD geometry, grass, ground cover, animated foliage and skinned meshes stay
   uncut by default or by their excluded draw paths. MapDoc and world validation integration remain follow-ups.
+- Contact support uses Bepu's represented installed transform, so exact tread-edge tangency on quarter-turn
+  stairs now supports without changing the feature or sweep contract (#1494).
+- Curved support certification has a cumulative per-Find work ceiling with visible work and storage exhaustion
+  reasons and atomic refusal. A whole-capsule crown certificate and nearest-point cylinder admission witness
+  keep end-seam queries bounded without changing roof guards, footprint protections or arrival rules (#1487).
+
+## 21.5.1
+
+- `IPhysicsCapsuleSweep` certifies rotated boxes, convex hulls, one-sided mesh triangles and supported
+  compound descendants, so authoritative contact ticks can advance over authored geometry (#1355).
+- `BugReportService.ReportConfirmed` is raised when the player presses Send, so a server-backed game releases its
+  server snapshot only after the player confirms.
 - Contact controller ground support covers more props. Players can stand on planks pitched 3 to 6 degrees at any
   yaw, climb onto lying logs and pipes up to the step height, and walk where a sloped edge crosses joined mesh
   triangles or statics without a pacing hitch or a false step signal (#1429, #1455, #1454). Log ends and capsule caps
-  can still refuse support, and authoritative ticks over rotated, hull, mesh and round props still wait on certified
-  shell sweeps (#1355).
+  can still refuse support. Exact tread-edge footprint tangency remains an open support boundary (#1494).
 - Contact controller bodies walking off a tall lying log fall to the floor instead of hanging beside its steep
   lower flank. A slide whose next seat fails shell clearance hands its unspent motion to the air pass (#1486).
 

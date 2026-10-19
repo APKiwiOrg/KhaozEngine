@@ -36,8 +36,9 @@ without a relay.
 F10 opens a report by default. In the trigger frame the service freezes the clip, arms the screenshot and captures
 every section, then raises `ReportCaptured`. The confirmation screen opens once the screenshot is taken, usually the
 next frame and at most three frames after the trigger. From the trigger until it closes the game sees
-`InputState.WithoutInteraction`, so typing never reaches the game. Send builds the bundle on the thread pool and
-hands it to the sink. The result shows as a toast and raises `ReportSubmitted` on the frame thread.
+`InputState.WithoutInteraction`, so typing never reaches the game. Send raises `ReportConfirmed` on the frame thread
+before building the bundle on the thread pool and handing it to the sink. The result shows as a toast and raises
+`ReportSubmitted` on the frame thread.
 
 Media never costs a report. Send keeps the newest clip frames that fit the bundle's 128 entries and 16 MiB beside the
 sections and the screenshot. When the bundle writer still refuses a size limit, or a clip frame or screenshot whose
@@ -52,6 +53,7 @@ image header does not match its record, Send retries once without the clip, then
 | `IsOpen` | True from the trigger frame until the screen closes. |
 | `AddSection(section)` | Adds a game section after the seven built-in ones, up to 64 sections in all. |
 | `ReportCaptured` | The new report id, raised in the trigger frame. |
+| `ReportConfirmed` | The report id, raised once on the frame thread when the player presses Send, before the bundle is built. Never raised for a cancelled report. |
 | `ReportSubmitted` | Each send's `BugReportSubmitResult`, raised on the frame thread. |
 | `SetRecordingEnabled(bool)` | Starts or stops the clip from a settings toggle. |
 | `SetPassTimingsSource(source)` | Gives the `performance` section a `PassTimings` meter. |
@@ -109,13 +111,18 @@ reports.AddSection(new ZoneSection(() => world.ZoneName));
 
 ## Server snapshot hook
 
-A server-backed game asks its server for a snapshot with the same report id, through its own protocol message:
+A server-backed game asks its server to capture and hold a snapshot in the trigger frame, then releases it only
+after the player presses Send. Both messages carry the same report id through the game's own protocol:
 
 ```csharp
 reports.ReportCaptured += reportId => connection.Send(new RequestBugSnapshot(reportId));
+reports.ReportConfirmed += reportId => connection.Send(new ConfirmBugSnapshot(reportId));
 ```
 
-The server side is described in the `KhaozEngine.BugReports` README.
+The first message captures without posting. The second permits the server to post that captured snapshot. Key held
+snapshots by the authenticated account and report id, and expire snapshots that are never confirmed. Cancel and
+shutdown never raise `ReportConfirmed`. A throwing handler is logged and the client send still proceeds. The server
+side is described in the `KhaozEngine.BugReports` README.
 
 ## Rebinding, pause menus and settings
 

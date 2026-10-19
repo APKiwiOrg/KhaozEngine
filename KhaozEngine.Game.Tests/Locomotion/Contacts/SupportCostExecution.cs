@@ -40,6 +40,7 @@ internal sealed class SupportCostExecution : IDisposable
     readonly MovementBoundary? boundary;
     static readonly MovementSpaceKey Room = new("world", "room");
     internal MovementQueryLease? LastMovementLease { get; private set; }
+    internal MovementAvailability? LastAcquisitionStatus { get; private set; }
     internal EnvironmentAcquisitionFixture Producer => environment!;
     internal CountingQueryView View { get; }
     internal KhaozEngine.Physics.Bepu.BepuPhysicsWorld World => scene.World;
@@ -125,6 +126,7 @@ internal sealed class SupportCostExecution : IDisposable
                 (MovementAvailability Status, IDisposable? Lease) acquired;
                 using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.Acquisition))
                     acquired = environment!.Acquire();
+                LastAcquisitionStatus = acquired.Status;
                 if (acquired.Status != MovementAvailability.Known)
                     return new(false, "AcquisitionRefused", double.NaN, double.NaN, Vector3.Zero, true);
                 MovementQueryLease acquiredLease = (MovementQueryLease)acquired.Lease!;

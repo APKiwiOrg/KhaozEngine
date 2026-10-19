@@ -3385,14 +3385,16 @@ var reports = new BugReportService(app,
 - **Trigger.** F10 by default, rebindable through `reports.TriggerControls`, persisted through
   `SaveTriggerBindings` and `TriggerBindingsJson`. `reports.Begin()` serves a menu entry.
 - **Capture.** The trigger frame freezes the clip, arms the screenshot and captures every section, then raises
-  `ReportCaptured(reportId)` for a server-backed game to request a server snapshot. The confirmation screen opens
+  `ReportCaptured(reportId)` for a server-backed game to capture and hold a server snapshot. The confirmation screen opens
   once the screenshot is taken, at most three frames later, and the game sees `InputState.WithoutInteraction` from
   the trigger until it closes. The game decides whether its
   world pauses.
 - **Sections.** Seven built-in sections (`build`, `platform`, `graphics`, `session`, `input`, `performance`,
   `log`) plus any `AddSection`. Sections run in the trigger frame and must be cheap. Redaction and truncation run
   off the frame thread before anything leaves the machine.
-- **Delivery.** Send builds the bundle on the thread pool. `BugReportSubmitter` writes it to the offline queue
+- **Delivery.** Send raises `ReportConfirmed(reportId)` once on the frame thread before building the bundle on the
+  thread pool. A server-backed game releases its held snapshot here. Cancel and shutdown never raise it, and a
+  throwing handler is logged without stopping the send. `BugReportSubmitter` writes the bundle to the offline queue
   before the first send, so a crash, a shutdown or an unreachable relay keeps it for the next sign-in. Only a relay
   acceptance that echoes the report id, or a refusal with the relay's error, deletes it. Use
   `LocalFolderSink` in development to open each report in the frame viewer without a relay.
@@ -3406,10 +3408,18 @@ var reports = new BugReportService(app,
 ### Server snapshot
 
 A game server registers its own sections on `BugReportServerCapture`, checks `ReportIds.IsValid` and `TryAccept`
-with the subject it authenticated before it calls `Capture` on the simulation thread, and posts with
-`ServerSnapshotPoster` off that thread. `TryAccept(subject)` defaults to 5 requests per rolling hour per
-account. The game carries the report id from `ReportCaptured` to the server over its own authenticated
-protocol. Never accept a subject from that message.
+with the subject it authenticated before it calls `Capture` on the simulation thread. Hold the snapshot until the
+player confirms, then post with `ServerSnapshotPoster` off that thread. `TryAccept(subject)` defaults to 5 requests
+per rolling hour per account. The game carries the report id from `ReportCaptured` to the server over its own
+authenticated protocol to capture, and from `ReportConfirmed` to release that same snapshot:
+
+```csharp
+reports.ReportCaptured += reportId => connection.Send(new RequestBugSnapshot(reportId));
+reports.ReportConfirmed += reportId => connection.Send(new ConfirmBugSnapshot(reportId));
+```
+
+Key held snapshots by the authenticated account and report id, and expire snapshots that are never confirmed.
+Never accept a subject from either message. Do not post the snapshot on capture, so evidence stays held until Send.
 
 `ServerSnapshotPoster(http, relayBase, serviceKey, redactor)` finishes sections off the simulation thread,
 redacts and truncates within the 1 MiB snapshot cap, and posts with `X-Report-Service-Key` to
@@ -9576,11 +9586,36 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   Bepu preserves child constraints before final manifold reduction and refuses unsupported layer masks.
   Its [backend limits](../KhaozEngine.Physics.Bepu/README.md) can refuse otherwise valid mesh inputs.
 - Optional `IPhysicsCapsuleSweep.SweepCapsuleCertified(capsule, pose, displacement, filter)` returns
-  a validated `CapsuleSweepResult` value. Bepu has an identity-box development implementation whose
-  numerical-domain acceptance and final verification remain pending. Default is
+  a validated `CapsuleSweepResult` value. Bepu certifies identity boxes, admitted rotated boxes and
+  installed convex hulls, including `ShapeFactory`'s exact single-hull centroid wrapper. Hull topology
+  and installed vertex identity must be proved within 256 faces, 508 vertices and 1524 face-index
+  entries. The child offset is preserved. A hull is never replaced by its AABB. Finite static triangle
+  meshes now retain positive installed scale, raw triangle identity, sidedness and closed boundaries.
+  Their inner traversal and separate recentered sweep continuation must be proved. The
+  [side/filter matrix](design/CERTIFIED-GENERAL-SWEEPS-2026-10-18.md#installed-mesh-implementation-and-pinned-side-policy)
+  distinguishes initial front contact from direction-based culling and raw back-face blocking.
+  Unproved sides, degeneracy, continuation or work refuse. Sphere and capsule leaves use closed
+  point/segment distance. Cylinders retain continuous side, cap-disc and rim-circle geometry and
+  their exact single-child base-offset wrapper. Unproved isolated rim events refuse atomically.
+  Compounds certify every actual flattened box, hull, sphere, capsule and cylinder child atomically,
+  within 64 children per root and the shared 4096-descendant budget. Hull centering and nested seam
+  poses are retained. Mesh children remain an installation refusal. Unsupported children, stale
+  registration or installation generation, and any unproved child discard the whole query even
+  after Hit(0). Admitted non-rigid poses can still refuse on an ambiguous enclosed tangency.
+  General queries require radius and half-cylinder length at most 1000 m, with original centre and
+  displacement components within [-1000000, 1000000] m. Out-of-domain requests refuse before traversal
+  if the selected set contains any non-identity-box installation. Identity-only selections keep their
+  original domain and unpadded traversal. General-only traversal uses an actual-query enclosure
+  without inflating the simulation collision tree. General poses require proved forward/operational correspondence and a complete
+  bracket within 0.001 m. The [backend domain and work ceilings](../KhaozEngine.Physics.Bepu/README.md) apply. Default is
   `Unresolved` without a usable prefix. `IsComplete` reports structural Clear/Hit status, not proof of
   the backend certificate. Validate the whole request extent, error budget, scope and read lifetime.
   Closed endpoints and stationary requests are included. Hit bounds do not authorize placement.
+  [Captured player-scale hull stairs](design/CERTIFIED-GENERAL-SWEEPS-2026-10-18.md#task-6-captured-content-evidence-and-gb-r13)
+  prove acquired split/compound ascent and descent within the unchanged Euclidean 1 mm arrival ball.
+  [Lane C](design/CONTACT-CONTROLLER-FOLLOWUPS-C-2026-10-19.md) resolves #1494 exact quarter-turn
+  tread-edge support using the represented installed transform. Historical GB-R13 results remain.
+  Native G1b, SG-12/#1334 cost, navigation and consumer adoption remain separate gates.
 - Optional `IPhysicsCapsuleGeometryQueries` offers the same complete sweep and contact queries with
   `CapsuleQueryDimensions` value inputs. Exact represented radius and cylindrical length reach the same
   Bepu query core without constructing a shape. Restricted views retain their exclusions and read gates.
@@ -9597,7 +9632,16 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   parts carry axis and footprint roles without changing raw IDs. The raw cap is 256, with atomic
   refusal at 257. `SupportFootprintBounds.TryCreate` encloses both proposal paths and the admission
   column for pre-query scope guards. Contact-controller footprints require radius at least 0.01 m.
-  See [Complete support footprints](#complete-support-footprints) for storage, witness and lifetime use.
+  Bepu support uses one represented affine source per installed leaf. Circular primitives exactly
+  normalize its represented Y column, retaining circular radius and length. Feature/sweep factories
+  keep their dual contract. A complete Find shares a sticky 1,048,576-event curved certification
+  ceiling (256 raw slots times 4,096 graph nodes). WorkLimit, RootStorage, TerminalRoots and
+  AdmissionStorage remain visible with work categories and cell high water. Failure refuses
+  atomically with untouched spans, including after checkpoint restores. The capsule crown and
+  nearest-point cylinder admission witness resolve #1487 without bypassing full admission, roof,
+  proposal, axis or lowest-contact proofs. A declined certificate retains complete traversal.
+  See the [backend source/work contract](../KhaozEngine.Physics.Bepu/README.md#support-source-and-curved-work-contract)
+  and [Complete support footprints](#complete-support-footprints) for storage, witness and lifetime use.
 - `IPhysicsWorld` static bodies + queries: `AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null) -> StaticHandle`,
   `RemoveStatic(StaticHandle handle)`, `Step(float dt)`,
   `Raycast(Vector3 origin, Vector3 direction, float maxDistance, out RayHit hit, QueryFilter filter = default) -> bool`,
@@ -11035,7 +11079,7 @@ Doors remain AuthoredOpen. `MapRoofPolicy` returns separate colour, shadow, came
 Auto concealment uses occupied rooms and explicit links/groups, and leaves unlinked shelters visible. Hidden
 roofs still cast shadows and block sky picking, and never change physics statics. R8 owns rendering, cameras
 and local-light pixels. Live door state waits for [#1363](https://github.com/APKiwiOrg/KhaozEngine/issues/1363).
-Native controller walking and layered routes remain gated by G1b, #1355 and #438. Physical doorway clearance
+Native controller walking and layered routes remain gated by G1b and #438. Physical doorway clearance
 is headless R5 evidence. R9 owns the GUI host and real input, and R10 owns the remaining verb-map parity.
 
 See the [MapDoc reference](../KhaozEngine.MapDoc/README.md#rigid-prefab-payloads-and-building-intent),

@@ -41,7 +41,7 @@ internal sealed class InstalledSupportLeaf
     {
         if (CurvedShape is { } shape)
             return SupportNeighborhoodCurved.Leaf(shape, (float)Radius, (float)HalfLength, pose, LeafId, curved);
-        if (!InstalledPoseOperator.TryCreate(pose, out InstalledPoseOperator transform))
+        if (!InstalledPoseOperator.TryCreateSupport(pose, out InstalledPoseOperator transform))
             return CapsuleFeatureStatus.Unsupported;
         Vector3[] local = scratch.Locals(_vertices.Length);
         _vertices.CopyTo(local, 0);
@@ -52,7 +52,7 @@ internal sealed class InstalledSupportLeaf
             _faces[i].CopyTo(faces[i], 0);
         }
         FeaturePoint[] world = scratch.Points(local.Length);
-        CapsuleFeatureStatus status = CapsuleFeatureGeometry.TransformVertices(local, pose, transform, world);
+        CapsuleFeatureStatus status = CapsuleFeatureGeometry.TransformVertices(local, transform, world);
         if (status != CapsuleFeatureStatus.Complete) return status;
         CapsuleFeaturePolyhedron leaf = scratch.Leaf();
         leaf.Reset(Installation, new RigidPose(LocalPose.Position, LocalPose.Orientation), pose,
@@ -117,14 +117,14 @@ internal sealed class InstalledSupportGeometry
         curved.Clear();
         if (description.Shape.Type != default(Compound).TypeId)
             return Leaves[0].Materialize(description.Pose, scratch, leaves, curved);
-        if (!CapsuleFeatureGeometry.ProveInstalledPose(description.Pose)) return CapsuleFeatureStatus.Unsupported;
+        if (!InstalledPoseOperator.TryCreateSupport(description.Pose, out _)) return CapsuleFeatureStatus.Unsupported;
         ref Compound compound = ref simulation.Shapes.GetShape<Compound>(description.Shape.Index);
         for (int i = 0; i < Leaves.Count; i++)
         {
             ref var child = ref compound.Children[i];
-            if (!CapsuleFeatureGeometry.ProveInstalledPose(child.LocalPose)) return CapsuleFeatureStatus.Unsupported;
+            if (!InstalledPoseOperator.TryCreateSupport(child.LocalPose, out _)) return CapsuleFeatureStatus.Unsupported;
             Compound.GetWorldPose(child.LocalPose, description.Pose, out RigidPose pose);
-            if (!InstalledPoseOperations.ProveComposition(child.LocalPose, description.Pose, pose))
+            if (!InstalledPoseOperations.ProveSupportComposition(child.LocalPose, description.Pose, pose))
                 return CapsuleFeatureStatus.Unsupported;
             CapsuleFeatureStatus status = Leaves[i].Materialize(pose, scratch, leaves, curved);
             if (status != CapsuleFeatureStatus.Complete) return status;

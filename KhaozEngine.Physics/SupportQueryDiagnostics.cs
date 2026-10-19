@@ -162,12 +162,18 @@ internal static class SupportQueryDiagnostics
     [ThreadStatic] static SupportGroundObservation t_ground;
     [ThreadStatic] static Action<SupportFindObservation>? t_find;
     [ThreadStatic] static SupportRouteCounts t_routes;
+    [ThreadStatic] static Action<SupportCurvedWorkObservation>? t_curvedWork;
 
     internal static SupportRouteCounts Routes => t_routes;
     internal static void SetFindObserver(Action<SupportFindObservation>? observer) => t_find = observer;
     internal static void ObserveFind(in SupportFindObservation observation)
     {
         if (t_enabled) t_find?.Invoke(observation);
+    }
+    internal static void SetCurvedWorkObserver(Action<SupportCurvedWorkObservation>? observer) => t_curvedWork = observer;
+    internal static void ObserveCurvedWork(in SupportCurvedWorkObservation observation)
+    {
+        if (t_enabled) t_curvedWork?.Invoke(observation);
     }
     internal static void MediumRetryMaximum(int count)
     {
@@ -210,23 +216,25 @@ internal static class SupportQueryDiagnostics
 
     /// <summary>Every thread-local counter, observation and callback of one thread.</summary>
     internal readonly record struct ThreadState(bool Enabled, int[]? Counts, Action? Begin, Action? End,
-        SupportGroundObservation Ground, Action<SupportFindObservation>? Find, SupportRouteCounts Routes)
+        SupportGroundObservation Ground, Action<SupportFindObservation>? Find, SupportRouteCounts Routes,
+        Action<SupportCurvedWorkObservation>? CurvedWork = null)
     {
         /// <summary>An empty recorder with the given enablement and no callbacks.</summary>
         internal static ThreadState Fresh(bool enabled) =>
-            new(enabled, enabled ? new int[CounterCount] : null, null, null, default, null, default);
+            new(enabled, enabled ? new int[CounterCount] : null, null, null, default, null, default, null);
     }
 
     /// <summary>Installs <paramref name="next"/> on this thread and returns the state it replaced.</summary>
     internal static ThreadState Exchange(in ThreadState next)
     {
-        var prior = new ThreadState(t_enabled, t_counts, t_begin, t_end, t_ground, t_find, t_routes);
+        var prior = new ThreadState(t_enabled, t_counts, t_begin, t_end, t_ground, t_find, t_routes, t_curvedWork);
         t_enabled = next.Enabled;
         t_counts = next.Counts;
         t_begin = next.Begin;
         t_end = next.End;
         t_ground = next.Ground;
         t_find = next.Find;
+        t_curvedWork = next.CurvedWork;
         t_routes = next.Routes;
         return prior;
     }

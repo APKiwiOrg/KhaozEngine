@@ -19,14 +19,14 @@ internal sealed partial class SupportTiltedCurvedGeometry
     {
         bool complete = _roots.Solve(_arithmetic, polynomial, low, high);
         ObserveRoots();
-        return complete;
+        return _work.Complete(complete);
     }
 
     bool SolveRoots(double low, double high, int maximumRoots = SupportCurvedRootRegions.MaximumTerminalCells)
     {
         bool complete = _roots.Solve(this, low, high, maximumRoots);
         ObserveRoots();
-        return complete;
+        return _work.Complete(complete);
     }
 
     void ObserveRoots()

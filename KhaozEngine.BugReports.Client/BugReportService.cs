@@ -26,7 +26,7 @@ namespace KhaozEngine.BugReports.Client;
 /// <see cref="BugReportServiceOptions.SessionLogPath"/>, and is skipped when no session log is set. Until it finishes
 /// the <c>session</c> section reports no previous crash, so the trigger frame never touches the disk.</para>
 /// <para>Construct, call and dispose it on the frame thread. <see cref="RetryQueuedAsync"/> completes off it, and
-/// <see cref="ReportCaptured"/> and <see cref="ReportSubmitted"/> are raised on it.</para>
+/// <see cref="ReportCaptured"/>, <see cref="ReportConfirmed"/> and <see cref="ReportSubmitted"/> are raised on it.</para>
 /// </summary>
 public sealed class BugReportService : IDisposable
 {
@@ -144,6 +144,15 @@ public sealed class BugReportService : IDisposable
     {
         add => _flow.ReportCaptured += value;
         remove => _flow.ReportCaptured -= value;
+    }
+
+    /// <summary>Raised on the frame thread with the report id when the player presses Send, before the bundle is
+    /// built. Never raised for a cancelled report. A server-backed game releases the evidence it captured at
+    /// <see cref="ReportCaptured"/> here, so nothing leaves before the player confirms.</summary>
+    public event Action<string>? ReportConfirmed
+    {
+        add => _flow.ReportConfirmed += value;
+        remove => _flow.ReportConfirmed -= value;
     }
 
     /// <summary>Raised on the frame thread with each submission's result.</summary>

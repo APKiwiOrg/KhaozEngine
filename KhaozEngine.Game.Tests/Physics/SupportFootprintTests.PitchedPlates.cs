@@ -84,7 +84,9 @@ public partial class SupportFootprintTests
             var normal = SupportFootprintExactOracle.Normal(vertices);
             int orientation = normal.Y.Numerator.Sign;
             Assert.NotEqual(0, orientation);
-            Assert.True(side.Normal.Y.Bounds.Lower < 0 && side.Normal.Y.Bounds.Upper > 0);
+            Assert.Equal(orientation > 0 ? GeometrySign.Positive : GeometrySign.Negative,
+                side.SourcePredicates.NormalComponent(side, 1));
+            Assert.True(R.From(side.Normal.Y.Bounds.Lower) <= normal.Y && normal.Y <= R.From(side.Normal.Y.Bounds.Upper));
             var radius = R.From(request.Radius) + R.From(request.ContactBand);
             var nx = -normal.X * new R(orientation, 1);
             var nz = -normal.Z * new R(orientation, 1);
@@ -109,7 +111,18 @@ public partial class SupportFootprintTests
             FeaturePoint first = side.Vertices[0];
             FeatureNumber height = first.Y.Add(side.Normal.X.Multiply(first.X.Subtract(uphillX.Multiply(scale, true)), true)
                 .Add(side.Normal.Z.Multiply(first.Z.Subtract(uphillZ.Multiply(scale, true)), true)).Divide(side.Normal.Y));
-            Assert.False(height.IsResolved);
+            if (height.IsResolved)
+            {
+                var exactScale = (SupportFootprintExactOracle.Bounds)radius / SupportFootprintExactOracle.Bounds.Root(squared);
+                var exactX = (SupportFootprintExactOracle.Bounds)nx * exactScale;
+                var exactZ = (SupportFootprintExactOracle.Bounds)nz * exactScale;
+                var exactHeight = (SupportFootprintExactOracle.Bounds)vertices[0].Y +
+                    ((SupportFootprintExactOracle.Bounds)normal.X * ((SupportFootprintExactOracle.Bounds)vertices[0].X - exactX) +
+                    (SupportFootprintExactOracle.Bounds)normal.Z * ((SupportFootprintExactOracle.Bounds)vertices[0].Z - exactZ)) /
+                    (SupportFootprintExactOracle.Bounds)normal.Y;
+                ContainsReference(height.Bounds, exactHeight);
+            }
+            else Assert.True(side.Normal.Y.Bounds.Lower <= 0 && side.Normal.Y.Bounds.Upper >= 0);
             AssertPlateQueryComplete(scene, query);
         }
     }
@@ -124,8 +137,10 @@ public partial class SupportFootprintTests
             int sideId = partition == "compound" ? 256 : 0;
             SupportPolygon side = CapturedPolygons(scene, request)
                 .Single(p => p.Static == scene.Crate && p.ElementId == sideId);
-            Assert.Equal(GeometrySign.Unresolved, SupportFootprintPolygon.Orientation(side));
             OracleFace face = scene.Faces.Single(f => f.Static == scene.Crate && f.ElementId == sideId);
+            R normalY = SupportFootprintExactOracle.Normal(SupportFootprintExactOracle.Vertices(face)).Y;
+            Assert.Equal(normalY > R.Zero ? GeometrySign.Positive : normalY < R.Zero ? GeometrySign.Negative : GeometrySign.Zero,
+                SupportFootprintPolygon.Orientation(side));
             R nx = R.From(-0.7), nz = R.From(0.7);
             R radius = R.From(request.Radius) + R.From(request.ContactBand);
             foreach (var vertex in SupportFootprintExactOracle.Vertices(face))

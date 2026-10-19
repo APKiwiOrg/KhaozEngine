@@ -632,7 +632,8 @@ On the recorded .NET 10 arm64 route, acquired explicit ticks allocate 312 bytes 
 (movement/release binding 192, physics ReadLease 64, producer pin 56), borrowed support reads allocate
 zero bytes and acquired dry ticks use 64 bytes. Continuously varying certified capsule dimensions use
 the optional value-input physics capability. Other backends need their own allocation inventory.
-Native adoption still waits on #1355 certified sweep shapes, #1334 support cost and #1344 small bodies.
+Lane C resolves #1494 exact-edge support. Native adoption still waits on #1334 support cost and
+#1344 small bodies.
 #1347 is closable only after all geometric rows pass and the orchestrator pushes the verified commit.
 The cost gate retains 96 local time rejections and an owner-approved normalized hosted repeat proof
 at the phase 6 stop. Phase 5 navigation and phase 6 aggregate actor CPU remain separate obligations.

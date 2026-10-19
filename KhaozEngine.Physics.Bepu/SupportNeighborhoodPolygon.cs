@@ -112,10 +112,22 @@ internal sealed class SupportPolygon
     internal void BeginSource(in InstalledPoseOperator map)
     {
         ClearDerived();
-        SourceMap = new(map.X.Bounds, map.Y.Bounds, map.Z.Bounds,
-            new((float)map.Translation.X.Value, (float)map.Translation.Y.Value, (float)map.Translation.Z.Value));
-        HasSource = map.IsResolved;
+        HasSource = false;
+        if (!map.IsResolved || !SameRepresented(map.X, map.RepresentedX) ||
+            !SameRepresented(map.Y, map.RepresentedY) || !SameRepresented(map.Z, map.RepresentedZ) || !map.Translation.IsExact)
+            throw new InvalidOperationException("Support requires an exact represented source map.");
+        SourceMap = new(Represented(map.X), Represented(map.Y), Represented(map.Z), Represented(map.Translation));
+        HasSource = true;
     }
+
+    static bool SameRepresented(FeaturePoint point, FeaturePoint represented) =>
+        SameRepresented(point.X, represented.X) && SameRepresented(point.Y, represented.Y) && SameRepresented(point.Z, represented.Z);
+
+    static bool SameRepresented(FeatureNumber value, FeatureNumber represented) => value.IsExact && represented.IsExact &&
+        (double)(float)value.Value == value.Value &&
+        BitConverter.DoubleToInt64Bits(value.Value) == BitConverter.DoubleToInt64Bits(represented.Value);
+
+    static Vector3 Represented(FeaturePoint point) => new((float)point.X.Value, (float)point.Y.Value, (float)point.Z.Value);
 
     internal void SetSource(int index, Vector3 local)
     {
@@ -214,9 +226,9 @@ internal sealed class SupportPolygon
         FeaturePoint.Subtract(point, Vertices[edge])), Normal).Sign;
 }
 
-/// <summary>The certified common coefficient box and exact installed binary32 translation. Inverse and
+/// <summary>The exact represented binary32 columns and installed translation. Inverse and
 /// Gram certificates are capture checks, so predicates retain only the forward source they evaluate.</summary>
-internal readonly record struct SupportPolygonSourceMap(GeometryVector X, GeometryVector Y, GeometryVector Z,
+internal readonly record struct SupportPolygonSourceMap(Vector3 X, Vector3 Y, Vector3 Z,
     Vector3 Translation);
 
 /// <summary>Polygons reused across queries. Every polygon rented during one query stays valid until the next

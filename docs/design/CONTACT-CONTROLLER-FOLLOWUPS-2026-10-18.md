@@ -7,8 +7,10 @@ Source baseline: `dcb0599e3a0bcd881cd268ac3b3a72b3ff49ba82`.
 Status: implemented on `fix/contact-followups` per the [implementation plan](../superpowers/plans/2026-10-18-contact-followups.md)
 and verified headless in the dry head. #1429 landed at 4ecf2669b, #1455 at 6dfd94eba to 488952a58 with the crest
 region at d32762c9a, and #1454 at ff9bfbb7d and 39e920072. `ContactFollowupTraversalTests` pins the CF-6 movement
-proof. Leased traversal over these props waits on certified general sweeps
-([#1355](https://github.com/APKiwiOrg/KhaozEngine/issues/1355)). No timing, #1334, navigation, adoption or release
+proof. [General sweeps and acquired movement evidence](CERTIFIED-GENERAL-SWEEPS-2026-10-18.md)
+complete #1355 for admitted families. [Lane C](CONTACT-CONTROLLER-FOLLOWUPS-C-2026-10-19.md)
+resolves #1494 exact-edge support and #1487 bounded curved work. The historical evidence below is retained.
+No timing, #1334, navigation, adoption or release
 acceptance follows. Research B in the owning checkout's
 `.superpowers/sdd/contact-followups/research-b.md` traces both geometry refusals at this baseline.
 
@@ -163,8 +165,10 @@ reason to increase the tick bound or arrival ball. This carries SG-16 and SG-23.
 Amended 2026-10-18 (rulings FA-R8 and FA-R9): the 0.3 m log's 0.6 m crest is above the default 0.4 m
 step height, so its approach from the floor is a blocked wall with no climb and no shell overlap. A
 body seated on that crest walks along it and down its walkable flank within the arrival ball instead.
-The proof runs the dry head. The leased head's certified shell sweeps cover only identity boxes, so
-its traversal over rotated, hull, mesh and curved props belongs to #1355.
+The original proof runs the dry head. The
+[general-sweep acceptance](CERTIFIED-GENERAL-SWEEPS-2026-10-18.md) adds acquired ticks over admitted
+rotated, hull, mesh and curved props. Lane C resolves the former #1494 tread-edge refusal
+using the represented installed support source, with the original questions unchanged.
 Cost if wrong: matching two implementations hides the same missing certificate from both.
 
 **Ruling CF-7. Name every changed result under SG-23.**

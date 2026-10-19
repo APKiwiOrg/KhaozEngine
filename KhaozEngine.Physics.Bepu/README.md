@@ -235,22 +235,115 @@ The owner and restricted views also implement `IPhysicsCapsuleGeometryQueries`. 
 dimensions, identical restrictions and validation. Changing an endpoint-rounding enclosure does not
 allocate a persistent shape.
 
-The owner and restricted query views implement `IPhysicsCapsuleSweep` for an initial identity-box
-geometry domain. This development implementation is not ready for consumer adoption: numerical-domain
-acceptance, affected regressions, general geometry and final backend verification remain pending.
-The first 32 integrated fixtures passed. Two proposed coordinate-domain refusal controls remain RED.
-See [the candidate proof](../docs/design/SWIM-TASK4-CANDIDATE-COVERAGE-2026-10-07.md).
+The owner and restricted query views implement `IPhysicsCapsuleSweep` for identity boxes and
+admitted rotated boxes, convex hulls, spheres, capsules and cylinders at their current installed
+static or dynamic pose, plus finite static triangle meshes with strictly positive finite installed
+scale. The identity-box kernel is unchanged. Rotated boxes use eight installed corners, six finite faces, twelve edges, capsule
+axis endpoint/interior regimes and closed solid occupancy. They are never replaced by an AABB or
+independently inflated planes. [The general sweep contract](../docs/design/CERTIFIED-GENERAL-SWEEPS-2026-10-18.md)
+defines this family and the remaining adoption gates.
 
+Queries require an upright identity-oriented capsule, positive finite radius, nonnegative finite
+cylindrical length, finite centre/displacement, `Layers == 0` and a supported mobility selection.
+Both culling flag values are retained. General queries require radius and half-cylinder length at
+most 1000 m, with each original centre and displacement component within [-1000000, 1000000] m.
+Mutation-maintained owner and view selection counts refuse an out-of-domain query before traversal
+when it selects any non-identity-box installation. Identity-only selections retain their original
+domain and aperture, including when general statics are excluded or mobility is unselected.
+General installed local coordinates and translations stay
+within 2048 m, with the existing squared quaternion norm band `1 +/- 2^-20` and positive determinant.
+A rounded quaternion is never normalized. The forward finite geometry and the pinned transpose-local
+operation graph must both prove the same outcome, including exactly rigid maps. Rounded root-offset
+subtraction and child-offset addition can disagree even with identity rotation. Stored Bepu
+bounds retain the forward enclosure without any operational pad. A separate general-only
+query traversal expands its aperture from the actual query operands and mutation-maintained
+selected root, child, geometry and operator bounds. It covers the complete operational graph,
+including cancellation and inverse-transpose skin departure. Only selected non-identity leaves
+count against that pass's own 4096-leaf preflight and callback ceilings. Identity leaves retain
+the original unpadded aperture, checked preflight, callback ceiling and kernels. The extra pass
+runs only when the selection contains a general installation. General candidate rejection and
+mesh inner traversal use the same actual-query proof over retained raw/recentered preimages.
+Unproved evidence refuses. No query-time geometry scan, replacement spatial index or warm
+allocation is introduced, and the simulation's collision tree receives no operational inflation.
+Hit brackets include their complete disagreement
+within 0.001 m. Unknown coefficient correspondence, ambiguous tangency and ill-conditioned transforms
+refuse. Hulls use the installed face loops and point identities, including SIMD padding, after strict
+exact topology validation. Planar convex faces, opposite edge pairing, Euler closure and connected
+cyclic vertex links must all be proved. The exact one-hull centroid-compensating Compound wrapper
+installed by `ShapeFactory` retains its child typed index and offset. Finite polygon faces, edges,
+vertices and closed interior share the box convex kernel. A tetrahedron has four faces, four vertices,
+six edges and four surface triangles. Its empty AABB corners remain clear. Topology caps are 256 faces,
+508 vertices and 1524 face-index entries. A cap is not a promise that every query fits the work budget.
+Mesh triangles reuse finite face, edge and vertex distance without solid occupancy. Raw triangle
+identities are retained across seams. Installed scaled geometry and Bepu's separately recentered
+sweep continuation must agree within the same complete bracket. The source-derived
+[side/filter matrix](../docs/design/CERTIFIED-GENERAL-SWEEPS-2026-10-18.md#installed-mesh-implementation-and-pinned-side-policy)
+retains initial closed front contact before directional culling, raw back-face sweep hits without
+culling, and culling of perpendicular faces. Unproved initial side agreement, degeneracy, scale,
+continuation, tree structure or work refuses atomically. Inner-tree bounds are proved at mutation,
+with closed checked traversal at query time. Sparse large meshes use pruning rather than a total
+triangle cap. Sphere and capsule leaves use closed point/segment distance with the exact sum of
+represented radii. Cylinders use continuous side, cap-disc and rim-circle predicates, with whole-cell
+support bounds for separation. Numerical closest points only propose witnesses or directions.
+An unproved isolated rim event refuses atomically. Curved radii and half-lengths stay within 2048 m
+and use the same forward/operational correspondence, error and work ceilings. The public cylinder's exact
+single-child base-offset wrapper is retained. General compounds admit the installer's actual flat
+box, hull, sphere, capsule and cylinder children, including nested seam flattening and hull centering.
+Every child completes before publication, including after Hit(0), within 64 children per root and
+the shared 4096-descendant account. Children are not pruned independently. Mesh children remain an
+installation refusal, and installed nested compounds and BigCompound remain unsupported.
+Non-rigid composition must still complete the existing leaf proof. An enclosed tangent face without
+a robust witness can reach depth 48 and refuse atomically despite a forward-oracle Hit.
+
+Mutation completion encloses actual installed corners, hull vertices, curved radial sets or mesh
+descendants and the rounded point graph, repairs inward bounds through Bepu's owning tree update/refit
+path, and validates ancestors before publishing evidence.
+Each capture authenticates its registration id and installation generation against the live owner
+binding. Recycled handles and identical replacement geometry cannot authenticate a previous capture.
 Selected unproved bound families refuse even outside the raw aperture. View/mobility exclusions retain
-their exact source meaning. Unsupported query orientation/layer filters, incomplete mutation evidence
-and capacity exhaustion return Unresolved without a prefix. Failed or missed physical mutations cannot
-be healed by an unrelated successful mutation. The actual read-lease contract is unchanged.
+their source meaning and cannot hide invalid stored evidence. Failed or missed physical mutations stay
+refused after unrelated successful mutations. Leases remain owner-scoped. Each restricted view applies
+its own exclusions through the same owner interval.
 
-Current work limits are 8192 visited nodes, 4096 leaves and 128 pending branches per tree, 4096 aggregate
-examined callbacks (including filtered entries), 4096 unproved static records inspected, and 256 cells
-at depth at most 48 per admitted leaf. Hit error is capped at 1 mm. Clear encodes the whole original
-vector, not a replacement trajectory. Closed tangency can be Hit(0), and an unencodable Hit endpoint
-refuses. These limits are not native geometry/residency or navigation acceptance.
+Policy version 1 retains 8192 nodes, 4096 leaves and 128 pending branches per tree, 4096 aggregate
+examined callbacks including exclusions, and 4096 unproved registrations. General queries admit at
+most 4096 primitive descendants, 4096 feature regimes per primitive and 256 fraction cells at depth
+at most 48 per primitive. Exact predicates use checked retained 4096-bit integers and a bounded
+2048-number workspace. Every exhausted or unproved step returns the exact default Unresolved result.
+Closed quadratic minima include isolated double roots and endpoint tangency. Clear encodes the full
+original vector. Hit bounds never grant placement permission. Warm shape/value queries, exact boundary
+fallback and refusal allocate no managed bytes and retain scratch capacity. Each reader retains up to
+four general-sweep workspaces for nested loans. First use provisions each depth once, warmed nesting
+allocates zero bytes, and a fifth simultaneous loan returns default Unresolved without allocation.
+Acquired explicit cost scenes and captured player-scale hull stairs are covered by the
+[general sweep acceptance record](../docs/design/CERTIFIED-GENERAL-SWEEPS-2026-10-18.md#task-6-captured-content-evidence-and-gb-r13).
+Lane C resolves #1494: exact quarter-turn tread-edge footprints now complete under represented
+support and the original split/compound stair rows advance and reach the unchanged Euclidean
+1 mm arrival ball at both physics origins. Historical GB-R13 refusals are retained in that record.
+Native G1b, SG-12/#1334 timing and
+aggregate actor cost, navigation, release and consumer adoption remain separate gates.
+
+## Support source and curved work contract
+
+Support admits the represented binary32 Bepu matrix on each actual installed leaf, composed with
+Compound.GetWorldPose before capture. Planar vertices, normals and mesh preimages derive from
+that point-valued affine map. Circular primitives use its exactly normalized represented Y column
+with outward arithmetic bounds, preserving radius and half length. Legacy feature/sweep factories
+retain their dual contract. Scalar/SIMD correspondence, finite domains and determinant guards remain.
+
+A complete Find or direct footprint shares one sticky 1,048,576-event account, derived from
+256 raw-member slots times 4,096 source nodes. New, Sign, recursive Split/Compile, root cells,
+Refine iterations and admission cells charge before execution, including cache-hit entries.
+Reset, Restore, later parts, proposals and the below-band pass never refund work. Diagnostics
+expose category counts, cell high water and first failure WorkLimit, RootStorage, TerminalRoots
+or AdmissionStorage. Every failed request refuses atomically with untouched spans and no prefix.
+
+The footprint-only whole-capsule crown certifies the attained global maximum by source identity.
+Cylinder admission first offers a clamped nearest top-line XZ point or nearest cap point, with
+only a decline from interval pruning and exact source proof for acceptance. A miss retains full
+traversal. Neither certificate bypasses axis/lowest roles, full admission, proposal/roof guards,
+other members or raw identity. The [lane C record](../docs/verification/2026-10-19-contact-followups-c.md)
+resolves #1494 and #1487 while retaining historical results and every safety/arrival rule.
 
 ## Usage
 

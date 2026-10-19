@@ -37,7 +37,8 @@ public partial class MovementCapsuleResolverTests
     public void UnsupportedSelectedGeometryReturnsNoPolyline()
     {
         using var scene = new Scene();
-        scene.World.AddStatic(new SphereShape(0.5f), Pose.At(new(6, 0, 0)));
+        // A 257-face hull stays unsupported under GS-3 as more leaf families are admitted.
+        Physics.CertifiedGeneralSweepFixture.AddOverFaceCapHull(scene.World, Pose.At(new(6, 0, 0)));
         AssertRefused(scene.Resolve(Body(), Vector3.UnitX), MovementAvailability.Unresolved);
     }
 

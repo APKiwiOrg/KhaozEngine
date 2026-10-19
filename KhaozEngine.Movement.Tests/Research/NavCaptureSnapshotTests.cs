@@ -20,7 +20,7 @@ public sealed class NavCaptureSnapshotTests
         try
         {
             var options = new PhysicsNavBakeOptions(-1f, -1f, 1f, 1f, 1f, 2f, 3f, 0.8f, 4, 8)
-                { SampleWater = true };
+            { SampleWater = true };
             using (var writer = new BinaryWriter(File.Create(path)))
             {
                 writer.Write("PCAP1");

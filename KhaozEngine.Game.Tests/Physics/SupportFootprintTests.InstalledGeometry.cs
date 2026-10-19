@@ -58,8 +58,9 @@ public partial class SupportFootprintTests
         var curved = new System.Collections.Generic.List<SupportCurvedLeaf>();
         var pose = new RigidPose(new Vector3(0.25f, -0.5f, 0.125f), Quaternion.CreateFromYawPitchRoll(0.37f, 0.25f, -0.4f));
         Assert.Equal(CapsuleFeatureStatus.Complete, geometry!.Leaves[0].Materialize(pose, scratch, leaves, curved));
+        Assert.True(InstalledPoseOperator.TryCreateSupport(pose, out var represented));
         Assert.Equal(CapsuleFeatureStatus.Complete, CapsuleFeatureGeometry.CaptureLeaf(simulation, shape, pose,
-            new RigidPose(Vector3.Zero, Quaternion.Identity), 0, out var uncached));
+            new RigidPose(Vector3.Zero, Quaternion.Identity), 0, represented, null, out var uncached));
         Assert.Equal(uncached!.Vertices.Select(v => v.Bounds), leaves[0].Vertices.Select(v => v.Bounds));
         Assert.Equal(uncached.Normals.Select(v => v.Bounds), leaves[0].Normals.Select(v => v.Bounds));
         leaves[0].LocalVertices[0] = new(999, 999, 999);

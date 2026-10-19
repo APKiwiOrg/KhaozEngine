@@ -1,12 +1,13 @@
 using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using BepuPhysics;
 using BepuUtilities;
 
 namespace KhaozEngine.Physics.Bepu;
 
 /// <summary>One common source-backed affine operator, not independent world-vertex boxes.
-/// Coefficients contain both the real quaternion polynomial and the pinned scalar/SIMD maps.
+/// Legacy coefficients contain both readings. Support captures the pinned scalar/SIMD point map.
 /// A strictly positive determinant carries exact local topology. It grants no output error budget.</summary>
 internal readonly struct InstalledPoseOperator
 {
@@ -51,8 +52,29 @@ internal readonly struct InstalledPoseOperator
             EqualsExact(xdy, 0) && EqualsExact(xdz, 0) && EqualsExact(ydz, 0) && EqualsExact(Determinant, 1);
     }
 
+    InstalledPoseOperator(in InstalledPoseOperator source, Vector3 position)
+    {
+        this = source;
+        Translation = FeaturePoint.Exact(position);
+    }
+
+    // Translation changes none of the already proved rotation, determinant or Gram data.
+    internal InstalledPoseOperator WithTranslation(Vector3 position) => IsResolved &&
+        Within(position, RepresentedGeometryTransforms.MaximumPositionMagnitude) ? new(this, position) : default;
+
+    // Test observation of legacy dual admissions on this thread. Support queries must leave it unchanged.
+    [ThreadStatic] static StrongBox<int>? t_dualAdmissions;
+
+    internal static StrongBox<int>? ObserveDualAdmissions(StrongBox<int>? probe)
+    {
+        StrongBox<int>? prior = t_dualAdmissions;
+        t_dualAdmissions = probe;
+        return prior;
+    }
+
     internal static bool TryCreate(in RigidPose pose, out InstalledPoseOperator result)
     {
+        if (t_dualAdmissions is { } probe) probe.Value++;
         result = default;
         if (!Within(pose.Position, RepresentedGeometryTransforms.MaximumPositionMagnitude) ||
             !RepresentedGeometryTransforms.QuaternionNormWithinBand(pose.Orientation)) return false;
@@ -60,7 +82,32 @@ internal readonly struct InstalledPoseOperator
         RealCoefficients(q, out FeaturePoint realX, out FeaturePoint realY, out FeaturePoint realZ);
         RepresentedGeometryTransforms.QuaternionCoefficients(q, out GeometryVector graphX,
             out GeometryVector graphY, out GeometryVector graphZ);
-        Matrix3x3.CreateFromQuaternion(q, out Matrix3x3 scalar);
+        CaptureCoefficients(q, out Matrix3x3 scalar, out Matrix3x3Wide wide);
+        FeaturePoint x = Certify(realX, graphX, scalar.X, wide.X, out FeaturePoint representedX);
+        FeaturePoint y = Certify(realY, graphY, scalar.Y, wide.Y, out FeaturePoint representedY);
+        FeaturePoint z = Certify(realZ, graphZ, scalar.Z, wide.Z, out FeaturePoint representedZ);
+        if (!x.IsResolved || !y.IsResolved || !z.IsResolved) return false;
+        result = new(x, y, z, pose.Position, representedX, representedY, representedZ);
+        return result.IsResolved;
+    }
+
+    internal static bool TryCreateSupport(in RigidPose pose, out InstalledPoseOperator result)
+    {
+        result = default;
+        if (!Within(pose.Position, RepresentedGeometryTransforms.MaximumPositionMagnitude) ||
+            !RepresentedGeometryTransforms.QuaternionNormWithinBand(pose.Orientation)) return false;
+        CaptureCoefficients(pose.Orientation, out Matrix3x3 scalar, out Matrix3x3Wide wide);
+        if (!Matches(scalar.X, wide.X) || !Matches(scalar.Y, wide.Y) || !Matches(scalar.Z, wide.Z)) return false;
+        FeaturePoint x = FeaturePoint.Exact(scalar.X), y = FeaturePoint.Exact(scalar.Y), z = FeaturePoint.Exact(scalar.Z);
+        result = new(x, y, z, pose.Position, x, y, z);
+        return result.IsResolved && InstalledSweepBounds.OperationalCoefficientsMatch(result, pose.Orientation);
+    }
+
+    // Both doors read the same pinned scalar and broadcast SIMD implementations. Support requires every
+    // coefficient bit to match, retaining the scalar's signed zeros as exact dyadic source inputs.
+    static void CaptureCoefficients(Quaternion q, out Matrix3x3 scalar, out Matrix3x3Wide wide)
+    {
+        Matrix3x3.CreateFromQuaternion(q, out scalar);
         var wideQ = new QuaternionWide
         {
             X = new Vector<float>(q.X),
@@ -68,13 +115,19 @@ internal readonly struct InstalledPoseOperator
             Z = new Vector<float>(q.Z),
             W = new Vector<float>(q.W),
         };
-        Matrix3x3Wide.CreateFromQuaternion(wideQ, out Matrix3x3Wide wide);
-        FeaturePoint x = Certify(realX, graphX, scalar.X, wide.X, out FeaturePoint representedX);
-        FeaturePoint y = Certify(realY, graphY, scalar.Y, wide.Y, out FeaturePoint representedY);
-        FeaturePoint z = Certify(realZ, graphZ, scalar.Z, wide.Z, out FeaturePoint representedZ);
-        if (!x.IsResolved || !y.IsResolved || !z.IsResolved) return false;
-        result = new(x, y, z, pose.Position, representedX, representedY, representedZ);
-        return result.IsResolved;
+        Matrix3x3Wide.CreateFromQuaternion(wideQ, out wide);
+    }
+
+    static bool Matches(Vector3 scalar, Vector3Wide wide) => Matches(scalar.X, wide.X) &&
+        Matches(scalar.Y, wide.Y) && Matches(scalar.Z, wide.Z);
+
+    static bool Matches(float scalar, Vector<float> wide)
+    {
+        if (!float.IsFinite(scalar)) return false;
+        int bits = BitConverter.SingleToInt32Bits(scalar);
+        for (int i = 0; i < Vector<float>.Count; i++)
+            if (BitConverter.SingleToInt32Bits(wide[i]) != bits) return false;
+        return true;
     }
 
     // Real coefficients use the same polynomial as Matrix3x3.cs:279-304. FeatureNumber's bounded

@@ -173,17 +173,20 @@ namespace KhaozEngine.Tests.Gpu
         // figures from 0.0058 and 0.0052 to 0.0072 and 0.0064.
         static readonly Dictionary<TemporalUpscale, (double Band, double Far)> HardwareStill = new()
         {
-            [TemporalUpscale.Quality] = (0.0058, 0.0052), [TemporalUpscale.Native] = (0.0044, 0.0039),
+            [TemporalUpscale.Quality] = (0.0058, 0.0052),
+            [TemporalUpscale.Native] = (0.0044, 0.0039),
         };
 
         static readonly Dictionary<TemporalUpscale, (double Band, double Far)> WarpStill = new()
         {
-            [TemporalUpscale.Quality] = (0.0057, 0.0052), [TemporalUpscale.Native] = (0.0044, 0.0039),
+            [TemporalUpscale.Quality] = (0.0057, 0.0052),
+            [TemporalUpscale.Native] = (0.0044, 0.0039),
         };
 
         static readonly Dictionary<TemporalUpscale, (double Band, double Far)> LavapipeStill = new()
         {
-            [TemporalUpscale.Quality] = (0.0058, 0.0053), [TemporalUpscale.Native] = (0.0044, 0.0040),
+            [TemporalUpscale.Quality] = (0.0058, 0.0053),
+            [TemporalUpscale.Native] = (0.0044, 0.0040),
         };
 
         static double StillBand(TemporalUpscale preset) => 1.1 * Still[preset].Band;

@@ -75,6 +75,7 @@ internal static class TemporalVisibilityReference
         var empty = new VisibilityCase("empty current", 1, 0) { Valid = false };
         empty.Depth[5] = float.NaN;
         yield return empty;
+        foreach (VisibilityCase c in NonFiniteCases()) yield return c;
         var unmatched = new VisibilityCase("empty history and unmatched depth", 1, 0) { Valid = false };
         Array.Fill(unmatched.PreviousDepth, 2);
         yield return unmatched;
@@ -102,6 +103,32 @@ internal static class TemporalVisibilityReference
             yield return c;
         }
     }
+
+    internal static IEnumerable<VisibilityCase> NonFiniteCases()
+    {
+        foreach (float depth in new[] { float.NaN, float.PositiveInfinity, float.NegativeInfinity })
+        {
+            var centre = new VisibilityCase($"non-finite centre {depth}", 1, 0) { Valid = false };
+            centre.Depth[5] = depth;
+            yield return centre;
+            var neighbour = new VisibilityCase($"non-finite current neighbour {depth}", 0, 0);
+            neighbour.Depth[4] = depth; neighbour.Current[4] = 1;
+            yield return neighbour;
+            yield return new($"non-finite expected history {depth}", 1, 0) { ExpectedDepth = depth, Valid = false };
+            var emptyHistory = new VisibilityCase($"non-finite empty history {depth}", 1, 0) { Valid = false };
+            Array.Fill(emptyHistory.PreviousDepth, depth);
+            yield return emptyHistory;
+            var mixedHistory = new VisibilityCase($"non-finite mixed history {depth}", 0.5f, 1)
+            {
+                PreviousJitter = new(0.5f), Want = 0.25f,
+            };
+            Array.Fill(mixedHistory.Depth, 2); mixedHistory.Depth[5] = 1;
+            Array.Fill(mixedHistory.PreviousDepth, depth); mixedHistory.PreviousDepth[5] = 1;
+            mixedHistory.Previous[5] = 0.25f;
+            yield return mixedHistory;
+        }
+    }
+
 }
 
 internal sealed class VisibilityCase

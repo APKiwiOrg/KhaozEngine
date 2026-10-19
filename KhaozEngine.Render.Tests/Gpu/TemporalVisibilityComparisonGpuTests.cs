@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
@@ -29,6 +31,23 @@ public sealed class TemporalVisibilityComparisonGpuTests(GameShadowGrainScene gr
             Assert.InRange(MathF.Abs(change - actual.X), 0, 1e-6f);
             Assert.Equal(valid && MathF.Abs(change) > 0.1f ? 1 : 0, actual.Z);
         }
+    }
+
+    public static IEnumerable<object[]> NonFiniteDepthCases()
+        => TemporalVisibilityReference.NonFiniteCases().Select(c => new object[] { c.Name });
+
+    [GpuTheory]
+    [MemberData(nameof(NonFiniteDepthCases))]
+    public void NonFiniteDepthsCannotQualify(string name)
+    {
+        VisibilityCase c = TemporalVisibilityReference.NonFiniteCases().Single(c => c.Name == name);
+        using var probe = new TemporalVisibilityProbe();
+        Vector3 actual = probe.Run(c);
+        output.WriteLine($"{probe.Device.Backend} on {probe.Device.Capabilities.DeviceName}");
+        output.WriteLine($"{c.Name}: valid {actual.Y}, signed {actual.X:R}, release {actual.Z}");
+        Assert.Equal(c.Valid ? 1 : 0, actual.Y);
+        Assert.InRange(MathF.Abs(c.Want - actual.X), 0, 1e-6f);
+        Assert.Equal(c.Valid && MathF.Abs(c.Want) > 0.1f ? 1 : 0, actual.Z);
     }
 
     [GpuTheory]

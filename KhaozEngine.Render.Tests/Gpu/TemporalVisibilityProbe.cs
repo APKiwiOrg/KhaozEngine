@@ -51,6 +51,9 @@ void main() {
 }
 ";
 
+    internal static string FragmentSource => "#version 450\n" + Header + ShaderSources.TemporalCommonGlsl
+        + ShaderSources.TemporalResolveTuningGlsl + ShaderSources.TemporalVisibilityGlsl + Main;
+
     internal TemporalVisibilityProbe()
     {
         IGpuResourceFactory f = Device.Factory;
@@ -65,8 +68,7 @@ void main() {
         elements.Add(new("Probe", GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment));
         _layout = Own(f.CreateResourceLayout(new GpuResourceLayoutDescription(elements.ToArray())));
         IGpuShaderSet shaders = Own(f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
-            "#version 450\n" + Header + ShaderSources.TemporalCommonGlsl + ShaderSources.TemporalResolveTuningGlsl
-            + ShaderSources.TemporalVisibilityGlsl + Main));
+            FragmentSource));
         _pipeline = Own(f.CreateGraphicsPipeline(new GpuPipelineDescription
         {
             BlendAttachments = [GpuBlendAttachment.OverrideBlend],

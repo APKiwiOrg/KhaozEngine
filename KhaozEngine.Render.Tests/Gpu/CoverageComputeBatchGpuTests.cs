@@ -43,6 +43,9 @@ public sealed class CoverageComputeBatchGpuTests(ITestOutputHelper output)
         Write(f, "warm", new
         {
             Allocations = allocations.Select(a => a.ToString()),
+            CompleteRenderAllocatedBytes = allocations.Select(a => a.RenderTotal).ToArray(),
+            CompleteSubmissionAllocatedBytes = allocations.Select(a => a.SubmissionTotal).ToArray(),
+            TestWaitStackCaptureEnabled = allocations.Select(a => a.TestWaitStackCaptureEnabled).ToArray(),
             Growths = growths,
             ProductionWaits = waits,
             CompletedDeviceReads = f.Device.Readbacks - readbacks,
@@ -80,6 +83,9 @@ public sealed class CoverageComputeBatchGpuTests(ITestOutputHelper output)
             ComparedActors = comparedActors,
             CrossActorSurfaceOrOutcomeMismatches = crossActorSurfaceOrOutcomeMismatches,
             ColdBatchAllocationObservations = f.Allocation.ToString(),
+            ColdCompleteRenderAllocatedBytes = f.Allocation.RenderTotal,
+            ColdCompleteSubmissionAllocatedBytes = f.Allocation.SubmissionTotal,
+            ColdCompleteRenderIncludesTestWaitStackCapture = f.Allocation.TestWaitStackCaptureEnabled,
             ColdConfigurationResourceCreations = f.Growths,
             TotalProductionWaitsIncludingColdConfiguration = f.ProductionWaits,
             ColdWaitCallStacks = f.Device.WaitSites.Take(f.Device.WaitSiteCount).ToArray(),
@@ -132,6 +138,9 @@ public sealed class CoverageComputeBatchGpuTests(ITestOutputHelper output)
         Write(f, "full-ring", new
         {
             Allocation = recording.ToString(),
+            CompleteRenderAllocatedBytes = recording.RenderTotal,
+            CompleteSubmissionAllocatedBytes = recording.SubmissionTotal,
+            TestWaitStackCaptureEnabled = recording.TestWaitStackCaptureEnabled,
             CompletedEnumeration = f.Allocation.OutcomeEnumeration,
             WarmCapacityGrowths = growths,
             ProductionWaits = waits,

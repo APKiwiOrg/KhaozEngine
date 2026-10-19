@@ -77,7 +77,10 @@ internal sealed class CoverageBatchNativeFixture : IDisposable
         submission.Begin();
         using (GpuRecording.Open(Device, commands, "Coverage.Batch"))
         {
+            Allocation.TestWaitStackCaptureEnabled = Device.CaptureWaitSites;
+            before = GC.GetAllocatedBytesForCurrentThread();
             Scene.RenderInternal(commands, 32, 24, target);
+            Allocation.RenderTotal = GC.GetAllocatedBytesForCurrentThread() - before;
             int readbackWaits = Device.Waits;
             before = GC.GetAllocatedBytesForCurrentThread();
             Scene.RecordCoverageReadbacks(commands, submission);
@@ -87,7 +90,9 @@ internal sealed class CoverageBatchNativeFixture : IDisposable
         SubmittedCurrent = Scene.CoverageGpuBatchForTests!.Current;
         foreach (var actor in Actors) actor.CaptureIdentity();
         int beforeSubmit = Device.Submissions;
+        before = GC.GetAllocatedBytesForCurrentThread();
         submission.Submit(commands);
+        Allocation.SubmissionTotal = GC.GetAllocatedBytesForCurrentThread() - before;
         FrameSubmissions = Device.Submissions - beforeSubmit;
         OtherProductionSubmissions = beforeSubmit - submissions;
         Assert.Equal(1, FrameSubmissions);
@@ -136,10 +141,14 @@ internal sealed class CoverageBatchNativeFixture : IDisposable
 internal struct CoverageBatchAllocation
 {
     public long Staging, Prepare, Resolution, Surface, ReadbackRecording, OutcomeEnumeration;
+    public long RenderTotal, SubmissionTotal;
+    public bool TestWaitStackCaptureEnabled;
     internal readonly void AssertZero()
     {
         Assert.Equal(0, Staging); Assert.Equal(0, Prepare); Assert.Equal(0, Resolution);
         Assert.Equal(0, Surface); Assert.Equal(0, ReadbackRecording); Assert.Equal(0, OutcomeEnumeration);
+        Assert.Equal(0, RenderTotal); Assert.Equal(0, SubmissionTotal);
+        Assert.False(TestWaitStackCaptureEnabled);
     }
-    public override readonly string ToString() => $"staging={Staging} prepare={Prepare} packing/dispatch/resolution={Resolution} surface={Surface} readback-record={ReadbackRecording} completed-enumeration={OutcomeEnumeration}";
+    public override readonly string ToString() => $"staging={Staging} prepare={Prepare} packing/dispatch/resolution={Resolution} surface={Surface} readback-record={ReadbackRecording} completed-enumeration={OutcomeEnumeration} render-total={RenderTotal} submission-total={SubmissionTotal}";
 }

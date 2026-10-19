@@ -10,10 +10,13 @@ frame, view, actor and preparation identities from native headers and completed 
 
 Measured coverage intervals are public equipment and host staging with draw submission, frame
 reservation, packing and compute dispatch inside resolution, pulled surface resolution, outcome-copy
-recording and completed outcome enumeration. Each requires zero managed bytes. Native command-list
-opening and host submission still execute, including the shared submission participant. Their general
-backend bookkeeping is outside the coverage allocation intervals. Assertion drains, reference
-construction, payload capture, word readback, comparison and evidence writing are outside those intervals.
+recording and completed outcome enumeration. Each requires zero managed bytes. Additional counters tightly
+bracket the complete `Scene.RenderInternal` and shared `GpuFrameSubmission.Submit(commands)` calls.
+Both totals require zero managed bytes in the warmed two-actor and full-ring facts. The render total
+includes graphics payload packing and upload. The submission total includes the native submission and
+submitted history callbacks. Warmed wait-stack capture is disabled and explicitly asserted.
+Command-list opening and closing, test assertions, assertion drains, reference construction, payload
+capture, word readback, comparison and evidence writing stay outside those two complete-call intervals.
 The full-ring fact warms completed enumeration before filling the ring again. Its fourth submission
 continues drawing and history while dropping only that frame's outcome copy.
 A first, previously unwarmed completed-enumeration observation allocated 88 bytes. Its exact internal
@@ -39,7 +42,10 @@ Its allocation and resource-creation observations describe cold batch configurat
 come from `Scene3D.EnsureSize` and `RenderResources.DisposeTargets` while replacing the initial MRT
 configuration. Both exact call stacks remain in the native packet. Outcome-copy recording and completed
 enumeration wait zero times. The separate warmed two-actor and full-ring facts require zero production
-waits and zero resource creation. This batch supplies no warm 32-actor allocation or timing claim.
+waits and zero resource creation. Cold complete-render and complete-submission totals are observations
+only. The cold render total explicitly includes test-owned wait-stack capture, which remains enabled to
+retain both call stacks. No captured bytes are subtracted. This batch supplies no warm 32-actor allocation
+or timing claim.
 
 Native packets are `coverage-batch-warm.<backend>.json`, `coverage-batch-mixed32.<backend>.json` and
 `coverage-batch-full-ring.<backend>.json`, emitted only through `KE_COVERAGE_EVIDENCE_DIR`.

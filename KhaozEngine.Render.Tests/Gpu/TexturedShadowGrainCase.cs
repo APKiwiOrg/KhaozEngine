@@ -36,8 +36,16 @@ internal static class TexturedShadowGrainCase
             // Balanced is reported only. Its reconstruction and shading-release gate are a separate issue.
             // Owner accepted on 2026-10-19 after real-scene clips: the visibility lock release removes held shadow
             // sparkle, and this synthetic value is the measured cost of that release. No large-change response ships.
-            // Quality was 0.008. D measures 0.008031049526854536, rounded up to the six-decimal reporting place.
-            double bound = preset == TemporalUpscale.Quality ? 0.008032 : 0.0113;
+            // Owner accepted per driver on 2026-10-19 after hosted run 39215298727: WARP and lavapipe show the same lock-release costs.
+            // Quality was 0.008. Hardware D measures 0.008031049526854536 and lavapipe 0.008039903208144449.
+            // Each accepted bound rounds its own measurement upward to the six-decimal reporting place.
+            double qualityBound = TemporalDeviceClass.Name switch
+            {
+                "hardware" => 0.008032,
+                "lavapipe" => 0.008040,
+                _ => 0.008
+            };
+            double bound = preset == TemporalUpscale.Quality ? qualityBound : 0.0113;
             output.WriteLine($"Textured grain {preset}, {scene.Backend} on {scene.DeviceName}, {TemporalDeviceClass.Name}: {m.Band.GrainOut:0.000000}, "
                 + $"error grain {m.Band.ErrorGrain:0.000000}, reference grain {m.Band.GrainRef:0.000000}, "
                 + $"change {m.Band.Change:0.000000}, bound {(preset == TemporalUpscale.Balanced ? "report only" : bound.ToString("0.000000"))}.");

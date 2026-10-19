@@ -189,7 +189,7 @@ This is not loosening a bound. It preserves its meaning on the same input. The s
 
 ### Regression and identity gates
 
-Port the textured receiver, dark surface and flickering/moving local light guards from `264bbc11c`. Retain Native textured grain `<= 0.0113` and the owner-accepted Quality target `<= 0.008032` (historically `0.008`), dark non-black proof, and the paired error/grain/temporal-error detail bounds. Collect per-device controls where needed, without using candidate output to raise them. Report Balanced and exercise every existing preset in the full suite.
+Port the textured receiver, dark surface and flickering/moving local light guards from `264bbc11c`. Retain Native textured grain `<= 0.0113` and per-device Quality grain bounds (hardware `<= 0.008032`, lavapipe `<= 0.008040`, WARP provisionally `<= 0.008` pending its exact filtered measurement), dark non-black proof, and the paired error/grain/temporal-error detail bounds. Collect per-device controls where needed, without using candidate output to raise them. Report Balanced and exercise every existing preset in the full suite.
 
 Add actual R8 pixel readbacks for every lit path and preserved transparent path, shadow-disabled and cutout cases, MSAA resolve, strength/cascade handoff and four-attachment capability handling. Add deterministic tests for jitter-only motion, reprojection, near/far rejection, no accepted weights, image edges, reset lifecycle and unchanged visibility over a missed thin feature. CPU arithmetic tests complement, never replace, the rendered result.
 
@@ -206,11 +206,25 @@ The owner accepted these three costs after the real-scene D clips. One focused M
 | Accepted cost | Measured D value | Old bound | New bound |
 | --- | ---: | ---: | ---: |
 | Hardware Native 8 px retreating textured absolute tail | 0.007221076276167364 | 0.007138970657410495 | 0.007221576276167364 |
-| Quality textured grain | 0.008031049526854536 | 0.008 | 0.008032 |
+| Hardware Quality textured grain | 0.008031049526854536 | 0.008 | 0.008032 |
 | Hardware Quality M 1.0 leading textured rim error | 0.0030106876217401947 | 0.00271205 | 0.00331265 |
 | Same rim, temporal error | 0.004819472651560228 | 0.00432135 | 0.00530145 |
 
 The absolute-tail check retains its existing `baseline + 0.0000005` formula. Only the failing hardware Native 8 px retreating textured row takes D's measured baseline instead of paired control `0.007138470657410495`. Other tails keep their paired controls, both presets and directions, flat/textured regions and actual 1 px denominators. The grain check remains a fixed target, rounded upward to the six-decimal reporting place so the measured `0.008031049526854536` is included. Native stays at `0.0113` and Balanced remains report-only. The rim row retains `(baseline + 0.0000005) * 1.1`, with six-decimal baselines `0.003011 / 0.004819` replacing `0.002465 / 0.003928`. Its change and spatial-reference values do not change. No unmeasured WARP or lavapipe row borrows the hardware cost.
+
+Hosted run [39215298727](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39215298727) subsequently measured the software costs on `3f7b8749f`. The owner accepted each driver separately with this reason: "Owner accepted per driver on 2026-10-19 after hosted run 39215298727: WARP and lavapipe show the same lock-release costs." Hardware keeps its original rows. The added software rows are:
+
+| Driver and accepted cost | Measured D | Old bound | New bound |
+| --- | ---: | ---: | ---: |
+| WARP Native 8 px retreating textured absolute tail | 0.007222797931709032 | 0.007152903227222303 | 0.007223297931709032 |
+| lavapipe Native 8 px retreating textured absolute tail | 0.007245504857927269 | 0.00716823283842791 | 0.007246004857927269 |
+| lavapipe Quality textured grain | 0.008039903208144449 | 0.008 | 0.008040 |
+| WARP Quality M 1.0 leading textured rim error | 0.003134108234483462 | 0.00278355 | 0.00344795 |
+| WARP same rim temporal error | 0.004831370554127536 | 0.00428835 | 0.00531465 |
+| lavapipe Quality M 1.0 leading textured rim error | 0.0030749369871157866 | 0.00286275 | 0.00338305 |
+| lavapipe same rim temporal error | 0.0047599525602309255 | 0.00438845 | 0.00523655 |
+
+The WARP/lavapipe paired tail controls remain `0.007152403227222303 / 0.00716773283842791`. The same single tail case per driver takes measured D, using the unchanged additive rounding allowance. WARP rim error/temporal baselines become `0.003134 / 0.004831`, lavapipe `0.003075 / 0.004760`, at the existing six-decimal convention. Fields 2 and 4 and the shared formula remain unchanged. Grain is scoped per driver, with hardware `0.008032`, lavapipe `0.008040` and WARP provisionally `0.008` until its exact filtered readback. If WARP exceeds `0.008`, only its own measured value at or below `0.008032` can receive an upward six-decimal accepted bound. A larger value is a stop. Native stays `0.0113` and Balanced stays report-only. The durable record is `KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/owner-release-only.md`.
 
 Each affected test records this reason: "Owner accepted on 2026-10-19 after real-scene clips: the visibility lock release removes held shadow sparkle, and this synthetic value is the measured cost of that release. No large-change response ships."
 

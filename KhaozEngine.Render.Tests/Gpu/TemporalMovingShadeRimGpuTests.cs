@@ -23,6 +23,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             // Owner accepted on 2026-10-19 after real-scene clips: the visibility lock release removes held shadow
             // sparkle, and this synthetic value is the measured cost of that release. No large-change response ships.
+            // Owner accepted per driver on 2026-10-19 after hosted run 39215298727: WARP and lavapipe show the same lock-release costs.
             var failures = new List<string>();
             foreach (TemporalUpscale preset in new[] { TemporalUpscale.Quality, TemporalUpscale.Native })
                 foreach (float shadow in new[] { 0f, 1f })

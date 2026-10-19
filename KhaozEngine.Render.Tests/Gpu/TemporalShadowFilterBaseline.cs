@@ -2,11 +2,11 @@ using System.Collections.Generic;
 
 namespace KhaozEngine.Tests.Gpu;
 
-/// <summary>Bilinear-input controls, with the recorded owner-accepted release cost for one hardware rim.</summary>
+/// <summary>Bilinear-input controls, with a recorded owner-accepted release cost for one rim per device class.</summary>
 internal static class TemporalShadowFilterBaseline
 {
     // Filter-only control 02f0bd1fc. Six-decimal GPU readbacks and provenance live in
-    // measurements/taa-shadow-visibility/filter-baseline.md. The one owner-accepted cost row below records its historical control.
+    // measurements/taa-shadow-visibility/filter-baseline.md. Each owner-accepted cost row below records its historical control.
     // Hardware is Metal. WARP and lavapipe require their own measured rows, never a hardware fallback.
     static readonly Dictionary<(string Device, string Name), TemporalReviewFigures> Before = new()
     {
@@ -101,7 +101,9 @@ internal static class TemporalShadowFilterBaseline
         [("WARP", "Quality M 0.5 trailing flat")] = new(0.007445, 0.005805, 0.005805, 0.000000),
         [("WARP", "Quality M 0.5 trailing textured")] = new(0.027128, 0.016226, 0.016523, 0.018955),
         [("WARP", "Quality M 1.0 leading flat")] = new(0.008098, 0.005960, 0.005960, 0.000000),
-        [("WARP", "Quality M 1.0 leading textured")] = new(0.002530, 0.032022, 0.003898, 0.031805),
+        // Owner-accepted D costs on 2026-10-19. The historical bilinear control is error 0.002530 and temporal 0.003898.
+        // D measured 0.003134108234483462 and 0.004831370554127536, stored at the existing six-decimal precision.
+        [("WARP", "Quality M 1.0 leading textured")] = new(0.003134, 0.032022, 0.004831, 0.031805),
         [("WARP", "Quality M 1.0 trailing flat")] = new(0.000223, 0.000223, 0.000223, 0.000000),
         [("WARP", "Quality M 1.0 trailing textured")] = new(0.008984, 0.038715, 0.008230, 0.035635),
         [("WARP", "Quality M 2.0 leading flat")] = new(0.004857, 0.012055, 0.005179, 0.006928),
@@ -157,7 +159,9 @@ internal static class TemporalShadowFilterBaseline
         [("lavapipe", "Quality M 0.5 trailing flat")] = new(0.007421, 0.005799, 0.005799, 0.000000),
         [("lavapipe", "Quality M 0.5 trailing textured")] = new(0.027013, 0.016023, 0.016376, 0.018925),
         [("lavapipe", "Quality M 1.0 leading flat")] = new(0.008154, 0.006288, 0.006288, 0.000000),
-        [("lavapipe", "Quality M 1.0 leading textured")] = new(0.002602, 0.031936, 0.003989, 0.031734),
+        // Owner-accepted D costs on 2026-10-19. The historical bilinear control is error 0.002602 and temporal 0.003989.
+        // D measured 0.0030749369871157866 and 0.0047599525602309255, stored at the existing six-decimal precision.
+        [("lavapipe", "Quality M 1.0 leading textured")] = new(0.003075, 0.031936, 0.004760, 0.031734),
         [("lavapipe", "Quality M 1.0 trailing flat")] = new(0.000223, 0.000223, 0.000223, 0.000000),
         [("lavapipe", "Quality M 1.0 trailing textured")] = new(0.008846, 0.038205, 0.007701, 0.035597),
         [("lavapipe", "Quality M 2.0 leading flat")] = new(0.004861, 0.012033, 0.005157, 0.006928),

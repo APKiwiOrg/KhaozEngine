@@ -6,14 +6,36 @@ Task 7d measured the final release-only renderer on MetalNative, Apple M2 Max, h
 
 | Cost | Measured D | Old bound | New bound |
 | --- | ---: | ---: | ---: |
-| Native 8 px retreating textured absolute tail | 0.007221076276167364 | 0.007138970657410495 | 0.007221576276167364 |
-| Quality textured grain | 0.008031049526854536 | 0.008 | 0.008032 |
-| Quality M 1.0 leading textured rim error | 0.0030106876217401947 | 0.00271205 | 0.00331265 |
-| Same rim temporal error | 0.004819472651560228 | 0.00432135 | 0.00530145 |
+| Hardware Native 8 px retreating textured absolute tail | 0.007221076276167364 | 0.007138970657410495 | 0.007221576276167364 |
+| Hardware Quality textured grain | 0.008031049526854536 | 0.008 | 0.008032 |
+| Hardware Quality M 1.0 leading textured rim error | 0.0030106876217401947 | 0.00271205 | 0.00331265 |
+| Hardware same rim temporal error | 0.004819472651560228 | 0.00432135 | 0.00530145 |
 
-The tail keeps `baseline + 0.0000005`, replacing only this hardware row's paired baseline `0.007138470657410495` with exact measured D. All other paired tails and 1 px denominators remain unchanged. The fixed grain target rounds D upward to its six-decimal reporting place. Rim baselines round to six decimals, `0.003011 / 0.004819`, and retain `(baseline + 0.0000005) * 1.1`. The historical baselines were `0.002465 / 0.003928`. Rim change and spatial reference retain their historical values. WARP and lavapipe controls are unchanged because this run did not measure them.
+The tail keeps `baseline + 0.0000005`, replacing only this hardware row's paired baseline `0.007138470657410495` with exact measured D. All other paired tails and 1 px denominators remain unchanged. The fixed grain target rounds D upward to its six-decimal reporting place. Rim baselines round to six decimals, `0.003011 / 0.004819`, and retain `(baseline + 0.0000005) * 1.1`. The historical baselines were `0.002465 / 0.003928`. Rim change and spatial reference retain their historical values. This initial Metal run did not measure WARP or lavapipe. Their later owner-accepted rows are recorded below.
 
 The original point-PCF history, bilinear controls and eight-arm tuning remain in their existing tables and measurement records. These accepted costs do not relabel D as a filter-only control.
+
+## Per-driver acceptance after hosted run 39215298727
+
+Owner accepted per driver on 2026-10-19 after hosted run 39215298727: WARP and lavapipe show the same lock-release costs.
+
+Run [39215298727](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39215298727) measured commit `3f7b8749fbf00883c09683949e2b8354d0935784`. Its console log supplies the full-precision software values below. Each driver takes only its own measured value. Hardware keeps its original rows above.
+
+| Driver and accepted cost | Measured D | Old bound | New bound |
+| --- | ---: | ---: | ---: |
+| WARP Native 8 px retreating textured absolute tail | 0.007222797931709032 | 0.007152903227222303 | 0.007223297931709032 |
+| lavapipe Native 8 px retreating textured absolute tail | 0.007245504857927269 | 0.00716823283842791 | 0.007246004857927269 |
+| lavapipe Quality textured grain | 0.008039903208144449 | 0.008 | 0.008040 |
+| WARP Quality M 1.0 leading textured rim error | 0.003134108234483462 | 0.00278355 | 0.00344795 |
+| WARP same rim temporal error | 0.004831370554127536 | 0.00428835 | 0.00531465 |
+| lavapipe Quality M 1.0 leading textured rim error | 0.0030749369871157866 | 0.00286275 | 0.00338305 |
+| lavapipe same rim temporal error | 0.0047599525602309255 | 0.00438845 | 0.00523655 |
+
+The WARP and lavapipe paired textured-tail controls remain `0.007152403227222303` and `0.00716773283842791`. Only their Native 8 px retreating textured rows take the measured D baseline. Every other tail retains its paired control and the formula `baseline + 0.0000005`.
+
+WARP rim error/temporal baselines become `0.003134 / 0.004831` from `0.002530 / 0.003898`. Lavapipe becomes `0.003075 / 0.004760` from `0.002602 / 0.003989`. Fields 2 and 4 remain unchanged, as does `(baseline + 0.0000005) * 1.1`.
+
+Quality grain uses a per-device bound. Hardware retains `0.008032`, lavapipe uses `0.008040`, and WARP provisionally retains the historical `0.008` pending its exact filtered measurement. Passing sharded tests did not print the WARP value in run 39215298727. Native remains `0.0113` and Balanced remains report-only. No driver inherits another driver's acceptance.
 
 ## Full-precision readbacks
 

@@ -16,12 +16,15 @@ budget claim or load proof is part of this gate.
 | Backend/device | Device word gate | Native compiler/pipeline gate | Synchronization validation |
 | --- | --- | --- | --- |
 | MetalNative, Apple M2 Max | Passed, 72 frozen mode-0 cases and 72 separate skin-through-select cases | Passed, every phase thread ceiling at least 64 | Native execution passed, Vulkan validation does not apply |
-| Direct3D11 WARP | Pending root hosted run | Pending FXC cs_5_0 compilation and native execution | Not applicable |
-| Vulkan lavapipe | Pending root hosted run | Pending native execution | Pending zero-error hosted synchronization-validation log |
-| Metal Apple Paravirtual | Pending root hosted run | Pending every pipeline at 64 threads and native execution | Not applicable |
+| Direct3D11 WARP | Passed in hosted run 39210816991 on 713da9182, 280 of 280 with none skipped | Passed, FXC cs_5_0 compiled every phase and executed natively | Not applicable |
+| Vulkan lavapipe | Passed in hosted run 39210816991, 280 of 280 | Passed, native execution | Passed, 513 tests under synchronization validation with no VUID or hazard lines |
+| Metal Apple Paravirtual | Passed in hosted run 39210816991, 280 of 280 | Passed, every phase pipeline created at 64 threads and executed natively | Not applicable |
 
-The hosted rows remain a hard gate before Tasks 8 to 17. Local HLSL/MSL cross-compilation and
-SPIRV-Tools validation do not stand in for those native rows.
+All four device rows now pass, so the hard gate before Tasks 8 to 17 is closed. On every
+backend the hosted run executed Every_production_fixture_matches_every_reference_word and
+Complete_skin_through_select_matches_the_same_uploaded_input_words. Local HLSL and MSL
+cross-compilation and SPIRV-Tools validation did not stand in for these native rows. The Direct3D11
+test step took 11 minutes 11 seconds, which issue 1503 tracks as a cold-cache compile concern.
 
 ## Numerical and publication proof
 
@@ -273,5 +276,5 @@ build-slot --label c07-tests -- env KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-nat
 The plan workspace retains task-7-red.log, task-7-final-header.log, task-7-regression.log,
 task-7-sizes.log, task-7-native-evidence.txt and task-7-report.md. Native TRX files are
 /tmp/ke-c07-final/task-7-final.trx and /tmp/ke-c07-regression/task-7-regression.trx.
-The exact size manifest is checked in. Root retains the hosted TRX, shader artifacts and Vulkan
-synchronization logs when it completes the three pending device rows.
+The exact size manifest is checked in. Hosted run 39210816991 holds the TRX, shader artifacts and
+Vulkan synchronization logs for the three hosted device rows.

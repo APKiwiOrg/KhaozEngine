@@ -22527,11 +22527,14 @@ Record GPU work and every retained copy into the same command list, then call `S
 with the shared fence when retained and calls `Submitted` on every participant. `Abandon` calls `Abandoned` and
 uses `DiscardUnsubmitted` only for a recording never handed to the device. Use it on recording exceptions before
 the next frame. A backend submit exception abandons participant state while quarantining potentially submitted
-copies. A callback exception still delivers the correct decision to every remaining participant.
+copies. A callback exception still delivers the correct decision to every remaining participant. Consumer cleanup
+or query failures retain the ambiguous slot before callbacks can escape, while cleanup continues for the other
+consumers. A later submission cannot reuse that fence to complete an abandoned copy.
 
 `Begin` resets a submitted fence only after GPU completion and release by every retained consumer. `Dispose`
 abandons any unsubmitted recording, performs one host teardown drain, invokes `ReleaseCompleted`, confirms release
-and disposes owned fences. Dispose the owner before its command list and device. Consumer-first disposal must keep
+and disposes owned fences. Once teardown starts, the owner refuses new recordings and accepts disposal retries.
+Dispose the owner before its command list and device. Consumer-first disposal must keep
 unsignaled staging alive until a completion poll or owner teardown releases it. There is no ordinary-frame wait,
 flush or extra frame submission. `GpuRetireQueue` retains its separate existing retirement fence.
 

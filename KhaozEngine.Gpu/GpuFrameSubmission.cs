@@ -11,7 +11,7 @@ public sealed class GpuFrameSubmission : IDisposable
     readonly Slot[] slots;
     readonly IGpuFrameSubmissionParticipant?[] participants;
     int participantCount, current = -1;
-    bool recording, disposed;
+    bool recording, disposed, teardown;
 
     public GpuFrameSubmission(IGpuDevice device, int retainedFrames = 3, int consumerCapacity = 8)
     {
@@ -36,16 +36,20 @@ public sealed class GpuFrameSubmission : IDisposable
     /// <summary>Abandon a prior unsubmitted recording, then reclaim only signaled frames with no consumers.</summary>
     public void Begin()
     {
-        ObjectDisposedException.ThrowIf(disposed, this);
+        ObjectDisposedException.ThrowIf(disposed || teardown, this);
         Abandon();
+        ExceptionDispatchInfo? error = null;
         foreach (var slot in slots)
         {
-            if (!slot.Submitted || !slot.Fence.Signaled) continue;
-            bool pending = false;
-            for (int i = 0; i < slot.Count; i++) pending |= slot.Consumers[i]!.HasPending(slot.Fence);
-            if (pending) continue;
-            slot.Fence.Reset(); slot.Clear();
+            if (!slot.Retained) continue;
+            try
+            {
+                if (!slot.Fence.Signaled || HasPending(slot, ref error)) continue;
+                slot.Fence.Reset(); slot.Clear();
+            }
+            catch (Exception failure) { error ??= ExceptionDispatchInfo.Capture(failure); }
         }
+        error?.Throw();
         recording = true;
     }
 
@@ -66,7 +70,7 @@ public sealed class GpuFrameSubmission : IDisposable
         completion = null;
         if (current < 0)
             for (int i = 0; i < slots.Length; i++)
-                if (!slots[i].Submitted) { current = i; break; }
+                if (!slots[i].Retained) { current = i; break; }
         if (current < 0) return false;
         var slot = slots[current];
         for (int i = 0; i < slot.Count; i++)
@@ -84,7 +88,7 @@ public sealed class GpuFrameSubmission : IDisposable
         RequireRecording(); ArgumentNullException.ThrowIfNull(commands);
         recording = false;
         var slot = current < 0 ? null : slots[current];
-        if (slot is not null) slot.Submitted = true;
+        if (slot is not null) slot.Retained = true;
         current = -1;
         try
         {
@@ -105,19 +109,17 @@ public sealed class GpuFrameSubmission : IDisposable
         ObjectDisposedException.ThrowIf(disposed, this);
         if (!recording) return;
         recording = false;
+        var slot = current < 0 ? null : slots[current];
+        current = -1;
+        // Quarantine before any external callback or query can throw or reenter the owner.
+        if (slot is not null) slot.Retained = true;
         ExceptionDispatchInfo? error = Notify(success: false);
-        if (current >= 0)
+        if (slot is not null)
         {
-            var slot = slots[current];
             for (int i = 0; i < slot.Count; i++)
                 try { slot.Consumers[i]!.DiscardUnsubmitted(slot.Fence); }
                 catch (Exception failure) { error ??= ExceptionDispatchInfo.Capture(failure); }
-            // Keep the slot if a broken consumer refused to release it.
-            bool pending = false;
-            for (int i = 0; i < slot.Count; i++) pending |= slot.Consumers[i]!.HasPending(slot.Fence);
-            if (pending) slot.Submitted = true;
-            else slot.Clear();
-            current = -1;
+            if (!HasPending(slot, ref error)) slot.Clear();
         }
         error?.Throw();
     }
@@ -126,16 +128,23 @@ public sealed class GpuFrameSubmission : IDisposable
     {
         if (disposed) return;
         if (GpuRecording.OpenOwner(device) is { } owner) throw new GpuDrainDuringRecordingException(owner);
+        teardown = true;
         ExceptionDispatchInfo? error = null;
         try { Abandon(); } catch (Exception failure) { error = ExceptionDispatchInfo.Capture(failure); }
         // Host teardown is the only blocking boundary. It also covers a submission that threw after replay.
         device.WaitForIdle();
+        bool pending = false;
         foreach (var slot in slots)
         {
-            for (int i = 0; i < slot.Count; i++) slot.Consumers[i]!.ReleaseCompleted(slot.Fence);
             for (int i = 0; i < slot.Count; i++)
-                if (slot.Consumers[i]!.HasPending(slot.Fence))
-                    throw new InvalidOperationException("A completion consumer retained staging after host teardown.");
+                try { slot.Consumers[i]!.ReleaseCompleted(slot.Fence); }
+                catch (Exception failure) { error ??= ExceptionDispatchInfo.Capture(failure); }
+            pending |= HasPending(slot, ref error);
+        }
+        if (pending)
+        {
+            error?.Throw();
+            throw new InvalidOperationException("A completion consumer retained staging after host teardown.");
         }
         foreach (var slot in slots) slot.Fence.Dispose();
         disposed = true;
@@ -144,7 +153,7 @@ public sealed class GpuFrameSubmission : IDisposable
 
     void RequireRecording()
     {
-        ObjectDisposedException.ThrowIf(disposed, this);
+        ObjectDisposedException.ThrowIf(disposed || teardown, this);
         if (!recording) throw new InvalidOperationException("Begin a frame submission before recording.");
     }
 
@@ -161,12 +170,25 @@ public sealed class GpuFrameSubmission : IDisposable
         return error;
     }
 
+    static bool HasPending(Slot slot, ref ExceptionDispatchInfo? error)
+    {
+        bool pending = false;
+        for (int i = 0; i < slot.Count; i++)
+            try { pending |= slot.Consumers[i]!.HasPending(slot.Fence); }
+            catch (Exception failure)
+            {
+                pending = true;
+                error ??= ExceptionDispatchInfo.Capture(failure);
+            }
+        return pending;
+    }
+
     sealed class Slot(IGpuFence fence, int capacity)
     {
         internal readonly IGpuFence Fence = fence;
         internal readonly IGpuFrameCompletionConsumer?[] Consumers = new IGpuFrameCompletionConsumer[capacity];
         internal int Count;
-        internal bool Submitted;
-        internal void Clear() { Array.Clear(Consumers); Count = 0; Submitted = false; }
+        internal bool Retained;
+        internal void Clear() { Array.Clear(Consumers); Count = 0; Retained = false; }
     }
 }

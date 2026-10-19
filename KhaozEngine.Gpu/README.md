@@ -378,9 +378,11 @@ What it owns today:
   then delivers `IGpuFrameSubmissionParticipant.Submitted` to every registered participant. `Abandon` delivers
   `Abandoned` and discards only unsubmitted copies. A backend submission exception abandons logical state but
   quarantines potentially submitted staging until completion or teardown. Callback exceptions never turn
-  submitted work into an abandoned copy. `Dispose` abandons unsubmitted recording, drains once at host teardown,
+  submitted work into an abandoned copy. Failed consumer cleanup or queries quarantine the slot before external
+  callbacks can escape, and cleanup still reaches other consumers. `Dispose` abandons unsubmitted recording, drains once at host teardown,
   releases retained consumers and disposes owned fences. Dispose it before the command list and device.
-  On devices without completion fences, retention returns false and participant submission remains available.
+  Once teardown starts, new recordings are refused. A failed teardown can be retried without exposing retained
+  fences. On devices without completion fences, retention returns false and participant submission remains available.
 - **GPU timestamps** - gate on `GpuCapabilities.SupportsTimestamps`, default false. Native Vulkan probes
   the selected queue's counter bits and the device period. Direct3D 11 probes timestamp and disjoint
   query creation on the actual device. Metal probes the timestamp counter set, supported sampling

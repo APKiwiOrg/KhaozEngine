@@ -65,6 +65,9 @@ float temporalViewDepth(vec2 motion, float ndcDepth) {
         // ---- The resolve's tuning constants, one for one with TemporalResolveTuning ----
         internal const string TemporalResolveTuningGlsl = @"
 const float VisibilityReleaseThreshold = 0.1;
+const float VisibilityLargeChangeThreshold = 0.5;
+const float VisibilityLargeChangeSign = 1.0;
+const float VisibilityLargeChangeScale = 0.0;
 const float VisibilityDepthTolerance = 0.02;
 const float DisocclusionTolerance = 0.02;
 const float MovingSurfaceInternalPixels = 0.5;

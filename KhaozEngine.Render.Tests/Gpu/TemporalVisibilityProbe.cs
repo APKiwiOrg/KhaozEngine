@@ -18,6 +18,7 @@ internal sealed class TemporalVisibilityProbe : IDisposable
     readonly IGpuBuffer _uniforms;
     readonly IGpuTexture _output;
     internal IGpuDevice Device => _gpu.GpuDevice;
+    internal float HistoryScale { get; private set; }
 
     const string Header = @"
 layout(set=0,binding=0) uniform texture2D SceneDepth;
@@ -46,7 +47,8 @@ void main() {
         + textureSize(sampler2D(PreviousKeyShadowVisibility, LinearClamp), 0).x) + PreviousJitter.x;
     int channel = int(gl_FragCoord.x);
     Result = channel == 0 ? change : channel == 1 ? (valid ? 1.0 : 0.0)
-        : channel == 2 ? (valid && abs(change) > 0.1 ? 1.0 : 0.0) : sink * 1e-30;
+        : channel == 2 ? (valid && abs(change) > 0.1 ? 1.0 : 0.0)
+        : (valid ? temporalVisibilityHistoryScale(change) : 1.0) + sink * 1e-30;
 }
 ";
 
@@ -68,10 +70,14 @@ void main() {
             + ShaderSources.TemporalVisibilityGlsl + Main));
         _pipeline = Own(f.CreateGraphicsPipeline(new GpuPipelineDescription
         {
-            BlendAttachments = [GpuBlendAttachment.OverrideBlend], DepthStencil = GpuDepthStencilState.Disabled,
+            BlendAttachments = [GpuBlendAttachment.OverrideBlend],
+            DepthStencil = GpuDepthStencilState.Disabled,
             Rasterizer = new(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, false, false),
-            Topology = GpuPrimitiveTopology.TriangleList, ResourceLayouts = [_layout], ShaderSet = shaders,
-            VertexLayouts = [], Outputs = _framebuffer.Outputs,
+            Topology = GpuPrimitiveTopology.TriangleList,
+            ResourceLayouts = [_layout],
+            ShaderSet = shaders,
+            VertexLayouts = [],
+            Outputs = _framebuffer.Outputs,
         }));
     }
 
@@ -102,6 +108,7 @@ void main() {
         Device.Submit(commands);
         Device.WaitForIdle();
         float[] values = TemporalTextureIo.Read(Device, _output);
+        HistoryScale = values[3];
         return new(values[0], values[1], values[2]);
     }
 

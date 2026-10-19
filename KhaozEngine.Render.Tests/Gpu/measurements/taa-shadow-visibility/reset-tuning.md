@@ -1,6 +1,6 @@
 # Large-change response tuning
 
-Status: BLOCKED. No candidate is selected. All eight fixed arms fail the unchanged Quality textured-grain guard and at least one frozen rim gate. No Task 7 production policy or tuning switch is retained.
+Historical Task 7 status: BLOCKED. The original eight-arm round selected no candidate because every arm failed the unchanged Quality textured-grain guard and at least one frozen rim gate. The Task 7b orchestrator amendment below selects arm 3 while keeping both residual gates RED for owner review.
 
 ## Method and unchanged gates
 
@@ -1346,3 +1346,67 @@ All four failures are existing exact-identity assertions in TemporalEntryIdentit
 | Quality with outline | None | None | 15 values, 8 frames from frame 22, maximum 0.00048828125 or 4 half-float steps | None |
 
 No identity tolerance was changed. The pre-existing software-Vulkan colour exception was not used on Metal and remains unchanged. No manual visual proof, release or hosted run was attempted. The next step is an owner-approved design amendment for the failed response round, plus resolution of #1501 before the combined fix ships.
+
+
+## Task 7b amendment and production revalidation
+
+The orchestrator selects arm 3, rising-only zero at 0.5, as the production response. Qualified signed d is current mean minus previous mean. Strictly d > 0.5 retains scale 0, otherwise scale 1. Apply the scale once to accumulated history weight and once to the computed display share. Keep it separate from the old released flag. Independent shading release still overrides both to zero. Named C# constants and pinned GLSL twins fix threshold 0.5, sign +1 and scale 0. Lock release remains strictly abs(d) > 0.1 and depth tolerance remains 0.02.
+
+Arm 3 is the simplest arm that passes every gate the response can influence. This selects code for the next proofs, not permission to ship. Task 8 resolves exact fused/split identity (#1501), then Task 10 takes the remaining grain and rim trade-off to the owner with real-scene images. Task 9 docs/version, Task 11 full gate and Task 12 bench request follow in that order. No bound, skip policy, software-Vulkan exception or warning rule changes.
+
+### Match to the original arm 3 measurements
+
+One measurement used the exact three-class Task 7 filter above, through build-slot --heavy, on MetalNative / Apple M2 Max / hardware with KE_GPU_TESTS=1 and KE_GRAPHICS_BACKEND=metal-native. All eight tail rows, all 56 complete rim rows and all 38 complete lag rows compare exactly to the original arm 3 tables above at their recorded round-trip precision. The matched 1 px denominators and 8 px tails are therefore preserved there in full, not replaced by rounded summaries.
+
+| Metric | Original arm 3 | Task 7b | Gate |
+| --- | ---: | ---: | --- |
+| Native textured grain | 0.010346 | 0.010346 | GREEN, bound 0.0113 |
+| Quality textured grain | 0.008031 | 0.008031 | RED, bound 0.008 |
+| Balanced textured grain | 0.007526 | 0.007526 | Report only |
+| Quality M 1.0 leading textured error | 0.0030106876217401947 | 0.0030106876217401947 | RED, bound 0.00271205 |
+| Quality M 1.0 leading textured temporal error | 0.004819472651560228 | 0.004819472651560228 | RED, bound 0.00432135 |
+| Absolute-tail failures | 0 | 0 | GREEN |
+| Failed rim assertions | 2 | 2 | Residual owner decision |
+| Lag fact | GREEN | GREEN | Unchanged 1.5 ratio and absolute gates |
+
+The grain guard and two assertions in the single leading textured rim case remain RED. Both residual failures are shared across all eight arms and arise from Task 6 lock release itself. The large-change response does not remove them. Keep their tests running and their bounds unchanged until the owner decides after seeing the real-scene images.
+
+### Response contracts and format boundary
+
+Behavioral RED ran before implementation. Both rising entry cases retained confidence 1 instead of the expected 1/15. Both falling cases passed. After implementation, all nine focused response cases pass. Both entries store confidence 0.06665039 for a rising unit step, versus the scalar 0.06666667, and 1 for a falling unit step. The upscaled rising result is exactly the fresh resolve's colour, with no display share. The falling result is exactly the unchanged-history control's colour. The unchanged-history and fresh controls differ, proving that the display test exercises an active share.
+
+The full-float probe checks both signs at 0.5, the adjacent floats on each side, and unit steps. Positive 0.50000006 and 1 retain scale 0, read back as the existing layout-retention sink's 2e-29 within 1e-7. Positive 0.5 and every falling boundary retain scale 1. Invalid footprints retain scale 1.
+
+The single measurement executed 34 facts, with 31 passed, 3 failed and zero skipped. Two failed facts are the expected grain guard and rim gate. The additional failure exposed the old R8/R32 fixture's assumption that only the 0.1 lock-release boundary could change output. R8 rounds input 0.5 to byte 128, or 0.5019608, while R32 retains 0.5. Both release locks, but only R8 now resets history. Its colour maximum difference is 0.23852539, so exact output equality at that boundary is incorrect under arm 3.
+
+The fixture now pins both scalar response decisions, includes the neighbouring R8 conversion boundary, requires observable colour/state differences when either decision differs, and still requires exact colour/state equality when both decisions agree. The corrected fixture passes its focused rerun, 1/1 with zero skips. No production source changed after the measurement. The full measurement filter was not repeated. This preserves the raw 31/3/0 result rather than presenting a rerun or a synthetic 32/2/0 aggregate as a measured run.
+
+### Verification and shader rebake
+
+The requested CPU class selection passes 1353 CPU cases across 116 runtime test classes. The source inventory has 118 matching declarations, including two nested helper types. Three additional emitted-backend hash facts pass, for 1356 passed CPU cases overall. Eight existing GPU facts in mixed classes are NotExecuted with the GPU gate unset, not skipped CPU cases. Command exit is 0.
+
+The non-shadow GPU guard filter above executes 58 facts, with 54 passed, 4 failed and zero skipped, exit 1. All four are the known exact fused/split identity failures in #1501. Their values match the preceding Task 7 record exactly, including the Performance colour differences. Confidence and marks remain identical. No unrelated non-shadow guard fails.
+
+The Release builds pass with zero warnings and zero errors. All builds, tests and the local shader bake use build-slot, one command at a time. Every GPU command and the bake use --heavy. No command returns exit 75. No hosted, timing, stress, full-suite, capture, release, version change, consumer repin or main integration is performed.
+
+The local shader bake passes 9 facts. A normal CPU run with writer flags unset then verifies all emitted hashes. Only fragment output changes for these ten programs in the MSL, HLSL, SPIR-V and live corpus tables:
+
+- TemporalResolve and TemporalResolveHalf
+- TemporalAccumulate and TemporalAccumulateHalf
+- TemporalAccumulateAtDisplaySize and TemporalAccumulateAtDisplaySizeHalf
+- TemporalDebugView and TemporalDebugViewHalf
+- TemporalCountProbe and TemporalCountProbeHalf
+
+Each backend hash table changes 10 rows. The live corpus changes the corresponding 30 emitted fragment rows. No vertex, layout, key set, historical corpus or golden table changes.
+
+TRX records remain in external scratch. SHA256 identifies each exact run below. Passed, failed and skipped counts are raw run totals, not combined latest outcomes.
+
+| Record | Total | Passed | Failed | Skipped | SHA256 |
+| --- | ---: | ---: | ---: | ---: | --- |
+| red | 4 | 2 | 2 | 0 | b0727902d30615c19b76b0d760887cc90d980d78295a1b0b426373244576f870 |
+| response | 9 | 9 | 0 | 0 | baeedcf5160f40910dff60edf6bcb98291e71c930d112ba83f384b499737b8e9 |
+| measurement | 34 | 31 | 3 | 0 | 68447fe61eea70f4686b86e1c9bf8f715fd12e9f4c67952841424ec74d151f99 |
+| format-control | 1 | 1 | 0 | 0 | 8c6ddd2a3b0ba409f01366234aa07c58a66fd55b3a5cdd897f852fa97274abd0 |
+| shader-bake | 9 | 9 | 0 | 0 | 85fe6dff7442b1ccef6683aa13f630fcb3f97cc3184ea04867e1d3ac070ddcd3 |
+| cpu | 1364 | 1356 | 0 | 8 | 506a31d786e371dd6f8424f7633c264ef80b02527625820a4fb5b4acd058d355 |
+| non-shadow | 58 | 54 | 4 | 0 | e020aa68a16e21c1d766d0c9b800cb48afe42fbc9593806d4de3c21a7928a03d |

@@ -461,6 +461,7 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     bool visibilityReleased = useHistory && !surface.background && PreviousJitter.z > 0.5
         && temporalVisibilityChange(uv, centreTexel, maxTexel, previousUv, expectedDepth, signedVisibilityChange)
         && abs(signedVisibilityChange) > VisibilityReleaseThreshold;
+    float visibilityHistoryScale = visibilityReleased ? temporalVisibilityHistoryScale(signedVisibilityChange) : 1.0;
     if (visibilityReleased) lockValue = 0.0;
     float hold = clamp(lockValue * LockHoldGain, 0.0, 1.0);
 
@@ -530,6 +531,7 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
         }
     }
     if (released || visibilityReleased) hold = 0.0;
+    accumulated *= visibilityHistoryScale;
     if (released) accumulated = 0.0;
     excess.x *= 1.0 - hold;
     float clipScale = max(excess.x, max(excess.y, excess.z));
@@ -581,7 +583,8 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     // the shading release dropped the pixel's accumulated weight this frame. A program compiled for the display's own
     // size (TemporalAtDisplaySize), where the share is always none, leaves it out.
 #ifndef TemporalAtDisplaySize
-    float displayShare = temporalDisplayShare(useHistory && !released, historyState.x, motionPixels, reactive);
+    float displayShare = temporalDisplayShare(useHistory && !released, historyState.x, motionPixels, reactive)
+        * visibilityHistoryScale;
     if (displayShare > 0.0)
         current.xyz = temporalDisplayCurrent(current.xyz, n.display, displayShare, neighbourMin, neighbourMax);
 #endif

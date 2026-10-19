@@ -59,6 +59,100 @@ public sealed class TemporalVisibilityComparisonGpuTests(GameShadowGrainScene gr
     }
 
     [GpuTheory]
+    [InlineData(0, false)]
+    [InlineData(0, true)]
+    [InlineData(1, false)]
+    [InlineData(1, true)]
+    public void LargeVisibilityStepScalesAccumulationOnceAndLeavesFallingHistory(int entry, bool rising)
+    {
+        using var rig = new Rig();
+        using GpuRetireQueue retired = GpuRetireQueue.Create(rig.Device);
+        rig.Renderer.SelectEntry((TemporalResolveEntry)entry, retired);
+        using IGpuTexture signal = Signal(rig.Device, rising ? (byte)0 : (byte)255);
+        float[] color = Grey((_, _) => 0.2f);
+        rig.Fill(color, color, Motion((_, _) => Vector2.Zero));
+        rig.BeginFrame(); rig.Resolve(Uniforms(false), signal);
+        rig.History.MarkValidAfterFrame(); rig.BeginFrame();
+        rig.FillHistory(Grey((_, _) => 0.4f), State((_, _) => new Vector2(1, 1)), SceneLinear);
+        byte[] next = new byte[N * N];
+        Array.Fill(next, rising ? (byte)255 : (byte)0);
+        rig.Device.UpdateTexture(signal, next, 0, 0, N, N);
+        rig.Resolve(Uniforms(true), signal);
+        float[] state = rig.ReadState();
+        float expected = rising ? 1f / 15 : 1;
+        output.WriteLine($"ACCUMULATION|{entry}|{rising}|{expected:R}|{state[At(3, 3) * 2]:R}");
+        Assert.InRange(MathF.Abs(state[At(3, 3) * 2] - expected), 0, 0.0001f);
+        Assert.Equal(0, state[At(3, 3) * 2 + 1]);
+        Assert.InRange(rig.ReadColor()[At(3, 3) * 4], 0.19f, 0.21f);
+    }
+
+    [GpuFact]
+    public void LargeChangeResponseIsStrictAndRisingOnlyAtBothSignedBoundaries()
+    {
+        using var probe = new TemporalVisibilityProbe();
+        foreach (float magnitude in new[] { MathF.BitDecrement(0.5f), 0.5f, MathF.BitIncrement(0.5f), 1f })
+            foreach (float sign in new[] { -1f, 1f })
+            {
+                float change = sign * magnitude;
+                var c = new VisibilityCase("large change", change, 0);
+                Array.Fill(c.Depth, 2); c.Depth[5] = 1;
+                (bool valid, float oracle) = TemporalVisibilityReference.Compare(c);
+                Vector3 actual = probe.Run(c);
+                float expected = change > 0.5f ? 0 : 1;
+                output.WriteLine($"RESPONSE|{change:R}|{actual.X:R}|{expected:R}|{probe.HistoryScale:R}");
+                Assert.True(valid);
+                Assert.Equal(change, oracle);
+                Assert.Equal(change, actual.X);
+                Assert.InRange(MathF.Abs(probe.HistoryScale - expected), 0, 1e-7f);
+            }
+        foreach (VisibilityCase c in TemporalVisibilityReference.Cases())
+        {
+            if (c.Valid) continue;
+            probe.Run(c);
+            Assert.Equal(1, probe.HistoryScale);
+        }
+    }
+
+    [GpuTheory]
+    [InlineData(0, false)]
+    [InlineData(0, true)]
+    [InlineData(1, false)]
+    [InlineData(1, true)]
+    public void LargeRiseDropsDisplayShareAndFallingResponseMatchesUnchangedHistory(int entry, bool rising)
+    {
+        const int display = 2 * N;
+        using var rig = new Rig(N, N, display, display, SceneNdc);
+        using GpuRetireQueue retired = GpuRetireQueue.Create(rig.Device);
+        rig.Renderer.SelectEntry((TemporalResolveEntry)entry, retired);
+        using IGpuTexture signal = Signal(rig.Device, rising ? (byte)0 : (byte)255);
+        float[] color = Grey((x, _) => 0.2f + 0.01f * (x % 3));
+        rig.Fill(color, color, Motion((_, _) => Vector2.Zero));
+        TemporalResolveUniforms cold = TemporalResolveMath.BuildUniforms(Still, Still, Vector2.Zero,
+            N, N, display, display, false);
+        TemporalResolveUniforms warm = TemporalResolveMath.BuildUniforms(Still, Still, Vector2.Zero,
+            N, N, display, display, true);
+        rig.BeginFrame(); rig.Resolve(cold, signal);
+        float[] fresh = rig.ReadColor();
+        rig.History.MarkValidAfterFrame(); rig.BeginFrame();
+        float[] state = new float[display * display * 2];
+        for (int i = 0; i < state.Length; i += 2) state[i] = 1;
+        rig.FillHistory(fresh, state, SceneLinear);
+        rig.Resolve(warm, signal);
+        float[] unchanged = rig.ReadColor();
+        Assert.NotEqual(fresh, unchanged);
+        byte[] next = new byte[N * N];
+        Array.Fill(next, rising ? (byte)255 : (byte)0);
+        rig.Device.UpdateTexture(signal, next, 0, 0, N, N);
+        rig.Resolve(warm, signal);
+        float[] actual = rig.ReadColor();
+        float[] expected = rising ? fresh : unchanged;
+        float maximum = 0;
+        for (int i = 0; i < expected.Length; i++) maximum = MathF.Max(maximum, MathF.Abs(expected[i] - actual[i]));
+        output.WriteLine($"DISPLAY|{entry}|{rising}|maximum {maximum:R}");
+        Assert.Equal(expected, actual);
+    }
+
+    [GpuTheory]
     [InlineData(0, 0)]
     [InlineData(0, 1)]
     [InlineData(0, 2)]
@@ -139,13 +233,18 @@ public sealed class TemporalVisibilityComparisonGpuTests(GameShadowGrainScene gr
         using var probe = new TemporalVisibilityProbe();
         using var render = new TemporalVisibilityFormatControl(probe.Device, Uniforms(true), SceneNdc);
         output.WriteLine($"{probe.Device.Backend} on {probe.Device.Capabilities.DeviceName}");
-        foreach (float value in new[] { 0.09f, 25.49f / 255, 25.5f / 255, 25.51f / 255, 0.099f, 0.1f, 0.101f, 0.11f, 0.5f, 0.75f })
+        foreach (float value in new[] { 0.09f, 25.49f / 255, 25.5f / 255, 25.51f / 255, 0.099f, 0.1f, 0.101f, 0.11f, 127.49f / 255, 0.5f, 127.51f / 255, 0.51f, 0.75f })
         {
             byte converted = probe.ReadR8Conversion(value);
             Assert.InRange(MathF.Abs(converted / 255f - value), 0, 0.5f / 255 + 1e-7f);
             var c = new VisibilityCase("format", value, 0);
             Array.Fill(c.Depth, 2); c.Depth[5] = 1;
-            Vector3 r8 = probe.Run(c, true), r32 = probe.Run(c);
+            Vector3 r8 = probe.Run(c, true);
+            float r8Scale = probe.HistoryScale;
+            Vector3 r32 = probe.Run(c);
+            float r32Scale = probe.HistoryScale;
+            Assert.InRange(MathF.Abs(r8Scale - (r8.X > 0.5f ? 0 : 1)), 0, 1e-7f);
+            Assert.InRange(MathF.Abs(r32Scale - (r32.X > 0.5f ? 0 : 1)), 0, 1e-7f);
             Assert.InRange(MathF.Abs(r8.X - r32.X), 0, 0.5f / 255 + 1e-6f);
             Assert.InRange(MathF.Abs(r8.X - converted / 255f), 0, 1e-7f);
             if (MathF.Abs(value - 0.1f) > 1f / 255) Assert.Equal(r32.Z, r8.Z);
@@ -157,10 +256,14 @@ public sealed class TemporalVisibilityComparisonGpuTests(GameShadowGrainScene gr
                 float difference = MathF.Abs(a.Colour[i] - b.Colour[i]);
                 mean += difference / a.Colour.Length; peak = MathF.Max(peak, difference);
             }
-            output.WriteLine($"input {value:R}, R8 byte {converted}, signed {r8.X:R}/{r32.X:R}, release {r8.Z}/{r32.Z}, colour mean {mean:R} max {peak:R}, lock {a.State[At(3, 3) * 2 + 1]}/{b.State[At(3, 3) * 2 + 1]}");
-            if (value == 0.1f)
-                Assert.True(peak > 0, "The boundary control must exercise clipping as well as stored lock release.");
-            if (MathF.Abs(value - 0.1f) > 1f / 255)
+            output.WriteLine($"input {value:R}, R8 byte {converted}, signed {r8.X:R}/{r32.X:R}, release {r8.Z}/{r32.Z}, scale {r8Scale:R}/{r32Scale:R}, colour mean {mean:R} max {peak:R}, lock {a.State[At(3, 3) * 2 + 1]}/{b.State[At(3, 3) * 2 + 1]}");
+            // Quantization may cross either strict threshold. A changed decision must remain observable.
+            if (r8.Z != r32.Z || (r8Scale < 0.5f) != (r32Scale < 0.5f))
+            {
+                Assert.True(peak > 0, "The boundary control must exercise the changed release or history response.");
+                Assert.NotEqual(a.State, b.State);
+            }
+            else
             {
                 Assert.Equal(a.Colour, b.Colour); Assert.Equal(a.State, b.State);
             }

@@ -4,6 +4,12 @@ namespace KhaozEngine.Render3D.Internal;
 internal static partial class ShaderSources
 {
     internal const string TemporalVisibilityGlsl = @"
+// Only a large rise drops history. Falling visibility retains accumulation and display reconstruction.
+float temporalVisibilityHistoryScale(float signedChange) {
+    return signedChange * VisibilityLargeChangeSign > VisibilityLargeChangeThreshold
+        ? VisibilityLargeChangeScale : 1.0;
+}
+
 // Current and history means have independent denominators. Reject other surfaces before interpolation,
 // retaining clamped offsets and bilinear corners with their ordinary footprint multiplicity.
 bool temporalVisibilityChange(vec2 uv, ivec2 centre, ivec2 last,

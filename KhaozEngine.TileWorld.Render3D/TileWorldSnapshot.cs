@@ -109,7 +109,7 @@ public static class TileWorldSnapshot
         return Render3DSnapshot.Capture(width, height,
             setup: scene =>
             {
-                view = Build(scene, doc, catalogs, resolver, viewOptions, regions, observer);
+                view = Build(scene, doc, catalogs, resolver, viewOptions, regions, observer, centre);
                 IsoCamera3D camera = scene.Camera;
                 camera.Azimuth = TopDownAzimuth;
                 camera.Elevation = MathF.PI / 2f - TopDownTiltRadians;
@@ -191,7 +191,7 @@ public static class TileWorldSnapshot
         return Render3DSnapshot.Capture(width, height,
             setup: scene =>
             {
-                view = Build(scene, doc, catalogs, resolver, viewOptions, regions, subject);
+                view = Build(scene, doc, catalogs, resolver, viewOptions, regions, subject, target);
                 scene.CameraOverride = new FlyCamera3D
                 {
                     Position = eye,
@@ -301,7 +301,7 @@ public static class TileWorldSnapshot
         ITileMeshResolver resolver,
         TileWorldViewOptions options,
         IReadOnlyList<RegionCoord> regions,
-        TileCoord observer)
+        TileCoord observer, Vector3 focus)
     {
         var view = new TileWorldView(new Scene3DTileWorldScene(scene), doc, catalogs, resolver, options)
         {
@@ -311,6 +311,7 @@ public static class TileWorldSnapshot
         // Settle everything now rather than over frames: a capture renders two, and a rebuild the per-flush budget
         // deferred would land after the pixels had been read back.
         view.Flush(int.MaxValue);
+        view.SettleInteriorCutForCapture(focus);
         return view;
     }
 

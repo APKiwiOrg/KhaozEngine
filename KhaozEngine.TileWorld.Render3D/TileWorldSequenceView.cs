@@ -70,6 +70,6 @@ internal sealed class TileWorldSequenceView
             (int)MathF.Floor(TileWorldSpace.TileX(target.X, _doc.TileSize)),
             (int)MathF.Floor(TileWorldSpace.TileZ(target.Z, _doc.TileSize)), 0);
         _view.Observer = _observer ?? subject;
-        _regions.Update(subject.Region);
+        _regions.Update(subject.Region, target);
     }
 }

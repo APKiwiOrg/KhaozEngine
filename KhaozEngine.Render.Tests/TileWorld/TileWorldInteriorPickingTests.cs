@@ -108,10 +108,10 @@ public sealed class TileWorldInteriorPickingTests
             };
             View = new TileWorldView(Scene, Doc, Catalogs, resolver,
                 options, null, _dispatcher);
-            View.InteriorMeshes = new InteriorTestMeshes();
             View.LoadRegion(default);
             View.SettleForCapture(default);
             InteriorTestWorker.Run(_dispatcher);
+            View.InteriorMeshes = new InteriorTestMeshes();
             if (complete) Complete();
         }
 

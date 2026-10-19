@@ -224,7 +224,7 @@ public sealed class TileWorldInteriorCutTests
     }
 
     [Fact]
-    public void NullReaderOrNoOptInNeverBuildsAndCaptureDoesNotCollectInline()
+    public void NullReaderOrNoOptInNeverBuilds()
     {
         using var rig = new Rig();
         rig.View.InteriorMeshes = null;
@@ -234,8 +234,6 @@ public sealed class TileWorldInteriorCutTests
         rig.Options.PropLayers = [Trees() with { CutInsideInteriors = false }];
         rig.Complete();
         Assert.Equal(0, rig.Builds);
-        rig.Options.PropLayers = [Trees()];
-        rig.View.Draw(Vector3.Zero);
         rig.View.SettleForCapture(default);
         Assert.Equal(0, rig.Builds);
         Assert.Empty(rig.Meshes.Threads);
@@ -301,12 +299,12 @@ public sealed class TileWorldInteriorCutTests
             Options = new TileWorldViewOptions { PropLayers = [Trees()], Log = Logs.Add };
             View = new TileWorldView(Scene, Doc, Catalogs, new GreyboxMeshResolver(), Options, null, Dispatcher,
                 key => { if (key.Kind == TileWorldBuildKind.InteriorCut) Builds++; });
-            View.InteriorMeshes = Meshes;
             if (profileManaged) View.LoadRegion(default, TileRegionResidencyState.Gameplay);
             else View.LoadRegion(default);
             // Settle unrelated ground, cover and prop jobs before observing the interior worker.
             View.SettleForCapture(default);
             InteriorTestWorker.Run(Dispatcher);
+            View.InteriorMeshes = Meshes;
         }
 
         public void Dirty() => View.MarkDirty(new TileRect(10, 10, 2, 2), 0);

@@ -33,6 +33,14 @@ public sealed class TileWorldViewOptions
     /// ordinary prop drawing.</summary>
     public IReadOnlyList<TilePropLayerDefinition> PropLayers { get; set; } = Array.Empty<TilePropLayerDefinition>();
 
+    /// <summary>Dedicated geometry reader used only by this view's serialized interior builds. Null disables
+    /// the field. Seeds <see cref="TileWorldView.InteriorMeshes"/> at construction, including snapshot captures.</summary>
+    public ITileMeshGeometry? InteriorMeshes { get; set; }
+
+    /// <summary>Initial roof rule, including snapshot captures. Runtime changes use
+    /// <see cref="TileWorldView.RoofMode"/>.</summary>
+    public RoofVisibility RoofMode { get; set; } = RoofVisibility.Interior;
+
     /// <summary>Live distance, quality and shadow policy for authored ground cover.</summary>
     public GroundCoverRenderOptions GroundCover { get; set; } = new();
 
@@ -185,6 +193,8 @@ public sealed partial class TileWorldView : IDisposable
         _doc = doc;
         _catalogs = catalogs;
         _options = options ?? new TileWorldViewOptions();
+        _interiorMeshes = _options.InteriorMeshes;
+        RoofMode = _options.RoofMode;
         _animatedFoliageStyles = new AnimatedFoliageStyleSnapshot(_options.AnimatedFoliageArchetypes,
             _options.AnimatedFoliageStyles, catalogs, _propMeshes);
         ArgumentNullException.ThrowIfNull(_options.PropLayers);

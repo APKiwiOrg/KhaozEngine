@@ -28,6 +28,7 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuResourceLayout _layout;   // UBO(vert) + texture(frag) + sampler(frag)
         readonly IGpuSampler _sampler;         // device built-in linear sampler (non-owning)
         readonly IGpuShaderSet _shaders;
+        readonly ModelVisibilityShaders _visibilityShaders = new();
         IGpuShaderSet? _motionShaders;   // TexturedBillboardMotionFrag, built only for a temporal model target
         IGpuPipeline[] _pipelines;             // [0] alpha, [1] additive; rebuilt by SetOutputs on MSAA change
         IGpuBuffer? _vb;
@@ -107,9 +108,11 @@ namespace KhaozEngine.Render3D.Rendering
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },
-                ShaderSet = MotionMath.IsTemporal(modelOutputs)
-                    ? _motionShaders ??= factory.CreateShadersFromSpirv(ShaderSources.BillboardVert, ShaderSources.TexturedBillboardMotionFrag)
-                    : _shaders,
+                ShaderSet = _visibilityShaders.Select(factory, modelOutputs, ShaderSources.BillboardVert,
+                    MotionMath.IsTemporal(modelOutputs) ? ShaderSources.TexturedBillboardMotionFrag : ShaderSources.TexturedBillboardFrag,
+                    MotionMath.IsTemporal(modelOutputs)
+                        ? _motionShaders ??= factory.CreateShadersFromSpirv(ShaderSources.BillboardVert, ShaderSources.TexturedBillboardMotionFrag)
+                        : _shaders, preserve: true),
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout },
                 Outputs = modelOutputs,
             });
@@ -161,7 +164,7 @@ namespace KhaozEngine.Render3D.Rendering
         public void Dispose()
         {
             foreach (var p in _pipelines) p.Dispose();
-            _shaders.Dispose();
+            _shaders.Dispose(); _visibilityShaders.Dispose();
             _motionShaders?.Dispose();
             _layout.Dispose();
             _ubo.Dispose();

@@ -43,6 +43,7 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuResourceLayout _layout;   // UBO (vertex + fragment)
         readonly IGpuResourceSet _set;
         readonly IGpuShaderSet _shaders;
+        readonly ModelVisibilityShaders _visibilityShaders = new();
         IGpuShaderSet? _motionShaders;   // BeamMotionFrag, built only for a temporal model target
         IGpuPipeline _pipeline;                // rebuilt by SetOutputs when the MRT sample count (MSAA) changes
         IGpuBuffer? _vb;
@@ -104,9 +105,11 @@ namespace KhaozEngine.Render3D.Rendering
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },
-                ShaderSet = MotionMath.IsTemporal(modelOutputs)
-                    ? _motionShaders ??= factory.CreateShadersFromSpirv(ShaderSources.BeamVert, ShaderSources.BeamMotionFrag)
-                    : _shaders,
+                ShaderSet = _visibilityShaders.Select(factory, modelOutputs, ShaderSources.BeamVert,
+                    MotionMath.IsTemporal(modelOutputs) ? ShaderSources.BeamMotionFrag : ShaderSources.BeamFrag,
+                    MotionMath.IsTemporal(modelOutputs)
+                        ? _motionShaders ??= factory.CreateShadersFromSpirv(ShaderSources.BeamVert, ShaderSources.BeamMotionFrag)
+                        : _shaders, preserve: true),
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout },
                 Outputs = modelOutputs,
             });
@@ -150,7 +153,7 @@ namespace KhaozEngine.Render3D.Rendering
         public void Dispose()
         {
             _pipeline.Dispose();
-            _shaders.Dispose();
+            _shaders.Dispose(); _visibilityShaders.Dispose();
             _motionShaders?.Dispose();
             _set.Dispose();
             _layout.Dispose();

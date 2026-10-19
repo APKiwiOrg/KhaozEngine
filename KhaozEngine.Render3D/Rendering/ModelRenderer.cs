@@ -152,6 +152,7 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         readonly IGpuDevice _gd;
+        readonly ModelVisibilityShaders _visibilityShaders = new();
         readonly AtmosphereBindings _atmosphere;
         readonly bool _ownsAtmosphere;
         readonly IGpuBuffer _ubo;
@@ -412,7 +413,7 @@ namespace KhaozEngine.Render3D.Rendering
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },
-                ShaderSet = _shaders,
+                ShaderSet = _visibilityShaders.Select(factory, modelOutputs, ShaderSources.ModelVert, ShaderSources.ModelFrag, _shaders),
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout },
                 Outputs = modelOutputs,
             });
@@ -429,7 +430,7 @@ namespace KhaozEngine.Render3D.Rendering
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },
-                ShaderSet = _dissolveShaders,
+                ShaderSet = _visibilityShaders.Select(factory, modelOutputs, ShaderSources.ModelVert, ShaderSources.ModelDissolveFrag, _dissolveShaders),
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout },
                 Outputs = modelOutputs,
             });
@@ -461,7 +462,7 @@ namespace KhaozEngine.Render3D.Rendering
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _skinnedMainLayout, _skinnedFragLayout, _bonePalette.Layout },
-                ShaderSet = _skinnedShaders,
+                ShaderSet = _visibilityShaders.Select(factory, modelOutputs, ShaderSources.SkinnedModelVert, ShaderSources.SkinnedModelFrag, _skinnedShaders),
                 VertexLayouts = new List<GpuVertexLayoutDescription> { skinnedVertexLayout },
                 Outputs = modelOutputs,
             });
@@ -474,7 +475,7 @@ namespace KhaozEngine.Render3D.Rendering
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _skinnedMainLayout, _skinnedFragLayout, _bonePalette.Layout },
-                ShaderSet = _skinnedDissolveShaders,
+                ShaderSet = _visibilityShaders.Select(factory, modelOutputs, ShaderSources.SkinnedModelVert, ShaderSources.SkinnedModelDissolveFrag, _skinnedDissolveShaders),
                 VertexLayouts = new List<GpuVertexLayoutDescription> { skinnedVertexLayout },
                 Outputs = modelOutputs,
             });
@@ -503,6 +504,7 @@ namespace KhaozEngine.Render3D.Rendering
             cl.ClearColorTarget(2, bg);
             // Background carries the sentinel, which marks no opaque geometry for every motion reader (MotionMath).
             if (res.MotionAllocated) cl.ClearColorTarget(MotionMath.Attachment, MotionMath.SentinelColor);
+            if (res.VisibilityAllocated) cl.ClearColorTarget((uint)ShadowVisibilityTargets.Attachment(res.MotionAllocated), Color.White);
             cl.ClearDepthStencil(1f);
         }
 
@@ -639,7 +641,7 @@ namespace KhaozEngine.Render3D.Rendering
             _white.Dispose(); _flatNormal.Dispose(); _defaultRough.Dispose(); // _sampler is the device built-in (non-owning); do not dispose it.
             _pointShadowDefault.Dispose();   // the point atlas itself is the scene's, never this renderer's
             _pointShadowTransientDefault.Dispose();
-            _shaders.Dispose();
+            _shaders.Dispose(); _visibilityShaders.Dispose();
             _dissolvePipeline.Dispose(); _dissolveShaders.Dispose();
             DisposeSplatResources();
             DisposeTileGroundResources();

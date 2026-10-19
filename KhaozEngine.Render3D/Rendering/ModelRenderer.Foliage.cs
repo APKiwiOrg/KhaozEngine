@@ -147,7 +147,8 @@ internal sealed partial class ModelRenderer
             ResourceLayouts = motion is null
                 ? new[] { _layout, _foliageLayout }
                 : new[] { _layout, _foliageLayout, motion.FrameLayout },
-            ShaderSet = shaders,
+            ShaderSet = _visibilityShaders.Select(factory, _foliageOutputs, motion is null ? ShaderSources.FoliageVert : ShaderSources.FoliageMotionVert,
+                motion is null ? ShaderSources.ModelFrag : ShaderSources.ModelMotionFrag, shaders),
             VertexLayouts = new(FoliageVertexLayouts.Create()),
             Outputs = _foliageOutputs,
         });

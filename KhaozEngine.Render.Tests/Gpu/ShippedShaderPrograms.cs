@@ -25,7 +25,7 @@ namespace KhaozEngine.Tests.Gpu
     /// a program from this list.
     ///
     /// <para>
-    /// DEDUPLICATED BY SOURCE PAIR, not by call site. The catalog contains 86 graphics pairs and eight compute
+    /// DEDUPLICATED BY SOURCE PAIR, not by call site. The catalog contains 111 graphics pairs and eight compute
     /// kernels. The <c>Line</c> pair is created three times (<c>DepthLineRenderer</c>, and <c>LineRenderer</c> plus
     /// <c>FillRenderer</c> through <c>OverlayRenderer</c>), and identical sources cross-compile to identical
     /// HLSL, so three rows would be three copies of one fact. Where a pair has several call sites the name is its
@@ -44,13 +44,13 @@ namespace KhaozEngine.Tests.Gpu
     /// 64, 128 and 256, and all four are listed. The default is 128.
     /// </para>
     /// </summary>
-    public static class ShippedShaderPrograms
+    public static partial class ShippedShaderPrograms
     {
         /// <summary>The cascade resolutions <c>OceanFftProducer</c> can compile a kernel for.</summary>
         public static readonly int[] OceanResolutions = { 32, 64, 128, 256 };
 
         /// <summary>Every distinct shipped vertex and fragment pair, 86 of them.</summary>
-        public static IEnumerable<ShippedGraphicsProgram> GraphicsPrograms()
+        static IEnumerable<ShippedGraphicsProgram> BaseGraphicsPrograms()
         {
             // Render2D.
             yield return new("Sprite2D", SpriteBatch.VertSrc, SpriteBatch.FragSrc);

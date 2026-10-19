@@ -25,6 +25,12 @@ namespace KhaozEngine.Render3D
         /// standalone queue is never recorded.</summary>
         public void Add(in RigidInstanceDraw draw) => _items.Add(new Instance(in draw));
 
+        internal void Add(in RigidInstanceDraw draw, bool relevantCut) =>
+            _items.Add(new Instance(in draw, relevantCut));
+
+        internal void SetInteriorCut(int index, bool relevantCut) =>
+            _items[index] = _items[index] with { CutInsideInteriors = relevantCut };
+
         /// <summary>Queue one instance with rigid-dissolve params (issue #253). Mirrors the
         /// <see cref="SkinnedSceneInstances"/> dissolve overload: <paramref name="dissolveThreshold"/> 0 = fully
         /// drawn (the byte-identical old path), &gt; 0 folds the noise discard + emissive edge into ModelFrag, with
@@ -110,13 +116,16 @@ namespace KhaozEngine.Render3D
             /// descriptor's. Only <see cref="Scene3D.Draw(in RigidInstanceDraw)"/> records it into motion history.
             /// </summary>
             public MotionKey Motion { get; }
+            /// <summary>Whether the rigid draw cuts pixels inside the scene's interior spans.</summary>
+            public bool CutInsideInteriors { get; internal init; }
+            internal bool InteriorCutRequested { get; }
             public Instance(MeshHandle mesh, Matrix4x4 world, Color tint) : this(mesh, world, tint, Material.None) { }
             public Instance(MeshHandle mesh, Matrix4x4 world, Color tint, Material material,
                 float dissolveThreshold = 0f, float dissolveEdgeWidth = 0f, Vector4 dissolveEdge = default,
                 bool castsShadows = true, bool invertShadowDissolve = false, float dissolveComplement = 0f,
                 bool shadowOnly = false)
                 : this(mesh, world, tint, material, dissolveThreshold, dissolveEdgeWidth, dissolveEdge, castsShadows,
-                    invertShadowDissolve, dissolveComplement, shadowOnly, MotionKey.None)
+                    invertShadowDissolve, dissolveComplement, shadowOnly, MotionKey.None, false)
             { }
 
             /// <summary>One queued draw from its descriptor: every knob of <paramref name="draw"/>, its motion key
@@ -124,12 +133,17 @@ namespace KhaozEngine.Render3D
             internal Instance(in RigidInstanceDraw draw)
                 : this(draw.Mesh, draw.World, draw.Tint, draw.Material, draw.Dissolve, draw.DissolveEdgeWidth,
                     draw.DissolveEdgeColor, draw.CastsShadows, draw.InvertShadowDissolve, draw.DissolveComplement,
-                    draw.ShadowOnly, draw.Motion)
+                    draw.ShadowOnly, draw.Motion, draw.CutInsideInteriors)
             { }
+
+            internal Instance(in RigidInstanceDraw draw, bool relevantCut) : this(in draw)
+            {
+                CutInsideInteriors = relevantCut;
+            }
 
             Instance(MeshHandle mesh, Matrix4x4 world, Color tint, Material material, float dissolveThreshold,
                 float dissolveEdgeWidth, Vector4 dissolveEdge, bool castsShadows, bool invertShadowDissolve,
-                float dissolveComplement, bool shadowOnly, MotionKey motion)
+                float dissolveComplement, bool shadowOnly, MotionKey motion, bool cutInsideInteriors)
             {
                 // Shadow-only says "colour pass no, depth pass yes" and the opt-out says "depth pass no", so the
                 // pair asks for an instance that is drawn in neither: a queue entry that costs a slot and produces
@@ -143,6 +157,8 @@ namespace KhaozEngine.Render3D
                 DissolveThreshold = dissolveThreshold; DissolveEdgeWidth = dissolveEdgeWidth; DissolveEdge = dissolveEdge;
                 CastsShadows = castsShadows; InvertShadowDissolve = invertShadowDissolve;
                 DissolveComplement = dissolveComplement; ShadowOnly = shadowOnly; Motion = motion;
+                CutInsideInteriors = cutInsideInteriors;
+                InteriorCutRequested = cutInsideInteriors;
             }
 
             /// <summary>True when this draw carries a dissolve (routes through the gated ModelFrag term).</summary>

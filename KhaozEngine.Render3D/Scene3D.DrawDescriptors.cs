@@ -24,7 +24,9 @@ namespace KhaozEngine.Render3D
         /// </summary>
         public void Draw(in RigidInstanceDraw draw)
         {
-            _instances.Add(in draw);
+            if (draw.CutInsideInteriors)
+                _instances.Add(in draw, RelevantInteriorCut(draw.Mesh, draw.World));
+            else _instances.Add(in draw);
             RecordRigidMotion(in draw);
         }
 

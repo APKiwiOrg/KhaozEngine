@@ -82,7 +82,7 @@ namespace KhaozEngine.Render3D
         /// capture measures the re-fit cadence against the threshold (issue #410).</summary>
         public bool LightMatrixChanged { get; }
 
-        /// <summary>Whether the rigid caster signature changed since the last rendered pass.</summary>
+        /// <summary>Whether the rigid caster signature or interior field changed since the last rendered pass.</summary>
         public bool CasterDataChanged { get; }
 
         /// <summary>How many skinned casters were queued for the shadow pass.</summary>

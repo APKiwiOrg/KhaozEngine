@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D.Internal;
@@ -10,7 +9,7 @@ namespace KhaozEngine.Render3D.Rendering;
 
 internal sealed partial class TargetOutlineRenderer : IDisposable
 {
-    const int DrawPayloadBytes = 160;
+    const int DrawPayloadBytes = 192;
     const int DrawSlotBytes = 256;
 
     readonly IGpuDevice _gd;
@@ -57,9 +56,9 @@ internal sealed partial class TargetOutlineRenderer : IDisposable
         _targetOutputs = targetOutputs;
         var f = gd.Factory;
         _fullShaders = f.CreateShadersFromSpirv(ShaderSources.TargetOutlineMaskVert,
-            ShaderSources.TargetOutlineFullMaskFrag);
+            ShaderSources.TargetOutlineRigidFullMaskFrag);
         _visibleShaders = f.CreateShadersFromSpirv(ShaderSources.TargetOutlineMaskVert,
-            ShaderSources.TargetOutlineVisibleMaskFrag);
+            ShaderSources.TargetOutlineRigidVisibleMaskFrag);
         _skinnedFullShaders = f.CreateShadersFromSpirv(ShaderSources.TargetOutlineSkinnedMaskVert,
             ShaderSources.TargetOutlineFullMaskFrag);
         _skinnedVisibleShaders = f.CreateShadersFromSpirv(ShaderSources.TargetOutlineSkinnedMaskVert,
@@ -72,6 +71,10 @@ internal sealed partial class TargetOutlineRenderer : IDisposable
         _materialLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
             new GpuResourceLayoutElement("Albedo", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
             new GpuResourceLayoutElement("Samp", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
+        _interiorCutLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
+            new GpuResourceLayoutElement("InteriorCut", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
+            new GpuResourceLayoutElement("Samp", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
+        _interiorCutBinding = new InteriorCutBinding(gd, _interiorCutLayout);
         _compositeLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
             new GpuResourceLayoutElement("FullCoverage", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
             new GpuResourceLayoutElement("VisibleCoverage", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
@@ -130,9 +133,9 @@ internal sealed partial class TargetOutlineRenderer : IDisposable
 
     public void EnqueueRigid(IGpuBuffer vertexBuffer, IGpuBuffer indexBuffer, int indexCount,
         GpuIndexFormat indexFormat, IGpuResourceSet? materialSet, int drawIndex, Matrix4x4 world,
-        float alphaCutoff, float dissolve, bool dissolveComplement, Vector3 renderOrigin)
+        float alphaCutoff, float dissolve, bool dissolveComplement, Vector3 renderOrigin, bool cutInsideInteriors = false)
     {
-        WriteDrawPayload(drawIndex, world, alphaCutoff, dissolve, dissolveComplement, renderOrigin);
+        WriteDrawPayload(drawIndex, world, alphaCutoff, dissolve, dissolveComplement, renderOrigin, cutInsideInteriors);
         _queue.Add(new QueuedDraw(QueuedGeometry.Rigid, vertexBuffer, indexBuffer, indexCount, indexFormat,
             materialSet ?? _defaultMaterialSet, drawIndex, -1, 0, 0, 0));
     }
@@ -203,6 +206,7 @@ internal sealed partial class TargetOutlineRenderer : IDisposable
             if (draw.Geometry == QueuedGeometry.GpuSkinned)
                 cl.SetGraphicsResourceSet(2, _skinning.PaletteSet,
                     (uint)draw.PaletteSlot * TargetOutlineSkinningStore.PaletteSlotBytes);
+            else cl.SetGraphicsResourceSet(2, _interiorCutBinding.Set!);
             cl.SetVertexBuffer(0, draw.VertexBuffer ?? throw new InvalidOperationException(
                 "outline draw has no prepared vertex buffer."));
             cl.SetIndexBuffer(draw.IndexBuffer, draw.IndexFormat);
@@ -308,7 +312,7 @@ internal sealed partial class TargetOutlineRenderer : IDisposable
             Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid,
                 GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
             Topology = GpuPrimitiveTopology.TriangleList,
-            ResourceLayouts = new[] { _drawLayout, _materialLayout },
+            ResourceLayouts = new[] { _drawLayout, _materialLayout, _interiorCutLayout },
             ShaderSet = shaders,
             VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout },
             Outputs = outputs,
@@ -364,15 +368,6 @@ internal sealed partial class TargetOutlineRenderer : IDisposable
         _boundSceneDepth = null;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
-    struct DrawUbo
-    {
-        public Matrix4x4 ViewProj;
-        public Matrix4x4 World;
-        public Vector4 Params;
-        public Vector4 RenderOrigin;
-    }
-
     struct CompositeUbo
     {
         public Vector4 OutlineColor;
@@ -413,6 +408,8 @@ internal sealed partial class TargetOutlineRenderer : IDisposable
         foreach (IGpuBuffer buffer in _compositeUbos) buffer.Dispose();
         _drawLayout.Dispose();
         _materialLayout.Dispose();
+        _interiorCutBinding.Dispose();
+        _interiorCutLayout.Dispose();
         _compositeLayout.Dispose();
         _fullShaders.Dispose();
         _visibleShaders.Dispose();

@@ -1,5 +1,10 @@
 # Skinned Target Outlines Implementation Plan
 
+Current layout note after interior cut. Outline draw payloads now occupy 192 bytes in the unchanged
+256-byte slots, with interior vec4 tails at 160 and 176. Rigid `Params.w` carries the cut flag, while
+skinned payloads zero the flag and tails and retain their uncut shaders and palette layout. The quoted
+160-byte payload below is historical. See the Render3D README for the current layout.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Let a posed `SkinnedMeshHandle` and its rigid carried parts form one existing pixel-width `MeshOutlineGroup`, with independent pose ownership, CPU and GPU skinning parity, dissolve and alpha cutout coverage, tile-world forwarding, and backend-specific pixel evidence.

@@ -104,15 +104,15 @@ namespace KhaozEngine.Tests.Gpu
             yield return new("SkinnedShadowDepth",
                 ShaderSources.SkinnedShadowDepthVert, ShaderSources.ShadowDepthFrag);
             // The alpha-cutout pair (issue #15), the only depth fragments that sample a texture, and the
-            // dissolve-aware skinned vertex (issue #387), which reuses the rigid dissolve fragment unchanged.
+            // dissolve-aware skinned vertex (issue #387), which keeps its original uncut dissolve fragment.
             yield return new("ShadowDepthCutout",
                 ShaderSources.ShadowDepthCutoutVert, ShaderSources.ShadowDepthCutoutFrag);
             yield return new("ShadowDepthCutoutInverted",
                 ShaderSources.ShadowDepthCutoutVert, ShaderSources.ShadowDepthCutoutInvertedFrag);
             yield return new("SkinnedShadowDepthDissolve",
-                ShaderSources.SkinnedShadowDepthDissolveVert, ShaderSources.ShadowDepthDissolveFrag);
+                ShaderSources.SkinnedShadowDepthDissolveVert, ShaderSources.SkinnedShadowDepthDissolveFrag);
             yield return new("SkinnedShadowDepthDissolveInverted",
-                ShaderSources.SkinnedShadowDepthDissolveVert, ShaderSources.ShadowDepthDissolveInvertedFrag);
+                ShaderSources.SkinnedShadowDepthDissolveVert, ShaderSources.SkinnedShadowDepthDissolveInvertedFrag);
 
             // Render3D point-light shadow atlas, the same three caster variants one geometry over plus the
             // per-row clear quad. The casters carry the same input sink the cascade ones do, for the same
@@ -127,9 +127,9 @@ namespace KhaozEngine.Tests.Gpu
             yield return new("PointShadowSkinned",
                 ShaderSources.PointShadowSkinnedVert, ShaderSources.PointShadowRigidFrag);
             yield return new("PointShadowSkinnedDissolve",
-                ShaderSources.PointShadowSkinnedDissolveVert, ShaderSources.PointShadowRigidDissolveFrag);
+                ShaderSources.PointShadowSkinnedDissolveVert, ShaderSources.PointShadowSkinnedDissolveFrag);
             yield return new("PointShadowSkinnedDissolveInverted",
-                ShaderSources.PointShadowSkinnedDissolveVert, ShaderSources.PointShadowRigidDissolveInvertedFrag);
+                ShaderSources.PointShadowSkinnedDissolveVert, ShaderSources.PointShadowSkinnedDissolveInvertedFrag);
             yield return new("PointShadowClear",
                 ShaderSources.PointShadowClearVert, ShaderSources.PointShadowClearFrag);
 
@@ -146,11 +146,11 @@ namespace KhaozEngine.Tests.Gpu
             yield return new("GroundDecal", ShaderSources.DecalVert, ShaderSources.DecalFrag);
             yield return new("OverlayMesh", ShaderSources.OverlayUnlitVert, ShaderSources.OverlayUnlitFrag);
 
-            // Render3D target outlines. Rigid and skinned geometry share both mask fragments and one composite.
+            // Render3D target outlines. Rigid masks cut interiors, skinned masks stay uncut, and both share a composite.
             yield return new("TargetOutlineRigidFull",
-                ShaderSources.TargetOutlineMaskVert, ShaderSources.TargetOutlineFullMaskFrag);
+                ShaderSources.TargetOutlineMaskVert, ShaderSources.TargetOutlineRigidFullMaskFrag);
             yield return new("TargetOutlineRigidVisible",
-                ShaderSources.TargetOutlineMaskVert, ShaderSources.TargetOutlineVisibleMaskFrag);
+                ShaderSources.TargetOutlineMaskVert, ShaderSources.TargetOutlineRigidVisibleMaskFrag);
             yield return new("TargetOutlineComposite",
                 ShaderSources.FullscreenVert, ShaderSources.TargetOutlineCompositeFrag);
             yield return new("TargetOutlineSkinnedFull",

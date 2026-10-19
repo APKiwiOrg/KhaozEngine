@@ -55,12 +55,12 @@ public sealed partial class TileWorldPropClusters
         _outlinePlacement.Value = snapshot.Placements[placementIndex];
         PropRenderer.EmitParts(_outlinePlacement, layer.PartMeshes, layer.LodPartMeshes, layer.LodDistance,
             focus, layer.DrawRadius, layer.FadeBandWidth, dissolveFloor,
-            new OutlineSink(_scene, group), SubmitOutlinePart, lodCrossfadeWidth: layer.LodCrossfadeWidth);
+            new OutlineSink(_scene, group, layer.CutsInsideInteriors), SubmitOutlinePart, lodCrossfadeWidth: layer.LodCrossfadeWidth);
     }
 
     static void SubmitOutlinePart(OutlineSink sink, MeshHandle mesh, Matrix4x4 world, float dissolve,
         float complement) => sink.Scene.DrawMeshOutlineDissolved(sink.Group, mesh, world, dissolve,
-            complement > 0.5f);
+            complement > 0.5f, sink.CutInsideInteriors);
 
     void DrawMergedOutline(MeshOutlineGroup group, PropClusterKey key, long objectId,
         in PropClusterDrawState state, SortedDictionary<long, TilePropLayerSnapshot> generations)
@@ -84,7 +84,7 @@ public sealed partial class TileWorldPropClusters
 
         if (_outlineHlodMesh is { } handle)
             _scene.DrawMeshOutlineDissolved(group, handle, Matrix4x4.Identity, state.MergedDissolve,
-                state.MergedComplement);
+                state.MergedComplement, false);
     }
 
     void RememberOutlineSnapshot(PropClusterKey key, long generation, TilePropLayerSnapshot snapshot)
@@ -169,7 +169,7 @@ public sealed partial class TileWorldPropClusters
         return last;
     }
 
-    readonly record struct OutlineSink(ITileWorldScene Scene, MeshOutlineGroup Group);
+    readonly record struct OutlineSink(ITileWorldScene Scene, MeshOutlineGroup Group, bool CutInsideInteriors);
 
     sealed class SinglePlacementList : IReadOnlyList<PropPlacement>
     {

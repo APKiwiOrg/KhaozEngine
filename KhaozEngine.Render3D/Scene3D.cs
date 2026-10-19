@@ -745,7 +745,7 @@ namespace KhaozEngine.Render3D
             _retired.BeginFrame();   // frees mid-life mesh buffers whose retirement fence has signaled (no stall)
             LatchRenderOrigin();
             BeginFrameView();   // one frame index per Begin (Scene3D.FrameView.cs)
-            _instances.Begin();
+            BeginRigidInstances();
             BeginFoliageFrame();
             _skinnedInstances.Begin();
             _boneMatrices.Clear();
@@ -1438,7 +1438,7 @@ namespace KhaozEngine.Render3D
             // run per unique mesh. Reuses member buffers (cleared, not realloc) to stay per-frame alloc-free. Done
             // BEFORE the model pass so the (optional) shadow depth pass can reuse the same uploaded instance buffer.
             GroupInstances(_instances.Items, _instanceData, _runs, _meshRunIndex, _instanceCastKinds, CullOptedOutInstances(camFrustum),
-                _groupWriteCursors, _instanceShadowOnly, _res.MotionAllocated ? _instanceMotionKeys : null);
+                _groupWriteCursors, _instanceShadowOnly, _res.MotionAllocated ? _instanceMotionKeys : null, _interiorCutPartition);
             // Fold each mesh's alpha-cutout threshold into its instances' SpecParams.z (the model fragment discards
             // texels below it, so MASK foliage renders as its silhouette). A mesh with cutoff 0 (OPAQUE, the default)
             // is untouched, so the instance data - and the render - stays byte-identical to the pre-cutout path.
@@ -1976,7 +1976,6 @@ namespace KhaozEngine.Render3D
             _gd.WaitForIdle();
             _retired.Dispose();    // flushes the retired tail (it would outlive the scene) and frees the fence barrier
             DisposeFoliage();
-            _model.Dispose();
             _post.Dispose();
             _lines.Dispose();
             _depthLines.Dispose();
@@ -2020,6 +2019,7 @@ namespace KhaozEngine.Render3D
             foreach (var t in _textures) t?.Dispose();
             _textures.Clear();
             DisposeSplatMaterials();
+            DisposeModelWithInteriorCutBorrowers();
             DisposeMotionVectorsView();
             DisposeTileGroundAndPointShadowResources();
             DisposeTemporalResolve();

@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 21.5.3
+## 21.6.1
 
 2026-10-19
 
@@ -15,6 +15,19 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   controller steps fall 5.66 percent and 8.25 percent. Complete bake bytes and protection rules are unchanged.
 - Serial callers can assert stable providers with `NavBakeExecution.UseStableContactHoldReuse`. Its default
   false preserves historical Hold callbacks. Parallel contact builds already require stable providers.
+## 21.6.0
+
+2026-10-19
+
+- Static interior cuts hide opted-in individual rigid props inside building outlines and below their roofs.
+  Only props whose drawn bounds can reach an interior take the cut path.
+  The shared height field cuts colour, temporal motion, cascaded and point shadows, object and walk-surface
+  picks, camera probes, target outlines and silhouettes. TileWorld builds the field off-thread and publishes
+  it with picks on the view thread.
+  Ordinary props, roofs, merged HLOD geometry, grass, ground cover, animated foliage and skinned meshes stay
+  uncut by default or by their excluded draw paths. MapDoc and world validation integration remain follow-ups.
+  On hosted T4 runners a typical village with 10,800 opted-in instances costs 0.08 to 0.20 ms per frame, almost
+  all of it CPU, with Direct3D 11 the highest (#1502).
 
 ## 21.5.2
 

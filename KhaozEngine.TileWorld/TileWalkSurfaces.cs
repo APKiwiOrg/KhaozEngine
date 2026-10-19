@@ -107,11 +107,14 @@ public static class TileWalkSurfaces
     /// <param name="maxDistance">Farthest accepted hit in world metres, inclusive.</param>
     /// <param name="include">Consulted once per candidate object that carries a surface near the ray, before its
     /// surfaces are tested. Null tests every object. A view uses it to limit the pick to what it draws.</param>
+    /// <param name="acceptPoint">Consulted for each covered surface point before it competes for the nearest
+    /// hit. False rejects only that point, so another surface on the same object can still win.</param>
     /// <returns>The hit, as the same <see cref="TileHit"/> <see cref="TileRaycast"/> answers: the tile is the floor
     /// of the hit point in tile coordinates, and the distance is in world metres.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="doc"/> or <paramref name="catalogs"/> is null.</exception>
     public static TileHit? Raycast(TileWorldDocument doc, TileWorldCatalogs catalogs, int plane, Vector3 origin,
-                                   Vector3 direction, float maxDistance, Func<TileObject, bool>? include = null)
+                                   Vector3 direction, float maxDistance, Func<TileObject, bool>? include = null,
+                                   Func<TileObject, Vector3, bool>? acceptPoint = null)
     {
         ArgumentNullException.ThrowIfNull(doc);
         ArgumentNullException.ThrowIfNull(catalogs);
@@ -150,10 +153,12 @@ public static class TileWalkSurfaces
                 {
                     if (surfaces[s] is not { } surface) continue;
                     float distance = (anchorY + surface.Height - origin.Y) / ray.Y;
-                    if (!(distance >= 0f) || distance > maxDistance || !(distance < bestDistance)) continue;
+                    if (!(distance >= 0f) || distance > maxDistance) continue;
                     Vector3 point = origin + ray * distance;
                     ToLocal(point.X - anchorX, point.Z - anchorZ, cos, sin, out float localX, out float localZ);
                     if (!Covers(surface, localX, localZ, halfX, halfZ)) continue;
+                    if (acceptPoint is not null && !acceptPoint(o, point)) continue;
+                    if (!(distance < bestDistance)) continue;
                     bestDistance = distance;
                     bestPoint = point;
                 }

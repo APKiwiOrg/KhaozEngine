@@ -141,7 +141,7 @@ public sealed partial class TileWorldView : IDisposable
     // The mesher settings as they stood at construction, which every ground build reads. See
     // TileWorldViewOptions.Mesher for why a copy rather than the caller's object.
     readonly TileGroundMesherOptions _mesher;
-    readonly TileWorldPropClusters _propClusters;
+    TileWorldPropClusters _propClusters;
     readonly Dictionary<RegionCoord, RegionHandles> _loaded = new();
     // The rebuild queue is a pair on purpose: the set is the dedup (a stroke marks the same region-plane a
     // hundred times) and the list is the ORDER, which matters once a flush is budgeted, because the oldest mark
@@ -194,6 +194,13 @@ public sealed partial class TileWorldView : IDisposable
         _terrainPickFilter = IsRenderedTerrain;
         _walkSurfacePickFilter = IsGameplayObject;
         _onCpuBuild = onCpuBuild;
+        _propLayerResolver = resolver;
+        _propLayerQueueOptions = buildQueueOptions;
+        _propLayerDispatcher = dispatcher;
+        RememberInteriorLayers(validatedPropLayers);
+        _interiorBuilds = new TileWorldBuildQueue<TileInteriorBuildInput, TileInteriorBuildOutput>(
+            BuildInteriorCpu, ApplyInteriorBuild,
+            (buildQueueOptions ?? new TileWorldBuildQueueOptions()) with { MaxConcurrentBuilds = 1 }, dispatcher);
         _profileBuilds = new TileWorldBuildQueue<TileProfileBuildInput, TileProfileBuildOutput>(
             BuildProfileCpu, ApplyProfileBuild, buildQueueOptions, dispatcher);
 
@@ -230,6 +237,7 @@ public sealed partial class TileWorldView : IDisposable
         catch
         {
             _profileBuilds.Dispose();
+            DisposeInteriorCut();
             UnloadPropMeshes();
             // The material is uploaded before the archetypes, so it is the one thing already on the device when
             // the ninth archetype of twelve throws.
@@ -371,6 +379,7 @@ public sealed partial class TileWorldView : IDisposable
     internal void LoadRegion(RegionCoord region, TileRegionResidencyState residency)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        _interiorInputsDirty = true;
         if (residency == TileRegionResidencyState.Unloaded)
         {
             UnloadRegion(region);
@@ -425,6 +434,7 @@ public sealed partial class TileWorldView : IDisposable
     public void UnloadRegion(RegionCoord region)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        _interiorInputsDirty = true;
         for (int plane = 0; plane < _planes; plane++)
         {
             if (_dirty.Remove((region, plane))) _dirtyOrder.Remove((region, plane));
@@ -487,7 +497,9 @@ public sealed partial class TileWorldView : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ValidateAnimatedFoliageStyles();
+        RefreshInteriorLayers();
         Flush();
+        PumpInteriorCut(focus);
         PumpProfileBuilds(focus);
         _propClusters.Pump(focus);
 
@@ -567,8 +579,9 @@ public sealed partial class TileWorldView : IDisposable
         if (dx * dx + dz * dz > _options.PropDrawRadius * _options.PropDrawRadius) return;
         Matrix4x4 world = Matrix4x4.CreateRotationY(TileObjectProps.YawRadians(archetype, o.Rotation))
             * Matrix4x4.CreateTranslation(at);
+        bool cutInsideInteriors = CutArchetypeIds.Contains(archetypeId);
         for (int i = 0; i < parts.Count; i++)
-            _scene.DrawMeshSilhouette(parts[i], world, _silhouetteColor, _silhouetteWidth);
+            _scene.DrawMeshSilhouette(parts[i], world, _silhouetteColor, _silhouetteWidth, cutInsideInteriors);
     }
 
     /// <summary>The ground materials every region-plane mesh of this view is drawn with, which is also the slot
@@ -588,6 +601,7 @@ public sealed partial class TileWorldView : IDisposable
         _dirty.Clear();
         _dirtyOrder.Clear();
 
+        DisposeInteriorCut();
         _profileBuilds.Dispose();
 
         // The clusters hold the archetype handles and may still have builds in flight, so they drain before the
@@ -623,6 +637,7 @@ public sealed partial class TileWorldView : IDisposable
     // conservative there. Observer moves and the indoor flag under a stationary observer have their own gates.
     void MarkInteriorDirty(TileRect worldRect, int plane)
     {
+        _interiorInputsDirty = true;
         if (_interiorStale || plane != _interior.Plane) return;
         if (_interior.Truncated || _interior.Bounds.Expand(1).Intersects(worldRect)) _interiorStale = true;
     }

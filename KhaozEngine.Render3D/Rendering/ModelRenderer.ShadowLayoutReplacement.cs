@@ -44,17 +44,17 @@ internal sealed partial class ModelRenderer
     }
 
     // Swap every rebuilt set in, re-key the rebuild descriptions onto the new sets, and free the old ones. Shared
-    // with BindPointShadowAtlas (ModelRenderer.PointShadowUniforms.cs), because a set carrying the cascade atlas carries
-    // the point atlas beside it and both swaps are the same transaction shape.
+    // by the atlas, point-light buffer and interior texture replacements, which preserve the other bindings.
     void CommitShadowSamplingSets(Dictionary<IGpuResourceSet, IGpuResourceSet> replacements,
         Dictionary<IGpuResourceSet, ShadowSamplingBinding> replacementBindings,
         Action<Func<IGpuResourceSet, IGpuResourceSet>> commitMaterialSets)
     {
         IGpuResourceSet oldDefaultSet = _defaultSet;
         IGpuResourceSet oldSkinnedDefaultFragSet = _skinnedDefaultFragSet;
-        commitMaterialSets(old => replacements[old]);
-        _defaultSet = replacements[oldDefaultSet];
-        _skinnedDefaultFragSet = replacements[oldSkinnedDefaultFragSet];
+        IGpuResourceSet ReplacementFor(IGpuResourceSet old) => replacements.TryGetValue(old, out var next) ? next : old;
+        commitMaterialSets(ReplacementFor);
+        _defaultSet = ReplacementFor(oldDefaultSet);
+        _skinnedDefaultFragSet = ReplacementFor(oldSkinnedDefaultFragSet);
 
         foreach ((IGpuResourceSet oldSet, IGpuResourceSet newSet) in replacements)
         {
@@ -79,13 +79,13 @@ internal sealed partial class ModelRenderer
     void AddReplacement(IGpuResourceSet oldSet, IGpuTexture shadowTexture, IGpuTexture pointShadowTexture,
         IGpuTexture pointShadowTransientTexture, IGpuBuffer pointLightBuffer,
         Dictionary<IGpuResourceSet, IGpuResourceSet> replacements,
-        Dictionary<IGpuResourceSet, ShadowSamplingBinding> replacementBindings)
+        Dictionary<IGpuResourceSet, ShadowSamplingBinding> replacementBindings, IGpuTexture? interiorCut = null)
     {
         if (replacements.ContainsKey(oldSet)) return;
         if (!_shadowSamplingBindings.TryGetValue(oldSet, out ShadowSamplingBinding? binding))
             throw new InvalidOperationException("a live shadow-sampling set has no rebuild description.");
         IGpuResourceSet replacement = BuildShadowSamplingSet(
-            binding, shadowTexture, pointShadowTexture, pointShadowTransientTexture, pointLightBuffer);
+            binding, shadowTexture, pointShadowTexture, pointShadowTransientTexture, pointLightBuffer, interiorCut);
         replacements.Add(oldSet, replacement);
         replacementBindings.Add(replacement, binding);
     }
@@ -116,9 +116,10 @@ internal sealed partial class ModelRenderer
         CreateShadowSamplingSet(_splatMaterialLayout, _shadowMap.ShadowTexture,
             paramsUbo, albedoArray, normalArray, sampler ?? _terrainSampler);
 
-    // Shadow resources end each material prefix. Only the rigid set 0 appends atmosphere after that prefix.
+    // Shadow resources end each material prefix. Rigid set 0 appends atmosphere, then the interior texture.
     IGpuResourceSet BuildShadowSamplingSet(ShadowSamplingBinding binding, IGpuTexture shadowTexture,
-        IGpuTexture pointShadowTexture, IGpuTexture pointShadowTransientTexture, IGpuBuffer pointLightBuffer)
+        IGpuTexture pointShadowTexture, IGpuTexture pointShadowTransientTexture, IGpuBuffer pointLightBuffer,
+        IGpuTexture? interiorCut = null)
     {
         int pointLightOffset = binding.IncludesPointLights ? 2 : 0;
         var resources = new IGpuBindableResource[binding.MaterialResources.Length + pointLightOffset + 4];
@@ -137,7 +138,7 @@ internal sealed partial class ModelRenderer
         resources[^3] = _shadowMap.ShadowSampler;
         resources[^2] = pointShadowTexture;
         resources[^1] = pointShadowTransientTexture;
-        if (binding.IncludesAtmosphere) resources = _atmosphere.AppendResources(resources);
+        if (binding.IncludesAtmosphere) resources = [.. _atmosphere.AppendResources(resources), interiorCut ?? _interiorTexture];
         return _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(binding.Layout, resources));
     }
 

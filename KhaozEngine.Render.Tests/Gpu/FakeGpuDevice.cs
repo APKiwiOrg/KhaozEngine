@@ -289,7 +289,13 @@ namespace KhaozEngine.Tests.Gpu
         /// teardown as a VUID-vkDestroyDevice-device-05137 object leak (#618).</summary>
         internal bool Disposed { get; private set; }
 
-        public void Dispose() => Disposed = true;
+        internal Action? OnDispose { get; set; }
+
+        public void Dispose()
+        {
+            OnDispose?.Invoke();
+            Disposed = true;
+        }
     }
 
     internal sealed class FakeFramebuffer : IGpuFramebuffer

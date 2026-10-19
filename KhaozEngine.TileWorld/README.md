@@ -402,11 +402,28 @@ above the ground by up to half the tile's rise: reeds on a river's sloped rim by
 carve, walk surface with it, because the deck is authored against the centre sample. A piece that has to meet
 sloped ground carries its own skirt or foundation below y 0.
 
+`TileWorldInteriors(detached, catalogs, meshes)` implements the Primitives `IInteriorSource` seam.
+`Collect(window)` returns simple rectangle volumes, source-wide encoding and issue strings, with structured
+issues also on `LastIssues`. The cell size divides `TileSize`, at most 25 cm (`CellSizeFor`). Indoor columns
+keep only their lowest contiguous run of retained indoor planes, never bridging an outdoor gap or a storey
+excluded by a wall check. Roofs apply only if that run reaches the column's highest indoor plane.
+`TileInteriorRoofSamples` uses `ClearanceSamples.Build(mesh, cellSize / 2f)`, not the clearance distance field.
+The core clips the retained source mesh triangles to each field cell and takes their exact minimum height.
+`CeilingY` is the fallback where no roof triangle intersects, including unreadable roofs and courtyards.
+On the highest plane the fallback ceiling is the corner height plus `PlaneHeight`. Inner-edge and diagonal
+boundary walls leave affected tiles uncut and report `interior.wall-inner-edge` or `interior.diagonal-wall`.
+Unreadable roofs report `interior.roof-mesh`, and coarser vertical encoding reports `interior.step` at
+collection. No world validation integration is implied ([#1473](https://github.com/APKiwiOrg/KhaozEngine/issues/1473)).
+
+The optional walk-surface `acceptPoint` predicate is `Func<TileObject, Vector3, bool>`. It runs for each
+candidate intersection before that candidate competes for the nearest hit, so rejecting a cut surface still
+allows a farther surface to win. `include` remains the separate object-level filter. `TryHeightAt` is unchanged.
+
 `TileWalkSurfaces` answers the walk surfaces two ways. `TryHeightAt(doc, catalogs, worldX, worldZ, plane, out
 height)` takes world metres, as `HeightAt` does, and reports the HIGHEST surface covering the point on that plane,
 edges inclusive, as the anchor height plus `Height`. It allocates nothing and does not consult the terrain, so a
 surface buried under the ground is still reported and the caller takes the higher of the two.
-`Raycast(doc, catalogs, plane, origin, direction, maxDistance, include?)` returns the nearest `TileHit` on a surface
+`Raycast(doc, catalogs, plane, origin, direction, maxDistance, include?, acceptPoint?)` returns the nearest `TileHit` on a surface
 TOP. Only a descending ray can land on one, the direction need not be normalised, the distance is world metres,
 the maximum is inclusive, and the tile is the floor of the hit point in tile coordinates. `include` is consulted per
 candidate object, which is how a view limits the pick to what it draws. Both read the document and the catalogs

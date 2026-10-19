@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.TileWorld;
 using KhaozEngine.TileWorld.Render3D;
 using Xunit;
@@ -165,6 +166,76 @@ public class TileObjectRaycastTests
         Assert.Equal(0, TileObjectRaycast.Pick(doc, Catalogs, 2, origin, Vector3.UnitX, 160f, AcrossPlanes, hits));
         Assert.Equal(3, doc.Regions.Count);
     }
+
+    [Fact]
+    public void CutBoxReturnsFirstVisibleDistance()
+    {
+        var doc = new TileWorldDocument();
+        doc.GetOrCreateRegion(default);
+        TileObject tree = doc.AddObject("tree", 10, 10, 0, 0);
+        TileObject wall = doc.AddObject("wall", 10, 10, 0, 0);
+        var hits = new List<TileObjectHit>();
+        var origin = new Vector3(10.5f, 0.5f, -10.5f);
+        Vector3 direction = Vector3.UnitY * 2f;
+        var cut = new TileObjectCut(CutField(2f), new HashSet<string> { "tree" });
+
+        Assert.Equal(2, TileObjectRaycast.Pick(doc, Catalogs, 0, origin, direction, 4f, CutBoxes, hits, cut));
+        Assert.Equal(wall.Id, hits[0].ObjectId);
+        Assert.Equal(0.5f, hits[0].Distance);
+        Assert.Equal(tree.Id, hits[1].ObjectId);
+        Assert.Equal(0.75f, hits[1].Distance);
+    }
+
+    [Theory]
+    [InlineData(2f, 0.75f)] // The first visible point equals maxDistance.
+    [InlineData(3f, 4f)] // The only uncut point equals the box exit.
+    [InlineData(4f, 4f)] // The whole box segment is cut.
+    public void CutBoxSegmentIsHalfOpen(float top, float maxDistance)
+    {
+        var doc = new TileWorldDocument();
+        doc.GetOrCreateRegion(default);
+        TileObject tree = doc.AddObject("tree", 10, 10, 0, 0);
+        var hits = new List<TileObjectHit>();
+        var origin = new Vector3(10.5f, 0.5f, -10.5f);
+        var cut = new TileObjectCut(CutField(top), new HashSet<string> { "tree" });
+        Assert.Equal(0, TileObjectRaycast.Pick(doc, Catalogs, 0, origin, Vector3.UnitY * 2f,
+            maxDistance, CutBoxes, hits, cut));
+        Assert.DoesNotContain(hits, h => h.ObjectId == tree.Id);
+    }
+
+    [Fact]
+    public void DefaultNullAndNonOptedInCutsRetainTheOriginalHit()
+    {
+        var doc = new TileWorldDocument();
+        doc.GetOrCreateRegion(default);
+        TileObject tree = doc.AddObject("tree", 10, 10, 0, 0);
+        var hits = new List<TileObjectHit>();
+        var origin = new Vector3(10.5f, 0.5f, -10.5f);
+        foreach (TileObjectCut cut in new TileObjectCut[]
+        {
+            default, new(null, new HashSet<string> { "tree" }), new(CutField(4f), new HashSet<string> { "wall" }),
+        })
+        {
+            Assert.Equal(1, TileObjectRaycast.Pick(doc, Catalogs, 0, origin, Vector3.UnitY,
+                4f, CutBoxes, hits, cut));
+            Assert.Equal(tree.Id, hits[0].ObjectId);
+            Assert.Equal(0f, hits[0].Distance);
+        }
+    }
+
+    static bool CutBoxes(TileObjectArchetype archetype, out Vector3 min, out Vector3 max)
+    {
+        min = new Vector3(-0.5f, archetype.Id == "wall" ? 1.5f : 0f, -0.5f);
+        max = new Vector3(0.5f, archetype.Id == "wall" ? 1.75f : 3f, 0.5f);
+        return true;
+    }
+
+    static InteriorHeightField CutField(float top) => InteriorHeightFieldBuilder.Build(
+        [new InteriorVolume
+        {
+            Outline = [new(10f, -11f), new(11f, -11f), new(11f, -10f), new(10f, -10f)],
+            FloorY = 0f, CeilingY = top,
+        }], new InteriorWindow(new Vector2(10f, -11f), 0.25f, 4), new InteriorEncoding(0f, 0.01f));
 
     [Fact]
     public void Only_anchors_inside_the_padded_rect_are_candidates_even_for_a_wide_box()

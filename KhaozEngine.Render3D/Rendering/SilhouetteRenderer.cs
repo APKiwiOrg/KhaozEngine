@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D.Internal;
@@ -19,13 +18,13 @@ namespace KhaozEngine.Render3D.Rendering
     /// <para>
     /// The per-draw dynamic-offset UBO pattern is <see cref="OverlayMeshRenderer"/>'s, one 256-byte slot per
     /// draw packed into a CPU image and uploaded in one whole-buffer write (#408's D3D11 partial-write stall).
-    /// The payload grows to 160 bytes (ViewProj + World + Color + Params), still inside one slot.
+    /// The payload is 192 bytes, including the interior tail, still inside one slot.
     /// </para>
     /// </summary>
-    internal sealed class SilhouetteRenderer : IDisposable
+    internal sealed partial class SilhouetteRenderer : IDisposable
     {
-        // ViewProj (64) + World (64) + Color (16) + Params (16) = 160 bytes, in a 256-byte dynamic-offset slot.
-        const int PayloadBytes = 160;
+        // ViewProj, World, Color, Params and the interior tail occupy 192 bytes in a 256-byte slot.
+        const int PayloadBytes = 192;
         const int SlotBytes = 256;
 
         readonly IGpuDevice _gd;
@@ -52,6 +51,10 @@ namespace KhaozEngine.Render3D.Rendering
                 // Color, and one dynamic-offset window serves both.
                 new GpuResourceLayoutElement("Draw", GpuResourceKind.UniformBuffer,
                     GpuShaderStages.Vertex | GpuShaderStages.Fragment, dynamic: true)));
+            _interiorCutLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
+                new GpuResourceLayoutElement("InteriorCut", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("Samp", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
+            _interiorCutBinding = new InteriorCutBinding(gd, _interiorCutLayout);
             _pipeline = BuildPipeline(f, modelOutputs);
         }
 
@@ -91,7 +94,7 @@ namespace KhaozEngine.Render3D.Rendering
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.Front, GpuPolygonFill.Solid,
                     GpuFrontFace.CounterClockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
-                ResourceLayouts = new[] { _layout },
+                ResourceLayouts = new[] { _layout, _interiorCutLayout },
                 ShaderSet = MotionMath.IsTemporal(modelOutputs)
                     ? _motionShaders ??= f.CreateShadersFromSpirv(ShaderSources.SilhouetteVert, ShaderSources.SilhouetteMotionFrag)
                     : _shaders,
@@ -106,16 +109,9 @@ namespace KhaozEngine.Render3D.Rendering
         /// <summary>Queue one silhouette and pack its UBO slot. <see cref="Flush"/> uploads and records.</summary>
         public void Enqueue(IGpuBuffer positionVb, IGpuBuffer normalVb, IGpuBuffer ib, int indexCount,
             GpuIndexFormat indexFormat,
-            int drawIndex, Matrix4x4 world, Color color, float widthMetres)
+            int drawIndex, Matrix4x4 world, Color color, float widthMetres, bool cutInsideInteriors = false)
         {
-            var slot = new DrawUbo
-            {
-                ViewProj = _viewProj,
-                World = world,
-                Color = color.ToVector4(),
-                Params = new Vector4(widthMetres, 0f, 0f, 0f),
-            };
-            MemoryMarshal.Write(_image.AsSpan(drawIndex * SlotBytes, SlotBytes), in slot);
+            WriteDrawPayload(drawIndex, world, color, widthMetres, cutInsideInteriors);
             _queue.Add(new QueuedDraw(positionVb, normalVb, ib, indexCount, indexFormat, drawIndex));
         }
 
@@ -129,6 +125,7 @@ namespace KhaozEngine.Render3D.Rendering
             {
                 cl.SetPipeline(_pipeline);
                 cl.SetGraphicsResourceSet(0, _set!, (uint)(d.DrawIndex * SlotBytes));
+                cl.SetGraphicsResourceSet(1, _interiorCutBinding.Set!);
                 cl.SetVertexBuffer(0, d.PositionVb);
                 cl.SetVertexBuffer(1, d.NormalVb);
                 cl.SetIndexBuffer(d.Ib, d.IndexFormat);
@@ -159,15 +156,6 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuResourceSet CreateSet() =>
             _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_layout, new GpuBufferRange(_ubo!, 0, PayloadBytes)));
 
-        /// <summary>Per-draw payload matching the Draw block in SilhouetteVert/Frag.</summary>
-        struct DrawUbo
-        {
-            public Matrix4x4 ViewProj;
-            public Matrix4x4 World;
-            public Vector4 Color;
-            public Vector4 Params;   // x = width in metres
-        }
-
         readonly record struct QueuedDraw(IGpuBuffer PositionVb, IGpuBuffer NormalVb, IGpuBuffer Ib,
             int IndexCount, GpuIndexFormat IndexFormat, int DrawIndex);
 
@@ -175,6 +163,8 @@ namespace KhaozEngine.Render3D.Rendering
         {
             _set?.Dispose();
             _pipeline.Dispose();
+            _interiorCutBinding.Dispose();
+            _interiorCutLayout.Dispose();
             _layout.Dispose();
             _shaders.Dispose();
             _motionShaders?.Dispose();

@@ -22,7 +22,10 @@ internal static class WorkerDiagnostics
     internal static void Merge(ReadOnlySpan<WorkerDiagnosticsRecord> records)
     {
         foreach (WorkerDiagnosticsRecord record in records)
+        {
             SupportQueryDiagnostics.Merge(record.Counts, record.Routes);
+            SupportQueryDiagnostics.MergeProofReuseRetention(record.Retention);
+        }
     }
 }
 
@@ -33,7 +36,8 @@ internal readonly record struct WorkerDiagnosticsPlan(bool Enabled,
     internal Action<ContactAllocationPhase, bool>? Observer(int worker) => ObserverFactory?.Invoke(worker);
 }
 
-internal readonly record struct WorkerDiagnosticsRecord(SupportQueryCounts Counts, SupportRouteCounts Routes);
+internal readonly record struct WorkerDiagnosticsRecord(SupportQueryCounts Counts, SupportRouteCounts Routes,
+    SupportProofReuseRetention Retention = default);
 
 /// <summary>One worker's recorder on its own thread. Entering replaces every thread-local counter, observation and
 /// callback, and exiting returns the record and restores what was there.</summary>
@@ -57,7 +61,8 @@ internal readonly struct WorkerDiagnosticsScope
 
     internal WorkerDiagnosticsRecord Exit()
     {
-        var record = new WorkerDiagnosticsRecord(SupportQueryDiagnostics.Snapshot(), SupportQueryDiagnostics.Routes);
+        var record = new WorkerDiagnosticsRecord(SupportQueryDiagnostics.Snapshot(), SupportQueryDiagnostics.Routes,
+            SupportQueryDiagnostics.Retention);
         SupportQueryDiagnostics.Exchange(_support);
         ContactAllocationDiagnostics.Exchange(_observer);
         return record;

@@ -56,10 +56,24 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprint
         SupportFootprintCollector collector = scratch.Footprints.Take();
         try
         {
+            FootprintReuseSession? reuse = FootprintReuse(receiver, lease, exclusions, collector);
+            ulong sourceVersion = reuse?.SourceVersion ?? 0;
+            SupportFootprintProofKey key = reuse is null ? default :
+                SupportFootprintProofKey.Create(request, filter, certificationJoins);
+            if (reuse is not null)
+            {
+                reuse.AssertCurrent(lease);
+                if (reuse.Memo.TryCopy(receiver, lease, key, members, joins, out var copied)) return copied;
+            }
             SupportFootprintResult result = CollectFootprint(collector, receiver, lease, request, members, joins, filter,
                 exclusions, certificationJoins);
             SupportQueryDiagnostics.ObserveCurvedWork(collector.CurvedWork with { FootprintStatus = result.Status });
             SupportQueryDiagnostics.Refusal(result.Status);
+            // A diagnostic callback may have reset or closed the source while the full evaluator ran.
+            // That cannot seed a later domain or add a failure after the evaluator committed its output.
+            if (reuse is not null && result.Status == CapsuleFeatureStatus.Complete &&
+                reuse.SourceVersion == sourceVersion && reuse.Matches(lease))
+                reuse.Memo.Remember(key, result, members, joins);
             return result;
         }
         finally { scratch.Footprints.Restore(collector); }

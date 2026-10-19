@@ -147,7 +147,7 @@ public sealed class ContactNavigationProofReuseWorkTests(ContactNavigationProofR
             var result = results[mode];
             var c = result.Counts;
             output.WriteLine($"WORK {fixture} degree={degree} mode={(ContactNavigationReuseMode)mode} " +
-                $"Find={c.Find} FindMemoHits={c.FindMemoHits} Volumes={c.Volumes} Proposals={c.Proposals} " +
+                $"Find={c.Find} ObservedFinds={result.ObservedFinds} FindMemoHits={c.FindMemoHits} Volumes={c.Volumes} Proposals={c.Proposals} " +
                 $"Hits={c.FootprintReuseHits} Misses={c.FootprintReuseMisses} Stores={c.FootprintReuseStores} " +
                 $"BudgetSkips={c.FootprintReuseBudgetSkips} EdgeSteps={c.EdgeSteps} Holds={c.InitialHoldReuseHits} " +
                 $"Keys={result.Retention.Keys} Bytes={result.Retention.Bytes} " +
@@ -156,7 +156,7 @@ public sealed class ContactNavigationProofReuseWorkTests(ContactNavigationProofR
     }
 
     internal sealed record Result(byte[] File, SupportQueryCounts Counts, SupportProofReuseRetention Retention,
-        string FindTrace, string OrderedFindTrace, SupportRouteCounts Routes);
+        int ObservedFinds, string FindTrace, string OrderedFindTrace, SupportRouteCounts Routes);
 
     // Share observations, never physics state or mutable reuse sessions. Each named configuration builds once.
     public sealed class Measurements
@@ -171,16 +171,23 @@ public sealed class ContactNavigationProofReuseWorkTests(ContactNavigationProofR
             foreach (ContactNavigationReuseMode mode in Enum.GetValues<ContactNavigationReuseMode>())
             {
                 var finds = new ConcurrentQueue<string>();
-                var prior = SupportQueryDiagnostics.Exchange(SupportQueryDiagnostics.ThreadState.Fresh(true) with
-                { Find = observation => finds.Enqueue(FindBits(observation)) });
+                Action<SupportFindObservation> observe = observation => finds.Enqueue(FindBits(observation));
+                var prior = SupportQueryDiagnostics.Exchange(SupportQueryDiagnostics.ThreadState.Fresh(true) with { Find = observe });
+                var priorWorkerObserver = WorkerDiagnostics.ExchangeFindObserver(observe);
                 try
                 {
                     var bake = ContactNavigationReuseFixture.Build(fixture, mode, degree);
-                    results[(int)mode] = new(GroundNavigationBakeRoundTripTests.Write(bake.Bake), SupportQueryDiagnostics.Snapshot(),
-                        SupportQueryDiagnostics.Retention, Digest(finds.Order(StringComparer.Ordinal)), Digest(finds),
+                    SupportQueryCounts counts = SupportQueryDiagnostics.Snapshot();
+                    Assert.Equal(counts.Find, finds.Count);
+                    results[(int)mode] = new(GroundNavigationBakeRoundTripTests.Write(bake.Bake), counts,
+                        SupportQueryDiagnostics.Retention, finds.Count, Digest(finds.Order(StringComparer.Ordinal)), Digest(finds),
                         SupportQueryDiagnostics.Routes);
                 }
-                finally { SupportQueryDiagnostics.Exchange(prior); }
+                finally
+                {
+                    WorkerDiagnostics.ExchangeFindObserver(priorWorkerObserver);
+                    SupportQueryDiagnostics.Exchange(prior);
+                }
             }
             return results;
         }

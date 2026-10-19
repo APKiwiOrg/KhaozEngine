@@ -799,11 +799,23 @@ floor/options, X/Z [-0.5, 0.5), cell 1 m, radius 0.2 m, half-height 0.75 m, no w
 
 There are 44 distinct fixture/degree configurations and three modes, or 132 unique builds per
 work selection. The two target theories share immutable observations through one class fixture,
-so they do not rebuild a named configuration. Only file bytes, counter values and Find-trace
-digests survive measurement. No physics object, producer, lease or session is retained there.
-Find traces preserve every original numeric bit and result. Degree 1 also compares their order.
-Parallel traces compare canonical multisets. Both analytic-support and physics-support wins
-retain the exact ordered live callback trace in separate real-provider controls.
+so they do not rebuild a named configuration. Only file bytes, counter values, observation counts
+and Find-trace digests survive measurement. No physics object, producer, lease or session is retained
+there. Each executing worker receives an explicitly installed Find observer. Every mode and degree
+asserts that its observed record count equals its actual Find counter before hashing any trace.
+Footprints and Off compare canonical multisets of every original numeric operand bit and result.
+Degree 1 also compares their order. Combined records its own complete trace but legitimately omits
+certified Hold Finds. Both analytic-support and physics-support wins retain the exact ordered live
+callback trace in separate real-provider controls.
+
+Review correction I1: the original Task 6 parallel digest comparisons observed no worker Finds.
+Those comparisons were vacuous, while the independent counters and byte matrix remain valid.
+The follow-up adds a separate thread-local opt-in worker hook, with no delegate allocation when
+off. A count-only red found 12,200 Finds but zero observations at low-lip degrees 2, 3, 8 and 9.
+After the hook, temporarily changing one observed parallel FeetY operand by one binary32 ULP
+in Footprints failed the multiset equality at all four degrees. Each retained 12,200 observations,
+the original counts and equal file bytes. Degree 1 passed. The mutation was removed before the
+focused green run and is absent from the committed source.
 
 ### Actual footprint work against projections
 
@@ -999,3 +1011,29 @@ build-slot --label bake-b-design -- dotnet test KhaozEngine.Game.Tests/KhaozEngi
 Exit 0, both diagnostics rows passed, zero failed or skipped, no compiler warnings or errors.
 The four-case work selection and the strengthened two-case subset are green. The counter tables
 remain the actual observations from the retained full selection. No production defect appeared.
+
+
+## Parallel Find trace review correction
+
+The count-only red, observer green and one-operand mutation red each used this selection,
+with the respective labels `bake-b-trace-red`, `bake-b-trace-green` and
+`bake-b-trace-mutation-red` through build-slot:
+
+```bash
+build-slot --label bake-b-trace-red -- dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release --filter 'FullyQualifiedName~FootprintOnlyMeetsRecordedTargetsWithoutSkippingFinds&DisplayName~low-lip-bank'
+```
+
+The first exited 1 with four parallel count failures and one serial pass. The observer fix
+exited 0 with five passes. The deliberate trace-operand mutation exited 1 with four multiset
+failures and one serial pass. It changed one observed FeetY by one ULP only in each parallel
+Footprints build. Counts and complete file comparisons passed before the trace failure.
+The mutation is removed. The complete focused green command was:
+
+```bash
+build-slot --heavy --label bake-b-design -- dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release --filter 'FullyQualifiedName~ContactNavigationProofReuseWorkTests|FullyQualifiedName~ContactNavigationProofReuseBaselineTests|FullyQualifiedName~ParallelContactBakeTests' --logger 'trx;LogFileName=trace-fix-green.trx' --results-directory /tmp/khaozengine-bake-proof-reuse/task-7
+```
+
+Exit 0, 176 passed, zero failed or skipped, no compiler warnings or errors. This covers all
+132 unique work builds with observed Find counts, real trace multiset equality, serial ordered
+trace equality, all seven pinned files and forced ordering, and worker diagnostic restoration.
+No historical counter, target, timing or geometry record changed.

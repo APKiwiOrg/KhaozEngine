@@ -160,4 +160,30 @@ internal static class CoverageGpuGuardGlsl
             if (i == 0u) CovWorkWords[w+31u] = 1u;
         }
         """;
+
+    internal const string ReduceFacesOrientation = """
+        void main() {
+            uint f = covFrame(), w = CovFrameWords[f+1u];
+            if (covCompletedFailure(w)) return;
+            int sign0 = 0, sign1 = 0, sign2 = 0, sign3 = 0;
+            uint events = covRow(w,24u), faces = covRow(w,22u);
+            [[dont_unroll]] for (uint t = 0u; t < CovFrameWords[f+7u]; t++) {
+                uint code = CovWorkWords[events+t*6u];
+                int slot = int(CovWorkWords[faces+t*2u]), sign = int(CovWorkWords[faces+t*2u+1u]);
+                if (code == 0u && slot >= 0) {
+                    int previous = slot == 0 ? sign0 : (slot == 1 ? sign1 : (slot == 2 ? sign2 : sign3));
+                    if (sign == 0 || previous != 0 && previous != sign) code = 8u;
+                    if (slot == 0) sign0 = sign; else if (slot == 1) sign1 = sign; else if (slot == 2) sign2 = sign; else sign3 = sign;
+                }
+                if (code == 0u) continue;
+                atomicOr(CovWorkWords[w+30u],1u);
+                CovWorkWords[w+26u] = code; CovWorkWords[w+27u] = 0xffffffffu;
+                CovWorkWords[w+28u] = 0u; CovWorkWords[w+29u] = 10u;
+                uint r = CovFrameWords[f+4u]; CovResultWords[r+8u] = code;
+                CovResultWords[r+9u] = 0u; CovResultWords[r+10u] = 0u; CovResultWords[r+11u] = 0u;
+                CovResultWords[r+12u] = 0u; CovResultWords[r+13u] = 0u; CovResultWords[r+14u] = 1u;
+                return;
+            }
+        }
+        """;
 }

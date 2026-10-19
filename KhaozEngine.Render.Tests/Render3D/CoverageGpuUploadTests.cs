@@ -64,14 +64,16 @@ public sealed class CoverageGpuUploadTests
         Assert.Equal(cursor, upload.Words.Length);
         AssertPulls(topology, upload);
         Assert.Equal((uint)(64 + 2 * topology.SourceVertexCount * 16 + 5 * topology.VertexCount * 16
-            + 12 * topology.PositionGroupCount + 15 * topology.TriangleCount
+            + 12 * topology.PositionGroupCount + 61 * topology.TriangleCount
             + 6 * Math.Max(Math.Max(topology.SourceVertexCount, topology.SourceAliases.Count), Math.Max(Math.Max(topology.PositionGroupCount, topology.VertexCount),
                 Math.Max(3 * topology.TriangleCount, 2 * topology.PositionGroupCount)))), CoverageGpuLayout.WorkWords(upload));
         var work = CoverageGpuLayout.WorkHeader(upload);
         Assert.Equal((uint)topology.PositionGroupCount, work[35]);
         Assert.Equal((uint)topology.TriangleCount, work[37]);
         Assert.Equal(work[34] + 6u * work[35], work[36]);
-        Assert.Equal(work[36] + 12u * work[37], CoverageGpuLayout.WorkWords(upload));
+        Assert.Equal(work[36] + 12u * work[37], work[42]);
+        Assert.Equal((uint)topology.TriangleCount, work[43]);
+        Assert.Equal(work[42] + 46u * work[43], CoverageGpuLayout.WorkWords(upload));
 
         uint[] Table(uint offset)
         {

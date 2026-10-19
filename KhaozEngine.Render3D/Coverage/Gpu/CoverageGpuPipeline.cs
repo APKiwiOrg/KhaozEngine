@@ -10,7 +10,9 @@ internal enum CoverageGpuPhase
     InterpolateGroups, ReduceGroups, ValidateAttributes, ReduceAttributes, FillBefore,
     ConformGroups, ConformBoundary, ConformResume, CopyPointAliases, ReduceConform,
     CorrectFaces, CorrectFacesOverlay, CorrectFacesFinish, ReduceFaces, GatherCorrections,
-    CheckFullTargets, ReduceFullTargets, CopyCorrectedAliases, TransitionGroups, StoreTransition
+    CheckFullTargets, ReduceFullTargets, CopyCorrectedAliases, TransitionGroups, StoreTransition,
+    ValidateVertices, ReduceVertices, PrepareNormalBasis, FinishNormalBasis, ValidateFaces, ReduceFacesOrientation,
+    GatherAttributes, ReduceAttributesFinal, Select
 }
 
 /// <summary>Standalone batched coverage phases. The caller owns recording and submission completion.</summary>
@@ -50,12 +52,12 @@ internal sealed class CoverageGpuPipeline : IDisposable
     }
 
     internal void Record(IGpuCommandList commands, CoverageGpuBatch batch) =>
-        RecordPhases(commands, batch, CoverageGpuPhase.Skin, CoverageGpuPhase.StoreTransition);
+        RecordPhases(commands, batch, CoverageGpuPhase.Skin, CoverageGpuPhase.Select);
 
     internal void RecordPhases(IGpuCommandList commands, CoverageGpuBatch batch, CoverageGpuPhase firstPhase, CoverageGpuPhase lastPhase)
     {
         ArgumentNullException.ThrowIfNull(commands); ArgumentNullException.ThrowIfNull(batch);
-        if (firstPhase < CoverageGpuPhase.Skin || lastPhase < firstPhase || lastPhase > CoverageGpuPhase.StoreTransition)
+        if (firstPhase < CoverageGpuPhase.Skin || lastPhase < firstPhase || lastPhase > CoverageGpuPhase.Select)
             throw new ArgumentOutOfRangeException(nameof(firstPhase));
         if (batch.Count == 0) return;
         IGpuResourceSet set = batch.Bind(layout);

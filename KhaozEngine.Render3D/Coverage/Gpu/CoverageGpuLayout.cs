@@ -27,7 +27,7 @@ internal static class CoverageGpuLayout
         // and typed group/face continuations for the split query phases.
         return Words(WorkHeaderWords + 2L * h.SourceCount * ModelWords + 5L * h.VertexCount * ModelWords
             + (6L + CoverageGpuQueryWorkLayout.ConformWords) * h.PositionGroupCount
-            + (3L + CoverageGpuQueryWorkLayout.FaceWords) * h.TriangleCount + 6L * events);
+            + (3L + CoverageGpuQueryWorkLayout.FaceWords + CoverageGpuNormalWorkLayout.Words) * h.TriangleCount + 6L * events);
     }
 
     internal static uint[] WorkHeader(CoverageGpuHostUpload h)
@@ -44,6 +44,7 @@ internal static class CoverageGpuLayout
         Row(24, events, 6); Row(AttributeCandidates, h.VertexCount, ModelWords);
         Row(ConformContinuations, h.PositionGroupCount, CoverageGpuQueryWorkLayout.ConformWords);
         Row(FaceContinuations, h.TriangleCount, CoverageGpuQueryWorkLayout.FaceWords);
+        Row(CoverageGpuNormalWorkLayout.Pair, h.TriangleCount, CoverageGpuNormalWorkLayout.Words);
         if (cursor != WorkWords(h)) throw new InvalidOperationException("Coverage work layout disagrees with its allocation.");
         return header;
         void Row(int pair, int count, int stride)

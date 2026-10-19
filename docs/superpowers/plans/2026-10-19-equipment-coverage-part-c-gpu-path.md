@@ -212,7 +212,7 @@ Keep legacy private fields/types until Task 15 when their final source consumers
 | 3, conform | ConformGroups, ConformBoundary, ConformResume, CopyPointAliases, ReduceConform | Pointwise After immutable before face work |
 | 4, correction | CorrectFaces, CorrectFacesOverlay, CorrectFacesFinish, ReduceFaces, GatherCorrections, CheckFullTargets, ReduceFullTargets, CopyCorrectedAliases | All faces finish before group gather, all full targets pass before alias publication |
 | 5, transition | TransitionGroups, StoreTransition | Full-target checks occur even at transition weight 0 |
-| 6, normals | ValidateVertices, ReduceVertices, ValidateFaces, ReduceFacesOrientation, GatherAttributes, ReduceAttributesFinal | Triangle-order orientation validation precedes any publishable normal/tangent |
+| 6, normals | ValidateVertices, ReduceVertices, PrepareNormalBasis, FinishNormalBasis, ValidateFaces, ReduceFacesOrientation, GatherAttributes, ReduceAttributesFinal | Triangle-order orientation validation precedes any publishable normal/tangent |
 | 7, select | Select | One outcome controls the complete surface, history seed and asynchronous payload |
 
 Physical phase names are the exact CoverageGpuPhase members. Numerical phases port contract section 4. Reducers reproduce section 9, rather than selecting the first atomic writer. This deliberately spends dispatches on global dependencies. Fusing independent lanes inside a phase is allowed only after the native proof stays exact, without changing these task interfaces.
@@ -228,6 +228,16 @@ checks its required state before loading the payload. Dispatch barriers separate
 boundary and conformation completion, and face preparation, overlay and final correction. All face
 notes remain private to their face rows until ReduceFaces. Completed failure substages remain 1 to 5
 for skin and refinement, with conformation 6, face correction 7 and full-target validation 8.
+
+Task 7 applies C8 option D to the pinned basis graph. Work header pair 42/43 names a checked,
+face-owned 46-word table. PrepareNormalBasis initializes each code and state before any consumer.
+State 0 is unchanged, state 1 publishes the prepared basis inputs, state 2 publishes all twelve
+basis vectors, and state 3 publishes only a failure code. FinishNormalBasis reads payloads only
+in state 1. Face validation consumes the result in triangle order, before gathering can read
+state 2. A moved corner necessarily belongs to a changed face. The exact immutable basis words
+therefore equal a fresh pinned TryBasis evaluation at every normal and tangent corner. The
+correctness proof records this substitution and the unchanged ordered accumulation graph.
+Normal refusal substages are 9 for vertices, 10 for faces and orientation, and 11 for gathers.
 
 ## Verification commands used by every task
 

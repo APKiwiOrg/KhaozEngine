@@ -7,7 +7,8 @@ internal static class CoverageGpuSkinRefineGlsl
 {
     internal static bool IsReducer(CoverageGpuPhase phase) => phase is CoverageGpuPhase.ReduceSkin or CoverageGpuPhase.ReduceSource
         or CoverageGpuPhase.ReduceAliases or CoverageGpuPhase.ReduceGroups or CoverageGpuPhase.ReduceAttributes
-        or CoverageGpuPhase.ReduceConform or CoverageGpuPhase.ReduceFaces or CoverageGpuPhase.ReduceFullTargets;
+        or CoverageGpuPhase.ReduceConform or CoverageGpuPhase.ReduceFaces or CoverageGpuPhase.ReduceFullTargets
+        or CoverageGpuPhase.ReduceVertices or CoverageGpuPhase.ReduceFacesOrientation or CoverageGpuPhase.ReduceAttributesFinal;
 
     internal static string Name(CoverageGpuPhase phase) => "Coverage" + phase;
 
@@ -43,6 +44,15 @@ internal static class CoverageGpuSkinRefineGlsl
             CoverageGpuPhase.CopyCorrectedAliases => CoverageGpuCorrectionGlsl.CopyCorrectedAliases,
             CoverageGpuPhase.TransitionGroups => CoverageGpuCorrectionGlsl.TransitionGroups,
             CoverageGpuPhase.StoreTransition => CoverageGpuCorrectionGlsl.StoreTransition,
+            CoverageGpuPhase.ValidateVertices => CoverageGpuNormalsGlsl.ValidateVertices,
+            CoverageGpuPhase.ReduceVertices => CoverageGpuGuardGlsl.Reduce(6, 9),
+            CoverageGpuPhase.PrepareNormalBasis => CoverageGpuNormalWorkLayout.Source + CoverageGpuNormalBasisGlsl.Unit + CoverageGpuNormalBasisGlsl.Prepare,
+            CoverageGpuPhase.FinishNormalBasis => CoverageGpuNormalWorkLayout.Source + CoverageGpuNormalBasisGlsl.Finish,
+            CoverageGpuPhase.ValidateFaces => CoverageGpuNormalWorkLayout.Source + CoverageGpuNormalsGlsl.ValidateFaces,
+            CoverageGpuPhase.ReduceFacesOrientation => CoverageGpuGuardGlsl.ReduceFacesOrientation,
+            CoverageGpuPhase.GatherAttributes => CoverageGpuNormalWorkLayout.Source + CoverageGpuNormalBasisGlsl.Unit + CoverageGpuNormalGatherGlsl.Source,
+            CoverageGpuPhase.ReduceAttributesFinal => CoverageGpuGuardGlsl.Reduce(6, 11),
+            CoverageGpuPhase.Select => CoverageGpuSelectGlsl.Source,
             _ => throw new ArgumentOutOfRangeException(nameof(phase))
         });
 

@@ -10012,7 +10012,10 @@ if (world is IPhysicsCapsuleFeatures features && world is IPhysicsQueryLeaseSour
 from features and neighborhoods. Bepu owners and selected views provide it. A caller supplies the
 closed disc, inclusive band, cosine slope gate, represented `0.0001f` contact band and two original
 upright downward proposal paths in one `SupportFootprintRequest`. No prior sweep hit is trusted.
-The backend authenticates the exact receiver and lease before executing both proposals.
+The backend authenticates the exact receiver and lease before executing both proposals on a full
+evaluation. An open completed-footprint reuse session (see `IPhysicsSupportFootprintReuseSource`
+below) may republish the exact completed payload of a bit-identical request with fresh lease metadata
+instead, so a reused result executes no proposal sweep.
 
 For axis `a`, radius `r`, band `[L, U]` and slope cosine `c`, the admission column covers the disc
 expanded by the contact band from `L - max(r * sqrt(1 - c*c) / c, 0.001) - 0.0001` to

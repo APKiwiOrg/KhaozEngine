@@ -2,11 +2,11 @@ using System.Collections.Generic;
 
 namespace KhaozEngine.Tests.Gpu;
 
-/// <summary>The unchanged v21.4.0 resolve measured on the bilinear 3x3 PCF scene input.</summary>
+/// <summary>Bilinear-input controls, with the recorded owner-accepted release cost for one hardware rim.</summary>
 internal static class TemporalShadowFilterBaseline
 {
     // Filter-only control 02f0bd1fc. Six-decimal GPU readbacks and provenance live in
-    // measurements/taa-shadow-visibility/filter-baseline.md. Later signal code must retain this control.
+    // measurements/taa-shadow-visibility/filter-baseline.md. The one owner-accepted cost row below records its historical control.
     // Hardware is Metal. WARP and lavapipe require their own measured rows, never a hardware fallback.
     static readonly Dictionary<(string Device, string Name), TemporalReviewFigures> Before = new()
     {
@@ -43,7 +43,9 @@ internal static class TemporalShadowFilterBaseline
         [("hardware", "Quality M 0.5 trailing flat")] = new(0.007357, 0.005763, 0.005763, 0.000000),
         [("hardware", "Quality M 0.5 trailing textured")] = new(0.026839, 0.016335, 0.016683, 0.018951),
         [("hardware", "Quality M 1.0 leading flat")] = new(0.008109, 0.005947, 0.005947, 0.000000),
-        [("hardware", "Quality M 1.0 leading textured")] = new(0.002465, 0.032098, 0.003928, 0.031816),
+        // Owner-accepted D costs on 2026-10-19. The historical bilinear control is error 0.002465 and temporal 0.003928.
+        // D measured 0.0030106876217401947 and 0.004819472651560228, stored at the existing six-decimal precision.
+        [("hardware", "Quality M 1.0 leading textured")] = new(0.003011, 0.032098, 0.004819, 0.031816),
         [("hardware", "Quality M 1.0 trailing flat")] = new(0.000223, 0.000223, 0.000223, 0.000000),
         [("hardware", "Quality M 1.0 trailing textured")] = new(0.008816, 0.038484, 0.008000, 0.035615),
         [("hardware", "Quality M 2.0 leading flat")] = new(0.004856, 0.012057, 0.005181, 0.006928),

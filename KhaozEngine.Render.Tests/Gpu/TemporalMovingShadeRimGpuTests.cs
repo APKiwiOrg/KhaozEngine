@@ -13,7 +13,7 @@ namespace KhaozEngine.Tests.Gpu
     /// error and temporal error are bounded against the frozen bilinear-input control on each device class. Raw
     /// frame-to-frame change is reported alongside the reference change.
     /// The PCF filter changed the scene input. These rows measure the unchanged 21.4.0 resolve on bilinear 3x3 PCF.
-    /// The signal is judged against this frozen input-matched control.
+    /// The signal is judged against this control, with the recorded owner-accepted Quality M 1.0 leading textured cost.
     /// </summary>
     public sealed class TemporalMovingShadeRimGpuTests(TemporalMovingShadeRimScene scene, ITestOutputHelper output)
         : IClassFixture<TemporalMovingShadeRimScene>
@@ -21,6 +21,8 @@ namespace KhaozEngine.Tests.Gpu
         [GpuFact]
         public void Moving_shadow_receivers_keep_their_leading_and_trailing_rims()
         {
+            // Owner accepted on 2026-10-19 after real-scene clips: the visibility lock release removes held shadow
+            // sparkle, and this synthetic value is the measured cost of that release. No large-change response ships.
             var failures = new List<string>();
             foreach (TemporalUpscale preset in new[] { TemporalUpscale.Quality, TemporalUpscale.Native })
                 foreach (float shadow in new[] { 0f, 1f })

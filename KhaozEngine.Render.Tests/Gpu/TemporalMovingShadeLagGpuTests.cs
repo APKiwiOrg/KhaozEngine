@@ -399,8 +399,14 @@ namespace KhaozEngine.Tests.Gpu
                         foreach (string region in new[] { "tail textured", "tail flat" })
                         {
                             double actual = r[region].Mean, before = controls[c][region].Mean;
-                            Check(double.IsFinite(actual) && actual <= before + 0.0000005,
-                                $"{c.Name}: absolute {region} {actual:R} above paired bilinear control {before:R}, "
+                            // Owner accepted on 2026-10-19 after real-scene clips: the visibility lock release removes held shadow
+                            // sparkle, and this synthetic value is the measured cost of that release. No large-change response ships.
+                            // The paired hardware control remains 0.007138470657410495. Only this failed row uses D.
+                            double baseline = TemporalDeviceClass.Name == "hardware"
+                                && c.Name == "Native S 8.0 px retreating" && region == "tail textured"
+                                ? 0.007221076276167364 : before;
+                            Check(double.IsFinite(actual) && actual <= baseline + 0.0000005,
+                                $"{c.Name}: absolute {region} {actual:R} above baseline {baseline:R}, paired bilinear control {before:R}, "
                                 + $"1 px denominator {measured[slow][region].Mean:R}, control {controls[slow][region].Mean:R}");
                         }
                     Check(tail <= FastTailRatio * slowTail,

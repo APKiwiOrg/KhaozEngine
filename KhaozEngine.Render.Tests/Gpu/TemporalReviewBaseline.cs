@@ -267,7 +267,7 @@ namespace KhaozEngine.Tests.Gpu
         internal static void Check(string device, string kind, string name, TemporalReviewFigures figures,
             List<string> failures)
         {
-            string source = kind == "rim" ? "bilinear-input control" : "v21.2.0";
+            string source = kind == "rim" ? "bilinear-input control with recorded owner acceptance" : "v21.2.0";
             TemporalReviewFigures before;
             bool found = kind == "rim"
                 ? TemporalShadowFilterBaseline.TryGetValue(device, name, out before)

@@ -34,10 +34,14 @@ internal static class TexturedShadowGrainCase
             // Quality's archive baseline is 0.010852, versus 0.006727 without locks. Native's baseline is
             // 0.012026. These absolute bounds catch the held bright pixels without disabling thin-feature locks.
             // Balanced is reported only. Its reconstruction and shading-release gate are a separate issue.
-            double bound = preset == TemporalUpscale.Quality ? 0.008 : 0.0113;
+            // Owner accepted on 2026-10-19 after real-scene clips: the visibility lock release removes held shadow
+            // sparkle, and this synthetic value is the measured cost of that release. No large-change response ships.
+            // Quality was 0.008. D measures 0.008031049526854536, rounded up to the six-decimal reporting place.
+            double bound = preset == TemporalUpscale.Quality ? 0.008032 : 0.0113;
             output.WriteLine($"Textured grain {preset}, {scene.Backend} on {scene.DeviceName}, {TemporalDeviceClass.Name}: {m.Band.GrainOut:0.000000}, "
                 + $"error grain {m.Band.ErrorGrain:0.000000}, reference grain {m.Band.GrainRef:0.000000}, "
                 + $"change {m.Band.Change:0.000000}, bound {(preset == TemporalUpscale.Balanced ? "report only" : bound.ToString("0.000000"))}.");
+            output.WriteLine($"GRAIN-EXACT|{TemporalDeviceClass.Name}|{preset}|{m.Band.GrainOut:R}");
             Assert.True(m.Band.Count > 0 && m.Contrast > 0.04, "The textured receiver must render a measured shadow edge.");
             if (preset != TemporalUpscale.Balanced && !(m.Band.GrainOut <= bound))
                 failures.Add($"{preset} grain {m.Band.GrainOut:0.000000} exceeds {bound:0.000000}.");

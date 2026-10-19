@@ -84,20 +84,21 @@ namespace KhaozEngine.Tests.Gpu
             return keys;
         }
 
-        static void EmitGraphics(ShippedGraphicsProgram program, List<ShaderCorpusRow> rows,
+        internal static void EmitGraphics(ShippedGraphicsProgram program, List<ShaderCorpusRow> rows,
             Action<string, byte[]>? dump)
         {
-            byte[] vertex = SpirvFrontEnd.ToSpirv(program.VertexGlsl, GpuShaderStages.Vertex, program.Name);
+            var options = new GpuShaderCompileOptions(PreciseMath: program.Name.StartsWith("Coverage", StringComparison.Ordinal));
+            byte[] vertex = SpirvFrontEnd.ToSpirv(program.VertexGlsl, GpuShaderStages.Vertex, program.Name, options);
             byte[] fragment = SpirvFrontEnd.ToSpirv(program.FragmentGlsl, GpuShaderStages.Fragment, program.Name);
             rows.Add(Row($"{program.Name}.vertex.spirv", vertex, dump));
             rows.Add(Row($"{program.Name}.fragment.spirv", fragment, dump));
 
-            CrossCompiledPair msl = SpirvCrossCompile.VertexFragmentToMsl(vertex, fragment, program.Name);
+            CrossCompiledPair msl = SpirvCrossCompile.VertexFragmentToMsl(vertex, fragment, program.Name, options);
             rows.Add(Row($"{program.Name}.vertex.msl", msl.VertexSource, dump));
             rows.Add(Row($"{program.Name}.fragment.msl", msl.FragmentSource, dump));
             rows.Add(LayoutRow($"{program.Name}.layout.msl", msl.Reflection));
 
-            CrossCompiledPair hlsl = SpirvCrossCompile.VertexFragmentToHlsl(vertex, fragment, program.Name);
+            CrossCompiledPair hlsl = SpirvCrossCompile.VertexFragmentToHlsl(vertex, fragment, program.Name, options);
             rows.Add(Row($"{program.Name}.vertex.hlsl", hlsl.VertexSource, dump));
             rows.Add(Row($"{program.Name}.fragment.hlsl", hlsl.FragmentSource, dump));
             rows.Add(LayoutRow($"{program.Name}.layout.hlsl", hlsl.Reflection));

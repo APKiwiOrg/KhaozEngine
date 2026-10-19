@@ -6368,6 +6368,10 @@ outlines. Its default `ReserveCoverageSupports` forwards to the conformer, so ex
 uncovered adapters remain compatible. The binding owns its conformer and borrows cached equipment. See
 the [attachment coverage contract](../KhaozEngine.Attachments.Render3D/README.md#optional-equipment-coverage)
 for transactional replacement, complete physical material submission, token lifetime and current-pose fallback.
+After GPU dispatch, the main pass and both outline masks share the selected final storage and each material's
+corner range. Numerical refusal switches to original-pose triangles on the GPU without a CPU route switch.
+These covered draws bypass ordinary skinning under either `UseGpuSkinning` setting. Equipment retains its
+existing material and dissolve drawing policy.
 
 The convenience `Queue` overload uses opaque white tint, `Material.None`, no dissolve and shadow
 casting. Its `RigidInstanceDraw` template overload replaces mesh, world or model, and motion while

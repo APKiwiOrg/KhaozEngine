@@ -15,7 +15,7 @@ public sealed partial class Scene3D
         CoverageSurfaceAllocationObserverForTests?.Invoke(true);
         foreach (CoveragePreparation p in _coverageArena.Preparations)
         {
-            if (p.Owner.Disposed || p.Outcome.Presentation != CoveragePresentation.Covered) continue;
+            if (p.Owner.Disposed || p.Outcome.Presentation != CoveragePresentation.Dispatched) continue;
             for (int i = 0; i < p.Owner.Meshes.Length; i++)
             {
                 SkinnedInstanceDraw? submitted = p.Draws[i];
@@ -24,10 +24,6 @@ public sealed partial class Scene3D
                 SkinnedInstanceDraw draw = submitted ?? outlined!.Value;
                 SkinnedMeshEntry entry = _skinnedMeshes[draw.Mesh.Index]!;
                 var range = p.Owner.Topology.MaterialRanges[i];
-                int start = _cpuSkinnedVerts.Count;
-                p.BaseVertices[i] = start;
-                foreach (ref readonly ModelVertex vertex in p.Candidate.AsSpan(range.FirstVertex, range.VertexCount))
-                    _cpuSkinnedVerts.Add(vertex);
                 var (main, shadow) = ClassifyCoverageVisibility(p, camera, shadows && draw.CastsShadows, cascades);
                 main &= submitted is not null && !draw.ShadowOnly;
                 PointShadowCasterSphere sphere = CoverageSphere(p);
@@ -35,7 +31,7 @@ public sealed partial class Scene3D
                 if (main) _drawnSkinnedInstances++;
                 else if (submitted is not null && !draw.ShadowOnly) _culledSkinnedInstances++;
                 bool dissolve = draw.Dissolve > 0 || draw.DissolveComplement > 0;
-                _cpuSkinnedInstances.Add(new ModelRenderer.InstanceData
+                _coverageInstances.Add(new ModelRenderer.InstanceData
                 {
                     Model = ToRender(draw.Model),
                     Tint = draw.Tint,
@@ -47,8 +43,13 @@ public sealed partial class Scene3D
                 });
                 ShadowCastKind kind = submitted is null || !draw.CastsShadows || !shadow && !main && !point
                     ? ShadowCastKind.None : ShadowDepthSelection.ClassifySkinnedCaster(new SkinnedSceneInstances.Instance(draw));
-                _cpuSkinnedDraws.Add(new CpuSkinnedDraw(p.Owner.Indices[i], range.IndexCount, GpuIndexFormat.UInt32,
-                    start, entry.MaterialSet, dissolve, main, kind, sphere, draw.Motion, -1, range.VertexCount));
+                var r = p.GpuReservation;
+                var batch = _coverageGpu!.Batch!;
+                var surface = new CoverageGpuSurfaceView(batch.Current, batch.Previous, batch.StaticData,
+                    r.CurrentBase, r.PreviousBase, r.StaticBase, r.VertexCount, r.TriangleCount);
+                _coverageDraws.Add(new(surface, range.FirstIndex, range.IndexCount, (uint)_coverageDraws.Count,
+                    p.Actor, sphere, main, kind));
+                _coverageMaterials.Add(entry.SkinnedMaterialSet);
             }
         }
         CoverageSurfaceAllocationObserverForTests?.Invoke(false);

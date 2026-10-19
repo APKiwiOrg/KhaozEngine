@@ -440,6 +440,8 @@ namespace KhaozEngine.Render3D.Rendering
             BuildSplatPipeline(factory, modelOutputs, vertexLayout, instanceLayout);
             BuildTileGroundPipeline(factory, modelOutputs, vertexLayout, instanceLayout);
 
+            BuildCoveragePipelines(factory, modelOutputs);
+
             // GPU-skinning pipelines. ONE vertex buffer slot: the rest-pose SkinnedVertex stream (Position/Normal/
             // Color/TexCoord/BoneIndices/BoneWeights/Tangent = locations 0..6), no per-instance stream (the per-draw
             // data lives in the UBOs). Set 0 = frame U + point-light buffers + per-draw VBlock, set 1 = material maps,
@@ -632,6 +634,7 @@ namespace KhaozEngine.Render3D.Rendering
         public void Dispose()
         {
             if (_ownsRetired) _retired.Dispose();
+            DisposeCoveragePulling();
             DisposeFoliageResources();
             DisposeMotionResources();
             _shadowMap.Dispose();

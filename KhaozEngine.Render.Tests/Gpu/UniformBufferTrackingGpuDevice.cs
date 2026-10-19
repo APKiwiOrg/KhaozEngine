@@ -152,6 +152,8 @@ namespace KhaozEngine.Tests.Gpu
             }
             public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl)
                 => _inner.CreateShadersFromSpirv(vertGlsl, fragGlsl);
+            public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl, GpuShaderCompileOptions options)
+                => _inner.CreateShadersFromSpirv(vertGlsl, fragGlsl, options);
             public IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl, GpuShaderCompileOptions options)
                 => _inner.CreateComputeShaderFromSpirv(computeGlsl, options);
             public IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl)

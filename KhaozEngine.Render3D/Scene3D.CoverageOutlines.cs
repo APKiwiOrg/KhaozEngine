@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using KhaozEngine.Gpu;
+using KhaozEngine.Render3D.Rendering;
 
 namespace KhaozEngine.Render3D;
 
@@ -21,12 +22,18 @@ public sealed partial class Scene3D
     bool EnqueueCoverageOutline(in MeshOutlinePart part, SkinnedMeshEntry mesh, int drawIndex)
     {
         if (!TryFrozenCoverage(part.Coverage, out CoveragePreparation p)
-            || p.Outcome.Presentation != CoveragePresentation.Covered) return false;
+            || p.Outcome.Presentation != CoveragePresentation.Dispatched) return false;
         int slice = CoverageSlice(p, part.SkinnedMesh);
         var range = p.Owner.Topology.MaterialRanges[slice];
-        _targetOutlines.EnqueuePrepared(_model.CpuSkinnedVertexBuffer!, p.Owner.Indices[slice], range.IndexCount,
-            GpuIndexFormat.UInt32, mesh.OutlineMaterialSet, drawIndex, ToRender(part.World), mesh.AlphaCutoff,
-            part.Dissolve, part.DissolveComplement, _frameOrigin, p.BaseVertices[slice]);
+        var r = p.GpuReservation;
+        var batch = _coverageGpu!.Batch!;
+        var surface = new CoverageGpuSurfaceView(batch.Current, batch.Previous, batch.StaticData,
+            r.CurrentBase, r.PreviousBase, r.StaticBase, r.VertexCount, r.TriangleCount);
+        var draw = new CoveragePulledDraw(surface, range.FirstIndex, range.IndexCount, 0, p.Actor,
+            CoverageSphere(p), false, ShadowCastKind.None);
+        _targetOutlines.SetCoverageMaterial(drawIndex, mesh.OutlineMaterialSet);
+        _targetOutlines.EnqueueCoverage(draw, drawIndex, ToRender(part.World), mesh.AlphaCutoff,
+            part.Dissolve, part.DissolveComplement, _frameOrigin);
         return true;
     }
 }

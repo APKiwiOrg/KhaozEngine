@@ -18,6 +18,11 @@ internal sealed class CoverageRecordingFactory(FakeGpuResourceFactory inner, boo
     public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d) => inner.CreateResourceLayout(d);
     public IGpuResourceSet CreateResourceSet(in GpuResourceSetDescription d) => inner.CreateResourceSet(d);
     public IGpuShaderSet CreateShadersFromSpirv(string vertex, string fragment) => inner.CreateShadersFromSpirv(vertex, fragment);
+    public IGpuShaderSet CreateShadersFromSpirv(string vertex, string fragment, GpuShaderCompileOptions options)
+    {
+        if (!options.PreciseMath) throw new InvalidOperationException("Coverage pulling requires precise vertex compilation.");
+        return inner.CreateShadersFromSpirv(vertex, fragment);
+    }
     public IGpuComputeShader CreateComputeShaderFromSpirv(string source) => CreateComputeShaderFromSpirv(source, default);
     public IGpuComputeShader CreateComputeShaderFromSpirv(string source, GpuShaderCompileOptions options)
     {

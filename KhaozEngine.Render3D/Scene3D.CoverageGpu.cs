@@ -36,6 +36,16 @@ public sealed partial class Scene3D
         _cpuSkinnedPrevious.EnsureCapacity(vertices);
         if (vertices > 0) _model.ReserveCoveredSkinning(vertices, draws, vertices);
         _gpuSkinnedDraws.EnsureCapacity(draws);
+        int coveredDraws = 0;
+        foreach (var p in _coverageArena.Preparations) coveredDraws = checked(coveredDraws + p.Owner.Meshes.Length);
+        _coverageDraws.EnsureCapacity(coveredDraws); _coverageInstances.EnsureCapacity(coveredDraws);
+        _coverageMaterials.EnsureCapacity(coveredDraws);
+        if (_coverageGpu is { Available: true, Batch: { } batch })
+        {
+            _model.ReserveCoverage(batch, coveredDraws);
+            _targetOutlines.ReserveCoverage(batch, _meshOutlinePartCount);
+        }
+        draws = Math.Max(draws, coveredDraws);
         _coveragePointMatrices.EnsureCapacity(checked(_lights.Count * 12));
         _model.EnsureSkinnedMainCapacity((uint)draws);
         _model.EnsureSkinnedBonePaletteCapacity((uint)draws);

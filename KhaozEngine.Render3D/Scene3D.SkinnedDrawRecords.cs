@@ -1,12 +1,37 @@
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
+using KhaozEngine.Render3D.Rendering;
 
 namespace KhaozEngine.Render3D;
 
 /// <summary>Compacted per-frame CPU and GPU skinned draw records shared by colour and shadow passes.</summary>
 public sealed partial class Scene3D
 {
+    readonly List<CoveragePulledDraw> _coverageDraws = new();
+    readonly List<ModelRenderer.InstanceData> _coverageInstances = new();
+    readonly List<IGpuResourceSet?> _coverageMaterials = new();
+
+    internal System.Action<string, CoveragePulledDraw>? CoveragePullObserverForTests
+    {
+        set { _model.CoveragePullObserverForTests = value; _targetOutlines.CoveragePullObserverForTests = value; }
+    }
+
+    void DrawCoverageMain(IGpuCommandList commands)
+    {
+        if (_coverageDraws.Count == 0) return;
+        for (int i = 0; i < _coverageDraws.Count; i++) _model.PackCoverage(_coverageDraws[i], _coverageInstances[i]);
+        _model.UploadCoverage(commands);
+        for (int i = 0; i < _coverageDraws.Count; i++)
+        {
+            var draw = _coverageDraws[i];
+            if (!draw.VisibleMain) continue;
+            _model.DrawCoverage(commands, draw, _coverageMaterials[i]);
+            CountSkinnedDraw(draw.CornerCount);
+        }
+    }
+
     /// <summary>One GPU-skinned draw (built per frame in RenderInternal when <see cref="UseGpuSkinning"/> is on).
     /// Carries the mesh's rest-pose vertex + index buffers (uploaded once at load - the GPU deforms them), the
     /// set-1 material set, the composed bone-palette slice (offset into <c>_boneMatrices</c> + bone count), the

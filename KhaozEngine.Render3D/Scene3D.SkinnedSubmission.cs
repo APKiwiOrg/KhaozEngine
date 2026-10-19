@@ -15,6 +15,7 @@ public sealed partial class Scene3D
     {
         CoverageStageObserverForTests?.Invoke(CoverageStageSpan.SkinnedPreparation, true);
         var skinnedItems = _skinnedInstances.Items;
+        _coverageDraws.Clear(); _coverageInstances.Clear(); _coverageMaterials.Clear();
         _cpuSkinnedVerts.Clear();
         _cpuSkinnedInstances.Clear();
         _cpuSkinnedDraws.Clear();
@@ -31,7 +32,7 @@ public sealed partial class Scene3D
             for (int i = 0; i < skinnedItems.Count; i++)
             {
                 var it = skinnedItems[i];
-                if (it.Coverage.Preparation is { Outcome.Presentation: CoveragePresentation.Covered }) continue;
+                if (it.Coverage.Preparation is { Outcome.Presentation: CoveragePresentation.Dispatched }) continue;
                 if (!_skinnedSlots.IsValid(it.Mesh.Index, it.Mesh.Generation)) continue;
                 var entry = _skinnedMeshes[it.Mesh.Index];
                 if (entry is null) continue;

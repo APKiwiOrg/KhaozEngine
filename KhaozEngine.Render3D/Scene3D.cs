@@ -1514,6 +1514,7 @@ namespace KhaozEngine.Render3D
             // must not draw here. The GPU path's loop
             // lives in Scene3D.GpuSkinning.cs, beside the palette upload it depends on.
             DrawGpuSkinnedMain(cl);
+            DrawCoverageMain(cl);
             if (_cpuSkinnedDraws.Count > 0)
             {
                 // CPU path: the deformed geometry uploaded above, drawn without bones through the pipelines bound below.

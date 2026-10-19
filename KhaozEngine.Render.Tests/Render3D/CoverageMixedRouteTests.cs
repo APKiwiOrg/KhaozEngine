@@ -1,6 +1,8 @@
+using System;
 using System.Linq;
 using System.Runtime.InteropServices;
 using KhaozEngine.Render3D;
+using KhaozEngine.Render3D.Internal;
 using Xunit;
 
 namespace KhaozEngine.Tests.Render3D;
@@ -8,9 +10,29 @@ namespace KhaozEngine.Tests.Render3D;
 public sealed class CoverageMixedRouteTests
 {
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public void Capability_fallback_never_builds_the_pulled_vertex_programs(bool compute, bool failBuild)
+    {
+        using var h = new CoverageSceneFixture(supportsCompute: compute, failCoverageBuild: failBuild);
+        h.Scene.UseGpuSkinning = false;
+        h.Begin();
+        var frame = h.Stage();
+        var draw = h.HostDraw(frame);
+        h.Scene.DrawSkinned(draw, h.Palette);
+        h.Outline(draw);
+        h.SubmitEquipment();
+        h.Render();
+        Assert.Equal(CoveragePresentation.UncoveredFallback, h.Scene.GetCoverageOutcome(frame).Presentation);
+        Assert.Equal(1, h.Scene.CoverageDiagnosticsForTests.UncoveredGpuDraws);
+        Assert.DoesNotContain(h.Factory.ShaderRequests, s => s.VertexGlsl == ShaderSources.CoverageModelVert
+            || s.VertexGlsl == ShaderSources.CoverageOutlineVert);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void Covered_cpu_and_uncovered_gpu_draws_coexist(bool reverse)
+    public void Pulled_and_uncovered_gpu_draws_coexist(bool reverse)
     {
         using var h = new CoverageSceneFixture();
         h.Begin();
@@ -24,16 +46,16 @@ public sealed class CoverageMixedRouteTests
         h.Outline(covered);
         h.Outline(uncovered);
         h.Render();
-        Assert.Equal(1, h.Scene.CoverageDiagnosticsForTests.CoveredCpuPreparations);
+        Assert.Equal(1, h.Scene.DispatchedHostPreparationCount);
+        Assert.Equal(0, h.Scene.CoverageDiagnosticsForTests.CoveredCpuPreparations);
         Assert.Equal(1, h.Scene.CoverageDiagnosticsForTests.UncoveredGpuDraws);
-        Assert.Equal(h.Expected, h.Scene.CoverageVerticesForTests(frame).ToArray());
         h.AssertCanonicalDraws(frame);
     }
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void Covered_and_uncovered_cpu_draws_keep_independent_ranges(bool reverse)
+    public void Pulled_and_uncovered_cpu_draws_keep_independent_ranges(bool reverse)
     {
         using var h = new CoverageSceneFixture();
         h.Scene.UseGpuSkinning = false;
@@ -48,24 +70,18 @@ public sealed class CoverageMixedRouteTests
         h.Outline(covered);
         h.Outline(uncovered);
         h.Render();
-        Assert.Equal(1, h.Scene.CoverageDiagnosticsForTests.CoveredCpuPreparations);
+        Assert.Equal(1, h.Scene.DispatchedHostPreparationCount);
+        Assert.Equal(0, h.Scene.CoverageDiagnosticsForTests.CoveredCpuPreparations);
         Assert.Equal(0, h.Scene.CoverageDiagnosticsForTests.UncoveredGpuDraws);
         h.AssertCanonicalDraws(frame);
-        var route = h.Scene.CoverageSliceForTests(frame, 0);
         var mesh = h.UncoveredMesh;
-        int start = h.Conformer.Topology.VertexCount;
-        var draws = h.Record.IndexedDraws.Where(d => ReferenceEquals(d.VertexBuffer, route.Vertices)
-            && !h.IsHostIndexBuffer(d.IndexBuffer)).ToArray();
-        Assert.NotEmpty(draws);
-        Assert.Single(draws.Select(d => d.IndexBuffer).Distinct());
-        Assert.All(draws, d =>
-        {
-            Assert.Equal(start, d.VertexOffset);
-            Assert.Equal((uint)mesh.Indices32.Length, d.IndexCount);
-        });
+        Assert.Equal(mesh.Vertices.Length, h.Scene.OrdinaryCpuSkinnedVerticesForTests);
         var composed = h.Palette.Select((m, i) => SkinningMath.Compose(m, mesh.InverseBind[i])).ToArray();
         var expected = mesh.Vertices.Select(v => SkinningMath.SkinVertex(v, composed)).ToArray();
-        var upload = Assert.Single(h.Record.Uploads, u => ReferenceEquals(u.Buffer, route.Vertices));
-        Assert.Equal(expected, MemoryMarshal.Cast<byte, ModelVertex>(upload.Data).Slice(start, expected.Length).ToArray());
+        byte[] bytes = MemoryMarshal.AsBytes(expected.AsSpan()).ToArray();
+        Assert.Contains(h.Record.Uploads, u => u.Data.AsSpan().SequenceEqual(bytes));
+        foreach (var upload in h.Record.Uploads.Where(u => u.Data.AsSpan().SequenceEqual(bytes)))
+            Assert.All(h.Record.IndexedDraws.Where(d => ReferenceEquals(d.VertexBuffer, upload.Buffer)),
+                draw => Assert.Equal(0, draw.VertexOffset));
     }
 }

@@ -9,7 +9,7 @@
 # corpus.veldrid-spirv.txt sibling are that comparison, taken in two processes.
 #
 # Rebuild: KE_WRITE_SHADER_CORPUS=1 dotnet test KhaozEngine.Render.Tests --filter ShaderCorpus
-# Rows: 963
+# Rows: 995
 AtmosphereMultiScattering.fragment.hlsl 34864b3f97ad3f79b19eb98448bafe39c4eac61e24aad497e3297f5a35589548 18121
 AtmosphereMultiScattering.fragment.msl d938a869745f054ed6ac9d4571fbeadd01130d6f98d18f6052bffc83be5e3184 17554
 AtmosphereMultiScattering.fragment.spirv 1d5958cb8914edf4831bcfce3c4a00621f879c6c7dd505ee7884d093927a8a05 13736
@@ -138,6 +138,38 @@ CoverageInterpolateGroups.compute.msl 2562d370c5164a131550f3a8f0c3ce978660047e5a
 CoverageInterpolateGroups.compute.spirv ea582182abc9d0c780f74464a153cc3991fea441c0006e4fb28d392616fb855b 98528
 CoverageInterpolateGroups.layout.hlsl 432806c1628873a1cc8bf387c76b290d30904a68bf8a99e82cae12920b7fca31 6 in[]|set0[CovStaticBuf:StructuredBufferReadOnly:C,CovFrameBuf:StructuredBufferReadOnly:C,CovWorkBuf:StructuredBufferReadWrite:C,CovCurrentBuf:StructuredBufferReadWrite:C,CovPreviousBuf:StructuredBufferReadWrite:C,CovResultsBuf:StructuredBufferReadWrite:C]
 CoverageInterpolateGroups.layout.msl 432806c1628873a1cc8bf387c76b290d30904a68bf8a99e82cae12920b7fca31 6 in[]|set0[CovStaticBuf:StructuredBufferReadOnly:C,CovFrameBuf:StructuredBufferReadOnly:C,CovWorkBuf:StructuredBufferReadWrite:C,CovCurrentBuf:StructuredBufferReadWrite:C,CovPreviousBuf:StructuredBufferReadWrite:C,CovResultsBuf:StructuredBufferReadWrite:C]
+CoverageModel.fragment.hlsl 8846dd18b8ae91bd1c017e4be49092ff19fd2f3672127123a99538b9612a0db8 81587
+CoverageModel.fragment.msl 68f84037e41c6640018eb0dcdb1387fc2bd45c3deb60317581489367e7ae21aa 80684
+CoverageModel.fragment.spirv baed2f1bc88127eab3a1863dde7736f1fdc0ac6a9760d165858dd30dcfdea0bc 58328
+CoverageModel.layout.hlsl 8b19b4d8fc57ce1378d1de567bef0dbf9f29cd80e4761ff2fc61cbbb4bd0d900 18 in[]|set0[U:UniformBuffer:VF,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:StructuredBufferReadOnly:F,VBlock:UniformBuffer:V,<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F]|set2[CoverageCurrent:StructuredBufferReadOnly:V,CoverageStatic:StructuredBufferReadOnly:V,CoverageDraw:UniformBuffer:V]
+CoverageModel.layout.msl 8b19b4d8fc57ce1378d1de567bef0dbf9f29cd80e4761ff2fc61cbbb4bd0d900 18 in[]|set0[U:UniformBuffer:VF,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:StructuredBufferReadOnly:F,VBlock:UniformBuffer:V,<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F]|set2[CoverageCurrent:StructuredBufferReadOnly:V,CoverageStatic:StructuredBufferReadOnly:V,CoverageDraw:UniformBuffer:V]
+CoverageModel.vertex.hlsl 8b1ac8cdfe29601ee4ad3b2fcbbef79ba3128c540755b87fc6a118887ed8f412 6151
+CoverageModel.vertex.msl 7d2d2a4410207d92c60a7b6c5516906a0aabfcb1c77f3b7d628a01ce1b0e092e 6849
+CoverageModel.vertex.spirv a8de7070970b34b43ec9270fcc20a7349efd9e72fb20919d17459e4d7fae22b6 12140
+CoverageModelDissolve.fragment.hlsl 16198d7a9e4864269ac91cce02ee16522acd90f54c7da7c2666c3cecc4b47af7 83503
+CoverageModelDissolve.fragment.msl b254bbc001e46ae0f4e154fd14ef0803cc6f60bfc38381d703b52c8a6c037f67 82543
+CoverageModelDissolve.fragment.spirv a762f4bfa89b99c991e420180c765e90ff2dd967e870203c41b830818e4f9a16 60256
+CoverageModelDissolve.layout.hlsl 8b19b4d8fc57ce1378d1de567bef0dbf9f29cd80e4761ff2fc61cbbb4bd0d900 18 in[]|set0[U:UniformBuffer:VF,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:StructuredBufferReadOnly:F,VBlock:UniformBuffer:V,<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F]|set2[CoverageCurrent:StructuredBufferReadOnly:V,CoverageStatic:StructuredBufferReadOnly:V,CoverageDraw:UniformBuffer:V]
+CoverageModelDissolve.layout.msl 8b19b4d8fc57ce1378d1de567bef0dbf9f29cd80e4761ff2fc61cbbb4bd0d900 18 in[]|set0[U:UniformBuffer:VF,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:StructuredBufferReadOnly:F,VBlock:UniformBuffer:V,<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F]|set2[CoverageCurrent:StructuredBufferReadOnly:V,CoverageStatic:StructuredBufferReadOnly:V,CoverageDraw:UniformBuffer:V]
+CoverageModelDissolve.vertex.hlsl 8b1ac8cdfe29601ee4ad3b2fcbbef79ba3128c540755b87fc6a118887ed8f412 6151
+CoverageModelDissolve.vertex.msl 7d2d2a4410207d92c60a7b6c5516906a0aabfcb1c77f3b7d628a01ce1b0e092e 6849
+CoverageModelDissolve.vertex.spirv a8de7070970b34b43ec9270fcc20a7349efd9e72fb20919d17459e4d7fae22b6 12140
+CoverageOutlineFull.fragment.hlsl 01a22ff979493a9e5ceb4dfaae586da9bd8dce15949321d2f05eed6c142a0282 866
+CoverageOutlineFull.fragment.msl 359e25dee9c39c117d8c148197d6cb822a16a3bf62b71609bca40381fc195493 696
+CoverageOutlineFull.fragment.spirv 28db6681ff8216b9f3046de161447f9c8ba368e1c8fd095aec61ce8eacc09c88 1200
+CoverageOutlineFull.layout.hlsl 0240d07bf70c5a91adb86745a6ecef218df7f91e2bcde23be2bd83cc64915454 6 in[]|set0[Draw:UniformBuffer:VF]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]|set2[CoverageCurrent:StructuredBufferReadOnly:V,CoverageStatic:StructuredBufferReadOnly:V,CoverageDraw:UniformBuffer:V]
+CoverageOutlineFull.layout.msl 0240d07bf70c5a91adb86745a6ecef218df7f91e2bcde23be2bd83cc64915454 6 in[]|set0[Draw:UniformBuffer:VF]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]|set2[CoverageCurrent:StructuredBufferReadOnly:V,CoverageStatic:StructuredBufferReadOnly:V,CoverageDraw:UniformBuffer:V]
+CoverageOutlineFull.vertex.hlsl e8166b5c80891db6d75972aefa358341d913610f1a48eb0ac8925c3d60e02a51 4005
+CoverageOutlineFull.vertex.msl 0d96c0b0863b9f9bb3e406a41169dfd372b70ae2043b1aac0800a90697d129ff 5539
+CoverageOutlineFull.vertex.spirv 214c49bf023a1dcc066e6bf0b26a9fbdb7b153697b4ccefee92f05c9d05d8f19 9280
+CoverageOutlineVisible.fragment.hlsl cae54e486a1c266b21c764e5e6fcb2ae4bb43a641c642744e623828737ce3059 3310
+CoverageOutlineVisible.fragment.msl 169c4c859df647521745b2e356fd9519bbfa6faa572a583180af306a6bb11aa6 2828
+CoverageOutlineVisible.fragment.spirv 601ca32d5ac387182ff33b4cde6dd66adcb44afedf9ee304b4fececc7baaf5cf 3784
+CoverageOutlineVisible.layout.hlsl 0240d07bf70c5a91adb86745a6ecef218df7f91e2bcde23be2bd83cc64915454 6 in[]|set0[Draw:UniformBuffer:VF]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]|set2[CoverageCurrent:StructuredBufferReadOnly:V,CoverageStatic:StructuredBufferReadOnly:V,CoverageDraw:UniformBuffer:V]
+CoverageOutlineVisible.layout.msl 0240d07bf70c5a91adb86745a6ecef218df7f91e2bcde23be2bd83cc64915454 6 in[]|set0[Draw:UniformBuffer:VF]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]|set2[CoverageCurrent:StructuredBufferReadOnly:V,CoverageStatic:StructuredBufferReadOnly:V,CoverageDraw:UniformBuffer:V]
+CoverageOutlineVisible.vertex.hlsl e8166b5c80891db6d75972aefa358341d913610f1a48eb0ac8925c3d60e02a51 4005
+CoverageOutlineVisible.vertex.msl 0d96c0b0863b9f9bb3e406a41169dfd372b70ae2043b1aac0800a90697d129ff 5539
+CoverageOutlineVisible.vertex.spirv 214c49bf023a1dcc066e6bf0b26a9fbdb7b153697b4ccefee92f05c9d05d8f19 9280
 CoveragePredicatesCell.compute.hlsl 22945e60143a9fd03970320fe6bd9a1afc09c8592e4e271b7e6ea2ecf34dcb8e 16910
 CoveragePredicatesCell.compute.msl 0604263988fcff027adce4bf195ccbeb7c32eae4e7f799aa163509890d0c6cd6 20581
 CoveragePredicatesCell.compute.spirv 0b6a6beb677961e72bc9d1358b0ae6e1a7c2e9c56fdf3d19000423e4e3796a0f 30596

@@ -74,6 +74,12 @@ internal static class MapFoliageJson
     static readonly string[] RectMembers = ["minX", "minZ", "maxX", "maxZ"];
     static readonly string[] ChunkMembers = ["x", "z", "density"];
 
+    [ThreadStatic] static long t_payloadWrites;
+
+    /// <summary>Whole inline payload serializations started on the calling thread. Counts actual calls, so a caller can
+    /// prove a phase wrote no complete foliage payload.</summary>
+    internal static long ThreadPayloadWrites => t_payloadWrites;
+
     internal static MapFoliageSet Read(JsonElement value) => Read(value, MapFoliagePayloadLimits.MaxUtf8Bytes);
 
     /// <summary>Reads under an explicit section size ceiling. The payload ceiling is <see cref="MapFoliagePayloadLimits.MaxUtf8Bytes"/>.</summary>
@@ -186,6 +192,7 @@ internal static class MapFoliageJson
 
     internal static void Write(Utf8JsonWriter w, MapFoliageSet set)
     {
+        t_payloadWrites++;
         if (MapFoliageStorageWork.Current is { } work) work.InlineWrites++;
         MapFoliageStorage.RequireComplete(set);
         w.WriteStartObject();

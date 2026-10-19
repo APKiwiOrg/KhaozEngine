@@ -1,8 +1,8 @@
 # Real-scene shadow visibility evidence
 
-Status: evidence collected, owner decision pending. This record does not accept Task 10 or authorize a release.
+Status: Task 10 accepted. The owner accepted D on 2026-10-19 after real-scene clips. D ships lock release only, without a large-change weight response. The [reset-tuning history](reset-tuning.md) and [owner-accepted release-only costs](owner-release-only.md) preserve the decision and its measured costs. This acceptance does not authorize a release.
 
-Material concern: ground15 ground change mean rises from 0.003674704 to 0.006519368 at Native and from 0.003728160 to 0.007835931 at Quality. Ground grain rises at both presets. Quality ground dots rise from 948 to 987. The back15 improvement alone does not settle this stability trade-off.
+Historical response-enabled concern, superseded by D below: ground15 ground change mean rises from 0.003674704 to 0.006519368 at Native and from 0.003728160 to 0.007835931 at Quality. Ground grain rises at both presets. Quality ground dots rise from 948 to 987. The back15 improvement alone does not settle this stability trade-off.
 
 MetalNative on Apple M2 Max, 2560x1440. Every condition uses 80 warm-up frames, 16 measured frames and start time `0.49777777777777776`. The idle player, world, camera, sharpness, light hold and shadow detail use the probe defaults. There is no diagnostic renderer build or engine instrumentation.
 
@@ -168,7 +168,7 @@ The [comparison panels](owner-look/comparisons) show control and final, Native, 
 
 The [owner look directory](owner-look) contains all three builds' back15 character 4x crops for Native, Quality and FXAA, normal-scale back15 contact sheets, and ground15 ground 4x crops. Combined labeled panels preserve mode order. Character crops use the archive's fixed 96x96 window at crop coordinates (144, 200), frame 15. Ground crops use the fixed cobble-edge window (260, 270) to (356, 366), frame 15, overlapping the archive's ground transects. The capture's densest ground-band windows include a signboard, because the inherited ground mask covers world receivers rather than a terrain-only surface. Those original automatic windows remain in `owner-look/world-window`. No mask or metric changed when adding the cobble views. Per-condition normal pixels and masks remain available for reviewing every regression, including day30 and back60.
 
-The orchestrator must obtain the owner's look decision and the Task 7b residual trade-off decision. The synthetic values supplied by the plan are Quality textured grain 0.008031 against 0.008, Quality M 1.0 leading textured rim error 0.0030106876217401947 against 0.00271205, and temporal error 0.004819472651560228 against 0.00432135. These are plan-supplied synthetic results, not measurements derived from the real scene. This task changes no bounds or skips and does not rebaseline any candidate. Those failures remain for the owner and orchestrator to resolve.
+The owner accepted the real-scene D clips and the remaining lock-release costs on 2026-10-19. The synthetic grain, absolute 8 px tail and Quality M 1.0 leading textured rim costs are recorded in [owner-release-only.md](owner-release-only.md). The earlier response-enabled metrics remain above as history. This confirmation changes no bounds, skips or renderer source.
 
 ## Capture and pack commands
 
@@ -214,4 +214,42 @@ build-slot --heavy --label taa-final-ground15 -- env KE_GRAPHICS_BACKEND=metal-n
 
 The ground look refinement is reproducible with `scripts/make_ground_look.py` against the committed lossless contact-sheet archives. It changes presentation only.
 
-The probe deleted 160 intermediate per-frame images after every successful capture. Full Grimhollow tests and navigation rebakes were deliberately omitted under the probe dispatch. This evidence does not replace the engine's final correctness gates or owner acceptance.
+The probe deleted 160 intermediate per-frame images after every successful capture. Full Grimhollow tests and navigation rebakes were deliberately omitted under the probe dispatch. The historical round does not replace the engine's final correctness gates. The owner acceptance and exact shipping-source confirmation are recorded below.
+
+
+## Accepted D shipping-head confirmation
+
+The exact shipping source is `8307e93361ee66ef30b9a379d2b1eeaf0eb7501b`, including the Task 7d response deletion and the D3D11 non-finite-depth fix. A detached scratch worktree changed only `Directory.Build.props` to private package `21.6.0-svship.1`. The new version did not exist in the private feed and no same-version NuGet extraction existed. The feed was `/Users/antonio/.cache/khaozengine-probe-feed/taa-shadow-visibility`. The pack produced 222 package files and the scratch worktree was removed. The probe pin, both tool pins and all 222 vendored files are committed and pushed at `fc0684fe3cb54a8d92ba7ff8aa0752a1135e7b9d` on the diagnostic archive branch. No game shipping branch changed.
+
+| Identity | SHA256 |
+| --- | --- |
+| Render3D nupkg | `d5e70f8a65447ece539e4a3b1a947a39391799252f94ed026a316569f4be65a4` |
+| Render3D symbols | `dec2a30966fe9535f6658e75268bb762aa0ed02b351d13db12efcc2f0e290705` |
+| Loaded Render3D DLL, both captures | `0cb4f7252e46fe566356ba7ffb25bc58833825996ad3b18550120cd96c254b75` |
+
+The [manifest](manifest.json) records the source tree, relevant source hashes, all 222 package hashes, package repository commit, probe commit and both captured loaded-binary identities in its separate `shipping_build` record. The D reference names private package `21.6.0-svtune-d.1`, probe `e9e994d8017c3ec2ff98ee72a839e18bc519aa78` and loaded DLL `cc9d7583b1f3e506a086a3d092a929a2f974bc20faad356870f39cd4a4ea3ccf`. The original three historical builds retain all four conditions. Shipping confirmation requires only back15 and ground15 under the authorized Task 10 brief.
+
+One capture ran per condition, without retries, on MetalNative / Apple M2 Max. Both used 2560x1440, dt 1/15, a five-minute day, start time `0.49777777777777776`, 80 warm-up frames and 16 measured frames. Native, Quality and FXAA each retained a continuous history. Every build, pack, capture and archive analysis used build-slot. Pack and build completed with zero warnings and errors. Each capture checked the loaded renderer against the vendored nupkg before image analysis and deleted its 160 per-frame images.
+
+Analysis called the unchanged archive `read_run` path. Every grain mean, nearest-rank p95, change mean, dot count and sample count matches D exactly across both regions and all modes. The six primary rows also match the Task 7c printed values at all nine decimal places. Locked share remains unavailable for TAA and not applicable for FXAA. Neither round has lock overlays.
+
+Each numeric cell below is shipping / D. No difference was rounded away.
+
+| Condition | Region | Mode | Grain mean | Grain p95 | Change mean | Dots |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| back15 | character | taa-native | 0.005474607 / 0.005474607 | 0.029102745 / 0.029102745 | 0.017496412 / 0.017496412 | 364 / 364 |
+| back15 | ground | taa-native | 0.005263856 / 0.005263856 | 0.020472941 / 0.020472941 | 0.012355875 / 0.012355875 | 45 / 45 |
+| back15 | character | taa-quality | 0.008704202 / 0.008704202 | 0.045072157 / 0.045072157 | 0.017329273 / 0.017329273 | 759 / 759 |
+| back15 | ground | taa-quality | 0.006224461 / 0.006224461 | 0.024378824 / 0.024378824 | 0.012273386 / 0.012273386 | 821 / 821 |
+| back15 | character | fxaa | 0.002607103 / 0.002607103 | 0.015403137 / 0.015403137 | 0.018394584 / 0.018394584 | 0 / 0 |
+| back15 | ground | fxaa | 0.001654852 / 0.001654852 | 0.007560000 / 0.007560000 | 0.013100857 / 0.013100857 | 0 / 0 |
+| ground15 | character | taa-native | 0.002937400 / 0.002937400 | 0.011214118 / 0.011214118 | 0.001168977 / 0.001168977 | 371 / 371 |
+| ground15 | ground | taa-native | 0.004815313 / 0.004815313 | 0.017416471 / 0.017416471 | 0.003688205 / 0.003688205 | 262 / 262 |
+| ground15 | character | taa-quality | 0.003011179 / 0.003011179 | 0.011816471 / 0.011816471 | 0.001193931 / 0.001193931 | 330 / 330 |
+| ground15 | ground | taa-quality | 0.005046021 / 0.005046021 | 0.020724706 / 0.020724706 | 0.003739381 / 0.003739381 | 782 / 782 |
+| ground15 | character | fxaa | 0.002280813 / 0.002280813 | 0.012598431 / 0.012598431 | 0.001350774 / 0.001350774 | 0 / 0 |
+| ground15 | ground | fxaa | 0.002293241 / 0.002293241 | 0.007575686 / 0.007575686 | 0.003328693 / 0.003328693 | 0 / 0 |
+
+The shipping Native, Quality and FXAA normal contact-sheet pixels are byte-identical to D in both conditions. Both region-mask streams are byte-identical to D. FXAA is also byte-identical to A. Differing pixel-frame count is zero in every comparison. Back15 character grain and dots remain below bilinear-only at both presets, with Native 0.005474607 / 364 versus 0.008027197 / 851 and Quality 0.008704202 / 759 versus 0.011052578 / 1166.
+
+The committed shipping inputs retain the lossless normal RGB archive, region bits, capture provenance and metrics. Summaries are [shipping-summary.json](shipping-summary.json) and [shipping-D-reference-summary.json](shipping-D-reference-summary.json). Contact sheets, edge crops, logs and the replay comparison remain under `/tmp/grimhollow-shadow-visibility/ship/`. There are no per-frame leftovers. The evidence verifier preserves every historical check and separately requires the two shipping conditions, three modes, both regions, complete hashes and the dated D acceptance. It accepts a pending shipping decision only when the D comparison differs. This round did not run GPU test suites, timing tests or other backends.

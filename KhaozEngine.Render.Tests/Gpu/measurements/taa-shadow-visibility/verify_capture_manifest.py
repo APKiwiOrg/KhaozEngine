@@ -35,13 +35,121 @@ def relative(path):
     return p
 
 
+def verify_shipping(engine, probe, data):
+    record = data['shipping_build']
+    source, commit = record['source_commit'], record['probe_commit']
+    version = '21.6.0-svship.1'
+    assert source == '8307e93361ee66ef30b9a379d2b1eeaf0eb7501b'
+    assert git(engine, 'rev-parse', source).decode().strip() == source
+    assert git(engine, 'rev-parse', source+'^{tree}').decode().strip() == record['source_tree']
+    assert record['package_version'] == version
+    subprocess.run(['git', '-C', str(probe), 'merge-base', '--is-ancestor', data['probe_base_commit'], commit], check=True)
+    assert f'<KhaozEngineVersion>{version}</KhaozEngineVersion>'.encode() in git(probe, 'show', commit+':Directory.Build.props')
+    tools = json.loads(git(probe, 'show', commit+':.config/dotnet-tools.json'))['tools']
+    assert tools['khaozengine.tileedit.tool']['version'] == version
+    assert tools['khaozengine.sfx.tool']['version'] == version
+    for item in record['source_files']:
+        assert sha(git(engine, 'show', source+':'+str(relative(item['path'])))) == item['sha256']
+    assert {item['path'] for item in record['source_files']} == {item['path'] for item in data['builds']['final']['source_files']}
+    assert len(record['packages']) == 222
+    listed = {str(relative(p['path'])) for p in record['packages']}
+    actual = set(git(probe, 'ls-tree', '-r', '--name-only', commit, 'vendor/khaozengine').decode().splitlines())
+    assert listed == {p for p in actual if p.endswith(('.nupkg', '.snupkg'))}
+    renderer = None
+    for package in record['packages']:
+        blob = git(probe, 'show', commit+':'+package['path'])
+        assert sha(blob) == package['sha256'], f'Shipping package hash mismatch {package["path"]}'
+        assert package['path'].endswith(('.'+version+'.nupkg', '.'+version+'.snupkg'))
+        if 'renderer_member' in package:
+            assert package['path'] == f'vendor/khaozengine/KhaozEngine.Render3D.{version}.nupkg'
+            with zipfile.ZipFile(io.BytesIO(blob)) as z:
+                renderer = sha(z.read(package['renderer_member']))
+                assert renderer == package['renderer_sha256'] == record['loaded_renderer_sha256'], 'Shipping loaded renderer identity mismatch'
+                nuspec = ET.fromstring(z.read(next(n for n in z.namelist() if n.endswith('.nuspec'))))
+                repository = next(n for n in nuspec.iter() if n.tag.rsplit('}', 1)[-1] == 'repository')
+                assert repository.attrib['commit'] == source == package['repository_commit']
+    assert renderer is not None
+    assert record['lock_overlay']['status'] == 'unavailable' and record['lock_overlay']['reason']
+    assert record['lock_overlay']['normal_overlay_pairs'] == []
+    required = {'back15', 'ground15'}
+    assert set(record['captures']) == required, 'Shipping condition inventory mismatch'
+    summary = json.loads((engine/relative(record['summary_path'])).read_text())
+    reference = data['shipping_reference']
+    assert reference['candidate'] == 'D'
+    assert reference['probe_commit'] == 'e9e994d8017c3ec2ff98ee72a839e18bc519aa78'
+    assert reference['package_version'] == '21.6.0-svtune-d.1'
+    reference_package = git(probe, 'show', reference['probe_commit']+':vendor/khaozengine/KhaozEngine.Render3D.21.6.0-svtune-d.1.nupkg')
+    assert sha(reference_package) == reference['renderer_package_sha256']
+    with zipfile.ZipFile(io.BytesIO(reference_package)) as z:
+        assert sha(z.read('lib/net10.0/KhaozEngine.Render3D.dll')) == reference['loaded_renderer_sha256']
+    old = json.loads((engine/relative(reference['summary_path'])).read_text())
+    assert set(summary) == set(old) == set(reference['captures']) == required
+    matches = True
+    pixels_match = True
+    for condition in sorted(required):
+        capture = record['captures'][condition]
+        run = engine/relative(capture['path'])
+        metrics = json.loads((run/'metrics.json').read_text())
+        meta = json.loads((run/'analysis-provenance.json').read_text())
+        opts = metrics['Options']
+        spot, dt, day = CONDITIONS[condition]
+        assert opts['Spot']['Name'] == spot and opts['FrameSeconds'] == dt and opts['DayMinutes'] == day
+        assert opts['StartTime'] == 0.49777777777777776 and opts['Warmup'] == 80 and opts['Frames'] == 16
+        assert opts['Width'] == 2560 and opts['Height'] == 1440 and not opts['KeepFrames']
+        assert opts['Sharpen'] is None and opts['HoldTexels'] is None and opts['TemporalResolve'] is None
+        assert metrics['TemporalResolveOverride'] is None and metrics['ValidRegions']
+        assert metrics['SheetColumns'] == list(MODES)
+        assert meta['RendererSha256'] == renderer == capture['loaded_renderer_sha256']
+        assert version in meta['RendererVersion'] and source in meta['RendererVersion']
+        assert meta['Frames'] == 16 and capture['command_exit_code'] == 0
+        assert capture['deleted_intermediate_images'] == 160
+        raw = gzip.decompress((run/'analysis-regions.bin.gz').read_bytes())
+        assert len(raw) == meta['Width']*meta['Height']*16 and set(raw) <= set(range(16))
+        pixels = lzma.decompress((run/'analysis-frames.rgb.xz').read_bytes())
+        assert len(pixels) == meta['Width']*meta['Height']*3*3*16
+        assert sha(pixels) == capture['normal_rgb_sha256']
+        assert not list(run.rglob('frame-*.png')) and not list(run.rglob('crop-*.png'))
+        pixels_match &= sha(pixels) == reference['captures'][condition]['normal_rgb_sha256']
+        pixels_match &= sha(raw) == reference['captures'][condition]['region_bits_sha256']
+        assert set(summary[condition]) == set(old[condition]) == set(MODES)
+        assert len(metrics['Modes']) == 3 and {m['Name'] for m in metrics['Modes']} == set(MODES)
+        for mode in metrics['Modes']:
+            assert len(mode['Frames']) == 16
+            assert all(f['Diagnostics']['Backend'] == 'MetalNative' for f in mode['Frames'])
+            assert all(f['Diagnostics']['ShadowActive'] for f in mode['Frames'])
+            if mode['Name'] != 'fxaa':
+                assert all(f['Diagnostics']['HistoryValid'] for f in mode['Frames'])
+            assert all(f['Diagnostics']['DisplayWidth'] == 2560 and f['Diagnostics']['DisplayHeight'] == 1440 for f in mode['Frames'])
+            assert set(summary[condition][mode['Name']]) == set(old[condition][mode['Name']]) == {'character', 'ground'}
+            for region in ('character', 'ground'):
+                row = summary[condition][mode['Name']][region]
+                assert row['locked_share'] is None and row['dots'] >= 0 and row['grain_samples'] > 0
+                assert row['lock_status'] == ('not-applicable' if mode['Name'] == 'fxaa' else 'unavailable')
+                if mode['Name'] == 'fxaa':
+                    assert row['dots'] == 0
+                original = mode['Regions'][region]
+                for key, name in [('grain', 'GrainMean'), ('p95', 'GrainP95'), ('change', 'ChangeMean')]:
+                    assert abs(row[key]-original[name]) < 1e-12
+                assert row['grain_samples'] == original['Pixels'] and row['change_samples'] == original['ChangePixels']
+                matches &= row == old[condition][mode['Name']][region]
+    assert not matches or pixels_match, 'Shipping pixels or masks differ despite equal D rows'
+    acceptance = data['acceptance']
+    base = 'KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/'
+    assert acceptance['candidate'] == 'D' and acceptance['owner_acceptance_date'] == '2026-10-19'
+    assert acceptance['statement'] == 'The owner accepted D on 2026-10-19 after real-scene clips.'
+    assert set(acceptance['evidence_links']) == {base+'reset-tuning.md', base+'owner-release-only.md'}
+    assert all((engine/relative(p)).is_file() for p in acceptance['evidence_links'])
+    assert acceptance['shipping_matches_D'] is matches
+    assert acceptance['status'] == ('accepted' if matches else 'pending-owner-decision'), 'Shipping acceptance does not match D comparison'
+    return matches
+
+
 def verify(path):
     engine = Path(__file__).resolve().parents[4]
     common = Path(git(engine, 'rev-parse', '--path-format=absolute', '--git-common-dir').decode().strip())
     probe = Path(os.environ.get('GRIMHOLLOW_PROBE', str(common.parent.parent/'Grimhollow')))
     data = json.loads(path.read_text())
     assert data['schema_version'] == 1
-    assert data['acceptance'] == 'pending-owner-decision'
     assert set(data['builds']) == set(BUILDS)
     assert data['capture_settings'] == {'width': 2560, 'height': 1440, 'warmup': 80,
                                          'frames': 16, 'start_time': 0.49777777777777776,
@@ -147,7 +255,8 @@ def verify(path):
                     original = mode['Regions'][region]
                     for key, name in [('grain','GrainMean'), ('p95','GrainP95'), ('change','ChangeMean')]:
                         assert abs(row[key]-original[name]) < 1e-12
-    print('PASS. Three source and package sets, loaded renderer hashes, 12 captures, 72 rows and all artifact hashes verified. Locks unavailable with explicit reason. No rendering performed.')
+    matches = verify_shipping(engine, probe, data)
+    print('PASS. Three historical source and package sets, 12 captures and 72 rows retain every check. Shipping source and 222 packages, loaded renderer, two captures and 12 rows verified. D match '+str(matches)+'. Acceptance '+data['acceptance']['status']+'. All artifact hashes verified. Locks unavailable with explicit reason. No rendering performed.')
 
 
 if __name__ == '__main__':

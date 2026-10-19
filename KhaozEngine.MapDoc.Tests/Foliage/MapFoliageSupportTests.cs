@@ -172,6 +172,45 @@ public sealed class MapFoliageSupportTests
         Assert.Equal(budget.Values.Sum(), budget.GetValueOrDefault("CapacityExceeded"));
     }
 
+    [Theory]
+    [InlineData(1.113f, MapMembershipStatus.MissingGeometry, false, MapSupportStatus.MissingGeometry, MapFoliageStatus.Unavailable)]
+    [InlineData(1.613f, MapMembershipStatus.Ambiguous, true, MapSupportStatus.CapacityExceeded, MapFoliageStatus.CapacityExceeded)]
+    public void SharedKernel_PreservesMembershipFailureOrderAcrossPointPreparation(float coordinate,
+        MapMembershipStatus membershipStatus, bool pointPrepared, MapSupportStatus supportStatus, MapFoliageStatus foliageStatus)
+    {
+        // The missing ceiling cell refuses before preparation. Beside it, two occupied caves are ambiguous only after
+        // preparation, so the sixty-fifth support intersection still takes precedence there.
+        MapSurfaceSet set = FoliageFixtures.Pocket();
+        MapSurfacePatch floor = CaveFixtures.Patch(set, "base");
+        MapSpaceFootprint pocket = floor.Records.OfType<MapSpaceFootprint>().Single();
+        floor.Records.Add(new MapSpaceDoc("overlap", MapSpaceKind.Cave, null, null, [], [], [], []));
+        floor.Records.Add(pocket with { Id = "overlap-cells", Space = new("overlap", floor.Key) });
+        for (int k = 1; k < 65; k++)
+            CaveFixtures.AddSurface(set, FormattableString.Invariant($"floor-{k:00}"), MapSurfaceRole.SupportFloor, 0, 0, 4, 4, (_, _) => k * 100);
+        FoliageFixture fixture = FoliageFixtures.Wrapped(set, FoliageFixtures.Surface("base"), -1, -1, 4, 4);
+        MapFoliageGenerationContext context = FoliageFixtures.Context(fixture);
+        MapFoliageLayer layer = context.Foliage!.Layers[0];
+        MapSurfaceScope scope = MapFoliageSupport.Scope(layer, Origin, context.Resources.SurfaceSource.Surfaces, context.Resources.Transforms);
+        MapScopedSurfaces view = context.Acquire(scope);
+        MapPreparedFoliageSupport prepared = MapFoliageSupport.Prepare(view, context.PaintFor(scope), context.Resources.SurfaceSource.Surfaces,
+            layer, Origin, Limits);
+        Assert.Equal(MapFoliageStatus.Complete, prepared.Status);
+
+        var xz = new MapExactXz(MapExactValue.FromSingle(coordinate), MapExactValue.FromSingle(coordinate));
+        var world = new MapExactPoint(xz.X, MapExactValue.FromSingle(0), xz.Z);
+        MapMembershipResult membership = new MapSpaceMembership(view).QueryExact(world, [], null, out MapBoundFaceContext? pointContext);
+        Assert.Equal(membershipStatus, membership.Status);
+        Assert.Equal(pointPrepared, pointContext is not null);
+        MapSupportResult released = MapSupportPreparation.Prepare(view).SampleBinding(layer.Support, xz);
+        Assert.Equal(supportStatus, released.Status);
+        if (pointPrepared) Assert.Equal("support intersections", released.Detail);
+        else Assert.Contains("missing bound", released.Detail);
+
+        MapFoliageSurfacePoint sample = prepared.Sample(coordinate, coordinate);
+        Assert.Equal((foliageStatus, MapFoliageReason.Refused), (sample.Status, sample.Reason));
+        Assert.Null(sample.Face);
+    }
+
     // Exterior "yard" on a 2 by 2 floor "base" at 0 m with three more floors above it, and a room whose prism footprint is
     // one staircase ring of 4090 vertices on a 1/511 m lattice.
     static MapSurfaceSet PrismBudget()

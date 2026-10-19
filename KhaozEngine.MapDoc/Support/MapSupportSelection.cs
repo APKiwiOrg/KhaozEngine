@@ -100,13 +100,9 @@ internal static class MapSupportSelection
                     ? spaces.QueryExact(exactPoint, cells.Select(c => new MapBoundFaceDemand(c, null)), work, out context)
                     : spaces.Query(point, cells.Select(c => new MapBoundFaceDemand(c, null)), work, out context);
             else
-            {
                 membership = exactWorld is { } exactPoint
-                    ? spaces.QueryExact(exactPoint, cells.Select(c => new MapBoundFaceDemand(c, null)), shared)
-                    : spaces.Query(point, cells.Select(c => new MapBoundFaceDemand(c, null)), shared);
-                // The point's own preparation would have refused here, before any face was read.
-                context = membership.Status == MapMembershipStatus.CapacityExceeded && membership.Detail == "context faces" ? null : shared;
-            }
+                    ? spaces.QueryExact(exactPoint, shared, cells.Select(c => new MapBoundFaceDemand(c, null)), out context)
+                    : spaces.Query(point, shared, cells.Select(c => new MapBoundFaceDemand(c, null)), out context);
             if (context is null) return Failure(Status(membership.Status), membership.Detail);
             var intersections = new List<Intersection>();
             foreach (MapCellDemand cell in cells)

@@ -100,16 +100,19 @@ public sealed class MapSpaceMembership
     }
 
     /// <summary>Point membership over a supplied context, as the point's own query would answer it: the point demands the
-    /// extra cells, and refuses CapacityExceeded when its own demand set exceeds its face allowance.</summary>
-    internal MapMembershipResult QueryExact(MapExactPoint world, IEnumerable<MapBoundFaceDemand> demands, MapBoundFaceContext context)
+    /// extra cells, and refuses CapacityExceeded when its own demand set exceeds its face allowance. Reports a prepared
+    /// context only after the point's preparation succeeds, including when the context is supplied.</summary>
+    internal MapMembershipResult QueryExact(MapExactPoint world, MapBoundFaceContext context, IEnumerable<MapBoundFaceDemand> demands,
+        out MapBoundFaceContext? prepared)
     {
         context.RequireView(_view);
-        return QueryCore(MapEffectiveGeometry.Presentation(_view, world), null, context, demands, out _, null, false, world, pointBudget: true);
+        return QueryCore(MapEffectiveGeometry.Presentation(_view, world), null, context, demands, out prepared, null, false, world, pointBudget: true);
     }
-    internal MapMembershipResult Query(MapFramePoint point, IEnumerable<MapBoundFaceDemand> demands, MapBoundFaceContext context)
+    internal MapMembershipResult Query(MapFramePoint point, MapBoundFaceContext context, IEnumerable<MapBoundFaceDemand> demands,
+        out MapBoundFaceContext? prepared)
     {
         context.RequireView(_view);
-        return QueryCore(point, null, context, demands, out _, null, false, pointBudget: true);
+        return QueryCore(point, null, context, demands, out prepared, null, false, pointBudget: true);
     }
 
     internal MapMembershipResult QueryExact(MapExactPoint world, MapBoundFaceContext context)
@@ -133,7 +136,7 @@ public sealed class MapSpaceMembership
         IEnumerable<MapBoundFaceDemand>? additional, out MapBoundFaceContext? prepared, List<MapSpaceBoundsPart>? parts, bool column, MapExactPoint? exactWorld = null,
         bool pointBudget = false)
     {
-        prepared = supplied;
+        prepared = null;
         if (point.Frame != _view.Scope.Frame) throw new ArgumentException("point frame differs from acquired frame", nameof(point));
         if (!float.IsFinite(point.Local.X) || !float.IsFinite(point.Local.Y) || !float.IsFinite(point.Local.Z))
             throw new ArgumentException("point must be finite", nameof(point));

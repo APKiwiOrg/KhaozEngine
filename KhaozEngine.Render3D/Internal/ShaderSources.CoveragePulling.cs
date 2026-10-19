@@ -81,4 +81,70 @@ void main() {
     vUv = v.uv;
     vWorldPos = world.xyz + RenderOrigin.xyz;
 }";
+    internal static readonly string CoverageCascadeVert = @"#version 450
+layout(set=0, binding=0) uniform VBlock {
+    mat4 LightMvp; mat4 Model; vec4 RenderOrigin; vec4 DissolveParams;
+};
+" + CoveragePulling.Replace("set=2", "set=1", System.StringComparison.Ordinal) + @"
+layout(location=0) out float vLightDepth;
+void main() {
+    CoverageVertex v = coverageVertex();
+    vec4 clip = coverageTransform(LightMvp, vec4(v.position, 1.0));
+    vLightDepth = clip.z / clip.w;
+    clip.z = max(clip.z, 0.0);
+    gl_Position = clip;
+}";
+
+    internal static readonly string CoverageCascadeDissolveVert = @"#version 450
+layout(set=0, binding=0) uniform VBlock {
+    mat4 LightMvp; mat4 Model; vec4 RenderOrigin; vec4 DissolveParams;
+};
+" + CoveragePulling.Replace("set=2", "set=1", System.StringComparison.Ordinal) + @"
+layout(location=0) out float vLightDepth;
+layout(location=1) out vec3 vNoisePos;
+layout(location=2) out vec2 vDissolve;
+layout(location=3) out float vDissolveComplement;
+void main() {
+    CoverageVertex v = coverageVertex();
+    vec4 local = vec4(v.position, 1.0);
+    vec4 clip = coverageTransform(LightMvp, local);
+    vLightDepth = clip.z / clip.w;
+    clip.z = max(clip.z, 0.0);
+    gl_Position = clip;
+    vec4 world = coverageTransform(Model, local);
+    vNoisePos = (world.xyz + RenderOrigin.xyz) * DissolveParams.x;
+    vDissolve = vec2(DissolveParams.y, 0.0);
+    vDissolveComplement = DissolveParams.z;
+}";
+
+    internal const string CoveragePointVert = @"#version 450
+" + PointShadowCasterUniformBlock + @"
+layout(set=1, binding=0) uniform Caster { mat4 Model; vec4 Dissolve; };
+" + CoveragePulling + @"
+layout(location=0) out vec3 vWorldPos;
+void main() {
+    CoverageVertex v = coverageVertex();
+    vec4 world = coverageTransform(Model, vec4(v.position, 1.0));
+    gl_Position = coverageTransform(LightVp, world);
+    vWorldPos = world.xyz;
+}";
+
+    internal const string CoveragePointDissolveVert = @"#version 450
+" + PointShadowCasterUniformBlock + @"
+layout(set=1, binding=0) uniform Caster { mat4 Model; vec4 Dissolve; };
+" + CoveragePulling + @"
+layout(location=0) out vec3 vWorldPos;
+layout(location=1) out vec3 vNoisePos;
+layout(location=2) out vec2 vDissolve;
+layout(location=3) out float vDissolveComplement;
+void main() {
+    CoverageVertex v = coverageVertex();
+    vec4 world = coverageTransform(Model, vec4(v.position, 1.0));
+    gl_Position = coverageTransform(LightVp, world);
+    vWorldPos = world.xyz;
+    vNoisePos = (world.xyz + Noise.yzw) * Noise.x;
+    vDissolve = vec2(Dissolve.x, 0.0);
+    vDissolveComplement = Dissolve.y;
+}";
+
 }

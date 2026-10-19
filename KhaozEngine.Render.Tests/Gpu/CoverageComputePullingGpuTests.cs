@@ -11,6 +11,9 @@ namespace KhaozEngine.Tests.Gpu;
 [Collection("NativeDeviceLifecycle")]
 public sealed partial class CoverageComputePullingGpuTests(ITestOutputHelper output, CoveragePullingGpuFixture fixture) : IClassFixture<CoveragePullingGpuFixture>
 {
+    static string EvidencePath => CoverageArtifacts.DirectoryPath is { } directory
+        ? Path.Combine(directory, "pulling-main-outline") : "/tmp/grimhollow-equipment-coverage-task10";
+
     [GpuFact]
     public void Main_and_both_outline_masks_pull_one_selected_surface()
         => Check(refusal: false);
@@ -30,7 +33,7 @@ public sealed partial class CoverageComputePullingGpuTests(ITestOutputHelper out
         scene.Select(refusal, materialEffects);
         var reference = scene.Capture(coverage: false, gpuSkinning: true, outlineOnly: false);
         var actual = scene.Capture(coverage: true, gpuSkinning: false, outlineOnly: false);
-        string path = "/tmp/grimhollow-equipment-coverage-task10";
+        string path = EvidencePath;
         Directory.CreateDirectory(path);
         string stem = refusal ? "refusal" : materialEffects ? "materials" : "covered";
         File.WriteAllBytes(Path.Combine(path, stem + ".rgba"), actual.Colour);

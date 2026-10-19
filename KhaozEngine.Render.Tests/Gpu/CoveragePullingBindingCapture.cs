@@ -15,7 +15,7 @@ internal sealed class CoveragePullingBindingCapture(UniformBufferTrackingGpuDevi
 {
     internal sealed record BoundDraw(string Pass, IGpuResourceSet Set, IGpuBuffer Current, IGpuBuffer Static,
         IGpuBuffer Uniform, uint DynamicOffset, uint RangeOffset, uint RangeBytes, uint[] Words,
-        uint Corners, uint Instances, uint FirstVertex, uint FirstInstance);
+        uint Corners, uint Instances, uint FirstVertex, uint FirstInstance, int Cell, uint PassOffset);
     internal List<BoundDraw> Draws { get; } = new();
 
     internal void Observe(RecordingGpuCommandList commands, RecordingGpuCommandList.DrawBindings bindings,
@@ -30,12 +30,15 @@ internal sealed class CoveragePullingBindingCapture(UniformBufferTrackingGpuDevi
                 || program.Fragment == ShaderSources.TargetOutlineVisibleMaskFrag);
             pass = program.Fragment == ShaderSources.TargetOutlineFullMaskFrag ? "full" : "visible";
         }
+        else if (program.Vertex == ShaderSources.CoverageCascadeVert || program.Vertex == ShaderSources.CoverageCascadeDissolveVert) pass = "cascade";
+        else if (program.Vertex == ShaderSources.CoveragePointVert || program.Vertex == ShaderSources.CoveragePointDissolveVert) pass = "point";
         else return;
         Assert.Equal(0, program.VertexLayouts);
-        Assert.Equal(3, program.Layouts.Length);
-        var bound = bindings.Sets[2];
+        uint setIndex = pass == "cascade" ? 1u : 2u;
+        Assert.Equal((int)setIndex + 1, program.Layouts.Length);
+        var bound = bindings.Sets[setIndex];
         var resources = tracker.ResourcesOf(bound.Set);
-        Assert.Same(program.Layouts[2], resources.Layout);
+        Assert.Same(program.Layouts[setIndex], resources.Layout);
         Assert.Equal(3, resources.Resources.Length);
         var current = Assert.IsAssignableFrom<IGpuBuffer>(resources.Resources[0]);
         var staticData = Assert.IsAssignableFrom<IGpuBuffer>(resources.Resources[1]);
@@ -51,7 +54,9 @@ internal sealed class CoveragePullingBindingCapture(UniformBufferTrackingGpuDevi
         Assert.NotNull(upload.Data);
         uint[] words = MemoryMarshal.Cast<byte, uint>(upload.Data.AsSpan(checked((int)(address - upload.Offset)), 16)).ToArray();
         Draws.Add(new(pass, bound.Set, current, staticData, range.Buffer, bound.DynamicOffset, range.Offset,
-            range.Size, words, corners, instances, firstVertex, firstInstance));
+            range.Size, words, corners, instances, firstVertex, firstInstance,
+            pass is "cascade" or "point" ? (int)(commands.Scissors.Last().X / commands.Scissors.Last().Width) : -1,
+            bindings.Sets[0].DynamicOffset));
     }
 
     internal void AssertMatches(CoveragePullingTestScene.Actor[] actors, CoverageGpuBatch batch, bool outlineOnly)
@@ -97,5 +102,7 @@ internal sealed class CoveragePullingBindingCapture(UniformBufferTrackingGpuDevi
         d.Instances,
         d.FirstVertex,
         d.FirstInstance,
+        d.Cell,
+        d.PassOffset,
     }), new JsonSerializerOptions { WriteIndented = true });
 }

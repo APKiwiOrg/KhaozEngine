@@ -44,8 +44,9 @@ public sealed partial class Scene3D
         {
             _model.ReserveCoverage(batch, coveredDraws);
             _targetOutlines.ReserveCoverage(batch, _meshOutlinePartCount);
+            _pointShadows?.ReserveCoverage(batch, coveredDraws);
         }
-        draws = Math.Max(draws, coveredDraws);
+        draws = checked(draws + coveredDraws);
         _coveragePointMatrices.EnsureCapacity(checked(_lights.Count * 12));
         _model.EnsureSkinnedMainCapacity((uint)draws);
         _model.EnsureSkinnedBonePaletteCapacity((uint)draws);

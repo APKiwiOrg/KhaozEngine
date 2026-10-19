@@ -124,7 +124,7 @@ namespace KhaozEngine.Render3D
             if (_packedPointSlots.Count > 0)
             {
                 UploadPointShadowFaces(cl);
-                if (_gpuSkinnedDraws.Count > 0 && (_selectedPointTransientRequests.Count > 0
+                if ((_gpuSkinnedDraws.Count > 0 || _coverageDraws.Count > 0) && (_selectedPointTransientRequests.Count > 0
                     || Array.Exists(_pointDynamicSkinnedRequests, static selected => selected)))
                     PrepareGpuSkinnedPointCasters(cl);
                 draws = RenderPointShadowSlots(cl);

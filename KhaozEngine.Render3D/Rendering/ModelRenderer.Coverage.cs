@@ -25,6 +25,7 @@ internal sealed partial class ModelRenderer
             BuildCoveragePipelines(_gd.Factory, _coverageOutputs);
         }
         _coveragePull.Reserve(batch, count);
+        ReserveCoverageShadows(count);
         if (_coverageDissolving.Length < count) Array.Resize(ref _coverageDissolving, count);
     }
 
@@ -36,8 +37,9 @@ internal sealed partial class ModelRenderer
         _coveragePull.Pack(draw.InstanceSlot, draw);
     }
 
-    internal void UploadCoverage(IGpuCommandList commands)
-    { UploadSkinnedMainSlots(commands); _coveragePull.Upload(commands); }
+    internal void PackCoverageSurface(in CoveragePulledDraw draw) => _coveragePull.Pack(draw.InstanceSlot, draw);
+    internal void UploadCoverageSurfaces(IGpuCommandList commands) => _coveragePull.Upload(commands);
+    internal void UploadCoverage(IGpuCommandList commands) => UploadSkinnedMainSlots(commands);
 
     internal void DrawCoverage(IGpuCommandList commands, in CoveragePulledDraw draw, IGpuResourceSet? material)
     {
@@ -70,6 +72,7 @@ internal sealed partial class ModelRenderer
 
     void DisposeCoveragePulling()
     {
+        DisposeCoverageShadows();
         _coveragePipeline?.Dispose(); _coverageDissolvePipeline?.Dispose();
         _coverageShaders?.Dispose(); _coverageDissolveShaders?.Dispose(); _coveragePull?.Dispose();
     }

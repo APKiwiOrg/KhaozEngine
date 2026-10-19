@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Rendering;
 using Xunit;
@@ -13,8 +14,8 @@ public sealed class CoverageOutlineTests
     public void Outline_only_uses_the_final_surface(bool shadowOnly)
     {
         using var h = new CoverageSceneFixture();
-        var bindings = new List<CoveragePulledDraw>();
-        h.Scene.CoveragePullObserverForTests = (_, draw) => bindings.Add(draw);
+        var bindings = new List<(string Pass, CoveragePulledDraw Draw)>();
+        h.Scene.CoveragePullObserverForTests = (pass, draw) => bindings.Add((pass, draw));
         h.Begin();
         var frame = h.Stage();
         var draw = h.HostDraw(frame, shadowOnly);
@@ -23,8 +24,11 @@ public sealed class CoverageOutlineTests
         h.SubmitEquipment();
         h.Render();
         Assert.Equal(CoveragePresentation.Dispatched, h.Scene.GetCoverageOutcome(frame).Presentation);
-        Assert.Equal(shadowOnly ? 0 : 2, bindings.Count);
-        Assert.All(bindings, draw => Assert.Same(h.Scene.CoverageGpuBatchForTests!.Current, draw.Surface.Current));
+        Assert.DoesNotContain(bindings, binding => binding.Pass == "main");
+        Assert.Equal(shadowOnly ? h.Scene.Post.Quality.Shadows.ShadowCascadeCount : 0,
+            bindings.Count(binding => binding.Pass == "cascade"));
+        Assert.Equal(shadowOnly ? 0 : 2, bindings.Count(binding => binding.Pass is "full" or "visible"));
+        Assert.All(bindings, binding => Assert.Same(h.Scene.CoverageGpuBatchForTests!.Current, binding.Draw.Surface.Current));
         h.AssertCanonicalDraws(frame);
     }
 }

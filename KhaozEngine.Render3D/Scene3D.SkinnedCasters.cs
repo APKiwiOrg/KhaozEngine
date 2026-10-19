@@ -54,6 +54,8 @@ namespace KhaozEngine.Render3D
                 if (dr.ShadowKind != ShadowCastKind.None) n++;
             foreach (CpuSkinnedDraw dr in _cpuSkinnedDraws)
                 if (dr.ShadowKind != ShadowCastKind.None) n++;
+            foreach (var dr in _coverageDraws)
+                if (dr.ShadowKind != ShadowCastKind.None) n++;
             return n;
         }
     }

@@ -1430,6 +1430,7 @@ namespace KhaozEngine.Render3D
             if (shadowMapActive) SetShadowReceiverTail();
             ResolveCoverageGpu(cl);
             PrepareSkinnedDraws(cl, camFrustum, shadowMapActive, shadowCascadeCount, hasPointShadowRequests);
+            PrepareCoverageDraws(cl, shadowMapActive);
             int skinnedCasterCount = CountSkinnedCasters();   // opted-out skinned draws neither cast nor dirty the atlas
 
             float shadowDepthMs = RenderCascadeShadowPass(cl, shadowMapActive, skinnedCasterCount);

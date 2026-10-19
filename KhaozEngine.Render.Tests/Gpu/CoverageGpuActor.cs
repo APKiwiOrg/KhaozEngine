@@ -48,7 +48,9 @@ internal sealed class CoverageGpuActor : IDisposable
                 skin[i].Uv = new((skin[i].Position.X + 1.2f) / 2.4f, (skin[i].Position.Y + 1.2f) / 2.4f);
         var source = new CoverageSourceTopology(data.Source.Identity, CoverageFixture.Hash,
             data.Source.Positions.ToArray(), data.Source.Vertices, data.Source.Triangles, skin);
-        data = data with { Source = source, Posed = skin.Select(v => SkinningMath.SkinVertex(v, palette)).ToArray() };
+        var posed = new ModelVertex[skin.Length];
+        Assert.True(CoverageReferenceSkinning.TrySkin(new(), new(source, 2), source, palette, posed, out _));
+        data = data with { Source = source, Posed = posed };
         var skeleton = Skeleton = new Skeleton([-1, 0], [JointPose.Identity, JointPose.Identity], [0, 1], [0, 1], ["root", "hip"]);
         uint[] indices = source.Triangles.SelectMany(t => new[] { (uint)t.A, (uint)t.B, (uint)t.C }).ToArray();
         var mesh = new SkinnedGltfMesh(skin, indices, identity, identity, skeleton);
@@ -59,12 +61,14 @@ internal sealed class CoverageGpuActor : IDisposable
         host = scene.LoadSkinnedMesh(covered, maps);
         conformer = scene.CreateHostConformer(skeleton, [host]);
         support = CoverageCommands.Plate(data);
+        conformer.ReserveSupports([support]);
         rigid = scene.LoadMesh(new GltfMesh(data.RigidPositions.Select(p =>
             new ModelVertex(p, Vector3.UnitZ, Vector4.One)).ToArray(), data.RigidIndices));
-        var commands = CoverageCommands.Poses(data, conformer.Topology, support, Matrix4x4.Identity);
+        var referenceWorld = actor >= 4 ? CoverageGpuScene.ShadowWorlds[actor - 4] : Matrix4x4.CreateTranslation((actor % 2) * 3, 0, 0);
+        var commands = CoverageCommands.Poses(data, conformer.Topology, support, referenceWorld);
         Final = new ModelVertex[conformer.Topology.VertexCount];
-        Assert.True(CoverageEvaluator.TryEvaluateGeometry(conformer.Topology, data.Posed, Matrix4x4.Identity,
-            commands, new CoverageScratch(conformer.Topology), Final, out var failure), failure.ToString());
+        Assert.True(CoverageReferenceConstructor.TryConstruct(conformer.Topology, data.Posed, referenceWorld,
+            commands, new CoverageReferenceScratch(conformer.Topology), Final, out var failure), failure.ToString());
         var before = new ModelVertex[Final.Length];
         conformer.Topology.Interpolate(data.Posed, before);
         var refined = conformer.Topology.Indices.ToArray();
@@ -88,10 +92,11 @@ internal sealed class CoverageGpuActor : IDisposable
             BoneWeights = new(1, 0, 0, 0),
         }).ToArray();
         reference = scene.LoadSkinnedMesh(new SkinnedGltfMesh(finalSkin, refined, identity, identity, skeleton), maps);
-        var blendPosed = skin.Select(v => SkinningMath.SkinVertex(v, blendedPalette)).ToArray();
+        var blendPosed = new ModelVertex[skin.Length];
+        Assert.True(CoverageReferenceSkinning.TrySkin(new(), new(source, 2), source, blendedPalette, blendPosed, out _));
         var blendFinal = new ModelVertex[Final.Length];
-        Assert.True(CoverageEvaluator.TryEvaluateGeometry(conformer.Topology, blendPosed, Matrix4x4.Identity,
-            commands, new CoverageScratch(conformer.Topology), blendFinal, out failure), failure.ToString());
+        Assert.True(CoverageReferenceConstructor.TryConstruct(conformer.Topology, blendPosed, referenceWorld,
+            commands, new CoverageReferenceScratch(conformer.Topology), blendFinal, out failure), failure.ToString());
         var blendBefore = new ModelVertex[Final.Length];
         conformer.Topology.Interpolate(blendPosed, blendBefore);
         var blendOracle = CoverageGeometryOracle.Validate(blendBefore, blendFinal, data with { Posed = blendPosed }, refined, protectedVertices);
@@ -175,6 +180,19 @@ internal sealed class CoverageGpuActor : IDisposable
         }
         Assert.True(outcome.Presentation == CoveragePresentation.Covered, outcome.ToString());
         Assert.Equal(Signature, Hash(scene.CoverageVerticesForTests(Frame).ToArray()));
+    }
+
+    internal void AssertSelected(uint[] words)
+    {
+        Assert.Equal(CoveragePresentation.Dispatched, scene.GetCoverageOutcome(Frame).Presentation);
+        var p = Frame.Preparation!;
+        var r = p.GpuReservation;
+        Assert.Equal(p.ResultIdentity.AsSpan(0, 8).ToArray(), words.AsSpan((int)r.CurrentBase, 8).ToArray());
+        Assert.Equal(0u, words[r.CurrentBase + 8]);
+        Assert.Equal(0u, words[r.CurrentBase + 14]);
+        var actual = words.AsSpan(checked((int)r.CurrentBase + 16 + r.SourceCount * 16), r.VertexCount * 16);
+        Assert.Equal(MemoryMarshal.Cast<ModelVertex, uint>(Final).ToArray(), actual.ToArray());
+        Signature = Hash(MemoryMarshal.Cast<uint, ModelVertex>(actual).ToArray());
     }
 
     internal static string Hash(ModelVertex[] vertices) =>

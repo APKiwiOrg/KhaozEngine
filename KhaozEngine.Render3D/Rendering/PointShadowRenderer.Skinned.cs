@@ -169,6 +169,7 @@ internal sealed partial class PointShadowRenderer
 
     void DisposeSkinnedResources()
     {
+        DisposeCoverage();
         _skinnedCasterSet.Dispose();
         _skinnedCasterUbo.Dispose();
         _skinnedDissolveInvertedPipeline.Dispose();

@@ -9,7 +9,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Gpu;
 
-internal sealed class CoveragePullingTestScene : IDisposable
+internal sealed partial class CoveragePullingTestScene : IDisposable
 {
     readonly IGpuDevice device;
     readonly IGpuTexture texture;
@@ -19,7 +19,7 @@ internal sealed class CoveragePullingTestScene : IDisposable
     internal Actor[] Actors { get; private set; }
     readonly Actor[][] variants;
 
-    internal CoveragePullingTestScene(IGpuDevice device)
+    internal CoveragePullingTestScene(IGpuDevice device, int actorCount = 2)
     {
         var tracker = new UniformBufferTrackingGpuDevice(device);
         this.device = tracker;
@@ -40,9 +40,9 @@ internal sealed class CoveragePullingTestScene : IDisposable
         Scene.Camera.OrthoSize = 4;
         Scene.Camera.Azimuth = Scene.Camera.Elevation = 0;
         variants = [
-            [new(Scene, 0, false, false), new(Scene, 1, false, false)],
-            [new(Scene, 0, true, false), new(Scene, 1, true, false)],
-            [new(Scene, 0, false, true), new(Scene, 1, false, true)],
+            Enumerable.Range(0, actorCount).Select(i => new Actor(Scene, i, false, false, actorCount > 2)).ToArray(),
+            Enumerable.Range(0, actorCount).Select(i => new Actor(Scene, i, true, false, actorCount > 2)).ToArray(),
+            Enumerable.Range(0, actorCount).Select(i => new Actor(Scene, i, false, true, actorCount > 2)).ToArray(),
         ];
         Actors = variants[0];
     }
@@ -84,12 +84,12 @@ internal sealed class CoveragePullingTestScene : IDisposable
         internal ModelVertex[] Posed { get; }
         internal ModelVertex[] Final { get; }
 
-        internal Actor(Scene3D scene, int actor, bool refusal, bool materialEffects)
+        internal Actor(Scene3D scene, int actor, bool refusal, bool materialEffects, bool shadowLayout = false)
         {
             this.scene = scene;
             this.materialEffects = materialEffects; complement = actor != 0;
             Key = MotionKey.From((ulong)actor + 10);
-            world = Matrix4x4.CreateTranslation(actor * 3, 0, 0);
+            world = shadowLayout ? CoverageGpuScene.ShadowWorlds[actor] : Matrix4x4.CreateTranslation(actor * 3, 0, 0);
             data = CoverageFixture.CurvedPanel(seams: true, level: 2);
             var authored = data.Source.SkinVertices.ToArray();
             for (int i = 0; i < authored.Length; i++)
@@ -141,8 +141,8 @@ internal sealed class CoveragePullingTestScene : IDisposable
             Posed = new ModelVertex[data.Source.Positions.Length];
             Assert.True(CoverageReferenceSkinning.TrySkin(new(), new(data.Source, 2), data.Source, palette, Posed, out _));
             Final = new ModelVertex[conformer.Topology.VertexCount];
-            var commands = CoverageCommands.Poses(data, conformer.Topology, support, Matrix4x4.Identity);
-            bool accepted = CoverageReferenceConstructor.TryConstruct(conformer.Topology, Posed, Matrix4x4.Identity,
+            var commands = CoverageCommands.Poses(data, conformer.Topology, support, world);
+            bool accepted = CoverageReferenceConstructor.TryConstruct(conformer.Topology, Posed, world,
                 commands, new(conformer.Topology), Final, out var failure);
             Assert.Equal(!refusal, accepted);
             if (refusal) Assert.Equal(CoverageFailureCode.UnsupportedTransform, failure.Code);
@@ -161,8 +161,10 @@ internal sealed class CoveragePullingTestScene : IDisposable
             }
         }
 
-        internal void Draw(bool coverage, bool outlineOnly)
+        internal void Draw(bool coverage, bool outlineOnly, Matrix4x4? worldOverride = null, bool shadowOnly = false,
+            bool outlines = true, bool referenceEquipment = false)
         {
+            var world = worldOverride ?? this.world;
             Frame = default;
             if (coverage)
             {
@@ -174,19 +176,21 @@ internal sealed class CoveragePullingTestScene : IDisposable
                     out Frame, out failure), failure.ToString());
                 scene.Draw(staged[0]);
             }
-            var group = scene.BeginMeshOutline(Color.White, 1);
+            if (!coverage && referenceEquipment) scene.Draw(new RigidInstanceDraw(equipment, world) { ShadowOnly = true });
+            var group = outlines ? scene.BeginMeshOutline(Color.White, 1) : default;
             for (int slice = 0; slice < 2; slice++)
             {
                 var draw = new SkinnedInstanceDraw(coverage ? hosts[slice] : references[slice], world)
                 {
                     Coverage = Frame,
+                    ShadowOnly = shadowOnly,
                     Motion = Key,
                     Tint = slice == 0 ? Color.White : new Color(.4f, .7f, 1, 1),
                     Dissolve = materialEffects ? .4f : 0,
                     DissolveComplement = materialEffects && complement ? 1 : 0
                 };
                 if (!outlineOnly) scene.DrawSkinned(draw, palette);
-                scene.DrawSkinnedOutline(group, draw, palette);
+                if (outlines) scene.DrawSkinnedOutline(group, draw, palette);
             }
         }
         public void Dispose() => conformer.Dispose();

@@ -60,6 +60,12 @@ namespace KhaozEngine.Tests.Gpu
             yield return new("ModelDissolve", ShaderSources.ModelVert, ShaderSources.ModelDissolveFrag);
             yield return new("CoverageModel", ShaderSources.CoverageModelVert, ShaderSources.SkinnedModelFrag);
             yield return new("CoverageModelDissolve", ShaderSources.CoverageModelVert, ShaderSources.SkinnedModelDissolveFrag);
+            yield return new("CoverageCascade", ShaderSources.CoverageCascadeVert, ShaderSources.ShadowDepthFrag);
+            yield return new("CoverageCascadeDissolve", ShaderSources.CoverageCascadeDissolveVert, ShaderSources.ShadowDepthDissolveFrag);
+            yield return new("CoverageCascadeDissolveInverted", ShaderSources.CoverageCascadeDissolveVert, ShaderSources.ShadowDepthDissolveInvertedFrag);
+            yield return new("CoveragePoint", ShaderSources.CoveragePointVert, ShaderSources.PointShadowRigidFrag);
+            yield return new("CoveragePointDissolve", ShaderSources.CoveragePointDissolveVert, ShaderSources.PointShadowRigidDissolveFrag);
+            yield return new("CoveragePointDissolveInverted", ShaderSources.CoveragePointDissolveVert, ShaderSources.PointShadowRigidDissolveInvertedFrag);
             yield return new("CoverageOutlineFull", ShaderSources.CoverageOutlineVert, ShaderSources.TargetOutlineFullMaskFrag);
             yield return new("CoverageOutlineVisible", ShaderSources.CoverageOutlineVert, ShaderSources.TargetOutlineVisibleMaskFrag);
             yield return new("SkinnedModel", ShaderSources.SkinnedModelVert, ShaderSources.SkinnedModelFrag);

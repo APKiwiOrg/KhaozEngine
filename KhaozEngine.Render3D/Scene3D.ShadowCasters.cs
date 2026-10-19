@@ -467,6 +467,7 @@ namespace KhaozEngine.Render3D
                     }
                 }
             }
+            DrawCoverageCascades(cl, count);
             _model.EndShadowPass(cl);
         }
 

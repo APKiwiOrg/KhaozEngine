@@ -96,14 +96,22 @@ public sealed partial class Scene3D
 
     void PrepareGpuSkinnedPointCasters(IGpuCommandList cl)
     {
-        if (_pointShadows is not { } renderer || _gpuSkinnedDraws.Count == 0) return;
-        renderer.EnsureSkinnedCasterCapacity((uint)_gpuSkinnedDraws.Count);
+        if (_pointShadows is not { } renderer) return;
+        renderer.EnsureSkinnedCasterCapacity((uint)(_gpuSkinnedDraws.Count + _coverageDraws.Count));
         foreach (GpuSkinnedDraw draw in _gpuSkinnedDraws)
         {
             if (draw.ShadowKind == ShadowCastKind.None) continue;
             renderer.PackSkinnedCaster(draw.Slot, draw.World, draw.DissolveParams.X, draw.DissolveComplement);
         }
+        foreach (var draw in _coverageDraws)
+        {
+            var instance = _coverageInstances[(int)draw.InstanceSlot];
+            renderer.PackSkinnedCaster((uint)_gpuSkinnedDraws.Count + draw.InstanceSlot,
+                instance.Model, instance.Dissolve.X, instance.DissolveComplement);
+            renderer.PackCoverage(draw);
+        }
         renderer.UploadSkinnedCasters(cl);
+        if (_coverageDraws.Count > 0) renderer.UploadCoverage(cl);
     }
 
     int DrawPointSkinnedCastersForFace(IGpuCommandList cl, PointShadowRenderer renderer,
@@ -139,6 +147,18 @@ public sealed partial class Scene3D
                     draw.IndexFormat, draw.BaseVertex, (uint)i);
                 draws++;
             }
+        }
+
+        foreach (var draw in _coverageDraws)
+        {
+            if (draw.ShadowKind == ShadowCastKind.None
+                || !draw.Sphere.TouchesShadowingShell(request.Position, request.Radius,
+                    request.NearRadius, request.ExclusionMin, request.ExclusionMax)) continue;
+            renderer.BeginCoverageFace(cl, packed.Atlas,
+                packed.PackedIndex * PointShadowMath.FaceCount + face, face, packed.Row, draw.ShadowKind);
+            renderer.DrawCoverageCaster(cl, draw, (uint)_gpuSkinnedDraws.Count + draw.InstanceSlot);
+            _coveragePullObserverForTests?.Invoke("point", draw);
+            draws++;
         }
 
         if (request.Mode == LightShadowMode.Dynamic)

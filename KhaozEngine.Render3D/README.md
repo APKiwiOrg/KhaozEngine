@@ -181,12 +181,15 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   when `UseGpuSkinning` is false. The capability failure is reported once per scene and kernel creation is not
   retried each frame. Equipment descriptors keep their ordinary drawing route.
   Rendering never waits for or reads back a GPU coverage outcome. Tokens expire at the next `Begin`, disposal
-  or host unload. Begin and stage again for each view. Main draws and both target outline masks pull the same
+  or host unload. Begin and stage again for each view. Main draws, both target outline masks, cascades and point-shadow faces pull the same
   GPU-selected final buffer through read-only vertex storage. Each material supplies an explicit first-corner
   offset and issues a nonindexed triangle list from vertex zero. A GPU refusal selects complete original-pose
   triangles inside that shader, including refusal before refined attributes exist. Covered hosts upload no CPU
-  vertices and do not enter ordinary skinning, regardless of `UseGpuSkinning`. Shadow pulling, GPU final history
-  and asynchronous outcome diagnostics follow in the remaining Part C tasks.
+  vertices and do not enter ordinary skinning, regardless of `UseGpuSkinning`. Shadow windows are uploaded
+  before either shadow pass. Covered casters retain their frozen absolute current-palette bound for scheduling,
+  including camera-culled and shadow-only actors. Static point lights use transient current-pose rows and dynamic
+  lights use base rows. Every face and cascade retains the same material corner range and GPU fallback decision.
+  GPU final history and asynchronous outcome diagnostics follow in the remaining Part C tasks.
   Before opening the frame list, call `PrepareFrame(displayWidth, displayHeight)` after all submissions.
   It reserves the temporal mask at the configured prospective temporal size, including when AA is initially off.
   Call it again before recording after changing display or temporal sizing. A missing or wrong-sized reservation

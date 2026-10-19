@@ -13,9 +13,10 @@ public sealed partial class Scene3D
     readonly List<ModelRenderer.InstanceData> _coverageInstances = new();
     readonly List<IGpuResourceSet?> _coverageMaterials = new();
 
+    System.Action<string, CoveragePulledDraw>? _coveragePullObserverForTests;
     internal System.Action<string, CoveragePulledDraw>? CoveragePullObserverForTests
     {
-        set { _model.CoveragePullObserverForTests = value; _targetOutlines.CoveragePullObserverForTests = value; }
+        set { _model.CoveragePullObserverForTests = value; _targetOutlines.CoveragePullObserverForTests = value; _coveragePullObserverForTests = value; }
     }
 
     void DrawCoverageMain(IGpuCommandList commands)

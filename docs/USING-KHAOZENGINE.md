@@ -6419,6 +6419,14 @@ Version 21 removes the old rigid-only set type names without aliases. See the
 [migration and design record](design/SKINNED-ATTACHMENT-PARTS-DESIGN-2026-10-15.md) and the
 [renderer package reference](../KhaozEngine.Attachments.Render3D/README.md) for the full contract.
 
+Covered host draws, target outlines, directional cascades and point-shadow faces consume the same selected
+GPU surface. Each material retains its own first-corner range. The selected header chooses the complete
+refined surface or original current pose for all consumers, including a refusal before refinement completed.
+Shadow draw windows are prepared before the shadow passes and do not depend on a main-camera draw.
+The frozen absolute current-palette bound schedules camera-culled and shadow-only actors. Static point lights
+put their current skinned poses in transient rows, while dynamic lights use base rows. Ordinary skinning
+remains the CPU admission and capability fallback. Rendering never reads back the numerical outcome.
+
 #### Headless equipment coverage oracle
 
 `CoverageOracle` in `KhaozEngine.Render3D` checks a sampled pose without a scene, render context,

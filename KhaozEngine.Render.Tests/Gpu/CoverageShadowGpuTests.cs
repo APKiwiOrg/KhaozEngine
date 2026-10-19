@@ -2,6 +2,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Gpu;
 
+[Collection("NativeDeviceLifecycle")]
 public sealed class CoverageShadowGpuTests(CoverageGpuScene scene) : IClassFixture<CoverageGpuScene>
 {
     [GpuTheory]
@@ -25,10 +26,10 @@ public sealed class CoverageShadowGpuTests(CoverageGpuScene scene) : IClassFixtu
     }
 
     [GpuFact]
-    public void Distant_point_projection_refuses_without_spending_the_clearance_margin()
+    public void Distant_point_projection_preserves_the_selected_surface()
     {
-        scene.Capture(new CoverageCase(0)
-        { Shadows = true, PointRadius = 30, ExpectRefusal = true }, true, true);
+        var row = new CoverageCase(0) { Shadows = true, PointRadius = 30 };
+        CoveragePixelProof.AssertShadows(scene.Capture(row, true, true), scene.CaptureReference(row, false), false);
     }
 
     [GpuTheory]

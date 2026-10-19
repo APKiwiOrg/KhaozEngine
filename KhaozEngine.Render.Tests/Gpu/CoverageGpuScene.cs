@@ -6,6 +6,7 @@ using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
+using KhaozEngine.Render3D.Rendering;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu;
@@ -91,6 +92,8 @@ public sealed partial class CoverageGpuScene : IDisposable
         SetCase(row, gpuSkinning);
         if (row.Shadows) PrimePoints(row);
         var submitted = new List<CoverageGpuActor>();
+        var pulls = new List<(string Pass, CoveragePulledDraw Draw)>();
+        scene.CoveragePullObserverForTests = (pass, draw) => pulls.Add((pass, draw));
         byte[] colour = Fixture.Frame((s, _) =>
         {
             if (row.Shadows)
@@ -117,24 +120,25 @@ public sealed partial class CoverageGpuScene : IDisposable
         });
         if (route == 1 && !row.ExpectRefusal)
         {
-            foreach (var actor in submitted) actor.AssertCovered();
+            var words = CoverageSelectedReadback.Read(Fixture.Device, scene.CoverageGpuBatchForTests!.Current);
+            foreach (var actor in submitted) actor.AssertSelected(words);
             if (row.Shadows)
-            {
-                var pointMatrices = scene.CoveragePointMatricesForTests.ToArray();
                 for (int i = 0; i < submitted.Count; i++)
                 {
-                    var passes = scene.CoveragePassesForTests(submitted[i].Frame).ToArray();
-                    int hostFaces = passes.Count(p => p.CommandId == 0 && pointMatrices.Contains(p.ViewProjection));
-                    if (row.ShadowOnly || row.CameraCulled && i is 2 or 3) Assert.False(scene.CoverageMainVisibleForTests(submitted[i].Frame));
-                    if (i < 6) Assert.True(hostFaces >= 6, $"Missing nearby point host faces: {i} count={hostFaces}");
-                    if (i >= 8) Assert.DoesNotContain(passes, p => pointMatrices.Contains(p.ViewProjection));
+                    var actor = submitted[i].Frame.Preparation!.Actor;
+                    int faces = pulls.Count(p => p.Pass == "point" && p.Draw.Actor == actor);
+                    if (i < 9) Assert.Equal(6, faces);
+                    if (i == 9) Assert.Equal(row.PointRadius > 0 ? 6 : 0, faces);
+                    Assert.Equal(4, pulls.Count(p => p.Pass == "cascade" && p.Draw.Actor == actor));
+                    if (row.ShadowOnly || row.CameraCulled && i is 2 or 3)
+                        Assert.False(scene.CoverageMainVisibleForTests(submitted[i].Frame));
                 }
-            }
         }
         if (row.ExpectRefusal)
             Assert.Contains(submitted, actor => scene.GetCoverageOutcome(actor.Frame).Presentation == CoveragePresentation.UncoveredFallback);
         var diagnostics = scene.CoverageDiagnosticsForTests;
-        if (!row.ExpectRefusal) Assert.Equal(route == 1 ? submitted.Count : 0, diagnostics.CoveredCpuPreparations);
+        Assert.Equal(0, diagnostics.CoveredCpuPreparations);
+        if (!row.ExpectRefusal) Assert.Equal(route == 1 ? submitted.Count : 0, scene.DispatchedHostPreparationCount);
         if (route == 0) Assert.Equal(gpuSkinning ? submitted.Count : 0, diagnostics.UncoveredGpuDraws);
         var outlines = row.Outlines ? scene.ReadCoverageOutlinesForTests() : default;
         var capture = new CoverageCapture(colour, scene.ReadCoverageDepthForTests(), scene.ReadCoverageNormalForTests(),
@@ -178,15 +182,13 @@ public sealed partial class CoverageGpuScene : IDisposable
         scene.Post.Quality.Shadows.PointShadows.FaceResolution = 64;
         scene.Post.Quality.Shadows.PointShadows.MaxShadowedLights = 1;
         scene.Camera.Target = row.Shadows ? Vector3.Zero : new(1.5f, 0, 0);
-        scene.Camera.OrthoSize = row.Shadows ? row.CameraCulled ? 3 : 5 : 4;
+        scene.Camera.OrthoSize = row.Shadows ? row.CameraCulled ? .5f : 5 : 4;
         scene.Camera.Azimuth = row.View switch { 1 => MathF.PI, 2 => 1.3f, 3 => -1.3f, _ => 0 };
         scene.Camera.Elevation = row.View switch { 4 => 1.1f, 5 => -1.1f, _ => 0 };
         if (row.CameraMode != 0) scene.CameraOverride = new CoverageGpuCamera(scene.Camera, row.CameraMode == 2);
     }
 
-    IEnumerable<(CoverageGpuActor Actor, Matrix4x4 World)> ShadowActors()
-    {
-        Matrix4x4[] worlds =
+    internal static readonly Matrix4x4[] ShadowWorlds =
         [
             Matrix4x4.CreateRotationY(-MathF.PI / 2) * Matrix4x4.CreateTranslation(4, 0, 0),
             Matrix4x4.CreateRotationY(MathF.PI / 2) * Matrix4x4.CreateTranslation(-4, 0, 0),
@@ -199,7 +201,9 @@ public sealed partial class CoverageGpuScene : IDisposable
             Matrix4x4.CreateTranslation(0, 0, -9),
             Matrix4x4.CreateTranslation(0, 0, -19),
         ];
-        for (int i = 0; i < worlds.Length; i++) yield return (Actors[i + 4], worlds[i]);
+    IEnumerable<(CoverageGpuActor Actor, Matrix4x4 World)> ShadowActors()
+    {
+        for (int i = 0; i < ShadowWorlds.Length; i++) yield return (Actors[i + 4], ShadowWorlds[i]);
     }
 
     public void Dispose()

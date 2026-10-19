@@ -43,6 +43,7 @@ public sealed partial class Scene3D
     {
         var actor = RequireCoverage(frame).Actor;
         foreach (var draw in _cpuSkinnedDraws) if (draw.Motion == actor && draw.VisibleMain) return true;
+        foreach (var draw in _coverageDraws) if (draw.Actor == actor && draw.VisibleMain) return true;
         return false;
     }
     internal CoverageTargetReadback ReadCoverageDepthForTests() => ReadCoverageTarget(_res.DepthColorTex);

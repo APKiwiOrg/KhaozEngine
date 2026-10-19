@@ -152,20 +152,38 @@ public sealed class TemporalLitVisibilityGpuTests(LitVisibilityGpuScene stage, I
     public void DissolveAndItsComplementLeaveRevealedVisibilityUntouched(int family, bool motion)
     {
         stage.Configure(motion);
-        var empty = stage.Capture(_ => { }).Visibility;
-        var gone = stage.Capture(s => { s.Receiver(family, 1f); s.Caster(); }).Visibility;
-        Assert.Equal(empty, gone);
+        var underlay = stage.Capture(s => { s.Receiver(0); s.Caster(); }).Visibility;
+        Nontrivial(underlay);
+        var jitter = stage.Scene.CurrentFrameView.JitterPixels;
+        var gone = stage.Capture(s => s.Receiver(family, 1f, height: .5f), begin: false).Visibility;
+        Assert.Equal(underlay, gone);
+        var inverseGone = stage.Capture(s => s.Receiver(family, 0f, 1f, height: .5f), begin: false).Visibility;
+        Assert.Equal(jitter, stage.Scene.CurrentFrameView.JitterPixels);
+        Assert.Equal(underlay, inverseGone);
         using var normalScene = new LitVisibilityGpuScene();
         using var inverseScene = new LitVisibilityGpuScene();
         normalScene.Configure(motion);
         inverseScene.Configure(motion);
-        var ordinary = normalScene.Capture(s => { s.Receiver(family, .5f); s.Caster(); }).Visibility;
-        var complement = inverseScene.Capture(s => { s.Receiver(family, .5f, 1f); s.Caster(); }).Visibility;
+        var partialUnderlay = normalScene.Capture(s => { s.Receiver(0); s.Caster(); }).Visibility;
+        Assert.Equal(partialUnderlay, inverseScene.Capture(s => { s.Receiver(0); s.Caster(); }).Visibility);
+        var partialJitter = normalScene.Scene.CurrentFrameView.JitterPixels;
+        var ordinary = normalScene.Capture(s => s.Receiver(family, .5f, height: .5f), begin: false).Visibility;
+        var complement = inverseScene.Capture(s => s.Receiver(family, .5f, 1f, height: .5f), begin: false).Visibility;
+        Assert.Equal(partialJitter, normalScene.Scene.CurrentFrameView.JitterPixels);
         Assert.Equal(normalScene.Scene.CurrentFrameView.JitterPixels, inverseScene.Scene.CurrentFrameView.JitterPixels);
         Assert.True(ordinary.Count(v => v < 100) > 10);
         Assert.True(complement.Count(v => v < 100) > 10);
+        int ordinaryRevealed = 0, complementRevealed = 0;
         for (int p = 0; p < ordinary.Length; p++)
-            Assert.True(ordinary[p] == 255 || complement[p] == 255, "complementary fragments must leave disjoint visibility");
+        {
+            Assert.True(ordinary[p] == partialUnderlay[p] || complement[p] == partialUnderlay[p],
+                "complementary fragments must reveal the opaque underlay");
+            if (partialUnderlay[p] >= 100) continue;
+            if (ordinary[p] == partialUnderlay[p] && complement[p] != partialUnderlay[p]) ordinaryRevealed++;
+            if (complement[p] == partialUnderlay[p] && ordinary[p] != partialUnderlay[p]) complementRevealed++;
+        }
+        Assert.True(ordinaryRevealed > 10, "dissolve must reveal shadowed pixels distinguishable from its foreground");
+        Assert.True(complementRevealed > 10, "the complement must reveal distinct shadowed underlay pixels");
     }
 
     [GpuFact]

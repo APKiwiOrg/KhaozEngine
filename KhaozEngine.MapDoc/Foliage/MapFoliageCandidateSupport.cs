@@ -39,6 +39,8 @@ internal sealed class MapFoliageCandidateSupport
         _owner = space is null ? null : MapSpaceGeometry.Owner(view, space);
     }
 
+    internal MapBoundFaceContext BoundContext => _context;
+
     /// <summary>Prepares the shared context for every candidate in the chunk rectangle. Refuses Unavailable once when a
     /// Space binding's space is absent from the acquisition, since a scoped absence never proves a known outside.</summary>
     internal static MapFoliageCandidateSupport Create(MapScopedSurfaces view, MapPreparedSupport support, IReadOnlyList<MapFoliageSupportGrid> grids,

@@ -173,12 +173,17 @@ public static class MapFoliageSupport
         { return MapPreparedFoliageSupport.Refused(layer, chunk, status, builder.Work(), error.Message); }
     }
 
+    /// <summary>The released interpolation's raster coordinate on one axis, in samples from the origin. Single precision
+    /// subtraction and division by a positive cell size round monotonically, so it never decreases as the world
+    /// coordinate grows.</summary>
+    internal static float RasterCoordinate(float world, float origin, float cellSize) => (world - origin) / cellSize;
+
     /// <summary>The released raster interpolation: float u and v, zero outside [0, Width - 1] by [0, Depth - 1], endpoint
     /// clamped bilinear <c>a + (b - a) * t</c> along X then Z, then divided by 255.</summary>
     internal static float RasterDensity(MapFoliageLayer layer, float worldX, float worldZ)
     {
-        float u = (worldX - layer.OriginX) / layer.CellSize;
-        float v = (worldZ - layer.OriginZ) / layer.CellSize;
+        float u = RasterCoordinate(worldX, layer.OriginX, layer.CellSize);
+        float v = RasterCoordinate(worldZ, layer.OriginZ, layer.CellSize);
         if (u < 0f || v < 0f || u > layer.Width - 1 || v > layer.Depth - 1) return 0f;
         int x0 = Math.Min((int)MathF.Floor(u), layer.Width - 1);
         int z0 = Math.Min((int)MathF.Floor(v), layer.Depth - 1);
@@ -251,6 +256,7 @@ public sealed class MapPreparedFoliageSupport
     internal MapAssetClosure? Assets { get; private set; }
     internal MapPreparedFoliageSupport WithAssets(MapAssetClosure assets) { Assets = assets; return this; }
     internal IReadOnlyList<MapFoliageSupportGrid> Grids => _grids;
+    internal MapFoliageCandidateSupport? Candidates => _candidates;
     internal bool Indoor(string? space) => _candidates?.Indoor(space) == true;
 
     // Clearance's cardinal tests ignore density and doors. They read the same prepared logical surface, visible paint

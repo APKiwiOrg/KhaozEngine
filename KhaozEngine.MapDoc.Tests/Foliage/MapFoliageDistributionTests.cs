@@ -4,9 +4,11 @@ using System.Linq;
 using System.Numerics;
 using System.Text.Json.Nodes;
 using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Spaces;
+using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.Terrain;
 using Xunit;
@@ -118,6 +120,50 @@ public sealed class MapFoliageDistributionTests
     }
 
     [Fact]
+    public void DependencyDigest_ChangesForInputsUnderTheChunk()
+    {
+        FoliageFixture f = FoliageComparisonFixtures.Grown(2, 8, 1, 8);
+        string original = Generate(f).DependencyDigest;
+        Assert.NotEmpty(original);
+        // Paint over the chunk's floor.
+        Assert.NotEqual(original, Changed(f, g => Paint(g, 10), "paint"));
+        Assert.NotEqual(Changed(f, g => Paint(g, 10), "paint"), Changed(f, g => Paint(g, 11), "repaint"));
+        // A clearance owner pose: tree-0 moves 1 m within the chunk.
+        Assert.NotEqual(original, Changed(f, g => g.Document.Placements.Single(p => p.Id == "tree-0").X = 5, "pose"));
+        // A consulted clearance rule's footprint.
+        Assert.NotEqual(original, Generate(FoliageComparisonFixtures.Copy(f, l => l["clearanceRules"]![0]!["footprint"]!["maxX"] = 2)).DependencyDigest);
+        // A material resource's bytes.
+        var (roots, source) = FoliageFixtures.AssetInputs(materialSalt: "-revised");
+        FoliageFixture revised = FoliageFixtures.Reload(f, tiled: false);
+        revised.Document.NativeAssets = roots.ToList();
+        Assert.NotEqual(original, Generate(revised with { Assets = MapAssetClosure.Load(roots, source) }).DependencyDigest);
+
+        static string Changed(FoliageFixture f, Action<FoliageFixture> change, string label)
+        {
+            FoliageFixture copy = FoliageFixtures.Reload(f, tiled: false);
+            change(copy);
+            MapFoliageSampleBatch batch = Generate(copy);
+            Assert.True(batch.Status == MapFoliageStatus.Complete, label + " " + batch.Status);
+            return batch.DependencyDigest;
+        }
+        static void Paint(FoliageFixture g, ushort underlay)
+        {
+            var set = new MapSurfaceSet();
+            KhaozEngine.Tests.MapDoc.Water.WaterFixtures.Surface(set, "near-paint", MapSurfaceRole.PaintOverride,
+                MapLatticeFrame.ImportedMetreCentimetre, 2, 0, 6, 4, (_, _) => 100);
+            foreach (MapSurfacePatch p in set.Patches.Values)
+                for (int i = 0; i < p.Cells.Length; i++) p.Cells[i] = p.Cells[i] with { Underlay = underlay };
+            foreach (var p in set.Patches) g.Document.Surfaces.Patches.Add(p.Key, p.Value);
+            MapSurfaceRef surface = set.Refs.Single() with { PaintTargetSurfaceId = "floor" };
+            g.Document.Surfaces.Refs.Add(surface with
+            {
+                SemanticSha256 = MapSurfaceSemantics.SurfaceDigest(surface, set.Patches.Select(p =>
+                    new KeyValuePair<MapPatchKey, string>(p.Key, MapSurfaceSemantics.PatchDigest(p.Value)))),
+            });
+        }
+    }
+
+    [Fact]
     public void GenerationContext_UnrelatedGrowthDoesNotGrowChunkWork()
     {
         FoliageFixture small = FoliageComparisonFixtures.Grown(2, 8, 1, 8);
@@ -208,18 +254,6 @@ public sealed class MapFoliageDistributionTests
     }
 
     [Fact]
-    public void PreparedMembership_ResolvesRecordsOnceAcrossCandidateQueries()
-    {
-        var context = FoliageFixtures.Context(FoliageComparisonFixtures.Flat());
-        long scans = MapSpaceGeometry.ThreadRecordScans;
-        var support = MapFoliageSupport.Prepare(context, context.Foliage!.Layers[0], new(0, 0), new());
-        Assert.Equal(MapFoliageStatus.Complete, support.Status);
-        _ = support.Sample(10.25f, 0.25f);
-        _ = support.Sample(10.75f, 0.75f);
-        Assert.Equal(1, MapSpaceGeometry.ThreadRecordScans - scans);
-    }
-
-    [Fact]
     public void Scope_DistantCoarseFloorDoesNotWidenChunkOrMembershipPreparation()
     {
         FoliageFixture small = FoliageFixtures.Create();
@@ -266,17 +300,112 @@ public sealed class MapFoliageDistributionTests
     }
 
     [Fact]
-    public void ChunkContext_UsesAcquisitionPatchAdmissionWithoutChangingPointBudgets()
+    public void ChunkContext_AdmitsEveryPatchItsAcquisitionAdmitted()
     {
-        // The acquisition admits at most 256 patches in total. Its shared context validates a subset of those patches,
-        // while each point still checks its own 4096 faces and 64 intersections through the released kernel.
-        var f = FoliageFixtures.Stacked(FoliageFixtures.Surface("floor-0"));
+        // The context's patch admission is the acquisition's own allowance over a subset of the acquired patches. An
+        // acquisition filled to exactly its allowance still prepares, and its context validates every acquired patch.
+        var context = FoliageFixtures.Context(FoliageFixtures.Stacked(FoliageFixtures.Surface("floor-0")));
+        MapFoliageLayer layer = context.Foliage!.Layers[0];
+        var chunk = new MapFoliageChunkKey(0, 0);
+        MapSurfaceScope scope = MapFoliageSupport.Scope(layer, chunk, context.SupportFloorsFor(layer, chunk), context.Resources.Transforms);
+        MapPatchKey[] acquired = context.Acquire(scope).Witness.Present.Select(p => p.Key).ToArray();
+        Assert.True(acquired.Length > 1, $"{acquired.Length} patches");
+        MapPreparedFoliageSupport Prepare(int patches)
+        {
+            MapSurfaceScope tight = scope with { Limits = new MapQueryLimits(MaxCandidatePatches: patches) };
+            return MapFoliageSupport.Prepare(context.Acquire(tight), context.PaintFor(tight), context.Resources.SurfaceSource.Surfaces,
+                layer, chunk, new(), context.DensityDigests(layer));
+        }
+        MapPreparedFoliageSupport exact = Prepare(acquired.Length);
+        Assert.Equal(MapFoliageStatus.Complete, exact.Status);
+        MapBoundFaceContext bound = exact.Candidates!.BoundContext;
+        Assert.All(acquired, key => Assert.Equal(key, bound.ValidatedPatch(key).Patch.Key));
+        MapPreparedFoliageSupport refused = Prepare(acquired.Length - 1);
+        Assert.Equal(MapFoliageStatus.CapacityExceeded, refused.Status);
+        Assert.Equal(0, refused.Work.Faces);
+    }
+
+    [Fact]
+    public void Preparation_ReusedMembershipPatchesMatchAPhysicalCompile()
+    {
+        var context = FoliageFixtures.Context(FoliageFixtures.FlagsAndCuts("nodraw"));
+        var support = MapFoliageSupport.Prepare(context, context.Foliage!.Layers[0], new(0, 0), new());
+        Assert.Equal(MapFoliageStatus.Complete, support.Status);
+        MapBoundFaceContext bound = support.Candidates!.BoundContext;
+        MapPatchKey[] keys = support.Grids.SelectMany(g => g.Cells.Values).Select(c => c.Key).Distinct().ToArray();
+        Assert.NotEmpty(keys);
+        foreach (MapPatchKey key in keys)
+        {
+            MapCompiledPatch reused = bound.LocalCompiled(key);
+            MapCompiledPatch physical = MapSurfaceCompiler.Compile(bound.ValidatedPatch(key), bound.Mask(key), MapSurfaceCompiler.MaxFacesPerPatch);
+            Assert.NotEmpty(physical.LegacyFallbackCells);
+            Assert.Equal(physical.LegacyFallbackCells, reused.LegacyFallbackCells);
+            Assert.Equal(physical.Faces.Select(f => (f.Key, physical.ExactTriangle(f))).OrderBy(f => f.Key),
+                reused.Faces.Select(f => (f.Key, reused.ExactTriangle(f))).OrderBy(f => f.Key));
+            Assert.Equal(physical.Paint.OrderBy(p => p.Face), reused.Paint.OrderBy(p => p.Face));
+        }
+    }
+
+    [Fact]
+    public void Query_SpaceBoundOffRasterChunksCompleteWithoutPreparation()
+    {
+        // The raster spans world X and Z -1 to 3. Chunks -2 and -1 lie wholly west of it, and chunk -2's acquisition
+        // holds no part of the bound space, so preparing it would refuse Unavailable.
+        FoliageFixture f = FoliageFixtures.Stacked(new(MapSupportBindingKind.Space, null, "level-1", 10.5f, 1, 1));
         var context = FoliageFixtures.Context(f);
-        var batch = MapFoliageDistribution.Generate(context, "cover-a", new(0, 0));
-        Assert.Equal(MapFoliageStatus.Complete, batch.Status);
-        Assert.Equal(0, batch.Work.SurfaceQueries);
-        Assert.Equal(MapFoliageStatus.CapacityExceeded,
-            MapFoliageDistribution.Generate(context, "cover-a", new(0, 0), new(MaxFaces: 1)).Status);
+        var rows = new List<MapFoliageDecision>();
+        MapFoliageQueryResult result = MapFoliageDistribution.Query(context, "cover-a", new(-70, -1, 3, 3), observe: rows.Add);
+        Assert.Equal(MapFoliageStatus.Complete, result.Status);
+        Assert.Equal(new[] { -2, -1, 0 }, result.Batches.Select(b => b.Chunk.X));
+        foreach (MapFoliageSampleBatch off in result.Batches.Take(2))
+        {
+            Assert.Equal(MapFoliageStatus.Complete, off.Status);
+            Assert.Empty(off.Samples);
+            Assert.Equal((0L, 0L, 0L), (off.Work.PrepareScopes, off.Work.Faces, off.Work.RuleCandidates));
+            Assert.NotEmpty(off.DependencyDigest);
+            Assert.True(off.Work.Candidates > 0);
+        }
+        Assert.NotEqual(result.Batches[0].DependencyDigest, result.Batches[1].DependencyDigest);
+        Assert.Equal(1, result.Batches[2].Work.PrepareScopes);
+        Assert.NotEmpty(result.Batches[2].Samples);
+        Assert.All(rows.Where(r => r.Distribution.Candidate.WorldX < -1), r => Assert.Null(r.Sample));
+        MapFoliageSampleBatch generated = MapFoliageDistribution.Generate(context, "cover-a", new(-2, 0));
+        Assert.Equal((MapFoliageStatus.Complete, result.Batches[0].DependencyDigest), (generated.Status, generated.DependencyDigest));
+    }
+
+    [Fact]
+    public void OffRasterDigest_FollowsOnlyTheRasterExtent()
+    {
+        FoliageFixture f = FoliageFixtures.Stacked(new(MapSupportBindingKind.Space, null, "level-1", 10.5f, 1, 1));
+        string original = Off(f);
+        Assert.NotEmpty(original);
+        Assert.Equal(original, Off(FoliageComparisonFixtures.Copy(f, l => l["seed"] = 18)));
+        Assert.NotEqual(original, Off(FoliageComparisonFixtures.Copy(f, l => l["width"] = 4)));
+        Assert.NotEqual(original, Off(FoliageComparisonFixtures.Copy(f, l => l["originZ"] = -3)));
+        static string Off(FoliageFixture fixture)
+        {
+            MapFoliageSampleBatch batch = MapFoliageDistribution.Generate(FoliageFixtures.Context(fixture), "cover-a", new(-2, 0));
+            Assert.Equal(MapFoliageStatus.Complete, batch.Status);
+            Assert.Equal(0, batch.Work.PrepareScopes);
+            return batch.DependencyDigest;
+        }
+    }
+
+    [Fact]
+    public void ChunkTouchingTheRasterEdge_StillPrepares()
+    {
+        // The raster's last column lands exactly on chunk 2's west edge at x = 128 when 65 samples wide, and 2 m short of
+        // it when 64 wide. Only the touching chunk prepares.
+        MapFoliageSampleBatch Chunk2(int width) => MapFoliageDistribution.Generate(FoliageFixtures.Context(FoliageComparisonFixtures.Set(
+            FoliageComparisonFixtures.Flat(), FoliageFixtures.Layer("cover-a", FoliageFixtures.Surface("floor"), 0, -2, 2, width, 3,
+                Enumerable.Repeat((byte)255, width * 3).ToArray(), []))), "cover-a", new(2, 0));
+        MapFoliageSampleBatch touching = Chunk2(65), off = Chunk2(64);
+        Assert.Equal(MapFoliageStatus.Complete, touching.Status);
+        Assert.Equal(1, touching.Work.PrepareScopes);
+        Assert.True(touching.Work.Faces > 0);
+        Assert.Equal(MapFoliageStatus.Complete, off.Status);
+        Assert.Equal((0L, 0L), (off.Work.PrepareScopes, off.Work.Faces));
+        Assert.NotEmpty(off.DependencyDigest);
     }
 
     static MapFoliageSampleBatch Generate(FoliageFixture f) => MapFoliageDistribution.Generate(FoliageFixtures.Context(f), "cover-a", new(0, 0));

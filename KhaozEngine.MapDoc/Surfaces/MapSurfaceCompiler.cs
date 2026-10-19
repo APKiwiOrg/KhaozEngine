@@ -193,6 +193,24 @@ public static class MapSurfaceCompiler
         return segments;
     }
 
+    /// <summary>The legacy fallback cells a physical compile of <paramref name="cells"/> lists, in the same z then x order,
+    /// for a caller that reuses faces from another compile and must not compile the patch again.</summary>
+    internal static IReadOnlyList<MapFallbackCell> FallbackCells(MapValidatedSurfacePatch validated, MapSlotCellMask cells)
+    {
+        ArgumentNullException.ThrowIfNull(cells);
+        MapSurfacePatch patch = validated.Patch;
+        var fallback = new List<MapFallbackCell>();
+        for (int z = 0; z < patch.Depth; z++)
+            for (int x = 0; x < patch.Width; x++)
+            {
+                if (!cells.Contains(SlotCell(patch, x, z)) || !patch.IsPresent(x, z) ||
+                    !Fallback(validated.Surface, patch.Cells[z * patch.Width + x])) continue;
+                fallback.Add(new(SlotCell(patch, x, z), patch.Height(x, z), patch.Height(x + 1, z),
+                    patch.Height(x, z + 1), patch.Height(x + 1, z + 1)));
+            }
+        return fallback;
+    }
+
     static int SlotCell(MapSurfacePatch patch, int x, int z) =>
         (patch.CellMinZ + z) * MapPatchKey.SlotCells + patch.CellMinX + x;
 

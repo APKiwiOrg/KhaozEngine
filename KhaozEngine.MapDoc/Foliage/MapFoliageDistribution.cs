@@ -69,6 +69,7 @@ public static class MapFoliageDistribution
         long previousSamples = meter.Samples;
         long initialBytes = budget.Bytes - 256;
         MapFoliageWork initial = meter.Work();
+        bool offRaster = KnownOffRaster(layer, Rectangle(layer, chunk));
         var evaluation = new Evaluation(context, layer, limits, meter);
         var samples = new List<MapFoliageSample>();
         for (long z = range.MinZ; z <= range.MaxZ; z++)
@@ -82,10 +83,34 @@ public static class MapFoliageDistribution
                 observe?.Invoke(row);
                 if (row.Sample is { } sample) samples.Add(sample);
             }
-        // Even an empty batch binds its exact prepared dependencies, except a known off-raster rectangle reads none.
-        string digest = evaluation.Digest(chunk);
+        // An empty batch binds its exact prepared dependencies. A known off-raster chunk prepared nothing, so it binds
+        // only the raster facts that make it off-raster.
+        System.Diagnostics.Debug.Assert(!offRaster || meter.PrepareScopes == initial.PrepareScopes);
+        string digest = offRaster ? MapFoliageDependencies.OffRaster(layer, chunk) : evaluation.Digest(chunk);
         MapFoliageWork work = meter.Difference(initial, budget.Bytes - initialBytes);
         return new(layer.Id, chunk, MapFoliageStatus.Complete, digest, samples, work);
+    }
+
+    /// <summary>True only when no candidate the chunk can own reaches support or clearance preparation, so its batch is
+    /// a Complete empty batch. A candidate prepares only from <see cref="Evaluation.Decide"/>, after its jittered point
+    /// passes the half-open clip (at least MinX and below MaxX, likewise on Z) and then the released interpolation's
+    /// raster test (u from 0 through Width - 1, v from 0 through Depth - 1). Generate clips to the chunk rectangle and Query to
+    /// a part of it, so every owned point lies in [MinX, BitDecrement(MaxX)] on X and likewise on Z, whatever the seed,
+    /// spacing or jitter. A candidate coordinate is a finite product, or an infinity the clip rejects, never NaN. The
+    /// raster coordinate never decreases as the world coordinate grows (see
+    /// <see cref="MapFoliageSupport.RasterCoordinate"/>), so its values at the first and last owned floats bound every
+    /// owned point's. When either bound lies outside the raster on either axis, every owned point is RasterZero before
+    /// preparation. Zero density bytes inside the raster still prepare, since those rows report support reasons. Any
+    /// other case, including an empty rectangle or a cell size that is not positive, prepares.</summary>
+    internal static bool KnownOffRaster(MapFoliageLayer layer, RectArea chunk)
+    {
+        if (!(layer.CellSize > 0)) return false;
+        float lastX = MathF.BitDecrement(chunk.MaxX), lastZ = MathF.BitDecrement(chunk.MaxZ);
+        if (!(chunk.MinX <= lastX && chunk.MinZ <= lastZ)) return false;
+        return MapFoliageSupport.RasterCoordinate(lastX, layer.OriginX, layer.CellSize) < 0 ||
+            MapFoliageSupport.RasterCoordinate(chunk.MinX, layer.OriginX, layer.CellSize) > layer.Width - 1 ||
+            MapFoliageSupport.RasterCoordinate(lastZ, layer.OriginZ, layer.CellSize) < 0 ||
+            MapFoliageSupport.RasterCoordinate(chunk.MinZ, layer.OriginZ, layer.CellSize) > layer.Depth - 1;
     }
 
     internal static MapFoliageLayer Layer(MapFoliageGenerationContext context, string id) =>
@@ -171,8 +196,10 @@ public static class MapFoliageDistribution
             {
                 if (clip is { } area && (c.WorldX < area.MinX || c.WorldX >= area.MaxX || c.WorldZ < area.MinZ || c.WorldZ >= area.MaxZ))
                 { outside = true; return new(null); }
-                // Outside the authored raster is known zero, even if no support geometry exists there.
-                float u = (c.WorldX - layer.OriginX) / layer.CellSize, v = (c.WorldZ - layer.OriginZ) / layer.CellSize;
+                // Outside the authored raster is known zero, even if no support geometry exists there. KnownOffRaster
+                // derives its chunk test from this point test.
+                float u = MapFoliageSupport.RasterCoordinate(c.WorldX, layer.OriginX, layer.CellSize);
+                float v = MapFoliageSupport.RasterCoordinate(c.WorldZ, layer.OriginZ, layer.CellSize);
                 if (u < 0 || v < 0 || u > layer.Width - 1 || v > layer.Depth - 1)
                 {
                     point = new(MapFoliageStatus.Complete, MapFoliageReason.RasterZero, layer.Support.SurfaceId, null, null, 0, Vector3.UnitY, 0, 0);

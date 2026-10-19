@@ -110,8 +110,9 @@ internal static partial class FoliageFixtures
         return document;
     }
 
-    // The shared native fixture closure, with reed-a and reed-b as model assets, plus the three invented materials.
-    static (IReadOnlyList<MapAssetRef> Roots, NativeMemoryAssetSource Source) AssetInputs()
+    // The shared native fixture closure, with reed-a and reed-b as model assets, plus the three invented materials. A
+    // salt revises every material's bytes, and so its resource hash, without changing any id.
+    internal static (IReadOnlyList<MapAssetRef> Roots, NativeMemoryAssetSource Source) AssetInputs(string materialSalt = "")
     {
         var (roots, source) = NativeAssetFixtures.Change(root =>
         {
@@ -125,7 +126,7 @@ internal static partial class FoliageFixtures
         });
         var materials = new JsonArray();
         foreach (string id in new[] { "moss-material", "soil-material", "pond-material" })
-            materials.Add(NativeAssetFixtures.Resource(source.Add(id, Encoding.UTF8.GetBytes("bytes:" + id)), "Material"));
+            materials.Add(NativeAssetFixtures.Resource(source.Add(id, Encoding.UTF8.GetBytes("bytes:" + id + materialSalt)), "Material"));
         MapAssetRef root = source.Add("root-foliage", new JsonObject
         {
             ["payloadVersion"] = 1,

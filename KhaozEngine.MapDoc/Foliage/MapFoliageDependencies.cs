@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using KhaozEngine.MapDoc.Assets;
 
 namespace KhaozEngine.MapDoc.Foliage;
@@ -21,7 +22,7 @@ public static class MapFoliageDependencies
             w.WriteStartArray(); w.WriteStringValue("kemap/foliage-batch/1");
             w.WriteStringValue(layer.Id); w.WriteNumberValue(chunk.X); w.WriteNumberValue(chunk.Z);
             w.WriteNumberValue(1);
-            foreach (string part in support.DependencyParts) w.WriteStringValue(part);
+            // Clearance parts already hold every support part.
             foreach (string part in clearance.DependencyParts) w.WriteStringValue(part);
             w.WriteNumberValue(layer.Seed);
             foreach (float number in new[] { layer.Spacing, layer.ScaleMin, layer.ScaleMax, layer.RootOffset })
@@ -61,4 +62,26 @@ public static class MapFoliageDependencies
             }
         });
     }
+
+    /// <summary>The digest of a chunk that <see cref="MapFoliageDistribution.KnownOffRaster"/> proves off the raster. It
+    /// prepared nothing, so it binds the scheme, layer, chunk, policy and the raster origin, cell size, width and depth
+    /// that decide off-raster status. Growing or moving the raster changes it. Support, clearance and model inputs do not.</summary>
+    internal static string OffRaster(MapFoliageLayer layer, MapFoliageChunkKey chunk) => MapCanonical.HashHex(w =>
+    {
+        w.WriteStartArray(); w.WriteStringValue("kemap/foliage-batch/1");
+        w.WriteStringValue(layer.Id); w.WriteNumberValue(chunk.X); w.WriteNumberValue(chunk.Z);
+        w.WriteNumberValue(1);
+        w.WriteStringValue("off-raster");
+        w.WriteStringValue(PolicyPart(layer));
+        w.WriteStringValue(RasterPart(layer));
+        w.WriteEndArray();
+    });
+
+    internal static string PolicyPart(MapFoliageLayer layer) =>
+        $"policy|{layer.Policy.Id}|{layer.Policy.Version.ToString(CultureInfo.InvariantCulture)}|{Bits(layer.Policy.NormalBoundaryHeight)}";
+
+    internal static string RasterPart(MapFoliageLayer layer) =>
+        $"raster|{Bits(layer.OriginX)}|{Bits(layer.OriginZ)}|{Bits(layer.CellSize)}|{layer.Width.ToString(CultureInfo.InvariantCulture)}|{layer.Depth.ToString(CultureInfo.InvariantCulture)}";
+
+    static string Bits(float value) => BitConverter.SingleToInt32Bits(value).ToString(CultureInfo.InvariantCulture);
 }

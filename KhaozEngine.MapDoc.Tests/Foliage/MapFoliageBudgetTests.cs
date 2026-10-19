@@ -95,6 +95,29 @@ public sealed class MapFoliageBudgetTests
     }
 
     [Fact]
+    public void Generate_AppliesBothQueryCeilingsAsAOneChunkQuery()
+    {
+        var context = FoliageFixtures.Context(FoliageFixtures.Create());
+        var batch = MapFoliageDistribution.Generate(context, "cover-a", new(0, 0));
+        Assert.Equal(MapFoliageStatus.Complete, batch.Status);
+        Assert.NotEmpty(batch.Samples);
+        var exact = MapFoliageDistribution.Generate(context, "cover-a", new(0, 0),
+            new(MaxQuerySamples: batch.Work.Samples, MaxQueryRetainedBytes: batch.Work.RetainedBytes));
+        Assert.Equal((MapFoliageStatus.Complete, batch.Work.RetainedBytes), (exact.Status, exact.Work.RetainedBytes));
+        foreach (var limit in new[]
+        {
+            new MapFoliageLimits(MaxQueryRetainedBytes: batch.Work.RetainedBytes - 1),
+            new MapFoliageLimits(MaxQuerySamples: batch.Work.Samples - 1),
+        })
+        {
+            var refused = MapFoliageDistribution.Generate(context, "cover-a", new(0, 0), limit);
+            Assert.Equal(MapFoliageStatus.CapacityExceeded, refused.Status);
+            Assert.Empty(refused.Samples);
+            Assert.Empty(refused.DependencyDigest);
+        }
+    }
+
+    [Fact]
     public void Generation_MaskCeilingRefusesBeforePublishingAnOtherwiseLegalChunk()
     {
         var context = FoliageFixtures.Context(FoliageFixtures.CentreMask());

@@ -190,6 +190,8 @@ internal sealed class MapBoundFaceContext
     }
     internal MapCompiledPatch LocalCompiled(MapPatchKey key) => _entries.TryGetValue(key, out Entry? entry) ? entry.LocalCompiled
         : throw new InvalidOperationException("context demand patch was not prepared");
+    internal MapSlotCellMask Mask(MapPatchKey key) => _entries.TryGetValue(key, out Entry? entry) ? entry.Mask
+        : throw new InvalidOperationException("context demand patch was not prepared");
     internal MapCompiledPatch Compiled(MapPatchKey key) => _entries.TryGetValue(key, out Entry? entry)
         ? entry.Compiled : throw new InvalidOperationException("context demand patch was not prepared");
     /// <summary>A compiled face of a prepared patch by key, from an index built once per patch.</summary>

@@ -82,18 +82,23 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
         _contextFaces = checked(_contextFaces + count);
     }
 
-    long PhysicalFaces() => _logical.Sum(pair => pair.Value.Patch.Faces.LongCount(f => !Fallback(pair.Key, f.Key.Primitive)));
+    long PhysicalFaces() => _logical.Sum(pair =>
+    {
+        Func<int, bool> fallback = Fallback(pair.Key);
+        return pair.Value.Patch.Faces.LongCount(f => !fallback(f.Key.Primitive));
+    });
 
-    bool Fallback(MapPatchKey key, int slot)
+    // Looks the patch and its surface up once, then tests slot cells of that patch.
+    Func<int, bool> Fallback(MapPatchKey key)
     {
         MapSurfacePatch patch = Patch(key)!;
         MapSurfaceRef surface = view.Surfaces.First(s => s.Id == key.SurfaceId);
-        int x = slot % 64 - patch.CellMinX, z = slot / 64 - patch.CellMinZ;
-        return MapSurfaceCompiler.Fallback(surface, patch.Cells[z * patch.Width + x]);
+        return slot => MapSurfaceCompiler.Fallback(surface, patch.Cells[(slot / 64 - patch.CellMinZ) * patch.Width + slot % 64 - patch.CellMinX]);
     }
 
     // Reuse the logical triangulation, filtering fallback cells from physical membership. Portal demands outside a
-    // grid compile only their additional cells. Existing exact coordinates, face keys and normals remain unchanged.
+    // grid compile only their additional cells. Existing exact coordinates, face keys and normals remain unchanged, and
+    // the fallback cell list is the one a physical compile of the same mask emits.
     MapCompiledPatch ReusePhysical(MapValidatedSurfacePatch validated, MapSlotCellMask mask)
     {
         if (!_logical.TryGetValue(validated.Patch.Key, out var logical))
@@ -102,17 +107,19 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
             return MapSurfaceCompiler.Compile(validated, mask, MapSurfaceCompiler.MaxFacesPerPatch);
         }
         MapCompiledPatch cached = logical.Patch;
-        var faces = cached.Faces.Where(f => mask.Contains(f.Key.Primitive) && !Fallback(cached.Key, f.Key.Primitive)).ToArray();
+        Func<int, bool> fallback = Fallback(cached.Key);
+        var faces = cached.Faces.Where(f => mask.Contains(f.Key.Primitive) && !fallback(f.Key.Primitive)).ToArray();
         MapSlotCellMask missing = MapSlotCellMask.Of(Enumerable.Range(0, 4096).Where(s => mask.Contains(s) && !logical.Mask.Contains(s)));
         if (missing.Count != 0)
             RetainContextFaces(MapSurfaceCompiler.CountFaces(validated, missing, logical: false));
         MapCompiledPatch? extra = missing.Count == 0 ? null : MapSurfaceCompiler.Compile(validated, missing, MapSurfaceCompiler.MaxFacesPerPatch);
         int offset = cached.VertexIds.Count;
         var additional = extra?.Faces.Select(f => f with { A = f.A + offset, B = f.B + offset, C = f.C + offset }) ?? [];
-        var selectedPaint = cached.Paint.Where(p => mask.Contains(p.Face.Primitive) && !Fallback(cached.Key, p.Face.Primitive));
+        var selectedPaint = cached.Paint.Where(p => mask.Contains(p.Face.Primitive) && !fallback(p.Face.Primitive));
         return new(cached.Key, cached.Role, cached.Anchor,
             cached.VertexIds.Concat(extra?.VertexIds ?? []), cached.ExactVertices.Concat(extra?.ExactVertices ?? []),
-            cached.Offsets.Concat(extra?.Offsets ?? []), faces.Concat(additional), selectedPaint.Concat(extra?.Paint ?? []), extra?.LegacyFallbackCells ?? []);
+            cached.Offsets.Concat(extra?.Offsets ?? []), faces.Concat(additional), selectedPaint.Concat(extra?.Paint ?? []),
+            MapSurfaceCompiler.FallbackCells(validated, mask));
     }
 
     MapResourceTransform? Kernel(MapSurfaceRef surface) => view.EffectiveContext?.Transform(MapPrefabChildKind.Surface, surface.Id);
@@ -165,6 +172,9 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
             long count = MapFoliageTriangles.CountFaces(validated, mask);
             if (checked(_faces + count) > limits.MaxFaces)
                 throw new MapFoliageRefusal(MapFoliageStatus.CapacityExceeded, Work(), "prepared faces");
+            // One 1280-byte charge per unique face covers both holds: this grid's record and the membership context's
+            // reused hold of the same face (its transformed copy, bound face and index entries). ReusePhysical charges
+            // only faces it compiles beyond the grid.
             limits.ChargePreparation?.Invoke(checked(1280 * count));
             _faces += count;
             MapCompiledPatch local = MapFoliageTriangles.Compile(validated, mask, (int)count);
@@ -212,9 +222,9 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
     {
         string F(float value) => BitConverter.SingleToInt32Bits(value).ToString(CultureInfo.InvariantCulture);
         string N(float? value) => value is { } v ? F(v) : "null";
-        Part($"policy|{layer.Policy.Id}|{layer.Policy.Version.ToString(CultureInfo.InvariantCulture)}|{F(layer.Policy.NormalBoundaryHeight)}");
+        Part(MapFoliageDependencies.PolicyPart(layer));
         Part($"binding|{binding.Kind}|{binding.SurfaceId}|{binding.SpaceId}|{N(binding.ReferenceY)}|{N(binding.SearchBelow)}|{N(binding.SearchAbove)}");
-        Part($"raster|{F(layer.OriginX)}|{F(layer.OriginZ)}|{F(layer.CellSize)}|{layer.Width.ToString(CultureInfo.InvariantCulture)}|{layer.Depth.ToString(CultureInfo.InvariantCulture)}");
+        Part(MapFoliageDependencies.RasterPart(layer));
         IReadOnlyDictionary<MapFoliageChunkKey, string> digests = densityDigests ?? layer.ChunkDigests.ToDictionary(d => d.Key, d => d.Sha256);
         // Bilinear reads reach one sample into the next chunk on each axis.
         for (int dz = 0; dz <= 1; dz++)

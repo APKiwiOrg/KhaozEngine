@@ -81,10 +81,9 @@ internal sealed class MapFoliagePatchFaces
     readonly MapCompiledPatch _compiled;
     readonly Dictionary<(int Primitive, byte Parent), List<int>> _index = new();
 
-    internal MapFoliagePatchFaces(MapCompiledPatch compiled, MapValidatedSurfacePatch validated)
+    internal MapFoliagePatchFaces(MapCompiledPatch compiled)
     {
         _compiled = compiled;
-        Validated = validated;
         for (int i = 0; i < compiled.Faces.Count; i++)
         {
             MapFaceKey key = compiled.Faces[i].Key;
@@ -94,27 +93,6 @@ internal sealed class MapFoliagePatchFaces
     }
 
     internal int Count => _compiled.Faces.Count;
-
-    /// <summary>The validated local patch these faces were compiled from.</summary>
-    internal MapValidatedSurfacePatch Validated { get; }
-
-    /// <summary>The support face a full selection takes in one cell at an exact world point: of the cell's faces holding
-    /// the point, the lowest face key, with its exact height. Null when no face holds the point.</summary>
-    internal (MapCompiledFace Face, MapExactValue Height)? Support(int slotCell, MapExactXz point)
-    {
-        (MapCompiledFace Face, MapExactValue Height)? selected = null;
-        for (byte parent = 0; parent < 4; parent++)
-        {
-            if (!_index.TryGetValue((slotCell, parent), out List<int>? faces)) continue;
-            foreach (int index in faces)
-            {
-                MapCompiledFace face = _compiled.Faces[index];
-                if (MapSubdividedTriangle.Height(_compiled.ExactTriangle(face), point.X, point.Z) is not { } height) continue;
-                if (selected is null || face.Key.CompareTo(selected.Value.Face.Key) < 0) selected = (face, height);
-            }
-        }
-        return selected;
-    }
 
     /// <summary>The canonical face of a parent triangle at a world point. An unsubdivided parent is its one face. A
     /// subdivided parent picks its first child holding the point exactly.</summary>

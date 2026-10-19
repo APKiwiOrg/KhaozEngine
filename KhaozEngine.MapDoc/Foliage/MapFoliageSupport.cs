@@ -248,13 +248,13 @@ public sealed class MapPreparedFoliageSupport
             return Refusal(MapCommonRefinement.NotRepresentable(error) ? MapFoliageStatus.NotRepresentable
                 : error.Message.Contains("invalid", StringComparison.Ordinal) ? MapFoliageStatus.Invalid : MapFoliageStatus.Unavailable);
         }
-        // A demand outside the prepared chunk context: this point's facts were not prepared.
-        catch (InvalidOperationException) { return Refusal(MapFoliageStatus.Unavailable); }
+        // Only a demand outside the prepared chunk context: this point's facts were not prepared.
+        catch (InvalidOperationException error) when (error.Message.StartsWith("context demand", StringComparison.Ordinal))
+        { return Refusal(MapFoliageStatus.Unavailable); }
     }
 
     MapFoliageSurfacePoint Decide(MapExactXz exact, float worldX, float worldZ, float density)
     {
-        MapFoliageSupportGrid? grid = null;
         MapFoliageSupportCell? chosen = null;
         string? owner = null, space = null;
         float fx = 0, fz = 0;
@@ -263,7 +263,7 @@ public sealed class MapPreparedFoliageSupport
             {
                 (long x, long z, float localX, float localZ) = candidate.Locate(worldX, worldZ);
                 if (candidate.Cells.TryGetValue((x, z), out MapFoliageSupportCell? cell) && cell.Selected)
-                    (grid, chosen, owner, fx, fz) = (candidate, cell, cell.OwnerId, localX, localZ);
+                    (chosen, owner, fx, fz) = (cell, cell.OwnerId, localX, localZ);
             }
         else
         {
@@ -272,7 +272,7 @@ public sealed class MapPreparedFoliageSupport
             if (outcome.Cell is { } cell)
             {
                 (float localX, float localZ) = outcome.Grid!.LocalIn(worldX, worldZ, outcome.CellX, outcome.CellZ);
-                (grid, chosen, owner, space, fx, fz) = (outcome.Grid, cell, outcome.OwnerId, outcome.SpaceId, localX, localZ);
+                (chosen, owner, space, fx, fz) = (cell, outcome.OwnerId, outcome.SpaceId, localX, localZ);
             }
         }
         if (chosen is null)
@@ -295,7 +295,7 @@ public sealed class MapPreparedFoliageSupport
         }
         if (_layer.Support.Kind == MapSupportBindingKind.Surface && _candidates is not null)
         {
-            (MapFoliageStatus status, string? occupied) = _candidates.Occupied(exact, grid!, chosen, height);
+            (MapFoliageStatus status, string? occupied) = _candidates.Occupied(exact, height);
             if (status != MapFoliageStatus.Complete) return Refusal(status);
             space = occupied;
         }

@@ -41,7 +41,13 @@ internal static class MapSupportSelection
         new(status, null, 0, null, null, null, null, detail, view.ReadWitness);
 
     internal static Outcome Compute(MapPreparedSupport prepared, MapSupportRequest request, MapBoundFaceWork? work, bool sampleSurface,
-        MapExactPoint? exactWorld = null)
+        MapExactPoint? exactWorld = null) => Compute(prepared, request, work, sampleSurface, exactWorld, null);
+
+    /// <summary>The kernel over a supplied context prepared once for many points. Each point keeps its released budgets:
+    /// its own demand set must fit the inspected-face allowance left by the prisms, and its intersections across every
+    /// support floor must fit MaxSupportIntersections. Without a supplied context the point prepares its own, as released.</summary>
+    internal static Outcome Compute(MapPreparedSupport prepared, MapSupportRequest request, MapBoundFaceWork? work, bool sampleSurface,
+        MapExactPoint? exactWorld, MapBoundFaceContext? shared)
     {
         ArgumentNullException.ThrowIfNull(prepared);
         ArgumentNullException.ThrowIfNull(request);
@@ -87,22 +93,31 @@ internal static class MapSupportSelection
                     if (patch is not null) cells.Add(new(key, MapLowerCellClassifier.SlotCell(x, z)));
                 }
             }
-            MapMembershipResult membership = exactWorld is { } exactPoint
-                ? spaces.QueryExact(exactPoint, cells.Select(c => new MapBoundFaceDemand(c, null)), work, out MapBoundFaceContext? context)
-                : spaces.Query(point, cells.Select(c => new MapBoundFaceDemand(c, null)), work, out context);
+            MapMembershipResult membership;
+            MapBoundFaceContext? context;
+            if (shared is null)
+                membership = exactWorld is { } exactPoint
+                    ? spaces.QueryExact(exactPoint, cells.Select(c => new MapBoundFaceDemand(c, null)), work, out context)
+                    : spaces.Query(point, cells.Select(c => new MapBoundFaceDemand(c, null)), work, out context);
+            else
+            {
+                membership = exactWorld is { } exactPoint
+                    ? spaces.QueryExact(exactPoint, cells.Select(c => new MapBoundFaceDemand(c, null)), shared)
+                    : spaces.Query(point, cells.Select(c => new MapBoundFaceDemand(c, null)), shared);
+                // The point's own preparation would have refused here, before any face was read.
+                context = membership.Status == MapMembershipStatus.CapacityExceeded && membership.Detail == "context faces" ? null : shared;
+            }
             if (context is null) return Failure(Status(membership.Status), membership.Detail);
             var intersections = new List<Intersection>();
             foreach (MapCellDemand cell in cells)
             {
-                MapCompiledPatch compiled = context.Compiled(cell.Patch);
-                var normals = compiled.Faces.Where(f => f.Key.Primitive == cell.SlotCell).ToDictionary(f => f.Key);
                 Intersection? selected = null;
                 foreach (MapBoundFace face in context.Faces(cell))
                 {
                     if (MapSubdividedTriangle.Height(face.Triangle, xz.X, xz.Z) is not { } height) continue;
                     if (selected is null || face.Key == request.CurrentSupport ||
                         (selected.Face.Key != request.CurrentSupport && face.Key.CompareTo(selected.Face.Key) < 0))
-                        selected = new(normals[face.Key], height);
+                        selected = new(context.CompiledFace(face.Key), height);
                 }
                 if (selected is null) continue;
                 if (intersections.Count >= scope.Limits.MaxSupportIntersections)

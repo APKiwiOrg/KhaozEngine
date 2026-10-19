@@ -119,13 +119,15 @@ public sealed class MapFoliageSupportTests
     public void SpaceBinding_PortalsMissingBoundsAndLegacyFallbackFollowReleasedMembership()
     {
         // Candidates exactly on the released cave mouth, an incident non-room portal band between chamber and outside.
-        var onMouth = Enumerable.Range(0, 17).Select(i => (2f + i * 0.25f, 3f, false));
+        var onMouth = Enumerable.Range(0, 17).Select(i => (2f + i * 0.25f, 3f, false)).ToArray();
         var around = Grid(1.513f, 6.6f, 1.513f, 8.6f, 0.211f);
         foreach (float reference in new[] { 8.2f, 9.5f })
         {
-            var counts = CompareContext(FoliageFixtures.Wrapped(CaveFixtures.RampChamberShaft().Surfaces, Space("chamber", reference, 0.5f, 0.5f), -1, -1, 6, 6),
-                "chamber", onMouth.Concat(around));
-            Assert.True(counts.Values.Sum() > 0);
+            FoliageFixture cave = FoliageFixtures.Wrapped(CaveFixtures.RampChamberShaft().Surfaces, Space("chamber", reference, 0.5f, 0.5f), -1, -1, 6, 6);
+            var mouth = CompareContext(cave, "chamber", onMouth);
+            _ = CompareContext(cave, "chamber", around);
+            // On the mouth at the band's floor height, the portal resolves membership and support is found there.
+            if (reference == 8.2f) Assert.True(mouth.GetValueOrDefault("cave-floor") > 0, string.Join(", ", mouth));
         }
 
         // A 0.5 m lid with one known missing cell under a quarter of base cell (1, 1): only candidates under that quarter
@@ -144,6 +146,52 @@ public sealed class MapFoliageSupportTests
             Grid(0.013f, 4f, -0.987f, 0f, 0.097f).Append((1.5f, -0.5f, false)));
         Assert.Equal(0, below.GetValueOrDefault("fallback"));
         Assert.True(below.GetValueOrDefault("missing") + below.GetValueOrDefault("outside") > 0);
+    }
+
+    [Fact]
+    public void SharedKernel_KeepsEachCandidatesReleasedBudgets()
+    {
+        // Sixty-five stacked floors over one XZ: the released selection counts intersections across every support floor,
+        // even without any space record, so both routes refuse CapacityExceeded at the sixty-fifth.
+        var stack = new MapSurfaceSet();
+        for (int k = 0; k < 65; k++)
+            CaveFixtures.AddSurface(stack, FormattableString.Invariant($"floor-{k:00}"), MapSurfaceRole.SupportFloor, 0, 0, 2, 2, (_, _) => k * 100);
+        var floors = CompareContext(FoliageFixtures.Wrapped(stack, FoliageFixtures.Surface("floor-00"), -1, -1, 3, 3), null,
+            Grid(0.013f, 2f, 0.013f, 2f, 0.137f));
+        Assert.Equal(floors.Values.Sum(), floors.GetValueOrDefault("CapacityExceeded"));
+
+        // A room prism costing 4090 leaves six inspected faces for each point. A candidate over four floors demands eight,
+        // so its own budget refuses on both routes, although the shared context holds every face.
+        MapSurfaceSet prism = PrismBudget();
+        MapFoliageLayer layer = FoliageFixtures.Layer("budget-cover", Space("yard", 0.2f, 0.5f, 0.5f), -1, -1, 2, 3, 3,
+            Enumerable.Repeat((byte)200, 9).ToArray(), []);
+        MapScopedSurfaces view = MapScopedSurfaces.Acquire(MapDocumentSurfaceSource.Capture(new MapDocument { Surfaces = prism }),
+            MapFoliageSupport.Scope(layer, Origin, prism.Refs, new Dictionary<string, MapEffectiveTransform>()), []);
+        MapPreparedFoliageSupport prepared = MapFoliageSupport.Prepare(view, new Dictionary<string, MapPaintRegionSet>(), prism.Refs, layer, Origin, Limits);
+        var budget = Compare(view, prepared, layer.Support, "yard", Grid(0.113f, 2f, 0.113f, 2f, 0.371f));
+        Assert.Equal(budget.Values.Sum(), budget.GetValueOrDefault("CapacityExceeded"));
+    }
+
+    // Exterior "yard" on a 2 by 2 floor "base" at 0 m with three more floors above it, and a room whose prism footprint is
+    // one staircase ring of 4090 vertices on a 1/511 m lattice.
+    static MapSurfaceSet PrismBudget()
+    {
+        var set = new MapSurfaceSet();
+        foreach (var (id, height) in new[] { ("base", 0), ("f1", 100), ("f2", 200), ("f3", 300) })
+            CaveFixtures.AddSurface(set, id, MapSurfaceRole.SupportFloor, 0, 0, 2, 2, (_, _) => height);
+        MapSurfacePatch anchor = CaveFixtures.Patch(set, "base");
+        MapRecordRef yard = new("yard", anchor.Key), room = new("room", anchor.Key);
+        anchor.Records.Add(new MapSpaceDoc("yard", MapSpaceKind.Exterior, null, null, [], [], [], []));
+        anchor.Records.Add(new MapSpaceFootprint("yard-cells", yard, anchor.Key, new[] { 0, 1, 64, 65 },
+            new(MapBoundKind.SupportFloor, "base", null), new(MapBoundKind.OpenTop, null, null)));
+        anchor.Records.Add(new MapSpaceDoc("room", MapSpaceKind.Room, yard, null, [], [], [], []));
+        var ring = new List<MapLatticeAddress> { MapLatticeAddress.Corner(0, 0) };
+        for (int i = 1; i <= 2044; i++) { ring.Add(MapLatticeAddress.Corner(i, i - 1)); ring.Add(MapLatticeAddress.Corner(i, i)); }
+        ring.Add(MapLatticeAddress.Corner(0, 2044));
+        var frame = new MapLatticeFrame(new(1, 511), new(1, 100), MapRowDirection.PositiveZ, MapHeightDatum.WorldY0);
+        anchor.Records.Add(new MapPrismDomain("room-domain", 1, room, yard, "", "lower",
+            new KhaozEngine.MapDoc.Water.MapWaterDomainDoc(frame, [], [new KhaozEngine.MapDoc.Water.MapWaterRing(ring)]), 0, 3));
+        return set;
     }
 
     static IEnumerable<(float X, float Z, bool Face)> Grid(float x0, float x1, float z0, float z1, float step)
@@ -165,7 +213,7 @@ public sealed class MapFoliageSupportTests
         return Compare(view, prepared, binding, owner, Grid(8.013f, 16f, -12.987f, -3f, 0.173f));
     }
 
-    static Dictionary<string, int> CompareContext(FoliageFixture fixture, string owner, IEnumerable<(float X, float Z, bool Face)> points)
+    static Dictionary<string, int> CompareContext(FoliageFixture fixture, string? owner, IEnumerable<(float X, float Z, bool Face)> points)
     {
         MapFoliageGenerationContext context = FoliageFixtures.Context(fixture);
         MapFoliageLayer layer = context.Foliage!.Layers[0];
@@ -183,9 +231,10 @@ public sealed class MapFoliageSupportTests
     {
         Assert.Equal(MapFoliageStatus.Complete, prepared.Status);
         var points = candidates.ToArray();
-        long before = MapPreparedSupport.ThreadSamples;
+        long before = MapPreparedSupport.ThreadSamples, contexts = MapBoundFaceContext.ThreadPreparations;
         MapFoliageSurfacePoint[] samples = points.Select(p => prepared.Sample(p.X, p.Z)).ToArray();
-        Assert.Equal(0, MapPreparedSupport.ThreadSamples - before);
+        // No candidate runs a prepared support query or prepares a context of its own.
+        Assert.Equal((0L, 0L), (MapPreparedSupport.ThreadSamples - before, MapBoundFaceContext.ThreadPreparations - contexts));
         MapPreparedSupport fresh = MapSupportPreparation.Prepare(view);
         var membership = new MapSpaceMembership(view);
         var counts = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -293,7 +342,9 @@ public sealed class MapFoliageSupportTests
         Assert.Equal(0, preparation);
         Assert.Equal(0, prepared.Work.SurfaceQueries);
         Assert.Equal(1, prepared.Work.PrepareScopes);
-        Assert.True(prepared.Work.Faces > 8);
+        // The floor's own eight logical faces, plus the shared context: every present cell of the sixteen stacked
+        // surfaces in the chunk, two faces each.
+        Assert.Equal(8 + stack.Document.Surfaces.Patches.Values.Sum(p => 2L * p.Width * p.Depth), prepared.Work.Faces);
 
         var points = new List<(float X, float Z)>();
         for (int z = 0; z < 20; z++)

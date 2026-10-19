@@ -39,11 +39,10 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
         // A Surface binding owns every present cell of its surface, a logical fallback cell through its compatibility tag.
         if (binding.Kind == MapSupportBindingKind.Surface)
             foreach (MapFoliageSupportCell cell in grids.SelectMany(g => g.Cells.Values)) cell.Select(cell.Fallback ? FallbackOwner(cell) : bound!);
-        // Support and membership are decided per candidate over one shared context. Only invariant states refuse here:
-        // the acquisition above and, for a Space binding, a bound space absent from it. Without any space record a
-        // Surface binding occupies no space and needs no context.
+        // Support and membership are decided per candidate over one shared context, built for every binding so each
+        // candidate keeps the released intersection budget over every support floor. Only invariant states refuse here:
+        // the acquisition above and, for a Space binding, a bound space absent from it.
         MapFoliageCandidateSupport? candidates = null;
-        if (binding.Kind == MapSupportBindingKind.Space || _support.Records.OfType<MapSpaceDoc>().Any())
         {
             (MapExactXz min, MapExactXz max) = Rectangle();
             try
@@ -111,7 +110,7 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
             _faces += count;
             MapCompiledPatch local = MapFoliageTriangles.Compile(validated, mask, (int)count);
             local = MapFoliageMaterials.ApplyWorldPaint(view, local, MapFoliageMaterials.WorldPaint(view, surface.Id));
-            var faces = new MapFoliagePatchFaces(MapEffectiveGeometry.TransformPatch(view, local), validated);
+            var faces = new MapFoliagePatchFaces(MapEffectiveGeometry.TransformPatch(view, local));
             foreach (var (x, z) in cells)
             {
                 int lx = (int)(x - key.SlotX * MapPatchKey.SlotCells) - patch.CellMinX, lz = (int)(z - key.SlotZ * MapPatchKey.SlotCells) - patch.CellMinZ;

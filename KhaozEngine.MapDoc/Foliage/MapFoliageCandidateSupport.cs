@@ -12,24 +12,21 @@ namespace KhaozEngine.MapDoc.Foliage;
 internal readonly record struct MapFoliageCandidateOutcome(MapFoliageStatus Status, MapFoliageSupportGrid? Grid, MapFoliageSupportCell? Cell,
     long CellX, long CellZ, string? OwnerId, string? SpaceId);
 
-/// <summary>Decides support and occupied space per candidate from one prepared chunk context, with no support query and
-/// no second membership rule. Every bound, portal source and indoor face a candidate in the chunk can demand is compiled
-/// once into a shared <see cref="MapBoundFaceContext"/>. Each candidate then runs the released membership and Column paths
-/// over that context at its own heights, so parent clipping, nested rooms, portal bands, missing bounds and their refusals
-/// are the released ones at that exact point. The support rule follows the released selection kernel: the lowest-keyed
-/// face holding the point on each support floor, the binding's search band and an upward normal, room parts from the
-/// Column, footprints and reachability, the highest eligible face with equal-height independent owners ambiguous, then
-/// the legacy fallback from membership at ReferenceY.</summary>
+/// <summary>Decides support and occupied space per candidate over one prepared chunk context, with no context prepared
+/// per candidate and no copied selection rule. Every support, bound, portal source and indoor face a candidate in the
+/// chunk can demand is compiled once into a shared <see cref="MapBoundFaceContext"/>. Each candidate then runs the one
+/// released selection kernel over that context, which keeps the point's own inspected-face and intersection budgets, so
+/// membership, parent clipping, portal bands, missing bounds, ambiguity, legacy fallback and every refusal are the released
+/// ones at that exact point. A Space NoSupport is MissingSupport inside the bound space's released membership column and
+/// has no sample outside it.</summary>
 internal sealed class MapFoliageCandidateSupport
 {
     readonly MapScopedSurfaces _view;
     readonly MapPreparedSupport _support;
     readonly MapBoundFaceContext _context;
-    readonly IReadOnlyList<MapFoliageSupportGrid> _grids;
+    readonly Dictionary<string, MapFoliageSupportGrid> _grids;
     readonly MapSupportBinding _binding;
-    readonly MapSpaceDoc? _space;
     readonly string? _owner;
-    readonly bool _prisms;
 
     MapFoliageCandidateSupport(MapScopedSurfaces view, MapPreparedSupport support, MapBoundFaceContext context,
         IReadOnlyList<MapFoliageSupportGrid> grids, MapSupportBinding binding, MapSpaceDoc? space)
@@ -37,11 +34,9 @@ internal sealed class MapFoliageCandidateSupport
         _view = view;
         _support = support;
         _context = context;
-        _grids = grids;
+        _grids = grids.ToDictionary(g => g.Surface.Id, StringComparer.Ordinal);
         _binding = binding;
-        _space = space;
         _owner = space is null ? null : MapSpaceGeometry.Owner(view, space);
-        _prisms = support.Records.OfType<MapPrismDomain>().Any();
     }
 
     /// <summary>Prepares the shared context for every candidate in the chunk rectangle. Refuses Unavailable once when a
@@ -58,9 +53,8 @@ internal sealed class MapFoliageCandidateSupport
         return new(view, support, context, grids, binding, space);
     }
 
-    // Every present physical and indoor cell of every acquired support, ceiling and opening surface over the chunk, each
-    // acquired patch there validated even when its cells there are absent, every opening cell there, and the source cells
-    // of every acquired portal band segment.
+    // Every cell of every acquired support, ceiling and indoor patch over the chunk, each such patch validated, every
+    // opening cell there, and the source cells of every acquired portal band segment.
     static MapBoundFaceContext Context(MapScopedSurfaces view, MapPreparedSupport support, MapExactXz min, MapExactXz max, long maxFaces, out long faces)
     {
         var limits = new MapRefinementLimits(MaxContextPatches: view.Scope.Limits.MaxCandidatePatches);
@@ -74,12 +68,11 @@ internal sealed class MapFoliageCandidateSupport
                 {
                     MapPatchKey key = MapPatchKey.ForCell(surface.Id, x, z);
                     if (!view.TryAcquiredPatch(key, out MapSurfacePatch? patch, out _) || patch is null) continue;
-                    int slot = MapLowerCellClassifier.SlotCell(x, z);
-                    int lx = slot % MapPatchKey.SlotCells - patch.CellMinX, lz = slot / MapPatchKey.SlotCells - patch.CellMinZ;
-                    if (lx < 0 || lx >= patch.Width || lz < 0 || lz >= patch.Depth) continue;
                     if (bounds.Preparation.ValidatedPatch(surface, patch) is null)
                         throw new MapFoliageRefusal(MapFoliageStatus.CapacityExceeded, MapFoliageSupport.NoWork, bounds.Preparation.Refusal ?? "context patches");
-                    if (patch.IsPresent(lx, lz)) demands.Add(new(new(key, slot), null));
+                    // Every cell of an acquired patch over the chunk, as a point query demands it: an absent or out-of-
+                    // rectangle cell compiles no face but answers its demand.
+                    demands.Add(new(new(key, MapLowerCellClassifier.SlotCell(x, z)), null));
                 }
         }
         foreach (MapHorizontalOpening opening in support.Records.OfType<MapHorizontalOpening>())
@@ -116,152 +109,60 @@ internal sealed class MapFoliageCandidateSupport
     /// <summary>A Space binding at an exact point.</summary>
     internal MapFoliageCandidateOutcome Space(MapExactXz point)
     {
-        MapExactValue y = MapExactValue.FromSingle(_binding.ReferenceY!.Value);
-        MapExactValue low = y.Subtract(MapExactValue.FromSingle(_binding.SearchBelow!.Value));
-        MapExactValue high = y.Add(MapExactValue.FromSingle(_binding.SearchAbove!.Value));
-        var world = new MapExactPoint(point.X, y, point.Z);
-        // The released order: membership at ReferenceY, then the intersections' capacity, then the membership status.
-        MapMembershipResult membership = _support.Membership.QueryExact(world, _context);
-        var intersections = Intersections(point, _grids, out MapFoliageStatus? capacity);
-        if (capacity is { } refusal) return Refused(refusal);
-        if (membership.Status is not (MapMembershipStatus.Resolved or MapMembershipStatus.Outside)) return Refused(membership.Status);
-        MapSpaceFootprint[] footprints = Footprints(point);
-        string owner = _owner!;
-        Dictionary<string, MapRecordRef?> reachable = MapSupportSelection.Reachable(_view, _support.Membership, owner, footprints, _support.Records, point);
-        IReadOnlyList<MapSpaceBoundsPart> occupied = Array.Empty<MapSpaceBoundsPart>();
-        if (_space!.Kind == MapSpaceKind.Room)
+        MapSupportResult result = Select(point);
+        switch (result.Status)
         {
-            MapMembershipResult column = _support.Membership.Column(MapEffectiveGeometry.Presentation(_view, world), world, _context, out occupied);
-            if (column.Status is not (MapMembershipStatus.Resolved or MapMembershipStatus.Outside)) return Refused(column.Status);
+            case MapSupportStatus.Supported when result.Face is { Patch: { } patch } face:
+                return Outcome(patch, face.Primitive, MapFoliageSupportIdentity.From(result), result.SpaceId);
+            case MapSupportStatus.LegacyFallback when result.Compatibility is { } tag:
+                return Outcome(tag.Patch, tag.SlotCell, MapFoliageSupportIdentity.From(result), result.SpaceId);
+            case MapSupportStatus.NoSupport:
+                // Inside the bound space's released membership column there is no support, outside it there is no sample.
+                var world = new MapExactPoint(point.X, MapExactValue.FromSingle(_binding.ReferenceY!.Value), point.Z);
+                MapMembershipResult column = _support.Membership.Column(MapEffectiveGeometry.Presentation(_view, world), world, _context,
+                    out IReadOnlyList<MapSpaceBoundsPart> parts);
+                if (column.Status is not (MapMembershipStatus.Resolved or MapMembershipStatus.Outside)) return Refused(Map(column.Status));
+                foreach (MapSpaceBoundsPart part in parts)
+                    if (part.Owner == _owner) return Refused(MapFoliageStatus.MissingSupport);
+                return new(MapFoliageStatus.Complete, null, null, 0, 0, null, null);
+            default:
+                return Refused(MapFoliageSupport.Map(result.Status));
         }
-        var eligible = new List<(MapSupportSelection.Candidate Candidate, int Index)>();
-        for (int i = 0; i < intersections.Count; i++)
-        {
-            var (_, _, _, _, face, height) = intersections[i];
-            if (_space.Kind == MapSpaceKind.Room && occupied.Any(p => p.Owner == owner &&
-                height.CompareTo(p.Lower) >= 0 && (p.Upper is not { } top || height.CompareTo(top) < 0)))
-            {
-                MapMembershipResult sample = _support.Membership.QueryExact(new(point.X, height, point.Z), _context);
-                if (sample.Status != MapMembershipStatus.Resolved) return Refused(sample.Status);
-                if (sample.SpaceId == owner && Band(height, low, high) && face.Normal.Y > 0) eligible.Add((new(face, height, owner, null), i));
-                continue;
-            }
-            foreach (MapSpaceFootprint footprint in footprints)
-            {
-                if (footprint.Lower.Kind is not (MapBoundKind.SupportFloor or MapBoundKind.LegacyExteriorV1) ||
-                    footprint.Lower.SurfaceId != face.Key.OwnerId) continue;
-                string candidateOwner = SpaceOwner(footprint);
-                if (!reachable.TryGetValue(candidateOwner, out MapRecordRef? via)) continue;
-                if (!Band(height, low, high) || face.Normal.Y <= 0) continue;
-                eligible.Add((new(face, height, candidateOwner, via), i));
-                break;
-            }
-        }
-        eligible.Sort((a, b) =>
-        {
-            int order = b.Candidate.Height.CompareTo(a.Candidate.Height);
-            return order != 0 ? order : a.Candidate.Face.Key.CompareTo(b.Candidate.Face.Key);
-        });
-        if (eligible.Count != 0)
-        {
-            var highest = eligible.TakeWhile(c => c.Candidate.Height == eligible[0].Candidate.Height).ToArray();
-            if (!MapSupportSelection.OneSeamOwner(_view, highest.Select(c => c.Candidate).ToArray(), _support.Seams, point))
-                return Refused(MapFoliageStatus.Ambiguous);
-            var selected = intersections[highest[0].Index];
-            return new(MapFoliageStatus.Complete, selected.Grid, selected.Cell, selected.X, selected.Z, selected.Face.Key.OwnerId,
-                highest[0].Candidate.SpaceId);
-        }
-        // The released fallback: membership at ReferenceY names the legacy lower cell and the bound space.
-        if (membership.LowerCompatibility is { } tag && membership.SpaceId == owner)
-        {
-            MapExactValue height = MapEffectiveGeometry.LegacyHeight(_view, _context.ValidatedPatch(tag.Patch), tag.SlotCell, point);
-            if (Band(height, low, high))
-            {
-                long cx = checked(tag.Patch.SlotX * MapPatchKey.SlotCells + tag.SlotCell % MapPatchKey.SlotCells);
-                long cz = checked(tag.Patch.SlotZ * MapPatchKey.SlotCells + tag.SlotCell / MapPatchKey.SlotCells);
-                MapFoliageSupportGrid? grid = _grids.FirstOrDefault(g => g.Surface.Id == tag.Patch.SurfaceId);
-                MapFoliageSupportCell? cell = grid?.Cells.GetValueOrDefault((cx, cz));
-                if (cell is null) return Refused(MapFoliageStatus.Unavailable);
-                string? support = MapFoliageSupportIdentity.From(new MapSupportResult(MapSupportStatus.LegacyFallback, null, height.ToSingle(),
-                    null, tag, owner, null, null, _view.ReadWitness));
-                return new(MapFoliageStatus.Complete, grid, cell, cx, cz, support, owner);
-            }
-        }
-        // No eligible support: inside the bound space's occupied column it refuses, outside it there is no sample.
-        if (_space.Kind != MapSpaceKind.Room)
-        {
-            MapMembershipResult column = _support.Membership.Column(MapEffectiveGeometry.Presentation(_view, world), world, _context, out occupied);
-            if (column.Status is not (MapMembershipStatus.Resolved or MapMembershipStatus.Outside)) return Refused(column.Status);
-        }
-        return occupied.Any(p => p.Owner == owner) ? Refused(MapFoliageStatus.MissingSupport)
-            : new(MapFoliageStatus.Complete, null, null, 0, 0, null, null);
     }
 
-    /// <summary>A Surface binding's occupied space at an exact point, as named-surface selection resolves it: membership at
-    /// the binding's reference height must resolve, then a physical face takes the footprint owner of its surface, or with
-    /// rooms present the membership at the face height. A logical fallback cell takes the membership at its legacy
-    /// height.</summary>
-    internal (MapFoliageStatus Status, string? SpaceId) Occupied(MapExactXz point, MapFoliageSupportGrid grid, MapFoliageSupportCell cell, float legacyHeight)
+    /// <summary>A Surface binding's occupied space at an exact point, from the released named-surface selection: its space
+    /// at the selected face. A logical fallback cell, which that selection never supports, takes the released membership
+    /// at its legacy height.</summary>
+    internal (MapFoliageStatus Status, string? SpaceId) Occupied(MapExactXz point, float legacyHeight)
     {
-        MapExactPoint world = new(point.X, MapExactValue.FromSingle(_binding.ReferenceY ?? 0), point.Z);
-        MapMembershipResult membership = _support.Membership.QueryExact(world, _context);
-        var hit = Intersections(point, [grid], out MapFoliageStatus? capacity).FirstOrDefault(i => ReferenceEquals(i.Cell, cell));
-        if (capacity is { } refusal) return (refusal, null);
-        if (membership.Status is not (MapMembershipStatus.Resolved or MapMembershipStatus.Outside)) return (Map(membership.Status), null);
-        if (hit.Cell is null)
+        MapSupportResult result = Select(point);
+        if (result.Status == MapSupportStatus.Supported) return (MapFoliageStatus.Complete, result.SpaceId);
+        if (result.Status != MapSupportStatus.NoSupport) return (MapFoliageSupport.Map(result.Status), null);
+        MapMembershipResult logical = _support.Membership.QueryExact(new(point.X, MapExactValue.FromSingle(legacyHeight), point.Z), _context);
+        return logical.Status switch
         {
-            MapMembershipResult logical = _support.Membership.QueryExact(new(point.X, MapExactValue.FromSingle(legacyHeight), point.Z), _context);
-            return logical.Status switch
-            {
-                MapMembershipStatus.Resolved => (MapFoliageStatus.Complete, logical.SpaceId),
-                MapMembershipStatus.Outside => (MapFoliageStatus.Complete, null),
-                _ => (Map(logical.Status), null),
-            };
-        }
-        string surfaceId = grid.Surface.Id;
-        MapSpaceFootprint? footprint = Footprints(point).FirstOrDefault(f => f.Lower.SurfaceId == surfaceId);
-        string? owner = footprint is null ? null : SpaceOwner(footprint);
-        if (_prisms)
-        {
-            MapMembershipResult occupied = _support.Membership.QueryExact(new(point.X, hit.Height, point.Z), _context);
-            if (occupied.Status is not (MapMembershipStatus.Resolved or MapMembershipStatus.Outside)) return (Map(occupied.Status), null);
-            owner = occupied.SpaceId;
-        }
-        return (MapFoliageStatus.Complete, owner);
+            MapMembershipStatus.Resolved => (MapFoliageStatus.Complete, logical.SpaceId),
+            MapMembershipStatus.Outside => (MapFoliageStatus.Complete, null),
+            _ => (Map(logical.Status), null),
+        };
     }
 
-    // Per support floor in ordinal order, each cell at the exact point and the lowest-keyed context face holding it.
-    List<(MapFoliageSupportGrid Grid, MapFoliageSupportCell? Cell, long X, long Z, MapCompiledFace Face, MapExactValue Height)> Intersections(
-        MapExactXz point, IReadOnlyList<MapFoliageSupportGrid> grids, out MapFoliageStatus? refusal)
+    // The binding's released request at the point, through the one selection kernel over the shared context.
+    MapSupportResult Select(MapExactXz point)
     {
-        refusal = null;
-        var result = new List<(MapFoliageSupportGrid, MapFoliageSupportCell?, long, long, MapCompiledFace, MapExactValue)>();
-        foreach (MapFoliageSupportGrid grid in grids)
-            foreach (var (x, z) in MapEffectiveGeometry.CellCandidates(_view, grid.Surface.Id, point))
-            {
-                if (!grid.Cells.TryGetValue((x, z), out MapFoliageSupportCell? cell) || cell.Fallback) continue;
-                var demand = new MapCellDemand(cell.Key, cell.SlotCell);
-                MapCompiledPatch compiled = _context.Compiled(cell.Key);
-                (MapCompiledFace Face, MapExactValue Height)? selected = null;
-                foreach (MapBoundFace face in _context.Faces(demand))
-                {
-                    if (MapSubdividedTriangle.Height(face.Triangle, point.X, point.Z) is not { } height) continue;
-                    if (selected is null || face.Key.CompareTo(selected.Value.Face.Key) < 0)
-                        selected = (compiled.Faces.First(f => f.Key == face.Key), height);
-                }
-                if (selected is not { } hit) continue;
-                if (result.Count >= _view.Scope.Limits.MaxSupportIntersections) { refusal = MapFoliageStatus.CapacityExceeded; return result; }
-                result.Add((grid, cell, x, z, hit.Face, hit.Height));
-            }
-        return result;
+        if (MapSupportSelection.BindingRequest(_view, _binding, point) is not { } bound)
+            return MapSupportSelection.Refusal(_view, MapSupportStatus.Invalid, "support binding lacks its kind's members");
+        return MapSupportSelection.Compute(_support, bound.Request, null, bound.NamedSurfaceOnly, bound.World, _context).Result;
     }
 
-    MapSpaceFootprint[] Footprints(MapExactXz point) =>
-        _support.Footprints.Where(f => MapSpaceGeometry.FootprintCell(_view, f, point) is not null).ToArray();
-
-    string SpaceOwner(MapSpaceFootprint footprint) => MapSpaceGeometry.Owner(_view, MapSpaceGeometry.Record<MapSpaceDoc>(_view, footprint.Space));
-
-    static bool Band(MapExactValue height, MapExactValue low, MapExactValue high) => height.CompareTo(low) >= 0 && height.CompareTo(high) <= 0;
+    MapFoliageCandidateOutcome Outcome(MapPatchKey patch, int slotCell, string? owner, string? space)
+    {
+        long x = checked(patch.SlotX * MapPatchKey.SlotCells + slotCell % MapPatchKey.SlotCells);
+        long z = checked(patch.SlotZ * MapPatchKey.SlotCells + slotCell / MapPatchKey.SlotCells);
+        if (!_grids.TryGetValue(patch.SurfaceId, out MapFoliageSupportGrid? grid) || !grid.Cells.TryGetValue((x, z), out MapFoliageSupportCell? cell))
+            return Refused(MapFoliageStatus.Unavailable);
+        return new(MapFoliageStatus.Complete, grid, cell, x, z, owner, space);
+    }
 
     static MapFoliageStatus Map(MapMembershipStatus status) => status switch
     {
@@ -272,6 +173,5 @@ internal sealed class MapFoliageCandidateSupport
         _ => MapFoliageStatus.Invalid,
     };
 
-    static MapFoliageCandidateOutcome Refused(MapMembershipStatus status) => Refused(Map(status));
     static MapFoliageCandidateOutcome Refused(MapFoliageStatus status) => new(status, null, null, 0, 0, null, null);
 }

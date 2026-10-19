@@ -99,6 +99,19 @@ public sealed class MapSpaceMembership
         return result;
     }
 
+    /// <summary>Point membership over a supplied context, as the point's own query would answer it: the point demands the
+    /// extra cells, and refuses CapacityExceeded when its own demand set exceeds its face allowance.</summary>
+    internal MapMembershipResult QueryExact(MapExactPoint world, IEnumerable<MapBoundFaceDemand> demands, MapBoundFaceContext context)
+    {
+        context.RequireView(_view);
+        return QueryCore(MapEffectiveGeometry.Presentation(_view, world), null, context, demands, out _, null, false, world, pointBudget: true);
+    }
+    internal MapMembershipResult Query(MapFramePoint point, IEnumerable<MapBoundFaceDemand> demands, MapBoundFaceContext context)
+    {
+        context.RequireView(_view);
+        return QueryCore(point, null, context, demands, out _, null, false, pointBudget: true);
+    }
+
     internal MapMembershipResult QueryExact(MapExactPoint world, MapBoundFaceContext context)
     {
         context.RequireView(_view);
@@ -117,7 +130,8 @@ public sealed class MapSpaceMembership
     sealed record Candidate(MapSpaceFootprint Footprint, MapSpacePointBounds.Bound Lower, MapSpacePointBounds.Bound Upper);
 
     MapMembershipResult QueryCore(MapFramePoint point, MapBoundFaceWork? work, MapBoundFaceContext? supplied,
-        IEnumerable<MapBoundFaceDemand>? additional, out MapBoundFaceContext? prepared, List<MapSpaceBoundsPart>? parts, bool column, MapExactPoint? exactWorld = null)
+        IEnumerable<MapBoundFaceDemand>? additional, out MapBoundFaceContext? prepared, List<MapSpaceBoundsPart>? parts, bool column, MapExactPoint? exactWorld = null,
+        bool pointBudget = false)
     {
         prepared = supplied;
         if (point.Frame != _view.Scope.Frame) throw new ArgumentException("point frame differs from acquired frame", nameof(point));
@@ -190,6 +204,9 @@ public sealed class MapSpaceMembership
                 }
             }
             if (additional is not null) demands.AddRange(additional);
+            // A supplied context may hold more than this point demands. The point still keeps its own face allowance.
+            if (supplied is not null && pointBudget && !WithinPointFaces(demands, remainingFaces))
+                return Failure(MapMembershipStatus.CapacityExceeded, "context faces");
             MapBoundFaceContext? context = supplied ?? MapBoundFaceContext.PrepareBounds(_view, demands,
                 budgets.MaxCandidatePatches, remainingFaces, work, out _, bounds.Preparation);
             prepared = context;
@@ -341,6 +358,29 @@ public sealed class MapSpaceMembership
             parts?.Clear();
             return new(status, point, null, Array.Empty<string>(), null, detail, _view.ReadWitness, exactWorld);
         }
+    }
+
+    // The face count a point's own context would charge: each distinct demanded cell's physical faces and each distinct
+    // opening cell's plane faces, as MapBoundFaceContext.PrepareBounds counts them, against the point's allowance.
+    bool WithinPointFaces(List<MapBoundFaceDemand> demands, long maxFaces)
+    {
+        var cells = new HashSet<MapCellDemand>();
+        var openings = new HashSet<(MapRecordRef, int)>();
+        long count = 0;
+        foreach (MapBoundFaceDemand demand in demands)
+        {
+            MapCellDemand cell = demand.Cell;
+            bool freshCell = cells.Add(cell);
+            bool freshOpening = demand.Opening is { } opening && openings.Add((opening, cell.SlotCell));
+            if (!freshCell && !freshOpening) continue;
+            MapSurfaceRef surface = MapSpaceGeometry.Surface(_view, cell.Patch.SurfaceId);
+            if (!_view.TryAcquiredPatch(cell.Patch, out MapSurfacePatch? patch, out _) || patch is null)
+                throw new MapDocumentException($"context demand patch {cell.Patch}: unavailable");
+            if (freshCell) count = checked(count + MapSurfaceCompiler.CountFaces(surface, patch, cell.SlotCell));
+            if (freshOpening) count = checked(count + MapBoundFaceContext.OpeningFaceCount(patch, cell.SlotCell));
+            if (count > maxFaces) return false;
+        }
+        return true;
     }
 
     static string BoundaryId(MapBoundRef bound) => bound.SurfaceId ?? bound.Opening?.Id ?? MapSpaceInterval.OpenTop;

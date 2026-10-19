@@ -31,7 +31,13 @@ internal sealed class MapBoundFaceContext
     }
 
     sealed record Entry(MapSlotCellMask Mask, MapCompiledPatch LocalCompiled, MapCompiledPatch Compiled,
-        IReadOnlyDictionary<int, IReadOnlyList<MapBoundFace>> Cells);
+        IReadOnlyDictionary<int, IReadOnlyList<MapBoundFace>> Cells, IReadOnlyDictionary<MapFaceKey, MapCompiledFace> ByKey);
+
+    [ThreadStatic] static long t_preparations;
+
+    /// <summary>Contexts prepared on the calling thread, counted at preparation. A caller reusing one supplied context
+    /// prepares none.</summary>
+    internal static long ThreadPreparations => t_preparations;
     sealed record OpeningEntry(MapPatchKey Patch, MapSlotCellMask Mask,
         IReadOnlyDictionary<int, IReadOnlyList<MapBoundFace>> Cells);
     sealed class Pending
@@ -66,6 +72,7 @@ internal sealed class MapBoundFaceContext
         preparation?.RequireView(view);
         if (maxPatches < 0 || maxFaces < 0) throw new ArgumentOutOfRangeException(nameof(maxPatches));
         preparation ??= new(view, new(MaxContextPatches: maxPatches), work);
+        t_preparations++;
         if (work is not null) work.ContextsPrepared++;
         refusal = null;
         var pending = new SortedDictionary<MapPatchKey, Pending>();
@@ -143,7 +150,8 @@ internal sealed class MapBoundFaceContext
             var cells = compiled.Faces.GroupBy(f => f.Key.Primitive).ToDictionary(g => g.Key,
                 g => (IReadOnlyList<MapBoundFace>)Array.AsReadOnly(g.OrderBy(f => f.Key)
                     .Select(f => new MapBoundFace(f.Key, compiled.ExactTriangle(f))).ToArray()));
-            entries.Add(key, new(mask, local, compiled, new ReadOnlyDictionary<int, IReadOnlyList<MapBoundFace>>(cells)));
+            entries.Add(key, new(mask, local, compiled, new ReadOnlyDictionary<int, IReadOnlyList<MapBoundFace>>(cells),
+                new ReadOnlyDictionary<MapFaceKey, MapCompiledFace>(compiled.Faces.ToDictionary(f => f.Key))));
         }
         foreach (var (reference, requested) in pendingOpenings.OrderBy(p => p.Key.Anchor).ThenBy(p => p.Key.Id, StringComparer.Ordinal))
         {
@@ -182,6 +190,9 @@ internal sealed class MapBoundFaceContext
         : throw new InvalidOperationException("context demand patch was not prepared");
     internal MapCompiledPatch Compiled(MapPatchKey key) => _entries.TryGetValue(key, out Entry? entry)
         ? entry.Compiled : throw new InvalidOperationException("context demand patch was not prepared");
+    /// <summary>A compiled face of a prepared patch by key, from an index built once per patch.</summary>
+    internal MapCompiledFace CompiledFace(MapFaceKey key) => key.Patch is { } patch && _entries.TryGetValue(patch, out Entry? entry) &&
+        entry.ByKey.TryGetValue(key, out MapCompiledFace face) ? face : throw new InvalidOperationException("context demand face was not prepared");
     internal MapValidatedSurfacePatch ValidatedPatch(MapPatchKey key) => _validated.TryGetValue(key, out MapValidatedSurfacePatch? validated)
         ? validated : throw new InvalidOperationException("context demand patch was not prepared");
     internal IReadOnlyList<MapBoundFace> Opening(MapRecordRef reference, MapCellDemand cell)

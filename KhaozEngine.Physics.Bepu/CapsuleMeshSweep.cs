@@ -30,7 +30,8 @@ internal static class CapsuleMeshSweep
             !CapsuleSweepAperture.TryCreate(centre, capsule.Radius, capsule.Length * 0.5f, displacement, out Vector3 min, out Vector3 max) ||
             !CapsuleSweepPruning.TryQueryPad(centre, capsule.Radius, capsule.Length * 0.5f, displacement, installed.PruningMetrics,
                 out double pad, includePreimage: false) ||
-            !CapsuleSweepPruning.ExpandAperture(min, max, pad, out min, out max)) return default;
+            !CapsuleSweepPruning.ExpandAperture(min, max, pad, out min, out max) ||
+            installed.SweepBounds() is not { } bounds) return default;
         ref Mesh mesh = ref shapes.GetShape<Mesh>(root.Index);
         int index = 0, count = 0, nodes = 0, leaves = 0;
         bool hit = false;
@@ -42,7 +43,8 @@ internal static class CapsuleMeshSweep
                 int triangle = Tree.Encode(index);
                 if ((uint)triangle >= installed.Count || leaves == maximumLeaves || !installed.TriangleMatches(mesh, triangle)) return Refuse(ref work);
                 leaves++;
-                InstalledSweepLeaf leaf = new(installed.Triangle(triangle), pose, map);
+                if (!installed.TryTriangle(triangle, scratch.MeshTriangle)) return Refuse(ref work);
+                InstalledSweepLeaf leaf = new(scratch.MeshTriangle.Scaled, pose, map);
                 CapsuleSweepResult result = CapsuleTriangleSweep.Sweep(leaf, centre, capsule.Radius, capsule.Length * 0.5f,
                     displacement, filter, CapsuleGeneralSweepPolicy.MaximumErrorMetres, ref work, scratch);
                 if (!result.IsComplete) return Refuse(ref work);
@@ -58,11 +60,11 @@ internal static class CapsuleMeshSweep
             }
             if (nodes == maximumNodes || !installed.ReadNode(mesh, index, out Node node)) return Refuse(ref work);
             nodes++;
-            var a = installed.Bounds(index, 0);
+            var a = bounds[index * 2];
             bool visitA = BoundingBox.Intersects(min, max, a.Min, a.Max), visitB = false;
             if (installed.Count > 1)
             {
-                var b = installed.Bounds(index, 1);
+                var b = bounds[index * 2 + 1];
                 visitB = BoundingBox.Intersects(min, max, b.Min, b.Max);
             }
             if (visitA)

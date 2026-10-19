@@ -18,6 +18,13 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   uncut by default or by their excluded draw paths. MapDoc and world validation integration remain follow-ups.
   On hosted T4 runners a typical village with 10,800 opted-in instances costs 0.08 to 0.20 ms per frame, almost
   all of it CPU, with Direct3D 11 the highest (#1502).
+
+## 21.5.2
+
+2026-10-19
+
+- Installed mesh capsule sweeps keep compact mutation evidence, share triangle topology and build traversal
+  bounds on first use, avoiding per-triangle geometry objects when installing large worlds (#1500).
 - Contact support uses Bepu's represented installed transform, so exact tread-edge tangency on quarter-turn
   stairs now supports without changing the feature or sweep contract (#1494).
 - Curved support certification has a cumulative per-Find work ceiling with visible work and storage exhaustion

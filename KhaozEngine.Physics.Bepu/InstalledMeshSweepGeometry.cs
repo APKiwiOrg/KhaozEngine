@@ -14,9 +14,9 @@ internal sealed class InstalledMeshSweepGeometry
     readonly TypedIndex _root;
     readonly Vector3 _scale;
     readonly Triangle[] _raw;
-    readonly InstalledSweepGeometry[] _triangles;
-    readonly RigidPose[] _nativeOffsets;
-    readonly (Vector3 Min, Vector3 Max)[] _nativeBounds;
+    readonly InstalledMeshSweepBoundsCache _bounds = new();
+    readonly InstalledMeshSweepTriangle _proofTriangle = new();
+    InstalledPoseOperator _lastMap;
     RigidPose _lastPose;
     bool _posed;
     internal (Vector3 Min, Vector3 Max) RootBounds { get; private set; }
@@ -24,32 +24,19 @@ internal sealed class InstalledMeshSweepGeometry
     internal CapsuleSweepPruningBounds PruningMetrics { get; private set; }
     readonly int _triangleBuffer, _nodeBuffer, _leafBuffer;
     readonly Node[] _nodes;
-    readonly (Vector3 Min, Vector3 Max)[] _posedBounds;
-    readonly bool[] _seenNodes, _seenLeaves;
-    readonly int[] _stack, _order, _counts;
+    readonly int[] _order;
     internal int Count => _raw.Length;
 
     InstalledMeshSweepGeometry(Shapes owner, TypedIndex root, in Mesh mesh)
     {
         _owner = owner; _root = root; _scale = mesh.Scale;
         _raw = new Triangle[mesh.Triangles.Length];
-        _triangles = new InstalledSweepGeometry[_raw.Length];
-        _nativeOffsets = new RigidPose[_raw.Length];
-        _nativeBounds = new (Vector3, Vector3)[_raw.Length];
         _triangleBuffer = mesh.Triangles.Id; _nodeBuffer = mesh.Tree.Nodes.Id; _leafBuffer = mesh.Tree.Leaves.Id;
         _nodes = new Node[mesh.Tree.NodeCount];
-        _posedBounds = new (Vector3, Vector3)[_nodes.Length * 2];
-        _seenNodes = new bool[_nodes.Length]; _seenLeaves = new bool[_raw.Length];
-        _stack = new int[_nodes.Length + _raw.Length]; _order = new int[_nodes.Length]; _counts = new int[_nodes.Length];
-        for (int i = 0; i < _raw.Length; i++)
-        {
-            _raw[i] = mesh.Triangles[i];
-            mesh.GetLocalChild(i, out Triangle scaled);
-            _triangles[i] = new(owner, root, scaled);
-            mesh.GetPosedLocalChild(i, out Triangle native, out _nativeOffsets[i]);
-            _triangles[i].SweepCompanion = new(owner, root, native, _nativeOffsets[i]);
-            _nativeBounds[i] = (Vector3.Min(native.A, Vector3.Min(native.B, native.C)), Vector3.Max(native.A, Vector3.Max(native.B, native.C)));
-        }
+        _order = new int[_nodes.Length];
+        // Exact raw identities and the proved nodes are the minimal stale-capture evidence.
+        // A buffer id alone cannot detect in-place edits before the first certified query.
+        for (int i = 0; i < _raw.Length; i++) _raw[i] = mesh.Triangles[i];
     }
 
     internal static bool TryCapture(Shapes shapes, TypedIndex root, out InstalledSweepGeometry? geometry)
@@ -72,7 +59,8 @@ internal sealed class InstalledMeshSweepGeometry
                 !Local(mesh.Triangles[i].A) || !Local(mesh.Triangles[i].B) || !Local(mesh.Triangles[i].C)) return false;
         }
         var captured = new InstalledMeshSweepGeometry(shapes, root, mesh);
-        if (!captured.ProveTree(ref mesh)) return false;
+        using var proof = new InstalledMeshSweepProofScratch(mesh.Tree.NodeCount, mesh.Triangles.Length);
+        if (!captured.ProveTree(ref mesh, proof)) return false;
         geometry = new(shapes, root, captured);
         return true;
     }
@@ -87,8 +75,26 @@ internal sealed class InstalledMeshSweepGeometry
             mesh.Tree.Nodes.Length >= _nodes.Length && mesh.Tree.Leaves.Length >= Count;
     }
 
-    internal Vector3 Vertex(int index) => _triangles[index / 3].Vertex(index % 3);
-    internal InstalledSweepGeometry Triangle(int index) => _triangles[index];
+    internal Vector3 Vertex(int index)
+    {
+        Triangle raw = _raw[index / 3];
+        return ((index % 3) switch { 0 => raw.A, 1 => raw.B, _ => raw.C }) * _scale;
+    }
+    internal InstalledSweepGeometry Triangle(int index)
+    {
+        var triangle = new InstalledMeshSweepTriangle();
+        if (!TryTriangle(index, triangle)) throw new InvalidOperationException("Mesh triangle has no proved pose.");
+        return triangle.Scaled;
+    }
+    internal bool TryTriangle(int index, InstalledMeshSweepTriangle triangle) => _posed &&
+        triangle.TryPose(_owner, _root, _raw[index], _scale, _lastPose, _lastMap);
+    internal (Vector3 Min, Vector3 Max)[]? SweepBounds() => _bounds.Get(this);
+    internal (Vector3 Min, Vector3 Max)[]? CreateSweepBounds()
+    {
+        if (!_posed) return null;
+        var bounds = new (Vector3, Vector3)[_nodes.Length * 2];
+        return BuildPoseBounds(_lastPose, _lastMap, bounds, out _, out _, out _) ? bounds : null;
+    }
     internal bool TriangleMatches(in Mesh mesh, int index) => Same(mesh.Triangles[index], _raw[index]);
     internal bool ReadNode(in Mesh mesh, int index, out Node node)
     {
@@ -97,44 +103,50 @@ internal sealed class InstalledMeshSweepGeometry
         node = mesh.Tree.Nodes[index];
         return Same(node.A, _nodes[index].A) && (Count == 1 || Same(node.B, _nodes[index].B));
     }
-    internal (Vector3 Min, Vector3 Max) Bounds(int node, int child) => _posedBounds[node * 2 + child];
+    internal (Vector3 Min, Vector3 Max) Bounds(int node, int child) =>
+        (SweepBounds() ?? throw new InvalidOperationException("Mesh has no proved traversal bounds."))[node * 2 + child];
 
     internal bool ProvePose(RigidPose pose, InstalledPoseOperator map)
     {
         if (!Matches(_owner, _root) || !CapsuleSweepPruning.Validate(map, pose.Orientation)) return false;
         ref Mesh mesh = ref _owner.GetShape<Mesh>(_root.Index);
         if (_posed && pose.Position == _lastPose.Position && pose.Orientation == _lastPose.Orientation && MatchesProof(mesh)) return true;
-        if (!ProveTree(ref mesh)) return false;
+        using var proof = new InstalledMeshSweepProofScratch(_nodes.Length, Count);
+        if (!ProveTree(ref mesh, proof)) return false;
+        _posed = false;
+        var retained = _bounds.TakeForWrite();
+        for (int i = 0; i < _nodes.Length; i++) _nodes[i] = mesh.Tree.Nodes[i];
+        // Bound repair and publication must stay with the writer. Only the retained
+        // traversal array is deferred, never the proof used to select broad-phase candidates.
+        if (!BuildPoseBounds(pose, map, retained ?? proof.Bounds, out var rootBounds, out var pruningBounds, out var metrics)) return false;
+        RootBounds = rootBounds; PruningBounds = pruningBounds; PruningMetrics = metrics;
+        _lastPose = pose; _lastMap = map; _posed = true;
+        if (retained is not null) _bounds.Publish(retained);
+        return true;
+    }
+
+    bool BuildPoseBounds(RigidPose pose, InstalledPoseOperator map, (Vector3 Min, Vector3 Max)[] bounds,
+        out (Vector3 Min, Vector3 Max) rootBounds, out (Vector3 Min, Vector3 Max) pruningBounds,
+        out CapsuleSweepPruningBounds pruningMetrics)
+    {
+        rootBounds = pruningBounds = default; pruningMetrics = default;
+        // Writer proofs and first-use cache construction cannot overlap: the world gate
+        // excludes writers, and the mesh-local cache gate admits one constructing reader.
+        var pair = _proofTriangle;
         CapsuleSweepPruningBounds metrics = default;
         bool identity = pose.Orientation == Quaternion.Identity;
         for (int i = 0; i < Count; i++)
         {
-            RigidPose nativePose;
-            InstalledPoseOperator nativeMap;
-            if (identity)
-            {
-                // Pinned scalar and wide identity rotation leave the offset unchanged.
-                // Their only composition operation is the same rounded translation add.
-                nativePose = new(pose.Position + _nativeOffsets[i].Position, Quaternion.Identity);
-                nativeMap = map.WithTranslation(nativePose.Position);
-                if (!nativeMap.IsResolved) return false;
-            }
-            else
-            {
-                Compound.GetWorldPose(_nativeOffsets[i], pose, out nativePose);
-                if (!InstalledPoseOperations.ProveComposition(_nativeOffsets[i], pose, nativePose) ||
-                    !InstalledPoseOperator.TryCreate(nativePose, out nativeMap)) return false;
-            }
-            _triangles[i].PublishPose(pose, pose, map);
-            _triangles[i].SweepCompanion!.PublishPose(pose, nativePose, nativeMap);
-            if (!CapsuleSweepPruningBounds.TryCreate(_triangles[i], pose, pose, map, out var rawMetrics) ||
-                !CapsuleSweepPruningBounds.TryCreate(_triangles[i].SweepCompanion!, pose, nativePose, nativeMap, out var nativeMetrics)) return false;
+            if (!pair.TryPose(_owner, _root, _raw[i], _scale, pose, map)) return false;
+            InstalledSweepGeometry native = pair.Native;
+            if (!native.TryPose(pose, out var nativeMap) ||
+                !CapsuleSweepPruningBounds.TryCreate(pair.Scaled, pose, pose, map, out var rawMetrics) ||
+                !CapsuleSweepPruningBounds.TryCreate(native, pose, native.LeafPose, nativeMap, out var nativeMetrics)) return false;
             metrics = metrics.Include(rawMetrics).Include(nativeMetrics);
         }
         Vector3 forwardRootMin = new(float.PositiveInfinity), forwardRootMax = new(float.NegativeInfinity);
         for (int i = 0; i < _nodes.Length; i++)
         {
-            _nodes[i] = mesh.Tree.Nodes[i];
             for (int child = 0; child < (Count == 1 ? 1 : 2); child++)
             {
                 NodeChild source = child == 0 ? _nodes[i].A : _nodes[i].B;
@@ -163,11 +175,13 @@ internal sealed class InstalledMeshSweepGeometry
                     // Retain its actual rounded recenter and composed pose as a second
                     // geometry, instead of asserting that subtracting the center is exact.
                     int triangle = Tree.Encode(source.Index);
-                    InstalledSweepGeometry native = _triangles[triangle].SweepCompanion!;
+                    if (!pair.TryPose(_owner, _root, _raw[triangle], _scale, pose, map)) return false;
+                    InstalledSweepGeometry native = pair.Native;
                     if (!native.TryPose(pose, out var nativeMap)) return false;
                     if (identity)
                     {
-                        var local = _nativeBounds[triangle];
+                        Vector3 a = native.Vertex(0), b = native.Vertex(1), c = native.Vertex(2);
+                        var local = (Min: Vector3.Min(a, Vector3.Min(b, c)), Max: Vector3.Max(a, Vector3.Max(b, c)));
                         if (!Translate(local.Min, local.Max, native.LeafPose.Position, out Vector3 lo, out Vector3 hi)) return false;
                         min = Vector3.Min(min, lo); max = Vector3.Max(max, hi);
                         forwardMin = Vector3.Min(forwardMin, lo); forwardMax = Vector3.Max(forwardMax, hi);
@@ -181,7 +195,7 @@ internal sealed class InstalledMeshSweepGeometry
                     }
                 }
                 forwardRootMin = Vector3.Min(forwardRootMin, forwardMin); forwardRootMax = Vector3.Max(forwardRootMax, forwardMax);
-                _posedBounds[i * 2 + child] = (min, max);
+                bounds[i * 2 + child] = (min, max);
             }
         }
         // Union the proved descendant enclosures bottom-up as well as the transformed
@@ -193,17 +207,16 @@ internal sealed class InstalledMeshSweepGeometry
             {
                 NodeChild child = slot == 0 ? _nodes[node].A : _nodes[node].B;
                 if (child.Index < 0) continue;
-                var a = _posedBounds[child.Index * 2]; var b = _posedBounds[child.Index * 2 + 1];
-                var current = _posedBounds[node * 2 + slot];
-                _posedBounds[node * 2 + slot] = (Vector3.Min(current.Min, Vector3.Min(a.Min, b.Min)),
+                var a = bounds[child.Index * 2]; var b = bounds[child.Index * 2 + 1];
+                var current = bounds[node * 2 + slot];
+                bounds[node * 2 + slot] = (Vector3.Min(current.Min, Vector3.Min(a.Min, b.Min)),
                     Vector3.Max(current.Max, Vector3.Max(a.Max, b.Max)));
             }
         }
-        var first = _posedBounds[0];
-        RootBounds = (forwardRootMin, forwardRootMax);
-        PruningBounds = Count == 1 ? first : (Vector3.Min(first.Min, _posedBounds[1].Min), Vector3.Max(first.Max, _posedBounds[1].Max));
-        PruningMetrics = metrics.WithExcess(RootBounds.Min, RootBounds.Max, PruningBounds.Min, PruningBounds.Max);
-        _lastPose = pose; _posed = true;
+        var first = bounds[0];
+        rootBounds = (forwardRootMin, forwardRootMax);
+        pruningBounds = Count == 1 ? first : (Vector3.Min(first.Min, bounds[1].Min), Vector3.Max(first.Max, bounds[1].Max));
+        pruningMetrics = metrics.WithExcess(rootBounds.Min, rootBounds.Max, pruningBounds.Min, pruningBounds.Max);
         return true;
     }
 
@@ -230,8 +243,10 @@ internal sealed class InstalledMeshSweepGeometry
         return true;
     }
 
-    bool ProveTree(ref Mesh mesh)
+    bool ProveTree(ref Mesh mesh, InstalledMeshSweepProofScratch proof)
     {
+        bool[] _seenNodes = proof.SeenNodes, _seenLeaves = proof.SeenLeaves;
+        int[] _stack = proof.Stack, _counts = proof.Counts;
         ref Tree tree = ref mesh.Tree;
         if (!tree.Metanodes.Allocated || tree.Metanodes.Length < _nodes.Length) return false;
         Array.Clear(_seenNodes); Array.Clear(_seenLeaves);
@@ -252,7 +267,8 @@ internal sealed class InstalledMeshSweepGeometry
             for (int slot = 0; slot < (Count == 1 ? 1 : 2); slot++)
             {
                 NodeChild child = slot == 0 ? tree.Nodes[index].A : tree.Nodes[index].B;
-                if (!Valid(child.Min, child.Max) || pending >= _stack.Length) return false;
+                // Pooled scratch can be longer than requested, so the proof keeps its exact logical bound.
+                if (!Valid(child.Min, child.Max) || pending >= _nodes.Length + Count) return false;
                 if (child.Index < 0)
                 {
                     int leaf = Tree.Encode(child.Index);

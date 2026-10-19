@@ -215,9 +215,9 @@ volume evaluation or publication. Every other row records one real volume and on
 | Receiver object | Querying another receiver while a session is active records zero hits and equals its own uncached payload. |
 | Source world | Foreign leases reject opening, current checks and queries with ArgumentException. |
 | Selected view and exclusions | Unrestricted, empty, nonempty, changed and distinct equal-looking views never share entries. Editing the caller's exclusion array after construction does not change the snapshot. |
-| Installed statics and generations | An unrelated installation and removed/reused Bepu storage invalidate the old basis. The new current query evaluates fully with zero reuse stores or hits. Old results remain invalid. |
-| Origin X, Y and Z | A one-bit increment from zero independently invalidates each component. Each current query evaluates fully with zero stores or hits. |
-| Origin zero signs | Changing only the sign of zero on X, Y or Z invalidates the old basis. |
+| Installed statics and generations | An unrelated installation and removed/reused Bepu storage invalidate the old basis. The fallback matches the complete uncached result and both entire caller spans under the new lease, with zero reuse hits, misses or stores. Old results remain invalid. |
+| Origin X, Y and Z | Real one-bit rebases also advance the query generation. Each fallback matches the complete uncached result and both entire caller spans, with zero reuse hits, misses or stores. These live rows do not isolate origin authentication. |
+| Origin zero signs | Signed-zero rebases on X, Y and Z also advance the query generation. Their complete fallback results and caller spans match uncached execution. Independent bit comparisons are synthetic session checks described below. |
 | Profile identity | A new profile token releases the prior table and forces a real volume, one miss and zero hits. |
 | Raw source identity | A new source token independently releases the table and forces a real volume, one miss and zero hits. Hold/source token contents remain Tasks 3 and 4. |
 | View and source lifetime | Disposal rejects later current checks and view opening/query access. Session disposal releases all retained keys and bytes even when authentication throws. |
@@ -230,13 +230,40 @@ equality. It also forces distinct keys into the same production table slot at ca
 The other key misses without touching either output span. The original key still returns its
 complete exact payload. No test-only production comparer or public tuning surface was added.
 
+`SessionOriginComparisonsRejectOneBitWithEveryOtherBasisComponentFixed` isolates each of
+the six origin-bit changes at the session boundary. A wrapper lease changes only its origin,
+keeping the real source and generation. The private Matches predicate accepts an equal-origin
+wrapper and rejects each changed-origin wrapper. Public entry points reject both wrappers,
+so this is a defensive comparison proof, not a reachable equal-generation public query.
+A shallow, unregistered session copy then changes only one captured origin field. Every
+other session field, including the memo, domain, receiver, exclusions, thread and generations,
+is checked equal before CurrentBasis rejects that copy. The original session remains current.
+No owner, real lease, request operand or retained payload is mutated.
+
+`RebaseCannotExposeAnotherOriginAtTheSameLeaseGeneration` proves real rebases are refused
+under the opening lease without changing the origin or generation. After that lease closes,
+each one-bit or signed-zero rebase advances the next lease generation by exactly one.
+An unchanged-origin rebase does too. Rebase is the sole production origin writer, and its
+checked generation advance precedes the origin assignment. Production therefore cannot expose
+a changed origin at an equal generation through these supported paths.
+
+Every live mutation fallback is captured before the stale session is disposed. The ordinary
+uncached oracle then runs with no registered session under the same new lease and receiver.
+Result metadata, counts, explicit member and witness bits, proposal verdicts, join words and
+both complete caller arrays, including sentinel tails, are compared. The fallback alone
+records one volume and two proposals, with no reuse lookup or publication.
+
 `ForwardedQueryConsumesJoinModeExactlyOnce` first proves that the uncached full and
-certification-only matrices differ on a real small-crate scene. Both modes are then seeded in
-the selected view. An armed forwarding call inserts a backend query before forwarding. The
-inserted query returns the exact certification payload and the forwarded query returns the
-exact full payload, with two hits. An inserted invalid-filter query consumes the arm before
-throwing. The forwarded query still returns the full payload, with exactly one hit. Direct
-armed and unarmed calls retain their respective complete matrices afterward.
+certification-only join matrices differ on a real small-crate scene. Warm-table cases seed
+both modes in the selected view. An armed forwarding call returns the exact certification
+payload from its inserted query and the exact full payload from its forwarded query, with
+two hits and no misses, evaluations or stores. If the inserted invalid-filter query throws,
+it still consumes the arm. Forwarding returns the full payload with one hit and no other work.
+Cold-table cases begin with no retained keys. Successful insertion and forwarding match both
+uncached payloads with zero hits, two misses, two volumes, four proposals and two stores.
+The separate cold inserted-throw case returns the uncached full payload with zero hits, one
+miss, one volume, two proposals and one store. The throwing insertion has no payload or
+lookup. Direct armed and unarmed calls retain their respective complete matrices afterward.
 
 ### Owned capacity and refusal evidence
 
@@ -291,6 +318,27 @@ degree is 1. Actual normalized complete-file hashes equal every unchanged pin.
 | rebased-origin | `e5c86385e4141a289d41d8efbb66766e5ac7c942f825521fff91dede8e9b4eee` |
 | stair-accepted-refused | `62a061314987a1b8243f9eb8da639cd0239ec200f8f62f11e69e62f5db20959a` |
 | wade-only-pool | `a735ea5a41a1adb58666219b053197ed457b3c7edd830e18f29c7c5c8a1a1635` |
+
+### Fix round 1 verification
+
+```bash
+build-slot --heavy --label bake-b-fix1-green -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter 'FullyQualifiedName~SupportFootprintProofReuseBasisTests|FullyQualifiedName~SupportFootprintProofReuseViewTests|FullyQualifiedName~SupportFootprintProofReuseKeyTests|FullyQualifiedName~SupportFootprintProofReuseSafetyTests|FullyQualifiedName~SupportFootprintProofReuseTests|FullyQualifiedName~RemovedAndReusedBackendStorageCannotReviveOldGeometry|FullyQualifiedName~WrongThreadAndDisposedViewRefuseCurrentChecksBeforeBackendWork' --logger 'console;verbosity=detailed'
+build-slot --label bake-b-fix1-baselines --heavy -- dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release --filter 'FullyQualifiedName~ContactNavigationBaselineTests' --logger 'console;verbosity=detailed'
+```
+
+Both exited 0. The first passed all 102 tests, including every new/changed control, the
+Task 2 green selection and the accepted Task 1 tests. The second passed all seven degree-1
+baselines with the unchanged normalized complete-file hashes above. Neither run had failures,
+skips, compiler warnings or errors. Logs are task-2-fix1-green.log and task-2-fix1-baselines.log
+under /tmp/khaozengine-bake-proof-reuse.
+
+Before final verification, separate deliberate mutation probes removed only the lease-origin
+comparisons, then only the owner-origin comparisons. Each exited 1 with six expected
+Assert.False failures, independently proving that both guards detect the synthetic origin-only
+differences. Forcing certification joins on reuse-enabled evaluator misses exited 1 with four
+exact-payload failures, including both cold forwarding cases. The original production files
+were restored byte for byte before the green runs. No production defect or production fix
+resulted from this round. The final diff contains only tests and this evidence correction.
 
 ### Self-review and scope
 

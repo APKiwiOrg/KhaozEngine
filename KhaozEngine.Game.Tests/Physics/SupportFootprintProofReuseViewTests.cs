@@ -136,36 +136,40 @@ public sealed class SupportFootprintProofReuseViewTests
         Assert.Equal(1, delta.Volumes);
     }
 
-    [Fact]
-    public void ForwardedQueryConsumesJoinModeExactlyOnce()
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void ForwardedQueryConsumesJoinModeExactlyOnce(bool coldTable, bool throwInserted)
     {
         using var fixture = new SupportFootprintProofReuseFixture();
         fixture.World.AddStatic(new BoxShape(new(0.08f, 0.1f, 0.08f)), Pose.At(new(0, 0.1f, 0)));
         using var view = fixture.World.CreateQueryViewExcludingStatics([]);
         using var lease = fixture.World.AcquireQueryReadLease();
         var capability = (IPhysicsSupportFootprint)view;
-        byte[] full = Read(false), certification = Read(true);
+        byte[] full = Read(false);
+        var fullJoins = (ulong[])fixture.Joins.Clone();
+        byte[] certification = Read(true);
         Assert.NotEqual(full, certification);
+        Assert.NotEqual(fullJoins, fixture.Joins);
         using var session = fixture.Open(lease, view);
-        Assert.Equal(certification, Read(true));
-        Assert.Equal(full, Read(false));
-        var forwarder = new ForwardingFootprint(capability);
+        if (!coldTable)
+        {
+            Assert.Equal(certification, Read(true));
+            Assert.Equal(full, Read(false));
+        }
+        else Assert.Equal(0, SupportQueryDiagnostics.Retention.Keys);
+        var forwarder = new ForwardingFootprint(capability) { ThrowInserted = throwInserted };
         var before = SupportQueryDiagnostics.Snapshot();
         using (SupportCertificationJoins.Arm())
         {
             var result = forwarder.QuerySupportFootprint(lease, fixture.Request, fixture.Members, fixture.Joins);
             Assert.Equal(full, SupportFootprintProofReuseFixture.SerializePayloadBits(result, fixture.Members, fixture.Joins));
-            Assert.Equal(certification, forwarder.InsertedPayload);
+            if (throwInserted) Assert.Null(forwarder.InsertedPayload);
+            else Assert.Equal(certification, forwarder.InsertedPayload);
         }
-        Assert.Equal(2, (SupportQueryDiagnostics.Snapshot() - before).FootprintReuseHits);
-        forwarder.ThrowInserted = true;
-        before = SupportQueryDiagnostics.Snapshot();
-        using (SupportCertificationJoins.Arm())
-        {
-            var result = forwarder.QuerySupportFootprint(lease, fixture.Request, fixture.Members, fixture.Joins);
-            Assert.Equal(full, SupportFootprintProofReuseFixture.SerializePayloadBits(result, fixture.Members, fixture.Joins));
-        }
-        Assert.Equal(1, (SupportQueryDiagnostics.Snapshot() - before).FootprintReuseHits);
+        AssertWork(SupportQueryDiagnostics.Snapshot() - before, coldTable, throwInserted ? 1 : 2);
         Assert.Equal(certification, Read(true));
         Assert.Equal(full, Read(false));
 
@@ -180,6 +184,15 @@ public sealed class SupportFootprintProofReuseViewTests
             else result = capability.QuerySupportFootprint(lease, fixture.Request, fixture.Members, fixture.Joins);
             Assert.Equal(CapsuleFeatureStatus.Complete, result.Status);
             return SupportFootprintProofReuseFixture.SerializePayloadBits(result, fixture.Members, fixture.Joins);
+        }
+
+        static void AssertWork(SupportQueryCounts delta, bool cold, int queries)
+        {
+            Assert.Equal(cold ? 0 : queries, delta.FootprintReuseHits);
+            Assert.Equal(cold ? queries : 0, delta.FootprintReuseMisses);
+            Assert.Equal(cold ? queries : 0, delta.FootprintReuseStores);
+            Assert.Equal(cold ? queries : 0, delta.Volumes);
+            Assert.Equal(cold ? 2 * queries : 0, delta.Proposals);
         }
     }
 
@@ -268,6 +281,7 @@ public sealed class SupportFootprintProofReuseViewTests
                     fixture.Members, fixture.Joins));
                 Assert.Equal(members, fixture.Members);
                 Assert.Equal(joins, fixture.Joins);
+                Assert.Throws<ObjectDisposedException>(session.Dispose);
             }
             else
             {
@@ -275,12 +289,27 @@ public sealed class SupportFootprintProofReuseViewTests
                 Assert.Throws<InvalidOperationException>(() => capability.AssertFootprintCurrent(first, next));
                 var current = capability.QuerySupportFootprint(next, fixture.Request, fixture.Members, fixture.Joins);
                 Assert.Equal(CapsuleFeatureStatus.Complete, current.Status);
-                Assert.Equal(1, (SupportQueryDiagnostics.Snapshot() - before).Volumes);
+                var actualMembers = (SupportFootprintMember[])fixture.Members.Clone();
+                var actualJoins = (ulong[])fixture.Joins.Clone();
+                var queryDelta = SupportQueryDiagnostics.Snapshot() - before;
+                Assert.Equal(1, queryDelta.Volumes);
+                Assert.Equal(2, queryDelta.Proposals);
+                Assert.Equal(0, queryDelta.FootprintReuseHits);
+                Assert.Equal(0, queryDelta.FootprintReuseMisses);
+                Assert.Equal(0, queryDelta.FootprintReuseStores);
+                capability.AssertFootprintCurrent(current, next);
                 Assert.Throws<InvalidOperationException>(() => session.ResetSource(fixture.Domain));
+                Assert.Throws<InvalidOperationException>(session.Dispose);
+                // Disposal removes the stale session before the ordinary uncached oracle runs under this same lease.
+                Assert.Equal(0, SupportQueryDiagnostics.Retention.Keys);
+                fixture.FillSentinels();
+                var expected = capability.QuerySupportFootprint(next, fixture.Request, fixture.Members, fixture.Joins);
+                Assert.Equal(expected, current);
+                Assert.Equal(SupportFootprintProofReuseFixture.SerializePayloadBits(expected, fixture.Members, fixture.Joins),
+                    SupportFootprintProofReuseFixture.SerializePayloadBits(current, actualMembers, actualJoins));
+                Assert.Equal(fixture.Members, actualMembers);
+                Assert.Equal(fixture.Joins, actualJoins);
             }
-            Exception? disposal = Record.Exception(session.Dispose);
-            if (change == "view-disposal") Assert.IsType<ObjectDisposedException>(disposal);
-            else Assert.IsType<InvalidOperationException>(disposal);
         }
         var delta = SupportQueryDiagnostics.Snapshot() - before;
         Assert.Equal(0, delta.FootprintReuseHits);
@@ -299,6 +328,7 @@ public sealed class SupportFootprintProofReuseViewTests
         {
             var insertedMembers = new SupportFootprintMember[256];
             var insertedJoins = new ulong[1024];
+            InsertedPayload = null;
             if (ThrowInserted)
             {
                 var captured = request;

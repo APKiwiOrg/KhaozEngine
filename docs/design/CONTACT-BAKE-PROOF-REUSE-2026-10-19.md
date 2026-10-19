@@ -23,6 +23,11 @@ interval. It contains arena-owned evidence and cannot become a cross-lease cache
 
 One diagnostic construction of each pinned fixture preserved every normalized full-file hash.
 It found repeated absolute physics requests across a source node's outgoing same-layer edges.
+The counter denominators below record the original non-SIMD stair-wall arithmetic path. The
+[proof record](../verification/2026-10-19-bake-proof-reuse.md#arithmetic-path-correction-after-main-ci)
+documents the Linux x64 SIMD path and its deterministic two-sweep control. The saved-work
+targets are identical, while that path performs four fewer baseline volume evaluations.
+
 Source-local completed-footprint reuse projects to 37,095 fewer evaluations out of 79,499
 (46.66%) over the seven pinned fixtures. On the 576-column fixture it projects to 29,234 fewer
 out of 69,532 (42.04%). Sharing the initial Hold separately projects to 2,888 fewer of 34,992

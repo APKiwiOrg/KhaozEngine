@@ -451,8 +451,9 @@ fixture at degrees 1, 2, 3 and 8, plus degree 16 for multi-layer-row-bands.
 
 ### Observed footprint work and retention
 
-Each row below was observed independently at degree 1 and degree 3, with identical counters
-at both degrees. Volumes include admission and Stair work. Misses and stores cover eligible
+Each row below was observed independently on ARM64 at degree 1 and degree 3, with identical counters
+at both degrees. The stair-wall arithmetic correction in Task 6 qualifies its absolute totals.
+Volumes include admission and Stair work. Misses and stores cover eligible
 source sessions only. Find, physics lease, movement lease and producer pin counts match
 reuse-off at the same degree. Footprint hits remove actual Volumes and preserve every Hold.
 Every row has zero budget skips and zero InitialHoldReuseHits.
@@ -824,6 +825,13 @@ FindMemoHits stay enabled and are not booked as new savings. The table uses actu
 which equal complete footprint evaluations in these fixtures. Combined and Footprints have
 the same remaining geometry count. Their reductions are not added to Hold percentages.
 
+These tables retain the original non-SIMD stair-wall observations. They are exact at every listed
+degree on that arithmetic path, including degree 1. A raw Bepu wall sweep can instead end with zero
+residual motion on Linux x64 SIMD, skipping four lifted/standing seat pairs. That path has 4,112 Off volumes,
+2,853 remaining volumes in either reuse mode and the same exact 1,259 avoided volumes. Its stair
+reduction is 30.62 percent. The seven-fixture denominator becomes 79,495 and remaining work becomes
+42,400. The saved work stays exactly 37,095. See the arithmetic-path correction below.
+
 | Fixture | Off evaluations | Projected avoided | Actual avoided | Footprints remaining | Combined remaining | Projected / actual reduction | Shortfall |
 | --- | ---: | ---: | ---: | ---: | ---: | --- | ---: |
 | low-lip-bank | 8,108 | 2,386 | 2,386 | 5,722 | 5,722 | 29.43% / 29.43% | 0 |
@@ -858,10 +866,15 @@ Stairs and every travel step remain real. These are controller work counts, not 
 
 ### Complete counter and retention disposition per fixture and degree
 
-Every displayed counter and retention value was independently recorded at every listed degree.
-The records are identical across those degrees, verified while extracting all 132 unique rows
-from the retained TRX outputs. Duplicate output from the two assertion theories also agrees.
-Setup lease counters are intentionally not presented as degree-invariant work metrics.
+Every displayed counter and retention value was independently recorded at every listed degree on
+the original ARM64 run. The records matched across degrees in those 132 unique builds. They are
+historical observations, not a claim that raw sweep arithmetic is identical across CPU paths.
+The corrected tests retain exact literal counts for all other fixtures and select the stair's
+exact count model with an isolated two-sweep wall probe. Every parallel mode also compares its
+work counters, Find trace multiset, routes, retention and complete file with a degree-1 build on
+the same runtime. Source sessions end before the next source, band or phase, so none of these
+counts depend on worker assignment. Setup pins and shared world-form builds are excluded from
+that projection because their work can depend on the number of workers and publication order.
 
 | Fixture | Recorded degrees |
 | --- | --- |
@@ -917,6 +930,65 @@ capacities including the fixed table, not managed allocation or process-memory m
 Find equals existing memo hits plus actual Volumes in Off. In both reuse modes, it equals
 existing memo hits plus actual Volumes plus new footprint hits. Combined removes the redundant
 Holds' own Finds and callbacks, while Footprints leaves those paths unchanged.
+
+### Arithmetic-path correction after main CI
+
+Run 39207206155 failed all five stair rows, including degree 1. The fifth failing degree was 1,
+not another parallel degree. Each recorded Off Find 5,819, FindMemoHits 1,707 and Volumes 4,112.
+Worker scheduling and a lost increment cannot explain that serial result. The volume counter
+increments once in `SupportFootprintCollector.Candidates`, on the executing thread. Worker
+recorders are private and merged after the join. Installed world-form work has a separate counter.
+
+A single serial Linux x64 replay reproduced the failure. Disabling hardware intrinsics for the
+same binary selected the other path and recorded 4,116, with no retries, sleeps or timing input.
+Temporary Find and wall-attempt traces localized the difference to Z=1 at the stair's wall.
+The instrumentation and throwaway diagnostic test were removed before the final verification.
+
+The retained `StairWallSweeps` control constructs only that wall and runs two real shell sweeps.
+It starts at feet (-0.06666669, 0.1875, 1), moves (0.016666668, 0), and lifts by 0.21, with
+capsule radius 0.04 and half-height 0.15625. No navigation, footprint reuse or recorded bake count
+participates in the control. Both sweeps remain blocked. Its observations are:
+
+| Arithmetic path | First achieved X | Repeat achieved X | Lifted/standing pairs skipped |
+| --- | ---: | ---: | ---: |
+| ARM64 and Linux x64 with hardware intrinsics disabled | 0.0056669423 | 1.967419E-08 | 0 |
+| Linux x64 SIMD | 0.0056670383 | 0 | 4 |
+
+The first sweep leaves the next axis at -0.06099975 or -0.060999654, respectively. The symmetric
+positive-X contact follows the same branch. `GroundCore.Tick.Try` returns before `GroundSeat.Resolve`
+when achieved motion is zero. Otherwise the lifted and standing attempts each run the seat pass.
+Four such pairs account for eight Finds, four interval memo hits and four actual volume
+queries. Two belong to source reuse sessions and two to ungrouped Stair proofs. The corresponding
+eight reads in the non-SIMD Find multiset occur at X magnitudes 0.06099973 and 0.06099975, Z=1,
+with feet heights 0, 0.1875 and 0.375. All select the same walkable support. EdgeSteps and
+GroundSubsteps are unchanged at 1,686 and 2,307 in Off. The baked files and verdicts are unchanged.
+
+The control selects an exact model, not a numeric tolerance or CPU/OS allowlist. With `s` equal to
+four for a zero repeat, otherwise zero, the original target remains exact as Volumes `4116 - s`,
+Find `5827 - 2*s` and FindMemoHits `1711 - s`, at degree 1 and every parallel degree. All other
+literal targets remain unchanged. Avoided volumes are now asserted equal to the recorded target,
+strengthening the earlier lower-bound assertion. They still equal actual footprint hits exactly.
+
+| Linux x64 SIMD mode, every degree | Find | FindMemoHits | Volumes | Hits | Misses | Stores | EdgeSteps | Hold hits |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Off | 5,819 | 1,707 | 4,112 | 0 | 0 | 0 | 1,686 | 0 |
+| Footprints | 5,819 | 1,707 | 2,853 | 1,259 | 1,582 | 1,582 | 1,686 | 0 |
+| Combined | 5,785 | 1,690 | 2,853 | 1,242 | 1,582 | 1,582 | 1,669 | 17 |
+
+Reuse Volumes, misses and stores vary with raw sweep arithmetic, not worker scheduling. Hits do
+not change in these two paths. Both extra eligible requests are unique complete entries, so they
+add misses and stores without adding hits. The two ungrouped Stair requests cannot hit the source
+memo. Each source session starts empty and ends before another source, so a worker claim order
+cannot change the hit sequence within it. Thus the exact saved-work target remains valid rather
+than requiring a relaxed lower bound. Combined reuses the same 17 initial Holds in both paths.
+Hold evidence is source-local and its initial states are unchanged by the wall contact.
+
+The new 44-row serial/parallel comparison covers all three modes, the wide-lip and single-flat
+controls, and exact retention peaks in addition to the unchanged 512-key and 2 MiB bounds.
+Single-flat still asserts exactly five volumes and no edge or Hold work. Wide-lip retains all
+literal counts and exactly 29,234 footprint hits and 2,888 Hold hits. No production code, raw
+identity, fixture used by a bake, file pin, roof or footprint protection, arrival rule or tolerance
+changed. Verification commands and final exit codes are in the CI-fix section at the end.
 
 ### Curved certification work and refusal enforcement
 
@@ -1284,3 +1356,44 @@ the earlier 21.5.3 staging as it was verified.
 | `dotnet format KhaozEngine.slnx --verify-no-changes --no-restore` | exit 2, 14 whitespace errors, all in five interior cut files already on main, none in a file this lane changed, tracked as #1505 |
 
 The engine has no format gate in CI. This lane's own files carry no format error.
+
+## Main CI counter correction verification
+
+The deterministic red and arithmetic model are recorded in the Task 6 correction above.
+The ARM64 stair selection passed 15 cases after removing temporary instrumentation. The final
+Linux x64 work selection passed all 134 cases, zero failed or skipped. It ran the same Release
+assembly in a disposable two-CPU, 2 GiB Apple container through build-slot with Linux x64
+Rosetta enabled. Runtime 10.0.13 selected the zero-residual path. The existing CI runner was
+not entered or changed. The full command and initial prerequisite failures are retained in
+the lane's `ci-fix-report.md`.
+
+The required full Movement suite ran once after the code was final:
+
+```bash
+build-slot --heavy --label bake-counter-movement-full -- dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release --logger 'trx;LogFileName=movement-full.trx' --results-directory /tmp/khaozengine-bake-counter-fix
+```
+
+Exit 0, 1,462 passed, zero failed, three existing `SlopeArrivalTests` skips. The suite covers
+the unchanged pinned bytes, protections and raw identity as well as the new exact work model.
+Independent extraction of both TRX records found 132 unique work observations per runtime,
+identical across degrees within each runtime, including misses, stores, Hold hits and peaks.
+The extra comparison theory reuses the original immutable observations and adds no named bake.
+
+```bash
+build-slot --label bake-counter-release-build -- dotnet build KhaozEngine.slnx -c Release
+```
+
+Exit 0, zero warnings and zero errors. This was the sole full solution build.
+
+```bash
+build-slot --label bake-counter-format -- dotnet format KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj --verify-no-changes --no-restore --include KhaozEngine.Movement.Tests/ContactNavigationProofReuseWorkTests.cs KhaozEngine.Movement.Tests/Fixtures/ContactNavigationReuseWorkFixtures.cs --verbosity diagnostic
+```
+
+Exit 0, zero files formatted. Code-style and analyzer-reference analysis covered both changed
+C# files. The production, version and golden diffs are empty. No additional full suite,
+stress test, timing claim, consumer run, push, merge or release was performed.
+
+The staged dash, prose, file-size and whitespace guards all exited 0. Whole-tree dash, prose
+and size checks reported no finding. The contributor-instruction budget check exited 0 at
+8,310 of 16,384 bytes, and the doc-version check exited 0 with 21.6.1 unchanged. Self-review
+confirmed the production and golden diffs are empty and every changed path belongs to this fix.

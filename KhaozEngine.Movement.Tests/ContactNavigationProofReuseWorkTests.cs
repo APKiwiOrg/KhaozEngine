@@ -5,6 +5,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
+using KhaozEngine.Locomotion.Contacts;
 using KhaozEngine.Movement;
 using KhaozEngine.Physics;
 using KhaozEngine.Tests.Movement.Fixtures;
@@ -44,9 +45,13 @@ public sealed class ContactNavigationProofReuseWorkTests(ContactNavigationProofR
         Target target = Targets[fixture];
         var reference = measured[0];
         var footprints = measured[1];
-        Assert.Equal(target.Volumes, reference.Counts.Volumes);
-        Assert.Equal(target.Find, reference.Counts.Find);
-        Assert.Equal(target.FindMemoHits, reference.Counts.FindMemoHits);
+        // Four lifted/standing pairs skip both seat reads when the raw wall sweep has no residual motion.
+        // Each pair otherwise performs two Finds, with one interval memo hit. The isolated wall probe
+        // selects that arithmetic path without running a bake or assuming a CPU/OS combination.
+        int skippedPairs = fixture == "stair-accepted-refused" && measurements.StairWall.Repeat.Achieved == default ? 4 : 0;
+        Assert.Equal(target.Volumes - skippedPairs, reference.Counts.Volumes);
+        Assert.Equal(target.Find - 2 * skippedPairs, reference.Counts.Find);
+        Assert.Equal(target.FindMemoHits - skippedPairs, reference.Counts.FindMemoHits);
         Assert.Equal(target.EdgeSteps, reference.Counts.EdgeSteps);
         Assert.Equal(reference.File, footprints.File);
         Assert.Equal(reference.Counts.Find, footprints.Counts.Find);
@@ -57,9 +62,7 @@ public sealed class ContactNavigationProofReuseWorkTests(ContactNavigationProofR
         Assert.Equal(reference.Counts.Bindings, footprints.Counts.Bindings);
         Assert.Equal(reference.Routes, footprints.Routes);
         Assert.Equal(reference.Counts.EdgeSteps, footprints.Counts.EdgeSteps);
-        Assert.True(reference.Counts.Volumes - footprints.Counts.Volumes >= target.Avoided,
-            $"{fixture} degree={degree} avoided={reference.Counts.Volumes - footprints.Counts.Volumes} target={target.Avoided} " +
-            $"misses={footprints.Counts.FootprintReuseMisses} budgetSkips={footprints.Counts.FootprintReuseBudgetSkips}");
+        Assert.Equal(target.Avoided, reference.Counts.Volumes - footprints.Counts.Volumes);
         Assert.Equal(reference.Counts.Volumes - footprints.Counts.Volumes, footprints.Counts.FootprintReuseHits);
         Assert.Equal(0, footprints.Counts.InitialHoldReuseHits);
         Assert.Equal(reference.Counts.Find, reference.Counts.FindMemoHits + reference.Counts.Volumes);
@@ -80,6 +83,29 @@ public sealed class ContactNavigationProofReuseWorkTests(ContactNavigationProofR
                 result.Counts.Find - result.Counts.FindMemoHits);
         }
     }
+
+    [Theory]
+    [MemberData(nameof(Matrix))]
+    public void EveryModePreservesSerialWorkAcrossWorkerAssignments(string fixture, int degree)
+    {
+        var serial = measurements.Get(fixture, 1);
+        var measured = measurements.Get(fixture, degree);
+        Write(fixture, degree, measured);
+        for (int mode = 0; mode < measured.Length; mode++)
+        {
+            Assert.Equal(serial[mode].File, measured[mode].File);
+            Assert.Equal(WorkCounts(serial[mode].Counts), WorkCounts(measured[mode].Counts));
+            Assert.Equal(serial[mode].FindTrace, measured[mode].FindTrace);
+            Assert.Equal(serial[mode].Routes, measured[mode].Routes);
+            Assert.Equal(serial[mode].Retention, measured[mode].Retention);
+        }
+    }
+
+    // Source sessions end before another source, band or phase. No work in this projection depends on which
+    // worker claimed a source. First pins and shared world-form construction are deliberately outside it.
+    static int[] WorkCounts(SupportQueryCounts c) => [c.Find, c.FindMemoHits, c.Volumes, c.Proposals,
+        c.FootprintReuseHits, c.FootprintReuseMisses, c.FootprintReuseStores, c.FootprintReuseBudgetSkips,
+        c.EdgeSteps, c.InitialHoldReuseHits, c.AnalyticSamples, c.Bindings];
 
     [Theory]
     [MemberData(nameof(Matrix))]
@@ -142,6 +168,8 @@ public sealed class ContactNavigationProofReuseWorkTests(ContactNavigationProofR
 
     void Write(string fixture, int degree, Result[] results)
     {
+        if (fixture == "stair-accepted-refused")
+            output.WriteLine($"WALL approach={measurements.StairWall.Approach.Achieved} repeat={measurements.StairWall.Repeat.Achieved}");
         for (int mode = 0; mode < results.Length; mode++)
         {
             var result = results[mode];
@@ -161,6 +189,7 @@ public sealed class ContactNavigationProofReuseWorkTests(ContactNavigationProofR
     // Share observations, never physics state or mutable reuse sessions. Each named configuration builds once.
     public sealed class Measurements
     {
+        internal readonly (ShellSweep Approach, ShellSweep Repeat) StairWall = ContactNavigationReuseWorkFixtures.StairWallSweeps();
         readonly ConcurrentDictionary<(string Fixture, int Degree), Lazy<Result[]>> _results = new();
         internal Result[] Get(string fixture, int degree) => _results.GetOrAdd((fixture, degree), key =>
             new(() => Measure(key.Fixture, key.Degree), LazyThreadSafetyMode.ExecutionAndPublication)).Value;

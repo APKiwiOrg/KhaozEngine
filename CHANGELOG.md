@@ -5,6 +5,14 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.7.0
+
+2026-10-19
+
+- Bug reports can mask game-supplied reporter identity terms, such as a display name or account subject, in
+  every section before a report leaves the machine. `BugReportServiceOptions.ReporterIdentityTerms` is read
+  once per report, matches are literal and case-insensitive, and any failure masks the whole section (#1504).
+
 ## 21.6.0
 
 2026-10-19

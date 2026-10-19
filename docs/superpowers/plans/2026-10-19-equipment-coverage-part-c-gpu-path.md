@@ -99,6 +99,27 @@ The preflight scan found two ordering blockers and four ownership gaps. Root rul
   - Task 11 also extends the skinned point-face owner (Scene3D.SkinnedPointShadows.cs:97-148).
   - Both tasks test scenes whose ordinary skinned lists are empty.
 
+## Execution rulings C4 to C8
+
+The plan ledger records these rulings in full. They override the task text below where they differ.
+
+- **C4.** Precise shaders keep IEEE zero signs, NaN and infinity on every backend.
+  - Metal backports SPIRV-Cross 300681bbcb. Issue https://github.com/APKiwiOrg/KhaozEngine/issues/1495 tracks dropping it.
+  - Vulkan requires SignedZeroInfNanPreserve.
+- **C5.** No dynamic vector or matrix component access in coverage kernels.
+- **C6.** Exact multiword code uses constant-index limbs, is sized to each operation's proved bound, and logs Metal thread limits.
+- **C8.** Hosted run 39181650116 showed the exact predicate layer is too large for FXC cs_5_0 and Apple Paravirtual. The cause is call-site duplication of inlined helpers, not the arithmetic. One overlay call expands to about 1.04 million SPIR-V instructions. Evidence and design are in [the code-size investigation](proofs/2026-10-19-equipment-coverage-gpu-code-size.md).
+  - Every physical kernel routes exact product, signed add, RN32, corrected division and square root through one shared call site per primitive, using bounded job loops.
+  - Query graphs (height, boundary, triangle height, overlay, correction and face validation) become resumable, typed continuations that keep reference traversal order.
+  - Kernels are split where a cap would otherwise be exceeded. Each physical phase compiles as its own module.
+  - Gates for every coverage pipeline:
+    - At most 30,000 exhaustively inlined SPIR-V instructions and 100,000 bytes per HLSL and MSL target.
+    - Exactly one heavy primitive site per worker, explicitly rolled job and traversal loops, and no forbidden accesses.
+    - Native FXC cs_5_0 compilation, Apple Paravirtual pipeline creation at 64 threads, and exact words on every backend.
+  - Sizes are measured as instruction counts and bytes, never as time.
+  - The numerical contract and the 144 frozen hashes are unchanged.
+  - Section 6 of the investigation lists the per-task changes for Tasks 2, 3 and 5 to 7.
+
 ## File-structure map
 
 All paths are repository-relative. In task file lists, Coverage/, Rendering/, Internal/ and an unprefixed Scene3D or Render3D filename are under KhaozEngine.Render3D/. Test prefixes Render3D/ and Gpu/ are under KhaozEngine.Render.Tests/. Attachments.Render3D/ means KhaozEngine.Attachments.Render3D/. New shader files contain GLSL string fragments, matching the existing shader-source approach, rather than adding a second build tool.

@@ -64,6 +64,14 @@ namespace KhaozEngine.Tests.Gpu
                         ?? throw new InvalidOperationException("the resolve never ran");
                     // Only a frame that records the split holds its targets.
                     Assert.Equal(entry == TemporalResolveEntry.Split, renderer.SplitTargetsAllocated);
+                    Assert.Equal(entry is not null, renderer.VisibilityHistory.Allocated);
+                    if (entry is not null)
+                    {
+                        var visibility = renderer.VisibilityHistory.Texture(scene.TemporalHistory.WriteIndex);
+                        Assert.Equal(KhaozEngine.Gpu.GpuPixelFormat.R8UNorm, visibility.Format);
+                        Assert.Equal(((uint)scene.RenderTargetWidth, (uint)scene.RenderTargetHeight),
+                            (visibility.Width, visibility.Height));
+                    }
                     if (entry is { } e) Assert.Equal(e, renderer.LastEntry);
                 }
                 if (vulkan is null) continue;

@@ -38,6 +38,10 @@ namespace KhaozEngine.Tests.Gpu
             TemporalTextureIo.Upload(_gd, _depth, ndc);
         }
 
+        internal IGpuDevice Device => _gd;
+        internal TemporalHistory History => _history;
+        internal TemporalResolveRenderer Renderer => _renderer;
+
         IGpuTexture Input(GpuPixelFormat format) => _gd.Factory.CreateTexture(
             GpuTextureDescription.Texture2D((uint)_width, (uint)_height, format, GpuTextureUsage.Sampled));
 
@@ -77,9 +81,9 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Record and run one resolve and depth store. The store takes the resolve's own depth
         /// parameters, which is what <see cref="TemporalResolveMath.BuildDepthStore"/> gives for the same
         /// projection.</summary>
-        public void Resolve(in TemporalResolveUniforms uniforms)
+        public void Resolve(in TemporalResolveUniforms uniforms, IGpuTexture? visibility = null)
         {
-            _renderer.BindInputs(new TemporalResolveInputs(_scene, _opaque, _depth, _motion), _history);
+            _renderer.BindInputs(new TemporalResolveInputs(_scene, _opaque, _depth, _motion, visibility), _history);
             using IGpuCommandList cl = _gd.Factory.CreateCommandList();
             using (GpuRecording.Open(_gd, cl, nameof(TemporalResolveRig)))
             {

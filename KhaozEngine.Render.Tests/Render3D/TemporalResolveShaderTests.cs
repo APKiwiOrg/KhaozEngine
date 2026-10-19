@@ -89,7 +89,7 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void The_core_declares_the_nine_bindings_in_layout_order_and_no_stage_inputs_or_outputs()
+        public void The_core_declares_the_twelve_bindings_in_layout_order_and_no_stage_inputs_or_outputs()
         {
             string[] bindings =
             {
@@ -102,6 +102,9 @@ namespace KhaozEngine.Tests.Render3D
                 "layout(set=0, binding=6) uniform texture2D HistoryConfidence;",
                 "layout(set=0, binding=7) uniform sampler LinearClamp;",
                 "layout(set=0, binding=8) uniform Resolve {",
+                "layout(set=0, binding=9) uniform texture2D KeyShadowVisibility;",
+                "layout(set=0, binding=10) uniform texture2D PreviousKeyShadowVisibility;",
+                "layout(set=0, binding=11) uniform VisibilityHistory {",
             };
             int last = -1;
             foreach (string binding in bindings)
@@ -396,8 +399,9 @@ namespace KhaozEngine.Tests.Render3D
         {
             const GpuResourceKind T = GpuResourceKind.TextureReadOnly;
             AssertSurvives(ShaderSources.TemporalResolveFrag, "TemporalResolve",
-                new[] { "t0", "t1", "t2", "t3", "t4", "t5", "t6", "s0", "b0" },
-                T, T, T, T, T, T, T, GpuResourceKind.Sampler, GpuResourceKind.UniformBuffer);
+                new[] { "t0", "t1", "t2", "t3", "t4", "t5", "t6", "s0", "b0", "t7", "t8", "b1" },
+                T, T, T, T, T, T, T, GpuResourceKind.Sampler, GpuResourceKind.UniformBuffer,
+                T, T, GpuResourceKind.UniformBuffer);
             AssertSurvives(ShaderSources.TemporalDepthStoreFrag, "TemporalDepthStore", new[] { "t0", "t1", "s0", "b0" },
                 T, T, GpuResourceKind.Sampler, GpuResourceKind.UniformBuffer);
         }

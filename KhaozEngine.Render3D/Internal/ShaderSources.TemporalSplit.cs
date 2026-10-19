@@ -88,7 +88,10 @@ layout(set=0, binding=9) uniform texture2D PreparedEdge;
 layout(set=0, binding=10) uniform sampler LinearClamp;
 // The members are TemporalResolveUniforms.GlslMembers, documented on the struct's fields.
 layout(set=0, binding=11) uniform Resolve {" + TemporalResolveUniforms.GlslMembers + @"};
-" + TemporalCommonGlsl + TemporalResolveTuningGlsl + TemporalNarrowBothGlsl + TemporalPrepareGlsl
+layout(set=0, binding=12) uniform texture2D KeyShadowVisibility;
+layout(set=0, binding=13) uniform texture2D PreviousKeyShadowVisibility;
+layout(set=0, binding=14) uniform VisibilityHistory {" + KhaozEngine.Render3D.Rendering.TemporalVisibilityUniforms.GlslMembers + @"};
+" + TemporalVisibilityBindingsGlsl + TemporalCommonGlsl + TemporalResolveTuningGlsl + TemporalNarrowBothGlsl + TemporalPrepareGlsl
             + TemporalAccumulateGlsl + @"
 // The split's per-pixel resolve: its 3x3 gathered from the first pass's targets (temporalGather), its centre texel's
 // surface read back (temporalStoredSurface), and the accumulation (temporalAccumulatePixel).
@@ -98,6 +101,7 @@ TemporalPixel temporalSplitPixel(ivec2 displayPixel) {
     ivec2 maxTexel;
     ivec2 centreTexel;
     temporalPixelSite(displayPixel, uv, pixelCentre, maxTexel, centreTexel);
+    uv = temporalRetainVisibilityBindings(uv);
     TemporalKernels kernels = temporalKernels(pixelCentre, centreTexel, maxTexel);
     TemporalNeighbourhood neighbourhood = temporalNeighbourhood();
     afloat lumas[9];

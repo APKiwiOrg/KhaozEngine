@@ -8,9 +8,9 @@ using static KhaozEngine.Render3D.Internal.FragmentPassResources;
 namespace KhaozEngine.Render3D.Rendering
 {
     /// <summary>The internal-resolution inputs of one resolve. The renderer rebuilds its resource sets when any of the
-    /// four textures is a different one from those it last bound.</summary>
+    /// textures is a different one from those it last bound.</summary>
     internal readonly record struct TemporalResolveInputs(IGpuTexture SceneColor, IGpuTexture OpaqueColor,
-        IGpuTexture SceneDepth, IGpuTexture Motion);
+        IGpuTexture SceneDepth, IGpuTexture Motion, IGpuTexture? KeyShadowVisibility = null);
 
     /// <summary>
     /// THE TEMPORAL RESOLVE (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3): one fullscreen fragment pass at the display
@@ -56,11 +56,13 @@ namespace KhaozEngine.Render3D.Rendering
             IGpuResourceFactory f = gd.Factory;
             _resolveLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 T("SceneColor"), T("OpaqueColor"), T("SceneDepth"), T("MotionTex"), T("PrevDepth"),
-                T("HistoryColor"), T("HistoryConfidence"), S("LinearClamp"), U("Resolve")));
+                T("HistoryColor"), T("HistoryConfidence"), S("LinearClamp"), U("Resolve"),
+                T("KeyShadowVisibility"), T("PreviousKeyShadowVisibility"), U("VisibilityHistory")));
             _storeLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 T("SceneDepth"), T("MotionTex"), S("Samp"), U("DepthStore")));
             _resolveBuffer = f.CreateBuffer(new GpuBufferDescription(TemporalResolveUniforms.SizeInBytes, GpuBufferUsage.UniformBuffer));
             _storeBuffer = f.CreateBuffer(new GpuBufferDescription(TemporalDepthStoreUniforms.SizeInBytes, GpuBufferUsage.UniformBuffer));
+            _visibilityBuffer = f.CreateBuffer(new GpuBufferDescription(TemporalVisibilityUniforms.SizeInBytes, GpuBufferUsage.UniformBuffer));
             _clampSampler = f.CreateSampler(GpuSamplerDescription.Linear);
         }
 
@@ -115,7 +117,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// <summary>Whether the resolve and depth store sets exist. For tests.</summary>
         internal bool HoldsSetsForTests => _storeSet is not null;
 
-        /// <summary>Build the resolve sets for both read indices and the depth store set, unless the four input textures
+        /// <summary>Build the resolve sets for both read indices and the depth store set, unless the input textures
         /// are the very ones already bound and the history targets are the same generation of the same owner. The
         /// fused sets are built on either entry point, since the debug views and counts re-evaluate through them, and
         /// the chosen entry point's own objects first (Entry partial). What either replaces goes to
@@ -123,7 +125,8 @@ namespace KhaozEngine.Render3D.Rendering
         /// split drains and the sets go at once.</summary>
         public void BindInputs(in TemporalResolveInputs inputs, TemporalHistory history, GpuRetireQueue? retired = null)
         {
-            BindEntry(inputs, history, retired);
+            TemporalResolveInputs effective = BindVisibility(inputs, history, retired);
+            BindEntry(effective, history, retired);
             if (_storeSet is not null && SameInputs(inputs, _boundInputs) && ReferenceEquals(history, _boundHistory)
                 && history.TargetGeneration == _boundTargets)
                 return;
@@ -132,7 +135,8 @@ namespace KhaozEngine.Render3D.Rendering
             for (int read = 0; read < 2; read++)
                 _resolveSets[read] = f.CreateResourceSet(new GpuResourceSetDescription(_resolveLayout,
                     inputs.SceneColor, inputs.OpaqueColor, inputs.SceneDepth, inputs.Motion, history.PreviousDepth(read),
-                    history.Color(read), history.Confidence(read), _clampSampler, _resolveBuffer));
+                    history.Color(read), history.Confidence(read), _clampSampler, _resolveBuffer, effective.KeyShadowVisibility!,
+                    VisibilityHistory.Texture(read), _visibilityBuffer));
             _storeSet = f.CreateResourceSet(new GpuResourceSetDescription(_storeLayout,
                 inputs.SceneDepth, inputs.Motion, _clampSampler, _storeBuffer));
             _boundInputs = inputs;
@@ -143,7 +147,8 @@ namespace KhaozEngine.Render3D.Rendering
         // By reference: the sets name these objects, and holding them keeps a replacement from ever being the same one.
         internal static bool SameInputs(in TemporalResolveInputs a, in TemporalResolveInputs b)
             => ReferenceEquals(a.SceneColor, b.SceneColor) && ReferenceEquals(a.OpaqueColor, b.OpaqueColor)
-                && ReferenceEquals(a.SceneDepth, b.SceneDepth) && ReferenceEquals(a.Motion, b.Motion);
+                && ReferenceEquals(a.SceneDepth, b.SceneDepth) && ReferenceEquals(a.Motion, b.Motion)
+                && ReferenceEquals(a.KeyShadowVisibility, b.KeyShadowVisibility);
 
         /// <summary>Let go of the sets, which name the history targets and the scene's inputs, and keep the pipelines,
         /// layouts, buffers and sampler. The sets go to <paramref name="retired"/>, since a frame the device has not
@@ -151,8 +156,8 @@ namespace KhaozEngine.Render3D.Rendering
         public void ReleaseSets(GpuRetireQueue retired)
         {
             _split?.ReleaseTargets(retired);   // a frame without the resolve holds none of the split's targets either
-            if (_storeSet is null) return;
             FreeSets(retired);
+            ReleaseVisibility(retired);
         }
 
         /// <summary>Upload this frame's uniforms. Call before any framebuffer is bound this frame, as the post chain's
@@ -162,6 +167,7 @@ namespace KhaozEngine.Render3D.Rendering
             LastUniforms = resolve;
             cl.UpdateBuffer(_resolveBuffer, 0, in resolve);
             cl.UpdateBuffer(_storeBuffer, 0, in store);
+            PrepareVisibilityUniforms(cl, resolve);
         }
 
         /// <summary>Record the resolve into <see cref="TemporalHistory.WriteIndex"/>'s colour and confidence, reading
@@ -175,20 +181,19 @@ namespace KhaozEngine.Render3D.Rendering
                 ?? throw new InvalidOperationException("TemporalResolveRenderer.Run was called before BindInputs.");
             CurrentSet = set;
             LastEntry = Entry;
-            if (RunSplit(cl, history))
+            if (!RunSplit(cl, history))
             {
-                RecordFinishProbe(cl);
-                return;
-            }
-            cl.SetFramebuffer(history.ResolveFramebuffer(history.WriteIndex));
-            cl.SetPipeline(_resolvePipeline!);
-            cl.SetGraphicsResourceSet(0, set);
-            cl.Draw(3);
+                cl.SetFramebuffer(history.ResolveFramebuffer(history.WriteIndex));
+                cl.SetPipeline(_resolvePipeline!);
+                cl.SetGraphicsResourceSet(0, set);
+                cl.Draw(3);
 
-            cl.SetFramebuffer(history.PreviousDepthFramebuffer(history.WriteIndex));
-            cl.SetPipeline(_storePipeline!);
-            cl.SetGraphicsResourceSet(0, _storeSet!);
-            cl.Draw(3);
+                cl.SetFramebuffer(history.PreviousDepthFramebuffer(history.WriteIndex));
+                cl.SetPipeline(_storePipeline!);
+                cl.SetGraphicsResourceSet(0, _storeSet!);
+                cl.Draw(3);
+            }
+            StoreVisibility(cl, history);
             RecordFinishProbe(cl);   // an armed temporal count request, over the set this run bound (Finish partial)
         }
 
@@ -214,6 +219,8 @@ namespace KhaozEngine.Render3D.Rendering
             DisposeFinish();
             _split?.Dispose();
             FreeSets(null);
+            ReleaseVisibility(null);
+            _visibilityBuffer.Dispose();
             _resolvePipeline?.Dispose();
             _storePipeline?.Dispose();
             _resolveLayout.Dispose();

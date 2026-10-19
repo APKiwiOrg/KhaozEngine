@@ -121,7 +121,10 @@ layout(set=0, binding=6) uniform texture2D HistoryConfidence;
 layout(set=0, binding=7) uniform sampler LinearClamp;
 // The members are TemporalResolveUniforms.GlslMembers, documented on the struct's fields.
 layout(set=0, binding=8) uniform Resolve {" + TemporalResolveUniforms.GlslMembers + @"};
-" + TemporalCommonGlsl + TemporalResolveTuningGlsl + TemporalNarrowBothGlsl + TemporalPrepareGlsl
+layout(set=0, binding=9) uniform texture2D KeyShadowVisibility;
+layout(set=0, binding=10) uniform texture2D PreviousKeyShadowVisibility;
+layout(set=0, binding=11) uniform VisibilityHistory {" + KhaozEngine.Render3D.Rendering.TemporalVisibilityUniforms.GlslMembers + @"};
+" + TemporalVisibilityBindingsGlsl + TemporalCommonGlsl + TemporalResolveTuningGlsl + TemporalNarrowBothGlsl + TemporalPrepareGlsl
             + TemporalAccumulateGlsl + @"
 // The fused entry point: one display pixel, its 3x3 read from the scene's inputs and prepared inline
 // (temporalWeighted, temporalReactiveDifference, temporalDilate), gathered (temporalGather), its centre texel's
@@ -132,6 +135,7 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     ivec2 maxTexel;
     ivec2 centreTexel;
     temporalPixelSite(displayPixel, uv, pixelCentre, maxTexel, centreTexel);
+    uv = temporalRetainVisibilityBindings(uv);
     TemporalKernels kernels = temporalKernels(pixelCentre, centreTexel, maxTexel);
     TemporalNeighbourhood neighbourhood = temporalNeighbourhood();
     float closestDepth = 2.0 * BackgroundLinearDepth;

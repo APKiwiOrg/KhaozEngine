@@ -51,6 +51,15 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void VisibilityJitterUsesItsOwnSixteenByteStd140Block()
+        {
+            Assert.Equal(16u, TemporalVisibilityUniforms.SizeInBytes);
+            Assert.Equal(16, Marshal.SizeOf<TemporalVisibilityUniforms>());
+            Assert.Equal(0, Offset<TemporalVisibilityUniforms>(nameof(TemporalVisibilityUniforms.PreviousJitter)));
+            AssertMirrors<TemporalVisibilityUniforms>(TemporalVisibilityUniforms.GlslMembers, 16);
+        }
+
+        [Fact]
         public void SharpenUbo_MarshalSize_EqualsSharpenBufferAllocation()
         {
             // GLSL: Sharpen { vec4 Params; } = 1 vec4 = 16 bytes (TemporalSharpenFrag).

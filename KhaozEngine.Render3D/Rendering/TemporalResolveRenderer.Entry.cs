@@ -55,14 +55,14 @@ namespace KhaozEngine.Render3D.Rendering
             LastEntry ?? throw new System.InvalidOperationException("the resolve recorded no entry point"),
             TemporalResolvePrecisionPolicy.For(_gd), TemporalSplitResolve.Upscales(LastUniforms));
 
-        // BindInputs' first statement: the chosen entry point's own objects. A renderer used outside a scene, which
+        // BindInputs builds the chosen entry point's own objects after aligning visibility. A renderer used outside a scene, which
         // never selects, retires nothing, so the fused entry point there releases the split's targets by draining.
         void BindEntry(in TemporalResolveInputs inputs, TemporalHistory history, GpuRetireQueue? retired)
         {
             if (Entry == TemporalResolveEntry.Split)
             {
                 _split ??= new TemporalSplitResolve(_gd);
-                _split.Bind(inputs, history, _clampSampler, _resolveBuffer, retired);
+                _split.Bind(inputs, history, _clampSampler, _resolveBuffer, VisibilityHistory, _visibilityBuffer, retired);
                 return;
             }
             _split?.ReleaseTargets(retired);

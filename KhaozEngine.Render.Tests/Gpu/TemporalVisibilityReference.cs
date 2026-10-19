@@ -13,13 +13,14 @@ internal static class TemporalVisibilityReference
             || c.PreviousUv.X > 1 || c.PreviousUv.Y > 1) return (false, 0);
         float current = 0, count = 0, previous = 0, weights = 0;
         float centreDepth = c.Depth[c.CentreY * c.Width + c.CentreX];
+        if (!float.IsFinite(centreDepth) || !float.IsFinite(c.ExpectedDepth)) return (false, 0);
         for (int y = -1; y <= 1; y++)
             for (int x = -1; x <= 1; x++)
             {
                 int ax = Math.Clamp(c.CentreX + x, 0, c.Width - 1);
                 int ay = Math.Clamp(c.CentreY + y, 0, c.Height - 1);
                 int a = ay * c.Width + ax;
-                if (!(MathF.Abs(c.Depth[a] - centreDepth) <= 0.02f * MathF.Max(centreDepth, 1e-5f))) continue;
+                if (!float.IsFinite(c.Depth[a]) || !(MathF.Abs(c.Depth[a] - centreDepth) <= 0.02f * MathF.Max(centreDepth, 1e-5f))) continue;
                 current += c.Current[a];
                 count++;
                 Vector2 size = new(c.Width, c.Height);
@@ -33,7 +34,7 @@ internal static class TemporalVisibilityReference
                     {
                         int b = Math.Clamp(by + j, 0, c.Height - 1) * c.Width + Math.Clamp(bx + i, 0, c.Width - 1);
                         float weight = (i == 0 ? 1 - fx : fx) * (j == 0 ? 1 - fy : fy);
-                        if (!(MathF.Abs(c.PreviousDepth[b] - c.ExpectedDepth) <= 0.02f * MathF.Max(c.ExpectedDepth, 1e-5f))) continue;
+                        if (!float.IsFinite(c.PreviousDepth[b]) || !(MathF.Abs(c.PreviousDepth[b] - c.ExpectedDepth) <= 0.02f * MathF.Max(c.ExpectedDepth, 1e-5f))) continue;
                         previous += c.Previous[b] * weight;
                         weights += weight;
                     }
@@ -75,6 +76,7 @@ internal static class TemporalVisibilityReference
         var empty = new VisibilityCase("empty current", 1, 0) { Valid = false };
         empty.Depth[5] = float.NaN;
         yield return empty;
+        foreach (VisibilityCase c in NonFiniteCases()) yield return c;
         var unmatched = new VisibilityCase("empty history and unmatched depth", 1, 0) { Valid = false };
         Array.Fill(unmatched.PreviousDepth, 2);
         yield return unmatched;
@@ -102,6 +104,33 @@ internal static class TemporalVisibilityReference
             yield return c;
         }
     }
+
+    internal static IEnumerable<VisibilityCase> NonFiniteCases()
+    {
+        foreach (float depth in new[] { float.NaN, float.PositiveInfinity, float.NegativeInfinity })
+        {
+            var centre = new VisibilityCase($"non-finite centre {depth}", 1, 0) { Valid = false };
+            centre.Depth[5] = depth;
+            yield return centre;
+            var neighbour = new VisibilityCase($"non-finite current neighbour {depth}", 0, 0);
+            neighbour.Depth[4] = depth; neighbour.Current[4] = 1;
+            yield return neighbour;
+            yield return new($"non-finite expected history {depth}", 1, 0) { ExpectedDepth = depth, Valid = false };
+            var emptyHistory = new VisibilityCase($"non-finite empty history {depth}", 1, 0) { Valid = false };
+            Array.Fill(emptyHistory.PreviousDepth, depth);
+            yield return emptyHistory;
+            var mixedHistory = new VisibilityCase($"non-finite mixed history {depth}", 0.5f, 1)
+            {
+                PreviousJitter = new(0.5f),
+                Want = 0.25f,
+            };
+            Array.Fill(mixedHistory.Depth, 2); mixedHistory.Depth[5] = 1;
+            Array.Fill(mixedHistory.PreviousDepth, depth); mixedHistory.PreviousDepth[5] = 1;
+            mixedHistory.Previous[5] = 0.25f;
+            yield return mixedHistory;
+        }
+    }
+
 }
 
 internal sealed class VisibilityCase

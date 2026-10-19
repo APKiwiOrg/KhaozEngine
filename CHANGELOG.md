@@ -9,6 +9,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-10-19
 
+- Installed mesh capsule sweeps keep compact mutation evidence, share triangle topology and build traversal
+  bounds on first use, avoiding per-triangle geometry objects when installing large worlds (#1500).
 - Contact support uses Bepu's represented installed transform, so exact tread-edge tangency on quarter-turn
   stairs now supports without changing the feature or sweep contract (#1494).
 - Curved support certification has a cumulative per-Find work ceiling with visible work and storage exhaustion

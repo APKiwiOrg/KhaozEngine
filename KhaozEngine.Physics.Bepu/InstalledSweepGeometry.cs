@@ -5,22 +5,29 @@ using BepuPhysics.Collidables;
 
 namespace KhaozEngine.Physics.Bepu;
 
-/// <summary>Private installation topology. Only the writer publishes the separate posed value.</summary>
+/// <summary>Private installation topology or query-private triangle scratch.
+/// Published installation poses change only under the writer.</summary>
 internal sealed class InstalledSweepGeometry
 {
     readonly Vector3[] _vertices;
-    readonly int[][] _faces = [[0, 4, 6, 2], [1, 3, 7, 5], [0, 1, 5, 4],
+    static readonly int[][] BoxFaces = [[0, 4, 6, 2], [1, 3, 7, 5], [0, 1, 5, 4],
         [2, 6, 7, 3], [0, 2, 3, 1], [4, 5, 7, 6]];
+    static readonly int[][] TriangleFaces = [[0, 1, 2]];
+    static readonly (int A, int B)[] BoxEdges = [(0, 1), (0, 2), (0, 4), (1, 3), (1, 5), (2, 3),
+        (2, 6), (3, 7), (4, 5), (4, 6), (5, 7), (6, 7)];
+    static readonly (int A, int B)[] TriangleEdges = [(0, 1), (1, 2), (2, 0)];
+    readonly int[][] _faces = BoxFaces;
     readonly (int A, int B)[] _edges;
+    Triangle _triangle;
     readonly Vector3[]? _installedPoints;
     readonly HullVertexIndex[]? _installedIndices;
     readonly InstalledSweepGeometry? _native;
     internal InstalledSweepGeometry[]? Children { get; }
     internal int ChildIndex { get; } = -1;
-    internal Shapes Owner { get; }
-    internal TypedIndex Root { get; }
-    internal TypedIndex Shape { get; }
-    internal RigidPose LocalPose { get; }
+    internal Shapes Owner { get; private set; }
+    internal TypedIndex Root { get; private set; }
+    internal TypedIndex Shape { get; private set; }
+    internal RigidPose LocalPose { get; private set; }
     internal InstalledMeshSweepGeometry? Mesh { get; }
     internal bool IsTriangle { get; }
     internal SupportCurvedShape? Curved { get; }
@@ -30,7 +37,7 @@ internal sealed class InstalledSweepGeometry
     internal InstalledSweepGeometry? SweepCompanion { get; set; }
     internal bool IsHull => _installedPoints is not null;
     internal Vector3 Half { get; }
-    internal int VertexCount => Mesh is { } mesh ? mesh.Count * 3 : _vertices.Length;
+    internal int VertexCount => Mesh is { } mesh ? mesh.Count * 3 : IsTriangle ? 3 : _vertices.Length;
     internal int FaceCount => _faces.Length;
     internal int SurfaceCount => _faces.Length;
     internal int EdgeCount => _edges.Length;
@@ -61,14 +68,11 @@ internal sealed class InstalledSweepGeometry
         Owner = owner; Root = Shape = root; Half = half;
         LocalPose = new(Vector3.Zero, Quaternion.Identity);
         _vertices = new Vector3[8];
-        _edges = new (int, int)[12];
-        int count = 0;
+        _edges = BoxEdges;
         for (int i = 0; i < 8; i++)
         {
             _vertices[i] = new((i & 1) == 0 ? -half.X : half.X,
                 (i & 2) == 0 ? -half.Y : half.Y, (i & 4) == 0 ? -half.Z : half.Z);
-            for (int bit = 1; bit <= 4; bit <<= 1)
-                if ((i & bit) == 0) _edges[count++] = (i, i | bit);
         }
     }
 
@@ -93,8 +97,8 @@ internal sealed class InstalledSweepGeometry
     {
         Owner = owner; Root = Shape = root; IsTriangle = true;
         LocalPose = local ?? new RigidPose(Vector3.Zero, Quaternion.Identity);
-        _vertices = [triangle.A, triangle.B, triangle.C];
-        _faces = [[0, 1, 2]]; _edges = [(0, 1), (1, 2), (2, 0)];
+        _triangle = triangle; _vertices = [];
+        _faces = TriangleFaces; _edges = TriangleEdges;
     }
 
     internal InstalledSweepGeometry(Shapes owner, TypedIndex root, TypedIndex shape, RigidPose local,
@@ -123,7 +127,13 @@ internal sealed class InstalledSweepGeometry
         _installedPoints = native._installedPoints; _installedIndices = native._installedIndices;
     }
 
-    internal Vector3 Vertex(int index) => Mesh is { } mesh ? mesh.Vertex(index) : _vertices[index];
+    internal Vector3 Vertex(int index) => Mesh is { } mesh ? mesh.Vertex(index) : IsTriangle
+        ? index switch { 0 => _triangle.A, 1 => _triangle.B, 2 => _triangle.C, _ => throw new IndexOutOfRangeException() }
+        : _vertices[index];
+    internal void SetTriangle(Shapes owner, TypedIndex root, in Triangle triangle, RigidPose local)
+    {
+        Owner = owner; Root = Shape = root; _triangle = triangle; LocalPose = local;
+    }
     internal int FaceVertex(int face, int index) => _faces[face][index];
     internal int InteriorFaceVertex(int face, int index) => _faces[face][index];
     internal int InteriorFaceSize(int face) => _faces[face].Length;

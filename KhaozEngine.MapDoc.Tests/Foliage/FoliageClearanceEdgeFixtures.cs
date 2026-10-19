@@ -41,6 +41,17 @@ internal static partial class FoliageFixtures
         return fixture;
     }
 
+    /// <summary>The edge chunk with the layer origin moved to (13, 0). Coarse slot boundary x = 0 lies 13 m, 3.25 of its
+    /// 4 m cells, west of the chunk: past the 3-cell + 0.01 halo, inside the 4.6-cell edge fade reach. The edge fade grid
+    /// starts at coarse cell 0, whose west corner normal reads the corner in slot -1.</summary>
+    internal static FoliageFixture EdgeScope(float edge)
+    {
+        var fixture = EdgeChunk(edge);
+        var layer = Layer("cover-a", Surface("coarse"), 13, 0, 1, 32, 32, Enumerable.Repeat((byte)255, 32 * 32).ToArray(), [10]);
+        fixture.Document.Foliage = new(1, [ClearanceLayer(layer, rules: [], ordinals: [new("coarse", 0)], edge: edge)]);
+        return fixture;
+    }
+
     /// <summary>The edge chunk bound to an exterior space "level" by Space at ReferenceY 20.2 with 11 m below, so the
     /// 4 m "coarse" floor at 10 m and the 1 m "floor-1" at 20 m are both in its band. The layer origin is (1.5, 0).
     /// Coarse supports the space over its patch (0, -1), world x 0 to 64. Floor-1 supports it only over cells x -8 to -1

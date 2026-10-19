@@ -35,9 +35,10 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
 
         MapSurfaceRef[] floors = view.Surfaces.Where(s => s.Role == MapSurfaceRole.SupportFloor && (bound is null || s.Id == bound))
             .OrderBy(s => s.Id, StringComparer.Ordinal).ToArray();
-        // One reach widens both the support grids and the shared context, so every neighbour centre edge fade reads has
-        // its prepared cell and its compiled faces. A layer without edge fade keeps the chunk rectangle.
-        double reach = ContextReach(floors);
+        // One reach widens the acquisition, the support grids and the shared context, so every neighbour centre edge fade
+        // reads has its prepared cell, its normal halo and its compiled faces. A layer without edge fade keeps the chunk
+        // rectangle.
+        double reach = MapFoliageSupport.EdgeReach(layer, floors.Select(s => (s, Kernel(s)?.Transform)));
         (MapExactXz min, MapExactXz max) = Rectangle(reach);
         if (reach > 0)
         {
@@ -66,23 +67,6 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
         Describe(binding);
         var materials = new MapFoliageMaterials(layer, paint);
         return new(layer, chunk, MapFoliageStatus.Complete, null, Work(), _parts.Order(StringComparer.Ordinal).ToArray(), grids, materials, candidates);
-    }
-
-    // Clearance edge fade evaluates the four neighbour cell centres of a sample's support cell. A centre lies at most
-    // 1.5 cells from the sample along one cell axis and 0.5 along the other, so its world offset on either axis is at
-    // most 1.5 cells, or sqrt(1.5^2 + 0.5^2) < 1.6 cells under a yawed transform. The reach takes the largest effective
-    // cell of the surfaces that become grids, since a centre from a coarse grid may land on a finer surface.
-    double ContextReach(IEnumerable<MapSurfaceRef> floors)
-    {
-        if (layer.EdgeFade <= 0) return 0;
-        double reach = 0;
-        foreach (MapSurfaceRef surface in floors)
-        {
-            MapResourceTransform? kernel = Kernel(surface);
-            double cell = surface.Frame.CellUnitMetres.Exact().ToDouble() * (kernel?.Transform.Scale ?? 1);
-            reach = Math.Max(reach, (kernel is { Transform.YawRadians: not 0 } ? 1.6 : 1.5) * cell);
-        }
-        return reach;
     }
 
     MapResourceTransform? Kernel(MapSurfaceRef surface) => view.EffectiveContext?.Transform(MapPrefabChildKind.Surface, surface.Id);

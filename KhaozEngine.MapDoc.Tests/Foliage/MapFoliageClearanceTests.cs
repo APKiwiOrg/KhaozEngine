@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Foliage;
+using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
 using Xunit;
 
@@ -392,6 +393,43 @@ public sealed class MapFoliageClearanceTests
         Assert.True(on.Work.Faces > off.Work.Faces, $"{on.Work.Faces} faces");
         Assert.Equal(MapFoliageStatus.CapacityExceeded, Prepared(4, new(MaxFaces: (int)on.Work.Faces - 1)).Status);
         Assert.Equal(MapFoliageStatus.Complete, Prepared(4, new(MaxFaces: (int)on.Work.Faces)).Status);
+    }
+
+    [Fact]
+    public void EdgeFade_AcquiresThePatchPastTheNormalHalo()
+    {
+        var fixture = FoliageFixtures.EdgeScope(0.25f);
+        var point = Sample(fixture, 13.1f, 1);
+        Assert.Equal((MapFoliageStatus.Complete, MapFoliageReason.Accepted, "coarse"), (point.Status, point.Reason, point.SupportOwnerId));
+        Assert.Equal(1f, point.Density);
+        var context = FoliageFixtures.Context(fixture);
+        var prepared = MapFoliageSupport.Prepare(context, context.Foliage!.Layers[0], new(0, 0), new());
+        Assert.Contains(prepared.DependencyParts, p => p.StartsWith("patch|coarse|-1|-1|", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void EdgeFade_ZeroKeepsTheScopeAndAcquiredPatches()
+    {
+        (MapSurfaceScope Scope, string Patches) Measure(float edge)
+        {
+            var context = FoliageFixtures.Context(FoliageFixtures.EdgeScope(edge));
+            var layer = context.Foliage!.Layers[0];
+            var scope = MapFoliageSupport.Scope(layer, new(0, 0), context.Resources.SurfaceSource.Surfaces, context.Resources.Transforms);
+            var prepared = MapFoliageSupport.Prepare(context, layer, new(0, 0), new());
+            Assert.Equal(MapFoliageStatus.Complete, prepared.Status);
+            return (scope, string.Join(",", prepared.DependencyParts.Where(p => p.StartsWith("patch|", StringComparison.Ordinal))
+                .Select(p => p[6..p.LastIndexOf('|')])));
+        }
+        var (off, patches) = Measure(0);
+        // Measured at 1223033b7, before the scope took the edge fade reach.
+        Assert.Equal(((short)0, (short)0, 0.98999995f, -12.01f, 57.010002f, 44.010002f),
+            (off.Frame.X, off.Frame.Z, off.LocalMin.X, off.LocalMin.Y, off.LocalMax.X, off.LocalMax.Y));
+        Assert.Equal("coarse|0|-1,coarse|0|0,floor-1|0|-1,floor-1|0|0,peer-seat|0|-1,peer-seat|0|0,roof-seat|0|-1,roof-seat|0|0," +
+            "unrelated|0|-1,unrelated|0|0", patches);
+        var (on, wider) = Measure(0.25f);
+        Assert.True(on.LocalMin.X < off.LocalMin.X && on.LocalMax.X > off.LocalMax.X, $"{on.LocalMin} {on.LocalMax}");
+        Assert.Contains("coarse|-1|-1", wider.Split(','));
+        Assert.DoesNotContain("coarse|-1|-1", patches.Split(','));
     }
 
     [Fact]

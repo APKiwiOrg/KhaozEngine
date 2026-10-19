@@ -82,19 +82,24 @@ public static class MapFoliageSupport
     }
 
     /// <summary>The acquisition scope of a chunk: its world rectangle plus a halo of three of the largest declared support
-    /// cells, which holds every neighbour corner a boundary normal reads. Every role is acquired, since membership reads
-    /// ceilings and visible paint reads paint overrides.</summary>
+    /// cells, which holds every neighbour corner a boundary normal reads, plus the edge fade reach over the declared
+    /// support floors, since grids and the shared context widen by that reach. Every role is acquired, since membership
+    /// reads ceilings and visible paint reads paint overrides.</summary>
     internal static MapSurfaceScope Scope(MapFoliageLayer layer, MapFoliageChunkKey chunk, IReadOnlyList<MapSurfaceRef> declared,
         IReadOnlyDictionary<string, MapEffectiveTransform> transforms)
     {
         (double minX, double minZ, double maxX, double maxZ) = Rect(layer, chunk);
         double cell = 0;
+        var floors = new List<(MapSurfaceRef Surface, MapEffectiveTransform? Pose)>();
         foreach (MapSurfaceRef surface in declared.Where(s => s.Role == MapSurfaceRole.SupportFloor))
         {
-            double scale = transforms.TryGetValue(MapEffectiveContext.Key(MapPrefabChildKind.Surface, surface.Id), out MapEffectiveTransform pose) ? pose.Scale : 1;
-            cell = Math.Max(cell, surface.Frame.CellUnitMetres.Exact().ToDouble() * scale);
+            MapEffectiveTransform? posed = transforms.TryGetValue(MapEffectiveContext.Key(MapPrefabChildKind.Surface, surface.Id), out MapEffectiveTransform pose) ? pose : null;
+            cell = Math.Max(cell, surface.Frame.CellUnitMetres.Exact().ToDouble() * (posed?.Scale ?? 1));
+            floors.Add((surface, posed));
         }
         double halo = 3 * cell + 0.01;
+        double reach = EdgeReach(layer, floors);
+        if (reach > 0) halo += reach;
         minX -= halo; minZ -= halo; maxX += halo; maxZ += halo;
         var frame = WorldFrame.Nearest((float)((minX + maxX) / 2), (float)((minZ + maxZ) / 2));
         double ax = (double)frame.X * WorldFrame.Grid, az = (double)frame.Z * WorldFrame.Grid;
@@ -103,6 +108,23 @@ public static class MapFoliageSupport
         if (!float.IsFinite(min.X) || !float.IsFinite(min.Y) || !float.IsFinite(max.X) || !float.IsFinite(max.Y))
             throw new MapExactOverflowException();
         return new(frame, min, max, null, null, Enum.GetValues<MapSurfaceRole>(), null, new MapQueryLimits());
+    }
+
+    /// <summary>How far outside the chunk clearance edge fade reads support: zero without edge fade. Edge fade evaluates
+    /// the four neighbour cell centres of a sample's support cell. A centre lies at most 1.5 cells from the sample along
+    /// one cell axis and 0.5 along the other, so its world offset on either axis is at most 1.5 cells, or
+    /// sqrt(1.5^2 + 0.5^2) &lt; 1.6 cells under a yawed pose. The reach takes the largest effective cell (cell unit metres
+    /// times pose scale) of the given floors, since a centre from a coarse grid may land on a finer surface.</summary>
+    internal static double EdgeReach(MapFoliageLayer layer, IEnumerable<(MapSurfaceRef Surface, MapEffectiveTransform? Pose)> floors)
+    {
+        if (layer.EdgeFade <= 0) return 0;
+        double reach = 0;
+        foreach (var (surface, pose) in floors)
+        {
+            double cell = surface.Frame.CellUnitMetres.Exact().ToDouble() * (pose?.Scale ?? 1);
+            reach = Math.Max(reach, (pose is { YawRadians: not 0 } ? 1.6 : 1.5) * cell);
+        }
+        return reach;
     }
 
     /// <summary>The nearest float on the outer side of <paramref name="value"/>: itself when exact, else one step outward.

@@ -18,6 +18,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   controller steps fall 5.66 percent and 8.25 percent. Complete bake bytes and protection rules are unchanged.
 - Serial callers can assert stable providers with `NavBakeExecution.UseStableContactHoldReuse`. Its default
   false preserves historical Hold callbacks. Parallel contact builds already require stable providers.
+- TileWorld captures can show interior cuts. `TileWorldViewOptions.InteriorMeshes` and `RoofMode` seed the view,
+  including every `TileWorldSnapshot` path, and capture settling builds and publishes the interior field before
+  the first captured frame. Views and captures that leave both options unset are unchanged (#1470).
 
 ## 21.6.0
 

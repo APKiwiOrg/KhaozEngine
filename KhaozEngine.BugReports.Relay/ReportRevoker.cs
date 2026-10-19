@@ -59,49 +59,78 @@ internal sealed class ReportRevoker(IReportMediaStore media, ReportRecordStore r
             return Result(ReportRevocationStatus.AlreadyRevoked, id, reference);
 
         await revocation.RevokeAsync(id, ct).ConfigureAwait(false);
-        int deleted = 0;
-        string? folder = report.Record?.Folder ?? report.Accepted?.Folder;
-        if (folder is not null)
-            foreach (string path in await media.ListAsync(ReportArea.Public, folder + "/", ct).ConfigureAwait(false))
-                if (await media.DeleteAsync(ReportArea.Public, path, ct).ConfigureAwait(false)) deleted++;
-
-        int? issueNumber = report.Record?.IssueNumber;
-        if (issueNumber is not > 0)
-        {
-            string? claimed = await claims.FindResultAsync(ReportWorkKind.CreateIssue, id, ct).ConfigureAwait(false);
-            issueNumber = int.TryParse(claimed, NumberStyles.None, CultureInfo.InvariantCulture, out int number) && number > 0
-                ? number : null;
-        }
-        ReportIssueRevocation issue = ReportIssueRevocation.NotCreated;
+        int deleted = await DeletePublicFolderAsync(report.Record?.Folder ?? report.Accepted?.Folder, ct).ConfigureAwait(false);
+        int? issueNumber = await FindIssueNumberAsync(report.Record, id, ct).ConfigureAwait(false);
+        ReportIssueRevocation issue;
         Uri? issueUrl = null;
-        if (issueNumber is not null)
+        try
         {
-            try
-            {
-                GitHubIssueUpdateResult update = await github.UpdateIssueAsync(issueNumber.Value,
-                    new GitHubIssueUpdate("Revoked bug report " + reference,
-                        "This report was revoked at the reporter's request. Its files and private record are being deleted."), ct)
-                    .ConfigureAwait(false);
-                issue = update.Outcome switch
-                {
-                    GitHubIssueUpdateOutcome.Updated => ReportIssueRevocation.Redacted,
-                    GitHubIssueUpdateOutcome.Gone => ReportIssueRevocation.Gone,
-                    GitHubIssueUpdateOutcome.Moved => ReportIssueRevocation.Moved,
-                    _ => throw new ArgumentOutOfRangeException(nameof(update), update.Outcome, "Unknown issue update outcome."),
-                };
-                issueUrl = update.IssueUrl;
-            }
-            catch (Exception exception) when (exception is GitHubApiException or HttpRequestException)
-            {
-                issue = ReportIssueRevocation.Failed;
-                logger.Warn("Issue redaction failed for revoked report " + id + ". The purge will retry it.", exception);
-            }
+            (issue, issueUrl) = await RedactIssueAsync(issueNumber, reference, ct).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is GitHubApiException or HttpRequestException)
+        {
+            issue = ReportIssueRevocation.Failed;
+            logger.Warn("Issue redaction failed for revoked report " + id + ". The purge will retry it.", exception);
         }
 
         DateTimeOffset purgeAt = time.GetUtcNow() + PurgeDelay;
         await work.EnqueueAsync(new ReportWorkItem(ReportWorkKind.PurgeRevoked, id), PurgeDelay, ct).ConfigureAwait(false);
         return new ReportRevocationResult(ReportRevocationStatus.Revoked, id, reference, [], deleted, issue,
             issueNumber, issueUrl, purgeAt);
+    }
+
+    /// <summary>Repeats public cleanup and redaction before deleting a revoked report's private state.</summary>
+    public async Task PurgeAsync(string reportId, CancellationToken ct)
+    {
+        if (!await media.ExistsAsync(ReportArea.Pending, ReportLayout.Revoked(reportId), ct).ConfigureAwait(false)) return;
+        ReportRecord? record = await records.LoadReportAsync(reportId, ct).ConfigureAwait(false);
+        AcceptedReport? accepted = record is null ? await records.LoadAcceptedAsync(reportId, ct).ConfigureAwait(false) : null;
+        await DeletePublicFolderAsync(record?.Folder ?? accepted?.Folder, ct).ConfigureAwait(false);
+
+        record = await records.LoadReportAsync(reportId, ct).ConfigureAwait(false);
+        int? issueNumber = await FindIssueNumberAsync(record, reportId, ct).ConfigureAwait(false);
+        var (issue, _) = await RedactIssueAsync(issueNumber, ReportIds.ReferenceCode(reportId), ct).ConfigureAwait(false);
+        if (issue == ReportIssueRevocation.Redacted && issueNumber is int number)
+            logger.Warn("Redacted issue " + number.ToString(CultureInfo.InvariantCulture) + " during purge of revoked report " + reportId + ".");
+
+        await media.DeleteAsync(ReportArea.Pending, ReportLayout.ReportRecord(reportId), ct).ConfigureAwait(false);
+        await media.DeleteAsync(ReportArea.Pending, ReportLayout.AcceptedIndex(reportId), ct).ConfigureAwait(false);
+        await media.DeleteAsync(ReportArea.Pending, ReportLayout.PendingSnapshot(reportId), ct).ConfigureAwait(false);
+        await claims.DeleteAllAsync(ReportWorkKind.CreateIssue, reportId, ct).ConfigureAwait(false);
+        await claims.DeleteAllAsync(ReportWorkKind.AppendServerSnapshot, reportId, ct).ConfigureAwait(false);
+    }
+
+    async Task<int> DeletePublicFolderAsync(string? folder, CancellationToken ct)
+    {
+        int deleted = 0;
+        if (folder is not null)
+            foreach (string path in await media.ListAsync(ReportArea.Public, folder + "/", ct).ConfigureAwait(false))
+                if (await media.DeleteAsync(ReportArea.Public, path, ct).ConfigureAwait(false)) deleted++;
+        return deleted;
+    }
+
+    async Task<int?> FindIssueNumberAsync(ReportRecord? record, string reportId, CancellationToken ct)
+    {
+        if (record?.IssueNumber is > 0) return record.IssueNumber;
+        string? claimed = await claims.FindResultAsync(ReportWorkKind.CreateIssue, reportId, ct).ConfigureAwait(false);
+        return int.TryParse(claimed, NumberStyles.None, CultureInfo.InvariantCulture, out int number) && number > 0 ? number : null;
+    }
+
+    async Task<(ReportIssueRevocation Issue, Uri? Url)> RedactIssueAsync(int? issueNumber, string reference, CancellationToken ct)
+    {
+        if (issueNumber is null) return (ReportIssueRevocation.NotCreated, null);
+        GitHubIssueUpdateResult update = await github.UpdateIssueAsync(issueNumber.Value,
+            new GitHubIssueUpdate("Revoked bug report " + reference,
+                "This report was revoked at the reporter's request. Its files and private record are being deleted."), ct)
+            .ConfigureAwait(false);
+        ReportIssueRevocation issue = update.Outcome switch
+        {
+            GitHubIssueUpdateOutcome.Updated => ReportIssueRevocation.Redacted,
+            GitHubIssueUpdateOutcome.Gone => ReportIssueRevocation.Gone,
+            GitHubIssueUpdateOutcome.Moved => ReportIssueRevocation.Moved,
+            _ => throw new ArgumentOutOfRangeException(nameof(update), update.Outcome, "Unknown issue update outcome."),
+        };
+        return (issue, update.IssueUrl);
     }
 
     async Task<ResolvedReport?> LoadAsync(string id, CancellationToken ct)

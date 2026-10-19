@@ -91,14 +91,19 @@ public sealed class BugReportRelay
         return RelayResponses.Revocation(await RevokeReportAsync(report, cancellationToken).ConfigureAwait(false));
     }
 
-    /// <summary>Processes durable issue work using create-only, ten-minute claims.</summary>
+    /// <summary>Processes claimed issue work or idempotent cleanup of revoked reports.</summary>
     /// <remarks>
     /// Completed work returns normally. Unfinished work with a busy claim throws for host redelivery.
     /// Failed holders release their claim, while a crash without release requires lease expiry for takeover.
-    /// A GitHub write whose result cannot be saved can be duplicated on takeover.
+    /// A GitHub write whose result cannot be saved can be duplicated on takeover. Purges take no claim.
     /// </remarks>
     public Task ProcessWorkAsync(ReportWorkItem item, CancellationToken cancellationToken)
-        => worker.ProcessAsync(item, cancellationToken);
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        return item.Kind == ReportWorkKind.PurgeRevoked
+            ? revoker.PurgeAsync(item.ReportId, cancellationToken)
+            : worker.ProcessAsync(item, cancellationToken);
+    }
 
     static void Validate(BugReportRelayOptions options)
     {

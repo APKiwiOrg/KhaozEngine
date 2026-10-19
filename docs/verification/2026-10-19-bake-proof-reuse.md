@@ -625,3 +625,163 @@ history remain with Task 7. No golden, version, raw physics identity, tolerance,
 ceiling, storage limit or baked schema changed. No cost harness, wall-clock measurement, load,
 stress, consumer launch, world bake, workflow, release, tag, push, merge, branch change, GitHub
 write or agent/reviewer dispatch occurred. All test commands ran one at a time through build-slot.
+
+## Task 5. Byte, geometry, arithmetic and scheduling certification
+
+The test-only Off, Footprints and Combined modes disable only this lane. Combined explicitly
+opts serial callers into stable providers. The original Baselines, BuildFixture and NormalizeFile
+helpers and every pinned digest are unchanged. No production source, identity, schema, tolerance,
+band, work ceiling or retention limit changed.
+
+### Finite byte and order matrix
+
+EveryPinnedFileAndDegreeMatchesUnchangedSerialBytes has 35 theory rows. Each checks all three
+modes against the actual Off serial KENB file, every unchanged normalized hash, every profile's
+complete graph bits and the existing semantic assertions. SourceAndDirectionOrderDoNotChangeBakeBytes
+has another 35 rows. For each mode it first pins its independently reconstructed file, then calls
+real BeginSource and TryEdge in reversed source order, reversed direction order and both orders
+reversed. It places results in canonical graph slots and uses the production KENB writer.
+No production order control exists. Legacy profiles remain in the complete mixed-profile file.
+
+| Fixture | Total layer rows | Tested degrees in each mode |
+| --- | ---: | --- |
+| low-lip-bank | 8 | 1, 2, 3, 8, 9 |
+| deck-over-ground | 16 | 1, 2, 3, 8, 17 |
+| wade-only-pool | 12 | 1, 2, 3, 8, 13 |
+| rebased-origin | 8 | 1, 2, 3, 8, 9 |
+| mixed-legacy-contact | 8 | 1, 2, 3, 8, 9 |
+| stair-accepted-refused | 6 | 1, 2, 3, 8, 7 |
+| multi-layer-row-bands | 20 | 1, 2, 3, 8, 21 |
+
+This is 105 named configurations, 105 full-file comparisons and 315 reordered full-file
+comparisons. Every supplied degree is checked against the fixture's actual layer-row count.
+No golden was regenerated. The final command results are recorded below.
+
+### Protection, arithmetic and lifetime controls
+
+The pool retains eight rejected level-support neighbours. Extended stairs retain four asymmetric
+opposite-direction pairs and row bands retain 28. Those counts include same-layer directions as
+well as Stair links. Seven new adversaries cover a forbidden corner touched by the circular disc,
+a thin intervening wall, a lift blocked by a roof, next-raw/headroom, an unsupported hole, a lower
+layer under a deck and changing support inside the disc. All three modes retain the original
+accepted or refused result, including repeated requests in a source group.
+
+Arithmetic coverage uses exact 0.001 m equality and adjacent binary32 values, a diagonal X/Z
+residual and a mixed vertical residual outside the Euclidean ball, diagonal travel, budgets 1,
+2 and 160, signed zero, near-zero inputs and positive/negative rebased origins. The direct real
+Hold result is the independent initial-step control. Current and copied-Hold proofs keep its
+verdict, including original refusals. Real output feet after centre/feet round trips compare by
+bits across independent leases and payload hits. No arithmetic order or epsilon is changed.
+
+WorkerPhaseThreadChangeCannotInheritAReuseSession constructs one worker on the caller, then
+runs three phases on three distinct dedicated threads. Construction and ungrouped admission have
+no session. Each grouped phase opens lazily, closes its session and starts another group cold.
+Four distinct sessions stay on their two executing phase threads. Retention is zero at every
+group and phase boundary. Reference policy reaches callbacks on all worker phases and seeds
+neither layer. Existing forced-band, cutoff, partial setup, interrupted join and disposal
+precedence checks now run in all three modes. ReuseFailureSelectionMatchesSerialUnderForcedBands
+retains the lowest serial producer failure when the later band finishes first.
+
+Full-payload tests use Task 2's explicit little-endian field serializer. They compare every
+member field, both witness slots, proposal verdicts and join words on tilted cylinders,
+capsule crowns, tiny faces, coincident statics/children, mesh edge joins, compound hulls,
+certified hulls, independent roofs and represented captured stairs in split/compound and
+zero/rebased frames. Reference payloads agree and bypass reuse. Old results remain invalid.
+Four fresh-interval continuity cases compare direct joined rows and actual GroundSeat outputs
+after hits, including gaps and a non-transitive strip. Old arena evidence stays invalid.
+The existing independent neighbourhood and captured-stair oracle tests remain unchanged.
+
+### Commands, corrections and results
+
+All tests ran synchronously, one command at a time through build-slot. No full suite, timing,
+load, stress, allocation, consumer, world bake, workflow, pack or release ran. Cost, timing and
+capture environment-variable names were absent. Logs are in /tmp/khaozengine-bake-proof-reuse.
+
+```bash
+build-slot --heavy --label bake-b-design -- dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release --filter 'FullyQualifiedName~ContactNavigationProofReuseBaselineTests|FullyQualifiedName~ContactNavigationProofReuseProtectionTests|FullyQualifiedName~ContactNavigationProofReuseScheduleTests|FullyQualifiedName~ParallelContactBakeScheduleTests|FullyQualifiedName~ParallelContactBakeFailureTests'
+```
+
+The first invocation exited 1 at compilation because the test project cannot access Navigation's
+internal direction helpers. A test-owned canonical direction table corrected that compile error.
+The second invocation exited 1 with 119 passed and 12 failed. All 70 byte/order rows and all 39
+schedule/cleanup rows passed. Failures were new test assumptions, with no reuse/reference
+mismatch. The pair count had omitted same-layer directions. The analytic floor filled the hole.
+The flat scene did not require a lift beneath the roof. The arithmetic control used the wrong
+centre/feet operation order and assumed every original rebased Hold succeeded. The controls
+now use an actual real Hold, a binary-exact floor and the complete unchanged predicates.
+The hole has an actual unsupported region and the roof obstructs a required step.
+
+```bash
+build-slot --heavy --label bake-b-design -- dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release --filter 'FullyQualifiedName~ContactNavigationProofReuseProtectionTests'
+```
+
+Exit 0, 22 passed, zero failed or skipped after those fixture/assertion corrections.
+The original broad selection then ran again after the final coverage and whitespace changes.
+Final exit 0. All 131 passed, zero failed or skipped. The complete matrix, all 22 protection
+rows and all 39 scheduling/cleanup rows passed after the final changes. No compiler warnings
+or errors were emitted.
+
+```bash
+build-slot --heavy --label bake-b-design -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter 'FullyQualifiedName~SupportFootprintProofReuseGeometryTests|FullyQualifiedName~SupportNeighborhoodEquivalenceTests|FullyQualifiedName~CapturedStairExplicitSweepTests'
+```
+
+The first invocation exited 1 at compilation for the test's incorrect SupportMemberKey field
+name. It was corrected to FeatureId. The second exited 1 with 73 passed and two failed because
+the new rebased stair requests supplied absolute coordinates to a local-physics API. The
+requests now subtract the captured physics origin, retaining the original geometric band and
+the installed fixture's real yaw. There was no production defect and no correction commit.
+Final exit 0. All 75 passed, zero failed or skipped. This includes all 17 new geometry and
+continuity rows and the unchanged independent oracle selections. No compiler warnings or errors
+were emitted.
+
+A targeted dotnet format whitespace command through build-slot included only the eight owned
+C# paths. Exit 0. Workspace loading emitted a generic warning, without a compiler diagnostic.
+Full solution build, full test selection and full format verification remain with Task 7.
+
+### Self-review and work boundary
+
+The implementation author reviewed the complete diff. Canonical graph slots and the KENB writer
+are real, session ownership is local and every old metadata or arena handle is rejected.
+All edits are test or verification evidence. No production fix, weakened predicate, widened
+bound, new golden, version change or attributed commit is included. Task 6 owns the independent
+nine-fixture work targets and counter/retention disposition. No savings acceptance is claimed
+from this certification step. The companion Task 6 record supplies that table after measurement.
+
+### Task 5 self-review. Forced failures after real reuse hits
+
+The older SmallStairScene forwarding view deliberately lacks the optional footprint-reuse
+capability. Its three-mode controls still exercise fallback and the independently eligible
+Hold optimization. Self-review added ReuseFailureSelectionMatchesSerialAfterRealHitsUnderForcedBands
+on the real capable ordinary view, in Off, Footprints and Combined modes. Two workers own
+separate original raw source addresses. Each seeds successful proofs first. The enabled modes
+assert real footprint hits, and Combined also asserts Hold hits, before the failure query.
+A fixed analytic query address fails per source. Completion gates and a join force the later
+worker to publish its failure before the earlier source can throw. The selected failure still
+matches the real serial proof, and all retained payload is released after both workers join.
+The fault function's result depends only on the query address. Coordination changes order only.
+
+```bash
+build-slot --heavy --label bake-b-design -- dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release --filter 'FullyQualifiedName~ContactNavigationProofReuseScheduleTests|FullyQualifiedName~ParallelContactBakeScheduleTests|FullyQualifiedName~ParallelContactBakeFailureTests'
+```
+
+Exit 0, 42 passed, zero failed or skipped. No compiler warnings or errors. This adds three
+verified cases to the prior 131-test Movement selection, for 134 distinct certified Movement
+cases. The byte/order matrix and geometry selections are unchanged. The self-review change is
+folded into the Task 5 commit before the separate Task 6 commit. No production correction was
+needed. Pending Task 6 paths remain unstaged during this amendment.
+
+### Task 5 self-review. Roof isolates the intermediate lift
+
+The roof adversary now has a narrow intermediate lip and a roof above that lip, with both
+endpoints on unobstructed level floor. Independent endpoint Holds and footprint checks admit
+both ends. The otherwise identical route without the roof passes. The roof route refuses in
+Off, Footprints and Combined modes, proving that endpoint fit cannot replace lifted clearance.
+The positive control adds one case to the seven requested adversaries. This strengthens the
+original control, which could refuse at the destination's own headroom precheck.
+
+```bash
+build-slot --label bake-b-design -- dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release --filter 'FullyQualifiedName~ProtectionCasesKeepSerialVerdict'
+```
+
+Exit 0, eight passed, zero failed or skipped. There is no production change or new golden.
+The complete Task 5 proof set now has 135 distinct Movement cases and 75 geometry/oracle cases.

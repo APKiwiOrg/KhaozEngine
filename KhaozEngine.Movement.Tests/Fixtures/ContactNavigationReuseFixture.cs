@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using System.Reflection;
 using KhaozEngine.Locomotion;
@@ -14,8 +15,109 @@ using static KhaozEngine.Tests.Movement.Fixtures.ContactNavigationFixture;
 
 namespace KhaozEngine.Tests.Movement.Fixtures;
 
+public enum ContactNavigationReuseMode { Off, Footprints, Combined }
+
 internal sealed class ContactNavigationReuseFixture : IDisposable
 {
+    internal static readonly (int X, int Z)[] Directions =
+        [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)];
+    internal static ContactNavigationBuildHooks Hooks(ContactNavigationReuseMode mode) => new()
+    {
+        DisableFootprintReuse = mode == ContactNavigationReuseMode.Off,
+        DisableInitialHoldReuse = mode != ContactNavigationReuseMode.Combined,
+    };
+
+    internal static ContactNavigationBaselineTests.BaselineBake Build(string fixture, ContactNavigationReuseMode mode, int degree)
+    {
+        using var hooks = ContactNavigationBuildHooks.Install(Hooks(mode));
+        return ContactNavigationBaselineTests.BuildFixture(fixture, new NavBakeExecution(degree)
+        { UseStableContactHoldReuse = mode == ContactNavigationReuseMode.Combined });
+    }
+
+    internal byte[] ProveInOrder(bool reverseSources, bool reverseDirections)
+    {
+        var baked = GroundNavigationBake.Create(Bake, ContactBakeFile.Sources(), [new("player", Tuning, default)],
+            new NavBakeExecution(1) { UseStableContactHoldReuse = true });
+        ProveInOrder(Bake, Context, baked, reverseSources, reverseDirections, ContactNavigationReusePolicy.Capture(
+            new NavBakeExecution(1) { UseStableContactHoldReuse = true }));
+        return ContactBakeFile.Write(baked);
+    }
+
+    // Re-evaluate real proofs, then write their verdicts into canonical slots in this locally owned bake.
+    internal static void ProveInOrder(PhysicsNavBake capture, GroundMoveContext context, GroundNavigationBake baked,
+        bool reverseSources, bool reverseDirections, ContactNavigationReusePolicy policy)
+    {
+        foreach (string name in baked.ProfileNames)
+        {
+            GroundNavigation original = baked.GetProfile(name);
+            if (original.Identity.Kind != EffectiveMovementBindingKind.OrdinaryContact) continue;
+            MoveTuning tuning = original.Identity.Tuning;
+            using var source = context.CreateNavigationBinding(tuning);
+            using var proof = new ContactNavigationProof(capture, context, source, original.Footprint, policy);
+            var cells = new List<(int Layer, int X, int Z)>();
+            var nodes = new bool[original.Space.Layers.Count][];
+            var exits = new byte[nodes.Length][];
+            var addresses = new ContactNavigationSources();
+            for (int layer = 0; layer < nodes.Length; layer++)
+            {
+                NavGrid grid = original.Space.Layers[layer];
+                nodes[layer] = new bool[grid.Width * grid.Height];
+                exits[layer] = new byte[nodes[layer].Length];
+                for (int z = 0; z < grid.Height; z++)
+                    for (int x = 0; x < grid.Width; x++)
+                    {
+                        if (!original.Graph.IsNodePassable(layer, x, z)) continue;
+                        nodes[layer][z * grid.Width + x] = true;
+                        cells.Add((layer, x, z));
+                        float raw = grid.SurfaceHeightAt(x, z)!.Value;
+                        Vector2 centre = grid.CellCenter(x, z);
+                        var column = capture.Columns.GetColumn(x, z);
+                        for (int ordinal = 0; ordinal < column.Length; ordinal++)
+                            if (BitConverter.SingleToInt32Bits(column[ordinal].Height) == BitConverter.SingleToInt32Bits(raw))
+                                addresses.Record(new(centre.X, raw, centre.Y), new(x, z, ordinal, BitConverter.SingleToInt32Bits(raw)));
+                    }
+            }
+            addresses.BindLayers(original.Space);
+            if (reverseSources) cells.Reverse();
+            int[] directions = reverseDirections ? [7, 6, 5, 4, 3, 2, 1, 0] : [0, 1, 2, 3, 4, 5, 6, 7];
+            foreach (var cell in cells)
+            {
+                NavGrid grid = original.Space.Layers[cell.Layer];
+                Assert.True(addresses.TryGet(cell.Layer, cell.X, cell.Z, out var address));
+                using var group = proof.BeginSource(address);
+                foreach (int direction in directions)
+                {
+                    int nx = cell.X + Directions[direction].X, nz = cell.Z + Directions[direction].Z;
+                    if (!original.Graph.IsNodePassable(cell.Layer, nx, nz)) continue;
+                    if (proof.TryEdge(Feet(grid, cell.X, cell.Z), Feet(grid, nx, nz)))
+                        exits[cell.Layer][cell.Z * grid.Width + cell.X] |= (byte)(1 << direction);
+                }
+            }
+            var layers = original.Space.Layers.Select((grid, layer) =>
+                new NavTraversalLayer(grid.Width, grid.Height, nodes[layer], exits[layer])).ToArray();
+            var links = original.Space.Links.Where(link => link.Kind == NavLinkKind.Stair &&
+                original.Graph.IsNodePassable(link.FromLayer, link.FromX, link.FromZ) &&
+                original.Graph.IsNodePassable(link.ToLayer, link.ToX, link.ToZ) &&
+                proof.TryEdge(Feet(original.Space.Layers[link.FromLayer], link.FromX, link.FromZ),
+                    Feet(original.Space.Layers[link.ToLayer], link.ToX, link.ToZ))).ToArray();
+            var replacement = new GroundNavigation(new NavTraversalGraph(original.Space, original.AgentRadius,
+                original.AgentHeight, layers, links), tuning, original.Footprint, original.Aquatic);
+            SameGraphBits(original, replacement);
+            const BindingFlags fields = BindingFlags.Instance | BindingFlags.NonPublic;
+            var profiles = (GroundNavigation[])typeof(GroundNavigationBake).GetField("_profiles", fields)!.GetValue(baked)!;
+            profiles[Array.IndexOf(baked.ProfileNames.ToArray(), name)] = replacement;
+            var byName = (Dictionary<string, GroundNavigation>)typeof(GroundNavigationBake).GetField("_byName", fields)!.GetValue(baked)!;
+            byName[name] = replacement;
+            proof.AssertCurrent();
+        }
+
+        static Vector3 Feet(NavGrid grid, int x, int z)
+        {
+            Vector2 centre = grid.CellCenter(x, z);
+            return new(centre.X, grid.RestingHeightAt(x, z)!.Value, centre.Y);
+        }
+    }
+
     internal readonly ConcurrentQueue<object> Trace = new();
     internal readonly OrdinaryContactScene Scene;
     internal readonly GroundMoveContext Context;

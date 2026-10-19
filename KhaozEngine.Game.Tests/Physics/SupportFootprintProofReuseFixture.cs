@@ -35,6 +35,57 @@ internal sealed class SupportFootprintProofReuseFixture : IDisposable
     internal SupportFootprintResult Query(IPhysicsQueryLease lease) =>
         World.QuerySupportFootprint(lease, Request, Members, Joins);
 
+    internal static IPhysicsSupportFootprintReuseSession Open(BepuPhysicsWorld world, IPhysicsQueryLease lease)
+    {
+        Assert.True(world.TryOpenSupportFootprintReuse(lease, out var session));
+        Assert.NotNull(session);
+        session.ResetSource(new(new object(), new object()));
+        return session;
+    }
+
+    internal static SupportFootprintScene Geometry(string scenario, out SupportFootprintRequest request)
+    {
+        request = SupportFootprintTests.Request();
+        if (scenario == "mesh-edge-joins") return SupportFootprintScenes.Grid(2);
+        if (scenario == "coincident-statics") return SupportFootprintScenes.Cluster(3, false, FootprintPartition.Boxes);
+        if (scenario == "coincident-children") return SupportFootprintScenes.Cluster(3, false, FootprintPartition.Compound);
+        var scene = new SupportFootprintScene();
+        switch (scenario)
+        {
+            case "tilted-cylinder":
+                scene.Install(new CylinderShape(0.3f, 2), new(new(0, -0.25f, 0),
+                    Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 6)));
+                request = SupportFootprintTests.Request(z: 0.1f, lower: -2, upper: 2, cosine: 0.4f);
+                break;
+            case "capsule-crown":
+                scene.Install(new CapsuleShape(0.25f, 0.5f), Pose.At(new(0, -0.5f, 0)));
+                break;
+            case "tiny-face":
+                scene.Install(new TriangleMeshShape([new(-0.001f, 0, -0.001f), new(0.001f, 0, -0.001f),
+                    new(0, 0, 0.001f)], [0, 1, 2]), Pose.Identity);
+                break;
+            case "compound-hulls":
+                Vector3[] corners = new Vector3[8];
+                for (int i = 0; i < corners.Length; i++)
+                    corners[i] = new((i & 1) == 0 ? -1 : 1, (i & 2) == 0 ? -1 : 1, (i & 4) == 0 ? -1 : 1);
+                var hull = new ConvexHullShape(corners);
+                scene.Install(new CompoundShape([new(hull, Pose.At(new(-1, -1, 0))),
+                    new(hull, Pose.At(new(1, -1, 0)))]), Pose.Identity);
+                break;
+            case "certified-hull":
+                scene.Install(CertifiedHullSweepTests.Tetrahedron(), Pose.Identity);
+                request = SupportFootprintTests.Request(x: 0.25f, z: 0.25f, cosine: 0.4f, lower: -1, upper: 2);
+                break;
+            case "independent-roof":
+                scene.Install(new BoxShape(new(2, 1, 2)), Pose.At(new(0, -1, 0)));
+                scene.Install(new TriangleMeshShape([new(-1, 0.25f, -1), new(1, 0.25f, -1),
+                    new(0, 0.25f, 1)], [0, 1, 2]), Pose.Identity);
+                break;
+            default: throw new ArgumentOutOfRangeException(nameof(scenario));
+        }
+        return scene;
+    }
+
     internal long[] Bits(in SupportFootprintResult result) => Bits(result, Members, Joins);
 
     internal static byte[] SerializePayloadBits(in SupportFootprintResult result,

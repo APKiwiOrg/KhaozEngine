@@ -182,6 +182,12 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   material participation and resource liveness once, then encodes the GPU chain. `GetCoverageOutcome` reports
   `Dispatched` after encoding, or a CPU/capability `UncoveredFallback`. `DispatchedHostPreparationCount` counts
   encoded hosts. A numerical GPU refusal does not change that same-frame diagnostic result.
+  With actor, command, history and diagnostic capacities reserved and both final generations warmed,
+  coverage staging, frame reservation, packing and dispatch, surface resolution, diagnostic copy recording
+  and completed outcome enumeration allocate no managed bytes. Native allocation tests exercise two changed
+  actors through refusal and recovery. A separate mixed 32-actor native batch compares every selected vertex
+  word and outcome identity. Cold scene configuration can allocate and drain. These correctness observations
+  establish neither the 32-actor CPU preparation budget nor native GPU overhead.
   Without compute or after one kernel-build failure, requested hosts use ordinary vertex-shader skinning even
   when `UseGpuSkinning` is false. The capability failure is reported once per scene and kernel creation is not
   retried each frame. Equipment descriptors keep their ordinary drawing route.

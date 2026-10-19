@@ -366,6 +366,7 @@ internal sealed class CoverageAttachmentFixture : IDisposable
         }
     }
     internal void Render(bool prepare = true) => render.Render(prepare: prepare);
+    internal void RenderUncaptured(IGpuCommandList commands) => render.RenderUncaptured(commands);
     internal RecordingGpuCommandList Record => render.Record;
     internal void DrainRetired()
     {

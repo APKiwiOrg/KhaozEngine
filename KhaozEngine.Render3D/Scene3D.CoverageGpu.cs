@@ -33,10 +33,14 @@ public sealed partial class Scene3D
         _coverageGpu?.PrepareFrame();
         ReserveCoverageOutcomes();
         ReserveCoverageVerification();
-        int draws = _skinnedInstances.Items.Count, vertices = 0;
-        foreach (var item in _skinnedInstances.Items)
+        var items = _skinnedInstances.Items;
+        int draws = items.Count, vertices = 0;
+        for (int i = 0; i < draws; i++)
+        {
+            var item = items[i];
             if (!UseCoverageVertexSkinning(item.Mesh, item.Coverage.Preparation is not null) && _skinnedCpuVerts[item.Mesh.Index] is { } source)
                 vertices = checked(vertices + source.Length);
+        }
         _cpuSkinnedVerts.EnsureCapacity(vertices); _cpuSkinnedInstances.EnsureCapacity(draws); _cpuSkinnedDraws.EnsureCapacity(draws);
         _cpuSkinnedPrevious.EnsureCapacity(vertices);
         if (vertices > 0) _model.ReserveCoveredSkinning(vertices, draws, vertices);

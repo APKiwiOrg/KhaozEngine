@@ -12,7 +12,7 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Render3D;
 
 [Collection("AllocSensitive")]
-public sealed class CoverageAllocationTests(ITestOutputHelper output)
+public sealed partial class CoverageAllocationTests(ITestOutputHelper output)
 {
     [Theory]
     [InlineData(false)]
@@ -54,6 +54,7 @@ public sealed class CoverageAllocationTests(ITestOutputHelper output)
         var palette = new Matrix4x4[f.Skeleton.BoneCount];
         var template = f.Template;
         var scratchDraws = new AttachmentDraw[equipment.Set.DrawCount];
+        using var uncaptured = new NullGpuCommandList();
 
         // Swap poses and actor order, warming both GPU history generations before allocation checks.
         WarmFrame(f, a, lifted, b, bent, palette, template);
@@ -85,7 +86,7 @@ public sealed class CoverageAllocationTests(ITestOutputHelper output)
             if (entering) surfaceStart = GC.GetAllocatedBytesForCurrentThread();
             else { surface += GC.GetAllocatedBytesForCurrentThread() - surfaceStart; surfaces++; }
         };
-        f.Render(prepare: false);
+        f.RenderUncaptured(uncaptured);
         f.Scene.CoverageAllocationObserverForTests = null;
         f.Scene.CoverageSurfaceAllocationObserverForTests = null;
 
@@ -114,8 +115,6 @@ public sealed class CoverageAllocationTests(ITestOutputHelper output)
         Assert.Equal(warmA, finalB);
         Assert.NotEqual(warmA, finalA);
         Assert.NotEqual(finalA, finalB);
-        AssertSubmittedSurface(f, a.Frame);
-        AssertSubmittedSurface(f, b.Frame);
 
         // Actor identities and equipment membership survive the switch in the frozen command snapshots.
         Assert.NotSame(a.Frame.Preparation, b.Frame.Preparation);
@@ -123,6 +122,13 @@ public sealed class CoverageAllocationTests(ITestOutputHelper output)
         Assert.Equal(MotionKey.From(b.Key), b.Frame.Preparation!.Actor);
         AssertPassInstances(f, a.Frame, a.Instance, b.Instance);
         AssertPassInstances(f, b.Frame, b.Instance, a.Instance);
+
+        // A separate captured encoding frame checks upload words outside the allocation interval.
+        SubmitFrame(f, a, lifted, b, bent, palette, template);
+        Array.Fill(palette, Matrix4x4.CreateScale(9));
+        f.Render();
+        AssertSubmittedSurface(f, a.Frame);
+        AssertSubmittedSurface(f, b.Frame);
 
         Assert.Equal(0, submission);
         Assert.Equal(0, reserve);

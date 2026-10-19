@@ -76,8 +76,9 @@ public sealed class CoverageTemporalAllocationTests(ITestOutputHelper output)
         Assert.True(motionDraws > 0);
         Assert.Equal(transition.Preparation!.Actor, motion.Actor);
         Assert.Equal(transition.Preparation.GpuReservation.CurrentBase, motion.Surface.CurrentBase);
-        Assert.Same(h.Scene.CoverageGpuBatchForTests!.Current, motion.Surface.Current);
-        Assert.Same(h.Scene.CoverageGpuBatchForTests.Previous, motion.Surface.Previous);
+        // Submitted commits the encoded current generation as the next frame's previous generation.
+        Assert.Same(h.Scene.CoverageGpuBatchForTests!.Previous, motion.Surface.Current);
+        Assert.Same(h.Scene.CoverageGpuBatchForTests.Current, motion.Surface.Previous);
 
         Assert.True(transition.Preparation!.MotionEligible);
         // Native history tests separately prove the selected position words.

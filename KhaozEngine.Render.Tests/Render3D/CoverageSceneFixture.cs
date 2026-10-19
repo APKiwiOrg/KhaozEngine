@@ -127,18 +127,26 @@ internal sealed partial class CoverageSceneFixture : IDisposable
         Record = new RecordingGpuCommandList(new NullGpuCommandList())
         { CapturePayloads = true, CaptureBindings = true, UniformWindowsOfSet = tracker.WindowsOf, BeforeIndexedDraw = BeforeDraw };
         Record.BeforeNonIndexedDraw = (bindings, _, _, _, _) => BeforeNonIndexedDraw?.Invoke(bindings);
+        RenderSubmitted(Record, width, height);
+    }
+    void RenderSubmitted(IGpuCommandList commands, int width, int height)
+    {
         nativeSubmission ??= new(device);
         nativeSubmission.Begin();
         try
         {
-            Scene.RenderInternal(Record, width, height, target);
-            Scene.RecordCoverageReadbacks(Record, nativeSubmission);
-            nativeSubmission.Submit(Record);
+            RecordUncaptured(commands, nativeSubmission, width, height);
+            nativeSubmission.Submit(commands);
         }
         catch { nativeSubmission.Abandon(); throw; }
     }
     internal void RenderUncaptured(IGpuCommandList cl)
-    { Scene.PrepareFrame(32, 24); Scene.RenderInternal(cl, 32, 24, target); }
+    { Scene.PrepareFrame(32, 24); RenderSubmitted(cl, 32, 24); }
+    internal void RecordUncaptured(IGpuCommandList commands, GpuFrameSubmission submission, int width = 32, int height = 24)
+    {
+        Scene.RenderInternal(commands, width, height, target);
+        Scene.RecordCoverageReadbacks(commands, submission);
+    }
     public void AssertCanonicalDraws(SkinnedCoverageFrame frame) => AssertCoverageDispatch(frame);
     internal void AssertCoverageDispatch(SkinnedCoverageFrame frame)
     {

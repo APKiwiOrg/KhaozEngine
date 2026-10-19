@@ -1,4 +1,51 @@
-# Equipment coverage GPU correctness, Part C Task 7
+# Equipment coverage GPU correctness, Part C
+
+## Task 16 allocation and batch boundaries
+
+`CoverageComputeBatchGpuTests` owns three executing native facts. The warmed changed-pose fact
+reserves two actors, fills all three outcome slots and warms both submitted final generations before
+measuring two distinct poses with a GPU recession refusal and recovery. Temporal history is active.
+The test checks actual submitted buffer rotation, history reuse, every selected vertex word and
+frame, view, actor and preparation identities from native headers and completed outcomes.
+
+Measured coverage intervals are public equipment and host staging with draw submission, frame
+reservation, packing and compute dispatch inside resolution, pulled surface resolution, outcome-copy
+recording and completed outcome enumeration. Each requires zero managed bytes. Native command-list
+opening and host submission still execute, including the shared submission participant. Their general
+backend bookkeeping is outside the coverage allocation intervals. Assertion drains, reference
+construction, payload capture, word readback, comparison and evidence writing are outside those intervals.
+The full-ring fact warms completed enumeration before filling the ring again. Its fourth submission
+continues drawing and history while dropping only that frame's outcome copy.
+A first, previously unwarmed completed-enumeration observation allocated 88 bytes. Its exact internal
+source remains unattributed. The bounded warm-up exercises that missing path once before measurement.
+There is no production workaround, allocation subtraction or repeated-until-green test.
+
+The headless allocation facts retain their zero assertions. Captured upload words and actor memberships
+are checked in a separate encoding frame. The measured uncaptured route shares the submission owner,
+readback registration and Submitted history callback with the captured route. Recording observations
+prove command encoding. Native facts supply the selected words and completed outcomes.
+
+The observed 200-byte reservation allocation came from interface enumeration of the skinned draw list.
+Replacing only that traversal with its existing count and indexer removed it. Restoring the traversal
+made both native measured frames fail at Prepare=200 while all other coverage intervals stayed zero.
+Changed-actor recorder isolation separately removed Resolution=5696. The recorder's payload copies and
+fresh containers belonged to test instrumentation. No production resolution fix or allocation allowance
+was introduced.
+
+`Thirty_two_mixed_actors_are_independent` submits one correctness batch with reversed actor and material
+order, one or two commands, reversed command inputs, seam and refinement variations, and independent
+covered and refused actors. It compares all 16 words per selected vertex and every outcome identity.
+Its allocation and resource-creation observations describe cold batch configuration. Two cold waits
+come from `Scene3D.EnsureSize` and `RenderResources.DisposeTargets` while replacing the initial MRT
+configuration. Both exact call stacks remain in the native packet. Outcome-copy recording and completed
+enumeration wait zero times. The separate warmed two-actor and full-ring facts require zero production
+waits and zero resource creation. This batch supplies no warm 32-actor allocation or timing claim.
+
+Native packets are `coverage-batch-warm.<backend>.json`, `coverage-batch-mixed32.<backend>.json` and
+`coverage-batch-full-ring.<backend>.json`, emitted only through `KE_COVERAGE_EVIDENCE_DIR`.
+The mixed packet retains independent expected words, actual device words, native headers, decoded
+outcomes and cold wait stacks. The frozen 72 constructions and 144-row manifest remain unchanged.
+CPU 2 ms for 32 actors and native GPU 15 percent overhead remain unmeasured.
 
 ## Commit and native gate
 

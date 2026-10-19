@@ -17,6 +17,7 @@ public sealed class CoverageGpuStagingTestsCompute
     {
         using var gpu = GpuDeviceContext.CreateHeadless();
         using var h = new CoverageSceneFixture(nativeDevice: gpu.GpuDevice);
+        using var submission = new GpuFrameSubmission(gpu.GpuDevice);
         foreach (bool refuse in new[] { false, true })
         {
             h.Begin();
@@ -37,12 +38,13 @@ public sealed class CoverageGpuStagingTestsCompute
             var batch = h.Scene.CoverageGpuBatchForTests!;
             using var staging = gpu.GpuDevice.Factory.CreateBuffer(new(batch.Current.SizeInBytes, GpuBufferUsage.Staging));
             using var commands = gpu.GpuDevice.Factory.CreateCommandList();
+            submission.Begin();
             commands.Begin();
-            h.RenderUncaptured(commands);
+            h.RecordUncaptured(commands, submission);
             commands.CopyBuffer(batch.Current, 0, staging, 0, batch.Current.SizeInBytes);
             commands.End();
             Assert.Equal(CoveragePresentation.Dispatched, h.Scene.GetCoverageOutcome(frame).Presentation);
-            gpu.GpuDevice.Submit(commands);
+            submission.Submit(commands);
             // Headless assertion boundary only. Production resolution never drains or reads a final buffer.
             gpu.GpuDevice.WaitForIdle();
             var mapped = gpu.GpuDevice.Map(staging, GpuMapMode.Read);

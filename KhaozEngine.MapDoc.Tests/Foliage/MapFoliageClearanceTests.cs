@@ -362,6 +362,39 @@ public sealed class MapFoliageClearanceTests
     }
 
     [Fact]
+    public void EdgeFade_SpaceNeighbourOnAFinerSurfaceFadesPastItsMargin()
+    {
+        var fixture = FoliageFixtures.EdgeChunkSpace(4);
+        var point = Sample(fixture, 1.75f, 6);
+        Assert.Equal((MapFoliageStatus.Complete, MapFoliageReason.Accepted, "coarse"), (point.Status, point.Reason, point.SupportOwnerId));
+        // Only the west neighbour is ineligible: 1.75 m over the 4 m edge fade.
+        Assert.Equal(0.4375f, point.Density, 0.0001f);
+        var context = FoliageFixtures.Context(fixture);
+        var neighbour = MapFoliageSupport.Prepare(context, context.Foliage!.Layers[0], new(0, 0), new()).Eligibility(-2, 6);
+        Assert.Equal((MapFoliageStatus.Complete, "floor-1"), (neighbour.Status, neighbour.SupportOwnerId));
+        Assert.NotEqual(MapFoliageReason.Accepted, neighbour.Reason);
+    }
+
+    [Fact]
+    public void EdgeFade_ZeroKeepsTheChunkGridsAndWideningCharges()
+    {
+        MapPreparedFoliageSupport Prepared(float edge, MapFoliageLimits limits)
+        {
+            var context = FoliageFixtures.Context(FoliageFixtures.EdgeChunkSpace(edge));
+            return MapFoliageSupport.Prepare(context, context.Foliage!.Layers[0], new(0, 0), limits);
+        }
+        var off = Prepared(0, new());
+        // Measured at a74f58a87, before the grids took the edge fade reach.
+        Assert.Equal((MapFoliageStatus.Complete, 4334, 17336L, 61),
+            (off.Status, off.Grids.Sum(g => g.Cells.Count), off.Work.Faces, off.DependencyParts.Count));
+        var on = Prepared(4, new());
+        Assert.True(on.Grids.Sum(g => g.Cells.Count) > off.Grids.Sum(g => g.Cells.Count), $"{on.Grids.Sum(g => g.Cells.Count)} cells");
+        Assert.True(on.Work.Faces > off.Work.Faces, $"{on.Work.Faces} faces");
+        Assert.Equal(MapFoliageStatus.CapacityExceeded, Prepared(4, new(MaxFaces: (int)on.Work.Faces - 1)).Status);
+        Assert.Equal(MapFoliageStatus.Complete, Prepared(4, new(MaxFaces: (int)on.Work.Faces)).Status);
+    }
+
+    [Fact]
     public void UnrelatedCave_WithoutCompatibilityProvenanceNeverClears()
     {
         var fixture = FoliageFixtures.Clearance("solid");

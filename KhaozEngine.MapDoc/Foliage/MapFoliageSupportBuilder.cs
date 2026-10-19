@@ -33,8 +33,21 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
             binding.SearchBelow is null || binding.SearchAbove is null))
             throw new MapFoliageRefusal(MapFoliageStatus.Invalid, Work(), "space binding lacks its reference height or search interval");
 
-        var grids = view.Surfaces.Where(s => s.Role == MapSurfaceRole.SupportFloor && (bound is null || s.Id == bound))
-            .OrderBy(s => s.Id, StringComparer.Ordinal).Select(Grid).ToArray();
+        MapSurfaceRef[] floors = view.Surfaces.Where(s => s.Role == MapSurfaceRole.SupportFloor && (bound is null || s.Id == bound))
+            .OrderBy(s => s.Id, StringComparer.Ordinal).ToArray();
+        // One reach widens both the support grids and the shared context, so every neighbour centre edge fade reads has
+        // its prepared cell and its compiled faces. A layer without edge fade keeps the chunk rectangle.
+        double reach = ContextReach(floors);
+        (MapExactXz min, MapExactXz max) = Rectangle(reach);
+        if (reach > 0)
+        {
+            MapExactRect acquired = view.Scope.WorldRectangle();
+            if (min.X.CompareTo(acquired.MinX) < 0 || min.Z.CompareTo(acquired.MinZ) < 0 ||
+                max.X.CompareTo(acquired.MaxX) > 0 || max.Z.CompareTo(acquired.MaxZ) > 0)
+                throw new MapFoliageRefusal(MapFoliageStatus.Unavailable, Work(), "edge fade reach lies outside the chunk acquisition");
+            _parts.Add("context-reach|" + BitConverter.DoubleToInt64Bits(reach).ToString(CultureInfo.InvariantCulture));
+        }
+        var grids = floors.Select(s => Grid(s, min, max)).ToArray();
         _support = MapSupportPreparation.PrepareFoliage(view);
         // A Surface binding owns every present cell of its surface, a logical fallback cell through its compatibility tag.
         if (binding.Kind == MapSupportBindingKind.Surface)
@@ -43,24 +56,12 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
         // candidate keeps the released intersection budget over every support floor. Only invariant states refuse here:
         // the acquisition above and, for a Space binding, a bound space absent from it.
         MapFoliageCandidateSupport? candidates = null;
+        try
         {
-            double reach = ContextReach(grids);
-            (MapExactXz min, MapExactXz max) = Rectangle(reach);
-            if (reach > 0)
-            {
-                MapExactRect acquired = view.Scope.WorldRectangle();
-                if (min.X.CompareTo(acquired.MinX) < 0 || min.Z.CompareTo(acquired.MinZ) < 0 ||
-                    max.X.CompareTo(acquired.MaxX) > 0 || max.Z.CompareTo(acquired.MaxZ) > 0)
-                    throw new MapFoliageRefusal(MapFoliageStatus.Unavailable, Work(), "edge fade reach lies outside the chunk acquisition");
-                _parts.Add("context-reach|" + BitConverter.DoubleToInt64Bits(reach).ToString(CultureInfo.InvariantCulture));
-            }
-            try
-            {
-                candidates = MapFoliageCandidateSupport.Create(view, _support, grids, binding, min, max, limits.MaxFaces - _faces, out long faces);
-                _faces = checked(_faces + faces);
-            }
-            catch (MapFoliageRefusal refusal) { throw new MapFoliageRefusal(refusal.Status, Work(), refusal.Message); }
+            candidates = MapFoliageCandidateSupport.Create(view, _support, grids, binding, min, max, limits.MaxFaces - _faces, out long faces);
+            _faces = checked(_faces + faces);
         }
+        catch (MapFoliageRefusal refusal) { throw new MapFoliageRefusal(refusal.Status, Work(), refusal.Message); }
 
         Describe(binding);
         var materials = new MapFoliageMaterials(layer, paint);
@@ -69,21 +70,24 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
 
     // Clearance edge fade evaluates the four neighbour cell centres of a sample's support cell. A centre lies at most
     // 1.5 cells from the sample along one cell axis and 0.5 along the other, so its world offset on either axis is at
-    // most 1.5 cells, or sqrt(1.5^2 + 0.5^2) < 1.6 cells under a yawed transform. Widening the shared context by that
-    // reach keeps every neighbour query inside it. A layer without edge fade keeps the chunk rectangle.
-    double ContextReach(IEnumerable<MapFoliageSupportGrid> grids)
+    // most 1.5 cells, or sqrt(1.5^2 + 0.5^2) < 1.6 cells under a yawed transform. The reach takes the largest effective
+    // cell of the surfaces that become grids, since a centre from a coarse grid may land on a finer surface.
+    double ContextReach(IEnumerable<MapSurfaceRef> floors)
     {
         if (layer.EdgeFade <= 0) return 0;
         double reach = 0;
-        foreach (MapFoliageSupportGrid grid in grids)
+        foreach (MapSurfaceRef surface in floors)
         {
-            double cell = grid.Surface.Frame.CellUnitMetres.Exact().ToDouble() * (grid.Kernel?.Transform.Scale ?? 1);
-            reach = Math.Max(reach, (grid.Kernel is { Transform.YawRadians: not 0 } ? 1.6 : 1.5) * cell);
+            MapResourceTransform? kernel = Kernel(surface);
+            double cell = surface.Frame.CellUnitMetres.Exact().ToDouble() * (kernel?.Transform.Scale ?? 1);
+            reach = Math.Max(reach, (kernel is { Transform.YawRadians: not 0 } ? 1.6 : 1.5) * cell);
         }
         return reach;
     }
 
-    (MapExactXz Min, MapExactXz Max) Rectangle(double reach = 0)
+    MapResourceTransform? Kernel(MapSurfaceRef surface) => view.EffectiveContext?.Transform(MapPrefabChildKind.Surface, surface.Id);
+
+    (MapExactXz Min, MapExactXz Max) Rectangle(double reach)
     {
         (double minX, double minZ, double maxX, double maxZ) = MapFoliageSupport.Rect(layer, chunk);
         minX -= reach; minZ -= reach; maxX += reach; maxZ += reach;
@@ -103,11 +107,9 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
         throw new MapFoliageRefusal(mapped, Work(), view.Detail ?? "incomplete chunk acquisition");
     }
 
-    MapFoliageSupportGrid Grid(MapSurfaceRef surface)
+    MapFoliageSupportGrid Grid(MapSurfaceRef surface, MapExactXz min, MapExactXz max)
     {
-        MapResourceTransform? kernel = view.EffectiveContext?.Transform(MapPrefabChildKind.Surface, surface.Id);
-        var grid = new MapFoliageSupportGrid(surface, kernel);
-        (MapExactXz min, MapExactXz max) = Rectangle();
+        var grid = new MapFoliageSupportGrid(surface, Kernel(surface));
         MapCellRect range = MapEffectiveGeometry.CellRange(view, surface.Id, min, max);
         // One cell of margin on every side absorbs the released float floor at the rectangle's edges.
         long x0 = checked(range.MinX - 1), z0 = checked(range.MinZ - 1), x1 = checked(range.MaxXExclusive + 1), z1 = checked(range.MaxZExclusive + 1);

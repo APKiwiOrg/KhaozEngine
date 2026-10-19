@@ -5,6 +5,7 @@ using System.Numerics;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Support;
 using KhaozEngine.MapDoc.Surfaces;
@@ -90,67 +91,172 @@ public sealed class MapFoliageSupportTests
         // 1 m ramp rises through the search band [0.5, 1.5] mid-cell and leaves it at x = 14 inside the room, and a 1.5 m
         // terrace on an offset lattice crosses the ramp's height at x = 12, so the higher floor changes per point, never per
         // cell or by floor ID.
-        MapEffectiveResources resources = RoomSpans();
-        MapFoliageLayer layer = FoliageFixtures.Layer("room-cover", Space("a/room", 1f, 0.5f, 0.5f), 0, -16, 2, 9, 9,
-            Enumerable.Repeat((byte)200, 81).ToArray(), []);
+        var counts = CompareRoom(RoomSpans("basic"), Space("a/room", 1f, 0.5f, 0.5f), "a/room");
+        Assert.All(new[] { "ramp", "terrace", "missing", "outside" }, c => Assert.True(counts.GetValueOrDefault(c) > 0, c));
+
+        // The parent occupies [-2, 2) under a 2 m lid while the room prism spans [0, 3): a loft face at 2.5 m inside the
+        // prism lies outside the room's released occupied part, so the band [2, 3] finds no room support there.
+        counts = CompareRoom(RoomSpans("clipped"), Space("a/room", 2.5f, 0.5f, 0.5f), "a/room");
+        Assert.All(new[] { "missing", "outside" }, c => Assert.True(counts.GetValueOrDefault(c) > 0, c));
+        Assert.Equal(0, counts.GetValueOrDefault("loft"));
+
+        // A Surface binding reads its occupied space at each candidate's face height, so the room edge through a ramp cell
+        // splits that cell's occupants.
+        counts = CompareRoom(RoomSpans("basic"), FoliageFixtures.Surface("ramp"), null);
+        Assert.All(new[] { "a/room", "exterior" }, c => Assert.True(counts.GetValueOrDefault("space:" + c) > 0, c));
+
+        // A bound space absent from the chunk's acquisition refuses rather than reporting a known outside.
+        MapEffectiveResources resources = RoomSpans("basic");
+        MapFoliageLayer absent = RoomLayer(Space("nowhere", 1f, 0.5f, 0.5f));
+        MapSurfaceScope scope = MapFoliageSupport.Scope(absent, Origin, resources.SurfaceSource.Surfaces, resources.Transforms);
+        MapPreparedFoliageSupport refused = MapFoliageSupport.Prepare(resources.Acquire(scope), resources.PaintRegions,
+            resources.SurfaceSource.Surfaces, absent, Origin, Limits);
+        Assert.Equal(MapFoliageStatus.Unavailable, refused.Status);
+        Assert.Equal((MapFoliageStatus.Unavailable, MapFoliageReason.Refused), (refused.Sample(10f, -8f).Status, refused.Sample(10f, -8f).Reason));
+    }
+
+    [Fact]
+    public void SpaceBinding_PortalsMissingBoundsAndLegacyFallbackFollowReleasedMembership()
+    {
+        // Candidates exactly on the released cave mouth, an incident non-room portal band between chamber and outside.
+        var onMouth = Enumerable.Range(0, 17).Select(i => (2f + i * 0.25f, 3f, false));
+        var around = Grid(1.513f, 6.6f, 1.513f, 8.6f, 0.211f);
+        foreach (float reference in new[] { 8.2f, 9.5f })
+        {
+            var counts = CompareContext(FoliageFixtures.Wrapped(CaveFixtures.RampChamberShaft().Surfaces, Space("chamber", reference, 0.5f, 0.5f), -1, -1, 6, 6),
+                "chamber", onMouth.Concat(around));
+            Assert.True(counts.Values.Sum() > 0);
+        }
+
+        // A 0.5 m lid with one known missing cell under a quarter of base cell (1, 1): only candidates under that quarter
+        // refuse, through the point's own bound, and the rest of the same support cell is supported.
+        var pocket = CompareContext(FoliageFixtures.Wrapped(FoliageFixtures.Pocket(), Space("pocket", 0.2f, 0.5f, 0.5f), -1, -1, 4, 4),
+            "pocket", Grid(0.013f, 4f, 0.013f, 4f, 0.091f));
+        Assert.True(pocket.GetValueOrDefault("MissingGeometry") > 0);
+        Assert.True(pocket.GetValueOrDefault("base") > 0);
+
+        // The released tagged legacy row: a reachable fallback at 3 m from ReferenceY 5, and below its floor from 2.
+        MapSurfaceSet row = SupportFixtures.LegacyFallback().Surfaces;
+        var reachable = CompareContext(FoliageFixtures.Wrapped(row, Space("world", 5f, 10f, 0.5f), -1, -3, 4, 4), "world",
+            Grid(0.013f, 4f, -0.987f, 0f, 0.097f));
+        Assert.True(reachable.GetValueOrDefault("fallback") > 0);
+        var below = CompareContext(FoliageFixtures.Wrapped(row, Space("world", 2f, 0f, 2f), -1, -3, 4, 4), "world",
+            Grid(0.013f, 4f, -0.987f, 0f, 0.097f).Append((1.5f, -0.5f, false)));
+        Assert.Equal(0, below.GetValueOrDefault("fallback"));
+        Assert.True(below.GetValueOrDefault("missing") + below.GetValueOrDefault("outside") > 0);
+    }
+
+    static IEnumerable<(float X, float Z, bool Face)> Grid(float x0, float x1, float z0, float z1, float step)
+    {
+        for (float z = z0; z < z1; z += step)
+            for (float x = x0; x < x1; x += step) yield return (x, z, true);
+    }
+
+    static MapFoliageLayer RoomLayer(MapSupportBinding binding) => FoliageFixtures.Layer("room-cover", binding, 0, -16, 2, 9, 9,
+        Enumerable.Repeat((byte)200, 81).ToArray(), []);
+
+    static Dictionary<string, int> CompareRoom(MapEffectiveResources resources, MapSupportBinding binding, string? owner)
+    {
+        MapFoliageLayer layer = RoomLayer(binding);
         IReadOnlyList<MapSurfaceRef> declared = resources.SurfaceSource.Surfaces;
         MapSurfaceScope scope = MapFoliageSupport.Scope(layer, Origin, declared, resources.Transforms);
         MapScopedSurfaces view = resources.Acquire(scope);
         MapPreparedFoliageSupport prepared = MapFoliageSupport.Prepare(view, resources.PaintRegions, declared, layer, Origin, Limits);
-        Assert.Equal(MapFoliageStatus.Complete, prepared.Status);
+        return Compare(view, prepared, binding, owner, Grid(8.013f, 16f, -12.987f, -3f, 0.173f));
+    }
 
-        var points = new List<(float X, float Z)>();
-        for (float z = -12.987f; z < -3f; z += 0.173f)
-            for (float x = 8.013f; x < 16f; x += 0.173f) points.Add((x, z));
+    static Dictionary<string, int> CompareContext(FoliageFixture fixture, string owner, IEnumerable<(float X, float Z, bool Face)> points)
+    {
+        MapFoliageGenerationContext context = FoliageFixtures.Context(fixture);
+        MapFoliageLayer layer = context.Foliage!.Layers[0];
+        MapPreparedFoliageSupport prepared = MapFoliageSupport.Prepare(context, layer, Origin, Limits);
+        MapScopedSurfaces view = context.Acquire(MapFoliageSupport.Scope(layer, Origin, context.Resources.SurfaceSource.Surfaces,
+            context.Resources.Transforms));
+        return Compare(view, prepared, layer.Support, owner, points);
+    }
+
+    // Every candidate against a fresh per-point released selection on the same acquisition. A Space NoSupport is
+    // MissingSupport exactly when the released membership column holds a part of the bound space at that XZ, else it is
+    // OutsideDomain. Faces are compared off the lattice's triangle edges, where tie order cannot differ.
+    static Dictionary<string, int> Compare(MapScopedSurfaces view, MapPreparedFoliageSupport prepared, MapSupportBinding binding, string? owner,
+        IEnumerable<(float X, float Z, bool Face)> candidates)
+    {
+        Assert.Equal(MapFoliageStatus.Complete, prepared.Status);
+        var points = candidates.ToArray();
         long before = MapPreparedSupport.ThreadSamples;
         MapFoliageSurfacePoint[] samples = points.Select(p => prepared.Sample(p.X, p.Z)).ToArray();
         Assert.Equal(0, MapPreparedSupport.ThreadSamples - before);
-
         MapPreparedSupport fresh = MapSupportPreparation.Prepare(view);
+        var membership = new MapSpaceMembership(view);
         var counts = new Dictionary<string, int>(StringComparer.Ordinal);
-        for (int i = 0; i < points.Count; i++)
+        for (int i = 0; i < points.Length; i++)
         {
-            MapSupportResult result = fresh.SampleBinding(layer.Support,
-                new(MapExactValue.FromSingle(points[i].X), MapExactValue.FromSingle(points[i].Z)));
+            var (x, z, face) = points[i];
+            var xz = new MapExactXz(MapExactValue.FromSingle(x), MapExactValue.FromSingle(z));
+            MapSupportResult result = fresh.SampleBinding(binding, xz);
             MapFoliageSurfacePoint sample = samples[i];
+            string at = FormattableString.Invariant($"({x}, {z})");
             string category;
-            if (result.Status == MapSupportStatus.Supported)
+            if (result.Status is MapSupportStatus.Supported or MapSupportStatus.LegacyFallback)
             {
-                Assert.Equal((MapFoliageStatus.Complete, MapFoliageSupportIdentity.From(result), result.SpaceId, result.Face),
-                    (sample.Status, sample.SupportOwnerId, sample.OccupiedSpaceId, sample.Face));
+                Assert.True((MapFoliageStatus.Complete, MapFoliageSupportIdentity.From(result), result.SpaceId) ==
+                    (sample.Status, sample.SupportOwnerId, sample.OccupiedSpaceId), $"{at}: {result.Status} {result.SpaceId} against {sample.Status} {sample.SupportOwnerId} {sample.OccupiedSpaceId}");
+                if (result.Status == MapSupportStatus.Supported && face) Assert.Equal(result.Face, sample.Face);
                 Assert.NotEqual(MapFoliageReason.OutsideDomain, sample.Reason);
-                category = result.Face!.Value.OwnerId;
+                category = result.Status == MapSupportStatus.LegacyFallback ? "fallback" : result.Face!.Value.OwnerId;
+                if (binding.Kind == MapSupportBindingKind.Surface) category = "space:" + result.SpaceId;
             }
-            else if (result.Status == MapSupportStatus.NoSupport)
+            else if (result.Status == MapSupportStatus.NoSupport && binding.Kind == MapSupportBindingKind.Space)
             {
-                Assert.True(sample.Status == MapFoliageStatus.MissingSupport || sample.Reason == MapFoliageReason.OutsideDomain,
-                    $"({points[i].X}, {points[i].Z}): {sample.Status} {sample.Reason}");
-                category = sample.Status == MapFoliageStatus.MissingSupport ? "missing" : "outside";
+                var world = new MapExactPoint(xz.X, MapExactValue.FromSingle(binding.ReferenceY!.Value), xz.Z);
+                MapMembershipResult column = membership.Column(MapEffectiveGeometry.Presentation(view, world), out IReadOnlyList<MapSpaceBoundsPart> parts);
+                (MapFoliageStatus, MapFoliageReason) expected = column.Status is not (MapMembershipStatus.Resolved or MapMembershipStatus.Outside)
+                    ? (MapFoliageStatus.Unavailable, MapFoliageReason.Refused)
+                    : parts.Any(p => p.Owner == owner) ? (MapFoliageStatus.MissingSupport, MapFoliageReason.Refused)
+                    : (MapFoliageStatus.Complete, MapFoliageReason.OutsideDomain);
+                Assert.True(expected == (sample.Status, sample.Reason), $"{at}: expected {expected}, got {sample.Status} {sample.Reason}");
+                category = expected.Item1 == MapFoliageStatus.MissingSupport ? "missing" : "outside";
             }
             else
             {
-                Assert.Equal(MapFoliageSupport.Map(result.Status), sample.Status);
+                Assert.True(MapFoliageSupport.Map(result.Status) == sample.Status, $"{at}: {result.Status} {result.Detail} against {sample.Status}");
                 category = result.Status.ToString();
             }
             counts[category] = counts.GetValueOrDefault(category) + 1;
         }
-        Assert.All(new[] { "ramp", "terrace", "missing", "outside" }, c => Assert.True(counts.GetValueOrDefault(c) > 0, c));
+        return counts;
     }
 
     // The released basic hut at (10.5, 0, -6) turned by 0.371 radians, plus two invented world floors that pass through
     // its room: "ramp" on the 1 m lattice at 0.15 x - 0.6 metres and a flat "terrace" at 1.2 m on a 1.5 m lattice that ends
-    // at x = 12.
-    static MapEffectiveResources RoomSpans()
+    // at x = 12. "clipped" also lowers the exterior's open top to a 2 m "lid" ceiling and adds a flat "loft" floor at 2.5 m.
+    static MapEffectiveResources RoomSpans(string variant)
     {
         PrefabFixture f = PrefabFixtures.Create("basic");
         MapPrefabInstance instance = f.Document.Prefabs!.Instances.Single();
         f.Document.Prefabs = new(1, 1, new[] { instance with { Transform = new(new Vector3(10.5f, 0, -6f), 0.371f, 1) } }, []);
         AddFloor(f.Document, "ramp", new(1, 1), 16, 16, x => -60 + 15 * x);
         AddFloor(f.Document, "terrace", new(3, 2), 8, 11, _ => 120);
+        if (variant == "clipped")
+        {
+            AddFloor(f.Document, "loft", new(1, 1), 16, 16, _ => 250);
+            AddFloor(f.Document, "lid", new(1, 1), 16, 16, _ => 200, MapSurfaceRole.Ceiling);
+            var key = new MapPatchKey("exterior", 0, 0);
+            MapSurfacePatch exterior = f.Document.Surfaces.Patches[key];
+            int index = exterior.Records.FindIndex(r => r.Id == "exterior-domain");
+            exterior.Records[index] = ((MapSpaceFootprint)exterior.Records[index]) with { Upper = new(MapBoundKind.Ceiling, "lid", null) };
+            int surface = f.Document.Surfaces.Refs.FindIndex(r => r.Id == "exterior");
+            f.Document.Surfaces.Refs[surface] = f.Document.Surfaces.Refs[surface] with
+            {
+                SemanticSha256 = MapSurfaceSemantics.SurfaceDigest(f.Document.Surfaces.Refs[surface],
+                    new[] { new KeyValuePair<MapPatchKey, string>(key, MapSurfaceSemantics.PatchDigest(exterior)) }),
+            };
+        }
         return MapPrefabResolver.Expand(f.Document, f.Assets);
     }
 
-    static void AddFloor(MapDocument document, string id, MapRational cell, int width, int depth, Func<int, int> height)
+    static void AddFloor(MapDocument document, string id, MapRational cell, int width, int depth, Func<int, int> height,
+        MapSurfaceRole role = MapSurfaceRole.SupportFloor)
     {
         var patch = new MapSurfacePatch
         {
@@ -164,7 +270,7 @@ public sealed class MapFoliageSupportTests
         for (int z = 0; z < depth; z++)
             for (int x = 0; x < width; x++) patch.SetPresent(x, z, true);
         var surface = new MapSurfaceRef(id, new(cell, new(1, 100), MapRowDirection.NegativeZ, MapHeightDatum.WorldY0),
-            MapSurfaceRole.SupportFloor, MapPresencePolicy.Native, null, null, "");
+            role, MapPresencePolicy.Native, null, null, "");
         document.Surfaces.Refs.Add(surface with
         {
             SemanticSha256 = MapSurfaceSemantics.SurfaceDigest(surface, new[] { new KeyValuePair<MapPatchKey, string>(patch.Key, MapSurfaceSemantics.PatchDigest(patch)) }),
@@ -182,11 +288,12 @@ public sealed class MapFoliageSupportTests
         MapPreparedFoliageSupport prepared = MapFoliageSupport.Prepare(context, layer, Origin, Limits);
         long preparation = MapPreparedSupport.ThreadSamples - before;
         Assert.Equal(MapFoliageStatus.Complete, prepared.Status);
-        // One named selection per support cell centre of the two by two floor, all charged to preparation.
-        Assert.Equal(4, preparation);
-        Assert.Equal(4, prepared.Work.SurfaceQueries);
+        // Preparation runs no support selection: occupied space is resolved per candidate over the shared context, whose
+        // faces are charged beside the floor's own eight.
+        Assert.Equal(0, preparation);
+        Assert.Equal(0, prepared.Work.SurfaceQueries);
         Assert.Equal(1, prepared.Work.PrepareScopes);
-        Assert.Equal(8, prepared.Work.Faces);
+        Assert.True(prepared.Work.Faces > 8);
 
         var points = new List<(float X, float Z)>();
         for (int z = 0; z < 20; z++)

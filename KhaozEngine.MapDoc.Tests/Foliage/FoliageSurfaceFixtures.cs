@@ -6,6 +6,7 @@ using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
 
@@ -160,6 +161,30 @@ internal static partial class FoliageFixtures
     {
         MapSurfaceSet set = SupportFixtures.EqualSlabs(secondIsPaint: false).Surfaces;
         return Assemble(set, Layer(LayerId, support, -1, -1, 2, 3, 3, Enumerable.Repeat((byte)200, 9).ToArray(), []));
+    }
+
+    /// <summary>Any released surface set, wrapped as a resolver-2 document, with a layer bound to <paramref name="support"/>
+    /// over <paramref name="width"/> by <paramref name="depth"/> samples of 2 m from the origin.</summary>
+    internal static FoliageFixture Wrapped(MapSurfaceSet set, MapSupportBinding support, float originX, float originZ, int width, int depth) =>
+        Assemble(set, Layer(LayerId, support, originX, originZ, 2, width, depth, Enumerable.Repeat((byte)200, width * depth).ToArray(), []));
+
+    /// <summary>Cave "pocket" over a flat 1 m floor "base" of 4 by 4 cells at 0 m, bounded above by a 0.5 m ceiling "lid"
+    /// at 3 m whose cell (2, 2) is a known missing cell, so it lies under one quarter of base cell (1, 1).</summary>
+    internal static MapSurfaceSet Pocket()
+    {
+        var set = new MapSurfaceSet();
+        set.Refs.Add(MixedResolutionFixtures.Surface("base", 1, MapSurfaceRole.SupportFloor));
+        set.Refs.Add(MixedResolutionFixtures.Surface("lid", 2, MapSurfaceRole.Ceiling));
+        MapSurfacePatch floor = MixedResolutionFixtures.Patch(new("base", 0, 0), 4, 4, (_, _) => 0);
+        MapSurfacePatch lid = MixedResolutionFixtures.Patch(new("lid", 0, 0), 8, 8, (_, _) => 600);
+        lid.SetPresent(2, 2, false);
+        floor.Records.Add(new MapSpaceDoc("pocket", MapSpaceKind.Cave, null, null, [], [], [], []));
+        floor.Records.Add(new MapSpaceFootprint("pocket-cells", new("pocket", floor.Key), floor.Key,
+            Enumerable.Range(0, 4).SelectMany(z => Enumerable.Range(0, 4).Select(x => z * MapPatchKey.SlotCells + x)).ToArray(),
+            new(MapBoundKind.SupportFloor, "base", null), new(MapBoundKind.Ceiling, "lid", null)));
+        set.Patches.Add(floor.Key, floor);
+        set.Patches.Add(lid.Key, lid);
+        return set;
     }
 
     /// <summary>A captured context, failing the test fixture when capture refuses.</summary>

@@ -188,16 +188,16 @@ public sealed class MapPreparedFoliageSupport
     readonly MapFoliageLayer _layer;
     readonly IReadOnlyList<MapFoliageSupportGrid> _grids;
     readonly MapFoliageMaterials? _materials;
-    readonly MapFoliageSpaceSelection? _space;
+    readonly MapFoliageCandidateSupport? _candidates;
 
     internal MapPreparedFoliageSupport(MapFoliageLayer layer, MapFoliageChunkKey chunk, MapFoliageStatus status, string? detail,
         MapFoliageWork work, IReadOnlyList<string> dependencyParts, IReadOnlyList<MapFoliageSupportGrid> grids, MapFoliageMaterials? materials,
-        MapFoliageSpaceSelection? space = null)
+        MapFoliageCandidateSupport? candidates = null)
     {
         _layer = layer;
         _grids = grids;
         _materials = materials;
-        _space = space;
+        _candidates = candidates;
         LayerId = layer.Id;
         Chunk = chunk;
         Status = status;
@@ -241,25 +241,38 @@ public sealed class MapPreparedFoliageSupport
         catch (MapDocumentException) { return Refusal(MapFoliageStatus.Unavailable); }
 
         var exact = new MapExactXz(MapExactValue.FromSingle(worldX), MapExactValue.FromSingle(worldZ));
+        try { return Decide(exact, worldX, worldZ, density); }
+        catch (Exception error) when (error is MapExactOverflowException or OverflowException) { return Refusal(MapFoliageStatus.NotRepresentable); }
+        catch (MapDocumentException error)
+        {
+            return Refusal(MapCommonRefinement.NotRepresentable(error) ? MapFoliageStatus.NotRepresentable
+                : error.Message.Contains("invalid", StringComparison.Ordinal) ? MapFoliageStatus.Invalid : MapFoliageStatus.Unavailable);
+        }
+        // A demand outside the prepared chunk context: this point's facts were not prepared.
+        catch (InvalidOperationException) { return Refusal(MapFoliageStatus.Unavailable); }
+    }
+
+    MapFoliageSurfacePoint Decide(MapExactXz exact, float worldX, float worldZ, float density)
+    {
+        MapFoliageSupportGrid? grid = null;
         MapFoliageSupportCell? chosen = null;
         string? owner = null, space = null;
         float fx = 0, fz = 0;
-        foreach (MapFoliageSupportGrid grid in _grids)
+        if (_layer.Support.Kind == MapSupportBindingKind.Surface)
+            foreach (MapFoliageSupportGrid candidate in _grids)
+            {
+                (long x, long z, float localX, float localZ) = candidate.Locate(worldX, worldZ);
+                if (candidate.Cells.TryGetValue((x, z), out MapFoliageSupportCell? cell) && cell.Selected)
+                    (grid, chosen, owner, fx, fz) = (candidate, cell, cell.OwnerId, localX, localZ);
+            }
+        else
         {
-            (long x, long z, float localX, float localZ) = grid.Locate(worldX, worldZ);
-            if (!grid.Cells.TryGetValue((x, z), out MapFoliageSupportCell? cell)) continue;
-            if (cell.Refusal is { } refusal) return Refusal(refusal);
-            if (_layer.Support.Kind != MapSupportBindingKind.Surface || !cell.Selected) continue;
-            (chosen, owner, space, fx, fz) = (cell, cell.OwnerId, cell.SpaceId, localX, localZ);
-        }
-        if (_layer.Support.Kind == MapSupportBindingKind.Space && _space is not null)
-        {
-            MapFoliageSpaceOutcome outcome = _space.Select(exact);
+            MapFoliageCandidateOutcome outcome = _candidates!.Space(exact);
             if (outcome.Status != MapFoliageStatus.Complete) return Refusal(outcome.Status);
             if (outcome.Cell is { } cell)
             {
                 (float localX, float localZ) = outcome.Grid!.LocalIn(worldX, worldZ, outcome.CellX, outcome.CellZ);
-                (chosen, owner, space, fx, fz) = (cell, outcome.OwnerId, outcome.SpaceId, localX, localZ);
+                (grid, chosen, owner, space, fx, fz) = (outcome.Grid, cell, outcome.OwnerId, outcome.SpaceId, localX, localZ);
             }
         }
         if (chosen is null)
@@ -279,6 +292,12 @@ public sealed class MapPreparedFoliageSupport
         {
             height = kernel.Height(MapExactValue.FromSingle(height)).ToSingle();
             normal = kernel.Normal(normal);
+        }
+        if (_layer.Support.Kind == MapSupportBindingKind.Surface && _candidates is not null)
+        {
+            (MapFoliageStatus status, string? occupied) = _candidates.Occupied(exact, grid!, chosen, height);
+            if (status != MapFoliageStatus.Complete) return Refusal(status);
+            space = occupied;
         }
         return new(MapFoliageStatus.Complete, reason, owner, space, face, height, normal,
             reason == MapFoliageReason.Accepted ? Math.Clamp(density, 0f, 1f) : 0f, visible);

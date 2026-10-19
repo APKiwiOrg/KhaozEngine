@@ -16,12 +16,11 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
     IReadOnlyList<MapSurfaceRef> declared, MapFoliageLayer layer, MapFoliageChunkKey chunk, MapFoliageLimits limits)
 {
     readonly List<string> _parts = new();
-    readonly Dictionary<MapExactXz, MapSupportResult> _queries = new();
     long _faces;
-    long _queriesRun;
     MapPreparedSupport? _support;
 
-    internal MapFoliageWork Work() => new(0, 0, 1, _faces, 0, 0, _queriesRun, 0);
+    // Preparation runs no support query, so SurfaceQueries stays zero.
+    internal MapFoliageWork Work() => new(0, 0, 1, _faces, 0, 0, 0, 0);
 
     internal MapPreparedFoliageSupport Build()
     {
@@ -37,17 +36,34 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
         var grids = view.Surfaces.Where(s => s.Role == MapSurfaceRole.SupportFloor && (bound is null || s.Id == bound))
             .OrderBy(s => s.Id, StringComparer.Ordinal).Select(Grid).ToArray();
         _support = MapSupportPreparation.PrepareFoliage(view);
-        MapFoliageSpaceSelection? space = null;
-        if (binding.Kind == MapSupportBindingKind.Surface) SelectSurface(grids, bound!);
-        else
+        // A Surface binding owns every present cell of its surface, a logical fallback cell through its compatibility tag.
+        if (binding.Kind == MapSupportBindingKind.Surface)
+            foreach (MapFoliageSupportCell cell in grids.SelectMany(g => g.Cells.Values)) cell.Select(cell.Fallback ? FallbackOwner(cell) : bound!);
+        // Support and membership are decided per candidate over one shared context. Only invariant states refuse here:
+        // the acquisition above and, for a Space binding, a bound space absent from it. Without any space record a
+        // Surface binding occupies no space and needs no context.
+        MapFoliageCandidateSupport? candidates = null;
+        if (binding.Kind == MapSupportBindingKind.Space || _support.Records.OfType<MapSpaceDoc>().Any())
         {
-            GateSpace(grids, binding);
-            space = MapFoliageSpaceSelection.Create(view, _support, grids, binding);
+            (MapExactXz min, MapExactXz max) = Rectangle();
+            try
+            {
+                candidates = MapFoliageCandidateSupport.Create(view, _support, grids, binding, min, max, limits.MaxFaces - _faces, out long faces);
+                _faces = checked(_faces + faces);
+            }
+            catch (MapFoliageRefusal refusal) { throw new MapFoliageRefusal(refusal.Status, Work(), refusal.Message); }
         }
 
         Describe(binding);
         var materials = new MapFoliageMaterials(layer, paint);
-        return new(layer, chunk, MapFoliageStatus.Complete, null, Work(), _parts.Order(StringComparer.Ordinal).ToArray(), grids, materials, space);
+        return new(layer, chunk, MapFoliageStatus.Complete, null, Work(), _parts.Order(StringComparer.Ordinal).ToArray(), grids, materials, candidates);
+    }
+
+    (MapExactXz Min, MapExactXz Max) Rectangle()
+    {
+        (double minX, double minZ, double maxX, double maxZ) = MapFoliageSupport.Rect(layer, chunk);
+        return (new(MapExactValue.FromSingle(MapFoliageSupport.Outward(minX, lower: true)), MapExactValue.FromSingle(MapFoliageSupport.Outward(minZ, lower: true))),
+            new(MapExactValue.FromSingle(MapFoliageSupport.Outward(maxX, lower: false)), MapExactValue.FromSingle(MapFoliageSupport.Outward(maxZ, lower: false))));
     }
 
     void Require(MapAcquireStatus status)
@@ -66,10 +82,8 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
     {
         MapResourceTransform? kernel = view.EffectiveContext?.Transform(MapPrefabChildKind.Surface, surface.Id);
         var grid = new MapFoliageSupportGrid(surface, kernel);
-        (double minX, double minZ, double maxX, double maxZ) = MapFoliageSupport.Rect(layer, chunk);
-        MapCellRect range = MapEffectiveGeometry.CellRange(view, surface.Id,
-            new(MapExactValue.FromSingle(MapFoliageSupport.Outward(minX, lower: true)), MapExactValue.FromSingle(MapFoliageSupport.Outward(minZ, lower: true))),
-            new(MapExactValue.FromSingle(MapFoliageSupport.Outward(maxX, lower: false)), MapExactValue.FromSingle(MapFoliageSupport.Outward(maxZ, lower: false))));
+        (MapExactXz min, MapExactXz max) = Rectangle();
+        MapCellRect range = MapEffectiveGeometry.CellRange(view, surface.Id, min, max);
         // One cell of margin on every side absorbs the released float floor at the rectangle's edges.
         long x0 = checked(range.MinX - 1), z0 = checked(range.MinZ - 1), x1 = checked(range.MaxXExclusive + 1), z1 = checked(range.MaxZExclusive + 1);
         if (((double)x1 - x0) * ((double)z1 - z0) > 4.0 * limits.MaxFaces + 64)
@@ -132,66 +146,8 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
         return null;
     }
 
-    // A Surface binding samples its named owner in every cell. Without any space record the named selection is purely
-    // geometric and needs no query, otherwise one named query per cell centre supplies the occupied space.
-    void SelectSurface(MapFoliageSupportGrid[] grids, string surfaceId)
-    {
-        bool spaces = _support!.Records.OfType<MapSpaceDoc>().Any();
-        foreach (MapFoliageSupportGrid grid in grids)
-            foreach (var ((x, z), cell) in grid.Cells.OrderBy(c => c.Key.Z).ThenBy(c => c.Key.X))
-            {
-                if (!spaces) { cell.Select(cell.Fallback ? FallbackOwner(cell) : surfaceId, null); continue; }
-                MapExactXz centre = Centre(grid.Surface, x, z);
-                MapSupportResult result = Query(layer.Support, centre);
-                if (result.Status == MapSupportStatus.Supported && result.Face is { } face && face.OwnerId == surfaceId &&
-                    face.Patch == cell.Key && face.Primitive == cell.SlotCell)
-                    cell.Select(MapFoliageSupportIdentity.From(result), result.SpaceId);
-                else if (result.Status == MapSupportStatus.NoSupport && cell.Fallback)
-                    cell.Select(FallbackOwner(cell), Occupied(centre, cell));
-                else if (result.Status != MapSupportStatus.NoSupport)
-                    cell.Refuse(MapFoliageSupport.Map(result.Status));
-            }
-    }
-
-    // A Space binding is decided per candidate by MapFoliageSpaceSelection. Preparation only gates hard refusals: one
-    // selection per distinct cell centre across every support floor, and a cell whose selection meets missing geometry,
-    // capacity, representability or invalid input refuses. Support, eligibility, ambiguity and the domain are never
-    // decided here.
-    void GateSpace(MapFoliageSupportGrid[] grids, MapSupportBinding binding)
-    {
-        foreach (MapFoliageSupportGrid grid in grids)
-            foreach (var ((x, z), cell) in grid.Cells.OrderBy(c => c.Key.Z).ThenBy(c => c.Key.X))
-            {
-                MapSupportResult result = Query(binding, Centre(grid.Surface, x, z));
-                if (result.Status is MapSupportStatus.MissingGeometry or MapSupportStatus.CapacityExceeded or
-                    MapSupportStatus.NotRepresentable or MapSupportStatus.Invalid) cell.Refuse(MapFoliageSupport.Map(result.Status));
-            }
-    }
-
-    MapSupportResult Query(MapSupportBinding binding, MapExactXz centre)
-    {
-        if (_queries.TryGetValue(centre, out MapSupportResult? cached)) return cached;
-        _queriesRun++;
-        MapSupportResult result = _support!.SampleBinding(binding, centre);
-        _queries.Add(centre, result);
-        return result;
-    }
-
-    // A logical fallback cell has no physical face, so its occupied space is the membership at its legacy ground height.
-    string? Occupied(MapExactXz centre, MapFoliageSupportCell cell)
-    {
-        _queriesRun++;
-        float height = MapFoliageNormals.Ground(cell.Corners, cell.Cell, cell.Split, 0.5f, 0.5f).Height;
-        if (cell.Kernel is { } kernel) height = kernel.Height(MapExactValue.FromSingle(height)).ToSingle();
-        MapMembershipResult membership = _support!.Membership.QueryExact(new(centre.X, MapExactValue.FromSingle(height), centre.Z));
-        return membership.Status == MapMembershipStatus.Resolved ? membership.SpaceId : null;
-    }
-
     string? FallbackOwner(MapFoliageSupportCell cell) => MapFoliageSupportIdentity.From(new MapSupportResult(MapSupportStatus.LegacyFallback,
         null, 0, null, new MapLegacyCellTag(cell.Key, cell.SlotCell, MapFoliageValidation.LegacyTilePolicy), null, null, null, view.ReadWitness));
-
-    MapExactXz Centre(MapSurfaceRef surface, long x, long z) => MapEffectiveGeometry.Vertex(view,
-        new MapLatticeVertex(surface.Id, MapLatticeAddress.Create(checked(2 * x + 1), checked(2 * z + 1), 2)));
 
     void Describe(MapSupportBinding binding)
     {

@@ -53,7 +53,7 @@ internal sealed class MapFoliageSupportGrid(MapSurfaceRef surface, MapResourceTr
 }
 
 /// <summary>One prepared support cell: its authored cell, released corners and split, its logical faces, and for a Surface
-/// binding the selection made once at preparation. A refusal names a hard support status met at preparation.</summary>
+/// binding its support owner. Occupied space and every refusal are decided per candidate.</summary>
 internal sealed class MapFoliageSupportCell
 {
     internal required MapPatchKey Key { get; init; }
@@ -66,17 +66,12 @@ internal sealed class MapFoliageSupportCell
     internal required MapResourceTransform? Kernel { get; init; }
     internal bool Selected { get; private set; }
     internal string? OwnerId { get; private set; }
-    internal string? SpaceId { get; private set; }
-    internal MapFoliageStatus? Refusal { get; private set; }
 
-    internal void Select(string? owner, string? space)
+    internal void Select(string? owner)
     {
         Selected = owner is not null;
         OwnerId = owner;
-        SpaceId = space;
     }
-
-    internal void Refuse(MapFoliageStatus status) => Refusal ??= status;
 }
 
 /// <summary>A patch's logical faces in effective coordinates with their world-painted coverage, indexed by cell and

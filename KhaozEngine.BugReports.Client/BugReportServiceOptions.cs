@@ -56,6 +56,15 @@ public sealed record BugReportServiceOptions
     /// <summary>The session log path <c>SessionLog.Configure</c> returned, when the game keeps one.</summary>
     public string? SessionLogPath { get; init; }
 
+    /// <summary>
+    /// Supplies reporter identity terms, such as the current display name and account subject, once per report
+    /// on the background finish thread. Must be thread-safe and finish promptly. Null disables identity masking.
+    /// Terms are literal, invariant case-insensitive matches replaced by <c>[redacted]</c> in every section's
+    /// property names and string values. Null, blank and shorter-than-three-character terms are ignored.
+    /// A callback, enumeration or pattern construction failure masks every section string instead.
+    /// </summary>
+    public Func<IEnumerable<string>>? ReporterIdentityTerms { get; init; }
+
     /// <summary>Checks every option a report depends on.</summary>
     /// <exception cref="ArgumentNullException"><paramref name="options"/> or its <see cref="Recording"/> is null.</exception>
     /// <exception cref="ArgumentException">The game id, the display name or a category id is invalid.</exception>

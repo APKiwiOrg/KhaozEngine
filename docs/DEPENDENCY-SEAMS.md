@@ -1147,6 +1147,12 @@ edge, so a headless server can take the core and an independent host can take th
 records, its `Diagnostics` edge is the engine `ILogger`, and its `Http` edge retries the GitHub App
 token exchange. Issue and comment POSTs are never retried in-process.
 
+`BugReportServiceOptions.ReporterIdentityTerms` is a game-owned `Func<IEnumerable<string>>`, called once on the
+background finish thread for each report. `ReportRedactor.WithReporterIdentityTerms` snapshots that source through
+the existing Diagnostics edge. No account, authentication or game dependency is added. The game supplies identity
+spellings and the redactor masks them in every section. Source and pattern construction failures mask every section
+string instead of sending identity unmasked.
+
 `Relay.Azure` implements only the media, queue and quota seams. Its three SDK references are declared
 there, with no `Azure.Identity` reference. Hosts supply built clients and own credentials, provisioning,
 access policy, poison scheduling and retention. HTTP and queue triggers stay in the host. The relay

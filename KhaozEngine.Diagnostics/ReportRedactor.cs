@@ -7,8 +7,9 @@ namespace KhaozEngine.Diagnostics;
 /// <summary>
 /// The backstop every bug report string passes through before it leaves the machine. Masks private key
 /// blocks, JWTs, well-known provider tokens, Bearer and Basic credentials, secret URL query values and secret
-/// key and value pairs with <see cref="Mask"/>, then replaces the user's home directory with <c>~</c>. Rules
-/// run in that fixed order. Every secret rule runs on the non-backtracking engine, so it is linear in the input
+/// key and value pairs with <see cref="Mask"/>, then any supplied reporter identity terms, then replaces the user's
+/// home directory with <c>~</c>. Rules run in that fixed order. Every secret and identity rule runs on the
+/// non-backtracking engine, so it is linear in the input
 /// by construction, and the home rule is an escaped literal path. Every pattern also has a 250 ms match timeout
 /// as a backstop, and a timeout fails closed, so a string the rules cannot finish with comes back as
 /// <see cref="Mask"/> whole. Thread-safe, and a string with nothing to mask is returned as the same instance
@@ -36,6 +37,8 @@ public sealed class ReportRedactor
 
     readonly Rule[] rules;
     readonly Regex? home;
+    readonly TimeSpan matchTimeout;
+    readonly ReporterIdentityRedaction? identity;
 
     /// <summary>
     /// Creates a redactor that replaces <paramref name="homeDirectory"/> with <c>~</c>. Null reads the user
@@ -56,9 +59,33 @@ public sealed class ReportRedactor
     ReportRedactor(string? homeDirectory, Rule[] rules, TimeSpan matchTimeout)
     {
         this.rules = rules;
+        this.matchTimeout = matchTimeout;
         string path = (homeDirectory ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile))
             .TrimEnd('/', '\\');
         if (path.Length >= MinimumHomeLength) home = BuildHomePattern(path, matchTimeout);
+    }
+
+    ReportRedactor(ReportRedactor source, ReporterIdentityRedaction identity)
+    {
+        rules = source.rules;
+        home = source.home;
+        matchTimeout = source.matchTimeout;
+        this.identity = identity;
+    }
+
+    /// <summary>
+    /// Returns an independent redactor with a snapshot of <paramref name="reporterIdentityTerms"/>, called once
+    /// now. Each term is an escaped literal, matched case-insensitively with invariant culture, longest first,
+    /// after secrets and before home. Null, blank and shorter-than-three-character terms are ignored. Matches
+    /// become <see cref="Mask"/>. The non-backtracking matcher uses this redactor's timeout. If the source throws,
+    /// returns null, or the combined pattern is unsupported or exceeds 4096 escaped characters including separators,
+    /// every string is masked. The source must finish promptly. This redactor is unchanged.
+    /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="reporterIdentityTerms"/> is null.</exception>
+    public ReportRedactor WithReporterIdentityTerms(Func<IEnumerable<string>> reporterIdentityTerms)
+    {
+        ArgumentNullException.ThrowIfNull(reporterIdentityTerms);
+        return new ReportRedactor(this, ReporterIdentityRedaction.Capture(reporterIdentityTerms, matchTimeout));
     }
 
     /// <summary>The secret rules in the order they run, for tests that check how they are built.</summary>
@@ -87,6 +114,7 @@ public sealed class ReportRedactor
                 if (rule.Pattern.IsMatch(result))
                     result = rule.Pattern.Replace(result, rule.Replacement);
             }
+            if (identity is not null) result = identity.Redact(result);
             if (home is not null && home.IsMatch(result))
                 result = home.Replace(result, "~");
             return result;

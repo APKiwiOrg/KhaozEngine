@@ -3376,7 +3376,13 @@ constructed:
 
 ```csharp
 var reports = new BugReportService(app,
-    new BugReportServiceOptions { GameId = "mygame", GameDisplayName = "My Game", SessionLogPath = logPath },
+    new BugReportServiceOptions
+    {
+        GameId = "mygame",
+        GameDisplayName = "My Game",
+        SessionLogPath = logPath,
+        ReporterIdentityTerms = () => new[] { displayName ?? "", subject ?? "" },
+    },
     new HttpRelaySink(http, relay, () => token),
     new BugReportOfflineQueue(Path.Combine(stateDir, "bug-reports", "pending"), TimeProvider.System),
     () => subject);
@@ -3391,7 +3397,12 @@ var reports = new BugReportService(app,
   world pauses.
 - **Sections.** Seven built-in sections (`build`, `platform`, `graphics`, `session`, `input`, `performance`,
   `log`) plus any `AddSection`. Sections run in the trigger frame and must be cheap. Redaction and truncation run
-  off the frame thread before anything leaves the machine.
+  off the frame thread before anything leaves the machine. Optional `ReporterIdentityTerms` supplies the current
+  display name, subject and any other identity spellings once on that background finish thread per report. The
+  callback must be thread-safe and prompt. Terms are invariant case-insensitive literals, replaced by `[redacted]`
+  in every section's property names and string values. Null, blank and terms shorter than three characters are
+  ignored. Source or pattern construction failures mask every section string. The delivery subject, screenshots,
+  clips and the player's confirmation text are unchanged.
 - **Delivery.** Send raises `ReportConfirmed(reportId)` once on the frame thread before building the bundle on the
   thread pool. A server-backed game releases its held snapshot here. Cancel and shutdown never raise it, and a
   throwing handler is logged without stopping the send. `BugReportSubmitter` writes the bundle to the offline queue
@@ -8545,7 +8556,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.6.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.7.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -8970,7 +8981,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.6.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.7.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9769,7 +9780,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.6.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.7.0" />
 ```
 
 ```csharp
@@ -17711,7 +17722,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.6.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.7.0" />
 ```
 
 ```csharp
@@ -17747,7 +17758,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.6.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.7.0" />
 ```
 
 ```csharp
@@ -17991,7 +18002,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.6.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.7.0" />
 ```
 
 ```csharp
@@ -22362,7 +22373,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.6.1" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.7.0" />
 </ItemGroup>
 ```
 

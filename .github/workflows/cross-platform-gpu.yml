@@ -1142,8 +1142,9 @@ jobs:
           #
           #
           # AND A TRX LOGGER WHERE THE POOL WATCHDOG IS ARMED, so a starvation episode's timestamps can be laid
-          # against the start and end of every test that was running beside it. The console logger is unchanged.
-          KE_TEST_LOGGER_ARGS: ${{ (env.VULKAN_VALIDATION_ARMED != '' || matrix.backend == 'metal-native') && '--logger console;verbosity=detailed' || (env.POOL_WATCH_ARMED != '' && '--logger trx' || '') }}
+          # against the start and end of every test that was running beside it. Targeted Windows dispatches also
+          # use detailed console verbosity so per-test progress remains visible while the run is executing.
+          KE_TEST_LOGGER_ARGS: ${{ (env.VULKAN_VALIDATION_ARMED != '' || matrix.backend == 'metal-native' || (matrix.backend == 'direct3d11-native' && github.event_name == 'workflow_dispatch' && inputs.renderTestFilter != '')) && '--logger console;verbosity=detailed' || (env.POOL_WATCH_ARMED != '' && '--logger trx' || '') }}
           # The watchdog itself (see POOL_WATCH_ARMED in the job env). Empty everywhere else, which leaves it off.
           # Absolute, because each test host runs from its own output directory.
           KE_POOL_WATCH: ${{ env.POOL_WATCH_ARMED }}
@@ -1472,6 +1473,16 @@ jobs:
           path: TestResults/suite-output.log
           if-no-files-found: ignore
 
+      # Targeted render dispatches retain the detailed Windows execution log so cancellation still leaves the
+      # per-test progress needed to distinguish slow progress from a stall.
+      - name: Upload targeted render execution log
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.renderTestFilter != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: targeted-render-log-${{ matrix.backend }}
+          path: TestResults/suite-output.log
+          if-no-files-found: ignore
+
       # THE POOL WATCHDOG'S EVIDENCE, on always() and only where POOL_WATCH_ARMED armed it: a green run's
       # episode lines are as much a reading as a red run's. The watch directory holds one log per armed test host
       # (an armed line, then one line per episode), and the trx files give every test's start and end from both
@@ -1487,10 +1498,10 @@ jobs:
           retention-days: 3
           if-no-files-found: warn
 
-      # On a host crash: surface the --blame Sequence.xml (names the last-started test on the dead host).
-      # Kilobytes, failure-only, no dumps.
+      # On a host crash or cancelled run: surface the --blame Sequence.xml (names the last-started test on the
+      # dead host). Kilobytes, failure or cancellation, no dumps.
       - name: Upload crash-sequence evidence
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: crash-sequence-${{ matrix.backend }}
@@ -1762,8 +1773,10 @@ jobs:
           path: TestResults/sync-validation.log
           if-no-files-found: ignore
 
+      # On a host crash or cancelled run: surface the --blame Sequence.xml from the sync host. Kilobytes, failure
+      # or cancellation, no dumps.
       - name: Upload crash-sequence evidence
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: crash-sequence-vulkan-native-sync

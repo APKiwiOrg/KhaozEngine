@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using KhaozEngine.Gpu;
+using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Render3D.Rendering;
 using Xunit;
@@ -268,6 +269,53 @@ public sealed class TemporalVisibilityComparisonGpuTests(GameShadowGrainScene gr
                 Assert.Equal(a.Colour, b.Colour); Assert.Equal(a.State, b.State);
             }
         }
+    }
+
+    [GpuTheory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public void DebugAndCountsReadTheSamePreWriteVisibilityAsTheResolve(int entry)
+    {
+        using var rig = new Rig();
+        using GpuRetireQueue retired = GpuRetireQueue.Create(rig.Device);
+        rig.Renderer.SelectEntry((TemporalResolveEntry)entry, retired);
+        using IGpuTexture signal = Signal(rig.Device, 0);
+        float[] current = Grey((_, _) => 0.2f);
+        rig.Fill(current, current, Motion((_, _) => Vector2.Zero));
+        rig.BeginFrame(); rig.Resolve(Uniforms(false, new Vector2(0.125f, -0.25f)), signal);
+        rig.History.MarkValidAfterFrame(); rig.BeginFrame();
+        rig.FillHistory(Grey((_, _) => 0.4f), State((_, _) => Vector2.One), SceneLinear);
+        byte[] lit = new byte[N * N]; Array.Fill(lit, (byte)255);
+        rig.Device.UpdateTexture(signal, lit, 0, 0, N, N);
+        rig.Renderer.ArmCounts();
+        rig.Resolve(Uniforms(true), signal);
+        float[] resolved = rig.ReadState();
+        Assert.Equal(lit, TemporalVisibilityHistoryGpuTests.Read(rig.Device,
+            rig.Renderer.VisibilityHistory.Texture(rig.History.WriteIndex)));
+        Assert.Equal(new byte[N * N], TemporalVisibilityHistoryGpuTests.Read(rig.Device,
+            rig.Renderer.VisibilityHistory.Texture(rig.History.ReadIndex)));
+        using IGpuTexture debug = rig.Device.Factory.CreateTexture(GpuTextureDescription.Texture2D(N, N,
+            GpuPixelFormat.R16G16B16A16Float, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
+        using IGpuFramebuffer target = rig.Device.Factory.CreateFramebuffer(null, debug);
+        using IGpuCommandList commands = rig.Device.Factory.CreateCommandList();
+        using (GpuRecording.Open(rig.Device, commands, nameof(DebugAndCountsReadTheSamePreWriteVisibilityAsTheResolve)))
+        {
+            // A new recording needs its own ring-buffer uniform slice, while visibility retains the pre-write jitter.
+            rig.Renderer.PrepareUniforms(commands, Uniforms(true), new TemporalDepthStoreUniforms { CurrentDepth = Depth });
+            rig.Renderer.DrawDebugView(commands, SceneDebugView.History, target, target.Outputs);
+        }
+        rig.Device.Submit(commands); rig.Device.WaitForIdle();
+        float[] view = TemporalTextureIo.Read(rig.Device, debug);
+        for (int i = 0; i < N * N; i++)
+        {
+            Assert.Equal(Q(1f / 15), resolved[i * 2]);
+            Assert.Equal(0, resolved[i * 2 + 1]);
+            for (int c = 0; c < 3; c++) Assert.Equal(resolved[i * 2], view[i * 4 + c]);
+        }
+        Assert.True(rig.Renderer.TryHarvestCounts(out int disoccluded, out int reactive, out int clipped));
+        Assert.Equal((0, 0, TemporalCountProbe.TotalSamples), (disoccluded, reactive, clipped));
+        output.WriteLine($"{rig.Device.Backend} on {rig.Device.Capabilities.DeviceName}, entry {entry}: "
+            + $"debug confidence {resolved[0]:R}, lock {resolved[1]:R}, clipped {clipped}, old R8 remains zero");
     }
 
     static IGpuTexture Signal(IGpuDevice device, byte value)

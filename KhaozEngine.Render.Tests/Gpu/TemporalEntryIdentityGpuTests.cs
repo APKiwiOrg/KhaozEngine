@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
@@ -27,7 +28,7 @@ namespace KhaozEngine.Tests.Gpu
     /// and the mark stay identical. There the fact holds those three exact and the colour within
     /// <see cref="SoftwareColourBound"/> and <see cref="SoftwareColourShare"/>.
     /// </summary>
-    public sealed class TemporalEntryIdentityGpuTests(ITestOutputHelper output)
+    public sealed class TemporalEntryIdentityGpuTests(ITestOutputHelper output) : TemporalResolveGpuFacts
     {
         const int W = 320, H = 180, StopFrames = 8, MoverSweep = 12;
         const float Speed = 2f, BladeTexels = 0.375f, MoverTexels = 1f, MoverStep = 3f, MoverHeight = 3f,
@@ -91,6 +92,7 @@ namespace KhaozEngine.Tests.Gpu
             var confidence = new EntryDifference("confidence");
             var locks = new EntryDifference("lock");
             var marks = new EntryDifference("mark", false);
+            Vector2 previousJitter = default;
             for (int n = 0; n < frames; n++)
             {
                 fused.Frame(Draw(fusedWalk));
@@ -104,6 +106,17 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.Equal(ShaderSources.TemporalAccumulateFragment(TemporalResolvePrecisionPolicy.For(split.Device),
                         upscales: preset != TemporalUpscale.Native),
                     split.Scene.TemporalResolveRendererForTests!.LastEntryFragmentsForTests()[1]);
+                var fusedRenderer = fused.Scene.TemporalResolveRendererForTests!;
+                var splitRenderer = split.Scene.TemporalResolveRendererForTests!;
+                Assert.Equal(fusedRenderer.LastVisibilityUniforms.PreviousJitter,
+                    splitRenderer.LastVisibilityUniforms.PreviousJitter);
+                Assert.Equal(new Vector4(previousJitter, n > 0 ? 1f : 0f, 0f),
+                    fusedRenderer.LastVisibilityUniforms.PreviousJitter);
+                Assert.Equal(TemporalVisibilityHistoryGpuTests.Read(fused.Device,
+                        fusedRenderer.VisibilityHistory.Texture(fused.Scene.TemporalHistory.WriteIndex)),
+                    TemporalVisibilityHistoryGpuTests.Read(split.Device,
+                        splitRenderer.VisibilityHistory.Texture(split.Scene.TemporalHistory.WriteIndex)));
+                previousJitter = new Vector2(fusedRenderer.LastUniforms.Jitter.X, fusedRenderer.LastUniforms.Jitter.Y);
                 float[] a = Read(fused, static h => h.Color(h.WriteIndex));
                 float[] b = Read(split, static h => h.Color(h.WriteIndex));
                 for (int i = 0; i < a.Length; i++) colour.Add(n, a[i], b[i]);
@@ -150,6 +163,92 @@ namespace KhaozEngine.Tests.Gpu
                 $"the walk stored {band} band, {followed} followed marks and {movingShare} moving shares");
             return outlinePixels;
         }
+
+        // Uploaded shadow edges isolate the visibility response from shadow-map rasterization. The normal walk
+        // above also covers the actual outlined scene inputs, while this sequence forces both release thresholds.
+        [GpuTheory]
+        [InlineData(TemporalUpscale.Native, 8)]
+        [InlineData(TemporalUpscale.Quality, 12)]
+        [InlineData(TemporalUpscale.Performance, 16)]
+        public void MovingShadowEntriesKeepVisibilityDecisionsAndHistoryExact(TemporalUpscale preset, int display)
+        {
+            using var fused = new TemporalResolveRig(N, N, display, display, SceneNdc);
+            using var split = new TemporalResolveRig(N, N, display, display, SceneNdc);
+            using GpuRetireQueue retired = GpuRetireQueue.Create(split.Device);
+            split.Renderer.SelectEntry(TemporalResolveEntry.Split, retired);
+            using IGpuTexture a = VisibilitySignal(fused.Device);
+            using IGpuTexture b = VisibilitySignal(split.Device);
+            output.WriteLine($"{fused.Device.Backend} on {fused.Device.Capabilities.DeviceName}, moving shadow {preset}");
+            int[] edges = [8, 8, 2, 8, 0, 8];
+            byte[] previous = [];
+            Vector2 previousJitter = default;
+            int rises = 0, falls = 0;
+            int pixel = (display / 2 * display + display / 4) * 2;
+            float freshConfidence = 0;
+            float[] freshColour = [];
+            for (int frame = 0; frame < edges.Length; frame++)
+            {
+                byte[] bytes = Enumerable.Range(0, N * N).Select(i => i % N >= edges[frame] ? (byte)255 : (byte)0).ToArray();
+                Vector2 jitter = new(frame % 2 == 0 ? 0.125f : -0.25f, 0.0625f);
+                var uniforms = TemporalResolveMath.BuildUniforms(Still, Still, jitter, N, N, display, display, frame > 0);
+                foreach ((TemporalResolveRig rig, IGpuTexture signal) in new[] { (fused, a), (split, b) })
+                {
+                    rig.Device.UpdateTexture(signal, bytes, 0, 0, N, N);
+                    float[] current = Grey((x, _) => x == 1 ? 0.7f : 0.2f);
+                    rig.Fill(current, current, Motion((_, _) => Vector2.Zero));
+                    rig.BeginFrame();
+                    if (frame > 0)
+                        rig.FillHistory(Grey(display, display, (_, _) => 0.4f),
+                            Pairs(display, display, (_, _) => Vector2.One), SceneLinear);
+                    rig.Resolve(uniforms, signal);
+                    Assert.Equal(bytes, TemporalVisibilityHistoryGpuTests.Read(rig.Device,
+                        rig.Renderer.VisibilityHistory.Texture(rig.History.WriteIndex)));
+                    Assert.Equal(new Vector4(previousJitter, frame > 0 ? 1f : 0f, 0f),
+                        rig.Renderer.LastVisibilityUniforms.PreviousJitter);
+                    if (frame > 0)
+                        Assert.Equal(previous, TemporalVisibilityHistoryGpuTests.Read(rig.Device,
+                            rig.Renderer.VisibilityHistory.Texture(rig.History.ReadIndex)));
+                    rig.History.MarkValidAfterFrame();
+                }
+                Assert.Equal(MemoryMarshal.AsBytes(fused.ReadState().AsSpan()).ToArray(),
+                    MemoryMarshal.AsBytes(split.ReadState().AsSpan()).ToArray());
+                Assert.Equal(MemoryMarshal.AsBytes(fused.ReadColor().AsSpan()).ToArray(),
+                    MemoryMarshal.AsBytes(split.ReadColor().AsSpan()).ToArray());
+                if (frame == 0)
+                {
+                    freshConfidence = fused.ReadState()[pixel];
+                    freshColour = fused.ReadColor();
+                    Assert.InRange(freshConfidence, 0.01f, 0.15f);
+                }
+                if (frame == 1)
+                {
+                    Assert.Equal(1, fused.ReadState()[pixel]);
+                    Assert.Equal(0.875f, fused.ReadState()[pixel + 1]);
+                }
+                if (frame >= 2)
+                {
+                    float[] state = fused.ReadState();
+                    Assert.Equal(0, state[pixel + 1]);
+                    if (edges[frame] == 8) { Assert.Equal(1, state[pixel]); falls++; }
+                    else
+                    {
+                        Assert.Equal(freshConfidence, state[pixel]);
+                        float[] colour = fused.ReadColor();
+                        for (int c = 0; c < 4; c++) Assert.Equal(freshColour[pixel * 2 + c], colour[pixel * 2 + c]);
+                        rises++;
+                    }
+                    output.WriteLine($"  frame {frame}: confidence {state[pixel]:R}, lock {state[pixel + 1]:R}");
+                }
+                previous = bytes;
+                previousJitter = jitter;
+            }
+            Assert.Equal(2, rises);
+            Assert.Equal(2, falls);
+            output.WriteLine($"  {edges.Length} frames exact in colour, confidence, locks, marks, R8 bytes and previous jitter");
+        }
+
+        static IGpuTexture VisibilitySignal(IGpuDevice device) => device.Factory.CreateTexture(
+            GpuTextureDescription.Texture2D(N, N, GpuPixelFormat.R8UNorm, GpuTextureUsage.Sampled));
 
         static void Setup(Scene3D s, PerspectiveFollowLines walk, TemporalUpscale preset, bool outline)
         {

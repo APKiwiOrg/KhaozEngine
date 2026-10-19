@@ -96,7 +96,7 @@ public sealed class TemporalVisibilityHistoryGpuTests(ITestOutputHelper output) 
     static IGpuTexture Signal(IGpuDevice device) => device.Factory.CreateTexture(GpuTextureDescription.Texture2D(
         N, N, GpuPixelFormat.R8UNorm, GpuTextureUsage.Sampled));
 
-    static byte[] Read(IGpuDevice device, IGpuTexture texture)
+    internal static byte[] Read(IGpuDevice device, IGpuTexture texture)
     {
         using IGpuTexture staging = device.Factory.CreateTexture(GpuTextureDescription.Texture2D(
             texture.Width, texture.Height, GpuPixelFormat.R8UNorm, GpuTextureUsage.Staging));

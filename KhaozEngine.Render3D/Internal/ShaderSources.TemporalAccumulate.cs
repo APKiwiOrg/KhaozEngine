@@ -130,6 +130,17 @@ float temporalStoredLock(float stored) {
     return temporalStoredMoved(stored) ? mod(-1.0 - stored, 2.0) : stored;
 }
 
+// Keep only the carried-lock release arithmetic ordered. Visibility adds another use of this value, which
+// exposed different contractions in the fused and split programs on Metal. Unqualified function inputs keep
+// precise from propagating into history sampling, reconstruction or surface preparation.
+float temporalReleaseLock(float value, float motionPixels, float reactive, float edgeMotion) {
+    precise float motionRelease = clamp((motionPixels - LockMotionStartPixels)
+        / (LockMotionEndPixels - LockMotionStartPixels), 0.0, 1.0);
+    precise float result = value * ((1.0 - motionRelease) * (1.0 - clamp(reactive * LockReactiveRelease, 0.0, 1.0))
+        * (1.0 - clamp(edgeMotion * LockEdgeRelease, 0.0, 1.0)));
+    return result;
+}
+
 ivec2 temporalDisplaySize() { return ivec2(Sizes.zw); }
 
 // The display pixel centre in upright UV (row 0 at the top) and in internal pixels, and the texel whose jittered
@@ -451,10 +462,7 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     // sub-texel feature missed for a few frames keeps its luma, and it lets go over the rest of the lock.
     float lockValue = useHistory && !heldFromFarther ? max(historyState.y - LockDecay, 0.0) : 0.0;
     if (ridge) lockValue = 1.0;
-    float motionRelease = clamp((motionPixels - LockMotionStartPixels)
-        / (LockMotionEndPixels - LockMotionStartPixels), 0.0, 1.0);
-    lockValue *= (1.0 - motionRelease) * (1.0 - clamp(reactive * LockReactiveRelease, 0.0, 1.0))
-        * (1.0 - clamp((ownReprojected && useHistory ? 0.0 : edgeMotion) * LockEdgeRelease, 0.0, 1.0));
+    lockValue = temporalReleaseLock(lockValue, motionPixels, reactive, ownReprojected && useHistory ? 0.0 : edgeMotion);
     // Preserve the colour release's carried-lock classification before visibility clears the stored lock.
     bool carriedLock = !ridge && lockValue > 0.0;
     float signedVisibilityChange = 0.0;

@@ -358,3 +358,158 @@ knob changed. Cost/timing artifact environment names were absent. All build/test
 synchronously through build-slot, one at a time. No full suite, benchmark, load, stress, consumer,
 world bake, workflow, release or tag ran. No branch switch, push, merge, GitHub write or agent
 was dispatched. Logs are under `/tmp/khaozengine-bake-proof-reuse/task-2-*.log`.
+
+## Task 3. Original same-layer source groups
+
+The MovementQueryLease bridge borrows its existing current physics lease through the exact
+selected view. It checks the producer pin as well as the session basis. No acquisition or pin
+was added. A source marker surrounds each accepted node's same-layer direction loop, opens
+lazily inside the first required Step lease after prechecks and the parallel cutoff, and
+disposes on that executing thread. Constructor pins, admission and Stair proofs open no session.
+Each new source resets a new session. No mutable session moves from setup into a worker.
+
+ContactNavigationSources records capture X/Z, the original sample ordinal and raw height bits
+before serial or parallel admission compacts its buffers. It binds the raw NavSpace before
+WithRestingHeights. Layer remains a separate address component. Missing, mismatched or ambiguous
+mapping disables grouping for that node. Anchors and source addresses have separate owners.
+
+The immutable policy is captured on the caller and passed explicitly to workers and proofs.
+Footprints default on for capable receivers. InitialHolds remains false. The two internal disable
+hooks and the policy never enter NavBakeIdentity or serialized data. Reference evaluation disables
+reuse and establishes a worker-local reference scope, restored in finally.
+
+### Behavioral red and focused commands
+
+```bash
+build-slot --label bake-b-design -- dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release --filter 'FullyQualifiedName~SameLayerSourceReusesFootprintsAcrossMovementLeases'
+```
+
+Exit 1. The unchanged low-lip-bank hash passed first. The real bake then failed because
+FootprintReuseHits was zero. This preceded every production grouping change.
+
+```bash
+build-slot --heavy --label bake-b-design -- dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release --filter 'FullyQualifiedName~ContactNavigationProofReuseTests|FullyQualifiedName~ParallelContactBakeFailureTests|FullyQualifiedName~WorkerDiagnosticsScopeRestoresEveryPriorThreadValue' --logger 'console;verbosity=detailed'
+```
+
+The first invocation exited 1, with 25 passed and nine failed. All pinned hashes passed.
+Seven new assertions incorrectly compared parallel setup lease counts with serial setup counts.
+The off/on counters now use the same degree, preserving the existing extra worker setup pins.
+The other two assertions expected an injected InvalidOperationException to escape, while the
+movement API intentionally converts it to Stale. The fixture now throws a distinct producer
+exception and compares that original failure. No production change was made for those nine
+incorrect test expectations.
+
+The next invocation, after adding actual raw-ordinal, bypass, phase and reference controls,
+exited 0 with 41 passed. The callback tests compare ordered real analytic, binding and medium
+requests and outcomes, Find observations, binding counts, movement results and injected failures.
+The fixture wraps and forwards the real ordinary producer, without changing its side effects.
+Both analytic and physics support wins are asserted. No stable-provider opt-in is used.
+
+### Self-review cleanup red
+
+```bash
+build-slot --label bake-b-design -- dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release --filter 'FullyQualifiedName~StaleSourceBasisKeepsTheOriginalAuthenticationFailure'
+```
+
+Exit 1. A real static installation between movement leases made the existing movement acquisition
+refuse. Source disposal then replaced that refusal with the stale session's cleanup exception.
+The wrapper now preserves the proof's original exception and attaches a secondary disposal failure
+under Data["SupportFootprintReuseCleanupFailure"]. The session still releases all payloads.
+
+```bash
+build-slot --label bake-b-design -- dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release --filter 'FullyQualifiedName~StaleSourceBasisKeepsTheOriginalAuthenticationFailure|FullyQualifiedName~FootprintHitStillRunsAnalyticBindingAndMediumRoutes|FullyQualifiedName~SourceScopeNeverNestsAnExplicitPhysicsLease'
+```
+
+Exit 0, six passed. The stale-source test now observes the exact original authentication
+message, the secondary cleanup exception and zero retained keys and bytes.
+
+### Final focused verification and BR-R2
+
+```bash
+build-slot --heavy --label bake-b-design -- dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release --filter 'FullyQualifiedName~ContactNavigationProofReuseTests|FullyQualifiedName~ContactNavigationBaselineTests|FullyQualifiedName~ParallelContactBakeTests|FullyQualifiedName~ParallelContactBakeFailureTests|FullyQualifiedName~ContactNavigationAdmissionTests|FullyQualifiedName~ContactNavigationBasisTests|FullyQualifiedName~ContactNavigationPlacementAdmissionTests|FullyQualifiedName~ContactNavigationTraversalTests|FullyQualifiedName~ContactNavigationWaterTests|FullyQualifiedName~WorkerDiagnosticsScopeRestoresEveryPriorThreadValue' --logger 'console;verbosity=detailed'
+```
+
+Exit 0, initially 108 passed. After making the trace collector thread-safe and adding an
+explicit parallel source-failure cleanup test, the final invocation exited 0 with 109 passed,
+zero failed or skipped and no compiler warnings or errors. Every rerun followed a change.
+This is a focused Movement selection, not the full suite reserved for Task 7.
+
+All seven existing degree-1 baselines passed. Fourteen new rows additionally compare actual
+reuse-off and footprint-only files at identical engine identity, all graph semantics and each
+unchanged normalized hash at degrees 1 and 3. The existing parallel matrix also passed each
+fixture at degrees 1, 2, 3 and 8, plus degree 16 for multi-layer-row-bands.
+
+| Fixture | Observed normalized SHA-256 at both 1 and 3 |
+| --- | --- |
+| low-lip-bank | `494ab0951ab46de04665351bf1e39ad9156f30aefa73cb43b34f4ecaba72e922` |
+| deck-over-ground | `77addcbc9c054f85e1a14f916bd95af75d02f105c54ad8e56a3a25716b0d44cc` |
+| wade-only-pool | `a735ea5a41a1adb58666219b053197ed457b3c7edd830e18f29c7c5c8a1a1635` |
+| rebased-origin | `e5c86385e4141a289d41d8efbb66766e5ac7c942f825521fff91dede8e9b4eee` |
+| mixed-legacy-contact | `94fc16f1dee6cfa4c99db7ce490443271a0eb2fe3d9f0906312a836c5cd9a856` |
+| stair-accepted-refused | `62a061314987a1b8243f9eb8da639cd0239ec200f8f62f11e69e62f5db20959a` |
+| multi-layer-row-bands | `ae89cde4394002043b200b5e25e4eb0ef778ced4438cd7e985bde8dd96de811a` |
+
+### Observed footprint work and retention
+
+Each row below was observed independently at degree 1 and degree 3, with identical counters
+at both degrees. Volumes include admission and Stair work. Misses and stores cover eligible
+source sessions only. Find, physics lease, movement lease and producer pin counts match
+reuse-off at the same degree. Footprint hits remove actual Volumes and preserve every Hold.
+Every row has zero budget skips and zero InitialHoldReuseHits.
+
+| Fixture | Off Volumes | On Volumes | Hits | Misses | Stores | Peak keys | Peak bytes |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| low-lip-bank | 8,108 | 5,722 | 2,386 | 5,386 | 5,386 | 145 | 228,032 |
+| deck-over-ground | 16,024 | 8,080 | 7,944 | 7,408 | 7,408 | 77 | 136,064 |
+| wade-only-pool | 24,752 | 12,444 | 12,308 | 11,868 | 11,868 | 149 | 180,608 |
+| rebased-origin | 8,108 | 4,168 | 3,940 | 3,832 | 3,832 | 89 | 175,040 |
+| mixed-legacy-contact | 8,012 | 4,040 | 3,972 | 3,704 | 3,704 | 77 | 136,064 |
+| stair-accepted-refused | 4,116 | 2,857 | 1,259 | 1,584 | 1,584 | 330 | 275,840 |
+| multi-layer-row-bands | 10,379 | 5,093 | 5,286 | 2,775 | 2,775 | 146 | 186,368 |
+
+The seven fixtures avoid 37,095 of 79,499 actual volume evaluations, leaving 42,404, at each
+reported degree. These actual footprint-only counts meet the seven projected targets exactly.
+There is no shortfall to explain. No combined-mode, wide-lip-576, curved-savings, elapsed-time,
+speedup or allocation claim is made here.
+
+The maximum retained session was 330 keys and 275,840 bytes. Peaks use maximum per session,
+including across workers. Every completed source, band, phase and build reports zero live keys
+and bytes. The test-only saturated table uses the existing internal one-key constructor,
+retains that key's hits and falls back on other keys with nonzero budget skips. Its bytes and
+provider trace equal reuse-off. The unsupported forwarding view and forced bypass perform
+zero hits and the full original volume count. No public capacity knob was added.
+
+### Source identity, lifetime and failure controls
+
+EqualRestingAnchorsKeepOriginalRawSourceAndLayer constructs distinct raw slots, columns and
+layers with the same substituted resting height. Complete addresses and reference-identity
+domains remain distinct, including skipped ordinals before admitted samples. The parallel
+case replays compacted admission metadata. A real floor-plus-slab bake additionally proves,
+at degrees 1 and 3, that every observed source retains original ordinal 1 after raw slot 0
+fails headroom. The bit-equal raw height comes from that original captured slot.
+
+Missing and ambiguous source maps decline lookup. A source's next domain and an independent
+profile both evaluate cold. Source opening adds no physics acquisition, movement lease or
+producer pin. Non-finite endpoint prechecks do no new work. An unrelated outer explicit
+physics lease retains its original non-nesting refusal. The bridge independently rejects a
+stale producer pin, even while the physics session itself is current.
+
+Admission and Stair worker callbacks observe no footprint reuse or stored payload. Completed
+edge bands have zero live retention. Real producer exceptions and the parallel cutoff/failure
+selection tests preserve original outcomes and failure order. The added parallel source fault
+happens after actual stores and hits, releases every retained payload, and leaves the context
+usable for a subsequent ordinary build. Reference workers see the reference switch in every
+phase and leave no retained reuse data. Caller reference and diagnostics scopes restore.
+
+### Scope and handoff
+
+No Task 3 concern remains. Initial Hold reuse, its public stable-provider assertion and the
+remaining lane-wide acceptance work belong to later tasks. Full solution build, full suite,
+format verification, living API docs and the staged changelog finish remain with Task 7.
+The Euclidean arrival rule, every tolerance, band, work ceiling, capacity, raw physics ID,
+navigation identity and baked schema are unchanged. No golden was changed.
+
+All build/test commands ran synchronously through build-slot, one at a time. Logs are under
+/tmp/khaozengine-bake-proof-reuse/task-3-*.log. No cost or timing harness, full suite, stress,
+load, consumer, world bake, workflow, pack, release or tag ran. No branch switch, push, merge,
+GitHub write or agent/reviewer dispatch occurred.

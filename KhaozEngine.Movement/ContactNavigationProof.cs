@@ -10,7 +10,7 @@ namespace KhaozEngine.Movement;
 
 /// <summary>One profile's leased admission and directed traversal at certified resting feet. The serial build reads
 /// its live context frame. A parallel worker reads the build snapshot instead and never touches the context.</summary>
-internal sealed class ContactNavigationProof : IDisposable
+internal sealed partial class ContactNavigationProof : IDisposable
 {
     readonly PhysicsNavBake _bake;
     readonly GroundMoveContext? _context;
@@ -23,10 +23,11 @@ internal sealed class ContactNavigationProof : IDisposable
     MovementQueryLeaseId? _leaseBasis;
 
     internal ContactNavigationProof(PhysicsNavBake bake, GroundMoveContext context, EffectiveMovementBinding source,
-        NavAreaFootprint footprint)
+        NavAreaFootprint footprint, ContactNavigationReusePolicy? reuse = null)
     {
         _bake = bake;
         _context = context;
+        _reuse = reuse ?? ContactNavigationReusePolicy.Capture();
         _basis = bake.Basis ?? throw new InvalidOperationException(
             "Contact navigation requires a capture from an IPhysicsQueryLeaseSource.");
         _basis.AssertCurrent();
@@ -45,10 +46,11 @@ internal sealed class ContactNavigationProof : IDisposable
     /// <summary>A parallel worker's proof over <paramref name="snapshot"/>. The build validated the envelope once.
     /// The first lease is authenticated against the snapshot before any work starts.</summary>
     internal ContactNavigationProof(PhysicsNavBake bake, ContactNavigationSnapshot snapshot,
-        EffectiveMovementBinding source, NavAreaFootprint footprint)
+        EffectiveMovementBinding source, NavAreaFootprint footprint, ContactNavigationReusePolicy reuse)
     {
         _bake = bake;
         _basis = snapshot.Basis;
+        _reuse = reuse;
         try
         {
             _proof = source.CreateProofBinding();
@@ -122,7 +124,7 @@ internal sealed class ContactNavigationProof : IDisposable
         return new(layers, space.Links);
     }
 
-    internal bool TryEdge(Vector3 fromFeet, Vector3 toFeet)
+    bool TryEdgeCore(Vector3 fromFeet, Vector3 toFeet)
     {
         if (!Finite(fromFeet) || !Finite(toFeet) ||
             !_footprint.Accepts(fromFeet) || !_footprint.Accepts(toFeet)) return false;
@@ -151,6 +153,7 @@ internal sealed class ContactNavigationProof : IDisposable
     MovementStepResult Step(in FramedMovementState state, Vector2 direction, Vector3 cell)
     {
         using var queries = Acquire(cell);
+        EnsureSourceSession(queries);
         // Each null-hint lease must rebuild its selection before selected-space queries.
         var unselected = new FramedMovementState(state.State, state.Frame, null);
         MovementStepResult result = _proof.StepTowards(unselected, direction, false, _bake.Options.EdgeProbeSeconds, queries);
@@ -206,5 +209,9 @@ internal sealed class ContactNavigationProof : IDisposable
 
     static bool Finite(Vector3 value) => float.IsFinite(value.X) && float.IsFinite(value.Y) && float.IsFinite(value.Z);
 
-    public void Dispose() => _proof.Dispose();
+    public void Dispose()
+    {
+        try { _sourceScope?.Dispose(); }
+        finally { _proof.Dispose(); }
+    }
 }

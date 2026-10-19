@@ -3376,7 +3376,13 @@ constructed:
 
 ```csharp
 var reports = new BugReportService(app,
-    new BugReportServiceOptions { GameId = "mygame", GameDisplayName = "My Game", SessionLogPath = logPath },
+    new BugReportServiceOptions
+    {
+        GameId = "mygame",
+        GameDisplayName = "My Game",
+        SessionLogPath = logPath,
+        ReporterIdentityTerms = () => new[] { displayName ?? "", subject ?? "" },
+    },
     new HttpRelaySink(http, relay, () => token),
     new BugReportOfflineQueue(Path.Combine(stateDir, "bug-reports", "pending"), TimeProvider.System),
     () => subject);
@@ -3391,7 +3397,12 @@ var reports = new BugReportService(app,
   world pauses.
 - **Sections.** Seven built-in sections (`build`, `platform`, `graphics`, `session`, `input`, `performance`,
   `log`) plus any `AddSection`. Sections run in the trigger frame and must be cheap. Redaction and truncation run
-  off the frame thread before anything leaves the machine.
+  off the frame thread before anything leaves the machine. Optional `ReporterIdentityTerms` supplies the current
+  display name, subject and any other identity spellings once on that background finish thread per report. The
+  callback must be thread-safe and prompt. Terms are invariant case-insensitive literals, replaced by `[redacted]`
+  in every section's property names and string values. Null, blank and terms shorter than three characters are
+  ignored. Source or pattern construction failures mask every section string. The delivery subject, screenshots,
+  clips and the player's confirmation text are unchanged.
 - **Delivery.** Send raises `ReportConfirmed(reportId)` once on the frame thread before building the bundle on the
   thread pool. A server-backed game releases its held snapshot here. Cancel and shutdown never raise it, and a
   throwing handler is logged without stopping the send. `BugReportSubmitter` writes the bundle to the offline queue

@@ -169,12 +169,21 @@ should still avoid writing secrets. This catches what slips through.
 var redactor = new ReportRedactor();               // home read from the user profile folder
 string safe = redactor.Redact(line);               // same instance back when nothing matched
 IReadOnlyList<TelemetryHeaderValue> env = redactor.SelectEnvironment(pairs);
+ReportRedactor reporter = redactor.WithReporterIdentityTerms(() => new[] { displayName ?? "", subject ?? "" });
+string anonymous = reporter.Redact(line);
 ```
 
 - Rules run in a fixed order, each writing `[redacted]` (`ReportRedactor.Mask`): PEM private key blocks, JWTs,
   provider tokens (GitHub, Slack, AWS access key ids, `sk-` keys), Bearer and Basic credentials (the scheme is
   kept), secret URL query values (the parameter name is kept), and secret key and value pairs such as
   `password=`, `"apiKey": "..."` or `AccountKey=` (the key and separator are kept).
+- `WithReporterIdentityTerms(source)` calls the game source once now and returns an independent snapshot. It masks
+  complete escaped literal terms, including occurrences inside longer text, after secrets and before home. Matching
+  is invariant case-insensitive, longest first, with the non-backtracking engine and the same timeout. Null, blank
+  and terms shorter than three characters are ignored. A source or enumeration that throws, a null result, an
+  unsupported pattern, or a combined escaped pattern above 4096 characters fails closed by masking every string.
+  The source must finish promptly. `BugReportServiceOptions.ReporterIdentityTerms` takes this snapshot at each
+  report's finish, so the game can return the signed-in display name and subject without caching them at startup.
 - The home directory becomes `~`, matched case-insensitively with either separator and only where the path ends,
   so `/Users/anna` survives a home of `/Users/ann`. Trailing separators on the home are ignored, and a home
   shorter than three characters turns the rule off.

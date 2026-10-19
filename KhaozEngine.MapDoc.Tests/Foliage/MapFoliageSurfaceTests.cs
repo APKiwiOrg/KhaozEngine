@@ -47,7 +47,8 @@ public sealed class MapFoliageSurfaceTests
         // Each rejection predicate rejects its first point only, by its own reason, with the released height and normal.
         foreach (var (variant, reason) in new[]
         {
-            ("void-underlay", MapFoliageReason.MissingUnderlay), ("allowed-underlay", MapFoliageReason.MaterialNotAllowed),
+            ("void-underlay", MapFoliageReason.MissingUnderlay), ("void-underlay-overlay", MapFoliageReason.MissingUnderlay),
+            ("allowed-underlay", MapFoliageReason.MaterialNotAllowed),
             ("water", MapFoliageReason.WaterMaterial), ("indoors", MapFoliageReason.Indoor), ("zero-raster", MapFoliageReason.RasterZero),
         })
         {
@@ -134,9 +135,7 @@ public sealed class MapFoliageSurfaceTests
     [Fact]
     public void ScopedPaint_PartialThenWorldThenCellDecideTheVisibleMaterial()
     {
-        PrefabFixture f = PrefabFixtures.Create("paint-notch");
-        PrefabFixtures.AddReleasedWorldPaint(f, false, 2);
-        MapEffectiveResources resources = MapPrefabResolver.Expand(f.Document, f.Assets);
+        MapEffectiveResources resources = MapPrefabResolver.Expand(NotchWithWorldPaint(lowPriority: 0).Document, NotchWithWorldPaint(lowPriority: 0).Assets);
         MapPreparedFoliageSupport prepared = PreparePaint(resources);
         Assert.Equal(MapFoliageStatus.Complete, prepared.Status);
         MapPaintRegion[] partial = resources.PaintRegions["ground"].Regions.ToArray();
@@ -148,10 +147,24 @@ public sealed class MapFoliageSurfaceTests
         MapFoliageSurfacePoint partialDecides = prepared.Sample(centre.X, centre.Y);
         Assert.Equal((MapFoliageReason.Accepted, (ushort)7, inside.Face), (partialDecides.Reason, partialDecides.VisibleMaterial, partialDecides.Face!.Value));
 
+        // Explicitly equal world priorities: the first ordinal ID, "priority-high" (8), wins the overlap, a written rule of
+        // legacy-tile/1.
+        Assert.Equal(new[] { 0, 0 }, resources.SurfaceSource.Surfaces.Where(s => s.Id.StartsWith("priority-", StringComparison.Ordinal))
+            .Select(s => s.PaintPriority).ToArray());
         MapFoliageSurfacePoint worldDecides = prepared.Sample(1.2f, -2.5f);
         Assert.DoesNotContain(partial, r => Holds(r, 1.2f, -2.5f));
         Assert.Equal(8, worldDecides.VisibleMaterial);
         Assert.Equal(7, prepared.Sample(0.5f, -3.5f).VisibleMaterial);
+
+        // Distinct world priorities: the higher priority owns the overlap whatever its ID, and the change is a dependency.
+        PrefabFixture raised = NotchWithWorldPaint(lowPriority: 2);
+        MapPreparedFoliageSupport prioritized = PreparePaint(MapPrefabResolver.Expand(raised.Document, raised.Assets));
+        Assert.Equal(7, prioritized.Sample(1.2f, -2.5f).VisibleMaterial);
+        Assert.Equal(7, prioritized.Sample(0.5f, -3.5f).VisibleMaterial);
+        Assert.Equal(8, prioritized.Sample(3.5f, -2.5f).VisibleMaterial);
+        Assert.NotEqual(prepared.DependencyParts, prioritized.DependencyParts);
+        Assert.Contains(prioritized.DependencyParts, p => p.StartsWith("surface|priority-low|PaintOverride|Native|ground|2|", StringComparison.Ordinal));
+        Assert.Contains(prepared.DependencyParts, p => p.StartsWith("transform|Surface:a/paint|", StringComparison.Ordinal));
         Assert.Equal(3, prepared.Sample(6.5f, -6.5f).VisibleMaterial);
 
         // The unpainted notch keeps the face's own or world coverage, never the partial source's material.
@@ -187,6 +200,16 @@ public sealed class MapFoliageSurfaceTests
                 bool split = MapSurfaceTopology.SplitSwNe(0, 0, 0, 0, cut, rotation, MapCellTopology.Auto);
                 Assert.Equal(expected, MapFoliageMaterials.OverlayAt(cell, split, 0.5f, 0.5f));
             }
+    }
+
+    // The released paint notch with released world paint on rows 2 and 3, its "priority-low" source raised as asked.
+    static PrefabFixture NotchWithWorldPaint(int lowPriority)
+    {
+        PrefabFixture f = PrefabFixtures.Create("paint-notch");
+        PrefabFixtures.AddReleasedWorldPaint(f, false, 2);
+        int index = f.Document.Surfaces.Refs.FindIndex(s => s.Id == "priority-low");
+        f.Document.Surfaces.Refs[index] = f.Document.Surfaces.Refs[index] with { PaintPriority = lowPriority };
+        return f;
     }
 
     static MapPreparedFoliageSupport PreparePaint(MapEffectiveResources resources)

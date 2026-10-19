@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Foliage;
+using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Support;
 using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.Tests.MapDoc.Prefabs;
 using Xunit;
 
 namespace KhaozEngine.Tests.MapDoc.Foliage;
@@ -47,7 +50,7 @@ public sealed class MapFoliageSupportTests
         MapPreparedFoliageSupport stranded = Prepared(FoliageFixtures.Stacked(Space("level-1", 15f, 0.5f, 0.5f)));
         Assert.Equal(MapFoliageStatus.Complete, stranded.Status);
         MapFoliageSurfacePoint missing = stranded.Sample(0.5f, 0.5f);
-        Assert.Equal(MapFoliageStatus.MissingSupport, missing.Status);
+        Assert.Equal((MapFoliageStatus.MissingSupport, MapFoliageReason.Refused), (missing.Status, missing.Reason));
         Assert.Null(missing.SupportOwnerId);
 
         // A named surface that is not an effective support floor refuses the whole preparation.
@@ -76,7 +79,97 @@ public sealed class MapFoliageSupportTests
         Assert.Equal(MapFoliageStatus.Unavailable, unavailable.Status);
         FoliageFixture slabs = FoliageFixtures.Slabs(Space("room", 0.2f, 1f, 0.5f));
         MapFoliageSurfacePoint ambiguous = Prepared(slabs).Sample(0.5f, 0.5f);
-        Assert.Equal(MapFoliageStatus.Ambiguous, ambiguous.Status);
+        Assert.Equal((MapFoliageStatus.Ambiguous, MapFoliageReason.Refused, (MapFaceKey?)null), (ambiguous.Status, ambiguous.Reason, ambiguous.Face));
+        Assert.Equal(MapFoliageReason.Refused, unavailable.Reason);
+    }
+
+    [Fact]
+    public void SpaceBinding_DecidesEveryCandidateLikeAFreshSelection()
+    {
+        // The released hut, turned so its room prism's edges cross the world lattice diagonally. Inside the room a
+        // 1 m ramp rises through the search band [0.5, 1.5] mid-cell and leaves it at x = 14 inside the room, and a 1.5 m
+        // terrace on an offset lattice crosses the ramp's height at x = 12, so the higher floor changes per point, never per
+        // cell or by floor ID.
+        MapEffectiveResources resources = RoomSpans();
+        MapFoliageLayer layer = FoliageFixtures.Layer("room-cover", Space("a/room", 1f, 0.5f, 0.5f), 0, -16, 2, 9, 9,
+            Enumerable.Repeat((byte)200, 81).ToArray(), []);
+        IReadOnlyList<MapSurfaceRef> declared = resources.SurfaceSource.Surfaces;
+        MapSurfaceScope scope = MapFoliageSupport.Scope(layer, Origin, declared, resources.Transforms);
+        MapScopedSurfaces view = resources.Acquire(scope);
+        MapPreparedFoliageSupport prepared = MapFoliageSupport.Prepare(view, resources.PaintRegions, declared, layer, Origin, Limits);
+        Assert.Equal(MapFoliageStatus.Complete, prepared.Status);
+
+        var points = new List<(float X, float Z)>();
+        for (float z = -12.987f; z < -3f; z += 0.173f)
+            for (float x = 8.013f; x < 16f; x += 0.173f) points.Add((x, z));
+        long before = MapPreparedSupport.ThreadSamples;
+        MapFoliageSurfacePoint[] samples = points.Select(p => prepared.Sample(p.X, p.Z)).ToArray();
+        Assert.Equal(0, MapPreparedSupport.ThreadSamples - before);
+
+        MapPreparedSupport fresh = MapSupportPreparation.Prepare(view);
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (int i = 0; i < points.Count; i++)
+        {
+            MapSupportResult result = fresh.SampleBinding(layer.Support,
+                new(MapExactValue.FromSingle(points[i].X), MapExactValue.FromSingle(points[i].Z)));
+            MapFoliageSurfacePoint sample = samples[i];
+            string category;
+            if (result.Status == MapSupportStatus.Supported)
+            {
+                Assert.Equal((MapFoliageStatus.Complete, MapFoliageSupportIdentity.From(result), result.SpaceId, result.Face),
+                    (sample.Status, sample.SupportOwnerId, sample.OccupiedSpaceId, sample.Face));
+                Assert.NotEqual(MapFoliageReason.OutsideDomain, sample.Reason);
+                category = result.Face!.Value.OwnerId;
+            }
+            else if (result.Status == MapSupportStatus.NoSupport)
+            {
+                Assert.True(sample.Status == MapFoliageStatus.MissingSupport || sample.Reason == MapFoliageReason.OutsideDomain,
+                    $"({points[i].X}, {points[i].Z}): {sample.Status} {sample.Reason}");
+                category = sample.Status == MapFoliageStatus.MissingSupport ? "missing" : "outside";
+            }
+            else
+            {
+                Assert.Equal(MapFoliageSupport.Map(result.Status), sample.Status);
+                category = result.Status.ToString();
+            }
+            counts[category] = counts.GetValueOrDefault(category) + 1;
+        }
+        Assert.All(new[] { "ramp", "terrace", "missing", "outside" }, c => Assert.True(counts.GetValueOrDefault(c) > 0, c));
+    }
+
+    // The released basic hut at (10.5, 0, -6) turned by 0.371 radians, plus two invented world floors that pass through
+    // its room: "ramp" on the 1 m lattice at 0.15 x - 0.6 metres and a flat "terrace" at 1.2 m on a 1.5 m lattice that ends
+    // at x = 12.
+    static MapEffectiveResources RoomSpans()
+    {
+        PrefabFixture f = PrefabFixtures.Create("basic");
+        MapPrefabInstance instance = f.Document.Prefabs!.Instances.Single();
+        f.Document.Prefabs = new(1, 1, new[] { instance with { Transform = new(new Vector3(10.5f, 0, -6f), 0.371f, 1) } }, []);
+        AddFloor(f.Document, "ramp", new(1, 1), 16, 16, x => -60 + 15 * x);
+        AddFloor(f.Document, "terrace", new(3, 2), 8, 11, _ => 120);
+        return MapPrefabResolver.Expand(f.Document, f.Assets);
+    }
+
+    static void AddFloor(MapDocument document, string id, MapRational cell, int width, int depth, Func<int, int> height)
+    {
+        var patch = new MapSurfacePatch
+        {
+            Key = new(id, 0, 0),
+            Width = width,
+            Depth = depth,
+            Heights = Enumerable.Range(0, (width + 1) * (depth + 1)).Select(i => height(i % (width + 1))).ToArray(),
+            Cells = Enumerable.Repeat(new MapSurfaceCell(3, 0, MapOverlayCut.Full, 0, MapCellFlags.None, MapCellTopology.Auto), width * depth).ToArray(),
+            Presence = new ulong[(width * depth + 63) / 64],
+        };
+        for (int z = 0; z < depth; z++)
+            for (int x = 0; x < width; x++) patch.SetPresent(x, z, true);
+        var surface = new MapSurfaceRef(id, new(cell, new(1, 100), MapRowDirection.NegativeZ, MapHeightDatum.WorldY0),
+            MapSurfaceRole.SupportFloor, MapPresencePolicy.Native, null, null, "");
+        document.Surfaces.Refs.Add(surface with
+        {
+            SemanticSha256 = MapSurfaceSemantics.SurfaceDigest(surface, new[] { new KeyValuePair<MapPatchKey, string>(patch.Key, MapSurfaceSemantics.PatchDigest(patch)) }),
+        });
+        document.Surfaces.Patches.Add(patch.Key, patch);
     }
 
     [Fact]

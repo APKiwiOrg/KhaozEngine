@@ -210,7 +210,7 @@ internal static class MapSupportSelection
             new(status, face, worldY, normal, compatibility, spaceId, via, detail, view.ReadWitness);
     }
 
-    static Dictionary<string, MapRecordRef?> Reachable(MapScopedSurfaces view, MapSpaceMembership spaces, string owner,
+    internal static Dictionary<string, MapRecordRef?> Reachable(MapScopedSurfaces view, MapSpaceMembership spaces, string owner,
         MapSpaceFootprint[] footprints, MapTopologyRecord[] records, MapExactXz point)
     {
         var result = new Dictionary<string, MapRecordRef?>(StringComparer.Ordinal) { [owner] = null };
@@ -251,7 +251,7 @@ internal static class MapSupportSelection
         return MapPatchKey.ForCell(surface.Id, x, z) == opening.Patch && opening.SlotCells.Contains(MapLowerCellClassifier.SlotCell(x, z));
     }
 
-    static bool OneSeamOwner(MapScopedSurfaces view, Candidate[] candidates, IEnumerable<MapSurfaceSeam> seams, MapExactXz point)
+    internal static bool OneSeamOwner(MapScopedSurfaces view, Candidate[] candidates, IEnumerable<MapSurfaceSeam> seams, MapExactXz point)
     {
         var joined = new HashSet<MapPatchKey?> { candidates[0].Face.Key.Patch };
         MapSurfaceSeam[] incident = seams.Where(s => OnEdge(s.First) && OnEdge(s.Second)).ToArray();

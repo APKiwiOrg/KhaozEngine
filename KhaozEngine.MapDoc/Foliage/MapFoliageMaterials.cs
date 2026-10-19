@@ -59,7 +59,9 @@ internal sealed class MapFoliageMaterials
 
     /// <summary>The released world paint sources acquired for <paramref name="targetId"/>: PaintOverride surfaces without
     /// an effective pose, ordered lowest precedence first so the highest priority, then the first ordinal ID, applies
-    /// last.</summary>
+    /// last. That winner is a rule of legacy-tile/1: equal-priority world paint is never refused, and among equal
+    /// priorities the ascending ordinal ID wins, the order the released partial-paint compiler already gives its
+    /// sources. A renderer showing this ground takes the same winner.</summary>
     internal static MapSurfaceRef[] WorldPaint(MapScopedSurfaces view, string targetId) => view.Surfaces
         .Where(s => s.Role == MapSurfaceRole.PaintOverride && s.PaintTargetSurfaceId == targetId &&
             view.EffectiveContext?.IsPartialPaint(s) != true)

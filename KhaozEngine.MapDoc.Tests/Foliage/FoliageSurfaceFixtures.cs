@@ -37,8 +37,8 @@ internal static partial class FoliageFixtures
     /// <summary>One slot of grass on a legacy-tile surface over the invented noncoplanar relief
     /// ((x * 37 + z * 11) % 23 * 5 - 40) cm, its x = 64 and z = 64 corners repeating the last authored corner as the
     /// released edge extension reads them. "slope-2m" uses a native 2 m lattice. Cut variants overlay road on cell
-    /// (40, 40). "void-underlay", "allowed-underlay", "water", "indoors", "nodraw", "blocked" and "nodraw-blocked" change
-    /// cell (30, 30). "zero-raster" zeroes the four raster samples around tile point (30.5, 30.5).</summary>
+    /// (40, 40). "void-underlay", "void-underlay-overlay", "allowed-underlay", "water", "indoors", "nodraw", "blocked" and
+    /// "nodraw-blocked" change cell (30, 30). "zero-raster" zeroes the four raster samples around tile point (30.5, 30.5).</summary>
     internal static FoliageFixture FlagsAndCuts(string variant = "control")
     {
         float size = variant == "slope-2m" ? 2f : 1f;
@@ -61,6 +61,7 @@ internal static partial class FoliageFixtures
         switch (variant)
         {
             case "void-underlay": Change(30, 30, c => c with { Underlay = 0 }); break;
+            case "void-underlay-overlay": Change(30, 30, c => c with { Underlay = 0, Overlay = Road }); break;
             case "allowed-underlay": Change(30, 30, c => c with { Underlay = Dirt }); allowed = [Grass]; break;
             case "water": Change(30, 30, c => c with { Underlay = Pond }); break;
             case "indoors": Change(30, 30, c => c with { Flags = MapCellFlags.Indoor }); break;

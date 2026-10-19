@@ -6,18 +6,22 @@ namespace KhaozEngine.Physics.Bepu;
 
 public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprintReuseSource
 {
-    readonly ConcurrentDictionary<int, FootprintReuseSession> _footprintReuseSessions = new();
+    readonly ConcurrentDictionary<(int Thread, IPhysicsWorld Receiver), FootprintReuseSession> _footprintReuseSessions = new();
 
     /// <inheritdoc/>
-    public bool TryOpenSupportFootprintReuse(IPhysicsQueryLease lease, out IPhysicsSupportFootprintReuseSession? session)
+    public bool TryOpenSupportFootprintReuse(IPhysicsQueryLease lease, out IPhysicsSupportFootprintReuseSession? session) =>
+        TryOpenSupportFootprintReuseCore(this, lease, null, out session);
+
+    bool TryOpenSupportFootprintReuseCore(IPhysicsWorld receiver, IPhysicsQueryLease lease,
+        StaticQueryExclusions? exclusions, out IPhysicsSupportFootprintReuseSession? session)
     {
         AuthenticateFeatureLease(lease);
         using QueryOperation scope = EnterQuery();
         session = null;
-        int thread = Environment.CurrentManagedThreadId;
-        if (_footprintReuseSessions.ContainsKey(thread)) return false;
-        var opened = new FootprintReuseSession(this, lease);
-        if (!_footprintReuseSessions.TryAdd(thread, opened)) return false;
+        var identity = (Environment.CurrentManagedThreadId, receiver);
+        if (_footprintReuseSessions.ContainsKey(identity)) return false;
+        var opened = new FootprintReuseSession(this, receiver, lease, exclusions);
+        if (!_footprintReuseSessions.TryAdd(identity, opened)) return false;
         session = opened;
         return true;
     }
@@ -26,15 +30,16 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprintReuseSour
         StaticQueryExclusions? exclusions, SupportFootprintCollector collector)
     {
         // Non-default scratch work policy must retain its original refusal, even after an unrestricted success.
-        if (SupportReferenceEvaluation.Active || collector.CurvedWork.Limit != SupportCurvedWork.MaximumWork ||
-            !ReferenceEquals(receiver, this) || exclusions is not null) return null;
-        return _footprintReuseSessions.TryGetValue(Environment.CurrentManagedThreadId, out var session) &&
-            session.Matches(lease) ? session : null;
+        if (SupportReferenceEvaluation.Active || collector.CurvedWork.Limit != SupportCurvedWork.MaximumWork) return null;
+        return _footprintReuseSessions.TryGetValue((Environment.CurrentManagedThreadId, receiver), out var session) &&
+            ReferenceEquals(exclusions, session.Exclusions) && session.Matches(lease) ? session : null;
     }
 
     sealed class FootprintReuseSession : IPhysicsSupportFootprintReuseSession
     {
         readonly BepuPhysicsWorld _owner;
+        readonly IPhysicsWorld _receiver;
+        internal StaticQueryExclusions? Exclusions { get; }
         readonly int _thread, _originX, _originY, _originZ;
         readonly long _installedGeneration, _staticGeneration, _leaseGeneration;
         internal readonly SupportFootprintProofMemo Memo = new();
@@ -42,9 +47,12 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprintReuseSour
         bool _hasDomain, _disposed;
         internal ulong SourceVersion { get; private set; }
 
-        internal FootprintReuseSession(BepuPhysicsWorld owner, IPhysicsQueryLease lease)
+        internal FootprintReuseSession(BepuPhysicsWorld owner, IPhysicsWorld receiver, IPhysicsQueryLease lease,
+            StaticQueryExclusions? exclusions)
         {
             _owner = owner;
+            _receiver = receiver;
+            Exclusions = exclusions;
             _thread = Environment.CurrentManagedThreadId;
             _installedGeneration = owner._staticGeometryVersion;
             _staticGeneration = owner.StaticGeometryGeneration;
@@ -84,7 +92,8 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprintReuseSour
             BitConverter.SingleToInt32Bits(lease.Origin.Y) == _originY &&
             BitConverter.SingleToInt32Bits(lease.Origin.Z) == _originZ;
 
-        bool CurrentBasis() => !_owner._disposed && _owner._staticGeometryVersion == _installedGeneration &&
+        bool CurrentBasis() => !_owner._disposed && (_receiver is not QueryView view || !view.IsDisposed) &&
+            _owner._staticGeometryVersion == _installedGeneration &&
             _owner.StaticGeometryGeneration == _staticGeneration && _owner._queryGeneration == _leaseGeneration &&
             BitConverter.SingleToInt32Bits(_owner._origin.X) == _originX &&
             BitConverter.SingleToInt32Bits(_owner._origin.Y) == _originY &&
@@ -93,6 +102,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprintReuseSour
         void AssertBasis()
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_receiver is QueryView view) view.ThrowIfDisposed();
             if (!CurrentBasis()) throw new InvalidOperationException("The footprint reuse session's selected view changed.");
         }
 
@@ -119,7 +129,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprintReuseSour
                     _domain = default;
                     _hasDomain = false;
                     _disposed = true;
-                    _owner._footprintReuseSessions.TryRemove(_thread, out _);
+                    _owner._footprintReuseSessions.TryRemove((_thread, _receiver), out _);
                 }
             }
         }

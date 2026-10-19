@@ -7,113 +7,148 @@ using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Support;
 using KhaozEngine.MapDoc.Surfaces;
-using KhaozEngine.Primitives;
 using KhaozEngine.Tests.MapDoc.Prefabs;
 using Xunit;
 
 namespace KhaozEngine.Tests.MapDoc.Foliage;
 
-/// <summary>The prepared support kernel against the released point query. Both run on the same acquisition, so any
-/// difference is the kernel's. One prepared instance serves several requests to prove it holds no request state.</summary>
+/// <summary>Released-parity tests pin both public support routes to rows captured from the released point query at
+/// 226a44bfb, before the selection kernel was shared. Adapter tests compare the two current routes with each other and
+/// prove only that one prepared instance holds no request state, not released parity.</summary>
 public sealed class MapPreparedSupportParityTests
 {
-    static MapSupportRequest Req(float x, float y, float z, float up, float down) => SupportFixtures.Request(x, y, z, up, down);
+    // Captured by running SupportParityFixtures.Matrix through SupportParityFixtures.Released against a scratch git
+    // archive of 226a44bfb. Columns: case, status, face, WorldY bits, normal bits, space, Via, compatibility, detail,
+    // witness outcome, counted point work (contexts, patch validations, bound faces, context faces, compiles, faces).
+    static readonly string[] ReleasedRows =
+    [
+        "auto-space | Supported | floor-1@floor-1:0:0#0.0.0.Front | 1092616192 | 0,1065353216,0 | level-1 | - | - | - | complete/view | 1,16,0,32,16,32",
+        "asymmetric-down | Supported | floor-0@floor-0:0:0#0.0.0.Front | 0 | 0,1065353216,0 | level-0 | - | - | - | complete/view | 1,16,0,32,16,32",
+        "asymmetric-up | Supported | floor-0@floor-0:0:0#0.0.0.Front | 0 | 0,1065353216,0 | level-0 | - | - | - | complete/view | 1,16,0,32,16,32",
+        "inside-rock | NoSupport | - | 0 | - | - | - | - | outside every space | complete/view | 1,16,0,32,16,32",
+        "explicit-space | Supported | floor-3@floor-3:0:0#0.0.0.Front | 1106247680 | 0,1065353216,0 | level-3 | - | - | - | complete/view | 1,16,0,32,16,32",
+        "filter-floor-1 | Supported | floor-1@floor-1:0:0#0.0.0.Front | 1092616192 | 0,1065353216,0 | level-1 | - | - | - | complete/view | 1,16,0,32,16,32",
+        "filter-floor-0 | NoSupport | - | 0 | - | - | - | - | no eligible support in the selected space | complete/view | 1,16,0,32,16,32",
+        "slope-0 | Supported | floor-1@floor-1:0:0#0.0.0.Front | 1092616192 | 0,1065353216,0 | level-1 | - | - | - | complete/view | 1,16,0,32,16,32",
+        "slope-quarter | Supported | floor-1@floor-1:0:0#0.0.0.Front | 1092616192 | 0,1065353216,0 | level-1 | - | - | - | complete/view | 1,16,0,32,16,32",
+        "intersection-capacity | CapacityExceeded | - | 0 | - | - | - | - | support intersections | complete/view | 1,16,0,32,16,32",
+        "shaft-link | Supported | deep-floor@deep-floor:0:0#323.0.0.Front | -1046478848 | 0,1065353216,0 | deep | shaft-link@cave-floor:0:0 | - | - | complete/view | 1,5,0,10,5,10",
+        "cave-floor | Supported | cave-floor@cave-floor:0:0#131.0.0.Front | 1091567616 | -2147483648,1055193390,1063581998 | outside | - | - | - | complete/view | 1,3,0,2,3,2",
+        "flat-slope-0 | Supported | cave-floor@cave-floor:0:0#386.0.0.Front | 1082130432 | 0,1065353216,0 | chamber | - | - | - | complete/view | 1,5,0,10,5,10",
+        "ramp | Supported | cave-floor@cave-floor:0:0#194.0.0.Front | 1088421888 | -2147483648,1055193390,1063581998 | chamber | - | - | - | complete/view | 1,4,0,6,4,6",
+        "ramp-slope-quarter | NoSupport | - | 0 | - | - | - | - | no eligible support in the selected space | complete/view | 1,4,0,6,4,6",
+        "ramp-slope-0 | NoSupport | - | 0 | - | - | - | - | no eligible support in the selected space | complete/view | 1,4,0,6,4,6",
+        "tiny-coordinate | NotRepresentable | - | 0 | - | - | - | - | overflow | complete/view | 0,0,0,0,0,0",
+        "equal-height | Ambiguous | - | 0 | - | - | - | - | equal-height independent support owners | complete/view | 1,2,0,4,2,4",
+        "legacy-fallback | LegacyFallback | - | 1077936128 | - | world | - | plane-0:0:0#1#kemap/legacy-exterior/1 | - | complete/view | 1,1,0,0,1,0",
+        "undeclared-hole | MissingGeometry | - | 0 | - | - | - | - | incomplete surface acquisition | incomplete/view | 0,0,0,0,0,0",
+        "invalid-interval | Invalid | - | 0 | - | - | - | - | invalid point or support interval or slope | complete/view | 0,0,0,0,0,0",
+        "invalid-point | Invalid | - | 0 | - | - | - | - | invalid point or support interval or slope | complete/view | 0,0,0,0,0,0",
+        "invalid-slope | Invalid | - | 0 | - | - | - | - | invalid point or support interval or slope | complete/view | 0,0,0,0,0,0",
+        "out-of-scope | MissingGeometry | - | 0 | - | - | - | - | outside acquired scope | complete/view | 0,0,0,0,0,0",
+        "equal-height-current | Ambiguous | - | 0 | - | - | - | - | equal-height independent support owners | complete/view | 1,2,0,4,2,4",
+        "paint-current | Supported | slab-a@slab-a:0:0#0.0.0.Front | 0 | 0,1065353216,0 | room | - | - | - | complete/view | 1,1,0,2,1,2",
+        "step-current | Supported | step@step:0:0#1.0.0.Front | 1050253722 | 0,1065353216,0 | yard | - | - | - | complete/view | 1,2,0,2,2,2",
+        "diagonal-0-none-any | Supported | floor-1@floor-1:0:0#0.0.0.Front | 1092616192 | 0,1065353216,0 | level-1 | - | - | - | complete/view | 1,16,0,32,16,32",
+        "diagonal-0-none-floor-1 | Supported | floor-1@floor-1:0:0#0.0.0.Front | 1092616192 | 0,1065353216,0 | level-1 | - | - | - | complete/view | 1,16,0,32,16,32",
+        "diagonal-0-0-any | Supported | floor-1@floor-1:0:0#0.0.0.Front | 1092616192 | 0,1065353216,0 | level-1 | - | - | - | complete/view | 1,16,0,32,16,32",
+        "diagonal-0-0-floor-1 | Supported | floor-1@floor-1:0:0#0.0.0.Front | 1092616192 | 0,1065353216,0 | level-1 | - | - | - | complete/view | 1,16,0,32,16,32",
+        "diagonal-0-0.7853982-any | Supported | floor-1@floor-1:0:0#0.0.0.Front | 1092616192 | 0,1065353216,0 | level-1 | - | - | - | complete/view | 1,16,0,32,16,32",
+        "diagonal-0-0.7853982-floor-1 | Supported | floor-1@floor-1:0:0#0.0.0.Front | 1092616192 | 0,1065353216,0 | level-1 | - | - | - | complete/view | 1,16,0,32,16,32",
+        "diagonal-1-none-any | Supported | floor-1@floor-1:0:0#0.1.0.Front | 1092616192 | 0,1065353216,0 | level-1 | - | - | - | complete/view | 1,16,0,32,16,32",
+        "diagonal-1-none-floor-1 | Supported | floor-1@floor-1:0:0#0.1.0.Front | 1092616192 | 0,1065353216,0 | level-1 | - | - | - | complete/view | 1,16,0,32,16,32",
+        "diagonal-1-0-any | Supported | floor-1@floor-1:0:0#0.1.0.Front | 1092616192 | 0,1065353216,0 | level-1 | - | - | - | complete/view | 1,16,0,32,16,32",
+        "diagonal-1-0-floor-1 | Supported | floor-1@floor-1:0:0#0.1.0.Front | 1092616192 | 0,1065353216,0 | level-1 | - | - | - | complete/view | 1,16,0,32,16,32",
+        "diagonal-1-0.7853982-any | Supported | floor-1@floor-1:0:0#0.1.0.Front | 1092616192 | 0,1065353216,0 | level-1 | - | - | - | complete/view | 1,16,0,32,16,32",
+        "diagonal-1-0.7853982-floor-1 | Supported | floor-1@floor-1:0:0#0.1.0.Front | 1092616192 | 0,1065353216,0 | level-1 | - | - | - | complete/view | 1,16,0,32,16,32",
+        "diagonal-2-none-any | Supported | floor-1@floor-1:0:0#0.0.0.Front | 1092616192 | 0,1065353216,0 | level-1 | - | - | - | complete/view | 1,16,0,32,16,32",
+        "diagonal-2-none-floor-1 | Supported | floor-1@floor-1:0:0#0.0.0.Front | 1092616192 | 0,1065353216,0 | level-1 | - | - | - | complete/view | 1,16,0,32,16,32",
+        "diagonal-2-0-any | Supported | floor-1@floor-1:0:0#0.0.0.Front | 1092616192 | 0,1065353216,0 | level-1 | - | - | - | complete/view | 1,16,0,32,16,32",
+        "diagonal-2-0-floor-1 | Supported | floor-1@floor-1:0:0#0.0.0.Front | 1092616192 | 0,1065353216,0 | level-1 | - | - | - | complete/view | 1,16,0,32,16,32",
+        "diagonal-2-0.7853982-any | Supported | floor-1@floor-1:0:0#0.0.0.Front | 1092616192 | 0,1065353216,0 | level-1 | - | - | - | complete/view | 1,16,0,32,16,32",
+        "diagonal-2-0.7853982-floor-1 | Supported | floor-1@floor-1:0:0#0.0.0.Front | 1092616192 | 0,1065353216,0 | level-1 | - | - | - | complete/view | 1,16,0,32,16,32",
+        "rim-0 | Supported | cave-floor@cave-floor:0:0#131.0.0.Front | 1092616192 | -2147483648,1055193390,1063581998 | outside | - | - | - | complete/view | 1,3,0,2,3,2",
+        "rim-1 | Supported | cave-floor@cave-floor:0:0#131.0.0.Front | 1092616192 | -2147483648,1055193390,1063581998 | outside | - | - | - | complete/view | 1,3,0,2,3,2",
+        "rim-2 | Supported | cave-floor@cave-floor:0:0#131.0.0.Front | 1092616192 | -2147483648,1055193390,1063581998 | outside | - | - | - | complete/view | 1,3,0,2,3,2",
+        "rim-3 | Supported | cave-floor@cave-floor:0:0#131.0.0.Front | 1092616192 | -2147483648,1055193390,1063581998 | outside | - | - | - | complete/view | 1,3,0,2,3,2",
+        "rim-4 | Supported | cave-floor@cave-floor:0:0#131.0.0.Front | 1092616192 | -2147483648,1055193390,1063581998 | outside | - | - | - | complete/view | 1,3,0,2,3,2",
+        "named-floor-1 | Supported | floor-1@floor-1:0:0#0.0.0.Front | 1092616192 | 0,1065353216,0 | level-1 | - | - | - | complete/view | -",
+        "named-floor-0 | Supported | floor-0@floor-0:0:0#0.0.0.Front | 0 | 0,1065353216,0 | level-0 | - | - | - | complete/view | -",
+        "named-ceiling-1 | NoSupport | - | 0 | - | - | - | - | surface has no physical support at XZ | complete/view | -",
+        "named-missing | NoSupport | - | 0 | - | - | - | - | surface has no physical support at XZ | complete/view | -",
+        "exact | Supported | floor-1@floor-1:0:0#0.0.0.Front | 1092616192 | 0,1065353216,0 | level-1 | - | - | - | complete/view | -",
+        "named-exact | Supported | floor-1@floor-1:0:0#0.0.0.Front | 1092616192 | 0,1065353216,0 | level-1 | - | - | - | complete/view | -",
+        "nested-surface | Supported | a/floor@a/floor:0:0#130.0.0.Front | 0 | 0,1065353216,0 | a/room | - | - | - | complete | -",
+        "nested-room | Supported | a/floor@a/floor:0:0#130.0.0.Front | 0 | 0,1065353216,0 | a/room | - | - | - | complete | -",
+        "nested-inner | NoSupport | - | 0 | - | - | - | - | no eligible support in the selected space | complete | -",
+        "shared-space | Supported | base@base:0:0#0.0.0.Front | 0 | 0,1065353216,0 | shared | - | - | - | complete | -",
+        "shared-base | Supported | base@base:0:0#0.0.0.Front | 0 | 0,1065353216,0 | shared | - | - | - | complete | -",
+        "shared-surface-west | NoSupport | - | 0 | - | - | - | - | surface has no physical support at XZ | complete | -",
+        "shared-surface-east | Supported | shared@shared:0:0#4.0.0.Front | 1077936128 | 0,1065353216,0 | elsewhere | - | - | - | complete | -",
+    ];
 
     [Fact]
     public void PreparedSupport_FullRequestMatchesReleasedSelection()
     {
-        var seen = new HashSet<MapSupportStatus>();
-        MapDocument stacked = SupportFixtures.EightStacked(), cave = CaveFixtures.RampChamberShaft();
-        MapSupportRequest level1 = Req(0.5f, 10.2f, 0.5f, 0.5f, 1f);
-        var cases = new List<(MapDocument Doc, MapSupportRequest Request, MapQueryLimits? Limits)>
+        // Each route runs on its own fresh matrix, so neither sees the other's cached acquisition work.
+        IReadOnlyList<SupportParityCase> query = SupportParityFixtures.Matrix(), prepared = SupportParityFixtures.Matrix();
+        Assert.Equal(ReleasedRows, query.Select(c =>
         {
-            (stacked, level1, null),                                                        // automatic occupied space
-            (stacked, Req(0.5f, 4.9f, 0.5f, 1f, 5f), null),                                 // asymmetric down search
-            (stacked, Req(0.5f, 1.0f, 0.5f, 20f, 1f), null),                                // asymmetric up search
-            (stacked, Req(0.5f, 7.0f, 0.5f, 1f, 1f), null),                                 // inside the rock
-            (stacked, Req(0.5f, 30.2f, 0.5f, 0.5f, 1f) with { SpaceId = "level-3" }, null),
-            (stacked, level1 with { SurfaceId = "floor-1" }, null),
-            (stacked, level1 with { SurfaceId = "floor-0" }, null),                         // the filter excludes the only floor in range
-            (stacked, level1 with { MaxSlopeRadians = 0f }, null),
-            (stacked, level1 with { MaxSlopeRadians = MathF.PI / 4 }, null),
-            (stacked, Req(0.5f, 70.2f, 0.5f, 0.5f, 100f), new MapQueryLimits(MaxSupportIntersections: 2)),
-            (cave, Req(3.5f, 3.0f, 5.5f, 0.5f, 30f), null),                                 // reached through the shaft link
-            (cave, Req(3.5f, 9.5f, 2.5f, 0.5f, 1f), null),
-            (cave, Req(2.5f, 4.2f, 6.5f, 1f, 1f) with { MaxSlopeRadians = 0f }, null),       // flat chamber floor at slope 0
-            (cave, Req(2.5f, 7.5f, 3.5f, 1f, 1f), null),                                    // the sloped chamber floor
-            (cave, Req(2.5f, 7.5f, 3.5f, 1f, 1f) with { MaxSlopeRadians = MathF.PI / 4 }, null),
-            (cave, Req(2.5f, 7.5f, 3.5f, 1f, 1f) with { MaxSlopeRadians = 0f }, null),
-            (cave, Req(1e-30f, 10.5f, 4.5f, 0.5f, 1f), null),                               // not representable
-            (SupportFixtures.EqualSlabs(secondIsPaint: false), Req(0.5f, 0.2f, 0.5f, 0.5f, 1f), null),
-            (SupportFixtures.LegacyFallback(), Req(1.5f, 5.0f, -0.5f, 0.5f, 10f), null),
-            (CaveFixtures.WithoutOpening("shaft-top"), Req(3.5f, 5.0f, 5.5f, 0.5f, 1f), null),
-            (stacked, Req(0.5f, 10.2f, 0.5f, -1f, 1f), null),                               // invalid interval
-            (stacked, Req(float.NaN, 10.2f, 0.5f, 0.5f, 1f), null),                         // invalid point
-            (stacked, level1 with { MaxSlopeRadians = 2f }, null),                          // invalid slope
-        };
-        MapDocument slabs = SupportFixtures.EqualSlabs(secondIsPaint: false), painted = SupportFixtures.EqualSlabs(secondIsPaint: true);
-        MapDocument step = SupportFixtures.Step();
-        cases.Add((slabs, Req(0.5f, 0.2f, 0.5f, 0.5f, 1f) with { CurrentSupport = SupportFixtures.FirstFace(slabs, "slab-a") }, null));
-        cases.Add((painted, Req(0.5f, 0.2f, 0.5f, 0.5f, 1f) with { CurrentSupport = SupportFixtures.FirstFace(painted, "slab-a") }, null));
-        cases.Add((step, Req(1.5f, 0.35f, 0.5f, 0.5f, 1f) with { CurrentSupport = SupportFixtures.FirstFace(step, "low") }, null));
-        foreach (var (doc, request, limits) in cases)
+            var (result, work) = SupportParityFixtures.Released(c);
+            return SupportParityFixtures.Row(c, result, work);
+        }));
+        Assert.Equal(ReleasedRows, prepared.Select(c =>
         {
-            // An invalid point cannot center a scope, so its acquisition is taken around the valid request.
-            MapScopedSurfaces view = SupportFixtures.Acquire(doc, float.IsFinite(request.Point.Local.X) ? request.Point : level1.Point, limits);
-            MapSupportResult released = new MapSupportQuery(view).Select(request);
-            MapSupportResult prepared = MapSupportPreparation.Prepare(view).Sample(request);
-            Same(released, prepared);
-            seen.Add(prepared.Status);
+            var (result, work) = Prepared(c);
+            return SupportParityFixtures.Row(c, result, work);
+        }));
+        var statuses = ReleasedRows.Select(r => Enum.Parse<MapSupportStatus>(r.Split(" | ")[1])).ToHashSet();
+        Assert.Equal(Enum.GetValues<MapSupportStatus>().ToHashSet(), statuses);
+    }
+
+    // The prepared route for every matrix mode, each Select case also counting work on a second fresh preparation.
+    static (MapSupportResult Result, MapBoundFaceWork? Work) Prepared(SupportParityCase c)
+    {
+        MapPreparedSupport prepared = MapSupportPreparation.Prepare(c.View);
+        switch (c.Mode)
+        {
+            case SupportParityMode.Select:
+                MapSupportResult result = prepared.Sample(c.Request!);
+                var work = new MapBoundFaceWork();
+                _ = MapSupportPreparation.Prepare(c.View).Sample(c.Request!, work);
+                return (result, work);
+            case SupportParityMode.Named:
+                return (prepared.Sample(new(c.Request!.Point, c.SurfaceId, null, null, 0, 0, null), namedSurfaceOnly: true), null);
+            case SupportParityMode.Exact: return (prepared.Sample(c.Request!, exactWorld: c.Exact), null);
+            case SupportParityMode.NamedExact:
+                return (prepared.Sample(new(MapEffectiveGeometry.Presentation(c.View, c.Exact!.Value), c.SurfaceId, null, null, 0, 0, null),
+                    namedSurfaceOnly: true, exactWorld: c.Exact), null);
+            default: return (prepared.SampleBinding(c.Binding!, new(c.Exact!.Value.X, c.Exact.Value.Z)), null);
         }
+    }
 
-        // Outside the acquired scope: the view is acquired around a different point.
-        MapScopedSurfaces elsewhere = SupportFixtures.Acquire(stacked, Req(40f, 10.2f, 40f, 0.5f, 1f).Point);
-        Same(new MapSupportQuery(elsewhere).Select(level1), MapSupportPreparation.Prepare(elsewhere).Sample(level1));
-        Assert.Equal(MapSupportStatus.MissingGeometry, MapSupportPreparation.Prepare(elsewhere).Sample(level1).Status);
-
-        // The released named-owner and exact entry points reach the same kernel through the full request.
-        MapScopedSurfaces stackedView = SupportFixtures.Acquire(stacked, level1.Point);
-        MapPreparedSupport shared = MapSupportPreparation.Prepare(stackedView);
-        var released1 = new MapSupportQuery(stackedView);
-        foreach (string surface in new[] { "floor-1", "floor-0", "ceiling-1", "missing" })
-        {
-            MapSupportResult named = shared.Sample(new(level1.Point, surface, null, null, 0, 0, null), namedSurfaceOnly: true);
-            Same(released1.SampleSurface(level1.Point, surface), named);
-            seen.Add(named.Status);
-        }
-        var exact = new MapExactPoint(new(1, 2), MapExactValue.FromSingle(10.2f), new(1, 2));
-        Same(released1.SelectExact(level1, exact), shared.Sample(level1, exactWorld: exact));
-        Same(released1.SampleSurfaceExact(exact, "floor-1"),
-            shared.Sample(new(level1.Point, "floor-1", null, null, 0, 0, null), namedSurfaceOnly: true, exactWorld: exact));
-
-        // One prepared instance honours each request's own current support, slope and filters, never a remembered one.
-        // The cell centre lies on the seam between the cell's two triangles, so the current support picks the face. On
-        // the cave rim, two surfaces meet along an authored seam.
+    /// <summary>Adapter test: one prepared instance answers every request of its acquisition exactly as a fresh point
+    /// query does, honouring each request's own current support, slope and filter.</summary>
+    [Fact]
+    public void PreparedSupport_AdapterSharedInstanceHoldsNoRequestState()
+    {
+        MapDocument stacked = SupportFixtures.EightStacked();
+        MapSupportRequest level1 = SupportFixtures.Request(0.5f, 10.2f, 0.5f, 0.5f, 1f);
+        MapScopedSurfaces view = SupportFixtures.Acquire(stacked, level1.Point);
+        MapPreparedSupport shared = MapSupportPreparation.Prepare(view);
         MapFaceKey?[] diagonal = CaveFixtures.Compile(stacked, "floor-1").Faces.Where(f => f.Key.Primitive == 0)
             .Select(f => (MapFaceKey?)f.Key).ToArray();
         Assert.Equal(2, diagonal.Length);
-        foreach (MapFaceKey? current in diagonal.Append(null))
-            foreach (float? slope in new float?[] { null, 0f, MathF.PI / 4 })
-                foreach (string? surface in new[] { null, "floor-1" })
-                {
-                    MapSupportRequest request = level1 with { CurrentSupport = current, MaxSlopeRadians = slope, SurfaceId = surface };
-                    Same(released1.Select(request), shared.Sample(request));
-                }
+        for (int pass = 0; pass < 2; pass++)
+            foreach (MapFaceKey? current in diagonal.Append(null))
+                foreach (float? slope in new float?[] { null, 0f, MathF.PI / 4 })
+                    foreach (string? surface in new[] { null, "floor-1", "floor-0" })
+                    {
+                        MapSupportRequest request = level1 with { CurrentSupport = current, MaxSlopeRadians = slope, SurfaceId = surface };
+                        Same(new MapSupportQuery(view).Select(request), shared.Sample(request));
+                    }
         Assert.Equal(diagonal[0], shared.Sample(level1 with { CurrentSupport = diagonal[0] }).Face);
         Assert.Equal(diagonal[1], shared.Sample(level1 with { CurrentSupport = diagonal[1] }).Face);
-        MapSupportRequest rimRequest = Req(3.5f, 10.2f, 2f, 0.5f, 1f);
-        MapScopedSurfaces rim = SupportFixtures.Acquire(cave, rimRequest.Point);
-        MapPreparedSupport onRim = MapSupportPreparation.Prepare(rim);
-        MapFaceKey?[] rimFaces = new[] { "outer", "cave-floor" }.SelectMany(id => CaveFixtures.Compile(cave, id).Faces
-            .Where(f => f.Key.Primitive == 2 * 64 + 3 || f.Key.Primitive == 64 + 3).Select(f => (MapFaceKey?)f.Key)).Append(null).ToArray();
-        Assert.True(rimFaces.Length > 2);
-        foreach (MapFaceKey? current in rimFaces)
-        {
-            MapSupportRequest request = rimRequest with { CurrentSupport = current };
-            Same(new MapSupportQuery(rim).Select(request), onRim.Sample(request));
-        }
-
-        Assert.Equal(Enum.GetValues<MapSupportStatus>().ToHashSet(), seen);
     }
 
     [Fact]
@@ -121,77 +156,38 @@ public sealed class MapPreparedSupportParityTests
     {
         // Nested rooms: the parent room's floor under the inner room's footprint.
         MapEffectiveResources nested = PrefabFixtures.Effective(PrefabFixtures.Cave("nested"));
-        MapScopedSurfaces view = nested.CompleteView();
-        MapPreparedSupport prepared = MapSupportPreparation.Prepare(view);
+        MapPreparedSupport prepared = MapSupportPreparation.Prepare(nested.CompleteView());
         MapExactPoint probe = PrefabFixtures.RoomProbe(nested, 2, 0, -2);
         var xz = new MapExactXz(probe.X, probe.Z);
-        MapSupportResult bySurface = prepared.SampleBinding(Surface("a/floor"), xz);
-        MapSupportResult bySpace = prepared.SampleBinding(Space("a/room", 0.5f, 1, 1), xz);
+        MapSupportResult bySurface = prepared.SampleBinding(SupportParityFixtures.Surface("a/floor"), xz);
+        MapSupportResult bySpace = prepared.SampleBinding(SupportParityFixtures.Space("a/room", 0.5f, 1, 1), xz);
         Assert.Equal(MapSupportStatus.Supported, bySurface.Status);
         Assert.Equal(MapSupportStatus.Supported, bySpace.Status);
         Assert.Equal(bySurface.Face, bySpace.Face);
         Assert.Equal("a/floor", bySpace.Face!.Value.OwnerId);
-        Assert.Equal("a/room", bySurface.SpaceId);
-        Assert.Equal("a/room", bySpace.SpaceId);
-        MapSupportResult inner = prepared.SampleBinding(Space("prefab/a/Record/inner-room", 1.5f, 2, 0.25f), xz);
-        Assert.NotEqual(MapSupportStatus.Supported, inner.Status);                            // the inner room never borrows its parent's floor
-        foreach (MapSupportBinding binding in new[] { Surface("a/floor"), Space("a/room", 0.5f, 1, 1), Space("prefab/a/Record/inner-room", 1.5f, 2, 0.25f) })
-        {
-            MapSupportResult seat = MapResolverV2.SeatSupport(probe, binding, nested.SurfaceSource, new[] { nested.Digest }, new());
-            MapSupportResult sampled = prepared.SampleBinding(binding, xz);
-            Assert.Equal((seat.Status, seat.Face, BitConverter.SingleToInt32Bits(seat.WorldY), seat.SpaceId),
-                (sampled.Status, sampled.Face, BitConverter.SingleToInt32Bits(sampled.WorldY), sampled.SpaceId));
-        }
+        Assert.Equal(("a/room", "a/room"), (bySurface.SpaceId, bySpace.SpaceId));
+        MapSupportResult inner = prepared.SampleBinding(SupportParityFixtures.Space("prefab/a/Record/inner-room", 1.5f, 2, 0.25f), xz);
+        Assert.Equal(MapSupportStatus.NoSupport, inner.Status);                                 // the inner room never borrows its parent's floor
 
         // A surface and a space record both spelled "shared" stay in their own namespaces.
-        MapDocument doc = SharedNamespaces();
-        MapScopedSurfaces whole = MapScopedSurfaces.CompleteView(doc.Surfaces);
-        MapPreparedSupport sharedPrepared = MapSupportPreparation.Prepare(whole);
+        MapPreparedSupport shared = MapSupportPreparation.Prepare(MapScopedSurfaces.CompleteView(SupportParityFixtures.SharedNamespaces().Surfaces));
         var west = new MapExactXz(new(1, 2), new(1, 2));
-        MapSupportResult spaceShared = sharedPrepared.SampleBinding(Space("shared", 0.2f, 1, 1), west);
-        MapSupportResult surfaceBase = sharedPrepared.SampleBinding(Surface("base"), west);
+        MapSupportResult spaceShared = shared.SampleBinding(SupportParityFixtures.Space("shared", 0.2f, 1, 1), west);
+        MapSupportResult surfaceBase = shared.SampleBinding(SupportParityFixtures.Surface("base"), west);
         Assert.Equal(MapSupportStatus.Supported, spaceShared.Status);
         Assert.Equal(surfaceBase.Face, spaceShared.Face);
-        Assert.Equal("base", spaceShared.Face!.Value.OwnerId);
-        Assert.Equal("shared", spaceShared.SpaceId);
-        Assert.Equal(MapSupportStatus.NoSupport, sharedPrepared.SampleBinding(Surface("shared"), west).Status);
-        MapSupportResult east = sharedPrepared.SampleBinding(Surface("shared"), new(new(9, 2), new(1, 2)));
+        Assert.Equal(("base", "shared"), (spaceShared.Face!.Value.OwnerId, spaceShared.SpaceId));
+        Assert.Equal(MapSupportStatus.NoSupport, shared.SampleBinding(SupportParityFixtures.Surface("shared"), west).Status);
+        MapSupportResult east = shared.SampleBinding(SupportParityFixtures.Surface("shared"), new(new(9, 2), new(1, 2)));
         Assert.Equal(("shared", "elsewhere"), (east.Face!.Value.OwnerId, east.SpaceId));
     }
 
-    static MapSupportBinding Surface(string id) => new(MapSupportBindingKind.Surface, id, null, null, null, null);
-    static MapSupportBinding Space(string id, float y, float below, float above) => new(MapSupportBindingKind.Space, null, id, y, below, above);
-
-    // Floor "base" over cells x 0 to 2 carries space "shared". Floor "shared" over cells x 4 to 6, 3 m higher, carries
-    // space "elsewhere". Text IDs alone would confuse the two.
-    static MapDocument SharedNamespaces()
+    static void Same(MapSupportResult query, MapSupportResult prepared)
     {
-        var set = new MapSurfaceSet();
-        CaveFixtures.AddSurface(set, "base", MapSurfaceRole.SupportFloor, 0, 0, 2, 1, (_, _) => 0);
-        CaveFixtures.AddSurface(set, "shared", MapSurfaceRole.SupportFloor, 4, 0, 2, 1, (_, _) => 300);
-        MapSurfacePatch basePatch = CaveFixtures.Patch(set, "base"), sharedPatch = CaveFixtures.Patch(set, "shared");
-        basePatch.Records.Add(new MapSpaceDoc("shared", MapSpaceKind.Exterior, null, null, [], [], [], []));
-        basePatch.Records.Add(new MapSpaceFootprint("shared-cells", new("shared", basePatch.Key), basePatch.Key,
-            new[] { 0, 1 }, CaveFixtures.Floor("base"), CaveFixtures.OpenTop));
-        sharedPatch.Records.Add(new MapSpaceDoc("elsewhere", MapSpaceKind.Exterior, null, null, [], [], [], []));
-        sharedPatch.Records.Add(new MapSpaceFootprint("elsewhere-cells", new("elsewhere", sharedPatch.Key), sharedPatch.Key,
-            new[] { 4, 5 }, CaveFixtures.Floor("shared"), CaveFixtures.OpenTop));
-        return CaveFixtures.Document(set);
-    }
-
-    static void Same(MapSupportResult released, MapSupportResult prepared)
-    {
-        Assert.Equal(released.Status, prepared.Status);
-        Assert.Equal(released.Face, prepared.Face);
-        Assert.Equal(BitConverter.SingleToInt32Bits(released.WorldY), BitConverter.SingleToInt32Bits(prepared.WorldY));
-        Assert.Equal(released.Normal, prepared.Normal);
-        Assert.Equal(released.SpaceId, prepared.SpaceId);
-        Assert.Equal(released.Via, prepared.Via);
-        Assert.Equal(released.Compatibility, prepared.Compatibility);
-        Assert.Equal(released.IsCaptureSupport, prepared.IsCaptureSupport);
-        Assert.Equal(released.Detail, prepared.Detail);
-        Assert.Equal((released.Witness.SnapshotId, released.Witness.ScopedDigest, released.Witness.Frame,
-            released.Witness.QueryPolicyVersion, released.Witness.Complete), (prepared.Witness.SnapshotId,
-            prepared.Witness.ScopedDigest, prepared.Witness.Frame, prepared.Witness.QueryPolicyVersion, prepared.Witness.Complete));
+        Assert.Equal(query.Status, prepared.Status);
+        Assert.Equal(query.Face, prepared.Face);
+        Assert.Equal(BitConverter.SingleToInt32Bits(query.WorldY), BitConverter.SingleToInt32Bits(prepared.WorldY));
+        Assert.Equal(query.Normal, prepared.Normal);
+        Assert.Equal((query.SpaceId, query.Via, query.Compatibility, query.Detail), (prepared.SpaceId, prepared.Via, prepared.Compatibility, prepared.Detail));
     }
 }

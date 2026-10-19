@@ -1,8 +1,10 @@
 using System;
 using System.IO;
+using System.Text.Json.Nodes;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Foliage;
+using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapEditor;
 using KhaozEngine.Tests.MapDoc.Foliage;
 using KhaozEngine.Tests.MapDoc.Prefabs;
@@ -69,6 +71,32 @@ public sealed class NativeFoliageSnapshotTests
         fixture.Document.Foliage = new(1, [FoliageStorageFixtures.Change(fixture.Document.Foliage!.Layers[0], l => l["cellSize"] = -1)]);
         Assert.Contains("cellSize", Assert.Throws<MapDocumentException>(() =>
             NativeDocumentSnapshot.Clone(fixture.Document, MapDocRegistry.CreateDefault())).Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EditorTransaction_ExpandsWithoutWholeFoliageWrites()
+    {
+        // The released hut prefab with a foliage layer bound to its exterior floor, so publication expands both sides.
+        PrefabFixture fixture = PrefabFixtures.Create();
+        MapDocument document = fixture.Document;
+        document.Foliage = new(1, [FoliageStorageFixtures.Change(FoliageFixtures.BasicLayer(), l =>
+        {
+            l["support"] = new JsonObject { ["kind"] = "Surface", ["surfaceId"] = "exterior" };
+            l["compatibilityOrdinals"] = new JsonArray(new JsonObject { ["surfaceId"] = "exterior", ["ordinal"] = 0 });
+            l["models"] = new JsonArray(new JsonObject { ["assetId"] = "item", ["weight"] = 1 });
+            l["allowedVisibleMaterials"] = new JsonArray(10);
+            l["materials"] = new JsonArray(new JsonObject { ["id"] = 10, ["resourceId"] = "material", ["kind"] = "Ordinary" });
+        })]);
+        Assert.Empty(MapFoliageValidation.ValidateBound(document, fixture.Assets));
+        string projection = MapFoliageProjection.Digest(document.Foliage);
+        long writes = MapFoliageJson.ThreadPayloadWrites, expansions = MapPrefabResolver.ThreadExpansions;
+        NativeDocumentTransaction.Run(document, new AddPlacementCommand(new MapPlacement
+        { Id = "item-new", Kind = "scenery", AssetId = "item", X = 1, Y = -2, Z = 1 }), false, fixture.Assets);
+        Assert.Contains(document.Placements, p => p.Id == "item-new");
+        Assert.True(MapPrefabResolver.ThreadExpansions - expansions > 0);
+        Assert.Equal(0, MapFoliageJson.ThreadPayloadWrites - writes);
+        Assert.NotNull(document.Foliage);
+        Assert.Equal(projection, MapFoliageProjection.Digest(document.Foliage));
     }
 
     [Fact]

@@ -36,7 +36,8 @@ public static class MapPrefabResolver
         var numericErrors = new List<string>();
         _ = MapNativeValidation.ValidateNumericIds(document, numericErrors);
         if (numericErrors.Count != 0) throw new MapDocumentException(string.Join("\n", numericErrors));
-        var authored = MapDocumentFile.LoadText(MapDocumentFile.SaveText(document));
+        // Expansion never reads foliage, so the authored copy shares it rather than encoding the density payload.
+        var authored = MapDocumentFile.CopyWithSharedFoliage(document);
         var transforms = new Dictionary<string, MapEffectiveTransform>(StringComparer.Ordinal);
         foreach (var value in authored.NativeResourceTransforms ?? []) transforms.Add(MapEffectiveContext.Key(value.Kind, value.OwnerId), value.Transform);
         var children = new List<MapPrefabChild>();

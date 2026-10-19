@@ -4,6 +4,7 @@ using System.Linq;
 using System.Numerics;
 using System.Text.Json.Nodes;
 using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Storage;
@@ -28,8 +29,8 @@ public sealed class MapFoliageContextTests
     [Fact]
     public void ContextAcquisition_UnrelatedGrowthDoesNotGrowChunkWork()
     {
-        FoliageFixture smallFixture = Grown(chunks: 2, placements: 8, paintTargets: 1);
-        FoliageFixture largeFixture = Grown(chunks: 64, placements: 128, paintTargets: 32);
+        FoliageFixture smallFixture = Grown(chunks: 2, placements: 8, paintTargets: 1, wide: 8);
+        FoliageFixture largeFixture = Grown(chunks: 64, placements: 128, paintTargets: 32, wide: 128);
         MapFoliageContextResult small = MapFoliageGenerationContext.Capture(smallFixture.Document, smallFixture.Assets);
         MapFoliageContextResult large = MapFoliageGenerationContext.Capture(largeFixture.Document, largeFixture.Assets);
         Assert.Equal((MapFoliageStatus.Complete, MapFoliageStatus.Complete), (small.Status, large.Status));
@@ -39,7 +40,7 @@ public sealed class MapFoliageContextTests
 
         // Capture accounts for the growth once.
         Assert.Equal((2L, 64L), (small.Work.ChunkDescriptors, large.Work.ChunkDescriptors));
-        Assert.Equal(120, large.Work.Placements - small.Work.Placements);
+        Assert.Equal(240, large.Work.Placements - small.Work.Placements);
         Assert.Equal((1L, 32L), (small.Work.PaintTargets, large.Work.PaintTargets));
         Assert.True(large.Work.SourceUtf8Bytes > small.Work.SourceUtf8Bytes);
         Assert.True(large.Work.SurfacePatches > small.Work.SurfacePatches);
@@ -51,6 +52,10 @@ public sealed class MapFoliageContextTests
         Assert.Equal(fixedChunkWork, unrelatedGrowthChunkWork);
         Assert.StartsWith("Complete | 4 | ", fixedChunkWork, StringComparison.Ordinal);       // the four floor slots meeting the request
         Assert.Contains(" | 2 | tree-0,tree-1 | ", fixedChunkWork, StringComparison.Ordinal);   // two owner candidates, both inside
+        // Every distant 400 m owner is indexed and found by a query that reaches it, and none is inspected near chunk (0, 0).
+        var distant = new MapFoliageRect(19000, 19000, 90000, 21000);
+        Assert.Equal(128, large.Context!.PlacementsIn(distant).Count(p => p.PlacementId.StartsWith("wide-", StringComparison.Ordinal)));
+        Assert.Equal(8, small.Context!.PlacementsIn(distant).Count);
 
         // The context is reused, never rebuilt by scoped calls.
         Assert.Equal(large.Work, large.Context!.Work);
@@ -197,10 +202,86 @@ public sealed class MapFoliageContextTests
         Assert.Equal(subset.Digest, context.PaintFor(cell)["ground"].Digest);
     }
 
+    [Fact]
+    public void ContextSourceCharge_DensityTokensAreChargedOnceAndAFullPayloadFits()
+    {
+        // {"x":n,"z":n,"density":"..."}: 8 for the object, names x and z at 8 each, two numbers at 72 each, name density
+        // at 44, then the escape-free token at 8 plus 1368 characters plus 2 quotes.
+        Assert.Equal(8 + 8 + 72 + 8 + 72 + 44 + 8 + 1368 + 2, MapFoliageContextPreflight.ChunkBytes);
+        Assert.Equal(1590, MapFoliageContextPreflight.ChunkBytes);
+        FoliageFixture two = Grown(chunks: 2, placements: 0, paintTargets: 0), three = Grown(chunks: 3, placements: 0, paintTargets: 0);
+        Assert.Equal(1590, MapFoliageContextPreflight.Measure(three.Document, three.Assets, new()).Work.SourceUtf8Bytes -
+            MapFoliageContextPreflight.Measure(two.Document, two.Assets, new()).Work.SourceUtf8Bytes);
+
+        // The document ceiling of 65,536 chunks spread over the maximum 256 layers, each with the maximum 256 models.
+        // Chunks are advertised digest rows only, so no density byte is allocated.
+        Assert.Equal(65_536, MapFoliagePayloadLimits.MaxDocumentChunks);
+        var models = new JsonArray(Enumerable.Range(0, MapFoliagePayloadLimits.MaxModels)
+            .Select(i => (JsonNode)new JsonObject { ["assetId"] = $"model-{i:000}", ["weight"] = 1 }).ToArray());
+        MapFoliageLayer template = FoliageStorageFixtures.Change(FoliageFixtures.BasicLayer([]), l => l["models"] = models);
+        int perLayer = MapFoliagePayloadLimits.MaxDocumentChunks / MapFoliagePayloadLimits.MaxLayers;
+        MapFoliageChunkDigest[] rows = Enumerable.Range(0, perLayer)
+            .Select(i => new MapFoliageChunkDigest(new(i % 16, i / 16), new string('a', 64))).ToArray();
+        MapFoliageLayer[] layers = Enumerable.Range(0, MapFoliagePayloadLimits.MaxLayers)
+            .Select(i => FoliageStorageFixtures.Change(template, l => l["id"] = $"layer-{i:000}")).ToArray();
+        long full = MapFoliageContextPreflight.SourceBytes(new(1, layers.Select(l => MapFoliageLayer.FromStorage(l, rows, [])).ToArray()), long.MaxValue);
+        long metadata = MapFoliageContextPreflight.SourceBytes(new(1, layers), long.MaxValue);
+        Assert.Equal(65_536L * 1590, full - metadata);
+        Assert.True(full <= new MapFoliageContextLimits().MaxSourceUtf8Bytes, $"{full} bytes exceed the default ceiling");
+    }
+
+    [Fact]
+    public void SharedRootCopy_ExpandsAndEditsWithoutWholeFoliageWrites()
+    {
+        // Capture and a direct expansion.
+        FoliageFixture f = FoliageFixtures.Create();
+        MapFoliageSet set = f.Document.Foliage!;
+        string before = MapDocumentFile.SaveText(f.Document);
+        long writes = MapFoliageJson.ThreadPayloadWrites;
+        MapFoliageContextResult captured = MapFoliageGenerationContext.Capture(f.Document, f.Assets);
+        Assert.Equal((MapFoliageStatus.Complete, 1L, 0L), (captured.Status, captured.Work.Expansions, captured.Work.SnapshotSerializations));
+        _ = MapPrefabResolver.Expand(f.Document, f.Assets);
+        Assert.Equal(0, MapFoliageJson.ThreadPayloadWrites - writes);
+        Assert.Same(set, f.Document.Foliage);
+        Assert.Equal(before, MapDocumentFile.SaveText(f.Document));
+
+        // Pure prefab and marker edits keep the immutable foliage set on their candidates without encoding it.
+        PrefabFixture p = PrefabWithFoliage();
+        MapFoliageSet prefabSet = p.Document.Foliage!;
+        string prefabBefore = MapDocumentFile.SaveText(p.Document);
+        writes = MapFoliageJson.ThreadPayloadWrites;
+        MapDocument removed = MapPrefabEdits.Prepare(p.Document, p.Assets, new MapRemovePrefab("a")).After;
+        MapDocument marked = MapMarkerEdits.Prepare(p.Document, p.Assets, new MapSetMarker(
+            new MapLocalMarkerDoc(1, "fresh", "fresh-name", new Vector3(2, 3.5f, -4), 0, "entry-role", true, new[] { "new" }))).After;
+        Assert.Equal(0, MapFoliageJson.ThreadPayloadWrites - writes);
+        Assert.Same(prefabSet, removed.Foliage);
+        Assert.Same(prefabSet, marked.Foliage);
+        Assert.DoesNotContain(removed.Prefabs?.Instances ?? [], i => i.Id == "a" && !i.Removed);
+        Assert.Contains(marked.BuildingIntent!.Markers, m => m.Id == "fresh");
+        Assert.Same(prefabSet, p.Document.Foliage);
+        Assert.Equal(prefabBefore, MapDocumentFile.SaveText(p.Document));
+    }
+
+    // The released hut prefab fixture with a foliage layer bound to its exterior floor and its verified resources.
+    static PrefabFixture PrefabWithFoliage()
+    {
+        PrefabFixture p = PrefabFixtures.Create();
+        p.Document.Foliage = new(1, [FoliageStorageFixtures.Change(FoliageFixtures.BasicLayer(), l =>
+        {
+            l["support"] = new JsonObject { ["kind"] = "Surface", ["surfaceId"] = "exterior" };
+            l["compatibilityOrdinals"] = new JsonArray(new JsonObject { ["surfaceId"] = "exterior", ["ordinal"] = 0 });
+            l["models"] = new JsonArray(new JsonObject { ["assetId"] = "item", ["weight"] = 1 });
+            l["allowedVisibleMaterials"] = new JsonArray(10);
+            l["materials"] = new JsonArray(new JsonObject { ["id"] = 10, ["resourceId"] = "material", ["kind"] = "Ordinary" });
+        })]);
+        Assert.Empty(MapFoliageValidation.ValidateBound(p.Document, p.Assets));
+        return p;
+    }
+
     // The basic fixture widened to 64 chunk columns, with a Solid rule on asset tree. Chunk columns [0, chunks) are
     // stored. Placements 0 and 1 stand inside chunk (0, 0), the rest far away. Each paint target is a distinct far
     // support floor painted by its own released paint override.
-    static FoliageFixture Grown(int chunks, int placements, int paintTargets)
+    static FoliageFixture Grown(int chunks, int placements, int paintTargets, int wide = 0)
     {
         FoliageFixture f = FoliageFixtures.Create();
         MapFoliageLayer layer = FoliageStorageFixtures.Change(FoliageFixtures.BasicLayer([]), l =>
@@ -213,6 +294,12 @@ public sealed class MapFoliageContextTests
                 ["assetId"] = "tree",
                 ["kind"] = "Solid",
                 ["footprint"] = new JsonObject { ["minX"] = -1, ["minZ"] = -1, ["maxX"] = 1, ["maxZ"] = 1 },
+            }, new JsonObject
+            {
+                ["id"] = "solid-wide",
+                ["assetId"] = "reed-a",
+                ["kind"] = "Solid",
+                ["footprint"] = new JsonObject { ["minX"] = -200, ["minZ"] = -200, ["maxX"] = 200, ["maxZ"] = 200 },
             });
             l["chunks"] = new JsonArray(Enumerable.Range(0, chunks).Select(x => (JsonNode)new JsonObject
             {
@@ -231,6 +318,18 @@ public sealed class MapFoliageContextTests
                 NumericId = MapNumericIds.Allocate(f.Document),
                 X = i < 2 ? 4 + 6 * i : 3000 + 8 * i,
                 Z = i < 2 ? 2 : 3000,
+                Y = 1,
+            });
+        // Distant owners of 400 m footprints, each spanning more than the finest index level allows.
+        for (int i = 0; i < wide; i++)
+            f.Document.Placements.Add(new MapPlacement
+            {
+                Id = "wide-" + i,
+                AssetId = "reed-a",
+                Kind = "scenery",
+                NumericId = MapNumericIds.Allocate(f.Document),
+                X = 20000 + 512 * i,
+                Z = 20000,
                 Y = 1,
             });
         var added = new MapSurfaceSet();

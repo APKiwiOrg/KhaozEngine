@@ -17,7 +17,8 @@ internal static class MapPrefabEditPreparation
 {
     internal static readonly MapEffectiveTransform Identity = new(0, 0, 0, 0, 1);
     internal static readonly MapTransform AuthoredIdentity = new(Vector3.Zero, 0, 1);
-    internal static MapDocument Copy(MapDocument document) => MapDocumentFile.LoadText(MapDocumentFile.SaveText(document));
+    // A detached candidate that shares the immutable foliage set instead of encoding its density.
+    internal static MapDocument Copy(MapDocument document) => MapDocumentFile.CopyWithSharedFoliage(document);
     internal static MapEffectiveResources Begin(MapDocument document, MapAssetClosure assets)
     {
         MapBoundDocumentValidation.Validate(document, assets);

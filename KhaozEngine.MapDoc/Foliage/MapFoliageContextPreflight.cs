@@ -24,8 +24,8 @@ public sealed record MapFoliageContextMeasure(MapFoliageStatus Status, MapFoliag
 /// <summary>Counts a document's context demand from metadata alone, refusing before expansion, cloning or staging.
 /// Residency is checked first, so a partial document refuses before any read. SourceUtf8Bytes is a conservative charge
 /// over the inline foliage form, walked from the object model with no serialized buffer: 8 bytes per JSON value, a
-/// further 64 per number, and 6 times the UTF-16 length plus 2 for every string value and property name, a density
-/// chunk's string being its 1368 character base64 token. Placements and paint targets count authored rows plus the
+/// further 64 per number, and 6 times the UTF-16 length plus 2 for every string value and property name. A density
+/// chunk's token is canonical base64, which never escapes, so its 1368 characters are charged once each plus 2. Placements and paint targets count authored rows plus the
 /// prefab children that can produce them, an upper bound on what expansion yields. Surface patches are the released
 /// prefab preflight's patch count, taken under the released expansion limits.</summary>
 internal static class MapFoliageContextPreflight
@@ -188,9 +188,18 @@ internal static class MapFoliageContextPreflight
         }
     }
 
-    // One inline chunk object: {"x":n,"z":n,"density":"<1368 base64 characters>"}.
-    static readonly long ChunkBytes = ValueBytes + Name("x") + ValueBytes + NumberBytes + Name("z") + ValueBytes + NumberBytes +
-        Name("density") + ValueBytes + 6L * DensityTokenChars + 2;
+    // One inline chunk object: {"x":n,"z":n,"density":"<1368 base64 characters>"}. The closed codec admits only
+    // canonical base64, which never escapes, so the token is charged one byte per character plus its two quotes.
+    internal static readonly long ChunkBytes = ValueBytes + Name("x") + ValueBytes + NumberBytes + Name("z") + ValueBytes + NumberBytes +
+        Name("density") + ValueBytes + DensityTokenChars + 2;
+
+    /// <summary>The SourceUtf8Bytes charge of <paramref name="set"/>, counting stopped once past <paramref name="max"/>.</summary>
+    internal static long SourceBytes(MapFoliageSet set, long max)
+    {
+        var charge = new SourceCharge(max);
+        Charge(charge, set);
+        return charge.Bytes;
+    }
 
     static long Name(string name) => 6L * name.Length + 2;
 

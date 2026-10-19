@@ -39,6 +39,11 @@ public sealed class MapPreparedSupport
     public MapSupportResult Sample(MapSupportRequest request, bool namedSurfaceOnly = false, MapExactPoint? exactWorld = null) =>
         MapSupportSelection.Select(this, request, namedSurfaceOnly, exactWorld);
 
+    /// <summary><see cref="Sample(MapSupportRequest, bool, MapExactPoint?)"/> charging membership face work to
+    /// <paramref name="work"/>, as the point query's counted overload does.</summary>
+    internal MapSupportResult Sample(MapSupportRequest request, MapBoundFaceWork work) =>
+        MapSupportSelection.Compute(this, request, work, false).Result;
+
     /// <summary>The restricted request a support binding makes at an exact world XZ, as placements and markers seat. A
     /// Surface binding samples its named owner with no invented interval. A Space binding searches below and above its
     /// reference height in its space, with no current support and no slope limit.</summary>

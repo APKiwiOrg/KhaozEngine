@@ -309,7 +309,7 @@ public sealed class MapFoliageGenerationContext
             w.WriteEndArray();
         });
 
-    readonly record struct Bounds(double MinX, double MinZ, double MaxX, double MaxZ)
+    internal readonly record struct Bounds(double MinX, double MinZ, double MaxX, double MaxZ)
     {
         internal static Bounds Union(Bounds? a, Bounds b) => a is not { } x ? b :
             new(Math.Min(x.MinX, b.MinX), Math.Min(x.MinZ, b.MinZ), Math.Max(x.MaxX, b.MaxX), Math.Max(x.MaxZ, b.MaxZ));
@@ -323,49 +323,56 @@ public sealed class MapFoliageGenerationContext
         internal bool Meets(Bounds b) => MinX <= b.MaxX && MaxX >= b.MinX && MinZ <= b.MaxZ && MaxZ >= b.MinZ;
     }
 
-    // A fixed 32 m bucket grid. An entry spanning more than 64 buckets joins a wide list every query inspects. A query
-    // walks its own buckets, or the occupied buckets when there are fewer, and both walks inspect the same entries:
-    // the wide list and every entry bucketed inside the query's range. Entries far from the query are never inspected.
-    sealed class SpatialIndex
+    // A bucket hierarchy. Level k has square buckets of 32 * 8^k metres. Each entry lives at the finest level where it
+    // spans at most 64 buckets, so small and wide entries alike are bucketed and nothing is scanned unconditionally. At
+    // each occupied level a query walks its own bucket range, or the occupied buckets when there are fewer. Both walks
+    // inspect the same entries: those bucketed inside the query's range. Results are complete, since an entry meeting
+    // the query shares a bucket with it at the entry's own level, and entries far from the query are never inspected.
+    internal sealed class SpatialIndex
     {
         const double Cell = 32;
-        const long WideCells = 64;
+        const double Branch = 8;
+        const long MaxSpanCells = 64;
         readonly Bounds[] _bounds;
-        readonly Dictionary<(long X, long Z), List<int>> _cells = new();
-        readonly List<int> _wide = new();
+        readonly List<Dictionary<(long X, long Z), List<int>>> _levels = new();
 
         internal SpatialIndex(IReadOnlyList<Bounds> bounds)
         {
             _bounds = bounds.ToArray();
             for (int i = 0; i < _bounds.Length; i++)
             {
-                var (x0, z0, x1, z1) = Range(_bounds[i]);
-                if ((x1 - x0 + 1d) * (z1 - z0 + 1d) > WideCells) { _wide.Add(i); continue; }
-                for (long z = z0; z <= z1; z++)
-                    for (long x = x0; x <= x1; x++)
-                    {
-                        if (!_cells.TryGetValue((x, z), out var list)) _cells.Add((x, z), list = new());
-                        list.Add(i);
-                    }
+                int level = 0;
+                var (x0, z0, x1, z1) = Range(_bounds[i], level);
+                while (Cells(x0, z0, x1, z1) > MaxSpanCells) (x0, z0, x1, z1) = Range(_bounds[i], ++level);
+                while (_levels.Count <= level) _levels.Add(new());
+                foreach (var cell in Walk(x0, z0, x1, z1))
+                {
+                    if (!_levels[level].TryGetValue(cell, out var list)) _levels[level].Add(cell, list = new());
+                    list.Add(i);
+                }
             }
         }
 
+        /// <summary>Every entry meeting <paramref name="query"/>, with the count of distinct entries inspected.</summary>
         internal List<int> Query(Bounds query, out long candidates)
         {
             var seen = new HashSet<int>();
             var hits = new List<int>();
-            var (x0, z0, x1, z1) = Range(query);
-            foreach (int i in _wide) Inspect(i);
-            if ((x1 - x0 + 1d) * (z1 - z0 + 1d) > _cells.Count)
+            for (int level = 0; level < _levels.Count; level++)
             {
-                foreach (var (cell, list) in _cells)
-                    if (cell.X >= x0 && cell.X <= x1 && cell.Z >= z0 && cell.Z <= z1) foreach (int i in list) Inspect(i);
-            }
-            else
-            {
-                for (long z = z0; z <= z1; z++)
-                    for (long x = x0; x <= x1; x++)
-                        if (_cells.TryGetValue((x, z), out var list)) foreach (int i in list) Inspect(i);
+                Dictionary<(long X, long Z), List<int>> cells = _levels[level];
+                if (cells.Count == 0) continue;
+                var (x0, z0, x1, z1) = Range(query, level);
+                if (Cells(x0, z0, x1, z1) > cells.Count)
+                {
+                    foreach (var (cell, list) in cells)
+                        if (cell.X >= x0 && cell.X <= x1 && cell.Z >= z0 && cell.Z <= z1) foreach (int i in list) Inspect(i);
+                }
+                else
+                {
+                    foreach (var cell in Walk(x0, z0, x1, z1))
+                        if (cells.TryGetValue(cell, out var list)) foreach (int i in list) Inspect(i);
+                }
             }
             candidates = seen.Count;
             return hits;
@@ -376,7 +383,26 @@ public sealed class MapFoliageGenerationContext
             }
         }
 
-        static (long, long, long, long) Range(Bounds b) =>
-            ((long)Math.Floor(b.MinX / Cell), (long)Math.Floor(b.MinZ / Cell), (long)Math.Floor(b.MaxX / Cell), (long)Math.Floor(b.MaxZ / Cell));
+        // Bucket counts and walks stay exact at saturated bucket indices.
+        static double Cells(long x0, long z0, long x1, long z1) => ((double)x1 - x0 + 1) * ((double)z1 - z0 + 1);
+
+        static IEnumerable<(long X, long Z)> Walk(long x0, long z0, long x1, long z1)
+        {
+            for (long z = z0; ; z++)
+            {
+                for (long x = x0; ; x++)
+                {
+                    yield return (x, z);
+                    if (x == x1) break;
+                }
+                if (z == z1) break;
+            }
+        }
+
+        static (long, long, long, long) Range(Bounds b, int level)
+        {
+            double size = Cell * Math.Pow(Branch, level);
+            return ((long)Math.Floor(b.MinX / size), (long)Math.Floor(b.MinZ / size), (long)Math.Floor(b.MaxX / size), (long)Math.Floor(b.MaxZ / size));
+        }
     }
 }

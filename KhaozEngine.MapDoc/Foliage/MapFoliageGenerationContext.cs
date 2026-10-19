@@ -22,8 +22,10 @@ public sealed record MapFoliageContextResult(MapFoliageStatus Status, MapFoliage
 /// tile, surface page and foliage chunk loaded. A windowed context over partial residency is a later addition.</summary>
 public sealed class MapFoliageGenerationContext
 {
+    [ThreadStatic] static long t_captures;
     readonly SpatialIndex _owners;
     readonly MapResolvedPlacement[] _ownerPlacements;
+    readonly Bounds[] _ownerBounds;
     readonly SpatialIndex _paint;
     readonly SpatialIndex _floorIndex;
     readonly MapSurfaceRef[] _floorEntries;
@@ -39,12 +41,16 @@ public sealed class MapFoliageGenerationContext
         Assets = assets;
         Resources = resources;
         Work = work;
-        (_ownerPlacements, _owners) = Owners(foliage, resources);
+        (_ownerPlacements, _ownerBounds, _owners) = Owners(foliage, resources);
         (_paintEntries, _paint) = Paint(resources);
         (_floorEntries, _floorIndex) = SupportInfluences(resources);
         ClearanceOwners = new(foliage, resources);
         SnapshotId = Snapshot(foliage, assets, resources, _paintEntries);
+        t_captures++;
     }
+
+    /// <summary>The contexts this thread constructed, counted once per completed construction and never per read.</summary>
+    internal static long ThreadCaptures => t_captures;
 
     /// <summary>The captured foliage, detached from the source document. Null when the document authors none.</summary>
     public MapFoliageSet? Foliage { get; }
@@ -178,6 +184,10 @@ public sealed class MapFoliageGenerationContext
     public IReadOnlyList<MapResolvedPlacement> PlacementsIn(MapFoliageRect bounds) => PlacementsIn(bounds, out _);
 
     /// <summary><see cref="PlacementsIn(MapFoliageRect)"/>, also reporting how many indexed owners it inspected.</summary>
+    /// <summary>Every indexed clearance owner with its proxy bounds, in effective order.</summary>
+    internal IEnumerable<(MapResolvedPlacement Placement, Bounds Proxy)> OwnerProxies() =>
+        _ownerPlacements.Select((p, i) => (p, _ownerBounds[i]));
+
     internal IReadOnlyList<MapResolvedPlacement> PlacementsIn(MapFoliageRect bounds, out long candidates)
     {
         if (!float.IsFinite(bounds.MinX) || !float.IsFinite(bounds.MinZ) || !float.IsFinite(bounds.MaxX) || !float.IsFinite(bounds.MaxZ) ||
@@ -238,7 +248,7 @@ public sealed class MapFoliageGenerationContext
     }
 
     // Owner proxies, indexed spatially. Rules are looked up by asset and masks by owner, never scanned per placement.
-    static (MapResolvedPlacement[], SpatialIndex) Owners(MapFoliageSet? set, MapEffectiveResources resources)
+    static (MapResolvedPlacement[], Bounds[], SpatialIndex) Owners(MapFoliageSet? set, MapEffectiveResources resources)
     {
         var rules = new Dictionary<string, List<(MapFoliageLayer Layer, MapFoliageClearanceRule Rule)>>(StringComparer.Ordinal);
         var masks = new Dictionary<string, List<(MapFoliageLayer Layer, MapFoliageMask Mask)>>(StringComparer.Ordinal);
@@ -257,7 +267,7 @@ public sealed class MapFoliageGenerationContext
         }
         var placements = new List<MapResolvedPlacement>();
         var bounds = new List<Bounds>();
-        if (rules.Count == 0 && masks.Count == 0) return (placements.ToArray(), new SpatialIndex(bounds));
+        if (rules.Count == 0 && masks.Count == 0) return (placements.ToArray(), bounds.ToArray(), new SpatialIndex(bounds));
         foreach (MapResolvedPlacement placement in resources.Placements)
         {
             Bounds? proxy = null;
@@ -274,7 +284,7 @@ public sealed class MapFoliageGenerationContext
             placements.Add(placement);
             bounds.Add(value);
         }
-        return (placements.ToArray(), new SpatialIndex(bounds));
+        return (placements.ToArray(), bounds.ToArray(), new SpatialIndex(bounds));
     }
 
     // A local footprint through the effective pose, as MapTransform.TransformPoint applies it, padded outward by a

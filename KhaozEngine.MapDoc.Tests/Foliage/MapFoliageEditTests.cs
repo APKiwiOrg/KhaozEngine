@@ -76,8 +76,8 @@ public sealed class MapFoliageEditTests
         Assert.Equal((byte)64, big.DensityAt(11, 8));
         Assert.Equal((byte)0, big.DensityAt(1_048_575, 1_048_575));
 
-        // The pure edit over that domain prepares no prefab expansion and serializes no payload, and its effect names
-        // the one new chunk with its cosmetic bounds: the samples it holds plus the one bilinear cell before them.
+        // The pure edit over that domain expands at most once for finalization and serializes no payload, and its effect
+        // names the one new batch with its cosmetic bounds: the chunk rectangle clipped to the sample domain.
         FoliageFixture f = FoliageComparisonFixtures.Set(FoliageFixtures.Create(), huge);
         MapPrefabEditResult result = Pure(f, Paint(1, -1, 2, 128, 0.5f));
         MapFoliageChunkChange change = Assert.Single(result.Effects.FoliageChunks);
@@ -147,11 +147,12 @@ public sealed class MapFoliageEditTests
             Assert.False(result.WriteSet.Foliage);
         }
 
-        // Settings, new layers and removal are direct chunk changes over every stored chunk.
+        // Settings, new layers and removal are direct changes over every batch that reads a stored chunk. A batch's
+        // bounds are its chunk rectangle clipped to the sample domain.
         var seeded = Pure(f, new MapSetFoliageLayer(Change(layer, l => l["seed"] = 18))).Effects.FoliageChunks;
         Assert.Equal(new[] { new MapFoliageChunkKey(0, 0), new MapFoliageChunkKey(1, 0) }, seeded.Select(c => c.Chunk));
         Assert.All(seeded, c => Assert.True(c.OldBounds == c.NewBounds && c.BeforeDigest != c.AfterDigest));
-        Assert.Equal(new MapFoliageRect(59, -5, 65, -1), seeded[1].NewBounds);
+        Assert.Equal(new MapFoliageRect(61, -5, 65, -1), seeded[1].NewBounds);
         var added = Pure(f, new MapSetFoliageLayer(Change(layer, l => l["id"] = "cover-b")));
         Assert.Equal(new[] { "cover-a", "cover-b" }, added.After.Foliage!.Layers.Select(l => l.Id));
         Assert.All(added.Effects.FoliageChunks, c => Assert.True(c.LayerId == "cover-b" && c.BeforeDigest is null && c.OldBounds is null));
@@ -194,7 +195,8 @@ public sealed class MapFoliageEditTests
         // An edit reaches at most 64 chunks and visits at most 65,536 addresses, refused before any byte is read.
         FoliageFixture wide = FoliageComparisonFixtures.Set(FoliageFixtures.Create(), Zero(-3, -5, 1, 1_048_576, 1024));
         Refused(wide, new MapSetFoliageDensity(Id, 31, 0, 2018, 1, Enumerable.Repeat(1, 2018).ToArray()), "65 chunks");
-        Assert.Equal(64, Pure(wide, new MapSetFoliageDensity(Id, 32, 0, 2048, 1, Enumerable.Repeat(1, 2048).ToArray())).Effects.FoliageChunks.Count);
+        // Chunks 1 to 64 are read by batches 0 to 64, since a batch's bilinear reads reach one sample into the next chunk.
+        Assert.Equal(65, Pure(wide, new MapSetFoliageDensity(Id, 32, 0, 2048, 1, Enumerable.Repeat(1, 2048).ToArray())).Effects.FoliageChunks.Count);
         Refused(wide, new MapSetFoliageDensity(Id, 0, 0, 65_537, 1, new int[65_537]), "65537 addresses");
         Assert.Equal(64, Pure(wide, new MapSetFoliageDensity(Id, 0, 0, 256, 256, Enumerable.Repeat(3, 65_536).ToArray())).Effects.FoliageChunks.Count);
         Refused(wide, new MapPaintFoliage(Id, 200, 200, 128, 9, 1), "66049 addresses");
@@ -293,7 +295,8 @@ public sealed class MapFoliageEditTests
         MapPrefabEditResult result = MapFoliageEdits.Prepare(f.Document, f.Assets, valid);
         Assert.Equal((1L, 0L), (MapPrefabResolver.ThreadExpansions - expansions, MapFoliageJson.ThreadPayloadWrites - writes));
         Assert.Single(result.After.Foliage!.Layers[0].ExceptionMasks);
-        // Once the reference is in the before document, an unrelated edit to the same layer expands nothing.
+        // Once the reference is in the before document, an unrelated edit to the same layer expands only once, for the
+        // finalization context both sides share.
         Pure(new(result.After, f.Assets), new MapSetFoliageLayer(Change(result.After.Foliage.Layers[0], l => l["seed"] = 18)));
     }
 
@@ -331,11 +334,14 @@ public sealed class MapFoliageEditTests
             l["depth"] = depth;
         });
 
+    // A pure foliage edit serializes no payload. Finalization expands the document at most once, shared by both sides
+    // since expansion never reads foliage, and a no-op edit expands nothing.
     static MapPrefabEditResult Pure(FoliageFixture f, MapFoliageEdit edit)
     {
         long expansions = MapPrefabResolver.ThreadExpansions, writes = MapFoliageJson.ThreadPayloadWrites;
         MapPrefabEditResult result = MapFoliageEdits.Prepare(f.Document, f.Assets, edit);
-        Assert.Equal((0L, 0L), (MapPrefabResolver.ThreadExpansions - expansions, MapFoliageJson.ThreadPayloadWrites - writes));
+        Assert.Equal(result.Effects.FoliageChunks.Count == 0 ? 0L : 1L, MapPrefabResolver.ThreadExpansions - expansions);
+        Assert.Equal(0L, MapFoliageJson.ThreadPayloadWrites - writes);
         return result;
     }
 

@@ -85,7 +85,7 @@ public static class MapMarkerEdits
             NativeResourceTransforms = transforms,
             Prefabs = transfers,
         };
-        return new(after, writes, effects);
+        return MapDocumentEditFinalizer.Complete(document, new(after, writes, effects) { Expansions = new(before, resources) }, assets, assets);
     }
 
     /// <summary>Resolver (1, 1) documents carry the legacy analytic support contract. Marker heights need authored

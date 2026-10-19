@@ -11,8 +11,14 @@ namespace KhaozEngine.MapEditor;
 /// <summary>Detached native candidates and identity-preserving publication at transaction boundaries.</summary>
 internal static class NativeDocumentSnapshot
 {
+    [ThreadStatic] static long t_clones;
+
+    /// <summary>The snapshot clones this thread entered, counted at entry, so a refusal before any copy shows zero.</summary>
+    internal static long ThreadClones => t_clones;
+
     internal static MapDocument Clone(MapDocument document, MapDocRegistry registry)
     {
+        t_clones++;
         if (document.Tiles is { IsPartial: true })
             throw new MapDocumentException("Native snapshots require a complete document, not a windowed document.");
         // Snapshotting a complete tiled world is independent of the small-file embedding limit.

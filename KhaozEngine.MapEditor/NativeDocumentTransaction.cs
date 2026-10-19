@@ -7,6 +7,7 @@ using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Interiors;
 using KhaozEngine.MapDoc.Editing;
+using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
@@ -28,6 +29,10 @@ internal enum MapNativePublicationMode { NamedWriteSet, CompleteSnapshot }
 internal sealed record NativeDocumentPreparation(MapNativeWriteSet WriteSet, MapNativeEditEffects Effects, Action Accept)
 {
     internal MapNativePublicationMode Mode { get; init; } = MapNativePublicationMode.NamedWriteSet;
+    /// <summary>The finalization the command already holds for this direction, reused when it still matches.</summary>
+    internal MapDocumentFinalizationStamp? Stamp { get; init; }
+    /// <summary>Receives the staged finalization just before <see cref="Accept"/>, so accepted state replays it.</summary>
+    internal Action<MapDocumentFinalizationStamp?>? AcceptStamp { get; init; }
 }
 internal sealed record NativeStagedPublication(MapDocument Candidate, MapNativeWriteSet WriteSet,
     MapNativePublicationMode Mode, MapAssetClosure? Assets, MapNativeEditEffects Effects, Action Accept)
@@ -35,6 +40,8 @@ internal sealed record NativeStagedPublication(MapDocument Candidate, MapNativeW
     /// <summary>The candidate's complete expansion against <see cref="Assets"/>, when staging built one.</summary>
     internal Lazy<MapEffectiveResources>? Expansion { get; init; }
     internal NativeLegacySpawnPermit? LegacySpawns { get; init; }
+    /// <summary>The finalization of the staged publication from the live document, null without foliage.</summary>
+    internal MapDocumentFinalizationStamp? Stamp { get; init; }
 }
 
 /// <summary>Validates and publishes exactly one native document write set.</summary>
@@ -64,6 +71,7 @@ internal static class NativeDocumentTransaction
         // Only an expansion already built during staging is a snapshot of what was published. Anything else clears it.
         if (staged is { Assets: { } assets, Expansion: { IsValueCreated: true } expansion }) NativeAcceptedExpansions.Remember(document, assets, expansion);
         else NativeAcceptedExpansions.Forget(document);
+        NativeAcceptedFinalizations.Remember(document, staged.Stamp);
     }
 
     /// <summary>Stages <paramref name="command"/> against <paramref name="document"/>. <paramref name="liveLists"/> is
@@ -81,6 +89,10 @@ internal static class NativeDocumentTransaction
             throw new MapDocumentException("Prefab editing requires a verified asset closure.");
         if (!localOnly && selected is null)
             throw new MapDocumentException("Native editing requires an explicit asset closure binding.");
+        var beforeAssets = command is INativeAssetClosureCommand pair ? pair.Closure(!undo) : assets;
+        // The source snapshot and its closure pass the foliage context preflight before the first copy. Foliage without
+        // a verified closure refuses here, before anything is cloned.
+        MapDocumentEditFinalizer.Preflight(document, beforeAssets ?? selected);
         registry ??= MapDocRegistry.CreateDefault();
         MapDocument candidate = NativeDocumentSnapshot.Clone(document, registry);
         NativeLegacySpawnPermit? permit = null;
@@ -106,14 +118,19 @@ internal static class NativeDocumentTransaction
             if (permit.BeforeLists != liveLists || permit.AfterLists != NativeLegacySpawnAdmission.Canonical(publication)) permit = null;
         }
         NativeLegacySpawnAdmission.RequireAdmitted(document, publication, permit, liveLists);
+        if (selected is null && publication.Foliage is not null)
+            throw new MapDocumentException("Native foliage editing requires a verified asset closure.");
         if (localOnly) MapBoundDocumentValidation.ValidateLocal(publication, registry);
         else MapBoundDocumentValidation.Validate(publication, selected!, registry);
-        var beforeAssets = command is INativeAssetClosureCommand pair ? pair.Closure(!undo) : assets;
+        // A side the command's finalization or the last accepted publication already captured is reused, with its
+        // expansion, only when its fingerprint and closure still match. No foliage means no fingerprint and no stamp.
+        var sides = NativeFinalizationSides.Of(document, publication, beforeAssets ?? selected, selected, preparation.Stamp, registry);
         // Validation and effects read one complete expansion of each document, built on first use.
-        var expanded = selected is null ? null : Expansion(publication, selected);
+        var expanded = selected is null ? null : sides.After?.Resources is { } reusedAfter ? new(reusedAfter) : Expansion(publication, selected);
         // The accepted expansion of the live document is its before side, when it was expanded against the same closure.
         var expandedBefore = (beforeAssets ?? selected) is { } closure
-            ? NativeAcceptedExpansions.TryBefore(document, closure, out var accepted) ? accepted : Expansion(document, closure) : null;
+            ? sides.Before?.Resources is { } reusedBefore ? new(reusedBefore)
+            : NativeAcceptedExpansions.TryBefore(document, closure, out var accepted) ? accepted : Expansion(document, closure) : null;
         ValidateSurfaces(publication, preparation.WriteSet, preparation.Mode, selected, expanded);
         if (expanded is not null && (publication.Prefabs is not null || publication.NativeResourceTransforms is not null || publication.BuildingIntent is not null))
         {
@@ -127,7 +144,15 @@ internal static class NativeDocumentTransaction
             document, publication, beforeAssets, selected, preparation.WriteSet, preparation.Mode, expandedBefore, expanded);
         if (expandedBefore is not null && expanded is not null && (HoldsMarkers(document) || HoldsMarkers(publication)))
             effects = MarkerEffects(effects, expandedBefore, expanded);
-        return new(publication, preparation.WriteSet, preparation.Mode, selected, effects, preparation.Accept) { Expansion = expanded, LegacySpawns = permit };
+        // The one public finalization replaces the foliage channel of the combined effects, every other member kept.
+        MapDocumentFinalizationStamp? stamp = null;
+        if (sides.Active)
+            (effects, stamp) = MapDocumentEditFinalizer.Staged(document, publication, effects, (beforeAssets ?? selected)!, selected!,
+                sides.Stamp, sides.Accepted, sides.BeforeFingerprint!, sides.AfterFingerprint!, () => expandedBefore!.Value, () => expanded!.Value);
+        Action accept = preparation.Accept;
+        if (preparation.AcceptStamp is { } acceptStamp) accept = () => { acceptStamp(stamp); preparation.Accept(); };
+        return new(publication, preparation.WriteSet, preparation.Mode, selected, effects, accept)
+        { Expansion = expanded, LegacySpawns = permit, Stamp = stamp };
     }
 
     static bool HoldsMarkers(MapDocument document) => document.Prefabs is not null || document.BuildingIntent is { Markers.Count: > 0 };
@@ -162,6 +187,8 @@ internal static class NativeDocumentTransaction
         surfaces = surfaces.Union(transformed.Where(t => t.Kind == MapPrefabChildKind.Surface).Select(t => t.OwnerId)).ToArray();
         var writes = new MapNativeWriteSet(patches, surfaces, [], [], [], [], true)
         {
+            // A remap moves foliage owner references with the placement. An unchanged root is never named.
+            Foliage = MapFoliageProjection.Digest(before.Foliage) != MapFoliageProjection.Digest(candidate.Foliage),
             Prefabs = before.Prefabs?.Digest() != candidate.Prefabs?.Digest(),
             BuildingIntent = before.BuildingIntent?.Digest() != candidate.BuildingIntent?.Digest(),
             NativeResourceTransforms = !(before.NativeResourceTransforms ?? []).SequenceEqual(candidate.NativeResourceTransforms ?? []),

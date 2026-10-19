@@ -32,9 +32,10 @@ public sealed record MapFoliageEditSequence(IReadOnlyList<MapFoliageEdit> Edits,
 
 /// <summary>Detached foliage preparation against the matching verified closure. Every step applies to a detached
 /// candidate that shares unchanged immutable layers, and the candidate is validated once before a result exists, so a
-/// refusal leaves nothing behind. A pure foliage edit expands no prefabs unless it introduces a reference only effective
-/// resources can answer. A raster edit reaches at most 64 chunks and visits at most 65,536 addresses. Effects come only
-/// from <see cref="MapFoliageEffects.Direct"/>.</summary>
+/// refusal leaves nothing behind. A raster edit reaches at most 64 chunks and visits at most 65,536 addresses. The
+/// candidate is finalized once by <see cref="MapDocumentEditFinalizer"/>, whose batch rows are the effects. A foliage-only
+/// edit expands the document at most once, shared by both sides, since expansion never reads foliage, and a no-op edit
+/// expands nothing.</summary>
 public static class MapFoliageEdits
 {
     public static MapPrefabEditResult Prepare(MapDocument document, MapAssetClosure assets, MapFoliageEdit edit)
@@ -47,8 +48,8 @@ public static class MapFoliageEdits
             MapFoliageSet? foliage = Apply(document.Foliage, edit);
             MapDocument candidate = MapPrefabEditPreparation.Copy(document);
             candidate.Foliage = foliage;
-            Validate(document, candidate, assets, [edit], owners: false);
-            return Result(document, candidate, assets, null);
+            MapEffectiveResources? expanded = Validate(document, candidate, assets, [edit], owners: false);
+            return Result(document, candidate, assets, null, new(null, expanded, Shared: true));
         }
         if (sequence.Edits is null) throw new MapDocumentException("A foliage edit sequence requires its edit list.");
         MapFoliageSet? set = document.Foliage;
@@ -65,13 +66,14 @@ public static class MapFoliageEdits
             // whole candidate is validated once, so no intermediate owner or foliage state is ever accepted alone.
             MapDocument withoutFoliage = MapPrefabEditPreparation.Copy(document);
             withoutFoliage.Foliage = null;
-            owner = MapPrefabEdits.Prepare(withoutFoliage, assets, ownerEdit);
+            owner = MapPrefabEdits.PrepareRaw(withoutFoliage, assets, ownerEdit);
             after = owner.After;
         }
         else after = MapPrefabEditPreparation.Copy(document);
         after.Foliage = set;
-        Validate(document, after, assets, sequence.Edits, owners: owner is not null);
-        return Result(document, after, assets, owner);
+        MapEffectiveResources? validated = Validate(document, after, assets, sequence.Edits, owners: owner is not null);
+        // An owner edit's before expansion read the document without its foliage, which expansion never reads.
+        return Result(document, after, assets, owner, owner is null ? new(null, validated, Shared: true) : new(owner.Expansions?.Before, validated));
     }
 
     /// <summary>The stable-lattice differential between the document and its proposal with this one layer set. Only a
@@ -176,11 +178,12 @@ public static class MapFoliageEdits
 
     // The candidate passes the complete bound document gate. A new reference that only effective resources can answer
     // needs one expansion, which validates every foliage owner. A policy definition change needs its differential token.
-    static void Validate(MapDocument before, MapDocument after, MapAssetClosure assets, IReadOnlyList<MapFoliageEdit> steps, bool owners)
+    static MapEffectiveResources? Validate(MapDocument before, MapDocument after, MapAssetClosure assets, IReadOnlyList<MapFoliageEdit> steps, bool owners)
     {
         MapBoundDocumentValidation.Validate(after, assets);
-        if (owners || NewEffectiveReferences(before, after)) _ = MapPrefabResolver.Expand(after, assets);
+        MapEffectiveResources? expanded = owners || NewEffectiveReferences(before, after) ? MapPrefabResolver.Expand(after, assets) : null;
         foreach (MapSetFoliageLayer step in steps.OfType<MapSetFoliageLayer>()) RequireDifferential(before, assets, step, after);
+        return expanded;
     }
 
     // The token binds the candidate that lands. A preview token therefore matches only a candidate equal to the before
@@ -237,15 +240,12 @@ public static class MapFoliageEdits
         static (string, string) Owner(MapPrefabReference owner) => ("Owner" + owner.Scope + owner.Kind, owner.Id);
     }
 
-    static MapPrefabEditResult Result(MapDocument before, MapDocument after, MapAssetClosure assets, MapPrefabEditResult? owner)
+    // The owner edit's effects and writes are kept. Finalization adds the foliage write and the batch rows.
+    static MapPrefabEditResult Result(MapDocument before, MapDocument after, MapAssetClosure assets, MapPrefabEditResult? owner,
+        MapEditExpansions expansions)
     {
-        IReadOnlyList<MapFoliageChunkChange> chunks = MapFoliageEffects.Direct(before, after, assets);
-        MapNativeInvalidation foliage = chunks.Count == 0 ? MapNativeInvalidation.None : MapNativeInvalidation.Foliage;
-        bool written = !string.Equals(MapFoliageProjection.Digest(before.Foliage), MapFoliageProjection.Digest(after.Foliage), StringComparison.Ordinal);
-        if (owner is not null)
-            return new(after, owner.WriteSet with { Foliage = written },
-                owner.Effects with { Invalidates = owner.Effects.Invalidates | foliage, FoliageChunks = chunks });
-        var effects = new MapNativeEditEffects(null, null, [], [], [], [], foliage) { FoliageChunks = chunks };
-        return new(after, new MapNativeWriteSet([], [], [], [], [], [], false) { Foliage = written }, effects);
+        MapNativeWriteSet writes = owner?.WriteSet ?? new MapNativeWriteSet([], [], [], [], [], [], false);
+        MapNativeEditEffects effects = owner?.Effects ?? new MapNativeEditEffects(null, null, [], [], [], [], MapNativeInvalidation.None);
+        return MapDocumentEditFinalizer.Complete(before, new(after, writes, effects) { Expansions = expansions }, assets, assets);
     }
 }

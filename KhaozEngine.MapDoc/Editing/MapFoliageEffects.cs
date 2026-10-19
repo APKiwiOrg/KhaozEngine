@@ -6,25 +6,57 @@ using KhaozEngine.MapDoc.Foliage;
 
 namespace KhaozEngine.MapDoc.Editing;
 
-/// <summary>One directly changed stored density chunk. A side without the stored chunk, including a side without the
-/// layer, has null bounds and a null digest. Bounds are the cosmetic world XZ rectangle of candidate points whose
-/// bilinear density reads the chunk's samples under that side's raster. A digest binds the side's layer settings, the
-/// chunk key and the chunk's logical bytes.</summary>
+/// <summary>One changed generated foliage batch, keyed by its layer and chunk. A side exists when the layer exists there,
+/// the batch is not provably off its raster and it reads at least one stored density chunk. A missing side has null
+/// bounds and a null digest. Bounds are the cosmetic world XZ rectangle where the batch may place samples: the chunk's
+/// world rectangle clipped to the raster's sample domain, rounded outward to single precision. A digest is the batch
+/// dependency digest a generated batch carries. A side whose preparation refuses deterministically carries a digest
+/// that binds its status and the read chunks' direct digests instead.</summary>
 public sealed record MapFoliageChunkChange(string LayerId, MapFoliageChunkKey Chunk, MapFoliageRect? OldBounds,
     MapFoliageRect? NewBounds, string? BeforeDigest, string? AfterDigest);
 
-/// <summary>The direct foliage diff. It reads authored layer metadata and advertised chunk digests only, so a byte edit
-/// prepares no support, clearance or prefab expansion. A layer settings change names every stored chunk of the layer.
-/// A settings change on a layer with no stored chunks still writes the foliage root but reports no chunk and no
-/// invalidation, because an all-zero raster places nothing. Dependent changes, where an owner edit changes what clears
-/// foliage, are not direct.</summary>
-internal static class MapFoliageEffects
+/// <summary>Foliage effects of one document edit. <see cref="Describe"/> publishes batch rows. The direct diff reads
+/// authored layer metadata and advertised chunk digests only and is an internal pre-filter, never a published row. A
+/// settings change on a layer with no stored chunks still writes the foliage root but reports no chunk and no
+/// invalidation, because an all-zero raster places nothing.</summary>
+public static class MapFoliageEffects
 {
-    internal static IReadOnlyList<MapFoliageChunkChange> Direct(MapDocument before, MapDocument after, MapAssetClosure assets)
+    /// <summary>The changed batches between two complete documents, read from contexts captured from exactly those
+    /// documents and their closures. Direct rows come from changed density chunks and layer settings. Dependent rows come
+    /// from every batch whose preparation acquisition meets the old or new bounds of a changed input: support, paint,
+    /// rooms, rules, masks, markers and clearance owners measured by their proxies. A context may be null only for a
+    /// document without foliage. <paramref name="trigger"/> is the base effect set whose foliage channel these rows
+    /// replace. Only its foliage channel is superseded, it never narrows the diff. Over-budget selection or a capacity
+    /// refusal throws, so a caller publishes all rows or none.</summary>
+    public static IReadOnlyList<MapFoliageChunkChange> Describe(MapDocument before, MapDocument after,
+        MapFoliageGenerationContext? oldContext, MapFoliageGenerationContext? newContext, MapNativeEditEffects trigger)
     {
         ArgumentNullException.ThrowIfNull(before);
         ArgumentNullException.ThrowIfNull(after);
-        ArgumentNullException.ThrowIfNull(assets);
+        ArgumentNullException.ThrowIfNull(trigger);
+        Require(before, oldContext, nameof(oldContext));
+        Require(after, newContext, nameof(newContext));
+        return MapFoliageDependents.Rows(before, after,
+            () => oldContext ?? throw new ArgumentNullException(nameof(oldContext)),
+            () => newContext ?? throw new ArgumentNullException(nameof(newContext)));
+    }
+
+    // A context must hold exactly the document's logical foliage. A stale context from another snapshot refuses.
+    static void Require(MapDocument document, MapFoliageGenerationContext? context, string name)
+    {
+        if (context is null)
+        {
+            if (document.Foliage is not null) throw new ArgumentNullException(name, "a document with foliage needs its context.");
+            return;
+        }
+        if (!string.Equals(MapFoliageProjection.Digest(context.Foliage), MapFoliageProjection.Digest(document.Foliage), StringComparison.Ordinal))
+            throw new ArgumentException("the foliage context was not captured from this document.", name);
+    }
+
+    internal static IReadOnlyList<MapFoliageChunkChange> Direct(MapDocument before, MapDocument after)
+    {
+        ArgumentNullException.ThrowIfNull(before);
+        ArgumentNullException.ThrowIfNull(after);
         Dictionary<string, MapFoliageLayer> old = Layers(before.Foliage), next = Layers(after.Foliage);
         var rows = new List<MapFoliageChunkChange>();
         foreach (string id in old.Keys.Union(next.Keys, StringComparer.Ordinal).Order(StringComparer.Ordinal))
@@ -56,7 +88,7 @@ internal static class MapFoliageEffects
         layer?.ChunkDigests.ToDictionary(d => d.Key, d => d.Sha256) ?? new Dictionary<MapFoliageChunkKey, string>();
 
     // Every authored layer member except the chunk list, in the closed codec's canonical form.
-    static string Settings(MapFoliageLayer layer) => MapCanonical.HashHex(w =>
+    internal static string Settings(MapFoliageLayer layer) => MapCanonical.HashHex(w =>
     {
         w.WriteStartArray();
         w.WriteStringValue("kemap/foliage-layer-settings/1");
@@ -64,7 +96,7 @@ internal static class MapFoliageEffects
         w.WriteEndArray();
     });
 
-    static string Digest(string settings, MapFoliageChunkKey key, string sha256) => MapCanonical.HashHex(w =>
+    internal static string Digest(string settings, MapFoliageChunkKey key, string sha256) => MapCanonical.HashHex(w =>
     {
         w.WriteStartArray();
         w.WriteStringValue("kemap/foliage-chunk/1");
@@ -90,13 +122,13 @@ internal static class MapFoliageEffects
         return new(Down(minX), Down(minZ), Up(maxX), Up(maxZ));
     }
 
-    static float Down(double value)
+    internal static float Down(double value)
     {
         float rounded = (float)value;
         return rounded > value ? MathF.BitDecrement(rounded) : rounded;
     }
 
-    static float Up(double value)
+    internal static float Up(double value)
     {
         float rounded = (float)value;
         return rounded < value ? MathF.BitIncrement(rounded) : rounded;

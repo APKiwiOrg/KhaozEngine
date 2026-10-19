@@ -4,6 +4,7 @@ using System.Linq;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Editing;
+using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Surfaces;
 
@@ -29,6 +30,7 @@ internal sealed class NativePlacementResourceState
         _transfers = (document.Prefabs?.Transfers ?? []).Where(t => _keys.Contains((t.Binding.Child.Kind, t.Binding.WorldId)))
             .Select(t => (t.InstanceId, t.Binding.Child)).ToHashSet();
     }
+    // Foliage is an immutable set shared by reference, so capturing it copies no density.
     static MapDocument CopyResources(MapDocument document) => new()
     {
         Placements = document.Placements.Select(NativePlacementTransaction.Copy).ToList(),
@@ -36,9 +38,18 @@ internal sealed class NativePlacementResourceState
         Prefabs = document.Prefabs?.Clone(),
         BuildingIntent = document.BuildingIntent?.Clone(),
         NativeResourceTransforms = document.NativeResourceTransforms?.ToArray(),
+        Foliage = document.Foliage,
     };
     internal static NativePlacementResourceState Capture(MapDocument document, string placementId) => new(document, placementId);
     internal MapNativeWriteSet WriteSet => Writes(_snapshot, _keys);
+
+    /// <summary>The write set between two captures of one edit. It names the foliage root exactly when the logical
+    /// foliage differs, as when a remap moves owner references, never for an unchanged root.</summary>
+    internal static MapNativeWriteSet Between(NativePlacementResourceState before, NativePlacementResourceState after) =>
+        Union(before.WriteSet, after.WriteSet) with
+        {
+            Foliage = MapFoliageProjection.Digest(before._snapshot.Foliage) != MapFoliageProjection.Digest(after._snapshot.Foliage),
+        };
 
     internal static void Restore(MapDocument document, NativePlacementResourceState state)
     {
@@ -80,7 +91,34 @@ internal sealed class NativePlacementResourceState
             document.BuildingIntent = new(intent.PayloadVersion, intent.RoofLinks, intent.RoofGroups,
                 RestoreItems(intent.Lights, savedIntent.Lights, l => keys.Contains((MapPrefabChildKind.Light, l.Id))), intent.Markers)
             { Roofs = intent.Roofs, Storeys = intent.Storeys };
+        document.Foliage = RestoreFoliage(document.Foliage, source.Foliage, keys);
     }
+
+    // Exception masks and owner correspondences that the restored owners own return to their captured rows. Every other
+    // row, layer and density byte is the current one, and an untouched layer keeps its object.
+    static MapFoliageSet? RestoreFoliage(MapFoliageSet? current, MapFoliageSet? saved, HashSet<(MapPrefabChildKind Kind, string Id)> keys)
+    {
+        if (current is null || !References(current, keys) && !References(saved, keys)) return current;
+        bool Owned(MapPrefabReference owner) => owner.Scope == MapPrefabReferenceScope.World && keys.Contains((owner.Kind, owner.Id));
+        var layers = current.Layers.Select(l =>
+        {
+            MapFoliageLayer? old = saved?.Layers.FirstOrDefault(s => string.Equals(s.Id, l.Id, StringComparison.Ordinal));
+            var masks = RestoreItems(l.ExceptionMasks, old?.ExceptionMasks, m => Owned(m.Owner));
+            var owners = RestoreItems(l.OwnerSupports, old?.OwnerSupports, o => Owned(o.Owner));
+            if (masks.SequenceEqual(l.ExceptionMasks) && owners.SequenceEqual(l.OwnerSupports)) return l;
+            var metadata = new MapFoliageLayer(l.PayloadVersion, l.Id, l.Support, l.OriginX, l.OriginZ, l.CellSize, l.Width, l.Depth,
+                l.RowDirection, l.Seed, l.Spacing, l.ScaleMin, l.ScaleMax, l.RootOffset, l.Models, l.AllowedVisibleMaterials, l.Materials,
+                l.Policy, l.ExcludeIndoors, l.ExcludeSolidObjects, l.DoorClearance, l.EdgeFade, l.CompatibilityOrdinals, l.ClearanceRules,
+                masks, owners, l.Chunks);
+            return MapFoliageLayer.FromStorage(metadata, l.ChunkDigests, l.Chunks);
+        }).ToArray();
+        return layers.SequenceEqual(current.Layers) ? current : new(current.PayloadVersion, layers);
+    }
+
+    // True when a mask or owner correspondence names one of the keys as its World owner.
+    static bool References(MapFoliageSet? set, HashSet<(MapPrefabChildKind Kind, string Id)> keys) =>
+        set?.Layers.Any(l => l.ExceptionMasks.Any(m => m.Owner.Scope == MapPrefabReferenceScope.World && keys.Contains((m.Owner.Kind, m.Owner.Id))) ||
+            l.OwnerSupports.Any(o => o.Owner.Scope == MapPrefabReferenceScope.World && keys.Contains((o.Owner.Kind, o.Owner.Id)))) == true;
 
     static IReadOnlyList<T> RestoreItems<T>(IEnumerable<T>? current, IEnumerable<T>? saved, Func<T, bool> affected)
     {
@@ -205,6 +243,7 @@ internal sealed class NativePlacementResourceState
         NativeResourceTransforms = a.NativeResourceTransforms || b.NativeResourceTransforms,
         NumericReservations = a.NumericReservations || b.NumericReservations,
         Water = a.Water || b.Water,
-        NativeAssets = a.NativeAssets || b.NativeAssets
+        NativeAssets = a.NativeAssets || b.NativeAssets,
+        Foliage = a.Foliage || b.Foliage,
     };
 }

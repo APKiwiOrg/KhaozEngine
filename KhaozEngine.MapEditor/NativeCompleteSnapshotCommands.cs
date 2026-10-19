@@ -19,9 +19,18 @@ internal sealed class NativeCompleteSnapshotCommand : EditorCommand, INativeBoun
     readonly MapDocument _before, _after;
     readonly MapAssetClosure _beforeAssets, _afterAssets;
     readonly MapNativeEditEffects _effects;
+    MapDocumentFinalizationStamp? _stamp;
+
+    /// <summary>Captures both snapshots. <paramref name="stamp"/> is an earlier finalization of this before snapshot,
+    /// such as the staged command a late callback replaced. Staging reuses each of its sides only while that side's
+    /// fingerprint and closure still match, and acceptance keeps the final one for replay. Both snapshots pass the foliage
+    /// preflight before either is cloned.</summary>
     internal NativeCompleteSnapshotCommand(string label, MapDocument before, MapDocument after,
-        MapAssetClosure beforeAssets, MapAssetClosure afterAssets, MapNativeEditEffects effects)
+        MapAssetClosure beforeAssets, MapAssetClosure afterAssets, MapNativeEditEffects effects, MapDocumentFinalizationStamp? stamp = null)
     {
+        MapDocumentEditFinalizer.Preflight(before, beforeAssets);
+        MapDocumentEditFinalizer.Preflight(after, afterAssets);
+        _stamp = stamp;
         _label = label;
         _before = NativeDocumentSnapshot.Clone(before, MapDocRegistry.CreateDefault());
         _after = NativeDocumentSnapshot.Clone(after, MapDocRegistry.CreateDefault());
@@ -34,12 +43,19 @@ internal sealed class NativeCompleteSnapshotCommand : EditorCommand, INativeBoun
     public override void Apply(MapDocument doc) => NativeDocumentTransaction.Run(doc, this, false, _afterAssets);
     public override void Revert(MapDocument doc) => NativeDocumentTransaction.Run(doc, this, true, _beforeAssets);
     public MapAssetClosure Closure(bool undo) => undo ? _beforeAssets : _afterAssets;
+    /// <summary>The accepted forward finalization, null before acceptance or without foliage.</summary>
+    internal MapDocumentFinalizationStamp? AcceptedStamp => _stamp;
     public NativeDocumentPreparation Prepare(MapDocument candidate, bool undo, MapAssetClosure assets)
     {
         MapDocument desired = NativeDocumentSnapshot.Clone(undo ? _before : _after, MapDocRegistry.CreateDefault());
         RetainReservations(desired, candidate);
         NativeDocumentSnapshot.Publish(candidate, desired);
-        return new(EmptyWrites, undo ? Reverse(_effects) : _effects, () => { }) { Mode = MapNativePublicationMode.CompleteSnapshot };
+        return new(EmptyWrites, undo ? Reverse(_effects) : _effects, () => { })
+        {
+            Mode = MapNativePublicationMode.CompleteSnapshot,
+            Stamp = undo ? _stamp?.Reverse() : _stamp,
+            AcceptStamp = staged => _stamp = undo ? staged?.Reverse() : staged,
+        };
     }
     internal static MapNativeWriteSet EmptyWrites { get; } = new([], [], [], [], [], [], false);
     internal static MapNativeEditEffects Reverse(MapNativeEditEffects effects) => effects with

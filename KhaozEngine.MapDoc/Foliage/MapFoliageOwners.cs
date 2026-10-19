@@ -18,7 +18,7 @@ namespace KhaozEngine.MapDoc.Foliage;
 internal sealed class MapFoliageOwners
 {
     internal sealed record MaskOwner(string LayerId, MapFoliageMask Mask, MapEffectiveTransform Pose);
-    readonly Dictionary<string, (MaskOwner[] Masks, SpatialIndex Index)> _masks = new(StringComparer.Ordinal);
+    readonly Dictionary<string, (MaskOwner[] Masks, Bounds[] Proxies, SpatialIndex Index)> _masks = new(StringComparer.Ordinal);
     readonly Dictionary<MapPrefabReference, MapSupportResult> _seats;
     readonly MapEffectiveResources _resources;
     readonly Dictionary<string, Dictionary<MapPrefabReference, MapSupportBinding>> _bindings;
@@ -42,16 +42,25 @@ internal sealed class MapFoliageOwners
                 bounds.Add(MapFoliageGenerationContext.Proxy(pose, mask.Footprint,
                     mask.Kind == MapFoliageClearanceKind.Door ? layer.DoorClearance : null));
             }
-            _masks.Add(layer.Id, (masks.ToArray(), new(bounds)));
+            _masks.Add(layer.Id, (masks.ToArray(), bounds.ToArray(), new(bounds)));
         }
     }
 
     internal IReadOnlyList<MaskOwner> Masks(string layerId, MapFoliageRect rect, out long candidates)
     {
-        var (masks, index) = _masks[layerId];
+        var (masks, _, index) = _masks[layerId];
         var hits = index.Query(new(rect.MinX, rect.MinZ, rect.MaxX, rect.MaxZ), out candidates);
         return hits.Select(i => masks[i]).OrderBy(m => m.Mask.Id, StringComparer.Ordinal).ToArray();
     }
+
+    /// <summary>Every captured exception mask with its owner pose and proxy bounds, by layer in authored order.</summary>
+    internal IEnumerable<(string LayerId, MaskOwner Mask, Bounds Proxy)> MaskProxies() =>
+        _masks.SelectMany(l => l.Value.Masks.Select((m, i) => (l.Key, m, l.Value.Proxies[i])));
+
+    /// <summary>The released seated answer of an already bound placement or Support marker, null for an owner whose
+    /// seat comes from its exceptional correspondence.</summary>
+    internal string? SeatIdentity(MapPrefabReference owner) => _seats.TryGetValue(owner, out var seated)
+        ? MapFoliageSupportIdentity.From(seated) + "|" + seated.SpaceId + "|" + seated.Face + "|" + seated.Status : null;
 
     internal int? Ordinal(string layerId, string surfaceId) => _ordinals[layerId].TryGetValue(surfaceId, out int ordinal) ? ordinal : null;
 

@@ -100,7 +100,8 @@ internal static class NativePlacementEffects
         // The provider's released contract takes authored placements. Project already resolved leaves into a
         // detached standalone view, with their precise frames and no support resampling or identity allocation.
         var projected = NativeDocumentSnapshot.Clone(document, registry);
-        projected.Prefabs = null; projected.BuildingIntent = null; projected.Water = null; projected.Surfaces = new();
+        // The projection holds no surfaces, so it holds no foliage that would name them either.
+        projected.Prefabs = null; projected.BuildingIntent = null; projected.Water = null; projected.Surfaces = new(); projected.Foliage = null;
         projected.Placements = selected.Select(p => new MapPlacement
         {
             Id = p.PlacementId,

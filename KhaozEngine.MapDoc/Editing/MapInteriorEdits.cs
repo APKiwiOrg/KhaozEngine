@@ -79,6 +79,7 @@ public static class MapInteriorEdits
                 break;
             default: throw new MapDocumentException("Unknown interior edit.");
         }
-        return MapPrefabEditPreparation.Finish(after, assets, before, [], affected, interiors: true);
+        return MapDocumentEditFinalizer.Complete(document, MapPrefabEditPreparation.Finish(after, assets, before, [], affected, interiors: true),
+            assets, assets);
     }
 }

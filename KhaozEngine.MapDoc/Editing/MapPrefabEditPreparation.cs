@@ -76,7 +76,7 @@ internal static class MapPrefabEditPreparation
             NativeAssets = nativeAssets,
             Water = unpack && resources.Water is not null,
         };
-        return new(after, writes, effects);
+        return new(after, writes, effects) { Expansions = new(before, resources) };
     }
 
     internal static string[] Ids(IEnumerable<string> values) => values.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();

@@ -264,7 +264,7 @@ public sealed class NativeCollisionService(MapEditSession session)
         public override void Revert(MapDocument doc) => NativeDocumentTransaction.Run(doc, this, true, beforeAssets);
         public MapAssetClosure Closure(bool undo) => undo ? beforeAssets : afterAssets;
         NativeDocumentPreparation INativeBoundDocumentCommand.Prepare(MapDocument candidate, bool undo, MapAssetClosure assets) =>
-            _state.Prepare(candidate, undo, () =>
+            _state.Prepare(candidate, undo, Closure(!undo), Closure(undo), () =>
             {
                 var after = NativeDocumentSnapshot.Clone(candidate, MapDocRegistry.CreateDefault());
                 after.NativeAssets = roots.ToList();

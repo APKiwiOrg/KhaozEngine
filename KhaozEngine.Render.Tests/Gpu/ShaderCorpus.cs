@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Internal;
+using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Tests.Gpu
 {
@@ -110,6 +111,8 @@ namespace KhaozEngine.Tests.Gpu
             yield return new(CoverageGpuResidualProbe.Name, CoverageGpuResidualProbe.Source);
             yield return new(CoverageGpuRoundingProbe.Name, CoverageGpuRoundingProbe.Source);
             foreach (var kernel in CoverageGpuPredicateProbe.Kernels().Concat(CoverageGpuSupportProbe.Kernels())) yield return kernel;
+            foreach (CoverageGpuPhase phase in Enum.GetValues<CoverageGpuPhase>())
+                yield return new(CoverageGpuSkinRefineGlsl.Name(phase), CoverageGpuSkinRefineGlsl.Source(phase));
         }
 
         static void EmitCompute(ShippedComputeKernel kernel, List<ShaderCorpusRow> rows, Action<string, byte[]>? dump,

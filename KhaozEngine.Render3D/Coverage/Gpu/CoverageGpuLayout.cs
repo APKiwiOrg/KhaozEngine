@@ -11,6 +11,8 @@ internal static class CoverageGpuLayout
     internal const int SourceAttributeWords = 20, SkinIndexWords = 4, RefinedVertexWords = 10;
     internal const int RefinedTriangleWords = 3, SourceTriangleWords = 8, RecipeWords = 7;
     internal const int MaxCommands = 4, MaxRegions = 32;
+    internal const int FailureCode = 26, FailureSlot = 27, FailureCount = 28, FailureStage = 29, Refused = 30, BeforePublished = 31;
+    internal const int AttributeCandidates = 32;
 
     internal static uint FrameWords(int boneCount) => Words(ActorHeaderWords + (long)boneCount * MatrixWords + MaxCommands * CommandWords + MaxCommands + MaxRegions);
     internal static uint SurfaceWords(CoverageGpuHostUpload host) => Words(FinalHeaderWords + ((long)host.SourceCount + host.VertexCount) * ModelWords);
@@ -19,10 +21,31 @@ internal static class CoverageGpuLayout
     {
         long events = Math.Max(Math.Max(h.SourceCount, h.AliasCount), Math.Max(Math.Max(h.PositionGroupCount, h.VertexCount),
             Math.Max(3L * h.TriangleCount, 2L * h.PositionGroupCount)));
-        // Posed and flushed source, four refined vertex rows, one XYZ and three scalar group rows,
-        // one face scalar row, two face-validation words and six words per event.
-        return Words(WorkHeaderWords + 2L * h.SourceCount * ModelWords + 4L * h.VertexCount * ModelWords
+        // Posed and flushed source, four refined rows and a private generated-attribute candidate,
+        // one XYZ and three scalar group rows, face scalar/validation rows and six words per event.
+        return Words(WorkHeaderWords + 2L * h.SourceCount * ModelWords + 5L * h.VertexCount * ModelWords
             + 6L * h.PositionGroupCount + 3L * h.TriangleCount + 6L * events);
+    }
+
+    internal static uint[] WorkHeader(CoverageGpuHostUpload h)
+    {
+        var header = new uint[WorkHeaderWords];
+        uint cursor = WorkHeaderWords;
+        Row(0, h.SourceCount, ModelWords); Row(2, h.SourceCount, ModelWords);
+        for (int row = 4; row <= 10; row += 2) Row(row, h.VertexCount, ModelWords);
+        Row(12, h.PositionGroupCount, 3);
+        for (int row = 14; row <= 18; row += 2) Row(row, h.PositionGroupCount, 1);
+        Row(20, h.TriangleCount, 1); Row(22, h.TriangleCount, 2);
+        int events = Math.Max(Math.Max(h.SourceCount, h.AliasCount), Math.Max(Math.Max(h.PositionGroupCount, h.VertexCount),
+            Math.Max(checked(3 * h.TriangleCount), checked(2 * h.PositionGroupCount))));
+        Row(24, events, 6); Row(AttributeCandidates, h.VertexCount, ModelWords);
+        if (cursor != WorkWords(h)) throw new InvalidOperationException("Coverage work layout disagrees with its allocation.");
+        return header;
+        void Row(int pair, int count, int stride)
+        {
+            header[pair] = cursor; header[pair + 1] = (uint)count;
+            cursor = Words(checked((long)cursor + (long)count * stride));
+        }
     }
 
     internal static CoverageGpuReservation CreateReservation(int actorSlot, uint staticBase, uint frameBase, uint workBase,

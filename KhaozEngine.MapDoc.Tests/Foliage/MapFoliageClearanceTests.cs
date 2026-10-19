@@ -352,9 +352,9 @@ public sealed class MapFoliageClearanceTests
             return MapFoliageSupport.Prepare(context, context.Foliage!.Layers[0], new(0, 0), limits);
         }
         var off = Prepared(0, new());
-        // Edge fade 0 widens only by the centre read reach, half the 4 m cell. Measured at the post-breaker fix (9112 faces
-        // and no reach part before the centre reach).
-        Assert.Equal((MapFoliageStatus.Complete, 10376L), (off.Status, off.Work.Faces));
+        // Edge fade 0 widens only by the centre read reach, half the 4 m cell. Membership reuses the coarse grid's
+        // 288 triangles, reducing the former 10376 charge to 10088 without changing the cells or their samples.
+        Assert.Equal((MapFoliageStatus.Complete, 10088L), (off.Status, off.Work.Faces));
         Assert.Contains("context-reach|" + BitConverter.DoubleToInt64Bits(2.0).ToString(System.Globalization.CultureInfo.InvariantCulture), off.DependencyParts);
         var on = Prepared(0.25f, new());
         Assert.True(on.Work.Faces > off.Work.Faces, $"{on.Work.Faces} faces");
@@ -386,9 +386,9 @@ public sealed class MapFoliageClearanceTests
             return MapFoliageSupport.Prepare(context, context.Foliage!.Layers[0], new(0, 0), limits);
         }
         var off = Prepared(0, new());
-        // Edge fade 0 grids widen only by the 2 m centre read reach. Measured at the post-breaker fix (4334 cells, 17336
-        // faces and 61 parts before the centre reach, the new part being its context-reach).
-        Assert.Equal((MapFoliageStatus.Complete, 4904, 19616L, 62),
+        // Edge fade 0 grids widen only by the 2 m centre read reach. The same 4904 cells and 62 dependency parts remain.
+        // Each cell's two triangles are compiled once and shared with membership.
+        Assert.Equal((MapFoliageStatus.Complete, 4904, 2L * 4904, 62),
             (off.Status, off.Grids.Sum(g => g.Cells.Count), off.Work.Faces, off.DependencyParts.Count));
         var on = Prepared(4, new());
         Assert.True(on.Grids.Sum(g => g.Cells.Count) > off.Grids.Sum(g => g.Cells.Count), $"{on.Grids.Sum(g => g.Cells.Count)} cells");

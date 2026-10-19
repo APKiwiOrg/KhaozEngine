@@ -57,8 +57,9 @@ public static class MapFoliageClearance
                         if (!Enabled(layer, rule.Kind) || rule.PlacementTag is { } tag && !placement.Tags.Any(t => string.Equals(t, tag, StringComparison.OrdinalIgnoreCase))) continue;
                         var owner = MapFoliageOwners.World(MapPrefabChildKind.Placement, placement.PlacementId);
                         var pose = MapFoliageOwners.Pose(context.Resources, owner);
+                        limits.ChargePreparation?.Invoke(4096);
                         entries.Add(new(Seat(owner, pose), pose, rule.Kind, rule.Footprint, null, layer.DoorClearance));
-                        parts.Add("rule|" + rule.Id + "|" + rule.AssetId + "|" + rule.PlacementTag + "|" + rule.Kind + "|" + Describe(rule.Footprint));
+                        Part("rule|" + rule.Id + "|" + rule.AssetId + "|" + rule.PlacementTag + "|" + rule.Kind + "|" + Describe(rule.Footprint));
                         DescribeOwner(owner, pose);
                     }
             var masks = context.ClearanceOwners.Masks(layer.Id, rect, out long maskCandidates);
@@ -68,8 +69,9 @@ public static class MapFoliageClearance
             {
                 var mask = row.Mask;
                 if (!Enabled(layer, mask.Kind)) continue;
+                limits.ChargePreparation?.Invoke(4096);
                 entries.Add(new(Seat(mask.Owner, row.Pose), row.Pose, mask.Kind, mask.Footprint, mask.Support, layer.DoorClearance));
-                parts.Add("mask|" + mask.Id + "|" + mask.Owner.Kind + "|" + mask.Owner.Id + "|" + mask.Kind + "|" + Describe(mask.Footprint) + "|" +
+                Part("mask|" + mask.Id + "|" + mask.Owner.Kind + "|" + mask.Owner.Id + "|" + mask.Kind + "|" + Describe(mask.Footprint) + "|" +
                     MapCanonical.HashHex(w => System.Text.Json.JsonSerializer.Serialize(w, mask.Support)));
                 DescribeOwner(mask.Owner, row.Pose);
             }
@@ -93,10 +95,10 @@ public static class MapFoliageClearance
             foreach (string id in consulted.Order(StringComparer.Ordinal))
             {
                 int? ordinal = context.ClearanceOwners.Ordinal(layer.Id, id);
-                parts.Add("ordinal|" + id + "|" + (ordinal is null ? "absent" : ordinal.Value.ToString(CultureInfo.InvariantCulture)));
+                Part("ordinal|" + id + "|" + (ordinal is null ? "absent" : ordinal.Value.ToString(CultureInfo.InvariantCulture)));
                 if (ordinal is { } value) ordinals.Add(id, value);
             }
-            parts.Add(string.Create(CultureInfo.InvariantCulture, $"clearance|{layer.ExcludeIndoors}|{layer.ExcludeSolidObjects}|{BitConverter.SingleToInt32Bits(layer.DoorClearance)}|{BitConverter.SingleToInt32Bits(layer.EdgeFade)}"));
+            Part(string.Create(CultureInfo.InvariantCulture, $"clearance|{layer.ExcludeIndoors}|{layer.ExcludeSolidObjects}|{BitConverter.SingleToInt32Bits(layer.DoorClearance)}|{BitConverter.SingleToInt32Bits(layer.EdgeFade)}"));
             return Result(MapFoliageStatus.Complete, null);
 
             string Seat(MapPrefabReference owner, MapEffectiveTransform pose)
@@ -107,12 +109,18 @@ public static class MapFoliageClearance
                 consulted.Add(seat);
                 return seat;
             }
-            void DescribeOwner(MapPrefabReference owner, MapEffectiveTransform pose) => parts.Add(string.Create(CultureInfo.InvariantCulture,
+            void DescribeOwner(MapPrefabReference owner, MapEffectiveTransform pose) => Part(string.Create(CultureInfo.InvariantCulture,
                 $"clearance-owner|{owner.Kind}|{owner.Id}|{BitConverter.DoubleToInt64Bits(pose.X)}|{BitConverter.DoubleToInt64Bits(pose.Y)}|{BitConverter.DoubleToInt64Bits(pose.Z)}|{BitConverter.DoubleToInt64Bits(pose.YawRadians)}|{BitConverter.DoubleToInt64Bits(pose.Scale)}"));
         }
         catch (MapFoliageRefusal refusal) { return Result(refusal.Status, refusal.Message); }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException) { return Result(MapFoliageStatus.NotRepresentable, error.Message); }
         catch (MapDocumentException error) { return Result(MapCommonRefinement.NotRepresentable(error) ? MapFoliageStatus.NotRepresentable : MapFoliageStatus.Unavailable, error.Message); }
+
+        void Part(string value)
+        {
+            limits.ChargePreparation?.Invoke(checked(128 + 2L * System.Text.Encoding.UTF8.GetByteCount(value)));
+            parts.Add(value);
+        }
 
         MapPreparedFoliageClearance Result(MapFoliageStatus status, string? detail) => new(layer, support, status, detail, work,
             status == MapFoliageStatus.Complete ? parts.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray() : [],
@@ -151,6 +159,7 @@ public sealed class MapPreparedFoliageClearance
         DependencyParts = Array.AsReadOnly(parts);
     }
 
+    internal MapPreparedFoliageSupport Support => _support;
     public MapFoliageStatus Status { get; }
     public string? Detail { get; }
     public MapFoliageWork Work { get; }

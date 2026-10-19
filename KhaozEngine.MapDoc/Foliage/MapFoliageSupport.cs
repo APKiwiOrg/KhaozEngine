@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Numerics;
+using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
@@ -64,7 +65,7 @@ public static class MapFoliageSupport
             throw new ArgumentException("the layer is not one of the context's captured layers", nameof(layer));
         IReadOnlyList<MapSurfaceRef> declared = context.Resources.SurfaceSource.Surfaces;
         MapSurfaceScope scope;
-        try { scope = Scope(layer, chunk, declared, context.Resources.Transforms); }
+        try { scope = Scope(layer, chunk, context.SupportFloorsFor(layer, chunk), context.Resources.Transforms); }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException or ArgumentException)
         { return MapPreparedFoliageSupport.Refused(layer, chunk, MapFoliageStatus.NotRepresentable, NoWork, "chunk scope is not representable"); }
         if (limits.MaxPrepareScopes < 1)
@@ -78,12 +79,12 @@ public static class MapFoliageSupport
         }
         catch (Exception error) when (Classify(error) is { } status)
         { return MapPreparedFoliageSupport.Refused(layer, chunk, status, NoWork with { PrepareScopes = 1 }, error.Message); }
-        return Prepare(view, paint, declared, layer, chunk, limits);
+        return Prepare(view, paint, declared, layer, chunk, limits, context.DensityDigests(layer)).WithAssets(context.Assets);
     }
 
-    /// <summary>The acquisition scope of a chunk: its world rectangle widened by the clearance read reach over the declared
+    /// <summary>The acquisition scope of a chunk: its world rectangle widened by the clearance read reach over the spatially contributing
     /// support floors, since grids and the shared context widen by that reach, plus a halo of three of the largest
-    /// declared support cells, which holds every neighbour corner a boundary normal reads. Every role is acquired, since
+    /// contributing support cells, which holds every neighbour corner a boundary normal reads. Every role is acquired, since
     /// membership reads ceilings and visible paint reads paint overrides.</summary>
     internal static MapSurfaceScope Scope(MapFoliageLayer layer, MapFoliageChunkKey chunk, IReadOnlyList<MapSurfaceRef> declared,
         IReadOnlyDictionary<string, MapEffectiveTransform> transforms)
@@ -158,12 +159,13 @@ public static class MapFoliageSupport
     /// <summary>The preparation core over an acquired chunk view, its scoped partial paint and the effective declared
     /// surfaces. The public entry acquires all three from the captured context.</summary>
     internal static MapPreparedFoliageSupport Prepare(MapScopedSurfaces view, IReadOnlyDictionary<string, MapPaintRegionSet> paint,
-        IReadOnlyList<MapSurfaceRef> declared, MapFoliageLayer layer, MapFoliageChunkKey chunk, MapFoliageLimits limits)
+        IReadOnlyList<MapSurfaceRef> declared, MapFoliageLayer layer, MapFoliageChunkKey chunk, MapFoliageLimits limits,
+        IReadOnlyDictionary<MapFoliageChunkKey, string>? densityDigests = null)
     {
         ArgumentNullException.ThrowIfNull(view);
         ArgumentNullException.ThrowIfNull(paint);
         ArgumentNullException.ThrowIfNull(declared);
-        var builder = new MapFoliageSupportBuilder(view, paint, declared, layer, chunk, limits);
+        var builder = new MapFoliageSupportBuilder(view, paint, declared, layer, chunk, limits, densityDigests);
         try { return builder.Build(); }
         catch (MapFoliageRefusal refusal)
         { return MapPreparedFoliageSupport.Refused(layer, chunk, refusal.Status, builder.Work(), refusal.Message); }
@@ -246,6 +248,8 @@ public sealed class MapPreparedFoliageSupport
     internal static MapPreparedFoliageSupport Refused(MapFoliageLayer layer, MapFoliageChunkKey chunk, MapFoliageStatus status,
         MapFoliageWork work, string detail) => new(layer, chunk, status, detail, work, Array.Empty<string>(), Array.Empty<MapFoliageSupportGrid>(), null);
 
+    internal MapAssetClosure? Assets { get; private set; }
+    internal MapPreparedFoliageSupport WithAssets(MapAssetClosure assets) { Assets = assets; return this; }
     internal IReadOnlyList<MapFoliageSupportGrid> Grids => _grids;
     internal bool Indoor(string? space) => _candidates?.Indoor(space) == true;
 

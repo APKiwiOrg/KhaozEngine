@@ -49,11 +49,14 @@ public sealed class MapMembershipResult
 public sealed class MapSpaceMembership
 {
     readonly MapScopedSurfaces _view;
+    readonly Func<MapTopologyRecord[]>? _preparedRecords;
     public MapSpaceMembership(MapScopedSurfaces scoped)
     {
         ArgumentNullException.ThrowIfNull(scoped);
         _view = scoped;
     }
+
+    internal MapSpaceMembership(MapScopedSurfaces scoped, Func<MapTopologyRecord[]> records) : this(scoped) => _preparedRecords = records;
 
     public MapMembershipResult Query(MapFramePoint point) => QueryCore(point, null, null, null, out _, null, false);
     internal MapMembershipResult Query(MapFramePoint point, MapBoundFaceWork work) => QueryCore(point, work, null, null, out _, null, false);
@@ -159,7 +162,7 @@ public sealed class MapSpaceMembership
             MapQueryLimits budgets = scope.Limits;
             var limits = new MapRefinementLimits(MaxContextPatches: budgets.MaxCandidatePatches, MaxContextFaces: budgets.MaxInspectedFaces);
             var bounds = supplied is null ? new MapSpacePointBounds(_view, limits, work) : new(supplied, limits);
-            MapTopologyRecord[] records = MapSpaceGeometry.Records(_view).OrderBy(r => r.Id, StringComparer.Ordinal).ToArray();
+            MapTopologyRecord[] records = _preparedRecords?.Invoke() ?? MapSpaceGeometry.Records(_view).OrderBy(r => r.Id, StringComparer.Ordinal).ToArray();
             var prisms = records.OfType<MapPrismDomain>().ToArray();
             var roomIds = records.OfType<MapSpaceDoc>().Where(s => s.Kind == MapSpaceKind.Room).Select(s => s.Id).ToHashSet(StringComparer.Ordinal);
             if (records.OfType<MapSpaceFootprint>().Any(f => roomIds.Contains(f.Space.Id)))

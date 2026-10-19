@@ -42,25 +42,29 @@ internal sealed class MapFoliageCandidateSupport
     /// <summary>Prepares the shared context for every candidate in the chunk rectangle. Refuses Unavailable once when a
     /// Space binding's space is absent from the acquisition, since a scoped absence never proves a known outside.</summary>
     internal static MapFoliageCandidateSupport Create(MapScopedSurfaces view, MapPreparedSupport support, IReadOnlyList<MapFoliageSupportGrid> grids,
-        MapSupportBinding binding, MapExactXz min, MapExactXz max, long maxFaces, out long faces)
+        MapSupportBinding binding, MapExactXz min, MapExactXz max, long maxFaces, out long faces,
+        Func<MapValidatedSurfacePatch, MapSlotCellMask, MapCompiledPatch>? compile = null, Action<long>? chargeFaces = null)
     {
         MapSpaceDoc? space = null;
         if (binding.Kind == MapSupportBindingKind.Space &&
             (space = support.Records.OfType<MapSpaceDoc>().FirstOrDefault(s => s.Id == binding.SpaceId)) is null)
             throw new MapFoliageRefusal(MapFoliageStatus.Unavailable, MapFoliageSupport.NoWork,
                 $"missing geometry: space '{binding.SpaceId}' is not in the chunk acquisition");
-        MapBoundFaceContext context = Context(view, support, min, max, maxFaces, out faces);
+        MapBoundFaceContext context = Context(view, support, min, max, maxFaces, out faces, compile, chargeFaces);
         return new(view, support, context, grids, binding, space);
     }
 
     // Every cell of every acquired support, ceiling and indoor patch over the chunk, each such patch validated, every
     // opening cell there, and the source cells of every acquired portal band segment.
-    internal static MapBoundFaceContext Context(MapScopedSurfaces view, MapPreparedSupport support, MapExactXz min, MapExactXz max, long maxFaces, out long faces)
+    internal static MapBoundFaceContext Context(MapScopedSurfaces view, MapPreparedSupport support, MapExactXz min, MapExactXz max, long maxFaces, out long faces,
+        Func<MapValidatedSurfacePatch, MapSlotCellMask, MapCompiledPatch>? compile = null, Action<long>? chargeFaces = null)
     {
+        // This is aggregate admission over a subset of the acquisition's at most 256 patches. It cannot lower a
+        // point's released patch allowance, and the supplied-context query still checks that point's face budget.
         var limits = new MapRefinementLimits(MaxContextPatches: view.Scope.Limits.MaxCandidatePatches);
         var bounds = new MapSpacePointBounds(view, limits, null);
         var demands = new List<MapBoundFaceDemand>();
-        foreach (MapSurfaceRef surface in view.Surfaces.Where(s => s.Role != MapSurfaceRole.PaintOverride))
+        foreach (MapSurfaceRef surface in Participating(view, support))
         {
             MapCellRect range = MapEffectiveGeometry.CellRange(view, surface.Id, min, max);
             for (long z = checked(range.MinZ - 1); z <= range.MaxZExclusive; z++)
@@ -100,10 +104,27 @@ internal sealed class MapFoliageCandidateSupport
                 }
             }
         var work = new MapBoundFaceWork();
+        if (compile is null && chargeFaces is not null)
+            compile = (patch, mask) =>
+            {
+                chargeFaces(MapSurfaceCompiler.CountFaces(patch, mask, logical: false));
+                return MapSurfaceCompiler.Compile(patch, mask, MapSurfaceCompiler.MaxFacesPerPatch);
+            };
         MapBoundFaceContext? context = MapBoundFaceContext.PrepareBounds(view, demands, limits.MaxContextPatches, maxFaces, work,
-            out string? refusal, bounds.Preparation);
+            out string? refusal, bounds.Preparation, compile, chargeFaces);
         faces = work.CompiledFaces;
         return context ?? throw new MapFoliageRefusal(MapFoliageStatus.CapacityExceeded, MapFoliageSupport.NoWork, refusal ?? "context faces");
+    }
+
+    // All support floors can affect the released per-point intersection budget, even in named-surface mode.
+    // A ceiling participates only as a bound or indoor span. Portal source demands are added separately below.
+    static IEnumerable<MapSurfaceRef> Participating(MapScopedSurfaces view, MapPreparedSupport support)
+    {
+        var bounds = support.Footprints.SelectMany(f => new[] { f.Lower.SurfaceId, f.Upper.SurfaceId })
+            .Where(id => id is not null).ToHashSet(StringComparer.Ordinal);
+        foreach (MapSurfaceRef surface in view.Surfaces)
+            if (surface.Role == MapSurfaceRole.SupportFloor || surface.IndoorSpan is not null || bounds.Contains(surface.Id))
+                yield return surface;
     }
 
     /// <summary>A Space binding at an exact point.</summary>

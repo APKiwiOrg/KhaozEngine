@@ -20,7 +20,7 @@ public sealed class MapPreparedSupport
     {
         ArgumentNullException.ThrowIfNull(view);
         View = view;
-        Membership = new(view);
+        Membership = new(view, () => Records);
         SupportFloors = view.Surfaces.Where(s => s.Role == MapSurfaceRole.SupportFloor).OrderBy(s => s.Id, StringComparer.Ordinal).ToArray();
     }
 

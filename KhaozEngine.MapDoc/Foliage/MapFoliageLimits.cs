@@ -1,3 +1,5 @@
+using System;
+
 namespace KhaozEngine.MapDoc.Foliage;
 
 /// <summary>The typed outcome shared by foliage context capture, preparation and generation. Only Complete publishes
@@ -12,7 +14,12 @@ public enum MapFoliageStatus { Complete, MissingSupport, Unavailable, PartialRes
 public sealed record MapFoliageLimits(int MaxCandidates = 4_000_000, int MaxSamples = 262_144, int MaxPrepareScopes = 256,
     int MaxFaces = 262_144, int MaxRuleCandidates = 4096, int MaxMaskCandidates = 4096, int MaxQueryChunks = 64,
     long MaxQuerySamples = 262_144, long MaxQueryRetainedBytes = 67_108_864, long MaxDifferentialCandidates = 64_000_000,
-    long MaxChangeRows = 4_000_000, int MaxComparisonPreparedChunks = 64, long MaxComparisonRetainedBytes = 134_217_728);
+    long MaxChangeRows = 4_000_000, int MaxComparisonPreparedChunks = 64, long MaxComparisonRetainedBytes = 134_217_728)
+{
+    // Reconciliation admits actual preparation allocations before emission. Ordinary chunk preparation owns no
+    // aggregate cache, and leaves this callback unset.
+    internal Action<long>? ChargePreparation { get; init; }
+}
 
 /// <summary>Charged foliage work. Byte charges are explicit conservative accounting, never a measured allocation.</summary>
 public sealed record MapFoliageWork(long Candidates, long Samples, long PrepareScopes, long Faces, long RuleCandidates,

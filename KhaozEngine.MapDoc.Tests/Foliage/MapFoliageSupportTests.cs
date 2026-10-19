@@ -377,13 +377,13 @@ public sealed class MapFoliageSupportTests
         long preparation = MapPreparedSupport.ThreadSamples - before;
         Assert.Equal(MapFoliageStatus.Complete, prepared.Status);
         // Preparation runs no support selection: occupied space is resolved per candidate over the shared context, whose
-        // faces are charged beside the floor's own eight.
+        // faces share the floor's own eight logical triangles.
         Assert.Equal(0, preparation);
         Assert.Equal(0, prepared.Work.SurfaceQueries);
         Assert.Equal(1, prepared.Work.PrepareScopes);
-        // The floor's own eight logical faces, plus the shared context: every present cell of the sixteen stacked
-        // surfaces in the chunk, two faces each.
-        Assert.Equal(8 + stack.Document.Surfaces.Patches.Values.Sum(p => 2L * p.Width * p.Depth), prepared.Work.Faces);
+        // Every present cell of the sixteen stacked surfaces has two triangles. The bound floor's eight are
+        // reused by membership and charged once.
+        Assert.Equal(stack.Document.Surfaces.Patches.Values.Sum(p => 2L * p.Width * p.Depth), prepared.Work.Faces);
 
         var points = new List<(float X, float Z)>();
         for (int z = 0; z < 20; z++)

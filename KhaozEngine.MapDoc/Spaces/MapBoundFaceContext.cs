@@ -65,7 +65,8 @@ internal sealed class MapBoundFaceContext
         PrepareBounds(view, demands.Select(d => new MapBoundFaceDemand(d, null)), maxPatches, maxFaces, work, out refusal);
 
     internal static MapBoundFaceContext? PrepareBounds(MapScopedSurfaces view, IEnumerable<MapBoundFaceDemand> demands,
-        int maxPatches, long maxFaces, MapBoundFaceWork? work, out string? refusal, MapBoundPreparation? preparation = null)
+        int maxPatches, long maxFaces, MapBoundFaceWork? work, out string? refusal, MapBoundPreparation? preparation = null,
+        Func<MapValidatedSurfacePatch, MapSlotCellMask, MapCompiledPatch>? compile = null, Action<long>? chargeOpeningFaces = null)
     {
         ArgumentNullException.ThrowIfNull(view);
         ArgumentNullException.ThrowIfNull(demands);
@@ -142,7 +143,7 @@ internal sealed class MapBoundFaceContext
             validated[key] = pendingEntry.Validated;
             MapSlotCellMask mask = MapSlotCellMask.Of(pendingEntry.Cells());
             MapCompiledPatch compiled;
-            try { compiled = MapSurfaceCompiler.Compile(pendingEntry.Validated, mask, MapSurfaceCompiler.MaxFacesPerPatch); }
+            try { compiled = compile is null ? MapSurfaceCompiler.Compile(pendingEntry.Validated, mask, MapSurfaceCompiler.MaxFacesPerPatch) : compile(pendingEntry.Validated, mask); }
             catch (MapDocumentException error) when (MapCommonRefinement.NotRepresentable(error)) { throw new MapExactOverflowException(); }
             MapCompiledPatch local = compiled;
             compiled = MapEffectiveGeometry.TransformPatch(view, compiled);
@@ -157,6 +158,7 @@ internal sealed class MapBoundFaceContext
         {
             Pending entry = pending[requested.Record.Patch];
             MapOpeningPlane plane;
+            chargeOpeningFaces?.Invoke(requested.Cells.Sum(slot => OpeningFaceCount(entry.Patch, slot)));
             try
             {
                 plane = MapOpeningBoundary.Compile(entry.Validated,

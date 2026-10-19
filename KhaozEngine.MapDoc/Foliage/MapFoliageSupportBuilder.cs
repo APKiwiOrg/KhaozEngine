@@ -13,14 +13,17 @@ namespace KhaozEngine.MapDoc.Foliage;
 /// <summary>Builds one chunk preparation: acquisition checks, cell discovery, logical faces with world paint, released
 /// corners and normals, then the binding's prepared selection. Every charge is counted before its allocation.</summary>
 internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnlyDictionary<string, MapPaintRegionSet> paint,
-    IReadOnlyList<MapSurfaceRef> declared, MapFoliageLayer layer, MapFoliageChunkKey chunk, MapFoliageLimits limits)
+    IReadOnlyList<MapSurfaceRef> declared, MapFoliageLayer layer, MapFoliageChunkKey chunk, MapFoliageLimits limits,
+    IReadOnlyDictionary<MapFoliageChunkKey, string>? densityDigests)
 {
     readonly List<string> _parts = new();
     long _faces;
     MapPreparedSupport? _support;
+    readonly Dictionary<MapPatchKey, (MapCompiledPatch Patch, MapSlotCellMask Mask)> _logical = new();
+    long _contextFaces;
 
     // Preparation runs no support query, so SurfaceQueries stays zero.
-    internal MapFoliageWork Work() => new(0, 0, 1, _faces, 0, 0, 0, 0);
+    internal MapFoliageWork Work() => new(0, 0, 1, checked(_faces + _contextFaces), 0, 0, 0, 0);
 
     internal MapPreparedFoliageSupport Build()
     {
@@ -45,7 +48,7 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
             if (min.X.CompareTo(acquired.MinX) < 0 || min.Z.CompareTo(acquired.MinZ) < 0 ||
                 max.X.CompareTo(acquired.MaxX) > 0 || max.Z.CompareTo(acquired.MaxZ) > 0)
                 throw new MapFoliageRefusal(MapFoliageStatus.Unavailable, Work(), "clearance read reach lies outside the chunk acquisition");
-            _parts.Add("context-reach|" + BitConverter.DoubleToInt64Bits(reach).ToString(CultureInfo.InvariantCulture));
+            Part("context-reach|" + BitConverter.DoubleToInt64Bits(reach).ToString(CultureInfo.InvariantCulture));
         }
         var grids = floors.Select(s => Grid(s, min, max)).ToArray();
         _support = MapSupportPreparation.PrepareFoliage(view);
@@ -58,14 +61,58 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
         MapFoliageCandidateSupport? candidates = null;
         try
         {
-            candidates = MapFoliageCandidateSupport.Create(view, _support, grids, binding, min, max, limits.MaxFaces - _faces, out long faces);
-            _faces = checked(_faces + faces);
+            candidates = MapFoliageCandidateSupport.Create(view, _support, grids, binding, min, max, limits.MaxFaces - _faces + PhysicalFaces(), out _, ReusePhysical, RetainContextFaces);
         }
         catch (MapFoliageRefusal refusal) { throw new MapFoliageRefusal(refusal.Status, Work(), refusal.Message); }
 
         Describe(binding);
         var materials = new MapFoliageMaterials(layer, paint);
         return new(layer, chunk, MapFoliageStatus.Complete, null, Work(), _parts.Order(StringComparer.Ordinal).ToArray(), grids, materials, candidates);
+    }
+
+    void Part(string value)
+    {
+        limits.ChargePreparation?.Invoke(checked(128 + 2L * System.Text.Encoding.UTF8.GetByteCount(value)));
+        _parts.Add(value);
+    }
+
+    void RetainContextFaces(long count)
+    {
+        limits.ChargePreparation?.Invoke(checked(1280 * count));
+        _contextFaces = checked(_contextFaces + count);
+    }
+
+    long PhysicalFaces() => _logical.Sum(pair => pair.Value.Patch.Faces.LongCount(f => !Fallback(pair.Key, f.Key.Primitive)));
+
+    bool Fallback(MapPatchKey key, int slot)
+    {
+        MapSurfacePatch patch = Patch(key)!;
+        MapSurfaceRef surface = view.Surfaces.First(s => s.Id == key.SurfaceId);
+        int x = slot % 64 - patch.CellMinX, z = slot / 64 - patch.CellMinZ;
+        return MapSurfaceCompiler.Fallback(surface, patch.Cells[z * patch.Width + x]);
+    }
+
+    // Reuse the logical triangulation, filtering fallback cells from physical membership. Portal demands outside a
+    // grid compile only their additional cells. Existing exact coordinates, face keys and normals remain unchanged.
+    MapCompiledPatch ReusePhysical(MapValidatedSurfacePatch validated, MapSlotCellMask mask)
+    {
+        if (!_logical.TryGetValue(validated.Patch.Key, out var logical))
+        {
+            RetainContextFaces(MapSurfaceCompiler.CountFaces(validated, mask, logical: false));
+            return MapSurfaceCompiler.Compile(validated, mask, MapSurfaceCompiler.MaxFacesPerPatch);
+        }
+        MapCompiledPatch cached = logical.Patch;
+        var faces = cached.Faces.Where(f => mask.Contains(f.Key.Primitive) && !Fallback(cached.Key, f.Key.Primitive)).ToArray();
+        MapSlotCellMask missing = MapSlotCellMask.Of(Enumerable.Range(0, 4096).Where(s => mask.Contains(s) && !logical.Mask.Contains(s)));
+        if (missing.Count != 0)
+            RetainContextFaces(MapSurfaceCompiler.CountFaces(validated, missing, logical: false));
+        MapCompiledPatch? extra = missing.Count == 0 ? null : MapSurfaceCompiler.Compile(validated, missing, MapSurfaceCompiler.MaxFacesPerPatch);
+        int offset = cached.VertexIds.Count;
+        var additional = extra?.Faces.Select(f => f with { A = f.A + offset, B = f.B + offset, C = f.C + offset }) ?? [];
+        var selectedPaint = cached.Paint.Where(p => mask.Contains(p.Face.Primitive) && !Fallback(cached.Key, p.Face.Primitive));
+        return new(cached.Key, cached.Role, cached.Anchor,
+            cached.VertexIds.Concat(extra?.VertexIds ?? []), cached.ExactVertices.Concat(extra?.ExactVertices ?? []),
+            cached.Offsets.Concat(extra?.Offsets ?? []), faces.Concat(additional), selectedPaint.Concat(extra?.Paint ?? []), extra?.LegacyFallbackCells ?? []);
     }
 
     MapResourceTransform? Kernel(MapSurfaceRef surface) => view.EffectiveContext?.Transform(MapPrefabChildKind.Surface, surface.Id);
@@ -118,8 +165,10 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
             long count = MapFoliageTriangles.CountFaces(validated, mask);
             if (checked(_faces + count) > limits.MaxFaces)
                 throw new MapFoliageRefusal(MapFoliageStatus.CapacityExceeded, Work(), "prepared faces");
+            limits.ChargePreparation?.Invoke(checked(1280 * count));
             _faces += count;
             MapCompiledPatch local = MapFoliageTriangles.Compile(validated, mask, (int)count);
+            _logical.Add(key, (local, mask));
             local = MapFoliageMaterials.ApplyWorldPaint(view, local, MapFoliageMaterials.WorldPaint(view, surface.Id));
             var faces = new MapFoliagePatchFaces(MapEffectiveGeometry.TransformPatch(view, local));
             foreach (var (x, z) in cells)
@@ -145,7 +194,7 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
             }
         }
         foreach (var ((sx, sz), patch) in lattice.Slots.OrderBy(s => s.Key))
-            _parts.Add("normal-slot|" + MapFoliagePatchFaces.Describe(new(surface.Id, sx, sz)) + "|" + (patch is null ? "absent" : MapSurfaceSemantics.PatchDigest(patch)));
+            Part("normal-slot|" + MapFoliagePatchFaces.Describe(new(surface.Id, sx, sz)) + "|" + (patch is null ? "absent" : MapSurfaceSemantics.PatchDigest(patch)));
         return grid;
     }
 
@@ -163,32 +212,32 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
     {
         string F(float value) => BitConverter.SingleToInt32Bits(value).ToString(CultureInfo.InvariantCulture);
         string N(float? value) => value is { } v ? F(v) : "null";
-        _parts.Add($"policy|{layer.Policy.Id}|{layer.Policy.Version.ToString(CultureInfo.InvariantCulture)}|{F(layer.Policy.NormalBoundaryHeight)}");
-        _parts.Add($"binding|{binding.Kind}|{binding.SurfaceId}|{binding.SpaceId}|{N(binding.ReferenceY)}|{N(binding.SearchBelow)}|{N(binding.SearchAbove)}");
-        _parts.Add($"raster|{F(layer.OriginX)}|{F(layer.OriginZ)}|{F(layer.CellSize)}|{layer.Width.ToString(CultureInfo.InvariantCulture)}|{layer.Depth.ToString(CultureInfo.InvariantCulture)}");
-        var digests = layer.ChunkDigests.ToDictionary(d => d.Key, d => d.Sha256);
+        Part($"policy|{layer.Policy.Id}|{layer.Policy.Version.ToString(CultureInfo.InvariantCulture)}|{F(layer.Policy.NormalBoundaryHeight)}");
+        Part($"binding|{binding.Kind}|{binding.SurfaceId}|{binding.SpaceId}|{N(binding.ReferenceY)}|{N(binding.SearchBelow)}|{N(binding.SearchAbove)}");
+        Part($"raster|{F(layer.OriginX)}|{F(layer.OriginZ)}|{F(layer.CellSize)}|{layer.Width.ToString(CultureInfo.InvariantCulture)}|{layer.Depth.ToString(CultureInfo.InvariantCulture)}");
+        IReadOnlyDictionary<MapFoliageChunkKey, string> digests = densityDigests ?? layer.ChunkDigests.ToDictionary(d => d.Key, d => d.Sha256);
         // Bilinear reads reach one sample into the next chunk on each axis.
         for (int dz = 0; dz <= 1; dz++)
             for (int dx = 0; dx <= 1; dx++)
             {
                 var key = new MapFoliageChunkKey(chunk.X + dx, chunk.Z + dz);
-                _parts.Add(string.Create(CultureInfo.InvariantCulture, $"density|{key.X}|{key.Z}|{(digests.TryGetValue(key, out string? sha) ? sha : "absent")}"));
+                Part(string.Create(CultureInfo.InvariantCulture, $"density|{key.X}|{key.Z}|{(digests.TryGetValue(key, out string? sha) ? sha : "absent")}"));
             }
-        _parts.Add("allowed|" + string.Join(",", layer.AllowedVisibleMaterials.Select(m => m.ToString(CultureInfo.InvariantCulture))) +
+        Part("allowed|" + string.Join(",", layer.AllowedVisibleMaterials.Select(m => m.ToString(CultureInfo.InvariantCulture))) +
             "|indoors|" + layer.ExcludeIndoors.ToString(CultureInfo.InvariantCulture));
         foreach (MapFoliageMaterial material in layer.Materials)
-            _parts.Add($"material|{material.Id.ToString(CultureInfo.InvariantCulture)}|{material.ResourceId}|{material.Kind}");
-        foreach (var (key, digest) in view.Witness.Present) _parts.Add("patch|" + MapFoliagePatchFaces.Describe(key) + "|" + digest);
+            Part($"material|{material.Id.ToString(CultureInfo.InvariantCulture)}|{material.ResourceId}|{material.Kind}");
+        foreach (var (key, digest) in view.Witness.Present) Part("patch|" + MapFoliagePatchFaces.Describe(key) + "|" + digest);
         foreach (MapCoveredRange range in view.Witness.KnownEmpty)
-            _parts.Add(string.Create(CultureInfo.InvariantCulture,
+            Part(string.Create(CultureInfo.InvariantCulture,
                 $"empty|{range.SurfaceId}|{range.Slots.MinX}|{range.Slots.MinZ}|{range.Slots.MaxXExclusive}|{range.Slots.MaxZExclusive}"));
-        foreach (MapRecordRef record in view.Witness.Records) _parts.Add("record|" + record.Id + "|" + MapFoliagePatchFaces.Describe(record.Anchor));
-        foreach (var (target, set) in paint) _parts.Add("paint|" + target + "|" + set.Digest);
+        foreach (MapRecordRef record in view.Witness.Records) Part("record|" + record.Id + "|" + MapFoliagePatchFaces.Describe(record.Anchor));
+        foreach (var (target, set) in paint) Part("paint|" + target + "|" + set.Digest);
         // Surface metadata and effective poses decide the lattice, world paint precedence and every transformed point.
         foreach (MapSurfaceRef surface in view.Surfaces)
         {
             MapLatticeFrame frame = surface.Frame;
-            _parts.Add(string.Create(CultureInfo.InvariantCulture,
+            Part(string.Create(CultureInfo.InvariantCulture,
                 $"surface|{surface.Id}|{surface.Role}|{surface.PresencePolicy}|{surface.PaintTargetSurfaceId}|{surface.PaintPriority}|" +
                 $"{frame.CellUnitMetres.Numerator}/{frame.CellUnitMetres.Denominator}|{frame.HeightUnitMetres.Numerator}/{frame.HeightUnitMetres.Denominator}|" +
                 $"{frame.RowDirection}|{frame.Datum}"));
@@ -197,8 +246,8 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
         {
             var owners = view.Surfaces.Select(s => MapEffectiveContext.Key(MapPrefabChildKind.Surface, s.Id))
                 .Concat(view.Witness.Records.Select(r => MapEffectiveContext.Key(MapPrefabChildKind.Record, r.Id))).ToHashSet(StringComparer.Ordinal);
-            foreach (var (key, pose) in context.Transforms.Where(t => owners.Contains(t.Key)))
-                _parts.Add(string.Create(CultureInfo.InvariantCulture, $"transform|{key}|{BitConverter.DoubleToInt64Bits(pose.X)}|" +
+            foreach (string key in owners.Order(StringComparer.Ordinal))
+                if (context.Transforms.TryGetValue(key, out MapEffectiveTransform pose)) Part(string.Create(CultureInfo.InvariantCulture, $"transform|{key}|{BitConverter.DoubleToInt64Bits(pose.X)}|" +
                     $"{BitConverter.DoubleToInt64Bits(pose.Y)}|{BitConverter.DoubleToInt64Bits(pose.Z)}|" +
                     $"{BitConverter.DoubleToInt64Bits(pose.YawRadians)}|{BitConverter.DoubleToInt64Bits(pose.Scale)}"));
         }

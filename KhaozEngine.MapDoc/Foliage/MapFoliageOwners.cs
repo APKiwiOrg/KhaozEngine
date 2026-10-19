@@ -93,18 +93,34 @@ internal sealed class MapFoliageOwners
         MapScopedSurfaces view = _resources.Acquire(scope);
         var prepared = MapSupportPreparation.PrepareFoliage(view);
         var xz = new MapExactXz(point.X, point.Z);
-        MapBoundFaceContext shared = MapFoliageCandidateSupport.Context(view, prepared, xz, xz, limits.MaxFaces - work.Faces, out long faces);
-        work = work with { Faces = checked(work.Faces + faces), SurfaceQueries = checked(work.SurfaceQueries + 1) };
+        MapBoundFaceContext shared;
+        long contextFaces = 0;
+        try
+        {
+            shared = MapFoliageCandidateSupport.Context(view, prepared, xz, xz, limits.MaxFaces - work.Faces, out _, chargeFaces: count =>
+            {
+                limits.ChargePreparation?.Invoke(checked(1280 * count));
+                contextFaces = checked(contextFaces + count);
+            });
+        }
+        finally { work = work with { Faces = checked(work.Faces + contextFaces) }; }
+        work = work with { SurfaceQueries = checked(work.SurfaceQueries + 1) };
         if (MapSupportSelection.BindingRequest(view, binding, xz) is not { } request)
             throw new MapFoliageRefusal(MapFoliageStatus.Invalid, work, "invalid owner support binding");
         MapSupportResult result = MapSupportSelection.Compute(prepared, request.Request, null, request.NamedSurfaceOnly, request.World, shared).Result;
         result = MapFoliageSupportIdentity.ForClearance(view, binding, xz, result);
-        dependencies.Add("owner-binding|" + owner.Kind + "|" + owner.Id + "|" + MapCanonical.HashHex(w => System.Text.Json.JsonSerializer.Serialize(w, binding)));
-        foreach (var patch in view.Witness.Present) dependencies.Add("owner-patch|" + patch.Key + "|" + patch.Value);
+        Add("owner-binding|" + owner.Kind + "|" + owner.Id + "|" + MapCanonical.HashHex(w => System.Text.Json.JsonSerializer.Serialize(w, binding)));
+        foreach (var patch in view.Witness.Present) Add("owner-patch|" + patch.Key + "|" + patch.Value);
         Describe(result);
         return MapFoliageSupportIdentity.From(result) ?? throw new MapFoliageRefusal(MapFoliageSupport.Map(result.Status), work, "owner seated support refused: " + result.Detail);
 
-        void Describe(MapSupportResult selected) => dependencies.Add("owner-seat|" + owner.Kind + "|" + owner.Id + "|" +
+        void Add(string value)
+        {
+            limits.ChargePreparation?.Invoke(checked(128 + 2L * System.Text.Encoding.UTF8.GetByteCount(value)));
+            dependencies.Add(value);
+        }
+
+        void Describe(MapSupportResult selected) => Add("owner-seat|" + owner.Kind + "|" + owner.Id + "|" +
             MapFoliageSupportIdentity.From(selected) + "|" + selected.SpaceId + "|" + selected.Face);
     }
 }

@@ -14,7 +14,7 @@ Success requires all of the following together:
 
 - Continuous comparison filtering preserves the existing shadow softness and cascade behavior.
 - A change in the key-light visibility used to shade a surface releases inappropriate thin-feature history without sacrificing real missed thin features, dark texture or animated local lighting.
-- Fast-shadow absolute tails and leading and trailing silhouette rims pass on the same filtered scene input as their control. An improved ratio denominator does not excuse an increased absolute tail.
+- Fast-shadow absolute tails and leading and trailing silhouette rims pass on the same filtered scene input as their control. An improved ratio denominator does not excuse an increased absolute tail. The owner-approved measured exception is recorded in section 8.
 - Fused and split execution make identical visibility decisions and write identical visibility histories. Existing exact state and hardware colour identity remain exact.
 - Every lit family, transparent writer, motion/dissolve variant and MSAA layout is covered. Lifecycle changes preserve reset, resize, repeated-render and zero steady managed-allocation contracts.
 - Real-scene reports cover all four conditions at Native, Quality and own FXAA. Correctness on all three native backends precedes any separate cost decision.
@@ -39,7 +39,7 @@ The depth-qualified mean release-only arm increases Native 8-pixel advancing and
 
 Four inherited archive entry-identity facts fail. A typical stored-lock difference is `0.00048828125`, with colour as much as `0.010253906` apart. Production must fix the arithmetic and wiring, not import diagnostic tolerances. Jitter invariance and quantization equivalence remain proof obligations.
 
-### Alternatives rejected or retained only as controls
+### Alternatives and final dispositions
 
 | Alternative | Disposition and reason |
 | --- | --- |
@@ -48,7 +48,7 @@ Four inherited archive entry-identity facts fail. A typical stored-lock differen
 | Disable or globally weaken thin-feature locks | Rejected. It removes the protection that the existing subpixel line and stable-detail tests require |
 | Single bilinear comparison tap | Rejected. It leaves more dots and sharpens the ground edge from 6.27 to 4.68 pixels, changing the authored softness |
 | Maximum of nine per-offset visibility differences | Control only. It compares individual offsets rather than the chosen low-pass means and retains the diagnostic's identity and shadow-guard failures |
-| Release-only mean without a large-change response | Control only. Its absolute 8-pixel tails regress even where a ratio happens to pass |
+| Release-only depth-qualified mean without a large-change response | Selected by the owner as D on 2026-10-19 after real-scene clips. The measured synthetic costs are explicitly accepted in section 8 |
 | Unqualified mean or centre-only visibility | Control only. The owner selected depth-qualified 3x3 means to reject other surfaces while retaining neighborhood evidence |
 | R32Float shipping storage | Matched numerical control only. It costs four times the R8 payload. The R8 proof must still isolate quantization rather than assume equivalence |
 
@@ -154,13 +154,24 @@ If current count or previous weight is zero, make no visibility decision. If his
 
 For `D > 0.1`, clear stored lock before hold is computed and set clip hold to zero. Do this regardless of ridge status or surface speed. At exactly 0.1, this signal does not release. Preserve the existing colour-based shading release for its other responsibilities. Visibility release alone must not be folded into its `released` Boolean, because that would also reset accumulation and display share unconditionally.
 
-### Large-change response
+### Owner selection, lock release only
 
-The Task 7b orchestrator amendment selects Task 7 arm 3 as the single production response. For qualified signed `d = meanCurrent - meanPrevious` strictly greater than `0.5`, visibility rose and light is arriving. Scale accumulated history weight and the display share that would otherwise be used to `0`. Apply the scale once to each. At exactly `0.5`, below it, or for any falling change, retain scale `1`. Keep the response separate from the old `released` flag. Existing independent shading release still overrides both values to zero.
+The owner selected candidate D on 2026-10-19 after viewing side-by-side real-scene clips. No large-change response ships. Qualified visibility changes strictly above `abs(d) > 0.1` release the lock and clip hold, with depth tolerance `0.02`. Visibility release changes neither accumulated history weight nor display share, for rising or falling visibility. The existing independent shading release retains its own accumulation and display behavior. Task 8's shared precision boundary for carried-lock arithmetic remains unchanged.
 
-Use named C# constants with pinned GLSL twins for threshold `0.5`, rising-only sign `+1` and scale `0`. Lock release remains strictly `abs(d) > 0.1`, with depth tolerance `0.02`. Invalid, unseeded, offscreen, background or empty qualified history makes no visibility response. Both entries, Native specialization, debug and count evaluation use the shared rule. No public tuning API or permanent experimental branches are added.
+Task 7b's rising-only reset at `d > 0.5` is superseded. Remove its helper, C# constants, GLSL twins and accumulated/display multipliers. Both entries, Native specialization, debug and count evaluation retain the shared lock-release rule. Invalid, unseeded, offscreen, background or empty qualified history makes no visibility decision. No public tuning API or experimental branch remains.
 
-The bounded eight-arm comparison is preserved in `KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/reset-tuning.md`. Arm 3 passes the lag fact and every absolute fast-tail gate, with zero absolute-tail failures. It adds no rim failures beyond the two assertions shared by every arm. Its Native grain is `0.010346`, Quality grain is `0.008031`, and Quality M 1.0 leading textured error / temporal error is `0.0030106876217401947 / 0.004819472651560228`. Arm 3 is the simplest response that passes every gate this response can influence. This selection does not approve the remaining grain and rim regressions.
+Task 7c measured these candidates with identical captures. A resets weight and display share to zero on a large rise, B retains 0.25, C retains 0.5, and D retains both unchanged.
+
+| Candidate | Retained share on a large rise | Ground change Native | Ground change Quality | Back dots Native | Back dots Quality |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| A | 0 | 0.006519368 | 0.007835931 | 364 | 760 |
+| B | 0.25 | 0.005118248 | 0.005879304 | 364 | 759 |
+| C | 0.5 | 0.004386340 | 0.004862258 | 364 | 759 |
+| D | 1, no response | 0.003688205 | 0.003739381 | 364 | 759 |
+
+The final clip capture confirmed D ground change at `0.003685 / 0.003770` Native/Quality, against bilinear-only `0.003665 / 0.003757` and A `0.006552 / 0.007902`. Back change was identical to A, and back dots remained `364 / 759` against A `364 / 760`. The response added ground shimmer without removing more held white dots. D restores ground change to the bilinear-control level, so the owner chose it and explicitly accepted the three synthetic costs in section 8.
+
+The original eight-arm comparison remains historical evidence in `KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/reset-tuning.md`. Task 7d's D measurements and accepted bounds are in `KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/owner-release-only.md`.
 
 ## 8. Test methodology and acceptance
 
@@ -174,11 +185,11 @@ The invariant is “the resolve is no worse than before on the same input”. An
 4. Commit these measurements and the new filter-specific rim baseline separately, before any signal implementation lands. Write in the test why the input changed. Keep the existing tolerance `0.1`, rounding `0.0000005`, reference-identity tolerance `0.000001`, metric definitions, masks and case inventory. The derived acceptance remains `(baseline + 0.0000005) * 1.1`.
 5. Preserve the historical v21.2.0 tables for unrelated diagonal and other tests. Update only measured filter-affected rows and their provenance, not the shared helper's margin. Judge all later signal/reset changes against the frozen bilinear control.
 
-This is not loosening a bound. It preserves its meaning on the same input. The signal cannot supply its own baseline. No other bound may change without a measured absolute value that did not regress and a written rationale. A ratio passing is insufficient. Do not rebake a golden to conceal a changed look or incorporate a failed signal into the control.
+This is not loosening a bound. It preserves its meaning on the same input. The signal cannot supply its own baseline. Outside the explicit owner-approved costs below, no bound may change without a measured absolute value that did not regress and a written rationale. A ratio passing is insufficient. Do not rebake a golden to conceal a changed look or incorporate a failed signal into the control.
 
 ### Regression and identity gates
 
-Port the textured receiver, dark surface and flickering/moving local light guards from `264bbc11c`. Retain Native textured grain `<= 0.0113` and Quality `<= 0.008`, dark non-black proof, and the paired error/grain/temporal-error detail bounds. Collect per-device controls where needed, without using candidate output to raise them. Report Balanced and exercise every existing preset in the full suite.
+Port the textured receiver, dark surface and flickering/moving local light guards from `264bbc11c`. Retain Native textured grain `<= 0.0113` and the owner-accepted Quality target `<= 0.008032` (historically `0.008`), dark non-black proof, and the paired error/grain/temporal-error detail bounds. Collect per-device controls where needed, without using candidate output to raise them. Report Balanced and exercise every existing preset in the full suite.
 
 Add actual R8 pixel readbacks for every lit path and preserved transparent path, shadow-disabled and cutout cases, MSAA resolve, strength/cascade handoff and four-attachment capability handling. Add deterministic tests for jitter-only motion, reprojection, near/far rejection, no accepted weights, image edges, reset lifecycle and unchanged visibility over a missed thin feature. CPU arithmetic tests complement, never replace, the rendered result.
 
@@ -188,9 +199,24 @@ Local Metal correctness comes first. Then dispatch `cross-platform-gpu.yml` on t
 
 Identity must be exact for lock, confidence, marks, visibility bytes and release/reset decisions. Hardware and WARP colour remains exact. Main already allows a measured software-Vulkan colour exception in `TemporalEntryIdentityGpuTests`. Preserve only that pre-existing exception, without widening it or extending it to visibility or state. Report it explicitly rather than claiming all main colour comparisons are currently zero-tolerance.
 
-The Task 7b amendment carries two residual gates to the owner with real-scene images in Task 10. Quality textured grain is `0.008031` against `0.008`. Quality M 1.0 leading textured rim error is `0.0030106876217401947` against `0.00271205`, and temporal error is `0.004819472651560228` against `0.00432135`. Both residual failures are present across all eight arms because they arise from Task 6 lock release itself. Changing the large-change response does not remove them. Keep their bounds unchanged and their tests RED, with no skips, until the owner decides after seeing absolute values and images.
+### Owner-accepted synthetic costs, 2026-10-19
 
-Exact fused/split identity is a separate correctness blocker, tracked in #1501 and owned by Task 8. The amended order is Task 7b, Task 8, Task 10 including the owner's residual trade-off decision, Task 9 docs/version, Task 11 full gate, then Task 12 bench request. No release or version change follows from selecting arm 3 alone.
+The owner accepted these three costs after the real-scene D clips. One focused MetalNative run on Apple M2 Max remeasured D. It had exactly the three expected failing facts and no other failure, with zero skips. Only the rows below change. Historical point-PCF tables, the other bilinear controls, all reference values, case inventories and tolerances remain unchanged.
+
+| Accepted cost | Measured D value | Old bound | New bound |
+| --- | ---: | ---: | ---: |
+| Hardware Native 8 px retreating textured absolute tail | 0.007221076276167364 | 0.007138970657410495 | 0.007221576276167364 |
+| Quality textured grain | 0.008031049526854536 | 0.008 | 0.008032 |
+| Hardware Quality M 1.0 leading textured rim error | 0.0030106876217401947 | 0.00271205 | 0.00331265 |
+| Same rim, temporal error | 0.004819472651560228 | 0.00432135 | 0.00530145 |
+
+The absolute-tail check retains its existing `baseline + 0.0000005` formula. Only the failing hardware Native 8 px retreating textured row takes D's measured baseline instead of paired control `0.007138470657410495`. Other tails keep their paired controls, both presets and directions, flat/textured regions and actual 1 px denominators. The grain check remains a fixed target, rounded upward to the six-decimal reporting place so the measured `0.008031049526854536` is included. Native stays at `0.0113` and Balanced remains report-only. The rim row retains `(baseline + 0.0000005) * 1.1`, with six-decimal baselines `0.003011 / 0.004819` replacing `0.002465 / 0.003928`. Its change and spatial-reference values do not change. No unmeasured WARP or lavapipe row borrows the hardware cost.
+
+Each affected test records this reason: "Owner accepted on 2026-10-19 after real-scene clips: the visibility lock release removes held shadow sparkle, and this synthetic value is the measured cost of that release. No large-change response ships."
+
+Task 8 repaired exact fused/split identity with the shared precision boundary, tracked in #1501 until integration. Task 7d retains that fix and changes the response tests and all moving-shadow identity cases, including outlined Quality, to prove rising and falling lock release with unchanged weight and display share. Every per-frame colour/state bit comparison, R8 byte comparison, previous-jitter comparison and proof that release fires remains required.
+
+The amended order after the owner's look and Task 7c is Task 7d, Task 9 docs/version, Task 11 full gate, then Task 12 bench request. Selecting D does not authorize a release, version change or billed benchmark.
 
 ### Real-scene acceptance
 
@@ -207,7 +233,7 @@ Use a unique private-feed prerelease for each changed package set. Record source
 
 All use start time `0.49777777777777776`, 80 warm-up frames and 16 measured frames, TAA Native, TAA Quality and each build's own FXAA. Report character and ground grain mean/p95, change mean, dots and locked share for the unchanged-resolve control and final candidate, with old point-filter results for context. FXAA locked share is not applicable.
 
-Keep the archive's dot definition, luma more than `0.05` above both the local 3x3 median and own FXAA, pooled over pixel-frames. Overlay pixels never contribute to normal metrics. Retain full tables and crops, not only favourable back15 character rows. Back15 character grain and dots must improve over bilinear-only at both presets. Any other regional grain, change or dot regression needs an explicit owner decision after seeing absolute values and images. Lower locked share alone is not quality. The owner decides the two residual gates above from these real-scene images and accepts the remaining sparkle. Exact entry identity and all other correctness gates remain required.
+Keep the archive's dot definition, luma more than `0.05` above both the local 3x3 median and own FXAA, pooled over pixel-frames. Overlay pixels never contribute to normal metrics. Retain full tables and crops, not only favourable back15 character rows. Back15 character grain and dots must improve over bilinear-only at both presets. Any other regional grain, change or dot regression needs an explicit owner decision after seeing absolute values and images. Lower locked share alone is not quality. The owner accepted D and the three measured synthetic costs above after these real-scene clips on 2026-10-19. Exact entry identity and all other correctness gates remain required.
 
 ## 9. Cost and risks
 
@@ -230,10 +256,10 @@ The billed T4 `gpu-hosted-bench.yml` is a separate stop. After correctness and r
 
 ## 10. Amendment, version and handoff
 
-This becomes **amendment 35** in `docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md`, which ends at amendment 34 at the design baseline. At implementation, append the shared visibility-release contract, history/format/lifetime rules, controlled rebaseline rationale, chosen reset and measured evidence. Mark only superseded key-shadow lock decisions from amendments 33/34. Their non-shadow shading behavior remains. Update the algorithm steps, target/memory tables, relevant living docs and `docs/INDEX.md`. If another branch has used 35, allocate the next amendment and update this spec and plan in the same reviewed commit.
+This becomes **amendment 35** in `docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md`, which ends at amendment 34 at the design baseline. At implementation, append the shared visibility-release contract, history/format/lifetime rules, controlled rebaseline rationale, owner-selected lock release and measured evidence. Mark only superseded key-shadow lock decisions from amendments 33/34. Their non-shadow shading behavior remains. Update the algorithm steps, target/memory tables, relevant living docs and `docs/INDEX.md`. If another branch has used 35, allocate the next amendment and update this spec and plan in the same reviewed commit.
 
 Recommend one **minor** version for the combined package-bearing batch. Although consumer calls need not change, a new lit MRT, persistent history pair and resolve input materially extend rendering resource and capability contracts. From the current tagged baseline this would be `21.6.0`, subject to fresh main/tag reconciliation. Do not reserve that number across concurrent work. Ride an appropriate staged unreleased version if one exists at finishing, or choose the next free minor. A patch classification instead needs an orchestrator/owner decision explaining why the resource contract counts only as an internal fix.
 
 The eventual version and matching newest changelog entry land together once, with guarded declarations updated. Neither this spec commit nor intermediate evidence-only tasks bump. Integration, release, tag, durable publication and Grimhollow adoption belong to the owning orchestrator and their separate gates. Both parts remain on the task branch until the combined fix is approved and verified.
 
-The four-attachment policy is settled by the ruling in section 5. Arm 3 is selected by the Task 7b amendment. Open decisions are the two residual gates and acceptable residual real-scene noise after images, and fresh billed-benchmark approval. Gather support is an implementation proof question, not an assumption requiring the owner to guess.
+The four-attachment policy is settled by the ruling in section 5. Candidate D and the three synthetic costs are accepted by the owner on 2026-10-19. Fresh billed-benchmark approval remains open. Gather support is an implementation proof question, not an assumption requiring the owner to guess.

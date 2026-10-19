@@ -33,21 +33,26 @@ internal static class Render3DSnapshotRunner
             (uint)width, (uint)height, GpuPixelFormat.R8G8B8A8UNorm,
             GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
         using IGpuFramebuffer framebuffer = factory.CreateFramebuffer(null, target);
-        using var scene = new Scene3D(gd, framebuffer.Outputs, shadows);
         using IGpuCommandList commands = factory.CreateCommandList();
+        using var submission = new GpuFrameSubmission(gd);
+        var scene = new Scene3D(gd, framebuffer.Outputs, shadows);
         try
         {
             setup(scene);
             for (int frame = 0; frame < frames; frame++)
             {
+                submission.Begin();
                 scene.Begin();
                 drawFrame(scene, frame);
                 // Producers run before opening the render list. Nested recording corrupts Direct3D11's
                 // immediate context, and PrepareFrame also advances pending temporal diagnostics.
                 scene.PrepareFrame(width, height);
                 using (GpuRecording.Open(gd, commands, "Render3DSnapshot.Capture"))
+                {
                     scene.RenderInternal(commands, width, height, framebuffer);
-                gd.Submit(commands);
+                    scene.RecordCoverageReadbacks(commands, submission);
+                }
+                submission.Submit(commands);
                 if (frame < firstReadbackFrame) continue;
                 byte[] rgba = GpuReadback.ToRgba(gd, target, width, height);
                 onFrame(frame, new Render3DCapture(rgba, width, height, gd.Backend));
@@ -55,8 +60,8 @@ internal static class Render3DSnapshotRunner
         }
         finally
         {
-            // Also drain an all-warm-up sequence or a callback failure before disposing the command list.
-            gd.WaitForIdle();
+            submission.Abandon();
+            scene.DisposeWithSubmission(submission);
         }
     }
 }

@@ -361,13 +361,26 @@ What it owns today:
   allocate nothing, and neither waits, flushes, submits, synchronously maps or takes a blocking lock.
   `Capacity` is fixed and `PendingCount` includes unsubmitted recordings. `DiscardUnsubmitted(completion)` stably
   removes only that fence's entries for an abandoned list that was never submitted. Using it for submitted work
-  is a caller error. The ring never resets or disposes a fence. `Dispose` refuses while entries remain and then
-  frees only its owned staging buffers. Equipment coverage copies one aggregate actor-result payload per frame,
+  is a caller error. The ring never resets or disposes a fence. It implements `IGpuFrameCompletionConsumer`.
+  `HasPending` tests exact fence ownership. Teardown `ReleaseCompleted` consumes submitted entries after the
+  caller proves completion by signal or host drain. `Dispose` consumes signaled entries, refuses while
+  unsignaled entries remain, and frees only owned staging buffers. Equipment coverage copies one aggregate actor-result payload per frame,
   tagged with the frame ID, with actor IDs and offsets in the payload. Optional surface verification may share
   that stable frame fence. Submit once with it, and never reset, resubmit or dispose it until every associated
   ring has consumed its entries or discarded an unsubmitted list. A full ring skips diagnostics for that frame
   while rendering continues and the dispatched outcome stands. Direct3D 11 completion needs a `Present` or drain
   because `Submit` does not flush.
+- **`GpuFrameSubmission`** - one owner for a host's submitted command list and completion fences. Construct
+  with the device and optional fixed `retainedFrames` and `consumerCapacity` (defaults 3 and 8).
+  `Begin` abandons a previous unsubmitted recording and polls completed frames. `TryRetain(consumer, out fence)`
+  gives every retained consumer of this frame the same fence, or returns false when capacity is full.
+  `TryRegister(participant)` is independent of diagnostic capacity. `Submit(commands)` submits exactly once,
+  then delivers `IGpuFrameSubmissionParticipant.Submitted` to every registered participant. `Abandon` delivers
+  `Abandoned` and discards only unsubmitted copies. A backend submission exception abandons logical state but
+  quarantines potentially submitted staging until completion or teardown. Callback exceptions never turn
+  submitted work into an abandoned copy. `Dispose` abandons unsubmitted recording, drains once at host teardown,
+  releases retained consumers and disposes owned fences. Dispose it before the command list and device.
+  On devices without completion fences, retention returns false and participant submission remains available.
 - **GPU timestamps** - gate on `GpuCapabilities.SupportsTimestamps`, default false. Native Vulkan probes
   the selected queue's counter bits and the device period. Direct3D 11 probes timestamp and disjoint
   query creation on the actual device. Metal probes the timestamp counter set, supported sampling

@@ -121,15 +121,8 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         /// <summary>
-        /// The same scene work driven entirely from the record phase, which is what the windowed loop forced before
-        /// the phase split existed. It used to reach a peak of two open lists and corrupt the device on Direct3D11
-        /// in immediate-context mode. It is now REFUSED at the seam, by name, on every backend and with no GPU
-        /// involved: the frame's list holds the device and the ocean's priming pass cannot open a second one
-        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/424">#424</see>).
-        /// <para>
-        /// This is also what stops the assertions above passing vacuously. A scene that primed nothing would
-        /// satisfy every "the peak never reached 2" test in this file, and would not throw here.
-        /// </para>
+        /// The whole mandatory preparation phase refuses while the host owns the device's open list.
+        /// This names the actual outer owner and the phase, before any cold storage or producer state changes.
         /// </summary>
         [Fact]
         public void Preparing_from_the_record_phase_is_refused_by_name()
@@ -145,7 +138,7 @@ namespace KhaozEngine.Tests.Render3D
                     onFrame: _ => GameApp3D.PrepareScene(scene, QueueOcean)));
 
             Assert.Equal("the window's frame list", ex.Owner);
-            Assert.Contains("ocean", ex.Attempted);
+            Assert.Equal("Scene3D.PrepareFrame", ex.Attempted);
             // Both halves of the diagnosis reach the reader, and the message names the fix rather than the symptom.
             Assert.Contains("the window's frame list", ex.Message);
             Assert.Contains("pre-record phase", ex.Message);
@@ -179,8 +172,7 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         /// <summary>
-        /// A frame that queues no water pays nothing for the phase, so the split costs a 3D game with no ocean
-        /// exactly one delegate call.
+        /// A frame without water still reserves scene resources, while opening no producer command list.
         /// </summary>
         [Fact]
         public void A_frame_with_no_water_opens_no_list_in_the_prepare_phase()

@@ -1931,12 +1931,12 @@ namespace KhaozEngine.Render3D
             return set;
         }
 
-        public void Dispose()
+        internal void DisposeResources(GpuFrameSubmission? submission)
         {
             // Drain in-flight GPU work before destroying anything because uploads or draws may still be queued on
             // the device's async submission thread (Mesa lavapipe can segfault on destroyed resources).
             DisposeShadowReconfiguration();
-            _gd.WaitForIdle();
+            if (submission is null) _gd.WaitForIdle(); else submission.Dispose();
             _retired.Dispose();    // flushes the retired tail (it would outlive the scene) and frees the fence barrier
             DisposeFoliage();
             _model.Dispose();

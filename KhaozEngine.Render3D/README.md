@@ -180,7 +180,14 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   Without compute or after one kernel-build failure, requested hosts use ordinary vertex-shader skinning even
   when `UseGpuSkinning` is false. The capability failure is reported once per scene and kernel creation is not
   retried each frame. Equipment descriptors keep their ordinary drawing route.
-  Rendering never waits for or reads back a GPU coverage outcome. Tokens expire at the next `Begin`, disposal
+  Rendering never waits for a GPU coverage outcome. `TryReadCoverageOutcome(out CoverageGpuOutcome outcome)`
+  polls asynchronously and reports immutable `FrameId`, `ViewId`, `Actor` and the completed `Outcome`.
+  The retained host, command and equipment identity survive later `Begin` calls, actor reuse and cold capacity
+  growth. Partial actor enumeration keeps its payload and metadata. Full rings skip only that frame's diagnostic
+  copy. Availability never changes a draw or history decision. Surface, preview and snapshot hosts share their
+  command list's `GpuFrameSubmission` owner with the aggregate result copy. The stable scene participant also
+  registers when no GPU result rows exist, including removal and CPU fallback views. Consumer disposal defers unsignaled
+  staging cleanup to completion or host teardown. Tokens expire at the next `Begin`, disposal
   or host unload. Begin and stage again for each view. Main draws, both target outline masks, cascades and point-shadow faces pull the same
   GPU-selected final buffer through read-only vertex storage. Each material supplies an explicit first-corner
   offset and issues a nonindexed triangle list from vertex zero. A GPU refusal selects complete original-pose
@@ -206,25 +213,16 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `GetOrLoad*` uploads again. There is no refcount and nothing evicts on its own. Calling the plain `Unload*` on a
   cached handle directly leaves the key pointing at a freed handle, so pair the two.
   `Scene3D.SharedAssetCount` is the diagnostic.
-- `Scene3D.PrepareFrame()` - the frame's pre-recording phase. Call it once per frame, after the frame's
-  `Draw*` calls and BEFORE opening the command list the scene is recorded into. Subsystems whose per-frame GPU work
-  cannot go in the frame's list (the FFT ocean's priming dispatch, which needs a submit + device wait of its own)
-  run there instead: opening a second command list while the frame's is recording resets the device's immediate
-  context on Direct3D11 and corrupts the frame (issue #423). `Render3DSurface.Render`,
-  `Render3DPreview.Capture` and `Render3DSnapshot.Capture` all call it for you, so every consumer of the surface
-  gets the phase rather than only `GameApp3D`, and since the record entry point is internal those are the only
-  ways a scene is rendered: nothing outside the engine is left having to call it, and a by-hand call is an early
-  no-op. Recording consumes the prepared frame, so a scene records once per `Begin` and a second viewport means a
-  second `Begin`. Costs nothing on a frame that queues no water. On a WINDOWED host, `Render3DSurface.Render`'s own
-  call is a safety net rather than the effective one - the frame's list is already open by then - so queue and
-  prepare the scene in `AppWindow.Run`'s `onPrepare` callback instead (`GameApp3D` does, in `OnPrepareWorld`, see
-  issue #429). A host that does neither no longer gets a silently corrupt frame on one backend: every scene path
-  that opens a list of its own goes through the seam's open-recording register, so the nesting is a
-  `GpuNestedRecordingException` naming both sides on every backend (issue #424). That refusal is the whole of the
-  residual since 18.0.0, and the pre-record phase it points at was KEPT rather than retired with the Veldrid leg
-  it was built for ([#690](https://github.com/APKiwiOrg/KhaozEngine/issues/690)): the seam has no
-  dispatch-to-dispatch barrier, so a producer with a dependent compute chain still needs a list of its own and
-  still has nowhere to open one inside the frame's recording. The calls that refuse mid-frame
+- `Scene3D.PrepareFrame()` - reserves point-light, coverage, outcome and temporal resources before command
+  recording, and runs producers such as the FFT ocean. Call once after queueing draws and before opening the
+  host list. A first call inside an open recording throws `GpuNestedRecordingException` with the actual outer
+  owner and attempted owner `Scene3D.PrepareFrame`, before resource or preparation state changes. This applies
+  without water. An already prepared call returns as a no-op before checking the recording guard.
+  `Render3DPreview.Capture` and snapshot hosts prepare before opening their lists. A window host queues and
+  prepares in `AppWindow.Run`'s `onPrepare` callback, then calls `Render3DSurface.Render` inside `onFrame`.
+  `GameApp3D` already follows this order. The surface's repeated preparation is a no-op. Nested preview capture
+  refuses at `Render3DPreview.Capture` before changing scene or submission state. Direct ocean-producer calls
+  retain their own named recording refusal. Other calls that refuse mid-frame
   are a mipped `LoadTexture`, `LoadSplatMaterial`, `LoadTileGroundMaterial`, `DebugReadShadowMap`,
   `DebugReadSplatAlbedoMip`,
   `Render3DPreview.Capture`, `Render3DPreview.ReadbackRgba`, and `Scene3D.Begin` on a device with GPU completion

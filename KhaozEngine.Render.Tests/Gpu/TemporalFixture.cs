@@ -18,6 +18,7 @@ public sealed class TemporalFixture : IDisposable
 {
     readonly GpuDeviceContext _gpu;
     readonly IGpuCommandList _commands;
+    readonly GpuFrameSubmission _submission;
     IGpuTexture _targetTexture;
     int _frame, _skippedPhases;
 
@@ -33,6 +34,7 @@ public sealed class TemporalFixture : IDisposable
         _targetTexture = CreateTarget(f, displayWidth, displayHeight);
         Target = f.CreateFramebuffer(null, _targetTexture);
         _commands = f.CreateCommandList();
+        _submission = new(_gpu.GpuDevice);
         DisplayWidth = displayWidth;
         DisplayHeight = displayHeight;
         Scene = new Scene3D(_gpu.GpuDevice, Target.Outputs);
@@ -75,21 +77,29 @@ public sealed class TemporalFixture : IDisposable
 
     void Render(Action<Scene3D, int> draw)
     {
-        int n = _frame++ - _skippedPhases;
-        Scene.Begin();
-        Scene.EffectTimeSeconds = n / 60f;
-        draw(Scene, n);
-        Scene.PrepareFrame(DisplayWidth, DisplayHeight);
-        using (GpuRecording.Open(Device, _commands, "TemporalFixture.Frame"))
-            Scene.RenderInternal(_commands, DisplayWidth, DisplayHeight, Target);
-        long submitted = Stopwatch.GetTimestamp();
-        Device.Submit(_commands);
-        Device.WaitForIdle();
-        LastSubmitMilliseconds = Stopwatch.GetElapsedTime(submitted).TotalMilliseconds;
-        // The frame boundary a game reaches every frame. A backend runs the destroys it deferred there (Vulkan
-        // holds every disposed image and its memory until then), so a fixture that never reached it grew device
-        // memory with every target the scene replaced.
-        Device.Present();
+        _submission.Begin();
+        try
+        {
+            int n = _frame++ - _skippedPhases;
+            Scene.Begin();
+            Scene.EffectTimeSeconds = n / 60f;
+            draw(Scene, n);
+            Scene.PrepareFrame(DisplayWidth, DisplayHeight);
+            using (GpuRecording.Open(Device, _commands, "TemporalFixture.Frame"))
+            {
+                Scene.RenderInternal(_commands, DisplayWidth, DisplayHeight, Target);
+                Scene.RecordCoverageReadbacks(_commands, _submission);
+            }
+            long submitted = Stopwatch.GetTimestamp();
+            _submission.Submit(_commands);
+            Device.WaitForIdle();
+            LastSubmitMilliseconds = Stopwatch.GetElapsedTime(submitted).TotalMilliseconds;
+            // The frame boundary a game reaches every frame. A backend runs the destroys it deferred there (Vulkan
+            // holds every disposed image and its memory until then), so a fixture that never reached it grew device
+            // memory with every target the scene replaced.
+            Device.Present();
+        }
+        catch { _submission.Abandon(); throw; }
     }
 
     /// <summary>A later render inside the frame the last <see cref="Frame"/> began, with no Begin, into a scratch
@@ -97,13 +107,21 @@ public sealed class TemporalFixture : IDisposable
     /// pixels.</summary>
     public byte[] RenderSecond(int width, int height)
     {
-        using IGpuTexture texture = CreateTarget(Device.Factory, width, height);
-        using IGpuFramebuffer target = Device.Factory.CreateFramebuffer(null, texture);
-        using (GpuRecording.Open(Device, _commands, "TemporalFixture.RenderSecond"))
-            Scene.RenderInternal(_commands, width, height, target);
-        Device.Submit(_commands);
-        Device.WaitForIdle();
-        return GpuReadback.ToRgba(Device, texture, width, height);
+        _submission.Begin();
+        try
+        {
+            using IGpuTexture texture = CreateTarget(Device.Factory, width, height);
+            using IGpuFramebuffer target = Device.Factory.CreateFramebuffer(null, texture);
+            using (GpuRecording.Open(Device, _commands, "TemporalFixture.RenderSecond"))
+            {
+                Scene.RenderInternal(_commands, width, height, target);
+                Scene.RecordCoverageReadbacks(_commands, _submission);
+            }
+            _submission.Submit(_commands);
+            Device.WaitForIdle();
+            return GpuReadback.ToRgba(Device, texture, width, height);
+        }
+        catch { _submission.Abandon(); throw; }
     }
 
     /// <summary>Begin <paramref name="count"/> frames without rendering them, so a fresh fixture can meet another at
@@ -140,7 +158,7 @@ public sealed class TemporalFixture : IDisposable
 
     public void Dispose()
     {
-        Scene.Dispose();
+        Scene.DisposeWithSubmission(_submission);
         _commands.Dispose();
         Target.Dispose();
         _targetTexture.Dispose();

@@ -25,9 +25,8 @@ public sealed partial class Scene3D
 
     void ReserveCoverageGpuFrame()
     {
-        if (GpuRecording.OpenOwner(_gd) is not null)
-            throw new InvalidOperationException("Reserve coverage storage before opening a command list.");
         _coverageGpu?.PrepareFrame();
+        ReserveCoverageOutcomes();
         int draws = _skinnedInstances.Items.Count, vertices = 0;
         foreach (var item in _skinnedInstances.Items)
             if (!UseCoverageVertexSkinning(item.Mesh, item.Coverage.Preparation is not null) && _skinnedCpuVerts[item.Mesh.Index] is { } source)

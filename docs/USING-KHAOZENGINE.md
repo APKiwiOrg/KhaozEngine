@@ -586,23 +586,16 @@ window.Run(
 Name the arguments. Both are `Action<Frame>`, so swapping them compiles and silently moves every draw outside
 the frame's command list.
 
-**Why it exists.** Some per-frame GPU work cannot be recorded into the frame's list at all: a compute dispatch
-whose output another dispatch reads in the same frame has no dispatch-to-dispatch barrier at the GPU seam, so its
-only ordering is a submit plus a device wait, which means a command list of its own. Opening one while the
-frame's list is recording is the nested recording the seam refuses by name, on every backend, so that work has
-nowhere to go inside the record phase. The headless hosts (`Render3DSnapshot.Capture`,
-`Render3DPreview.Capture`) open the frame's list themselves and could already honour that ordering. The windowed
-loop opened it before calling back, so no host running on a window could (issue #429). This phase is the fix.
+**Why it exists.** Scene preparation may grow buffers, change resource bindings or run producers that submit
+GPU work on their own lists. It must run before the host opens its render list. The engine permits one open
+recording per device. A first `Scene3D.PrepareFrame` inside another recording throws `GpuNestedRecordingException`
+with the actual outer owner and attempted owner `Scene3D.PrepareFrame`, before any capacity or preparation state
+change. This boundary applies even without water. A repeated already-prepared call remains a no-op.
 
-**It was built for a backend that no longer exists, and it is KEPT anyway (18.0.0, issue #690).** The urgency
-came from the vendored Veldrid Direct3D11 leg, where a command list WAS the device's immediate context and a
-second `Begin` called `ClearState` on it, so the nesting was a silent one-frame corruption rather than a refusal
-(issue #423). That leg was deleted in 18.0.0, and the plan of record had been to retire this phase with it. It
-was not, because neither reason it rests on was that leg's: the seam still offers no dispatch-to-dispatch
-barrier, so a dependent compute chain still pays `End` + `Submit` + a device wait and still needs a list of its
-own, and the one-open-recording rule is still enforced for every recording the engine opens, on every backend.
-Nothing about `AppWindow.Run(onFrame, onPrepare)`, `GameApp.OnPrepareWorld` or `Scene3D.PrepareFrame` changed in
-18.0.0, and no game needs to do anything.
+Headless preview and snapshot hosts prepare before opening their lists. A window host uses `onPrepare` to queue
+and prepare, then records in `onFrame`. The original nested-recording failure and the phase ordering are tracked
+in [#423](https://github.com/APKiwiOrg/KhaozEngine/issues/423) and
+[#429](https://github.com/APKiwiOrg/KhaozEngine/issues/429).
 
 **What belongs where.** `onPrepare` is for update-side work and for filling the frame's queues, which is what
 puts a producer's own command list before the frame's. Do **not** record into `Frame.Commands` there: the list is
@@ -3726,20 +3719,14 @@ cl.Begin();
 // ... record the scene, submit cl
 ```
 
-  Some per-frame GPU work cannot be recorded into the frame's list at all. The FFT ocean's priming pass is a
-  compute dispatch whose output another dispatch reads in the same frame, and the GPU seam has no
-  dispatch-to-dispatch barrier, so the only ordering available is a submit plus a device wait - which means a
-  command list of its own. Opening one while the frame's list is recording is not harmless: with Direct3D11 in
-  immediate-context mode a command list IS the device's immediate context, so opening one resets the state the
-  frame's list believes is still bound and the device faults a few draws later (issue #423). A frame that queues no
-  water does nothing here, and a host that skips the call gets an exception from the water pass rather than a
-  stale ocean. Calling it twice for one `Begin` is harmless: the second call is a no-op, so a host that prepares by
-  hand and then hands the scene to `Render3DSurface.Render` does not prepare the frame twice. The sized overload can
-  refresh coverage resources before recording after a display or temporal sizing change. Queueing a draw AFTER
-  preparing is the one thing that is not harmless, and the water pass throws for it.
+  The phase reserves scene storage even without water, and can run a producer's own GPU work. Its first call
+  requires no command list open. A nested first call is refused by name before reservation or preparation state
+  changes. Calling the parameterless method twice for one prepared frame is harmless. The sized overload can
+  refresh coverage resources before recording after a display or temporal sizing change. Queue every draw
+  before preparation so producers observe the complete frame demand.
 
   **On a windowed host the effective call is the earlier one.** `Render3DSurface.Render` runs inside the frame's
-  command list, so its `PrepareFrame` is a safety net, not the pre-recording phase. Queue and prepare the scene in
+  command list, so its `PrepareFrame` call only accepts an already prepared frame. Queue and prepare the scene in
   the loop's pre-record phase instead (`AppWindow.Run`'s `onPrepare`, or `GameApp.OnPrepareWorld` - see "The
   frame's pre-record phase" above), and the surface's own call then finds the frame prepared and no-ops. `GameApp3D`
   already does this, so a game on it needs no change.
@@ -18070,17 +18057,12 @@ consumer's own list gets whatever its backend does. And the register is per DEVI
 contract is: recording on two threads at once is refused here exactly as it is on one, even on a backend whose
 own object model would allow it.
 
-**A `Render3DSurface` driven off a raw `AppWindow.Run(onFrame)`, with no `onPrepare`, still nests, and that is
-the whole of what happens (18.0.0, issue #690).** `Render3DSurface.Render` calls `Scene3D.PrepareFrame` as a
-safety net, but by then the frame's list is open, so a scene with a producer that owns a command list (today: the
-FFT ocean, and `Scene3D.Begin`'s retire barrier once a retirement is pending) gets `GpuNestedRecordingException`
-naming the fix. There used to be a second layer under that, the vendored Veldrid fork's own guardrail throwing
-`VeldridException` on its leg, and it went with the fork in 18.0.0. Nothing replaced it and nothing needs to: the
-register refuses before any list is begun, so the message and the behaviour are identical on all three backends.
-The fix is unchanged, and it is the one the message names: queue and prepare the scene in `onPrepare`, call
-`Render` from `onFrame`, or subclass `GameApp3D`, which does exactly that for you. Note the data-dependence above
-applies here too, so a raw-`AppWindow` host with no ocean can run for a long time before the first unload turns
-its missing phase into an exception.
+**A window surface requires the pre-record callback.** `Render3DSurface.Render` calls `Scene3D.PrepareFrame`
+inside the host recording. If the scene is not already prepared, that call refuses with the actual recording
+owner and attempted owner `Scene3D.PrepareFrame` before resource or state mutation. The refusal applies even with
+no ocean and no pending retirement. Queue and prepare in `onPrepare`, then render in `onFrame`, or use `GameApp3D`.
+`Render3DPreview.Capture` checks its own named site before scene begin or submission changes. Direct producers
+retain their individual named nested-recording guards.
 
 ### Uniform buffers on the native Direct3D 11 backend (17.32.0)
 
@@ -22528,8 +22510,44 @@ offset or size throw `ArgumentOutOfRangeException` before a slot is reserved.
 Call `DiscardUnsubmitted(completion)` only when abandoning a list that was never submitted. It stably removes
 all entries retaining that exact fence and leaves every other entry in FIFO order. Using it with a submitted
 fence is a caller error, even if that fence has not signalled yet. Abandon the list before reusing the freed
-slots. `Dispose` throws `InvalidOperationException` while entries remain, including completed entries that have
-not been consumed. After consumption or valid discard it disposes only the owned staging buffers.
+slots. The ring implements `IGpuFrameCompletionConsumer`. `HasPending(completion)` checks retained ownership.
+Teardown-only `ReleaseCompleted(completion)` consumes submitted entries after the caller proves GPU completion
+with a signal or a successful host drain. `Dispose` releases signaled entries and throws `InvalidOperationException`
+while unsignaled entries remain. It disposes only owned staging buffers after every entry is released.
+
+### Shared frame submission and coverage outcomes
+
+`GpuFrameSubmission(device, retainedFrames: 3, consumerCapacity: 8)` precreates its fixed fence and registration
+storage. Call `Begin` before recording and register completion consumers with `TryRetain`. Successful retention
+returns one shared fence for the frame. A full retention window skips diagnostics without blocking rendering.
+Register `IGpuFrameSubmissionParticipant` independently with `TryRegister`, even when diagnostics have no slot.
+If participant registration fails, explicitly abandon that participant's pending logical state.
+
+Record GPU work and every retained copy into the same command list, then call `Submit(commands)` once. It submits
+with the shared fence when retained and calls `Submitted` on every participant. `Abandon` calls `Abandoned` and
+uses `DiscardUnsubmitted` only for a recording never handed to the device. Use it on recording exceptions before
+the next frame. A backend submit exception abandons participant state while quarantining potentially submitted
+copies. A callback exception still delivers the correct decision to every remaining participant.
+
+`Begin` resets a submitted fence only after GPU completion and release by every retained consumer. `Dispose`
+abandons any unsubmitted recording, performs one host teardown drain, invokes `ReleaseCompleted`, confirms release
+and disposes owned fences. Dispose the owner before its command list and device. Consumer-first disposal must keep
+unsignaled staging alive until a completion poll or owner teardown releases it. There is no ordinary-frame wait,
+flush or extra frame submission. `GpuRetireQueue` retains its separate existing retirement fence.
+
+The window exposes its owner as `Frame.Submission`. `Render3DSurface`, `Render3DPreview` and snapshot hosts record
+one aggregate coverage result copy per scene with that owner. The stable scene participant registers before
+result-count and capability checks, including views without a GPU result copy. Preview and snapshot teardown share the owner's
+drain with scene cleanup. Public `Scene3D.Dispose` retains its general scene teardown safety boundary. Existing
+resource retirement tails may have their own cleanup drains.
+
+Poll `scene.TryReadCoverageOutcome(out CoverageGpuOutcome outcome)` to enumerate completed actors without waiting.
+`FrameId`, `ViewId`, `Actor`, host identity and command attribution come from retained immutable metadata validated
+against the copied GPU identity words. They survive `Begin`, actor reuse, partial enumeration and cold capacity
+growth. `Outcome` is `Covered` or `UncoveredFallback` with the GPU failure. `GetCoverageOutcome(token)` continues to
+report the same-frame CPU admission or `Dispatched` result. Diagnostic availability changes neither drawing nor
+history. A full ring drops only the new diagnostic copy. On Direct3D11 the normal Present boundary makes completion
+visible. A headless correctness test may drain once before polling, while production polling never flushes.
 
 ### GPU timestamps without waiting
 

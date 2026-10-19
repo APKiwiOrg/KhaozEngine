@@ -35,6 +35,7 @@ namespace KhaozEngine.Render3D
 
         readonly IGpuDevice _gd;
         readonly IGpuCommandList _cl;
+        readonly GpuFrameSubmission _submission;
         IGpuTexture _target = null!;
         IGpuFramebuffer _fb = null!;
         Texture2D _texture = null!;
@@ -67,12 +68,21 @@ namespace KhaozEngine.Render3D
             _gd = gd;
             (Width, Height) = ClampSize(width, height);
             _cl = gd.Factory.CreateCommandList();
-            AllocTarget(Width, Height);
-            Scene = new Scene3D(gd, _fb.Outputs, shadows);
-            // Sensible preview defaults: composite transparently into a panel; the starfield would fill the
-            // background opaquely, so leave it off (callers can re-enable any post setting on Scene.Post).
-            Scene.Post.TransparentBackground = true;
-            Scene.Post.Starfield = false;
+            try
+            {
+                _submission = new(gd);
+                AllocTarget(Width, Height);
+                Scene = new Scene3D(gd, _fb.Outputs, shadows);
+                // Composite transparently into a panel, without an opaque starfield behind the model.
+                Scene.Post.TransparentBackground = true;
+                Scene.Post.Starfield = false;
+            }
+            catch
+            {
+                _submission?.Dispose();
+                _cl.Dispose(); _fb?.Dispose(); _target?.Dispose();
+                throw;
+            }
         }
 
         /// <summary>Clamp a requested target size into <c>[1, <see cref="MaxDimension"/>]</c> per axis. Pure +
@@ -120,14 +130,24 @@ namespace KhaozEngine.Render3D
         /// </remarks>
         public Texture2D Capture(Action<Scene3D> drawFrame)
         {
-            Scene.Begin();
-            drawFrame?.Invoke(Scene);
-            // Producers with GPU work of their own run here, while no list is open (see Scene3D.PrepareFrame).
-            Scene.PrepareFrame(Width, Height);
-            using (GpuRecording.Open(_gd, _cl, "Render3DPreview.Capture"))
-                Scene.RenderInternal(_cl, Width, Height, _fb);
-            _gd.Submit(_cl);
-            return _texture;
+            if (GpuRecording.OpenOwner(_gd) is { } owner)
+                throw new GpuNestedRecordingException(owner, "Render3DPreview.Capture");
+            _submission.Begin();
+            try
+            {
+                Scene.Begin();
+                drawFrame?.Invoke(Scene);
+                // Producers with GPU work of their own run here, while no list is open (see Scene3D.PrepareFrame).
+                Scene.PrepareFrame(Width, Height);
+                using (GpuRecording.Open(_gd, _cl, "Render3DPreview.Capture"))
+                {
+                    Scene.RenderInternal(_cl, Width, Height, _fb);
+                    Scene.RecordCoverageReadbacks(_cl, _submission);
+                }
+                _submission.Submit(_cl);
+                return _texture;
+            }
+            catch { _submission.Abandon(); throw; }
         }
 
         /// <summary>Read the current preview target back to CPU RGBA bytes (fences the GPU). For diagnostics /
@@ -136,7 +156,7 @@ namespace KhaozEngine.Render3D
 
         public void Dispose()
         {
-            Scene.Dispose();
+            Scene.DisposeWithSubmission(_submission);
             _cl.Dispose();
             _fb.Dispose();
             _target.Dispose();

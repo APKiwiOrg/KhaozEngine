@@ -1,10 +1,10 @@
+using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Rendering;
 
 namespace KhaozEngine.Render3D
 {
     /// <summary>
-    /// The frame's pre-recording phase: the half of <see cref="Scene3D"/> that runs the subsystems which have GPU
-    /// work of their own to submit, at the one point in the frame where no command list is open.
+    /// The scene's pre-record phase reserves cold resources and runs once-only producers before any command list opens.
     /// See <see cref="IFramePreparer"/> for why that point has to exist, and
     /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/423">#423</see> for what happens when it does not.
     /// </summary>
@@ -21,15 +21,13 @@ namespace KhaozEngine.Render3D
         /// Run the frame's pre-recording work. Call it ONCE per frame, after every <c>Draw*</c> call for the frame
         /// and BEFORE opening the command list the scene is rendered into.
         /// <para>
-        /// Some of what a frame needs cannot be recorded into the frame's list: the FFT ocean's priming pass is a
-        /// compute dispatch whose output another dispatch reads in the same frame, and the GPU seam's only ordering
-        /// for that pair is a submit plus a device wait (#311), which means a command list of its own. Opening one
-        /// while the frame's list is recording is what corrupts the device on Direct3D11 in immediate-context mode
-        /// (#423), so it happens here instead. A frame that queues no water does nothing at all here.
+        /// This phase can grow point-light, coverage, outcome and temporal storage or run a producer's own GPU
+        /// work. Its first call requires no open recording, even when no water is queued. A nested call refuses
+        /// with <see cref="GpuNestedRecordingException"/> before capacity or preparation state changes.
         /// </para>
         /// <para>
         /// The order is <see cref="Begin"/> -> queue the frame's draws -> <c>PrepareFrame</c> -> open the frame's
-        /// command list -> render. Skipping it throws from the water pass rather than rendering a stale ocean.
+        /// command list -> render. Preparing for the first time inside the render list is refused by name.
         /// </para>
         /// <para>
         /// <b>Once per frame, and the second call is a no-op</b> rather than a second preparation.
@@ -48,6 +46,8 @@ namespace KhaozEngine.Render3D
         public void PrepareFrame()
         {
             if (_framePrepared) return;
+            if (GpuRecording.OpenOwner(_gd) is { } owner)
+                throw new GpuNestedRecordingException(owner, "Scene3D.PrepareFrame");
             EnsurePointLightCapacity();
             ReserveCoverageMotion();
             ReserveCoverageGpuFrame();

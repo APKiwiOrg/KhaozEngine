@@ -95,6 +95,7 @@ public sealed partial class Scene3D
 
     void DisposeCoverage()
     {
+        DisposeCoverageOutcomes();
         _coverageGpu?.Dispose();
         _coverageTransition?.Dispose();
         _coverageMotion.Reset();

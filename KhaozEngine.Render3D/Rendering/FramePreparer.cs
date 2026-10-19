@@ -6,22 +6,9 @@ namespace KhaozEngine.Render3D.Rendering
     /// A scene subsystem that has GPU work of its OWN to submit for the frame, on a command list that is not the
     /// frame's. <see cref="Scene3D.PrepareFrame()"/> runs every preparer once per frame, after the frame's queues are
     /// filled and BEFORE the host opens the frame's command list.
-    /// <para>
-    /// <b>Why the phase exists at all.</b> A command list that opens while another is recording is not a second
-    /// list on every backend: with Direct3D11 in immediate-context mode (which is how
-    /// <c>GpuDeviceContext</c> creates the device) a list IS the device's immediate context, and opening one calls
-    /// <c>ClearState</c> on it. That wipes every binding the frame's list believes is still bound, the managed
-    /// binding cache skips re-binding them because nothing in ITS model changed, and the draws that follow execute
-    /// with no render target and no shaders until the device faults
-    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/423">#423</see>). So a producer that has to
-    /// submit and drain its own list runs here, where no frame list is open, rather than mid-recording.
-    /// </para>
-    /// <para>
-    /// <b>Why not record that work into the frame's list instead.</b> Because the work in question is a dispatch
-    /// whose output another dispatch reads, and the GPU seam has no dispatch-to-dispatch barrier
-    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/311">#311</see>): the only ordering it can offer
-    /// for that pair is a submit and a device wait, which cannot be recorded into a list that is still open.
-    /// </para>
+    /// <para>The engine permits one recording per device. Producers that submit their own lists run here,
+    /// before the host claims that device for rendering. The scene also reserves cold storage in this phase,
+    /// so a scene with no queued producer still requires pre-record preparation.</para>
     /// </summary>
     internal interface IFramePreparer
     {

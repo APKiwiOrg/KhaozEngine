@@ -372,7 +372,7 @@ public class TileWorldBuildQueueTests
     }
 
     [Fact]
-    public void Interior_cut_has_an_independent_apply_budget_and_is_never_primed_inline()
+    public void Interior_cut_has_an_independent_apply_budget_and_is_never_gameplay_primed_inline()
     {
         var dispatcher = new ManualTileBuildDispatcher();
         var applied = new List<TileWorldBuildResult<int>>();
@@ -382,7 +382,6 @@ public class TileWorldBuildQueueTests
         queue.Request(Request(0, TileWorldBuildKind.InteriorCut, 1));
         queue.Request(Request(1, TileWorldBuildKind.InteriorCut, 1));
         queue.Request(Request(2, TileWorldBuildKind.Hlod, 1));
-        queue.PrimeForCapture(default);
         queue.PrimeGameplay(default, new HashSet<RegionCoord> { new(0, 0) });
         Assert.Empty(applied);
         dispatcher.RunAll();

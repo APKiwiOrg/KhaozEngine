@@ -1,0 +1,299 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
+using System.Text.Json.Nodes;
+using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Editing;
+using KhaozEngine.MapDoc.Foliage;
+using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.Tests.MapDoc.Prefabs;
+using Xunit;
+
+namespace KhaozEngine.Tests.MapDoc.Foliage;
+
+/// <summary>Pure foliage edits: the legacy metre brush and its exact boundaries over sparse rasters, strict detached
+/// refusal, direct chunk effects and the before and proposal bound policy differential.</summary>
+public sealed class MapFoliageEditTests
+{
+    const string Id = FoliageFixtures.LayerId;
+
+    [Fact]
+    public void MetreBrush_QuantizesPositiveZAndDoesNotAllocateDomain()
+    {
+        // A zero raster with a negative origin, 33 by 17 samples at half a metre. The brush centre (1, -1) is sample (8, 8).
+        MapFoliageLayer zero = Zero(-3, -5, 0.5f, 33, 17);
+        MapFoliageLayer painted = MapFoliageBrush.Apply(zero, Paint(1, -1, 2, 128, 0.5f));
+        byte fullHardnessCentre = painted.DensityAt(8, 8);
+        byte halfLinearRim = painted.DensityAt(11, 8);
+        byte softExactRadius = painted.DensityAt(8, 12);
+        Assert.Equal((byte)128, fullHardnessCentre);
+        Assert.Equal((byte)64, halfLinearRim);
+        Assert.Equal((byte)0, softExactRadius);
+        // Hardness times radius is still full strength, and the rim is symmetric across rows in positive Z.
+        Assert.Equal((byte)128, painted.DensityAt(8, 10));
+        Assert.Equal((byte)64, painted.DensityAt(8, 5));
+        Assert.Equal((byte)64, painted.DensityAt(5, 8));
+        Assert.Same(zero.Policy, painted.Policy);
+
+        // Hardness 0 is full strength only at the centre, then linear to the radius.
+        MapFoliageLayer soft = MapFoliageBrush.Apply(zero, Paint(1, -1, 2, 128, 0));
+        Assert.Equal(new byte[] { 128, 96, 64, 32, 0 }, Enumerable.Range(8, 5).Select(x => soft.DensityAt(x, 8)).ToArray());
+        // Half strength lands on .5 for odd targets. Ties go to even, never away from zero or toward zero.
+        Assert.Equal((byte)2, MapFoliageBrush.Apply(zero, Paint(1, -1, 2, 5, 0)).DensityAt(10, 8));
+        Assert.Equal((byte)4, MapFoliageBrush.Apply(zero, Paint(1, -1, 2, 7, 0)).DensityAt(10, 8));
+        Assert.Equal((byte)0, MapFoliageBrush.Apply(zero, Paint(1, -1, 2, 1, 0)).DensityAt(10, 8));
+        // 255 is a legal target and clamps nothing away. A lower target erases toward it.
+        MapFoliageLayer full = MapFoliageBrush.Apply(zero, Paint(1, -1, 2, 255, 1));
+        Assert.Equal((byte)255, full.DensityAt(8, 12));
+        Assert.Equal((byte)128, MapFoliageBrush.Apply(full, Paint(1, -1, 2, 1, 0)).DensityAt(10, 8));
+
+        // The brush quantizes to lattice samples, not cell centres. This disc reaches sample (2, 3) alone, and row 3
+        // advances positive world Z from the origin, so the mirrored row 13 stays zero.
+        MapFoliageLayer one = MapFoliageBrush.Apply(zero, Paint(-1.9f, -3.45f, 0.2f, 77, 1));
+        Assert.Equal((byte)77, one.DensityAt(2, 3));
+        Assert.Equal((byte)0, one.DensityAt(2, 13));
+        Assert.Equal(1, Samples(one).Count(v => v != 0));
+
+        // Every reached sample equals the released full-domain loop, on negative, non-square and nonzero rasters.
+        MapFoliageLayer basic = FoliageFixtures.BasicLayer();
+        foreach (MapFoliageLayer layer in new[] { zero, basic, Zero(-7.25f, 3.5f, 0.75f, 21, 40) })
+            foreach (MapPaintFoliage brush in new[]
+            {
+                Paint(0.3f, -3.7f, 5, 200, 0.3f), Paint(60, -1, 7.5f, 0, 0), Paint(-3, -5, 2, 255, 1),
+                Paint(20.1f, -4.9f, 3.3f, 17, 0.75f), Paint(1.1f, 10.2f, 4.4f, 99, 0.6f), Paint(500, 500, 2, 10, 1),
+            })
+                Assert.Equal(Legacy(layer, brush), Samples(MapFoliageBrush.Apply(layer, brush)));
+        Assert.Same(basic, MapFoliageBrush.Apply(basic, Paint(500, 500, 2, 10, 1)));
+
+        // A full 1,048,576 sample square writes the one chunk the disc reaches and allocates nothing in proportion to it.
+        MapFoliageLayer huge = Zero(-3, -5, 0.5f, 1_048_576, 1_048_576);
+        long allocated = GC.GetAllocatedBytesForCurrentThread();
+        MapFoliageLayer big = MapFoliageBrush.Apply(huge, Paint(1, -1, 2, 128, 0.5f));
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+        Assert.True(allocated < 1 << 20, $"the brush allocated {allocated} bytes");
+        Assert.Equal(new MapFoliageChunkKey(0, 0), Assert.Single(big.Chunks).Key);
+        Assert.Equal((byte)64, big.DensityAt(11, 8));
+        Assert.Equal((byte)0, big.DensityAt(1_048_575, 1_048_575));
+
+        // The pure edit over that domain prepares no prefab expansion and serializes no payload, and its effect names
+        // the one new chunk with its cosmetic bounds: the samples it holds plus the one bilinear cell before them.
+        FoliageFixture f = FoliageComparisonFixtures.Set(FoliageFixtures.Create(), huge);
+        MapPrefabEditResult result = Pure(f, Paint(1, -1, 2, 128, 0.5f));
+        MapFoliageChunkChange change = Assert.Single(result.Effects.FoliageChunks);
+        Assert.Equal(new MapFoliageChunkChange(Id, new(0, 0), null, new MapFoliageRect(-3, -5, 13, 11), null, change.AfterDigest), change);
+        Assert.Equal(64, change.AfterDigest!.Length);
+        Assert.Equal(MapNativeInvalidation.Foliage, result.Effects.Invalidates);
+        Assert.Null(f.Document.Foliage!.Layers[0].Chunks.SingleOrDefault());
+    }
+
+    [Fact]
+    public void HardnessOne_IncludesExactRadiusAndExcludesJustOutside()
+    {
+        MapFoliageLayer zero = Zero(-3, -5, 0.5f, 33, 17);
+        // Sample (12, 8) sits exactly 2 m east of the centre.
+        byte hardnessOneExactRadius = MapFoliageBrush.Apply(zero, Paint(1, -1, 2, 128, 1)).DensityAt(12, 8);
+        Assert.Equal((byte)128, hardnessOneExactRadius);
+        // Moving the centre 0.0001 m west leaves that sample 2.0001 m away, and brings sample (4, 8) to 1.9999 m.
+        MapFoliageLayer outside = MapFoliageBrush.Apply(zero, Paint(0.9999f, -1, 2, 128, 1));
+        byte hardnessOneJustOutside = outside.DensityAt(12, 8);
+        Assert.Equal((byte)0, hardnessOneJustOutside);
+        Assert.Equal((byte)128, outside.DensityAt(4, 8));
+        // The same exact radius in Z, and below hardness 1 the exact radius has zero weight.
+        Assert.Equal((byte)128, MapFoliageBrush.Apply(zero, Paint(1, -1, 2, 128, 1)).DensityAt(8, 4));
+        Assert.Equal((byte)0, MapFoliageBrush.Apply(zero, Paint(1, -1, 2, 128, 0.999f)).DensityAt(8, 4));
+        Assert.Equal((byte)0, MapFoliageBrush.Apply(zero, Paint(1, -1, 1.9999f, 128, 1)).DensityAt(12, 8));
+        // A hard disc wholly between samples reaches nothing and returns the layer unchanged.
+        Assert.Same(zero, MapFoliageBrush.Apply(zero, Paint(1.25f, -0.75f, 0.2f, 128, 1)));
+    }
+
+    [Fact]
+    public void PureFoliageEdits_RefuseAtomicallyAndBindDifferentialIdentity()
+    {
+        FoliageFixture f = FoliageFixtures.Create();
+        MapFoliageLayer layer = f.Document.Foliage!.Layers[0];
+        string original = MapDocumentFile.SaveText(f.Document);
+
+        // A byte edit reports one chunk, Foliage alone and the foliage write set, without touching the input document.
+        MapPrefabEditResult density = Pure(f, new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7, 9]));
+        MapNativeEditEffects densityOnly = density.Effects;
+        Assert.Equal(MapNativeInvalidation.Foliage, densityOnly.Invalidates);
+        MapFoliageChunkChange chunk = Assert.Single(densityOnly.FoliageChunks);
+        Assert.Equal((Id, new MapFoliageChunkKey(0, 0)), (chunk.LayerId, chunk.Chunk));
+        Assert.Equal(new MapFoliageRect(-3, -5, 61, -1), chunk.OldBounds);
+        Assert.Equal(chunk.OldBounds, chunk.NewBounds);
+        Assert.NotEqual(chunk.BeforeDigest, chunk.AfterDigest);
+        Assert.Equal((64, 64), (chunk.BeforeDigest!.Length, chunk.AfterDigest!.Length));
+        Assert.Contains("\"foliageChunks\":[{\"layerId\":\"cover-a\",\"x\":0,\"z\":0,", densityOnly.Describe());
+        Assert.True(density.WriteSet.Foliage);
+        Assert.False(density.WriteSet.Placements || density.WriteSet.Prefabs || density.WriteSet.BuildingIntent);
+        MapFoliageLayer edited = density.After.Foliage!.Layers[0];
+        Assert.Equal(new byte[] { 70, 7, 9, 73 }, new[] { edited.DensityAt(0, 2), edited.DensityAt(1, 2), edited.DensityAt(2, 2), edited.DensityAt(3, 2) });
+        Assert.Same(layer.Chunks[1], edited.Chunks[1]);
+        Assert.Equal(original, MapDocumentFile.SaveText(f.Document));
+
+        // No-op edits report empty effects and write nothing, in the released description bytes.
+        string empty = new MapNativeEditEffects(null, null, [], [], [], [], MapNativeInvalidation.None).Describe();
+        Assert.DoesNotContain("foliageChunks", empty);
+        foreach (MapFoliageEdit noOp in new MapFoliageEdit[]
+        {
+            new MapSetFoliageDensity(Id, 1, 2, 2, 1, [71, 72]), new MapSetFoliageLayer(layer), Paint(-2, -4, 0.5f, 200, 1),
+            new MapFoliageEditSequence([], null), new MapFoliageEditSequence([new MapSetFoliageDensity(Id, 0, 0, 1, 1, [0])], null),
+        })
+        {
+            MapPrefabEditResult result = Pure(f, noOp);
+            Assert.Equal(empty, result.Effects.Describe());
+            Assert.Empty(result.Effects.FoliageChunks);
+            Assert.False(result.WriteSet.Foliage);
+        }
+
+        // Settings, new layers and removal are direct chunk changes over every stored chunk.
+        var seeded = Pure(f, new MapSetFoliageLayer(Change(layer, l => l["seed"] = 18))).Effects.FoliageChunks;
+        Assert.Equal(new[] { new MapFoliageChunkKey(0, 0), new MapFoliageChunkKey(1, 0) }, seeded.Select(c => c.Chunk));
+        Assert.All(seeded, c => Assert.True(c.OldBounds == c.NewBounds && c.BeforeDigest != c.AfterDigest));
+        Assert.Equal(new MapFoliageRect(59, -5, 65, -1), seeded[1].NewBounds);
+        var added = Pure(f, new MapSetFoliageLayer(Change(layer, l => l["id"] = "cover-b")));
+        Assert.Equal(new[] { "cover-a", "cover-b" }, added.After.Foliage!.Layers.Select(l => l.Id));
+        Assert.All(added.Effects.FoliageChunks, c => Assert.True(c.LayerId == "cover-b" && c.BeforeDigest is null && c.OldBounds is null));
+        var removed = Pure(f, new MapRemoveFoliage(Id));
+        Assert.Null(removed.After.Foliage);
+        Assert.Equal(2, removed.Effects.FoliageChunks.Count(c => c.AfterDigest is null && c.NewBounds is null && c.BeforeDigest is not null));
+        Assert.True(removed.WriteSet.Foliage);
+
+        // Every invalid request refuses before any write and leaves the document byte for byte as it was.
+        foreach (MapFoliageEdit bad in new MapFoliageEdit[]
+        {
+            new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7, 256]), new MapSetFoliageDensity(Id, 1, 2, 2, 1, [-1, 9]),
+            new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7]), new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7, 9, 11]),
+            new MapSetFoliageDensity(Id, 34, 0, 2, 1, [1, 1]), new MapSetFoliageDensity(Id, -1, 0, 1, 1, [1]),
+            new MapSetFoliageDensity(Id, 0, 3, 1, 1, [1]), new MapSetFoliageDensity(Id, 0, 0, 0, 1, []),
+            new MapSetFoliageDensity(Id, 0, 0, 1, 1, null!), new MapSetFoliageDensity("absent", 0, 0, 1, 1, [1]),
+            Paint(1, -1, 0, 9, 1), Paint(1, -1, -2, 9, 1), Paint(1, -1, float.NaN, 9, 1), Paint(1, -1, float.PositiveInfinity, 9, 1),
+            Paint(1, -1, 2, 9, -0.1f), Paint(1, -1, 2, 9, 1.1f), Paint(1, -1, 2, 9, float.NaN), Paint(float.NaN, -1, 2, 9, 1),
+            new MapPaintFoliage("absent", 1, -1, 2, 9, 1), new MapRemoveFoliage("absent"), new MapSetFoliageLayer(null!),
+            new MapSetFoliageLayer(Change(layer, l => l["policy"]!["version"] = 2)),
+            new MapSetFoliageLayer(Change(layer, l => l["models"] = new JsonArray(new JsonObject { ["assetId"] = "missing", ["weight"] = 1 }))),
+            new MapFoliageEditSequence([new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7, 9]), new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7])], null),
+            new MapFoliageEditSequence([new MapFoliageEditSequence([], null)], null), new MapFoliageEditSequence(null!, null),
+            new MapFoliageEditSequence([new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7, 9])], new MapMovePrefab("missing", new(Vector3.Zero, 0, 1))),
+        })
+            Refused(f, bad);
+
+        // An edit reaches at most 64 chunks and visits at most 65,536 addresses, refused before any byte is read.
+        FoliageFixture wide = FoliageComparisonFixtures.Set(FoliageFixtures.Create(), Zero(-3, -5, 1, 1_048_576, 1024));
+        Refused(wide, new MapSetFoliageDensity(Id, 31, 0, 2018, 1, Enumerable.Repeat(1, 2018).ToArray()), "65 chunks");
+        Assert.Equal(64, Pure(wide, new MapSetFoliageDensity(Id, 32, 0, 2048, 1, Enumerable.Repeat(1, 2048).ToArray())).Effects.FoliageChunks.Count);
+        Refused(wide, new MapSetFoliageDensity(Id, 0, 0, 65_537, 1, new int[65_537]), "65537 addresses");
+        Assert.Equal(64, Pure(wide, new MapSetFoliageDensity(Id, 0, 0, 256, 256, Enumerable.Repeat(3, 65_536).ToArray())).Effects.FoliageChunks.Count);
+        Refused(wide, new MapPaintFoliage(Id, 200, 200, 128, 9, 1), "66049 addresses");
+        // A 241 sample square box from sample 31 to 271 stays under the address limit but spans 9 by 9 chunks.
+        Refused(wide, new MapPaintFoliage(Id, 148, 146, 120, 9, 1), "81 chunks");
+
+        // A supported policy definition change needs the digest issued for this before document and this proposal.
+        var policy = new MapSetFoliageLayer(Change(layer, l => l["policy"]!["normalBoundaryHeight"] = 0.25f));
+        Refused(f, policy, "differential");
+        MapFoliageDifferentialResult preview = MapFoliageEdits.PreviewPolicyChange(f.Document, f.Assets, policy);
+        Assert.Equal(MapFoliageStatus.Complete, preview.Status);
+        Assert.Equal(64, preview.Digest.Length);
+        Assert.Equal(FoliageFixtures.Context(f).SnapshotId, preview.BeforeIdentity);
+        var otherProposal = policy with { Layer = Change(layer, l => l["policy"]!["normalBoundaryHeight"] = 0.5f) };
+        string other = MapFoliageEdits.PreviewPolicyChange(f.Document, f.Assets, otherProposal).Digest;
+        string otherBefore = MapFoliageEdits.PreviewPolicyChange(density.After, f.Assets, policy).Digest;
+        Assert.Equal(3, new[] { preview.Digest, other, otherBefore }.Distinct().Count());
+        Refused(f, policy with { ExpectedDifferentialDigest = other }, "stale");
+        Refused(f, policy with { ExpectedDifferentialDigest = otherBefore }, "stale");
+        Refused(f, new MapFoliageEditSequence([policy], null), "differential");
+        MapPrefabEditResult accepted = MapFoliageEdits.Prepare(f.Document, f.Assets, policy with { ExpectedDifferentialDigest = preview.Digest });
+        Assert.Equal(0.25f, accepted.After.Foliage!.Layers[0].Policy.NormalBoundaryHeight);
+        Assert.Equal(preview.ProposalDigest, FoliageFixtures.Context(new(accepted.After, f.Assets)).SnapshotId);
+        Assert.Equal(MapNativeInvalidation.Foliage, accepted.Effects.Invalidates);
+        Assert.Equal(seeded.Select(c => (c.Chunk, c.OldBounds, c.BeforeDigest)), accepted.Effects.FoliageChunks.Select(c => (c.Chunk, c.OldBounds, c.BeforeDigest)));
+        var sequenced = MapFoliageEdits.Prepare(f.Document, f.Assets,
+            new MapFoliageEditSequence([policy with { ExpectedDifferentialDigest = preview.Digest }, new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7, 9])], null));
+        Assert.Equal((0.25f, (byte)9), (sequenced.After.Foliage!.Layers[0].Policy.NormalBoundaryHeight, sequenced.After.Foliage.Layers[0].DensityAt(2, 2)));
+        Assert.Equal(original, MapDocumentFile.SaveText(f.Document));
+
+        // A sequence applies its owner edit and every foliage step on one detached candidate, validated together.
+        PrefabFixture p = PrefabFixtures.Create();
+        string prefabState = MapDocumentFile.SaveText(p.Document);
+        MapFoliageLayer exterior = Change(layer, l =>
+        {
+            l["support"] = new JsonObject { ["kind"] = "Surface", ["surfaceId"] = "exterior" };
+            l["models"] = new JsonArray(new JsonObject { ["assetId"] = p.Assets.Assets[0].Id, ["weight"] = 1 });
+            l["allowedVisibleMaterials"] = new JsonArray();
+            l["materials"] = new JsonArray();
+            l["compatibilityOrdinals"] = new JsonArray(new JsonObject { ["surfaceId"] = "exterior", ["ordinal"] = 0 });
+            l["chunks"] = new JsonArray();
+        });
+        var together = MapFoliageEdits.Prepare(p.Document, p.Assets, new MapFoliageEditSequence(
+            [new MapSetFoliageLayer(exterior), Paint(-3, -5, 0.5f, 40, 1)], new MapMovePrefab("a", new(new Vector3(1, 0, 0), 0, 1))));
+        Assert.Equal(1, together.After.Prefabs!.Instances.Single(i => i.Id == "a").Transform.Position.X);
+        Assert.Equal((byte)40, together.After.Foliage!.Layers[0].DensityAt(0, 0));
+        Assert.True(together.WriteSet.Prefabs && together.WriteSet.Foliage);
+        Assert.True(together.Effects.Invalidates.HasFlag(MapNativeInvalidation.Placements) && together.Effects.Invalidates.HasFlag(MapNativeInvalidation.Foliage));
+        Assert.Null(Assert.Single(together.Effects.FoliageChunks).BeforeDigest);
+        Assert.Equal(prefabState, MapDocumentFile.SaveText(p.Document));
+    }
+
+    static MapPaintFoliage Paint(float x, float z, float radius, byte target, float hardness) => new(Id, x, z, radius, target, hardness);
+
+    static MapFoliageLayer Change(MapFoliageLayer layer, Action<JsonObject> change) => FoliageStorageFixtures.Change(layer, change);
+
+    static MapFoliageLayer Zero(float originX, float originZ, float cell, int width, int depth) =>
+        Change(FoliageFixtures.BasicLayer([]), l =>
+        {
+            l["originX"] = originX;
+            l["originZ"] = originZ;
+            l["cellSize"] = cell;
+            l["width"] = width;
+            l["depth"] = depth;
+        });
+
+    static MapPrefabEditResult Pure(FoliageFixture f, MapFoliageEdit edit)
+    {
+        long expansions = MapPrefabResolver.ThreadExpansions, writes = MapFoliageJson.ThreadPayloadWrites;
+        MapPrefabEditResult result = MapFoliageEdits.Prepare(f.Document, f.Assets, edit);
+        Assert.Equal((0L, 0L), (MapPrefabResolver.ThreadExpansions - expansions, MapFoliageJson.ThreadPayloadWrites - writes));
+        return result;
+    }
+
+    static void Refused(FoliageFixture f, MapFoliageEdit edit, string? detail = null)
+    {
+        string beforeState = MapDocumentFile.SaveText(f.Document);
+        var error = Assert.Throws<MapDocumentException>(() => MapFoliageEdits.Prepare(f.Document, f.Assets, edit));
+        if (detail is not null) Assert.Contains(detail, error.Message, StringComparison.Ordinal);
+        string refusedState = MapDocumentFile.SaveText(f.Document);
+        Assert.Equal(beforeState, refusedState);
+    }
+
+    static byte[] Samples(MapFoliageLayer layer)
+    {
+        var values = new byte[layer.Width * layer.Depth];
+        for (int z = 0; z < layer.Depth; z++)
+            for (int x = 0; x < layer.Width; x++) values[z * layer.Width + x] = layer.DensityAt(x, z);
+        return values;
+    }
+
+    // The released full-domain brush loop, copied as the reference for every reached sample.
+    static byte[] Legacy(MapFoliageLayer layer, MapPaintFoliage brush)
+    {
+        byte[] values = Samples(layer);
+        float radius = brush.RadiusMetres, hardness = brush.Hardness, hardRadius = radius * hardness;
+        int density = brush.Target;
+        for (int z = 0; z < layer.Depth; z++)
+        {
+            float sampleZ = layer.OriginZ + (z * layer.CellSize);
+            for (int x = 0; x < layer.Width; x++)
+            {
+                float sampleX = layer.OriginX + (x * layer.CellSize);
+                float distance = MathF.Sqrt(((sampleX - brush.WorldX) * (sampleX - brush.WorldX)) +
+                    ((sampleZ - brush.WorldZ) * (sampleZ - brush.WorldZ)));
+                if (distance > radius) continue;
+                float strength = distance <= hardRadius || hardness == 1f ? 1f : (radius - distance) / (radius - hardRadius);
+                int index = (z * layer.Width) + x;
+                values[index] = (byte)Math.Clamp((int)MathF.Round(values[index] + ((density - values[index]) * strength)), 0, byte.MaxValue);
+            }
+        }
+        return values;
+    }
+}

@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.MapDoc.Editing;
@@ -29,6 +30,10 @@ public enum MapNativeInvalidation
     /// are named in <see cref="MapNativeEditEffects.WaterBodyIds"/>, and their residency and navigation medium
     /// identity follow.</summary>
     Medium = 128,
+
+    /// <summary>The edit changed authored foliage. The changed density chunks and their cosmetic bounds are named in
+    /// <see cref="MapNativeEditEffects.FoliageChunks"/>. Foliage never adds Physics, Nav or Residency.</summary>
+    Foliage = 256,
 }
 
 public readonly record struct MapBox3(double MinX, double MinY, double MinZ, double MaxX, double MaxY, double MaxZ)
@@ -78,9 +83,13 @@ public sealed record MapNativeEditEffects(MapBox3? OldBounds, MapBox3? NewBounds
     /// <summary>The effective marker name changes of the edit, empty when no name changes.</summary>
     public IReadOnlyList<MapMarkerNameChange> MarkerNameChanges { get; init; } = Array.Empty<MapMarkerNameChange>();
 
+    /// <summary>The directly changed foliage density chunks, empty when the edit changes none.</summary>
+    public IReadOnlyList<MapFoliageChunkChange> FoliageChunks { get; init; } = Array.Empty<MapFoliageChunkChange>();
+
     /// <summary>Compact canonical JSON with fixed field order, ordinal IDs and invariant numbers. <c>waterBodyIds</c>
     /// follows <c>dependencyIds</c> only when <see cref="WaterBodyIds"/> is not empty, and <c>markerNameChanges</c>
-    /// follows <c>markerIds</c> only when <see cref="MarkerNameChanges"/> is not empty. Spatial bounds follow the reported
+    /// follows <c>markerIds</c> only when <see cref="MarkerNameChanges"/> is not empty, and <c>foliageChunks</c> follows
+    /// them only when <see cref="FoliageChunks"/> is not empty. Spatial bounds follow the reported
     /// bounds only when they differ, preserving descriptions whose extents already agree.</summary>
     public string Describe()
     {
@@ -125,6 +134,7 @@ public sealed record MapNativeEditEffects(MapBox3? OldBounds, MapBox3? NewBounds
                 }
                 writer.WriteEndArray();
             }
+            if (FoliageChunks.Count != 0) WriteFoliageChunks(writer, FoliageChunks);
             writer.WriteStartArray("digestChanges");
             foreach (MapDigestChange change in DigestChanges.OrderBy(c => c.Key, StringComparer.Ordinal)
                 .ThenBy(c => c.Before, StringComparer.Ordinal).ThenBy(c => c.After, StringComparer.Ordinal))
@@ -160,6 +170,41 @@ public sealed record MapNativeEditEffects(MapBox3? OldBounds, MapBox3? NewBounds
         writer.WriteNumberValue(box.MaxX);
         writer.WriteNumberValue(box.MaxY);
         writer.WriteNumberValue(box.MaxZ);
+        writer.WriteEndArray();
+    }
+
+    static void WriteFoliageChunks(Utf8JsonWriter writer, IReadOnlyList<MapFoliageChunkChange> changes)
+    {
+        writer.WriteStartArray("foliageChunks");
+        foreach (MapFoliageChunkChange change in changes.OrderBy(c => c.LayerId, StringComparer.Ordinal)
+            .ThenBy(c => c.Chunk.Z).ThenBy(c => c.Chunk.X))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("layerId", change.LayerId);
+            writer.WriteNumber("x", change.Chunk.X);
+            writer.WriteNumber("z", change.Chunk.Z);
+            WriteRect(writer, "oldBounds", change.OldBounds);
+            WriteRect(writer, "newBounds", change.NewBounds);
+            writer.WriteString("before", change.BeforeDigest);
+            writer.WriteString("after", change.AfterDigest);
+            writer.WriteEndObject();
+        }
+        writer.WriteEndArray();
+    }
+
+    static void WriteRect(Utf8JsonWriter writer, string name, MapFoliageRect? bounds)
+    {
+        writer.WritePropertyName(name);
+        if (bounds is not { } rect)
+        {
+            writer.WriteNullValue();
+            return;
+        }
+        writer.WriteStartArray();
+        writer.WriteNumberValue(rect.MinX);
+        writer.WriteNumberValue(rect.MinZ);
+        writer.WriteNumberValue(rect.MaxX);
+        writer.WriteNumberValue(rect.MaxZ);
         writer.WriteEndArray();
     }
 

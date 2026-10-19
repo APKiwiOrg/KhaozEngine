@@ -204,6 +204,11 @@ History reuse also projects the conservative anchored envelope with the shared b
 All four prior clip components must remain finite, including products and partial sums before cancellation.
 Unsafe prior projection follows the same current-data seeding and local transition rejection path.
 
+Ordinary restoration uses a cold raw-input envelope for its actual skinning route. GPU skinning retains homogeneous
+palette W through the full model and projection. CPU skinning drops skin W before the model shader supplies W=1.
+These restoration bounds cover raw weights, projective palettes and subnormal amplification without normalizing inputs
+or changing the covered kernel's XYZ envelope.
+
 **CPU-side bounds.** The CPU never reads the GPU surface back for drawing decisions. Culling, shadow
 caster classification, the coverage sphere, temporal rejection bounds and the origin guard use one
 conservative envelope of the current pose, expanded by the largest command `MaxWorldRecession`. Preparation

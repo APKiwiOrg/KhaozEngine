@@ -6434,7 +6434,10 @@ shadow and sphere consumers receive an outward absolute box from that same envel
 retain the anchored coordinates. GPU transitions draw those rectangles before resolve only when
 `TransitionChanged` is set. CPU-known removals reject their bounds directly. Near-plane uncertainty rejects the
 viewport for that transition. Ordinary replacement meshes have cold palette bounds too, so restoration needs no
-vertex scan. Unavailable or unrepresentable bounds use uncertainty for one removal transition. Global temporal
+vertex scan. Those bounds follow the actual ordinary route: GPU skinning preserves raw-weight homogeneous W through the
+palette and full model transform, while CPU skinning drops skin W before the model shader supplies W=1. Raw-input
+rounding bounds cover subnormal amplification and projective W without changing or normalizing ordinary rendering.
+Unavailable or unrepresentable bounds use uncertainty for one removal transition. Global temporal
 history stays valid through these local changes.
 
 #### Headless equipment coverage oracle

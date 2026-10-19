@@ -212,7 +212,10 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   Unequip and removal reject their bounds unconditionally. Near-plane uncertainty rejects the viewport for that
   transition. The common prepared palette envelope retains an origin anchor before outward absolute conversion,
   so culling and shadow scheduling share the bound while temporal projection preserves large-origin locality.
-  Ordinary restoration uses cold per-mesh palette bounds. An unavailable or unrepresentable bound uses viewport
+  Ordinary restoration uses cold per-mesh raw-input palette bounds and the actual skinning route. GPU skinning retains
+  homogeneous W through palette, model and projection. CPU skinning drops skin W before the model shader supplies W=1.
+  The bounds preserve that distinction, including raw weights and projective palettes, without normalizing renderer inputs.
+  An unavailable or unrepresentable bound uses viewport
   uncertainty for that removal transition. None of these transitions resets global temporal history.
   Before opening the frame list, call `PrepareFrame(displayWidth, displayHeight)` after all submissions.
   It reserves the temporal mask at the configured prospective temporal size, including when AA is initially off.

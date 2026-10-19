@@ -158,8 +158,8 @@ public sealed partial class Scene3D
             int count = _skinnedMeshes[item.Mesh.Index]!.InverseBind.Length;
             var bones = CollectionsMarshal.AsSpan(_boneMatrices).Slice(i * SkinningMath.MaxBonesPerDraw, count);
             Matrix4x4 renderModel = ToRender(item.World);
-            bounds.AddBounds(CoverageSurfaceBounds.FromRender(envelope.ExpandWorld(envelope.BoundSkin(bones),
-                renderModel, ReadOnlySpan<CoverageCommandPose>.Empty), _frameOrigin));
+            bounds.Add(envelope.BoundOrdinary(bones, renderModel,
+                UseCoverageVertexSkinning(item.Mesh, item.Coverage.Preparation is not null)));
         }
         return bounds.Build();
     }

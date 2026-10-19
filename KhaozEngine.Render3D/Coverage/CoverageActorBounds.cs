@@ -16,6 +16,7 @@ internal sealed class CoverageActorBounds
     readonly CoverageScalarBounds[] slotWeights;
     readonly CoverageScalarBounds totals;
     readonly bool nonnegative = true, identity, rigid;
+    readonly CoverageOrdinaryBounds ordinary;
 
     internal CoverageActorBounds(CoverageSourceTopology source)
         : this((source ?? throw new ArgumentNullException(nameof(source))).Identity, source.Positions, source.SkinVertices) { }
@@ -67,7 +68,12 @@ internal sealed class CoverageActorBounds
             totals = Join(totals, total);
             identity |= roundedTotal < 1e-8f;
         }
+        ordinary = new(skin);
     }
+
+    /// <summary>Ordinary rendering preserves GPU skin W, or drops CPU skin W before the full model transform.</summary>
+    internal CoveragePositionBounds BoundOrdinary(ReadOnlySpan<Matrix4x4> palette, in Matrix4x4 model, bool vertexSkinning) =>
+        ordinary.Transform(palette, model, vertexSkinning);
 
     internal MeshBounds BoundSkin(ReadOnlySpan<Matrix4x4> composedPalette)
     {

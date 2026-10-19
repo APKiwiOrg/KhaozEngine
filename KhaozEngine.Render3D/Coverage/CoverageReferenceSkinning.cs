@@ -29,6 +29,13 @@ internal sealed class CoverageReferenceSkin
 /// <summary>Pinned scalar CPU palette composition and independently gathered source-vertex skinning.</summary>
 internal static class CoverageReferenceSkinning
 {
+    internal static void Compose(ReadOnlySpan<Matrix4x4> jointWorld, ReadOnlySpan<Matrix4x4> inverseBind, Span<Matrix4x4> composed)
+    {
+        if (jointWorld.Length != inverseBind.Length || composed.Length != jointWorld.Length)
+            throw new ArgumentException("Palette composition requires identical input and output lengths.");
+        for (int bone = 0; bone < composed.Length; bone++) composed[bone] = Compose(jointWorld[bone], inverseBind[bone]);
+    }
+
     internal static Matrix4x4 Compose(in Matrix4x4 jointWorld, in Matrix4x4 inverseBind)
     {
         var j = jointWorld; var b = inverseBind;

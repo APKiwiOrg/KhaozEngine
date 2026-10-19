@@ -15,18 +15,32 @@ internal static class CoverageReferenceFrames
     {
         if (!ReferenceEquals(topology, scratch.ReferenceTopology.Topology))
             return CoverageFrames.Refuse(topology, CoverageFailureCode.IdentityMismatch, 0, 0, 0, 0, out failure);
-        if (!CoverageFrameAdmission.TryBegin(topology, commands, scratch.CommandCapacity, scratch.Order, scratch.RegionCommands, out failure)) return false;
-        Span<int> order = scratch.Order.AsSpan(0, commands.Length);
-        scratch.UniformArithmetic.Reset();
-        scratch.ActiveCommands = commands.Length;
+        bool accepted = TryPrepare(topology, model, commands, scratch.Order, scratch.RegionCommands, scratch.Frames,
+            scratch.UniformArithmetic, out failure);
+        if (commands.Length <= scratch.CommandCapacity) scratch.ActiveCommands = commands.Length;
+        return accepted;
+    }
+
+    internal static bool TryPrepare(CoverageRefinement topology, in Matrix4x4 model, ReadOnlySpan<CoverageCommandPose> commands,
+        Span<int> order, Span<int> regionCommands, Span<CoverageReferenceFrame> frames,
+        CoverageReferenceArithmetic uniformArithmetic, out CoverageFailure failure)
+    {
+        ArgumentNullException.ThrowIfNull(topology);
+        ArgumentNullException.ThrowIfNull(uniformArithmetic);
+        int capacity = Math.Min(CoverageScratch.MaxCommands, Math.Min(order.Length, frames.Length));
+        if (regionCommands.Length < topology.Map.Regions.Count)
+            return CoverageFrames.Refuse(topology, CoverageFailureCode.CapacityExceeded, 0, 0, topology.Map.Regions.Count, regionCommands.Length, out failure);
+        if (!CoverageFrameAdmission.TryBegin(topology, commands, capacity, order, regionCommands, out failure)) return false;
+        order = order[..commands.Length];
+        uniformArithmetic.Reset();
         if (commands.Length == 0) return true;
         bool actorValid = CoverageFrameAdmission.TryActor(model, out var actor);
         for (int slot = 0; slot < order.Length; slot++)
         {
             CoverageCommandPose command = commands[order[slot]];
-            if (!CoverageFrameAdmission.TryCommand(topology, commands, order, scratch.RegionCommands, slot, actorValid,
+            if (!CoverageFrameAdmission.TryCommand(topology, commands, order, regionCommands[..topology.Map.Regions.Count], slot, actorValid,
                 out var equipment, out var coverage, out failure)) return false;
-            if (!Derive(scratch.UniformArithmetic, actor, equipment, coverage, command, order[slot], out scratch.Frames[slot]))
+            if (!Derive(uniformArithmetic, actor, equipment, coverage, command, order[slot], out frames[slot]))
                 return CoverageFrames.Refuse(topology, CoverageFailureCode.UnsupportedTransform, command, out failure);
         }
         return true;

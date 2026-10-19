@@ -44,8 +44,9 @@ internal static class CoverageGpuSupportProbe
         }
         """;
 
-    internal static (uint[] Inputs, uint[] Static, uint[] Expected) Data()
+    internal static (uint[] Inputs, uint[] Static, uint[] Expected) Data(Func<List<uint>, CoverageReferenceSupport, uint>? pack = null)
     {
+        pack ??= AppendSupport;
         var inputs = new List<uint> { 0 };
         var data = new List<uint>(new uint[17]);
         var expected = new List<uint>();
@@ -64,13 +65,13 @@ internal static class CoverageGpuSupportProbe
             expected.Add(ok ? 1u : 0u); expected.Add(Bits(first)); expected.Add(Bits(second)); expected.Add(unchecked((uint)source));
         }
         CoverageReferenceSupport square = Grid([-1, 1]);
-        uint squareOffset = CoverageGpuTestSupportPacking.Append(data, square);
+        uint squareOffset = pack(data, square);
         // Literal first-hit and boundary-tie rows precede the larger reference corpus.
         Add(square, squareOffset, 0, default);
         Add(square, squareOffset, 1, default);
         foreach (var support in new[] { square, Grid([0, 1]), Grid([-1, -MathF.ScaleB(1, -25), 1]), Grid([-2, -1, 0, 1, 2]), Rounded(2), Rounded(3) })
         {
-            uint offset = ReferenceEquals(support, square) ? squareOffset : CoverageGpuTestSupportPacking.Append(data, support);
+            uint offset = ReferenceEquals(support, square) ? squareOffset : pack(data, support);
             for (int y = 0; y <= 16; y++)
                 for (int x = 0; x <= 16; x++)
                     Add(support, offset, 0, new(support.GridMin.X + x / 16f * (support.GridMax.X - support.GridMin.X),
@@ -84,22 +85,22 @@ internal static class CoverageGpuSupportProbe
         }
         Vector3[] sheet = [new(.25f, -.25f, .04f), new(.25f, .25f, .04f), new(0, 0, .02f)];
         var regression = Triangle(sheet);
-        uint reg = CoverageGpuTestSupportPacking.Append(data, regression);
+        uint reg = pack(data, regression);
         foreach (float x in new[] { 0.10000000149011612f, 0.20000001788139343f })
             Add(regression, reg, 2, new(-0.050000011920928955f, -0.04999999701976776f, 0),
                 new(x, x < .15f ? 0.10000000894069672f : 0.20000000298023224f, 0), new(-.2f, .2f, 0));
         foreach (var (host, frozenSheet) in CoverageReferencePredicateTests.FrozenGroup224Fixtures())
         {
             var frozen = Triangle(frozenSheet);
-            uint offset = CoverageGpuTestSupportPacking.Append(data, frozen);
+            uint offset = pack(data, frozen);
             Add(frozen, offset, 2, host[0], host[1], host[2]);
         }
         var crossing = Triangle([new(0, 1.25f, 0), new(2, 1.25f, .1f), new(1, -.75f, .05f)]);
-        uint cross = CoverageGpuTestSupportPacking.Append(data, crossing);
+        uint cross = pack(data, crossing);
         Add(crossing, cross, 2, new(0, 0, .2f), new(2, 0, .3f), new(1, 2, .1f));
         Add(crossing, cross, 2, new(0, 0, .2f), new(1, 2, .1f), new(2, 0, .3f));
         var flat = Triangle([new(0, 0, .125f), new(2, 0, .125f), new(0, 2, .125f)]);
-        uint flatOffset = CoverageGpuTestSupportPacking.Append(data, flat);
+        uint flatOffset = pack(data, flat);
         foreach (Vector3[] host in new Vector3[][] {
             [new(0, 0, .25f), new(1, 0, .5f), new(0, 1, .125f)],
             [new(1, 0, .25f), new(3, 0, .75f), new(2, -1, 0)],
@@ -113,23 +114,30 @@ internal static class CoverageGpuSupportProbe
             [new(0, 2, .25f), new(2, 0, .75f), new(0, 0, .125f)] })
         {
             var slope = Triangle(points);
-            uint slopeOffset = CoverageGpuTestSupportPacking.Append(data, slope);
+            uint slopeOffset = pack(data, slope);
             foreach (Vector3 p in new Vector3[] { points[0], points[1], points[2], new(0, .5f, 0), new(.5f, 0, 0), new(1, 1, 0), new(.5f, .75f, 0) })
             { Add(slope, slopeOffset, 0, p); Add(slope, slopeOffset, 1, p); }
         }
         // A query must use the uploaded cell list, rather than silently substituting a full scan.
         var emptyCell = Grid([-1, 1]);
         Array.Clear(emptyCell.CellOffsets);
-        uint emptyOffset = CoverageGpuTestSupportPacking.Append(data, emptyCell);
+        uint emptyOffset = pack(data, emptyCell);
         Add(emptyCell, emptyOffset, 0, default);
         // A bad first candidate aborts. It must not be skipped to reach a later valid candidate.
         var invalid = Grid([-1, 1]);
         invalid.Positions[1] = invalid.Positions[0];
-        uint invalidOffset = CoverageGpuTestSupportPacking.Append(data, invalid);
+        uint invalidOffset = pack(data, invalid);
         Add(invalid, invalidOffset, 0, default);
         Add(invalid, invalidOffset, 1, default);
         Add(invalid, invalidOffset, 2, new(-.5f, -.5f, 1), new(.5f, -.5f, 1), new(0, .5f, 1));
         return (inputs.ToArray(), data.ToArray(), expected.ToArray());
+    }
+
+    static uint AppendSupport(List<uint> words, CoverageReferenceSupport support)
+    {
+        uint offset = checked((uint)words.Count);
+        words.AddRange(CoverageGpuUpload.Support(support.Support).Words);
+        return offset;
     }
 
     static uint Bits(float value) => BitConverter.SingleToUInt32Bits(value);

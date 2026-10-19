@@ -22579,6 +22579,11 @@ report the same-frame CPU admission or `Dispatched` result. Diagnostic availabil
 history. A full ring drops only the new diagnostic copy. On Direct3D11 the normal Present boundary makes completion
 visible. A headless correctness test may drain once before polling, while production polling never flushes.
 
+Rigid mesh upload caches whether `Normal.X`, `Color.X`, `Uv.X` and `Tangent.X` are finite, matching the
+vertex inputs consumed by the shadow position sink. Coverage equipment staging refuses a nonfinite lane with
+`IdentityMismatch` before registry or destination mutation. Eligibility belongs to the uploaded snapshot and
+requires no vertex scan during staging.
+
 The public offline surface validator is `CoverageCertification.ValidateGeometry`, with and without a
 `CoverageGeometryCertificate` output. It retains exact geometry checks and grants no draw permission.
 The CPU constructor, render certificate, captured pass API and CPU preparation counters are retired.

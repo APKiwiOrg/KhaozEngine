@@ -58,6 +58,77 @@ public sealed class CoverageGpuStagingTests
         h.AssertCoverageDispatch(frame);
     }
 
+    public static IEnumerable<object[]> EquipmentAttributeInputs()
+    {
+        foreach (string lane in new[] { "normal", "color", "uv", "tangent" })
+            foreach (var (value, accepted) in new[] { (float.NaN, false), (float.PositiveInfinity, false),
+                (float.NegativeInfinity, false), (0f, true), (float.MaxValue, true), (-float.MaxValue, true) })
+                yield return new object[] { lane, value, accepted };
+    }
+
+    [Theory]
+    [MemberData(nameof(EquipmentAttributeInputs))]
+    public void Equipment_staging_preserves_cold_finite_lane_eligibility(string lane, float value, bool accepted)
+    {
+        using var h = new CoverageSceneFixture();
+        var vertices = h.RigidMesh.Vertices.ToArray();
+        SetLane(value);
+        var mesh = new GltfMesh(vertices, h.RigidMesh.Indices32.ToArray());
+        Assert.Equal(h.RigidMesh.Vertices.Select(v => v.Position), mesh.Vertices.Select(v => v.Position));
+        Assert.Equal(h.RigidMesh.Indices32, mesh.Indices32);
+        var handle = h.Scene.LoadMesh(mesh);
+        // Caller array edits after upload cannot change the eligibility of the bytes already uploaded.
+        SetLane(accepted ? float.NaN : 0);
+        var sentinel = new RigidInstanceDraw(h.RigidHandle, Matrix4x4.CreateTranslation(77, 0, 0));
+        var frozen = new[] { sentinel };
+        h.Begin();
+        bool staged = h.Scene.TryStageCoverageEquipment(MotionKey.From(10), 1, 1, h.Support,
+            [new(handle, Matrix4x4.Identity)], frozen, out var failure);
+        Assert.Equal(accepted, staged);
+        Assert.Empty(h.Scene.QueuedInstancesForTests);
+        if (accepted)
+        {
+            Assert.Equal(default, failure);
+            Assert.NotNull(frozen[0].Coverage.Stage);
+            Assert.Equal(handle, frozen[0].Mesh);
+        }
+        else
+        {
+            Assert.Equal(new CoverageFailure(CoverageFailureCode.IdentityMismatch, null, 1, 1, 0, 0), failure);
+            Assert.Equal(sentinel, frozen[0]);
+            Assert.Null(frozen[0].Coverage.Stage);
+            // A failed admission did not claim this actor, instance or command in the staging registry.
+            Assert.True(h.Scene.TryStageCoverageEquipment(MotionKey.From(10), 1, 1, h.Support,
+                [new(h.RigidHandle, Matrix4x4.Identity)], frozen, out failure), failure.ToString());
+            Assert.NotNull(frozen[0].Coverage.Stage);
+        }
+
+        void SetLane(float input)
+        {
+            switch (lane)
+            {
+                case "normal": vertices[^1].Normal.X = input; break;
+                case "color": vertices[^1].Color.X = input; break;
+                case "uv": vertices[^1].Uv.X = input; break;
+                case "tangent": vertices[^1].Tangent.X = input; break;
+            }
+        }
+    }
+
+    [Fact]
+    public void Equipment_finite_lane_admission_keeps_other_attribute_components_eligible()
+    {
+        using var h = new CoverageSceneFixture();
+        var vertices = h.RigidMesh.Vertices.ToArray();
+        vertices[^1].Normal.Y = vertices[^1].Color.Y = vertices[^1].Uv.Y = vertices[^1].Tangent.Y = float.NaN;
+        var handle = h.Scene.LoadMesh(new GltfMesh(vertices, h.RigidMesh.Indices32.ToArray()));
+        var frozen = new RigidInstanceDraw[1];
+        h.Begin();
+        Assert.True(h.Scene.TryStageCoverageEquipment(MotionKey.From(10), 1, 1, h.Support,
+            [new(handle, Matrix4x4.Identity)], frozen, out var failure), failure.ToString());
+        Assert.NotNull(frozen[0].Coverage.Stage);
+    }
+
     [Theory]
     [InlineData(false, false)]
     [InlineData(true, true)]

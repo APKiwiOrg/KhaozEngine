@@ -12,11 +12,21 @@ internal sealed class CoverageUploadEvidence
 {
     internal readonly string Fingerprint;
     internal readonly MeshBounds Bounds;
+    internal readonly bool FinitePositionSinkInputs;
 
     internal CoverageUploadEvidence(GltfMesh mesh)
     {
         Fingerprint = Hash(mesh.Vertices.Select(v => v.Position).ToArray(), mesh.Indices32);
         Bounds = MeshBounds.FromVertices(mesh.Vertices);
+        FinitePositionSinkInputs = HasFinitePositionSinkInputs(mesh.Vertices);
+    }
+
+    static bool HasFinitePositionSinkInputs(ReadOnlySpan<ModelVertex> vertices)
+    {
+        foreach (ref readonly ModelVertex v in vertices)
+            if (!float.IsFinite(v.Normal.X) || !float.IsFinite(v.Color.X)
+                || !float.IsFinite(v.Uv.X) || !float.IsFinite(v.Tangent.X)) return false;
+        return true;
     }
 
     internal static string Hash(Vector3[] positions, uint[] indices)

@@ -1,8 +1,8 @@
 # Interior cut for props inside buildings
 
-Status: implemented, backend correctness and timing evidence pending for
-[#1470](https://github.com/APKiwiOrg/KhaozEngine/issues/1470). Approved on 2026-10-18 under owner rulings
-IC1 to IC6, amended by IC7 on 2026-10-19, orchestrator calls OC1 to OC10 and OC8 (a).
+Status: implemented for [#1470](https://github.com/APKiwiOrg/KhaozEngine/issues/1470), correct on Metal,
+Direct3D 11 and Vulkan, with its measured cost accepted under IC8. Approved on 2026-10-18 under owner rulings
+IC1 to IC6, amended by IC7 and IC8 on 2026-10-19, orchestrator calls OC1 to OC10 and OC8 (a).
 Consumer captures remain the IC6 adoption gate.
 
 ## As built
@@ -78,6 +78,11 @@ time, is therefore not the fix. That check stays available as an optional author
   drawn bounds can reach an interior take the cut path. Cache by world transform and field version. The
   0.1 ms budget applies to TypicalVillage, with 3600 trees, 49 buildings and about 2 percent reaching trees.
   DenseVillage retains the original layout and is recorded without a budget gate.
+- **IC8 Accept the measured cost (2026-10-19).** After three tuning rounds, hosted run 39196852937 measured
+  TypicalVillage at 0.079 ms on Linux Vulkan, 0.116 ms on Windows Vulkan and 0.203 ms on Windows Direct3D 11,
+  with the GPU part near zero on every leg. The owner accepted this cost for the release. The remaining CPU
+  cost of about 10 to 19 ns per opted-in instance, highest on Direct3D 11, is tracked in
+  [#1502](https://github.com/APKiwiOrg/KhaozEngine/issues/1502).
 
 ## Orchestrator calls approved with the design
 
@@ -390,6 +395,9 @@ The query expands its footprint by one cell and bounds height in the shader's fl
 Answers are cached by mesh generation and world transform for the field version and render origin.
 Stable submission slots retain the per-placement flag without hashing the transform again each frame.
 Changed slots consult the placement cache, so reordered or temporarily absent placements keep their answers.
+The field version and render origin are checked once per `Begin` and in the `InteriorCut` setter, not per draw.
+A retained slot answers before any mesh validation or bounds read, comparing handle index and generation
+directly and reading the stored transform in place, so an unchanged opted-in draw allocates nothing.
 Colour, shadows and outlines use zero outward margin. Silhouettes expand the transformed sphere by their
 world-metre hull width and cache that separate answer with the margin in its key.
 Static placements retain their answer across absent frames. Unloading a mesh removes its cached placements.
@@ -866,6 +874,12 @@ The engine's GPU seam has no timestamp queries (`KhaozEngine.Diagnostics/PassTim
 measure, as in the temporal record. It runs through `gpu-hosted-bench` on the hosted T4 (Direct3D 11 and Vulkan),
 once, as OC8 approves.
 
+**As recorded.** The owner approved each later run. TypicalVillage mode 4 minus mode 2 measured 1.9 to 2.4 ms
+before the relevance counters were fixed, 0.56 to 0.63 ms after them, 0.23 to 0.31 ms once the per-draw boxing
+and copies were removed, and 0.079 to 0.203 ms in the final run 39196852937. In every later run the GPU part,
+read from the submit-and-drain delta, stayed near zero, and EmptyField cost the same as VillageInteriors, so the
+remainder is the CPU cost of opting in. IC8 accepts it.
+
 ## Docs and release notes
 
 At build time, in the same change:
@@ -886,8 +900,8 @@ At build time, in the same change:
 
 - **Early depth on reaching casters.** Discard-capable pipelines can lose early depth, including for solid
   trunks. Hosted run 39160690665 measured this routing cost at about seven times the budget when every tree
-  opted in. IC7 keeps missed instances on their original path. The next hosted record measures TypicalVillage
-  against 0.1 ms for colour and shadows together, with DenseVillage recorded without that budget gate.
+  opted in. IC7 keeps missed instances on their original path, and the final record puts the GPU part near
+  zero. The CPU cost of opting in remains and is tracked in [#1502](https://github.com/APKiwiOrg/KhaozEngine/issues/1502).
 - **Upload hitch.** A re-centre or a rebuild uploads 16 MiB in one frame. If it shows, the lattice snap already
   allows a toroidal window that uploads only the strip the re-centre exposes.
 - **Courtyards.** An Indoors-flagged courtyard with a tree in it is cut up to the top of its storey, trunk

@@ -162,9 +162,10 @@ internal sealed partial class CoveragePullingTestScene : IDisposable
         }
 
         internal void Draw(bool coverage, bool outlineOnly, Matrix4x4? worldOverride = null, bool shadowOnly = false,
-            bool outlines = true, bool referenceEquipment = false)
+            bool outlines = true, bool referenceEquipment = false, Matrix4x4? bonePose = null)
         {
             var world = worldOverride ?? this.world;
+            if (bonePose is { } pose) palette[0] = palette[1] = pose;
             Frame = default;
             if (coverage)
             {

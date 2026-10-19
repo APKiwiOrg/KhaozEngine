@@ -27,6 +27,7 @@ public sealed partial class Scene3D
     {
         _coverageGpu?.PrepareFrame();
         ReserveCoverageOutcomes();
+        ReserveCoverageVerification();
         int draws = _skinnedInstances.Items.Count, vertices = 0;
         foreach (var item in _skinnedInstances.Items)
             if (!UseCoverageVertexSkinning(item.Mesh, item.Coverage.Preparation is not null) && _skinnedCpuVerts[item.Mesh.Index] is { } source)
@@ -129,6 +130,7 @@ public sealed partial class Scene3D
         }
         for (int region = 0; region < 32; region++) frame[start + 324 + region] = unchecked((uint)uniforms.RegionCommands[region]);
         StageCoverageHistory(p, commands, frame);
+        StageCoverageVerification(p, frame, batch);
         batch.Add(r, frame);
         Pair(0, p.Generation); Pair(2, p.View); Pair(4, p.Actor.Value); Pair(6, p.Id);
         commands.UpdateBuffer(batch.Results, (uint)r.ActorSlot * 64, p.ResultIdentity);

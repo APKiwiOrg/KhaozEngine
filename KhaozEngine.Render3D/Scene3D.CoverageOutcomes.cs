@@ -55,7 +55,9 @@ public sealed partial class Scene3D
     internal void RecordCoverageReadbacks(IGpuCommandList commands, GpuFrameSubmission submission)
     {
         _coverageSubmissionState.Outcomes = _coverageOutcomes;
+        _coverageSubmissionState.Verification = _coverageVerification;
         if (!submission.TryRegister(_coverageSubmissionState)) { _coverageSubmissionState.Abandoned(); return; }
+        _coverageVerificationTail?.Record(commands, submission);
         if (_coverageOutcomesTail is not { } state || _coverageGpu?.Batch is not { Count: > 0 } batch) return;
         foreach (var p in _coverageArena.Preparations)
         {
@@ -76,6 +78,7 @@ public sealed partial class Scene3D
 
     void DisposeCoverageOutcomes()
     {
+        DisposeCoverageVerification();
         for (var state = _coverageOutcomes; state is not null; state = state.Next) state.Dispose();
     }
 }

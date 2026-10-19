@@ -1,3 +1,5 @@
+using System;
+using System.Runtime.ExceptionServices;
 using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Render3D;
@@ -7,16 +9,23 @@ internal sealed partial class CoverageSubmissionState : IGpuFrameSubmissionParti
 {
     internal CoverageOutcomeReadbacks? Outcomes;
     internal Scene3D? Scene;
+    internal CoverageVerificationReadbacks? Verification;
 
-    public void Submitted()
-    {
-        Scene?.CommitCoverageMotion();
-        for (var state = Outcomes; state is not null; state = state.Next) state.Submitted();
-    }
+    public void Submitted() => Notify(true);
+    public void Abandoned() => Notify(false);
 
-    public void Abandoned()
+    void Notify(bool success)
     {
-        Scene?.AbandonCoverageMotion();
-        for (var state = Outcomes; state is not null; state = state.Next) state.Abandoned();
+        ExceptionDispatchInfo? error = null;
+        try { if (success) Scene?.CommitCoverageMotion(); else Scene?.AbandonCoverageMotion(); }
+        catch (Exception failure) { error = ExceptionDispatchInfo.Capture(failure); }
+        for (var state = Outcomes; state is not null; state = state.Next) NotifyConsumer(state);
+        for (var state = Verification; state is not null; state = state.Next) NotifyConsumer(state);
+        error?.Throw();
+        void NotifyConsumer(IGpuFrameSubmissionParticipant consumer)
+        {
+            try { if (success) consumer.Submitted(); else consumer.Abandoned(); }
+            catch (Exception failure) { error ??= ExceptionDispatchInfo.Capture(failure); }
+        }
     }
 }

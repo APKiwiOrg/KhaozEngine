@@ -6529,8 +6529,9 @@ static CoverageOracleCertificate CheckPose(CoverageSourceTopology host, HostCove
 A certificate covers only the exact supplied palette, model and command bits. The game's sampler
 must produce those bits deterministically on every machine that plays them. R2's sampled-pose
 limitation remains: passing samples does not prove unsampled blends, transitions or continuous
-animation. The game's sampler, blend grid and asset inventory remain Part D. The dev-only real-GPU
-verification mode and native bit-equality proof remain Part C.
+animation. The game's sampler, blend grid and asset inventory remain Part D. For asynchronous device
+construction comparisons, see [sampled equipment coverage verification](#sampled-equipment-coverage-verification).
+That mode supplies no exact geometry certificate.
 
 #### Migrating from 20.x
 
@@ -22577,6 +22578,40 @@ growth. `Outcome` is `Covered` or `UncoveredFallback` with the GPU failure. `Get
 report the same-frame CPU admission or `Dispatched` result. Diagnostic availability changes neither drawing nor
 history. A full ring drops only the new diagnostic copy. On Direct3D11 the normal Present boundary makes completion
 visible. A headless correctness test may drain once before polling, while production polling never flushes.
+
+### Sampled equipment coverage verification
+
+Developer construction diagnostics default to off. Select one explicit stable actor key before opening the
+command list:
+
+```csharp
+scene.ConfigureCoverageVerification(actor, everyNFrames: 3);
+```
+
+The interval samples scene coverage generations 3, 6 and so on when that actor is dispatched. It does not infer
+an actor from a draw slot. Coverage generations and view identities are retained separately from the rendered
+`FrameView.FrameIndex`. `MotionKey.None` or an interval of zero disables it. Negative intervals throw.
+
+Opt-in and cold topology growth reserve a three-slot surface ring, owned pose snapshots and reusable reference
+scratch. Each sample copies the exact original palette, inverse binds, model, commands and actual uploaded input
+words before staging storage is reused. Immutable host and support identities remain attached to the sample.
+Its concrete physical current buffer and reservation are captured before successful submission rotates history.
+The surface copy is recorded beside outcomes under the same `GpuFrameSubmission` fence. No additional submission,
+wait, synchronous map or flush is introduced. Full slots or unavailable shared fences skip only verification.
+
+Later `PrepareFrame` calls poll completion. The pinned `CoverageReferenceSkinning.Compose` checks the original
+palette against the captured upload, then `TrySkin` consumes those uploaded palette words.
+`CoverageReferenceConstructor.TryConstruct` rebuilds the stored command pose with the same pinned command-frame
+preparation used at admission. The comparison checks every field word in vertex order with zero tolerance,
+including signed zero. A refused GPU surface compares its complete selected source fallback. A mismatch logs
+the first vertex, field, expected and actual hexadecimal bits, original pose words, actual upload words and all
+retained identities. Matching samples log nothing. Actor replacement cannot redirect an old sample to new pose
+storage. Disabling or changing selection cancels comparison while pending staging stays owned until completion
+or host teardown. Disabled verification performs no CPU reference construction.
+
+This mode checks device construction conformance. It does not run `CoverageOracle`, certify exact geometry,
+produce a drawable certificate or alter the GPU-selected surface. Native fixture comparisons and injected
+comparison controls are separate proof routes. The frozen device corpus and exact certification rules still apply.
 
 ### GPU timestamps without waiting
 

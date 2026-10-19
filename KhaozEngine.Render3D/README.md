@@ -184,7 +184,20 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   polls asynchronously and reports immutable `FrameId`, `ViewId`, `Actor` and the completed `Outcome`.
   The retained host, command and equipment identity survive later `Begin` calls, actor reuse and cold capacity
   growth. Partial actor enumeration keeps its payload and metadata. Full rings skip only that frame's diagnostic
-  copy. Availability never changes a draw or history decision. Surface, preview and snapshot hosts share their
+  copy. Availability never changes a draw or history decision.
+  Developer conformance diagnostics are off by default. Call
+  `scene.ConfigureCoverageVerification(actor, everyNFrames: 3)` before command recording to sample an explicit
+  `MotionKey` on coverage frames 3, 6 and so on. `MotionKey.None` or zero disables it, and negative intervals throw.
+  Three cold-reserved slots retain original palettes, inverse binds, model, commands, actual uploaded words and
+  frame/view/actor/preparation identities. The selected physical surface is copied alongside outcomes with the
+  same submission fence before history buffers rotate. Later `PrepareFrame` polling compares completed native
+  words against pinned CPU construction. Refused actors compare their selected source fallback.
+  A mismatch logs only its first vertex and field with exact expected/actual bits and complete retained pose and
+  upload words. Signed zeros compare exactly. Full slots skip verification while drawing and history continue.
+  Disable and actor changes cancel comparison while retaining pending staging until completion or teardown.
+  This mode allocates reference scratch only on opt-in or cold topology growth, runs no reference work while
+  disabled, and adds no wait, flush or submission. It tests construction conformance, and supplies no exact
+  geometry certificate. Surface, preview and snapshot hosts share their
   command list's `GpuFrameSubmission` owner with the aggregate result copy. The stable scene participant also
   registers when no GPU result rows exist, including removal and CPU fallback views. Consumer disposal defers unsignaled
   staging cleanup to completion or host teardown. Tokens expire at the next `Begin`, disposal

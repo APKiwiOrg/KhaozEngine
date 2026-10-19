@@ -13,7 +13,7 @@ public sealed class ModelVisibilityShaderTests
     [InlineData(true, false)]
     [InlineData(false, true)]
     [InlineData(true, true)]
-    public void SelectInvokesFallbackFactoryOnlyWithoutVisibility(bool motion, bool visibility)
+    public void TrySelectEvaluatesFallbackOnlyWithoutVisibility(bool motion, bool visibility)
     {
         using var device = new FakeGpuDevice();
         using var shaders = new ModelVisibilityShaders();
@@ -21,12 +21,14 @@ public sealed class ModelVisibilityShaderTests
         string fragment = motion ? ShaderSources.SilhouetteMotionFrag : ShaderSources.SilhouetteFrag;
         int fallbackCalls = 0;
 
-        IGpuShaderSet selected = shaders.Select(device.Factory, TemporalVisibilityLayoutTests.Layout(motion, visibility),
-            ShaderSources.SilhouetteVert, fragment, () =>
-            {
-                fallbackCalls++;
-                return fallback;
-            }, preserve: true);
+        IGpuShaderSet Fallback()
+        {
+            fallbackCalls++;
+            return fallback;
+        }
+        IGpuShaderSet selected = shaders.TrySelect(device.Factory, TemporalVisibilityLayoutTests.Layout(motion, visibility),
+            ShaderSources.SilhouetteVert, fragment, preserve: true, out IGpuShaderSet visibilityShaders)
+            ? visibilityShaders : Fallback();
 
         Assert.Equal(visibility ? 0 : 1, fallbackCalls);
         if (visibility) Assert.NotSame(fallback, selected);
@@ -39,9 +41,10 @@ public sealed class ModelVisibilityShaderTests
         using var device = new FakeGpuDevice();
         using var shaders = new ModelVisibilityShaders();
         using var fallback = new FakeShaderSet("fallback vertex", "fallback fragment");
-        IGpuShaderSet Select(bool visibility) => shaders.Select(device.Factory,
+        IGpuShaderSet Select(bool visibility) => shaders.TrySelect(device.Factory,
             TemporalVisibilityLayoutTests.Layout(motion: true, visibility), ShaderSources.SilhouetteVert,
-            ShaderSources.SilhouetteMotionFrag, () => fallback, preserve: true);
+            ShaderSources.SilhouetteMotionFrag, preserve: true, out IGpuShaderSet selectedShaders)
+            ? selectedShaders : fallback;
 
         var visibilityShaders = Assert.IsType<FakeShaderSet>(Select(visibility: true));
         Assert.Same(visibilityShaders, Select(visibility: true));

@@ -96,11 +96,11 @@ namespace KhaozEngine.Render3D.Rendering
                     GpuFrontFace.CounterClockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout, _interiorCutLayout },
-                ShaderSet = _visibilityShaders.Select(f, modelOutputs, ShaderSources.SilhouetteVert,
-                    MotionMath.IsTemporal(modelOutputs) ? ShaderSources.SilhouetteMotionFrag : ShaderSources.SilhouetteFrag,
-                    () => MotionMath.IsTemporal(modelOutputs)
+                ShaderSet = _visibilityShaders.TrySelect(f, modelOutputs, ShaderSources.SilhouetteVert,
+                    MotionMath.IsTemporal(modelOutputs) ? ShaderSources.SilhouetteMotionFrag : ShaderSources.SilhouetteFrag, preserve: true, out IGpuShaderSet visibilityShaders)
+                    ? visibilityShaders : MotionMath.IsTemporal(modelOutputs)
                         ? _motionShaders ??= f.CreateShadersFromSpirv(ShaderSources.SilhouetteVert, ShaderSources.SilhouetteMotionFrag)
-                        : _shaders, preserve: true),
+                        : _shaders,
                 VertexLayouts = new List<GpuVertexLayoutDescription> { positionLayout, normalLayout },
                 Outputs = modelOutputs,
             });

@@ -128,11 +128,11 @@ namespace KhaozEngine.Render3D.Rendering
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },
-                ShaderSet = _visibilityShaders.Select(f, modelOutputs, ShaderSources.OverlayUnlitVert,
-                    MotionMath.IsTemporal(modelOutputs) ? ShaderSources.OverlayUnlitMotionFrag : ShaderSources.OverlayUnlitFrag,
-                    () => MotionMath.IsTemporal(modelOutputs)
+                ShaderSet = _visibilityShaders.TrySelect(f, modelOutputs, ShaderSources.OverlayUnlitVert,
+                    MotionMath.IsTemporal(modelOutputs) ? ShaderSources.OverlayUnlitMotionFrag : ShaderSources.OverlayUnlitFrag, preserve: true, out IGpuShaderSet visibilityShaders)
+                    ? visibilityShaders : MotionMath.IsTemporal(modelOutputs)
                         ? _motionShaders ??= f.CreateShadersFromSpirv(ShaderSources.OverlayUnlitVert, ShaderSources.OverlayUnlitMotionFrag)
-                        : _shaders, preserve: true),
+                        : _shaders,
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout },
                 Outputs = modelOutputs,
             });

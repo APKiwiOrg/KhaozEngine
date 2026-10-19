@@ -71,7 +71,8 @@ namespace KhaozEngine.Render3D.Rendering
             if (_motion is { } motion && MotionMath.IsTemporal(modelOutputs))
             {
                 // The temporal variant: the terrain's two sets, then the motion block at set 2.
-                _splatPipeline = OpaqueMotionPipeline(factory, modelOutputs, _visibilityShaders.Select(factory, modelOutputs, ShaderSources.SplatMotionVert, ShaderSources.SplatMotionFrag, () => motion.SplatShaders),
+                _splatPipeline = OpaqueMotionPipeline(factory, modelOutputs, _visibilityShaders.TrySelect(factory, modelOutputs, ShaderSources.SplatMotionVert, ShaderSources.SplatMotionFrag, preserve: false, out IGpuShaderSet motionVisibilityShaders)
+                    ? motionVisibilityShaders : motion.SplatShaders,
                     new[] { _splatFrameLayout, _splatMaterialLayout, motion.FrameLayout },
                     new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout });
                 return;
@@ -84,7 +85,8 @@ namespace KhaozEngine.Render3D.Rendering
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _splatFrameLayout, _splatMaterialLayout },
-                ShaderSet = _visibilityShaders.Select(factory, modelOutputs, ShaderSources.SplatVert, ShaderSources.SplatFrag, () => _splatShaders),
+                ShaderSet = _visibilityShaders.TrySelect(factory, modelOutputs, ShaderSources.SplatVert, ShaderSources.SplatFrag, preserve: false, out IGpuShaderSet visibilityShaders)
+                    ? visibilityShaders : _splatShaders,
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout },
                 Outputs = modelOutputs,
             });

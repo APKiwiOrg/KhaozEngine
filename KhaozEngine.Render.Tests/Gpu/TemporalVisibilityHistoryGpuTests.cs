@@ -18,7 +18,7 @@ public sealed class TemporalVisibilityHistoryGpuTests(ITestOutputHelper output) 
     [InlineData(0, true)]
     [InlineData(1, false)]
     [InlineData(1, true)]
-    public void VisibilityPlumbingLeavesColourConfidenceAndDepthUnchanged(int choice, bool fallback)
+    public void ConstantVisibilityStorageLeavesColourConfidenceAndDepthUnchanged(int choice, bool fallback)
     {
         using var rig = new Rig();
         using var reference = new Rig();
@@ -30,7 +30,7 @@ public sealed class TemporalVisibilityHistoryGpuTests(ITestOutputHelper output) 
         using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         for (int frame = 0; frame < 4; frame++)
         {
-            byte value = (byte)(frame % 2 == 0 ? 51 : 204);
+            const byte value = 51;
             rig.Device.UpdateTexture(signal, Enumerable.Repeat(value, N * N).ToArray(), 0, 0, N, N);
             float[] colour = Grey((x, y) => Ramp((x + y + frame) % N));
             float[] motion = Motion((_, _) => Vector2.Zero);

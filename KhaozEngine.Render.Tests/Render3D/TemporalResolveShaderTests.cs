@@ -22,6 +22,8 @@ namespace KhaozEngine.Tests.Render3D
         {
             { "const float MotionSentinel = 60000.0;", TemporalResolveTuning.MotionSentinel, 60000f },
             { "const float BackgroundLinearDepth = 1.0e30;", TemporalResolveTuning.BackgroundLinearDepth, 1.0e30f },
+            { "const float VisibilityReleaseThreshold = 0.1;", TemporalResolveTuning.VisibilityReleaseThreshold, 0.1f },
+            { "const float VisibilityDepthTolerance = 0.02;", TemporalResolveTuning.VisibilityDepthTolerance, 0.02f },
             { "const float DisocclusionTolerance = 0.02;", TemporalResolveTuning.DisocclusionTolerance, 0.02f },
             { "const float MovingSurfaceInternalPixels = 0.5;", TemporalResolveTuning.MovingSurfaceInternalPixels, 0.5f },
             { "const float MovingSurfaceMotionFraction = 0.0009765625;", TemporalResolveTuning.MovingSurfaceMotionFraction, 1f / 1024f },
@@ -86,6 +88,20 @@ namespace KhaozEngine.Tests.Render3D
         {
             Assert.Contains(glslLine, ShaderSources.TemporalResolveCoreGlsl, StringComparison.Ordinal);
             Assert.Equal(expected, csharp);
+        }
+
+        [Fact]
+        public void AllVisibilityConsumersIncludeExactlyOneSharedComparisonAndNoRetentionSink()
+        {
+            string[] programs = [ShaderSources.TemporalResolveFrag, ShaderSources.TemporalAccumulateFrag,
+                ShaderSources.TemporalAccumulateAtDisplaySizeFrag, ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag,
+                ShaderSources.TemporalDebugFrag, ShaderSources.TemporalProbeFrag];
+            foreach (string program in programs)
+            {
+                Assert.Contains(ShaderSources.TemporalVisibilityGlsl, program, StringComparison.Ordinal);
+                Assert.Single(Regex.Matches(program, "bool temporalVisibilityChange\\("));
+                Assert.DoesNotContain("temporalRetainVisibilityBindings", program, StringComparison.Ordinal);
+            }
         }
 
         [Fact]

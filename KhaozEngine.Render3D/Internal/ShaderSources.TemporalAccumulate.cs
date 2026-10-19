@@ -455,6 +455,13 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
         / (LockMotionEndPixels - LockMotionStartPixels), 0.0, 1.0);
     lockValue *= (1.0 - motionRelease) * (1.0 - clamp(reactive * LockReactiveRelease, 0.0, 1.0))
         * (1.0 - clamp((ownReprojected && useHistory ? 0.0 : edgeMotion) * LockEdgeRelease, 0.0, 1.0));
+    // Preserve the colour release's carried-lock classification before visibility clears the stored lock.
+    bool carriedLock = !ridge && lockValue > 0.0;
+    float signedVisibilityChange = 0.0;
+    bool visibilityReleased = useHistory && !surface.background && PreviousJitter.z > 0.5
+        && temporalVisibilityChange(uv, centreTexel, maxTexel, previousUv, expectedDepth, signedVisibilityChange)
+        && abs(signedVisibilityChange) > VisibilityReleaseThreshold;
+    if (visibilityReleased) lockValue = 0.0;
     float hold = clamp(lockValue * LockHoldGain, 0.0, 1.0);
 
     // Step 5: variance clipping in luma-weighted YCoCg, from the box centre towards the history, which keeps its hue.
@@ -507,7 +514,6 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     float releaseExtent = max(boxExtent.x, ridgeStep);
     bool released = false;
     bool upscaled = Jitter.z > 1.0;
-    bool carriedLock = !ridge && lockValue > 0.0;
     bool strict = carriedLock || !(motionPixels < LockMotionStartPixels);
     if (useHistory && Jitter.z < ShadingMaxUpscale
         && (ridge || boxExtent.x > (carriedLock ? ShadingLockFlatShare : 1.0) * ridgeStep)
@@ -523,10 +529,8 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
                 && (!carriedLock || ringShift.y > ShadingLockPairExtents * releaseExtent);
         }
     }
-    if (released) {
-        hold = 0.0;
-        accumulated = 0.0;
-    }
+    if (released || visibilityReleased) hold = 0.0;
+    if (released) accumulated = 0.0;
     excess.x *= 1.0 - hold;
     float clipScale = max(excess.x, max(excess.y, excess.z));
     vec3 clipped = clipScale > 1.0 ? boxCentre + fromCentre / clipScale : historyYcc;

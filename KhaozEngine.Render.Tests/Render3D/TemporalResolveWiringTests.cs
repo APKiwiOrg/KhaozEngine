@@ -328,6 +328,24 @@ namespace KhaozEngine.Tests.Render3D
             history.ReleaseTargets();
         }
 
+        [Fact]
+        public void VisibilityComparisonReadinessFollowsTheResolveHistoryInDebugAndCountFrames()
+        {
+            using var rig = new HeadlessSceneRig();
+            rig.Scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
+            rig.Scene.DebugView = SceneDebugView.History;
+            rig.Frame(96, 64);
+            Assert.Equal(0f, rig.Scene.TemporalResolveRendererForTests!.LastVisibilityUniforms.PreviousJitter.Z);
+            rig.Frame(96, 64);
+            Assert.Equal(1f, rig.Scene.TemporalResolveRendererForTests.LastVisibilityUniforms.PreviousJitter.Z);
+            rig.Scene.CameraCut();
+            rig.Frame(96, 64);
+            Assert.Equal(0f, rig.Scene.TemporalResolveRendererForTests.LastVisibilityUniforms.PreviousJitter.Z);
+            rig.Scene.RequestTemporalCounts();
+            rig.Frame(96, 64);
+            Assert.Equal(1f, rig.Scene.TemporalResolveRendererForTests.LastVisibilityUniforms.PreviousJitter.Z);
+        }
+
         /// <summary>New inputs rebuild the resolve's sets, and the sets they replace go to the retire queue rather than
         /// being freed in place, since a submitted frame may still bind them.</summary>
         [Fact]

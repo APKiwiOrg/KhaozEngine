@@ -22,6 +22,10 @@ namespace KhaozEngine.Render3D.Internal
     /// </summary>
     internal static class TemporalResolveTuning
     {
+        /// <summary>Qualified visibility changes release locks strictly above this magnitude.</summary>
+        public const float VisibilityReleaseThreshold = 0.1f;
+        /// <summary>Relative current and previous surface depth qualification.</summary>
+        public const float VisibilityDepthTolerance = 0.02f;
         /// <summary>Step 1. The motion target clears both channels to <see cref="MotionMath.Sentinel"/> where no opaque
         /// geometry drew. An x channel whose magnitude passes this reads as background, as
         /// <see cref="MotionMath.IsBackground"/> reads it. Written motion is clamped to <see cref="MotionMath.MaxMotionUv"/>

@@ -64,6 +64,8 @@ float temporalViewDepth(vec2 motion, float ndcDepth) {
 
         // ---- The resolve's tuning constants, one for one with TemporalResolveTuning ----
         internal const string TemporalResolveTuningGlsl = @"
+const float VisibilityReleaseThreshold = 0.1;
+const float VisibilityDepthTolerance = 0.02;
 const float DisocclusionTolerance = 0.02;
 const float MovingSurfaceInternalPixels = 0.5;
 const float MovingSurfaceMotionFraction = 0.0009765625;
@@ -124,7 +126,7 @@ layout(set=0, binding=8) uniform Resolve {" + TemporalResolveUniforms.GlslMember
 layout(set=0, binding=9) uniform texture2D KeyShadowVisibility;
 layout(set=0, binding=10) uniform texture2D PreviousKeyShadowVisibility;
 layout(set=0, binding=11) uniform VisibilityHistory {" + KhaozEngine.Render3D.Rendering.TemporalVisibilityUniforms.GlslMembers + @"};
-" + TemporalVisibilityBindingsGlsl + TemporalCommonGlsl + TemporalResolveTuningGlsl + TemporalNarrowBothGlsl + TemporalPrepareGlsl
+" + TemporalCommonGlsl + TemporalResolveTuningGlsl + TemporalVisibilityGlsl + TemporalNarrowBothGlsl + TemporalPrepareGlsl
             + TemporalAccumulateGlsl + @"
 // The fused entry point: one display pixel, its 3x3 read from the scene's inputs and prepared inline
 // (temporalWeighted, temporalReactiveDifference, temporalDilate), gathered (temporalGather), its centre texel's
@@ -135,7 +137,6 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     ivec2 maxTexel;
     ivec2 centreTexel;
     temporalPixelSite(displayPixel, uv, pixelCentre, maxTexel, centreTexel);
-    uv = temporalRetainVisibilityBindings(uv);
     TemporalKernels kernels = temporalKernels(pixelCentre, centreTexel, maxTexel);
     TemporalNeighbourhood neighbourhood = temporalNeighbourhood();
     float closestDepth = 2.0 * BackgroundLinearDepth;

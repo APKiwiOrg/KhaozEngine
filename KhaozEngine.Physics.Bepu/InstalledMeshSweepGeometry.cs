@@ -267,7 +267,8 @@ internal sealed class InstalledMeshSweepGeometry
             for (int slot = 0; slot < (Count == 1 ? 1 : 2); slot++)
             {
                 NodeChild child = slot == 0 ? tree.Nodes[index].A : tree.Nodes[index].B;
-                if (!Valid(child.Min, child.Max) || pending >= _stack.Length) return false;
+                // Pooled scratch can be longer than requested, so the proof keeps its exact logical bound.
+                if (!Valid(child.Min, child.Max) || pending >= _nodes.Length + Count) return false;
                 if (child.Index < 0)
                 {
                     int leaf = Tree.Encode(child.Index);

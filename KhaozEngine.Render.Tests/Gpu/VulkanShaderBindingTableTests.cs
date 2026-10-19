@@ -73,6 +73,33 @@ namespace KhaozEngine.Tests.Gpu
                 ["OverlayMeshMotion"] = "OverlayMeshRenderer",
                 ["SilhouetteMotion"] = "SilhouetteRenderer",
 
+                // Visibility adds fragment outputs and preserves each program's resource layout.
+                ["ModelVisibility"] = "ModelRenderer",
+                ["FoliageVisibility"] = "ModelRenderer foliage",
+                ["ModelDissolveVisibility"] = "ModelRenderer dissolve",
+                ["SkinnedModelVisibility"] = "ModelRenderer skinned",
+                ["SkinnedModelDissolveVisibility"] = "ModelRenderer skinned dissolve",
+                ["SplatVisibility"] = "ModelRenderer splat",
+                ["TileGroundVisibility"] = "ModelRenderer tile ground",
+                ["ModelMotionVisibility"] = "ModelRenderer motion",
+                ["SkinnedModelMotionVisibility"] = "ModelRenderer skinned motion",
+                ["SkinnedModelDissolveMotionVisibility"] = "ModelRenderer skinned motion",
+                ["ModelCpuSkinnedMotionVisibility"] = "ModelRenderer cpu skinned motion",
+                ["ModelCpuSkinnedDissolveMotionVisibility"] = "ModelRenderer cpu skinned motion",
+                ["FoliageMotionVisibility"] = "ModelRenderer foliage motion",
+                ["SplatMotionVisibility"] = "ModelRenderer splat motion",
+                ["TileGroundMotionVisibility"] = "ModelRenderer tile ground motion",
+                ["TexturedBillboardVisibility"] = "TexturedBillboardRenderer",
+                ["TexturedBillboardMotionVisibility"] = "TexturedBillboardRenderer",
+                ["BeamVisibility"] = "BeamRenderer",
+                ["BeamMotionVisibility"] = "BeamRenderer",
+                ["TrailVisibility"] = "TrailRenderer",
+                ["TrailMotionVisibility"] = "TrailRenderer",
+                ["OverlayMeshVisibility"] = "OverlayMeshRenderer",
+                ["OverlayMeshMotionVisibility"] = "OverlayMeshRenderer",
+                ["SilhouetteVisibility"] = "SilhouetteRenderer",
+                ["SilhouetteMotionVisibility"] = "SilhouetteRenderer",
+
                 // All three depth variants are built into the same single-set pipeline: the dissolve fragment
                 // shaders read the instance's dissolve amount out of the SAME uniform block rather than adding a
                 // resource of their own.
@@ -185,7 +212,10 @@ namespace KhaozEngine.Tests.Gpu
         {
             foreach (var program in ShippedShaderPrograms.GraphicsPrograms())
             {
-                int prefix = program.Name switch
+                const string visibilitySuffix = "Visibility";
+                string baseName = program.Name.EndsWith(visibilitySuffix, StringComparison.Ordinal)
+                    ? program.Name[..^visibilitySuffix.Length] : program.Name;
+                int prefix = baseName switch
                 {
                     "Model" or "ModelDissolve" or "Foliage" or "ModelMotion" or "ModelCpuSkinnedMotion"
                         or "ModelCpuSkinnedDissolveMotion" or "FoliageMotion" => 11,
@@ -287,7 +317,7 @@ namespace KhaozEngine.Tests.Gpu
                 .Select(p => p.Pipeline)
                 .ToHashSet(StringComparer.Ordinal);
 
-            Assert.Equal(86, catalog.Length);
+            Assert.Equal(111, catalog.Length);
             Assert.Equal(catalog.Length, ProgramPipelines.Count);
 
             foreach (string program in catalog)

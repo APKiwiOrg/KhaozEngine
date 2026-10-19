@@ -18,11 +18,12 @@ public sealed class MotionTargetFoliageWiringTests
     sealed class Rig : IDisposable
     {
         static readonly FoliageRenderSettings Settings = new() { DistantDensity = 1f };
-        readonly MotionTestScene _harness = new();
+        readonly MotionTestScene _harness;
         readonly FoliageBatch _batch;
 
-        internal Rig()
+        internal Rig(int maxColorAttachments = 8)
         {
+            _harness = new MotionTestScene(maxColorAttachments);
             MeshHandle blade = Scene.LoadMesh(MeshPrimitives.Box(1f));
             _batch = Scene.CreateFoliageBatch(new[] { new FoliageInstance(blade, Matrix4x4.Identity, .1f) });
             Scene.ForceTemporalForTests = true;
@@ -138,17 +139,24 @@ public sealed class MotionTargetFoliageWiringTests
         d => d.Pipeline is FakePipeline { Request: { } r }
             && (r.VertexGlsl == ShaderSources.FoliageVert || r.VertexGlsl == ShaderSources.FoliageMotionVert));
 
-    [Fact]
-    public void TheFoliageDrawBindsItsVariantAndTheMotionBlockAtSetTwoOnlyWhileTemporal()
+    [Theory]
+    [InlineData(4, 4, "FoliageMotion")]
+    [InlineData(5, 5, "FoliageMotionVisibility")]
+    [InlineData(8, 5, "FoliageMotionVisibility")]
+    public void TheFoliageDrawBindsItsVariantAndTheMotionBlockAtSetTwoOnlyWhileTemporal(
+        int maxColorAttachments, int outputs, string program)
     {
-        using var rig = new Rig();
+        using var rig = new Rig(maxColorAttachments);
         rig.Scene.ForceTemporalForTests = false;
         rig.Begin(orthoSize: 6f);
         rig.Draw(focusX: 3f, seconds: 1f);
         using (RecordingGpuCommandList off = rig.Render())
         {
             RecordingGpuCommandList.DrawBindings draw = FoliageDraw(off);
-            Assert.Equal(ShaderSources.FoliageVert, ((FakePipeline)draw.Pipeline!).Request!.Value.VertexGlsl);
+            FakeGraphicsPipelineRequest request = ((FakePipeline)draw.Pipeline!).Request!.Value;
+            Assert.Equal("Foliage", MotionTargetPrograms.Name(request));
+            MotionTargetPrograms.AssertLayout(request, 3);
+            Assert.Equal(2, request.Description.ResourceLayouts.Length);
             Assert.Equal(new uint[] { 0, 1 }, draw.Sets.Keys.Order().ToArray());
         }
 
@@ -159,9 +167,12 @@ public sealed class MotionTargetFoliageWiringTests
         {
             RecordingGpuCommandList.DrawBindings draw = FoliageDraw(on);
             FakeGraphicsPipelineRequest request = ((FakePipeline)draw.Pipeline!).Request!.Value;
-            Assert.Equal((ShaderSources.FoliageMotionVert, ShaderSources.ModelMotionFrag), (request.VertexGlsl, request.FragmentGlsl));
+            Assert.Equal(program, MotionTargetPrograms.Name(request));
+            MotionTargetPrograms.AssertLayout(request, outputs);
+            Assert.Equal(3, request.Description.ResourceLayouts.Length);
             Assert.Equal(new uint[] { 0, 1, 2 }, draw.Sets.Keys.Order().ToArray());
             Assert.Same(rig.Scene.MotionResourcesForTests!.FrameSet, draw.Sets[2].Set);
+            Assert.Equal(0u, draw.Sets[2].Item2);
         }
     }
 }

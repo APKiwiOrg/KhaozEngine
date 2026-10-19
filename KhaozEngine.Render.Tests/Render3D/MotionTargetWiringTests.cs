@@ -196,10 +196,14 @@ public sealed class MotionTargetWiringTests
         factory.GraphicsPipelines.Skip(from)
             .Where(p => p.Description.Outputs.Depth is not null && p.Description.Outputs.Colour.Length >= 3).ToArray();
 
-    [Fact]
-    public void AMotionToggleAtAFixedSizeRebuildsTheModelPassPipelinesForFourOutputsAndBackForThree()
+    [Theory]
+    [InlineData(4, 4, "")]
+    [InlineData(5, 5, "Visibility")]
+    [InlineData(8, 5, "Visibility")]
+    public void AMotionToggleAtAFixedSizeRebuildsTheModelPassPipelinesForTheCapabilityAndBackForThree(
+        int maxColorAttachments, int outputs, string suffix)
     {
-        using var harness = new MotionTestScene();
+        using var harness = new MotionTestScene(maxColorAttachments);
         var factory = (FakeGpuResourceFactory)harness.Device.Factory;
         MeshHandle box = harness.Scene.LoadMesh(MeshPrimitives.Box(1f));
         void Queue(Scene3D s) => s.Draw(box, Matrix4x4.Identity);
@@ -214,13 +218,16 @@ public sealed class MotionTargetWiringTests
         Assert.Equal(size, (harness.Scene.CurrentFrameView.Width, harness.Scene.CurrentFrameView.Height));
         Assert.Equal(1, harness.Scene.ModelSampleCountForTests);
         Assert.True(harness.Device.WaitForIdleCalls > idles, "the toggle recreated the model target without idling the device");
-        Assert.All(on, p => Assert.Equal(4, p.Description.Outputs.Colour.Length));
-        foreach (string vertex in new[] { ShaderSources.ModelMotionVert, ShaderSources.ModelCpuSkinnedMotionVert,
-            ShaderSources.SkinnedModelMotionVert, ShaderSources.SplatMotionVert, ShaderSources.TileGroundMotionVert })
-            Assert.Contains(on, p => p.VertexGlsl == vertex);
-        foreach (string fragment in new[] { ShaderSources.TexturedBillboardMotionFrag, ShaderSources.BeamMotionFrag,
-            ShaderSources.TrailMotionFrag, ShaderSources.OverlayUnlitMotionFrag, ShaderSources.SilhouetteMotionFrag })
-            Assert.Contains(on, p => p.FragmentGlsl == fragment);
+        Assert.All(on, p => MotionTargetPrograms.AssertLayout(p, outputs));
+        string[] programs =
+        {
+            "ModelMotion", "ModelCpuSkinnedMotion", "ModelCpuSkinnedDissolveMotion",
+            "SkinnedModelMotion", "SkinnedModelDissolveMotion", "SplatMotion", "TileGroundMotion",
+            "TexturedBillboardMotion", "TexturedBillboardMotion", "BeamMotion",
+            "TrailMotion", "TrailMotion", "OverlayMeshMotion", "SilhouetteMotion",
+        };
+        Assert.Equal(programs.Select(p => p + suffix).Order().ToArray(),
+            on.Select(MotionTargetPrograms.Name).Order().ToArray());
 
         built = factory.GraphicsPipelines.Count;
         idles = harness.Device.WaitForIdleCalls;
@@ -229,11 +236,8 @@ public sealed class MotionTargetWiringTests
         FakeGraphicsPipelineRequest[] off = ModelTargetPipelines(factory, built);
         Assert.Equal(size, (harness.Scene.CurrentFrameView.Width, harness.Scene.CurrentFrameView.Height));
         Assert.True(harness.Device.WaitForIdleCalls > idles, "the toggle recreated the model target without idling the device");
-        Assert.All(off, p =>
-        {
-            Assert.Equal(3, p.Description.Outputs.Colour.Length);
-            Assert.DoesNotContain("oMotion", p.FragmentGlsl, StringComparison.Ordinal);
-        });
+        Assert.NotEmpty(off);
+        Assert.All(off, p => MotionTargetPrograms.AssertLayout(p, 3));
         Assert.Contains(off, p => p.VertexGlsl == ShaderSources.ModelVert && p.FragmentGlsl == ShaderSources.ModelFrag);
         Assert.Contains(off, p => p.FragmentGlsl == ShaderSources.TexturedBillboardFrag);
     }

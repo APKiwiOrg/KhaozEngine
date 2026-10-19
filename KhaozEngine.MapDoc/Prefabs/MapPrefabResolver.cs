@@ -268,8 +268,12 @@ public static class MapPrefabResolver
             Roofs = roofs.Where(r => r.Scope != MapPrefabReferenceScope.World || !inactivePlacementIds.Contains(r.Id) || livePlacementIds.Contains(r.Id)).ToArray(),
             Storeys = Storeys(),
         };
-        return new(context, source, placements, supports, water, intent, lightPoints, waterCorners, attachments, markers.Markers, markers.Supports)
+        var resources = new MapEffectiveResources(context, source, placements, supports, water, intent, lightPoints, waterCorners,
+            attachments, markers.Markers, markers.Supports)
         { SupportRequests = supportRequests };
+        var foliageErrors = Foliage.MapFoliageReferences.ValidateOwners(authored, resources);
+        if (foliageErrors.Count != 0) throw new MapDocumentException(string.Join("\n", foliageErrors));
+        return resources;
     }
 
     /// <summary>F-R7. The one frame choice an owner placement declares in an instance, shared by expansion and

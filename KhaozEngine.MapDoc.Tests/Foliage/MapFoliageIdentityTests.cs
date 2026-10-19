@@ -211,7 +211,7 @@ public sealed class MapFoliageIdentityTests
             {
                 var marker = new MapLocalMarkerDoc(v, "marker", "Marker", new Vector3(0, 1, 0), 0, "test", true, [])
                 { HeightMode = v == 2 ? MapMarkerHeightMode.Explicit : null };
-                document.BuildingIntent = new(1, [], [], [], [marker]);
+                document.BuildingIntent = new(1, [], [], [], (original?.Markers ?? []).Append(marker).ToArray());
                 return MapPrefabResolver.Expand(document, assets).AnnotationDigest;
             }).ToArray();
         }

@@ -1,0 +1,109 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using KhaozEngine.MapDoc.Markers;
+using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Spaces;
+using KhaozEngine.MapDoc.Storage;
+using KhaozEngine.MapDoc.Support;
+using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.Primitives;
+using Bounds = KhaozEngine.MapDoc.Foliage.MapFoliageGenerationContext.Bounds;
+using SpatialIndex = KhaozEngine.MapDoc.Foliage.MapFoliageGenerationContext.SpatialIndex;
+
+namespace KhaozEngine.MapDoc.Foliage;
+
+/// <summary>Captured typed owners for clearance. Non-placement exception masks have their own spatial index because
+/// PlacementsIn deliberately indexes placements only. Seating answers are canonical surface provenance, not geometry.</summary>
+internal sealed class MapFoliageOwners
+{
+    internal sealed record MaskOwner(string LayerId, MapFoliageMask Mask, MapEffectiveTransform Pose);
+    readonly MaskOwner[] _masks;
+    readonly SpatialIndex _index;
+    readonly Dictionary<MapPrefabReference, MapSupportResult> _seats;
+    readonly MapEffectiveResources _resources;
+    readonly Dictionary<string, Dictionary<MapPrefabReference, MapSupportBinding>> _bindings;
+    readonly Dictionary<string, Dictionary<string, int>> _ordinals;
+
+    internal MapFoliageOwners(MapFoliageSet? set, MapEffectiveResources resources)
+    {
+        _resources = resources;
+        _bindings = (set?.Layers ?? []).ToDictionary(l => l.Id, l => l.OwnerSupports.ToDictionary(o => o.Owner, o => o.Support), StringComparer.Ordinal);
+        _ordinals = (set?.Layers ?? []).ToDictionary(l => l.Id, l => l.CompatibilityOrdinals.ToDictionary(r => r.SurfaceId, r => r.Ordinal, StringComparer.Ordinal), StringComparer.Ordinal);
+        _seats = resources.PlacementSupports.ToDictionary(s => World(MapPrefabChildKind.Placement, s.PlacementId), s => s.Support);
+        foreach (var marker in resources.MarkerSupports) _seats.Add(World(MapPrefabChildKind.Marker, marker.MarkerId), marker.Support);
+        var masks = new List<MaskOwner>();
+        var bounds = new List<Bounds>();
+        foreach (var layer in set?.Layers ?? [])
+            foreach (var mask in layer.ExceptionMasks)
+            {
+                MapEffectiveTransform pose = Pose(resources, mask.Owner);
+                masks.Add(new(layer.Id, mask, pose));
+                bounds.Add(MapFoliageGenerationContext.Proxy(pose, mask.Footprint,
+                    mask.Kind == MapFoliageClearanceKind.Door ? layer.DoorClearance : null));
+            }
+        _masks = masks.ToArray();
+        _index = new(bounds);
+    }
+
+    internal IReadOnlyList<MaskOwner> Masks(string layerId, MapFoliageRect rect, out long candidates)
+    {
+        var hits = _index.Query(new(rect.MinX, rect.MinZ, rect.MaxX, rect.MaxZ), out candidates);
+        return hits.Select(i => _masks[i]).Where(m => m.LayerId == layerId).OrderBy(m => m.Mask.Id, StringComparer.Ordinal).ToArray();
+    }
+
+    internal int? Ordinal(string layerId, string surfaceId) => _ordinals[layerId].TryGetValue(surfaceId, out int ordinal) ? ordinal : null;
+
+    internal static MapPrefabReference World(MapPrefabChildKind kind, string id) => new(MapPrefabReferenceScope.World, kind, id);
+
+    internal static MapEffectiveTransform Pose(MapEffectiveResources resources, MapPrefabReference owner)
+    {
+        MapEffectiveTransform pose = resources.Transforms.GetValueOrDefault(MapEffectiveContext.Key(owner.Kind, owner.Id), new(0, 0, 0, 0, 1));
+        if (owner.Kind == MapPrefabChildKind.Marker)
+        {
+            var marker = resources.EffectiveMarkers.Single(m => m.Id == owner.Id);
+            return pose with { X = marker.Position.X.ToDouble(), Y = marker.Position.Y.ToDouble(), Z = marker.Position.Z.ToDouble(), YawRadians = marker.YawRadians };
+        }
+        return pose;
+    }
+
+    internal string Seated(MapFoliageLayer layer, MapPrefabReference owner, MapEffectiveTransform pose,
+        MapFoliageLimits limits, ref MapFoliageWork work, List<string> dependencies)
+    {
+        // Already bound placements and Support markers need no exceptional correspondence and never resample their seat.
+        if (_seats.TryGetValue(owner, out var seated))
+        {
+            Describe(seated);
+            return MapFoliageSupportIdentity.From(seated) ?? throw new MapFoliageRefusal(MapFoliageSupport.Map(seated.Status), work, "owner seat refused");
+        }
+        MapSupportBinding? binding = _bindings[layer.Id].GetValueOrDefault(owner);
+        // A room-bound placement already has the released seated answer above. An explicit-height owner requires
+        // its correspondence. RoofLink.Rooms describes clearing/visibility targets and cannot supply a seat.
+        if (binding is null) throw new MapFoliageRefusal(MapFoliageStatus.MissingSupport, work, $"owner {owner.Kind} '{owner.Id}' lacks seated support");
+        // One bounded support preparation per exceptional owner, never per foliage candidate. The shared selection
+        // kernel retains its own released point budgets and all surface/room semantics.
+        work = work with { PrepareScopes = checked(work.PrepareScopes + 1) };
+        if (work.PrepareScopes > limits.MaxPrepareScopes) throw new MapFoliageRefusal(MapFoliageStatus.CapacityExceeded, work, "owner support scopes");
+        var point = new MapResourceTransform(pose).Point(new(default, default, default));
+        var frame = WorldFrame.Nearest(point.X.ToSingle(), point.Z.ToSingle());
+        float x = point.X.ToSingle() - frame.Anchor.X, z = point.Z.ToSingle() - frame.Anchor.Z;
+        var scope = new MapSurfaceScope(frame, new(x - 2, z - 2), new(x + 2, z + 2), null, null,
+            Enum.GetValues<MapSurfaceRole>(), null, new MapQueryLimits());
+        MapScopedSurfaces view = _resources.Acquire(scope);
+        var prepared = MapSupportPreparation.PrepareFoliage(view);
+        var xz = new MapExactXz(point.X, point.Z);
+        MapBoundFaceContext shared = MapFoliageCandidateSupport.Context(view, prepared, xz, xz, limits.MaxFaces - work.Faces, out long faces);
+        work = work with { Faces = checked(work.Faces + faces), SurfaceQueries = checked(work.SurfaceQueries + 1) };
+        if (MapSupportSelection.BindingRequest(view, binding, xz) is not { } request)
+            throw new MapFoliageRefusal(MapFoliageStatus.Invalid, work, "invalid owner support binding");
+        MapSupportResult result = MapSupportSelection.Compute(prepared, request.Request, null, request.NamedSurfaceOnly, request.World, shared).Result;
+        result = MapFoliageSupportIdentity.ForClearance(view, binding, xz, result);
+        dependencies.Add("owner-binding|" + owner.Kind + "|" + owner.Id + "|" + MapCanonical.HashHex(w => System.Text.Json.JsonSerializer.Serialize(w, binding)));
+        foreach (var patch in view.Witness.Present) dependencies.Add("owner-patch|" + patch.Key + "|" + patch.Value);
+        Describe(result);
+        return MapFoliageSupportIdentity.From(result) ?? throw new MapFoliageRefusal(MapFoliageSupport.Map(result.Status), work, "owner seated support refused: " + result.Detail);
+
+        void Describe(MapSupportResult selected) => dependencies.Add("owner-seat|" + owner.Kind + "|" + owner.Id + "|" +
+            MapFoliageSupportIdentity.From(selected) + "|" + selected.SpaceId + "|" + selected.Face);
+    }
+}

@@ -35,6 +35,7 @@ public sealed class MapFoliageGenerationContext
         Work = work;
         (_ownerPlacements, _owners) = Owners(foliage, resources);
         (_paintEntries, _paint) = Paint(resources);
+        ClearanceOwners = new(foliage, resources);
         SnapshotId = Snapshot(foliage, assets, resources, _paintEntries);
     }
 
@@ -44,6 +45,7 @@ public sealed class MapFoliageGenerationContext
     public MapAssetClosure Assets { get; }
     /// <summary>The effective resources of the snapshot, expanded once.</summary>
     public MapEffectiveResources Resources { get; }
+    internal MapFoliageOwners ClearanceOwners { get; }
     /// <summary>Identifies the captured snapshot from facts already captured: effective resources, annotations, the
     /// closure, logical foliage, every effective placement and the paint partition.</summary>
     public string SnapshotId { get; }
@@ -226,7 +228,7 @@ public sealed class MapFoliageGenerationContext
     // A local footprint through the effective pose, as MapTransform.TransformPoint applies it, padded outward by a
     // millimetre so exact downstream arithmetic never falls outside it. A Door footprint first widens to include the
     // owner's origin, then by the door clearance in owner units, which the pose scales once.
-    static Bounds Proxy(MapEffectiveTransform pose, MapFoliageRect footprint, float? doorClearance)
+    internal static Bounds Proxy(MapEffectiveTransform pose, MapFoliageRect footprint, float? doorClearance)
     {
         double minX = footprint.MinX, minZ = footprint.MinZ, maxX = footprint.MaxX, maxZ = footprint.MaxZ;
         if (doorClearance is { } reach)

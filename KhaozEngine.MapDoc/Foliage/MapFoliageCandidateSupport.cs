@@ -55,7 +55,7 @@ internal sealed class MapFoliageCandidateSupport
 
     // Every cell of every acquired support, ceiling and indoor patch over the chunk, each such patch validated, every
     // opening cell there, and the source cells of every acquired portal band segment.
-    static MapBoundFaceContext Context(MapScopedSurfaces view, MapPreparedSupport support, MapExactXz min, MapExactXz max, long maxFaces, out long faces)
+    internal static MapBoundFaceContext Context(MapScopedSurfaces view, MapPreparedSupport support, MapExactXz min, MapExactXz max, long maxFaces, out long faces)
     {
         var limits = new MapRefinementLimits(MaxContextPatches: view.Scope.Limits.MaxCandidatePatches);
         var bounds = new MapSpacePointBounds(view, limits, null);
@@ -147,10 +147,18 @@ internal sealed class MapFoliageCandidateSupport
         };
     }
 
+    internal MapSupportResult Target(MapSupportBinding binding, MapExactXz point) =>
+        MapFoliageSupportIdentity.ForClearance(_view, binding, point, Select(binding, point));
+
+    internal bool Indoor(string? space) => space is not null && _support.Records.OfType<MapSpaceDoc>()
+        .Any(r => r.Kind == MapSpaceKind.Room && MapSpaceGeometry.Owner(_view, r) == space);
+
     // The binding's released request at the point, through the one selection kernel over the shared context.
-    MapSupportResult Select(MapExactXz point)
+    MapSupportResult Select(MapExactXz point) => Select(_binding, point);
+
+    internal MapSupportResult Select(MapSupportBinding binding, MapExactXz point)
     {
-        if (MapSupportSelection.BindingRequest(_view, _binding, point) is not { } bound)
+        if (MapSupportSelection.BindingRequest(_view, binding, point) is not { } bound)
             return MapSupportSelection.Refusal(_view, MapSupportStatus.Invalid, "support binding lacks its kind's members");
         return MapSupportSelection.Compute(_support, bound.Request, null, bound.NamedSurfaceOnly, bound.World, _context).Result;
     }

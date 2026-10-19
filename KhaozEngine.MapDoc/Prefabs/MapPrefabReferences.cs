@@ -154,6 +154,7 @@ public static class MapPrefabReferences
                 set.Instances.Select(i => i with
                 {
                     ParentSpace = i.ParentSpace is { } parent ? Record(parent) : null,
+                    Bindings = new(i.Bindings.Entries.Select(b => b with { WorldId = Id(b.Child.Kind, b.WorldId) }).ToArray()),
                     Overrides = i.Overrides.Select(o => WorldOverride(o, kind, oldId, newId)).ToArray(),
                 }).ToArray(),
                 set.Transfers.Select(t => t with { Binding = t.Binding with { WorldId = Id(t.Binding.Child.Kind, t.Binding.WorldId) } }).ToArray())
@@ -174,6 +175,9 @@ public static class MapPrefabReferences
             { Roofs = intent.Roofs.Select(Ref).ToArray(), Storeys = intent.Storeys.Select(s => s with { Id = Id(MapPrefabChildKind.Storey, s.Id) }).ToArray() };
         if (copy.NativeResourceTransforms is { } poses)
             copy.NativeResourceTransforms = poses.Select(p => p with { OwnerId = Id(p.Kind, p.OwnerId) }).ToArray();
+        if (copy.Foliage is { } foliage)
+            copy.Foliage = Foliage.MapFoliageReferences.Remap(foliage, new Dictionary<MapPrefabReference, MapPrefabReference>
+            { [new(MapPrefabReferenceScope.World, kind, oldId)] = new(MapPrefabReferenceScope.World, kind, newId) });
         return copy;
     }
 

@@ -51,10 +51,11 @@ public static class MapFoliageValidation
         var declared = (document.Surfaces?.Refs ?? []).Where(s => s?.Id is not null).GroupBy(s => s.Id, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.First().Role, StringComparer.Ordinal);
         // Bound prefab surfaces are known by their persisted world IDs. Their roles are checked after expansion.
-        var bound = new HashSet<string>(document.Prefabs?.Instances.Where(i => !i.Removed)
-            .SelectMany(i => i.Bindings.Entries)
-            .Where(b => !b.Removed && b.Child.Kind == MapPrefabChildKind.Surface).Select(b => b.WorldId) ?? Enumerable.Empty<string>(),
-            StringComparer.Ordinal);
+        var bindings = (document.Prefabs?.Instances.Where(i => !i.Removed).SelectMany(i => i.Bindings.Entries) ?? [])
+            .Concat(document.Prefabs?.Transfers.Where(t => !t.Retired).Select(t => t.Binding) ?? []);
+        var bound = bindings.Where(b => !b.Removed && b.Child.Kind == MapPrefabChildKind.Surface).Select(b => b.WorldId)
+            .Concat((document.Prefabs?.Attachments.Where(a => !a.Retired).SelectMany(a => a.Children) ?? [])
+                .Where(c => c.LocalChild.Kind == MapPrefabChildKind.Surface).Select(c => c.WorldId)).ToHashSet(StringComparer.Ordinal);
         foreach (MapFoliageLayer layer in set.Layers)
         {
             string label = $"foliage layer '{layer.Id}'";
@@ -67,6 +68,9 @@ public static class MapFoliageValidation
                 if (!assetIds.Contains(rule.AssetId)) errors.Add($"{label} rule '{rule.Id}': asset '{rule.AssetId}' is not in the verified closure.");
             if (layer.Support is { Kind: MapSupportBindingKind.Surface, SurfaceId: { Length: > 0 } support })
                 RequireSupportSurface(support, declared, bound, label + " support", errors);
+            foreach (MapSupportBinding binding in layer.OwnerSupports.Select(o => o.Support).Concat(layer.ExceptionMasks.Select(m => m.Support)))
+                if (binding is { Kind: MapSupportBindingKind.Surface, SurfaceId: { Length: > 0 } target })
+                    RequireSupportSurface(target, declared, bound, label + " dependent support", errors);
             // Empty IDs are already reported by the set rules.
             foreach (MapFoliageCompatibilityOrdinal row in layer.CompatibilityOrdinals.Where(r => !string.IsNullOrEmpty(r.SurfaceId)))
                 RequireSupportSurface(row.SurfaceId, declared, bound, label + " compatibility ordinal", errors);

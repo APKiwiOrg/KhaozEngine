@@ -212,6 +212,17 @@ public sealed class MapPreparedFoliageSupport
     internal static MapPreparedFoliageSupport Refused(MapFoliageLayer layer, MapFoliageChunkKey chunk, MapFoliageStatus status,
         MapFoliageWork work, string detail) => new(layer, chunk, status, detail, work, Array.Empty<string>(), Array.Empty<MapFoliageSupportGrid>(), null);
 
+    internal IReadOnlyList<MapFoliageSupportGrid> Grids => _grids;
+    internal bool Indoor(string? space) => _candidates?.Indoor(space) == true;
+
+    // Clearance's cardinal tests ignore density and doors. They read the same prepared logical surface, visible paint
+    // and membership at neighbour centres, including the one-cell halo outside render ownership.
+    internal MapFoliageSurfacePoint Eligibility(float worldX, float worldZ) =>
+        Decide(new(MapExactValue.FromSingle(worldX), MapExactValue.FromSingle(worldZ)), worldX, worldZ, 1f);
+
+    internal MapSupportResult Target(MapSupportBinding binding, float worldX, float worldZ) =>
+        _candidates!.Target(binding, new(MapExactValue.FromSingle(worldX), MapExactValue.FromSingle(worldZ)));
+
     public string LayerId { get; }
     public MapFoliageChunkKey Chunk { get; }
     /// <summary>Complete, or the typed refusal that every sample of this chunk reports.</summary>

@@ -37,6 +37,7 @@ internal static partial class FoliageFixtures
         };
         var (roots, source) = AssetInputs();
         MapDocument document = FloorDocument(variant == "decorated");
+        if (variant == "decorated") DecorateClearanceOwners(document);
         document.NativeAssets = roots.ToList();
         document.Foliage = new MapFoliageSet(1, [layer]);
         return new(document, MapAssetClosure.Load(roots, source));

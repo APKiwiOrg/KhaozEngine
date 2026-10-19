@@ -81,10 +81,10 @@ public static class MapFoliageSupport
         return Prepare(view, paint, declared, layer, chunk, limits);
     }
 
-    /// <summary>The acquisition scope of a chunk: its world rectangle plus a halo of three of the largest declared support
-    /// cells, which holds every neighbour corner a boundary normal reads, plus the edge fade reach over the declared
-    /// support floors, since grids and the shared context widen by that reach. Every role is acquired, since membership
-    /// reads ceilings and visible paint reads paint overrides.</summary>
+    /// <summary>The acquisition scope of a chunk: its world rectangle widened by the clearance read reach over the declared
+    /// support floors, since grids and the shared context widen by that reach, plus a halo of three of the largest
+    /// declared support cells, which holds every neighbour corner a boundary normal reads. Every role is acquired, since
+    /// membership reads ceilings and visible paint reads paint overrides.</summary>
     internal static MapSurfaceScope Scope(MapFoliageLayer layer, MapFoliageChunkKey chunk, IReadOnlyList<MapSurfaceRef> declared,
         IReadOnlyDictionary<string, MapEffectiveTransform> transforms)
     {
@@ -98,7 +98,7 @@ public static class MapFoliageSupport
             floors.Add((surface, posed));
         }
         double halo = 3 * cell + 0.01;
-        double reach = EdgeReach(layer, floors);
+        double reach = ReadReach(layer, floors);
         if (reach > 0) halo += reach;
         minX -= halo; minZ -= halo; maxX += halo; maxZ += halo;
         var frame = WorldFrame.Nearest((float)((minX + maxX) / 2), (float)((minZ + maxZ) / 2));
@@ -110,21 +110,33 @@ public static class MapFoliageSupport
         return new(frame, min, max, null, null, Enum.GetValues<MapSurfaceRole>(), null, new MapQueryLimits());
     }
 
-    /// <summary>How far outside the chunk clearance edge fade reads support: zero without edge fade. Edge fade evaluates
-    /// the four neighbour cell centres of a sample's support cell. A centre lies at most 1.5 cells from the sample along
-    /// one cell axis and 0.5 along the other, so its world offset on either axis is at most 1.5 cells, or
-    /// sqrt(1.5^2 + 0.5^2) &lt; 1.6 cells under a yawed pose. The reach takes the largest effective cell (cell unit metres
-    /// times pose scale) of the given floors, since a centre from a coarse grid may land on a finer surface.</summary>
-    internal static double EdgeReach(MapFoliageLayer layer, IEnumerable<(MapSurfaceRef Surface, MapEffectiveTransform? Pose)> floors)
+    /// <summary>How far outside the chunk clearance reads support, the one reach the acquisition scope, the support grids,
+    /// the shared context and the clearance owner rectangle widen by. Every clearance read lands at a sample or at a
+    /// support-cell centre of some grid, so the reach follows the read chain over the largest effective cell c (cell unit
+    /// metres times pose scale) of the given floors:
+    /// <list type="bullet">
+    /// <item>The sample's own cell centre, where Solid and roof footprints and their mask targets are tested. It lies
+    /// at most 0.5 c from the sample along each cell axis, so 0.5 c on each world axis, or half the diagonal
+    /// sqrt(0.5) c &lt; 0.71 c under a yawed pose. Always read.</item>
+    /// <item>With edge fade, each cardinal neighbour centre. It lies at most 1.5 c along one cell axis and 0.5 c along the
+    /// other, so 1.5 c on each world axis, or sqrt(1.5^2 + 0.5^2) c &lt; 1.6 c under yaw.</item>
+    /// <item>With edge fade, that neighbour's own cell centre on the grid that supports it, which may be another lattice:
+    /// a further 0.5 c, or 0.71 c under yaw.</item>
+    /// </list>
+    /// Each term takes the largest cell over the floors, since a centre from a coarse grid may land on a finer surface.
+    /// The reach is a bound on world-axis offsets from the chunk rectangle, so every read point lies inside the rectangle
+    /// widened by it. Each surface's one-cell ring past that rectangle absorbs float rounding in locating and centring.</summary>
+    internal static double ReadReach(MapFoliageLayer layer, IEnumerable<(MapSurfaceRef Surface, MapEffectiveTransform? Pose)> floors)
     {
-        if (layer.EdgeFade <= 0) return 0;
-        double reach = 0;
+        double centre = 0, neighbour = 0;
         foreach (var (surface, pose) in floors)
         {
             double cell = surface.Frame.CellUnitMetres.Exact().ToDouble() * (pose?.Scale ?? 1);
-            reach = Math.Max(reach, (pose is { YawRadians: not 0 } ? 1.6 : 1.5) * cell);
+            bool yawed = pose is { YawRadians: not 0 };
+            centre = Math.Max(centre, (yawed ? 0.71 : 0.5) * cell);
+            neighbour = Math.Max(neighbour, (yawed ? 1.6 : 1.5) * cell);
         }
-        return reach;
+        return layer.EdgeFade > 0 ? neighbour + centre : centre;
     }
 
     /// <summary>The nearest float on the outer side of <paramref name="value"/>: itself when exact, else one step outward.

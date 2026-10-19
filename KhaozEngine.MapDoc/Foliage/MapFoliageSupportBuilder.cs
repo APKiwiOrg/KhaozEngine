@@ -35,17 +35,16 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
 
         MapSurfaceRef[] floors = view.Surfaces.Where(s => s.Role == MapSurfaceRole.SupportFloor && (bound is null || s.Id == bound))
             .OrderBy(s => s.Id, StringComparer.Ordinal).ToArray();
-        // One reach widens the acquisition, the support grids and the shared context, so every neighbour centre edge fade
-        // reads has its prepared cell, its normal halo and its compiled faces. A layer without edge fade keeps the chunk
-        // rectangle.
-        double reach = MapFoliageSupport.EdgeReach(layer, floors.Select(s => (s, Kernel(s)?.Transform)));
+        // One reach widens the acquisition, the support grids and the shared context, so every cell centre and neighbour
+        // centre clearance reads has its prepared cell, its normal halo and its compiled faces.
+        double reach = MapFoliageSupport.ReadReach(layer, floors.Select(s => (s, Kernel(s)?.Transform)));
         (MapExactXz min, MapExactXz max) = Rectangle(reach);
         if (reach > 0)
         {
             MapExactRect acquired = view.Scope.WorldRectangle();
             if (min.X.CompareTo(acquired.MinX) < 0 || min.Z.CompareTo(acquired.MinZ) < 0 ||
                 max.X.CompareTo(acquired.MaxX) > 0 || max.Z.CompareTo(acquired.MaxZ) > 0)
-                throw new MapFoliageRefusal(MapFoliageStatus.Unavailable, Work(), "edge fade reach lies outside the chunk acquisition");
+                throw new MapFoliageRefusal(MapFoliageStatus.Unavailable, Work(), "clearance read reach lies outside the chunk acquisition");
             _parts.Add("context-reach|" + BitConverter.DoubleToInt64Bits(reach).ToString(CultureInfo.InvariantCulture));
         }
         var grids = floors.Select(s => Grid(s, min, max)).ToArray();

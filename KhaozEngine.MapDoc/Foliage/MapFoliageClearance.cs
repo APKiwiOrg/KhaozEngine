@@ -31,10 +31,14 @@ public static class MapFoliageClearance
         if (support.Status != MapFoliageStatus.Complete) return Result(support.Status, support.Detail);
         try
         {
-            float halo = support.Grids.Select(g => g.Surface.Frame.CellUnitMetres.Exact().ToSingle() * (float)(g.Kernel?.Transform.Scale ?? 1)).DefaultIfEmpty(0).Max();
+            // Owners are gathered over every point evaluation tests against them. A door tests the sample itself, which lies
+            // in the chunk bounds, and its proxy already carries the door radius. Solid and roof footprints and every mask
+            // target test support-cell centres: the sample's own and, with edge fade, a neighbour centre's own, all inside
+            // the read reach. No other term is needed.
+            double reach = MapFoliageSupport.ReadReach(layer, support.Grids.Select(g => (g.Surface, g.Kernel?.Transform)));
             MapFoliageRect b = support.Bounds;
-            float pad = halo + layer.EdgeFade;
-            var rect = new MapFoliageRect(b.MinX - pad, b.MinZ - pad, b.MaxX + pad, b.MaxZ + pad);
+            var rect = new MapFoliageRect(MapFoliageSupport.Outward(b.MinX - reach, lower: true), MapFoliageSupport.Outward(b.MinZ - reach, lower: true),
+                MapFoliageSupport.Outward(b.MaxX + reach, lower: false), MapFoliageSupport.Outward(b.MaxZ + reach, lower: false));
             var rules = layer.ClearanceRules.GroupBy(r => r.AssetId, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.OrderBy(r => r.Id, StringComparer.Ordinal).ToArray(), StringComparer.Ordinal);
             var seats = new Dictionary<MapPrefabReference, string>();
             var consulted = new HashSet<string>(StringComparer.Ordinal);

@@ -352,9 +352,10 @@ public sealed class MapFoliageClearanceTests
             return MapFoliageSupport.Prepare(context, context.Foliage!.Layers[0], new(0, 0), limits);
         }
         var off = Prepared(0, new());
-        // Measured at f55789fb0, before the edge fade reach existed.
-        Assert.Equal((MapFoliageStatus.Complete, 9112L), (off.Status, off.Work.Faces));
-        Assert.DoesNotContain(off.DependencyParts, p => p.StartsWith("context-reach|", StringComparison.Ordinal));
+        // Edge fade 0 widens only by the centre read reach, half the 4 m cell. Measured at the post-breaker fix (9112 faces
+        // and no reach part before the centre reach).
+        Assert.Equal((MapFoliageStatus.Complete, 10376L), (off.Status, off.Work.Faces));
+        Assert.Contains("context-reach|" + BitConverter.DoubleToInt64Bits(2.0).ToString(System.Globalization.CultureInfo.InvariantCulture), off.DependencyParts);
         var on = Prepared(0.25f, new());
         Assert.True(on.Work.Faces > off.Work.Faces, $"{on.Work.Faces} faces");
         Assert.Contains(on.DependencyParts, p => p.StartsWith("context-reach|", StringComparison.Ordinal));
@@ -377,7 +378,7 @@ public sealed class MapFoliageClearanceTests
     }
 
     [Fact]
-    public void EdgeFade_ZeroKeepsTheChunkGridsAndWideningCharges()
+    public void EdgeFade_ZeroGridsTakeOnlyTheCentreReachAndWideningCharges()
     {
         MapPreparedFoliageSupport Prepared(float edge, MapFoliageLimits limits)
         {
@@ -385,8 +386,9 @@ public sealed class MapFoliageClearanceTests
             return MapFoliageSupport.Prepare(context, context.Foliage!.Layers[0], new(0, 0), limits);
         }
         var off = Prepared(0, new());
-        // Measured at a74f58a87, before the grids took the edge fade reach.
-        Assert.Equal((MapFoliageStatus.Complete, 4334, 17336L, 61),
+        // Edge fade 0 grids widen only by the 2 m centre read reach. Measured at the post-breaker fix (4334 cells, 17336
+        // faces and 61 parts before the centre reach, the new part being its context-reach).
+        Assert.Equal((MapFoliageStatus.Complete, 4904, 19616L, 62),
             (off.Status, off.Grids.Sum(g => g.Cells.Count), off.Work.Faces, off.DependencyParts.Count));
         var on = Prepared(4, new());
         Assert.True(on.Grids.Sum(g => g.Cells.Count) > off.Grids.Sum(g => g.Cells.Count), $"{on.Grids.Sum(g => g.Cells.Count)} cells");
@@ -399,7 +401,7 @@ public sealed class MapFoliageClearanceTests
     public void EdgeFade_AcquiresThePatchPastTheNormalHalo()
     {
         var fixture = FoliageFixtures.EdgeScope(0.25f);
-        var point = Sample(fixture, 13.1f, 1);
+        var point = Sample(fixture, 15.1f, 1);
         Assert.Equal((MapFoliageStatus.Complete, MapFoliageReason.Accepted, "coarse"), (point.Status, point.Reason, point.SupportOwnerId));
         Assert.Equal(1f, point.Density);
         var context = FoliageFixtures.Context(fixture);
@@ -408,7 +410,7 @@ public sealed class MapFoliageClearanceTests
     }
 
     [Fact]
-    public void EdgeFade_ZeroKeepsTheScopeAndAcquiredPatches()
+    public void EdgeFade_ZeroScopeTakesOnlyTheCentreReach()
     {
         (MapSurfaceScope Scope, string Patches) Measure(float edge)
         {
@@ -421,8 +423,9 @@ public sealed class MapFoliageClearanceTests
                 .Select(p => p[6..p.LastIndexOf('|')])));
         }
         var (off, patches) = Measure(0);
-        // Measured at 1223033b7, before the scope took the edge fade reach.
-        Assert.Equal(((short)0, (short)0, 0.98999995f, -12.01f, 57.010002f, 44.010002f),
+        // Edge fade 0 widens the 12.01 m halo only by the 2 m centre read reach, so slot -1 stays unread. Measured at the
+        // post-breaker fix with the layer origin at 15.
+        Assert.Equal(((short)0, (short)0, 0.98999995f, -14.01f, 61.010002f, 46.010002f),
             (off.Frame.X, off.Frame.Z, off.LocalMin.X, off.LocalMin.Y, off.LocalMax.X, off.LocalMax.Y));
         Assert.Equal("coarse|0|-1,coarse|0|0,floor-1|0|-1,floor-1|0|0,peer-seat|0|-1,peer-seat|0|0,roof-seat|0|-1,roof-seat|0|0," +
             "unrelated|0|-1,unrelated|0|0", patches);
@@ -430,6 +433,29 @@ public sealed class MapFoliageClearanceTests
         Assert.True(on.LocalMin.X < off.LocalMin.X && on.LocalMax.X > off.LocalMax.X, $"{on.LocalMin} {on.LocalMax}");
         Assert.Contains("coarse|-1|-1", wider.Split(','));
         Assert.DoesNotContain("coarse|-1|-1", patches.Split(','));
+    }
+
+    [Fact]
+    public void CellCentreMaskTarget_PastAFinerRingWithoutEdgeFadeIsCompiled()
+    {
+        var fixture = FoliageFixtures.CentreMask();
+        Assert.Equal(0f, fixture.Document.Foliage!.Layers[0].EdgeFade);
+        var point = Sample(fixture, 32.05f, 1);
+        Assert.Equal((MapFoliageStatus.Complete, MapFoliageReason.Solid, "coarse"), (point.Status, point.Reason, point.SupportOwnerId));
+    }
+
+    [Fact]
+    public void EdgeFade_GathersAnOwnerAtANeighboursOwnCellCentre()
+    {
+        var fixture = FoliageFixtures.YawedNeighbour();
+        var context = FoliageFixtures.Context(fixture);
+        var neighbour = MapFoliageSupport.Prepare(context, context.Foliage!.Layers[0], new(0, 0), new()).Eligibility(98, -14);
+        Assert.Equal((MapFoliageStatus.Complete, MapFoliageReason.Accepted, "p/deck"), (neighbour.Status, neighbour.Reason, neighbour.SupportOwnerId));
+        var point = Sample(fixture, 95.9f, -14);
+        Assert.Equal((MapFoliageStatus.Complete, MapFoliageReason.Accepted, "coarse"), (point.Status, point.Reason, point.SupportOwnerId));
+        // The solid east neighbour fades the sample by its distance 0.1 m over the 0.25 m edge fade.
+        Assert.Equal(0.4f, point.Density, 0.001f);
+        Assert.Contains(Prepare(fixture).DependencyParts, p => p.StartsWith("clearance-owner|Placement|owner|", StringComparison.Ordinal));
     }
 
     [Fact]

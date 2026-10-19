@@ -79,11 +79,11 @@ public static class MapFoliageClearance
                     low = y.Subtract(MapExactValue.FromSingle(binding.SearchBelow!.Value));
                     high = y.Add(MapExactValue.FromSingle(binding.SearchAbove!.Value));
                 }
-                // Acquired floors outside the binding's exact search band cannot supply the sample's ordinal.
-                // This only narrows dependencies. Actual selection and membership stay in the shared support kernel.
+                // Acquired floors the kernel cannot select inside the binding's search band cannot supply the sample's
+                // ordinal. The test is conservative: it only narrows dependencies, and actual selection and membership
+                // stay in the shared support kernel.
                 foreach (var grid in support.Grids)
-                    if (grid.Cells.Count != 0 && (binding.Kind == MapSupportBindingKind.Surface ||
-                        grid.Cells.Values.Select(c => c.Faces).Distinct().Any(f => f.IntersectsHeight(low, high))))
+                    if (grid.Cells.Count != 0 && (binding.Kind == MapSupportBindingKind.Surface || grid.MeetsBand(low, high)))
                         consulted.Add(grid.Surface.Id);
             }
             foreach (string id in consulted.Order(StringComparer.Ordinal))

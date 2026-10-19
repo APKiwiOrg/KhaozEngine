@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Surfaces;
 
@@ -29,6 +30,54 @@ internal sealed class MapFoliageSupportGrid(MapSurfaceRef surface, MapResourceTr
         (float tx, float tz) = Tile(worldX, worldZ);
         return (tx - x, tz - z);
     }
+
+    /// <summary>Whether the shared kernel could select this surface for a sample in an inclusive world-height band:
+    /// a Supported face through its exact logical faces, or a LegacyFallback cell through its legacy recipe height.</summary>
+    internal bool MeetsBand(MapExactValue low, MapExactValue high)
+    {
+        if (Cells.Values.Select(c => c.Faces).Distinct().Any(f => f.IntersectsHeight(low, high))) return true;
+        if (Surface.Frame != MapLatticeFrame.ImportedMetreCentimetre || Surface.PresencePolicy != MapPresencePolicy.LegacyTileWorld)
+            return false;
+        foreach (MapFoliageSupportCell cell in Cells.Values)
+            if (LegacyMeetsBand(cell.Corners, low, high)) return true;
+        return false;
+    }
+
+    // A LegacyFallback height is MapLegacyBilinear.Evaluate over the cell's binary32 corner metres hCm * 0.01f, which
+    // are exactly these Corners for this frame, then the kernel's Height under an effective transform. With S the
+    // largest corner magnitude and u = 2^-24, every binary32 operation returns x(1 + e) + n with |e| <= u, where n is
+    // nonzero only for an underflowing product and |n| <= 2^-150. For fx and fz in [0, 1], |d * f| <= |d|, and the
+    // exact bilinear value B of the corners lies between their minimum and maximum, so |B| <= S. Each edge lerp
+    // h0 + (h1 - h0) * f then errs by at most (4u + 2u^2)(1 + u)S + u S + 2n < 5.001 u S + 2n, since |h1 - h0| <= 2S.
+    // The final lerp south + (north - south) * fz adds at most 4.01 u S from its difference and product, plus u times
+    // a sum below 1.01 S from its own rounding, so |Evaluate - B| < 10.1 u S + 4n. That is under 11 ulps of S, as
+    // u S < ulp(S). Without a transform the recipe may floor a point on a shared edge into the neighbour cell, where
+    // the zero fraction leaves only the shared corners in play, so the bound still holds over this cell's corners.
+    // The interval widens outward by 16 u S + 2^-40, which covers the rounding. Height rounds Y + local * Scale
+    // in binary64 with a positive Scale, freezes to a 2^-20 quantum and rounds to binary32. Each step is monotonic,
+    // and both endpoints are dyadic, so ToDouble rounds them once and preserves order. The image of the interval
+    // therefore lies between the images of its endpoints. Where an endpoint cannot be mapped, the surface counts.
+    bool LegacyMeetsBand(in MapFoliageCellCorners corners, MapExactValue low, MapExactValue high)
+    {
+        float min = MathF.Min(MathF.Min(corners.Sw, corners.Se), MathF.Min(corners.Nw, corners.Ne));
+        float max = MathF.Max(MathF.Max(corners.Sw, corners.Se), MathF.Max(corners.Nw, corners.Ne));
+        float largest = MathF.Max(MathF.Abs(min), MathF.Abs(max));
+        try
+        {
+            MapExactValue pad = MapExactValue.FromSingle(largest).Multiply(RelativePad).Add(AbsolutePad);
+            MapExactValue first = MapExactValue.FromSingle(min).Subtract(pad), second = MapExactValue.FromSingle(max).Add(pad);
+            if (Kernel is { } kernel)
+            {
+                MapExactValue a = kernel.Height(first), b = kernel.Height(second);
+                (first, second) = a.CompareTo(b) <= 0 ? (a, b) : (b, a);
+            }
+            return first.CompareTo(high) <= 0 && second.CompareTo(low) >= 0;
+        }
+        catch (Exception error) when (error is MapExactOverflowException or OverflowException or MapDocumentException) { return true; }
+    }
+
+    static readonly MapExactValue RelativePad = new(1, 1L << 20);
+    static readonly MapExactValue AbsolutePad = new(1, 1L << 40);
 
     (float X, float Z) Tile(float worldX, float worldZ)
     {

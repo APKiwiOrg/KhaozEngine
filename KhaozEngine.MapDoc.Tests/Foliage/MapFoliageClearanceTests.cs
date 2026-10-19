@@ -209,7 +209,8 @@ public sealed class MapFoliageClearanceTests
         var masked = MapFoliageClearance.Prepare(context, other, new(0, 0), new(MaxMaskCandidates: 1));
         Assert.Equal(MapFoliageStatus.Complete, masked.Status);
         Assert.Equal(1, masked.Work.MaskCandidates);
-        Assert.Equal(MapFoliageReason.Solid, masked.Evaluate(point, 0.1f, 0.1f).Reason);
+        var otherPoint = MapFoliageSupport.Prepare(context, other, new(0, 0), new()).Sample(0.1f, 0.1f);
+        Assert.Equal(MapFoliageReason.Solid, masked.Evaluate(otherPoint, 0.1f, 0.1f).Reason);
         Assert.Equal(MapFoliageStatus.CapacityExceeded,
             MapFoliageClearance.Prepare(context, other, new(0, 0), new(MaxMaskCandidates: 0)).Status);
     }
@@ -284,6 +285,42 @@ public sealed class MapFoliageClearanceTests
         Assert.Equal(higher, Sample(fixture, 4.1f, -0.1f));
         Assert.Equal(peer, Sample(fixture, 8.1f, -0.1f));
         Assert.Equal(before.DependencyParts, Prepare(fixture).DependencyParts);
+    }
+
+    [Fact]
+    public void SpaceBoundLayer_HashesItsSelectedSurfaceOrdinal()
+    {
+        var fixture = FoliageFixtures.Clearance("roof");
+        var patch = fixture.Document.Surfaces.Patches[new("floor-1", 0, 0)];
+        patch.Records.Add(new KhaozEngine.MapDoc.Spaces.MapSpaceDoc("level", KhaozEngine.MapDoc.Spaces.MapSpaceKind.Exterior, null, null, [], [], [], []));
+        patch.Records.Add(new KhaozEngine.MapDoc.Spaces.MapSpaceFootprint("level-domain", new("level", patch.Key), patch.Key,
+            Enumerable.Range(0, patch.Depth).SelectMany(z => Enumerable.Range(0, patch.Width).Select(x => z * 64 + x)).ToArray(),
+            new(KhaozEngine.MapDoc.Spaces.MapBoundKind.SupportFloor, "floor-1", null), new(KhaozEngine.MapDoc.Spaces.MapBoundKind.OpenTop, null, null)));
+        fixture.Document.Placements[0].X = 4;
+        fixture.Document.Placements[1].X = 8;
+        FoliageFixtures.WithClearance(fixture, l => FoliageFixtures.ClearanceLayer(l,
+            support: new(MapSupportBindingKind.Space, null, "level", 20.2f, 1, 0.5f)));
+        var before = Prepare(fixture);
+        Assert.Contains("ordinal|floor-1|1", before.DependencyParts);
+        FoliageFixtures.WithClearance(fixture, l => FoliageFixtures.ClearanceLayer(l,
+            ordinals: l.CompatibilityOrdinals.Select(r => r.SurfaceId == "floor-1" ? r with { Ordinal = 4 } : r).ToArray()));
+        Assert.NotEqual(before.DependencyParts, Prepare(fixture).DependencyParts);
+    }
+
+    [Theory]
+    [InlineData(false, "floor-1", 4.1f, -0.1f)]
+    [InlineData(true, "p/deck", 8.1f, -8.1f)]
+    public void SpaceBoundLegacyFallback_AtTheBandEdgeKeepsItsSurfaceOrdinal(bool posed, string surface, float x, float z)
+    {
+        var fixture = posed ? FoliageFixtures.LegacyBandPosed() : FoliageFixtures.LegacyBand();
+        var context = FoliageFixtures.Context(fixture);
+        var layer = context.Foliage!.Layers[0];
+        var target = MapFoliageSupport.Prepare(context, layer, new(0, 0), new()).Target(layer.Support, x, z);
+        Assert.Equal((KhaozEngine.MapDoc.Support.MapSupportStatus.LegacyFallback, surface), (target.Status, target.Compatibility?.Patch.SurfaceId));
+        var parts = Prepare(fixture).DependencyParts;
+        var point = Sample(fixture, x, z);
+        Assert.Equal((true, surface, MapFoliageReason.RoofAbove),
+            (parts.Contains("ordinal|" + surface + "|1"), point.SupportOwnerId, point.Reason));
     }
 
     [Fact]

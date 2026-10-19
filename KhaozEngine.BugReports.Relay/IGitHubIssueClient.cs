@@ -41,6 +41,9 @@ public interface IGitHubIssueClient
     /// <summary>Adds a comment with <paramref name="body"/> to issue <paramref name="issueNumber"/>.</summary>
     Task AddCommentAsync(int issueNumber, string body, CancellationToken cancellationToken);
 
+    /// <summary>Returns the issue page URL, or null when this client cannot construct the page URL.</summary>
+    Uri? IssuePageUrl(int issueNumber) => null;
+
     /// <summary>Replaces the title and body and closes the issue as not planned, preserving labels.</summary>
     Task<GitHubIssueUpdateResult> UpdateIssueAsync(int issueNumber, GitHubIssueUpdate update, CancellationToken cancellationToken)
         => throw new NotSupportedException("IGitHubIssueClient.UpdateIssueAsync is not implemented by this client.");

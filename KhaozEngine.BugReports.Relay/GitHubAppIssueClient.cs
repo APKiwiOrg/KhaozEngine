@@ -106,6 +106,13 @@ public sealed class GitHubAppIssueClient : IGitHubIssueClient, IDisposable
             + "/comments", content, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>Returns the issue page URL in the configured repository.</summary>
+    public Uri? IssuePageUrl(int issueNumber)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(issueNumber);
+        return new Uri("https://github.com/" + issuesPath["repos/".Length..] + "/" + issueNumber.ToString(CultureInfo.InvariantCulture));
+    }
+
     /// <summary>Replaces the title and body and closes the issue as not planned. The PATCH is sent once.</summary>
     public async Task<GitHubIssueUpdateResult> UpdateIssueAsync(int issueNumber, GitHubIssueUpdate update, CancellationToken cancellationToken)
     {

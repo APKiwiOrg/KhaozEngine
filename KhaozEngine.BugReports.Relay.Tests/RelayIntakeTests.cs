@@ -447,7 +447,8 @@ public sealed class RelayIntakeTests
         Assert.Equal(savedWinner, (await harness.Media.GetAsync(ReportArea.Pending, "records/" + Id + ".json", ReportLayout.MaxRecordBytes, Ct))!.Value.ToArray());
         Assert.Equal(new AcceptedReport(winner.Folder, winner.Reporter.Subject, winner.ReceivedAt), accepted);
         Assert.Equal(0, harness.Work.Count);
-        Assert.Equal(2, harness.Media.Paths(ReportArea.Public).Count(path => path.EndsWith("/viewer.html", StringComparison.Ordinal)));
+        Assert.Single(harness.Media.Paths(ReportArea.Public), path => path.EndsWith("/viewer.html", StringComparison.Ordinal));
+        Assert.All(harness.Media.Paths(ReportArea.Public), path => Assert.StartsWith(winner.Folder + "/", path, StringComparison.Ordinal));
     }
 
     [Fact]

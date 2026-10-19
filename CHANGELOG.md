@@ -18,10 +18,11 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   files. The non-personal tombstone and reference index remain for repeat revokes (#1510).
 - Default-implemented seam additions support revocation without breaking third-party implementers:
   `IReportMediaStore.ListAsync` and `DeleteAsync`, the delayed `IReportWorkQueue.EnqueueAsync`, and
-  `IGitHubIssueClient.UpdateIssueAsync`. Defaults throw a named `NotSupportedException`, while engine
-  implementations provide each operation (#1510).
-- Delayed Azure queue sends use a time to live of the delay plus seven days, keeping a full seven-day
-  delivery window after the visibility delay (#1510).
+  `IGitHubIssueClient.UpdateIssueAsync`. These defaults throw a named `NotSupportedException`, while engine
+  implementations provide each operation. `IGitHubIssueClient.IssuePageUrl` defaults to null and supplies
+  the operator's deletion URL when redaction fails or the App cannot see the issue (#1510).
+- Delayed Azure queue sends round positive delays up to whole seconds and use a time to live of the rounded
+  delay plus seven days, keeping a full seven-day delivery window after the visibility delay (#1510).
 
 ## 21.7.1
 

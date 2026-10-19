@@ -109,25 +109,31 @@ Any other failure throws `GitHubApiException` as the existing calls do. The resu
 
 ### Failure rules
 
-- A failed redaction during the call answers `Revoked` with issue outcome `Failed`. The purge retries it.
-- The purge redacts before it deletes the record, so the issue number is never lost. A failed redaction throws, the
-  queue redelivers, and the existing poison requeue picks up an exhausted item.
+- A failed redaction during the call answers `Revoked` with issue outcome `Failed`. An HTTP timeout with an
+  uncancelled caller token is a failed redaction too. Caller cancellation propagates. The purge retries failures.
+- Whenever a positive issue number is known, the result carries the issue page URL, including `Failed` and
+  `Gone`. Use the update's URL for `Updated` or `Moved` when returned, otherwise use `IssuePageUrl(number)`.
+- The purge redacts before it deletes the record, so the issue number is never lost. A failed redaction, including
+  an uncancelled HTTP timeout, throws. The queue redelivers, and the existing poison requeue picks up an exhausted item.
 - `Gone` and `Moved` do not block the purge. The call's answer carries them so the operator can act.
 - A late issue created inside the lease is redacted and closed by the purge and logged at warning level with its
-  number. The operator script does not see it. This needs a revoke within seconds of the report being sent.
+  number. A transferred late issue logs a warning with the report id, issue number and destination URL, and the
+  purge still completes. The operator script does not see late issues. This needs a revoke within seconds of
+  the report being sent.
 
 ### Seams and compatibility
 
 | Seam | New member | Engine implementations |
 | --- | --- | --- |
 | `IReportMediaStore` | `ListAsync(ReportArea, string prefix, CancellationToken)` and `DeleteAsync(ReportArea, string path, CancellationToken)` | in-memory, Azure Blob |
-| `IReportWorkQueue` | `EnqueueAsync(ReportWorkItem, TimeSpan visibleAfter, CancellationToken)` | in-memory honours `TimeProvider`, Azure Queue sets the visibility timeout and a time to live of the delay plus seven days, preserving a full delivery window |
-| `IGitHubIssueClient` | `UpdateIssueAsync` as above | `GitHubAppIssueClient` |
+| `IReportWorkQueue` | `EnqueueAsync(ReportWorkItem, TimeSpan visibleAfter, CancellationToken)` | in-memory honours `TimeProvider`, Azure Queue rounds positive delays up to whole seconds and uses the rounded delay for visibility and a time to live of the delay plus seven days, preserving a full delivery window |
+| `IGitHubIssueClient` | `UpdateIssueAsync` as above and `IssuePageUrl(int issueNumber)` | `GitHubAppIssueClient` constructs the page in the configured repository |
 | `ReportWorkKind` | `PurgeRevoked` | the worker |
 
-The new interface members are default-implemented and throw `NotSupportedException` naming the member, following
+The new asynchronous interface members are default-implemented and throw `NotSupportedException` naming the member, following
 the `IGpuDevice` precedent in [DEPENDENCY-SEAMS.md](../../DEPENDENCY-SEAMS.md). Every engine implementation overrides
 them, so only a third-party implementer can reach a default, and the release stays an additive minor.
+`IssuePageUrl` defaults to null. A client that cannot construct the issue page URL answers null.
 
 ## Host integration
 

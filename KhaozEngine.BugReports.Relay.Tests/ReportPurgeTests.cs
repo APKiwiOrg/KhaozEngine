@@ -17,6 +17,37 @@ public sealed class ReportPurgeTests
     static readonly CancellationToken Ct = CancellationToken.None;
 
     [Fact]
+    public async Task Purge_AfterConcurrentSameIdIntakes_LeavesNoPublicBlobs()
+    {
+        var recordHeld = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseRecord = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var harness = new RelayHarness(wrapMedia: inner => new HookedMediaStore(inner, "records/", async () =>
+        {
+            recordHeld.SetResult();
+            await releaseRecord.Task;
+        }));
+        Task<RelayResponse> loser = harness.IntakeAsync();
+        await recordHeld.Task;
+        try
+        {
+            Assert.Equal(202, (await harness.IntakeAsync()).StatusCode);
+            Assert.Equal(2, harness.Media.Paths(ReportArea.Public).Count(path => path.EndsWith("/viewer.html", StringComparison.Ordinal)));
+        }
+        finally
+        {
+            releaseRecord.SetResult();
+            Assert.Equal(202, (await loser).StatusCode);
+        }
+        await WorkerFixtures.DrainAsync(harness);
+
+        Assert.Equal(ReportRevocationStatus.Revoked, (await harness.Relay.RevokeReportAsync(Id, Ct)).Status);
+        await AdvanceAndDrainAsync(harness);
+
+        Assert.Empty(harness.Media.Paths(ReportArea.Public));
+        AssertPurged(harness);
+    }
+
+    [Fact]
     public async Task Purge_DeletesPrivateFilesAndKeepsTombstoneAndIndex()
     {
         var harness = new RelayHarness();
@@ -77,6 +108,42 @@ public sealed class ReportPurgeTests
     }
 
     [Fact]
+    public async Task Purge_LateIssueTransferred_LogsDestinationForOperatorDeletion()
+    {
+        var harness = new RelayHarness();
+        await WorkerFixtures.AcceptAsync(harness);
+        var createHeld = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseCreate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.GitHub.OnCreate = async () =>
+        {
+            createHeld.SetResult();
+            await releaseCreate.Task;
+        };
+        Task creating = WorkerFixtures.ProcessAsync(harness);
+        await createHeld.Task;
+        try
+        {
+            ReportRevocationResult result = await harness.Relay.RevokeReportAsync(Id, Ct);
+            Assert.Equal(ReportIssueRevocation.NotCreated, result.Issue);
+            Assert.Null(result.IssueUrl);
+        }
+        finally
+        {
+            releaseCreate.SetResult();
+            await creating;
+        }
+        const string destination = "https://github.com/example/transferred/issues/19";
+        harness.GitHub.OnUpdate = _ => Task.FromResult(new GitHubIssueUpdateResult(GitHubIssueUpdateOutcome.Moved, new Uri(destination)));
+
+        await AdvanceAndDrainAsync(harness);
+
+        Assert.Contains(harness.Logger.Entries, entry => entry.Level == LogLevel.Warn
+            && entry.Message.Contains(Id, StringComparison.Ordinal) && entry.Message.Contains(" 7 ", StringComparison.Ordinal)
+            && entry.Message.Contains(destination, StringComparison.Ordinal));
+        AssertPurged(harness);
+    }
+
+    [Fact]
     public async Task Purge_ReloadsIssueAfterPublicCleanup()
     {
         WorkerMediaStore store = null!;
@@ -120,9 +187,10 @@ public sealed class ReportPurgeTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task Purge_RedactionFails_ThrowsAndKeepsPrivateFiles(bool apiFailure)
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task Purge_RedactionFails_ThrowsAndKeepsPrivateFiles(int failureKind)
     {
         var harness = new RelayHarness();
         ReportRecord record = await WorkerFixtures.AcceptAsync(harness);
@@ -132,8 +200,12 @@ public sealed class ReportPurgeTests
         string late = record.Folder + "/server.json";
         await harness.Media.PutAsync(ReportArea.Public, late, "{}"u8.ToArray(), ReportLayout.HeadersFor(late), false, Ct);
         string[] pending = harness.Media.Paths(ReportArea.Pending).ToArray();
-        Exception failure = apiFailure ? new GitHubApiException(503, false, null, "GitHub unavailable")
-            : new HttpRequestException("GitHub unavailable");
+        Exception failure = failureKind switch
+        {
+            0 => new GitHubApiException(503, false, null, "GitHub unavailable"),
+            1 => new HttpRequestException("GitHub unavailable"),
+            _ => new TaskCanceledException("GitHub timed out.", new TimeoutException()),
+        };
         harness.GitHub.OnUpdate = _ =>
         {
             Assert.Empty(harness.Media.Paths(ReportArea.Public));
@@ -167,7 +239,10 @@ public sealed class ReportPurgeTests
 
         AssertPurged(harness);
         Assert.Equal(2, harness.GitHub.Updates.Count);
-        Assert.DoesNotContain(harness.Logger.Entries, entry => entry.Level == LogLevel.Warn);
+        if (outcome == GitHubIssueUpdateOutcome.Moved)
+            Assert.Contains(harness.Logger.Entries, entry => entry.Level == LogLevel.Warn && entry.Message.Contains(Id, StringComparison.Ordinal));
+        else
+            Assert.DoesNotContain(harness.Logger.Entries, entry => entry.Level == LogLevel.Warn);
     }
 
     [Fact]

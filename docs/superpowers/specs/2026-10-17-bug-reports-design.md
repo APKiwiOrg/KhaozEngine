@@ -347,11 +347,13 @@ running beyond the lease is outside the guarantee.
 | `IReportMediaStore` | write and read report blobs, existence checks, recursive `ListAsync` and idempotent `DeleteAsync` | Blob Storage |
 | `IReportWorkQueue` | at-least-once work items, including delayed `EnqueueAsync` | Storage Queue, with a time to live of the delay plus seven days |
 | `IReportQuotaStore` | fixed-window counters with optimistic concurrency | Table Storage |
+| `IGitHubIssueClient` | create issues, add comments, redact through `UpdateIssueAsync`, and construct a page URL through `IssuePageUrl` | in-package GitHub App client |
 
 The media, queue and quota seams have in-memory implementations for tests and local runs.
 `IGitHubIssueClient` creates issues, adds comments and redacts and closes issues through `UpdateIssueAsync`.
 The new list, delete, delayed enqueue and issue update members have default implementations that throw
 `NotSupportedException` naming the member. Engine backends override them.
+`IssuePageUrl` defaults to null when a client cannot construct the issue page URL.
 
 ## Security
 

@@ -78,8 +78,9 @@ propagate so queue work can be redelivered. `ListAsync` returns all full blob pa
 folder prefix in ordinal order. `DeleteAsync` returns false for an absent blob and propagates other faults.
 
 `StorageQueueReportWorkQueue` sends `ReportWorkItemJson` unchanged to the SDK, which performs the one
-base64 encoding. Its delayed `EnqueueAsync` accepts zero to seven days, sets that visibility timeout
-and sets the time to live to the delay plus seven days. The item retains a full seven-day delivery
+base64 encoding. Its delayed `EnqueueAsync` accepts zero to seven days, rounds positive delays up to whole
+seconds, sets that visibility timeout and sets the time to live to the rounded delay plus seven days.
+The item retains a full seven-day delivery
 window after it becomes visible.
 
 `TableReportQuotaStore` uses the quota key as PartitionKey, RowKey `q`, a long `Count` and `ExpiresAt`. Creates use add and updates use a matching ETag with replace. The host owns expired

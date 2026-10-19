@@ -178,10 +178,29 @@ public sealed class ReportRevokeTests
         Assert.Equal(1, harness.Work.Count);
     }
 
+    [Fact]
+    public async Task RevokeRequest_FailedRedaction_CarriesIssueNumberAndPageUrl()
+    {
+        var harness = new RelayHarness();
+        await WorkerFixtures.AcceptAsync(harness);
+        await WorkerFixtures.ProcessAsync(harness);
+        harness.GitHub.OnUpdate = _ => throw new GitHubApiException(503, false, null, "unavailable");
+
+        RelayResponse response = await harness.Relay.RevokeRequestAsync(Request("{\"report\":\"" + Id + "\"}"), Ct);
+
+        Assert.Equal(200, response.StatusCode);
+        using JsonDocument json = JsonDocument.Parse(response.JsonBody!);
+        Assert.Equal("revoked", json.RootElement.GetProperty("status").GetString());
+        Assert.Equal("failed", json.RootElement.GetProperty("issue").GetString());
+        Assert.Equal(7, json.RootElement.GetProperty("issueNumber").GetInt32());
+        Assert.Equal("https://github.com/example/reports/issues/7", json.RootElement.GetProperty("issueUrl").GetString());
+    }
+
     [Theory]
-    [InlineData(GitHubIssueUpdateOutcome.Gone, ReportIssueRevocation.Gone, null)]
-    [InlineData(GitHubIssueUpdateOutcome.Moved, ReportIssueRevocation.Moved, "https://github.com/example/moved/issues/9")]
-    public async Task Revoke_GitHubOutcome_IsReturned(GitHubIssueUpdateOutcome outcome, ReportIssueRevocation expected, string? url)
+    [InlineData(GitHubIssueUpdateOutcome.Gone, ReportIssueRevocation.Gone, null, "https://github.com/example/reports/issues/7")]
+    [InlineData(GitHubIssueUpdateOutcome.Moved, ReportIssueRevocation.Moved, "https://github.com/example/moved/issues/9", "https://github.com/example/moved/issues/9")]
+    [InlineData(GitHubIssueUpdateOutcome.Updated, ReportIssueRevocation.Redacted, null, "https://github.com/example/reports/issues/7")]
+    public async Task Revoke_GitHubOutcome_IsReturned(GitHubIssueUpdateOutcome outcome, ReportIssueRevocation expected, string? url, string expectedUrl)
     {
         var harness = new RelayHarness();
         await WorkerFixtures.AcceptAsync(harness);
@@ -191,7 +210,7 @@ public sealed class ReportRevokeTests
         ReportRevocationResult result = await harness.Relay.RevokeReportAsync(Id, Ct);
 
         Assert.Equal(expected, result.Issue);
-        Assert.Equal(url, result.IssueUrl?.AbsoluteUri);
+        Assert.Equal(expectedUrl, result.IssueUrl?.AbsoluteUri);
         Assert.Equal(1, harness.Work.Count);
     }
 
@@ -220,17 +239,47 @@ public sealed class ReportRevokeTests
     }
 
     [Fact]
-    public async Task Revoke_Cancellation_Propagates()
+    public async Task Revoke_HttpTimeout_StillRevokedAndSchedulesPurge()
     {
         var harness = new RelayHarness();
         await WorkerFixtures.AcceptAsync(harness);
         await WorkerFixtures.ProcessAsync(harness);
-        harness.GitHub.OnUpdate = _ => throw new OperationCanceledException();
+        harness.GitHub.OnUpdate = _ => throw new TaskCanceledException("GitHub timed out.", new TimeoutException());
 
-        await Assert.ThrowsAsync<OperationCanceledException>(() => harness.Relay.RevokeReportAsync(Id, Ct));
+        ReportRevocationResult result = await harness.Relay.RevokeReportAsync(Id, Ct);
 
+        Assert.Equal(ReportRevocationStatus.Revoked, result.Status);
+        Assert.Equal(ReportIssueRevocation.Failed, result.Issue);
+        Assert.Equal(7, result.IssueNumber);
+        Assert.Equal(new Uri("https://github.com/example/reports/issues/7"), result.IssueUrl);
+        Assert.True(await harness.Media.ExistsAsync(ReportArea.Pending, ReportLayout.Revoked(Id), Ct));
+        Assert.Empty(harness.Media.Paths(ReportArea.Public));
+        Assert.Equal(1, harness.Work.Count);
+        Assert.False(harness.Work.TryDequeue(out _));
+        harness.Clock.Advance(TimeSpan.FromMinutes(12));
+        Assert.True(harness.Work.TryDequeue(out ReportWorkItem? item));
+        Assert.Equal(new ReportWorkItem(ReportWorkKind.PurgeRevoked, Id), item);
+    }
+
+    [Fact]
+    public async Task Revoke_CallerCancellation_Propagates()
+    {
+        var harness = new RelayHarness();
+        await WorkerFixtures.AcceptAsync(harness);
+        await WorkerFixtures.ProcessAsync(harness);
+        using var caller = new CancellationTokenSource();
+        harness.GitHub.OnUpdate = _ =>
+        {
+            caller.Cancel();
+            throw new OperationCanceledException(caller.Token);
+        };
+
+        var error = await Assert.ThrowsAsync<OperationCanceledException>(() => harness.Relay.RevokeReportAsync(Id, caller.Token));
+
+        Assert.Equal(caller.Token, error.CancellationToken);
         Assert.Equal(0, harness.Work.Count);
         Assert.True(await harness.Media.ExistsAsync(ReportArea.Pending, ReportLayout.Revoked(Id), Ct));
+        Assert.NotNull(await harness.Records.LoadReportAsync(Id, Ct));
     }
 
     [Theory]
@@ -307,6 +356,8 @@ public sealed class ReportRevokeTests
 
     [Theory]
     [InlineData("{", 400, "bad_request")]
+    [InlineData("{\"report\":\"\\uD800\"}", 400, "bad_request")]
+    [InlineData("{\"\\uD800\":\"x\"}", 400, "bad_request")]
     [InlineData("{\"report\":1}", 400, "bad_request")]
     [InlineData("{\"report\":\"x\",\"y\":1}", 400, "bad_request")]
     [InlineData("[]", 400, "bad_request")]

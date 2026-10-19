@@ -18,6 +18,9 @@ internal sealed class RecordingGitHubIssueClient : IGitHubIssueClient
     public Func<int, Task<GitHubIssueUpdateResult>>? OnUpdate { get; set; }
     public int FirstIssueNumber { get; set; } = 7;
 
+    public Uri? IssuePageUrl(int issueNumber)
+        => new Uri("https://github.com/example/reports/issues/" + issueNumber.ToString(CultureInfo.InvariantCulture));
+
     public async Task<int> CreateIssueAsync(GitHubIssueDraft issue, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

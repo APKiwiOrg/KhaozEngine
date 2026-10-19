@@ -83,7 +83,7 @@ public sealed class BugReportRelay
                 report = property.Value.GetString();
             }
         }
-        catch (JsonException)
+        catch (Exception exception) when (exception is JsonException or InvalidOperationException)
         {
             return RelayResponses.Error(400, "bad_request");
         }

@@ -67,11 +67,13 @@ internal sealed class ReportRevoker(IReportMediaStore media, ReportRecordStore r
         {
             (issue, issueUrl) = await RedactIssueAsync(issueNumber, reference, ct).ConfigureAwait(false);
         }
-        catch (Exception exception) when (exception is GitHubApiException or HttpRequestException)
+        catch (Exception exception) when (exception is GitHubApiException or HttpRequestException
+            || exception is OperationCanceledException && !ct.IsCancellationRequested)
         {
             issue = ReportIssueRevocation.Failed;
             logger.Warn("Issue redaction failed for revoked report " + id + ". The purge will retry it.", exception);
         }
+        if (issueNumber is > 0) issueUrl ??= github.IssuePageUrl(issueNumber.Value);
 
         DateTimeOffset purgeAt = time.GetUtcNow() + PurgeDelay;
         await work.EnqueueAsync(new ReportWorkItem(ReportWorkKind.PurgeRevoked, id), PurgeDelay, ct).ConfigureAwait(false);
@@ -89,9 +91,12 @@ internal sealed class ReportRevoker(IReportMediaStore media, ReportRecordStore r
 
         record = await records.LoadReportAsync(reportId, ct).ConfigureAwait(false);
         int? issueNumber = await FindIssueNumberAsync(record, reportId, ct).ConfigureAwait(false);
-        var (issue, _) = await RedactIssueAsync(issueNumber, ReportIds.ReferenceCode(reportId), ct).ConfigureAwait(false);
+        var (issue, issueUrl) = await RedactIssueAsync(issueNumber, ReportIds.ReferenceCode(reportId), ct).ConfigureAwait(false);
         if (issue == ReportIssueRevocation.Redacted && issueNumber is int number)
             logger.Warn("Redacted issue " + number.ToString(CultureInfo.InvariantCulture) + " during purge of revoked report " + reportId + ".");
+        else if (issue == ReportIssueRevocation.Moved && issueNumber is int movedNumber)
+            logger.Warn("Issue " + movedNumber.ToString(CultureInfo.InvariantCulture) + " moved to " + issueUrl
+                + " during purge of revoked report " + reportId + ". Operator deletion is required.");
 
         await media.DeleteAsync(ReportArea.Pending, ReportLayout.ReportRecord(reportId), ct).ConfigureAwait(false);
         await media.DeleteAsync(ReportArea.Pending, ReportLayout.AcceptedIndex(reportId), ct).ConfigureAwait(false);

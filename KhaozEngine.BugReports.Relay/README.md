@@ -156,6 +156,8 @@ HTTP client and disposes the GitHub client at shutdown. Grant the app issue writ
 - Protect the service key and GitHub App private key as server secrets. Logs carry report ids and
   references, never a bearer token, service key, installation token, JWT or subject.
 
+Reference-code lookup covers reports accepted on 21.8.0 or later. Lookup by report id always works.
+
 To revoke a report:
 
 1. Call `BugReportRelay.RevokeReportAsync(idOrReference, cancellationToken)`, or forward an authorized operator
@@ -175,13 +177,20 @@ Only the non-personal tombstone and reference index remain until their lifecycle
 `Issue`, `IssueNumber`, `IssueUrl` and `PurgeAt`. An ambiguous reference needs one of the returned ids.
 `RevokeRequestAsync` returns 200 for `Revoked` or `AlreadyRevoked`, 404 for `NotFound`, 409 for `Ambiguous`,
 400 for `Invalid` or malformed JSON, and 413 for an oversized body. Forward its JSON and headers unchanged.
-Issue outcomes are `NotCreated`, `Redacted`, `Gone`, `Moved` or `Failed`. A redaction failure is reported
-as `Failed` and retried by the purge. Other storage or queue faults propagate for host retry.
+Issue outcomes are `NotCreated`, `Redacted`, `Gone`, `Moved` or `Failed`. Whenever an issue number is known,
+the result carries its page URL, including `Gone` and `Failed`. A returned `Updated` or `Moved` URL takes
+precedence, otherwise `IGitHubIssueClient.IssuePageUrl` supplies the page in the configured repository.
+A third-party client that cannot construct a page URL returns null. A redaction failure, including an HTTP
+timeout while the caller's token is not cancelled, is reported as `Failed` and retried by the purge.
+Caller cancellation and other storage or queue faults propagate for host retry. A redaction timeout during
+the purge also propagates, preserving the private record for redelivery.
 
 A holder that passed its check before revocation can still finish a write inside its lease. The delayed
 purge removes that write. A holder running beyond the lease remains outside the guarantee. A late issue
-found by the purge is redacted and logged with its number for operator deletion. A missing public
-`manifest.json` also means revoked, and the relay writes a tombstone when it discovers that deletion.
+found by the purge is redacted and logged with its number for operator deletion. A transferred late issue
+instead logs a warning with the report id, issue number and destination URL for operator deletion, and the
+purge still completes. A missing public `manifest.json` also means revoked, and the relay writes a
+tombstone when it discovers that deletion.
 
 The relevant `host.json` settings are:
 

@@ -40,9 +40,10 @@ public sealed class StorageQueueReportWorkQueueTests
     }
 
     [Theory]
-    [InlineData(720, 605520)]
-    [InlineData(604800, 1209600)]
-    public async Task StorageQueue_DelayedEnqueue_SendsSdkVisibilityTimeoutAndTimeToLive(int delaySeconds, int timeToLiveSeconds)
+    [InlineData(0.5, 1, 604801)]
+    [InlineData(720, 720, 605520)]
+    [InlineData(604800, 604800, 1209600)]
+    public async Task StorageQueue_DelayedEnqueue_SendsSdkVisibilityTimeoutAndTimeToLive(double delaySeconds, int visibilitySeconds, int timeToLiveSeconds)
     {
         using var handler = new VisibilityTimeoutHandler();
         using var http = new HttpClient(handler);
@@ -57,7 +58,7 @@ public sealed class StorageQueueReportWorkQueueTests
 
         Assert.NotNull(handler.RequestUri);
         string[] queryParameters = handler.RequestUri.Query.TrimStart('?').Split('&');
-        Assert.Contains($"visibilitytimeout={delaySeconds}", queryParameters);
+        Assert.Contains($"visibilitytimeout={visibilitySeconds}", queryParameters);
         Assert.Contains($"messagettl={timeToLiveSeconds}", queryParameters);
     }
 

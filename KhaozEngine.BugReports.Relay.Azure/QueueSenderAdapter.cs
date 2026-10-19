@@ -21,7 +21,10 @@ internal sealed class QueueSenderAdapter : IReportQueueSender
         if (visibilityTimeout is null)
             await queue.SendMessageAsync(text, cancellationToken: ct).ConfigureAwait(false);
         else
-            await queue.SendMessageAsync(text, visibilityTimeout: visibilityTimeout,
-                timeToLive: visibilityTimeout.Value + TimeSpan.FromDays(DeliveryRetentionDays), cancellationToken: ct).ConfigureAwait(false);
+        {
+            TimeSpan delay = TimeSpan.FromSeconds(Math.Ceiling(visibilityTimeout.Value.TotalSeconds));
+            await queue.SendMessageAsync(text, visibilityTimeout: delay,
+                timeToLive: delay + TimeSpan.FromDays(DeliveryRetentionDays), cancellationToken: ct).ConfigureAwait(false);
+        }
     }
 }

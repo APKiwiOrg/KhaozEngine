@@ -3468,13 +3468,19 @@ Nothing else is manual. The relay deletes public media immediately and schedules
 minutes later. The purge repeats public cleanup and issue redaction, then removes private state and
 claim files. The non-personal tombstone and `references/<lowercase code>/<reportId>.json` index remain
 until lifecycle expiry. Keep both for the report retention, 180 days for the first consumer.
+Reference-code lookup covers reports accepted on 21.8.0 or later. Lookup by report id always works.
+When an issue number is known, the result carries its page URL even for `Failed` or `Gone` redaction.
+`IGitHubIssueClient.IssuePageUrl` supplies that URL when the update returned none, and defaults to null
+for clients that cannot construct it. An HTTP timeout with an uncancelled caller token is reported as
+`Failed` and the purge is still scheduled. A redaction failure during purge propagates for redelivery.
 
 `RevokeRequestAsync` maps `Revoked` and `AlreadyRevoked` to 200, `NotFound` to 404, `Ambiguous` to 409,
 and `Invalid` or malformed JSON to 400. Oversized bodies return 413. Forward its JSON and headers.
 The host authenticates the operator. The engine request method does not do so.
 A holder that passed its check can still write inside the ten-minute lease. The purge removes those
 writes, but holders running beyond their lease remain outside the guarantee. A late issue discovered
-by the purge is redacted and logged for operator deletion. A missing public manifest is also treated
+by the purge is redacted and logged for operator deletion. A transferred late issue logs a warning with
+its report id, issue number and destination URL before the purge completes. A missing public manifest is also treated
 as revoked. Late snapshots and full-bundle resends return 202 without enqueueing revoked work.
 
 The [relay README](../KhaozEngine.BugReports.Relay/README.md) has the isolated-worker host sketch and status

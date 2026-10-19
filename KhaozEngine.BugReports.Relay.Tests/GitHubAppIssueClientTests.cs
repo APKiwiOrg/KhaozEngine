@@ -42,6 +42,25 @@ public sealed class GitHubAppIssueClientTests : IDisposable
     void IssueResponse() => handler.Enqueue(HttpStatusCode.Created, "{\"number\":42,\"id\":123,\"state\":\"open\"}");
 
     [Fact]
+    public async Task Revoke_FailedAppRedaction_ReturnsConfiguredIssuePageForDeletion()
+    {
+        var harness = new RelayHarness();
+        await WorkerFixtures.AcceptAsync(harness);
+        await WorkerFixtures.ProcessAsync(harness);
+        TokenResponse();
+        handler.Enqueue(HttpStatusCode.ServiceUnavailable, "unavailable");
+        using var client = new GitHubAppIssueClient(http, Credentials, "other-owner", "other-reports", clock);
+        var relay = new BugReportRelay(harness.Options, harness.Authenticator, harness.Media, harness.Work,
+            harness.Quotas, client, harness.Clock);
+
+        ReportRevocationResult result = await relay.RevokeReportAsync(RelayHarness.Id, CancellationToken.None);
+
+        Assert.Equal(ReportIssueRevocation.Failed, result.Issue);
+        Assert.Equal(7, result.IssueNumber);
+        Assert.Equal(new Uri("https://github.com/other-owner/other-reports/issues/7"), result.IssueUrl);
+    }
+
+    [Fact]
     public async Task UpdateIssue_SendsPatchWithTitleBodyAndNotPlannedClose()
     {
         TokenResponse();

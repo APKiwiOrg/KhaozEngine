@@ -75,8 +75,12 @@ internal sealed class RelayIntake
 
         record = await storer.StoreAsync(body, manifest, reporter, time.GetUtcNow(), ct).ConfigureAwait(false);
         if (!await records.CreateReportAsync(record, ct).ConfigureAwait(false))
+        {
+            foreach (string path in await media.ListAsync(ReportArea.Public, record.Folder + "/", ct).ConfigureAwait(false))
+                await media.DeleteAsync(ReportArea.Public, path, ct).ConfigureAwait(false);
             record = await records.LoadReportAsync(key, ct).ConfigureAwait(false)
                 ?? throw new InvalidDataException("The winning report record is missing.");
+        }
         return await CompleteAcceptanceAsync(record, ct).ConfigureAwait(false);
     }
 

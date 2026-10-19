@@ -36,13 +36,24 @@ public sealed class MapPreparedSupport
     /// <summary>Selects support for <paramref name="request"/> through the released kernel, honouring every request
     /// field. Named-owner mode samples only the request's SurfaceId and requires one. An exact world point, when given,
     /// replaces the request point's world position.</summary>
-    public MapSupportResult Sample(MapSupportRequest request, bool namedSurfaceOnly = false, MapExactPoint? exactWorld = null) =>
-        MapSupportSelection.Select(this, request, namedSurfaceOnly, exactWorld);
+    public MapSupportResult Sample(MapSupportRequest request, bool namedSurfaceOnly = false, MapExactPoint? exactWorld = null)
+    {
+        t_samples++;
+        return MapSupportSelection.Select(this, request, namedSurfaceOnly, exactWorld);
+    }
+
+    [ThreadStatic] static long t_samples;
+
+    /// <summary>Support selections run through prepared support on the calling thread, counted at the call itself.</summary>
+    internal static long ThreadSamples => t_samples;
 
     /// <summary><see cref="Sample(MapSupportRequest, bool, MapExactPoint?)"/> charging membership face work to
     /// <paramref name="work"/>, as the point query's counted overload does.</summary>
-    internal MapSupportResult Sample(MapSupportRequest request, MapBoundFaceWork work) =>
-        MapSupportSelection.Compute(this, request, work, false).Result;
+    internal MapSupportResult Sample(MapSupportRequest request, MapBoundFaceWork work)
+    {
+        t_samples++;
+        return MapSupportSelection.Compute(this, request, work, false).Result;
+    }
 
     /// <summary>The restricted request a support binding makes at an exact world XZ, as placements and markers seat. A
     /// Surface binding samples its named owner with no invented interval. A Space binding searches below and above its
@@ -50,6 +61,7 @@ public sealed class MapPreparedSupport
     internal MapSupportResult SampleBinding(MapSupportBinding binding, MapExactXz world)
     {
         ArgumentNullException.ThrowIfNull(binding);
+        t_samples++;
         if (MapSupportSelection.BindingRequest(View, binding, world) is not { } bound)
             return MapSupportSelection.Refusal(View, MapSupportStatus.Invalid, "support binding lacks its kind's members");
         return MapSupportSelection.Select(this, bound.Request, bound.NamedSurfaceOnly, bound.World);

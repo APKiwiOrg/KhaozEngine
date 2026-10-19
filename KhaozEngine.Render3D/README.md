@@ -974,7 +974,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   Null binds the zero default and disables the field. `RigidInstanceDraw.CutInsideInteriors` defaults false.
   Only opted-in static rigid draws whose cull bounds can reach an interior take the cut path. Colour, shadows
   and outlines share a cached zero-margin query, invalidated by field, world transform or render origin changes.
-  Silhouettes query separately with their world-metre hull width added to the bounds. Missed models keep the
+  Stable submission slots reuse the flag without transform-cache lookups. Reaching instances are packed
+  contiguously within each mesh to preserve instancing. Silhouettes cache a separate answer with their
+  world-metre hull width added to the bounds and included in the key. Missed models keep the
   original rendering and depth-only caster route with no cut texture read.
   Reaching draws discard only inside the field, in colour and temporal motion together and in
   both cascaded and point-light shadows. A field version change invalidates the shadow caches. Ordinary

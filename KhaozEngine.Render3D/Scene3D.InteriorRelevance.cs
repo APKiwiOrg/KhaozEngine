@@ -8,21 +8,28 @@ namespace KhaozEngine.Render3D;
 public sealed partial class Scene3D
 {
     readonly InteriorCutRelevanceCache _interiorRelevance = new();
+    readonly InteriorCutRelevanceCache _silhouetteRelevance = new();
     bool _interiorRelevanceDirty;
     InteriorCutFrame _interiorRelevanceFrame;
+    internal int InteriorMarginEvaluations => _silhouetteRelevance.Evaluations;
+    internal int InteriorMarginLookups => _silhouetteRelevance.Lookups;
+
+    void BeginRigidInstances()
+    {
+        _instances.Begin();
+        _interiorRelevance.BeginFrame();
+        _silhouetteRelevance.BeginFrame();
+    }
 
     bool RelevantInteriorCut(MeshHandle handle, in Matrix4x4 world, float outwardMargin = 0f)
     {
         if (InteriorCut is not { } field || !_slots.IsValid(handle.Index, handle.Generation)
             || _meshes[handle.Index] is not { } mesh) return false;
         var frame = new InteriorCutFrame(_frameOrigin);
-        if (outwardMargin == 0f)
-            return _interiorRelevance.MayIntersect(field, frame, handle, world, mesh.Bounds);
+        InteriorCutRelevanceCache cache = outwardMargin == 0f ? _interiorRelevance : _silhouetteRelevance;
         // Silhouettes cut at their extruded positions. Their world-metre displacement must expand the
         // drawn sphere, independently of mesh scale and the cached zero-margin answer for the model.
-        mesh.Bounds.WorldSphere(world, out Vector3 centre, out float radius);
-        var extent = new Vector3(radius + MathF.Abs(outwardMargin));
-        return field.MayIntersect(centre - extent, centre + extent, frame);
+        return cache.MayIntersect(field, frame, handle, world, mesh.Bounds, outwardMargin);
     }
 
     void RefreshInteriorRelevance()

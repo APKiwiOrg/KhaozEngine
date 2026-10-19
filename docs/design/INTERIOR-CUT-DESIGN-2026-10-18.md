@@ -388,14 +388,23 @@ stays excluded. The immutable field builds minimum-floor and maximum-top code sp
 The query expands its footprint by one cell and bounds height in the shader's float32 code space using
 `InteriorCutFrame`, widening endpoints by one represented code value. It checks blocks instead of cells.
 Answers are cached by mesh generation and world transform for the field version and render origin.
+Stable submission slots retain the per-placement flag without hashing the transform again each frame.
+Changed slots consult the placement cache, so reordered or temporarily absent placements keep their answers.
 Colour, shadows and outlines use zero outward margin. Silhouettes expand the transformed sphere by their
-world-metre hull width and query separately without caching, since the shader cuts at the extruded position.
+world-metre hull width and cache that separate answer with the margin in its key.
 Static placements retain their answer across absent frames. Unloading a mesh removes its cached placements.
 Requests are retained separately from effective flags. Replacing the field after submission refreshes all
 three queues before packing, preserving the setter's next-render contract. An unchanged field and origin
 do not walk those queues again.
 No field or a missed field leaves `SpecParams.w` zero and opaque casters on their original depth-only path.
 Colour, cascaded and point shadows consume that same gated submission. Outlines reuse its cached query.
+Instance packing stably partitions reaching instances first within each mesh. All-miss streams preserve
+their original order and bytes. Relevance therefore adds at most one caster span per mesh before visibility
+culling, rather than splitting a span at every alternating flag. Motion keys and caster policies follow
+the same scatter as the instance data.
+With visibility culling enabled, the run-count limit is asserted for TypicalVillage under IC7.
+DenseVillage culled counters are recorded. Coherence-preserving packing is tracked in
+[#1498](https://github.com/APKiwiOrg/KhaozEngine/issues/1498).
 Picks keep the archetype-set route, since an instance whose drawn bounds miss cannot lose a picked point.
 
 ### The opt-in route

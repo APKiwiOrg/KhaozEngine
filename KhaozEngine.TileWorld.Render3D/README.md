@@ -28,8 +28,9 @@ Cells are at most 25 cm and divide `TileSize`. A 4096-cell cap logs `interior.wi
 The internal `CutArchetypeIds` is the union of opted-in layer archetypes, refreshed when `PropLayers` change.
 It drives object picks, walk-surface point rejection, camera probes and individual highlights. Full and authored
 LOD parts take the cut path only when their drawn bounds can reach an interior, including both shadow kinds.
-Outlines share the models' cached zero-margin relevance query. Silhouettes query separately with their
-world-metre hull width added to the bounds. Missed models preserve their original rendering, and picks keep
+Outlines share the models' cached zero-margin relevance query. Stable submissions reuse the stored flag.
+Silhouettes cache a separate answer with their world-metre hull width added to the bounds and cache key.
+Reaching instances stay contiguous within each mesh. Missed models preserve their original rendering, and picks keep
 the archetype-set route. Merged HLOD, roofs, unflagged ordinary props, grass, ground cover,
 animated foliage and skinned meshes stay uncut. This changes presentation and picks, not physics or authoring.
 MapDoc adoption remains [#1474](https://github.com/APKiwiOrg/KhaozEngine/issues/1474), and world validation remains

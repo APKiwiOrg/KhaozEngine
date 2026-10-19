@@ -38,10 +38,12 @@ internal static class TexturedShadowGrainCase
             // sparkle, and this synthetic value is the measured cost of that release. No large-change response ships.
             // Owner accepted per driver on 2026-10-19 after hosted run 39215298727: WARP and lavapipe show the same lock-release costs.
             // Quality was 0.008. Hardware D measures 0.008031049526854536 and lavapipe 0.008039903208144449.
+            // WARP measures 0.008013324991270224 in filtered hosted run 39221506634.
             // Each accepted bound rounds its own measurement upward to the six-decimal reporting place.
             double qualityBound = TemporalDeviceClass.Name switch
             {
                 "hardware" => 0.008032,
+                "WARP" => 0.008014,
                 "lavapipe" => 0.008040,
                 _ => 0.008
             };

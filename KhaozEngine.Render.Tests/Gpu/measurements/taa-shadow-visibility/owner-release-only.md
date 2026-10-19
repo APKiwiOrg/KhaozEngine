@@ -19,12 +19,13 @@ The original point-PCF history, bilinear controls and eight-arm tuning remain in
 
 Owner accepted per driver on 2026-10-19 after hosted run 39215298727: WARP and lavapipe show the same lock-release costs.
 
-Run [39215298727](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39215298727) measured commit `3f7b8749fbf00883c09683949e2b8354d0935784`. Its console log supplies the full-precision software values below. Each driver takes only its own measured value. Hardware keeps its original rows above.
+Run [39215298727](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39215298727) measured commit `3f7b8749fbf00883c09683949e2b8354d0935784`. Its console log supplies the tail, rim and lavapipe-grain values below. WARP grain comes from the later filtered run recorded below. Each driver takes only its own measured value. Hardware keeps its original rows above.
 
 | Driver and accepted cost | Measured D | Old bound | New bound |
 | --- | ---: | ---: | ---: |
 | WARP Native 8 px retreating textured absolute tail | 0.007222797931709032 | 0.007152903227222303 | 0.007223297931709032 |
 | lavapipe Native 8 px retreating textured absolute tail | 0.007245504857927269 | 0.00716823283842791 | 0.007246004857927269 |
+| WARP Quality textured grain | 0.008013324991270224 | 0.008 | 0.008014 |
 | lavapipe Quality textured grain | 0.008039903208144449 | 0.008 | 0.008040 |
 | WARP Quality M 1.0 leading textured rim error | 0.003134108234483462 | 0.00278355 | 0.00344795 |
 | WARP same rim temporal error | 0.004831370554127536 | 0.00428835 | 0.00531465 |
@@ -35,7 +36,9 @@ The WARP and lavapipe paired textured-tail controls remain `0.007152403227222303
 
 WARP rim error/temporal baselines become `0.003134 / 0.004831` from `0.002530 / 0.003898`. Lavapipe becomes `0.003075 / 0.004760` from `0.002602 / 0.003989`. Fields 2 and 4 remain unchanged, as does `(baseline + 0.0000005) * 1.1`.
 
-Quality grain uses a per-device bound. Hardware retains `0.008032`, lavapipe uses `0.008040`, and WARP provisionally retains the historical `0.008` pending its exact filtered measurement. Passing sharded tests did not print the WARP value in run 39215298727. Native remains `0.0113` and Balanced remains report-only. No driver inherits another driver's acceptance.
+Quality grain uses a per-device bound. Hardware retains `0.008032`, lavapipe uses `0.008040`, and WARP uses its own `0.008014` from filtered run 39221506634. Passing sharded tests did not print the WARP value in run 39215298727. Native remains `0.0113` and Balanced remains report-only. No driver inherits another driver's acceptance.
+
+Filtered hosted run [39221506634](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39221506634) on `0e48f0c36a1741b78ce6d0bdfcbeb93deb7821e2` measured WARP Quality grain `0.008013324991270224` in both textured-grain guard callers. Its four selected facts returned two passed and two grain failures against the restored historical `0.008`, with zero skips. The value is above `0.008` and below `0.008032`, so the per-driver owner ruling admits WARP's own smallest upward six-decimal bound, `0.008014`. The detailed console log contains the `GRAIN-EXACT` readbacks. No workflow edit was needed.
 
 ## Full-precision readbacks
 

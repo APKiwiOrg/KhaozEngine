@@ -44,7 +44,16 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
         // the acquisition above and, for a Space binding, a bound space absent from it.
         MapFoliageCandidateSupport? candidates = null;
         {
-            (MapExactXz min, MapExactXz max) = Rectangle();
+            double reach = ContextReach(grids);
+            (MapExactXz min, MapExactXz max) = Rectangle(reach);
+            if (reach > 0)
+            {
+                MapExactRect acquired = view.Scope.WorldRectangle();
+                if (min.X.CompareTo(acquired.MinX) < 0 || min.Z.CompareTo(acquired.MinZ) < 0 ||
+                    max.X.CompareTo(acquired.MaxX) > 0 || max.Z.CompareTo(acquired.MaxZ) > 0)
+                    throw new MapFoliageRefusal(MapFoliageStatus.Unavailable, Work(), "edge fade reach lies outside the chunk acquisition");
+                _parts.Add("context-reach|" + BitConverter.DoubleToInt64Bits(reach).ToString(CultureInfo.InvariantCulture));
+            }
             try
             {
                 candidates = MapFoliageCandidateSupport.Create(view, _support, grids, binding, min, max, limits.MaxFaces - _faces, out long faces);
@@ -58,9 +67,26 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
         return new(layer, chunk, MapFoliageStatus.Complete, null, Work(), _parts.Order(StringComparer.Ordinal).ToArray(), grids, materials, candidates);
     }
 
-    (MapExactXz Min, MapExactXz Max) Rectangle()
+    // Clearance edge fade evaluates the four neighbour cell centres of a sample's support cell. A centre lies at most
+    // 1.5 cells from the sample along one cell axis and 0.5 along the other, so its world offset on either axis is at
+    // most 1.5 cells, or sqrt(1.5^2 + 0.5^2) < 1.6 cells under a yawed transform. Widening the shared context by that
+    // reach keeps every neighbour query inside it. A layer without edge fade keeps the chunk rectangle.
+    double ContextReach(IEnumerable<MapFoliageSupportGrid> grids)
+    {
+        if (layer.EdgeFade <= 0) return 0;
+        double reach = 0;
+        foreach (MapFoliageSupportGrid grid in grids)
+        {
+            double cell = grid.Surface.Frame.CellUnitMetres.Exact().ToDouble() * (grid.Kernel?.Transform.Scale ?? 1);
+            reach = Math.Max(reach, (grid.Kernel is { Transform.YawRadians: not 0 } ? 1.6 : 1.5) * cell);
+        }
+        return reach;
+    }
+
+    (MapExactXz Min, MapExactXz Max) Rectangle(double reach = 0)
     {
         (double minX, double minZ, double maxX, double maxZ) = MapFoliageSupport.Rect(layer, chunk);
+        minX -= reach; minZ -= reach; maxX += reach; maxZ += reach;
         return (new(MapExactValue.FromSingle(MapFoliageSupport.Outward(minX, lower: true)), MapExactValue.FromSingle(MapFoliageSupport.Outward(minZ, lower: true))),
             new(MapExactValue.FromSingle(MapFoliageSupport.Outward(maxX, lower: false)), MapExactValue.FromSingle(MapFoliageSupport.Outward(maxZ, lower: false))));
     }

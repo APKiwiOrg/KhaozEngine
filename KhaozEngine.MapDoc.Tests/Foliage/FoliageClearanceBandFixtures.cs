@@ -43,8 +43,7 @@ internal static partial class FoliageFixtures
 
     /// <summary>The same band edge on a prefab deck posed at scale 16 and lowered 320 m, so the effective transform
     /// moves height. The legacy height maps to 16 * 20.010000228881836 - 320 = 0.160003662109375, the band's low edge,
-    /// while every exact vertex freezes to 167772 / 2^20, just under it. Edge fade is off, so a 16 m cell's cardinal
-    /// neighbour centres stay inside the prepared chunk context.</summary>
+    /// while every exact vertex freezes to 167772 / 2^20, just under it.</summary>
     internal static FoliageFixture LegacyBandPosed()
     {
         var fixture = Clearance("roof");
@@ -92,6 +91,6 @@ internal static partial class FoliageFixtures
             new(asset.Children.Select(c => new MapPrefabBinding(c.Key, "p/" + c.Key.Key, null, false)).ToArray()), [])], []);
         var posed = new FoliageFixture(document, MapAssetClosure.Load(roots, source));
         return WithClearance(posed, l => ClearanceLayer(l, support: new(MapSupportBindingKind.Space, null, "p/terrace", 0.160003662109375f, 0, 0.5f),
-            ordinals: l.CompatibilityOrdinals.Append(new("p/deck", 1)).ToArray(), edge: 0));
+            ordinals: l.CompatibilityOrdinals.Append(new("p/deck", 1)).ToArray()));
     }
 }

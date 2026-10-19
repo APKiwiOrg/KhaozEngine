@@ -324,6 +324,44 @@ public sealed class MapFoliageClearanceTests
     }
 
     [Fact]
+    public void EdgeFade_ReadsANeighbourCentreAcrossTheChunkAndPatchEdge()
+    {
+        var point = Sample(FoliageFixtures.EdgeChunk(0.25f), 0.1f, 0.5f);
+        Assert.Equal((MapFoliageStatus.Complete, MapFoliageReason.Accepted, "coarse"), (point.Status, point.Reason, point.SupportOwnerId));
+        // The void west neighbour fades by its distance 0.1 m over the 0.25 m edge.
+        Assert.Equal(0.4f, point.Density, 0.0001f);
+    }
+
+    [Fact]
+    public void EdgeFade_PosedLargeCellsKeepNeighbourCentresInTheContext()
+    {
+        var fixture = FoliageFixtures.LegacyBandPosed();
+        Assert.Equal(0.25f, fixture.Document.Foliage!.Layers[0].EdgeFade);
+        fixture.Document.Placements.RemoveAt(0);
+        var point = Sample(fixture, 8.1f, -8.1f);
+        Assert.Equal((MapFoliageStatus.Complete, MapFoliageReason.Accepted, "p/deck"), (point.Status, point.Reason, point.SupportOwnerId));
+    }
+
+    [Fact]
+    public void EdgeFade_WidensAndChargesOnlyItsOwnContext()
+    {
+        MapPreparedFoliageSupport Prepared(float edge, MapFoliageLimits limits)
+        {
+            var context = FoliageFixtures.Context(FoliageFixtures.EdgeChunk(edge));
+            return MapFoliageSupport.Prepare(context, context.Foliage!.Layers[0], new(0, 0), limits);
+        }
+        var off = Prepared(0, new());
+        // Measured at f55789fb0, before the edge fade reach existed.
+        Assert.Equal((MapFoliageStatus.Complete, 9112L), (off.Status, off.Work.Faces));
+        Assert.DoesNotContain(off.DependencyParts, p => p.StartsWith("context-reach|", StringComparison.Ordinal));
+        var on = Prepared(0.25f, new());
+        Assert.True(on.Work.Faces > off.Work.Faces, $"{on.Work.Faces} faces");
+        Assert.Contains(on.DependencyParts, p => p.StartsWith("context-reach|", StringComparison.Ordinal));
+        Assert.Equal(MapFoliageStatus.CapacityExceeded, Prepared(0.25f, new(MaxFaces: (int)on.Work.Faces - 1)).Status);
+        Assert.Equal(MapFoliageStatus.Complete, Prepared(0.25f, new(MaxFaces: (int)on.Work.Faces)).Status);
+    }
+
+    [Fact]
     public void UnrelatedCave_WithoutCompatibilityProvenanceNeverClears()
     {
         var fixture = FoliageFixtures.Clearance("solid");

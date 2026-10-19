@@ -18,8 +18,7 @@ namespace KhaozEngine.MapDoc.Foliage;
 internal sealed class MapFoliageOwners
 {
     internal sealed record MaskOwner(string LayerId, MapFoliageMask Mask, MapEffectiveTransform Pose);
-    readonly MaskOwner[] _masks;
-    readonly SpatialIndex _index;
+    readonly Dictionary<string, (MaskOwner[] Masks, SpatialIndex Index)> _masks = new(StringComparer.Ordinal);
     readonly Dictionary<MapPrefabReference, MapSupportResult> _seats;
     readonly MapEffectiveResources _resources;
     readonly Dictionary<string, Dictionary<MapPrefabReference, MapSupportBinding>> _bindings;
@@ -32,9 +31,10 @@ internal sealed class MapFoliageOwners
         _ordinals = (set?.Layers ?? []).ToDictionary(l => l.Id, l => l.CompatibilityOrdinals.ToDictionary(r => r.SurfaceId, r => r.Ordinal, StringComparer.Ordinal), StringComparer.Ordinal);
         _seats = resources.PlacementSupports.ToDictionary(s => World(MapPrefabChildKind.Placement, s.PlacementId), s => s.Support);
         foreach (var marker in resources.MarkerSupports) _seats.Add(World(MapPrefabChildKind.Marker, marker.MarkerId), marker.Support);
-        var masks = new List<MaskOwner>();
-        var bounds = new List<Bounds>();
         foreach (var layer in set?.Layers ?? [])
+        {
+            var masks = new List<MaskOwner>();
+            var bounds = new List<Bounds>();
             foreach (var mask in layer.ExceptionMasks)
             {
                 MapEffectiveTransform pose = Pose(resources, mask.Owner);
@@ -42,14 +42,15 @@ internal sealed class MapFoliageOwners
                 bounds.Add(MapFoliageGenerationContext.Proxy(pose, mask.Footprint,
                     mask.Kind == MapFoliageClearanceKind.Door ? layer.DoorClearance : null));
             }
-        _masks = masks.ToArray();
-        _index = new(bounds);
+            _masks.Add(layer.Id, (masks.ToArray(), new(bounds)));
+        }
     }
 
     internal IReadOnlyList<MaskOwner> Masks(string layerId, MapFoliageRect rect, out long candidates)
     {
-        var hits = _index.Query(new(rect.MinX, rect.MinZ, rect.MaxX, rect.MaxZ), out candidates);
-        return hits.Select(i => _masks[i]).Where(m => m.LayerId == layerId).OrderBy(m => m.Mask.Id, StringComparer.Ordinal).ToArray();
+        var (masks, index) = _masks[layerId];
+        var hits = index.Query(new(rect.MinX, rect.MinZ, rect.MaxX, rect.MaxZ), out candidates);
+        return hits.Select(i => masks[i]).OrderBy(m => m.Mask.Id, StringComparer.Ordinal).ToArray();
     }
 
     internal int? Ordinal(string layerId, string surfaceId) => _ordinals[layerId].TryGetValue(surfaceId, out int ordinal) ? ordinal : null;

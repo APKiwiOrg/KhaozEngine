@@ -94,6 +94,20 @@ internal sealed class MapFoliagePatchFaces
 
     internal int Count => _compiled.Faces.Count;
 
+    /// <summary>Whether any prepared logical triangle can intersect an inclusive world-height search band. Logical
+    /// faces include legacy fallback cells, and the compiled effective coordinates already carry their transform.</summary>
+    internal bool IntersectsHeight(MapExactValue low, MapExactValue high)
+    {
+        foreach (MapCompiledFace face in _compiled.Faces)
+        {
+            MapExactTriangle triangle = _compiled.ExactTriangle(face);
+            if ((triangle.A.Y.CompareTo(low) >= 0 || triangle.B.Y.CompareTo(low) >= 0 || triangle.C.Y.CompareTo(low) >= 0) &&
+                (triangle.A.Y.CompareTo(high) <= 0 || triangle.B.Y.CompareTo(high) <= 0 || triangle.C.Y.CompareTo(high) <= 0))
+                return true;
+        }
+        return false;
+    }
+
     /// <summary>The canonical face of a parent triangle at a world point. An unsubdivided parent is its one face. A
     /// subdivided parent picks its first child holding the point exactly.</summary>
     internal (MapFaceKey Face, MapPaintCoverage Paint) Face(int slotCell, byte parent, MapExactXz point)

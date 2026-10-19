@@ -69,7 +69,23 @@ public static class MapFoliageClearance
                     MapCanonical.HashHex(w => System.Text.Json.JsonSerializer.Serialize(w, mask.Support)));
                 DescribeOwner(mask.Owner, row.Pose);
             }
-            if (entries.Count != 0) foreach (var grid in support.Grids) consulted.Add(grid.Surface.Id);
+            if (entries.Count != 0)
+            {
+                var binding = layer.Support;
+                MapExactValue low = default, high = default;
+                if (binding.Kind == MapSupportBindingKind.Space)
+                {
+                    var y = MapExactValue.FromSingle(binding.ReferenceY!.Value);
+                    low = y.Subtract(MapExactValue.FromSingle(binding.SearchBelow!.Value));
+                    high = y.Add(MapExactValue.FromSingle(binding.SearchAbove!.Value));
+                }
+                // Acquired floors outside the binding's exact search band cannot supply the sample's ordinal.
+                // This only narrows dependencies. Actual selection and membership stay in the shared support kernel.
+                foreach (var grid in support.Grids)
+                    if (grid.Cells.Count != 0 && (binding.Kind == MapSupportBindingKind.Surface ||
+                        grid.Cells.Values.Select(c => c.Faces).Distinct().Any(f => f.IntersectsHeight(low, high))))
+                        consulted.Add(grid.Surface.Id);
+            }
             foreach (string id in consulted.Order(StringComparer.Ordinal))
             {
                 int? ordinal = context.ClearanceOwners.Ordinal(layer.Id, id);

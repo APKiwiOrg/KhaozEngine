@@ -187,6 +187,33 @@ public sealed class MapFoliageClearanceTests
         Assert.Null(refused.SupportOwnerId);
     }
 
+    [Fact]
+    public void MaskBudget_OnlyChargesThePreparedLayer()
+    {
+        var fixture = FoliageFixtures.Clearance("solid");
+        var layer = FoliageFixtures.ClearanceLayer(fixture.Document.Foliage!.Layers[0], rules: []);
+        var other = FoliageFixtures.Layer("cover-b", layer.Support, -16, -16, 1, 32, 32,
+            Enumerable.Repeat((byte)255, 32 * 32).ToArray(), [10]);
+        other = FoliageFixtures.ClearanceLayer(other,
+            masks: [new("other-mask", FoliageFixtures.Owner("prop"), layer.Support,
+                MapFoliageClearanceKind.Solid, new(-0.5f, -1.5f, 0.5f, 1.5f))]);
+        fixture.Document.Foliage = new(1, [layer, other]);
+        var context = FoliageFixtures.Context(fixture);
+        layer = context.Foliage!.Layers[0];
+        other = context.Foliage.Layers[1];
+        var prepared = MapFoliageClearance.Prepare(context, layer, new(0, 0), new(MaxMaskCandidates: 0));
+        Assert.Equal(MapFoliageStatus.Complete, prepared.Status);
+        Assert.Equal(0, prepared.Work.MaskCandidates);
+        var point = MapFoliageSupport.Prepare(context, layer, new(0, 0), new()).Sample(0.1f, 0.1f);
+        Assert.Equal(MapFoliageReason.Accepted, prepared.Evaluate(point, 0.1f, 0.1f).Reason);
+        var masked = MapFoliageClearance.Prepare(context, other, new(0, 0), new(MaxMaskCandidates: 1));
+        Assert.Equal(MapFoliageStatus.Complete, masked.Status);
+        Assert.Equal(1, masked.Work.MaskCandidates);
+        Assert.Equal(MapFoliageReason.Solid, masked.Evaluate(point, 0.1f, 0.1f).Reason);
+        Assert.Equal(MapFoliageStatus.CapacityExceeded,
+            MapFoliageClearance.Prepare(context, other, new(0, 0), new(MaxMaskCandidates: 0)).Status);
+    }
+
     [Theory]
     [InlineData(-1, 0, 0.125f, -0.5f)]
     [InlineData(1, 0, 0.875f, -0.5f)]
@@ -247,8 +274,16 @@ public sealed class MapFoliageClearanceTests
         fixture.Document.Placements[1].X = 8;
         FoliageFixtures.WithClearance(fixture, l => FoliageFixtures.ClearanceLayer(l,
             support: new(MapSupportBindingKind.Space, null, "level", 20.2f, 1, 0.5f)));
-        Assert.Equal(MapFoliageReason.RoofAbove, Sample(fixture, 4.1f, -0.1f).Reason);
-        Assert.Equal(MapFoliageReason.Accepted, Sample(fixture, 8.1f, -0.1f).Reason);
+        var higher = Sample(fixture, 4.1f, -0.1f);
+        var peer = Sample(fixture, 8.1f, -0.1f);
+        Assert.Equal(MapFoliageReason.RoofAbove, higher.Reason);
+        Assert.Equal(MapFoliageReason.Accepted, peer.Reason);
+        var before = Prepare(fixture);
+        FoliageFixtures.WithClearance(fixture, l => FoliageFixtures.ClearanceLayer(l,
+            ordinals: l.CompatibilityOrdinals.Select(r => r.SurfaceId == "unrelated" ? r with { Ordinal = 7 } : r).ToArray()));
+        Assert.Equal(higher, Sample(fixture, 4.1f, -0.1f));
+        Assert.Equal(peer, Sample(fixture, 8.1f, -0.1f));
+        Assert.Equal(before.DependencyParts, Prepare(fixture).DependencyParts);
     }
 
     [Fact]

@@ -26,6 +26,53 @@ Complete_skin_through_select_matches_the_same_uploaded_input_words. Local HLSL a
 cross-compilation and SPIRV-Tools validation did not stand in for these native rows. The Direct3D11
 test step took 11 minutes 11 seconds, which issue 1503 tracks as a cold-cache compile concern.
 
+## Task 8 CPU envelope and origin admission
+
+CoverageActorBounds is host code, outside Binary32Kernel. It caches each bone's influenced
+source-position box, the interval of exact sums of flushed vertex weights, per-bone/per-slot
+weight ranges, the nonnegative flag and reachability of the rounded total's 1e-8f identity branch.
+Only cold preparation visits source vertices. Frame preparation is O(bones) plus fixed interval work.
+
+For nonnegative weights, each exact weighted position is T times a convex combination of points
+in H. H joins the transformed bone boxes and T is enclosed by the cached weight-total interval.
+This uses the joined form, with no normalization or independent slot totals. Signed hosts instead
+evaluate each weighted matrix coefficient through the four left-associated slots and then the
+three-term point dot, applying Round32Envelope at every multiply and add. The identity source box
+is joined whenever the rounded weight total can take the identity branch.
+
+Let u=2^-24 and eta=2^-126. For every finite operation F(RN32(x)), its error is at most
+u*abs(x)+eta. This includes the midpoint that rounds to the inclusively flushed smallest normal.
+The nonnegative path bounds the absolute expanded product sum P by the largest per-bone absolute
+point-product sum times the maximum total. A path through the four-weight coefficient blend and
+point dot has at most eight rounded operations. With S the source box's sum of absolute coordinate
+maxima, the additive enclosure is gamma8*P + (7*eta*(S+1)+6*eta)/(1-8*u).
+Seven coefficient flushes per row propagate through the three source coordinates and translation.
+Six point-dot flushes remain. All relative amplification is bounded by the denominator. Absolute
+coefficient and dot bounds also check potential intermediate overflow before using this finite
+error model. All sums, products, divisions, square roots and endpoint conversions round outward.
+
+Round32Envelope applies the monotone RN32-then-F map to both interval endpoints. Its endpoints
+retain signed zero and the inclusive 0x00800000 threshold. A binary64 outward interval alone is
+never treated as a binary32 rounding enclosure. Refinement expands each skin axis by
+gamma6*max(abs(min),abs(max))+6*eta. The fixed positive interpolation weights sum to one, and their
+edge/interior graphs fit this six-operation relative and flush allowance. There is no frame-time
+recipe loop. Tests use separate integer RN32 skinning, edge and integer-barycentric interpolation,
+including shear, unnormalized and signed weights, identity, subnormals and near-limit magnitudes.
+
+ExpandWorld and OriginError both start from the refined envelope. World bounds enclose the model
+dot and add the maximum command recession, never its sum. Origin admission first expands the
+local domain by that recession times outward column lengths of the interval inverse model.
+It adds the Euclidean origin-subtraction/upload residual to sqrt(3) times
+(gamma7*maximumAbsoluteProductSum+7*eta). Copied-coefficient flush residuals are included as well.
+Nonfinite intervals and potential dot overflow refuse. Allows uses error <= (double)clearance*.25d.
+Every sorted command is checked and the first exceeded margin owns UnsupportedTransform and its IDs.
+
+Task 9 and the draw/history tasks consume this one world box for culling, caster classification,
+the coverage sphere and rejection rectangles. CoverageSurfaceBounds.FromWorld reanchors it with
+outward subtraction, without GPU readback. This guard bounds model-coordinate magnitude only.
+It does not reinstate the removed render-pass certificate or certify raster, depth or temporal math.
+Uncovered actors retain the heuristic tracked by issue 1492.
+
 ## Numerical and publication proof
 
 The frozen-pose test calls the unchanged 144-row reference-manifest test first. It uploads each

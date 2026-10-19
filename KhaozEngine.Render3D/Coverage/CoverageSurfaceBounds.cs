@@ -15,6 +15,18 @@ internal readonly struct CoverageSurfaceBounds
     { Relative = new(min, max); Origin = origin; Weight = weight; }
     internal static CoverageSurfaceBounds FromRender(MeshBounds relative, Vector3 origin) =>
         new(relative.Min, relative.Max, origin, CoverageIntervals.One);
+    /// <summary>Reanchors the shared CPU envelope without reading back or rescanning a GPU surface.</summary>
+    internal static CoverageSurfaceBounds FromWorld(in MeshBounds world, Vector3 origin)
+    {
+        Vector3 low = default, high = default;
+        for (int axis = 0; axis < 3; axis++)
+        {
+            var relative = CoverageIntervals.Subtract(new(world.Min[axis], world.Max[axis]), new(origin[axis], origin[axis]));
+            low[axis] = CoverageActorBounds.Lower(relative.Min);
+            high[axis] = CoverageActorBounds.Upper(relative.Max);
+        }
+        return new(low, high, origin, CoverageIntervals.One);
+    }
     internal static CoverageSurfaceBounds FromHomogeneousRender(MeshBounds relative, Vector3 origin, CoverageScalarBounds weight) =>
         new(relative.Min, relative.Max, origin, weight);
     public static implicit operator CoverageSurfaceBounds(MeshBounds absolute) => new(absolute.Min, absolute.Max);

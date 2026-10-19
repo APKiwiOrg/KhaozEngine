@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -40,4 +41,15 @@ public interface IReportMediaStore
 
     /// <summary>Answers whether a blob exists at <paramref name="path"/>.</summary>
     Task<bool> ExistsAsync(ReportArea area, string path, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Lists every full path under <paramref name="prefix"/> at any depth, in ordinal order. The prefix must end in
+    /// <c>/</c> and the path before that slash must pass <see cref="ReportPaths.IsValid"/>. Answers an empty list when absent.
+    /// </summary>
+    Task<IReadOnlyList<string>> ListAsync(ReportArea area, string prefix, CancellationToken cancellationToken)
+        => throw new NotSupportedException("IReportMediaStore.ListAsync is not implemented by this store.");
+
+    /// <summary>Deletes the blob at <paramref name="path"/>. Answers true when deleted, false when already absent.</summary>
+    Task<bool> DeleteAsync(ReportArea area, string path, CancellationToken cancellationToken)
+        => throw new NotSupportedException("IReportMediaStore.DeleteAsync is not implemented by this store.");
 }

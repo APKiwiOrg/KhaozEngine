@@ -25,6 +25,20 @@ public sealed class InMemorySeamTests
     const string SecondId = "0192f3a4b5c67d8e9f0a1b2c3d4e5f61";
 
     [Fact]
+    public async Task MediaStoreWithoutListOrDelete_ThrowsNotSupportedNamingTheMember()
+    {
+        IReportMediaStore store = new MediaStoreWithoutListOrDelete();
+
+        NotSupportedException list = await Assert.ThrowsAsync<NotSupportedException>(() =>
+            store.ListAsync(ReportArea.Public, "g/2026-10/a/", CancellationToken.None));
+        NotSupportedException delete = await Assert.ThrowsAsync<NotSupportedException>(() =>
+            store.DeleteAsync(ReportArea.Public, "g/2026-10/a/x.json", CancellationToken.None));
+
+        Assert.Contains("ListAsync", list.Message);
+        Assert.Contains("DeleteAsync", delete.Message);
+    }
+
+    [Fact]
     public async Task InMemoryMediaStore_RecordsHeaders()
     {
         var store = new InMemoryReportMediaStore();
@@ -52,6 +66,7 @@ public sealed class InMemorySeamTests
             store.PutAsync(ReportArea.Public, path, new byte[] { 1 }, headers, false, CancellationToken.None));
         await Assert.ThrowsAsync<ArgumentException>(() => store.GetAsync(ReportArea.Public, path, 16, CancellationToken.None));
         await Assert.ThrowsAsync<ArgumentException>(() => store.ExistsAsync(ReportArea.Public, path, CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentException>(() => store.DeleteAsync(ReportArea.Public, path, CancellationToken.None));
     }
 
     [Fact]
@@ -71,5 +86,17 @@ public sealed class InMemorySeamTests
         Assert.Equal(first, a);
         Assert.Equal(second, b);
         Assert.Equal(0, queue.Count);
+    }
+
+    sealed class MediaStoreWithoutListOrDelete : IReportMediaStore
+    {
+        public Task<bool> PutAsync(ReportArea area, string path, ReadOnlyMemory<byte> content, ReportBlobHeaders headers,
+            bool overwrite, CancellationToken cancellationToken) => throw new NotImplementedException();
+
+        public Task<ReadOnlyMemory<byte>?> GetAsync(ReportArea area, string path, int maxBytes, CancellationToken cancellationToken)
+            => throw new NotImplementedException();
+
+        public Task<bool> ExistsAsync(ReportArea area, string path, CancellationToken cancellationToken)
+            => throw new NotImplementedException();
     }
 }

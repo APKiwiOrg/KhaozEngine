@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.BugReports.Relay;
@@ -33,4 +34,10 @@ internal sealed class WorkerMediaStore(InMemoryReportMediaStore inner) : IReport
         if (BeforeExists is not null) await BeforeExists(path);
         return await inner.ExistsAsync(area, path, cancellationToken);
     }
+
+    public Task<IReadOnlyList<string>> ListAsync(ReportArea area, string prefix, CancellationToken cancellationToken)
+        => inner.ListAsync(area, prefix, cancellationToken);
+
+    public Task<bool> DeleteAsync(ReportArea area, string path, CancellationToken cancellationToken)
+        => inner.DeleteAsync(area, path, cancellationToken);
 }

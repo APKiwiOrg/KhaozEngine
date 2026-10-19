@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.BugReports.Contracts;
 using KhaozEngine.BugReports.Relay;
 using Xunit;
 
@@ -65,6 +66,55 @@ public sealed class ReportLayoutTests
         Assert.Throws<ArgumentException>(() => ReportLayout.ReportRecord(reportId));
         Assert.Throws<ArgumentException>(() => ReportLayout.AcceptedIndex(reportId));
         Assert.Throws<ArgumentException>(() => ReportLayout.PendingSnapshot(reportId));
+        Assert.Throws<ArgumentException>(() => ReportLayout.ReferenceIndex("R-ABC123", reportId));
+    }
+
+    [Theory]
+    [InlineData(" r-abc123 ", "R-ABC123")]
+    [InlineData("R-ABCI23", "R-ABC123")]
+    [InlineData("R-ABCL23", "R-ABC123")]
+    [InlineData("R-0O0000", "R-000000")]
+    public void TryNormalizeReference_AcceptsCaseSpacesAndConfusables(string text, string expected)
+    {
+        Assert.True(ReportLayout.TryNormalizeReference(text, out string reference));
+        Assert.Equal(expected, reference);
+    }
+
+    [Fact]
+    public void TryNormalizeReference_RoundTripsMintedCodes()
+    {
+        for (int i = 0; i < 64; i++)
+        {
+            string minted = ReportIds.ReferenceCode(ReportIds.NewId());
+
+            Assert.True(ReportLayout.TryNormalizeReference(minted, out string reference));
+            Assert.Equal(minted, reference);
+        }
+    }
+
+    [Theory]
+    [InlineData("ABC123")]
+    [InlineData("R-ABC12")]
+    [InlineData("R-ABC1234")]
+    [InlineData("R-ABCU23")]
+    [InlineData("X-ABC123")]
+    [InlineData("R-ABC/23")]
+    [InlineData("")]
+    public void TryNormalizeReference_RejectsWrongPrefixLengthOrU(string text)
+    {
+        Assert.False(ReportLayout.TryNormalizeReference(text, out string reference));
+        Assert.Equal(string.Empty, reference);
+    }
+
+    [Fact]
+    public void ReferenceIndex_IsLowercaseValidAndJson()
+    {
+        string path = ReportLayout.ReferenceIndex("R-ABC123", Id);
+
+        Assert.Equal("references/r-abc123/" + Id + ".json", path);
+        Assert.True(ReportPaths.IsValid(path));
+        Assert.Equal(new ReportBlobHeaders("application/json; charset=utf-8", "no-cache"), ReportLayout.HeadersFor(path));
+        Assert.Equal("references/r-abc123/", ReportLayout.ReferencePrefix("R-ABC123"));
     }
 
     [Fact]

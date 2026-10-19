@@ -31,7 +31,7 @@ public sealed class BugReportRelay
         var records = new ReportRecordStore(media);
         revocation = new ReportRevocation(media, time, logger);
         var viewer = new ReportViewerWriter(media, revocation);
-        intake = new RelayIntake(options, authenticator, work, records,
+        intake = new RelayIntake(options, authenticator, media, work, records,
             new ReportQuotaGate(quotas, options, time, logger), new ReportBundleStorer(media, viewer), time, revocation);
         snapshots = new ServerSnapshotIntake(options, records, work, logger, revocation);
         worker = new ReportWorker(options, media, records, viewer, github, time, logger, revocation);

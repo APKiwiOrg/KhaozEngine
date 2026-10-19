@@ -207,11 +207,67 @@ public sealed class RelayIntakeTests
         }
         Assert.Equal(zip.Entries.Count + 1, harness.Media.Paths(ReportArea.Public).Count);
         Assert.True(await harness.Media.ExistsAsync(ReportArea.Public, accepted.Folder + "/viewer.html", Ct));
-        Assert.Equal(new[] { "accepted/" + Id + ".json", "records/" + Id + ".json" }, harness.Media.Paths(ReportArea.Pending));
+        Assert.Equal(new[] { "accepted/" + Id + ".json", "records/" + Id + ".json", "references/r-ymwqv0/" + Id + ".json" }, harness.Media.Paths(ReportArea.Pending));
         Assert.True(harness.Work.TryDequeue(out ReportWorkItem? work));
         Assert.Equal(new ReportWorkItem(ReportWorkKind.CreateIssue, Id), work);
         Assert.Equal(0, harness.Work.Count);
         Assert.Empty(harness.GitHub.Issues);
+    }
+
+    [Fact]
+    public async Task Intake_WritesReferenceIndexBeforeAcceptedIndex()
+    {
+        var writes = new List<string>();
+        var harness = new RelayHarness(wrapMedia: inner => new WorkerMediaStore(inner)
+        {
+            BeforeWrite = path =>
+            {
+                writes.Add(path);
+                return Task.CompletedTask;
+            },
+        });
+        string referencePath = "references/r-ymwqv0/" + Id + ".json";
+        await harness.Media.PutAsync(ReportArea.Pending, referencePath, "{\"stale\":true}"u8.ToArray(),
+            ReportLayout.HeadersFor(referencePath), overwrite: true, Ct);
+
+        AssertAccepted(await harness.IntakeAsync());
+
+        Assert.Contains(referencePath, writes);
+        Assert.Contains("accepted/" + Id + ".json", writes);
+        Assert.True(writes.IndexOf(referencePath) < writes.IndexOf("accepted/" + Id + ".json"));
+        ReadOnlyMemory<byte>? bytes = await harness.Media.GetAsync(ReportArea.Pending, referencePath, 1024, Ct);
+        Assert.NotNull(bytes);
+        Assert.Equal("{}", Encoding.UTF8.GetString(bytes.Value.Span));
+        Assert.Equal(new ReportBlobHeaders("application/json; charset=utf-8", "no-cache"),
+            harness.Media.HeadersOf(ReportArea.Pending, referencePath));
+        Assert.False(await harness.Media.ExistsAsync(ReportArea.Public, referencePath, Ct));
+    }
+
+    [Fact]
+    public async Task Intake_LostAcceptanceRace_KeepsReferenceIndex()
+    {
+        bool otherHolderWon = false;
+        var harness = new RelayHarness(wrapMedia: inner => new WorkerMediaStore(inner)
+        {
+            BeforeWrite = async path =>
+            {
+                if (path == "accepted/" + Id + ".json")
+                {
+                    var records = new ReportRecordStore(inner);
+                    ReportRecord record = (await records.LoadReportAsync(Id, Ct))!;
+                    otherHolderWon = await records.TryCreateAcceptedAsync(Id,
+                        new AcceptedReport(record.Folder, record.Reporter.Subject, record.ReceivedAt), Ct);
+                }
+            },
+        });
+
+        AssertAccepted(await harness.IntakeAsync());
+
+        Assert.True(otherHolderWon);
+        ReadOnlyMemory<byte>? bytes = await harness.Media.GetAsync(ReportArea.Pending,
+            "references/r-ymwqv0/" + Id + ".json", 1024, Ct);
+        Assert.NotNull(bytes);
+        Assert.Equal("{}", Encoding.UTF8.GetString(bytes.Value.Span));
     }
 
     [Fact]
@@ -408,6 +464,7 @@ public sealed class RelayIntakeTests
 
         Assert.Equal(new AcceptedReport(original.Folder, original.Reporter.Subject, original.ReceivedAt),
             await harness.Records.LoadAcceptedAsync(Id, Ct));
+        Assert.True(await harness.Media.ExistsAsync(ReportArea.Pending, "references/r-ymwqv0/" + Id + ".json", Ct));
         Assert.Equal(savedRecord, (await harness.Media.GetAsync(ReportArea.Pending, "records/" + Id + ".json", ReportLayout.MaxRecordBytes, Ct))!.Value.ToArray());
         Assert.Equal(original.Folder + "/manifest.json", Assert.Single(harness.Media.Paths(ReportArea.Public)));
         Assert.True(harness.Work.TryDequeue(out ReportWorkItem? work));

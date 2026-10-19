@@ -125,6 +125,28 @@ either value shifts the bit-exact result legitimately.
   Cost is O(statics + bodies) pose writes plus refits on the calling thread, budgeted at less than one physics step
   on the same world.
 
+## Exact completed-footprint reuse
+
+Bepu owners and selected views implement the optional `IPhysicsSupportFootprintReuseSource`.
+A session authenticates its exact receiver, owner, selected view/exclusions, installed/static/lease
+geometry generations and all origin bits. Immutable profile and original raw-source token identities
+select one domain. Reset discards every entry, and source-group disposal releases all owned storage.
+The session is thread-affine, non-owning and never retains or opens a second explicit read lease.
+
+Requests use the full bitwise disc/band/slope/contact-band, both proposal dimensions/poses/distances,
+filter and consumed join mode. Complete-empty and full ordered member/witness/proposal/join payloads
+can hit. Every hit authenticates the current basis and publishes new receiver/lease metadata before
+copying only occupied output ranges. An old result never becomes current. Refusals, exceptions,
+unsupported views and changed bases keep the original validation and evaluator path.
+
+Each source session has at most 512 keys and 2 MiB of retained storage, with no eviction. Accounting
+charges the entire fixed entry-array capacity by `Unsafe.SizeOf<Entry>()`, plus exact member-array
+capacity by `Unsafe.SizeOf<SupportFootprintMember>()` and join-array capacity by `sizeof(ulong)`.
+Entry size includes key, witness count, both proposal verdicts and buffer references. This deterministic
+capacity charge is separate from measured runtime allocation. Saturation declines new publication.
+Reference evaluation and non-default curved-work policies bypass lookup and publication. Hits do
+not replay Volumes, Proposals or curved-work events. See the [consumer contract](../docs/USING-KHAOZENGINE.md#exact-completed-footprint-reuse).
+
 ## Joints
 
 Each seam `ConstraintKind` maps to Bepu 2.4 constraint types (verified against the assembly, never from memory):

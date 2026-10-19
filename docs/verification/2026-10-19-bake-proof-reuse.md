@@ -1037,3 +1037,234 @@ Exit 0, 176 passed, zero failed or skipped, no compiler warnings or errors. This
 132 unique work builds with observed Find counts, real trace multiset equality, serial ordered
 trace equality, all seven pinned files and forced ordering, and worker diagnostic restoration.
 No historical counter, target, timing or geometry record changed.
+
+
+## Task 7. Contracts and 21.5.3 finishing verification
+
+BR-R4 supersedes the original staged-version premise. Before finishing, `git fetch origin`
+confirmed released engine main `08f1c027c57e9ea9a322248ffb2d90b5d9f8df1b` and tag
+`v21.5.2`. A normal merge brings #1500's sweep-memory fix into this branch. This lane stages
+one patch bump to 21.5.3 with its own entry dated 2026-10-19. The released 21.5.2 entry
+remains untouched. No release or consumer adoption is performed here.
+
+### Requirement and acceptance self-review
+
+| Requirement | Concrete proof and inspected contract | Acceptance |
+| --- | --- | --- |
+| BB-1 | `IdenticalCrossLeaseQueryPublishesFreshCompleteWithOneEvaluation`, `FootprintHitStillRunsAnalyticBindingAndMediumRoutes`, geometry payload serializer. Only owned geometry crosses leases. | A |
+| BB-2 | `WorldDeclaresExactFootprintReuseCapability`, `SelectedViewDeclaresExactFootprintReuseCapability`, `SourceScopeNeverNestsAnExplicitPhysicsLease`, unsupported and nested-session controls. Exact selected receiver and non-owning lazy opening. | A, B |
+| BB-3 | `OneBitKeyDifferenceMisses`, `HashCollisionRequiresFullEquality`, `ProfileAndSourceTokenChangesResetAllPayloads`, origin/view/generation tests. Inspected integer key fields and immutable session basis. | A |
+| BB-4 | `SelectedViewHitPublishesUnderItsNewLeaseOnly`, `CompleteEmptyPayloadIsReusable`, `CurvedMeshAndCompoundPayloadsRemainBitExact`, `DirectOnlyEndpointContinuityIsRebuiltAfterTheHit`. Inspected fresh Completed metadata before output copies. | A |
+| BB-5 | `InvalidAndUndersizedQueriesPreserveSentinels`, `RefusedOrShortSpanQueryCannotSeedReuse`, `MemoNeverRetainsAnyRefusalStatus`, `BoundedMemoDeclinesWithoutChangingPayload`, stale/wrong-thread and reset/dispose controls. | A |
+| BB-6 | `OriginalOrdinalSurvivesRealSerialAndParallelAdmission`, `EqualRestingAnchorsKeepOriginalRawSourceAndLayer`, `AdmissionAndStairPhasesRetainNoSourceSession`. Raw capture address remains separate from derived layer. | B |
+| BB-7 | `ReusedHoldAuthenticatesAnImmediateArrivalAndKeepsItsSlice`, `FirstRejectedHoldIsNeverRetained`, `SuccessfulHoldCopiesEveryNumericStateBitWithoutSelection`, `EveryHoldKeyDifferenceMisses`. Current lease is acquired before any copied Hold. | B |
+| BB-8 | `StableSerialOptInMatchesParallelAndKeepsOneRealHold`, `SerialWithoutAssertionPreservesStatefulCallbackTrace`, `HoldEligibilityIsIndependentOfFootprintCapability`, `MutationAfterLastHitRefusesSerialAndParallelPublication`, `WaterBasisChangesCannotReuseAnImmediateArrival`. | B |
+| BB-9 | `FootprintReuseKeepsPoolAndDirectionalStairRefusals`, `ProtectionCasesKeepSerialVerdict`, `ArrivalReuseKeepsEuclideanEqualityAndAdjacentFloats`. All protection and arithmetic cases keep their independent oracles. | C |
+| BB-10 | `WorkerProofReuseCountersRestoreAndMerge`, `ResetCountersKeepsPerSessionRetentionPeaks`, `CurvedHitDoesNotReplayCertificationWork`, diagnostics-off refusal work and complete parallel Find traces. | E |
+| BB-11 | `FootprintOnlyMeetsRecordedTargetsWithoutSkippingFinds`, `CombinedModeSavesOnlyCertifiedInitialHolds`. All fixture projections met, zero shortfall. Footprint and Hold reductions remain separate. | E |
+| BB-12 | `EveryPinnedFileAndDegreeMatchesUnchangedSerialBytes`, `SourceAndDirectionOrderDoNotChangeBakeBytes`, `ReuseFailureSelectionMatchesSerialAfterRealHitsUnderForcedBands`, worker failure/setup/restoration tests. No golden regeneration. | D |
+| BB-13 | One-bit and adversarial tests above, `ForwardedQueryConsumesJoinModeExactlyOnce`, `JoinWordBoundaryAndOwnedCapacityRespectPayloadBudget`, selected mutation and full geometry payload controls. | A, C |
+| BB-14 | Living Physics, Bepu, Movement and consumer contracts, corrected Find evidence, version/changelog declarations and final command/guard results below. | F |
+
+All five plan Review Focus tests exist and are included in final Game/Movement suite discovery:
+`ForwardedQueryConsumesJoinModeExactlyOnce`, `EqualRestingAnchorsKeepOriginalRawSourceAndLayer`,
+`ReusedHoldAuthenticatesAnImmediateArrivalAndKeepsItsSlice`,
+`WorkerPhaseThreadChangeCannotInheritAReuseSession` and
+`JoinWordBoundaryAndOwnedCapacityRespectPayloadBudget`.
+
+The Markdown sweep used all requested names and covered 654 matches in 93 files before edits.
+Additional affected living documents are `README.md` for guarded version examples,
+`KhaozEngine.Locomotion/README.md` for actual versus copied complete queries, and
+`docs/DEPENDENCY-SEAMS.md` for the capability, bridge and explicit worker Find hook. Original
+plans, research projections and historical lane C/cost evidence remain historical, with BR-R4
+recorded in the completed spec. Other Hold mentions concern unrelated APIs. No historical
+measurement is relabeled as proof reuse savings.
+
+The actual accepted reductions remain 37,095 of 79,499 footprint evaluations (46.66 percent)
+and 2,285 of 40,338 real edge steps (5.66 percent) across the seven pinned fixtures. Wide-lip
+avoids 29,234 of 69,532 evaluations (42.04 percent) and 2,888 of 34,992 edge steps
+(8.25 percent). No shortfall, addition of overlapping reductions or wall-clock claim.
+Retention peaks remain 330 keys and 275,840 bytes, with zero live entries after every build,
+against unchanged limits of 512 keys and 2 MiB. Curved hits replay no work, and refusals
+consume their real work independently with diagnostics off as well as on.
+
+### Full Release build
+
+```bash
+build-slot --label bake-b-design -- dotnet build KhaozEngine.slnx -c Release
+```
+
+Exit 0. Build succeeded with zero warnings and zero errors. Full log is retained at
+`/tmp/khaozengine-bake-proof-reuse/task-7/full-build.log`. This was the sole full build.
+Support-cost artifact, hosted-cost artifact and GPU opt-in environment checks exited 0,
+confirming they were unset. No timing/load harness or consumer was started.
+
+### Full-suite discovery. Raw height call-site classification
+
+The sole full solution run exposed `SurfaceHeightCallSiteTests.ProductionCallSitesAreClassified`.
+Its exact allowlist lacked the new `ContactNavigationSources.BindLayers` raw `SurfaceHeightAt`
+read. Inspection confirmed both serial and parallel paths call BindLayers before
+WithRestingHeights. This read authenticates the original raw slot and must use raw topology,
+not substituted resting feet. The classification now names that one call with its rationale.
+No production read or raw identity changed, and the scanner retains its exact call-count guard.
+The full run supplies the deterministic red. Only the three-case classification test class
+will rerun after completion, with no second full solution run. This additional affected path
+is `KhaozEngine.Game.Tests/Navigation/SurfaceHeightCallSiteTests.cs`.
+
+### Unchanged tracked catalog failure
+
+The full solution run also failed
+`ContentUpgradeFreezeReleaseTests.ASuccessfulPublishReleasesNothingItselfAndLeavesNoMarkerStanding(sqlite: True)`
+in Catalog.Tests. Its 20-second CancellationTokenSource expired in SqliteStoreConnection.EnterAsync
+while ContentPublishCommit.SweepAsync awaited ListVersionsAsync. This exact test and failure
+shape are already tracked by open [#1462](https://github.com/APKiwiOrg/KhaozEngine/issues/1462).
+Read-only issue inspection confirmed the match. `git diff v21.5.2` over the test and involved
+Catalog.Authoring, Catalog.Sqlite and SqliteStoreConnection paths was empty, exit 0.
+No timeout increase, retry, exclusion or unrelated catalog change was made. The full run's
+failure remains visible in the counts and prevents claiming a wholly green full selection.
+The ledger search reported no local mirror, so the existing issue was located read-only with
+gh. No GitHub write or new issue was made.
+
+### Once-only full solution test selection
+
+```bash
+build-slot --heavy --label bake-b-design -- dotnet test KhaozEngine.slnx -c Release --no-build --filter 'Category!=LiveSocket' --logger trx --results-directory /tmp/khaozengine-bake-proof-reuse/task-7/full-tests
+```
+
+Exit 1. All 41 solution test projects produced TRX files and are represented below.
+Full selection totals are 36,619 passed, 2 failed, 1,421 skipped, 38,042 total.
+The two failures are the corrected raw-height classification and unchanged tracked #1462.
+The original full-run record remains red. No second full run was made.
+
+| Project | Passed | Failed | Skipped | Total |
+| --- | ---: | ---: | ---: | ---: |
+| KeDungeon.Tests | 13 | 0 | 0 | 13 |
+| KhaozEngine.Accounts.Tests | 286 | 0 | 46 | 332 |
+| KhaozEngine.Attachments.Tests | 261 | 0 | 0 | 261 |
+| KhaozEngine.Audio.Tests | 206 | 0 | 3 | 209 |
+| KhaozEngine.Automation.Tests | 110 | 0 | 0 | 110 |
+| KhaozEngine.BugReports.Client.Tests | 202 | 0 | 0 | 202 |
+| KhaozEngine.BugReports.Relay.Azure.Tests | 97 | 0 | 15 | 112 |
+| KhaozEngine.BugReports.Relay.Tests | 494 | 0 | 0 | 494 |
+| KhaozEngine.BugReports.Tests | 442 | 0 | 0 | 442 |
+| KhaozEngine.Catalog.AzureBlob.Tests | 25 | 0 | 7 | 32 |
+| KhaozEngine.Catalog.Tests | 1520 | 1 | 0 | 1521 |
+| KhaozEngine.CodeHealth.Analyzers.Tests | 51 | 0 | 0 | 51 |
+| KhaozEngine.Foundation.Tests | 1503 | 0 | 0 | 1503 |
+| KhaozEngine.Game.Tests | 6328 | 1 | 1 | 6330 |
+| KhaozEngine.Gui.Tests | 1532 | 0 | 0 | 1532 |
+| KhaozEngine.Identity.Exchange.Tests | 177 | 0 | 0 | 177 |
+| KhaozEngine.ItemInstances.Tests | 895 | 0 | 0 | 895 |
+| KhaozEngine.Localization.Analyzers.Tests | 46 | 0 | 0 | 46 |
+| KhaozEngine.MapDoc.Compatibility.Tests | 14 | 0 | 0 | 14 |
+| KhaozEngine.MapDoc.Physics.Tests | 242 | 0 | 0 | 242 |
+| KhaozEngine.MapDoc.Tests | 1398 | 0 | 0 | 1398 |
+| KhaozEngine.MapEditor.Tests | 1706 | 0 | 9 | 1715 |
+| KhaozEngine.Movement.Tests | 1418 | 0 | 3 | 1421 |
+| KhaozEngine.Netcode.Abstractions.DecouplingTests | 4 | 0 | 0 | 4 |
+| KhaozEngine.Netcode.DecouplingTests | 4 | 0 | 0 | 4 |
+| KhaozEngine.Particles.Tests | 106 | 0 | 0 | 106 |
+| KhaozEngine.Physics.HeadlessLoaderTests | 5 | 0 | 0 | 5 |
+| KhaozEngine.Render.Tests | 10203 | 0 | 1013 | 11216 |
+| KhaozEngine.Server.Tests | 4072 | 0 | 317 | 4389 |
+| KhaozEngine.Showcase.Tests | 83 | 0 | 0 | 83 |
+| KhaozEngine.Simulation.Tests | 309 | 0 | 0 | 309 |
+| KhaozEngine.Tests | 88 | 0 | 0 | 88 |
+| KhaozEngine.TileEdit.Tests | 110 | 0 | 7 | 117 |
+| KhaozEngine.TileWorld.Netcode.Tests | 1389 | 0 | 0 | 1389 |
+| KhaozEngine.TileWorld.Physics.Tests | 159 | 0 | 0 | 159 |
+| KhaozEngine.TileWorld.Tests | 608 | 0 | 0 | 608 |
+| KhaozEngine.TileWorld.WorldMap.Tests | 30 | 0 | 0 | 30 |
+| KhaozEngine.Windowing.Tests | 147 | 0 | 0 | 147 |
+| KhaozEngine.WorldMap.Gui.Tests | 66 | 0 | 0 | 66 |
+| KhaozEngine.WorldMap.Tests | 238 | 0 | 0 | 238 |
+| PixelLabSheetAssembler.Tests | 32 | 0 | 0 | 32 |
+
+### Necessary classification correction check
+
+```bash
+build-slot --label bake-b-height-classification -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter 'FullyQualifiedName~SurfaceHeightCallSiteTests' --logger 'trx;LogFileName=height-classification-green.trx' --results-directory /tmp/khaozengine-bake-proof-reuse/task-7
+```
+
+Exit 0. All three tests passed, zero failed/skipped, with zero compiler warnings or errors.
+This rebuilt the affected Game test project after adding the exact raw-read classification.
+No production source changed after the full build. The full selection was not retried, and
+#1462 was not rerun. Final full-suite accounting retains both original failures rather than
+rewriting the historical run as green. The lane-caused classification failure is resolved.
+
+### Full diagnostic format and workspace warning
+
+```bash
+build-slot --heavy --label bake-b-design -- dotnet format KhaozEngine.slnx --verify-no-changes --no-restore --verbosity diagnostic
+```
+
+Exit 2. The complete pass checked 8,429 files and reported only eight WHITESPACE diagnostics
+in one object initializer at SupportFootprintProofMemo.cs lines 76 and 77. The required layout
+puts the opening brace, each property and the closing brace on separate lines. That whitespace
+is corrected without changing any non-whitespace initializer text. This additional affected
+path is `KhaozEngine.Physics.Bepu/SupportFootprintProofMemo.cs`. No arithmetic, storage bound,
+control flow or payload value changed. Only that file needs a correction verification.
+
+Diagnostic output confirms the existing workspace warning exactly as lane C attributed it:
+`Found project reference without a matching metadata reference` for
+KhaozEngine.Localization.Analyzers.csproj. Showcase's existing ProjectReference declares
+`OutputItemType="Analyzer"` and `ReferenceOutputAssembly="false"`. The analyzer targets
+netstandard2.0 and ships under analyzers/dotnet/cs. Both project files are unchanged from
+v21.5.2, confirmed by an empty diff. No warning, project or analyzer was suppressed.
+
+Every branch-changed code project loaded its configuration and ran both analysis passes:
+
+| Project | Code-style analyzers | Analyzer-reference analyzers |
+| --- | ---: | ---: |
+| KhaozEngine.Game.Tests | 5 | 233 |
+| KhaozEngine.Locomotion | 5 | 154 |
+| KhaozEngine.Movement | 5 | 154 |
+| KhaozEngine.Movement.Tests | 5 | 210 |
+| KhaozEngine.Physics | 5 | 154 |
+| KhaozEngine.Physics.Bepu | 5 | 154 |
+
+No changed project was omitted. The full diagnostic log and the necessary file-only correction
+log are retained under `/tmp/khaozengine-bake-proof-reuse/task-7/`. The initial whole-solution
+format result remains recorded as exit 2, rather than being rewritten as a clean first pass.
+
+### Necessary format correction verification
+
+```bash
+build-slot --heavy --label bake-b-format-correction -- dotnet format KhaozEngine.Physics.Bepu/KhaozEngine.Physics.Bepu.csproj --verify-no-changes --no-restore --include KhaozEngine.Physics.Bepu/SupportFootprintProofMemo.cs --verbosity diagnostic
+```
+
+Exit 0. Zero files formatted, no errors or workspace warnings in this targeted project run.
+The changed Bepu file ran 5 code-style and 154 analyzer-reference analyzers. The initializer's
+non-whitespace text is identical, verified before editing. The full solution's earlier diagnostic
+pass proves all other files and every changed project were checked. No second full build,
+full solution test selection or full solution format pass was run. The necessary checks were
+limited to the corrected classification class and this whitespace-only file.
+
+### Governance and final self-review
+
+All commands below exited 0 after explicit staging:
+
+```bash
+sh scripts/check-dashes.sh staged
+sh scripts/check-prose.sh staged
+sh scripts/check-file-size.sh staged
+sh scripts/check-dashes.sh --tree
+sh scripts/check-prose.sh --tree
+sh scripts/check-file-size.sh --tree
+sh scripts/check-agent-instructions.sh --tree
+bash scripts/check-doc-versions.sh
+git diff --cached --check
+```
+
+Contributor instructions remain 8,310 of 16,384 bytes. Every guarded version example and the
+newest changelog heading matches 21.5.3. The final evidence footer receives the same staged
+dash, prose, size and whitespace checks before commit.
+
+Self-review of the final diff found no remaining lane finding. No golden, schema, controller
+arithmetic, tolerance, band, work ceiling, storage bound, raw identity or callback default
+changed. The only late code edits are the explicit raw-height audit classification and a
+whitespace-only initializer layout. Full protection, payload, counter and scheduling evidence
+is retained. No consumer, timing, load, world bake, push, main integration or release was run.
+No manual client validation is required for this CPU-only lane. The remaining verification
+concern is the unchanged tracked catalog deadline failure #1462. The original red full-test
+and format results remain visible beside their necessary focused corrections.

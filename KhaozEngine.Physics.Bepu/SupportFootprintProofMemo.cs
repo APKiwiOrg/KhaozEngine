@@ -73,8 +73,16 @@ internal sealed class SupportFootprintProofMemo : IDisposable
         ulong[] ownedJoins = joins[..words].ToArray();
         _entries ??= new Entry[_keyCapacity];
         index = Find(key);
-        _entries[index] = new Entry { Occupied = true, Key = key, Members = ownedMembers, Joins = ownedJoins,
-            Witnesses = result.Witnesses, Axis = result.AxisVerdict, Foot = result.FootVerdict };
+        _entries[index] = new Entry
+        {
+            Occupied = true,
+            Key = key,
+            Members = ownedMembers,
+            Joins = ownedJoins,
+            Witnesses = result.Witnesses,
+            Axis = result.AxisVerdict,
+            Foot = result.FootVerdict
+        };
         _count++;
         int retained = tableBytes + payloadBytes;
         _bytes += retained;

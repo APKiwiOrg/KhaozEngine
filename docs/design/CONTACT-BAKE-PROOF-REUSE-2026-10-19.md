@@ -3,8 +3,11 @@
 Design for [#1401](https://github.com/APKiwiOrg/KhaozEngine/issues/1401), option B of the
 [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438) contact-controller navigation lane.
 Source baseline: `f23e19ec0b814add04dd5d19ab05ea2b5129b7b9`, staged 21.5.2.
-Status: proposed under BB-R1. The [implementation plan](../superpowers/plans/2026-10-19-bake-proof-reuse.md)
-requires acceptance by the owning orchestrator before implementation.
+Status: implemented under BB-R1 and the [seven-task plan](../superpowers/plans/2026-10-19-bake-proof-reuse.md).
+[Verification](../verification/2026-10-19-bake-proof-reuse.md) records the unchanged payload/byte matrix,
+measured counters and final Release checks. Living use belongs in the Physics, Bepu and Movement
+READMEs and [consumer contract](../USING-KHAOZENGINE.md#exact-completed-footprint-reuse).
+BR-R4 supersedes the original staged-version premise after the release of 21.5.2. This lane stages 21.5.3.
 
 The owning checkout's `.superpowers/sdd/bake-option-b/research.md` and `progress.md` supply the
 research and ruling. This spec retains their operative evidence and contracts so implementation
@@ -59,7 +62,7 @@ the ruling, not a reason to omit its stable-provider certificate. No owner quest
 - The complete KENB bytes equal the current serial bake at the same engine identity for every pinned baseline and every supported parallel degree, independently of iteration order.
 - Every miss, stale view, unsupported backend or refusal takes the full existing path, including its original refusal or exception when authentication fails.
 - No wall-clock timing, load run, stress run, test loop, consumer launch, world bake, release or tag is authorized by this lane.
-- Ride staged 21.5.2 without a version bump. The final implementation task appends to its CHANGELOG entry and rolls its date, preserving released history.
+- Under finishing ruling BR-R4, stage one patch bump to 21.5.3 with its own dated CHANGELOG entry and guarded declarations. Preserve released 21.5.2 history.
 
 ## Requirements
 
@@ -323,12 +326,12 @@ bounded storage and provider/failure controls in a committed verification record
 Physics, Bepu, Movement and consumer-use documentation for the capability and serial assertion.
 Search all Markdown for changed names and stale callback/cache lifetime claims.
 
-The final implementation task alone appends the verified behavior to the existing 21.5.2
-CHANGELOG entry and rolls its date to the finishing day. Directory.Build.props and guarded
-version declarations remain unchanged. Run the full Release solution build, full solution
+The final implementation task follows BR-R4 and stages 21.5.3 after merging released 21.5.2
+from origin/main. It adds a separate CHANGELOG entry dated 2026-10-19, updates Directory.Build.props
+and guarded declarations, and leaves the released 21.5.2 entry untouched. Run the full Release solution build, full solution
 test selection required by AGENTS.md in build-slot's heavy lane and format verification once
 at that finish. Run the governance guards. The design author commits only the spec, plan and
-index row. Neither this design nor an implementation worker authorizes push, merge, release,
+index row. Neither this design nor an implementation worker authorizes push, main integration, release,
 consumer adoption, #1334/SG-12 acceptance or closure of world-scale cost work.
 
 ## Acceptance groups
@@ -340,7 +343,7 @@ consumer adoption, #1334/SG-12 acceptance or closure of world-scale cost work.
 | C. Protection and arithmetic | BB-9 and BB-13. Eight pool rejections, directional stairs, thin wall, lifted roof, circular forbidden corner, headroom/next-raw boundary, unsupported hole, lower deck layer, changing support within the disc, exact Euclidean equality and adjacent floats. |
 | D. Bytes and scheduling | BB-12. All seven actual files and hashes, every specified degree, forced direction/source and band order, serial failure ordinal and cleanup. No changed golden. |
 | E. Measured work | BB-10 and BB-11. Separate footprint-only and combined counters, no replayed curved work, real retention bounds and explicit target shortfall reporting. |
-| F. Finish | BB-14. Living docs, staged 21.5.2 history, full once-only Release verification and governance evidence. |
+| F. Finish | BB-14. Living docs, staged 21.5.3 history under BR-R4, full once-only Release verification and governance evidence. |
 
 ## Explicit non-goals
 

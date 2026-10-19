@@ -5,6 +5,17 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.5.3
+
+2026-10-19
+
+- Contact navigation bakes reuse exact completed footprints within one raw source and share certified
+  successful initial Holds under stable providers (#1401 option B). Footprint evaluations fall 46.66 percent
+  across the seven pinned fixtures and 42.04 percent on the 576-column fixture. Separately, real edge
+  controller steps fall 5.66 percent and 8.25 percent. Complete bake bytes and protection rules are unchanged.
+- Serial callers can assert stable providers with `NavBakeExecution.UseStableContactHoldReuse`. Its default
+  false preserves historical Hold callbacks. Parallel contact builds already require stable providers.
+
 ## 21.5.2
 
 2026-10-19

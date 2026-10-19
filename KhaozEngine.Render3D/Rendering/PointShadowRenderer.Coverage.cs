@@ -28,7 +28,8 @@ internal sealed partial class PointShadowRenderer
                 Rasterizer = new(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, true, true),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = [_layout, _skinnedCasterLayout, _coveragePull.Layout],
-                ShaderSet = _coverageShaders[i], VertexLayouts = [],
+                ShaderSet = _coverageShaders[i],
+                VertexLayouts = [],
                 Outputs = new(GpuPixelFormat.D32FloatS8UInt, GpuPixelFormat.R32Float),
             });
         }

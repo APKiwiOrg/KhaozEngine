@@ -36,7 +36,9 @@ internal sealed partial class ModelRenderer
                     Rasterizer = new(GpuFaceCull.Front, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, true, true),
                     Topology = GpuPrimitiveTopology.TriangleList,
                     ResourceLayouts = [_coverageCascadeLayout, _coveragePull.Layout],
-                    ShaderSet = _coverageCascadeShaders[i], VertexLayouts = [], Outputs = _shadowMap.Outputs,
+                    ShaderSet = _coverageCascadeShaders[i],
+                    VertexLayouts = [],
+                    Outputs = _shadowMap.Outputs,
                 });
         }
         int bytes = checked(Math.Max(1, count) * ShadowSettings.MaxCascades * 256);

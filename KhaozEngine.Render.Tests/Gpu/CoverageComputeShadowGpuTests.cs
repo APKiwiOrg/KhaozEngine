@@ -106,17 +106,32 @@ public sealed partial class CoverageComputeShadowGpuTests(ITestOutputHelper outp
             }
         var differences = Enumerable.Range(0, actual.Cascades.Values.Length)
             .Where(i => BitConverter.SingleToUInt32Bits(actual.Cascades.Values[i]) != BitConverter.SingleToUInt32Bits(expected.Cascades.Values[i]))
-            .Take(4).Select(i => new { Index = i, Actual = BitConverter.SingleToUInt32Bits(actual.Cascades.Values[i]),
-                OrdinaryReference = BitConverter.SingleToUInt32Bits(expected.Cascades.Values[i]) }).ToArray();
+            .Take(4).Select(i => new
+            {
+                Index = i,
+                Actual = BitConverter.SingleToUInt32Bits(actual.Cascades.Values[i]),
+                OrdinaryReference = BitConverter.SingleToUInt32Bits(expected.Cascades.Values[i])
+            }).ToArray();
         File.WriteAllText(Path.Combine(path, stem + ".metrics.json"), JsonSerializer.Serialize(new
         {
-            Backend = fixture.Device.Backend.ToString(), Device = fixture.Device.Capabilities.DeviceName,
-            ComparedCascades = 4, ComparedPointFaces = 6, ShadowSurfaceOffsetMismatches = 0,
-            UncoveredGhostEnvelopePixels = 0, MissingShadowPixels = 0, CoveredCpuVertices = scene.Scene.OrdinaryCpuSkinnedVerticesForTests,
-            MainDraws = 0, NumericalRefusal = refusal, FinalWordMismatches = 0,
+            Backend = fixture.Device.Backend.ToString(),
+            Device = fixture.Device.Capabilities.DeviceName,
+            ComparedCascades = 4,
+            ComparedPointFaces = 6,
+            ShadowSurfaceOffsetMismatches = 0,
+            UncoveredGhostEnvelopePixels = 0,
+            MissingShadowPixels = 0,
+            CoveredCpuVertices = scene.Scene.OrdinaryCpuSkinnedVerticesForTests,
+            MainDraws = 0,
+            NumericalRefusal = refusal,
+            FinalWordMismatches = 0,
             OrdinaryCascadeWordDifferences = differences,
-            Actors = scene.Actors.Select(a => new { a.Key.Value, a.Frame.Preparation!.Sphere.Radius,
-                Center = a.Frame.Preparation!.Sphere.Center.ToString() }).ToArray(),
+            Actors = scene.Actors.Select(a => new
+            {
+                a.Key.Value,
+                a.Frame.Preparation!.Sphere.Radius,
+                Center = a.Frame.Preparation!.Sphere.Center.ToString()
+            }).ToArray(),
         }, new JsonSerializerOptions { WriteIndented = true }));
         if (refusal)
         {

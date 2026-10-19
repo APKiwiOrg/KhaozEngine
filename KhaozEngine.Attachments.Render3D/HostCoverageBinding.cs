@@ -109,6 +109,13 @@ public sealed class HostCoverageBinding : IDisposable
         }
         var prepared = new AttachmentDraw[draws];
         var poses = new CoverageCommandPose[count];
+        var supports = new CoverageSupportSurface[count];
+        int supportIndex = 0;
+        foreach (var instance in equipment)
+            foreach (var support in instance.Coverage.Supports) supports[supportIndex++] = support;
+        try { if (_conformer is not null) _coverageScene!.ReserveCoverageSupports(_conformer, supports); }
+        catch (Exception error) when (error is InvalidOperationException or NotSupportedException)
+        { return Refuse(CoverageFailureCode.UnsupportedAdapter, 0, 0, out failure); }
         _commandIds = ids; _equipment = replacement; _draws = prepared; _commands = poses; _lastCommandId = last; _preparedCount = 0;
         failure = default;
         return true;

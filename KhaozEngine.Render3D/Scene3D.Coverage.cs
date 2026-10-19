@@ -7,6 +7,8 @@ public sealed partial class Scene3D
 {
     /// <summary>Canonical covered surfaces resolved in the last rendered frame.</summary>
     public int CoveredHostPreparationCount { get; private set; }
+    /// <summary>CPU-admitted complete hosts whose GPU coverage commands were encoded in the last view.</summary>
+    public int DispatchedHostPreparationCount { get; private set; }
     internal (int CoveredCpuPreparations, int UncoveredGpuDraws) CoverageDiagnosticsForTests =>
         (CoveredHostPreparationCount, _gpuSkinnedDraws.Count);
     internal ReadOnlySpan<ModelVertex> CoverageVerticesForTests(SkinnedCoverageFrame frame) => RequireCoverage(frame).Final;
@@ -57,12 +59,17 @@ public sealed partial class Scene3D
         CoveragePreparation p = conformer.Request;
         if (_coverageDisposed || _coverageArena.Generation == 0 || _coverageArena.Closed || _framePrepared || actor.IsNone
             || fallback != CoverageFallback.UncoveredCurrentPose || p.Generation == _coverageArena.Generation
-            || !conformer.Actor.IsNone && conformer.Actor != actor || palette.Length != p.Palette.Length)
+            || !conformer.Actor.IsNone && conformer.Actor != actor)
             return Refuse(CoverageFailureCode.StaleFrame, out failure);
-        if (commands.Length is < 1 or > CoverageScratch.MaxCommands)
-            return Refuse(CoverageFailureCode.CapacityExceeded, out failure);
         foreach (var handle in conformer.Meshes)
             if (!_skinnedSlots.IsValid(handle.Index, handle.Generation)) return Refuse(CoverageFailureCode.IdentityMismatch, out failure);
+        if (palette.Length != p.Palette.Length) return Refuse(CoverageFailureCode.IdentityMismatch, out failure);
+        // Identity precedes capacity. Do not index bounded scratch until the whole identity prefix is checked.
+        foreach (var command in commands)
+            if (command.Id == 0 || command.EquipmentInstanceId == 0 || command.Support is null
+                || !ReferenceEquals(command.Topology, conformer.Topology)
+                || !conformer.Gpu.TrySupport(command.Support, out _))
+                return Refuse(CoverageFailureCode.IdentityMismatch, out failure);
         for (int c = 0; c < commands.Length; c++)
         {
             ref readonly var command = ref commands[c];
@@ -76,28 +83,18 @@ public sealed partial class Scene3D
             if (found is null || command.EquipmentWorld != found.Draws[0].World
                 || !ReferenceEquals(command.Topology, conformer.Topology))
                 return Refuse(CoverageFailureCode.IdentityMismatch, out failure);
-            p.Equipment[c] = found;
+            if (c < CoverageScratch.MaxCommands) p.Equipment[c] = found;
         }
+        if (commands.Length is < 1 or > CoverageScratch.MaxCommands)
+            return Refuse(CoverageFailureCode.CapacityExceeded, out failure);
+        if (!conformer.Uniforms.TryPrepare(palette, conformer.InverseBind, model, commands, out failure)) return false;
+        var bounds = conformer.Gpu.Host.Bounds;
+        MeshBounds skin = bounds.BoundSkin(conformer.Uniforms.ComposedPalette);
+        if (!bounds.TryAdmitOrigin(skin, model, _frameOrigin, commands, out failure)) return false;
+        p.WorldBounds = bounds.ExpandWorld(skin, model, commands);
+        if (!CoverageRefinement.Finite(p.WorldBounds.Min) || !CoverageRefinement.Finite(p.WorldBounds.Max))
+            return Refuse(CoverageFailureCode.UnsupportedTransform, out failure);
         palette.CopyTo(p.Palette);
-        CoverageStageObserverForTests?.Invoke(CoverageStageSpan.Skinning, true);
-        Span<Matrix4x4> composed = stackalloc Matrix4x4[SkinningMath.MaxBonesPerDraw];
-        for (int i = 0; i < palette.Length; i++) composed[i] = SkinningMath.Compose(palette[i], conformer.InverseBind[i]);
-        ReadOnlySpan<SkinnedVertex> source = conformer.Topology.Source.SkinVertices;
-        for (int i = 0; i < source.Length; i++) p.Posed[i] = SkinningMath.SkinVertex(source[i], composed[..palette.Length]);
-        CoverageStageObserverForTests?.Invoke(CoverageStageSpan.Skinning, false);
-        // Staging constructs the candidate and its normals only. The full late validation is its one certification.
-        CoverageStageObserverForTests?.Invoke(CoverageStageSpan.GeometryEvaluation, true);
-        bool evaluated = CoverageEvaluator.TryConstructCandidate(conformer.Topology, p.Posed, model, commands, conformer.Scratch,
-            p.Candidate, out failure);
-        CoverageStageObserverForTests?.Invoke(CoverageStageSpan.GeometryEvaluation, false);
-        if (!evaluated || !conformer.Topology.TryInterpolate(p.Posed, p.Before, out failure)) return false;
-        // The staged surface is immutable, so its full-surface reductions are taken once here for every pass.
-        MeshBounds candidate = MeshBounds.FromVertices(p.Candidate), uncovered = MeshBounds.FromVertices(p.Posed);
-        p.CandidateBounds = candidate;
-        p.CandidateAttributes = CoverageUploadEvidence.Attributes(p.Candidate);
-        p.CandidateOutlineAttributes = CoverageUploadEvidence.Attributes(p.Candidate, true);
-        CoverageSurfaceScansForTests += 4;
-        p.UnionBounds = new(Vector3.Min(candidate.Min, uncovered.Min), Vector3.Max(candidate.Max, uncovered.Max));
         p.Model = model; p.Actor = actor; p.CommandCount = commands.Length;
         commands.CopyTo(p.Commands);
         p.Generation = _coverageArena.Generation; p.Id = ++_coverageArena.NextPreparation; p.View = 0;

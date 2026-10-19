@@ -65,7 +65,9 @@ internal sealed class CoveragePreparation
     internal MotionKey Actor;
     internal Matrix4x4 Model;
     internal int CommandCount;
-    internal MeshBounds UnionBounds, CandidateBounds;
+    internal MeshBounds UnionBounds, CandidateBounds, WorldBounds;
+    internal CoverageGpuReservation GpuReservation;
+    internal readonly uint[] ResultIdentity = new uint[8];
     internal double CandidateAttributes, CandidateOutlineAttributes;
     internal PointShadowCasterSphere Sphere;
     internal ulong SphereView;

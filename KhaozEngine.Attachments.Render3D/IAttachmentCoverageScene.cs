@@ -11,6 +11,9 @@ public interface IAttachmentCoverageScene : IAttachmentScene
     /// <summary>Non-null stable reference to the actual scene that owns uploaded resources.</summary>
     object CoverageResourceOwner { get; }
     SkinnedHostConformer CreateHostConformer(Skeleton skeleton, IReadOnlyList<SkinnedMeshHandle> meshes);
+    /// <summary>Cold equip reservation. Existing adapters inherit forwarding to the actor-owned conformer.</summary>
+    void ReserveCoverageSupports(SkinnedHostConformer conformer, ReadOnlySpan<CoverageSupportSurface> supports) =>
+        conformer.ReserveSupports(supports);
     bool TryStageCoverageEquipment(MotionKey actorKey, ulong equipmentInstanceId,
         ReadOnlySpan<CoverageEquipmentCommand> commands, ReadOnlySpan<RigidInstanceDraw> draws,
         Span<RigidInstanceDraw> frozenDraws, out CoverageFailure failure);

@@ -56,8 +56,8 @@ public sealed class CoverageAttachmentLifetimeTests
         f.Submit(af, ad);
         f.Submit(bf, bd, 92, bm, bp);
         f.Render();
-        Assert.Equal(CoveragePresentation.Covered, f.Scene.GetCoverageOutcome(af).Presentation);
-        Assert.Equal(CoveragePresentation.Covered, f.Scene.GetCoverageOutcome(bf).Presentation);
+        Assert.Equal(CoveragePresentation.Dispatched, f.Scene.GetCoverageOutcome(af).Presentation);
+        Assert.Equal(CoveragePresentation.Dispatched, f.Scene.GetCoverageOutcome(bf).Presentation);
         Assert.Same(rigid.Coverage.Supports[0].Source, equipment.Coverage.Supports[0].Source);
     }
 
@@ -174,9 +174,10 @@ public sealed class CoverageAttachmentLifetimeTests
         f.Submit(frame, draws);
         Assert.Equal(f.Hosts.Length + 2, f.Adapter.QueuedDrawCount);
         f.Render();
-        Assert.Equal(CoveragePresentation.Covered, f.Scene.GetCoverageOutcome(frame).Presentation);
-        var passes = f.Scene.CoveragePassesForTests(frame).ToArray();
-        Assert.All(f.Adapter.Commands, c => Assert.Contains(passes, p => p.CommandId == c.Command && p.EquipmentInstanceId == equipment.InstanceId));
+        Assert.Equal(CoveragePresentation.Dispatched, f.Scene.GetCoverageOutcome(frame).Presentation);
+        var staged = frame.Preparation!.Commands.AsSpan(0, frame.Preparation.CommandCount).ToArray();
+        Assert.All(f.Adapter.Commands, c => Assert.Contains(staged, p => p.Id == c.Command
+            && p.EquipmentInstanceId == equipment.InstanceId && ReferenceEquals(p.Support, c.Support)));
     }
 
     [Fact]
@@ -227,9 +228,9 @@ public sealed class CoverageAttachmentLifetimeTests
         if (reverse) { f.Submit(bf, bd, 92, modelB, original); f.Submit(af, ad, palette: original); }
         else { f.Submit(af, ad, palette: original); f.Submit(bf, bd, 92, modelB, original); }
         f.Render();
-        Assert.Equal(CoveragePresentation.Covered, f.Scene.GetCoverageOutcome(af).Presentation);
-        Assert.Equal(CoveragePresentation.Covered, f.Scene.GetCoverageOutcome(bf).Presentation);
-        Assert.Equal(2, f.Scene.CoveredHostPreparationCount);
+        Assert.Equal(CoveragePresentation.Dispatched, f.Scene.GetCoverageOutcome(af).Presentation);
+        Assert.Equal(CoveragePresentation.Dispatched, f.Scene.GetCoverageOutcome(bf).Presentation);
+        Assert.Equal(2, f.Scene.DispatchedHostPreparationCount);
     }
 
     [Fact]
@@ -262,7 +263,7 @@ public sealed class CoverageAttachmentLifetimeTests
             out var frame, out var failure), failure.ToString());
         f.Submit(frame, binding.PreparedEquipmentDraws.ToArray());
         f.Render();
-        Assert.Equal(CoveragePresentation.Covered, f.Scene.GetCoverageOutcome(frame).Presentation);
+        Assert.Equal(CoveragePresentation.Dispatched, f.Scene.GetCoverageOutcome(frame).Presentation);
     }
 }
 

@@ -16,7 +16,8 @@ internal sealed class CoverageSceneFixture : IDisposable
     readonly CoverageCaptureDevice device;
     readonly UniformBufferTrackingGpuDevice tracker;
     internal RecordingGpuCommandList Record { get; private set; } = null!;
-    internal FakeGpuResourceFactory Factory => (FakeGpuResourceFactory)device.Factory;
+    internal FakeGpuResourceFactory Factory => device.RecordingInner!;
+    internal CoverageCaptureDevice Capture => device;
     readonly IGpuTexture targetTexture;
     readonly IGpuFramebuffer target;
     readonly CoverageFixture data;
@@ -35,9 +36,10 @@ internal sealed class CoverageSceneFixture : IDisposable
     public ModelVertex[] Expected { get; }
     public ModelVertex[] Posed => data.Posed;
 
-    public CoverageSceneFixture(bool seams = false, GpuBackendKind backend = GpuBackendKind.Vulkan)
+    public CoverageSceneFixture(bool seams = false, GpuBackendKind backend = GpuBackendKind.Vulkan,
+        bool supportsCompute = true, bool failCoverageBuild = false, IGpuDevice? nativeDevice = null)
     {
-        device = new(backend);
+        device = new(backend, supportsCompute, failCoverageBuild, nativeDevice);
         data = CoverageFixture.CurvedPanel(seams: seams, level: 2);
         tracker = new(device);
         targetTexture = tracker.Factory.CreateTexture(GpuTextureDescription.Texture2D(32, 24,
@@ -53,6 +55,7 @@ internal sealed class CoverageSceneFixture : IDisposable
         uncovered = Scene.LoadSkinnedMesh(first);
         conformer = Scene.CreateHostConformer(skeleton, Host);
         support = CoverageCommands.Plate(data);
+        conformer.ReserveSupports([support]);
         RigidMesh = new GltfMesh(data.RigidPositions.Select(p =>
             new ModelVertex(p, Vector3.UnitZ, Vector4.One)).ToArray(), data.RigidIndices);
         equipment = Scene.LoadMesh(RigidMesh);
@@ -89,12 +92,18 @@ internal sealed class CoverageSceneFixture : IDisposable
 
     CoverageCommandPose[] Commands() => CoverageCommands.Poses(data, conformer.Topology, support, Matrix4x4.Identity);
     public void Begin() => Scene.Begin();
-    public SkinnedCoverageFrame Stage(Matrix4x4? model = null, ulong instance = 1, float weight = 1)
+    public SkinnedCoverageFrame Stage(Matrix4x4? model = null, ulong instance = 1, float weight = 1, float? recession = null)
     {
         Matrix4x4 world = model ?? Matrix4x4.Identity;
         var commands = Commands();
         for (int i = 0; i < commands.Length; i++) commands[i] = commands[i] with
-        { EquipmentInstanceId = instance, EquipmentWorld = world, CoverageWorld = support.CoverageLocal * world, TransitionWeight = weight };
+        {
+            EquipmentInstanceId = instance,
+            EquipmentWorld = world,
+            CoverageWorld = support.CoverageLocal * world,
+            TransitionWeight = weight,
+            MaxWorldRecession = recession ?? commands[i].MaxWorldRecession
+        };
         Assert.True(Scene.TryStageCoverageEquipment(MotionKey.From(10), 1, instance, support,
             [new RigidInstanceDraw(equipment, world)], stagedEquipment, out var failure), failure.ToString());
         Assert.True(conformer.TryPrepare(Palette, world, commands, MotionKey.From(10),
@@ -118,29 +127,17 @@ internal sealed class CoverageSceneFixture : IDisposable
     }
     internal void RenderUncaptured(IGpuCommandList cl)
     { Scene.PrepareFrame(32, 24); Scene.RenderInternal(cl, 32, 24, target); }
-    public void AssertCanonicalDraws(SkinnedCoverageFrame frame)
+    public void AssertCanonicalDraws(SkinnedCoverageFrame frame) => AssertCoverageDispatch(frame);
+    internal void AssertCoverageDispatch(SkinnedCoverageFrame frame)
     {
-        for (int slice = 0; slice < Host.Length; slice++)
-        {
-            var range = conformer.Topology.MaterialRanges[slice];
-            var route = Scene.CoverageSliceForTests(frame, slice);
-            var draws = Record.IndexedDraws.Where(d => ReferenceEquals(d.IndexBuffer, route.Indices)).ToArray();
-            Assert.NotEmpty(draws);
-            Assert.All(draws, d =>
-            {
-                Assert.Same(route.Vertices, d.VertexBuffer);
-                Assert.Equal(route.BaseVertex, d.VertexOffset);
-                Assert.Equal((uint)route.IndexCount, d.IndexCount);
-            });
-            var upload = Assert.Single(Record.Uploads, u => ReferenceEquals(u.Buffer, route.Vertices));
-            Assert.Equal(Expected.AsSpan(range.FirstVertex, range.VertexCount).ToArray(),
-                MemoryMarshal.Cast<byte, ModelVertex>(upload.Data).Slice(route.BaseVertex, range.VertexCount).ToArray());
-            uint[] expectedIndices = conformer.Topology.Indices.Slice(range.FirstIndex, range.IndexCount).ToArray();
-            for (int i = 0; i < expectedIndices.Length; i++) expectedIndices[i] -= (uint)range.FirstVertex;
-            Assert.Equal(expectedIndices, MemoryMarshal.Cast<byte, uint>(device.Uploads[route.Indices]).ToArray());
-            int firstDraw = Record.IndexedDraws.ToList().FindIndex(d => ReferenceEquals(d.IndexBuffer, route.Indices));
-            Assert.True(upload.DrawsBefore <= firstDraw);
-        }
+        var batch = Scene.CoverageGpuBatchForTests!;
+        var actor = frame.Preparation!.GpuReservation;
+        Assert.Contains(batch.Actors.ToArray(), a => a == actor);
+        Assert.Equal(conformer.Topology.VertexCount, actor.VertexCount);
+        Assert.Contains(Factory.ResourceSets, set => set.Resources.Length == 6
+            && ReferenceEquals(set.Resources[0], batch.StaticData) && ReferenceEquals(set.Resources[1], batch.FrameData)
+            && ReferenceEquals(set.Resources[2], batch.Work) && ReferenceEquals(set.Resources[3], batch.Current)
+            && ReferenceEquals(set.Resources[4], batch.Previous) && ReferenceEquals(set.Resources[5], batch.Results));
     }
     internal bool IsHostIndexBuffer(IGpuBuffer? buffer) => conformer.Indices.Contains(buffer);
     internal void AssertCapturedMatricesUploaded(SkinnedCoverageFrame frame)

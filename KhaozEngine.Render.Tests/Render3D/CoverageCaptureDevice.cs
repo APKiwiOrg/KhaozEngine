@@ -8,12 +8,27 @@ namespace KhaozEngine.Tests.Render3D;
 
 internal sealed class CoverageCaptureDevice : IGpuDevice
 {
-    internal readonly FakeGpuDevice Inner;
-    internal CoverageCaptureDevice(GpuBackendKind backend = GpuBackendKind.Vulkan) => Inner = new(backend);
+    internal readonly IGpuDevice Inner;
+    internal readonly FakeGpuResourceFactory? RecordingInner;
+    readonly CoverageRecordingFactory? recordingFactory;
+    internal bool CoverageShadersDisposed => recordingFactory is { Shaders.Count: 2 } f && f.Shaders.TrueForAll(s => s.Disposed);
+    internal int CoverageBuildAttempts => recordingFactory?.CoverageBuildAttempts ?? 0;
+    internal CoverageCaptureDevice(GpuBackendKind backend = GpuBackendKind.Vulkan, bool supportsCompute = true,
+        bool failCoverageBuild = false, IGpuDevice? nativeDevice = null)
+    {
+        Inner = nativeDevice ?? new FakeGpuDevice(backend);
+        if (nativeDevice is null)
+        {
+            RecordingInner = (FakeGpuResourceFactory)Inner.Factory;
+            recordingFactory = new(RecordingInner, failCoverageBuild);
+        }
+        Capabilities = nativeDevice?.Capabilities ?? new GpuCapabilities(false, true, deviceName: "CoverageRecordingDevice",
+            supportsCompute: supportsCompute);
+    }
     internal readonly Dictionary<IGpuBuffer, byte[]> Uploads = new();
     public GpuBackendKind Backend => Inner.Backend;
-    public GpuCapabilities Capabilities => Inner.Capabilities;
-    public IGpuResourceFactory Factory => Inner.Factory;
+    public GpuCapabilities Capabilities { get; }
+    public IGpuResourceFactory Factory => recordingFactory ?? Inner.Factory;
     public IGpuFramebuffer? SwapchainFramebuffer => null;
     public IGpuSampler PointSampler => Inner.PointSampler;
     public IGpuSampler LinearSampler => Inner.LinearSampler;
@@ -39,5 +54,5 @@ internal sealed class CoverageCaptureDevice : IGpuDevice
     public void Unmap(IGpuBuffer buffer) => Inner.Unmap(buffer);
     public void ResizeSwapchain(uint w, uint h) => Inner.ResizeSwapchain(w, h);
     public void Present() => Inner.Present();
-    public void Dispose() => Inner.Dispose();
+    public void Dispose() { if (RecordingInner is not null) Inner.Dispose(); }
 }

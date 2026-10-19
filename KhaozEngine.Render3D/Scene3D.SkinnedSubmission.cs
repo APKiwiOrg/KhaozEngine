@@ -67,7 +67,7 @@ public sealed partial class Scene3D
                     ? new Vector2(it.DissolveThreshold, it.DissolveEdgeWidth)
                     : Vector2.Zero;
 
-                if (UseGpuSkinning)
+                if (UseCoverageVertexSkinning(it.Mesh, staged is not null))
                 {
                     // Record the draw. The GPU deforms the rest-pose buffer. The palette lives at slot i of
                     // _boneMatrices (submission index), packed into the shared palette at the compacted slot.

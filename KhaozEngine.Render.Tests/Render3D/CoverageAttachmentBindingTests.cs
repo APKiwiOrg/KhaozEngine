@@ -53,7 +53,7 @@ public sealed class CoverageAttachmentBindingTests
         Assert.Equal(2, binding.PreparedEquipmentDraws.Length);
         f.Submit(frame, binding.PreparedEquipmentDraws.ToArray());
         f.Render();
-        Assert.Equal(CoveragePresentation.Covered, f.Scene.GetCoverageOutcome(frame).Presentation);
+        Assert.Equal(CoveragePresentation.Dispatched, f.Scene.GetCoverageOutcome(frame).Presentation);
     }
 
     [Fact]
@@ -75,7 +75,7 @@ public sealed class CoverageAttachmentBindingTests
         Assert.Single(prepared, draw => draw.IsSkinned);
         f.Submit(frame, prepared);
         f.Render();
-        Assert.Equal(CoveragePresentation.Covered, f.Scene.GetCoverageOutcome(frame).Presentation);
+        Assert.Equal(CoveragePresentation.Dispatched, f.Scene.GetCoverageOutcome(frame).Presentation);
     }
 
     static CoveredAttachmentInstance BindMixed(CoverageAttachmentFixture f, SkinnedGltfMesh host)
@@ -156,7 +156,7 @@ public sealed class CoverageAttachmentBindingTests
         Assert.All(f.Adapter.Commands, c => Assert.Equal(first[c.EquipmentInstanceId], c.Command));
         f.Submit(frame, binding.PreparedEquipmentDraws.ToArray());
         f.Render();
-        Assert.Equal(CoveragePresentation.Covered, f.Scene.GetCoverageOutcome(frame).Presentation);
+        Assert.Equal(CoveragePresentation.Dispatched, f.Scene.GetCoverageOutcome(frame).Presentation);
     }
 
     [Fact]
@@ -200,7 +200,7 @@ public sealed class CoverageAttachmentBindingTests
         });
         f.Submit(frame, frozen, model: model);
         f.Render();
-        Assert.Equal(CoveragePresentation.Covered, f.Scene.GetCoverageOutcome(frame).Presentation);
+        Assert.Equal(CoveragePresentation.Dispatched, f.Scene.GetCoverageOutcome(frame).Presentation);
     }
 
     [Fact]
@@ -346,8 +346,8 @@ public sealed class CoverageAttachmentBindingTests
         Assert.Equal(0, f.Adapter.QueuedDrawCount);
         f.Submit(frame, frozen);
         f.Render();
-        Assert.Equal(CoveragePresentation.Covered, f.Scene.GetCoverageOutcome(frame).Presentation);
-        Assert.Equal(1, f.Scene.CoveredHostPreparationCount);
+        Assert.Equal(CoveragePresentation.Dispatched, f.Scene.GetCoverageOutcome(frame).Presentation);
+        Assert.Equal(1, f.Scene.DispatchedHostPreparationCount);
     }
 
     [Fact]
@@ -369,6 +369,6 @@ public sealed class CoverageAttachmentBindingTests
         Assert.Equal(default, frame);
         f.Submit(frame, []);
         f.Render();
-        Assert.Equal(0, f.Scene.CoveredHostPreparationCount);
+        Assert.Equal(0, f.Scene.DispatchedHostPreparationCount);
     }
 }

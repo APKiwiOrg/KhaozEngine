@@ -22,8 +22,8 @@ public sealed class CoverageResourceTests
         h.Scene.DrawSkinned(h.HostDraw(frame), h.Palette);
         h.SubmitEquipment();
         h.Render();
-        Assert.Equal(CoveragePresentation.Covered, h.Scene.GetCoverageOutcome(frame).Presentation);
-        Assert.Equal(h.Expected, h.Scene.CoverageVerticesForTests(frame).ToArray());
+        Assert.Equal(CoveragePresentation.Dispatched, h.Scene.GetCoverageOutcome(frame).Presentation);
+        h.AssertCoverageDispatch(frame);
     }
 
     [Fact]
@@ -38,13 +38,10 @@ public sealed class CoverageResourceTests
         h.Outline(h.HostDraw(frame, slice: 1));
         h.SubmitEquipment();
         h.Render();
-        Assert.Equal(CoveragePresentation.Covered, h.Scene.GetCoverageOutcome(frame).Presentation);
-        var first = h.Scene.CoverageSliceForTests(frame, 0);
-        var second = h.Scene.CoverageSliceForTests(frame, 1);
-        Assert.Same(first.Vertices, second.Vertices);
-        Assert.NotSame(first.Indices, second.Indices);
-        Assert.NotEqual(first.BaseVertex, second.BaseVertex);
-        Assert.Equal(1, h.Scene.CoveredHostPreparationCount);
+        Assert.Equal(CoveragePresentation.Dispatched, h.Scene.GetCoverageOutcome(frame).Presentation);
+        var first = frame.Preparation!.GpuReservation;
+        Assert.Equal(h.Conformer.Topology.VertexCount, first.VertexCount);
+        Assert.Equal(1, h.Scene.DispatchedHostPreparationCount);
         h.AssertCanonicalDraws(frame);
     }
 
@@ -64,6 +61,7 @@ public sealed class CoverageResourceTests
     {
         using var h = new CoverageSceneFixture();
         using var second = h.Scene.CreateHostConformer(h.HostMesh.Skeleton!, h.Host);
+        second.ReserveSupports([h.Support]);
         h.Begin();
         var first = h.Stage();
         Matrix4x4 world = Matrix4x4.CreateTranslation(3, 0, 0);
@@ -71,8 +69,13 @@ public sealed class CoverageResourceTests
         Assert.True(h.Scene.TryStageCoverageEquipment(MotionKey.From(20), 1, 2, h.Support,
             [new RigidInstanceDraw(h.RigidHandle, world)], draws, out var failure), failure.ToString());
         var commands = h.CommandPoses;
-        commands[0] = commands[0] with { Topology = second.Topology, EquipmentInstanceId = 2,
-            EquipmentWorld = world, CoverageWorld = h.Support.CoverageLocal * world };
+        commands[0] = commands[0] with
+        {
+            Topology = second.Topology,
+            EquipmentInstanceId = 2,
+            EquipmentWorld = world,
+            CoverageWorld = h.Support.CoverageLocal * world
+        };
         Assert.True(second.TryPrepare(h.Palette, world, commands, MotionKey.From(20),
             CoverageFallback.UncoveredCurrentPose, out var other, out failure), failure.ToString());
         h.Scene.DrawSkinned(h.HostDraw(first), h.Palette);
@@ -80,10 +83,10 @@ public sealed class CoverageResourceTests
         h.SubmitEquipment();
         h.Scene.Draw(draws[0]);
         h.Render();
-        Assert.Equal(CoveragePresentation.Covered, h.Scene.GetCoverageOutcome(first).Presentation);
-        Assert.Equal(CoveragePresentation.Covered, h.Scene.GetCoverageOutcome(other).Presentation);
-        Assert.Equal(2, h.Scene.CoveredHostPreparationCount);
-        Assert.NotEqual(h.Scene.CoverageSliceForTests(first, 0).BaseVertex, h.Scene.CoverageSliceForTests(other, 0).BaseVertex);
+        Assert.Equal(CoveragePresentation.Dispatched, h.Scene.GetCoverageOutcome(first).Presentation);
+        Assert.Equal(CoveragePresentation.Dispatched, h.Scene.GetCoverageOutcome(other).Presentation);
+        Assert.Equal(2, h.Scene.DispatchedHostPreparationCount);
+        Assert.NotEqual(first.Preparation!.GpuReservation.CurrentBase, other.Preparation!.GpuReservation.CurrentBase);
     }
 
     [Theory]
@@ -113,6 +116,7 @@ public sealed class CoverageResourceTests
             handles[slice] = h.Scene.LoadMesh(new GltfMesh(source.Positions.ToArray().Select(p =>
                 new ModelVertex(p, Vector3.UnitZ, Vector4.One)).ToArray(), indices));
         }
+        h.Conformer.ReserveSupports([support]);
         h.Begin();
         var frozen = new RigidInstanceDraw[2];
         Assert.True(h.Scene.TryStageCoverageEquipment(MotionKey.From(10), 1, 1, support,
@@ -125,7 +129,7 @@ public sealed class CoverageResourceTests
         h.Scene.Draw(frozen[0]);
         if (!omitSecond) h.Scene.Draw(frozen[1]);
         h.Render();
-        Assert.Equal(omitSecond ? CoveragePresentation.UncoveredFallback : CoveragePresentation.Covered,
+        Assert.Equal(omitSecond ? CoveragePresentation.UncoveredFallback : CoveragePresentation.Dispatched,
             h.Scene.GetCoverageOutcome(frame).Presentation);
     }
 
@@ -149,48 +153,40 @@ public sealed class CoverageResourceTests
         h.Scene.DrawSkinned(h.UncoveredDraw(), h.Palette);
         h.SubmitEquipment();
         h.Scene.PrepareFrame();
-        int vertices = h.Conformer.Topology.VertexCount;
-        Assert.True(vertices < 4096);
-        // Nothing has been recorded yet: the actual previous-position buffer must already be owned here.
-        var reserved = h.Scene.CoverageMotionReserveForTests;
+        var reserved = h.Scene.CoverageGpuBatchForTests!;
+        var buffer = Assert.IsType<KhaozEngine.Tests.Gpu.FakeBuffer>(reserved.Previous);
+        uint bytes = (uint)(16 + (h.Conformer.Topology.SourceVertexCount + h.Conformer.Topology.VertexCount) * 16) * 4;
+        Assert.Equal(bytes, buffer.SizeInBytes);
+        Assert.NotSame(reserved.Current, buffer);
         int createdBeforeRecording = h.Factory.Buffers.Count;
-        Assert.True(reserved.List >= vertices);
-        Assert.Equal((uint)vertices, reserved.Gpu);
-        var buffer = Assert.IsType<KhaozEngine.Tests.Gpu.FakeBuffer>(reserved.Buffer);
-        Assert.Equal((uint)vertices * 12, buffer.SizeInBytes);
         Assert.InRange(h.Factory.Buffers.IndexOf(buffer), 0, createdBeforeRecording - 1);
         h.Render();
-        Assert.Equal(CoveragePresentation.Covered, h.Scene.GetCoverageOutcome(frame).Presentation);
-        var after = h.Scene.CoverageMotionReserveForTests;
-        Assert.Equal(reserved.List, after.List);
-        Assert.Equal((uint)vertices, after.Gpu);
-        Assert.Same(buffer, after.Buffer);
+        Assert.Equal(CoveragePresentation.Dispatched, h.Scene.GetCoverageOutcome(frame).Presentation);
+        Assert.Same(buffer, h.Scene.CoverageGpuBatchForTests!.Previous);
         Assert.False(buffer.Disposed);
-        Assert.Contains(h.Record.Uploads, u => ReferenceEquals(u.Buffer, buffer));
-        Assert.Contains(h.Record.Bindings, b => b.VertexBuffers.TryGetValue(2, out var bound) && ReferenceEquals(bound, buffer));
+        h.AssertCoverageDispatch(frame);
     }
 
     [Fact]
     public void Temporal_reserve_grows_by_retirement_and_disposes_with_the_scene()
     {
         var h = new CoverageSceneFixture();
-        h.Scene.ForceTemporalForTests = true;
         h.Begin();
         var frame = h.Stage();
         h.Scene.DrawSkinned(h.HostDraw(frame), h.Palette);
         h.SubmitEquipment();
-        h.Scene.PrepareFrame();
-        var first = Assert.IsType<KhaozEngine.Tests.Gpu.FakeBuffer>(h.Scene.CoverageMotionReserveForTests.Buffer);
-        h.Scene.UseGpuSkinning = false;
+        h.Render();
+        var first = Assert.IsType<KhaozEngine.Tests.Gpu.FakeBuffer>(h.Scene.CoverageGpuBatchForTests!.Previous);
+        using var second = h.Scene.CreateHostConformer(h.HostMesh.Skeleton!, h.Host);
+        second.ReserveSupports([h.Support]);
         h.Begin();
         frame = h.Stage();
         h.Scene.DrawSkinned(h.HostDraw(frame), h.Palette);
-        h.Scene.DrawSkinned(h.UncoveredDraw(), h.Palette);
         h.SubmitEquipment();
         h.Scene.PrepareFrame();
-        var grown = Assert.IsType<KhaozEngine.Tests.Gpu.FakeBuffer>(h.Scene.CoverageMotionReserveForTests.Buffer);
+        var grown = Assert.IsType<KhaozEngine.Tests.Gpu.FakeBuffer>(h.Scene.CoverageGpuBatchForTests!.Previous);
         Assert.NotSame(first, grown);
-        Assert.Equal((uint)(h.Conformer.Topology.VertexCount + h.UncoveredMesh.Vertices.Length) * 12, grown.SizeInBytes);
+        Assert.Equal(first.SizeInBytes * 2, grown.SizeInBytes);
         Assert.False(first.Disposed);
         h.Dispose();
         Assert.True(first.Disposed);

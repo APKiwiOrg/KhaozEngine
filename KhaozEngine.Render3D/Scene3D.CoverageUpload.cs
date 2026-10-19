@@ -39,6 +39,8 @@ public sealed partial class Scene3D
         RequireCoverageThread();
         ObjectDisposedException.ThrowIf(_coverageDisposed, this);
         ArgumentNullException.ThrowIfNull(skeleton); ArgumentNullException.ThrowIfNull(meshes);
+        if (KhaozEngine.Gpu.GpuRecording.OpenOwner(_gd) is not null)
+            throw new InvalidOperationException("Create coverage conformers before opening a command list.");
         if (meshes.Count == 0) throw new ArgumentException("A host requires every material slice.", nameof(meshes));
         var uploaded = new SkinnedGltfMesh[meshes.Count];
         for (int i = 0; i < meshes.Count; i++)
@@ -55,7 +57,9 @@ public sealed partial class Scene3D
             || !m.InverseBind.AsSpan().SequenceEqual(uploaded[0].InverseBind))
             || uploaded.Select(m => m.Coverage!.MaterialSlice).Distinct().Count() != meshes.Count)
             throw new ArgumentException("A host requires one complete compatible source and map.", nameof(meshes));
-        var topology = CoverageRefinement.Build(first.Source, first.Map);
+        _coverageGpu ??= new(_gd, _retired);
+        var gpu = _coverageGpu.Acquire(first.Source, first.Map, uploaded[0].InverseBind.Length);
+        var topology = gpu.Host.Topology;
         var handles = topology.MaterialRanges.Select(range => meshes[Array.FindIndex(uploaded,
             m => m.Coverage!.MaterialSlice == range.MaterialSlice)]).ToArray();
         var indices = new KhaozEngine.Gpu.IGpuBuffer[handles.Length];
@@ -69,11 +73,12 @@ public sealed partial class Scene3D
                 indices[i] = CreateIndexBuffer(slice, KhaozEngine.Gpu.GpuIndexFormat.UInt32);
             }
             var conformer = new SkinnedHostConformer(this, handles, topology,
-                (Matrix4x4[])uploaded[0].InverseBind.Clone(), indices);
+                (Matrix4x4[])uploaded[0].InverseBind.Clone(), indices, gpu);
+            _coverageArena.Preparations.EnsureCapacity(_coverageConformers.Count + 1);
             _coverageConformers.Add(conformer);
             return conformer;
         }
-        catch { foreach (var buffer in indices) buffer?.Dispose(); throw; }
+        catch { foreach (var buffer in indices) buffer?.Dispose(); _coverageGpu.Release(gpu); throw; }
     }
 
     static bool SameSkeleton(Skeleton? a, Skeleton b) => a is not null
@@ -83,12 +88,14 @@ public sealed partial class Scene3D
     internal void RetireCoverage(SkinnedHostConformer conformer)
     {
         if (_coverageDisposed) return;
+        _coverageGpu?.Release(conformer.Gpu);
         foreach (var buffer in conformer.Indices) _retired.Retire(buffer);
         _coverageConformers.Remove(conformer);
     }
 
     void DisposeCoverage()
     {
+        _coverageGpu?.Dispose();
         _coverageTransition?.Dispose();
         _coverageMotion.Reset();
         _coverageDisposed = true;

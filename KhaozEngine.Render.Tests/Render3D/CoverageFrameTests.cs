@@ -24,8 +24,8 @@ public sealed class CoverageFrameTests
         h.Palette[0] = Matrix4x4.CreateScale(99);
         h.SubmitEquipment();
         h.Render();
-        Assert.Equal(CoveragePresentation.Covered, h.Scene.GetCoverageOutcome(frame).Presentation);
-        Assert.Equal(h.Expected, h.Scene.CoverageVerticesForTests(frame).ToArray());
+        Assert.Equal(CoveragePresentation.Dispatched, h.Scene.GetCoverageOutcome(frame).Presentation);
+        h.AssertCoverageDispatch(frame);
         h.Scene.Begin();
         Assert.Throws<InvalidOperationException>(() => h.Scene.GetCoverageOutcome(frame));
     }
@@ -39,6 +39,7 @@ public sealed class CoverageFrameTests
         h.Scene.DrawSkinned(h.HostDraw(frame), h.Palette);
         h.Render();
         Assert.Equal(CoveragePresentation.UncoveredFallback, h.Scene.GetCoverageOutcome(frame).Presentation);
-        Assert.Equal(h.Posed, h.Scene.CoverageVerticesForTests(frame).ToArray());
+        Assert.Equal(0, h.Scene.DispatchedHostPreparationCount);
+        h.AssertFallbackDraws(frame);
     }
 }

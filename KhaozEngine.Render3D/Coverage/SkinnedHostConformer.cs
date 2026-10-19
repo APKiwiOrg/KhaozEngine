@@ -8,6 +8,8 @@ namespace KhaozEngine.Render3D;
 public sealed class SkinnedHostConformer : IDisposable
 {
     internal readonly Scene3D Scene;
+    internal readonly CoverageGpuActor Gpu;
+    internal readonly CoverageCommandUniforms Uniforms;
     internal readonly SkinnedMeshHandle[] Meshes;
     internal readonly IGpuBuffer[] Indices;
     internal readonly CoverageScratch Scratch;
@@ -21,9 +23,10 @@ public sealed class SkinnedHostConformer : IDisposable
     internal readonly CoverageCommandPose[] MotionCommands = new CoverageCommandPose[CoverageScratch.MaxCommands];
 
     internal SkinnedHostConformer(Scene3D scene, SkinnedMeshHandle[] meshes, CoverageRefinement topology,
-        Matrix4x4[] inverseBind, IGpuBuffer[] indices)
+        Matrix4x4[] inverseBind, IGpuBuffer[] indices, CoverageGpuActor gpu)
     {
         Scene = scene; Meshes = meshes; Topology = topology; InverseBind = inverseBind; Indices = indices;
+        Gpu = gpu; Uniforms = new(topology, inverseBind.Length);
         Scratch = new(topology);
         Request = new(this, inverseBind.Length, meshes.Length);
     }
@@ -39,9 +42,16 @@ public sealed class SkinnedHostConformer : IDisposable
         return inverseBind.SequenceEqual(InverseBind);
     }
 
-    /// <summary>Stages frozen current-pose geometry and the constructed candidate with its normals. True means accepted
-    /// for late resolution in this frame. Argument, identity, construction and normal refusals return false here.
-    /// Geometry and render certification run once at resolution, where a refusal selects the current-pose fallback.</summary>
+    /// <summary>Replaces the complete support reservation at cold equip. Acquisition is transactional.</summary>
+    public void ReserveSupports(ReadOnlySpan<CoverageSupportSurface> supports)
+    {
+        RequireThread();
+        ObjectDisposedException.ThrowIf(Disposed, this);
+        Scene.ReserveCoverageSupports(this, supports);
+    }
+
+    /// <summary>Stages immutable palette and command inputs after CPU admission. Accepted requests remain pending
+    /// until encoding. Construction and numerical refusal happen on the GPU, without blocking drawing.</summary>
     public bool TryPrepare(ReadOnlySpan<Matrix4x4> palette, in Matrix4x4 model,
         ReadOnlySpan<CoverageCommandPose> commands, MotionKey actorKey, CoverageFallback fallback,
         out SkinnedCoverageFrame frame, out CoverageFailure failure)

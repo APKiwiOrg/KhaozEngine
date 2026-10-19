@@ -128,6 +128,9 @@ namespace KhaozEngine.Render3D
             if (h.Generation == 0) return;
             _skinnedSlots.Free(h.Index, h.Generation);
             _coverageHostUploads.Remove((h.Index, h.Generation));
+            foreach (var conformer in _coverageConformers)
+                foreach (var mesh in conformer.Meshes)
+                    if (mesh.Index == h.Index && mesh.Generation == h.Generation) _coverageGpu?.Release(conformer.Gpu);
             if (_skinnedMeshes[h.Index] is { } e)
             {
                 // All five resources land in the same batch because a batch is one frame's retirements.

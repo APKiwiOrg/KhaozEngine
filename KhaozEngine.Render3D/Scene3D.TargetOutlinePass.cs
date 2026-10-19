@@ -187,7 +187,7 @@ public sealed partial class Scene3D
                 { drawIndex++; groupDraws++; continue; }
                 ReadOnlySpan<Matrix4x4> pose = CollectionsMarshal.AsSpan(_outlineBoneMatrices)
                     .Slice(part.BoneStart, part.BoneCount);
-                if (UseGpuSkinning)
+                if (UseCoverageVertexSkinning(part.SkinnedMesh, part.Coverage.Preparation is not null))
                 {
                     _targetOutlines.EnqueueSkinnedGpu(skinned.Vb, skinned.Ib, skinned.IndexCount,
                         skinned.IndexFormat, skinned.OutlineMaterialSet, pose, drawIndex++, ToRender(part.World),

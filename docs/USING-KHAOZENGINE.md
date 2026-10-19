@@ -6363,7 +6363,8 @@ The host palette contains joint model matrices. Scene3D alone applies garment in
 Optional covered equipment uses `AttachmentSetCache.GetCoverage` and one `HostCoverageBinding` per actor
 incarnation. These verify exact source ownership, bind named host regions and prepare immutable equipment
 descriptors without queuing. The constructor requires an explicit `CoverageFallback.UncoveredCurrentPose`.
-Only the separate `IAttachmentCoverageScene` capability adds staging and descriptor outlines, so existing
+Only the separate `IAttachmentCoverageScene` capability adds staging, cold support reservation and descriptor
+outlines. Its default `ReserveCoverageSupports` forwards to the conformer, so existing
 uncovered adapters remain compatible. The binding owns its conformer and borrows cached equipment. See
 the [attachment coverage contract](../KhaozEngine.Attachments.Render3D/README.md#optional-equipment-coverage)
 for transactional replacement, complete physical material submission, token lifetime and current-pose fallback.

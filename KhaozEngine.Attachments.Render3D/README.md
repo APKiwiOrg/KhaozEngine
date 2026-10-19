@@ -222,22 +222,26 @@ state change or disposal. Do not compose another pose through `BoundAttachmentSe
 An empty equipped list succeeds with an empty token and ordinary current-pose host submission.
 
 On refusal, the token is empty and no prepared equipment descriptors are exposed. Present the current
-uncovered pose explicitly. Preparation refuses identity, transform, construction and normal failures.
-Staging success is pending late certification, which runs the full geometry and render certificate once.
-Missing actual material participation or a late geometry or render refusal selects the captured
-current-pose uncovered fallback across passes. Finish all submissions before
+uncovered pose explicitly. Preparation refuses identity, capacity, command-frame and origin-magnitude failures.
+`TrySetEquipment` reserves the complete support replacement before publishing its new identity. An acquisition
+failure retains the previous equipment and GPU reservation. Staging snapshots inputs without constructing CPU
+vertices. Complete material participation and live resources admit GPU dispatch, reported as `Dispatched` by
+`GetCoverageOutcome`. Missing participation selects a CPU `UncoveredFallback`. Numerical GPU results arrive
+asynchronously and never block drawing. No compute or a kernel-build failure uses ordinary vertex skinning
+independently of `UseGpuSkinning`, with one capability report per scene. Finish all submissions before
 `PrepareFrame(displayWidth, displayHeight)`, outside the frame recording.
-A new `Begin` requires fresh preparation. Previous final host positions follow compatible weight changes.
-Changing the equipment identity rejects only the affected projected bounds. Failed replacement keeps the active
-identity and its history. Independent equipment fading must change `TransitionWeight` or disable its coverage.
+A new `Begin` requires fresh preparation. Failed replacement keeps the active equipment identity.
+GPU final-buffer drawing, temporal history and asynchronous diagnostics are subsequent Part C tasks. Independent equipment fading must change `TransitionWeight` or disable its coverage.
 Whole-actor dissolve keeps conformation and ordinary, complementary and inverted-shadow dissolve behavior.
 
 `IAttachmentCoverageScene` is a separate opt-in interface. It adds conformer creation, single-command and
-batch equipment staging, descriptor outlines, and a non-null stable `CoverageResourceOwner` reference to
+batch equipment staging, cold support reservation, descriptor outlines, and a non-null stable
+`CoverageResourceOwner` reference to
 the actual scene that owns uploads. `Scene3DAttachmentScene` and `Scene3DTileWorldScene` return their
 underlying `Scene3D` and forward opaque descriptors unchanged. Separate wrappers around that same scene
 are compatible. Another scene is incompatible even when handle values and geometry match. Existing
-`IAttachmentScene` adapters need no new members. Requested coverage through an unsupported adapter
+`ReserveCoverageSupports` has a default implementation forwarding to the conformer, so existing coverage
+adapters remain compatible. `IAttachmentScene` adapters need no new members. Requested coverage through an unsupported adapter
 returns `UnsupportedAdapter`, and uncovered submission keeps its existing behavior.
 
 Dispose the actor binding before the cache and scene. Binding disposal retires only its conformer and

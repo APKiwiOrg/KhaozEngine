@@ -164,23 +164,26 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   registered command. It validates the complete batch before registry or destination mutation. The existing
   one-command overload remains supported. `AttachmentSetCache.GetCoverage` and `HostCoverageBinding` in
   `KhaozEngine.Attachments.Render3D` provide verified asset ownership and transactional equipment binding.
+  At cold equip, call `SkinnedHostConformer.ReserveSupports` with the complete replacement support set.
+  The scene shares immutable host uploads by exact source, map and refinement identity, and support uploads by
+  exact support identity. Actors reserve independent work and double-final storage. Failed acquisition preserves
+  the previous reservation. Conformer disposal and host unload retire their submitted resources.
   `TryPrepare` requires an explicit `CoverageFallback.UncoveredCurrentPose` and returns a pending
-  `SkinnedCoverageFrame`. Staging constructs the candidate and its normals but certifies nothing, so a geometry
-  refusal resolves later as the fallback. Assign it to every host `SkinnedInstanceDraw.Coverage`, including
-  descriptor-based outlines. Prepare the frame after all submissions. The scene captures actual pass matrices,
-  certifies once before drawing, then shares one covered CPU surface across colour, shadows and outlines
-  alongside ordinary GPU-skinned actors. `GetCoverageOutcome` reports covered or current-pose uncovered
-  fallback. Missing actual material submissions select fallback. Tokens expire at the next `Begin`, disposal
-  or host unload, and new submissions with an expired token throw. Disposal or unload after submission freezes the current-pose fallback
-  with a recorded failure, and live slices keep their ordinary route. A covered
-  frame cannot be recorded again for another view. Begin and stage again for each view.
-  Coverage motion retains the previous final vertices and absolute model, rebased against the current origin.
-  Compatible weight changes keep surface motion. Equipment, topology, incarnation, refusal, missing-frame and
-  view changes seed current positions and reject history over conservative current and previous surface bounds.
-  Near-plane uncertainty rejects the viewport for that transition. Other actors keep their temporal history.
-  The single history bank requires the same camera object and consecutive successfully encoded scene frames.
-  This observes successful scene command encoding, not GPU submission or presentation.
-  Returning to ordinary CPU or GPU skinning after coverage seeds that actor's current surface for one frame.
+  `SkinnedCoverageFrame`. CPU admission checks identity, capacity, command frames and origin magnitude in order.
+  It snapshots palette and command inputs with the pinned scalar composition and a conservative current-palette
+  world bound. It constructs no CPU vertices and performs no runtime geometry or render certification.
+  Assign the token to every host `SkinnedInstanceDraw.Coverage`, including descriptor-based outlines.
+  After all submissions, `PrepareFrame` reserves resources before command recording. Resolution verifies complete
+  material participation and resource liveness once, then encodes the GPU chain. `GetCoverageOutcome` reports
+  `Dispatched` after encoding, or a CPU/capability `UncoveredFallback`. `DispatchedHostPreparationCount` counts
+  encoded hosts. A numerical GPU refusal does not change that same-frame diagnostic result.
+  Without compute or after one kernel-build failure, requested hosts use ordinary vertex-shader skinning even
+  when `UseGpuSkinning` is false. The capability failure is reported once per scene and kernel creation is not
+  retried each frame. Equipment descriptors keep their ordinary drawing route.
+  Rendering never waits for or reads back a GPU coverage outcome. Tokens expire at the next `Begin`, disposal
+  or host unload. Begin and stage again for each view. Part C's following tasks connect final-buffer vertex
+  pulling in every pass, GPU final history and asynchronous outcome diagnostics. Until those consumers land,
+  staged host draws retain ordinary vertex skinning.
   Before opening the frame list, call `PrepareFrame(displayWidth, displayHeight)` after all submissions.
   It reserves the temporal mask at the configured prospective temporal size, including when AA is initially off.
   Call it again before recording after changing display or temporal sizing. A missing or wrong-sized reservation

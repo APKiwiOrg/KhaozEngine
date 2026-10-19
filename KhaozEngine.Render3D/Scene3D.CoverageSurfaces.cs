@@ -37,10 +37,12 @@ public sealed partial class Scene3D
                 bool dissolve = draw.Dissolve > 0 || draw.DissolveComplement > 0;
                 _cpuSkinnedInstances.Add(new ModelRenderer.InstanceData
                 {
-                    Model = ToRender(draw.Model), Tint = draw.Tint,
+                    Model = ToRender(draw.Model),
+                    Tint = draw.Tint,
                     Emissive = dissolve ? draw.DissolveEdgeColor : draw.Material.Emissive,
                     SpecParams = new(draw.Material.Specular, draw.Material.Shininess, entry.AlphaCutoff, 0),
-                    IsDynamic = 1, Dissolve = dissolve ? new(draw.Dissolve, draw.DissolveEdgeWidth) : Vector2.Zero,
+                    IsDynamic = 1,
+                    Dissolve = dissolve ? new(draw.Dissolve, draw.DissolveEdgeWidth) : Vector2.Zero,
                     DissolveComplement = draw.DissolveComplement,
                 });
                 ShadowCastKind kind = submitted is null || !draw.CastsShadows || !shadow && !main && !point
@@ -60,54 +62,17 @@ public sealed partial class Scene3D
 
     PointShadowCasterSphere ComputeCoverageSphere(CoveragePreparation p)
     {
-        Span<double> low = stackalloc double[3] { double.PositiveInfinity, double.PositiveInfinity, double.PositiveInfinity };
-        Span<double> high = stackalloc double[3] { double.NegativeInfinity, double.NegativeInfinity, double.NegativeInfinity };
-        Span<float> matrix = stackalloc float[16];
-        System.Runtime.InteropServices.MemoryMarshal.Cast<Matrix4x4, float>(
-            System.Runtime.InteropServices.MemoryMarshal.CreateReadOnlySpan(in p.Model, 1)).CopyTo(matrix);
-        for (int bits = 0; bits < 8; bits++)
-            for (int c = 0; c < 3; c++)
-            {
-                CoverageScalarBounds coordinate = new(matrix[12 + c], matrix[12 + c]);
-                for (int axis = 0; axis < 3; axis++)
-                {
-                    float value = (bits & (1 << axis)) == 0 ? p.UnionBounds.Min[axis] : p.UnionBounds.Max[axis];
-                    coordinate = CoverageIntervals.Add(coordinate, CoverageIntervals.Multiply(
-                        new(value, value), new(matrix[axis * 4 + c], matrix[axis * 4 + c])));
-                }
-                low[c] = Math.Min(low[c], coordinate.Min); high[c] = Math.Max(high[c], coordinate.Max);
-            }
-        double margin = 0;
-        double attributes = p.CandidateAttributes;
-        CoverageSphereEvaluationsForTests++;
-        for (int i = 0; i < p.Draws.Length; i++)
-        {
-            if (p.Draws[i] is { } draw)
-                margin = Math.Max(margin, Perturbation(p.Model, p.UnionBounds, attributes,
-                    DrawInputs(draw.Tint, draw.Material, draw.DissolveEdgeColor,
-                        draw.Dissolve > 0 || draw.DissolveComplement > 0, true)));
-            if (p.Outlines[i] is not null) margin = Math.Max(margin, Perturbation(p.Model, p.UnionBounds, attributes, 0));
-        }
-        Matrix4x4 render = ToRender(p.Model);
-        double error = 0;
-        for (int c = 0; c < 3; c++) error = Math.Max(error, CoverageShaderPosition.ModelError(render, p.UnionBounds, c));
-        double residual = 0;
-        for (int c = 0; c < 3; c++)
-        {
-            float reduced = c == 0 ? render.M41 : c == 1 ? render.M42 : render.M43;
-            CoverageScalarBounds originResidual = CoverageIntervals.Subtract(
-                CoverageIntervals.Add(new(reduced, reduced), new(_frameOrigin[c], _frameOrigin[c])),
-                new(matrix[12 + c], matrix[12 + c]));
-            residual = Math.Max(residual, Math.Max(Math.Abs(originResidual.Min), Math.Abs(originResidual.Max)));
-        }
-        margin = CoverageShaderPosition.Sum(margin, CoverageShaderPosition.Sum(error, residual));
-        Vector3 center = new((float)((low[0] + high[0]) * .5), (float)((low[1] + high[1]) * .5), (float)((low[2] + high[2]) * .5));
+        MeshBounds world = p.WorldBounds;
+        Vector3 center = new((float)(((double)world.Min.X + world.Max.X) * .5),
+            (float)(((double)world.Min.Y + world.Max.Y) * .5), (float)(((double)world.Min.Z + world.Max.Z) * .5));
         double squared = 0;
-        for (int c = 0; c < 3; c++)
+        for (int axis = 0; axis < 3; axis++)
         {
-            double reach = CoverageShaderPosition.Sum(Math.Max(Math.Abs(low[c] - center[c]), Math.Abs(high[c] - center[c])), margin);
-            squared = CoverageShaderPosition.Sum(squared, Math.BitIncrement(reach * reach));
+            double reach = Math.BitIncrement(Math.Max(Math.Abs((double)world.Min[axis] - center[axis]),
+                Math.Abs((double)world.Max[axis] - center[axis])));
+            squared = Math.BitIncrement(squared + Math.BitIncrement(reach * reach));
         }
+        CoverageSphereEvaluationsForTests++;
         return new(center, MathF.BitIncrement((float)Math.BitIncrement(Math.Sqrt(squared))));
     }
 

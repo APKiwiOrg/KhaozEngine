@@ -71,6 +71,7 @@ internal sealed class CoverageGpuBatch : IDisposable
     }
 
     internal void UploadFrame() => device.UpdateBuffer(FrameData, 0, frameWords);
+    internal void UploadFrame(IGpuCommandList commands) => commands.UpdateBuffer(FrameData, 0, frameWords);
 
     internal uint Elements(CoverageGpuPhase phase)
     {
@@ -95,6 +96,12 @@ internal sealed class CoverageGpuBatch : IDisposable
             maximum = Math.Max(maximum, count);
         }
         return maximum;
+    }
+
+    internal void Prepare(IGpuResourceLayout layout)
+    {
+        if (recording) throw new InvalidOperationException("Coverage bindings must be prepared before recording.");
+        resources ??= device.Factory.CreateResourceSet(new(layout, StaticData, FrameData, Work, Current, Previous, Results));
     }
 
     internal IGpuResourceSet Bind(IGpuResourceLayout layout)

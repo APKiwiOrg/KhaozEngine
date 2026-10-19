@@ -51,6 +51,8 @@ internal sealed class CoverageGpuPipeline : IDisposable
         get { foreach (CoverageGpuPhase phase in Enum.GetValues<CoverageGpuPhase>()) yield return (phase, pipelines[(int)phase]); }
     }
 
+    internal void Prepare(CoverageGpuBatch batch) => batch.Prepare(layout);
+
     internal void Record(IGpuCommandList commands, CoverageGpuBatch batch) =>
         RecordPhases(commands, batch, CoverageGpuPhase.Skin, CoverageGpuPhase.Select);
 

@@ -25,6 +25,8 @@ public sealed class Scene3DAttachmentScene : IAttachmentCoverageScene
         _scene.DrawSkinned(draw, boneMatrices);
     public SkinnedHostConformer CreateHostConformer(Skeleton skeleton, IReadOnlyList<SkinnedMeshHandle> meshes) =>
         _scene.CreateHostConformer(skeleton, meshes);
+    public void ReserveCoverageSupports(SkinnedHostConformer conformer, ReadOnlySpan<CoverageSupportSurface> supports) =>
+        conformer.ReserveSupports(supports);
     public bool TryStageCoverageEquipment(MotionKey actorKey, uint commandId, ulong equipmentInstanceId,
         CoverageSupportSurface support, ReadOnlySpan<RigidInstanceDraw> draws,
         Span<RigidInstanceDraw> frozenDraws, out CoverageFailure failure) =>

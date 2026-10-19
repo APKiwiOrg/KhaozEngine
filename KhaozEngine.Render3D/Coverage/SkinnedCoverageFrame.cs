@@ -4,7 +4,7 @@ namespace KhaozEngine.Render3D;
 public enum CoverageFallback { UncoveredCurrentPose }
 
 /// <summary>Lifecycle of a staged coverage request.</summary>
-public enum CoveragePresentation { Pending, Covered, UncoveredFallback }
+public enum CoveragePresentation { Pending, Covered, UncoveredFallback, Dispatched = 3 }
 
 /// <summary>Developer result of the owning scene's one presentation decision.</summary>
 public readonly record struct CoverageFrameOutcome(CoveragePresentation Presentation, CoverageFailure Failure);

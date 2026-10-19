@@ -16,6 +16,8 @@ namespace KhaozEngine.Tests.Gpu;
 public sealed partial class CoverageComputeShadowGpuTests(ITestOutputHelper output, CoverageShadowPullingFixture fixture)
     : IClassFixture<CoverageShadowPullingFixture>
 {
+    static string EvidencePath => CoverageArtifacts.DirectoryPath ?? "/tmp/grimhollow-equipment-coverage-task11";
+
     [GpuTheory]
     [InlineData(false, false, false)]
     [InlineData(true, false, false)]
@@ -89,7 +91,7 @@ public sealed partial class CoverageComputeShadowGpuTests(ITestOutputHelper outp
         Assert.Equal(0, scene.Scene.CoverageDiagnosticsForTests.UncoveredGpuDraws);
         Assert.Equal(10, scene.Scene.DispatchedHostPreparationCount);
         string stem = $"shadow-static{staticLight}-refused{refusal}-effects{effects}";
-        string path = "/tmp/grimhollow-equipment-coverage-task11";
+        string path = EvidencePath;
         Directory.CreateDirectory(path);
         File.WriteAllText(Path.Combine(path, stem + ".bindings.json"), scene.Bindings.Json());
         File.WriteAllBytes(Path.Combine(path, stem + ".cascade.f32"), MemoryMarshal.AsBytes(actual.Cascades.Values.AsSpan()).ToArray());

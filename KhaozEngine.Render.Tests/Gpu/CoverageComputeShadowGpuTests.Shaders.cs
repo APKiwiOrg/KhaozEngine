@@ -48,7 +48,7 @@ public sealed partial class CoverageComputeShadowGpuTests
         if (KhaozEngineD3D11.IsPlatformSupported)
             _ = D3D11ShaderBuild.Pair(program.VertexGlsl, program.FragmentGlsl,
                 D3D11ShaderDebug.Optimized, cache: null, options: new(PreciseMath: true));
-        string path = "/tmp/grimhollow-equipment-coverage-task11";
+        string path = EvidencePath;
         Directory.CreateDirectory(path);
         foreach (var artifact in artifacts) File.WriteAllBytes(Path.Combine(path, artifact.Key), artifact.Value);
         File.WriteAllLines(Path.Combine(path, name + ".corpus"), rows.Select(r =>

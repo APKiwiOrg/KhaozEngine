@@ -252,7 +252,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     upload.DepthStencil, upload.Format, upload.MipLevel, upload.ArrayLayer);
                 ImageLayout resting = VulkanFormats.ToImageLayout(upload.Resting);
 
-                Barrier(buffer, VulkanSetupBarrier.ToTransferDestination(upload.Image, range, resting));
+                Barrier(buffer, VulkanSetupBarrier.ToTransferDestination(upload.Image, range, resting), stagingRead: true);
 
                 VulkanBufferImageCopy region = VulkanStagingLayout.UploadRegion(
                     lease.OffsetBytes, upload.MipLevel, upload.ArrayLayer, upload.X, upload.Y, upload.Width,
@@ -267,8 +267,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         /// <summary>
-        /// Append a device-level BUFFER upload: stage the bytes and record the copy, bracketed by the two barriers
-        /// narrowed to what actually reads the destination.
+        /// Append a device-level BUFFER upload: stage the bytes and bracket the copy with destination range
+        /// dependencies. The pre-copy call also orders reads through recycled staging memory.
         /// <para>
         /// A RING-BACKED UNIFORM BUFFER NEVER COMES HERE. Its device-level write reaches every segment as a memcpy
         /// into persistently mapped memory and records no command at all (9.2), which is the whole contrast
@@ -304,7 +304,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
                 BufferBarrier(buffer, VulkanUploadBarrier.Before(
                     destination.DeviceBuffer, destinationOffsetBytes, (ulong)data.Length,
-                    destination.UploadUsage));
+                    destination.UploadUsage), stagingRead: true);
 
                 _sink.CopyBuffer(buffer, lease.Buffer, lease.OffsetBytes, destination.DeviceBuffer,
                     destinationOffsetBytes, (ulong)data.Length);
@@ -408,10 +408,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         // One barrier per call, which is what a creation-time transition is. A DependencyInfo carries raw pointer
         // arrays as a matter of ABI, which is why this package is unsafe by construction rather than by choice.
-        unsafe void Barrier(ulong commandBuffer, ImageMemoryBarrier2 barrier)
+        unsafe void Barrier(ulong commandBuffer, ImageMemoryBarrier2 barrier, bool stagingRead = false)
         {
+            MemoryBarrier2 source = VulkanStagingReadBarrier.BeforeCopy;
             var dependency = new DependencyInfo(
                 sType: StructureType.DependencyInfo,
+                memoryBarrierCount: stagingRead ? 1u : 0u,
+                pMemoryBarriers: stagingRead ? &source : null,
                 imageMemoryBarrierCount: 1,
                 pImageMemoryBarriers: &barrier);
 
@@ -419,10 +422,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         // The buffer half of the same one-barrier-per-call shape.
-        unsafe void BufferBarrier(ulong commandBuffer, BufferMemoryBarrier2 barrier)
+        unsafe void BufferBarrier(ulong commandBuffer, BufferMemoryBarrier2 barrier, bool stagingRead = false)
         {
+            MemoryBarrier2 source = VulkanStagingReadBarrier.BeforeCopy;
             var dependency = new DependencyInfo(
                 sType: StructureType.DependencyInfo,
+                memoryBarrierCount: stagingRead ? 1u : 0u,
+                pMemoryBarriers: stagingRead ? &source : null,
                 bufferMemoryBarrierCount: 1,
                 pBufferMemoryBarriers: &barrier);
 

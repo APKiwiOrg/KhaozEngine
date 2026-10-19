@@ -438,10 +438,10 @@ build-slot --label c03-shared-fixtures-tests -- env KE_GPU_TESTS=1 KE_GRAPHICS_B
 
 Set `KE_SHADER_CORPUS_DUMP` to retain both new modules' SPIR-V, HLSL, MSL and five corpus rows.
 Only their ten new rows are added to the committed corpus. Existing shader hashes and frozen
-coverage outputs are unchanged. Native Direct3D11 WARP with FXC cs_5_0, Vulkan lavapipe with clean
-synchronization validation, and Apple Paravirtual pipeline creation remain root-owned hosted
-checks using that same four-class filter. Local Apple M2 Max limits do not establish Paravirtual
-limits. This task makes no timing, load, stress, performance-budget or full-construction claim.
+coverage outputs are unchanged. Hosted run 39181650116 on this commit then failed. FXC cs_5_0 did
+not finish compiling within 87 minutes, and Apple Paravirtual refused both pipelines. Lavapipe
+passed but slowly. Local Apple M2 Max limits did not establish Paravirtual limits. The C8 section
+below records the fix. This task makes no timing, load, stress, performance-budget or full-construction claim.
 
 
 ## C8 shared exact workers and artifact gates
@@ -533,8 +533,17 @@ passed. All 34 original/inlined before-and-after coverage modules passed SPIR-V 
 On Apple M2 Max, exact diagnostics retain a ceiling of 576 threads. Rounding and residuals report
 1,024. Edge, Dot, Crossing and Cell report 768, 704, 384 and 1,024. Height, Boundary and Overlay
 report 384, 512 and 384. Every queried pipeline reports execution width 32 and clears the
-64-thread workgroup floor. Native FXC/WARP, Apple Paravirtual and Vulkan acceptance still belongs
-to root's hosted correctness run. No timing or performance claim is made.
+64-thread workgroup floor on the M2 Max. Hosted run 39193580270 on commit 47a62eec8 then passed
+every leg with no skipped facts:
+
+- Apple Paravirtual 102 of 102, with every pipeline created. The ceilings were 384 for Height,
+  Overlay and Crossing, 512 for Boundary, 704 for Dot, 768 for Edge and 1,024 for Cell, Residual
+  and Rounding, all at execution width 32.
+- Direct3D11 WARP with FXC cs_5_0 102 of 102, plus 32 FXC and struct-size checks.
+- Vulkan lavapipe 102 of 102.
+
+Its Vulkan synchronization-validation selections of 8, 22, 2, 1, 7 and 496 tests all passed. No
+timing or performance claim is made.
 
 To refresh measurements after an intentional coverage shader change, first dump all size-test
 modules with `KE_COVERAGE_SIZE_DUMP`. The changed-module test is expected to fail until the new

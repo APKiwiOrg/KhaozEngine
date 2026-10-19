@@ -113,9 +113,13 @@ public static class MapFoliageEdits
         }
     }
 
-    // The layer is copied in, so the request's layer object never becomes document state.
+    // The layer is copied in, so the request's layer object never becomes document state. Every advertised chunk must
+    // be resident in the request, since no document can read density another storage only advertised.
     static MapFoliageSet SetLayer(MapFoliageSet? set, MapFoliageLayer value)
     {
+        var resident = value.Chunks.Select(c => c.Key).ToHashSet();
+        if (value.ChunkDigests.FirstOrDefault(d => !resident.Contains(d.Key)) is { } missing)
+            throw new MapDocumentException($"Foliage layer '{value.Id}' advertises chunk {missing.Key} without its density bytes.");
         MapFoliageLayer layer = value.Copy();
         var layers = (set?.Layers ?? []).ToList();
         int index = layers.FindIndex(l => string.Equals(l.Id, layer.Id, StringComparison.Ordinal));
@@ -176,11 +180,12 @@ public static class MapFoliageEdits
     {
         MapBoundDocumentValidation.Validate(after, assets);
         if (owners || NewEffectiveReferences(before, after)) _ = MapPrefabResolver.Expand(after, assets);
-        foreach (MapSetFoliageLayer step in steps.OfType<MapSetFoliageLayer>())
-            RequireDifferential(before, assets, step, steps.Count == 1 && !owners ? after : null);
+        foreach (MapSetFoliageLayer step in steps.OfType<MapSetFoliageLayer>()) RequireDifferential(before, assets, step, after);
     }
 
-    static void RequireDifferential(MapDocument before, MapAssetClosure assets, MapSetFoliageLayer step, MapDocument? proposal)
+    // The token binds the candidate that lands. A preview token therefore matches only a candidate equal to the before
+    // document plus that one layer, and a mixed sequence carrying a policy change refuses as stale.
+    static void RequireDifferential(MapDocument before, MapAssetClosure assets, MapSetFoliageLayer step, MapDocument proposal)
     {
         MapFoliageLayer layer = step.Layer;
         MapFoliageLayer? old = before.Foliage?.Layers.FirstOrDefault(l => string.Equals(l.Id, layer.Id, StringComparison.Ordinal));
@@ -188,7 +193,7 @@ public static class MapFoliageEdits
         if (string.IsNullOrEmpty(step.ExpectedDifferentialDigest))
             throw new MapDocumentException($"Foliage layer '{layer.Id}': a policy definition change needs the differential digest " +
                 "PreviewPolicyChange issues for this document and proposal.");
-        MapFoliageDifferentialResult result = MapFoliageDifferential.Compare(before, proposal ?? Proposal(before, step), assets, layer.Id);
+        MapFoliageDifferentialResult result = MapFoliageDifferential.Compare(before, proposal, assets, layer.Id);
         if (result.Status != MapFoliageStatus.Complete)
             throw new MapDocumentException($"Foliage layer '{layer.Id}': the policy differential is {result.Status}, so it issues no digest.");
         if (!string.Equals(result.Digest, step.ExpectedDifferentialDigest, StringComparison.Ordinal))

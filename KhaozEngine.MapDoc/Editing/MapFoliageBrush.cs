@@ -39,14 +39,38 @@ public static class MapFoliageBrush
             return layer;
         return Rewrite(layer, xs.Lo, zs.Lo, xs.Hi, zs.Hi, (x, z, value) =>
         {
-            // The released expression order, so every reached byte matches bit for bit.
-            float sampleX = layer.OriginX + (x * layer.CellSize);
-            float sampleZ = layer.OriginZ + (z * layer.CellSize);
-            float distance = MathF.Sqrt(((sampleX - centreX) * (sampleX - centreX)) + ((sampleZ - centreZ) * (sampleZ - centreZ)));
+            float distance = Distance(x, z);
             if (distance > radius) return value;
             float strength = distance <= hardRadius || hardness == 1f ? 1f : (radius - distance) / (radius - hardRadius);
             return (byte)Math.Clamp((int)MathF.Round(value + ((target - value) * strength), MidpointRounding.ToEven), 0, byte.MaxValue);
-        });
+        }, (x0, z0, x1, z1) => Distance(Nearest(layer.OriginX, layer.CellSize, x0, x1, centreX),
+            Nearest(layer.OriginZ, layer.CellSize, z0, z1, centreZ)) <= radius);
+
+        // The released expression order, so every reached byte matches bit for bit.
+        float Distance(int x, int z)
+        {
+            float sampleX = layer.OriginX + (x * layer.CellSize);
+            float sampleZ = layer.OriginZ + (z * layer.CellSize);
+            return MathF.Sqrt(((sampleX - centreX) * (sampleX - centreX)) + ((sampleZ - centreZ) * (sampleZ - centreZ)));
+        }
+    }
+
+    /// <summary>The sample in [a, b] with the smallest released single-axis offset from the centre. Offsets never decrease
+    /// with the index, and each squared term grows with its offset, so the pair of per-axis nearest samples has the
+    /// smallest released distance over the whole sample rectangle.</summary>
+    static int Nearest(float origin, float cell, int a, int b, float centre)
+    {
+        if (Offset(a) >= 0f) return a;
+        if (Offset(b) <= 0f) return b;
+        while (b - a > 1)
+        {
+            int mid = a + (b - a) / 2;
+            if (Offset(mid) < 0f) a = mid;
+            else b = mid;
+        }
+        return -Offset(a) <= Offset(b) ? a : b;
+
+        float Offset(int i) => origin + (i * cell) - centre;
     }
 
     internal static void RequireRaster(MapFoliageLayer layer)
@@ -68,10 +92,12 @@ public static class MapFoliageBrush
             throw new MapDocumentException($"Foliage layer '{layer.Id}': one raster edit reaches {chunks} chunks, more than {MaxChunks}.");
     }
 
-    /// <summary>Rewrites the inclusive sample box chunk by chunk. An absent chunk reads zero and stays absent unless a byte
+    /// <summary>Rewrites the inclusive sample box chunk by chunk. A chunk whose part of the box <paramref name="reaches"/>
+    /// rejects is skipped before its residency is checked. An absent chunk reads zero and stays absent unless a byte
     /// changes. An explicit chunk keeps its identity when nothing changes, and an advertised nonresident chunk refuses.
     /// Returns the same layer when no byte changes.</summary>
-    internal static MapFoliageLayer Rewrite(MapFoliageLayer layer, int loX, int loZ, int hiX, int hiZ, Func<int, int, byte, byte> sample)
+    internal static MapFoliageLayer Rewrite(MapFoliageLayer layer, int loX, int loZ, int hiX, int hiZ, Func<int, int, byte, byte> sample,
+        Func<int, int, int, int, bool>? reaches = null)
     {
         RequireBudget(layer, loX, loZ, hiX, hiZ);
         var resident = new Dictionary<MapFoliageChunkKey, MapFoliageChunk>();
@@ -83,13 +109,16 @@ public static class MapFoliageBrush
             for (int cx = loX / size; cx <= hiX / size; cx++)
             {
                 var key = new MapFoliageChunkKey(cx, cz);
+                int x0 = Math.Max(loX, cx * size), x1 = Math.Min(hiX, cx * size + size - 1);
+                int z0 = Math.Max(loZ, cz * size), z1 = Math.Min(hiZ, cz * size + size - 1);
+                if (reaches is not null && !reaches(x0, z0, x1, z1)) continue;
                 byte[] bytes;
                 if (resident.TryGetValue(key, out MapFoliageChunk? stored)) bytes = stored.CopyDensity();
                 else if (advertised.Contains(key)) throw new MapDocumentException($"Foliage layer '{layer.Id}' chunk {key} is unavailable.");
                 else bytes = new byte[MapFoliageChunk.ByteLength];
                 bool changed = false;
-                for (int z = Math.Max(loZ, cz * size); z <= Math.Min(hiZ, cz * size + size - 1); z++)
-                    for (int x = Math.Max(loX, cx * size); x <= Math.Min(hiX, cx * size + size - 1); x++)
+                for (int z = z0; z <= z1; z++)
+                    for (int x = x0; x <= x1; x++)
                     {
                         int index = (z - cz * size) * size + (x - cx * size);
                         byte next = sample(x, z, bytes[index]);

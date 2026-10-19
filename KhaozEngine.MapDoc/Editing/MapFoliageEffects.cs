@@ -15,7 +15,9 @@ public sealed record MapFoliageChunkChange(string LayerId, MapFoliageChunkKey Ch
 
 /// <summary>The direct foliage diff. It reads authored layer metadata and advertised chunk digests only, so a byte edit
 /// prepares no support, clearance or prefab expansion. A layer settings change names every stored chunk of the layer.
-/// Dependent changes, where an owner edit changes what clears foliage, are not direct.</summary>
+/// A settings change on a layer with no stored chunks still writes the foliage root but reports no chunk and no
+/// invalidation, because an all-zero raster places nothing. Dependent changes, where an owner edit changes what clears
+/// foliage, are not direct.</summary>
 internal static class MapFoliageEffects
 {
     internal static IReadOnlyList<MapFoliageChunkChange> Direct(MapDocument before, MapDocument after, MapAssetClosure assets)

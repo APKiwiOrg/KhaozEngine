@@ -1,11 +1,8 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
-using KhaozEngine.Render3D.Rendering;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -31,10 +28,17 @@ public sealed partial class CoverageComputePullingGpuTests(ITestOutputHelper out
         var gpu = fixture.Device;
         var scene = fixture.Scene;
         scene.Select(refusal, materialEffects);
-        var bindings = new List<(string Pass, CoveragePulledDraw Draw)>();
-        scene.Scene.CoveragePullObserverForTests = (pass, draw) => bindings.Add((pass, draw));
         var reference = scene.Capture(coverage: false, gpuSkinning: true, outlineOnly: false);
         var actual = scene.Capture(coverage: true, gpuSkinning: false, outlineOnly: false);
+        string path = "/tmp/grimhollow-equipment-coverage-task10";
+        Directory.CreateDirectory(path);
+        string stem = refusal ? "refusal" : materialEffects ? "materials" : "covered";
+        File.WriteAllBytes(Path.Combine(path, stem + ".rgba"), actual.Colour);
+        File.WriteAllBytes(Path.Combine(path, stem + ".reference.rgba"), reference.Colour);
+        File.WriteAllText(Path.Combine(path, stem + ".bindings.json"), scene.Bindings.Json());
+        Assert.False(MemoryMarshal.AsBytes(scene.Actors[0].Posed.AsSpan()).SequenceEqual(
+            MemoryMarshal.AsBytes(scene.Actors[1].Posed.AsSpan())));
+        scene.Bindings.AssertMatches(scene.Actors, scene.Scene.CoverageGpuBatchForTests!, outlineOnly: false);
         Assert.Equal(reference.Colour, actual.Colour);
         Assert.Equal(reference.Full.Values, actual.Full.Values);
         Assert.Equal(reference.Visible.Values, actual.Visible.Values);
@@ -50,9 +54,7 @@ public sealed partial class CoverageComputePullingGpuTests(ITestOutputHelper out
         foreach (var actor in scene.Actors)
         {
             var r = actor.Frame.Preparation!.GpuReservation;
-            var selected = bindings.Where(b => b.Draw.Actor == actor.Key).ToArray();
-            Assert.Equal(6, selected.Length);
-            Assert.Contains(selected, b => b.Draw.FirstCorner > 0);
+            Assert.True(actor.Topology.MaterialRanges[1].FirstIndex > 0);
             Assert.Equal(actor.Frame.Preparation.ResultIdentity.AsSpan(0, 8).ToArray(),
                 words.AsSpan((int)r.CurrentBase, 8).ToArray());
             Assert.Equal(refusal ? 1u : 0u, words[r.CurrentBase + 14]);
@@ -65,33 +67,18 @@ public sealed partial class CoverageComputePullingGpuTests(ITestOutputHelper out
             var expected = refusal ? actor.Posed : actor.Final;
             int start = checked((int)r.CurrentBase + 16 + (refusal ? 0 : r.SourceCount * 16));
             Assert.Equal(MemoryMarshal.Cast<ModelVertex, uint>(expected).ToArray(), words.AsSpan(start, expected.Length * 16).ToArray());
-            foreach (var binding in selected)
-            {
-                Assert.Same(batch.Current, binding.Draw.Surface.Current);
-                Assert.Same(batch.StaticData, binding.Draw.Surface.StaticData);
-                Assert.Equal(r.CurrentBase, binding.Draw.Surface.CurrentBase);
-                Assert.Equal(r.StaticBase, binding.Draw.Surface.StaticBase);
-            }
-            Assert.Equal(2, selected.Count(b => b.Pass == "main"));
-            Assert.Equal(2, selected.Count(b => b.Pass == "full"));
-            Assert.Equal(2, selected.Count(b => b.Pass == "visible"));
         }
-        bindings.Clear();
+
         var outlineReference = scene.Capture(coverage: false, gpuSkinning: false, outlineOnly: true);
         var outlineActual = scene.Capture(coverage: true, gpuSkinning: true, outlineOnly: true);
+        File.WriteAllText(Path.Combine(path, stem + ".outline-only.bindings.json"), scene.Bindings.Json());
+        scene.Bindings.AssertMatches(scene.Actors, scene.Scene.CoverageGpuBatchForTests!, outlineOnly: true);
         Assert.Equal(outlineReference.Colour, outlineActual.Colour);
         Assert.Equal(outlineReference.Full.Values, outlineActual.Full.Values);
         Assert.Equal(outlineReference.Visible.Values, outlineActual.Visible.Values);
-        Assert.Equal(8, bindings.Count);
-        Assert.DoesNotContain(bindings, b => b.Pass == "main");
-        string path = "/tmp/grimhollow-equipment-coverage-task10";
-        Directory.CreateDirectory(path);
-        string stem = refusal ? "refusal" : materialEffects ? "materials" : "covered";
-        File.WriteAllBytes(Path.Combine(path, stem + ".rgba"), actual.Colour);
-        File.WriteAllBytes(Path.Combine(path, stem + ".reference.rgba"), reference.Colour);
         File.WriteAllBytes(Path.Combine(path, stem + ".full.f32"), MemoryMarshal.AsBytes(actual.Full.Values.AsSpan()).ToArray());
         File.WriteAllBytes(Path.Combine(path, stem + ".visible.f32"), MemoryMarshal.AsBytes(actual.Visible.Values.AsSpan()).ToArray());
-        output.WriteLine($"{gpu.Backend} {gpu.Capabilities.DeviceName}: two actors, two materials, nonzero firstCorner, main/full/visible and outline-only exact pixels. refusal={refusal}. Final word mismatches=0, fallback extra pixels=0, covered CPU uploads=0, ordinary host draws=0.");
+        output.WriteLine($"{gpu.Backend} {gpu.Capabilities.DeviceName}: two actors, two materials, nonzero firstCorner, main/full/visible and outline-only exact pixels. refusal={refusal}. Actual main/full/visible resources, dynamic offsets and uploaded window words match. Final word mismatches=0, fallback extra pixels=0, covered CPU uploads=0, ordinary host draws=0.");
     }
 
     [GpuFact]

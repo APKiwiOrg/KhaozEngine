@@ -171,12 +171,14 @@ namespace KhaozEngine.Tests.Gpu
         public void Draw(uint vertexCount, uint instanceCount, uint vertexStart, uint instanceStart)
         {
             NoteGraphicsReads();
+            NoteNonIndexedDraw(vertexCount, instanceCount, vertexStart, instanceStart);
             _draws++;
             Inner.Draw(vertexCount, instanceCount, vertexStart, instanceStart);
         }
         public void Draw(uint vertexCount)
         {
             NoteGraphicsReads();
+            NoteNonIndexedDraw(vertexCount, 1, 0, 0);
             _draws++;
             Inner.Draw(vertexCount);
         }

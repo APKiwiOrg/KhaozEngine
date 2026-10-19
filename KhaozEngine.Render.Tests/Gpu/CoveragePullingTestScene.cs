@@ -15,16 +15,19 @@ internal sealed class CoveragePullingTestScene : IDisposable
     readonly IGpuTexture texture;
     readonly IGpuFramebuffer target;
     internal Scene3D Scene { get; }
+    internal CoveragePullingBindingCapture Bindings { get; }
     internal Actor[] Actors { get; private set; }
     readonly Actor[][] variants;
 
     internal CoveragePullingTestScene(IGpuDevice device)
     {
-        this.device = device;
-        texture = device.Factory.CreateTexture(GpuTextureDescription.Texture2D(160, 120,
+        var tracker = new UniformBufferTrackingGpuDevice(device);
+        this.device = tracker;
+        Bindings = new(tracker);
+        texture = this.device.Factory.CreateTexture(GpuTextureDescription.Texture2D(160, 120,
             GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
-        target = device.Factory.CreateFramebuffer(null, texture);
-        Scene = new(device, target.Outputs) { FrustumCulling = false };
+        target = this.device.Factory.CreateFramebuffer(null, texture);
+        Scene = new(tracker, target.Outputs) { FrustumCulling = false };
         Scene.Post.Starfield = false;
         Scene.Post.Sky.Enabled = Scene.Post.Atmosphere.Enabled = false;
         Scene.Post.Outline = Scene.Post.Hdr.Enabled = Scene.Post.Bloom.Enabled = false;
@@ -54,9 +57,12 @@ internal sealed class CoveragePullingTestScene : IDisposable
         Scene.EffectTimeSeconds = 0;
         foreach (var actor in Actors) actor.Draw(coverage, outlineOnly);
         Scene.PrepareFrame(160, 120);
-        using var commands = device.Factory.CreateCommandList();
+        Bindings.Draws.Clear();
+        using var commands = new RecordingGpuCommandList(device.Factory.CreateCommandList()) { CapturePayloads = true };
+        commands.BeforeNonIndexedDraw = (bound, count, instances, first, firstInstance) =>
+            Bindings.Observe(commands, bound, count, instances, first, firstInstance);
         using (GpuRecording.Open(device, commands, "CoveragePulling")) Scene.RenderInternal(commands, 160, 120, target);
-        device.Submit(commands); device.WaitForIdle(); device.Present();
+        device.Submit(commands.Inner); device.WaitForIdle(); device.Present();
         var outlines = Scene.ReadCoverageOutlinesForTests();
         return (GpuReadback.ToRgba(device, texture, 160, 120), outlines.Full, outlines.Visible);
     }
@@ -74,6 +80,7 @@ internal sealed class CoveragePullingTestScene : IDisposable
         readonly Matrix4x4[] palette = [Matrix4x4.Identity, Matrix4x4.Identity];
         internal MotionKey Key { get; }
         internal SkinnedCoverageFrame Frame;
+        internal CoverageRefinement Topology => conformer.Topology;
         internal ModelVertex[] Posed { get; }
         internal ModelVertex[] Final { get; }
 
@@ -86,11 +93,14 @@ internal sealed class CoveragePullingTestScene : IDisposable
             data = CoverageFixture.CurvedPanel(seams: true, level: 2);
             var authored = data.Source.SkinVertices.ToArray();
             for (int i = 0; i < authored.Length; i++)
+            {
                 authored[i].Uv = new((authored[i].Position.X + 1.2f) / 2.4f, (authored[i].Position.Y + 1.2f) / 2.4f);
+                if (actor == 1) authored[i].Position.X *= .75f;
+            }
             data = data with
             {
                 Source = new(data.Source.Identity, CoverageFixture.Hash,
-                data.Source.Positions.ToArray(), data.Source.Vertices, data.Source.Triangles, authored)
+                authored.Select(v => v.Position).ToArray(), data.Source.Vertices, data.Source.Triangles, authored)
             };
             if (refusal)
             {

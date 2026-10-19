@@ -27,7 +27,7 @@ namespace KhaozEngine.Tests.Gpu
     /// nor a set's bound resources can be read back off the handles. <see cref="WindowsOf"/> is what a
     /// <see cref="RecordingGpuCommandList"/> is given so its draws can stamp the windows they bind.</para>
     /// </summary>
-    internal sealed class UniformBufferTrackingGpuDevice : IGpuDevice
+    internal sealed partial class UniformBufferTrackingGpuDevice : IGpuDevice
     {
         readonly IGpuDevice _inner;
         readonly TrackingFactory _factory;
@@ -104,7 +104,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>The factory that does the remembering. Every member forwards; only
         /// <see cref="CreateBuffer"/> notes anything down.</summary>
-        sealed class TrackingFactory : IGpuResourceFactory
+        sealed partial class TrackingFactory : IGpuResourceFactory
         {
             readonly IGpuResourceFactory _inner;
 
@@ -148,18 +148,19 @@ namespace KhaozEngine.Tests.Gpu
             {
                 IGpuResourceSet set = _inner.CreateResourceSet(in d);
                 Windows.NoteSet(set, in d, IsUniform);
+                TrackSet(set, in d);
                 return set;
             }
             public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl)
-                => _inner.CreateShadersFromSpirv(vertGlsl, fragGlsl);
+                => TrackShaders(_inner.CreateShadersFromSpirv(vertGlsl, fragGlsl), vertGlsl, fragGlsl);
             public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl, GpuShaderCompileOptions options)
-                => _inner.CreateShadersFromSpirv(vertGlsl, fragGlsl, options);
+                => TrackShaders(_inner.CreateShadersFromSpirv(vertGlsl, fragGlsl, options), vertGlsl, fragGlsl);
             public IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl, GpuShaderCompileOptions options)
                 => _inner.CreateComputeShaderFromSpirv(computeGlsl, options);
             public IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl)
                 => _inner.CreateComputeShaderFromSpirv(computeGlsl);
             public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d)
-                => _inner.CreateGraphicsPipeline(in d);
+                => TrackPipeline(_inner.CreateGraphicsPipeline(in d), in d);
             public IGpuComputePipeline CreateComputePipeline(in GpuComputePipelineDescription d)
                 => _inner.CreateComputePipeline(in d);
             public IGpuCommandList CreateCommandList() => _inner.CreateCommandList();

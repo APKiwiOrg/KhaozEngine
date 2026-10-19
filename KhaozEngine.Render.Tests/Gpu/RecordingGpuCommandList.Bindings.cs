@@ -23,6 +23,18 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Record <see cref="Bindings"/> for every indexed draw. Off by default.</summary>
         public bool CaptureBindings { get; set; }
 
+        internal System.Action<DrawBindings, uint, uint, uint, uint>? BeforeNonIndexedDraw { get; set; }
+
+        void NoteNonIndexedDraw(uint vertices, uint instances, uint firstVertex, uint firstInstance)
+        {
+            if (BeforeNonIndexedDraw is not { } observe) return;
+            var sets = new Dictionary<uint, (IGpuResourceSet Set, uint DynamicOffset)>();
+            foreach (KeyValuePair<uint, Binding> bound in _graphicsSets)
+                sets[bound.Key] = (bound.Value.Set, bound.Value.DynamicOffset);
+            observe(new(_currentPipeline, sets, new Dictionary<uint, IGpuBuffer>(_vertexBuffers)),
+                vertices, instances, firstVertex, firstInstance);
+        }
+
         /// <summary>The bindings of every indexed draw since the last <see cref="Clear"/>, in record order. Empty
         /// unless <see cref="CaptureBindings"/> was on.</summary>
         internal IReadOnlyList<DrawBindings> Bindings => _drawBindings;

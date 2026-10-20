@@ -1,12 +1,16 @@
 using System;
+using System.Linq;
 using System.Text.RegularExpressions;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace KhaozEngine.Tests.Gpu;
 
 /// <summary>Narrow source proofs for offsets that are validated at runtime or converted from uint words.</summary>
 internal static class CopyBufferAlignmentProof
 {
-    const string ScalarType = @"(?:bool|byte|sbyte|char|short|ushort|int|uint|long|ulong|nint|nuint|float|double|decimal)";
+    static readonly MetadataReference CoreLibrary = MetadataReference.CreateFromFile(typeof(uint).Assembly.Location);
 
     internal static bool Accepts(string expression, string source, int copyIndex, string helper)
     {
@@ -16,61 +20,60 @@ internal static class CopyBufferAlignmentProof
                 && Regex.Matches(helper, @"\b[A-Za-z_][\w<>?,.\[\]]*\s+Bytes\s*(?:<[^<>]*>)?\s*\(").Count == 1
                 && Regex.Matches(helper, @"\buint\s+Bytes\s*\(\s*uint\s+words\s*\)\s*=>\s*"
                 + @"checked\s*\(\s*words\s*\*\s*sizeof\s*\(\s*uint\s*\)\s*\)\s*;").Count == 1;
-        if (!Regex.IsMatch(expression, @"^[A-Za-z_]\w*$")) return false;
-
-        // Blank literals before reading braces or statements. SourceSweep already blanks comments for the sweep.
-        string text = Regex.Replace(source, "\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*'", m => new string(' ', m.Length));
-        const string methodPattern = @"\b[A-Za-z_][\w<>?,.\[\]]*\s+[A-Za-z_]\w*\s*\((?<parameters>[^()]*)\)\s*\{";
-        foreach (Match method in Regex.Matches(text, methodPattern))
-        {
-            int start = method.Index + method.Length;
-            if (start > copyIndex) break;
-            string prefix = text[start..copyIndex];
-            // Only a direct method-body copy is proved. A nested function or conditional validation cannot qualify.
-            if (Depth(prefix) != 0 || Regex.IsMatch(prefix, @"\b(?:goto|try|catch|delegate)\b|=>")) continue;
-            int end = start;
-            int braces = 1;
-            while (end < text.Length && braces != 0)
-            {
-                if (text[end] == '{') braces++;
-                else if (text[end] == '}') braces--;
-                end++;
-            }
-            string body = text[start..end];
-            if (Regex.IsMatch(body, methodPattern + @"|=>|#|\bdelegate\b")) continue;
-            foreach (Match validation in Regex.Matches(prefix,
-                @"(?:^|[;{}])\s*(?<call>GpuCopyAlignment\.RequireAlignedOffset)\s*\(\s*"
-                + Regex.Escape(expression) + @"\s*,[^;]*\)\s*;"))
-            {
-                string before = prefix[..validation.Groups["call"].Index];
-                if (Depth(before) != 0 || !IndependentScalar(expression, method.Groups["parameters"].Value, before)) continue;
-                string after = prefix[(validation.Index + validation.Length)..];
-                string name = Regex.Escape(expression);
-                string value = @"(?:\(\s*)*\b" + name + @"\b(?:\s*\))*";
-                // A validated value must stay unchanged, including by an alias handed to another method.
-                if (Regex.IsMatch(body, @"\b(?:ref|out)\s+" + value + @"|&\s*" + value)
-                    || Regex.IsMatch(after, value + @"\s*(?:[+*/%&|^\-]?=(?!=)|<<=|>>>=|>>=|\+\+|--)|(?:\+\+|--)\s*" + value))
-                    continue;
-                if (Regex.IsMatch(after, @"\([^;{}]*\b" + name + @"\b[^;{}]*\)\s*=(?!=)")) continue;
-                return true;
-            }
-        }
-        return false;
+        return RuntimeValidationProves(expression, source, copyIndex);
     }
 
-    static bool IndependentScalar(string expression, string parameters, string before)
+    static bool RuntimeValidationProves(string expression, string source, int copyIndex)
     {
-        string name = Regex.Escape(expression);
-        // A primitive passed by value owns its storage. Parameter modifiers must not be skipped.
-        if (Regex.IsMatch(parameters, @"(?:^|,)\s*" + ScalarType + @"\s+" + name + @"\s*(?:=[^,]+)?(?:,|$)"))
-            return true;
+        SyntaxTree tree = CSharpSyntaxTree.ParseText(source);
+        InvocationExpressionSyntax? copy = tree.GetRoot().DescendantNodes().OfType<InvocationExpressionSyntax>()
+            .SingleOrDefault(call => call.SpanStart == copyIndex
+                && call.Expression is MemberAccessExpressionSyntax { Name.Identifier.ValueText: "CopyBuffer" });
+        if (copy is null || copy.ArgumentList.Arguments.Count != 5) return false;
+        ExpressionSyntax? argument = copy.ArgumentList.Arguments.Where((_, index) => index is 1 or 3)
+            .Select(value => value.Expression).FirstOrDefault(value => value.ToString() == expression);
+        if (argument is not IdentifierNameSyntax identifier) return false;
 
-        // An explicit scalar declaration copies its initializer, even when that value came from mutable storage.
-        // Require a direct declaration and a plain initializer so a ref local or an unknown var cannot qualify.
-        foreach (Match local in Regex.Matches(before,
-            @"(?:^|[;{}])\s*" + ScalarType + @"\s+" + name + @"\s*=\s*(?<value>[^;{}]+);"))
-            if (Depth(before[..local.Index]) == 0 && !Regex.IsMatch(local.Groups["value"].Value, @"^\s*ref\b"))
+        StatementSyntax? statement = copy.Ancestors().OfType<StatementSyntax>().FirstOrDefault();
+        SyntaxNode? owner = copy.Ancestors().FirstOrDefault(node => node is BaseMethodDeclarationSyntax
+            or LocalFunctionStatementSyntax or AnonymousFunctionExpressionSyntax);
+        if (statement?.Parent is not BlockSyntax block || owner is not MethodDeclarationSyntax { Body: { } body }
+            || body.ContainsDiagnostics || body.ContainsDirectives
+            || body.DescendantNodes().Any(node => node is GotoStatementSyntax)) return false;
+
+        var compilation = CSharpCompilation.Create("CopyBufferAlignmentProof", [tree], [CoreLibrary],
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: true));
+        SemanticModel model = compilation.GetSemanticModel(tree);
+        ISymbol? symbol = model.GetSymbolInfo(identifier).Symbol;
+        if (symbol is not (ILocalSymbol { RefKind: RefKind.None, Type.SpecialType: SpecialType.System_UInt32 }
+            or IParameterSymbol { RefKind: RefKind.None, Type.SpecialType: SpecialType.System_UInt32 })) return false;
+        // Only locals initialized at their declaration qualify for this narrow proof.
+        if (symbol is ILocalSymbol local && !local.DeclaringSyntaxReferences.Any(reference =>
+            reference.GetSyntax() is VariableDeclaratorSyntax { Initializer: not null })) return false;
+
+        DataFlowAnalysis? whole = model.AnalyzeDataFlow(body);
+        if (whole is not { Succeeded: true } || whole.Captured.Contains(symbol, SymbolEqualityComparer.Default)
+            || whole.UnsafeAddressTaken.Contains(symbol, SymbolEqualityComparer.Default)) return false;
+
+        int copyStatement = block.Statements.IndexOf(statement);
+        for (int index = copyStatement - 1; index >= 0; index--)
+        {
+            if (block.Statements[index] is not ExpressionStatementSyntax
+                { Expression: InvocationExpressionSyntax validation }
+                || validation.Expression is not MemberAccessExpressionSyntax
+                {
+                    Expression: IdentifierNameSyntax { Identifier.ValueText: "GpuCopyAlignment" },
+                    Name.Identifier.ValueText: "RequireAlignedOffset"
+                }
+                || validation.ArgumentList.Arguments.Count == 0
+                || !SymbolEqualityComparer.Default.Equals(
+                    model.GetSymbolInfo(validation.ArgumentList.Arguments[0].Expression).Symbol, symbol)) continue;
+
+            if (index + 1 == copyStatement) return true;
+            DataFlowAnalysis? between = model.AnalyzeDataFlow(block.Statements[index + 1], block.Statements[copyStatement - 1]);
+            if (between is { Succeeded: true } && !between.WrittenInside.Contains(symbol, SymbolEqualityComparer.Default))
                 return true;
+        }
         return false;
     }
 

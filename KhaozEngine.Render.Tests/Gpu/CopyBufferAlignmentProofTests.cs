@@ -22,6 +22,17 @@ public sealed class CopyBufferAlignmentProofTests
         => Assert.True(ProvesStorage(prefix, "offset", after));
 
     [Theory]
+    [InlineData("void Copy(uint @offset) {", "offset")]
+    [InlineData("void Copy(uint offset) {", "@offset")]
+    [InlineData("void Copy(uint value) { var offset = value;", "offset")]
+    public void Runtime_validation_uses_the_bound_uint_symbol(string prefix, string expression)
+        => Assert.True(ProvesStorage(prefix, expression, ""));
+
+    [Fact]
+    public void Validation_and_copy_can_use_different_spellings_of_the_same_symbol()
+        => Assert.True(Proves("GpuCopyAlignment.RequireAlignedOffset(@offset, nameof(offset), \"copy\", \"source\");"));
+
+    [Theory]
     [InlineData("void Copy(ref uint offset) {", "offset", "Mutate();")]
     [InlineData("void Copy(in uint offset) {", "offset", "Mutate();")]
     [InlineData("void Copy(out uint offset) { offset = 0;", "offset", "Mutate();")]
@@ -42,6 +53,21 @@ public sealed class CopyBufferAlignmentProofTests
     [InlineData("void Copy() {", "Offsets.Current", "Mutate();")]
     public void Aliased_or_member_storage_is_not_a_runtime_proof(string prefix, string expression, string after)
         => Assert.False(ProvesStorage(prefix, expression, after));
+
+    [Theory]
+    [InlineData("void Copy(uint offset) {", "Mutate(ref @offset);")]
+    [InlineData("void Copy(uint offset) {", "Mutate(out @offset);")]
+    [InlineData("void Copy(uint offset) { System.Action mutate = () => offset = 1;", "mutate();")]
+    [InlineData("void Copy(uint offset) { void Mutate() { offset = 1; }", "Mutate();")]
+    [InlineData("unsafe void Copy(uint offset) { uint* alias = &@offset;", "*alias = 1;")]
+    public void Escaped_writes_captures_and_unsafe_aliases_are_not_a_runtime_proof(string prefix, string after)
+        => Assert.False(ProvesStorage(prefix, "offset", after));
+
+    [Theory]
+    [InlineData("void Copy(ulong offset) {")]
+    [InlineData("void Copy() { int offset = 0;")]
+    public void Non_uint_storage_is_not_a_runtime_proof(string prefix)
+        => Assert.False(ProvesStorage(prefix, "offset", ""));
 
     [Theory]
     [InlineData("")]
@@ -71,7 +97,7 @@ public sealed class CopyBufferAlignmentProofTests
     {
         string source = "void Validate(uint offset) { GpuCopyAlignment.RequireAlignedOffset(offset, \"offset\", \"copy\", \"source\"); } "
             + "void Copy(uint offset) { commands.CopyBuffer(source, offset, target, 0, count); }";
-        Assert.False(CopyBufferAlignmentProof.Accepts("offset", source, source.IndexOf("commands.CopyBuffer", StringComparison.Ordinal), Helper));
+        Assert.False(ProvesSource("offset", source));
     }
 
     [Fact]
@@ -79,7 +105,7 @@ public sealed class CopyBufferAlignmentProofTests
     {
         string source = "void Copy(uint offset) { commands.CopyBuffer(source, offset, target, 0, count); "
             + "GpuCopyAlignment.RequireAlignedOffset(offset, \"offset\", \"copy\", \"source\"); }";
-        Assert.False(CopyBufferAlignmentProof.Accepts("offset", source, source.IndexOf("commands.CopyBuffer", StringComparison.Ordinal), Helper));
+        Assert.False(ProvesSource("offset", source));
     }
 
     [Fact]
@@ -100,7 +126,7 @@ public sealed class CopyBufferAlignmentProofTests
     static bool Proves(string prefix)
     {
         string source = "void Copy(uint offset) { " + prefix + " commands.CopyBuffer(source, offset, target, 0, count); }";
-        return CopyBufferAlignmentProof.Accepts("offset", source, source.IndexOf("commands.CopyBuffer", StringComparison.Ordinal), Helper);
+        return ProvesSource("offset", source);
     }
 
     static bool ProvesStorage(string prefix, string expression, string after)
@@ -108,6 +134,12 @@ public sealed class CopyBufferAlignmentProofTests
         string source = prefix + " GpuCopyAlignment.RequireAlignedOffset(" + expression
             + ", \"offset\", \"copy\", \"source\"); " + after + " commands.CopyBuffer(source, "
             + expression + ", target, 0, count); }";
+        return ProvesSource(expression, source);
+    }
+
+    static bool ProvesSource(string expression, string source)
+    {
+        source = "class CallSite { " + source + " }";
         return CopyBufferAlignmentProof.Accepts(expression, source, source.IndexOf("commands.CopyBuffer", StringComparison.Ordinal), Helper);
     }
 }

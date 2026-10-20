@@ -323,10 +323,10 @@ bool temporalVisibilityReleases(vec2 uv, ivec2 centre, ivec2 last, vec2 previous
 
 **Interfaces:** one GLSL function computes the mask from D's tolerance arithmetic in D's 3x3 order for both entries. The stored value is an integer below 1024, exact in half.
 
-- [ ] RED: a split-only readback fact compares the pass-one mask with the inline mask for every texel of a random frame and fails until pass one writes it.
-- [ ] Implement, keeping pass two at 9 current visibility loads and D's summation order.
-- [ ] Run the same build, device-free and single Metal selection as 7f.2.
-- [ ] Commit `perf(taa): carry the current visibility mask from the first pass`.
+- [x] RED: a split-only readback fact compares the pass-one mask with the inline mask for every texel of a random frame and fails until pass one writes it. On Metal before the first pass wrote it, 2509 of 2560 stored masks differed.
+- [x] Implement, keeping pass two at 9 current visibility loads and D's summation order. A fast-path pixel issues 41 fetches against D's 101, or 25 under the range skip. Static counts are 71 `OpImageFetch` and 14 `OpLoopMerge` per accumulate program.
+- [x] Run the same build, device-free and single Metal selection as 7f.2.
+- [x] Commit `perf(taa): carry the current visibility mask from the first pass`.
 
 **Definition of done:** fused and split stay exact, the oracles stay at zero mismatches, and pass two's current-side fetch count matches the target.
 

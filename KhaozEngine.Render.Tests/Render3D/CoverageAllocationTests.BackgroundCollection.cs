@@ -15,7 +15,8 @@ public sealed partial class CoverageAllocationTests
         var covered = Measure(fallback: false, coverage: true, collection);
         output.WriteLine($"coverage={covered} inFlightAtStart={collection.InFlight} completed={collection.Completed} " +
             $"consumedBeforeMeasurement={collection.Consumed}");
-        Assert.True(collection.InFlight, "The background collection finished before the measurement opened.");
+        Assert.True(collection.InFlight,
+            "No background gen2 was still in flight when the measurement opened. It finished early or ran blocking.");
         Assert.True(collection.Completed, "The background collection did not complete.");
         Assert.Equal(new Allocation(0, 0, 0, 0, 0, 0, 0), covered);
         GC.KeepAlive(collection);
@@ -23,13 +24,16 @@ public sealed partial class CoverageAllocationTests
 
     /// <summary>Starts a background collection just before a measurement opens and waits for it inside the
     /// render window. The measuring thread takes a fresh allocation context after the collection starts. Without a
-    /// checked region the collection's final mark voids that context while the thread waits.</summary>
+    /// checked region the collection's final mark voids that context while the thread waits. With one,
+    /// AllocationRegion.Start drains the collection first, because StartNoGCRegion runs a blocking gen2 that waits
+    /// for it, so Await returns at once. The region's collection counts cannot see a void from a collection that began
+    /// before the region started, so the protection relies on that drain.</summary>
     sealed class BackgroundCollection
     {
         // Live objects that keep the background mark running past the windows that precede the render window.
         readonly object[] graph = new object[1 << 20];
         readonly Thread completion;
-        long index;
+        long index, fullBlocking;
 
         internal BackgroundCollection()
         {
@@ -44,16 +48,22 @@ public sealed partial class CoverageAllocationTests
 
         internal void Start()
         {
+            int gen2 = GC.CollectionCount(2);
             index = GC.GetGCMemoryInfo(GCKind.Background).Index;
+            fullBlocking = GC.GetGCMemoryInfo(GCKind.FullBlocking).Index;
             GC.Collect(2, GCCollectionMode.Forced, blocking: false, compacting: false);
             long fresh = GC.GetAllocatedBytesForCurrentThread();
-            completion.Start();
-            InFlight = GC.GetGCMemoryInfo(GCKind.Background).Index == index;
+            // Decided before any other work. Only a background gen2 that is still marking advances the gen2 count
+            // while neither the background nor the full blocking index has moved.
+            InFlight = GC.CollectionCount(2) != gen2 && GC.GetGCMemoryInfo(GCKind.Background).Index == index
+                && GC.GetGCMemoryInfo(GCKind.FullBlocking).Index == fullBlocking;
+            if (InFlight) completion.Start();
             Consumed = GC.GetAllocatedBytesForCurrentThread() - fresh;
         }
 
-        /// <summary>Blocks without allocating until the background collection has completed.</summary>
-        internal void Await() => Completed = completion.Join(TimeSpan.FromSeconds(30));
+        /// <summary>Blocks without allocating until the background collection has completed. Returns at once when
+        /// no background collection was in flight.</summary>
+        internal void Await() => Completed = InFlight && completion.Join(TimeSpan.FromSeconds(30));
 
         void WaitForCompletion()
         {

@@ -31,6 +31,13 @@ namespace KhaozEngine.Tests.Gpu;
 /// where D adds <c>previousUv</c>, or <c>previousUv</c> computed from other inputs, reads as D's chain. A component
 /// swizzle of a computed register is not compared either, nor anything past four moves. Those are held by the
 /// equivalence and A/B facts on the device, not here.</para>
+/// <para>Fix round 7f r3. A chain's head, from the <c>itof</c> to the division, also accepts a register beside it, read
+/// through its provenance, which now names the operands of any opcode that reads only constants and literals. So a
+/// head that adds a shared <c>0.5 - J</c> reads as such rather than as no chain. <see cref="Form"/> sorts a head into
+/// the two association orders the binade rule is proved for, written <c>(at + 0.5) - J</c> and reassociated
+/// <c>(at - J) + 0.5</c>, or neither, and <see cref="Remainder"/> is the chain from the division on. Every
+/// <c>mad</c> by a literal -0.5 that reads as no chain is listed by <see cref="Unread"/> with the instructions behind
+/// it, so a program whose chains the reader misses shows why.</para>
 /// </summary>
 internal static partial class TemporalVisibilityDxbc
 {
@@ -172,12 +179,11 @@ internal static partial class TemporalVisibilityDxbc
                 return Provenance(code, def, moved.Name, moved.Component(destComponent), moves - 1);
             if (!moved.IsRegister) return moved.Kind(destComponent);
         }
-        if (op == "div" && step.Sources.Length == 2)
-        {
-            Operand dividend = Operand.Parse(step.Sources[0]), divisor = Operand.Parse(step.Sources[1]);
-            if (dividend.IsConstant && divisor.IsConstant)
-                return $"div {dividend.Kind(destComponent)} {divisor.Kind(destComponent)}";
-        }
+        // An opcode that reads only constant-buffer elements, inputs and literals names them, such as Jp / S's
+        // division or a shared 0.5 - J.
+        Operand[] sources = step.Sources.Select(Operand.Parse).ToArray();
+        if (op != "mov" && sources.Length > 0 && sources.All(o => !o.IsRegister))
+            return op + " " + string.Join(" ", sources.Select(o => o.Kind(destComponent)));
         return op;
     }
 
@@ -199,12 +205,103 @@ internal static partial class TemporalVisibilityDxbc
         for (int s = 0; s < 2; s++)
         {
             Operand along = Operand.Parse(step.Sources[s]), beside = Operand.Parse(step.Sources[1 - s]);
-            if (!along.IsRegister || along.Negated || along.Absolute || beside.IsRegister) continue;
+            if (!along.IsRegister || along.Negated || along.Absolute) continue;
             string? before = BeforeDivision(code, def, along.Name, along.Component(destComponent), adds - 1);
-            if (before is not null) return $"{before} > {step.Opcode} {beside.Kind(destComponent)}";
+            if (before is not null) return $"{before} > {step.Opcode} {Beside(code, def, beside, destComponent)}";
         }
         return null;
     }
+
+    /// <summary>The association order of a chain's head.</summary>
+    internal enum HeadForm { Written, Reassociated, Other }
+
+    /// <summary>Which of the two analysed association orders a chain's head is, from the <c>itof</c> to the
+    /// division: an <c>add</c> of the literal 0.5 and an <c>add</c> of a negated constant-buffer element, the jitter,
+    /// in either order. A register beside the head counts as what it holds where that is one constant-buffer element or
+    /// literal, moved. Precise markings are ignored.</summary>
+    internal static HeadForm Form(string chain)
+    {
+        string[] head = Head(chain);
+        if (head.Length != 3 || !head[0].StartsWith("itof", StringComparison.Ordinal)) return HeadForm.Other;
+        string? first = Added(head[1]), second = Added(head[2]);
+        if (first == Half && IsJitter(second)) return HeadForm.Written;
+        if (IsJitter(first) && second == Half) return HeadForm.Reassociated;
+        return HeadForm.Other;
+    }
+
+    /// <summary>The jitter element a chain's head subtracts, or null where it is not one of the analysed forms.</summary>
+    internal static string? Jitter(string chain)
+    {
+        if (Form(chain) == HeadForm.Other) return null;
+        string[] head = Head(chain);
+        return IsJitter(Added(head[1])) ? Added(head[1]) : Added(head[2]);
+    }
+
+    /// <summary>The chain from its division on, the part the head's order does not change.</summary>
+    internal static string Remainder(string chain)
+    {
+        int division = chain.IndexOf(" > div", StringComparison.Ordinal);
+        return division < 0 ? chain : chain[(division + 3)..];
+    }
+
+    const string Half = "+l(0.500000)";
+
+    static bool IsJitter(string? operand) => operand is not null && operand.StartsWith("-cb", StringComparison.Ordinal);
+
+    // The steps before the division, precise markings dropped.
+    static string[] Head(string chain)
+    {
+        int division = chain.IndexOf(" > div", StringComparison.Ordinal);
+        string head = division < 0 ? chain : chain[..division];
+        return Regex.Replace(head, @" \[precise\([xyzw]*\)\]", "").Split(" > ");
+    }
+
+    // What an add step adds: its operand, or what a register beside it holds where that is one element or literal.
+    static string? Added(string step)
+    {
+        if (!step.StartsWith("add ", StringComparison.Ordinal)) return null;
+        string operand = step["add ".Length..];
+        Match moved = Regex.Match(operand, @"^\+r\(([+-](?:cb\d+\[\d+\]\.[xyzw]|l\([^)]*\)))\)$");
+        return moved.Success ? moved.Groups[1].Value : operand;
+    }
+
+    /// <summary>Every <c>mad</c> by a literal -0.5 whose first source reads as no chain, with up to eight
+    /// instructions behind that source, nearest first, so a log shows the shape the reader missed.</summary>
+    internal static List<string> Unread(string disassembly)
+    {
+        List<Instruction> code = Parse(disassembly);
+        var unread = new List<string>();
+        for (int i = 0; i < code.Count; i++)
+        {
+            Instruction mad = code[i];
+            if (Bare(mad) != "mad" || mad.Sources.Length != 3 || mad.Destinations.Length != 1) continue;
+            Operand dest = Operand.Parse(mad.Destinations[0]), bias = Operand.Parse(mad.Sources[2]);
+            foreach (int c in dest.Mask())
+            {
+                if (bias.Literal(c) != "-0.500000") continue;
+                Operand scale = Operand.Parse(mad.Sources[1]), chain = Operand.Parse(mad.Sources[0]);
+                if (scale.IsConstant && chain.IsRegister && !chain.Negated
+                    && AfterDivision(code, i, chain.Name, chain.Component(c), 4) is not null) continue;
+                var behind = new List<string> { Text(mad) };
+                int at = i;
+                Operand along = chain;
+                int component = along.Component(c);
+                for (int step = 0; step < 8 && along.IsRegister; step++)
+                {
+                    int def = Definition(code, at, along.Name, component, out int destComponent);
+                    if (def < 0) break;
+                    behind.Add(Text(code[def]));
+                    Operand next = code[def].Sources.Select(Operand.Parse).FirstOrDefault(o => o.IsRegister) ?? new Operand();
+                    (at, along, component) = (def, next, next.Component(destComponent));
+                }
+                unread.Add($"component {"xyzw"[c]}: " + string.Join(" < ", behind));
+            }
+        }
+        return unread;
+    }
+
+    static string Text(Instruction instruction) => instruction.Opcode + " " + string.Join(", ",
+        instruction.Destinations.Concat(instruction.Sources));
 
     // The last instruction before `at` that writes the component, in program order, and which of its destination
     // components it is.

@@ -10,6 +10,7 @@ public sealed class GpuFrameSubmission : IDisposable
     readonly IGpuDevice device;
     readonly Slot[] slots;
     readonly IGpuFrameSubmissionParticipant?[] participants;
+    IGpuFence[] submitCompletions;
     int participantCount, current = -1;
     bool recording, disposed, teardown;
 
@@ -20,6 +21,7 @@ public sealed class GpuFrameSubmission : IDisposable
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(consumerCapacity);
         this.device = device;
         participants = new IGpuFrameSubmissionParticipant[consumerCapacity];
+        submitCompletions = new IGpuFence[consumerCapacity + 1];
         slots = new Slot[device.Capabilities.SupportsCompletionFences ? retainedFrames : 0];
         int created = 0;
         try
@@ -83,7 +85,9 @@ public sealed class GpuFrameSubmission : IDisposable
 
     /// <summary>Submit this list exactly once, then notify every participant, even if a callback throws.
     /// A submission exception quarantines retained copies until completion or host teardown.</summary>
-    public void Submit(IGpuCommandList commands)
+    public void Submit(IGpuCommandList commands) => Submit(commands, ReadOnlySpan<IGpuFence>.Empty);
+
+    public void Submit(IGpuCommandList commands, ReadOnlySpan<IGpuFence> completions)
     {
         RequireRecording(); ArgumentNullException.ThrowIfNull(commands);
         recording = false;
@@ -92,8 +96,16 @@ public sealed class GpuFrameSubmission : IDisposable
         current = -1;
         try
         {
-            if (slot is null) device.Submit(commands);
-            else device.Submit(commands, slot.Fence);
+            if (slot is null) device.Submit(commands, completions);
+            else
+            {
+                int count = checked(completions.Length + 1);
+                if (submitCompletions.Length < count) Array.Resize(ref submitCompletions, count);
+                submitCompletions[0] = slot.Fence;
+                completions.CopyTo(submitCompletions.AsSpan(1));
+                try { device.Submit(commands, submitCompletions.AsSpan(0, count)); }
+                finally { Array.Clear(submitCompletions, 0, count); }
+            }
         }
         catch
         {

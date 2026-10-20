@@ -21,6 +21,7 @@ internal sealed class CoverageBatchDevice(IGpuDevice inner) : IGpuDevice
     public bool SyncToVerticalBlank { get => inner.SyncToVerticalBlank; set => inner.SyncToVerticalBlank = value; }
     public void Submit(IGpuCommandList commands) { Submissions++; inner.Submit(commands); }
     public void Submit(IGpuCommandList commands, IGpuFence fence) { Submissions++; inner.Submit(commands, fence); }
+    public void Submit(IGpuCommandList commands, ReadOnlySpan<IGpuFence> completions) { Submissions++; inner.Submit(commands, completions); }
     public void WaitForIdle()
     {
         if (CaptureWaitSites) WaitSites[WaitSiteCount++] = Environment.StackTrace;

@@ -36,6 +36,7 @@ internal sealed class CoverageCaptureDevice : IGpuDevice
     public bool SyncToVerticalBlank { get => Inner.SyncToVerticalBlank; set => Inner.SyncToVerticalBlank = value; }
     public void Submit(IGpuCommandList cl) => Inner.Submit(cl);
     public void Submit(IGpuCommandList cl, IGpuFence fence) => Inner.Submit(cl, fence);
+    public void Submit(IGpuCommandList cl, ReadOnlySpan<IGpuFence> completions) => Inner.Submit(cl, completions);
     public void WaitForIdle() => Inner.WaitForIdle();
     public void UpdateBuffer<T>(IGpuBuffer b, uint offset, ReadOnlySpan<T> data) where T : unmanaged
     {

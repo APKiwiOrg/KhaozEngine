@@ -180,6 +180,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _submits.Submit(list, armed, TakeFrameSemaphores(list));
         }
 
+        public void Submit(IGpuCommandList cl, ReadOnlySpan<IGpuFence> completions)
+        {
+            _submits.ValidateCompletions(completions);
+            VulkanCommandList list = Recording(cl);
+            FlushSetup();
+            _submits.Submit(list, null, TakeFrameSemaphores(list), completions);
+        }
+
         // The list check, shared by both overloads. A foreign list is refused by NAME rather than by a cast
         // exception, because the two ways to get here (a list from another device, or, until 18.0.0, a list from
         // the Veldrid backend on a machine running both) look identical at the call site and neither is a bug here.

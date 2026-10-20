@@ -34,6 +34,7 @@ internal sealed class SubmissionTestDevice : IGpuDevice, IGpuResourceFactory, IG
     internal readonly System.Collections.Generic.List<SubmissionTestFence> Fences = new();
     internal bool FailSubmit, FailWait, AllowCommandList;
     internal IGpuFence? SubmittedFence;
+    internal IGpuFence[] SubmittedFences = Array.Empty<IGpuFence>();
     internal bool Busy, FailCopy;
     internal SubmissionTestDevice(int capacity) => Buffers = new SubmissionTestBuffer[capacity];
     public IGpuResourceFactory Factory => this;
@@ -70,6 +71,13 @@ internal sealed class SubmissionTestDevice : IGpuDevice, IGpuResourceFactory, IG
 
     public void Submit(IGpuCommandList cl) { SubmitCalls++; if (FailSubmit) throw new InvalidOperationException("planned submit failure"); }
     public void Submit(IGpuCommandList cl, IGpuFence fence) { SubmitCalls++; SubmittedFence = fence; if (FailSubmit) throw new InvalidOperationException("planned submit failure"); }
+    public void Submit(IGpuCommandList cl, ReadOnlySpan<IGpuFence> completions)
+    {
+        GpuCompletionFences.Validate(completions);
+        SubmittedFences = completions.ToArray();
+        SubmittedFence = completions.IsEmpty ? null : completions[0];
+        Submit(cl);
+    }
     public void WaitForIdle() { WaitCalls++; FlushCalls++; if (FailWait) throw new InvalidOperationException("planned drain failure"); foreach (var fence in Fences) fence.Signaled = true; }
     public MappedData Map(IGpuBuffer staging, GpuMapMode mode) { WaitCalls++; throw new NotSupportedException(); }
     public MappedData Map(IGpuTexture staging, GpuMapMode mode) => throw new NotSupportedException();

@@ -114,6 +114,13 @@ namespace KhaozEngine.Tests.Gpu
         }
         public void WaitForIdle() { }
 
+        public void Submit(IGpuCommandList cl, ReadOnlySpan<IGpuFence> completions)
+        {
+            GpuCompletionFences.Validate(completions);
+            if (_fences || completions.IsEmpty) Submits++;
+            else _inner.Submit(cl, completions);
+        }
+
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged { }
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, T[] data) where T : unmanaged { }
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, in T data) where T : unmanaged { }

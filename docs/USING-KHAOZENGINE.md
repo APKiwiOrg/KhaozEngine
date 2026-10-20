@@ -2068,6 +2068,32 @@ Null keeps the authored dimensions and existing raster bytes. Raster queries and
 the largest visible drawn half diagonal at every chunk level. Coarse filtering still uses the authored
 footprint to preserve source-side materialization limits. Icon anchors and hover bounds are unchanged.
 
+Set `WorldMapSymbol.Geometry` to replace its default rectangle or ellipse with a normalized polygon
+and independent detail segments:
+
+```csharp
+var geometry = new WorldMapSymbolGeometry(
+    new Vector2[] { new(-1f, -1f), new(1f, -1f), new(0.5f, 1f), new(-0.5f, 1f) },
+    new WorldMapSymbolStroke[] { new(new(-0.5f, 0f), new(0.5f, 0f)) });
+var customSymbol = new WorldMapSymbol(WorldMapSymbolKind.Obstacle, Color.White, Color.Black)
+{
+    Geometry = geometry,
+    SizeMetres = new Vector2(4f, 2f)
+};
+```
+
+`WorldMapSymbolGeometry(IEnumerable<Vector2> outline, IEnumerable<WorldMapSymbolStroke>? strokes = null)`
+snapshots inputs and exposes read-only `Outline` and `Strokes`. Coordinates must be finite in `[-1, 1]`
+on each local axis. Supply at least three vertices enclosing a nonzero area, with no repeated closing
+endpoint, self-crossing, touching or overlapping edges. Concavity and either winding are supported.
+Construction rejects invalid geometry with `ArgumentException`. Existing footprint dimensions,
+optional `SizeMetres`, rotation, wall sizing, collection and invalidation rules still apply.
+`Fill` paints the silhouette. `OutlinePixels` controls its inset `Outline` boundary and centred
+round-capped detail segments in raster pixels, independent of non-square scaling or pyramid level.
+Overlapping boundary and detail ink contributes once. Detail segments may extend outside a concave fill,
+are clipped to the footprint box and are excluded from building shadows. Transparent fills leave
+terrain visible. Null geometry preserves existing bytes, feature anchors and hover targets.
+
 Keep the `TileWorldDocument` and `TileWorldCatalogs` unchanged while a `TileWorldMapSource` is in use. Its
 `Revision` stays zero and it never raises `Changed`. After edits or loaded-region changes, stop and dispose
 the old map pipeline and create a new source, cache, worker and view. `surfacePlane` selects terrain, objects

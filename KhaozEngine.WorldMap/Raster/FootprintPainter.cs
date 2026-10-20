@@ -31,7 +31,7 @@ internal sealed class FootprintPainter(RasterCanvas canvas, WorldMapStyle style)
 
         foreach (var item in resolved)
         {
-            float inset = item.Symbol.Kind == WorldMapSymbolKind.Wall ? 0f :
+            float inset = item.Symbol.Kind == WorldMapSymbolKind.Wall && item.Symbol.Geometry is null ? 0f :
                 MathF.Max(0f, style.OutlinePixels / canvas.EffectivePixelsPerMetre);
             PaintShape(new CoverageSampler(item.Footprint, item.Symbol, style.WallWidthMetres, Vector2.Zero),
                 item.Symbol.Fill, item.Symbol.Outline, inset);

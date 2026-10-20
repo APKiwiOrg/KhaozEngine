@@ -37,6 +37,15 @@ public sealed record WorldMapSymbol(WorldMapSymbolKind Kind, Color Fill, Color O
     /// </remarks>
     public Vector2? SizeMetres { get; init; }
 
+    /// <summary>Optional normalized polygon and detail strokes. Null preserves the default rectangle or ellipse.</summary>
+    /// <remarks>
+    /// Geometry follows the existing footprint dimensions, optional SizeMetres and rotation. Boundary ink is
+    /// inset, and detail segments are centred with round caps. Both use OutlinePixels in raster pixels.
+    /// Details are clipped to the footprint box and do not contribute to building shadows.
+    /// Feature anchors and hover targets are unaffected.
+    /// </remarks>
+    public WorldMapSymbolGeometry? Geometry { get; init; }
+
     /// <summary>The non-drawing symbol with transparent colours.</summary>
     public static WorldMapSymbol Hidden { get; } = new(WorldMapSymbolKind.Hidden, Color.Transparent, Color.Transparent);
 }

@@ -58,7 +58,8 @@ Implement `IWorldMapSource` to adapt an authored world:
   thread. Allow concurrent worker reads. Consumers discard results sampled against an older revision.
 
 The source filters to the mapped surface before returning footprints or markers. The contract
-carries neither levels nor top heights, and this round supports oriented rectangles only.
+carries neither levels nor top heights. Footprints remain oriented bounding rectangles, with optional
+symbol geometry changing only their raster silhouette and details.
 
 ## Style
 
@@ -89,6 +90,18 @@ carries neither levels nor top heights, and this round supports oriented rectang
   Coarse admission still uses the authored footprint, not this drawn size. This keeps source filtering
   before materialization bounded without requiring every small prop to be collected to resolve style rules.
   Icons, labels and hover targets remain unchanged.
+- `WorldMapSymbol.Geometry` optionally replaces the default rectangle or ellipse with a
+  `WorldMapSymbolGeometry(outline, strokes: null)`. The constructor snapshots both inputs and exposes
+  read-only `Outline` and `Strokes` collections. Use finite normalized coordinates in `[-1, 1]` on each
+  local axis. The outline needs at least three vertices enclosing a nonzero area, may be concave and
+  accepts either winding. Its last vertex connects to the first. Do not repeat the closing vertex or
+  supply crossing, touching or overlapping edges. Invalid geometry throws `ArgumentException` at construction.
+  Each `WorldMapSymbolStroke(Start, End)` is an independent open detail segment. Geometry follows the
+  existing dimensions, `SizeMetres`, rotation and wall sizing. `Fill` paints the polygon. `Outline`
+  paints its inset boundary and centred round-capped details using `OutlinePixels` in raster pixels,
+  including non-square symbols and coarse levels. Overlapping ink shares coverage once. Details can
+  lie outside a concave fill and are clipped to the normalized footprint box. Building shadows use
+  only the filled silhouette. Null preserves existing raster bytes, anchors and hover targets.
 - `IconRules` default to an empty array. Rules select footprint or marker tags, an icon key, a priority
   and a merge radius, defaulting to 24 screen pixels. `Labels` defaults to null. When enabled,
   `WorldMapLabelRules` selects a label tag and tagged tiers with rank, zoom range and text scale.

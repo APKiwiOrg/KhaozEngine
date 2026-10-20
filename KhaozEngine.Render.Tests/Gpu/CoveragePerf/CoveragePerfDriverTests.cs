@@ -267,6 +267,150 @@ public sealed class CoveragePerfDriverTests
     }
 
     [Theory]
+    [InlineData("G1")]
+    [InlineData("G2")]
+    [InlineData("G3")]
+    public void DeferredGpuBatchesValidateAndPresetsReachEveryStage(string preset)
+    {
+        var run = new CoveragePerfFakeRun(preset);
+        run.WrapSession = session => new CoveragePerfDeferredFakeSession(session);
+
+        var report = run.Run();
+
+        Assert.Equal(CoveragePerfRunStatus.Completed, report.Status);
+        Assert.Equal(8, report.Blocks.Length);
+        Assert.Equal(1152, run.Sessions.Sum(s => s.Frames));
+        Assert.Equal(392, run.Sessions.Sum(s => s.Batches));
+        Assert.All(report.Blocks, block =>
+        {
+            Assert.Equal(CoveragePerfRunStatus.Completed, block.Status);
+            Assert.Equal(Enumerable.Range(0, 64), block.Warmup.Select(s => s.FrameIndex));
+            Assert.Equal(Enumerable.Range(64, block.Block.Index < 4 ? 32 : 128), block.Samples.Select(s => s.FrameIndex));
+            Assert.All(block.Warmup.Concat(block.Samples), sample =>
+            {
+                Assert.NotNull(sample.Gpu);
+                Assert.Equal(block.Block.TimerLayout, sample.Gpu.Layout);
+                Assert.Equal(new[] { (ulong)sample.FrameIndex + 1, (ulong)sample.FrameIndex + 2 }, sample.Gpu.Ticks);
+                Assert.Equal(1, sample.CpuFramePreparationTicks);
+                Assert.Equal(block.Block.Actors, sample.MainVisibleActors);
+            });
+        });
+        Assert.Equal(CoveragePerfBudgetStatus.Unproved, report.GpuStatus);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DeferredCompletionRetainsFilledSlotsAndItsFirstFailure(bool measuredBatch)
+    {
+        int firstFrame = measuredBatch ? 64 : 0;
+        var run = new CoveragePerfFakeRun("G1");
+        run.WrapSession = session =>
+        {
+            var deferred = new CoveragePerfDeferredFakeSession(session);
+            deferred.OnCompleteBatch = samples =>
+            {
+                if (samples[0].FrameIndex != firstFrame) { deferred.Resolve(samples); return; }
+                deferred.Resolve(samples[..2]);
+                throw new InvalidOperationException("completion primary");
+            };
+            return deferred;
+        };
+        run.Setup = s => s.OnDispose = _ => throw new InvalidOperationException("cleanup secondary");
+        run.Publisher.OnBlock = _ => throw new InvalidOperationException("block publication secondary");
+        run.Publisher.OnUnit = _ => throw new InvalidOperationException("unit publication secondary");
+
+        var report = run.Run();
+
+        var block = Assert.Single(report.Blocks);
+        Assert.Equal(CoveragePerfRunStatus.Failed, report.Status);
+        Assert.Equal(CoveragePerfRunStatus.Failed, block.Status);
+        Assert.Contains("completion primary", report.Reason, StringComparison.Ordinal);
+        Assert.Equal(report.Reason, block.Reason);
+        Assert.Equal(report.Reason, report.Errors[0]);
+        Assert.Equal(4, report.Errors.Length);
+        Assert.Contains(report.Errors, e => e.Contains("cleanup secondary", StringComparison.Ordinal));
+        Assert.Contains(report.Errors, e => e.Contains("block publication secondary", StringComparison.Ordinal));
+        Assert.Contains(report.Errors, e => e.Contains("unit publication secondary", StringComparison.Ordinal));
+        Assert.Equal(measuredBatch ? 64 : 3, block.Warmup.Length);
+        Assert.Equal(measuredBatch ? 3 : 0, block.Samples.Length);
+        var partial = measuredBatch ? block.Samples : block.Warmup;
+        Assert.Equal(new[] { firstFrame, firstFrame + 1, firstFrame + 2 }, partial.Select(s => s.FrameIndex));
+        Assert.All(partial.Take(2), sample =>
+        {
+            Assert.NotNull(sample.Gpu);
+            Assert.Equal(new[] { (ulong)sample.FrameIndex + 1, (ulong)sample.FrameIndex + 2 }, sample.Gpu.Ticks);
+        });
+        Assert.Null(partial[2].Gpu);
+        Assert.All(partial, sample => Assert.Equal(1, sample.CpuFramePreparationTicks));
+        Assert.Equal(block, Assert.Single(run.Publisher.Blocks));
+        Assert.Single(run.Publisher.Units);
+        Assert.True(Assert.Single(run.Sessions).Disposed);
+        Assert.Equal(CoveragePerfBudgetStatus.Unproved, report.CpuStatus);
+        Assert.Equal(CoveragePerfBudgetStatus.Unproved, report.GpuStatus);
+    }
+
+    [Theory]
+    [InlineData("G1", 0)]
+    [InlineData("G2", 2)]
+    [InlineData("G3", 4)]
+    public void DeferredCompletionLeavingAnUnresolvedSlotStopsTheStageAsUnproved(string preset, int invalidBlock)
+    {
+        var run = new CoveragePerfFakeRun(preset);
+        run.WrapSession = session =>
+        {
+            var deferred = new CoveragePerfDeferredFakeSession(session);
+            if (session.Block.Index == invalidBlock)
+                deferred.OnCompleteBatch = samples => deferred.Resolve(samples[..^1]);
+            return deferred;
+        };
+
+        var report = run.Run();
+
+        Assert.Equal(CoveragePerfRunStatus.Failed, report.Status);
+        Assert.Contains("unresolved", report.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(invalidBlock + 1, report.Blocks.Length);
+        Assert.Equal(invalidBlock + 1, run.Sessions.Count);
+        var block = report.Blocks[^1];
+        Assert.Equal(CoveragePerfRunStatus.Failed, block.Status);
+        Assert.Equal(3, block.Warmup.Length);
+        Assert.NotNull(block.Warmup[0].Gpu);
+        Assert.NotNull(block.Warmup[1].Gpu);
+        Assert.Null(block.Warmup[2].Gpu);
+        Assert.Empty(block.Samples);
+        Assert.Equal(block, run.Publisher.Blocks[^1]);
+        Assert.Single(run.Publisher.Units);
+        Assert.Equal(CoveragePerfBudgetStatus.Unproved, report.CpuStatus);
+        Assert.Equal(CoveragePerfBudgetStatus.Unproved, report.GpuStatus);
+    }
+
+    [Theory]
+    [InlineData("C0", 4, 384, 132)]
+    [InlineData("C1", 6, 1152, 390)]
+    public void DeferredCompletionDoesNotRequireGpuResultsForCpuOnlyPresets(string preset, int blocks, int frames, int batches)
+    {
+        var run = new CoveragePerfFakeRun(preset);
+        run.WrapSession = session => new CoveragePerfDeferredFakeSession(session);
+
+        var report = run.Run();
+
+        Assert.Equal(CoveragePerfRunStatus.Completed, report.Status);
+        Assert.Equal(blocks, report.Blocks.Length);
+        Assert.Equal(frames, run.Sessions.Sum(s => s.Frames));
+        Assert.Equal(batches, run.Sessions.Sum(s => s.Batches));
+        Assert.All(report.Blocks, block =>
+        {
+            Assert.Equal(CoveragePerfRunStatus.Completed, block.Status);
+            Assert.All(block.Warmup.Concat(block.Samples), sample =>
+            {
+                Assert.Null(sample.Gpu);
+                Assert.Equal(1, sample.CpuFramePreparationTicks);
+            });
+        });
+        Assert.Equal(CoveragePerfBudgetStatus.Unproved, report.GpuStatus);
+    }
+
+    [Theory]
     [InlineData(9999, true)]
     [InlineData(10000, false)]
     [InlineData(10001, false)]

@@ -73,7 +73,7 @@ internal sealed record CoveragePerfBlockResult(CoveragePerfBlock Block, Coverage
 internal interface ICoveragePerfSession : IDisposable
 {
     void Frame(int frameIndex, ref CoveragePerfFrameSample sample);
-    void CompleteBatch();
+    void CompleteBatch(Span<CoveragePerfFrameSample> samples);
     CoveragePerfSessionInfo ReadInfo();
 }
 

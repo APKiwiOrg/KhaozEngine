@@ -128,7 +128,7 @@ internal static class CoveragePerfDriver
             if (count - batchStart != manifest.BatchFrames && count != storage.Length) continue;
 
             deadline.Check("before batch completion");
-            try { session.CompleteBatch(); }
+            try { session.CompleteBatch(storage.AsSpan(batchStart, count - batchStart)); }
             catch (Exception ex) { failure.Add("batch completion", ex); }
             try { deadline.Check("after batch completion"); }
             catch (Exception ex) { failure.Add("batch completion", ex); }

@@ -77,9 +77,48 @@ internal sealed class CoveragePerfFakeSession : ICoveragePerfSession
         OnFrame?.Invoke(this, frameIndex, ref sample);
     }
 
-    public void CompleteBatch() { Batches++; OnBatch?.Invoke(this); }
+    public void CompleteBatch(Span<CoveragePerfFrameSample> samples) { Batches++; OnBatch?.Invoke(this); }
     public CoveragePerfSessionInfo ReadInfo() { OnReadInfo?.Invoke(this); return Info; }
     public void Dispose() { Disposed = true; OnDispose?.Invoke(this); }
+}
+
+internal delegate void CoveragePerfFakeBatch(Span<CoveragePerfFrameSample> samples);
+
+internal sealed class CoveragePerfDeferredFakeSession(CoveragePerfFakeSession session) : ICoveragePerfSession
+{
+    int _pendingFrames, _nextCompletionFrame;
+    internal CoveragePerfFakeBatch? OnCompleteBatch { get; set; }
+
+    public void Frame(int frameIndex, ref CoveragePerfFrameSample sample)
+    {
+        session.Frame(frameIndex, ref sample);
+        sample.Gpu = null;
+        _pendingFrames++;
+    }
+
+    public void CompleteBatch(Span<CoveragePerfFrameSample> samples)
+    {
+        if (samples.Length != _pendingFrames) throw new InvalidOperationException("Completion did not receive the pending batch.");
+        for (int i = 0; i < samples.Length; i++)
+            if (samples[i].FrameIndex != _nextCompletionFrame + i || samples[i].Gpu is not null)
+                throw new InvalidOperationException("Completion did not receive the unresolved frame slots in order.");
+        if (OnCompleteBatch is { } complete) complete(samples);
+        else Resolve(samples);
+        _nextCompletionFrame += samples.Length;
+        _pendingFrames = 0;
+        session.CompleteBatch(samples);
+    }
+
+    internal void Resolve(Span<CoveragePerfFrameSample> samples)
+    {
+        if (session.Block.TimerLayout == CoveragePerfTimerLayout.CpuOnly) return;
+        foreach (ref var sample in samples)
+            sample.Gpu = new(session.Block.TimerLayout, [(ulong)sample.FrameIndex + 1, (ulong)sample.FrameIndex + 2],
+                1, true, false, "synthetic deferred");
+    }
+
+    public CoveragePerfSessionInfo ReadInfo() => session.ReadInfo();
+    public void Dispose() => session.Dispose();
 }
 
 internal sealed class CoveragePerfFakePublisher
@@ -100,6 +139,7 @@ internal sealed class CoveragePerfFakeRun
     internal List<CoveragePerfFakeSession> Sessions { get; } = [];
     internal List<string> Events { get; } = [];
     internal Action<CoveragePerfFakeSession>? Setup { get; set; }
+    internal Func<CoveragePerfFakeSession, ICoveragePerfSession>? WrapSession { get; set; }
     internal byte[] Json { get; set; }
     internal CoveragePerfRunIdentity Identity { get; set; }
 
@@ -170,7 +210,7 @@ internal sealed class CoveragePerfFakeRun
         Sessions.Add(session);
         session.OnDispose = s => Events.Add($"dispose-{s.Block.Index}");
         Setup?.Invoke(session);
-        return session;
+        return WrapSession?.Invoke(session) ?? session;
     }
 
     static string Hash(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));

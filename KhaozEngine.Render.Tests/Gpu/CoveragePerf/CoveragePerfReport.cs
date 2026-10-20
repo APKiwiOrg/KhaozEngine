@@ -14,13 +14,14 @@ internal sealed record CoveragePerfRunIdentity(string WorkloadSha, string Workfl
     string Runner, string Workflow, string Leg, string WorkflowRunId, int WorkflowRunAttempt, int ProcessId,
     string AuthorizationIdentity)
 {
+    internal CoveragePerfExecutionIdentity Execution { get; init; } = new();
     internal string RunId => string.Create(CultureInfo.InvariantCulture, $"{WorkflowRunId}-{WorkflowRunAttempt}-{ProcessId}");
 }
 
 internal sealed record CoveragePerfEnvironmentValue(string Name, string Value);
 
 /// <summary>
-/// Protocol envelope for later driver, publication and arithmetic tasks. Missing or synthetic evidence starts Unproved.
+/// Completed unit envelope. Missing or synthetic evidence stays Unproved through independent validity checks.
 /// Partial blocks survive failure, and a completed block does not establish final unit completion.
 /// </summary>
 internal sealed record CoveragePerfReport(CoveragePerfRunStatus Status, string Reason, CoveragePerfManifest? Manifest,
@@ -28,6 +29,9 @@ internal sealed record CoveragePerfReport(CoveragePerfRunStatus Status, string R
     CoveragePerfBudgetStatus CpuStatus = CoveragePerfBudgetStatus.Unproved,
     CoveragePerfBudgetStatus GpuStatus = CoveragePerfBudgetStatus.Unproved)
 {
+    internal bool ReturnedByRun { get; init; }
+    internal bool FinalUnitPublished { get; init; }
+    internal CoveragePerfAllocationProof AllocationProof { get; init; } = new("unavailable", false, CoveragePerfBudgetStatus.Unproved);
     internal const string Schema = "khaozengine.coverage-perf-report/1";
     internal ImmutableArray<string> Errors { get; init; } = [];
 }

@@ -1,0 +1,132 @@
+using System;
+using System.Collections.Immutable;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
+
+namespace KhaozEngine.Tests.Gpu;
+
+internal static class CoveragePerfReportJson
+{
+    static readonly JsonSerializerOptions Options = CreateOptions();
+    internal static string Serialize(CoveragePerfReport report) => JsonSerializer.Serialize(new Document(
+        CoveragePerfReport.Schema, report, CoveragePerfBudgets.Evaluate(report), report.Blocks.Select(b =>
+            CoveragePerfStatistics.Summarize(b, report.Identity.Execution.ClockFrequency)).ToImmutableArray()), Options);
+
+    internal static CoveragePerfReport Deserialize(string json)
+    {
+        var document = JsonSerializer.Deserialize<Document>(json, Options) ?? throw new InvalidDataException("Missing report.");
+        if (document.Schema != CoveragePerfReport.Schema) throw new InvalidDataException("Unsupported coverage performance report schema.");
+        return document.Report;
+    }
+
+    internal static string Markdown(CoveragePerfReport report)
+    {
+        var verdict = CoveragePerfBudgets.Evaluate(report);
+        var text = new StringBuilder();
+        text.AppendLine($"Coverage performance {report.Manifest?.Preset ?? "unknown"}, {report.Identity.RunId}");
+        text.AppendLine();
+        text.AppendLine($"CPU {verdict.Cpu.Status}, both reversed C1 deltas at most 2 ms.");
+        text.AppendLine($"GPU {verdict.Gpu.Status}, both reversed Total deltas at most 15 percent on {report.Manifest?.Backend}.");
+        foreach (var pair in verdict.Cpu.Pairs.Concat(verdict.Gpu.Pairs).Concat(verdict.SharedSubmission))
+            text.AppendLine(FormattableString.Invariant($"- {pair.Name}, blocks {pair.OffBlock}/{pair.OnBlock}: {Number(pair.Microseconds)} us, {Number(pair.Percent)} percent, {pair.Status}."));
+        if (verdict.Cpu.PooledDeltaMilliseconds.HasValue)
+            text.AppendLine($"Pooled CPU delta {Number(verdict.Cpu.PooledDeltaMilliseconds)} ms, order difference {Number(verdict.Cpu.OrderDifferenceMilliseconds)} ms.");
+        if (verdict.OneActor is { } one) text.AppendLine($"One actor observed delta {Number(one.Microseconds)} us per actor. No extrapolation or gate.");
+        text.AppendLine(verdict.SharedSubmissionAcceptance);
+        text.AppendLine($"Allocation {verdict.AllocationProof.Status}, native proof {verdict.AllocationProof.NativeProofSha}, reconciled {verdict.AllocationProof.Reconciled}. Timing observations are informational only.");
+        var reasons = verdict.Cpu.Reasons.Concat(verdict.Gpu.Reasons)
+            .Concat(verdict.SharedSubmission.SelectMany(p => p.Reasons)).Concat(verdict.OneActor?.Reasons ?? []).Distinct();
+        foreach (string reason in reasons) text.AppendLine("- Unproved: " + reason.Replace('\r', ' ').Replace('\n', ' '));
+        return text.ToString();
+    }
+
+    internal static void WriteReturnedReport(CoveragePerfReport report, string jsonPath, string markdownPath)
+    {
+        if (!report.ReturnedByRun) throw new InvalidOperationException("Durable publication requires Run's returned report, never its publication candidate.");
+        File.WriteAllText(jsonPath, Serialize(report), new UTF8Encoding(false));
+        File.WriteAllText(markdownPath, Markdown(report), new UTF8Encoding(false));
+    }
+
+    static string Number(double? value) => value?.ToString("0.#########", CultureInfo.InvariantCulture) ?? "unresolved";
+
+    static JsonSerializerOptions CreateOptions()
+    {
+        var resolver = new DefaultJsonTypeInfoResolver();
+        resolver.Modifiers.Add(info =>
+        {
+            if (info.Kind != JsonTypeInfoKind.Object || info.Type.Namespace != typeof(CoveragePerfReport).Namespace ||
+                !info.Type.Name.StartsWith("CoveragePerf", StringComparison.Ordinal)) return;
+            // The harness contract is internal to the test assembly. Include its explicit internal data properties,
+            // without exposing generated record equality members or private implementation fields.
+            foreach (var property in info.Type.GetProperties(BindingFlags.Instance | BindingFlags.NonPublic))
+            {
+                if (property.GetMethod?.IsAssembly != true) continue;
+                var json = info.CreateJsonPropertyInfo(property.PropertyType, JsonNamingPolicy.CamelCase.ConvertName(property.Name));
+                json.Get = property.GetValue;
+                if (property.SetMethod is not null) json.Set = property.SetValue;
+                info.Properties.Add(json);
+            }
+            if (info.CreateObject is null && info.Type.GetConstructor(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                null, Type.EmptyTypes, null) is not null) info.CreateObject = () => Activator.CreateInstance(info.Type, true)!;
+        });
+        var options = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            WriteIndented = true,
+            TypeInfoResolver = resolver,
+            NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals,
+        };
+        options.Converters.Add(new JsonStringEnumConverter());
+        options.Converters.Add(new ManifestConverter());
+        options.Converters.Add(new PartialArrayConverterFactory());
+        return options;
+    }
+
+    sealed record Document(string Schema, CoveragePerfReport Report, CoveragePerfVerdict Verdict,
+        ImmutableArray<CoveragePerfBlockSummary> Summaries);
+
+    // An exception may leave a raw sample's array uninitialized. Preserve that absence as null rather than
+    // throwing during publication or turning it into evidence that an empty result completed successfully.
+    sealed class PartialArrayConverterFactory : JsonConverterFactory
+    {
+        public override bool CanConvert(Type type) => type.IsGenericType && type.GetGenericTypeDefinition() == typeof(ImmutableArray<>);
+        public override JsonConverter CreateConverter(Type type, JsonSerializerOptions options) =>
+            (JsonConverter)Activator.CreateInstance(typeof(PartialArrayConverter<>).MakeGenericType(type.GetGenericArguments()), true)!;
+    }
+
+    sealed class PartialArrayConverter<T> : JsonConverter<ImmutableArray<T>>
+    {
+        public override ImmutableArray<T> Read(ref Utf8JsonReader reader, Type type, JsonSerializerOptions options) =>
+            reader.TokenType == JsonTokenType.Null ? default : ImmutableArray.CreateRange(JsonSerializer.Deserialize<T[]>(ref reader, options)!);
+        public override void Write(Utf8JsonWriter writer, ImmutableArray<T> value, JsonSerializerOptions options)
+        {
+            if (value.IsDefault) { writer.WriteNullValue(); return; }
+            writer.WriteStartArray();
+            foreach (T item in value) JsonSerializer.Serialize(writer, item, options);
+            writer.WriteEndArray();
+        }
+    }
+
+    sealed class ManifestConverter : JsonConverter<CoveragePerfManifest>
+    {
+        public override CoveragePerfManifest Read(ref Utf8JsonReader reader, Type type, JsonSerializerOptions options)
+        {
+            using var document = JsonDocument.ParseValue(ref reader);
+            return CoveragePerfManifest.Parse(document.RootElement.GetProperty("utf8Base64").GetBytesFromBase64());
+        }
+        public override void Write(Utf8JsonWriter writer, CoveragePerfManifest value, JsonSerializerOptions options)
+        {
+            writer.WriteStartObject();
+            writer.WriteBase64String("utf8Base64", value.Utf8.AsSpan());
+            writer.WritePropertyName("document");
+            writer.WriteRawValue(value.Utf8.AsSpan());
+            writer.WriteEndObject();
+        }
+    }
+}

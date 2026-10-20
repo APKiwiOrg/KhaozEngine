@@ -254,7 +254,12 @@ public sealed class CoveragePerfDriverTests
         Assert.Equal(0, run.Time.Reads);
         Assert.Empty(run.Publisher.Blocks);
         Assert.Empty(report.Blocks);
-        Assert.Equal(report, Assert.Single(run.Publisher.Units));
+        var candidate = Assert.Single(run.Publisher.Units);
+        Assert.False(candidate.ReturnedByRun);
+        Assert.False(candidate.FinalUnitPublished);
+        Assert.True(report.ReturnedByRun);
+        Assert.True(report.FinalUnitPublished);
+        Assert.Equal(report with { ReturnedByRun = false, FinalUnitPublished = false }, candidate);
     }
 
     [Theory]

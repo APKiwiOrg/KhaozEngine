@@ -19,6 +19,7 @@ internal static class CoveragePerfDriver
             manifest = CoveragePerfManifest.Parse(manifestJson);
             manifest.ValidateAuthorization(identity);
             if (clock.Frequency <= 0) throw new InvalidDataException("Clock frequency must be positive.");
+            identity = identity with { Execution = CoveragePerfExecutionIdentity.Capture(identity.Execution, clock, manifest) };
         }
         catch (Exception ex) when (ex is InvalidDataException or ArgumentException)
         {
@@ -38,7 +39,7 @@ internal static class CoveragePerfDriver
             foreach (var block in manifest.Blocks)
             {
                 deadline.Check("before factory");
-                var result = RunBlock(manifest, block, factory, clock, deadline);
+                var result = RunBlock(manifest, block, factory, clock, deadline) with { RunIdentity = identity };
                 blocks.Add(result);
                 failure.Add(result.Status, result.Errors);
                 try { publishBlock(result); }
@@ -187,10 +188,14 @@ internal static class CoveragePerfDriver
     static CoveragePerfReport PublishUnit(CoveragePerfReport report, Action<CoveragePerfReport> publish, Deadline? deadline)
     {
         // The callback receives a publication candidate. Only Run's returned report includes its outcome and deadline check.
+        bool published = true;
         try { publish(report); }
-        catch (Exception ex) { report = PublicationFailure(report, Error("unit publication", ex)); }
-        try { deadline?.Check("after unit publication"); }
-        catch (Exception ex) { report = PublicationFailure(report, Error("unit publication", ex)); }
+        catch (Exception ex) { published = false; report = PublicationFailure(report, Error("unit publication", ex)); }
+        report = report with { ReturnedByRun = true, FinalUnitPublished = published };
+        var verdict = CoveragePerfBudgets.Evaluate(report);
+        report = report with { CpuStatus = verdict.Cpu.Status, GpuStatus = verdict.Gpu.Status };
+        try { deadline?.Check("after unit publication and evaluation"); }
+        catch (Exception ex) { report = PublicationFailure(report, Error("unit publication", ex)) with { FinalUnitPublished = false }; }
         return report;
     }
 

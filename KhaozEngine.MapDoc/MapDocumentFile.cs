@@ -234,7 +234,7 @@ public static class MapDocumentFile
 
     static void WriteWhole(MapDocument writable, Stream stream, MapDocRegistry registry)
     {
-        using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true });
+        using var writer = new Utf8JsonWriter(stream, MapJsonTextOptions.IndentedWriter);
         JsonSerializer.Serialize(writer, writable, CreateOptions(registry, write: true));
     }
 
@@ -366,18 +366,15 @@ public static class MapDocumentFile
 
     static JsonSerializerOptions BuildOptions(MapDocRegistry registry, bool indented)
     {
-        var options = new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true,
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            ReadCommentHandling = JsonCommentHandling.Skip,
-            AllowTrailingCommas = true,
-            AllowOutOfOrderMetadataProperties = true,
-            WriteIndented = indented,
-            // Omit nulls on write: absent means "default" (ground-snap Y, all-layers filter, no $schema),
-            // and the JSON schema types $schema as string, so an emitted null would fail validation.
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        };
+        JsonSerializerOptions options = MapJsonTextOptions.CreateSerializer(indented);
+        options.PropertyNameCaseInsensitive = true;
+        options.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        options.ReadCommentHandling = JsonCommentHandling.Skip;
+        options.AllowTrailingCommas = true;
+        options.AllowOutOfOrderMetadataProperties = true;
+        // Omit nulls on write: absent means "default" (ground-snap Y, all-layers filter, no $schema),
+        // and the JSON schema types $schema as string, so an emitted null would fail validation.
+        options.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
         MapNativeJson.Configure(options);
         options.Converters.Add(new MapRationalJsonConverter());
         options.Converters.Add(new MapPatchKeyJsonConverter());

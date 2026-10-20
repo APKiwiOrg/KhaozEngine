@@ -223,7 +223,7 @@ internal static partial class MapTiledFile
     {
         using (var stream = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None))
         {
-            using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
+            using (var writer = new Utf8JsonWriter(stream, MapJsonTextOptions.IndentedWriter))
             {
                 body(writer);
                 writer.Flush();

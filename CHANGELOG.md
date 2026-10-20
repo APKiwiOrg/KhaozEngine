@@ -25,6 +25,7 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Add the immutable padded `MapFoliageRenderHandoff` for R8, preserving CPU sample matrices and selection
   while adding model extents and explicit motion padding. Residency, upload and drawing remain R8.
 - Fix `MapNativeWriteSet.Union` to preserve `LegacySpawns` (#1513).
+- MapDoc text saves now write LF line endings on every platform, so saved bytes and tiled digests match across operating systems (#1518).
 
 ## 21.8.0
 

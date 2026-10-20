@@ -53,6 +53,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             {
                 _passes.EndPass();
                 _encoders.EnsureNoEncoder();
+                EmitTimestampEnd();
                 _sealed = true;
             }
             catch
@@ -63,6 +64,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             finally
             {
                 _recording = false;
+                ClearTimestampEnd();
             }
         }
 

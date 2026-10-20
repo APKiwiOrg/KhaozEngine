@@ -23227,8 +23227,8 @@ retains one unresolved batch, and a new begin clears the previous batch only aft
 Invalid count or index bounds throw `ArgumentOutOfRangeException`. Missing, duplicate or out-of-order writes
 and invalid lifecycle operations throw `InvalidOperationException`.
 
-For completed-frame GPU timing, also require `commandList is IGpuCommandListTimestampEnd`. Vulkan
-implements this optional interface. A list without it cannot prove completed-frame time, because End can
+For completed-frame GPU timing, also require `commandList is IGpuCommandListTimestampEnd`. Vulkan, Direct3D 11
+and Metal implement this optional interface. A list without it cannot prove completed-frame time, because End can
 emit later clears or barriers. Begin the batch and write every index before the last, then call
 `FinishTimestampsOnEnd(pool, count - 1)` while the list is still recording. Arming validates the current
 list and recording, the same-device pool, the last batch index and every earlier write before storing

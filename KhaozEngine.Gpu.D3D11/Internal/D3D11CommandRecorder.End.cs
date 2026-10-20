@@ -15,12 +15,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             try
             {
+                EmitTimestampEnd();
                 _emitter.End();
                 IsSealed = true;
             }
             finally
             {
                 _recording = false;
+                ClearTimestampEnd();
                 if (!IsSealed)
                 {
                     _boundSwapchain = false;

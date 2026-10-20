@@ -284,6 +284,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // The sealed-but-unsubmitted buffer goes back BEFORE the new one is taken, so a list re-Begun in a
             // loop holds one buffer rather than accumulating one per iteration against the queue's own maximum.
             ReleaseHeldBuffer();
+            BeginTimestampRecording();
 
             IntPtr buffer = _buffers.Acquire();
             if (buffer == IntPtr.Zero)
@@ -449,6 +450,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (_disposed) return;
             _disposed = true;
+            ClearTimestampEnd();
             _recording = false;
 
             // BEFORE the buffer goes back, and through the scope. See this member's remarks: an encoder dropped

@@ -15,6 +15,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         readonly bool _stageBoundary;
         ulong _cpuStart, _gpuStart, _eventValue;
         IntPtr _recordingBuffer;
+        MetalCommandList? _recordingList;
+        ulong _recordingId;
         double _period;
         bool _ended, _disposed;
         GpuTimestampStatus? _resolved;
@@ -42,7 +44,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 throw new ArgumentException("The timestamp pool belongs to another Metal device.", "pool");
         }
 
-        internal void Begin(IntPtr commandBuffer, uint count)
+        internal void Begin(IntPtr commandBuffer, uint count, MetalCommandList? list = null, ulong recordingId = 0)
         {
             RequireLive();
             _state.Begin(count);
@@ -50,7 +52,18 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _ended = false;
             _period = 0d;
             _recordingBuffer = commandBuffer;
+            _recordingList = list;
+            _recordingId = recordingId;
             _api.SampleClocks(out _cpuStart, out _gpuStart);
+        }
+
+        internal void ValidateTimestampEnd(MetalCommandList list, ulong recordingId, IntPtr commandBuffer, uint finalIndex)
+        {
+            RequireLive();
+            if (!ReferenceEquals(_recordingList, list) || _recordingId != recordingId)
+                throw new InvalidOperationException("The timestamp pool must be begun on this list in its current recording.");
+            RequireRecording(commandBuffer);
+            _state.ValidateTimestampEnd(finalIndex);
         }
 
         internal void Write(IntPtr commandBuffer, uint index)

@@ -648,6 +648,14 @@ then the immediate emitter calls `Begin(disjoint)`, `End(timestamp[index])` for 
 reference list until reset or recorder disposal. It makes no native query call before replay. Counting
 and trace emitters preserve the operations and their order too.
 
+`IGpuCommandListTimestampEnd.FinishTimestampsOnEnd(pool, count - 1)` reserves the batch's last query
+for ordinary command-list End. The same-device batch must have begun on this list in this recording,
+with every earlier index written and the final index unwritten. Only one tail can be armed. Manual
+write or batch end for its pool is then refused. End emits the final timestamp and disjoint end after
+every recorded opcode and before emitter End on both drivers. Unarmed End keeps its existing program.
+Failed End or disposal clears only the list's tail. Its Recording or Pending pool stays quarantined
+through teardown without reset or reuse. Arming and the tail add no submit, flush, wait or allocation.
+
 `TryResolve` uses `Monitor.TryEnter` on the device's immediate-context lock. Contention returns Pending.
 It polls the supplied completion fence before issuing one non-flushing `GetData` per required query,
 with `D3D11_ASYNC_GETDATA_DONOTFLUSH` (1). Unavailable queries remain Pending. Disjoint data or zero

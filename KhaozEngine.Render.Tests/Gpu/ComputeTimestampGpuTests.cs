@@ -59,6 +59,49 @@ void main() {
         [GpuFact]
         public void RepeatedResolveReturnsTheSameResult() => VerifyPass(repeatResolve: true);
 
+        [GpuFact]
+        public void CompletedFrameTailIsLastAndTicksAreNonDecreasing()
+        {
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+            IGpuDevice device = gpu.GpuDevice;
+            IGpuResourceFactory factory = device.Factory;
+            output.WriteLine($"backend: {device.Backend} ({device.Capabilities.DeviceName})");
+            if (!device.Capabilities.SupportsTimestamps)
+            {
+                output.WriteLine("timestamp tail branch: unsupported (pool creation must throw)");
+                Assert.Throws<NotSupportedException>(() => factory.CreateTimestampPool(3));
+                return;
+            }
+
+            using IGpuTimestampPool pool = factory.CreateTimestampPool(3);
+            using IGpuFence completion = factory.CreateFence();
+            using IGpuTexture target = factory.CreateTexture(GpuTextureDescription.Texture2D(
+                Size, Size, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget));
+            using IGpuFramebuffer framebuffer = factory.CreateFramebuffer(null, target);
+            using IGpuCommandList commands = factory.CreateCommandList();
+            var tail = Assert.IsAssignableFrom<IGpuCommandListTimestampEnd>(commands);
+            commands.Begin();
+            commands.BeginTimestamps(pool, 3);
+            commands.WriteTimestamp(pool, 0);
+            commands.SetFramebuffer(framebuffer);
+            commands.ClearColorTarget(0, Color.Black);
+            commands.WriteTimestamp(pool, 1);
+            tail.FinishTimestampsOnEnd(pool, 2);
+            // End still owes the pending clear, then the final marker and batch end.
+            commands.End();
+            ulong[] ticks = { 91, 92, 93, 94 };
+            Assert.Equal(GpuTimestampStatus.Pending, ResolveChecked(pool, completion, ticks, out _));
+            device.Submit(commands, completion);
+            device.WaitForIdle(); // One bounded correctness drain, outside recording and resolution.
+            Assert.Equal(GpuTimestampStatus.Ready, ResolveChecked(pool, completion, ticks, out double period));
+            Assert.Equal(0ul, ticks[0]);
+            Assert.True(ticks[1] >= ticks[0]);
+            Assert.True(ticks[2] >= ticks[1]);
+            Assert.Equal(94ul, ticks[3]);
+            Assert.True(double.IsFinite(period) && period > 0d);
+            output.WriteLine("timestamp tail branch: Ready, ordered ticks, tail last");
+        }
+
         void VerifyPass(bool repeatResolve)
         {
             using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();

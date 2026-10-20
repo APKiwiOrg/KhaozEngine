@@ -15,6 +15,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         readonly ulong[] _values;
         readonly object _disjoint;
         object? _recording;
+        ulong _recordingId;
         bool _ended, _disposed;
         GpuTimestampStatus? _resolved;
         double _period;
@@ -54,15 +55,25 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             if (!ReferenceEquals(_fences, fences)) throw new ArgumentException("Use a timestamp pool from this Direct3D 11 device.", "pool");
         }
 
-        internal void BeginRecording(object recording, uint count)
+        internal void BeginRecording(object recording, uint count, ulong recordingId = 0)
         {
             RequireLive();
             _state.Begin(count);
             _recording = recording;
+            _recordingId = recordingId;
             _ended = false;
             _resolved = null;
             Frequency = 0;
             _period = 0;
+        }
+
+        internal void ValidateTimestampEnd(object recording, ulong recordingId, uint finalIndex)
+        {
+            RequireLive();
+            if (!ReferenceEquals(_recording, recording) || _recordingId != recordingId)
+                throw new InvalidOperationException("The timestamp pool must be begun on this list in its current recording.");
+            RequireRecording(recording);
+            _state.ValidateTimestampEnd(finalIndex);
         }
 
         internal void WriteRecording(object recording, uint index)

@@ -8,13 +8,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         public void BeginTimestamps(IGpuTimestampPool pool, uint count)
         {
             D3D11TimestampPool native = RequireTimestampPool(pool);
-            native.BeginRecording(this, count);
+            native.BeginRecording(this, count, _timestampRecordingId);
             _emitter.BeginTimestamps(pool, count);
         }
 
         public void WriteTimestamp(IGpuTimestampPool pool, uint index)
         {
             D3D11TimestampPool native = RequireTimestampPool(pool);
+            RefuseArmedTimestampPool(native);
             native.WriteRecording(this, index);
             _emitter.WriteTimestamp(pool, index);
         }
@@ -22,6 +23,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         public void EndTimestamps(IGpuTimestampPool pool)
         {
             D3D11TimestampPool native = RequireTimestampPool(pool);
+            RefuseArmedTimestampPool(native);
             native.EndRecording(this);
             _emitter.EndTimestamps(pool);
         }

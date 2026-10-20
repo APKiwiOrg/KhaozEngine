@@ -322,6 +322,15 @@ advance the device completion timeline. End encodes
 `resolveCounters:inRange:destinationBuffer:destinationOffset:` into the fixed shared result buffer.
 It does not call the allocating CPU `resolveCounterRange:` selector.
 
+`IGpuCommandListTimestampEnd.FinishTimestampsOnEnd(pool, count - 1)` arms the final query for ordinary
+command-list End. Validation requires this device's batch begun on this list in this recording, every
+earlier index written and the final index unwritten. Only one tail can be armed. Manual write or batch
+end for its pool is then refused. End closes the pass, flushes pending clears and closes any encoder,
+then writes the final marker and resolves the batch before publishing its seal. Dedicated marker and
+resolve blits close before sealing. Unarmed End keeps its existing native order. Failed End or disposal
+clears only the list's tail. Its Recording or Pending pool stays quarantined through teardown without
+reset or reuse. Arming and the tail add no submit, CPU wait, flush or per-frame allocation.
+
 Begin samples the correlated CPU nanosecond and GPU clocks. Once the completion fence signals,
 resolve samples them again and derives nanoseconds per tick from the two deltas. Both terminal status
 and calibrated results remain cached until Begin. Invalid clock spans, out-of-interval or reversed

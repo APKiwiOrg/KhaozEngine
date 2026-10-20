@@ -393,7 +393,7 @@ What it owns today:
   `IGpuTimestampPool` records one batch with `BeginTimestamps(pool, count)`, increasing unique
   `WriteTimestamp(pool, index)` calls from 0 and `EndTimestamps(pool)`. They only encode work, never submit.
   Completed-frame proof also requires the optional `IGpuCommandListTimestampEnd` interface, implemented by
-  Vulkan. After writing every earlier index, call `FinishTimestampsOnEnd(pool, count - 1)`. The ordinary End
+  Vulkan, Direct3D 11 and Metal. After writing every earlier index, call `FinishTimestampsOnEnd(pool, count - 1)`. The ordinary End
   writes that last marker and ends the batch after all GPU finalization and before the native seal. Manual
   write or end for the armed pool is refused. Lists without the interface cannot prove completed-frame time.
   Failed End and abandonment clear the tail without resetting the pool, which stays quarantined until teardown.

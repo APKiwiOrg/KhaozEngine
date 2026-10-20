@@ -92,6 +92,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                     + "the recording to zero, so a second call would silently discard everything recorded since "
                     + "the first. Call End first.");
 
+            BeginTimestampRecording();
             _recording = true;
             IsSealed = false;
             _boundSwapchain = false;
@@ -325,6 +326,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             if (_disposed) return;
             _disposed = true;
+            ClearTimestampEnd();
             _recording = false;
             IsSealed = false;
             if (_emitter is D3D11StreamEmitter stream) stream.Stream.Reset();

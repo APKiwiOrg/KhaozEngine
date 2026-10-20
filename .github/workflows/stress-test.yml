@@ -62,13 +62,38 @@ on:
         required: false
         default: ''
         type: string
+      coverage-perf-cpu:
+        description: One separately approved native Vulkan CPU measurement on lavapipe
+        required: false
+        default: false
+        type: boolean
+      coverage-perf-unit:
+        description: Exact separately approved performance unit ID
+        required: false
+        default: ''
+        type: string
+      coverage-perf-manifest-sha256:
+        description: SHA-256 of the exact approved manifest bytes
+        required: false
+        default: ''
+        type: string
+      coverage-perf-workload-sha:
+        description: Exact approved workload commit SHA
+        required: false
+        default: ''
+        type: string
+      coverage-perf-preset:
+        description: Approved CPU preset, C0 smoke or C1 proof
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
 
 jobs:
   stress:
-    uses: APKiwiOrg/ci-workflows/.github/workflows/stress-test.yml@1a176109d8598a9991de98101d6d29b51d4331c9 # per-run artifact directories
+    uses: APKiwiOrg/ci-workflows/.github/workflows/stress-test.yml@a0f13d51ec0c4ba0ceaa65caf86b2875fca35004 # opt-in coverage CPU performance proofs
     with:
       project: ${{ inputs.project }}
       filter: ${{ inputs.filter }}
@@ -78,5 +103,10 @@ jobs:
       support-cost: ${{ inputs.support-cost }}
       build-target: ${{ inputs.build-target }}
       artifact-env: ${{ inputs.artifact-env }}
+      coverage-perf-cpu: ${{ inputs.coverage-perf-cpu }}
+      coverage-perf-unit: ${{ inputs.coverage-perf-unit }}
+      coverage-perf-manifest-sha256: ${{ inputs.coverage-perf-manifest-sha256 }}
+      coverage-perf-workload-sha: ${{ inputs.coverage-perf-workload-sha }}
+      coverage-perf-preset: ${{ inputs.coverage-perf-preset }}
     secrets:
       packages-token: ${{ secrets.GITHUB_TOKEN }}

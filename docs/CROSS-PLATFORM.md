@@ -937,6 +937,54 @@ PASSED:
 The fast inner-loop CI (`.github/workflows/ci.yml`: build/test/pack/publish, GPU tests skipped) is separate and
 untouched.
 
+## Separately approved coverage performance
+
+`gpu-hosted-bench.yml` is a manual, paid NVIDIA T4 bench with Windows Direct3D 11, Windows Vulkan and
+Linux Vulkan legs. An empty `coverage-perf-unit` retains its existing filtered Render.Tests behavior,
+including the default filter and 60-minute limit. GRID setup, the NVIDIA-only Linux Vulkan ICD and
+the adapter checks still run before any measurement.
+
+A separately approved coverage unit selects exactly one leg with `legs`, never `all`. Supply
+`coverage-perf-unit` (1 to 64 lowercase ASCII letters, digits or hyphens), `coverage-perf-manifest-sha256`
+(64 lowercase hex) and `coverage-perf-workload-sha` (40 lowercase hex). Leave `filter` at its default.
+The job checks out `ref`, records `git rev-parse HEAD` and refuses a workload mismatch before building.
+It records `nvidia-smi`, native PCI identity, driver, compute and timestamp capabilities before building
+the outside-solution `tools/EquipmentCoverage.Perf.Tests/EquipmentCoverage.Perf.Tests.csproj` in Release.
+The fixed selection is
+`FullyQualifiedName=EquipmentCoverage.Perf.Tests.CoveragePerfTests.Measure_authorized_unit&Category=CoveragePerformance`.
+No caller filter extends that selection. The measurement job is capped at 30 minutes.
+
+`stress-test.yml` provides the CPU-only preparation route through the pinned shared workflow. Set
+`coverage-perf-cpu=true`, `coverage-perf-preset=C0` or `C1`, the same three identity inputs,
+`project=tools/EquipmentCoverage.Perf.Tests/EquipmentCoverage.Perf.Tests.csproj`, the same `build-target`,
+`configuration=Release`, `iterations=1`, `load=0`, `support-cost=false`, an empty `filter` and
+`artifact-env=KE_COVERAGE_PERF_REPORTS`. It installs Vulkan and Mesa, discovers lavapipe's ICD from the
+package file list and selects software Vulkan explicitly. C0 has a 20-minute job limit and C1 has 30.
+This route proves CPU preparation only. The existing stress behavior stays unchanged when the switch
+is false and the four coverage strings are empty.
+
+Before either dispatch, root obtains exact owner approval for that single run, commits its manifest
+under the Perf project's `authorized/` directory and binds the unit, exact byte hash, workload SHA,
+workflow SHA, run ID and attempt to the approval. Reruns need new approval. Harness implementation and
+workflow enablement authorize no measurement. The GPU runner group admits this workflow from main only,
+so root first lands a separately reviewed workflow bootstrap, then dispatches that workflow on main
+with the approved feature workload in `ref`. The shared CPU workflow also needs its separately approved
+one-iteration caller proof before its pin is retained.
+
+The entrypoint skips when `KE_COVERAGE_PERF_UNIT` is unset. With a selection it reads only that exact
+manifest, verifies its SHA-256 and actual checkout SHA, and refuses any approval or route mismatch.
+Gate verdicts are reported rather than asserted. A completed above-budget result still passes the
+entrypoint. Refused or failed execution fails with its reason. JSON and Markdown are published from
+the driver's returned report through temporary files and atomic renames. Candidate reports never
+become final evidence. The final write is also checked against the cooperative deadline.
+
+Both hosted routes require exactly one passed executed unit, zero skips and finalized matching JSON
+and nonempty Markdown. The GPU route additionally checks returned and publication flags and the two
+dispatch hashes. An `always()` upload retains JSON, Markdown, TRX and logs under `gpu-hosted-bench-<leg>`
+or `stress-artifacts`, including setup identity and workload SHA on the GPU route. A hard job timeout
+can still prevent an upload. Ordinary solution, selective CI and GPU correctness discovery never
+select the Perf project. No executable authorization ships with the harness.
+
 ## Authoring shaders that pass on all three backends
 
 The GLSL shaders cross-compile through SPIRV-Cross to MSL (Metal), HLSL→FXC (Direct3D11), and SPIR-V (Vulkan).

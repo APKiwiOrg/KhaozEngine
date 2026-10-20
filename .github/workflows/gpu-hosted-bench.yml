@@ -40,6 +40,21 @@ on:
         type: choice
         options: [all, windows-d3d11, windows-vulkan, linux-vulkan]
         default: all
+      coverage-perf-unit:
+        description: Exact separately approved performance unit, empty keeps the filtered bench
+        required: false
+        default: ''
+        type: string
+      coverage-perf-manifest-sha256:
+        description: SHA-256 of the approved manifest bytes, 64 lowercase hex
+        required: false
+        default: ''
+        type: string
+      coverage-perf-workload-sha:
+        description: Approved checkout SHA, 40 lowercase hex
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -58,7 +73,29 @@ jobs:
         shell: bash
         env:
           LEGS: ${{ inputs.legs }}
+          FILTER: ${{ inputs.filter }}
+          COVERAGE_PERF_UNIT: ${{ inputs.coverage-perf-unit }}
+          COVERAGE_PERF_MANIFEST_SHA256: ${{ inputs.coverage-perf-manifest-sha256 }}
+          COVERAGE_PERF_WORKLOAD_SHA: ${{ inputs.coverage-perf-workload-sha }}
+          LC_ALL: C
         run: |
+          if [ -n "$COVERAGE_PERF_UNIT" ]; then
+            case "$LEGS" in windows-d3d11|windows-vulkan|linux-vulkan) ;; *) echo "::error::coverage performance requires one named GPU leg, never all"; exit 1 ;; esac
+            if [ "$FILTER" != 'FullyQualifiedName~GpuCapabilitiesDiagTests' ]; then
+              echo "::error::coverage performance refuses a non-default free-form filter"; exit 1
+            fi
+            if ! [[ "$COVERAGE_PERF_UNIT" =~ ^[a-z0-9-]{1,64}$ ]]; then
+              echo "::error::coverage-perf-unit must be 1 to 64 lowercase ASCII letters, digits or hyphens"; exit 1
+            fi
+            if ! [[ "$COVERAGE_PERF_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
+              echo "::error::coverage-perf-manifest-sha256 must be 64 lowercase hex characters"; exit 1
+            fi
+            if ! [[ "$COVERAGE_PERF_WORKLOAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::coverage-perf-workload-sha must be 40 lowercase hex characters"; exit 1
+            fi
+          elif [ -n "$COVERAGE_PERF_MANIFEST_SHA256$COVERAGE_PERF_WORKLOAD_SHA" ]; then
+            echo "::error::coverage performance hashes require a selected unit"; exit 1
+          fi
           all='[{"leg":"windows-d3d11","runner":"gpu-t4-windows","backend":"direct3d11-native"},{"leg":"windows-vulkan","runner":"gpu-t4-windows","backend":"vulkan-native"},{"leg":"linux-vulkan","runner":"gpu-t4-linux","backend":"vulkan-native"}]'
           if [ "$LEGS" = "all" ]; then picked="$all"; else picked=$(echo "$all" | jq -c --arg l "$LEGS" '[.[] | select(.leg == $l)]'); fi
           echo "matrix={\"include\":$picked}" >> "$GITHUB_OUTPUT"
@@ -67,7 +104,7 @@ jobs:
     needs: legs
     name: ${{ matrix.leg }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
+    timeout-minutes: ${{ inputs.coverage-perf-unit != '' && 30 || 60 }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.legs.outputs.matrix) }}
@@ -78,11 +115,28 @@ jobs:
       KE_VULKAN_DEVICE: discrete
       KE_VULKAN_REQUIRED: ${{ matrix.backend == 'vulkan-native' && '1' || '' }}
       FILTER: ${{ inputs.filter }}
+      KE_COVERAGE_PERF_UNIT: ${{ inputs.coverage-perf-unit }}
+      KE_COVERAGE_PERF_MANIFEST_SHA256: ${{ inputs.coverage-perf-manifest-sha256 }}
+      KE_COVERAGE_PERF_WORKLOAD_SHA: ${{ inputs.coverage-perf-workload-sha }}
+      KE_COVERAGE_PERF_LEG: ${{ matrix.leg }}
       DEVICE_REPORT: FullyQualifiedName~GpuCapabilitiesDiagTests.LiveDeviceReportsNameAndSamplerFeatures
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
+
+      - name: Verify coverage workload checkout
+        if: inputs.coverage-perf-unit != ''
+        shell: pwsh
+        env:
+          KE_COVERAGE_PERF_REPORTS: ${{ runner.temp }}/coverage-perf/${{ matrix.leg }}
+        run: |
+          "KE_COVERAGE_PERF_REPORTS=$env:KE_COVERAGE_PERF_REPORTS" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          New-Item -ItemType Directory -Force $env:KE_COVERAGE_PERF_REPORTS | Out-Null
+          $sha = (& git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot verify workload checkout SHA' }
+          $sha | Set-Content (Join-Path $env:KE_COVERAGE_PERF_REPORTS 'workload-sha.txt')
+          if ($sha -cne $env:KE_COVERAGE_PERF_WORKLOAD_SHA) { throw 'Checked-out workload SHA differs from coverage-perf-workload-sha' }
 
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
@@ -177,8 +231,49 @@ jobs:
           line=$(echo "$report" | grep -m1 "device='" || true)
           if ! echo "$line" | grep -Eq 'NVIDIA|Tesla'; then echo "::error::$KE_GRAPHICS_BACKEND is not on the NVIDIA GPU: $line"; exit 1; fi
 
+      - name: Record coverage native identity
+        if: inputs.coverage-perf-unit != ''
+        shell: pwsh
+        run: |
+          & nvidia-smi --query-gpu=name,pci.device_id,driver_version --format=csv 2>&1 | Tee-Object -FilePath (Join-Path $env:KE_COVERAGE_PERF_REPORTS 'nvidia-smi.log')
+          if ($LASTEXITCODE -ne 0) { throw 'nvidia-smi identity failed' }
+          & dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName=KhaozEngine.Tests.Gpu.CoveragePerfDeviceFactsGpuTests.Hosted_device_reports_native_T4_identity_and_timestamp_capability' --logger 'console;verbosity=detailed' --logger 'trx;LogFileName=device.trx' --results-directory $env:KE_COVERAGE_PERF_REPORTS 2>&1 | Tee-Object -FilePath (Join-Path $env:KE_COVERAGE_PERF_REPORTS 'device-report.log')
+          if ($LASTEXITCODE -ne 0) { throw 'Native device identity or capability check failed' }
+          [xml]$trx = Get-Content -Raw (Join-Path $env:KE_COVERAGE_PERF_REPORTS 'device.trx')
+          $counts = $trx.TestRun.ResultSummary.Counters
+          if ($counts.total -ne '1' -or $counts.executed -ne '1' -or $counts.passed -ne '1' -or $counts.failed -ne '0' -or $counts.notExecuted -ne '0') { throw 'Native capability check must execute exactly once with zero skips' }
+
+      - name: Build coverage performance project
+        if: inputs.coverage-perf-unit != ''
+        shell: pwsh
+        run: |
+          & dotnet build tools/EquipmentCoverage.Perf.Tests/EquipmentCoverage.Perf.Tests.csproj -c Release 2>&1 | Tee-Object -FilePath (Join-Path $env:KE_COVERAGE_PERF_REPORTS 'build.log')
+          if ($LASTEXITCODE -ne 0) { throw 'Performance project build failed' }
+
+      - name: Measure authorized coverage unit
+        if: inputs.coverage-perf-unit != ''
+        shell: pwsh
+        run: |
+          $fixedFilter = 'FullyQualifiedName=EquipmentCoverage.Perf.Tests.CoveragePerfTests.Measure_authorized_unit&Category=CoveragePerformance'
+          & dotnet test tools/EquipmentCoverage.Perf.Tests/EquipmentCoverage.Perf.Tests.csproj -c Release --no-build --filter $fixedFilter --logger 'console;verbosity=detailed' --logger 'trx;LogFileName=measurement.trx' --results-directory $env:KE_COVERAGE_PERF_REPORTS 2>&1 | Tee-Object -FilePath (Join-Path $env:KE_COVERAGE_PERF_REPORTS 'measurement.log')
+          if ($LASTEXITCODE -ne 0) { throw 'Coverage measurement test failed' }
+          [xml]$trx = Get-Content -Raw (Join-Path $env:KE_COVERAGE_PERF_REPORTS 'measurement.trx')
+          $counters = @($trx.SelectNodes('//*[local-name()="Counters"]'))
+          if ($counters.Count -ne 1) { throw 'TRX requires exactly one Counters element' }
+          $counts = $counters[0]
+          if ($counts.total -ne '1' -or $counts.executed -ne '1' -or $counts.passed -ne '1' -or $counts.failed -ne '0' -or $counts.notExecuted -ne '0') { throw 'Measurement requires exactly one passed executed test and zero skips' }
+          $tests = @($trx.SelectNodes('//*[local-name()="UnitTestResult"]'))
+          if ($tests.Count -ne 1 -or $tests[0].outcome -ne 'Passed') { throw 'TRX requires exactly one Passed result' }
+          $json = Join-Path $env:KE_COVERAGE_PERF_REPORTS ($env:KE_COVERAGE_PERF_UNIT + '.json')
+          $markdown = Join-Path $env:KE_COVERAGE_PERF_REPORTS ($env:KE_COVERAGE_PERF_UNIT + '.md')
+          if (!(Test-Path $json -PathType Leaf) -or (Get-Item $json).Length -eq 0) { throw 'Final JSON is missing or empty' }
+          if (!(Test-Path $markdown -PathType Leaf) -or (Get-Item $markdown).Length -eq 0) { throw 'Final Markdown is missing or empty' }
+          $document = Get-Content -Raw $json | ConvertFrom-Json -ErrorAction Stop
+          if ($document.schema -cne 'khaozengine.coverage-perf-report/1' -or $document.report.identity.unitId -cne $env:KE_COVERAGE_PERF_UNIT -or $document.report.returnedByRun -ne $true -or $document.report.finalUnitPublished -ne $true -or $document.report.status -cne 'Completed') { throw 'Coverage report is unfinalized or does not match the approved unit' }
+          if ($document.report.manifestSha256 -cne $env:KE_COVERAGE_PERF_MANIFEST_SHA256 -or $document.report.identity.workloadSha -cne $env:KE_COVERAGE_PERF_WORKLOAD_SHA) { throw 'Final report hashes differ from the dispatch' }
+
       - name: Test (Windows)
-        if: runner.os == 'Windows'
+        if: inputs.coverage-perf-unit == '' && runner.os == 'Windows'
         shell: powershell
         run: |
           $ErrorActionPreference = 'Continue'
@@ -186,7 +281,7 @@ jobs:
           exit $LASTEXITCODE
 
       - name: Test (Linux)
-        if: runner.os == 'Linux'
+        if: inputs.coverage-perf-unit == '' && runner.os == 'Linux'
         shell: bash
         run: |
           set -o pipefail
@@ -197,5 +292,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: gpu-hosted-bench-${{ matrix.leg }}
-          path: bench-output.log
+          path: |
+            bench-output.log
+            ${{ runner.temp }}/coverage-perf
           if-no-files-found: warn

@@ -527,7 +527,7 @@ public sealed class CoverageCostContractTests
         return root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }).ReplaceLineEndings(newline);
     }
 
-    static string ActiveSelectionText(string text)
+    internal static string ActiveSelectionText(string text)
     {
         using var reader = new StringReader(text);
         var activeLines = new List<string>();

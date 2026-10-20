@@ -23177,6 +23177,24 @@ Frozen exact captures and the pinned reference manifest remain immutable oracle 
 cost authorizations reject before parsing, clocks, devices, fixtures or report creation. Their report models
 and fake accounting tests remain historical evidence. GPU timing needs fresh approval and separate instrumentation.
 
+### Opt-in equipment coverage performance
+
+The current performance harness lives in the outside-solution
+`tools/EquipmentCoverage.Perf.Tests/EquipmentCoverage.Perf.Tests.csproj`. It is separate from retired
+CPU cost authorizations and ordinary correctness tests. Its single `CoveragePerformance` fact skips
+unless `KE_COVERAGE_PERF_UNIT` selects an exact freshly approved manifest. It verifies the manifest
+bytes against `KE_COVERAGE_PERF_MANIFEST_SHA256` and the actual checkout against
+`KE_COVERAGE_PERF_WORKLOAD_SHA`. `GITHUB_SHA` identifies the workflow and cannot substitute for the
+workload checkout when the workflow tests another ref.
+
+Each run or rerun needs its own owner approval before root commits the manifest. Manual
+`gpu-hosted-bench.yml` selects one T4 backend leg and keeps GRID, NVIDIA ICD and native identity checks.
+Manual `stress-test.yml` selects the shared workflow's explicit lavapipe CPU route with one iteration,
+no load and Release. Both require one executed unit, zero skips and retained JSON, Markdown, TRX and
+logs. Run completion is separate from CPU and GPU gate verdicts. See
+[the dispatch inputs and approval sequence](CROSS-PLATFORM.md#separately-approved-coverage-performance).
+No version bump, workflow enablement or completed harness grants permission to measure.
+
 ### Sampled equipment coverage verification
 
 Developer construction diagnostics default to off. Select one explicit stable actor key before opening the

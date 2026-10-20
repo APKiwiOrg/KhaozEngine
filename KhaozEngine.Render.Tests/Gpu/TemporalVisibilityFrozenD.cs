@@ -11,7 +11,9 @@ namespace KhaozEngine.Tests.Gpu;
 /// <c>ShaderSources.TemporalAccumulate.cs</c>. The cost cut (plan Task 7f) must keep every output and every observable
 /// decision bit-identical to this text, so it is the oracle the equivalence and resolve-level facts compare against.
 /// Never edit the three texts or their pins. <see cref="ToD"/> finds the production pieces through anchors, which may
-/// move with production.
+/// move with production. It also restores what the current mask (Task 7f.3) changed in the first pass, the surface and
+/// the fused entry, frozen in <see cref="TemporalVisibilityFrozenDMask"/>, so a D program is the whole program D
+/// shipped.
 /// </summary>
 internal static class TemporalVisibilityFrozenD
 {
@@ -104,9 +106,12 @@ bool temporalVisibilityChange(vec2 uv, ivec2 centre, ivec2 last,
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text.Replace("\r\n", "\n")))).ToLowerInvariant();
 
     /// <summary>A production fragment program as D: the production visibility block, call-site block and hold release
-    /// replaced by the frozen texts. A program that holds none of them, such as the split's first pass or the depth
-    /// store, comes back unchanged. One that holds only some of them, or holds one twice, throws, so a production
-    /// change cannot leave the D program half rewritten.</summary>
+    /// replaced by the frozen texts, then the current mask's changes undone by
+    /// <see cref="TemporalVisibilityFrozenDMask.Restore"/>. A program that holds none of them, such as the depth store,
+    /// comes back unchanged, and the split's first pass takes only the mask restore. One that holds only some of the
+    /// release pieces, or holds one twice, or holds the release without the mask's pieces, throws, so a production
+    /// change cannot leave the D program half rewritten. Every program the renderer compiles comes out as the program
+    /// D shipped, which <c>TemporalVisibilityFrozenDTests</c> holds to <see cref="TemporalVisibilityFrozenDMask.ProgramSha256"/>.</summary>
     internal static string ToD(string program) => Rewrite(program, VisibilityGlsl, CallSiteGlsl, HoldReleaseGlsl);
 
     /// <summary>As <see cref="ToD"/> with the call site's text transformed first, for mutant controls that prove a
@@ -114,14 +119,17 @@ bool temporalVisibilityChange(vec2 uv, ivec2 centre, ivec2 last,
     internal static string ToMutantD(string program, Func<string, string> callSite)
         => Rewrite(program, VisibilityGlsl, callSite(CallSiteGlsl), HoldReleaseGlsl);
 
-    /// <summary>D's helper with its two functions renamed to <paramref name="prefix"/>VisibilityChange and
-    /// <paramref name="prefix"/>VisibilityFiniteDepth, so one program can hold D beside the production helper. Only the
-    /// names change.</summary>
-    internal static string Renamed(string prefix) => VisibilityGlsl
-        .Replace("temporalVisibilityChange", prefix + "VisibilityChange", StringComparison.Ordinal)
-        .Replace("temporalVisibilityFiniteDepth", prefix + "VisibilityFiniteDepth", StringComparison.Ordinal);
-
     static string Rewrite(string program, string visibility, string callSite, string holdRelease)
+    {
+        string released = RewriteRelease(program, visibility, callSite, holdRelease);
+        string restored = TemporalVisibilityFrozenDMask.Restore(released);
+        if (!ReferenceEquals(released, program) && ReferenceEquals(restored, released))
+            throw new InvalidOperationException("the D rewrite found the visibility release without the current mask's "
+                + "pieces");
+        return restored;
+    }
+
+    static string RewriteRelease(string program, string visibility, string callSite, string holdRelease)
     {
         int helpers = Count(program, ShaderSources.TemporalVisibilityGlsl);
         int firsts = Count(program, ProductionCallSiteFirstLine);

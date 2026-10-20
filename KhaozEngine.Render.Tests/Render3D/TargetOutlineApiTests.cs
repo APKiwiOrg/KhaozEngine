@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
@@ -8,6 +9,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Render3D;
 
+[Collection("AllocSensitive")]
 public sealed class TargetOutlineApiTests
 {
     static readonly GpuOutputDescription Outputs = new(null, GpuPixelFormat.R8G8B8A8UNorm);
@@ -88,6 +90,49 @@ public sealed class TargetOutlineApiTests
         Assert.Equal(MeshOutlineOcclusion.None, scene.MeshOutlineOcclusionAt(through.Index));
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             scene.BeginMeshOutline(Color.White, 1.25f, (MeshOutlineOcclusion)2));
+    }
+
+    [Fact]
+    public void Every_defined_occlusion_is_accepted_and_an_undefined_value_is_rejected()
+    {
+        using var device = new FakeGpuDevice();
+        using var scene = new Scene3D(device, Outputs);
+        scene.Begin();
+        MeshOutlineOcclusion[] defined = Enum.GetValues<MeshOutlineOcclusion>();
+
+        foreach (MeshOutlineOcclusion occlusion in defined)
+        {
+            MeshOutlineGroup group = scene.BeginMeshOutline(Color.White, 1.25f, occlusion);
+            Assert.Equal(occlusion, scene.MeshOutlineOcclusionAt(group.Index));
+        }
+        foreach (MeshOutlineOcclusion undefined in new[] { defined.Max() + 1, (MeshOutlineOcclusion)(-1) })
+        {
+            var failure = Assert.Throws<ArgumentOutOfRangeException>(() =>
+                scene.BeginMeshOutline(Color.White, 1.25f, undefined));
+            Assert.Equal("occlusion", failure.ParamName);
+            Assert.Equal(undefined, failure.ActualValue);
+            Assert.StartsWith("unknown outline occlusion.", failure.Message);
+        }
+    }
+
+    // Engine issue 1515. A collection can reclaim the runtime's enum metadata cache, so the warm validation must not
+    // rebuild it.
+    [Fact]
+    public void Warm_begin_allocates_nothing_after_a_full_collection()
+    {
+        using var device = new FakeGpuDevice();
+        using var scene = new Scene3D(device, Outputs);
+        scene.Begin();
+        _ = scene.BeginMeshOutline(Color.White, 1.25f, MeshOutlineOcclusion.None);
+        scene.Begin();
+        _ = scene.BeginMeshOutline(Color.White, 1.25f, MeshOutlineOcclusion.None);
+        scene.Begin();
+        Action begin = () => _ = scene.BeginMeshOutline(Color.White, 1.25f, MeshOutlineOcclusion.None);
+
+        GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+        long allocated = AllocationMeasurement.Measure("warm target outline begin after a full collection", begin);
+
+        Assert.Equal(0, allocated);
     }
 
     [Theory]

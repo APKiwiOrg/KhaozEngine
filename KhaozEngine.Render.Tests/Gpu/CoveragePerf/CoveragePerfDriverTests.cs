@@ -6,6 +6,72 @@ namespace KhaozEngine.Tests.Gpu;
 
 public sealed class CoveragePerfDriverTests
 {
+    [Fact]
+    public void TimestampPeriodLearnedDuringCompletedWarmupAllowsMeasurement()
+    {
+        var run = new CoveragePerfFakeRun("G1");
+        run.Setup = session =>
+        {
+            session.Info = session.Info with { TimestampPeriodNanoseconds = null };
+            session.OnBatch = s => s.Info = s.Info with { TimestampPeriodNanoseconds = 2.5 };
+        };
+
+        var report = run.Run();
+
+        Assert.Equal(CoveragePerfRunStatus.Completed, report.Status);
+        Assert.Equal(8, report.Blocks.Length);
+        Assert.All(report.Blocks, block =>
+        {
+            Assert.Equal(block.Block.WarmupFrames, block.Warmup.Length);
+            Assert.Equal(block.Block.MeasuredFrames, block.Samples.Length);
+            Assert.Equal(2.5, block.Session!.TimestampPeriodNanoseconds);
+            Assert.All(block.Warmup.Concat(block.Samples), sample => Assert.Equal(1, sample.Gpu!.PeriodNanoseconds));
+        });
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(0.0)]
+    [InlineData(-1.0)]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    public void UnavailablePeriodAfterWarmupRefusesBeforeAnyMeasuredFrame(double? period)
+    {
+        var run = new CoveragePerfFakeRun("G1");
+        run.Setup = s => s.Info = s.Info with { TimestampPeriodNanoseconds = period };
+
+        var report = run.Run();
+
+        Assert.Equal(CoveragePerfRunStatus.Refused, report.Status);
+        var block = Assert.Single(report.Blocks);
+        Assert.Equal(64, block.Warmup.Length);
+        Assert.Empty(block.Samples);
+        Assert.Equal(64, Assert.Single(run.Sessions).Frames);
+        Assert.Contains("period", block.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public void MissingTimestampSupportOrSoftwareAdapterRefusesBeforeWarmup(bool support, bool software)
+    {
+        var run = new CoveragePerfFakeRun("G1");
+        run.Setup = s => s.Info = s.Info with
+        {
+            TimestampSupported = support,
+            SoftwareAdapter = software,
+            TimestampPeriodNanoseconds = null,
+        };
+
+        var report = run.Run();
+
+        Assert.Equal(CoveragePerfRunStatus.Refused, report.Status);
+        var block = Assert.Single(report.Blocks);
+        Assert.Empty(block.Warmup);
+        Assert.Empty(block.Samples);
+        Assert.Equal(0, Assert.Single(run.Sessions).Frames);
+    }
+
     [Theory]
     [InlineData("setup", 300000, 1)]
     [InlineData("setup", 300001, 1)]

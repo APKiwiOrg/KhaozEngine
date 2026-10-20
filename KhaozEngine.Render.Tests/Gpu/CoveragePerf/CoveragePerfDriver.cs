@@ -77,11 +77,18 @@ internal static class CoveragePerfDriver
             deadline.Check("after setup");
             info = session.ReadInfo();
             deadline.Check("after setup diagnostics");
-            string? refusal = ValidateInfo(manifest, block, info);
+            string? refusal = ValidateInfo(manifest, block, info, requirePeriod: false);
             if (refusal is not null) failure.Refuse(refusal);
             else
             {
                 RunFrames(session, manifest, block, deadline, warmup, 0, ref warmCount, failure);
+                if (!failure.Failed && block.TimerLayout != CoveragePerfTimerLayout.CpuOnly)
+                {
+                    info = session.ReadInfo();
+                    deadline.Check("after warm-up diagnostics");
+                    refusal = ValidateInfo(manifest, block, info);
+                    if (refusal is not null) failure.Refuse(refusal);
+                }
                 if (!failure.Failed)
                     RunFrames(session, manifest, block, deadline, samples, warmup.Length, ref sampleCount, failure);
                 if (!failure.Failed)
@@ -144,7 +151,8 @@ internal static class CoveragePerfDriver
         }
     }
 
-    static string? ValidateInfo(CoveragePerfManifest manifest, CoveragePerfBlock block, CoveragePerfSessionInfo info)
+    static string? ValidateInfo(CoveragePerfManifest manifest, CoveragePerfBlock block, CoveragePerfSessionInfo info,
+        bool requirePeriod = true)
     {
         if (info.OrdinarySkinningRoute != manifest.OrdinarySkinning || info.CoveredSurfaceRoute != manifest.CoveredSurface)
             return "Effective routes do not match the approved GPU routes.";
@@ -152,7 +160,8 @@ internal static class CoveragePerfDriver
         if (!info.Synthetic && !info.NativeDevice) return "Session has no native device evidence.";
         if (block.TimerLayout == CoveragePerfTimerLayout.CpuOnly) return null;
         if (info.SoftwareAdapter) return "Software adapter cannot establish GPU proof.";
-        if (!info.TimestampSupported || info.TimestampPeriodNanoseconds is not double period || !double.IsFinite(period) || period <= 0)
+        if (!info.TimestampSupported || requirePeriod &&
+            (info.TimestampPeriodNanoseconds is not double period || !double.IsFinite(period) || period <= 0))
             return "GPU timestamp capability or period is unavailable.";
         return null;
     }

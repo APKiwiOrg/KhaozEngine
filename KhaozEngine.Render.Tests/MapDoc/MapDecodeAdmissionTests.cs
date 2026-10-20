@@ -10,6 +10,32 @@ namespace KhaozEngine.Tests.MapDoc;
 public sealed class MapDecodeAdmissionTests
 {
     [Theory]
+    [InlineData("emissiveTexture", "corrupt")]
+    [InlineData("emissiveTexture", "over-budget")]
+    [InlineData("occlusionTexture", "corrupt")]
+    [InlineData("occlusionTexture", "over-budget")]
+    [InlineData("extension", "corrupt")]
+    [InlineData("extension", "over-budget")]
+    public void UnsupportedReferencedTextures_RefuseBeforeModelMeshOrPixelEntry(string channel, string fault)
+    {
+        byte[] glb = NativeRenderAssetFixtures.UnsupportedTexture(channel, fault);
+        var budget = new GltfDecodeBudget(new(MaxImagePixels: 1));
+        int model = GltfDecodeAdmission.ModelDecodeEntries, arrays = GltfDecodeAdmission.LargeAllocationEntries;
+        int pixels = ImageDecodeAdmission.PixelDecodeEntries;
+        Assert.Equal(GltfDecodeStatus.Unsupported, Assert.Throws<GltfDecodeRefusal>(() =>
+            GltfLoader.LoadPartsWithMaterialsStrict(glb, "unsupported-texture", budget)).Status);
+        Assert.Equal(model, GltfDecodeAdmission.ModelDecodeEntries);
+        Assert.Equal(arrays, GltfDecodeAdmission.LargeAllocationEntries);
+        Assert.Equal(pixels, ImageDecodeAdmission.PixelDecodeEntries);
+        Assert.Equal(0, budget.OwnedBytes);
+        Assert.Equal(budget.Limits.MaxPeakBytes, budget.RemainingBytes);
+        Assert.Equal(GltfDecodeStatus.Unsupported, Assert.Throws<GltfDecodeRefusal>(() => GltfDecodeAdmission.Measure(glb, budget)).Status);
+        var compatible = GltfLoader.LoadPartsWithMaterials(glb, "released-texture-policy");
+        Assert.Equal(2, compatible.Count);
+        Assert.Equal(new byte[] { 220, 20, 20, 255 }, compatible[0].Maps.Albedo!.Value.Rgba);
+    }
+
+    [Theory]
     [InlineData("vertices")]
     [InlineData("indices")]
     [InlineData("pixels")]

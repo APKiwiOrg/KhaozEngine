@@ -140,6 +140,10 @@ public sealed class GltfDecodeAdmission
         {
             if (id < 0) continue;
             var material = root.GetProperty("materials")[id];
+            if (material.TryGetProperty("emissiveTexture", out _) || material.TryGetProperty("occlusionTexture", out _) ||
+                (material.TryGetProperty("extensions", out var materialExtensions) && materialExtensions.EnumerateObject().Any()))
+                throw new GltfDecodeRefusal(GltfDecodeStatus.Unsupported,
+                    "Strict material decoding supports only core base colour, normal and metallic-roughness textures.");
             AddImage(material, "normalTexture");
             if (material.TryGetProperty("pbrMetallicRoughness", out var pbr))
             { AddImage(pbr, "baseColorTexture"); AddImage(pbr, "metallicRoughnessTexture"); }

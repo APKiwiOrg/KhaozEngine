@@ -9,6 +9,61 @@ namespace KhaozEngine.Tests.MapDoc;
 public sealed class MapPreparedInputTests
 {
     [Fact]
+    public void TexturelessMaterials_ChargeRetainedMetadataUntilDisposed()
+    {
+        var (closure, ids) = NativeRenderAssetFixtures.TexturelessMaterials(3);
+        var budget = new GltfDecodeBudget(new(MaxPeakBytes: 4096));
+        var materials = MapRenderMaterials.Load(closure, ids, budget);
+        try
+        {
+            Assert.Equal(3, materials.Count);
+            Assert.True(budget.OwnedBytes > 0);
+            Assert.Equal(budget.Limits.MaxPeakBytes - budget.OwnedBytes, budget.RemainingBytes);
+        }
+        finally { ((IDisposable)materials).Dispose(); }
+        Assert.Equal(0, budget.OwnedBytes);
+        Assert.Equal(4096, budget.RemainingBytes);
+    }
+
+    [Fact]
+    public void TexturelessMaterials_RefuseAggregateCapacityAndRollBackOwnership()
+    {
+        var (closure, ids) = NativeRenderAssetFixtures.TexturelessMaterials(16);
+        var budget = new GltfDecodeBudget(new(MaxPeakBytes: 4096));
+        using var earlier = (IDisposable)MapRenderMaterials.Load(closure, ids[..1], budget);
+        long retained = budget.OwnedBytes;
+        Assert.True(retained > 0);
+        Assert.Equal(MapRenderAssetStatus.CapacityExceeded, Assert.Throws<MapRenderAssetRefusal>(() =>
+            MapRenderMaterials.Load(closure, ids, budget)).Status);
+        Assert.Equal(retained, budget.OwnedBytes);
+        Assert.Equal(4096 - retained, budget.RemainingBytes);
+        earlier.Dispose();
+        Assert.Equal(0, budget.OwnedBytes);
+        Assert.Equal(4096, budget.RemainingBytes);
+    }
+
+    [Fact]
+    public void TexturelessInputLease_HoldsMetadataChargeUntilFinalOwner()
+    {
+        var (closure, ids) = NativeRenderAssetFixtures.TexturelessMaterials(3);
+        var proofs = MapRenderExtentValidator.Validate(closure, [], new(new())).Proofs!;
+        var budget = new GltfDecodeBudget(new(MaxPeakBytes: 4096));
+        var loaded = MapPreparedInputLease.LoadSelected(closure, [], ids, proofs, budget);
+        Assert.Equal(MapRenderAssetStatus.Complete, loaded.Status);
+        using var input = loaded.Input!;
+        using var retained = input.Retain();
+        long charge = budget.OwnedBytes;
+        Assert.True(charge > 0);
+        Assert.Equal(charge, input.RetainedBytes);
+        input.Dispose();
+        Assert.Equal(charge, budget.OwnedBytes);
+        Assert.Equal(charge, retained.RetainedBytes);
+        retained.Dispose();
+        Assert.Equal(0, budget.OwnedBytes);
+        Assert.Equal(4096, budget.RemainingBytes);
+    }
+
+    [Fact]
     public void RequiredMaterialImageLimit_RefusesBeforePixelDecode()
     {
         var closure = NativeRenderAssetFixtures.Create();

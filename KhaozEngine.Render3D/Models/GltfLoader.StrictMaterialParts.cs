@@ -32,6 +32,7 @@ public static partial class GltfLoader
 
     static GltfMaterialMaps StrictMaps(SharpGLTF.Schema2.Material? material, GltfDecodeBudget budget)
     {
+        // Admission refuses textured channels and material extensions that these three maps cannot represent.
         if (material is null) return default;
         return new(Decode("BaseColor"), Decode("Normal"), Decode("MetallicRoughness"), ReadAlphaCutoff(material));
         DecodedImage? Decode(string key)

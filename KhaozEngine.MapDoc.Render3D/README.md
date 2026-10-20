@@ -14,7 +14,8 @@ under one `GltfDecodeBudget`. Retain the input for each accepted or pending plan
 Only the last lease releases decoded ownership. `MapRenderAssets` is independently disposable and owns
 mesh tiers only. Its exposed meshes and images are detached copies. Do not dispose a lease's Assets
 separately. Standalone `MapRenderMaterials.Load` results implement `IDisposable` and release their charge
-when disposed. Prefer the combined input lease for scene preparation.
+when disposed. Material objects and collection storage remain charged even with no texture maps.
+Prefer the combined input lease for scene preparation.
 
 Native render materials use the embedded closed `map-render-material.schema.json` contract. Every member
 is required, including nullable texture resource IDs. Textures name verified Material dependencies.
@@ -22,7 +23,10 @@ Numeric terrain IDs need explicit caller mappings. Prop material authority stays
 
 The strict glTF and bounded image APIs are opt-in. They admit model, expanded geometry, image and copy
 peaks before decoding and preserve typed capacity refusals. Bounded images currently support PNG and
-JPEG. Compatibility glTF and flattened native loading keep their released lenient behavior.
+JPEG. Strict multipart loading supports core base-colour, normal and metallic-roughness textures.
+Emissive/occlusion textures and nonempty material extensions refuse before model loading because the
+returned maps cannot represent them. Compatibility glTF and flattened native loading keep their
+released lenient behavior.
 
 `MapPreparedResource` carries copied immutable registration payloads. `MapDrawRecord` carries explicit
 anchor-local transform and focus, channels and exactly one typed frame. `MapDrawRecorder` records these

@@ -115,6 +115,49 @@ internal static class NativeRenderAssetFixtures
          "roughness":0.7,"metallic":0.1,"alphaCutoff":0.5,"albedo":"image","normal":null,"roughnessMap":null}
         """;
 
+    internal static (MapAssetClosure Closure, string[] MaterialIds) TexturelessMaterials(int count)
+    {
+        var source = new Source();
+        var resources = new JsonArray();
+        var ids = new string[count];
+        for (int i = 0; i < count; i++)
+        {
+            string id = ids[i] = "mat-" + i;
+            MapAssetRef reference = source.Add(id, Encoding.UTF8.GetBytes(Material().Replace("\"albedo\":\"image\"", "\"albedo\":null", StringComparison.Ordinal)));
+            resources.Add(new JsonObject
+            {
+                ["reference"] = new JsonObject { ["id"] = id, ["path"] = reference.Path, ["sha256"] = reference.Sha256, ["payloadVersion"] = 1 },
+                ["kind"] = "Material",
+                ["dependencies"] = new JsonArray()
+            });
+        }
+        var root = source.Add("root", Encoding.UTF8.GetBytes(new JsonObject
+        { ["payloadVersion"] = 1, ["assets"] = new JsonArray(), ["resources"] = resources }.ToJsonString()));
+        return (MapAssetClosure.Load([root], source), ids);
+    }
+
+    internal static byte[] UnsupportedTexture(string channel, string fault)
+    {
+        byte[] glb = Glb();
+        int jsonLength = BinaryPrimitives.ReadInt32LittleEndian(glb.AsSpan(12));
+        var root = JsonNode.Parse(glb.AsSpan(20, jsonLength))!.AsObject();
+        byte[] extra = fault == "corrupt" ? Png()[..33] : Png(2, 2);
+        root["images"]!.AsArray().Add(new JsonObject { ["uri"] = "data:image/png;base64," + Convert.ToBase64String(extra) });
+        root["textures"]!.AsArray().Add(new JsonObject { ["source"] = 1 });
+        if (channel == "extension")
+        {
+            root["extensionsUsed"] = new JsonArray("KHR_materials_clearcoat");
+            root["materials"]![0]!["extensions"] = new JsonObject
+            { ["KHR_materials_clearcoat"] = new JsonObject { ["clearcoatTexture"] = new JsonObject { ["index"] = 1 } } };
+        }
+        else
+        {
+            root["materials"]![0]![channel] = new JsonObject { ["index"] = 1 };
+            if (channel == "emissiveTexture") root["materials"]![0]!["emissiveFactor"] = new JsonArray(1, 1, 1);
+        }
+        return Pack(root, glb.AsSpan(28 + jsonLength).ToArray());
+    }
+
     internal static byte[] Glb(string variant = "valid", int width = 1, int height = 1, int seed = 0)
     {
         byte[] image = Png(width, height, (byte)(220 + seed % 30));

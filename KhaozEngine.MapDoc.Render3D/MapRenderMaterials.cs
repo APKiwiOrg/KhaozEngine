@@ -46,9 +46,18 @@ public static class MapRenderMaterials
         int images = 0;
         try
         {
+            // Covers the dictionary and published collection even when no textures or material rows are selected.
+            const long collectionCharge = 256;
+            if (!budget.TryReserve(collectionCharge, 0)) throw Capacity();
+            owned = collectionCharge;
             var result = new Dictionary<string, MapRenderMaterial>(StringComparer.Ordinal);
             foreach (string id in materialIds.Distinct(StringComparer.Ordinal))
             {
+                ArgumentNullException.ThrowIfNull(id);
+                // Covers material/definition objects, UTF-16 identity storage and conservative dictionary growth.
+                long materialCharge = checked(512L + 24 + 2L * id.Length);
+                if (!budget.TryReserve(materialCharge, 0)) throw Capacity();
+                owned = checked(owned + materialCharge);
                 long before = owned;
                 var definition = ReadDefinition(closure, id, budget);
                 var source = closure.GetResource(id);

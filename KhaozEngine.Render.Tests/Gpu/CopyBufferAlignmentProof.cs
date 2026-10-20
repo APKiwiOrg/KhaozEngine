@@ -1,16 +1,27 @@
 using System;
 using System.Linq;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Operations;
 
 namespace KhaozEngine.Tests.Gpu;
 
 /// <summary>Narrow source proofs for offsets that are validated at runtime or converted from uint words.</summary>
 internal static class CopyBufferAlignmentProof
 {
-    static readonly MetadataReference CoreLibrary = MetadataReference.CreateFromFile(typeof(uint).Assembly.Location);
+    static readonly MetadataReference[] References = new[]
+        {
+            typeof(uint).Assembly, typeof(Unsafe).Assembly, Assembly.Load("System.Runtime"),
+            typeof(KhaozEngine.Gpu.IGpuCommandList).Assembly
+        }.Distinct().Select(assembly => MetadataReference.CreateFromFile(assembly.Location)).ToArray();
+
+    internal static CSharpCompilation CreateCompilation(SyntaxTree tree)
+        => CSharpCompilation.Create("KhaozEngine.Render.Tests", [tree], References,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: true));
 
     internal static bool Accepts(string expression, string source, int copyIndex, string helper)
     {
@@ -41,8 +52,7 @@ internal static class CopyBufferAlignmentProof
             || body.ContainsDiagnostics || body.ContainsDirectives
             || body.DescendantNodes().Any(node => node is GotoStatementSyntax)) return false;
 
-        var compilation = CSharpCompilation.Create("CopyBufferAlignmentProof", [tree], [CoreLibrary],
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: true));
+        CSharpCompilation compilation = CreateCompilation(tree);
         SemanticModel model = compilation.GetSemanticModel(tree);
         ISymbol? symbol = model.GetSymbolInfo(identifier).Symbol;
         if (symbol is not (ILocalSymbol { RefKind: RefKind.None, Type.SpecialType: SpecialType.System_UInt32 }
@@ -51,11 +61,21 @@ internal static class CopyBufferAlignmentProof
         if (symbol is ILocalSymbol local && !local.DeclaringSyntaxReferences.Any(reference =>
             reference.GetSyntax() is VariableDeclaratorSyntax { Initializer: not null })) return false;
 
-        if (body.DescendantNodes().Where(node => node is RefExpressionSyntax or MakeRefExpressionSyntax
-            || node is ArgumentSyntax byRef && byRef.RefKindKeyword.Kind()
-                is SyntaxKind.RefKeyword or SyntaxKind.OutKeyword or SyntaxKind.InKeyword)
-            .SelectMany(node => node.DescendantNodes().OfType<IdentifierNameSyntax>())
-            .Any(use => SymbolEqualityComparer.Default.Equals(model.GetSymbolInfo(use).Symbol, symbol))) return false;
+        if (model.GetDiagnostics(owner.Span).Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+            || model.GetOperation(body) is not IBlockOperation operation
+            || model.GetDeclaredSymbol(owner) is not IMethodSymbol method) return false;
+        foreach (IOperation use in operation.DescendantsAndSelf())
+        {
+            if (use is IInvalidOperation) return false;
+            ISymbol? referenced = use switch
+            {
+                ILocalReferenceOperation reference => reference.Local,
+                IParameterReferenceOperation reference => reference.Parameter,
+                _ => null
+            };
+            if (SymbolEqualityComparer.Default.Equals(referenced, symbol) && !AllowedReference(use, method))
+                return false;
+        }
 
         DataFlowAnalysis? whole = model.AnalyzeDataFlow(body);
         if (whole is not { Succeeded: true } || whole.Captured.Contains(symbol, SymbolEqualityComparer.Default)
@@ -80,6 +100,30 @@ internal static class CopyBufferAlignmentProof
                 return true;
         }
         return false;
+    }
+
+    static bool AllowedReference(IOperation reference, IMethodSymbol method)
+    {
+        // nameof binds symbols but never evaluates its argument or exposes their storage.
+        for (IOperation? ancestor = reference.Parent; ancestor is not null; ancestor = ancestor.Parent)
+            if (ancestor is INameOfOperation nameOf
+                && nameOf.Argument.Syntax.Span.Contains(reference.Syntax.Span)) return true;
+
+        return reference.Parent switch
+        {
+            IArgumentOperation argument => argument.Value == reference && argument.Parameter?.RefKind == RefKind.None,
+            IBinaryOperation binary => binary.LeftOperand == reference || binary.RightOperand == reference,
+            IUnaryOperation unary => unary.Operand == reference,
+            IConversionOperation conversion => conversion.Operand == reference,
+            IInterpolationOperation interpolation => interpolation.Expression == reference || interpolation.Alignment == reference,
+            IVariableInitializerOperation initializer => initializer.Value == reference
+                && initializer.Parent is IVariableDeclaratorOperation { Symbol.RefKind: RefKind.None },
+            IReturnOperation returned => returned.ReturnedValue == reference && !method.ReturnsByRef && !method.ReturnsByRefReadonly,
+            ISimpleAssignmentOperation { IsRef: false } assignment => assignment.Value == reference || assignment.Target == reference,
+            ICompoundAssignmentOperation assignment => assignment.Value == reference || assignment.Target == reference,
+            IIncrementOrDecrementOperation increment => increment.Target == reference,
+            _ => false
+        };
     }
 
     static bool BalancedArgument(string expression)

@@ -1,4 +1,9 @@
 using System;
+using System.Linq;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Operations;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu;
@@ -74,6 +79,77 @@ public sealed class CopyBufferAlignmentProofTests
         => Assert.False(ProvesSource("offset", source));
 
     [Theory]
+    [InlineData("in", RefKind.In, false)]
+    [InlineData("ref readonly", RefKind.RefReadOnlyParameter, false)]
+    [InlineData("in", RefKind.In, true)]
+    public void Implicit_readonly_arguments_are_not_a_runtime_proof(string modifier, RefKind expected, bool nameOf)
+    {
+        string parameterName = nameOf ? "nameof(offset)" : "\"offset\"";
+        string source = BoundSource("static void Change(" + modifier + " uint value) { "
+            + "System.Runtime.CompilerServices.Unsafe.AsRef(in value) = 1; } "
+            + "void Copy(uint offset) { GpuCopyAlignment.RequireAlignedOffset(offset, " + parameterName + ", \"copy\", \"source\"); "
+            + "Change(offset); commands.CopyBuffer(source, offset, target, 0, count); }");
+        SemanticModel model = BoundModel(source);
+        InvocationExpressionSyntax call = model.SyntaxTree.GetRoot().DescendantNodes()
+            .OfType<InvocationExpressionSyntax>().Single(node => node.Expression.ToString() == "Change");
+        IInvocationOperation operation = Assert.IsAssignableFrom<IInvocationOperation>(model.GetOperation(call));
+        Assert.Equal(expected, Assert.Single(operation.Arguments).Parameter!.RefKind);
+        InvocationExpressionSyntax asRef = model.SyntaxTree.GetRoot().DescendantNodes()
+            .OfType<InvocationExpressionSyntax>().Single(node => node.Expression.ToString().EndsWith("Unsafe.AsRef", StringComparison.Ordinal));
+        IInvocationOperation mutation = Assert.IsAssignableFrom<IInvocationOperation>(model.GetOperation(asRef));
+        Assert.Equal("System.Runtime.CompilerServices.Unsafe", mutation.TargetMethod.ContainingType.ToDisplayString());
+        Assert.True(mutation.TargetMethod.ReturnsByRef);
+        Assert.False(ProvesBoundSource(source));
+    }
+
+    [Fact]
+    public void An_instance_receiver_is_not_a_runtime_proof()
+    {
+        string source = BoundSource("void Copy(uint offset) { "
+            + "GpuCopyAlignment.RequireAlignedOffset(offset, \"offset\", \"copy\", \"source\"); "
+            + "offset.ToString(); commands.CopyBuffer(source, offset, target, 0, count); }");
+        SemanticModel model = BoundModel(source);
+        InvocationExpressionSyntax call = model.SyntaxTree.GetRoot().DescendantNodes()
+            .OfType<InvocationExpressionSyntax>().Single(node => node.Expression.ToString() == "offset.ToString");
+        IInvocationOperation operation = Assert.IsAssignableFrom<IInvocationOperation>(model.GetOperation(call));
+        IParameterReferenceOperation receiver = Assert.IsAssignableFrom<IParameterReferenceOperation>(operation.Instance);
+        Assert.Equal(SpecialType.System_UInt32, receiver.Parameter.Type.SpecialType);
+        Assert.False(ProvesBoundSource(source));
+    }
+
+    [Theory]
+    [InlineData("void Copy(uint offset) {", "uint value = offset;", "")]
+    [InlineData("void Copy(uint offset) {", "uint value = offset + 4;", "")]
+    [InlineData("void Copy(uint offset) {", "uint value = ~offset;", "")]
+    [InlineData("void Copy(uint offset) {", "ulong value = offset;", "")]
+    [InlineData("void Copy(uint offset) {", "string value = $\"{offset}\";", "")]
+    [InlineData("void Copy(uint offset) {", "uint value = 0; value = offset;", "")]
+    [InlineData("void Copy(uint offset) {", "uint value = 0; value += offset;", "")]
+    [InlineData("uint Copy(uint offset) {", "", "return offset;")]
+    [InlineData("void Copy(uint offset) { offset = 0;", "", "")]
+    [InlineData("void Copy(uint offset) {", "", "offset += 4;")]
+    [InlineData("void Copy(uint offset) {", "", "offset++;")]
+    [InlineData("static void Change(uint value) { } void Copy(uint offset) {", "Change(offset);", "")]
+    public void Value_contexts_and_writes_outside_the_validation_range_remain_provable(string prefix, string between, string after)
+    {
+        string source = BoundSource(prefix + " GpuCopyAlignment.RequireAlignedOffset(offset, nameof(offset), \"copy\", \"source\"); "
+            + between + " commands.CopyBuffer(source, offset, target, 0, count); " + after + " }");
+        BoundModel(source);
+        Assert.True(ProvesBoundSource(source));
+    }
+
+    [Fact]
+    public void An_unbound_call_is_not_a_runtime_proof()
+    {
+        string source = BoundSource("void Copy(uint offset) { "
+            + "GpuCopyAlignment.RequireAlignedOffset(offset, \"offset\", \"copy\", \"source\"); "
+            + "Unknown(offset); commands.CopyBuffer(source, offset, target, 0, count); }");
+        SyntaxTree tree = CSharpSyntaxTree.ParseText(source);
+        Assert.Contains(CopyBufferAlignmentProof.CreateCompilation(tree).GetDiagnostics(), diagnostic => diagnostic.Id == "CS0103");
+        Assert.False(ProvesBoundSource(source));
+    }
+
+    [Theory]
     [InlineData("void Copy(ulong offset) {")]
     [InlineData("void Copy() { int offset = 0;")]
     public void Non_uint_storage_is_not_a_runtime_proof(string prefix)
@@ -133,6 +209,24 @@ public sealed class CopyBufferAlignmentProofTests
     public void Unproven_word_expressions_and_helper_drift_are_refused(string expression, string helper)
         => Assert.False(CopyBufferAlignmentProof.Accepts(expression, "", 0, helper));
 
+    static string BoundSource(string methods)
+        => "class Commands { public void CopyBuffer(object source, uint offset, object target, uint destination, uint count) { } } "
+            + "static class GpuCopyAlignment { public static void RequireAlignedOffset(ulong offset, string name, string what, string side) { } } "
+            + "class CallSite { Commands commands = new(); object source = new(), target = new(); uint count = 4; "
+            + methods + " }";
+
+    static SemanticModel BoundModel(string source)
+    {
+        SyntaxTree tree = CSharpSyntaxTree.ParseText(source);
+        CSharpCompilation compilation = CopyBufferAlignmentProof.CreateCompilation(tree);
+        Assert.Empty(compilation.GetDiagnostics().Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error));
+        return compilation.GetSemanticModel(tree);
+    }
+
+    static bool ProvesBoundSource(string source)
+        => CopyBufferAlignmentProof.Accepts("offset", source,
+            source.IndexOf("commands.CopyBuffer", StringComparison.Ordinal), Helper);
+
     static bool Proves(string prefix)
     {
         string source = "void Copy(uint offset) { " + prefix + " commands.CopyBuffer(source, offset, target, 0, count); }";
@@ -149,7 +243,7 @@ public sealed class CopyBufferAlignmentProofTests
 
     static bool ProvesSource(string expression, string source)
     {
-        source = "class CallSite { " + source + " }";
+        source = BoundSource(source);
         return CopyBufferAlignmentProof.Accepts(expression, source, source.IndexOf("commands.CopyBuffer", StringComparison.Ordinal), Helper);
     }
 }

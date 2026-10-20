@@ -972,8 +972,11 @@ Before either dispatch, root obtains exact owner approval for that single run. T
 binds only approval-time facts: the unit, exact byte hash, workload SHA, baseline main SHA, preset,
 runner, workflow, leg, approver and approval reference. A manifest authorizes one dispatch. The run does
 not exist at approval time, so the report names it by workflow SHA, run ID, attempt and process ID. The
-entrypoint refuses any run attempt other than 1, so a GitHub re-run cannot reuse an approval. Any further
-run needs a new approval and a new unit. The measured code and its authorization are two commits:
+entrypoint refuses any run attempt other than 1, so a GitHub re-run cannot reuse an approval. On
+gpu-hosted-bench, re-running all jobs fails in the leg selection, and re-running failed or single jobs
+skips the bench job before a runner is allocated. That attempt can show as passed with a skipped job and
+produces no report. Only a report counts as evidence.
+Any further run needs a new approval and a new unit. The measured code and its authorization are two commits:
 
 1. Workload commit A is the exact code to measure. The manifest names A as `workloadSha`.
 2. Authorization commit B has A as its only parent and adds only

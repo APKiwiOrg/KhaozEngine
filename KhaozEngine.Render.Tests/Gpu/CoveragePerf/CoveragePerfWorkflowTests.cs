@@ -82,10 +82,10 @@ public sealed class CoveragePerfWorkflowTests
             "            fi", measurement, StringComparison.Ordinal);
         string legacy = CoveragePerfWorkflowText.After(pick, "          elif ");
         Assert.DoesNotContain("WORKFLOW_RUN_ATTEMPT", legacy, StringComparison.Ordinal);
-        Assert.Contains("    needs: legs\n", CoveragePerfWorkflowText.After(Gpu, "  bench:\n"), StringComparison.Ordinal);
+        Assert.Contains("\n    needs: legs\n", CoveragePerfWorkflowText.After(Gpu, "  bench:"), StringComparison.Ordinal);
         // Re-running only failed jobs skips the pick job, so the bench job itself must refuse before a runner.
-        Assert.Contains("    if: inputs.coverage-perf-unit == '' || github.run_attempt == 1\n",
-            CoveragePerfWorkflowText.Before(CoveragePerfWorkflowText.After(Gpu, "  bench:\n"), "    steps:\n"),
+        Assert.Contains("\n    if: inputs.coverage-perf-unit == '' || github.run_attempt == 1\n",
+            CoveragePerfWorkflowText.Before(CoveragePerfWorkflowText.After(Gpu, "  bench:"), "    steps:\n"),
             StringComparison.Ordinal);
     }
 

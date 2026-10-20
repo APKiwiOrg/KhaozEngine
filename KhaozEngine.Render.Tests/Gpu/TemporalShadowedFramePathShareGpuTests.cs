@@ -23,10 +23,10 @@ namespace KhaozEngine.Tests.Gpu
     /// accepted, on the slow path by reason, and released.
     /// <para>The export writes the path word in place of the history colour, and that history is read again the next
     /// frame. The state output, every input of the decision and every rule that sets a lock stay production's, so a
-    /// production scene rendered beside it in lockstep should store the same locks, and the fact prints how many
-    /// differ. It is a readback, not a timing, and asserts only that the categories cover every display pixel and
-    /// that every slow pixel names its reason. Software devices render a smaller display, since only a GPU's share at
-    /// 1440p feeds the bench.</para>
+    /// production scene rendered beside it in lockstep must store the same locks, and the fact asserts that none
+    /// differ (review 7f r3, m-4). It is a readback, not a timing, and asserts besides only that the categories cover
+    /// every display pixel and that every slow pixel names its reason. Software devices render a smaller display,
+    /// since only a GPU's share at 1440p feeds the bench.</para>
     /// </summary>
     public sealed class TemporalShadowedFramePathShareGpuTests(ITestOutputHelper output)
     {
@@ -91,6 +91,7 @@ namespace KhaozEngine.Tests.Gpu
             output.WriteLine($"    released {Share(paths.Released)} (on the fast path {Share(paths.FastReleased)})");
             output.WriteLine($"  stored locks apart from a production scene rendered beside it: {lockDiffers} of {pixels}");
 
+            Assert.True(lockDiffers == 0, $"{lockDiffers} of {pixels} stored locks differ from the production scene's");
             Assert.Equal(pixels, paths.Pixels);
             Assert.Equal(pixels, paths.NotReached + paths.GatedByLock + paths.GatedOtherwise + paths.FastPath
                 + paths.SlowPath);

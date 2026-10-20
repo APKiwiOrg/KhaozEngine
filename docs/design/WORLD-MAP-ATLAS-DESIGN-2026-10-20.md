@@ -13,8 +13,10 @@ No GPU pipeline, shader, package dependency or source coordinate contract change
 
 ### Map-only ground palette
 
-Add an optional `IReadOnlyDictionary<ushort, Color>? groundPalette = null` parameter after
-`surfacePlane` on `TileWorldMapSource`. Snapshot the supplied mapping at construction so worker
+Retain the existing three-parameter `TileWorldMapSource` constructor and its optional surfacePlane.
+Add a four-parameter overload with explicit `int surfacePlane` and
+`IReadOnlyDictionary<ushort, Color>? groundPalette`. The existing overload delegates with null.
+Snapshot the supplied mapping at construction so worker
 reads cannot race caller mutation. Both underlay and overlay selection retain their existing
 semantics. A missing palette entry falls back to the catalog colour. Water detection, heights,
 material roles, footprints and the source catalogs remain unchanged.
@@ -43,19 +45,33 @@ Add immutable `WorldMapSymbolStroke(Vector2 Start, Vector2 End)` and
 `WorldMapSymbolGeometry(IEnumerable<Vector2> outline, IEnumerable<WorldMapSymbolStroke>? strokes = null)`.
 Expose read-only `Outline` and `Strokes`. Snapshot inputs and validate finite normalized coordinates
 in [-1, 1], at least three nondegenerate outline vertices and a simple closed outline. Open strokes
-are independent segments. The last outline point connects to the first without a repeated endpoint.
+are independent segments and may lie outside a concave fill, but remain inside the normalized box.
+This permits a trunk below a canopy. The last outline point connects to the first without a repeated endpoint.
 
 Add optional `WorldMapSymbol.Geometry`. Null retains the existing rectangle/ellipse shape.
 Custom outlines may be concave. Rotate and scale them through the existing footprint and
 SizeMetres rules. Polygon fills use Fill, its boundary and internal strokes use Outline. Outline
 and detail widths use the existing OutlinePixels, measured in raster pixels even for non-square
-symbols. Internal strokes are rendered after fill without double-darkening shared coverage.
+symbols. Internal strokes are rendered over fill without double-darkening shared coverage.
+An opaque white fill with a half-alpha black internal stroke yields RGB 128, independent of the
+terrain underneath. A stroke outside the polygon blends over terrain. Preserve the legacy boundary
+fill/outline composition. The union rule applies to intersecting detail strokes, not removal of fill.
 A building shadow uses the filled outline silhouette and does not reproduce its detail lines.
 
 This permits game-authored broadleaf outlines, roof ridges and bridge rails without engine-owned
 art styles. Geometry stays inside the normalized footprint, so existing spatial collection and
 sizing reach remain authoritative. Antialias through the same fixed sample pattern as current
 symbols, with no raw vector paths reaching the GPU.
+
+### Standard offscreen map view
+
+Add `WorldMapView(WorldMapChunkCache cache, Render2DContext context)` beside the existing
+surface constructor. The existing constructor and its ownership remain unchanged.
+The snapshot context owns every texture it creates until capture submission finishes.
+View disposal or cache eviction must therefore release managed view references without disposing
+snapshot-owned textures early. The snapshot context frees them at its normal teardown.
+Borrowed fonts and icon sprites remain caller-owned. This is the standard headless path for drawing
+the same map view and game window code used in the client.
 
 ## Alternatives considered
 

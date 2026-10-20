@@ -42,26 +42,27 @@ The generic geometry contract carries authored shapes without a second renderer 
 
 **Interfaces**
 
-- `TileWorldMapSource(..., int surfacePlane = 0,
-  IReadOnlyDictionary<ushort, Color>? groundPalette = null)`.
+- Preserve `TileWorldMapSource(document, catalogs, int surfacePlane = 0)`.
+- Add `TileWorldMapSource(document, catalogs, int surfacePlane,
+  IReadOnlyDictionary<ushort, Color>? groundPalette)`.
 - `public sealed record WorldMapContours(float IntervalMetres, Color Color, float WidthPixels = 0.75f)`.
 - `WorldMapStyle.Contours { get; init; }`, nullable, default null.
 - Consume current source grid and style level/raster scale. No consumer-specific defaults.
 
-- [ ] Add failing tests for selected underlay palette, overlay precedence, fallback, catalog immutability,
+- [x] Add failing tests for selected underlay palette, overlay precedence, fallback, catalog immutability,
   and a caller mutating its dictionary after source construction.
-- [ ] Add failing tests for contours on a ramp, correct metre intervals, configured pixel width at
+- [x] Add failing tests for contours on a ramp, correct metre intervals, configured pixel width at
   different raster levels, no water/void/flat-plateau contour, invalid numeric inputs, and matching
   independently rendered neighboring chunks at negative coordinates.
-- [ ] Run `build-slot --label atlas-terrain-red -- dotnet test KhaozEngine.WorldMap.Tests/KhaozEngine.WorldMap.Tests.csproj -c Release` and `build-slot --label atlas-palette-red -- dotnet test KhaozEngine.TileWorld.WorldMap.Tests/KhaozEngine.TileWorld.WorldMap.Tests.csproj -c Release`, filtering the new tests.
+- [x] Run `build-slot --label atlas-terrain-red -- dotnet test KhaozEngine.WorldMap.Tests/KhaozEngine.WorldMap.Tests.csproj -c Release` and `build-slot --label atlas-palette-red -- dotnet test KhaozEngine.TileWorld.WorldMap.Tests/KhaozEngine.TileWorld.WorldMap.Tests.csproj -c Release`, filtering the new tests.
   Record expected failing assertions before production implementation.
-- [ ] Implement the snapshotted adapter palette and optional contour coverage. Keep legacy sampling
+- [x] Implement the snapshotted adapter palette and optional contour coverage. Keep legacy sampling
   untouched when null. Account for finite-difference/sample reach in invalidation.
-- [ ] Add default-byte compatibility assertions against the existing renderer's unchanged fixtures.
+- [x] Add default-byte compatibility assertions against the existing renderer's unchanged fixtures.
   Cover source change invalidation with contours active using the existing cache test helpers.
-- [ ] Run all existing map tests in the owning area projects through build-slot. Record counts and exits.
-- [ ] Update package READMEs and the relevant consumer guide examples. No version declarations yet.
-- [ ] Commit as `feat(world-map): add map palettes and elevation contours`.
+- [x] Run all existing map tests in the owning area projects through build-slot. Record counts and exits.
+- [x] Update package READMEs and the relevant consumer guide examples. No version declarations yet.
+- [x] Commit as `feat(world-map): add map palettes and elevation contours`.
 
 ### Task 2: Vector footprint geometry
 
@@ -80,19 +81,46 @@ The generic geometry contract carries authored shapes without a second renderer 
 - `WorldMapSymbol.Geometry { get; init; }`, nullable, default null.
 - Consume current SizeMetres, rotation, OutlinePixels and footprint raster bounds.
 
-- [ ] Write failing tests for a concave silhouette, an internal ridge stroke, rotated non-square
+- [x] Write failing tests for a concave silhouette, an internal ridge stroke, rotated non-square
   geometry, constant pixel stroke width, transparent fill, and building silhouette shadow.
-- [ ] Write validation and defensive-copy tests for nonfinite/out-of-range points, degenerate and
+- [x] Write validation and defensive-copy tests for nonfinite/out-of-range points, degenerate and
   self-crossing outlines, and mutation of caller collections after construction.
-- [ ] Run `build-slot --label atlas-symbol-red -- dotnet test KhaozEngine.WorldMap.Tests/KhaozEngine.WorldMap.Tests.csproj -c Release --filter FullyQualifiedName~SymbolGeometry` and record missing-feature failures.
-- [ ] Implement normalized immutable geometry and supersampled coverage. Use existing fill/outline
-  composition, source collection, sizing and chunk reach. Keep default bytes unchanged.
-- [ ] Prove matching chunk-edge geometry, optional geometry with SizeMetres, source invalidation,
+- [x] Run `build-slot --label atlas-symbol-red -- dotnet test KhaozEngine.WorldMap.Tests/KhaozEngine.WorldMap.Tests.csproj -c Release --filter FullyQualifiedName~SymbolGeometry` and record missing-feature failures.
+- [x] Implement normalized immutable geometry and supersampled coverage. Preserve existing boundary
+  composition, source collection, sizing and chunk reach. Internal detail strokes composite over fill
+  with unioned stroke coverage. Half-alpha black over opaque white yields RGB 128, not terrain-dependent
+  RGB 64. Keep default bytes unchanged.
+- [x] Prove matching chunk-edge geometry, optional geometry with SizeMetres, source invalidation,
   and no changes to feature anchor/hover semantics.
-- [ ] Run the owning area's full map test set through build-slot and update living documentation.
-- [ ] Commit as `feat(world-map): rasterize vector footprint symbols`.
+- [x] Run the owning area's full map test set through build-slot and update living documentation.
+- [x] Commit as `feat(world-map): rasterize vector footprint symbols`.
 
-### Task 3: Engine integration and release-ready proof
+### Task 3: Standard offscreen map view
+
+**Files**
+
+- `KhaozEngine.WorldMap.Gui/WorldMapView.cs`.
+- Focused construction/ownership tests in `KhaozEngine.WorldMap.Gui.Tests/`.
+- `KhaozEngine.WorldMap.Gui/README.md`.
+
+**Interfaces**
+
+- Retain `WorldMapView(WorldMapChunkCache cache, Render2DSurface surface)`.
+- Add `WorldMapView(WorldMapChunkCache cache, Render2DContext context)`.
+- Both use the same view core and draw path. Only texture ownership differs.
+
+- [x] Read the Render2DContext capture-owned resource contract and current view disposal/eviction.
+- [x] Add regression coverage proving surface mode still disposes its textures, snapshot mode does
+  not dispose context-owned textures on view disposal or eviction, and borrowed icons/fonts remain
+  untouched. Test null arguments and public overload presence.
+- [x] Implement shared construction with explicit ownership. Snapshot creates textures through
+  context.CreateTexture and leaves their eventual disposal to the capture. Do not reach into private
+  engine state, add a second renderer, change GPU state or modify the snapshot lifetime contract.
+- [x] Run the focused WorldMap.Gui tests via build-slot in Release. Add a real offscreen smoke proof
+  using existing GPU test infrastructure if available, and report exactly what ran or was skipped.
+- [x] Document use and ownership in the package README and commit explicit paths.
+
+### Task 4: Engine integration and release-ready proof
 
 Owned by the orchestrator after independent review of both tasks.
 

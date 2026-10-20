@@ -5,6 +5,16 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.10.0
+
+2026-10-21
+
+- Add map-only material palettes to `TileWorldMapSource`, preserving catalog roles and the existing constructor.
+- Add opt-in `WorldMapContours` with pixel-width elevation lines, dry-ground filtering and cache invalidation reach.
+- Add immutable `WorldMapSymbolGeometry` outlines and detail strokes, with rotated coverage and silhouette shadows.
+- Add `WorldMapView` construction from `Render2DContext`, retaining snapshot-owned textures through capture submission.
+- Existing world-map styles retain their default raster bytes. These additions resolve #1520.
+
 ## 21.9.0
 
 2026-10-20

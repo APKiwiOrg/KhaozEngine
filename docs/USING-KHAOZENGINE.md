@@ -2205,7 +2205,16 @@ draw-list construction, `Update` disposes the least recently drawn textures that
 frame's draws until the cap is met. Fallback textures count as drawn. Active draws stay protected and can
 temporarily exceed a smaller cap. The default retained chunk payload is 48 MiB per view for 192 textures
 of 256 by 256 RGBA pixels, excluding GPU overhead and temporary active-draw excess. Changing the cap takes
-effect on the next usable `Update`, with all texture disposal on the frame thread.
+effect on the next usable `Update`, with all surface-owned texture disposal on the frame thread.
+
+For standard offscreen capture, construct `WorldMapView(cache, context)` inside
+`Render2DSnapshot.Capture` or `CaptureToPng`, where `context` is the supplied `Render2DContext`.
+It uses the same update and draw path. The capture owns uploaded textures and the white pixel until
+submission has finished, so eviction and view disposal only release the view's references in this mode.
+`MaxTextures` still bounds the retained view entries, but the context keeps every texture created during
+that capture until teardown. Keep capture work bounded and prepare the required cache chunks before the
+draw. Do not dispose context-created fonts or icon textures inside the callback. The package README has
+the complete offscreen example.
 
 `Viewport`, the pointer and the open batch must use the same coordinates. The example uses UI pixels. A
 design-space host instead opens its own batch with `Begin(IDesignViewport)` and passes a pointer and bounds
@@ -2220,7 +2229,7 @@ screen size, merge by key and radius, and declutter by priority. Labels require 
 maximum. `Hovered` returns the accepted icon or label for a game-resolved tooltip. Live markers draw last,
 skip decluttering and hover, and can be removed with `RemoveMarker(id)`.
 
-Create, update, draw and dispose views on the surface's frame thread. A cache and worker may serve several
+Create, update, draw and dispose surface views on the surface's frame thread. A cache and worker may serve several
 views, each with its own uploaded textures. Dispose all views first, then stop the worker, then dispose the
 cache before releasing its source data. Icon and marker textures, the label font and the surface remain
 caller-owned. A custom `IWorldMapSource` must allow concurrent reads, increment `Revision` and raise `Changed`
@@ -8610,7 +8619,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.9.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.10.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -9035,7 +9044,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.9.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.10.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9834,7 +9843,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.9.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.10.0" />
 ```
 
 ```csharp
@@ -17836,7 +17845,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.9.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.10.0" />
 ```
 
 ```csharp
@@ -17872,7 +17881,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.9.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.10.0" />
 ```
 
 ```csharp
@@ -18116,7 +18125,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.9.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.10.0" />
 ```
 
 ```csharp
@@ -22487,7 +22496,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.9.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.10.0" />
 </ItemGroup>
 ```
 

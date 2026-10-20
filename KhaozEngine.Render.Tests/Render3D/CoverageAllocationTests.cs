@@ -200,7 +200,7 @@ public sealed partial class CoverageAllocationTests(ITestOutputHelper output)
 
     readonly record struct Allocation(long Equipment, long Preparation, long Submission, long Reserve, long Resolution, long Surface, long Render);
 
-    static Allocation Measure(bool fallback, bool coverage)
+    static Allocation Measure(bool fallback, bool coverage, BackgroundCollection? collection = null)
     {
         using var h = new CoverageSceneFixture();
         h.Scene.UseGpuSkinning = coverage || fallback;
@@ -243,6 +243,9 @@ public sealed partial class CoverageAllocationTests(ITestOutputHelper output)
         bool equipment = true, host = true;
         CoverageFailure equipmentFailure = default, hostFailure = default;
         SkinnedCoverageFrame frame = default;
+        collection?.Start();
+        // Every window below shares one checked no-GC region, so a collection cannot move the thread counter.
+        using var region = AllocationRegion.Start($"coverage render windows fallback={fallback} coverage={coverage}");
         long before = GC.GetAllocatedBytesForCurrentThread();
         if (coverage) equipment = h.Scene.TryStageCoverageEquipment(MotionKey.From(10), 1, 1, h.Support,
             inputs, frozen, out equipmentFailure);
@@ -255,8 +258,10 @@ public sealed partial class CoverageAllocationTests(ITestOutputHelper output)
         long afterSubmission = GC.GetAllocatedBytesForCurrentThread();
         h.Scene.PrepareFrame();
         long afterReserve = GC.GetAllocatedBytesForCurrentThread();
+        collection?.Await();
         h.RenderUncaptured(list);
         long afterRender = GC.GetAllocatedBytesForCurrentThread();
+        region.Dispose();
         Assert.True(equipment, equipmentFailure.ToString());
         Assert.True(host, hostFailure.ToString());
         if (points) Assert.Equal(1, h.Scene.PointShadowedLights);

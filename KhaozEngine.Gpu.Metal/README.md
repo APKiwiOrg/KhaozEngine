@@ -302,8 +302,11 @@ blocked inside the native call keeps blocking until its current slice expires.
 
 A failed command-list `End` abandons the recording and releases its retained command buffer without
 committing it. The list is neither recording nor sealed, Submit and another End refuse it, and the
-next Begin takes a fresh buffer. Encoder cleanup cannot replace the original End exception. Pending
-pass state and the swapchain-use flag are discarded, while staging blocks keep their arena ownership.
+next Begin takes a fresh buffer. The original exception and stack are preserved. Secondary descriptor,
+encoder, boundary bookkeeping and buffer cleanup failures are discarded. A cleanup failure on an
+otherwise successful path still propagates. Pending pass state and the swapchain-use flag are
+discarded, while staging blocks keep their arena ownership. Manual timestamp writes and batch ends
+also preserve the primary exception if closing their private blit or recording its boundary fails.
 
 `SupportsTimestamps` requires `MTLCommonCounterSetTimestamp`, stage-boundary or blit-command sampling,
 and a successful trial sample-buffer allocation. The probe releases that buffer immediately. Stage

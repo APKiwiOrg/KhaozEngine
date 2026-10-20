@@ -92,7 +92,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 _native.CopyMarker(encoder, resources.MarkerSource, resources.MarkerDestination, 4);
                 if (!stageBoundary) _native.Sample(encoder, resources.Samples, index, barrier: true);
             }
-            finally { _native.EndBlit(encoder); }
+            catch
+            {
+                // Match failed-End abandonment: cleanup must not replace the primary failure.
+                try { _native.EndBlit(encoder); }
+                catch { }
+                throw;
+            }
+            _native.EndBlit(encoder);
             _native.Signal(commandBuffer, resources.Event, afterValue);
             _native.Wait(commandBuffer, resources.Event, afterValue);
         }
@@ -102,7 +109,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
             using var pool = ObjCAutoreleasePool.Enter();
             IntPtr encoder = Require(_native.BeginBlit(commandBuffer, IntPtr.Zero));
             try { _native.Resolve(encoder, resources.Samples, count, resources.ResultBuffer); }
-            finally { _native.EndBlit(encoder); }
+            catch
+            {
+                try { _native.EndBlit(encoder); }
+                catch { }
+                throw;
+            }
+            _native.EndBlit(encoder);
         }
 
         public void CopyResolved(in MetalTimestampResources resources, uint count, Span<ulong> raw)

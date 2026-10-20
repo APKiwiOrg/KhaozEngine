@@ -9,7 +9,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <remarks>
         /// Closes any open encoder and seals the record for submission.
         /// Failure abandons the buffer without committing it. Submit and another End refuse it, and Begin
-        /// takes a fresh buffer. The original exception survives cleanup failures.
+        /// takes a fresh buffer. The original exception is rethrown with its stack preserved. Secondary
+        /// descriptor, encoder, boundary bookkeeping and buffer cleanup failures are discarded.
         /// <para>
         /// THE ENCODER CLOSES FIRST AND UNCONDITIONALLY. Committing a command buffer with an encoder still open
         /// is a call Metal refuses, and there is no equivalent of <c>vkEndCommandBuffer</c> to seal against: the

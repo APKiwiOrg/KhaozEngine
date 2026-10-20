@@ -25,7 +25,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             _encoders.EnsureNoEncoder();
             try { timestamps.Write(_commandBuffer, index); }
-            finally { _encoders.RecordExternalEncoderBoundary(); }
+            catch
+            {
+                // Bookkeeping is still attempted, but its invariant check must not replace the native failure.
+                try { _encoders.RecordExternalEncoderBoundary(); }
+                catch { }
+                throw;
+            }
+            _encoders.RecordExternalEncoderBoundary();
         }
 
         public void EndTimestamps(IGpuTimestampPool pool)
@@ -40,7 +47,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             _encoders.EnsureNoEncoder();
             try { timestamps.End(_commandBuffer); }
-            finally { _encoders.RecordExternalEncoderBoundary(); }
+            catch
+            {
+                try { _encoders.RecordExternalEncoderBoundary(); }
+                catch { }
+                throw;
+            }
+            _encoders.RecordExternalEncoderBoundary();
         }
 
         MetalTimestampPool RequireTimestampPool(IGpuTimestampPool pool)

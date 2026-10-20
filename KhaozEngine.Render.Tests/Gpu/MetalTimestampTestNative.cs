@@ -61,6 +61,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             if (!Blit) UnsupportedCalls++;
             if (Record) Trace.Add($"sample {index} barrier={barrier}");
+            OnCall?.Invoke("sample");
         }
         public void EndBlit(IntPtr encoder) { OpenBlits--; if (Record) Trace.Add("end blit"); OnCall?.Invoke("end blit"); }
         public void Resolve(IntPtr encoder, IntPtr samples, uint count, IntPtr destination) { if (Record) Trace.Add($"resolve {count}"); OnCall?.Invoke("resolve"); }

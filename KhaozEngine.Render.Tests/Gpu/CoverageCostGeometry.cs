@@ -60,6 +60,10 @@ internal sealed class CoverageCostGeometry
     static readonly int[] PlateIndices = [0, 1, 4, 1, 2, 4, 2, 3, 4, 3, 0, 4,
         5, 7, 6, 5, 8, 7, 0, 5, 6, 0, 6, 1, 1, 6, 7, 1, 7, 2, 2, 7, 8, 2, 8, 3, 3, 8, 5, 3, 5, 0];
 
+    // Semantic fake hosts consume the same retained plate data without importing EquipmentGlb.
+    internal static ReadOnlySpan<Vector3> EquipmentPlatePositions => Plate;
+    internal static ReadOnlySpan<int> EquipmentPlateIndices => PlateIndices;
+
     CoverageCostGeometry(CoverageCostFixtureMode mode, int level, Region[] regions)
     {
         Mode = mode; Level = level; Regions = regions;

@@ -106,6 +106,8 @@ jobs:
 
   bench:
     needs: legs
+    # Re-running only failed jobs reuses the legs result, so a measurement re-run is refused here, before a runner.
+    if: inputs.coverage-perf-unit == '' || github.run_attempt == 1
     name: ${{ matrix.leg }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ inputs.coverage-perf-unit != '' && 30 || 60 }}

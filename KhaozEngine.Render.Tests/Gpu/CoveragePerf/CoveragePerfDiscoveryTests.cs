@@ -54,14 +54,26 @@ public sealed class CoveragePerfDiscoveryTests
         Assert.IsAssignableFrom<Xunit.Sdk.XunitException>(Record.Exception(() => AssertOnlyMeasurementStepsNameProject(workflow)));
     }
 
+    [Theory]
+    [InlineData("\n")]
+    [InlineData("\r\n")]
+    public void Gate_text_inside_a_script_does_not_authorize_a_step(string newline)
+    {
+        string workflow = string.Join(newline, "jobs:", "  bench:", "    steps:",
+            "      - name: Build coverage performance project", "        if: always()", "        run: |",
+            "          echo \"if: inputs.coverage-perf-unit != ''\"", "          dotnet build " + Name, "");
+        Assert.IsAssignableFrom<Xunit.Sdk.XunitException>(Record.Exception(() => AssertOnlyMeasurementStepsNameProject(workflow)));
+    }
+
     static void AssertOnlyMeasurementStepsNameProject(string workflow)
     {
         var steps = CoveragePerfWorkflowText.Steps(workflow);
         Assert.DoesNotContain(Name, steps[0], StringComparison.Ordinal);
         foreach (string step in steps.Skip(1).Where(s => s.Contains(Name, StringComparison.Ordinal)))
         {
-            Assert.Contains("if: inputs.coverage-perf-unit != ''", step, StringComparison.Ordinal);
-            Assert.Contains(MeasurementSteps, name => step.StartsWith("name: " + name + "\n", StringComparison.Ordinal));
+            // The gate must be the step's own condition line, not text that merely appears inside its script.
+            Assert.Contains(MeasurementSteps, name => step.StartsWith(
+                "name: " + name + "\n        if: inputs.coverage-perf-unit != ''\n", StringComparison.Ordinal));
         }
     }
 

@@ -15,8 +15,12 @@ namespace KhaozEngine.Tests.Gpu;
 /// <c>mad</c> by a constant-buffer value with a literal -0.5, whose first source leads back through adds to a
 /// <c>div</c> by a constant-buffer value, whose dividend leads back through adds of constants and literals to an
 /// <c>itof</c>. Each chain reads as one signature: the opcodes in order, with the kind of each operand beside the
-/// chain (a register, a constant-buffer element, a literal) and its sign. Registers are not compared, only shapes.
-/// Platform-neutral text processing, so its own facts run on every leg.
+/// chain (a register, a constant-buffer element, a literal) and its sign. A register beside the chain also carries
+/// where its value comes from (<see cref="Provenance"/>): a division of two constant-buffer elements, such as
+/// <c>Jp / S</c>, a constant-buffer element or shader input moved into it, or the opcode that computed it, such as
+/// <c>previousUv</c>'s. So a copy that adds <c>Jp / S</c> where D adds <c>previousUv</c> reads apart from D. Register
+/// names are not compared, only shapes and provenance. Platform-neutral text processing, so its own facts run on every
+/// leg.
 /// </summary>
 internal static partial class TemporalVisibilityDxbc
 {
@@ -131,9 +135,40 @@ internal static partial class TemporalVisibilityDxbc
             Operand along = Operand.Parse(step.Sources[s]), beside = Operand.Parse(step.Sources[1 - s]);
             if (!along.IsRegister || along.Negated || along.Absolute) continue;
             string? before = AfterDivision(code, def, along.Name, along.Component(destComponent), adds - 1);
-            if (before is not null) return $"{before} > {step.Opcode} {beside.Kind(destComponent)}";
+            if (before is not null) return $"{before} > {step.Opcode} {Beside(code, def, beside, destComponent)}";
         }
         return null;
+    }
+
+    // An operand beside the chain: its kind and sign, and a register's provenance.
+    static string Beside(List<Instruction> code, int at, Operand operand, int component) => operand.IsRegister
+        ? $"{operand.Kind(component)}({Provenance(code, at, operand.Name, operand.Component(component), 4)})"
+        : operand.Kind(component);
+
+    /// <summary>Where the value of a register component read at instruction <paramref name="at"/> comes from, through
+    /// at most <paramref name="moves"/> plain moves: <c>div</c> and both operands where it divides two constant-buffer
+    /// elements, the element or input a move read, otherwise the opcode that wrote it, or <c>?</c> where nothing
+    /// before <paramref name="at"/> did.</summary>
+    internal static string Provenance(List<Instruction> code, int at, string register, int component, int moves)
+    {
+        int def = Definition(code, at, register, component, out int destComponent);
+        if (def < 0) return "?";
+        Instruction step = code[def];
+        string op = Bare(step);
+        if (op == "mov" && step.Sources.Length == 1)
+        {
+            Operand moved = Operand.Parse(step.Sources[0]);
+            if (moved.IsRegister && !moved.Negated && !moved.Absolute && moves > 0)
+                return Provenance(code, def, moved.Name, moved.Component(destComponent), moves - 1);
+            if (!moved.IsRegister) return moved.Kind(destComponent);
+        }
+        if (op == "div" && step.Sources.Length == 2)
+        {
+            Operand dividend = Operand.Parse(step.Sources[0]), divisor = Operand.Parse(step.Sources[1]);
+            if (dividend.IsConstant && divisor.IsConstant)
+                return $"div {dividend.Kind(destComponent)} {divisor.Kind(destComponent)}";
+        }
+        return op;
     }
 
     // Before the division: adds whose other operand is a constant or a literal, back to an itof.
@@ -208,6 +243,7 @@ internal static partial class TemporalVisibilityDxbc
 
         internal bool IsRegister => Name.Length > 1 && Name[0] == 'r' && char.IsDigit(Name[1]);
         internal bool IsConstant => Name.StartsWith("cb", StringComparison.Ordinal);
+        bool IsInput => Name.Length > 1 && Name[0] == 'v' && char.IsDigit(Name[1]);
         bool IsLiteral => Values.Length > 0;
 
         internal static Operand Parse(string text)
@@ -242,12 +278,12 @@ internal static partial class TemporalVisibilityDxbc
             : c < Values.Length ? Values[c] : "";
 
         /// <summary>The operand's shape for destination component <paramref name="c"/>: its sign, a register as
-        /// <c>r</c>, a constant-buffer element with the component read, or a literal's value.</summary>
+        /// <c>r</c>, a constant-buffer element or shader input with the component read, or a literal's value.</summary>
         internal string Kind(int c)
         {
             string sign = Negated ? "-" : "+";
             if (IsLiteral) return $"{sign}l({Literal(c)})";
-            string body = IsRegister ? "r" : IsConstant ? $"{Name}.{"xyzw"[Component(c)]}" : Name;
+            string body = IsRegister ? "r" : IsConstant || IsInput ? $"{Name}.{"xyzw"[Component(c)]}" : Name;
             return sign + (Absolute ? $"|{body}|" : body);
         }
 

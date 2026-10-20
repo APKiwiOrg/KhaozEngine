@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Linq;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -7,8 +9,10 @@ namespace KhaozEngine.Tests.Gpu
     /// The DXBC reader behind the hosted Windows check (<c>D3D11FxcValidationTests</c>, the visibility partial), held to
     /// disassembly written in FXC's form. D's reassociated chain sits in a loop on one register's <c>.xy</c>, a fast
     /// path copy sits on another register's <c>.zw</c>, and both must read as the same signature, while a copy whose
-    /// order differs from D's must not. Device-free on every leg, so the Windows-only check never meets a reader that
-    /// only ever ran there.
+    /// order differs from D's must not, including one that only swaps which register operand it adds where. The three
+    /// registers the chain adds are defined first, as FXC defines them: <c>previousUv</c> computed from the input and
+    /// the motion, <c>uv</c> moved from the input and <c>Jp / S</c> divided from the constant buffer. Device-free on
+    /// every leg, so the Windows-only check never meets a reader that only ever ran there.
     /// </summary>
     public sealed class TemporalVisibilityDxbcTests
     {
@@ -17,6 +21,10 @@ namespace KhaozEngine.Tests.Gpu
 ps_5_0
 dcl_globalFlags refactoringAllowed
 dcl_temps 12
+div r4.xy, cb0[5].xyxx, cb0[3].xyxx
+mov r3.xy, v1.xyxx
+ld_indexable(texture2d)(float,float,float,float) r1.xy, r0.xyzw, t1.xyzw
+add r2.xy, v1.xyxx, -r1.xyxx
 loop
   ld_indexable(texture2d)(float,float,float,float) r8.x, r9.xyzw, t0.xyzw
   itof r10.xy, r9.xyxx
@@ -55,6 +63,19 @@ endloop
   mad r5.xy, r5.xyxx, cb0[3].xyxx, l(-0.500000, -0.500000, 0.000000, 0.000000)
 ";
 
+        // D's order with Jp / S added where D adds previousUv and previousUv where D adds Jp / S. Without each
+        // register's provenance this reads exactly as D's chain does.
+        const string SwappedRegisters = @"
+  itof r5.xy, r6.xyxx
+  add r5.xy, r5.xyxx, -cb0[4].xyxx
+  add r5.xy, r5.xyxx, l(0.500000, 0.500000, 0.000000, 0.000000)
+  div r5.xy, r5.xyxx, cb0[3].xyxx
+  add r5.xy, r5.xyxx, r4.xyxx
+  add r5.xy, r5.xyxx, -r3.xyxx
+  add r5.xy, r5.xyxx, r2.xyxx
+  mad r5.xy, r5.xyxx, cb0[3].xyxx, l(-0.500000, -0.500000, 0.000000, 0.000000)
+";
+
         // The loop-invariant part folded once, so a copy adds one register where D adds three.
         const string Hoisted = @"
   itof r5.xy, r6.xyxx
@@ -71,8 +92,10 @@ endloop
             List<string> chains = TemporalVisibilityDxbc.Chains(DChain);
             Assert.Equal(
             [
-                "itof > add -cb0[4].x > add +l(0.500000) > div +cb0[3].x > add +r > add -r > add +r > mad +cb0[3].x l(-0.500000)",
-                "itof > add -cb0[4].y > add +l(0.500000) > div +cb0[3].y > add +r > add -r > add +r > mad +cb0[3].y l(-0.500000)",
+                "itof > add -cb0[4].x > add +l(0.500000) > div +cb0[3].x > add +r(add) > add -r(+v1.x) "
+                    + "> add +r(div +cb0[5].x +cb0[3].x) > mad +cb0[3].x l(-0.500000)",
+                "itof > add -cb0[4].y > add +l(0.500000) > div +cb0[3].y > add +r(add) > add -r(+v1.y) "
+                    + "> add +r(div +cb0[5].y +cb0[3].y) > mad +cb0[3].y l(-0.500000)",
             ], chains);
         }
 
@@ -89,13 +112,26 @@ endloop
         [Theory]
         [InlineData(OtherOrder)]
         [InlineData(Hoisted)]
+        [InlineData(SwappedRegisters)]
         public void ACopyInAnotherOrderReadsDifferently(string copy)
         {
             List<string> d = TemporalVisibilityDxbc.Chains(DChain);
-            List<string> copies = TemporalVisibilityDxbc.Chains(copy);
-            Assert.Equal(2, copies.Count);
+            List<string> both = TemporalVisibilityDxbc.Chains(DChain + copy);
+            Assert.Equal(4, both.Count);
+            List<string> copies = both.GetRange(2, 2);
             Assert.DoesNotContain(copies[0], d);
             Assert.DoesNotContain(copies[1], d);
+        }
+
+        /// <summary>The swapped copy differs from D in provenance alone: with it stripped, both read the same.</summary>
+        [Fact]
+        public void TheSwappedCopyIsToldApartByProvenanceAlone()
+        {
+            static string Shape(string chain) => Regex.Replace(chain, @"([+-])r\([^)]*\)", "$1r");
+            List<string> d = TemporalVisibilityDxbc.Chains(DChain);
+            List<string> swapped = TemporalVisibilityDxbc.Chains(DChain + SwappedRegisters).GetRange(2, 2);
+            Assert.Equal(d.Select(Shape), swapped.Select(Shape));
+            Assert.NotEqual(d, swapped);
         }
 
         [Fact]

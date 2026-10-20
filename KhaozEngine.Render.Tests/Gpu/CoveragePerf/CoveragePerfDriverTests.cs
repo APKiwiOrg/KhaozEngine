@@ -237,6 +237,47 @@ public sealed class CoveragePerfDriverTests
     }
 
     [Theory]
+    [InlineData("wait", false)]
+    [InlineData("wait", true)]
+    [InlineData("growth", false)]
+    [InlineData("growth", true)]
+    public void ColdSetupObservationsArePreservedAndOnlyMeasuredFailuresStopTheUnit(string observation, bool measured)
+    {
+        var run = new CoveragePerfFakeRun();
+        run.Setup = session => session.OnFrame = (CoveragePerfFakeSession _, int index, ref CoveragePerfFrameSample sample) =>
+        {
+            if (session.Block.Index != 0 || index != (measured ? session.Block.WarmupFrames : 0)) return;
+            if (observation == "wait") sample.ProductionWaits = 7;
+            else sample.ResourceGrowth = 42;
+        };
+
+        var report = run.Run();
+
+        Assert.Equal(measured ? CoveragePerfRunStatus.Failed : CoveragePerfRunStatus.Completed, report.Status);
+        var first = report.Blocks[0];
+        var observed = measured ? first.Samples[0] : first.Warmup[0];
+        Assert.Equal(observation == "wait" ? 7 : 0, observed.ProductionWaits);
+        Assert.Equal(observation == "growth" ? 42 : 0, observed.ResourceGrowth);
+        Assert.Equal(CoveragePerfManifest.WarmupFrameCount, first.Warmup.Length);
+        if (measured)
+        {
+            Assert.Single(run.Sessions);
+            Assert.Single(report.Blocks);
+            Assert.Equal(CoveragePerfRunStatus.Failed, first.Status);
+            Assert.Contains(observation == "wait" ? "Frame performed a production wait." : "Measured frame grew hot resources.",
+                first.Reason, StringComparison.Ordinal);
+            Assert.Equal(CoveragePerfManifest.BatchFrameCount, first.Samples.Length);
+        }
+        else
+        {
+            Assert.Equal(4, run.Sessions.Count);
+            Assert.Equal(4, report.Blocks.Length);
+            Assert.Equal(CoveragePerfManifest.SmokeMeasuredFrames, first.Samples.Length);
+            Assert.All(first.Samples, sample => { Assert.Equal(0, sample.ProductionWaits); Assert.Equal(0, sample.ResourceGrowth); });
+        }
+    }
+
+    [Theory]
     [InlineData("C0", 4, 384, 132)]
     [InlineData("C1", 6, 1152, 390)]
     [InlineData("G1", 8, 1152, 392)]

@@ -165,7 +165,7 @@ internal static class CoveragePerfDriver
         if (sample.Fallback) return "Frame used a fallback route.";
         if (sample.Actors != block.Actors || sample.MainVisibleActors != block.Actors)
             return "Actual or visible actor count does not match the approved block.";
-        if (sample.ProductionWaits != 0) return "Frame performed a production wait.";
+        if (measured && sample.ProductionWaits != 0) return "Frame performed a production wait.";
         if (measured && sample.ResourceGrowth != 0) return "Measured frame grew hot resources.";
         if (block.TimerLayout == CoveragePerfTimerLayout.CpuOnly) return null;
         if (sample.Gpu is not { } gpu) return "GPU timestamp outcome is unresolved.";

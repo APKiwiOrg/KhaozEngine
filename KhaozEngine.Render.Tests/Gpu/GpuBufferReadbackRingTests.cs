@@ -6,6 +6,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
 {
+    [Collection("AllocSensitive")]
     public sealed class GpuBufferReadbackRingTests
     {
         [Fact]
@@ -31,9 +32,11 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(ring.TryRecord(gpu, source, 0, 16, 101ul, second));
             Write(source, 9, 10, 11, 12);
             Assert.True(ring.TryRecord(gpu, source, 0, 16, 102ul, third));
+            using var region = AllocationRegion.Start("full readback ring refusal");
             long before = GC.GetAllocatedBytesForCurrentThread();
             bool full = ring.TryRecord(gpu, source, 0, 16, 103ul, fourth);
             long allocationDelta = GC.GetAllocatedBytesForCurrentThread() - before;
+            region.Dispose();
             Assert.False(full);
             Assert.Equal(0L, allocationDelta);
             Assert.Equal(3, gpu.CopyCalls);
@@ -296,11 +299,13 @@ namespace KhaozEngine.Tests.Gpu
             Read(ring, destination, 1, 1, 2, 3, 4);
             fence.Reset();
 
+            using var region = AllocationRegion.Start("warm readback record and read");
             long before = GC.GetAllocatedBytesForCurrentThread();
             bool recorded = ring.TryRecord(gpu, source, 0, 16, 2, fence);
             fence.Signaled = true;
             bool read = ring.TryRead(destination, out ulong tag, out uint count);
             long allocationDelta = GC.GetAllocatedBytesForCurrentThread() - before;
+            region.Dispose();
 
             Assert.True(recorded);
             Assert.True(read);

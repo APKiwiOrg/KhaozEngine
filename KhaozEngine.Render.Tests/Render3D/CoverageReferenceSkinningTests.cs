@@ -5,6 +5,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Render3D;
 
+[Collection("AllocSensitive")]
 public sealed class CoverageReferenceSkinningTests
 {
     [Fact]
@@ -97,9 +98,11 @@ public sealed class CoverageReferenceSkinningTests
         Matrix4x4[] palette = [Matrix4x4.Identity];
         Assert.True(CoverageReferenceSkinning.TrySkin(f, skin, source, palette, output, out _));
         f.Reset();
+        using var region = AllocationRegion.Start("warm reference skinning");
         long before = GC.GetAllocatedBytesForCurrentThread();
         bool success = CoverageReferenceSkinning.TrySkin(f, skin, source, palette, output, out _);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        region.Dispose();
         Assert.True(success);
         Assert.Equal(0, allocated);
         Assert.Equal(CoverageExactnessPhase.Skinning, f.FirstSite.Phase);

@@ -8,6 +8,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Render3D;
 
+[Collection("AllocSensitive")]
 public sealed class CoverageSafetyRegressionTests
 {
     [Theory]
@@ -139,9 +140,11 @@ public sealed class CoverageSafetyRegressionTests
         CoverageCommandPose[] commands = [command with { MaxWorldRecession = .25f }];
         var scratch = new CoverageScratch(topology);
         Assert.True(CoverageCertification.ValidateGeometry(topology, before, after, Matrix4x4.Identity, commands, scratch, out var failure), failure.ToString());
+        using var region = AllocationRegion.Start("warm recession budget validation");
         long start = GC.GetAllocatedBytesForCurrentThread();
         bool accepted = CoverageCertification.ValidateGeometry(topology, before, after, Matrix4x4.Identity, commands, scratch, out _);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - start;
+        region.Dispose();
         Assert.True(accepted);
         Assert.Equal(0, allocated);
         Assert.True(MemoryMarshal.AsBytes(before.AsSpan(1)).SequenceEqual(MemoryMarshal.AsBytes(after.AsSpan(1))));

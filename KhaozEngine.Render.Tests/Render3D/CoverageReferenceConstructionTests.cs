@@ -7,6 +7,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Render3D;
 
+[Collection("AllocSensitive")]
 public sealed class CoverageReferenceConstructionTests
 {
     [Theory]
@@ -448,10 +449,12 @@ public sealed class CoverageReferenceConstructionTests
         var (topology, posed, commands, scratch) = Flat();
         Prepare(topology, posed, commands, scratch);
         Assert.True(CoverageReferenceConstructor.TryConformGroups(topology, commands, scratch, out _));
+        using var region = AllocationRegion.Start("warm reference interpolation and conforming");
         long start = GC.GetAllocatedBytesForCurrentThread();
         bool interpolated = CoverageReferenceConstructor.TryInterpolate(topology, posed, scratch, out _);
         bool conformed = CoverageReferenceConstructor.TryConformGroups(topology, commands, scratch, out _);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - start;
+        region.Dispose();
         Assert.True(interpolated && conformed);
         Assert.Equal(0, allocated);
     }

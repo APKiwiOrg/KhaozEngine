@@ -158,9 +158,11 @@ public sealed class CoverageReferenceNormalTests
         var scratch = new CoverageReferenceScratch(c.Topology);
         var final = new ModelVertex[c.Topology.VertexCount];
         Assert.True(CoverageReferenceConstructor.TryConstruct(c.Topology, c.Posed, c.Model, c.Commands, scratch, final, out _));
+        using var region = AllocationRegion.Start("warm reference construction");
         long start = GC.GetAllocatedBytesForCurrentThread();
         bool accepted = CoverageReferenceConstructor.TryConstruct(c.Topology, c.Posed, c.Model, c.Commands, scratch, final, out var failure);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - start;
+        region.Dispose();
         Assert.True(accepted, failure.ToString());
         Assert.Equal(0, allocated);
         Assert.Throws<ArgumentException>(() => CoverageReferenceConstructor.TryConstruct(c.Topology, c.Posed, c.Model, c.Commands, scratch, final.AsSpan(1), out _));

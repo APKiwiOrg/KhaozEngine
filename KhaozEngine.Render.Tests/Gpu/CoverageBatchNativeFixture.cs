@@ -62,12 +62,15 @@ internal sealed class CoverageBatchNativeFixture : IDisposable
         }
     }
 
-    internal void Record(bool reverse)
+    /// <summary>Records and submits one frame. A measured frame runs every allocation window in one checked
+    /// no-GC region. Cold and warm-up frames leave it off because their bytes are reported, not asserted.</summary>
+    internal void Record(bool reverse, bool measured = false)
     {
         Allocation = default; resolutionCalls = surfaceCalls = ReadbackWaits = 0;
         int waits = Device.Waits, creations = Device.Creations;
         int submissions = Device.Submissions;
         Scene.Begin();
+        using var region = AllocationRegion.Start($"coverage batch frame reverse={reverse}", enabled: measured);
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int n = 0; n < Actors.Length; n++) Actors[reverse ? Actors.Length - n - 1 : n].Draw();
         long staged = GC.GetAllocatedBytesForCurrentThread();
@@ -93,6 +96,7 @@ internal sealed class CoverageBatchNativeFixture : IDisposable
         before = GC.GetAllocatedBytesForCurrentThread();
         submission.Submit(commands);
         Allocation.SubmissionTotal = GC.GetAllocatedBytesForCurrentThread() - before;
+        region.Dispose();
         FrameSubmissions = Device.Submissions - beforeSubmit;
         OtherProductionSubmissions = beforeSubmit - submissions;
         Assert.Equal(1, FrameSubmissions);
@@ -106,15 +110,17 @@ internal sealed class CoverageBatchNativeFixture : IDisposable
         Assert.Null(Scene.CoverageVerificationForTests);
     }
 
-    internal void Complete()
+    internal void Complete(bool measured = false)
     {
         // One assertion drain exposes completion on Direct3D11 too. It is outside every production interval.
         Device.WaitForIdle();
         int waits = Device.Waits, creations = Device.Creations;
         OutcomeCount = 0;
+        using var region = AllocationRegion.Start("coverage batch completed outcome enumeration", enabled: measured);
         long before = GC.GetAllocatedBytesForCurrentThread();
         while (Scene.TryReadCoverageOutcome(out var outcome)) outcomes[OutcomeCount++] = outcome;
         Allocation.OutcomeEnumeration = GC.GetAllocatedBytesForCurrentThread() - before;
+        region.Dispose();
         ReadbackWaits += Device.Waits - waits;
         ProductionWaits += Device.Waits - waits; Growths += Device.Creations - creations;
     }

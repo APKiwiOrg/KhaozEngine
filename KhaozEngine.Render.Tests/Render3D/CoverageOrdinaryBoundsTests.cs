@@ -5,6 +5,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Render3D;
 
+[Collection("AllocSensitive")]
 public sealed class CoverageOrdinaryBoundsTests
 {
     [Theory]
@@ -115,9 +116,11 @@ public sealed class CoverageOrdinaryBoundsTests
         var bounds = new CoverageActorBounds([vertex]); Matrix4x4[] palette = [Matrix4x4.Identity];
         _ = bounds.BoundOrdinary(palette, Matrix4x4.Identity, true);
         _ = bounds.BoundOrdinary(palette, Matrix4x4.Identity, true);
+        using var region = AllocationRegion.Start("warm ordinary bound");
         long before = GC.GetAllocatedBytesForCurrentThread();
         var result = bounds.BoundOrdinary(palette, Matrix4x4.Identity, true);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        region.Dispose();
         Assert.True(result.IsFinite); Assert.Equal(0, allocated);
     }
 

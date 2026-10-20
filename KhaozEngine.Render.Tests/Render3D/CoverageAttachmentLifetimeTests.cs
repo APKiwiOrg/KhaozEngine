@@ -19,6 +19,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Render3D;
 
+[Collection("AllocSensitive")]
 public sealed class CoverageAttachmentLifetimeTests
 {
     [Fact]
@@ -149,9 +150,11 @@ public sealed class CoverageAttachmentLifetimeTests
         Assert.True(binding.TryPrepare(f.Skeleton, f.Palette, Matrix4x4.Identity, f.Template, out _, out _));
         f.Scene.Begin();
         var template = f.Template;
+        using var region = AllocationRegion.Start("warm binding preparation");
         long before = GC.GetAllocatedBytesForCurrentThread();
         bool accepted = binding.TryPrepare(f.Skeleton, f.Palette, Matrix4x4.Identity, template, out _, out var failure);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        region.Dispose();
         Assert.True(accepted, failure.ToString());
         Assert.Equal(0, allocated);
     }

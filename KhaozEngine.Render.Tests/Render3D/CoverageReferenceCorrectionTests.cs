@@ -418,9 +418,11 @@ public sealed class CoverageReferenceCorrectionTests(ITestOutputHelper output)
         var scratch = Pointwise(c);
         Assert.True(CoverageReferenceConstructor.TryCorrectAndTransition(c.Topology, c.Commands, scratch, out _));
         scratch = Pointwise(c);
+        using var region = AllocationRegion.Start("warm correction and transition");
         long before = GC.GetAllocatedBytesForCurrentThread();
         bool accepted = CoverageReferenceConstructor.TryCorrectAndTransition(c.Topology, c.Commands, scratch, out _);
         long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        region.Dispose();
         Assert.True(accepted);
         Assert.Equal(0, bytes);
     }

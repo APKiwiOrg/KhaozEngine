@@ -187,10 +187,12 @@ public sealed class CoverageEvaluatorTests
         var before = CoverageCommands.Surface(topology, fixture.Posed);
         Assert.True(CoverageGeometryTestRun.TryEvaluate(topology, fixture.Posed, Matrix4x4.Identity, commands, scratch, final, out var failure), failure.ToString());
         Assert.True(CoverageCertification.ValidateGeometry(topology, before, final, Matrix4x4.Identity, commands, scratch, out failure), failure.ToString());
+        using var region = AllocationRegion.Start("warm evaluation and validation");
         long start = GC.GetAllocatedBytesForCurrentThread();
         bool evaluated = CoverageGeometryTestRun.TryEvaluate(topology, fixture.Posed, Matrix4x4.Identity, commands, scratch, final, out _);
         bool validated = CoverageCertification.ValidateGeometry(topology, before, final, Matrix4x4.Identity, commands, scratch, out _);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - start;
+        region.Dispose();
         Assert.True(evaluated && validated);
         Assert.Equal(0, allocated);
     }

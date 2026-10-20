@@ -32,10 +32,10 @@ public sealed class CoverageComputeBatchGpuTests(ITestOutputHelper output)
         for (int frame = 0; frame < 2; frame++)
         {
             f.Pose(frame + 1, refusal: frame == 0);
-            f.Record(reverse: frame == 0);
+            f.Record(reverse: frame == 0, measured: true);
             generations[frame] = f.SubmittedCurrent;
             Assert.All(f.Actors, actor => Assert.True(actor.Frame.Preparation!.MotionReusable));
-            f.Complete();
+            f.Complete(measured: true);
             allocations[frame] = f.Allocation; growths[frame] = f.Growths; waits[frame] = f.ProductionWaits;
             Assert.Equal(2, f.OutcomeCount);
             observations[frame] = f.Observe();
@@ -129,11 +129,11 @@ public sealed class CoverageComputeBatchGpuTests(ITestOutputHelper output)
             f.Record(reverse: frame % 2 != 0);
         }
         f.Pose(1, refusal: false, reference: false);
-        f.Record(reverse: true);
+        f.Record(reverse: true, measured: true);
         ulong droppedFrame = f.Actors[0].Generation;
         var recording = f.Allocation;
         int growths = f.Growths, waits = f.ProductionWaits;
-        f.Complete();
+        f.Complete(measured: true);
         var completed = f.CompletedOutcomes();
         Write(f, "full-ring", new
         {

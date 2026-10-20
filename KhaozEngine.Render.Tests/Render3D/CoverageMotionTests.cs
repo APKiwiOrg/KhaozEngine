@@ -268,10 +268,12 @@ public sealed class CoverageMotionTests
         object view = new(); var key = MotionKey.From(8); var surface = Surface(key, 4);
         h.Begin(1, view, true); h.Record(surface); h.Commit();
         h.Begin(2, view, true); h.Record(surface); h.Commit();
+        using var region = AllocationRegion.Start("warm history copy, lookup and commit");
         long before = GC.GetAllocatedBytesForCurrentThread();
         h.Begin(3, view, true); bool found = h.TryGetPrevious(key, 4, out var previous);
         h.Record(surface); h.Commit();
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        region.Dispose();
         Assert.True(found); Assert.Equal(surface, previous); Assert.Equal(0, allocated);
     }
 

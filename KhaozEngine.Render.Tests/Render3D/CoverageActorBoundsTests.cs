@@ -7,6 +7,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Render3D;
 
+[Collection("AllocSensitive")]
 public sealed class CoverageActorBoundsTests
 {
     [Theory]
@@ -235,10 +236,13 @@ public sealed class CoverageActorBoundsTests
         var skin = producer.BoundSkin(palette);
         producer.ExpandWorld(skin, Matrix4x4.Identity, commands);
         producer.OriginError(skin, Matrix4x4.Identity, Vector3.Zero, commands);
+        using var region = AllocationRegion.Start("warm actor bounds");
         long before = GC.GetAllocatedBytesForCurrentThread();
         var result = producer.ExpandWorld(producer.BoundSkin(palette), Matrix4x4.Identity, commands);
         double error = producer.OriginError(skin, Matrix4x4.Identity, Vector3.Zero, commands);
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        region.Dispose();
+        Assert.Equal(0, allocated);
         Assert.True(double.IsFinite(error));
         Inside(result, Vector3.One);
         Assert.False(float.IsFinite(producer.BoundSkin([Matrix4x4.Identity with { M41 = float.NaN }]).Max.X));

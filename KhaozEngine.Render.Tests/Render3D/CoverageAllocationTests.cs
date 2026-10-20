@@ -62,7 +62,8 @@ public sealed partial class CoverageAllocationTests(ITestOutputHelper output)
         var warmA = a.Frame.Preparation!.Palette.ToArray();
         var warmB = b.Frame.Preparation!.Palette.ToArray();
 
-        // Measured frame. A returns to the lifted pose and B to the bent pose.
+        // Measured frame. A returns to the lifted pose and B to the bent pose. One checked region covers every window.
+        using var region = AllocationRegion.Start($"warm changed poses and actor switching gpuSkinning={gpuSkinning}");
         SubmitFrame(f, a, lifted, b, bent, palette, template);
         var pendingA = f.Scene.GetCoverageOutcome(a.Frame).Presentation;
         var pendingB = f.Scene.GetCoverageOutcome(b.Frame).Presentation;
@@ -87,6 +88,7 @@ public sealed partial class CoverageAllocationTests(ITestOutputHelper output)
             else { surface += GC.GetAllocatedBytesForCurrentThread() - surfaceStart; surfaces++; }
         };
         f.RenderUncaptured(uncaptured);
+        region.Dispose();
         f.Scene.CoverageAllocationObserverForTests = null;
         f.Scene.CoverageSurfaceAllocationObserverForTests = null;
 

@@ -8,6 +8,7 @@ using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests.Render3D;
 
+[Collection("AllocSensitive")]
 public sealed class CoverageCommandUniformTests(ITestOutputHelper output)
 {
     [Fact]
@@ -96,9 +97,11 @@ public sealed class CoverageCommandUniformTests(ITestOutputHelper output)
         Matrix4x4[] palette = [Matrix4x4.Identity, Matrix4x4.Identity];
         var uniforms = new CoverageCommandUniforms(topology, 2);
         Assert.True(uniforms.TryPrepare(palette, palette, Matrix4x4.Identity, commands, out _));
+        using var region = AllocationRegion.Start("warm command uniform preparation");
         long before = GC.GetAllocatedBytesForCurrentThread();
         bool accepted = uniforms.TryPrepare(palette, palette, Matrix4x4.Identity, commands, out _);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        region.Dispose();
         Assert.True(accepted); Assert.Equal(0, allocated);
         Assert.False(uniforms.TryPrepare(palette[..1], palette, Matrix4x4.Identity, commands, out var failure));
         Assert.Equal(CoverageFailureCode.IdentityMismatch, failure.Code);

@@ -55,11 +55,13 @@ public sealed class CoverageTemporalAllocationTests(ITestOutputHelper output)
 
         var steady = Submit(2, .35f, .02f);
 
+        using var steadyRegion = AllocationRegion.Start($"warm temporal steady frame split={split}");
         long before = GC.GetAllocatedBytesForCurrentThread();
         h.Scene.PrepareFrame(32, 24);
         long prepared = GC.GetAllocatedBytesForCurrentThread();
         h.RenderUncaptured(audit);
         long rendered = GC.GetAllocatedBytesForCurrentThread();
+        steadyRegion.Dispose();
         long steadyPrepare = prepared - before, steadyRender = rendered - prepared;
         Matrix4x4[] steadyPalette = steady.Preparation!.Palette.ToArray();
         Assert.NotEqual(lastPalette, steadyPalette);
@@ -67,11 +69,13 @@ public sealed class CoverageTemporalAllocationTests(ITestOutputHelper output)
 
         var transition = Submit(3, .5f, .025f);
 
+        using var transitionRegion = AllocationRegion.Start($"warm temporal transition frame split={split}");
         before = GC.GetAllocatedBytesForCurrentThread();
         h.Scene.PrepareFrame(32, 24);
         prepared = GC.GetAllocatedBytesForCurrentThread();
         h.RenderUncaptured(audit);
         rendered = GC.GetAllocatedBytesForCurrentThread();
+        transitionRegion.Dispose();
         long transitionPrepare = prepared - before, transitionRender = rendered - prepared;
         Assert.True(motionDraws > 0);
         Assert.Equal(transition.Preparation!.Actor, motion.Actor);

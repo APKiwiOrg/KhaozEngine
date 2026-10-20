@@ -191,10 +191,12 @@ public sealed class CoverageNormalTests
         topology.Interpolate(fixture.Posed, before); before.CopyTo(after, 0);
         for (int i = 0; i < after.Length; i++) after[i].Position.Z -= topology.Vertices[i].Strength * .05f;
         Assert.True(CoverageGeometryTestRun.UpdateNormals(topology, before, after, scratch, out _));
+        using var region = AllocationRegion.Start("warm interpolation and normal update");
         long start = GC.GetAllocatedBytesForCurrentThread();
         bool interpolated = topology.TryInterpolate(fixture.Posed, before, out _);
         bool updated = CoverageGeometryTestRun.UpdateNormals(topology, before, after, scratch, out _);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - start;
+        region.Dispose();
         Assert.True(interpolated && updated);
         Assert.Equal(0, allocated);
     }

@@ -7,6 +7,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Render3D;
 
+[Collection("AllocSensitive")]
 public sealed class CoverageOutcomeTests
 {
     [Fact]
@@ -61,12 +62,14 @@ public sealed class CoverageOutcomeTests
         submission.Begin();
         Assert.True(submission.TryRegister(outcomes));
 
+        using var region = AllocationRegion.Start("warm outcome record and read");
         long before = GC.GetAllocatedBytesForCurrentThread();
         bool recorded = outcomes.Record(gpu, submission, source, identities);
         submission.Submit(gpu);
         ((SubmissionTestFence)gpu.SubmittedFence!).Signaled = true;
         bool read = outcomes.TryRead(out var outcome);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        region.Dispose();
 
         Assert.True(recorded); Assert.True(read);
         Assert.Equal(100ul, outcome.FrameId);

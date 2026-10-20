@@ -7,6 +7,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Render3D;
 
+[Collection("AllocSensitive")]
 public sealed class CoverageSupportTests
 {
     [Fact]
@@ -164,11 +165,13 @@ public sealed class CoverageSupportTests
         double expectedDistance = .125 * Math.Sqrt(slope * slope + 1);
         Assert.True(boundary.Distance.Min <= expectedDistance && boundary.Distance.Max >= expectedDistance);
         Assert.True(boundary.Distance.Max - boundary.Distance.Min < 1e-12);
+        using var region = AllocationRegion.Start("warm support height and boundary bounds");
         long before = GC.GetAllocatedBytesForCurrentThread();
         var projectedMiddle = CoverageAffinePoint.Project(new(.5f, 1, 3), support.SourceToCoverage);
         bool heightFound = support.TryGetHeightBounds(projectedMiddle, out var measuredHeight);
         bool boundaryFound = support.TryGetBoundaryBounds(outside, out var measuredBoundary);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        region.Dispose();
         Assert.True(heightFound && boundaryFound);
         Assert.True(measuredHeight.IsFinite && measuredBoundary.Distance.IsFinite && measuredBoundary.Height.IsFinite);
         Assert.Equal(0, allocated);

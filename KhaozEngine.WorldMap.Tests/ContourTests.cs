@@ -35,6 +35,32 @@ public sealed class ContourTests
         Assert.Equal(255, Red(image, 18, 16));
     }
 
+    /// <summary>Opposing diagonal slopes keep a contour through their stationary saddle intersection.</summary>
+    [Theory]
+    [InlineData(1f)]
+    [InlineData(-1f)]
+    public void Contours_StationarySaddle_PaintsTheCrossing(float direction)
+    {
+        TestWorldMapSource source = Surface((x, y) => direction * (x - 4.125f) * (y - 4.125f));
+        WorldMapChunkImage image = WorldMapRasterizer.Rasterize(source, Style(1f, 0.75f), new(0, 0));
+
+        Assert.InRange(Red(image, 16, 15), (byte)0, (byte)64);
+        Assert.InRange(Red(image, 16, 14), (byte)0, (byte)64);
+        Assert.InRange(Red(image, 17, 15), (byte)0, (byte)64);
+    }
+
+    /// <summary>Distant opposing slopes cannot ink a locally flat interval plateau.</summary>
+    [Fact]
+    public void Contours_StationaryPlateauBetweenOpposingSlopes_DoesNotPaint()
+    {
+        TestWorldMapSource source = Surface((x, y) =>
+            MathF.Sign(x - 4.125f) * MathF.Max(0f, MathF.Abs(x - 4.125f) - 0.75f) *
+            MathF.Sign(y - 4.125f) * MathF.Max(0f, MathF.Abs(y - 4.125f) - 0.75f));
+        WorldMapChunkImage image = WorldMapRasterizer.Rasterize(source, Style(1f, 16f), new(0, 0));
+
+        Assert.Equal(255, Red(image, 16, 15));
+    }
+
     /// <summary>The width stays two image pixels as the pyramid changes its metre scale.</summary>
     [Theory]
     [InlineData(0, 15, 16)]

@@ -27,7 +27,9 @@ internal sealed class ContourPainter(SurfaceSampler sampler, RasterCanvas canvas
                 double south = Height(point - new Vector2(0f, derivativeStep), sample.Height);
                 double dx = east - west, dy = north - south;
                 double gradientPerPixel = Math.Sqrt(dx * dx + dy * dy);
-                if (gradientPerPixel <= 0d) continue;
+                // A stationary saddle crosses locally even though its axial derivatives vanish.
+                if (gradientPerPixel <= 0d &&
+                    (sample.Height != contour || !CrossesLocally(point, derivativeStep, contour, sample.Height))) continue;
 
                 double min = Math.Min(Math.Min(east, west), Math.Min(north, south));
                 double max = Math.Max(Math.Max(east, west), Math.Max(north, south));
@@ -41,7 +43,7 @@ internal sealed class ContourPainter(SurfaceSampler sampler, RasterCanvas canvas
                 // A level plateau has no crossing, even when neighbouring slopes produce a gradient.
                 if (min >= contour || max <= contour) continue;
 
-                double distancePixels = Math.Abs(sample.Height - contour) / gradientPerPixel;
+                double distancePixels = gradientPerPixel > 0d ? Math.Abs(sample.Height - contour) / gradientPerPixel : 0d;
                 float coverage = (float)Math.Clamp(settings.WidthPixels * 0.5d + 0.5d - distancePixels, 0d, 1d);
                 if (coverage > 0f) canvas.Blend(column, row, settings.Color, coverage);
             }
@@ -51,6 +53,15 @@ internal sealed class ContourPainter(SurfaceSampler sampler, RasterCanvas canvas
     {
         SurfaceSample sample = sampler.Sample(point);
         return sample.HasGround ? sample.Height : fallback;
+    }
+
+    bool CrossesLocally(Vector2 point, float step, double contour, float fallback)
+    {
+        double min = contour, max = contour;
+        for (int y = -1; y <= 1; y += 2)
+            for (int x = -1; x <= 1; x += 2)
+                Include(Height(point + new Vector2(x * step, y * step), fallback), ref min, ref max);
+        return min < contour && max > contour;
     }
 
     static void Include(double height, ref double min, ref double max)

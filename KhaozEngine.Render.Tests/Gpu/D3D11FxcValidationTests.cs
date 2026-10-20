@@ -45,7 +45,7 @@ namespace KhaozEngine.Tests.Gpu
     /// leg ships alongside indefinitely.
     /// </para>
     /// </summary>
-    public sealed class D3D11FxcValidationTests
+    public sealed partial class D3D11FxcValidationTests
     {
         // ---- the Windows FXC leg -------------------------------------------------------------------------
 

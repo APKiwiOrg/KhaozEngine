@@ -271,6 +271,9 @@ namespace KhaozEngine.Tests.Windowing
                 noKeys, noKeys, noKeys, noButtons, noButtons, Vector2.Zero, Vector2.Zero, 0, 960, 540);
             var gesture = new PointerGesture(MouseButton.Right, new PointerTapTolerance(4f, 0.25f, 8f));
 
+            // Initialize the runtime's per-enum HashSet comparer before measuring frame work.
+            Assert.True(drifting.IsDown(MouseButton.Right));
+
             // Each press holds 12 frames of 1/32 s: pending through frame 7, crossing on frame 8, dragging after.
             int crossings = 0;
             AllocAssert.NoPerCallAllocation("PointerGesture.Advance over held tolerance presses", () =>

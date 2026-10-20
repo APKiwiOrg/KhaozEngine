@@ -312,13 +312,20 @@ public sealed class SkinnedPointShadowSchedulingTests
             Scene.AddLight(origin + new Vector3(0f, 1f, 1f), Color.White, 10f, 1f, LightShadow.Dynamic);
             Scene.PrepareFrame();
             using IGpuCommandList inner = Device.Factory.CreateCommandList();
-            using var commands = new RecordingGpuCommandList(inner) { CapturePayloads = true };
+            using var commands = new RecordingGpuCommandList(inner) { CapturePayloads = true, CaptureBindings = true };
             commands.Begin();
             Scene.RenderInternal(commands, 16, 16, _target);
             commands.End();
-            byte[]? faceBytes = commands.Uploads
-                .FirstOrDefault(upload => upload.Buffer.SizeInBytes == PointShadowRenderer.FaceSlotBytes * 6)
-                .Data;
+            if (Scene.LastShadowPassDiagnostics.PointDynamicSkinnedDrawCalls == 0)
+                return (Scene.LastShadowPassDiagnostics, null);
+
+            // Select the buffer bound by the point caster, independent of its geometric capacity growth.
+            IGpuBuffer faceBuffer = Assert.Single(commands.Bindings
+                .Where(draw => draw.Pipeline is FakePipeline { Request: { } request }
+                    && request.FragmentGlsl == ShaderSources.PointShadowRigidFrag)
+                .Select(draw => Assert.IsType<GpuBufferRange>(Assert.IsType<FakeResourceSet>(draw.Sets[0].Set).Resources[0]).Buffer)
+                .Distinct());
+            byte[]? faceBytes = Assert.Single(commands.Uploads, upload => ReferenceEquals(upload.Buffer, faceBuffer)).Data;
             return (Scene.LastShadowPassDiagnostics, faceBytes);
         }
 

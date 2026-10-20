@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
@@ -160,6 +161,7 @@ namespace KhaozEngine.Tests.Render3D
             // per-unload stall through there, with the Scene3D-side drain gone and the test still green.
             Harness h = NewHarness();
             Scene3D.TextureHandle atlas = h.Scene.LoadTexture(Pixel, 1, 1);
+            FakeTexture atlasTexture = h.Factory.Textures[^1];
             int setFrom = h.Factory.ResourceSets.Count;
 
             h.Scene.Begin();
@@ -179,8 +181,9 @@ namespace KhaozEngine.Tests.Render3D
             }
 
             // The set the renderer cached for this atlas, which is what UnloadTexture has to drop.
-            Assert.NotEmpty(SetsSince(h.Factory, setFrom));
-            List<FakeResourceSet> cached = SetsSince(h.Factory, setFrom);
+            List<FakeResourceSet> cached = SetsSince(h.Factory, setFrom)
+                .FindAll(set => set.Resources.Contains(atlasTexture));
+            Assert.Single(cached);
             int before = h.Spy.WaitForIdleCalls;
 
             h.Scene.UnloadTexture(atlas);

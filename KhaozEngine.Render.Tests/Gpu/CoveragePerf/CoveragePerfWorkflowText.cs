@@ -33,5 +33,5 @@ internal static class CoveragePerfWorkflowText
         return next < 0 ? rest : rest[..next];
     }
 
-    internal static string[] Steps(string workflow) => Lf(workflow).Split("\n      - name: ", StringSplitOptions.None);
+    internal static string[] Steps(string workflow) => Lf(workflow).Split("\n      - ", StringSplitOptions.None);
 }

@@ -14,6 +14,8 @@ public sealed class CoveragePerfAuthorizationCommitTests
     [InlineData("head-is-workload", "HEAD is the workload commit")]
     [InlineData("second-file", "must add only tools/EquipmentCoverage.Perf.Tests/authorized/inline-driver.json")]
     [InlineData("source-change", "must add only tools/EquipmentCoverage.Perf.Tests/authorized/inline-driver.json")]
+    [InlineData("rename-into-manifest", "D\tsrc/Workload.cs")]
+    [InlineData("missing-git", "git is unavailable, so the authorization commit cannot be verified")]
     [InlineData("grandparent", "parent differs from KE_COVERAGE_PERF_WORKLOAD_SHA")]
     [InlineData("merge", "exactly one parent, found 2")]
     [InlineData("manifest-workload", "Manifest workloadSha differs from the dispatched KE_COVERAGE_PERF_WORKLOAD_SHA")]
@@ -29,7 +31,10 @@ public sealed class CoveragePerfAuthorizationCommitTests
         {
             string parent = vector == "grandparent" ? repository.Commit("Intermediate", workload) : workload;
             string[] parents = vector == "merge" ? new[] { workload, repository.Commit("Side", workload) } : new[] { parent };
-            repository.Write(CoveragePerfAuthorizationCommit.ManifestPath("inline-driver"), run.Json);
+            string manifest = CoveragePerfAuthorizationCommit.ManifestPath("inline-driver");
+            repository.Write(manifest, run.Json);
+            if (vector == "rename-into-manifest")
+                File.Move(Path.Combine(repository.Root, "src/Workload.cs"), Path.Combine(repository.Root, manifest), true);
             if (vector == "second-file") repository.Write("src/Extra.cs", "class Extra { }\n"u8.ToArray());
             if (vector == "source-change") repository.Write("src/Workload.cs", "class Workload { int changed; }\n"u8.ToArray());
             authorization = repository.Commit("B authorization", parents);
@@ -43,7 +48,8 @@ public sealed class CoveragePerfAuthorizationCommitTests
 
         CoveragePerfRequest? request = null;
         var error = Record.Exception(() => request = CoveragePerfDispatch.Load(repository.Authorized, name => env.GetValueOrDefault(name),
-            (unit, sha) => CoveragePerfAuthorizationCommit.Commit(repository.Root, sha, unit)));
+            (unit, sha) => CoveragePerfAuthorizationCommit.Commit(repository.Root, sha, unit,
+                vector == "missing-git" ? Path.Combine(repository.Root, "nonexistent-git") : "git")));
 
         if (refusal is not null)
         {

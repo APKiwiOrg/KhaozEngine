@@ -38,13 +38,30 @@ public sealed class CoveragePerfDiscoveryTests
             string active = CoverageCostContractTests.ActiveSelectionText(CoveragePerfWorkflowText.Lf(File.ReadAllText(workflow)));
             if (!active.Contains(Name, StringComparison.Ordinal)) continue;
             Assert.Contains(Path.GetFileName(workflow), new[] { "stress-test.yml", "gpu-hosted-bench.yml" });
-            var steps = CoveragePerfWorkflowText.Steps(active);
-            Assert.DoesNotContain(Name, steps[0], StringComparison.Ordinal);
-            foreach (string step in steps.Skip(1).Where(s => s.Contains(Name, StringComparison.Ordinal)))
-            {
-                Assert.Contains("if: inputs.coverage-perf-unit != ''", step, StringComparison.Ordinal);
-                Assert.Contains(MeasurementSteps, name => step.StartsWith(name + "\n", StringComparison.Ordinal));
-            }
+            AssertOnlyMeasurementStepsNameProject(active);
+        }
+    }
+
+    [Theory]
+    [InlineData("\n")]
+    [InlineData("\r\n")]
+    public void An_unnamed_unconditional_step_cannot_inherit_measurement_authorization(string newline)
+    {
+        string workflow = string.Join(newline, "jobs:", "  bench:", "    steps:",
+            "      - name: Verify coverage authorization commit", "        if: inputs.coverage-perf-unit != ''",
+            "        run: echo verified", "      - uses: actions/setup-dotnet@pinned", "        with:",
+            "          dotnet-version: " + Name, "");
+        Assert.IsAssignableFrom<Xunit.Sdk.XunitException>(Record.Exception(() => AssertOnlyMeasurementStepsNameProject(workflow)));
+    }
+
+    static void AssertOnlyMeasurementStepsNameProject(string workflow)
+    {
+        var steps = CoveragePerfWorkflowText.Steps(workflow);
+        Assert.DoesNotContain(Name, steps[0], StringComparison.Ordinal);
+        foreach (string step in steps.Skip(1).Where(s => s.Contains(Name, StringComparison.Ordinal)))
+        {
+            Assert.Contains("if: inputs.coverage-perf-unit != ''", step, StringComparison.Ordinal);
+            Assert.Contains(MeasurementSteps, name => step.StartsWith("name: " + name + "\n", StringComparison.Ordinal));
         }
     }
 

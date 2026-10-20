@@ -77,9 +77,13 @@ jobs:
           COVERAGE_PERF_UNIT: ${{ inputs.coverage-perf-unit }}
           COVERAGE_PERF_MANIFEST_SHA256: ${{ inputs.coverage-perf-manifest-sha256 }}
           COVERAGE_PERF_WORKLOAD_SHA: ${{ inputs.coverage-perf-workload-sha }}
+          WORKFLOW_RUN_ATTEMPT: ${{ github.run_attempt }}
           LC_ALL: C
         run: |
           if [ -n "$COVERAGE_PERF_UNIT" ]; then
+            if [ "$WORKFLOW_RUN_ATTEMPT" != '1' ]; then
+              echo "::error::coverage performance requires github.run_attempt 1, a re-run cannot reuse an approval"; exit 1
+            fi
             case "$LEGS" in windows-d3d11|windows-vulkan|linux-vulkan) ;; *) echo "::error::coverage performance requires one named GPU leg, never all"; exit 1 ;; esac
             if [ "$FILTER" != 'FullyQualifiedName~GpuCapabilitiesDiagTests' ]; then
               echo "::error::coverage performance refuses a non-default free-form filter"; exit 1

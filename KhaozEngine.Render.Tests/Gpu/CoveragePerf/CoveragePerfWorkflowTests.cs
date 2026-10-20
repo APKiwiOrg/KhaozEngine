@@ -43,7 +43,7 @@ public sealed class CoveragePerfWorkflowTests
         Assert.Equal("  bench:\n", CoveragePerfWorkflowText.Before(CoveragePerfWorkflowText.After(workflow, "jobs:\n"), "    steps:"));
         string[] steps = CoveragePerfWorkflowText.Steps(workflow);
         Assert.Equal(3, steps.Length);
-        Assert.StartsWith("Second\n        if: inputs.coverage-perf-unit != ''\n", steps[2], StringComparison.Ordinal);
+        Assert.StartsWith("name: Second\n        if: inputs.coverage-perf-unit != ''\n", steps[2], StringComparison.Ordinal);
     }
 
     [Fact]
@@ -68,6 +68,35 @@ public sealed class CoveragePerfWorkflowTests
         Assert.Contains("COVERAGE_PERF_UNIT", pick, StringComparison.Ordinal);
         Assert.Contains("FILTER", pick, StringComparison.Ordinal);
         Assert.DoesNotContain("${{ inputs.", CoveragePerfWorkflowText.After(pick, "        run: |"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Gpu_refuses_re_runs_in_the_pick_job_only_for_measurement()
+    {
+        string pick = CoveragePerfWorkflowText.Before(Gpu, "  bench:\n");
+        Assert.Contains("          WORKFLOW_RUN_ATTEMPT: ${{ github.run_attempt }}", pick, StringComparison.Ordinal);
+        string measurement = CoveragePerfWorkflowText.Before(
+            CoveragePerfWorkflowText.After(pick, "          if [ -n \"$COVERAGE_PERF_UNIT\" ]; then\n"), "          elif ");
+        Assert.Contains("if [ \"$WORKFLOW_RUN_ATTEMPT\" != '1' ]; then\n" +
+            "              echo \"::error::coverage performance requires github.run_attempt 1, a re-run cannot reuse an approval\"; exit 1\n" +
+            "            fi", measurement, StringComparison.Ordinal);
+        string legacy = CoveragePerfWorkflowText.After(pick, "          elif ");
+        Assert.DoesNotContain("WORKFLOW_RUN_ATTEMPT", legacy, StringComparison.Ordinal);
+        Assert.Contains("    needs: legs\n", CoveragePerfWorkflowText.After(Gpu, "  bench:\n"), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("\n")]
+    [InlineData("\r\n")]
+    public void Step_chunks_end_before_an_unnamed_step(string newline)
+    {
+        string workflow = string.Join(newline, "    steps:", "      - name: Verify coverage authorization commit",
+            "        if: inputs.coverage-perf-unit != ''", "        run: echo verified",
+            "      - uses: actions/setup-dotnet@pinned", "        with:", "          dotnet-version: 10.0.x", "");
+        string[] steps = CoveragePerfWorkflowText.Steps(workflow);
+        Assert.Equal(3, steps.Length);
+        Assert.Equal("name: Verify coverage authorization commit\n        if: inputs.coverage-perf-unit != ''\n        run: echo verified", steps[1]);
+        Assert.Equal("uses: actions/setup-dotnet@pinned\n        with:\n          dotnet-version: 10.0.x\n", steps[2]);
     }
 
     [Fact]

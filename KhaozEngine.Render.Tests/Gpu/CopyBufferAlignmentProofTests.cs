@@ -64,6 +64,16 @@ public sealed class CopyBufferAlignmentProofTests
         => Assert.False(ProvesStorage(prefix, "offset", after));
 
     [Theory]
+    [InlineData("void Copy(uint offset) { ref uint alias = ref offset; GpuCopyAlignment.RequireAlignedOffset(offset, \"offset\", \"copy\", \"source\"); alias = 1; commands.CopyBuffer(source, offset, target, 0, count); }")]
+    [InlineData("void Copy(uint offset) { GpuCopyAlignment.RequireAlignedOffset(offset, \"offset\", \"copy\", \"source\"); commands.CopyBuffer(GetSource(out offset), offset, target, 0, count); }")]
+    [InlineData("void Copy(uint offset) { GpuCopyAlignment.RequireAlignedOffset(offset, \"offset\", \"copy\", \"source\"); commands.CopyBuffer(source, offset, target, 0, count); Inspect(in offset); }")]
+    [InlineData("void Copy(uint offset, uint other, bool ready) { ref uint alias = ref (ready ? ref offset : ref other); GpuCopyAlignment.RequireAlignedOffset(offset, \"offset\", \"copy\", \"source\"); alias = 1; commands.CopyBuffer(source, offset, target, 0, count); }")]
+    [InlineData("void Copy(uint offset) { var alias = __makeref(offset); GpuCopyAlignment.RequireAlignedOffset(offset, \"offset\", \"copy\", \"source\"); __refvalue(alias, uint) = 1; commands.CopyBuffer(source, offset, target, 0, count); }")]
+    [InlineData("void Copy(uint offset) { GpuCopyAlignment.RequireAlignedOffset(offset, (offset = 1).ToString(), \"copy\", \"source\"); commands.CopyBuffer(source, offset, target, 0, count); }")]
+    public void Ref_taking_and_writes_in_validation_or_copy_statements_are_not_a_runtime_proof(string source)
+        => Assert.False(ProvesSource("offset", source));
+
+    [Theory]
     [InlineData("void Copy(ulong offset) {")]
     [InlineData("void Copy() { int offset = 0;")]
     public void Non_uint_storage_is_not_a_runtime_proof(string prefix)

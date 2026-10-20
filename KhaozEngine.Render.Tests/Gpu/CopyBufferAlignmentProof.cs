@@ -51,6 +51,12 @@ internal static class CopyBufferAlignmentProof
         if (symbol is ILocalSymbol local && !local.DeclaringSyntaxReferences.Any(reference =>
             reference.GetSyntax() is VariableDeclaratorSyntax { Initializer: not null })) return false;
 
+        if (body.DescendantNodes().Where(node => node is RefExpressionSyntax or MakeRefExpressionSyntax
+            || node is ArgumentSyntax byRef && byRef.RefKindKeyword.Kind()
+                is SyntaxKind.RefKeyword or SyntaxKind.OutKeyword or SyntaxKind.InKeyword)
+            .SelectMany(node => node.DescendantNodes().OfType<IdentifierNameSyntax>())
+            .Any(use => SymbolEqualityComparer.Default.Equals(model.GetSymbolInfo(use).Symbol, symbol))) return false;
+
         DataFlowAnalysis? whole = model.AnalyzeDataFlow(body);
         if (whole is not { Succeeded: true } || whole.Captured.Contains(symbol, SymbolEqualityComparer.Default)
             || whole.UnsafeAddressTaken.Contains(symbol, SymbolEqualityComparer.Default)) return false;
@@ -69,9 +75,8 @@ internal static class CopyBufferAlignmentProof
                 || !SymbolEqualityComparer.Default.Equals(
                     model.GetSymbolInfo(validation.ArgumentList.Arguments[0].Expression).Symbol, symbol)) continue;
 
-            if (index + 1 == copyStatement) return true;
-            DataFlowAnalysis? between = model.AnalyzeDataFlow(block.Statements[index + 1], block.Statements[copyStatement - 1]);
-            if (between is { Succeeded: true } && !between.WrittenInside.Contains(symbol, SymbolEqualityComparer.Default))
+            DataFlowAnalysis? range = model.AnalyzeDataFlow(block.Statements[index], statement);
+            if (range is { Succeeded: true } && !range.WrittenInside.Contains(symbol, SymbolEqualityComparer.Default))
                 return true;
         }
         return false;

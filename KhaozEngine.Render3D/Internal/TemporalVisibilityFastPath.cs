@@ -38,10 +38,12 @@ namespace KhaozEngine.Render3D.Internal
         /// <summary>
         /// THE BINADE RULE, as the generated text tests it per column (row) of the block: whether column
         /// <paramref name="at"/> under jitter <paramref name="jitter"/> on its axis sends the block to D's slow path.
-        /// <para>Why. D's chain begins <c>(at + 0.5) - J</c>, and FXC at the shipped flags compiles it as written in
-        /// some programs and reassociated, <c>(at - J) + 0.5</c>, in others (D's own helper and two of the fast path's
-        /// six components in hosted run 39362804399). Take integer <c>at</c> with <c>0 &lt;= at &lt; 2^22</c> and float
-        /// <c>J</c> in (-0.5, 0.5). <c>at + 0.5</c> is exact, so the written form rounds once, at
+        /// <para>Why. D's chain begins <c>(at + 0.5) - J</c>, and FXC at the shipped flags compiles each chain either
+        /// as written or reassociated, <c>(at - J) + 0.5</c>. In the decision helper of hosted run 39362804399 D's
+        /// chain came out reassociated, and of the fast path's six components two came out as written and four
+        /// reassociated. In the full accumulate and resolve programs, where FXC marks every instruction precise, every
+        /// chain is as written (hosted run 39374926165). Take integer <c>at</c> with <c>0 &lt;= at &lt; 2^22</c> and
+        /// float <c>J</c> in (-0.5, 0.5). <c>at + 0.5</c> is exact, so the written form rounds once, at
         /// <c>t + 0.5</c> where <c>t = at - J</c>. The reassociated form rounds <c>t</c>, then <c>fl(t) + 0.5</c>.
         /// Where <c>t</c> and <c>t + 0.5</c> lie in one closed binade <c>[2^e, 2^(e+1)]</c>, both are rounded to the
         /// same grid of spacing <c>u = 2^(e-23)</c>, ties to even, and 0.5 is an even multiple of <c>u</c> below
@@ -52,7 +54,8 @@ namespace KhaozEngine.Render3D.Internal
         /// <c>at - J &gt; 2^e + 0.5</c>. Only positive jitter at <c>at = 2^e</c> puts <c>t</c> below <c>2^e</c> and
         /// <c>t + 0.5</c> above it, where the two roundings land on different grids and can differ by an ulp. Zero and
         /// negative zero jitter give <c>t = at</c> exactly. So the forms are equal wherever this returns false.
-        /// TemporalVisibilityBinadeTests checks it in float32 for every <c>at</c> to 4096.</para>
+        /// TemporalVisibilityBinadeTests checks it in float32 for every <c>at</c> to 16384, against every real jitter
+        /// offset among others.</para>
         /// <para>The jitter is tested by its bits, so a positive denormal or a positive NaN also takes D's path and no
         /// compiler rewrites an ordered comparison.</para>
         /// </summary>

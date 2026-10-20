@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using KhaozEngine.Render3D.Internal;
 using Xunit;
 using Xunit.Abstractions;
@@ -12,20 +13,24 @@ namespace KhaozEngine.Tests.Render3D
     /// starts <c>(at + 0.5) - J</c>, and FXC compiles it as written in some programs and as <c>(at - J) + 0.5</c> in
     /// others. The fast path sends a block to D's slow path wherever any of its columns (rows) is a power of two and the
     /// jitter on that axis is positive (<see cref="TemporalVisibilityFastPath.SlowForBinade"/>). This replays both
-    /// association orders in System.Single, every step rounded to float, for every <c>at</c> from 0 to 4096 against a
-    /// dense set of jitters in (-0.5, 0.5): both signs, zero, denormals, the ends of every binade down to 2^-40, the
-    /// last few thousand floats below 0.5 and an even sweep. Wherever the rule lets the fast path run, the two orders
-    /// must give the same bits. Where it does not, they must differ somewhere, so the rule is not vacuous. Device-free.
+    /// association orders in System.Single, every step rounded to float, for every <c>at</c> from 0 to 16384, the
+    /// largest internal size, against a dense set of jitters in (-0.5, 0.5): both signs, zero, denormals, the ends of
+    /// every binade down to 2^-40, the last few thousand floats below 0.5, an even sweep and, since review 7f r3 (m-5),
+    /// every offset <see cref="TemporalJitter.Offset"/> returns on either axis for every phase count up to
+    /// <see cref="TemporalJitter.MaxPhaseCount"/>, the only jitter the shader is given. Wherever the rule lets the fast
+    /// path run, the two orders must give the same bits. Where it does not, they must differ somewhere, so the rule is
+    /// not vacuous. Device-free.
     /// </summary>
     public sealed class TemporalVisibilityBinadeTests(ITestOutputHelper output)
     {
-        const int LastColumn = 4096;
+        const int LastColumn = 16384;
 
         [Fact]
         public void BothAssociationOrdersAgreeWhereverTheRuleKeepsTheFastPath()
         {
             float[] jitters = Jitters();
-            long agreed = 0, slowPairs = 0, slowDiffer = 0;
+            var real = new HashSet<uint>(RealOffsets().Select(Bits));
+            long agreed = 0, slowPairs = 0, slowDiffer = 0, realPairs = 0, realSlowDiffer = 0;
             var counterexamples = new List<string>();
             var differByColumn = new SortedDictionary<int, long>();
             for (int at = 0; at <= LastColumn; at++)
@@ -34,11 +39,14 @@ namespace KhaozEngine.Tests.Render3D
                 foreach (float jitter in jitters)
                 {
                     uint written = Bits(Written(column, jitter)), reassociated = Bits(Reassociated(column, jitter));
+                    bool isReal = real.Contains(Bits(jitter));
+                    if (isReal) realPairs++;
                     if (TemporalVisibilityFastPath.SlowForBinade(at, jitter))
                     {
                         slowPairs++;
                         if (written == reassociated) continue;
                         slowDiffer++;
+                        if (isReal) realSlowDiffer++;
                         differByColumn[at] = differByColumn.GetValueOrDefault(at) + 1;
                     }
                     else if (written == reassociated) agreed++;
@@ -49,10 +57,16 @@ namespace KhaozEngine.Tests.Render3D
             }
             output.WriteLine($"{LastColumn + 1} columns x {jitters.Length} jitters: {agreed} fast-path pairs agree, "
                 + $"{slowPairs} pairs take the slow path, {slowDiffer} of them differ");
+            output.WriteLine($"  {real.Count} distinct real jitter offsets: {realPairs} pairs, {realSlowDiffer} slow pairs "
+                + "differ");
             foreach ((int at, long count) in differByColumn) output.WriteLine($"  at {at}: {count} pairs differ");
             Assert.True(counterexamples.Count == 0,
                 "the two orders differ where the fast path runs:\n  " + string.Join("\n  ", counterexamples));
             Assert.True(slowDiffer > 0, "no pair the rule sends to the slow path differs, so the rule is vacuous");
+            Assert.Equal((long)real.Count * (LastColumn + 1), realPairs);
+            // The real offsets alone meet the binade, all 201 pairs at a power of two under positive jitter, as review
+            // 7f r3 found replaying them independently.
+            Assert.Equal(201, realSlowDiffer);
             // Every column that differs is a power of two, the only columns the rule names.
             Assert.All(differByColumn.Keys, at => Assert.True(at > 0 && (at & (at - 1)) == 0, $"at {at}"));
         }
@@ -92,9 +106,37 @@ namespace KhaozEngine.Tests.Render3D
 
         static uint Bits(float value) => BitConverter.SingleToUInt32Bits(value);
 
+        /// <summary>Every offset the sequence gives, both axes, at every phase count up to the longest, all inside
+        /// (-0.5, 0.5). The first frame's x is zero.</summary>
+        [Fact]
+        public void TheRealOffsetsLieInsideTheProvedRange()
+        {
+            float[] offsets = RealOffsets();
+            Assert.Equal(2 * TemporalJitter.MaxPhaseCount, offsets.Length);
+            Assert.All(offsets, j => Assert.True(j > -0.5f && j < 0.5f, $"J {j:R}"));
+            Assert.Contains(0f, offsets);
+            Assert.Equal(-0.49609375f, offsets.Min());
+            Assert.Equal(0.4921875f, offsets.Max());
+        }
+
+        // TemporalJitter.Offset on both axes for every frame of every phase count up to MaxPhaseCount. A longer
+        // sequence only extends a shorter one, so this is Halton indices 1 to MaxPhaseCount, each axis kept apart.
+        static float[] RealOffsets()
+        {
+            var set = new HashSet<(int Axis, uint Bits)>();
+            for (int phases = 1; phases <= TemporalJitter.MaxPhaseCount; phases++)
+                for (long frame = 0; frame < phases; frame++)
+                {
+                    Vector2 offset = TemporalJitter.Offset(frame, phases);
+                    set.Add((0, Bits(offset.X)));
+                    set.Add((1, Bits(offset.Y)));
+                }
+            return set.Select(o => BitConverter.UInt32BitsToSingle(o.Bits)).ToArray();
+        }
+
         static float[] Jitters()
         {
-            var set = new HashSet<uint>();
+            var set = new HashSet<uint>(RealOffsets().Select(Bits));
             void Add(float j)
             {
                 if (j > -0.5f && j < 0.5f) { set.Add(Bits(j)); set.Add(Bits(-j)); }

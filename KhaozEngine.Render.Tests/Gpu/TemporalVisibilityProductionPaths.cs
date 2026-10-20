@@ -8,8 +8,8 @@ namespace KhaozEngine.Tests.Gpu;
 /// WHICH PATH THE SHIPPED DECISION TOOK, PIXEL BY PIXEL, IN A REWRITE OF THE PRODUCTION PROGRAM WHOSE STORED LOCKS MUST
 /// EQUAL PRODUCTION'S (plan Task 7f, reviews 7f r1 I2 and r2 m-2). <see cref="Rewrite"/> is a test-only rewrite through
 /// the renderer's fragment source hook. It keeps every production rule and adds three things: two private globals, a
-/// slow path that also names its reason (an edge centre, bases off their consecutive run, or a block over the border),
-/// and a call site that copies the shipped path bits, whether the post-release lock's bits are zero, and the signed
+/// slow path that also names its reason where the block does not fit (an edge centre, bases off their consecutive run,
+/// or a block over the border), and a call site that copies the shipped path bits, whether the post-release lock's bits are zero, and the signed
 /// change into them. The program's colour output then carries them instead of the colour: the path word in red, the
 /// change's 32 bits in green, blue and alpha, 11, 11 and 10 bits, whole numbers a half float holds exactly. The colour
 /// is still computed, so the program binds what production binds, and the state output is untouched, so a rig running
@@ -21,18 +21,19 @@ namespace KhaozEngine.Tests.Gpu;
 /// </summary>
 internal sealed class TemporalVisibilityProductionPaths
 {
-    /// <summary>The path word: the shipped bits, the slow path's reason, the call site reached and a lock whose bits
-    /// are zero there, which the call site's first test (R1) gates off.</summary>
-    internal const uint Fast = 1, Slow = 2, RangeSkip = 4, Computed = 8, Edge = 16, Deviation = 32, Border = 64,
-        Reached = 128, LockZero = 256;
+    /// <summary>The path word: the shipped bits, the binade among them, the slow path's reason, the call site reached
+    /// and a lock whose bits are zero there, which the call site's first test (R1) gates off.</summary>
+    internal const uint Fast = 1, Slow = 2, RangeSkip = 4, Computed = 8, Binade = 16, Edge = 32, Deviation = 64,
+        Border = 128, Reached = 256, LockZero = 512;
 
     /// <summary>The slow path's reason bits, which only <see cref="Rewrite"/> sets.</summary>
     internal const uint Reasons = Edge | Deviation | Border;
 
     // Anchors stop before their line ending, so a CRLF checkout of the shader sources matches too.
-    const string SlowLine = "        path = VisibilitySlowPath;";
-    const string SlowWithReason = "        path = VisibilitySlowPath | (any(equal(centre, ivec2(0))) || any(equal(centre, last))"
-        + " ? 16u\n            : base0 == base1 - 1 && base2 == base1 + 1 ? 64u : 32u);";
+    const string SlowLine = "        path = VisibilitySlowPath | (blockFits ? VisibilitySlowBinade : 0u);";
+    const string SlowWithReason = "        path = VisibilitySlowPath | (blockFits ? VisibilitySlowBinade\n"
+        + "            : any(equal(centre, ivec2(0))) || any(equal(centre, last)) ? 32u\n"
+        + "            : base0 == base1 - 1 && base2 == base1 + 1 ? 128u : 64u);";
     const string CallSiteLine = "    if (visibilityReleased) lockValue = 0.0;";
     const string ColourLine = "    oColor = vec4(p.color, p.alpha + vUv.x * 1.0e-30);";
     const string Globals = "\nuint visibilityPathForTests = 0u;\nfloat visibilityChangeForTests = 0.0;\n";
@@ -84,7 +85,7 @@ internal sealed class TemporalVisibilityProductionPaths
         | ((uint)colour[pixel * 4 + 2] << 11) | ((uint)colour[pixel * 4 + 3] << 22));
 
     internal long Pixels, NotReached, GatedByLock, GatedOtherwise, FastPath, SlowPath, SlowEdge, SlowDeviation,
-        SlowBorder, RangeSkips, ChangeComputed, FastComputed, Released, FastReleased, FastNearThresholdAbove,
+        SlowBorder, SlowBinade, RangeSkips, ChangeComputed, FastComputed, Released, FastReleased, FastNearThresholdAbove,
         FastNearThresholdBelow;
 
     /// <summary>Pixels the call site reached and gated off before the decision, by the lock or otherwise.</summary>
@@ -116,7 +117,8 @@ internal sealed class TemporalVisibilityProductionPaths
         else
         {
             SlowPath++;
-            if ((path & Edge) != 0) SlowEdge++;
+            if ((path & Binade) != 0) SlowBinade++;
+            else if ((path & Edge) != 0) SlowEdge++;
             else if ((path & Deviation) != 0) SlowDeviation++;
             else if ((path & Border) != 0) SlowBorder++;
         }
@@ -139,6 +141,6 @@ internal sealed class TemporalVisibilityProductionPaths
         + $"decision {GatedByLock} by a zero lock and {GatedOtherwise} otherwise, fast {FastPath} (range skip "
         + $"{RangeSkips}, change computed {FastComputed}, released {FastReleased}, within 2^-22 of 0.1 above "
         + $"{FastNearThresholdAbove} and below {FastNearThresholdBelow}), slow {SlowPath} (at an edge {SlowEdge}, on a "
-        + $"base deviation {SlowDeviation}, at the border {SlowBorder}), change computed {ChangeComputed}, released "
+        + $"base deviation {SlowDeviation}, at the border {SlowBorder}, at a binade {SlowBinade}), change computed {ChangeComputed}, released "
         + $"{Released}";
 }

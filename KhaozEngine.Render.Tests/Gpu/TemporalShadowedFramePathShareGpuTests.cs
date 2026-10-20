@@ -86,15 +86,15 @@ namespace KhaozEngine.Tests.Gpu
             output.WriteLine($"    the check runs {Share(paths.FastPath + paths.SlowPath)}: fast {Share(paths.FastPath)} "
                 + $"(range skip {Share(paths.RangeSkips)}, change computed {Share(paths.FastComputed)}, nothing accepted "
                 + $"{Share(paths.FastWithoutChange)}), slow {Share(paths.SlowPath)} (at an edge {Share(paths.SlowEdge)}, "
-                + $"on a base deviation {Share(paths.SlowDeviation)}, at the border {Share(paths.SlowBorder)}, change "
-                + $"computed {Share(paths.ChangeComputed - paths.FastComputed)})");
+                + $"on a base deviation {Share(paths.SlowDeviation)}, at the border {Share(paths.SlowBorder)}, at a binade "
+                + $"{Share(paths.SlowBinade)}, change computed {Share(paths.ChangeComputed - paths.FastComputed)})");
             output.WriteLine($"    released {Share(paths.Released)} (on the fast path {Share(paths.FastReleased)})");
             output.WriteLine($"  stored locks apart from a production scene rendered beside it: {lockDiffers} of {pixels}");
 
             Assert.Equal(pixels, paths.Pixels);
             Assert.Equal(pixels, paths.NotReached + paths.GatedByLock + paths.GatedOtherwise + paths.FastPath
                 + paths.SlowPath);
-            Assert.Equal(paths.SlowPath, paths.SlowEdge + paths.SlowDeviation + paths.SlowBorder);
+            Assert.Equal(paths.SlowPath, paths.SlowEdge + paths.SlowDeviation + paths.SlowBorder + paths.SlowBinade);
         }
 
         // The scene builds its resolve renderer on the first frame that resolves, unless one is there already. This

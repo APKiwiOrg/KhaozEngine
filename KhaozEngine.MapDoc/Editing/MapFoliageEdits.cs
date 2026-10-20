@@ -158,12 +158,7 @@ public static class MapFoliageEdits
     // read again and never reaches the layer.
     static MapFoliageLayer SetDensity(MapFoliageLayer layer, MapSetFoliageDensity edit)
     {
-        MapFoliageBrush.RequireRaster(layer);
-        if (edit.Width < 1 || edit.Depth < 1) throw new MapDocumentException("A foliage density rectangle needs a positive width and depth.");
-        if (edit.X < 0 || edit.Z < 0 || (long)edit.X + edit.Width > layer.Width || (long)edit.Z + edit.Depth > layer.Depth)
-            throw new MapDocumentException($"The foliage density rectangle lies outside layer '{layer.Id}' samples {layer.Width} by {layer.Depth}.");
-        int hiX = edit.X + edit.Width - 1, hiZ = edit.Z + edit.Depth - 1;
-        MapFoliageBrush.RequireBudget(layer, edit.X, edit.Z, hiX, hiZ);
+        var (hiX, hiZ) = MapFoliageBrush.RequireRectangle(layer, edit.X, edit.Z, edit.Width, edit.Depth);
         if (edit.Density is null) throw new MapDocumentException("A foliage density edit requires its values.");
         int count = edit.Width * edit.Depth;
         if (edit.Density.Count != count)

@@ -51,6 +51,7 @@ public sealed partial class MapEditSession
     {
         bool same = _nativeAssets?.Hash == assets.Hash && _nativeAssets.Roots.SequenceEqual(assets.Roots);
         _nativeAssets = assets;
+        NewSnapshotLocked();
         if (!same) ResetNativeHistory();
         else _nativeHistory.RebindNativeAssets(assets, NativePlacementBoundsProvider.Instance);
     }
@@ -148,6 +149,7 @@ public sealed partial class MapEditSession
         checkpoint?.Invoke();
         NativeDocumentTransaction.Publish(_doc!, staged, liveLists);
         _nativeAssets = staged.Assets;
+        NewSnapshotLocked();
         staged.Accept();
         _dirty = true;
         if (worldChanged) _field = null;

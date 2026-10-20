@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Editing;
@@ -12,8 +13,8 @@ public sealed partial class MutationService
 {
     /// <summary>Applies one foliage edit through the native session history with the command the GUI uses, so the public
     /// finalizer supplies its effects. A dry run applies nothing: it previews one layer set's stable-lattice differential
-    /// against the open document and returns that identity-bound result, whose digest a later layer set may carry. Every
-    /// other edit refuses a dry run. A refusal throws and leaves the session unchanged.</summary>
+    /// against the open document and returns that identity-bound result, whose digest a later layer set may carry. A new
+    /// layer needs no differential, so its dry run refuses, as does every other edit. A refusal throws and leaves the session unchanged.</summary>
     public MapFoliageMutationResult FoliageApply(MapFoliageEdit edit, bool dryRun = false)
     {
         ArgumentNullException.ThrowIfNull(edit);
@@ -23,6 +24,9 @@ public sealed partial class MutationService
                 throw new MapDocumentException("A foliage dry run previews one layer set, not " + edit.Label.ToLowerInvariant() + ".");
             return session.WithNativeAssets(c =>
             {
+                // The core gate needs no differential for a layer the document does not have yet, so there is none to preview.
+                if (c.Document.Foliage?.Layers.Any(l => string.Equals(l.Id, layer.Layer.Id, StringComparison.Ordinal)) != true)
+                    throw new MapDocumentException($"Foliage layer '{layer.Layer.Id}' is new, so it needs no differential. Apply it directly without dryRun.");
                 MapFoliageDifferentialResult differential = MapFoliageEdits.PreviewPolicyChange(c.Document, c.Assets, layer);
                 return Result(false, differential.Status, c.Document, c.Assets, "", differential);
             });

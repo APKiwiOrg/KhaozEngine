@@ -80,6 +80,20 @@ public static class MapFoliageBrush
             throw new MapDocumentException($"Foliage layer '{layer.Id}' has no valid density raster to edit.");
     }
 
+    /// <summary>Refuses a sample rectangle [x, x + width) by [z, z + depth) that is empty, lies outside the layer's
+    /// raster or exceeds the raster edit limits, before any byte is read, and returns its inclusive high corner. The edit
+    /// and read paths share it, so their limits cannot drift apart.</summary>
+    internal static (int HiX, int HiZ) RequireRectangle(MapFoliageLayer layer, int x, int z, int width, int depth)
+    {
+        RequireRaster(layer);
+        if (width < 1 || depth < 1) throw new MapDocumentException("A foliage density rectangle needs a positive width and depth.");
+        if (x < 0 || z < 0 || (long)x + width > layer.Width || (long)z + depth > layer.Depth)
+            throw new MapDocumentException($"The foliage density rectangle lies outside layer '{layer.Id}' samples {layer.Width} by {layer.Depth}.");
+        int hiX = x + width - 1, hiZ = z + depth - 1;
+        RequireBudget(layer, x, z, hiX, hiZ);
+        return (hiX, hiZ);
+    }
+
     /// <summary>Refuses an edit over the inclusive sample box before any byte is read.</summary>
     internal static void RequireBudget(MapFoliageLayer layer, int loX, int loZ, int hiX, int hiZ)
     {

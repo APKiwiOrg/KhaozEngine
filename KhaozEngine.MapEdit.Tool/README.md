@@ -268,8 +268,9 @@ Z, density bytes are 0 to 255 and brush positions and radii are world metres.
 
 `layerJson` is one closed payload 1 layer, the object a layer takes in the document foliage section, read by the
 payload codec with its limits. A policy definition change refuses without the digest a `dryRun` of the same proposal
-returned. A dry run applies nothing and returns the identity-bound `MapFoliageDifferentialResult`. Only a layer set takes
-a dry run. `foliage_paint` checks `target` against 0 to 255 before converting it. Every refusal leaves the document,
+returned. A dry run applies nothing and returns the identity-bound `MapFoliageDifferentialResult`. Only a layer set of an
+existing layer takes a dry run. A new layer needs no differential, so its dry run refuses and it can be applied directly.
+`foliage_paint` checks `target` against 0 to 255 before converting it. Every refusal leaves the document,
 history, dirty flag and identity unchanged.
 
 `MapFoliageMutationResult` carries `Applied`, `Status`, the whole authored `Identity` after the call, the finalized
@@ -280,7 +281,9 @@ density or preview. A named layer returns its metadata, the stored chunks its sa
 `width` and `depth` are all given, and a CPU preview of the closed chunk address `previewChunkJson` `{"x":0,"z":0}`.
 Absent chunks are omitted and read zero. A rectangle or preview without a layer ID, a partial rectangle, a rectangle
 outside the raster and one beyond 64 chunks or 65,536 samples refuse. One generation context serves every preview of
-one accepted session snapshot, and an edit, undo, redo or reload captures a new one.
+one accepted session snapshot. The session's snapshot version advances on every native publication, including undo and
+redo, and whenever open, create, save, window replacement, conversion, retile or closure binding replaces the document
+or its verified closure. Each advance drops the cached context, and the next preview captures a new one.
 
 The reply uses camelCase members and string enums, and writes every member even when it is zero or null. Density is
 base64 of a copy of the chunk's 1024 bytes beside its `sha256`. A sample's `position` is `x`, `y`, `z`, its `orientation`

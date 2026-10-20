@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc;
-using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Foliage;
 
@@ -10,11 +9,6 @@ namespace KhaozEngine.MapEdit;
 
 public sealed partial class QueryService
 {
-    // The preview context of one accepted session snapshot: the live document object, its bound closure and the native
-    // event count. An edit, undo or redo advances the count, and reload or window replacement swaps the document, so any
-    // of them captures again. Read and written only under the session lock.
-    (MapDocument Document, MapAssetClosure Assets, long Events, MapFoliageContextResult Context)? _foliageContext;
-
     /// <summary>Reads foliage without changing the document. An omitted <paramref name="layerId"/> lists every layer's
     /// detached metadata in authoring order, with no density and no preview. A named layer returns its metadata, the
     /// stored chunks the sample rectangle [x, x + width) by [z, z + depth) reaches when all four bounds are given, and a
@@ -49,12 +43,7 @@ public sealed partial class QueryService
     // The stored chunks the rectangle reaches, in row-major key order. Shape and budget refuse before any chunk is read.
     static IReadOnlyList<MapFoliageChunk> Chunks(MapFoliageLayer layer, int x, int z, int width, int depth)
     {
-        MapFoliageBrush.RequireRaster(layer);
-        if (width < 1 || depth < 1) throw new MapDocumentException("A foliage density rectangle needs a positive width and depth.");
-        if (x < 0 || z < 0 || (long)x + width > layer.Width || (long)z + depth > layer.Depth)
-            throw new MapDocumentException($"The foliage density rectangle lies outside layer '{layer.Id}' samples {layer.Width} by {layer.Depth}.");
-        int hiX = x + width - 1, hiZ = z + depth - 1;
-        MapFoliageBrush.RequireBudget(layer, x, z, hiX, hiZ);
+        var (hiX, hiZ) = MapFoliageBrush.RequireRectangle(layer, x, z, width, depth);
         int cx0 = x / MapFoliageChunk.Size, cz0 = z / MapFoliageChunk.Size, cx1 = hiX / MapFoliageChunk.Size, cz1 = hiZ / MapFoliageChunk.Size;
         var resident = layer.Chunks.Select(c => c.Key).ToHashSet();
         foreach (MapFoliageChunkDigest advertised in layer.ChunkDigests)
@@ -63,18 +52,13 @@ public sealed partial class QueryService
         return Array.AsReadOnly(layer.Chunks.Where(c => c.Key.X >= cx0 && c.Key.X <= cx1 && c.Key.Z >= cz0 && c.Key.Z <= cz1).ToArray());
     }
 
-    // One captured context serves every preview of the same accepted snapshot. A refused capture is reported as the
-    // preview batch's status, with no samples.
+    // One captured context serves every preview of the same accepted session snapshot, keyed by the session's snapshot
+    // version. A refused capture is reported as the preview batch's status, with no samples.
     Func<MapFoliageSampleBatch> Preview(NativeAssetContext c, string layerId, MapFoliageChunkKey chunk) => () =>
     {
-        long events = session.NativeHistoryState.Events;
-        if (_foliageContext is not { } cached || !ReferenceEquals(cached.Document, c.Document) || !ReferenceEquals(cached.Assets, c.Assets) ||
-            cached.Events != events)
-        {
-            _foliageContext = cached = (c.Document, c.Assets, events, MapFoliageGenerationContext.Capture(c.Document, c.Assets));
-        }
-        return cached.Context.Context is { } context
+        MapFoliageContextResult captured = session.FoliagePreviewContext(() => MapFoliageGenerationContext.Capture(c.Document, c.Assets));
+        return captured.Context is { } context
             ? MapFoliageDistribution.Generate(context, layerId, chunk)
-            : new MapFoliageSampleBatch(layerId, chunk, cached.Context.Status, "", [], new MapFoliageWork(0, 0, 0, 0, 0, 0, 0, 0));
+            : new MapFoliageSampleBatch(layerId, chunk, captured.Status, "", [], new MapFoliageWork(0, 0, 0, 0, 0, 0, 0, 0));
     };
 }

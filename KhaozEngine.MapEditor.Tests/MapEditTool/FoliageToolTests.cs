@@ -55,7 +55,8 @@ public sealed class FoliageToolTests
     public async Task FoliageGet_OmittedIdListsDetachedMetadataInAuthoringOrder()
     {
         FoliageFixture f = FoliageFixtures.ReachableWirePreview();
-        f.Document.Foliage = new MapFoliageSet(1, [FoliageFixtures.WireLayer(Wire), FoliageFixtures.WireLayer("moss-cover")]);
+        MapFoliageLayer wide = FoliageStorageFixtures.Change(FoliageFixtures.WireLayer("wide-cover"), l => { l["width"] = 4096; l["depth"] = 4096; });
+        f.Document.Foliage = new MapFoliageSet(1, [FoliageFixtures.WireLayer(Wire), FoliageFixtures.WireLayer("moss-cover"), wide]);
         MapEditSession seed = FoliageEditorFixtures.Session(f);
         try
         {
@@ -67,7 +68,7 @@ public sealed class FoliageToolTests
             // An omitted ID lists every layer's detached metadata in authoring order, never ordinal order, with no density.
             JsonElement listBody = Body(await Call(harness, "foliage_get", new()));
             Assert.Equal("list", listBody.GetProperty("mode").GetString());
-            string[] authoringOrderIds = [Wire, "moss-cover"];
+            string[] authoringOrderIds = [Wire, "moss-cover", "wide-cover"];
             string[] listedIds = listBody.GetProperty("layers").EnumerateArray().Select(l => l.GetProperty("id").GetString()!).ToArray();
             Assert.Equal(authoringOrderIds, listedIds);
             Assert.NotEqual(authoringOrderIds.Order(StringComparer.Ordinal), listedIds);
@@ -95,6 +96,14 @@ public sealed class FoliageToolTests
             JsonElement raster = Body(await Call(harness, "foliage_get", new() { ["layerId"] = "moss-cover", ["x"] = 1, ["z"] = 1, ["width"] = 1, ["depth"] = 1 }));
             Assert.Equal(FoliageFixtures.WireDensity(), Convert.FromBase64String(Assert.Single(raster.GetProperty("chunks").EnumerateArray()).GetProperty("density").GetString()!));
             Assert.Equal(JsonValueKind.Null, raster.GetProperty("preview").ValueKind);
+
+            // The read limits are the raster edit limits: 64 chunks and 65,536 samples are read, one more of either refuses.
+            JsonElement widest = Body(await Call(harness, "foliage_get", new() { ["layerId"] = "wide-cover", ["x"] = 0, ["z"] = 0, ["width"] = 256, ["depth"] = 256 }));
+            Assert.Equal((0, 0), (widest.GetProperty("chunks")[0].GetProperty("x").GetInt32(), widest.GetProperty("chunks")[0].GetProperty("z").GetInt32()));
+            Assert.Contains("65792 addresses", await Refuse(harness, "foliage_get",
+                new() { ["layerId"] = "wide-cover", ["x"] = 0, ["z"] = 0, ["width"] = 257, ["depth"] = 256 }), StringComparison.Ordinal);
+            Assert.Contains("65 chunks", await Refuse(harness, "foliage_get",
+                new() { ["layerId"] = "wide-cover", ["x"] = 31, ["z"] = 0, ["width"] = 2018, ["depth"] = 1 }), StringComparison.Ordinal);
 
             // A raster or preview without a layer ID, a partial rectangle, an unknown layer and an out-of-raster rectangle refuse.
             foreach (var args in new Dictionary<string, object?>[]
@@ -144,9 +153,16 @@ public sealed class FoliageToolTests
                     new() { ["layerId"] = Wire, ["worldX"] = 0.5f, ["worldZ"] = 0.5f, ["radiusMetres"] = 1f, ["target"] = 40, ["hardness"] = 0.5f }),
                 (new MapRemoveFoliage("moss-cover"), "foliage_remove", new() { ["layerId"] = "moss-cover" }),
             };
+            // One preview context serves one accepted snapshot: preview, preview again, then every edit captures once more.
+            var query = harness.Services.GetRequiredService<QueryService>();
+            var chunk = new MapFoliageChunkKey(0, 0);
+            Assert.Equal(1, Previews(query, chunk));
+            Assert.Equal(0, Previews(query, chunk));
+            Assert.True(live.HoldsFoliagePreview);
             var published = new List<string> { MapDocumentFile.SaveText(gui) };
             foreach (var (edit, verb, args) in steps)
             {
+                long version = live.SnapshotVersion;
                 history.Execute(gui, new FoliageEditCommand(edit));
                 JsonElement result = Body(await Call(harness, verb, args));
                 MapNativeEditEffects editorEffects = history.LastNativeEffects!;
@@ -163,15 +179,29 @@ public sealed class FoliageToolTests
                 Assert.Equal(PrefabEditorFixtures.State(live).Identity, result.GetProperty("identity").GetString());
                 Assert.Equal(MapDocumentFile.SaveText(gui), FoliageEditorFixtures.Bytes(live));
                 published.Add(MapDocumentFile.SaveText(gui));
+
+                // Adding or removing a layer with stored chunks publishes a whole-layer entry in the wire effects.
+                using (JsonDocument effects = JsonDocument.Parse(result.GetProperty("effects").GetString()!))
+                {
+                    if (edit is MapSetFoliageLayer or MapRemoveFoliage)
+                    {
+                        JsonElement entry = Assert.Single(effects.RootElement.GetProperty("foliageLayers").EnumerateArray());
+                        Assert.Equal("moss-cover", entry.GetProperty("layerId").GetString());
+                        bool added = edit is MapSetFoliageLayer;
+                        Assert.Equal(added ? JsonValueKind.Null : JsonValueKind.String, entry.GetProperty("before").ValueKind);
+                        Assert.Equal(added ? JsonValueKind.String : JsonValueKind.Null, entry.GetProperty("after").ValueKind);
+                    }
+                    else Assert.False(effects.RootElement.TryGetProperty("foliageLayers", out _));
+                }
+
+                // The accepted edit advances the snapshot once and drops the cached context, so the next preview captures.
+                Assert.Equal(version + 1, live.SnapshotVersion);
+                Assert.False(live.HoldsFoliagePreview);
+                Assert.Equal(1, Previews(query, chunk));
+                Assert.Equal(0, Previews(query, chunk));
             }
             Assert.Equal(published.Count, published.Distinct(StringComparer.Ordinal).Count());
             Assert.Equal((4, 4), (live.NativeHistoryState.Cursor, live.NativeHistoryState.Depth));
-
-            // One preview context serves one accepted snapshot, and edit, undo, redo and reload each invalidate it.
-            var query = harness.Services.GetRequiredService<QueryService>();
-            var chunk = new MapFoliageChunkKey(0, 0);
-            Assert.Equal(1, FoliageEditorFixtures.Work(() => query.FoliageGet(Wire, previewChunk: chunk)).Captures);
-            Assert.Equal(0, FoliageEditorFixtures.Work(() => query.FoliageGet(Wire, previewChunk: chunk)).Captures);
 
             // Undo and redo through the wire replay the same bytes and labels as the direct history.
             for (int i = steps.Length - 1; i >= 0; i--)
@@ -181,16 +211,30 @@ public sealed class FoliageToolTests
                 Assert.Equal(published[i], FoliageEditorFixtures.Bytes(live));
                 Assert.Equal(published[i], MapDocumentFile.SaveText(gui));
                 Assert.Equal((history.UndoLabel, history.RedoLabel), live.NativeHistoryLabels);
-                Assert.Equal(1, FoliageEditorFixtures.Work(() => query.FoliageGet(Wire, previewChunk: chunk)).Captures);
+                Assert.Equal(1, Previews(query, chunk));
             }
             await Call(harness, "prefab_redo", new());
             Assert.True(history.Redo(gui));
             Assert.Equal(published[1], FoliageEditorFixtures.Bytes(live));
             Assert.Equal((history.UndoLabel, history.RedoLabel), live.NativeHistoryLabels);
-            Assert.Equal(1, FoliageEditorFixtures.Work(() => query.FoliageGet(Wire, previewChunk: chunk)).Captures);
-            await Call(harness, "map_open", new() { ["path"] = seed.DocumentPath });
-            Assert.Equal(1, FoliageEditorFixtures.Work(() => query.FoliageGet(Wire, previewChunk: chunk)).Captures);
-            Assert.Equal(0, FoliageEditorFixtures.Work(() => query.FoliageGet(Wire, previewChunk: chunk)).Captures);
+            Assert.Equal(1, Previews(query, chunk));
+
+            // Save rebinds a freshly verified closure and reload replaces the document. Each advances the snapshot and
+            // drops the cached context at once.
+            foreach (var (verb, args) in new (string, Dictionary<string, object?>)[]
+            {
+                ("map_save", new()),
+                ("map_open", new() { ["path"] = seed.DocumentPath }),
+            })
+            {
+                Assert.True(live.HoldsFoliagePreview);
+                long version = live.SnapshotVersion;
+                await Call(harness, verb, args);
+                Assert.True(live.SnapshotVersion > version, verb);
+                Assert.False(live.HoldsFoliagePreview, verb);
+                Assert.Equal(1, Previews(query, chunk));
+                Assert.Equal(0, Previews(query, chunk));
+            }
         }
         finally { FoliageEditorFixtures.Delete(seed); }
     }
@@ -225,6 +269,11 @@ public sealed class FoliageToolTests
             Assert.Equal("Complete", differential.GetProperty("status").GetString());
             string refusedState = FoliageEditorFixtures.State(live);
             Assert.Equal(beforeState, refusedState);
+
+            // A new layer needs no differential, so its dry run refuses before any comparison and changes nothing.
+            Assert.Contains("needs no differential", await Refuse(harness, "foliage_layer_set",
+                new() { ["layerJson"] = LayerJson(FoliageFixtures.WireLayer("moss-cover")), ["dryRun"] = true }), StringComparison.Ordinal);
+            Assert.Equal(beforeState, FoliageEditorFixtures.State(live));
 
             // Every refusal leaves the session state, bytes, history and identity unchanged.
             foreach (var (verb, args) in new (string, Dictionary<string, object?>)[]
@@ -309,6 +358,10 @@ public sealed class FoliageToolTests
         }
     }
 
+    // The context captures one direct preview read makes on the test thread.
+    static long Previews(QueryService query, MapFoliageChunkKey chunk) =>
+        FoliageEditorFixtures.Work(() => query.FoliageGet(Wire, previewChunk: chunk)).Captures;
+
     internal static string LayerJson(MapFoliageLayer layer) =>
         JsonNode.Parse(FoliageStorageFixtures.Json(new MapFoliageSet(1, [layer])))!["layers"]![0]!.ToJsonString();
 
@@ -325,9 +378,11 @@ public sealed class FoliageToolTests
         return result;
     }
 
-    static async Task Refuse(McpAdapterTests.McpHarness harness, string name, Dictionary<string, object?> args)
+    static async Task<string> Refuse(McpAdapterTests.McpHarness harness, string name, Dictionary<string, object?> args)
     {
         CallToolResult result = await harness.Client.CallAsync(name, args);
-        Assert.True(result.IsError == true, name + " was accepted: " + string.Join(",", args.Keys));
+        string text = string.Join("\n", result.Content.OfType<TextContentBlock>().Select(c => c.Text));
+        Assert.True(result.IsError == true, name + " was accepted: " + string.Join(",", args.Keys) + " " + text);
+        return text;
     }
 }

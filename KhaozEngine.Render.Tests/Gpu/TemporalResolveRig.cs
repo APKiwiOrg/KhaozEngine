@@ -11,7 +11,8 @@ namespace KhaozEngine.Tests.Gpu
     /// One headless device, a <see cref="TemporalResolveRenderer"/> and its <see cref="TemporalHistory"/>, with the
     /// scene inputs the resolve reads uploaded per frame, for the temporal resolve's GPU facts. Every texel starts at
     /// one scene depth, and <see cref="FillDepth"/> replaces it for a scene with more than one surface. Optional outline
-    /// settings run the production edge pass over both colour inputs and a synthetic right-hand normal edge.
+    /// settings run the production edge pass over both colour inputs and a synthetic right-hand normal edge. An optional
+    /// fragment source rewrite reaches every program the renderer compiles, for oracles that run frozen rules.
     /// </summary>
     internal class TemporalResolveRig : IDisposable
     {
@@ -28,13 +29,13 @@ namespace KhaozEngine.Tests.Gpu
         long _frame;
 
         public TemporalResolveRig(int internalWidth, int internalHeight, int displayWidth, int displayHeight, float sceneNdc,
-            PixelPostProcessSettings? outlineSettings = null)
+            PixelPostProcessSettings? outlineSettings = null, Func<string, string>? fragmentSource = null)
         {
             _width = internalWidth;
             _height = internalHeight;
             _gpu = GpuDeviceContext.CreateHeadless();
             _gd = _gpu.GpuDevice;
-            _renderer = new TemporalResolveRenderer(_gd);
+            _renderer = new TemporalResolveRenderer(_gd, fragmentSource);
             _history.EnsureTargets(_gd, displayWidth, displayHeight, internalWidth, internalHeight);
             _scene = Input(GpuPixelFormat.R16G16B16A16Float);
             _opaque = Input(GpuPixelFormat.R16G16B16A16Float);

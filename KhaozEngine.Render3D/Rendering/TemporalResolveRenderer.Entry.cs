@@ -61,7 +61,7 @@ namespace KhaozEngine.Render3D.Rendering
         {
             if (Entry == TemporalResolveEntry.Split)
             {
-                _split ??= new TemporalSplitResolve(_gd);
+                _split ??= new TemporalSplitResolve(_gd, _fragmentSourceForTests);
                 _split.Bind(inputs, history, _clampSampler, _resolveBuffer, VisibilityHistory, _visibilityBuffer, retired);
                 return;
             }

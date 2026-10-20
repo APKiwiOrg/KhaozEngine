@@ -31,7 +31,8 @@ namespace KhaozEngine.Render3D.Rendering
             {
                 IGpuResourceFactory f = _gd.Factory;
                 _atDisplaySizeShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
-                    ShaderSources.TemporalAccumulateFragment(TemporalResolvePrecisionPolicy.For(_gd), upscales: false));
+                    FragmentSource(ShaderSources.TemporalAccumulateFragment(TemporalResolvePrecisionPolicy.For(_gd),
+                        upscales: false)));
                 _atDisplaySizePipeline = TemporalResolveRenderer.Fullscreen(f, _atDisplaySizeShaders,
                     _accumulateLayout,
                     new GpuOutputDescription(null, TemporalFormats.HistoryColor, TemporalFormats.HistoryConfidence));

@@ -45,14 +45,19 @@ namespace KhaozEngine.Render3D.Rendering
         TemporalResolveInputs _boundInputs;
         int _boundTargets = int.MinValue;
         TemporalHistory? _boundHistory;
+        readonly Func<string, string>? _fragmentSourceForTests;
 
-        public TemporalSplitResolve(IGpuDevice gd)
+        /// <summary>The split's objects on <paramref name="gd"/>. <paramref name="fragmentSourceForTests"/> is the
+        /// owning renderer's test rewrite of each fragment program's text, null outside tests.</summary>
+        public TemporalSplitResolve(IGpuDevice gd, Func<string, string>? fragmentSourceForTests = null)
         {
             _gd = gd;
+            _fragmentSourceForTests = fragmentSourceForTests;
             IGpuResourceFactory f = gd.Factory;
-            _prepareShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert, ShaderSources.TemporalPrepareFrag);
+            _prepareShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
+                FragmentSource(ShaderSources.TemporalPrepareFrag));
             _accumulateShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
-                ShaderSources.TemporalAccumulateFragment(TemporalResolvePrecisionPolicy.For(gd)));
+                FragmentSource(ShaderSources.TemporalAccumulateFragment(TemporalResolvePrecisionPolicy.For(gd))));
             _prepareLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 T("SceneColor"), T("OpaqueColor"), T("SceneDepth"), T("MotionTex"), S("LinearClamp"), U("Resolve")));
             _accumulateLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
@@ -68,6 +73,9 @@ namespace KhaozEngine.Render3D.Rendering
             _accumulatePipeline = TemporalResolveRenderer.Fullscreen(f, _accumulateShaders, _accumulateLayout,
                 new GpuOutputDescription(null, TemporalFormats.HistoryColor, TemporalFormats.HistoryConfidence));
         }
+
+        // A fragment program's text as compiled: the shipped text unless a test rewrites it.
+        string FragmentSource(string source) => _fragmentSourceForTests?.Invoke(source) ?? source;
 
         /// <summary>For the cost measurement alone: which pass <see cref="Run"/> leaves out, so each pass can be timed
         /// on its own. The output is then not a resolve.</summary>

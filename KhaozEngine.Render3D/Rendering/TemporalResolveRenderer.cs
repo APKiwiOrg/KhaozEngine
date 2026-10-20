@@ -49,10 +49,15 @@ namespace KhaozEngine.Render3D.Rendering
         TemporalResolveInputs _boundInputs;
         int _boundTargets = int.MinValue;
         TemporalHistory? _boundHistory;
+        readonly Func<string, string>? _fragmentSourceForTests;
 
-        public TemporalResolveRenderer(IGpuDevice gd)
+        /// <summary>A renderer on <paramref name="gd"/>. <paramref name="fragmentSourceForTests"/> is for tests alone:
+        /// it rewrites the text of every fragment program this renderer and its split compile, so an oracle can run a
+        /// frozen copy of the rules through the same objects. Null everywhere else.</summary>
+        public TemporalResolveRenderer(IGpuDevice gd, Func<string, string>? fragmentSourceForTests = null)
         {
             _gd = gd;
+            _fragmentSourceForTests = fragmentSourceForTests;
             IGpuResourceFactory f = gd.Factory;
             _resolveLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 T("SceneColor"), T("OpaqueColor"), T("SceneDepth"), T("MotionTex"), T("PrevDepth"),
@@ -73,14 +78,17 @@ namespace KhaozEngine.Render3D.Rendering
             if (_resolvePipeline is not null) return;
             IGpuResourceFactory f = _gd.Factory;
             _resolveShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
-                ShaderSources.TemporalResolveFragment(TemporalResolvePrecisionPolicy.For(_gd)));
+                FragmentSource(ShaderSources.TemporalResolveFragment(TemporalResolvePrecisionPolicy.For(_gd))));
             _storeShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
-                ShaderSources.TemporalDepthStoreFrag);
+                FragmentSource(ShaderSources.TemporalDepthStoreFrag));
             _resolvePipeline = Fullscreen(f, _resolveShaders, _resolveLayout,
                 new GpuOutputDescription(null, TemporalFormats.HistoryColor, TemporalFormats.HistoryConfidence));
             _storePipeline = Fullscreen(f, _storeShaders, _storeLayout,
                 new GpuOutputDescription(null, TemporalFormats.PreviousDepth));
         }
+
+        // A fragment program's text as compiled: the shipped text unless a test rewrites it.
+        string FragmentSource(string source) => _fragmentSourceForTests?.Invoke(source) ?? source;
 
         /// <summary>The resolve's resource layout, for a pass that binds the resolve's own set to re-evaluate
         /// it.</summary>

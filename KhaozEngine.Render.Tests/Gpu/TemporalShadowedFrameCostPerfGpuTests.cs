@@ -31,6 +31,12 @@ namespace KhaozEngine.Tests.Gpu
     /// measuring.
     /// </para>
     /// <para>
+    /// The shadow coverage is not the share of pixels whose resolve runs the visibility check. On a ref whose resolve
+    /// can export its visibility paths, <c>TemporalShadowedFramePathShareGpuTests</c> renders this scene through
+    /// <see cref="Yard"/> outside the timed class and prints that share: gated off by the lock, skipped by range, the
+    /// fast path's computed changes, the slow path by reason and the releases.
+    /// </para>
+    /// <para>
     /// The scene is a yard: the textured ground under a still follow camera at a game's boot pitch, a grid of crates
     /// and thin posts standing on it, walkers crossing it with their own motion, and a low key light swaying about
     /// a fixed afternoon direction. The camera holds still so the resolve keeps locks on the still ground. The sway
@@ -45,8 +51,8 @@ namespace KhaozEngine.Tests.Gpu
         // signal on every shadowed pixel, and the resolve releases and rebuilds on the frames after it.
         const int Rounds = 15, Warm = 3, Block = 12;
 
-        // The frame the path mix is read on, and the luma drop in 8-bit levels that counts a pixel as darkened.
-        const int MixFrame = 90;
+        // The frame the shadow coverage is read on, and the luma drop in 8-bit levels that counts a pixel as darkened.
+        internal const int CoverageFrame = 90;
         const int DarkenedLevels = 4, EdgePixels = 2;
 
         [GpuFact(RequiresRealGpu = true)]
@@ -185,7 +191,7 @@ namespace KhaozEngine.Tests.Gpu
                 + (TemporalResolvePolicy.Forced is { } forced ? $", forced to {forced} in this process" : ""));
             output.WriteLine($"  resolve counts with shadows on frame {counts.CountsFrameIndex}: "
                 + $"{counts.DisoccludedPixels} disoccluded, {counts.ClippedPixels} clipped, of {w * h} display pixels");
-            PrintPathMix(fx, yard, iw, ih);
+            PrintShadowCoverage(fx, yard, iw, ih);
         }
 
         static void Apply(Scene3D scene, Mode mode, int iw, int ih)
@@ -212,10 +218,10 @@ namespace KhaozEngine.Tests.Gpu
         // internal size, shadows on and off. A display pixel is darkened where its luma drops by more than
         // DarkenedLevels with shadows on, and near an edge where a pixel within EdgePixels on either axis is darkened
         // and it is not, or the other way round. Read after the timed rounds, so it cannot disturb them.
-        void PrintPathMix(TemporalFixture fx, Yard yard, int iw, int ih)
+        void PrintShadowCoverage(TemporalFixture fx, Yard yard, int iw, int ih)
         {
             Scene3D scene = fx.Scene;
-            Action<Scene3D, int> frozen = (s, _) => yard.Draw(s, MixFrame);
+            Action<Scene3D, int> frozen = (s, _) => yard.Draw(s, CoverageFrame);
             Apply(scene, Mode.FxaaShadowed, iw, ih);
             scene.Post.Quality.AntiAliasing = AntiAliasing.Off;
             fx.Frames(3, frozen);
@@ -234,8 +240,8 @@ namespace KhaozEngine.Tests.Gpu
             for (int y = 0; y < h; y++)
                 for (int x = 0; x < w; x++)
                     if (NearEdge(darkened, w, h, x, y)) near++;
-            output.WriteLine($"  path mix on frame {MixFrame}, anti-aliasing off at {iw}x{ih}: {yard.Casters} casters, "
-                + $"{Percent(dark, (long)w * h)} of display pixels darkened by the key shadow, "
+            output.WriteLine($"  shadow coverage on frame {CoverageFrame}, anti-aliasing off at {iw}x{ih}: "
+                + $"{yard.Casters} casters, {Percent(dark, (long)w * h)} of display pixels darkened by the key shadow, "
                 + $"{Percent(near, (long)w * h)} within {EdgePixels} display pixels of a shadow edge");
         }
 
@@ -266,7 +272,7 @@ namespace KhaozEngine.Tests.Gpu
         /// light comes down at <see cref="Elevation"/> and sways <see cref="Sway"/> radians either side of
         /// <see cref="Azimuth"/> over <see cref="SwayFrames"/> frames.
         /// </summary>
-        sealed class Yard
+        internal sealed class Yard
         {
             const float Pitch = 0.75f;
             const int Columns = 7, Rows = 7, Walkers = 8;

@@ -19,12 +19,18 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
     readonly bool _completeOutcomes;
     readonly CoveragePerfTimerLayout _layout;
     readonly List<SubmissionTestFence> _submittedFences = [];
+    IGpuCommandList? _frameCommands;
     internal CoveragePerfNativeSession Session { get; }
     internal List<string> Events { get; } = [];
     internal int UploadCalls;
     internal long TickAtStart, TickAtPresentEntry, Ticks;
     internal bool HistoryCommittedAtPresent;
     internal int ParticipantsAtReadback;
+    internal Action<string>? OnTrace;
+    internal Action<Frame>? OnReadbacks;
+    internal bool RefuseOutcomes;
+    internal List<CoveragePerfTimestampTestPool> TimestampPools { get; } = [];
+    internal FakeGpuResourceFactory Resources => _device.Resources;
 
     CoveragePerfSceneProbe(int actors, bool covered, bool completeOutcomes, CoveragePerfTimerLayout layout)
     {
@@ -93,6 +99,8 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
         Trace(name);
         if (name == "readbacks")
         {
+            _frameCommands = frame.Commands;
+            OnReadbacks?.Invoke(frame);
             // Observe remaining capacity without reflecting private fields. Production owns the first participant.
             int accepted = 0;
             foreach (var participant in _participants) if (frame.Submission.TryRegister(participant)) accepted++;
@@ -100,7 +108,8 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
         }
     }
 
-    internal void Trace(string name) { Events.Add(name); Ticks += name == "present-forward" ? 10000 : 10; }
+    internal void Trace(string name)
+    { Events.Add(name); Ticks += name == "present-forward" ? 10000 : 10; OnTrace?.Invoke(name); }
     public void Dispose() => Session.Dispose();
 
     sealed class Participant(Action? submitted) : IGpuFrameSubmissionParticipant
@@ -144,6 +153,7 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
         readonly CoveragePerfSceneProbe _probe;
         readonly FakeGpuDevice _inner = new(GpuBackendKind.VulkanNative);
         readonly ProbeFactory _factory;
+        internal FakeGpuResourceFactory Resources => (FakeGpuResourceFactory)_inner.Factory;
         internal ProbeDevice(CoveragePerfSceneProbe probe)
         { _probe = probe; _factory = new(new CoverageRecordingFactory((FakeGpuResourceFactory)_inner.Factory, false), probe); }
         public GpuBackendKind Backend => _inner.Backend;
@@ -167,7 +177,7 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
             foreach (var fence in completions) _probe._submittedFences.Add((SubmissionTestFence)fence);
             _probe.Trace("submit-span");
         }
-        public void WaitForIdle() => _probe.CompletePendingOutcomes();
+        public void WaitForIdle() { _probe.Trace("drain"); _probe.CompletePendingOutcomes(); }
         public bool TryReadBuffer(IGpuBuffer staging, IGpuFence completion, uint offsetBytes, Span<byte> destination)
         {
             if (!completion.Signaled) return false;
@@ -186,7 +196,7 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
         public void Unmap(IGpuBuffer buffer) { }
         public void ResizeSwapchain(uint width, uint height) => throw new NotSupportedException();
         public void Present() => _probe.Trace("present-forward");
-        public void Dispose() => _inner.Dispose();
+        public void Dispose() { _probe.Trace("host-release"); _inner.Dispose(); }
     }
 
     sealed class ProbeFactory(IGpuResourceFactory source, CoveragePerfSceneProbe probe) : IGpuResourceFactory
@@ -196,8 +206,18 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
             return probe._completeOutcomes && description.Usage == GpuBufferUsage.Staging
                 ? new SubmissionTestBuffer(description.SizeInBytes, description.Usage) : source.CreateBuffer(description);
         }
-        public IGpuTexture CreateTexture(in GpuTextureDescription description) { return source.CreateTexture(description); }
-        public IGpuFramebuffer CreateFramebuffer(IGpuTexture? depth, params IGpuTexture[] colour) { return source.CreateFramebuffer(depth, colour); }
+        public IGpuTexture CreateTexture(in GpuTextureDescription description)
+        {
+            var texture = source.CreateTexture(description);
+            if (probe.Resources.Textures.Count == 1)
+                ((FakeTexture)texture).OnDispose = () => probe.Trace("colour-dispose");
+            return texture;
+        }
+        public IGpuFramebuffer CreateFramebuffer(IGpuTexture? depth, params IGpuTexture[] colour)
+        {
+            var target = source.CreateFramebuffer(depth, colour);
+            return probe.Resources.Framebuffers.Count == 1 ? new ProbeTarget(target, probe) : target;
+        }
         public IGpuResourceSet CreateResourceSet(in GpuResourceSetDescription description) { return source.CreateResourceSet(description); }
         public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription description) { return source.CreateResourceLayout(description); }
         public IGpuSampler CreateSampler(in GpuSamplerDescription description) { return source.CreateSampler(description); }
@@ -208,12 +228,27 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
         public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription description) { return source.CreateGraphicsPipeline(description); }
         public IGpuComputePipeline CreateComputePipeline(in GpuComputePipelineDescription description) { return source.CreateComputePipeline(description); }
         public IGpuCommandList CreateCommandList() { return new ProbeCommands(probe); }
-        public IGpuTimestampPool CreateTimestampPool(uint capacity) { return new CoveragePerfTimestampTestPool(capacity); }
+        public IGpuTimestampPool CreateTimestampPool(uint capacity)
+        {
+            int index = probe.TimestampPools.Count;
+            var pool = new CoveragePerfTimestampTestPool(capacity)
+            { OnDispose = () => probe.Trace("timestamp-dispose-" + index) };
+            probe.TimestampPools.Add(pool);
+            return pool;
+        }
         public IGpuFence CreateFence()
         {
             if (!probe._completeOutcomes) return source.CreateFence();
             return new SubmissionTestFence();
         }
+    }
+
+    sealed class ProbeTarget(IGpuFramebuffer target, CoveragePerfSceneProbe probe) : IGpuFramebuffer
+    {
+        public uint Width => target.Width;
+        public uint Height => target.Height;
+        public GpuOutputDescription Outputs => target.Outputs;
+        public void Dispose() { probe.Trace("target-dispose"); target.Dispose(); }
     }
 
     sealed class ProbeCommands(CoveragePerfSceneProbe probe) : IGpuCommandList, IGpuCommandListTimestampEnd
@@ -264,6 +299,7 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
                 var p = actor.Frame.Preparation!;
                 var words = MemoryMarshal.Cast<byte, uint>(staging.Bytes.AsSpan()).Slice(p.GpuReservation.ActorSlot * 16, 16);
                 Pair(words, 0, p.Generation); Pair(words, 2, p.View); Pair(words, 4, p.Actor.Value); Pair(words, 6, p.Id);
+                if (probe.RefuseOutcomes) words[8] = uint.MaxValue;
             }
             static void Pair(Span<uint> words, int offset, ulong value)
             { words[offset] = (uint)value; words[offset + 1] = (uint)(value >> 32); }
@@ -283,6 +319,7 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set) { }
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset) { }
         public void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ) { }
-        public void Dispose() { }
+        public void Dispose()
+        { if (ReferenceEquals(this, probe._frameCommands)) probe.Trace("commands-dispose"); }
     }
 }

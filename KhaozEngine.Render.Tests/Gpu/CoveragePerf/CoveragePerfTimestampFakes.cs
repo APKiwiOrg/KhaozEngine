@@ -14,6 +14,8 @@ internal sealed class CoveragePerfTimestampTestPool(uint capacity) : IGpuTimesta
     internal bool Ended, Invalid, Disjoint, Hold;
     internal double Period = 2.5;
     internal IGpuFence? ResolvedFence;
+    internal Exception? ResolveFailure;
+    internal Action? OnDispose;
     internal void Begin(uint count)
     {
         if (Begins != 0 && !Consumed) throw new InvalidOperationException("Unconsumed timestamp pool reused.");
@@ -33,6 +35,7 @@ internal sealed class CoveragePerfTimestampTestPool(uint capacity) : IGpuTimesta
     public GpuTimestampStatus TryResolve(IGpuFence completion, Span<ulong> ticks, out double tickPeriodNanoseconds)
     {
         Resolves++; ResolvedFence = completion; tickPeriodNanoseconds = 0;
+        if (ResolveFailure is not null) throw ResolveFailure;
         if (!Ended) throw new InvalidOperationException("An unended timestamp batch was polled.");
         if (!completion.Signaled || Hold) return GpuTimestampStatus.Pending;
         Consumed = true;
@@ -41,7 +44,7 @@ internal sealed class CoveragePerfTimestampTestPool(uint capacity) : IGpuTimesta
         tickPeriodNanoseconds = Period;
         return GpuTimestampStatus.Ready;
     }
-    public void Dispose() => Disposals++;
+    public void Dispose() { Disposals++; OnDispose?.Invoke(); }
 }
 
 internal sealed class CoveragePerfTimestampTestDevice : IGpuDevice, IGpuResourceFactory

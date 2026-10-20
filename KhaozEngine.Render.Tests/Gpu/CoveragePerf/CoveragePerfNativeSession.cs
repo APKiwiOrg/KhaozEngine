@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Immutable;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
@@ -230,18 +231,25 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
         long start = _clock.Now();
         _device.WaitForIdle();
         HarnessDrainTicks += checked(_clock.Now() - start); HarnessDrains++;
-        BufferOutcomes();
-        MatchOutcomes();
-        _timestamps?.PollCompleted();
-        for (int i = 0; i < samples.Length; i++)
+        try
         {
-            var pending = _pending[i];
-            // A fake never claims execution. Synthetic marks its semantic completion and stays Unproved.
-            samples[i].DeviceComplete = _host.Synthetic || !Typical.Covered || pending.Completed == Typical.Actors.Length;
-            samples[i].Fallback |= pending.Fallback;
-            if (!samples[i].DeviceComplete) samples[i].Error = "Coverage device outcomes remain incomplete after the batch drain.";
-            samples[i].Gpu = pending.Gpu;
-            samples[i].Error ??= _timestamps?.Failure;
+            BufferOutcomes();
+            MatchOutcomes();
+            _timestamps?.PollCompleted();
+        }
+        finally
+        {
+            // Preserve partial completion evidence before propagating a harvest or resolution failure.
+            for (int i = 0; i < samples.Length; i++)
+            {
+                var pending = _pending[i];
+                // A fake never claims execution. Synthetic marks its semantic completion and stays Unproved.
+                samples[i].DeviceComplete = _host.Synthetic || !Typical.Covered || pending.Completed == Typical.Actors.Length;
+                samples[i].Fallback |= pending.Fallback;
+                if (!samples[i].DeviceComplete) samples[i].Error = "Coverage device outcomes remain incomplete after the batch drain.";
+                samples[i].Gpu = pending.Gpu;
+                samples[i].Error ??= _timestamps?.Failure;
+            }
         }
         _pendingCount = 0;
     }
@@ -277,12 +285,22 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
     {
         if (_disposed) return;
         _disposed = true;
-        try { _frame.DisposeSubmission(); _timestamps?.Dispose(); }
-        finally
-        {
-            try { _commands.Dispose(); Typical.Dispose(); _target.Dispose(); _colour.Dispose(); }
-            finally { _host.Release(); }
-        }
+        ExceptionDispatchInfo? error = null;
+        try { _frame.DisposeSubmission(); }
+        catch (Exception failure) { error ??= ExceptionDispatchInfo.Capture(failure); }
+        try { _timestamps?.Dispose(); }
+        catch (Exception failure) { error ??= ExceptionDispatchInfo.Capture(failure); }
+        try { _commands.Dispose(); }
+        catch (Exception failure) { error ??= ExceptionDispatchInfo.Capture(failure); }
+        try { Typical.Dispose(); }
+        catch (Exception failure) { error ??= ExceptionDispatchInfo.Capture(failure); }
+        try { _target.Dispose(); }
+        catch (Exception failure) { error ??= ExceptionDispatchInfo.Capture(failure); }
+        try { _colour.Dispose(); }
+        catch (Exception failure) { error ??= ExceptionDispatchInfo.Capture(failure); }
+        try { _host.Release(); }
+        catch (Exception failure) { error ??= ExceptionDispatchInfo.Capture(failure); }
+        error?.Throw();
     }
 
     sealed class PendingFrame(int actors)

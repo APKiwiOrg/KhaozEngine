@@ -203,6 +203,8 @@ Interfaces: consume Task 1 types and produce the exact Run signature in the file
 
 ## Task 3: Retained typical scene and aggregate CPU interval
 
+Task 0 amendments (A2, A3, A4): pin CoveragePerfLegacyHost.cs to main 5d896b333's FramePhases.RunPlain sequence and name the current FramePhases.Run as the one shared path. The aggregate CPU interval closes at the headless adapter's Present entry, after GpuFrameSubmission.Submit and its history callbacks and before Present is forwarded. Never time the whole Run call. Shared controls include the zero-row RecordCoverageReadbacks participant registration. Production submission goes through IGpuDevice.Submit(IGpuCommandList, ReadOnlySpan<IGpuFence>) and GpuFrameSubmission.Submit(commands, completions). GpuFrameSubmission defaults are three retained slots, eight consumers and eight participants, with a nine-entry combined fence buffer. The native helper must forward CreateTimestampPool and the span Submit. Captured or recording command-list wrappers are excluded from measured work unless every timestamp and tail operation and the native list identity are forwarded and their observer work removed.
+
 Files: create `CoveragePerfTypicalScene.cs`, `CoveragePerfNativeSession.cs`, `CoveragePerfSceneTests.cs`, and `CoveragePerfFrameBracketTests.cs`. Reuse CoverageCostGeometry without activating its old driver.
 
 Interfaces: implement ICoveragePerfSession. Native session construction accepts a manifest block, device/host factory and CoveragePerfClock. The fake factory supplies semantic recording only and marks results Synthetic.
@@ -214,6 +216,8 @@ Interfaces: implement ICoveragePerfSession. Native session construction accepts 
 - [ ] Commit `test(coverage): retain GPU workload and aggregate preparation bracket`.
 
 ## Task 4: Completed-frame timestamp contract and Vulkan tail
+
+Task 0 amendments (A5, A8): a failed or abandoned measurement unit quarantines its Recording or Pending timestamp pools through teardown. Clearing the pending tail on the command list does not reset the pool, and no reusable cancellation API is implied. VulkanCommandList.cs is 783 lines against the 800-line physical cap, so the tail lives in the new VulkanCommandList.TimestampEnd.cs partial and End changes stay minimal. Do not grow any .filesize-baseline entry.
 
 Files: create `KhaozEngine.Gpu/IGpuCommandListTimestampEnd.cs`, `KhaozEngine.Gpu.Vulkan/Internal/VulkanCommandList.TimestampEnd.cs`, `CoveragePerfTimestampEndTests.cs` and `VulkanTimestampEndTests.cs`. Modify `VulkanCommandList.cs` at End and its partial interface declaration. Update GPU interface docs.
 
@@ -227,6 +231,8 @@ Interfaces: produce the optional interface in the file map. It arms the same cur
 
 ## Task 5: D3D11 and Metal timestamp tails
 
+Task 0 amendments (A5, A8): the same abandoned-pool quarantine rule as Task 4. Metal is 537 lines and the D3D11 recorder 346, keep new work in the TimestampEnd partials.
+
 Files: create `D3D11CommandRecorder.TimestampEnd.cs`, `MetalCommandList.TimestampEnd.cs`, `D3D11TimestampEndTests.cs` and `MetalTimestampEndTests.cs`. Modify the recorder/Metal End methods and interface declarations. Extend `ComputeTimestampGpuTests.cs` with a bounded tail-order correctness case, with no duration threshold or performance report.
 
 Interfaces: implement Task 4's same interface on D3D11CommandRecorder<TEmitter> and MetalCommandList. No backend-specific method names escape to the harness.
@@ -239,6 +245,8 @@ Interfaces: implement Task 4's same interface on D3D11CommandRecorder<TEmitter> 
 
 ## Task 6: Fixed timestamp ring and retained native completion
 
+Task 0 amendments (A3, A4, A5): the ring stays inside the already begun production GpuFrameSubmission, consuming slot fences through TryRetain (ruling in the SDD ledger). Semantic tests cover paired slot and caller fences, independent resets, callback errors and zero-row participants. If CoverageBatchDevice is reused, implement and count FactoryCounts.CreateTimestampPool(uint). Abandoned or failed units quarantine pools through teardown.
+
 Files: create `CoveragePerfTimestampRing.cs`, `CoveragePerfTimestampRingTests.cs`, and a native forwarding device helper in the CoveragePerf directory. Modify the new native session to consume them. If reusing CoverageBatchDevice, explicitly forward CreateTimestampPool and count its cold creation.
 
 Interfaces: consume Parts A and Tasks 4/5. Implement the exact ring methods and completion/participant callbacks from the file map. Pools have capacity 5, active count 2 or 5, one unresolved batch each. Pool/arrays/delegates are cold-owned. Keep per-slot sample index and frame identity immutable until consumed.
@@ -250,6 +258,8 @@ Interfaces: consume Parts A and Tasks 4/5. Implement the exact ring methods and 
 - [ ] Commit `test(coverage): retain asynchronous performance timestamp batches`.
 
 ## Task 7: Shared-host control, validity and gate arithmetic
+
+Task 0 amendments (A2, A3): the legacy host is pinned to main 5d896b333 RunPlain, the shared host is the current FramePhases.Run, and the no-tap interval closes at Present entry as in Task 3. Include zero-row scene participant registration in the shared control.
 
 Files: create `CoveragePerfLegacyHost.cs`, `CoveragePerfHostTests.cs`, `CoveragePerfBudgetTests.cs` and `CoveragePerfReportTests.cs`. Complete `CoveragePerfReport.cs` and serialization.
 
@@ -265,6 +275,8 @@ Interfaces: produce CoveragePerfBudgets.Evaluate and the report contract above. 
 
 ## Task 8: Isolated entrypoint and hosted wiring
 
+Task 0 amendments (A6, A7, A8): the shared-workflow amendment in APKiwiOrg/ci-workflows is required before C0, not conditional. It provisions libvulkan1 and mesa-vulkan-drivers, discovers and records the lavapipe ICD from the package file list (as cross-platform-gpu.yml does), selects the native Vulkan backend and software adapter explicitly with KE_VULKAN_REQUIRED=1, and forwards the fresh unit, hash and workload SHA through narrow structured inputs. It sets validated hard job limits of 20 minutes for smoke and 30 for proof, and fails on missing or unfinalized JSON, Markdown or TRX, on zero or more than one executed unit, and on any skipped unit. Existing artifact-env restrictions stay. The engine caller pins the reviewed shared commit. The admitted GPU workflow bootstrap on main stays a separately reviewed commit that keeps GRID, NVIDIA ICD and adapter checks and adds the Perf build, test, report path and 30-minute proof cap. AssemblyInfo.CoveragePerf.cs grants InternalsVisibleTo("EquipmentCoverage.Perf.Tests"). The Perf project follows the Cost project's SDK, xUnit, IsPackable=false and one-way ProjectReference pattern. The new discovery guard allows only the explicit manual measurement branches, and the old Cost guard stays unchanged. Run scripts/tests/gpu-test-shards.test.sh if shard contracts change, and compare actionlint diagnostics against main's set.
+
 Files: new opt-in project/entrypoint and AssemblyInfo.CoveragePerf, new `CoveragePerfDiscoveryTests.cs` and `CoveragePerfWorkflowTests.cs`, modified GPU/stress workflows and living documentation. The existing Cost project and its isolation guard remain unchanged.
 
 Interfaces: `CoveragePerfTests.Measure_authorized_unit(string unitId)` resolves only the exact selected fresh manifest. Missing selection or authorization is a refusal or explicit skip outside a measurement dispatch. A workflow intended to measure must require exactly one executed unit and zero skipped units. Add trait `Category=CoveragePerformance` and explicitly exclude that project/entrypoint from normal solution, CI and GPU correctness discovery.
@@ -279,6 +291,8 @@ Interfaces: `CoveragePerfTests.Measure_authorized_unit(string unitId)` resolves 
 - [ ] Commit explicit harness/wiring paths with `ci(coverage): wire opt-in hosted performance proofs`. Keep any main-only workflow bootstrap as a separately reviewed commit. Update GPU API docs and current package version/changelog only under the engine's existing staged-version rules.
 
 ## Task 9: Final verification and approval-sized measurement handoff
+
+Task 0 amendments (A8, A9): v21.9.0 is already released. Root selects the next free additive minor at the finishing checkpoint and moves version, newest changelog entry and guarded declarations together. No tag. Runner readiness at Task 0: gpu-t4-linux and gpu-t4-windows were Ready with maximum_runners 1 each. Gpu-hosted-bench run 39407694921 on main shows the Windows T4 D3D11 runner working, with unrelated TemporalVisibilityResolveAbGpuTests failures tracked in https://github.com/APKiwiOrg/KhaozEngine/issues/1521. Before each run request, root re-checks runtime device, timestamp support, driver mode and price.
 
 Owner: root. This task is a future execution handoff, not permission granted by the plan.
 
@@ -360,3 +374,7 @@ Root resolutions:
 - Question 6: root checks runner availability and workflow enablement before each run request.
 
 Reconciliation context: the branch merged main through 5d896b333 at 2c09e933b, with owner ruling T10-1 adding `IGpuDevice.Submit(IGpuCommandList, ReadOnlySpan<IGpuFence>)`. Task 0 records R1 to R15 dispositions against the reconciled head.
+
+## Task 0 dispositions (2026-10-20)
+
+Frozen identity: plan head b143c2334, reviewed code head 7391fc157, merged main 5d896b333 (merge 2c09e933b, earlier merge d0b542378 with main parent 64426c246), clean, no MERGE_HEAD. R2, R3, R4, R5, R8, R9, R10 and R13 hold. R1, R6, R7, R11 and R15 changed. R12 and R14 needed action. Root adopted all nine amendments A1 to A9 from the Task 0 revalidation report and folded them into Tasks 3 to 9 above. The correctness packet for the reconciled code head is the hosted all-leg full run https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39422002850. Executable workload identities are generated only after implementation is committed.

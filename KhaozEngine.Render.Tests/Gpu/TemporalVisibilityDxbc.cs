@@ -21,6 +21,16 @@ namespace KhaozEngine.Tests.Gpu;
 /// <c>previousUv</c>'s. So a copy that adds <c>Jp / S</c> where D adds <c>previousUv</c> reads apart from D. Register
 /// names are not compared, only shapes and provenance. Platform-neutral text processing, so its own facts run on every
 /// leg.
+/// <para>What provenance tells apart and what it does not (review 7f r2, m-3). It goes one step back from a register
+/// beside the chain, through plain moves only. Two such registers read apart where their provenances differ: a value
+/// moved from a shader input or a constant-buffer element (<c>uv</c>), a division of two constant-buffer elements
+/// (<c>Jp / S</c>, the elements named), and a value some other opcode computed (<c>previousUv</c>, read as that
+/// opcode alone). So a copy that swaps any two of <c>previousUv</c>, <c>uv</c> and <c>Jp / S</c>, or divides other
+/// elements, reads apart from D, and so does a flipped sign, which <see cref="Operand.Kind"/> carries. Two registers
+/// that the same opcode computed read the same whatever their operands: a copy that adds another <c>add</c> result
+/// where D adds <c>previousUv</c>, or <c>previousUv</c> computed from other inputs, reads as D's chain. A component
+/// swizzle of a computed register is not compared either, nor anything past four moves. Those are held by the
+/// equivalence and A/B facts on the device, not here.</para>
 /// </summary>
 internal static partial class TemporalVisibilityDxbc
 {

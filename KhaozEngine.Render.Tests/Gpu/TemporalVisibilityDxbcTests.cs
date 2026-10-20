@@ -11,8 +11,9 @@ namespace KhaozEngine.Tests.Gpu
     /// path copy sits on another register's <c>.zw</c>, and both must read as the same signature, while a copy whose
     /// order differs from D's must not, including one that only swaps which register operand it adds where. The three
     /// registers the chain adds are defined first, as FXC defines them: <c>previousUv</c> computed from the input and
-    /// the motion, <c>uv</c> moved from the input and <c>Jp / S</c> divided from the constant buffer. Device-free on
-    /// every leg, so the Windows-only check never meets a reader that only ever ran there.
+    /// the motion, <c>uv</c> moved from the input and <c>Jp / S</c> divided from the constant buffer. One copy pins the
+    /// limit the reader states: another <c>add</c> result where D adds <c>previousUv</c> reads as D's chain. Device-free
+    /// on every leg, so the Windows-only check never meets a reader that only ever ran there.
     /// </summary>
     public sealed class TemporalVisibilityDxbcTests
     {
@@ -76,6 +77,32 @@ endloop
   mad r5.xy, r5.xyxx, cb0[3].xyxx, l(-0.500000, -0.500000, 0.000000, 0.000000)
 ";
 
+        // D's order with uv added where D adds previousUv and previousUv subtracted where D subtracts uv.
+        const string SwappedUv = @"
+  itof r5.xy, r6.xyxx
+  add r5.xy, r5.xyxx, -cb0[4].xyxx
+  add r5.xy, r5.xyxx, l(0.500000, 0.500000, 0.000000, 0.000000)
+  div r5.xy, r5.xyxx, cb0[3].xyxx
+  add r5.xy, r5.xyxx, r3.xyxx
+  add r5.xy, r5.xyxx, -r2.xyxx
+  add r5.xy, r5.xyxx, r4.xyxx
+  mad r5.xy, r5.xyxx, cb0[3].xyxx, l(-0.500000, -0.500000, 0.000000, 0.000000)
+";
+
+        // D's order with another add result, uv plus the motion rather than minus it, where D adds previousUv. The
+        // provenance names the opcode alone, so this reads as D's chain: the limit the reader's summary states.
+        const string OtherAddResult = @"
+  add r12.xy, v1.xyxx, r1.xyxx
+  itof r5.xy, r6.xyxx
+  add r5.xy, r5.xyxx, -cb0[4].xyxx
+  add r5.xy, r5.xyxx, l(0.500000, 0.500000, 0.000000, 0.000000)
+  div r5.xy, r5.xyxx, cb0[3].xyxx
+  add r5.xy, r12.xyxx, r5.xyxx
+  add r5.xy, r5.xyxx, -r3.xyxx
+  add r5.xy, r5.xyxx, r4.xyxx
+  mad r5.xy, r5.xyxx, cb0[3].xyxx, l(-0.500000, -0.500000, 0.000000, 0.000000)
+";
+
         // The loop-invariant part folded once, so a copy adds one register where D adds three.
         const string Hoisted = @"
   itof r5.xy, r6.xyxx
@@ -113,6 +140,7 @@ endloop
         [InlineData(OtherOrder)]
         [InlineData(Hoisted)]
         [InlineData(SwappedRegisters)]
+        [InlineData(SwappedUv)]
         public void ACopyInAnotherOrderReadsDifferently(string copy)
         {
             List<string> d = TemporalVisibilityDxbc.Chains(DChain);
@@ -132,6 +160,17 @@ endloop
             List<string> swapped = TemporalVisibilityDxbc.Chains(DChain + SwappedRegisters).GetRange(2, 2);
             Assert.Equal(d.Select(Shape), swapped.Select(Shape));
             Assert.NotEqual(d, swapped);
+        }
+
+        /// <summary>The stated limit: a register another <c>add</c> computed, beside the chain where D's
+        /// <c>previousUv</c> is, reads as D's chain, since provenance names the opcode and not its operands.</summary>
+        [Fact]
+        public void AnotherAddResultWherePreviousUvIsReadsTheSame()
+        {
+            List<string> d = TemporalVisibilityDxbc.Chains(DChain);
+            List<string> both = TemporalVisibilityDxbc.Chains(DChain + OtherAddResult);
+            Assert.Equal(4, both.Count);
+            Assert.Equal(d, both.GetRange(2, 2));
         }
 
         [Fact]

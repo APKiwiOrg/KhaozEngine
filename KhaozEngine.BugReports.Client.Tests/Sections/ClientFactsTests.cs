@@ -140,7 +140,8 @@ public sealed class ClientFactsTests
             new[]
             {
                 "ClipSpaceYInverted", "DepthRangeZeroToOne", "DeviceName", "MaxColorAttachments", "MaxMsaaSampleCount",
-                "SamplerAnisotropy", "SamplerLodBias", "SupportsCompletionFences", "SupportsCompute", "SupportsShadowMaps",
+                "SamplerAnisotropy", "SamplerLodBias", "SupportsCompletionFences", "SupportsCompute",
+                "SupportsShaderFloatControls", "SupportsShadowMaps", "SupportsTimestamps",
             },
             described.Keys);
         Assert.Equal("true", described["ClipSpaceYInverted"]);

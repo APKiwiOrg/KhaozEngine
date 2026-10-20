@@ -105,8 +105,8 @@ public sealed partial class Scene3D
             main &= submitted is { } draw && !draw.ShadowOnly && CoverageHasMainFragments(draw.Dissolve, draw.DissolveComplement);
         if (FrustumCulling)
         {
-            var absoluteVp = Matrix4x4.CreateTranslation(-CurrentFrameView.RenderOrigin) * CurrentFrameView.ViewProjection;
-            main &= FrustumPlanes.Extract(absoluteVp).IntersectsSphere(p.Sphere.Center, p.Sphere.Radius);
+            main &= FrustumPlanes.Extract(Matrix4x4.CreateTranslation(-CurrentFrameView.RenderOrigin)
+                * CurrentFrameView.ViewProjection).IntersectsSphere(p.Sphere.Center, p.Sphere.Radius);
         }
         frame[13] = main ? 2u : 0u;
         p.MotionRevision = SameCoverageIdentity(p) ? p.Owner.MotionRevision : ++_coverageMotionRevision;

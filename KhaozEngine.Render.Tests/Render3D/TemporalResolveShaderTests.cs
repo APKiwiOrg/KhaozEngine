@@ -396,8 +396,8 @@ namespace KhaozEngine.Tests.Render3D
         {
             const GpuResourceKind T = GpuResourceKind.TextureReadOnly;
             AssertSurvives(ShaderSources.TemporalResolveFrag, "TemporalResolve",
-                new[] { "t0", "t1", "t2", "t3", "t4", "t5", "t6", "s0", "b0" },
-                T, T, T, T, T, T, T, GpuResourceKind.Sampler, GpuResourceKind.UniformBuffer);
+                new[] { "t0", "t1", "t2", "t3", "t4", "t5", "t6", "s0", "b0", "t7" },
+                T, T, T, T, T, T, T, GpuResourceKind.Sampler, GpuResourceKind.UniformBuffer, T);
             AssertSurvives(ShaderSources.TemporalDepthStoreFrag, "TemporalDepthStore", new[] { "t0", "t1", "s0", "b0" },
                 T, T, GpuResourceKind.Sampler, GpuResourceKind.UniformBuffer);
         }

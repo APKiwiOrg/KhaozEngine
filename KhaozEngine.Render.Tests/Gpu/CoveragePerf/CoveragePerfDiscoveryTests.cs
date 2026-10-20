@@ -12,6 +12,8 @@ public sealed class CoveragePerfDiscoveryTests
     internal const string Project = "tools/EquipmentCoverage.Perf.Tests/EquipmentCoverage.Perf.Tests.csproj";
     internal const string Filter = "FullyQualifiedName=EquipmentCoverage.Perf.Tests.CoveragePerfTests.Measure_authorized_unit&Category=CoveragePerformance";
     const string Name = "EquipmentCoverage.Perf.Tests";
+    static readonly string[] MeasurementSteps =
+        { "Verify coverage authorization commit", "Build coverage performance project", "Measure authorized coverage unit" };
 
     [Fact]
     public void Perf_project_is_outside_the_solution_and_every_ordinary_selection()
@@ -33,16 +35,15 @@ public sealed class CoveragePerfDiscoveryTests
     {
         foreach (string workflow in Directory.EnumerateFiles(Path.Combine(Root(), ".github/workflows")))
         {
-            string active = CoverageCostContractTests.ActiveSelectionText(File.ReadAllText(workflow));
+            string active = CoverageCostContractTests.ActiveSelectionText(CoveragePerfWorkflowText.Lf(File.ReadAllText(workflow)));
             if (!active.Contains(Name, StringComparison.Ordinal)) continue;
             Assert.Contains(Path.GetFileName(workflow), new[] { "stress-test.yml", "gpu-hosted-bench.yml" });
-            var steps = active.Split("      - name: ", StringSplitOptions.None);
+            var steps = CoveragePerfWorkflowText.Steps(active);
             Assert.DoesNotContain(Name, steps[0], StringComparison.Ordinal);
             foreach (string step in steps.Skip(1).Where(s => s.Contains(Name, StringComparison.Ordinal)))
             {
                 Assert.Contains("if: inputs.coverage-perf-unit != ''", step, StringComparison.Ordinal);
-                Assert.True(step.StartsWith("Build coverage performance project", StringComparison.Ordinal)
-                    || step.StartsWith("Measure authorized coverage unit", StringComparison.Ordinal));
+                Assert.Contains(MeasurementSteps, name => step.StartsWith(name + "\n", StringComparison.Ordinal));
             }
         }
     }
@@ -61,7 +62,7 @@ public sealed class CoveragePerfDiscoveryTests
         Assert.Contains("authorized/*.json", Read(Project), StringComparison.Ordinal);
     }
 
-    internal static string Read(string path) => File.ReadAllText(Path.Combine(Root(), path));
+    internal static string Read(string path) => CoveragePerfWorkflowText.Lf(File.ReadAllText(Path.Combine(Root(), path)));
     internal static string Root([CallerFilePath] string path = "") =>
         Path.GetFullPath(Path.Combine(Path.GetDirectoryName(path)!, "../../.."));
 

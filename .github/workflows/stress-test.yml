@@ -78,7 +78,7 @@ on:
         default: ''
         type: string
       coverage-perf-workload-sha:
-        description: Exact approved workload commit SHA
+        description: Measured workload commit, the single parent of the dispatched authorization commit
         required: false
         default: ''
         type: string
@@ -93,7 +93,7 @@ permissions:
 
 jobs:
   stress:
-    uses: APKiwiOrg/ci-workflows/.github/workflows/stress-test.yml@a0f13d51ec0c4ba0ceaa65caf86b2875fca35004 # opt-in coverage CPU performance proofs
+    uses: APKiwiOrg/ci-workflows/.github/workflows/stress-test.yml@b44c61e038646889e9f40281ceb78ca9989d1546 # opt-in coverage CPU performance proofs, depth-2 coverage checkout
     with:
       project: ${{ inputs.project }}
       filter: ${{ inputs.filter }}

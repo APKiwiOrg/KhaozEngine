@@ -51,7 +51,7 @@ on:
         default: ''
         type: string
       coverage-perf-workload-sha:
-        description: Approved checkout SHA, 40 lowercase hex
+        description: Measured workload commit, the single parent of ref's authorization commit, 40 lowercase hex
         required: false
         default: ''
         type: string
@@ -121,11 +121,14 @@ jobs:
       KE_COVERAGE_PERF_LEG: ${{ matrix.leg }}
       DEVICE_REPORT: FullyQualifiedName~GpuCapabilitiesDiagTests.LiveDeviceReportsNameAndSamplerFeatures
     steps:
+      # A coverage dispatch checks out the authorization commit, whose single parent is the measured workload
+      # commit. Depth 2 makes that parent present. An empty unit keeps the default depth 1.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
+          fetch-depth: ${{ inputs.coverage-perf-unit != '' && 2 || 1 }}
 
-      - name: Verify coverage workload checkout
+      - name: Verify coverage authorization commit
         if: inputs.coverage-perf-unit != ''
         shell: pwsh
         env:
@@ -133,10 +136,18 @@ jobs:
         run: |
           "KE_COVERAGE_PERF_REPORTS=$env:KE_COVERAGE_PERF_REPORTS" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           New-Item -ItemType Directory -Force $env:KE_COVERAGE_PERF_REPORTS | Out-Null
-          $sha = (& git rev-parse HEAD).Trim()
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot verify workload checkout SHA' }
-          $sha | Set-Content (Join-Path $env:KE_COVERAGE_PERF_REPORTS 'workload-sha.txt')
-          if ($sha -cne $env:KE_COVERAGE_PERF_WORKLOAD_SHA) { throw 'Checked-out workload SHA differs from coverage-perf-workload-sha' }
+          $env:KE_COVERAGE_PERF_WORKLOAD_SHA | Set-Content (Join-Path $env:KE_COVERAGE_PERF_REPORTS 'workload-sha.txt')
+          $head = (& git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot read the checked-out authorization commit' }
+          $head | Set-Content (Join-Path $env:KE_COVERAGE_PERF_REPORTS 'authorization-sha.txt')
+          if ($head -ceq $env:KE_COVERAGE_PERF_WORKLOAD_SHA) { throw 'ref is the workload commit, dispatch its authorization commit' }
+          $parents = @((& git rev-list --parents -n 1 HEAD).Trim() -split ' ')
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot read the authorization commit parents' }
+          if ($parents.Count -ne 2 -or $parents[1] -cne $env:KE_COVERAGE_PERF_WORKLOAD_SHA) { throw 'Authorization commit must have exactly one parent, equal to coverage-perf-workload-sha' }
+          $manifest = "tools/EquipmentCoverage.Perf.Tests/authorized/$($env:KE_COVERAGE_PERF_UNIT).json"
+          $changes = @(& git diff --name-status --no-renames $env:KE_COVERAGE_PERF_WORKLOAD_SHA HEAD)
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot compare the authorization commit with its workload parent' }
+          if ($changes.Count -ne 1 -or $changes[0] -cne "A`t$manifest") { throw "Authorization commit must add only $manifest" }
 
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
@@ -271,6 +282,8 @@ jobs:
           $document = Get-Content -Raw $json | ConvertFrom-Json -ErrorAction Stop
           if ($document.schema -cne 'khaozengine.coverage-perf-report/1' -or $document.report.identity.unitId -cne $env:KE_COVERAGE_PERF_UNIT -or $document.report.returnedByRun -ne $true -or $document.report.finalUnitPublished -ne $true -or $document.report.status -cne 'Completed') { throw 'Coverage report is unfinalized or does not match the approved unit' }
           if ($document.report.manifestSha256 -cne $env:KE_COVERAGE_PERF_MANIFEST_SHA256 -or $document.report.identity.workloadSha -cne $env:KE_COVERAGE_PERF_WORKLOAD_SHA) { throw 'Final report hashes differ from the dispatch' }
+          $authorization = (Get-Content -Raw (Join-Path $env:KE_COVERAGE_PERF_REPORTS 'authorization-sha.txt')).Trim()
+          if ($document.report.identity.authorizationCommitSha -cne $authorization) { throw 'Final report authorization commit differs from the checkout' }
 
       - name: Test (Windows)
         if: inputs.coverage-perf-unit == '' && runner.os == 'Windows'

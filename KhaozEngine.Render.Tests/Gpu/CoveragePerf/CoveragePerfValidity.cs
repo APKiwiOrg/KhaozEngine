@@ -168,7 +168,8 @@ internal static class CoveragePerfValidity
     }
 
     static bool SameRun(CoveragePerfRunIdentity? a, CoveragePerfRunIdentity? b) => a is not null && b is not null &&
-        a.WorkloadSha == b.WorkloadSha && a.WorkflowSha == b.WorkflowSha && a.ManifestSha256 == b.ManifestSha256 &&
+        a.WorkloadSha == b.WorkloadSha && a.AuthorizationCommitSha == b.AuthorizationCommitSha && a.WorkflowSha == b.WorkflowSha &&
+        a.ManifestSha256 == b.ManifestSha256 &&
         a.UnitId == b.UnitId && a.RunId == b.RunId && a.Runner == b.Runner && a.Workflow == b.Workflow && a.Leg == b.Leg &&
         a.AuthorizationIdentity == b.AuthorizationIdentity && SameExecution(a.Execution, b.Execution);
     static bool SameExecution(CoveragePerfExecutionIdentity a, CoveragePerfExecutionIdentity b) =>

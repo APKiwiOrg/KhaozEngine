@@ -20,22 +20,37 @@ public sealed class CoveragePerfDispatchTests
         var env = files.Environment();
         env[key] = value;
         Assert.Throws<InvalidDataException>(() => CoveragePerfDispatch.Load(files.Path, name => env.GetValueOrDefault(name),
-            () => throw new InvalidOperationException("Workload lookup must not run.")));
+            (_, _) => throw new InvalidOperationException("Authorization lookup must not run.")));
     }
 
     [Theory]
     [InlineData("missing")]
     [InlineData("bytes")]
     [InlineData("workload")]
+    [InlineData("authorization")]
+    [InlineData("malformed-authorization")]
     public void Exact_file_bytes_and_actual_checkout_must_match_the_dispatch(string refusal)
     {
         using var files = new Files();
         var env = files.Environment();
         if (refusal == "missing") File.Delete(files.Manifest);
         if (refusal == "bytes") File.AppendAllText(files.Manifest, "\n");
-        var error = Assert.Throws<InvalidDataException>(() => CoveragePerfDispatch.Load(files.Path,
-            name => env.GetValueOrDefault(name), () => refusal == "workload" ? new string('f', 40) : files.Run.Identity.WorkloadSha));
-        Assert.Contains(refusal == "missing" ? "missing" : refusal == "bytes" ? "SHA-256" : "workload SHA", error.Message, StringComparison.Ordinal);
+        if (refusal == "workload") env["KE_COVERAGE_PERF_WORKLOAD_SHA"] = new string('f', 40);
+        var error = Assert.Throws<InvalidDataException>(() => CoveragePerfDispatch.Load(files.Path, name => env.GetValueOrDefault(name),
+            (_, _) => refusal switch
+            {
+                "authorization" => throw new InvalidDataException("Authorization commit's parent differs from KE_COVERAGE_PERF_WORKLOAD_SHA."),
+                "malformed-authorization" => "HEAD",
+                _ => Files.Authorization,
+            }));
+        Assert.Contains(refusal switch
+        {
+            "missing" => "missing",
+            "bytes" => "SHA-256",
+            "workload" => "Manifest workloadSha differs",
+            "authorization" => "parent differs",
+            _ => "authorization commit SHA",
+        }, error.Message, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -50,9 +65,10 @@ public sealed class CoveragePerfDispatchTests
         env["RUNNER_OS"] = os;
         env["KE_GRAPHICS_BACKEND"] = backend;
         env["KE_COVERAGE_PERF_LEG"] = leg;
-        var request = CoveragePerfDispatch.Load(files.Path, name => env.GetValueOrDefault(name), () => files.Run.Identity.WorkloadSha);
+        var request = CoveragePerfDispatch.Load(files.Path, name => env.GetValueOrDefault(name), (_, _) => Files.Authorization);
         var identity = CoveragePerfDispatch.Identity(request, name => env.GetValueOrDefault(name));
         Assert.Equal(files.Run.Identity.WorkloadSha, identity.WorkloadSha);
+        Assert.Equal(Files.Authorization, identity.AuthorizationCommitSha);
         Assert.NotEqual(identity.WorkflowSha, identity.WorkloadSha);
         Assert.Equal(files.Run.Identity.Leg, identity.Leg);
         Assert.Equal(files.Run.Identity.Runner, identity.Runner);
@@ -72,16 +88,16 @@ public sealed class CoveragePerfDispatchTests
         using var files = new Files();
         var env = files.Environment();
         env[key] = value;
-        var request = CoveragePerfDispatch.Load(files.Path, name => env.GetValueOrDefault(name), () => files.Run.Identity.WorkloadSha);
+        var request = CoveragePerfDispatch.Load(files.Path, name => env.GetValueOrDefault(name), (_, _) => Files.Authorization);
         Assert.Throws<InvalidDataException>(() => CoveragePerfDispatch.Identity(request, name => env.GetValueOrDefault(name)));
     }
 
     [Fact]
-    public void Workload_reader_resolves_the_repository_and_reads_its_actual_HEAD()
+    public void Repository_root_resolves_from_the_test_location_and_git_reads_its_actual_HEAD()
     {
         string root = CoveragePerfDiscoveryTests.Root();
         Assert.Equal(root, CoveragePerfDispatch.RepositoryRoot(System.IO.Path.Combine(root, "tools")));
-        Assert.Matches("^[0-9a-f]{40}$", CoveragePerfDispatch.WorkloadSha(root));
+        Assert.Matches("^[0-9a-f]{40}\n$", CoveragePerfAuthorizationCommit.Git(root, "rev-parse", "--verify", "HEAD"));
     }
 
     sealed class Files : IDisposable
@@ -89,6 +105,7 @@ public sealed class CoveragePerfDispatchTests
         internal string Path { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "khaozengine-ec-perf-8b", Guid.NewGuid().ToString("N"));
         internal string Manifest => System.IO.Path.Combine(Path, "inline-driver.json");
         internal CoveragePerfFakeRun Run { get; }
+        internal static readonly string Authorization = new('b', 40);
         internal Files(string preset = "C0")
         {
             Run = new(preset);

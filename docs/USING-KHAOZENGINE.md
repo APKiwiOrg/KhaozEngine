@@ -23183,9 +23183,10 @@ The current performance harness lives in the outside-solution
 `tools/EquipmentCoverage.Perf.Tests/EquipmentCoverage.Perf.Tests.csproj`. It is separate from retired
 CPU cost authorizations and ordinary correctness tests. Its single `CoveragePerformance` fact skips
 unless `KE_COVERAGE_PERF_UNIT` selects an exact freshly approved manifest. It verifies the manifest
-bytes against `KE_COVERAGE_PERF_MANIFEST_SHA256` and the actual checkout against
-`KE_COVERAGE_PERF_WORKLOAD_SHA`. `GITHUB_SHA` identifies the workflow and cannot substitute for the
-workload checkout when the workflow tests another ref.
+bytes against `KE_COVERAGE_PERF_MANIFEST_SHA256` and the manifest's `workloadSha` against
+`KE_COVERAGE_PERF_WORKLOAD_SHA`. The checkout must be the authorization commit: its only parent is that
+workload commit and it adds only the selected manifest, which git proves offline before any clock or
+device. `GITHUB_SHA` identifies the workflow and cannot substitute for either commit.
 
 Each run or rerun needs its own owner approval before root commits the manifest. Manual
 `gpu-hosted-bench.yml` selects one T4 backend leg and keeps GRID, NVIDIA ICD and native identity checks.

@@ -10,3 +10,6 @@ KhaozEngine.Game.Tests/Locomotion/Contacts/Fixtures/*.json text eol=lf
 KhaozEngine.Game.Tests/Locomotion/Contacts/Fixtures/*.jsonl text eol=lf
 KhaozEngine.Game.Tests/Locomotion/Contacts/Fixtures/*.txt text eol=lf
 KhaozEngine.Game.Tests/Physics/Fixtures/*.jsonl text eol=lf
+
+# Approved coverage performance manifests are hashed over their exact committed bytes. No conversion in either direction.
+tools/EquipmentCoverage.Perf.Tests/authorized/*.json -text

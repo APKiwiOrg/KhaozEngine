@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Immutable;
-using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -9,12 +8,12 @@ using System.Text.RegularExpressions;
 
 namespace KhaozEngine.Tests.Gpu;
 
-internal sealed record CoveragePerfRequest(byte[] Bytes, CoveragePerfManifest Manifest, string WorkloadSha);
+internal sealed record CoveragePerfRequest(byte[] Bytes, CoveragePerfManifest Manifest, string WorkloadSha, string AuthorizationSha);
 
 // Authorization and runtime facts are resolved before the entrypoint creates a clock or a device.
 internal static class CoveragePerfDispatch
 {
-    internal static CoveragePerfRequest Load(string authorized, Func<string, string?> environment, Func<string> workloadSha)
+    internal static CoveragePerfRequest Load(string authorized, Func<string, string?> environment, Func<string, string, string> authorizationCommit)
     {
         string unit = Required(environment, "KE_COVERAGE_PERF_UNIT");
         Match(unit, "^[a-z0-9-]{1,64}$", "KE_COVERAGE_PERF_UNIT");
@@ -29,13 +28,14 @@ internal static class CoveragePerfDispatch
         byte[] bytes = File.ReadAllBytes(file);
         if (Convert.ToHexStringLower(SHA256.HashData(bytes)) != hash)
             throw new InvalidDataException("Selected manifest SHA-256 differs from KE_COVERAGE_PERF_MANIFEST_SHA256.");
-        string actual = workloadSha();
-        Match(actual, "^[0-9a-f]{40}$", "checked-out workload SHA");
-        if (actual != expected) throw new InvalidDataException("Checked-out workload SHA differs from KE_COVERAGE_PERF_WORKLOAD_SHA.");
         var manifest = CoveragePerfManifest.Parse(bytes);
-        if (manifest.UnitId != unit || manifest.WorkloadSha != actual)
-            throw new InvalidDataException("Manifest unit or workload identity differs from the verified dispatch.");
-        return new(bytes, manifest, actual);
+        if (manifest.UnitId != unit) throw new InvalidDataException("Manifest unitId differs from KE_COVERAGE_PERF_UNIT.");
+        if (manifest.WorkloadSha != expected)
+            throw new InvalidDataException("Manifest workloadSha differs from the dispatched KE_COVERAGE_PERF_WORKLOAD_SHA.");
+        // The checkout is the authorization commit, verified against the dispatched workload commit by git.
+        string authorization = authorizationCommit(unit, expected);
+        Match(authorization, "^[0-9a-f]{40}$", "authorization commit SHA");
+        return new(bytes, manifest, expected, authorization);
     }
 
     internal static CoveragePerfRunIdentity Identity(CoveragePerfRequest request, Func<string, string?> environment)
@@ -73,6 +73,7 @@ internal static class CoveragePerfDispatch
             request.Manifest.Sha256, runner, workflow, leg, Required(environment, "GITHUB_RUN_ID"), attempt,
             Environment.ProcessId, request.Manifest.Authorization.Identity)
         {
+            AuthorizationCommitSha = request.AuthorizationSha,
             Execution = new()
             {
                 HostCpu = HostCpu(environment),
@@ -90,19 +91,6 @@ internal static class CoveragePerfDispatch
         for (DirectoryInfo? current = new(directory); current is not null; current = current.Parent)
             if (File.Exists(Path.Combine(current.FullName, "KhaozEngine.slnx"))) return current.FullName;
         throw new InvalidDataException("Cannot locate the checked-out workload repository.");
-    }
-
-    internal static string WorkloadSha(string root)
-    {
-        var info = new ProcessStartInfo("git") { WorkingDirectory = root, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
-        info.ArgumentList.Add("rev-parse");
-        info.ArgumentList.Add("HEAD");
-        using var process = Process.Start(info) ?? throw new InvalidDataException("Cannot start git workload verification.");
-        string sha = process.StandardOutput.ReadToEnd().Trim();
-        string error = process.StandardError.ReadToEnd();
-        process.WaitForExit();
-        if (process.ExitCode != 0) throw new InvalidDataException("Cannot verify workload SHA: " + error);
-        return sha;
     }
 
     static string HostCpu(Func<string, string?> environment)

@@ -31,6 +31,8 @@ internal static class CoveragePerfReportJson
         var text = new StringBuilder();
         text.AppendLine($"Coverage performance {report.Manifest?.Preset ?? "unknown"}, {report.Identity.RunId}");
         text.AppendLine();
+        text.AppendLine($"Workload {report.Identity.WorkloadSha}, authorization commit {report.Identity.AuthorizationCommitSha}.");
+        text.AppendLine();
         text.AppendLine($"CPU {verdict.Cpu.Status}, both reversed C1 deltas at most 2 ms.");
         text.AppendLine($"GPU {verdict.Gpu.Status}, both reversed Total deltas at most 15 percent on {report.Manifest?.Backend}.");
         foreach (var pair in verdict.Cpu.Pairs.Concat(verdict.Gpu.Pairs).Concat(verdict.SharedSubmission))

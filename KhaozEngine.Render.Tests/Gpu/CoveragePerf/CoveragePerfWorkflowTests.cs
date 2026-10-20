@@ -5,6 +5,7 @@ namespace KhaozEngine.Tests.Gpu;
 
 public sealed class CoveragePerfWorkflowTests
 {
+    const string SharedPin = "b44c61e038646889e9f40281ceb78ca9989d1546";
     static string Gpu => CoveragePerfDiscoveryTests.Read(".github/workflows/gpu-hosted-bench.yml");
     static string Stress => CoveragePerfDiscoveryTests.Read(".github/workflows/stress-test.yml");
 
@@ -14,7 +15,7 @@ public sealed class CoveragePerfWorkflowTests
     public void Measurement_is_dispatch_only_and_forwards_all_three_identity_inputs(string file)
     {
         string text = CoveragePerfDiscoveryTests.Read(".github/workflows/" + file);
-        string events = text.Split("on:\n", 2)[1].Split("\npermissions:", 2)[0];
+        string events = CoveragePerfWorkflowText.Events(text);
         Assert.StartsWith("  workflow_dispatch:\n", events, StringComparison.Ordinal);
         foreach (string trigger in new[] { "\n  push:", "\n  pull_request:", "\n  schedule:", "\n  workflow_call:" })
             Assert.DoesNotContain(trigger, events, StringComparison.Ordinal);
@@ -25,10 +26,31 @@ public sealed class CoveragePerfWorkflowTests
         }
     }
 
+    [Theory]
+    [InlineData("\n")]
+    [InlineData("\r\n")]
+    public void Structural_helpers_read_lf_and_crlf_workflows_alike(string newline)
+    {
+        string[] lines = { "name: sample", "on:", "  workflow_dispatch:", "    inputs:", "      coverage-perf-unit:", "permissions:",
+            "  contents: read", "jobs:", "  bench:", "    steps:", "      - name: First", "        run: |", "          echo one",
+            "      - name: Second", "        if: inputs.coverage-perf-unit != ''", "        run: echo two", "" };
+        string workflow = string.Join(newline, lines);
+        Assert.Equal(string.Join("\n", lines), CoveragePerfWorkflowText.Lf(workflow));
+        Assert.Equal("  workflow_dispatch:\n    inputs:\n      coverage-perf-unit:", CoveragePerfWorkflowText.Events(workflow));
+        Assert.Equal("name: sample\n", CoveragePerfWorkflowText.Before(workflow, "on:\n"));
+        Assert.Equal("\n        run: |\n          echo one", CoveragePerfWorkflowText.Step(workflow, "First"));
+        Assert.Equal("\n        if: inputs.coverage-perf-unit != ''\n        run: echo two\n", CoveragePerfWorkflowText.Step(workflow, "Second"));
+        Assert.Equal("  bench:\n", CoveragePerfWorkflowText.Before(CoveragePerfWorkflowText.After(workflow, "jobs:\n"), "    steps:"));
+        string[] steps = CoveragePerfWorkflowText.Steps(workflow);
+        Assert.Equal(3, steps.Length);
+        Assert.StartsWith("Second\n        if: inputs.coverage-perf-unit != ''\n", steps[2], StringComparison.Ordinal);
+    }
+
     [Fact]
     public void Stress_preserves_the_existing_contract_and_pins_the_reviewed_shared_workflow()
     {
-        Assert.Contains("stress-test.yml@a0f13d51ec0c4ba0ceaa65caf86b2875fca35004 #", Stress, StringComparison.Ordinal);
+        Assert.Contains("stress-test.yml@" + SharedPin + " #", Stress, StringComparison.Ordinal);
+        Assert.DoesNotContain("a0f13d51e", Stress, StringComparison.Ordinal);
         foreach (string input in new[] { "project", "filter", "iterations", "load", "configuration", "support-cost", "build-target", "artifact-env",
             "coverage-perf-cpu", "coverage-perf-unit", "coverage-perf-manifest-sha256", "coverage-perf-workload-sha", "coverage-perf-preset" })
             Assert.Contains($"      {input}: ${{{{ inputs.{input} }}}}", Stress, StringComparison.Ordinal);
@@ -39,13 +61,13 @@ public sealed class CoveragePerfWorkflowTests
     [Fact]
     public void Gpu_refuses_bad_selection_before_allocating_a_paid_runner()
     {
-        string pick = Gpu.Split("  bench:\n", 2)[0];
+        string pick = CoveragePerfWorkflowText.Before(Gpu, "  bench:\n");
         foreach (string validation in new[] { "^[a-z0-9-]{1,64}$", "^[0-9a-f]{64}$", "^[0-9a-f]{40}$",
             "windows-d3d11|windows-vulkan|linux-vulkan", "FullyQualifiedName~GpuCapabilitiesDiagTests", "::error::" })
             Assert.Contains(validation, pick, StringComparison.Ordinal);
         Assert.Contains("COVERAGE_PERF_UNIT", pick, StringComparison.Ordinal);
         Assert.Contains("FILTER", pick, StringComparison.Ordinal);
-        Assert.DoesNotContain("${{ inputs.", pick.Split("        run: |", 2)[1], StringComparison.Ordinal);
+        Assert.DoesNotContain("${{ inputs.", CoveragePerfWorkflowText.After(pick, "        run: |"), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -54,8 +76,9 @@ public sealed class CoveragePerfWorkflowTests
         string text = Gpu;
         int measure = text.IndexOf("      - name: Measure authorized coverage unit", StringComparison.Ordinal);
         Assert.True(measure > 0);
-        foreach (string step in new[] { "GPU, driver model and the GRID driver (Windows)", "Load only the NVIDIA Vulkan driver (Linux)",
-            "Confirm the NVIDIA adapter (Windows)", "Confirm the NVIDIA adapter (Linux)", "Record coverage native identity" })
+        foreach (string step in new[] { "Verify coverage authorization commit", "GPU, driver model and the GRID driver (Windows)",
+            "Load only the NVIDIA Vulkan driver (Linux)", "Confirm the NVIDIA adapter (Windows)", "Confirm the NVIDIA adapter (Linux)",
+            "Record coverage native identity" })
         {
             int position = text.IndexOf("      - name: " + step, StringComparison.Ordinal);
             Assert.InRange(position, 0, measure - 1);
@@ -64,11 +87,27 @@ public sealed class CoveragePerfWorkflowTests
         Assert.Contains("VK_DRIVER_FILES=$icd", text, StringComparison.Ordinal);
         foreach (string os in new[] { "Windows", "Linux" })
         {
-            string legacy = text.Split("      - name: Test (" + os + ")", 2)[1].Split("      - name:", 2)[0];
+            string legacy = CoveragePerfWorkflowText.Step(text, "Test (" + os + ")");
             Assert.Contains("inputs.coverage-perf-unit == ''", legacy, StringComparison.Ordinal);
             Assert.Contains("dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj", legacy, StringComparison.Ordinal);
             Assert.Contains(os == "Windows" ? "$env:FILTER" : "$FILTER", legacy, StringComparison.Ordinal);
         }
+    }
+
+    [Fact]
+    public void Gpu_measurement_checks_out_the_authorization_commit_and_its_single_workload_parent()
+    {
+        string text = Gpu;
+        string checkout = CoveragePerfWorkflowText.Before(CoveragePerfWorkflowText.After(text, "      - uses: actions/checkout@"), "\n      - ");
+        Assert.Contains("ref: ${{ inputs.ref }}", checkout, StringComparison.Ordinal);
+        Assert.Contains("fetch-depth: ${{ inputs.coverage-perf-unit != '' && 2 || 1 }}", checkout, StringComparison.Ordinal);
+        string verify = CoveragePerfWorkflowText.Step(text, "Verify coverage authorization commit");
+        Assert.Contains("if: inputs.coverage-perf-unit != ''", verify, StringComparison.Ordinal);
+        foreach (string fact in new[] { "git rev-parse HEAD", "git rev-list --parents -n 1 HEAD", "git diff --name-status --no-renames",
+            "$env:KE_COVERAGE_PERF_WORKLOAD_SHA", "tools/EquipmentCoverage.Perf.Tests/authorized/$($env:KE_COVERAGE_PERF_UNIT).json",
+            "workload-sha.txt", "authorization-sha.txt", "$parents.Count -ne 2", "$changes.Count -ne 1" })
+            Assert.Contains(fact, verify, StringComparison.Ordinal);
+        Assert.DoesNotContain("Checked-out workload SHA differs", text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -77,12 +116,11 @@ public sealed class CoveragePerfWorkflowTests
         string text = Gpu;
         Assert.Contains("timeout-minutes: ${{ inputs.coverage-perf-unit != '' && 30 || 60 }}", text, StringComparison.Ordinal);
         Assert.Contains(CoveragePerfDiscoveryTests.Filter, text, StringComparison.Ordinal);
-        Assert.Contains("git rev-parse HEAD", text, StringComparison.Ordinal);
         Assert.Contains("KE_COVERAGE_PERF_REPORTS:", text, StringComparison.Ordinal);
         foreach (string fact in new[] { "nvidia-smi", "device-report.log", "workload-sha.txt", "notExecuted", "executed", "passed", "failed",
-            "khaozengine.coverage-perf-report/1", "unitId", "returnedByRun", "finalUnitPublished", ".json", ".md", ".trx" })
+            "khaozengine.coverage-perf-report/1", "unitId", "returnedByRun", "finalUnitPublished", "authorizationCommitSha", ".json", ".md", ".trx" })
             Assert.Contains(fact, text, StringComparison.Ordinal);
-        string upload = text.Split("      - name: Upload the output", 2)[1];
+        string upload = CoveragePerfWorkflowText.After(text, "      - name: Upload the output");
         Assert.Contains("if: always()", upload, StringComparison.Ordinal);
         Assert.Contains("${{ runner.temp }}/coverage-perf", upload, StringComparison.Ordinal);
     }

@@ -15,6 +15,8 @@ internal sealed record CoveragePerfRunIdentity(string WorkloadSha, string Workfl
     string AuthorizationIdentity)
 {
     internal CoveragePerfExecutionIdentity Execution { get; init; } = new();
+    // The checked-out commit whose single parent is WorkloadSha and which adds only the approved manifest.
+    internal string AuthorizationCommitSha { get; init; } = "unavailable";
     internal string RunId => string.Create(CultureInfo.InvariantCulture, $"{WorkflowRunId}-{WorkflowRunAttempt}-{ProcessId}");
 }
 

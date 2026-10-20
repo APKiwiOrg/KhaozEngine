@@ -14,7 +14,7 @@ public sealed class CoveragePerfTests
     {
         string root = CoveragePerfDispatch.RepositoryRoot(AppContext.BaseDirectory);
         var request = CoveragePerfDispatch.Load(Path.Combine(AppContext.BaseDirectory, "authorized"),
-            Environment.GetEnvironmentVariable, () => CoveragePerfDispatch.WorkloadSha(root));
+            Environment.GetEnvironmentVariable, (unit, workload) => CoveragePerfAuthorizationCommit.Commit(root, workload, unit));
         var identity = CoveragePerfDispatch.Identity(request, Environment.GetEnvironmentVariable);
         string directory = Environment.GetEnvironmentVariable("KE_COVERAGE_PERF_REPORTS")
             ?? throw new InvalidDataException("KE_COVERAGE_PERF_REPORTS must name the retained output directory.");

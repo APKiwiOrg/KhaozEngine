@@ -947,7 +947,10 @@ the adapter checks still run before any measurement.
 A separately approved coverage unit selects exactly one leg with `legs`, never `all`. Supply
 `coverage-perf-unit` (1 to 64 lowercase ASCII letters, digits or hyphens), `coverage-perf-manifest-sha256`
 (64 lowercase hex) and `coverage-perf-workload-sha` (40 lowercase hex). Leave `filter` at its default.
-The job checks out `ref`, records `git rev-parse HEAD` and refuses a workload mismatch before building.
+`ref` names the authorization commit described below and `coverage-perf-workload-sha` names its parent.
+The job checks out `ref` at depth 2, so the parent is present, and records both SHAs. Before building it
+refuses unless HEAD has exactly one parent, that parent is the workload SHA, and
+`git diff --name-status --no-renames` from the workload SHA to HEAD lists only the added manifest.
 It records `nvidia-smi`, native PCI identity, driver, compute and timestamp capabilities before building
 the outside-solution `tools/EquipmentCoverage.Perf.Tests/EquipmentCoverage.Perf.Tests.csproj` in Release.
 The fixed selection is
@@ -956,34 +959,49 @@ No caller filter extends that selection. The measurement job is capped at 30 min
 
 `stress-test.yml` provides the CPU-only preparation route through the pinned shared workflow. Set
 `coverage-perf-cpu=true`, `coverage-perf-preset=C0` or `C1`, the same three identity inputs,
-`project=tools/EquipmentCoverage.Perf.Tests/EquipmentCoverage.Perf.Tests.csproj`, the same `build-target`,
-`configuration=Release`, `iterations=1`, `load=0`, `support-cost=false`, an empty `filter` and
-`artifact-env=KE_COVERAGE_PERF_REPORTS`. It installs Vulkan and Mesa, discovers lavapipe's ICD from the
-package file list and selects software Vulkan explicitly. C0 has a 20-minute job limit and C1 has 30.
-This route proves CPU preparation only. The existing stress behavior stays unchanged when the switch
-is false and the four coverage strings are empty.
+`project=tools/EquipmentCoverage.Perf.Tests/EquipmentCoverage.Perf.Tests.csproj`, the same
+`build-target`, `configuration=Release`, `iterations=1`, `load=0`, `support-cost=false`, an empty
+`filter` and `artifact-env=KE_COVERAGE_PERF_REPORTS`. Dispatch it with `--ref` naming the authorization
+commit. The pinned shared workflow checks that commit out at depth 2 in coverage mode. It installs
+Vulkan and Mesa, discovers lavapipe's ICD from the package file list and selects software Vulkan
+explicitly. C0 has a 20-minute job limit and C1 has 30. This route proves CPU preparation only. The
+existing stress behavior stays unchanged when the switch is false and the four coverage strings are
+empty.
 
-Before either dispatch, root obtains exact owner approval for that single run, commits its manifest
-under the Perf project's `authorized/` directory and binds the unit, exact byte hash, workload SHA,
-workflow SHA, run ID and attempt to the approval. Reruns need new approval. Harness implementation and
-workflow enablement authorize no measurement. The GPU runner group admits this workflow from main only,
-so root first lands a separately reviewed workflow bootstrap, then dispatches that workflow on main
-with the approved feature workload in `ref`. The shared CPU workflow also needs its separately approved
-one-iteration caller proof before its pin is retained.
+Before either dispatch, root obtains exact owner approval for that single run. The approval binds the
+unit, exact byte hash, workload SHA, workflow SHA, run ID and attempt. Reruns need new approval. The
+measured code and its authorization are two commits:
+
+1. Workload commit A is the exact code to measure. The manifest names A as `workloadSha`.
+2. Authorization commit B has A as its only parent and adds only
+   `tools/EquipmentCoverage.Perf.Tests/authorized/<unit>.json`. A merge, a second file, a modified
+   file or a manifest added further down the history refuses.
+3. The dispatch checks out B and passes A as `coverage-perf-workload-sha` and the SHA-256 of the
+   committed manifest bytes as `coverage-perf-manifest-sha256`.
+
+`.gitattributes` marks those manifests `-text`, so every checkout keeps the exact committed bytes.
+Harness implementation and workflow enablement authorize no measurement. The GPU runner group admits
+this workflow from main only, so root first lands a separately reviewed workflow bootstrap, then
+dispatches that workflow on main with the approved authorization commit in `ref`. The shared CPU
+workflow also needs its separately approved one-iteration caller proof before its pin is retained.
 
 The entrypoint skips when `KE_COVERAGE_PERF_UNIT` is unset. With a selection it reads only that exact
-manifest, verifies its SHA-256 and actual checkout SHA, and refuses any approval or route mismatch.
-Gate verdicts are reported rather than asserted. A completed above-budget result still passes the
-entrypoint. Refused or failed execution fails with its reason. JSON and Markdown are published from
-the driver's returned report through temporary files and atomic renames. Candidate reports never
-become final evidence. The final write is also checked against the cooperative deadline.
+manifest and verifies its SHA-256 and that its `workloadSha` equals the dispatched A. Before any clock
+or device, git, run offline with an argument list, proves HEAD's only parent is A and that the
+difference from A is exactly the added manifest. The entrypoint refuses any failure, including a missing
+git, and any approval or route mismatch. Reports record A as `workloadSha` and B as
+`authorizationCommitSha`. Gate verdicts are reported rather than asserted. A completed above-budget
+result still passes the entrypoint. Refused or failed execution fails with its reason. JSON and Markdown
+are published from the driver's returned report through temporary files and atomic renames. Candidate
+reports never become final evidence. The final write is also checked against the cooperative deadline.
 
-Both hosted routes require exactly one passed executed unit, zero skips and finalized matching JSON
-and nonempty Markdown. The GPU route additionally checks returned and publication flags and the two
-dispatch hashes. An `always()` upload retains JSON, Markdown, TRX and logs under `gpu-hosted-bench-<leg>`
-or `stress-artifacts`, including setup identity and workload SHA on the GPU route. A hard job timeout
-can still prevent an upload. Ordinary solution, selective CI and GPU correctness discovery never
-select the Perf project. No executable authorization ships with the harness.
+Both hosted routes require exactly one passed executed unit, zero skips and finalized matching JSON and
+nonempty Markdown. The GPU route additionally checks returned and publication flags, the two dispatch
+hashes and the recorded authorization commit. An `always()` upload retains JSON, Markdown, TRX and logs
+under `gpu-hosted-bench-<leg>` or `stress-artifacts`, including setup identity and the workload and
+authorization SHAs on the GPU route. A hard job timeout can still prevent an upload. Ordinary solution,
+selective CI and GPU correctness discovery never select the Perf project. No executable authorization
+ships with the harness.
 
 ## Authoring shaders that pass on all three backends
 

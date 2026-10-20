@@ -392,6 +392,11 @@ What it owns today:
   optional command defaults throw `NotSupportedException` without support. A fixed-capacity
   `IGpuTimestampPool` records one batch with `BeginTimestamps(pool, count)`, increasing unique
   `WriteTimestamp(pool, index)` calls from 0 and `EndTimestamps(pool)`. They only encode work, never submit.
+  Completed-frame proof also requires the optional `IGpuCommandListTimestampEnd` interface, implemented by
+  Vulkan. After writing every earlier index, call `FinishTimestampsOnEnd(pool, count - 1)`. The ordinary End
+  writes that last marker and ends the batch after all GPU finalization and before the native seal. Manual
+  write or end for the armed pool is refused. Lists without the interface cannot prove completed-frame time.
+  Failed End and abandonment clear the tail without resetting the pool, which stays quarantined until teardown.
   `TryResolve(completion, ticks, out tickPeriodNanoseconds)` polls the same-device fence supplied to the
   submission containing `EndTimestamps`. Keep it unreset and alive until every associated readback is consumed.
   `Pending` and `Invalid` preserve caller ticks and return period zero. `Ready` publishes elapsed ticks relative

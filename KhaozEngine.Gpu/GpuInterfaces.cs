@@ -411,7 +411,8 @@ namespace KhaozEngine.Gpu
             => throw new NotSupportedException("This GPU command list does not support timestamps.");
 
         /// <summary>Encode a pass-boundary query without submitting. Write each index from zero through count
-        /// minus one exactly once, in increasing order, in the same list that began the batch.</summary>
+        /// minus one exactly once, in increasing order, in the same list that began the batch. For completed-frame
+        /// timing, reserve the last index for <see cref="IGpuCommandListTimestampEnd"/> instead of writing it here.</summary>
         /// <exception cref="ArgumentOutOfRangeException">Index is outside the current batch count.</exception>
         /// <exception cref="InvalidOperationException">The batch is not recording or the index is not next.</exception>
         /// <exception cref="NotSupportedException">Timestamp commands are not supported by this list.</exception>
@@ -420,7 +421,9 @@ namespace KhaozEngine.Gpu
 
         /// <summary>Encode the end of the batch after every index was written, without submitting. Submit this
         /// list with the same-device fence later supplied to <see cref="IGpuTimestampPool.TryResolve"/>. Keep
-        /// that fence alive and unreset until the result and every associated readback have been consumed.</summary>
+        /// that fence alive and unreset until the result and every associated readback have been consumed.
+        /// An armed <see cref="IGpuCommandListTimestampEnd"/> tail ends the batch instead and refuses this call.
+        /// Ordinary markers before End cannot prove completed-frame timing without that optional interface.</summary>
         /// <exception cref="InvalidOperationException">The batch is not recording or an index is missing.</exception>
         /// <exception cref="NotSupportedException">Timestamp commands are not supported by this list.</exception>
         void EndTimestamps(IGpuTimestampPool pool)

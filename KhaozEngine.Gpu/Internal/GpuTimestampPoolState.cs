@@ -40,6 +40,16 @@ namespace KhaozEngine.Gpu.Internal
             _nextIndex++;
         }
 
+        internal void ValidateTimestampEnd(uint finalIndex)
+        {
+            if (_phase != Phase.Recording)
+                throw new InvalidOperationException("Begin a timestamp batch before arming its final timestamp.");
+            if (finalIndex != Count - 1)
+                throw new ArgumentOutOfRangeException(nameof(finalIndex), "The final timestamp must use the batch's last index.");
+            if (_nextIndex != finalIndex)
+                throw new InvalidOperationException("Write every earlier timestamp index, leaving the final index unwritten, before arming the tail.");
+        }
+
         internal void End()
         {
             if (_phase != Phase.Recording || _nextIndex != Count)

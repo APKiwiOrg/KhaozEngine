@@ -23,6 +23,11 @@ namespace KhaozEngine.Gpu
     /// zero exactly once. One unresolved batch may occupy a pool. Only a consumed Ready or Invalid result
     /// permits the next begin, which clears the prior result.
     /// </para>
+    /// <para>
+    /// Completed-frame timing additionally requires <see cref="IGpuCommandListTimestampEnd"/>. Its armed tail
+    /// writes the final index and ends this batch after all End finalization, before the native list seal.
+    /// Failed or abandoned recordings clear only their tail, leaving the pool quarantined through teardown.
+    /// </para>
     /// </summary>
     public interface IGpuTimestampPool : IDisposable
     {

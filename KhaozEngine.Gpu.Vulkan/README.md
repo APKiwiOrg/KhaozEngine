@@ -302,6 +302,20 @@ interleaved value and availability pairs. Create a fixed caller-owned ring and s
 through the same schedule and records `vkCmdWriteTimestamp2` with `ALL_COMMANDS`. `EndTimestamps` only
 closes the batch. No timestamp command submits, and resolve never drains, flushes or waits.
 
+Vulkan lists implement `IGpuCommandListTimestampEnd`. After writing all earlier indices, arm the current
+recording's batch with `FinishTimestampsOnEnd(pool, count - 1)`. Arming validates device, list, recording,
+batch count and written indices before storing a tail. Only one tail can be armed, and manual write or
+end for that pool is then refused. End closes rendering, flushes pending clears and restores resting
+layouts. The shared command-pool ring then releases memory for reuse, writes the final timestamp, ends
+the batch and seals the native buffer, in that order. Setup batches and ordinary lists keep the same
+release-and-seal path. The tail adds no submit, flush, wait or per-frame allocation.
+
+End clears tail ownership even when finalization fails. Begin and disposal also clear it without resetting
+the pool. Failed or abandoned Recording or Pending pools stay quarantined by their caller through teardown.
+A known lost device skips the tail, as it skips the release barrier, and retains the existing native-end
+loss handling. Device loss during a timestamp call can throw through the existing pool validation. No lost
+device recording supplies valid timing. Completed-frame proof requires this optional interface.
+
 Resolve polls the supplied same-device completion fence first, then makes one `vkGetQueryPoolResults`
 call with exactly `64_BIT | WITH_AVAILABILITY` (flags 5), stride 16 bytes, with no `WAIT` or `PARTIAL`.
 Every availability word must be nonzero before normalization through `GpuTimestampResults.TryNormalize`.

@@ -23227,6 +23227,18 @@ retains one unresolved batch, and a new begin clears the previous batch only aft
 Invalid count or index bounds throw `ArgumentOutOfRangeException`. Missing, duplicate or out-of-order writes
 and invalid lifecycle operations throw `InvalidOperationException`.
 
+For completed-frame GPU timing, also require `commandList is IGpuCommandListTimestampEnd`. Vulkan
+implements this optional interface. A list without it cannot prove completed-frame time, because End can
+emit later clears or barriers. Begin the batch and write every index before the last, then call
+`FinishTimestampsOnEnd(pool, count - 1)` while the list is still recording. Arming validates the current
+list and recording, the same-device pool, the last batch index and every earlier write before storing
+anything. Only one tail can be armed. Manual `WriteTimestamp` or `EndTimestamps` for its pool is refused.
+The ordinary End writes the last marker and ends that same batch after all GPU finalization and before
+the native seal, with no extra submission, flush, wait or per-frame allocation. Unarmed End is unchanged.
+Failure or abandonment clears only the list's tail. The caller quarantines the Recording or Pending pool
+through teardown, rather than resetting or reusing it. There is no cancellation API. Device loss follows
+the backend's sealing policy and cannot produce valid completed-frame evidence.
+
 Submit the list containing `EndTimestamps` once with a same-device completion fence, then call
 `pool.TryResolve(completion, ticks, out double tickPeriodNanoseconds)` on later frames. Keep the pool and
 fence alive, and never reset, resubmit or dispose that fence until resolution completes and every associated

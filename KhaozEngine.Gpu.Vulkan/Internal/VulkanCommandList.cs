@@ -289,6 +289,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     + "record that has not been sealed.");
             }
 
+            BeginTimestampRecording();
             // Cleared BEFORE Advance, not after: a native throw mid-advance must not leave a stale record marked
             // sealed.
             _sealedSlot = NoSeal;
@@ -371,18 +372,22 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                         + "is a call the driver refuses.");
             }
 
-            // THE INSTANCE CLOSES BEFORE ANYTHING ELSE, including the clear-only flush a pass with no draw owes.
-            _rendering?.EndRendering(CurrentBuffer);
+            try
+            {
+                // THE INSTANCE CLOSES BEFORE ANYTHING ELSE, including the clear-only flush a pass with no draw owes.
+                _rendering?.EndRendering(CurrentBuffer);
 
-            // EVERY TOUCHED TEXTURE BACK TO REST (V-F7), as ONE batched barrier, after the instance closed and
-            // before the native end. The remarks above say why that order is fixed rather than incidental.
-            _layouts?.RestoreResting(CurrentBuffer);
+                // EVERY TOUCHED TEXTURE BACK TO REST (V-F7), as ONE batched barrier, after the instance closed and
+                // before the native end. The remarks above say why that order is fixed rather than incidental.
+                _layouts?.RestoreResting(CurrentBuffer);
 
-            int slot = _ring.Slot;
-            _ring.EndRecording(slot);
+                int slot = _ring.Slot;
+                _ring.EndRecording(slot, _timestampEndPool, _timestampEndIndex);
 
-            _recording = false;
-            _sealedSlot = slot;
+                _recording = false;
+                _sealedSlot = slot;
+            }
+            finally { ClearTimestampEnd(); }
         }
 
         /// <inheritdoc/>
@@ -675,6 +680,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _recording = false;
             _sealedSlot = NoSeal;
 
+            ClearTimestampEnd();
             _ring.RetireInto(_retired);
             _uploads?.Dispose();
         }

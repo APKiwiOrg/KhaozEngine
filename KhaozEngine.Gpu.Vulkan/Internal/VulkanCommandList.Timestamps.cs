@@ -8,18 +8,23 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             VulkanTimestampPool native = RequireTimestampPool(pool);
             EndRenderingBeforeIllegalCommand();
-            native.Begin(CurrentBuffer, count);
+            native.Begin(CurrentBuffer, count, this, _timestampRecordingId);
         }
 
         public void WriteTimestamp(IGpuTimestampPool pool, uint index)
         {
             VulkanTimestampPool native = RequireTimestampPool(pool);
+            RefuseArmedTimestampPool(native);
             EndRenderingBeforeIllegalCommand();
             native.Write(CurrentBuffer, index);
         }
 
         public void EndTimestamps(IGpuTimestampPool pool)
-            => RequireTimestampPool(pool).End(CurrentBuffer);
+        {
+            VulkanTimestampPool native = RequireTimestampPool(pool);
+            RefuseArmedTimestampPool(native);
+            native.End(CurrentBuffer);
+        }
 
         VulkanTimestampPool RequireTimestampPool(IGpuTimestampPool pool)
         {

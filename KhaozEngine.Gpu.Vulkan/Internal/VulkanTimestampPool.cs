@@ -16,6 +16,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly ulong[] _values;
         readonly ulong[] _availability;
         ulong _recordingBuffer;
+        VulkanCommandList? _recordingList;
+        ulong _recordingId;
         bool _ended;
         bool _disposed;
         GpuTimestampStatus? _resolved;
@@ -49,14 +51,25 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 throw new ArgumentException("The timestamp pool belongs to another Vulkan device.", "pool");
         }
 
-        internal void Begin(ulong commandBuffer, uint count)
+        internal void Begin(ulong commandBuffer, uint count, VulkanCommandList list, ulong recordingId)
         {
             RequireLive();
             _state.Begin(count);
             _resolved = null;
             _ended = false;
             _recordingBuffer = commandBuffer;
+            _recordingList = list;
+            _recordingId = recordingId;
             _api.Reset(commandBuffer, _handle, count);
+        }
+
+        internal void ValidateTimestampEnd(VulkanCommandList list, ulong recordingId, ulong commandBuffer, uint finalIndex)
+        {
+            RequireLive();
+            if (!ReferenceEquals(_recordingList, list) || _recordingId != recordingId)
+                throw new InvalidOperationException("The timestamp pool must be begun on this list in its current recording.");
+            RequireRecording(commandBuffer);
+            _state.ValidateTimestampEnd(finalIndex);
         }
 
         internal void Write(ulong commandBuffer, uint index)

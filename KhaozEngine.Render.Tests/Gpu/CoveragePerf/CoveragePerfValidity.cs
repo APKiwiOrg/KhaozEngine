@@ -60,8 +60,7 @@ internal static class CoveragePerfValidity
                 if (info.TimestampPeriodNanoseconds is not double period || !double.IsFinite(period) || period <= 0)
                     Invalid("timestamp period is unresolved or invalid.");
             }
-            else if (!info.SoftwareAdapter || !(info.Adapter.Contains("lavapipe", StringComparison.OrdinalIgnoreCase) ||
-                info.Adapter.Contains("llvmpipe", StringComparison.OrdinalIgnoreCase))) Invalid("device is not the approved lavapipe CPU route.");
+            else if (!CoveragePerfHardwareIdentity.IsLavapipe(info)) Invalid("device is not the approved lavapipe CPU route.");
             if (manifest.Backend == KhaozEngine.Gpu.GpuBackendKind.Direct3D11Native && Unknown(info.D3DRecordingMode))
                 Invalid("D3D recording mode configuration is unresolved.");
             if ((result.Samples.Length & 1) != 0 || (result.Block.MeasuredFrames & 1) != 0) Invalid("measured counts must be even.");

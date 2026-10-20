@@ -32,6 +32,7 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
     internal bool RefuseOutcomes;
     internal List<CoveragePerfTimestampTestPool> TimestampPools { get; } = [];
     internal FakeGpuResourceFactory Resources => _device.Resources;
+    internal GpuCapabilities? ReportedCapabilities { get; set; }
 
     CoveragePerfSceneProbe(int actors, bool covered, bool completeOutcomes, CoveragePerfTimerLayout layout, bool direct = false)
     {
@@ -161,7 +162,7 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
         internal ProbeDevice(CoveragePerfSceneProbe probe)
         { _probe = probe; _factory = new(new CoverageRecordingFactory((FakeGpuResourceFactory)_inner.Factory, false), probe); }
         public GpuBackendKind Backend => _inner.Backend;
-        public GpuCapabilities Capabilities => new(false, true, deviceName: "semantic coverage probe", supportsCompute: true,
+        public GpuCapabilities Capabilities => _probe.ReportedCapabilities ?? new(false, true, deviceName: "semantic coverage probe", supportsCompute: true,
             supportsCompletionFences: _probe._completeOutcomes)
         { MaxColorAttachments = 8, SupportsTimestamps = _probe._layout != CoveragePerfTimerLayout.CpuOnly };
         public IGpuResourceFactory Factory => _factory;

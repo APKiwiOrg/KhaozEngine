@@ -35,7 +35,7 @@ public sealed class CoveragePerfAdapterIdentityTests
         using var json = JsonDocument.Parse(CoveragePerfReportJson.Serialize(report));
         var session = json.RootElement.GetProperty("report").GetProperty("blocks")[0].GetProperty("session");
         Assert.True(session.TryGetProperty("hardwareIdentityBasis", out var basis));
-        Assert.Equal("name-based (PCI vendor/device IDs unavailable through the device seam)", basis.GetString());
+        Assert.Equal("name-based (PCI vendor/device IDs not reported)", basis.GetString());
         var copy = CoveragePerfReportJson.Deserialize(json.RootElement.GetRawText());
         Assert.Equal(report.Blocks[0].Session, copy.Blocks[0].Session! with { Environment = report.Blocks[0].Session!.Environment });
         Assert.Contains(adapter, CoveragePerfReportJson.Markdown(report));

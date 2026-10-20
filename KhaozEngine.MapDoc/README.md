@@ -889,8 +889,14 @@ for an asset switch. Both validate the complete candidate and preserve every oth
 `MapFoliageEffectSet(Chunks, Layers)`, with contexts captured from those exact snapshots and closures.
 
 `MapNativeEditEffects.FoliageChunks` contains per-chunk rows only when a side is added or removed, its bounds change
-or its digest changes. The digests are `MapFoliageSampleBatch.DependencyDigest` values, including the raster-only
-digest off-raster. Bounds are cosmetic XZ candidate extents, not padded model bounds. `FoliageLayers` names layers
+or its digest changes. When preparation completes, a side's digest equals `MapFoliageSampleBatch.DependencyDigest`,
+including the raster-only digest off-raster. Deterministically refused preparation instead carries the refusal digest
+from `MapFoliageDependents`. It binds `kemap/foliage-batch-refused/1`, the layer ID, batch chunk X/Z and refusal status,
+plus the four density read positions at chunk offsets (0, 0), (1, 0), (0, 1) and (1, 1). Each present position contributes
+a digest of its chunk address, density SHA-256 and canonical authored layer settings excluding the chunk list.
+Missing positions contribute `absent`. A refused batch from `MapFoliageDistribution` carries an empty
+`DependencyDigest`, so consumers must check status and never compare a refused effect side to a refused batch by digest
+equality. Bounds are cosmetic XZ candidate extents, not padded model bounds. `FoliageLayers` names layers
 whose every batch is stale. Entry presence is authoritative even when before/after digests are equal, since those
 digests describe stored settings/chunks only and a dependency selection past the per-edit ceiling degrades to an entry.
 Whole-layer settings are policy, seed, spacing, density settings, raster geometry, models, materials, clearance rules,

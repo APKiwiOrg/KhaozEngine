@@ -206,7 +206,7 @@ world point. Both drive residency invalidation and neither registers a physics s
 bounds. Markers do not, so a marker-only edit never changes the world extent, a static or a navigation capture identity.
 `Build` remains the static-only ownership list and `BuildWater` remains the compiled-water list.
 
-Format-8 builds consume `kemap/effective-resources/1` with query policy 2 from the captured MapDoc snapshot.
+Format-9 builds consume `kemap/effective-resources/1` with query policy 2 from the captured MapDoc snapshot.
 Rebuild identity-keyed world and navigation captures when adopting 20.40.0, including prefab-free native maps.
 AuthoredOpen doorway clearance is a geometry proof. Controller walking and layered routes still require G1b,
 #1355 and #438, and intent does not supply R8 pixels or live door state.

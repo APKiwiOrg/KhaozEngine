@@ -54,7 +54,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 _layouts?.RestoreResting(CurrentBuffer);
 
                 int slot = _ring.Slot;
-                _ring.EndRecording(slot, _timestampEndPool, _timestampEndIndex);
+                _ring.EndRecording(slot, _timestampEndRecording, _timestampEndIndex);
 
                 _sealedSlot = slot;
             }

@@ -12,14 +12,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly GpuTimestampPoolState _state;
         readonly int _validBits;
         readonly double _period;
-        readonly ulong _handle;
         readonly ulong[] _values;
         readonly ulong[] _availability;
-        ulong _recordingBuffer;
-        VulkanCommandList? _recordingList;
-        ulong _recordingId;
-        bool _ended;
-        bool _disposed;
         GpuTimestampStatus? _resolved;
 
         internal VulkanTimestampPool(IVulkanTimestampApi api, VulkanTimeline timeline, VulkanResourceOwner owner,
@@ -33,65 +27,47 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _state = new GpuTimestampPoolState(capacity);
             if (!new VulkanTimestampSupport(validBits, tickPeriodNanoseconds).IsSupported)
                 throw new NotSupportedException("This Vulkan queue has no usable timestamp counter.");
-            RequireLive();
+            VulkanTimestampRecording.RequireDeviceLive(timeline);
             Capacity = capacity;
             _validBits = validBits;
             _period = tickPeriodNanoseconds;
             _values = new ulong[capacity];
             _availability = new ulong[capacity];
-            _handle = api.CreatePool(capacity);
+            Recording = new VulkanTimestampRecording(api, timeline, _state) { Handle = api.CreatePool(capacity) };
         }
 
         public uint Capacity { get; }
+        internal VulkanTimestampRecording Recording { get; }
 
         internal void RequireOwner(VulkanTimeline timeline)
         {
-            RequireLive();
+            Recording.RequireLive();
             if (!ReferenceEquals(_timeline, timeline))
                 throw new ArgumentException("The timestamp pool belongs to another Vulkan device.", "pool");
         }
 
         internal void Begin(ulong commandBuffer, uint count, VulkanCommandList list, ulong recordingId)
         {
-            RequireLive();
-            _state.Begin(count);
+            Recording.Begin(commandBuffer, count, list, recordingId);
             _resolved = null;
-            _ended = false;
-            _recordingBuffer = commandBuffer;
-            _recordingList = list;
-            _recordingId = recordingId;
-            _api.Reset(commandBuffer, _handle, count);
+            _api.Reset(commandBuffer, Recording.Handle, count);
         }
 
         internal void ValidateTimestampEnd(VulkanCommandList list, ulong recordingId, ulong commandBuffer, uint finalIndex)
-        {
-            RequireLive();
-            if (!ReferenceEquals(_recordingList, list) || _recordingId != recordingId)
-                throw new InvalidOperationException("The timestamp pool must be begun on this list in its current recording.");
-            RequireRecording(commandBuffer);
-            _state.ValidateTimestampEnd(finalIndex);
-        }
+            => Recording.ValidateTimestampEnd(list, recordingId, commandBuffer, finalIndex);
 
         internal void Write(ulong commandBuffer, uint index)
-        {
-            RequireRecording(commandBuffer);
-            _state.Write(index);
-            _api.Write(commandBuffer, _handle, index);
-        }
+            => Recording.Write(commandBuffer, index);
 
         internal void End(ulong commandBuffer)
-        {
-            RequireRecording(commandBuffer);
-            _state.End();
-            _ended = true;
-        }
+            => Recording.End(commandBuffer);
 
         public GpuTimestampStatus TryResolve(IGpuFence completion, Span<ulong> ticks, out double tickPeriodNanoseconds)
         {
             tickPeriodNanoseconds = 0d;
-            RequireLive();
+            Recording.RequireLive();
             ArgumentNullException.ThrowIfNull(completion);
-            if (!_ended) throw new InvalidOperationException("End a timestamp batch before resolving it.");
+            if (!Recording.Ended) throw new InvalidOperationException("End a timestamp batch before resolving it.");
             int count = (int)_state.Count;
             if (ticks.Length < count) throw new ArgumentException("The output cannot hold the timestamp batch.", nameof(ticks));
             if (completion is not VulkanGpuFence fence)
@@ -101,11 +77,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             {
                 if (!fence.Signaled) return GpuTimestampStatus.Pending;
                 // A semaphore poll can itself latch device loss. Do not query a dead device afterwards.
-                RequireLive();
+                Recording.RequireLive();
                 Span<ulong> values = _values.AsSpan(0, count);
                 Span<ulong> availability = _availability.AsSpan(0, count);
                 availability.Clear();
-                if (!_api.TryRead(_handle, _state.Count, values, availability)) return GpuTimestampStatus.Pending;
+                if (!_api.TryRead(Recording.Handle, _state.Count, values, availability)) return GpuTimestampStatus.Pending;
                 for (int i = 0; i < count; i++)
                     if (availability[i] == 0) return GpuTimestampStatus.Pending;
                 _resolved = GpuTimestampResults.TryNormalize(values, _validBits, values)
@@ -122,23 +98,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         public void Dispose()
         {
-            if (_disposed) return;
-            _disposed = true;
-            _owner.RetireTerminal(() => _api.DestroyPool(_handle));
-        }
-
-        void RequireLive()
-        {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            if (_timeline.IsDeviceDead)
-                throw new InvalidOperationException("The native Vulkan timestamp device is disposed or lost.");
-        }
-
-        void RequireRecording(ulong commandBuffer)
-        {
-            RequireLive();
-            if (_ended || commandBuffer != _recordingBuffer)
-                throw new InvalidOperationException("Write and end a timestamp batch in the command buffer that began it.");
+            if (Recording.IsDisposed) return;
+            Recording.IsDisposed = true;
+            _owner.RetireTerminal(() => _api.DestroyPool(Recording.Handle));
         }
     }
 }

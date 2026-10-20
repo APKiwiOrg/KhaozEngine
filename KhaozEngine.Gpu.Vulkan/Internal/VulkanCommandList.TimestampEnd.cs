@@ -4,23 +4,23 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 {
     internal sealed partial class VulkanCommandList : IGpuCommandListTimestampEnd
     {
-        VulkanTimestampPool? _timestampEndPool;
+        VulkanTimestampRecording? _timestampEndRecording;
         uint _timestampEndIndex;
         ulong _timestampRecordingId;
 
         public void FinishTimestampsOnEnd(IGpuTimestampPool pool, uint finalIndex)
         {
             VulkanTimestampPool native = RequireTimestampPool(pool);
-            if (_timestampEndPool is not null)
+            if (_timestampEndRecording is not null)
                 throw new InvalidOperationException("A final timestamp tail is already armed for this recording.");
             native.ValidateTimestampEnd(this, _timestampRecordingId, CurrentBuffer, finalIndex);
-            _timestampEndPool = native;
+            _timestampEndRecording = native.Recording;
             _timestampEndIndex = finalIndex;
         }
 
         void RefuseArmedTimestampPool(VulkanTimestampPool pool)
         {
-            if (ReferenceEquals(pool, _timestampEndPool))
+            if (ReferenceEquals(pool.Recording, _timestampEndRecording))
                 throw new InvalidOperationException("The timestamp pool's final marker and batch end are armed for End.");
         }
 
@@ -34,7 +34,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         void ClearTimestampEnd()
         {
             // Only forget list ownership. Failed or abandoned pools remain quarantined through teardown.
-            _timestampEndPool = null;
+            _timestampEndRecording = null;
             _timestampEndIndex = 0;
         }
     }

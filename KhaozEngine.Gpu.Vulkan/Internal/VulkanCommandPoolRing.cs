@@ -176,7 +176,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         /// <summary>Release writes for pooled reuse, then seal the buffer. Both command lists and setup batches
         /// finish here, after rendering and layout restoration and before the existing completion signal.</summary>
-        internal void EndRecording(int slot, VulkanTimestampPool? timestampEnd = null, uint finalIndex = 0)
+        internal void EndRecording(int slot, VulkanTimestampRecording? timestampEnd = null, uint finalIndex = 0)
         {
             _api.ReleaseMemoryForReuse(_buffers[slot]);
             // The final marker includes the release barrier. A lost device skips it, as it skips the barrier,

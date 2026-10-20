@@ -1,6 +1,6 @@
 # Equipment coverage GPU correctness, Part C
 
-## Task 17 scene evidence boundaries
+## Task 17 scene evidence and reviewed goldens
 
 Scene capture copies actual selected words in the frame command list beside the aggregate result readback.
 The shared fixture submits once and drains explicitly at its assertion boundary. Test callbacks freeze each
@@ -19,8 +19,36 @@ reservation separately proves disposal of the uncommitted buffer and partial bin
 The six local Metal golden comparisons retain the original references and tolerance. Candidate images, raw
 float grids and exact delta/hash metadata are emitted without baking. Full-resolution original images are
 paired externally for exact review. Local scene proof does not accept the other twelve backend comparisons,
-any nonzero golden cause, final hosted synchronization or a refresh. Exact Task 17 local counts, commits and
-review packets belong in its execution report until root completes those remaining gates.
+final hosted synchronization or a refresh.
+
+The [initial hosted comparison](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39347407621) at
+`22ccad5140e85429f9e6d7a198d4717e568828d0` passed all eighteen expected native comparisons, six per backend,
+with zero skips. Its synchronization validation passed 573 Render tests and 740 total tests with zero actual
+validation messages. The [owning-backend bake](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39348598745)
+then passed all six native cases on each backend with zero skips. Root authenticated all eighteen baked grid
+hashes and all eighteen baked PNG hashes. Each backend has exactly three reviewed changed grids and three
+unchanged grids. The nine approved grid bytes imported from that bake are:
+
+| Backend | View | Approved grid SHA-256 |
+| --- | --- | --- |
+| metal-native | rear | `d625e30c061a184a399029050a1575dfdffd636709a05cbf2d7a246f92ed71e1` |
+| metal-native | grazing-left | `af3a3343692b5a25ca3e1d1ed62ebde155fb827b2aeb4e10b2c4b06779b799f2` |
+| metal-native | grazing-right | `72dabd74539b794963815a9d2107110b09c77628bcc2e827b6a690436666334b` |
+| direct3d11-native | rear | `d625e30c061a184a399029050a1575dfdffd636709a05cbf2d7a246f92ed71e1` |
+| direct3d11-native | grazing-left | `af3a3343692b5a25ca3e1d1ed62ebde155fb827b2aeb4e10b2c4b06779b799f2` |
+| direct3d11-native | grazing-right | `72dabd74539b794963815a9d2107110b09c77628bcc2e827b6a690436666334b` |
+| vulkan-native | rear | `c0cd15b3518ec973c5d20627c3a4a10fc2e9e88241ac31b5a542697b830e8f8f` |
+| vulkan-native | grazing-left | `af3a3343692b5a25ca3e1d1ed62ebde155fb827b2aeb4e10b2c4b06779b799f2` |
+| vulkan-native | grazing-right | `72dabd74539b794963815a9d2107110b09c77628bcc2e827b6a690436666334b` |
+
+Root's review accepts the source-supported intended 25% clearance reserve and the resulting local
+normal/tangent shading changes for these rear and grazing views. The original approved bake has no vertex
+readback, so original-bake vertex provenance remains limited. Front, high and low-backlit retain their
+unchanged grids and images. This import changes no tolerance or frozen contract.
+
+The initial comparison used normal caches, and neither it nor the owning-backend bake is the final cold-cache
+gate. Final all-backend Coverage and synchronization verification remains pending. This record makes no
+final acceptance, performance, integration, release or adoption claim.
 
 ## Task 16 allocation and batch boundaries
 

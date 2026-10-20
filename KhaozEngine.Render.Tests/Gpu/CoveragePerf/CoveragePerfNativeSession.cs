@@ -29,9 +29,10 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
     readonly Frame _frame;
     readonly Action<Frame> _prepare, _record;
     readonly PendingFrame[] _pending;
+    readonly CoverageGpuOutcome[] _bufferedOutcomes;
     long _aggregateStart, _aggregateTicks, _resolutionStart, _surfaceStart, _resolutionTicks, _surfaceTicks;
-    int _frameIndex, _pendingCount, _nextFrame;
-    bool _presented, _disposed;
+    int _frameIndex, _pendingCount, _nextFrame, _bufferedOutcomeCount;
+    bool _presented, _disposed, _outcomeOverflow;
     int _endCreations, _endWaits, _endSubmits;
     GpuDeviceCounters _endCounters;
     internal CoveragePerfTypicalScene Typical { get; }
@@ -39,6 +40,8 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
     internal bool EffectiveRoutesValid => Typical.EffectiveRoutesValid;
     internal long HarnessDrainTicks { get; private set; }
     internal int HarnessDrains { get; private set; }
+    internal int CompletedOutcomes => _pending.Sum(p => p.Completed);
+    internal ReadOnlySpan<CoverageGpuOutcome> OutcomesForFrame(int batchIndex) => _pending[batchIndex].Outcomes;
 
     internal CoveragePerfNativeSession(CoveragePerfManifest manifest, CoveragePerfBlock block,
         CoveragePerfHostFactory factory, CoveragePerfClock clock)
@@ -71,6 +74,8 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
             };
             _prepare = Prepare; _record = Record;
             _pending = Enumerable.Range(0, CoveragePerfManifest.BatchFrameCount).Select(_ => new PendingFrame(block.Actors)).ToArray();
+            // Each frame records one row per actor. No frame starts beyond this batch until its outcomes are drained.
+            _bufferedOutcomes = new CoverageGpuOutcome[checked(_pending.Length * block.Actors)];
             Typical.Scene.CoverageAllocationObserverForTests = entering => Child(entering, resolution: true);
             Typical.Scene.CoverageSurfaceAllocationObserverForTests = entering => Child(entering, resolution: false);
             _device.PresentEntry = PresentEntry;
@@ -96,6 +101,7 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
         Observe("aggregate-start");
         FramePhases.Run(_frame, true, _device, _commands, Color.Black, _prepare, _record);
         if (!_presented) throw new InvalidOperationException("The production host never reached Present.");
+        MatchOutcomes();
         var schedule = Typical.PassSchedule();
         bool stageComplete = Typical.Actors.All(a => a.Staged);
         bool fallback = !EffectiveRoutesValid || Typical.Covered && Typical.Actors.Any(a =>
@@ -129,7 +135,7 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
 
     void Prepare(Frame frame)
     {
-        HarvestOutcomes();
+        BufferOutcomes();
         Typical.Scene.Begin(); Observe("scene-begin");
         Typical.Queue(_frameIndex); Observe("pose-and-stage");
         Typical.Scene.PrepareFrame(CoveragePerfTypicalScene.Width, CoveragePerfTypicalScene.Height); Observe("prepare");
@@ -172,15 +178,28 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
 
     void Observe(string name) => _host.Observe?.Invoke(name, _frame);
 
-    void HarvestOutcomes()
+    void BufferOutcomes()
     {
-        // Production outcome consumption remains inside the next preparation interval. No oracle or numeric copies.
+        // Only production consumption and bounded value copies belong in the preparation interval.
         while (Typical.Scene.TryReadCoverageOutcome(out var outcome))
         {
+            if (_bufferedOutcomeCount < _bufferedOutcomes.Length) _bufferedOutcomes[_bufferedOutcomeCount++] = outcome;
+            else _outcomeOverflow = true;
+        }
+    }
+
+    void MatchOutcomes()
+    {
+        if (_outcomeOverflow) throw new InvalidOperationException("Coverage outcomes exceeded the retained batch storage bound.");
+        for (int row = 0; row < _bufferedOutcomeCount; row++)
+        {
+            var outcome = _bufferedOutcomes[row];
+            Observe("outcome-match");
             bool found = false;
             for (int i = 0; i < _pendingCount; i++) found |= _pending[i].Accept(outcome);
             if (!found) throw new InvalidOperationException("A coverage outcome did not match a retained frame/view/actor.");
         }
+        _bufferedOutcomeCount = 0;
     }
 
     public void CompleteBatch(Span<CoveragePerfFrameSample> samples)
@@ -193,7 +212,8 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
         long start = _clock.Now();
         _device.WaitForIdle();
         HarnessDrainTicks += checked(_clock.Now() - start); HarnessDrains++;
-        HarvestOutcomes();
+        BufferOutcomes();
+        MatchOutcomes();
         for (int i = 0; i < samples.Length; i++)
         {
             var pending = _pending[i];

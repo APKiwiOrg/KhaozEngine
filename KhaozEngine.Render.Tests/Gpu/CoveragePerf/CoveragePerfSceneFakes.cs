@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
@@ -15,6 +16,8 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
 {
     readonly ProbeDevice _device;
     readonly Participant[] _participants;
+    readonly bool _completeOutcomes;
+    readonly List<SubmissionTestFence> _submittedFences = [];
     internal CoveragePerfNativeSession Session { get; }
     internal List<string> Events { get; } = [];
     internal int UploadCalls;
@@ -22,8 +25,9 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
     internal bool HistoryCommittedAtPresent;
     internal int ParticipantsAtReadback;
 
-    CoveragePerfSceneProbe(int actors, bool covered)
+    CoveragePerfSceneProbe(int actors, bool covered, bool completeOutcomes)
     {
+        _completeOutcomes = completeOutcomes;
         _device = new(this);
         _participants = Enumerable.Range(0, 8).Select(i => new Participant(i == 0 ? () => Trace("history-submitted") : null)).ToArray();
         var manifest = CoveragePerfManifest.Parse(new CoveragePerfFakeRun(actors == 32 ? "C1" : "C0").Json);
@@ -35,7 +39,22 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
         }, new CoveragePerfClock(() => Ticks, 1000));
     }
 
-    internal static CoveragePerfSceneProbe Open(int actors, bool covered) => new(actors, covered);
+    internal static CoveragePerfSceneProbe Open(int actors, bool covered, bool completeOutcomes = false)
+        => new(actors, covered, completeOutcomes);
+    internal void CompletePendingOutcomes()
+    {
+        foreach (var fence in _submittedFences) fence.Signaled = true;
+        _submittedFences.Clear();
+    }
+
+    internal GpuFrameSubmission RepeatCurrentOutcomes()
+    {
+        var submission = new GpuFrameSubmission(Session.Device);
+        submission.Begin();
+        Session.Typical.Scene.RecordCoverageReadbacks(new ProbeCommands(this), submission);
+        submission.Submit(new ProbeCommands(this));
+        return submission;
+    }
     internal CoveragePerfFrameSample[] Warm()
     {
         var samples = new CoveragePerfFrameSample[CoveragePerfManifest.WarmupFrameCount];
@@ -124,7 +143,8 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
         internal ProbeDevice(CoveragePerfSceneProbe probe)
         { _probe = probe; _factory = new(new CoverageRecordingFactory((FakeGpuResourceFactory)_inner.Factory, false), probe); }
         public GpuBackendKind Backend => _inner.Backend;
-        public GpuCapabilities Capabilities => new(false, true, deviceName: "semantic coverage probe", supportsCompute: true)
+        public GpuCapabilities Capabilities => new(false, true, deviceName: "semantic coverage probe", supportsCompute: true,
+            supportsCompletionFences: _probe._completeOutcomes)
         { MaxColorAttachments = 8 };
         public IGpuResourceFactory Factory => _factory;
         public IGpuFramebuffer? SwapchainFramebuffer => null;
@@ -132,9 +152,25 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
         public IGpuSampler LinearSampler => _inner.LinearSampler;
         public bool SyncToVerticalBlank { get; set; }
         public void Submit(IGpuCommandList commands) => throw new InvalidOperationException("Expected the production span submit.");
-        public void Submit(IGpuCommandList commands, IGpuFence fence) => throw new InvalidOperationException("Expected the production span submit.");
-        public void Submit(IGpuCommandList commands, ReadOnlySpan<IGpuFence> completions) => _probe.Trace("submit-span");
-        public void WaitForIdle() { }
+        public void Submit(IGpuCommandList commands, IGpuFence fence)
+        {
+            if (!_probe._completeOutcomes) throw new InvalidOperationException("Expected the production span submit.");
+            _probe._submittedFences.Add((SubmissionTestFence)fence);
+            _probe.Trace("retire-submit");
+        }
+        public void Submit(IGpuCommandList commands, ReadOnlySpan<IGpuFence> completions)
+        {
+            foreach (var fence in completions) _probe._submittedFences.Add((SubmissionTestFence)fence);
+            _probe.Trace("submit-span");
+        }
+        public void WaitForIdle() => _probe.CompletePendingOutcomes();
+        public bool TryReadBuffer(IGpuBuffer staging, IGpuFence completion, uint offsetBytes, Span<byte> destination)
+        {
+            if (!completion.Signaled) return false;
+            _probe.Trace("outcome-read");
+            ((SubmissionTestBuffer)staging).Bytes.AsSpan((int)offsetBytes, destination.Length).CopyTo(destination);
+            return true;
+        }
         public void UpdateBuffer<T>(IGpuBuffer b, uint offset, ReadOnlySpan<T> values) where T : unmanaged { }
         public void UpdateBuffer<T>(IGpuBuffer b, uint offset, T[] values) where T : unmanaged { }
         public void UpdateBuffer<T>(IGpuBuffer b, uint offset, in T value) where T : unmanaged { }
@@ -151,7 +187,11 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
 
     sealed class ProbeFactory(IGpuResourceFactory source, CoveragePerfSceneProbe probe) : IGpuResourceFactory
     {
-        public IGpuBuffer CreateBuffer(in GpuBufferDescription description) { return source.CreateBuffer(description); }
+        public IGpuBuffer CreateBuffer(in GpuBufferDescription description)
+        {
+            return probe._completeOutcomes && description.Usage == GpuBufferUsage.Staging
+                ? new SubmissionTestBuffer(description.SizeInBytes, description.Usage) : source.CreateBuffer(description);
+        }
         public IGpuTexture CreateTexture(in GpuTextureDescription description) { return source.CreateTexture(description); }
         public IGpuFramebuffer CreateFramebuffer(IGpuTexture? depth, params IGpuTexture[] colour) { return source.CreateFramebuffer(depth, colour); }
         public IGpuResourceSet CreateResourceSet(in GpuResourceSetDescription description) { return source.CreateResourceSet(description); }
@@ -165,7 +205,11 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
         public IGpuComputePipeline CreateComputePipeline(in GpuComputePipelineDescription description) { return source.CreateComputePipeline(description); }
         public IGpuCommandList CreateCommandList() { return new ProbeCommands(probe); }
         public IGpuTimestampPool CreateTimestampPool(uint capacity) { return source.CreateTimestampPool(capacity); }
-        public IGpuFence CreateFence() { return source.CreateFence(); }
+        public IGpuFence CreateFence()
+        {
+            if (!probe._completeOutcomes) return source.CreateFence();
+            return new SubmissionTestFence();
+        }
     }
 
     sealed class ProbeCommands(CoveragePerfSceneProbe probe) : IGpuCommandList
@@ -188,7 +232,20 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
         public void DrawIndexed(uint indexCount, uint instanceCount, uint indexStart, int vertexOffset, uint instanceStart) { }
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, in T data) where T : unmanaged { probe.UploadCalls++; probe.Trace("upload"); }
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged { probe.UploadCalls++; probe.Trace("upload"); }
-        public void CopyBuffer(IGpuBuffer src, uint srcOffsetBytes, IGpuBuffer dst, uint dstOffsetBytes, uint sizeInBytes) { }
+        public void CopyBuffer(IGpuBuffer src, uint srcOffsetBytes, IGpuBuffer dst, uint dstOffsetBytes, uint sizeInBytes)
+        {
+            if (dst is not SubmissionTestBuffer staging) return;
+            // Synthetic completion records only immutable identities, never numerical GPU/reference results.
+            staging.Bytes.AsSpan().Clear();
+            foreach (var actor in probe.Session.Typical.Actors)
+            {
+                var p = actor.Frame.Preparation!;
+                var words = MemoryMarshal.Cast<byte, uint>(staging.Bytes.AsSpan()).Slice(p.GpuReservation.ActorSlot * 16, 16);
+                Pair(words, 0, p.Generation); Pair(words, 2, p.View); Pair(words, 4, p.Actor.Value); Pair(words, 6, p.Id);
+            }
+            static void Pair(Span<uint> words, int offset, ulong value)
+            { words[offset] = (uint)value; words[offset + 1] = (uint)(value >> 32); }
+        }
         public void CopyTexture(IGpuTexture src, IGpuTexture dst) { }
         public void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer, IGpuTexture dst, uint width, uint height) { }
         public void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer,

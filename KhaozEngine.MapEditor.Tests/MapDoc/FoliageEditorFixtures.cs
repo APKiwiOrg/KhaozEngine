@@ -52,11 +52,11 @@ internal static class FoliageEditorFixtures
     /// <summary>The channel the public effects boundary publishes between two documents, from freshly captured contexts.</summary>
     internal static string Expected(MapDocument before, MapDocument after, MapAssetClosure beforeAssets, MapAssetClosure? afterAssets = null)
     {
-        IReadOnlyList<MapFoliageChunkChange> rows = MapFoliageEffects.Describe(before, after,
+        MapFoliageEffectSet effects = MapFoliageEffects.Describe(before, after,
             before.Foliage is null ? null : FoliageFixtures.Context(new(before, beforeAssets)),
             after.Foliage is null ? null : FoliageFixtures.Context(new(after, afterAssets ?? beforeAssets)),
-            new(null, null, [], [], [], [], MapNativeInvalidation.None), out IReadOnlyList<MapFoliageLayerChange> layers);
-        return Channel(rows, layers);
+            new(null, null, [], [], [], [], MapNativeInvalidation.None));
+        return Channel(effects.Chunks, effects.Layers);
     }
 
     /// <summary>The same channel read from the after side back to the before side, as undo publishes it.</summary>

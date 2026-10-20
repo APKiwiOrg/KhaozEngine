@@ -152,8 +152,9 @@ public sealed class MapFoliageFinalizationTests
         candidate.Placements.Single(p => p.Id == FoliageFixtures.ShrubId).X = 8;
         MapFoliageGenerationContext moved = FoliageFixtures.Context(new(candidate, f.Assets));
         var trigger = new MapNativeEditEffects(null, null, [], [], [], [], MapNativeInvalidation.None);
-        IReadOnlyList<MapFoliageChunkChange> rows = MapFoliageEffects.Describe(f.Document, candidate, context, moved, trigger);
-        Assert.Equal(Home, Assert.Single(rows).Chunk);
+        MapFoliageEffectSet effects = MapFoliageEffects.Describe(f.Document, candidate, context, moved, trigger);
+        Assert.Equal(Home, Assert.Single(effects.Chunks).Chunk);
+        Assert.Empty(effects.Layers);
         // A context captured from another snapshot never stands in for the document's own, whether its foliage differs
         // or matches, as the before context of a moved placement does.
         Assert.Throws<ArgumentException>(() => MapFoliageEffects.Describe(f.Document, candidate, context, FoliageFixtures.Context(
@@ -242,6 +243,14 @@ public sealed class MapFoliageFinalizationTests
         Assert.Equal(mask.Effects.FoliageChunks, rows);
         Assert.Empty(layers);
 
+        // A degraded side without stored chunks has a null digest, as a whole-layer entry's side does.
+        MapPrefabEditResult cleared = MapFoliageEdits.Prepare(f.Document, f.Assets,
+            new MapSetFoliageLayer(FoliageStorageFixtures.Change(layer, l => l["chunks"] = new System.Text.Json.Nodes.JsonArray())));
+        MapFoliageGenerationContext empty = FoliageFixtures.Context(new(cleared.After, f.Assets));
+        (rows, layers) = MapFoliageDependents.Describe(f.Document, cleared.After, () => before, () => empty, limits: new(MaxPreparedSides: 0));
+        Assert.Empty(rows);
+        Assert.Equal(new MapFoliageLayerChange(Id, MapFoliageDependents.LayerDigest(layer), null), Assert.Single(layers));
+
         // A correspondence rewritten by a placement rename publishes only that owner's rows.
         FoliageFixture renamable = FoliageFixtures.Renamable();
         MapDocument renamed = MapPrefabReferences.RemapWorld(Detached(renamable.Document), MapPrefabChildKind.Placement, "prop", "q");
@@ -252,6 +261,62 @@ public sealed class MapFoliageFinalizationTests
         Assert.Empty(rename.Effects.FoliageLayers);
         Assert.NotEmpty(rename.Effects.FoliageChunks);
         AssertExact(renamable, new(rename.After, renamable.Assets), rename.Effects.FoliageChunks);
+    }
+
+    [Fact]
+    public void DegradedEntries_ShareOneBudgetInLayerIdOrder()
+    {
+        const string Second = "cover-e";
+        FoliageFixture f = FoliageFixtures.Dependents();
+        MapFoliageLayer first = f.Document.Foliage!.Layers[0];
+        MapDocument two = MapFoliageEdits.Prepare(f.Document, f.Assets,
+            new MapSetFoliageLayer(FoliageStorageFixtures.Change(first, l => l["id"] = Second))).After;
+        MapFoliageLayer second = two.Foliage!.Layers.Single(l => l.Id == Second);
+        MapDocument moved = Detached(two);
+        moved.Placements.Single(p => p.Id == FoliageFixtures.ShrubId).X = 8;
+        MapFoliageGenerationContext before = FoliageFixtures.Context(new(two, f.Assets)), after = FoliageFixtures.Context(new(moved, f.Assets));
+
+        // Within the default ceilings each layer publishes its Home row from two prepared sides.
+        var (rows, layers) = MapFoliageDependents.Describe(two, moved, () => before, () => after);
+        Assert.Equal(new[] { (Id, Home), (Second, Home) }, rows.Select(r => (r.LayerId, r.Chunk)));
+        Assert.Empty(layers);
+
+        // The first layer in ID order exceeds the shared budget, so the second degrades too. The move changes no stored
+        // setting or chunk, so each entry's digests are equal and only its presence invalidates the layer.
+        (rows, layers) = MapFoliageDependents.Describe(two, moved, () => before, () => after, limits: new(MaxPreparedSides: 1));
+        Assert.Empty(rows);
+        Assert.Equal(new[]
+        {
+            new MapFoliageLayerChange(Id, MapFoliageDependents.LayerDigest(first), MapFoliageDependents.LayerDigest(first)),
+            new MapFoliageLayerChange(Second, MapFoliageDependents.LayerDigest(second), MapFoliageDependents.LayerDigest(second)),
+        }, layers);
+
+        // The budget is per edit, not per layer: the first layer's two sides fit, and the second, which would fit alone,
+        // degrades.
+        (rows, layers) = MapFoliageDependents.Describe(two, moved, () => before, () => after, limits: new(MaxPreparedSides: 3));
+        Assert.Equal((Id, Home), Assert.Single(rows.Select(r => (r.LayerId, r.Chunk))));
+        Assert.Equal(new MapFoliageLayerChange(Second, MapFoliageDependents.LayerDigest(second), MapFoliageDependents.LayerDigest(second)),
+            Assert.Single(layers));
+    }
+
+    [Fact]
+    public void PublicPreparations_RefuseANullDocumentWithArgumentNullException()
+    {
+        FoliageFixture f = FoliageFixtures.Dependents();
+        MapAssetClosure assets = f.Assets;
+        MapDocument document = null!;
+        var entries = new (string Name, Action Prepare)[]
+        {
+            ("PrepareRaw", () => MapPrefabEdits.PrepareRaw(document, assets, new MapRemovePrefab("missing"))),
+            ("Prepare", () => MapPrefabEdits.Prepare(document, assets, new MapRemovePrefab("missing"))),
+            ("PrepareAssetUpdate", () => MapPrefabEdits.PrepareAssetUpdate(document, assets, assets, new MapUpdatePrefabAsset("hut", "old", "hut", "new"))),
+            ("Interior", () => MapInteriorEdits.Prepare(document, assets, new MapRemoveInterior("missing"))),
+            ("Marker", () => MapMarkerEdits.Prepare(document, assets, new MapRemoveMarker("missing"))),
+            ("Foliage", () => MapFoliageEdits.Prepare(document, assets, new MapPaintFoliage(Id, 1, 1, 2, 9, 1))),
+            ("Terrain", () => MapDocumentTerrainEdits.Prepare(document, assets, new MapSetCornerHeights(new(FoliageFixtures.FloorId, 0, 0), 0, 0, 1, 1, [120]))),
+        };
+        Assert.Empty(entries.Where(e => Record.Exception(e.Prepare) is not ArgumentNullException { ParamName: "document" })
+            .Select(e => e.Name + ": " + Record.Exception(e.Prepare)?.GetType().Name));
     }
 
     [Fact]

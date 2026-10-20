@@ -40,7 +40,9 @@ public static class MapDocumentEditFinalizer
         MapDocument after = prepared.After;
         // Without foliage nothing is finalized, and released results carry no retained expansion.
         if (before.Foliage is null && after.Foliage is null) return prepared.Expansions is null ? prepared : prepared with { Expansions = null };
-        string fa = Fingerprint(before), fb = Fingerprint(after);
+        // Each side's fingerprint without foliage is hashed once here and reused by its capture.
+        string ba = BaseFingerprint(before), bb = BaseFingerprint(after);
+        string fa = Fingerprint(ba, before.Foliage), fb = Fingerprint(bb, after.Foliage);
         bool written = !string.Equals(MapFoliageProjection.Digest(before.Foliage), MapFoliageProjection.Digest(after.Foliage), StringComparison.Ordinal);
         MapNativeWriteSet writes = written && !prepared.WriteSet.Foliage ? prepared.WriteSet with { Foliage = true } : prepared.WriteSet;
         if (prepared.Stamp is { } done && done.Before.Matches(fa, beforeAssets) && done.After.Matches(fb, afterAssets))
@@ -48,9 +50,10 @@ public static class MapDocumentEditFinalizer
         MapEditExpansions? expansions = prepared.Expansions;
         // One shared expansion serves both sides only when they bind the same closure.
         bool shared = expansions?.Shared == true && string.Equals(beforeAssets.Hash, afterAssets.Hash, StringComparison.Ordinal);
-        var sideA = new MapDocumentFinalizationSide(fa, beforeAssets, shared ? expansions!.Before ?? expansions.After : expansions?.Before);
+        var sideA = new MapDocumentFinalizationSide(fa, beforeAssets, shared ? expansions!.Before ?? expansions.After : expansions?.Before,
+            baseline: ba);
         var sideB = new MapDocumentFinalizationSide(fb, afterAssets, shared ? expansions!.After ?? expansions.Before : expansions?.After,
-            shared ? () => sideA.ResourcesFor(before) : null);
+            shared ? () => sideA.ResourcesFor(before) : null, bb);
         var (rows, layers) = MapFoliageDependents.Describe(before, after, () => sideA.Capture(before), () => sideB.Capture(after), shared);
         var stamp = new MapDocumentFinalizationStamp(sideA, sideB, rows, layers);
         return new(after, writes, Channel(prepared.Effects, stamp)) { Stamp = stamp };

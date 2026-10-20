@@ -94,9 +94,11 @@ public sealed class MapFoliageGenerationContext
     /// without another expansion. The transaction measures before its own expansion. This verifies the provenance the
     /// expansion recorded, its closure hash and the fingerprint without foliage of the document it was expanded from,
     /// checks that the resources correspond to the document's placements and declared surfaces, then runs the context
-    /// preflight again before staging. It is not a route to inject unrelated resources.</summary>
+    /// preflight again before staging. It is not a route to inject unrelated resources. <paramref name="baseline"/> is the
+    /// document's fingerprint without foliage when the caller already computed it from exactly this document, so it is
+    /// not hashed again.</summary>
     internal static MapFoliageContextResult CaptureEffective(MapDocument document, MapAssetClosure assets, MapEffectiveResources resources,
-        MapFoliageContextLimits? limits = null)
+        MapFoliageContextLimits? limits = null, string? baseline = null)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(assets);
@@ -108,7 +110,7 @@ public sealed class MapFoliageGenerationContext
             return new(MapFoliageStatus.Invalid, null, measure.Work);
         // A snapshot expanded from another document or closure never stands in for this one. An expansion of a document
         // without foliage records no fingerprint and serves only that document's own empty capture.
-        string baseline = Editing.MapDocumentEditFinalizer.BaseFingerprint(document);
+        baseline ??= Editing.MapDocumentEditFinalizer.BaseFingerprint(document);
         if (!string.Equals(resources.ClosureHash, assets.Hash, StringComparison.Ordinal) ||
             (resources.SourceFingerprint is { } recorded ? !string.Equals(recorded, baseline, StringComparison.Ordinal) : document.Foliage is not null))
             return new(MapFoliageStatus.Invalid, null, measure.Work);

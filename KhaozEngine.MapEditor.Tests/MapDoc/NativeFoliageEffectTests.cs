@@ -183,7 +183,8 @@ public sealed class NativeFoliageEffectTests
         yield return ("prefab", new PrefabEditCommand(place), true);
         if (control) yield break;
         yield return ("density", new FoliageEditCommand(new MapPaintFoliage(layer.Id, 20, 20, 2, 9, 1)), true);
-        // Each foliage step builds on the previous one's layer, so only its own member changes.
+        // The seed step is built from the fixture's original layer, so it also reverts the density step's paint. The rule
+        // step builds on the seeded layer and the mask step on the ruled one, so each of those changes only its own member.
         MapFoliageLayer seeded = FoliageStorageFixtures.Change(layer, l => l["seed"] = 18);
         MapFoliageLayer ruled = FoliageFixtures.ClearanceLayer(seeded,
             rules: [new("shrub-solid", "item", "shrub", MapFoliageClearanceKind.Solid, new(-1, -1, 1, 1))]);

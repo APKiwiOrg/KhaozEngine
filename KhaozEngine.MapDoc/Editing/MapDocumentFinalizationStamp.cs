@@ -14,18 +14,21 @@ internal sealed record MapEditExpansions(MapEffectiveResources? Before, MapEffec
 
 /// <summary>One side of a finalized edit: the document fingerprint and verified closure it was captured from, its
 /// effective resources and, once a row needed it, its foliage context. Never serialized. A side is reused only when a
-/// later caller presents the same fingerprint and closure hash, never by document bytes alone.</summary>
+/// later caller presents the same fingerprint and closure hash, never by document bytes alone. A side may also carry the
+/// fingerprint without foliage its creator computed from the same document, which its capture then reuses.</summary>
 internal sealed class MapDocumentFinalizationSide
 {
     readonly Func<MapEffectiveResources>? _source;
+    readonly string? _baseline;
 
     internal MapDocumentFinalizationSide(string fingerprint, MapAssetClosure assets, MapEffectiveResources? resources,
-        Func<MapEffectiveResources>? source = null)
+        Func<MapEffectiveResources>? source = null, string? baseline = null)
     {
         Fingerprint = fingerprint;
         Assets = assets;
         Resources = resources;
         _source = source;
+        _baseline = baseline;
     }
 
     internal string Fingerprint { get; }
@@ -44,7 +47,7 @@ internal sealed class MapDocumentFinalizationSide
     internal MapFoliageGenerationContext Capture(MapDocument document)
     {
         if (Context is { } context) return context;
-        MapFoliageContextResult result = MapFoliageGenerationContext.CaptureEffective(document, Assets, ResourcesFor(document));
+        MapFoliageContextResult result = MapFoliageGenerationContext.CaptureEffective(document, Assets, ResourcesFor(document), baseline: _baseline);
         if (result.Status != MapFoliageStatus.Complete || result.Context is null)
             throw MapFoliageEditRefusal.Create(result.Status, "the foliage generation context refused this document");
         return Context = result.Context;

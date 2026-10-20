@@ -31,8 +31,9 @@ public enum MapNativeInvalidation
     /// identity follow.</summary>
     Medium = 128,
 
-    /// <summary>The edit changed authored foliage. The changed density chunks and their cosmetic bounds are named in
-    /// <see cref="MapNativeEditEffects.FoliageChunks"/>. Foliage never adds Physics, Nav or Residency.</summary>
+    /// <summary>The edit changed generated foliage. The changed batches and their cosmetic bounds are named in
+    /// <see cref="MapNativeEditEffects.FoliageChunks"/>, and the layers whose every batch is stale are named in
+    /// <see cref="MapNativeEditEffects.FoliageLayers"/>. Foliage never adds Physics, Nav or Residency.</summary>
     Foliage = 256,
 }
 

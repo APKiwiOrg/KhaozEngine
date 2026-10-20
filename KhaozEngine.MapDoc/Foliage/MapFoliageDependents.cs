@@ -23,7 +23,9 @@ namespace KhaozEngine.MapDoc.Foliage;
 internal static class MapFoliageDependents
 {
     /// <summary>Finalization ceilings for one edit: batch sides prepared, and existing batches inspected against changed
-    /// inputs. Callers use the defaults. A layer past a ceiling degrades to a layer entry.</summary>
+    /// inputs. Callers use the defaults. One budget is shared by every layer of the edit, spent in ordinal layer ID order,
+    /// so once a layer exceeds a ceiling every later layer that selects or prepares anything degrades too. A layer past a
+    /// ceiling degrades to a layer entry.</summary>
     internal sealed record Limits(int MaxPreparedSides = 4096, long MaxScannedBatches = 262_144);
 
     internal readonly record struct Side(MapFoliageRect? Bounds, string Digest);
@@ -84,8 +86,9 @@ internal static class MapFoliageDependents
             }
             catch (BudgetExceeded)
             {
-                // Past a ceiling the layer is rebuilt whole rather than refusing the edit, and work stays bounded.
-                entries.Add(new(id, LayerDigest(la), LayerDigest(lb)));
+                // Past a ceiling the layer is rebuilt whole rather than refusing the edit, and work stays bounded. The
+                // entry is published even when its digests are equal, as after a dependency change.
+                entries.Add(new(id, Digest(la), Digest(lb)));
             }
         }
         return (Array.AsReadOnly(rows.ToArray()), Array.AsReadOnly(entries.ToArray()));
@@ -93,10 +96,12 @@ internal static class MapFoliageDependents
 
     static void Entry(List<MapFoliageLayerChange> entries, string id, MapFoliageLayer? before, MapFoliageLayer? after)
     {
-        string? a = before is { ChunkDigests.Count: > 0 } ? LayerDigest(before) : null;
-        string? b = after is { ChunkDigests.Count: > 0 } ? LayerDigest(after) : null;
+        string? a = Digest(before), b = Digest(after);
         if (!string.Equals(a, b, StringComparison.Ordinal)) entries.Add(new(id, a, b));
     }
+
+    // An entry side's digest, null for a missing layer or one without stored chunks.
+    static string? Digest(MapFoliageLayer? layer) => layer is { ChunkDigests.Count: > 0 } ? LayerDigest(layer) : null;
 
     /// <summary>The preparation-free layer digest: the settings digest over every member except density, and the ordered
     /// stored-chunk digests.</summary>

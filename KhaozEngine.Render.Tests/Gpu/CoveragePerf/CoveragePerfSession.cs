@@ -64,7 +64,10 @@ internal sealed record CoveragePerfSessionInfo
 }
 
 internal sealed record CoveragePerfBlockResult(CoveragePerfBlock Block, CoveragePerfRunStatus Status, string Reason,
-    CoveragePerfSessionInfo? Session, ImmutableArray<CoveragePerfFrameSample> Warmup, ImmutableArray<CoveragePerfFrameSample> Samples);
+    CoveragePerfSessionInfo? Session, ImmutableArray<CoveragePerfFrameSample> Warmup, ImmutableArray<CoveragePerfFrameSample> Samples)
+{
+    internal ImmutableArray<string> Errors { get; init; } = [];
+}
 
 /// <summary>One retained block. Setup, completion drains, diagnostics and disposal are outside measured intervals.</summary>
 internal interface ICoveragePerfSession : IDisposable

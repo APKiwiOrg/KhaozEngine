@@ -29,4 +29,5 @@ internal sealed record CoveragePerfReport(CoveragePerfRunStatus Status, string R
     CoveragePerfBudgetStatus GpuStatus = CoveragePerfBudgetStatus.Unproved)
 {
     internal const string Schema = "khaozengine.coverage-perf-report/1";
+    internal ImmutableArray<string> Errors { get; init; } = [];
 }

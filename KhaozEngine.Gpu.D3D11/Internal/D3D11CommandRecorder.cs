@@ -98,19 +98,6 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _emitter.Begin();
         }
 
-        public void End()
-        {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            if (!_recording)
-                throw new InvalidOperationException(
-                    "End was called on a Direct3D 11 command list that is not recording. Every recording opens "
-                    + "with Begin, which is what resets the stream.");
-
-            _recording = false;
-            IsSealed = true;
-            _emitter.End();
-        }
-
         /// <summary>
         /// THE RECORD-PATH GUARD, and the one place the two drivers would otherwise answer the same program
         /// differently. A command recorded outside a Begin and End pair is meaningless, and each driver has its

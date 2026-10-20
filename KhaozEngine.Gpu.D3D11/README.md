@@ -632,6 +632,11 @@ the work handed over, and `IGpuFence.Signaled` stays as cheap as the seam's cont
 
 ## Timestamp batches
 
+A failed command-list `End` abandons the recording. It remains neither recording nor sealed, so
+Submit and another End refuse it. Deferred ops, resource references and payloads are dropped without
+replay. The next Begin resets the selected driver for a fresh recording. Immediate commands already
+issued cannot be undone. No failure cleanup submits, flushes or waits.
+
 `SupportsTimestamps` probes creation of timestamp and timestamp-disjoint queries on the actual device.
 It times no workload and does not exclude WARP. Unsupported creation reports false and releases every
 successful probe object. Removal and other device faults follow the existing failure path.

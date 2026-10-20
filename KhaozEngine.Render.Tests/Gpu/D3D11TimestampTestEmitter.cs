@@ -15,8 +15,8 @@ namespace KhaozEngine.Tests.Gpu
             _api = api;
         }
 
-        public void Begin() => _inner.Begin();
-        public void End() => _inner.End();
+        public void Begin() { if (_api.Record) _inner.Begin(); }
+        public void End() { if (_api.Record) _inner.End(); _api.OnEmitterEnd?.Invoke(); }
         public void SetFramebuffer(IGpuFramebuffer framebuffer) => _inner.SetFramebuffer(framebuffer);
         public void ClearColorTarget(uint index, Color rgba) => _inner.ClearColorTarget(index, rgba);
         public void ClearDepthStencil(float depth) => _inner.ClearDepthStencil(depth);
@@ -54,9 +54,9 @@ namespace KhaozEngine.Tests.Gpu
             => _inner.SetComputeResourceSet(slot, set);
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset)
             => _inner.SetComputeResourceSet(slot, set, dynamicOffset);
-        public void BeginTimestamps(IGpuTimestampPool pool, uint count) { ((D3D11TimestampPool)pool).EmitBegin(); _inner.BeginTimestamps(pool, count); }
-        public void WriteTimestamp(IGpuTimestampPool pool, uint index) { ((D3D11TimestampPool)pool).EmitWrite(index); _inner.WriteTimestamp(pool, index); }
-        public void EndTimestamps(IGpuTimestampPool pool) { ((D3D11TimestampPool)pool).EmitEnd(); _inner.EndTimestamps(pool); }
+        public void BeginTimestamps(IGpuTimestampPool pool, uint count) { ((D3D11TimestampPool)pool).EmitBegin(); if (_api.Record) _inner.BeginTimestamps(pool, count); }
+        public void WriteTimestamp(IGpuTimestampPool pool, uint index) { ((D3D11TimestampPool)pool).EmitWrite(index); if (_api.Record) _inner.WriteTimestamp(pool, index); }
+        public void EndTimestamps(IGpuTimestampPool pool) { ((D3D11TimestampPool)pool).EmitEnd(); if (_api.Record) _inner.EndTimestamps(pool); }
         public void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ)
         { _api.Calls.Add($"Dispatch({groupCountX},{groupCountY},{groupCountZ})"); _inner.Dispatch(groupCountX, groupCountY, groupCountZ); }
     }

@@ -300,6 +300,11 @@ blocked inside the native call keeps blocking until its current slice expires.
 
 ## GPU timestamps
 
+A failed command-list `End` abandons the recording and releases its retained command buffer without
+committing it. The list is neither recording nor sealed, Submit and another End refuse it, and the
+next Begin takes a fresh buffer. Encoder cleanup cannot replace the original End exception. Pending
+pass state and the swapchain-use flag are discarded, while staging blocks keep their arena ownership.
+
 `SupportsTimestamps` requires `MTLCommonCounterSetTimestamp`, stage-boundary or blit-command sampling,
 and a successful trial sample-buffer allocation. The probe releases that buffer immediately. Stage
 boundaries are preferred, including on Apple GPUs that do not support the blit sample command.

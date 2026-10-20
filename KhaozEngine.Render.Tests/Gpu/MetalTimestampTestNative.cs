@@ -12,6 +12,9 @@ namespace KhaozEngine.Tests.Gpu
         internal bool ClockError;
         internal ulong CpuEnd = 2000, GpuEnd = 600;
         internal ulong[] Raw = { 150, 175, 200 };
+        internal bool Record = true;
+        internal Action<string>? OnCall;
+        internal int OpenBlits;
         internal Action? BeforeBoundary;
         internal readonly List<string> Trace = new();
         internal readonly List<(ulong Start, ulong End)> Attachments = new();
@@ -21,7 +24,7 @@ namespace KhaozEngine.Tests.Gpu
         public bool SupportsSampling(uint point) => point == 0 ? Stage : Blit;
         IntPtr Allocate() { Allocations++; return new IntPtr(_next++); }
         public IntPtr CreateSampleBuffer(uint capacity) => FailSamples ? IntPtr.Zero : Allocate();
-        public IntPtr CreateBuffer(uint bytes) { Trace.Add($"allocate {bytes}"); return Allocate(); }
+        public IntPtr CreateBuffer(uint bytes) { if (Record) Trace.Add($"allocate {bytes}"); return Allocate(); }
         public IntPtr Contents(IntPtr buffer) => buffer;
         public IntPtr CreateEvent() => Allocate();
         public IntPtr CreateBlitDescriptor() => Allocate();
@@ -41,24 +44,26 @@ namespace KhaozEngine.Tests.Gpu
         public void Signal(IntPtr commandBuffer, IntPtr ev, ulong value)
         {
             BeforeBoundary?.Invoke();
-            Signals.Add(value);
-            Trace.Add($"signal {value}");
+            if (Record) Signals.Add(value);
+            if (Record) Trace.Add($"signal {value}");
         }
-        public void Wait(IntPtr commandBuffer, IntPtr ev, ulong value) => Trace.Add($"wait {value}");
+        public void Wait(IntPtr commandBuffer, IntPtr ev, ulong value) { if (Record) Trace.Add($"wait {value}"); }
         public IntPtr BeginBlit(IntPtr commandBuffer, IntPtr descriptor)
         {
             if (descriptor != IntPtr.Zero && !Stage) UnsupportedCalls++;
-            Trace.Add(descriptor == IntPtr.Zero ? "blit" : "stage blit");
+            if (Record) Trace.Add(descriptor == IntPtr.Zero ? "blit" : "stage blit");
+            OnCall?.Invoke("begin blit");
+            OpenBlits++;
             return new IntPtr(9);
         }
-        public void CopyMarker(IntPtr encoder, IntPtr source, IntPtr destination, uint bytes) => Trace.Add($"copy {bytes}");
+        public void CopyMarker(IntPtr encoder, IntPtr source, IntPtr destination, uint bytes) { if (Record) Trace.Add($"copy {bytes}"); OnCall?.Invoke("copy"); }
         public void Sample(IntPtr encoder, IntPtr samples, uint index, bool barrier)
         {
             if (!Blit) UnsupportedCalls++;
-            Trace.Add($"sample {index} barrier={barrier}");
+            if (Record) Trace.Add($"sample {index} barrier={barrier}");
         }
-        public void EndBlit(IntPtr encoder) => Trace.Add("end blit");
-        public void Resolve(IntPtr encoder, IntPtr samples, uint count, IntPtr destination) => Trace.Add($"resolve {count}");
+        public void EndBlit(IntPtr encoder) { OpenBlits--; if (Record) Trace.Add("end blit"); OnCall?.Invoke("end blit"); }
+        public void Resolve(IntPtr encoder, IntPtr samples, uint count, IntPtr destination) { if (Record) Trace.Add($"resolve {count}"); OnCall?.Invoke("resolve"); }
         public void CopyResolved(IntPtr contents, uint count, Span<ulong> raw)
         {
             Copies++;

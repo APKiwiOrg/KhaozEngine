@@ -10,23 +10,26 @@ namespace KhaozEngine.Tests.Gpu
     {
         internal readonly List<string> Calls = new();
         internal readonly List<object> Destroyed = new();
+        internal bool Record = true;
+        internal Action<object>? OnEnd;
+        internal Action? OnEmitterEnd;
         internal ulong Frequency = 10_000_000;
         internal bool Disjoint = false;
         internal int Unavailable = -1;
         int _next;
         public object CreateTimestamp() => _next++;
         public object CreateDisjoint() => "disjoint";
-        public void Begin(object disjoint) => Calls.Add($"Begin({disjoint})");
-        public void End(object query) => Calls.Add($"End({query})");
+        public void Begin(object disjoint) { if (Record) Calls.Add($"Begin({disjoint})"); }
+        public void End(object query) { if (Record) Calls.Add($"End({query})"); OnEnd?.Invoke(query); }
         public bool TryReadTimestamp(object query, out ulong value)
         {
-            Calls.Add($"Read({query})");
+            if (Record) Calls.Add($"Read({query})");
             value = (int)query == 0 ? 100ul : 125ul;
             return (int)query != Unavailable;
         }
         public bool TryReadDisjoint(object query, out ulong frequency, out bool disjoint)
         {
-            Calls.Add("Read(disjoint)");
+            if (Record) Calls.Add("Read(disjoint)");
             frequency = Frequency;
             disjoint = Disjoint;
             return Unavailable != -2;
@@ -41,6 +44,9 @@ namespace KhaozEngine.Tests.Gpu
         internal readonly List<(int Size, uint Flags)> Reads = new();
         internal int UnsupportedType = -1;
         internal int Failure;
+        internal bool Record = true;
+        internal Action<object>? OnEnd;
+        internal Action? OnEmitterEnd;
         internal ulong Frequency = 10_000_000;
         internal bool Disjoint = false;
         public object CreateQuery(int type)

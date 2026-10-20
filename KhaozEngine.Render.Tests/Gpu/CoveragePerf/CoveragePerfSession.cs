@@ -33,6 +33,9 @@ internal struct CoveragePerfFrameSample
     internal long ResourceGrowth { get; set; }
     internal int ProductionWaits { get; set; }
     internal int Submissions { get; set; }
+    internal int SubmittedCompletionFences { get; set; }
+    internal int SubmissionParticipants { get; set; }
+    internal int CompletionConsumers { get; set; }
     internal bool StageComplete { get; set; }
     internal bool DeviceComplete { get; set; }
     internal bool Fallback { get; set; }
@@ -57,6 +60,7 @@ internal sealed record CoveragePerfSessionInfo
     internal string Adapter { get; init; } = "unavailable";
     internal string Vendor { get; init; } = "unavailable";
     internal string Device { get; init; } = "unavailable";
+    internal string HardwareIdentityBasis { get; init; } = CoveragePerfHardwareIdentity.NameBased;
     internal string Driver { get; init; } = "unavailable";
     internal bool SoftwareAdapter { get; init; }
     internal bool TimestampSupported { get; init; }

@@ -17,6 +17,8 @@ internal sealed record CoveragePerfBlockSummary(int Index, CoveragePerfDistribut
     internal int HarnessDrains { get; init; }
     internal long HarnessDrainTicks { get; init; }
     internal long ObservedAllocatedBytes { get; init; }
+    internal CoveragePerfSubmissionSummary? WarmupSubmission { get; init; }
+    internal CoveragePerfSubmissionSummary? MeasuredSubmission { get; init; }
 }
 
 internal static class CoveragePerfStatistics
@@ -44,6 +46,8 @@ internal static class CoveragePerfStatistics
         HarnessDrains = block.Warmup.Sum(s => s.HarnessDrains) + block.Samples.Sum(s => s.HarnessDrains),
         HarnessDrainTicks = block.Warmup.Sum(s => s.HarnessDrainTicks) + block.Samples.Sum(s => s.HarnessDrainTicks),
         ObservedAllocatedBytes = block.Samples.Sum(s => s.AllocatedBytes),
+        WarmupSubmission = CoveragePerfSharedSubmission.Summarize(block.Warmup),
+        MeasuredSubmission = CoveragePerfSharedSubmission.Summarize(block.Samples),
     };
 
     internal static double? CpuMilliseconds(CoveragePerfFrameSample sample, long frequency) =>

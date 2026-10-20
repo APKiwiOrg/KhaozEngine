@@ -72,6 +72,10 @@ internal static class CoveragePerfReportVectors
         Passes = 15,
         PointShadowFaces = 6,
         Submissions = 1,
+        SubmittedCompletionFences = block.TimerLayout != CoveragePerfTimerLayout.CpuOnly || block.Condition == CoveragePerfCondition.SharedOn ? 1 : 0,
+        SubmissionParticipants = block.Condition == CoveragePerfCondition.DirectOff ? 0 : block.TimerLayout == CoveragePerfTimerLayout.CpuOnly ? 1 : 2,
+        CompletionConsumers = block.Condition == CoveragePerfCondition.DirectOff ? 0 :
+            (block.TimerLayout == CoveragePerfTimerLayout.CpuOnly ? 0 : 1) + (block.Condition == CoveragePerfCondition.SharedOn ? 1 : 0),
         StageComplete = true,
         DeviceComplete = true,
         PoseFingerprint = "pose-" + index % 2,

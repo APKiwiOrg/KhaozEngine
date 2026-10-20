@@ -35,10 +35,12 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
     readonly CoveragePerfTimerLayout _timerLayout;
     readonly CoveragePerfTimestampRing? _timestamps;
     long _beginTicks, _submitStart, _submitTicks;
+    long _endAndPreSubmitStart, _endAndPreSubmitTicks;
+    CoveragePerfSubmissionCounts _submissionCounts;
     long _aggregateStart, _aggregateTicks, _resolutionStart, _surfaceStart, _resolutionTicks, _surfaceTicks;
     int _frameIndex, _pendingCount, _nextFrame, _bufferedOutcomeCount;
     bool _presented, _disposed, _outcomeOverflow;
-    int _endCreations, _endWaits, _endSubmits, _endGen0, _endGen1, _endGen2;
+    int _endCreations, _endWaits, _endSubmits, _endCompletionFences, _endGen0, _endGen1, _endGen2;
     long _endAllocated;
     GpuDeviceCounters _endCounters;
     internal CoveragePerfTypicalScene Typical { get; }
@@ -81,6 +83,7 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
                 Dt = 1f / 60
             };
             _prepare = Prepare; _record = Record;
+            _ = CoveragePerfSubmissionProbe.Capture(_frame);
             _pending = Enumerable.Range(0, CoveragePerfManifest.BatchFrameCount).Select(_ => new PendingFrame(block.Actors)).ToArray();
             // Each frame records one row per actor. No frame starts beyond this batch until its outcomes are drained.
             _bufferedOutcomes = new CoverageGpuOutcome[checked(_pending.Length * block.Actors)];
@@ -92,7 +95,12 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
             _device.PresentEntry = PresentEntry;
             _device.SubmitBoundary = entering =>
             {
-                if (entering) _submitStart = _clock.Now();
+                if (entering)
+                {
+                    _submitStart = _clock.Now();
+                    _endAndPreSubmitTicks = checked(_submitStart - _endAndPreSubmitStart);
+                    Observe("end-and-pre-submit-stop");
+                }
                 else _submitTicks = checked(_clock.Now() - _submitStart);
             };
         }
@@ -111,10 +119,11 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
         if (frameIndex != _nextFrame || _pendingCount == _pending.Length)
             throw new InvalidOperationException("Frames must be sequential and completed in fixed batches.");
         _frameIndex = frameIndex;
-        _presented = false; _aggregateTicks = _resolutionTicks = _surfaceTicks = _beginTicks = _submitTicks = 0;
+        _presented = false; _aggregateTicks = _resolutionTicks = _surfaceTicks = _beginTicks = _submitTicks = _endAndPreSubmitTicks = 0;
         long allocated = GC.GetAllocatedBytesForCurrentThread();
         int gen0 = GC.CollectionCount(0), gen1 = GC.CollectionCount(1), gen2 = GC.CollectionCount(2);
         int creations = _device.Creations, waits = _device.Waits, submits = _device.Submissions;
+        int completionFences = _device.SubmittedCompletionFences;
         var counters = _device.Counters;
         // This tick precedes BeginSubmission and Scene.Begin. PresentEntry owns the matching closing tick.
         _aggregateStart = _clock.Now();
@@ -135,7 +144,7 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
             PoseId = frameIndex % 2,
             FrameTicks = _aggregateTicks,
             CpuFramePreparationTicks = _aggregateTicks,
-            CpuChildren = [new("host.beginSubmission", _beginTicks), new("device.submit", _submitTicks),
+            CpuChildren = [new("host.beginSubmission", _beginTicks), new("host.endAndPreSubmit", _endAndPreSubmitTicks), new("device.submit", _submitTicks),
                 new("coverage.resolution", _resolutionTicks), new("coverage.surface", _surfaceTicks)],
             AllocatedBytes = _endAllocated - allocated,
             Gen0Collections = _endGen0 - gen0,
@@ -151,6 +160,9 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
                 + (int)(_endCounters.BackpressureStallCount - counters.BackpressureStallCount)
                 + (int)(_endCounters.AcquireWaitCount - counters.AcquireWaitCount)),
             Submissions = _endSubmits - submits,
+            SubmittedCompletionFences = _endCompletionFences - completionFences,
+            SubmissionParticipants = _submissionCounts.Participants,
+            CompletionConsumers = _submissionCounts.Consumers,
             StageComplete = stageComplete,
             Fallback = fallback,
             PoseFingerprint = Typical.PoseFingerprint(),
@@ -186,12 +198,18 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
             ((IGpuCommandListTimestampEnd)frame.Commands).FinishTimestampsOnEnd(pool,
                 _timerLayout == CoveragePerfTimerLayout.Total ? 1u : 4u);
         }
+        _submissionCounts = CoveragePerfSubmissionProbe.Capture(frame);
+        // The callback return through the device Submit entry includes recording-scope End and release,
+        // production host/submission checks and completion-list preparation. It is not isolated End time.
+        _endAndPreSubmitStart = _clock.Now();
+        Observe("end-and-pre-submit-start");
     }
 
     void PresentEntry()
     {
         _aggregateTicks = checked(_clock.Now() - _aggregateStart);
         _endCreations = _device.Creations; _endWaits = _device.Waits; _endSubmits = _device.Submissions;
+        _endCompletionFences = _device.SubmittedCompletionFences;
         _endCounters = _device.Counters;
         _endAllocated = GC.GetAllocatedBytesForCurrentThread();
         _endGen0 = GC.CollectionCount(0); _endGen1 = GC.CollectionCount(1); _endGen2 = GC.CollectionCount(2);

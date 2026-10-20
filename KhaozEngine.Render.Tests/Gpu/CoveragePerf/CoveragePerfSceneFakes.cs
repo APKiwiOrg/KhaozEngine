@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
@@ -15,7 +16,6 @@ namespace KhaozEngine.Tests.Gpu;
 internal sealed class CoveragePerfSceneProbe : IDisposable
 {
     readonly ProbeDevice _device;
-    readonly Participant[] _participants;
     readonly bool _completeOutcomes;
     readonly CoveragePerfTimerLayout _layout;
     readonly List<SubmissionTestFence> _submittedFences = [];
@@ -38,7 +38,6 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
         _completeOutcomes = completeOutcomes;
         _layout = layout;
         _device = new(this);
-        _participants = Enumerable.Range(0, 8).Select(i => new Participant(i == 0 ? () => Trace("history-submitted") : null)).ToArray();
         var manifest = CoveragePerfManifest.Parse(new CoveragePerfFakeRun(actors == 32 ? "C1" : "C0").Json);
         var block = manifest.Blocks.First(b => (direct || b.Actors == actors) && b.Condition ==
             (direct ? CoveragePerfCondition.DirectOff : covered ? CoveragePerfCondition.SharedOn : CoveragePerfCondition.SharedOff)) with
@@ -103,10 +102,13 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
         {
             _frameCommands = frame.Commands;
             OnReadbacks?.Invoke(frame);
-            // Observe remaining capacity without reflecting private fields. Production owns the first participant.
-            int accepted = 0;
-            foreach (var participant in _participants) if (frame.Submission.TryRegister(participant)) accepted++;
-            ParticipantsAtReadback = 8 - accepted;
+            ParticipantsAtReadback = CoveragePerfSubmissionProbe.Capture(frame).Participants;
+            // Decorate an existing production notification only in this fake. Adding audit participants would
+            // contaminate the counts we are now reporting and could hide registration regressions.
+            var participants = (IGpuFrameSubmissionParticipant?[])typeof(GpuFrameSubmission)
+                .GetField("participants", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(frame.Submission)!;
+            if (participants[0] is { } participant)
+                participants[0] = new Participant(participant, () => Trace("history-submitted"));
         }
     }
 
@@ -114,10 +116,10 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
     { Events.Add(name); Ticks += name == "present-forward" ? 10000 : 10; OnTrace?.Invoke(name); }
     public void Dispose() => Session.Dispose();
 
-    sealed class Participant(Action? submitted) : IGpuFrameSubmissionParticipant
+    sealed class Participant(IGpuFrameSubmissionParticipant inner, Action submitted) : IGpuFrameSubmissionParticipant
     {
-        public void Submitted() => submitted?.Invoke();
-        public void Abandoned() { }
+        public void Submitted() { inner.Submitted(); submitted(); }
+        public void Abandoned() => inner.Abandoned();
     }
 
     static CoveragePerfEquipment Equipment(CoverageCostGeometry geometry)

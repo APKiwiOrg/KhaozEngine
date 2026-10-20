@@ -7,7 +7,7 @@ namespace KhaozEngine.Tests.Gpu;
 internal sealed class CoveragePerfDevice(IGpuDevice inner) : IGpuDevice
 {
     readonly FactoryCounts factory = new(inner.Factory);
-    internal int Waits, Readbacks, Submissions;
+    internal int Waits, Readbacks, Submissions, SubmittedCompletionFences;
     internal int Creations => factory.Creations;
     internal Action? PresentEntry;
     internal Action<bool>? SubmitBoundary;
@@ -29,12 +29,14 @@ internal sealed class CoveragePerfDevice(IGpuDevice inner) : IGpuDevice
     }
     public void Submit(IGpuCommandList commands, IGpuFence fence)
     {
+        SubmittedCompletionFences++;
         Submissions++; SubmitBoundary?.Invoke(true);
         try { inner.Submit(commands, fence); }
         finally { SubmitBoundary?.Invoke(false); }
     }
     public void Submit(IGpuCommandList commands, ReadOnlySpan<IGpuFence> completions)
     {
+        SubmittedCompletionFences += completions.Length;
         Submissions++; SubmitBoundary?.Invoke(true);
         try { inner.Submit(commands, completions); }
         finally { SubmitBoundary?.Invoke(false); }

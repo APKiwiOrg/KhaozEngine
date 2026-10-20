@@ -54,8 +54,7 @@ internal static class CoveragePerfValidity
             if (result.Block.Condition == CoveragePerfCondition.DirectOff && gpu) Invalid("DirectOff GPU layout is unsupported.");
             if (gpu)
             {
-                if (info.SoftwareAdapter || !info.Adapter.Contains("T4", StringComparison.OrdinalIgnoreCase) ||
-                    !info.Vendor.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase))
+                if (!CoveragePerfHardwareIdentity.IsT4(info))
                     Invalid("device is not the approved NVIDIA T4 hardware route.");
                 if (!info.TimestampSupported) Invalid("unsupported GPU timestamp capability.");
                 if (info.TimestampPeriodNanoseconds is not double period || !double.IsFinite(period) || period <= 0)
@@ -99,6 +98,7 @@ internal static class CoveragePerfValidity
         else
         {
             if (a.Backend != b.Backend || a.Adapter != b.Adapter || a.Vendor != b.Vendor || a.Device != b.Device ||
+                a.HardwareIdentityBasis != b.HardwareIdentityBasis ||
                 a.SoftwareAdapter != b.SoftwareAdapter) Refuse("device identity differs.");
             if (a.Driver != b.Driver) Refuse("driver identity differs.");
             if (a.FixtureFingerprint != b.FixtureFingerprint || a.ProfileFingerprint != b.ProfileFingerprint ||
@@ -143,11 +143,17 @@ internal static class CoveragePerfValidity
             if (sample.Actors != result.Block.Actors || sample.MainVisibleActors != result.Block.Actors) Invalid("actual or visible actor count differs.");
             if (sample.CpuFramePreparationTicks < 0 || frequency <= 0) Invalid("CPU aggregate or clock identity is invalid.");
             if (sample.Submissions != 1) Invalid("submission schedule is not one frame submission.");
+            if (sample.SubmittedCompletionFences < 0 || sample.SubmissionParticipants < 0 || sample.CompletionConsumers < 0)
+                Invalid("submission observations cannot be negative.");
             if (measured && sample.ResourceGrowth != 0) Invalid("hot resource growth.");
             if (measured && sample.ProductionWaits != 0) Invalid("production wait inside measurement.");
             if (result.Block.TimerLayout == CoveragePerfTimerLayout.CpuOnly)
             {
                 if (sample.Gpu is not null) Invalid("CPU route contains unexpected query instrumentation.");
+                if (result.Block.Condition != CoveragePerfCondition.SharedOn && (sample.SubmittedCompletionFences != 0 ||
+                    sample.CompletionConsumers != 0 || sample.SubmissionParticipants !=
+                    (result.Block.Condition == CoveragePerfCondition.DirectOff ? 0 : 1)))
+                    Invalid("shared-host control requires zero completion fences/consumers and the direct/shared participant schedule.");
                 continue;
             }
             if (sample.Gpu is not { } gpu) { Invalid("unresolved GPU baseline/query outcome."); continue; }

@@ -38,12 +38,29 @@ internal static class CoveragePerfReportJson
         if (verdict.Cpu.PooledDeltaMilliseconds.HasValue)
             text.AppendLine($"Pooled CPU delta {Number(verdict.Cpu.PooledDeltaMilliseconds)} ms, order difference {Number(verdict.Cpu.OrderDifferenceMilliseconds)} ms.");
         if (verdict.OneActor is { } one) text.AppendLine($"One actor observed delta {Number(one.Microseconds)} us per actor. No extrapolation or gate.");
+        text.AppendLine();
+        text.AppendLine("Shared submission");
+        text.AppendLine();
         text.AppendLine(verdict.SharedSubmissionAcceptance);
+        foreach (var observation in verdict.SharedSubmissionObservations)
+        {
+            SubmissionCounts(observation, "warm-up", observation.Warmup);
+            SubmissionCounts(observation, "measured", observation.Measured);
+        }
+        text.AppendLine();
+        foreach (string disclosure in verdict.SharedSubmissionDisclosure) text.AppendLine("- " + disclosure);
+        text.AppendLine();
+        foreach (var block in report.Blocks)
+            if (block.Session is { } info)
+                text.AppendLine($"Block {block.Block.Index} adapter {info.Adapter}, vendor {info.Vendor}, device {info.Device}, hardware identity {info.HardwareIdentityBasis}.");
         text.AppendLine($"Allocation {verdict.AllocationProof.Status}, native proof {verdict.AllocationProof.NativeProofSha}, reconciled {verdict.AllocationProof.Reconciled}. Timing observations are informational only.");
         var reasons = verdict.Cpu.Reasons.Concat(verdict.Gpu.Reasons)
             .Concat(verdict.SharedSubmission.SelectMany(p => p.Reasons)).Concat(verdict.OneActor?.Reasons ?? []).Distinct();
         foreach (string reason in reasons) text.AppendLine("- Unproved: " + reason.Replace('\r', ' ').Replace('\n', ' '));
         return text.ToString();
+
+        void SubmissionCounts(CoveragePerfSharedSubmissionObservation observation, string phase, CoveragePerfSubmissionSummary counts) =>
+            text.AppendLine($"- Block {observation.Block} {observation.Condition} {phase}, {counts.Frames} frames: {counts.Submissions} submissions, {counts.SubmittedCompletionFences} completion fences, {counts.SubmissionParticipants} participants, {counts.CompletionConsumers} consumers, {counts.ProductionWaits} production waits.");
     }
 
     internal static void WriteReturnedReport(CoveragePerfReport report, string jsonPath, string markdownPath)

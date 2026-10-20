@@ -13,7 +13,11 @@ internal sealed record CoveragePerfGate(CoveragePerfBudgetStatus Status, Immutab
     ImmutableArray<CoveragePerfComparison> Pairs, double? PooledDeltaMilliseconds = null, double? OrderDifferenceMilliseconds = null);
 internal sealed record CoveragePerfVerdict(CoveragePerfGate Cpu, CoveragePerfGate Gpu,
     ImmutableArray<CoveragePerfComparison> SharedSubmission, CoveragePerfComparison? OneActor,
-    string SharedSubmissionAcceptance, CoveragePerfAllocationProof AllocationProof);
+    string SharedSubmissionAcceptance, CoveragePerfAllocationProof AllocationProof)
+{
+    internal ImmutableArray<string> SharedSubmissionDisclosure { get; init; } = CoveragePerfSharedSubmission.Disclosure;
+    internal ImmutableArray<CoveragePerfSharedSubmissionObservation> SharedSubmissionObservations { get; init; } = [];
+}
 
 internal static class CoveragePerfBudgets
 {
@@ -43,7 +47,8 @@ internal static class CoveragePerfBudgets
         }
         return new(cpu, gpu, shared, one,
             "Shared-submission overhead has no threshold. Owner acceptance required. The 2 ms coverage budget does not apply.",
-            report.AllocationProof);
+            report.AllocationProof)
+        { SharedSubmissionObservations = CoveragePerfSharedSubmission.Observe(report) };
     }
 
     static CoveragePerfGate Gate(CoveragePerfReport report, bool gpu, double limit,

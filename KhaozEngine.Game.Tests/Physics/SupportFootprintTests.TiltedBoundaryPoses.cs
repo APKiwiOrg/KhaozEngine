@@ -17,7 +17,7 @@ public partial class SupportFootprintTests
     [InlineData(true, 0f, 1f)]
     [InlineData(false, 0.1f, 1f)]
     [InlineData(true, 0.1f, 1f)]
-    public void CurvedTiltedSourceTouchingHorizontalStratumPublishesEnclosedRoles(bool capsule, float z, float cosine)
+    public void CurvedRepresentedHorizontalStratumPublishesClosedFormRoles(bool capsule, float z, float cosine)
     {
         using var scene = new SupportFootprintScene();
         var orientation = new Quaternion(0.6f, 0, 0.3741657f, 0.70710677f);
@@ -32,7 +32,6 @@ public partial class SupportFootprintTests
         Assert.Equal(0, source.Centre.X.Middle);
         Assert.Equal(-0.25, source.Centre.Y.Middle);
         Assert.Equal(0, source.Centre.Z.Middle);
-        var expected = SupportFootprintOracle.Curved(source.Tangent, request)!;
         using var lease = scene.World.AcquireQueryReadLease();
         var members = new SupportFootprintMember[256];
         var result = Capability(scene.World).QuerySupportFootprint(lease, request, members, new ulong[1024]);
@@ -41,7 +40,8 @@ public partial class SupportFootprintTests
         var member = Assert.Single(members.Take(result.Members));
         Assert.Equal(owner, member.Static);
         Assert.Equal(2, member.WitnessCount);
-        CheckTiltedMember(member, expected, source, request);
+        Assert.Equal(InstalledPoseOracle.R.Zero, InstalledPoseOracle.Represented(orientation).Y.Y);
+        CheckLyingLogParts(scene, owner, request, horizontal: true, lease: lease);
     }
 
     [Theory]

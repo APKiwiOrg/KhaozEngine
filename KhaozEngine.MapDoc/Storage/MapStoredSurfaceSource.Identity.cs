@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using KhaozEngine.MapDoc.Assets;
+using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Prefabs;
 
 namespace KhaozEngine.MapDoc.Storage;
@@ -10,10 +11,14 @@ public sealed partial class MapStoredSurfaceSource
     /// reservations against standalone content follow in <see cref="IdentityContentDigest"/>.</summary>
     internal void RequireIdentityManifest(MapAssetClosure assets)
     {
-        MapBoundDocumentValidation.ValidateLocal(_globals);
+        MapDocument complete = MapTiledFile.GlobalsOnly(_globals);
+        complete.Foliage = MapFoliageStorage.ReadComplete(_globals.Foliage, _pinnedTiles.Foliage, _directory);
+        MapBoundDocumentValidation.ValidateLocal(complete);
         MapBoundDocumentValidation.RequireRoots(_nativeAssets, assets);
-        MapPrefabValidation.RequireDocument(_globals, assets);
-        MapBoundDocumentValidation.RequireWaterMaterials(_globals.Water, assets);
+        MapPrefabValidation.RequireDocument(complete, assets);
+        MapBoundDocumentValidation.RequireWaterMaterials(complete.Water, assets);
+        var foliageErrors = MapFoliageValidation.ValidateBound(complete, assets);
+        if (foliageErrors.Count > 0) throw new MapDocumentException(string.Join("\n", foliageErrors));
     }
 
     internal IEnumerable<MapSurfaceIndexEntry> EnumeratePinnedEntries(MapWholeIdentityWork? work)

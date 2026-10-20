@@ -15,10 +15,11 @@ public sealed partial class PhysicsNavBake
     // then Stair links in candidate index order with skipped candidates included. Each work item carries its ordinal
     // in that order, so the lowest failing ordinal is the exception the serial build throws first.
     private GroundNavigation BuildContactProfileInParallel(GroundMoveContext context, EffectiveMovementBinding source,
-        in MoveTuning tuning, NavAreaFootprint footprint, float height, int maxSurfaces, int degree)
+        in MoveTuning tuning, NavAreaFootprint footprint, float height, int maxSurfaces, int degree,
+        ContactNavigationReusePolicy reuse)
     {
         ContactNavigationWorkers workers = ContactNavigationWorkers.Create(this, context, source, footprint, degree,
-            Columns.Height);
+            Columns.Height, reuse);
         GroundNavigation navigation;
         try
         {
@@ -26,6 +27,7 @@ public sealed partial class PhysicsNavBake
             NavSpace space = NavLayerBaker.BakeGroundedLayered(admission,
                 Options.MinX, Options.MinZ, Options.MaxX, Options.MaxZ, Options.CellSize,
                 tuning.StepHeight, height, maxSurfaces, maxLayerCells: Options.MaxLayerCells);
+            admission.Sources.BindLayers(space);
             space = ContactNavigationProof.WithRestingHeights(space, admission.Anchors);
 
             var nodes = new bool[space.Layers.Count][];
@@ -56,6 +58,8 @@ public sealed partial class PhysicsNavBake
                     for (int x = 0; x < grid.Width; x++)
                     {
                         if (!nodes[layer][z * grid.Width + x]) continue;
+                        using IDisposable? group = admission.Sources.TryGet(layer, x, z, out var address)
+                            ? proof.BeginSource(address) : null;
                         for (int direction = 0; direction < ProfileNeighbors.Length; direction++)
                         {
                             int nx = x + ProfileNeighbors[direction].X, nz = z + ProfileNeighbors[direction].Z;
@@ -125,6 +129,7 @@ public sealed partial class PhysicsNavBake
         int _cursor;
 
         internal IReadOnlyDictionary<Vector3, float> Anchors => _anchors;
+        internal ContactNavigationSources Sources { get; } = new();
 
         public int SampleColumn(float x, float z, Span<NavSurfaceSample> surfaces)
         {
@@ -166,6 +171,7 @@ public sealed partial class PhysicsNavBake
                             Vector3 feet = new(cellX, surface.Height, cellZ);
                             float next = i + 1 < count ? buffer[i + 1].Height : float.PositiveInfinity;
                             if (!proof.Admit(feet, surface.Headroom, next)) continue;
+                            result.Sources.Add((feet, new(x, z, i, BitConverter.SingleToInt32Bits(surface.Height)), ordinal));
                             buffer[kept++] = surface;
                             result.Anchors.Add((feet, proof.Anchors[feet], ordinal));
                         }
@@ -173,6 +179,7 @@ public sealed partial class PhysicsNavBake
                     }
             });
             ContactAdmissionBand.MergeAnchors(bands, cutoff, _anchors);
+            ContactAdmissionBand.MergeSources(bands, cutoff, Sources);
             cutoff.ThrowSelected();
 
             int cells = width * rows;
@@ -199,6 +206,21 @@ internal sealed class ContactAdmissionBand(int firstCell, int endCell)
     internal int FirstCell { get; } = firstCell;
     internal int EndCell { get; } = endCell;
     internal List<(Vector3 Feet, float Resting, long Ordinal)> Anchors { get; } = [];
+    internal List<(Vector3 Feet, ContactNavigationRawSource Raw, long Ordinal)> Sources { get; } = [];
+
+    internal static void MergeSources(ContactAdmissionBand?[] bands, ContactNavigationCutoff cutoff,
+        ContactNavigationSources sources)
+    {
+        foreach (ContactAdmissionBand? band in bands)
+        {
+            if (band is null) return;
+            foreach (var source in band.Sources)
+            {
+                if (!cutoff.Admits(source.Ordinal)) return;
+                sources.Record(source.Feet, source.Raw);
+            }
+        }
+    }
 
     internal void Keep(int cell, ReadOnlySpan<NavSurfaceSample> surfaces)
     {

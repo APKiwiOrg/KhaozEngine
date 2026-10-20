@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.D3D11.Internal;
+using KhaozEngine.Render3D.Rendering;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -67,11 +68,11 @@ namespace KhaozEngine.Tests.Gpu
                 new[] { T("DepthTex"), S("Samp"), U("Frame", dynamic: true), T("NormalTex") }, "t0 s0 b0 t1"),
 
             ("ModelRenderer._layout",
-                new[] { U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
+                [.. AtmosphereBindings.AppendLayout(U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
                     StructRO("PointLightClusters", GpuShaderStages.Fragment), T("Albedo"), T("NormalMap"),
                     T("RoughnessMap"), S("Sampler"), T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap"),
-                    T("PointShadowTransientMap") },
-                "b0 t0 t1 t2 t3 t4 s0 t5 s1 t6 t7"),
+                    T("PointShadowTransientMap")), T("InteriorCut")],
+                "b0 t0 t1 t2 t3 t4 s0 t5 s1 t6 t7 b1 t8 s2 t9"),
             // The only shipped layout with TWO uniform buffers in it, since #604 unfolded the skinned pipeline's
             // combined block into a shared frame block and a per-draw one.
             ("ModelRenderer._skinnedMainLayout",
@@ -158,6 +159,9 @@ namespace KhaozEngine.Tests.Gpu
             ("TemporalDebugViewPass._modeLayout", new[] { U("DebugView") }, "b0"),
 
             ("ShadowMapRenderer._layout", new[] { U("U", dynamic: true) }, "b0"),
+            ("ShadowMapRenderer._interiorFrameLayout", new[] { U("U", dynamic: true) }, "b0"),
+            ("ShadowMapRenderer._interiorCutLayout", new[] { T("InteriorCut"), S("Samp") }, "t0 s0"),
+            ("PointShadowRenderer._interiorCutLayout", new[] { T("InteriorCut"), S("Samp") }, "t0 s0"),
             ("ShadowMapRenderer._skinnedLayout", new[] { U("VBlock", dynamic: true) }, "b0"),
             ("SkyRenderer._layout", new[] { U("Sky") }, "b0"),
             ("StarfieldRenderer._layout", new[] { U("Starfield") }, "b0"),

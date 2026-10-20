@@ -10,6 +10,34 @@ public sealed class GpuMultiFenceSubmissionTests
     [InlineData(0)]
     [InlineData(1)]
     [InlineData(2)]
+    public void Texture_readback_device_carries_every_fence_on_one_submit(int count)
+    {
+        using var gpu = new ReadbackRingFakeDevice();
+        IGpuDevice device = gpu;
+        using var commands = device.Factory.CreateCommandList();
+        var fences = new IGpuFence[count];
+        for (int i = 0; i < count; i++) fences[i] = device.Factory.CreateFence();
+        device.Submit(commands, fences.AsSpan());
+        Assert.Equal(1, gpu.SubmitCalls);
+        Assert.Equal(fences, gpu.SubmittedFences);
+    }
+
+    [Fact]
+    public void Texture_readback_device_rejects_a_repeated_fence_without_submission()
+    {
+        using var gpu = new ReadbackRingFakeDevice();
+        IGpuDevice device = gpu;
+        using var commands = device.Factory.CreateCommandList();
+        using var fence = device.Factory.CreateFence();
+        Assert.Throws<ArgumentException>(() => device.Submit(commands, new IGpuFence[] { fence, fence }.AsSpan()));
+        Assert.Equal(0, gpu.SubmitCalls);
+        Assert.Empty(gpu.SubmittedFences);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
     public void Legacy_device_default_forwards_only_supported_span_sizes(int count)
     {
         var gpu = new SubmissionTestDevice(0);

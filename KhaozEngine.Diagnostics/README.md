@@ -143,6 +143,66 @@ the graphics backend as soon as its window exists), so this is only wired by han
   once a file exists, so a crash that could not be written cannot delete one that was.
 - Never throws and needs nothing configured, because it runs on the runtime's crash path.
 
+## Recent log ring (`RecentLogSink`)
+
+`RecentLogSink` keeps the last N formatted lines in memory so a bug report can attach what the game logged just
+before the player pressed the key. Add it next to the session log's file sink and read it when a report is taken.
+
+```csharp
+var recent = new RecentLogSink();                  // 500 lines by default
+options.Sinks.Add(recent);
+IReadOnlyList<string> lines = recent.Snapshot();   // oldest first, a copy
+```
+
+- A fixed ring. Once full, each new line drops the oldest, so memory stays at `Capacity` lines.
+- Each line is `LogFormatter.Format(entry)`, exception text included. A line longer than `MaxEntryChars` (2000)
+  is cut there and ends with ` [truncated]`. The cut never splits a surrogate pair.
+- Thread-safe, never throws from `Emit`, and `Flush` and `Dispose` do nothing.
+- `InMemorySink` stays the test capture. It keeps every entry unbounded and is not meant for a shipped head.
+
+## Report redaction (`ReportRedactor`)
+
+`ReportRedactor` is the backstop every bug report string passes through before it leaves the machine. Sections
+should still avoid writing secrets. This catches what slips through.
+
+```csharp
+var redactor = new ReportRedactor();               // home read from the user profile folder
+string safe = redactor.Redact(line);               // same instance back when nothing matched
+IReadOnlyList<TelemetryHeaderValue> env = redactor.SelectEnvironment(pairs);
+ReportRedactor reporter = redactor.WithReporterIdentityTerms(() => new[] { displayName ?? "", subject ?? "" });
+string anonymous = reporter.Redact(line);
+```
+
+- Rules run in a fixed order, each writing `[redacted]` (`ReportRedactor.Mask`): PEM private key blocks, JWTs,
+  provider tokens (GitHub, Slack, AWS access key ids, `sk-` keys), Bearer and Basic credentials (the scheme is
+  kept), secret URL query values (the parameter name is kept), and secret key and value pairs such as
+  `password=`, `"apiKey": "..."` or `AccountKey=` (the key and separator are kept).
+- `WithReporterIdentityTerms(source)` calls the game source once now and returns an independent snapshot. It masks
+  complete escaped literal terms, including occurrences inside longer text, after secrets and before home. Matching
+  is invariant case-insensitive, longest first, with the non-backtracking engine and the same timeout. Null, blank
+  and terms shorter than three characters are ignored. A source or enumeration that throws, a null result, an
+  unsupported pattern, or a combined escaped pattern above 4096 characters fails closed by masking every string.
+  The source must finish promptly. `BugReportServiceOptions.ReporterIdentityTerms` takes this snapshot at each
+  report's finish, so the game can return the signed-in display name and subject without caching them at startup.
+- The home directory becomes `~`, matched case-insensitively with either separator and only where the path ends,
+  so `/Users/anna` survives a home of `/Users/ann`. Trailing separators on the home are ignored, and a home
+  shorter than three characters turns the rule off.
+- Every secret rule runs on the non-backtracking engine, so it is linear in the input by construction. A JWT
+  may start only at the start of the text or after a character that cannot be in a token, and that character is
+  kept. The home rule stays on the backtracking engine for its look-ahead, and its body is an escaped literal
+  path.
+- The linear guarantee has a one-time cost. The engine turns each pattern into an automaton, so building the
+  shared default rules allocates about 11.8 MB once per process, when the first redactor is constructed.
+  `BugReportService` builds its redactor at construction, so that lands at game startup. The automaton grows
+  lazily as it meets new input, so the first report pays about 70 ms of matcher setup. Redaction runs over
+  log text a player can influence, and linear time keeps that bounded whatever the text holds.
+- Every pattern also has a 250 ms match timeout as a backstop. A timeout fails closed: the whole string comes
+  back as `[redacted]`.
+- Thread-safe. Clean text is returned as the same instance without allocating.
+- `SelectEnvironment` keeps only `KE_` variables, chosen and sorted exactly as
+  `TelemetrySessionHeader.SelectEngineVariables` does. A name containing `TOKEN`, `SECRET`, `PASSWORD`,
+  `PASSWD` or `KEY` in any case has its whole value masked. Every other value passes through `Redact`.
+
 ## Categories
 
 Every entry carries a **category**, rendered by the formatter as `[Category] message`. Choose it once and never repeat it in the message text:

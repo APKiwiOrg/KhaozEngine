@@ -123,15 +123,15 @@ public partial class SupportFootprintTests
         ];
         var incidence = new SupportSourceIncidence();
         var kernel = new SupportSegmentPolygon();
-        using var region = SupportAllocationRegion.Start();
         incidence.Build(polygons);
         Assert.Equal(GeometrySign.Positive,
             SupportNeighborhoodJoins.Joined(polygons[0]!, polygons[1]!, 0.0001f, kernel, incidence, 0, 1));
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        incidence.Build(polygons);
-        GeometrySign joined = SupportNeighborhoodJoins.Joined(polygons[0]!, polygons[1]!, 0.0001f, kernel, incidence, 0, 1);
-        long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
-        region.Dispose();
+        GeometrySign joined = default;
+        long bytes = AllocationMeasurement.Measure(nameof(WarmBatchedSourceIncidenceAndResolutionAllocateNothing), () =>
+        {
+            incidence.Build(polygons);
+            joined = SupportNeighborhoodJoins.Joined(polygons[0]!, polygons[1]!, 0.0001f, kernel, incidence, 0, 1);
+        });
         Assert.Equal(GeometrySign.Positive, joined);
         Assert.Equal(0, bytes);
     }
@@ -139,7 +139,7 @@ public partial class SupportFootprintTests
     static SupportPolygon IncidencePolygon(Vector3[] local, in RigidPose pose, int owner)
     {
         if (Vector3.Cross(local[1] - local[0], local[2] - local[0]).Y < 0) Array.Reverse(local);
-        Assert.True(InstalledPoseOperator.TryCreate(pose, out var map));
+        Assert.True(InstalledPoseOperator.TryCreateSupport(pose, out var map));
         var polygon = new SupportPolygon();
         polygon.Begin(new StaticHandle(owner), 0, local.Length);
         polygon.BeginSource(map);

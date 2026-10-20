@@ -5,6 +5,42 @@ This is the geometry certificate consumed by Task 6, not a production API or a c
 SG-1, SG-4, SG-7, SG-19 and SG-23 remain binding. The named certificates below cover every
 orientation admitted by phase 2b, including composed compound leaves.
 
+## Represented support source and bounded certification
+
+Lane C resolves #1494 and #1487 under [CC-1 to CC-12](CONTACT-CONTROLLER-FOLLOWUPS-C-2026-10-19.md).
+Support alone uses the installed binary32 Bepu Matrix3x3.CreateFromQuaternion coefficients,
+with compounds first composed by Compound.GetWorldPose. Its explicit support factory proves
+finite domains, the existing norm band, scalar/SIMD continuation and positive determinant
+without admitting a real-quaternion alternative first. Planar sources are point-valued affine
+maps. Normals and mesh preimages use their actual cross/inverse operations. Circular primitives
+normalize the represented Y column exactly with outward arithmetic enclosures, preserving radius
+and half length. The represented matrix is not an ellipsoid transform. Legacy feature and sweep
+factories retain their dual contract. Exact inputs do not erase arithmetic or publication error.
+
+One scratch-owned account covers a complete Find or direct footprint request. It accepts at most
+1,048,576 events, derived as 256 existing raw-member slots times 4,096 existing source-graph slots.
+It charges New, Sign, recursive Split and Compile entries (including cache hits), processed root
+cells, Refine iterations and admission cells before execution. Reset, Restore, parts, proposals
+and the below-band pass never refund work. WorkLimit, RootStorage, TerminalRoots and
+AdmissionStorage are visible first-failure reasons with category counts and cell high water.
+Failure is sticky across every success exit and atomically refuses without touching caller spans.
+Memo hits do no certification work. Nested owners remain independent and warm Find allocates zero.
+The existing 1,024-cell frontiers, twelve terminal roots and all source/storage bounds remain.
+
+The FU-R4 crown branch was taken and retained under FC-R10. A footprint-only capsule certificate
+proves the higher endpoint crown attained in the original disc and correct hemisphere/slope,
+with source height identity C.Y + abs(d.Y)*H + R. Axis, lowest contacts, full admission, proposals
+and other raw members retain their proofs. A failed certificate runs the complete general path.
+The cylinder has no crown. FC-R11 offers one clamped barrel top-line XZ projection or nearest cap
+point, with decline-only interval pruning before exact source membership. A hit proves existence
+only and a miss retains complete coverage. The cylinder statuses remain Walkable, None, None.
+The fixed a251a3bf4 interior reference is 762 events, giving a 7,620-event bound per seam row.
+Final counts are 588 interior and 1,109/1,216/774 at the seam, with bit-identical public results.
+Capsule rows are 636/635/1,006. The [verification record](../verification/2026-10-19-contact-followups-c.md)
+retains all earlier counters and frozen questions. Roof, original-disc, footprint, raw identity,
+1 mm Euclidean arrival and atomic-refusal protections remain. SG-12/#1334, native G1b, navigation,
+consumer adoption and release stay separate.
+
 ## Installed domain and common obligations
 
 `SupportNeighborhoodCurved.Capture` and `Leaf` are the admission owners. They require finite
@@ -252,7 +288,7 @@ Every sign expressible as a polynomial in the installed source uses Task 4's
 `SupportSourcePolynomialWorkspace` when outward bounds do not decide it. Clear positive norm
 denominators and square radical comparisons only after proving the original sign guards. These
 closed-form predicates have degree at most eight. Equal source monomials combine before their
-shared coefficient box is evaluated. Preserve the workspace's degree-eight, nine-variable and
+exact coefficient expressions are evaluated. Preserve the workspace's degree-eight, nine-variable and
 64-expression bounds and its zero warm allocation. Equality remains a closed stratum, including
 slope equality and an authored top exactly at a proposal band boundary.
 
@@ -266,7 +302,7 @@ after its membership is certified. An interval overlap never proves absence.
 
 Ruling RO replaces scalar-cell exhaustion with certified region termination. A terminal cell
 has one of three certificates. Its objective upper bound is below the best attained lower bound,
-so it cannot contain a maximum. Its objective is monotone for every installed source in the box,
+so it cannot contain a maximum. Its objective is monotone over the installed source's arithmetic enclosure,
 so its maximum belongs to separately retained boundary candidates. Or it encloses a stationary
 region for every source, with existence and coverage proved by an interval Newton or Krawczyk
 certificate, or uniform opposite derivative signs at its ends with the necessary uniqueness
@@ -284,7 +320,8 @@ continue certification. Preprovision a static bound on live and terminal cells. 
 query, with untouched output spans, when that storage bound cannot carry the remaining coverage
 proof. No epsilon, iteration cap, sampled maximum, incomplete support or virtual probe replaces
 a failed certificate. Publish retained regions' enclosure widths as height and witness errors.
-Source uncertainty remains in those errors. No exact irrational ordering solver, field norm,
+Arithmetic enclosure uncertainty remains in those errors. The installed source itself is point-valued.
+No exact irrational ordering solver, field norm,
 resultant or Sturm-chain scratch is required.
 
 The finite subdivision bound does not grant a cost, stack or scratch exception. The tilted owner
@@ -300,8 +337,8 @@ probe nor incomplete support is a fallback.
 
 ### Task 6b region implementation
 
-`SupportTiltedCurvedGeometry` orients the same unnormalized installed column upward when the
-source box certifies a weak Y sign. A box crossing zero retains signed Y. The finite
+`SupportTiltedCurvedGeometry` orients the represented point-valued installed column upward from
+its exact Y sign. An exact zero stays horizontal. The finite
 side keeps the full parameter range, the original disc endpoints and the closed slope endpoints.
 The positive normalizing length preserves a source's weak Y sign exactly. Intersect the
 normalized component enclosure with that certified half-line before choosing an axial branch
@@ -311,21 +348,26 @@ z and `Q+R*z` to have opposite signs, so the squared equation's other roots cann
 points of the original branch. The displayed strictly negative second derivative proves uniqueness
 of a disc-branch stationary maximum on its smooth domain. Source-uniform endpoint signs and a
 nonzero derivative enclosure certify existence and coverage of each retained root region.
+The squared polynomial's constant term is `-k*k*Q*Q`. When its source sign is proved nonzero, no
+source has a root at z=0. A root region closed at zero then holds its root strictly on its open
+side, which fixes the sign of z for the opposite-sign test. Without that proof, a region touching
+zero still refuses. This is what lets a lying log's crest region resolve when Q is nonzero.
 
-When Y includes zero, the disc branch uses `|k|` and its unsquared stationary function is
+When a normalized arithmetic enclosure includes zero, the disc branch uses `|k|` and its
+unsquared stationary function is
 `z/sqrt(1-z*z) + |k|*(Q+R*z)/sqrt(disc*disc-(Q+R*z)^2)`. Its derivative is strictly positive
 on the smooth domain, including k=0. A uniform existence bracket therefore covers every source's
 unique stationary point. If no such bracket covers the common domain, retain the union of the
 source-dependent domain tails in the existing bounded root owner. Signed Y selects the corresponding
-upper or lower finite axial endpoint. A box crossing zero retains their hull, including the tied
-horizontal crest. No source box is dropped because its Y sign is indefinite.
+upper or lower finite axial endpoint. The represented source has one exact sign, even when
+normalization enclosures cross zero. An exact horizontal source retains the tied crest.
 
 At c=1 a walkable normal is vertical. On a capsule it is a global solid-height maximum.
 On a finite side it requires k=0 and is a global horizontal crest. On a cap it requires
 a horizontal plane and all cap points share its height. Consequently any such point in D
 already attains the unrestricted disc maximum. No distinct walkable replacement is needed
-at this exact gate, including a source box where only some sources have a vertical normal.
-Retain the original witness and its component enclosure without asserting Y=1 for other sources.
+at this exact gate. Retain the original witness and its component enclosure. An uncertain
+arithmetic enclosure alone never establishes a vertical normal.
 A cap also needs no distinct replacement at any c because its normal is constant. If its
 geometric maximum is steep, every cap point is steep. If any cap point is walkable, its
 geometric maximum is walkable too. Source-polynomial slope certificates may refine the
@@ -336,16 +378,16 @@ whole side is steep. On a capsule any spherical end point with normal Y greater 
 to the higher core end and exceeds the side's global height bound. It would already have replaced
 the barrel in the unrestricted maximum. Therefore a retained barrel crest also needs no distinct
 walkable replacement. Candidate hulls retain this certificate only when every retained candidate
-is a crest. Other source families crossing the side's slope-availability boundary retain the
-original quadratic `u*u*z*z + c*c - u*u` in the bounded root owner. A family with source-dependent
-walkable existence refuses at the storage bound instead of failing before a coverage attempt.
+is a crest. Other arithmetic enclosures crossing the side's slope-availability boundary retain the
+original quadratic `u*u*z*z + c*c - u*u` in the bounded root owner. An unresolved
+walkable-existence proof refuses at the storage bound instead of failing before a coverage attempt.
 
 Caps keep their raw signed normals. Their rim candidates do not divide by Y. A cap whose Y includes
 zero offers its whole-circle crest when original disc membership is certified, or retains the full
 possible vertical interval until a boundary candidate proves an attained lower bound. Axis roots
 at finite ends and vertical caps use their original linear equations under the same bounded root
-rules when a closed source predicate remains uncertain. A cap whose upper-role existence changes
-across the source box takes full surface coverage with the upward predicate included. Uncertain
+rules when a closed source predicate remains uncertain. A cap whose upper-role existence remains
+arithmetically unresolved takes full surface coverage with the upward predicate included. Uncertain
 feasible cells remain live and refuse at the storage bound instead of publishing an uncertified role.
 
 End and cap crossings use the original function `A+B*z+J*z*z-K*sqrt(1-z*z)`, with the rim sign
@@ -365,6 +407,30 @@ candidate cannot establish the attained lower bound. All candidates which can at
 remain in the published hull. The original maximum and the walkable replacement are separate.
 The member's maximum bounds the unrestricted height. The footprint role carries the replacement
 when the certified walkable region is nonempty, retaining an exact normal Y at the slope boundary.
+
+CF-3 retains a signed source identity for each original disc-lateral endpoint. For sign s equal
+to -1 or +1, the candidate is created only by `z=(s*disc-Q)/R` and retains `Q+R*z=s*disc`.
+Its original quotient enclosure is not clipped into the circle domain. Since R is positive,
+source signs of `s*disc-Q+R` and `R-(s*disc-Q)` certify `-1 <= z <= 1` for every represented
+source. A strictly outside root is absent. An undecided domain does not establish attainment.
+The defining equation proves `disc*disc-(Q+R*z)^2=0`, hence transverse extent is exactly zero.
+Reconstructing the quotient with independent intervals and subtracting two enclosures of the
+same squared quantity would lose this identity and cannot be used as an absence proof.
+
+For a proved endpoint, evaluate `v=sqrt(1-z*z)` through source arithmetic. Its only possible
+axial coordinate is `t=(R*k*v-P)/u`, with positive u. Source signs of
+`R*k*v-P+u*H` and `u*H-(R*k*v-P)` certify the two finite-axis bounds. The original source
+normal is `w*v+f*z`, with Y equal to `u*v`. A source sign of `u*v-c` certifies slope, including
+equality. Only the joint domain, finite-axis and slope certificate makes this endpoint attained.
+The certificate preserves the tiny signed installed Y and original normal enclosures. It supplies
+the maximum's lower bound while possible stationary regions retain the enclosing upper bound.
+It grants no attainment to a merely possible stationary region, clipped root or nearby pole.
+An endpoint whose domain, slope or finite-axis sign stays unresolved is neither discarded nor
+attained. It takes the untagged clipped candidate's role. Its possible enclosure can widen the
+witness hull and upper bound but never sets the attained lower bound. The half-skin error ceiling
+downstream decides whether the widened range is usable. The side refuses when no attained lower
+bound exists.
+Unproved relevant predicates still refuse atomically within the existing cell and candidate bounds.
 
 Caps enumerate their crest, the disc uphill point and both signed rim crossings. Capsule ends
 keep the sphere's nearest-point solve and its original hemisphere predicate. The finite barrel

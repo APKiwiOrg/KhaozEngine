@@ -749,6 +749,7 @@ namespace KhaozEngine.Windowing
             try { _rumble?.StopAll(); } catch { } // leave no motor buzzing after teardown
             try { _input?.Dispose(); } catch { }
             _frame.DisposeSubmission();
+            try { _captureTaps?.Dispose(); } catch { }
             try { _cl?.Dispose(); } catch { }
             try { _gpu?.Dispose(); } catch { }
             try { _window?.Dispose(); } catch { }

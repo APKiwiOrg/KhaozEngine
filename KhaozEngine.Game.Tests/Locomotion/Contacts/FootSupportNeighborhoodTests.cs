@@ -339,10 +339,9 @@ public class FootSupportNeighborhoodTests
     {
         const float radius = 0.3f, length = 2;
         using FootSupportScene scene = LyingLog(new Vector3(0, 0.3f, 0), radius, length);
-        Pose pose = scene.PoseOf("log");
-        FootSupportScene.Point centre = FootSupportScene.Point.Rotate(pose.Orientation, 0, length / 2.0, 0) +
-            pose.Position;
-        AssertSupport(SupportStatus.Walkable, centre.Y + radius, scene["log"], Find(scene, Query(0.25f, 0, 0.6f)));
+        var part = SupportFootprintCurvedProofOracle.Installed(scene.World, scene["log"])[0];
+        AssertSupport(SupportStatus.Walkable, part.Tangent.Centre.Y + radius, scene["log"],
+            Find(scene, Query(0.25f, 0, 0.6f)));
     }
 
     // The nearest point in D is x = offset - foot. On the upper sphere, its upward normal is

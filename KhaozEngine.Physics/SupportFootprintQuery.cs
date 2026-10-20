@@ -146,7 +146,9 @@ public readonly struct SupportFootprintResult
 public interface IPhysicsSupportFootprint
 {
     /// <summary>Publishes every relevant admitted raw pair ordered by static then element id, with fixed witness roles and
-    /// the join matrix, after authenticating the lease and executing both original sweeps. The join span must hold
+    /// the join matrix, after authenticating the lease. A full evaluation executes both original sweeps. An
+    /// authenticated <see cref="IPhysicsSupportFootprintReuseSource"/> session may instead republish the exact
+    /// completed payload of a bit-identical request with fresh lease metadata and no sweep. The join span must hold
     /// members.Length*JoinWordsFor(members.Length) words. A short join span throws ArgumentException. Capacity is
     /// 256 relevant raw pairs and at most 512 occupied slots. A proved below-band member can be omitted only when
     /// it cannot contribute, join a band-capable member or establish a required proposal guard.

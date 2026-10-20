@@ -15,8 +15,8 @@ namespace KhaozEngine.Render3D
         None = 0,
         /// <summary>The unchanged default: a solid caster drawn through the plain depth-only pipeline.</summary>
         Opaque = 1,
-        /// <summary>A caster carrying a rigid dissolve: drawn through the dissolve-aware depth pipeline, so its
-        /// shadow erodes with the same noise mask that erodes the mesh instead of staying solid to the cull edge.</summary>
+        /// <summary>A caster with rigid dissolve or an interior cut, drawn through the dissolve-aware depth pipeline.
+        /// The fragment removes the dissolve noise mask and any opted-in interior span.</summary>
         Dissolving = 2,
         /// <summary>A dissolving caster whose SHADOW dither is inverted (issue #391): drawn through the inverted
         /// dissolve depth pipeline, which keeps exactly what <see cref="Dissolving"/> discards. The merged half of an
@@ -65,11 +65,10 @@ namespace KhaozEngine.Render3D
         /// compares. An all-opaque frame yields one span per run, so this is the pre-policy run list exactly.</summary>
         internal readonly record struct ShadowCasterSpan(int Index, int Generation, uint Start, uint Count, ShadowCastKind Kind);
 
-        /// <summary>One captured caster instance: its uploaded world matrix plus the dissolve threshold driving the
-        /// depth-pass discard. The dissolve rides along because it CHANGES the recorded depth (a fading caster
-        /// records fewer fragments), so a dissolve that moves while the light matrices and transforms hold still
-        /// must still re-render the atlas.</summary>
-        internal readonly record struct ShadowCasterInstance(Matrix4x4 Model, float Dissolve);
+        /// <summary>One captured caster instance: its uploaded world matrix, dissolve threshold and interior opt-in.
+        /// These all change the recorded depth, so a dissolve or cut bit that changes while the light matrices
+        /// and transforms hold still must still re-render the atlas.</summary>
+        internal readonly record struct ShadowCasterInstance(Matrix4x4 Model, float Dissolve, bool CutInsideInteriors = false);
 
         // Per-instance caster classification, index-aligned to _instanceData (filled by GroupInstances, which is the
         // one place that knows each uploaded slot's source instance). Reused, never per-frame allocated.
@@ -166,7 +165,7 @@ namespace KhaozEngine.Render3D
         /// </para></summary>
         internal static ShadowCastKind ClassifyCaster(in SceneInstances.Instance instance)
             => !instance.CastsShadows ? ShadowCastKind.None
-             : !instance.Dissolving ? ShadowCastKind.Opaque
+             : !instance.Dissolving && !instance.CutInsideInteriors ? ShadowCastKind.Opaque
              : instance.InvertShadowDissolve ? ShadowCastKind.DissolvingInverted
              : ShadowCastKind.Dissolving;
 
@@ -242,7 +241,7 @@ namespace KhaozEngine.Render3D
                     for (uint s = 0; s < span.Count; s++)
                     {
                         ModelRenderer.InstanceData d = _instanceData[(int)(span.Start + s)];
-                        instances.Add(new ShadowCasterInstance(d.Model, d.Dissolve.X));
+                        instances.Add(new ShadowCasterInstance(d.Model, d.Dissolve.X, d.SpecParams.W > 0.5f));
                         mesh.Bounds.WorldSphere(d.Model, out Vector3 bc, out float br);
                         _shadowCasterSpheres.Add(new Vector4(bc, br));
                     }

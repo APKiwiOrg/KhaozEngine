@@ -13,6 +13,7 @@ internal sealed partial class SupportTiltedCurvedGeometry : ISupportCurvedRootFu
         out GeometryInterval lowest)
     {
         lowest = default;
+        if (_work.Failed) return _work.Complete(GeometrySign.Unresolved, ref lowest);
         _contactShape = shape; _contactPart = part; _probe = probe;
         _boundaryMode = false;
         _stationaryMode = false;
@@ -22,8 +23,8 @@ internal sealed partial class SupportTiltedCurvedGeometry : ISupportCurvedRootFu
         GeometryInterval reach = B(_h).Multiply(B(_arithmetic.Abs(_k))).Add(B(_r)).Add(I(probe).Multiply(I(2)));
         double low = _centre.Y.Subtract(reach).Lower, high = _centre.Y.Add(reach).Upper;
         _contactLow = low; _contactHigh = high;
-        if (!SolveRoots(low, high)) return GeometrySign.Unresolved;
-        if (_roots.Count == 0) return GeometrySign.Negative;
+        if (!SolveRoots(low, high)) return _work.Complete(GeometrySign.Unresolved, ref lowest);
+        if (_roots.Count == 0) return _work.Complete(GeometrySign.Negative, ref lowest);
         GeometryInterval root = _roots.Get(_roots.Count - 1);
         lowest = root.Subtract(I(probe));
         for (int boundary = 0; boundary < 2; boundary++)
@@ -33,14 +34,14 @@ internal sealed partial class SupportTiltedCurvedGeometry : ISupportCurvedRootFu
             if (centre >= root.Lower && centre <= root.Upper && SignContact(centre) == GeometrySign.Zero)
                 lowest = I(band);
         }
-        return lowest.IsResolved ? GeometrySign.Positive : GeometrySign.Unresolved;
+        return _work.Complete(lowest.IsResolved ? GeometrySign.Positive : GeometrySign.Unresolved, ref lowest);
     }
 
     GeometryInterval ISupportCurvedRootFunction.Evaluate(GeometryInterval y, bool derivative)
     {
-        if (_axisMode) return AxisValue(y, derivative);
-        if (_stationaryMode) return StationaryValue(y, derivative);
-        if (_boundaryMode) return BoundaryValue(y, derivative);
+        if (_axisMode) return _work.Complete(AxisValue(y, derivative));
+        if (_stationaryMode) return _work.Complete(StationaryValue(y, derivative));
+        if (_boundaryMode) return _work.Complete(BoundaryValue(y, derivative));
         GeometryInterval dy = y.Subtract(_centre.Y), u = B(_u), k = _axis.Y, p = B(_p);
         GeometryInterval t = k.Multiply(dy).Subtract(u.Multiply(p));
         GeometryInterval across = u.Multiply(dy).Add(k.Multiply(p));
@@ -64,29 +65,30 @@ internal sealed partial class SupportTiltedCurvedGeometry : ISupportCurvedRootFu
                 gap.Upper == 0 ? I(0) : Hull(N(k), k);
         }
         if (_contactShape == SupportCurvedShape.Capsule)
-            return derivative ? I(2).Multiply(across.Multiply(u).Add(gap.Multiply(gapDerivative))) :
-                radialSquare.Add(gap.Square()).Subtract(B(_r).Add(I(_probe)).Square());
+            return _work.Complete(derivative ? I(2).Multiply(across.Multiply(u).Add(gap.Multiply(gapDerivative))) :
+                radialSquare.Add(gap.Square()).Subtract(B(_r).Add(I(_probe)).Square()));
         GeometryInterval radialGap = radial.Subtract(B(_r));
         if (_contactPart != SupportNeighborhoodCurved.Side)
             radialGap = GeometryInterval.Enclose(Math.Max(0, radialGap.Lower), Math.Max(0, radialGap.Upper));
-        if (!derivative) return radialGap.Square().Add(gap.Square()).Subtract(I(_probe).Square());
+        if (!derivative) return _work.Complete(radialGap.Square().Add(gap.Square()).Subtract(I(_probe).Square()));
         GeometryInterval radialTerm = radialGap.Lower == 0 && radialGap.Upper == 0 ? I(0) :
             radialGap.Multiply(across.Multiply(u).Divide(radial));
-        return I(2).Multiply(radialTerm.Add(gap.Multiply(gapDerivative)));
+        return _work.Complete(I(2).Multiply(radialTerm.Add(gap.Multiply(gapDerivative))));
     }
 
-    GeometrySign ISupportCurvedRootFunction.Sign(double parameter) => _axisMode ? AxisSign(parameter) :
+    GeometrySign ISupportCurvedRootFunction.Sign(double parameter) => _work.Complete(_axisMode ? AxisSign(parameter) :
         _stationaryMode ? StationarySign(parameter) :
-        _boundaryMode ? BoundarySign(parameter) : SignContact(parameter);
+        _boundaryMode ? BoundarySign(parameter) : SignContact(parameter));
     GeometrySign ISupportCurvedRootFunction.DerivativeSign(GeometryInterval parameter) =>
-        _axisMode ? GeometrySign.Unresolved : _stationaryMode ? StationaryDerivativeSign(parameter) :
-        _boundaryMode ? BoundaryDerivativeSign(parameter) : GeometrySign.Unresolved;
+        _work.Complete(_axisMode ? GeometrySign.Unresolved : _stationaryMode ? StationaryDerivativeSign(parameter) :
+        _boundaryMode ? BoundaryDerivativeSign(parameter) : GeometrySign.Unresolved);
 
     GeometrySign SignContact(double y)
     {
+        if (_work.Failed) return GeometrySign.Unresolved;
         // Unit-axis surface extents enclose the whole raw part. Here vertical separation
         // is at least two probe radii, so the contact objective is strictly positive.
-        if (y <= _contactLow || y >= _contactHigh) return GeometrySign.Positive;
+        if (y <= _contactLow || y >= _contactHigh) return _work.Complete(GeometrySign.Positive);
         int checkpoint = _arithmetic.Checkpoint;
         var dy = Sub(C(y), C(_centre.Y.Lower));
         var t = Sub(Mul(_k, dy), Mul(_u, _p));
@@ -100,6 +102,6 @@ internal sealed partial class SupportTiltedCurvedGeometry : ISupportCurvedRootFu
                 _arithmetic.Max(Sub(Root(radialSquare), _r), C(0))), Sq(gap)), Sq(C(_probe)));
         GeometrySign result = Sign(value);
         _arithmetic.Restore(checkpoint);
-        return result;
+        return _work.Complete(result);
     }
 }

@@ -80,7 +80,7 @@ internal readonly struct ContactQueryContext
 /// <summary>Ordinary dry delegates and primitives, forwarded without changing arithmetic or selection.</summary>
 internal readonly struct DryContactQueryContext(Func<float, float, float>? height,
     Func<float, float, Vector3>? normal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
-    MoveTuning tuning, Func<float, float, float, MovementMedium>? medium = null)
+    MoveTuning tuning, Func<float, float, float, MovementMedium>? medium = null, SupportRequestMemo? memo = null)
 {
     readonly float _halfHeight = tuning.CapsuleHalfHeight;
     internal bool HasShell => world is not null;
@@ -107,7 +107,7 @@ internal readonly struct DryContactQueryContext(Func<float, float, float>? heigh
     internal SupportSample FindSupport(in FootSupportQuery query, out MovementContactSupportBinding? binding)
     {
         binding = null;
-        return FootSupport.Find(height, normal, world, lease, query);
+        return FootSupport.Find(height, normal, world, lease, query, memo);
     }
     internal bool SweepShell(CapsuleShape shape, Vector3 centre, Vector3 direction, float distance,
         out SweepHit hit, QueryFilter filter = default)

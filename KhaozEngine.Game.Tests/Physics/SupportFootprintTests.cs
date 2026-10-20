@@ -62,7 +62,6 @@ public partial class SupportFootprintTests
         SupportPolygon tangent = Polygon([new(0.25f, 0.1f, -0.5f), new(0.25f, 0.1f, 0.5f),
             new(0.5f, 0.1f, 0.5f)], out OracleFace tangentFace);
         FootprintOracleMember tangentReference = SupportFootprintOracle.Polygon(tangentFace, request)!;
-        using var region = SupportAllocationRegion.Start();
         CheckMaximum(Measure(tangent, request), tangentReference);
         // The warmed kernel has no per-query storage, including with predicate counters enabled.
         SupportQueryDiagnostics.Enable(true);
@@ -70,9 +69,9 @@ public partial class SupportFootprintTests
         {
             Measure(tangent, request);
             SupportQueryDiagnostics.Reset();
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            GeometrySign measured = SupportFootprintPolygon.Measure(tangent, request, out _);
-            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            GeometrySign measured = default;
+            long allocated = AllocationMeasurement.Measure($"{nameof(PolygonMaximumUsesVertexEdgeAndDiscExtrema)} diagnostics enabled", () =>
+                measured = SupportFootprintPolygon.Measure(tangent, request, out _));
             Assert.Equal(GeometrySign.Positive, measured);
             Assert.Equal(0, allocated);
             SupportQueryCounts counts = SupportQueryDiagnostics.Snapshot();
@@ -80,10 +79,8 @@ public partial class SupportFootprintTests
             Assert.True(counts.Extrema > 0);
         }
         finally { SupportQueryDiagnostics.Enable(false); }
-        long disabledBefore = GC.GetAllocatedBytesForCurrentThread();
-        SupportFootprintPolygon.Measure(tangent, request, out _);
-        long disabledBytes = GC.GetAllocatedBytesForCurrentThread() - disabledBefore;
-        region.Dispose();
+        long disabledBytes = AllocationMeasurement.Measure($"{nameof(PolygonMaximumUsesVertexEdgeAndDiscExtrema)} diagnostics disabled", () =>
+            SupportFootprintPolygon.Measure(tangent, request, out _));
         Assert.Equal(0, disabledBytes);
     }
 
@@ -153,7 +150,7 @@ public partial class SupportFootprintTests
             new(0.3f, 0.05001f, 0.000013f)];
         if (Vector3.Cross(local[1] - local[0], local[2] - local[0]).Y < 0) Array.Reverse(local);
         var pose = new Pose(new(0.01f, 0, 0), rotation);
-        Assert.True(InstalledPoseOperator.TryCreate(new BepuPhysics.RigidPose(pose.Position, pose.Orientation),
+        Assert.True(InstalledPoseOperator.TryCreateSupport(new BepuPhysics.RigidPose(pose.Position, pose.Orientation),
             out var installed));
         var captured = new SupportPolygon();
         captured.Begin(new StaticHandle(42), 7, local.Length);

@@ -35,9 +35,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// encoder with <c>loadAction = Clear</c> and the pending value per attachment that has one, <c>Load</c> for
     /// the rest and <c>storeAction = Store</c> always (M-A4), then emit whatever dynamic state is
     /// owed.</description></item>
-    /// <item><description><b><see cref="EndPass"/>, which <c>End</c> and <see cref="SetFramebuffer"/> call.</b>
-    /// Close the pass, flushing pending clears through a begin and end pair first if there were any and no draw
-    /// came (M-A3).</description></item>
+    /// <item><description><b><see cref="EndPass"/>, which <c>End</c>, <see cref="SetFramebuffer"/> and every
+    /// texture copy call.</b> Close the pass, flushing pending clears through a begin and end pair first if there
+    /// were any and no draw came (M-A3). A copy reaches it through <c>MetalCommandList.EnsureCopyEncoder</c>, so a
+    /// copy always sees a clear recorded before it.</description></item>
     /// </list>
     ///
     /// <para><b>THERE IS NO "IS A PASS OPEN" FLAG, AND ITS ABSENCE IS THE ONE STRUCTURAL DIFFERENCE FROM THE
@@ -354,8 +355,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         /// <summary>
-        /// CLOSE THE PASS, FLUSHING A CLEAR-ONLY ONE FIRST (M-A3). One of the incumbent's two forcing sites is
-        /// <c>SetFramebufferCore</c> and the other is <c>End</c>, and those are exactly the two callers of this.
+        /// CLOSE THE PASS, FLUSHING A CLEAR-ONLY ONE FIRST (M-A3). The incumbent forced the flush at two sites,
+        /// <c>SetFramebufferCore</c> and <c>End</c>, and both call this. A third caller is
+        /// <c>MetalCommandList.EnsureCopyEncoder</c>, which every texture copy opens its blit encoder through: the
+        /// incumbent left the clear owed across a copy, so the copy read the texture from before the clear, and
+        /// Direct3D 11 and Vulkan clear at the call. The resolve keeps the incumbent's behaviour on purpose, and
+        /// mip generation is tracked in https://github.com/APKiwiOrg/KhaozEngine/issues/1432.
         /// <para>
         /// THE CLEAR-ONLY CASE IS REPRODUCED DELIBERATELY, NOT INHERITED BY ACCIDENT. A framebuffer plus a clear
         /// plus an <c>End</c> with no draw between them must still clear, because the incumbent forced exactly

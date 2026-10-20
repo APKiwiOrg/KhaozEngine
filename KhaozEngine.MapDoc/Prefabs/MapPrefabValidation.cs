@@ -5,6 +5,7 @@ using System.Linq;
 using System.Numerics;
 using System.Text.Json;
 using KhaozEngine.MapDoc.Assets;
+using KhaozEngine.MapDoc.Markers;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Support;
 using KhaozEngine.MapDoc.Surfaces;
@@ -141,6 +142,9 @@ public static class MapPrefabValidation
             using var json = JsonDocument.Parse(MapPrefabJson.Bytes(poses));
             MapPrefabJson.Preflight(json.RootElement);
         }
+        // R6-P3. Closure-bound validation of a complete document, loaded or stored, certifies effective marker IDs and
+        // names from metadata alone. A partial window cannot certify the whole world.
+        if (assets is not null && doc.Tiles is not { IsPartial: true }) MapMarkerExpansion.RequireUnique(doc, assets);
     }
 
     internal static void RequireAsset(MapPrefabAsset asset) => RequireAsset(asset, null);
@@ -344,6 +348,7 @@ public static class MapPrefabValidation
         if (intent.Roofs.Count == 0 && intent.RoofLinks.Count == 0 && intent.RoofGroups.Count == 0 && intent.Lights.Count == 0 && intent.Markers.Count == 0) return;
         Unique(intent.Lights, l => l.Id, "effective light");
         Unique(intent.Markers, m => m.Id, "effective marker");
+        Unique(intent.Markers, m => m.Name, "effective marker name");
         Unique(intent.RoofLinks, r => r.Id, "effective roof link");
         Unique(intent.RoofGroups, g => g.Id, "effective roof group");
         var owners = placements.Select(p => p.PlacementId).ToHashSet(StringComparer.Ordinal);
@@ -387,12 +392,7 @@ public static class MapPrefabValidation
         if (l.Colour.X < 0 || l.Colour.Y < 0 || l.Colour.Z < 0) Fail("Light colour must be nonnegative.");
         if (l.Owner is { } owner) { Reference(owner); if (owner.Kind != MapPrefabChildKind.Placement) Fail("Light owner requires a Placement reference."); }
     }
-    static void Marker(MapLocalMarkerDoc m)
-    {
-        if (m.PayloadVersion != 1) Fail("Unsupported local marker payload version.");
-        Text(m.Id); Text(m.Name); Text(m.Role); Vector(m.Position);
-        if (!float.IsFinite(m.YawRadians) || m.Tags is null || m.Tags.Any(t => t is null)) Fail("Invalid marker yaw/tags.");
-    }
+    static void Marker(MapLocalMarkerDoc m) => MapMarkerValidation.Require(m);
     static void Roof(MapRoofLinkDoc roof)
     {
         Text(roof.Id); RoofReference(roof.Roof);

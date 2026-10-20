@@ -37,7 +37,7 @@ internal readonly record struct AirStepResult(Vector3 Feet, float VerticalVeloci
 internal static class AirPass
 {
     // A bound on one tick's substeps, so a huge displacement throws rather than running unbounded.
-    const int MaxSubsteps = 1024;
+    internal const int MaxSubsteps = 1024;
 
     static readonly SupportSample NoSupport =
         new(SupportStatus.None, float.NaN, float.NaN, Vector3.Zero, null, -1, Vector3.Zero);

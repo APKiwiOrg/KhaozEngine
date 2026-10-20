@@ -10,6 +10,17 @@ internal sealed class StaticQueryExclusions
 {
     private readonly HashSet<SeamStaticHandle> _excludedStatics;
     private readonly IReadOnlyDictionary<int, int> _reverseHandles;
+    internal int SelectedGeneralSweepStatics;
+    internal CapsuleSweepPruningBounds GeneralSweepBounds;
+
+    internal bool ExcludesSweepStatic(int id) => _excludedStatics.Contains(new SeamStaticHandle(id));
+
+    internal void InitializeGeneralSweepStatics(HashSet<int> general)
+    {
+        SelectedGeneralSweepStatics = general.Count;
+        foreach (SeamStaticHandle handle in _excludedStatics)
+            if (general.Contains(handle.Value)) SelectedGeneralSweepStatics--;
+    }
 
     public StaticQueryExclusions(SeamStaticHandle[] snapshot, IReadOnlyDictionary<int, int> reverseHandles)
     {

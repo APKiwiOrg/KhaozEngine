@@ -82,13 +82,30 @@ internal static class GroundCore
    axis is the axis the tick reports. While the motion follows its plan that is the start axis plus the planned
    part of the displacement, so the reported feet are certified at their own axis and not at a summed axis a
    rounding step away.
-   - **Walkable:** seat on it. The step part of the rise is the rise the start support's own plane does not
-     explain: the seated height less that plane extrapolated to the new axis. When `MaxStepClimbSpeed` is
-     positive, the tick's owed climb and step part together are capped at `MaxStepClimbSpeed * dt`, so a run up
-     stairs paces its climb as the knob always meant, while a continuous slope is followed exactly and never
-     throttled. A paced body stays `Walkable` with its feet below the tread for a tick or two. That is legs-band
-     overlap, which the body model allows. Paced feet round down to the largest float not above the paced
-     height, for the owed climb and the step part alike, so a paid climb never exceeds the budget.
+   - **Walkable:** seat on it. The step part of the rise is the rise the start support's height field does not
+     explain: the seated height less that field extrapolated to the new axis. On the start support's own raw
+     member, the same static and element id, that field explains a rise up to the walkable grade over the
+     horizontal move, `tan` of the tick's traction gate times the axis displacement, plus both certified height
+     errors. The step part is the excess, and a descent charges nothing. A walkable slope, a planar face and a
+     walkable sloped edge the footprint overhangs are therefore never charged, while a disc reaching up a curved
+     prop's flank, or closing on a sloped edge so fast its chord outruns a walkable grade, is. The same rule
+     holds across two different walkable members when either endpoint's complete footprint directly joins the
+     selected pair (CF-4, CF-5): each physics sample carries a 16-byte handle to its selected member's direct
+     joined walkable row in the read interval's arena, bound to its source footprint, exact query and lease
+     interval, and the seat reads a row only after both handles and both sources authenticate as one interval. Equal normals, mesh adjacency or an A-B-C chain never
+     stand in for the direct A-C join. Analytic terrain has no member. Across other members the start field is
+     its plane, or level when the start height lies below that plane at its axis by more than the contact skin
+     plus the start support's own certified error, because the footprint then overhangs an edge or vertex.
+     When `MaxStepClimbSpeed` is positive, the tick's owed climb and step part together are capped at
+     `MaxStepClimbSpeed * dt`, so a run up stairs paces its climb as the knob always meant, while a continuous
+     walkable slope over one member, or a plane continuing across members under the axis, is followed exactly
+     and never throttled. A sloped overhung edge split between two directly joined members, two mesh triangles
+     or two statics, is followed as one member (#1454). Split between members no endpoint certifies as joined,
+     such as across a crack wider than the 0.1 mm join band, it still charges its rise on the substep that
+     crosses members. A paced body stays `Walkable` with its feet below the tread for a
+     tick or two. That is legs-band overlap, which the body model allows. Paced feet round down to the largest
+     float not above the paced height, for the owed climb and the step part alike, so a paid climb never exceeds
+     the budget.
    - **Steep above the start feet:** a footed tick never climbs ground it cannot stand on (#486). The steep
      face acts as a wall: undo the substep and slide along its horizontal tangent.
    - **Steep at or below the start feet:** seat on it with `Steep` footing. Phase 3 slides from there.
@@ -114,6 +131,9 @@ internal static class GroundCore
    Commit position, support and budget only after selecting a valid attempt. An unaffordable clearance push
    invalidates only that attempt. A paced shell can still advance along a valid standing route to the next
    nosing contact less skin, pay the remaining climb in later ticks and reach the next tread.
+   In slide mode, a steep or walkable seat that fails placement leaves the body airborne at the last clear
+   position. Its failed substep accepted no motion, so the air pass receives that substep's time too (#1486).
+   Keeping the old steep support would clip the fall to zero when the floor seat overlaps a curved flank.
 
 The contact skin is 1 mm. It backs off a sweep only when the sweep hits something, so it never shortens free
 motion. That is the difference from the legacy pre-sweep clearance push measured in #1270.

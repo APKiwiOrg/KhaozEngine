@@ -26,6 +26,10 @@ public sealed partial class EditorToolController
     /// pick, so it must be constant-time.</summary>
     public Func<float, float, bool> PlacementDrawnAt { get; set; } = static (_, _) => true;
 
+    /// <summary>The spawn markers the viewport draws, whose ground the spawn pick boxes stand on. Null builds them from
+    /// <see cref="Field"/> with no native readouts. The scene points it at its viewport's frame.</summary>
+    internal Func<SpawnBillboardFrame>? SpawnFrame { get; set; }
+
     // A press that grabbed no gizmo handle: pick a placement / spawn first, else fall through to the overlay shapes
     // under the ground point (exclusions, regions, feature markers), so those otherwise-invisible authoring shapes
     // are selectable with the mouse. A pick that finds nothing at all clears the selection.
@@ -36,7 +40,7 @@ public sealed partial class EditorToolController
         bool Drawn(MapPlacement p) =>
             (selected is not null && string.Equals(p.Id, selected, StringComparison.Ordinal)) || drawnAt(p.X, p.Z);
         if (!EditorPicking.Pick(_document.Doc, Field!, input.RayOrigin, input.RayDirection, PickDistance, HeightOf,
-                out EditorPicking.PickResult r, IsVisible, PlacementKindVisible, Drawn))
+                out EditorPicking.PickResult r, IsVisible, PlacementKindVisible, Drawn, SpawnFrame?.Invoke()))
         {
             _document.Selection.Clear();
             return;

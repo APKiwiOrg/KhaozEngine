@@ -76,17 +76,39 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             dstAccessMask: AccessFlags2.MemoryReadBit | AccessFlags2.MemoryWriteBit | AccessFlags2.HostReadBit);
 
         /// <summary>
+        /// After a copy whose DESTINATION is a staging texture: the transfer's write becomes available to the HOST.
+        /// Unlike the combined buffer-copy dependency in <see cref="FromTransfer"/>, this names only the host.
+        /// A timeline signal's own memory dependency covers device access only. This barrier is the device-to-host domain operation a host read after a completed timeline
+        /// value needs, which the fenced read map relies on because it takes no wait of its own.
+        /// </summary>
+        internal static MemoryBarrier2 ToHost => new(
+            sType: StructureType.MemoryBarrier2,
+            srcStageMask: PipelineStageFlags2.AllTransferBit,
+            srcAccessMask: AccessFlags2.TransferWriteBit,
+            dstStageMask: PipelineStageFlags2.HostBit,
+            dstAccessMask: AccessFlags2.HostReadBit);
+
+        /// <summary>
         /// ONE <c>vkCmdPipelineBarrier2</c> CARRYING ONE OF THE TWO, through the budget seam like every other
         /// barrier this backend emits.
         /// </summary>
         /// <typeparam name="TSink">The command sink, monomorphized at the call site.</typeparam>
         /// <param name="sink">Where the call is recorded.</param>
         /// <param name="toTransfer">Which of the two shapes.</param>
-        internal static unsafe void Emit<TSink>(TSink sink, bool toTransfer)
+        internal static void Emit<TSink>(TSink sink, bool toTransfer)
+            where TSink : struct, IVkCmdSink
+            => Emit(sink, toTransfer ? ToTransfer : FromTransfer);
+
+        /// <summary>One <c>vkCmdPipelineBarrier2</c> carrying <see cref="ToHost"/>.</summary>
+        /// <typeparam name="TSink">The command sink, monomorphized at the call site.</typeparam>
+        /// <param name="sink">Where the call is recorded.</param>
+        internal static void EmitToHost<TSink>(TSink sink)
+            where TSink : struct, IVkCmdSink
+            => Emit(sink, ToHost);
+
+        static unsafe void Emit<TSink>(TSink sink, MemoryBarrier2 barrier)
             where TSink : struct, IVkCmdSink
         {
-            MemoryBarrier2 barrier = toTransfer ? ToTransfer : FromTransfer;
-
             var dependency = new DependencyInfo(
                 sType: StructureType.DependencyInfo,
                 memoryBarrierCount: 1,

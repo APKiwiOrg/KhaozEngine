@@ -121,8 +121,20 @@ void main() {
         //      cascade pass's reason one geometry over: a noise cell smaller than an atlas texel stops being a
         //      dither (see ShadowDissolveNoise.ScaleForCascade, which this pass feeds the light radius and the face
         //      resolution). ----
+        const string PointShadowInteriorUniformBlock = PointShadowUniformBlockHead + @"    vec4 Near;
+    vec4 ExclusionMin;
+    vec4 ExclusionMax;
+    vec4 InteriorCutWindow;
+    vec4 InteriorCutHeights;
+};
+";
+        const string PointShadowInteriorBindings = @"layout(set=1, binding=0) uniform texture2D InteriorCut;
+layout(set=1, binding=1) uniform sampler Samp;
+layout(location=4) in vec4 vCut;
+";
+
         public const string PointShadowRigidDissolveVert = @"#version 450
-" + PointShadowCasterUniformBlock + @"layout(location=0) in vec3 Position;
+" + PointShadowInteriorUniformBlock + @"layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
 layout(location=2) in vec4 Color;
 layout(location=3) in vec2 TexCoord;
@@ -141,12 +153,14 @@ layout(location=0) out vec3 vWorldPos;
 layout(location=1) out vec3 vNoisePos;            // ABSOLUTE world position pre-scaled by this light's noise scale
 layout(location=2) out vec2 vDissolve;
 layout(location=3) out float vDissolveComplement;
+layout(location=4) out vec4 vCut;
 void main() {
     mat4 Model = mat4(IModel0, IModel1, IModel2, IModel3);
     vec4 world = Model * vec4(Position, 1.0);
     float sink = Normal.x + Color.x + TexCoord.x + Tangent.x + ITint.x + IEmissive.x + ISpecParams.x + IDynamic;
     world.x += sink * 1e-30;
     vWorldPos = world.xyz;
+    vCut = vec4(world.xyz, ISpecParams.w);
     gl_Position = LightVp * world;
     vNoisePos = (world.xyz + Noise.yzw) * Noise.x;
     vDissolve = IDissolve;
@@ -157,7 +171,10 @@ void main() {
         // dissolve and ShadowDepthDissolveFrag's, so a caster's point-light shadow holes match the holes punched in
         // the caster itself and in its sun shadow. Keep the three in sync.
         const string PointShadowDissolveFragPrologue = @"#version 450
-" + PointShadowCasterUniformBlock + @"layout(location=0) in vec3 vWorldPos;
+" + PointShadowCasterUniformBlock + PointShadowDissolveInputs;
+        const string PointShadowInteriorDissolveFragPrologue = @"#version 450
+" + PointShadowInteriorUniformBlock + PointShadowDissolveInputs;
+        const string PointShadowDissolveInputs = @"layout(location=0) in vec3 vWorldPos;
 layout(location=1) in vec3 vNoisePos;
 layout(location=2) in vec2 vDissolve;
 layout(location=3) in float vDissolveComplement;
@@ -174,8 +191,22 @@ float pdnoise(vec3 p) {
 }
 ";
 
-        public const string PointShadowRigidDissolveFrag = PointShadowDissolveFragPrologue + @"
+        public const string PointShadowSkinnedDissolveFrag = PointShadowDissolveFragPrologue + @"
 void main() {
+    // Gated exactly like ModelFrag: threshold 0 writes unconditionally, so an instance carrying no dissolve
+    // records the same distance this pipeline's plain sibling would.
+    if (vDissolve.x > 0.0 || vDissolveComplement > 0.5) {
+        float threshold = clamp(vDissolve.x, 0.0, 1.0);
+        float mask = pdnoise(vNoisePos);
+        bool keep = vDissolveComplement > 0.5 ? mask < threshold : mask >= threshold;
+        if (!keep) discard;
+    }
+" + PointShadowDistanceWrite + @"
+}";
+
+        public const string PointShadowRigidDissolveFrag = PointShadowInteriorDissolveFragPrologue + PointShadowInteriorBindings + InteriorCutGlsl + @"
+void main() {
+    if (vCut.w > 0.5 && interiorCut(vCut.xyz)) discard;
     // Gated exactly like ModelFrag: threshold 0 writes unconditionally, so an instance carrying no dissolve
     // records the same distance this pipeline's plain sibling would.
     if (vDissolve.x > 0.0 || vDissolveComplement > 0.5) {
@@ -191,7 +222,7 @@ void main() {
         //      what that one discards, so the two halves of an HLOD crossfade cover the noise mask between them
         //      instead of nesting. The derivation is the same as ShadowDepthDissolveInvertedFrag's, which documents
         //      it in full. ----
-        public const string PointShadowRigidDissolveInvertedFrag = PointShadowDissolveFragPrologue + @"
+        public const string PointShadowSkinnedDissolveInvertedFrag = PointShadowDissolveFragPrologue + @"
 void main() {
     if (vDissolve.x > 0.0) {
         float threshold = clamp(vDissolve.x, 0.0, 1.0);
@@ -199,6 +230,19 @@ void main() {
         if (mask >= 1.0 - threshold) discard;     // keep the complement of the plain half's keep-set
     }
 " + PointShadowDistanceWrite + @"
+}";
+
+        // Keep location 3 live below vCut at location 4, like ShadowDepthCutoutInvertedFrag.
+        public const string PointShadowRigidDissolveInvertedFrag = PointShadowInteriorDissolveFragPrologue + PointShadowInteriorBindings + InteriorCutGlsl + @"
+void main() {
+    if (vCut.w > 0.5 && interiorCut(vCut.xyz)) discard;
+    if (vDissolve.x > 0.0) {
+        float threshold = clamp(vDissolve.x, 0.0, 1.0);
+        float mask = pdnoise(vNoisePos);
+        if (mask >= 1.0 - threshold) discard;     // keep the complement of the plain half's keep-set
+    }
+" + PointShadowDistanceWrite + @"
+    oDist.a += vDissolveComplement * 1e-30;
 }";
 
         // One face header at set 0, one caster header at set 1, and the model pass's shared bone palette at set 2.

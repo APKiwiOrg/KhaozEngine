@@ -1061,6 +1061,23 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   depth-tested-but-not-depth-writing, alpha-blended draw of an already-loaded mesh, colored by the mesh's
   per-vertex color. A general overlay primitive, not collision-specific: drawn after the meshes/beams and
   before the pixel post.
+- `Scene3D.InteriorCut` accepts an immutable `InteriorHeightField`, uploaded once at the next render.
+  Null binds the zero default and disables the field. `RigidInstanceDraw.CutInsideInteriors` defaults false.
+  Only opted-in static rigid draws whose cull bounds can reach an interior take the cut path. Colour, shadows
+  and outlines share a cached zero-margin query, invalidated by field, world transform or render origin changes.
+  Stable submission slots reuse the flag without transform-cache lookups. Reaching instances are packed
+  contiguously within each mesh to preserve instancing. Silhouettes cache a separate answer with their
+  world-metre hull width added to the bounds and included in the key. Missed models keep the
+  original rendering and depth-only caster route with no cut texture read.
+  Reaching draws discard only inside the field, in colour and temporal motion together and in
+  both cascaded and point-light shadows. A field version change invalidates the shadow caches. Ordinary
+  unflagged draws, roofs, skinned meshes, animated foliage, grass and ground cover keep their existing path.
+  `InstanceData` stays 128 bytes, with `SpecParams.xyz` unchanged and `w` the 0/1 cut flag.
+  The shared frame UBO is 1376 bytes, interior vec4 tails at 1344 and 1360. Model set 0 binding 14 follows
+  atmosphere bindings 11 to 13 and reuses sampler 6, with six dynamic uniform descriptors unchanged.
+  Cascade slots remain 256 bytes with tails at 96/112, point slots at 144/160. Rigid outline and silhouette
+  payloads are 192 bytes in 256-byte slots, tails at 160/176, flags in `Params.w` and `Params.y` respectively.
+  `InteriorCutBinding` shares the texture/sampler set per renderer and rebuilds it only on texture identity changes.
 - `Scene3D.DrawMeshSilhouette(MeshHandle mesh, Matrix4x4 world, Color color, float widthMetres)` - the
   per-entity highlight rim (the RuneLite look): re-draws the mesh as an inverted hull, vertices pushed along
   angle-weighted geometric normals shared by exact-coincident positions. Hard shading, UV seams, and material
@@ -1081,6 +1098,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `DrawMeshSilhouette` metre-width hull remains available for world-space expansion effects.
   `DrawMeshOutlineDissolved(group, mesh, world, dissolve, dissolveComplement)` applies the same world-anchored
   coverage split as rigid LOD handoffs. Its full union still rejects strokes around individual dissolve holes.
+  The overload with trailing `bool cutInsideInteriors` applies the field to both rigid coverage masks, so the
+  border follows the cut boundary in either occlusion mode. `DrawMeshSilhouette` has the same trailing flag
+  and tests the extruded hull position. Existing overloads forward false, and skinned outlines remain uncut.
 - Posed skinned target outlines use the grouped `DrawSkinnedOutline(MeshOutlineGroup, SkinnedMeshHandle,
   ReadOnlySpan<Matrix4x4>, Matrix4x4)` and `DrawSkinnedOutlineDissolved` methods. The two convenience overloads
   start a group for one part, with the five-argument form using scene-depth occlusion and the six-argument form
@@ -1427,6 +1447,7 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     each track once, animate contract joints only and carry no scale track. `BaseLocal`, `BaseWorld`,
     `ParentBaseInverse` and `BodyAlignment` expose the base frames, and the frame accessors refuse a node outside
     the contract. `BodyAlignment` pairs with `BoneSocket.ComposeRigid` to seat a piece authored in the body's axes.
+    Its homogeneous component stays exactly one when general inversion rounds it for oblique base axes.
     `SkinAtBase` deforms a skin to the base on the CPU and allocates, so call it at load.
   - `ClipRefusals` words a skin loader's clip refusals one way, naming the clip, the rule and the joint. `Only`
     throws on a second clip of one name. `NoLength`, `Unkeyed`, `Uncovered` and `Breach` return null for a clean

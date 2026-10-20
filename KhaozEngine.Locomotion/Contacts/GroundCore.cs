@@ -59,7 +59,7 @@ internal readonly record struct GroundStepResult(Vector3 Feet, GroundFooting Foo
 internal static partial class GroundCore
 {
     // A bound on one tick's substeps, so a huge displacement throws rather than running unbounded.
-    const int MaxSubsteps = 1024;
+    internal const int MaxSubsteps = 1024;
 
     /// <summary>Moves a grounded body whose feet are at <paramref name="feet"/>, in the world's local frame, by
     /// the horizontal <paramref name="displacement"/>. Free motion on walkable support is exact. A start that is
@@ -348,11 +348,12 @@ internal static partial class GroundCore
                     GroundPlacement placement = attempt.Placement;
                     if (!placement.Valid)
                     {
-                        // A slide seat that fails clearance hands the body to the air pass.
-                        if (_slide && seat.Outcome == SeatOutcome.SteepSeated)
+                        // A rejected slide seat leaves no accepted motion in this substep. The air pass owns its
+                        // time too, whether the next support was steep or walkable, so the old support cannot stall it.
+                        if (_slide && seat.Outcome is SeatOutcome.Seated or SeatOutcome.SteepSeated)
                         {
                             footing = GroundFooting.None;
-                            unspent = substeps - i - 1;
+                            unspent = substeps - i;
                         }
                         blocked = true;
                         break;
@@ -452,10 +453,11 @@ internal static partial class GroundCore
             bool liftedValid = lifted.Placement.Valid &&
                 (!lifted.Blocked || standing.Obstructions.Includes(lifted.Obstructions));
             bool standingValid = standing.Placement.Valid;
-            // A slide seat that fails clearance on both routes is reported, so the tick can hand the body over.
+            // Either kind of slide seat that fails clearance is reported, so the tick can hand the body to air.
             if (!liftedValid)
                 return standingValid || standing.Seat.Outcome == SeatOutcome.Wall ||
-                    (_slide && standing.Moved && standing.Seat.Outcome == SeatOutcome.SteepSeated) ? standing : DeniedMediumSeat(lifted, standing);
+                    (_slide && standing.Moved && standing.Seat.Outcome is SeatOutcome.Seated or SeatOutcome.SteepSeated)
+                    ? standing : DeniedMediumSeat(lifted, standing);
             if (!standingValid) return lifted;
             return Progress(standing.Achieved, move) > Progress(lifted.Achieved, move) ? standing : lifted;
         }

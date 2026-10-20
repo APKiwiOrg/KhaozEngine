@@ -54,8 +54,20 @@ public sealed record MapPrefabBindingTransfer(string InstanceId, MapPrefabBindin
 
 public sealed record MapLocalLightDoc(int PayloadVersion, string Id, MapPrefabReference? Owner,
     Vector3 Position, Vector3 Colour, float Intensity, float Radius, bool CastShadows);
+/// <summary>An authored local marker. Payload 1 and payload-2 Explicit carry the authored height in Position.Y.
+/// Payload-2 Support carries Position.Y exactly +0 with no height meaning. Its resolved height is on
+/// MapEffectiveMarker.Position. The payload-2 members are omitted when null, so payload-1 bytes are unchanged.</summary>
 public sealed record MapLocalMarkerDoc(int PayloadVersion, string Id, string Name, Vector3 Position,
-    float YawRadians, string Role, bool Enabled, IReadOnlyList<string> Tags);
+    float YawRadians, string Role, bool Enabled, IReadOnlyList<string> Tags)
+{
+    /// <summary>Required by payload 2 and absent from payload 1.</summary>
+    public Markers.MapMarkerHeightMode? HeightMode { get; init; }
+    /// <summary>Required by a Support height and absent otherwise. Surface names only a surface, Space names a
+    /// space, reference Y and both search extents.</summary>
+    public MapSupportBinding? SupportBinding { get; init; }
+    /// <summary>An optional nonempty payload-2 archetype.</summary>
+    public string? ArchetypeId { get; init; }
+}
 public sealed record MapRoofLinkDoc(string Id, MapPrefabReference Roof, IReadOnlyList<MapPrefabReference> Rooms,
     IReadOnlyList<MapPrefabReference> Groups, float AboveY);
 public sealed record MapRoofGroupDoc(string Id, IReadOnlyList<MapPrefabReference> Rooms);

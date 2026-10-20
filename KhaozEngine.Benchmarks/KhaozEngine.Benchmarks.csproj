@@ -26,6 +26,8 @@
     <!-- The item-instances mode measures the SHIPPED generator: its rows go through ContentSnapshotBuilder,
          budget 9 times ModCandidateTables.Build over them and every roll goes through ItemGenerator. -->
     <ProjectReference Include="../KhaozEngine.ItemInstances/KhaozEngine.ItemInstances.csproj" />
+    <!-- The jpeg mode times the shipped JpegWriter on one bug report clip frame. -->
+    <ProjectReference Include="../KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- ResidentMemory is the instrument every memory budget is read through, so its own accuracy is a fact

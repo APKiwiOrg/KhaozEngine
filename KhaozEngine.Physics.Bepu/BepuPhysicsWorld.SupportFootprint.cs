@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using BepuPhysics;
 using KhaozEngine.Physics;
 
 namespace KhaozEngine.Physics.Bepu;
@@ -41,6 +42,8 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprint
         in SupportFootprintRequest request, Span<SupportFootprintMember> members, Span<ulong> joins,
         QueryFilter filter, StaticQueryExclusions? exclusions)
     {
+        // Taken first, so a refused or throwing query still consumes the request and no later query inherits it.
+        bool certificationJoins = SupportCertificationJoins.Take();
         AuthenticateFeatureLease(lease);
         using QueryOperation scope = EnterQuery();
         ArgumentNullException.ThrowIfNull(request.AxisProposal.Probe);
@@ -53,8 +56,24 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprint
         SupportFootprintCollector collector = scratch.Footprints.Take();
         try
         {
-            SupportFootprintResult result = CollectFootprint(collector, receiver, lease, request, members, joins, filter, exclusions);
+            FootprintReuseSession? reuse = FootprintReuse(receiver, lease, exclusions, collector);
+            ulong sourceVersion = reuse?.SourceVersion ?? 0;
+            SupportFootprintProofKey key = reuse is null ? default :
+                SupportFootprintProofKey.Create(request, filter, certificationJoins);
+            if (reuse is not null)
+            {
+                reuse.AssertCurrent(lease);
+                if (reuse.Memo.TryCopy(receiver, lease, key, members, joins, out var copied)) return copied;
+            }
+            SupportFootprintResult result = CollectFootprint(collector, receiver, lease, request, members, joins, filter,
+                exclusions, certificationJoins);
+            SupportQueryDiagnostics.ObserveCurvedWork(collector.CurvedWork with { FootprintStatus = result.Status });
             SupportQueryDiagnostics.Refusal(result.Status);
+            // A diagnostic callback may have reset or closed the source while the full evaluator ran.
+            // That cannot seed a later domain or add a failure after the evaluator committed its output.
+            if (reuse is not null && result.Status == CapsuleFeatureStatus.Complete &&
+                reuse.SourceVersion == sourceVersion && reuse.Matches(lease))
+                reuse.Memo.Remember(key, result, members, joins);
             return result;
         }
         finally { scratch.Footprints.Restore(collector); }
@@ -62,7 +81,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprint
 
     SupportFootprintResult CollectFootprint(SupportFootprintCollector collector, IPhysicsWorld receiver,
         IPhysicsQueryLease lease, in SupportFootprintRequest request, Span<SupportFootprintMember> members,
-        Span<ulong> joins, QueryFilter filter, StaticQueryExclusions? exclusions)
+        Span<ulong> joins, QueryFilter filter, StaticQueryExclusions? exclusions, bool certificationJoins)
     {
         if (!collector.Begin(request) || request.Radius > 2 || !FootprintProposalDomain(request.AxisProposal) ||
             !FootprintProposalDomain(request.FootProposal)) return collector.Refused(CapsuleFeatureStatus.Unsupported);
@@ -97,10 +116,10 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprint
                     _staticGeometryVersion);
                 if (captured != CapsuleFeatureStatus.Complete) return collector.Refused(captured);
             }
-        return collector.Publish(receiver, lease, members, joins);
+        return collector.Publish(receiver, lease, members, joins, certificationJoins);
     }
 
     static bool FootprintProposalDomain(in SupportFootprintProposal proposal) =>
         proposal.Probe.Radius is >= 0.01f and <= 2f && proposal.Probe.Length <= 8 &&
-        RepresentedGeometryTransforms.PosePoint(proposal.Start, Vector3.Zero).IsResolved;
+        InstalledPoseOperator.TryCreateSupport(new RigidPose(proposal.Start.Position, proposal.Start.Orientation), out _);
 }

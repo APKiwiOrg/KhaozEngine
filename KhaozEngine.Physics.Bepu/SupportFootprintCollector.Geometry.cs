@@ -42,6 +42,7 @@ internal sealed partial class SupportFootprintCollector
     [MethodImpl(MethodImplOptions.NoInlining)]
     CapsuleFeatureStatus CollectCurves(StaticHandle owner)
     {
+        using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportCurved);
         foreach (ref readonly SupportCurvedLeaf leaf in CollectionsMarshal.AsSpan(_curved))
             for (int part = 0; part < leaf.Parts; part++)
             {
@@ -61,6 +62,6 @@ internal sealed partial class SupportFootprintCollector
                 CapsuleFeatureStatus retained = Retain(new(null, leaf, part, value with { ProposalMask = mask }));
                 if (retained != CapsuleFeatureStatus.Complete) return retained;
             }
-        return CapsuleFeatureStatus.Complete;
+        return _curvedWork.Failed ? CapsuleFeatureStatus.Unsupported : CapsuleFeatureStatus.Complete;
     }
 }

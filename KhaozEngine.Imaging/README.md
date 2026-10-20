@@ -1,10 +1,11 @@
 # KhaozEngine.Imaging
 
-Dependency-free image IO for KhaozEngine. Two jobs, both BCL-only so no third-party image library
-ever enters your dependency graph: a minimal PNG encoder for 8-bit RGBA buffers, and a
-tolerance-based golden-grid regression primitive. This is the canonical home of the encoder the
-headless snapshot harness (`KhaozEngine.Snapshot`) and Render2D's clipboard-copy path use, plus the
-grid-compare core the golden-image tests and the snapshot-diff tool share.
+Dependency-free image IO for KhaozEngine. Everything here is BCL-only so no third-party image library
+ever enters your dependency graph: a minimal PNG encoder for 8-bit RGBA buffers, a baseline JPEG
+encoder for the same buffers, and a tolerance-based golden-grid regression primitive. This is the
+canonical home of the PNG encoder the headless snapshot harness (`KhaozEngine.Snapshot`) and
+Render2D's clipboard-copy path use, plus the grid-compare core the golden-image tests and the
+snapshot-diff tool share.
 
 ## PngWriter
 
@@ -16,6 +17,37 @@ grid-compare core the golden-image tests and the snapshot-diff tool share.
 byte[] rgba = Render2DSnapshot.Capture(320, 180, Color.Black, ctx => DrawScene(ctx));
 PngWriter.Save("/tmp/scene.png", rgba, 320, 180);
 ```
+
+## JpegWriter
+
+`JpegWriter.Encode(rgba, width, height, quality)` encodes a top-to-bottom row-major RGBA8 buffer (length
+must be `width * height * 4`) to a baseline JPEG byte array. Width and height are 1 to 65535 and quality
+is 1 to 100. Alpha is ignored. The stream is JFIF 1.01, sequential (never progressive), with full-range
+BT.601 YCbCr and 4:2:0 chroma subsampling. Quantization uses the ITU T.81 Annex K tables scaled by the
+IJG quality rule, entropy coding uses the Annex K standard Huffman tables and the forward DCT is the float
+AAN factorization. Edges that do not fill a 16x16 MCU repeat the last row and column. The output is a pure
+function of the input, so the same pixels always encode to the same bytes.
+
+```csharp
+byte[] jpeg = JpegWriter.Encode(rgba, 960, 540, quality: 70);
+```
+
+One 960x540 frame at quality 70 encodes in a mean of 10.18 ms with a p95 of 31.04 ms (125,460 bytes) on
+macOS, machine model `Mac14,6`, measured on a shared machine under heavy load, so the p95 is pessimistic.
+Reproduce with `dotnet run --project KhaozEngine.Benchmarks -c Release -- --jpeg`. Windows and Linux
+figures are not yet measured.
+
+## JpegThumbnailDecoder
+
+`JpegThumbnailDecoder.DecodeEighthScale(jpeg)` returns a `JpegThumbnail` with a row-major RGBA8 buffer
+at `ceil(width / 8)` by `ceil(height / 8)`, with alpha 255. It reads sequential Huffman JPEG (SOF0 or
+8-bit SOF1), one grayscale or three YCbCr components, sampling factors of one or two, and restart
+markers. Only DC coefficients are dequantized, AC coefficients are consumed without an inverse DCT.
+Chroma maps to the output block grid by sampling ratio and uses the JFIF conversion matrix. Malformed
+or truncated input and edges outside 1 to 16384 throw `InvalidDataException`. Progressive, arithmetic,
+12-bit and other unsupported coding processes throw `NotSupportedException`, as do component counts
+other than one or three. Three components are always read as YCbCr, so an Adobe RGB JPEG decodes with
+wrong colours. The decoder is meant for frames that `JpegWriter` produced.
 
 ## PngReader
 

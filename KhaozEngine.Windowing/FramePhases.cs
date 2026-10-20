@@ -24,7 +24,21 @@ namespace KhaozEngine.Windowing
         /// </summary>
         internal static void Run(Frame frame, bool render, IGpuDevice device, IGpuCommandList commands,
             Color clearColor, Action<Frame>? onPrepare, Action<Frame> onFrame)
+            => Run(frame, render, device, commands, clearColor, onPrepare, onFrame, null, 0);
+
+        /// <summary>
+        /// The same frame with the window's capture taps. A null registry, or one with nothing to do, runs the
+        /// frame exactly as the overload without taps: one submit and one present. Otherwise every tap records
+        /// after <paramref name="onFrame"/> inside the frame's list, the list is submitted with the fence a tap
+        /// handed in (or without one), every tap's after-submit callback runs with nothing recording, and then
+        /// the frame presents. A render-suppressed frame runs no tap. <c>frameMilliseconds</c> is the loop's
+        /// unclamped frame delta, handed to the taps.
+        /// </summary>
+        internal static void Run(Frame frame, bool render, IGpuDevice device, IGpuCommandList commands,
+            Color clearColor, Action<Frame>? onPrepare, Action<Frame> onFrame, FrameCaptureTaps? taps,
+            double frameMilliseconds)
         {
+            bool capture = taps is { HasWork: true };
             // Prepare. The frame's dt / input / size are already latched onto `frame`, so a callback sees this
             // frame's state, not the previous one's - which is what lets the world's queues be filled here rather
             // than in the record phase. frame.Commands is NOT recording during this call.
@@ -32,6 +46,7 @@ namespace KhaozEngine.Windowing
             try
             {
                 onPrepare?.Invoke(frame);
+                IGpuFence? fence = null;
 
                 // Record. Everything from here to the scope's close belongs in the frame's own list, and the scope is
                 // what makes that enforceable rather than advisory: it claims the device in the seam's open-recording
@@ -49,12 +64,16 @@ namespace KhaozEngine.Windowing
                         commands.ClearColorTarget(0, clearColor);
                     }
                     onFrame(frame);
+                    // A tap's copy stays after the game's draws in the same recording and submission.
+                    if (render && capture) fence = taps!.Record(frame, commands, frameMilliseconds);
                 }
                 finally { recording.Dispose(); }
 
                 if (render)
                 {
-                    frame.Submission.Submit(commands);
+                    if (fence is null) frame.Submission.Submit(commands);
+                    else frame.Submission.Submit(commands, [fence]);
+                    if (capture) taps!.AfterSubmit();
                     device.Present();
                 }
                 else frame.Submission.Abandon();
@@ -65,5 +84,6 @@ namespace KhaozEngine.Windowing
                 throw;
             }
         }
+
     }
 }

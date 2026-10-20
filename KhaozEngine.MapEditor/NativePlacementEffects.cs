@@ -100,7 +100,8 @@ internal static class NativePlacementEffects
         // The provider's released contract takes authored placements. Project already resolved leaves into a
         // detached standalone view, with their precise frames and no support resampling or identity allocation.
         var projected = NativeDocumentSnapshot.Clone(document, registry);
-        projected.Prefabs = null; projected.BuildingIntent = null; projected.Water = null; projected.Surfaces = new();
+        // The projection holds no surfaces, so it holds no foliage that would name them either.
+        projected.Prefabs = null; projected.BuildingIntent = null; projected.Water = null; projected.Surfaces = new(); projected.Foliage = null;
         projected.Placements = selected.Select(p => new MapPlacement
         {
             Id = p.PlacementId,
@@ -156,7 +157,8 @@ internal static class NativePlacementEffects
                 ? placements.Invalidates : placements.Invalidates & ~MapNativeInvalidation.Placements),
             ChildIds = named.ChildIds.Union(placements.ChildIds).Order(StringComparer.Ordinal).ToArray(),
         };
-        if (!(writes.Prefabs || writes.BuildingIntent || writes.NativeResourceTransforms || named.LightIds.Count != 0 || named.MarkerIds.Count != 0)) return result;
+        // Markers take their effects from the shared marker diff of the transaction, not from named resource IDs.
+        if (!(writes.Prefabs || writes.BuildingIntent || writes.NativeResourceTransforms || named.LightIds.Count != 0)) return result;
         // Resolution may refuse old geometry during a repair. Preserve the reset categories of the named resources.
         var resourceReset = (writes.Patches.Count != 0 || writes.SurfaceIds.Count != 0 || writes.SpaceIds.Count != 0)
             ? Spatial : MapNativeInvalidation.None;
@@ -253,13 +255,6 @@ internal static class NativePlacementEffects
             {
                 invalidates |= MapNativeInvalidation.Residency;
                 box = Union(box, MapEffectiveAnnotations.Bounds(light));
-            }
-        var otherMarkers = MapEffectiveAnnotations.Markers(other).ToDictionary(m => m.Id);
-        foreach (var marker in MapEffectiveAnnotations.Markers(resources).Where(m => named.MarkerIds.Contains(m.Id)))
-            if (!otherMarkers.TryGetValue(marker.Id, out var old) || marker.Position != old.Position || marker.YawRadians != old.YawRadians || marker.Enabled != old.Enabled)
-            {
-                invalidates |= MapNativeInvalidation.Residency;
-                box = Union(box, MapEffectiveAnnotations.Bounds(marker));
             }
         return new(box, invalidates);
 

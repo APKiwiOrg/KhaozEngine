@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
@@ -30,12 +31,48 @@ public sealed class PointShadowUboLayoutTests
     const uint OldUboBytes = 1008;
 
     [Fact]
+    public void InteriorShadowTailsStayInsideTheExisting256ByteSlots()
+    {
+        using var device = new FakeGpuDevice();
+        using var model = NewRenderer(device);
+        using var point = new PointShadowRenderer(device, model.SkinnedBonePaletteLayout);
+        var uniforms = new InteriorCutUniforms(new Vector4(-12, 16, 4, 32), new Vector4(-8, 100, 0, 0));
+        model.ShadowMap.SetInteriorCut(model.InteriorResources.Texture, uniforms);
+        point.SetInteriorCut(model.InteriorResources.Texture, uniforms);
+        using var commands = new RecordingGpuCommandList(new NullGpuCommandList()) { CapturePayloads = true };
+        commands.Begin();
+        model.ShadowMap.BeginDepthPass(commands, new[] { Matrix4x4.Identity }, 1, new Vector3(1, 2, 3), new[] { 2f });
+        point.PackFace(0, Matrix4x4.Identity, new Vector3(4, 5, 6), 8, 2, new Vector3(1, 2, 3),
+            .5f, new Vector3(-1), new Vector3(1));
+        point.UploadFaces(commands);
+        commands.End();
+        Assert.Equal(2, commands.Uploads.Count);
+        byte[] cascade = commands.Uploads[0].Data!;
+        byte[] face = commands.Uploads[1].Data!;
+        Assert.Equal(Matrix4x4.Identity, MemoryMarshal.Read<Matrix4x4>(cascade));
+        Assert.Equal(new Vector4(1, 2, 3, 0), MemoryMarshal.Read<Vector4>(cascade.AsSpan(64)));
+        Assert.Equal(new Vector4(2, 0, 0, 0), MemoryMarshal.Read<Vector4>(cascade.AsSpan(80)));
+        Assert.Equal(uniforms.Window, MemoryMarshal.Read<Vector4>(cascade.AsSpan(96)));
+        Assert.Equal(uniforms.Heights, MemoryMarshal.Read<Vector4>(cascade.AsSpan(112)));
+        Assert.Equal(new Vector4(4, 5, 6, 8), MemoryMarshal.Read<Vector4>(face.AsSpan(64)));
+        Assert.Equal(new Vector4(2, 1, 2, 3), MemoryMarshal.Read<Vector4>(face.AsSpan(80)));
+        Assert.Equal(new Vector4(.5f, 0, 0, 0), MemoryMarshal.Read<Vector4>(face.AsSpan(96)));
+        Assert.Equal(new Vector4(-1, -1, -1, 0), MemoryMarshal.Read<Vector4>(face.AsSpan(112)));
+        Assert.Equal(new Vector4(1, 1, 1, 0), MemoryMarshal.Read<Vector4>(face.AsSpan(128)));
+        Assert.Equal(uniforms.Window, MemoryMarshal.Read<Vector4>(face.AsSpan(144)));
+        Assert.Equal(uniforms.Heights, MemoryMarshal.Read<Vector4>(face.AsSpan(160)));
+        Assert.All(cascade.AsSpan(128, 128).ToArray(), value => Assert.Equal(0, value));
+        Assert.All(face.AsSpan(176, 80).ToArray(), value => Assert.Equal(0, value));
+        Assert.Equal(256u, PointShadowRenderer.FaceSlotBytes);
+    }
+
+    [Fact]
     public void TransientShapeAppendsAfterTheCompatibilityTail()
     {
         Assert.Equal(1296u, ModelRenderer.PointShadowTransientTailOffset);
         Assert.Equal(16u, ModelRenderer.PointShadowTransientTailBytes);
         Assert.Equal(1312u, ModelRenderer.ClusterTailOffset);
-        Assert.Equal(1344u, ModelRenderer.UboBytes);
+        Assert.Equal(1376u, ModelRenderer.UboBytes);
     }
 
     static ModelRenderer NewRenderer(FakeGpuDevice device)
@@ -85,7 +122,7 @@ public sealed class PointShadowUboLayoutTests
         Assert.Equal(OldUboBytes + ModelRenderer.PointShadowTailBytes,
             ModelRenderer.PointShadowTransientTailOffset);
         Assert.Equal(1312u, ModelRenderer.ClusterTailOffset);
-        Assert.Equal(1344u, ModelRenderer.UboBytes);
+        Assert.Equal(1376u, ModelRenderer.UboBytes);
     }
 
     [Fact]
@@ -278,7 +315,7 @@ public sealed class PointShadowUboLayoutTests
             Assert.True(atlas < filter, $"{name}: PointShadowFilter follows PointShadowAtlas.");
             Assert.True(filter < transient, $"{name}: PointShadowTransientAtlas follows PointShadowFilter.");
             Assert.True(transient < clusterDepth, $"{name}: ClusterDepth follows the transient atlas shape.");
-            Assert.True(clusterDepth < clusterCamera, $"{name}: ClusterCamera is the last member of the block.");
+            Assert.True(clusterDepth < clusterCamera, $"{name}: ClusterCamera follows ClusterDepth before the interior tail.");
         }
     }
 

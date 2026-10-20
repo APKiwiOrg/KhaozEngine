@@ -36,7 +36,7 @@ public sealed class TileWorldSequenceRegionsTests
             options, new TileWorldBuildQueueOptions { MaxConcurrentBuilds = 1, MaxHlodAppliesPerPump = 0 },
             new HeldDispatcher());
         var regions = new TileWorldSequenceRegions(view, doc);
-        regions.Update(default);
+        regions.Update(default, Vector3.Zero);
         view.Draw(Vector3.Zero);
         Assert.Equal(3, scene.ClusterPropDraws.Sum(draw => draw.Placements.Count));
     }
@@ -57,19 +57,19 @@ public sealed class TileWorldSequenceRegionsTests
         using var view = new TileWorldView(scene, doc, TileRenderTestData.Catalogs,
             new GreyboxMeshResolver(doc.TileSize, doc.PlaneHeight));
         var regions = new TileWorldSequenceRegions(view, doc);
-        regions.Update(origin);
+        regions.Update(origin, Vector3.Zero);
         view.Draw(Vector3.Zero);
         var originalHandles = scene.Drawn.Select(draw => draw.Handle).ToArray();
         Assert.Equal(2, originalHandles.Length);
         scene.ClearFrame();
 
-        regions.Update(adjacent);
+        regions.Update(adjacent, Vector3.Zero);
         view.Draw(Vector3.Zero);
         Assert.Equal(2, scene.MeshLoads.Count);
         Assert.Empty(scene.MeshUnloads);
         Assert.Equal(originalHandles, scene.Drawn.Select(draw => draw.Handle).ToArray());
 
-        regions.Update(far);
+        regions.Update(far, new Vector3(far.OriginX, 0f, -far.OriginZ));
         Assert.Equal(3, scene.MeshLoads.Count);
         Assert.Equal(2, scene.MeshUnloads.Count);
         Assert.Single(view.LoadedRegions);

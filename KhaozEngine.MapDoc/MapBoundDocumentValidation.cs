@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc.Assets;
+using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Identity;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Surfaces;
@@ -20,6 +21,7 @@ public static class MapBoundDocumentValidation
         RequireRoots(document.NativeAssets, assets);
         MapPrefabIdentity.RequireOwnership(document, assets);
         RequireWaterMaterials(document.Water, assets);
+        Require(MapFoliageValidation.ValidateBound(document, assets));
         foreach (MapPlacement placement in document.Placements) RequireClosureAsset(placement, assets);
     }
 

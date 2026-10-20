@@ -53,6 +53,17 @@ namespace KhaozEngine.Tests.Gui
             public override void Draw(SpriteBatch batch) { }
         }
 
+        // A screen that occludes one rect instead of reserving it, the way a window stack beneath the screens does.
+        sealed class OccludingScreen : Screen
+        {
+            public override bool Update(float dt, bool receivesInput)
+            {
+                if (receivesInput) Manager.Pointer.Occlude(Panel);
+                return true;
+            }
+            public override void Draw(SpriteBatch batch) { }
+        }
+
         static ScreenStack WithPanel()
         {
             var stack = new ScreenStack();
@@ -89,6 +100,20 @@ namespace KhaozEngine.Tests.Gui
 
             stack.Update(0.016f, Frame(new Vector2(150, 130), false));   // release, nothing reserved any more
             Assert.True(stack.PressBeganOverUi);                         // the world must still refuse this tap
+        }
+
+        [Fact]
+        public void A_press_that_began_over_an_occluded_region_latches()
+        {
+            var stack = new ScreenStack();
+            stack.Add(new OccludingScreen());
+            stack.Update(0.016f, Frame(new Vector2(150, 130), false));
+            stack.Update(0.016f, Frame(new Vector2(150, 130), true));   // press inside the occluded panel
+            Assert.True(stack.PressBeganOverUi);
+
+            stack.Update(0.016f, Frame(new Vector2(150, 130), false));
+            stack.Update(0.016f, Frame(new Vector2(600, 400), true));   // a fresh press outside it
+            Assert.False(stack.PressBeganOverUi);
         }
 
         [Fact]

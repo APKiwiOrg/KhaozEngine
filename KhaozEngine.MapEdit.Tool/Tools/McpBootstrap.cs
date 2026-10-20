@@ -1,5 +1,8 @@
-using Microsoft.Extensions.DependencyInjection;
+using System.Text.Json;
+using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Prefabs;
+using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol;
 
 namespace KhaozEngine.MapEdit.Tools;
 
@@ -24,16 +27,29 @@ public static class McpBootstrap
         return services;
     }
 
+    /// <summary>The MCP defaults plus MapDoc's closed vector converter, so a native support answer's normal crosses the
+    /// wire as x, y and z rather than an empty object. No other query result carries a vector.</summary>
+    internal static JsonSerializerOptions QueryToolOptions { get; } = CreateQueryToolOptions();
+
+    static JsonSerializerOptions CreateQueryToolOptions()
+    {
+        var options = new JsonSerializerOptions(McpJsonUtilities.DefaultOptions);
+        options.Converters.Add(new MapNativeVector3Converter());
+        return options;
+    }
+
     /// <summary>Registers the document, query, mutation, and render tool classes on the MCP server builder, so both
     /// the host and the tests pick up the same verb set from this one call.</summary>
     public static IMcpServerBuilder WithMapEditTools(this IMcpServerBuilder builder)
     {
         builder.WithTools<DocumentTools>();
-        builder.WithTools<QueryTools>();
+        builder.WithTools<QueryTools>(QueryToolOptions);
         builder.WithTools<MutationTools>();
         builder.WithTools<RenderTools>();
         builder.WithTools<PrefabTools>(MapPrefabJson.ToolOptions);
         builder.WithTools<InteriorTools>(MapPrefabJson.ToolOptions);
+        builder.WithTools<MarkerTools>(MapPrefabJson.ToolOptions);
+        builder.WithTools<FoliageTools>(FoliageWire.ToolOptions);
         return builder;
     }
 }

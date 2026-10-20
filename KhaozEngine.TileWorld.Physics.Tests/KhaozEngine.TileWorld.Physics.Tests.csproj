@@ -17,8 +17,5 @@
     <ProjectReference Include="../KhaozEngine.Physics.Bepu/KhaozEngine.Physics.Bepu.csproj" />
     <ProjectReference Include="../KhaozEngine.Movement/KhaozEngine.Movement.csproj" />
   </ItemGroup>
-  <ItemGroup>
-    <Compile Include="../test-shared/AllocationRegion.cs" Link="Shared/AllocationRegion.cs" />
-    <Compile Include="../test-shared/AllocationMeasurement.cs" Link="Shared/AllocationMeasurement.cs" />
-  </ItemGroup>
+  <Import Project="../test-shared/AllocationMeasurement.props" />
 </Project>

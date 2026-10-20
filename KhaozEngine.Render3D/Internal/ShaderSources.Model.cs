@@ -46,6 +46,7 @@ layout(set=0, binding=0) uniform U {
     vec4 PointShadowTransientAtlas;
     vec4 ClusterDepth;            // x=near, y=far, z=log(far/near), w=1 perspective, 0 orthographic, -1 invalid
     vec4 ClusterCamera;           // xyz = camera forward in the render frame
+    vec4 InteriorCutWindow; vec4 InteriorCutHeights;
 };
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
@@ -113,6 +114,7 @@ layout(set=0, binding=0) uniform U {
     vec4 PointShadowTransientAtlas;
     vec4 ClusterDepth;            // x=near, y=far, z=log(far/near), w=1 perspective, 0 orthographic, -1 invalid
     vec4 ClusterCamera;           // xyz = camera forward in the render frame
+    vec4 InteriorCutWindow; vec4 InteriorCutHeights;
 };
 " + PointLightBufferGlsl + PointLightClusterBufferGlsl + @"
 layout(set=0, binding=3) uniform texture2D Albedo;       // 1x1 white default keeps untextured meshes unchanged
@@ -123,6 +125,7 @@ layout(set=0, binding=7) uniform texture2D ShadowMap;    // key-light depth map 
 layout(set=0, binding=8) uniform sampler ShadowSamp;     // clamp/linear sampler for the shadow-map PCF taps
 layout(set=0, binding=9) uniform texture2D PointShadowMap;  // point-light distance atlas (R32F), read through ShadowSamp; 1x1 default when no light carries one
 layout(set=0, binding=10) uniform texture2D PointShadowTransientMap;
+layout(set=0, binding=14) uniform texture2D InteriorCut;
 layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;
 layout(location=2) in vec3 vWorldPos;
@@ -137,7 +140,7 @@ layout(location=10) in float vDissolveComplement;
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
-" + MaterialLodSampleGlsl + LightingCommonGlsl + AtmosphereBindingsAt11Glsl + AtmosphereFogGlsl + @"
+" + MaterialLodSampleGlsl + LightingCommonGlsl + AtmosphereBindingsAt11Glsl + AtmosphereFogGlsl + InteriorCutGlsl + @"
 // World-space value noise for the per-instance dissolve mask (issue #253). The SAME hash/noise + scale as
 // ModelDissolveFrag (the skinned CharDissolve path), so a prop and a character dissolve with one visual language.
 float dhash(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
@@ -168,6 +171,7 @@ void main() {
     // first-sample-order is untouched. OPAQUE meshes carry cutoff 0, so the branch is never taken and the render
     // is byte-identical to the pre-cutout path (the 1x1 white default has alpha 1, so untextured meshes are safe).
     if (vSpecParams.z > 0.0 && texRgba.a < vSpecParams.z) discard;
+    if (vSpecParams.w > 0.5 && interiorCut(vWorldPos)) discard;
     // Perturb the lighting normal via a TBN only when a tangent exists. Zero tangent (primitives, skinned,
     // untangented meshes) => geometric normal, bit-identical to the pre-PBR pass. A flat normal sample
     // (0,0,1) also yields Ngeo, so a tangent-bearing mesh with no normal map is unchanged too.
@@ -246,6 +250,7 @@ layout(set=0, binding=0) uniform U {
     vec4 PointShadowTransientAtlas;
     vec4 ClusterDepth;            // x=near, y=far, z=log(far/near), w=1 perspective, 0 orthographic, -1 invalid
     vec4 ClusterCamera;           // xyz = camera forward in the render frame
+    vec4 InteriorCutWindow; vec4 InteriorCutHeights;
 };
 " + PointLightBufferGlsl + PointLightClusterBufferGlsl + @"
 layout(set=0, binding=3) uniform texture2D Albedo;
@@ -256,6 +261,7 @@ layout(set=0, binding=7) uniform texture2D ShadowMap;
 layout(set=0, binding=8) uniform sampler ShadowSamp;
 layout(set=0, binding=9) uniform texture2D PointShadowMap;
 layout(set=0, binding=10) uniform texture2D PointShadowTransientMap;
+layout(set=0, binding=14) uniform texture2D InteriorCut;
 layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;
 layout(location=2) in vec3 vWorldPos;
@@ -316,6 +322,9 @@ void main() {
     lit += vEmissive.rgb * edge;
     lit = atmosphereFog(lit, vWorldPos, false, RenderOrigin.w > 0.5);
     oColor = vec4(lit, 1.0);
+    // Keep binding 14 live for the shared layout without cutting CPU-skinned dissolve pixels.
+    // Binding keepalive: ShaderSources.PointShadow.cs:276. Alpha sink: ShaderSources.Motion.cs:50.
+    oColor.a += float(textureSize(sampler2D(InteriorCut, Samp), 0).x) * 1e-30;
     oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0 - clamp(vDynamic, 0.0, 1.0)); // a: dynamic-geometry decal mask (issue #235)
     oDepth = vec4(gl_FragCoord.z, gl_FragCoord.z, gl_FragCoord.z, 1.0);   // per-fragment NDC depth, see the note at the top
 }";
@@ -363,6 +372,7 @@ layout(set=0, binding=0) uniform U {
     vec4 PointShadowTransientAtlas;
     vec4 ClusterDepth;            // x=near, y=far, z=log(far/near), w=1 perspective, 0 orthographic, -1 invalid
     vec4 ClusterCamera;           // xyz = camera forward in the render frame
+    vec4 InteriorCutWindow; vec4 InteriorCutHeights;
 };
 // This draw's own block, selected by the per-draw dynamic offset. Declared here and NOT in either skinned
 // fragment, because no fragment stage reads any of it (the per-draw constants reach it as interpolants).
@@ -465,6 +475,7 @@ layout(set=0, binding=0) uniform U {
     vec4 PointShadowTransientAtlas;
     vec4 ClusterDepth;            // x=near, y=far, z=log(far/near), w=1 perspective, 0 orthographic, -1 invalid
     vec4 ClusterCamera;           // xyz = camera forward in the render frame
+    vec4 InteriorCutWindow; vec4 InteriorCutHeights;
 };
 " + PointLightBufferGlsl + PointLightClusterBufferGlsl + @"
 layout(set=1, binding=0) uniform texture2D Albedo;
@@ -543,6 +554,7 @@ layout(set=0, binding=0) uniform U {
     vec4 PointShadowTransientAtlas;
     vec4 ClusterDepth;            // x=near, y=far, z=log(far/near), w=1 perspective, 0 orthographic, -1 invalid
     vec4 ClusterCamera;           // xyz = camera forward in the render frame
+    vec4 InteriorCutWindow; vec4 InteriorCutHeights;
 };
 " + PointLightBufferGlsl + PointLightClusterBufferGlsl + @"
 layout(set=1, binding=0) uniform texture2D Albedo;

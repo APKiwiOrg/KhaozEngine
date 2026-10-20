@@ -32,7 +32,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(ToTransfer, transfers[0]);
             Assert.All(transfers.GetRange(1, 6),
                 t => Assert.StartsWith("CopyImageToBuffer", t, StringComparison.Ordinal));
-            Assert.Equal(FromTransfer, transfers[7]);
+            Assert.Equal(ToHost, transfers[7]);
         }
 
         [Fact]
@@ -46,7 +46,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(3, transfers.Count);
             Assert.Equal(ToTransfer, transfers[0]);
             Assert.StartsWith("CopyImageToBuffer", transfers[1], StringComparison.Ordinal);
-            Assert.Equal(FromTransfer, transfers[2]);
+            Assert.Equal(ToHost, transfers[2]);
         }
 
         [Fact]
@@ -60,7 +60,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(3, transfers.Count);
             Assert.Equal(ToTransfer, transfers[0]);
             Assert.StartsWith("CopyBuffer(", transfers[1], StringComparison.Ordinal);
-            Assert.Equal(FromTransfer, transfers[2]);
+            Assert.Equal(ToHost, transfers[2]);
         }
 
         [Fact]
@@ -70,7 +70,7 @@ namespace KhaozEngine.Tests.Gpu
                 Texture(fixture, owned, GpuTextureUsage.Staging), 0, 0,
                 Texture(fixture, owned, GpuTextureUsage.Sampled), 0, 0, 8, 8));
 
-            Assert.DoesNotContain(FromTransfer, trace);
+            Assert.DoesNotContain(ToHost, trace);
         }
 
         [Fact]
@@ -120,10 +120,10 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(6, transfers.Count);
             Assert.Equal(ToTransfer, transfers[0]);
             Assert.StartsWith("CopyImageToBuffer", transfers[1], StringComparison.Ordinal);
-            Assert.Equal(FromTransfer, transfers[2]);
+            Assert.Equal(ToHost, transfers[2]);
             Assert.Equal(ToTransfer, transfers[3]);
             Assert.StartsWith("CopyImageToBuffer", transfers[4], StringComparison.Ordinal);
-            Assert.Equal(FromTransfer, transfers[5]);
+            Assert.Equal(ToHost, transfers[5]);
         }
 
         /// <summary>Two real images are ordered by their layout transitions, so the copy between them takes no
@@ -140,7 +140,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         const string ToTransfer = "MemoryBarrier(toTransfer)";
-        const string FromTransfer = "MemoryBarrier(fromTransfer)";
+        const string ToHost = "HostReadBarrier";
 
         // The before-copy barrier appears exactly once and before the copy's first region.
         static void AssertOrderedOnce(List<string> trace, string copy)
@@ -156,7 +156,7 @@ namespace KhaozEngine.Tests.Gpu
         // The global barriers and the copy regions, in recorded order, without the layout transitions.
         static List<string> Transfers(List<string> trace)
             => trace.FindAll(t => t.StartsWith("MemoryBarrier", StringComparison.Ordinal)
-                || t.StartsWith("Copy", StringComparison.Ordinal));
+                || t.StartsWith("Copy", StringComparison.Ordinal) || t == ToHost);
 
         static List<string> Record(Action<VulkanResourceFixture, List<IDisposable>, VulkanCommandList> copy)
         {

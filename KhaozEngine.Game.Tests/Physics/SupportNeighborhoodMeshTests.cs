@@ -243,24 +243,27 @@ public class SupportNeighborhoodMeshTests
     }
 
     [Fact]
-    public void UnboundedSliverNextToTheProbeIsSkipped()
+    public void RepresentedNonzeroSliverNextToTheProbeKeepsItsRawTriangle()
     {
-        // A level floor triangle (0) and a sliver (1) on its long edge from b to c, which passes through the origin.
-        // The sliver's third vertex is 1e-9 off the edge's midpoint, so its exact area is 2e-9 and nonzero. The mesh
-        // is yawed 30 degrees: the installed operator's certified coefficients are then intervals about 1e-7 wide,
-        // far wider than the sliver's normal, so the normal cannot be bounded away from zero. The probe rests on the
-        // floor straight above the origin, touching both triangles there. Yaw keeps the floor level at y 0.
+        // The exact represented area remains nonzero. No small-normal threshold may discard triangle 1.
         const float offset = 1e-9f;
         Vector3 a = new(-1, 0, -1), b = new(1, 0, -1), c = new(-1, 0, 1);
         using var scene = new Scene();
-        StaticHandle mesh = AddMesh(scene, [a, b, c, c, b, new(offset, 0, offset)],
-            new Pose(Vector3.Zero, Quaternion.CreateFromAxisAngle(Vector3.UnitY, FootSupportScenes.Radians(30))));
+        var pose = new Pose(Vector3.Zero, Quaternion.CreateFromAxisAngle(Vector3.UnitY, FootSupportScenes.Radians(30)));
+        StaticHandle mesh = AddMesh(scene, [a, b, c, c, b, new(offset, 0, offset)], pose);
         Query query = scene.Query(scene.World, Lowest(0, FootProbe.Radius, 0), probe: FootProbe);
 
         Assert.Equal(CapsuleFeatureStatus.Complete, query.Result.Status);
-        SupportElement floor = Assert.Single(query.Elements);
-        Assert.Equal(mesh, floor.Static);
-        Assert.Equal(0, floor.ElementId);
+        var faces = SupportNeighborhoodOracle.InstalledMesh(scene.World, mesh);
+        var exact = SupportFootprintExactOracle.Vertices(faces.Single(f => f.ElementId == 1));
+        var normal = SupportFootprintExactOracle.Normal(exact);
+        Assert.True(InstalledPoseOracle.V.Dot(normal, normal) > InstalledPoseOracle.R.Zero);
+        var represented = InstalledPoseOracle.Represented(pose.Orientation);
+        var determinantXZ = represented.X.X * represented.Z.Z - represented.X.Z * represented.Z.X;
+        Assert.Equal(new InstalledPoseOracle.R(4, 1) * InstalledPoseOracle.R.From(offset) * determinantXZ, normal.Y);
+        Assert.Equal(new[] { 0, 1 }, query.Elements.Select(e => e.ElementId));
+        Assert.All(query.Elements, element => Assert.Equal(mesh, element.Static));
+
     }
 
     [Theory]

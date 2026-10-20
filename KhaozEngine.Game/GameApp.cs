@@ -33,6 +33,7 @@ namespace KhaozEngine.Game
         readonly Pointer _pointer = new();
         readonly UiViewport _ui = new();
         readonly Pointer _uiPointer = new();
+        readonly GameOverlayHost _overlays = new();
         readonly Render2DSurface _surface2D;
 
         // Built-in frame-cost HUD (FPS/frame-ms/heap + draw counters + 3D pass timings + network + build), toggled
@@ -496,6 +497,14 @@ namespace KhaozEngine.Game
         /// <summary>Request the loop stop (closes the window after the current frame).</summary>
         protected void Quit() => _window.Close();
 
+        /// <summary>Add an engine overlay above every screen. See <see cref="IGameOverlay"/>. Throws
+        /// <see cref="InvalidOperationException"/> when it is already added. Call from the frame thread.</summary>
+        public void AddOverlay(IGameOverlay overlay) => _overlays.Add(overlay, new GameOverlayContext(_window, _ui, _surface2D));
+
+        /// <summary>Remove an overlay. False when it was not added. Safe from inside an overlay's own pass. Call from the
+        /// frame thread.</summary>
+        public bool RemoveOverlay(IGameOverlay overlay) => _overlays.Remove(overlay);
+
         /// <summary>
         /// Background-thread body for the single-instance guard's foreground-request listener (started from
         /// the ctor only when <see cref="GameAppOptions.SingleInstance"/> is set). Polls
@@ -606,11 +615,15 @@ namespace KhaozEngine.Game
                 _lastH = frame.Height;
             }
 
-            _pointer.Update(_input, _viewport);
-
             // Point-space UI viewport + pointer: 1 logical point = the DPI scale in device pixels, reflowing to
             // the logical window size (stable per display, so DpiFont atlases re-bake only on a DPI change).
             _ui.Update(frame);
+
+            // Overlays read the raw frame first. One that holds leaves the game, its pointers and the HUD a frame
+            // without interaction.
+            _input = _overlays.Update(frame.Input, frame.Dt);
+
+            _pointer.Update(_input, _viewport);
             _uiPointer.Update(_input, _ui);
 
             // A supra-threshold wall-clock gap means the OS slept/suspended (or the app hung) between frames.
@@ -648,6 +661,13 @@ namespace KhaozEngine.Game
             _surface2D.Batch.Begin(_ui);
             OnDrawUi(_surface2D.Batch);
             _surface2D.Batch.End();
+
+            if (!_overlays.IsEmpty)
+            {
+                _surface2D.Batch.Begin(_ui);
+                _overlays.DrawUi(_surface2D.Batch);
+                _surface2D.Batch.End();
+            }
 
             // Diagnostics HUD on top, in its own point-space UI pass (crisp on HiDPI). The aggregated draw stats
             // (2D batch + any 3D scene, via CollectFrameStats) are handed in just before the panel draws. No-op

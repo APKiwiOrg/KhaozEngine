@@ -6,6 +6,7 @@ using KhaozEngine.Content;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Editing;
+using KhaozEngine.MapDoc.Markers;
 using KhaozEngine.MapEditor;
 using KhaozEngine.Terrain;
 
@@ -67,13 +68,13 @@ public sealed partial class MapEditSession
         }
     }
 
-    /// <summary>Occupied-tile ceiling below which <see cref="Open"/> loads a tiled document whole, mirroring
+    /// <summary>Occupied-tile ceiling below which <see cref="Open(string, IReadOnlyList{string})"/> loads a tiled document whole, mirroring
     /// <c>MapEditorOptions.WholeWorldTileLimit</c> so the GUI editor and this MCP session agree on when a
     /// world is too large to load whole. Settable so a test can exercise the windowed path against a small
     /// synthetic world instead of a real 512-tile one.</summary>
     public int WholeWorldTileLimit { get; set; } = MapDocumentWindowing.DefaultWholeWorldTileLimit;
 
-    /// <summary>Tile radius either side of the window center when <see cref="Open"/> windows a large document.</summary>
+    /// <summary>Tile radius either side of the window center when <see cref="Open(string, IReadOnlyList{string})"/> windows a large document.</summary>
     public int EditorWindowRadius { get; set; } = MapDocumentWindowing.DefaultEditorWindowRadius;
 
     /// <summary>Loads the document at <paramref name="path"/>, replacing any open document. A monolithic file
@@ -83,16 +84,19 @@ public sealed partial class MapEditSession
     /// reports unsaved state. Throws <see cref="MapDocumentException"/> (naming the path) on any load failure.
     /// A native document must load whole and pass <see cref="NativeDocumentService"/> validation against its
     /// resource root (the file's directory, or the tiled directory) before it replaces anything. Its path and
-    /// root are anchored as absolute paths, and its verified closure is bound for editing.</summary>
+    /// root are anchored as absolute paths, and its verified closure is bound for editing. Stages
+    /// <see cref="MapMarkerConsumerOptions.None"/> as the marker options.</summary>
     public OpenResult Open(string path, IReadOnlyList<string>? manifestPaths = null)
+        => OpenWith(path, manifestPaths, MapMarkerConsumerOptions.None);
+
+    OpenResult OpenWith(string path, IReadOnlyList<string>? manifestPaths, MapMarkerConsumerOptions markerOptions)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         lock (_lock)
         {
             string fullPath = Path.GetFullPath(path);
             var options = new MapDocumentLoadOptions { Registry = _registry };
-            MapDocument doc = MapDocumentWindowing.Load(fullPath, options, WholeWorldTileLimit, EditorWindowRadius,
-                out _, out MapTileRect? window);
+            MapDocument doc = LoadForOpen(fullPath, options, markerOptions, out MapTileRect? window);
             MapDocumentForm form = MapDocumentFile.DetectForm(fullPath);
             MapResolvedDocument? resolved = NativeDocumentService.IsNative(doc)
                 ? NativeDocumentService.Verify(doc, fullPath, form, path)
@@ -103,10 +107,12 @@ public sealed partial class MapEditSession
             _storagePath = fullPath;
             _storageForm = form;
             _manifests = CopyManifests(manifestPaths);
+            _markerOptions = markerOptions;
             ResetNativeHistory();
             _dirty = false;
             _field = null;
             _window = window;
+            NewSnapshotLocked();
             return new OpenResult(_path, doc.Id, doc.DisplayName, BuildSummaryLocked(resolved));
         }
     }
@@ -167,6 +173,7 @@ public sealed partial class MapEditSession
             _dirty = false;
             _field = null;
             _window = null;
+            NewSnapshotLocked();
             return new OpenResult(path, doc.Id, doc.DisplayName, BuildSummaryLocked(null));
         }
     }
@@ -189,6 +196,7 @@ public sealed partial class MapEditSession
                 MapResolvedDocument resolved = NativeDocumentService.Verify(_doc!, _storagePath!, _storageForm, _path!);
                 NativeDocumentService.Save(_doc!, _storagePath!, _storageForm, _registry);
                 _nativeAssets = resolved.AssetClosure;
+                NewSnapshotLocked();
                 _nativeHistory.RebindNativeAssets(_nativeAssets, NativePlacementBoundsProvider.Instance);
                 _nativeHistory.SealGesture();
             }
@@ -237,6 +245,7 @@ public sealed partial class MapEditSession
             _storagePath = storage;
             _storageForm = MapDocumentForm.Tiled;
             _window = rect;
+            NewSnapshotLocked();
             ResetNativeHistory();
             _dirty = false;
             _field = null;
@@ -302,6 +311,7 @@ public sealed partial class MapEditSession
             _dirty = false;
             _field = null;
             _window = null;   // SaveTiled just refreshed doc.Tiles as a whole (unwindowed) index.
+            NewSnapshotLocked();
             return new ConvertResult(directory, nameof(MapDocumentForm.Tiled), _doc!.TileSize,
                 MapDocumentHash.OfWorld(_doc, _registry));
         }
@@ -340,6 +350,7 @@ public sealed partial class MapEditSession
             _dirty = false;
             _field = null;
             _window = null;
+            NewSnapshotLocked();
             return new ConvertResult(path, nameof(MapDocumentForm.Monolithic), _doc.TileSize,
                 MapDocumentHash.OfWorld(_doc, _registry));
         }
@@ -396,6 +407,7 @@ public sealed partial class MapEditSession
             _dirty = false;
             _field = null;
             _window = null;
+            NewSnapshotLocked();
             string newHash = MapDocumentHash.OfWorld(_doc, _registry);
             string warning = string.Equals(oldHash, newHash, StringComparison.Ordinal)
                 ? "tileSize is unchanged, so the world hash is unchanged."
@@ -480,7 +492,7 @@ public sealed partial class MapEditSession
 
     /// <summary>A flat summary of the open document (counts, names in fold order, dirty flag). A native document
     /// is verified fresh first, so a stale or incomplete closure throws <see cref="MapDocumentException"/> rather
-    /// than reporting a native identity.</summary>
+    /// than reporting a native identity. Its markers come from that same complete validation.</summary>
     public MapSummary Summary()
     {
         lock (_lock)
@@ -574,6 +586,7 @@ public sealed partial class MapEditSession
             _dirty)
         {
             Native = resolved is null ? null : NativeDocumentService.Summarize(d, resolved),
+            Markers = MarkerSummaryLocked(resolved),
         };
     }
 

@@ -16,10 +16,11 @@ internal sealed partial class PointShadowRenderer
         {
             _coveragePull = new(_gd, resource => _retired.Add(resource));
             var factory = _gd.Factory;
+            // Coverage consumes the skinned caster bindings, which exclude the rigid interior cut.
             _coverageShaders = [
                 factory.CreateShadersFromSpirv(ShaderSources.CoveragePointVert, ShaderSources.PointShadowRigidFrag, new(PreciseMath: true)),
-                factory.CreateShadersFromSpirv(ShaderSources.CoveragePointDissolveVert, ShaderSources.PointShadowRigidDissolveFrag, new(PreciseMath: true)),
-                factory.CreateShadersFromSpirv(ShaderSources.CoveragePointDissolveVert, ShaderSources.PointShadowRigidDissolveInvertedFrag, new(PreciseMath: true))];
+                factory.CreateShadersFromSpirv(ShaderSources.CoveragePointDissolveVert, ShaderSources.PointShadowSkinnedDissolveFrag, new(PreciseMath: true)),
+                factory.CreateShadersFromSpirv(ShaderSources.CoveragePointDissolveVert, ShaderSources.PointShadowSkinnedDissolveInvertedFrag, new(PreciseMath: true))];
             _coveragePipelines = new IGpuPipeline[3];
             for (int i = 0; i < 3; i++) _coveragePipelines[i] = factory.CreateGraphicsPipeline(new()
             {

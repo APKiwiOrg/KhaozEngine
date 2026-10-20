@@ -375,6 +375,9 @@ empty buffer covers one. A write mapping does not drain, because the caller is t
 Shared buffer a blit wrote is visible to the CPU once that command buffer has completed, which is what the fence
 reports, and the copy is recorded in the submitted list rather than the setup batch.
 
+`IGpuFencedReadback.MapForRead(staging, fence)` returns the same pointer once the fence has signaled, with no
+flush, no drain and no storage-mode synchronisation, because a staging texture is Shared storage and never Managed.
+
 **A device-level `UpdateTexture` records into a device-owned setup command buffer rather than issuing its own
 queue submit.** The incumbent created a staging texture, a command list and a whole `SubmitCommands` per call.
 Here they accumulate into one buffer, flushed at the next device-level read. That trades the incumbent's one
@@ -993,6 +996,14 @@ backend there is no per-level blit, no per-level barrier and no filter to choose
 one mip level and must not be a staging texture, which on this backend is an `MTLBuffer` with a software
 subresource layout and has no texture to generate from.
 
+**A texture copy applies a pending clear before its blit.** A clear recorded with no draw after it is still a load
+action waiting for a pass, so a blit opened over it would read the attachment as it was before the clear, or be
+overwritten by the clear at `End`. `CopyTexture`, `CopyTextureSubresource` and the swapchain copy end that pass
+first, which is the same empty clear pass `End` and a framebuffer change use, and does nothing when no clear is
+pending. Direct3D 11 records its clear at the call, and Vulkan defers a clear until its pass opens and flushes it
+before a copy, so the three backends agree. `GenerateMipmaps` does not
+flush a pending clear yet ([#1432](https://github.com/APKiwiOrg/KhaozEngine/issues/1432)).
+
 `CopyTextureSubresource` rejects an out-of-range mip as `mipLevel` and an out-of-range array layer as
 `arrayLayer`, so callers can identify which index needs correcting from `ArgumentOutOfRangeException.ParamName`.
 
@@ -1005,8 +1016,8 @@ drawable, and hands back a device whose `SwapchainFramebuffer` is the same objec
 and acquires the drawable the next frame will use.
 
 **The layer configuration is the deleted Veldrid Metal backend's, field for field, with one exception.** `device`,
-`pixelFormat` (`BGRA8Unorm`, or its sRGB sibling if the seam ever grows a way to ask), `framebufferOnly = true`,
-and `drawableSize` from the host view's frame.
+`pixelFormat` (`BGRA8Unorm`, or its sRGB sibling if the seam ever grows a way to ask), `framebufferOnly = true`
+unless a capture is requested, and `drawableSize` from the host view's frame.
 
 **The exception is that `drawableSize` is the view frame in POINTS multiplied by
 `-[NSWindow backingScaleFactor]`, because a drawable size is in PIXELS**
@@ -1062,6 +1073,17 @@ Its `Outputs` are fixed at construction, so every pipeline built against the win
 **A headless device answers `null` for `SwapchainFramebuffer` and does nothing at a `Present()`**, which is
 correct rather than unbuilt. `FramesBegun` and the acquire pair are then genuinely zero rather than absent,
 which is what `GpuDeviceCounters.HasValue` being true is for.
+
+**A swapchain capture request turns `framebufferOnly` off.** The device implements `IGpuSwapchainCapture`. Setting
+`SwapchainCopySourceRequested` queues a `framebufferOnly` write, and the present boundary applies it before it
+takes the next drawable, with no drain because the write releases nothing. The layer may still hand back a pooled
+drawable made under the old value, so each acquire reads the texture's own `isFramebufferOnly`. The drawable held
+when the request arrives stays uncopyable, a recycled one stays uncopyable until the layer makes a fresh one, and
+the orphan target never is. `SwapchainCopyable` reports exactly that, `SwapchainCopySupported` is always true
+because any drawable can be vended copyable, and `CopySwapchainColor`
+throws `InvalidOperationException` when it is false. It throws the same exception for a list that never bound the
+swapchain framebuffer in its current recording, because only the frame's own list holds what the frame drew. The
+copy is a blit from the drawable's texture on the same encoder `CopyTexture` uses, so a pending clear lands first. Clearing the request writes `framebufferOnly = true` again at the next boundary.
 
 ## Three decisions worth knowing before reading the code
 

@@ -10,6 +10,7 @@ namespace KhaozEngine.Render3D
     public sealed partial class Scene3D
     {
         readonly List<uint> _groupWriteCursors = new();
+        readonly InteriorCutInstancePartition _interiorCutPartition = new();
 
         /// <summary>
         /// Group queued <paramref name="items"/> by mesh handle into <paramref name="instanceData"/> (a flat array
@@ -32,12 +33,15 @@ namespace KhaozEngine.Render3D
         /// produced, which the main-pass mask reads as "nothing is shadow-only" (the pre-policy shape).
         /// <paramref name="motionKeys"/> (optional) receives each SLOT's motion key, index-aligned the same way, for the rigid
         /// motion slots (TEMPORAL-FOUNDATIONS-DESIGN section 3). Omit it and no keys are produced.
+        /// <paramref name="interiorCuts"/> optionally partitions reaching instances first within each mesh,
+        /// preserving the order inside both partitions. All aligned policies and motion keys follow that scatter.
         /// </summary>
         internal static void GroupInstances(IReadOnlyList<SceneInstances.Instance> items,
             List<ModelRenderer.InstanceData> instanceData, List<MeshRun> runs,
             Dictionary<(int Index, int Generation), int>? meshRunIndex = null,
             List<ShadowCastKind>? castKinds = null, ReadOnlySpan<bool> retained = default,
-            List<uint>? writeCursorScratch = null, List<bool>? shadowOnly = null, List<MotionKey>? motionKeys = null)
+            List<uint>? writeCursorScratch = null, List<bool>? shadowOnly = null, List<MotionKey>? motionKeys = null,
+            InteriorCutInstancePartition? interiorCuts = null)
         {
             if (!retained.IsEmpty && retained.Length != items.Count)
                 throw new ArgumentException("Retention must cover every queued instance.", nameof(retained));
@@ -46,6 +50,7 @@ namespace KhaozEngine.Render3D
             castKinds?.Clear();
             shadowOnly?.Clear();
             motionKeys?.Clear();
+            interiorCuts?.Clear();
             if (items.Count == 0) return;
 
             meshRunIndex ??= new Dictionary<(int, int), int>();
@@ -76,6 +81,7 @@ namespace KhaozEngine.Render3D
                         runs.Add(new MeshRun(mesh, 0, count));
                     }
                     runSlots[i] = slot;
+                    interiorCuts?.Count(slot, count != 0 && items[i].CutInsideInteriors);
                 }
 
                 // Assign each run a start offset (prefix sum), and record per-mesh write cursors.
@@ -87,7 +93,7 @@ namespace KhaozEngine.Render3D
                 for (int r = 0; r < runs.Count; r++)
                 {
                     uint start = cursor;
-                    writeCursor[r] = start;
+                    writeCursor[r] = start + (interiorCuts?.BeginRun(r, start) ?? 0);
                     cursor += runs[r].Count;
                     runs[r] = new MeshRun(runs[r].Mesh, start, runs[r].Count);
                 }
@@ -103,7 +109,7 @@ namespace KhaozEngine.Render3D
                     if (!retained.IsEmpty && !retained[i]) continue;
                     var inst = items[i];
                     int slot = runSlots[i];
-                    uint dst = writeCursor[slot]++;
+                    uint dst = inst.CutInsideInteriors && interiorCuts != null ? interiorCuts.TakeCut(slot) : writeCursor[slot]++;
                     bool dissolving = inst.Dissolving;
                     if (castKinds != null) castKinds[(int)dst] = ClassifyCaster(inst);
                     if (shadowOnly != null) shadowOnly[(int)dst] = inst.ShadowOnly;
@@ -117,7 +123,7 @@ namespace KhaozEngine.Render3D
                         // zero Dissolve, so it is byte-identical to the pre-dissolve packing (issue #253). SpecParams.z is
                         // left 0 for ApplyAlphaCutoffs to fill with the MASK cutoff, independent of dissolve.
                         Emissive = dissolving ? inst.DissolveEdge : inst.Material.Emissive,
-                        SpecParams = new Vector4(inst.Material.Specular, inst.Material.Shininess, 0f, 0f),
+                        SpecParams = new Vector4(inst.Material.Specular, inst.Material.Shininess, 0f, inst.CutInsideInteriors ? 1f : 0f),
                         Dissolve = dissolving ? new Vector2(inst.DissolveThreshold, inst.DissolveEdgeWidth) : Vector2.Zero,
                         DissolveComplement = dissolving ? inst.DissolveComplement : 0f,
                     };

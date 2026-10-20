@@ -330,6 +330,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _graphicsBinds.Reset();
             _computeBinds.Reset();
             _streams.Reset();
+            _boundSwapchain = false;
 
             // BOTH PIPELINES FORGOTTEN. The epoch bump above already invalidates the STATE BLOCK's stamp, so this
             // is specifically about which pipeline is bound: that is recorder state and survives an encoder

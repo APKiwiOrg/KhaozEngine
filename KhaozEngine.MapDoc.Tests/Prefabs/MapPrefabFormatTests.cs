@@ -123,8 +123,11 @@ public sealed class MapPrefabFormatTests
     }
 
     [Fact]
-    public void FormatEight_Refuses() =>
-        Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText(PrefabFixtures.FormatSixJson(true).Replace("\"formatVersion\":6", "\"formatVersion\":8", StringComparison.Ordinal)));
+    public void FormatTen_RefusesWithUpdateGuidance()
+    {
+        var error = Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText(PrefabFixtures.FormatSixJson(true).Replace("\"formatVersion\":6", "\"formatVersion\":10", StringComparison.Ordinal)));
+        Assert.Contains("newer than this engine supports", error.Message);
+    }
 
     [Fact]
     public void AnalyticResolution_MatchesRecordedFormatFourBits()

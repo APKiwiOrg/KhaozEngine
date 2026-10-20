@@ -686,6 +686,10 @@ the other API did implicitly. A WRITE map does not wait, and neither did the inc
 creation and never unmapped, so a map is a pointer plus an offset and an unmap is bookkeeping plus, on a
 non-coherent memory type, a flush.
 
+`IGpuFencedReadback.MapForRead(staging, fence)` skips the setup flush and the drain once the fence has signaled
+and keeps the invalidate, and every copy into a staging texture ends with a transfer-to-host barrier so the copy's
+writes are available to the host when its fence signals.
+
 **And both `Map` overloads refuse a LOST device** ([#551](https://github.com/APKiwiOrg/KhaozEngine/issues/551)),
 with the reason the loss latch recorded. They used to guard the disposed flag alone, which says the consumer let
 the device go and answers false for a device the driver took: the host-visible chunk a staging resource is
@@ -1426,13 +1430,29 @@ in a pure function that a plain test can read value by value.
 
 **The create-info is reproduced from the incumbent exactly**, because it is visible only to a human eye and
 changing it buys nothing this phase is measuring: `B8G8R8A8_UNORM` in `SRGB_NONLINEAR`,
-`min(maxImageCount, minImageCount + 1)` images, `COLOR_ATTACHMENT | TRANSFER_DST`, `OPAQUE` composite alpha,
-`clipped`, no MSAA and no depth. Present mode is `FIFO_RELAXED` then `FIFO` under a vsync request and `MAILBOX`
+`min(maxImageCount, minImageCount + 1)` images, `COLOR_ATTACHMENT | TRANSFER_DST` (plus `TRANSFER_SRC` while a
+capture is requested, see below), `OPAQUE` composite alpha, `clipped`, no MSAA and no depth. Present mode is `FIFO_RELAXED` then `FIFO` under a vsync request and `MAILBOX`
 then `IMMEDIATE` then `FIFO` without one. `FIFO_RELAXED` under a vsync request permits tearing on a late frame
 and is arguably the wrong answer, and it is reproduced anyway: the pacing work
 ([#380](https://github.com/APKiwiOrg/KhaozEngine/issues/380)) is where that gets decided with a measurement, and
 moving the variable underneath it would make every pacing capture taken here incomparable with every one taken
 against the incumbent.
+
+**The usage flags.** `TRANSFER_DST` lets a copy or a clear write into a swapchain image. Copying one out needs
+`TRANSFER_SRC`, which the incumbent never asked for. The device implements `IGpuSwapchainCapture`, and setting
+`SwapchainCopySourceRequested` queues a swapchain recreation at the next present boundary, the same path a vsync
+change takes. The policy adds `TRANSFER_SRC` only when the request is on and the surface's `supportedUsageFlags`
+include it. Otherwise it logs that frame capture is unavailable and creates the swapchain with the base bits, so a
+request never costs the window its swapchain. `SwapchainCopyable` reads the usage the current generation was
+created with, so the frame that made the request, a surface without the bit and the orphan target all read false,
+and `CopySwapchainColor` throws `InvalidOperationException` then. `SwapchainCopySupported` tells the permanent
+case apart: it is true only when the surface's `supportedUsageFlags` include `TRANSFER_SRC`, is read again with
+the other surface facts on every recreate, and is false on a headless device. The copy ends the pass first, which applies a
+pending clear, moves the image from `COLOR_ATTACHMENT_OPTIMAL` to `TRANSFER_SRC_OPTIMAL` through the layout
+tracker, and `End` restores it to `PRESENT_SRC_KHR`. A list that never bound the swapchain framebuffer in its
+recording is refused with `InvalidOperationException`: it would find the image at rest in `PRESENT_SRC_KHR`,
+where a transition out discards, and its submit would not wait on the acquire. Clearing the request recreates the
+swapchain without the bit.
 
 **Two departures, both bugs rather than behaviours.** `preTransform` reads the surface's own `currentTransform`
 rather than being hardcoded to `IDENTITY`, which is wrong on any device reporting a rotation. And the

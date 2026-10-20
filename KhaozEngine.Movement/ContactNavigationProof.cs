@@ -10,7 +10,7 @@ namespace KhaozEngine.Movement;
 
 /// <summary>One profile's leased admission and directed traversal at certified resting feet. The serial build reads
 /// its live context frame. A parallel worker reads the build snapshot instead and never touches the context.</summary>
-internal sealed class ContactNavigationProof : IDisposable
+internal sealed partial class ContactNavigationProof : IDisposable
 {
     readonly PhysicsNavBake _bake;
     readonly GroundMoveContext? _context;
@@ -19,17 +19,20 @@ internal sealed class ContactNavigationProof : IDisposable
     readonly MovementFrameDescriptor _frame;
     readonly MovementQueryScope _scope;
     readonly NavAreaFootprint _footprint;
+    readonly ContactNavigationSnapshot? _snapshot;
     readonly Dictionary<Vector3, float> _anchors = [];
     MovementQueryLeaseId? _leaseBasis;
 
     internal ContactNavigationProof(PhysicsNavBake bake, GroundMoveContext context, EffectiveMovementBinding source,
-        NavAreaFootprint footprint)
+        NavAreaFootprint footprint, ContactNavigationReusePolicy? reuse = null)
     {
         _bake = bake;
         _context = context;
+        _reuse = reuse ?? ContactNavigationReusePolicy.Capture();
         _basis = bake.Basis ?? throw new InvalidOperationException(
             "Contact navigation requires a capture from an IPhysicsQueryLeaseSource.");
-        _basis.AssertCurrent();
+        _snapshot = _reuse.InitialHolds ? ContactNavigationSnapshot.Capture(bake, context) : null;
+        if (_snapshot is null) _basis.AssertCurrent();
         try
         {
             _proof = source.CreateProofBinding();
@@ -38,6 +41,7 @@ internal sealed class ContactNavigationProof : IDisposable
             _footprint = footprint;
             ContactNavigationEnvelope.Validate(bake, source.Tuning, _scope);
             using var queries = Acquire(new(bake.Options.MinX, 0, bake.Options.MinZ));
+            _snapshot?.Authenticate(queries);
         }
         catch { _proof?.Dispose(); throw; }
     }
@@ -45,10 +49,12 @@ internal sealed class ContactNavigationProof : IDisposable
     /// <summary>A parallel worker's proof over <paramref name="snapshot"/>. The build validated the envelope once.
     /// The first lease is authenticated against the snapshot before any work starts.</summary>
     internal ContactNavigationProof(PhysicsNavBake bake, ContactNavigationSnapshot snapshot,
-        EffectiveMovementBinding source, NavAreaFootprint footprint)
+        EffectiveMovementBinding source, NavAreaFootprint footprint, ContactNavigationReusePolicy reuse)
     {
         _bake = bake;
         _basis = snapshot.Basis;
+        _reuse = reuse;
+        _snapshot = snapshot;
         try
         {
             _proof = source.CreateProofBinding();
@@ -91,7 +97,7 @@ internal sealed class ContactNavigationProof : IDisposable
         }
         if (!AdmitsPlacement(anchorFeet, Feet(placed), placed.Outcome, placed.State.State.Grounded,
             placed.State.Selection?.Support is not null)) return false;
-        if (!TryEdge(anchorFeet, anchorFeet)) return false;
+        if (!TryEdgeCore(anchorFeet, anchorFeet, false)) return false;
         _anchors.Add(rawFeet, anchorFeet.Y);
         return true;
     }
@@ -122,14 +128,15 @@ internal sealed class ContactNavigationProof : IDisposable
         return new(layers, space.Links);
     }
 
-    internal bool TryEdge(Vector3 fromFeet, Vector3 toFeet)
+    internal bool TryEdgeCore(Vector3 fromFeet, Vector3 toFeet, bool edgeProof)
     {
         if (!Finite(fromFeet) || !Finite(toFeet) ||
             !_footprint.Accepts(fromFeet) || !_footprint.Accepts(toFeet)) return false;
         FramedMovementState state = State(fromFeet);
-        MovementStepResult result = Step(state, Vector2.Zero, fromFeet);
-        Vector3 feet = Feet(result);
+        MovementStepResult result = InitialHold(state, fromFeet, edgeProof, out Vector3 feet, out var remember);
         if (!Accepted(result, feet) || !Near(feet, fromFeet)) return false;
+        if (remember is { } key)
+            _sourceScope!.Hold.Remember(key, result.State.State, result.State.Frame, feet, result.Outcome);
         if (Near(feet, toFeet)) return true;
         state = result.State;
         for (int slice = 1; slice < _bake.Options.MaxEdgeProbeSteps; slice++)
@@ -139,7 +146,7 @@ internal sealed class ContactNavigationProof : IDisposable
             if (!float.IsFinite(distance)) return false;
             Vector2 direction = distance > 0
                 ? delta / distance * MathF.Min(1, distance / _bake.Options.EdgeProbeSeconds) : Vector2.Zero;
-            result = Step(state, direction, fromFeet);
+            result = Step(state, direction, fromFeet, edgeProof);
             feet = Feet(result);
             if (!Accepted(result, feet)) return false;
             if (Near(feet, toFeet)) return true;
@@ -148,11 +155,18 @@ internal sealed class ContactNavigationProof : IDisposable
         return false;
     }
 
-    MovementStepResult Step(in FramedMovementState state, Vector2 direction, Vector3 cell)
+    MovementStepResult Step(in FramedMovementState state, Vector2 direction, Vector3 cell, bool edgeProof)
     {
         using var queries = Acquire(cell);
+        EnsureSourceSession(queries);
+        return StepLeased(state, direction, queries, edgeProof);
+    }
+
+    MovementStepResult StepLeased(in FramedMovementState state, Vector2 direction, MovementQueryLease queries, bool edgeProof)
+    {
         // Each null-hint lease must rebuild its selection before selected-space queries.
         var unselected = new FramedMovementState(state.State, state.Frame, null);
+        if (edgeProof) SupportQueryDiagnostics.Record(SupportQueryCounter.EdgeSteps);
         MovementStepResult result = _proof.StepTowards(unselected, direction, false, _bake.Options.EdgeProbeSeconds, queries);
         queries.AssertCurrent();
         return result;
@@ -206,5 +220,9 @@ internal sealed class ContactNavigationProof : IDisposable
 
     static bool Finite(Vector3 value) => float.IsFinite(value.X) && float.IsFinite(value.Y) && float.IsFinite(value.Z);
 
-    public void Dispose() => _proof.Dispose();
+    public void Dispose()
+    {
+        try { _sourceScope?.Dispose(); }
+        finally { _proof.Dispose(); }
+    }
 }

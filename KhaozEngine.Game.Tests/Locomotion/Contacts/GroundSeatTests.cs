@@ -55,7 +55,7 @@ public class GroundSeatTests
     public void RiserBetweenLevelTreadsIsItsHeight()
     {
         SupportSample start = Sample(0, Vector3.UnitY), next = Sample(0.18f, Vector3.UnitY);
-        Assert.Equal(0.18f, GroundSeat.DiscreteStep(start, Vector2.Zero, next, new Vector2(0.1f, 0)));
+        Assert.Equal(0.18f, GroundSeat.DiscreteStep(start, Vector2.Zero, next, new Vector2(0.1f, 0), CosMaxSlope));
     }
 
     [Theory]
@@ -68,7 +68,7 @@ public class GroundSeatTests
             axisX: x0);
         SupportSample next = Sample(sign * 0.5f * x1 * x1, Vector3.Normalize(new Vector3(-sign * x1, 1, 0)),
             axisX: x1);
-        Assert.Equal(0f, GroundSeat.DiscreteStep(start, new Vector2(x0, 0), next, new Vector2(x1, 0)));
+        Assert.Equal(0f, GroundSeat.DiscreteStep(start, new Vector2(x0, 0), next, new Vector2(x1, 0), CosMaxSlope));
     }
 
     [Fact]
@@ -78,14 +78,14 @@ public class GroundSeatTests
         Vector3 normal = new(-MathF.Sin(angle), MathF.Cos(angle), 0);
         // The second point is one unit along the tangent, so its float coordinates also define the plane.
         SupportSample start = Sample(0, normal), next = Sample(-normal.X, normal, axisX: normal.Y);
-        Assert.Equal(0f, GroundSeat.DiscreteStep(start, Vector2.Zero, next, new Vector2(normal.Y, 0)));
+        Assert.Equal(0f, GroundSeat.DiscreteStep(start, Vector2.Zero, next, new Vector2(normal.Y, 0), CosMaxSlope));
     }
 
     [Fact]
     public void DropIsTheNegativeHeight()
     {
         SupportSample start = Sample(0.18f, Vector3.UnitY), next = Sample(0, Vector3.UnitY);
-        Assert.Equal(-0.18f, GroundSeat.DiscreteStep(start, Vector2.Zero, next, new Vector2(0.1f, 0)));
+        Assert.Equal(-0.18f, GroundSeat.DiscreteStep(start, Vector2.Zero, next, new Vector2(0.1f, 0), CosMaxSlope));
     }
 
     [Fact]
@@ -94,7 +94,7 @@ public class GroundSeatTests
         float grade = MathF.Tan(Radians(10));
         SupportSample start = Sample(0, Vector3.UnitY);
         SupportSample next = Sample(0.18f, Vector3.Normalize(new Vector3(-grade, 1, 0)), axisX: 0.1f);
-        float step = GroundSeat.DiscreteStep(start, Vector2.Zero, next, new Vector2(0.1f, 0));
+        float step = GroundSeat.DiscreteStep(start, Vector2.Zero, next, new Vector2(0.1f, 0), CosMaxSlope);
         // rf is 0.18. rb is 0.18 less the new tread's rise over the 0.1 move.
         Assert.True(step > 0 && Math.Abs(step - 0.18f) <= 0.1 * grade, $"Discrete step {step:R}");
     }
@@ -111,8 +111,10 @@ public class GroundSeatTests
         Vector3 face = Vector3.Normalize(new Vector3(-grade, 1, 0));
         SupportSample start = Sample(top - 0.05f * grade, face, axisX: 1.95f);
         SupportSample next = Sample(top, face) with { Witness = new Vector3(2, top, 0) };
-        Assert.Equal(0f, GroundSeat.DiscreteStep(start, new Vector2(1.95f, 0), next, new Vector2(2.05f, 0)));
-        Assert.Equal(0f, GroundSeat.DiscreteStep(next, new Vector2(2.05f, 0), next, new Vector2(2.15f, 0)));
+        Assert.Equal(0f, GroundSeat.DiscreteStep(start, new Vector2(1.95f, 0), next, new Vector2(2.05f, 0),
+            CosMaxSlope));
+        Assert.Equal(0f, GroundSeat.DiscreteStep(next, new Vector2(2.05f, 0), next, new Vector2(2.15f, 0),
+            CosMaxSlope));
     }
 
     [Theory]
@@ -127,7 +129,7 @@ public class GroundSeatTests
         SupportSample start = Sample(0, Vector3.UnitY), next = Sample(0.18f, Vector3.UnitY);
         if (atStart) start = start with { Status = (SupportStatus)status };
         else next = next with { Status = (SupportStatus)status };
-        Assert.Equal(0f, GroundSeat.DiscreteStep(start, Vector2.Zero, next, new Vector2(0.1f, 0)));
+        Assert.Equal(0f, GroundSeat.DiscreteStep(start, Vector2.Zero, next, new Vector2(0.1f, 0), CosMaxSlope));
     }
 
     [Theory]
@@ -137,7 +139,7 @@ public class GroundSeatTests
     {
         SupportSample start = Sample(0, Vector3.UnitY, MathF.Abs(height) / 2);
         SupportSample next = Sample(height, Vector3.UnitY, MathF.Abs(height) / 2);
-        Assert.Equal(0f, GroundSeat.DiscreteStep(start, Vector2.Zero, next, new Vector2(0.1f, 0)));
+        Assert.Equal(0f, GroundSeat.DiscreteStep(start, Vector2.Zero, next, new Vector2(0.1f, 0), CosMaxSlope));
     }
 
     [Theory]
@@ -158,7 +160,7 @@ public class GroundSeatTests
         SupportSample start = Sample(0, Vector3.UnitY, error), next = Sample(height, Vector3.UnitY, error);
 
         Assert.Equal(above ? height : 0f,
-            GroundSeat.DiscreteStep(start, Vector2.Zero, next, new Vector2(0.1f, 0)));
+            GroundSeat.DiscreteStep(start, Vector2.Zero, next, new Vector2(0.1f, 0), CosMaxSlope));
     }
 
     // The step part is charged against the climb budget, so it rounds up, never to nearest. Feet at -2^-28 seated

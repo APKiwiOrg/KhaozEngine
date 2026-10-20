@@ -115,14 +115,15 @@ public sealed partial class Scene3D
         && a.Material.Shininess == b.Material.Shininess && a.Dissolve == b.Dissolve
         && a.DissolveEdgeWidth == b.DissolveEdgeWidth && (Vector4)a.DissolveEdgeColor == (Vector4)b.DissolveEdgeColor
         && a.CastsShadows == b.CastsShadows && a.ShadowOnly == b.ShadowOnly
-        && a.InvertShadowDissolve == b.InvertShadowDissolve && a.DissolveComplement == b.DissolveComplement && a.Motion == b.Motion;
+        && a.InvertShadowDissolve == b.InvertShadowDissolve && a.DissolveComplement == b.DissolveComplement
+        && a.CutInsideInteriors == b.CutInsideInteriors && a.Motion == b.Motion;
 
     /// <summary>Submits a frozen equipment descriptor to an outline group.</summary>
     public void DrawMeshOutline(MeshOutlineGroup group, in RigidInstanceDraw draw)
     {
         RequireMeshOutlineGroup(group);
         ValidateCoverageEquipment(draw, true);
-        AddMeshOutlinePart(group, draw.Mesh, draw.World, draw.Dissolve, draw.DissolveComplement > .5f);
+        AddMeshOutlinePart(group, draw.Mesh, draw.World, draw.Dissolve, draw.DissolveComplement > .5f, draw.CutInsideInteriors);
         RecordCoverageEquipment(draw, true);
     }
 }

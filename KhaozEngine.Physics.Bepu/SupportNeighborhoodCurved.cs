@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using BepuPhysics;
 using BepuPhysics.Collidables;
 using KhaozEngine.Physics;
@@ -13,12 +14,14 @@ internal enum SupportCurvedShape : byte { Sphere, Capsule, Cylinder }
 /// direction of its installed local Y axis, its radius and its half length. A sphere is round about its centre, a
 /// capsule is round about its core segment, and a cylinder has a side and two caps. Published errors enclose this
 /// rigid solid, with the centre and Y column of the leaf's float world pose, not the float path Bepu evaluates for
-/// each colliding pair, which can differ from it by about 1e-7 m. The rows of I - Axis Axis^T
+/// each colliding pair, which can differ from it by about 1e-7 m. <see cref="SourceColumn"/> is the represented
+/// binary32 Y column Bepu builds from that pose, and <see cref="Axis"/> encloses its exact normalization, so the
+/// tangent kernel and every footprint stratum read one column. The rows of I - Axis Axis^T
 /// project an offset across the axis with each offset component used once, so interval dependency does not widen
 /// the radial direction along the axis.</summary>
 internal readonly record struct SupportCurvedLeaf(int LeafId, SupportCurvedShape Shape, GeometryVector Centre,
     GeometryVector Axis, double Radius, double HalfLength, GeometryVector AcrossX, GeometryVector AcrossY,
-    GeometryVector AcrossZ, FeaturePoint SourceColumn)
+    GeometryVector AcrossZ, Vector3 SourceColumn)
 {
     internal int Parts => Shape == SupportCurvedShape.Cylinder ? 3 : 1;
 
@@ -42,7 +45,8 @@ internal static class SupportNeighborhoodCurved
         if (!compound && !Curved(shape)) return CapsuleFeatureStatus.Complete;
         // Leaf proves this same pose first and refuses it as Unsupported.
         if (!compound) return Leaf(simulation, shape, pose, 0, leaves);
-        if (!CapsuleFeatureGeometry.ProveInstalledPose(pose)) return CapsuleFeatureStatus.Unsupported;
+        // The compound root and composition gates are shared with box and hull leaves, so they use the support door.
+        if (!InstalledPoseOperator.TryCreateSupport(pose, out _)) return CapsuleFeatureStatus.Unsupported;
         ref Compound installed = ref simulation.Shapes.GetShape<Compound>(shape.Index);
         if (installed.Children.Length is 0 or > CapsuleFeatureGeometry.MaximumLeaves)
             return CapsuleFeatureStatus.Unsupported;
@@ -50,10 +54,10 @@ internal static class SupportNeighborhoodCurved
         {
             ref var child = ref installed.Children[i];
             if (!Curved(child.ShapeIndex)) continue;
-            if (!CapsuleFeatureGeometry.ProveInstalledPose(child.LocalPose)) return CapsuleFeatureStatus.Unsupported;
+            if (!InstalledPoseOperator.TryCreateSupport(child.LocalPose, out _)) return CapsuleFeatureStatus.Unsupported;
             // Exactly the pinned backend's composition, including its represented rounding.
             Compound.GetWorldPose(child.LocalPose, pose, out RigidPose worldPose);
-            if (!InstalledPoseOperations.ProveComposition(child.LocalPose, pose, worldPose))
+            if (!InstalledPoseOperations.ProveSupportComposition(child.LocalPose, pose, worldPose))
                 return CapsuleFeatureStatus.Unsupported;
             CapsuleFeatureStatus status = Leaf(simulation, child.ShapeIndex, worldPose, i, leaves);
             if (status != CapsuleFeatureStatus.Complete) return status;
@@ -61,12 +65,11 @@ internal static class SupportNeighborhoodCurved
         return CapsuleFeatureStatus.Complete;
     }
 
-    // The axis is the normalized enclosure of the installed operator's Y column, which holds both the real
-    // quaternion polynomial and the represented maps. Curved sizes retain their independent 64 m domain.
+    // Both doors admit the leaf pose through the support factory. Curved sizes retain their independent 64 m domain.
     internal static CapsuleFeatureStatus Leaf(Simulation simulation, TypedIndex index, in RigidPose pose, int leafId,
         List<SupportCurvedLeaf> leaves)
     {
-        if (!InstalledPoseOperator.TryCreate(pose, out InstalledPoseOperator transform))
+        if (!InstalledPoseOperator.TryCreateSupport(pose, out InstalledPoseOperator transform))
             return CapsuleFeatureStatus.Unsupported;
         SupportCurvedShape shape;
         float radius, half;
@@ -98,15 +101,19 @@ internal static class SupportNeighborhoodCurved
     internal static CapsuleFeatureStatus Leaf(SupportCurvedShape shape, float radius, float half,
         in RigidPose pose, int leafId, List<SupportCurvedLeaf> leaves)
     {
-        if (!InstalledPoseOperator.TryCreate(pose, out InstalledPoseOperator transform))
+        if (!InstalledPoseOperator.TryCreateSupport(pose, out InstalledPoseOperator transform))
             return CapsuleFeatureStatus.Unsupported;
         return Leaf(shape, radius, half, pose, leafId, transform, leaves);
     }
 
+    // The support operator's Y column is the represented point. The axis is the outward enclosure of its exact
+    // normalization, and Across derives from that axis, so neither reads a second transform.
     static CapsuleFeatureStatus Leaf(SupportCurvedShape shape, float radius, float half, in RigidPose pose,
         int leafId, in InstalledPoseOperator transform, List<SupportCurvedLeaf> leaves)
     {
-        GeometryVector axis = GeometryVectorOperations.Normalize(transform.Y.Bounds);
+        if (!RepresentedColumn(transform.Y, transform.RepresentedY, out Vector3 column))
+            throw new InvalidOperationException("Curved support requires an exact represented source column.");
+        GeometryVector axis = GeometryVectorOperations.Normalize(FeaturePoint.Exact(column).Bounds);
         if (!axis.IsResolved) return CapsuleFeatureStatus.Unsupported;
         GeometryInterval one = GeometryInterval.Exact(1);
         GeometryInterval xy = Negate(axis.X.Multiply(axis.Y)), xz = Negate(axis.X.Multiply(axis.Z));
@@ -116,8 +123,25 @@ internal static class SupportNeighborhoodCurved
         var acrossZ = new GeometryVector(xz, yz, one.Subtract(axis.Z.Square()));
         if (!acrossX.IsResolved || !acrossY.IsResolved || !acrossZ.IsResolved) return CapsuleFeatureStatus.Unsupported;
         leaves.Add(new(leafId, shape, FeaturePoint.Exact(pose.Position).Bounds, axis, radius, half, acrossX, acrossY,
-            acrossZ, transform.Y));
+            acrossZ, column));
         return CapsuleFeatureStatus.Complete;
+    }
+
+    static bool RepresentedColumn(FeaturePoint point, FeaturePoint represented, out Vector3 column)
+    {
+        column = default;
+        if (!Represented(point.X, represented.X, out float x) || !Represented(point.Y, represented.Y, out float y) ||
+            !Represented(point.Z, represented.Z, out float z)) return false;
+        column = new(x, y, z);
+        return true;
+    }
+
+    // No interval midpoint or inexact value is cast. Signed zeros keep their bits.
+    static bool Represented(FeatureNumber value, FeatureNumber represented, out float component)
+    {
+        component = (float)value.Value;
+        return value.IsExact && represented.IsExact && component == value.Value &&
+            BitConverter.DoubleToInt64Bits(value.Value) == BitConverter.DoubleToInt64Bits(represented.Value);
     }
 
     static GeometryInterval Negate(GeometryInterval value) =>
@@ -168,7 +192,31 @@ internal sealed class SupportTangentKernel
 
     /// <summary>Positive with the published element when it is a member, Negative when it is not, and Unresolved
     /// when the bounded arithmetic failed.</summary>
-    internal GeometrySign Measure(StaticHandle owner, in SupportCurvedLeaf leaf, int part, out SupportElement element)
+    internal GeometrySign Measure(StaticHandle owner, in SupportCurvedLeaf leaf, int part, out SupportElement element) =>
+        Measure(owner, leaf, part, false, out element);
+
+    /// <summary>The verdict <see cref="Measure(StaticHandle, in SupportCurvedLeaf, int, out SupportElement)"/>
+    /// returns, without its element. Bisection stops as soon as the kept spans certify that verdict, and otherwise
+    /// runs to full resolution. Under <see cref="SupportReferenceEvaluation"/> the full kernel runs unchanged.
+    /// <para>The certificate rests on one property. Inside <see cref="Domain"/>, every operation of
+    /// <see cref="Evaluate"/> is inclusion isotone in its height operand and refuses only a divisor interval that holds
+    /// zero, so a narrower height span's distance, height, normal and witness are resolved wherever its ancestor's are,
+    /// and lie inside them. Every later span descends from a kept span. Distances are always resolved there, so no later
+    /// span or axis point refuses and the separation stays resolved. Pruning keeps every span while the root's bound is
+    /// the reached bound, and otherwise keeps the span holding the axis point whose bound it is, so the kept set never
+    /// empties. The only exits left to the full run are Negative and Positive, and a refused publication on the way to
+    /// Positive.</para>
+    /// <para>Negative: every kept height lies certainly below the band's lower edge, so every later height does too, the
+    /// front check fails, and every remaining exit of the full run is Negative.</para>
+    /// <para>Positive: the reached bound is within the band, and every later lowest distance lies at or below it, so no
+    /// band check fires. Every kept height is at or above the band's lower edge, so every final span is in front. Every kept
+    /// normal and witness is resolved inside the domain, so the final hulls are resolved inside it too and publish
+    /// resolved.</para></summary>
+    internal GeometrySign MeasureSign(StaticHandle owner, in SupportCurvedLeaf leaf, int part) =>
+        Measure(owner, leaf, part, !SupportReferenceEvaluation.Active && Bounded(leaf), out _);
+
+    GeometrySign Measure(StaticHandle owner, in SupportCurvedLeaf leaf, int part, bool certify,
+        out SupportElement element)
     {
         SupportQueryDiagnostics.Record(SupportQueryCounter.Extrema);
         element = default;
@@ -187,6 +235,7 @@ internal sealed class SupportTangentKernel
             Prune(upper);
             if (_spans.Count == 0) return GeometrySign.Unresolved;
             if (GeometryInterval.Exact(Lowest()).Subtract(_radius).Lower > _band) return GeometrySign.Negative;
+            if (certify && Certified(upper, out GeometrySign verdict)) return verdict;
             if (depth == MaximumDepth || _spans.Count * 2 > MaximumSpans || Narrow()) break;
             _next.Clear();
             foreach (Span span in _spans)
@@ -231,6 +280,38 @@ internal sealed class SupportTangentKernel
         return GeometrySign.Positive;
     }
 
+    // The verdict the full run reaches from the kept spans and the reached bound, when they certify it.
+    bool Certified(double upper, out GeometrySign verdict)
+    {
+        bool negative = true;
+        GeometryInterval reached = GeometryInterval.Exact(upper).Subtract(_radius);
+        bool positive = reached.IsResolved && reached.Lower <= _band;
+        foreach (Span span in _spans)
+        {
+            Sample sample = span.Sample;
+            negative &= sample.Height.IsResolved && sample.Height.Upper < -_band;
+            positive &= sample.Height.IsResolved && sample.Height.Lower >= -_band && Within(sample.Normal) &&
+                Within(sample.Witness);
+        }
+        verdict = negative ? GeometrySign.Negative : positive ? GeometrySign.Positive : GeometrySign.Unresolved;
+        return negative || positive;
+    }
+
+    // A bound far below overflow for every intermediate of Evaluate. With every input inside it, including the axis and
+    // across rows, offsets stay below 2^21, dot products below 2^43, squares and their sums below 2^89, and a quotient by
+    // a positive length lower bound, at least about 2^-538, scaled by a radius stays below 2^601. Unit axes keep the
+    // squares far lower. The Positive certificate bounds the published normal and witness on their own.
+    const double Domain = 1 << 20;
+
+    bool Bounded(in SupportCurvedLeaf leaf) => Within(_x) && Within(_z) &&
+        Within(GeometryInterval.Enclose(_low, _high)) && Within(_radius) && Within(leaf.Centre) &&
+        Within(leaf.Axis) && Within(leaf.AcrossX) && Within(leaf.AcrossY) && Within(leaf.AcrossZ) &&
+        Within(GeometryInterval.Exact(leaf.Radius)) && Within(GeometryInterval.Exact(leaf.HalfLength));
+
+    static bool Within(GeometryVector value) => Within(value.X) && Within(value.Y) && Within(value.Z);
+
+    static bool Within(GeometryInterval value) => value.IsResolved && value.Lower >= -Domain && value.Upper <= Domain;
+
     // A height certainly on the axis: its distance bound is reached.
     bool Reach(in SupportCurvedLeaf leaf, int part, double height, ref double upper)
     {
@@ -266,6 +347,7 @@ internal sealed class SupportTangentKernel
     /// distance, the axis point's signed height above the tangent plane there, the closest point and its normal.</summary>
     Sample Evaluate(in SupportCurvedLeaf leaf, int part, GeometryInterval height)
     {
+        SupportQueryDiagnostics.Record(SupportQueryCounter.TangentSamples);
         var point = new GeometryVector(_x, height, _z);
         GeometryVector offset = Subtract(point, leaf.Centre);
         if (leaf.Shape == SupportCurvedShape.Sphere) return Round(leaf.Centre, offset, leaf.Radius);

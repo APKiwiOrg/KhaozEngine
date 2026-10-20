@@ -43,6 +43,8 @@
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />
     <ProjectReference Include="../KhaozEngine.Attachments.Render3D/KhaozEngine.Attachments.Render3D.csproj" />
+    <!-- Gpu/FrameHistoryRecorderGpuTests.cs records a clip and a screenshot through a real device. -->
+    <ProjectReference Include="../KhaozEngine.BugReports.Client/KhaozEngine.BugReports.Client.csproj" />
     <ProjectReference Include="../KhaozEngine.Collision/KhaozEngine.Collision.csproj" />
     <!-- Gpu/GpuTelemetryTests.cs names TelemetrySessionInfo, the telemetry session header's options type. -->
     <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
@@ -105,8 +107,7 @@
     <ProjectReference Include="../KhaozEngine.TestSupport.Gpu/KhaozEngine.TestSupport.Gpu.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="../test-shared/AllocationRegion.cs" Link="Shared/AllocationRegion.cs" />
-    <Compile Include="../test-shared/AllocationMeasurement.cs" Link="Shared/AllocationMeasurement.cs" />
     <Compile Include="../test-shared/SkinnedAttachmentGlbFixture.cs" Link="Shared/SkinnedAttachmentGlbFixture.cs" />
   </ItemGroup>
+  <Import Project="../test-shared/AllocationMeasurement.props" />
 </Project>

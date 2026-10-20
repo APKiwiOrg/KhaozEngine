@@ -38,6 +38,9 @@ dotnet run --project KhaozEngine.Benchmarks -c Release -- --gate
 
 # replication-hotpath jobs-1 matrix only (runs alone, no cell/entities/ownership-lookup sections)
 dotnet run --project KhaozEngine.Benchmarks -c Release -- --replication
+
+# one 960x540 quality 70 JpegWriter encode, mean and p95 over 200 runs (runs alone)
+dotnet run --project KhaozEngine.Benchmarks -c Release -- --jpeg
 ```
 
 Always run in `-c Release`. Debug numbers are not representative.

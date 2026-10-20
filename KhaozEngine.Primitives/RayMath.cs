@@ -15,6 +15,10 @@ public static class RayMath
     /// <paramref name="direction"/> always misses (a NaN comparison is false on both sides, so without an
     /// explicit check it would silently fall through every slab test as an always-pass hit instead).</summary>
     public static bool IntersectAabb(Vector3 origin, Vector3 direction, Vector3 min, Vector3 max, out float tNear)
+        => IntersectSlabs(origin, direction, min, max, out tNear, out _);
+
+    static bool IntersectSlabs(Vector3 origin, Vector3 direction, Vector3 min, Vector3 max,
+        out float tNear, out float tFar)
     {
         float near = float.NegativeInfinity;
         float far = float.PositiveInfinity;
@@ -23,17 +27,18 @@ public static class RayMath
             !SlabAxis(origin.Y, direction.Y, min.Y, max.Y, ref near, ref far) ||
             !SlabAxis(origin.Z, direction.Z, min.Z, max.Z, ref near, ref far))
         {
-            tNear = 0f;
+            tNear = tFar = 0f;
             return false;
         }
 
         if (far < 0f || near > far)
         {
-            tNear = 0f;
+            tNear = tFar = 0f;
             return false;
         }
 
         tNear = near > 0f ? near : 0f;
+        tFar = far;
         return true;
     }
 
@@ -47,6 +52,13 @@ public static class RayMath
     /// calling <see cref="IntersectAabb"/> with the anchor subtracted out.</summary>
     public static bool IntersectObbY(
         Vector3 origin, Vector3 direction, Vector3 center, float yaw, Vector3 min, Vector3 max, out float tNear)
+        => IntersectObbY(origin, direction, center, yaw, min, max, out tNear, out _);
+
+    /// <summary>The same oriented-box test, also returning the exit in the ray's parameter units.
+    /// A stationary ray inside the box has entry 0 and exit positive infinity.</summary>
+    public static bool IntersectObbY(
+        Vector3 origin, Vector3 direction, Vector3 center, float yaw, Vector3 min, Vector3 max,
+        out float tNear, out float tFar)
     {
         // Rotating the ray by -yaw is the same picking answer as rotating the box by +yaw, and it keeps the
         // actual intersection on the cheap axis-aligned path.
@@ -56,7 +68,7 @@ public static class RayMath
         var localOrigin = new Vector3(ro.X * cos + ro.Z * sin, ro.Y, -ro.X * sin + ro.Z * cos);
         var localDirection = new Vector3(
             direction.X * cos + direction.Z * sin, direction.Y, -direction.X * sin + direction.Z * cos);
-        return IntersectAabb(localOrigin, localDirection, min, max, out tNear);
+        return IntersectSlabs(localOrigin, localDirection, min, max, out tNear, out tFar);
     }
 
     private static bool SlabAxis(float origin, float direction, float min, float max, ref float near, ref float far)

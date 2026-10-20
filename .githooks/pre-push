@@ -10,8 +10,10 @@ cat > "$refs_file"
 # Shared release-tag standard (sourced so pre-push and scripts/tag-release.sh agree on one rule).
 if [ -f scripts/tag-standard.sh ]; then . scripts/tag-standard.sh; have_tagstd=1; else have_tagstd=0; fi
 
+main_push=0
 while read -r local_ref local_sha remote_ref remote_sha; do
   [ -z "$local_ref" ] && continue
+  [ "$remote_ref" = refs/heads/main ] && main_push=1
   [ "$local_ref" = "(delete)" ] && continue
   # all-zero local sha => ref deletion; allow it
   case "$local_sha" in *[!0]*) ;; *) continue ;; esac
@@ -93,6 +95,14 @@ while read -r local_ref local_sha remote_ref remote_sha; do
       esac ;;
   esac
 done < "$refs_file"
+
+# RELEASE LOCK (issue #1439). While another session holds a fresh lock from scripts/release-lock.sh,
+# refuse any push that updates the remote main, whatever the local ref. Tags and other branches pass.
+# A subshell, so a broken library fails open. Only its refusal code 3 refuses.
+if [ "$main_push" = 1 ] && [ -f scripts/release-lock-standard.sh ]; then
+  ( . scripts/release-lock-standard.sh && { rl_main_guard pre-push || exit 3; } )
+  [ $? -eq 3 ] && fail=1
+fi
 
 if [ -f scripts/check-doc-versions.sh ]; then
   if ! bash scripts/check-doc-versions.sh >/dev/null 2>&1; then

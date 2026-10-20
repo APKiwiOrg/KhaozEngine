@@ -134,6 +134,8 @@ namespace KhaozEngine.Render3D
         {
             _packedPointSlots.Clear();
             _pointShadows?.EnsureFaceCapacity(slotCount);
+            _pointShadows?.SetInteriorCut(_model.InteriorResources.Texture,
+                InteriorCutUniforms.From(InteriorCut, _currentFrameView.RenderOrigin));
         }
 
         /// <summary>

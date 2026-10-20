@@ -127,8 +127,10 @@ recorder, synthetic guard and private inventory runs.
 `ShippedBuildingInputs.Read` and `ShippedBuildingComparison.Compare` are test-only. The shipped building
 entry runs through the existing private entry boundary. It has no discovery-time reads. Implementers select
 only `ShippedBuildingInputGuardTests` and `PrivateOracleGuardTests`, never the shipped building fact.
-The architecture guard pins exactly five direct engine references. The harness remains outside the
-solution and public CI and is not packable.
+The architecture guard pins exactly seven direct engine references, MapDoc, MapDoc.Physics, Physics.Bepu,
+TileWorld, TileWorld.Netcode, TileWorld.Physics and the test-only TileWorld.Render3D that the
+foliage comparison samples through. The harness remains outside the solution and public CI and is
+not packable.
 
 The controller freezes the source and creates a fresh extraction and its provenance outside git. Nothing here searches a game
 checkout, infers building membership, restamps a nominal definition or repairs incomplete extraction data.
@@ -172,7 +174,11 @@ in provenance `paths` with its SHA-256, include those entries in the existing ag
 the resulting generator digest with the private acceptance evidence. Private script contents never enter
 this public repository. Regenerate and re-attest output after any source, manifest or generator change.
 
-`nativeDocumentPath` names an attested monolithic format-7 MapDoc document. The generator uses the released
+`nativeDocumentPath` names an attested monolithic MapDoc document. Accepted format-7 R5 building scaffolds
+and format-8 building correspondences retained by R6 marker extractions still load through the pure
+version-only migrations to the current format 9. The reader checks the loaded current format. Do not
+regenerate accepted R5 or R6 inputs merely to change the format number. Accepted R6 marker scaffolds
+declare format 8 and new scaffolds declare the current format. The generator uses the released
 `MapDocumentFile`, payload-1 prefab files and native manifest format. It must declare resolver 2,
 `AuthoredBindingsV2`, its native asset roots, valid bounds and complete surfaces and topology. Its active
 packed prefab instances must exactly match `buildings`. Preserve instance poses, complete bindings and
@@ -374,3 +380,307 @@ The existing four-variable contract and secure report lifecycle are unchanged. A
 0700 parent outside git and an absent path, created exclusively at 0600. The entry sanitizes exceptions and
 final failure text. Only synthetic guard fixtures may expose their invented detail while diagnosing a
 failed public guard. Actual source IDs, geometry, inventory, digests and report contents remain private.
+
+## Marker extraction contract
+
+`ShippedMarkerComparisonTests` uses `PrivateOracleEntry.Run`. Discovery and static initialization read no
+process input. Implementers run only `ShippedMarkerInputGuardTests`, `PrivateOracleGuardTests` and
+`ShippedBuildingInputGuardTests`, with explicit filters. Never run this project unfiltered.
+
+The four input variables and their order stay unchanged. They are `KHAOZ_R2_SHIPPED_SOURCE`,
+`KHAOZ_R2_ORACLE_PROVENANCE`, `KHAOZ_R2_ORACLE_PROVENANCE_SHA256` and `KHAOZ_R2_ORACLE_REPORT`.
+Use every provenance field and the aggregate rule defined above. Freeze current source, including its
+full commit and engine pin. Historical inventories are not expectations for this comparison.
+
+The extraction attests exactly one `world.json`, all listed regions and catalogs, the source prefab
+definitions needed for ownership, the retained generator and all imported helpers, both manifests below,
+the monolithic native scaffold at format 8 or the current format, and every native root manifest and
+transitive resource. Retain the generator in private source git before generating. Do not hand-edit
+scaffold output. Regenerate and re-attest after changing any source, policy, script or dependency.
+Source-support-only scaffolds need no invented physical shell. Every resource advertised by a declared
+native root must still be present.
+
+All paths below are attested extraction-relative paths. Containment, symlink refusal, verified byte
+capture and post-loader rechecks apply. There is no checkout search or fallback. Native reloads use
+captured bytes even if original files change later. Temporary tiled reloads stay under the secure report
+parent and are removed after comparison. The report parent must exist at 0700 outside git, with an absent
+report path. The boundary creates that report exclusively at 0600 and sanitizes every public failure.
+
+### Marker comparison schema 1
+
+Every listed property is required, including nullable properties. Objects are closed, property names
+are case-sensitive, and duplicate or case-variant members refuse. Unknown rules, missing or extra
+correspondences and duplicate source names or destination IDs refuse. Arrays use authored order where
+order matters. These are field shapes, with invented examples only.
+
+The provenance `comparison` object has exactly these fields:
+
+```json
+{
+  "schemaVersion": 1,
+  "nativeDocumentPath": "native.json",
+  "roleManifestPath": "roles.json",
+  "markerManifestPath": "markers.json",
+  "expectations": {
+    "total": 6, "playerStart": 1, "spawn": 2, "landmark": 1, "label": 2,
+    "negativeX": 1, "supportBound": 6, "enabled": 5
+  }
+}
+```
+
+Expectations are nonnegative integer counts. `total` is checked against the independent source region
+inventory, not the number of generated native rows. Other counts come from exhaustive source-to-role
+correspondences and standing points. Disabled markers remain in the inventory.
+
+The source world must use tile size 1, and every source marker must lie on plane 0. The reader refuses
+any other tile size, and any marker on another plane, because the server ground and walk surfaces
+describe plane 0 only. At tile size 1 a standing point's world X is `TileWorldSpace.WorldX(tileX, 1)`,
+which equals tile X, the source integer X plus `offsetX`. Its world Z is `TileWorldSpace.WorldZ(tileZ, 1)`,
+which equals minus tile Z, the source integer Z plus `offsetZ`.
+
+The role manifest has exactly `schemaVersion`, `generator`, `sourcePrefabs`, `buildingManifestPath`,
+`supports` and `markers`. `schemaVersion` is 1. `generator` has exactly `path` and `helpers`. Its path is
+`generator/build-scaffold.py`, and `helpers` lists unique attested helper paths. `sourcePrefabs` lists
+unique attested `TilePrefabFile` definition paths. `buildingManifestPath` is null when no R5 semantic
+correspondence is retained. Otherwise it names an attested, complete R5 building comparison object with
+the building contract above, which the released building reader validates against the same extraction.
+
+Each `supports` row has exactly these fields:
+
+```json
+{
+  "name": "ground-owner",
+  "binding": { "kind": "Surface", "surfaceId": "plane-0" },
+  "source": { "kind": "terrain", "plane": 0, "objectId": null }
+}
+```
+
+Support names are unique and every declared support is used. A Surface binding has exactly `kind` and
+`surfaceId`. A Space binding has exactly `kind`, `spaceId`, `referenceY`, `searchBelow` and `searchAbove`.
+The kind is `Surface` or `Space`, IDs are nonempty strings, reference Y is finite, and the search extents
+are finite, nonnegative and at most 1000000 metres. Null or foreign binding members refuse. These are
+world-owner bindings in the Task 1 shape, including when authored markers expand from local bindings.
+`source.kind` is `terrain` or `object`. Terrain uses null `objectId`. Object uses the positive original
+ID of exactly one source object, whose catalog archetype must declare standing surfaces on the named
+plane. An absent or nonpositive ID refuses.
+
+Each role `markers` row has exactly these fields:
+
+```json
+{
+  "sourceName": "arrival", "id": "arrival-id", "role": "entry-role",
+  "projection": "player-start", "offsetX": 0.5, "offsetZ": 0.5,
+  "supportName": "ground-owner", "heightMode": "Support", "heightRule": "terrain",
+  "yaw": 0.371, "enabled": true, "archetype": null
+}
+```
+
+`role` is caller vocabulary. `projection` is exactly `player-start`, `spawn`, `landmark` or `label` for
+category counts. Offsets are finite tile-unit offsets from the recorded source tile, including footprint
+and role policy. Yaw is finite radians. Enabled is a Boolean. Archetype is null for tag-driven identity,
+otherwise a nonempty authored string. There are no inferred roles, offsets, yaws, enabled flags,
+archetypes, bindings or height rules.
+
+`heightRule` is exactly `terrain` or `standing` and names the authoritative server rule. `terrain` is the
+`Ground` sampler of the released `TileWorldColliders`, built from the source terrain alone. It reads the
+drawn tile triangles. `standing` is the higher of that ground and the released `TileWalkSurfaces.TryHeightAt`
+on the marker's plane. The server stands bodies on the collider ground plus walk surfaces. The bilinear
+`TileDocumentGroundHeight` is the client presenter's drawing rule. It differs from the drawn triangles on a
+twisted tile, so it is not the comparison rule.
+
+`heightMode` is `Support` for every actual private import. The shipped entry calls `RequireBoundImports`
+before comparison and refuses any other mode. `Explicit` exists only to exercise comparator diagnostics
+with invented synthetic inputs. It never relaxes the private import policy.
+
+The marker manifest has exactly `schemaVersion` (1) and `markers`. Each row has exactly these fields:
+
+```json
+{
+  "sourceName": "arrival", "x": -2, "z": 1, "plane": 0,
+  "regionX": -1, "regionZ": 0, "supportName": "ground-owner",
+  "spaceId": null, "parents": []
+}
+```
+
+Source coordinates, signed region ownership and plane must equal the source record. The reader verifies
+the world's marker index against every region marker, including exact ordered tags. Each source name
+occurs once in both manifests. `supportName` must agree with the role manifest and name a support on
+that plane. `spaceId` is null for Outside or the exact occupied world-space ID. `parents` is its ordered
+parent chain without duplicates. Authored room, exterior, parent, topology and support dependencies must
+be present in the scaffold. A binding must never reassign a home to an owner excluded by game policy.
+
+### Marker comparison evidence
+
+The comparator checks exhaustive identity, name, tag sequence, role, enabled state, archetype, standing
+XZ, height, yaw, binding, value provenance, witness-bearing support, occupied owner and parent chain.
+It also checks role, tag, typed projection and half-open rectangle queries, including disabled rows and
+negative X. The engine filters exact native positions, so each head's rectangle edges and expected set
+come from that head's own native points. A native point inside the source tolerance can still lie a
+quantum below its source float, as a prefab-expanded marker can. Source fidelity stays the separate
+position check. Object support is queried separately with only the named original owner, through the
+released source sampler. This prevents another object's higher floor from concealing a wrong owner.
+
+All XYZ and height components use 0.00001 metre tolerance. Wrapped yaw uses
+`Math.IEEERemainder(native - source, 2 * Math.PI)` with 0.000001 radian tolerance. Identity, names,
+roles, archetypes, enabled flags, bindings and tag order compare exactly. Tolerances are fixed.
+
+Four fresh heads, two monolithic and two tiled, have matching native TileSize, equal identities and
+annotation results, and independent mutable state. Every head is checked against source expectations.
+Label standing-point offsets are recorded as deferred R11 acceptance. They are not a claim that the
+old corner convention was preserved exactly. Generator output is a comparison scaffold, not the R11
+importer or game acceptance.
+
+Private reports retain category counts and detailed failures. Public output contains sanitized pass or
+fail, fixed failure categories and the secure report reference only. No private source inventory,
+coordinates, tags, geometry or digest belongs in engine git, public CI or logs.
+
+## Foliage extraction contract
+
+`ShippedFoliageComparisonTests.ShippedFoliage_PreservesEveryByteCandidatePoseAndDecision` uses
+`PrivateOracleEntry.Run`. Discovery and static initialization read no process input, and the fact refuses
+without its four inputs. Implementers run only `ShippedFoliageInputGuardTests`, `PrivateOracleGuardTests`,
+`ShippedBuildingInputGuardTests` and `ShippedMarkerInputGuardTests`, with explicit filters. Never run this
+project unfiltered, and never set a private input variable for a public run.
+
+The seventh direct reference, TileWorld.Render3D, is test-only. Expected rows come from the released legacy
+sampler, `TileFoliageSurface.SampleDetailed`, through the Task 3 channel kernel
+`GroundCoverDistribution.GenerateTraced`. Its released wrapper `Sample` delegates without arithmetic
+change, and the Render.Tests literals frozen at f1cd6656b stay the preservation oracle. Headless
+construction of the sampler starts no window or GPU state. The valid public guard checks that no window
+or GPU backend assembly loads. Actual rows come only from the native `MapFoliageDistribution`. No native
+adapter writes an expected row.
+
+### Foliage closure
+
+The extraction attests exactly one `world.json`, every listed region and catalog, the retained
+`generator/build-scaffold.py` and every imported helper, the correspondence manifest, the monolithic
+current-format native scaffold, the complete tiled store with its foliage region packs, and every native
+root manifest and transitive resource. Retain the generator and helpers in private git first. Two fresh
+extractions must be byte identical without hand edits. The generator self-check compares the original
+footprint, door, ordinal roof and normal rules before attestation. A discrepancy stops for a controller
+ruling on the rule, never a tolerance. The provenance records the full source commit, an explicit or empty
+tag, the engine pin and the generator commit. There is no checkout search, fallback or unattested helper.
+
+The reader verifies the provenance digest before parsing, captures every attested byte once and rechecks
+the extraction after the released world, catalog and closure loaders. Each tiled head is reloaded from
+its own private copy of the captured store bytes under the secure report parent, verified as a whole
+store and removed before use. A harness-only hook between the released loaders and that recheck lets a
+public guard prove the recheck refuses a change the loaders could have observed. Private source tile size
+1 is what the released terrain conversion requires. It is not a native engine limit.
+
+### Foliage comparison schema 1
+
+Every listed property is required, including nullable ones. Objects are closed, names are case-sensitive,
+duplicate or case-variant members refuse, and every path is an attested extraction-relative path. Field
+shapes only, with invented examples.
+
+```json
+{
+  "schemaVersion": 1,
+  "nativeDocumentPath": "native.json",
+  "nativeTiledManifestPath": "native-tiled/map.json",
+  "foliageManifestPath": "foliage.json",
+  "buildingManifestPath": null,
+  "expectations": {
+    "layers": 2, "rasterBytes": 1045, "storedChunks": 3, "sourceOwners": 9,
+    "models": 3, "ownedCandidates": 32768, "accepted": 4096, "rejected": 28672
+  }
+}
+```
+
+Expectations are nonnegative integers counted from the independently enumerated source over the compared
+regions: every source region, then every absent region that a layer raster's closed sample rectangle
+reaches. `rasterBytes` sums width times height over the source layers. `storedChunks` counts the 32 by 32
+chunks holding a nonzero source byte, which is exactly what every native head advertises. `sourceOwners`
+counts every source object with solid collision, a roof archetype or a door tag. `models` sums the source
+layers' models. Owned, accepted and rejected candidates come from the actual legacy sampler, never from
+native results. `buildingManifestPath` is required and must be null. Private foliage bindings are Surface
+only, so no clearing target depends on the R5 room and building correspondence.
+
+The correspondence manifest has exactly `schemaVersion` (1), `generator`, `layers` and `owners`.
+
+```json
+{
+  "schemaVersion": 1,
+  "generator": { "path": "generator/build-scaffold.py", "helpers": ["generator/helper.py"] },
+  "layers": [{
+    "sourceLayerId": "source-layer", "nativeLayerId": "cover-a",
+    "support": { "kind": "Surface", "surfaceId": "plane-0" },
+    "compatibilitySupports": [
+      { "sourcePlane": 0, "nativeSurfaceId": "plane-0" }, { "sourcePlane": 1, "nativeSurfaceId": "plane-1" }
+    ],
+    "models": [{ "sourceArchetypeId": "reed-a", "nativeAssetId": "native-reed-a" }],
+    "materials": [{ "sourceMaterialId": 1, "nativeResourceId": "grass-material", "kind": "Ordinary" }],
+    "ruleIds": ["cover-solid-tree"], "maskIds": [], "ownerIds": ["1"],
+    "candidateConvention": "world-lattice-v1"
+  }],
+  "owners": [{
+    "sourceObjectId": "1", "sourcePlane": 0, "sourceArchetypeId": "tree",
+    "nativeOwner": { "scope": "World", "kind": "Placement", "id": "owner-1" },
+    "seatedSupport": { "kind": "Surface", "surfaceId": "plane-0" },
+    "targets": [{ "nativeLayerId": "cover-a", "support": { "kind": "Surface", "surfaceId": "plane-0" } }],
+    "ruleIds": ["cover-solid-tree"], "maskIds": []
+  }]
+}
+```
+
+Every binding is the closed Surface shape. A Space binding or any other private import shape refuses.
+Layers correspond bijectively with the source layers and the native layers. Each layer's support is the
+compatibility row of its source plane. The native ordinal table must hold exactly one row per
+compatibility row, with the source plane as its ordinal. The reader never trusts a table ordinal as an
+expected source value. It checks each row's surface independently: a metre and centimetre SupportFloor
+with one patch per source region whose plane is authored, each with the semantic patch digest of the
+released `LegacyOracleConverter.ToNative` conversion of that region and plane.
+Models are the source layer's ordered archetypes and the native layer's ordered assets. Materials ascend by
+source ID, agree in kind with the source catalog, name Material resources, equal the native layer's table
+and cover every visible material on the layer's plane. `ruleIds` and `maskIds` are exactly the native
+layer's rules and masks. `ownerIds` are exactly the owners whose native placement a layer rule matches or
+whose mask the layer holds, and each names an owner row. Obsolete rule ordering fields refuse as unknown
+members.
+
+Owners correspond bijectively with source objects that have solid collision, a roof archetype or a door
+tag, including transformed footprint centres. Each imports as a world Placement. Its seated support is the
+compatibility row of the original object's plane in every layer that lists it. A support-bound placement's
+resolved seat must name that surface. An explicit-height owner needs exactly one Surface owner support
+correspondence per listing layer, naming that surface, and none elsewhere. Every matched rule or mask must
+match the original object's own property, solid for Solid, roof for RoofAbove and a door tag for Door. A
+Solid or RoofAbove footprint transformed through the owner's effective pose must cover exactly the original
+tiles. A Door clears around the original footprint centre. Per owner and layer, the reader recomputes
+applicability twice. From the source, Solid and Door apply on the layer's own plane and a roof only from a
+strictly higher plane. Natively, an enabled matched rule or mask applies by equal seated and layer ordinals
+for Solid and Door and a strictly higher seated ordinal for RoofAbove. Any difference refuses. `targets`
+lists exactly the layers the source owner clears, so a higher roof lists only the layers below it, and a
+same-tag peer on the layer's own plane lists none. No native placement a layer rule matches may be absent
+from the owners.
+
+### Foliage comparison evidence
+
+Four heads, a client and a server of each storage form, each capture one full generation context that
+every region and chunk call reuses. Settings and every raster byte compare before any sample work, and each
+head advertises exactly the nonzero source chunks. Each compared region is then compared over its released
+half-open area. In an absent source region the released build generates nothing. Inside the raster native
+decides its domain before its raster there, so those rows expect OutsideDomain, and off the raster they
+expect RasterZero. A capacity refusal streams four smaller half-open rectangles, which own exactly the same
+candidates, and off-raster rows compare as zero raster. Every owned candidate address has exactly one row
+on each side.
+
+A row compares its seven channel values, the native reason the legacy stage maps to, its layer and its
+support owner exactly. In the Task 7 decide order only a refused point has no support owner, so every
+compared row, off-raster RasterZero and OutsideDomain included, names the bound Surface. An accepted pair
+also compares its stable address and versioned key, the mapped model, the visible
+material and its resource correspondence, and the model's material references. Finite checks run before
+any tolerance. Position compares within 0.00001 m per component, root offset included. Orientation compares
+the full surface-aligned rotation angle `2*acos(min(1,abs(dot(qSource,qNative))))` within 0.000001 radians,
+normalized and evaluated in binary64 for comparison only. Scale, from the trace's scale channel, and
+thinning rank compare exact binary32 bits. Every head's row stream digests to the same value.
+
+Fixed failure categories are `foliage-context`, `foliage-settings`, `foliage-byte`, `foliage-chunk`,
+`foliage-query`, `foliage-candidate`, `foliage-channel`, `foliage-decision`, `foliage-missing-sample`,
+`foliage-extra-sample`, `foliage-key`, `foliage-model`, `foliage-material`, `foliage-nonfinite`,
+`foliage-position`, `foliage-orientation`, `foliage-scale`, `foliage-rank`, `foliage-head` and one
+`expectation-` category per expectation field. The private report holds one summary with layers, bytes,
+chunks, scanned and owned candidates, accepted and rejected rows, each rejection stage, model choices,
+support owners, head matches and failure counts, then each failed category with at most 16 retained
+details. Successes stream as aggregates and the full candidate corpus is never retained. Public output is
+the sanitized category and report digest only. This is a comparison, neither R11 importer acceptance nor
+game adoption.

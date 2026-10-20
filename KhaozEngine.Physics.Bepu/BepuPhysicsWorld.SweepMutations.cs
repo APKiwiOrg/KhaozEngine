@@ -30,6 +30,7 @@ public sealed partial class BepuPhysicsWorld
                 if (!ObserveDynamicSweepBounds(dynamicId)) { complete = false; break; }
         }
         complete = complete && SweepRecordCountsMatch();
+        if (complete) _sweepSelection.PublishBounds();
         _sweepEvidence.CompleteMutation(token, _queryGeneration, complete);
     }
 }

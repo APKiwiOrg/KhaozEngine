@@ -29,7 +29,7 @@ internal sealed partial class TargetOutlineRenderer
     internal void EnqueueCoverage(in CoveragePulledDraw draw, int drawIndex, Matrix4x4 world,
         float alphaCutoff, float dissolve, bool complement, Vector3 origin)
     {
-        WriteDrawPayload(drawIndex, world, alphaCutoff, dissolve, complement, origin);
+        WriteDrawPayload(drawIndex, world, alphaCutoff, dissolve, complement, origin, false);
         _coveragePull.Pack((uint)drawIndex, draw);
         _queue.Add(new(QueuedGeometry.Coverage, null, null!, draw.CornerCount, GpuIndexFormat.UInt32,
             _coverageMaterials[drawIndex] ?? _defaultMaterialSet, drawIndex, -1, 0, 0, 0, draw));
@@ -92,7 +92,7 @@ internal sealed partial class TargetOutlineRenderer
         GpuIndexFormat format, IGpuResourceSet? material, int drawIndex, Matrix4x4 world,
         float alphaCutoff, float dissolve, bool complement, Vector3 origin, int baseVertex)
     {
-        WriteDrawPayload(drawIndex, world, alphaCutoff, dissolve, complement, origin);
+        WriteDrawPayload(drawIndex, world, alphaCutoff, dissolve, complement, origin, false);
         _queue.Add(new QueuedDraw(QueuedGeometry.Rigid, vertices, indices, indexCount, format,
             material ?? _defaultMaterialSet, drawIndex, -1, baseVertex, 0, 0));
     }

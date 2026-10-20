@@ -46,12 +46,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// list that was never ended.
     /// </para>
     /// </summary>
-    internal sealed partial class D3D11CommandRecorder<TEmitter> : IGpuCommandList
+    internal sealed partial class D3D11CommandRecorder<TEmitter> : IGpuCommandList, ID3D11SwapchainBindTracking
         where TEmitter : struct, ID3D11Emitter
     {
         TEmitter _emitter;
         bool _recording;
         bool _disposed;
+        bool _boundSwapchain;
 
         readonly D3D11FenceSubsystem? _timestampFences;
 
@@ -93,6 +94,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             _recording = true;
             IsSealed = false;
+            _boundSwapchain = false;
             _emitter.Begin();
         }
 
@@ -140,7 +142,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             RequireRecording();
             _emitter.SetFramebuffer(fb);
+            _boundSwapchain |= fb is D3D11SwapchainFramebuffer;
         }
+
+        /// <inheritdoc/>
+        public bool BoundSwapchainFramebuffer => _boundSwapchain;
 
         public void ClearColorTarget(uint index, Color rgba)
         {

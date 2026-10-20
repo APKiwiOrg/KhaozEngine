@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using KhaozEngine.MapDoc.Storage;
+using KhaozEngine.MapDoc.Foliage;
 
 namespace KhaozEngine.MapDoc;
 
@@ -65,15 +66,18 @@ public sealed class MapTileIndex
     /// canonicalizations under one label is permanently wrong rather than detectably wrong.</summary>
     public int SchemeVersion { get; }
 
-    /// <summary>True when any tile, surface directory page, index page or patch is unloaded. Every whole-document
+    /// <summary>True when any tile, surface page, patch or advertised foliage chunk is unloaded. Every whole-document
     /// writer and complete-document operation checks this unified flag to prevent a window dropping data.</summary>
-    public bool IsPartial => HasUnloadedTiles || Surfaces?.IsPartial == true;
+    public bool IsPartial => HasUnloadedTiles || Surfaces?.IsPartial == true || Foliage?.IsPartial == true;
 
     /// <summary>The tile-only residency flag, independent of surface completeness.</summary>
     public bool HasUnloadedTiles => LoadedCount < _entries.Length;
 
     /// <summary>Surface storage knowledge from the same manifest generation.</summary>
     public MapSurfaceStorageIndex? Surfaces { get; }
+
+    /// <summary>Immutable foliage storage from the same manifest generation.</summary>
+    public MapFoliageStorageIndex? Foliage { get; init; }
 
     /// <summary>The directory this index was read from, null for an index built in memory from a whole
     /// document. A partial document may only be written back here.</summary>

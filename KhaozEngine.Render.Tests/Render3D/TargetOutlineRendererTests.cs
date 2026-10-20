@@ -106,7 +106,7 @@ public sealed class TargetOutlineRendererTests
     }
 
     [Fact]
-    public void Rigid_and_skinned_mask_pipelines_disable_face_culling_and_reuse_fragments()
+    public void Rigid_and_skinned_mask_pipelines_disable_face_culling_and_keep_their_fragment_pairs()
     {
         using var device = new FakeGpuDevice();
         var factory = (FakeGpuResourceFactory)device.Factory;
@@ -129,7 +129,9 @@ public sealed class TargetOutlineRendererTests
 
         FakeGraphicsPipelineRequest[] masks = factory.GraphicsPipelines.Where(request =>
             request.FragmentGlsl == ShaderSources.TargetOutlineFullMaskFrag
-            || request.FragmentGlsl == ShaderSources.TargetOutlineVisibleMaskFrag).ToArray();
+            || request.FragmentGlsl == ShaderSources.TargetOutlineVisibleMaskFrag
+            || request.FragmentGlsl == ShaderSources.TargetOutlineRigidFullMaskFrag
+            || request.FragmentGlsl == ShaderSources.TargetOutlineRigidVisibleMaskFrag).ToArray();
         Assert.Equal(4, masks.Length);
         Assert.All(masks, request => Assert.Equal(GpuFaceCull.None, request.Description.Rasterizer.CullMode));
         Assert.Equal(2, masks.Count(request => request.VertexGlsl == ShaderSources.TargetOutlineMaskVert));

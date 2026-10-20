@@ -41,7 +41,11 @@ public sealed class TileFoliageSurface
     }
 
     /// <summary>Samples height, upward normal and final normalized density at world XZ.</summary>
-    public GroundCoverSample Sample(float worldX, float worldZ)
+    public GroundCoverSample Sample(float worldX, float worldZ) => SampleDetailed(worldX, worldZ).Sample;
+
+    /// <summary>Samples exactly as <see cref="Sample"/> and names the released rule stage that zeroed the density, with
+    /// the visible material the eligibility stages read. The stages are the released ones, in their released order.</summary>
+    public TileFoliageDecision SampleDetailed(float worldX, float worldZ)
     {
         if (!Finite(worldX) || !Finite(worldZ))
             throw new ArgumentException("Foliage surface coordinates must be finite.");
@@ -53,17 +57,24 @@ public sealed class TileFoliageSurface
         float fx = tileX - x;
         float fz = tileZ - z;
         GroundPoint ground = GroundAt(x, z, fx, fz);
-        if (density > 0f && TileAllowed(x, z, ground.Overlay))
+        TileFoliageRejection reason = TileFoliageRejection.ZeroRaster;
+        ushort visible = 0;
+        if (density > 0f && (reason = Eligibility(x, z, ground.Overlay, out visible)) == TileFoliageRejection.None)
         {
-            density *= DoorFactor(worldX, worldZ);
-            density *= EdgeFactor(tileX, tileZ, x, z);
+            float door = DoorFactor(worldX, worldZ);
+            density *= door;
+            float edge = EdgeFactor(tileX, tileZ, x, z);
+            density *= edge;
+            if (door == 0f) reason = TileFoliageRejection.Door;
+            else if (edge == 0f) reason = TileFoliageRejection.EdgeFade;
         }
         else
         {
             density = 0f;
         }
 
-        return new GroundCoverSample(ground.Height, ground.Normal, Math.Clamp(density, 0f, 1f));
+        return new TileFoliageDecision(new GroundCoverSample(ground.Height, ground.Normal, Math.Clamp(density, 0f, 1f)),
+            reason, visible);
     }
 
     void IndexObjects()
@@ -100,20 +111,22 @@ public sealed class TileFoliageSurface
     }
 
     bool TileAllowed(int x, int z, float localX = 0.5f, float localZ = 0.5f) =>
-        TileAllowed(x, z, OverlayAt(x, z, localX, localZ));
+        Eligibility(x, z, OverlayAt(x, z, localX, localZ), out _) == TileFoliageRejection.None;
 
-    bool TileAllowed(int x, int z, bool overlayAtPoint)
+    TileFoliageRejection Eligibility(int x, int z, bool overlayAtPoint, out ushort visible)
     {
-        if (_doc.GetRegion(RegionCoord.Of(x, z)) is null) return false;
+        visible = 0;
+        if (_doc.GetRegion(RegionCoord.Of(x, z)) is null) return TileFoliageRejection.AbsentRegion;
         ushort underlay = _doc.GetUnderlay(x, z, _layer.Plane);
-        if (underlay == 0) return false;
+        if (underlay == 0) return TileFoliageRejection.VoidUnderlay;
         ushort overlay = _doc.GetOverlay(x, z, _layer.Plane);
-        ushort visible = overlay != 0 && overlayAtPoint ? overlay : underlay;
-        if (_layer.AllowedUnderlays.Count > 0 && !Contains(_layer.AllowedUnderlays, visible)) return false;
-        if (_catalogs.Material(visible)?.Kind == GroundMaterialKind.Water) return false;
-        if (_layer.ExcludeIndoors && (_doc.GetSettings(x, z, _layer.Plane) & TileSettings.Indoors) != 0) return false;
-        if (_solid.Contains((x, z)) || _roofed.Contains((x, z))) return false;
-        return true;
+        visible = overlay != 0 && overlayAtPoint ? overlay : underlay;
+        if (_layer.AllowedUnderlays.Count > 0 && !Contains(_layer.AllowedUnderlays, visible)) return TileFoliageRejection.UnderlayNotAllowed;
+        if (_catalogs.Material(visible)?.Kind == GroundMaterialKind.Water) return TileFoliageRejection.Water;
+        if (_layer.ExcludeIndoors && (_doc.GetSettings(x, z, _layer.Plane) & TileSettings.Indoors) != 0) return TileFoliageRejection.Indoors;
+        if (_solid.Contains((x, z))) return TileFoliageRejection.Solid;
+        if (_roofed.Contains((x, z))) return TileFoliageRejection.Roof;
+        return TileFoliageRejection.None;
     }
 
     GroundPoint GroundAt(int x, int z, float localX, float localZ)

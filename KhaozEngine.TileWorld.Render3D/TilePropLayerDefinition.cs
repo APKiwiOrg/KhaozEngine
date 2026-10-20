@@ -29,6 +29,9 @@ public sealed record TilePropLayerDefinition
     /// <summary>Vertex-cluster weld cell size in metres for the merged HLOD.</summary>
     public float HlodWeldCell { get; init; }
 
+    /// <summary>Whether individual full and authored LOD props cut inside building interiors.</summary>
+    public bool CutInsideInteriors { get; init; }
+
     /// <summary>Whether individual and merged representations cast directional shadows.</summary>
     public bool CastsShadows { get; init; } = true;
 }

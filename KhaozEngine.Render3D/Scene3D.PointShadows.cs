@@ -338,6 +338,7 @@ namespace KhaozEngine.Render3D
             Vector3 exclusionMin, Vector3 exclusionMax)
         {
             ulong hash = PointSignatureSeed;
+            MixPointSignature(ref hash, unchecked((ulong)_model.InteriorResources.Version));
             MixPointSignature(ref hash, Quantise(lightPosAbsolute.X));
             MixPointSignature(ref hash, Quantise(lightPosAbsolute.Y));
             MixPointSignature(ref hash, Quantise(lightPosAbsolute.Z));
@@ -474,7 +475,7 @@ namespace KhaozEngine.Render3D
         /// <summary>
         /// The dissolve half of one caster's signature word: its threshold in <see cref="PointDissolveSteps"/> steps,
         /// <c>round(clamp(threshold, 0, 1) * 16)</c>, plus <see cref="PointDissolveComplementBit"/> when the caster
-        /// keeps the complementary noise set.
+        /// keeps the complementary noise set, plus the interior-cut bit.
         /// <para>
         /// QUANTISED ON PURPOSE, AND ONLY HERE (issue #1111). A prop inside a distance fade or an LOD crossfade band
         /// changes its threshold on every frame the draw focus moves, and the raw bits made every static light over
@@ -493,11 +494,13 @@ namespace KhaozEngine.Render3D
         {
             // A NaN threshold passes the clamp and converts to step 0, which is still one fixed answer per frame.
             uint step = (uint)(int)MathF.Round(Math.Clamp(data.Dissolve.X, 0f, 1f) * PointDissolveSteps);
+            if (data.SpecParams.W > 0.5f) step |= PointInteriorCutBit;
             return data.DissolveComplement > 0.5f ? step | PointDissolveComplementBit : step;
         }
 
         const float PointDissolveSteps = 16f;
         const uint PointDissolveComplementBit = 1u << 8;
+        const uint PointInteriorCutBit = 1u << 9;
 
         /// <summary>One queued light asking for a map, with everything the budget and the pass need: where it is,
         /// how far it reaches, how much of its own fixture it clears as a sphere and as a box, what kind of map it

@@ -28,6 +28,28 @@ public class ParallelContactBakeScheduleTests
     }
 
     [Fact]
+    public void AnEarlierFailureCanCutOffTheUnclaimedDistantFault()
+    {
+        // The old edge fixture held layer 0 row 0 while the other worker traversed bands 1 through 6.
+        // Its later fault was in band 7. A missed wait let ordinal 2 fail before that band was claimed.
+        var cutoff = new ContactNavigationCutoff();
+        var schedule = new ContactNavigationSchedule(12, ContactNavigationWorkers.BandCount(2, 12),
+            row => row * 16L, cutoff);
+        Assert.True(schedule.TryClaim(out var earlier));
+        Assert.True(earlier.Admits(2));
+        for (int index = 1; index < 7; index++)
+        {
+            Assert.True(schedule.TryClaim(out var intervening));
+            Assert.Equal(index, intervening.Index);
+            Assert.True(intervening.End <= 10);
+        }
+        var failure = new ProviderFaultException("earlier", default);
+        earlier.Fail(failure);
+        Assert.False(schedule.TryClaim(out _));
+        Assert.Same(failure, Assert.Throws<ProviderFaultException>(cutoff.ThrowSelected));
+    }
+
+    [Fact]
     public void DuplicateAnchorBelowAWorkerFailureThrowsTheDuplicate()
     {
         var cutoff = new ContactNavigationCutoff();
@@ -64,20 +86,30 @@ public class ParallelContactBakeScheduleTests
         return [first, second];
     }
 
-    [Fact]
-    public void MoreBandsThanWorkersMatchTheSerialBytesWhenOneRowIsSlow()
+    [Theory]
+    [InlineData(ContactNavigationReuseMode.Off)]
+    [InlineData(ContactNavigationReuseMode.Footprints)]
+    [InlineData(ContactNavigationReuseMode.Combined)]
+    public void MoreBandsThanWorkersMatchTheSerialBytesWhenOneRowIsSlow(ContactNavigationReuseMode mode)
     {
+        using var reuse = ContactNavigationBuildHooks.Install(ContactNavigationReuseFixture.Hooks(mode));
         int bands = ContactNavigationWorkers.BandCount(2, Rows);
         Assert.True(bands > 2);
         var slow = new SlowFirstRow(bands);
         using var scene = new SmallStairScene(fault: slow.Hold);
         using PhysicsNavBake capture = scene.Capture();
         NavBakeProfile[] profiles = [new("player", StairTuning, default)];
-        byte[] serial = ContactBakeFile.Write(GroundNavigationBake.Create(capture, ContactBakeFile.Sources(), profiles));
+        byte[] serial = ContactBakeFile.Write(GroundNavigationBake.Create(capture, ContactBakeFile.Sources(), profiles,
+            new NavBakeExecution(1) { UseStableContactHoldReuse = mode == ContactNavigationReuseMode.Combined }));
 
         slow.Arm();
         byte[] parallel;
-        using (ContactNavigationBuildHooks.Install(new() { BandCompleted = slow.Completed }))
+        using (ContactNavigationBuildHooks.Install(new()
+        {
+            BandCompleted = slow.Completed,
+            DisableFootprintReuse = mode == ContactNavigationReuseMode.Off,
+            DisableInitialHoldReuse = mode != ContactNavigationReuseMode.Combined
+        }))
             parallel = ContactBakeFile.Write(GroundNavigationBake.Create(capture, ContactBakeFile.Sources(), profiles,
                 new NavBakeExecution(2)));
         Assert.Equal(serial, parallel);
@@ -88,9 +120,13 @@ public class ParallelContactBakeScheduleTests
         scene.AssertUsable();
     }
 
-    [Fact]
-    public void MoreBandsThanWorkersThrowTheSerialFailureWhenTheLaterBandFailsFirst()
+    [Theory]
+    [InlineData(ContactNavigationReuseMode.Off)]
+    [InlineData(ContactNavigationReuseMode.Footprints)]
+    [InlineData(ContactNavigationReuseMode.Combined)]
+    public void ReuseFailureSelectionMatchesSerialUnderForcedBands(ContactNavigationReuseMode mode)
     {
+        using var reuse = ContactNavigationBuildHooks.Install(ContactNavigationReuseFixture.Hooks(mode));
         Func<Vector3, Vector3, bool> earlier = ParallelContactBakeFailureTests.Near(
             ParallelContactBakeFailureTests.Centre(1, 0), 0.45f, 0.8f);
         Func<Vector3, Vector3, bool> later = ParallelContactBakeFailureTests.Near(
@@ -109,13 +145,15 @@ public class ParallelContactBakeScheduleTests
             if (Volatile.Read(ref coordinate) && laterThrown.Wait(Timeout)) Interlocked.Exchange(ref waited, 1);
             throw new ProviderFaultException("earlier", position);
         });
-        var serial = Assert.Throws<ProviderFaultException>(() => scene.Build(null));
+        var serial = Assert.Throws<ProviderFaultException>(() => scene.Build(new(1) { UseStableContactHoldReuse = true }));
         Assert.Equal("earlier", serial.Tag);
 
         var completions = new ConcurrentDictionary<int, int>();
         Volatile.Write(ref coordinate, true);
         using (ContactNavigationBuildHooks.Install(new()
         {
+            DisableFootprintReuse = mode == ContactNavigationReuseMode.Off,
+            DisableInitialHoldReuse = mode != ContactNavigationReuseMode.Combined,
             BandCompleted = (phase, _) =>
             {
                 if (phase == ContactNavigationPhase.Admission)

@@ -305,7 +305,8 @@ namespace KhaozEngine.Tests.Gpu
 
                 Assert.Single(fixture.TransferSink.BufferCopies);
                 Assert.Equal(0, fixture.Barriers.CallCount);
-                Assert.Equal([true, false], fixture.TransferSink.MemoryBarriers);
+                Assert.Equal([true], fixture.TransferSink.MemoryBarriers);
+                Assert.Single(fixture.TransferSink.Trace, call => call == "HostReadBarrier");
             }
             finally
             {

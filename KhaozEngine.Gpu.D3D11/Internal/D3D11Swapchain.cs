@@ -68,6 +68,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         long _pendingSize = NothingPending;
         volatile bool _syncToVerticalBlank;
+        volatile bool _attachmentsLive;
         bool _disposed;
 
         /// <summary>
@@ -87,6 +88,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _syncToVerticalBlank = syncToVerticalBlank;
             _framebuffer = new D3D11SwapchainFramebuffer(
                 surface.ColourFormat, surface.DepthFormat, surface.CreateAttachments(width, height));
+            _attachmentsLive = true;
         }
 
         /// <summary>
@@ -95,6 +97,21 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// resize changes its size and its views and never its identity.
         /// </summary>
         internal D3D11SwapchainFramebuffer Framebuffer => _framebuffer;
+
+        /// <summary>
+        /// The render target view over the current back buffer, which is what a swapchain copy names as its
+        /// source, or null while no attachments are live: inside a resize between the release and the next
+        /// create, and after <see cref="Dispose"/>. Null is what makes <c>IGpuSwapchainCapture.SwapchainCopyable</c>
+        /// false on this backend. A blit-model back buffer is created <c>RenderTargetOutput</c>, which is already
+        /// a <c>CopyResource</c> source, so nothing else decides it.
+        /// </summary>
+        internal object? CurrentColourView => _attachmentsLive ? _framebuffer.RenderTargetView : null;
+
+        /// <summary>
+        /// <c>IGpuSwapchainCapture.SwapchainCopySourceRequested</c>, stored and never read. The back buffer is a
+        /// copy source whatever is asked, so there is no usage to change and no swapchain to recreate.
+        /// </summary>
+        internal bool CopySourceRequested { get; set; }
 
         /// <summary>
         /// Whether presentation syncs to the vertical blank. Settable live from any thread, which is what the
@@ -233,9 +250,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             uint width = WidthOf(pending);
             uint height = HeightOf(pending);
 
+            _attachmentsLive = false;
             _surface.ReleaseAttachments();
             _surface.ResizeBuffers(width, height);
             _framebuffer.Adopt(_surface.CreateAttachments(width, height));
+            _attachmentsLive = true;
             return true;
         }
 
@@ -251,6 +270,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 if (_disposed) return;
 
                 _disposed = true;
+                _attachmentsLive = false;
                 _surface.Dispose();
             }
         }

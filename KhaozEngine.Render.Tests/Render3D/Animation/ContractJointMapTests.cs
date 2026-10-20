@@ -155,7 +155,7 @@ namespace KhaozEngine.Tests.Render3D.Animation
                 Assert.Throws<ArgumentOutOfRangeException>(() => read(skeleton.NodeCount));
             }
 
-            // Every contract joint, sockets included, still reads the frames the map computed, bit for bit.
+            // Alignment keeps the inverse recipe's other fifteen elements, including their rounding and signs.
             var world = new Matrix4x4[skeleton.NodeCount];
             foreach (ContractJoint joint in Contract.Joints)
             {
@@ -169,7 +169,14 @@ namespace KhaozEngine.Tests.Render3D.Animation
 
                 Assert.Equal(world[node], map.BaseWorld(node));
                 Assert.Equal(parentInverse, map.ParentBaseInverse(node));
-                Assert.Equal(Matrix4x4.CreateTranslation(rigid.Translation) * inverseRigid, map.BodyAlignment(node));
+                Matrix4x4 expectedAlignment = Matrix4x4.CreateTranslation(rigid.Translation) * inverseRigid;
+                Matrix4x4 alignment = map.BodyAlignment(node);
+                for (int row = 0; row < 4; row++)
+                    for (int column = 0; column < 4; column++)
+                        if (row != 3 || column != 3)
+                            Assert.Equal(BitConverter.SingleToInt32Bits(expectedAlignment[row, column]),
+                                BitConverter.SingleToInt32Bits(alignment[row, column]));
+                Assert.Equal(1f, alignment.M44);
             }
         }
 

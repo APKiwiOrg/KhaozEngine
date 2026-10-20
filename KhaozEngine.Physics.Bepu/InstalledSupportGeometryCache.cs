@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Numerics;
@@ -18,8 +19,9 @@ namespace KhaozEngine.Physics.Bepu;
 internal sealed class InstalledSupportGeometryCache
 {
     readonly record struct Key(int Owner, TypedIndex Installation, long StaticGeometryVersion);
-    readonly ConcurrentDictionary<Key, Slot> _entries = new();
+    readonly ConcurrentDictionary<Key, Slot> _entries = new(KeyComparer.Instance);
     int _constructions, _captures;
+    internal InstalledSupportMeshWorldCache MeshWorldForms { get; } = new();
 
     /// <summary>How many captures this cache has published.</summary>
     internal int Constructions => Volatile.Read(ref _constructions);
@@ -48,11 +50,12 @@ internal sealed class InstalledSupportGeometryCache
 
     internal void Remove(StaticHandle owner)
     {
+        MeshWorldForms.Remove(owner);
         foreach (Key key in _entries.Keys)
             if (key.Owner == owner.Value) _entries.TryRemove(key, out _);
     }
 
-    internal void Clear() => _entries.Clear();
+    internal void Clear() { _entries.Clear(); MeshWorldForms.Clear(); }
 
     Outcome Capture(Simulation simulation, TypedIndex installation)
     {
@@ -74,7 +77,7 @@ internal sealed class InstalledSupportGeometryCache
             for (int i = 0; i < compound.Children.Length; i++)
             {
                 ref var child = ref compound.Children[i];
-                if (!CapsuleFeatureGeometry.ProveInstalledPose(child.LocalPose)) return CapsuleFeatureStatus.Unsupported;
+                if (!InstalledPoseOperator.TryCreateSupport(child.LocalPose, out _)) return CapsuleFeatureStatus.Unsupported;
                 status = CaptureLeaf(simulation, child.ShapeIndex, child.LocalPose, i, leaves);
                 if (status != CapsuleFeatureStatus.Complete) return status;
             }
@@ -95,8 +98,9 @@ internal sealed class InstalledSupportGeometryCache
         Pose localPose = new(local.Position, local.Orientation);
         if (installation.Type == default(Box).TypeId || installation.Type == default(ConvexHull).TypeId)
         {
+            if (!InstalledPoseOperator.TryCreateSupport(identity, out var transform)) return CapsuleFeatureStatus.Unsupported;
             CapsuleFeatureStatus status = CapsuleFeatureGeometry.CaptureLeaf(simulation, installation, identity,
-                local, id, null, out var captured, topologyOnly: true);
+                local, id, transform, null, out var captured, topologyOnly: true);
             if (status != CapsuleFeatureStatus.Complete) return status;
             leaves.Add(new(id, localPose, captured!.LocalVertices, captured.Faces, null, 0, 0, installation));
             return CapsuleFeatureStatus.Complete;
@@ -112,6 +116,20 @@ internal sealed class InstalledSupportGeometryCache
     }
 
     sealed record Outcome(CapsuleFeatureStatus Status, InstalledSupportGeometry? Geometry);
+
+    // A hit compares keys, and a miss only hashes them. Without an explicit comparer the first hit in the process
+    // creates the default key and field comparers, which allocates inside a warm query. Only an isolated run of
+    // CurvedFootprintMatchesAllProvedPoseStrata("cylinder-ring") catches a regression, since earlier tests in a
+    // full run make the first hit.
+    sealed class KeyComparer : IEqualityComparer<Key>
+    {
+        internal static readonly KeyComparer Instance = new();
+
+        public bool Equals(Key a, Key b) => a.Owner == b.Owner && a.Installation.Packed == b.Installation.Packed &&
+            a.StaticGeometryVersion == b.StaticGeometryVersion;
+
+        public int GetHashCode(Key key) => HashCode.Combine(key.Owner, key.Installation.Packed, key.StaticGeometryVersion);
+    }
 
     /// <summary>One key's capture, published once by compare-and-exchange of an immutable outcome.</summary>
     sealed class Slot

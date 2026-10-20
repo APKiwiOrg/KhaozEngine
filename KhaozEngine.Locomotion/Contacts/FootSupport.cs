@@ -41,7 +41,12 @@ internal static class FootSupport
     /// <summary>Samples analytic terrain once at the exact axis and forwards the value fact.</summary>
     internal static SupportSample Find(Func<float, float, float>? groundHeight,
         Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
-        in FootSupportQuery query)
+        in FootSupportQuery query) => Find(groundHeight, groundNormal, world, lease, query, null);
+
+    /// <summary>As the delegate overload, offering the read to <paramref name="memo"/>.</summary>
+    internal static SupportSample Find(Func<float, float, float>? groundHeight,
+        Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
+        in FootSupportQuery query, SupportRequestMemo? memo)
     {
         Validate(query);
         FootAnalyticGround? analytic = null;
@@ -51,7 +56,7 @@ internal static class FootSupport
             analytic = new(groundHeight(query.Axis.X, query.Axis.Y),
                 groundNormal?.Invoke(query.Axis.X, query.Axis.Y) ?? Vector3.UnitY);
         }
-        return Find(analytic, world, lease, query);
+        return Find(analytic, world, lease, query, null, memo);
     }
 
     /// <summary>Describes both original proposal paths without reading physics or acquiring an interval.</summary>
@@ -86,51 +91,108 @@ internal static class FootSupport
     /// refusing with <see cref="NotSupportedException"/> when a term that can decide a published contribution
     /// in the band lies outside <paramref name="scope"/>.</summary>
     internal static SupportSample Find(FootAnalyticGround? analytic, IPhysicsWorld? world, IPhysicsQueryLease? lease,
-        in FootSupportQuery query, SupportFootprintBounds? scope)
+        in FootSupportQuery query, SupportFootprintBounds? scope) => Find(analytic, world, lease, query, scope, null);
+
+    /// <summary>As <see cref="Find(FootAnalyticGround?, IPhysicsWorld?, IPhysicsQueryLease?, in FootSupportQuery,
+    /// SupportFootprintBounds?)"/>. A <paramref name="memo"/> open for <paramref name="lease"/> serves an exact repeat
+    /// of a read it remembers and remembers each read it certifies (SC-15). Analytic sampling stays with the
+    /// caller, so the fact a repeat is keyed on is sampled afresh.</summary>
+    internal static SupportSample Find(FootAnalyticGround? analytic, IPhysicsWorld? world, IPhysicsQueryLease? lease,
+        in FootSupportQuery query, SupportFootprintBounds? scope, SupportRequestMemo? memo)
     {
         SupportQueryDiagnostics.Record(SupportQueryCounter.Find);
         SupportFootprintRequest request = DescribeFootprint(query);
         var selection = new Selection(query);
         bool refused = false;
+        SupportRequestMemo? serving = null;
+        SupportSample sample;
         if (world is not null)
         {
             ArgumentNullException.ThrowIfNull(lease);
             IPhysicsSupportFootprint features = world as IPhysicsSupportFootprint ?? throw new NotSupportedException(
                 "Foot support needs a physics world that offers complete footprint queries.");
+            // The interval's arena holds evidence whether or not the memo serves repeats, so a bypassed or reference
+            // read keeps the same accounting.
+            SupportContinuityArena? arena = memo is not null && ReferenceEquals(memo.Lease, lease) ? memo.Arena : null;
+            if (memo is not null && memo.Serves(lease))
+            {
+                // The lease is authenticated before the memo is read, as the backend authenticates it before a
+                // sweep, so a stale or foreign-thread read still fails.
+                lease.AssertCurrent();
+                if (memo.TryGet(world, analytic, query, scope, out sample))
+                {
+                    SupportQueryDiagnostics.Record(SupportQueryCounter.FindMemoHits);
+                    Observe(query, sample);
+                    return sample;
+                }
+                serving = memo;
+            }
             ProbeScratch scratch = t_scratch!;
             if (scratch.InUse) scratch = new ProbeScratch();
             scratch.InUse = true;
             try
             {
                 // A zero slope cosine or an unbounded column has no finite admission volume.
+                SupportFootprintResult result = default;
                 refused = !SupportFootprintBounds.TryCreate(request, out _);
-                if (!refused) Certify(features, lease, request, query, scope, scratch, ref selection, out refused);
+                if (!refused)
+                    result = Certify(features, lease, request, query, scope, scratch, ref selection, out refused);
+                // Terrain joins the selection while the footprint's spans are still this Find's, so the winner's
+                // certified join row is copied before the scratch can serve another Find.
+                if (analytic is { } terrain) selection.Terrain(terrain);
+                sample = refused ? RefusedSupport : selection.Result();
+                if (!refused && arena is not null && selection.Member >= 0 &&
+                    sample.Status is SupportStatus.Walkable or SupportStatus.Steep)
+                    sample = WithEvidence(features, lease, arena, result, query, scratch, selection.Member, sample);
             }
             finally { scratch.InUse = false; }
         }
-        if (analytic is { } fact) selection.Terrain(fact);
-        SupportSample sample = refused ? RefusedSupport : selection.Result();
+        else
+        {
+            if (analytic is { } fact) selection.Terrain(fact);
+            sample = selection.Result();
+        }
+        serving?.Remember(world!, analytic, query, scope, sample);
+        Observe(query, sample);
+        return sample;
+    }
+
+    static void Observe(in FootSupportQuery query, in SupportSample sample) =>
         SupportQueryDiagnostics.ObserveFind(new(query.Axis, query.FeetY, query.FootRadius,
             query.ReachUp, query.ReachDown, query.CosMaxSlope, (byte)sample.Status, sample.Height, sample.HeightError));
-        return sample;
+
+    // The selected physics member's interval evidence (CF-4). The footprint is authenticated again after selection,
+    // then the winner's direct joined walkable row is copied into the interval arena with its source and exact query,
+    // and the sample keeps only the handle.
+    static SupportSample WithEvidence(IPhysicsSupportFootprint features, IPhysicsQueryLease lease,
+        SupportContinuityArena arena, in SupportFootprintResult result, in FootSupportQuery query, ProbeScratch scratch,
+        int member, in SupportSample sample)
+    {
+        features.AssertFootprintCurrent(result, lease);
+        return sample with
+        {
+            Continuity = SupportContinuity.Capture(arena, result, query, scratch.Members, scratch.Joins, member),
+        };
     }
 
     // Runs the one complete query, applies both proposal guards and offers every certified contribution. A
     // refused query or certificate refuses the whole Find.
-    static void Certify(IPhysicsSupportFootprint features, IPhysicsQueryLease lease, in SupportFootprintRequest request,
-        in FootSupportQuery query, SupportFootprintBounds? scope, ProbeScratch scratch, ref Selection selection,
-        out bool refused)
+    static SupportFootprintResult Certify(IPhysicsSupportFootprint features, IPhysicsQueryLease lease,
+        in SupportFootprintRequest request, in FootSupportQuery query, SupportFootprintBounds? scope,
+        ProbeScratch scratch, ref Selection selection, out bool refused)
     {
-
-        SupportFootprintResult result = features.QuerySupportFootprint(lease, request,
-            scratch.Members, scratch.Joins, QueryFilter.StaticsOnly);
+        // Certification reads only joins between members with a positive upward bound, so the backend skips the rest.
+        SupportFootprintResult result;
+        using (SupportCertificationJoins.Arm())
+            result = features.QuerySupportFootprint(lease, request, scratch.Members, scratch.Joins,
+                QueryFilter.StaticsOnly);
         FootprintScope? certified = scope is { } bounds ? new(bounds, request.BandLower, request.BandUpper) : null;
         int count;
         using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportCertification))
             count = SupportCertification.CertifyFootprint(features, lease, result, scratch.Members,
                 scratch.Joins, query.Axis, query.CosMaxSlope, scratch.Contributions, scratch.Contexts, certified);
         refused = count < 0;
-        if (refused) return;
+        if (refused) return result;
         using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportSelection);
         Guard(result.AxisVerdict, 1, result.Members, scratch, request.BandUpper, ref selection);
         Guard(result.FootVerdict, 2, result.Members, scratch, request.BandUpper, ref selection);
@@ -142,8 +204,9 @@ internal static class FootSupport
             selection.Offer(new Candidate(contribution.Kind == CertifiedSupportKind.Walkable
                 ? SupportStatus.Walkable : SupportStatus.Steep, contribution.Lower, contribution.Upper,
                 contribution.Normal, scratch.Members[item.MemberIndex].Static, contribution.FeatureId,
-                contribution.Witness));
+                contribution.Witness, item.MemberIndex));
         }
+        return result;
     }
 
     // A proposal stopped above the band, or started inside geometry, hides anything lower. A contact stopped in
@@ -200,8 +263,9 @@ internal static class FootSupport
             _footProbe is { } probe && probe.Radius == radius ? probe : _footProbe = new CapsuleShape(radius, ProbeLength);
     }
 
+    // MemberIndex is the raw footprint member a physics candidate came from, or -1 for terrain.
     readonly record struct Candidate(SupportStatus Status, double Lower, double Upper, Vector3 Normal,
-        StaticHandle? Static, int FeatureId, Vector3 Witness)
+        StaticHandle? Static, int FeatureId, Vector3 Witness, int MemberIndex = -1)
     {
         internal double Midpoint => (Lower + Upper) / 2;
     }
@@ -213,6 +277,9 @@ internal static class FootSupport
         readonly double _bandUpper = (double)query.FeetY + query.ReachUp;
         Candidate? _best;
         double _refusedTop = double.NegativeInfinity;
+
+        // The raw member of the selected physics candidate, or -1 when terrain or nothing is selected.
+        internal readonly int Member => _best is Candidate chosen ? chosen.MemberIndex : -1;
 
         // Analytic terrain is exact at the axis and needs no certificate.
         internal void Terrain(in FootAnalyticGround ground)

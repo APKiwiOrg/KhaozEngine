@@ -48,6 +48,24 @@ namespace KhaozEngine.Tests.Gpu
     public sealed class ShaderSourceValidationTests
     {
         [Fact]
+        public void InteriorHighlightPairs()
+        {
+            foreach (string fragment in new[] { ShaderSources.TargetOutlineRigidFullMaskFrag, ShaderSources.TargetOutlineRigidVisibleMaskFrag })
+                ShaderValidation.ValidatePair(ShaderSources.TargetOutlineMaskVert, fragment, "RigidOutline");
+            foreach (string fragment in new[] { ShaderSources.TargetOutlineFullMaskFrag, ShaderSources.TargetOutlineVisibleMaskFrag })
+                ShaderValidation.ValidatePair(ShaderSources.TargetOutlineSkinnedMaskVert, fragment, "SkinnedOutline");
+            ShaderValidation.ValidatePair(ShaderSources.SilhouetteVert, ShaderSources.SilhouetteFrag, "Silhouette");
+            ShaderValidation.ValidatePair(ShaderSources.SilhouetteVert, ShaderSources.SilhouetteMotionFrag, "SilhouetteMotion");
+        }
+
+        [Fact]
+        public void InteriorShadowPairs()
+        {
+            foreach (var (vertex, fragment, _) in KhaozEngine.Tests.Render3D.InteriorCutShadowTests.RigidPairs())
+                ShaderValidation.ValidatePair(vertex, fragment, "InteriorShadow");
+        }
+
+        [Fact]
         public void Model()
             => ShaderValidation.ValidatePair(ShaderSources.ModelVert, ShaderSources.ModelFrag, "Model");
 
@@ -334,10 +352,10 @@ namespace KhaozEngine.Tests.Gpu
         public void SkinnedShadowDepth()
             => ShaderValidation.ValidatePair(ShaderSources.SkinnedShadowDepthVert, ShaderSources.ShadowDepthFrag, "SkinnedShadowDepth");
 
-        // The dissolve-aware skinned depth vertex (issue #387), paired with the rigid dissolve fragment it reuses.
+        // The dissolve-aware skinned depth vertex (issue #387), paired with its uncut skinned fragment.
         [Fact]
         public void SkinnedShadowDepthDissolve()
-            => ShaderValidation.ValidatePair(ShaderSources.SkinnedShadowDepthDissolveVert, ShaderSources.ShadowDepthDissolveFrag, "SkinnedShadowDepthDissolve");
+            => ShaderValidation.ValidatePair(ShaderSources.SkinnedShadowDepthDissolveVert, ShaderSources.SkinnedShadowDepthDissolveFrag, "SkinnedShadowDepthDissolve");
 
         // The alpha-cutout depth pair and its inverted-dither sibling (issue #15): the only depth fragments that
         // sample a texture, at set 1.

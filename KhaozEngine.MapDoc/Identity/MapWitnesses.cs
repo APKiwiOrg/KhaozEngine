@@ -37,7 +37,9 @@ public sealed class MapCoverageWitness
     public bool Complete { get; }
 }
 
-/// <summary>Certifies the pinned acquisition, rather than current producer residency.</summary>
+/// <summary>Certifies the pinned acquisition, rather than current producer residency. Only a complete witness certifies
+/// anything. An incomplete witness, such as the one on a typed overflow or unavailable result, certifies nothing,
+/// including its <see cref="Frame"/> and <see cref="SnapshotId"/>.</summary>
 public sealed class MapReadWitness
 {
     internal MapReadWitness(string snapshotId, string scopedDigest, WorldFrame frame, int queryPolicyVersion, bool complete)

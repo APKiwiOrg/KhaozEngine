@@ -60,6 +60,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// surface: the seam sees only <see cref="Signaled"/>.</summary>
         internal ulong Target => _target;
 
+        /// <summary>The timeline this fence was created on. Each device has one, so timeline identity is device
+        /// identity, which is how the fenced read map refuses another device's fence.</summary>
+        internal VulkanTimeline Timeline => _owner;
+
         /// <inheritdoc/>
         public bool Signaled
         {

@@ -54,6 +54,7 @@ public sealed partial class EnvironmentAcquisitionFixture : IMovementEnvironment
     public EnvironmentAcquisitionFixture(IPhysicsWorldQueryView view, MovementQueryScope? scope = null)
     {
         _view = view;
+        _identity = scope?.Identity ?? _identity;
         var frame = new MovementFrameDescriptor(WorldFrame.Origin, view.Origin, 1ul);
         _scope = scope ?? new MovementQueryScope(new Vector3(-4f), new Vector3(4f), 0.5f, 2f,
             new MovementSpaceKey("world", "room"), _identity, frame);

@@ -64,6 +64,21 @@ internal static class CapsuleFeatureGeometry
         // The operator proves the pose here and maps the vertices below. It is a function of the pose alone.
         if (!InstalledPoseOperator.TryCreate(pose, out InstalledPoseOperator transform))
             return CapsuleFeatureStatus.Unsupported;
+        return CaptureLeaf(simulation, index, pose, localPose, leafId, transform, scratch, out leaf, topologyOnly,
+            legacyCorrespondence: true);
+    }
+
+    internal static CapsuleFeatureStatus CaptureLeaf(Simulation simulation, TypedIndex index, in RigidPose pose,
+        in RigidPose localPose, int leafId, in InstalledPoseOperator transform, CapsuleFeatureCaptureScratch? scratch,
+        out CapsuleFeaturePolyhedron? leaf, bool topologyOnly = false) =>
+        CaptureLeaf(simulation, index, pose, localPose, leafId, transform, scratch, out leaf, topologyOnly, legacyCorrespondence: false);
+
+    static CapsuleFeatureStatus CaptureLeaf(Simulation simulation, TypedIndex index, in RigidPose pose,
+        in RigidPose localPose, int leafId, in InstalledPoseOperator transform, CapsuleFeatureCaptureScratch? scratch,
+        out CapsuleFeaturePolyhedron? leaf, bool topologyOnly, bool legacyCorrespondence)
+    {
+        leaf = null;
+        if (!transform.IsResolved) return CapsuleFeatureStatus.Unsupported;
         Vector3[] local;
         int[][] polygons;
         if (index.Type == default(Box).TypeId)
@@ -129,7 +144,8 @@ internal static class CapsuleFeatureGeometry
         }
 
         FeaturePoint[] world = scratch?.Points(local.Length) ?? new FeaturePoint[local.Length];
-        CapsuleFeatureStatus transformed = TransformVertices(local, pose, transform, world);
+        CapsuleFeatureStatus transformed = legacyCorrespondence ? TransformVertices(local, pose, transform, world)
+            : TransformVertices(local, transform, world);
         if (transformed != CapsuleFeatureStatus.Complete) return transformed;
         CapsuleFeaturePolyhedron candidate = scratch?.Leaf() ?? new CapsuleFeaturePolyhedron();
         candidate.Reset(index, localPose, pose, leafId, local, world, polygons, transform);
@@ -164,6 +180,17 @@ internal static class CapsuleFeatureGeometry
         return CapsuleFeatureStatus.Complete;
     }
 
+    internal static CapsuleFeatureStatus TransformVertices(Vector3[] local, in InstalledPoseOperator transform,
+        FeaturePoint[] world)
+    {
+        for (int i = 0; i < local.Length; i++)
+        {
+            CapsuleFeatureStatus status = TransformVertex(local[i], transform, out world[i]);
+            if (status != CapsuleFeatureStatus.Complete) return status;
+        }
+        return CapsuleFeatureStatus.Complete;
+    }
+
     /// <summary>One local vertex through a proved installed pose, with the coordinate bounds and finite checks every
     /// captured vertex passes.</summary>
     internal static CapsuleFeatureStatus TransformVertex(Vector3 point, in Pose seamPose,
@@ -173,9 +200,14 @@ internal static class CapsuleFeatureGeometry
         if (!Within(point, RepresentedGeometryTransforms.MaximumLocalMagnitude)) return CapsuleFeatureStatus.Unsupported;
         GeometryVector enclosure = RepresentedGeometryTransforms.PosePoint(seamPose, point);
         if (!enclosure.IsResolved) return CapsuleFeatureStatus.Unsupported;
-        // PosePoint is an operation correspondence record only. The common certified affine
-        // operator below contains real and actual represented coefficients through every
-        // witness expression. Independently rounded point outputs never define topology.
+        return TransformVertex(point, transform, out world, exactZeroProducts);
+    }
+
+    internal static CapsuleFeatureStatus TransformVertex(Vector3 point, in InstalledPoseOperator transform,
+        out FeaturePoint world, bool exactZeroProducts = false)
+    {
+        world = default;
+        if (!Within(point, RepresentedGeometryTransforms.MaximumLocalMagnitude)) return CapsuleFeatureStatus.Unsupported;
         world = transform.Point(point, exactZeroProducts);
         if (!world.IsResolved) return CapsuleFeatureStatus.Unresolved;
         if (!world.Within(2048)) return CapsuleFeatureStatus.Unsupported;

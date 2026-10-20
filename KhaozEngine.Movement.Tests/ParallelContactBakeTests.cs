@@ -62,7 +62,7 @@ public class ParallelContactBakeTests
         WorkerDiagnostics.SetObserverFactory(worker => (workerRecorders[worker] = new PhaseRecorder()).Observe);
         try
         {
-            GroundNavigation serial = scene.Build(null);
+            GroundNavigation serial = scene.Build(new(1) { UseStableContactHoldReuse = true });
             SupportQueryCounts serialCounts = SupportQueryDiagnostics.Snapshot();
             SupportRouteCounts serialRoutes = SupportQueryDiagnostics.Routes;
             Assert.All(workerRecorders, recorder => Assert.Null(recorder));
@@ -75,8 +75,11 @@ public class ParallelContactBakeTests
 
             int workers = serial.Space.Layers[0].Height;
             Assert.Equal(workers, workerRecorders.Count(recorder => recorder is not null));
-            // Every proof counts the same. Each extra worker adds one first pin.
-            Assert.Equal(serialCounts with { PhysicsLeases = 0, MovementLeases = 0, ProducerPins = 0 },
+            // Every proof counts the same. Each extra worker adds one first pin. The workers bind the world forms
+            // the serial build published, since no static changed between the builds.
+            Assert.True(serialCounts.WorldFormBuilds > 0);
+            Assert.Equal(0, parallelCounts.WorldFormBuilds);
+            Assert.Equal(serialCounts with { PhysicsLeases = 0, MovementLeases = 0, ProducerPins = 0, WorldFormBuilds = 0 },
                 parallelCounts with { PhysicsLeases = 0, MovementLeases = 0, ProducerPins = 0 });
             Assert.Equal(serialCounts.MovementLeases + workers - 1, parallelCounts.MovementLeases);
             Assert.Equal(serialCounts.ProducerPins + workers - 1, parallelCounts.ProducerPins);

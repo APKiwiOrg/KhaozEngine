@@ -187,7 +187,7 @@ Each terrain chunk retains outward-rounded `CanonicalBounds` alongside its submi
 both, so exact support crossing a tile seam survives inward float vertex rounding. World bounds include these
 effective support extents as well as render, LOD, asset light, emitted light and water extents.
 Doorway compounds retain their jambs and lintel under one transform. Headless clearance proves a physical opening
-only. Native walking routes remain with G1b, #1355 and #438 phase 5.
+only. Native walking routes remain with G1b and #438 phase 5.
 
 ## Roof and annotation intent
 
@@ -202,13 +202,14 @@ interaction geometry unchanged. These are R8 presentation inputs, rather than a 
 
 `MapResidencyOwnership.BuildAnnotations(world, grids)` supplies separate `light:{id}` and `marker:{id}` entries.
 Light extents use the effective position and scaled metre radius with outward rounding. Markers occupy their exact
-world point. Both contribute to world bounds and residency invalidation. They never register physics shapes.
+world point. Both drive residency invalidation and neither registers a physics shape. Light extents join the world
+bounds. Markers do not, so a marker-only edit never changes the world extent, a static or a navigation capture identity.
 `Build` remains the static-only ownership list and `BuildWater` remains the compiled-water list.
 
-Format-7 builds consume `kemap/effective-resources/1` with query policy 2 from the captured MapDoc snapshot.
+Format-9 builds consume `kemap/effective-resources/1` with query policy 2 from the captured MapDoc snapshot.
 Rebuild identity-keyed world and navigation captures when adopting 20.40.0, including prefab-free native maps.
-AuthoredOpen doorway clearance is a geometry proof. Controller walking and layered routes still require G1b,
-#1355 and #438, and intent does not supply R8 pixels or live door state.
+AuthoredOpen doorway clearance is a geometry proof. Controller walking and layered routes still require G1b
+and #438, and intent does not supply R8 pixels or live door state.
 
 ## Independent synthetic village heads
 
@@ -224,6 +225,44 @@ water, markers, lights and a cross-building roof group. A roomless canopy keeps 
 visible in Auto. Concealment leaves statics intact. The acceptance covers headless geometry and
 ownership. The [MapDoc handoff table](../KhaozEngine.MapDoc/README.md#public-synthetic-village-acceptance)
 names the remaining controller, route, rendering, streaming, marker and importer proofs.
+
+`MapMarkerVillageAcceptanceTests` builds client and server heads of the invented marker village from separately
+loaded monolithic and tiled documents with the same tile size and independently verified resource bytes. Both heads
+and both forms agree on complete marker value rows, height provenance, point membership, half-open rectangle
+queries, annotation digests and build hashes. Support heights equal the named owner's float answer, exact points
+keep negative X, and yaw compares modulo a turn. The server's whole load lists every root-resident marker, and a
+tiled manifest names all six from root metadata without reading a tile body.
+
+A marker-only move or removal through `MapMarkerEdits` reports Residency alone. Static descriptors, world bounds and
+every navigation tile capture identity stay equal, while the annotation digest and build hash move because markers
+are authored data. The moved marker leaves its old storage tile and enters the new one exactly once, and
+`Affected(before, after, grids, effects)` names its owner and both tiles. A removed marker's owner leaves the
+annotation list and its old membership stays in the affected set. This proves marker residency only. It does not
+solve whole-cell residency (#341).
+
+Markers never join the world bounds that set navigation tile heights. The village's `actor` stands above every
+static, and removing it leaves the world extent and every capture identity unchanged. `MapMarkerBoundsTests` sets a
+marker above and one below every static and proves the same, with the marker's residency entry still installed.
+
+## Native foliage physical boundary
+
+`MapFoliageWorldTests` builds independent heads and both monolithic/tiled forms on invented stacked-support and
+released prefab-cave fixtures. `IndependentHeadsAndStorageForms_ProduceIdenticalOwnedFoliage` compares owned CPU
+samples, while `DensitySeedRuleAndMask_NeverChangeStaticsNavOrWorldBounds` proves cosmetic edits leave statics,
+placement envelopes, navigation captures and world bounds equal. `ColliderBuilder_ReferencesNoFoliageType` checks the
+builder type boundary. `MapFoliageHandoffBoundaryTests.HandoffCosmeticExtents_NeverChangeNavOrStatics` extends that proof
+to model extents and motion padding. This package consumes no foliage render batch and installs no foliage collider.
+
+| Consumer | Boundary and remaining proof |
+| --- | --- |
+| R7 | Complete CPU ownership and independent-head acceptance, with the [MapDoc evidence table](../KhaozEngine.MapDoc/README.md#public-foliage-acceptance-and-deferred-ownership) |
+| R8 | Cosmetic padded mesh bounds and one owned batch across intersected memberships. Actual residency/upload, windowed context, viewport drawing and interior-cut adapter [#1474](https://github.com/APKiwiOrg/KhaozEngine/issues/1474) remain |
+| R9 and R10 | Interactive painting/input and complete wire parity, including native placement ID rename |
+| R11/G2 and R8/G3 | Actual importer/source acceptance and appearance acceptance, respectively |
+
+The [MapDoc foliage contract](../KhaozEngine.MapDoc/README.md#native-foliage-consumer-contract) owns full-request support,
+canonical identity, ordinal fallback, typed refusal and atomic observer completion. Sparse storage does not prove
+partial-residency generation. R8 must add its immutable windowed closure/completeness constructor first.
 
 ## Pick, reach and stances
 
@@ -443,7 +482,6 @@ separate spatial values fall back to their reported bounds.
 | Vertical-layer navigation capture on native worlds | #438 phase 5 | `MapNavTiling` provides tile, seam and link identity only |
 | Incremental rebake orchestration, planning budgets, on-demand loading | #1301 | After #438 phase 5 |
 | Multi-cell ghost handoff proof | R8 and G3 | `MapWorldGrids` and `MapResidencyOwnership` provide grid mapping and ownership |
-| Placement-local support surfaces (`Surface` resources) | R5 | Installed in MapDoc before sampling and compiled here with canonical owners |
 | Live portal and door state | [#1363](https://github.com/APKiwiOrg/KhaozEngine/issues/1363) | Portals remain authored open |
 | Clearance body model confirmation | Owner, #1344 | Clearance uses the #438 shell through `ContactShell` |
 | Support certification of curved statics, creases and one-sided back faces | #438 phase 2b | Landed. Staged complete-footprint discovery uses `IPhysicsSupportFootprint` for explicit movement, and diagnostics here still predict only `IPhysicsCapsuleFeatures`. Native adoption remains separately gated |

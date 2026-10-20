@@ -241,13 +241,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             return buffer;
         }
 
-        // THE ONE THING EVERY TEXTURE COPY DOES AFTER ITS LAST REGION: make a STAGING destination's write visible
-        // to the host (VulkanTransferBarrier.FromTransfer), once per copy call. A copy whose only staging side is
-        // its source, and an image-to-image copy, have no host reader to order and take nothing here.
+        // AFTER THE LAST REGION OF A COPY INTO A STAGING TEXTURE: the transfer-to-host barrier
+        // (VulkanTransferBarrier.ToHost). The host is the only reader of a staging destination, and a timeline
+        // signal makes device writes available to the device only, so this is what lets the fenced read map read
+        // the bytes once the submission's fence has signaled, with no drain. One per copy call, not per region,
+        // and an image destination takes none.
         void FinishTransfer(ulong buffer, VulkanTexture destination, string what)
         {
-            if (destination.IsStaging)
-                RequireTransfers(what).MemoryBarrier(buffer, toTransfer: false);
+            if (destination.IsStaging) RequireTransfers(what).HostReadBarrier(buffer);
         }
 
         // ONE REGION, IN WHICHEVER OF THE FOUR SHAPES THIS PAIR IS. The staging side supplies the buffer terms out
@@ -290,7 +291,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 default:
                     // BOTH SIDES ARE VkBuffers, so this is a plain byte copy between two software layouts and the
                     // subresource offsets are the whole of what it needs. PrepareTransfer ordered it before the
-                    // first region and FinishTransfer makes it host visible after the last, as CopyBuffer does.
+                    // first region. No device barrier after it, unlike CopyBuffer: a staging texture is only ever
+                    // read by the host, which FinishTransfer's host barrier covers, or by a later copy, which
+                    // carries its own barrier.
                     VulkanSubresourceLayout from =
                         VulkanStagingLayout.For(source.StagingShape, sourceMip, sourceLayer);
                     VulkanSubresourceLayout to =

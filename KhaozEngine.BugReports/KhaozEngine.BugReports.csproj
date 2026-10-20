@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.BugReports</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>The headless in-game bug report core for KhaozEngine (opt-in, NOT in any umbrella). Isolated and redacted report sections, drafts and the version 1 bundle writer, the relay and local folder sinks, the write-ahead offline queue, the frame viewer page, and server snapshot capture and posting. Pure .NET, no GPU, window or game dependency, so a server can reference it.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <EmbeddedResource Include="Viewer/viewer.html" LogicalName="KhaozEngine.BugReports.Viewer.html" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.BugReports.Contracts/KhaozEngine.BugReports.Contracts.csproj" />
+    <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
+    <ProjectReference Include="../KhaozEngine.Http/KhaozEngine.Http.csproj" />
+    <ProjectReference Include="../KhaozEngine.Platform/KhaozEngine.Platform.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.BugReports.Tests" />
+  </ItemGroup>
+</Project>

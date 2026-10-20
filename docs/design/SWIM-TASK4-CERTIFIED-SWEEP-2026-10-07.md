@@ -1,10 +1,110 @@
 # Task 4 certified capsule sweep prerequisite
 
-Status: source-audited design completion for the existing approved G1a collision prerequisite.
-The value/interface seam is implemented with eight passing contract facts. No certified backend
-implementation is claimed. This does not open native G1b or change legacy
-locomotion. The [generic plan](../superpowers/plans/2026-10-06-swimming-generic-foundations.md)
-and accepted F3 require conservative swept completeness, not only complete point contacts.
+Status: historical prerequisite design with the current rotated-box, hull, mesh and compound extensions recorded below.
+The checkpoint sections retain the evidence and limits of their original slices. Current consumer
+use and restrictions live in the [backend README](../../KhaozEngine.Physics.Bepu/README.md).
+
+## Final general-family acceptance
+
+The [general-sweep acceptance record](CERTIFIED-GENERAL-SWEEPS-2026-10-18.md#task-6-captured-content-evidence-and-gb-r13)
+completes #1355 for admitted rotated boxes, installed hulls, finite one-sided mesh triangles,
+spheres, capsules, cylinders and supported flat compound descendants. It adds actual acquired
+cost-scene ticks and player-scale captured Grimhollow stairs. Both split and eight-hull compound
+installations retain installed vertex/centroid identity. Off-tangency quarter-turn ascent/descent
+advances every tick and reaches the exact Euclidean 1 mm arrival ball at both physics origins.
+At the general-sweep baseline, the six exact-edge rows retained Clear shell sweeps and Unsupported
+footprints with Blocked movement. [Lane C](CONTACT-CONTROLLER-FOLLOWUPS-C-2026-10-19.md) resolves
+#1494 using represented support. Those unchanged rows now complete and advance, with the historical
+real-quaternion/represented-matrix discriminants retained. No support, roof, raw identity, reach or lifetime rule changes. GS-3 ceilings,
+GS-9 sidedness/culling, GS-10 non-rigid seam refusal and whole-query atomic refusal remain binding.
+Native G1b, SG-12/#1334 timing/cost, navigation, release and consumer adoption remain separate.
+
+## Rotated-box family extension
+
+The [general-sweep contract](CERTIFIED-GENERAL-SWEEPS-2026-10-18.md) adds installed rotated boxes
+without changing `TryReadIdentityBox`, `CapsuleBoxSweep` or `CapsuleBoxFractionSweep`. The convex
+kernel enumerates six finite faces, twelve edges, eight vertices and solid occupancy against axis
+endpoint/interior regimes. Singular pairs reduce to boundary strata. Original-operand Gram
+elimination retains closed parameter inequalities and convex distance quadratics.
+
+Checked 4096-bit dyadics decide constrained minima and isolate the first root, including the isolated
+double root at one third and closed endpoint roots. Exact representable roots are confirmed by
+cross multiplication. Interval coefficients retain their uncertainty. Whole-cell separation precedes
+any discarded interval, and a robust witness can enclose an uncertain root across a subdivision
+boundary. Once one regime proves an upper event witness, later regimes need only establish a
+lower bound before the current bracket. Uncertain cells remain inside that aggregate bracket,
+without inventing another event or a Clear result. The final bracket still needs the real witness
+and the complete 0.001 m check. No sampled miss, inflated-plane construction or AABB certifies the box.
+
+General poses, including exactly rigid maps, retain the actual forward operator and separately enclose the pinned transpose-local
+capsule, including its full axis. The operational bound is
+`6 U(M) + 3 U(4 M) + 2 U(16 M) + U(2 h) + U(16 (M+h))`, where `M` outwardly bounds the complete
+relative path, `h` is the half-cylinder length and `U` is full neighboring binary32 spacing.
+The actual source coefficients must agree across the scalar/SIMD maps and the conjugate-quaternion
+operation graph. No transpose is asserted to be an inverse. Unproved correspondence or an outcome
+or bracket disagreement beyond the unchanged 0.001 m ceiling refuses atomically.
+
+`CertifiedRotatedBoxSweepTests`, `CertifiedSweepPolynomialTests`, `CertifiedSweepBoundsTests` and
+`CertifiedSweepLifetimeTests` carry this extension's geometric, exact, lifecycle and allocation gates.
+The real hidden-crate lift retains both GS-14 dimension pairs. Independent rational installed-point
+oracles check face, edge and vertex entries. General compounds use the extension below. This
+family does not imply native G1b, movement cost-scene acceptance, navigation or consumer adoption.
+
+## Installed hull family extension
+
+`TryCaptureHull` reads actual installed face loops and point lanes, including the exact single-hull
+centroid wrapper produced by `ShapeFactory`. The child typed index, local offset, source face indices
+and vertex bits are retained and checked against the current installation. No descriptor or AABB
+substitutes for the installed solid. The existing exact convex topology validator proves planar strict
+convex faces, opposite edge pairing, Euler closure, connected face neighborhoods and cyclic vertex links.
+Every padded support lane must alias an admitted vertex. Invalid or ambiguous topology refuses.
+
+Finite polygon faces use their original wound edge inequalities on the Gram-eliminated closest
+point. No fan diagonal introduces an artificial uncertain boundary inside a face. Original edges,
+vertices and all interior halfspaces complete the endpoint/interior axis regimes. A tetrahedron has
+four surface triangles, six edges, four vertices and one interior feature. Isolated vertex tangency
+at fraction one third, stationary face/edge/vertex contact, interior overlap, closed endpoints and
+one-binary32-neighbor separation use the same exact polynomial contract as boxes.
+
+The hull ceilings remain 256 faces, 508 vertices and 1524 face-index entries. The shared 256-cell,
+48-depth, 4096-feature, 4096-descendant and checked 4096-bit work ceilings do not grow. A larger valid
+topology may still exhaust a query budget and refuse atomically. `CertifiedHullSweepTests` and
+`CertifiedHullSweepLifetimeTests` cover native reuse, centroid compensation, static/dynamic poses,
+nonzero-Y frames, bound repair, exact fallback and zero warm allocation. General compound composition
+uses the extension below. The final acceptance above proves authored multi-hull stairs. Movement
+adoption remains separate.
+
+## Finite static mesh extension
+
+Finite scaled triangle faces, edges and vertices now use the shared distance/root kernel without
+solid occupancy. The captured original triangle and Bepu's rounded centroid continuation both complete
+before a result is published. Their complete bracket union must fit the unchanged 0.001 m ceiling.
+Initial closed front contact is distinct from directional culling. Default raw sweeps retain their
+back-face row. Stationary/back/crossing relationships without a proved contact agreement refuse.
+The exact [side/filter matrix](CERTIFIED-GENERAL-SWEEPS-2026-10-18.md#installed-mesh-implementation-and-pinned-side-policy)
+and pinned source symbols are recorded in GS-9. `CertifiedMeshSweepTests`,
+`CertifiedMeshSweepCoverageTests` and `CertifiedMeshSweepLifetimeTests` carry these gates.
+General compounds use the extension below. Acquired movement acceptance is recorded above, while
+native producer certification and consumer adoption remain separate.
+
+## Atomic compound extension
+
+The capture reads every actual installed flat convex child, retaining raw child index, typed shape
+identity, local pose and immutable leaf topology. Nested seam flattening and hull centering come from
+`ShapeFactory`, without reconstructing descriptors or adding another centroid offset. Supported
+children reuse box, hull, sphere, capsule and cylinder proofs. Mesh children remain an installation
+refusal. Installed nested compounds and BigCompound remain unsupported.
+
+Mutation completion unions every child's proved bounds and publishes all composed poses together.
+Queries retain the existing 64-child scratch array and shared 4096-descendant account, certify every
+child without child pruning and aggregate complete brackets independently of child order. An early
+Hit(0) never bypasses a later unsupported or exhausted child. Capture lookup also authenticates the
+registration id and installation generation against independent live owner records.
+
+The rounded 60-degree nested fixture passes composition and bounds but its enclosed tangent box
+face reaches depth 48 without a robust witness. It retains exact default refusal, while the rigid
+cyclic-child sibling certifies the independently checked Hit. GS-10 records this non-rigid proof
+limitation under GB-R9. No leaf kernel, tolerance, error ceiling or work ceiling changes.
 
 ## Source facts
 

@@ -83,6 +83,30 @@ automatically, so this is transparent to every other package.
   they are relative to that anchor. It untranslates and unrotates the ray and defers to `IntersectAabb`, so
   every edge case above holds unchanged and a `yaw` of 0 gives the same answer as `IntersectAabb` with the
   anchor subtracted out.
+- `InteriorVolume` / `InteriorRoof` / `IInteriorSource` describe simple world-XZ polygons, floor and ceiling
+  heights and roof geometry without a renderer dependency. `InteriorSourceResult.Encoding` carries the
+  source-wide `InteriorEncoding.For(lowestFloorY, highestTopY)`, stable across window re-centres.
+  `InteriorLattice` supplies identical represented edges for window corners, roof clipping and adapter outlines.
+  `InteriorWindow.Centred` snaps to the world-origin lattice. `CellsFor(512f, cellSize)` rounds up and caps
+  at 4096 cells per side. `InteriorHeightFieldBuilder.Build(volumes, window, encoding)` fills only whole
+  polygon cells, clips roof triangles to each cell for their exact minimum height, and merges overlapping spans
+  to their lowest floor and highest top.
+  The immutable field packs floor high/low in RG and top high/low in BA, rows toward +world Z, with a 1 cm
+  step through 655.35 m or a coarser source-wide step beyond that. `Texels`, `Version`, `MergedCells` and
+  `OutOfRangeCells` describe the result. `TryGetSpan` returns approximate decoded heights, while `Contains`
+  tests the shader's float32 code space, floor-inclusive and top-exclusive. `InteriorCutFrame` carries a double
+  render origin and produces both the uniforms and the render-relative point used by membership. Cell addressing
+  multiplies by the rounded reciprocal cell size. `Contains(world, frame)` and the overload
+  `FirstUncut(origin, direction, tStart, tEnd, frame, out t)` share that frame, including represented ray crossings.
+  Overloads without a frame use origin zero.
+  `MayIntersect(worldMin, worldMax)` and its frame-taking overload conservatively test a box against
+  packed-code summaries of 8 by 8 cells. They expand XZ by a cell and round height bounds outwards.
+  False positives are allowed. The renderer caches this query so only opted-in props whose drawn bounds
+  can reach an interior take the cut path.
+  `FirstUncut(origin, direction, tStart, tEnd, out t)` finds the first uncut point in ray-parameter units,
+  treating empty cells and points outside the window as uncut. It returns false for a wholly cut segment.
+  `RayMath.IntersectObbY(..., out tNear, out tFar)` supplies the matching box entry and exit, including
+  `tNear = 0` for a ray starting inside, without changing the existing entry-only overload.
 - `WorldFrame` - a quantized planar frame for large worlds, the floating-origin primitive: a `(short X, short Z)`
   index onto a 128 m grid whose `Anchor` is `(X, 0, Z) * Grid` metres, always exactly representable in float32.
   `Nearest(world)` rounds (never floors) so a freshly anchored local lies inside half a grid, which is what makes
@@ -135,6 +159,29 @@ automatically, so this is transparent to every other package.
   counts as 0 (`1.2` equals `1.2.0`), and a null or blank string is the empty all-zero version (never
   throws). The one shared rule behind `KhaozEngine.Updates.UpdateVersion.IsNewer` and
   `KhaozEngine.ServerStatus.VersionOrder.Compare`/`IsBelow`, both thin wrappers over `Compare` here.
+- `ClearanceMesh` / `ClearanceSolid` / `ClearanceSamples` / `ClearanceProbe` / `ClearancePenetration` - the
+  format-free geometry core of the tile world clearance check, which keeps one placed mesh out of another.
+  `ClearanceMesh` copies and validates an indexed triangle mesh once (whole triangles, indices in range, finite
+  positions, at least one triangle) and keeps its local bounds. Both builders sample each triangle in rows
+  parallel to its longest edge, no more than the pitch apart, plus its edges and exact vertices, so the count
+  grows with area plus perimeter for every triangle shape. `ClearanceSamples.Build(mesh, pitch)` is a subject's
+  probe points, and refuses a pitch below 0.01 or not finite. `ClearanceSolid.Build(mesh, cellSize)` accepts a
+  `cellSize` from 0.02 to 1 (otherwise `ArgumentOutOfRangeException`), samples the obstacle at half that size
+  and fills a planar grid from the samples, each filled cell solid from the mesh's lowest point up to its
+  highest sample. It throws `ClearanceTooLargeException` past `MaxCells`.
+  `DepthAt(local)` is the nearest way out: up to the top, down to the base or sideways to an empty cell (a chamfer
+  distance transform, quantized to the cell). A thin piece caps depth near half its thickness, and an overhang,
+  doorway or deck reads as filled, so the check leans toward reporting a contact a precise test would clear.
+  Readings carry an error band that scales with the cell size c. A point just outside a curved or off-grid edge
+  reads up to c / 2 inside, a cell with only a diagonal empty neighbour about 0.91 c, and a point just above a
+  sloped top up to about c times the slope's tangent (at c = 0.1, 0.05, 0.091 and about 0.09 for a point 1 cm
+  above a 45 degree slope). A contact narrower than the subject's sample pitch can be missed, and an obstacle
+  wholly inside a subject is never seen. A tolerance of at least c / 2 absorbs the edge band, and a smaller c
+  suits steep roofs. `ClearanceProbe.Deepest(samples, subjectToWorld, solid, obstacleToWorld, tolerance)` returns the deepest
+  `ClearancePenetration(Depth, WorldPoint)` beyond the tolerance or null, throwing `ArgumentException` for an
+  obstacle transform that cannot be inverted, and `PlanarBounds` is its broad phase. Each build is done once per
+  mesh in local space and probed under any placement. `KhaozEngine.TileWorld`'s `TileWorldClearance` is the
+  document adapter.
 - `RenderFrameStats` - per-frame render cost counters (draw calls, instances, triangles, buffer-update bytes,
   and the 2D quads / flushes / texture switches). A plain value type summed with `+`, so a host aggregates
   several surfaces' tallies into one frame total. Populated always-on by `Render2D.SpriteBatch.FrameStats` and

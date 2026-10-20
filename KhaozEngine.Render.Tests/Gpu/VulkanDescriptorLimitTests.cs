@@ -55,10 +55,10 @@ namespace KhaozEngine.Tests.Gpu
         static GpuResourceLayoutDescription L(params GpuResourceLayoutElement[] elements) => new(elements);
 
         /// <summary>
-        /// EVERY SHIPPED <c>CreateResourceLayout</c> SITE, transcribed with its own source line. All of them are in
-        /// <c>KhaozEngine.Render2D</c> and <c>KhaozEngine.Render3D</c>: no other package declares a layout at all,
-        /// because every other renderer draws through those two. The count is asserted below rather than restated
-        /// here, so it cannot go stale.
+        /// EVERY SHIPPED <c>CreateResourceLayout</c> SITE, transcribed with its own source line. All but one are in
+        /// <c>KhaozEngine.Render2D</c> and <c>KhaozEngine.Render3D</c>, because every other renderer draws through
+        /// those two. The one exception is <c>KhaozEngine.Gpu</c>'s <c>GpuScaledCopy</c>, the frame capture
+        /// downscale. The count is asserted below rather than restated here, so it cannot go stale.
         /// </summary>
         internal static IReadOnlyDictionary<string, GpuResourceLayoutDescription> ShippedLayouts { get; } =
             new Dictionary<string, GpuResourceLayoutDescription>(StringComparer.Ordinal)
@@ -67,6 +67,9 @@ namespace KhaozEngine.Tests.Gpu
                 // in shipped code and why the pipeline grouping below is the load-bearing half of this table.
                 ["SpriteBatch.texture"] = L(T("Tex"), S("Samp")),
                 ["SpriteBatch.vp"] = L(U("Vp", V, dynamic: true)),
+
+                // Gpu/GpuScaledCopy.cs, the frame capture downscale. Fragment-stage, no uniform buffer.
+                ["GpuScaledCopy"] = L(T("Src"), S("Samp")),
 
                 // Render3D/Rendering/BeamRenderer.cs:54
                 ["Beam"] = L(AtmosphereBindings.AppendLayout(U("U", VF))),
@@ -78,9 +81,9 @@ namespace KhaozEngine.Tests.Gpu
                 ["GroundDecal"] = L(AtmosphereBindings.AppendLayout(T("DepthTex"), S("Samp"), U("Frame", F, dynamic: true), T("NormalTex"))),
 
                 // Render3D/Rendering/ModelRenderer.cs:225, :270 and :273
-                ["Model"] = L(AtmosphereBindings.AppendLayout(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F), T("Albedo"),
+                ["Model"] = L([.. AtmosphereBindings.AppendLayout(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F), T("Albedo"),
                     T("NormalMap"), T("RoughnessMap"), S("Sampler"), T("ShadowMap"), S("ShadowSamp"),
-                    T("PointShadowMap"), T("PointShadowTransientMap"))),
+                    T("PointShadowMap"), T("PointShadowTransientMap")), T("InteriorCut")]),
                 ["Foliage"] = L(U("Foliage", V, dynamic: true)),
                 // The shared frame block, fragment-only point lights and per-draw vertex block in binding order.
                 // The two uniform buffers retain their relative order from #604.
@@ -114,6 +117,12 @@ namespace KhaozEngine.Tests.Gpu
                 // Render3D/Rendering/ModelMotionResources.cs, the motion block alone: set 1 of the CPU-skinned variants
                 // and set 2 of the foliage and ground variants.
                 ["Motion.frame"] = L(U("MotionFrame", V)),
+
+                // CoveragePulledResources, ModelRenderer.CoverageShadows and CoverageTransitionGpu.
+                ["Coverage.pull"] = L(Ro("CoverageCurrent", V), Ro("CoverageStatic", V),
+                    U("CoverageDraw", V, dynamic: true), Ro("CoveragePrevious", V)),
+                ["Coverage.cascade"] = L(U("VBlock", V, dynamic: true)),
+                ["Coverage.transition"] = L(Ro("TransitionState", V), U("TransitionOffset", V, dynamic: true)),
 
                 // Render3D/Rendering/OceanFftProducer.cs:506 and :510, both compute
                 ["OceanFft.row"] = L(U("Params", C), Rw("H0Buf", C), Rw("WorkBuf", C)),
@@ -177,6 +186,8 @@ namespace KhaozEngine.Tests.Gpu
 
                 // Render3D/Rendering/ShadowMapRenderer.cs:125 and :141
                 ["Shadow"] = L(U("U", V, dynamic: true)),
+                ["Shadow.interiorFrame"] = L(U("U", VF, dynamic: true)),
+                ["InteriorCut"] = L(T("InteriorCut"), S("Samp")),
                 // Render3D/Rendering/FoliageShadowRenderer.cs. Cascade matrices, camera fade matrix and origin.
                 ["FoliageShadow"] = L(U("U", V, dynamic: true)),
                 ["Shadow.skinned"] = L(U("VBlock", V, dynamic: true)),
@@ -232,6 +243,9 @@ namespace KhaozEngine.Tests.Gpu
             // Render2D/SpriteBatch.cs:214, both the alpha and the additive pipeline through one Describe(blend).
             ("SpriteBatch", ["SpriteBatch.texture", "SpriteBatch.vp"]),
 
+            // Gpu/GpuScaledCopy.cs, the frame capture downscale.
+            ("GpuScaledCopy", ["GpuScaledCopy"]),
+
             // Render3D/Rendering/ModelRenderer.cs:407 and :419. THREE slots since #407 added the shared palette.
             ("ModelRenderer skinned", ["Model.skinnedMain", "Model.skinnedFrag", "SkinnedBonePalette"]),
             ("ModelRenderer skinned dissolve", ["Model.skinnedMain", "Model.skinnedFrag", "SkinnedBonePalette"]),
@@ -261,10 +275,10 @@ namespace KhaozEngine.Tests.Gpu
             ("OverlayMeshRenderer", ["OverlayMesh"]),
             ("OverlayRenderer", ["Overlay"]),
             ("BillboardRenderer", ["Billboard"]),
-            ("SilhouetteRenderer", ["Silhouette"]),
+            ("SilhouetteRenderer", ["Silhouette", "InteriorCut"]),
             ("ParticleRenderer", ["Particle"]),
-            ("TargetOutlineRenderer rigid full", ["TargetOutline.draw", "TargetOutline.material"]),
-            ("TargetOutlineRenderer rigid visible", ["TargetOutline.draw", "TargetOutline.material"]),
+            ("TargetOutlineRenderer rigid full", ["TargetOutline.draw", "TargetOutline.material", "InteriorCut"]),
+            ("TargetOutlineRenderer rigid visible", ["TargetOutline.draw", "TargetOutline.material", "InteriorCut"]),
             ("TargetOutlineRenderer composite", ["TargetOutline.composite"]),
             ("TargetOutlineRenderer skinned full",
                 ["TargetOutline.draw", "TargetOutline.material", "TargetOutline.palette"]),
@@ -282,6 +296,12 @@ namespace KhaozEngine.Tests.Gpu
             ("PixelPostProcess apply", ["Pixel.apply"]),
             ("TemporalSharpenPass", ["TemporalSharpen"]),
             ("CoverageTransitionMask", []),
+            ("ModelRenderer coverage", ["Model.skinnedMain", "Model.skinnedFrag", "Coverage.pull"]),
+            ("ModelRenderer coverage motion", ["Model.skinnedMain", "Model.skinnedFrag", "Coverage.pull", "Motion.frame"]),
+            ("ModelRenderer coverage cascade", ["Coverage.cascade", "Coverage.pull"]),
+            ("PointShadowRenderer coverage", ["PointShadow", "PointShadow.skinnedCaster", "Coverage.pull"]),
+            ("TargetOutlineRenderer coverage", ["TargetOutline.draw", "TargetOutline.material", "Coverage.pull"]),
+            ("CoverageTransitionGpu", ["Coverage.transition"]),
             ("TemporalResolveRenderer resolve", ["Temporal.resolve"]),
             ("TemporalResolveRenderer depth store", ["Temporal.depthStore"]),
             ("TemporalResolveRenderer debug view", ["Temporal.resolve", "Temporal.debugMode"]),
@@ -289,10 +309,9 @@ namespace KhaozEngine.Tests.Gpu
             ("TemporalResolveRenderer count probe", ["Temporal.resolve"]),
             ("TemporalSplitResolve prepare", ["Temporal.prepare"]),
             ("TemporalSplitResolve accumulate", ["Temporal.accumulate"]),
-            // The four rigid point-shadow pipelines (three caster variants and the row clear) are one row, the way
-            // the cascade pass's three depth variants are: they differ in blend, depth state and shaders, and a
-            // pipeline is in this table for its LAYOUT ARRAY, which is the same single set for all of them.
+            // Rigid dissolve pipelines add the shared interior image and sampler, with no extra uniform buffer.
             ("PointShadowRenderer", ["PointShadow"]),
+            ("PointShadowRenderer dissolve", ["PointShadow", "InteriorCut"]),
             ("PointShadowRenderer skinned", ["PointShadow", "PointShadow.skinnedCaster", "SkinnedBonePalette"]),
             ("PointShadowRenderer skinned dissolve", ["PointShadow", "PointShadow.skinnedCaster", "SkinnedBonePalette"]),
             ("PointShadowRenderer skinned dissolve inverted", ["PointShadow", "PointShadow.skinnedCaster", "SkinnedBonePalette"]),
@@ -300,7 +319,8 @@ namespace KhaozEngine.Tests.Gpu
             ("FoliageShadowRenderer cutout depth", ["FoliageShadow", "Foliage", "Shadow.cutout"]),
             ("ShadowMapRenderer depth", ["Shadow"]),
             ("ShadowMapRenderer skinned depth", ["Shadow.skinned", "SkinnedBonePalette"]),
-            ("ShadowMapRenderer cutout depth", ["Shadow", "Shadow.cutout"]),
+            ("ShadowMapRenderer dissolve depth", ["Shadow.interiorFrame", "InteriorCut"]),
+            ("ShadowMapRenderer cutout depth", ["Shadow.interiorFrame", "Shadow.cutout", "InteriorCut"]),
             ("SkyRenderer", ["Sky"]),
             ("StarfieldRenderer", ["Starfield"]),
             ("TexturedBillboardRenderer", ["TexturedBillboard"]),
@@ -319,10 +339,10 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void EveryShippedPipeline_StaysWithinTheRequiredMinimumDynamicUniformBuffers()
         {
-            // The atmosphere producers add three dense layouts and pipeline rows.
+            // The atmosphere producers add three dense layouts and pipeline rows. GpuScaledCopy adds one of each.
             // Both counts are stated so an emptied table cannot pass by agreeing with itself.
-            Assert.Equal(62, ShippedLayouts.Count);
-            Assert.Equal(68, ShippedPipelines.Count);
+            Assert.Equal(68, ShippedLayouts.Count);
+            Assert.Equal(77, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {

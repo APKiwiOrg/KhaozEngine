@@ -4,3 +4,9 @@ KhaozEngine.Render.Tests/Gpu/goldens/*.txt text eol=lf
 KhaozEngine.MapDoc.Tests/Fixtures/FormatFour/** text eol=lf
 KhaozEngine.Render.Tests/Fixtures/coverage-exact-v1/*.json text eol=lf
 KhaozEngine.Render.Tests/Fixtures/coverage-reference-v1/outputs.sha256 text eol=lf
+
+# Support certification fixtures are pinned by SHA-256 over their bytes, so a CRLF checkout breaks them.
+KhaozEngine.Game.Tests/Locomotion/Contacts/Fixtures/*.json text eol=lf
+KhaozEngine.Game.Tests/Locomotion/Contacts/Fixtures/*.jsonl text eol=lf
+KhaozEngine.Game.Tests/Locomotion/Contacts/Fixtures/*.txt text eol=lf
+KhaozEngine.Game.Tests/Physics/Fixtures/*.jsonl text eol=lf

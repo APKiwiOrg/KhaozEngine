@@ -16,6 +16,7 @@ layout(set=0, binding=0) uniform U {
     // the size of one buffer. Same trap the render origin left when it was appended.
     vec4 PointShadowParams[16]; vec4 PointShadowAtlas; vec4 PointShadowFilter; vec4 PointShadowTransientAtlas;
     vec4 ClusterDepth; vec4 ClusterCamera;
+    vec4 InteriorCutWindow; vec4 InteriorCutHeights;
 };
 " + FoliageUniformBlockGlsl + @"layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;

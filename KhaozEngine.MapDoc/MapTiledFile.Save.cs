@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using KhaozEngine.Serialization;
+using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
 
@@ -75,6 +77,7 @@ internal static partial class MapTiledFile
             throw new MapDocumentException($"{directory}: stale window, the manifest changed after this window was loaded.");
 
         MapSurfaceTiledStore.Prepared surfaces = MapSurfaceTiledStore.Prepare(doc, root, packing);
+        MapFoliagePreparedStorage foliage = MapFoliageStorage.Prepare(doc, root);
 
         // 2. Bucket and hash.
         MapSpatialIndex spatial = MapSpatialIndex.Build(doc);
@@ -112,28 +115,35 @@ internal static partial class MapTiledFile
             save.OnStep?.Invoke(MapTiledSaveStep.AfterTileWrite);
         }
         MapSurfaceTiledStore.Write(root, surfaces, save, touchedShards);
+        MapFoliageStorage.Write(root, foliage, save, touchedShards);
 
         // 5. Commit: the manifest rename, and nothing before this mutated anything live.
+        MapFoliageStorage.RequireUnchanged(doc, foliage);
         MapDocument manifestDoc = GlobalsOnly(doc);
         manifestDoc.Surfaces = new MapSurfaceSet();
         manifestDoc.Surfaces.Refs.AddRange(surfaces.Refs);
-        WriteManifest(root, manifestDoc, entries, surfaces.Index.Directory, indented, save.Durability);
+        WriteManifest(root, manifestDoc, entries, surfaces.Index.Directory, foliage.Index, indented, save.Durability);
         string manifestSha256 = HashManifest(File.ReadAllBytes(Path.Combine(root, ManifestTempName)));
         save.OnStep?.Invoke(MapTiledSaveStep.BeforeManifestRename);
+        MapFoliageStorage.RequireUnchanged(doc, foliage);
         File.Move(Path.Combine(root, ManifestTempName), manifestPath, overwrite: true);
         FlushDirectories(root, touchedShards, save.Durability);
         save.OnStep?.Invoke(MapTiledSaveStep.AfterManifestRename);
 
         // 6. Sweep, after the commit. Skipped when the previous manifest could not be read: deleting files on
         //    the authority of a manifest that failed to parse is how a bad save turns into a lost world.
-        if (previous is not null) Sweep(root, entries, surfaces.Keep, save);
+        if (previous is not null) Sweep(root, entries, surfaces.Keep.Concat(foliage.Keep).ToArray(), save);
 
         // The document now describes what is on disk. Refreshing the index here is what keeps
         // MapDocumentHash.OfWorld honest on an edited document: it reads stored hashes and never opens a
         // tile file, so a stale index would report the pre-edit world forever.
         doc.Surfaces.Refs.Clear();
         doc.Surfaces.Refs.AddRange(surfaces.Refs);
-        doc.Tiles = new MapTileIndex(doc.TileSize, MapDocumentHash.SchemeVersion, root, entries, manifestSha256, surfaces.Index);
+        doc.Tiles = new MapTileIndex(doc.TileSize, MapDocumentHash.SchemeVersion, root, entries, manifestSha256, surfaces.Index)
+        { Foliage = doc.Foliage is null ? null : foliage.Index };
+        if (doc.Foliage is { } set)
+            doc.Foliage = new(set.PayloadVersion, set.Layers.Select(l => MapFoliageLayer.FromStorage(l,
+                foliage.Index.Chunks.Where(c => c.LayerId == l.Id).Select(c => new MapFoliageChunkDigest(c.Key, c.Sha256)).ToArray(), l.Chunks)).ToArray());
     }
 
     static void GuardMovedContent(MapSpatialIndex spatial, MapTileIndex window)
@@ -175,7 +185,7 @@ internal static partial class MapTiledFile
     }
 
     static void WriteManifest(string root, MapDocument doc, List<MapTileEntry> entries,
-                              IReadOnlyList<MapDirectoryPageRef> surfaces, JsonSerializerOptions options, MapSaveDurability durability)
+                              IReadOnlyList<MapDirectoryPageRef> surfaces, MapFoliageStorageIndex foliage, JsonSerializerOptions options, MapSaveDurability durability)
     {
         string temp = Path.Combine(root, ManifestTempName);
         WriteThroughTemp(temp, moveTo: null, durability, w =>
@@ -187,7 +197,11 @@ internal static partial class MapTiledFile
             if (!string.IsNullOrEmpty(doc.DisplayName)) w.WriteString("displayName", doc.DisplayName);
             w.WriteNumber("schemeVersion", MapDocumentHash.SchemeVersion);
             MapCanonical.WriteGlobals(w, doc, options);
-            MapCanonical.WriteNativeGlobals(w, doc, options);
+            MapCanonical.WriteNativeGlobals(w, doc, options, includeFoliage: false);
+            if (doc.Foliage is { } set)
+            {
+                w.WritePropertyName("foliage"); MapFoliageStorage.WriteManifest(w, set, foliage);
+            }
             w.WritePropertyName("surfaceStorage");
             JsonSerializer.Serialize(w, surfaces, options);
             w.WriteStartArray("tiles");

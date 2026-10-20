@@ -82,7 +82,10 @@ public sealed partial class ContactLifetimeAllocationTests(ITestOutputHelper out
         }
         Assert.True(samples.Max(s => s.Counts.Find) > samples.Min(s => s.Counts.Find));
         Assert.True(samples.Single(s => s.Scene == "pushed seat").Routes.PushedPlacements > 0);
-        Assert.Equal(3, samples.Single(s => s.Scene == "stairs box").SupportReads.Count(q => q.ReachUp > 1));
+        // The pushed seat carries no run in, so its three look-ahead samples decide its ascent. The stairs carry an
+        // ascent the move already continues, which skips them.
+        Assert.Equal(3, samples.Single(s => s.Scene == "pushed seat").SupportReads.Count(q => q.ReachUp > 1));
+        Assert.Equal(0, samples.Single(s => s.Scene == "stairs box").SupportReads.Count(q => q.ReachUp > 1));
         Assert.True(samples.Single(s => s.Scene == "explicit rounding handoff").Counts.ModeSegments > 1);
         Assert.All(samples, sample => Assert.True(total == sample.WarmBytes, $"{sample.Scene}. Expected {total} B, actual {sample.WarmBytes} B."));
     }
@@ -95,12 +98,15 @@ public sealed partial class ContactLifetimeAllocationTests(ITestOutputHelper out
         using var lease = (MovementQueryLease)execution.Producer.Acquire().Lease!;
         var request = new MovementSupportRequest(new(row.Input.Position, 0.4f, 0.9f, new("world", "room"), null),
             0.4f, 0.4f, MathF.PI / 4, new(new("world", "room"), row.Feet));
-        using var region = SupportAllocationRegion.Start();
         Assert.Equal(MovementAvailability.Known, lease.FindContactSupport(request, row.Query, out var support, out _));
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        MovementAvailability sampled = lease.SampleAnalyticGround(request, out var ground);
-        MovementAvailability bound = lease.BindContactSupport(request, support, out var binding);
-        long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        MovementAvailability sampled = default, bound = default;
+        MovementAnalyticGround? ground = null;
+        MovementContactSupportBinding binding = default;
+        long bytes = AllocationMeasurement.Measure(nameof(BorrowedSampleAndBindingAllocateNothing), () =>
+        {
+            sampled = lease.SampleAnalyticGround(request, out ground);
+            bound = lease.BindContactSupport(request, support, out binding);
+        });
         Assert.Equal(MovementAvailability.Known, sampled);
         Assert.Equal(MovementAvailability.Known, bound);
         Assert.Equal(ground!.Value.Owner, binding.Owner);

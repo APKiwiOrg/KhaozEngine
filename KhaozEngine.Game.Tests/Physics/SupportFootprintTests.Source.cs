@@ -167,27 +167,28 @@ public partial class SupportFootprintTests
     }
 
     [Fact]
-    public void InstalledCoefficientBoundaryRefusesAtomically()
+    public void InstalledRepresentedCoefficientBoundaryIsExactlyOnTheDisc()
     {
-        using var diagnostics = new SourceDiagnosticScope();
         Quaternion rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, 0.65f);
-        Assert.True(InstalledPoseOperator.TryCreate(new RigidPose(Vector3.Zero, rotation), out var map));
-        float radius = (float)map.RepresentedX.X.Value;
-        Assert.True(map.X.X.Bounds.Lower < map.X.X.Bounds.Upper);
-        Assert.InRange((double)radius, map.X.X.Bounds.Lower, map.X.X.Bounds.Upper);
+        var represented = InstalledPoseOracle.Represented(rotation);
+        float radius = represented.X.X.AsSingle();
         using var scene = new SupportFootprintScene();
         scene.Install(new TriangleMeshShape([new(1, 0, 0), new(1.125f, 0, -0.125f), new(1.125f, 0, 0.125f)],
             [0, 1, 2]), new(Vector3.Zero, rotation));
         var request = Request(radius: radius, upper: 1);
+        var polygon = Assert.Single(CapturedMesh(scene, request));
+        Assert.Equal(InstalledPoseOracle.R.Zero, represented.X.X.Square() - InstalledPoseOracle.R.From(radius).Square());
+        Assert.Equal(GeometrySign.Zero, polygon.SourcePredicates.VertexDisc(polygon, 0,
+            FeaturePoint.Exact(Vector3.Zero), FeatureNumber.Exact(radius)));
         using var lease = scene.World.AcquireQueryReadLease();
         var members = MemberSentinels(256);
         var before = (SupportFootprintMember[])members.Clone();
         var joins = Enumerable.Repeat(73UL, 1024).ToArray();
-        Assert.Equal(CapsuleFeatureStatus.Unsupported,
-            Capability(scene.World).QuerySupportFootprint(lease, request, members, joins).Status);
-        Assert.Equal(before, members);
-        Assert.All(joins, word => Assert.Equal(73UL, word));
-        AssertSourceFallbacks();
+        var result = Capability(scene.World).QuerySupportFootprint(lease, request, members, joins);
+        CheckQueryOracle(scene, request, result, members, joins);
+        Assert.True(Assert.Single(members.Take(result.Members)).HasDiscMaximum);
+        Assert.Equal(before.Skip(result.Members), members.Skip(result.Members));
+        Assert.All(joins.Skip(result.Members * result.JoinWordsPerRow), word => Assert.Equal(73UL, word));
     }
 
     [Theory]
@@ -242,15 +243,15 @@ public partial class SupportFootprintTests
             [0, 2, 1]), new(Vector3.Zero, new Quaternion(0.5f, 0.5f, 0.5f, 0.5f)));
         var request = Request(radius: 5 * s, upper: 7);
         var polygon = Assert.Single(CapturedMesh(scene, request));
-        using var region = SupportAllocationRegion.Start();
         Assert.Equal(GeometrySign.Positive, SupportFootprintPolygon.Measure(polygon, request, out _));
         Assert.Equal(GeometrySign.Positive, SupportFootprintProposalGeometry.Lowest(polygon, request.FootProposal, out _));
         SupportQueryDiagnostics.Reset();
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        var footprint = SupportFootprintPolygon.Measure(polygon, request, out _);
-        var contact = SupportFootprintProposalGeometry.Lowest(polygon, request.FootProposal, out _);
-        long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
-        region.Dispose();
+        GeometrySign footprint = default, contact = default;
+        long bytes = AllocationMeasurement.Measure(nameof(WarmSourceStrataAllocateNothing), () =>
+        {
+            footprint = SupportFootprintPolygon.Measure(polygon, request, out _);
+            contact = SupportFootprintProposalGeometry.Lowest(polygon, request.FootProposal, out _);
+        });
         Assert.Equal(GeometrySign.Positive, footprint);
         Assert.Equal(GeometrySign.Positive, contact);
         Assert.Equal(0, bytes);

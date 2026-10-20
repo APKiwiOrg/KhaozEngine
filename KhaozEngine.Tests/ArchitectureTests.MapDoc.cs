@@ -34,11 +34,16 @@ public partial class ArchitectureTests
         IReadOnlyDictionary<string, Project> graph = LoadGraph();
         Assert.DoesNotContain(graph.Values, p => p.ProjectRefs.Contains(Harness));
         Assert.False(graph[Harness].IsPackableLibrary);
+        // The seventh, TileWorld.Render3D, is test-only: the private foliage comparison samples the released legacy
+        // foliage surface through it.
+        List<string> harnessDirectEngineReferences = graph[Harness].ProjectRefs.OrderBy(name => name, StringComparer.Ordinal).ToList();
+        Assert.Equal(7, harnessDirectEngineReferences.Count);
         Assert.Equal(new[]
         {
             "KhaozEngine.MapDoc", "KhaozEngine.MapDoc.Physics", "KhaozEngine.Physics.Bepu",
-            "KhaozEngine.TileWorld", "KhaozEngine.TileWorld.Physics",
-        }, graph[Harness].ProjectRefs.OrderBy(name => name, StringComparer.Ordinal));
+            "KhaozEngine.TileWorld", "KhaozEngine.TileWorld.Netcode", "KhaozEngine.TileWorld.Physics",
+            "KhaozEngine.TileWorld.Render3D",
+        }, harnessDirectEngineReferences);
         Assert.Contains(XDocument.Load(Path.Combine(RepoRoot(), Harness, Harness + ".csproj")).Root!.Descendants("IsPackable"),
             e => string.Equals((string?)e, "false", StringComparison.OrdinalIgnoreCase));
     }

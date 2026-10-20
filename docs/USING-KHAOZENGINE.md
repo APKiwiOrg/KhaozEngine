@@ -29,6 +29,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [File-size ratchet (KESIZE analyzer)](#file-size-ratchet-kesize-analyzer)
 - [In-game patch notes (`PatchNotesLoader` / `PatchNotesView` / `PatchNotesScreen`, 10.45.0)](#in-game-patch-notes-patchnotesloader--patchnotesview--patchnotesscreen-10450)
 - [Reconnect / connection-outage screen (`ConnectionStatusController` / `ReconnectScreen`, 13.2.0)](#reconnect--connection-outage-screen-connectionstatuscontroller--reconnectscreen-1320)
+- [In-game bug reports (`BugReportService`)](#in-game-bug-reports-bugreportservice)
 - [Render2D (`KhaozEngine.Render2D`)](#render2d-khaozenginerender2d)
 - [DPI-aware / crisp UI (the point-space path)](#dpi-aware--crisp-ui-the-point-space-path)
 - [Floating world text (`FloatingTextStore` / `FloatingBannerStore`, 18.16.0)](#floating-world-text-floatingtextstore--floatingbannerstore-18160)
@@ -155,9 +156,14 @@ These are not style preferences. Breaking them re-introduces the exact bugs this
 4. **An overlay above a still-updating layer must reserve its footprint** with `BlockInputRegion(rect)` every
    frame, and the layer beneath must guard its actions with `IsInputBlocked(point)`. This is half of the
    click-through fix. The other half is `IsTapIn`.
-5. **Pass the design viewport to `Pointer.Update` / `InputManager.Update`** so hit-testing lines up with what's
+5. **Overlapping windows go on a `WindowStack`** (21.3.0). Register every non-modal window that can overlap
+   another, and update the stack before any layer beneath it reads the same pointer. Decide every pointer
+   behaviour through a `Pointer` hit query or `IsOccluded`, and read raw `Position` only after such a gate. A
+   covered area then answers nothing, engine widgets included. See
+   [Overlapping windows](#overlapping-windows-windowstack-2130).
+6. **Pass the design viewport to `Pointer.Update` / `InputManager.Update`** so hit-testing lines up with what's
    drawn. `GameApp` does this for you. If you build your own loop, do it yourself.
-6. **`System.Numerics` only** - `Vector2/3/4`, `Matrix4x4`. No XNA / MonoGame types anywhere. (An RGBA color
+7. **`System.Numerics` only** - `Vector2/3/4`, `Matrix4x4`. No XNA / MonoGame types anywhere. (An RGBA color
    is `KhaozEngine.Primitives.Color`, not a bare `Vector4`. GPU-layout structs still use `Vector4`.) To dim
    or brighten a color for a tint, use `color.ScaleRgb(factor)`: it scales RGB and keeps alpha. `color *
    factor` scales alpha too, which under the 2D batch's straight-alpha blend turns a dim into translucency
@@ -165,7 +171,7 @@ These are not style preferences. Breaking them re-introduces the exact bugs this
    `ScaleRgb` is unclamped, so a brighten factor over an already-bright color can overshoot 1.0 per channel.
    Use `color.ScaleRgbClamped(factor)` (same contract, each scaled channel clamped to 0..1) whenever the
    factor can push a channel out of range, e.g. a UI "selected" highlight tint.
-7. **Don't fork the packages.** Need an API that isn't there? Add it to KhaozEngine, ship a headless test, bump
+8. **Don't fork the packages.** Need an API that isn't there? Add it to KhaozEngine, ship a headless test, bump
    the version, and consume the new version. Pinned versions are how games stay green during each other's
    migrations.
 
@@ -931,6 +937,18 @@ interactive layout mid-gesture without a scene transition.
 
 **Region blocking (the other half of click-through):** `BlockInputRegion(Rect)` from the higher overlay each
 frame; `IsInputBlocked(Vector2)` from the layer beneath before acting. Cleared at the start of every `Update`.
+
+**Occlusion (21.3.0):** `Pointer.Occlude(Rect)` and `Pointer.OccludeAll()` mark an area, or the whole surface,
+as covered for the rest of the frame. `IsOccluded(Vector2)` reads it and `ClearOcclusion()` drops it early.
+Every `Pointer.Update` clears it, as it clears blocked regions. Unlike `BlockRegion`, which only answers
+`IsBlocked`, occlusion changes what the hit queries report: `IsTapIn`, `IsTapFromTo`, `IsPressingIn`,
+`IsRightTapIn` and `IsRightPressingIn` miss when the press origin or the cursor is occluded, `IsPointerIn` and
+`IsHoveringIn` miss when the cursor is, and `IsDraggingIn`, `GetDragDelta` and `IsDragStartIn` miss when the
+press origin is. `IsReleasedOutside` counts a release in an occluded area as outside, so a click on a window in
+front dismisses a dropdown or text focus in a window behind it. The `InputManager` pass-throughs inherit all of
+this. With nothing occluded every query reads exactly as in 21.1.0. `WindowStack` is the normal producer of
+occlusion. `IsRightPressOriginFresh` is the right-button twin of `IsPressOriginFresh`, true only on the frame
+`RightPressOrigin` latched, a same-frame right tap included.
 
 **Scroll:** `ScrollDelta`, `IsMouseWheelScrolledUp/Down`.
 
@@ -1894,7 +1912,9 @@ nothing catches that, so make it the first line of the window's update.
 `WindowDrag` is the title-bar drag. It stores an OFFSET from wherever the window's own layout put it, so a
 window keeps its placement rule (centred, docked, anchored) across a resize instead of being stranded at an
 absolute position. `Update(pointer, grip)` latches the grab ONCE on the press frame, through
-`Pointer.IsPressOriginFresh`, and holds it until the button goes up wherever the cursor wanders. Re-reading the
+`Pointer.IsPressOriginFresh` and `Pointer.IsDragStartIn(grip)`, and holds it until the button goes up wherever
+the cursor wanders. Since 21.3.0 an occluded press origin never latches, so of two overlapping windows on a
+`WindowStack` only the front one under the press can grab it. Re-reading the
 press origin every frame is the defect this exists to avoid: the grip travels with the window while the press
 origin stays where the button went down, so a window dragged further than its title row is tall moves the grip
 out from under its own press and drops the grab part way. A held drag calls `Pointer.ConsumeGesture`, so a
@@ -1923,13 +1943,103 @@ pointer.BlockRegion(bounds);   // this window's call, not the frame's
 PanelFrame.DrawFrame(batch, white, bounds);
 PanelFrame.DrawTitle(batch, font, white, bounds, stripHeight: 0f, title: Strings.BankTitle,
     readout: LocalizedText.Of(Strings.BankUsed, used, capacity), showClose: true,
-    closeHovered: close.Contains(pointer.Position));
+    closeHovered: pointer.IsPointerIn(close));
 DrawRows(batch, PanelFrame.ContentRect(bounds, stripHeight: 0f));
 ```
 
 What stays in the GAME: the palette values it assigns to `GuiTheme`, the metric numbers if the default shape is
 wrong for it, which taps it swallows through `BlockRegion`, each window's natural-bounds rule, the grip rect,
 and whatever fills the strip, content and footer bands.
+
+### Overlapping windows (`WindowStack`, 21.3.0)
+
+`WindowStack` owns the z-order of a consumer's non-modal windows. Register each window once with
+`Add(window, band)`. The stack raises a window when it opens or is pressed, updates open windows top to
+bottom so each sees only its uncovered area, and draws them bottom to top. A covered area of a window is dead
+to every pointer read, engine widgets included, with no extra code in the window.
+
+A window implements `IStackWindow`: `IsOpen`, `Bounds`, `Close()`, `Update(in WindowUpdate)` and
+`Draw(batch, pointer)`. `CapturesPointer` defaults to false and `ClosesOnEscape` to true. `Contains(point)` and
+`Occlude(pointer)` default to `Bounds`, so override both for a window that is not one rectangle, such as a
+docked panel whose tab strip and body are separate rects. `WindowUpdate` carries the frame's `Pointer`,
+`Input`, `Dt`, `ReceivesInput` and `IsFront`, true for the top-most open window of its band, so up to one
+window per band. For a single global focus read the last open entry of `Order`.
+
+- **Bands.** `WindowBand.Docked`, `Floating` (the default) and `Topmost`, bottom to top. No window rises above
+  a higher band. `Add` places a window at the front of its band, and `Add` on a registered window moves it.
+  `BringToFront` raises within the band. `Order` lists every registered window bottom to top.
+- **Raise on open.** A window that becomes open goes to the front of its band. While the left button is held
+  that raise waits until the gesture has ended. `Update` skips it on the release frame too and that frame's
+  `Draw` applies it, so the release's taps and drops resolve against the order the player saw and the window
+  draws on top from that frame.
+- **Raise on press.** A fresh left or right press raises the front-most open window containing the press
+  origin, tested against where the windows were before this frame's updates. No press raises anything while a
+  window captures the pointer, while the other button is held from an earlier frame, or on a frame with
+  `receivesInput: false`.
+- **A gesture keeps its owner.** Queries that test the press origin (`IsDragStartIn`, `IsDraggingIn`,
+  `GetDragDelta`) keep answering for the window the press began in for the whole gesture. The press raised
+  that window, and a window opened mid-gesture rises only after the release frame's update.
+- **Update.** Each open window updates with every window above it occluded. A window that closes during its
+  own update still occludes for the rest of that frame, so the tap that closed it cannot reach the window
+  behind, and it is not drawn. A window another window closed or removed earlier in the frame is skipped.
+- **Capture.** A window reporting `CapturesPointer`, normally while a context menu it owns stands, updates
+  first with nothing occluded. Every other window then updates with the whole surface occluded. The top-most
+  captor wins.
+- **No input.** `Update(..., receivesInput: false)` still updates every open window, with the whole surface
+  occluded and `ReceivesInput` false. Read no keyboard input on such a frame, the `Screen.Update` contract.
+- **Draw.** Before each window the stack re-applies the occluders of the open windows above it, so a
+  draw-time hover read such as a lit close square normally agrees with the update. It mirrors the last
+  `Update`'s mode: after a capture frame the captor draws with nothing occluded and the rest fully occluded,
+  and after a no-input frame every window draws fully occluded. Occluders come from the order and open state
+  at draw time, so for one frame they can differ from the update, for example when a window closed during its
+  own update or a window was raised between `Update` and `Draw`. Occluders a consumer adds to the pointer
+  before `Update` are respected by `Update` but not kept by `Draw`, which clears occlusion before each window.
+- **Escape and hit tests.** `CloseFront()` closes the top-most open window that closes on Escape, searching
+  `Topmost`, then `Floating`, then `Docked`, and reports whether it closed one. `Covers(point)` is true over
+  any open window. A closed window stays registered and is skipped by update, draw, `Covers` and `CloseFront`.
+  `IsCapturing` is true when the last `Update` ran in capture mode.
+
+Frame ordering is the part a consumer must get right:
+
+1. `Pointer.Update` runs first, as `GameApp` already does.
+2. Update the stack before any layer beneath it reads the same pointer. After `Update` every window that
+   updated stays occluded and reserved with `BlockRegion` for the rest of the frame, so the world, a HUD and
+   `ScreenStack.PressBeganOverUi` treat the windows as UI. After a capture or no-input frame the whole surface
+   stays occluded for those layers.
+3. `Draw` clears occlusion when it finishes. Content drawn after `WindowStack.Draw`, such as tooltips, context
+   menus and drag ghosts, reads the pointer as uncovered and draws above every window.
+
+```csharp
+// Once, at construction.
+_windows.Add(_sidePanel, WindowBand.Docked);
+_windows.Add(_bank);
+_windows.Add(_debugMenu, WindowBand.Topmost);
+
+// Update: after Pointer.Update, before the world reads the pointer.
+// Escape goes to the stack only on a frame it receives input, so one press never closes an overlay and a window.
+bool escapeSpent = !overlayOpen && !_windows.IsCapturing && input.WasPressed(Key.Escape) && _windows.CloseFront();
+_windows.Update(pointer, input, dt, receivesInput: !overlayOpen);
+UpdateWorld(pointer);   // windows are occluded and blocked here
+
+// Draw: windows bottom to top, then content that floats above them.
+_windows.Draw(batch, pointer);
+_tooltip.Draw(batch, pointer);
+```
+
+`IsCapturing` reports the last `Update`, read here before this frame's. While a window captures, a capturing
+window's own popup, normally its context menu, handles Escape that frame, so the stack closes nothing.
+
+The engine widgets inside a window already honour occlusion. `WindowDrag` latches through `IsDragStartIn`.
+`SlotGrid` offers no drop slot, `GuiDragContext.OfferTargetIn` refuses, `TreeView` computes no drop position
+and `ScrollablePanel` does no drag edge scroll while the pointer is occluded. `PropertyGrid` hit-tests through
+`IsPointerIn`, `WorldMapViewCore` builds no hover overlay for an occluded position,
+`GuiSurface.HoverCaptured` is true over an occluded position, `GuiSurface.PointerCaptured` and
+`ScreenStack.PressBeganOverUi` are true for an occluded press origin and `DraggableBottomSheet` refuses an
+occluded press. `PannableCanvas.TryGetTap` misses when the press origin or the release is occluded, and
+`PanZoomController` admits no press, touch or gesture at an occluded point and records no tap on an occluded
+release. A consumer's own widgets follow the same gate rule: a `Pointer` hit query or `IsOccluded` first, raw
+`Position` only after it. Out of scope for the stack: saved order or position, cascade placement, docking,
+minimising, keyboard focus beyond `IsFront`, and modal dialogs, which stay on `PopupPanel`.
 
 ---
 
@@ -3247,6 +3357,135 @@ localization catalog.
 
 ---
 
+## In-game bug reports (`BugReportService`)
+
+Bug reports are opt-in and sit in no umbrella. A client references `KhaozEngine.BugReports.Client`, which brings
+`KhaozEngine.BugReports` and `KhaozEngine.BugReports.Contracts`. A game server references `KhaozEngine.BugReports`
+alone, which has no GPU, window or game dependency.
+
+`BugReportService` lives at the `GameApp` level, as an overlay added through `GameApp.AddOverlay`, so the trigger
+works on the title, login, loading and game screens. Build it once on the frame thread after the app is
+constructed:
+
+```csharp
+var reports = new BugReportService(app,
+    new BugReportServiceOptions
+    {
+        GameId = "mygame",
+        GameDisplayName = "My Game",
+        SessionLogPath = logPath,
+        ReporterIdentityTerms = () => new[] { displayName ?? "", subject ?? "" },
+    },
+    new HttpRelaySink(http, relay, () => token),
+    new BugReportOfflineQueue(Path.Combine(stateDir, "bug-reports", "pending"), TimeProvider.System),
+    () => subject);
+```
+
+- **Trigger.** F10 by default, rebindable through `reports.TriggerControls`, persisted through
+  `SaveTriggerBindings` and `TriggerBindingsJson`. `reports.Begin()` serves a menu entry.
+- **Capture.** The trigger frame freezes the clip, arms the screenshot and captures every section, then raises
+  `ReportCaptured(reportId)` for a server-backed game to capture and hold a server snapshot. The confirmation screen opens
+  once the screenshot is taken, at most three frames later, and the game sees `InputState.WithoutInteraction` from
+  the trigger until it closes. The game decides whether its
+  world pauses.
+- **Sections.** Seven built-in sections (`build`, `platform`, `graphics`, `session`, `input`, `performance`,
+  `log`) plus any `AddSection`. Sections run in the trigger frame and must be cheap. Redaction and truncation run
+  off the frame thread before anything leaves the machine. Optional `ReporterIdentityTerms` supplies the current
+  display name, subject and any other identity spellings once on that background finish thread per report. The
+  callback must be thread-safe and prompt. Terms are invariant case-insensitive literals, replaced by `[redacted]`
+  in every section's property names and string values. Null, blank and terms shorter than three characters are
+  ignored. Source or pattern construction failures mask every section string. The delivery subject, screenshots,
+  clips and the player's confirmation text are unchanged.
+- **Delivery.** Send raises `ReportConfirmed(reportId)` once on the frame thread before building the bundle on the
+  thread pool. A server-backed game releases its held snapshot here. Cancel and shutdown never raise it, and a
+  throwing handler is logged without stopping the send. `BugReportSubmitter` writes the bundle to the offline queue
+  before the first send, so a crash, a shutdown or an unreachable relay keeps it for the next sign-in. Only a relay
+  acceptance that echoes the report id, or a refusal with the relay's error, deletes it. Use
+  `LocalFolderSink` in development to open each report in the frame viewer without a relay.
+- **Clip.** `reports.Recorder.Suspend()` and `Resume()` around a pause menu, and `SetRecordingEnabled` for a
+  settings toggle.
+- **Strings.** Every line resolves through `bugreport.*` `StringId` keys with an English fallback. Add a key to
+  the game's catalog to override it.
+- **Shutdown.** `reports.Dispose()` removes the overlay, waits up to 3 s for sends to reach the offline queue,
+  cancels sends and flushes, disposes the recorder and detaches the log ring. Dispose it before the app.
+
+### Server snapshot
+
+A game server registers its own sections on `BugReportServerCapture`, checks `ReportIds.IsValid` and `TryAccept`
+with the subject it authenticated before it calls `Capture` on the simulation thread. Hold the snapshot until the
+player confirms, then post with `ServerSnapshotPoster` off that thread. `TryAccept(subject)` defaults to 5 requests
+per rolling hour per account. The game carries the report id from `ReportCaptured` to the server over its own
+authenticated protocol to capture, and from `ReportConfirmed` to release that same snapshot:
+
+```csharp
+reports.ReportCaptured += reportId => connection.Send(new RequestBugSnapshot(reportId));
+reports.ReportConfirmed += reportId => connection.Send(new ConfirmBugSnapshot(reportId));
+```
+
+Key held snapshots by the authenticated account and report id, and expire snapshots that are never confirmed.
+Never accept a subject from either message. Do not post the snapshot on capture, so evidence stays held until Send.
+
+`ServerSnapshotPoster(http, relayBase, serviceKey, redactor)` finishes sections off the simulation thread,
+redacts and truncates within the 1 MiB snapshot cap, and posts with `X-Report-Service-Key` to
+`bug-reports/{reportId}/server`. The optional redactor defaults to the engine rules. `PostAsync` returns false
+with one warning on failure, except caller cancellation, which throws. Snapshot failure does not discard
+the client report. See the [server example](../KhaozEngine.BugReports/README.md#server-snapshot).
+
+### Relay host
+
+E1 capture and the E2 report client ship in 21.4.0. E3 adds `KhaozEngine.BugReports.Relay` and
+`KhaozEngine.BugReports.Relay.Azure` for staged 21.5.0. Both are opt-in, outside every umbrella, and target
+`net10.0`. The first consumer uses .NET 10 isolated on Functions Flex Consumption.
+
+The host supplies an `IReporterAuthenticator` over its verified game token and constructs `BugReportRelay`
+with media, queue, quota and GitHub seams plus a `TimeProvider`. Only the authenticator's returned subject
+is authoritative. Map HTTP POST `bug-reports` to `IntakeAsync`, HTTP POST `bug-reports/{reportId}/server`
+to `ServerSnapshotIntakeAsync`, and the queue trigger to
+`ProcessWorkAsync(ReportWorkItemJson.Parse(message), cancellationToken)`. Pass request bodies unread and
+forward the `RelayResponse` status, JSON and headers, including `Retry-After`. Let worker exceptions escape
+for durable queue redelivery.
+
+Every resend of an unfinished report enqueues `CreateIssue` before returning 202, regardless of age.
+If enqueue fails, the request fails so the client keeps its bundle. Worker claims and result markers
+suppress duplicate messages.
+
+To revoke a report:
+
+1. Call `BugReportRelay.RevokeReportAsync(idOrReference, cancellationToken)`, or forward an authorized
+   operator request to `RevokeRequestAsync(request, cancellationToken)`. Use the intake request adapter,
+   an Admin-level HTTP trigger and a body of `{"report":"<code or id>"}` capped at 1024 bytes.
+2. Delete the returned issue with an identity that may delete issues, following a moved issue's new URL.
+   The relay redacts and closes it, but only deletion removes its original title and body history.
+
+Nothing else is manual. The relay deletes public media immediately and schedules `PurgeRevoked` twelve
+minutes later. The purge repeats public cleanup and issue redaction, then removes private state and
+claim files. The non-personal tombstone and `references/<lowercase code>/<reportId>.json` index remain
+until lifecycle expiry. Keep both for the report retention, 180 days for the first consumer.
+Reference-code lookup covers reports accepted on 21.8.0 or later. Lookup by report id always works.
+When an issue number is known, the result carries its page URL even for `Failed` or `Gone` redaction.
+`IGitHubIssueClient.IssuePageUrl` supplies that URL when the update returned none, and defaults to null
+for clients that cannot construct it. An HTTP timeout with an uncancelled caller token is reported as
+`Failed` and the purge is still scheduled. A redaction failure during purge propagates for redelivery.
+
+`RevokeRequestAsync` maps `Revoked` and `AlreadyRevoked` to 200, `NotFound` to 404, `Ambiguous` to 409,
+and `Invalid` or malformed JSON to 400. Oversized bodies return 413. Forward its JSON and headers.
+The host authenticates the operator. The engine request method does not do so.
+A holder that passed its check can still write inside the ten-minute lease. The purge removes those
+writes, but holders running beyond their lease remain outside the guarantee. A late issue discovered
+by the purge is redacted and logged for operator deletion. A transferred late issue logs a warning with
+its report id, issue number and destination URL before the purge completes. A missing public manifest is also treated
+as revoked. Late snapshots and full-bundle resends return 202 without enqueueing revoked work.
+
+The [relay README](../KhaozEngine.BugReports.Relay/README.md) has the isolated-worker host sketch and status
+codes. Read its [Host duties](../KhaozEngine.BugReports.Relay/README.md#host-duties) for the 5-dequeue poison
+policy, visibility backoff, daily requeue and prefix-scoped retention, and its
+[Guarantees and residuals](../KhaozEngine.BugReports.Relay/README.md#guarantees-and-residuals) for claims,
+crash windows, unfenced leases and operator recovery. The
+[Azure backend README](../KhaozEngine.BugReports.Relay.Azure/README.md) covers caller-built clients,
+`ReportQueueClientOptions.Create(logger)`, RBAC roles and the separately gated live storage tests.
+
+---
+
 ## Render2D (`KhaozEngine.Render2D`)
 
 2D rendering on the custom stack. `Render2DSurface(window)` owns the `SpriteBatch` and the loaders;
@@ -4254,10 +4493,10 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   final image with each pixel's screen motion since the last frame: hue for direction (rightward cyan, leftward red,
   downward violet, upward yellow-green), brightness for length (full at 16 internal pixels), and black where nothing
   opaque drew or nothing moved. The screen overlays drawn after the post chain (target outlines, fills, lines,
-  billboards and the screen transition) still draw over it. `History` (black just after a reset, white at the full
-  history, green where thin feature retention holds a pixel), `Disocclusion` (red where history was rejected) and
-  `Reactive` (yellow where transparent content lowered the history weight) show the resolve's own decisions and take
-  effect only under `AntiAliasing.Temporal`.
+  billboards and the screen transition) still draw over it. `History` (black just after a reset and where a pixel's
+  shading changed, white at the full history, green where thin feature retention holds a pixel's lock),
+  `Disocclusion` (red where history was rejected) and `Reactive` (yellow where transparent content lowered the
+  history weight) show the resolve's own decisions and take effect only under `AntiAliasing.Temporal`.
 - **Diagnostics.** `scene.LastTemporalDiagnostics` reports the frame index, the jitter phase and offset, the keyed
   rigid and skinned draws and key collisions, whether history was valid and why it was last reset, the internal and
   display sizes, the preset and the effective `UpscaleRatio`. `LastReset` is a `TemporalResetReason`: `None`,
@@ -6585,6 +6824,8 @@ carry no scale track, or it is refused before it is sampled. `BaseLocal` is the 
 `BaseWorld`, `ParentBaseInverse` and `BodyAlignment` return a contract joint's base model frame, the inverse of its
 parent's, and the rotation that takes its base orientation back out. They refuse a node outside the contract
 rather than return a zero matrix. `Node` resolves any named node and `Bone` its skin bone.
+The alignment's homogeneous component is exactly one, including when general inversion rounds it for oblique
+base axes. External attachment matrices still require an exact affine column.
 
 `ClipRefusals` words a skin loader's clip refusals one way, naming the clip, the rule and the joint. `Only` throws
 on a second clip of one name. The other checks return null for a clean clip and a message otherwise, so a loader
@@ -7689,7 +7930,9 @@ if (camController.OrbitTap) Select(camController.OrbitGesture!.TapPosition);
 
 Gate `UiBlocked` on `GuiSurface.HoverCaptured`, which tests the pointer against every UI rect reserved whichever
 button is pressed, and reads the frozen capture point while captured. `GuiSurface.PointerCaptured` tracks only the
-left button's press origin, so it would let a right drag start on an inventory slot.
+left button's press origin, so it would let a right drag start on an inventory slot. Since 21.3.0
+`HoverCaptured` is also true while the live position is occluded, so a camera gated after `WindowStack.Update`
+stays still under every window.
 
 `HoverCaptured` tests the rects reserved since the last `GuiSurface.Begin`, which clears them, against the live
 position of the `Pointer` handed to that `Begin`. A game that passes its one long-lived `Pointer` and sets
@@ -7905,6 +8148,20 @@ distance-culls the rest, so an N-tree forest batches into a handful of draws (on
 ```csharp
 scene.DrawProps(placements, meshes, focus: character.Position, drawRadius: 90f);   // each frame
 ```
+
+For a static layer cut inside building interiors, set `scene.InteriorCut` and use a terminal filtered overload:
+
+```csharp
+scene.DrawProps(placements, meshes, focus: character.Position, drawRadius: 192f,
+    lodCrossfadeWidth: 0f, drawFilter: null, layerIdentity: null, cutInsideInteriors: true);
+```
+
+Only the two terminal single-mesh and multi-part overloads expose the trailing flag, after `drawFilter` and
+`layerIdentity`. Supplying `lodCrossfadeWidth` selects that form. The four convenience overloads, `Queue` and
+`DrawShadowOnlyProps` keep forwarding false. `PropLayer` factories take `cutInsideInteriors: true` and expose
+`CutsInsideInteriors` on the readonly struct, preserving it through copies. Only full and authored LOD parts
+whose drawn bounds can reach an interior take the cut path. Misses keep their original rendering and caster
+route. Merged HLOD, grass, ground cover, animated foliage and skinned paths stay uncut.
 
 `PropRenderer.Queue(SceneInstances, ...)` is the same logic against a raw instance queue (headless-testable).
 `DrawProps`/`Queue` also overload on `IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>` (one-or-many
@@ -8444,7 +8701,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.1.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.9.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -8773,7 +9030,7 @@ the clamp bounds and the classifier policy. Normalise text to LF before digestin
 Prefer authored inputs to `TileWorldColliders.Hash` for walk surfaces yawed off a quarter turn, since that hash is
 not promised equal across x64 and ARM64. Rebake when any input, option, probed tuning field or the engine pin
 changes, and keep a game test that loads the shipped bake and expects `Loaded`. Load also compares the normalized
-`KhaozEngine.Movement` assembly version. An upgrade from an older engine version to 21.1.0 therefore requires
+`KhaozEngine.Movement` assembly version. Any engine version change, a patch included, therefore requires
 regeneration and returns `EngineChanged`, even when the format and payload algorithm are unchanged. A backend fix
 within the same engine version does not add another invalidation when the bake identity and payload remain unchanged.
 
@@ -8783,7 +9040,7 @@ On the dev Mac a 36,864-column flat world wrote 664,689 bytes and loaded in abou
 ### Parallel contact bake (`NavBakeExecution`)
 
 Contact profiles cost far more to bake than legacy ones, so a content pipeline can spread one contact profile over
-worker threads. This is implemented in staged 20.40.0:
+worker threads. Scheduling shipped in 20.40.0:
 
 ```csharp
 var execution = new NavBakeExecution(Environment.ProcessorCount);
@@ -8816,6 +9073,30 @@ otherwise idle. See the [cost record](superpowers/plans/proofs/2026-10-14-parall
 [slowdown record](superpowers/plans/proofs/2026-10-14-parallel-proof-slowdown.md) for the metrics and the Hollowmere
 extrapolation.
 
+### Stable contact initial Holds
+
+A serial content pipeline can explicitly assert stable providers to share the same source's
+successful initial Hold across its outgoing same-layer directions:
+
+```csharp
+var execution = new NavBakeExecution(1) { UseStableContactHoldReuse = true };
+GroundNavigationBake bake = GroundNavigationBake.Create(capture, sources, profiles, execution);
+```
+
+The flag defaults false. True asserts deterministic analytic ground/normal, medium, water,
+registration, boundary and area providers, independent of call order and fixed through capture
+and build. Fields may vary with the supplied inputs. Above degree 1 the existing stable,
+thread-safe provider obligation already permits this sharing. Null execution and degree 1
+without the assertion preserve all historical Hold callbacks. Legacy profiles ignore the flag.
+
+Only the first successful initial Hold's numeric state, frame, outcome and feet are copied.
+Each edge retains its prechecks, current-basis authentication, consumed slice zero, travel and
+Euclidean 1 mm arrival rule. Rejected, admission and Stair Holds are never shared. No selection,
+binding, support or interval evidence survives. Provider or water changes still refuse the
+build, including after its last hit. Reference evaluation bypasses both Hold and completed-footprint
+reuse. These execution choices do not enter bake identity or alter the complete serialized file.
+See the [Movement contract](../KhaozEngine.Movement/README.md#contact-source-proof-reuse).
+
 ### Stable legacy profile reads
 
 An audited content pipeline can reuse one synchronous physics read interval for each legacy profile:
@@ -8845,7 +9126,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.1.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.9.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9485,11 +9766,36 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   Bepu preserves child constraints before final manifold reduction and refuses unsupported layer masks.
   Its [backend limits](../KhaozEngine.Physics.Bepu/README.md) can refuse otherwise valid mesh inputs.
 - Optional `IPhysicsCapsuleSweep.SweepCapsuleCertified(capsule, pose, displacement, filter)` returns
-  a validated `CapsuleSweepResult` value. Bepu has an identity-box development implementation whose
-  numerical-domain acceptance and final verification remain pending. Default is
+  a validated `CapsuleSweepResult` value. Bepu certifies identity boxes, admitted rotated boxes and
+  installed convex hulls, including `ShapeFactory`'s exact single-hull centroid wrapper. Hull topology
+  and installed vertex identity must be proved within 256 faces, 508 vertices and 1524 face-index
+  entries. The child offset is preserved. A hull is never replaced by its AABB. Finite static triangle
+  meshes now retain positive installed scale, raw triangle identity, sidedness and closed boundaries.
+  Their inner traversal and separate recentered sweep continuation must be proved. The
+  [side/filter matrix](design/CERTIFIED-GENERAL-SWEEPS-2026-10-18.md#installed-mesh-implementation-and-pinned-side-policy)
+  distinguishes initial front contact from direction-based culling and raw back-face blocking.
+  Unproved sides, degeneracy, continuation or work refuse. Sphere and capsule leaves use closed
+  point/segment distance. Cylinders retain continuous side, cap-disc and rim-circle geometry and
+  their exact single-child base-offset wrapper. Unproved isolated rim events refuse atomically.
+  Compounds certify every actual flattened box, hull, sphere, capsule and cylinder child atomically,
+  within 64 children per root and the shared 4096-descendant budget. Hull centering and nested seam
+  poses are retained. Mesh children remain an installation refusal. Unsupported children, stale
+  registration or installation generation, and any unproved child discard the whole query even
+  after Hit(0). Admitted non-rigid poses can still refuse on an ambiguous enclosed tangency.
+  General queries require radius and half-cylinder length at most 1000 m, with original centre and
+  displacement components within [-1000000, 1000000] m. Out-of-domain requests refuse before traversal
+  if the selected set contains any non-identity-box installation. Identity-only selections keep their
+  original domain and unpadded traversal. General-only traversal uses an actual-query enclosure
+  without inflating the simulation collision tree. General poses require proved forward/operational correspondence and a complete
+  bracket within 0.001 m. The [backend domain and work ceilings](../KhaozEngine.Physics.Bepu/README.md) apply. Default is
   `Unresolved` without a usable prefix. `IsComplete` reports structural Clear/Hit status, not proof of
   the backend certificate. Validate the whole request extent, error budget, scope and read lifetime.
   Closed endpoints and stationary requests are included. Hit bounds do not authorize placement.
+  [Captured player-scale hull stairs](design/CERTIFIED-GENERAL-SWEEPS-2026-10-18.md#task-6-captured-content-evidence-and-gb-r13)
+  prove acquired split/compound ascent and descent within the unchanged Euclidean 1 mm arrival ball.
+  [Lane C](design/CONTACT-CONTROLLER-FOLLOWUPS-C-2026-10-19.md) resolves #1494 exact quarter-turn
+  tread-edge support using the represented installed transform. Historical GB-R13 results remain.
+  Native G1b, SG-12/#1334 cost, navigation and consumer adoption remain separate gates.
 - Optional `IPhysicsCapsuleGeometryQueries` offers the same complete sweep and contact queries with
   `CapsuleQueryDimensions` value inputs. Exact represented radius and cylindrical length reach the same
   Bepu query core without constructing a shape. Restricted views retain their exclusions and read gates.
@@ -9506,7 +9812,16 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   parts carry axis and footprint roles without changing raw IDs. The raw cap is 256, with atomic
   refusal at 257. `SupportFootprintBounds.TryCreate` encloses both proposal paths and the admission
   column for pre-query scope guards. Contact-controller footprints require radius at least 0.01 m.
-  See [Complete support footprints](#complete-support-footprints) for storage, witness and lifetime use.
+  Bepu support uses one represented affine source per installed leaf. Circular primitives exactly
+  normalize its represented Y column, retaining circular radius and length. Feature/sweep factories
+  keep their dual contract. A complete Find shares a sticky 1,048,576-event curved certification
+  ceiling (256 raw slots times 4,096 graph nodes). WorkLimit, RootStorage, TerminalRoots and
+  AdmissionStorage remain visible with work categories and cell high water. Failure refuses
+  atomically with untouched spans, including after checkpoint restores. The capsule crown and
+  nearest-point cylinder admission witness resolve #1487 without bypassing full admission, roof,
+  proposal, axis or lowest-contact proofs. A declined certificate retains complete traversal.
+  See the [backend source/work contract](../KhaozEngine.Physics.Bepu/README.md#support-source-and-curved-work-contract)
+  and [Complete support footprints](#complete-support-footprints) for storage, witness and lifetime use.
 - `IPhysicsWorld` static bodies + queries: `AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null) -> StaticHandle`,
   `RemoveStatic(StaticHandle handle)`, `Step(float dt)`,
   `Raycast(Vector3 origin, Vector3 direction, float maxDistance, out RayHit hit, QueryFilter filter = default) -> bool`,
@@ -9610,7 +9925,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.1.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.9.0" />
 ```
 
 ```csharp
@@ -9867,7 +10182,10 @@ if (world is IPhysicsCapsuleFeatures features && world is IPhysicsQueryLeaseSour
 from features and neighborhoods. Bepu owners and selected views provide it. A caller supplies the
 closed disc, inclusive band, cosine slope gate, represented `0.0001f` contact band and two original
 upright downward proposal paths in one `SupportFootprintRequest`. No prior sweep hit is trusted.
-The backend authenticates the exact receiver and lease before executing both proposals.
+The backend authenticates the exact receiver and lease before executing both proposals on a full
+evaluation. An open completed-footprint reuse session (see `IPhysicsSupportFootprintReuseSource`
+below) may republish the exact completed payload of a bit-identical request with fresh lease metadata
+instead, so a reused result executes no proposal sweep.
 
 For axis `a`, radius `r`, band `[L, U]` and slope cosine `c`, the admission column covers the disc
 expanded by the contact band from `L - max(r * sqrt(1 - c*c) / c, 0.001) - 0.0001` to
@@ -9926,6 +10244,49 @@ Continuously varying capsule enclosures use `IPhysicsCapsuleGeometryQueries` val
 quantization. These bytes are runtime/adapter specific, not a promise for every backend. #1334 stays
 open with 96 local time rejections pending owner-approved normalized hosted repeat proof. Phase 5
 navigation capture and phase 6 game adoption/aggregate CPU remain separate.
+
+### Exact completed-footprint reuse
+
+Discover `IPhysicsSupportFootprintReuseSource` separately on the exact selected query receiver,
+including a restricted view. Do not infer it from an underlying owner. Bepu owners and selected
+views implement it. `TryOpenSupportFootprintReuse(lease, out session)` authenticates an ordinary
+current lease and can decline. A successful session is thread-affine and non-owning. It borrows
+the opening lease only for authentication and neither retains nor acquires another explicit
+lease. The caller owns each ordinary lease and the source/view lifetime.
+
+Call `ResetSource(new SupportFootprintReuseDomain(profileToken, rawSourceToken))` with immutable,
+non-null identity tokens. A reset always discards all entries, even for the same tokens. Then
+continue using `IPhysicsSupportFootprint.QuerySupportFootprint` with each authenticated current
+lease. `session.AssertCurrent(lease)` checks the unchanged view and domain. Dispose the session
+at source-group end, including on failure. An opening lease may end before later queries.
+Nested opens decline without disturbing the active session. Unsupported receivers retain the
+original query path. Never carry a mutable session across threads or source domains.
+
+The exact key binds receiver/source/selected-view and immutable exclusions, installed/static/lease
+generations, every binary32 origin bit, both domain identities, axis/radius/slope/contact-band bits,
+binary64 band bounds, each proposal's probe radius/length, position/quaternion and distance bits,
+filter fields and the join mode consumed at backend entry. Float equality, rounded coordinates,
+probe identity and hash equality alone are insufficient. Raw `(StaticHandle, ElementId)` pairs
+and their order remain distinct. Movement retains original raw ordinals before resting-height
+replacement and opens the session lazily through its first already-required Step lease.
+
+Only Complete results are remembered, including empty results. Owned payloads preserve all
+ordered members, witnesses, proposal verdicts and join words. Hits authenticate the current basis
+and prepare fresh receiver/lease metadata before touching either caller span. Unused tails stay
+untouched, and `AssertFootprintCurrent` accepts only the new result under its current lease.
+The old result remains expired. Analytic sampling, selection, binding, medium and shell checks
+still execute, with fresh current-arena continuity evidence. Tick-local `SupportRequestMemo`
+and interval-owned support evidence never escape their original lifetime.
+
+Each Bepu source session retains at most 512 keys and 2 MiB, with no eviction. It charges all
+fixed entry capacity and actual member/join buffer capacities by element size. Saturation or
+budget exhaustion keeps the full path. Exceptions, Unsupported, Ambiguous, CapacityExceeded
+and work-limit refusals never seed a payload. Original lease/probe/filter/span validation and
+untouched-output refusals remain in force. Stale bases keep their authentication failures.
+Reference evaluation and non-default diagnostic work policies bypass lookup and publication.
+Volumes, Proposals and curved-work counters count actual evaluation, never replayed hits.
+[Measured work](verification/2026-10-19-bake-proof-reuse.md) separates footprint savings from
+stable initial Holds and the existing tick memo. Neither is a new wall-clock speedup claim.
 
 ### Support neighborhoods
 
@@ -10856,21 +11217,63 @@ version or the load fails. The engine's own steps are pre-registered: v1 to v2 d
 (512 m), v3 to v4 adds `playableBounds` from `bounds` when it is absent, and v4 to v5 stamps the
 `LegacyXzCallbackV1` support recipe. The v5 to v6 step (`MapWaterMigration.Upgrade`) adds no member.
 The v6 to v7 step (`MapPrefabMigration.Upgrade`) clones input and changes only `formatVersion`.
-`MapDocumentFile.CurrentFormatVersion` is 7, and saving always writes it. Version and layout are independent
+The v7 to v8 step (`MapMarkerMigration.Upgrade`) clones input and changes only `formatVersion`.
+The v8 to v9 step (`MapFoliageMigration.Upgrade`) clones input and changes only `formatVersion`.
+`MapDocumentFile.CurrentFormatVersion` is 9, and saving always writes it. Version and layout are independent
 axes, so a monolithic file at the current version is legal. Format 5 and the v4 to v5 step arrived in
-20.30.0. Format 6 adds optional bounded water in 20.32.0, and format 7 adds rigid prefabs and building intent
-in 20.40.0. Releases up to 20.29.1 write format 4.
+20.30.0. Format 6 adds optional bounded water in 20.32.0, format 7 adds rigid prefabs and building intent
+in 20.40.0, and format 8 adds general markers in 21.5.0. Releases up to 20.29.1 write format 4.
 
 Format 6 moves every native root digest and every resolver-2 authored identity once, including documents
 without water. Rebuild caches and navigation captures keyed on them. Documents without water keep their
 document hash. Loading now refuses a repeated or case-variant JSON member anywhere in a document, manifest
 or tile, including open feature payloads, where the last value previously won.
 
+Format 7 moves every native root digest and resolver-2 authored identity once, including documents without
+prefabs. Format 8 is another pure version-only migration and moves every native identity once again. Rebuild
+identity-keyed caches and navigation captures after either migration. Format 9 moves those identities once again,
+including documents without foliage. Absent foliage stays absent.
+
 From 20.30.0, a format-4 document migrates on load with no action from the game. Its authored
 identity token changes exactly once at that format advance, with no continuity to the old token, so
 recompute any stored token after the first load. That token change arrives with 20.30.0 too. Resolver-v1
 options, including the caller's `OptionsHash`, and resolver-v1 execution are unchanged. The authored-surface
 resolver version 2 is new in 20.30.0 and is opt-in through a document's resolver identity.
+
+### Native foliage and the R8 handoff
+
+Format 9 carries optional `MapFoliageSet` payload 1 independently of scatter, companions and explicit placements.
+Capture a complete immutable context once and reuse it across chunk calls. Partial terrain/content/foliage returns
+`PartialResidency`. R8 must add a windowed constructor and closure/completeness contract before streamed generation.
+
+```csharp
+using KhaozEngine.MapDoc.Foliage;
+
+var captured = MapFoliageGenerationContext.Capture(document, closure);
+if (captured.Status == MapFoliageStatus.Complete)
+{
+    var batch = MapFoliageDistribution.Generate(captured.Context!, "cover-a", new(0, 0));
+    var extents = batch.Samples.Select(s => s.AssetId).Distinct().Select(id =>
+    {
+        var asset = closure.GetAsset(id);
+        return new MapFoliageModelExtent(id, asset.RenderBounds, asset.SourceUnitsToMetres, 0.35f);
+    }).ToArray();
+    var handoff = MapFoliageRenderHandoff.Create(batch, extents);
+    // Only Complete is usable. Empty complete batches have null Bounds.
+}
+```
+
+Motion padding is explicit caller policy in metres. Transform all eight source-unit-adjusted mesh corners by each
+sample's exact CPU matrix, then expand XYZ. Preserve CPU selection, live blade/shrub profiles and shadow flags. Use the
+render dependency digest plus generation to reject stale work. Keep one owned batch across every intersected residency
+membership and release after the last leaves. The R8 handoff does not upload, stream, draw or certify appearance.
+
+The [MapDoc foliage contract](../KhaozEngine.MapDoc/README.md#native-foliage-consumer-contract) is the living reference
+for payload/storage ceilings, compatibility owner fallback, paint tie-break, typed refusals, aggregate budgets,
+`MapFoliageEffectSet(Chunks, Layers)`, whole-layer stale entries and public acceptance evidence. Bounds and density are
+cosmetic and never join statics, navigation captures or world bounds. Interactive painting stays R9, complete verb
+parity stays R10, actual import/source acceptance stays R11/G2 and appearance stays R8/G3. The
+[private harness](../KhaozEngine.MapDoc.OracleHarness.Tests/README.md) owns its test-only dependency boundary.
 
 ### Free buildings and effective resources
 
@@ -10916,11 +11319,30 @@ materialized support/light pins. Extraction preserves explicit parent context an
 `PrefabService` edits detached assets, then publishes immutable bytes and a verified replacement closure before
 one accepted switch of every referring instance in the open complete map. Other maps retain their pins.
 
+### General markers
+
+Format 8 keeps marker payload 1 byte for byte and adds payload 2 for world markers and prefab Marker children.
+Payload 2 requires `heightMode`. `Explicit` keeps `Position.Y`, while `Support` carries a `MapSupportBinding`,
+stores `Position.Y` as zero and resolves through the shared seat query after support-bound placements are seated.
+`HeightProvenance` is value-only. Witness-bearing support answers are carried by `MarkerSupports`. Payload-1
+markers retain annotation digest scheme `/1`, while any payload-2 marker selects `/2`.
+
+Effective marker IDs and names are global, ordinal and case-sensitive. Duplicate IDs or names refuse before patch,
+support or static reads. Repeated prefab marker names require an explicit replace override on each repeated instance.
+`MapPlacePrefab.InitialOverrides` applies those overrides atomically. `MapMarkerRegistry` looks up markers by ID,
+name, caller role and tag, and by a half-open XZ rectangle. `MapMarkerProjection` supplies typed player-start,
+spawn and landmark views, while `MapMarkerSpaces.Query` reports occupied space and its parent chain by point
+membership.
+
+`MapMarkerAnchors` reads metadata-only start anchors without resolving support or terrain. A caller supplies role
+vocabulary through `MapMarkerConsumerOptions`. Native editor and tool consumers use the same named support readout,
+so they do not invent a role or fall back to the analytic terrain field.
+
 Doors remain AuthoredOpen. `MapRoofPolicy` returns separate colour, shadow, camera-boom and sky-picking flags.
 Auto concealment uses occupied rooms and explicit links/groups, and leaves unlinked shelters visible. Hidden
 roofs still cast shadows and block sky picking, and never change physics statics. R8 owns rendering, cameras
 and local-light pixels. Live door state waits for [#1363](https://github.com/APKiwiOrg/KhaozEngine/issues/1363).
-Native controller walking and layered routes remain gated by G1b, #1355 and #438. Physical doorway clearance
+Native controller walking and layered routes remain gated by G1b and #438. Physical doorway clearance
 is headless R5 evidence. R9 owns the GUI host and real input, and R10 owns the remaining verb-map parity.
 
 See the [MapDoc reference](../KhaozEngine.MapDoc/README.md#rigid-prefab-payloads-and-building-intent),
@@ -11220,7 +11642,7 @@ patch keys and semantic digests, the effective resource policy and query policy 
 the builder ID and version, the options hash and the resolver version. The content digest
 (`kemap/native-content/1`) covers placements, including explicit `Y`
 and `SupportBinding`, spawns, player spawns and sculpt tiles, normalized as scheme 1 normalizes them with
-placement display names stripped. `MapSurfaceSemantics.RootDigest` covers native globals, including format-7
+placement display names stripped. `MapSurfaceSemantics.RootDigest` covers native globals, including format-9
 prefab and building intent,
 and surface metadata, never tile content. Scoped identity covers its acquired effective facts and policies.
 Repacking, embedding and incident bookkeeping do not change the token.
@@ -11403,6 +11825,24 @@ tagged `door` within `DoorClearance`. Its height and normal use the selected `Ti
 the same interpolated lattice values as the rendered ground. Non-solid decorative objects remain eligible.
 Validation resolves the foliage archetype and material ids against the same catalogs as the rest of the world.
 
+**Clearance is an authoring check, never a runtime rule.** An optional `clearance` manifest block
+(`TileWorldDocument.Clearance`, a `TileClearanceSettings`) declares rules such as "objects whose archetype is
+tagged `tree` keep their meshes clear of objects tagged `structure`", with a mesh root (relative to the world
+directory, forward slashes only, refused when rooted or holding a backslash on every OS), a sampling cell size and
+an object waiver tag. `TileWorldClearance.Check(doc, catalogs, meshes)` places every loaded object's mesh as the
+prop renderer draws it and returns `clearance.overlap`, `clearance.mesh` and `clearance.rule` issues, reading
+meshes through `ITileMeshGeometry` (the glb implementation is `GltfTileMeshGeometry` in
+`KhaozEngine.TileWorld.Render3D`). `TileWorldValidator.Validate` never runs it, the block is outside
+`TileWorldHash.OfWorld`, and the geometry core is `ClearanceMesh`, `ClearanceSolid`, `ClearanceSamples` and
+`ClearanceProbe` in `KhaozEngine.Primitives`. An obstacle is solid from its lowest point to its top surface, so a
+hollow piece such as a bridge deck must not carry an obstacle tag. Field contracts, rule matching and the issue
+order are in the `KhaozEngine.TileWorld` package README under Clearance.
+
+```csharp
+var meshes = new GltfTileMeshGeometry(TileWorldClearance.ResolveMeshRoot(worldDir, doc.Clearance!));
+IReadOnlyList<TileWorldIssue> clearance = TileWorldClearance.Check(doc, catalogs, meshes);
+```
+
 **Two conventions run through every type.** Coordinates are WORLD tile coordinates everywhere, including
 `TileObject.X/Z` and `TileMarker.X/Z`, and the owning region is always `RegionCoord.Of(X, Z)`, which floors, so
 a negative coordinate lands in a negative region with a local coordinate in 0..63. Rotation is quarter turns
@@ -11524,6 +11964,74 @@ foreach (TileWaterBody body in TileWaterBodies.Collect(doc, catalogs, region, pl
     Console.WriteLine($"{body.Rects.Count} rects at {body.SurfaceY} m");
 ```
 
+**Static interior cuts for prop layers.** Opt a tree layer into render-time cutting inside buildings by
+setting `TilePropLayerDefinition.CutInsideInteriors = true`. Give `TileWorldViewOptions.InteriorMeshes` a dedicated
+`ITileMeshGeometry` reader, such as a separate `GltfTileMeshGeometry`, used only by this serialized driver.
+That reader is single-threaded, so never share it with another view, capture, job or view-thread geometry read.
+For an existing definition, its required identity, archetypes and LOD distances stay in the definition:
+
+```csharp
+TilePropLayerDefinition cutTrees = treeLayer with { CutInsideInteriors = true };
+var options = new TileWorldViewOptions
+{
+    PropLayers = [cutTrees],
+    InteriorMeshes = dedicatedInteriorMeshes,
+    RoofMode = RoofVisibility.AlwaysHidden,
+};
+// Pass options to the view constructor or a TileWorldSnapshot capture.
+```
+
+The constructor seeds `InteriorMeshes` and `RoofMode` from options. Runtime changes still use the view's
+setters. The default reader is null and the default roof mode is `RoofVisibility.Interior`.
+`CaptureTopDown`, `CapturePerspective` and `CapturePerspectiveSequence` finish and publish configured
+interior builds before drawing. The first sequence frame is already cut, and moving the camera settles a
+re-centre even within the same region ring. This offline settle completes the requested work without
+frame-count waits or sleeps. With no reader or no opted-in layer there is no field. Unset options preserve
+existing capture output. Use `AlwaysVisible` and `AlwaysHidden` roof modes for before and after captures.
+
+`TileWorldInteriors` derives simple polygons from indoor tiles, safe wall boundaries and roof meshes.
+A column keeps its lowest contiguous run of retained indoor planes, so no cut crosses an excluded storey or
+an outdoor gap. Roof triangles clipped to each cell supply its exact minimum top. Missing geometry uses the
+ceiling, and cells must be wholly inside
+the polygon. The field covers 512 m around the prop focus, re-centres at 64 m along either axis, and uses the
+largest cell at or below 25 cm dividing `TileSize`. `CellsFor` caps the side at 4096 cells. Its encoding comes
+from all source interiors and stays fixed across re-centres. Membership is floor-inclusive, top-exclusive in
+the shader's float32 code space, shared with CPU queries.
+
+The view captures detached inputs, collects and rasterizes on one background worker, and applies only the
+newest generation at `Draw(focus)`. `AppliedInteriorCut` and the scene field publish together. Before the
+first result both picture and picks are uncut. While re-centring they keep the previous field until its
+replacement arrives. Replacing `InteriorMeshes` or changing layers clears stale fields.
+`TileWorldViewOptions.Log` receives each source issue once: `interior.wall-inner-edge`, `interior.diagonal-wall`, `interior.roof-mesh` and
+`interior.step`. The view logs `interior.window` once when the cell cap reduces the window's physical extent.
+An unsafe wall leaves affected tiles uncut. An unreadable roof keeps its ceiling fallback.
+
+`CutArchetypeIds` is the view's internal union of opted-in layer archetypes, refreshed when `PropLayers`
+change. It drives object and walk-surface picks, camera probes, individual target outlines and silhouettes.
+Only full and authored LOD parts whose drawn bounds can reach an interior take the cut path in colour,
+temporal motion and both cascaded and point-light shadows. Those draws and outlines share a zero-margin
+relevance cache, keyed by mesh, world transform, field version and render origin. Static placements reuse their
+answer in stable submission slots across frames without transform-cache lookups. A field or transform change
+re-evaluates. Silhouettes cache a separate answer with their world-metre hull width added to the bounds and
+included in the key, including after a field replacement. Reaching instances stay contiguous within each mesh
+to preserve instancing. Missed model instances keep
+`SpecParams.w` zero, and solid casters keep the opaque depth-only pipeline without a cut texture read. Picks retain their archetype-set
+route, since a missed instance cannot overlap a cut interior.
+Merged HLOD, roofs, unflagged ordinary props, grass, ground cover, animated foliage and skinned meshes stay
+uncut. Physics and editor rays are unchanged. MapDoc and world validation integration remain
+[#1474](https://github.com/APKiwiOrg/KhaozEngine/issues/1474) and
+[#1473](https://github.com/APKiwiOrg/KhaozEngine/issues/1473).
+
+A custom `ITileWorldScene` forwards `SetInteriorCut(field)` to its renderer and exposes `InteriorCutFrame`
+from the current picture's render origin. Their defaults are a no-op and origin zero. `Scene3DTileWorldScene`
+already forwards both. Without the view, build an `InteriorHeightField` through
+`InteriorHeightFieldBuilder.Build(volumes, window, sourceEncoding)`, set `scene.InteriorCut`, and submit
+`RigidInstanceDraw` with `CutInsideInteriors = true`. Null disables the field. A field uploads once at the
+next render, and a version change invalidates shadow caches. No opted-in draws preserves existing rendering.
+`field.MayIntersect(worldMin, worldMax)` conservatively tests a world box against an 8 by 8 cell summary.
+The overload taking `InteriorCutFrame` shares the visible shader's frame arithmetic. Both allow false
+positives, expand the XZ footprint by a cell and compare packed-code height ranges with outward rounding.
+
 **Picking object models.** `TileRaycast` answers the GROUND. For the objects standing on it,
 `TileObjectRaycast.Pick(doc, catalogs, plane, origin, direction, maxDistance, bounds, hits)` (in
 `KhaozEngine.TileWorld.Render3D`) names every object whose drawn MODEL the ray passes through, nearest first,
@@ -11534,6 +12042,15 @@ bounds source (the per-archetype vertex box, measured once), and apply your own 
 non-interactive archetype, or a cut at the ground hit's distance are all the caller's rules, deliberately.
 The candidate walk allocates nothing. Reuse a hit list with enough capacity and a warmed bounds cache for
 allocation-free repeated picks, including the per-frame picks made by `TileWorldCameraProbe`.
+
+The overload with trailing `TileObjectCut(field, archetypeIds, frame)` intersects an opted-in object's OBB
+entry/exit interval with `field.FirstUncut`. The optional frame defaults to origin zero. CPU queries and GPU
+uniforms use the same `InteriorCutFrame`, including reciprocal cell addressing and rounded render-relative
+heights. A wholly cut interval disappears, while a partial interval reports the first
+visible point. The original overload remains inactive. `view.PickObjects` supplies `AppliedInteriorCut` and
+the opted-in union and the scene's current frame automatically, so cut branches do not catch a click through a doorway. The camera probe
+applies the same field to opted-in object intervals after inflating their boxes by its sphere radius, including
+a start inside that inflated box, so invisible branches do not shorten the camera boom.
 
 ---
 
@@ -12037,6 +12554,11 @@ direction, maxDistance)` is the same query without a view. The picker does not c
 edit keeps picking the plane still on screen until that region-plane mesh is rebuilt. Changing the water look
 invalidates the cache too, exactly as it does for the draw path.
 
+`TileWalkSurfaces.Raycast` also accepts optional `include` and
+`Func<TileObject, Vector3, bool>? acceptPoint` filters. The latter tests each intersection before nearest-hit
+selection, so a rejected point still allows a farther surface to win. `PickSurface` supplies that point filter
+for opted-in archetypes using `AppliedInteriorCut`. `TryHeightAt` and physics surface queries are unchanged.
+
 **Two conventions carry over from the document.** World z is MINUS tile z (`TileWorldSpace`), so a region-local
 ground mesh runs from 0 to minus 64 tiles on z and `TileGroundMesher.WorldMatrix` translates it into place, and
 an object's yaw is NEGATIVE per quarter turn, which is what makes `Matrix4x4.CreateRotationY` turn clockwise seen
@@ -12136,7 +12658,9 @@ after every command, so one verb is one undo step there.
 `SetCornerHeightsCommand` (a rect of CORNERS, skipping corners no region holds and reporting `WrittenCount`
 against `CornerCount`), `PlaceObjectCommand` / `MoveObjectCommand` / `RotateObjectCommand` /
 `RemoveObjectCommand` / `SetObjectTagsCommand`, `SetMarkerCommand` / `RemoveMarkerCommand`,
-`CreateRegionCommand` / `DeleteRegionCommand`, `CompositeCommand` (a list of commands as one undo step, rolled
+`SetFoliageLayerCommand` / `RemoveFoliageLayerCommand` (replace or remove one cosmetic foliage layer, reporting
+its raster extent), `SetClearanceCommand` (one replace or remove of the whole clearance settings, no dirty
+rects), `CreateRegionCommand` / `DeleteRegionCommand`, `CompositeCommand` (a list of commands as one undo step, rolled
 back whole when a child throws) and `SnapshotRectCommand` (an arbitrary mutation made undoable by capturing the
 rect's pre-image first). An object placed and then undone comes back with the id it HAD on redo, so anything
 referring to it by id keeps resolving.
@@ -12205,14 +12729,15 @@ working directory, because an MCP server is started by a client whose working di
 The two verbs that OPEN a world (`world_open`, `world_create`) are the exception, since there is no world to be
 relative to yet: pass them an absolute path.
 
-**Verb families (50 tools).** World lifecycle, catalogs, regions and history (`world_open`, `world_create`,
+**Verb families (55 tools).** World lifecycle, catalogs, regions and history (`world_open`, `world_create`,
 `world_save`, `world_summary`, `world_validate`, `catalog_list`, `region_create`, `region_delete`,
 `region_list`, `undo`, `redo`), tiles (`tile_get`, `tile_set`, `tiles_fill`, `tiles_get_rect`), heights
 (`height_set`, `height_raise`, `height_flatten`, `height_smooth`, `height_get_rect`, `height_import`), objects
 (`object_place`, `object_move`, `object_rotate`, `object_remove`, `object_set_tags`, `object_get`,
 `objects_in_rect`, `object_find`, `objects_line`, `objects_scatter`), markers (`marker_set`, `marker_remove`,
 `marker_list`), foliage (`foliage_layer_set`, `foliage_get`, `foliage_density_set`, `foliage_paint`,
-`foliage_remove`), prefabs (`prefab_save`, `prefab_place`, `prefab_list`), derived collision (`collision_at`,
+`foliage_remove`), clearance (`clearance_get`, `clearance_set`, `clearance_rule_set`, `clearance_rule_remove`,
+`clearance_check`), prefabs (`prefab_save`, `prefab_place`, `prefab_list`), derived collision (`collision_at`,
 `is_walkable`, `path`, `walkable_rect`), archetype collision heights (`archetype_measure_heights`,
 `archetype_set_collision_heights`) and renders (`render_topdown`, `render_view`). The per-verb reference,
 with every argument and the ASCII map legends, is the
@@ -12229,6 +12754,16 @@ while `foliage_density_set` takes explicit numeric rows and dimensions. `foliage
 centre and radius. Every configure, density, paint and remove call is one undo step.
 `render_view` is the one verb in WORLD metres, where y is up and world z is MINUS tile z: to look at tile
 (10, 20) from the south-east, target world (10.5, 0, -20.5) with the eye at (18, 8, -12).
+
+**Clearance refuses the save.** When the world declares clearance rules, `world_save` runs
+`TileWorldClearance.Check` after the validator against the glb meshes under the block's mesh root, and any
+`clearance.overlap`, `clearance.mesh` or `clearance.rule` issue refuses the save with every issue listed and
+nothing written. `world_validate` appends the same issues and `clearance_check` reports them alone, neither
+writing. `clearance_set` replaces the mesh root, cell size and waiver tag on every call, so an omitted value
+resets to its default. The session reads meshes through one `GltfTileMeshGeometry` per open world, which
+re-reads a glb whose last write time or length changed, so a glb written or re-exported while the world is open
+is seen at the next save or check with no `world_open`. The block and the check are under
+[Tile world](#tile-world-khaozenginetileworld).
 
 **Renders return the image inline.** `render_topdown` and `render_view` are the only two verbs that need a GPU
 (a headless Metal, D3D11 or Vulkan device, through `TileWorldSnapshot`, the same path the render goldens take),
@@ -12590,6 +13125,13 @@ undo step (place-then-drag-into-position is one undo). The inspector groups Iden
 `SetPlayerSpawnYawCommand`, both undoable and merge-coalescing a scrub), and State (Enabled through
 `SetPlayerSpawnEnabledCommand`, plus the standard Visible row). Player spawn ids are unique only within the
 `playerSpawns` section, so an NPC spawn and a player spawn may share the same id string with no collision.
+
+**Native markers.** Resolver-2 editor starts use `MapMarkerAnchors` to choose an enabled start from the caller's
+role vocabulary using root metadata and verified prefab bytes only. The selected anchor chooses the window and
+camera start without resolving support or terrain. Spawn billboards, picking and focus then use the named native
+Surface support readout from the same effective snapshot. A legacy native spawn whose readout is not Supported is
+not drawn, picked or focused. Public `EditorPicking.Pick` overloads omit resolver-2 legacy spawn boxes when no
+readouts are supplied.
 
 **Selection sync.** Picking an object in the viewport (or any other selection change: an outline tap, a
 select-on-add) highlights and scrolls to the matching row in the outline tree, via `TreeView.FindByTag`
@@ -13010,13 +13552,24 @@ This is not geometry or navigation certification. `WholeWorldChecked`, `WholeWor
 on-disk check, which does not replace validation of unsaved loaded edits. A failed requested whole-world
 check makes the overall `Valid` result false.
 
+**Native marker consumers.** `map_open(path, manifestPaths?, markerOptionsJson?)` accepts caller role vocabulary and
+the Surface owner used to read unadopted legacy spawns. `map_summary.markers` reports the effective marker total,
+enabled count, configured roles and selected start IDs on a complete resolver-2 document. `marker_list` returns
+resolved markers in ordinal ID order and accepts an optional half-open rectangle. `placements_in_rect` reads actual
+native placement resolution and reports seated support heights. It refuses an unadopted legacy spawn unless its
+configured Surface owner returns Supported, naming `spawns_adopt` and `marker_set` as the remedies.
+
+On native documents, legacy `spawn_*` and `player_spawn_*` mutations refuse and name the marker verbs. The
+`prefab_place` verb accepts `overridesJson` so repeated marker names can be replaced atomically. Query vectors use
+the lossless MapDoc vector converter when serialized over MCP.
+
 **Features and shapes cross the wire as JSON.** Terrain features (`featureJson`) and
 exclusion/region/override shapes (`shapeJson`) are registry-open or polymorphic unions, so they cross
 the MCP boundary as raw JSON strings parsed with the open document's own serializer options rather than
 typed parameters. A lake feature: `{"type": "lake", "centerX": 34, "centerZ": -14, "radius": 22,
 "depth": 6}`. A disc shape: `{"type": "disc", "centerX": 0, "centerZ": 0, "radius": 26}`.
 
-**Verb surface (92 tools).**
+**Verb surface (101 tools).**
 
 | Group | Verbs |
 |---|---|
@@ -13033,6 +13586,17 @@ typed parameters. A lake feature: `{"type": "lake", "centerX": 34, "centerZ": -1
 | Renders | `render_topdown`, `render_view` |
 | Prefabs | `prefab_open`, `prefab_edit`, `prefab_save`, `prefab_extract`, `prefab_place`, `prefab_list`, `prefab_override`, `prefab_unpack`, `prefab_undo`, `prefab_redo` |
 | Interiors | `interior_volume_add`, `interior_volume_set`, `interior_volume_remove`, `roof_link_set` |
+| Markers | `marker_set`, `marker_remove`, `marker_list`, `spawns_adopt` |
+| Foliage | `foliage_layer_set`, `foliage_get`, `foliage_density_set`, `foliage_paint`, `foliage_remove` |
+
+The five native foliage verbs use the shared command history and finalized effects. `foliage_layer_set` takes
+`layerJson`, optional `expectedDifferentialDigest` and `dryRun`. A policy change needs the exact proposal's preview
+token and publishes alone. A new-layer dry run refuses because no differential is needed. `foliage_density_set` takes
+`layerId`, `x`, `z`, `width`, `depth`, `density`. `foliage_paint` takes `layerId`, `worldX`, `worldZ`, `radiusMetres`,
+`target`, `hardness`. `foliage_remove` takes `layerId`. `foliage_get` takes optional `layerId`, the complete optional
+sample rectangle and `previewChunkJson`. Omitted layer lists detached metadata in authored order. A named layer returns
+copied bytes and optional CPU preview, including every matrix/quaternion component. See the
+[wire contract](../KhaozEngine.MapEdit.Tool/README.md#foliage) for results and refusal semantics.
 
 `sculpt_apply(brush, x, z, radius, strength, dt, targetHeight?)` applies one terrain-sculpt brush dab
 (`raise`/`lower`/`smooth`/`flatten`/`set_height`) at a world point as a single `TerrainSculptStrokeCommand`
@@ -17364,7 +17928,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.1.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.9.0" />
 ```
 
 ```csharp
@@ -17400,7 +17964,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.1.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.9.0" />
 ```
 
 ```csharp
@@ -17644,7 +18208,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.1.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.9.0" />
 ```
 
 ```csharp
@@ -18632,6 +19196,10 @@ self-corrects when its region streams in, so a click handler may set it optimist
 `ITileWorldScene.DrawMeshSilhouette` defaults to a no-op, so custom scene implementations keep compiling and
 simply draw no rims.
 
+The rigid `DrawMeshSilhouette(mesh, world, color, widthMetres, cutInsideInteriors)` overload cuts its extruded
+hull against `Scene3D.InteriorCut`. Existing overloads forward false. The tile-world view forwards the opted-in
+archetype flag itself, so a selected tree's rim does not restore the branches hidden inside a room.
+
 ### Grouped target outlines (`DrawMeshOutline`, 18.47.0)
 
 Use a grouped target outline when the border must follow only the visible camera-projected exterior at a
@@ -18713,6 +19281,13 @@ The occlusion overload of `BeginMeshOutline` defaults to the two-argument one, s
 scene-depth border.
 An implementation that supports outlines can construct its own `MeshOutlineGroup(int index)` and interpret
 the index when parts are submitted.
+
+The rigid `DrawMeshOutlineDissolved(group, mesh, world, dissolve, dissolveComplement,
+cutInsideInteriors)` overload applies the field to both full and visible coverage masks in either occlusion
+mode. Its border follows the cut boundary. Existing overloads forward false, and skinned outlines remain
+uncut. The view forwards the individual layer's flag but explicitly leaves merged HLOD outlines uncut.
+The cut-aware outline and silhouette defaults on `ITileWorldScene` forward to their old methods, keeping
+custom implementations compatible.
 
 The tile-world seam adds the grouped skinned outline methods with the same compatibility defaults:
 
@@ -21999,7 +22574,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.1.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.9.0" />
 </ItemGroup>
 ```
 

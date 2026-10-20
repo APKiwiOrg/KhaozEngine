@@ -25,7 +25,9 @@ namespace KhaozEngine.Render3D
         public void Draw(in RigidInstanceDraw draw)
         {
             ValidateCoverageEquipment(draw, false);
-            _instances.Add(in draw);
+            if (draw.CutInsideInteriors)
+                _instances.Add(in draw, RelevantInteriorCut(draw.Mesh, draw.World));
+            else _instances.Add(in draw);
             RecordCoverageEquipment(draw, false);
             RecordRigidMotion(in draw);
         }

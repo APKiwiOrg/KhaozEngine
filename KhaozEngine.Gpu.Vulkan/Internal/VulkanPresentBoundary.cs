@@ -103,6 +103,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // pair is offered to exactly the submissions that rendered the image, and the first of those takes it.
         bool _swapchainSubmitted;
         bool _syncToVerticalBlank;
+        bool _copySourceRequested;
         bool _surfaceLost;
         bool _orphanBound;
         // WHETHER THE ORPHAN TEXTURE EXISTS, which is a different question from whether the framebuffer is
@@ -216,6 +217,34 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 _pending.QueueRecreate();
             }
         }
+
+        /// <summary>
+        /// Whether a frame capture wants the swapchain images as copy sources. A swapchain image's usage is fixed
+        /// at creation, so a change QUEUES a recreate for the next boundary exactly as a vsync change does, and
+        /// every recreate passes the value to the policy, which adds <c>TRANSFER_SRC</c> only when the surface
+        /// supports it. Setting the value already in force queues nothing.
+        /// </summary>
+        internal bool CopySourceRequested
+        {
+            get => _copySourceRequested;
+            set
+            {
+                if (_copySourceRequested == value) return;
+
+                _copySourceRequested = value;
+                _pending.QueueRecreate();
+            }
+        }
+
+        /// <summary>
+        /// Whether the image the current frame renders into can be copied out: an image is held, it belongs to a
+        /// real generation rather than the orphan target, and that generation was CREATED with
+        /// <c>TRANSFER_SRC</c>. Read off the created spec rather than the request, so the frames between a request
+        /// and its recreate, and a surface that could not honour it, both read false.
+        /// </summary>
+        internal bool CurrentGenerationCopyable
+            => !_orphanBound && _heldImage != NoImage && _generation is { } generation
+                && generation.Spec.IsCopySource;
 
         /// <summary>Queue a resize. Takes no lock, makes no native call and never blocks, so a window callback on
         /// any thread is safe. See <see cref="VulkanPresentPending"/>.</summary>

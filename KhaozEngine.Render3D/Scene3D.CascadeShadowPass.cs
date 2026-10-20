@@ -29,8 +29,8 @@ namespace KhaozEngine.Render3D
                 bool resolutionChanged = hadPrevious && _model.ShadowMap.Resolution != _lastShadowResolution;
                 bool lightMatrixChanged = hadPrevious && ShadowCascadeVpsChanged(
                     _cascadeCpuVps, _cascadeCount, _lastCascadeCpuVps, _lastShadowCascadeCount);
-                bool casterDataChanged = hadPrevious && ShadowCastersChanged(
-                    _shadowCasterRunsScratch, _shadowCasterModelsScratch, _lastShadowCasterRuns, _lastShadowCasterModels);
+                bool casterDataChanged = hadPrevious && (InteriorShadowChanged || ShadowCastersChanged(
+                    _shadowCasterRunsScratch, _shadowCasterModelsScratch, _lastShadowCasterRuns, _lastShadowCasterModels));
                 bool anyFoliageCaster = _foliageShadowDraws.Count > 0;
                 bool dirty = FoliageShadowSelection.NeedsDepthPass(anyFoliageCaster, _lastAnyFoliageCaster)
                     || ShadowDepthPassDirty(

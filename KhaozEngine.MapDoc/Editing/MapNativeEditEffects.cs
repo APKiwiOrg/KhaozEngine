@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.MapDoc.Editing;
@@ -29,6 +30,11 @@ public enum MapNativeInvalidation
     /// are named in <see cref="MapNativeEditEffects.WaterBodyIds"/>, and their residency and navigation medium
     /// identity follow.</summary>
     Medium = 128,
+
+    /// <summary>The edit changed generated foliage. The changed batches and their cosmetic bounds are named in
+    /// <see cref="MapNativeEditEffects.FoliageChunks"/>, and the layers whose every batch is stale are named in
+    /// <see cref="MapNativeEditEffects.FoliageLayers"/>. Foliage never adds Physics, Nav or Residency.</summary>
+    Foliage = 256,
 }
 
 public readonly record struct MapBox3(double MinX, double MinY, double MinZ, double MaxX, double MaxY, double MaxZ)
@@ -38,6 +44,10 @@ public readonly record struct MapBox3(double MinX, double MinY, double MinZ, dou
         Math.Min(MinZ, other.MinZ), Math.Max(MaxX, other.MaxX), Math.Max(MaxY, other.MaxY), Math.Max(MaxZ, other.MaxZ));
 }
 public sealed record MapDigestChange(string Key, string? Before, string? After);
+
+/// <summary>One effective marker name change. A created marker has a null <paramref name="Before"/> and a deleted
+/// marker a null <paramref name="After"/>.</summary>
+public sealed record MapMarkerNameChange(string MarkerId, string? Before, string? After);
 
 /// <summary>Reported consequences of one accepted native document edit.</summary>
 public sealed record MapNativeEditEffects(MapBox3? OldBounds, MapBox3? NewBounds,
@@ -71,8 +81,20 @@ public sealed record MapNativeEditEffects(MapBox3? OldBounds, MapBox3? NewBounds
     public IReadOnlyList<string> LightIds { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> MarkerIds { get; init; } = Array.Empty<string>();
 
+    /// <summary>The effective marker name changes of the edit, empty when no name changes.</summary>
+    public IReadOnlyList<MapMarkerNameChange> MarkerNameChanges { get; init; } = Array.Empty<MapMarkerNameChange>();
+
+    /// <summary>The changed foliage batches, empty when the edit changes none. A layer named in
+    /// <see cref="FoliageLayers"/> has no rows here.</summary>
+    public IReadOnlyList<MapFoliageChunkChange> FoliageChunks { get; init; } = Array.Empty<MapFoliageChunkChange>();
+
+    /// <summary>The foliage layers whose every batch the edit invalidates, empty when it invalidates none.</summary>
+    public IReadOnlyList<MapFoliageLayerChange> FoliageLayers { get; init; } = Array.Empty<MapFoliageLayerChange>();
+
     /// <summary>Compact canonical JSON with fixed field order, ordinal IDs and invariant numbers. <c>waterBodyIds</c>
-    /// follows <c>dependencyIds</c> only when <see cref="WaterBodyIds"/> is not empty. Spatial bounds follow the reported
+    /// follows <c>dependencyIds</c> only when <see cref="WaterBodyIds"/> is not empty, and <c>markerNameChanges</c>
+    /// follows <c>markerIds</c> only when <see cref="MarkerNameChanges"/> is not empty, and <c>foliageChunks</c> and then
+    /// <c>foliageLayers</c> follow them only when each is not empty. Spatial bounds follow the reported
     /// bounds only when they differ, preserving descriptions whose extents already agree.</summary>
     public string Describe()
     {
@@ -103,6 +125,34 @@ public sealed record MapNativeEditEffects(MapBox3? OldBounds, MapBox3? NewBounds
             if (RoofIds.Count != 0) WriteIds(writer, "roofIds", RoofIds);
             if (LightIds.Count != 0) WriteIds(writer, "lightIds", LightIds);
             if (MarkerIds.Count != 0) WriteIds(writer, "markerIds", MarkerIds);
+            if (MarkerNameChanges.Count != 0)
+            {
+                writer.WriteStartArray("markerNameChanges");
+                foreach (MapMarkerNameChange change in MarkerNameChanges.OrderBy(c => c.MarkerId, StringComparer.Ordinal)
+                    .ThenBy(c => c.Before, StringComparer.Ordinal).ThenBy(c => c.After, StringComparer.Ordinal))
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("markerId", change.MarkerId);
+                    writer.WriteString("before", change.Before);
+                    writer.WriteString("after", change.After);
+                    writer.WriteEndObject();
+                }
+                writer.WriteEndArray();
+            }
+            if (FoliageChunks.Count != 0) WriteFoliageChunks(writer, FoliageChunks);
+            if (FoliageLayers.Count != 0)
+            {
+                writer.WriteStartArray("foliageLayers");
+                foreach (MapFoliageLayerChange change in FoliageLayers.OrderBy(c => c.LayerId, StringComparer.Ordinal))
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("layerId", change.LayerId);
+                    writer.WriteString("before", change.BeforeDigest);
+                    writer.WriteString("after", change.AfterDigest);
+                    writer.WriteEndObject();
+                }
+                writer.WriteEndArray();
+            }
             writer.WriteStartArray("digestChanges");
             foreach (MapDigestChange change in DigestChanges.OrderBy(c => c.Key, StringComparer.Ordinal)
                 .ThenBy(c => c.Before, StringComparer.Ordinal).ThenBy(c => c.After, StringComparer.Ordinal))
@@ -138,6 +188,41 @@ public sealed record MapNativeEditEffects(MapBox3? OldBounds, MapBox3? NewBounds
         writer.WriteNumberValue(box.MaxX);
         writer.WriteNumberValue(box.MaxY);
         writer.WriteNumberValue(box.MaxZ);
+        writer.WriteEndArray();
+    }
+
+    static void WriteFoliageChunks(Utf8JsonWriter writer, IReadOnlyList<MapFoliageChunkChange> changes)
+    {
+        writer.WriteStartArray("foliageChunks");
+        foreach (MapFoliageChunkChange change in changes.OrderBy(c => c.LayerId, StringComparer.Ordinal)
+            .ThenBy(c => c.Chunk.Z).ThenBy(c => c.Chunk.X))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("layerId", change.LayerId);
+            writer.WriteNumber("x", change.Chunk.X);
+            writer.WriteNumber("z", change.Chunk.Z);
+            WriteRect(writer, "oldBounds", change.OldBounds);
+            WriteRect(writer, "newBounds", change.NewBounds);
+            writer.WriteString("before", change.BeforeDigest);
+            writer.WriteString("after", change.AfterDigest);
+            writer.WriteEndObject();
+        }
+        writer.WriteEndArray();
+    }
+
+    static void WriteRect(Utf8JsonWriter writer, string name, MapFoliageRect? bounds)
+    {
+        writer.WritePropertyName(name);
+        if (bounds is not { } rect)
+        {
+            writer.WriteNullValue();
+            return;
+        }
+        writer.WriteStartArray();
+        writer.WriteNumberValue(rect.MinX);
+        writer.WriteNumberValue(rect.MinZ);
+        writer.WriteNumberValue(rect.MaxX);
+        writer.WriteNumberValue(rect.MaxZ);
         writer.WriteEndArray();
     }
 

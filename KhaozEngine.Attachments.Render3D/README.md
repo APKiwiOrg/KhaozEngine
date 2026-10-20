@@ -27,6 +27,7 @@ animation. `ComposeWorlds` writes canonical part-ID order using
 `BoneSocket.ComposeRigid(part.Local * map.BodyAlignment(node), palette[bone], characterWorld)`.
 Body alignment cancels the joint's base orientation while retaining its translation. Joint scale
 and shear are removed, and reflected handedness is preserved.
+The map keeps the alignment's homogeneous component exactly one despite general inverse rounding on x64.
 
 For skinned or mixed definitions, construct `AttachmentSetBinding(definition, map, hostMesh,
 skinnedMeshes)`. The dictionary maps each skinned mesh reference to its imported `SkinnedGltfMesh`.

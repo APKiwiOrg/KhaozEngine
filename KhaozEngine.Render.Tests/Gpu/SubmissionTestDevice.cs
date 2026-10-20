@@ -74,7 +74,8 @@ internal sealed class SubmissionTestDevice : IGpuDevice, IGpuResourceFactory, IG
     public void Submit(IGpuCommandList cl, ReadOnlySpan<IGpuFence> completions)
     {
         GpuCompletionFences.Validate(completions);
-        SubmittedFences = completions.ToArray();
+        if (SubmittedFences.Length != completions.Length) SubmittedFences = new IGpuFence[completions.Length];
+        completions.CopyTo(SubmittedFences);
         SubmittedFence = completions.IsEmpty ? null : completions[0];
         Submit(cl);
     }

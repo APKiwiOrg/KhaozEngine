@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Markers;
 
 namespace KhaozEngine.MapEditor;
 
@@ -32,12 +33,10 @@ public partial class MapEditorScene
         ViewportWorld? replacementViewport = null;
         EditorDocument replacementDocument;
         MapTileRect? replacementWindow;
+        MapMarkerAnchor? replacementAnchor;
         try
         {
-            MapDocument replacementMap = MapDocumentWindowing.Load(_options.DocumentPath,
-                new MapDocumentLoadOptions { Registry = _document.Registry },
-                _options.WholeWorldTileLimit, EffectiveWindowRadius, _options.PlayerSpawnSearchTileLimit,
-                out _, out replacementWindow);
+            MapDocument replacementMap = LoadEditorDocument(_document.Registry, out replacementWindow, out replacementAnchor);
             replacementDocument = new EditorDocument(replacementMap, _document.Registry);
             replacementViewport = BuildReloadViewport(replacementDocument);
         }
@@ -48,7 +47,7 @@ public partial class MapEditorScene
             return false;
         }
 
-        CommitReload(replacementDocument, replacementViewport, replacementWindow);
+        CommitReload(replacementDocument, replacementViewport, replacementWindow, replacementAnchor);
         _statusText = MapEditorStrings.Resolve(MapEditorStrings.Reloaded, _options.DocumentPath);
         return true;
     }
@@ -71,17 +70,10 @@ public partial class MapEditorScene
         }
     }
 
-    internal ViewportWorld CreateReloadViewport() =>
-        new ViewportWorld(_scene, _options.ManifestPaths)
-        {
-            ScatterLayerVisible = _visibility.GetLayer,
-            RenderDistance = _viewport.RenderDistance,
-            TexturedPropsEnabled = () => _options.TexturedProps,
-            PropCategoryResolver = _options.ResolvePropCategory,
-            PropKindVisible = PropKindVisible,
-        };
+    internal ViewportWorld CreateReloadViewport() => CreateViewport(_viewport.RenderDistance);
 
-    void CommitReload(EditorDocument replacement, ViewportWorld? replacementViewport, MapTileRect? replacementWindow)
+    void CommitReload(EditorDocument replacement, ViewportWorld? replacementViewport, MapTileRect? replacementWindow,
+        MapMarkerAnchor? replacementAnchor)
     {
         EditorDocument previousDocument = _document;
         ViewportWorld previousViewport = _viewport;
@@ -92,6 +84,7 @@ public partial class MapEditorScene
             IsVisible = _visibility.IsElementVisible,
             PlacementKindVisible = PropKindVisible,
             PlacementDrawnAt = PlacementDrawnAt,
+            SpawnFrame = SpawnFrame,
             PlaceKind = previousController.PlaceKind,
             SpawnArchetype = previousController.SpawnArchetype,
             PlacingPlayerSpawn = previousController.PlacingPlayerSpawn,
@@ -106,6 +99,7 @@ public partial class MapEditorScene
         _document = replacement;
         _controller = replacementController;
         _window = replacementWindow;
+        _windowAnchor = replacementAnchor;
         if (replacementViewport is not null)
         {
             _viewport = replacementViewport;
@@ -129,6 +123,7 @@ public partial class MapEditorScene
     {
         document.PlacementsChanged += OnPlacementsChanged;
         document.DocumentChanged += OnDocumentChanged;
+        document.DocumentChanged += OnMarkerSourceChanged;
         document.CommandApplied += OnCommandVisibilityForward;
         document.CommandRedone += OnCommandVisibilityForward;
         document.CommandUndone += OnCommandVisibilityInverse;
@@ -139,6 +134,7 @@ public partial class MapEditorScene
     {
         document.PlacementsChanged -= OnPlacementsChanged;
         document.DocumentChanged -= OnDocumentChanged;
+        document.DocumentChanged -= OnMarkerSourceChanged;
         document.CommandApplied -= OnCommandVisibilityForward;
         document.CommandRedone -= OnCommandVisibilityForward;
         document.CommandUndone -= OnCommandVisibilityInverse;

@@ -51,6 +51,9 @@ internal static class MapDocumentMembers
 
     static void Check(JsonNode? node, JsonObject schema, string path, bool native)
     {
+        // Foliage has a closed codec for each storage form. It charges all counts before visiting nested records,
+        // so let that codec validate this native block once rather than walking its untrusted arrays first.
+        if (schema["$ref"]?.GetValue<string>() is "#/$defs/foliageInline" or "#/$defs/foliageStored") return;
         schema = Resolve(schema);
         if (node is null)
         {
@@ -89,9 +92,14 @@ internal static class MapDocumentMembers
         }
     }
 
+    // The first admitted alternative is checked, as released. When that alternative is an object shape, a later
+    // admitted shape whose every const member matches is preferred, so payload and kind discriminants select their
+    // own closed shape. A node no shape fully matches keeps the released first choice.
     static void CheckUnion(JsonNode node, JsonArray? alternatives, string path, bool native)
     {
         if (alternatives is null) return;
+        JsonObject? first = null;
+        JsonObject? matched = null;
         foreach (JsonNode? alternative in alternatives)
         {
             JsonObject candidate = Resolve(alternative!.AsObject());
@@ -107,10 +115,28 @@ internal static class MapDocumentMembers
                 JsonNode? expected = fields["type"]?["const"];
                 if (expected is not null &&
                     (!TryGetProperty(obj, "type", out JsonNode? actual) || !JsonNode.DeepEquals(expected, actual))) continue;
+                first ??= candidate;
+                // A type-discriminated union admits exactly one alternative, so only an untyped shape compares consts.
+                if (expected is null && ConstantsMatch(obj, fields)) { matched = candidate; break; }
             }
-            Check(node, candidate, path, native);
-            return;
+            else
+            {
+                first ??= candidate;
+                break;
+            }
         }
+        if (first is null) return;
+        Check(node, first["properties"] is JsonObject ? matched ?? first : first, path, native);
+    }
+
+    static bool ConstantsMatch(JsonObject obj, JsonObject fields)
+    {
+        foreach (KeyValuePair<string, JsonNode?> field in fields)
+        {
+            if (field.Value is not JsonObject declared || declared["const"] is not { } expected) continue;
+            if (!TryGetProperty(obj, field.Key, out JsonNode? actual) || !JsonNode.DeepEquals(expected, actual)) return false;
+        }
+        return true;
     }
 
     static JsonObject Resolve(JsonObject schema)
@@ -137,6 +163,7 @@ internal static class MapDocumentMembers
         string.Equals(name, "surfacePatches", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "surfaceStorage", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "water", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "foliage", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "prefabs", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "buildingIntent", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "nativeResourceTransforms", StringComparison.OrdinalIgnoreCase);

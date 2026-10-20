@@ -8,6 +8,15 @@
   <Project Path="KhaozEngine.Attachments.Tests/KhaozEngine.Attachments.Tests.csproj" />
   <Project Path="KhaozEngine.Audio/KhaozEngine.Audio.csproj" />
   <Project Path="KhaozEngine.Automation/KhaozEngine.Automation.csproj" />
+  <Project Path="KhaozEngine.BugReports/KhaozEngine.BugReports.csproj" />
+  <Project Path="KhaozEngine.BugReports.Client/KhaozEngine.BugReports.Client.csproj" />
+  <Project Path="KhaozEngine.BugReports.Client.Tests/KhaozEngine.BugReports.Client.Tests.csproj" />
+  <Project Path="KhaozEngine.BugReports.Contracts/KhaozEngine.BugReports.Contracts.csproj" />
+  <Project Path="KhaozEngine.BugReports.Relay/KhaozEngine.BugReports.Relay.csproj" />
+  <Project Path="KhaozEngine.BugReports.Relay.Azure/KhaozEngine.BugReports.Relay.Azure.csproj" />
+  <Project Path="KhaozEngine.BugReports.Relay.Azure.Tests/KhaozEngine.BugReports.Relay.Azure.Tests.csproj" />
+  <Project Path="KhaozEngine.BugReports.Relay.Tests/KhaozEngine.BugReports.Relay.Tests.csproj" />
+  <Project Path="KhaozEngine.BugReports.Tests/KhaozEngine.BugReports.Tests.csproj" />
   <Project Path="KhaozEngine.Catalog/KhaozEngine.Catalog.csproj" />
   <Project Path="KhaozEngine.Catalog.Authoring/KhaozEngine.Catalog.Authoring.csproj" />
   <Project Path="KhaozEngine.Catalog.AzureBlob/KhaozEngine.Catalog.AzureBlob.csproj" />

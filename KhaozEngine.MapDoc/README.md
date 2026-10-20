@@ -636,7 +636,87 @@ radius once in binary64 before rounding to float. Colour, intensity and shadow i
 `LightResourceIds` use the existing scoped and bound implicit Light children. Explicit children coexist under
 distinct keys. Materialized transfers reuse the captured descriptor frame without composing the owner again.
 Markers retain exact XYZ, yaw, name, role, enabled state, ordered tags and optional instance provenance. They do
-not become `MapSpawn`. R6 chooses role registries and spawn projections. R8 renders lights.
+not become `MapSpawn`. R8 renders lights.
+
+### Marker payloads and height modes
+
+Format 8 keeps marker payload 1 byte for byte and adds payload 2, used by world markers and prefab Marker children
+alike. Payload 1 keeps its height in `Position.Y`. Payload 2 requires a closed `heightMode`. `Explicit` keeps
+`Position.Y` as the only height authority and never resamples. `Support` carries a `supportBinding` and stores
+`Position.Y` exactly +0, so an authored Support marker carries no height. A Surface binding names only `surfaceId`.
+A Space binding names `spaceId`, a finite `referenceY` and finite nonnegative `searchBelow` and `searchAbove`. Nothing
+is defaulted. `MapMarkerHeights.Apply(marker, height)` writes the one canonical encoding of a `MapMarkerHeight` choice.
+An optional nonempty `archetypeId` is caller vocabulary.
+
+Expansion resolves a Support height through the shared seat query that support-bound placements use, after the
+placement seats are installed. A prefab-local or framed standalone binding is stored frame-local and passes through
+its frame once. The effective Y is the exact value of the query's float `WorldY`, and only Supported resolves. A
+removed or unsupported owner refuses the load, build or edit, disabled markers included. Effective markers carry
+value-only `HeightProvenance`, with the mode, the world request, face, space, via record and float height for Support,
+and the mode alone for Explicit. Payload-1 markers carry none. The witness-bearing answers live separately in
+`MapEffectiveResources.MarkerSupports`, one row per Support marker in ID order. A document whose effective markers
+are all payload 1 keeps the annotation digest scheme `kemap/effective-annotations/1`. Any payload-2 marker selects
+`/2`. `MapMarkerSpaces.Query(view, marker)` answers occupied space and parent chain by point membership, Outside when
+no authored space holds the point, and keeps every refusal status. Outside needs acquired coverage. A point beyond the
+view's acquired XZ extent, for example a marker past every patch of `CompleteView()`, has no geometry to certify
+Outside and returns MissingGeometry. Uncovered scope refuses, while covered ground that no authored space owns is
+Outside.
+
+The shared seat query acquires a 2 m scope around each point. A complete acquisition reads every patch that meets
+that scope, so a floor it captures only through records incident to another patch, or through an empty neighbouring
+slot, holds no cell at the point when its own slot was never read, and the query skips it. A recorded unavailable read
+still refuses with MissingGeometry. Support-bound markers and placements on sparse floors therefore seat on their
+named owner, and `MapPrefabResolver.Expand` and native resolution agree. `SeatSupportSlotTests` pins both cases.
+Completeness is relative to the acquisition's own filters. The seat query acquires every role with no space or height
+filter, so a skipped slot holds nothing at the point anywhere in the world. A caller that filters roles, spaces or
+height gets an answer scoped to that filter and must acquire the geometry its support search needs.
+
+### Marker names, lookup and typed views
+
+Effective marker IDs and names are global, ordinal and case-sensitive. A name is nonempty, editable and unique across
+world markers and every prefab-derived marker after current overrides. IDs are immutable. Disabled markers take part
+in both checks and removed children do not. Closure-bound validation of a complete document, on the loaded and the
+stored path, refuses a duplicate effective ID or name from root globals and verified prefab payloads before any patch
+read, support query, callback or static installation. Names are never normalized or suffixed. A repeated
+marker-bearing prefab gives each copy's marker its own name through an explicit replace override.
+
+Compatibility: duplicate marker names were accepted before R6. A document whose repeated prefab instances share a
+marker name now refuses to load and build until each repeated instance carries such an override. Format 8 moves every
+native root identity once, as format 7 did, so identity-keyed caches and navigation captures rebuild after migration.
+
+`MapPlacePrefab.InitialOverrides` lets one placement request carry keyed overrides, such as that marker rename, so a
+second instance is accepted in a single placement with no intermediate duplicate. Duplicate keys refuse before any
+binding is allocated. The overrides persist only as the instance's `Overrides`. The `prefab_place` tool accepts them as
+the optional `overridesJson` array.
+
+`MapMarkerRegistry(markers)` is an immutable lookup over effective markers with `All`, `Enabled`, `FindById`,
+`FindByName`, `ByRole` and `ByTag`, every list in ordinal ID order. `InRect(rect, enabledOnly, membership)` returns the
+markers whose exact XZ lies in the half-open `MapMarkerRect`, minima included and maxima excluded on both axes,
+negative coordinates included. A median-split point hierarchy with outward-rounded node bounds narrows candidates
+before the exact test, and the membership delegate runs once for each returned marker. Each `MapMarkerMapPoint` keeps
+the delegate's status, refusals included, so a rectangle never claims complete space membership. Non-finite or
+reversed bounds refuse and a zero width or depth holds no marker.
+
+Roles are caller vocabulary and the engine defines none. `MapMarkerRoleCatalog(roles).Validate(registry)` reports one
+`unknown-role` finding for every unlisted marker in ID order, disabled ones included, without making a document
+invalid. `MapMarkerProjection.PlayerStarts`, `Spawns` and `Landmarks` wrap each effective marker of one caller role and
+keep its exact XYZ, yaw, ordered tags, enabled state, name, ID and height provenance. A spawn carries a payload-2
+archetype, or null for a tag-driven spawn. A landmark is a point and adds no region, disc or geometry.
+
+### Marker window anchors and native readouts
+
+`MapMarkerAnchors.Read(manifest, assets)` reads each marker's world XZ, enabled state and role from root metadata and
+verified prefab bytes, through the same enumeration and frame kernel that expansion uses. It reads no support, terrain
+or tile body, resolves nothing and certifies no whole-world identity. A missing prefab refuses.
+`MapMarkerAnchors.Select(anchors, role, centre)` is pure. It keeps enabled anchors whose role equals the caller's
+ordinally, orders them by squared distance to the centre over binary64 differences, then by ordinal ID, and returns
+null when none match. The engine never guesses a role. `MapMarkerConsumerOptions(Roles, LegacySpawnSurfaceId)` carries
+the caller's `MapMarkerConsumerRoles` and the one Surface owner for unadopted legacy spawns. Nothing is defaulted.
+
+`MapNativePointReadout.SurfaceAt(resources, point, surfaceId)` samples the named Surface owner at an exact XZ through
+the shared seat query, with no reference height and the default scoped budgets. Every status stays typed, and only
+Supported carries a height. An exact overflow returns a typed NotRepresentable result with an incomplete witness. It
+never falls back to another floor, a zero height or the analytic field.
 
 `MapPrefabExpansionLimits` supplies finite collection and payload ceilings before codec materialization. Effective
 geometry composition, aggregate expansion charges, remapping and editor lifecycle commands are separate stages.
@@ -683,6 +763,200 @@ instances, children and the effective roof, light and marker inventories. Empty 
 and the released positional write-set and effect constructors remain unchanged. Physical bounds and editor publication
 are later stages. These APIs have no editor, tool, rendering or physics dependency.
 
+`MapMarkerEdits.Prepare(document, assets, edit)` prepares one standalone marker edit through the same detached gate
+and returns a `MapPrefabEditResult`. `MapSetMarker(marker)` sets the marker whose immutable ID matches, or creates it.
+The name is an editable member and never a key, so a rename keeps the ID. `MapRemoveMarker(id)` removes one standalone
+marker. A set takes the marker in world terms, the form `MapEffectiveResources.BuildingIntent` publishes. An unframed
+standalone marker stores it as given. A framed standalone marker, such as one transferred by unpack, keeps its precise
+frame verbatim and stores the frame-local point, yaw, height and binding, so expansion applies the frame once. A
+component whose world value is unchanged keeps its stored local bits, so a metadata edit never rounds them.
+
+Preparation refuses a resolver (1, 1) document and names resolver adoption through
+`MapResolverAdoption.ConvertToAuthoredSupport` as the prerequisite. A live prefab marker belongs to its instance, so
+set and remove refuse with `prefab_override` guidance. An ID held by any marker reservation, live or dormant, refuses
+unless it is the active transfer of the standalone marker being edited, so a set never seizes a retired reservation.
+Removing a transferred marker retires its transfer and removes only its own frame. Payload rules, unique IDs and
+names, binding owners and every support-bound height are validated before the result exists. `MapPrefabJson.ReadMarker`
+is the closed decoder the tool uses, sharing the prefab child codec and binding converter.
+
+Marker effects come only from `MapMarkerEffects.Describe` over the before and after expansions. A metadata edit names
+the marker and any rename row with no bounds and no invalidation. A spatial edit adds both point boxes with Residency.
+Markers never add Physics, Nav or Unbounded. The write set names the building intent, plus the resource frames or
+prefab transfers only when a removal changed them.
+
+`MapMarkerAdoption.ConvertSpawns(document, choices)` adopts both legacy lists on a detached, complete resolver-2
+native document. Choices are keyed by `MapLegacySpawnKey(Kind, Id)`, where `Kind` is `Spawn` or `PlayerSpawn`, so the
+same source ID in both lists stays distinct. Every source needs a `MapMarkerAdoptionChoice(MarkerId, Name, Role,
+Height, YawRadians?)` and extra choices refuse. Destinations must be distinct and cannot reuse live or retained
+marker IDs. Each `MapMarkerHeight` explicitly chooses Y or a support binding. The pure conversion encodes the height
+without sampling support. Bound command preparation validates the complete closure, names and support before acceptance.
+
+Adoption preserves XZ, enabled state, ordered tags and the NPC archetype. Without an explicit yaw choice, NPC yaw is
+0 and player yaw is copied. Both source lists clear only after every conversion succeeds. Partial and analytic
+documents refuse. Resolver (1, 1) requires `MapResolverAdoption.ConvertToAuthoredSupport` first. Old native legacy lists
+still load and save, but native editing changes them only through adoption and its exact captured undo restoration.
+`MapNativeWriteSet.LegacySpawns` publishes both lists together and does not itself authorize a legacy-list change.
+
+## Native foliage consumer contract
+
+Format 9 adds optional root `foliage` payload 1, independent of analytic scatter, companion layers and explicit
+placements. `MapFoliageMigration.Upgrade` is a pure 8 to 9 version-only migration. Absent foliage stays absent and
+released prefab payload 1 and annotation digests keep their contracts. The format advance moves native root digests
+and resolver-2 authored identities once even without foliage. Rebuild identity-keyed caches and navigation captures.
+Foliage edits subsequently change authored/whole identity and foliage dependencies, never physical world bounds,
+statics, navigation captures or annotation identity.
+
+### Payload, storage and refusal
+
+Each `MapFoliageLayer` binds explicitly to a Surface or Space through `MapSupportBinding`, with seed, spacing,
+scale range, root offset, ordered weighted models, visible materials, policy, clearance and a sparse byte raster.
+Raster row 0 starts at `originZ`, X advances within a row and rows advance positive world Z. Each immutable
+`MapFoliageChunk` is 32 by 32 bytes, indexed by `MapFoliageChunkKey`. Missing chunks read zero. Advertised unavailable
+chunks refuse. Boundary padding is zero, including last-row padding, and an explicit all-zero chunk retains authored
+identity. `CopyDensity()` returns detached bytes.
+
+| Payload 1 ceiling | Value |
+| --- | --- |
+| Width and depth | 1,048,576 samples each |
+| Stored chunks per layer and region memberships per chunk | 16,384 and 4096 |
+| Layers and document decoded density bytes | 256 and 67,108,864 |
+| Models and materials per layer | 256 and 65,535 |
+| Clearance rules, exception masks and owner correspondences per layer | 4096, 4096 and 65,536 |
+| Foliage JSON and base64 chunk token | 134,217,728 UTF-8 bytes and 1368 characters |
+
+The closed codec checks counts, sizes and arithmetic before allocation. Monolithic storage embeds density.
+Tiled storage writes one verified content-addressed pack per (layer, storage region), with logical chunk digests
+independent of pack layout. The stored schema accepts pack references, the inline schema accepts inline bytes, and
+`VerifyTiled` plus `map_validate` check every advertised pack and its memberships. Sparse addressability is not a
+promise of full-area allocation. Partial storage saves preserve unloaded chunks and verify their advertised data.
+
+`MapFoliageGenerationContext.Capture(document, assets, limits?)` admits construction separately, expands effective
+resources once and detaches one complete snapshot. Reuse it across `MapFoliageDistribution.Generate` and `Query`.
+`MapFoliageContextLimits` defaults to 134,217,728 source UTF-8 bytes, 65,536 chunk descriptors, 65,536 placements,
+65,536 surface patches and 4096 paint targets. Construction is counted before expansion, cloning or index staging,
+alongside the released prefab expansion limits. `MapFoliageContextWork` reports charges and actual expansion and
+snapshot-serialization counts.
+R7 capture requires all terrain, content and foliage resident. Partial snapshots return `PartialResidency` before
+capture. R8 must add a windowed context constructor with an immutable closure and explicit completeness contract
+before claiming streamed native generation. Sparse storage and partial save/verification are not partial-generation
+proof. That constructor must preserve public finalization, full-request support selection, canonical surface identity
+and the observer atomic-completion contract described here.
+
+Only `MapFoliageStatus.Complete` publishes usable samples. MissingSupport, Unavailable, PartialResidency, Ambiguous,
+CapacityExceeded, NotRepresentable and Invalid refuse without truncation, a substituted floor or budget inflation.
+Outside a known domain produces no sample. `MapFoliageLimits` retains per-chunk ceilings. Query also caps total samples
+at 262,144 and retained bytes at 67,108,864 before retention. `MapFoliageDifferential.Compare` caps total candidates at
+64,000,000 and changes at 4,000,000, with reconciliation bytes at 134,217,728 per stable 64 by 64 lattice-address block. Byte charges are
+conservative accounting, not measured allocation. Generate, Query and Compare observer rows remain provisional until
+the enclosing result is Complete. A refusal discards all usable output and issues no differential token.
+
+### Compatibility support and paint
+
+Payload 1 supports `legacy-tile/1` with explicit boundary/material metadata, resolver identity (1, 2) and
+`AuthoredBindingsV2`. It preserves legacy interpolation, smoothed global-corner central-difference normals,
+and additive NoDraw triangles. NoDraw and Blocked flags do not veto density under this compatibility policy.
+Full-request prepared support selection is shared with the
+seat query. A later geometric policy needs its own version and differential. Equal-priority world paint chooses the
+ascending ordinal ID winner. R8 must preserve that winner rather than choose paint by draw order.
+
+Both binding kinds normalize to the selected support surface owner. Occupied Space is a separate field. Clearance
+rules apply to effective placements after their effective transform once. Their seated support, not a roof's clearing
+target or geometric Y, supplies applicability through the layer's compatibility ordinal table.
+
+| Owner seated support | Solid and Door | RoofAbove |
+| --- | --- | --- |
+| Owner and layer have mapped ordinals | Equal ordinals only | Owner ordinal strictly greater than layer ordinal |
+| Owner support is unmapped | Canonical support surface identity must match | Never matches |
+
+`MapFoliageOwnerSupport` supplies exceptional typed seated bindings without clearing geometry. Asset ID and placement
+tag rules share the same per-owner applicability even for mixed owners. Solid/roof clearing remains cell-based,
+DoorClearance scales once and EdgeFade remains world metres. The one-metre interaction envelope is never foliage
+geometry. Explicit trees, shrubs and flora retain placement IDs and collision independently of density.
+
+### Edits and invalidation
+
+`MapFoliageEdits` and `MapFoliageBrush` return pure proposals. A policy definition change needs its
+`PreviewPolicyChange` token, bound to the exact committed candidate, so publish a policy change alone.
+A new layer requires no differential and its tool dry run refuses. Same-layer advertisements can carry density only
+when their keys and digests match the before document's resident chunks. Brush density is 0 to 255 with ToEven rounding,
+hardness 0 to 1, at most 64 chunks and 65,536 addresses. Hardness 1 includes the radius at full strength. Lower hardness
+has zero weight on that boundary. Refusal is atomic and allocates no accepted history entry.
+
+Complete document transactions use public `MapDocumentEditFinalizer`, shared by pure consumers, MapEditor commands,
+callbacks and wire paths. `MapNativeInvalidation.Foliage` is 256 and never adds Physics, Nav or Residency.
+`Finalize(before, prepared, assets)` uses one closure. Its four-argument overload takes separate before/after closures
+for an asset switch. Both admit the proposed foliage context against its target closure before expansion or stamp reuse,
+including whole-layer and chunkless changes, then validate the candidate and preserve every other effect and write.
+`MapFoliageEffects.Describe(before, after, oldContext, newContext, trigger)` returns
+`MapFoliageEffectSet(Chunks, Layers)`, with contexts captured from those exact snapshots and closures.
+
+`MapNativeEditEffects.FoliageChunks` contains per-chunk rows only when a side is added or removed, its bounds change
+or its digest changes. When preparation completes, a side's digest equals `MapFoliageSampleBatch.DependencyDigest`,
+including the raster-only digest off-raster. Deterministically refused preparation instead carries the refusal digest
+from `MapFoliageDependents`. It binds `kemap/foliage-batch-refused/1`, the layer ID, batch chunk X/Z and refusal status,
+plus the density chunks read by float bilinear sampling over points owned by the rounded binary32 generation rectangle.
+This can include the preceding density chunk at a rounded lower edge. Each present read position contributes
+a digest of its chunk address, density SHA-256 and canonical authored layer settings excluding the chunk list.
+Missing positions contribute `absent`. A refused batch from `MapFoliageDistribution` carries an empty
+`DependencyDigest`, so consumers must check status and never compare a refused effect side to a refused batch by digest
+equality. Bounds are cosmetic XZ candidate extents, not padded model bounds. `FoliageLayers` names layers
+whose every batch is stale. Entry presence is authoritative even when before/after digests are equal, since those
+digests describe stored settings/chunks only and a dependency selection past the per-edit ceiling degrades to an entry.
+Whole-layer settings are policy, seed, spacing, density settings, raster geometry, models, materials, clearance rules,
+binding, clearance flags, edge fade and door clearance. Raster chunks, masks, compatibility ordinal rows and owner
+correspondences are localized. A layer appears in at most one list.
+
+### Padded immutable R8 handoff
+
+`MapFoliageModelExtent(AssetId, BoundsInSourceUnits, SourceUnitsToMetres, MotionPaddingMetres)` takes
+`MapResolvedAsset.RenderBounds` and `SourceUnitsToMetres`, plus explicit finite non-negative caller motion padding in
+metres. Zero is valid only when supplied. `MapFoliageRenderHandoff.Create(batch, extents)` returns
+`MapFoliageRenderBatch(Samples, Status, Bounds, DependencyDigest)`, without renderer or GPU types. Samples retain keys,
+canonical support and occupied space, exact CPU matrices and poses, ordered material references, visible material,
+model, scale, thinning rank and completeness. Lists and nested values are detached or immutable.
+
+For each sample, multiply all eight source-box corners by source units exactly once, transform by the original CPU
+matrix, then expand XYZ by that model's motion padding. Never rebuild a matrix from the decomposed quaternion or
+apply the instance scale twice. Bounds union those padded boxes. Empty complete batches have null bounds. Missing or
+duplicate extents, invalid units/bounds, nonfinite or negative padding and nonfinite transformed corners return Invalid
+with null bounds and no usable render digest. Incomplete source status propagates. The render dependency digest binds
+the distribution digest and the used model extents, units and padding in ordinal asset order. Unused model extents do
+not broaden invalidation. It is separate from distribution identity and never resamples or changes CPU selection.
+
+Styling remains caller policy. Preserve live blade/shrub motion profiles and shadow flags. Use dependency digest plus
+generation to reject stale work. Keep one owned batch with every residency membership intersecting its padded bounds
+and release it only after its last membership leaves. Actual residency, upload, viewport drawing, captures and appearance
+remain R8/G3. The bounds are cosmetic and never union into world/nav bounds or static descriptors.
+
+### Public foliage acceptance and deferred ownership
+
+| Evidence | Contract proved |
+| --- | --- |
+| `NativeFoliageAcceptanceTests.StackedLayerFoliageAndExclusions_RemainInOwnedDomain` | OA9 owned stacked support and exclusions |
+| `NativeFoliageAcceptanceTests.SurfaceDensity_DoesNotPopulateDeepCave` | OA9 exterior density stays out of the released prefab cave topology |
+| `NativeFoliageAcceptanceTests.CaveOwnerTransform_InvalidatesOnlyDependentSamples` | OA9 transformed cave ownership and narrow effects |
+| `MapFoliageWorldTests` | Independent client/server heads in monolithic/tiled forms, unchanged statics/nav/world bounds and collider builder type boundary |
+| `FoliageAcceptanceWorkflowTests.StackedDomains_WireEditsInvalidateOnlyTheirOwnLayer` | Shared commands, real MCP edits, owner isolation and history |
+| `FoliageWireTests.FoliageWire_ContainsEveryByteQuaternionAndMatrixComponent` | Reachable generated pose and every wire component |
+| `MapFoliageHandoffTests` and `MapFoliageHandoffBoundaryTests` | Exact CPU matrices, padded cosmetic bounds, immutability and physical isolation |
+| [foliage-conformance](../.github/workflows/foliage-conformance.yml) | Fixed public platform pins and trace on ubuntu-26.04, macos-26 and windows-latest, nonzero totals, no skipped tests |
+
+Scale/rank bits, keys, models and decisions compare exactly. Position tolerance is 0.00001 m per component and
+orientation tolerance 0.000001 radians. The workflow does not regenerate literals or run the private harness.
+The private comparison boundary and its seven test-only references are defined only in the
+[oracle harness README](../KhaozEngine.MapDoc.OracleHarness.Tests/README.md). That harness is not an importer or actual
+source acceptance. Public CPU proofs certify no pixels or windowed acceptance.
+
+| Later owner | Remaining contract or proof |
+| --- | --- |
+| R8, R7-R1 | Windowed context constructor with immutable closure/completeness and full-request support semantics before streamed native generation |
+| R8 and [#1474](https://github.com/APKiwiOrg/KhaozEngine/issues/1474) | MapDoc interior-cut adapter, actual residency/upload and viewport rendering/captures |
+| R8 and G3 | Appearance with live motion profiles, styling and shadow flags |
+| R9 | Interactive painting and native GUI input |
+| R9 and [#1516](https://github.com/APKiwiOrg/KhaozEngine/issues/1516) | Authoring decision for space footprints left over removed floor cells by presence edits |
+| R10 | Complete verb parity and native placement ID rename wire verb |
+| R11 and G2 | Actual-source refreeze, importer and source acceptance |
+
 ## Public synthetic village acceptance
 
 `PrefabFixtures.Village()` in `MapDoc.Tests/Prefabs/PrefabVillageFixtures.cs` is invented public data.
@@ -703,23 +977,57 @@ The independent-head acceptance lives in `MapDoc.Physics.Tests`, and the shared 
 MCP workflow lives in `MapEditor.Tests/MapEditTool/PrefabVillageWorkflowTests.cs`. These tests consume
 verified bytes and separately loaded documents. They supply headless acceptance for these seams.
 
+### Public marker village acceptance
+
+`MarkerFixtures.Village()` in `MapDoc.Tests/Markers/MarkerVillageFixtures.cs` is an invented native village over
+the released room prefab, placed at yaw 0.371 and scale 1.2, and stacked prefab-cave geometry. It holds six uniquely
+named markers. `start` is Surface-bound to the authored exterior at negative X. `actor` is Explicit with an archetype,
+above every static. `cave-explicit` sits in the deep room and `cave-bound` is Space-bound to the high cave. The
+prefab's payload-1 child is renamed and raised above its roof as `roof-label` by a replace override, and the payload-2
+local child `disabled-local` is disabled, Surface-bound to the prefab's local floor and carries ordered duplicate tags. Roles are caller values and neither legacy spawn list has a record.
+
+`NativeMarkerAcceptanceTests` checks payload versions, the exhaustive and enabled registry views, roles, tags,
+witness rows, half-open rectangles with markers on their minimum and maximum edges, point membership and identity on
+monolithic and tiled reloads with independently verified closures, plus explicit adoption of both legacy lists.
+`MapMarkerVillageAcceptanceTests` in MapDoc.Physics.Tests builds independent client and server heads, and
+`MarkerVillageWorkflowTests` in MapEditor.Tests drives the shared commands and the MCP verbs. The stacked,
+underground and local cave proofs stay `StackedCaveMarkerSupport_DoesNotSnapToSurface`,
+`UndergroundMarker_ExplicitHeightAndLayerSurviveReload` and `LocalCaveMarker_TransformsOnceAndKeepsVolumeAssociation`.
+
+Identity and saved text are different guarantees. A monolithic reload keeps authored surface declaration order, while a
+tiled reload orders declarations by ID. Semantic and identity hashes agree across the two forms, but saved canonical
+text matches only when declarations are already in ID order. The village sorts its declarations so its text
+comparison holds, which proves that fixture only, not a general cross-storage byte guarantee.
+
+Markers hand off to later rounds through these seams. They certify no native route, door, renderer pixel or game
+policy.
+
+| Consumer | Marker seam |
+| --- | --- |
+| R7 | Generic tagged points through `MapMarkerRegistry.ByTag` and the enabled view |
+| R8 | Resolved annotations, `AnnotationDigest` and the `marker:{id}` residency entries |
+| R9 | The full GUI host, marker inspectors and windowed native editing over `MarkerEditCommand` and `AdoptSpawnsCommand` |
+| R10 | Whole-tool parity for every verb beyond the registered marker, prefab and interior commands |
+| #1370 | Indexed half-open point queries through `MapMarkerRegistry.InRect` |
+| #438 | Queried occupied space through `MapMarkerSpaces.Query` and its refusal statuses |
+| R11 and G2 | Private source refreeze, the importer and final import and point-shift acceptance |
+
 | Later owner | Remaining proof |
 | --- | --- |
-| R6 | Local marker role registry, spawn projection and gameplay consumers |
-| R7 | Distribution and foliage exclusions over effective canonical paint owners |
+| R7 | Complete native foliage CPU contract, see [foliage acceptance](#public-foliage-acceptance-and-deferred-ownership) |
 | R8 | Partial-face drawing, roof colour and shadows, camera boom, sky picking, local-light pixels, bounded streaming, eviction, HLOD and on-demand navigation |
 | R9 and #1349 | GUI closure/bounds binding, prefab mode, inspectors and real pointer/key input |
-| R10 | Whole verb-map wire parity beyond the registered prefab/interior commands |
+| R10 | Whole verb-map wire parity beyond the registered prefab, interior and marker commands |
 | R11 and G2 | Private lossless importer, exhaustive source comparison, actual source freeze and import-time acceptance of target, distance, occlusion and stance changes |
-| G1b, #1355 and #438 phase 5 | Native controller walking, body certificates and complete layered routes |
+| G1b and #438 phase 5 | Native controller walking, body certificates and complete layered routes |
 | #1363 | Live door state and generation-fenced collision, navigation and water swaps |
 | #1327 | Compound contact provenance beyond canonical support surfaces |
 | #1301 and #1358 to #1362 | Runtime residency and water indexing, huge exterior coverage and medium-aware seam capture |
 
 ## Format versioning
 
-`MapDocumentFile.CurrentFormatVersion` is the version this engine build reads and writes, currently 7.
-Format 7 adds rigid prefabs and building intent. Version 6 added bounded water, version 5 added the support recipe
+`MapDocumentFile.CurrentFormatVersion` is the version this engine build reads and writes, currently 9.
+Format 9 adds optional foliage payload 1. Format 8 adds marker payload 2. Format 7 added rigid prefabs and building intent. Version 6 added bounded water, version 5 added the support recipe
 and surface metadata and version 4 added native metadata. Loading a document with an
 older `formatVersion` runs migrations
 (`MapDocumentLoadOptions.RegisterMigration`, each a pure `JsonObject -> JsonObject` step from N to N+1)
@@ -734,10 +1042,14 @@ v5 -> v6 (`MapWaterMigration.Upgrade`) adds no member, so a migrated document ha
 legacy global water. It accepts only format 5 or 6 input.
 v6 -> v7 (`MapPrefabMigration.Upgrade`) clones input and changes only `formatVersion`. It accepts format 6 or 7.
 Format 7 moves every native root digest and resolver-2 authored identity once, including maps without prefabs.
-Rebuild identity-keyed caches and navigation captures after this migration. Absent prefab sections preserve
+v7 -> v8 (`MapMarkerMigration.Upgrade`) clones input and changes only `formatVersion`. It accepts format 7 or 8 and
+reads no source, terrain, closure or role. Format 8 again moves every native root digest and resolver-2 authored
+identity once. Rebuild identity-keyed caches and navigation captures after either migration. Absent prefab sections preserve
 analytic execution and document hashing. Portals remain AuthoredOpen, with live state gated by #1363.
 Headless doorway clearance and roof intent are available. Native controller routes and R8 rendering retain
 the separate gates in the handoff table above.
+v8 -> v9 (`MapFoliageMigration.Upgrade`) clones input and changes only `formatVersion`, accepting 8 or 9.
+Absent foliage stays absent. Format 9 moves native root digests and resolver-2 authored identity once.
 
 `MapDocument.SupportRecipe` pairs resolver 1 with `LegacyXzCallbackV1` and resolver 2 with
 `AuthoredBindingsV2`. Resolver 1 refuses authored surfaces and placement support bindings. A placement

@@ -37,7 +37,7 @@ surface is "ship a patchable, pinned copy and update it", not "audit their inter
 
 ## Threat model: where untrusted bytes enter a game
 
-Six categories of untrusted input cross into a game. Everything else (the game's own embedded assets,
+Seven categories of untrusted input cross into a game. Everything else (the game's own embedded assets,
 its own code) is trusted by construction.
 
 ### 1. Hostile network input (multiplayer)
@@ -272,6 +272,53 @@ locking, path-traversal guards on both download staging and apply (one shared ch
 path never reaches disk in the first place) plus symlink/reparse guards on apply, per-file/total/free-disk size caps, strict
 downgrade rejection on the signed version, and macOS `codesign` re-verify before relaunch.
 
+### 7. In-game bug report uploads
+
+Packages: `KhaozEngine.BugReports.Contracts`, `KhaozEngine.BugReports`,
+`KhaozEngine.BugReports.Relay` and the opt-in `KhaozEngine.BugReports.Relay.Azure` backend.
+Bundles, descriptions, sections, media and server snapshot bodies are untrusted input to the relay.
+
+- **Authenticate before reading the body.** `BugReportRelay.IntakeAsync` resolves the bearer token through
+  `IReporterAuthenticator`, refuses blocked subjects and checks per-account and global quota before
+  reading the stream. Reporter identity comes only from the authenticator, never a client-supplied subject.
+  The defaults are 5 reports per account per UTC hour, 20 per account per UTC day and 100 globally per UTC day.
+  Validation and retries can over-count quota because counters are consumed first and are not transactional.
+- **Bound and validate before publishing.** Intake caps the streamed bundle at 16 MiB, checks it with
+  `BundleValidator`, and matches the report id and game id. The entry whitelist, size and hash checks,
+  section bounds and image validation prevent arbitrary files and mislabeled images from being published.
+  Media stores enforce `ReportPaths.IsValid` for every relative path. Every blob carries an explicit
+  content type, and the only HTML served is the engine's viewer page.
+- **Treat public report URLs as capabilities.** Each folder carries a 128-bit random token and the relay's
+  received UTC month. Anyone with the URL can read its report. Keep Pending private, avoid public listings,
+  use HTTPS off loopback and apply the prefix-scoped retention in the relay's Host duties. Reporter identity
+  and issue state stay in private `records/` and `accepted/` documents. Public server snapshots omit the
+  authenticated subject. Games must still keep their own secrets out of custom sections and captured media.
+  Configure `BugReportServiceOptions.ReporterIdentityTerms` with the display name, subject and every other logged
+  identity spelling. It is read once per report at finish time and masks literal terms in every section. Direct
+  capture callers can supply a `ReportRedactor.WithReporterIdentityTerms` snapshot. Short terms under three
+  characters are ignored, and a source or pattern construction failure masks every section string.
+- **Separate server authentication.** Snapshot intake checks a service key before reading its capped 1 MiB
+  body. The key must hold at least 32 characters. `ServiceKeyCheck` compares SHA-256 hashes of both UTF-8
+  values with `CryptographicOperations.FixedTimeEquals`, equalizing comparison lengths. A snapshot merges
+  only for the authenticated reporter's subject. A mismatch is dropped with a report-id-only warning and
+  still returns 202, so the response does not reveal the report's owner. The game server must derive that
+  subject from its authenticated connection.
+- **Escape every display boundary.** `BugReportViewerPage` treats report data as untrusted and escapes it.
+  Issue composition neutralizes mentions, issue references and backlinks and bounds the title and body.
+  Client and server section finishing uses `ReportRedactor`, but it cannot make arbitrary screenshots or
+  game-authored section contents safe to publish. The player chooses which media to send.
+- **Keep credentials and identity out of logs.** The host owns the service key, GitHub App RSA key and storage
+  credentials. Do not log a bearer token, service key, installation token, JWT or subject. Relay diagnostics
+  use report ids and references. Grant only the Azure backend's documented data roles on its resources.
+
+Queue delivery is at least once. Epoch claims and result markers suppress repeated issue and comment writes
+within their lease and saved-result limits. They cannot fence a worker past its 10-minute lease or resolve a
+successful GitHub POST hidden by a crash, failed marker write or transport timeout. The
+[relay guarantees and residuals](../KhaozEngine.BugReports.Relay/README.md#guarantees-and-residuals) define
+those duplicate windows and recovery after all 64 epochs are used. The host owns visibility backoff,
+poison routing, daily requeue and retention. Authentication and quota do not replace upstream request rate
+limits or service availability controls.
+
 ## Layered defenses
 
 The posture is defense in depth: no single control is the whole story.
@@ -331,7 +378,7 @@ To keep the doc from overpromising, these are explicitly **not** provided or cla
 - **Sandboxing untrusted mods or scripts.** The engine runs no untrusted code in a sandbox. A game that
   loads third-party mods/plugins is running them with full process trust; isolating them is the game's
   problem and out of scope here.
-- **Side-channel resistance.** Beyond the fixed-time MAC comparison in token verification, no constant-time
+- **Side-channel resistance.** Beyond the fixed-time comparisons in token verification and relay service-key checks, no constant-time
   guarantees and no timing/cache/power side-channel hardening. The crypto in use (RSA verify for updates, HMAC for
   saves and tokens) uses BCL primitives as-is.
 - **Confidentiality of the network channel.** Netcode is transport-free; the engine does not encrypt or

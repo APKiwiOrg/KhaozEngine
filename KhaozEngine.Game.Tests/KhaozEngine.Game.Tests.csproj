@@ -38,9 +38,16 @@
          The clean inn/single-riser fixtures have a clear path behind the step so they do not cover this. -->
     <None Include="Physics/Fixtures/house_1_proxy.coll" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Physics/Fixtures/house_2_proxy.coll" CopyToOutputDirectory="PreserveNewest" />
-    <!-- One digest per support neighborhood and FootSupport question, recorded before the neighborhood was made
-         allocation free. SupportNeighborhoodEquivalenceTests proves every result is still bit-identical. -->
+    <!-- Original query and field baselines plus individually reviewed represented-support answers.
+         SupportNeighborhoodEquivalenceTests checks every digest and independently derives each changed answer. -->
+    <None Include="Locomotion/Contacts/Fixtures/support-equivalence-queries.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Locomotion/Contacts/Fixtures/support-exact-install-controls.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Locomotion/Contacts/Fixtures/support-exact-curved-install-controls.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Locomotion/Contacts/Fixtures/support-equivalence-fields.jsonl" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Locomotion/Contacts/Fixtures/support-equivalence.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Physics/Fixtures/cylinder-admission-before.jsonl" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Physics/Fixtures/cylinder-admission-interior-before.jsonl" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Locomotion/Contacts/Fixtures/grimhollow-stairs-collision.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />
@@ -80,8 +87,5 @@
     <ProjectReference Include="../KhaozEngine.TestSupport.Windowing/KhaozEngine.TestSupport.Windowing.csproj" />
     <ProjectReference Include="../KhaozEngine.TestSupport.Services/KhaozEngine.TestSupport.Services.csproj" />
   </ItemGroup>
-  <ItemGroup>
-    <Compile Include="../test-shared/AllocationRegion.cs" Link="Shared/AllocationRegion.cs" />
-    <Compile Include="../test-shared/AllocationMeasurement.cs" Link="Shared/AllocationMeasurement.cs" />
-  </ItemGroup>
+  <Import Project="../test-shared/AllocationMeasurement.props" />
 </Project>

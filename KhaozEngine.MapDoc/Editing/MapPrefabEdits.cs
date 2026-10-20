@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Spaces;
@@ -9,7 +10,13 @@ namespace KhaozEngine.MapDoc.Editing;
 
 public abstract record MapPrefabEdit(string Label);
 public sealed record MapPlacePrefab(string InstanceId, string ResourceId, MapTransform Transform,
-    Surfaces.MapRecordRef? ParentSpace = null, bool NumericLeaves = true) : MapPrefabEdit("Place prefab");
+    Surfaces.MapRecordRef? ParentSpace = null, bool NumericLeaves = true) : MapPrefabEdit("Place prefab")
+{
+    /// <summary>Keyed overrides the new instance starts with, such as a marker replace override that names a repeated
+    /// instance's marker. Request data only. They are detached, planned and validated with the placement, and persist
+    /// as the instance's Overrides.</summary>
+    public IReadOnlyList<MapPrefabOverride> InitialOverrides { get; init; } = [];
+}
 public sealed record MapMovePrefab(string InstanceId, MapTransform Transform) : MapPrefabEdit("Move prefab");
 public sealed record MapSetPrefabOverride(string InstanceId, MapPrefabOverride Override) : MapPrefabEdit("Set prefab override");
 public sealed record MapRestorePrefabChild(string InstanceId, MapPrefabChildKey Child) : MapPrefabEdit("Restore prefab child");
@@ -17,14 +24,32 @@ public sealed record MapRemovePrefab(string InstanceId) : MapPrefabEdit("Remove 
 public sealed record MapUnpackPrefab(string InstanceId) : MapPrefabEdit("Unpack prefab");
 public sealed record MapUpdatePrefabAsset(string ResourceId, string OldSha256, string NewResourceId,
     string NewSha256) : MapPrefabEdit("Update prefab asset");
-public sealed record MapPrefabEditResult(MapDocument After, MapNativeWriteSet WriteSet, MapNativeEditEffects Effects);
+public sealed record MapPrefabEditResult(MapDocument After, MapNativeWriteSet WriteSet, MapNativeEditEffects Effects)
+{
+    /// <summary>The finalization this result carries, null before finalization or for documents without foliage. Never
+    /// serialized.</summary>
+    internal MapDocumentFinalizationStamp? Stamp { get; init; }
 
-/// <summary>Detached document preparation. Accepting the candidate and publishing its reservations belongs to the caller.</summary>
+    /// <summary>Expansions the preparer already built for its before and after documents. Never serialized.</summary>
+    internal MapEditExpansions? Expansions { get; init; }
+}
+
+/// <summary>Detached document preparation. Accepting the candidate and publishing its reservations belongs to the caller.
+/// Every result is finalized by <see cref="MapDocumentEditFinalizer"/>, so it carries its dependent foliage rows.</summary>
 public static class MapPrefabEdits
 {
-    public static MapPrefabEditResult Prepare(MapDocument document, MapAssetClosure assets, MapPrefabEdit edit)
+    public static MapPrefabEditResult Prepare(MapDocument document, MapAssetClosure assets, MapPrefabEdit edit) =>
+        MapDocumentEditFinalizer.Complete(document, PrepareRaw(document, assets, edit), assets, assets);
+
+    /// <summary>The validated candidate before finalization, for callers that compose it with more changes and
+    /// finalize the whole candidate once.</summary>
+    internal static MapPrefabEditResult PrepareRaw(MapDocument document, MapAssetClosure assets, MapPrefabEdit edit,
+        Action<MapDocument>? admitProposal = null)
     {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(assets);
         ArgumentNullException.ThrowIfNull(edit);
+        MapDocumentEditFinalizer.Preflight(document, assets);
         var before = MapPrefabEditPreparation.Begin(document, assets);
         var after = MapPrefabEditPreparation.Copy(document);
         var set = after.Prefabs ?? new(1, 1, [], []);
@@ -44,9 +69,11 @@ public static class MapPrefabEdits
         if (edit is MapPlacePrefab place)
         {
             if (instance is not null) throw new MapDocumentException($"Prefab instance '{id}' is already reserved.");
+            var initial = InitialOverrides(place);
             var resource = assets.GetResource(place.ResourceId);
             if (resource.Kind != MapResourceKind.Prefab) throw new MapDocumentException("Placement requires a Prefab resource.");
-            instance = new(id, place.ResourceId, resource.Reference.Sha256, place.Transform, place.ParentSpace, new([]), []);
+            // The instance starts with its overrides, so bindings, names and every other rule see them before publication.
+            instance = new(id, place.ResourceId, resource.Reference.Sha256, place.Transform, place.ParentSpace, new([]), initial);
             Set(after, instance);
             Plan(after, assets, instance, before, place.NumericLeaves);
         }
@@ -87,6 +114,7 @@ public static class MapPrefabEdits
         }
         var bindings = oldBindings.Concat(after.Prefabs!.Instances.Single(i => i.Id == id).Bindings.Entries)
             .Concat(after.Prefabs.Transfers.Where(t => t.InstanceId == id).Select(t => t.Binding)).ToArray();
+        admitProposal?.Invoke(after);
         return MapPrefabEditPreparation.Finish(after, assets, before, new[] { id }, bindings,
             unpack: edit is MapUnpackPrefab);
     }
@@ -95,8 +123,11 @@ public static class MapPrefabEdits
     public static MapPrefabEditResult PrepareAssetUpdate(MapDocument document, MapAssetClosure beforeAssets,
         MapAssetClosure afterAssets, MapUpdatePrefabAsset edit)
     {
-        ArgumentNullException.ThrowIfNull(edit);
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(beforeAssets);
         ArgumentNullException.ThrowIfNull(afterAssets);
+        ArgumentNullException.ThrowIfNull(edit);
+        MapDocumentEditFinalizer.Preflight(document, beforeAssets);
         var before = MapPrefabEditPreparation.Begin(document, beforeAssets);
         var oldResource = beforeAssets.GetResource(edit.ResourceId);
         var nextResource = afterAssets.GetResource(edit.NewResourceId);
@@ -119,8 +150,22 @@ public static class MapPrefabEdits
             Plan(after, afterAssets, updated, before);
             bindings.AddRange(after.Prefabs!.Instances.Single(i => i.Id == updated.Id).Bindings.Entries);
         }
-        return MapPrefabEditPreparation.Finish(after, afterAssets, before, instances.Select(i => i.Id).ToArray(), bindings,
-            nativeAssets: true);
+        return MapDocumentEditFinalizer.Complete(document, MapPrefabEditPreparation.Finish(after, afterAssets, before,
+            instances.Select(i => i.Id).ToArray(), bindings, nativeAssets: true), beforeAssets, afterAssets);
+    }
+
+    // Duplicate keys refuse before any binding or numeric ID is allocated. The closed override codec detaches the request.
+    static IReadOnlyList<MapPrefabOverride> InitialOverrides(MapPlacePrefab place)
+    {
+        var values = place.InitialOverrides ?? throw new MapDocumentException("Initial overrides must not be null.");
+        if (values.Count == 0) return [];
+        var keys = new HashSet<MapPrefabChildKey>();
+        foreach (MapPrefabOverride value in values)
+        {
+            if (value is null) throw new MapDocumentException("Initial overrides must not contain null.");
+            if (!keys.Add(value.Child)) throw new MapDocumentException($"Duplicate initial override for {value.Child.Kind} '{value.Child.Key}'.");
+        }
+        return MapPrefabJson.ReadOverrides(Encoding.UTF8.GetString(MapPrefabJson.Bytes(values.ToArray())));
     }
 
     internal static void Set(MapDocument document, MapPrefabInstance instance)

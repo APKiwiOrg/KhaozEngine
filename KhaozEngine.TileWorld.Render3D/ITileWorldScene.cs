@@ -42,6 +42,12 @@ public interface ITileWorldPropClusterOwner : IDisposable
 /// is <see cref="Scene3DTileWorldScene"/>, and the tests drive a recording fake.</summary>
 public interface ITileWorldScene
 {
+    /// <summary>The render frame of the current picture, shared with cut-aware picks.</summary>
+    InteriorCutFrame InteriorCutFrame => default;
+
+    /// <summary>Publish the interior field shared by the picture and this view's picks.</summary>
+    void SetInteriorCut(InteriorHeightField? field) { }
+
     /// <summary>Create one view-owned adapter around the shared prop-cluster renderer.</summary>
     ITileWorldPropClusterOwner CreatePropClusterOwner() =>
         throw new NotSupportedException("This tile-world scene does not support prop clusters.");
@@ -203,6 +209,10 @@ public interface ITileWorldScene
     /// silhouettes existed keeps compiling and simply draws none.</summary>
     void DrawMeshSilhouette(MeshHandle handle, Matrix4x4 world, Color color, float widthMetres) { }
 
+    /// <summary>Queues a silhouette with the model's interior-cut opt-in. Older scenes draw their existing hull.</summary>
+    void DrawMeshSilhouette(MeshHandle handle, Matrix4x4 world, Color color, float widthMetres,
+        bool cutInsideInteriors) => DrawMeshSilhouette(handle, world, color, widthMetres);
+
     /// <summary>Starts one frame-local pixel-width outline group. Defaults to an inert handle for an older scene.</summary>
     MeshOutlineGroup BeginMeshOutline(Color color, float widthPixels) => default;
 
@@ -217,6 +227,11 @@ public interface ITileWorldScene
     /// <summary>Adds a part whose visible mask follows the rigid dissolve used by the ordinary model draw.</summary>
     void DrawMeshOutlineDissolved(MeshOutlineGroup group, MeshHandle handle, Matrix4x4 world,
         float dissolve, bool dissolveComplement) => DrawMeshOutline(group, handle, world);
+
+    /// <summary>Adds a rigid part with its interior-cut opt-in. Older scenes retain their existing dissolve.</summary>
+    void DrawMeshOutlineDissolved(MeshOutlineGroup group, MeshHandle handle, Matrix4x4 world,
+        float dissolve, bool dissolveComplement, bool cutInsideInteriors) =>
+        DrawMeshOutlineDissolved(group, handle, world, dissolve, dissolveComplement);
 
     /// <summary>Adds one posed skinned part to a pixel-width outline group. Defaults to a no-op for an older scene.</summary>
     void DrawSkinnedOutline(
@@ -302,6 +317,11 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene, IAttachmentCoverage
     /// <exception cref="ArgumentException">The descriptor is shadow-only and casts no shadow, which the scene's
     /// instance queue refuses.</exception>
     public void DrawMesh(in RigidInstanceDraw draw) => _scene.Draw(in draw);
+    /// <summary>Publish the field for the next scene render.</summary>
+    public void SetInteriorCut(InteriorHeightField? field) => _scene.InteriorCut = field;
+
+    /// <inheritdoc />
+    public InteriorCutFrame InteriorCutFrame => new(_scene.RenderOrigin ?? Vector3.Zero);
 
     /// <inheritdoc />
     public SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh) => _scene.LoadSkinnedMesh(mesh);
@@ -334,6 +354,10 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene, IAttachmentCoverage
         _scene.DrawMeshSilhouette(handle, world, color, widthMetres);
 
     /// <inheritdoc />
+    public void DrawMeshSilhouette(MeshHandle handle, Matrix4x4 world, Color color, float widthMetres,
+        bool cutInsideInteriors) => _scene.DrawMeshSilhouette(handle, world, color, widthMetres, cutInsideInteriors);
+
+    /// <inheritdoc />
     public MeshOutlineGroup BeginMeshOutline(Color color, float widthPixels) =>
         _scene.BeginMeshOutline(color, widthPixels);
 
@@ -349,6 +373,11 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene, IAttachmentCoverage
     public void DrawMeshOutlineDissolved(MeshOutlineGroup group, MeshHandle handle, Matrix4x4 world,
         float dissolve, bool dissolveComplement) =>
         _scene.DrawMeshOutlineDissolved(group, handle, world, dissolve, dissolveComplement);
+
+    /// <inheritdoc />
+    public void DrawMeshOutlineDissolved(MeshOutlineGroup group, MeshHandle handle, Matrix4x4 world,
+        float dissolve, bool dissolveComplement, bool cutInsideInteriors) =>
+        _scene.DrawMeshOutlineDissolved(group, handle, world, dissolve, dissolveComplement, cutInsideInteriors);
 
     /// <inheritdoc />
     public void DrawSkinnedOutline(

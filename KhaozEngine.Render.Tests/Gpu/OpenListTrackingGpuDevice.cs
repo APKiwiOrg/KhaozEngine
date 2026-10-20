@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 
@@ -29,13 +30,19 @@ namespace KhaozEngine.Tests.Gpu
         readonly FakeGpuDevice _inner = new();
         readonly TrackingFactory _factory;
         readonly bool _fences;
+        readonly IGpuFramebuffer? _swapchain;
 
         /// <param name="completionFences">Report GPU completion fences, so a
         /// <c>GpuRetireBarrier</c> exists on this device and its own recording can be driven headless. Off by
         /// default, which is what every caller had before the barrier needed testing.</param>
-        internal OpenListTrackingGpuDevice(bool completionFences = false)
+        /// <param name="swapchain">Report a fake 320x200 <see cref="GpuPixelFormat.B8G8R8A8UNorm"/> swapchain
+        /// framebuffer, so a swapchain copy has a shape to size its destination by. Off by default, which leaves
+        /// <see cref="SwapchainFramebuffer"/> null as before.</param>
+        internal OpenListTrackingGpuDevice(bool completionFences = false, bool swapchain = false)
         {
             _fences = completionFences;
+            if (swapchain)
+                _swapchain = new FakeFramebuffer(new GpuOutputDescription(null, GpuPixelFormat.B8G8R8A8UNorm), 320, 200);
             _factory = new TrackingFactory(_inner.Factory, this, completionFences);
             GpuCapabilities c = _inner.Capabilities;
             Capabilities = GpuCapabilities.FromSupportedMsaaSampleCounts(
@@ -56,8 +63,22 @@ namespace KhaozEngine.Tests.Gpu
         /// </summary>
         internal int Begins { get; private set; }
 
-        /// <summary>How many command lists were submitted.</summary>
+        /// <summary>How many command lists were submitted, with or without a fence.</summary>
         internal int Submits { get; private set; }
+
+        /// <summary>How many of <see cref="Submits"/> carried a fence.</summary>
+        internal int FencedSubmits { get; private set; }
+        internal int SubmittedFenceCount { get; private set; }
+        internal IGpuFence? FirstSubmittedFence { get; private set; }
+        internal IGpuFence? SecondSubmittedFence { get; private set; }
+        internal bool CompleteSubmissions { get; set; }
+
+        /// <summary>How many times <see cref="Present"/> ran.</summary>
+        internal int Presents { get; private set; }
+
+        /// <summary>Submits and presents in call order: <c>"submit"</c>, <c>"submit+fence"</c> and
+        /// <c>"present"</c>. A test may append its own entries to place a callback between them.</summary>
+        internal List<string> Order { get; } = new();
 
         /// <summary>Textures handed out by this device's factory, and how many of them were freed. The difference
         /// is what a leak test watches across a call that throws: a refusal that walks past a texture nobody owns
@@ -99,26 +120,41 @@ namespace KhaozEngine.Tests.Gpu
         public GpuBackendKind Backend => _inner.Backend;
         public GpuCapabilities Capabilities { get; }
         public IGpuResourceFactory Factory => _factory;
-        public IGpuFramebuffer? SwapchainFramebuffer => _inner.SwapchainFramebuffer;
+        public IGpuFramebuffer? SwapchainFramebuffer => _swapchain ?? _inner.SwapchainFramebuffer;
         public IGpuSampler PointSampler => _inner.PointSampler;
         public IGpuSampler LinearSampler => _inner.LinearSampler;
         public bool SyncToVerticalBlank { get => _inner.SyncToVerticalBlank; set => _inner.SyncToVerticalBlank = value; }
 
-        public void Submit(IGpuCommandList cl) => Submits++;
+        public void Submit(IGpuCommandList cl)
+        {
+            Submits++;
+            Order.Add("submit");
+        }
         // With fences reported, a fenced submit is a real submit here. Without them, the fake's refusal is the
         // right answer and stays the answer.
         public void Submit(IGpuCommandList cl, IGpuFence fence)
         {
-            if (_fences) Submits++;
-            else _inner.Submit(cl, fence);
+            if (!_fences)
+            {
+                _inner.Submit(cl, fence);
+                return;
+            }
+            Submits++;
+            FencedSubmits++;
+            Order.Add("submit+fence");
         }
         public void WaitForIdle() { }
 
         public void Submit(IGpuCommandList cl, ReadOnlySpan<IGpuFence> completions)
         {
             GpuCompletionFences.Validate(completions);
-            if (_fences || completions.IsEmpty) Submits++;
-            else _inner.Submit(cl, completions);
+            if (completions.IsEmpty) Submit(cl);
+            else Submit(cl, completions[0]);
+            SubmittedFenceCount = completions.Length;
+            FirstSubmittedFence = completions.IsEmpty ? null : completions[0];
+            SecondSubmittedFence = completions.Length < 2 ? null : completions[1];
+            if (CompleteSubmissions)
+                foreach (var completion in completions) ((StubFence)completion).Signaled = true;
         }
 
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged { }
@@ -135,7 +171,11 @@ namespace KhaozEngine.Tests.Gpu
         public void Unmap(IGpuBuffer staging) { }
 
         public void ResizeSwapchain(uint w, uint h) { }
-        public void Present() { }
+        public void Present()
+        {
+            Presents++;
+            Order.Add("present");
+        }
         public void Dispose() => _inner.Dispose();
 
         /// <summary>Forwards to the fake factory, except that command lists report their open/close to the device
@@ -183,8 +223,8 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>A fence that is never signaled, which is all a recording-order test needs from one.</summary>
         sealed class StubFence : IGpuFence
         {
-            public bool Signaled => false;
-            public void Reset() { }
+            public bool Signaled { get; internal set; }
+            public void Reset() => Signaled = false;
             public void Dispose() { }
         }
 

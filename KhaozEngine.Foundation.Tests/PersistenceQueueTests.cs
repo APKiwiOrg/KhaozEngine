@@ -10,6 +10,8 @@ using Xunit;
 
 namespace KhaozEngine.Tests;
 
+// Bounded waits guard test-owned drain and actor threads, so pool starvation cannot fail them.
+// Facts without deadlines keep the default scheduler and public constructor coverage.
 public class PersistenceQueueTests
 {
     [Fact]
@@ -36,7 +38,9 @@ public class PersistenceQueueTests
         string root = NewTempRoot();
         try
         {
-            using var queue = new PersistenceQueue();
+            var drains = new DedicatedDrainScheduler();
+            drains.Start();
+            using var queue = new PersistenceQueue(AtomicJsonWriter.WriteText, scheduleDrain: drains.Schedule);
             const int n = 2000;
             const int paths = 8;
             for (int i = 0; i < n; i++)
@@ -47,7 +51,7 @@ public class PersistenceQueueTests
             // The schedule-on-demand drain has a window where an Enqueue can land just as the worker
             // is exiting; if mishandled it strands that write and Flush() wedges forever. Guard with a
             // timeout so a regression fails loudly instead of hanging the suite.
-            var flushTask = Task.Run(() => queue.Flush());
+            var flushTask = DedicatedThread.Run(queue.Flush);
             bool flushed = await Task.WhenAny(flushTask, Task.Delay(TimeSpan.FromSeconds(15))) == flushTask;
             Assert.True(flushed, "Flush() did not complete - the queue wedged");
             await flushTask;   // observe any exception thrown by Flush()
@@ -131,7 +135,10 @@ public class PersistenceQueueTests
             string badPath = Path.Combine(blocker, "save.json");
 
             var log = new FakeLogger();
-            using var queue = new PersistenceQueue(log, maxAttempts: 2, retryDelay: TimeSpan.FromMilliseconds(1));
+            var drains = new DedicatedDrainScheduler();
+            drains.Start();
+            using var queue = new PersistenceQueue(AtomicJsonWriter.WriteText, log, maxAttempts: 2,
+                retryDelay: TimeSpan.FromMilliseconds(1), scheduleDrain: drains.Schedule);
             using var notified = new ManualResetEventSlim(false);
             PersistenceWriteFailedEventArgs? failure = null;
             queue.WriteFailed += (_, e) => { failure = e; notified.Set(); };
@@ -187,7 +194,10 @@ public class PersistenceQueueTests
             string badPath = Path.Combine(blocker, "save.json");
             string goodPath = Path.Combine(root, "good.json");
 
-            var queue = new PersistenceQueue(maxAttempts: 1, retryDelay: TimeSpan.FromMilliseconds(1));
+            var drains = new DedicatedDrainScheduler();
+            drains.Start();
+            var queue = new PersistenceQueue(AtomicJsonWriter.WriteText, maxAttempts: 1,
+                retryDelay: TimeSpan.FromMilliseconds(1), scheduleDrain: drains.Schedule);
             try
             {
                 using var handlerReturned = new ManualResetEventSlim(false);
@@ -205,7 +215,7 @@ public class PersistenceQueueTests
 
                 // The queue must not be wedged after a handler-triggered flush: a fresh write still lands.
                 queue.Enqueue(goodPath, "ok");
-                var flushTask = Task.Run(() => queue.Flush());
+                var flushTask = DedicatedThread.Run(queue.Flush);
                 bool flushed = await Task.WhenAny(flushTask, Task.Delay(TimeSpan.FromSeconds(5))) == flushTask;
                 Assert.True(flushed, "Flush() after a handler-flush wedged");
                 await flushTask;   // observe any exception thrown by Flush()
@@ -216,7 +226,7 @@ public class PersistenceQueueTests
                 // Dispose deterministically on every path, but through a timeout guard rather than
                 // a using: on a regression the queue is wedged and a bare Dispose() here would hang
                 // the runner right after the timeout assert above reported the failure.
-                var disposeTask = Task.Run(() => queue.Dispose());
+                var disposeTask = DedicatedThread.Run(queue.Dispose);
                 if (await Task.WhenAny(disposeTask, Task.Delay(TimeSpan.FromSeconds(5))) == disposeTask)
                 {
                     await disposeTask;   // observe any exception thrown by Dispose()
@@ -236,7 +246,10 @@ public class PersistenceQueueTests
             File.WriteAllText(blocker, "x");
             string badPath = Path.Combine(blocker, "save.json");
 
-            var queue = new PersistenceQueue(maxAttempts: 1, retryDelay: TimeSpan.FromMilliseconds(1));
+            var drains = new DedicatedDrainScheduler();
+            drains.Start();
+            var queue = new PersistenceQueue(AtomicJsonWriter.WriteText, maxAttempts: 1,
+                retryDelay: TimeSpan.FromMilliseconds(1), scheduleDrain: drains.Schedule);
             using var handlerReturned = new ManualResetEventSlim(false);
             queue.WriteFailed += (_, _) =>
             {
@@ -265,7 +278,10 @@ public class PersistenceQueueTests
             string badA = Path.Combine(blocker, "a.json");
             string badB = Path.Combine(blocker, "b.json");
 
-            var queue = new PersistenceQueue(maxAttempts: 1, retryDelay: TimeSpan.FromMilliseconds(1));
+            var drains = new DedicatedDrainScheduler();
+            drains.Start();
+            var queue = new PersistenceQueue(AtomicJsonWriter.WriteText, maxAttempts: 1,
+                retryDelay: TimeSpan.FromMilliseconds(1), scheduleDrain: drains.Schedule);
             try
             {
                 using var allDelivered = new ManualResetEventSlim(false);
@@ -325,7 +341,7 @@ public class PersistenceQueueTests
                 // wedges the drain thread, and a bare Dispose() here (which calls Flush()) would hang the
                 // runner right after the timeout assert above already reported the failure (issue #210,
                 // mirroring the guarded-dispose finally in WriteFailed_HandlerCallsFlush_DoesNotDeadlock).
-                var disposeTask = Task.Run(() => queue.Dispose());
+                var disposeTask = DedicatedThread.Run(queue.Dispose);
                 if (await Task.WhenAny(disposeTask, Task.Delay(TimeSpan.FromSeconds(5))) == disposeTask)
                 {
                     await disposeTask;   // observe any exception thrown by Dispose()

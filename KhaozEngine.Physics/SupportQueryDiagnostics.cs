@@ -29,6 +29,42 @@ internal enum SupportQueryCounter
     GroundSubsteps,
     MediumRetries,
     ModeSegments,
+    /// <summary>Installed support world forms built, published or not.</summary>
+    WorldFormBuilds,
+    /// <summary>Footprint polygons that passed the bounds and column reject and began per-query operands.</summary>
+    PolygonOperands,
+    /// <summary>Contact members the certified separation prefilter decided negative without the contact kernel.</summary>
+    PrefilterRejects,
+    /// <summary>Joins of two faces of one installed convex leaf whose meeting along a captured shared edge came
+    /// from the world form's topology. <see cref="JoinsProved"/> counts the geometric joins only.</summary>
+    TopologyJoins,
+    /// <summary>Interval samples of the curved tangent contact kernel, each one closest point evaluation over a
+    /// height span or at one height of a probe axis.</summary>
+    TangentSamples,
+    /// <summary>Member pairs a foot support footprint query left unjoined because support certification never reads
+    /// their join. <see cref="JoinPairs"/> counts the pairs it evaluated.</summary>
+    JoinsSkipped,
+    /// <summary>Mesh triangles materialized, including uncached reference captures.</summary>
+    MeshTriangleCaptures,
+    /// <summary>Finds an exact repeat request served from its interval's memo. <see cref="Find"/> counts them too.</summary>
+    FindMemoHits,
+    /// <summary>Vertical footprint polygons whose admission and column verdict the certified segment test decided
+    /// without the extrema kernel.</summary>
+    AdmissionCertificates,
+    /// <summary>Extrema evaluations served by the exact horizontal rectangle stratum.</summary>
+    StairStratum,
+    /// <summary>Contact member verdicts and contact heights the exact axis-aligned rectangle certificates decided
+    /// without the contact kernel or the complete lowest-height evaluator.</summary>
+    RectangleContact,
+    /// <summary>Face-only arithmetic values read from installed world faces. Each projected edge length, normalized
+    /// normal, normal publication, plane publication and exhaustive proposal normal length counts once per read.</summary>
+    SharedMemberFacts,
+    FootprintReuseHits,
+    FootprintReuseMisses,
+    FootprintReuseStores,
+    FootprintReuseBudgetSkips,
+    EdgeSteps,
+    InitialHoldReuseHits,
 }
 
 internal readonly record struct SupportQueryCounts(
@@ -55,7 +91,25 @@ internal readonly record struct SupportQueryCounts(
     int ProducerPins,
     int GroundSubsteps,
     int MediumRetries,
-    int ModeSegments)
+    int ModeSegments,
+    int WorldFormBuilds,
+    int PolygonOperands,
+    int PrefilterRejects,
+    int TopologyJoins,
+    int TangentSamples,
+    int JoinsSkipped,
+    int MeshTriangleCaptures,
+    int FindMemoHits,
+    int AdmissionCertificates,
+    int StairStratum,
+    int RectangleContact,
+    int SharedMemberFacts,
+    int FootprintReuseHits,
+    int FootprintReuseMisses,
+    int FootprintReuseStores,
+    int FootprintReuseBudgetSkips,
+    int EdgeSteps,
+    int InitialHoldReuseHits)
 {
     public static SupportQueryCounts operator -(SupportQueryCounts a, SupportQueryCounts b) => new(
         a.Find - b.Find,
@@ -81,7 +135,25 @@ internal readonly record struct SupportQueryCounts(
         a.ProducerPins - b.ProducerPins,
         a.GroundSubsteps - b.GroundSubsteps,
         a.MediumRetries - b.MediumRetries,
-        a.ModeSegments - b.ModeSegments);
+        a.ModeSegments - b.ModeSegments,
+        a.WorldFormBuilds - b.WorldFormBuilds,
+        a.PolygonOperands - b.PolygonOperands,
+        a.PrefilterRejects - b.PrefilterRejects,
+        a.TopologyJoins - b.TopologyJoins,
+        a.TangentSamples - b.TangentSamples,
+        a.JoinsSkipped - b.JoinsSkipped,
+        a.MeshTriangleCaptures - b.MeshTriangleCaptures,
+        a.FindMemoHits - b.FindMemoHits,
+        a.AdmissionCertificates - b.AdmissionCertificates,
+        a.StairStratum - b.StairStratum,
+        a.RectangleContact - b.RectangleContact,
+        a.SharedMemberFacts - b.SharedMemberFacts,
+        a.FootprintReuseHits - b.FootprintReuseHits,
+        a.FootprintReuseMisses - b.FootprintReuseMisses,
+        a.FootprintReuseStores - b.FootprintReuseStores,
+        a.FootprintReuseBudgetSkips - b.FootprintReuseBudgetSkips,
+        a.EdgeSteps - b.EdgeSteps,
+        a.InitialHoldReuseHits - b.InitialHoldReuseHits);
 }
 
 /// <summary>Opt-in counters owned by the executing thread. Installation is outside measured intervals.</summary>
@@ -99,7 +171,7 @@ internal readonly record struct SupportRouteCounts(int WallRetries, int PushedPl
     int MaximumMediumRetries, int GroundSegments, int SlideSegments, int AirSegments, int WaterSegments,
     int RoundedReads, int MediumHandoffs);
 
-internal static class SupportQueryDiagnostics
+internal static partial class SupportQueryDiagnostics
 {
     [ThreadStatic] static bool t_enabled;
     [ThreadStatic] static int[]? t_counts;
@@ -108,12 +180,18 @@ internal static class SupportQueryDiagnostics
     [ThreadStatic] static SupportGroundObservation t_ground;
     [ThreadStatic] static Action<SupportFindObservation>? t_find;
     [ThreadStatic] static SupportRouteCounts t_routes;
+    [ThreadStatic] static Action<SupportCurvedWorkObservation>? t_curvedWork;
 
     internal static SupportRouteCounts Routes => t_routes;
     internal static void SetFindObserver(Action<SupportFindObservation>? observer) => t_find = observer;
     internal static void ObserveFind(in SupportFindObservation observation)
     {
         if (t_enabled) t_find?.Invoke(observation);
+    }
+    internal static void SetCurvedWorkObserver(Action<SupportCurvedWorkObservation>? observer) => t_curvedWork = observer;
+    internal static void ObserveCurvedWork(in SupportCurvedWorkObservation observation)
+    {
+        if (t_enabled) t_curvedWork?.Invoke(observation);
     }
     internal static void MediumRetryMaximum(int count)
     {
@@ -152,28 +230,31 @@ internal static class SupportQueryDiagnostics
         t_enabled = enabled;
     }
 
-    const int CounterCount = 24;
+    const int CounterCount = 42;
 
     /// <summary>Every thread-local counter, observation and callback of one thread.</summary>
     internal readonly record struct ThreadState(bool Enabled, int[]? Counts, Action? Begin, Action? End,
-        SupportGroundObservation Ground, Action<SupportFindObservation>? Find, SupportRouteCounts Routes)
+        SupportGroundObservation Ground, Action<SupportFindObservation>? Find, SupportRouteCounts Routes,
+        Action<SupportCurvedWorkObservation>? CurvedWork = null, SupportProofReuseRetention Retention = default)
     {
         /// <summary>An empty recorder with the given enablement and no callbacks.</summary>
         internal static ThreadState Fresh(bool enabled) =>
-            new(enabled, enabled ? new int[CounterCount] : null, null, null, default, null, default);
+            new(enabled, enabled ? new int[CounterCount] : null, null, null, default, null, default, null);
     }
 
     /// <summary>Installs <paramref name="next"/> on this thread and returns the state it replaced.</summary>
     internal static ThreadState Exchange(in ThreadState next)
     {
-        var prior = new ThreadState(t_enabled, t_counts, t_begin, t_end, t_ground, t_find, t_routes);
+        var prior = new ThreadState(t_enabled, t_counts, t_begin, t_end, t_ground, t_find, t_routes, t_curvedWork, t_retention);
         t_enabled = next.Enabled;
         t_counts = next.Counts;
         t_begin = next.Begin;
         t_end = next.End;
         t_ground = next.Ground;
         t_find = next.Find;
+        t_curvedWork = next.CurvedWork;
         t_routes = next.Routes;
+        t_retention = next.Retention;
         return prior;
     }
 
@@ -207,6 +288,24 @@ internal static class SupportQueryDiagnostics
         c[(int)SupportQueryCounter.GroundSubsteps] += counts.GroundSubsteps;
         c[(int)SupportQueryCounter.MediumRetries] += counts.MediumRetries;
         c[(int)SupportQueryCounter.ModeSegments] += counts.ModeSegments;
+        c[(int)SupportQueryCounter.WorldFormBuilds] += counts.WorldFormBuilds;
+        c[(int)SupportQueryCounter.PolygonOperands] += counts.PolygonOperands;
+        c[(int)SupportQueryCounter.PrefilterRejects] += counts.PrefilterRejects;
+        c[(int)SupportQueryCounter.TopologyJoins] += counts.TopologyJoins;
+        c[(int)SupportQueryCounter.TangentSamples] += counts.TangentSamples;
+        c[(int)SupportQueryCounter.JoinsSkipped] += counts.JoinsSkipped;
+        c[(int)SupportQueryCounter.MeshTriangleCaptures] += counts.MeshTriangleCaptures;
+        c[(int)SupportQueryCounter.FindMemoHits] += counts.FindMemoHits;
+        c[(int)SupportQueryCounter.AdmissionCertificates] += counts.AdmissionCertificates;
+        c[(int)SupportQueryCounter.StairStratum] += counts.StairStratum;
+        c[(int)SupportQueryCounter.RectangleContact] += counts.RectangleContact;
+        c[(int)SupportQueryCounter.SharedMemberFacts] += counts.SharedMemberFacts;
+        c[(int)SupportQueryCounter.FootprintReuseHits] += counts.FootprintReuseHits;
+        c[(int)SupportQueryCounter.FootprintReuseMisses] += counts.FootprintReuseMisses;
+        c[(int)SupportQueryCounter.FootprintReuseStores] += counts.FootprintReuseStores;
+        c[(int)SupportQueryCounter.FootprintReuseBudgetSkips] += counts.FootprintReuseBudgetSkips;
+        c[(int)SupportQueryCounter.EdgeSteps] += counts.EdgeSteps;
+        c[(int)SupportQueryCounter.InitialHoldReuseHits] += counts.InitialHoldReuseHits;
         t_routes = new(t_routes.WallRetries + routes.WallRetries, t_routes.PushedPlacements + routes.PushedPlacements,
             t_routes.MediumResolves + routes.MediumResolves, Math.Max(t_routes.MaximumMediumRetries, routes.MaximumMediumRetries),
             t_routes.GroundSegments + routes.GroundSegments, t_routes.SlideSegments + routes.SlideSegments,
@@ -218,6 +317,7 @@ internal static class SupportQueryDiagnostics
     {
         if (t_counts is { } counts) Array.Clear(counts);
         t_routes = default;
+        if (t_retention.Keys == 0) t_retention = default;
     }
 
     internal static void Record(SupportQueryCounter counter, int count = 1)
@@ -252,7 +352,25 @@ internal static class SupportQueryDiagnostics
             c[20],
             c[21],
             c[22],
-            c[23]);
+            c[23],
+            c[24],
+            c[25],
+            c[26],
+            c[27],
+            c[28],
+            c[29],
+            c[30],
+            c[31],
+            c[32],
+            c[33],
+            c[34],
+            c[35],
+            c[36],
+            c[37],
+            c[38],
+            c[39],
+            c[40],
+            c[41]);
     }
 
     internal static void SetGroundSubstepObserver(Action? begin, Action? end)

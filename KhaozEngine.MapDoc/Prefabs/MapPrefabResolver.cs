@@ -5,6 +5,7 @@ using System.Numerics;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Identity;
 using KhaozEngine.MapDoc.Interiors;
+using KhaozEngine.MapDoc.Markers;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Support;
@@ -35,7 +36,8 @@ public static class MapPrefabResolver
         var numericErrors = new List<string>();
         _ = MapNativeValidation.ValidateNumericIds(document, numericErrors);
         if (numericErrors.Count != 0) throw new MapDocumentException(string.Join("\n", numericErrors));
-        var authored = MapDocumentFile.LoadText(MapDocumentFile.SaveText(document));
+        // Expansion never reads foliage, so the authored copy shares it rather than encoding the density payload.
+        var authored = MapDocumentFile.CopyWithSharedFoliage(document);
         var transforms = new Dictionary<string, MapEffectiveTransform>(StringComparer.Ordinal);
         foreach (var value in authored.NativeResourceTransforms ?? []) transforms.Add(MapEffectiveContext.Key(value.Kind, value.OwnerId), value.Transform);
         var children = new List<MapPrefabChild>();
@@ -43,9 +45,6 @@ public static class MapPrefabResolver
         var attachments = new List<MapPrefabAttachmentTransfer>();
         var owners = new Dictionary<string, string>(StringComparer.Ordinal);
         var worldLightFrames = new Dictionary<string, MapTransform>(StringComparer.Ordinal);
-        var markerInstances = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var transfer in authored.Prefabs?.Transfers ?? [])
-            if (!transfer.Retired && transfer.Binding.Child.Kind == MapPrefabChildKind.Marker) markerInstances.Add(transfer.Binding.WorldId, transfer.InstanceId);
         var roofs = new List<MapPrefabReference>(authored.BuildingIntent?.Roofs ?? []);
         var digestParts = new List<string> { "kemap/effective-resources/1", "2", assets.Hash, MapSurfaceSemantics.RootDigest(authored) };
         if (nativeSource is not null) { digestParts.Add(nativeSource.RootSha256); digestParts.Add(nativeSource.SnapshotId); }
@@ -150,7 +149,6 @@ public static class MapPrefabResolver
                 }
                 string id = bindings[local.Key];
                 if (world is MapPrefabStoreyChild) storeyOwners[id] = instance.Id;
-                if (world is MapPrefabMarkerChild) markerInstances[id] = instance.Id;
                 if (capturedRow is null && local is MapPrefabLightChild { Value.Owner.Scope: MapPrefabReferenceScope.World })
                     worldLightFrames[id] = local.LocalTransform;
                 if (world is MapPrefabRecordChild { Value: MapPrismDomain prism } room)
@@ -255,36 +253,33 @@ public static class MapPrefabResolver
             lightPoints.Add(light.Value.Id, point);
             lights.Add(light.Value with { Position = new(point.X.ToSingle(), point.Y.ToSingle(), point.Z.ToSingle()), Radius = (float)(light.Value.Radius * kernel.Transform.Scale) });
         }
-        var markerPoints = new Dictionary<string, MapExactPoint>(StringComparer.Ordinal);
-        var markers = originalIntent.Markers.Select(marker =>
-        {
-            var kernel = context.Transform(MapPrefabChildKind.Marker, marker.Id);
-            var point = kernel?.Point(Exact(marker.Position)) ?? Exact(marker.Position);
-            markerPoints.Add(marker.Id, point);
-            if (kernel is null) return marker;
-            return marker with { Position = new(point.X.ToSingle(), point.Y.ToSingle(), point.Z.ToSingle()), YawRadians = (float)(marker.YawRadians + kernel.Transform.YawRadians) };
-        }).ToList();
-        foreach (var marker in children.OfType<MapPrefabMarkerChild>())
-        {
-            var kernel = context.Transform(MapPrefabChildKind.Marker, marker.Value.Id)!;
-            var point = kernel.Point(Exact(marker.Value.Position));
-            markerPoints.Add(marker.Value.Id, point);
-            markers.Add(marker.Value with { Position = new(point.X.ToSingle(), point.Y.ToSingle(), point.Z.ToSingle()), YawRadians = (float)(marker.Value.YawRadians + kernel.Transform.YawRadians) });
-        }
+        // Markers resolve after the seat rebuild, so seated support placements and their owned floors are in the source.
+        var markers = MapMarkerResolution.Resolve(MapMarkerExpansion.Capture(authored, assets), source,
+            assets.Roots.Select(a => a.Sha256).ToArray(), new MapQueryLimits());
         var livePlacementIds = placements.Select(p => p.PlacementId).ToHashSet(StringComparer.Ordinal);
         var inactivePlacementIds = (authored.Prefabs?.Instances ?? []).SelectMany(instance => instance.Bindings.Entries
             .Where(binding => binding.Child.Kind == MapPrefabChildKind.Placement && (instance.Removed || binding.Removed)).Select(binding => binding.WorldId))
             .Concat((authored.Prefabs?.Transfers ?? []).Where(t => t.Retired && t.Binding.Child.Kind == MapPrefabChildKind.Placement).Select(t => t.Binding.WorldId))
             .ToHashSet(StringComparer.Ordinal);
         var intent = new MapBuildingIntent(1, originalIntent.RoofLinks.Concat(children.OfType<MapPrefabRoofChild>().Select(c => c.Value)).ToArray(),
-            originalIntent.RoofGroups.Concat(children.OfType<MapPrefabRoofGroupChild>().Select(c => c.Value)).ToArray(), lights, markers)
+            originalIntent.RoofGroups.Concat(children.OfType<MapPrefabRoofGroupChild>().Select(c => c.Value)).ToArray(), lights, markers.Intent)
         {
             // Retained inventory references can name a removed reservation. A live transferred producer still wins.
             Roofs = roofs.Where(r => r.Scope != MapPrefabReferenceScope.World || !inactivePlacementIds.Contains(r.Id) || livePlacementIds.Contains(r.Id)).ToArray(),
             Storeys = Storeys(),
         };
-        return new(context, source, placements, supports, water, intent, lightPoints, waterCorners, attachments, markerPoints, markerInstances)
-        { SupportRequests = supportRequests };
+        var resources = new MapEffectiveResources(context, source, placements, supports, water, intent, lightPoints, waterCorners,
+            attachments, markers.Markers, markers.Supports)
+        {
+            SupportRequests = supportRequests,
+            ClosureHash = assets.Hash,
+            // Provenance for foliage contexts, recorded only for documents that hold foliage, so released expansions do no
+            // extra work.
+            SourceFingerprint = document.Foliage is null ? null : Editing.MapDocumentEditFinalizer.BaseFingerprint(document),
+        };
+        var foliageErrors = Foliage.MapFoliageReferences.ValidateOwners(authored, resources);
+        if (foliageErrors.Count != 0) throw new MapDocumentException(string.Join("\n", foliageErrors));
+        return resources;
     }
 
     /// <summary>F-R7. The one frame choice an owner placement declares in an instance, shared by expansion and

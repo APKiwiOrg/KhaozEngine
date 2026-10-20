@@ -330,6 +330,97 @@ says "1 staged, 0 unsafe, 1 released, 1 drifted"
 check "  the summary counts all three" 0 "$r"
 feedrun --strict
 check "--strict fails on a drifted version" 1 "$rc"
+cp "$OUTFILE" "$TMPROOT/feed-default.out"
+
+echo "== check-local-feed: --version, --current and --all choose the versions checked (#1442) =="
+feedrun --all
+cmp -s "$OUTFILE" "$TMPROOT/feed-default.out" && r=0 || r=1
+check "--all prints exactly what the default walk prints" 0 "$r"
+feedrun --strict --version 1.0.0
+check "--version on a released version passes --strict" 0 "$rc"
+says "RELEASED   1.0.0  commit $TAG_COMMIT";  check "  reports that version" 0 "$r"
+absent_says "1.1.0";                          check "  without judging the drifted one" 0 "$r"
+absent_says "3.0.0";                          check "  or the staged one" 0 "$r"
+says "0 staged, 0 unsafe, 1 released, 0 drifted";  check "  and counts one version" 0 "$r"
+feedrun --version 1.1.0 --strict
+check "--version on a drifted version fails --strict" 1 "$rc"
+says "DRIFTED    1.1.0  tag commit $TAG_COMMIT";  check "  with the same DRIFTED line" 0 "$r"
+says "KhaozEngine.Gui.1.1.0.nupkg: commit $WRONG_COMMIT";  check "  and the same package detail" 0 "$r"
+feedrun --current --strict
+check "--current passes --strict on the staged version" 0 "$rc"
+says "STAGED     3.0.0  commit $WRONG_COMMIT on origin/main"
+check "  reads <KhaozEngineVersion> from Directory.Build.props" 0 "$r"
+says "1 staged, 0 unsafe, 0 released, 0 drifted";  check "  and checks only it" 0 "$r"
+feedrun --strict --version 9.0.0
+check "--version absent from the feed is a quiet success" 0 "$rc"
+says "holds no KhaozEngine 9.0.0 packages; nothing to check";  check "  and names the version" 0 "$r"
+feedrun --version 1.0
+check "--version rejects a value that is not X.Y.Z" 2 "$rc"
+feedrun --version
+check "--version without a value is a usage error" 2 "$rc"
+feedrun --current --version 1.0.0
+check "two scopes together are a usage error" 2 "$rc"
+says "at most one of --all, --current and --version";  check "  and says so" 0 "$r"
+( cd "$REPO" && sed 's/<KhaozEngineVersion>3.0.0</<KhaozEngineVersion></' Directory.Build.props > props.tmp \
+  && mv props.tmp Directory.Build.props )
+feedrun --current
+check "--current without a readable version is a usage error" 2 "$rc"
+
+echo "== check-local-feed: per-package details keep their wording and order =="
+# package_nuspec <file> <repository-element> [nonl] -> a package whose nuspec carries exactly that
+# repository element. nonl drops the nuspec's final newline, the shape the SDK writes.
+package_nuspec() {
+  _pn_dir="$TMPROOT/nuspec-$1"
+  mkdir -p "$_pn_dir"
+  printf '<?xml version="1.0" encoding="utf-8"?>\n<package>\n  <metadata>\n    %s\n  </metadata>\n</package>' \
+    "$2" > "$_pn_dir/p.nuspec"
+  [ "${3:-}" = nonl ] || printf '\n' >> "$_pn_dir/p.nuspec"
+  ( cd "$_pn_dir" && zip -q "$FEED/$1" p.nuspec )
+}
+newfixture details 7.0.0
+tagit 6.0.0
+DTAG=$(cd "$REPO" && git rev-parse 'refs/tags/v6.0.0^{commit}')
+advance
+DMAIN=$(cd "$REPO" && git rev-parse HEAD)
+DOFF=$(cd "$REPO" && echo off | $GIT commit-tree "HEAD^{tree}" -p HEAD)
+repo() { printf '<repository type="git" url="https://example.invalid/repo" commit="%s" />' "$1"; }
+package_nuspec KhaozEngine.App.7.0.0.nupkg "$(repo "$DMAIN")"
+package_nuspec KhaozEngine.Gui.7.0.0.nupkg "$(repo "$DOFF")"
+package_nuspec KhaozEngine.Net.7.0.0.nupkg '<repository type="git" url="https://example.invalid/repo" />'
+package_nuspec KhaozEngine.Ui.7.0.0.nupkg "$(repo "$DMAIN")" nonl
+package_nuspec KhaozEngine.App.7.0.0.snupkg "$(repo "$DMAIN")"
+package_nuspec KhaozEngine.Gui.7.0.0.snupkg "$(repo "$DOFF")" nonl
+package_nuspec KhaozEngine.App.6.0.0.nupkg "$(repo "$DTAG")"
+package_nuspec KhaozEngine.Gui.6.0.0.nupkg '<repository type="git" />'
+package_nuspec KhaozEngine.Net.6.0.0.snupkg "$(repo "$DMAIN")" nonl
+touch -t 202601020304 "$FEED"/*.nupkg "$FEED"/*.snupkg
+touch -t 202601020506 "$FEED/KhaozEngine.Gui.7.0.0.snupkg"
+feedrun --strict
+check "the mixed feed fails --strict" 1 "$rc"
+cat > "$TMPROOT/details.expected" <<EOF
+  UNSAFE     7.0.0  packed 2026-01-02 05:06  (no v7.0.0 tag)
+             KhaozEngine.Gui.7.0.0.nupkg: commit $DOFF not on origin/main
+             KhaozEngine.Net.7.0.0.nupkg: no repository commit in nuspec
+             KhaozEngine.Gui.7.0.0.snupkg: commit $DOFF not on origin/main
+  DRIFTED    6.0.0  tag commit $DTAG  packed 2026-01-02 03:04
+             KhaozEngine.Gui.6.0.0.nupkg: no repository commit in nuspec
+             KhaozEngine.Net.6.0.0.snupkg: commit $DMAIN
+check-local-feed: 0 staged, 1 unsafe, 0 released, 1 drifted (feed: $REAL/local-feed).
+check-local-feed: an UNSAFE staged version contains a package commit not on origin/main (#1135).
+                  Do not vendor it from the shared feed. Re-pack from origin/main, or use an
+                  explicit private KHAOZENGINE_FEED for intentional branch builds.
+check-local-feed: a DRIFTED version contains a build its tag does not describe (#492, #1136).
+                  Do not vendor it into a consumer. Re-pack from a checkout of the tag or
+                  restore the published copy from GitHub Packages.
+EOF
+cmp -s "$OUTFILE" "$TMPROOT/details.expected" && r=0 || r=1
+check "  prints every status line, detail line and note exactly" 0 "$r"
+[ "$r" = 0 ] || diff "$TMPROOT/details.expected" "$OUTFILE" || true
+feedrun --version 7.0.0
+says "UNSAFE     7.0.0  packed 2026-01-02 05:06  (no v7.0.0 tag)"
+check "  the scoped run prints the same version line" 0 "$r"
+says "KhaozEngine.Gui.7.0.0.snupkg: commit $DOFF not on origin/main"
+check "  and the same details" 0 "$r"
 
 echo "== check-local-feed: a clean feed and a missing feed are both quiet successes =="
 newfixture cleanfeed 3.0.0

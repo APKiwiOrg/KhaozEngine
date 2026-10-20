@@ -410,3 +410,71 @@ Run [39265183977](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39265183
 | ubuntu-latest vulkan-native | lavapipe | 1555 | 1555 | 0 | 0 | 0.008040 | 0.008040 |
 
 The Vulkan synchronization validation job also passed. Every backend executed the same 1555 selected facts as the local Metal inventory, so no selected GPU fact was skipped on any backend. The earlier run [39238918090](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39238918090) on `df821a2ad` passed the same plan selection on all legs before the allocation correction.
+
+
+## 7f local gate and byte-identical shipping capture
+
+Tested source `8fe6c5927c6fd0fa4960bcd6dda88e2c209f8ff5` on `fix/taa-shadow-visibility`. The guarded engine and probe worktrees started clean. Every build, test, pack, capture and archive replay ran once through build-slot. No unchanged test or capture was retried. No source, test, bound, baseline or golden changed.
+
+| Command label | Exit | Result |
+| --- | ---: | --- |
+| taa-7f5-build | 0 | Release solution, 0 warnings, 0 errors |
+| taa-7f5-headless | 0 | 41 assemblies, 37,110 passed, 0 failed, 1,484 skipped, 38,594 total |
+| taa-7f5-metal-inventory | 0 | 1,687 cases, 209 classes, no cost, perf or bench class |
+| taa-7f5-metal | 0 | 1,687 executed and passed, 0 failed, 0 skipped |
+| taa-7f5-pack | 0 | 222 private package files, no compiler or package warning or error |
+| taa-7f5-probe-build | 0 | SnapshotTool Release, 0 warnings, 0 errors |
+| taa-7f5-back15 | 0 | 3 continuous mode histories, 16 measured frames each, 160 intermediate images deleted |
+| taa-7f5-ground15 | 0 | 3 continuous mode histories, 16 measured frames each, 160 intermediate images deleted |
+| taa-7f5-analysis | 0 | 12 full-precision rows, RGB and masks identical to shipping D |
+
+```bash
+TAA_CORRECTNESS='((FullyQualifiedName~KhaozEngine.Tests.Gpu.Temporal&FullyQualifiedName!~CostPerf)|((FullyQualifiedName~Shadow|FullyQualifiedName~Golden)&FullyQualifiedName!~Perf&FullyQualifiedName!~Bench)|FullyQualifiedName~MotionTargetLifecycleGpuTests)'
+build-slot --label taa-7f5-build -- dotnet build KhaozEngine.slnx -c Release
+build-slot --heavy --label taa-7f5-headless -- env KE_GPU_TESTS=0 dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket"
+build-slot --label taa-7f5-metal-inventory -- env KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "$TAA_CORRECTNESS" --list-tests
+build-slot --heavy --label taa-7f5-metal -- env KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "$TAA_CORRECTNESS" --logger 'console;verbosity=detailed' --logger 'trx;LogFileName=taa-7f5-metal.trx' --results-directory /tmp/grimhollow-taa-7f5/metal
+```
+
+Metal used MetalNative on Apple M2 Max hardware. The [inventory](7f-metal-inventory.jsonl) retains every result. Discovery and TRX name multisets match with zero missing or extra cases. There are 1,687 distinct TRX test IDs. Three theory cases have one shared truncated display name, retained with multiplicity three. The discovered-name multiset SHA256 is `0fa46ceab93cdffe8371b00a579a257bddd80b06845013884a8bf2852695c25c`. The selected skipped list is `[]`. TemporalMovingShadeRimGpuTests passed 2 cases, TemporalEntryIdentityGpuTests 8, MotionTargetLifecycleGpuTests 2, TemporalVisibilityEquivalenceGpuTests 6 and TemporalVisibilityResolveAbGpuTests 12.
+
+Headless GPU and unavailable-service skips are not Metal evidence. The known [PhysicsRebaseCostTests flake](https://github.com/APKiwiOrg/KhaozEngine/issues/1512) did not recur. The [local results](7f-local-results.json) retain all assembly counts and raw log and TRX hashes. Full logs, TRX and capture sheets remain under `/tmp/grimhollow-taa-7f5/`.
+
+Private package `21.8.0-svcut.1` was packed from a detached scratch worktree at the tested source, with only Directory.Build.props changed. The version did not exist in the private feed before packing and no same-version NuGet extraction existed before refresh. The feed was `/Users/antonio/.cache/khaozengine-probe-feed/taa-shadow-visibility`. All 222 vendored packages match it. The scratch worktree was removed after packing. The pin and both tool pins were committed and pushed on `probe/taa-shadow-visibility` at `c480240d588a023dc8ac3f00311ddd478913f20a`, with the remote SHA verified before capture. The copied renderer matched the vendored nupkg before capture and both capture provenance records name that renderer.
+
+| Identity | SHA256 |
+| --- | --- |
+| Render3D nupkg | `61f8905cc09cc26b5656e89e99c492d614d0c62518c977bb806a6b8090978a80` |
+| Render3D symbols | `fd5c33cd1cf704ef8332d9bf8f1f74eb51b25a2d3dd2581394a5d99541631a87` |
+| Loaded renderer, build and both captures | `d831e1f1b591df59e49a70028b791351eb6e6e48dd0cd514d44d746350db6a90` |
+
+The [7f real-scene record](real-scene.md#7f-shipping-capture) contains every full-precision metric row and the RGB and mask hashes. Every row and retained pixel is identical to shipping D. The verifier extension adds the 7f source, all 222 package hashes, local gate and capture checks. An AST comparison confirms every historical verifier statement is unchanged. The three historical builds, shipping build, D reference and owner acceptance records are unchanged. The artifact hash list also repairs the preexisting ledger drift described below.
+
+Hosted correctness, the parallel reviewer verdict and any billed performance proof remain with the orchestrator. This worker ran no timing, perf or bench class, workflow dispatch, merge, tag or release. No manual validation is needed for this verification round.
+
+
+Every numeric cell in this 7f comparison is shipping D / 7f, at full printed precision.
+
+| Condition | Region | Mode | Grain mean | Grain p95 | Change mean | Dots |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| back15 | character | taa-native | 0.005474607155653376 / 0.005474607155653376 | 0.029102745098039118 / 0.029102745098039118 | 0.017496411969800285 / 0.017496411969800285 | 364 / 364 |
+| back15 | ground | taa-native | 0.00526385609353138 / 0.00526385609353138 | 0.020472941176470583 / 0.020472941176470583 | 0.012355875438918482 / 0.012355875438918482 | 45 / 45 |
+| back15 | character | taa-quality | 0.008704202242702883 / 0.008704202242702883 | 0.04507215686274513 / 0.04507215686274513 | 0.017329273445767134 / 0.017329273445767134 | 759 / 759 |
+| back15 | ground | taa-quality | 0.0062244609736071465 / 0.0062244609736071465 | 0.024378823529411675 / 0.024378823529411675 | 0.01227338604965782 / 0.01227338604965782 | 821 / 821 |
+| back15 | character | fxaa | 0.0026071029228602943 / 0.0026071029228602943 | 0.015403137254901944 / 0.015403137254901944 | 0.018394583895005687 / 0.018394583895005687 | 0 / 0 |
+| back15 | ground | fxaa | 0.0016548521211947336 / 0.0016548521211947336 | 0.0075599999999999 / 0.0075599999999999 | 0.013100857420120631 / 0.013100857420120631 | 0 / 0 |
+| ground15 | character | taa-native | 0.00293740035335003 / 0.00293740035335003 | 0.01121411764705893 / 0.01121411764705893 | 0.0011689773847883102 / 0.0011689773847883102 | 371 / 371 |
+| ground15 | ground | taa-native | 0.004815313021091819 / 0.004815313021091819 | 0.017416470588235367 / 0.017416470588235367 | 0.003688204569631017 / 0.003688204569631017 | 262 / 262 |
+| ground15 | character | taa-quality | 0.0030111794193593325 / 0.0030111794193593325 | 0.011816470588235206 / 0.011816470588235206 | 0.0011939310203571874 / 0.0011939310203571874 | 330 / 330 |
+| ground15 | ground | taa-quality | 0.005046020977145357 / 0.005046020977145357 | 0.020724705882352867 / 0.020724705882352867 | 0.0037393807392348626 / 0.0037393807392348626 | 782 / 782 |
+| ground15 | character | fxaa | 0.002280812938047255 / 0.002280812938047255 | 0.012598431372548957 / 0.012598431372548957 | 0.0013507738528787314 / 0.0013507738528787314 | 0 / 0 |
+| ground15 | ground | fxaa | 0.0022932411255083716 / 0.0022932411255083716 | 0.007575686274509774 / 0.007575686274509774 | 0.003328692573683128 / 0.003328692573683128 | 0 / 0 |
+
+
+The final formatting check exited 0. It emitted the same workspace-loading warning as the historical run. Warning details were not expanded and the unchanged format command was not retried. Release builds had zero warnings. Whole-tree dashes, prose, file-size and instruction checks, doc-version checks and git diff --check each exited 0. Their commands and exit codes are retained in the local results JSON.
+
+
+The guarded source already had three stale artifact hashes (filter-baseline.md, non-finite-depths.md and reset-tuning.md) and four omitted artifact entries (benchmark-request.md, benchmark-result.md, local-metal-inventory.jsonl and verification.md). Their bytes were checked against the source commit. The three stale documents are unchanged. The artifact ledger now hashes the current source documents and includes the omitted entries. The [drift record](7f-preexisting-manifest-drift.json) preserves the old hashes. Every historical source, package, capture, baseline, D-reference and owner-acceptance check remains unchanged.
+
+
+The manifest verifier exited 0 with 72 historical rows, 12 shipping rows and 12 new 7f rows checked. The final whole-tree dashes, prose and file-size checks also exited 0 after the evidence additions. Local and capture checkboxes in 7f.5 are complete. Hosted correctness and review checkboxes remain open.

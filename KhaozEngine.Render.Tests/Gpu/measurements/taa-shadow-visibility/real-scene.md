@@ -253,3 +253,52 @@ Each numeric cell below is shipping / D. No difference was rounded away.
 The shipping Native, Quality and FXAA normal contact-sheet pixels are byte-identical to D in both conditions. Both region-mask streams are byte-identical to D. FXAA is also byte-identical to A. Differing pixel-frame count is zero in every comparison. Back15 character grain and dots remain below bilinear-only at both presets, with Native 0.005474607 / 364 versus 0.008027197 / 851 and Quality 0.008704202 / 759 versus 0.011052578 / 1166.
 
 The committed shipping inputs retain the lossless normal RGB archive, region bits, capture provenance and metrics. Summaries are [shipping-summary.json](shipping-summary.json) and [shipping-D-reference-summary.json](shipping-D-reference-summary.json). Contact sheets, edge crops, logs and the replay comparison remain under `/tmp/grimhollow-shadow-visibility/ship/`. There are no per-frame leftovers. The evidence verifier preserves every historical check and separately requires the two shipping conditions, three modes, both regions, complete hashes and the dated D acceptance. It accepts a pending shipping decision only when the D comparison differs. This round did not run GPU test suites, timing tests or other backends.
+
+
+## 7f shipping capture
+
+Source `8fe6c5927c6fd0fa4960bcd6dda88e2c209f8ff5`, private package `21.8.0-svcut.1`, probe `c480240d588a023dc8ac3f00311ddd478913f20a`. The detached pack changed only the version declaration and wrote exclusively to `/Users/antonio/.cache/khaozengine-probe-feed/taa-shadow-visibility`. All 222 package hashes and relevant source hashes are recorded in the manifest's separate `cost_cut_build` record. The pack scratch worktree was removed. The diagnostic probe pin and both tool pins were committed and pushed before capture, and its remote SHA was verified.
+
+| Identity | SHA256 |
+| --- | --- |
+| Render3D nupkg | `61f8905cc09cc26b5656e89e99c492d614d0c62518c977bb806a6b8090978a80` |
+| Render3D symbols | `fd5c33cd1cf704ef8332d9bf8f1f74eb51b25a2d3dd2581394a5d99541631a87` |
+| Loaded renderer, build and both captures | `d831e1f1b591df59e49a70028b791351eb6e6e48dd0cd514d44d746350db6a90` |
+
+The two captures each ran once through build-slot --heavy with shadowgrain, MetalNative on Apple M2 Max, 2560x1440, dt 1/15, a five-minute day, start time 0.49777777777777776, 80 warm-up frames and 16 measured frames. Native, Quality and FXAA retained continuous histories. The built renderer matched the vendored nupkg before capture. Both provenance records match that hash. Both runs exited 0 and each deleted 160 per-frame images. No per-frame images remain.
+
+Run from the guarded Grimhollow probe worktree, with logs redirected under `/tmp/grimhollow-taa-7f5/`.
+
+```bash
+build-slot --heavy --label taa-7f5-back15 -- env KE_GRAPHICS_BACKEND=metal-native dotnet run --project tools/SnapshotTool -c Release --no-build -- shadowgrain /tmp/grimhollow-taa-7f5/capture/back15 --spot back-edge --frame-time 1/15 --day-minutes 5 --start-time 0.49777777777777776 --warmup 80 --frames 16
+build-slot --heavy --label taa-7f5-ground15 -- env KE_GRAPHICS_BACKEND=metal-native dotnet run --project tools/SnapshotTool -c Release --no-build -- shadowgrain /tmp/grimhollow-taa-7f5/capture/ground15 --spot ground-edge --frame-time 1/15 --day-minutes 5 --start-time 0.49777777777777776 --warmup 80 --frames 16
+```
+
+The unchanged archive `read_run` replay agrees with the tool within 1e-12. Every full-precision replay row, including samples and dots, equals the [shipping D summary](shipping-summary.json). The [7f summary](7f-summary.json) and [comparison](7f-comparison.json) retain the exact values. Each numeric cell below is shipping D / 7f, using full Python printed precision.
+
+| Condition | Region | Mode | Grain mean | Grain p95 | Change mean | Dots |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| back15 | character | taa-native | 0.005474607155653376 / 0.005474607155653376 | 0.029102745098039118 / 0.029102745098039118 | 0.017496411969800285 / 0.017496411969800285 | 364 / 364 |
+| back15 | ground | taa-native | 0.00526385609353138 / 0.00526385609353138 | 0.020472941176470583 / 0.020472941176470583 | 0.012355875438918482 / 0.012355875438918482 | 45 / 45 |
+| back15 | character | taa-quality | 0.008704202242702883 / 0.008704202242702883 | 0.04507215686274513 / 0.04507215686274513 | 0.017329273445767134 / 0.017329273445767134 | 759 / 759 |
+| back15 | ground | taa-quality | 0.0062244609736071465 / 0.0062244609736071465 | 0.024378823529411675 / 0.024378823529411675 | 0.01227338604965782 / 0.01227338604965782 | 821 / 821 |
+| back15 | character | fxaa | 0.0026071029228602943 / 0.0026071029228602943 | 0.015403137254901944 / 0.015403137254901944 | 0.018394583895005687 / 0.018394583895005687 | 0 / 0 |
+| back15 | ground | fxaa | 0.0016548521211947336 / 0.0016548521211947336 | 0.0075599999999999 / 0.0075599999999999 | 0.013100857420120631 / 0.013100857420120631 | 0 / 0 |
+| ground15 | character | taa-native | 0.00293740035335003 / 0.00293740035335003 | 0.01121411764705893 / 0.01121411764705893 | 0.0011689773847883102 / 0.0011689773847883102 | 371 / 371 |
+| ground15 | ground | taa-native | 0.004815313021091819 / 0.004815313021091819 | 0.017416470588235367 / 0.017416470588235367 | 0.003688204569631017 / 0.003688204569631017 | 262 / 262 |
+| ground15 | character | taa-quality | 0.0030111794193593325 / 0.0030111794193593325 | 0.011816470588235206 / 0.011816470588235206 | 0.0011939310203571874 / 0.0011939310203571874 | 330 / 330 |
+| ground15 | ground | taa-quality | 0.005046020977145357 / 0.005046020977145357 | 0.020724705882352867 / 0.020724705882352867 | 0.0037393807392348626 / 0.0037393807392348626 | 782 / 782 |
+| ground15 | character | fxaa | 0.002280812938047255 / 0.002280812938047255 | 0.012598431372548957 / 0.012598431372548957 | 0.0013507738528787314 / 0.0013507738528787314 | 0 / 0 |
+| ground15 | ground | fxaa | 0.0022932411255083716 / 0.0022932411255083716 | 0.007575686274509774 / 0.007575686274509774 | 0.003328692573683128 / 0.003328692573683128 | 0 / 0 |
+
+Identical verdict: true. All 12 rows match exactly. Both lossless RGB streams and region-mask streams are byte-identical to shipping D. Differing pixel-frame counts are zero for Native, Quality and FXAA in each condition. The previous shipping comparison already proves D identity. Locked share and lock overlays remain unavailable with the historical explicit reason.
+
+| Condition | RGB SHA256, shipping D and 7f | Region-mask SHA256, shipping D and 7f |
+| --- | --- | --- |
+| back15 | `42a6ad43168c03470b5138a51ea26ba6d1d3b2affd30ac4cd3e0314d448ecb94` | `adfbc3c6c2f74775770413f0290d8ac6f62fe717c8e294139e7e144888394986` |
+| ground15 | `fac3d2356e5d35d4aa8a44bb71f89d9aa957a0e4444f373f493af0a1545bdc9c` | `fe19a50ced8e1ce8100f896cfc14e82573291993588a08de0689b922890bd9cf` |
+
+The committed capture inputs retain lossless RGB, masks, metrics and provenance. Contact sheets and crops remain under `/tmp/grimhollow-taa-7f5/capture/`. The [local gate record](verification.md#7f-local-gate-and-byte-identical-shipping-capture) records the Release solution build with zero warnings and errors, the headless suite with 37,110 passed, zero failed and 1,484 expected skips across 41 assemblies, and the Metal gate with 1,687 inventoried, 1,687 passed, zero failed and zero skipped. The selected Metal skipped list is empty. No cost, perf or bench class was selected. All command exits are zero. Formatting verification and the whole-tree guards passed. The formatting process retained the historical workspace-loading warning. This round changes no source, tests, bounds or baselines and supplies no timing or other-backend proof.
+
+
+The guarded source already had three stale artifact hashes (filter-baseline.md, non-finite-depths.md and reset-tuning.md) and four omitted artifact entries (benchmark-request.md, benchmark-result.md, local-metal-inventory.jsonl and verification.md). Their bytes were checked against the source commit. The three stale documents are unchanged. The artifact ledger now hashes the current source documents and includes the omitted entries. The [drift record](7f-preexisting-manifest-drift.json) preserves the old hashes. Every historical source, package, capture, baseline, D-reference and owner-acceptance check remains unchanged.

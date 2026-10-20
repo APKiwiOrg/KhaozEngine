@@ -353,10 +353,10 @@ bool temporalVisibilityReleases(vec2 uv, ivec2 centre, ivec2 last, vec2 previous
 
 #### Task 7f.5: Run the gates
 
-- [ ] Full headless: `build-slot --heavy --label taa-7f-headless -- env KE_GPU_TESTS=0 dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket"`, zero failures and zero warnings.
-- [ ] Broad local Metal: the Task 11 `TAA_CORRECTNESS` selection once with `--heavy`, which includes the new classes. Zero failed and zero skipped in the TRX. Since the review 7f r2 fix round the selection excludes every `CostPerf` class, and `--list-tests` under it names no cost, perf or bench class.
+- [x] Full headless: `build-slot --heavy --label taa-7f-headless -- env KE_GPU_TESTS=0 dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket"`, zero failures and zero warnings.
+- [x] Broad local Metal: the Task 11 `TAA_CORRECTNESS` selection once with `--heavy`, which includes the new classes. Zero failed and zero skipped in the TRX. Since the review 7f r2 fix round the selection excludes every `CostPerf` class, and `--list-tests` under it names no cost, perf or bench class.
 - [ ] Hosted correctness: the orchestrator dispatches `cross-platform-gpu.yml` on the candidate with `renderTestFilter` equal to that selection, legs all, plus the DXBC compile-only fact. Software Vulkan keeps the entry-identity treatment, state exact and colour within the existing bound, with no new epsilon.
-- [ ] Shipping capture: rerun back15 and ground15 with the commands in [real-scene.md](../../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/real-scene.md) under the consumer-probe authorization. Contact-sheet pixels and region masks must be byte-identical to the shipping D record.
+- [x] Shipping capture: rerun back15 and ground15 with the commands in [real-scene.md](../../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/real-scene.md) under the consumer-probe authorization. Contact-sheet pixels and region masks must be byte-identical to the shipping D record.
 - [ ] Review by the task reviewer over 7f.1 to 7f.4. Record the gate in `verification.md` and commit `test(taa): record visibility cost cut correctness`.
 
 **Definition of done:** every gate is green with evidence and the shipping capture is byte-identical to D.

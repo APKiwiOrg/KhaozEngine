@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Vulkan.Internal;
 using KhaozEngine.Primitives;
 using Xunit;
 
@@ -153,35 +154,166 @@ public sealed class VulkanTimestampEndTests
     }
 
     [Theory]
+    [InlineData("render-end")]
+    [InlineData("clear-flush")]
+    [InlineData("restore")]
     [InlineData("release")]
     [InlineData("write")]
+    [InlineData("pool-end")]
     [InlineData("native-end")]
     public void AbandonedOrFailedRecordingCannotLeakTailIntoNextBegin(string failure)
     {
         using var rig = new CoveragePerfTimestampEndFixture();
         rig.Start();
+        using var target = rig.Resources.Factory.CreateTexture(GpuTextureDescription.Texture2D(
+            4, 4, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
+        using var framebuffer = rig.Resources.Factory.CreateFramebuffer(null, target);
+        rig.List.SetFramebuffer(framebuffer);
+        rig.List.ClearColorTarget(0, Color.Black);
+        int abandonedSlot = rig.List.Ring.Slot;
+        ulong abandonedBuffer = rig.List.Ring.BufferAt(abandonedSlot);
+        if (failure != "clear-flush") rig.List.Rendering.PrepareDraw(abandonedBuffer);
         rig.Arm(rig.Pool, 2);
+        rig.Rendering.FailBegin = failure == "clear-flush";
+        rig.Rendering.FailEnd = failure == "render-end";
+        rig.Rendering.FailBarrier = failure == "restore";
         rig.Commands.FailRelease = failure == "release";
         rig.Commands.FailEnd = failure == "native-end";
         rig.Queries.FailWrite = failure == "write";
-        Assert.Contains("Injected", Assert.Throws<InvalidOperationException>(() => rig.List.End()).Message);
+        if (failure == "pool-end")
+        {
+            // Pool.End has no native call. Disposing after the final write faults its existing liveness check.
+            rig.Queries.OnWrite = buffer => { rig.Pool.Dispose(); rig.Commands.Abandon(buffer); };
+            Assert.Throws<ObjectDisposedException>(() => rig.List.End());
+        }
+        else
+            Assert.Same(rig.Commands.Failure, Assert.Throws<InvalidOperationException>(() => rig.List.End()));
+        Assert.False(rig.List.IsRecording);
+        Assert.False(rig.List.IsSealed);
+        Assert.Contains("without a sealed recording", Assert.Throws<InvalidOperationException>(
+            () => rig.Resources.Submits.Submit(rig.List, null)).Message);
+        Assert.Empty(rig.Resources.CommandApi.Submissions);
+        Assert.Equal(0UL, rig.List.Ring.SubmittedAt(abandonedSlot));
         int writes = rig.Queries.Writes;
-        rig.Commands.FailRelease = rig.Commands.FailEnd = rig.Queries.FailWrite = false;
-        // Existing End retry semantics remain intact, but cannot repeat the armed marker.
-        rig.List.End();
+        int releases = rig.Commands.Releases;
+        int ends = rig.Commands.Ends;
+        Assert.Contains("not recording", Assert.Throws<InvalidOperationException>(() => rig.List.End()).Message);
         Assert.Equal(writes, rig.Queries.Writes);
+        Assert.Equal(releases, rig.Commands.Releases);
+        Assert.Equal(ends, rig.Commands.Ends);
+        if (failure == "native-end")
+            Assert.Contains($"End(b{rig.Resources.CommandApi.IndexOf(rig.List.Ring.Pools[abandonedSlot])})",
+                rig.Resources.CommandApi.EventsForPool(rig.List.Ring.Pools[abandonedSlot]));
+        string[] abandonedEvents = rig.Resources.CommandApi.EventsForPool(rig.List.Ring.Pools[abandonedSlot]).ToArray();
+        rig.Rendering.FailBegin = rig.Rendering.FailEnd = rig.Rendering.FailBarrier = false;
+        rig.Commands.FailRelease = rig.Commands.FailEnd = rig.Queries.FailWrite = false;
+        rig.Queries.OnWrite = null;
         using var fence = rig.Resources.Timeline.CreateFence();
         if (failure == "native-end")
             Assert.Equal(GpuTimestampStatus.Pending, rig.Pool.TryResolve(fence, new ulong[3], out _));
+        else if (failure == "pool-end")
+            Assert.Throws<ObjectDisposedException>(() => rig.Pool.TryResolve(fence, new ulong[3], out _));
         else
             Assert.Throws<InvalidOperationException>(() => rig.Pool.TryResolve(fence, new ulong[3], out _));
         rig.List.Begin();
-        Assert.Throws<InvalidOperationException>(() => rig.List.BeginTimestamps(rig.Pool, 3));
+        Assert.Equal((abandonedSlot + 1) % rig.List.Ring.Depth, rig.List.Ring.Slot);
+        Assert.NotEqual(abandonedBuffer, rig.List.Ring.BufferAt(rig.List.Ring.Slot));
+        if (failure == "pool-end")
+            Assert.Throws<ObjectDisposedException>(() => rig.List.BeginTimestamps(rig.Pool, 3));
+        else
+            Assert.Throws<InvalidOperationException>(() => rig.List.BeginTimestamps(rig.Pool, 3));
+        Assert.Equal(1, rig.Queries.Resets);
+        // A plain replacement recording cannot inherit either the old tail or the old rendering/layout state.
+        rig.Resources.Trace.Clear();
+        rig.List.End();
+        Assert.Equal(new[] { "ReleaseMemory", "NativeEnd" }, rig.Resources.Trace);
+        Assert.Equal(writes, rig.Queries.Writes);
+        rig.List.Begin();
         using var replacement = rig.NewPool();
         rig.List.BeginTimestamps(replacement, 1);
         rig.Arm(replacement, 0);
+        rig.Resources.Trace.Clear();
         rig.List.End();
+        Assert.Equal(new[] { "ReleaseMemory", "Write0", "NativeEnd" }, rig.Resources.Trace);
         Assert.Equal(writes + 1, rig.Queries.Writes);
+        Assert.Equal(2, rig.Queries.Resets);
+        Assert.Equal(abandonedEvents, rig.Resources.CommandApi.EventsForPool(rig.List.Ring.Pools[abandonedSlot]));
+    }
+
+    [Fact]
+    public void AbandonedRingSlotIsResetBeforeItsBufferBeginsAgain()
+    {
+        using var rig = new CoveragePerfTimestampEndFixture();
+        var ring = new VulkanCommandPoolRing(rig.Commands, 3, rig.Resources.Timeline, rig.Resources.Backpressure);
+        int slot = ring.Advance();
+        ulong buffer = ring.BufferAt(slot);
+        rig.Commands.FailEnd = true;
+        Assert.Same(rig.Commands.Failure, Assert.Throws<InvalidOperationException>(() => ring.EndRecording(slot)));
+        rig.Commands.FailEnd = false;
+        string[] abandonedEvents = rig.Resources.CommandApi.EventsForPool(ring.Pools[slot]).ToArray();
+        for (int i = 1; i < ring.Depth; i++)
+        {
+            int next = ring.Advance();
+            Assert.NotEqual(buffer, ring.BufferAt(next));
+            ring.EndRecording(next);
+            Assert.Equal(abandonedEvents, rig.Resources.CommandApi.EventsForPool(ring.Pools[slot]));
+        }
+        Assert.Equal(slot, ring.Advance());
+        int index = rig.Resources.CommandApi.IndexOf(ring.Pools[slot]);
+        Assert.Equal(abandonedEvents.Concat(new[] { $"ResetPool(p{index})", $"Begin(b{index})" }),
+            rig.Resources.CommandApi.EventsForPool(ring.Pools[slot]));
+        Assert.Equal(0UL, ring.SubmittedAt(slot));
+        rig.Commands.RequireRecording(buffer);
+        ring.EndRecording(slot);
+        ring.RetireInto(rig.Resources.Retired);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FailedSetupSealAbandonsBatchAndNextAppendAdvances(bool nativeEnd)
+    {
+        using var rig = new CoveragePerfTimestampEndFixture();
+        var ring = new VulkanCommandPoolRing(rig.Commands, 3, rig.Resources.Timeline, rig.Resources.Backpressure);
+        using var setup = new VulkanSetupCommands(ring, rig.Resources.SetupSink,
+            new VulkanStagingArena(rig.Resources.StagingSource, 3), rig.Resources.Submits, rig.Resources.Liveness);
+        var image = new VulkanImageSetup(1, false, GpuPixelFormat.R8G8B8A8UNorm, 1, 1, false, false,
+            VulkanRestingLayout.ShaderReadOnlyOptimal);
+        setup.Prepare(image);
+        rig.Commands.FailEnd = nativeEnd;
+        rig.Commands.FailRelease = !nativeEnd;
+        Assert.Same(rig.Commands.Failure, Assert.Throws<InvalidOperationException>(() => setup.Flush()));
+        Assert.False(setup.HasPendingWork);
+        Assert.Equal(0, setup.FlushCount);
+        Assert.Equal(0UL, setup.Flush());
+        Assert.Empty(rig.Resources.CommandApi.Submissions);
+        Assert.Equal(0UL, ring.SubmittedAt(0));
+        rig.Commands.FailEnd = rig.Commands.FailRelease = false;
+        setup.Prepare(image);
+        Assert.Equal(1, ring.Slot);
+        Assert.NotEqual(0UL, setup.Flush());
+        Assert.Equal(ring.BufferAt(1), Assert.Single(rig.Resources.CommandApi.Submissions).Buffer);
+        setup.Retire(rig.Resources.Retired);
+    }
+
+    [Fact]
+    public void UploadAfterFailedEndCannotRecordIntoAbandonedSlot()
+    {
+        using var rig = new CoveragePerfTimestampEndFixture();
+        var uploads = new TimestampEndUploads();
+        using var list = rig.NewList(uploads);
+        using var destination = new FakeVulkanUploadBuffer(1, 4, GpuBufferUsage.VertexBuffer);
+        list.Begin();
+        list.UpdateBuffer(destination, 0, 42);
+        rig.Commands.FailEnd = true;
+        Assert.Same(rig.Commands.Failure, Assert.Throws<InvalidOperationException>(() => list.End()));
+        Assert.Throws<InvalidOperationException>(() => list.UpdateBuffer(destination, 0, 43));
+        Assert.Equal(1, uploads.Uploads);
+        rig.Commands.FailEnd = false;
+        list.Begin();
+        list.UpdateBuffer(destination, 0, 44);
+        list.End();
+        Assert.Equal(2, uploads.Uploads);
     }
 
     [Fact]

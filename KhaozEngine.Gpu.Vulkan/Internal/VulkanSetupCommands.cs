@@ -340,8 +340,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     return 0;
                 }
 
-                _ring.EndRecording(_slot);
-                _open = false;
+                // Sealing can fail after vkEndCommandBuffer invalidates the buffer. Never append or retry
+                // this batch. EnsureOpen advances to the next slot, and wrap resets the abandoned pool.
+                try { _ring.EndRecording(_slot); }
+                finally { _open = false; }
 
                 // THE SUBMIT LOCK IS TAKEN INSIDE THIS ONE, by SubmitSetup. See the class note for the whole
                 // ordering argument.

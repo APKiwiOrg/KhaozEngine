@@ -13,6 +13,7 @@ internal sealed class CoveragePerfTimestampEndFixture : IDisposable
     internal readonly VulkanResourceFixture Resources = new();
     internal readonly TimestampEndCommandApi Commands;
     internal readonly TimestampEndQueryApi Queries;
+    internal readonly TimestampEndRenderApi Rendering;
     internal readonly VulkanCommandList List;
     internal readonly VulkanTimestampPool Pool;
     internal readonly Action<IGpuTimestampPool, uint> Arm;
@@ -20,7 +21,8 @@ internal sealed class CoveragePerfTimestampEndFixture : IDisposable
     internal CoveragePerfTimestampEndFixture()
     {
         Commands = new(Resources.CommandApi, Resources.Trace);
-        Queries = new(Resources.Trace);
+        Queries = new(Resources.Trace, Commands);
+        Rendering = new(Resources.RenderApi, Resources.Barriers, Commands);
         List = NewList();
         Pool = NewPool();
         Arm = Bind(List);
@@ -38,10 +40,10 @@ internal sealed class CoveragePerfTimestampEndFixture : IDisposable
         return method.CreateDelegate<Action<IGpuTimestampPool, uint>>(list);
     }
 
-    internal VulkanCommandList NewList()
+    internal VulkanCommandList NewList(IVulkanRecordUploads? uploads = null)
         => new(new VulkanCommandPoolRing(Commands, 3, Resources.Timeline, Resources.Backpressure),
-            Resources.Retired, render: Resources.RenderApi,
-            layouts: new VulkanLayoutTracker(Resources.Barriers), timestampTimeline: Resources.Timeline);
+            Resources.Retired, uploads, render: Rendering,
+            layouts: new VulkanLayoutTracker(Rendering), timestampTimeline: Resources.Timeline);
 
     internal VulkanTimestampPool NewPool(uint capacity = 5)
         => new(Queries, Resources.Timeline, Resources.Owner, capacity, 64, 1);
@@ -63,6 +65,10 @@ internal sealed class CoveragePerfTimestampEndFixture : IDisposable
 /// <summary>Observes the existing native command boundary, with recording disabled for allocation windows.</summary>
 internal sealed class TimestampEndCommandApi(FakeVulkanCommandApi inner, List<string> trace) : IVulkanCommandApi
 {
+    enum BufferState { Initial, Recording, Unusable }
+    readonly Dictionary<ulong, ulong> _poolBuffers = new();
+    readonly Dictionary<ulong, BufferState> _states = new();
+    internal readonly InvalidOperationException Failure = new("Injected Vulkan finalization failure.");
     internal bool Record = true;
     internal bool FailRelease;
     internal bool FailEnd;
@@ -73,15 +79,46 @@ internal sealed class TimestampEndCommandApi(FakeVulkanCommandApi inner, List<st
     internal int Ends;
 
     public ulong CreatePool() => inner.CreatePool();
-    public ulong AllocatePrimaryBuffer(ulong pool) => inner.AllocatePrimaryBuffer(pool);
-    public void ResetPool(ulong pool) { if (Record) inner.ResetPool(pool); }
-    public void BeginOneTimeSubmit(ulong commandBuffer) { if (Record) inner.BeginOneTimeSubmit(commandBuffer); }
+    public ulong AllocatePrimaryBuffer(ulong pool)
+    {
+        ulong buffer = inner.AllocatePrimaryBuffer(pool);
+        _poolBuffers.Add(pool, buffer);
+        _states.Add(buffer, BufferState.Initial);
+        return buffer;
+    }
+    public void ResetPool(ulong pool)
+    {
+        if (Record) inner.ResetPool(pool);
+        _states[_poolBuffers[pool]] = BufferState.Initial;
+    }
+    public void BeginOneTimeSubmit(ulong commandBuffer)
+    {
+        if (_states[commandBuffer] != BufferState.Initial)
+            throw new InvalidOperationException("A command buffer must be pool-reset before another Begin.");
+        if (Record) inner.BeginOneTimeSubmit(commandBuffer);
+        _states[commandBuffer] = BufferState.Recording;
+    }
     public void DestroyPool(ulong pool) => inner.DestroyPool(pool);
+
+    internal void RequireRecording(ulong buffer)
+    {
+        if (_states[buffer] != BufferState.Recording)
+            throw new InvalidOperationException("A command was recorded into an abandoned or sealed buffer before pool reset.");
+    }
+
+    internal void Abandon(ulong buffer) => _states[buffer] = BufferState.Unusable;
+
+    internal void ThrowFailure(ulong buffer)
+    {
+        Abandon(buffer);
+        throw Failure;
+    }
 
     public void ReleaseMemoryForReuse(ulong commandBuffer)
     {
+        RequireRecording(commandBuffer);
         Releases++;
-        if (FailRelease) throw new InvalidOperationException("Injected release failure.");
+        if (FailRelease) ThrowFailure(commandBuffer);
         if (Record)
         {
             inner.ReleaseMemoryForReuse(commandBuffer);
@@ -92,14 +129,17 @@ internal sealed class TimestampEndCommandApi(FakeVulkanCommandApi inner, List<st
 
     public void EndRecording(ulong commandBuffer)
     {
+        RequireRecording(commandBuffer);
         Ends++;
         OnEnd?.Invoke();
-        if (FailEnd) throw new InvalidOperationException("Injected native end failure.");
         if (Record)
         {
             trace.Add("NativeEnd");
             inner.EndRecording(commandBuffer);
         }
+        // A failed vkEndCommandBuffer has still consumed the native end attempt and invalidated the buffer.
+        Abandon(commandBuffer);
+        if (FailEnd) throw Failure;
     }
 
     public VulkanSubmitStatus Submit(ulong commandBuffer, ulong signalValue,
@@ -110,23 +150,30 @@ internal sealed class TimestampEndCommandApi(FakeVulkanCommandApi inner, List<st
     }
 }
 
-internal sealed class TimestampEndQueryApi(List<string> trace) : IVulkanTimestampApi
+internal sealed class TimestampEndQueryApi(List<string> trace, TimestampEndCommandApi commands) : IVulkanTimestampApi
 {
     internal bool Record = true;
     internal bool FailWrite;
     internal int Writes;
     internal int Resets;
     internal int Creates;
+    internal Action<ulong>? OnWrite;
     ulong _nextPool;
 
     public ulong CreatePool(uint capacity) { Creates++; return ++_nextPool; }
     public void DestroyPool(ulong pool) { }
-    public void Reset(ulong commandBuffer, ulong pool, uint count) => Resets++;
+    public void Reset(ulong commandBuffer, ulong pool, uint count)
+    {
+        commands.RequireRecording(commandBuffer);
+        Resets++;
+    }
     public void Write(ulong commandBuffer, ulong pool, uint index)
     {
-        if (FailWrite) throw new InvalidOperationException("Injected timestamp write failure.");
+        commands.RequireRecording(commandBuffer);
+        if (FailWrite) commands.ThrowFailure(commandBuffer);
         Writes++;
         if (Record) trace.Add(index switch { 0 => "Write0", 1 => "Write1", _ => "Write2" });
+        OnWrite?.Invoke(commandBuffer);
     }
     public bool TryRead(ulong pool, uint count, Span<ulong> values, Span<ulong> availability)
     {

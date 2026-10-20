@@ -310,8 +310,14 @@ layouts. The shared command-pool ring then releases memory for reuse, writes the
 the batch and seals the native buffer, in that order. Setup batches and ordinary lists keep the same
 release-and-seal path. The tail adds no submit, flush, wait or per-frame allocation.
 
-End clears tail ownership even when finalization fails. Begin and disposal also clear it without resetting
-the pool. Failed or abandoned Recording or Pending pools stay quarantined by their caller through teardown.
+A failure anywhere in End abandons the recording and propagates the original exception. The list is no
+longer recording and has no sealed record, so Submit and a retry End are refused. Begin starts a fresh
+recording on the next ring slot. The abandoned buffer receives no further commands until Advance resets
+its pool on wrap. Staged buffer uploads require an open recording. Setup batches follow the same rule
+when their shared release-and-seal path fails, and the next append opens the next ring slot.
+
+End clears tail ownership on success or failure. Begin and disposal also clear it without resetting the
+timestamp pool. Failed or abandoned Recording or Pending pools stay quarantined by their caller through teardown.
 A known lost device skips the tail, as it skips the release barrier, and retains the existing native-end
 loss handling. Device loss during a timestamp call can throw through the existing pool validation. No lost
 device recording supplies valid timing. Completed-frame proof requires this optional interface.

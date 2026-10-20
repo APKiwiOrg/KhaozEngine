@@ -47,6 +47,7 @@ public static class MapFoliageEdits
         if (edit is not MapFoliageEditSequence sequence)
         {
             MapFoliageSet? foliage = Apply(document.Foliage, edit);
+            MapDocumentEditFinalizer.Preflight(document, assets, foliage);
             MapDocument candidate = MapPrefabEditPreparation.Copy(document);
             candidate.Foliage = foliage;
             MapEffectiveResources? expanded = Validate(document, candidate, assets, [edit], owners: false);
@@ -67,13 +68,18 @@ public static class MapFoliageEdits
             // whole candidate is validated once, so no intermediate owner or foliage state is ever accepted alone.
             MapDocument withoutFoliage = MapPrefabEditPreparation.Copy(document);
             withoutFoliage.Foliage = null;
-            owner = MapPrefabEdits.PrepareRaw(withoutFoliage, assets, ownerEdit);
+            owner = MapPrefabEdits.PrepareRaw(withoutFoliage, assets, ownerEdit,
+                admitProposal: proposal => MapDocumentEditFinalizer.Preflight(proposal, assets, set));
             // That expansion read the document without its foliage, which expansion never reads, so it is the
             // document's own snapshot, and its provenance is recorded for the foliage context that reuses it.
             if (owner.Expansions?.Before is { } read) read.SourceFingerprint ??= MapDocumentEditFinalizer.BaseFingerprint(withoutFoliage);
             after = owner.After;
         }
-        else after = MapPrefabEditPreparation.Copy(document);
+        else
+        {
+            MapDocumentEditFinalizer.Preflight(document, assets, set);
+            after = MapPrefabEditPreparation.Copy(document);
+        }
         after.Foliage = set;
         MapEffectiveResources? validated = Validate(document, after, assets, sequence.Edits, owners: owner is not null);
         return Result(document, after, assets, owner, owner is null ? new(null, validated, Shared: true) : new(owner.Expansions?.Before, validated));
@@ -86,17 +92,33 @@ public static class MapFoliageEdits
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(assets);
         ArgumentNullException.ThrowIfNull(edit);
-        MapDocument proposal = Proposal(document, edit);
+        MapDocument proposal = Proposal(document, assets, edit);
         MapBoundDocumentValidation.Validate(proposal, assets);
         return MapFoliageDifferential.Compare(document, proposal, assets, edit.Layer.Id);
     }
 
-    static MapDocument Proposal(MapDocument document, MapSetFoliageLayer edit)
+    static MapDocument Proposal(MapDocument document, MapAssetClosure assets, MapSetFoliageLayer edit)
     {
         MapFoliageSet? foliage = Apply(document.Foliage, edit);
+        MapDocumentEditFinalizer.Preflight(document, assets, foliage);
         MapDocument proposal = MapPrefabEditPreparation.Copy(document);
         proposal.Foliage = foliage;
         return proposal;
+    }
+
+    // The editor can admit a foliage-only proposal before its first snapshot clone. An owner sequence's actual target
+    // metadata is available only after the owner edit, whose preparation admits it before its after expansion.
+    internal static void Preflight(MapDocument document, MapAssetClosure assets, MapFoliageEdit edit)
+    {
+        if (edit is MapFoliageEditSequence { OwnerEdit: not null }) return;
+        MapFoliageSet? foliage = document.Foliage;
+        if (edit is MapFoliageEditSequence sequence)
+        {
+            if (sequence.Edits is null) throw new MapDocumentException("A foliage edit sequence requires its edit list.");
+            foreach (MapFoliageEdit step in sequence.Edits) foliage = Apply(foliage, step);
+        }
+        else foliage = Apply(foliage, edit);
+        MapDocumentEditFinalizer.Preflight(document, assets, foliage);
     }
 
     static MapFoliageSet? Apply(MapFoliageSet? set, MapFoliageEdit edit)
@@ -118,14 +140,23 @@ public static class MapFoliageEdits
         }
     }
 
-    // The layer is copied in, so the request's layer object never becomes document state. Every advertised chunk must
-    // be resident in the request, since no document can read density another storage only advertised.
+    // A request can carry this same layer's advertised chunks by key and digest. Reuse only the matching before bytes,
+    // so a windowed request never imports foreign storage advertisements or turns unavailable data into absent data.
     static MapFoliageSet SetLayer(MapFoliageSet? set, MapFoliageLayer value)
     {
         var resident = value.Chunks.Select(c => c.Key).ToHashSet();
-        if (value.ChunkDigests.FirstOrDefault(d => !resident.Contains(d.Key)) is { } missing)
-            throw new MapDocumentException($"Foliage layer '{value.Id}' advertises chunk {missing.Key} without its density bytes.");
-        MapFoliageLayer layer = value.Copy();
+        var before = set?.Layers.FirstOrDefault(l => string.Equals(l.Id, value.Id, StringComparison.Ordinal));
+        var previous = before?.ChunkDigests.ToDictionary(d => d.Key, d => d.Sha256);
+        var available = before?.Chunks.ToDictionary(c => c.Key);
+        var carried = new List<MapFoliageChunk>();
+        foreach (var missing in value.ChunkDigests.Where(d => !resident.Contains(d.Key)))
+        {
+            var bytes = available?.GetValueOrDefault(missing.Key);
+            if (previous?.GetValueOrDefault(missing.Key) != missing.Sha256 || bytes is null)
+                throw new MapDocumentException($"Foliage layer '{value.Id}' advertises chunk {missing.Key} without its density bytes.");
+            carried.Add(bytes);
+        }
+        MapFoliageLayer layer = MapFoliageLayer.FromStorage(value, value.ChunkDigests, value.Chunks.Concat(carried).ToArray());
         var layers = (set?.Layers ?? []).ToList();
         int index = layers.FindIndex(l => string.Equals(l.Id, layer.Id, StringComparison.Ordinal));
         if (index >= 0) layers[index] = layer;
@@ -178,8 +209,9 @@ public static class MapFoliageEdits
     // needs one expansion, which validates every foliage owner. A policy definition change needs its differential token.
     static MapEffectiveResources? Validate(MapDocument before, MapDocument after, MapAssetClosure assets, IReadOnlyList<MapFoliageEdit> steps, bool owners)
     {
+        MapDocumentEditFinalizer.Preflight(after, assets);
         MapBoundDocumentValidation.Validate(after, assets);
-        MapEffectiveResources? expanded = owners || NewEffectiveReferences(before, after) ? MapPrefabResolver.Expand(after, assets) : null;
+        MapEffectiveResources? expanded = owners || NewEffectiveReferences(before, after) ? MapDocumentEditFinalizer.Expand(after, assets) : null;
         foreach (MapSetFoliageLayer step in steps.OfType<MapSetFoliageLayer>()) RequireDifferential(before, assets, step, after);
         return expanded;
     }

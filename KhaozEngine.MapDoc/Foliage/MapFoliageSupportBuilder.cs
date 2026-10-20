@@ -226,13 +226,8 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
         Part($"binding|{binding.Kind}|{binding.SurfaceId}|{binding.SpaceId}|{N(binding.ReferenceY)}|{N(binding.SearchBelow)}|{N(binding.SearchAbove)}");
         Part(MapFoliageDependencies.RasterPart(layer));
         IReadOnlyDictionary<MapFoliageChunkKey, string> digests = densityDigests ?? layer.ChunkDigests.ToDictionary(d => d.Key, d => d.Sha256);
-        // Bilinear reads reach one sample into the next chunk on each axis.
-        for (int dz = 0; dz <= 1; dz++)
-            for (int dx = 0; dx <= 1; dx++)
-            {
-                var key = new MapFoliageChunkKey(chunk.X + dx, chunk.Z + dz);
-                Part(string.Create(CultureInfo.InvariantCulture, $"density|{key.X}|{key.Z}|{(digests.TryGetValue(key, out string? sha) ? sha : "absent")}"));
-            }
+        foreach (var key in MapFoliageRasterReads.Density(layer, chunk))
+            Part(string.Create(CultureInfo.InvariantCulture, $"density|{key.X}|{key.Z}|{(digests.TryGetValue(key, out string? sha) ? sha : "absent")}"));
         Part("allowed|" + string.Join(",", layer.AllowedVisibleMaterials.Select(m => m.ToString(CultureInfo.InvariantCulture))) +
             "|indoors|" + layer.ExcludeIndoors.ToString(CultureInfo.InvariantCulture));
         foreach (MapFoliageMaterial material in layer.Materials)

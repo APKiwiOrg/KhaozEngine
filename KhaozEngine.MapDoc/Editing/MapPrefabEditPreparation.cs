@@ -31,13 +31,14 @@ internal static class MapPrefabEditPreparation
     internal static MapEffectiveResources Begin(MapDocument document, MapAssetClosure assets)
     {
         MapBoundDocumentValidation.Validate(document, assets);
-        return MapPrefabResolver.Expand(document, assets);
+        return MapDocumentEditFinalizer.Expand(document, assets);
     }
 
     internal static MapPrefabEditResult Finish(MapDocument after, MapAssetClosure assets, MapEffectiveResources before,
         IReadOnlyList<string> instances, IEnumerable<MapPrefabBinding> bindings, bool unpack = false, bool nativeAssets = false,
         bool interiors = false)
     {
+        MapDocumentEditFinalizer.Preflight(after, assets);
         _ = MapPrefabPreflight.Count(after, assets, new());
         for (int i = 0; i < after.Surfaces.Refs.Count; i++)
         {
@@ -51,7 +52,7 @@ internal static class MapPrefabEditPreparation
         MapPrefabAttachmentDescriptors.Refresh(after);
         after = Copy(after);
         MapBoundDocumentValidation.Validate(after, assets);
-        var resources = MapPrefabResolver.Expand(after, assets);
+        var resources = MapDocumentEditFinalizer.Expand(after, assets);
         var errors = MapPrismCoverage.Validate(resources.CompleteView(), new());
         if (errors.Count != 0) throw new MapDocumentException(string.Join("\n", errors));
         MapBoundDocumentValidation.ValidateEffectiveWater(resources, assets);

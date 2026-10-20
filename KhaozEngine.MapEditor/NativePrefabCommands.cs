@@ -44,6 +44,7 @@ internal sealed class NativePrefabCommandState
         var registry = MapDocRegistry.CreateDefault();
         if (_writes is { } writes)
         {
+            MapDocumentEditFinalizer.Preflight((undo ? _before : _after)!, targetAssets);
             var desired = NativeDocumentSnapshot.Clone((undo ? _before : _after)!, registry);
             NativeCompleteSnapshotCommand.RetainReservations(desired, candidate);
             NativeDocumentSnapshot.PublishWriteSet(candidate, desired, writes);
@@ -56,6 +57,7 @@ internal sealed class NativePrefabCommandState
         if (undo) throw new InvalidOperationException("Revert called before Apply.");
         var before = NativeDocumentSnapshot.Clone(candidate, registry);
         var result = prepare();
+        MapDocumentEditFinalizer.Preflight(result.After, targetAssets);
         var after = NativeDocumentSnapshot.Clone(result.After, registry);
         NativeDocumentSnapshot.PublishWriteSet(candidate, result.After, result.WriteSet);
         MapDocumentFinalizationStamp? accepted = result.Stamp;

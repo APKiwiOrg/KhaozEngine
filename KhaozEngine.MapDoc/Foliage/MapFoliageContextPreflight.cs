@@ -33,7 +33,10 @@ internal static class MapFoliageContextPreflight
     const long ValueBytes = 8, NumberBytes = 64;
     static readonly int DensityTokenChars = 4 * ((MapFoliageChunk.ByteLength + 2) / 3);
 
-    internal static MapFoliageContextMeasure Measure(MapDocument document, MapAssetClosure assets, MapFoliageContextLimits limits)
+    internal static MapFoliageContextMeasure Measure(MapDocument document, MapAssetClosure assets, MapFoliageContextLimits limits) =>
+        Measure(document, assets, limits, document?.Foliage);
+
+    internal static MapFoliageContextMeasure Measure(MapDocument document, MapAssetClosure assets, MapFoliageContextLimits limits, MapFoliageSet? set)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(assets);
@@ -41,8 +44,8 @@ internal static class MapFoliageContextPreflight
         if (limits.MaxSourceUtf8Bytes < 0 || limits.MaxChunkDescriptors < 0 || limits.MaxPlacements < 0 ||
             limits.MaxSurfacePatches < 0 || limits.MaxPaintTargets < 0) throw new ArgumentOutOfRangeException(nameof(limits));
         var work = new MapFoliageContextWork(0, 0, 0, 0, 0, 0, 0);
-        if (IsPartial(document)) return new(MapFoliageStatus.PartialResidency, work);
-        MapFoliageSet? set = document.Foliage;
+        if (IsPartial(document) || set?.Layers.Any(l => l.Chunks.Count != l.ChunkDigests.Count) == true)
+            return new(MapFoliageStatus.PartialResidency, work);
 
         work = work with { ChunkDescriptors = set?.Layers.Sum(l => (long)l.ChunkDigests.Count) ?? 0 };
         if (work.ChunkDescriptors > limits.MaxChunkDescriptors) return new(MapFoliageStatus.CapacityExceeded, work);

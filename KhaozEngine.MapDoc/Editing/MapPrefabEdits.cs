@@ -43,7 +43,8 @@ public static class MapPrefabEdits
 
     /// <summary>The validated candidate before finalization, for callers that compose it with more changes and
     /// finalize the whole candidate once.</summary>
-    internal static MapPrefabEditResult PrepareRaw(MapDocument document, MapAssetClosure assets, MapPrefabEdit edit)
+    internal static MapPrefabEditResult PrepareRaw(MapDocument document, MapAssetClosure assets, MapPrefabEdit edit,
+        Action<MapDocument>? admitProposal = null)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(assets);
@@ -113,6 +114,7 @@ public static class MapPrefabEdits
         }
         var bindings = oldBindings.Concat(after.Prefabs!.Instances.Single(i => i.Id == id).Bindings.Entries)
             .Concat(after.Prefabs.Transfers.Where(t => t.InstanceId == id).Select(t => t.Binding)).ToArray();
+        admitProposal?.Invoke(after);
         return MapPrefabEditPreparation.Finish(after, assets, before, new[] { id }, bindings,
             unpack: edit is MapUnpackPrefab);
     }

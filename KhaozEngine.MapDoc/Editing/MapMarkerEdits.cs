@@ -78,7 +78,7 @@ public static class MapMarkerEdits
         { Roofs = intent.Roofs, Storeys = intent.Storeys };
         // IDs, names, payloads and bindings are validated, and every support-bound height resolves, before the result exists.
         MapBoundDocumentValidation.Validate(after, assets);
-        var resources = MapPrefabResolver.Expand(after, assets);
+        var resources = MapDocumentEditFinalizer.Expand(after, assets);
         var effects = MapMarkerEffects.Describe(MapEffectiveAnnotations.Markers(before), MapEffectiveAnnotations.Markers(resources));
         var writes = new MapNativeWriteSet([], [], [], [], [], [], false)
         {

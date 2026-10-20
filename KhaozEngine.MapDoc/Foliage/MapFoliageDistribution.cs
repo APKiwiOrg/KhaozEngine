@@ -43,16 +43,18 @@ public static class MapFoliageDistribution
             if (area.MinX == area.MaxX || area.MinZ == area.MaxZ) return new(MapFoliageStatus.Complete, [], meter.Work());
             int x0 = ChunkIndex(layer, area.MinX, true), z0 = ChunkIndex(layer, area.MinZ, false);
             int x1 = ChunkIndex(layer, MathF.BitDecrement(area.MaxX), true), z1 = ChunkIndex(layer, MathF.BitDecrement(area.MaxZ), false);
-            decimal count = ((decimal)x1 - x0 + 1) * ((decimal)z1 - z0 + 1);
-            if (count > admitted.MaxQueryChunks) throw Refuse(MapFoliageStatus.CapacityExceeded, "query chunks");
+            int[] xs = MapFoliageRasterReads.Chunks(layer, x0, x1, true).Take(admitted.MaxQueryChunks + 1).ToArray();
+            int[] zs = MapFoliageRasterReads.Chunks(layer, z0, z1, false).Take(admitted.MaxQueryChunks + 1).ToArray();
+            if ((long)xs.Length * zs.Length > admitted.MaxQueryChunks) throw Refuse(MapFoliageStatus.CapacityExceeded, "query chunks");
             var batches = new List<MapFoliageSampleBatch>();
-            for (long z = z0; z <= z1; z++)
-                for (long x = x0; x <= x1; x++)
+            foreach (int z in zs)
+                foreach (int x in xs)
                 {
-                    var key = new MapFoliageChunkKey((int)x, (int)z);
+                    var key = new MapFoliageChunkKey(x, z);
                     RectArea rect = Rectangle(layer, key);
                     var clipped = new RectArea(MathF.Max(rect.MinX, area.MinX), MathF.Max(rect.MinZ, area.MinZ),
                         MathF.Min(rect.MaxX, area.MaxX), MathF.Min(rect.MaxZ, area.MaxZ));
+                    if (clipped.MinX >= clipped.MaxX || clipped.MinZ >= clipped.MaxZ) continue;
                     batches.Add(GenerateCore(context, layer, key, clipped, admitted, budget, meter, observe));
                 }
             return new(MapFoliageStatus.Complete, batches, meter.Work(budget.Bytes));
@@ -125,12 +127,7 @@ public static class MapFoliageDistribution
         return new((float)r.MinX, (float)r.MinZ, (float)r.MaxX, (float)r.MaxZ);
     }
 
-    internal static int ChunkIndex(MapFoliageLayer layer, float point, bool x)
-    {
-        double n = Math.Floor(((double)point - (x ? layer.OriginX : layer.OriginZ)) / (32.0 * layer.CellSize));
-        if (n < int.MinValue || n > int.MaxValue) throw Refuse(MapFoliageStatus.NotRepresentable, "logical chunk index");
-        return (int)n;
-    }
+    internal static int ChunkIndex(MapFoliageLayer layer, float point, bool x) => MapFoliageRasterReads.Owner(layer, point, x);
 
     internal static MapFoliageRefusal Refuse(MapFoliageStatus status, string detail) => new(status, MapFoliageSupport.NoWork, detail);
 

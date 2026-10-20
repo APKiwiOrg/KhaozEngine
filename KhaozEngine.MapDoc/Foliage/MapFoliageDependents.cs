@@ -57,11 +57,11 @@ internal static class MapFoliageDependents
             {
                 HashSet<MapFoliageChunkKey> presentA = Present(la), presentB = Present(lb);
                 var selected = new HashSet<MapFoliageChunkKey>();
-                // A changed chunk is read by its own batch and the batches one chunk before it on each axis.
+                // Invert the same rounded ownership and released float sampling intervals as batch dependencies.
                 var shaA = la.ChunkDigests.ToDictionary(d => d.Key, d => d.Sha256);
                 var shaB = lb.ChunkDigests.ToDictionary(d => d.Key, d => d.Sha256);
                 foreach (MapFoliageChunkKey chunk in shaA.Keys.Union(shaB.Keys).Where(k => shaA.GetValueOrDefault(k) != shaB.GetValueOrDefault(k)))
-                    foreach (MapFoliageChunkKey key in Readers(chunk))
+                    foreach (MapFoliageChunkKey key in MapFoliageRasterReads.Readers(la, chunk).Union(MapFoliageRasterReads.Readers(lb, chunk)))
                         if (presentA.Contains(key) || presentB.Contains(key)) selected.Add(key);
                 bool members = !la.ExceptionMasks.SequenceEqual(lb.ExceptionMasks) || !la.CompatibilityOrdinals.SequenceEqual(lb.CompatibilityOrdinals) ||
                     !la.OwnerSupports.SequenceEqual(lb.OwnerSupports);
@@ -128,21 +128,13 @@ internal static class MapFoliageDependents
         return layers;
     }
 
-    static IEnumerable<MapFoliageChunkKey> Readers(MapFoliageChunkKey chunk)
-    {
-        for (int dz = 0; dz <= 1; dz++)
-            for (int dx = 0; dx <= 1; dx++)
-                if ((long)chunk.X - dx >= int.MinValue && (long)chunk.Z - dz >= int.MinValue)
-                    yield return new(chunk.X - dx, chunk.Z - dz);
-    }
-
     // The batches that read at least one stored chunk and are not provably off the raster.
     internal static HashSet<MapFoliageChunkKey> Present(MapFoliageLayer? layer)
     {
         var present = new HashSet<MapFoliageChunkKey>();
         if (layer is null) return present;
         foreach (MapFoliageChunkDigest stored in layer.ChunkDigests)
-            foreach (MapFoliageChunkKey key in Readers(stored.Key))
+            foreach (MapFoliageChunkKey key in MapFoliageRasterReads.Readers(layer, stored.Key))
                 if (!present.Contains(key) && !OffRaster(layer, key)) present.Add(key);
         return present;
     }
@@ -175,12 +167,8 @@ internal static class MapFoliageDependents
         w.WriteStringValue(status.ToString());
         string settings = MapFoliageEffects.Settings(layer);
         var stored = layer.ChunkDigests.ToDictionary(d => d.Key, d => d.Sha256);
-        for (int dz = 0; dz <= 1; dz++)
-            for (int dx = 0; dx <= 1; dx++)
-            {
-                var read = new MapFoliageChunkKey(key.X + dx, key.Z + dz);
-                w.WriteStringValue(stored.TryGetValue(read, out string? sha) ? MapFoliageEffects.Digest(settings, read, sha) : "absent");
-            }
+        foreach (var read in MapFoliageRasterReads.Density(layer, key))
+            w.WriteStringValue(stored.TryGetValue(read, out string? sha) ? MapFoliageEffects.Digest(settings, read, sha) : "absent");
         w.WriteEndArray();
     });
 

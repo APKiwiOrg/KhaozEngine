@@ -208,13 +208,16 @@ public sealed class MapPreparedFoliageClearance
         if (Grid(point) is not { } grid) return MapFoliageReason.OutsideDomain;
         var (cx, cz, _, _) = grid.Locate(x, z);
         Vector2 centre = Centre(grid, cx, cz);
+        MapFoliageReason reason = MapFoliageReason.Accepted;
         foreach (int i in _index.Query(new(centre.X, centre.Y, centre.X, centre.Y), out _))
         {
             Entry entry = _entries[i];
             if (entry.Kind == MapFoliageClearanceKind.Door || !Applies(entry, point, centre.X, centre.Y)) continue;
-            if (entry.Contains(centre.X, centre.Y)) return entry.Kind == MapFoliageClearanceKind.Solid ? MapFoliageReason.Solid : MapFoliageReason.RoofAbove;
+            if (!entry.Contains(centre.X, centre.Y)) continue;
+            if (entry.Kind == MapFoliageClearanceKind.Solid) return MapFoliageReason.Solid;
+            reason = MapFoliageReason.RoofAbove;
         }
-        return MapFoliageReason.Accepted;
+        return reason;
     }
 
     bool Applies(Entry entry, MapFoliageSurfacePoint point, float x, float z)

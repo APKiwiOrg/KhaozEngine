@@ -187,7 +187,7 @@ internal sealed class ShippedFoliageCorrespondence(TileWorldDocument world, Tile
 
     // The generator's self-check, repeated: each rule or mask kind needs the original object's own property, a solid
     // or roof footprint must cover exactly the original tiles, and a door clears around the original footprint centre.
-    static void RequireRule(MapFoliageClearanceKind kind, MapFoliageRect local, MapEffectiveTransform pose, TileRect footprint,
+    internal static void RequireRule(MapFoliageClearanceKind kind, MapFoliageRect local, MapEffectiveTransform pose, TileRect footprint,
         TileObject obj, TileObjectArchetype archetype, HashSet<string> ids, string id)
     {
         Require(kind switch
@@ -213,8 +213,12 @@ internal sealed class ShippedFoliageCorrespondence(TileWorldDocument world, Tile
             var corners = new[] { Point(local.MinX, local.MinZ), Point(local.MaxX, local.MinZ), Point(local.MaxX, local.MaxZ), Point(local.MinX, local.MaxZ) };
             double minX = TileWorldSpace.WorldX(footprint.X, 1f), maxX = TileWorldSpace.WorldX(footprint.X1, 1f);
             double minZ = TileWorldSpace.WorldZ(footprint.Z1, 1f), maxZ = TileWorldSpace.WorldZ(footprint.Z, 1f);
-            Require(Math.Abs(corners.Min(c => c.X) - minX) <= 0.0001 && Math.Abs(corners.Max(c => c.X) - maxX) <= 0.0001 &&
-                Math.Abs(corners.Min(c => c.Z) - minZ) <= 0.0001 && Math.Abs(corners.Max(c => c.Z) - maxZ) <= 0.0001,
+            (double X, double Z)[] source = [(minX, minZ), (maxX, minZ), (maxX, maxZ), (minX, maxZ)];
+            // Compare the polygon in cyclic order, allowing either winding and any starting vertex. Equal extents alone
+            // would also admit a rotated diamond with different coverage.
+            Require(new[] { -1, 1 }.Any(step => Enumerable.Range(0, 4).Any(start => Enumerable.Range(0, 4).All(i =>
+                Math.Abs(corners[i].X - source[(start + step * i + 4) % 4].X) <= 0.0001 &&
+                Math.Abs(corners[i].Z - source[(start + step * i + 4) % 4].Z) <= 0.0001))),
                 "clearance rule disagrees with the source footprint");
         }
         ids.Add(id);

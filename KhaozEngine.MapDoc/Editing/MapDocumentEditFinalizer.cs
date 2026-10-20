@@ -29,6 +29,7 @@ public static class MapDocumentEditFinalizer
         ArgumentNullException.ThrowIfNull(beforeAssets);
         ArgumentNullException.ThrowIfNull(afterAssets);
         ArgumentNullException.ThrowIfNull(prepared.After);
+        Preflight(prepared.After, afterAssets);
         MapBoundDocumentValidation.Validate(prepared.After, afterAssets);
         return Complete(before, prepared, beforeAssets, afterAssets);
     }
@@ -38,6 +39,7 @@ public static class MapDocumentEditFinalizer
         MapAssetClosure afterAssets)
     {
         MapDocument after = prepared.After;
+        Preflight(after, afterAssets);
         // Without foliage nothing is finalized, and released results carry no retained expansion.
         if (before.Foliage is null && after.Foliage is null) return prepared.Expansions is null ? prepared : prepared with { Expansions = null };
         // Each side's fingerprint without foliage is hashed once here and reused by its capture.
@@ -69,6 +71,7 @@ public static class MapDocumentEditFinalizer
         MapDocumentFinalizationSide? accepted, string beforeFingerprint, string afterFingerprint,
         Func<MapEffectiveResources> beforeResources, Func<MapEffectiveResources> afterResources)
     {
+        Preflight(after, afterAssets);
         if (before.Foliage is null && after.Foliage is null) return (effects, null);
         bool matchA = stamp?.Before.Matches(beforeFingerprint, beforeAssets) == true, matchB = stamp?.After.Matches(afterFingerprint, afterAssets) == true;
         if (matchA && matchB) return (Channel(effects, stamp!), stamp);
@@ -92,11 +95,14 @@ public static class MapDocumentEditFinalizer
 
     /// <summary>Refuses a document whose foliage context demand exceeds the default construction budget, from metadata
     /// alone. A document without foliage is not measured, so released documents keep their behaviour.</summary>
-    internal static void Preflight(MapDocument document, MapAssetClosure? assets)
+    internal static void Preflight(MapDocument document, MapAssetClosure? assets) => Preflight(document, assets, document.Foliage);
+
+    /// <summary>Admits proposed foliage against the target's metadata and closure without a document copy.</summary>
+    internal static void Preflight(MapDocument document, MapAssetClosure? assets, MapFoliageSet? foliage)
     {
-        if (document.Foliage is null) return;
+        if (foliage is null) return;
         if (assets is null) throw new MapDocumentException("Native foliage editing requires a verified asset closure.");
-        MapFoliageContextMeasure measure = MapFoliageContextPreflight.Measure(document, assets, new());
+        MapFoliageContextMeasure measure = MapFoliageContextPreflight.Measure(document, assets, new(), foliage);
         if (measure.Status != MapFoliageStatus.Complete)
             throw MapFoliageEditRefusal.Create(measure.Status, "the document exceeds the foliage context budget before any copy");
     }

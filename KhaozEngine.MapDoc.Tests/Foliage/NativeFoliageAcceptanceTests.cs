@@ -144,7 +144,7 @@ public sealed class NativeFoliageAcceptanceTests
         Assert.DoesNotContain(holed[ShoreLayer].Samples, OverCaves);
         Assert.All(holed[ShoreLayer].Samples, s => Assert.Equal("exterior", s.Key.Address.SupportOwnerId));
         foreach (string cave in new[] { DryLayer, FloodLayer, OtherCaveLayer })
-            Assert.DoesNotContain(holed[cave].Samples, s => s.Key.Address.LayerId == ShoreLayer || s.Key.Address.SupportOwnerId == "exterior");
+            Assert.DoesNotContain(holed[cave].Samples, s => s.Key.Address.SupportOwnerId == "exterior");
         Assert.Equal(authored[OtherCaveLayer].Samples, SampleText(holed[OtherCaveLayer].Samples));
         MapDocument spaceBound = MapDocumentFile.LoadText(MapDocumentFile.SaveText(removed.After));
         MapFoliageLayer shore = spaceBound.Foliage!.Layers.Single(l => l.Id == ShoreLayer);

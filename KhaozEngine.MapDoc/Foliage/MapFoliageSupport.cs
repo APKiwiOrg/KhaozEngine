@@ -151,9 +151,8 @@ public static class MapFoliageSupport
     /// <summary>The chunk's world rectangle. Rows advance positive world Z.</summary>
     internal static (double MinX, double MinZ, double MaxX, double MaxZ) Rect(MapFoliageLayer layer, MapFoliageChunkKey chunk)
     {
-        double span = (double)MapFoliageChunk.Size * layer.CellSize;
-        double minX = layer.OriginX + chunk.X * span, minZ = layer.OriginZ + chunk.Z * span;
-        return (minX, minZ, minX + span, minZ + span);
+        return (MapFoliageRasterReads.Edge(layer, chunk.X, true), MapFoliageRasterReads.Edge(layer, chunk.Z, false),
+            MapFoliageRasterReads.Edge(layer, (long)chunk.X + 1, true), MapFoliageRasterReads.Edge(layer, (long)chunk.Z + 1, false));
     }
 
     /// <summary>The preparation core over an acquired chunk view, its scoped partial paint and the effective declared
@@ -295,8 +294,11 @@ public sealed class MapPreparedFoliageSupport
         try { density = MapFoliageSupport.RasterDensity(_layer, worldX, worldZ); }
         catch (MapDocumentException) { return Refusal(MapFoliageStatus.Unavailable); }
 
-        var exact = new MapExactXz(MapExactValue.FromSingle(worldX), MapExactValue.FromSingle(worldZ));
-        try { return Decide(exact, worldX, worldZ, density); }
+        try
+        {
+            var exact = new MapExactXz(MapExactValue.FromSingle(worldX), MapExactValue.FromSingle(worldZ));
+            return Decide(exact, worldX, worldZ, density);
+        }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException) { return Refusal(MapFoliageStatus.NotRepresentable); }
         catch (MapDocumentException error)
         {

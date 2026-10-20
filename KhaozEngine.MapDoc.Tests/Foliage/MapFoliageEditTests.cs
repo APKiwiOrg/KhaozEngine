@@ -172,7 +172,8 @@ public sealed class MapFoliageEditTests
         const string range = "must be from 0 to 255", count = "needs 2 values", outside = "lies outside layer", absent = "No foliage layer 'absent'";
         const string radius = "radius must be finite and positive", hardness = "hardness must be from 0 to 1";
         // A layer that advertises a chunk it does not hold cannot become this document's state.
-        MapFoliageLayer advertisedOnly = MapFoliageLayer.FromStorage(layer, layer.ChunkDigests, layer.Chunks.Take(1).ToArray());
+        MapFoliageLayer advertisedOnly = MapFoliageLayer.FromStorage(layer,
+            layer.ChunkDigests.Select(d => d.Key.X == 1 ? d with { Sha256 = new string('0', 64) } : d).ToArray(), layer.Chunks.Take(1).ToArray());
         foreach ((MapFoliageEdit bad, string reason) in new (MapFoliageEdit, string)[]
         {
             (new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7, 256]), range), (new MapSetFoliageDensity(Id, 1, 2, 2, 1, [-1, 9]), range),

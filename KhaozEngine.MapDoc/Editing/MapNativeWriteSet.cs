@@ -47,6 +47,7 @@ public sealed record MapNativeWriteSet(IReadOnlyList<MapPatchKey> Patches, IRead
         Water = a.Water || b.Water,
         NativeAssets = a.NativeAssets || b.NativeAssets,
         Foliage = a.Foliage || b.Foliage,
+        LegacySpawns = a.LegacySpawns || b.LegacySpawns,
     };
 }
 

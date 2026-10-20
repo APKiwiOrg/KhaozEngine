@@ -19,6 +19,7 @@ public sealed class FoliageEditCommand : EditorCommand, INativeBoundDocumentComm
     public override void Revert(MapDocument doc) => NativeDocumentTransaction.Run(doc, this, true, null, localOnly: true);
     /// <summary>The accepted forward finalization, null before acceptance.</summary>
     internal MapDocumentFinalizationStamp? AcceptedStamp => _state.AcceptedStamp;
+    internal void Preflight(MapDocument document, MapAssetClosure assets) => MapFoliageEdits.Preflight(document, assets, _edit);
     NativeDocumentPreparation INativeBoundDocumentCommand.Prepare(MapDocument candidate, bool undo, MapAssetClosure assets) =>
         _state.Prepare(candidate, undo, assets, assets, () => MapFoliageEdits.Prepare(candidate, assets, _edit));
 }

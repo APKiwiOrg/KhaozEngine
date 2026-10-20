@@ -877,14 +877,16 @@ geometry. Explicit trees, shrubs and flora retain placement IDs and collision in
 
 `MapFoliageEdits` and `MapFoliageBrush` return pure proposals. A policy definition change needs its
 `PreviewPolicyChange` token, bound to the exact committed candidate, so publish a policy change alone.
-A new layer requires no differential and its tool dry run refuses. Brush density is 0 to 255 with ToEven rounding,
+A new layer requires no differential and its tool dry run refuses. Same-layer advertisements can carry density only
+when their keys and digests match the before document's resident chunks. Brush density is 0 to 255 with ToEven rounding,
 hardness 0 to 1, at most 64 chunks and 65,536 addresses. Hardness 1 includes the radius at full strength. Lower hardness
 has zero weight on that boundary. Refusal is atomic and allocates no accepted history entry.
 
 Complete document transactions use public `MapDocumentEditFinalizer`, shared by pure consumers, MapEditor commands,
 callbacks and wire paths. `MapNativeInvalidation.Foliage` is 256 and never adds Physics, Nav or Residency.
 `Finalize(before, prepared, assets)` uses one closure. Its four-argument overload takes separate before/after closures
-for an asset switch. Both validate the complete candidate and preserve every other effect and write-set member.
+for an asset switch. Both admit the proposed foliage context against its target closure before expansion or stamp reuse,
+including whole-layer and chunkless changes, then validate the candidate and preserve every other effect and write.
 `MapFoliageEffects.Describe(before, after, oldContext, newContext, trigger)` returns
 `MapFoliageEffectSet(Chunks, Layers)`, with contexts captured from those exact snapshots and closures.
 
@@ -892,7 +894,8 @@ for an asset switch. Both validate the complete candidate and preserve every oth
 or its digest changes. When preparation completes, a side's digest equals `MapFoliageSampleBatch.DependencyDigest`,
 including the raster-only digest off-raster. Deterministically refused preparation instead carries the refusal digest
 from `MapFoliageDependents`. It binds `kemap/foliage-batch-refused/1`, the layer ID, batch chunk X/Z and refusal status,
-plus the four density read positions at chunk offsets (0, 0), (1, 0), (0, 1) and (1, 1). Each present position contributes
+plus the density chunks read by float bilinear sampling over points owned by the rounded binary32 generation rectangle.
+This can include the preceding density chunk at a rounded lower edge. Each present read position contributes
 a digest of its chunk address, density SHA-256 and canonical authored layer settings excluding the chunk list.
 Missing positions contribute `absent`. A refused batch from `MapFoliageDistribution` carries an empty
 `DependencyDigest`, so consumers must check status and never compare a refused effect side to a refused batch by digest

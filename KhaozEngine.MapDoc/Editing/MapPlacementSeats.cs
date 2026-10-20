@@ -18,7 +18,7 @@ internal static class MapPlacementSeats
     {
         var missing = document.Placements.Where(p => p.Y is null).Select(p => p.Id).ToHashSet(StringComparer.Ordinal);
         if (missing.Count == 0 || document.ResolverIdentity?.ResolverVersion != 2) return Empty;
-        var effective = MapPrefabResolver.Expand(document, assets);
+        var effective = MapDocumentEditFinalizer.Expand(document, assets);
         var writes = Empty;
         foreach (string id in missing)
         {

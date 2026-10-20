@@ -386,10 +386,12 @@ public sealed class MapFoliageClearanceTests
             return MapFoliageSupport.Prepare(context, context.Foliage!.Layers[0], new(0, 0), limits);
         }
         var off = Prepared(0, new());
-        // Edge fade 0 grids widen only by the 2 m centre read reach. The same 4904 cells and 62 dependency parts remain.
+        // Edge fade 0 grids widen only by the 2 m centre read reach. The same 4904 cells remain.
         // Each cell's two triangles are compiled once and shared with membership.
-        Assert.Equal((MapFoliageStatus.Complete, 4904, 2L * 4904, 62),
-            (off.Status, off.Grids.Sum(g => g.Cells.Count), off.Work.Faces, off.DependencyParts.Count));
+        Assert.Equal((MapFoliageStatus.Complete, 4904, 2L * 4904),
+            (off.Status, off.Grids.Sum(g => g.Cells.Count), off.Work.Faces));
+        // The 32 by 32 raster clamps its bilinear reads to chunk (0, 0), with no next-chunk density dependency.
+        Assert.StartsWith("density|0|0|", Assert.Single(off.DependencyParts, p => p.StartsWith("density|", StringComparison.Ordinal)), StringComparison.Ordinal);
         var on = Prepared(4, new());
         Assert.True(on.Grids.Sum(g => g.Cells.Count) > off.Grids.Sum(g => g.Cells.Count), $"{on.Grids.Sum(g => g.Cells.Count)} cells");
         Assert.True(on.Work.Faces > off.Work.Faces, $"{on.Work.Faces} faces");

@@ -372,8 +372,9 @@ internal static partial class FoliageFixtures
         return heads;
     }
 
-    /// <summary>Changes one head's loaded state in place: its first layer's seed and the underlay of the first cell of its
-    /// first surface patch, rehashed so the head stays a valid document.</summary>
+    /// <summary>Replaces this loaded head's immutable foliage set to change its first layer's seed. Mutates the first
+    /// loaded patch's first cell underlay and refreshes the surface-reference digests in the head's mutable ref list.
+    /// The saved storage and the other independently loaded heads are not changed.</summary>
     internal static void MutateHead(FoliageFixture head)
     {
         MapDocument document = head.Document;

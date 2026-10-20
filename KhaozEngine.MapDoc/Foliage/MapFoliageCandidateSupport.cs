@@ -59,52 +59,69 @@ internal sealed class MapFoliageCandidateSupport
     // Every cell of every acquired support, ceiling and indoor patch over the chunk, each such patch validated, every
     // opening cell there, and the source cells of every acquired portal band segment.
     internal static MapBoundFaceContext Context(MapScopedSurfaces view, MapPreparedSupport support, MapExactXz min, MapExactXz max, long maxFaces, out long faces,
-        Func<MapValidatedSurfacePatch, MapSlotCellMask, MapCompiledPatch>? compile = null, Action<long>? chargeFaces = null)
+        Func<MapValidatedSurfacePatch, MapSlotCellMask, MapCompiledPatch>? compile = null, Action<long>? chargeFaces = null,
+        Action? inspectCell = null)
     {
         // This is aggregate admission over a subset of the acquisition's at most 256 patches. It cannot lower a
         // point's released patch allowance, and the supplied-context query still checks that point's face budget.
         var limits = new MapRefinementLimits(MaxContextPatches: view.Scope.Limits.MaxCandidatePatches);
         var bounds = new MapSpacePointBounds(view, limits, null);
-        var demands = new List<MapBoundFaceDemand>();
-        foreach (MapSurfaceRef surface in Participating(view, support))
+        // Stream demands into PrepareBounds. Its face admission precedes retained masks and compiled arrays, and no
+        // chunk-wide demand list is allocated before that gate.
+        IEnumerable<MapBoundFaceDemand> Demands()
         {
-            MapCellRect range = MapEffectiveGeometry.CellRange(view, surface.Id, min, max);
-            for (long z = checked(range.MinZ - 1); z <= range.MaxZExclusive; z++)
-                for (long x = checked(range.MinX - 1); x <= range.MaxXExclusive; x++)
+            foreach (MapSurfaceRef surface in Participating(view, support))
+            {
+                MapCellRect range = MapEffectiveGeometry.CellRange(view, surface.Id, min, max);
+                foreach (var row in view.Witness.Present.Where(p => p.Key.SurfaceId == surface.Id))
                 {
-                    MapPatchKey key = MapPatchKey.ForCell(surface.Id, x, z);
+                    MapPatchKey key = row.Key;
                     if (!view.TryAcquiredPatch(key, out MapSurfacePatch? patch, out _) || patch is null) continue;
+                    // Point selection also demands known empty cells outside a patch's authored rectangle within its
+                    // acquired slot. Keep those zero-face answers, bounded by 4096 cells per acquired patch.
+                    long px = checked(key.SlotX * MapPatchKey.SlotCells);
+                    long pz = checked(key.SlotZ * MapPatchKey.SlotCells);
+                    long x0 = Math.Max(checked(range.MinX - 1), px), z0 = Math.Max(checked(range.MinZ - 1), pz);
+                    long x1 = Math.Min(range.MaxXExclusive, checked(px + MapPatchKey.SlotCells - 1));
+                    long z1 = Math.Min(range.MaxZExclusive, checked(pz + MapPatchKey.SlotCells - 1));
+                    if (x0 > x1 || z0 > z1) continue;
                     if (bounds.Preparation.ValidatedPatch(surface, patch) is null)
                         throw new MapFoliageRefusal(MapFoliageStatus.CapacityExceeded, MapFoliageSupport.NoWork, bounds.Preparation.Refusal ?? "context patches");
-                    // Every cell of an acquired patch over the chunk, as a point query demands it: an absent or out-of-
-                    // rectangle cell compiles no face but answers its demand.
-                    demands.Add(new(new(key, MapLowerCellClassifier.SlotCell(x, z)), null));
+                    for (long z = z0; z <= z1; z++)
+                        for (long x = x0; x <= x1; x++)
+                        {
+                            inspectCell?.Invoke();
+                            yield return new(new(key, MapLowerCellClassifier.SlotCell(x, z)), null);
+                        }
                 }
-        }
-        foreach (MapHorizontalOpening opening in support.Records.OfType<MapHorizontalOpening>())
-        {
-            MapRecordRef reference = view.Witness.Records.First(r => r.Id == opening.Id);
-            MapCellRect range = MapEffectiveGeometry.CellRange(view, opening.Patch.SurfaceId, min, max);
-            foreach (int slot in opening.SlotCells)
-            {
-                long x = checked(opening.Patch.SlotX * MapPatchKey.SlotCells + slot % MapPatchKey.SlotCells);
-                long z = checked(opening.Patch.SlotZ * MapPatchKey.SlotCells + slot / MapPatchKey.SlotCells);
-                if (x >= range.MinX - 1 && x <= range.MaxXExclusive && z >= range.MinZ - 1 && z <= range.MaxZExclusive)
-                    demands.Add(new(new(opening.Patch, slot), reference));
             }
-        }
-        foreach (MapCavePortal portal in support.Records.OfType<MapCavePortal>())
-            foreach (MapRecordRef band in portal.BandTop is { } top ? new[] { portal.BandBottom, top } : new[] { portal.BandBottom })
+            foreach (MapHorizontalOpening opening in support.Records.OfType<MapHorizontalOpening>())
             {
-                // A band whose chain or source patch is not acquired is left to the point's own refusal.
-                if (!view.TryRecord(band, out MapTopologyRecord? record, out _, borrow: true) || record is not MapBoundaryChain chain) continue;
-                for (int i = 0; i + 1 < chain.Vertices.Count; i++)
+                MapRecordRef reference = view.Witness.Records.First(r => r.Id == opening.Id);
+                MapCellRect range = MapEffectiveGeometry.CellRange(view, opening.Patch.SurfaceId, min, max);
+                foreach (int slot in opening.SlotCells)
                 {
-                    MapBoundaryChain segment = chain with { Vertices = Array.AsReadOnly(new[] { chain.Vertices[i], chain.Vertices[i + 1] }) };
-                    try { demands.AddRange(bounds.SourceCells(segment).Select(cell => new MapBoundFaceDemand(cell, null))); }
-                    catch (MapDocumentException) { }
+                    long x = checked(opening.Patch.SlotX * MapPatchKey.SlotCells + slot % MapPatchKey.SlotCells);
+                    long z = checked(opening.Patch.SlotZ * MapPatchKey.SlotCells + slot / MapPatchKey.SlotCells);
+                    if (x >= range.MinX - 1 && x <= range.MaxXExclusive && z >= range.MinZ - 1 && z <= range.MaxZExclusive)
+                        yield return new(new(opening.Patch, slot), reference);
                 }
             }
+            foreach (MapCavePortal portal in support.Records.OfType<MapCavePortal>())
+                foreach (MapRecordRef band in portal.BandTop is { } top ? new[] { portal.BandBottom, top } : new[] { portal.BandBottom })
+                {
+                    // A band whose chain or source patch is not acquired is left to the point's own refusal.
+                    if (!view.TryRecord(band, out MapTopologyRecord? record, out _, borrow: true) || record is not MapBoundaryChain chain) continue;
+                    for (int i = 0; i + 1 < chain.Vertices.Count; i++)
+                    {
+                        MapBoundaryChain segment = chain with { Vertices = Array.AsReadOnly(new[] { chain.Vertices[i], chain.Vertices[i + 1] }) };
+                        MapCellDemand[] cells;
+                        try { cells = bounds.SourceCells(segment).ToArray(); }
+                        catch (MapDocumentException) { continue; }
+                        foreach (var cell in cells) yield return new(cell, null);
+                    }
+                }
+        }
         var work = new MapBoundFaceWork();
         if (compile is null && chargeFaces is not null)
             compile = (patch, mask) =>
@@ -112,7 +129,7 @@ internal sealed class MapFoliageCandidateSupport
                 chargeFaces(MapSurfaceCompiler.CountFaces(patch, mask, logical: false));
                 return MapSurfaceCompiler.Compile(patch, mask, MapSurfaceCompiler.MaxFacesPerPatch);
             };
-        MapBoundFaceContext? context = MapBoundFaceContext.PrepareBounds(view, demands, limits.MaxContextPatches, maxFaces, work,
+        MapBoundFaceContext? context = MapBoundFaceContext.PrepareBounds(view, Demands(), limits.MaxContextPatches, maxFaces, work,
             out string? refusal, bounds.Preparation, compile, chargeFaces);
         faces = work.CompiledFaces;
         return context ?? throw new MapFoliageRefusal(MapFoliageStatus.CapacityExceeded, MapFoliageSupport.NoWork, refusal ?? "context faces");

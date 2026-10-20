@@ -19,9 +19,8 @@ public sealed class FoliageSchemaParityTests
     // schema parses the text. Uniqueness by a key inside array items, ordering, cross-references, cross-field ranges,
     // sums and checks against the decoded density span several values, which JSON Schema cannot relate. The schema
     // itself refuses a cell size beyond binary32 range and a support ID without a non-whitespace character. Its pattern
-    // is evaluated with ECMA semantics by other validators, whose \s also holds U+FEFF, while the runtime blank test
-    // uses char.IsWhiteSpace, which does not. An ID of only U+FEFF is therefore accepted here and refused by an ECMA
-    // validator, the one known edge between the two.
+    // uses .NET whitespace here, as does the runtime's char.IsWhiteSpace. ECMA validators include U+FEFF and exclude
+    // U+0085 in \s, while .NET does the reverse. IDs made only of either scalar can therefore differ between validators.
     static readonly string[] RuntimeOnly =
     [
         "set-duplicate", "id-duplicate", "scale-reversed", "model-duplicate", "weight-sum", "material-unknown",

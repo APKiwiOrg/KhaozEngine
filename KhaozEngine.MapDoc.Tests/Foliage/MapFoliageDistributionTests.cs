@@ -125,6 +125,7 @@ public sealed class MapFoliageDistributionTests
         FoliageFixture f = FoliageComparisonFixtures.Grown(2, 8, 1, 8);
         string original = Generate(f).DependencyDigest;
         Assert.NotEmpty(original);
+        Assert.Equal(original, Changed(f, _ => { }, "reload"));
         // Paint over the chunk's floor.
         Assert.NotEqual(original, Changed(f, g => Paint(g, 10), "paint"));
         Assert.NotEqual(Changed(f, g => Paint(g, 10), "paint"), Changed(f, g => Paint(g, 11), "repaint"));

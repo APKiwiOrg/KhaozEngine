@@ -65,6 +65,7 @@ internal static class NativeDocumentTransaction
 
     internal static void Publish(MapDocument document, NativeStagedPublication staged, string? liveLists = null)
     {
+        MapDocumentEditFinalizer.Preflight(staged.Candidate, staged.Assets);
         NativeLegacySpawnAdmission.RequireAdmitted(document, staged.Candidate, staged.LegacySpawns, liveLists);
         if (staged.Mode == MapNativePublicationMode.CompleteSnapshot) NativeDocumentSnapshot.Publish(document, staged.Candidate);
         else NativeDocumentSnapshot.PublishWriteSet(document, staged.Candidate, staged.WriteSet);
@@ -93,6 +94,7 @@ internal static class NativeDocumentTransaction
         // The source snapshot and its closure pass the foliage context preflight before the first copy. Foliage without
         // a verified closure refuses here, before anything is cloned.
         MapDocumentEditFinalizer.Preflight(document, beforeAssets ?? selected);
+        if (!undo && command is FoliageEditCommand foliage) foliage.Preflight(document, selected!);
         registry ??= MapDocRegistry.CreateDefault();
         MapDocument candidate = NativeDocumentSnapshot.Clone(document, registry);
         NativeLegacySpawnPermit? permit = null;
@@ -105,6 +107,7 @@ internal static class NativeDocumentTransaction
             INativePlacementCommand placement => PreparePlacement(document, candidate, placement, undo, selected),
             _ => throw new MapDocumentException("This command does not support atomic native document editing."),
         };
+        MapDocumentEditFinalizer.Preflight(candidate, selected);
         MapDocument publication;
         if (preparation.Mode == MapNativePublicationMode.CompleteSnapshot) publication = NativeDocumentSnapshot.Clone(candidate, registry);
         else

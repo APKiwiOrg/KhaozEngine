@@ -73,7 +73,7 @@ namespace KhaozEngine.Tests.Gpu
         const string DHelperDecision = @"
 const uint VisibilityFastPath = 1u, VisibilitySlowPath = 2u, VisibilityRangeSkip = 4u, VisibilityChangeComputed = 8u;
 bool temporalVisibilityReleases(vec2 uv, ivec2 centre, ivec2 last, vec2 previousUv, float expectedDepth,
-    out float signedChange, out uint path) {
+    uint currentMask, out float signedChange, out uint path) {
     bool valid = temporalVisibilityChange(uv, centre, last, previousUv, expectedDepth, signedChange);
     path = VisibilitySlowPath | (valid ? VisibilityChangeComputed : 0u);
     return valid && abs(signedChange) > VisibilityReleaseThreshold;

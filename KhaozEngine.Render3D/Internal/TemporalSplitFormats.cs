@@ -11,8 +11,8 @@ namespace KhaozEngine.Render3D.Internal
     /// difference to a normal half float or a zero in integer steps (<c>temporalPrepared</c>, <c>temporalHalf</c>),
     /// so the half-float prepared target holds them exactly. The
     /// expected depth and the edge motion are single floats, as the fused resolve holds them. The surface target is
-    /// half float: its motion is the motion target's own half float and its flags a whole number below 256, both
-    /// exact. Alpha is not stored, the second pass reads it from the scene colour, so it stays exact under an 8-bit
+    /// half float: its motion is the motion target's own half float, and its flags and the visibility decision's
+    /// current mask whole numbers below 256 and 1024, which a half's 11 significant bits hold exactly. Alpha is not stored, the second pass reads it from the scene colour, so it stays exact under an 8-bit
     /// colour target too. The targets live for one frame, written by the first pass and read by the second, so they
     /// need no pair. That both entry points compute the values alike on a backend is what
     /// <c>TemporalEntryIdentityGpuTests</c> checks, bit for bit on hardware and WARP, the state alone on a software
@@ -24,7 +24,8 @@ namespace KhaozEngine.Render3D.Internal
         /// entry points.</summary>
         public const GpuPixelFormat Prepared = GpuPixelFormat.R16G16B16A16Float;
 
-        /// <summary>The motion the display pixels centred on the texel reproject by, and the surface's flags.</summary>
+        /// <summary>The motion the display pixels centred on the texel reproject by, the surface's flags and the
+        /// visibility decision's current mask.</summary>
         public const GpuPixelFormat Surface = GpuPixelFormat.R16G16B16A16Float;
 
         /// <summary>The expected depth of the surface those pixels reproject by.</summary>

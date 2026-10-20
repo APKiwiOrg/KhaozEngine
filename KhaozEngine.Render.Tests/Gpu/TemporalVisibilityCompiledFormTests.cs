@@ -12,8 +12,9 @@ namespace KhaozEngine.Tests.Gpu
     /// texel fetches, gathers and structured loops. Each pass-two program is pinned twice: as it ships, and rewritten
     /// to D (<see cref="TemporalVisibilityFrozenD.ToD"/>), which keeps D's counts at 583a3ae7b for good. The shipped
     /// decision keeps D's function, with its 7 fetches and 4 loops, as the slow path and adds the straight-line fast
-    /// path's 59 fetches, no gather and no loop. A pixel on the fast path issues those 59 where D issues 101, or 43
-    /// where the range skip declines the stored depths. Device-free.
+    /// path's 41 fetches, no gather and no loop. A pixel on the fast path issues those 41 where D issues 101, or 25
+    /// where the range skip declines the stored depths, since the current mask the first pass stores replaces this
+    /// frame's 18 depth and motion fetches. Device-free.
     /// </summary>
     public sealed class TemporalVisibilityCompiledFormTests(ITestOutputHelper output)
     {
@@ -39,14 +40,16 @@ void main() {
     Result = vec4(change, valid ? 1.0 : 0.0, 0.0, 1.0);
 }";
 
-        /// <summary>The shipped decision alone, D's slow path and the fast path, with the same bindings.</summary>
-        internal const string DecisionHelperProgram = HelperBindings + ShaderSources.TemporalVisibilityGlsl + @"
+        /// <summary>The shipped decision alone, D's slow path and the fast path, with the same bindings and its
+        /// current mask from the uniforms.</summary>
+        internal const string DecisionHelperProgram = HelperBindings + ShaderSources.TemporalVisibilityMaskGlsl
+            + ShaderSources.TemporalVisibilityGlsl + @"
 layout(location=0) out vec4 Result;
 void main() {
     float change = 0.0;
     uint path = 0u;
     bool release = temporalVisibilityReleases(Site.xy, ivec2(Site.zw), ivec2(Sizes.xy) - 1, Site.xy + Jitter.xy,
-        Sizes.z, change, path);
+        Sizes.z, floatBitsToUint(Sizes.w), change, path);
     Result = vec4(change, release ? 1.0 : 0.0, float(path), 1.0);
 }";
 
@@ -66,7 +69,7 @@ void main() {
             { "shipped decision helper", false, 7 + TemporalVisibilityFastPath.Fetches, 0, 4 },
         };
 
-        // D's 30 and the fast path's 59.
+        // D's 30 and the fast path's 41.
         const int AccumulateTarget = 30 + TemporalVisibilityFastPath.Fetches;
 
         static string Program(string name) => name switch

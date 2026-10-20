@@ -29,8 +29,10 @@ internal sealed class TemporalVisibilityEquivalenceProbe : IDisposable
     }
 
     /// <summary>
-    /// THE PRODUCTION SIDE: the shipped decision, <c>temporalVisibilityReleases</c>, and the path bits it reports. A
-    /// range skip leaves <c>computed</c> false where D computed a change, and only there may the validities differ.
+    /// THE PRODUCTION SIDE: the shipped decision, <c>temporalVisibilityReleases</c>, and the path bits it reports, with
+    /// the current mask the shipped mask functions give the case's centre
+    /// (<see cref="TemporalVisibilityMaskProbe.MaskAtGlsl"/>). A range skip leaves <c>computed</c> false where D
+    /// computed a change, and only there may the validities differ.
     /// </summary>
     internal const string ProductionDecisionGlsl = @"
 const uint ReportedFast = 1u, ReportedSlow = 2u, ReportedRangeSkip = 4u;
@@ -38,7 +40,8 @@ bool productionReleases(vec2 uv, ivec2 centre, ivec2 last, vec2 previousUv, floa
     out bool computed, out float change, out uint path) {
     change = 0.0;
     uint shipped = 0u;
-    bool release = temporalVisibilityReleases(uv, centre, last, previousUv, expectedDepth, change, shipped);
+    bool release = temporalVisibilityReleases(uv, centre, last, previousUv, expectedDepth,
+        inlineVisibilityMask(centre, last), change, shipped);
     computed = (shipped & VisibilityChangeComputed) != 0u;
     path = ((shipped & VisibilityFastPath) != 0u ? ReportedFast : 0u)
         | ((shipped & VisibilitySlowPath) != 0u ? ReportedSlow : 0u)
@@ -283,8 +286,9 @@ void main() {
     internal readonly int Size;
 
     internal static string FragmentSource => "#version 450\n" + Header + ShaderSources.TemporalCommonGlsl
-        + ShaderSources.TemporalResolveTuningGlsl + ShaderSources.TemporalVisibilityGlsl
-        + TemporalVisibilityFrozenD.Renamed("frozenD") + ProductionDecisionGlsl + CaseGlsl + ClassifierGlsl + Main;
+        + ShaderSources.TemporalResolveTuningGlsl + ShaderSources.TemporalVisibilityMaskGlsl
+        + ShaderSources.TemporalVisibilityGlsl + TemporalVisibilityFrozenD.Renamed("frozenD")
+        + TemporalVisibilityMaskProbe.MaskAtGlsl + ProductionDecisionGlsl + CaseGlsl + ClassifierGlsl + Main;
 
     /// <summary>A probe drawing <paramref name="hardwareSize"/> squared cases a draw, or
     /// <paramref name="softwareSize"/> squared on a software adapter.</summary>

@@ -472,7 +472,7 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     uint visibilityPath = 0u;
     bool visibilityReleased = floatBitsToUint(lockValue) != 0u && useHistory && !surface.background
         && PreviousJitter.z > 0.5 && temporalVisibilityReleases(uv, centreTexel, maxTexel, previousUv, expectedDepth,
-            signedVisibilityChange, visibilityPath);
+            surface.visibilityMask, signedVisibilityChange, visibilityPath);
     if (visibilityReleased) lockValue = 0.0;
     float hold = clamp(lockValue * LockHoldGain, 0.0, 1.0);
 

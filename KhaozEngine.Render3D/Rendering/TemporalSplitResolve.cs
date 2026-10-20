@@ -84,6 +84,10 @@ namespace KhaozEngine.Render3D.Rendering
         /// <summary>Whether the split's targets exist.</summary>
         internal bool TargetsAllocated => _targets[0] is not null;
 
+        /// <summary>The first pass's target at <paramref name="index"/> in <see cref="TemporalSplitFormats.Targets"/>
+        /// order, null before the first bind, for tests that read what the first pass stored.</summary>
+        internal IGpuTexture? TargetForTests(int index) => _targets[index];
+
         /// <summary>The first pass's layout and the second pass's, for tests.</summary>
         internal (IGpuResourceLayout Prepare, IGpuResourceLayout Accumulate) LayoutsForTests =>
             (_prepareLayout, _accumulateLayout);

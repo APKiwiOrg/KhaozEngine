@@ -85,7 +85,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         internal const uint NoQueueFamily = uint.MaxValue;
 
         /// <summary>Read one physical device.</summary>
-        internal static VulkanPhysicalDeviceRead Read(Vk vk, PhysicalDevice device)
+        internal static VulkanPhysicalDeviceRead Read(Vk vk, PhysicalDevice device, uint instanceApiVersion)
         {
             ArgumentNullException.ThrowIfNull(vk);
 
@@ -137,7 +137,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     properties.Limits.MaxFragmentOutputAttachments),
                 timestampValidBits, properties.Limits.TimestampPeriod,
                 clearsVersionFloor && ReadFloatControls(vk, device),
-                VulkanDriverIdentity.Read(vk, device, in properties));
+                VulkanDriverIdentity.Read(vk, device, in properties, instanceApiVersion));
         }
 
         /// <summary>

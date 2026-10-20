@@ -160,7 +160,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             try
             {
-                return MissingRequirementAcrossDevices(vk, instance);
+                return MissingRequirementAcrossDevices(vk, instance, apiVersion);
             }
             finally
             {
@@ -173,7 +173,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // Null as soon as ANY physical device meets the requirements, which is the same "first device that
         // qualifies" shape V-N3's default selection takes. When none does, every device's own reason is reported,
         // because on a two-device machine the interesting information is usually why the OTHER one was rejected.
-        static string? MissingRequirementAcrossDevices(Vk vk, Instance instance)
+        static string? MissingRequirementAcrossDevices(Vk vk, Instance instance, uint instanceApiVersion)
         {
             uint deviceCount = 0;
             Result counted = vk.EnumeratePhysicalDevices(instance, &deviceCount, null);
@@ -205,7 +205,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             var rejections = new List<string>();
             for (uint i = 0; i < deviceCount; i++)
             {
-                VulkanDeviceFacts facts = VulkanPhysicalDeviceReader.Read(vk, devices[i]).Facts;
+                VulkanDeviceFacts facts = VulkanPhysicalDeviceReader.Read(vk, devices[i], instanceApiVersion).Facts;
 
                 // presentationRequired: false. IsSupported() receives no window, so there is no VkSurfaceKHR to
                 // ask about, and building one would need a platform surface extension the headless path is not

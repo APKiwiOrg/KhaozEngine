@@ -129,7 +129,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             var candidates = new VulkanPhysicalDeviceInfo[handles.Length];
             for (int i = 0; i < handles.Length; i++)
             {
-                VulkanPhysicalDeviceRead candidate = VulkanPhysicalDeviceReader.Read(vk, handles[i]);
+                VulkanPhysicalDeviceRead candidate = VulkanPhysicalDeviceReader.Read(vk, handles[i], instance.ApiVersion);
 
                 // THE PRESENT ANSWER IS FILLED IN HERE AND NOWHERE ELSE, because here is where a surface exists.
                 // The reader leaves it false, deliberately: it is asked from the probe too, which receives no

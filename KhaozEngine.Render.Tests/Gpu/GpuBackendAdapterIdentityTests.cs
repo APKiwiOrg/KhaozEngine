@@ -61,7 +61,7 @@ public sealed class GpuBackendAdapterIdentityTests
     public void VulkanQueriesDriverPropertiesOnlyWhenCoreOrAdvertised(uint api, bool extension, int extensionReads)
     {
         int checkedExtension = 0, reads = 0;
-        string driver = VulkanDriverIdentity.Read(api, 0x1234, () => { checkedExtension++; return extension; },
+        string driver = VulkanDriverIdentity.Read(0x00403000, api, 0x1234, () => { checkedExtension++; return extension; },
             () => { reads++; return ("llvmpipe", "Mesa 26.0.0 (LLVM 21.1.8)"); });
         var caps = VulkanCapabilityRead.Assemble("llvmpipe (LLVM 21.1.8, 256 bits)", false, true, GpuSampleCounts.One, 4,
             pciVendorId: 0x10005, pciDeviceId: 0, driverVersion: driver);
@@ -76,7 +76,7 @@ public sealed class GpuBackendAdapterIdentityTests
     [InlineData(0u, "raw driverVersion=0x00000000 (implementation-defined)")]
     [InlineData(0x12345678u, "raw driverVersion=0x12345678 (implementation-defined)")]
     public void UnsupportedVulkanDriverPropertiesUseHonestRawVersionWithoutAQuery(uint raw, string expected)
-        => Assert.Equal(expected, VulkanDriverIdentity.Read(0x00401000, raw, () => false,
+        => Assert.Equal(expected, VulkanDriverIdentity.Read(0x00403000, 0x00401000, raw, () => false,
             () => throw new InvalidOperationException("unsupported query")));
 
     [Theory]
@@ -86,7 +86,7 @@ public sealed class GpuBackendAdapterIdentityTests
     [InlineData("", "version", "version")]
     [InlineData("driver\0ignored", "version\0ignored", "driver: version")]
     public void VulkanKeepsAnsweredStringsAndFallsBackForMissingVersions(string? name, string? info, string expected)
-        => Assert.Equal(expected, VulkanDriverIdentity.Read(0x00402000, 1,
+        => Assert.Equal(expected, VulkanDriverIdentity.Read(0x00403000, 0x00402000, 1,
             () => throw new InvalidOperationException("core needs no extension"), () => (name, info)));
 
     [Fact]

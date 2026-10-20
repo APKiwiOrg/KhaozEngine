@@ -260,7 +260,10 @@ What it owns today:
   adapter), `PciVendorId` and `PciDeviceId` (`uint?`, null when unanswered, zero preserved), and
   `DriverVersion` (`string?`, null when unanswered). Vulkan uses the physical device's vendorID and deviceID,
   including Mesa's software IDs, and joins driverName and driverInfo on Vulkan 1.2 or
-  VK_KHR_driver_properties. Without those strings it labels raw driverVersion as implementation-defined.
+  VK_KHR_driver_properties, provided the created instance supports the properties2 query. The backend does not
+  enable VK_KHR_get_physical_device_properties2, so that requires an instance API version of at least 1.1.
+  An unavailable or failed optional query, or no usable strings, falls back to raw driverVersion labelled
+  as implementation-defined without failing device enumeration or creation.
   Direct3D11 uses the created DXGI adapter's VendorId and DeviceId, including WARP's Microsoft IDs, and
   CheckInterfaceSupport with IDXGIDevice for the user-mode driver version as four dotted parts, or null
   if unsupported. Metal exposes none of these three values and leaves them null. These creation-fixed

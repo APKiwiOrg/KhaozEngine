@@ -31,4 +31,16 @@ public sealed class TelemetryAdapterIdentityTests
             Assert.Equal(JsonValueKind.Null, value.ValueKind);
         }
     }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" \t\r\n")]
+    public void BlankDriverVersionIsRecordedAsNull(string driverVersion)
+    {
+        var info = new TelemetrySessionInfo { DriverVersion = driverVersion };
+        using var header = JsonDocument.Parse(TelemetrySessionHeader.Build(info, Array.Empty<TelemetryHeaderValue>()));
+
+        Assert.Equal(JsonValueKind.Null,
+            header.RootElement.GetProperty("session").GetProperty("gpu").GetProperty("driverVersion").ValueKind);
+    }
 }

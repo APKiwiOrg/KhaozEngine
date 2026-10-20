@@ -145,7 +145,7 @@ public static class TelemetrySessionHeader
         sb.Append(",\"pciDeviceId\":");
         sb.Append(session?.PciDeviceId?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "null");
         sb.Append(",\"driverVersion\":");
-        TelemetryJson.AppendString(sb, session?.DriverVersion);
+        TelemetryJson.AppendString(sb, NullIfBlank(session?.DriverVersion));
 
         // Whether that adapter was a software rasterizer. Three-valued on purpose: null is "nobody asked", which
         // is a different fact from false, and a performance capture that cannot tell those apart cannot say

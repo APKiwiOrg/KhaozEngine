@@ -149,3 +149,121 @@ Not covered: the bilinear PCF and a real shadow signal. Those need a separate sh
 ```
 
 Result: [benchmark-result.md](benchmark-result.md) records the paired run.
+
+## 6. Head-only decomposition and NVIDIA Direct3D 11 rule, approval pending
+
+Two new requests, each requiring fresh owner approval. Neither has been dispatched. The exact input ref is
+`c3842b762d8d381719bef00091520e1d000c1604`, pushed and verified against the remote branch before writing this
+section. It contains the test-only NVIDIA comparison rule (`e639ef2d6`) and decomposition harness (`c3842b762`).
+The later request-record commit changes documentation only. No production code, shader hash table, bound or
+baseline changes in this work.
+
+### A. One head-only cost decomposition dispatch
+
+```bash
+gh workflow run gpu-hosted-bench.yml --repo APKiwiOrg/KhaozEngine --ref main -f ref=c3842b762d8d381719bef00091520e1d000c1604 -f filter='FullyQualifiedName~TemporalVisibilityCostDecompositionCostPerfGpuTests' -f legs=all
+```
+
+One dispatch, three GPU jobs, `windows-d3d11`, `windows-vulkan` and `linux-vulkan`. No base dispatch, repeat or
+loop. The class name contains `CostPerf` so the plan's unchanged `TAA_CORRECTNESS` selection excludes it.
+
+All four requested cases remain, twelve keyed boxes and the moving thin field at 2560x1440 Native and Quality.
+The harness calls the original cost fixture's scene builders. Each case interleaves nine modes in rotating order,
+Off at the internal size and the four programs below on each of the fused and split entries. Every mode owns a
+synchronized copy of the scene and history, settles for ten frames and then takes fifteen blocks of twelve
+frames after two warm frames. This keeps the moving geometry, draw frame, effect clock and jitter sequence
+aligned across variants in every round. Shader compilation and target creation precede the timed blocks.
+
+| Variant | Test-only injection |
+| --- | --- |
+| V0 shipped | The normal scene renderer with no fragment rewrite. |
+| V1 check removed | `TemporalVisibilityCostPrograms.WithoutCheck` replaces the call-site expression with `bool visibilityReleased = false`, without evaluating the check. All mask source stays shipped. |
+| V2 check and mask removed | V1 plus `WithoutCheckOrMask`, which removes the unused visibility helper and uses `TemporalVisibilityFrozenDMask.Restore` to restore the pre-7f.3 prepare loop, fused loop, surface and zero surface w store. |
+| V3 D | `TemporalVisibilityFrozenD.ToD` restores all frozen D programs, including the mask changes. |
+
+Rewritten renderers are installed before the first resolve by reflection over `Scene3D._temporalResolve`, using
+the existing `fragmentSourceForTests` constructor hook. No production seam changes. Every variant retains the
+head's R8 MRT write and history copy, so this does not isolate those costs. In a fused V1 program the compiler
+may remove the now-unused mask too. V1 minus V2 measures the compiled programs' difference, which may be zero
+there, rather than forcing dead ALU to stay alive with a synthetic output.
+
+Output follows the original median-of-blocks method, mode medians, resolve and sharpen at most over Off,
+paired round median and min to max, block values and submit-and-drain difference. For each entry it also prints
+V0 minus V1 (check), V1 minus V2 (mask) and V0 minus V3 (7f against D), plus the Off drift control. No budget is
+asserted. This is the shadowless fixture, so current visibility is constant 1.0 and no PCF work is timed.
+
+No trimming is needed for the 60 minute per-job timeout. [Bench 2](benchmark-result-2.md#1-provenance) measured
+the complete cost filter's test step at 2.11 to 2.31 minutes on D3D11, 1.41 to 1.57 minutes on Windows Vulkan
+and 1.27 to 1.42 minutes on Linux Vulkan. Its complete jobs took 9:15 to 10:38, 22:46 to 33:40 and 3:09 to
+3:30 respectively. This request has 36 mode/case combinations and 6,480 timed frames against bench 2's 58 and
+10,440, but creates more fixture copies and compiles more programs. The estimates below allow for that extra
+setup, approximately three to ten minutes of tests and compilation, while retaining bench 2's driver/setup
+variability. They are planning estimates, not new measurements.
+
+| Leg | Expected complete job duration | Rounded billed minutes | Estimated bill |
+| --- | --- | --- | --- |
+| windows-d3d11 | 12 to 18 minutes | 12 to 18 | $1.22 to $1.84 |
+| windows-vulkan | 25 to 40 minutes | 25 to 40 | $2.55 to $4.08 |
+| linux-vulkan | 4 to 6 minutes | 4 to 6 | $0.21 to $0.31 |
+| Dispatch total | Windows legs serialize, about 37 to 58 minutes plus queue time | 37 to 58 Windows, 4 to 6 Linux | $3.98 to $6.23 |
+
+Rates are the same published rates used in the earlier request, Windows GPU $0.102 per minute and Linux GPU
+$0.052 per minute, with each job rounded up, from [Actions runner pricing](https://docs.github.com/en/billing/reference/actions-runner-pricing).
+All three jobs reaching the workflow's 60 minute timeout would cost at most $15.36, excluding queue time, which
+is not a running GPU job. Billing is authoritative. No cost or timing test has run locally for this request.
+
+### B. One NVIDIA Direct3D 11 correctness dispatch
+
+```bash
+gh workflow run gpu-hosted-bench.yml --repo APKiwiOrg/KhaozEngine --ref main -f ref=c3842b762d8d381719bef00091520e1d000c1604 -f filter='FullyQualifiedName~TemporalVisibilityResolveAbGpuTests|FullyQualifiedName~TemporalEntryIdentityGpuTests' -f legs=windows-d3d11
+```
+
+One dispatch, one GPU job, twenty correctness cases on the hardware NVIDIA Direct3D 11 device. This filter
+selects no cost, timing, perf or bench test. Bench 2's D3D11 oracle job took 16:34, with 1.5967 minutes in its
+test step. This selection replaces the helper equivalence and yard-path cases with entry identity, adds D's
+opposite entry to each A/B case and D's two entries to the walk and moving-shadow cases. Allow 17 to 25 minutes
+for the complete job, including the observed Windows setup variability and added controls. At $0.102 per
+rounded minute that is about $1.73 to $2.55. The 60 minute timeout ceiling is $6.12. These are estimates only.
+
+Owner ruling, 2026-10-21, implemented only when the backend is `Direct3D11Native`, the device reports hardware,
+the existing device-class and software-name helpers exclude software, and the adapter name contains NVIDIA.
+D's fused and split programs measure the maximum difference in representable half-float steps separately for
+RGBA and confidence across the same frame set. Production versus the matching D entry, and production fused
+versus split in entry identity, must stay inside that measured envelope. A zero channel envelope requires exact
+bits, including signed zero. Stored lock channels, R8 and depth stay exact. No fixed epsilon is introduced.
+Every NVIDIA frame prints D fused versus split and production versus D counts, maximum steps per channel and
+whether any lock differs. The running and final envelopes are printed. The complete frame-set envelope is
+measured before accepting arithmetic differences, so the first failing frame is judged against the same bound
+as the last. A/B failures on every backend identify the zero-based frame, and aggregate coverage failures name
+the final frame as an aggregate check.
+
+Input identity was checked in the A/B rig. One `Frame` is generated once per frame and supplied to every rig,
+including the new opposite-entry D control, with the same current colour, motion, NDC depth, history colour,
+confidence, locks, previous depth, R8 sequence and uniforms. Each renderer's actual uniforms are asserted equal
+to that shared value. The separate original fused and split theory rows use different random seeds, so their
+inputs as whole frame sets were not identical. The new envelope never compares those separate rows. It
+compares both D entries inside each row on the same inputs. Thus the historical 0.06293 versus 0.06219 report
+alone was not proof of identical inputs across the two original rows.
+
+Every other device retains its existing comparison, strict byte identity except the pre-existing software
+Vulkan colour rule in entry identity, whose bounds remain unchanged. The single authorized local Metal run
+passed all twenty cases, zero failed and zero skipped, on Apple M2 Max in 11.4337 seconds. All twelve A/B
+cases printed byte-identical colour, state, R8 and depth. Every walk printed no colour, confidence, lock or mark
+differences. The NVIDIA branch remains unverified on hardware until this approved T4 request runs.
+
+### Local verification, no performance execution
+
+- Release solution build passed with zero warnings and zero errors after correcting a missing namespace import
+  in the new compile test.
+- Device-free selection passed 103 of 103, including half-step distance across zero and binades, per-channel
+  maxima, exact locks, exact zero envelopes, non-finite rejection, frozen D pins, existing shader contracts and
+  compilation of every rewritten program through both backend emitters.
+- Discovery through `build-slot` listed four decomposition cases. The unchanged `TAA_CORRECTNESS` filter listed
+  1,343 entries with no cost, perf or bench case. Neither discovery executed a test.
+- The one focused Metal run passed 20 of 20. No other GPU test, timing, perf or bench test ran.
+- `dotnet format KhaozEngine.slnx --verify-no-changes --no-restore` returned zero. It emitted its workspace-load
+  warning summary. The Release build itself emitted zero warnings.
+- Whole-tree dash, prose and file-size guards and `git diff --check` passed. Production shader sources, hash
+  tables and baselines are unchanged.
+
+Integration, any billed execution, merge and release remain with the owner and orchestrator.

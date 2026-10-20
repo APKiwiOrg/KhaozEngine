@@ -14,7 +14,8 @@ namespace KhaozEngine.Tests.Render3D
     /// <see cref="TemporalVisibilityFastPath"/> generates, D's helper stays in front of it verbatim as the slow path,
     /// and the fast path is straight-line code with every fetch it issues counted. Device-free.
     /// <para>TO REWRITE THE COMMITTED TEXT after a generator change: <c>KE_WRITE_VISIBILITY_FAST_PATH=1 dotnet test
-    /// KhaozEngine.Render.Tests --filter TemporalVisibilityFastPathTests</c>, then read the diff.</para>
+    /// KhaozEngine.Render.Tests --filter TemporalVisibilityFastPathTests</c>, then read the diff. The rewrite writes LF
+    /// and refuses to run where <c>CI</c> is set, so a leaked variable fails a CI run instead of passing it.</para>
     /// </summary>
     public sealed class TemporalVisibilityFastPathTests
     {
@@ -26,11 +27,38 @@ namespace KhaozEngine.Tests.Render3D
             string generated = TemporalVisibilityFastPath.Generate();
             if (Environment.GetEnvironmentVariable(WriteEnvVar) == "1")
             {
+                Assert.True(string.IsNullOrEmpty(Environment.GetEnvironmentVariable("CI")),
+                    $"{WriteEnvVar}=1 rewrites ShaderSources.TemporalVisibilityReleases.cs and is refused where CI is set. "
+                    + $"Unset {WriteEnvVar} in this environment.");
                 File.WriteAllText(CommittedPath(), CommittedFile(generated), new UTF8Encoding(false));
                 return;
             }
-            Assert.True(generated == ShaderSources.TemporalVisibilityReleasesGlsl.Replace("\r\n", "\n", StringComparison.Ordinal),
+            Assert.True(generated == Lf(ShaderSources.TemporalVisibilityReleasesGlsl),
                 $"ShaderSources.TemporalVisibilityReleasesGlsl is not the generator's text. Rewrite it with {WriteEnvVar}=1.");
+        }
+
+        /// <summary>A CRLF checkout gives the generator's verbatim blocks and the committed constant CRLF line endings.
+        /// The generator's text stays LF, and the comparison above still holds.</summary>
+        [Fact]
+        public void TheComparisonHoldsOnACrlfCheckout()
+        {
+            int blocks = 0;
+            string fromCrlf = TemporalVisibilityFastPath.Generate(block =>
+            {
+                blocks++;
+                return Crlf(block);
+            });
+            Assert.Equal(TemporalVisibilityFastPath.Generate(), fromCrlf);
+            Assert.DoesNotContain('\r', fromCrlf);
+            Assert.Equal(Lf(ShaderSources.TemporalVisibilityReleasesGlsl), Lf(Crlf(ShaderSources.TemporalVisibilityReleasesGlsl)));
+            Assert.Equal(fromCrlf, Lf(Crlf(ShaderSources.TemporalVisibilityReleasesGlsl)));
+            Assert.DoesNotContain('\r', CommittedFile(fromCrlf));
+
+            // Every verbatim block in the generator's source passes through the replay, so none escapes it.
+            string source = File.ReadAllText(SourcePath("KhaozEngine.Render3D", "Internal", "TemporalVisibilityFastPath.cs"));
+            int verbatim = Regex.Matches(source, "@\"").Count;
+            Assert.Equal(verbatim, Regex.Matches(source, @"\bVerbatim\(@""").Count);
+            Assert.Equal(verbatim, blocks);
         }
 
         /// <summary>D's function ships unchanged in front of the decision, which calls it as the slow path.</summary>
@@ -73,8 +101,14 @@ namespace KhaozEngine.Tests.Render3D
             + "    internal const string TemporalVisibilityReleasesGlsl = @\"" + glsl.Replace("\"", "\"\"", StringComparison.Ordinal)
             + "\";\n}\n";
 
-        static string CommittedPath([CallerFilePath] string thisFile = "") => Path.GetFullPath(Path.Combine(
-            Path.GetDirectoryName(thisFile)!, "..", "..", "KhaozEngine.Render3D", "Internal",
-            "ShaderSources.TemporalVisibilityReleases.cs"));
+        static string CommittedPath() => SourcePath("KhaozEngine.Render3D", "Internal",
+            "ShaderSources.TemporalVisibilityReleases.cs");
+
+        static string SourcePath(string project, string folder, string file, [CallerFilePath] string thisFile = "")
+            => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(thisFile)!, "..", "..", project, folder, file));
+
+        static string Lf(string text) => text.Replace("\r\n", "\n", StringComparison.Ordinal);
+
+        static string Crlf(string text) => Lf(text).Replace("\n", "\r\n", StringComparison.Ordinal);
     }
 }

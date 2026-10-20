@@ -10,7 +10,7 @@
 
 **Spec:** [2026-10-19-taa-shadow-visibility-design.md](../specs/2026-10-19-taa-shadow-visibility-design.md). Read it with the pinned archive links before execution. This plan starts at `a1e826635`, with tagged `21.5.1` and no version staged on this branch.
 
-**Amended task order:** Task 7b, Task 8 (exact fused/split identity, #1501), Task 10 (Grimhollow capture and owner look), Task 7c tuning and owner selection, Task 7d (land D and the three accepted costs), Task 9 (docs and version), Task 11 (full gate), then Task 12 (bench request). Task numbers below remain stable for existing briefs and evidence.
+**Amended task order:** Task 7b, Task 8 (exact fused/split identity, #1501), Task 10 (Grimhollow capture and owner look), Task 7c tuning and owner selection, Task 7d (land D and the three accepted costs), Task 9 (docs and version), Task 11 (full gate), then Task 12 (bench request). After the billed result, Task 7f cuts the visibility check cost before integration. Task numbers below remain stable for existing briefs and evidence.
 
 ## Global Constraints
 
@@ -241,6 +241,124 @@ Task 7b's rising-only zero response was provisional. Task 7c and the final real-
 - [ ] Commit `fix(taa): ship visibility lock release without a weight response`, `test(taa): record owner accepted visibility costs` and `docs(taa): record owner choice of lock release only`. Stage explicit paths, push only the task branch and verify the remote SHA.
 
 **Definition of done:** D is the only production policy. The response and moving-shadow identity cases prove lock release with retained weight/display history for both signs, including outlined Quality. Only the three accepted costs change their bounds. Required local checks pass with zero skips, the amendment and measured values are durable, and the three commits are pushed. The initial Task 7d implementation had no hosted dispatch. Fix round 1 is authorized to run one filtered WARP grain dispatch after local verification, then one final all-leg dispatch for lag, rim, game grain and only the textured-grain fact in TemporalVisibilityComparisonGpuTests. Do not select its other facts because the separate WARP NaN-depth defect is outside this fix. Require zero selected skips and obtain exact grain values from detailed passing console output. WARP keeps 0.008 if it passes that historical limit, otherwise accepts only its own upward six-decimal bound at or below 0.008032. A larger value is a stop. No timing run, version change, release or main integration belongs to Task 7d.
+
+### Task 7f: Cut the visibility check cost
+
+In reading order this task follows Task 7d and its Task 7e non-finite depth fix and precedes Task 8. It runs after Task 12's billed result, [benchmark-result.md](../../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/benchmark-result.md). That bench measured head adding 2.1 to 2.9 ms on both Vulkan legs and 3.9 to 4.8 ms on Direct3D 11 to resolve and sharpen at 1440p on a T4. All of it sits in the split's second pass and grows with the display size. The Task 7f design review traces it to `temporalVisibilityChange`, about 101 point fetches and 950 ALU operations per display pixel, and names the restructures R0 to R5 used below.
+
+**Rulings, binding:**
+
+- Owner, 2026-10-20: optimize before merging. The budget is at most 0.5 ms resolve growth over `v21.7.1` (`6c6529589`) at 1440p on every T4 backend, Direct3D 11, Windows Vulkan and Linux Vulkan. Any further billed bench needs fresh owner approval.
+- Phase 1 is exact. Every output pixel and every observable decision stays bit-identical to D, so the owner's accepted look stays valid. Phase 1 implements R1 (gate the check on the post-release `lockValue` bits, exact on outputs), R2 (shared 4x4 history block, separable positions, a generated straight-line fast path, D's function verbatim as the slow path), R3-lite (a 9-bit current acceptance mask and a centre-finite flag from pass one in `PreparedSurface.w`, computed inline by the fused entry) and R4 (value-range early-out with the `2^-13` margin). All of them use loads.
+- R5 (gathers) is deferred until a T4 oracle proves gather equals load. R0 (CPU constant-input skip) is rejected because it would only make the bench free.
+- The shadows-on whole-frame cost case, the request's Proposal B, is authored in 7f.4 and not run.
+- If any oracle shows a mismatch, the affected restructure is withdrawn, never adjusted toward close.
+
+**Global for Task 7f:** no bound, baseline, golden or tolerance changes, no timing, perf or benchmark run before the 7f.6 approval, no merge, tag or release. The frozen D fixture never changes after 7f.1. Each sub-step commits explicit paths, pushes `fix/taa-shadow-visibility` and verifies the remote SHA. Approximations (Phase 2 of the design review) need a new owner look and are outside this task.
+
+#### Task 7f.1: Freeze the D oracles
+
+**Files:**
+- Create: `KhaozEngine.Render.Tests/Gpu/TemporalVisibilityFrozenD.cs` (D's `TemporalVisibilityGlsl`, call-site block and hold release copied verbatim at `583a3ae7b`, their SHA-256 pins, the D program rewrite and the renamed copy).
+- Create: `KhaozEngine.Render.Tests/Render3D/TemporalVisibilityFrozenDTests.cs`, `KhaozEngine.Render.Tests/Gpu/TemporalVisibilityCompiledFormTests.cs`.
+- Create: `KhaozEngine.Render.Tests/Gpu/TemporalVisibilityEquivalenceProbe.cs`, `TemporalVisibilityEquivalenceInputs.cs`, `TemporalVisibilityEquivalenceGpuTests.cs`, `TemporalVisibilityResolveAbGpuTests.cs`.
+- Modify: `KhaozEngine.Render.Tests/Gpu/TemporalResolveRig.cs` (optional fragment source rewrite).
+- Test hook only: `KhaozEngine.Render3D/Rendering/TemporalResolveRenderer.cs`, `TemporalResolveRenderer.Entry.cs`, `TemporalSplitResolve.cs`, `TemporalSplitResolve.AtDisplaySize.cs`. No shader text, binding or default behaviour changes.
+
+**Interfaces:**
+
+```csharp
+// Internal, null in production. Applied to every fragment program the renderer and its split compile.
+internal TemporalResolveRenderer(IGpuDevice gd, Func<string, string>? fragmentSourceForTests = null);
+
+internal static class TemporalVisibilityFrozenD
+{
+    internal const string VisibilityGlsl, CallSiteGlsl, HoldReleaseGlsl;   // verbatim D, never edited
+    internal const string VisibilitySha256, CallSiteSha256, HoldReleaseSha256;
+    internal static string ToD(string program);        // production program to D program, throws on a lost anchor
+    internal static string Renamed(string prefix);     // D's functions under another name, for one-program oracles
+}
+```
+
+- [ ] Copy D's text verbatim and pin SHA-256 over LF-normalized UTF-8. `FrozenDTextHashesToTheShippedDPin` is permanent. `ProductionStillShipsFrozenD` asserts the production text equals the fixture at this commit. The D rewrite replaces the production visibility block, the call-site block between its first and last lines and the hold release, leaves programs without them untouched and throws when a program carries only some anchors.
+- [ ] Proof 2, `TemporalVisibilityEquivalenceGpuTests`: one fragment program holds the renamed D function, the production decision wrapper (`ProductionDecisionGlsl`, D itself at this commit) and an independent classifier. Each fragment of a 1024x1024 target (256x256 on software adapters) builds its own case from a hash PRNG against full-size textures at 2560x1440, 1707x960 and 3342x2160, with Halton consecutive, Halton wrap and zero jitter. The cases cover edge and corner centres, fractions on, within ulps of and away from integers, history near the border, depths exactly at, and 1 ulp either side of, both tolerances, NaN, both infinities, the background sentinel, and R8 lattices straddling 0.1 and `0.1 - 2^-13`. Assert zero decision and validity mismatches, bitwise-equal change wherever both compute it, every fragment written, input coverage minimums, the classifier's predicted fast path, slow path reasons and R4 skip counts, and that no predicted R4 skip meets a D release. The reported path counters are named placeholders that 7f.2 fills.
+- [ ] Proof 3, `TemporalVisibilityResolveAbGpuTests`: the production rig and a D rig built through the hook, fused and split, Native and Quality, random colour, depth, motion, moving R8 edges and random stored locks including exact zero and ridged pixels, six frames. History colour, state and R8 bytes must match every frame. A mutant D that never releases must differ, which proves the hook reaches the compiled program and the frames exercise release.
+- [ ] Proof 4, `TemporalVisibilityCompiledFormTests`: device-free SPIR-V counts of `OpImageFetch`, `OpImageGather` and `OpLoopMerge` for the four pass-two programs and for D's function alone, pinned as the D baseline.
+- [ ] Verify `build-slot --label taa-7f1-build -- dotnet build KhaozEngine.slnx -c Release` with zero warnings, the new device-free classes headless, one focused Metal run `build-slot --heavy --label taa-7f1-metal -- env KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~TemporalVisibilityEquivalence|FullyQualifiedName~TemporalVisibilityResolveAb"` with zero failed and zero skipped, then `dotnet format KhaozEngine.slnx --verify-no-changes --no-restore`, the dash, prose and file-size tree guards and `git diff --check`.
+- [ ] Commit `test(taa): freeze visibility oracles before the cost cut`.
+
+**Definition of done:** every oracle passes with the production side equal to D, the D baseline opcode counts and text hashes are pinned, and no production shader or behaviour changed.
+
+#### Task 7f.2: Ship the R2 and R4 fast path and the R1 call-site gate
+
+**Files:**
+- Modify: `KhaozEngine.Render3D/Internal/ShaderSources.TemporalVisibility.cs` (D's function kept verbatim as the slow path, the decision function added).
+- Create: `KhaozEngine.Render3D/Internal/TemporalVisibilityFastPath.cs` (C# generator of the straight-line fast path, compile-time block indices, explicit `fma()` for D's emitted `Fma` pattern).
+- Modify: `KhaozEngine.Render3D/Internal/ShaderSources.TemporalAccumulate.cs` (R1 gate `floatBitsToUint(lockValue) != 0u` evaluated first, then the decision).
+- Modify tests: `TemporalVisibilityEquivalenceProbe.cs` (`ProductionDecisionGlsl` calls the shipped decision and reports its path), `TemporalVisibilityEquivalenceGpuTests.cs` (fill the path placeholders), `TemporalVisibilityCompiledFormTests.cs` (target counts), `TemporalVisibilityFrozenDTests.cs` (delete `ProductionStillShipsFrozenD` only). Update the production anchors in `TemporalVisibilityFrozenD.ToD` only if a production anchor line moves. The frozen texts and their pins stay untouched.
+- Rebake only the moved shader hash tables.
+
+**Interfaces:** the shape is binding, the names are the implementer's.
+
+```glsl
+// Path bits for the oracle. The call site ignores them.
+const uint VisibilityFastPath = 1u, VisibilitySlowPath = 2u, VisibilityRangeSkip = 4u;
+bool temporalVisibilityReleases(vec2 uv, ivec2 centre, ivec2 last, vec2 previousUv, float expectedDepth,
+    out float signedChange, out uint path);
+```
+
+- [ ] Write the compilable contract first, then the behavioural RED: point the wrapper at the new function while it still calls D, set the fast path and R4 skip minimums and the reported-equals-predicted assertions, and record their failure on Metal.
+- [ ] Implement the fast path under the design review's preconditions (consecutive separable bases on both axes, block inside `[0, last]`), D verbatim otherwise, and R4 with the `2^-13` margin after the current mean. Gate the call site on the post-release `lockValue` bits, never on the stored lock or the hold.
+- [ ] Assert the target SPIR-V counts: fewer `OpImageFetch`, zero `OpImageGather` and no `OpLoopMerge` added by the fast path. Author a hosted Windows compile-only fact that disassembles the shipped `TemporalAccumulate` DXBC, refuses `dcl_indexableTemp` and checks the fast path's position chain keeps FXC's reassociated order for D. It runs in 7f.5.
+- [ ] Run the Release build, the device-free classes of 7f.1 plus `TemporalResolveShaderTests|ShaderCorpusTests|VulkanSpirvByteEqualityTests`, then one `--heavy` Metal run of `TemporalVisibilityEquivalence|TemporalVisibilityResolveAb|TemporalVisibilityComparisonGpuTests|TemporalEntryIdentityGpuTests|TemporalCountProbeGpuTests|TemporalDebugViewGoldenTests`.
+- [ ] Commit `perf(taa): share the visibility history block and skip uniform footprints`.
+
+**Definition of done:** zero mismatches, bitwise-equal change, every path covered, reported paths equal the predicted ones, the A/B and entry identity stay exact, and the frozen pins are unchanged.
+
+#### Task 7f.3: Move the current acceptance mask to pass one (R3-lite)
+
+**Files:**
+- Modify: `KhaozEngine.Render3D/Internal/ShaderSources.TemporalSplit.cs` (`TemporalPrepareFrag` writes the mask and the centre-finite flag to `oSurface.w`), `ShaderSources.TemporalPrepare.cs` (store and decode), `ShaderSources.TemporalVisibility.cs` (decision takes the mask), `ShaderSources.TemporalResolve.cs` (fused computes it inline with the same function).
+- Modify tests: the equivalence wrapper derives the mask through the shipped mask function, and the A/B and entry identity facts run unchanged.
+
+**Interfaces:** one GLSL function computes the mask from D's tolerance arithmetic in D's 3x3 order for both entries. The stored value is an integer below 1024, exact in half.
+
+- [ ] RED: a split-only readback fact compares the pass-one mask with the inline mask for every texel of a random frame and fails until pass one writes it.
+- [ ] Implement, keeping pass two at 9 current visibility loads and D's summation order.
+- [ ] Run the same build, device-free and single Metal selection as 7f.2.
+- [ ] Commit `perf(taa): carry the current visibility mask from the first pass`.
+
+**Definition of done:** fused and split stay exact, the oracles stay at zero mismatches, and pass two's current-side fetch count matches the target.
+
+#### Task 7f.4: Author the shadows-on whole-frame cost case, not run
+
+**Files:**
+- Create: `KhaozEngine.Render.Tests/Gpu/TemporalShadowedFrameCostPerfGpuTests.cs`.
+- Modify: `KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/benchmark-request.md` (Proposal B as authored).
+
+**Interfaces:** the existing cost block structure of `TemporalResolveCostPerfGpuTests` (warm frames, 12 timed frames, 15 rotating rounds, `Off` drift control) over a whole lit frame with `ShadowSettings.Mode` on and a moving sun-shadow edge, so PCF, the R8 MRT, the history copy and the resolve carry a real signal. It uses only API present at `v21.7.1`, so the same file can be placed on a `probe/` branch cut from `6c6529589` as the base ref.
+
+- [ ] Write it and prove discovery only, with `dotnet test --list-tests` under the bench filter. Do not execute it.
+- [ ] Commit `test(taa): author the shadowed whole-frame cost case`.
+
+**Definition of done:** the case compiles at head and against the base API, it is discoverable by the bench filter, and nothing ran.
+
+#### Task 7f.5: Run the gates
+
+- [ ] Full headless: `build-slot --heavy --label taa-7f-headless -- env KE_GPU_TESTS=0 dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket"`, zero failures and zero warnings.
+- [ ] Broad local Metal: the Task 11 `TAA_CORRECTNESS` selection once with `--heavy`, which includes the new classes. Zero failed and zero skipped in the TRX.
+- [ ] Hosted correctness: the orchestrator dispatches `cross-platform-gpu.yml` on the candidate with `renderTestFilter` equal to that selection, legs all, plus the DXBC compile-only fact. Software Vulkan keeps the entry-identity treatment, state exact and colour within the existing bound, with no new epsilon.
+- [ ] Shipping capture: rerun back15 and ground15 with the commands in [real-scene.md](../../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/real-scene.md) under the consumer-probe authorization. Contact-sheet pixels and region masks must be byte-identical to the shipping D record.
+- [ ] Review by the task reviewer over 7f.1 to 7f.4. Record the gate in `verification.md` and commit `test(taa): record visibility cost cut correctness`.
+
+**Definition of done:** every gate is green with evidence and the shipping capture is byte-identical to D.
+
+#### Task 7f.6: Stop for owner approval of the billed T4 bench
+
+- [ ] Add a proposal to `benchmark-request.md`: `gpu-hosted-bench.yml`, legs all, one dispatch per ref. The head is the 7f candidate. The base is `6c6529589`, or a `probe/` branch of it carrying only the shadows-on case file. The filter carries the existing resolve and outline cost cases, the shadows-on case and, on the head only, `TemporalVisibilityEquivalenceGpuTests`. State the runs, legs, duration and estimated bill.
+- [ ] Verify the request against the workflow inputs with `git diff --check`, commit `docs(taa): request the cost cut benchmark`, then stop. No dispatch without fresh explicit owner approval.
+
+**Definition of done:** the owner has a reviewable request. The budget verdict, R5 and any Phase 2 approximation are later decisions.
 
 ### Task 8: Prove exact entry identity and integration edges
 

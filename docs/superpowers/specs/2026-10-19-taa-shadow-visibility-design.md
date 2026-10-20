@@ -272,6 +272,12 @@ Material risks are five-attachment support, per-sample R8 MSAA support/resolve b
 
 The billed T4 `gpu-hosted-bench.yml` is a separate stop. After correctness and real-scene proof, present exact refs, device legs, test filter, paired run count, expected duration and estimated bill to the owner. Obtain fresh explicit approval before dispatch. No local timing/load loop substitutes for it. This plan does not authorize any timing or load run.
 
+### Measured resolve cost and the Phase 1 rule
+
+The owner-approved T4 bench is recorded in [benchmark-result.md](../../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/benchmark-result.md). Against `v21.7.1` the head adds 3.9 to 4.8 ms on Direct3D 11 and 2.1 to 2.9 ms on Windows and Linux Vulkan to resolve and sharpen at a 2560x1440 display, about twice that at 3456x2234. The growth is all in the split's second pass and follows the display size. Pass one, the outline cost and the `Off` drift control stay within noise. The fixtures run with shadows off, so PCF and a real shadow signal are not in these numbers.
+
+On 2026-10-20 the owner ruled to optimize before merging, with a budget of at most 0.5 ms resolve growth over `v21.7.1` at 1440p on every T4 backend. Phase 1 of the cost cut is exact: every output pixel and every observable visibility decision stays bit-identical to D, proved against a frozen copy of D's text. Any approximation is a separate owner look. The work and its oracles are plan Task 7f. A further billed bench needs fresh owner approval.
+
 ## 10. Amendment, version and handoff
 
 This is **amendment 35** in [the canonical temporal-resolve design](../../design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md). Task 9 reconciled main and the document before allocation. The amendment records the shared visibility-release contract, history/format/lifetime rules, controlled rebaseline rationale, owner-selected lock release and measured evidence. Only the affected key-shadow decisions from amendments 33/34 are superseded. Their independent colour-based shading behavior remains. Algorithm and memory sections, living docs and `docs/INDEX.md` carry the current contract.

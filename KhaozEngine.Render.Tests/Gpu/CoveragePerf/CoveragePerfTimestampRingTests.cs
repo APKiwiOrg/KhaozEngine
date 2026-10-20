@@ -6,7 +6,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Gpu;
 
 [Collection("AllocSensitive")]
-public sealed class CoveragePerfTimestampRingTests
+public sealed partial class CoveragePerfTimestampRingTests
 {
     [Fact]
     public void PendingNeverMutatesPublishedSamplesOrResetsFence()
@@ -222,18 +222,6 @@ public sealed class CoveragePerfTimestampRingTests
         rig.Submission.Begin(); rig.Submission.Abandon();
         Assert.Equal(1, ((SubmissionTestFence)fence).ResetCalls);
         Assert.True(rig.Results[0]!.Valid);
-    }
-
-    [Fact]
-    public void DisposalBeforeTeardownCannotFreeARetainedPool()
-    {
-        using var rig = new Rig();
-        rig.Record(0);
-        Assert.Throws<InvalidOperationException>(rig.Ring.Dispose);
-        Assert.Equal(0, rig.Device.Pools[0].Disposals);
-        Assert.True(rig.Ring.HasPending(rig.Device.Fences[0]));
-        rig.Submission.Dispose(); rig.Ring.Dispose();
-        Assert.All(rig.Device.Pools, p => Assert.Equal(1, p.Disposals));
     }
 
     [Fact]

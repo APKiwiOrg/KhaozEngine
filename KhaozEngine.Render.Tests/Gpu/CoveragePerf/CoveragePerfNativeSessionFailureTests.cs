@@ -156,11 +156,13 @@ public sealed class CoveragePerfNativeSessionFailureTests
 
         Assert.True(consumer.HasPending(fence));
         Assert.Equal(0, fence.DisposeCalls);
-        Assert.All(run.TimestampPools, pool => Assert.Equal(0, pool.Disposals));
-        Assert.DoesNotContain(run.Events, name => name.StartsWith("timestamp-dispose-", StringComparison.Ordinal));
+        Assert.Equal(new[] { 0, 1, 1 }, run.TimestampPools.Select(pool => pool.Disposals));
+        Assert.Equal(new[] { "timestamp-dispose-1", "timestamp-dispose-2" },
+            run.Events.Where(name => name.StartsWith("timestamp-dispose-", StringComparison.Ordinal)));
         AssertLaterResourcesDisposed(run);
+        Assert.True(consumer.HasPending(fence));
         Assert.Equal(0, fence.DisposeCalls);
-        Assert.All(run.TimestampPools, pool => Assert.Equal(0, pool.Disposals));
+        Assert.Equal(new[] { 0, 1, 1 }, run.TimestampPools.Select(pool => pool.Disposals));
         Assert.Same(expected, actual);
     }
 

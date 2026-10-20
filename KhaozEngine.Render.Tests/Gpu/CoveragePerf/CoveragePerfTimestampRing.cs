@@ -134,7 +134,7 @@ internal sealed class CoveragePerfTimestampRing : IGpuFrameCompletionConsumer, I
 
     public bool HasPending(IGpuFence completion)
     {
-        if (_disposed) return false;
+        // A disposed ring still owns quarantined pools until their retained fences are released.
         foreach (var slot in _slots) if (ReferenceEquals(slot.Fence, completion)) return true;
         return false;
     }
@@ -162,27 +162,53 @@ internal sealed class CoveragePerfTimestampRing : IGpuFrameCompletionConsumer, I
                 slot.State = State.Quarantined;
                 Refuse("The GPU timestamp recording was discarded before submission.");
             }
+        if (_disposed) ReleaseCompleted(completion);
     }
 
     public void ReleaseCompleted(IGpuFence completion)
     {
         // Teardown only. GpuFrameSubmission owns the drain and calls every consumer before freeing fences.
+        ExceptionDispatchInfo? error = null;
         foreach (var slot in _slots)
             if (ReferenceEquals(slot.Fence, completion))
             {
                 slot.Fence = null;
                 slot.State = State.Quarantined;
                 if (ReferenceEquals(_recording, slot)) _recording = null;
+                if (_disposed)
+                    try { DisposePool(slot); }
+                    catch (Exception failure) { error ??= ExceptionDispatchInfo.Capture(failure); }
             }
+        error?.Throw();
     }
 
     public void Dispose()
     {
         if (_disposed) return;
-        foreach (var slot in _slots)
-            if (slot.Fence is not null) throw new InvalidOperationException("Drain and dispose the frame submission before the timestamp ring.");
         _disposed = true;
-        foreach (var slot in _slots) slot.Pool.Dispose();
+        _recording = null;
+        bool retained = false;
+        ExceptionDispatchInfo? error = null;
+        foreach (var slot in _slots)
+        {
+            if (slot.Fence is not null)
+            {
+                slot.State = State.Quarantined;
+                retained = true;
+                continue;
+            }
+            try { DisposePool(slot); }
+            catch (Exception failure) { error ??= ExceptionDispatchInfo.Capture(failure); }
+        }
+        error?.Throw();
+        if (retained) throw new InvalidOperationException("Drain and dispose the frame submission before the timestamp ring.");
+    }
+
+    static void DisposePool(Slot slot)
+    {
+        if (slot.PoolDisposed) return;
+        slot.PoolDisposed = true;
+        slot.Pool.Dispose();
     }
 
     bool Refuse(string reason) { Failure ??= reason; return false; }
@@ -195,5 +221,6 @@ internal sealed class CoveragePerfTimestampRing : IGpuFrameCompletionConsumer, I
         internal int SampleIndex, Count;
         internal CoveragePerfTimerLayout Layout;
         internal State State;
+        internal bool PoolDisposed;
     }
 }

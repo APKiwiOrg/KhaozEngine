@@ -5,6 +5,27 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.9.0
+
+2026-10-20
+
+- Add native foliage density in MapDoc format 9, foliage payload 1, chunked sparse rasters and
+  content-addressed region packs for world authoring R7 (#1291). Format 9 moves authored identity once.
+  Documents without foliage keep their behaviour.
+- Add per-surface compatibility ordinal tables and the `legacy-tile/1` policy for released interpolation,
+  normals, material selection and per-owner clearance applicability.
+- Publish immutable `MapFoliageSampleBatch` results and stable-lattice differentials with bounded retention.
+  Queries cap retained samples at 262,144 and retained bytes at 67,108,864. Differentials cap candidates at
+  64,000,000, changes at 4,000,000 and reconciliation bytes at 134,217,728 per stable 64 by 64 lattice block.
+- Add pure layer, raster and metre-brush edits through `MapFoliageEdits` and `MapFoliageBrush`. The public
+  `MapDocumentEditFinalizer` publishes `FoliageChunks` rows and `FoliageLayers` entries in edit effects.
+- Add `foliage_layer_set`, `foliage_get`, `foliage_density_set`, `foliage_paint` and `foliage_remove` to
+  ke-mapedit, bringing its inventory to 101 tools with detached discovery and CPU preview.
+- Keep foliage cosmetic. Density and foliage edits never change physics statics, navigation or world bounds.
+- Add the immutable padded `MapFoliageRenderHandoff` for R8, preserving CPU sample matrices and selection
+  while adding model extents and explicit motion padding. Residency, upload and drawing remain R8.
+- Fix `MapNativeWriteSet.Union` to preserve `LegacySpawns` (#1513).
+
 ## 21.8.0
 
 2026-10-20

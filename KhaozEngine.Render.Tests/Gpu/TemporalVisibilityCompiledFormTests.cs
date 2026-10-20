@@ -112,9 +112,9 @@ void main() {
                 ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, source, "visibility equivalence " + name);
         }
 
-        /// <summary>The A/B fact's path export rewrites every program that runs the decision, leaves the others alone,
-        /// compiles through the shipped front end and both emitters, and reflects as many resources as the program it
-        /// rewrites, so a backend binds it with production's layout.</summary>
+        /// <summary>The A/B fact's two path exports rewrite every program that runs the decision, leave the others alone,
+        /// compile through the shipped front end and both emitters, and reflect as many resources as the program they
+        /// rewrite, so a backend binds them with production's layout.</summary>
         [Fact]
         public void TheProductionPathExportCompilesForEveryBackend()
         {
@@ -125,14 +125,25 @@ void main() {
                 ShaderSources.TemporalResolveFrag, ShaderSources.TemporalResolveHalfFrag,
             })
             {
-                string rewritten = TemporalVisibilityProductionPaths.Rewrite(program);
-                Assert.NotEqual(program, rewritten);
-                ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, rewritten, "path export");
-                Assert.Equal(Reflected(program), Reflected(rewritten));
+                foreach (Func<string, string> export in new Func<string, string>[]
+                {
+                    TemporalVisibilityProductionPaths.Rewrite, TemporalVisibilityProductionPaths.RewriteKeepingTheDecision,
+                })
+                {
+                    string rewritten = export(program);
+                    Assert.NotEqual(program, rewritten);
+                    ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, rewritten, "path export");
+                    Assert.Equal(Reflected(program), Reflected(rewritten));
+                }
+                // The second export keeps production's visibility functions word for word.
+                Assert.Contains(ShaderSources.TemporalVisibilityGlsl,
+                    TemporalVisibilityProductionPaths.RewriteKeepingTheDecision(program), StringComparison.Ordinal);
             }
             Assert.Same(ShaderSources.TemporalPrepareFrag, TemporalVisibilityProductionPaths.Rewrite(ShaderSources.TemporalPrepareFrag));
             Assert.Same(ShaderSources.TemporalDepthStoreFrag,
                 TemporalVisibilityProductionPaths.Rewrite(ShaderSources.TemporalDepthStoreFrag));
+            Assert.Same(ShaderSources.TemporalPrepareFrag,
+                TemporalVisibilityProductionPaths.RewriteKeepingTheDecision(ShaderSources.TemporalPrepareFrag));
         }
 
         // The resource elements Metal's and Direct3D's emitters reflect for a fragment program.

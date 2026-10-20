@@ -116,13 +116,7 @@ namespace KhaozEngine.Tests.Gpu
             int roll = random.Next(4);
             if (kind < 3) return Ndc(baseDepth);
             if (kind < 5) return Ndc(roll < 2 ? baseDepth : baseDepth * 1.3);
-            if (kind < 9)
-            {
-                if (roll == 0) return Ndc(baseDepth);
-                double side = roll == 1 ? 1.0 - TemporalResolveTuning.VisibilityDepthTolerance
-                    : 1.0 + TemporalResolveTuning.VisibilityDepthTolerance;
-                return Ulps(Ndc(baseDepth * side), random.Next(7) - 3);
-            }
+            if (kind < 9) return roll == 0 ? Ndc(baseDepth) : ToleranceEdge(baseDepth, roll != 1, random.Next(7) - 3);
             return random.Next(6) switch
             {
                 0 => float.NaN,
@@ -133,6 +127,13 @@ namespace KhaozEngine.Tests.Gpu
                 _ => Ndc(baseDepth),
             };
         }
+
+        /// <summary>The NDC depth of a neighbour at the centre's current tolerance: the view depth
+        /// <paramref name="baseDepth"/> times one plus or minus <see cref="TemporalResolveTuning.VisibilityDepthTolerance"/>,
+        /// moved <paramref name="ulps"/> float steps. The A/B fact's tolerance-edge tiles use it too.</summary>
+        internal static float ToleranceEdge(double baseDepth, bool farther, int ulps)
+            => Ulps(Ndc(baseDepth * (farther ? 1.0 + TemporalResolveTuning.VisibilityDepthTolerance
+                : 1.0 - TemporalResolveTuning.VisibilityDepthTolerance)), ulps);
 
         // The NDC depth the resolve's perspective depth parameters turn into this view depth.
         static float Ndc(double linear)

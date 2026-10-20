@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Render3D.Internal;
@@ -109,6 +110,39 @@ void main() {
         {
             foreach ((string name, string source) in TemporalVisibilityEquivalenceProbe.Sources)
                 ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, source, "visibility equivalence " + name);
+        }
+
+        /// <summary>The A/B fact's path export rewrites every program that runs the decision, leaves the others alone,
+        /// compiles through the shipped front end and both emitters, and reflects as many resources as the program it
+        /// rewrites, so a backend binds it with production's layout.</summary>
+        [Fact]
+        public void TheProductionPathExportCompilesForEveryBackend()
+        {
+            foreach (string program in new[]
+            {
+                ShaderSources.TemporalAccumulateFrag, ShaderSources.TemporalAccumulateHalfFrag,
+                ShaderSources.TemporalAccumulateAtDisplaySizeFrag, ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag,
+                ShaderSources.TemporalResolveFrag, ShaderSources.TemporalResolveHalfFrag,
+            })
+            {
+                string rewritten = TemporalVisibilityProductionPaths.Rewrite(program);
+                Assert.NotEqual(program, rewritten);
+                ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, rewritten, "path export");
+                Assert.Equal(Reflected(program), Reflected(rewritten));
+            }
+            Assert.Same(ShaderSources.TemporalPrepareFrag, TemporalVisibilityProductionPaths.Rewrite(ShaderSources.TemporalPrepareFrag));
+            Assert.Same(ShaderSources.TemporalDepthStoreFrag,
+                TemporalVisibilityProductionPaths.Rewrite(ShaderSources.TemporalDepthStoreFrag));
+        }
+
+        // The resource elements Metal's and Direct3D's emitters reflect for a fragment program.
+        static (int Msl, int Hlsl) Reflected(string fragment)
+        {
+            byte[] vertex = SpirvFrontEnd.ToSpirv(ShaderSources.FullscreenVert, GpuShaderStages.Vertex, "reflected");
+            byte[] spirv = SpirvFrontEnd.ToSpirv(fragment, GpuShaderStages.Fragment, "reflected");
+            static int Elements(ShaderReflection r) => r.ResourceLayouts.Sum(l => l.Elements.Length);
+            return (Elements(SpirvCrossCompile.VertexFragmentToMsl(vertex, spirv, "reflected").Reflection),
+                Elements(SpirvCrossCompile.VertexFragmentToHlsl(vertex, spirv, "reflected").Reflection));
         }
 
         /// <summary>Instructions with <paramref name="opcode"/> in a SPIR-V module, walked by word count after the

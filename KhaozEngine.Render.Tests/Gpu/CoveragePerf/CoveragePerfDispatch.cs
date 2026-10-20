@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Immutable;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -40,6 +39,12 @@ internal static class CoveragePerfDispatch
 
     internal static CoveragePerfRunIdentity Identity(CoveragePerfRequest request, Func<string, string?> environment)
     {
+        // The run is recorded, never matched against the manifest. Only its first attempt may use an approval.
+        string runId = Required(environment, "GITHUB_RUN_ID");
+        Match(runId, "^[1-9][0-9]{0,18}$", "GITHUB_RUN_ID");
+        string attempt = Required(environment, "GITHUB_RUN_ATTEMPT");
+        Match(attempt, "^[1-9][0-9]{0,8}$", "GITHUB_RUN_ATTEMPT");
+        if (attempt != "1") throw new InvalidDataException("GITHUB_RUN_ATTEMPT must be 1, a GitHub re-run cannot reuse an approval.");
         string workflow = Required(environment, "GITHUB_WORKFLOW");
         string os = Required(environment, "RUNNER_OS");
         string backend = Required(environment, "KE_GRAPHICS_BACKEND");
@@ -67,10 +72,8 @@ internal static class CoveragePerfDispatch
         else throw new InvalidDataException("Measurement requires the approved workflow and runner route.");
         string workflowSha = Required(environment, "GITHUB_SHA");
         Match(workflowSha, "^[0-9a-f]{40}$", "GITHUB_SHA");
-        if (!int.TryParse(Required(environment, "GITHUB_RUN_ATTEMPT"), NumberStyles.None, CultureInfo.InvariantCulture, out int attempt) || attempt <= 0)
-            throw new InvalidDataException("GITHUB_RUN_ATTEMPT must be positive.");
         var identity = new CoveragePerfRunIdentity(request.WorkloadSha, workflowSha, request.Manifest.UnitId,
-            request.Manifest.Sha256, runner, workflow, leg, Required(environment, "GITHUB_RUN_ID"), attempt,
+            request.Manifest.Sha256, runner, workflow, leg, runId, CoveragePerfManifest.FirstRunAttempt,
             Environment.ProcessId, request.Manifest.Authorization.Identity)
         {
             AuthorizationCommitSha = request.AuthorizationSha,

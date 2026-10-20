@@ -1,8 +1,11 @@
 # Approved performance units
 
 Root commits each manifest here only after its own exact owner approval. No executable manifest ships
-with the harness. Each run or rerun needs a separate approval, including the workflow run and attempt,
-unit ID, exact manifest SHA-256, workload SHA, preset, runner, leg, limits and approval reference.
+with the harness. A manifest binds only approval-time facts: unit ID, exact manifest SHA-256, workload
+SHA, baseline main SHA, preset, runner, workflow, leg, limits, approver and approval reference. It
+authorizes one dispatch. The run does not exist when the manifest is committed, so the report names it
+by workflow SHA, run ID, attempt and process ID. A GitHub re-run attempt is refused. Any further run
+needs a new approval and a new unit.
 
 Each manifest arrives in its own authorization commit. That commit's only parent is the workload commit
 the manifest names as `workloadSha`, and it adds only that one JSON file. `.gitattributes` keeps these

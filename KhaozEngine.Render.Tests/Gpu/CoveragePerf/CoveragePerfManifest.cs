@@ -20,12 +20,13 @@ internal sealed record CoveragePerfBlock(int Index, int Actors, CoveragePerfCond
 internal sealed record CoveragePerfPreset(string Name, GpuBackendKind Backend, CoveragePerfAdapterPolicy AdapterPolicy,
     string Runner, string Workflow, string Leg, int MaxUnitSeconds, int JobMinutes, ImmutableArray<CoveragePerfBlock> Blocks);
 
-internal sealed record CoveragePerfAuthorization(string Identity, string ApprovedBy, string Reference,
-    string WorkflowSha, string WorkflowRunId, int WorkflowRunAttempt);
+// Approval-time facts only. The run that executes an approval does not exist when its manifest is committed.
+internal sealed record CoveragePerfAuthorization(string Identity, string ApprovedBy, string Reference);
 
 /// <summary>
 /// A strict audit record for one separately approved unit. Prefixes do not establish owner consent. The caller must
-/// supply the exact approved identity and byte hash, with independently verified workload and workflow identities.
+/// supply the exact approved identity and byte hash, with an independently verified workload identity. The run's
+/// workflow SHA, run ID and process ID are recorded and never matched. Only a run's first attempt is admitted.
 /// Parsing and binding have no device, factory, environment or clock dependencies.
 /// </summary>
 internal sealed record CoveragePerfManifest
@@ -35,7 +36,7 @@ internal sealed record CoveragePerfManifest
     internal const string FixtureVersion = "coverage-typical-gpu/1", ProfileVersion = "full-1280x720/1";
     internal const string ReleaseConfiguration = "Release", OrdinarySkinningRoute = "gpu", CoveredSurfaceRoute = "gpu-built";
     internal const int BatchFrameCount = 3, WarmupFrameCount = 64, SmokeMeasuredFrames = 32, ProofMeasuredFrames = 128;
-    internal const int IterationCount = 1, AddedLoad = 0, MaxFrameMillisecondsValue = 10000;
+    internal const int IterationCount = 1, AddedLoad = 0, MaxFrameMillisecondsValue = 10000, FirstRunAttempt = 1;
     internal const int MaxManifestBytes = 65536, MaxLabelCharacters = 128, MaxApprovalReferenceCharacters = 1024;
 
     // This is the single preset table. Counts, order, runner labels and workflow deadlines are shared with later tasks.
@@ -120,12 +121,13 @@ internal sealed record CoveragePerfManifest
         Equal(identity.UnitId, UnitId, "identity.unitId");
         Equal(identity.ManifestSha256, Sha256, "identity.manifestSha256");
         Equal(identity.WorkloadSha, WorkloadSha, "identity.workloadSha");
-        Equal(identity.WorkflowSha, Authorization.WorkflowSha, "identity.workflowSha");
         Equal(identity.Runner, Runner, "identity.runner");
         Equal(identity.Workflow, Workflow, "identity.workflow");
         Equal(identity.Leg, Leg, "identity.leg");
-        Equal(identity.WorkflowRunId, Authorization.WorkflowRunId, "identity.workflowRunId");
-        Equal(identity.WorkflowRunAttempt, Authorization.WorkflowRunAttempt, "identity.workflowRunAttempt");
+        // Run facts are protocol checks, not manifest bindings. A GitHub re-run cannot reuse an approval.
+        if (!RunId(identity.WorkflowRunId)) throw Invalid("identity.workflowRunId", "must be a positive decimal workflow run ID");
+        if (identity.WorkflowRunAttempt != FirstRunAttempt)
+            throw Invalid("identity.workflowRunAttempt", "must be 1, a GitHub re-run cannot reuse an approval");
         if (identity.ProcessId <= 0) throw Invalid("identity.processId", "must be positive");
     }
 
@@ -136,8 +138,7 @@ internal sealed record CoveragePerfManifest
         var routes = Object(Value(root, "routes"), "routes", "ordinarySkinning", "coveredSurface");
         var device = Object(Value(root, "device"), "device", "backend", "adapterPolicy");
         var limits = Object(Value(root, "limits"), "limits", "maxUnitSeconds", "maxFrameMilliseconds", "jobMinutes");
-        var approval = Object(Value(root, "authorization"), "authorization",
-            "identity", "approvedBy", "reference", "workflowSha", "workflowRunId", "workflowRunAttempt");
+        var approval = Object(Value(root, "authorization"), "authorization", "identity", "approvedBy", "reference");
         string authorizationIdentity = Label(approval, "authorization.identity");
         FreshIdentity(authorizationIdentity, "authorization.identity");
         string unitId = Label(root, "unitId");
@@ -168,8 +169,7 @@ internal sealed record CoveragePerfManifest
             MaxFrameMilliseconds = Equal(Int(limits, "limits.maxFrameMilliseconds"), MaxFrameMillisecondsValue, "limits.maxFrameMilliseconds"),
             JobMinutes = Equal(Int(limits, "limits.jobMinutes"), preset.JobMinutes, "limits.jobMinutes"),
             Authorization = new(authorizationIdentity, Label(approval, "authorization.approvedBy"),
-                Label(approval, "authorization.reference", MaxApprovalReferenceCharacters), Sha(approval, "authorization.workflowSha"),
-                RunId(approval), PositiveInt(approval, "authorization.workflowRunAttempt")),
+                Label(approval, "authorization.reference", MaxApprovalReferenceCharacters)),
             Blocks = BlocksFrom(Value(root, "blocks"), preset),
             Utf8 = ImmutableArray.CreateRange(utf8.ToArray()),
             Sha256 = Convert.ToHexStringLower(SHA256.HashData(utf8)),
@@ -260,12 +260,6 @@ internal sealed record CoveragePerfManifest
         return number;
     }
 
-    static int PositiveInt(Dictionary<string, JsonElement> fields, string path)
-    {
-        int value = Int(fields, path);
-        return value > 0 ? value : throw Invalid(path, "must be positive");
-    }
-
     static string Label(Dictionary<string, JsonElement> fields, string path, int max = MaxLabelCharacters)
     {
         string text = String(fields, path);
@@ -285,15 +279,9 @@ internal sealed record CoveragePerfManifest
         return text;
     }
 
-    static string RunId(Dictionary<string, JsonElement> fields)
-    {
-        const string path = "authorization.workflowRunId";
-        string text = String(fields, path);
-        if (!long.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out long value) || value <= 0
-            || text != value.ToString(CultureInfo.InvariantCulture))
-            throw Invalid(path, "must be a positive decimal workflow run ID");
-        return text;
-    }
+    static bool RunId(string? text) => text is not null
+        && long.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out long value) && value > 0
+        && text == value.ToString(CultureInfo.InvariantCulture);
 
     static void FreshIdentity(string text, string path)
     {

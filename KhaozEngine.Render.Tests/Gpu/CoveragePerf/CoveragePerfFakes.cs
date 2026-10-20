@@ -174,9 +174,6 @@ internal sealed class CoveragePerfFakeRun
                 identity = CoveragePerfManifest.AuthorizationPrefix + "inline-driver",
                 approvedBy = "inline fixture, no owner approval",
                 reference = "Protocol test only, no measurement authorized",
-                workflowSha = new string('2', 40),
-                workflowRunId = "123456789",
-                workflowRunAttempt = 1,
             },
             blocks = preset.Blocks.Select(b => new
             {

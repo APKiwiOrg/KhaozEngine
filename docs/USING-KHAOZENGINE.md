@@ -23188,7 +23188,9 @@ bytes against `KE_COVERAGE_PERF_MANIFEST_SHA256` and the manifest's `workloadSha
 workload commit and it adds only the selected manifest, which git proves offline before any clock or
 device. `GITHUB_SHA` identifies the workflow and cannot substitute for either commit.
 
-Each run or rerun needs its own owner approval before root commits the manifest. Manual
+The manifest binds only approval-time facts and authorizes one dispatch. Its report names the run by
+workflow SHA, run ID, attempt and process ID. A GitHub re-run attempt is refused, and any further run
+needs a new owner approval and a new unit before root commits its manifest. Manual
 `gpu-hosted-bench.yml` selects one T4 backend leg and keeps GRID, NVIDIA ICD and native identity checks.
 Manual `stress-test.yml` selects the shared workflow's explicit lavapipe CPU route with one iteration,
 no load and Release. Both require one executed unit, zero skips and retained JSON, Markdown, TRX and

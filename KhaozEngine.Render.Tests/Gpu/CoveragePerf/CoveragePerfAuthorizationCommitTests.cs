@@ -37,6 +37,8 @@ public sealed class CoveragePerfAuthorizationCommitTests
         // The build output carries the approved bytes, so the git rule alone must refuse a bad checkout.
         repository.Output(run.Json);
         var env = Environment(run, workload);
+        // On the stress route GITHUB_SHA is the dispatched authorization commit itself.
+        env["GITHUB_SHA"] = authorization;
         if (vector == "hash") env["KE_COVERAGE_PERF_MANIFEST_SHA256"] = new string('0', 64);
 
         CoveragePerfRequest? request = null;
@@ -54,20 +56,37 @@ public sealed class CoveragePerfAuthorizationCommitTests
         var identity = CoveragePerfDispatch.Identity(request, name => env.GetValueOrDefault(name));
         Assert.Equal(workload, identity.WorkloadSha);
         Assert.Equal(authorization, identity.AuthorizationCommitSha);
+        Assert.Equal(authorization, identity.WorkflowSha);
     }
 
     [Fact]
-    public void Report_json_and_markdown_record_workload_and_authorization_commits()
+    public void Report_json_and_markdown_record_workload_authorization_and_run_identity()
     {
         var report = CoveragePerfReportVectors.Create();
-        report = report with { Identity = report.Identity with { AuthorizationCommitSha = new string('b', 40) } };
+        report = report with
+        {
+            Identity = report.Identity with
+            {
+                AuthorizationCommitSha = new string('b', 40),
+                WorkflowSha = new string('c', 40),
+                WorkflowRunId = "987654321",
+                ProcessId = 4242,
+            },
+        };
         string json = CoveragePerfReportJson.Serialize(report);
         var identity = JsonDocument.Parse(json).RootElement.GetProperty("report").GetProperty("identity");
         Assert.Equal(report.Identity.WorkloadSha, identity.GetProperty("workloadSha").GetString());
         Assert.Equal(new string('b', 40), identity.GetProperty("authorizationCommitSha").GetString());
-        Assert.Equal(new string('b', 40), CoveragePerfReportJson.Deserialize(json).Identity.AuthorizationCommitSha);
+        Assert.Equal(new string('c', 40), identity.GetProperty("workflowSha").GetString());
+        Assert.Equal("987654321", identity.GetProperty("workflowRunId").GetString());
+        Assert.Equal(1, identity.GetProperty("workflowRunAttempt").GetInt32());
+        Assert.Equal(4242, identity.GetProperty("processId").GetInt32());
+        var copy = CoveragePerfReportJson.Deserialize(json).Identity;
+        Assert.Equal(new string('b', 40), copy.AuthorizationCommitSha);
+        Assert.Equal((new string('c', 40), "987654321", 1, 4242), (copy.WorkflowSha, copy.WorkflowRunId, copy.WorkflowRunAttempt, copy.ProcessId));
         string markdown = CoveragePerfReportJson.Markdown(report);
-        Assert.Contains("Workload " + report.Identity.WorkloadSha + ", authorization commit " + new string('b', 40) + ".", markdown, StringComparison.Ordinal);
+        Assert.Contains("Workload " + report.Identity.WorkloadSha + ", authorization commit " + new string('b', 40) +
+            ", workflow " + new string('c', 40) + ", run 987654321 attempt 1, process 4242.", markdown, StringComparison.Ordinal);
     }
 
     [Fact]

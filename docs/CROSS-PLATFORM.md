@@ -968,9 +968,12 @@ explicitly. C0 has a 20-minute job limit and C1 has 30. This route proves CPU pr
 existing stress behavior stays unchanged when the switch is false and the four coverage strings are
 empty.
 
-Before either dispatch, root obtains exact owner approval for that single run. The approval binds the
-unit, exact byte hash, workload SHA, workflow SHA, run ID and attempt. Reruns need new approval. The
-measured code and its authorization are two commits:
+Before either dispatch, root obtains exact owner approval for that single run. The committed manifest
+binds only approval-time facts: the unit, exact byte hash, workload SHA, baseline main SHA, preset,
+runner, workflow, leg, approver and approval reference. A manifest authorizes one dispatch. The run does
+not exist at approval time, so the report names it by workflow SHA, run ID, attempt and process ID. The
+entrypoint refuses any run attempt other than 1, so a GitHub re-run cannot reuse an approval. Any further
+run needs a new approval and a new unit. The measured code and its authorization are two commits:
 
 1. Workload commit A is the exact code to measure. The manifest names A as `workloadSha`.
 2. Authorization commit B has A as its only parent and adds only
@@ -989,8 +992,10 @@ The entrypoint skips when `KE_COVERAGE_PERF_UNIT` is unset. With a selection it 
 manifest and verifies its SHA-256 and that its `workloadSha` equals the dispatched A. Before any clock
 or device, git, run offline with an argument list, proves HEAD's only parent is A and that the
 difference from A is exactly the added manifest. The entrypoint refuses any failure, including a missing
-git, and any approval or route mismatch. Reports record A as `workloadSha` and B as
-`authorizationCommitSha`. Gate verdicts are reported rather than asserted. A completed above-budget
+git, any approval or route mismatch, a missing or malformed `GITHUB_RUN_ID` or `GITHUB_RUN_ATTEMPT` and
+any attempt other than 1. Reports record A as `workloadSha` and B as `authorizationCommitSha`, beside the
+run's `workflowSha`, `workflowRunId`, `workflowRunAttempt` and `processId`. None of the run facts is
+compared with the manifest. Gate verdicts are reported rather than asserted. A completed above-budget
 result still passes the entrypoint. Refused or failed execution fails with its reason. JSON and Markdown
 are published from the driver's returned report through temporary files and atomic renames. Candidate
 reports never become final evidence. The final write is also checked against the cooperative deadline.

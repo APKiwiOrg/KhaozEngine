@@ -76,10 +76,58 @@ public sealed class CoveragePerfDispatchTests
         Assert.Equal("123456789-1-" + Environment.ProcessId, identity.RunId);
     }
 
+    // The run's facts exist only at dispatch. They are recorded beside the workload and never matched to the manifest.
     [Theory]
-    [InlineData("GITHUB_SHA", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
-    [InlineData("GITHUB_RUN_ID", "different-run")]
-    [InlineData("GITHUB_RUN_ATTEMPT", "2")]
+    [InlineData("1", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    [InlineData("987654321", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")]
+    [InlineData("9223372036854775807", "1111111111111111111111111111111111111111")]
+    public void Any_first_attempt_run_is_recorded_without_binding_the_manifest(string runId, string workflowSha)
+    {
+        using var files = new Files();
+        var env = files.Environment();
+        env["GITHUB_RUN_ID"] = runId;
+        env["GITHUB_SHA"] = workflowSha;
+        var request = CoveragePerfDispatch.Load(files.Path, name => env.GetValueOrDefault(name), (_, _) => Files.Authorization);
+        CoveragePerfRunIdentity? identity = null;
+        Assert.Null(Record.Exception(() => identity = CoveragePerfDispatch.Identity(request, name => env.GetValueOrDefault(name))));
+        Assert.Equal(workflowSha, identity!.WorkflowSha);
+        Assert.Equal(runId, identity.WorkflowRunId);
+        Assert.Equal(1, identity.WorkflowRunAttempt);
+        Assert.Equal(Environment.ProcessId, identity.ProcessId);
+        Assert.Equal(runId + "-1-" + Environment.ProcessId, identity.RunId);
+    }
+
+    [Theory]
+    [InlineData("GITHUB_RUN_ATTEMPT", "2", "GITHUB_RUN_ATTEMPT must be 1, a GitHub re-run cannot reuse an approval")]
+    [InlineData("GITHUB_RUN_ATTEMPT", "3", "GITHUB_RUN_ATTEMPT must be 1, a GitHub re-run cannot reuse an approval")]
+    [InlineData("GITHUB_RUN_ATTEMPT", null, "GITHUB_RUN_ATTEMPT is required")]
+    [InlineData("GITHUB_RUN_ATTEMPT", "", "GITHUB_RUN_ATTEMPT is required")]
+    [InlineData("GITHUB_RUN_ATTEMPT", "0", "GITHUB_RUN_ATTEMPT has an invalid identity format")]
+    [InlineData("GITHUB_RUN_ATTEMPT", "01", "GITHUB_RUN_ATTEMPT has an invalid identity format")]
+    [InlineData("GITHUB_RUN_ATTEMPT", "+1", "GITHUB_RUN_ATTEMPT has an invalid identity format")]
+    [InlineData("GITHUB_RUN_ATTEMPT", " 1", "GITHUB_RUN_ATTEMPT has an invalid identity format")]
+    [InlineData("GITHUB_RUN_ATTEMPT", "1.0", "GITHUB_RUN_ATTEMPT has an invalid identity format")]
+    [InlineData("GITHUB_RUN_ATTEMPT", "one", "GITHUB_RUN_ATTEMPT has an invalid identity format")]
+    [InlineData("GITHUB_RUN_ID", null, "GITHUB_RUN_ID is required")]
+    [InlineData("GITHUB_RUN_ID", "", "GITHUB_RUN_ID is required")]
+    [InlineData("GITHUB_RUN_ID", "0", "GITHUB_RUN_ID has an invalid identity format")]
+    [InlineData("GITHUB_RUN_ID", "0123", "GITHUB_RUN_ID has an invalid identity format")]
+    [InlineData("GITHUB_RUN_ID", "-5", "GITHUB_RUN_ID has an invalid identity format")]
+    [InlineData("GITHUB_RUN_ID", "different-run", "GITHUB_RUN_ID has an invalid identity format")]
+    [InlineData("GITHUB_RUN_ID", "123456789\n", "GITHUB_RUN_ID has an invalid identity format")]
+    [InlineData("GITHUB_RUN_ID", "99999999999999999999", "GITHUB_RUN_ID has an invalid identity format")]
+    public void Only_the_first_attempt_of_a_well_formed_run_is_admitted(string key, string? value, string reason)
+    {
+        using var files = new Files();
+        var env = files.Environment();
+        if (value is null) env.Remove(key);
+        else env[key] = value;
+        var request = CoveragePerfDispatch.Load(files.Path, name => env.GetValueOrDefault(name), (_, _) => Files.Authorization);
+        var error = Assert.Throws<InvalidDataException>(() => CoveragePerfDispatch.Identity(request, name => env.GetValueOrDefault(name)));
+        Assert.Contains(reason, error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
     [InlineData("RUNNER_OS", "Windows")]
     [InlineData("RUNNER_ENVIRONMENT", "self-hosted")]
     [InlineData("KE_GRAPHICS_BACKEND", "metal-native")]

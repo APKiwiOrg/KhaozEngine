@@ -7,8 +7,8 @@ internal enum CoveragePerfRunStatus { Completed, Refused, Failed }
 internal enum CoveragePerfBudgetStatus { Unproved, Pass, Fail }
 
 /// <summary>
-/// Caller-verified identities, not values inferred from a manifest or GITHUB_SHA alone. A different workflow attempt
-/// requires a new audit record and exact byte binding. Process identity distinguishes reports within that attempt.
+/// Caller-verified identities, not values inferred from a manifest or GITHUB_SHA alone. The workflow SHA, run ID,
+/// attempt and process ID name the run and are never matched against the manifest. Only attempt 1 is admitted.
 /// </summary>
 internal sealed record CoveragePerfRunIdentity(string WorkloadSha, string WorkflowSha, string UnitId, string ManifestSha256,
     string Runner, string Workflow, string Leg, string WorkflowRunId, int WorkflowRunAttempt, int ProcessId,

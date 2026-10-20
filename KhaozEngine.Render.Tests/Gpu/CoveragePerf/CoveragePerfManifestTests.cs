@@ -36,10 +36,7 @@ public sealed class CoveragePerfManifestTests
           "authorization": {
             "identity": "coverage-gpu-era-perf-inline-only",
             "approvedBy": "inline fixture, no owner approval",
-            "reference": "Protocol test only, no measurement authorized",
-            "workflowSha": "2222222222222222222222222222222222222222",
-            "workflowRunId": "123456789",
-            "workflowRunAttempt": 1
+            "reference": "Protocol test only, no measurement authorized"
           },
           "blocks": [
             { "index": 0, "actors": 0, "condition": "DirectOff", "timerLayout": "CpuOnly", "warmupFrames": 64, "measuredFrames": 32, "fixture": "coverage-typical-gpu/1" },
@@ -78,15 +75,12 @@ public sealed class CoveragePerfManifestTests
 
     [Theory]
     [InlineData("workloadSha", "workloadSha")]
-    [InlineData("workflowSha", "workflowSha")]
     [InlineData("unitId", "unitId")]
     [InlineData("manifestHash", "manifestSha256")]
     [InlineData("exactBytes", "manifestSha256")]
     [InlineData("runner", "runner")]
     [InlineData("workflow", "workflow")]
     [InlineData("leg", "leg")]
-    [InlineData("runId", "workflowRunId")]
-    [InlineData("attempt", "workflowRunAttempt")]
     [InlineData("processId", "processId")]
     [InlineData("identity", "authorization.identity")]
     [InlineData("retiredIdentity", "authorization.identity")]
@@ -103,14 +97,11 @@ public sealed class CoveragePerfManifestTests
         identity = change switch
         {
             "workloadSha" => identity with { WorkloadSha = WorkflowSha },
-            "workflowSha" => identity with { WorkflowSha = WorkloadSha },
             "unitId" => identity with { UnitId = "other-unit" },
             "manifestHash" => identity with { ManifestSha256 = new string('0', 64) },
             "runner" => identity with { Runner = "self-hosted" },
             "workflow" => identity with { Workflow = "gpu-hosted-bench" },
             "leg" => identity with { Leg = "linux-vulkan" },
-            "runId" => identity with { WorkflowRunId = "123456790" },
-            "attempt" => identity with { WorkflowRunAttempt = 2 },
             "processId" => identity with { ProcessId = 0 },
             "identity" => identity with { AuthorizationIdentity = "coverage-gpu-era-perf-other-approval" },
             "retiredIdentity" => identity with { AuthorizationIdentity = "coverage-pilot-20261018-a1-after-unit4-once" },
@@ -153,15 +144,10 @@ public sealed class CoveragePerfManifestTests
     [InlineData("\"leg\": \"ubuntu-26.04-vulkan-lavapipe\"", "\"leg\": \"linux-vulkan\"", "leg")]
     [InlineData("\"workloadSha\": \"1111111111111111111111111111111111111111\"", "\"workloadSha\": \"1111111\"", "workloadSha")]
     [InlineData("\"baselineMainSha\": \"3333333333333333333333333333333333333333\"", "\"baselineMainSha\": null", "baselineMainSha")]
-    [InlineData("\"workflowSha\": \"2222222222222222222222222222222222222222\"", "\"workflowSha\": \"bad\"", "authorization.workflowSha")]
     [InlineData("\"unitId\": \"inline-c0\"", "\"unitId\": \"../inline-c0\"", "unitId")]
     [InlineData("\"approvedBy\": \"inline fixture, no owner approval\"", "\"approvedBy\": \" \"", "authorization.approvedBy")]
     [InlineData("\"reference\": \"Protocol test only, no measurement authorized\"", "\"reference\": \"\"", "authorization.reference")]
-    [InlineData("\"reference\": \"Protocol test only, no measurement authorized\",", "", "authorization.reference")]
     [InlineData("\"authorization\": {", "\"authorization\": null, \"retiredAuthorization\": {", "retiredAuthorization")]
-    [InlineData("\"workflowRunId\": \"123456789\"", "\"workflowRunId\": 123456789", "authorization.workflowRunId")]
-    [InlineData("\"workflowRunId\": \"123456789\"", "\"workflowRunId\": \"0\"", "authorization.workflowRunId")]
-    [InlineData("\"workflowRunAttempt\": 1", "\"workflowRunAttempt\": 0", "authorization.workflowRunAttempt")]
     [InlineData("\"ordinarySkinning\": \"gpu\"", "\"ordinarySkinning\": \"gpu\", \"ordinarySkinning\": \"gpu\"", "routes.ordinarySkinning")]
     [InlineData("\"backend\": \"vulkan-native\"", "\"backend\": \"vulkan-native\", \"unknown\": true", "device.unknown")]
     [InlineData("\"index\": 0", "\"index\": 0, \"index\": 0", "blocks[0].index")]
@@ -169,6 +155,56 @@ public sealed class CoveragePerfManifestTests
     public void StrictFieldsRejectDuplicatesUnknownsAndCoercion(string from, string to, string reason)
     {
         var error = Assert.Throws<InvalidDataException>(() => Authorize(Replace(Valid, from, to)));
+        Assert.Contains(reason, error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("workflowSha", "\"2222222222222222222222222222222222222222\"")]
+    [InlineData("workflowRunId", "\"123456789\"")]
+    [InlineData("workflowRunAttempt", "1")]
+    public void RunFactsInTheManifestAreRefusedAsUnknownFields(string field, string value)
+    {
+        string json = Replace(Valid, "\"approvedBy\":", $"\"{field}\": {value}, \"approvedBy\":");
+        var error = Assert.Throws<InvalidDataException>(() => Authorize(json));
+        Assert.Contains($"authorization.{field} is an unknown field", error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("identity")]
+    [InlineData("approvedBy")]
+    [InlineData("reference")]
+    public void EveryApprovalTimeAuthorizationFieldIsRequired(string field)
+    {
+        var root = JsonNode.Parse(Valid)!.AsObject();
+        root["authorization"]!.AsObject().Remove(field);
+        var error = Assert.Throws<InvalidDataException>(() => Authorize(root.ToJsonString()));
+        Assert.Contains($"authorization.{field} is required", error.Message, StringComparison.Ordinal);
+    }
+
+    // The manifest is committed before dispatch, so the run that executes it is recorded and never matched.
+    [Theory]
+    [InlineData("1", "2222222222222222222222222222222222222222", 1)]
+    [InlineData("987654321", "4444444444444444444444444444444444444444", 7)]
+    [InlineData("9223372036854775807", "1111111111111111111111111111111111111111", 42)]
+    public void AValidManifestValidatesAgainstAnyRunOfItsFirstAttempt(string runId, string workflowSha, int processId)
+    {
+        var identity = Identity(Valid) with { WorkflowRunId = runId, WorkflowSha = workflowSha, ProcessId = processId };
+        Assert.Null(Record.Exception(() => CoveragePerfManifest.Parse(Bytes(Valid)).ValidateAuthorization(identity)));
+    }
+
+    [Theory]
+    [InlineData("123456789", 2, "identity.workflowRunAttempt must be 1, a GitHub re-run cannot reuse an approval")]
+    [InlineData("123456789", 3, "identity.workflowRunAttempt must be 1, a GitHub re-run cannot reuse an approval")]
+    [InlineData("123456789", 0, "identity.workflowRunAttempt must be 1, a GitHub re-run cannot reuse an approval")]
+    [InlineData("", 1, "identity.workflowRunId must be a positive decimal workflow run ID")]
+    [InlineData("0", 1, "identity.workflowRunId must be a positive decimal workflow run ID")]
+    [InlineData("0123", 1, "identity.workflowRunId must be a positive decimal workflow run ID")]
+    [InlineData("-5", 1, "identity.workflowRunId must be a positive decimal workflow run ID")]
+    [InlineData("run-1", 1, "identity.workflowRunId must be a positive decimal workflow run ID")]
+    public void ReRunAttemptsAndMalformedRunIdsAreRefused(string runId, int attempt, string reason)
+    {
+        var identity = Identity(Valid) with { WorkflowRunId = runId, WorkflowRunAttempt = attempt };
+        var error = Assert.Throws<InvalidDataException>(() => CoveragePerfManifest.Parse(Bytes(Valid)).ValidateAuthorization(identity));
         Assert.Contains(reason, error.Message, StringComparison.Ordinal);
     }
 

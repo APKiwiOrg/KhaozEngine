@@ -233,6 +233,8 @@ public sealed class CoveragePerfDriverTests
     [InlineData("retired identity", "authorization.identity")]
     [InlineData("wrong leg", "identity.leg")]
     [InlineData("wrong SHA", "identity.workloadSha")]
+    [InlineData("re-run attempt", "identity.workflowRunAttempt must be 1, a GitHub re-run cannot reuse an approval")]
+    [InlineData("malformed run ID", "identity.workflowRunId must be a positive decimal workflow run ID")]
     [InlineData("unapproved blocks", "condition")]
     public void RefusalNeverOpensAFactoryOrReadsAClock(string change, string reason)
     {
@@ -243,6 +245,8 @@ public sealed class CoveragePerfDriverTests
             case "retired identity": run.Identity = run.Identity with { AuthorizationIdentity = "coverage-pilot-20261018-a1-after-unit4-once" }; break;
             case "wrong leg": run.Identity = run.Identity with { Leg = "linux-vulkan" }; break;
             case "wrong SHA": run.Identity = run.Identity with { WorkloadSha = new string('4', 40) }; break;
+            case "re-run attempt": run.Identity = run.Identity with { WorkflowRunAttempt = 2 }; break;
+            case "malformed run ID": run.Identity = run.Identity with { WorkflowRunId = "run-1" }; break;
             case "unapproved blocks": run.ReplaceJson("DirectOff", "SharedOn"); break;
         }
 

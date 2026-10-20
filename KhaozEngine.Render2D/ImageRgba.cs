@@ -46,8 +46,29 @@ namespace KhaozEngine.Render2D
         /// <summary>Decode an encoded image (PNG/JPG/...) from memory to RGBA on the CPU. No GPU device needed.</summary>
         public static ImageRgba Decode(ReadOnlySpan<byte> fileBytes)
         {
+            ImageDecodeAdmission.EnterPixelDecode();
             ImageResult img = ImageResult.FromMemory(fileBytes.ToArray(), ColorComponents.RedGreenBlueAlpha);
             return new ImageRgba(img.Data, img.Width, img.Height);
+        }
+
+        /// <summary>Refuses unsupported headers and capacity excess before copying or decoding pixels.</summary>
+        public static ImageRgba DecodeBounded(ReadOnlySpan<byte> encoded, long maxPeakBytes, int maxPixels)
+        {
+            ImageDecodeInfo info = ImageDecodeAdmission.Probe(encoded);
+            try
+            {
+                long pixels = (long)info.Width * info.Height;
+                if (pixels > maxPixels || pixels > Array.MaxLength / 4 || ImageDecodeAdmission.Demand(info) > maxPeakBytes)
+                    throw new ImageDecodeRefusal(ImageDecodeStatus.CapacityExceeded, "Image decode allowance exceeded.");
+                ImageRgba image = Decode(encoded);
+                if (image.Width != info.Width || image.Height != info.Height)
+                    throw new ImageDecodeRefusal(ImageDecodeStatus.Invalid, "Decoded image dimensions differ from its header.");
+                return image;
+            }
+            catch (OverflowException) { throw new ImageDecodeRefusal(ImageDecodeStatus.CapacityExceeded, "Image demand overflow."); }
+            catch (ImageDecodeRefusal) { throw; }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            { throw new ImageDecodeRefusal(ImageDecodeStatus.Invalid, "Image cannot be decoded: " + ex.Message); }
         }
 
         /// <summary>Decode an image file from disk to RGBA on the CPU. No GPU device needed.</summary>

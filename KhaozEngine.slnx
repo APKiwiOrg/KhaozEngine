@@ -62,6 +62,7 @@
   <Project Path="KhaozEngine.Movement/KhaozEngine.Movement.csproj" />
   <Project Path="KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj" />
   <Project Path="KhaozEngine.MapDoc/KhaozEngine.MapDoc.csproj" />
+  <Project Path="KhaozEngine.MapDoc.Render3D/KhaozEngine.MapDoc.Render3D.csproj" />
   <Project Path="KhaozEngine.MapDoc.Tests/KhaozEngine.MapDoc.Tests.csproj" />
   <Project Path="KhaozEngine.MapDoc.Compatibility.Tests/KhaozEngine.MapDoc.Compatibility.Tests.csproj" />
   <Project Path="KhaozEngine.MapDoc.Physics/KhaozEngine.MapDoc.Physics.csproj" />

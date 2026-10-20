@@ -11,7 +11,7 @@ namespace KhaozEngine.Terrain;
 /// <see cref="PropLoader.LoadProp"/>, which fits a mesh to a declared height, drops its base to zero and recentres X
 /// and Z, this applies <see cref="MapResolvedAsset.SourceUnitsToMetres"/> once and nothing else, so a native asset keeps
 /// its authored origin and proportions and the mesh agrees with its collider.</summary>
-public static class NativeMapAssetLoader
+public static partial class NativeMapAssetLoader
 {
     // "glTF" and "JSON" read as little-endian uint32 words: the GLB magic and the first chunk's type.
     const uint GlbMagic = 0x46546C67;
@@ -26,10 +26,7 @@ public static class NativeMapAssetLoader
     /// closure's own, the resource is not a binary glTF, it names an external URI, or the mesh does not load.</summary>
     public static GltfMesh Load(MapResolvedAsset asset, MapAssetClosure closure)
     {
-        ArgumentNullException.ThrowIfNull(asset);
-        ArgumentNullException.ThrowIfNull(closure);
-        if (!ReferenceEquals(closure.GetAsset(asset.Id), asset))
-            throw new MapDocumentException($"Native asset '{asset.Id}' is not the descriptor of the supplied closure.");
+        RequireDescriptor(asset, closure);
         MapResolvedResource resource = closure.GetResource(asset.MeshResourceId);
         if (resource.Kind != MapResourceKind.Mesh)
             throw new MapDocumentException(

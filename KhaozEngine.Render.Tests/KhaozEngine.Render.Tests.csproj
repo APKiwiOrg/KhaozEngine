@@ -85,6 +85,7 @@
     <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
     <ProjectReference Include="../KhaozEngine.Render2D/KhaozEngine.Render2D.csproj" />
     <ProjectReference Include="../KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
+    <ProjectReference Include="../KhaozEngine.MapDoc.Render3D/KhaozEngine.MapDoc.Render3D.csproj" />
     <!-- Scene3DBinder, Transform3D and MeshInstance (base namespace KhaozEngine.Render3D) live in the Ecs arm. -->
     <ProjectReference Include="../KhaozEngine.Render3D.Ecs/KhaozEngine.Render3D.Ecs.csproj" />
     <ProjectReference Include="../KhaozEngine.Snapshot/KhaozEngine.Snapshot.csproj" />

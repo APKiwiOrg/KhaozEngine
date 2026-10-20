@@ -56,5 +56,5 @@ public partial class ArchitectureTests
 
     // The Foundation umbrella is code free. Dungeon, the editor and the terrain renderer consume MapDoc for authoring and
     // terrain, and MapDoc.Physics builds the statics, from placements and terrain only.
-    static readonly string[] CombinedMapDocPhysics = ["Dungeon", "Foundation", "MapDoc.Physics", "MapEditor", "Terrain.Render3D"];
+    static readonly string[] CombinedMapDocPhysics = ["Dungeon", "Foundation", "MapDoc.Physics", "MapDoc.Render3D", "MapEditor", "Terrain.Render3D"];
 }

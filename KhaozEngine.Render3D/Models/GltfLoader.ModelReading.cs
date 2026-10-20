@@ -15,6 +15,7 @@ namespace KhaozEngine.Render3D
         // read-only stream, so the validation fallback can re-read it.
         static ModelRoot LoadModel(ReadOnlyMemory<byte> glb, string identity)
         {
+            GltfDecodeAdmission.EnterModelDecode();
             ArraySegment<byte> bytes = MemoryMarshal.TryGetArray(glb, out ArraySegment<byte> segment)
                 ? segment : new ArraySegment<byte>(glb.ToArray());
             return LoadModel(identity, settings =>

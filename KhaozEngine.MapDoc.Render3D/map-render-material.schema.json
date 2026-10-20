@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "kemap/render-material/1",
+  "title": "Native render material payload 1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "payloadVersion", "baseColour", "roughness", "metallic", "alphaCutoff", "albedo", "normal", "roughnessMap"],
+  "properties": {
+    "schema": {"const": "kemap/render-material"},
+    "payloadVersion": {"const": 1},
+    "baseColour": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"$ref": "#/$defs/unit"}},
+    "roughness": {"$ref": "#/$defs/unit"},
+    "metallic": {"$ref": "#/$defs/unit"},
+    "alphaCutoff": {"$ref": "#/$defs/unit"},
+    "albedo": {"$ref": "#/$defs/resourceId"},
+    "normal": {"$ref": "#/$defs/resourceId"},
+    "roughnessMap": {"$ref": "#/$defs/resourceId"}
+  },
+  "$defs": {
+    "unit": {"type": "number", "minimum": 0, "maximum": 1},
+    "resourceId": {"type": ["string", "null"], "minLength": 1, "pattern": "\\S"}
+  }
+}

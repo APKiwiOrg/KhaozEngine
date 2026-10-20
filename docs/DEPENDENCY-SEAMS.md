@@ -1056,6 +1056,21 @@ OA9, both-head/storage proofs, real wire acceptance and hosted foliage-conforman
 context/completeness contract before streamed native generation. Actual rendering/residency and appearance, R9 input,
 R10 complete verbs and R11 actual import remain separate gates.
 
+### Optional native map rendering
+
+`KhaozEngine.MapDoc.Render3D` directly references exactly MapDoc, Render3D and Terrain.Render3D.
+It adds no third-party package or direct backend edge, has no editor, TileWorld or MapDoc.Physics edge,
+and belongs to no umbrella. Render3D already carries Metal, D3D11 and Vulkan through Windowing.
+MapDoc grants friend access only, with no renderer reference in the reverse direction.
+Terrain.Render3D already carries the neutral Physics seam, so this adapter is a deliberate combined
+MapDoc/Physics consumer. Foundation, Server and the GPU-free native builders remain independent.
+
+Verified extent proofs retain metadata in MapDoc. Selected decoded payloads and shared input leases
+live in the adapter. Bounded glTF/image admission and model-bound upload contracts live below it in
+the render packages, without referencing upper-package exceptions or DTOs. The adapter alone maps
+lower refusals to `MapRenderAssetStatus`. CPU recording needs no device or backend. See the
+[package contract](../KhaozEngine.MapDoc.Render3D/README.md) for ownership and policy details.
+
 ## Content catalog package edges
 
 The family is seven packages, and every edge is forward and acyclic. `KhaozEngine.Catalog`, the read side, adds

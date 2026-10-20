@@ -10,6 +10,7 @@ internal sealed class CoveragePerfDevice(IGpuDevice inner) : IGpuDevice
     internal int Waits, Readbacks, Submissions;
     internal int Creations => factory.Creations;
     internal Action? PresentEntry;
+    internal Action<bool>? SubmitBoundary;
     internal IGpuFramebuffer? Target;
     public GpuDeviceDiagnostics Diagnostics => inner.Diagnostics;
     public GpuDeviceCounters Counters => inner.Counters;
@@ -20,9 +21,24 @@ internal sealed class CoveragePerfDevice(IGpuDevice inner) : IGpuDevice
     public IGpuSampler PointSampler => inner.PointSampler;
     public IGpuSampler LinearSampler => inner.LinearSampler;
     public bool SyncToVerticalBlank { get => inner.SyncToVerticalBlank; set => inner.SyncToVerticalBlank = value; }
-    public void Submit(IGpuCommandList commands) { Submissions++; inner.Submit(commands); }
-    public void Submit(IGpuCommandList commands, IGpuFence fence) { Submissions++; inner.Submit(commands, fence); }
-    public void Submit(IGpuCommandList commands, ReadOnlySpan<IGpuFence> completions) { Submissions++; inner.Submit(commands, completions); }
+    public void Submit(IGpuCommandList commands)
+    {
+        Submissions++; SubmitBoundary?.Invoke(true);
+        try { inner.Submit(commands); }
+        finally { SubmitBoundary?.Invoke(false); }
+    }
+    public void Submit(IGpuCommandList commands, IGpuFence fence)
+    {
+        Submissions++; SubmitBoundary?.Invoke(true);
+        try { inner.Submit(commands, fence); }
+        finally { SubmitBoundary?.Invoke(false); }
+    }
+    public void Submit(IGpuCommandList commands, ReadOnlySpan<IGpuFence> completions)
+    {
+        Submissions++; SubmitBoundary?.Invoke(true);
+        try { inner.Submit(commands, completions); }
+        finally { SubmitBoundary?.Invoke(false); }
+    }
     public void WaitForIdle()
     {
         Waits++; inner.WaitForIdle();

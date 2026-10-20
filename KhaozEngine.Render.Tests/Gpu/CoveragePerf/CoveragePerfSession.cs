@@ -38,6 +38,13 @@ internal struct CoveragePerfFrameSample
     internal bool Fallback { get; set; }
     internal string? PoseFingerprint { get; set; }
     internal string? PassFingerprint { get; set; }
+    internal long AllocatedBytes { get; set; }
+    internal int Gen0Collections { get; set; }
+    internal int Gen1Collections { get; set; }
+    internal int Gen2Collections { get; set; }
+    internal int HarnessDrains { get; set; }
+    internal long HarnessDrainTicks { get; set; }
+    internal bool CompletedFrameTail { get; set; }
     internal string? Error { get; set; }
 }
 
@@ -66,6 +73,7 @@ internal sealed record CoveragePerfSessionInfo
 internal sealed record CoveragePerfBlockResult(CoveragePerfBlock Block, CoveragePerfRunStatus Status, string Reason,
     CoveragePerfSessionInfo? Session, ImmutableArray<CoveragePerfFrameSample> Warmup, ImmutableArray<CoveragePerfFrameSample> Samples)
 {
+    internal CoveragePerfRunIdentity? RunIdentity { get; init; }
     internal ImmutableArray<string> Errors { get; init; } = [];
 }
 

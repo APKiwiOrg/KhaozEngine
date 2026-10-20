@@ -26,22 +26,23 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
     internal long TickAtStart, TickAtPresentEntry, Ticks;
     internal bool HistoryCommittedAtPresent;
     internal int ParticipantsAtReadback;
+    internal int LastSubmittedFenceCount;
     internal Action<string>? OnTrace;
     internal Action<Frame>? OnReadbacks;
     internal bool RefuseOutcomes;
     internal List<CoveragePerfTimestampTestPool> TimestampPools { get; } = [];
     internal FakeGpuResourceFactory Resources => _device.Resources;
 
-    CoveragePerfSceneProbe(int actors, bool covered, bool completeOutcomes, CoveragePerfTimerLayout layout)
+    CoveragePerfSceneProbe(int actors, bool covered, bool completeOutcomes, CoveragePerfTimerLayout layout, bool direct = false)
     {
         _completeOutcomes = completeOutcomes;
         _layout = layout;
         _device = new(this);
         _participants = Enumerable.Range(0, 8).Select(i => new Participant(i == 0 ? () => Trace("history-submitted") : null)).ToArray();
         var manifest = CoveragePerfManifest.Parse(new CoveragePerfFakeRun(actors == 32 ? "C1" : "C0").Json);
-        var block = manifest.Blocks.First(b => b.Actors == actors && b.Condition ==
-            (covered ? CoveragePerfCondition.SharedOn : CoveragePerfCondition.SharedOff)) with
-        { TimerLayout = layout };
+        var block = manifest.Blocks.First(b => (direct || b.Actors == actors) && b.Condition ==
+            (direct ? CoveragePerfCondition.DirectOff : covered ? CoveragePerfCondition.SharedOn : CoveragePerfCondition.SharedOff)) with
+        { TimerLayout = layout, Actors = actors };
         Session = new(manifest, block, (_, _) => new(_device, Equipment, true, _device.Dispose)
         {
             Observe = Observe,
@@ -51,6 +52,7 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
     internal static CoveragePerfSceneProbe Open(int actors, bool covered, bool completeOutcomes = false,
         CoveragePerfTimerLayout layout = CoveragePerfTimerLayout.CpuOnly)
         => new(actors, covered, completeOutcomes, layout);
+    internal static CoveragePerfSceneProbe OpenDirect(int actors) => new(actors, false, false, CoveragePerfTimerLayout.CpuOnly, true);
     internal void CompletePendingOutcomes()
     {
         foreach (var fence in _submittedFences) fence.Signaled = true;
@@ -165,7 +167,7 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
         public IGpuSampler PointSampler => _inner.PointSampler;
         public IGpuSampler LinearSampler => _inner.LinearSampler;
         public bool SyncToVerticalBlank { get; set; }
-        public void Submit(IGpuCommandList commands) => throw new InvalidOperationException("Expected the production span submit.");
+        public void Submit(IGpuCommandList commands) => _probe.Trace("submit-direct");
         public void Submit(IGpuCommandList commands, IGpuFence fence)
         {
             if (!_probe._completeOutcomes) throw new InvalidOperationException("Expected the production span submit.");
@@ -174,6 +176,7 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
         }
         public void Submit(IGpuCommandList commands, ReadOnlySpan<IGpuFence> completions)
         {
+            _probe.LastSubmittedFenceCount = completions.Length;
             foreach (var fence in completions) _probe._submittedFences.Add((SubmissionTestFence)fence);
             _probe.Trace("submit-span");
         }

@@ -109,7 +109,7 @@ public sealed class CoveragePerfFrameBracketTests
         using var run = CoveragePerfSceneProbe.Open(1, covered: true);
         var sample = run.Frame(0);
         Assert.False(sample.CpuChildren.IsDefaultOrEmpty);
-        Assert.Equal(new[] { "coverage.resolution", "coverage.surface" }, sample.CpuChildren.Select(s => s.Name));
+        Assert.Equal(new[] { "host.beginSubmission", "device.submit", "coverage.resolution", "coverage.surface" }, sample.CpuChildren.Select(s => s.Name));
         Assert.All(sample.CpuChildren, span => Assert.True(span.Ticks > 0));
         Assert.Equal(run.TickAtPresentEntry - run.TickAtStart, sample.CpuFramePreparationTicks);
         Assert.True(sample.CpuChildren.Sum(c => c.Ticks) < sample.CpuFramePreparationTicks);

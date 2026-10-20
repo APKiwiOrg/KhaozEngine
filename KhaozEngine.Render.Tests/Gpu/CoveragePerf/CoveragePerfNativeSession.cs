@@ -21,6 +21,7 @@ internal sealed record CoveragePerfHost(IGpuDevice Device, Func<CoverageCostGeom
 /// <summary>Retained shared production host. No command-list capture wrapper enters the native path.</summary>
 internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
 {
+    readonly bool _legacy;
     readonly CoveragePerfClock _clock;
     readonly CoveragePerfHost _host;
     readonly CoveragePerfDevice _device;
@@ -33,10 +34,12 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
     readonly CoverageGpuOutcome[] _bufferedOutcomes;
     readonly CoveragePerfTimerLayout _timerLayout;
     readonly CoveragePerfTimestampRing? _timestamps;
+    long _beginTicks, _submitStart, _submitTicks;
     long _aggregateStart, _aggregateTicks, _resolutionStart, _surfaceStart, _resolutionTicks, _surfaceTicks;
     int _frameIndex, _pendingCount, _nextFrame, _bufferedOutcomeCount;
     bool _presented, _disposed, _outcomeOverflow;
-    int _endCreations, _endWaits, _endSubmits;
+    int _endCreations, _endWaits, _endSubmits, _endGen0, _endGen1, _endGen2;
+    long _endAllocated;
     GpuDeviceCounters _endCounters;
     internal CoveragePerfTypicalScene Typical { get; }
     internal IGpuDevice Device => _device;
@@ -49,8 +52,9 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
     internal CoveragePerfNativeSession(CoveragePerfManifest manifest, CoveragePerfBlock block,
         CoveragePerfHostFactory factory, CoveragePerfClock clock)
     {
-        if (block.Condition == CoveragePerfCondition.DirectOff)
-            throw new NotSupportedException("DirectOff requires the Task 7 pinned legacy host.");
+        _legacy = block.Condition == CoveragePerfCondition.DirectOff;
+        if (_legacy && block.TimerLayout != CoveragePerfTimerLayout.CpuOnly)
+            throw new NotSupportedException("DirectOff is a CpuOnly pinned legacy control.");
         if (clock.Frequency <= 0) throw new ArgumentOutOfRangeException(nameof(clock));
         if (block.Fixture != CoveragePerfManifest.FixtureVersion || manifest.Profile != CoveragePerfManifest.ProfileVersion)
             throw new ArgumentException("The session requires the approved typical/full fixture.");
@@ -86,6 +90,11 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
             Typical.Scene.CoverageAllocationObserverForTests = entering => Child(entering, resolution: true);
             Typical.Scene.CoverageSurfaceAllocationObserverForTests = entering => Child(entering, resolution: false);
             _device.PresentEntry = PresentEntry;
+            _device.SubmitBoundary = entering =>
+            {
+                if (entering) _submitStart = _clock.Now();
+                else _submitTicks = checked(_clock.Now() - _submitStart);
+            };
         }
         catch
         {
@@ -102,13 +111,16 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
         if (frameIndex != _nextFrame || _pendingCount == _pending.Length)
             throw new InvalidOperationException("Frames must be sequential and completed in fixed batches.");
         _frameIndex = frameIndex;
-        _presented = false; _aggregateTicks = _resolutionTicks = _surfaceTicks = 0;
+        _presented = false; _aggregateTicks = _resolutionTicks = _surfaceTicks = _beginTicks = _submitTicks = 0;
+        long allocated = GC.GetAllocatedBytesForCurrentThread();
+        int gen0 = GC.CollectionCount(0), gen1 = GC.CollectionCount(1), gen2 = GC.CollectionCount(2);
         int creations = _device.Creations, waits = _device.Waits, submits = _device.Submissions;
         var counters = _device.Counters;
         // This tick precedes BeginSubmission and Scene.Begin. PresentEntry owns the matching closing tick.
         _aggregateStart = _clock.Now();
         Observe("aggregate-start");
-        FramePhases.Run(_frame, true, _device, _commands, Color.Black, _prepare, _record);
+        if (_legacy) CoveragePerfLegacyHost.Run(_frame, true, _device, _commands, Color.Black, _prepare, _record);
+        else FramePhases.Run(_frame, true, _device, _commands, Color.Black, _prepare, _record);
         if (!_presented) throw new InvalidOperationException("The production host never reached Present.");
         MatchOutcomes();
         var schedule = Typical.PassSchedule();
@@ -123,7 +135,12 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
             PoseId = frameIndex % 2,
             FrameTicks = _aggregateTicks,
             CpuFramePreparationTicks = _aggregateTicks,
-            CpuChildren = [new("coverage.resolution", _resolutionTicks), new("coverage.surface", _surfaceTicks)],
+            CpuChildren = [new("host.beginSubmission", _beginTicks), new("device.submit", _submitTicks),
+                new("coverage.resolution", _resolutionTicks), new("coverage.surface", _surfaceTicks)],
+            AllocatedBytes = _endAllocated - allocated,
+            Gen0Collections = _endGen0 - gen0,
+            Gen1Collections = _endGen1 - gen1,
+            Gen2Collections = _endGen2 - gen2,
             Actors = Typical.Actors.Length,
             MainVisibleActors = Typical.MainVisibleActors(),
             Passes = schedule.Passes,
@@ -144,6 +161,7 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
 
     void Prepare(Frame frame)
     {
+        _beginTicks = checked(_clock.Now() - _aggregateStart);
         BufferOutcomes();
         Typical.Scene.Begin(); Observe("scene-begin");
         Typical.Queue(_frameIndex); Observe("pose-and-stage");
@@ -157,8 +175,11 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
         Typical.Scene.RenderInternal(frame.Commands, CoveragePerfTypicalScene.Width, CoveragePerfTypicalScene.Height, _target);
         Observe("render");
         // Registration is required even for zero rows, because it publishes the production history callbacks.
-        Typical.Scene.RecordCoverageReadbacks(frame.Commands, frame.Submission);
-        Observe("readbacks");
+        if (!_legacy)
+        {
+            Typical.Scene.RecordCoverageReadbacks(frame.Commands, frame.Submission);
+            Observe("readbacks");
+        }
         if (_timestamps?.ActivePool is { } pool)
         {
             if (_timerLayout == CoveragePerfTimerLayout.Phases) frame.Commands.WriteTimestamp(pool, 3);
@@ -172,6 +193,8 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
         _aggregateTicks = checked(_clock.Now() - _aggregateStart);
         _endCreations = _device.Creations; _endWaits = _device.Waits; _endSubmits = _device.Submissions;
         _endCounters = _device.Counters;
+        _endAllocated = GC.GetAllocatedBytesForCurrentThread();
+        _endGen0 = GC.CollectionCount(0); _endGen1 = GC.CollectionCount(1); _endGen2 = GC.CollectionCount(2);
         if (_aggregateTicks < 0) throw new InvalidOperationException("Injected clock moved backwards.");
         _presented = true;
         Observe("aggregate-stop");
@@ -230,7 +253,11 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
             if (samples[i].FrameIndex != _pending[i].FrameIndex) throw new InvalidOperationException("Batch identities differ.");
         long start = _clock.Now();
         _device.WaitForIdle();
-        HarnessDrainTicks += checked(_clock.Now() - start); HarnessDrains++;
+        long drainTicks = checked(_clock.Now() - start);
+        HarnessDrainTicks += drainTicks; HarnessDrains++;
+        // Charge each drain once to its batch's last raw sample, outside frame preparation.
+        samples[^1].HarnessDrains = 1;
+        samples[^1].HarnessDrainTicks = drainTicks;
         try
         {
             BufferOutcomes();
@@ -248,6 +275,7 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
                 samples[i].Fallback |= pending.Fallback;
                 if (!samples[i].DeviceComplete) samples[i].Error = "Coverage device outcomes remain incomplete after the batch drain.";
                 samples[i].Gpu = pending.Gpu;
+                samples[i].CompletedFrameTail = pending.Gpu is { Valid: true } && _timestamps is not null;
                 samples[i].Error ??= _timestamps?.Failure;
             }
         }

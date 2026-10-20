@@ -1,6 +1,5 @@
 using System;
 using System.Numerics;
-using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
@@ -17,7 +16,9 @@ namespace KhaozEngine.Tests.Gpu
     /// internal fragment source hook, a mutant D that never releases on visibility, and the production programs with
     /// their path bits exported twice (<see cref="TemporalVisibilityProductionPaths.Rewrite"/> and
     /// <see cref="TemporalVisibilityProductionPaths.RewriteKeepingTheDecision"/>). After every frame the production and
-    /// D histories must be byte-identical in colour, state, stored visibility and stored depth, and both exporting rigs
+    /// D histories must be byte-identical in colour, state, stored visibility and stored depth, except hardware NVIDIA
+    /// Direct3D 11 uses D's own fused/split half-step envelope for colour and confidence. Locks, R8 and depth stay
+    /// exact on every device. Both exporting rigs
     /// must write production's locks and the same path words less the slow path's reasons. The mutant must differ,
     /// which shows the hook reaches the compiled program and the frames exercise the release. The exported paths must
     /// reach minimum counts of fast-path and range-skip pixels, so the identity is shown on the production program's
@@ -70,7 +71,7 @@ namespace KhaozEngine.Tests.Gpu
                     TemporalResolveMath.LinearDepth(NdcDepth(Projection, 1.4f), Depth)));
             // Floors under what the random frames give: a lock in two of three pixels, most centres off the border.
             Assert.True(paths.FastPath >= 50 && paths.RangeSkips >= 10 && paths.FastComputed >= 10,
-                $"the random frames reached too few production paths: {paths}");
+                $"frame {Frames - 1} (aggregate): the random frames reached too few production paths: {paths}");
         }
 
         [GpuTheory]
@@ -97,14 +98,14 @@ namespace KhaozEngine.Tests.Gpu
             // at the current tolerance.
             Assert.True(paths.FastPath >= 1_000 && paths.RangeSkips >= 200 && paths.FastComputed >= 100
                 && paths.FastReleased >= 20 && paths.FastNearThresholdAbove + paths.FastNearThresholdBelow >= 50,
-                $"the threshold frames reached too few production paths at the threshold: {paths}");
+                $"frame {Frames - 1} (aggregate): the threshold frames reached too few production paths at the threshold: {paths}");
             // About 137 tolerance-edge centres over the three frames, one display pixel each at Native and two or more
             // at Quality, and the edge texel's ulps either side of the tolerance give both acceptances. An outcome
             // neither design gives would come from a display pixel the mirror of temporalPixelSite placed on another
             // centre, at a rounding boundary, so a few are let through.
             Assert.True(edges.Paths.FastPath >= 60 && edges.Accepted >= 10 && edges.Rejected >= 10
                 && edges.Unexpected * 20 <= edges.Paths.FastPath,
-                $"the tolerance-edge tiles reached too few fast-path decisions either side of the tolerance: "
+                $"frame {Frames - 1} (aggregate): the tolerance-edge tiles reached too few fast-path decisions either side of the tolerance: "
                 + $"{edges.Paths}, accepted {edges.Accepted}, rejected {edges.Rejected}, unexpected {edges.Unexpected}");
         }
 
@@ -134,16 +135,16 @@ namespace KhaozEngine.Tests.Gpu
                 + $"unexpected {edges.Unexpected}, over {edges.Paths}");
             output.WriteLine($"  binade rule: {binade}");
             Assert.True(paths.FastPath >= 100_000 && paths.SlowBinade >= 1_000 && paths.FastReleased >= 1_000,
-                $"the large frames reached too few production paths: {paths}");
+                $"frame {Frames - 1} (aggregate): the large frames reached too few production paths: {paths}");
             // The mirror of temporalPixelSite can place a pixel at a rounding boundary on the next centre, so a few
             // pixels are let through. The rule itself is exact.
             Assert.True(binade.Apart * 100 <= binade.Checked,
-                $"the binade bit differs from the rule's prediction on too many pixels: {binade}");
+                $"frame {Frames - 1} (aggregate): the binade bit differs from the rule's prediction on too many pixels: {binade}");
             Assert.True(binade.StraddleBinade >= 1_000 && binade.StraddleFast >= 1_000 && binade.StraddleFastPositive >= 100,
-                $"too few decisions beside columns 512 and 1024 and row 512 on either path: {binade}");
+                $"frame {Frames - 1} (aggregate): too few decisions beside columns 512 and 1024 and row 512 on either path: {binade}");
             Assert.True(edges.Paths.FastPath >= 1_000 && edges.Accepted >= 100 && edges.Rejected >= 100
                 && edges.Unexpected * 20 <= edges.Paths.FastPath,
-                $"the large tolerance-edge tiles reached too few fast-path decisions: {edges.Paths}, accepted "
+                $"frame {Frames - 1} (aggregate): the large tolerance-edge tiles reached too few fast-path decisions: {edges.Paths}, accepted "
                 + $"{edges.Accepted}, rejected {edges.Rejected}, unexpected {edges.Unexpected}");
         }
 
@@ -226,6 +227,10 @@ namespace KhaozEngine.Tests.Gpu
             int dRewrites = 0, mutantRewrites = 0;
             bool prepareRewritten = false;
             using var production = new TemporalResolveRig(iw, ih, dw, dh, SceneNdc);
+            bool nvidia = TemporalDeviceClass.IsHardwareNvidiaD3D11(production.Device);
+            var oracle = nvidia ? new TemporalNvidiaHistoryOracle(output) : null;
+            using var otherD = nvidia ? new TemporalResolveRig(iw, ih, dw, dh, SceneNdc,
+                fragmentSource: TemporalVisibilityFrozenD.ToD) : null;
             using var d = new TemporalResolveRig(iw, ih, dw, dh, SceneNdc, fragmentSource: source =>
             {
                 string rewritten = TemporalVisibilityFrozenD.ToD(source);
@@ -244,18 +249,23 @@ namespace KhaozEngine.Tests.Gpu
                 fragmentSource: TemporalVisibilityProductionPaths.Rewrite);
             using var kept = new TemporalResolveRig(iw, ih, dw, dh, SceneNdc,
                 fragmentSource: TemporalVisibilityProductionPaths.RewriteKeepingTheDecision);
-            TemporalResolveRig[] rigs = [production, d, mutant, exported, kept];
+            TemporalResolveRig[] rigs = otherD is null ? [production, d, mutant, exported, kept]
+                : [production, d, mutant, exported, kept, otherD];
             var queues = new GpuRetireQueue[rigs.Length];
             var signals = new IGpuTexture[rigs.Length];
             for (int r = 0; r < rigs.Length; r++)
             {
                 queues[r] = GpuRetireQueue.Create(rigs[r].Device);
-                rigs[r].Renderer.SelectEntry(entry, queues[r]);
+                rigs[r].Renderer.SelectEntry(ReferenceEquals(rigs[r], otherD)
+                    ? entry == TemporalResolveEntry.Fused ? TemporalResolveEntry.Split : TemporalResolveEntry.Fused
+                    : entry, queues[r]);
                 signals[r] = rigs[r].Device.Factory.CreateTexture(GpuTextureDescription.Texture2D((uint)iw, (uint)ih,
                     GpuPixelFormat.R8UNorm, GpuTextureUsage.Sampled));
             }
             output.WriteLine($"{production.Device.Backend} on {production.Device.Capabilities.DeviceName}, {entry} {preset}, "
                 + $"{iw}x{ih} internal, {dw}x{dh} display");
+            if (nvidia) output.WriteLine("  D fused and split receive the same Frame arrays, uploaded colour, motion, "
+                + "depth, history colour, confidence, locks and previous depth, R8 sequence and uniforms in this case");
             var paths = new TemporalVisibilityProductionPaths();
             var keptPaths = new TemporalVisibilityProductionPaths();
             try
@@ -277,20 +287,31 @@ namespace KhaozEngine.Tests.Gpu
                         rig.BeginFrame();
                         if (frame > 0) rig.FillHistory(f.HistoryColour, f.HistoryState, (x, y) => f.PreviousDepth[y * iw + x]);
                         rig.Resolve(uniforms, signals[r]);
-                        Assert.Equal(entry, rig.Renderer.LastEntry);
-                        Assert.Equal(frame > 0 ? 1f : 0f, rig.Renderer.LastVisibilityUniforms.PreviousJitter.Z);
+                        Assert.True(uniforms.Equals(rig.Renderer.LastUniforms),
+                            $"frame {frame}: the resolve did not receive the shared uniforms");
+                        TemporalResolveEntry expected = ReferenceEquals(rig, otherD)
+                            ? entry == TemporalResolveEntry.Fused ? TemporalResolveEntry.Split : TemporalResolveEntry.Fused
+                            : entry;
+                        Assert.True(expected == rig.Renderer.LastEntry, $"frame {frame}: the wrong entry resolved");
+                        Assert.True(rig.Renderer.LastVisibilityUniforms.PreviousJitter.Z == (frame > 0 ? 1f : 0f),
+                            $"frame {frame}: the previous visibility validity differs");
                     }
-                    byte[] colour = Bytes(production.ReadColor()), state = Bytes(production.ReadState());
-                    Assert.Equal(colour, Bytes(d.ReadColor()));
-                    Assert.Equal(state, Bytes(d.ReadState()));
-                    Assert.Equal(Stored(production), Stored(d));
+                    TemporalHistorySample actual = TemporalHistorySample.Read(production);
+                    TemporalHistorySample reference = TemporalHistorySample.Read(d);
+                    if (otherD is not null)
+                    {
+                        TemporalHistorySample opposite = TemporalHistorySample.Read(otherD);
+                        oracle!.ObserveD(frame, entry == TemporalResolveEntry.Fused ? reference : opposite,
+                            entry == TemporalResolveEntry.Fused ? opposite : reference);
+                        oracle.Compare(frame, $"production {entry} vs D {entry}", actual, reference);
+                    }
+                    else TemporalHistorySample.Exact(frame, "production vs D", actual, reference);
                     // The depth this frame stored, read from the write target before the next frame fills the read one.
-                    float[] storedDepth = production.ReadPreviousDepth();
-                    Assert.Equal(Bytes(storedDepth), Bytes(d.ReadPreviousDepth()));
+                    float[] storedDepth = actual.Depth;
                     for (int i = 0; i < storedDepth.Length; i++)
                         if (BitConverter.SingleToInt32Bits(storedDepth[i]) != BitConverter.SingleToInt32Bits(f.PreviousDepth[i]))
                             storedApart++;
-                    float[] productionState = production.ReadState(), mutantState = mutant.ReadState();
+                    float[] productionState = actual.State, mutantState = mutant.ReadState();
                     float[] exportedState = exported.ReadState(), keptState = kept.ReadState();
                     for (int i = 0; i < productionState.Length; i++)
                         if (BitConverter.SingleToInt32Bits(productionState[i]) != BitConverter.SingleToInt32Bits(mutantState[i]))
@@ -329,7 +350,8 @@ namespace KhaozEngine.Tests.Gpu
                     values += productionState.Length;
                     foreach (TemporalResolveRig rig in rigs) rig.History.MarkValidAfterFrame();
                 }
-                output.WriteLine($"  {Frames} frames byte-identical to D in colour, state and stored visibility, "
+                oracle?.Complete();
+                output.WriteLine($"  {Frames} frames {(nvidia ? "within D's measured arithmetic envelope, exact locks, R8 and depth" : "byte-identical to D in colour, state, R8 and depth")}, "
                     + $"{zeroLocks} stored locks exactly zero, the never-releasing mutant differs in {mutantDiffers} of "
                     + $"{values} state values, {dRewrites} D and {mutantRewrites} mutant programs rewritten"
                     + (entry == TemporalResolveEntry.Split ? $", the first pass {(prepareRewritten ? "" : "not ")}as D" : ""));
@@ -343,13 +365,13 @@ namespace KhaozEngine.Tests.Gpu
                     && keptPaths.SlowBinade == paths.SlowBinade
                     && keptPaths.RangeSkips == paths.RangeSkips && keptPaths.ChangeComputed == paths.ChangeComputed
                     && keptPaths.FastComputed == paths.FastComputed && keptPaths.Released == paths.Released,
-                    "the export keeping the decision counted other paths than the full export");
-                Assert.True(storedApart > 0, "every stored depth equals the uploaded one, so the read may not be this "
+                    $"frame {Frames - 1}: the export keeping the decision counted other paths than the full export");
+                Assert.True(storedApart > 0, $"frame {Frames - 1}: every stored depth equals the uploaded one, so the read may not be this "
                     + "frame's store");
-                Assert.True(dRewrites >= 1 && mutantRewrites >= 1, "the rewrite reached no release program");
+                Assert.True(dRewrites >= 1 && mutantRewrites >= 1, $"frame {Frames - 1}: the rewrite reached no release program");
                 Assert.True(entry == TemporalResolveEntry.Fused || prepareRewritten,
-                    "the D rig compiled the split's first pass as production");
-                Assert.True(mutantDiffers > 0, "the never-releasing mutant wrote the production history, so the frames "
+                    $"frame {Frames - 1}: the D rig compiled the split's first pass as production");
+                Assert.True(mutantDiffers > 0, $"frame {Frames - 1}: the never-releasing mutant wrote the production history, so the frames "
                     + "do not exercise the visibility release");
             }
             finally
@@ -602,10 +624,5 @@ namespace KhaozEngine.Tests.Gpu
                 if (accepted[k]) levels[k] = low + (given++ < extra ? 1 : 0);
             return (levels, accepted, kind);
         }
-
-        static byte[] Bytes(float[] values) => MemoryMarshal.AsBytes(values.AsSpan()).ToArray();
-
-        static byte[] Stored(TemporalResolveRig rig) => TemporalVisibilityHistoryGpuTests.Read(rig.Device,
-            rig.Renderer.VisibilityHistory.Texture(rig.History.WriteIndex));
     }
 }

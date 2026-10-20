@@ -32,6 +32,13 @@ namespace KhaozEngine.Tests.Gpu
         public static bool IsLavapipe(IGpuDevice device) =>
             device.Backend == GpuBackendKind.VulkanNative && device.Diagnostics.SoftwareAdapter == true;
 
+        /// <summary>The owner's measured-envelope rule is limited to hardware NVIDIA Direct3D 11.</summary>
+        public static bool IsHardwareNvidiaD3D11(IGpuDevice device) =>
+            device.Backend == GpuBackendKind.Direct3D11Native && !IsWarp(device)
+            && device.Diagnostics.SoftwareAdapter == false
+            && !TemporalResolveCostPerfGpuTests.IsSoftwareDevice(device.Capabilities.DeviceName)
+            && device.Capabilities.DeviceName.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase);
+
         /// <summary>The class's name for a measurement's output: WARP, lavapipe or hardware.</summary>
         public static string Name => Warp ? "WARP" : Lavapipe ? "lavapipe" : "hardware";
     }

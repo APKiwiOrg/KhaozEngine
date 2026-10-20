@@ -19,14 +19,14 @@ public sealed partial class BepuPhysicsWorld
                 throw new ArgumentException($"StaticHandle {handle.Value} is not a live static.", nameof(excludedStatics));
         }
 
-        return new QueryView(this, new StaticQueryExclusions(snapshot, _reverseHandles));
+        return new QueryView(this, _sweepSelection.CreateExclusions(snapshot, _reverseHandles));
     }
 
-    // The view's own state is an immutable exclusion snapshot and a disposal flag written only by an exclusive
-    // writer, so it declares concurrent reads alongside its owner.
+    // Exclusions are immutable. Selection counts and disposal change only under the owner's
+    // exclusive writer gate, so the view declares concurrent reads alongside its owner.
     private sealed class QueryView : IPhysicsWorldQueryView, IPhysicsQueryLeaseSource, IPhysicsConcurrentReadSource,
         IPhysicsCapsuleContacts, IPhysicsCapsuleSweep, IPhysicsCapsuleGeometryQueries, IPhysicsCapsuleFeatures,
-        IPhysicsSupportNeighborhood, IPhysicsSupportFootprint, IPhysicsStaticGeometrySource
+        IPhysicsSupportNeighborhood, IPhysicsSupportFootprint, IPhysicsStaticGeometrySource, IPhysicsSupportFootprintReuseSource
     {
         private readonly BepuPhysicsWorld _owner;
         private readonly StaticQueryExclusions _exclusions;
@@ -39,6 +39,15 @@ public sealed partial class BepuPhysicsWorld
         }
 
         public IPhysicsWorld SourceWorld => _owner;
+
+        internal bool IsDisposed => _disposed;
+
+        public bool TryOpenSupportFootprintReuse(IPhysicsQueryLease lease, out IPhysicsSupportFootprintReuseSession? session)
+        {
+            _owner.AuthenticateFeatureLease(lease);
+            ThrowIfDisposed();
+            return _owner.TryOpenSupportFootprintReuseCore(this, lease, _exclusions, out session);
+        }
 
         public long StaticGeometryGeneration
         {
@@ -238,7 +247,7 @@ public sealed partial class BepuPhysicsWorld
             return new NotSupportedException("Physics query views do not support mutations.");
         }
 
-        private void ThrowIfDisposed()
+        internal void ThrowIfDisposed()
         {
             if (_disposed)
                 throw new ObjectDisposedException(nameof(QueryView));

@@ -422,11 +422,11 @@ public sealed class SkinnedTargetOutlineRendererTests
         IsRigidFull(draw) || IsRigidVisible(draw);
 
     static bool IsRigidFull(RecordingGpuCommandList.IndexedDraw draw) => IsPipeline(draw,
-        ShaderSources.TargetOutlineMaskVert, ShaderSources.TargetOutlineFullMaskFrag);
+        ShaderSources.TargetOutlineMaskVert, ShaderSources.TargetOutlineRigidFullMaskFrag);
     static bool IsSkinnedFull(RecordingGpuCommandList.IndexedDraw draw) => IsPipeline(draw,
         ShaderSources.TargetOutlineSkinnedMaskVert, ShaderSources.TargetOutlineFullMaskFrag);
     static bool IsRigidVisible(RecordingGpuCommandList.IndexedDraw draw) => IsPipeline(draw,
-        ShaderSources.TargetOutlineMaskVert, ShaderSources.TargetOutlineVisibleMaskFrag);
+        ShaderSources.TargetOutlineMaskVert, ShaderSources.TargetOutlineRigidVisibleMaskFrag);
     static bool IsSkinnedVisible(RecordingGpuCommandList.IndexedDraw draw) => IsPipeline(draw,
         ShaderSources.TargetOutlineSkinnedMaskVert, ShaderSources.TargetOutlineVisibleMaskFrag);
 
@@ -437,7 +437,9 @@ public sealed class SkinnedTargetOutlineRendererTests
     static bool IsOutlineMask(RecordingGpuCommandList.IndexedDraw draw) =>
         draw.Pipeline is FakePipeline { Request: { } request }
         && (request.FragmentGlsl == ShaderSources.TargetOutlineFullMaskFrag
-            || request.FragmentGlsl == ShaderSources.TargetOutlineVisibleMaskFrag);
+            || request.FragmentGlsl == ShaderSources.TargetOutlineVisibleMaskFrag
+            || request.FragmentGlsl == ShaderSources.TargetOutlineRigidFullMaskFrag
+            || request.FragmentGlsl == ShaderSources.TargetOutlineRigidVisibleMaskFrag);
 
     static SkinnedGltfMesh Tube() =>
         SkinnedMeshBuilder.BuildTube(0.25f, 2f, 4, 6, 3, Axis.Z);

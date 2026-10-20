@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Azure.Storage.Blobs;
@@ -47,6 +48,24 @@ public sealed class BlobReportMediaStore : IReportMediaStore
         IReportBlobContainer container = Container(area, path);
         cancellationToken.ThrowIfCancellationRequested();
         return container.ExistsAsync(path, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<string>> ListAsync(ReportArea area, string prefix, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(prefix) || !prefix.EndsWith('/') || !ReportPaths.IsValid(prefix[..^1]))
+            throw new ArgumentException("A valid report path followed by '/' is required.", nameof(prefix));
+        IReportBlobContainer container = Container(area, prefix[..^1]);
+        cancellationToken.ThrowIfCancellationRequested();
+        return container.ListAsync(prefix, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<bool> DeleteAsync(ReportArea area, string path, CancellationToken cancellationToken)
+    {
+        IReportBlobContainer container = Container(area, path);
+        cancellationToken.ThrowIfCancellationRequested();
+        return container.DeleteAsync(path, cancellationToken);
     }
 
     IReportBlobContainer Container(ReportArea area, string path)

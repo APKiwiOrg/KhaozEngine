@@ -13,6 +13,8 @@ namespace KhaozEngine.BugReports.Relay;
 /// </summary>
 internal static class ReportLayout
 {
+    const string ReferenceAlphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
     public const string ViewerFile = "viewer.html";
     public const string ServerSnapshotFile = "server.json";
     public const int MaxRecordBytes = 2 * 1024 * 1024;
@@ -49,6 +51,35 @@ internal static class ReportLayout
     {
         ValidateReportId(reportId);
         return "accepted/" + reportId + ".json";
+    }
+
+    /// <summary>Normalizes a reference code, including Crockford confusable characters.</summary>
+    public static bool TryNormalizeReference(string text, out string reference)
+    {
+        reference = string.Empty;
+        if (text is null) return false;
+        string normalized = text.Trim().ToUpperInvariant();
+        if (normalized.Length != 8 || !normalized.StartsWith("R-", StringComparison.Ordinal)) return false;
+        normalized = normalized.Replace('O', '0').Replace('I', '1').Replace('L', '1');
+        foreach (char c in normalized.AsSpan(2))
+            if (!ReferenceAlphabet.Contains(c)) return false;
+        reference = normalized;
+        return true;
+    }
+
+    /// <summary>The relay-private path mapping a reference code to one report id.</summary>
+    public static string ReferenceIndex(string reference, string reportId)
+    {
+        ValidateReportId(reportId);
+        return ReferencePrefix(reference) + reportId + ".json";
+    }
+
+    /// <summary>The relay-private listing prefix for every report with a reference code.</summary>
+    public static string ReferencePrefix(string reference)
+    {
+        if (!TryNormalizeReference(reference, out string normalized))
+            throw new ArgumentException("A valid report reference code is required.", nameof(reference));
+        return "references/" + normalized.ToLowerInvariant() + "/";
     }
 
     /// <summary>The raw server snapshot path in the Pending area.</summary>

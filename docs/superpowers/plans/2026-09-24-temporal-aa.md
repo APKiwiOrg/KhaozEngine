@@ -1,5 +1,10 @@
 # Temporal Anti-Aliasing Program Implementation Plan
 
+Current layout note after interior cut. The shared frame `U` is now 1376 bytes, with interior vec4 tails
+at 1344 and 1360, while the separate motion vertex block remains 144 bytes. `InstanceData` stays 128 bytes,
+and `SpecParams.w` now carries the rigid interior-cut flag, with x/y/z unchanged and dissolve in separate
+fields. Animated foliage writes w = 0. The older frame sizes and shader snippets below are history.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Give `Scene3D` temporal anti-aliasing with temporal upscaling on reusable temporal foundations, release it, and adopt it in Grimhollow so distant grass holds still while the camera moves, at a lower frame cost than MSAA 4x.

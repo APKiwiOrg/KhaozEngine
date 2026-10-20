@@ -153,7 +153,8 @@ internal static class SupportFootprintCurvedProofOracle
         void Add(TypedIndex index, Pose pose, int leaf)
         {
             Point centre = Point.Exact(V.From(pose.Position));
-            V source = InstalledPoseOracle.Real(pose.Orientation).Y;
+            // The represented Y column of the actual installed leaf pose, independently rounded per operation.
+            V source = InstalledPoseOracle.Represented(pose.Orientation).Y;
             Bounds length = Bounds.Root(source.LengthSquared);
             var axis = new Point((Bounds)source.X / length, (Bounds)source.Y / length, (Bounds)source.Z / length);
             int id = leaf * SupportNeighborhoodOracle.TangentLeafStride;

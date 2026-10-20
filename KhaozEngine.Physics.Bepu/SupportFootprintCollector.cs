@@ -23,7 +23,17 @@ internal sealed partial class SupportFootprintCollector
     readonly SupportSegmentPolygon _kernel = new();
     readonly List<CapsuleFeaturePolyhedron> _leaves = [];
     readonly List<SupportCurvedLeaf> _curved = [];
-    readonly SupportFootprintCurved _curvedKernel = new();
+    readonly SupportFootprintCurved _curvedKernel;
+    readonly SupportCurvedWork _curvedWork;
+    internal SupportCurvedWorkObservation CurvedWork => _curvedWork.Snapshot;
+
+    public SupportFootprintCollector() : this(SupportCurvedWork.MaximumWork) { }
+
+    internal SupportFootprintCollector(int curvedWorkLimit = SupportCurvedWork.MaximumWork)
+    {
+        _curvedWork = new(curvedWorkLimit);
+        _curvedKernel = new(_curvedWork);
+    }
     readonly SupportTangentKernel _contactKernel = new();
     readonly List<SupportPolygon> _polygons = [];
     readonly List<int> _triangles = [];
@@ -43,6 +53,7 @@ internal sealed partial class SupportFootprintCollector
 
     internal bool Begin(in SupportFootprintRequest request)
     {
+        _curvedWork.Begin();
         _request = request;
         _count = 0;
         _belowBandPass = _hasBelowBand = false;
@@ -103,6 +114,7 @@ internal sealed partial class SupportFootprintCollector
     internal CapsuleFeatureStatus Collect(Simulation simulation, StaticHandle owner, in StaticDescription description,
         InstalledSupportGeometryCache installed, long staticGeometryVersion)
     {
+        if (_curvedWork.Failed) return CapsuleFeatureStatus.Unsupported;
         _polygons.Clear();
         _curved.Clear();
         CapsuleFeatureStatus captured;
@@ -277,6 +289,7 @@ internal sealed partial class SupportFootprintCollector
     internal SupportFootprintResult Publish(IPhysicsWorld receiver, IPhysicsQueryLease lease,
         Span<SupportFootprintMember> members, Span<ulong> joins, bool certificationJoins)
     {
+        if (_curvedWork.Failed) return Refused(CapsuleFeatureStatus.Unsupported);
         using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportJoins);
         int stride = SupportFootprintResult.JoinWordsFor(_count);
         if (_count > SupportFootprintResult.MaximumElements || members.Length < _count || joins.Length < _count * stride)
@@ -334,6 +347,7 @@ internal sealed partial class SupportFootprintCollector
                 matrix[first * stride + second / 64] |= 1UL << (second % 64);
                 matrix[second * stride + first / 64] |= 1UL << (first % 64);
             }
+        if (_curvedWork.Failed) return Refused(CapsuleFeatureStatus.Unsupported);
         int witnesses = 0;
         for (int i = 0; i < _count; i++) witnesses += _members[i].Value.WitnessCount;
         SupportFootprintResult result = SupportFootprintResult.Completed(receiver, lease, _count, witnesses,

@@ -20,6 +20,8 @@ internal sealed class CountingQueryView(IPhysicsWorldQueryView inner)
     : IPhysicsWorldQueryView, IPhysicsCapsuleFeatures, IPhysicsSupportNeighborhood, IPhysicsSupportFootprint, IPhysicsQueryLeaseSource, IPhysicsCapsuleContacts, IPhysicsCapsuleSweep, IPhysicsCapsuleGeometryQueries
 {
     int _sweeps, _penetrations, _raycasts, _features;
+    internal Action<Pose, Vector3, CapsuleSweepResult>? CertifiedSweepObserver;
+    internal Action<SupportFootprintRequest, SupportFootprintResult>? FootprintObserver;
 
     internal QueryCounts Counts => new(_sweeps, _penetrations, _raycasts, _features);
 
@@ -64,7 +66,9 @@ internal sealed class CountingQueryView(IPhysicsWorldQueryView inner)
         QueryFilter filter = default)
     {
         _sweeps++;
-        return ((IPhysicsCapsuleSweep)inner).SweepCapsuleCertified(shape, pose, delta, filter);
+        var result = ((IPhysicsCapsuleSweep)inner).SweepCapsuleCertified(shape, pose, delta, filter);
+        CertifiedSweepObserver?.Invoke(pose, delta, result);
+        return result;
     }
 
     public CapsuleContactResult QueryCapsuleContacts(CapsuleShape shape, Pose pose, float margin,
@@ -78,7 +82,9 @@ internal sealed class CountingQueryView(IPhysicsWorldQueryView inner)
         QueryFilter filter = default)
     {
         _sweeps++;
-        return ((IPhysicsCapsuleGeometryQueries)inner).SweepCapsuleCertified(shape, pose, delta, filter);
+        var result = ((IPhysicsCapsuleGeometryQueries)inner).SweepCapsuleCertified(shape, pose, delta, filter);
+        CertifiedSweepObserver?.Invoke(pose, delta, result);
+        return result;
     }
 
     public CapsuleContactResult QueryCapsuleContacts(in CapsuleQueryDimensions shape, Pose pose, float margin,
@@ -103,7 +109,9 @@ internal sealed class CountingQueryView(IPhysicsWorldQueryView inner)
         Span<SupportFootprintMember> members, Span<ulong> joins, QueryFilter filter = default)
     {
         _features++;
-        return ((IPhysicsSupportFootprint)inner).QuerySupportFootprint(lease, request, members, joins, filter);
+        var result = ((IPhysicsSupportFootprint)inner).QuerySupportFootprint(lease, request, members, joins, filter);
+        FootprintObserver?.Invoke(request, result);
+        return result;
     }
 
     public void AssertFootprintCurrent(in SupportFootprintResult result, IPhysicsQueryLease lease) =>

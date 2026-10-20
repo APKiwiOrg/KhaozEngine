@@ -15,6 +15,14 @@ namespace KhaozEngine.Movement;
 /// value below 1 before any other check.</param>
 public sealed record NavBakeExecution(int MaxDegreeOfParallelism)
 {
+    /// <summary>Default false. Asserts that all analytic ground/normal, medium, water, registration, boundary and
+    /// area providers are deterministic functions of inputs, independent of call order and fixed through capture
+    /// and build. Permits sharing identical successful initial Holds across a contact source's outgoing directions.
+    /// Above degree 1 the existing stable concurrent-provider contract already permits this reuse. Null execution
+    /// and degree 1 without this assertion preserve every historical Hold callback. Legacy profiles ignore it.
+    /// This execution choice never enters the bake identity or baked bytes.</summary>
+    public bool UseStableContactHoldReuse { get; init; }
+
     /// <summary>Default false. Opts each synchronous legacy profile into one thread-affine physics read lease.
     /// The caller asserts every provider used by this build is deterministic, stable and read-only, and callbacks
     /// neither mutate physics, acquire an incompatible explicit nested lease nor wait for another thread's mutation.

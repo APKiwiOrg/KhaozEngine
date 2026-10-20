@@ -81,7 +81,7 @@ namespace KhaozEngine.Tests.Render3D
                 ModelRenderer.HeaderBytes + 2 * ModelRenderer.LightArrayBytes + ModelRenderer.ShadowTailBytes
                     + ModelRenderer.RenderOriginBytes + ModelRenderer.PointShadowTailBytes
                     + ModelRenderer.PointShadowTransientTailBytes
-                    + ModelRenderer.ClusterTailBytes,
+                    + ModelRenderer.ClusterTailBytes + ModelRenderer.InteriorCutBytes,
                 ModelRenderer.UboBytes);
             Assert.Equal(ModelRenderer.ShadowTailOffset + ModelRenderer.ShadowTailBytes,
                 ModelRenderer.RenderOriginOffset);
@@ -111,15 +111,15 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void UboBytes_Is1344_WithTheAppendedTransientAndClusterTails()
+        public void UboBytes_Is1376_WithTheAppendedInteriorTail()
         {
-            // 176 + 2*256 + 304 + 16 + 288 + 16 + 32 = 1344. The cluster tail follows every compatibility field, so
+            // 176 + 2*256 + 304 + 16 + 288 + 16 + 32 + 32 = 1376. The new tail follows the cluster fields, so
             // all offsets that existed before clustered lighting remain unchanged.
             Assert.Equal(992u, ModelRenderer.RenderOriginOffset);
             Assert.Equal(1008u, ModelRenderer.PointShadowTailOffset);
             Assert.Equal(1312u, ModelRenderer.ClusterTailOffset);
             Assert.Equal(32u, ModelRenderer.ClusterTailBytes);
-            Assert.Equal(1344u, ModelRenderer.UboBytes);
+            Assert.Equal(1376u, ModelRenderer.UboBytes);
         }
 
         [Fact]

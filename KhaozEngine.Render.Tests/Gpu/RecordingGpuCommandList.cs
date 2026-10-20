@@ -149,14 +149,16 @@ namespace KhaozEngine.Tests.Gpu
             Inner.ClearColorTarget(index, rgba);
         }
         public void ClearDepthStencil(float depth) => Inner.ClearDepthStencil(depth);
-        public void SetPipeline(IGpuPipeline p) { NotePipeline(p); Inner.SetPipeline(p); }
+        public void SetPipeline(IGpuPipeline p) { TraceCommand("pipeline", p); NotePipeline(p); Inner.SetPipeline(p); }
         public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set)
         {
+            TraceCommand("bind", _currentPipeline, slot);
             NoteGraphicsSet(slot, set, 0);
             Inner.SetGraphicsResourceSet(slot, set);
         }
         public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset)
         {
+            TraceCommand("bind", _currentPipeline, slot, dynamicOffset);
             NoteGraphicsSet(slot, set, dynamicOffset);
             Inner.SetGraphicsResourceSet(slot, set, dynamicOffset);
         }
@@ -167,18 +169,21 @@ namespace KhaozEngine.Tests.Gpu
         public void SetFullScissorRects() => Inner.SetFullScissorRects();
         public void Draw(uint vertexCount, uint instanceCount, uint vertexStart, uint instanceStart)
         {
+            TraceCommand("draw", _currentPipeline, instanceStart, instanceCount);
             NoteGraphicsReads();
             _draws++;
             Inner.Draw(vertexCount, instanceCount, vertexStart, instanceStart);
         }
         public void Draw(uint vertexCount)
         {
+            TraceCommand("draw", _currentPipeline, 0, 1);
             NoteGraphicsReads();
             _draws++;
             Inner.Draw(vertexCount);
         }
         public void DrawIndexed(uint indexCount, uint instanceCount, uint indexStart, int vertexOffset, uint instanceStart)
         {
+            TraceCommand("draw", _currentPipeline, instanceStart, instanceCount);
             NoteGraphicsReads();
             NoteIndexedDraw(indexCount, indexStart, vertexOffset);
             _draws++;

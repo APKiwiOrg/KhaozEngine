@@ -34,7 +34,7 @@ internal static class SupportNeighborhoodMesh
         ReadOnlySpan<double> probeHigh, GeometryInterval reach, List<int> candidates, SupportPolygonPool pool,
         List<SupportPolygon> output, bool exactZeroProducts = false)
     {
-        if (!InstalledPoseOperator.TryCreate(pose, out InstalledPoseOperator transform))
+        if (!InstalledPoseOperator.TryCreateSupport(pose, out InstalledPoseOperator transform))
             return CapsuleFeatureStatus.Unsupported;
         ref Mesh mesh = ref simulation.Shapes.GetShape<Mesh>(shape.Index);
         if (mesh.Scale != Vector3.One) return CapsuleFeatureStatus.Unsupported;
@@ -50,7 +50,7 @@ internal static class SupportNeighborhoodMesh
         StaticHandle owner, in SupportFootprintBounds bounds, List<int> candidates, SupportPolygonPool pool,
         List<SupportPolygon> output, InstalledSupportMeshWorldCache? cache = null, long version = 0)
     {
-        if (!InstalledPoseOperator.TryCreate(pose, out InstalledPoseOperator transform))
+        if (!InstalledPoseOperator.TryCreateSupport(pose, out InstalledPoseOperator transform))
             return CapsuleFeatureStatus.Unsupported;
         ref Mesh mesh = ref simulation.Shapes.GetShape<Mesh>(shape.Index);
         if (mesh.Scale != Vector3.One) return CapsuleFeatureStatus.Unsupported;
@@ -133,15 +133,14 @@ internal static class SupportNeighborhoodMesh
         bool exactZeroProducts, out SupportPolygon? polygon)
     {
         polygon = null;
-        var seamPose = new Pose(pose.Position, pose.Orientation);
         ref Mesh mesh = ref simulation.Shapes.GetShape<Mesh>(shape.Index);
         ref Triangle triangle = ref mesh.Triangles[id];
         Vector3 a = triangle.A, b = triangle.B, c = triangle.C;
-        if (CapsuleFeatureGeometry.TransformVertex(a, seamPose, transform, out FeaturePoint worldA, exactZeroProducts) !=
+        if (CapsuleFeatureGeometry.TransformVertex(a, transform, out FeaturePoint worldA, exactZeroProducts) !=
                 CapsuleFeatureStatus.Complete ||
-            CapsuleFeatureGeometry.TransformVertex(b, seamPose, transform, out FeaturePoint worldB, exactZeroProducts) !=
+            CapsuleFeatureGeometry.TransformVertex(b, transform, out FeaturePoint worldB, exactZeroProducts) !=
                 CapsuleFeatureStatus.Complete ||
-            CapsuleFeatureGeometry.TransformVertex(c, seamPose, transform, out FeaturePoint worldC, exactZeroProducts) !=
+            CapsuleFeatureGeometry.TransformVertex(c, transform, out FeaturePoint worldC, exactZeroProducts) !=
                 CapsuleFeatureStatus.Complete)
             return CapsuleFeatureStatus.Unsupported;
         if (Degenerate(a, b, c)) return CapsuleFeatureStatus.Complete;
@@ -172,7 +171,7 @@ internal static class SupportNeighborhoodMesh
     }
 
     // Local coordinates are M^-1 (world - translation). The rows of M^-1 are the columns of its inverse transpose,
-    // and interval evaluation encloses the preimage for every operator the certified coefficients contain.
+    // and interval evaluation encloses the preimage for the represented point map, without assuming transpose is inverse.
     static bool LocalBounds(in InstalledPoseOperator transform, FeaturePoint lower, FeaturePoint upper,
         GeometryInterval reach, out Vector3 min, out Vector3 max)
     {

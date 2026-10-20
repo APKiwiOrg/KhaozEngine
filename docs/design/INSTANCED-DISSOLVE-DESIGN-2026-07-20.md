@@ -1,5 +1,9 @@
 # Instanced-path per-instance dissolve, design (2026-07-20)
 
+Current layout note after interior cut. `InstanceData` is 128 bytes. `SpecParams.xyz` retain specular,
+shininess and alpha cutoff, and `SpecParams.w` is now the static rigid interior-cut flag. Dissolve remains
+in its separate fields. The historical sizes below describe this design's original change.
+
 Status: approved for build (issue #253, rescoped 2026-07-20). Consumers: the prop draw-distance
 fade band (#44) and the AoI presentation fade (#37) build their policy on this primitive later. The
 skinned path already has its dissolve (CharDissolve + the DrawSkinned dissolve overload) and is not

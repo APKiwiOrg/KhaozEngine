@@ -187,7 +187,7 @@ Each terrain chunk retains outward-rounded `CanonicalBounds` alongside its submi
 both, so exact support crossing a tile seam survives inward float vertex rounding. World bounds include these
 effective support extents as well as render, LOD, asset light, emitted light and water extents.
 Doorway compounds retain their jambs and lintel under one transform. Headless clearance proves a physical opening
-only. Native walking routes remain with G1b, #1355 and #438 phase 5.
+only. Native walking routes remain with G1b and #438 phase 5.
 
 ## Roof and annotation intent
 
@@ -208,8 +208,8 @@ bounds. Markers do not, so a marker-only edit never changes the world extent, a 
 
 Format-9 builds consume `kemap/effective-resources/1` with query policy 2 from the captured MapDoc snapshot.
 Rebuild identity-keyed world and navigation captures when adopting 20.40.0, including prefab-free native maps.
-AuthoredOpen doorway clearance is a geometry proof. Controller walking and layered routes still require G1b,
-#1355 and #438, and intent does not supply R8 pixels or live door state.
+AuthoredOpen doorway clearance is a geometry proof. Controller walking and layered routes still require G1b
+and #438, and intent does not supply R8 pixels or live door state.
 
 ## Independent synthetic village heads
 

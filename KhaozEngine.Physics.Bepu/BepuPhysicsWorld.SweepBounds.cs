@@ -13,6 +13,7 @@ public sealed partial class BepuPhysicsWorld
     readonly Dictionary<int, bool> _sweepDynamicBounds = new();
     readonly HashSet<int> _unprovedSweepStatics = new();
     readonly HashSet<int> _unprovedSweepDynamics = new();
+    readonly CapsuleSweepSelection _sweepSelection = new();
 
     bool ObserveStaticSweepBounds(int id)
     {
@@ -26,8 +27,11 @@ public sealed partial class BepuPhysicsWorld
         if (!SameSweepShape(body.Shape, entry.Shape) ||
             !ReadSweepStoredBounds(_sim.BroadPhase.StaticTree, body.BroadPhaseIndex, out Vector3 min, out Vector3 max))
             return false;
-        bool proved = IdentityBoxSweepBounds(body.Shape, body.Pose, min, max);
+        if (!ObserveInstalledSweepBounds(new CollidableReference(entry.Handle), body.Shape, body.Pose, min, max,
+            out bool proved)) return false;
         SetSweepBoundStatus(_sweepStaticBounds, _unprovedSweepStatics, id, proved);
+        _sweepSelection.Observe(id, dynamic: false, !CapsuleSweepGeometry.TryReadIdentityBox(_sim.Shapes, body.Shape, body.Pose, out _),
+            _installedSweepStatics[id]?.PruningMetrics ?? default);
         return true;
     }
 
@@ -42,8 +46,10 @@ public sealed partial class BepuPhysicsWorld
             ? ReadSweepStoredBounds(_sim.BroadPhase.ActiveTree, body.Collidable.BroadPhaseIndex, out Vector3 min, out Vector3 max)
             : ReadSweepStoredBounds(_sim.BroadPhase.StaticTree, body.Collidable.BroadPhaseIndex, out min, out max);
         if (!stored) return false;
-        bool proved = IdentityBoxSweepBounds(body.Collidable.Shape, body.Pose, min, max);
+        if (!ObserveInstalledSweepBounds(new CollidableReference(CollidableMobility.Dynamic, entry.Handle), body.Collidable.Shape, body.Pose, min, max, out bool proved)) return false;
         SetSweepBoundStatus(_sweepDynamicBounds, _unprovedSweepDynamics, id, proved);
+        _sweepSelection.Observe(id, dynamic: true, !CapsuleSweepGeometry.TryReadIdentityBox(_sim.Shapes, body.Collidable.Shape, body.Pose, out _),
+            _installedSweepDynamics[id]?.PruningMetrics ?? default);
         return true;
     }
 
@@ -92,7 +98,9 @@ public sealed partial class BepuPhysicsWorld
     bool SweepRecordCountsMatch() =>
         _sim.Statics.Count == _handles.Count && _reverseHandles.Count == _handles.Count &&
         _reverseDynamics.Count == _dynamics.Count && _sweepStaticBounds.Count == _handles.Count &&
-        _sweepDynamicBounds.Count == _dynamics.Count && _sim.BroadPhase.ActiveTree.LeafCount >= 0 &&
+        _sweepDynamicBounds.Count == _dynamics.Count && _installedSweepStatics.Count == _handles.Count &&
+        _installedSweepDynamics.Count == _dynamics.Count && _sweepInstallationGenerations.Count == _handles.Count + _dynamics.Count &&
+        _sim.BroadPhase.ActiveTree.LeafCount >= 0 &&
         _sim.BroadPhase.StaticTree.LeafCount >= 0 &&
         (long)_sim.BroadPhase.ActiveTree.LeafCount + _sim.BroadPhase.StaticTree.LeafCount ==
         (long)_handles.Count + _dynamics.Count;

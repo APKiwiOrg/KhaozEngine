@@ -13,6 +13,7 @@ internal enum TileWorldBuildKind
     CoarseGround,
     Hlod,
     Cover,
+    InteriorCut,
 }
 
 internal readonly record struct TileWorldBuildKey(
@@ -29,9 +30,12 @@ internal sealed record TileWorldBuildQueueOptions
     public int MaxCoverAppliesPerPump { get; init; } = 2;
     public int MaxCoarseGroundAppliesPerPump { get; init; } = 2;
     public int MaxHlodAppliesPerPump { get; init; } = 2;
+    public int MaxInteriorCutAppliesPerPump { get; init; } = 1;
 
     public void Validate()
     {
+        if (MaxInteriorCutAppliesPerPump < 0)
+            throw new ArgumentOutOfRangeException(nameof(MaxInteriorCutAppliesPerPump));
         if (MaxConcurrentBuilds < 1) throw new ArgumentOutOfRangeException(nameof(MaxConcurrentBuilds));
         if (MaxFullGroundAppliesPerPump < 0)
             throw new ArgumentOutOfRangeException(nameof(MaxFullGroundAppliesPerPump));
@@ -54,12 +58,13 @@ internal sealed class TileWorldBuildQueue<TInput, TOutput> : IDisposable
     readonly Dictionary<TileWorldBuildKey, Slot> _tracked = new();
     readonly Dictionary<TileWorldBuildKey, TileWorldBuildResult<TOutput>> _ready = new();
     readonly ConcurrentQueue<Completion> _completed = new();
+    readonly Dictionary<(TileWorldBuildKey Key, long Generation), ScheduledWork> _scheduled = new();
     int _running;
     bool _disposed;
 
     enum WorkState { Pending, Running, Ready }
 
-    readonly record struct Slot(long Generation, WorkState State, ScheduledWork? Work);
+    readonly record struct Slot(long Generation, WorkState State);
 
     readonly record struct Completion(
         TileWorldBuildKey Key, long Generation, TOutput Payload, Exception? Error, bool CountsWorker);
@@ -106,8 +111,9 @@ internal sealed class TileWorldBuildQueue<TInput, TOutput> : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (request is null) throw new ArgumentNullException(nameof(request));
-        _tracked[request.Key] = new Slot(request.Generation, WorkState.Pending, Work: null);
+        _tracked[request.Key] = new Slot(request.Generation, WorkState.Pending);
         _ready.Remove(request.Key);
+        RemovePending(request.Key);
         _pending.Enqueue(request);
         DispatchAvailable();
     }
@@ -117,6 +123,7 @@ internal sealed class TileWorldBuildQueue<TInput, TOutput> : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         _tracked.Remove(key);
         _ready.Remove(key);
+        RemovePending(key);
     }
 
     public void CollectCompleted()
@@ -133,7 +140,8 @@ internal sealed class TileWorldBuildQueue<TInput, TOutput> : IDisposable
             _options.MaxFullGroundAppliesPerPump,
             _options.MaxCoarseGroundAppliesPerPump,
             _options.MaxHlodAppliesPerPump,
-            _options.MaxCoverAppliesPerPump);
+            _options.MaxCoverAppliesPerPump,
+            _options.MaxInteriorCutAppliesPerPump);
     }
 
     public void PrimeGameplay(RegionCoord focus, IReadOnlySet<RegionCoord> regions)
@@ -143,7 +151,7 @@ internal sealed class TileWorldBuildQueue<TInput, TOutput> : IDisposable
     }
 
     public void PrimeForCapture(RegionCoord focus) =>
-        Prime(focus, key => key.Kind is TileWorldBuildKind.FullGround or TileWorldBuildKind.Cover);
+        Prime(focus, key => key.Kind is TileWorldBuildKind.FullGround or TileWorldBuildKind.Cover or TileWorldBuildKind.InteriorCut);
 
     internal void PrimeHlod(RegionCoord focus) =>
         Prime(focus, key => key.Kind == TileWorldBuildKind.Hlod);
@@ -151,10 +159,10 @@ internal sealed class TileWorldBuildQueue<TInput, TOutput> : IDisposable
     void Prime(RegionCoord focus, Func<TileWorldBuildKey, bool> selected)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        RunPendingInline(selected);
         FinishScheduled(selected);
+        RunPendingInline(selected);
         CollectCompletedCore(reportFailures: true);
-        ApplyReady(focus, int.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue, selected);
+        ApplyReady(focus, int.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue, selected);
     }
 
     void RunPendingInline(Func<TileWorldBuildKey, bool> selected)
@@ -173,14 +181,14 @@ internal sealed class TileWorldBuildQueue<TInput, TOutput> : IDisposable
     void FinishScheduled(Func<TileWorldBuildKey, bool> selected)
     {
         var running = new List<ScheduledWork>();
-        foreach (KeyValuePair<TileWorldBuildKey, Slot> item in _tracked)
-            if (selected(item.Key) &&
-                item.Value.State == WorkState.Running && item.Value.Work is { } work)
-                running.Add(work);
+        // Superseded work still owns its input reader until it finishes. Complete it before an inline
+        // replacement can use that same reader, even though its generation will never publish.
+        foreach (var item in _scheduled)
+            if (selected(item.Key.Key)) running.Add(item.Value);
         for (int i = 0; i < running.Count; i++) running[i].RunOrWait();
     }
 
-    void ApplyReady(RegionCoord focus, int fullBudget, int coarseBudget, int hlodBudget, int coverBudget,
+    void ApplyReady(RegionCoord focus, int fullBudget, int coarseBudget, int hlodBudget, int coverBudget, int interiorBudget,
                     Func<TileWorldBuildKey, bool>? selected = null)
     {
         if (_ready.Count == 0) return;
@@ -190,7 +198,7 @@ internal sealed class TileWorldBuildQueue<TInput, TOutput> : IDisposable
         {
             TileWorldBuildResult<TOutput> result = ordered[i];
             if (selected is not null && !selected(result.Key)) continue;
-            ref int budget = ref Budget(result.Key.Kind, ref fullBudget, ref coarseBudget, ref hlodBudget, ref coverBudget);
+            ref int budget = ref Budget(result.Key.Kind, ref fullBudget, ref coarseBudget, ref hlodBudget, ref coverBudget, ref interiorBudget);
             if (budget <= 0) continue;
             if (!_tracked.TryGetValue(result.Key, out Slot slot) ||
                 slot.Generation != result.Generation || slot.State != WorkState.Ready)
@@ -205,12 +213,24 @@ internal sealed class TileWorldBuildQueue<TInput, TOutput> : IDisposable
         }
     }
 
-    static ref int Budget(TileWorldBuildKind kind, ref int full, ref int coarse, ref int hlod, ref int cover)
+    static ref int Budget(TileWorldBuildKind kind, ref int full, ref int coarse, ref int hlod, ref int cover, ref int interior)
     {
         if (kind == TileWorldBuildKind.FullGround) return ref full;
         if (kind == TileWorldBuildKind.CoarseGround) return ref coarse;
         if (kind == TileWorldBuildKind.Cover) return ref cover;
-        return ref hlod;
+        if (kind == TileWorldBuildKind.Hlod) return ref hlod;
+        if (kind == TileWorldBuildKind.InteriorCut) return ref interior;
+        throw new ArgumentOutOfRangeException(nameof(kind));
+    }
+
+    void RemovePending(TileWorldBuildKey key)
+    {
+        int count = _pending.Count;
+        while (count-- > 0)
+        {
+            TileWorldBuildRequest<TInput> pending = _pending.Dequeue();
+            if (pending.Key != key) _pending.Enqueue(pending);
+        }
     }
 
     void DispatchAvailable()
@@ -223,7 +243,8 @@ internal sealed class TileWorldBuildQueue<TInput, TOutput> : IDisposable
                 continue;
 
             var work = new ScheduledWork(() => Build(request, countsWorker: true));
-            _tracked[request.Key] = slot with { State = WorkState.Running, Work = work };
+            _tracked[request.Key] = slot with { State = WorkState.Running };
+            _scheduled.Add((request.Key, request.Generation), work);
             _running++;
             try
             {
@@ -232,6 +253,7 @@ internal sealed class TileWorldBuildQueue<TInput, TOutput> : IDisposable
             catch
             {
                 _running--;
+                _scheduled.Remove((request.Key, request.Generation));
                 if (_tracked.TryGetValue(request.Key, out Slot current) && current.Generation == request.Generation)
                     _tracked.Remove(request.Key);
                 throw;
@@ -252,7 +274,11 @@ internal sealed class TileWorldBuildQueue<TInput, TOutput> : IDisposable
     {
         while (_completed.TryDequeue(out Completion completion))
         {
-            if (completion.CountsWorker) _running--;
+            if (completion.CountsWorker)
+            {
+                _running--;
+                _scheduled.Remove((completion.Key, completion.Generation));
+            }
             if (!_tracked.TryGetValue(completion.Key, out Slot slot) ||
                 slot.Generation != completion.Generation || slot.State != WorkState.Running)
                 continue;
@@ -302,6 +328,7 @@ internal sealed class TileWorldBuildQueue<TInput, TOutput> : IDisposable
         _tracked.Clear();
         _ready.Clear();
         _dispatcher.Drain();
+        _scheduled.Clear();
         while (_completed.TryDequeue(out Completion completion))
             if (completion.CountsWorker) _running--;
         while (_completed.TryDequeue(out _)) { }

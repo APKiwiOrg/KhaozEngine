@@ -269,7 +269,7 @@ public sealed class SupportRectangleContactTests
 
     static SupportPolygon Installed(Quaternion rotation, Vector3 translation)
     {
-        Assert.True(InstalledPoseOperator.TryCreate(new BepuPhysics.RigidPose(translation, rotation),
+        Assert.True(InstalledPoseOperator.TryCreateSupport(new BepuPhysics.RigidPose(translation, rotation),
             out InstalledPoseOperator map));
         Vector3[] local = [new(-1, 0.5f, -1), new(-1, 0.5f, 1), new(1, 0.5f, 1), new(1, 0.5f, -1)];
         var polygon = new SupportPolygon();

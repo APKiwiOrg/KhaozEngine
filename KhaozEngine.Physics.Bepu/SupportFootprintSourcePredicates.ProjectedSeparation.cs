@@ -5,7 +5,7 @@ namespace KhaozEngine.Physics.Bepu;
 
 internal sealed partial class SupportFootprintSourcePredicates
 {
-    /// <summary>Certifies min(n dot (vertex-axis)) against radius*|n| over the whole source coefficient box.
+    /// <summary>Certifies min(n dot (vertex-axis)) against radius*|n| under the represented source map.
     /// The projection's sign is proved before squaring. Equality never excludes a face.</summary>
     internal GeometrySign ProjectedSeparation(SupportPolygon polygon, double nx, double nz,
         FeatureNumber axisX, FeatureNumber axisZ, FeatureNumber radius)

@@ -41,5 +41,5 @@ finite budget handling, every tuning input, semantic digest snapshot/order and e
 across two adjacent synthetic physics frames. The tests link the existing bounded analytic environment
 fixtures rather than creating a native sampler. Native tiled navigation, real seams, area coverage,
 engine release and game adoption remain separate gates. The unchanged short-step regression passes.
-Adoption remains blocked by #1355 certified sweep shapes, #1334 cost, #1347 hidden support and #1344
-small bodies. Phase 5 still owns the public selector and navigation bake identity.
+Lane C resolves #1494 exact-edge support. Adoption remains blocked by #1334 cost, #1347 hidden
+support and #1344 small bodies. Phase 5 still owns the public selector and navigation bake identity.

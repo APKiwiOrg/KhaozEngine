@@ -54,6 +54,9 @@ public struct MoveState
     /// degrades to normal speed rather than to paralysis.</summary>
     private float speedScaleBias;
 
+    // Exact proof keys distinguish storage bits that the public addition can round to the same scale.
+    internal readonly int SpeedScaleStorageBits => System.BitConverter.SingleToInt32Bits(speedScaleBias);
+
     /// <summary>Per-entity HORIZONTAL speed multiplier: haste (&gt; 1), slow (&lt; 1), root (exactly 0), unmodified
     /// (1, the default). It is a movement INPUT the step reads and carries through unchanged - the engine owns the
     /// scale and its plumbing, never the buff: duration, stacking, what granted it, and how it is balanced are game

@@ -83,6 +83,30 @@ automatically, so this is transparent to every other package.
   they are relative to that anchor. It untranslates and unrotates the ray and defers to `IntersectAabb`, so
   every edge case above holds unchanged and a `yaw` of 0 gives the same answer as `IntersectAabb` with the
   anchor subtracted out.
+- `InteriorVolume` / `InteriorRoof` / `IInteriorSource` describe simple world-XZ polygons, floor and ceiling
+  heights and roof geometry without a renderer dependency. `InteriorSourceResult.Encoding` carries the
+  source-wide `InteriorEncoding.For(lowestFloorY, highestTopY)`, stable across window re-centres.
+  `InteriorLattice` supplies identical represented edges for window corners, roof clipping and adapter outlines.
+  `InteriorWindow.Centred` snaps to the world-origin lattice. `CellsFor(512f, cellSize)` rounds up and caps
+  at 4096 cells per side. `InteriorHeightFieldBuilder.Build(volumes, window, encoding)` fills only whole
+  polygon cells, clips roof triangles to each cell for their exact minimum height, and merges overlapping spans
+  to their lowest floor and highest top.
+  The immutable field packs floor high/low in RG and top high/low in BA, rows toward +world Z, with a 1 cm
+  step through 655.35 m or a coarser source-wide step beyond that. `Texels`, `Version`, `MergedCells` and
+  `OutOfRangeCells` describe the result. `TryGetSpan` returns approximate decoded heights, while `Contains`
+  tests the shader's float32 code space, floor-inclusive and top-exclusive. `InteriorCutFrame` carries a double
+  render origin and produces both the uniforms and the render-relative point used by membership. Cell addressing
+  multiplies by the rounded reciprocal cell size. `Contains(world, frame)` and the overload
+  `FirstUncut(origin, direction, tStart, tEnd, frame, out t)` share that frame, including represented ray crossings.
+  Overloads without a frame use origin zero.
+  `MayIntersect(worldMin, worldMax)` and its frame-taking overload conservatively test a box against
+  packed-code summaries of 8 by 8 cells. They expand XZ by a cell and round height bounds outwards.
+  False positives are allowed. The renderer caches this query so only opted-in props whose drawn bounds
+  can reach an interior take the cut path.
+  `FirstUncut(origin, direction, tStart, tEnd, out t)` finds the first uncut point in ray-parameter units,
+  treating empty cells and points outside the window as uncut. It returns false for a wholly cut segment.
+  `RayMath.IntersectObbY(..., out tNear, out tFar)` supplies the matching box entry and exit, including
+  `tNear = 0` for a ray starting inside, without changing the existing entry-only overload.
 - `WorldFrame` - a quantized planar frame for large worlds, the floating-origin primitive: a `(short X, short Z)`
   index onto a 128 m grid whose `Anchor` is `(X, 0, Z) * Grid` metres, always exactly representable in float32.
   `Nearest(world)` rounds (never floors) so a freshly anchored local lies inside half a grid, which is what makes

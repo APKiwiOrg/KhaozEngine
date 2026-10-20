@@ -28,6 +28,7 @@ internal static partial class ShaderSources
     vec4 ShadowNormalOffsets; vec4 RenderOrigin;
     vec4 PointShadowParams[16]; vec4 PointShadowAtlas; vec4 PointShadowFilter; vec4 PointShadowTransientAtlas;
     vec4 ClusterDepth; vec4 ClusterCamera;
+    vec4 InteriorCutWindow; vec4 InteriorCutHeights;
 };
 ";
 }

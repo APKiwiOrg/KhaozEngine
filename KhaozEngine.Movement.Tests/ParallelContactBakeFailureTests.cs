@@ -19,9 +19,13 @@ public class ParallelContactBakeFailureTests
     static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
     static readonly int[] Degrees = [2, 3, 8];
 
-    [Fact]
-    public void TwoAdmissionFailuresOnDifferentRawSurfacesThrowTheSerialFailure()
+    [Theory]
+    [InlineData(ContactNavigationReuseMode.Off)]
+    [InlineData(ContactNavigationReuseMode.Footprints)]
+    [InlineData(ContactNavigationReuseMode.Combined)]
+    public void TwoAdmissionFailuresOnDifferentRawSurfacesThrowTheSerialFailure(ContactNavigationReuseMode mode)
     {
+        using var reuse = ContactNavigationBuildHooks.Install(ContactNavigationReuseFixture.Hooks(mode));
         using var faults = new Faults
         {
             // The right column's slab top in the first row, after its floor surface admits.
@@ -32,9 +36,13 @@ public class ParallelContactBakeFailureTests
         AssertSerialFailureWins(faults);
     }
 
-    [Fact]
-    public void TwoEdgeFailuresInDifferentLayersThrowTheSerialFailure()
+    [Theory]
+    [InlineData(ContactNavigationReuseMode.Off)]
+    [InlineData(ContactNavigationReuseMode.Footprints)]
+    [InlineData(ContactNavigationReuseMode.Combined)]
+    public void TwoEdgeFailuresInDifferentLayersThrowTheSerialFailure(ContactNavigationReuseMode mode)
     {
+        using var reuse = ContactNavigationBuildHooks.Install(ContactNavigationReuseFixture.Hooks(mode));
         using var faults = new Faults();
         using (var reference = new SmallStairScene())
         {
@@ -55,9 +63,13 @@ public class ParallelContactBakeFailureTests
         AssertSerialFailureWins(faults);
     }
 
-    [Fact]
-    public void TwoStairLinkFailuresInCandidateOrderThrowTheSerialFailure()
+    [Theory]
+    [InlineData(ContactNavigationReuseMode.Off)]
+    [InlineData(ContactNavigationReuseMode.Footprints)]
+    [InlineData(ContactNavigationReuseMode.Combined)]
+    public void TwoStairLinkFailuresInCandidateOrderThrowTheSerialFailure(ContactNavigationReuseMode mode)
     {
+        using var reuse = ContactNavigationBuildHooks.Install(ContactNavigationReuseFixture.Hooks(mode));
         using var faults = new Faults();
         using (var reference = new SmallStairScene())
         {
@@ -77,12 +89,16 @@ public class ParallelContactBakeFailureTests
         AssertSerialFailureWins(faults);
     }
 
-    [Fact]
-    public void ProviderExceptionIsTheSerialException()
+    [Theory]
+    [InlineData(ContactNavigationReuseMode.Off)]
+    [InlineData(ContactNavigationReuseMode.Footprints)]
+    [InlineData(ContactNavigationReuseMode.Combined)]
+    public void ProviderExceptionIsTheSerialException(ContactNavigationReuseMode mode)
     {
+        using var reuse = ContactNavigationBuildHooks.Install(ContactNavigationReuseFixture.Hooks(mode));
         using var faults = new Faults { Earlier = Near(Centre(1, 2), 0.45f, 0.8f) };
         using var scene = new SmallStairScene(fault: faults.Check);
-        var serial = Assert.Throws<ProviderFaultException>(() => scene.Build(null));
+        var serial = Assert.Throws<ProviderFaultException>(() => scene.Build(new(1) { UseStableContactHoldReuse = true }));
         foreach (int degree in Degrees)
         {
             var parallel = Assert.Throws<ProviderFaultException>(() => scene.Build(new NavBakeExecution(degree)));
@@ -92,9 +108,13 @@ public class ParallelContactBakeFailureTests
         }
     }
 
-    [Fact]
-    public void FailureWhileASiblingHoldsItsLeaseReleasesEveryGate()
+    [Theory]
+    [InlineData(ContactNavigationReuseMode.Off)]
+    [InlineData(ContactNavigationReuseMode.Footprints)]
+    [InlineData(ContactNavigationReuseMode.Combined)]
+    public void FailureWhileASiblingHoldsItsLeaseReleasesEveryGate(ContactNavigationReuseMode mode)
     {
+        using var reuse = ContactNavigationBuildHooks.Install(ContactNavigationReuseFixture.Hooks(mode));
         var holding = new ManualResetEventSlim();
         var failed = new ManualResetEventSlim();
         Func<Vector3, Vector3, bool> earlier = Near(Centre(1, 0), 0.45f, 0.8f), sibling = Near(Centre(0, 5), 0.2f, 0.6f);
@@ -113,7 +133,7 @@ public class ParallelContactBakeFailureTests
             failed.Set();
             throw new ProviderFaultException("earlier", position);
         });
-        string expected = Assert.Throws<ProviderFaultException>(() => scene.Build(null)).Message;
+        string expected = Assert.Throws<ProviderFaultException>(() => scene.Build(new(1) { UseStableContactHoldReuse = true })).Message;
         failed.Reset();
         coordinate = true;
         var thrown = Assert.Throws<ProviderFaultException>(() => scene.Build(new NavBakeExecution(2)));
@@ -123,14 +143,20 @@ public class ParallelContactBakeFailureTests
         scene.AssertUsable();
     }
 
-    [Fact]
-    public void SetupFailureAfterPartialWorkerConstructionReleasesTheBuiltWorkers()
+    [Theory]
+    [InlineData(ContactNavigationReuseMode.Off)]
+    [InlineData(ContactNavigationReuseMode.Footprints)]
+    [InlineData(ContactNavigationReuseMode.Combined)]
+    public void SetupFailureAfterPartialWorkerConstructionReleasesTheBuiltWorkers(ContactNavigationReuseMode mode)
     {
+        using var reuse = ContactNavigationBuildHooks.Install(ContactNavigationReuseFixture.Hooks(mode));
         using var scene = new SmallStairScene();
         var released = new List<int>();
         var setup = new InvalidOperationException("setup fault");
         using (ContactNavigationBuildHooks.Install(new()
         {
+            DisableFootprintReuse = mode == ContactNavigationReuseMode.Off,
+            DisableInitialHoldReuse = mode != ContactNavigationReuseMode.Combined,
             WorkerPinned = worker => { if (worker == 1) throw setup; },
             Releasing = released.Add,
         }))
@@ -140,16 +166,22 @@ public class ParallelContactBakeFailureTests
         scene.AssertUsable();
     }
 
-    [Fact]
-    public void CleanupFailureRidesOnThePrimaryFailure()
+    [Theory]
+    [InlineData(ContactNavigationReuseMode.Off)]
+    [InlineData(ContactNavigationReuseMode.Footprints)]
+    [InlineData(ContactNavigationReuseMode.Combined)]
+    public void CleanupFailureRidesOnThePrimaryFailure(ContactNavigationReuseMode mode)
     {
+        using var reuse = ContactNavigationBuildHooks.Install(ContactNavigationReuseFixture.Hooks(mode));
         using var faults = new Faults { Earlier = Near(Centre(1, 2), 0.45f, 0.8f) };
         using var scene = new SmallStairScene(fault: faults.Check);
-        string expected = Assert.Throws<ProviderFaultException>(() => scene.Build(null)).Message;
+        string expected = Assert.Throws<ProviderFaultException>(() => scene.Build(new(1) { UseStableContactHoldReuse = true })).Message;
         var released = new List<int>();
         var cleanup = new InvalidOperationException("release fault");
         using (ContactNavigationBuildHooks.Install(new()
         {
+            DisableFootprintReuse = mode == ContactNavigationReuseMode.Off,
+            DisableInitialHoldReuse = mode != ContactNavigationReuseMode.Combined,
             Releasing = worker =>
             {
                 released.Add(worker);
@@ -166,19 +198,32 @@ public class ParallelContactBakeFailureTests
         scene.AssertUsable();
     }
 
-    [Fact]
-    public void CleanupFailureAfterASuccessfulBuildPublishesNothing()
+    [Theory]
+    [InlineData(ContactNavigationReuseMode.Off)]
+    [InlineData(ContactNavigationReuseMode.Footprints)]
+    [InlineData(ContactNavigationReuseMode.Combined)]
+    public void CleanupFailureAfterASuccessfulBuildPublishesNothing(ContactNavigationReuseMode mode)
     {
+        using var reuse = ContactNavigationBuildHooks.Install(ContactNavigationReuseFixture.Hooks(mode));
         using var scene = new SmallStairScene();
         var cleanup = new InvalidOperationException("release fault");
-        using (ContactNavigationBuildHooks.Install(new() { Releasing = worker => { if (worker == 0) throw cleanup; } }))
+        using (ContactNavigationBuildHooks.Install(new()
+        {
+            DisableFootprintReuse = mode == ContactNavigationReuseMode.Off,
+            DisableInitialHoldReuse = mode != ContactNavigationReuseMode.Combined,
+            Releasing = worker => { if (worker == 0) throw cleanup; }
+        }))
             Assert.Same(cleanup, Assert.Throws<InvalidOperationException>(() => scene.Build(new NavBakeExecution(2))));
         scene.AssertUsable();
     }
 
-    [Fact]
-    public void InterruptedJoinStillJoinsEveryWorkerBeforeRelease()
+    [Theory]
+    [InlineData(ContactNavigationReuseMode.Off)]
+    [InlineData(ContactNavigationReuseMode.Footprints)]
+    [InlineData(ContactNavigationReuseMode.Combined)]
+    public void InterruptedJoinStillJoinsEveryWorkerBeforeRelease(ContactNavigationReuseMode mode)
     {
+        using var reuse = ContactNavigationBuildHooks.Install(ContactNavigationReuseFixture.Hooks(mode));
         var holding = new ManualResetEventSlim();
         var resume = new ManualResetEventSlim();
         var released = new ManualResetEventSlim();
@@ -200,6 +245,8 @@ public class ParallelContactBakeFailureTests
         {
             using var hooks = ContactNavigationBuildHooks.Install(new()
             {
+                DisableFootprintReuse = mode == ContactNavigationReuseMode.Off,
+                DisableInitialHoldReuse = mode != ContactNavigationReuseMode.Combined,
                 Releasing = _ =>
                 {
                     aliveAtRelease.Add(heldWorker!.IsAlive);
@@ -237,12 +284,12 @@ public class ParallelContactBakeFailureTests
         using var scene = new SmallStairScene(fault: faults.Check);
         Func<Vector3, Vector3, bool>? earlier = faults.Earlier, later = faults.Later;
         faults.Earlier = null;
-        Assert.Equal("later", Assert.Throws<ProviderFaultException>(() => scene.Build(null)).Tag);
+        Assert.Equal("later", Assert.Throws<ProviderFaultException>(() => scene.Build(new(1) { UseStableContactHoldReuse = true })).Tag);
         faults.Earlier = earlier;
         faults.Later = null;
-        Assert.Equal("earlier", Assert.Throws<ProviderFaultException>(() => scene.Build(null)).Tag);
+        Assert.Equal("earlier", Assert.Throws<ProviderFaultException>(() => scene.Build(new(1) { UseStableContactHoldReuse = true })).Tag);
         faults.Later = later;
-        var serial = Assert.Throws<ProviderFaultException>(() => scene.Build(null));
+        var serial = Assert.Throws<ProviderFaultException>(() => scene.Build(new(1) { UseStableContactHoldReuse = true }));
         Assert.Equal("earlier", serial.Tag);
 
         foreach (int degree in Degrees)

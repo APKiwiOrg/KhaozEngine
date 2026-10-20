@@ -78,6 +78,13 @@ bash scripts/check-doc-versions.sh
 Plain `dotnet test` skips GPU facts. GPU work follows `docs/CROSS-PLATFORM.md` and uses the relevant
 backend CI bake. Do not launch consumer clients for engine tooling or documentation work.
 
+Scratch captures, coverage evidence and CI downloads go under `/tmp/khaozengine-<topic>/`, never inside a
+worktree or its `.superpowers/` folder. Delete per-frame images and raw buffers once the metrics and contact
+sheets they feed exist, unless the brief asks to keep them. Fetch only the artifact you need with
+`gh run download <run-id> -n <artifact> -D <dir>` and delete it once read, since the run keeps its own copy
+until it expires. One coverage evidence download is about 4 GB, and kept downloads once filled 30 GB of a
+worktree.
+
 ## Version and release boundary
 
 `Directory.Build.props` contains the single `<KhaozEngineVersion>` used by every package. Tooling,

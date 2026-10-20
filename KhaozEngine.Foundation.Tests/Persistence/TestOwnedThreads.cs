@@ -78,7 +78,8 @@ internal static class DedicatedThread
             {
                 completion.SetException(ex);
             }
-        }) { IsBackground = true, Name = "persistence-test-actor" }.Start();
+        })
+        { IsBackground = true, Name = "persistence-test-actor" }.Start();
         return completion.Task;
     }
 

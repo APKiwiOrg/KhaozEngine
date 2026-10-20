@@ -11,6 +11,8 @@ namespace KhaozEngine.Tests.Physics;
 
 public partial class SupportFootprintTests
 {
+    // Quantifies the legacy dual column box, which support no longer reads. The support column is one point
+    // inside it, so none of the subdivision measured below is support work.
     [Fact]
     public void TiltedSubdivisionSourceBoxDiagnostic()
     {
@@ -19,7 +21,13 @@ public partial class SupportFootprintTests
         Assert.True(InstalledPoseOperator.TryCreate(pose, out var map));
         var sx = map.Y.X.Bounds;
         var sy = map.Y.Y.Bounds;
-        _output.WriteLine($"source X=[{sx.Lower:R},{sx.Upper:R}] Y=[{sy.Lower:R},{sy.Upper:R}]");
+        _output.WriteLine($"legacy source X=[{sx.Lower:R},{sx.Upper:R}] Y=[{sy.Lower:R},{sy.Upper:R}]");
+        Assert.True(InstalledPoseOperator.TryCreateSupport(pose, out var support));
+        Vector3 column = InstalledSupportPoseTests.Point(support.Y);
+        _output.WriteLine($"support column X={column.X:R} Y={column.Y:R}");
+        Assert.InRange((double)column.X, sx.Lower, sx.Upper);
+        Assert.InRange((double)column.Y, sy.Lower, sy.Upper);
+        Assert.True(sx.Lower < sx.Upper || sy.Lower < sy.Upper);
         var low = Components(-sx.Lower, sy.Lower);
         var high = Components(-sx.Upper, sy.Upper);
         var lowRoot = Stationary(low.U, low.K);

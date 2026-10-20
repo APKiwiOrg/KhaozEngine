@@ -382,13 +382,13 @@ namespace KhaozEngine.Terrain
                         tint: null, fadeBandWidth: layer.FadeBandWidth, lodParts: layer.LodPartMeshes,
                         lodDistance: layer.LodDistance, dissolveFloor: dissolveFloor,
                         castsShadows: layer.CastsShadows, blobRadii: layer.BlobRadii,
-                        lodCrossfadeWidth: layer.LodCrossfadeWidth);
+                        lodCrossfadeWidth: layer.LodCrossfadeWidth, cutInsideInteriors: layer.CutsInsideInteriors);
                 else
                     _scene.DrawProps(placements, layer.Meshes, focus, layer.DrawRadius,
                         tint: null, fadeBandWidth: layer.FadeBandWidth, lodMeshes: layer.LodMeshes,
                         lodDistance: layer.LodDistance, dissolveFloor: dissolveFloor,
                         castsShadows: layer.CastsShadows, blobRadii: layer.BlobRadii,
-                        lodCrossfadeWidth: layer.LodCrossfadeWidth);
+                        lodCrossfadeWidth: layer.LodCrossfadeWidth, cutInsideInteriors: layer.CutsInsideInteriors);
             }
 
             public void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve, bool invertShadowDissolve)

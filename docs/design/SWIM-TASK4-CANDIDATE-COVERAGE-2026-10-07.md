@@ -1,8 +1,99 @@
 # Swimming Task 4 candidate coverage
 
-Status: source proposal for the next generic backend slice. No candidate implementation, public
-sweep forwarding, native adapter or complete-world certificate exists from this document.
-The single identity-box sweep is preserved at `04e38bf73`.
+Status: historical candidate proposal with the installed rotated-box, hull, mesh and compound extensions recorded below.
+The checkpoint sections retain their original evidence. Current restrictions live in the
+[backend README](../../KhaozEngine.Physics.Bepu/README.md).
+
+## Final general-family acceptance
+
+The [general-sweep acceptance record](CERTIFIED-GENERAL-SWEEPS-2026-10-18.md#task-6-captured-content-evidence-and-gb-r13)
+completes #1355 for admitted rotated boxes, installed hulls, finite one-sided mesh triangles,
+spheres, capsules, cylinders and supported flat compound descendants. It adds actual acquired
+cost-scene ticks and player-scale captured Grimhollow stairs. Both split and eight-hull compound
+installations retain installed vertex/centroid identity. Off-tangency quarter-turn ascent/descent
+advances every tick and reaches the exact Euclidean 1 mm arrival ball at both physics origins.
+At the general-sweep baseline, the six exact-edge rows retained Clear shell sweeps and Unsupported
+footprints with Blocked movement. [Lane C](CONTACT-CONTROLLER-FOLLOWUPS-C-2026-10-19.md) resolves
+#1494 using represented support. Those unchanged rows now complete and advance, with the historical
+real-quaternion/represented-matrix discriminants retained. No support, roof, raw identity, reach or lifetime rule changes. GS-3 ceilings,
+GS-9 sidedness/culling, GS-10 non-rigid seam refusal and whole-query atomic refusal remain binding.
+Native G1b, SG-12/#1334 timing/cost, navigation, release and consumer adoption remain separate.
+
+## Installed rotated-box evidence
+
+Each monotonically assigned registration id owns captured immutable Bepu Box topology. Removal
+removes that binding. Native handles or typed shape indices alone never identify an installation.
+Mutation completion rechecks the native shape/dimensions and publishes its current pose operator.
+The query rereads that pose under its existing owner read interval and rejects stale evidence.
+
+Required bounds union all eight corners under the common forward operator and the pinned rounded
+point graph. An inward stored leaf is expanded through `BroadPhase.UpdateActiveBounds` or
+`UpdateStaticBounds`. In pinned Bepu 2.4.0 these call `Tree.UpdateBounds`, which refits metanode
+ancestors through `RefitForNodeBoundsChange`. Ancestor structure is checked before repair, then
+stored leaf and ancestor containment are reread before publication. A failed repair poisons the
+mutation evidence and cannot be healed by an unrelated successful registration.
+
+The original outward query aperture and both bounded tree preflights remain unchanged. Rotated boxes
+with proved far bounds can be pruned. Unsupported selected families still refuse before traversal.
+Exclusions retain their existing source meaning and cannot hide invalid stored bounds or failed
+evidence. Mutation tests cover remove/re-add, wake/sleep transfers, velocity, stepping, constraints,
+nonzero Y rebase, no-op rebase and failed or missed hooks. Owner-scoped leases and view/gate/token
+semantics are unchanged under GS-13 ruling GB-R2.
+
+Candidate aggregation completes every selected leaf after an earlier Hit(0). Cell, depth, feature,
+descendant, exact-storage and arithmetic exhaustion discard the entire result. Warm queries borrow
+private retained scratch. Nested loans and two simultaneous owner intervals keep active workspaces
+separate. The [general-sweep contract](CERTIFIED-GENERAL-SWEEPS-2026-10-18.md) fixes the unchanged
+1,000,000 m stored-coordinate ceiling and all finite work ceilings. General compounds use the
+installed compound evidence below. Unknown installed families retain unproved bounds.
+
+## Installed compound evidence
+
+The real installer's flattened convex children retain their raw array index, typed identity and local
+pose. Bounds union every supported child's forward/rounded enclosure through the existing owning
+tree repair and ancestor proof. A proved far compound root can be pruned, but an unsupported child
+leaves the selected root unproved even outside the aperture. The query certifies all children of a
+selected root without child pruning, including after Hit(0), within 64 children per root and 4096
+descendants per query. Box, hull and curved leaf kernels remain unchanged.
+
+Each immutable capture binds once to its monotonically assigned registration id and installation
+generation. Separate live owner records authenticate both on mutation and query lookup. Removal and
+disposal destroy those records. Recycled native handles/indices with identical replacement geometry
+cannot accept the old capture. Pose refreshes, rebase, wake/sleep and constraint transfers retain the
+original installation binding under the existing generation/read-interval contract.
+
+The rounded non-rigid nested fixture retains atomic refusal for a tangent face whose enclosed
+distance cannot prove contact or separation at depth 48. Its composition and bounds succeed. The
+rigid cyclic-child sibling certifies Hit, and all unsupported or exhausted children still discard
+the entire result. Mesh children remain a public installation refusal.
+
+## Installed hull evidence
+
+The same registration lifetime now captures installed hull face loops, point identities and the exact
+single-hull centroid-compensating Compound wrapper. Removal destroys the binding. Recycled native
+handles and typed indices cannot substitute for the old topology or child offset. Exact local
+validation proves a closed strict convex solid before publication, within 256 faces, 508 vertices
+and 1524 face-index entries. Every SIMD support lane must alias a proved face vertex.
+
+Mutation completion uses the actual composed child pose, preserving its represented offset and
+orientation. Scalar/SIMD composition must agree. Bounds enclose every hull vertex under both the
+common forward operator and pinned rounded point graph, then use the existing owning tree repair
+and ancestor checks. A far certified hull no longer poisons Clear. Invalid topology, failed bounds,
+stale pose or exhausted work still discards the whole query, including an earlier identity-box Hit(0).
+Restricted views and mobility use the unchanged owner-scoped interval and selected set.
+
+## Installed mesh evidence
+
+Mesh capture retains actual raw triangle indices, strictly positive scale and both original and
+recentered sweep geometry. Mutation proof validates every tree member and link, repairs finite inward
+leaf bounds through the owning update/refit path, then proves scaled/posed ancestor enclosures.
+Invalid inner structure or nonfinite bounds invalidate owner evidence even under view exclusion.
+Queries compare examined nodes with that proof, prune only closed proved bounds and complete every
+relevant triangle. The inner limits remain 8192 nodes, 4096 leaves and 128 pending branches, with
+4096 primitive descendants across the whole query. No earlier Hit(0) can hide exhaustion or a late
+unresolved triangle. Sparse large meshes retain tree pruning and have no total triangle cap.
+The [GS-9 source/side audit](CERTIFIED-GENERAL-SWEEPS-2026-10-18.md#installed-mesh-implementation-and-pinned-side-policy)
+also records the source-derived stationary and directional eligibility rules.
 
 ## Problem
 
@@ -235,8 +326,8 @@ geometry certificate was added by this slice.
 
 The next implementation/test batch is the actual optional backend sweep, not another isolated value
 helper. Thirty-two prepared facts use the real Bepu owner or its exact restricted view and actual read
-leases. Production does not yet implement IPhysicsCapsuleSweep, so initial RED expects missing backend
-capability after valid setup. No native producer or movement adoption is part of this batch.
+leases. At this historical checkpoint production did not implement IPhysicsCapsuleSweep, so initial
+RED expected missing backend capability after valid setup. No native producer or movement adoption is part of this batch.
 
 Planned production scope:
 
@@ -292,8 +383,9 @@ the raw overlap enumerator directly on that over-budget tree. There are no loops
 loads. The partial-failure fixture observes the newly allocated shapeless anchor before asserting
 persistent refusal, rather than inferring partial mutation from an exception alone.
 
-The initial identity-box sweep/bound domain remains a material backend capability limit. Passing these
-fixtures will not finish Task 4, general-shape support, the full movement resolver or native G1b.
+The initial identity-box sweep/bound domain was this checkpoint's backend capability limit. These
+fixtures alone did not finish Task 4, general-shape support, the full movement resolver or native G1b.
+The final general-family acceptance above supersedes that shape limit, with native G1b still separate.
 
 Integrated RED compiled and all 32 facts failed at the expected missing IPhysicsCapsuleSweep backend
 capability (25 owner, 7 view). Zero passes/skips and no compiler/setup failure, exit 1 in

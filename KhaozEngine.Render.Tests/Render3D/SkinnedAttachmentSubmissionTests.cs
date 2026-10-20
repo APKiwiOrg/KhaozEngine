@@ -50,6 +50,7 @@ public sealed class SkinnedAttachmentSubmissionTests
         {
             if (property.Name is nameof(RigidInstanceDraw.Mesh) or nameof(RigidInstanceDraw.World) or nameof(RigidInstanceDraw.Motion)) continue;
             Assert.Equal(property.GetValue(template), property.GetValue(draws[0].Rigid));
+            if (property.Name == nameof(RigidInstanceDraw.CutInsideInteriors)) continue;
             Assert.Equal(property.GetValue(template), typeof(SkinnedInstanceDraw).GetProperty(property.Name)!.GetValue(draws[1].Skinned));
         }
 
@@ -270,6 +271,7 @@ internal sealed class MixedAttachmentSubmissionFixture : IDisposable
     };
     readonly AttachmentAssetHarness _harness = new();
     internal Scene3D Scene => _harness.Scene;
+    internal KhaozEngine.Tests.Gpu.FakeGpuResourceFactory Factory => _harness.Factory;
     internal readonly AttachmentTestSource Source = new();
     internal readonly Skeleton Skeleton = RigidAttachmentTestRig.Create();
     internal readonly Matrix4x4[] Palette;

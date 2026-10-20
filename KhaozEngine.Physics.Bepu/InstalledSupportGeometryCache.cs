@@ -77,7 +77,7 @@ internal sealed class InstalledSupportGeometryCache
             for (int i = 0; i < compound.Children.Length; i++)
             {
                 ref var child = ref compound.Children[i];
-                if (!CapsuleFeatureGeometry.ProveInstalledPose(child.LocalPose)) return CapsuleFeatureStatus.Unsupported;
+                if (!InstalledPoseOperator.TryCreateSupport(child.LocalPose, out _)) return CapsuleFeatureStatus.Unsupported;
                 status = CaptureLeaf(simulation, child.ShapeIndex, child.LocalPose, i, leaves);
                 if (status != CapsuleFeatureStatus.Complete) return status;
             }
@@ -98,8 +98,9 @@ internal sealed class InstalledSupportGeometryCache
         Pose localPose = new(local.Position, local.Orientation);
         if (installation.Type == default(Box).TypeId || installation.Type == default(ConvexHull).TypeId)
         {
+            if (!InstalledPoseOperator.TryCreateSupport(identity, out var transform)) return CapsuleFeatureStatus.Unsupported;
             CapsuleFeatureStatus status = CapsuleFeatureGeometry.CaptureLeaf(simulation, installation, identity,
-                local, id, null, out var captured, topologyOnly: true);
+                local, id, transform, null, out var captured, topologyOnly: true);
             if (status != CapsuleFeatureStatus.Complete) return status;
             leaves.Add(new(id, localPose, captured!.LocalVertices, captured.Faces, null, 0, 0, installation));
             return CapsuleFeatureStatus.Complete;

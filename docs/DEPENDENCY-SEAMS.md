@@ -105,10 +105,10 @@ this doc cannot silently drift apart.
 | Server heartbeat (liveness) | `KhaozEngine.ServerStatus` (`IServerHeartbeatSink`, `ServerHeartbeat`, `Null`/`InMemory` reference sinks, `ServerHeartbeatService`) | **game-side** (the one-table upsert against the status DB), no engine backend package | Microsoft.Data.SqlClient / any - in the game, never the engine |
 | Bug report delivery | `KhaozEngine.BugReports` (`IBugReportSink`: one `SubmitAsync` returning a `BugReportSubmitResult` of Sent, Queued or Rejected for every delivery outcome, with only the caller's own cancellation thrown. `BugReportSubmitter` treats a sink that throws or returns nothing as a failed send and keeps its bundle in `BugReportOfflineQueue`) | (in-package) `HttpRelaySink` (the relay intake over the engine's `HttpRetry`) and `LocalFolderSink` (a folder plus the rendered viewer page, for development), a fake sink in tests | none. System.Net.Http (BCL `HttpClient`, supplied by the caller and contained in `HttpRelaySink`) |
 | Bug report authentication | `KhaozEngine.BugReports.Relay.IReporterAuthenticator` resolves a bearer token to `ReporterIdentity` or null | The game's token verifier, supplied by the host | none in the relay |
-| Bug report media | `KhaozEngine.BugReports.Relay.IReportMediaStore` provides bounded reads, existence checks and create-only or overwrite writes in Public and Pending, enforcing `ReportPaths.IsValid` | `InMemoryReportMediaStore` and opt-in `Relay.Azure.BlobReportMediaStore` over caller-built containers | Azure.Storage.Blobs only in Relay.Azure |
-| Bug report work | `KhaozEngine.BugReports.Relay.IReportWorkQueue` enqueues `ReportWorkItem` for durable host delivery | `InMemoryReportWorkQueue` and opt-in `Relay.Azure.StorageQueueReportWorkQueue` over a caller-built queue | Azure.Storage.Queues only in Relay.Azure |
+| Bug report media | `KhaozEngine.BugReports.Relay.IReportMediaStore` provides bounded reads, existence checks, create-only or overwrite writes, recursive `ListAsync` and idempotent `DeleteAsync` in Public and Pending, enforcing `ReportPaths.IsValid`. The new list and delete members default to a named `NotSupportedException` | `InMemoryReportMediaStore` and opt-in `Relay.Azure.BlobReportMediaStore` over caller-built containers | Azure.Storage.Blobs only in Relay.Azure |
+| Bug report work | `KhaozEngine.BugReports.Relay.IReportWorkQueue` enqueues `ReportWorkItem` for durable host delivery, including `PurgeRevoked`. Delayed `EnqueueAsync` accepts zero to seven days and defaults to a named `NotSupportedException` | `InMemoryReportWorkQueue` and opt-in `Relay.Azure.StorageQueueReportWorkQueue` over a caller-built queue. Delayed Azure sends use a time to live of the delay plus seven days | Azure.Storage.Queues only in Relay.Azure |
 | Bug report quotas | `KhaozEngine.BugReports.Relay.IReportQuotaStore` reads `QuotaCounter` and conditionally writes a count with an opaque version | `InMemoryReportQuotaStore` and opt-in `Relay.Azure.TableReportQuotaStore` over a caller-built table | Azure.Data.Tables only in Relay.Azure |
-| Bug report issues | `KhaozEngine.BugReports.Relay.IGitHubIssueClient` creates an issue or adds a comment, throwing `GitHubApiException` on failure | In-package `GitHubAppIssueClient`, with a host-owned `HttpClient` and GitHub App credentials | none. BCL HTTP and cryptography, with `KhaozEngine.Http` for token exchange retry only |
+| Bug report issues | `KhaozEngine.BugReports.Relay.IGitHubIssueClient` creates an issue, adds a comment or redacts and closes an issue through `UpdateIssueAsync`, preserving labels and returning Updated, Gone or Moved. The update member defaults to a named `NotSupportedException`. `IssuePageUrl` constructs the operator's deletion URL, defaulting to null when unavailable. API failures throw `GitHubApiException` | In-package `GitHubAppIssueClient`, with a host-owned `HttpClient` and GitHub App credentials | none. BCL HTTP and cryptography, with `KhaozEngine.Http` for token exchange retry only |
 | Social / presence | `KhaozEngine.Social` (`ISocialProvider`, whose `TryInitialize` must be re-attemptable on the same instance and whose `IsConnected` is the RECOVERABLE way to report a dropped connection where a throw is the terminal one, value types, `NullSocialProvider` no-op, `SocialPresenceController` + `SocialPresenceState`/`SocialPresenceOptions`) | `KhaozEngine.Social.Discord` (`DiscordSocialProvider`) | none - hand-rolled Discord IPC over `System.IO.Pipes` / `System.Net.Sockets` (no third-party lib) |
 | Player identity | `KhaozEngine.Identity` (`IIdentityProvider`, `IIdentityValidator` + `IdentityValidation` - the three-outcome result of `ValidateDetailedAsync`, so a backend can report a provider outage instead of flattening it onto a refused credential, `ITokenCache` + `FileTokenCache`, `IBrowserLauncher`, `ILoopbackListener`, shared `Interactive.SystemBrowserLauncher` and `Interactive.HttpLoopbackListener` adapters, `IdentitySession` orchestrator, `SessionToken` HMAC, `SignInException` - the shared base a backend's own sign-in failure derives from, so a consumer catches one type across every provider, and the `/auth/exchange` wire DTOs `AuthExchangeRequest`, `AuthExchangeResponse` and `AuthExchangeStatuses` a client and an auth service share) | `KhaozEngine.Identity.Oidc` (`OidcClientProvider`, `OidcTokenValidator`, legacy adapter wrappers), `KhaozEngine.Identity.Discord` (`DiscordClientProvider`, `DiscordTokenValidator`) | Microsoft.IdentityModel.Protocols.OpenIdConnect + Microsoft.IdentityModel.JsonWebTokens (Oidc only). Discord backend has no third-party lib (plain HTTP token-introspection call) |
 | Sign-in exchange | `KhaozEngine.Identity.Exchange` (`AuthExchange`, the pure decision behind `/auth/exchange`: any `IIdentityValidator` keyed by provider id, any `IAccountStore`, a signing key of at least `SigningSecret.MinimumBytes`, and the fixed shape, provider deadline, find-or-create, admissible-subject, ban-then-whitelist and mint sequence. `AuthExchangeResult` with `AuthExchangeOutcome` and the log-only `AuthExchangeCause`, `AuthExchangeOptions`, `AuthAdmission.Decide`, and `IAuthExchangePolicy` + `SessionClaims`, the game's display name and token claims hooks, which cannot reorder the gate) | the game's own `IAuthExchangePolicy` (the reference consumer's character shell and v3 persistence key), or the defaults (Grimhollow's provider-subject name fallback and v2). The HTTP handler is `KhaozEngine.Identity.Exchange.AspNetCore`, a separate package over the core (`MapAuthExchange`, `AddAuthExchangeHosting`, `TrustedProxyNetworks`, `AuthExchangeClientKey`), so the core stays testable with no web server | (no extra dep in the core. Engine edges to `Identity`, `Accounts` and `Netcode` only, and no HTTP type. The handler takes the `Microsoft.AspNetCore.App` shared framework through a `FrameworkReference` and no package) |
@@ -738,24 +738,37 @@ view origin and captured geometry without acquiring a nested lease. Providers mu
 read-only, with no mutation or incompatible explicit lease in a callback. Contact profiles ignore the property.
 Default callers retain their existing path. No backend dependency, new seam or bake identity field is added.
 
+Contact proof reuse adds the optional public `IPhysicsSupportFootprintReuseSource` and
+`IPhysicsSupportFootprintReuseSession` in Physics. Locomotion's internal `MovementQueryLease`
+bridge discovers the exact selected receiver and authenticates its current producer pin before
+borrowing its physics lease. Movement groups same-layer edges by immutable profile and original
+raw-source identity. Bepu owns bounded exact payload storage and fresh current-lease publication,
+so neither Movement nor Locomotion gains a backend reference. The stable serial assertion is
+`NavBakeExecution.UseStableContactHoldReuse`, default false. Parallel providers already assert
+stability. No old result, selection or arena evidence crosses intervals. The
+[consumer contract](USING-KHAOZENGINE.md#exact-completed-footprint-reuse) owns lifetime and key details.
+
 `GroundNavigationBake` writes one capture's columns and named profiles as a versioned `KENB` file and loads them
 without physics, rebuilding layer grids through `NavGrid.FromBlockedSurfaces`. Hashing uses the base library's
 `IncrementalHash` and encoding uses `BinaryPrimitives`, so the bake adds no reference or package.
 
 `KhaozEngine.Physics` grants `InternalsVisibleTo` to `KhaozEngine.Movement` for the per-worker diagnostics of a
-parallel contact bake, and for nothing else. Movement uses exactly these members:
+parallel contact bake and its reference/diagnostic controls. Movement uses these internal members:
 
-- `WorkerDiagnostics.Plan()`, which copies the calling thread's enablement and per-worker observer factory, never its
-  observer delegates.
+- `WorkerDiagnostics.Plan()`, which copies diagnostic enablement, the allocation-observer factory and a separately
+  opted-in test Find observer. Ordinary caller ThreadState observers are never inherited.
 - `WorkerDiagnostics.Merge(...)`, which adds worker records to the calling thread's recorder after the join.
 - `WorkerDiagnosticsPlan.Observer(int)`, which gives one worker its own allocation observer during setup.
-- `WorkerDiagnosticsRecord`, the counts and routes one worker hands back.
+- `WorkerDiagnosticsRecord`, the counts, routes and per-session retention maxima one worker hands back.
 - `WorkerDiagnosticsScope.Enter` and `Exit`, which swap a fresh recorder onto a worker thread and restore every prior
   thread value.
 - `ContactAllocationPhase`, the argument type of the allocation observer delegate.
+- `SupportQueryDiagnostics.Record` for actual EdgeSteps and separately reused initial Holds.
+- `SupportReferenceEvaluation.Active` and `Begin` to bypass both reuse layers, including on workers.
 
 None of them is safe as public API. They read and replace thread-local diagnostic state, and a public form would let
 any caller swap another subsystem's recorder or observer. `WorkerDiagnostics.SetObserverFactory`,
+`WorkerDiagnostics.ExchangeFindObserver`,
 `SupportQueryDiagnostics.ThreadState` and `SupportQueryDiagnostics.Exchange` are used only by tests, through the
 existing test assembly grants. The two packages ship together under one `KhaozEngineVersion`, so the grant cannot
 skew across versions.
@@ -1152,6 +1165,12 @@ edge, so a headless server can take the core and an independent host can take th
 `BugReports` edge is the shared viewer page, its `BugReports.Contracts` edge is validation and wire
 records, its `Diagnostics` edge is the engine `ILogger`, and its `Http` edge retries the GitHub App
 token exchange. Issue and comment POSTs are never retried in-process.
+
+`BugReportServiceOptions.ReporterIdentityTerms` is a game-owned `Func<IEnumerable<string>>`, called once on the
+background finish thread for each report. `ReportRedactor.WithReporterIdentityTerms` snapshots that source through
+the existing Diagnostics edge. No account, authentication or game dependency is added. The game supplies identity
+spellings and the redactor masks them in every section. Source and pattern construction failures mask every section
+string instead of sending identity unmasked.
 
 `Relay.Azure` implements only the media, queue and quota seams. Its three SDK references are declared
 there, with no `Azure.Identity` reference. Hosts supply built clients and own credentials, provisioning,

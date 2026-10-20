@@ -7,8 +7,16 @@ namespace KhaozEngine.Physics.Bepu;
 /// <summary>Independent attained SG-19 roles for curved strata. Tilted parts use certified regions.</summary>
 internal sealed partial class SupportFootprintCurved
 {
-    readonly SupportCurvedSourceArithmetic _arithmetic = new();
-    readonly SupportTiltedCurved _tilted = new();
+    readonly SupportCurvedWork _work;
+    internal SupportFootprintCurved(SupportCurvedWork work)
+    {
+        _work = work;
+        _arithmetic = new(work);
+        _tilted = new(work);
+    }
+
+    readonly SupportCurvedSourceArithmetic _arithmetic;
+    readonly SupportTiltedCurved _tilted;
     internal void ResetStatistics() => _tilted.ResetStatistics();
     readonly record struct Point(Number X, Number Y, Number Z)
     {
@@ -39,6 +47,7 @@ internal sealed partial class SupportFootprintCurved
 
     bool Begin(in SupportCurvedLeaf leaf, double x, double z)
     {
+        if (_work.Failed) return false;
         _arithmetic.Reset(leaf.SourceColumn);
         _centre = new(C(leaf.Centre.X.Lower), C(leaf.Centre.Y.Lower), C(leaf.Centre.Z.Lower));
         _radius = C(leaf.Radius); _half = C(leaf.HalfLength);
@@ -49,9 +58,9 @@ internal sealed partial class SupportFootprintCurved
         _upright = vertical == GeometrySign.Zero;
         if (_sphere || _upright)
         {
-            _axisSign = leaf.SourceColumn.Y.Bounds.Upper < 0 ? -1 : 1;
+            _axisSign = leaf.SourceColumn.Y < 0 ? -1 : 1;
             _p = C(0); _q = C(0); _e = Up; _f = new(C(1), C(0), C(0));
-            return true;
+            return _work.Complete(true);
         }
         if (Sign(_arithmetic.Y) != GeometrySign.Zero || vertical != GeometrySign.Positive) return false;
         Number length = Root(Add(Sq(_arithmetic.X), Sq(_arithmetic.Z)));
@@ -59,14 +68,15 @@ internal sealed partial class SupportFootprintCurved
         _f = new(Neg(_e.Z), C(0), _e.X);
         _p = Add(Mul(dx, _e.X), Mul(dz, _e.Z));
         _q = Add(Mul(dx, _f.X), Mul(dz, _f.Z));
-        return _e.Bounds(_arithmetic).IsResolved && Bounds(_p).IsResolved && Bounds(_q).IsResolved;
+        return _work.Complete(_e.Bounds(_arithmetic).IsResolved && Bounds(_p).IsResolved && Bounds(_q).IsResolved);
     }
 
     internal GeometrySign Measure(StaticHandle owner, in SupportCurvedLeaf leaf, int part,
         in SupportFootprintRequest request, out SupportFootprintMember member)
     {
         member = default;
-        if (!SupportFootprintBounds.TryColumn(request, out double bottom, out double top)) return GeometrySign.Unresolved;
+        if (_work.Failed) return _work.Complete(GeometrySign.Unresolved, ref member);
+        if (!SupportFootprintBounds.TryColumn(request, out double bottom, out double top)) return _work.Complete(GeometrySign.Unresolved, ref member);
         GeometryInterval reach = GeometryInterval.Exact(leaf.Radius).Add(GeometryInterval.Exact(leaf.HalfLength));
         GeometryInterval expanded = GeometryInterval.Exact(request.Radius).Add(GeometryInterval.Exact(request.ContactBand));
         GeometryInterval x = GeometryInterval.Exact(request.Axis.X), z = GeometryInterval.Exact(request.Axis.Y);
@@ -74,23 +84,23 @@ internal sealed partial class SupportFootprintCurved
             leaf.Centre.X.Add(reach).Upper < x.Subtract(expanded).Lower ||
             leaf.Centre.Z.Subtract(reach).Lower > z.Add(expanded).Upper ||
             leaf.Centre.Z.Add(reach).Upper < z.Subtract(expanded).Lower ||
-            leaf.Centre.Y.Subtract(reach).Lower > top || leaf.Centre.Y.Add(reach).Upper < bottom) return GeometrySign.Negative;
-        if (!Begin(leaf, request.Axis.X, request.Axis.Y)) return _tilted.Measure(owner, leaf, part, request, out member);
+            leaf.Centre.Y.Subtract(reach).Lower > top || leaf.Centre.Y.Add(reach).Upper < bottom) return _work.Complete(GeometrySign.Negative, ref member);
+        if (!Begin(leaf, request.Axis.X, request.Axis.Y)) return _work.Complete(_tilted.Measure(owner, leaf, part, request, out member), ref member);
         GeometrySign admitted = Admission(leaf, part, Add(C(request.Radius), C(request.ContactBand)), C(bottom), C(top));
-        if (admitted != GeometrySign.Positive) return admitted;
+        if (admitted != GeometrySign.Positive) return _work.Complete(admitted, ref member);
         GeometrySign axis = Maximum(leaf, part, request.Axis.X, request.Axis.Y, C(0), out Witness axisPoint);
         GeometrySign footprint = Maximum(leaf, part, request.Axis.X, request.Axis.Y, C(request.Radius), out Witness point);
-        if (axis == GeometrySign.Unresolved || footprint == GeometrySign.Unresolved) return GeometrySign.Unresolved;
+        if (axis == GeometrySign.Unresolved || footprint == GeometrySign.Unresolved) return _work.Complete(GeometrySign.Unresolved, ref member);
         byte count = 0;
         SupportFootprintWitness first = default, second = default;
         if (axis == GeometrySign.Positive)
         {
-            if (!Publish(axisPoint, SupportWitnessRole.Axis, request.CosMaxSlope, out first)) return GeometrySign.Unresolved;
+            if (!Publish(axisPoint, SupportWitnessRole.Axis, request.CosMaxSlope, out first)) return _work.Complete(GeometrySign.Unresolved, ref member);
             count++;
         }
         if (footprint == GeometrySign.Positive)
         {
-            if (!Publish(point, SupportWitnessRole.Footprint, request.CosMaxSlope, out var witness)) return GeometrySign.Unresolved;
+            if (!Publish(point, SupportWitnessRole.Footprint, request.CosMaxSlope, out var witness)) return _work.Complete(GeometrySign.Unresolved, ref member);
             if (count == 0) first = witness; else second = witness;
             count++;
         }
@@ -99,7 +109,7 @@ internal sealed partial class SupportFootprintCurved
             default, 0, first.Normal, first.NormalError, first.UpwardLower, footprint == GeometrySign.Positive,
             footprint == GeometrySign.Positive ? height.Lower : 0, footprint == GeometrySign.Positive ? height.Upper : 0,
             0, count, first, second);
-        return GeometrySign.Positive;
+        return _work.Complete(GeometrySign.Positive, ref member);
     }
 
     bool Publish(Witness point, SupportWitnessRole role, double cosine, out SupportFootprintWitness witness)
@@ -108,22 +118,22 @@ internal sealed partial class SupportFootprintCurved
         if (normal.IsResolved && normal.Y.Lower < cosine && normal.Y.Upper >= cosine &&
             Sign(Sub(point.Normal.Y, C(cosine))) == GeometrySign.Zero)
             normal = new(normal.X, GeometryInterval.Exact(cosine), normal.Z);
-        return SupportFootprintPublication.TryWitness(role, point.Position.Bounds(_arithmetic),
-            normal, out witness);
+        return _work.Complete(SupportFootprintPublication.TryWitness(role, point.Position.Bounds(_arithmetic),
+            normal, out witness), ref witness);
     }
 
     GeometrySign Maximum(in SupportCurvedLeaf leaf, int part, double x, double z, Number disc, out Witness witness)
     {
         witness = default;
-        if (leaf.Shape != SupportCurvedShape.Cylinder) return RoundMaximum(x, z, disc, out witness);
-        if (_upright) return UprightMaximum(part, x, z, disc, out witness);
-        return HorizontalMaximum(part, disc, out witness);
+        if (leaf.Shape != SupportCurvedShape.Cylinder) return _work.Complete(RoundMaximum(x, z, disc, out witness), ref witness);
+        if (_upright) return _work.Complete(UprightMaximum(part, x, z, disc, out witness), ref witness);
+        return _work.Complete(HorizontalMaximum(part, disc, out witness), ref witness);
     }
 
     Number CoreParameter()
     {
         // Cauchy bounds every unit-axis projection by the query's distance from the core centre.
-        // A closed bounding-circle endpoint remains in the strip for the whole source box.
+        // A closed bounding-circle endpoint remains in the strip for every enclosed unit axis.
         GeometrySign circle = Sign(Sub(_distanceSquared, Sq(_half)));
         return circle is GeometrySign.Negative or GeometrySign.Zero ? _p : _arithmetic.Clamp(_p, _half);
     }
@@ -147,8 +157,8 @@ internal sealed partial class SupportFootprintCurved
         bool axis = Sign(disc) == GeometrySign.Zero;
         Number distance = Root(distanceSquared), nearest = axis ? distance : Max(Sub(distance, disc), C(0));
         GeometrySign exists = Sign(Sub(_radius, nearest));
-        if (exists == GeometrySign.Negative) return exists;
-        if (exists == GeometrySign.Unresolved) return exists;
+        if (exists == GeometrySign.Negative) return _work.Complete(exists, ref witness);
+        if (exists == GeometrySign.Unresolved) return _work.Complete(exists, ref witness);
         Number dy = Root(Sub(Sq(_radius), Sq(nearest)));
         Number rx, rz;
         if (axis)
@@ -166,7 +176,7 @@ internal sealed partial class SupportFootprintCurved
         }
         var radial = new Point(rx, dy, rz);
         witness = new(Add(core, radial), Scale(radial, Div(C(1), _radius)));
-        return witness.Position.Bounds(_arithmetic).IsResolved && witness.Normal.Bounds(_arithmetic).IsResolved ? GeometrySign.Positive : GeometrySign.Unresolved;
+        return _work.Complete(witness.Position.Bounds(_arithmetic).IsResolved && witness.Normal.Bounds(_arithmetic).IsResolved ? GeometrySign.Positive : GeometrySign.Unresolved, ref witness);
     }
 
     GeometrySign UprightMaximum(int part, double x, double z, Number disc, out Witness witness)
@@ -175,11 +185,11 @@ internal sealed partial class SupportFootprintCurved
         Number distance = Root(_distanceSquared);
         bool side = part == SupportNeighborhoodCurved.Side;
         int sign = part == SupportNeighborhoodCurved.TopCap ? _axisSign : -_axisSign;
-        if (!side && sign < 0) return GeometrySign.Negative;
+        if (!side && sign < 0) return _work.Complete(GeometrySign.Negative, ref witness);
         GeometrySign near = Sign(Sub(Add(distance, disc), _radius));
         GeometrySign far = Sign(Sub(distance, Add(_radius, disc)));
-        if ((side && near == GeometrySign.Negative) || far == GeometrySign.Positive) return GeometrySign.Negative;
-        if ((side && near == GeometrySign.Unresolved) || far == GeometrySign.Unresolved) return GeometrySign.Unresolved;
+        if ((side && near == GeometrySign.Negative) || far == GeometrySign.Positive) return _work.Complete(GeometrySign.Negative, ref witness);
+        if ((side && near == GeometrySign.Unresolved) || far == GeometrySign.Unresolved) return _work.Complete(GeometrySign.Unresolved, ref witness);
         Number factor = Sign(distance) == GeometrySign.Zero ? C(0) :
             side ? Div(_radius, distance) : Min(C(1), Div(_radius, distance));
         Number dx = Sub(C(x), _centre.X), dz = Sub(C(z), _centre.Z);
@@ -192,7 +202,7 @@ internal sealed partial class SupportFootprintCurved
             if (Sign(distance) == GeometrySign.Zero) position = position with { X = Add(_centre.X, _radius) };
         }
         witness = new(position, normal);
-        return position.Bounds(_arithmetic).IsResolved && normal.Bounds(_arithmetic).IsResolved ? GeometrySign.Positive : GeometrySign.Unresolved;
+        return _work.Complete(position.Bounds(_arithmetic).IsResolved && normal.Bounds(_arithmetic).IsResolved ? GeometrySign.Positive : GeometrySign.Unresolved, ref witness);
     }
 
     GeometrySign HorizontalMaximum(int part, Number disc, out Witness witness)
@@ -202,10 +212,10 @@ internal sealed partial class SupportFootprintCurved
         Number t = side ? CoreParameter() : Mul(C(part == SupportNeighborhoodCurved.TopCap ? 1 : -1), _half);
         Number gap = Sub(_p, t), square = Sub(Sq(disc), Sq(gap));
         GeometrySign feasible = Sign(square);
-        if (feasible == GeometrySign.Negative || feasible == GeometrySign.Unresolved) return feasible;
+        if (feasible == GeometrySign.Negative || feasible == GeometrySign.Unresolved) return _work.Complete(feasible, ref witness);
         Number width = Root(square), lateral = Sub(_q, _arithmetic.Clamp(_q, width));
         GeometrySign inside = Sign(Sub(_radius, Abs(lateral)));
-        if (inside == GeometrySign.Negative || inside == GeometrySign.Unresolved) return inside;
+        if (inside == GeometrySign.Negative || inside == GeometrySign.Unresolved) return _work.Complete(inside, ref witness);
         // At zero extent the attained coordinate is q itself, including a sign-uncertain seam.
         if (Sign(square) == GeometrySign.Zero) lateral = _q;
         Number height = Root(Sub(Sq(_radius), Sq(lateral)));
@@ -214,6 +224,6 @@ internal sealed partial class SupportFootprintCurved
         Point normal = side ? Scale(radial, Div(C(1), _radius)) :
             Scale(_e, C(part == SupportNeighborhoodCurved.TopCap ? 1 : -1));
         witness = new(position, normal);
-        return position.Bounds(_arithmetic).IsResolved && normal.Bounds(_arithmetic).IsResolved ? GeometrySign.Positive : GeometrySign.Unresolved;
+        return _work.Complete(position.Bounds(_arithmetic).IsResolved && normal.Bounds(_arithmetic).IsResolved ? GeometrySign.Positive : GeometrySign.Unresolved, ref witness);
     }
 }

@@ -49,6 +49,7 @@ public sealed partial class TileWorldView
         if (indoors != ObserverIndoors) _interiorStale = true;
         ObserverIndoors = indoors;
         EnsureInterior();
+        _interiorInputsDirty |= _dirtyOrder.Count > 0;
         if (_dirtyOrder.Count == 0) return;
 
         int budget = Math.Max(1, maxRebuilds);

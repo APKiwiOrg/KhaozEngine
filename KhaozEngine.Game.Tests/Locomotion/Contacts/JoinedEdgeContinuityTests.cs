@@ -377,7 +377,7 @@ public sealed partial class JoinedEdgeContinuityTests(ITestOutputHelper output)
         AssertOracle(start, Oracle(scene, partition, from));
         AssertOracle(seat.Support, Oracle(scene, partition, to));
         SupportSample b = reverse ? seat.Support : start, a = reverse ? start : seat.Support;
-                Assert.NotEqual(Key(a), Key(b));
+        Assert.NotEqual(Key(a), Key(b));
         // B's nearest point to the far axis is the edge corner at the origin, outside the expanded admission disc.
         Assert.True(Math.Sqrt((double)far.X * far.X + (double)far.Y * far.Y) > FootRadius + SupportCertification.ContactBand);
         FootSupportQuery nearQuery = reverse ? GroundSeat.Query(near, start, startFeetY, FootRadius, Tuning, CosMaxSlope)

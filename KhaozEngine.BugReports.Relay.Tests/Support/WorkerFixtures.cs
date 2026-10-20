@@ -17,7 +17,8 @@ internal static class WorkerFixtures
         => IssueFixtures.Snapshot(new Dictionary<string, JsonElement>
         {
             [key] = JsonSerializer.SerializeToElement(new { tick }),
-        }) with { Subject = subject };
+        }) with
+        { Subject = subject };
 
     public static RelayRequest Request(byte[]? bytes = null, string? serviceKey = "ssssssssssssssssssssssssssssssss",
         Stream? body = null, long? length = null, string header = RelayHeaders.ServiceKey)

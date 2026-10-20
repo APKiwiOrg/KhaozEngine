@@ -60,7 +60,7 @@ public sealed partial class BepuPhysicsWorld
         _origin = newOrigin;
         if (delta == Vector3.Zero)
         {
-            CompleteSweepMutation(evidence);
+            CompleteSweepMutation(evidence, refreshStatics: true);
             return;
         }
         _installedSupportGeometry.Clear();

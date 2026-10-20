@@ -29,9 +29,10 @@ internal sealed class ContactNavigationWorkers
     readonly Action<ContactAllocationPhase, bool>?[] _observers;
     readonly WorkerDiagnosticsPlan _diagnostics;
     readonly ContactNavigationBuildHooks? _hooks;
+    readonly ContactNavigationReusePolicy _reuse;
 
     ContactNavigationWorkers(ContactNavigationSnapshot snapshot, int count, WorkerDiagnosticsPlan diagnostics,
-        ContactNavigationBuildHooks? hooks)
+        ContactNavigationBuildHooks? hooks, ContactNavigationReusePolicy reuse)
     {
         Snapshot = snapshot;
         _proofs = new ContactNavigationProof?[count];
@@ -39,6 +40,7 @@ internal sealed class ContactNavigationWorkers
         _observers = new Action<ContactAllocationPhase, bool>?[count];
         _diagnostics = diagnostics;
         _hooks = hooks;
+        _reuse = reuse;
     }
 
     internal ContactNavigationSnapshot Snapshot { get; }
@@ -47,18 +49,19 @@ internal sealed class ContactNavigationWorkers
     /// <summary>Captures the snapshot, validates the envelope once and constructs at most <paramref name="degree"/>
     /// workers, never more than <paramref name="rows"/>. A setup failure releases every worker built so far.</summary>
     internal static ContactNavigationWorkers Create(PhysicsNavBake bake, GroundMoveContext context,
-        EffectiveMovementBinding source, NavAreaFootprint footprint, int degree, int rows)
+        EffectiveMovementBinding source, NavAreaFootprint footprint, int degree, int rows,
+        ContactNavigationReusePolicy reuse)
     {
         var snapshot = ContactNavigationSnapshot.Capture(bake, context);
         ContactNavigationEnvelope.Validate(bake, source.Tuning, source.CreateOrdinaryScope(snapshot.Frame));
         var workers = new ContactNavigationWorkers(snapshot, Math.Max(1, Math.Min(degree, rows)),
-            WorkerDiagnostics.Plan(), ContactNavigationBuildHooks.Current);
+            WorkerDiagnostics.Plan(), ContactNavigationBuildHooks.Current, reuse);
         try
         {
             for (int worker = 0; worker < workers.Count; worker++)
             {
                 workers._sources[worker] = context.CreateNavigationBinding(source.Tuning);
-                workers._proofs[worker] = new ContactNavigationProof(bake, snapshot, workers._sources[worker]!, footprint);
+                workers._proofs[worker] = new ContactNavigationProof(bake, snapshot, workers._sources[worker]!, footprint, reuse);
                 workers._observers[worker] = workers._diagnostics.Observer(worker);
                 workers._hooks?.WorkerPinned?.Invoke(worker);
             }
@@ -142,6 +145,7 @@ internal sealed class ContactNavigationWorkers
         try
         {
             var scope = WorkerDiagnosticsScope.Enter(_diagnostics, _observers[worker]);
+            SupportReferenceEvaluation.Scope? reference = _reuse.ReferenceEvaluation ? SupportReferenceEvaluation.Begin() : null;
             try
             {
                 ContactNavigationProof proof = _proofs[worker]!;
@@ -160,7 +164,11 @@ internal sealed class ContactNavigationWorkers
                     }
                 }
             }
-            finally { records[worker] = scope.Exit(); }
+            finally
+            {
+                try { reference?.Dispose(); }
+                finally { records[worker] = scope.Exit(); }
+            }
         }
         catch (Exception failure)
         {

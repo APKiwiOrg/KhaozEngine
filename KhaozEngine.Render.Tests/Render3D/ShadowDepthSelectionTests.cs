@@ -328,11 +328,11 @@ namespace KhaozEngine.Tests.Render3D
                 List<FakeGraphicsPipelineRequest> solid = RecordFrame(scene, gd.Factory, fb,
                     () => scene.DrawSkinned(h, tube.RestPose, TubeAt, Color.White));
                 Assert.True(Bound(solid, ShaderSources.SkinnedShadowDepthVert, ShaderSources.ShadowDepthFrag));
-                Assert.False(Bound(solid, ShaderSources.SkinnedShadowDepthDissolveVert, ShaderSources.ShadowDepthDissolveFrag));
+                Assert.False(Bound(solid, ShaderSources.SkinnedShadowDepthDissolveVert, ShaderSources.SkinnedShadowDepthDissolveFrag));
 
                 List<FakeGraphicsPipelineRequest> fading = RecordFrame(scene, gd.Factory, fb,
                     () => scene.DrawSkinned(h, tube.RestPose, TubeAt, Color.White, Material.None, 0.5f, 0.05f, Color.White));
-                Assert.True(Bound(fading, ShaderSources.SkinnedShadowDepthDissolveVert, ShaderSources.ShadowDepthDissolveFrag),
+                Assert.True(Bound(fading, ShaderSources.SkinnedShadowDepthDissolveVert, ShaderSources.SkinnedShadowDepthDissolveFrag),
                     "a dissolving GPU-skinned caster still wrote solid depth");
                 Assert.False(Bound(fading, ShaderSources.SkinnedShadowDepthVert, ShaderSources.ShadowDepthFrag));
             }
@@ -410,7 +410,7 @@ namespace KhaozEngine.Tests.Render3D
                         castsShadows: false);
                 });
                 Assert.Equal(0, scene.LastShadowPassDiagnostics.SkinnedDrawCalls);
-                Assert.False(Bound(binds, ShaderSources.SkinnedShadowDepthDissolveVert, ShaderSources.ShadowDepthDissolveFrag));
+                Assert.False(Bound(binds, ShaderSources.SkinnedShadowDepthDissolveVert, ShaderSources.SkinnedShadowDepthDissolveFrag));
                 // The colour pass still dissolves it.
                 Assert.True(Bound(binds, ShaderSources.SkinnedModelVert, ShaderSources.SkinnedModelDissolveFrag));
             }

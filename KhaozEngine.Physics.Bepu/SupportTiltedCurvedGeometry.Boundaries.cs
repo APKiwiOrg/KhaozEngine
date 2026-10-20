@@ -18,11 +18,11 @@ internal sealed partial class SupportTiltedCurvedGeometry
             GeometryInterval lateral = B(_q).Add(B(_r).Multiply(z));
             // Keep squared distances factored. At a pole the normal-square identity must
             // not be lost by separately enclosing R^2*k^2 and R^2*u^2.
-            return parallel.Square().Add(lateral.Square()).Subtract(B(_disc).Square());
+            return _work.Complete(parallel.Square().Add(lateral.Square()).Subtract(B(_disc).Square()));
         }
         GeometryInterval linear = B(_boundaryB).Add(I(2).Multiply(B(_boundaryJ)).Multiply(z));
-        if (B(_boundaryK).Lower == 0 && B(_boundaryK).Upper == 0) return linear;
-        return linear.Add(B(_boundaryK).Multiply(z).Divide(v));
+        if (B(_boundaryK).Lower == 0 && B(_boundaryK).Upper == 0) return _work.Complete(linear);
+        return _work.Complete(linear.Add(B(_boundaryK).Multiply(z).Divide(v)));
     }
 
     GeometrySign BoundarySign(double parameter)
@@ -33,7 +33,7 @@ internal sealed partial class SupportTiltedCurvedGeometry
         Number lateral = Add(_q, Mul(_r, z));
         GeometrySign result = Sign(Sub(Add(Sq(parallel), Sq(lateral)), Sq(_disc)));
         _arithmetic.Restore(checkpoint);
-        return result;
+        return _work.Complete(result);
     }
 
     GeometrySign BoundaryDerivativeSign(GeometryInterval z)
@@ -42,13 +42,13 @@ internal sealed partial class SupportTiltedCurvedGeometry
         // strict monotonicity on the open interval, with continuity retaining the endpoint.
         GeometryInterval linear = B(_boundaryB).Add(I(2).Multiply(B(_boundaryJ)).Multiply(z));
         GeometryInterval numerator = B(_boundaryK).Multiply(z);
-        if (linear.Lower > 0 && numerator.Lower >= 0) return GeometrySign.Positive;
-        if (linear.Upper < 0 && numerator.Upper <= 0) return GeometrySign.Negative;
+        if (linear.Lower > 0 && numerator.Lower >= 0) return _work.Complete(GeometrySign.Positive);
+        if (linear.Upper < 0 && numerator.Upper <= 0) return _work.Complete(GeometrySign.Negative);
         int checkpoint = _arithmetic.Checkpoint;
         GeometrySign k = Sign(_boundaryK);
         _arithmetic.Restore(checkpoint);
         bool positive = k == GeometrySign.Zero || k == GeometrySign.Positive && z.Lower >= 0 || k == GeometrySign.Negative && z.Upper <= 0;
         bool negative = k == GeometrySign.Zero || k == GeometrySign.Positive && z.Upper <= 0 || k == GeometrySign.Negative && z.Lower >= 0;
-        return linear.Lower > 0 && positive ? GeometrySign.Positive : linear.Upper < 0 && negative ? GeometrySign.Negative : GeometrySign.Unresolved;
+        return _work.Complete(linear.Lower > 0 && positive ? GeometrySign.Positive : linear.Upper < 0 && negative ? GeometrySign.Negative : GeometrySign.Unresolved);
     }
 }

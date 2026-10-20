@@ -61,6 +61,30 @@ public sealed class InMemoryReportMediaStore : IReportMediaStore
             return Task.FromResult(blobs.ContainsKey(key));
     }
 
+    /// <inheritdoc />
+    public Task<IReadOnlyList<string>> ListAsync(ReportArea area, string prefix, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(prefix) || !prefix.EndsWith('/') || !ReportPaths.IsValid(prefix[..^1]))
+            throw new ArgumentException("A valid report path followed by '/' is required.", nameof(prefix));
+        _ = Key(area, prefix[..^1]);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (gate)
+        {
+            return Task.FromResult<IReadOnlyList<string>>(blobs.Keys
+                .Where(key => key.Area == area && key.Path.StartsWith(prefix, StringComparison.Ordinal))
+                .Select(key => key.Path).OrderBy(path => path, StringComparer.Ordinal).ToArray());
+        }
+    }
+
+    /// <inheritdoc />
+    public Task<bool> DeleteAsync(ReportArea area, string path, CancellationToken cancellationToken)
+    {
+        var key = Key(area, path);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (gate)
+            return Task.FromResult(blobs.Remove(key));
+    }
+
     /// <summary>The headers the blob at <paramref name="path"/> was last written with, or null when it is absent.</summary>
     public ReportBlobHeaders? HeadersOf(ReportArea area, string path)
     {

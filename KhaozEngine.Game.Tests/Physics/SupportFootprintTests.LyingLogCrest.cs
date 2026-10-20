@@ -6,7 +6,10 @@ using KhaozEngine.Locomotion.Contacts;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using Xunit;
+using B = KhaozEngine.Tests.Physics.SupportFootprintExactOracle.Bounds;
+using P = KhaozEngine.Tests.Physics.SupportFootprintExactOracle.Point;
 using Proof = KhaozEngine.Tests.Physics.SupportFootprintCurvedProofOracle;
+using R = KhaozEngine.Tests.Physics.InstalledPoseOracle.R;
 
 namespace KhaozEngine.Tests.Physics;
 
@@ -38,6 +41,8 @@ public partial class SupportFootprintTests
                 0.2f, 0.4f, 0.4f, MathF.Cos(MathF.PI / 4));
             var request = FootSupport.DescribeFootprint(query);
             var expected = InstalledLyingLogSelect(scene, owner, request);
+            // The binary64 locator selects the stratum. Its rational certificate encloses the published height.
+            B? exact = expected.Static == owner ? InstalledLyingLogContribution(scene, owner, request, expected) : null;
             // At |across| 0.2 the disc rim is tangent to the crest line. That boundary row
             // asserts containment, and every interior row also keeps the half-skin ceiling.
             float ceiling = Math.Abs(step) == 12 ? float.PositiveInfinity : 0.0005f;
@@ -48,14 +53,30 @@ public partial class SupportFootprintTests
                 if (expected.Status == SupportStatus.Walkable && expected.Static == owner &&
                     sample.Status == SupportStatus.Walkable && sample.Static == owner &&
                     sample.FeatureId == expected.ElementId && sample.HeightError >= 0f && sample.HeightError <= ceiling &&
-                    (double)sample.Height - sample.HeightError <= expected.HeightLower &&
-                    (double)sample.Height + sample.HeightError >= expected.HeightUpper) continue;
+                    exact is { } height && R.From(sample.Height) - R.From(sample.HeightError) <= height.Lower &&
+                    R.From(sample.Height) + R.From(sample.HeightError) >= height.Upper) continue;
                 failures.Add($"across {across:R} reference {reference}: {sample.Status} h {sample.Height:R} " +
                     $"+- {sample.HeightError:R}, oracle {expected.Status} {expected.Static?.Value}/{expected.ElementId} " +
-                    $"[{expected.HeightLower:R}, {expected.HeightUpper:R}]");
+                    $"[{expected.HeightLower:R}, {expected.HeightUpper:R}] exact " +
+                    (exact is { } e ? $"[{SupportFootprintExactOracle.AsDouble(e.Lower):R}, {SupportFootprintExactOracle.AsDouble(e.Upper):R}]" : "none"));
             }
         }
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
+    }
+
+    // The selected witness's rational enclosure and its tangent plane at the query axis. Near a flat crest the
+    // binary64 locator's own plane misses the exact attained point by more than one unit in the last place.
+    static B InstalledLyingLogContribution(SupportFootprintScene scene, StaticHandle owner,
+        SupportFootprintRequest request, FootprintOracleSupport expected)
+    {
+        var part = Proof.Installed(scene.World, owner).Single(p => p.Tangent.ElementId == expected.ElementId);
+        var locator = SupportFootprintOracle.Curved(part.Tangent, request)!.Witnesses.First(w => w.Position == expected.Witness);
+        var certificate = SupportFootprintTiltedOracle.Enclose(part, locator, request);
+        P position = certificate.Position, normal = certificate.Normal;
+        B plane = position.Y + (normal.X * (position.X - (B)R.From(request.Axis.X)) +
+            normal.Z * (position.Z - (B)R.From(request.Axis.Y))) / normal.Y;
+        return new(position.Y.Lower < plane.Lower ? position.Y.Lower : plane.Lower,
+            position.Y.Upper < plane.Upper ? position.Y.Upper : plane.Upper);
     }
 
     // The log's parts come from its installed float pose, including the composed child centre,

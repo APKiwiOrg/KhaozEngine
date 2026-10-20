@@ -15,6 +15,8 @@ internal sealed class ContactNavigationBuildHooks
     internal Action<int>? WorkerPinned { get; init; }
     internal Action<ContactNavigationPhase, int>? BandCompleted { get; init; }
     internal Action<int>? Releasing { get; init; }
+    internal bool DisableFootprintReuse { get; init; }
+    internal bool DisableInitialHoldReuse { get; init; }
 
     /// <summary>Installs <paramref name="hooks"/> for builds started on this thread until the scope is disposed.</summary>
     internal static Scope Install(ContactNavigationBuildHooks? hooks)

@@ -125,6 +125,9 @@ internal sealed class BugReportFlow
     /// <summary>Raised in the trigger frame with the new report id.</summary>
     internal event Action<string>? ReportCaptured;
 
+    /// <summary>Raised on the frame thread with the report id when Send is pressed, before the bundle is built.</summary>
+    internal event Action<string>? ReportConfirmed;
+
     /// <summary>Raised on the frame thread with each submission's result.</summary>
     internal event Action<BugReportSubmitResult>? ReportSubmitted;
 
@@ -402,6 +405,14 @@ internal sealed class BugReportFlow
         _holdNextFrame = true;
         if (result == BugReportScreenResult.Send)
         {
+            try
+            {
+                ReportConfirmed?.Invoke(report.Id);
+            }
+            catch (Exception exception)
+            {
+                Log.Warn("A ReportConfirmed handler failed for bug report " + report.Id + ".", exception);
+            }
             string? subject = _subject;
             TaskCompletionSource queued = Builds.Start();
             PendingWork = Task.Run(async () =>
@@ -520,8 +531,10 @@ internal sealed class BugReportFlow
                 ? await WaitForScreenshotAsync(report.Screenshot, logFailure: false, _stopping.Token).ConfigureAwait(false)
                 : null;
             FinishStarting?.Invoke();
+            ReportRedactor redactor = _options.ReporterIdentityTerms is { } identityTerms
+                ? _redactor.WithReporterIdentityTerms(identityTerms) : _redactor;
             IReadOnlyList<CapturedSection> sections =
-                BugReportSectionSet.Finish(report.Raw, _redactor, BugReportSectionSet.DefaultFinishBudget);
+                BugReportSectionSet.Finish(report.Raw, redactor, BugReportSectionSet.DefaultFinishBudget);
             bundle = ReportBundleBuilder.Write(new ReportBundleBuilder.Request(report.Id, _options.GameId, report.CapturedAt,
                 sections, choices.Description, choices.Category, screenshot, choices.IncludeClip ? report.Clip : null));
         }

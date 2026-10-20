@@ -12,7 +12,7 @@ public partial class SupportFootprintTests
     public void SourcePredicatesReuseOnlyTheUnchangedCoefficientMap()
     {
         SupportPolygon polygon = Polygon([new(-1, 0, -1), new(1, 0, -1), new(1, 0, 1)], out _);
-        Assert.True(InstalledPoseOperator.TryCreate(new BepuPhysics.RigidPose(Vector3.Zero, Quaternion.Identity), out var map));
+        Assert.True(InstalledPoseOperator.TryCreateSupport(new BepuPhysics.RigidPose(Vector3.Zero, Quaternion.Identity), out var map));
         polygon.BeginSource(map);
         for (int i = 0; i < polygon.SourceVertices.Length; i++)
             polygon.SetSource(i, new((float)polygon.Vertices[i].X.Value, 0, (float)polygon.Vertices[i].Z.Value));
@@ -32,7 +32,7 @@ public partial class SupportFootprintTests
             Assert.Equal(GeometryInterval.Exact(0), height);
             Assert.Equal(0, setups);
 
-            Assert.True(InstalledPoseOperator.TryCreate(new BepuPhysics.RigidPose(Vector3.Zero,
+            Assert.True(InstalledPoseOperator.TryCreateSupport(new BepuPhysics.RigidPose(Vector3.Zero,
                 Quaternion.CreateFromAxisAngle(Vector3.UnitZ, 0.65f)), out var rotated));
             polygon.BeginSource(rotated);
             Assert.Equal(new SupportFootprintSourcePredicates().NormalComponent(polygon, 0), shared.NormalComponent(polygon, 0));

@@ -150,7 +150,7 @@ public partial class SupportFootprintTests
             new(0.3f, 0.05001f, 0.000013f)];
         if (Vector3.Cross(local[1] - local[0], local[2] - local[0]).Y < 0) Array.Reverse(local);
         var pose = new Pose(new(0.01f, 0, 0), rotation);
-        Assert.True(InstalledPoseOperator.TryCreate(new BepuPhysics.RigidPose(pose.Position, pose.Orientation),
+        Assert.True(InstalledPoseOperator.TryCreateSupport(new BepuPhysics.RigidPose(pose.Position, pose.Orientation),
             out var installed));
         var captured = new SupportPolygon();
         captured.Begin(new StaticHandle(42), 7, local.Length);

@@ -10,8 +10,13 @@ namespace KhaozEngine.TileWorld.Render3D;
 /// <param name="ObjectId">The document object id.</param>
 /// <param name="ArchetypeId">Its archetype, so a caller can gate or name the hit without a second document
 /// walk.</param>
-/// <param name="Distance">Entry distance along the ray, in units of the direction's length.</param>
+/// <param name="Distance">First uncut distance inside the box, in units of the direction's length.
+/// Without an active cut this is the box entry.</param>
 public readonly record struct TileObjectHit(long ObjectId, string ArchetypeId, float Distance);
+
+/// <summary>The applied interior field and the archetypes whose pixels opt into its cut.
+/// A default value leaves every object uncut.</summary>
+public readonly record struct TileObjectCut(InteriorHeightField? Field, IReadOnlySet<string> ArchetypeIds, InteriorCutFrame Frame = default);
 
 /// <summary>
 /// Ray picking against the MODELS of a document's objects: every object whose drawn body the ray passes
@@ -55,6 +60,13 @@ public static class TileObjectRaycast
     /// <returns>The number of hits.</returns>
     public static int Pick(TileWorldDocument document, TileWorldCatalogs catalogs, int plane,
         Vector3 origin, Vector3 direction, float maxDistance, BoundsSource bounds, List<TileObjectHit> hits)
+        => Pick(document, catalogs, plane, origin, direction, maxDistance, bounds, hits, default);
+
+    /// <summary>Names intersected objects by their first uncut point inside each half-open box segment.
+    /// Archetypes outside <paramref name="cut"/> retain the original box entry.</summary>
+    public static int Pick(TileWorldDocument document, TileWorldCatalogs catalogs, int plane,
+        Vector3 origin, Vector3 direction, float maxDistance, BoundsSource bounds, List<TileObjectHit> hits,
+        TileObjectCut cut)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(catalogs);
@@ -86,8 +98,13 @@ public static class TileObjectRaycast
             Vector3 at = TileObjectProps.AnchorPosition(document, archetype, o);
             float yaw = TileObjectProps.YawRadians(archetype, o.Rotation);
 
-            if (!RayMath.IntersectObbY(origin, direction, at, yaw, min, max, out float t)) continue;
+            if (!RayMath.IntersectObbY(origin, direction, at, yaw, min, max, out float t, out float tFar)) continue;
             if (t >= maxDistance) continue;
+            if (cut.Field is { } field && cut.ArchetypeIds?.Contains(o.ArchetypeId) == true)
+            {
+                float tEnd = MathF.Min(tFar, maxDistance);
+                if (!field.FirstUncut(origin, direction, t, tEnd, cut.Frame, out t) || t >= tEnd) continue;
+            }
             hits.Add(new TileObjectHit(o.Id, o.ArchetypeId, t));
         }
 

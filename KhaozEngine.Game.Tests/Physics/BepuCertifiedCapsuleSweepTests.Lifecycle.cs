@@ -13,10 +13,11 @@ public partial class BepuCertifiedCapsuleSweepTests
     public void SelectedViewCanExcludeAnUnprovedBoundFamily()
     {
         using var world = new BepuPhysicsWorld(Vector3.Zero);
-        StaticHandle sphere = world.AddStatic(new SphereShape(0.5f), Pose.At(new(100, 0, 0)));
+        // A 257-face hull stays unsupported under GS-3 as more leaf families are admitted.
+        StaticHandle hull = CertifiedGeneralSweepFixture.AddOverFaceCapHull(world, Pose.At(new(100, 0, 0)));
         world.AddStatic(Box, Pose.Identity);
         Refused(Read(world));
-        using var view = world.CreateQueryViewExcludingStatics([sphere]);
+        using var view = world.CreateQueryViewExcludingStatics([hull]);
         Contains(Read(view), 1.25);
     }
 
@@ -24,7 +25,8 @@ public partial class BepuCertifiedCapsuleSweepTests
     public void StaticsFilterCanExcludeUnprovedDynamicGeometry()
     {
         using var world = new BepuPhysicsWorld(Vector3.Zero);
-        world.AddDynamic(new SphereShape(0.5f), Pose.At(new(100, 0, 0)), new DynamicBodyDescription(0));
+        // A 257-face hull stays unsupported under GS-3 as more leaf families are admitted.
+        world.AddDynamic(CertifiedGeneralSweepFixture.OverFaceCapHull(), Pose.At(new(100, 0, 0)), new DynamicBodyDescription(0));
         world.AddStatic(Box, Pose.Identity);
         Refused(Read(world));
         Contains(Read(world, filter: QueryFilter.StaticsOnly), 1.25);
@@ -34,7 +36,8 @@ public partial class BepuCertifiedCapsuleSweepTests
     public void DynamicsFilterCanExcludeUnprovedStaticGeometry()
     {
         using var world = new BepuPhysicsWorld(Vector3.Zero);
-        world.AddStatic(new SphereShape(0.5f), Pose.At(new(100, 0, 0)));
+        // A 257-face hull stays unsupported under GS-3 as more leaf families are admitted.
+        CertifiedGeneralSweepFixture.AddOverFaceCapHull(world, Pose.At(new(100, 0, 0)));
         world.AddDynamic(Box, Pose.Identity, new DynamicBodyDescription(0));
         Refused(Read(world));
         Contains(Read(world, filter: QueryFilter.DynamicsOnly), 1.25);

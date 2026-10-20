@@ -155,7 +155,9 @@ public sealed class SupportFootprintStairStratumTests
     // Optimized Extrema counts before the stratum, for the scenes whose reference skips SC-14 certificates.
     static readonly Dictionary<string, int> PreStratumExtrema = new()
     {
-        ["stairs box"] = 18, ["stairs hull"] = 18, ["hidden crate"] = 23,
+        ["stairs box"] = 18,
+        ["stairs hull"] = 18,
+        ["hidden crate"] = 23,
     };
 
     [Fact]
@@ -229,7 +231,7 @@ public sealed class SupportFootprintStairStratumTests
 
     static SupportPolygon Installed(Quaternion rotation, Vector3 translation)
     {
-        Assert.True(InstalledPoseOperator.TryCreate(new BepuPhysics.RigidPose(translation, rotation),
+        Assert.True(InstalledPoseOperator.TryCreateSupport(new BepuPhysics.RigidPose(translation, rotation),
             out InstalledPoseOperator map));
         Vector3[] local = [new(-1, 0.5f, -1), new(-1, 0.5f, 1), new(1, 0.5f, 1), new(1, 0.5f, -1)];
         var polygon = new SupportPolygon();

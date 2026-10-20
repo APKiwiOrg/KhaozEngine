@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
@@ -129,7 +130,7 @@ public partial class SupportFootprintTests
     }
 
     [Fact]
-    public void SlopeAdjustedNormalIsNeverShared()
+    public void RepresentedHorizontalNormalKeepsEverySlopeQueryIndependent()
     {
         using var counters = new WorldFormCounters();
         var world = new BepuPhysicsWorld(Vector3.Zero);
@@ -140,7 +141,9 @@ public partial class SupportFootprintTests
         InstalledSupportWorldFace top = scene.Form(scene.Owners().Single())!.Leaves[0].Faces.ToArray()
             .Single(face => face.Orientation == GeometrySign.Positive);
         GeometryVector unadjusted = GeometryVectorOperations.Normalize(top.Normal.Bounds);
-        Assert.True(unadjusted.Y.Lower < 1 && unadjusted.Y.Upper >= 1);
+        Assert.Equal(GeometryInterval.Exact(1), unadjusted.Y);
+        Assert.Equal(GeometryInterval.Exact(0), unadjusted.X);
+        Assert.Equal(GeometryInterval.Exact(0), unadjusted.Z);
         var polygon = new SupportPolygon();
         polygon.Bind(scene.Owners().Single(), top);
         foreach (float cosine in new[] { 1f, 0.7f, 1f })
@@ -160,6 +163,68 @@ public partial class SupportFootprintTests
             }
             Assert.Equal(hits, SharedMemberFactHits());
         }
+    }
+
+    [Fact]
+    public void RepresentedSlopeAdjustedNormalIsNeverShared()
+    {
+        using var counters = new WorldFormCounters();
+        var world = new BepuPhysicsWorld(Vector3.Zero);
+        StaticHandle owner = world.AddStatic(new BoxShape(new(0.9f, 0.2f, 1.1f)),
+            new(new(0, -0.1f, 0), Quaternion.CreateFromAxisAngle(Vector3.UnitY, 0.37f)));
+        using var scene = new WorldFormScene(world, new(Vector2.Zero, 0, 0.2f, 0.4f, 0.4f, 0.7f));
+        scene.Find();
+        InstalledSupportWorldFace top = scene.Form(owner)!.Leaves[0].Faces.ToArray()
+            .Single(face => face.Orientation == GeometrySign.Positive);
+        const float equalityCosine = 1, interiorCosine = 0.7f;
+        GeometryVector unadjusted = GeometryVectorOperations.Normalize(top.Normal.Bounds);
+        Assert.True(unadjusted.IsResolved);
+        Assert.True(unadjusted.Y.Lower < equalityCosine,
+            "The equality query must enter the slope-adjustment branch.");
+        Assert.True(unadjusted.Y.Upper >= equalityCosine);
+        Assert.True(unadjusted.Y.Lower > interiorCosine);
+        AssertMemberFactInterval(unadjusted.Y, top.MemberFacts.NormalBounds.Y);
+        _output.WriteLine($"Unadjusted upward [{unadjusted.Y.Lower:R}, {unadjusted.Y.Upper:R}], " +
+            $"lower bits {BitConverter.DoubleToInt64Bits(unadjusted.Y.Lower):X16}.");
+
+        // Read the installed pose and extents, then prove exact source slope equality using rational edges.
+        var simulation = SimulationOf(world);
+        ref var box = ref simulation.Shapes.GetShape<BepuPhysics.Collidables.Box>(HandlesOf(world)[owner.Value].Shape.Index);
+        var matrix = InstalledPoseOracle.Represented(scene.StaticPose(owner).Orientation);
+        var twice = new InstalledPoseOracle.R(2, 1);
+        var edgeX = matrix.X * (InstalledPoseOracle.R.From(box.HalfWidth) * twice);
+        var edgeZ = matrix.Z * (InstalledPoseOracle.R.From(box.HalfLength) * twice);
+        var normal = InstalledPoseOracle.V.Cross(edgeZ, edgeX);
+        Assert.Equal(InstalledPoseOracle.R.Zero, normal.X);
+        Assert.Equal(InstalledPoseOracle.R.Zero, normal.Z);
+        Assert.True(normal.Y > InstalledPoseOracle.R.Zero);
+        Assert.Equal(normal.Y.Square(),
+            InstalledPoseOracle.R.From(equalityCosine).Square() * normal.LengthSquared);
+
+        var polygon = new SupportPolygon();
+        polygon.Bind(owner, top);
+        Assert.True(polygon.HasSource);
+        Assert.Same(top.MemberFacts, polygon.SharedMemberFacts);
+        Assert.Equal(GeometrySign.Zero, polygon.SourcePredicates.NormalSlope(polygon, equalityCosine));
+        var json = new JsonSerializerOptions { IncludeFields = true };
+        foreach (float cosine in new[] { equalityCosine, interiorCosine, equalityCosine })
+        {
+            var request = FootSupport.DescribeFootprint(scene.Query) with { CosMaxSlope = cosine };
+            SupportQueryDiagnostics.Reset();
+            Assert.Equal(GeometrySign.Positive, SupportFootprintPolygon.Measure(polygon, request, out var member));
+            int hits = SharedMemberFactHits();
+            Assert.True(hits > 0);
+            Assert.Equal(BitConverter.DoubleToInt64Bits(cosine == equalityCosine ? equalityCosine : unadjusted.Y.Lower),
+                BitConverter.DoubleToInt64Bits(member.UpwardLower));
+            using (SupportReferenceEvaluation.Begin())
+            {
+                Assert.Equal(GeometrySign.Positive, SupportFootprintPolygon.Measure(polygon, request, out var reference));
+                Assert.Equal(reference, member);
+                Assert.Equal(JsonSerializer.Serialize(reference, json), JsonSerializer.Serialize(member, json));
+            }
+            Assert.Equal(hits, SharedMemberFactHits());
+        }
+        AssertMemberFactInterval(unadjusted.Y, top.MemberFacts.NormalBounds.Y);
     }
 
     static void AssertMemberFactInterval(GeometryInterval expected, GeometryInterval actual)
@@ -375,6 +440,8 @@ public partial class SupportFootprintTests
         Assert.Equal(SupportStatus.Walkable, expected.Status);
 
         var samples = new SupportSample[Readers];
+        var curvedWork = new SupportCurvedWorkObservation[Readers];
+        var observedWork = new int[Readers];
         var builds = new int[Readers];
         using (var barrier = new Barrier(Readers))
         {
@@ -388,17 +455,30 @@ public partial class SupportFootprintTests
                     BoundedThread.Arrive(barrier);
                 });
                 using var readerCounters = new WorldFormCounters();
+                SupportQueryDiagnostics.SetCurvedWorkObserver(observation =>
+                { curvedWork[slot] = observation; observedWork[slot]++; });
                 try
                 {
                     using IPhysicsQueryLease lease = world.AcquireQueryReadLease();
                     samples[slot] = FootSupport.Find(null, world, lease, query);
                     builds[slot] = SupportQueryDiagnostics.Snapshot().WorldFormBuilds;
                 }
-                finally { ContactAllocationDiagnostics.SetObserver(null); }
+                finally
+                {
+                    ContactAllocationDiagnostics.SetObserver(null);
+                    SupportQueryDiagnostics.SetCurvedWorkObserver(null);
+                }
             }))];
             foreach (BoundedThread reader in readers) reader.Join();
         }
         Assert.All(samples, sample => Assert.Equal(expected.ToString(), sample.ToString()));
+        Assert.All(observedWork, count => Assert.Equal(1, count));
+        Assert.All(curvedWork, observation =>
+        {
+            Assert.Equal(CapsuleFeatureStatus.Complete, observation.FootprintStatus);
+            Assert.Equal(SupportCurvedWorkFailure.None, observation.Failure);
+            Assert.Equal(observation.Consumed, SupportCurvedWorkTests.Sum(observation));
+        });
         StaticHandle[] owners = scene.Owners();
         Assert.Equal(owners.Length, builds.Sum());
         Assert.All(owners, owner => Assert.NotNull(scene.Form(owner)));
@@ -417,6 +497,7 @@ public partial class SupportFootprintTests
         StaticHandle owner = scene.Owners()[0];
         SupportSample? nested = null;
         InstalledSupportWorldForm? first = null;
+        var curvedWork = new List<SupportCurvedWorkObservation>();
         SupportSample outer;
         using (IPhysicsQueryLease lease = scene.World.AcquireQueryReadLease())
         {
@@ -425,11 +506,29 @@ public partial class SupportFootprintTests
                 // The outer build of this static's form is running when the same thread misses the same form again.
                 if (nested is not null || !entering || phase != ContactAllocationPhase.SupportMaterialization) return;
                 nested = default(SupportSample);
-                nested = FootSupport.Find(null, scene.World, lease, scene.Query);
+                var prior = SupportQueryDiagnostics.Exchange(SupportQueryDiagnostics.ThreadState.Fresh(true) with
+                { CurvedWork = curvedWork.Add });
+                SupportQueryCounts counts;
+                SupportRouteCounts routes;
+                try
+                {
+                    nested = FootSupport.Find(null, scene.World, lease, scene.Query);
+                    counts = SupportQueryDiagnostics.Snapshot();
+                    routes = SupportQueryDiagnostics.Routes;
+                }
+                finally { SupportQueryDiagnostics.Exchange(prior); }
+                SupportQueryDiagnostics.Merge(counts, routes);
                 first = scene.Form(owner);
             });
+            SupportQueryDiagnostics.SetCurvedWorkObserver(curvedWork.Add);
             try { outer = FootSupport.Find(null, scene.World, lease, scene.Query); }
-            finally { ContactAllocationDiagnostics.SetObserver(null); }
+            finally
+            {
+                ContactAllocationDiagnostics.SetObserver(null);
+                SupportQueryDiagnostics.SetCurvedWorkObserver(null);
+            }
+            Assert.Equal(2, curvedWork.Count);
+            Assert.All(curvedWork, observation => Assert.Equal(CapsuleFeatureStatus.Complete, observation.FootprintStatus));
         }
         int builds = SupportQueryDiagnostics.Snapshot().WorldFormBuilds;
         SupportSample reference;

@@ -62,6 +62,6 @@ internal sealed partial class SupportFootprintCollector
                 CapsuleFeatureStatus retained = Retain(new(null, leaf, part, value with { ProposalMask = mask }));
                 if (retained != CapsuleFeatureStatus.Complete) return retained;
             }
-        return CapsuleFeatureStatus.Complete;
+        return _curvedWork.Failed ? CapsuleFeatureStatus.Unsupported : CapsuleFeatureStatus.Complete;
     }
 }

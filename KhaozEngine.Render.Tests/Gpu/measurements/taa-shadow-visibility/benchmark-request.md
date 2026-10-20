@@ -116,7 +116,18 @@ Estimate for this request: $2.20 to $5.82 a dispatch, $4.40 to $11.64 for the pa
 
 ## 4. Proposal B: isolated whole-frame shadowed cost case, separate later approval
 
-Not implemented and not part of Proposal A's approval.
+Authored in plan Task 7f.4 and not run. Not part of Proposal A's approval. The billed request belongs to Task 7f.6.
+
+As authored:
+
+- Class `TemporalShadowedFrameCostPerfGpuTests` in `KhaozEngine.Render.Tests/Gpu/TemporalShadowedFrameCostPerfGpuTests.cs`, cases `TheShadowedYardAtQualityIsMeasuredAt1440p` and `TheShadowedYardAtNativeIsMeasuredAt1440p`, both at 2560x1440. It uses only API present at `6c6529589`.
+- Base side: branch `fix/taa-vis-shadow-cost-base`, commit `10478d68c` (a diagnostic base that is never merged, named `fix/` because the engine push hook allows no `probe/` branches), which adds only that file to `6c6529589`. The file is byte-identical on both branches.
+- Scene: the textured ground under a still follow camera at boot pitch, 49 crates and thin posts and 8 walkers with their own motion, a low key light swaying about a fixed direction, `ShadowMode.ShadowMap`.
+- Modes per round: off without shadows (drift control), FXAA with shadows, fused and split each with and without shadows. 15 rotating rounds of 12 frames after 3 warm frames. Printed only, no budget asserted.
+- It also prints how often the key light's depth pass rendered, the resolve's counts and, from one frame rendered with anti-aliasing off with shadows on and off, the share of display pixels the shadow darkens and the share within 2 display pixels of a shadow edge.
+- Filter for this class alone: `FullyQualifiedName~TemporalShadowedFrameCostPerfGpuTests`. `dotnet test --list-tests` under the Task 7f.6 filter lists 13 cases at head and 12 on the probe branch.
+
+The proposal as first written:
 
 - Purpose: time the whole lit frame with the key shadow on, so the bilinear PCF, the R8 MRT carrying a real signal and the history copy are all inside the measured frame.
 - Shape: a new GPU perf class with the existing block discipline (15 rounds, rotating order, printed and never asserted, software rasterisers return before measuring). `ShadowMode.ShadowMap` with the key light covering a receiver that fills most display pixels, moving casters so the signal changes, at 2560x1440 Native and Quality. Modes per round: temporal with shadows, FXAA with shadows, temporal without shadows.

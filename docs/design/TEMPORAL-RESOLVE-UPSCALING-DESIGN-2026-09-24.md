@@ -700,7 +700,8 @@ and changed these details. Its contract amendment blocks carry the evidence.
     Cg and its reactive difference to half float (`temporalPrepared`, `temporalHalf`), in the fused pass too, and the
     split stores every value exactly: those four in one half-float target, the expected depth and step 6's edge
     motion in single-float targets, the motion in a half-float target, the motion target's own format, beside the
-    surface's eight flags as a whole number below 256, and alpha is read back from the scene colour. Moving the rules
+    surface's eight flags as a whole number below 256 and, in the fourth channel, the visibility decision's current
+    mask as a whole number below 1024, and alpha is read back from the scene colour. Moving the rules
     into functions changed no output: a hash of both history outputs after every resolved frame of every temporal fact
     on Metal, 2928 test fixtures and 63108 frames, matched the single-pass resolve they replaced, with each entry point
     forced in turn. It took the emitted resolve from 43661 to 42862 bytes of HLSL.

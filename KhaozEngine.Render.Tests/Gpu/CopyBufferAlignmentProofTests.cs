@@ -22,6 +22,7 @@ public sealed class CopyBufferAlignmentProofTests
     [InlineData("GpuCopyAlignment.RequireAlignedOffset(offset, nameof(offset), \"copy\", \"source\"); offset >>= 1;")]
     [InlineData("GpuCopyAlignment.RequireAlignedOffset(offset, nameof(offset), \"copy\", \"source\"); (offset, other) = values;")]
     [InlineData("GpuCopyAlignment.RequireAlignedOffset(offset, nameof(offset), \"copy\", \"source\"); Change(); void Change() { offset++; }")]
+    [InlineData("#if DEBUG\nGpuCopyAlignment.RequireAlignedOffset(offset, nameof(offset), \"copy\", \"source\");\n#endif\n")]
     public void Unproven_or_bypassed_runtime_validation_is_refused(string prefix)
         => Assert.False(Proves(prefix));
 
@@ -51,6 +52,8 @@ public sealed class CopyBufferAlignmentProofTests
     [InlineData("CoverageGpuLayout.Bytes(words)", "internal static uint Bytes(uint words) => words * sizeof(uint);")]
     [InlineData("CoverageGpuLayout.Bytes(words)", "internal static uint Bytes(uint words) => checked(words * 2);")]
     [InlineData("CoverageGpuLayout.Bytes(words)", "internal static uint Bytes(uint words) => checked(words * sizeof(uint) + 1);")]
+    [InlineData("CoverageGpuLayout.Bytes(words)", Helper + " internal static uint Bytes(long words) => 1;")]
+    [InlineData("CoverageGpuLayout.Bytes(words)", "#if DEBUG\n" + Helper + "\n#endif")]
     public void Unproven_word_expressions_and_helper_drift_are_refused(string expression, string helper)
         => Assert.False(CopyBufferAlignmentProof.Accepts(expression, "", 0, helper));
 

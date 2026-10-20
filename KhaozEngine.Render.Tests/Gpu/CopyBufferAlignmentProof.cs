@@ -10,7 +10,9 @@ internal static class CopyBufferAlignmentProof
     {
         if (Regex.IsMatch(expression, @"^CoverageGpuLayout\.Bytes\([^;]+\)$")
             && BalancedArgument(expression))
-            return Regex.Matches(helper, @"\buint\s+Bytes\s*\(\s*uint\s+words\s*\)\s*=>\s*"
+            return !helper.Contains('#', StringComparison.Ordinal)
+                && Regex.Matches(helper, @"\b[A-Za-z_][\w<>?,.\[\]]*\s+Bytes\s*(?:<[^<>]*>)?\s*\(").Count == 1
+                && Regex.Matches(helper, @"\buint\s+Bytes\s*\(\s*uint\s+words\s*\)\s*=>\s*"
                 + @"checked\s*\(\s*words\s*\*\s*sizeof\s*\(\s*uint\s*\)\s*\)\s*;").Count == 1;
         if (!Regex.IsMatch(expression, @"^[A-Za-z_]\w*$")) return false;
 
@@ -33,7 +35,7 @@ internal static class CopyBufferAlignmentProof
                 end++;
             }
             string body = text[start..end];
-            if (Regex.IsMatch(body, methodPattern + @"|=>|\bdelegate\b")) continue;
+            if (Regex.IsMatch(body, methodPattern + @"|=>|#|\bdelegate\b")) continue;
             foreach (Match validation in Regex.Matches(prefix,
                 @"(?:^|[;{}])\s*(?<call>GpuCopyAlignment\.RequireAlignedOffset)\s*\(\s*"
                 + Regex.Escape(expression) + @"\s*,[^;]*\)\s*;"))

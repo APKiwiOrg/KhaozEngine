@@ -33,7 +33,7 @@ public sealed partial class CoverageAllocationTests
         // Live objects that keep the background mark running past the windows that precede the render window.
         readonly object[] graph = new object[1 << 20];
         readonly Thread completion;
-        long index, fullBlocking;
+        long background, fullBlocking;
 
         internal BackgroundCollection()
         {
@@ -48,14 +48,17 @@ public sealed partial class CoverageAllocationTests
 
         internal void Start()
         {
+            // A blocking full collection waits for any background collection already running, so the request below
+            // starts a new one instead of returning into one that allocation triggered earlier.
+            GC.Collect();
             int gen2 = GC.CollectionCount(2);
-            index = GC.GetGCMemoryInfo(GCKind.Background).Index;
+            background = GC.GetGCMemoryInfo(GCKind.Background).Index;
             fullBlocking = GC.GetGCMemoryInfo(GCKind.FullBlocking).Index;
             GC.Collect(2, GCCollectionMode.Forced, blocking: false, compacting: false);
             long fresh = GC.GetAllocatedBytesForCurrentThread();
-            // Decided before any other work. Only a background gen2 that is still marking advances the gen2 count
+            // Decided before any other work. Only a background gen2 that is still running advances the gen2 count
             // while neither the background nor the full blocking index has moved.
-            InFlight = GC.CollectionCount(2) != gen2 && GC.GetGCMemoryInfo(GCKind.Background).Index == index
+            InFlight = GC.CollectionCount(2) != gen2 && GC.GetGCMemoryInfo(GCKind.Background).Index == background
                 && GC.GetGCMemoryInfo(GCKind.FullBlocking).Index == fullBlocking;
             if (InFlight) completion.Start();
             Consumed = GC.GetAllocatedBytesForCurrentThread() - fresh;
@@ -67,7 +70,7 @@ public sealed partial class CoverageAllocationTests
 
         void WaitForCompletion()
         {
-            while (GC.GetGCMemoryInfo(GCKind.Background).Index == index) Thread.Sleep(1);
+            while (GC.GetGCMemoryInfo(GCKind.Background).Index == background) Thread.Sleep(1);
             GC.KeepAlive(graph);
         }
     }

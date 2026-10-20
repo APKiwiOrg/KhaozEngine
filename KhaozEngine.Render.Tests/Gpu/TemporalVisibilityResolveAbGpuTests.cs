@@ -39,11 +39,22 @@ namespace KhaozEngine.Tests.Gpu
     /// D's flips the bit, the release and the stored lock. The fact counts the exported paths of the display pixels
     /// centred on those tiles, and the outcomes there show the edge texel accepted on some and rejected on
     /// others.</para>
+    /// <para>Large threshold frames (fix round 7f r3) run the same tiles over a 1104x612 internal frame, so columns 512
+    /// and 1024 and row 512 lie inside it with tiles centred one texel past each. There the binade rule
+    /// (<see cref="TemporalVisibilityFastPath.SlowForBinade"/>) sends the block to D's path under positive jitter on
+    /// that axis, and the fast path decides it otherwise. The jitter takes six of the Halton offsets in an order that
+    /// gives the designed frames both signs on both axes. Every exported path word whose block fits must carry the
+    /// binade bit exactly where the rule predicts it from the mirrored centre.</para>
     /// </summary>
     public sealed class TemporalVisibilityResolveAbGpuTests(ITestOutputHelper output) : TemporalResolveGpuFacts
     {
         const int Iw = 40, Ih = 24, Frames = 6;
         const int ThresholdIw = 96, ThresholdIh = 60, ThresholdTile = 6, ThresholdSite = 3;
+        const int LargeIw = 1104, LargeIh = 612;
+
+        // The large frames' Halton phases, frame by frame: the designed frames 1, 3 and 5 take jitter (-, +), (+, -) and
+        // (+, +), so each axis meets both signs where the tiles decide.
+        static readonly int[] LargePhases = [0, 1, 3, 2, 5, 4];
 
         [GpuTheory]
         [InlineData(0, TemporalUpscale.Native)]
@@ -75,7 +86,8 @@ namespace KhaozEngine.Tests.Gpu
             var designs = new int[5];
             var edges = new EdgeOutcomes();
             TemporalVisibilityProductionPaths paths = Run(entry, preset, ThresholdIw, ThresholdIh,
-                (frame, dw, dh) => MakeThresholdFrame(random, frame, dw, dh, levels, designs), edges);
+                (frame, dw, dh) => MakeThresholdFrame(random, frame, ThresholdIw, ThresholdIh, dw, dh, levels, designs),
+                edges);
             output.WriteLine($"  designed tile centres: {designs[0]} on 0.1 exactly, {designs[1]} a lattice step either "
                 + $"side, {designs[2]} below the R4 margin, {designs[3]} above it, {designs[4]} at the current tolerance");
             output.WriteLine($"  display pixels centred on a tolerance-edge tile: {edges.Paths}");
@@ -94,6 +106,94 @@ namespace KhaozEngine.Tests.Gpu
                 && edges.Unexpected * 20 <= edges.Paths.FastPath,
                 $"the tolerance-edge tiles reached too few fast-path decisions either side of the tolerance: "
                 + $"{edges.Paths}, accepted {edges.Accepted}, rejected {edges.Rejected}, unexpected {edges.Unexpected}");
+        }
+
+        [GpuTheory]
+        [InlineData(0, TemporalUpscale.Native)]
+        [InlineData(0, TemporalUpscale.Quality)]
+        [InlineData(1, TemporalUpscale.Native)]
+        [InlineData(1, TemporalUpscale.Quality)]
+        public void LargeThresholdFramesWriteTheFrozenDHistoryAcrossPowerOfTwoColumns(int choice, TemporalUpscale preset)
+        {
+            var entry = (TemporalResolveEntry)choice;
+            var random = new Random(entry == TemporalResolveEntry.Fused ? 5501 : 6607);
+            var levels = new int[(LargeIw / ThresholdTile) * (LargeIh / ThresholdTile)];
+            var designs = new int[5];
+            var straddling = new int[5];
+            var edges = new EdgeOutcomes();
+            var binade = new BinadeOutcomes();
+            TemporalVisibilityProductionPaths paths = Run(entry, preset, LargeIw, LargeIh,
+                (frame, dw, dh) => MakeThresholdFrame(random, frame, LargeIw, LargeIh, dw, dh, levels, designs, straddling),
+                edges, binade, (frame, phases) => TemporalJitter.Offset(LargePhases[frame], phases));
+            output.WriteLine($"  designed tile centres: {designs[0]} on 0.1 exactly, {designs[1]} a lattice step either "
+                + $"side, {designs[2]} below the R4 margin, {designs[3]} above it, {designs[4]} at the current tolerance");
+            output.WriteLine($"  of them centred one texel past column 512 or 1024 or row 512: {straddling[0]} on 0.1 "
+                + $"exactly, {straddling[1]} a step either side, {straddling[2]} and {straddling[3]} by the R4 margin, "
+                + $"{straddling[4]} at the current tolerance");
+            output.WriteLine($"  tolerance-edge outcomes: accepted {edges.Accepted}, rejected {edges.Rejected}, "
+                + $"unexpected {edges.Unexpected}, over {edges.Paths}");
+            output.WriteLine($"  binade rule: {binade}");
+            Assert.True(paths.FastPath >= 100_000 && paths.SlowBinade >= 1_000 && paths.FastReleased >= 1_000,
+                $"the large frames reached too few production paths: {paths}");
+            // The mirror of temporalPixelSite can place a pixel at a rounding boundary on the next centre, so a few
+            // pixels are let through. The rule itself is exact.
+            Assert.True(binade.Apart * 100 <= binade.Checked,
+                $"the binade bit differs from the rule's prediction on too many pixels: {binade}");
+            Assert.True(binade.StraddleBinade >= 1_000 && binade.StraddleFast >= 1_000 && binade.StraddleFastPositive >= 100,
+                $"too few decisions beside columns 512 and 1024 and row 512 on either path: {binade}");
+            Assert.True(edges.Paths.FastPath >= 1_000 && edges.Accepted >= 100 && edges.Rejected >= 100
+                && edges.Unexpected * 20 <= edges.Paths.FastPath,
+                $"the large tolerance-edge tiles reached too few fast-path decisions: {edges.Paths}, accepted "
+                + $"{edges.Accepted}, rejected {edges.Rejected}, unexpected {edges.Unexpected}");
+        }
+
+        // The display pixels whose block fits, checked against the binade rule from the mirrored centre: how many the
+        // rule and the binade bit both send to D's path or both keep on the fast path, those beside column 512 or 1024
+        // or row 512, and those beside such a column or row with positive jitter on the other axis, which the rule must
+        // keep fast.
+        sealed class BinadeOutcomes
+        {
+            internal long Checked, Binade, Fast, Apart, StraddleBinade, StraddleFast, StraddleFastPositive;
+
+            public override string ToString() => $"{Checked} pixels whose block fits, {Binade} sent to D's path and "
+                + $"{Fast} kept fast as predicted, {Apart} apart from the prediction, beside 512 or 1024 {StraddleBinade} "
+                + $"sent and {StraddleFast} kept, {StraddleFastPositive} of those kept under positive jitter on the other "
+                + "axis";
+        }
+
+        static void CountBinade(BinadeOutcomes binade, float[] exported, Vector4 jitter, int iw, int ih, int dw, int dh)
+        {
+            static bool Named(int centre, int last, float axisJitter)
+            {
+                for (int k = -1; k <= 1; k++)
+                    if (TemporalVisibilityFastPath.SlowForBinade(Math.Clamp(centre + k, 0, last), axisJitter)) return true;
+                return false;
+            }
+            static bool Beside(int centre, int line) => Math.Abs(centre - line) <= 1;
+            for (int y = 0; y < dh; y++)
+                for (int x = 0; x < dw; x++)
+                {
+                    int p = y * dw + x;
+                    uint path = TemporalVisibilityProductionPaths.PathAt(exported, p);
+                    if ((path & (TemporalVisibilityProductionPaths.Fast | TemporalVisibilityProductionPaths.Slow)) == 0
+                        || (path & TemporalVisibilityProductionPaths.Reasons) != 0) continue;
+                    int cx = Math.Clamp((int)MathF.Floor((x + 0.5f) / dw * iw + jitter.X), 0, iw - 1);
+                    int cy = Math.Clamp((int)MathF.Floor((y + 0.5f) / dh * ih + jitter.Y), 0, ih - 1);
+                    bool namedX = Named(cx, iw - 1, jitter.X), namedY = Named(cy, ih - 1, jitter.Y);
+                    bool reported = (path & TemporalVisibilityProductionPaths.Binade) != 0;
+                    binade.Checked++;
+                    if (reported != (namedX || namedY)) { binade.Apart++; continue; }
+                    bool besideX = Beside(cx, 512) || Beside(cx, 1024), besideY = Beside(cy, 512);
+                    if (reported) binade.Binade++;
+                    else binade.Fast++;
+                    if (!besideX && !besideY) continue;
+                    if (reported) binade.StraddleBinade++;
+                    else
+                    {
+                        binade.StraddleFast++;
+                        if ((besideX && jitter.Y > 0f) || (besideY && jitter.X > 0f)) binade.StraddleFastPositive++;
+                    }
+                }
         }
 
         // The exported paths of the display pixels centred on a tolerance-edge tile, and what each fast-path outcome
@@ -119,7 +219,8 @@ namespace KhaozEngine.Tests.Gpu
         // The five rigs over one frame set. Returns the production paths the exporting rig counted, and gives the
         // tolerance-edge tiles' display pixels to edges.
         TemporalVisibilityProductionPaths Run(TemporalResolveEntry entry, TemporalUpscale preset, int iw, int ih,
-            Func<int, int, int, Frame> makeFrame, EdgeOutcomes? edges = null)
+            Func<int, int, int, Frame> makeFrame, EdgeOutcomes? edges = null, BinadeOutcomes? binade = null,
+            Func<int, int, Vector2>? jitterOf = null)
         {
             int dw = preset == TemporalUpscale.Native ? iw : iw * 3 / 2, dh = preset == TemporalUpscale.Native ? ih : ih * 3 / 2;
             int dRewrites = 0, mutantRewrites = 0;
@@ -165,7 +266,7 @@ namespace KhaozEngine.Tests.Gpu
                 {
                     Frame f = makeFrame(frame, dw, dh);
                     zeroLocks += f.ZeroLocks;
-                    Vector2 jitter = TemporalJitter.Offset(frame, phases);
+                    Vector2 jitter = jitterOf?.Invoke(frame, phases) ?? TemporalJitter.Offset(frame, phases);
                     var uniforms = TemporalResolveMath.BuildUniforms(Still, Still, jitter, iw, ih, dw, dh, frame > 0);
                     for (int r = 0; r < rigs.Length; r++)
                     {
@@ -197,14 +298,13 @@ namespace KhaozEngine.Tests.Gpu
                     // Both exporting rigs decide as production does: every stored lock is production's.
                     for (int p = 0; p < productionState.Length / 2; p++)
                     {
-                        Assert.True(BitConverter.SingleToInt32Bits(productionState[p * 2 + 1])
-                            == BitConverter.SingleToInt32Bits(exportedState[p * 2 + 1]),
-                            $"frame {frame} pixel {p}: the path export stored lock {exportedState[p * 2 + 1]:R}, "
-                            + $"production {productionState[p * 2 + 1]:R}");
-                        Assert.True(BitConverter.SingleToInt32Bits(productionState[p * 2 + 1])
-                            == BitConverter.SingleToInt32Bits(keptState[p * 2 + 1]),
-                            $"frame {frame} pixel {p}: the export keeping the decision stored lock "
-                            + $"{keptState[p * 2 + 1]:R}, production {productionState[p * 2 + 1]:R}");
+                        int locked = BitConverter.SingleToInt32Bits(productionState[p * 2 + 1]);
+                        if (locked != BitConverter.SingleToInt32Bits(exportedState[p * 2 + 1]))
+                            Assert.Fail($"frame {frame} pixel {p}: the path export stored lock {exportedState[p * 2 + 1]:R}, "
+                                + $"production {productionState[p * 2 + 1]:R}");
+                        if (locked != BitConverter.SingleToInt32Bits(keptState[p * 2 + 1]))
+                            Assert.Fail($"frame {frame} pixel {p}: the export keeping the decision stored lock "
+                                + $"{keptState[p * 2 + 1]:R}, production {productionState[p * 2 + 1]:R}");
                     }
                     float[] exportedColour = exported.ReadColor(), keptColour = kept.ReadColor();
                     for (int p = 0; p < exportedColour.Length / 4; p++)
@@ -213,10 +313,10 @@ namespace KhaozEngine.Tests.Gpu
                         uint plain = TemporalVisibilityProductionPaths.PathAt(keptColour, p);
                         float fullChange = TemporalVisibilityProductionPaths.ChangeAt(exportedColour, p);
                         float plainChange = TemporalVisibilityProductionPaths.ChangeAt(keptColour, p);
-                        Assert.True((full & ~TemporalVisibilityProductionPaths.Reasons) == plain
-                            && BitConverter.SingleToInt32Bits(fullChange) == BitConverter.SingleToInt32Bits(plainChange),
-                            $"frame {frame} pixel {p}: the full export wrote path {full} and change {fullChange:R}, the "
-                            + $"export keeping the decision {plain} and {plainChange:R}");
+                        if ((full & ~TemporalVisibilityProductionPaths.Reasons) != plain
+                            || BitConverter.SingleToInt32Bits(fullChange) != BitConverter.SingleToInt32Bits(plainChange))
+                            Assert.Fail($"frame {frame} pixel {p}: the full export wrote path {full} and change "
+                                + $"{fullChange:R}, the export keeping the decision {plain} and {plainChange:R}");
                     }
                     if (frame > 0)
                     {
@@ -224,6 +324,7 @@ namespace KhaozEngine.Tests.Gpu
                         keptPaths.Add(keptColour);
                         if (edges is not null && f.EdgeSites is { } sites)
                             CountEdgeSites(edges, exportedColour, sites, uniforms.Jitter, iw, ih, dw, dh);
+                        if (binade is not null) CountBinade(binade, exportedColour, uniforms.Jitter, iw, ih, dw, dh);
                     }
                     values += productionState.Length;
                     foreach (TemporalResolveRig rig in rigs) rig.History.MarkValidAfterFrame();
@@ -239,6 +340,7 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.True(keptPaths.Pixels == paths.Pixels && keptPaths.NotReached == paths.NotReached
                     && keptPaths.GatedByLock == paths.GatedByLock && keptPaths.GatedOtherwise == paths.GatedOtherwise
                     && keptPaths.FastPath == paths.FastPath && keptPaths.SlowPath == paths.SlowPath
+                    && keptPaths.SlowBinade == paths.SlowBinade
                     && keptPaths.RangeSkips == paths.RangeSkips && keptPaths.ChangeComputed == paths.ChangeComputed
                     && keptPaths.FastComputed == paths.FastComputed && keptPaths.Released == paths.Released,
                     "the export keeping the decision counted other paths than the full export");
@@ -347,32 +449,37 @@ namespace KhaozEngine.Tests.Gpu
         // colour, no motion, the previous depth on the shared surface and a full lock everywhere, so every centre away
         // from the border meets the fast path and its decision is the threshold's. designs counts the centres by kind,
         // 4 for a tolerance-edge tile.
-        static Frame MakeThresholdFrame(Random random, int frame, int dw, int dh, int[] levels, int[] designs)
+        static Frame MakeThresholdFrame(Random random, int frame, int w, int h, int dw, int dh, int[] levels, int[] designs,
+            int[]? straddling = null)
         {
-            const int W = ThresholdIw, H = ThresholdIh, Tiles = ThresholdIw / ThresholdTile;
+            int tiles = w / ThresholdTile;
             float behindNdc = NdcDepth(Projection, SceneMetres * 1.5f);
-            var colour = new float[W * H * 4];
-            for (int i = 0; i < W * H; i++) (colour[i * 4], colour[i * 4 + 1], colour[i * 4 + 2], colour[i * 4 + 3]) = (0.5f, 0.5f, 0.5f, 1f);
-            var ndc = new float[W * H];
+            var colour = new float[w * h * 4];
+            for (int i = 0; i < w * h; i++) (colour[i * 4], colour[i * 4 + 1], colour[i * 4 + 2], colour[i * 4 + 3]) = (0.5f, 0.5f, 0.5f, 1f);
+            var ndc = new float[w * h];
             Array.Fill(ndc, SceneNdc);
-            var visibility = new byte[W * H];
-            var previousDepth = new float[W * H];
+            var visibility = new byte[w * h];
+            var previousDepth = new float[w * h];
             Array.Fill(previousDepth, SceneLinear);
-            int[]? edgeSites = frame % 2 == 0 ? null : new int[W * H];
+            int[]? edgeSites = frame % 2 == 0 ? null : new int[w * h];
             for (int t = 0; t < levels.Length; t++)
             {
-                int x0 = t % Tiles * ThresholdTile, y0 = t / Tiles * ThresholdTile;
+                int x0 = t % tiles * ThresholdTile, y0 = t / tiles * ThresholdTile;
                 if (frame % 2 == 0) levels[t] = 40 + random.Next(161);
                 for (int y = y0; y < y0 + ThresholdTile; y++)
                     for (int x = x0; x < x0 + ThresholdTile; x++)
-                        visibility[y * W + x] = (byte)levels[t];
+                        visibility[y * w + x] = (byte)levels[t];
                 if (frame % 2 == 0) continue;
-                bool inside = x0 + ThresholdSite <= W - 3 && y0 + ThresholdSite <= H - 3;
+                bool inside = x0 + ThresholdSite <= w - 3 && y0 + ThresholdSite <= h - 3;
+                int siteX = x0 + ThresholdSite, siteY = y0 + ThresholdSite;
+                bool straddles = straddling is not null && inside
+                    && (Math.Abs(siteX - 512) <= 1 || Math.Abs(siteX - 1024) <= 1 || Math.Abs(siteY - 512) <= 1);
                 if (random.Next(7) < 2)
                 {
                     (int[] edgeLevels, bool[] sure, int edge, int design) = ToleranceEdgeSite(random, levels[t]);
                     if (inside) designs[4]++;
-                    edgeSites![(y0 + ThresholdSite) * W + x0 + ThresholdSite] = design;
+                    if (straddles) straddling![4]++;
+                    edgeSites![(y0 + ThresholdSite) * w + x0 + ThresholdSite] = design;
                     bool farther = random.Next(2) == 0;
                     float edgeNdc = TemporalVisibilityMaskGpuTests.ToleranceEdge(SceneLinear, farther, random.Next(7) - 3);
                     // A nearer edge texel is the 3x3's nearest, so the centre expects its depth: the tile's previous
@@ -382,11 +489,11 @@ namespace KhaozEngine.Tests.Gpu
                         float edgeLinear = TemporalResolveMath.LinearDepth(edgeNdc, Depth);
                         for (int y = y0; y < y0 + ThresholdTile; y++)
                             for (int x = x0; x < x0 + ThresholdTile; x++)
-                                previousDepth[y * W + x] = edgeLinear;
+                                previousDepth[y * w + x] = edgeLinear;
                     }
                     for (int k = 0; k < 9; k++)
                     {
-                        int i = (y0 + ThresholdSite - 1 + k / 3) * W + x0 + ThresholdSite - 1 + k % 3;
+                        int i = (y0 + ThresholdSite - 1 + k / 3) * w + x0 + ThresholdSite - 1 + k % 3;
                         if (k == edge)
                         {
                             visibility[i] = (byte)edgeLevels[k];
@@ -403,9 +510,10 @@ namespace KhaozEngine.Tests.Gpu
                 }
                 (int[] site, bool[] accepted, int kind) = ThresholdSiteLevels(random, levels[t]);
                 if (inside) designs[kind]++;
+                if (straddles) straddling![kind]++;
                 for (int k = 0; k < 9; k++)
                 {
-                    int i = (y0 + ThresholdSite - 1 + k / 3) * W + x0 + ThresholdSite - 1 + k % 3;
+                    int i = (y0 + ThresholdSite - 1 + k / 3) * w + x0 + ThresholdSite - 1 + k % 3;
                     visibility[i] = (byte)(accepted[k] ? site[k] : random.Next(256));
                     if (!accepted[k]) ndc[i] = behindNdc;
                 }
@@ -419,7 +527,7 @@ namespace KhaozEngine.Tests.Gpu
                 historyState[p * 2] = 0.5f;
                 historyState[p * 2 + 1] = 1f;
             }
-            return new Frame(colour, new float[W * H * 2], ndc, visibility, historyColour, historyState, previousDepth, 0,
+            return new Frame(colour, new float[w * h * 2], ndc, visibility, historyColour, historyState, previousDepth, 0,
                 edgeSites);
         }
 

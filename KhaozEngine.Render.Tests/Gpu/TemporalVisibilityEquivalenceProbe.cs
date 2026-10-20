@@ -16,6 +16,11 @@ namespace KhaozEngine.Tests.Gpu;
 /// programs read the same case bit for bit and no compiler can share a value between D and production. Every target is
 /// cleared to -1 before its pass, so a fragment a pass did not write shows. <see cref="Combine"/> joins the outputs into
 /// one word of <see cref="Flag"/> bits per case.
+/// <para>Binade draws (fix round 7f r3) place every centre so that a column, a row or both of its 3x3 lie on a power
+/// of two up to 2048, where the binade rule (<see cref="TemporalVisibilityFastPath.SlowForBinade"/>) sends a positive
+/// jitter axis to D's path. A fifth program, the shipped decision with that rule written out
+/// (<see cref="WithoutBinadeRule"/>), runs only when asked and only to report how often it would differ from D on the
+/// device.</para>
 /// </summary>
 internal sealed class TemporalVisibilityEquivalenceProbe : IDisposable
 {
@@ -23,13 +28,14 @@ internal sealed class TemporalVisibilityEquivalenceProbe : IDisposable
     /// bit order. The rest are joined from the D and production programs' outputs.</summary>
     internal enum Flag
     {
-        PredictedFast, PredictedSlowEdge, PredictedSlowDeviation, PredictedSlowBorder, PredictedRangeSkip,
+        PredictedFast, PredictedSlowEdge, PredictedSlowDeviation, PredictedSlowBorder, PredictedSlowBinade,
+        PredictedRangeSkip,
         RangeSkipNearMarginBelow, RangeSkipNearMarginAbove, EdgeCentre, CornerCentre, NearIntegerFraction, NaN,
         PositiveInfinity, NegativeInfinity, Background, CurrentToleranceExact, CurrentToleranceUlp,
         PreviousToleranceExact, PreviousToleranceUlp, EmptyHistory, FastNonFiniteNeighbour, FastNonFiniteStored,
         DValid, DRelease, NewComputed, NewRelease, DecisionMismatch, ValidityMismatch, ChangeMismatch, Written,
         RangeSkipMeetsRelease, NearThresholdAbove, NearThresholdBelow, ReportedFast, ReportedSlow, ReportedRangeSkip,
-        ReportedPathMismatch,
+        ReportedSlowBinade, ReportedPathMismatch,
     }
 
     /// <summary>How many of <see cref="Flag"/>'s bits the classifier program sets.</summary>
@@ -42,7 +48,7 @@ internal sealed class TemporalVisibilityEquivalenceProbe : IDisposable
     /// computed a change, and only there may the validities differ.
     /// </summary>
     internal const string ProductionDecisionGlsl = @"
-const uint ReportedFast = 1u, ReportedSlow = 2u, ReportedRangeSkip = 4u;
+const uint ReportedFast = 1u, ReportedSlow = 2u, ReportedRangeSkip = 4u, ReportedSlowBinade = 8u;
 bool productionReleases(vec2 uv, ivec2 centre, ivec2 last, vec2 previousUv, float expectedDepth,
     out bool computed, out float change, out uint path) {
     change = 0.0;
@@ -52,7 +58,8 @@ bool productionReleases(vec2 uv, ivec2 centre, ivec2 last, vec2 previousUv, floa
     computed = (shipped & VisibilityChangeComputed) != 0u;
     path = ((shipped & VisibilityFastPath) != 0u ? ReportedFast : 0u)
         | ((shipped & VisibilitySlowPath) != 0u ? ReportedSlow : 0u)
-        | ((shipped & VisibilityRangeSkip) != 0u ? ReportedRangeSkip : 0u);
+        | ((shipped & VisibilityRangeSkip) != 0u ? ReportedRangeSkip : 0u)
+        | ((shipped & VisibilitySlowBinade) != 0u ? ReportedSlowBinade : 0u);
     return release;
 }
 ";
@@ -105,6 +112,11 @@ float caseUlps(float v, int k) {
     // The case: a centre texel, the pixel's UV, a previous UV that puts the centre's history position at a chosen
     // texel plus a chosen fraction, and an expected depth related to the stored depths there.
     const string BuildCaseGlsl = @"
+// A power of two no larger than last - 1, then one texel either side of it or on it.
+int casePowerOfTwoLine(inout uint s, int last) {
+    int power = 1 << caseInt(s, findMSB(last - 1) + 1);
+    return power + caseInt(s, 3) - 1;
+}
 int caseEdge(inout uint s, int last) {
     int r = caseInt(s, 5);
     return r == 0 ? 0 : r == 1 ? 1 : r == 2 ? last - 1 : r == 3 ? last : caseInt(s, last + 1);
@@ -130,8 +142,16 @@ VisibilityCase buildCase(ivec2 fragment) {
     } else {
         c.centre = ivec2(caseInt(s, last.x + 1), caseInt(s, last.y + 1));
     }
+    bool binadeDraw = Seed.y > 0.5;
+    if (binadeDraw) {
+        // A column, a row or both of the 3x3 on a power of two up to 2048, the centre one texel either side of it or
+        // on it, never on the edge.
+        int pick = caseInt(s, 4);
+        if (pick != 1) c.centre.x = clamp(casePowerOfTwoLine(s, last.x), 1, last.x - 1);
+        if (pick != 0) c.centre.y = clamp(casePowerOfTwoLine(s, last.y), 1, last.y - 1);
+    }
     c.uv = (vec2(c.centre) + 0.5 - Jitter.xy + inTexel) / size;
-    if (!designed && mode >= 0.6 && mode < 0.85) {
+    if (!designed && !binadeDraw && mode >= 0.6 && mode < 0.85) {
         // A display pixel and the texel its jittered sample lands in, as temporalPixelSite finds them.
         vec2 pixel = floor(vec2(caseUnit(s), caseUnit(s)) * Sizes.zw);
         c.uv = (pixel + 0.5) / Sizes.zw;
@@ -268,7 +288,7 @@ uint classify(VisibilityCase c) {
     float previousTolerance = VisibilityDepthTolerance * max(e, 1.0e-5);
     float currentSum = 0.0, currentCount = 0.0, previousAccepted = 0.0;
     bool neighbourNonFinite = false, storedNonFinite = false;
-    int baseX[3], baseY[3];
+    int baseX[3], baseY[3], atX[3], atY[3];
     for (int y = -1; y <= 1; y++) {
         for (int x = -1; x <= 1; x++) {
             ivec2 at = clamp(c.centre + ivec2(x, y), ivec2(0), last);
@@ -278,8 +298,8 @@ uint classify(VisibilityCase c) {
             vec2 historyUv = c.previousUv + (vec2(at) + 0.5 - Jitter.xy) / Sizes.xy - c.uv + PreviousJitter.xy / Sizes.xy;
             vec2 position = historyUv * Sizes.xy - 0.5;
             ivec2 base = ivec2(floor(position));
-            if (y == 0) baseX[x + 1] = base.x;
-            if (x == 0) baseY[y + 1] = base.y;
+            if (y == 0) { baseX[x + 1] = base.x; atX[x + 1] = at.x; }
+            if (x == 0) { baseY[y + 1] = base.y; atY[y + 1] = at.y; }
             vec2 fraction = position - vec2(base);
             if (x == 0 && y == 0 && any(lessThan(min(fraction, 1.0 - fraction), vec2(1.0e-3))))
                 bits |= ClassNearIntegerFraction;
@@ -319,10 +339,18 @@ uint classify(VisibilityCase c) {
     bool consecutive = baseX[0] == baseX[1] - 1 && baseX[2] == baseX[1] + 1
         && baseY[0] == baseY[1] - 1 && baseY[2] == baseY[1] + 1;
     bool inside = baseX[1] - 1 >= 0 && baseX[1] + 2 <= last.x && baseY[1] - 1 >= 0 && baseY[1] + 2 <= last.y;
-    bool fast = !(edgeX || edgeY) && consecutive && inside;
+    // The binade rule, written apart from production's: a single set bit, under a jitter whose sign bit is clear and
+    // whose bits are not zero, so a denormal a device flushes still counts as positive.
+    bvec2 positive = bvec2((floatBitsToUint(Jitter.x) & 0x80000000u) == 0u && floatBitsToUint(Jitter.x) != 0u,
+        (floatBitsToUint(Jitter.y) & 0x80000000u) == 0u && floatBitsToUint(Jitter.y) != 0u);
+    bool binade = false;
+    for (int k = 0; k < 3; k++)
+        binade = binade || (positive.x && bitCount(atX[k]) == 1) || (positive.y && bitCount(atY[k]) == 1);
+    bool fast = !(edgeX || edgeY) && consecutive && inside && !binade;
     if (edgeX || edgeY) bits |= ClassPredictedSlowEdge;
     else if (!consecutive) bits |= ClassPredictedSlowDeviation;
     else if (!inside) bits |= ClassPredictedSlowBorder;
+    else if (binade) bits |= ClassPredictedSlowBinade;
     else bits |= ClassPredictedFast;
     if (fast && references && neighbourNonFinite) bits |= ClassFastNonFiniteNeighbour;
     if (fast && references && currentCount > 0.0) {
@@ -386,6 +414,22 @@ void main() {
         + ShaderSources.TemporalVisibilityGlsl + TemporalVisibilityMaskProbe.MaskAtGlsl + ProductionDecisionGlsl
         + CaseStructGlsl + ReadCaseGlsl + ProductionMain);
 
+    /// <summary>The shipped decision with the binade rule written out, for the diagnostic count only: its blocks at a
+    /// power of two under positive jitter take the fast path, whichever order FXC compiles their chains in.</summary>
+    internal static string UnruledSource => WithoutBinadeRule(ProductionSource);
+
+    /// <summary>A test-only rewrite of a program carrying the shipped decision: the binade test reads false. Throws
+    /// where the decision's binade statement is missing or repeated.</summary>
+    internal static string WithoutBinadeRule(string program)
+    {
+        const string Start = "    bool binade = ";
+        int first = program.IndexOf(Start, StringComparison.Ordinal);
+        if (first < 0 || program.IndexOf(Start, first + Start.Length, StringComparison.Ordinal) >= 0)
+            throw new InvalidOperationException("the rewrite expects one binade statement in the shipped decision");
+        int end = program.IndexOf(';', first);
+        return program[..first] + Start + "false" + program[end..];
+    }
+
     /// <summary>The classifier alone.</summary>
     internal static string ClassifierSource => Program(ClassifierBits + CaseStructGlsl + CaseCommonGlsl + ReadCaseGlsl
         + ClassifierGlsl + ClassifierMain);
@@ -394,13 +438,13 @@ void main() {
     internal static (string Name, string Source)[] Sources =>
     [
         ("case", CaseSource), ("frozen D", DSource), ("production decision", ProductionSource),
-        ("classifier", ClassifierSource),
+        ("classifier", ClassifierSource), ("production decision without the binade rule", UnruledSource),
     ];
 
     readonly GpuDeviceContext _gpu = GpuDeviceContext.CreateHeadless();
     readonly List<IDisposable> _owned = [];
     readonly IGpuResourceLayout _caseLayout, _layout;
-    readonly Pass _case, _d, _production, _classifier;
+    readonly Pass _case, _d, _production, _classifier, _unruled;
     readonly IGpuBuffer _uniforms;
     readonly IGpuTexture[] _caseTargets;
     internal IGpuDevice Device => _gpu.GpuDevice;
@@ -431,6 +475,7 @@ void main() {
         _d = MakePass("frozen D", DSource, _layout, 2);
         _production = MakePass("production decision", ProductionSource, _layout, 2);
         _classifier = MakePass("classifier", ClassifierSource, _layout, 2);
+        _unruled = MakePass("without the binade rule", UnruledSource, _layout, 2);
     }
 
     Pass MakePass(string name, string source, IGpuResourceLayout layout, int targets)
@@ -497,16 +542,19 @@ void main() {
         }
     }
 
-    /// <summary>One draw's outputs, one value per case, rows top to bottom.</summary>
+    /// <summary>One draw's outputs, one value per case, rows top to bottom. The unruled program's outputs are empty
+    /// unless the draw asked for them.</summary>
     internal sealed record Outputs(float[] Centre, float[] DFlags, float[] DChange, float[] NewFlags, float[] NewChange,
-        float[] ClassLow, float[] ClassHigh);
+        float[] ClassLow, float[] ClassHigh, float[] UnruledFlags, float[] UnruledChange);
 
     /// <summary>One draw: every fragment of the target one case, at a display size, a jitter pair and a seed. The case
-    /// pass runs first, then D, production and the classifier, each its own program.</summary>
-    internal Outputs Run(Textures textures, Vector2 display, Vector2 jitter, Vector2 previousJitter, int seed)
+    /// pass runs first, then D, production and the classifier, each its own program. A binade draw places the
+    /// centres on power-of-two columns and rows, and also runs the decision without the binade rule.</summary>
+    internal Outputs Run(Textures textures, Vector2 display, Vector2 jitter, Vector2 previousJitter, int seed,
+        bool binade = false)
     {
         float[] uniforms = [0, 0, 1, 0, textures.Inputs.Width, textures.Inputs.Height, display.X, display.Y,
-            jitter.X, jitter.Y, 1, 1, previousJitter.X, previousJitter.Y, 1, 0, seed, 0, 0, 0];
+            jitter.X, jitter.Y, 1, 1, previousJitter.X, previousJitter.Y, 1, 0, seed, binade ? 1 : 0, 0, 0];
         Device.UpdateBuffer(_uniforms, 0, uniforms);
         using IGpuResourceSet caseSet = Device.Factory.CreateResourceSet(new GpuResourceSetDescription(_caseLayout,
             textures.PreviousDepth, Device.LinearSampler, _uniforms));
@@ -522,10 +570,13 @@ void main() {
         Draw(_d, set);
         Draw(_production, set);
         Draw(_classifier, set);
+        if (binade) Draw(_unruled, set);
         return new Outputs(TemporalTextureIo.Read(Device, _caseTargets[CentreTarget]),
             TemporalTextureIo.Read(Device, _d.Targets[0]), TemporalTextureIo.Read(Device, _d.Targets[1]),
             TemporalTextureIo.Read(Device, _production.Targets[0]), TemporalTextureIo.Read(Device, _production.Targets[1]),
-            TemporalTextureIo.Read(Device, _classifier.Targets[0]), TemporalTextureIo.Read(Device, _classifier.Targets[1]));
+            TemporalTextureIo.Read(Device, _classifier.Targets[0]), TemporalTextureIo.Read(Device, _classifier.Targets[1]),
+            binade ? TemporalTextureIo.Read(Device, _unruled.Targets[0]) : [],
+            binade ? TemporalTextureIo.Read(Device, _unruled.Targets[1]) : []);
     }
 
     void Draw(Pass pass, IGpuResourceSet set)
@@ -554,7 +605,7 @@ void main() {
         ulong bits = (ulong)o.ClassLow[i] | ((ulong)o.ClassHigh[i] << 16) | Bit(Flag.Written);
         uint d = (uint)o.DFlags[i], p = (uint)o.NewFlags[i];
         bool dValid = (d & 1) != 0, dRelease = (d & 2) != 0, computed = (p & 1) != 0, release = (p & 2) != 0;
-        bool fast = (p & 4) != 0, slow = (p & 8) != 0, skip = (p & 16) != 0;
+        bool fast = (p & 4) != 0, slow = (p & 8) != 0, skip = (p & 16) != 0, binade = (p & 32) != 0;
         if (dValid) bits |= Bit(Flag.DValid);
         if (dRelease) bits |= Bit(Flag.DRelease);
         if (computed) bits |= Bit(Flag.NewComputed);
@@ -562,19 +613,32 @@ void main() {
         if (fast) bits |= Bit(Flag.ReportedFast);
         if (slow) bits |= Bit(Flag.ReportedSlow);
         if (skip) bits |= Bit(Flag.ReportedRangeSkip);
+        if (binade) bits |= Bit(Flag.ReportedSlowBinade);
         if (dRelease != release) bits |= Bit(Flag.DecisionMismatch);
         if ((computed && !dValid) || (dValid && !computed && !skip)) bits |= Bit(Flag.ValidityMismatch);
         if (computed && dValid && BitConverter.SingleToUInt32Bits(o.DChange[i]) != BitConverter.SingleToUInt32Bits(o.NewChange[i]))
             bits |= Bit(Flag.ChangeMismatch);
         bool predictedFast = (bits & Bit(Flag.PredictedFast)) != 0, predictedSkip = (bits & Bit(Flag.PredictedRangeSkip)) != 0;
+        bool predictedBinade = (bits & Bit(Flag.PredictedSlowBinade)) != 0;
         if (predictedSkip && dRelease) bits |= Bit(Flag.RangeSkipMeetsRelease);
-        // The reported path must be the predicted one, case for case: fast or slow, and the range skip.
-        if (fast != predictedFast || slow == predictedFast || skip != predictedSkip) bits |= Bit(Flag.ReportedPathMismatch);
+        // The reported path must be the predicted one, case for case: fast or slow, the binade and the range skip.
+        if (fast != predictedFast || slow == predictedFast || skip != predictedSkip || binade != predictedBinade)
+            bits |= Bit(Flag.ReportedPathMismatch);
         float magnitude = MathF.Abs(o.DChange[i]);
         if (dValid && MathF.Abs(magnitude - TemporalResolveTuning.VisibilityReleaseThreshold) <= 2.384185791015625e-7f)
             bits |= magnitude > TemporalResolveTuning.VisibilityReleaseThreshold ? Bit(Flag.NearThresholdAbove)
                 : Bit(Flag.NearThresholdBelow);
         return bits;
+    }
+
+    /// <summary>Case <paramref name="i"/> of a binade draw, the decision without the binade rule against D: whether
+    /// its release decision differs, and whether its change differs in bits where both computed one.</summary>
+    internal static (bool Decision, bool Change) UnruledApart(Outputs o, int i)
+    {
+        uint d = (uint)o.DFlags[i], u = (uint)o.UnruledFlags[i];
+        bool dValid = (d & 1) != 0, dRelease = (d & 2) != 0, computed = (u & 1) != 0, release = (u & 2) != 0;
+        return (dRelease != release, computed && dValid
+            && BitConverter.SingleToUInt32Bits(o.DChange[i]) != BitConverter.SingleToUInt32Bits(o.UnruledChange[i]));
     }
 
     public void Dispose()

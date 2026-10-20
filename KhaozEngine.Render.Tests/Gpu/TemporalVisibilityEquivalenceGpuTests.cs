@@ -22,6 +22,11 @@ namespace KhaozEngine.Tests.Gpu;
 /// changes within ulps of 0.1 on both sides, and R4 bounds both sides of the <c>0.1 - 2^-13</c> margin. The
 /// classifier's predicted paths are independent of production, and the shipped decision must report each case's
 /// predicted path: fast or slow, and the range skip. No predicted R4 skip may meet a D release.</para>
+/// <para>The binade cases (fix round 7f r3) centre every case beside or on a power-of-two column, row or both, up to
+/// 2048, under jitter of each sign on each axis, zero, a denormal's neighbour and just under one half. A block that
+/// fits must take D's path exactly where an axis with positive jitter holds a power of two, and the fast path
+/// otherwise, with the same zero mismatches. The shipped decision with the rule written out runs beside it, and the
+/// fact reports, without asserting, how often that one differs from D on the device.</para>
 /// </summary>
 public sealed class TemporalVisibilityEquivalenceGpuTests(ITestOutputHelper output)
 {
@@ -53,7 +58,7 @@ public sealed class TemporalVisibilityEquivalenceGpuTests(ITestOutputHelper outp
         (Path.RangeSkip, 100_000),
     ];
 
-    enum Path { Fast, SlowEdge, SlowDeviation, SlowBorder, RangeSkip }
+    enum Path { Fast, SlowEdge, SlowDeviation, SlowBorder, SlowBinade, RangeSkip }
 
     public static TheoryData<int, int, int, int> Sizes => new()
     {
@@ -123,7 +128,8 @@ public sealed class TemporalVisibilityEquivalenceGpuTests(ITestOutputHelper outp
 
         // Every case takes exactly one predicted path.
         Assert.Equal(cases, totals[(int)Flag.PredictedFast] + totals[(int)Flag.PredictedSlowEdge]
-            + totals[(int)Flag.PredictedSlowDeviation] + totals[(int)Flag.PredictedSlowBorder]);
+            + totals[(int)Flag.PredictedSlowDeviation] + totals[(int)Flag.PredictedSlowBorder]
+            + totals[(int)Flag.PredictedSlowBinade]);
         double scale = cases / (3.0 * HardwareTarget * HardwareTarget);
         var thin = Coverage.Where(c => totals[(int)c.Flag] < Math.Max(1, (long)(c.Minimum * scale)))
             .Select(c => $"{c.Flag} {totals[(int)c.Flag]} under {Math.Max(1, (long)(c.Minimum * scale))}").ToArray();
@@ -140,6 +146,126 @@ public sealed class TemporalVisibilityEquivalenceGpuTests(ITestOutputHelper outp
         Assert.True(unmet.Length == 0, "reported paths too thin: " + string.Join(", ", unmet));
     }
 
+    // The binade draws' jitter, each against a previous jitter of the other signs: every sign pair, zero, the float
+    // after zero and the float before one half.
+    static readonly (string Name, Vector2 Jitter, Vector2 Previous)[] BinadeDraws =
+    [
+        ("(+, +)", new(0.3125f, 0.2109375f), new(-0.125f, -0.375f)),
+        ("(+, -)", new(0.1875f, -0.4375f), new(-0.25f, 0.125f)),
+        ("(-, +)", new(-0.375f, 0.0625f), new(0.25f, -0.125f)),
+        ("(-, -)", new(-0.0625f, -0.2890625f), new(0.375f, 0.3125f)),
+        ("zero", Vector2.Zero, Vector2.Zero),
+        ("smallest positive x, largest y", new(float.Epsilon, BitConverter.Int32BitsToSingle(0x3EFFFFFF)),
+            new(-0.25f, 0f)),
+    ];
+
+    [GpuTheory]
+    [MemberData(nameof(Sizes))]
+    public void BinadeCasesTakeDsPathUnderPositiveJitterAndTheFastPathOtherwise(int width, int height, int displayWidth,
+        int displayHeight)
+    {
+        using var run = new TemporalVisibilityEquivalenceProbe(HardwareTarget, SoftwareTarget);
+        output.WriteLine($"{run.Device.Backend} on {run.Device.Capabilities.DeviceName}, {width}x{height} internal, "
+            + $"{displayWidth}x{displayHeight} display, {run.Size}x{run.Size} binade cases a draw");
+        var inputs = new TemporalVisibilityEquivalenceInputs(width, height, (ulong)(width * 7919 + height));
+        using var textures = new TemporalVisibilityEquivalenceProbe.Textures(run.Device, inputs);
+        // The powers of two the case pass places per axis: up to the last texel but one.
+        int[] lines = [Lines(width), Lines(height)];
+        int bitsCount = Enum.GetValues<Flag>().Length;
+        long cases = 0, wrong = 0, pathMismatch = 0, unruledDecisions = 0, unruledChanges = 0, unruledChecked = 0;
+        var mismatches = new List<string>();
+        for (int d = 0; d < BinadeDraws.Length; d++)
+        {
+            (string name, Vector2 jitter, Vector2 previous) = BinadeDraws[d];
+            TemporalVisibilityEquivalenceProbe.Outputs outputs = run.Run(textures,
+                new Vector2(displayWidth, displayHeight), jitter, previous, 11 + d, binade: true);
+            var counts = new long[bitsCount];
+            // Per power of two up to 2048, by axis: cases sent to D's path by it, and fast-path cases beside it.
+            var sent = new long[2, 12];
+            var kept = new long[2, 12];
+            long drawUnruledDecisions = 0, drawUnruledChanges = 0;
+            for (int i = 0; i < outputs.Centre.Length; i++)
+            {
+                ulong flags = TemporalVisibilityEquivalenceProbe.Combine(outputs, i);
+                for (int b = 0; b < bitsCount; b++) if ((flags & (1UL << b)) != 0) counts[b]++;
+                const ulong Wrong = (1UL << (int)Flag.DecisionMismatch) | (1UL << (int)Flag.ValidityMismatch)
+                    | (1UL << (int)Flag.ChangeMismatch);
+                if ((flags & Wrong) != 0) wrong++;
+                if ((flags & (1UL << (int)Flag.ReportedPathMismatch)) != 0) pathMismatch++;
+                if ((flags & (Wrong | (1UL << (int)Flag.ReportedPathMismatch))) != 0 && mismatches.Count < 16)
+                    mismatches.Add($"{name} case ({i % run.Size}, {i / run.Size}) centre {outputs.Centre[i]:R}: flags "
+                        + $"0x{flags:x10}, D change 0x{BitConverter.SingleToUInt32Bits(outputs.DChange[i]):x8}, production "
+                        + $"0x{BitConverter.SingleToUInt32Bits(outputs.NewChange[i]):x8}");
+                int packed = (int)outputs.Centre[i];
+                (int cx, int cy) = (packed % 4096, packed / 4096);
+                bool binade = (flags & (1UL << (int)Flag.ReportedSlowBinade)) != 0;
+                bool fast = (flags & (1UL << (int)Flag.ReportedFast)) != 0;
+                for (int axis = 0; axis < 2; axis++)
+                {
+                    int centre = axis == 0 ? cx : cy;
+                    float axisJitter = axis == 0 ? jitter.X : jitter.Y;
+                    for (int k = 0; k < 12; k++)
+                    {
+                        if (Math.Abs(centre - (1 << k)) > 1) continue;
+                        if (binade && TemporalVisibilityFastPath.SlowForBinade(1 << k, axisJitter)) sent[axis, k]++;
+                        if (fast) kept[axis, k]++;
+                    }
+                }
+                (bool decision, bool change) = TemporalVisibilityEquivalenceProbe.UnruledApart(outputs, i);
+                if (decision) drawUnruledDecisions++;
+                if (change) drawUnruledChanges++;
+            }
+            unruledDecisions += drawUnruledDecisions;
+            unruledChanges += drawUnruledChanges;
+            unruledChecked += outputs.Centre.Length;
+            cases += outputs.Centre.Length;
+            output.WriteLine($"  {name}, jitter ({jitter.X:R}, {jitter.Y:R}): fast {counts[(int)Flag.ReportedFast]}, "
+                + $"binade {counts[(int)Flag.ReportedSlowBinade]}, edge {counts[(int)Flag.PredictedSlowEdge]}, deviation "
+                + $"{counts[(int)Flag.PredictedSlowDeviation]}, border {counts[(int)Flag.PredictedSlowBorder]}, range skip "
+                + $"{counts[(int)Flag.ReportedRangeSkip]}, D releases {counts[(int)Flag.DRelease]}");
+            output.WriteLine($"    sent to D's path by x 1 to 2048: {Row(sent, 0)}, by y: {Row(sent, 1)}");
+            output.WriteLine($"    kept fast beside x 1 to 2048: {Row(kept, 0)}, beside y: {Row(kept, 1)}");
+            output.WriteLine($"    DIAGNOSTIC, not asserted: without the binade rule {drawUnruledDecisions} decisions and "
+                + $"{drawUnruledChanges} change bits differ from D");
+
+            Assert.Equal(outputs.Centre.Length, counts[(int)Flag.Written]);
+            // A positive axis sends every fitting block beside one of its powers of two to D's path, and a negative or
+            // zero one keeps them fast, line by line on the axes the size holds.
+            for (int axis = 0; axis < 2; axis++)
+            {
+                float axisJitter = axis == 0 ? jitter.X : jitter.Y;
+                for (int k = 0; k < lines[axis]; k++)
+                {
+                    long floor = run.Size >= HardwareTarget ? 100 : 4;
+                    if (BitConverter.SingleToInt32Bits(axisJitter) > 0)
+                        Assert.True(sent[axis, k] >= floor, $"{name}: {sent[axis, k]} cases sent to D's path by "
+                            + $"{"xy"[axis]} = {1 << k}, under {floor}");
+                    else
+                        Assert.True(kept[axis, k] >= floor, $"{name}: {kept[axis, k]} fast-path cases beside "
+                            + $"{"xy"[axis]} = {1 << k}, under {floor}");
+                }
+            }
+            if (jitter.X <= 0f && jitter.Y <= 0f)
+                Assert.True(counts[(int)Flag.ReportedSlowBinade] == 0, $"{name}: a draw without positive jitter sent "
+                    + $"{counts[(int)Flag.ReportedSlowBinade]} cases to D's path for a binade");
+        }
+        output.WriteLine($"  all {cases} cases: {wrong} differ from D, {pathMismatch} report another path than predicted");
+        output.WriteLine($"  DIAGNOSTIC, not asserted: without the binade rule, over {unruledChecked} cases, "
+            + $"{unruledDecisions} decisions and {unruledChanges} change bits differ from D on this device");
+        foreach (string mismatch in mismatches) output.WriteLine("  MISMATCH " + mismatch);
+        Assert.True(wrong == 0, $"{wrong} binade cases differ from D");
+        Assert.True(pathMismatch == 0, $"{pathMismatch} binade cases report another path than predicted");
+    }
+
+    static int Lines(int size)
+    {
+        int lines = 0;
+        for (int p = 1; p <= size - 2; p *= 2) lines++;
+        return lines;
+    }
+
+    static string Row(long[,] counts, int axis) => string.Join(" ", Enumerable.Range(0, 12).Select(k => counts[axis, k]));
+
     // One case's reported path, the slow path split by the classifier's reason.
     static void CountPaths(ulong flags, long[] paths)
     {
@@ -150,6 +276,7 @@ public sealed class TemporalVisibilityEquivalenceGpuTests(ITestOutputHelper outp
         if (Has(flags, Flag.PredictedSlowEdge)) paths[(int)Path.SlowEdge]++;
         else if (Has(flags, Flag.PredictedSlowDeviation)) paths[(int)Path.SlowDeviation]++;
         else if (Has(flags, Flag.PredictedSlowBorder)) paths[(int)Path.SlowBorder]++;
+        else if (Has(flags, Flag.PredictedSlowBinade)) paths[(int)Path.SlowBinade]++;
     }
 
     static string Describe(long[] counts) => string.Join(", ",

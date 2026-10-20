@@ -10934,7 +10934,8 @@ version or the load fails. The engine's own steps are pre-registered: v1 to v2 d
 `LegacyXzCallbackV1` support recipe. The v5 to v6 step (`MapWaterMigration.Upgrade`) adds no member.
 The v6 to v7 step (`MapPrefabMigration.Upgrade`) clones input and changes only `formatVersion`.
 The v7 to v8 step (`MapMarkerMigration.Upgrade`) clones input and changes only `formatVersion`.
-`MapDocumentFile.CurrentFormatVersion` is 8, and saving always writes it. Version and layout are independent
+The v8 to v9 step (`MapFoliageMigration.Upgrade`) clones input and changes only `formatVersion`.
+`MapDocumentFile.CurrentFormatVersion` is 9, and saving always writes it. Version and layout are independent
 axes, so a monolithic file at the current version is legal. Format 5 and the v4 to v5 step arrived in
 20.30.0. Format 6 adds optional bounded water in 20.32.0, format 7 adds rigid prefabs and building intent
 in 20.40.0, and format 8 adds general markers in 21.5.0. Releases up to 20.29.1 write format 4.
@@ -10946,13 +10947,49 @@ or tile, including open feature payloads, where the last value previously won.
 
 Format 7 moves every native root digest and resolver-2 authored identity once, including documents without
 prefabs. Format 8 is another pure version-only migration and moves every native identity once again. Rebuild
-identity-keyed caches and navigation captures after either migration.
+identity-keyed caches and navigation captures after either migration. Format 9 moves those identities once again,
+including documents without foliage. Absent foliage stays absent.
 
 From 20.30.0, a format-4 document migrates on load with no action from the game. Its authored
 identity token changes exactly once at that format advance, with no continuity to the old token, so
 recompute any stored token after the first load. That token change arrives with 20.30.0 too. Resolver-v1
 options, including the caller's `OptionsHash`, and resolver-v1 execution are unchanged. The authored-surface
 resolver version 2 is new in 20.30.0 and is opt-in through a document's resolver identity.
+
+### Native foliage and the R8 handoff
+
+Format 9 carries optional `MapFoliageSet` payload 1 independently of scatter, companions and explicit placements.
+Capture a complete immutable context once and reuse it across chunk calls. Partial terrain/content/foliage returns
+`PartialResidency`. R8 must add a windowed constructor and closure/completeness contract before streamed generation.
+
+```csharp
+using KhaozEngine.MapDoc.Foliage;
+
+var captured = MapFoliageGenerationContext.Capture(document, closure);
+if (captured.Status == MapFoliageStatus.Complete)
+{
+    var batch = MapFoliageDistribution.Generate(captured.Context!, "cover-a", new(0, 0));
+    var extents = batch.Samples.Select(s => s.AssetId).Distinct().Select(id =>
+    {
+        var asset = closure.GetAsset(id);
+        return new MapFoliageModelExtent(id, asset.RenderBounds, asset.SourceUnitsToMetres, 0.35f);
+    }).ToArray();
+    var handoff = MapFoliageRenderHandoff.Create(batch, extents);
+    // Only Complete is usable. Empty complete batches have null Bounds.
+}
+```
+
+Motion padding is explicit caller policy in metres. Transform all eight source-unit-adjusted mesh corners by each
+sample's exact CPU matrix, then expand XYZ. Preserve CPU selection, live blade/shrub profiles and shadow flags. Use the
+render dependency digest plus generation to reject stale work. Keep one owned batch across every intersected residency
+membership and release after the last leaves. The R8 handoff does not upload, stream, draw or certify appearance.
+
+The [MapDoc foliage contract](../KhaozEngine.MapDoc/README.md#native-foliage-consumer-contract) is the living reference
+for payload/storage ceilings, compatibility owner fallback, paint tie-break, typed refusals, aggregate budgets,
+`MapFoliageEffectSet(Chunks, Layers)`, whole-layer stale entries and public acceptance evidence. Bounds and density are
+cosmetic and never join statics, navigation captures or world bounds. Interactive painting stays R9, complete verb
+parity stays R10, actual import/source acceptance stays R11/G2 and appearance stays R8/G3. The
+[private harness](../KhaozEngine.MapDoc.OracleHarness.Tests/README.md) owns its test-only dependency boundary.
 
 ### Free buildings and effective resources
 
@@ -11321,7 +11358,7 @@ patch keys and semantic digests, the effective resource policy and query policy 
 the builder ID and version, the options hash and the resolver version. The content digest
 (`kemap/native-content/1`) covers placements, including explicit `Y`
 and `SupportBinding`, spawns, player spawns and sculpt tiles, normalized as scheme 1 normalizes them with
-placement display names stripped. `MapSurfaceSemantics.RootDigest` covers native globals, including format-8
+placement display names stripped. `MapSurfaceSemantics.RootDigest` covers native globals, including format-9
 prefab and building intent,
 and surface metadata, never tile content. Scoped identity covers its acquired effective facts and policies.
 Repacking, embedding and incident bookkeeping do not change the token.
@@ -13166,7 +13203,7 @@ the MCP boundary as raw JSON strings parsed with the open document's own seriali
 typed parameters. A lake feature: `{"type": "lake", "centerX": 34, "centerZ": -14, "radius": 22,
 "depth": 6}`. A disc shape: `{"type": "disc", "centerX": 0, "centerZ": 0, "radius": 26}`.
 
-**Verb surface (96 tools).**
+**Verb surface (101 tools).**
 
 | Group | Verbs |
 |---|---|
@@ -13184,6 +13221,16 @@ typed parameters. A lake feature: `{"type": "lake", "centerX": 34, "centerZ": -1
 | Prefabs | `prefab_open`, `prefab_edit`, `prefab_save`, `prefab_extract`, `prefab_place`, `prefab_list`, `prefab_override`, `prefab_unpack`, `prefab_undo`, `prefab_redo` |
 | Interiors | `interior_volume_add`, `interior_volume_set`, `interior_volume_remove`, `roof_link_set` |
 | Markers | `marker_set`, `marker_remove`, `marker_list`, `spawns_adopt` |
+| Foliage | `foliage_layer_set`, `foliage_get`, `foliage_density_set`, `foliage_paint`, `foliage_remove` |
+
+The five native foliage verbs use the shared command history and finalized effects. `foliage_layer_set` takes
+`layerJson`, optional `expectedDifferentialDigest` and `dryRun`. A policy change needs the exact proposal's preview
+token and publishes alone. A new-layer dry run refuses because no differential is needed. `foliage_density_set` takes
+`layerId`, `x`, `z`, `width`, `depth`, `density`. `foliage_paint` takes `layerId`, `worldX`, `worldZ`, `radiusMetres`,
+`target`, `hardness`. `foliage_remove` takes `layerId`. `foliage_get` takes optional `layerId`, the complete optional
+sample rectangle and `previewChunkJson`. Omitted layer lists detached metadata in authored order. A named layer returns
+copied bytes and optional CPU preview, including every matrix/quaternion component. See the
+[wire contract](../KhaozEngine.MapEdit.Tool/README.md#foliage) for results and refusal semantics.
 
 `sculpt_apply(brush, x, z, radius, strength, dt, targetHeight?)` applies one terrain-sculpt brush dab
 (`raise`/`lower`/`smooth`/`flatten`/`set_height`) at a world point as a single `TerrainSculptStrokeCommand`

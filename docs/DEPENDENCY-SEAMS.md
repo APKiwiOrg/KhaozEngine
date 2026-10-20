@@ -991,7 +991,7 @@ inherit it. The effective resource policy `kemap/effective-resources/1` and quer
 captured GPU-free resource view. The Light/Support `resourceSchema` discriminant does not move decoding into
 a renderer or physics backend, and unmarked bytes retain the released opaque path.
 
-Rigid prefab payloads, persisted bindings, format-8 identity, strict immutable resource closure,
+Rigid prefab payloads, persisted bindings, format-9 identity, strict immutable resource closure,
 local support ownership, partial paint, room parenting, AuthoredOpen portals, bounded effective
 witnesses, roof flags and versioned marker/light values stay in `MapDoc`. `MapDoc.Physics` consumes
 that same effective village for statics, water inputs, membership and annotation intent. Neither
@@ -1023,6 +1023,25 @@ caller.
 reloads, independent client and server heads, marker-only residency without physics or navigation change, and the
 shared commands with real MCP verbs. The [marker handoff](../KhaozEngine.MapDoc/README.md#public-marker-village-acceptance)
 names what R7 to R11, #1370 and #438 consume.
+
+### Native foliage runtime and private comparison boundary
+
+R7 adds no production package or umbrella edge. Payload 1, sparse storage, immutable full-snapshot context, prepared
+support/clearance, distribution/differential, pure edits, public finalization and `MapFoliageRenderHandoff` live in
+MapDoc over its existing Terrain edge. The handoff contains CPU records, `MapLocalBounds`, `MapBox3` and Numerics values.
+It introduces no renderer/GPU type, TileWorld, physics, editor or consumer dependency. MapEditor still has no
+MapDoc.Physics edge. MapDoc.Physics never consumes generated foliage for statics, world bounds or navigation.
+
+`GroundCoverCandidateEvaluator` and the lazy-channel trace remain Terrain CPU APIs. The frozen released legacy sampler
+is unchanged. The [private oracle harness README](../KhaozEngine.MapDoc.OracleHarness.Tests/README.md) is authoritative
+for its seven test-only references and comparison protocol. It is nonpackable, unreferenced, outside the solution and
+public CI. Do not copy that dependency into runtime code. Earlier private marker/building scaffolds keep their own
+format policies, they do not become format-9-only requirements.
+
+The [MapDoc foliage handoff](../KhaozEngine.MapDoc/README.md#public-foliage-acceptance-and-deferred-ownership) consolidates
+OA9, both-head/storage proofs, real wire acceptance and hosted foliage-conformance. R8 must add its windowed immutable
+context/completeness contract before streamed native generation. Actual rendering/residency and appearance, R9 input,
+R10 complete verbs and R11 actual import remain separate gates.
 
 ## Content catalog package edges
 

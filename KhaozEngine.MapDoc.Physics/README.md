@@ -244,6 +244,26 @@ Markers never join the world bounds that set navigation tile heights. The villag
 static, and removing it leaves the world extent and every capture identity unchanged. `MapMarkerBoundsTests` sets a
 marker above and one below every static and proves the same, with the marker's residency entry still installed.
 
+## Native foliage physical boundary
+
+`MapFoliageWorldTests` builds independent heads and both monolithic/tiled forms on invented stacked-support and
+released prefab-cave fixtures. `IndependentHeadsAndStorageForms_ProduceIdenticalOwnedFoliage` compares owned CPU
+samples, while `DensitySeedRuleAndMask_NeverChangeStaticsNavOrWorldBounds` proves cosmetic edits leave statics,
+placement envelopes, navigation captures and world bounds equal. `ColliderBuilder_ReferencesNoFoliageType` checks the
+builder type boundary. `MapFoliageHandoffBoundaryTests.HandoffCosmeticExtents_NeverChangeNavOrStatics` extends that proof
+to model extents and motion padding. This package consumes no foliage render batch and installs no foliage collider.
+
+| Consumer | Boundary and remaining proof |
+| --- | --- |
+| R7 | Complete CPU ownership and independent-head acceptance, with the [MapDoc evidence table](../KhaozEngine.MapDoc/README.md#public-foliage-acceptance-and-deferred-ownership) |
+| R8 | Cosmetic padded mesh bounds and one owned batch across intersected memberships. Actual residency/upload, windowed context, viewport drawing and interior-cut adapter [#1474](https://github.com/APKiwiOrg/KhaozEngine/issues/1474) remain |
+| R9 and R10 | Interactive painting/input and complete wire parity, including native placement ID rename |
+| R11/G2 and R8/G3 | Actual importer/source acceptance and appearance acceptance, respectively |
+
+The [MapDoc foliage contract](../KhaozEngine.MapDoc/README.md#native-foliage-consumer-contract) owns full-request support,
+canonical identity, ordinal fallback, typed refusal and atomic observer completion. Sparse storage does not prove
+partial-residency generation. R8 must add its immutable windowed closure/completeness constructor first.
+
 ## Pick, reach and stances
 
 ```csharp

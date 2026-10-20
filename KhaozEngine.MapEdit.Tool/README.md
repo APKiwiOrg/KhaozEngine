@@ -130,7 +130,7 @@ These are service APIs. Water MCP registrations remain with R10, so the register
 
 ## Prefab assets and native history
 
-The 21.5.0 native surface uses MapDoc format 8 and prefab payload 1. Rebuild identity-keyed caches/captures
+The native surface uses MapDoc format 9, prefab payload 1 and optional foliage payload 1. Rebuild identity-keyed caches/captures
 when adopting its effective resource policy. Light and Support resources require the `resourceSchema`
 discriminant documented in the [MapDoc reference](../KhaozEngine.MapDoc/README.md#rigid-prefab-payloads-and-building-intent).
 Unmarked bytes retain their released opaque meaning, and typed consumers refuse them clearly.
@@ -271,7 +271,8 @@ payload codec with its limits. A policy definition change refuses without the di
 returned. A dry run applies nothing and returns the identity-bound `MapFoliageDifferentialResult`. Only a layer set of an
 existing layer takes a dry run. A new layer needs no differential, so its dry run refuses and it can be applied directly.
 `foliage_paint` checks `target` against 0 to 255 before converting it. Every refusal leaves the document,
-history, dirty flag and identity unchanged.
+history, dirty flag and identity unchanged. A policy definition change publishes alone because its token binds the
+exact committed candidate.
 
 `MapFoliageMutationResult` carries `Applied`, `Status`, the whole authored `Identity` after the call, the finalized
 `Effects` description, `Dirty`, the next `UndoLabel` and `RedoLabel`, and the dry run's `Differential`.
@@ -289,6 +290,11 @@ The reply uses camelCase members and string enums, and writes every member even 
 base64 of a copy of the chunk's 1024 bytes beside its `sha256`. A sample's `position` is `x`, `y`, `z`, its `orientation`
 `x`, `y`, `z`, `w` and its `transform` `m11` through `m44`, with its `scale`, `thinningRank`, key, face, model and
 material references. Support bindings use the closed foliage shape of their kind. No reply exposes chunk memory.
+
+The [MapDoc foliage contract](../KhaozEngine.MapDoc/README.md#native-foliage-consumer-contract) owns storage limits,
+compatibility/refusal semantics and the padded CPU handoff. The inventory is 101 verbs. R7 supplies CPU preview only.
+Windowed generation/residency and interior cut remain R8, interactive painting R9, complete verb parity and native
+placement ID rename R10, actual import/source acceptance R11/G2 and appearance R8/G3.
 
 ## Native colliders
 

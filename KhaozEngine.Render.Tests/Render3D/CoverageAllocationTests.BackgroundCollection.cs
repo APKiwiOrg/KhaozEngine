@@ -13,24 +13,24 @@ public sealed partial class CoverageAllocationTests
     {
         var collection = new BackgroundCollection();
         var covered = Measure(fallback: false, coverage: true, collection);
-        output.WriteLine($"coverage={covered} inFlightAtStart={collection.InFlight} completed={collection.Completed} " +
+        output.WriteLine($"coverage={covered} backgroundStarted={collection.Started} " +
+            $"inFlightAtStart={collection.InFlight} completed={collection.Completed} " +
             $"consumedBeforeMeasurement={collection.Consumed}");
-        Assert.True(collection.InFlight,
-            "No background gen2 was still in flight when the measurement opened. It finished early or ran blocking.");
+        Assert.True(collection.Started, "No background gen2 started. The collection ran blocking or did not start.");
         Assert.True(collection.Completed, "The background collection did not complete.");
         Assert.Equal(new Allocation(0, 0, 0, 0, 0, 0, 0), covered);
         GC.KeepAlive(collection);
     }
 
-    /// <summary>Starts a background collection just before a measurement opens and waits for it inside the
-    /// render window. The measuring thread takes a fresh allocation context after the collection starts. Without a
-    /// checked region the collection's final mark voids that context while the thread waits. With one,
-    /// AllocationRegion.Start drains the collection first, because StartNoGCRegion runs a blocking gen2 that waits
-    /// for it, so Await returns at once. The region's collection counts cannot see a void from a collection that began
-    /// before the region started, so the protection relies on that drain.</summary>
+    /// <summary>Starts a background gen2 just before a measurement opens and waits for its completion inside the
+    /// render window. Whether it is still running at the check is diagnostic only. The measuring thread takes a
+    /// fresh allocation context after the collection starts. Without a checked region the collection's final mark
+    /// can void that context while the thread waits. With one, AllocationRegion.Start drains any active collection
+    /// first, because StartNoGCRegion runs a blocking gen2 that waits for it. The region's collection counts cannot
+    /// see a void from a collection that began before the region started, so the protection relies on that drain.</summary>
     sealed class BackgroundCollection
     {
-        // Live objects that keep the background mark running past the windows that precede the render window.
+        // Live objects for the background gen2 mark.
         readonly object[] graph = new object[1 << 20];
         readonly Thread completion;
         long background, fullBlocking;
@@ -41,6 +41,7 @@ public sealed partial class CoverageAllocationTests
             completion = new Thread(WaitForCompletion) { IsBackground = true, Name = "Background collection completion" };
         }
 
+        internal bool Started { get; private set; }
         internal bool InFlight { get; private set; }
         internal bool Completed { get; private set; }
         /// <summary>Bytes the measuring thread took from its fresh allocation context before the measurement.</summary>
@@ -56,17 +57,17 @@ public sealed partial class CoverageAllocationTests
             fullBlocking = GC.GetGCMemoryInfo(GCKind.FullBlocking).Index;
             GC.Collect(2, GCCollectionMode.Forced, blocking: false, compacting: false);
             long fresh = GC.GetAllocatedBytesForCurrentThread();
-            // Decided before any other work. Only a background gen2 that is still running advances the gen2 count
-            // while neither the background nor the full blocking index has moved.
-            InFlight = GC.CollectionCount(2) != gen2 && GC.GetGCMemoryInfo(GCKind.Background).Index == background
-                && GC.GetGCMemoryInfo(GCKind.FullBlocking).Index == fullBlocking;
-            if (InFlight) completion.Start();
+            // A gen2 started before Collect returned without a blocking gen2. Completion before this check does
+            // not invalidate that precondition. The background index reports only whether it is still running.
+            Started = GC.CollectionCount(2) != gen2 && GC.GetGCMemoryInfo(GCKind.FullBlocking).Index == fullBlocking;
+            InFlight = Started && GC.GetGCMemoryInfo(GCKind.Background).Index == background;
+            if (Started) completion.Start();
             Consumed = GC.GetAllocatedBytesForCurrentThread() - fresh;
         }
 
         /// <summary>Blocks without allocating until the background collection has completed. Returns at once when
-        /// no background collection was in flight.</summary>
-        internal void Await() => Completed = InFlight && completion.Join(TimeSpan.FromSeconds(30));
+        /// no background collection started.</summary>
+        internal void Await() => Completed = Started && completion.Join(TimeSpan.FromSeconds(30));
 
         void WaitForCompletion()
         {

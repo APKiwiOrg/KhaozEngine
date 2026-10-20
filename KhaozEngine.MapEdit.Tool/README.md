@@ -251,6 +251,42 @@ its status and the Surface owner. Without that owner, a rectangle holding a lega
 vector converter on the query tool options. Analytic and resolver (1, 1) documents keep their released field readouts
 and omit `support`.
 
+## Foliage
+
+The five foliage verbs are thin adapters over `MutationService.FoliageApply` and `QueryService.FoliageGet`. Edits run the
+GUI's `FoliageEditCommand` through the one native history, so the public document finalizer supplies their effects and
+`prefab_undo` and `prefab_redo` undo and redo them. Raster samples are columns X and rows Z, rows advance positive world
+Z, density bytes are 0 to 255 and brush positions and radii are world metres.
+
+| Verb | Parameters | Result |
+|---|---|---|
+| `foliage_layer_set` | `layerJson`, `expectedDifferentialDigest?`, `dryRun = false` | `MapFoliageMutationResult` |
+| `foliage_get` | `layerId?`, `x?`, `z?`, `width?`, `depth?`, `previewChunkJson?` | `FoliageReadWireResult` |
+| `foliage_density_set` | `layerId`, `x`, `z`, `width`, `depth`, `density` | `MapFoliageMutationResult` |
+| `foliage_paint` | `layerId`, `worldX`, `worldZ`, `radiusMetres`, `target`, `hardness` | `MapFoliageMutationResult` |
+| `foliage_remove` | `layerId` | `MapFoliageMutationResult` |
+
+`layerJson` is one closed payload 1 layer, the object a layer takes in the document foliage section, read by the
+payload codec with its limits. A policy definition change refuses without the digest a `dryRun` of the same proposal
+returned. A dry run applies nothing and returns the identity-bound `MapFoliageDifferentialResult`. Only a layer set takes
+a dry run. `foliage_paint` checks `target` against 0 to 255 before converting it. Every refusal leaves the document,
+history, dirty flag and identity unchanged.
+
+`MapFoliageMutationResult` carries `Applied`, `Status`, the whole authored `Identity` after the call, the finalized
+`Effects` description, `Dirty`, the next `UndoLabel` and `RedoLabel`, and the dry run's `Differential`.
+
+`foliage_get` with no `layerId` lists every layer's metadata in authoring order with its complete `chunkKeys`, and no
+density or preview. A named layer returns its metadata, the stored chunks its sample rectangle reaches when `x`, `z`,
+`width` and `depth` are all given, and a CPU preview of the closed chunk address `previewChunkJson` `{"x":0,"z":0}`.
+Absent chunks are omitted and read zero. A rectangle or preview without a layer ID, a partial rectangle, a rectangle
+outside the raster and one beyond 64 chunks or 65,536 samples refuse. One generation context serves every preview of
+one accepted session snapshot, and an edit, undo, redo or reload captures a new one.
+
+The reply uses camelCase members and string enums, and writes every member even when it is zero or null. Density is
+base64 of a copy of the chunk's 1024 bytes beside its `sha256`. A sample's `position` is `x`, `y`, `z`, its `orientation`
+`x`, `y`, `z`, `w` and its `transform` `m11` through `m44`, with its `scale`, `thinningRank`, key, face, model and
+material references. Support bindings use the closed foliage shape of their kind. No reply exposes chunk memory.
+
 ## Native colliders
 
 `NativeCollisionService(session)` measures and edits the colliders of the open native document. It is a service
@@ -381,7 +417,7 @@ GPU with a scatter-free document (flat terrain and a single marker placement), a
 to 1.4 s (the higher figure includes first device start-up) and a capped 2 km square about 0.9 s. A document with
 dense scatter layers pays for every scattered prop inside the widened ring as well, so expect longer renders.
 
-## Verb surface (96 tools)
+## Verb surface (101 tools)
 
 | Group | Verbs |
 |---|---|
@@ -399,6 +435,7 @@ dense scatter layers pays for every scattered prop inside the widened ring as we
 | Prefabs | `prefab_open`, `prefab_edit`, `prefab_save`, `prefab_extract`, `prefab_place`, `prefab_list`, `prefab_override`, `prefab_unpack`, `prefab_undo`, `prefab_redo` |
 | Interiors | `interior_volume_add`, `interior_volume_set`, `interior_volume_remove`, `roof_link_set` |
 | Markers | `marker_set`, `marker_remove`, `marker_list`, `spawns_adopt` |
+| Foliage | `foliage_layer_set`, `foliage_get`, `foliage_density_set`, `foliage_paint`, `foliage_remove` |
 
 `scatter_override_rename(index, name?)` renames the scatter override at `index`, a null or empty name
 clearing it back to unnamed. `scatter_override_reorder(fromIndex, toIndex)` moves a scatter override

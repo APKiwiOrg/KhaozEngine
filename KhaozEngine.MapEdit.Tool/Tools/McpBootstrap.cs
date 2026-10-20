@@ -49,6 +49,7 @@ public static class McpBootstrap
         builder.WithTools<PrefabTools>(MapPrefabJson.ToolOptions);
         builder.WithTools<InteriorTools>(MapPrefabJson.ToolOptions);
         builder.WithTools<MarkerTools>(MapPrefabJson.ToolOptions);
+        builder.WithTools<FoliageTools>(FoliageWire.ToolOptions);
         return builder;
     }
 }

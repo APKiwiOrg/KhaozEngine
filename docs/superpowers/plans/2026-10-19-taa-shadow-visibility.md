@@ -307,11 +307,11 @@ bool temporalVisibilityReleases(vec2 uv, ivec2 centre, ivec2 last, vec2 previous
     out float signedChange, out uint path);
 ```
 
-- [ ] Write the compilable contract first, then the behavioural RED: point the wrapper at the new function while it still calls D, set the fast path and R4 skip minimums and the reported-equals-predicted assertions, and record their failure on Metal.
-- [ ] Implement the fast path under the design review's preconditions (consecutive separable bases on both axes, block inside `[0, last]`), D verbatim otherwise, and R4 with the `2^-13` margin after the current mean. Gate the call site on the post-release `lockValue` bits, never on the stored lock or the hold.
-- [ ] Assert the target SPIR-V counts: fewer `OpImageFetch`, zero `OpImageGather` and no `OpLoopMerge` added by the fast path. Author a hosted Windows compile-only fact that disassembles the shipped `TemporalAccumulate` DXBC, refuses `dcl_indexableTemp` and checks the fast path's position chain keeps FXC's reassociated order for D. It runs in 7f.5.
-- [ ] Run the Release build, the device-free classes of 7f.1 plus `TemporalResolveShaderTests|ShaderCorpusTests|VulkanSpirvByteEqualityTests`, then one `--heavy` Metal run of `TemporalVisibilityEquivalence|TemporalVisibilityResolveAb|TemporalVisibilityComparisonGpuTests|TemporalEntryIdentityGpuTests|TemporalCountProbeGpuTests|TemporalDebugViewGoldenTests`.
-- [ ] Commit `perf(taa): share the visibility history block and skip uniform footprints`.
+- [x] Write the compilable contract first, then the behavioural RED: point the wrapper at the new function while it still calls D, set the fast path and R4 skip minimums and the reported-equals-predicted assertions, and record their failure on Metal.
+- [x] Implement the fast path under the design review's preconditions (consecutive separable bases on both axes, block inside `[0, last]`), D verbatim otherwise, and R4 with the `2^-13` margin after the current mean. Gate the call site on the post-release `lockValue` bits, never on the stored lock or the hold.
+- [x] Assert the target SPIR-V counts: fewer `OpImageFetch`, zero `OpImageGather` and no `OpLoopMerge` added by the fast path. Author a hosted Windows compile-only fact that disassembles the shipped `TemporalAccumulate` DXBC, refuses `dcl_indexableTemp` and checks the fast path's position chain keeps FXC's reassociated order for D. It runs in 7f.5. Static counts are 89 `OpImageFetch` per accumulate program against D's 30, because D's looped 7 stay as the slow path. A fast-path pixel issues 59 fetches against D's 101, or 43 under the range skip.
+- [x] Run the Release build, the device-free classes of 7f.1 plus `TemporalResolveShaderTests|ShaderCorpusTests|VulkanSpirvByteEqualityTests`, then one `--heavy` Metal run of `TemporalVisibilityEquivalence|TemporalVisibilityResolveAb|TemporalVisibilityComparisonGpuTests|TemporalEntryIdentityGpuTests|TemporalCountProbeGpuTests|TemporalDebugViewGoldenTests`.
+- [x] Commit `perf(taa): share the visibility history block and skip uniform footprints`.
 
 **Definition of done:** zero mismatches, bitwise-equal change, every path covered, reported paths equal the predicted ones, the A/B and entry identity stay exact, and the frozen pins are unchanged.
 

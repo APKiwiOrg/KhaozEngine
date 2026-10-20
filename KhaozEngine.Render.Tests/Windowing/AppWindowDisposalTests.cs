@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Tests.Gpu;
 using KhaozEngine.Windowing;
+using KhaozEngine.Windowing.Rumble;
 using Silk.NET.Input;
 using Silk.NET.Windowing;
 using Xunit;
@@ -19,18 +20,24 @@ public sealed class AppWindowDisposalTests
     [InlineData("release", true)]
     [InlineData("query", false)]
     [InlineData("query", true)]
+    [InlineData("rumble", false)]
+    [InlineData("input", false)]
     [InlineData("input", true)]
+    [InlineData("tap", false)]
+    [InlineData("commands", false)]
+    [InlineData("device", false)]
+    [InlineData("window", false)]
     [InlineData("none", false)]
-    public void Disposal_attempts_every_step_in_order_and_rethrows_the_first_failure(string firstFailure, bool laterFailures)
+    public void Disposal_attempts_every_step_in_order_and_only_rethrows_submission_failures(string firstFailure, bool laterFailures)
     {
         var order = new List<string>();
         var original = new InvalidOperationException("original teardown failure");
         var later = new InvalidOperationException("later teardown failure");
         using var inner = new SubmissionTestDevice(0) { AllowCommandList = true };
-        var device = new TeardownDevice(inner, () => Step("device", laterFailures));
+        var device = new TeardownDevice(inner, () => Step("device", true));
         var context = new GpuDeviceContext(device, null, null,
             new GpuBackendSelection(device.Backend, GpuBackendSource.OsProbe, null), ownsDevice: true);
-        var commands = DisposalProxy.Create<IGpuCommandList>(() => Step("commands", laterFailures));
+        var commands = DisposalProxy.Create<IGpuCommandList>(() => Step("commands", true));
         var frame = new Frame { Commands = commands };
         frame.BeginSubmission(device);
         Assert.True(frame.Submission.TryRetain(Consumer(), out _));
@@ -42,33 +49,34 @@ public sealed class AppWindowDisposalTests
         Set("_device", device);
         Set("_gpu", context);
         Set("_cl", commands);
-        Set("_input", DisposalProxy.Create<IInputContext>(() => Step("input", firstFailure == "input", original)));
-        Set("_window", DisposalProxy.Create<IWindow>(() => Step("window", laterFailures)));
-        window.AddCaptureTap(new Tap(() => Step("tap", laterFailures)));
+        Set("_rumble", DisposalProxy.Create<IRumble>(() => Step("rumble"), nameof(IRumble.StopAll)));
+        Set("_input", DisposalProxy.Create<IInputContext>(() => Step("input")));
+        Set("_window", DisposalProxy.Create<IWindow>(() => Step("window", true)));
+        window.AddCaptureTap(new Tap(() => Step("tap", true)));
         var taps = (FrameCaptureTaps)typeof(AppWindow).GetField("_captureTaps", BindingFlags.Instance | BindingFlags.NonPublic)!
             .GetValue(window)!;
 
         Exception? failure = Record.Exception(window.Dispose);
 
-        Assert.Equal(new[] { "input", "release", "query", "tap", "commands", "device", "window" }, order);
+        Assert.Equal(new[] { "rumble", "input", "release", "query", "tap", "commands", "device", "window" }, order);
         Assert.Equal(0, taps.Count);
         Assert.Throws<ObjectDisposedException>(() => window.AddCaptureTap(new Tap(() => { })));
-        if (firstFailure == "none") Assert.Null(failure);
-        else
+        if (firstFailure is "release" or "query")
         {
             Assert.Same(original, failure);
-            Assert.Contains(firstFailure == "input" ? nameof(Step)
-                : firstFailure == "release" ? nameof(Release)
+            Assert.Contains(firstFailure == "release" ? nameof(Release)
                 : nameof(Query), failure.StackTrace);
         }
+        else Assert.Null(failure);
 
         void Set(string field, object value) =>
             typeof(AppWindow).GetField(field, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(window, value);
 
-        void Step(string name, bool fail, Exception? error = null)
+        void Step(string name, bool failLater = false)
         {
             order.Add(name);
-            if (fail) throw error ?? later;
+            if (firstFailure == name) throw original;
+            if (failLater && laterFailures) throw later;
         }
 
         bool Query()
@@ -104,17 +112,19 @@ public sealed class AppWindowDisposalTests
     public class DisposalProxy : DispatchProxy
     {
         Action dispose = null!;
+        string method = null!;
 
-        internal static T Create<T>(Action dispose) where T : class
+        internal static T Create<T>(Action dispose, string method = nameof(IDisposable.Dispose)) where T : class
         {
             T result = Create<T, DisposalProxy>();
             ((DisposalProxy)(object)result).dispose = dispose;
+            ((DisposalProxy)(object)result).method = method;
             return result;
         }
 
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
         {
-            if (targetMethod?.Name != nameof(IDisposable.Dispose)) throw new NotSupportedException(targetMethod?.Name);
+            if (targetMethod?.Name != method) throw new NotSupportedException(targetMethod?.Name);
             dispose();
             return null;
         }

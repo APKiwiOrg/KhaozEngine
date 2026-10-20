@@ -748,22 +748,15 @@ namespace KhaozEngine.Windowing
             catch (Exception failure) { error ??= ExceptionDispatchInfo.Capture(failure); }
             // Unregister the GLFW clipboard provider before GLFW is torn down so a later Clipboard call can
             // never dereference this window's freed GLFW handle.
-            try { Clipboard.ClearTextProvider(); }
-            catch (Exception failure) { error ??= ExceptionDispatchInfo.Capture(failure); }
-            try { _rumble?.StopAll(); } // leave no motor buzzing after teardown
-            catch (Exception failure) { error ??= ExceptionDispatchInfo.Capture(failure); }
-            try { _input?.Dispose(); }
-            catch (Exception failure) { error ??= ExceptionDispatchInfo.Capture(failure); }
+            try { Clipboard.ClearTextProvider(); } catch { }
+            try { _rumble?.StopAll(); } catch { } // leave no motor buzzing after teardown
+            try { _input?.Dispose(); } catch { }
             try { _frame.DisposeSubmission(); }
             catch (Exception failure) { error ??= ExceptionDispatchInfo.Capture(failure); }
-            try { _captureTaps?.Dispose(); }
-            catch (Exception failure) { error ??= ExceptionDispatchInfo.Capture(failure); }
-            try { _cl?.Dispose(); }
-            catch (Exception failure) { error ??= ExceptionDispatchInfo.Capture(failure); }
-            try { _gpu?.Dispose(); }
-            catch (Exception failure) { error ??= ExceptionDispatchInfo.Capture(failure); }
-            try { _window?.Dispose(); }
-            catch (Exception failure) { error ??= ExceptionDispatchInfo.Capture(failure); }
+            try { _captureTaps?.Dispose(); } catch { }
+            try { _cl?.Dispose(); } catch { }
+            try { _gpu?.Dispose(); } catch { }
+            try { _window?.Dispose(); } catch { }
             error?.Throw();
         }
     }

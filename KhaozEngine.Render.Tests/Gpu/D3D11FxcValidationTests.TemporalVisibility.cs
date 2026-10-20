@@ -21,14 +21,19 @@ namespace KhaozEngine.Tests.Gpu
     /// texel as its own value, so FXC must not have placed one in an indexed array. Second, the position chains. FXC at
     /// the shipped flags compiles a chain's head as written, <c>(at + 0.5) - J</c>, in some places and reassociated,
     /// <c>(at - J) + 0.5</c>, in others (hosted run 39362804399). The binade rule makes the two give the same bits
-    /// wherever the fast path runs (<see cref="TemporalVisibilityFastPath.SlowForBinade"/>), and that is all it proves.
-    /// So every chain in D's program and the shipped one must head in one of those two orders, subtract one of the
-    /// jitter elements D's chains subtract, and continue from the division exactly as one of D's chains does, and the
-    /// shipped program must hold D's chains plus the fast path's six. Each check compares the shipped program against
-    /// the same program rewritten to D (<see cref="TemporalVisibilityFrozenD.ToD"/>), compiled the same way, so whatever
-    /// D's own program declares or computes elsewhere is the baseline. Every program's chains are logged by form, with
-    /// any -0.5 position the reader could not read and the instructions behind it. The disassembly is read by
-    /// <see cref="TemporalVisibilityDxbc"/>, whose own facts run on every leg, on real FXC text among others.
+    /// wherever the fast path runs (<see cref="TemporalVisibilityFastPath.SlowForBinade"/>), and every binade block
+    /// runs D's function inside the shipped program instead. So D's chains, inside D's loops, must compile in the
+    /// shipped program exactly as in D's: the shipped in-loop chains, by head form, jitter element and remainder from
+    /// the division on, are D's chain for chain. The fast path adds exactly six straight-line chains, three per jitter
+    /// element, each in one of the two analysed orders and with one of D's remainders
+    /// (<see cref="TemporalVisibilityDxbcComparison"/>). Each check compares the shipped program against the same
+    /// program rewritten to D (<see cref="TemporalVisibilityFrozenD.ToD"/>), compiled the same way, so whatever D's own
+    /// program declares or computes elsewhere is the baseline. It covers the decision helper, the four accumulate
+    /// programs of the split's second pass and, since review 7f r3 (m-1), the fused TemporalResolve and
+    /// TemporalResolveHalf programs, which carry the decision wherever the fused entry runs. Every program's chains are
+    /// logged by loop and form, with any -0.5 position the reader could not read and the instructions behind it. The
+    /// disassembly is read by <see cref="TemporalVisibilityDxbc"/>, whose own facts run on every leg, on the full
+    /// programs as hosted run 39374926165 printed them among others.
     /// </summary>
     public sealed partial class D3D11FxcValidationTests
     {
@@ -36,14 +41,17 @@ namespace KhaozEngine.Tests.Gpu
 
         public D3D11FxcValidationTests(ITestOutputHelper output) => _output = output;
 
-        /// <summary>The second pass at both precisions, upscaling and at the display's own size.</summary>
-        static readonly (string Name, string Source)[] AccumulatePrograms =
+        /// <summary>Every program that carries the decision: the second pass at both precisions, upscaling and at the
+        /// display's own size, and the fused resolve at both precisions.</summary>
+        internal static readonly (string Name, string Source)[] VisibilityPrograms =
         [
             (nameof(ShaderSources.TemporalAccumulateFrag), ShaderSources.TemporalAccumulateFrag),
             (nameof(ShaderSources.TemporalAccumulateHalfFrag), ShaderSources.TemporalAccumulateHalfFrag),
             (nameof(ShaderSources.TemporalAccumulateAtDisplaySizeFrag), ShaderSources.TemporalAccumulateAtDisplaySizeFrag),
             (nameof(ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag),
                 ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag),
+            (nameof(ShaderSources.TemporalResolveFrag), ShaderSources.TemporalResolveFrag),
+            (nameof(ShaderSources.TemporalResolveHalfFrag), ShaderSources.TemporalResolveHalfFrag),
         ];
 
         [Fact]
@@ -58,22 +66,27 @@ namespace KhaozEngine.Tests.Gpu
         void CheckVisibilityFastPath()
         {
             var failures = new List<string>();
-            // The decision alone, D's slow path beside the fast path: no indexable temp at all, and six chains more
-            // than D's helper alone, each in an analysed order with D's remainder.
+            // The decision alone, D's slow path beside the fast path: no indexable temp at all, D's chains in D's loops
+            // as D's helper compiles them, and the fast path's six.
             string helper = Disassemble(TemporalVisibilityCompiledFormTests.DecisionHelperProgram, "visibility decision");
-            string dHelper = Disassemble(TemporalVisibilityCompiledFormTests.DecisionHelperProgram
-                .Replace(ShaderSources.TemporalVisibilityGlsl, TemporalVisibilityFrozenD.VisibilityGlsl
-                    + DHelperDecision, StringComparison.Ordinal), "visibility decision as D");
+            string dHelper = Disassemble(DHelperProgram, "visibility decision as D");
             if (TemporalVisibilityDxbc.Declarations(helper).IndexableTemps.Length > 0)
                 failures.Add("the decision helper declares an indexable temp: "
                     + string.Join(" ", TemporalVisibilityDxbc.Declarations(helper).IndexableTemps));
-            Compare("decision helper", dHelper, helper, failures);
-            foreach ((string name, string source) in AccumulatePrograms)
-                Compare(name, Disassemble(TemporalVisibilityFrozenD.ToD(source), name + " as D"),
-                    Disassemble(source, name), failures);
+            failures.AddRange(TemporalVisibilityDxbcComparison.Compare("decision helper", dHelper, helper, Log));
+            foreach ((string name, string source) in VisibilityPrograms)
+                failures.AddRange(TemporalVisibilityDxbcComparison.Compare(name,
+                    Disassemble(TemporalVisibilityFrozenD.ToD(source), name + " as D"), Disassemble(source, name), Log));
             Assert.True(failures.Count == 0, "The visibility fast path does not compile to D's DXBC shape:\n  "
                 + string.Join("\n  ", failures));
+
+            void Log(string line) => _output?.WriteLine(line);
         }
+
+        /// <summary>The decision helper with its decision replaced by one that only calls D.</summary>
+        internal static string DHelperProgram => TemporalVisibilityCompiledFormTests.DecisionHelperProgram
+            .Replace(ShaderSources.TemporalVisibilityGlsl, TemporalVisibilityFrozenD.VisibilityGlsl + DHelperDecision,
+                StringComparison.Ordinal);
 
         // A decision that only calls D, so D's helper compiles with the same main as the shipped one.
         const string DHelperDecision = @"
@@ -85,50 +98,6 @@ bool temporalVisibilityReleases(vec2 uv, ivec2 centre, ivec2 last, vec2 previous
     return valid && abs(signedChange) > VisibilityReleaseThreshold;
 }
 ";
-
-        // The shipped program against its D form: the same indexable temps, D's position chains plus the fast path's
-        // six, every head in one of the two analysed orders with one of D's jitter elements, and every remainder one
-        // of D's.
-        void Compare(string name, string d, string shipped, List<string> failures)
-        {
-            (int dTemps, string[] dIndexable) = TemporalVisibilityDxbc.Declarations(d);
-            (int temps, string[] indexable) = TemporalVisibilityDxbc.Declarations(shipped);
-            List<string> dChains = TemporalVisibilityDxbc.Chains(d), chains = TemporalVisibilityDxbc.Chains(shipped);
-            _output?.WriteLine($"{name}: dcl_temps {temps} (D {dTemps}), indexable temps [{string.Join(" ", indexable)}] "
-                + $"(D [{string.Join(" ", dIndexable)}]), {chains.Count} position chain components (D {dChains.Count})");
-            Log("D", d, dChains);
-            Log("shipped", shipped, chains);
-            if (!indexable.SequenceEqual(dIndexable))
-                failures.Add($"{name}: indexable temps [{string.Join(" ", indexable)}], D's [{string.Join(" ", dIndexable)}]");
-            if (dChains.Count < 2) failures.Add($"{name}: D's DXBC shows {dChains.Count} position chain components, not 2 or more");
-            if (chains.Count != dChains.Count + 6)
-                failures.Add($"{name}: {chains.Count} position chain components, {dChains.Count} in D plus 6 expected");
-            foreach ((string side, List<string> list) in new[] { ("D's", dChains), ("the shipped", chains) })
-                foreach (string chain in list.Distinct().Where(c => Is(c, TemporalVisibilityDxbc.HeadForm.Other)))
-                    failures.Add($"{name}: {side} program has a position chain whose head is neither analysed order: {chain}");
-            var remainders = dChains.Select(TemporalVisibilityDxbc.Remainder).ToHashSet(StringComparer.Ordinal);
-            var jitters = dChains.Select(TemporalVisibilityDxbc.Jitter).OfType<string>().ToHashSet(StringComparer.Ordinal);
-            foreach (string chain in chains.Distinct())
-            {
-                if (!remainders.Contains(TemporalVisibilityDxbc.Remainder(chain)))
-                    failures.Add($"{name}: a position chain whose remainder no chain of D's has: {chain}");
-                if (TemporalVisibilityDxbc.Jitter(chain) is { } jitter && !jitters.Contains(jitter))
-                    failures.Add($"{name}: a position chain subtracting {jitter}, which no chain of D's subtracts: {chain}");
-            }
-
-            static bool Is(string chain, TemporalVisibilityDxbc.HeadForm form) => TemporalVisibilityDxbc.Form(chain) == form;
-
-            void Log(string side, string disassembly, List<string> list)
-            {
-                _output?.WriteLine($"  {side}: {list.Count(c => Is(c, TemporalVisibilityDxbc.HeadForm.Written))} written, "
-                    + $"{list.Count(c => Is(c, TemporalVisibilityDxbc.HeadForm.Reassociated))} reassociated, "
-                    + $"{list.Count(c => Is(c, TemporalVisibilityDxbc.HeadForm.Other))} other");
-                foreach (string chain in list.Distinct())
-                    _output?.WriteLine($"    {list.Count(c => c == chain)} x {TemporalVisibilityDxbc.Form(chain)}: {chain}");
-                foreach (string unread in TemporalVisibilityDxbc.Unread(disassembly).Take(24))
-                    _output?.WriteLine($"    unread -0.5 position, {unread}");
-            }
-        }
 
         [SupportedOSPlatform("windows")]
         static string Disassemble(string fragment, string label)

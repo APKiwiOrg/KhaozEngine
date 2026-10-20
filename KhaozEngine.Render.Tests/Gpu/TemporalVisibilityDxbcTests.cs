@@ -13,7 +13,9 @@ namespace KhaozEngine.Tests.Gpu
     /// registers the chain adds are defined first, as FXC defines them: <c>previousUv</c> computed from the input and
     /// the motion, <c>uv</c> moved from the input and <c>Jp / S</c> divided from the constant buffer. One copy pins the
     /// limit the reader states: another <c>add</c> result where D adds <c>previousUv</c> reads as D's chain. Device-free
-    /// on every leg, so the Windows-only check never meets a reader that only ever ran there.
+    /// on every leg, so the Windows-only check never meets a reader that only ever ran there. Since fix round 7f r4 it
+    /// also reads the precise shape of the full programs, and every chain carries its loop depth.
+    /// <see cref="TemporalVisibilityDxbcRealProgramTests"/> runs the whole check on the full programs' real text.
     /// </summary>
     public sealed class TemporalVisibilityDxbcTests
     {
@@ -249,7 +251,7 @@ endloop
             Assert.Equal(2, strict.Count);
             Assert.All(strict, c => Assert.Equal(TemporalVisibilityDxbc.HeadForm.Written, TemporalVisibilityDxbc.Form(c)));
             Assert.Equal(shipped.Select(TemporalVisibilityDxbc.Jitter), strict.Select(TemporalVisibilityDxbc.Jitter));
-            static string Unmarked(string chain) => Regex.Replace(chain, @" \[precise\([xyzw]*\)\]", "");
+            static string Unmarked(string chain) => chain.Replace(" [precise]", "", System.StringComparison.Ordinal);
             Assert.Equal(shipped.Select(TemporalVisibilityDxbc.Remainder),
                 strict.Select(c => Unmarked(TemporalVisibilityDxbc.Remainder(c))));
             Assert.Empty(TemporalVisibilityDxbc.Unread(TemporalVisibilityDxbcSamples.ProbeStrict));
@@ -287,6 +289,89 @@ endloop
             Assert.Contains("< div r5.xy, r5.xyxx, cb0[3].xyxx < add r5.xy", unread[0], System.StringComparison.Ordinal);
             Assert.Contains("< itof r5.xy, r6.xyxx", unread[0], System.StringComparison.Ordinal);
             Assert.Empty(TemporalVisibilityDxbc.Unread(DChain + FastCopy));
+        }
+
+        /// <summary>A chain carries the loop depth of its last step: D's inside its loop, a copy after the loop
+        /// straight-line.</summary>
+        [Fact]
+        public void ChainsCarryTheLoopDepthOfTheirLastStep()
+        {
+            List<TemporalVisibilityDxbc.Chain> found = TemporalVisibilityDxbc.Found(DChain + FastCopy);
+            Assert.Equal([1, 1, 0, 0], found.Select(c => c.LoopDepth));
+            Assert.Equal(found.GetRange(0, 2).Select(c => c.Signature), found.GetRange(2, 2).Select(c => c.Signature));
+        }
+
+        // D's chain as FXC writes it where every instruction is precise: the half added first, and the last two steps a
+        // mul and an add of -0.5 rather than one mad, with the head hoisted above the loop on a four-wide vector.
+        const string PreciseChain = @"
+ps_5_0
+dcl_globalFlags refactoringAllowed
+dcl_immediateConstantBuffer { { 1.000000, 0, 0, 0},
+                              { 0, 1.000000, 0, 0} }
+dcl_temps 12
+div [precise(xy)] r4.xy, cb0[5].xyxx, cb0[3].xyxx
+mov [precise(xy)] r3.xy, v1.xyxx
+ld_indexable [precise(xy)](texture2d)(float,float,float,float) r1.xy, r0.xyzw, t1.xyzw
+add [precise(xy)] r2.xy, v1.xyxx, -r1.xyxx
+itof [precise] r10.xyzw, r9.xyxy
+add [precise] r10.xyzw, r10.xyzw, l(0.500000, 0.500000, 0.500000, 0.500000)
+add [precise] r10.xyzw, r10.xyzw, -cb0[4].xyxy
+loop
+  div [precise(xy)] r11.xy, r10.xyxx, cb0[3].xyxx
+  add [precise(xy)] r11.xy, r2.xyxx, r11.xyxx
+  add [precise(xy)] r11.xy, -r3.xyxx, r11.xyxx
+  add [precise(xy)] r11.xy, r4.xyxx, r11.xyxx
+  mul [precise(xy)] r11.xy, r11.xyxx, cb0[3].xyxx
+  add [precise(xy)] r11.xy, r11.xyxx, l(-0.500000, -0.500000, 0.000000, 0.000000)
+  round_ni [precise(xy)] r6.xy, r11.xyxx
+endloop
+";
+
+        /// <summary>The shape every full program shows: precise markings read as <c>[precise]</c> on the steps they
+        /// cover, a mul and an add of -0.5 end the chain, the immediate constant buffer's lines are skipped, and the
+        /// resource types glued to a marking are parsed off it.</summary>
+        [Fact]
+        public void APreciseChainEndingInAMulAndAnAddReads()
+        {
+            List<TemporalVisibilityDxbc.Chain> found = TemporalVisibilityDxbc.Found(PreciseChain);
+            Assert.Equal(
+            [
+                "itof [precise] > add [precise] +l(0.500000) > add [precise] -cb0[4].x > div [precise] +cb0[3].x "
+                    + "> add [precise] +r(add) > add [precise] -r(+v1.x) > add [precise] +r(div +cb0[5].x +cb0[3].x) "
+                    + "> mul [precise] +cb0[3].x > add [precise] l(-0.500000)",
+                "itof [precise] > add [precise] +l(0.500000) > add [precise] -cb0[4].y > div [precise] +cb0[3].y "
+                    + "> add [precise] +r(add) > add [precise] -r(+v1.y) > add [precise] +r(div +cb0[5].y +cb0[3].y) "
+                    + "> mul [precise] +cb0[3].y > add [precise] l(-0.500000)",
+            ], found.Select(c => c.Signature));
+            Assert.All(found, c => Assert.Equal(1, c.LoopDepth));
+            Assert.All(found, c => Assert.Equal(TemporalVisibilityDxbc.HeadForm.Written, TemporalVisibilityDxbc.Form(c.Signature)));
+            Assert.Empty(TemporalVisibilityDxbc.Unread(PreciseChain));
+            List<TemporalVisibilityDxbc.Instruction> code = TemporalVisibilityDxbc.Parse(PreciseChain);
+            Assert.DoesNotContain(code, i => i.Opcode.StartsWith('{'));
+            TemporalVisibilityDxbc.Instruction load = code.Single(i => i.Opcode.StartsWith("ld_indexable", System.StringComparison.Ordinal));
+            Assert.Equal(("ld_indexable(texture2d)(float,float,float,float)", "xy"), (load.Opcode, load.Precise));
+            Assert.Equal(["r1.xy"], load.Destinations);
+            Assert.Equal("xyzw", code.Single(i => i.Opcode == "itof").Precise);
+        }
+
+        /// <summary>An add of -0.5 to a register no multiplication by a constant wrote is no position, and one whose
+        /// multiplication follows no chain is listed.</summary>
+        [Fact]
+        public void AnAddOfMinusAHalfReadsOnlyAfterAMultiplicationByAConstant()
+        {
+            const string NotAPosition = @"
+  add r5.xy, r6.xyxx, l(-0.500000, -0.500000, 0.000000, 0.000000)
+";
+            const string UnreadPosition = @"
+  mul r5.xy, r6.xyxx, cb0[3].xyxx
+  add r5.xy, r5.xyxx, l(-0.500000, -0.500000, 0.000000, 0.000000)
+";
+            Assert.Empty(TemporalVisibilityDxbc.Unread(NotAPosition));
+            List<string> unread = TemporalVisibilityDxbc.Unread(UnreadPosition);
+            Assert.Equal(2, unread.Count);
+            Assert.StartsWith("component x: add r5.xy, r5.xyxx, l(-0.500000", unread[0], System.StringComparison.Ordinal);
+            Assert.Contains("< mul r5.xy, r6.xyxx, cb0[3].xyxx", unread[0], System.StringComparison.Ordinal);
+            Assert.Empty(TemporalVisibilityDxbc.Found(UnreadPosition));
         }
 
         [Fact]

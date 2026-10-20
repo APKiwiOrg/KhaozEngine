@@ -38,10 +38,25 @@ namespace KhaozEngine.Tests.Gpu;
 /// <c>(at - J) + 0.5</c>, or neither, and <see cref="Remainder"/> is the chain from the division on. Every
 /// <c>mad</c> by a literal -0.5 that reads as no chain is listed by <see cref="Unread"/> with the instructions behind
 /// it, so a program whose chains the reader misses shows why.</para>
+/// <para>Fix round 7f r4, after hosted run 39374926165 printed the full programs. FXC marks every instruction of the
+/// shipped accumulate and resolve programs precise, so there it neither reassociates a chain nor fuses its last two
+/// steps: the chain ends <c>mul S</c> then <c>add -0.5</c>, not <c>mad S -0.5</c>, and the r3 reader, which knew only
+/// the <c>mad</c>, found no chain at all. It also hoists the fast path's heads above the call site's branch, four
+/// components in one vector register, where the accumulation's own 3x3 positions share them. So a chain now ends in
+/// either form, a precise marking reads per component as <c>[precise]</c> on the step it covers, a marking glued to a
+/// resource opcode is parsed off it, the lines of an immediate constant buffer are skipped, and every chain carries the
+/// loop depth of its last step (<see cref="Found"/>), so D's chains, inside D's loops, read apart from the fast
+/// path's straight-line ones.</para>
 /// </summary>
 internal static partial class TemporalVisibilityDxbc
 {
-    internal readonly record struct Instruction(string Opcode, string[] Destinations, string[] Sources);
+    /// <summary>One instruction: the opcode with any resource suffix, the components its precise marking covers
+    /// (all four for a bare <c>[precise]</c>, none without one), its operands and how many loops enclose it.</summary>
+    internal readonly record struct Instruction(string Opcode, string Precise, string[] Destinations, string[] Sources,
+        int Depth);
+
+    /// <summary>A position chain component: its signature and the loop depth of its last step.</summary>
+    internal readonly record struct Chain(string Signature, int LoopDepth);
 
     static readonly HashSet<string> TwoDestinations = new(StringComparer.Ordinal)
     {
@@ -55,33 +70,44 @@ internal static partial class TemporalVisibilityDxbc
         "default", "endswitch", "label", "call", "callc_nz", "callc_z", "nop",
     };
 
-    /// <summary>The instructions of a disassembly, declarations and comments left out.</summary>
+    /// <summary>The instructions of a disassembly, declarations, an immediate constant buffer's lines and comments
+    /// left out.</summary>
     internal static List<Instruction> Parse(string disassembly)
     {
         var instructions = new List<Instruction>();
+        int depth = 0;
         foreach (string raw in disassembly.Split('\n'))
         {
             string line = raw;
             int comment = line.IndexOf("//", StringComparison.Ordinal);
             if (comment >= 0) line = line[..comment];
             line = line.Trim();
-            if (line.Length == 0 || line.StartsWith("dcl_", StringComparison.Ordinal)
+            if (line.Length == 0 || !char.IsLetter(line[0]) || line.StartsWith("dcl_", StringComparison.Ordinal)
                 || line.StartsWith("ps_", StringComparison.Ordinal) || line.StartsWith("vs_", StringComparison.Ordinal))
                 continue;
             int space = line.IndexOf(' ');
             string opcode = space < 0 ? line : line[..space];
             string rest = space < 0 ? "" : line[(space + 1)..].Trim();
+            string precise = "";
             if (rest.StartsWith('['))
             {
                 int close = rest.IndexOf(']');
-                opcode += " " + rest[..(close + 1)];
-                rest = rest[(close + 1)..].Trim();
+                string marking = rest[1..close];
+                precise = marking == "precise" ? "xyzw"
+                    : marking.StartsWith("precise(", StringComparison.Ordinal) ? marking["precise(".Length..^1] : "";
+                rest = rest[(close + 1)..];
+                // A resource opcode's types follow the marking with no space, as in ld_indexable [precise](texture2d).
+                int end = rest.IndexOf(' ');
+                if (end < 0) end = rest.Length;
+                opcode += rest[..end];
+                rest = rest[end..].Trim();
             }
             string[] operands = SplitOperands(rest);
-            string bare = opcode.Split(' ')[0];
-            int dests = NoDestination.Contains(bare) || operands.Length == 0 ? 0
-                : TwoDestinations.Contains(bare) ? Math.Min(2, operands.Length) : 1;
-            instructions.Add(new Instruction(opcode, operands[..dests], operands[dests..]));
+            int dests = NoDestination.Contains(opcode) || operands.Length == 0 ? 0
+                : TwoDestinations.Contains(opcode) ? Math.Min(2, operands.Length) : 1;
+            if (opcode == "endloop") depth--;
+            instructions.Add(new Instruction(opcode, precise, operands[..dests], operands[dests..], depth));
+            if (opcode == "loop") depth++;
         }
         return instructions;
     }
@@ -102,28 +128,97 @@ internal static partial class TemporalVisibilityDxbc
     }
 
     /// <summary>One signature for every position chain component found, in program order.</summary>
-    internal static List<string> Chains(string disassembly)
+    internal static List<string> Chains(string disassembly) => Found(disassembly).Select(c => c.Signature).ToList();
+
+    /// <summary>Every position chain component found, in program order, with the loop depth of its last step.</summary>
+    internal static List<Chain> Found(string disassembly)
     {
         List<Instruction> code = Parse(disassembly);
-        var chains = new List<string>();
+        var chains = new List<Chain>();
         for (int i = 0; i < code.Count; i++)
-        {
-            Instruction mad = code[i];
-            if (Bare(mad) != "mad" || mad.Sources.Length != 3 || mad.Destinations.Length != 1) continue;
-            Operand dest = Operand.Parse(mad.Destinations[0]);
-            foreach (int c in dest.Mask())
-            {
-                Operand scale = Operand.Parse(mad.Sources[1]), bias = Operand.Parse(mad.Sources[2]);
-                if (!scale.IsConstant || bias.Literal(c) != "-0.500000") continue;
-                Operand chain = Operand.Parse(mad.Sources[0]);
-                if (!chain.IsRegister || chain.Negated) continue;
-                string tail = $"{Bare(mad)} {scale.Kind(c)} l({bias.Literal(c)})";
-                string? found = AfterDivision(code, i, chain.Name, chain.Component(c), 4);
-                if (found is not null) chains.Add(found + " > " + tail);
-            }
-        }
+            foreach (int c in PositionComponents(code, i))
+                if (Read(code, i, c) is { } found) chains.Add(new Chain(found, code[i].Depth));
         return chains;
     }
+
+    const string MinusHalf = "-0.500000";
+
+    // The destination components instruction `at` ends a -0.5 position in, a chain or not: a mad by a constant with
+    // a literal -0.5, or an add of a literal -0.5 to a register that a multiplication by a constant wrote.
+    static IEnumerable<int> PositionComponents(List<Instruction> code, int at)
+    {
+        Instruction step = code[at];
+        if (step.Destinations.Length != 1) yield break;
+        string op = Bare(step);
+        if (op == "mad" && step.Sources.Length == 3)
+        {
+            foreach (int c in Operand.Parse(step.Destinations[0]).Mask())
+                if (Operand.Parse(step.Sources[1]).IsConstant && Operand.Parse(step.Sources[2]).Literal(c) == MinusHalf)
+                    yield return c;
+        }
+        else if (op == "add" && step.Sources.Length == 2)
+        {
+            foreach (int c in Operand.Parse(step.Destinations[0]).Mask())
+                if (Scaled(code, at, c) is not null) yield return c;
+        }
+    }
+
+    // For an add of a literal -0.5 at component c: the multiplication by a constant that wrote its other operand, and
+    // the register component that multiplication scales. Null for any other add.
+    static (int Mul, int Component, Operand Scale, Operand Value)? Scaled(List<Instruction> code, int at, int c)
+    {
+        Instruction add = code[at];
+        for (int s = 0; s < 2; s++)
+        {
+            Operand half = Operand.Parse(add.Sources[s]), along = Operand.Parse(add.Sources[1 - s]);
+            if (half.Literal(c) != MinusHalf || !along.IsRegister || along.Negated || along.Absolute) continue;
+            int def = Moved(code, at, along.Name, along.Component(c), out int mc);
+            if (def < 0 || Bare(code[def]) != "mul" || code[def].Sources.Length != 2) return null;
+            for (int m = 0; m < 2; m++)
+            {
+                Operand scale = Operand.Parse(code[def].Sources[m]), value = Operand.Parse(code[def].Sources[1 - m]);
+                if (scale.IsConstant && value.IsRegister && !value.Negated && !value.Absolute)
+                    return (def, mc, scale, value);
+            }
+            return null;
+        }
+        return null;
+    }
+
+    // The signature of the chain ending at instruction `at`, component c, or null where it reads as no chain.
+    static string? Read(List<Instruction> code, int at, int c)
+    {
+        Instruction last = code[at];
+        if (Bare(last) == "mad")
+        {
+            Operand scale = Operand.Parse(last.Sources[1]), chain = Operand.Parse(last.Sources[0]);
+            if (!chain.IsRegister || chain.Negated) return null;
+            string? found = AfterDivision(code, at, chain.Name, chain.Component(c), 4);
+            return found is null ? null : $"{found} > {Op(last, c)} {scale.Kind(c)} l({MinusHalf})";
+        }
+        if (Scaled(code, at, c) is not { } mul) return null;
+        string? before = AfterDivision(code, mul.Mul, mul.Value.Name, mul.Value.Component(mul.Component), 4);
+        return before is null ? null
+            : $"{before} > {Op(code[mul.Mul], mul.Component)} {mul.Scale.Kind(mul.Component)} "
+                + $"> {Op(last, c)} l({MinusHalf})";
+    }
+
+    // The last write of a register component before `at`, followed back through plain moves.
+    static int Moved(List<Instruction> code, int at, string register, int component, out int destComponent)
+    {
+        int def = Definition(code, at, register, component, out destComponent);
+        while (def >= 0 && Bare(code[def]) == "mov" && code[def].Sources.Length == 1)
+        {
+            Operand moved = Operand.Parse(code[def].Sources[0]);
+            if (!moved.IsRegister || moved.Negated || moved.Absolute) break;
+            def = Definition(code, def, moved.Name, moved.Component(destComponent), out destComponent);
+        }
+        return def;
+    }
+
+    // An opcode as a signature names it: bare, with [precise] where its marking covers the component.
+    static string Op(Instruction step, int component) =>
+        step.Precise.Contains("xyzw"[component], StringComparison.Ordinal) ? step.Opcode + " [precise]" : step.Opcode;
 
     // From the chain value read at instruction `at`, back through at most `adds` adds to the division by a constant,
     // then back to the itof. Returns the signature from the itof up to the value, or null where this is no chain.
@@ -144,7 +239,7 @@ internal static partial class TemporalVisibilityDxbc
             Operand dividend = Operand.Parse(step.Sources[0]), divisor = Operand.Parse(step.Sources[1]);
             if (!dividend.IsRegister || dividend.Negated || !divisor.IsConstant) return null;
             string? head = BeforeDivision(code, def, dividend.Name, dividend.Component(destComponent), 3);
-            return head is null ? null : $"{head} > {step.Opcode} {divisor.Kind(destComponent)}";
+            return head is null ? null : $"{head} > {Op(step, destComponent)} {divisor.Kind(destComponent)}";
         }
         if (op != "add" || step.Sources.Length != 2 || adds == 0) return null;
         for (int s = 0; s < 2; s++)
@@ -152,7 +247,8 @@ internal static partial class TemporalVisibilityDxbc
             Operand along = Operand.Parse(step.Sources[s]), beside = Operand.Parse(step.Sources[1 - s]);
             if (!along.IsRegister || along.Negated || along.Absolute) continue;
             string? before = AfterDivision(code, def, along.Name, along.Component(destComponent), adds - 1);
-            if (before is not null) return $"{before} > {step.Opcode} {Beside(code, def, beside, destComponent)}";
+            if (before is not null)
+                return $"{before} > {Op(step, destComponent)} {Beside(code, def, beside, destComponent)}";
         }
         return null;
     }
@@ -194,7 +290,7 @@ internal static partial class TemporalVisibilityDxbc
         if (def < 0) return null;
         Instruction step = code[def];
         string op = Bare(step);
-        if (op == "itof") return step.Opcode;
+        if (op == "itof") return Op(step, destComponent);
         if (op == "mov" && step.Sources.Length == 1)
         {
             Operand moved = Operand.Parse(step.Sources[0]);
@@ -207,7 +303,8 @@ internal static partial class TemporalVisibilityDxbc
             Operand along = Operand.Parse(step.Sources[s]), beside = Operand.Parse(step.Sources[1 - s]);
             if (!along.IsRegister || along.Negated || along.Absolute) continue;
             string? before = BeforeDivision(code, def, along.Name, along.Component(destComponent), adds - 1);
-            if (before is not null) return $"{before} > {step.Opcode} {Beside(code, def, beside, destComponent)}";
+            if (before is not null)
+                return $"{before} > {Op(step, destComponent)} {Beside(code, def, beside, destComponent)}";
         }
         return null;
     }
@@ -218,7 +315,7 @@ internal static partial class TemporalVisibilityDxbc
     /// <summary>Which of the two analysed association orders a chain's head is, from the <c>itof</c> to the
     /// division: an <c>add</c> of the literal 0.5 and an <c>add</c> of a negated constant-buffer element, the jitter,
     /// in either order. A register beside the head counts as what it holds where that is one constant-buffer element or
-    /// literal, moved. Precise markings are ignored.</summary>
+    /// literal, moved. Precise markings are ignored here, and kept in <see cref="Remainder"/>.</summary>
     internal static HeadForm Form(string chain)
     {
         string[] head = Head(chain);
@@ -253,7 +350,7 @@ internal static partial class TemporalVisibilityDxbc
     {
         int division = chain.IndexOf(" > div", StringComparison.Ordinal);
         string head = division < 0 ? chain : chain[..division];
-        return Regex.Replace(head, @" \[precise\([xyzw]*\)\]", "").Split(" > ");
+        return head.Replace(" [precise]", "", StringComparison.Ordinal).Split(" > ");
     }
 
     // What an add step adds: its operand, or what a register beside it holds where that is one element or literal.
@@ -265,26 +362,26 @@ internal static partial class TemporalVisibilityDxbc
         return moved.Success ? moved.Groups[1].Value : operand;
     }
 
-    /// <summary>Every <c>mad</c> by a literal -0.5 whose first source reads as no chain, with up to eight
-    /// instructions behind that source, nearest first, so a log shows the shape the reader missed.</summary>
+    /// <summary>Every <c>mad</c> by a literal -0.5, and every <c>add</c> of a literal -0.5 to a register a
+    /// multiplication by a constant wrote, that reads as no chain, with up to eight instructions behind its first
+    /// register source, nearest first, so a log shows the shape the reader missed.</summary>
     internal static List<string> Unread(string disassembly)
     {
         List<Instruction> code = Parse(disassembly);
         var unread = new List<string>();
         for (int i = 0; i < code.Count; i++)
         {
-            Instruction mad = code[i];
-            if (Bare(mad) != "mad" || mad.Sources.Length != 3 || mad.Destinations.Length != 1) continue;
-            Operand dest = Operand.Parse(mad.Destinations[0]), bias = Operand.Parse(mad.Sources[2]);
-            foreach (int c in dest.Mask())
+            Instruction last = code[i];
+            if (last.Destinations.Length != 1 || (Bare(last) != "mad" || last.Sources.Length != 3)
+                && (Bare(last) != "add" || last.Sources.Length != 2)) continue;
+            foreach (int c in Operand.Parse(last.Destinations[0]).Mask())
             {
-                if (bias.Literal(c) != "-0.500000") continue;
-                Operand scale = Operand.Parse(mad.Sources[1]), chain = Operand.Parse(mad.Sources[0]);
-                if (scale.IsConstant && chain.IsRegister && !chain.Negated
-                    && AfterDivision(code, i, chain.Name, chain.Component(c), 4) is not null) continue;
-                var behind = new List<string> { Text(mad) };
+                bool position = Bare(last) == "mad" ? Operand.Parse(last.Sources[2]).Literal(c) == MinusHalf
+                    : PositionComponents(code, i).Contains(c);
+                if (!position || PositionComponents(code, i).Contains(c) && Read(code, i, c) is not null) continue;
+                var behind = new List<string> { Text(last) };
                 int at = i;
-                Operand along = chain;
+                Operand along = last.Sources.Select(Operand.Parse).FirstOrDefault(o => o.IsRegister) ?? new Operand();
                 int component = along.Component(c);
                 for (int step = 0; step < 8 && along.IsRegister; step++)
                 {
@@ -300,8 +397,12 @@ internal static partial class TemporalVisibilityDxbc
         return unread;
     }
 
-    static string Text(Instruction instruction) => instruction.Opcode + " " + string.Join(", ",
-        instruction.Destinations.Concat(instruction.Sources));
+    static string Text(Instruction instruction)
+    {
+        string marking = instruction.Precise.Length == 0 ? "" : $" [precise({instruction.Precise})]";
+        return instruction.Opcode + marking + " "
+            + string.Join(", ", instruction.Destinations.Concat(instruction.Sources));
+    }
 
     // The last instruction before `at` that writes the component, in program order, and which of its destination
     // components it is.
@@ -319,7 +420,7 @@ internal static partial class TemporalVisibilityDxbc
         return -1;
     }
 
-    static string Bare(Instruction instruction) => instruction.Opcode.Split(' ')[0];
+    static string Bare(Instruction instruction) => instruction.Opcode;
 
     static string[] SplitOperands(string text)
     {

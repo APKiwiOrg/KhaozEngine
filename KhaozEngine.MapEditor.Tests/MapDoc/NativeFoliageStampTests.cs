@@ -74,10 +74,11 @@ public sealed class NativeFoliageStampTests
         MapFoliageGenerationContext stagedBeforeContext = stagedPublication!.Stamp!.Before.Context!, unchangedStagedAfterContext = stagedPublication.Stamp.After.Context!;
         Assert.Same(pureBeforeContext, stagedBeforeContext);
         Assert.Same(pureAfterContext, unchangedStagedAfterContext);
-        Assert.Equal(pureResult.Effects.FoliageChunks, stagedPublication.Effects.FoliageChunks);
+        Assert.Equal(FoliageEditorFixtures.Channel(pureResult.Effects), FoliageEditorFixtures.Channel(stagedPublication.Effects));
 
-        // The real late callback: a different command is staged, then the callback changes density and a rule. Only the
-        // stale after side is captured again, the before context object is kept, and nothing else is expanded.
+        // The real late callback: a different command is staged, then the callback changes density and a mask, both
+        // localized members. Only the stale after side is captured again, the before context object is kept, and nothing
+        // else is expanded. A rule change is whole-layer and needs no capture, see LateCallbackFoliage.
         MapEditSession session = FoliageEditorFixtures.Session(basic);
         try
         {
@@ -93,7 +94,8 @@ public sealed class NativeFoliageStampTests
                 MapFoliageLayer layer = doc.Foliage!.Layers[0];
                 MapFoliageLayer denser = MapFoliageBrush.Apply(layer, new(layer.Id, 5, -3, 1.5f, 200, 1));
                 doc.Foliage = new(1, [FoliageFixtures.ClearanceLayer(denser,
-                    rules: [new("late-rule", "tree", null, MapFoliageClearanceKind.Solid, new(-1, -1, 1, 1))])]);
+                    masks: [new("late-mask", FoliageFixtures.Owner(FoliageFixtures.FloorId, MapPrefabChildKind.Surface),
+                        FoliageFixtures.Surface(FoliageFixtures.FloorId), MapFoliageClearanceKind.Solid, new(-1, -1, 1, 1))])]);
                 afterCallback = Counters();
                 return 0;
             }, false);
@@ -106,11 +108,13 @@ public sealed class NativeFoliageStampTests
             Assert.Same(staged.Before.Context, published.Before.Context);
             Assert.NotSame(staged.After.Context, published.After.Context);
             FoliageFixture final = FoliageEditorFixtures.Fixture(session);
-            Assert.Equal(FoliageEditorFixtures.Expected(basic.Document, final.Document, basic.Assets), session.LastNativeEffects!.FoliageChunks);
+            Assert.Equal(FoliageEditorFixtures.Expected(basic.Document, final.Document, basic.Assets), FoliageEditorFixtures.Channel(session.LastNativeEffects!));
+            Assert.Empty(session.LastNativeEffects!.FoliageLayers);
             Assert.Equal((paint.Label, (string?)null), session.NativeHistoryLabels);
-            Assert.Single(final.Document.Foliage!.Layers[0].ClearanceRules, r => r.Id == "late-rule");
+            Assert.Single(final.Document.Foliage!.Layers[0].ExceptionMasks, m => m.Id == "late-mask");
             string publishedBytes = FoliageEditorFixtures.Bytes(session);
             IReadOnlyList<MapFoliageChunkChange> publishedChunkEffects = session.LastNativeEffects.FoliageChunks;
+            string publishedChannel = FoliageEditorFixtures.Channel(session.LastNativeEffects);
 
             // Undo and redo of the replacement entry reuse its sides with direction-correct fingerprints and closures.
             var undoWork = FoliageEditorFixtures.Work(() => session.UndoNative());
@@ -126,6 +130,7 @@ public sealed class NativeFoliageStampTests
             IReadOnlyList<MapFoliageChunkChange> redoChunkEffects = session.LastNativeEffects!.FoliageChunks;
             Assert.Equal(publishedBytes, redoBytes);
             Assert.Equal(publishedChunkEffects, redoChunkEffects);
+            Assert.Equal(publishedChannel, FoliageEditorFixtures.Channel(session.LastNativeEffects!));
             Assert.Same(published.After.Context, session.LastNativeStamp!.After.Context);
 
             // The next edit's before state is the one published snapshot.
@@ -204,7 +209,7 @@ public sealed class NativeFoliageStampTests
         var stageWork = FoliageEditorFixtures.Work(() => history.Execute(gui, command));
         Assert.Equal((pureWork.Captures, 0L), (stageWork.Captures, stageWork.Writes));
         Assert.Equal(controlStage.Expansions - controlPure.Expansions - 2, stageWork.Expansions - pureWork.Expansions);
-        Assert.Equal(result!.Effects.FoliageChunks, history.LastNativeEffects!.FoliageChunks);
+        Assert.Equal(FoliageEditorFixtures.Channel(result!.Effects), FoliageEditorFixtures.Channel(history.LastNativeEffects!));
         MapDocumentFinalizationStamp stamp = history.LastNativeStamp!;
         Assert.Same(stamp, accepted());
         Assert.Equal((beforeAssets.Hash, afterAssets.Hash), (stamp.Before.Assets.Hash, stamp.After.Assets.Hash));
@@ -219,13 +224,15 @@ public sealed class NativeFoliageStampTests
         Assert.Same(stamp.After.Context, undone.Before.Context);
         if (restored) Assert.Same(stamp.Before.Context, undone.After.Context);
         Assert.Equal((afterAssets.Hash, beforeAssets.Hash), (undone.Before.Assets.Hash, undone.After.Assets.Hash));
-        if (restored) Assert.Equal(FoliageEditorFixtures.Reversed(stamp.Rows), history.LastNativeEffects!.FoliageChunks);
+        if (restored)
+            Assert.Equal(FoliageEditorFixtures.Channel(MapDocumentFinalizationStamp.ReverseRows(stamp.Rows), MapDocumentFinalizationStamp.ReverseLayers(stamp.Layers)),
+                FoliageEditorFixtures.Channel(history.LastNativeEffects!));
         // Redo returns to the accepted after snapshot with both sides already captured, so it does no new work.
         var redoWork = FoliageEditorFixtures.Work(() => Assert.True(history.Redo(gui)));
         Assert.Equal((0L, 0L), (redoWork.Captures, redoWork.Expansions - (controlStage.Expansions - controlPure.Expansions - 2)));
         Assert.Same(stamp.After.Context, history.LastNativeStamp!.After.Context);
         Assert.Same(undone.After.Context, history.LastNativeStamp.Before.Context);
-        if (restored) Assert.Equal(stamp.Rows, history.LastNativeEffects!.FoliageChunks);
+        if (restored) Assert.Equal(FoliageEditorFixtures.Channel(stamp.Rows, stamp.Layers), FoliageEditorFixtures.Channel(history.LastNativeEffects!));
         return stamp;
     }
 

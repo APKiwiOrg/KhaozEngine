@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Prefabs;
@@ -85,6 +86,7 @@ public sealed class MapFoliageFinalizationTests
             if (changes) Assert.Contains(result.Effects.FoliageChunks, r => r.LayerId == Id && r.Chunk == Home);
             else Assert.Empty(result.Effects.FoliageChunks);
             AssertExact(f, new(result.After, f.Assets), result.Effects.FoliageChunks, name);
+            Assert.Empty(result.Effects.FoliageLayers);
         }
         Assert.Equal(original, MapDocumentFile.SaveText(f.Document));
     }
@@ -103,6 +105,7 @@ public sealed class MapFoliageFinalizationTests
                 new MapSetFoliageLayer(FoliageFixtures.ClearanceLayer(layer, ordinals: ordinals)));
             Assert.True(changed.WriteSet.Foliage);
             Assert.All(changed.Effects.FoliageChunks, r => Assert.Equal(Home, r.Chunk));
+            Assert.Empty(changed.Effects.FoliageLayers);
             AssertExact(f, new(changed.After, f.Assets), changed.Effects.FoliageChunks);
         }
 
@@ -151,31 +154,132 @@ public sealed class MapFoliageFinalizationTests
         var trigger = new MapNativeEditEffects(null, null, [], [], [], [], MapNativeInvalidation.None);
         IReadOnlyList<MapFoliageChunkChange> rows = MapFoliageEffects.Describe(f.Document, candidate, context, moved, trigger);
         Assert.Equal(Home, Assert.Single(rows).Chunk);
-        // A context captured from another snapshot never stands in for the document's own.
+        // A context captured from another snapshot never stands in for the document's own, whether its foliage differs
+        // or matches, as the before context of a moved placement does.
         Assert.Throws<ArgumentException>(() => MapFoliageEffects.Describe(f.Document, candidate, context, FoliageFixtures.Context(
             new(MapFoliageEdits.Prepare(candidate, f.Assets, new MapPaintFoliage(Id, 1, 1, 2, 9, 1)).After, f.Assets)), trigger));
+        Assert.Throws<ArgumentException>(() => MapFoliageEffects.Describe(f.Document, candidate, context, context, trigger));
+        Assert.Throws<ArgumentException>(() => MapFoliageEffects.Describe(f.Document, candidate, moved, moved, trigger));
+        // A snapshot expanded from another document is refused as a capture source.
+        MapEffectiveResources movedResources = moved.Resources;
+        Assert.Equal(MapFoliageStatus.Invalid, MapFoliageGenerationContext.CaptureEffective(f.Document, f.Assets, movedResources).Status);
+        Assert.Equal(MapFoliageStatus.Complete, MapFoliageGenerationContext.CaptureEffective(candidate, f.Assets, movedResources).Status);
 
-        // Selection and preparation are budgeted, and an over-budget edit refuses with no rows rather than truncating.
-        Assert.Equal(new MapFoliageDependents.Limits(4096, 262_144), new MapFoliageDependents.Limits());
-        MapDocument seeded = MapFoliageEdits.Prepare(f.Document, f.Assets,
-            new MapSetFoliageLayer(FoliageStorageFixtures.Change(f.Document.Foliage!.Layers[0], l => l["seed"] = 18))).After;
-        MapFoliageGenerationContext seededContext = FoliageFixtures.Context(new(seeded, f.Assets));
-        // Four existing batches change their seed on both sides, so eight sides are prepared.
-        Assert.Equal(4, MapFoliageDependents.Rows(f.Document, seeded, () => context, () => seededContext, limits: new(MaxPreparedSides: 8)).Count);
-        Assert.StartsWith("Foliage CapacityExceeded", Assert.Throws<MapDocumentException>(() =>
-            MapFoliageDependents.Rows(f.Document, seeded, () => context, () => seededContext, limits: new(MaxPreparedSides: 7))).Message, StringComparison.Ordinal);
-        Assert.StartsWith("Foliage CapacityExceeded", Assert.Throws<MapDocumentException>(() =>
-            MapFoliageDependents.Rows(f.Document, candidate, () => context, () => moved, limits: new(MaxScannedBatches: 0))).Message, StringComparison.Ordinal);
-
-        // More than the default 4096 paint targets refuses before any expansion.
+        // More than the default 4096 paint targets refuses every public preparation before any copy or expansion.
         FoliageFixture grown = FoliageFixtures.PaintTargets(4097);
         string state = MapDocumentFile.SaveText(grown.Document);
-        long expansions = MapPrefabResolver.ThreadExpansions;
-        var refused = Assert.Throws<MapDocumentException>(() =>
-            MapFoliageEdits.Prepare(grown.Document, grown.Assets, new MapPaintFoliage(FoliageFixtures.LayerId, 1, -1, 2, 9, 1)));
-        Assert.StartsWith("Foliage CapacityExceeded", refused.Message, StringComparison.Ordinal);
-        Assert.Equal(0, MapPrefabResolver.ThreadExpansions - expansions);
+        MapAssetClosure assets = grown.Assets;
+        MapDocument document = grown.Document;
+        var entries = new Action[]
+        {
+            () => MapFoliageEdits.Prepare(document, assets, new MapPaintFoliage(FoliageFixtures.LayerId, 1, -1, 2, 9, 1)),
+            () => MapFoliageEdits.Prepare(document, assets, new MapFoliageEditSequence([], new MapRemovePrefab("missing"))),
+            () => MapPrefabEdits.Prepare(document, assets, new MapRemovePrefab("missing")),
+            () => MapPrefabEdits.PrepareAssetUpdate(document, assets, assets, new MapUpdatePrefabAsset("hut", "old", "hut", "new")),
+            () => MapInteriorEdits.Prepare(document, assets, new MapRemoveInterior("missing")),
+            () => MapMarkerEdits.Prepare(document, assets, new MapRemoveMarker("missing")),
+            () => MapDocumentTerrainEdits.Prepare(document, assets, new MapSetCornerHeights(new(FoliageFixtures.FloorId, 0, 0), 0, 0, 1, 1, [120])),
+        };
+        foreach (Action entry in entries)
+        {
+            long expansions = MapPrefabResolver.ThreadExpansions, copies = MapPrefabEditPreparation.ThreadCopies;
+            Assert.StartsWith("Foliage CapacityExceeded", Assert.Throws<MapDocumentException>(entry).Message, StringComparison.Ordinal);
+            Assert.Equal((0L, 0L), (MapPrefabResolver.ThreadExpansions - expansions, MapPrefabEditPreparation.ThreadCopies - copies));
+        }
         Assert.Equal(state, MapDocumentFile.SaveText(grown.Document));
+    }
+
+    [Fact]
+    public void LayerEntries_PublishWholeLayerChangesAndDegradeOverCeiling()
+    {
+        FoliageFixture f = FoliageFixtures.Dependents();
+        MapFoliageLayer layer = f.Document.Foliage!.Layers[0];
+
+        // Whole-layer members publish one entry and no rows, with no preparation.
+        foreach (MapFoliageLayer changed in new[]
+        {
+            FoliageStorageFixtures.Change(layer, l => l["seed"] = 18),
+            FoliageFixtures.ClearanceLayer(layer, rules: [new("shrub-solid", "item", "shrub", MapFoliageClearanceKind.Solid, new(-1, -1, 1, 1))]),
+        })
+        {
+            long captures = MapFoliageGenerationContext.ThreadCaptures;
+            MapPrefabEditResult whole = MapFoliageEdits.Prepare(f.Document, f.Assets, new MapSetFoliageLayer(changed));
+            Assert.Equal(0, MapFoliageGenerationContext.ThreadCaptures - captures);
+            Assert.Empty(whole.Effects.FoliageChunks);
+            MapFoliageLayerChange entry = Assert.Single(whole.Effects.FoliageLayers);
+            Assert.Equal(new MapFoliageLayerChange(Id, MapFoliageDependents.LayerDigest(layer), MapFoliageDependents.LayerDigest(whole.After.Foliage!.Layers[0])), entry);
+            Assert.Equal(MapNativeInvalidation.Foliage, whole.Effects.Invalidates);
+        }
+
+        // A mask change is localized to the batches its old and new footprints reach.
+        var widerMask = new MapSetFoliageLayer(FoliageFixtures.ClearanceLayer(layer,
+            masks: [new("post-mask", FoliageFixtures.Owner(FoliageFixtures.PostId, MapPrefabChildKind.Marker), FoliageFixtures.Surface("exterior"),
+                MapFoliageClearanceKind.Solid, new(-2, -2, 2, 2))]));
+        MapPrefabEditResult mask = MapFoliageEdits.Prepare(f.Document, f.Assets, widerMask);
+        Assert.Empty(mask.Effects.FoliageLayers);
+        Assert.Equal(Home, Assert.Single(mask.Effects.FoliageChunks).Chunk);
+        AssertExact(f, new(mask.After, f.Assets), mask.Effects.FoliageChunks);
+
+        // A layer with no stored chunks on either side publishes nothing, though the root is written.
+        var bare = new MapSetFoliageLayer(FoliageStorageFixtures.Change(layer, l => { l["id"] = "bare"; l["chunks"] = new System.Text.Json.Nodes.JsonArray(); }));
+        MapPrefabEditResult added = MapFoliageEdits.Prepare(f.Document, f.Assets, bare);
+        Assert.True(added.WriteSet.Foliage);
+        Assert.Equal((0, 0, MapNativeInvalidation.None), (added.Effects.FoliageChunks.Count, added.Effects.FoliageLayers.Count, added.Effects.Invalidates));
+        MapPrefabEditResult reseeded = MapFoliageEdits.Prepare(added.After, f.Assets,
+            new MapSetFoliageLayer(FoliageStorageFixtures.Change(added.After.Foliage!.Layers[1], l => l["seed"] = 99)));
+        Assert.Equal((0, 0, MapNativeInvalidation.None), (reseeded.Effects.FoliageChunks.Count, reseeded.Effects.FoliageLayers.Count, reseeded.Effects.Invalidates));
+
+        // A selection past a per-edit ceiling degrades its layer to an entry and never refuses.
+        MapFoliageGenerationContext before = FoliageFixtures.Context(f), after = FoliageFixtures.Context(new(mask.After, f.Assets));
+        var (rows, layers) = MapFoliageDependents.Describe(f.Document, mask.After, () => before, () => after, limits: new(MaxPreparedSides: 1));
+        Assert.Empty(rows);
+        Assert.Equal(new MapFoliageLayerChange(Id, MapFoliageDependents.LayerDigest(layer), MapFoliageDependents.LayerDigest(mask.After.Foliage!.Layers[0])),
+            Assert.Single(layers));
+        (rows, layers) = MapFoliageDependents.Describe(f.Document, mask.After, () => before, () => after, limits: new(MaxScannedBatches: 0));
+        Assert.Empty(rows);
+        Assert.Single(layers);
+        (rows, layers) = MapFoliageDependents.Describe(f.Document, mask.After, () => before, () => after, limits: new(MaxPreparedSides: 2));
+        Assert.Equal(mask.Effects.FoliageChunks, rows);
+        Assert.Empty(layers);
+
+        // A correspondence rewritten by a placement rename publishes only that owner's rows.
+        FoliageFixture renamable = FoliageFixtures.Renamable();
+        MapDocument renamed = MapPrefabReferences.RemapWorld(Detached(renamable.Document), MapPrefabChildKind.Placement, "prop", "q");
+        renamed.Placements.Single(p => p.Id == "prop").Id = "q";
+        MapPrefabEditResult rename = MapDocumentEditFinalizer.Finalize(renamable.Document,
+            new(renamed, MapNativeWriteSet.PlacementsOnly, new(null, null, [], [], [], [], MapNativeInvalidation.Placements)), renamable.Assets);
+        Assert.True(rename.WriteSet.Foliage);
+        Assert.Empty(rename.Effects.FoliageLayers);
+        Assert.NotEmpty(rename.Effects.FoliageChunks);
+        AssertExact(renamable, new(rename.After, renamable.Assets), rename.Effects.FoliageChunks);
+    }
+
+    [Fact]
+    public void BatchCapacityRefusal_PublishesRefusalDigestAndSucceeds()
+    {
+        // 4097 clearing owners inside the first batch exceed its 4096 rule candidates, a deterministic refused side.
+        FoliageFixture f = FoliageFixtures.Create();
+        for (int i = 0; i < 4097; i++)
+            f.Document.Placements.Add(new MapPlacement
+            {
+                Id = "crowd-" + i,
+                Kind = "tree",
+                AssetId = "tree",
+                NumericId = MapNumericIds.Allocate(f.Document),
+                X = 1 + (i % 64) * 0.5f,
+                Y = 1,
+                Z = -4 + (i / 64) * 0.125f,
+                Scale = 1,
+            });
+        f.Document.Foliage = new(1, [FoliageFixtures.ClearanceLayer(f.Document.Foliage!.Layers[0],
+            rules: [new("crowd", "tree", null, MapFoliageClearanceKind.Solid, new(-0.1f, -0.1f, 0.1f, 0.1f))])]);
+        MapFoliageGenerationContext context = FoliageFixtures.Context(f);
+        Assert.Equal(MapFoliageStatus.CapacityExceeded, MapFoliageDistribution.Generate(context, FoliageFixtures.LayerId, new(0, 0)).Status);
+        MapPrefabEditResult painted = MapFoliageEdits.Prepare(f.Document, f.Assets, new MapPaintFoliage(FoliageFixtures.LayerId, 1, -1, 2, 9, 1));
+        MapFoliageChunkChange row = Assert.Single(painted.Effects.FoliageChunks);
+        Assert.Equal(new MapFoliageChunkKey(0, 0), row.Chunk);
+        Assert.True(row.BeforeDigest is { Length: 64 } && row.AfterDigest is { Length: 64 } && row.BeforeDigest != row.AfterDigest);
+        Assert.Empty(painted.Effects.FoliageLayers);
     }
 
     static MapDocument Detached(MapDocument document) => MapDocumentFile.LoadText(MapDocumentFile.SaveText(document));

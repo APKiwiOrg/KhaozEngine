@@ -64,6 +64,9 @@ internal sealed class MapFoliageOwners
 
     internal int? Ordinal(string layerId, string surfaceId) => _ordinals[layerId].TryGetValue(surfaceId, out int ordinal) ? ordinal : null;
 
+    /// <summary>How far from an exceptional owner's origin its seat acquisition reaches, in metres on each world axis.</summary>
+    internal const float SeatReach = 2;
+
     internal static MapPrefabReference World(MapPrefabChildKind kind, string id) => new(MapPrefabReferenceScope.World, kind, id);
 
     internal static MapEffectiveTransform Pose(MapEffectiveResources resources, MapPrefabReference owner)
@@ -97,7 +100,7 @@ internal sealed class MapFoliageOwners
         var point = new MapResourceTransform(pose).Point(new(default, default, default));
         var frame = WorldFrame.Nearest(point.X.ToSingle(), point.Z.ToSingle());
         float x = point.X.ToSingle() - frame.Anchor.X, z = point.Z.ToSingle() - frame.Anchor.Z;
-        var scope = new MapSurfaceScope(frame, new(x - 2, z - 2), new(x + 2, z + 2), null, null,
+        var scope = new MapSurfaceScope(frame, new(x - SeatReach, z - SeatReach), new(x + SeatReach, z + SeatReach), null, null,
             Enum.GetValues<MapSurfaceRole>(), null, new MapQueryLimits());
         MapScopedSurfaces view = _resources.Acquire(scope);
         var prepared = MapSupportPreparation.PrepareFoliage(view);

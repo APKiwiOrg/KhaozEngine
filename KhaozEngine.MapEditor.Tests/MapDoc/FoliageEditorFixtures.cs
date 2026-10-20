@@ -11,7 +11,6 @@ using KhaozEngine.MapEdit;
 using KhaozEngine.MapEditor;
 using KhaozEngine.Tests.MapDoc.Foliage;
 using KhaozEngine.Tests.MapDoc.Prefabs;
-using Xunit;
 
 namespace KhaozEngine.Tests.MapDoc;
 
@@ -44,16 +43,26 @@ internal static class FoliageEditorFixtures
         return (gui, PrefabEditorFixtures.History(gui, fixture.Assets));
     }
 
-    /// <summary>The rows the public effects boundary publishes between two documents, from freshly captured contexts.</summary>
-    internal static IReadOnlyList<MapFoliageChunkChange> Expected(MapDocument before, MapDocument after, MapAssetClosure beforeAssets,
-        MapAssetClosure? afterAssets = null) => MapFoliageEffects.Describe(before, after,
+    /// <summary>The foliage channel of <paramref name="effects"/>, its batch rows and layer entries, in canonical form.</summary>
+    internal static string Channel(MapNativeEditEffects effects) => Channel(effects.FoliageChunks, effects.FoliageLayers);
+
+    internal static string Channel(IReadOnlyList<MapFoliageChunkChange> rows, IReadOnlyList<MapFoliageLayerChange> layers) =>
+        new MapNativeEditEffects(null, null, [], [], [], [], MapNativeInvalidation.None) { FoliageChunks = rows, FoliageLayers = layers }.Describe();
+
+    /// <summary>The channel the public effects boundary publishes between two documents, from freshly captured contexts.</summary>
+    internal static string Expected(MapDocument before, MapDocument after, MapAssetClosure beforeAssets, MapAssetClosure? afterAssets = null)
+    {
+        IReadOnlyList<MapFoliageChunkChange> rows = MapFoliageEffects.Describe(before, after,
             before.Foliage is null ? null : FoliageFixtures.Context(new(before, beforeAssets)),
             after.Foliage is null ? null : FoliageFixtures.Context(new(after, afterAssets ?? beforeAssets)),
-            new(null, null, [], [], [], [], MapNativeInvalidation.None));
+            new(null, null, [], [], [], [], MapNativeInvalidation.None), out IReadOnlyList<MapFoliageLayerChange> layers);
+        return Channel(rows, layers);
+    }
 
-    /// <summary>The same rows read from the after side back to the before side.</summary>
-    internal static MapFoliageChunkChange[] Reversed(IEnumerable<MapFoliageChunkChange> rows) =>
-        rows.Select(r => r with { OldBounds = r.NewBounds, NewBounds = r.OldBounds, BeforeDigest = r.AfterDigest, AfterDigest = r.BeforeDigest }).ToArray();
+    /// <summary>The same channel read from the after side back to the before side, as undo publishes it.</summary>
+    internal static string Reversed(MapNativeEditEffects effects) => Channel(
+        effects.FoliageChunks.Select(r => r with { OldBounds = r.NewBounds, NewBounds = r.OldBounds, BeforeDigest = r.AfterDigest, AfterDigest = r.BeforeDigest }).ToArray(),
+        effects.FoliageLayers.Select(l => l with { BeforeDigest = l.AfterDigest, AfterDigest = l.BeforeDigest }).ToArray());
 
     /// <summary>The logical foliage digest of the session's open document.</summary>
     internal static string Foliage(MapEditSession session) => session.WithDocument((d, _) => MapFoliageProjection.Digest(d.Foliage));
@@ -75,7 +84,4 @@ internal static class FoliageEditorFixtures
         string directory = Path.GetDirectoryName(session.DocumentPath)!;
         if (Directory.Exists(directory)) Directory.Delete(directory, true);
     }
-
-    internal static void AssertRows(IReadOnlyList<MapFoliageChunkChange> expected, IReadOnlyList<MapFoliageChunkChange> actual) =>
-        Assert.Equal(expected.ToArray(), actual.ToArray());
 }

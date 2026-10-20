@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
 
@@ -31,6 +32,22 @@ public sealed record MapNativeWriteSet(IReadOnlyList<MapPatchKey> Patches, IRead
     public static MapNativeWriteSet PlacementsOnly { get; } = new(Array.Empty<MapPatchKey>(),
         Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>(), Array.Empty<MapCornerOwnerChange>(),
         Array.Empty<ushort>(), true);
+
+    /// <summary>Both write sets' named patches, surfaces, records, spaces, owner changes and materials, and every root
+    /// either names.</summary>
+    internal static MapNativeWriteSet Union(MapNativeWriteSet a, MapNativeWriteSet b) => new(
+        a.Patches.Union(b.Patches).Order().ToArray(), a.SurfaceIds.Union(b.SurfaceIds).Order(StringComparer.Ordinal).ToArray(),
+        a.RecordIds.Union(b.RecordIds).Order(StringComparer.Ordinal).ToArray(), a.SpaceIds.Union(b.SpaceIds).Order(StringComparer.Ordinal).ToArray(),
+        a.OwnerChanges.Union(b.OwnerChanges).ToArray(), a.Materials.Union(b.Materials).ToArray(), a.Placements || b.Placements)
+    {
+        Prefabs = a.Prefabs || b.Prefabs,
+        BuildingIntent = a.BuildingIntent || b.BuildingIntent,
+        NativeResourceTransforms = a.NativeResourceTransforms || b.NativeResourceTransforms,
+        NumericReservations = a.NumericReservations || b.NumericReservations,
+        Water = a.Water || b.Water,
+        NativeAssets = a.NativeAssets || b.NativeAssets,
+        Foliage = a.Foliage || b.Foliage,
+    };
 }
 
 public sealed record MapFinePatchRequest(string SourceSurfaceId, IReadOnlyList<MapCellRect> Regions,

@@ -147,18 +147,25 @@ public sealed class MapFoliageEditTests
             Assert.False(result.WriteSet.Foliage);
         }
 
-        // Settings, new layers and removal are direct changes over every batch that reads a stored chunk. A batch's
-        // bounds are its chunk rectangle clipped to the sample domain.
-        var seeded = Pure(f, new MapSetFoliageLayer(Change(layer, l => l["seed"] = 18))).Effects.FoliageChunks;
-        Assert.Equal(new[] { new MapFoliageChunkKey(0, 0), new MapFoliageChunkKey(1, 0) }, seeded.Select(c => c.Chunk));
-        Assert.All(seeded, c => Assert.True(c.OldBounds == c.NewBounds && c.BeforeDigest != c.AfterDigest));
-        Assert.Equal(new MapFoliageRect(61, -5, 65, -1), seeded[1].NewBounds);
+        // Settings, new layers holding chunks and removal are whole-layer changes: one layer entry with preparation-free
+        // digests and no batch rows (T9-P4a).
+        MapNativeEditEffects seededEffects = Pure(f, new MapSetFoliageLayer(Change(layer, l => l["seed"] = 18))).Effects;
+        Assert.Empty(seededEffects.FoliageChunks);
+        MapFoliageLayerChange seeded = Assert.Single(seededEffects.FoliageLayers);
+        Assert.Equal(Id, seeded.LayerId);
+        Assert.NotEqual(seeded.BeforeDigest, seeded.AfterDigest);
+        Assert.Equal((64, 64), (seeded.BeforeDigest!.Length, seeded.AfterDigest!.Length));
+        Assert.Equal(MapNativeInvalidation.Foliage, seededEffects.Invalidates);
+        Assert.Contains("\"foliageLayers\":[{\"layerId\":\"cover-a\",", seededEffects.Describe());
         var added = Pure(f, new MapSetFoliageLayer(Change(layer, l => l["id"] = "cover-b")));
         Assert.Equal(new[] { "cover-a", "cover-b" }, added.After.Foliage!.Layers.Select(l => l.Id));
-        Assert.All(added.Effects.FoliageChunks, c => Assert.True(c.LayerId == "cover-b" && c.BeforeDigest is null && c.OldBounds is null));
+        Assert.Empty(added.Effects.FoliageChunks);
+        MapFoliageLayerChange addedEntry = Assert.Single(added.Effects.FoliageLayers);
+        Assert.Equal(("cover-b", (string?)null), (addedEntry.LayerId, addedEntry.BeforeDigest));
+        Assert.NotNull(addedEntry.AfterDigest);
         var removed = Pure(f, new MapRemoveFoliage(Id));
         Assert.Null(removed.After.Foliage);
-        Assert.Equal(2, removed.Effects.FoliageChunks.Count(c => c.AfterDigest is null && c.NewBounds is null && c.BeforeDigest is not null));
+        Assert.Equal(new MapFoliageLayerChange(Id, seeded.BeforeDigest, null), Assert.Single(removed.Effects.FoliageLayers));
         Assert.True(removed.WriteSet.Foliage);
 
         // Every invalid request refuses for its own reason before any write and leaves the document byte for byte as it was.
@@ -221,7 +228,8 @@ public sealed class MapFoliageEditTests
         Assert.Equal(0.25f, accepted.After.Foliage!.Layers[0].Policy.NormalBoundaryHeight);
         Assert.Equal(preview.ProposalDigest, FoliageFixtures.Context(new(accepted.After, f.Assets)).SnapshotId);
         Assert.Equal(MapNativeInvalidation.Foliage, accepted.Effects.Invalidates);
-        Assert.Equal(seeded.Select(c => (c.Chunk, c.OldBounds, c.BeforeDigest)), accepted.Effects.FoliageChunks.Select(c => (c.Chunk, c.OldBounds, c.BeforeDigest)));
+        Assert.Equal(seeded.BeforeDigest, Assert.Single(accepted.Effects.FoliageLayers).BeforeDigest);
+        Assert.Empty(accepted.Effects.FoliageChunks);
         // The token binds the candidate that lands. A single-step sequence lands exactly the previewed proposal, while a
         // sequence that also edits density lands another candidate, so its token is stale.
         var tokened = policy with { ExpectedDifferentialDigest = preview.Digest };
@@ -254,7 +262,8 @@ public sealed class MapFoliageEditTests
         Assert.Equal((byte)40, together.After.Foliage!.Layers[0].DensityAt(0, 0));
         Assert.True(together.WriteSet.Prefabs && together.WriteSet.Foliage);
         Assert.True(together.Effects.Invalidates.HasFlag(MapNativeInvalidation.Placements) && together.Effects.Invalidates.HasFlag(MapNativeInvalidation.Foliage));
-        Assert.Null(Assert.Single(together.Effects.FoliageChunks).BeforeDigest);
+        Assert.Empty(together.Effects.FoliageChunks);
+        Assert.Null(Assert.Single(together.Effects.FoliageLayers).BeforeDigest);
         Assert.Equal(prefabState, MapDocumentFile.SaveText(p.Document));
 
         // A policy token previewed for the layer alone is stale once an owner edit joins the candidate.
@@ -295,8 +304,8 @@ public sealed class MapFoliageEditTests
         MapPrefabEditResult result = MapFoliageEdits.Prepare(f.Document, f.Assets, valid);
         Assert.Equal((1L, 0L), (MapPrefabResolver.ThreadExpansions - expansions, MapFoliageJson.ThreadPayloadWrites - writes));
         Assert.Single(result.After.Foliage!.Layers[0].ExceptionMasks);
-        // Once the reference is in the before document, an unrelated edit to the same layer expands only once, for the
-        // finalization context both sides share.
+        // Once the reference is in the before document, a whole-layer edit of the same layer expands nothing, since its
+        // layer entry needs no preparation.
         Pure(new(result.After, f.Assets), new MapSetFoliageLayer(Change(result.After.Foliage.Layers[0], l => l["seed"] = 18)));
     }
 

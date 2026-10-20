@@ -43,6 +43,7 @@ public static class MapFoliageEdits
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(assets);
         ArgumentNullException.ThrowIfNull(edit);
+        MapDocumentEditFinalizer.Preflight(document, assets);
         if (edit is not MapFoliageEditSequence sequence)
         {
             MapFoliageSet? foliage = Apply(document.Foliage, edit);
@@ -67,12 +68,14 @@ public static class MapFoliageEdits
             MapDocument withoutFoliage = MapPrefabEditPreparation.Copy(document);
             withoutFoliage.Foliage = null;
             owner = MapPrefabEdits.PrepareRaw(withoutFoliage, assets, ownerEdit);
+            // That expansion read the document without its foliage, which expansion never reads, so it is the
+            // document's own snapshot, and its provenance is recorded for the foliage context that reuses it.
+            if (owner.Expansions?.Before is { } read) read.SourceFingerprint ??= MapDocumentEditFinalizer.BaseFingerprint(withoutFoliage);
             after = owner.After;
         }
         else after = MapPrefabEditPreparation.Copy(document);
         after.Foliage = set;
         MapEffectiveResources? validated = Validate(document, after, assets, sequence.Edits, owners: owner is not null);
-        // An owner edit's before expansion read the document without its foliage, which expansion never reads.
         return Result(document, after, assets, owner, owner is null ? new(null, validated, Shared: true) : new(owner.Expansions?.Before, validated));
     }
 

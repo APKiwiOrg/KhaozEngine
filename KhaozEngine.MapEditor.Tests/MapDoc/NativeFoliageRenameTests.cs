@@ -55,7 +55,8 @@ public sealed class NativeFoliageRenameTests
         MapNativeWriteSet renamedWrites = ((INativePlacementWriteSetCommand)rename).AcceptedWrites!;
         Assert.True(renamedWrites.Foliage);
         Assert.NotEmpty(staged.Effects.FoliageChunks);
-        Assert.Equal(FoliageEditorFixtures.Expected(MapDocumentFile.LoadText(original), gui, f.Assets), staged.Effects.FoliageChunks);
+        Assert.Equal(FoliageEditorFixtures.Expected(MapDocumentFile.LoadText(original), gui, f.Assets), FoliageEditorFixtures.Channel(staged.Effects));
+        Assert.Empty(staged.Effects.FoliageLayers);
         AssertOwner(gui, Q);
         string renamed = MapDocumentFile.SaveText(gui);
         NativeStagedPublication undo = history.StageUndo(gui)!;
@@ -73,7 +74,7 @@ public sealed class NativeFoliageRenameTests
         NativeDocumentTransaction.Publish(gui, plain);
         plain.Accept();
         Assert.False(((INativePlacementWriteSetCommand)other).AcceptedWrites!.Foliage);
-        Assert.Empty(plain.Effects.FoliageChunks);
+        Assert.Equal(FoliageEditorFixtures.Channel([], []), FoliageEditorFixtures.Channel(plain.Effects));
         string unrelated = MapDocumentFile.SaveText(gui);
         Assert.True(history.Undo(gui));
 
@@ -98,9 +99,9 @@ public sealed class NativeFoliageRenameTests
             new MutationService(session).PlacementRemapId("prop", "q");
             Assert.Equal(staged.Effects.Describe(), session.LastNativeEffects!.Describe());
             Assert.Equal(renamed, FoliageEditorFixtures.Bytes(session));
-            Assert.Equal(FoliageEditorFixtures.Reversed(staged.Effects.FoliageChunks), session.UndoNative()!.FoliageChunks);
+            Assert.Equal(FoliageEditorFixtures.Reversed(staged.Effects), FoliageEditorFixtures.Channel(session.UndoNative()!));
             Assert.Equal(original, FoliageEditorFixtures.Bytes(session));
-            Assert.Equal(staged.Effects.FoliageChunks, session.RedoNative()!.FoliageChunks);
+            Assert.Equal(FoliageEditorFixtures.Channel(staged.Effects), FoliageEditorFixtures.Channel(session.RedoNative()!));
             Assert.Equal(renamed, FoliageEditorFixtures.Bytes(session));
             session.Save();
             MapDocument saved = MapDocumentFile.Load(session.DocumentPath!);
@@ -120,10 +121,10 @@ public sealed class NativeFoliageRenameTests
             CallToolResult labelled = await harness.Client.CallAsync("placement_rename", new Dictionary<string, object?> { ["oldId"] = "prop", ["newId"] = "q" });
             Assert.NotEqual(true, labelled.IsError);
             Assert.Equal(foliage, FoliageEditorFixtures.Foliage(live));
-            Assert.Empty(live.LastNativeEffects!.FoliageChunks);
+            Assert.Equal(FoliageEditorFixtures.Channel([], []), FoliageEditorFixtures.Channel(live.LastNativeEffects!));
             AssertOwner(FoliageEditorFixtures.Fixture(live).Document, FoliageFixtures.Owner("prop"));
             new MutationService(live).PlacementRemapId("prop", "q");
-            Assert.Equal(session.LastNativeEffects!.FoliageChunks, live.LastNativeEffects!.FoliageChunks);
+            Assert.Equal(FoliageEditorFixtures.Channel(session.LastNativeEffects!), FoliageEditorFixtures.Channel(live.LastNativeEffects!));
             AssertOwner(FoliageEditorFixtures.Fixture(live).Document, Q);
         }
         finally

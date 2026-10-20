@@ -46,6 +46,7 @@ public static class MapPrefabEdits
     internal static MapPrefabEditResult PrepareRaw(MapDocument document, MapAssetClosure assets, MapPrefabEdit edit)
     {
         ArgumentNullException.ThrowIfNull(edit);
+        MapDocumentEditFinalizer.Preflight(document, assets);
         var before = MapPrefabEditPreparation.Begin(document, assets);
         var after = MapPrefabEditPreparation.Copy(document);
         var set = after.Prefabs ?? new(1, 1, [], []);
@@ -120,6 +121,7 @@ public static class MapPrefabEdits
     {
         ArgumentNullException.ThrowIfNull(edit);
         ArgumentNullException.ThrowIfNull(afterAssets);
+        MapDocumentEditFinalizer.Preflight(document, beforeAssets);
         var before = MapPrefabEditPreparation.Begin(document, beforeAssets);
         var oldResource = beforeAssets.GetResource(edit.ResourceId);
         var nextResource = afterAssets.GetResource(edit.NewResourceId);

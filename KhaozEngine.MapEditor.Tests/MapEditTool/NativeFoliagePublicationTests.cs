@@ -47,28 +47,31 @@ public sealed class NativeFoliagePublicationTests
             Assert.Equal(FoliageEditorFixtures.Bytes(generic), FoliageEditorFixtures.Bytes(session));
             Assert.Equal(generic.LastNativeEffects!.Describe(), published.Describe());
             FoliageFixture final = FoliageEditorFixtures.Fixture(session);
-            Assert.Equal(FoliageEditorFixtures.Expected(f.Document, final.Document, f.Assets), published.FoliageChunks);
-            Assert.NotEmpty(published.FoliageChunks);
+            Assert.Equal(FoliageEditorFixtures.Expected(f.Document, final.Document, f.Assets), FoliageEditorFixtures.Channel(published));
+            // The rule is a whole-layer member, so the late edit publishes the layer entry and no rows.
+            MapFoliageLayerChange entry = Assert.Single(published.FoliageLayers);
+            Assert.Empty(published.FoliageChunks);
             Assert.True(published.Invalidates.HasFlag(MapNativeInvalidation.Foliage | MapNativeInvalidation.Terrain));
             Assert.Equal((cursor + 1, depth + 1), (session.NativeHistoryState.Cursor, session.NativeHistoryState.Depth));
             Assert.Equal((terrain.Label, (string?)null), session.NativeHistoryLabels);
             Assert.Single(final.Document.Foliage!.Layers[0].ClearanceRules, r => r.Id == "late-rule");
 
             string publishedBytes = FoliageEditorFixtures.Bytes(session);
-            IReadOnlyList<MapFoliageChunkChange> publishedChunkEffects = published.FoliageChunks;
-            Assert.Equal(FoliageEditorFixtures.Reversed(publishedChunkEffects), session.UndoNative()!.FoliageChunks);
+            string publishedChunkEffects = FoliageEditorFixtures.Channel(published);
+            Assert.Equal(FoliageEditorFixtures.Reversed(published), FoliageEditorFixtures.Channel(session.UndoNative()!));
             Assert.Equal(original, FoliageEditorFixtures.Bytes(session));
-            IReadOnlyList<MapFoliageChunkChange> redoChunkEffects = session.RedoNative()!.FoliageChunks;
+            string redoChunkEffects = FoliageEditorFixtures.Channel(session.RedoNative()!);
             string redoBytes = FoliageEditorFixtures.Bytes(session);
             Assert.Equal(publishedBytes, redoBytes);
             Assert.Equal(publishedChunkEffects, redoChunkEffects);
             Assert.Equal(3, events.Count);
 
-            // The next edit starts from the one published snapshot's dependency digest.
-            MapFoliageChunkChange home = publishedChunkEffects.Single(r => r.Chunk == new MapFoliageChunkKey(0, 0));
-            MapNativeEditEffects next = session.ExecuteNativeCommand(new FoliageEditCommand(new MapPaintFoliage(home.LayerId, -10, -10, 1, 3, 1)));
-            string? publishedDependencyDigest = home.AfterDigest;
-            string? nextEditBeforeDigest = next.FoliageChunks.Single(r => r.Chunk == home.Chunk).BeforeDigest;
+            // The next edit starts from the one published snapshot's layer digest.
+            MapFoliageLayer current = FoliageEditorFixtures.Fixture(session).Document.Foliage!.Layers[0];
+            MapNativeEditEffects next = session.ExecuteNativeCommand(new FoliageEditCommand(new MapSetFoliageLayer(
+                FoliageStorageFixtures.Change(current, l => l["seed"] = 99))));
+            string? publishedDependencyDigest = entry.AfterDigest;
+            string? nextEditBeforeDigest = Assert.Single(next.FoliageLayers).BeforeDigest;
             Assert.Equal(publishedDependencyDigest, nextEditBeforeDigest);
         }
         finally

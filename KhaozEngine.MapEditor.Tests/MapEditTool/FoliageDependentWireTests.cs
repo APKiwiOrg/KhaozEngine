@@ -48,6 +48,7 @@ public sealed class FoliageDependentWireTests
             MapNativeEditEffects baseEffects = editorEffects with
             {
                 FoliageChunks = [],
+                FoliageLayers = [],
                 Invalidates = editorEffects.Invalidates & ~MapNativeInvalidation.Foliage,
             };
             MapNativeInvalidation baseGeometryFlags = baseEffects.Invalidates;
@@ -93,6 +94,10 @@ public sealed class FoliageDependentWireTests
     {
         Assert.Equal(pure.Effects.FoliageChunks, editorEffects.FoliageChunks);
         Assert.Equal(editorEffects.FoliageChunks, wireEffects.FoliageChunks);
+        Assert.Equal(FoliageEditorFixtures.Channel(pure.Effects), FoliageEditorFixtures.Channel(editorEffects));
+        Assert.Equal(FoliageEditorFixtures.Channel(editorEffects), FoliageEditorFixtures.Channel(wireEffects));
+        // No dependent edit here is whole-layer, and the roof link reports equal empty rows and entries and no flag.
+        Assert.Empty(pure.Effects.FoliageLayers);
         Assert.Equal(editorEffects.Describe(), wireEffects.Describe());
         foreach (MapNativeEditEffects effects in new[] { pure.Effects, editorEffects, wireEffects })
             Assert.Equal(dependent, effects.Invalidates.HasFlag(MapNativeInvalidation.Foliage));

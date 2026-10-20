@@ -43,6 +43,13 @@ public sealed class MapEffectiveResources
     internal IReadOnlyList<MapPrefabAttachmentTransfer> Attachments { get; }
     /// <summary>World-space support requests of prefab-local placements, keyed by world placement ID. Each is computed
     /// from the placement's pre-seat frame. Standalone placements keep their authored request and are absent.</summary>
+    /// <summary>The hash of the verified closure this snapshot was expanded against.</summary>
+    internal string? ClosureHash { get; init; }
+
+    /// <summary>The fingerprint, without foliage, of the document this snapshot was expanded from, recorded when the
+    /// document holds foliage or when finalization expands it. Foliage contexts verify it before reusing the snapshot.</summary>
+    internal string? SourceFingerprint { get; set; }
+
     internal IReadOnlyDictionary<string, MapSupportBinding> SupportRequests
     {
         get => _supportRequests;

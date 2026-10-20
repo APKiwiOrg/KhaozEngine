@@ -270,7 +270,13 @@ public static class MapPrefabResolver
         };
         var resources = new MapEffectiveResources(context, source, placements, supports, water, intent, lightPoints, waterCorners,
             attachments, markers.Markers, markers.Supports)
-        { SupportRequests = supportRequests };
+        {
+            SupportRequests = supportRequests,
+            ClosureHash = assets.Hash,
+            // Provenance for foliage contexts, recorded only for documents that hold foliage, so released expansions do no
+            // extra work.
+            SourceFingerprint = document.Foliage is null ? null : Editing.MapDocumentEditFinalizer.BaseFingerprint(document),
+        };
         var foliageErrors = Foliage.MapFoliageReferences.ValidateOwners(authored, resources);
         if (foliageErrors.Count != 0) throw new MapDocumentException(string.Join("\n", foliageErrors));
         return resources;

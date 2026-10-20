@@ -32,8 +32,11 @@ public sealed class MapFoliageGenerationContext
     readonly IReadOnlyDictionary<string, IReadOnlyDictionary<MapFoliageChunkKey, string>> _densityDigests;
     readonly PaintEntry[] _paintEntries;
 
-    MapFoliageGenerationContext(MapFoliageSet? foliage, MapAssetClosure assets, MapEffectiveResources resources, MapFoliageContextWork work)
+    MapFoliageGenerationContext(MapFoliageSet? foliage, MapAssetClosure assets, MapEffectiveResources resources, MapFoliageContextWork work,
+        string sourceFingerprint)
     {
+        SourceFingerprint = sourceFingerprint;
+        ClosureHash = assets.Hash;
         Foliage = foliage;
         _densityDigests = (foliage?.Layers ?? []).ToDictionary(l => l.Id,
             l => (IReadOnlyDictionary<MapFoliageChunkKey, string>)new ReadOnlyDictionary<MapFoliageChunkKey, string>(
@@ -64,6 +67,10 @@ public sealed class MapFoliageGenerationContext
     public string SnapshotId { get; }
     /// <summary>The construction work, fixed at capture.</summary>
     public MapFoliageContextWork Work { get; }
+    /// <summary>The fingerprint of the document this context was captured from, foliage included.</summary>
+    internal string SourceFingerprint { get; }
+    /// <summary>The hash of the verified closure this context was captured against.</summary>
+    internal string ClosureHash { get; }
 
     /// <summary>Captures a fully loaded document, reading it without editing it. Refuses before expansion when the
     /// document is partially resident, its preflight demand exceeds <paramref name="limits"/> or its foliage does not
@@ -79,12 +86,14 @@ public sealed class MapFoliageGenerationContext
         MapEffectiveResources resources;
         try { resources = MapPrefabResolver.Expand(document, assets); }
         catch (Exception error) when (Refusal(error) is { } status) { return new(status, null, Observed(measure.Work, expansions, writes)); }
-        return Build(document, assets, resources, measure.Work, expansions, writes);
+        string baseline = resources.SourceFingerprint ?? Editing.MapDocumentEditFinalizer.BaseFingerprint(document);
+        return Build(document, assets, resources, measure.Work, expansions, writes, baseline);
     }
 
     /// <summary>Captures exact resources a pure or native transaction already expanded for this document and closure,
-    /// without another expansion. The transaction measures before its own expansion. This checks that the resources
-    /// correspond to the document's placements and declared surfaces and to the closure, then runs the context
+    /// without another expansion. The transaction measures before its own expansion. This verifies the provenance the
+    /// expansion recorded, its closure hash and the fingerprint without foliage of the document it was expanded from,
+    /// checks that the resources correspond to the document's placements and declared surfaces, then runs the context
     /// preflight again before staging. It is not a route to inject unrelated resources.</summary>
     internal static MapFoliageContextResult CaptureEffective(MapDocument document, MapAssetClosure assets, MapEffectiveResources resources,
         MapFoliageContextLimits? limits = null)
@@ -97,7 +106,13 @@ public sealed class MapFoliageGenerationContext
         if (measure.Status != MapFoliageStatus.Complete) return new(measure.Status, null, measure.Work);
         if (MapFoliageValidation.ValidateBound(document, assets).Count != 0 || !Corresponds(document, assets, resources))
             return new(MapFoliageStatus.Invalid, null, measure.Work);
-        return Build(document, assets, resources, measure.Work, expansions, writes);
+        // A snapshot expanded from another document or closure never stands in for this one. An expansion of a document
+        // without foliage records no fingerprint and serves only that document's own empty capture.
+        string baseline = Editing.MapDocumentEditFinalizer.BaseFingerprint(document);
+        if (!string.Equals(resources.ClosureHash, assets.Hash, StringComparison.Ordinal) ||
+            (resources.SourceFingerprint is { } recorded ? !string.Equals(recorded, baseline, StringComparison.Ordinal) : document.Foliage is not null))
+            return new(MapFoliageStatus.Invalid, null, measure.Work);
+        return Build(document, assets, resources, measure.Work, expansions, writes, baseline);
     }
 
     /// <summary>Acquires a chunk scope from the captured effective resources.</summary>
@@ -200,11 +215,12 @@ public sealed class MapFoliageGenerationContext
     }
 
     static MapFoliageContextResult Build(MapDocument document, MapAssetClosure assets, MapEffectiveResources resources,
-        MapFoliageContextWork measured, long expansions, long writes)
+        MapFoliageContextWork measured, long expansions, long writes, string baseline)
     {
         // Copying and indexing neither expand nor serialize, so the observed work is final before staging begins.
         MapFoliageContextWork work = Observed(measured, expansions, writes);
-        try { return new(MapFoliageStatus.Complete, new(document.Foliage?.Clone(), assets, resources, work), work); }
+        string fingerprint = Editing.MapDocumentEditFinalizer.Fingerprint(baseline, document.Foliage);
+        try { return new(MapFoliageStatus.Complete, new(document.Foliage?.Clone(), assets, resources, work, fingerprint), work); }
         catch (Exception error) when (Refusal(error) is { } status) { return new(status, null, work); }
     }
 

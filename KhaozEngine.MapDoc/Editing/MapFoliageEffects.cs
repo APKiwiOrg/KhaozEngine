@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Foliage;
 
 namespace KhaozEngine.MapDoc.Editing;
@@ -15,33 +14,49 @@ namespace KhaozEngine.MapDoc.Editing;
 public sealed record MapFoliageChunkChange(string LayerId, MapFoliageChunkKey Chunk, MapFoliageRect? OldBounds,
     MapFoliageRect? NewBounds, string? BeforeDigest, string? AfterDigest);
 
-/// <summary>Foliage effects of one document edit. <see cref="Describe"/> publishes batch rows. The direct diff reads
-/// authored layer metadata and advertised chunk digests only and is an internal pre-filter, never a published row. A
-/// settings change on a layer with no stored chunks still writes the foliage root but reports no chunk and no
-/// invalidation, because an all-zero raster places nothing.</summary>
+/// <summary>One foliage layer whose every batch an edit invalidates: a whole-layer member changed, a layer holding stored
+/// chunks was added or removed, or a localized selection exceeded its per-edit ceiling. A missing side has a null digest.
+/// A digest binds the layer's settings, every member except density, and its ordered stored-chunk digests, read without
+/// any preparation.</summary>
+public sealed record MapFoliageLayerChange(string LayerId, string? BeforeDigest, string? AfterDigest);
+
+/// <summary>Foliage effects of one document edit: batch rows and whole-layer entries (T9-P4a). A layer without stored
+/// chunks on either side reports nothing, because an all-zero raster places nothing, though the edit still writes the
+/// foliage root.</summary>
 public static class MapFoliageEffects
 {
-    /// <summary>The changed batches between two complete documents, read from contexts captured from exactly those
-    /// documents and their closures. Direct rows come from changed density chunks and layer settings. Dependent rows come
-    /// from every batch whose preparation acquisition meets the old or new bounds of a changed input: support, paint,
-    /// rooms, rules, masks, markers and clearance owners measured by their proxies. A context may be null only for a
-    /// document without foliage. <paramref name="trigger"/> is the base effect set whose foliage channel these rows
-    /// replace. Only its foliage channel is superseded, it never narrows the diff. Over-budget selection or a capacity
-    /// refusal throws, so a caller publishes all rows or none.</summary>
+    /// <summary>The changed batch rows between two complete documents, read from contexts captured from exactly those
+    /// documents and their closures. A layer that publishes a whole-layer entry has no rows here, use the overload that
+    /// returns the entries too. A context may be null only for a document without foliage. <paramref name="trigger"/> is
+    /// the base effect set whose foliage channel these rows replace. It never narrows the diff.</summary>
     public static IReadOnlyList<MapFoliageChunkChange> Describe(MapDocument before, MapDocument after,
-        MapFoliageGenerationContext? oldContext, MapFoliageGenerationContext? newContext, MapNativeEditEffects trigger)
+        MapFoliageGenerationContext? oldContext, MapFoliageGenerationContext? newContext, MapNativeEditEffects trigger) =>
+        Describe(before, after, oldContext, newContext, trigger, out _);
+
+    /// <summary>The changed batch rows and whole-layer entries between two complete documents. Direct rows come from
+    /// changed density chunks. Dependent rows come from every batch whose preparation acquisition meets the old or new
+    /// bounds of a changed input: support, paint, rooms, masks, consulted compatibility rows, owner correspondences,
+    /// markers and clearance owners measured by their proxies. A whole-layer member change, the addition or removal of a
+    /// layer holding stored chunks, or a selection past its per-edit ceiling publishes one layer entry instead of rows.
+    /// Each context must have been captured from its document and the closure that document names.</summary>
+    public static IReadOnlyList<MapFoliageChunkChange> Describe(MapDocument before, MapDocument after,
+        MapFoliageGenerationContext? oldContext, MapFoliageGenerationContext? newContext, MapNativeEditEffects trigger,
+        out IReadOnlyList<MapFoliageLayerChange> layers)
     {
         ArgumentNullException.ThrowIfNull(before);
         ArgumentNullException.ThrowIfNull(after);
         ArgumentNullException.ThrowIfNull(trigger);
         Require(before, oldContext, nameof(oldContext));
         Require(after, newContext, nameof(newContext));
-        return MapFoliageDependents.Rows(before, after,
+        var (rows, entries) = MapFoliageDependents.Describe(before, after,
             () => oldContext ?? throw new ArgumentNullException(nameof(oldContext)),
             () => newContext ?? throw new ArgumentNullException(nameof(newContext)));
+        layers = entries;
+        return rows;
     }
 
-    // A context must hold exactly the document's logical foliage. A stale context from another snapshot refuses.
+    // A context must be captured from exactly this document, foliage and everything else, and from the closure the
+    // document names. A context from another snapshot refuses even when its foliage matches.
     static void Require(MapDocument document, MapFoliageGenerationContext? context, string name)
     {
         if (context is null)
@@ -49,43 +64,11 @@ public static class MapFoliageEffects
             if (document.Foliage is not null) throw new ArgumentNullException(name, "a document with foliage needs its context.");
             return;
         }
-        if (!string.Equals(MapFoliageProjection.Digest(context.Foliage), MapFoliageProjection.Digest(document.Foliage), StringComparison.Ordinal))
-            throw new ArgumentException("the foliage context was not captured from this document.", name);
+        if (!string.Equals(context.SourceFingerprint, MapDocumentEditFinalizer.Fingerprint(document), StringComparison.Ordinal) ||
+            !string.Equals(context.ClosureHash, context.Assets.Hash, StringComparison.Ordinal) ||
+            !context.Assets.Roots.OrderBy(r => r.Id, StringComparer.Ordinal).SequenceEqual(document.NativeAssets.OrderBy(r => r.Id, StringComparer.Ordinal)))
+            throw new ArgumentException("the foliage context was not captured from this document and its closure.", name);
     }
-
-    internal static IReadOnlyList<MapFoliageChunkChange> Direct(MapDocument before, MapDocument after)
-    {
-        ArgumentNullException.ThrowIfNull(before);
-        ArgumentNullException.ThrowIfNull(after);
-        Dictionary<string, MapFoliageLayer> old = Layers(before.Foliage), next = Layers(after.Foliage);
-        var rows = new List<MapFoliageChunkChange>();
-        foreach (string id in old.Keys.Union(next.Keys, StringComparer.Ordinal).Order(StringComparer.Ordinal))
-        {
-            old.TryGetValue(id, out MapFoliageLayer? a);
-            next.TryGetValue(id, out MapFoliageLayer? b);
-            if (ReferenceEquals(a, b)) continue;
-            string? settingsA = a is null ? null : Settings(a), settingsB = b is null ? null : Settings(b);
-            Dictionary<MapFoliageChunkKey, string> chunksA = Stored(a), chunksB = Stored(b);
-            foreach (MapFoliageChunkKey key in chunksA.Keys.Union(chunksB.Keys).OrderBy(k => k.Z).ThenBy(k => k.X))
-            {
-                string? digestA = chunksA.TryGetValue(key, out string? shaA) ? Digest(settingsA!, key, shaA) : null;
-                string? digestB = chunksB.TryGetValue(key, out string? shaB) ? Digest(settingsB!, key, shaB) : null;
-                if (string.Equals(digestA, digestB, StringComparison.Ordinal)) continue;
-                rows.Add(new(id, key, digestA is null ? null : Bounds(a!, key), digestB is null ? null : Bounds(b!, key), digestA, digestB));
-            }
-        }
-        return Array.AsReadOnly(rows.ToArray());
-    }
-
-    static Dictionary<string, MapFoliageLayer> Layers(MapFoliageSet? set)
-    {
-        var layers = new Dictionary<string, MapFoliageLayer>(StringComparer.Ordinal);
-        foreach (MapFoliageLayer layer in set?.Layers ?? []) layers.TryAdd(layer.Id, layer);
-        return layers;
-    }
-
-    static Dictionary<MapFoliageChunkKey, string> Stored(MapFoliageLayer? layer) =>
-        layer?.ChunkDigests.ToDictionary(d => d.Key, d => d.Sha256) ?? new Dictionary<MapFoliageChunkKey, string>();
 
     // Every authored layer member except the chunk list, in the closed codec's canonical form.
     internal static string Settings(MapFoliageLayer layer) => MapCanonical.HashHex(w =>
@@ -106,21 +89,6 @@ public static class MapFoliageEffects
         w.WriteStringValue(sha256);
         w.WriteEndArray();
     });
-
-    // A sample reaches every point within one cell of it, clamped to the raster's sample domain. Rounded outward to
-    // single precision.
-    static MapFoliageRect? Bounds(MapFoliageLayer layer, MapFoliageChunkKey key)
-    {
-        long firstX = (long)key.X * MapFoliageChunk.Size, firstZ = (long)key.Z * MapFoliageChunk.Size;
-        if (firstX < 0 || firstZ < 0 || firstX >= layer.Width || firstZ >= layer.Depth) return null;
-        long lastX = Math.Min(firstX + MapFoliageChunk.Size - 1, layer.Width - 1);
-        long lastZ = Math.Min(firstZ + MapFoliageChunk.Size - 1, layer.Depth - 1);
-        double minX = layer.OriginX + (double)Math.Max(0, firstX - 1) * layer.CellSize;
-        double minZ = layer.OriginZ + (double)Math.Max(0, firstZ - 1) * layer.CellSize;
-        double maxX = layer.OriginX + (double)Math.Min(layer.Width - 1, lastX + 1) * layer.CellSize;
-        double maxZ = layer.OriginZ + (double)Math.Min(layer.Depth - 1, lastZ + 1) * layer.CellSize;
-        return new(Down(minX), Down(minZ), Up(maxX), Up(maxZ));
-    }
 
     internal static float Down(double value)
     {

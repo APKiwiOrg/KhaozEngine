@@ -57,23 +57,31 @@ internal sealed class MapDocumentFinalizationSide
 internal sealed class MapDocumentFinalizationStamp
 {
     internal MapDocumentFinalizationStamp(MapDocumentFinalizationSide before, MapDocumentFinalizationSide after,
-        IReadOnlyList<MapFoliageChunkChange> rows)
+        IReadOnlyList<MapFoliageChunkChange> rows, IReadOnlyList<MapFoliageLayerChange> layers)
     {
         Before = before;
         After = after;
         Rows = rows;
+        Layers = layers;
     }
 
     internal MapDocumentFinalizationSide Before { get; }
     internal MapDocumentFinalizationSide After { get; }
     internal IReadOnlyList<MapFoliageChunkChange> Rows { get; }
+    internal IReadOnlyList<MapFoliageLayerChange> Layers { get; }
 
     /// <summary>The same edit read from its after side back to its before side, as undo publishes it.</summary>
-    internal MapDocumentFinalizationStamp Reverse() => new(After, Before, Array.AsReadOnly(Rows.Select(r => r with
-    {
-        OldBounds = r.NewBounds,
-        NewBounds = r.OldBounds,
-        BeforeDigest = r.AfterDigest,
-        AfterDigest = r.BeforeDigest,
-    }).ToArray()));
+    internal MapDocumentFinalizationStamp Reverse() => new(After, Before, ReverseRows(Rows), ReverseLayers(Layers));
+
+    internal static IReadOnlyList<MapFoliageChunkChange> ReverseRows(IReadOnlyList<MapFoliageChunkChange> rows) =>
+        Array.AsReadOnly(rows.Select(r => r with
+        {
+            OldBounds = r.NewBounds,
+            NewBounds = r.OldBounds,
+            BeforeDigest = r.AfterDigest,
+            AfterDigest = r.BeforeDigest,
+        }).ToArray());
+
+    internal static IReadOnlyList<MapFoliageLayerChange> ReverseLayers(IReadOnlyList<MapFoliageLayerChange> layers) =>
+        Array.AsReadOnly(layers.Select(l => l with { BeforeDigest = l.AfterDigest, AfterDigest = l.BeforeDigest }).ToArray());
 }

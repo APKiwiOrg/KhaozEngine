@@ -65,6 +65,8 @@ internal sealed class NativeCompleteSnapshotCommand : EditorCommand, INativeBoun
         OldSpatialBounds = effects.NewSpatialBounds,
         NewSpatialBounds = effects.OldSpatialBounds,
         DigestChanges = effects.DigestChanges.Select(d => new MapDigestChange(d.Key, d.After, d.Before)).ToArray(),
+        FoliageChunks = MapDocumentFinalizationStamp.ReverseRows(effects.FoliageChunks),
+        FoliageLayers = MapDocumentFinalizationStamp.ReverseLayers(effects.FoliageLayers),
     };
 
     // Retain identity, never live payload. A restored prefab reclaims its own transferred inventory.

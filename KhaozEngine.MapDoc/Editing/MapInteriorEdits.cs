@@ -20,6 +20,7 @@ public static class MapInteriorEdits
     public static MapPrefabEditResult Prepare(MapDocument document, MapAssetClosure assets, MapInteriorEdit edit)
     {
         ArgumentNullException.ThrowIfNull(edit);
+        MapDocumentEditFinalizer.Preflight(document, assets);
         var before = MapPrefabEditPreparation.Begin(document, assets);
         var after = MapPrefabEditPreparation.Copy(document);
         var affected = new List<MapPrefabBinding>();

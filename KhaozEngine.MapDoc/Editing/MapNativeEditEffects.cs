@@ -83,13 +83,17 @@ public sealed record MapNativeEditEffects(MapBox3? OldBounds, MapBox3? NewBounds
     /// <summary>The effective marker name changes of the edit, empty when no name changes.</summary>
     public IReadOnlyList<MapMarkerNameChange> MarkerNameChanges { get; init; } = Array.Empty<MapMarkerNameChange>();
 
-    /// <summary>The directly changed foliage density chunks, empty when the edit changes none.</summary>
+    /// <summary>The changed foliage batches, empty when the edit changes none. A layer named in
+    /// <see cref="FoliageLayers"/> has no rows here.</summary>
     public IReadOnlyList<MapFoliageChunkChange> FoliageChunks { get; init; } = Array.Empty<MapFoliageChunkChange>();
+
+    /// <summary>The foliage layers whose every batch the edit invalidates, empty when it invalidates none.</summary>
+    public IReadOnlyList<MapFoliageLayerChange> FoliageLayers { get; init; } = Array.Empty<MapFoliageLayerChange>();
 
     /// <summary>Compact canonical JSON with fixed field order, ordinal IDs and invariant numbers. <c>waterBodyIds</c>
     /// follows <c>dependencyIds</c> only when <see cref="WaterBodyIds"/> is not empty, and <c>markerNameChanges</c>
-    /// follows <c>markerIds</c> only when <see cref="MarkerNameChanges"/> is not empty, and <c>foliageChunks</c> follows
-    /// them only when <see cref="FoliageChunks"/> is not empty. Spatial bounds follow the reported
+    /// follows <c>markerIds</c> only when <see cref="MarkerNameChanges"/> is not empty, and <c>foliageChunks</c> and then
+    /// <c>foliageLayers</c> follow them only when each is not empty. Spatial bounds follow the reported
     /// bounds only when they differ, preserving descriptions whose extents already agree.</summary>
     public string Describe()
     {
@@ -135,6 +139,19 @@ public sealed record MapNativeEditEffects(MapBox3? OldBounds, MapBox3? NewBounds
                 writer.WriteEndArray();
             }
             if (FoliageChunks.Count != 0) WriteFoliageChunks(writer, FoliageChunks);
+            if (FoliageLayers.Count != 0)
+            {
+                writer.WriteStartArray("foliageLayers");
+                foreach (MapFoliageLayerChange change in FoliageLayers.OrderBy(c => c.LayerId, StringComparer.Ordinal))
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("layerId", change.LayerId);
+                    writer.WriteString("before", change.BeforeDigest);
+                    writer.WriteString("after", change.AfterDigest);
+                    writer.WriteEndObject();
+                }
+                writer.WriteEndArray();
+            }
             writer.WriteStartArray("digestChanges");
             foreach (MapDigestChange change in DigestChanges.OrderBy(c => c.Key, StringComparer.Ordinal)
                 .ThenBy(c => c.Before, StringComparer.Ordinal).ThenBy(c => c.After, StringComparer.Ordinal))

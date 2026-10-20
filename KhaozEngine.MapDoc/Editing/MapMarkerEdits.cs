@@ -26,6 +26,7 @@ public static class MapMarkerEdits
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(assets);
         ArgumentNullException.ThrowIfNull(edit);
+        MapDocumentEditFinalizer.Preflight(document, assets);
         RequireResolver(document);
         string id = edit switch
         {

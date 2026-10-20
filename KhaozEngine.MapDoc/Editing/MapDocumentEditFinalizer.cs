@@ -38,27 +38,29 @@ public static class MapDocumentEditFinalizer
         MapAssetClosure afterAssets)
     {
         MapDocument after = prepared.After;
-        if (before.Foliage is null && after.Foliage is null) return prepared;
+        // Without foliage nothing is finalized, and released results carry no retained expansion.
+        if (before.Foliage is null && after.Foliage is null) return prepared.Expansions is null ? prepared : prepared with { Expansions = null };
         string fa = Fingerprint(before), fb = Fingerprint(after);
         bool written = !string.Equals(MapFoliageProjection.Digest(before.Foliage), MapFoliageProjection.Digest(after.Foliage), StringComparison.Ordinal);
         MapNativeWriteSet writes = written && !prepared.WriteSet.Foliage ? prepared.WriteSet with { Foliage = true } : prepared.WriteSet;
         if (prepared.Stamp is { } done && done.Before.Matches(fa, beforeAssets) && done.After.Matches(fb, afterAssets))
-            return new(after, writes, Channel(prepared.Effects, done.Rows)) { Stamp = done };
+            return new(after, writes, Channel(prepared.Effects, done)) { Stamp = done };
         MapEditExpansions? expansions = prepared.Expansions;
-        var sideA = new MapDocumentFinalizationSide(fa, beforeAssets, expansions?.Shared == true ? expansions.Before ?? expansions.After : expansions?.Before);
-        var sideB = new MapDocumentFinalizationSide(fb, afterAssets, expansions?.Shared == true ? expansions.After ?? expansions.Before : expansions?.After,
-            expansions?.Shared == true && string.Equals(beforeAssets.Hash, afterAssets.Hash, StringComparison.Ordinal) ? () => sideA.ResourcesFor(before) : null);
-        bool foliageOnly = expansions?.Shared == true && string.Equals(beforeAssets.Hash, afterAssets.Hash, StringComparison.Ordinal);
-        IReadOnlyList<MapFoliageChunkChange> rows = MapFoliageDependents.Rows(before, after, () => sideA.Capture(before), () => sideB.Capture(after),
-            foliageOnly);
-        return new(after, writes, Channel(prepared.Effects, rows)) { Stamp = new(sideA, sideB, rows) };
+        // One shared expansion serves both sides only when they bind the same closure.
+        bool shared = expansions?.Shared == true && string.Equals(beforeAssets.Hash, afterAssets.Hash, StringComparison.Ordinal);
+        var sideA = new MapDocumentFinalizationSide(fa, beforeAssets, shared ? expansions!.Before ?? expansions.After : expansions?.Before);
+        var sideB = new MapDocumentFinalizationSide(fb, afterAssets, shared ? expansions!.After ?? expansions.Before : expansions?.After,
+            shared ? () => sideA.ResourcesFor(before) : null);
+        var (rows, layers) = MapFoliageDependents.Describe(before, after, () => sideA.Capture(before), () => sideB.Capture(after), shared);
+        var stamp = new MapDocumentFinalizationStamp(sideA, sideB, rows, layers);
+        return new(after, writes, Channel(prepared.Effects, stamp)) { Stamp = stamp };
     }
 
     /// <summary>The editor's central finalization of a staged publication. A side is reused from
     /// <paramref name="stamp"/>, or for the before side from <paramref name="accepted"/>, only when its fingerprint and
-    /// closure still match. Otherwise only that side is captured again from the staged expansion. Rows are reused only
-    /// when both of the stamp's sides match. Returns the input effects unchanged, with no stamp, when neither document
-    /// holds foliage.</summary>
+    /// closure still match. Otherwise only that side is captured again from the staged expansion. Rows and entries are
+    /// reused only when both of the stamp's sides match. Returns the input effects unchanged, with no stamp, when neither
+    /// document holds foliage.</summary>
     internal static (MapNativeEditEffects Effects, MapDocumentFinalizationStamp? Stamp) Staged(MapDocument before, MapDocument after,
         MapNativeEditEffects effects, MapAssetClosure beforeAssets, MapAssetClosure afterAssets, MapDocumentFinalizationStamp? stamp,
         MapDocumentFinalizationSide? accepted, string beforeFingerprint, string afterFingerprint,
@@ -66,20 +68,23 @@ public static class MapDocumentEditFinalizer
     {
         if (before.Foliage is null && after.Foliage is null) return (effects, null);
         bool matchA = stamp?.Before.Matches(beforeFingerprint, beforeAssets) == true, matchB = stamp?.After.Matches(afterFingerprint, afterAssets) == true;
-        if (matchA && matchB) return (Channel(effects, stamp!.Rows), stamp);
+        if (matchA && matchB) return (Channel(effects, stamp!), stamp);
         MapDocumentFinalizationSide sideA = matchA ? stamp!.Before
             : accepted?.Matches(beforeFingerprint, beforeAssets) == true ? accepted : new(beforeFingerprint, beforeAssets, null, beforeResources);
         MapDocumentFinalizationSide sideB = matchB ? stamp!.After : new(afterFingerprint, afterAssets, null, afterResources);
-        IReadOnlyList<MapFoliageChunkChange> rows = MapFoliageDependents.Rows(before, after, () => sideA.Capture(before), () => sideB.Capture(after));
-        return (Channel(effects, rows), new(sideA, sideB, rows));
+        var (rows, layers) = MapFoliageDependents.Describe(before, after, () => sideA.Capture(before), () => sideB.Capture(after));
+        var staged = new MapDocumentFinalizationStamp(sideA, sideB, rows, layers);
+        return (Channel(effects, staged), staged);
     }
 
-    /// <summary>Replaces the foliage channel: the rows, and the Foliage flag exactly when a row exists. Every other member
-    /// and flag is kept, so finalizing twice is idempotent.</summary>
-    internal static MapNativeEditEffects Channel(MapNativeEditEffects effects, IReadOnlyList<MapFoliageChunkChange> rows) => effects with
+    /// <summary>Replaces the foliage channel: the rows, the layer entries, and the Foliage flag exactly when either
+    /// exists. Every other member and flag is kept, so finalizing twice is idempotent.</summary>
+    internal static MapNativeEditEffects Channel(MapNativeEditEffects effects, MapDocumentFinalizationStamp stamp) => effects with
     {
-        FoliageChunks = rows,
-        Invalidates = (effects.Invalidates & ~MapNativeInvalidation.Foliage) | (rows.Count != 0 ? MapNativeInvalidation.Foliage : MapNativeInvalidation.None),
+        FoliageChunks = stamp.Rows,
+        FoliageLayers = stamp.Layers,
+        Invalidates = (effects.Invalidates & ~MapNativeInvalidation.Foliage) |
+            (stamp.Rows.Count != 0 || stamp.Layers.Count != 0 ? MapNativeInvalidation.Foliage : MapNativeInvalidation.None),
     };
 
     /// <summary>Refuses a document whose foliage context demand exceeds the default construction budget, from metadata
@@ -93,19 +98,40 @@ public static class MapDocumentEditFinalizer
             throw MapFoliageEditRefusal.Create(measure.Status, "the document exceeds the foliage context budget before any copy");
     }
 
-    /// <summary>One expansion of a document whose context demand the preflight first admits.</summary>
+    /// <summary>One expansion of a document whose context demand the preflight first admits, with its provenance
+    /// recorded even when the document holds no foliage, since a foliage-only edit shares it with its other side.</summary>
     internal static MapEffectiveResources Expand(MapDocument document, MapAssetClosure assets)
     {
         Preflight(document, assets);
-        return MapPrefabResolver.Expand(document, assets);
+        MapEffectiveResources resources = MapPrefabResolver.Expand(document, assets);
+        resources.SourceFingerprint ??= BaseFingerprint(document);
+        return resources;
     }
 
-    /// <summary>The semantic identity of a complete document: its world identity computed from its live lists rather
-    /// than any stored tile index, its native globals including logical foliage, and every patch digest. Display name,
-    /// schema text and each surface's cached semantic digest are excluded, since that digest is derived from patches the
-    /// fingerprint already binds and a named publication may leave it stale. Two documents that finalize differently
-    /// never share a fingerprint.</summary>
-    internal static string Fingerprint(MapDocument document, MapDocRegistry? registry = null)
+    /// <summary>The semantic identity of a complete document: its fingerprint without foliage and its logical foliage
+    /// digest. Two documents that finalize differently never share a fingerprint.</summary>
+    internal static string Fingerprint(MapDocument document, MapDocRegistry? registry = null) =>
+        Fingerprint(BaseFingerprint(document, registry), document.Foliage);
+
+    /// <summary>The fingerprint of a document whose <see cref="BaseFingerprint"/> is already known.</summary>
+    internal static string Fingerprint(string baseline, MapFoliageSet? set)
+    {
+        string foliage = MapFoliageProjection.Digest(set);
+        return MapCanonical.HashHex(w =>
+        {
+            w.WriteStartArray();
+            w.WriteStringValue("kemap/finalization-fingerprint/1");
+            w.WriteStringValue(baseline);
+            w.WriteStringValue(foliage);
+            w.WriteEndArray();
+        });
+    }
+
+    /// <summary>The identity of everything in a complete document except foliage, which expansion never reads: its world
+    /// identity computed from its live lists rather than any stored tile index, its native globals and every patch
+    /// digest. Display name, schema text and each surface's cached semantic digest are excluded, since that digest is
+    /// derived from patches the fingerprint already binds and a named publication may leave it stale.</summary>
+    internal static string BaseFingerprint(MapDocument document, MapDocRegistry? registry = null)
     {
         registry ??= MapDocRegistry.CreateDefault();
         var options = MapDocumentFile.CreateCompactOptions(registry);
@@ -113,7 +139,9 @@ public static class MapDocumentEditFinalizer
         return MapCanonical.HashHex(w =>
         {
             w.WriteStartObject();
-            w.WriteString("manifest", MapDocumentHash.OfManifest(document, registry));
+            w.WriteNumber("formatVersion", document.FormatVersion);
+            w.WriteString("id", document.Id);
+            MapCanonical.WriteGlobals(w, document, options);
             w.WriteStartArray("tiles");
             foreach (MapTileCoord tile in spatial.OccupiedTiles)
             {

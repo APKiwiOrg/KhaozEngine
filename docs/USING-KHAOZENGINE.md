@@ -2090,7 +2090,8 @@ Construction rejects invalid geometry with `ArgumentException`. Existing footpri
 optional `SizeMetres`, rotation, wall sizing, collection and invalidation rules still apply.
 `Fill` paints the silhouette. `OutlinePixels` controls its inset `Outline` boundary and centred
 round-capped detail segments in raster pixels, independent of non-square scaling or pyramid level.
-Overlapping boundary and detail ink contributes once. Detail segments may extend outside a concave fill,
+Details blend over polygon fill. Overlapping boundary and detail ink contributes once.
+Detail segments may extend outside a concave fill,
 are clipped to the footprint box and are excluded from building shadows. Transparent fills leave
 terrain visible. Null geometry preserves existing bytes, feature anchors and hover targets.
 

@@ -79,11 +79,40 @@ public sealed class SymbolGeometryRasterTests
         var geometry = new WorldMapSymbolGeometry(Rectangle,
             [new(new(-1f, 0f), new(1f, 0f)), new(new(0f, -1f), new(0f, 1f))]);
         WorldMapChunkImage image = Render(geometry, new(2f), width: 2f, outline: new(0f, 0f, 0f, 0.5f));
-        byte[] ink = [64, 64, 64, 255];
+        byte[] ink = [128, 128, 128, 255];
         Assert.Equal(ink, Pixel(image, 4.125f, 4.125f));
         Assert.Equal(ink, Pixel(image, 4.125f, 5.125f));
-        Assert.Equal(ink, Pixel(image, 2.125f, 4.125f));
+        Assert.Equal(new byte[] { 64, 64, 64, 255 }, Pixel(image, 2.125f, 4.125f));
         Assert.Equal(White, Pixel(image, 5.125f, 5.125f));
+    }
+
+    /// <summary>Unioned detail ink blends after opaque, translucent or transparent polygon fill.</summary>
+    [Theory]
+    [InlineData(1f, 128)]
+    [InlineData(0.5f, 96)]
+    [InlineData(0f, 64)]
+    public void SymbolGeometry_DetailsCompositeOverFill(float fillAlpha, int expected)
+    {
+        var geometry = new WorldMapSymbolGeometry(Rectangle,
+            [new(new(-1f, 0f), new(1f, 0f)), new(new(0f, -1f), new(0f, 1f)),
+                new(new(-1f, 0f), new(1f, 0f))]);
+        WorldMapChunkImage image = Render(geometry, new(2f), width: 2f,
+            fill: new(1f, 1f, 1f, fillAlpha), outline: new(0f, 0f, 0f, 0.5f));
+        byte[] ink = [(byte)expected, (byte)expected, (byte)expected, 255];
+        Assert.Equal(ink, Pixel(image, 4.125f, 4.125f));
+        Assert.Equal(ink, Pixel(image, 5.125f, 4.125f));
+        Assert.Equal(new byte[] { 64, 64, 64, 255 }, Pixel(image, 2.125f, 4.125f));
+    }
+
+    /// <summary>Detail ink outside a concave fill blends over terrain without inheriting polygon fill.</summary>
+    [Fact]
+    public void SymbolGeometry_ExternalDetailCompositesOverTerrain()
+    {
+        var geometry = new WorldMapSymbolGeometry(Concave, [new(new(0.5f, 0.25f), new(0.5f, 1f))]);
+        WorldMapChunkImage image = Render(geometry, new(2f), width: 2f,
+            fill: new(1f, 1f, 1f, 0.5f), outline: new(0f, 0f, 0f, 0.5f));
+        Assert.Equal(new byte[] { 64, 64, 64, 255 }, Pixel(image, 5.125f, 5.125f));
+        Assert.Equal(new byte[] { 192, 192, 192, 255 }, Pixel(image, 3.125f, 3.125f));
     }
 
     /// <summary>Horizontal and vertical detail segments keep the same width after non-square scaling.</summary>

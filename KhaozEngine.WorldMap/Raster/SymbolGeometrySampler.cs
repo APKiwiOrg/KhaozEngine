@@ -20,11 +20,11 @@ internal sealed class SymbolGeometrySampler
             _strokes[i] = new(geometry.Strokes[i].Start * halfExtents, geometry.Strokes[i].End * halfExtents);
     }
 
-    internal (bool Full, bool Fill) Sample(Vector2 point, float width)
+    internal (bool Full, bool Fill, bool FillUnderDetail) Sample(Vector2 point, float width)
     {
         // Clip detail caps and joins to the footprint box so existing collection reach stays authoritative.
         if (_halfExtents.X <= 0f || _halfExtents.Y <= 0f ||
-            MathF.Abs(point.X) > _halfExtents.X || MathF.Abs(point.Y) > _halfExtents.Y) return (false, false);
+            MathF.Abs(point.X) > _halfExtents.X || MathF.Abs(point.Y) > _halfExtents.Y) return (false, false, false);
         bool inside = false;
         double boundaryDistance = double.PositiveInfinity;
         for (int i = 0; i < _outline.Length; i++)
@@ -36,7 +36,8 @@ internal sealed class SymbolGeometrySampler
                 inside = !inside;
         }
         inside |= boundaryDistance == 0d;
-        bool ink = inside && width > 0f && boundaryDistance <= (double)width * width;
+        bool boundary = inside && width > 0f && boundaryDistance <= (double)width * width;
+        bool ink = boundary;
         if (!ink && width > 0f)
             foreach (WorldMapSymbolStroke stroke in _strokes)
                 if (DistanceSquared(point, stroke.Start, stroke.End) <= (double)width * width * 0.25d)
@@ -44,7 +45,7 @@ internal sealed class SymbolGeometrySampler
                     ink = true;
                     break;
                 }
-        return (inside || ink, inside && !ink);
+        return (inside || ink, inside && !ink, inside && ink && !boundary);
     }
 
     static double DistanceSquared(Vector2 point, Vector2 a, Vector2 b)

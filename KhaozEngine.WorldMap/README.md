@@ -99,7 +99,8 @@ symbol geometry changing only their raster silhouette and details.
   Each `WorldMapSymbolStroke(Start, End)` is an independent open detail segment. Geometry follows the
   existing dimensions, `SizeMetres`, rotation and wall sizing. `Fill` paints the polygon. `Outline`
   paints its inset boundary and centred round-capped details using `OutlinePixels` in raster pixels,
-  including non-square symbols and coarse levels. Overlapping ink shares coverage once. Details can
+  including non-square symbols and coarse levels. Details blend over polygon fill. Overlapping ink
+  shares coverage once. Details can
   lie outside a concave fill and are clipped to the normalized footprint box. Building shadows use
   only the filled silhouette. Null preserves existing raster bytes, anchors and hover targets.
 - `IconRules` default to an empty array. Rules select footprint or marker tags, an icon key, a priority

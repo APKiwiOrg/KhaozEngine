@@ -49,10 +49,12 @@ internal sealed class FootprintPainter(RasterCanvas canvas, WorldMapStyle style)
         for (int row = top; row < bottom; row++)
             for (int column = left; column < right; column++)
             {
-                (float full, float interior) = shape.Sample(canvas, column, row, inset);
-                // Fill and outline occupy disjoint samples, so neither attenuates the other's contribution.
+                (float full, float interior, float fillUnderDetail) = shape.Sample(canvas, column, row, inset);
+                // Boundaries replace fill. Unioned detail ink retains attenuated fill beneath its samples.
                 float fillAlpha = interior * MathUtil.Clamp01(fill.A);
                 float outlineAlpha = (full - interior) * MathUtil.Clamp01(outline.A);
+                if (fillUnderDetail > 0f)
+                    fillAlpha += fillUnderDetail * MathUtil.Clamp01(fill.A) * (1f - MathUtil.Clamp01(outline.A));
                 float alpha = fillAlpha + outlineAlpha;
                 if (alpha <= 0f) continue;
                 var colour = new Color(

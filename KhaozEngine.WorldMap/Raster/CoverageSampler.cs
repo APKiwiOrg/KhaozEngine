@@ -32,10 +32,10 @@ internal sealed class CoverageSampler
 
     internal MapRect Bounds { get; }
 
-    internal (float Full, float Fill) Sample(RasterCanvas canvas, int column, int row, float inset)
+    internal (float Full, float Fill, float FillUnderDetail) Sample(RasterCanvas canvas, int column, int row, float inset)
     {
         Vector2 inner = _halfExtents - new Vector2(inset);
-        int full = 0, fill = 0;
+        int full = 0, fill = 0, fillUnderDetail = 0;
         for (int y = 0; y < SamplesPerAxis; y++)
             for (int x = 0; x < SamplesPerAxis; x++)
             {
@@ -45,9 +45,10 @@ internal sealed class CoverageSampler
                 var local = new Vector2(_cos * delta.X - _sin * delta.Y, _sin * delta.X + _cos * delta.Y);
                 if (_geometry is not null)
                 {
-                    (bool covered, bool interior) = _geometry.Sample(local, inset);
+                    (bool covered, bool interior, bool underDetail) = _geometry.Sample(local, inset);
                     if (covered) full++;
                     if (interior) fill++;
+                    if (underDetail) fillUnderDetail++;
                     continue;
                 }
                 if (!Contains(local, _halfExtents)) continue;
@@ -55,7 +56,7 @@ internal sealed class CoverageSampler
                 if (Contains(local, inner)) fill++;
             }
         const float sampleCount = SamplesPerAxis * SamplesPerAxis;
-        return (full / sampleCount, fill / sampleCount);
+        return (full / sampleCount, fill / sampleCount, fillUnderDetail / sampleCount);
     }
 
     bool Contains(Vector2 local, Vector2 halfExtents)

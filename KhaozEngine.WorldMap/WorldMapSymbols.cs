@@ -41,7 +41,8 @@ public sealed record WorldMapSymbol(WorldMapSymbolKind Kind, Color Fill, Color O
     /// <remarks>
     /// Geometry follows the existing footprint dimensions, optional SizeMetres and rotation. Boundary ink is
     /// inset, and detail segments are centred with round caps. Both use OutlinePixels in raster pixels.
-    /// Details are clipped to the footprint box and do not contribute to building shadows.
+    /// Details blend over polygon fill, share coverage at intersections and are clipped to the footprint box.
+    /// They do not contribute to building shadows.
     /// Feature anchors and hover targets are unaffected.
     /// </remarks>
     public WorldMapSymbolGeometry? Geometry { get; init; }

@@ -52,7 +52,7 @@ public sealed class CopyBufferAlignmentProofTests
     [InlineData("void Copy(MutableOffset value) { var offset = value;", "offset", "Mutate();")]
     [InlineData("void Copy() { uint offset; offset = 0;", "offset", "")]
     [InlineData("void Copy(uint[] offsets) {", "offsets[0]", "offsets[0] = 1;")]
-    [InlineData("uint this[int i] { get; set; } void Copy() {", "this[0]", "Mutate();")]
+    [InlineData("uint this[int i] { get => count; set => count = value; } void Copy() {", "this[0]", "Mutate();")]
     [InlineData("uint offset; void Copy() {", "this.offset", "Mutate();")]
     [InlineData("void Copy(Holder holder) {", "holder.Offset", "Mutate();")]
     [InlineData("void Copy() {", "Offsets.Current", "Mutate();")]
@@ -146,7 +146,8 @@ public sealed class CopyBufferAlignmentProofTests
             + "Unknown(offset); commands.CopyBuffer(source, offset, target, 0, count); }");
         SyntaxTree tree = CSharpSyntaxTree.ParseText(source);
         Assert.Contains(CopyBufferAlignmentProof.CreateCompilation(tree).GetDiagnostics(), diagnostic => diagnostic.Id == "CS0103");
-        Assert.False(ProvesBoundSource(source));
+        Assert.False(CopyBufferAlignmentProof.Accepts("offset", source,
+            source.IndexOf("commands.CopyBuffer", StringComparison.Ordinal), Helper));
     }
 
     [Theory]
@@ -210,9 +211,20 @@ public sealed class CopyBufferAlignmentProofTests
         => Assert.False(CopyBufferAlignmentProof.Accepts(expression, "", 0, helper));
 
     static string BoundSource(string methods)
-        => "class Commands { public void CopyBuffer(object source, uint offset, object target, uint destination, uint count) { } } "
-            + "static class GpuCopyAlignment { public static void RequireAlignedOffset(ulong offset, string name, string what, string side) { } } "
+        => "class Commands { public void CopyBuffer(object source, uint offset, object target, uint destination, uint count) { } "
+            + "public void CopyBuffer(object source, int offset, object target, uint destination, uint count) { } "
+            + "public void CopyBuffer(object source, ulong offset, object target, uint destination, uint count) { } } "
+            + "static class GpuCopyAlignment { public static void RequireAlignedOffset(ulong offset, string name, string what, string side) { } "
+            + "public static void RequireAlignedOffset(int offset, string name, string what, string side) { } } "
             + "class CallSite { Commands commands = new(); object source = new(), target = new(); uint count = 4; "
+            + "uint other = 4; bool ready = true; (uint, uint) values = (1, 2); "
+            + "class MutableOffset { public uint Value; public static implicit operator uint(MutableOffset value) => value.Value; } "
+            + "class Holder { public uint Offset; } static class Offsets { public static uint Current; } "
+            + "void Mutate() { count = 1; } void Mutate(ref uint value) { value = 1; } "
+            + "void Mutate(out uint value, bool unused = false) { value = 1; } "
+            + "object GetSource(out uint value) { value = 1; return source; } void Inspect(in uint value) { _ = value; } "
+            + "void Change(ref uint value, bool unused = false) { value = 1; } "
+            + "void Change(out uint value, bool unused = false, bool alsoUnused = false) { value = 1; } "
             + methods + " }";
 
     static SemanticModel BoundModel(string source)
@@ -223,13 +235,16 @@ public sealed class CopyBufferAlignmentProofTests
         return compilation.GetSemanticModel(tree);
     }
 
-    static bool ProvesBoundSource(string source)
-        => CopyBufferAlignmentProof.Accepts("offset", source,
+    static bool ProvesBoundSource(string source, string expression = "offset")
+    {
+        BoundModel(source);
+        return CopyBufferAlignmentProof.Accepts(expression, source,
             source.IndexOf("commands.CopyBuffer", StringComparison.Ordinal), Helper);
+    }
 
     static bool Proves(string prefix)
     {
-        string source = "void Copy(uint offset) { " + prefix + " commands.CopyBuffer(source, offset, target, 0, count); }";
+        string source = "unsafe void Copy(uint offset) {\n" + prefix + "\ncommands.CopyBuffer(source, offset, target, 0, count); }";
         return ProvesSource("offset", source);
     }
 
@@ -242,8 +257,5 @@ public sealed class CopyBufferAlignmentProofTests
     }
 
     static bool ProvesSource(string expression, string source)
-    {
-        source = BoundSource(source);
-        return CopyBufferAlignmentProof.Accepts(expression, source, source.IndexOf("commands.CopyBuffer", StringComparison.Ordinal), Helper);
-    }
+        => ProvesBoundSource(BoundSource(source), expression);
 }

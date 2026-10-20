@@ -240,7 +240,6 @@ namespace KhaozEngine.Tests.Gpu
                 nameof(device.SyncToVerticalBlank));
             Drive(() => device.ResizeSwapchain(640u, 480u), nameof(device.ResizeSwapchain));
             Drive(() => device.Present(), nameof(device.Present));
-            Drive(device.WaitForIdle, nameof(device.WaitForIdle));
 
             // THE THREE UpdateBuffer OVERLOADS, spelled so each one really is a different overload: an array, an
             // explicit span, and a single value by readonly reference.
@@ -263,11 +262,31 @@ namespace KhaozEngine.Tests.Gpu
             Drive(() => _ = device.Map(buffer, GpuMapMode.Read), nameof(device.Map));
             Drive(() => device.Unmap(buffer), nameof(device.Unmap));
 
+            var readback = new byte[] { 0x7f };
+            Drive(() =>
+            {
+                Assert.False(device.TryReadBuffer(buffer, fence, 32u, readback));
+                Assert.Equal(0x7f, readback[0]);
+            }, nameof(device.TryReadBuffer));
+
             // AND THE SECOND Submit OVERLOAD, on a real recording, because the fence arm is where the timeline
             // signal is encoded and a device that could submit but not arm a fence would pass a list-only call.
             list.Begin();
             list.End();
             Drive(() => device.Submit(list, fence), nameof(device.Submit));
+            Drive(device.WaitForIdle, nameof(device.WaitForIdle));
+            Assert.True(device.TryReadBuffer(buffer, fence, 32u, readback));
+            Assert.Equal(one, readback[0]);
+
+            using IGpuFence first = device.Factory.CreateFence();
+            using IGpuFence second = device.Factory.CreateFence();
+            IGpuFence[] completions = [first, second];
+            list.Begin();
+            list.End();
+            Drive(() => device.Submit(list, (ReadOnlySpan<IGpuFence>)completions), nameof(device.Submit));
+            device.WaitForIdle();
+            Assert.True(first.Signaled);
+            Assert.True(second.Signaled);
 
             // AND THE REFUSAL THAT IS LEFT IS ABOUT THE CALLER, not about the package. Asserted by its message
             // rather than by its type, because both shapes are exceptions and only the message tells a reader

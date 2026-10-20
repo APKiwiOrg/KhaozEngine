@@ -73,7 +73,9 @@ namespace KhaozEngine.Tests.Gpu
 
                 // The table came through with the shader set rather than being rebuilt, which is what rows 10, 11
                 // and 13 read.
-                Assert.True(metal.Table.Count > 0, program.Name + " bound nothing at all");
+                GpuResourceLayoutDescription[] declared = SpirvCrossCompile.GlslPairToHlsl(
+                    program.VertexGlsl, program.FragmentGlsl, program.Name).Reflection.ResourceLayouts;
+                MetalProgramBindingContract.Require(metal.Table, declared);
                 programs++;
             }
 

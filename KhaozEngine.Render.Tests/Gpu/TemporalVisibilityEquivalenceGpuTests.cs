@@ -18,8 +18,8 @@ namespace KhaozEngine.Tests.Gpu;
 /// <para>The coverage counts say the cases met what the cost cut can break: edge and corner centres, fractions on and
 /// near integers, non-finite and background depths, depths exactly at and one ulp either side of both tolerances,
 /// changes within ulps of 0.1 on both sides, and R4 bounds both sides of the <c>0.1 - 2^-13</c> margin. The
-/// classifier's predicted paths are independent of production. No predicted R4 skip may meet a D release, which
-/// checks the R4 bound against D on the device before R4 exists.</para>
+/// classifier's predicted paths are independent of production, and the shipped decision must report each case's
+/// predicted path: fast or slow, and the range skip. No predicted R4 skip may meet a D release.</para>
 /// </summary>
 public sealed class TemporalVisibilityEquivalenceGpuTests(ITestOutputHelper output)
 {
@@ -38,10 +38,18 @@ public sealed class TemporalVisibilityEquivalenceGpuTests(ITestOutputHelper outp
         (Flag.RangeSkipNearMarginBelow, 16), (Flag.RangeSkipNearMarginAbove, 16),
     ];
 
-    // PLACEHOLDERS FOR PLAN TASK 7f.2. Production is D at this commit, so it reports one path for every case. 7f.2
-    // reports the shipped function's own fast, slow and range-skip bits, then sets these minimums and asserts that
-    // the reported fast and slow paths equal the predicted ones case for case.
-    const int ReportedFastMinimum = 0, ReportedSlowMinimum = 0, ReportedRangeSkipMinimum = 0;
+    // The paths the shipped decision reports, per internal size over its three draws of a hardware-sized target and
+    // scaled like the coverage above: the fast path, the slow path for each of its three reasons, and the range skip.
+    // Every reported path must also equal the classifier's prediction case for case. Metal on 7f.2 reported, over the
+    // three sizes, fast 2516372 to 2572817, slow at an edge 423174 to 425119, on a base deviation 101946 to 166744,
+    // at the border 39438 to 45846 and range skips 250383 to 255408. The minimums sit under half of those.
+    static readonly (Path Path, int Minimum)[] Reported =
+    [
+        (Path.Fast, 1_000_000), (Path.SlowEdge, 100_000), (Path.SlowDeviation, 50_000), (Path.SlowBorder, 15_000),
+        (Path.RangeSkip, 100_000),
+    ];
+
+    enum Path { Fast, SlowEdge, SlowDeviation, SlowBorder, RangeSkip }
 
     public static TheoryData<int, int, int, int> Sizes => new()
     {
@@ -72,6 +80,7 @@ public sealed class TemporalVisibilityEquivalenceGpuTests(ITestOutputHelper outp
         ];
         int bitsCount = Enum.GetValues<Flag>().Length;
         var totals = new long[bitsCount];
+        var paths = new long[Enum.GetValues<Path>().Length];
         long cases = 0;
         var mismatches = new List<string>();
         for (int d = 0; d < draws.Length; d++)
@@ -82,6 +91,7 @@ public sealed class TemporalVisibilityEquivalenceGpuTests(ITestOutputHelper outp
             for (int i = 0; i < flags.Length; i++)
             {
                 for (int b = 0; b < bitsCount; b++) if ((flags[i] & (1u << b)) != 0) counts[b]++;
+                CountPaths(flags[i], paths);
                 const uint Wrong = (1u << (int)Flag.DecisionMismatch) | (1u << (int)Flag.ValidityMismatch)
                     | (1u << (int)Flag.ChangeMismatch);
                 if ((flags[i] & Wrong) != 0 && mismatches.Count < 16)
@@ -95,6 +105,7 @@ public sealed class TemporalVisibilityEquivalenceGpuTests(ITestOutputHelper outp
             cases += flags.Length;
         }
         output.WriteLine($"  all {cases} cases: {Describe(totals)}");
+        output.WriteLine($"  reported paths: {string.Join(", ", Enum.GetValues<Path>().Select(p => $"{p} {paths[(int)p]}"))}");
         foreach (string mismatch in mismatches) output.WriteLine("  MISMATCH " + mismatch);
 
         Assert.Equal(cases, totals[(int)Flag.Written]);
@@ -112,12 +123,27 @@ public sealed class TemporalVisibilityEquivalenceGpuTests(ITestOutputHelper outp
             .Select(c => $"{c.Flag} {totals[(int)c.Flag]} under {Math.Max(1, (long)(c.Minimum * scale))}").ToArray();
         Assert.True(thin.Length == 0, "coverage too thin: " + string.Join(", ", thin));
 
-        // The reported paths. At this commit production is D, so every case reports the one path and none other.
-        Assert.Equal(cases, totals[(int)Flag.ReportedOnlyPath]);
-        Assert.True(totals[(int)Flag.ReportedFast] >= ReportedFastMinimum);
-        Assert.True(totals[(int)Flag.ReportedSlow] >= ReportedSlowMinimum);
-        Assert.True(totals[(int)Flag.ReportedRangeSkip] >= ReportedRangeSkipMinimum);
-        Assert.Equal(0L, totals[(int)Flag.ReportedFast] + totals[(int)Flag.ReportedSlow] + totals[(int)Flag.ReportedRangeSkip]);
+        // The reported paths: each the predicted one, every case on exactly one of fast and slow, and each path met.
+        Assert.True(totals[(int)Flag.ReportedPathMismatch] == 0,
+            $"{totals[(int)Flag.ReportedPathMismatch]} reported paths differ from the predicted ones");
+        Assert.Equal(cases, totals[(int)Flag.ReportedFast] + totals[(int)Flag.ReportedSlow]);
+        Assert.Equal(totals[(int)Flag.PredictedFast], totals[(int)Flag.ReportedFast]);
+        Assert.Equal(totals[(int)Flag.PredictedRangeSkip], totals[(int)Flag.ReportedRangeSkip]);
+        var unmet = Reported.Where(r => paths[(int)r.Path] < Math.Max(1, (long)(r.Minimum * scale)))
+            .Select(r => $"{r.Path} {paths[(int)r.Path]} under {Math.Max(1, (long)(r.Minimum * scale))}").ToArray();
+        Assert.True(unmet.Length == 0, "reported paths too thin: " + string.Join(", ", unmet));
+    }
+
+    // One case's reported path, the slow path split by the classifier's reason.
+    static void CountPaths(uint flags, long[] paths)
+    {
+        static bool Has(uint flags, Flag flag) => (flags & (1u << (int)flag)) != 0;
+        if (Has(flags, Flag.ReportedFast)) paths[(int)Path.Fast]++;
+        if (Has(flags, Flag.ReportedRangeSkip)) paths[(int)Path.RangeSkip]++;
+        if (!Has(flags, Flag.ReportedSlow)) return;
+        if (Has(flags, Flag.PredictedSlowEdge)) paths[(int)Path.SlowEdge]++;
+        else if (Has(flags, Flag.PredictedSlowDeviation)) paths[(int)Path.SlowDeviation]++;
+        else if (Has(flags, Flag.PredictedSlowBorder)) paths[(int)Path.SlowBorder]++;
     }
 
     static string Describe(long[] counts) => string.Join(", ",

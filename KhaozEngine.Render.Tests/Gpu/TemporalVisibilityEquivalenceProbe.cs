@@ -25,23 +25,25 @@ internal sealed class TemporalVisibilityEquivalenceProbe : IDisposable
         EdgeCentre, CornerCentre, NearIntegerFraction, NonFinite, Background, CurrentToleranceExact,
         CurrentToleranceUlp, PreviousToleranceExact,
         PreviousToleranceUlp, NearThresholdAbove, NearThresholdBelow, ReportedFast, ReportedSlow, ReportedRangeSkip,
-        ReportedOnlyPath, EmptyHistory,
+        ReportedPathMismatch, EmptyHistory,
     }
 
     /// <summary>
-    /// THE PRODUCTION SIDE. At 583a3ae7b production is D, so this calls the shipped helper and reports its single
-    /// path. Plan Task 7f.2 points it at the shipped decision function and reports that function's own path bits:
-    /// fast, slow and the R4 range skip. A skip may leave <c>computed</c> false where D computed a change. Nothing
-    /// else about the oracle changes.
+    /// THE PRODUCTION SIDE: the shipped decision, <c>temporalVisibilityReleases</c>, and the path bits it reports. A
+    /// range skip leaves <c>computed</c> false where D computed a change, and only there may the validities differ.
     /// </summary>
     internal const string ProductionDecisionGlsl = @"
-const uint ReportedFast = 1u, ReportedSlow = 2u, ReportedRangeSkip = 4u, ReportedOnlyPath = 8u;
+const uint ReportedFast = 1u, ReportedSlow = 2u, ReportedRangeSkip = 4u;
 bool productionReleases(vec2 uv, ivec2 centre, ivec2 last, vec2 previousUv, float expectedDepth,
     out bool computed, out float change, out uint path) {
     change = 0.0;
-    computed = temporalVisibilityChange(uv, centre, last, previousUv, expectedDepth, change);
-    path = ReportedOnlyPath;
-    return computed && abs(change) > VisibilityReleaseThreshold;
+    uint shipped = 0u;
+    bool release = temporalVisibilityReleases(uv, centre, last, previousUv, expectedDepth, change, shipped);
+    computed = (shipped & VisibilityChangeComputed) != 0u;
+    path = ((shipped & VisibilityFastPath) != 0u ? ReportedFast : 0u)
+        | ((shipped & VisibilitySlowPath) != 0u ? ReportedSlow : 0u)
+        | ((shipped & VisibilityRangeSkip) != 0u ? ReportedRangeSkip : 0u);
+    return release;
 }
 ";
 
@@ -218,12 +220,13 @@ uint classify(VisibilityCase c, bool dValid, float dChange, bool dRelease) {
                 lowest = min(lowest, v);
                 highest = max(highest, v);
             }
-        float mean = currentSum / currentCount;
-        float bound = max(mean - lowest, highest - mean);
+        // The current mean's distance from each end of the block's range, times the count, against the margin times
+        // the count: the same bound as the mean's own, which the shipped skip takes this way.
+        float bound = max(currentSum - lowest * currentCount, highest * currentCount - currentSum);
         const float Margin = VisibilityReleaseThreshold - 1.220703125e-4;
-        bool skip = bound <= Margin;
+        bool skip = bound <= Margin * currentCount;
         if (skip) bits |= 1u << 12;
-        if (abs(bound - Margin) <= 4.8828125e-4) bits |= skip ? 1u << 13 : 1u << 14;
+        if (abs(bound - Margin * currentCount) <= 4.8828125e-4 * currentCount) bits |= skip ? 1u << 13 : 1u << 14;
         if (skip && dRelease) bits |= 1u << 15;
     }
     if (dValid && abs(abs(dChange) - VisibilityReleaseThreshold) <= 2.384185791015625e-7)
@@ -258,7 +261,11 @@ void main() {
     if ((path & ReportedFast) != 0u) bits |= 1u << 27;
     if ((path & ReportedSlow) != 0u) bits |= 1u << 28;
     if ((path & ReportedRangeSkip) != 0u) bits |= 1u << 29;
-    if ((path & ReportedOnlyPath) != 0u) bits |= 1u << 30;
+    // The reported path must be the predicted one, case for case: fast or slow, and the range skip.
+    bool predictedFast = (bits & (1u << 8)) != 0u, predictedSkip = (bits & (1u << 12)) != 0u;
+    bool reportedFast = (path & ReportedFast) != 0u, reportedSlow = (path & ReportedSlow) != 0u;
+    if (reportedFast != predictedFast || reportedSlow == predictedFast
+        || ((path & ReportedRangeSkip) != 0u) != predictedSkip) bits |= 1u << 30;
     oFlags = vec4(uvec4(bits & 255u, (bits >> 8) & 255u, (bits >> 16) & 255u, bits >> 24)) / 255.0;
     oDChange = dChange;
     oNewChange = computed ? newChange : 0.0;

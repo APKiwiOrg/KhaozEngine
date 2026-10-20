@@ -55,5 +55,5 @@ bool temporalVisibilityChange(vec2 uv, ivec2 centre, ivec2 last,
     signedChange = currentSum / currentCount - previousSum / previousWeight;
     return true;
 }
-";
+" + TemporalVisibilityReleasesGlsl;
 }

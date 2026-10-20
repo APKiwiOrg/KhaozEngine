@@ -6,9 +6,9 @@ using Xunit;
 namespace KhaozEngine.Tests.Render3D
 {
     /// <summary>
-    /// The frozen D oracle cannot drift. Its three texts hash to the pins taken from production at 583a3ae7b, the
-    /// production text still is D at this commit, and the D rewrite turns every program that runs the visibility
-    /// release into D while leaving the others alone. Device-free.
+    /// The frozen D oracle cannot drift. Its three texts hash to the pins taken from production at 583a3ae7b, and the
+    /// D rewrite turns every program that runs the visibility release into D while leaving the others alone.
+    /// Device-free.
     /// </summary>
     public sealed class TemporalVisibilityFrozenDTests
     {
@@ -31,18 +31,6 @@ namespace KhaozEngine.Tests.Render3D
                 TemporalVisibilityFrozenD.Sha256(TemporalVisibilityFrozenD.CallSiteGlsl));
             Assert.Equal(TemporalVisibilityFrozenD.HoldReleaseSha256,
                 TemporalVisibilityFrozenD.Sha256(TemporalVisibilityFrozenD.HoldReleaseGlsl));
-        }
-
-        /// <summary>True until the cost cut changes production (plan Task 7f.2), which deletes this fact in the same
-        /// commit. The pin above stays.</summary>
-        [Fact]
-        public void ProductionStillShipsFrozenD()
-        {
-            Assert.Equal(TemporalVisibilityFrozenD.VisibilityGlsl, ShaderSources.TemporalVisibilityGlsl);
-            Assert.Equal(1, Count(ShaderSources.TemporalAccumulateGlsl, TemporalVisibilityFrozenD.CallSiteGlsl));
-            Assert.Equal(1, Count(ShaderSources.TemporalAccumulateGlsl, TemporalVisibilityFrozenD.HoldReleaseGlsl));
-            foreach (string program in ReleasePrograms)
-                Assert.Equal(program, TemporalVisibilityFrozenD.ToD(program));
         }
 
         [Fact]

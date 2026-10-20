@@ -9,15 +9,17 @@ namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
     /// The compiled form of the split's second pass, through the shipped GLSL front end, as SPIR-V instruction counts:
-    /// texel fetches, gathers and structured loops. The rows pin D's counts. The cost cut (plan Task 7f.2) turns the
-    /// four production rows into its targets. The frozen D helper's row stays D's for good. Device-free.
+    /// texel fetches, gathers and structured loops. Each pass-two program is pinned twice: as it ships, and rewritten
+    /// to D (<see cref="TemporalVisibilityFrozenD.ToD"/>), which keeps D's counts at 583a3ae7b for good. The shipped
+    /// decision keeps D's function, with its 7 fetches and 4 loops, as the slow path and adds the straight-line fast
+    /// path's 59 fetches, no gather and no loop. A pixel on the fast path issues those 59 where D issues 101, or 43
+    /// where the range skip declines the stored depths. Device-free.
     /// </summary>
     public sealed class TemporalVisibilityCompiledFormTests(ITestOutputHelper output)
     {
         const uint OpImageFetch = 95, OpImageGather = 96, OpLoopMerge = 246;
 
-        // D's helper alone, with every input it reads bound, so its own fetches and loops count apart from the pass.
-        const string HelperProgram = "#version 450\n" + @"
+        const string HelperBindings = "#version 450\n" + @"
 layout(set=0,binding=0) uniform texture2D SceneDepth;
 layout(set=0,binding=1) uniform texture2D MotionTex;
 layout(set=0,binding=2) uniform texture2D PrevDepth;
@@ -25,8 +27,10 @@ layout(set=0,binding=3) uniform texture2D KeyShadowVisibility;
 layout(set=0,binding=4) uniform texture2D PreviousKeyShadowVisibility;
 layout(set=0,binding=5) uniform sampler LinearClamp;
 layout(set=0,binding=6) uniform Probe { vec4 CurrentDepth; vec4 Sizes; vec4 Jitter; vec4 PreviousJitter; vec4 Site; };
-" + ShaderSources.TemporalCommonGlsl + ShaderSources.TemporalResolveTuningGlsl + TemporalVisibilityFrozenD.VisibilityGlsl
-            + @"
+" + ShaderSources.TemporalCommonGlsl + ShaderSources.TemporalResolveTuningGlsl;
+
+        // D's helper alone, with every input it reads bound, so its own fetches and loops count apart from the pass.
+        const string HelperProgram = HelperBindings + TemporalVisibilityFrozenD.VisibilityGlsl + @"
 layout(location=0) out vec4 Result;
 void main() {
     float change = 0.0;
@@ -35,15 +39,35 @@ void main() {
     Result = vec4(change, valid ? 1.0 : 0.0, 0.0, 1.0);
 }";
 
-        /// <summary>Program, then D's OpImageFetch, OpImageGather and OpLoopMerge counts at 583a3ae7b.</summary>
-        public static TheoryData<string, int, int, int> DBaseline => new()
+        /// <summary>The shipped decision alone, D's slow path and the fast path, with the same bindings.</summary>
+        internal const string DecisionHelperProgram = HelperBindings + ShaderSources.TemporalVisibilityGlsl + @"
+layout(location=0) out vec4 Result;
+void main() {
+    float change = 0.0;
+    uint path = 0u;
+    bool release = temporalVisibilityReleases(Site.xy, ivec2(Site.zw), ivec2(Sizes.xy) - 1, Site.xy + Jitter.xy,
+        Sizes.z, change, path);
+    Result = vec4(change, release ? 1.0 : 0.0, float(path), 1.0);
+}";
+
+        /// <summary>Program, whether it is rewritten to D, then its OpImageFetch, OpImageGather and OpLoopMerge
+        /// counts. The D rows are D's baseline at 583a3ae7b.</summary>
+        public static TheoryData<string, bool, int, int, int> Counts => new()
         {
-            { nameof(ShaderSources.TemporalAccumulateFrag), 30, 0, 14 },
-            { nameof(ShaderSources.TemporalAccumulateHalfFrag), 30, 0, 14 },
-            { nameof(ShaderSources.TemporalAccumulateAtDisplaySizeFrag), 30, 0, 14 },
-            { nameof(ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag), 30, 0, 14 },
-            { "frozen D helper", 7, 0, 4 },
+            { nameof(ShaderSources.TemporalAccumulateFrag), false, AccumulateTarget, 0, 14 },
+            { nameof(ShaderSources.TemporalAccumulateHalfFrag), false, AccumulateTarget, 0, 14 },
+            { nameof(ShaderSources.TemporalAccumulateAtDisplaySizeFrag), false, AccumulateTarget, 0, 14 },
+            { nameof(ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag), false, AccumulateTarget, 0, 14 },
+            { nameof(ShaderSources.TemporalAccumulateFrag), true, 30, 0, 14 },
+            { nameof(ShaderSources.TemporalAccumulateHalfFrag), true, 30, 0, 14 },
+            { nameof(ShaderSources.TemporalAccumulateAtDisplaySizeFrag), true, 30, 0, 14 },
+            { nameof(ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag), true, 30, 0, 14 },
+            { "frozen D helper", false, 7, 0, 4 },
+            { "shipped decision helper", false, 7 + TemporalVisibilityFastPath.Fetches, 0, 4 },
         };
+
+        // D's 30 and the fast path's 59.
+        const int AccumulateTarget = 30 + TemporalVisibilityFastPath.Fetches;
 
         static string Program(string name) => name switch
         {
@@ -53,18 +77,27 @@ void main() {
             nameof(ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag)
                 => ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag,
             "frozen D helper" => HelperProgram,
+            "shipped decision helper" => DecisionHelperProgram,
             _ => throw new ArgumentOutOfRangeException(nameof(name), name, "not a counted program"),
         };
 
         [Theory]
-        [MemberData(nameof(DBaseline))]
-        public void PassTwoKeepsTheDBaselineOpcodeCounts(string program, int fetches, int gathers, int loops)
+        [MemberData(nameof(Counts))]
+        public void PassTwoHasItsPinnedOpcodeCounts(string program, bool asD, int fetches, int gathers, int loops)
         {
-            byte[] spirv = SpirvFrontEnd.ToSpirv(Program(program), GpuShaderStages.Fragment, "visibility form " + program);
+            string source = asD ? TemporalVisibilityFrozenD.ToD(Program(program)) : Program(program);
+            byte[] spirv = SpirvFrontEnd.ToSpirv(source, GpuShaderStages.Fragment, "visibility form " + program);
             (int f, int g, int l) = (Count(spirv, OpImageFetch), Count(spirv, OpImageGather), Count(spirv, OpLoopMerge));
-            output.WriteLine($"{program}: {f} OpImageFetch, {g} OpImageGather, {l} OpLoopMerge");
+            output.WriteLine($"{program}{(asD ? " as D" : "")}: {f} OpImageFetch, {g} OpImageGather, {l} OpLoopMerge, "
+                + $"{spirv.Length / 4} words");
             Assert.Equal((fetches, gathers, loops), (f, g, l));
         }
+
+        /// <summary>The decision helper compiles through the shipped front end and both emitters, so the hosted DXBC
+        /// check meets no text the other legs never compiled.</summary>
+        [Fact]
+        public void TheDecisionHelperCompilesForEveryBackend()
+            => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, DecisionHelperProgram, "visibility decision helper");
 
         /// <summary>The equivalence oracle's program compiles through the shipped front end and both emitters, so a
         /// GPU run cannot fail on its text alone.</summary>

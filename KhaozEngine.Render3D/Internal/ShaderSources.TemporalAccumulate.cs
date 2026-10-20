@@ -465,10 +465,14 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     lockValue = temporalReleaseLock(lockValue, motionPixels, reactive, ownReprojected && useHistory ? 0.0 : edgeMotion);
     // Preserve the colour release's carried-lock classification before visibility clears the stored lock.
     bool carriedLock = !ridge && lockValue > 0.0;
+    // A visibility release only clears this lock and the hold it gives, so a lock whose bits are +0.0 runs no check:
+    // clearing it would store the same bits and its hold is +0.0 already. The bits are tested, not the value, so a
+    // -0.0, a denormal or a NaN lock still runs the check.
     float signedVisibilityChange = 0.0;
-    bool visibilityReleased = useHistory && !surface.background && PreviousJitter.z > 0.5
-        && temporalVisibilityChange(uv, centreTexel, maxTexel, previousUv, expectedDepth, signedVisibilityChange)
-        && abs(signedVisibilityChange) > VisibilityReleaseThreshold;
+    uint visibilityPath = 0u;
+    bool visibilityReleased = floatBitsToUint(lockValue) != 0u && useHistory && !surface.background
+        && PreviousJitter.z > 0.5 && temporalVisibilityReleases(uv, centreTexel, maxTexel, previousUv, expectedDepth,
+            signedVisibilityChange, visibilityPath);
     if (visibilityReleased) lockValue = 0.0;
     float hold = clamp(lockValue * LockHoldGain, 0.0, 1.0);
 

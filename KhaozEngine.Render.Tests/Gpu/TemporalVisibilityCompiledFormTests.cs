@@ -102,12 +102,14 @@ void main() {
         public void TheDecisionHelperCompilesForEveryBackend()
             => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, DecisionHelperProgram, "visibility decision helper");
 
-        /// <summary>The equivalence oracle's program compiles through the shipped front end and both emitters, so a
-        /// GPU run cannot fail on its text alone.</summary>
+        /// <summary>The equivalence oracle's four programs compile through the shipped front end and both emitters, so
+        /// a GPU run cannot fail on their text alone.</summary>
         [Fact]
         public void TheEquivalenceProbeCompilesForEveryBackend()
-            => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, TemporalVisibilityEquivalenceProbe.FragmentSource,
-                "visibility equivalence probe");
+        {
+            foreach ((string name, string source) in TemporalVisibilityEquivalenceProbe.Sources)
+                ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, source, "visibility equivalence " + name);
+        }
 
         /// <summary>Instructions with <paramref name="opcode"/> in a SPIR-V module, walked by word count after the
         /// five-word header.</summary>

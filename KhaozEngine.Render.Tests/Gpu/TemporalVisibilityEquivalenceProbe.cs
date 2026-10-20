@@ -1,32 +1,39 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
-using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Tests.Gpu;
 
 /// <summary>
-/// One fragment program that runs frozen D (<see cref="TemporalVisibilityFrozenD"/>) and the production decision on
-/// the same case, one case per fragment, and an independent classifier that says which inputs and which predicted
-/// paths the case exercised. Each fragment builds its case from a hash PRNG against full-size textures
-/// (<see cref="TemporalVisibilityEquivalenceInputs"/>). It writes three targets: an RGBA8 of flag bits
-/// (<see cref="Flag"/>), D's signed change and the production signed change.
+/// Frozen D (<see cref="TemporalVisibilityFrozenD"/>) and the production decision, each compiled as its own program, on
+/// the same cases, one case per fragment, and an independent classifier in a third program that says which inputs and
+/// which predicted paths each case exercised. A first pass builds every case from a hash PRNG against full-size
+/// textures (<see cref="TemporalVisibilityEquivalenceInputs"/>) and stores it in single-float targets, so the three
+/// programs read the same case bit for bit and no compiler can share a value between D and production. Every target is
+/// cleared to -1 before its pass, so a fragment a pass did not write shows. <see cref="Combine"/> joins the outputs into
+/// one word of <see cref="Flag"/> bits per case.
 /// </summary>
 internal sealed class TemporalVisibilityEquivalenceProbe : IDisposable
 {
-    /// <summary>The flag bits, numbered across the four RGBA8 channels, red's bit 0 first.</summary>
+    /// <summary>The bits of a case. The first <see cref="ClassifierFlags"/> are the classifier program's own, in its
+    /// bit order. The rest are joined from the D and production programs' outputs.</summary>
     internal enum Flag
     {
-        DValid, DRelease, NewComputed, NewRelease, DecisionMismatch, ValidityMismatch, ChangeMismatch, Written,
         PredictedFast, PredictedSlowEdge, PredictedSlowDeviation, PredictedSlowBorder, PredictedRangeSkip,
-        RangeSkipNearMarginBelow, RangeSkipNearMarginAbove, RangeSkipMeetsRelease,
-        EdgeCentre, CornerCentre, NearIntegerFraction, NonFinite, Background, CurrentToleranceExact,
-        CurrentToleranceUlp, PreviousToleranceExact,
-        PreviousToleranceUlp, NearThresholdAbove, NearThresholdBelow, ReportedFast, ReportedSlow, ReportedRangeSkip,
-        ReportedPathMismatch, EmptyHistory,
+        RangeSkipNearMarginBelow, RangeSkipNearMarginAbove, EdgeCentre, CornerCentre, NearIntegerFraction, NaN,
+        PositiveInfinity, NegativeInfinity, Background, CurrentToleranceExact, CurrentToleranceUlp,
+        PreviousToleranceExact, PreviousToleranceUlp, EmptyHistory, FastNonFiniteNeighbour, FastNonFiniteStored,
+        DValid, DRelease, NewComputed, NewRelease, DecisionMismatch, ValidityMismatch, ChangeMismatch, Written,
+        RangeSkipMeetsRelease, NearThresholdAbove, NearThresholdBelow, ReportedFast, ReportedSlow, ReportedRangeSkip,
+        ReportedPathMismatch,
     }
+
+    /// <summary>How many of <see cref="Flag"/>'s bits the classifier program sets.</summary>
+    internal const int ClassifierFlags = (int)Flag.FastNonFiniteStored + 1;
 
     /// <summary>
     /// THE PRODUCTION SIDE: the shipped decision, <c>temporalVisibilityReleases</c>, and the path bits it reports, with
@@ -50,6 +57,8 @@ bool productionReleases(vec2 uv, ivec2 centre, ivec2 last, vec2 previousUv, floa
 }
 ";
 
+    // The scene's inputs, the probe's uniforms and the stored case, as the D, production and classifier programs bind
+    // them.
     const string Header = @"
 layout(set=0,binding=0) uniform texture2D SceneDepth;
 layout(set=0,binding=1) uniform texture2D MotionTex;
@@ -58,11 +67,28 @@ layout(set=0,binding=3) uniform texture2D KeyShadowVisibility;
 layout(set=0,binding=4) uniform texture2D PreviousKeyShadowVisibility;
 layout(set=0,binding=5) uniform sampler LinearClamp;
 layout(set=0,binding=6) uniform Probe { vec4 CurrentDepth; vec4 Sizes; vec4 Jitter; vec4 PreviousJitter; vec4 Seed; };
+layout(set=0,binding=7) uniform texture2D CaseUvX;
+layout(set=0,binding=8) uniform texture2D CaseUvY;
+layout(set=0,binding=9) uniform texture2D CasePreviousUvX;
+layout(set=0,binding=10) uniform texture2D CasePreviousUvY;
+layout(set=0,binding=11) uniform texture2D CaseCentre;
+layout(set=0,binding=12) uniform texture2D CaseExpectedDepth;
 ";
 
-    // The case: a centre texel, the pixel's UV, a previous UV that puts the centre's history position at a chosen
-    // texel plus a chosen fraction, and an expected depth related to the stored depths there.
-    const string CaseGlsl = @"
+    // The case pass binds only what it reads.
+    const string CaseHeader = @"
+layout(set=0,binding=0) uniform texture2D PrevDepth;
+layout(set=0,binding=1) uniform sampler LinearClamp;
+layout(set=0,binding=2) uniform Probe { vec4 CurrentDepth; vec4 Sizes; vec4 Jitter; vec4 PreviousJitter; vec4 Seed; };
+";
+
+    // The case, as every program holds it.
+    const string CaseStructGlsl = @"
+struct VisibilityCase { vec2 uv; ivec2 centre; vec2 previousUv; float expectedDepth; };
+";
+
+    // The PRNG helpers the case pass and the classifier share.
+    const string CaseCommonGlsl = @"
 uint caseHash(uint v) {
     v ^= v >> 16; v *= 0x7feb352du; v ^= v >> 15; v *= 0x846ca68bu; v ^= v >> 16;
     return v;
@@ -74,11 +100,15 @@ int caseInt(inout uint s, int n) { return int(caseNext(s) % uint(n)); }
 float caseUlps(float v, int k) {
     return v > 0.0 && v < 3.0e38 ? uintBitsToFloat(uint(int(floatBitsToUint(v)) + k)) : v;
 }
+";
+
+    // The case: a centre texel, the pixel's UV, a previous UV that puts the centre's history position at a chosen
+    // texel plus a chosen fraction, and an expected depth related to the stored depths there.
+    const string BuildCaseGlsl = @"
 int caseEdge(inout uint s, int last) {
     int r = caseInt(s, 5);
     return r == 0 ? 0 : r == 1 ? 1 : r == 2 ? last - 1 : r == 3 ? last : caseInt(s, last + 1);
 }
-struct VisibilityCase { vec2 uv; ivec2 centre; vec2 previousUv; float expectedDepth; };
 VisibilityCase buildCase(ivec2 fragment) {
     uint s = caseHash(uint(fragment.x) * 0x8da6b343u ^ uint(fragment.y) * 0xd8163841u
         ^ (uint(Seed.x) + 1u) * 0xcb1ab31fu);
@@ -149,30 +179,101 @@ VisibilityCase buildCase(ivec2 fragment) {
 }
 ";
 
+    // The case pass: each fragment's case into six single-float targets. The centre is packed as x + 4096 y, which a
+    // single float holds exactly at every size the oracle draws.
+    const string CaseMain = @"
+layout(location=0) out float oUvX;
+layout(location=1) out float oUvY;
+layout(location=2) out float oPreviousUvX;
+layout(location=3) out float oPreviousUvY;
+layout(location=4) out float oCentre;
+layout(location=5) out float oExpectedDepth;
+void main() {
+    VisibilityCase c = buildCase(ivec2(gl_FragCoord.xy));
+    oUvX = c.uv.x;
+    oUvY = c.uv.y;
+    oPreviousUvX = c.previousUv.x;
+    oPreviousUvY = c.previousUv.y;
+    oCentre = float(c.centre.x + c.centre.y * 4096);
+    oExpectedDepth = c.expectedDepth;
+}
+";
+
+    // The stored case of a fragment, as the case pass wrote it.
+    const string ReadCaseGlsl = @"
+VisibilityCase readCase(ivec2 f) {
+    VisibilityCase c;
+    c.uv = vec2(texelFetch(sampler2D(CaseUvX, LinearClamp), f, 0).r, texelFetch(sampler2D(CaseUvY, LinearClamp), f, 0).r);
+    c.previousUv = vec2(texelFetch(sampler2D(CasePreviousUvX, LinearClamp), f, 0).r,
+        texelFetch(sampler2D(CasePreviousUvY, LinearClamp), f, 0).r);
+    int packed = int(texelFetch(sampler2D(CaseCentre, LinearClamp), f, 0).r);
+    c.centre = ivec2(packed % 4096, packed / 4096);
+    c.expectedDepth = texelFetch(sampler2D(CaseExpectedDepth, LinearClamp), f, 0).r;
+    return c;
+}
+";
+
+    // D's program: D's helper as it shipped, alone with the case.
+    const string DMain = @"
+layout(location=0) out float oFlags;
+layout(location=1) out float oChange;
+void main() {
+    VisibilityCase c = readCase(ivec2(gl_FragCoord.xy));
+    float change = 0.0;
+    bool valid = temporalVisibilityChange(c.uv, c.centre, ivec2(Sizes.xy) - 1, c.previousUv, c.expectedDepth, change);
+    bool release = valid && abs(change) > VisibilityReleaseThreshold;
+    oFlags = float((valid ? 1u : 0u) | (release ? 2u : 0u));
+    oChange = change;
+}
+";
+
+    // The production program: the shipped decision alone with the case.
+    const string ProductionMain = @"
+layout(location=0) out float oFlags;
+layout(location=1) out float oChange;
+void main() {
+    VisibilityCase c = readCase(ivec2(gl_FragCoord.xy));
+    bool computed;
+    float change;
+    uint path;
+    bool release = productionReleases(c.uv, c.centre, ivec2(Sizes.xy) - 1, c.previousUv, c.expectedDepth, computed,
+        change, path);
+    oFlags = float((computed ? 1u : 0u) | (release ? 2u : 0u) | (path << 2));
+    oChange = computed ? change : 0.0;
+}
+";
+
     // Independent of both sides: which inputs the case met, and which path the cost cut's preconditions (separable
     // consecutive bases, a 4x4 block inside the texture) and its R4 bound predict.
     const string ClassifierGlsl = @"
-bool classFinite(float v) { return (floatBitsToUint(v) & 0x7f800000u) != 0x7f800000u; }
-uint classify(VisibilityCase c, bool dValid, float dChange, bool dRelease) {
+// Which kind of non-finite a value is, read from its bits so no compiler can fold the test away.
+uint classNonFinite(float v) {
+    uint b = floatBitsToUint(v);
+    if ((b & 0x7f800000u) != 0x7f800000u) return 0u;
+    if ((b & 0x007fffffu) != 0u) return ClassNaN;
+    return (b & 0x80000000u) != 0u ? ClassNegativeInfinity : ClassPositiveInfinity;
+}
+uint classify(VisibilityCase c) {
     uint bits = 0u;
     ivec2 last = ivec2(Sizes.xy) - 1;
     bool edgeX = c.centre.x == 0 || c.centre.x == last.x, edgeY = c.centre.y == 0 || c.centre.y == last.y;
-    if (edgeX || edgeY) bits |= 1u << 16;
-    if (edgeX && edgeY) bits |= 1u << 17;
+    if (edgeX || edgeY) bits |= ClassEdgeCentre;
+    if (edgeX && edgeY) bits |= ClassCornerCentre;
     float centreDepth = temporalViewDepth(texelFetch(sampler2D(MotionTex, LinearClamp), c.centre, 0).rg,
         texelFetch(sampler2D(SceneDepth, LinearClamp), c.centre, 0).r);
     float e = c.expectedDepth;
-    bool references = classFinite(centreDepth) && classFinite(e);
-    if (!references) bits |= 1u << 19;
+    bits |= classNonFinite(centreDepth) | classNonFinite(e);
+    bool references = classNonFinite(centreDepth) == 0u && classNonFinite(e) == 0u;
     float currentTolerance = VisibilityDepthTolerance * max(centreDepth, 1.0e-5);
     float previousTolerance = VisibilityDepthTolerance * max(e, 1.0e-5);
     float currentSum = 0.0, currentCount = 0.0, previousAccepted = 0.0;
+    bool neighbourNonFinite = false, storedNonFinite = false;
     int baseX[3], baseY[3];
     for (int y = -1; y <= 1; y++) {
         for (int x = -1; x <= 1; x++) {
             ivec2 at = clamp(c.centre + ivec2(x, y), ivec2(0), last);
             vec2 motion = texelFetch(sampler2D(MotionTex, LinearClamp), at, 0).rg;
-            if (abs(motion.x) > MotionSentinel) bits |= 1u << 20;
+            if (abs(motion.x) > MotionSentinel) bits |= ClassBackground;
             float depth = temporalViewDepth(motion, texelFetch(sampler2D(SceneDepth, LinearClamp), at, 0).r);
             vec2 historyUv = c.previousUv + (vec2(at) + 0.5 - Jitter.xy) / Sizes.xy - c.uv + PreviousJitter.xy / Sizes.xy;
             vec2 position = historyUv * Sizes.xy - 0.5;
@@ -180,14 +281,19 @@ uint classify(VisibilityCase c, bool dValid, float dChange, bool dRelease) {
             if (y == 0) baseX[x + 1] = base.x;
             if (x == 0) baseY[y + 1] = base.y;
             vec2 fraction = position - vec2(base);
-            if (x == 0 && y == 0 && any(lessThan(min(fraction, 1.0 - fraction), vec2(1.0e-3)))) bits |= 1u << 18;
-            if (!classFinite(depth)) { bits |= 1u << 19; continue; }
+            if (x == 0 && y == 0 && any(lessThan(min(fraction, 1.0 - fraction), vec2(1.0e-3))))
+                bits |= ClassNearIntegerFraction;
+            if (classNonFinite(depth) != 0u) {
+                bits |= classNonFinite(depth);
+                if (x != 0 || y != 0) neighbourNonFinite = true;
+                continue;
+            }
             if (!references) continue;
             float apart = abs(depth - centreDepth);
-            if (apart == currentTolerance) bits |= 1u << 21;
+            if (apart == currentTolerance) bits |= ClassCurrentToleranceExact;
             float up = centreDepth + currentTolerance, down = centreDepth - currentTolerance;
             if (depth == caseUlps(up, 1) || depth == caseUlps(up, -1) || depth == caseUlps(down, 1)
-                || depth == caseUlps(down, -1)) bits |= 1u << 22;
+                || depth == caseUlps(down, -1)) bits |= ClassCurrentToleranceUlp;
             if (!(apart <= currentTolerance)) continue;
             currentSum += texelFetch(sampler2D(KeyShadowVisibility, LinearClamp), at, 0).r;
             currentCount += 1.0;
@@ -195,25 +301,30 @@ uint classify(VisibilityCase c, bool dValid, float dChange, bool dRelease) {
                 for (int i = 0; i < 2; i++) {
                     float stored = texelFetch(sampler2D(PrevDepth, LinearClamp),
                         clamp(base + ivec2(i, j), ivec2(0), last), 0).r;
-                    if (!classFinite(stored)) { bits |= 1u << 19; continue; }
+                    if (classNonFinite(stored) != 0u) {
+                        bits |= classNonFinite(stored);
+                        storedNonFinite = true;
+                        continue;
+                    }
                     if (abs(stored - e) <= previousTolerance) previousAccepted += 1.0;
-                    if (abs(stored - e) == previousTolerance) bits |= 1u << 23;
+                    if (abs(stored - e) == previousTolerance) bits |= ClassPreviousToleranceExact;
                     float pUp = e + previousTolerance, pDown = e - previousTolerance;
                     if (stored == caseUlps(pUp, 1) || stored == caseUlps(pUp, -1) || stored == caseUlps(pDown, 1)
-                        || stored == caseUlps(pDown, -1)) bits |= 1u << 24;
+                        || stored == caseUlps(pDown, -1)) bits |= ClassPreviousToleranceUlp;
                 }
             }
         }
     }
-    if (references && currentCount > 0.0 && previousAccepted == 0.0) bits |= 1u << 31;
+    if (references && currentCount > 0.0 && previousAccepted == 0.0) bits |= ClassEmptyHistory;
     bool consecutive = baseX[0] == baseX[1] - 1 && baseX[2] == baseX[1] + 1
         && baseY[0] == baseY[1] - 1 && baseY[2] == baseY[1] + 1;
     bool inside = baseX[1] - 1 >= 0 && baseX[1] + 2 <= last.x && baseY[1] - 1 >= 0 && baseY[1] + 2 <= last.y;
     bool fast = !(edgeX || edgeY) && consecutive && inside;
-    if (edgeX || edgeY) bits |= 1u << 9;
-    else if (!consecutive) bits |= 1u << 10;
-    else if (!inside) bits |= 1u << 11;
-    else bits |= 1u << 8;
+    if (edgeX || edgeY) bits |= ClassPredictedSlowEdge;
+    else if (!consecutive) bits |= ClassPredictedSlowDeviation;
+    else if (!inside) bits |= ClassPredictedSlowBorder;
+    else bits |= ClassPredictedFast;
+    if (fast && references && neighbourNonFinite) bits |= ClassFastNonFiniteNeighbour;
     if (fast && references && currentCount > 0.0) {
         float lowest = 2.0, highest = -1.0;
         for (int j = -1; j <= 2; j++)
@@ -223,106 +334,126 @@ uint classify(VisibilityCase c, bool dValid, float dChange, bool dRelease) {
                 lowest = min(lowest, v);
                 highest = max(highest, v);
             }
-        // The current mean's distance from each end of the block's range, times the count, against the margin times
-        // the count: the same bound as the mean's own, which the shipped skip takes this way.
+        // THIS IS THE PRODUCTION FORMULA. The current mean's distance from each end of the block's range, times the
+        // count, against the margin times the count: the same expression the shipped skip evaluates, so a skip it
+        // predicts is one production takes, and the reported-equals-predicted check holds R4 to its own formula only.
+        // The evidence that R4 is sound is RangeSkipMeetsRelease: no case predicted to skip may meet a release by D,
+        // which D decides on its own. The near-margin bands are 2^-11 times the count either side of the margin.
         float bound = max(currentSum - lowest * currentCount, highest * currentCount - currentSum);
         const float Margin = VisibilityReleaseThreshold - 1.220703125e-4;
         bool skip = bound <= Margin * currentCount;
-        if (skip) bits |= 1u << 12;
-        if (abs(bound - Margin * currentCount) <= 4.8828125e-4 * currentCount) bits |= skip ? 1u << 13 : 1u << 14;
-        if (skip && dRelease) bits |= 1u << 15;
+        if (skip) bits |= ClassPredictedRangeSkip;
+        if (abs(bound - Margin * currentCount) <= 4.8828125e-4 * currentCount)
+            bits |= skip ? ClassRangeSkipNearMarginBelow : ClassRangeSkipNearMarginAbove;
+        if (!skip && storedNonFinite) bits |= ClassFastNonFiniteStored;
     }
-    if (dValid && abs(abs(dChange) - VisibilityReleaseThreshold) <= 2.384185791015625e-7)
-        bits |= abs(dChange) > VisibilityReleaseThreshold ? 1u << 25 : 1u << 26;
     return bits;
 }
 ";
 
-    const string Main = @"
-layout(location=0) out vec4 oFlags;
-layout(location=1) out float oDChange;
-layout(location=2) out float oNewChange;
+    const string ClassifierMain = @"
+layout(location=0) out float oLow;
+layout(location=1) out float oHigh;
 void main() {
-    VisibilityCase c = buildCase(ivec2(gl_FragCoord.xy));
-    ivec2 last = ivec2(Sizes.xy) - 1;
-    float dChange = 0.0;
-    bool dValid = frozenDVisibilityChange(c.uv, c.centre, last, c.previousUv, c.expectedDepth, dChange);
-    bool dRelease = dValid && abs(dChange) > VisibilityReleaseThreshold;
-    bool computed;
-    float newChange;
-    uint path;
-    bool newRelease = productionReleases(c.uv, c.centre, last, c.previousUv, c.expectedDepth, computed, newChange,
-        path);
-    uint bits = classify(c, dValid, dChange, dRelease) | (1u << 7);
-    if (dValid) bits |= 1u;
-    if (dRelease) bits |= 2u;
-    if (computed) bits |= 4u;
-    if (newRelease) bits |= 8u;
-    if (dRelease != newRelease) bits |= 16u;
-    if ((computed && !dValid) || (dValid && !computed && (path & ReportedRangeSkip) == 0u)) bits |= 32u;
-    if (computed && dValid && floatBitsToUint(dChange) != floatBitsToUint(newChange)) bits |= 64u;
-    if ((path & ReportedFast) != 0u) bits |= 1u << 27;
-    if ((path & ReportedSlow) != 0u) bits |= 1u << 28;
-    if ((path & ReportedRangeSkip) != 0u) bits |= 1u << 29;
-    // The reported path must be the predicted one, case for case: fast or slow, and the range skip.
-    bool predictedFast = (bits & (1u << 8)) != 0u, predictedSkip = (bits & (1u << 12)) != 0u;
-    bool reportedFast = (path & ReportedFast) != 0u, reportedSlow = (path & ReportedSlow) != 0u;
-    if (reportedFast != predictedFast || reportedSlow == predictedFast
-        || ((path & ReportedRangeSkip) != 0u) != predictedSkip) bits |= 1u << 30;
-    oFlags = vec4(uvec4(bits & 255u, (bits >> 8) & 255u, (bits >> 16) & 255u, bits >> 24)) / 255.0;
-    oDChange = dChange;
-    oNewChange = computed ? newChange : 0.0;
+    uint bits = classify(readCase(ivec2(gl_FragCoord.xy)));
+    oLow = float(bits & 0xffffu);
+    oHigh = float(bits >> 16);
 }
 ";
 
+    // The classifier's bit constants, named as Flag names them.
+    static readonly string ClassifierBits = string.Concat(Enumerable.Range(0, ClassifierFlags)
+        .Select(i => $"const uint Class{(Flag)i} = {1u << i}u;\n"));
+
+    static readonly string[] CaseTargets =
+        ["CaseUvX", "CaseUvY", "CasePreviousUvX", "CasePreviousUvY", "CaseCentre", "CaseExpectedDepth"];
+
+    const int CentreTarget = 4;
+
+    static string Program(string body) => "#version 450\n" + Header + ShaderSources.TemporalCommonGlsl
+        + ShaderSources.TemporalResolveTuningGlsl + body;
+
+    /// <summary>The case pass.</summary>
+    internal static string CaseSource => "#version 450\n" + CaseHeader + CaseStructGlsl + CaseCommonGlsl + BuildCaseGlsl
+        + CaseMain;
+
+    /// <summary>Frozen D alone, its helper as it shipped.</summary>
+    internal static string DSource => Program(TemporalVisibilityFrozenD.VisibilityGlsl + CaseStructGlsl + ReadCaseGlsl
+        + DMain);
+
+    /// <summary>The shipped decision alone.</summary>
+    internal static string ProductionSource => Program(ShaderSources.TemporalVisibilityMaskGlsl
+        + ShaderSources.TemporalVisibilityGlsl + TemporalVisibilityMaskProbe.MaskAtGlsl + ProductionDecisionGlsl
+        + CaseStructGlsl + ReadCaseGlsl + ProductionMain);
+
+    /// <summary>The classifier alone.</summary>
+    internal static string ClassifierSource => Program(ClassifierBits + CaseStructGlsl + CaseCommonGlsl + ReadCaseGlsl
+        + ClassifierGlsl + ClassifierMain);
+
+    /// <summary>Every program the probe compiles, by name.</summary>
+    internal static (string Name, string Source)[] Sources =>
+    [
+        ("case", CaseSource), ("frozen D", DSource), ("production decision", ProductionSource),
+        ("classifier", ClassifierSource),
+    ];
+
     readonly GpuDeviceContext _gpu = GpuDeviceContext.CreateHeadless();
     readonly List<IDisposable> _owned = [];
-    readonly IGpuResourceLayout _layout;
-    readonly IGpuPipeline _pipeline;
-    readonly IGpuFramebuffer _framebuffer;
+    readonly IGpuResourceLayout _caseLayout, _layout;
+    readonly Pass _case, _d, _production, _classifier;
     readonly IGpuBuffer _uniforms;
-    readonly IGpuTexture _flags, _dChange, _newChange;
+    readonly IGpuTexture[] _caseTargets;
     internal IGpuDevice Device => _gpu.GpuDevice;
     internal readonly int Size;
 
-    internal static string FragmentSource => "#version 450\n" + Header + ShaderSources.TemporalCommonGlsl
-        + ShaderSources.TemporalResolveTuningGlsl + ShaderSources.TemporalVisibilityMaskGlsl
-        + ShaderSources.TemporalVisibilityGlsl + TemporalVisibilityFrozenD.Renamed("frozenD")
-        + TemporalVisibilityMaskProbe.MaskAtGlsl + ProductionDecisionGlsl + CaseGlsl + ClassifierGlsl + Main;
+    sealed record Pass(string Name, IGpuPipeline Pipeline, IGpuFramebuffer Framebuffer, IGpuTexture[] Targets);
 
     /// <summary>A probe drawing <paramref name="hardwareSize"/> squared cases a draw, or
     /// <paramref name="softwareSize"/> squared on a software adapter.</summary>
     internal TemporalVisibilityEquivalenceProbe(int hardwareSize, int softwareSize)
     {
-        int size = Size = Device.Diagnostics.SoftwareAdapter == true ? softwareSize : hardwareSize;
+        Size = Device.Diagnostics.SoftwareAdapter == true ? softwareSize : hardwareSize;
         IGpuResourceFactory f = Device.Factory;
-        _flags = Own(f.CreateTexture(GpuTextureDescription.Texture2D((uint)size, (uint)size,
-            GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled)));
-        _dChange = Own(f.CreateTexture(GpuTextureDescription.Texture2D((uint)size, (uint)size, GpuPixelFormat.R32Float,
-            GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled)));
-        _newChange = Own(f.CreateTexture(GpuTextureDescription.Texture2D((uint)size, (uint)size, GpuPixelFormat.R32Float,
-            GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled)));
-        _framebuffer = Own(f.CreateFramebuffer(null, _flags, _dChange, _newChange));
         _uniforms = Own(f.CreateBuffer(new GpuBufferDescription(80, GpuBufferUsage.UniformBuffer)));
+        _caseLayout = Own(f.CreateResourceLayout(new GpuResourceLayoutDescription(
+            new GpuResourceLayoutElement("PrevDepth", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
+            new GpuResourceLayoutElement("LinearClamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
+            new GpuResourceLayoutElement("Probe", GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment))));
         var elements = new List<GpuResourceLayoutElement>();
         foreach (string name in new[] { "SceneDepth", "MotionTex", "PrevDepth", "KeyShadowVisibility", "PreviousKeyShadowVisibility" })
             elements.Add(new(name, GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment));
         elements.Add(new("LinearClamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment));
         elements.Add(new("Probe", GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment));
+        foreach (string name in CaseTargets) elements.Add(new(name, GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment));
         _layout = Own(f.CreateResourceLayout(new GpuResourceLayoutDescription(elements.ToArray())));
-        IGpuShaderSet shaders = Own(f.CreateShadersFromSpirv(ShaderSources.FullscreenVert, FragmentSource));
-        _pipeline = Own(f.CreateGraphicsPipeline(new GpuPipelineDescription
+        _case = MakePass("case", CaseSource, _caseLayout, CaseTargets.Length);
+        _caseTargets = _case.Targets;
+        _d = MakePass("frozen D", DSource, _layout, 2);
+        _production = MakePass("production decision", ProductionSource, _layout, 2);
+        _classifier = MakePass("classifier", ClassifierSource, _layout, 2);
+    }
+
+    Pass MakePass(string name, string source, IGpuResourceLayout layout, int targets)
+    {
+        IGpuResourceFactory f = Device.Factory;
+        var textures = new IGpuTexture[targets];
+        for (int i = 0; i < targets; i++)
+            textures[i] = Own(f.CreateTexture(GpuTextureDescription.Texture2D((uint)Size, (uint)Size,
+                GpuPixelFormat.R32Float, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled)));
+        IGpuFramebuffer framebuffer = Own(f.CreateFramebuffer(null, textures));
+        IGpuShaderSet shaders = Own(f.CreateShadersFromSpirv(ShaderSources.FullscreenVert, source));
+        IGpuPipeline pipeline = Own(f.CreateGraphicsPipeline(new GpuPipelineDescription
         {
-            BlendAttachments = [GpuBlendAttachment.OverrideBlend, GpuBlendAttachment.OverrideBlend,
-                GpuBlendAttachment.OverrideBlend],
+            BlendAttachments = Enumerable.Repeat(GpuBlendAttachment.OverrideBlend, targets).ToArray(),
             DepthStencil = GpuDepthStencilState.Disabled,
             Rasterizer = new(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, false, false),
             Topology = GpuPrimitiveTopology.TriangleList,
-            ResourceLayouts = [_layout],
+            ResourceLayouts = [layout],
             ShaderSet = shaders,
             VertexLayouts = [],
-            Outputs = _framebuffer.Outputs,
+            Outputs = framebuffer.Outputs,
         }));
+        return new Pass(name, pipeline, framebuffer, textures);
     }
 
     T Own<T>(T resource) where T : IDisposable { _owned.Add(resource); return resource; }
@@ -366,58 +497,84 @@ void main() {
         }
     }
 
-    /// <summary>One draw: every fragment of the target one case, at a display size, a jitter pair and a seed. Returns
-    /// the flag words and both changes, one per fragment, rows top to bottom.</summary>
-    internal (uint[] Flags, float[] DChange, float[] NewChange) Run(Textures textures, Vector2 display, Vector2 jitter,
-        Vector2 previousJitter, int seed)
+    /// <summary>One draw's outputs, one value per case, rows top to bottom.</summary>
+    internal sealed record Outputs(float[] Centre, float[] DFlags, float[] DChange, float[] NewFlags, float[] NewChange,
+        float[] ClassLow, float[] ClassHigh);
+
+    /// <summary>One draw: every fragment of the target one case, at a display size, a jitter pair and a seed. The case
+    /// pass runs first, then D, production and the classifier, each its own program.</summary>
+    internal Outputs Run(Textures textures, Vector2 display, Vector2 jitter, Vector2 previousJitter, int seed)
     {
         float[] uniforms = [0, 0, 1, 0, textures.Inputs.Width, textures.Inputs.Height, display.X, display.Y,
             jitter.X, jitter.Y, 1, 1, previousJitter.X, previousJitter.Y, 1, 0, seed, 0, 0, 0];
         Device.UpdateBuffer(_uniforms, 0, uniforms);
-        using IGpuResourceSet set = Device.Factory.CreateResourceSet(new GpuResourceSetDescription(_layout,
-            textures.Depth, textures.Motion, textures.PreviousDepth, textures.Current, textures.Previous,
-            Device.LinearSampler, _uniforms));
-        using (IGpuCommandList commands = Device.Factory.CreateCommandList())
+        using IGpuResourceSet caseSet = Device.Factory.CreateResourceSet(new GpuResourceSetDescription(_caseLayout,
+            textures.PreviousDepth, Device.LinearSampler, _uniforms));
+        var resources = new List<IGpuBindableResource>
         {
-            using (GpuRecording.Open(Device, commands, nameof(TemporalVisibilityEquivalenceProbe)))
-            {
-                commands.SetFramebuffer(_framebuffer);
-                commands.SetPipeline(_pipeline);
-                commands.SetGraphicsResourceSet(0, set);
-                commands.Draw(3);
-            }
-            Device.Submit(commands);
-            Device.WaitForIdle();
-        }
-        return (ReadFlags(), TemporalTextureIo.Read(Device, _dChange), TemporalTextureIo.Read(Device, _newChange));
+            textures.Depth, textures.Motion, textures.PreviousDepth, textures.Current, textures.Previous,
+            Device.LinearSampler, _uniforms,
+        };
+        resources.AddRange(_caseTargets);
+        using IGpuResourceSet set = Device.Factory.CreateResourceSet(new GpuResourceSetDescription(_layout,
+            resources.ToArray()));
+        Draw(_case, caseSet);
+        Draw(_d, set);
+        Draw(_production, set);
+        Draw(_classifier, set);
+        return new Outputs(TemporalTextureIo.Read(Device, _caseTargets[CentreTarget]),
+            TemporalTextureIo.Read(Device, _d.Targets[0]), TemporalTextureIo.Read(Device, _d.Targets[1]),
+            TemporalTextureIo.Read(Device, _production.Targets[0]), TemporalTextureIo.Read(Device, _production.Targets[1]),
+            TemporalTextureIo.Read(Device, _classifier.Targets[0]), TemporalTextureIo.Read(Device, _classifier.Targets[1]));
     }
 
-    uint[] ReadFlags()
+    void Draw(Pass pass, IGpuResourceSet set)
     {
-        using IGpuTexture staging = Device.Factory.CreateTexture(GpuTextureDescription.Texture2D((uint)Size, (uint)Size,
-            GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Staging));
-        using (IGpuCommandList commands = Device.Factory.CreateCommandList())
+        using IGpuCommandList commands = Device.Factory.CreateCommandList();
+        using (GpuRecording.Open(Device, commands, nameof(TemporalVisibilityEquivalenceProbe) + " " + pass.Name))
         {
-            using (GpuRecording.Open(Device, commands, nameof(TemporalVisibilityEquivalenceProbe)))
-                commands.CopyTexture(_flags, staging);
-            Device.Submit(commands);
-            Device.WaitForIdle();
+            commands.SetFramebuffer(pass.Framebuffer);
+            for (uint t = 0; t < pass.Targets.Length; t++) commands.ClearColorTarget(t, new Color(-1f, -1f, -1f, -1f));
+            commands.SetPipeline(pass.Pipeline);
+            commands.SetGraphicsResourceSet(0, set);
+            commands.Draw(3);
         }
-        var flags = new uint[Size * Size];
-        MappedData map = Device.Map(staging, GpuMapMode.Read);
-        try
-        {
-            for (int y = 0; y < Size; y++)
-            {
-                IntPtr row = map.Data + (int)(y * map.RowPitch);
-                for (int x = 0; x < Size; x++) flags[y * Size + x] = (uint)Marshal.ReadInt32(row, x * 4);
-            }
-        }
-        finally
-        {
-            Device.Unmap(staging);
-        }
-        return flags;
+        Device.Submit(commands);
+        Device.WaitForIdle();
+    }
+
+    /// <summary>Case <paramref name="i"/>'s <see cref="Flag"/> bits from one draw's outputs: the classifier's own,
+    /// D's and production's results, their comparison, and the classifier's prediction against both.</summary>
+    internal static ulong Combine(Outputs o, int i)
+    {
+        static ulong Bit(Flag flag) => 1UL << (int)flag;
+        bool written = o.Centre[i] >= 0f && o.DFlags[i] >= 0f && o.NewFlags[i] >= 0f && o.ClassLow[i] >= 0f
+            && o.ClassHigh[i] >= 0f;
+        if (!written) return 0;
+        ulong bits = (ulong)o.ClassLow[i] | ((ulong)o.ClassHigh[i] << 16) | Bit(Flag.Written);
+        uint d = (uint)o.DFlags[i], p = (uint)o.NewFlags[i];
+        bool dValid = (d & 1) != 0, dRelease = (d & 2) != 0, computed = (p & 1) != 0, release = (p & 2) != 0;
+        bool fast = (p & 4) != 0, slow = (p & 8) != 0, skip = (p & 16) != 0;
+        if (dValid) bits |= Bit(Flag.DValid);
+        if (dRelease) bits |= Bit(Flag.DRelease);
+        if (computed) bits |= Bit(Flag.NewComputed);
+        if (release) bits |= Bit(Flag.NewRelease);
+        if (fast) bits |= Bit(Flag.ReportedFast);
+        if (slow) bits |= Bit(Flag.ReportedSlow);
+        if (skip) bits |= Bit(Flag.ReportedRangeSkip);
+        if (dRelease != release) bits |= Bit(Flag.DecisionMismatch);
+        if ((computed && !dValid) || (dValid && !computed && !skip)) bits |= Bit(Flag.ValidityMismatch);
+        if (computed && dValid && BitConverter.SingleToUInt32Bits(o.DChange[i]) != BitConverter.SingleToUInt32Bits(o.NewChange[i]))
+            bits |= Bit(Flag.ChangeMismatch);
+        bool predictedFast = (bits & Bit(Flag.PredictedFast)) != 0, predictedSkip = (bits & Bit(Flag.PredictedRangeSkip)) != 0;
+        if (predictedSkip && dRelease) bits |= Bit(Flag.RangeSkipMeetsRelease);
+        // The reported path must be the predicted one, case for case: fast or slow, and the range skip.
+        if (fast != predictedFast || slow == predictedFast || skip != predictedSkip) bits |= Bit(Flag.ReportedPathMismatch);
+        float magnitude = MathF.Abs(o.DChange[i]);
+        if (dValid && MathF.Abs(magnitude - TemporalResolveTuning.VisibilityReleaseThreshold) <= 2.384185791015625e-7f)
+            bits |= magnitude > TemporalResolveTuning.VisibilityReleaseThreshold ? Bit(Flag.NearThresholdAbove)
+                : Bit(Flag.NearThresholdBelow);
+        return bits;
     }
 
     public void Dispose()

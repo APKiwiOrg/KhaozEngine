@@ -10,13 +10,15 @@ using Flag = KhaozEngine.Tests.Gpu.TemporalVisibilityEquivalenceProbe.Flag;
 namespace KhaozEngine.Tests.Gpu;
 
 /// <summary>
-/// THE PRODUCTION VISIBILITY DECISION IS D'S, CASE FOR CASE (plan Task 7f.1, proof 2). One program runs frozen D and
-/// the production decision on millions of cases at the real internal sizes: 2560x1440 (Native at 1440p), 1707x960
+/// THE PRODUCTION VISIBILITY DECISION IS D'S, CASE FOR CASE (plan Task 7f.1, proof 2). Frozen D and the production
+/// decision, each compiled as its own program so no compiler can share a value between them, run on millions of
+/// stored cases at the real internal sizes: 2560x1440 (Native at 1440p), 1707x960
 /// (Quality at 1440p) and 3342x2160 (the capped Native under 3456x2234), with consecutive Halton jitter, the Halton
 /// wrap and zero jitter. Every release decision must match, every validity must match unless the production side
 /// reports a range skip, and the signed change must match bit for bit wherever both computed it.
 /// <para>The coverage counts say the cases met what the cost cut can break: edge and corner centres, fractions on and
-/// near integers, non-finite and background depths, depths exactly at and one ulp either side of both tolerances,
+/// near integers, NaN and both infinities apart, fast-path cases meeting a non-finite neighbour depth and a non-finite
+/// stored depth, background depths, depths exactly at and one ulp either side of both tolerances,
 /// changes within ulps of 0.1 on both sides, and R4 bounds both sides of the <c>0.1 - 2^-13</c> margin. The
 /// classifier's predicted paths are independent of production, and the shipped decision must report each case's
 /// predicted path: fast or slow, and the range skip. No predicted R4 skip may meet a D release.</para>
@@ -30,7 +32,9 @@ public sealed class TemporalVisibilityEquivalenceGpuTests(ITestOutputHelper outp
     static readonly (Flag Flag, int Minimum)[] Coverage =
     [
         (Flag.DValid, 100_000), (Flag.DRelease, 10_000), (Flag.EdgeCentre, 10_000), (Flag.CornerCentre, 1_000),
-        (Flag.NearIntegerFraction, 10_000), (Flag.NonFinite, 1_000), (Flag.Background, 1_000),
+        (Flag.NearIntegerFraction, 10_000), (Flag.NaN, 1_000), (Flag.PositiveInfinity, 1_000),
+        (Flag.NegativeInfinity, 1_000), (Flag.FastNonFiniteNeighbour, 1_000), (Flag.FastNonFiniteStored, 1_000),
+        (Flag.Background, 1_000),
         (Flag.CurrentToleranceExact, 100), (Flag.CurrentToleranceUlp, 100), (Flag.PreviousToleranceExact, 100),
         (Flag.PreviousToleranceUlp, 100), (Flag.NearThresholdAbove, 16), (Flag.NearThresholdBelow, 16),
         (Flag.EmptyHistory, 1_000), (Flag.PredictedFast, 100_000), (Flag.PredictedSlowEdge, 10_000),
@@ -85,24 +89,26 @@ public sealed class TemporalVisibilityEquivalenceGpuTests(ITestOutputHelper outp
         var mismatches = new List<string>();
         for (int d = 0; d < draws.Length; d++)
         {
-            (uint[] flags, float[] dChange, float[] newChange) = run.Run(textures,
+            TemporalVisibilityEquivalenceProbe.Outputs outputs = run.Run(textures,
                 new Vector2(displayWidth, displayHeight), draws[d].Jitter, draws[d].Previous, d + 1);
             var counts = new long[bitsCount];
-            for (int i = 0; i < flags.Length; i++)
+            for (int i = 0; i < outputs.Centre.Length; i++)
             {
-                for (int b = 0; b < bitsCount; b++) if ((flags[i] & (1u << b)) != 0) counts[b]++;
-                CountPaths(flags[i], paths);
-                const uint Wrong = (1u << (int)Flag.DecisionMismatch) | (1u << (int)Flag.ValidityMismatch)
-                    | (1u << (int)Flag.ChangeMismatch);
-                if ((flags[i] & Wrong) != 0 && mismatches.Count < 16)
-                    mismatches.Add($"{draws[d].Name} case ({i % run.Size}, {i / run.Size}): flags 0x{flags[i]:x8}, "
-                        + $"D change {dChange[i]:R} (0x{BitConverter.SingleToUInt32Bits(dChange[i]):x8}), production "
-                        + $"{newChange[i]:R} (0x{BitConverter.SingleToUInt32Bits(newChange[i]):x8})");
+                ulong flags = TemporalVisibilityEquivalenceProbe.Combine(outputs, i);
+                for (int b = 0; b < bitsCount; b++) if ((flags & (1UL << b)) != 0) counts[b]++;
+                CountPaths(flags, paths);
+                const ulong Wrong = (1UL << (int)Flag.DecisionMismatch) | (1UL << (int)Flag.ValidityMismatch)
+                    | (1UL << (int)Flag.ChangeMismatch);
+                if ((flags & Wrong) != 0 && mismatches.Count < 16)
+                    mismatches.Add($"{draws[d].Name} case ({i % run.Size}, {i / run.Size}): flags 0x{flags:x10}, "
+                        + $"D change {outputs.DChange[i]:R} (0x{BitConverter.SingleToUInt32Bits(outputs.DChange[i]):x8}), "
+                        + $"production {outputs.NewChange[i]:R} "
+                        + $"(0x{BitConverter.SingleToUInt32Bits(outputs.NewChange[i]):x8})");
             }
             output.WriteLine($"  {draws[d].Name}, jitter ({draws[d].Jitter.X:R}, {draws[d].Jitter.Y:R}) after "
                 + $"({draws[d].Previous.X:R}, {draws[d].Previous.Y:R}): {Describe(counts)}");
             for (int b = 0; b < bitsCount; b++) totals[b] += counts[b];
-            cases += flags.Length;
+            cases += outputs.Centre.Length;
         }
         output.WriteLine($"  all {cases} cases: {Describe(totals)}");
         output.WriteLine($"  reported paths: {string.Join(", ", Enum.GetValues<Path>().Select(p => $"{p} {paths[(int)p]}"))}");
@@ -135,9 +141,9 @@ public sealed class TemporalVisibilityEquivalenceGpuTests(ITestOutputHelper outp
     }
 
     // One case's reported path, the slow path split by the classifier's reason.
-    static void CountPaths(uint flags, long[] paths)
+    static void CountPaths(ulong flags, long[] paths)
     {
-        static bool Has(uint flags, Flag flag) => (flags & (1u << (int)flag)) != 0;
+        static bool Has(ulong flags, Flag flag) => (flags & (1UL << (int)flag)) != 0;
         if (Has(flags, Flag.ReportedFast)) paths[(int)Path.Fast]++;
         if (Has(flags, Flag.ReportedRangeSkip)) paths[(int)Path.RangeSkip]++;
         if (!Has(flags, Flag.ReportedSlow)) return;

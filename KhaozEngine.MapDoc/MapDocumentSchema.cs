@@ -143,7 +143,7 @@ public static class MapDocumentSchema
         };
     }
 
-    static readonly System.Text.Json.JsonSerializerOptions WriteOptions = new() { WriteIndented = true };
+    static readonly System.Text.Json.JsonSerializerOptions WriteOptions = MapJsonTextOptions.CreateSerializer();
 
     static JsonObject Root() =>
         JsonNode.Parse(GetJson()) as JsonObject

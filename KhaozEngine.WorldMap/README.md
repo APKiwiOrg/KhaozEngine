@@ -68,6 +68,10 @@ carries neither levels nor top heights, and this round supports oriented rectang
   256 pixels by default. Void colour is `#d9cba6`.
 - `WorldMapRelief` lights from azimuth 315 degrees at altitude 45 degrees, with strength 0.5,
   steep-slope threshold 1 and steep darkening multiplier 0.75.
+- `Contours` defaults to null. Set `new WorldMapContours(5f, Color.Black, WidthPixels: 0.75f)`
+  for five-metre elevation lines on dry ground after relief and before footprint symbols.
+  Intervals use the source's actual metre heights, including negative elevations. Width is measured
+  in image pixels at every pyramid level. Colour alpha controls compositing over the shaded ground.
 - `WorldMapWater` uses shallow `#6f9cc0`, deep `#2a5a9a` and shoreline `#1f3f66`. Water is fully deep
   at four metres, and the shoreline is one pixel wide.
 - `SymbolRules` default to an empty array. Each rule matches an optional archetype key, all-of tags,
@@ -98,6 +102,7 @@ pixel. Relief altitude is finite in `(0, 90]`, strength and steep darkening are 
 and the steep slope threshold is finite and non-negative. Deep water depth is finite and positive.
 Shoreline pixels, wall width and outline width are non-negative, with finite floating-point widths.
 Both shadow offset components must be finite.
+Contour interval and pixel width must be finite and strictly positive.
 Symbol size components must be finite and positive, with a finite half-diagonal reach.
 `Coord` identifies the chunk, `Size` is its pixel edge length, and `Rgba` holds `Size * Size * 4`
 opaque RGBA8 bytes. Raster row zero is north, and column zero is west. `Revision` is captured before
@@ -106,12 +111,21 @@ sampling, so a consumer can discard an image when the source changes during the 
 At level `L`, the rasterizer uses `levelPpm = EffectivePixelsPerMetre / 2^L` and requests
 `SampleSurface(area, maxCellSize: 2f / levelPpm)`. It samples once over the chunk plus a margin of
 `2 * returnedCellSize + Water.ShorelinePixels / levelPpm` metres. The resolution contract determines
-the returned cell size before sampling, so the margin covers coarse relief samples too. It blends ground colours and
+the returned cell size before sampling, so the margin covers coarse relief samples too.
+When contours are enabled, replace the shoreline pixel radius in that margin with
+`Max(Water.ShorelinePixels, Contours.WidthPixels / 2 + 1)`. This bounded neighbourhood covers
+the contour's height differences and stroke fringe, and participates in cache invalidation.
+It blends ground colours and
 heights between source cell centres, dropping void contributions and renormalizing the remaining
 weights. Pixels whose nearest cell is void retain `VoidColor`. Dry ground receives normalized
 hillshade and the configured steep-slope multiplier. Water blends the depth palette without relief,
 then receives shoreline colour when dry, non-void pixels lie within the configured Chebyshev radius,
 including across chunk edges.
+
+Optional contours estimate distance to a height-interval multiple from the local height gradient,
+then antialias coverage in raster pixels. They require a height crossing in their bounded
+neighbourhood. Water, void and flat plateaus at an interval are excluded. Null contours retain
+the existing sampling margin and raster bytes.
 
 Footprints are collected over the chunk expanded by `BuildingShadowOffsetMetres.Length()` plus
 half of `WallWidthMetres`, one raster pixel and the largest visible symbol's drawn half diagonal.

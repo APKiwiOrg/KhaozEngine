@@ -9,6 +9,18 @@ var source = new TileWorldMapSource(document, catalogs, surfacePlane: 0);
 var image = WorldMapRasterizer.Rasterize(source, new WorldMapStyle(), new WorldMapChunkCoord(0, 0));
 ```
 
+An optional map-only palette overrides selected material colours:
+
+```csharp
+var palette = new Dictionary<ushort, Color> { [1] = Color.FromHex("#b8b8b8") };
+var source = new TileWorldMapSource(document, catalogs, surfacePlane: 0, groundPalette: palette);
+```
+
+The source copies the dictionary at construction. Later caller changes cannot affect worker reads.
+Missing palette entries fall back to catalog colours. Null preserves existing sampling. The palette
+does not change the source catalogs, heights, water roles, footprints or markers.
+The palette overload takes an explicit `surfacePlane`. The original three-parameter constructor remains available.
+
 ## Static source and coordinates
 
 Keep the document and catalogs unchanged for the source's lifetime. Concurrent worker reads are
@@ -39,6 +51,8 @@ order to put north at the top.
   `Color.Transparent`, and its surface and water heights are NaN.
 - Ground colour starts with the underlay material's parsed hex colour. A non-zero, resolved overlay
   replaces it for the whole tile. Overlay shapes are ignored. An unresolved overlay keeps the underlay.
+  Palette lookup uses that selected material id after resolving the overlay. An unknown underlay stays
+  void even if the palette contains its id.
 - Surface height is the mean of the four corner heights on `surfacePlane`, in metres.
 - Water tiles are identified by `TileWaterBodies.IsWater`. Their water height is the covering body's
   `TileWaterBody.SurfaceY`, already in world metres. Dry tiles have NaN water height. Water-coloured

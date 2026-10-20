@@ -2073,6 +2073,14 @@ Keep the `TileWorldDocument` and `TileWorldCatalogs` unchanged while a `TileWorl
 the old map pipeline and create a new source, cache, worker and view. `surfacePlane` selects terrain, objects
 and markers, while roofs on all planes are included.
 
+The optional `groundPalette` constructor argument maps material ids to map-only `Color` values.
+The adapter snapshots it at construction, applies it after underlay and overlay selection, and falls
+back to catalog colours for missing entries. It leaves terrain heights, water roles and catalogs intact.
+`WorldMapStyle.Contours` enables dry-ground lines at multiples of `IntervalMetres` in actual height
+metres. `WidthPixels` stays fixed in raster pixels across pyramid levels, and colour alpha blends over
+relief before footprint symbols. Water, void and flat interval plateaus are excluded. The sampling and
+cache invalidation margins include the bounded contour neighbourhood. Null options preserve existing bytes.
+
 This example borrows the game's loaded document, catalogs, `Render2DSurface`, icon textures and `SpriteFont`.
 `resolveLocalizedMarkerName` is a game-supplied `Func<string, string?>` that maps an authored marker name to
 localized text and returns null for an unknown name. Tags and icon keys are game-owned tokens. Call
@@ -2080,6 +2088,7 @@ localized text and returns null for an unknown name. Tags and icon keys are game
 game's UI pass, and call `CloseMap` when closing the map.
 
 ```csharp
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
@@ -2088,9 +2097,11 @@ using KhaozEngine.Windowing;
 using KhaozEngine.WorldMap;
 using KhaozEngine.WorldMap.Gui;
 
-var source = new TileWorldMapSource(document, catalogs, surfacePlane: 0);
+var mapPalette = new Dictionary<ushort, Color> { [1] = Color.FromHex("#b8b8b8") };
+var source = new TileWorldMapSource(document, catalogs, surfacePlane: 0, groundPalette: mapPalette);
 var style = new WorldMapStyle
 {
+    Contours = new WorldMapContours(5f, Color.Black, WidthPixels: 0.75f),
     SymbolRules = new[]
     {
         new WorldMapSymbolRule(

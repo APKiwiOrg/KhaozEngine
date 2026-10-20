@@ -9,7 +9,7 @@ namespace KhaozEngine.WorldMap;
 /// <summary>Builds deterministic, GPU-free world-map imagery from an authored surface.</summary>
 public static class WorldMapRasterizer
 {
-    /// <summary>Samples and shades one north-up chunk, including water, shoreline and footprint symbols.</summary>
+    /// <summary>Samples and shades one north-up chunk, including water, optional contours and footprint symbols.</summary>
     /// <param name="source">The authored surface to sample.</param>
     /// <param name="style">The map raster resolution and appearance.</param>
     /// <param name="chunk">The map-space chunk address.</param>
@@ -44,6 +44,9 @@ public static class WorldMapRasterizer
                     : relief.Shade(sampler, point, sample);
                 canvas.Set(column, row, colour);
             }
+
+        if (style.Contours is { } contours)
+            new ContourPainter(sampler, canvas, contours).Paint();
 
         var footprints = new List<WorldMapFootprint>();
         float footprintMargin = WorldMapRasterReach.FootprintMetres(style, chunk.Level);

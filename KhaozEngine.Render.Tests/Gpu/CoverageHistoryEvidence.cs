@@ -8,12 +8,15 @@ namespace KhaozEngine.Tests.Gpu;
 
 internal static class CoverageHistoryEvidence
 {
+    internal static string ResolveDirectory(string? configured)
+        => string.IsNullOrWhiteSpace(configured)
+            ? Path.Combine(Path.GetTempPath(), "grimhollow-equipment-coverage-task12") : configured;
+
     internal static int BufferId(IGpuBuffer buffer) => RuntimeHelpers.GetHashCode(buffer);
 
     internal static void Write(IGpuDevice device, string name, object actual)
     {
-        string directory = Environment.GetEnvironmentVariable("KE_COVERAGE_EVIDENCE_DIR")
-            ?? Path.Combine(Path.GetTempPath(), "grimhollow-equipment-coverage-task12");
+        string directory = ResolveDirectory(Environment.GetEnvironmentVariable("KE_COVERAGE_EVIDENCE_DIR"));
         Directory.CreateDirectory(directory);
         string path = Path.Combine(directory, $"coverage-history-{name}-{device.Backend}.json");
         File.WriteAllText(path, JsonSerializer.Serialize(new

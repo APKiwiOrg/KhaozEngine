@@ -3,7 +3,9 @@ namespace KhaozEngine.Gpu;
 /// <summary>A nonblocking consumer retaining a frame fence until its staging entries are released.</summary>
 public interface IGpuFrameCompletionConsumer
 {
-    /// <summary>Whether any staging entry still retains this exact fence. Disposed consumers answer false.</summary>
+    /// <summary>Whether any staging entry still retains this exact fence. A consumer whose disposal has completed
+    /// answers false. A consumer whose disposal was requested while an entry still retained the fence keeps
+    /// answering true until that entry is released, so the submission never resets or frees a fence it needs.</summary>
     bool HasPending(IGpuFence completion);
     /// <summary>Discard entries from a recording known never to have been submitted.</summary>
     void DiscardUnsubmitted(IGpuFence completion);

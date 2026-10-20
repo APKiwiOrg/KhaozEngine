@@ -1520,7 +1520,8 @@ jobs:
           if-no-files-found: ignore
 
       - name: Upload coverage correctness evidence
-        if: always() && github.event_name == 'workflow_dispatch' && contains(inputs.renderTestFilter, 'Coverage')
+        # Headless and kernel-only Coverage filters do not produce scene packets. Their empty directory is not scene acceptance.
+        if: always() && github.event_name == 'workflow_dispatch' && contains(inputs.renderTestFilter, 'Coverage') && hashFiles('coverage-evidence/**') != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-evidence-${{ matrix.backend }}

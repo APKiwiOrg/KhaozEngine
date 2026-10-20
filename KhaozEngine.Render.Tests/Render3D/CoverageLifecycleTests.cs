@@ -1,5 +1,9 @@
 using System;
 using System.Linq;
+using System.Collections.Generic;
+using KhaozEngine.Gpu;
+using KhaozEngine.Render3D.Rendering;
+using KhaozEngine.Tests.Gpu;
 using System.Numerics;
 using KhaozEngine.Render3D;
 using Xunit;
@@ -25,7 +29,8 @@ public sealed class CoverageLifecycleTests
         h.Scene.DrawSkinned(h.HostDraw(frame), h.Palette);
         h.SubmitEquipment();
         h.Render();
-        Assert.Equal(CoveragePresentation.Covered, h.Scene.GetCoverageOutcome(frame).Presentation);
+        Assert.Equal(CoveragePresentation.Dispatched, h.Scene.GetCoverageOutcome(frame).Presentation);
+        h.AssertCoverageDispatch(frame);
     }
 
     [Fact]
@@ -119,23 +124,84 @@ public sealed class CoverageLifecycleTests
         h.Scene.DrawSkinned(h.HostDraw(frame, slice: 1), h.Palette);
         h.SubmitEquipment();
         h.Render();
-        Assert.Equal(CoveragePresentation.Covered, h.Scene.GetCoverageOutcome(frame).Presentation);
+        Assert.Equal(CoveragePresentation.Dispatched, h.Scene.GetCoverageOutcome(frame).Presentation);
+        h.AssertCoverageDispatch(frame);
     }
 
     [Fact]
-    public void Partial_frame_capacity_allocation_disposes_the_uncommitted_buffer()
+    public void Committed_frame_reservation_survives_sibling_failure_and_is_reused_until_teardown()
+    {
+        FakeBuffer retained;
+        FakeResourceSet[] committed;
+        using (var h = new CoverageSceneFixture())
+        {
+            h.Begin();
+            var frame = h.Stage();
+            h.Scene.DrawSkinned(h.HostDraw(frame), h.Palette);
+            h.SubmitEquipment();
+            int start = h.Factory.Buffers.Count;
+            h.Factory.FailBufferCreationAfter(1);
+            Assert.Throws<InvalidOperationException>(() => h.Scene.PrepareFrame());
+            retained = h.Factory.Buffers[start];
+            Assert.False(retained.Disposed);
+            committed = h.Factory.ResourceSets.Where(set => Names(set, retained)).ToArray();
+            Assert.Equal(2, committed.Length);
+            Assert.All(committed, set => Assert.False(set.Disposed));
+            h.Factory.ThrowOnBufferCreate = 0;
+            var consumed = new List<IGpuResourceSet>();
+            h.BeforeNonIndexedDraw = bindings => consumed.AddRange(bindings.Sets.Values.Select(value => value.Set));
+            h.Render();
+            Assert.Equal(CoveragePresentation.Dispatched, h.Scene.GetCoverageOutcome(frame).Presentation);
+            h.AssertCoverageDispatch(frame);
+            Assert.Contains(h.Record.Uploads, upload => ReferenceEquals(retained, upload.Buffer));
+            Assert.Contains(committed, set => consumed.Contains(set));
+            Assert.Equal(committed, h.Factory.ResourceSets.Where(set => Names(set, retained)).ToArray());
+            Assert.False(retained.Disposed);
+            Assert.All(committed, set => Assert.False(set.Disposed));
+        }
+        Assert.True(retained.Disposed);
+        Assert.All(committed, set => Assert.True(set.Disposed));
+    }
+
+    [Fact]
+    public void Partial_pulled_binding_failure_disposes_uncommitted_resources_and_retries()
     {
         using var h = new CoverageSceneFixture();
-        h.Begin();
-        var frame = h.Stage();
-        h.Scene.DrawSkinned(h.HostDraw(frame), h.Palette);
-        h.SubmitEquipment();
-        int start = h.Factory.Buffers.Count;
-        h.Factory.FailBufferCreationAfter(1);
-        Assert.Throws<InvalidOperationException>(() => h.Scene.PrepareFrame());
-        Assert.True(h.Factory.Buffers[start].Disposed);
-        h.Factory.ThrowOnBufferCreate = 0;
-        h.Render();
-        Assert.Equal(CoveragePresentation.Covered, h.Scene.GetCoverageOutcome(frame).Presentation);
+        var batch = h.Scene.CoverageGpuBatchForTests!;
+        FakeBuffer retained;
+        FakeResourceSet[] committed;
+        using (var owner = new CoveragePulledResources(h.Capture, resource => resource.Dispose()))
+        {
+            int buffers = h.Factory.Buffers.Count, sets = h.Factory.ResourceSets.Count;
+            h.Factory.ThrowOnResourceSetCreate = sets + 2;
+            Assert.Throws<InvalidOperationException>(() => owner.Reserve(batch, 1));
+            Assert.Equal(buffers + 1, h.Factory.Buffers.Count);
+            Assert.True(h.Factory.Buffers[buffers].Disposed);
+            Assert.Equal(sets + 1, h.Factory.ResourceSets.Count);
+            Assert.True(h.Factory.ResourceSets[sets].Disposed);
+            h.Factory.ThrowOnResourceSetCreate = 0;
+            owner.Reserve(batch, 1);
+            retained = h.Factory.Buffers[^1];
+            committed = h.Factory.ResourceSets.Where(set => Names(set, retained)).ToArray();
+            Assert.Equal(2, committed.Length);
+            using var commands = new RecordingGpuCommandList(new NullGpuCommandList());
+            IGpuResourceSet? consumed = null;
+            commands.BeforeNonIndexedDraw = (bindings, _, _, _, _) => consumed = bindings.Sets[0].Set;
+            owner.Bind(commands, 0, 0);
+            commands.Draw(3);
+            Assert.NotNull(consumed);
+            Assert.Contains(committed, set => ReferenceEquals(set, consumed));
+            Assert.False(retained.Disposed);
+            Assert.All(committed, set => Assert.False(set.Disposed));
+            int reservedBuffers = h.Factory.Buffers.Count, reservedSets = h.Factory.ResourceSets.Count;
+            owner.Reserve(batch, 1);
+            Assert.Equal(reservedBuffers, h.Factory.Buffers.Count);
+            Assert.Equal(reservedSets, h.Factory.ResourceSets.Count);
+        }
+        Assert.True(retained.Disposed);
+        Assert.All(committed, set => Assert.True(set.Disposed));
     }
+
+    static bool Names(FakeResourceSet set, IGpuBuffer buffer) =>
+        set.Resources.Any(resource => resource is GpuBufferRange range && ReferenceEquals(range.Buffer, buffer));
 }

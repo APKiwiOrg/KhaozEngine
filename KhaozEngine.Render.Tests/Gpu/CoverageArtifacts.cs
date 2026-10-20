@@ -61,6 +61,8 @@ internal static class CoverageArtifacts
             Backend = capture.Backend.ToString(),
             capture.Device,
             capture.SubmittedSurfaceSignature,
+            capture.Surfaces,
+            capture.SignatureSource,
             capture.Artifact,
             MetalCache = Environment.GetEnvironmentVariable("KE_METAL_MSL_CACHE") ?? "default",
             SpirvCache = Environment.GetEnvironmentVariable("KE_SPIRV_CACHE") ?? "default",
@@ -94,6 +96,14 @@ internal static class CoverageArtifacts
         if (DirectoryPath is not { } directory) return;
         Directory.CreateDirectory(directory);
         Save(Path.Combine(directory, name), MemoryMarshal.AsBytes(values).ToArray());
+    }
+
+    internal static void WriteFile(string name, byte[] bytes)
+    {
+        if (DirectoryPath is not { } directory) return;
+        string path = Path.Combine(directory, name);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        Save(path, bytes);
     }
 
     static void Save(string path, byte[] bytes)

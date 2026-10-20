@@ -11,16 +11,17 @@ namespace KhaozEngine.Tests.Gpu
     internal sealed class SpyGpuDevice : IGpuDevice
     {
         readonly IGpuDevice _inner;
-        readonly bool _suppressFences;
+        readonly bool _suppressFences, _suppressCompute;
 
         /// <summary><paramref name="suppressFences"/> reports <see cref="GpuCapabilities.SupportsCompletionFences"/>
         /// as false while forwarding everything else to a device that really does have them. That is how the
         /// retired-resource A/B runs both ripeness policies in ONE process on ONE device: a number measured against
         /// a second process is not comparable.</summary>
-        public SpyGpuDevice(IGpuDevice inner, bool suppressFences = false)
+        public SpyGpuDevice(IGpuDevice inner, bool suppressFences = false, bool suppressCompute = false)
         {
             _inner = inner;
             _suppressFences = suppressFences;
+            _suppressCompute = suppressCompute;
         }
 
         /// <summary>How many times <see cref="WaitForIdle"/> has been called through this wrapper.</summary>
@@ -37,12 +38,16 @@ namespace KhaozEngine.Tests.Gpu
             get
             {
                 GpuCapabilities c = _inner.Capabilities;
-                if (!_suppressFences) return c;
+                if (!_suppressFences && !_suppressCompute) return c;
                 return GpuCapabilities.FromSupportedMsaaSampleCounts(
                     c.ClipSpaceYInverted, c.DepthRangeZeroToOne, c.SupportedMsaaSampleCounts, c.DeviceName,
-                    c.SamplerAnisotropy, c.SamplerLodBias, c.SupportsShadowMaps, c.SupportsCompute,
-                    supportsCompletionFences: false) with
-                { MaxColorAttachments = c.MaxColorAttachments };
+                    c.SamplerAnisotropy, c.SamplerLodBias, c.SupportsShadowMaps, c.SupportsCompute && !_suppressCompute,
+                    supportsCompletionFences: c.SupportsCompletionFences && !_suppressFences) with
+                {
+                    MaxColorAttachments = c.MaxColorAttachments,
+                    SupportsShaderFloatControls = c.SupportsShaderFloatControls,
+                    SupportsTimestamps = c.SupportsTimestamps
+                };
             }
         }
 

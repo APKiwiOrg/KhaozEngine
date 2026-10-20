@@ -29,6 +29,8 @@ internal sealed record CoverageCapture(byte[] Colour, CoverageTargetReadback Dep
     CoverageTargetReadback? FullOutline, CoverageTargetReadback? VisibleOutline,
     string SubmittedSurfaceSignature, GpuBackendKind Backend, string Device, string Artifact)
 {
+    internal CoverageSceneSurfaceEvidence[] Surfaces { get; init; } = [];
+    internal string SignatureSource { get; init; } = "cpu-reference";
     internal MotionTargetReadback? Motion { get; init; }
     internal Vector2 Jitter { get; init; }
     internal CoverageTargetReadback? ReconstructionColour { get; init; }
@@ -46,6 +48,9 @@ internal sealed record CoverageCapture(byte[] Colour, CoverageTargetReadback Dep
 public sealed partial class CoverageGpuScene : IDisposable
 {
     internal const int Width = 320, Height = 240;
+    readonly bool suppressCompute;
+    public CoverageGpuScene() { }
+    internal CoverageGpuScene(bool suppressCompute) => this.suppressCompute = suppressCompute;
     TemporalFixture? fixture;
     CoverageGpuActor[]? actors;
     MeshHandle occluder;
@@ -56,7 +61,7 @@ public sealed partial class CoverageGpuScene : IDisposable
 
     TemporalFixture Create()
     {
-        var result = new TemporalFixture(Width, Height, Configure);
+        var result = new TemporalFixture(Width, Height, Configure, suppressCompute);
         actors = new CoverageGpuActor[14];
         for (int i = 0; i < actors.Length; i++) actors[i] = new(result.Scene, result.Device, i, mapped: i is 2 or 3);
         occluder = result.Scene.LoadMesh(MeshPrimitives.Box(.6f));
@@ -92,9 +97,7 @@ public sealed partial class CoverageGpuScene : IDisposable
         SetCase(row, gpuSkinning);
         if (row.Shadows) PrimePoints(row);
         var submitted = new List<CoverageGpuActor>();
-        var pulls = new List<(string Pass, CoveragePulledDraw Draw)>();
-        scene.CoveragePullObserverForTests = (pass, draw) => pulls.Add((pass, draw));
-        byte[] colour = Fixture.Frame((s, _) =>
+        byte[] colour = EvidenceFrame((s, _) =>
         {
             if (row.Shadows)
             {
@@ -117,19 +120,18 @@ public sealed partial class CoverageGpuScene : IDisposable
                 }
                 if (row.Outlines) s.Draw(occluder, Matrix4x4.CreateTranslation(3.1f, 0, .6f));
             }
-        });
-        if (route == 1 && !row.ExpectRefusal)
+        }, () => submitted.Select(actor => actor.Frame).ToArray());
+        if (route == 1 && !row.ExpectRefusal && !suppressCompute)
         {
-            var words = CoverageSelectedReadback.Read(Fixture.Device, scene.CoverageGpuBatchForTests!.Previous);
-            foreach (var actor in submitted) actor.AssertSelected(words);
+            foreach (var actor in submitted) actor.AssertSelected(Surface(actor.Frame));
             if (row.Shadows)
                 for (int i = 0; i < submitted.Count; i++)
                 {
-                    var actor = submitted[i].Frame.Preparation!.Actor;
-                    int faces = pulls.Count(p => p.Pass == "point" && p.Draw.Actor == actor);
+                    var consumers = Surface(submitted[i].Frame).Consumers;
+                    int faces = consumers.Count(p => p.Pass == "point");
                     if (i < 9) Assert.Equal(6, faces);
                     if (i == 9) Assert.Equal(row.PointRadius > 0 ? 6 : 0, faces);
-                    Assert.Equal(4, pulls.Count(p => p.Pass == "cascade" && p.Draw.Actor == actor));
+                    Assert.Equal(4, consumers.Count(p => p.Pass == "cascade"));
                     if (row.ShadowOnly || row.CameraCulled && i is 2 or 3)
                         Assert.False(scene.CoverageMainVisibleForTests(submitted[i].Frame));
                 }
@@ -137,8 +139,9 @@ public sealed partial class CoverageGpuScene : IDisposable
         if (row.ExpectRefusal)
             Assert.Contains(submitted, actor => scene.GetCoverageOutcome(actor.Frame).Presentation == CoveragePresentation.UncoveredFallback);
         int uncovered = scene.UncoveredGpuDrawsForTests;
-        if (!row.ExpectRefusal) Assert.Equal(route == 1 ? submitted.Count : 0, scene.DispatchedHostPreparationCount);
-        if (route == 0) Assert.Equal(gpuSkinning ? submitted.Count : 0, uncovered);
+        if (!row.ExpectRefusal) Assert.Equal(route == 1 && !suppressCompute ? submitted.Count : 0, scene.DispatchedHostPreparationCount);
+        if (route == 0) Assert.Equal(gpuSkinning || suppressCompute ? submitted.Count : 0, uncovered);
+        if (route == 1 && suppressCompute) foreach (var actor in submitted) actor.SelectCpuFallbackSignature();
         var outlines = row.Outlines ? scene.ReadCoverageOutlinesForTests() : default;
         var capture = new CoverageCapture(colour, scene.ReadCoverageDepthForTests(), scene.ReadCoverageNormalForTests(),
             row.Shadows ? scene.ReadCoverageCascadesForTests() : null,
@@ -146,7 +149,12 @@ public sealed partial class CoverageGpuScene : IDisposable
             row.Shadows ? scene.ReadCoveragePointsForTests(true) : null,
             outlines.Full, outlines.Visible, submitted[0].Signature, Fixture.Device.Backend,
             Fixture.Device.Capabilities.DeviceName, $"coverage-{captureId}-{captureNumber++}-camera{row.CameraMode}-v{row.View}-s{row.Shadows}-static{row.StaticLight}-only{row.ShadowOnly}-culled{row.CameraCulled}-o{row.Outlines}-gpu{gpuSkinning}-route{route}")
-        { ReconstructionColour = scene.ReadCoverageReconstructionColourForTests(), FrameStats = scene.LastFrameStats };
+        {
+            ReconstructionColour = scene.ReadCoverageReconstructionColourForTests(),
+            FrameStats = scene.LastFrameStats,
+            Surfaces = lastSurfaces,
+            SignatureSource = route == 1 ? suppressCompute ? "cpu-admission-current-pose" : "selected-gpu" : route == 0 ? "ordinary-skinning" : "cpu-reference"
+        };
         CoverageArtifacts.Write(capture);
         return capture;
     }

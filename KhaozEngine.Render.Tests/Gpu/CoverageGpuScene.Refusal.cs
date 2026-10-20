@@ -48,12 +48,12 @@ public sealed partial class CoverageGpuScene
             actor.Draw(row, route, Matrix4x4.Identity, submitEquipment: equipment,
                 recession: stream == CoverageStream.Accumulated && refusedFrame ? .0001f : null);
         }
-        Fixture.Frame(Draw);
-        if (stream == CoverageStream.Accumulated) actor.AssertCovered();
+        EvidenceFrame(Draw, () => [actor.Frame]);
+        if (stream == CoverageStream.Accumulated) actor.AssertCovered(Surface(actor.Frame));
         refusedFrame = true;
         scene.RenderOrigin = new(128, 0, 0);
         if (stream == CoverageStream.CurrentOnly) scene.CameraCut();
-        observe(Fixture.Frame(Draw));
+        observe(EvidenceFrame(Draw, () => [actor.Frame]));
     }
 
     CoverageHostFootprint ArithmeticRefusalFootprint(CoverageStream stream)
@@ -74,10 +74,12 @@ public sealed partial class CoverageGpuScene
             {
                 var actor = Actors[0];
                 Assert.Equal(CoveragePresentation.Dispatched, scene.GetCoverageOutcome(actor.Frame).Presentation);
-                var words = CoverageNativeSurface.Read(Fixture.Device, scene, actor.Frame);
-                uint offset = actor.Frame.Preparation!.GpuReservation.CurrentBase;
-                Assert.Equal((uint)CoverageFailureCode.RecessionExceeded, words[offset + 8]);
-                Assert.Equal(1u, words[offset + 14]);
+                var surface = Surface(actor.Frame);
+                actor.AssertSelectedWords(surface);
+                Assert.Equal((uint)CoverageFailureCode.RecessionExceeded, surface.HeaderWords[8]);
+                Assert.Equal(1u, surface.HeaderWords[14]);
+                Assert.Equal(CoverageFailureCode.RecessionExceeded, surface.CompletedOutcome!.Value.Outcome.Failure.Code);
+                Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => actor.AssertCovered(surface));
                 AssertRejectedConfidence();
                 CoverageTemporalCurrentProbe.AssertRejectedPixelsMatchCurrent(this);
             }
@@ -85,7 +87,7 @@ public sealed partial class CoverageGpuScene
             Assert.Contains(motion.Motion, v => !MotionMath.IsBackground(v));
             Assert.All(motion.Motion.Where(v => !MotionMath.IsBackground(v)),
                 v => Assert.InRange(v.Length(), 0, .000001f));
-            capture = TemporalCapture(colour, "uncovered-current-pose", accumulated,
+            capture = TemporalCapture(colour, accumulated ? Actors[0].Signature : "uncovered-current-pose", accumulated,
                 $"coverage-{captureId}-{captureNumber++}-arithmetic-refusal-control{!accumulated}");
             CoverageArtifacts.Write(capture);
         });

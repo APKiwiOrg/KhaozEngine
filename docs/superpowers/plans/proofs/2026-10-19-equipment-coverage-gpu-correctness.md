@@ -1,5 +1,27 @@
 # Equipment coverage GPU correctness, Part C
 
+## Task 17 scene evidence boundaries
+
+Scene capture copies actual selected words in the frame command list beside the aggregate result readback.
+The shared fixture submits once and drains explicitly at its assertion boundary. Test callbacks freeze each
+preparation identity and reservation before submission, record the physical buffers and draw windows observed
+at the main, full/visible outline, cascade and point consumers, and verify the submitted current buffer becomes
+the retained previous buffer. The completed keyed result is read through `Scene3D.TryReadCoverageOutcome`.
+Actual source and final words retain independent pinned-reference comparisons. Temporal signatures are assigned
+from returned bytes. Admission refusals and no-compute fallbacks retain separate metadata without a GPU result.
+Stale frame, actor, preparation, offset and buffer associations have negative controls on real captured data.
+Expected-covered callers require final selection, a completed Covered/None outcome and zero refusal words.
+The actual recession-refused surface must fail that positive assertion while retaining independent source-word checks.
+Cold reservation tests distinguish a successful reservation from a later sibling failure. The committed buffer
+stays live, is consumed on retry and is disposed at teardown. A failure inside the pulling owner's binding
+reservation separately proves disposal of the uncommitted buffer and partial binding before a successful retry.
+
+The six local Metal golden comparisons retain the original references and tolerance. Candidate images, raw
+float grids and exact delta/hash metadata are emitted without baking. Full-resolution original images are
+paired externally for exact review. Local scene proof does not accept the other twelve backend comparisons,
+any nonzero golden cause, final hosted synchronization or a refresh. Exact Task 17 local counts, commits and
+review packets belong in its execution report until root completes those remaining gates.
+
 ## Task 16 allocation and batch boundaries
 
 `CoverageComputeBatchGpuTests` owns three executing native facts. The warmed changed-pose fact

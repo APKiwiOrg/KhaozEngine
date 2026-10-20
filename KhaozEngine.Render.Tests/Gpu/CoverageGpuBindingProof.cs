@@ -62,7 +62,8 @@ internal static class CoverageGpuBindingProof
         byte[] Capture(ulong expectedInstance)
         {
             SkinnedCoverageFrame frame = default;
-            byte[] colour = fixture.Fixture.Frame((s, _) =>
+            using var evidence = new CoverageSceneEvidence(fixture.Fixture);
+            byte[] colour = evidence.Frame((s, _) =>
             {
                 Assert.True(binding.TryPrepare(actor.Skeleton, actor.Palette, Matrix4x4.Identity,
                     new RigidInstanceDraw(default, Matrix4x4.Identity) { Tint = new(.12f, .7f, 1, 1) },
@@ -72,18 +73,19 @@ internal static class CoverageGpuBindingProof
                 var group = s.BeginMeshOutline(Color.White, 1);
                 s.DrawSkinnedOutline(group, draw, actor.Palette);
                 foreach (var equipment in binding.PreparedEquipmentDraws.Span) s.Draw(equipment.Rigid);
-            });
+            }, () => [frame]);
             Assert.Equal(CoveragePresentation.Dispatched, scene.GetCoverageOutcome(frame).Presentation);
-            var words = CoverageNativeSurface.Read(fixture.Fixture.Device, scene, frame);
-            Assert.Equal(0u, words[frame.Preparation!.GpuReservation.CurrentBase + 8]);
-            var commands = frame.Preparation.Commands.AsSpan(0, frame.Preparation.CommandCount).ToArray();
+            var surface = Assert.Single(evidence.Surfaces);
+            Assert.Equal(0u, surface.HeaderWords[8]);
+            var commands = frame.Preparation!.Commands.AsSpan(0, frame.Preparation.CommandCount).ToArray();
             Assert.Contains(commands, command => command.EquipmentInstanceId == expectedInstance);
             Assert.DoesNotContain(commands, command => command.EquipmentInstanceId != expectedInstance);
             var outline = scene.ReadCoverageOutlinesForTests();
             CoverageArtifacts.Write(new(colour, scene.ReadCoverageDepthForTests(), scene.ReadCoverageNormalForTests(),
                 null, null, null, outline.Full, outline.Visible,
-                CoverageNativeSurface.Signature(words, frame.Preparation.GpuReservation), fixture.Fixture.Device.Backend,
-                fixture.Fixture.Device.Capabilities.DeviceName, $"coverage-binding-{Guid.NewGuid():N}-instance{expectedInstance}"));
+                surface.Signature, fixture.Fixture.Device.Backend,
+                fixture.Fixture.Device.Capabilities.DeviceName, $"coverage-binding-{Guid.NewGuid():N}-instance{expectedInstance}")
+            { Surfaces = evidence.Surfaces, SignatureSource = "selected-gpu" });
             return colour;
         }
     }

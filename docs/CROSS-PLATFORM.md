@@ -719,7 +719,11 @@ Coverage tests write raw evidence only when `KE_COVERAGE_EVIDENCE_DIR` names a d
 runs keep every assertion and readback and write nothing, and `KE_GOLDEN_EVIDENCE_DIR` never enables
 it. A manual correctness dispatch filtered to `FullyQualifiedName~Coverage` sets it to
 `coverage-evidence/` outside `goldens-evidence/` and uploads `coverage-evidence-<backend>` on success or
-failure. Its synthetic captures use unique identities and atomic files, with full-resolution colour,
+failure when files were produced. Headless and kernel-only filters can match Coverage without producing
+scene packets, so an empty evidence directory skips the upload. A skipped upload grants no scene-evidence
+acceptance. Producing tests still require their selected words, identities, rendered targets and output files,
+and the acceptance audit checks the expected packet inventory.
+Its synthetic captures use unique identities and atomic files, with full-resolution colour,
 the exact temporal reconstruction source, the resolve's own output and state, the R8 rejection mask,
 depth, normal, outline, cascade and selected point-row targets. JSON records the actual backend,
 adapter, source row, frame and jitter, the ghost envelope with every residual coordinate, and mask
@@ -734,7 +738,20 @@ The six accepted-surface views also have separate backend-owned reference grids.
 the invariant proof first, then calls the existing `GoldenCompare` for `coverage-front`, `coverage-rear`,
 `coverage-grazing-left`, `coverage-grazing-right`, `coverage-high` and `coverage-low-backlit`. Each reference
 is baked and owned by the actual backend that renders it through the existing backend golden workflow. These
-references complement the quantitative invariant and temporal/raw evidence.
+references complement the quantitative invariant and temporal/raw evidence. With coverage evidence enabled,
+each comparison also writes a full-resolution candidate, its grid and raw grid floats, exact worst delta and
+reference/candidate hashes under `golden-review/`. These packets never update a reference. Pair each nonzero
+delta with the original full-resolution bake image before deciding whether to refresh its owning backend.
+
+Scene captures record the selected-buffer copy beside the frame readbacks. One fixture submission and its
+explicit assertion drain complete both. Before submission, the capture freezes frame, view, actor and
+preparation identities, reservation offsets and the actual current/previous/static objects observed at each
+consumer. It validates their physical identities and verifies the submitted current object becomes the retained
+previous object. After the drain, it compares independent reference words with actual selected source/final
+words and hashes the returned selected bytes, including temporal captures. The keyed completed result comes
+from `Scene3D.TryReadCoverageOutcome`. Same-frame staging remains `Dispatched`. CPU admission and no-compute
+fallbacks have no invented GPU result, pulled buffers or selected words. Their metadata names the ordinary
+current-pose route. Existing target readbacks and independent temporal controls retain their own assertion copies.
 
 Six artifacts carry no pixels at all and upload on `always()`, because each of them is read off a run that
 PASSED:

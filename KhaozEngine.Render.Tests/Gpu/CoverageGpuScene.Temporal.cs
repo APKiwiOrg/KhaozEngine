@@ -128,12 +128,12 @@ public sealed partial class CoverageGpuScene
             bool accumulated = stream == CoverageStream.Accumulated;
             int route = !covered ? 0 : accumulated ? 1 : refusal ? 0 : 2;
             bool equipment = (accumulated || stream == CoverageStream.CurrentOnly) && covered && !refusal;
-            byte[] colour = Fixture.Frame((s, _) =>
+            byte[] colour = EvidenceFrame((s, _) =>
             {
                 s.AddLight(new Vector3(128, 0, 0), KhaozEngine.Primitives.Color.White, 6, 1, LightShadow.Static(8001));
                 actor.Draw(current, route, world, instance: identity >= 4 ? 2ul : 1ul, submitEquipment: equipment,
                     dissolve: dissolve, complement: frame == 13, invertShadow: frame == 14, blended: frame == 3);
-            });
+            }, () => [actor.Frame]);
             observe(frame, colour);
         }
     }
@@ -184,8 +184,12 @@ public sealed partial class CoverageGpuScene
             bool accumulated = stream == CoverageStream.Accumulated;
             if (accumulated)
             {
-                if (CoveredAt(frame) && !RefusedAt(frame)) actor.AssertCovered();
-                if (RefusedAt(frame)) Assert.Equal(CoveragePresentation.UncoveredFallback, scene.GetCoverageOutcome(actor.Frame).Presentation);
+                if (CoveredAt(frame) && !RefusedAt(frame)) actor.AssertCovered(Surface(actor.Frame));
+                if (RefusedAt(frame))
+                {
+                    Assert.Equal(CoveragePresentation.UncoveredFallback, scene.GetCoverageOutcome(actor.Frame).Presentation);
+                    actor.SelectCpuFallbackSignature();
+                }
                 if (TransitionAt(frame))
                 {
                     AssertRejectedConfidence();
@@ -213,6 +217,9 @@ public sealed partial class CoverageGpuScene
             scene.ReadCoverageCascadesForTests(), scene.ReadCoveragePointsForTests(false), scene.ReadCoveragePointsForTests(true),
             outline.Full, outline.Visible, signature, Fixture.Device.Backend, Fixture.Device.Capabilities.DeviceName, artifact)
         {
+            Surfaces = lastSurfaces,
+            SignatureSource = lastSurfaces.Any(surface => surface.CompletedOutcome is not null) ? "selected-gpu"
+                : lastSurfaces.Length > 0 ? "cpu-admission-current-pose" : "ordinary-or-reference",
             Motion = scene.ReadMotionTargetForTests(),
             FrameStats = scene.LastFrameStats,
             Temporal = scene.LastTemporalDiagnostics,

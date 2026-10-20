@@ -154,6 +154,7 @@ public sealed class CoverageResourceTests
         h.SubmitEquipment();
         h.Scene.PrepareFrame();
         var reserved = h.Scene.CoverageGpuBatchForTests!;
+        var submittedCurrent = reserved.Current;
         var buffer = Assert.IsType<KhaozEngine.Tests.Gpu.FakeBuffer>(reserved.Previous);
         uint bytes = (uint)(16 + (h.Conformer.Topology.SourceVertexCount + h.Conformer.Topology.VertexCount) * 16) * 4;
         Assert.Equal(bytes, buffer.SizeInBytes);
@@ -162,7 +163,8 @@ public sealed class CoverageResourceTests
         Assert.InRange(h.Factory.Buffers.IndexOf(buffer), 0, createdBeforeRecording - 1);
         h.Render();
         Assert.Equal(CoveragePresentation.Dispatched, h.Scene.GetCoverageOutcome(frame).Presentation);
-        Assert.Same(buffer, h.Scene.CoverageGpuBatchForTests!.Previous);
+        Assert.Same(buffer, h.Scene.CoverageGpuBatchForTests!.Current);
+        Assert.Same(submittedCurrent, h.Scene.CoverageGpuBatchForTests.Previous);
         Assert.False(buffer.Disposed);
         h.AssertCoverageDispatch(frame);
     }

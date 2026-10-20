@@ -17,6 +17,7 @@ namespace KhaozEngine.Tests.Gpu;
 public sealed class TemporalFixture : IDisposable
 {
     readonly GpuDeviceContext _gpu;
+    readonly IGpuDevice _device;
     readonly IGpuCommandList _commands;
     readonly GpuFrameSubmission _submission;
     IGpuTexture _targetTexture;
@@ -27,17 +28,18 @@ public sealed class TemporalFixture : IDisposable
 
     /// <summary>A fixture presenting at <paramref name="displayWidth"/> x <paramref name="displayHeight"/>.
     /// <paramref name="setup"/> runs once after the defaults. Temporal rendering stays off unless it asks.</summary>
-    public TemporalFixture(int displayWidth, int displayHeight, Action<Scene3D>? setup = null)
+    public TemporalFixture(int displayWidth, int displayHeight, Action<Scene3D>? setup = null, bool suppressCompute = false)
     {
         _gpu = GpuDeviceContext.CreateHeadless();
-        IGpuResourceFactory f = _gpu.GpuDevice.Factory;
+        _device = suppressCompute ? new SpyGpuDevice(_gpu.GpuDevice, suppressCompute: true) : _gpu.GpuDevice;
+        IGpuResourceFactory f = Device.Factory;
         _targetTexture = CreateTarget(f, displayWidth, displayHeight);
         Target = f.CreateFramebuffer(null, _targetTexture);
         _commands = f.CreateCommandList();
-        _submission = new(_gpu.GpuDevice);
+        _submission = new(Device);
         DisplayWidth = displayWidth;
         DisplayHeight = displayHeight;
-        Scene = new Scene3D(_gpu.GpuDevice, Target.Outputs);
+        Scene = new Scene3D(Device, Target.Outputs);
         Scene.Post.UseSmoothPreset();
         Scene.Post.RenderScale = RenderScale.MatchViewport;
         Scene.RenderOrigin = Vector3.Zero;
@@ -45,9 +47,14 @@ public sealed class TemporalFixture : IDisposable
         setup?.Invoke(Scene);
     }
 
-    public IGpuDevice Device => _gpu.GpuDevice;
+    public IGpuDevice Device => _device;
 
     public Scene3D Scene { get; }
+
+    internal Action<IGpuCommandList>? RecordFrameEvidenceForTests { get; set; }
+    internal Action? CompleteFrameEvidenceForTests { get; set; }
+    internal int FrameSubmissionsForTests { get; private set; }
+    internal int AssertionDrainsForTests { get; private set; }
 
     /// <summary>The display framebuffer every frame presents into.</summary>
     public IGpuFramebuffer Target { get; private set; }
@@ -89,11 +96,15 @@ public sealed class TemporalFixture : IDisposable
             {
                 Scene.RenderInternal(_commands, DisplayWidth, DisplayHeight, Target);
                 Scene.RecordCoverageReadbacks(_commands, _submission);
+                RecordFrameEvidenceForTests?.Invoke(_commands);
             }
             long submitted = Stopwatch.GetTimestamp();
             _submission.Submit(_commands);
+            FrameSubmissionsForTests++;
             Device.WaitForIdle();
+            AssertionDrainsForTests++;
             LastSubmitMilliseconds = Stopwatch.GetElapsedTime(submitted).TotalMilliseconds;
+            CompleteFrameEvidenceForTests?.Invoke();
             // The frame boundary a game reaches every frame. A backend runs the destroys it deferred there (Vulkan
             // holds every disposed image and its memory until then), so a fixture that never reached it grew device
             // memory with every target the scene replaced.

@@ -14,7 +14,6 @@ namespace KhaozEngine.Tests.Gpu;
 internal sealed class CoverageGpuActor : IDisposable
 {
     readonly Scene3D scene;
-    readonly IGpuDevice device;
     readonly CoverageFixture data;
     readonly SkinnedHostConformer conformer;
     readonly SkinnedMeshHandle host, reference, blendedReference, removed;
@@ -22,6 +21,8 @@ internal sealed class CoverageGpuActor : IDisposable
     readonly CoverageSupportSurface support;
     readonly Matrix4x4[] palette, blendedPalette;
     readonly string normalSignature, blendedSignature;
+    readonly ModelVertex[] blendedFinal, blendedPosed;
+    ModelVertex[] selectedFinal = [], selectedPosed = [];
     readonly Matrix4x4[] identity = [Matrix4x4.Identity, Matrix4x4.Identity];
     readonly RigidInstanceDraw[] equipment = new RigidInstanceDraw[1];
     readonly MotionKey key;
@@ -37,7 +38,7 @@ internal sealed class CoverageGpuActor : IDisposable
 
     internal CoverageGpuActor(Scene3D scene, IGpuDevice device, int actor, bool mapped)
     {
-        this.scene = scene; this.device = device;
+        this.scene = scene;
         key = MotionKey.From((ulong)(100 + actor));
         data = CoverageFixture.CurvedPanel(seams: false);
         palette = CoverageFixture.Pose;
@@ -93,9 +94,9 @@ internal sealed class CoverageGpuActor : IDisposable
             BoneWeights = new(1, 0, 0, 0),
         }).ToArray();
         reference = scene.LoadSkinnedMesh(new SkinnedGltfMesh(finalSkin, refined, identity, identity, skeleton), maps);
-        var blendPosed = new ModelVertex[skin.Length];
+        var blendPosed = blendedPosed = new ModelVertex[skin.Length];
         Assert.True(CoverageReferenceSkinning.TrySkin(new(), new(source, 2), source, blendedPalette, blendPosed, out _));
-        var blendFinal = new ModelVertex[Final.Length];
+        var blendFinal = blendedFinal = new ModelVertex[Final.Length];
         Assert.True(CoverageReferenceConstructor.TryConstruct(conformer.Topology, blendPosed, referenceWorld,
             commands, new CoverageReferenceScratch(conformer.Topology), blendFinal, out failure), failure.ToString());
         var blendBefore = new ModelVertex[Final.Length];
@@ -127,6 +128,9 @@ internal sealed class CoverageGpuActor : IDisposable
         Frame = default;
         var selectedPalette = blended ? blendedPalette : palette;
         Signature = blended ? blendedSignature : normalSignature;
+        selectedFinal = blended ? blendedFinal : Final;
+        selectedPosed = blended ? blendedPosed : data.Posed;
+        if (route == 0) Signature = Hash(selectedPosed);
         var rigidDraw = new RigidInstanceDraw(rigid, world)
         {
             Tint = new Color(.12f, .7f, 1, 1),
@@ -165,28 +169,32 @@ internal sealed class CoverageGpuActor : IDisposable
         }
     }
 
-    internal void AssertCovered()
+    internal void SelectCpuFallbackSignature() => Signature = Hash(selectedPosed);
+
+    internal void AssertSelectedWords(CoverageSceneSurfaceEvidence surface)
     {
         Assert.Equal(CoveragePresentation.Dispatched, scene.GetCoverageOutcome(Frame).Presentation);
-        var words = CoverageNativeSurface.Read(device, scene, Frame);
-        var r = Frame.Preparation!.GpuReservation;
-        Assert.Equal(0u, words[r.CurrentBase + 8]);
-        Assert.Equal(0u, words[r.CurrentBase + 14]);
-        Assert.Equal(Signature, CoverageNativeSurface.Signature(words, r));
+        CoverageSceneEvidence.AssertAssociation(surface);
+        Assert.Equal(Frame.Preparation!.Id, surface.PreparationId);
+        Assert.Equal(MemoryMarshal.Cast<ModelVertex, uint>(selectedPosed).ToArray(), surface.SourceWords);
+        if (surface.Selection == "final")
+            Assert.Equal(MemoryMarshal.Cast<ModelVertex, uint>(selectedFinal).ToArray(), surface.FinalWords);
+        else
+            Assert.Equal("source", surface.Selection);
+        Signature = surface.Signature;
     }
 
-    internal void AssertSelected(uint[] words)
+    internal void AssertCovered(CoverageSceneSurfaceEvidence surface)
     {
-        Assert.Equal(CoveragePresentation.Dispatched, scene.GetCoverageOutcome(Frame).Presentation);
-        var p = Frame.Preparation!;
-        var r = p.GpuReservation;
-        Assert.Equal(p.ResultIdentity.AsSpan(0, 8).ToArray(), words.AsSpan((int)r.CurrentBase, 8).ToArray());
-        Assert.Equal(0u, words[r.CurrentBase + 8]);
-        Assert.Equal(0u, words[r.CurrentBase + 14]);
-        var actual = words.AsSpan(checked((int)r.CurrentBase + 16 + r.SourceCount * 16), r.VertexCount * 16);
-        Assert.Equal(MemoryMarshal.Cast<ModelVertex, uint>(Final).ToArray(), actual.ToArray());
-        Signature = Hash(MemoryMarshal.Cast<uint, ModelVertex>(actual).ToArray());
+        AssertSelectedWords(surface);
+        Assert.Equal("final", surface.Selection);
+        Assert.Equal(CoveragePresentation.Covered, surface.CompletedOutcome!.Value.Outcome.Presentation);
+        Assert.Equal(CoverageFailureCode.None, surface.CompletedOutcome.Value.Outcome.Failure.Code);
+        Assert.Equal(0u, surface.HeaderWords[8]);
+        Assert.Equal(0u, surface.HeaderWords[14]);
     }
+
+    internal void AssertSelected(CoverageSceneSurfaceEvidence surface) => AssertCovered(surface);
 
     internal static string Hash(ModelVertex[] vertices) =>
         Convert.ToHexString(SHA256.HashData(MemoryMarshal.AsBytes(vertices.AsSpan())));

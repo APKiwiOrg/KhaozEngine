@@ -22578,6 +22578,11 @@ growth. `Outcome` is `Covered` or `UncoveredFallback` with the GPU failure. `Get
 report the same-frame CPU admission or `Dispatched` result. Diagnostic availability changes neither drawing nor
 history. A full ring drops only the new diagnostic copy. On Direct3D11 the normal Present boundary makes completion
 visible. A headless correctness test may drain once before polling, while production polling never flushes.
+Scene correctness captures record their selected-surface copy in that same frame submission. They freeze
+preparation and consumer buffer identities before submission, then validate the copied words and keyed
+completed outcome after the assertion drain. A CPU admission refusal or unavailable compute path has no GPU
+outcome or selected-buffer evidence. See [coverage evidence](CROSS-PLATFORM.md#failure-evidence-pngs) for packet
+and golden review ownership.
 
 Rigid mesh upload caches whether `Normal.X`, `Color.X`, `Uv.X` and `Tangent.X` are finite, matching the
 vertex inputs consumed by the shadow position sink. Coverage equipment staging refuses a nonfinite lane with

@@ -19,6 +19,7 @@ public sealed class CoverageGoldenTests(CoverageGpuScene scene) : IClassFixture<
         var accepted = scene.Capture(row, true, true);
         var reference = scene.CaptureReference(row, true);
         CoveragePixelProof.AssertSurface(baseline, accepted, reference, requireBreakthrough: view == 0);
+        CoverageGoldenEvidence.Write(goldenName, accepted);
         GoldenCompare.AssertOrUpdate(goldenName, accepted.Colour, CoverageGpuScene.Width, CoverageGpuScene.Height);
     }
 }

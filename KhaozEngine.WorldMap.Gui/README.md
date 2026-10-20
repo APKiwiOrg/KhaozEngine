@@ -26,6 +26,35 @@ textures and one white pixel used for placeholders. The caller owns the cache, w
 One worker can build for a cache shared by several views. Each view owns its own uploads and budget.
 Dispose the views before their surface, and stop the worker before disposing the cache or source.
 
+## Offscreen capture
+
+Pass the callback's `Render2DContext` to draw the same widget through `Render2DSnapshot`:
+
+```csharp
+byte[] rgba = Render2DSnapshot.Capture(width, height, Color.Black, context =>
+{
+    using var view = new WorldMapView(cache, context);
+    view.Viewport = new Rect(0, 0, width, height);
+    view.Update(pointer, 0f);
+    context.Batch.Begin();
+    view.Draw(context.Batch);
+    context.Batch.End();
+});
+```
+
+Use a pointer in the capture's pixel coordinates. Chunk requests and upload budgets work as in the
+surface view. Prepare the shared cache with a worker or `BuildNext` before the final update when the
+capture needs completed imagery.
+
+The context creates and owns every uploaded chunk texture and the white placeholder pixel. Replacement,
+eviction and view disposal release the view's chunk references without disposing those textures. The
+capture retains them until recorded commands finish submitting, then frees them through its normal
+teardown. `MaxTextures` limits view retention, while the capture retains all textures it created until
+teardown. Create and use the context view inside its capture callback. Icons, markers and label fonts
+remain borrowed in both modes.
+
+## Drawing
+
 `Draw` uses the caller's open batch in `Viewport` coordinates. It does not open or close a batch or
 change its scissor. Chunk destination rectangles are clipped to the viewport on the CPU, and their
 source UV endpoints shrink by the same fractions. Quads also clip to the authored world bounds, including
@@ -68,7 +97,8 @@ uploads, and negative budgets are refused. Rasterization stays with `WorldMapChu
 Each upload records the cache's `long` generation. Cache-wide monotonically increasing generations
 ensure that re-requesting an evicted chunk replaces any surviving upload. An unchanged generation
 never uploads again. A stale chunk keeps its old texture until a newly built generation uploads,
-including while the upload budget is exhausted. Replacing a texture disposes the previous one.
+including while the upload budget is exhausted. Replacing a surface-owned texture disposes the previous
+one. A snapshot view leaves disposal to its capture.
 
 `MaxTextures` defaults to 192 and rejects values below one with `ArgumentOutOfRangeException`. After
 building the draw list, `Update` evicts the least recently drawn texture that is absent from this frame's
@@ -76,7 +106,8 @@ draws until retention reaches the cap. Textures used for fallback count as drawn
 exceed the cap, they remain protected until a later update can evict them. Setting the cap does not dispose
 textures until `Update`. Default retained chunk imagery is 48 MiB per view, for 192 textures of
 256 by 256 RGBA pixels, excluding GPU overhead and any temporary active-draw excess. Every remaining
-texture is disposed with the view. Eviction and disposal stay on the frame thread.
+surface-owned texture is disposed with the view. Snapshot textures remain capture-owned through eviction
+and view disposal. Eviction and disposal stay on the rendering thread.
 
 A chunk with no uploaded texture samples the matching north-up UV sub-rectangle of its nearest uploaded
 coarser ancestor. With no uploaded ancestor it draws a filled rectangle in `PlaceholderColor`, which

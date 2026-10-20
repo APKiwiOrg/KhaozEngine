@@ -17,8 +17,9 @@ using KhaozEngine.TileWorld;
 namespace KhaozEngine.Tests.MapDocOracle;
 
 /// <summary>One owned legacy candidate: the Task 3 channel decision over the actual legacy sampler, and that sampler's
-/// detailed answer at the candidate's point.</summary>
-internal sealed record FoliageExpectedRow(GroundCoverDecision Decision, TileFoliageDecision Legacy);
+/// detailed answer at the candidate's point. DomainFirst marks a point inside the raster on a tile of an absent source
+/// region, where native decides its domain before its raster.</summary>
+internal sealed record FoliageExpectedRow(GroundCoverDecision Decision, TileFoliageDecision Legacy, bool DomainFirst = false);
 
 /// <summary>Compares the attested source foliage with four independently loaded native heads, a client and a server of
 /// each storage form, chunk by chunk and candidate by candidate. Expected rows come only from the actual legacy sampler
@@ -50,10 +51,11 @@ internal static class ShippedFoliageComparison
         {
             var surface = new TileFoliageSurface(inputs.World, inputs.Catalogs, binding.Source);
             GroundCoverSettings settings = Settings(binding.Source);
-            foreach (TileRegion region in inputs.World.Regions.Values.OrderBy(r => r.Coord.Rz).ThenBy(r => r.Coord.Rx))
+            foreach (RegionCoord region in Regions(inputs.World))
             {
-                RectArea area = Area(region.Coord);
+                RectArea area = Area(region);
                 Dictionary<(int X, int Z), FoliageExpectedRow> expected = Expected(surface, settings, area, out long scanned);
+                Mark(expected, inputs.World, binding.Source);
                 tally.Add("scannedCandidates", scanned);
                 Count(expected.Values, tally);
                 foreach (var (name, context) in heads)
@@ -62,7 +64,7 @@ internal static class ShippedFoliageComparison
                     List<MapFoliageDecision>? actual = Actual(context, binding.Row.NativeLayerId, area);
                     if (actual is null)
                     {
-                        tally.Fail("foliage-query", Detail(name, binding, region.Coord));
+                        tally.Fail("foliage-query", Detail(name, binding, region));
                         continue;
                     }
                     CompareRegion(binding, Layer(context, binding), context.Assets, expected, actual, name, tally, digests[name]);
@@ -112,6 +114,36 @@ internal static class ShippedFoliageComparison
         RootOffset = layer.RootOffset,
         Models = layer.Archetypes.Select(a => new GroundCoverModel(a.Id, a.Weight)).ToArray(),
     };
+
+    /// <summary>Every source region, then every absent region that a layer raster's closed sample rectangle reaches, in
+    /// signed region order. The released build generates nothing in an absent region, so native must not either.</summary>
+    internal static IReadOnlyList<RegionCoord> Regions(TileWorldDocument world)
+    {
+        var regions = world.Regions.Keys.ToHashSet();
+        foreach (TileFoliageLayer layer in world.FoliageLayers)
+        {
+            float maxX = layer.OriginX + (layer.Width - 1) * layer.CellSize, maxZ = layer.OriginZ + (layer.Height - 1) * layer.CellSize;
+            RegionCoord low = RegionCoord.Of((int)MathF.Floor(TileWorldSpace.TileX(layer.OriginX, 1f)), (int)MathF.Floor(TileWorldSpace.TileZ(maxZ, 1f)));
+            RegionCoord high = RegionCoord.Of((int)MathF.Floor(TileWorldSpace.TileX(maxX, 1f)), (int)MathF.Floor(TileWorldSpace.TileZ(layer.OriginZ, 1f)));
+            for (int rz = low.Rz; rz <= high.Rz; rz++)
+                for (int rx = low.Rx; rx <= high.Rx; rx++) regions.Add(new(rx, rz));
+        }
+        return regions.OrderBy(r => r.Rz).ThenBy(r => r.Rx).ToArray();
+    }
+
+    // Native decides its domain before its raster for a point inside the raster, and the raster first outside it. Only
+    // a tile of an absent source region can differ, where the released sampler reads the raster first.
+    static void Mark(Dictionary<(int X, int Z), FoliageExpectedRow> rows, TileWorldDocument world, TileFoliageLayer layer)
+    {
+        foreach (var key in rows.Keys.ToArray())
+        {
+            GroundCoverCandidate c = rows[key].Decision.Candidate;
+            int x = (int)MathF.Floor(TileWorldSpace.TileX(c.WorldX, 1f)), z = (int)MathF.Floor(TileWorldSpace.TileZ(c.WorldZ, 1f));
+            float u = (c.WorldX - layer.OriginX) / layer.CellSize, v = (c.WorldZ - layer.OriginZ) / layer.CellSize;
+            if (world.GetRegion(RegionCoord.Of(x, z)) is null && !(u < 0f || v < 0f || u > layer.Width - 1 || v > layer.Height - 1))
+                rows[key] = rows[key] with { DomainFirst = true };
+        }
+    }
 
     /// <summary>Every owned candidate of the area, from the actual legacy sampler through the Task 3 channel kernel.</summary>
     internal static Dictionary<(int X, int Z), FoliageExpectedRow> Expected(TileFoliageSurface surface, GroundCoverSettings settings,
@@ -200,16 +232,25 @@ internal static class ShippedFoliageComparison
             Bits(want.DensityPick) == Bits(got.DensityPick) && Bits(want.ModelPick) == Bits(got.ModelPick) &&
             Bits(want.ScalePick) == Bits(got.ScalePick) && Bits(want.YawPick) == Bits(got.YawPick) && Bits(want.Rank) == Bits(got.Rank)))
             failed.Add("foliage-channel");
+        // The Task 7 Decide order: a candidate outside the half-open clip gets no point and is never compared, and a refused
+        // point has no support owner. Every other point carries the bound Surface, including off-raster RasterZero and
+        // OutsideDomain, which are decided before support resolves and stamped with the requested surface.
+        string? owner = actual.Reason == MapFoliageReason.Refused ? null : binding.Row.SupportSurfaceId;
+        bool key = actual.Address.LayerId == binding.Row.NativeLayerId && actual.Address.SupportOwnerId == owner &&
+            actual.Address.X == want.X && actual.Address.Z == want.Z;
         if (Reason(expected) != actual.Reason) failed.Add("foliage-decision");
         bool accepted = expected.Decision.Instance is not null;
         if (accepted && actual.Sample is null) failed.Add("foliage-missing-sample");
         if (!accepted && actual.Sample is not null) failed.Add("foliage-extra-sample");
-        if (expected.Decision.Instance is not { } instance || actual.Sample is not { } sample) return failed;
+        if (expected.Decision.Instance is not { } instance || actual.Sample is not { } sample)
+        {
+            if (!key) failed.Add("foliage-key");
+            return failed;
+        }
 
-        MapFoliageSampleKey key = sample.Key;
-        if (!(key.Address == actual.Address && key.Address.LayerId == binding.Row.NativeLayerId &&
-            key.Address.SupportOwnerId == binding.Row.SupportSurfaceId && key.Address.X == want.X && key.Address.Z == want.Z &&
-            key.DistributionVersion == 1 && key.Policy.Id == "legacy-tile" && key.Policy.Version == 1))
+        MapFoliageSampleKey sampleKey = sample.Key;
+        if (!key || !(sampleKey.Address == actual.Address && sampleKey.DistributionVersion == 1 && sampleKey.Policy.Id == "legacy-tile" &&
+            sampleKey.Policy.Version == 1))
             failed.Add("foliage-key");
         if (!binding.Models.TryGetValue(instance.ModelId, out string? model) || model != sample.AssetId) failed.Add("foliage-model");
         string? resource = layer.Materials.FirstOrDefault(m => m.Id == sample.VisibleMaterial)?.ResourceId;
@@ -251,6 +292,7 @@ internal static class ShippedFoliageComparison
     {
         GroundCoverDecisionKind.Accepted => MapFoliageReason.Accepted,
         GroundCoverDecisionKind.DensityRejected => MapFoliageReason.DensityRejected,
+        GroundCoverDecisionKind.ZeroDensity when row.DomainFirst => MapFoliageReason.OutsideDomain,
         GroundCoverDecisionKind.ZeroDensity => row.Legacy.Reason switch
         {
             TileFoliageRejection.ZeroRaster => MapFoliageReason.RasterZero,

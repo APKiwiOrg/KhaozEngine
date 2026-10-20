@@ -36,7 +36,9 @@ public sealed class ShippedFoliageInputGuardTests
         Assert.Equal(4 * counts.GetProperty("ownedCandidates").GetInt64(), counts.GetProperty("comparedRows").GetInt64());
         // Every released stage the invented world exercises is reached by the legacy sampler and matched natively.
         var stages = summary.GetProperty("breakdowns").GetProperty("rejections").EnumerateObject().Select(p => p.Name).ToHashSet();
-        foreach (string stage in new[] { "ZeroRaster", "UnderlayNotAllowed", "Water", "Indoors", "Solid", "Roof", "Door", "DensityRejected" })
+        // EdgeFade, VoidUnderlay and AbsentRegion compare end to end as EdgeZero, MissingUnderlay and OutsideDomain.
+        foreach (string stage in new[] { "ZeroRaster", "AbsentRegion", "VoidUnderlay", "UnderlayNotAllowed", "Water", "Indoors", "Solid",
+            "Roof", "Door", "EdgeFade", "DensityRejected" })
             Assert.Contains(stage, stages);
         // Headless legacy sampling started no window or GPU backend in this host.
         Assert.DoesNotContain(AppDomain.CurrentDomain.GetAssemblies(), a => a.GetName().Name is { } name &&
@@ -164,6 +166,49 @@ public sealed class ShippedFoliageInputGuardTests
             System.Numerics.Quaternion.CreateFromAxisAngle(System.Numerics.Vector3.UnitY, MathF.PI / 2))) > 1);
     }
 
+    [Fact]
+    public void ComparedRow_ChecksLayerAndSupportOwnerOnEveryRow()
+    {
+        using var fixture = Create("valid");
+        var inputs = ShippedFoliageInputs.Read(PrivateOracleInputs.Require(fixture.Environment));
+        FoliageLayerBinding binding = inputs.Layers.Single(l => l.Row.NativeLayerId == Cover);
+        var document = inputs.ReloadDocument();
+        var context = MapFoliageGenerationContext.Capture(document, inputs.ReloadAssets(document)).Context!;
+        MapFoliageLayer layer = context.Foliage!.Layers.Single(l => l.Id == Cover);
+        RectArea area = ShippedFoliageComparison.Area(new RegionCoord(0, 0));
+        var expected = ShippedFoliageComparison.Expected(new TileFoliageSurface(inputs.World, inputs.Catalogs, binding.Source),
+            ShippedFoliageComparison.Settings(binding.Source), area, out _);
+        MapFoliageDecision rejected = ShippedFoliageComparison.Actual(context, Cover, area)!.First(d => d.Reason == MapFoliageReason.Solid);
+        FoliageExpectedRow want = expected[(rejected.Address.X, rejected.Address.Z)];
+        IReadOnlyList<string> Compare(MapFoliageDecision row) => ShippedFoliageComparison.CompareRow(binding, layer, context.Assets, want, row);
+
+        Assert.Empty(Compare(rejected));
+        // A rejected row that resolved the wrong support, or names another layer, fails exactly on its address.
+        Assert.Equal(new[] { "foliage-key" }, Compare(rejected with { Address = rejected.Address with { SupportOwnerId = Deck } }));
+        Assert.Equal(new[] { "foliage-key" }, Compare(rejected with { Address = rejected.Address with { LayerId = Upper } }));
+        Assert.Equal(new[] { "foliage-key" }, Compare(rejected with { Address = rejected.Address with { SupportOwnerId = null } }));
+        // Only a refused point carries no support owner, so a refused row fails on its reason and not its address.
+        Assert.Equal(new[] { "foliage-decision" }, Compare(rejected with { Reason = MapFoliageReason.Refused, Address = rejected.Address with { SupportOwnerId = null } }));
+        Assert.Contains("foliage-key", Compare(rejected with { Reason = MapFoliageReason.Refused }));
+        // Rows decided before support resolves still name the bound surface: off-raster and outside-domain rows of an
+        // absent region, which the released Decide order stamps with the requested Surface.
+        var absent = ShippedFoliageComparison.Actual(context, Cover, ShippedFoliageComparison.Area(new RegionCoord(0, 1)))!;
+        Assert.Contains(absent, d => d.Reason == MapFoliageReason.OutsideDomain);
+        Assert.Contains(absent, d => d.Reason == MapFoliageReason.RasterZero);
+        Assert.All(absent, d => Assert.Equal((Cover, (string?)Ground), (d.Address.LayerId, d.Address.SupportOwnerId)));
+    }
+
+    [Fact]
+    public void StaleInputAfterReleasedLoaders_IsRefusedByTheRecheck()
+    {
+        using var fixture = Create("valid");
+        var entry = PrivateOracleInputs.Require(fixture.Environment);
+        string region = Path.Combine(Source(fixture), "world/regions/r_0_0.json");
+        var error = Assert.Throws<InvalidDataException>(() => ShippedFoliageInputs.Read(entry,
+            afterLoaders: () => File.AppendAllText(region, fixture.PublicSecretMarker)));
+        Assert.Equal("foliage extraction changed during load", error.Message);
+    }
+
     [Theory]
     [InlineData("missing-source")]
     [InlineData("missing-provenance")]
@@ -201,6 +246,10 @@ public sealed class ShippedFoliageInputGuardTests
     [Theory]
     [InlineData("duplicate-comparison", "duplicate or case-variant JSON member")]
     [InlineData("duplicate-manifest-field", "duplicate or case-variant JSON member")]
+    [InlineData("case-duplicate-manifest-field", "duplicate or case-variant JSON member")]
+    [InlineData("dangling-layer-owner", "dangling foliage layer owner")]
+    [InlineData("building-manifest", "private foliage bindings are Surface only and take no building manifest")]
+    [InlineData("patch-cells", "native support surface does not derive from its source plane")]
     [InlineData("case-manifest-field", "incomplete comparison object")]
     [InlineData("obsolete-rule-order", "incomplete comparison object")]
     [InlineData("unsupported-schema", "unsupported foliage comparison schema")]

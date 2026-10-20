@@ -382,6 +382,8 @@ internal static class ShippedMarkerGuardFixtures
         string nativeText = MapDocumentFile.SaveText(document);
         // The scaffold saves at the current format 9. The next format is the unsupported one.
         if (variant == "unsupported-native") nativeText = nativeText.Replace("\"formatVersion\": 9", "\"formatVersion\": 10", StringComparison.Ordinal);
+        // An accepted R6 scaffold declares format 8 and loads through the pure migration.
+        if (variant == "format-eight-native") nativeText = nativeText.Replace("\"formatVersion\": 9", "\"formatVersion\": 8", StringComparison.Ordinal);
         File.WriteAllText(Path.Combine(root, "native.json"), nativeText);
         string rolesText = roles.ToJsonString();
         if (variant == "duplicate-role-field") rolesText = rolesText.Replace("\"offsetX\":0.5", "\"offsetX\":0.5,\"offsetX\":0.5", StringComparison.Ordinal);

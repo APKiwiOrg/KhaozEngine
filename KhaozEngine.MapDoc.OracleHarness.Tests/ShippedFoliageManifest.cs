@@ -14,9 +14,11 @@ namespace KhaozEngine.Tests.MapDocOracle;
 internal sealed record FoliageExpectations(long Layers, long RasterBytes, long StoredChunks, long SourceOwners, long Models,
     long OwnedCandidates, long Accepted, long Rejected);
 
-/// <summary>The closed provenance comparison object of the private foliage contract. Every path is extraction relative.</summary>
+/// <summary>The closed provenance comparison object of the private foliage contract. Every path is extraction relative.
+/// Its required buildingManifestPath member must be null, since private foliage bindings are Surface only and no
+/// clearing target can depend on room or building correspondence.</summary>
 internal sealed record FoliageComparisonPaths(string NativeDocumentPath, string NativeTiledManifestPath, string FoliageManifestPath,
-    string? BuildingManifestPath, FoliageExpectations Expectations);
+    FoliageExpectations Expectations);
 
 /// <summary>One compatibility row: the native support surface derived from one source plane.</summary>
 internal sealed record FoliageSupportRow(int SourcePlane, string NativeSurfaceId);
@@ -62,8 +64,9 @@ internal static class ShippedFoliageManifest
             Count("models"), Count("ownedCandidates"), Count("accepted"), Count("rejected"));
         string native = Path(comparison, "nativeDocumentPath"), tiled = Path(comparison, "nativeTiledManifestPath");
         string manifest = Path(comparison, "foliageManifestPath");
-        string? building = comparison.GetProperty("buildingManifestPath").ValueKind == JsonValueKind.Null ? null : Path(comparison, "buildingManifestPath");
-        return new(native, tiled, manifest, building, counts);
+        Require(comparison.GetProperty("buildingManifestPath").ValueKind == JsonValueKind.Null,
+            "private foliage bindings are Surface only and take no building manifest");
+        return new(native, tiled, manifest, counts);
     }
 
     internal static FoliageManifest Read(JsonElement manifest)
@@ -83,6 +86,8 @@ internal static class ShippedFoliageManifest
         FoliageOwnerRow[] owners = Array(manifest, "owners").Select(Owner).ToArray();
         Require(owners.Select(o => o.SourceObjectId).Distinct().Count() == owners.Length && owners.Select(o => o.NativeOwner).Distinct().Count() == owners.Length,
             "duplicate foliage owner correspondence");
+        var ids = owners.Select(o => o.SourceObjectId).ToHashSet();
+        Require(layers.All(l => l.OwnerIds.All(ids.Contains)), "dangling foliage layer owner");
         return new(path, System.Array.AsReadOnly(helpers), System.Array.AsReadOnly(layers), System.Array.AsReadOnly(owners));
     }
 

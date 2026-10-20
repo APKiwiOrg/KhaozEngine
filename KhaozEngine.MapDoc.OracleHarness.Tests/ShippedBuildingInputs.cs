@@ -79,8 +79,8 @@ internal sealed class ShippedBuildingInputs
         }
         string nativePath = Text(comparison, "nativeDocumentPath");
         using (var json = JsonDocument.Parse(source.Bytes(nativePath)))
-            Require(json.RootElement.GetProperty("formatVersion").GetInt32() is 7 or MapDocumentFile.CurrentFormatVersion,
-                "native scaffold must declare format seven or the current format");
+            Require(json.RootElement.GetProperty("formatVersion").GetInt32() is 7 or 8 or MapDocumentFile.CurrentFormatVersion,
+                "native scaffold must declare format seven, eight or the current format");
         MapDocument native = MapDocumentFile.LoadText(Encoding.UTF8.GetString(source.Bytes(nativePath)));
         Require(native.FormatVersion == MapDocumentFile.CurrentFormatVersion && native.NativeAssets.Count != 0 && native.Prefabs is not null,
             "building comparison requires current native roots and instances");

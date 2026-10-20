@@ -180,13 +180,19 @@ public sealed class ShippedBuildingInputGuardTests
     }
 
     [Fact]
-    public void AcceptedFormatSevenBuilding_LoadsCurrentWithoutRewritingScaffold()
+    public void AcceptedFormatSevenBuilding_LoadsCurrentWithoutRewritingScaffold() => AcceptedFormat_LoadsCurrentWithoutRewritingScaffold(7);
+
+    // A marker extraction accepted at format 8 may retain its building correspondence at format 8.
+    [Fact]
+    public void AcceptedFormatEightBuilding_LoadsCurrentWithoutRewritingScaffold() => AcceptedFormat_LoadsCurrentWithoutRewritingScaffold(8);
+
+    static void AcceptedFormat_LoadsCurrentWithoutRewritingScaffold(int format)
     {
         using var fixture = ShippedBuildingGuardFixtures.Create("valid");
         var environment = fixture.Environment.ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal);
         string native = Path.Combine(environment["KHAOZ_R2_SHIPPED_SOURCE"]!, "native.json");
         var scaffold = JsonNode.Parse(File.ReadAllText(native))!;
-        scaffold["formatVersion"] = 7;
+        scaffold["formatVersion"] = format;
         File.WriteAllText(native, scaffold.ToJsonString());
         string provenancePath = environment["KHAOZ_R2_ORACLE_PROVENANCE"]!;
         var provenance = JsonNode.Parse(File.ReadAllText(provenancePath))!;
@@ -197,9 +203,9 @@ public sealed class ShippedBuildingInputGuardTests
         environment["KHAOZ_R2_ORACLE_PROVENANCE_SHA256"] = AssertFixtures.Sha256(provenancePath);
         var inputs = ShippedBuildingInputs.Read(PrivateOracleInputs.Require(environment));
         Assert.Equal(MapDocumentFile.CurrentFormatVersion, inputs.NativeDocument.FormatVersion);
-        // The migration happened in memory. The retained attested bytes still declare format seven.
+        // The migration happened in memory. The retained attested bytes still declare the accepted format.
         using var retained = JsonDocument.Parse(inputs.Bytes("native.json"));
-        Assert.Equal(7, retained.RootElement.GetProperty("formatVersion").GetInt32());
+        Assert.Equal(format, retained.RootElement.GetProperty("formatVersion").GetInt32());
     }
 
     [Fact]

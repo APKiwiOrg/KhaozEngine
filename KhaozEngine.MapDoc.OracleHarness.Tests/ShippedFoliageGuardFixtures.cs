@@ -44,6 +44,7 @@ internal static class ShippedFoliageGuardFixtures
     // Source object ids in creation order: three trees, two canopies, two roof slabs, two doorways and one lamp.
     internal const long LevelTree = 1, FarTree = 2, HighTree = 3, HighCanopy = 4, LevelCanopy = 5, HighSlab = 6, LevelSlab = 7,
         LevelDoor = 8, HighDoor = 9, Lamp = 10;
+    internal const int RimSeed = 1446451;
 
     internal static ShippedFoliageGuardFixture Create(string variant)
     {
@@ -140,7 +141,9 @@ internal static class ShippedFoliageGuardFixtures
         string manifestText = manifest.ToJsonString();
         if (variant == "duplicate-manifest-field") manifestText = manifestText.Replace("\"nativeLayerId\":\"cover-a\"", "\"nativeLayerId\":\"cover-a\",\"nativeLayerId\":\"cover-a\"", StringComparison.Ordinal);
         if (variant == "case-manifest-field") manifestText = manifestText.Replace("\"nativeLayerId\":\"cover-a\"", "\"NativeLayerId\":\"cover-a\"", StringComparison.Ordinal);
+        if (variant == "case-duplicate-manifest-field") manifestText = manifestText.Replace("\"nativeLayerId\":\"cover-a\"", "\"nativeLayerId\":\"cover-a\",\"NativeLayerId\":\"cover-a\"", StringComparison.Ordinal);
         File.WriteAllText(Path.Combine(root, "foliage.json"), manifestText);
+        if (variant == "building-manifest") File.WriteAllText(Path.Combine(root, "building.json"), "{}");
 
         (long owned, long accepted) = LegacyCounts(world, catalogs);
         var comparison = new JsonObject
@@ -149,7 +152,7 @@ internal static class ShippedFoliageGuardFixtures
             ["nativeDocumentPath"] = "native.json",
             ["nativeTiledManifestPath"] = "native-tiled/map.json",
             ["foliageManifestPath"] = variant == "escape-path" ? "../" + Sentinel : "foliage.json",
-            ["buildingManifestPath"] = variant == "unattested-building" ? "building.json" : null,
+            ["buildingManifestPath"] = variant is "unattested-building" or "building-manifest" ? "building.json" : null,
             ["expectations"] = new JsonObject
             {
                 ["layers"] = 2,
@@ -175,7 +178,8 @@ internal static class ShippedFoliageGuardFixtures
         for (int z = 0; z < TileRegion.Size; z++)
             for (int x = 0; x < 2 * TileRegion.Size; x++) world.SetUnderlay(x, z, 0, Grass);
         Fill(24, 32, 28, 35, (x, z) => world.SetUnderlay(x, z, 0, Dirt));
-        Fill(60, 36, 62, 38, (x, z) => world.SetUnderlay(x, z, 0, Rock));
+        Fill(60, 36, 64, 40, (x, z) => world.SetUnderlay(x, z, 0, Rock));
+        Fill(66, 44, 68, 46, (x, z) => world.SetUnderlay(x, z, 0, 0));
         Fill(32, 16, 35, 19, (x, z) => world.SetUnderlay(x, z, 0, Water));
         Fill(74, 40, 77, 42, (x, z) => world.SetSettings(x, z, 0, TileSettings.Indoors));
         world.SetSettings(80, 30, 0, TileSettings.NoDraw);
@@ -191,16 +195,20 @@ internal static class ShippedFoliageGuardFixtures
         world.AddObject("tree", 48, 18, 1, 0);
         world.AddObject("canopy", 50, 20, 1, 0);
         world.AddObject("canopy", 36, 40, 0, 0);
-        world.AddObject("roofslab", 52, 24, 1, 0, ["Cover"]);
+        // A quarter turn: the shared slab rule's local 3 by 2 footprint covers 2 by 3 tiles through the owner's yaw.
+        world.AddObject("roofslab", 52, 24, 1, 1, ["Cover"]);
         world.AddObject("roofslab", 26, 14, 0, 0, ["COVER"]);
         world.AddObject("doorway", 40, 26, 0, 0);
         world.AddObject("doorway", 56, 26, 1, 0);
         world.AddObject("lamp", 34, 22, 0, 0);
-        world.SetFoliageLayer(new TileFoliageLayer(Sentinel, 0, 20, -50, 2, 36, 21, CoverBytes(), 23, 1f, 0.7f, 1.3f, -0.02f,
+        // The plane 0 raster reaches north into the absent regions (0, 1) and (1, 1).
+        world.SetFoliageLayer(new TileFoliageLayer(Sentinel, 0, 20, -70, 2, 36, 31, CoverBytes(), 23, 1f, 0.7f, 1.3f, -0.02f,
             [new TileFoliageArchetype("reed-a", 3f), new TileFoliageArchetype("reed-b", 1f)], [Grass, Dirt],
             excludeIndoors: true, excludeSolidObjects: true, doorClearance: 1.5f, edgeFade: 0.5f));
-        world.SetFoliageLayer(new TileFoliageLayer("upper-source", 1, 44, -30, 1, 17, 17, UpperBytes(), 5, 1f, 0.9f, 1.1f, 0f,
-            [new TileFoliageArchetype("reed-b", 1f)], null, excludeIndoors: true, excludeSolidObjects: true, doorClearance: 1f, edgeFade: 0f));
+        // Seed 1446451 puts candidate (59, -15) exactly on world X 59, the west rim of tile (59, 15) beside plane 1 water,
+        // so its released edge factor is exactly zero.
+        world.SetFoliageLayer(new TileFoliageLayer("upper-source", 1, 44, -30, 1, 17, 17, UpperBytes(), RimSeed, 1f, 0.9f, 1.1f, 0f,
+            [new TileFoliageArchetype("reed-b", 1f)], null, excludeIndoors: true, excludeSolidObjects: true, doorClearance: 1f, edgeFade: 0.5f));
         const string Mesh = "\"meshRef\":\"assets/public.mesh\"";
         string catalog = "{\"materials\":[" +
             "{\"id\":1,\"name\":\"Invented grass\",\"color\":\"#3a7a3a\"},{\"id\":2,\"name\":\"Invented dirt\",\"color\":\"#7a5a3a\"}," +
@@ -218,8 +226,8 @@ internal static class ShippedFoliageGuardFixtures
     // Varied nonzero bytes with one zero block, positive world Z rows.
     static byte[] CoverBytes()
     {
-        var bytes = new byte[36 * 21];
-        for (int z = 0; z < 21; z++)
+        var bytes = new byte[36 * 31];
+        for (int z = 0; z < 31; z++)
             for (int x = 0; x < 36; x++) bytes[z * 36 + x] = x is >= 4 and <= 6 && z is >= 4 and <= 6 ? (byte)0 : (byte)((x * 29 + z * 17) % 200 + 40);
         return bytes;
     }
@@ -255,8 +263,7 @@ internal static class ShippedFoliageGuardFixtures
             int index = z % TileRegion.Size * TileRegion.Size + x % TileRegion.Size;
             patch.Cells[index] = change(patch.Cells[index]);
         }
-        if (variant == "changed-decision") Fill(48, 30, 52, 34, (x, z) => Cell(x, z, c => c with { Underlay = Water }));
-        if (variant == "extra-sample") Fill(32, 16, 35, 19, (x, z) => Cell(x, z, c => c with { Underlay = Grass }));
+        if (variant == "patch-cells") Cell(50, 50, c => c with { Underlay = Dirt });
         for (int i = 0; i < document.Surfaces.Refs.Count; i++)
         {
             var surface = document.Surfaces.Refs[i];
@@ -279,6 +286,7 @@ internal static class ShippedFoliageGuardFixtures
                 X = footprint.X + footprint.Width * 0.5f,
                 Z = -(footprint.Z + footprint.Height * 0.5f),
                 Y = explicitY ? world.CornerHeightCm(obj.X, obj.Z, obj.Plane) / 100f : null,
+                Yaw = obj.Rotation * MathF.PI / 2,
                 Scale = 1,
                 Tags = (obj.Tags ?? []).ToList(),
                 SupportBinding = explicitY ? null : new(MapSupportBindingKind.Surface, seat, null, null, null, null),
@@ -314,6 +322,8 @@ internal static class ShippedFoliageGuardFixtures
         cover = variant switch
         {
             "changed-byte" => With(cover, chunks: Bumped(cover)),
+            "changed-decision" => With(cover, door: 2.5f),
+            "extra-sample" => With(cover, allowed: [Grass, Dirt, Rock]),
             "wrong-seed" => With(cover, seed: cover.Seed + 1),
             "wrong-weight" => With(cover, models: [new("native-reed-a", 1), new("native-reed-b", 3)]),
             "missing-chunk" => With(cover, chunks: cover.Chunks.Where(c => c.Key != new MapFoliageChunkKey(1, 0)).ToArray()),
@@ -353,10 +363,10 @@ internal static class ShippedFoliageGuardFixtures
     }
 
     static MapFoliageLayer With(MapFoliageLayer l, int? seed = null, IReadOnlyList<MapFoliageModel>? models = null,
-        IReadOnlyList<MapFoliageChunk>? chunks = null) =>
+        IReadOnlyList<MapFoliageChunk>? chunks = null, float? door = null, ushort[]? allowed = null) =>
         new(1, l.Id, l.Support, l.OriginX, l.OriginZ, l.CellSize, l.Width, l.Depth, l.RowDirection, seed ?? l.Seed, l.Spacing, l.ScaleMin,
-            l.ScaleMax, l.RootOffset, models ?? l.Models, l.AllowedVisibleMaterials, l.Materials, l.Policy, l.ExcludeIndoors,
-            l.ExcludeSolidObjects, l.DoorClearance, l.EdgeFade, l.CompatibilityOrdinals, l.ClearanceRules, l.ExceptionMasks, l.OwnerSupports,
+            l.ScaleMax, l.RootOffset, models ?? l.Models, allowed ?? l.AllowedVisibleMaterials, l.Materials, l.Policy, l.ExcludeIndoors,
+            l.ExcludeSolidObjects, door ?? l.DoorClearance, l.EdgeFade, l.CompatibilityOrdinals, l.ClearanceRules, l.ExceptionMasks, l.OwnerSupports,
             chunks ?? l.Chunks);
 
     // One changed density byte, at raster sample (14, 9), in the middle of open grass.
@@ -384,8 +394,11 @@ internal static class ShippedFoliageGuardFixtures
         JsonArray Models(params (string Source, string Native)[] models) => new(models.Select(m => (JsonNode)new JsonObject
         { ["sourceArchetypeId"] = m.Source, ["nativeAssetId"] = m.Native }).ToArray());
 
-        long[] owners = world.AllObjects().Where(o => o.ArchetypeId != "lamp").Select(o => o.Id).Order().ToArray();
-        long[] upperOwners = world.AllObjects().Where(o => o.ArchetypeId is "tree" or "canopy" or "doorway").Select(o => o.Id).Order().ToArray();
+        // A missing owner row is also missing from the layers, so only the owner correspondence is incomplete.
+        long dropped = variant == "missing-owner" ? LevelTree : 0;
+        long[] owners = world.AllObjects().Where(o => o.ArchetypeId != "lamp" && o.Id != dropped).Select(o => o.Id).Order().ToArray();
+        long[] upperOwners = world.AllObjects().Where(o => o.ArchetypeId is "tree" or "canopy" or "doorway" && o.Id != dropped)
+            .Select(o => o.Id).Order().ToArray();
         string[] coverRules = ["cover-solid-tree", "cover-solid-canopy", "cover-roof-canopy", "cover-roof-slab", "cover-door"];
         var cover = new JsonObject
         {
@@ -400,7 +413,8 @@ internal static class ShippedFoliageGuardFixtures
             ["materials"] = Materials(),
             ["ruleIds"] = Strings(variant == "unknown-rule" ? coverRules.Skip(1) : coverRules),
             ["maskIds"] = new JsonArray(),
-            ["ownerIds"] = Strings(owners.Select(o => o.ToString(System.Globalization.CultureInfo.InvariantCulture))),
+            ["ownerIds"] = Strings(owners.Append(variant == "dangling-layer-owner" ? 999 : owners[0]).Distinct()
+                .Select(o => o.ToString(System.Globalization.CultureInfo.InvariantCulture))),
             ["candidateConvention"] = variant == "wrong-convention" ? "world-lattice-v2" : ShippedFoliageManifest.CandidateConvention,
         };
         if (variant == "obsolete-rule-order") cover["ruleOrder"] = Strings(coverRules);
@@ -480,8 +494,8 @@ internal static class ShippedFoliageGuardFixtures
         foreach (TileFoliageLayer layer in world.FoliageLayers)
         {
             var surface = new TileFoliageSurface(world, catalogs, layer);
-            foreach (TileRegion region in world.Regions.Values)
-                GroundCoverDistribution.GenerateTraced(ShippedFoliageComparison.Area(region.Coord), ShippedFoliageComparison.Settings(layer),
+            foreach (RegionCoord region in ComparedRegions(world))
+                GroundCoverDistribution.GenerateTraced(ShippedFoliageComparison.Area(region), ShippedFoliageComparison.Settings(layer),
                     c => new GroundCoverSurfaceInput(surface.Sample(c.WorldX, c.WorldZ)), d =>
                     {
                         if (d.Kind == GroundCoverDecisionKind.OutsideArea) return;
@@ -492,6 +506,21 @@ internal static class ShippedFoliageGuardFixtures
         return (owned, accepted);
     }
 
+    // Every source region, and every absent region a raster's closed sample rectangle reaches.
+    static IEnumerable<RegionCoord> ComparedRegions(TileWorldDocument world)
+    {
+        var regions = world.Regions.Keys.ToHashSet();
+        foreach (TileFoliageLayer layer in world.FoliageLayers)
+        {
+            float maxX = layer.OriginX + (layer.Width - 1) * layer.CellSize, maxZ = layer.OriginZ + (layer.Height - 1) * layer.CellSize;
+            RegionCoord low = RegionCoord.Of((int)MathF.Floor(layer.OriginX), (int)MathF.Floor(-maxZ));
+            RegionCoord high = RegionCoord.Of((int)MathF.Floor(maxX), (int)MathF.Floor(-layer.OriginZ));
+            for (int rz = low.Rz; rz <= high.Rz; rz++)
+                for (int rx = low.Rx; rx <= high.Rx; rx++) regions.Add(new(rx, rz));
+        }
+        return regions;
+    }
+
     internal static string OwnerId(long sourceObjectId) => "owner-" + sourceObjectId.ToString(System.Globalization.CultureInfo.InvariantCulture);
     static MapSupportBinding Surface(string id) => new(MapSupportBindingKind.Surface, id, null, null, null, null);
 
@@ -499,51 +528,5 @@ internal static class ShippedFoliageGuardFixtures
     {
         for (int z = z0; z < z1; z++)
             for (int x = x0; x < x1; x++) set(x, z);
-    }
-}
-
-/// <summary>The invented native closure: owner and model assets sharing one mesh, collider, selection and material, plus
-/// the five visible ground materials the layers name. Every resource is a file under assets.</summary>
-[UnsupportedOSPlatform("windows")]
-internal static class ShippedFoliageGuardAssets
-{
-    internal static MapAssetRef Write(string root)
-    {
-        MapAssetRef Add(string id, byte[] bytes)
-        {
-            File.WriteAllBytes(Path.Combine(root, "assets", id), bytes);
-            return new(id, "assets/" + id, System.Convert.ToHexStringLower(SHA256.HashData(bytes)), 1);
-        }
-        // An invented 0.1 m prop in the released KECL payload 1 format.
-        using var stream = new MemoryStream();
-        using (var writer = new BinaryWriter(stream, Encoding.UTF8, true))
-        { writer.Write(0x4B45434Cu); writer.Write((byte)1); writer.Write((byte)4); writer.Write(0.05f); writer.Write(0.05f); writer.Write(0.05f); }
-        var resources = new JsonArray(
-            NativeAssetFixtures.Resource(Add("mesh", Encoding.UTF8.GetBytes("invented foliage mesh")), "Mesh", "material"),
-            NativeAssetFixtures.Resource(Add("collider", stream.ToArray()), "Collider"),
-            NativeAssetFixtures.Resource(Add("selection", stream.ToArray()), "Selection"),
-            NativeAssetFixtures.Resource(Add("material", Encoding.UTF8.GetBytes("invented asset material")), "Material"));
-        foreach (string id in new[] { "grass-material", "dirt-material", "rock-material", "water-material", "road-material" })
-            resources.Add(NativeAssetFixtures.Resource(Add(id, Encoding.UTF8.GetBytes("invented " + id)), "Material"));
-        var assets = new JsonArray();
-        foreach (string id in new[] { "native-tree", "native-canopy", "native-roofslab", "native-doorway", "native-reed-a", "native-reed-b" })
-        {
-            JsonObject asset = NativeAssetFixtures.Asset();
-            asset["id"] = id;
-            asset["supportResourceIds"] = new JsonArray();
-            asset["lightResourceIds"] = new JsonArray();
-            asset["lodResourceIds"] = new JsonArray();
-            asset["sourceUnitsToMetres"] = 1;
-            asset["renderBounds"] = JsonNode.Parse("""{"min":{"x":-0.05,"y":-0.05,"z":-0.05},"max":{"x":0.05,"y":0.05,"z":0.05}}""");
-            asset.Remove("lodBounds");
-            asset.Remove("lightBounds");
-            assets.Add(asset);
-        }
-        return Add("foliage-root", Encoding.UTF8.GetBytes(new JsonObject
-        {
-            ["payloadVersion"] = 1,
-            ["assets"] = assets,
-            ["resources"] = resources,
-        }.ToJsonString()));
     }
 }

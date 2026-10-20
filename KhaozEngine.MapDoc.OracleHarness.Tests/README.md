@@ -175,9 +175,10 @@ the resulting generator digest with the private acceptance evidence. Private scr
 this public repository. Regenerate and re-attest output after any source, manifest or generator change.
 
 `nativeDocumentPath` names an attested monolithic MapDoc document. Accepted format-7 R5 building scaffolds
-still load through the pure version-only migration to the current format 8. The reader checks the loaded
-current format. Do not regenerate accepted R5 inputs merely to change the format number. New marker
-scaffolds declare format 8. The generator uses the released
+and format-8 building correspondences retained by R6 marker extractions still load through the pure
+version-only migrations to the current format 9. The reader checks the loaded current format. Do not
+regenerate accepted R5 or R6 inputs merely to change the format number. Accepted R6 marker scaffolds
+declare format 8 and new scaffolds declare the current format. The generator uses the released
 `MapDocumentFile`, payload-1 prefab files and native manifest format. It must declare resolver 2,
 `AuthoredBindingsV2`, its native asset roots, valid bounds and complete surfaces and topology. Its active
 packed prefab instances must exactly match `buildings`. Preserve instance poses, complete bindings and
@@ -393,10 +394,11 @@ full commit and engine pin. Historical inventories are not expectations for this
 
 The extraction attests exactly one `world.json`, all listed regions and catalogs, the source prefab
 definitions needed for ownership, the retained generator and all imported helpers, both manifests below,
-the monolithic native scaffold at the current format, and every native root manifest and transitive resource. Retain
-the generator in private source git before generating. Do not hand-edit scaffold output. Regenerate and
-re-attest after changing any source, policy, script or dependency. Source-support-only scaffolds need no
-invented physical shell. Every resource advertised by a declared native root must still be present.
+the monolithic native scaffold at format 8 or the current format, and every native root manifest and
+transitive resource. Retain the generator in private source git before generating. Do not hand-edit
+scaffold output. Regenerate and re-attest after changing any source, policy, script or dependency.
+Source-support-only scaffolds need no invented physical shell. Every resource advertised by a declared
+native root must still be present.
 
 All paths below are attested extraction-relative paths. Containment, symlink refusal, verified byte
 capture and post-loader rechecks apply. There is no checkout search or fallback. Native reloads use
@@ -560,10 +562,11 @@ ruling on the rule, never a tolerance. The provenance records the full source co
 tag, the engine pin and the generator commit. There is no checkout search, fallback or unattested helper.
 
 The reader verifies the provenance digest before parsing, captures every attested byte once and rechecks
-the extraction after the released world, catalog and closure loaders. Each tiled head is reloaded from its
-own private copy of the captured store bytes under the secure report parent, verified as a whole store and
-removed before use. Private
-source tile size 1 is what the released terrain conversion requires. It is not a native engine limit.
+the extraction after the released world, catalog and closure loaders. Each tiled head is reloaded from
+its own private copy of the captured store bytes under the secure report parent, verified as a whole
+store and removed before use. A harness-only hook between the released loaders and that recheck lets a
+public guard prove the recheck refuses a change the loaders could have observed. Private source tile size
+1 is what the released terrain conversion requires. It is not a native engine limit.
 
 ### Foliage comparison schema 1
 
@@ -585,13 +588,14 @@ shapes only, with invented examples.
 }
 ```
 
-Expectations are nonnegative integers counted from the independently enumerated source. `rasterBytes` sums
-width times height over the source layers. `storedChunks` counts the 32 by 32 chunks holding a nonzero
-source byte, which is exactly what every native head advertises. `sourceOwners` counts every source object
-with solid collision, a roof archetype or a door tag. `models` sums the source layers' models. Owned,
-accepted and rejected candidates come from the actual legacy sampler, never from native results.
-`buildingManifestPath` is required only when a clearing target depends on the R5 room and building
-correspondence, which is then validated in full against the same extraction. Otherwise it is null.
+Expectations are nonnegative integers counted from the independently enumerated source over the compared
+regions: every source region, then every absent region that a layer raster's closed sample rectangle
+reaches. `rasterBytes` sums width times height over the source layers. `storedChunks` counts the 32 by 32
+chunks holding a nonzero source byte, which is exactly what every native head advertises. `sourceOwners`
+counts every source object with solid collision, a roof archetype or a door tag. `models` sums the source
+layers' models. Owned, accepted and rejected candidates come from the actual legacy sampler, never from
+native results. `buildingManifestPath` is required and must be null. Private foliage bindings are Surface
+only, so no clearing target depends on the R5 room and building correspondence.
 
 The correspondence manifest has exactly `schemaVersion` (1), `generator`, `layers` and `owners`.
 
@@ -625,12 +629,14 @@ Layers correspond bijectively with the source layers and the native layers. Each
 compatibility row of its source plane. The native ordinal table must hold exactly one row per
 compatibility row, with the source plane as its ordinal. The reader never trusts a table ordinal as an
 expected source value. It checks each row's surface independently: a metre and centimetre SupportFloor
-with one patch per source region whose plane is authored and every corner at that source plane's height.
+with one patch per source region whose plane is authored, each with the semantic patch digest of the
+released `LegacyOracleConverter.ToNative` conversion of that region and plane.
 Models are the source layer's ordered archetypes and the native layer's ordered assets. Materials ascend by
 source ID, agree in kind with the source catalog, name Material resources, equal the native layer's table
 and cover every visible material on the layer's plane. `ruleIds` and `maskIds` are exactly the native
 layer's rules and masks. `ownerIds` are exactly the owners whose native placement a layer rule matches or
-whose mask the layer holds. Obsolete rule ordering fields refuse as unknown members.
+whose mask the layer holds, and each names an owner row. Obsolete rule ordering fields refuse as unknown
+members.
 
 Owners correspond bijectively with source objects that have solid collision, a roof archetype or a door
 tag, including transformed footprint centres. Each imports as a world Placement. Its seated support is the
@@ -651,13 +657,17 @@ from the owners.
 
 Four heads, a client and a server of each storage form, each capture one full generation context that
 every region and chunk call reuses. Settings and every raster byte compare before any sample work, and each
-head advertises exactly the nonzero source chunks. Each source region is then compared over its released
-half-open area. A capacity refusal streams four smaller half-open rectangles, which own exactly the same
+head advertises exactly the nonzero source chunks. Each compared region is then compared over its released
+half-open area. In an absent source region the released build generates nothing. Inside the raster native
+decides its domain before its raster there, so those rows expect OutsideDomain, and off the raster they
+expect RasterZero. A capacity refusal streams four smaller half-open rectangles, which own exactly the same
 candidates, and off-raster rows compare as zero raster. Every owned candidate address has exactly one row
 on each side.
 
-A row compares its seven channel values and the native reason the legacy stage maps to exactly. An accepted
-pair also compares its stable address, versioned key and support owner, the mapped model, the visible
+A row compares its seven channel values, the native reason the legacy stage maps to, its layer and its
+support owner exactly. In the Task 7 decide order only a refused point has no support owner, so every
+compared row, off-raster RasterZero and OutsideDomain included, names the bound Surface. An accepted pair
+also compares its stable address and versioned key, the mapped model, the visible
 material and its resource correspondence, and the model's material references. Finite checks run before
 any tolerance. Position compares within 0.00001 m per component, root offset included. Orientation compares
 the full surface-aligned rotation angle `2*acos(min(1,abs(dot(qSource,qNative))))` within 0.000001 radians,

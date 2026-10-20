@@ -27,6 +27,23 @@ namespace KhaozEngine.Gpu
         /// backend does not report one. Diagnostic (which physical GPU/driver is actually rendering).</summary>
         public string DeviceName { get; }
 
+        /// <summary>Creation-fixed PCI vendor ID, or null when unanswered. Vulkan reports
+        /// VkPhysicalDeviceProperties.vendorID, including Mesa's assigned vendor ID. Direct3D11 reports the
+        /// created adapter's DXGI VendorId, including Microsoft's software adapter IDs. Metal exposes no PCI
+        /// vendor ID and leaves this null. A reported zero is preserved.</summary>
+        public uint? PciVendorId { get; init; }
+
+        /// <summary>Creation-fixed PCI device ID, or null when unanswered. Vulkan reports
+        /// VkPhysicalDeviceProperties.deviceID and Direct3D11 reports the created DXGI adapter's DeviceId.
+        /// Metal exposes no PCI device ID and leaves this null. A reported zero is preserved.</summary>
+        public uint? PciDeviceId { get; init; }
+
+        /// <summary>Creation-fixed driver identity, or null when unanswered. Vulkan joins driverName and
+        /// driverInfo when supported, otherwise labels the raw implementation-defined driverVersion.
+        /// Direct3D11 reports DXGI's user-mode driver version as four dotted parts, or null when DXGI cannot
+        /// answer. Metal has no public driver-version query and leaves this null.</summary>
+        public string? DriverVersion { get; init; }
+
         /// <summary>True if the device supports anisotropic sampling (until 18.0.0, Veldrid
         /// <c>Features.SamplerAnisotropy</c>).
         /// When false, an anisotropic sampler silently falls back to trilinear.</summary>

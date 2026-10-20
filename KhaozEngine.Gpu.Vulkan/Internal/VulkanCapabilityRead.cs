@@ -125,13 +125,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// (<see cref="ColorAttachmentLimit"/>).</param>
         /// <param name="signedZeroInfNanPreserveFloat32">The core binary32 float-controls property.</param>
         /// <param name="timestamps">The selected queue's valid bits and the device's timestamp period.</param>
+        /// <param name="pciVendorId">The physical device's reported vendorID, including software vendors.</param>
+        /// <param name="pciDeviceId">The physical device's reported deviceID, preserving zero.</param>
+        /// <param name="driverVersion">The queried driver strings or labelled raw version.</param>
         internal static GpuCapabilities Assemble(
             string? deviceName,
             bool samplerAnisotropy,
             bool supportsShadowMaps,
             GpuSampleCounts supportedMsaaSampleCounts,
             int maxColorAttachments, VulkanTimestampSupport timestamps = default,
-            bool signedZeroInfNanPreserveFloat32 = false)
+            bool signedZeroInfNanPreserveFloat32 = false, uint? pciVendorId = null,
+            uint? pciDeviceId = null, string? driverVersion = null)
             => GpuCapabilities.FromSupportedMsaaSampleCounts(
                 clipSpaceYInverted: ClipSpaceYInverted,
                 depthRangeZeroToOne: DepthRangeZeroToOne,
@@ -142,6 +146,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 supportsShadowMaps: supportsShadowMaps,
                 supportsCompute: SupportsCompute,
                 supportsCompletionFences: SupportsCompletionFences) with
-            { MaxColorAttachments = maxColorAttachments, SupportsTimestamps = timestamps.IsSupported, SupportsShaderFloatControls = signedZeroInfNanPreserveFloat32 };
+            {
+                MaxColorAttachments = maxColorAttachments,
+                SupportsTimestamps = timestamps.IsSupported,
+                SupportsShaderFloatControls = signedZeroInfNanPreserveFloat32,
+                PciVendorId = pciVendorId,
+                PciDeviceId = pciDeviceId,
+                DriverVersion = driverVersion,
+            };
     }
 }

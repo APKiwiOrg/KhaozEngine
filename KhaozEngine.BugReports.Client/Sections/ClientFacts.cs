@@ -84,7 +84,7 @@ internal static class ClientFacts
         .GetProperties(BindingFlags.Public | BindingFlags.Instance)
         .Where(property => property.GetIndexParameters().Length == 0
             && (property.PropertyType == typeof(bool) || property.PropertyType == typeof(int)
-                || property.PropertyType == typeof(string)))
+                || property.PropertyType == typeof(string) || property.PropertyType == typeof(uint?)))
         .ToArray();
 
     /// <summary>
@@ -245,6 +245,7 @@ internal static class ClientFacts
             {
                 bool flag => flag ? "true" : "false",
                 int number => number.ToString(CultureInfo.InvariantCulture),
+                uint id => "0x" + id.ToString("x4", CultureInfo.InvariantCulture),
                 string text => text,
                 _ => "",
             };

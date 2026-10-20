@@ -27,11 +27,12 @@ namespace KhaozEngine.Tests.Gpu
             readonly FakeGpuDevice _inner = new(GpuBackendKind.Direct3D11Native);
 
             internal GpuDeviceDiagnostics Reported { get; set; }
+            internal GpuCapabilities? ReportedCapabilities { get; set; }
 
             public GpuDeviceDiagnostics Diagnostics => Reported;
 
             public GpuBackendKind Backend => GpuBackendKind.Direct3D11Native;
-            public GpuCapabilities Capabilities => _inner.Capabilities;
+            public GpuCapabilities Capabilities => ReportedCapabilities ?? _inner.Capabilities;
             public IGpuResourceFactory Factory => _inner.Factory;
             public IGpuFramebuffer? SwapchainFramebuffer => null;
             public IGpuSampler PointSampler => _inner.PointSampler;
@@ -108,6 +109,8 @@ namespace KhaozEngine.Tests.Gpu
             var device = new DiagnosticGpuDevice
             {
                 Reported = new GpuDeviceDiagnostics(false, "DXGI_ERROR_DEVICE_RESET at staging map"),
+                ReportedCapabilities = new GpuCapabilities(false, true)
+                { PciVendorId = 0x10de, PciDeviceId = 0x1eb8, DriverVersion = "32.0.15.0" },
             };
             using var ctx = new GpuDeviceContext(device, threadingCaps: null, threadingProbeFailure: null,
                 Selection(), ownsDevice: true);
@@ -116,6 +119,9 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.False(info.SoftwareAdapter);
             Assert.Equal("DXGI_ERROR_DEVICE_RESET at staging map", info.DeviceLossReason);
+            Assert.Equal(0x10deu, info.PciVendorId);
+            Assert.Equal(0x1eb8u, info.PciDeviceId);
+            Assert.Equal("32.0.15.0", info.DriverVersion);
         }
 
         /// <summary>The four-argument overload is unchanged and leaves both fields at "nobody answered", which is

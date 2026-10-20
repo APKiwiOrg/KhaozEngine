@@ -127,6 +127,7 @@ public sealed class TelemetrySessionHeaderTests
         foreach (string field in new[]
                  {
                      "backend", "backendSource", "requestedBackend", "requestedOverride", "adapter",
+                     "pciVendorId", "pciDeviceId", "driverVersion",
                      "injectedModules", "threading",
                  })
             Assert.True(gpu.TryGetProperty(field, out _), $"gpu.{field} missing");

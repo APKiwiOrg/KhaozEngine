@@ -197,6 +197,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 supportsShadowMaps: SupportsShadowMaps,
                 supportsCompute: SupportsCompute,
                 supportsCompletionFences: SupportsCompletionFences)
-            { MaxColorAttachments = ColorRenderTargets, SupportsTimestamps = supportsTimestamps };
+            {
+                MaxColorAttachments = ColorRenderTargets,
+                SupportsTimestamps = supportsTimestamps,
+                // MTLDevice has no public PCI ID or driver-version query. registryID is not a PCI ID.
+                PciVendorId = null,
+                PciDeviceId = null,
+                DriverVersion = null,
+            };
     }
 }

@@ -17,6 +17,34 @@ namespace KhaozEngine.Tests.Gpu
         readonly ITestOutputHelper _out;
         public GpuDeviceDiagnosticsGpuTests(ITestOutputHelper o) => _out = o;
 
+        [GpuFact]
+        public void LiveAdapterReportsCreationFixedIdentityThroughCapabilitiesAndTelemetry()
+        {
+            using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless();
+            var caps = ctx.Capabilities;
+            _out.WriteLine($"backend={ctx.Backend} adapter='{caps.DeviceName}' vendor={caps.PciVendorId:x} device={caps.PciDeviceId:x} driver='{caps.DriverVersion}'");
+            if (ctx.Backend.IsMetal())
+            {
+                Assert.Null(caps.PciVendorId);
+                Assert.Null(caps.PciDeviceId);
+                Assert.Null(caps.DriverVersion);
+            }
+            else
+            {
+                Assert.NotNull(caps.PciVendorId);
+                Assert.NotNull(caps.PciDeviceId);
+                Assert.False(string.IsNullOrWhiteSpace(caps.DriverVersion));
+            }
+            Assert.Equal(caps.PciVendorId, ctx.GpuDevice.Capabilities.PciVendorId);
+            Assert.Equal(caps.PciDeviceId, ctx.GpuDevice.Capabilities.PciDeviceId);
+            Assert.Equal(caps.DriverVersion, ctx.GpuDevice.Capabilities.DriverVersion);
+            var info = new KhaozEngine.Diagnostics.TelemetrySessionInfo();
+            GpuTelemetry.WithGpu(info, ctx);
+            Assert.Equal(caps.PciVendorId, info.PciVendorId);
+            Assert.Equal(caps.PciDeviceId, info.PciDeviceId);
+            Assert.Equal(caps.DriverVersion, info.DriverVersion);
+        }
+
         /// <summary>
         /// The accessor is a second name for <c>Capabilities.DeviceName</c>, and a second name is exactly the thing
         /// that can quietly get pointed at the wrong source. On Direct3D11 the value is the DXGI adapter

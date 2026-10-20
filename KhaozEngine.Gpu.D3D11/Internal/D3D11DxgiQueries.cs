@@ -52,7 +52,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 AdapterNameWindows(adapter),
                 MaxMsaaSampleCountWindows(device),
                 SupportsShadowMapsWindows(device),
-                supportsCompletionFences, timestamps is not null && D3D11TimestampApi.Probe(timestamps));
+                supportsCompletionFences, timestamps is not null && D3D11TimestampApi.Probe(timestamps),
+                D3D11AdapterIdentityQuery.ReadWindows(adapter));
         }
 
         /// <summary>The adapter description, exactly as DXGI gives it.

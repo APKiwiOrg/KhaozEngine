@@ -79,6 +79,15 @@ public sealed class TelemetrySessionInfo
     /// <summary>The adapter the device ran on (on Direct3D11 exactly the DXGI adapter description).</summary>
     public string? AdapterDescription { get; set; }
 
+    /// <summary>Creation-fixed PCI vendor ID from the device, or null when unanswered. Zero is a reported value.</summary>
+    public uint? PciVendorId { get; set; }
+
+    /// <summary>Creation-fixed PCI device ID from the device, or null when unanswered. Zero is a reported value.</summary>
+    public uint? PciDeviceId { get; set; }
+
+    /// <summary>Creation-fixed driver identity from the device, or null when the API cannot report it.</summary>
+    public string? DriverVersion { get; set; }
+
     /// <summary>
     /// Whether that adapter is a SOFTWARE rasterizer (on Direct3D11, <c>DXGI_ADAPTER_FLAG_SOFTWARE</c>). Null when
     /// nothing answered the question, which is every backend that does not report it and every session where the

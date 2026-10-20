@@ -43,6 +43,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <param name="SignedZeroInfNanPreserveFloat32">The core float-controls property for precise shaders.</param>
     /// <param name="TimestampValidBits">The selected graphics queue family's counter width.</param>
     /// <param name="TimestampPeriodNanoseconds">The physical device's limits.timestampPeriod.</param>
+    /// <param name="DriverVersion">The queried driver strings or labelled raw version.</param>
     internal readonly record struct VulkanPhysicalDeviceRead(
         VulkanDeviceFacts Facts,
         VulkanFeatureSupport Features,
@@ -57,7 +58,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         uint MaxColorAttachments,
         int TimestampValidBits = 0,
         double TimestampPeriodNanoseconds = 0d,
-        bool SignedZeroInfNanPreserveFloat32 = false);
+        bool SignedZeroInfNanPreserveFloat32 = false,
+        string? DriverVersion = null);
 
     /// <summary>
     /// The one place a <c>VkPhysicalDevice</c> is turned into plain data, shared by the support probe and by
@@ -134,7 +136,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 VulkanCapabilityRead.ColorAttachmentLimit(properties.Limits.MaxColorAttachments,
                     properties.Limits.MaxFragmentOutputAttachments),
                 timestampValidBits, properties.Limits.TimestampPeriod,
-                clearsVersionFloor && ReadFloatControls(vk, device));
+                clearsVersionFloor && ReadFloatControls(vk, device),
+                VulkanDriverIdentity.Read(vk, device, in properties));
         }
 
         /// <summary>

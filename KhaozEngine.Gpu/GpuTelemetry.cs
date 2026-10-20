@@ -17,6 +17,19 @@ namespace KhaozEngine.Gpu
     /// </summary>
     public static class GpuTelemetry
     {
+        /// <summary>Carry creation-fixed adapter identity beside the live diagnostics. The older overloads
+        /// remain available for callers without a capability snapshot.</summary>
+        public static TelemetrySessionInfo WithGpu(this TelemetrySessionInfo info, GpuBackendSelection selection,
+            string? adapterDescription, IReadOnlyList<string>? injectedModules, GpuThreadingCaps? threadingCaps,
+            GpuDeviceDiagnostics diagnostics, GpuCapabilities capabilities)
+        {
+            info.WithGpu(selection, adapterDescription, injectedModules, threadingCaps, diagnostics);
+            info.PciVendorId = capabilities.PciVendorId;
+            info.PciDeviceId = capabilities.PciDeviceId;
+            info.DriverVersion = capabilities.DriverVersion;
+            return info;
+        }
+
         /// <summary>
         /// Fill <paramref name="info"/>'s GPU fields from a live device. The one-liner for a consumer holding a
         /// <see cref="GpuDeviceContext"/>.
@@ -27,7 +40,7 @@ namespace KhaozEngine.Gpu
         {
             ArgumentNullException.ThrowIfNull(device);
             return info.WithGpu(device.Selection, device.AdapterDescription, device.InjectedModules,
-                device.ThreadingCaps, device.Diagnostics);
+                device.ThreadingCaps, device.Diagnostics, device.Capabilities);
         }
 
         /// <summary>

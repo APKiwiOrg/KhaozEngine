@@ -257,7 +257,15 @@ What it owns today:
   one device's GPU backpressure is never paid on another device's thread.
 - **`GpuCapabilities`** - `ClipSpaceYInverted` / `DepthRangeZeroToOne` (so renderers derive clip-Y / depth
   handling from the active backend instead of a baked Metal assumption), plus diagnostics: `DeviceName` (the GPU
-  adapter/driver), `SamplerAnisotropy`, `SamplerLodBias` (whether those sampler levers are supported),
+  adapter), `PciVendorId` and `PciDeviceId` (`uint?`, null when unanswered, zero preserved), and
+  `DriverVersion` (`string?`, null when unanswered). Vulkan uses the physical device's vendorID and deviceID,
+  including Mesa's software IDs, and joins driverName and driverInfo on Vulkan 1.2 or
+  VK_KHR_driver_properties. Without those strings it labels raw driverVersion as implementation-defined.
+  Direct3D11 uses the created DXGI adapter's VendorId and DeviceId, including WARP's Microsoft IDs, and
+  CheckInterfaceSupport with IDXGIDevice for the user-mode driver version as four dotted parts, or null
+  if unsupported. Metal exposes none of these three values and leaves them null. These creation-fixed
+  facts also travel through `GpuTelemetry.WithGpu` into the session header beside the adapter name.
+  `SamplerAnisotropy`, `SamplerLodBias` (whether those sampler levers are supported),
   `SupportedMsaaSampleCounts` (the full shared set across the engine's MRT formats, including sparse masks) and
   `MaxMsaaSampleCount` (its largest member, kept for compatibility), `SupportsShadowMaps` (whether the device can render + sample an R32_Float depth target, gating the
   `ShadowMode.ShadowMap` tier in Render3D), and `SupportsCompletionFences` (see **Completion fences** below).

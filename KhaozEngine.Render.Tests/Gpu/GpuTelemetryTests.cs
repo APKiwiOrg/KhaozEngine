@@ -16,6 +16,23 @@ namespace KhaozEngine.Tests.Gpu
     public sealed class GpuTelemetryTests
     {
         [Fact]
+        public void WithGpuCarriesCreationFixedIdentityAndKeepsUnansweredValuesDistinctFromZero()
+        {
+            var selection = new GpuBackendSelection(GpuBackendKind.VulkanNative, GpuBackendSource.OsProbe, null);
+            var caps = new GpuCapabilities(false, true) { PciVendorId = 0x10005, PciDeviceId = 0, DriverVersion = "Mesa driver" };
+            var info = new TelemetrySessionInfo().WithGpu(selection, "llvmpipe", null, null,
+                new GpuDeviceDiagnostics(softwareAdapter: true), caps);
+            Assert.Equal(0x10005u, info.PciVendorId);
+            Assert.Equal(0u, info.PciDeviceId);
+            Assert.Equal("Mesa driver", info.DriverVersion);
+            Assert.True(info.SoftwareAdapter);
+            info.WithGpu(selection, "Metal", null, null, default, default);
+            Assert.Null(info.PciVendorId);
+            Assert.Null(info.PciDeviceId);
+            Assert.Null(info.DriverVersion);
+        }
+
+        [Fact]
         public void WithGpu_MapsBackendAndProvenanceOntoTheirEnumNames()
         {
             var selection = new GpuBackendSelection(

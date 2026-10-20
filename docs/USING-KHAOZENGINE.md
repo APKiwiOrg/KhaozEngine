@@ -19112,6 +19112,12 @@ means something on Metal and Vulkan too. `GpuDeviceContext.AdapterDescription` a
 same value as `Capabilities.DeviceName`, which stays the single source. It is named again because "adapter
 description" is what a reader chasing a Direct3D11 problem goes looking for.
 
+`GpuCapabilities.PciVendorId` and `PciDeviceId` are nullable unsigned IDs from the created Vulkan or DXGI
+adapter. `DriverVersion` is the queried driver identity. Null means the API did not answer and zero remains
+a reported value. Metal leaves all three null because MTLDevice has no public PCI ID or driver-version query.
+`GpuTelemetry.WithGpu` carries these creation-fixed values into `gpu.pciVendorId`, `gpu.pciDeviceId` and
+`gpu.driverVersion` beside the adapter name. The GPU package README defines backend sources and formatting.
+
 **The overlay line is Windows-only** and is gated on the scan rather than the backend, because overlays inject
 whatever graphics API is in use, so a Windows Vulkan session gets it too. The engine matches the modules loaded
 into the live process against a list of known overlay and capture injectors (Nahimic, Sonic Studio, RivaTuner /

@@ -173,8 +173,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// the capability and the fence path being able to disagree.
         /// </param>
         /// <param name="supportsTimestamps">Both native timestamp query kinds were created successfully.</param>
+        /// <param name="identity">Identity queried from the adapter retained by the created device.</param>
         internal static GpuCapabilities Assemble(string adapterName, int maxMsaaSampleCount,
-            bool supportsShadowMaps, bool supportsCompletionFences, bool supportsTimestamps = false)
+            bool supportsShadowMaps, bool supportsCompletionFences, bool supportsTimestamps = false,
+            D3D11AdapterIdentity identity = default)
             => new(
                 ClipSpaceYInverted,
                 DepthRangeZeroToOne,
@@ -185,7 +187,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 supportsShadowMaps,
                 SupportsCompute,
                 supportsCompletionFences)
-            { MaxColorAttachments = SimultaneousRenderTargets, SupportsTimestamps = supportsTimestamps };
+            {
+                MaxColorAttachments = SimultaneousRenderTargets,
+                SupportsTimestamps = supportsTimestamps,
+                PciVendorId = identity.VendorId,
+                PciDeviceId = identity.DeviceId,
+                DriverVersion = identity.DriverVersion,
+            };
 
         /// <summary>
         /// DECISION C4's THROW: a requested sample count above what the device supports is a fault, not something

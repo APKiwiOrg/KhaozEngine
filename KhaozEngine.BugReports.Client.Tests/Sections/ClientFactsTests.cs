@@ -129,17 +129,19 @@ public sealed class ClientFactsTests
     }
 
     [Fact]
-    public void Capabilities_are_every_bool_int_and_string_property_by_name()
+    public void Capabilities_include_flags_limits_and_nullable_adapter_identity_by_name()
     {
         var capabilities = new GpuCapabilities(clipSpaceYInverted: true, depthRangeZeroToOne: true, deviceName: "Apple M3",
-            maxMsaaSampleCount: 4, supportsCompute: true);
+            maxMsaaSampleCount: 4, supportsCompute: true)
+        { PciVendorId = 0x10de, PciDeviceId = 0, DriverVersion = "32.0.15.0" };
 
         IReadOnlyDictionary<string, string> described = ClientFacts.DescribeCapabilities(capabilities);
 
         Assert.Equal(
             new[]
             {
-                "ClipSpaceYInverted", "DepthRangeZeroToOne", "DeviceName", "MaxColorAttachments", "MaxMsaaSampleCount",
+                "ClipSpaceYInverted", "DepthRangeZeroToOne", "DeviceName", "DriverVersion", "MaxColorAttachments", "MaxMsaaSampleCount",
+                "PciDeviceId", "PciVendorId",
                 "SamplerAnisotropy", "SamplerLodBias", "SupportsCompletionFences", "SupportsCompute",
                 "SupportsShaderFloatControls", "SupportsShadowMaps", "SupportsTimestamps",
             },
@@ -148,6 +150,12 @@ public sealed class ClientFactsTests
         Assert.Equal("false", described["SamplerLodBias"]);
         Assert.Equal("Apple M3", described["DeviceName"]);
         Assert.Equal("4", described["MaxMsaaSampleCount"]);
+        Assert.Equal("0x10de", described["PciVendorId"]);
+        Assert.Equal("0x0000", described["PciDeviceId"]);
+        Assert.Equal("32.0.15.0", described["DriverVersion"]);
+        Assert.Equal("", ClientFacts.DescribeCapabilities(default)["PciVendorId"]);
+        Assert.Equal("", ClientFacts.DescribeCapabilities(default)["PciDeviceId"]);
+        Assert.Equal("", ClientFacts.DescribeCapabilities(default)["DriverVersion"]);
     }
 
     [Fact]

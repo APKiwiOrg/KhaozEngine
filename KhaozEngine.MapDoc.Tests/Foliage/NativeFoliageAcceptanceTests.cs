@@ -33,6 +33,7 @@ public sealed class NativeFoliageAcceptanceTests
         Assert.All(independentHeads, head => Assert.Equal(expected, Canonical(Batches(head))));
         Assert.Equal(4, independentHeads.Select(h => h.Document).Distinct(ReferenceEqualityComparer.Instance).Count());
         Assert.Equal(4, independentHeads.Select(h => h.Assets).Distinct(ReferenceEqualityComparer.Instance).Count());
+        AssertHeadsIndependent(independentHeads, expected);
 
         Dictionary<string, MapFoliageSampleBatch> batches = Batches(f).ToDictionary(b => b.LayerId);
         Assert.All(batches.Values, b => Assert.Equal(MapFoliageStatus.Complete, b.Status));
@@ -83,11 +84,18 @@ public sealed class NativeFoliageAcceptanceTests
     public void SurfaceDensity_DoesNotPopulateDeepCave()
     {
         FoliageFixture f = PrefabCaves();
+        IReadOnlyList<FoliageFixture> independentHeads = Heads(f);
+        Assert.Equal(4, independentHeads.Count);
+        string original = Canonical(Batches(f));
+        Assert.All(independentHeads, head => Assert.Equal(original, Canonical(Batches(head))));
+        // The monolithic server head takes the density edits, the tiled client head the authored checks and the tiled
+        // server head the removal and the unload.
+        FoliageFixture denseHead = independentHeads[1], authoredHead = independentHeads[2], removalHead = independentHeads[3];
         int[] full = Enumerable.Repeat(255, 32 * 32).ToArray(), none = new int[32 * 32];
-        MapDocument dense = MapFoliageEdits.Prepare(f.Document, f.Assets, new MapSetFoliageDensity(ShoreLayer, 0, 0, 32, 32, full)).After;
+        MapDocument dense = MapFoliageEdits.Prepare(denseHead.Document, denseHead.Assets, new MapSetFoliageDensity(ShoreLayer, 0, 0, 32, 32, full)).After;
         foreach (string cave in new[] { DryLayer, FloodLayer })
-            dense = MapFoliageEdits.Prepare(dense, f.Assets, new MapSetFoliageDensity(cave, 0, 0, 32, 32, none)).After;
-        Dictionary<string, Generated> surfaceOnly = Generate(new(dense, f.Assets));
+            dense = MapFoliageEdits.Prepare(dense, denseHead.Assets, new MapSetFoliageDensity(cave, 0, 0, 32, 32, none)).After;
+        Dictionary<string, Generated> surfaceOnly = Generate(new(dense, denseHead.Assets));
         Assert.All(surfaceOnly[ShoreLayer].Batch.Samples, s => Assert.Equal("exterior", s.Key.Address.SupportOwnerId));
         Assert.Contains(surfaceOnly[ShoreLayer].Batch.Samples, OverCaves);
         Assert.All(surfaceOnly[ShoreLayer].Batch.Samples, s => Assert.InRange(Support(s, CaveRoot) + 2, -1e-5f, 1e-5f));
@@ -101,9 +109,9 @@ public sealed class NativeFoliageAcceptanceTests
         // The world ocean covers the exterior and the dry cave, and the lake fills the flooded cave. Only visible water
         // material rejects: the exterior's water row and the flooded floor's one water cell. The dry cave under the ocean
         // and the submerged flooded floor still place samples, with no global or contained-medium rule.
-        Assert.Contains(f.Document.Water!.Bodies, b => b.Id == "ocean");
-        Assert.Contains(f.Assets.GetPrefab("hut").Children, c => c is MapPrefabWaterChild { Value.Id: "lake" });
-        Dictionary<string, Generated> authored = Generate(f);
+        Assert.Contains(authoredHead.Document.Water!.Bodies, b => b.Id == "ocean");
+        Assert.Contains(authoredHead.Assets.GetPrefab("hut").Children, c => c is MapPrefabWaterChild { Value.Id: "lake" });
+        Dictionary<string, Generated> authored = Generate(authoredHead);
         Assert.All(authored[ShoreLayer].Decisions.Where(d => d.Reason == MapFoliageReason.WaterMaterial),
             d => Assert.InRange(d.Distribution.Candidate.WorldZ, -1f, 0f));
         Assert.Contains(MapFoliageReason.WaterMaterial, authored[ShoreLayer].Reasons);
@@ -122,39 +130,46 @@ public sealed class NativeFoliageAcceptanceTests
         Assert.Contains(MapFoliageReason.WaterMaterial, authored[FloodLayer].Reasons);
 
         // Removing the exterior cells over the caves leaves the Surface-bound shore without samples there: a known hole,
-        // never a borrowed cave floor. The exterior footprint still claims those cells, so every read that crosses the
-        // column refuses with a typed status: a Space-bound shore and both caves below it. The other cave keeps its batch.
+        // never a borrowed cave floor, and every shore sample stays on the exterior. A Space-bound shore over the same hole
+        // refuses with a typed status. No cave batch holds a sample from the shore or the exterior. The caves below also
+        // refuse today, Unavailable, because the exterior footprint still claims the removed cells (KhaozEngine #1516).
+        // That is recorded here and not asserted as acceptance.
         int[] column = Enumerable.Range(0, 4).SelectMany(z => Enumerable.Range(0, 4).Select(x => z * MapPatchKey.SlotCells + x)).ToArray();
         var hole = new MapSetPresence(new("exterior", 0, 0), column, false);
-        MapPrefabEditResult removed = MapDocumentTerrainEdits.Prepare(f.Document, f.Assets, hole);
-        Assert.Equal([DryLayer, FloodLayer, ShoreLayer], removed.Effects.FoliageChunks.Select(r => r.LayerId).Order(StringComparer.Ordinal));
-        Dictionary<string, MapFoliageSampleBatch> holed = Statuses(new FoliageFixture(removed.After, f.Assets));
+        MapPrefabEditResult removed = MapDocumentTerrainEdits.Prepare(removalHead.Document, removalHead.Assets, hole);
+        Assert.Contains(removed.Effects.FoliageChunks, r => r.LayerId == ShoreLayer);
+        Assert.DoesNotContain(removed.Effects.FoliageChunks, r => r.LayerId == OtherCaveLayer);
+        Dictionary<string, MapFoliageSampleBatch> holed = Statuses(new FoliageFixture(removed.After, removalHead.Assets));
         Assert.Equal(MapFoliageStatus.Complete, holed[ShoreLayer].Status);
         Assert.DoesNotContain(holed[ShoreLayer].Samples, OverCaves);
         Assert.All(holed[ShoreLayer].Samples, s => Assert.Equal("exterior", s.Key.Address.SupportOwnerId));
-        AssertRefused(holed, DryLayer, FloodLayer);
+        foreach (string cave in new[] { DryLayer, FloodLayer, OtherCaveLayer })
+            Assert.DoesNotContain(holed[cave].Samples, s => s.Key.Address.LayerId == ShoreLayer || s.Key.Address.SupportOwnerId == "exterior");
         Assert.Equal(authored[OtherCaveLayer].Samples, SampleText(holed[OtherCaveLayer].Samples));
         MapDocument spaceBound = MapDocumentFile.LoadText(MapDocumentFile.SaveText(removed.After));
         MapFoliageLayer shore = spaceBound.Foliage!.Layers.Single(l => l.Id == ShoreLayer);
         spaceBound.Foliage = new(1, spaceBound.Foliage.Layers.Select(l => l.Id == ShoreLayer
             ? ClearanceLayer(shore, support: new(MapSupportBindingKind.Space, null, "exterior", -1.8f, 1, 0.5f)) : l).ToArray());
-        AssertRefused(Statuses(new FoliageFixture(spaceBound, f.Assets)), ShoreLayer);
+        MapFoliageSampleBatch spaceShore = Statuses(new FoliageFixture(spaceBound, removalHead.Assets))[ShoreLayer];
+        Assert.NotEqual(MapFoliageStatus.Complete, spaceShore.Status);
+        Assert.Empty(spaceShore.Samples);
 
         // Unloading the exterior's stored payload refuses the shore and both caves whose scopes read it, with a typed
         // status and no sample, and transfers nothing to any other layer.
-        string root = SaveTiled(f);
+        string root = SaveTiled(removalHead);
         try
         {
             SurfaceStorageFixtures.DeletePayload(root, new("exterior", 0, 0));
-            MapEffectiveResources resources = MapPrefabResolver.Expand(f.Document, f.Assets, new(), null,
+            MapEffectiveResources resources = MapPrefabResolver.Expand(removalHead.Document, removalHead.Assets, new(), null,
                 MapStoredSurfaceSource.Open(root));
-            MapFoliageContextResult unloaded = MapFoliageGenerationContext.CaptureEffective(f.Document, f.Assets, resources);
+            MapFoliageContextResult unloaded = MapFoliageGenerationContext.CaptureEffective(removalHead.Document, removalHead.Assets, resources);
             Assert.Equal(MapFoliageStatus.Complete, unloaded.Status);
             Dictionary<string, MapFoliageSampleBatch> partial = Statuses(unloaded.Context!);
             AssertRefused(partial, ShoreLayer, DryLayer, FloodLayer);
             Assert.Equal(authored[OtherCaveLayer].Samples, SampleText(partial[OtherCaveLayer].Samples));
         }
         finally { Directory.Delete(root, true); }
+        AssertHeadsIndependent(independentHeads, original);
     }
 
     [Fact]
@@ -186,15 +201,15 @@ public sealed class NativeFoliageAcceptanceTests
         Assert.Equal(row.OldBounds, row.NewBounds);
         Assert.NotEqual(row.BeforeDigest, row.AfterDigest);
         FoliageFixture after = new(moved.After, head.Assets);
+        AssertPublished(head, after, effects);
         MapFoliageSampleBatch movedCave = MapFoliageDistribution.Generate(Context(after), caveLayer, Home);
         Assert.Equal(row.AfterDigest, movedCave.DependencyDigest);
         AssertOnPosedFloor(movedCave.Samples, pose, -60);
         Assert.NotEqual(SampleText(caveBefore), SampleText(movedCave.Samples));
         string unrelatedBatchAfter = Canonical([MapFoliageDistribution.Generate(Context(after), otherCaveLayer, Home)]);
         Assert.Equal(unrelatedBatchBefore, unrelatedBatchAfter);
-        // The edit is detached, and the other three heads keep their own state.
+        // The edit is detached from the head it read.
         Assert.Equal(original, Canonical(Batches(head)));
-        Assert.All(independentHeads.Skip(1), other => Assert.Equal(original, Canonical(Batches(other))));
 
         // Override: replacing the moved instance's dry floor with one raised 1 m changes the cave rows and heights only.
         var dryFloor = (MapPrefabSurfaceChild)head.Assets.GetPrefab("hut").Children.Single(c => c.Key.Key == "dry-floor");
@@ -212,22 +227,32 @@ public sealed class NativeFoliageAcceptanceTests
         Assert.Contains(overridden.Effects.FoliageChunks, c => c.LayerId == caveLayer);
         Assert.DoesNotContain(overridden.Effects.FoliageChunks, c => c.LayerId == otherCaveLayer);
         FoliageFixture over = new(overridden.After, head.Assets);
+        AssertPublished(after, over, overridden.Effects);
         AssertOnPosedFloor(MapFoliageDistribution.Generate(Context(over), caveLayer, Home).Samples, pose, -59);
         Assert.Equal(unrelatedBatchBefore, Canonical([MapFoliageDistribution.Generate(Context(over), otherCaveLayer, Home)]));
 
         // Remap: renaming the instance's dry floor World ID renames the layer binding and every sample owner, nothing else.
+        // The public finalizer publishes the rename: the binding is a whole-layer member, so the cave layer publishes one
+        // entry, and every other dependent batch publishes its exact row.
         MapDocument remapped = MapPrefabReferences.RemapWorld(overridden.After, MapPrefabChildKind.Surface, "a/dry-floor",
             "a/hollow-floor");
         Assert.Equal(Surface("a/hollow-floor"), remapped.Foliage!.Layers.Single(l => l.Id == caveLayer).Support);
-        FoliageFixture renamed = new(remapped, head.Assets);
+        var renameWrites = new MapNativeWriteSet([], [], [], [], [], [], false) { Prefabs = true };
+        MapPrefabEditResult renaming = MapDocumentEditFinalizer.Finalize(overridden.After,
+            new(remapped, renameWrites, new(null, null, [], [], [], [], MapNativeInvalidation.None)), head.Assets);
+        Assert.True(renaming.WriteSet.Foliage && renaming.WriteSet.Prefabs);
+        Assert.True(renaming.Effects.Invalidates.HasFlag(MapNativeInvalidation.Foliage));
+        FoliageFixture renamed = new(renaming.After, head.Assets);
+        AssertPublished(over, renamed, renaming.Effects, caveLayer);
         Assert.Equal(Samples(Context(over), caveLayer).Replace("a/dry-floor", "a/hollow-floor", StringComparison.Ordinal),
             Samples(Context(renamed), caveLayer));
         Assert.Equal(unrelatedBatchBefore, Canonical([MapFoliageDistribution.Generate(Context(renamed), otherCaveLayer, Home)]));
 
         // Unpack: the cave becomes world authoring with the same World IDs and the same samples.
-        MapPrefabEditResult unpacked = MapPrefabEdits.Prepare(remapped, head.Assets, new MapUnpackPrefab("a"));
+        MapPrefabEditResult unpacked = MapPrefabEdits.Prepare(renamed.Document, head.Assets, new MapUnpackPrefab("a"));
         Assert.True(unpacked.After.Prefabs!.Instances.Single(i => i.Id == "a").Unpacked);
         FoliageFixture flat = new(unpacked.After, head.Assets);
+        AssertPublished(renamed, flat, unpacked.Effects);
         Assert.Equal(Samples(Context(renamed), caveLayer), Samples(Context(flat), caveLayer));
         Assert.Equal(unrelatedBatchBefore, Canonical([MapFoliageDistribution.Generate(Context(flat), otherCaveLayer, Home)]));
 
@@ -244,9 +269,13 @@ public sealed class NativeFoliageAcceptanceTests
             [new MapRemoveFoliage(caveLayer), new MapRemoveFoliage(FloodLayer)], new MapRemovePrefab("a")));
         Assert.Equal([caveLayer, FloodLayer], removed.Effects.FoliageLayers.Select(l => l.LayerId).Order(StringComparer.Ordinal));
         Assert.All(removed.Effects.FoliageLayers, l => Assert.Null(l.AfterDigest));
+        AssertPublished(after, new(removed.After, after.Assets), removed.Effects, caveLayer, FloodLayer);
         Assert.DoesNotContain(removed.Effects.FoliageChunks, c => c.LayerId is caveLayer or otherCaveLayer);
         Assert.Equal(unrelatedBatchBefore,
             Canonical([MapFoliageDistribution.Generate(Context(new(removed.After, after.Assets)), otherCaveLayer, Home)]));
+
+        // Changing one head in place leaves the other three heads' bytes and batches untouched.
+        AssertHeadsIndependent(independentHeads, original);
     }
 
     [Fact]
@@ -340,6 +369,36 @@ public sealed class NativeFoliageAcceptanceTests
         }
         return result;
     }
+
+    // Head 0 changes in place. It differs afterwards, and every other head keeps its saved bytes and its batches.
+    static void AssertHeadsIndependent(IReadOnlyList<FoliageFixture> heads, string expected)
+    {
+        string[] texts = heads.Select(h => MapDocumentFile.SaveText(h.Document)).ToArray();
+        MutateHead(heads[0]);
+        Assert.NotEqual(texts[0], MapDocumentFile.SaveText(heads[0].Document));
+        for (int i = 1; i < heads.Count; i++)
+        {
+            Assert.Equal(texts[i], MapDocumentFile.SaveText(heads[i].Document));
+            Assert.Equal(expected, Canonical(Batches(heads[i])));
+        }
+    }
+
+    // The published whole-layer entries are exactly the named layers. The published rows are exactly the other stored
+    // chunks whose generated dependency digest differs between the two documents, carrying those digests, in layer, Z
+    // and X order.
+    static void AssertPublished(FoliageFixture before, FoliageFixture after, MapNativeEditEffects effects, params string[] entries)
+    {
+        Assert.Equal(entries.Order(StringComparer.Ordinal), effects.FoliageLayers.Select(l => l.LayerId).Order(StringComparer.Ordinal));
+        Dictionary<(string Layer, MapFoliageChunkKey Chunk), string> a = Digests(before), b = Digests(after);
+        var expected = a.Keys.Union(b.Keys).Where(k => !entries.Contains(k.Layer) && a.GetValueOrDefault(k) != b.GetValueOrDefault(k))
+            .OrderBy(k => k.Layer, StringComparer.Ordinal).ThenBy(k => k.Chunk.Z).ThenBy(k => k.Chunk.X).ToArray();
+        Assert.Equal(expected, effects.FoliageChunks.Select(r => (r.LayerId, r.Chunk)).ToArray());
+        foreach (MapFoliageChunkChange row in effects.FoliageChunks)
+            Assert.Equal((a.GetValueOrDefault((row.LayerId, row.Chunk)), b.GetValueOrDefault((row.LayerId, row.Chunk))), (row.BeforeDigest, row.AfterDigest));
+    }
+
+    static Dictionary<(string Layer, MapFoliageChunkKey Chunk), string> Digests(FoliageFixture fixture) =>
+        Batches(fixture).ToDictionary(b => (b.LayerId, b.Chunk), b => b.DependencyDigest);
 
     static Dictionary<string, MapFoliageSampleBatch> Statuses(FoliageFixture fixture) => Statuses(Context(fixture));
 

@@ -12,6 +12,10 @@ public partial class ArchitectureTests
     static readonly string[] FoliageForbidden =
         ["Physics", "Render", "Gpu", "Windowing", "Gui", "TileWorld", "MapEdit", "Game", "Particles", "Audio"];
 
+    /// <summary>Foliage generation lives in MapDoc, whose production edges reach no physics, renderer, GPU, tile world,
+    /// editor or game package. The proof against sample-driven colliders is scoped to the designated builder,
+    /// MapDoc.Physics, whose metadata MapFoliageWorldTests reads. Other direct MapDoc consumers with a physics edge are a
+    /// pinned allow list.</summary>
     [Fact]
     public void FoliageRuntime_HasNoPhysicsRenderGpuTileWorldDependency()
     {
@@ -32,9 +36,10 @@ public partial class ArchitectureTests
         Assert.DoesNotContain(TransitiveClosure("KhaozEngine.Terrain", graph).Select(Short),
             name => FoliageForbidden.Any(prefix => name.StartsWith(prefix, StringComparison.Ordinal)));
 
-        // The collider builder for MapDoc worlds is MapDoc.Physics. It reaches physics through the seam only and no
-        // renderer, GPU, tile world or editor, and the editor never reaches it. Its compiled metadata holds no foliage
-        // type, which MapFoliageWorldTests reads from the built assembly.
+        // The designated static and collider builder for MapDoc worlds is MapDoc.Physics. It reaches physics through the
+        // seam only and no renderer, GPU, tile world or editor, and the editor never reaches it. Its compiled metadata holds
+        // no foliage type or member, which MapFoliageWorldTests reads from the built assembly. That metadata proof covers
+        // this builder only. The other consumers below are allow-listed, not checked for sample-driven colliders.
         string[] colliders = TransitiveClosure("KhaozEngine.MapDoc.Physics", graph).Select(Short).ToArray();
         Assert.Contains("Physics", colliders);
         Assert.DoesNotContain(colliders, name => name.StartsWith("Physics.", StringComparison.Ordinal) || name.StartsWith("Render", StringComparison.Ordinal) ||

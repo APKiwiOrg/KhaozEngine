@@ -17,8 +17,8 @@ using static KhaozEngine.Tests.MapDoc.Foliage.FoliageFixtures;
 namespace KhaozEngine.Tests.MapDoc.Physics;
 
 /// <summary>OA9 on the released stacked-support and prefab-cave fixtures: foliage edits never reach statics, navigation
-/// captures or world bounds, independent heads in both storage forms produce identical owned foliage, and the collider
-/// builder has no edge to foliage samples.</summary>
+/// captures or world bounds, independent heads in both storage forms produce identical owned foliage, and the designated
+/// static and collider builder for MapDoc worlds, MapDoc.Physics, has no edge to foliage samples.</summary>
 public sealed class MapFoliageWorldTests
 {
     static readonly MapNavTileOptions Nav = new(2f, "foliage-profile", "foliage-controller");
@@ -135,14 +135,27 @@ public sealed class MapFoliageWorldTests
             // Each head's world holds no foliage collider: its statics equal those of the same document without foliage.
             Assert.Equal(Statics(Build(new(Without(fixture.Document), fixture.Assets))), Statics(worlds[0]));
             Assert.True(worlds[0].Statics.All(s => s.Kind is MapStaticKind.Placement or MapStaticKind.TerrainChunk), name);
+
+            // Changing head 0 in place leaves the other heads' bytes, worlds and foliage untouched.
+            string[] texts = heads.Select(h => MapDocumentFile.SaveText(h.Document)).ToArray();
+            MutateHead(heads[0]);
+            Assert.NotEqual(texts[0], MapDocumentFile.SaveText(heads[0].Document));
+            for (int i = 1; i < heads.Count; i++)
+            {
+                Assert.Equal(texts[i], MapDocumentFile.SaveText(heads[i].Document));
+                Assert.Equal(foliage[0], Canonical(Batches(heads[i])));
+                Assert.Equal(Statics(worlds[0]), Statics(Build(heads[i])));
+            }
         }
     }
 
     [Fact]
     public void ColliderBuilder_ReferencesNoFoliageType()
     {
-        // The metadata of the physics consumer, not its source text: no type it references is a foliage type, so no
-        // collider or static can be built from a generated sample.
+        // The metadata of the designated builder, not its source text: no type or member MapDoc.Physics references is a
+        // foliage one, so no static or collider it builds can come from a generated sample. The scope is that builder.
+        // Other MapDoc consumers with a physics edge (Dungeon, MapEditor, Terrain.Render3D) are allow-listed by the
+        // architecture guard, not checked here.
         using FileStream stream = File.OpenRead(typeof(MapWorldBuilder).Assembly.Location);
         using var pe = new PEReader(stream);
         MetadataReader metadata = pe.GetMetadataReader();

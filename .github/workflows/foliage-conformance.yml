@@ -7,8 +7,9 @@ name: foliage-conformance
 # the dev machine's build-slot, a private harness, a secret or a repeat loop. Exact keys, decisions, models and the
 # scale and rank bits compare exactly. Positions compare within 0.00001 m and orientations within 0.000001 rad.
 #
-# A leg passes only when both result files report a nonzero total with every test executed and passed. A skipped
-# xunit fact leaves executed below total, so a run that skipped anything fails here too.
+# A leg passes only when both result files exist and report a nonzero total with every test executed and passed. A
+# skipped xunit fact leaves executed below total, so a run that skipped anything fails here too. A filter that matches
+# nothing reports a zero total and fails.
 on:
   push:
   pull_request:
@@ -68,12 +69,21 @@ jobs:
         run: |
           for name in foliage-platform-pins ground-cover-trace; do
             trx="$RESULTS/$name.trx"
-            counters=$(grep -o '<Counters [^/]*' "$trx" | head -1)
-            total=$(printf '%s' "$counters" | grep -o ' total="[0-9]*"' | grep -o '[0-9]*')
-            executed=$(printf '%s' "$counters" | grep -o ' executed="[0-9]*"' | grep -o '[0-9]*')
-            passed=$(printf '%s' "$counters" | grep -o ' passed="[0-9]*"' | grep -o '[0-9]*')
+            if [ ! -f "$trx" ]; then
+              echo "$name: no result file at $trx"
+              exit 1
+            fi
+            counters=$(grep -o '<Counters [^/]*' "$trx" | head -1 || true)
+            total=$(printf '%s' "$counters" | grep -o ' total="[0-9]*"' | grep -o '[0-9]*' || true)
+            executed=$(printf '%s' "$counters" | grep -o ' executed="[0-9]*"' | grep -o '[0-9]*' || true)
+            passed=$(printf '%s' "$counters" | grep -o ' passed="[0-9]*"' | grep -o '[0-9]*' || true)
             echo "$name: passed ${passed:-unknown}, executed ${executed:-unknown} of ${total:-unknown}"
-            test -n "$total" && test "$total" -gt 0 && test "$executed" = "$total" && test "$passed" = "$total"
+            # Every condition is checked as one group, so a failure in any file fails the step. A bare && chain inside the
+            # loop would let errexit ignore every failure but its last test.
+            if ! { test -n "$total" && test "$total" -gt 0 && test "$executed" = "$total" && test "$passed" = "$total"; }; then
+              echo "$name: requires a nonzero total with every test executed and passed"
+              exit 1
+            fi
           done
 
       - name: Upload the test results

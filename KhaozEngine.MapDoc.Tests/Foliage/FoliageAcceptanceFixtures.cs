@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Text;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Foliage;
@@ -341,15 +342,46 @@ internal static partial class FoliageFixtures
             new("legacy-tile", 1, 0), indoors, true, door, 0, ordinals, rules, masks, owners, raster.Chunks);
     }
 
-    /// <summary>Four independent heads: a client and a server load of each storage form, each from its own saved bytes
-    /// with its own reloaded closure.</summary>
+    /// <summary>Four independent heads, a client and a server of each storage form. Each form is persisted once. Each head
+    /// then loads from its own copy of those bytes, its own text or its own copy of the tiled directory, with its own
+    /// closure loaded from its own copy of the captured resource bytes. Heads are listed monolithic client, monolithic
+    /// server, tiled client, tiled server.</summary>
     internal static IReadOnlyList<FoliageFixture> Heads(FoliageFixture fixture)
     {
         var heads = new List<FoliageFixture>();
-        foreach (bool tiled in new[] { false, true })
+        byte[] text = Encoding.UTF8.GetBytes(MapDocumentFile.SaveText(fixture.Document));
+        for (int head = 0; head < 2; head++)
+            heads.Add(new(MapDocumentFile.LoadText(Encoding.UTF8.GetString(text.ToArray())), PrefabFixtures.ReloadVillageAssets(fixture.Assets)));
+        string root = SaveTiled(fixture);
+        try
+        {
             for (int head = 0; head < 2; head++)
-                heads.Add(Reload(fixture with { Assets = PrefabFixtures.ReloadVillageAssets(fixture.Assets) }, tiled));
+            {
+                string copy = root + "-head-" + head.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                foreach (string file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
+                {
+                    string target = Path.Combine(copy, Path.GetRelativePath(root, file));
+                    Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                    File.WriteAllBytes(target, File.ReadAllBytes(file));
+                }
+                try { heads.Add(new(MapDocumentFile.LoadTiled(copy), PrefabFixtures.ReloadVillageAssets(fixture.Assets))); }
+                finally { Directory.Delete(copy, true); }
+            }
+        }
+        finally { Directory.Delete(root, true); }
         return heads;
+    }
+
+    /// <summary>Changes one head's loaded state in place: its first layer's seed and the underlay of the first cell of its
+    /// first surface patch, rehashed so the head stays a valid document.</summary>
+    internal static void MutateHead(FoliageFixture head)
+    {
+        MapDocument document = head.Document;
+        document.Foliage = new(1, document.Foliage!.Layers
+            .Select((layer, i) => i == 0 ? FoliageStorageFixtures.Change(layer, l => l["seed"] = layer.Seed + 1) : layer).ToArray());
+        MapSurfacePatch patch = document.Surfaces.Patches.Values.First();
+        patch.Cells[0] = patch.Cells[0] with { Underlay = (ushort)(patch.Cells[0].Underlay == 10 ? 12 : 10) };
+        Rehash(document);
     }
 
     /// <summary>Every complete batch of every stored chunk of every layer, generated from a fresh context.</summary>

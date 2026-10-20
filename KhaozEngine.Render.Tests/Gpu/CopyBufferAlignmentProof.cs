@@ -6,6 +6,8 @@ namespace KhaozEngine.Tests.Gpu;
 /// <summary>Narrow source proofs for offsets that are validated at runtime or converted from uint words.</summary>
 internal static class CopyBufferAlignmentProof
 {
+    const string ScalarType = @"(?:bool|byte|sbyte|char|short|ushort|int|uint|long|ulong|nint|nuint|float|double|decimal)";
+
     internal static bool Accepts(string expression, string source, int copyIndex, string helper)
     {
         if (Regex.IsMatch(expression, @"^CoverageGpuLayout\.Bytes\([^;]+\)$")
@@ -18,7 +20,7 @@ internal static class CopyBufferAlignmentProof
 
         // Blank literals before reading braces or statements. SourceSweep already blanks comments for the sweep.
         string text = Regex.Replace(source, "\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*'", m => new string(' ', m.Length));
-        const string methodPattern = @"\b[A-Za-z_][\w<>?,.\[\]]*\s+[A-Za-z_]\w*\s*\([^()]*\)\s*\{";
+        const string methodPattern = @"\b[A-Za-z_][\w<>?,.\[\]]*\s+[A-Za-z_]\w*\s*\((?<parameters>[^()]*)\)\s*\{";
         foreach (Match method in Regex.Matches(text, methodPattern))
         {
             int start = method.Index + method.Length;
@@ -40,17 +42,35 @@ internal static class CopyBufferAlignmentProof
                 @"(?:^|[;{}])\s*(?<call>GpuCopyAlignment\.RequireAlignedOffset)\s*\(\s*"
                 + Regex.Escape(expression) + @"\s*,[^;]*\)\s*;"))
             {
-                if (Depth(prefix[..validation.Groups["call"].Index]) != 0) continue;
+                string before = prefix[..validation.Groups["call"].Index];
+                if (Depth(before) != 0 || !IndependentScalar(expression, method.Groups["parameters"].Value, before)) continue;
                 string after = prefix[(validation.Index + validation.Length)..];
                 string name = Regex.Escape(expression);
+                string value = @"(?:\(\s*)*\b" + name + @"\b(?:\s*\))*";
                 // A validated value must stay unchanged, including by an alias handed to another method.
-                if (Regex.IsMatch(body, @"\b(?:ref|out)\s+" + name + @"\b|&\s*\b" + name + @"\b")
-                    || Regex.IsMatch(after, @"\b" + name + @"\s*(?:[+*/%&|^\-]?=(?!=)|<<=|>>>=|>>=|\+\+|--)|(?:\+\+|--)\s*\b" + name + @"\b"))
+                if (Regex.IsMatch(body, @"\b(?:ref|out)\s+" + value + @"|&\s*" + value)
+                    || Regex.IsMatch(after, value + @"\s*(?:[+*/%&|^\-]?=(?!=)|<<=|>>>=|>>=|\+\+|--)|(?:\+\+|--)\s*" + value))
                     continue;
                 if (Regex.IsMatch(after, @"\([^;{}]*\b" + name + @"\b[^;{}]*\)\s*=(?!=)")) continue;
                 return true;
             }
         }
+        return false;
+    }
+
+    static bool IndependentScalar(string expression, string parameters, string before)
+    {
+        string name = Regex.Escape(expression);
+        // A primitive passed by value owns its storage. Parameter modifiers must not be skipped.
+        if (Regex.IsMatch(parameters, @"(?:^|,)\s*" + ScalarType + @"\s+" + name + @"\s*(?:=[^,]+)?(?:,|$)"))
+            return true;
+
+        // An explicit scalar declaration copies its initializer, even when that value came from mutable storage.
+        // Require a direct declaration and a plain initializer so a ref local or an unknown var cannot qualify.
+        foreach (Match local in Regex.Matches(before,
+            @"(?:^|[;{}])\s*" + ScalarType + @"\s+" + name + @"\s*=\s*(?<value>[^;{}]+);"))
+            if (Depth(before[..local.Index]) == 0 && !Regex.IsMatch(local.Groups["value"].Value, @"^\s*ref\b"))
+                return true;
         return false;
     }
 

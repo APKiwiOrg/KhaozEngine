@@ -121,7 +121,7 @@ Authored in plan Task 7f.4 and not run. Not part of Proposal A's approval. The b
 As authored:
 
 - Class `TemporalShadowedFrameCostPerfGpuTests` in `KhaozEngine.Render.Tests/Gpu/TemporalShadowedFrameCostPerfGpuTests.cs`, cases `TheShadowedYardAtQualityIsMeasuredAt1440p` and `TheShadowedYardAtNativeIsMeasuredAt1440p`, both at 2560x1440. It uses only API present at `6c6529589`.
-- Base side: branch `probe/taa-vis-shadow-cost-base`, commit `10478d68c`, which adds only that file to `6c6529589`. The file is byte-identical on both branches.
+- Base side: branch `fix/taa-vis-shadow-cost-base`, commit `10478d68c` (a diagnostic base that is never merged, named `fix/` because the engine push hook allows no `probe/` branches), which adds only that file to `6c6529589`. The file is byte-identical on both branches.
 - Scene: the textured ground under a still follow camera at boot pitch, 49 crates and thin posts and 8 walkers with their own motion, a low key light swaying about a fixed direction, `ShadowMode.ShadowMap`.
 - Modes per round: off without shadows (drift control), FXAA with shadows, fused and split each with and without shadows. 15 rotating rounds of 12 frames after 3 warm frames. Printed only, no budget asserted.
 - It also prints how often the key light's depth pass rendered, the resolve's counts and, from one frame rendered with anti-aliasing off with shadows on and off, the share of display pixels the shadow darkens and the share within 2 display pixels of a shadow edge.

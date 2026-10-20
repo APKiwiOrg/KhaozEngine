@@ -315,7 +315,8 @@ internal static partial class TemporalVisibilityDxbc
     /// <summary>Which of the two analysed association orders a chain's head is, from the <c>itof</c> to the
     /// division: an <c>add</c> of the literal 0.5 and an <c>add</c> of a negated constant-buffer element, the jitter,
     /// in either order. A register beside the head counts as what it holds where that is one constant-buffer element or
-    /// literal, moved. Precise markings are ignored here, and kept in <see cref="Remainder"/>.</summary>
+    /// literal, moved. Precise markings are ignored here, and kept in <see cref="HeadMarking"/> and
+    /// <see cref="Remainder"/>.</summary>
     internal static HeadForm Form(string chain)
     {
         string[] head = Head(chain);
@@ -332,6 +333,20 @@ internal static partial class TemporalVisibilityDxbc
         if (Form(chain) == HeadForm.Other) return null;
         string[] head = Head(chain);
         return IsJitter(Added(head[1])) ? Added(head[1]) : Added(head[2]);
+    }
+
+    /// <summary>The precise marking of each head step by its role, as in
+    /// <c>itof [precise] | half [precise] | jitter [precise]</c>, so the two orders of one marking read the same
+    /// (review 7f r4, M-2). A head in neither analysed order reads as its steps.</summary>
+    internal static string HeadMarking(string chain)
+    {
+        int division = chain.IndexOf(" > div", StringComparison.Ordinal);
+        string[] steps = (division < 0 ? chain : chain[..division]).Split(" > ");
+        if (Form(chain) == HeadForm.Other) return string.Join(" > ", steps);
+        int half = Added(Head(chain)[1]) == Half ? 1 : 2;
+        return $"itof{Marked(steps[0])} | half{Marked(steps[half])} | jitter{Marked(steps[3 - half])}";
+
+        static string Marked(string step) => step.Contains(" [precise]", StringComparison.Ordinal) ? " [precise]" : "";
     }
 
     /// <summary>The chain from its division on, the part the head's order does not change.</summary>

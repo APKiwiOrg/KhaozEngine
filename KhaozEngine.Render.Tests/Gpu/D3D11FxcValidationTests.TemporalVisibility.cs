@@ -23,9 +23,10 @@ namespace KhaozEngine.Tests.Gpu
     /// <c>(at - J) + 0.5</c>, in others (hosted run 39362804399). The binade rule makes the two give the same bits
     /// wherever the fast path runs (<see cref="TemporalVisibilityFastPath.SlowForBinade"/>), and every binade block
     /// runs D's function inside the shipped program instead. So D's chains, inside D's loops, must compile in the
-    /// shipped program exactly as in D's: the shipped in-loop chains, by head form, jitter element and remainder from
-    /// the division on, are D's chain for chain. The fast path adds exactly six straight-line chains, three per jitter
-    /// element, each in one of the two analysed orders and with one of D's remainders
+    /// shipped program exactly as in D's: the shipped in-loop chains, by head form, head precise markings, jitter
+    /// element and remainder from the division on, are D's chain for chain. The fast path adds exactly six
+    /// straight-line chains, three per jitter element, each in one of the two analysed orders and with the head
+    /// markings, jitter element and remainder of one of D's chains together
     /// (<see cref="TemporalVisibilityDxbcComparison"/>). Each check compares the shipped program against the same
     /// program rewritten to D (<see cref="TemporalVisibilityFrozenD.ToD"/>), compiled the same way, so whatever D's own
     /// program declares or computes elsewhere is the baseline. It covers the decision helper, the four accumulate

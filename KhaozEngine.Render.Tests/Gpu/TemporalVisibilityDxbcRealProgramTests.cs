@@ -10,15 +10,18 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// The hosted Windows check, run on FXC's real disassembly of every visibility program (review 7f r3, I-1 and m-1).
-    /// Hosted runs 39374926165 and 39376184230 printed the decision helper, the four accumulate programs and the two
-    /// fused resolve programs, each as shipped and as rewritten to D, at the shipped flags, and the two runs printed the
-    /// same text. The fixtures hold that text, carriage returns removed. The r3 reader found no chain in the six full
-    /// programs, because FXC marks every instruction there precise and so ends each chain <c>mul S</c> then
-    /// <c>add -0.5</c> rather than <c>mad S -0.5</c>. Here every program reads as the check requires: D's in-loop chains
-    /// equal in both programs, and six straight-line chains for the fast path. Mutated copies of the real text, D's
-    /// in-loop head swapped to the other order, or a fast path head given a third association, must fail it.
-    /// Device-free on every leg.
+    /// The hosted Windows check, run on FXC's real disassembly of every visibility program (review 7f r3, I-1 and m-1). The
+    /// dump test of diagnostic commits a00f69fd5 and a65622ae4 printed each program as shipped and as rewritten to D, at
+    /// the shipped flags. Hosted run 39374926165 printed the four accumulate programs and the two fused resolve programs,
+    /// and run 39376184230 printed those twelve listings again, identical, and the decision helper's two. So the helper
+    /// fixtures come from run 39376184230 alone. Both runs name the compiler only by its banner, <c>Microsoft (R) HLSL
+    /// Shader Compiler 10.1</c>, on runner image windows-2025-vs2026 20261007.264.1, and no d3dcompiler build number. The
+    /// fixtures hold that text, carriage returns removed, and beside each the SHA-256 of the GLSL it was compiled from
+    /// (<see cref="EachFixtureWasCompiledFromTheCurrentGlsl"/>). The r3 reader found no chain in the six full programs,
+    /// because FXC marks every instruction there precise and so ends each chain <c>mul S</c> then <c>add -0.5</c> rather
+    /// than <c>mad S -0.5</c>. Here every program reads as the check requires: D's in-loop chains equal in both programs,
+    /// and six straight-line chains for the fast path. Mutated copies of the real text, one per rule, must fail it on that
+    /// rule alone (<see cref="TemporalVisibilityDxbcRuleMutationTests"/>). Device-free on every leg.
     /// </summary>
     public sealed class TemporalVisibilityDxbcRealProgramTests(ITestOutputHelper output)
     {
@@ -33,14 +36,65 @@ namespace KhaozEngine.Tests.Gpu
             "TemporalResolveHalfFrag",
         };
 
+        const string Helper = "DecisionHelper";
+
+        static string Fixtures => Path.Combine(AppContext.BaseDirectory, "Fixtures", "taa-visibility-dxbc");
+
         internal static string Load(string program, bool d)
         {
-            string path = Path.Combine(AppContext.BaseDirectory, "Fixtures", "taa-visibility-dxbc",
-                $"{program}.{(d ? "d" : "shipped")}.dxbc.gz");
+            string path = Path.Combine(Fixtures, $"{program}.{(d ? "d" : "shipped")}.dxbc.gz");
             using var file = File.OpenRead(path);
             using var gzip = new GZipStream(file, CompressionMode.Decompress);
             using var reader = new StreamReader(gzip);
             return reader.ReadToEnd();
+        }
+
+        /// <summary>The GLSL the dump compiled for a fixture: the decision helper and D's helper as the hosted fact
+        /// builds them, or a visibility program and <see cref="TemporalVisibilityFrozenD.ToD"/> of it.</summary>
+        internal static string Glsl(string program, bool d)
+        {
+            if (program == Helper)
+                return d ? D3D11FxcValidationTests.DHelperProgram : TemporalVisibilityCompiledFormTests.DecisionHelperProgram;
+            string source = D3D11FxcValidationTests.VisibilityPrograms.Single(p => p.Name == program).Source;
+            return d ? TemporalVisibilityFrozenD.ToD(source) : source;
+        }
+
+        /// <summary>The programs here are the decision helper and the hosted fact's programs, in its order, and the
+        /// fixture folder holds a listing and a source hash for each side of each, nothing more.</summary>
+        [Fact]
+        public void TheFixturesCoverEveryProgramTheHostedFactChecks()
+        {
+            string[] programs = ((IEnumerable<object[]>)Programs).Select(row => (string)row[0]).ToArray();
+            string[] hosted = [Helper, .. D3D11FxcValidationTests.VisibilityPrograms.Select(p => p.Name)];
+            Assert.Equal(hosted, programs);
+            string[] expected = programs.SelectMany(p => new[] { "d", "shipped" }.SelectMany(side =>
+                new[] { $"{p}.{side}.dxbc.gz", $"{p}.{side}.glsl.sha256" })).Order(StringComparer.Ordinal).ToArray();
+            Assert.Equal(expected, Directory.GetFiles(Fixtures).Select(f => Path.GetRelativePath(Fixtures, f))
+                .Order(StringComparer.Ordinal));
+        }
+
+        /// <summary>Each fixture is FXC's compile of the GLSL the code builds today (review 7f r4, M-1): the SHA-256 of
+        /// that text, LF line endings, UTF-8, equals the one stored beside the fixture, the hash of the text at
+        /// 863bade06, which both dump commits sit on.</summary>
+        [Theory]
+        [MemberData(nameof(Programs))]
+        public void EachFixtureWasCompiledFromTheCurrentGlsl(string program)
+        {
+            var stale = new List<string>();
+            foreach (bool d in new[] { true, false })
+            {
+                string fixture = $"{program}.{(d ? "d" : "shipped")}";
+                string stored = File.ReadAllText(Path.Combine(Fixtures, fixture + ".glsl.sha256")).Trim();
+                string current = TemporalVisibilityFrozenD.Sha256(Glsl(program, d));
+                if (stored != current)
+                    stale.Add($"{fixture}.dxbc.gz was dumped from GLSL hashing {stored}, and the code now builds GLSL "
+                        + $"hashing {current}.");
+            }
+            Assert.True(stale.Count == 0, string.Join("\n", stale) + "\nRecapture: put the dump test of diagnostic "
+                + "commits a00f69fd5 and a65622ae4 (D3D11FxcValidationTests.DxbcDump.cs) on a diagnostic branch, dispatch "
+                + "cross-platform-gpu.yml there with legs=direct3d11-native, take each stale fixture's DXBC|name|D or "
+                + "DXBC|name|S lines from the log, carriage returns removed, gzip them over the fixture and store the new "
+                + "hash beside it.");
         }
 
         [Theory]
@@ -78,12 +132,14 @@ namespace KhaozEngine.Tests.Gpu
             string end = precise ? " > add [precise] l(-0.500000)" : "l(-0.500000)";
             Assert.All(dChains.Concat(chains), c => Assert.EndsWith(end, c.Signature, StringComparison.Ordinal));
             Assert.All(dChains.Concat(chains), c => Assert.Equal(precise, c.Signature.StartsWith("itof [precise]", StringComparison.Ordinal)));
-            // Every -0.5 position left unread is the history's own sample position, with no itof behind it.
+            // The -0.5 positions left unread have no itof behind them. In each full program six are a sample position,
+            // uv times a constant-buffer size less 0.5, and two are a bicubic weight's mad by a register.
             foreach (string text in new[] { d, shipped })
             {
                 List<string> unread = TemporalVisibilityDxbc.Unread(text);
                 Assert.Equal(precise ? 8 : 0, unread.Count);
                 Assert.All(unread, u => Assert.DoesNotContain("itof", u, StringComparison.Ordinal));
+                Assert.Equal(precise ? 6 : 0, unread.Count(u => Regex.IsMatch(u, @"^component [xyzw]: mad[^,]*, r\d+\.[xyzw]+, cb\d+\[")));
             }
 
             static string Forms(IEnumerable<TemporalVisibilityDxbc.Chain> list) => string.Concat(list
@@ -96,74 +152,47 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>The check has teeth on real text. D's in-loop head swapped to the other order in the shipped
-        /// program, the case review 7f r3 named, fails as an in-loop difference even though both orders are analysed
-        /// ones. A fast path head given a shared <c>0.5 - J</c>, a third association, fails as neither order.</summary>
+        /// program, the case review 7f r3 named, fails as an in-loop difference and nothing else, even though both
+        /// orders are analysed ones. A fast path head given a shared <c>0.5 - J</c>, a third association, fails as
+        /// neither order and nothing else, and turns exactly the chains through its half into that form, each with its
+        /// own remainder (review 7f r4, N-1).</summary>
         [Theory]
-        [InlineData("DecisionHelper")]
-        [InlineData("TemporalAccumulateFrag")]
-        [InlineData("TemporalResolveHalfFrag")]
-        public void MutatedRealTextFailsTheCheck(string program)
+        [InlineData("DecisionHelper", 2)]
+        [InlineData("TemporalAccumulateFrag", 4)]
+        [InlineData("TemporalResolveHalfFrag", 4)]
+        public void MutatedRealTextFailsTheCheck(string program, int shared)
         {
             string d = Load(program, d: true), shipped = Load(program, d: false);
-            List<string> swapped = TemporalVisibilityDxbcComparison.Compare(program, d, SwapInLoopHead(shipped));
+            List<string> swapped = TemporalVisibilityDxbcComparison.Compare(program, d,
+                TemporalVisibilityDxbcMutations.SwapInLoopHead(shipped));
             Assert.Contains($"{program}: the shipped program's in-loop chains differ from D's", swapped);
-            Assert.DoesNotContain(swapped, f => f.Contains("straight-line", StringComparison.Ordinal));
-            List<string> shared = TemporalVisibilityDxbcComparison.Compare(program, d, ShareStraightLineHead(shipped));
-            Assert.Contains(shared, f => f.Contains("head is neither analysed order", StringComparison.Ordinal));
-            Assert.DoesNotContain(shared, f => f.Contains("in-loop", StringComparison.Ordinal));
-        }
+            Assert.All(swapped, f => Assert.True(f.StartsWith($"{program}: the shipped program's in-loop chains differ from D's",
+                StringComparison.Ordinal) || f.StartsWith($"{program}:   ", StringComparison.Ordinal), f));
 
-        // Every line of the text, with the loop depth it sits at.
-        static (string Line, int Depth)[] Lines(string text)
-        {
-            int depth = 0;
-            return text.Split('\n').Select(raw =>
+            string mutated = TemporalVisibilityDxbcMutations.ShareStraightLineHead(shipped);
+            List<string> failures = TemporalVisibilityDxbcComparison.Compare(program, d, mutated);
+            Assert.NotEmpty(failures);
+            Assert.All(failures, f => Assert.StartsWith(
+                $"{program}: the shipped program has a position chain whose head is neither analysed order: ", f, StringComparison.Ordinal));
+            List<string> before = TemporalVisibilityDxbcMutations.Side(shipped, inLoop: false);
+            List<string> after = TemporalVisibilityDxbcMutations.Side(mutated, inLoop: false);
+            Assert.Equal(TemporalVisibilityDxbcMutations.Side(shipped, inLoop: true), TemporalVisibilityDxbcMutations.Side(mutated, inLoop: true));
+            Assert.Equal(before.Count, after.Count);
+            List<string> other = after.Where(c => TemporalVisibilityDxbc.Form(c) == TemporalVisibilityDxbc.HeadForm.Other).ToList();
+            List<string> changed = TemporalVisibilityDxbcComparison.Without(before, after);
+            Assert.Equal(shared, other.Count);
+            Assert.Equal(shared, changed.Count);
+            Assert.All(changed, c => Assert.Equal(TemporalVisibilityDxbc.HeadForm.Written, TemporalVisibilityDxbc.Form(c)));
+            Assert.Equal(changed.Select(Shared).Order(StringComparer.Ordinal), other.Order(StringComparer.Ordinal));
+
+            // A written chain as the shared head reads it: the itof, then one add of a register holding 0.5 - J.
+            static string Shared(string chain)
             {
-                string line = raw.Trim();
-                if (line == "endloop") depth--;
-                (string, int) entry = (raw, depth);
-                if (line == "loop") depth++;
-                return entry;
-            }).ToArray();
-        }
-
-        // The in-loop chain's head: the jitter subtract and the half added beside it, in the other order.
-        static string SwapInLoopHead(string text)
-        {
-            (string Line, int Depth)[] lines = Lines(text);
-            int jitter = Array.FindIndex(lines, l => l.Depth > 0 && IsJitter(l.Line));
-            int half = new[] { jitter - 1, jitter + 1 }.Single(i => lines[i].Line.Contains("0.500000", StringComparison.Ordinal)
-                && !lines[i].Line.Contains("-0.500000", StringComparison.Ordinal));
-            string[] result = lines.Select(l => l.Line).ToArray();
-            (result[jitter], result[half]) = (result[half], result[jitter]);
-            return string.Join('\n', result);
-        }
-
-        // The first straight-line head that adds the half and then the jitter on a whole register, rewritten to add
-        // 0.5 - J computed into a fresh register.
-        static string ShareStraightLineHead(string text)
-        {
-            (string Line, int Depth)[] lines = Lines(text);
-            string[] result = lines.Select(l => l.Line).ToArray();
-            for (int i = 1; i < lines.Length; i++)
-            {
-                if (lines[i].Depth != 0 || !IsJitter(lines[i].Line)) continue;
-                int half = lines[i - 1].Line.Contains("l(0.5", StringComparison.Ordinal) ? i - 1 : i + 1;
-                Match add = Regex.Match(lines[half].Line, @"^(\s*add(?: \[precise[^\]]*\])?) (r\d+)(\.[xyzw]+), (r\d+\.[xyzw]+), (l\([^)]*\))$");
-                Match sub = Regex.Match(lines[i].Line, @"^\s*add(?: \[precise[^\]]*\])? r\d+\.[xyzw]+, r\d+\.[xyzw]+, (-cb\d+\[\d+\]\.[xyzw]+)$");
-                if (!add.Success || !sub.Success) continue;
-                string op = add.Groups[1].Value, register = add.Groups[2].Value, mask = add.Groups[3].Value;
-                int first = Math.Min(i, half), second = Math.Max(i, half);
-                result[first] = $"{op} r99{mask}, {sub.Groups[1].Value}, {add.Groups[5].Value}";
-                result[second] = $"{op} {register}{mask}, {add.Groups[4].Value}, r99{Swizzle(add.Groups[4].Value)}";
-                return string.Join('\n', result);
+                string[] steps = chain.Split(" > ");
+                string add = steps[1][..steps[1].IndexOf(" +l(", StringComparison.Ordinal)];
+                return $"{steps[0]} > {add} +r(add {TemporalVisibilityDxbc.Jitter(chain)} +l(0.500000)) > "
+                    + TemporalVisibilityDxbc.Remainder(chain);
             }
-            throw new InvalidOperationException("no straight-line head to rewrite");
         }
-
-        // The swizzle a source register reads, so r99 is read the same way.
-        static string Swizzle(string source) => source[source.IndexOf('.', StringComparison.Ordinal)..];
-
-        static bool IsJitter(string line) => Regex.IsMatch(line, @"^\s*add(?: \[precise[^\]]*\])? r\d+\.[xyzw]+, r\d+\.[xyzw]+, -cb\d+\[\d+\]\.[xyzw]+$");
     }
 }

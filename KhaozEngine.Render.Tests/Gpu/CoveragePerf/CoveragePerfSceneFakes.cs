@@ -17,6 +17,7 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
     readonly ProbeDevice _device;
     readonly Participant[] _participants;
     readonly bool _completeOutcomes;
+    readonly CoveragePerfTimerLayout _layout;
     readonly List<SubmissionTestFence> _submittedFences = [];
     internal CoveragePerfNativeSession Session { get; }
     internal List<string> Events { get; } = [];
@@ -25,22 +26,25 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
     internal bool HistoryCommittedAtPresent;
     internal int ParticipantsAtReadback;
 
-    CoveragePerfSceneProbe(int actors, bool covered, bool completeOutcomes)
+    CoveragePerfSceneProbe(int actors, bool covered, bool completeOutcomes, CoveragePerfTimerLayout layout)
     {
         _completeOutcomes = completeOutcomes;
+        _layout = layout;
         _device = new(this);
         _participants = Enumerable.Range(0, 8).Select(i => new Participant(i == 0 ? () => Trace("history-submitted") : null)).ToArray();
         var manifest = CoveragePerfManifest.Parse(new CoveragePerfFakeRun(actors == 32 ? "C1" : "C0").Json);
         var block = manifest.Blocks.First(b => b.Actors == actors && b.Condition ==
-            (covered ? CoveragePerfCondition.SharedOn : CoveragePerfCondition.SharedOff));
+            (covered ? CoveragePerfCondition.SharedOn : CoveragePerfCondition.SharedOff)) with
+        { TimerLayout = layout };
         Session = new(manifest, block, (_, _) => new(_device, Equipment, true, _device.Dispose)
         {
             Observe = Observe,
         }, new CoveragePerfClock(() => Ticks, 1000));
     }
 
-    internal static CoveragePerfSceneProbe Open(int actors, bool covered, bool completeOutcomes = false)
-        => new(actors, covered, completeOutcomes);
+    internal static CoveragePerfSceneProbe Open(int actors, bool covered, bool completeOutcomes = false,
+        CoveragePerfTimerLayout layout = CoveragePerfTimerLayout.CpuOnly)
+        => new(actors, covered, completeOutcomes, layout);
     internal void CompletePendingOutcomes()
     {
         foreach (var fence in _submittedFences) fence.Signaled = true;
@@ -145,7 +149,7 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
         public GpuBackendKind Backend => _inner.Backend;
         public GpuCapabilities Capabilities => new(false, true, deviceName: "semantic coverage probe", supportsCompute: true,
             supportsCompletionFences: _probe._completeOutcomes)
-        { MaxColorAttachments = 8 };
+        { MaxColorAttachments = 8, SupportsTimestamps = _probe._layout != CoveragePerfTimerLayout.CpuOnly };
         public IGpuResourceFactory Factory => _factory;
         public IGpuFramebuffer? SwapchainFramebuffer => null;
         public IGpuSampler PointSampler => _inner.PointSampler;
@@ -204,7 +208,7 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
         public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription description) { return source.CreateGraphicsPipeline(description); }
         public IGpuComputePipeline CreateComputePipeline(in GpuComputePipelineDescription description) { return source.CreateComputePipeline(description); }
         public IGpuCommandList CreateCommandList() { return new ProbeCommands(probe); }
-        public IGpuTimestampPool CreateTimestampPool(uint capacity) { return source.CreateTimestampPool(capacity); }
+        public IGpuTimestampPool CreateTimestampPool(uint capacity) { return new CoveragePerfTimestampTestPool(capacity); }
         public IGpuFence CreateFence()
         {
             if (!probe._completeOutcomes) return source.CreateFence();
@@ -212,10 +216,28 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
         }
     }
 
-    sealed class ProbeCommands(CoveragePerfSceneProbe probe) : IGpuCommandList
+    sealed class ProbeCommands(CoveragePerfSceneProbe probe) : IGpuCommandList, IGpuCommandListTimestampEnd
     {
-        public void Begin() => probe.Trace("commands-begin");
-        public void End() => probe.Trace("commands-end");
+        CoveragePerfTimestampTestPool? _timestampPool;
+        uint _tail;
+        bool _armed;
+        public void Begin() { _armed = false; _timestampPool = null; probe.Trace("commands-begin"); }
+        public void BeginTimestamps(IGpuTimestampPool pool, uint count)
+        { _timestampPool = (CoveragePerfTimestampTestPool)pool; _timestampPool.Begin(count); }
+        public void WriteTimestamp(IGpuTimestampPool pool, uint index)
+        { ((CoveragePerfTimestampTestPool)pool).Write(index); probe.Trace("timestamp-" + index); }
+        public void EndTimestamps(IGpuTimestampPool pool) => ((CoveragePerfTimestampTestPool)pool).End();
+        public void FinishTimestampsOnEnd(IGpuTimestampPool pool, uint finalIndex)
+        {
+            if (!ReferenceEquals(pool, _timestampPool) || _armed || _timestampPool.Written != finalIndex)
+                throw new InvalidOperationException("Incorrect timestamp tail.");
+            _tail = finalIndex; _armed = true;
+        }
+        public void End()
+        {
+            if (_armed) { WriteTimestamp(_timestampPool!, _tail); EndTimestamps(_timestampPool!); _armed = false; }
+            probe.Trace("commands-end");
+        }
         public void SetFramebuffer(IGpuFramebuffer fb) { }
         public void ClearColorTarget(uint index, Color rgba) { }
         public void ClearDepthStencil(float depth) { }

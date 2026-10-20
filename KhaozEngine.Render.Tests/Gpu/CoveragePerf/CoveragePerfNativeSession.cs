@@ -30,6 +30,8 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
     readonly Action<Frame> _prepare, _record;
     readonly PendingFrame[] _pending;
     readonly CoverageGpuOutcome[] _bufferedOutcomes;
+    readonly CoveragePerfTimerLayout _timerLayout;
+    readonly CoveragePerfTimestampRing? _timestamps;
     long _aggregateStart, _aggregateTicks, _resolutionStart, _surfaceStart, _resolutionTicks, _surfaceTicks;
     int _frameIndex, _pendingCount, _nextFrame, _bufferedOutcomeCount;
     bool _presented, _disposed, _outcomeOverflow;
@@ -52,6 +54,7 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
         if (block.Fixture != CoveragePerfManifest.FixtureVersion || manifest.Profile != CoveragePerfManifest.ProfileVersion)
             throw new ArgumentException("The session requires the approved typical/full fixture.");
         _clock = clock;
+        _timerLayout = block.TimerLayout;
         _host = factory(manifest, block);
         _device = new(_host.Device);
         try
@@ -76,13 +79,16 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
             _pending = Enumerable.Range(0, CoveragePerfManifest.BatchFrameCount).Select(_ => new PendingFrame(block.Actors)).ToArray();
             // Each frame records one row per actor. No frame starts beyond this batch until its outcomes are drained.
             _bufferedOutcomes = new CoverageGpuOutcome[checked(_pending.Length * block.Actors)];
+            if (_timerLayout != CoveragePerfTimerLayout.CpuOnly && _device.Capabilities.SupportsTimestamps
+                && _device.Capabilities.SupportsCompletionFences && _device.Diagnostics.SoftwareAdapter != true)
+                _timestamps = new(_device, checked(block.WarmupFrames + block.MeasuredFrames), _timerLayout, PublishTimestamps);
             Typical.Scene.CoverageAllocationObserverForTests = entering => Child(entering, resolution: true);
             Typical.Scene.CoverageSurfaceAllocationObserverForTests = entering => Child(entering, resolution: false);
             _device.PresentEntry = PresentEntry;
         }
         catch
         {
-            _commands?.Dispose(); Typical?.Dispose(); _target?.Dispose(); _colour?.Dispose(); _host.Release();
+            _timestamps?.Dispose(); _commands?.Dispose(); Typical?.Dispose(); _target?.Dispose(); _colour?.Dispose(); _host.Release();
             throw;
         }
     }
@@ -90,6 +96,8 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
     public void Frame(int frameIndex, ref CoveragePerfFrameSample sample)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_timerLayout != CoveragePerfTimerLayout.CpuOnly && _timestamps is null)
+            throw new NotSupportedException("The device cannot establish GPU timestamp proof.");
         if (frameIndex != _nextFrame || _pendingCount == _pending.Length)
             throw new InvalidOperationException("Frames must be sequential and completed in fixed batches.");
         _frameIndex = frameIndex;
@@ -143,11 +151,19 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
 
     void Record(Frame frame)
     {
+        if (_timestamps is not null && !_timestamps.TryBegin(frame.Commands, frame.Submission, _frameIndex, _timerLayout))
+            throw new InvalidOperationException(_timestamps.Failure);
         Typical.Scene.RenderInternal(frame.Commands, CoveragePerfTypicalScene.Width, CoveragePerfTypicalScene.Height, _target);
         Observe("render");
         // Registration is required even for zero rows, because it publishes the production history callbacks.
         Typical.Scene.RecordCoverageReadbacks(frame.Commands, frame.Submission);
         Observe("readbacks");
+        if (_timestamps?.ActivePool is { } pool)
+        {
+            if (_timerLayout == CoveragePerfTimerLayout.Phases) frame.Commands.WriteTimestamp(pool, 3);
+            ((IGpuCommandListTimestampEnd)frame.Commands).FinishTimestampsOnEnd(pool,
+                _timerLayout == CoveragePerfTimerLayout.Total ? 1u : 4u);
+        }
     }
 
     void PresentEntry()
@@ -162,6 +178,8 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
 
     void Child(bool entering, bool resolution)
     {
+        if (resolution && _timerLayout == CoveragePerfTimerLayout.Phases && _timestamps?.ActivePool is { } pool)
+            _commands.WriteTimestamp(pool, entering ? 1u : 2u);
         long now = _clock.Now();
         if (resolution)
         {
@@ -214,6 +232,7 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
         HarnessDrainTicks += checked(_clock.Now() - start); HarnessDrains++;
         BufferOutcomes();
         MatchOutcomes();
+        _timestamps?.PollCompleted();
         for (int i = 0; i < samples.Length; i++)
         {
             var pending = _pending[i];
@@ -221,9 +240,17 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
             samples[i].DeviceComplete = _host.Synthetic || !Typical.Covered || pending.Completed == Typical.Actors.Length;
             samples[i].Fallback |= pending.Fallback;
             if (!samples[i].DeviceComplete) samples[i].Error = "Coverage device outcomes remain incomplete after the batch drain.";
+            samples[i].Gpu = pending.Gpu;
+            samples[i].Error ??= _timestamps?.Failure;
         }
         _pendingCount = 0;
-        // Task 6 fills deferred timestamp results here. Null GPU evidence is deliberately preserved until then.
+    }
+
+    void PublishTimestamps(int frameIndex, CoveragePerfGpuResult result)
+    {
+        for (int i = 0; i < _pendingCount; i++)
+            if (_pending[i].FrameIndex == frameIndex) { _pending[i].Gpu = result; return; }
+        throw new InvalidOperationException("A GPU timestamp result did not match its retained frame.");
     }
 
     public CoveragePerfSessionInfo ReadInfo() => new()
@@ -234,6 +261,7 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
         Adapter = _device.Capabilities.DeviceName ?? "unavailable",
         SoftwareAdapter = _device.Diagnostics.SoftwareAdapter ?? false,
         TimestampSupported = _device.Capabilities.SupportsTimestamps,
+        TimestampPeriodNanoseconds = _timestamps?.FirstReadyPeriod,
         OrdinarySkinningRoute = CoveragePerfManifest.OrdinarySkinningRoute,
         CoveredSurfaceRoute = CoveragePerfManifest.CoveredSurfaceRoute,
         FixtureFingerprint = Typical.FixtureFingerprint,
@@ -249,7 +277,7 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
     {
         if (_disposed) return;
         _disposed = true;
-        try { _frame.DisposeSubmission(); }
+        try { _frame.DisposeSubmission(); _timestamps?.Dispose(); }
         finally
         {
             try { _commands.Dispose(); Typical.Dispose(); _target.Dispose(); _colour.Dispose(); }
@@ -263,9 +291,10 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
         internal readonly CoverageGpuOutcome[] Outcomes = new CoverageGpuOutcome[actors];
         internal int FrameIndex, Completed;
         internal bool Fallback;
+        internal CoveragePerfGpuResult? Gpu;
         internal void Begin(int index, CoveragePerfTypicalScene scene)
         {
-            FrameIndex = index; Completed = 0; Fallback = false;
+            FrameIndex = index; Completed = 0; Fallback = false; Gpu = null;
             if (!scene.Covered) return;
             for (int i = 0; i < _actors.Length; i++)
             {

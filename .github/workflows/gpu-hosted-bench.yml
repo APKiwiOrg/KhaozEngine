@@ -306,12 +306,20 @@ jobs:
           set -o pipefail
           dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "$FILTER" --logger "console;verbosity=detailed" 2>&1 | tee bench-output.log
 
+      # Two uploads keep an ordinary bench's artifact identical to before: a second search path, even an absent one,
+      # would move bench-output.log out of the archive root.
       - name: Upload the output
-        if: always()
+        if: always() && inputs.coverage-perf-unit == ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: gpu-hosted-bench-${{ matrix.leg }}
-          path: |
-            bench-output.log
-            ${{ runner.temp }}/coverage-perf
+          path: bench-output.log
+          if-no-files-found: warn
+
+      - name: Upload the coverage evidence
+        if: always() && inputs.coverage-perf-unit != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: gpu-hosted-bench-${{ matrix.leg }}
+          path: ${{ runner.temp }}/coverage-perf
           if-no-files-found: warn

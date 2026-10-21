@@ -158,8 +158,16 @@ public sealed class CoveragePerfWorkflowTests
         foreach (string fact in new[] { "nvidia-smi", "device-report.log", "workload-sha.txt", "notExecuted", "executed", "passed", "failed",
             "khaozengine.coverage-perf-report/1", "unitId", "returnedByRun", "finalUnitPublished", "authorizationCommitSha", ".json", ".md", ".trx" })
             Assert.Contains(fact, text, StringComparison.Ordinal);
-        string upload = CoveragePerfWorkflowText.After(text, "      - name: Upload the output");
-        Assert.Contains("if: always()", upload, StringComparison.Ordinal);
-        Assert.Contains("${{ runner.temp }}/coverage-perf", upload, StringComparison.Ordinal);
+        // Ordinary benches keep main's exact single-path upload, so bench-output.log stays at the artifact root.
+        string upload = CoveragePerfWorkflowText.Step(text, "Upload the output");
+        Assert.Contains("        if: always() && inputs.coverage-perf-unit == ''\n", upload, StringComparison.Ordinal);
+        Assert.Contains("          path: bench-output.log\n", upload, StringComparison.Ordinal);
+        Assert.DoesNotContain("runner.temp", upload, StringComparison.Ordinal);
+        string evidence = CoveragePerfWorkflowText.Step(text, "Upload the coverage evidence");
+        Assert.Contains("        if: always() && inputs.coverage-perf-unit != ''\n", evidence, StringComparison.Ordinal);
+        Assert.Contains("          path: ${{ runner.temp }}/coverage-perf\n", evidence, StringComparison.Ordinal);
+        Assert.DoesNotContain("bench-output.log", evidence, StringComparison.Ordinal);
+        foreach (string step in new[] { upload, evidence })
+            Assert.Contains("          name: gpu-hosted-bench-${{ matrix.leg }}\n", step, StringComparison.Ordinal);
     }
 }

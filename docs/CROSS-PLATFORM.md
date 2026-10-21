@@ -943,7 +943,9 @@ untouched.
 `gpu-hosted-bench.yml` is a manual, paid NVIDIA T4 bench with Windows Direct3D 11, Windows Vulkan and
 Linux Vulkan legs. An empty `coverage-perf-unit` retains its existing filtered Render.Tests behavior,
 including the default filter and 60-minute limit. GRID setup, the NVIDIA-only Linux Vulkan ICD and
-the adapter checks still run before any measurement.
+the adapter checks still run before any measurement. The partner T4 images ship no PowerShell 7, so measurement mode first
+installs PowerShell 7.6.7 from its official release, checks the published SHA-256 and puts it first on
+`PATH`. Ordinary benches skip that install.
 
 A separately approved coverage unit selects exactly one leg with `legs`, never `all`. Supply
 `coverage-perf-unit` (1 to 64 lowercase ASCII letters, digits or hyphens), `coverage-perf-manifest-sha256`

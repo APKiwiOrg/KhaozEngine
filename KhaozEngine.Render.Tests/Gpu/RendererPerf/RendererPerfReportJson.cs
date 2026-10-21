@@ -64,6 +64,7 @@ internal static class RendererPerfReportJson
         Metric(publication.EstimatedCostUsd);
         Metrics(report.Assessment.Metrics);
         Metrics(report.Memory.Process);
+        ValidateWorkModels(report.Assessment.WorkModels);
         if (report.Assessment.ValidForPromotion)
         {
             RendererPerfRuntimePolicy runtime = report.Manifest.Runtime;
@@ -136,25 +137,50 @@ internal static class RendererPerfReportJson
 
     static void ValidateFrame(RendererPerfFrameSample frame, int sequenceIndex, HashSet<int> frameIds)
     {
-        Metric(frame.GpuFrame);
         Metrics(frame.Metrics);
         Require(frame.FrameId >= 0 && frameIds.Add(frame.FrameId) && frame.SequenceIndex == sequenceIndex
             && frame.CpuFrequency > 0 && frame.CpuEndTicks >= frame.CpuStartTicks, "Sample", "Frame identity, fixed sequence or monotonic CPU interval is invalid.");
         Require(frame.GpuPeriodNs == null || double.IsFinite(frame.GpuPeriodNs.Value) && frame.GpuPeriodNs > 0,
             "Sample", "GPU period must be finite and positive or unavailable.");
-        Require(frame.GpuFrame.Status != RendererPerfMetricStatus.Available || frame.GpuElapsedTicks != null && frame.GpuPeriodNs != null,
-            "Sample", "Available GPU time needs raw elapsed ticks and a period.");
+        Duration(frame.GpuFrame, frame.GpuElapsedTicks, frame.GpuPeriodNs, "Frame");
         Require(frame.Passes.Length <= 255 && frame.Passes.Select(p => (p.Id, p.Occurrence)).Distinct().Count() == frame.Passes.Length,
             "Sample", "Scope occurrences are duplicated or exceed the 512-query layout capacity.");
         foreach (RendererPerfPassSample pass in frame.Passes)
         {
-            Metric(pass.Duration);
+            Duration(pass.Duration, pass.ElapsedTicks, frame.GpuPeriodNs, $"Pass '{pass.Id}/{pass.Occurrence}'");
             Require(Text(pass.Id) && pass.Occurrence >= 0 && pass.BeginMarker >= 1 && pass.BeginMarker < pass.EndMarker
                 && pass.EndMarker <= 510 && (pass.ParentId == null) == (pass.ParentOccurrence == null), "Sample", "Pass key, parent or reserved marker pair is invalid.");
         }
         foreach (RendererPerfCpuSpan span in frame.CpuPhases)
             Require(Text(span.Id) && span.StartTicks >= frame.CpuStartTicks && span.EndTicks >= span.StartTicks
                 && span.EndTicks <= frame.CpuEndTicks, "Sample", "CPU child is outside the frame wall interval.");
+    }
+
+    static void ValidateWorkModels(ImmutableArray<RendererPassWorkModel> models)
+    {
+        var identities = new HashSet<(string, int)>();
+        foreach (RendererPassWorkModel model in models)
+        {
+            Require(Text(model.PassId) && model.Occurrence >= 0 && identities.Add((model.PassId, model.Occurrence)),
+                "Metric", "Work models require unique nonempty pass IDs and nonnegative occurrences.");
+            Require(model.SerialDependencies.All(Text) && model.MissingEvidence.All(Text),
+                "Metric", "Work-model dependency IDs and missing-evidence reasons cannot be empty.");
+            foreach (var pair in model.Components)
+            {
+                Require(Text(pair.Key), "Metric", "Work-model component key is missing.");
+                if (pair.Value == null)
+                    throw new RendererPerfProtocolException("Metric", $"Work-model component '{pair.Key}' is missing. Use unavailable bounds with a reason.");
+                RendererPerfWorkRange range = pair.Value;
+                Require(Text(range.Unit) && Text(range.Source) && range.Provenance is "exact" or "estimated" or "unknown",
+                    "Metric", $"Work-model component '{pair.Key}' requires units, source and exact/estimated/unknown provenance.");
+                Require((range.Minimum == null || double.IsFinite(range.Minimum.Value) && range.Minimum >= 0)
+                    && (range.Maximum == null || double.IsFinite(range.Maximum.Value) && range.Maximum >= 0)
+                    && (range.Minimum == null || range.Maximum == null || range.Minimum <= range.Maximum),
+                    "Metric", $"Work-model component '{pair.Key}' bounds must be finite, nonnegative and ordered when present.");
+                Require(range.Minimum != null && range.Maximum != null || Text(range.Reason),
+                    "Metric", $"Work-model component '{pair.Key}' requires a reason for unavailable bounds.");
+            }
+        }
     }
 
     static void ValidateNative(RendererPerfReport report)
@@ -211,6 +237,20 @@ internal static class RendererPerfReportJson
             Require(Text(pair.Key), "Metric", "Metric key is missing.");
             Metric(pair.Value);
         }
+    }
+
+    static void Duration(RendererPerfMetric metric, ulong? elapsedTicks, double? periodNs, string scope)
+    {
+        Metric(metric);
+        if (metric.Status != RendererPerfMetricStatus.Available) return;
+        Require(metric.Unit == "ns" && elapsedTicks != null && periodNs != null
+            && double.IsFinite(periodNs.Value) && periodNs > 0,
+            "Sample", $"{scope} GPU duration requires nanoseconds, raw elapsed ticks and a finite positive period.");
+        double expected = elapsedTicks!.Value * periodNs!.Value;
+        // Relative tolerance covers conversion roundoff without treating a small nonzero duration as zero.
+        Require(double.IsFinite(expected) && metric.Value >= 0
+            && Math.Abs(metric.Value!.Value - expected) <= expected * 1e-12,
+            "Sample", $"{scope} GPU duration must be nonnegative and match raw elapsed ticks times period within relative tolerance 1e-12.");
     }
 
     static void Metric(RendererPerfMetric? metric)

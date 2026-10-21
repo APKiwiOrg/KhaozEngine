@@ -268,6 +268,222 @@ public sealed class RendererPerfProtocolTests
         Assert.Throws<RendererPerfProtocolException>(() => RendererPerfReportJson.Parse(Encoding.UTF8.GetBytes(json.ToJsonString())));
     }
 
+    [Theory]
+    [InlineData("negative")]
+    [InlineData("inconsistent")]
+    [InlineData("wrong-unit")]
+    [InlineData("conversion-overflow")]
+    [InlineData("tiny-nonzero-rounded-to-zero")]
+    [InlineData("outside-rounding-tolerance")]
+    public void Invalid_outer_gpu_durations_cannot_be_promoted(string fault)
+    {
+        var json = JsonNode.Parse(RendererPerfReportJson.Serialize(CompleteReport()))!.AsObject();
+        JsonNode frame = json["blocks"]![0]!["measured"]![0]!;
+        switch (fault)
+        {
+            case "negative": frame["gpuFrame"]!["value"] = -1; break;
+            case "inconsistent": frame["gpuFrame"]!["value"] = 11; break;
+            case "wrong-unit": frame["gpuFrame"]!["unit"] = "ms"; break;
+            case "conversion-overflow": frame["gpuPeriodNs"] = 1e308; break;
+            case "tiny-nonzero-rounded-to-zero":
+                frame["gpuElapsedTicks"] = 1;
+                frame["gpuPeriodNs"] = 1e-300;
+                frame["gpuFrame"]!["value"] = 0;
+                break;
+            case "outside-rounding-tolerance": frame["gpuFrame"]!["value"] = 10.00000000002; break;
+        }
+        RendererPerfProtocolException error = Assert.Throws<RendererPerfProtocolException>(
+            () => RendererPerfReportJson.Parse(Encoding.UTF8.GetBytes(json.ToJsonString())));
+        Assert.Equal("Sample", error.Code);
+        Assert.False(string.IsNullOrWhiteSpace(error.Message));
+    }
+
+    [Theory]
+    [InlineData(10.000000000005, 10ul, 1.0)]
+    [InlineData(3.0, 12ul, 0.25)]
+    [InlineData(1e-300, 1ul, 1e-300)]
+    public void Outer_gpu_duration_retains_valid_raw_conversion(double duration, ulong ticks, double period)
+    {
+        var json = JsonNode.Parse(RendererPerfReportJson.Serialize(CompleteReport()))!.AsObject();
+        JsonNode frame = json["blocks"]![0]!["measured"]![0]!;
+        frame["gpuFrame"]!["value"] = duration;
+        frame["gpuElapsedTicks"] = ticks;
+        frame["gpuPeriodNs"] = period;
+        RendererPerfReport restored = RendererPerfReportJson.Parse(Encoding.UTF8.GetBytes(json.ToJsonString()));
+        Assert.True(restored.Assessment.ValidForPromotion);
+        Assert.Equal(duration, restored.Blocks[0].Measured[0].GpuFrame.Value);
+        Assert.Equal(ticks, restored.Blocks[0].Measured[0].GpuElapsedTicks);
+        Assert.Equal(period, restored.Blocks[0].Measured[0].GpuPeriodNs);
+    }
+
+    [Fact]
+    public void Generic_metrics_preserve_signed_values()
+    {
+        RendererPerfReport report = PartialReport();
+        report = report with
+        {
+            Assessment = report.Assessment with
+            {
+                Metrics = report.Assessment.Metrics.Add("delta", new(-5, "ns", "comparison", RendererPerfMetricStatus.Available, null))
+            }
+        };
+        RendererPerfReport restored = RendererPerfReportJson.Parse(RendererPerfReportJson.Serialize(report));
+        Assert.Equal(-5, restored.Assessment.Metrics["delta"].Value);
+    }
+
+    [Theory]
+    [InlineData("missing-ticks")]
+    [InlineData("missing-period")]
+    [InlineData("inconsistent")]
+    [InlineData("negative")]
+    [InlineData("wrong-unit")]
+    [InlineData("conversion-overflow")]
+    public void Available_pass_duration_requires_raw_timing(string fault)
+    {
+        var json = JsonNode.Parse(RendererPerfReportJson.Serialize(CompleteReport()))!.AsObject();
+        JsonNode frame = json["blocks"]![1]!["measured"]![0]!;
+        JsonNode pass = JsonSerializer.SerializeToNode(new RendererPerfPassSample("opaque", 0, null, null, 1, 2, 10,
+            new(10, "ns", "pass timestamp pair", RendererPerfMetricStatus.Available, null)), RendererPerfManifest.JsonOptions)!;
+        ((JsonArray)frame["passes"]!).Add(pass);
+        switch (fault)
+        {
+            case "missing-ticks": pass["elapsedTicks"] = null; break;
+            case "missing-period": frame["gpuPeriodNs"] = null; break;
+            case "inconsistent": pass["duration"]!["value"] = 11; break;
+            case "negative": pass["duration"]!["value"] = -1; break;
+            case "wrong-unit": pass["duration"]!["unit"] = "ms"; break;
+            case "conversion-overflow": frame["gpuPeriodNs"] = 1e308; break;
+        }
+        if (fault is "missing-period" or "conversion-overflow")
+        {
+            frame["gpuFrame"]!["value"] = null;
+            frame["gpuFrame"]!["status"] = "invalid";
+            frame["gpuFrame"]!["reason"] = "outer query invalid";
+            json["assessment"]!["validForPromotion"] = false;
+        }
+        RendererPerfProtocolException error = Assert.Throws<RendererPerfProtocolException>(
+            () => RendererPerfReportJson.Parse(Encoding.UTF8.GetBytes(json.ToJsonString())));
+        Assert.Equal("Sample", error.Code);
+        Assert.False(string.IsNullOrWhiteSpace(error.Message));
+    }
+
+    [Fact]
+    public void Available_pass_duration_uses_retained_frame_period()
+    {
+        RendererPerfReport report = CompleteReport();
+        RendererPerfBlockReport block = report.Blocks[1];
+        RendererPerfFrameSample frame = block.Measured[0] with
+        {
+            GpuPeriodNs = 0.25,
+            GpuFrame = block.Measured[0].GpuFrame with { Value = 2.5 },
+            Passes = [new("opaque", 0, null, null, 1, 2, 8, new(2, "ns", "pass timestamp pair", RendererPerfMetricStatus.Available, null))]
+        };
+        report = report with { Blocks = report.Blocks.SetItem(1, block with { Measured = block.Measured.SetItem(0, frame) }) };
+        RendererPerfReport restored = RendererPerfReportJson.Parse(RendererPerfReportJson.Serialize(report));
+        Assert.True(restored.Assessment.ValidForPromotion);
+        Assert.Equal(8ul, restored.Blocks[1].Measured[0].Passes[0].ElapsedTicks);
+        Assert.Equal(0.25, restored.Blocks[1].Measured[0].GpuPeriodNs);
+        Assert.Equal(2, restored.Blocks[1].Measured[0].Passes[0].Duration.Value);
+    }
+
+    [Theory]
+    [InlineData((int)RendererPerfMetricStatus.Unsupported)]
+    [InlineData((int)RendererPerfMetricStatus.Invalid)]
+    [InlineData((int)RendererPerfMetricStatus.BelowResolution)]
+    [InlineData((int)RendererPerfMetricStatus.NotExecuted)]
+    public void Unavailable_pass_timing_preserves_status_and_reason(int statusValue)
+    {
+        var status = (RendererPerfMetricStatus)statusValue;
+        RendererPerfReport report = CompleteReport();
+        RendererPerfBlockReport block = report.Blocks[1];
+        RendererPerfFrameSample frame = block.Measured[0] with
+        {
+            Passes = [new("opaque", 0, null, null, 1, 2, null, new(null, "ns", "pass timestamp pair", status, "no usable pass duration"))]
+        };
+        report = report with
+        {
+            Blocks = report.Blocks.SetItem(1, block with { Measured = block.Measured.SetItem(0, frame) }),
+            Assessment = report.Assessment with { ValidForPromotion = false, Reasons = ["pass timing unavailable"] }
+        };
+        RendererPerfReport restored = RendererPerfReportJson.Parse(RendererPerfReportJson.Serialize(report));
+        RendererPerfPassSample pass = restored.Blocks[1].Measured[0].Passes[0];
+        Assert.Null(pass.ElapsedTicks);
+        Assert.Null(pass.Duration.Value);
+        Assert.Equal(status, pass.Duration.Status);
+        Assert.Equal("no usable pass duration", pass.Duration.Reason);
+    }
+
+    [Theory]
+    [InlineData("null-component")]
+    [InlineData("unexplained-absent-bounds")]
+    [InlineData("missing-minimum")]
+    [InlineData("missing-maximum")]
+    [InlineData("reversed-bounds")]
+    [InlineData("negative-minimum")]
+    [InlineData("negative-maximum")]
+    [InlineData("nonfinite-minimum")]
+    [InlineData("nonfinite-maximum")]
+    [InlineData("missing-unit")]
+    [InlineData("missing-source")]
+    [InlineData("missing-provenance")]
+    [InlineData("invalid-provenance")]
+    [InlineData("missing-component-key")]
+    [InlineData("missing-pass-id")]
+    [InlineData("negative-occurrence")]
+    [InlineData("duplicate-model")]
+    [InlineData("missing-dependency-id")]
+    [InlineData("missing-evidence-reason")]
+    public void Invalid_work_model_components_are_rejected(string fault)
+    {
+        RendererPerfWorkRange component = new(10, 20, "bytes", "public recipe", "estimated", null);
+        component = fault switch
+        {
+            "null-component" => null!,
+            "unexplained-absent-bounds" => component with { Minimum = null, Maximum = null },
+            "missing-minimum" => component with { Minimum = null },
+            "missing-maximum" => component with { Maximum = null },
+            "reversed-bounds" => component with { Minimum = 21 },
+            "negative-minimum" => component with { Minimum = -1 },
+            "negative-maximum" => component with { Minimum = -2, Maximum = -1 },
+            "nonfinite-minimum" => component with { Minimum = double.NaN },
+            "nonfinite-maximum" => component with { Maximum = double.PositiveInfinity },
+            "missing-unit" => component with { Unit = " " },
+            "missing-source" => component with { Source = " " },
+            "missing-provenance" => component with { Provenance = " " },
+            "invalid-provenance" => component with { Provenance = "measured" },
+            _ => component
+        };
+        var model = new RendererPassWorkModel(fault == "missing-pass-id" ? " " : "opaque",
+            fault == "negative-occurrence" ? -1 : 0,
+            ImmutableDictionary<string, RendererPerfWorkRange>.Empty.Add(fault == "missing-component-key" ? " " : "bytes", component),
+            fault == "missing-dependency-id" ? [" "] : [], fault == "missing-evidence-reason" ? [" "] : []);
+        RendererPerfReport report = PartialReport();
+        report = report with { Assessment = report.Assessment with { WorkModels = fault == "duplicate-model" ? [model, model] : [model] } };
+        RendererPerfProtocolException error = Assert.Throws<RendererPerfProtocolException>(() => RendererPerfReportJson.Serialize(report));
+        Assert.Equal(fault is "nonfinite-minimum" or "nonfinite-maximum" ? "Json" : "Metric", error.Code);
+        Assert.False(string.IsNullOrWhiteSpace(error.Message));
+    }
+
+    [Theory]
+    [InlineData(0.0, 0.0, "exact", null)]
+    [InlineData(10.0, 20.0, "estimated", null)]
+    [InlineData(null, null, "unknown", "traffic unavailable")]
+    [InlineData(10.0, null, "estimated", "maximum traffic unavailable")]
+    [InlineData(null, 20.0, "unknown", "minimum traffic unavailable")]
+    public void Work_model_components_preserve_ranges_and_missing_evidence(double? minimum, double? maximum, string provenance, string? reason)
+    {
+        RendererPerfReport report = PartialReport();
+        var component = new RendererPerfWorkRange(minimum, maximum, "bytes", "public recipe", provenance, reason);
+        var model = new RendererPassWorkModel("opaque", 0,
+            ImmutableDictionary<string, RendererPerfWorkRange>.Empty.Add("bytes", component), ["upload"],
+            reason == null ? [] : [reason]);
+        report = report with { Assessment = report.Assessment with { WorkModels = [model] } };
+        RendererPerfReport restored = RendererPerfReportJson.Parse(RendererPerfReportJson.Serialize(report));
+        Assert.Equal(component, restored.Assessment.WorkModels[0].Components["bytes"]);
+        Assert.Equal(new[] { "upload" }, restored.Assessment.WorkModels[0].SerialDependencies.ToArray());
+        Assert.Equal(reason == null ? [] : new[] { reason }, restored.Assessment.WorkModels[0].MissingEvidence.ToArray());
+    }
+
     static RendererPerfReport CompleteReport()
     {
         RendererPerfReport report = PartialReport();

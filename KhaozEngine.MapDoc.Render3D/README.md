@@ -74,9 +74,17 @@ retain annotation identities without adding visible labels. Register every part 
 recording. Geometry is already in metres. Effective placement poses compose once in anchor-local space.
 The typed recorder and `PropRenderer.DrawNative` share N-tier selection and complementary coverage.
 
-Each selected HLOD layer merges its frozen placement inventory. Its cluster identity includes that inventory,
-transforms, closure and weld cell, so differing scoped subsets cannot alias the same merged owner.
-`NativeMapPlacements.PrepareCluster` validates the scene, frozen routes and roof exclusion before invoking
+Each selected HLOD layer partitions its frozen inventory by the effective origin's document storage cell.
+Cell size is the document storage tile size, independent of the render frame. Assignment floors the precise
+binary64 origin before any absolute float conversion. Keys are `(layer, cell X, cell Z, plane 0)`. The cluster
+anchor is the whole-metre cell anchor at world-datum Y zero, with any fractional cell origin retained locally.
+Merged vertices round once after their bounded cell translation. Content digests retain inventory, transforms,
+closure and weld settings separately from the stable spatial owner key.
+
+The shared `PropLayer.PlacementLayer` native overload freezes the actual instance inventory, every tier and
+caller thresholds. Both individual fallback and accepted proxies consume that shared layer. The released
+per-cluster centre-distance coverage remains unchanged and uses the complete cell area. Each cell is independent.
+`NativeMapPlacements.PrepareCluster` validates the scene, frozen routes, cell domain, layer inventory and roof exclusion before invoking
 the internal shared CPU builder. That lower builder has no building intent and makes no independent roof promise.
 Ordinary roofs retain separate resources. Individuals remain active until `AcceptCluster` receives the exact
 prepared build and the externally published mesh. It retains metadata only and never uploads or frees that handle.

@@ -13,7 +13,7 @@ namespace KhaozEngine.Tests.MapDoc;
 
 internal static partial class NativeRenderAssetFixtures
 {
-    static byte[] PlacementLod(int tier)
+    static byte[] PlacementLod(int tier, bool originVertex = false)
     {
         byte[] glb = Glb();
         int length = BinaryPrimitives.ReadInt32LittleEndian(glb.AsSpan(12));
@@ -22,15 +22,17 @@ internal static partial class NativeRenderAssetFixtures
         float[] positions = tier == 1
             ? new float[] { -5, 3, 4, 5, 3, 4, -5, 10, 4, -5, 6, 4, 5, 6, 4, -5, 12, 4 }
             : new float[] { -8, 3, 4, 8, 3, 4, -8, 16, 4, -8, 6, 4, 8, 6, 4, -8, 18, 4 };
+        float extent = tier == 1 ? 5 : 8;
+        if (originVertex) positions[0] = 0;
         for (int i = 0; i < positions.Length; i++) BinaryPrimitives.WriteSingleLittleEndian(bin.AsSpan(i * 4), positions[i]);
-        root["accessors"]![0]!["min"] = new JsonArray(positions[0], 3, 4);
-        root["accessors"]![0]!["max"] = new JsonArray(-positions[0], positions[7], 4);
-        root["accessors"]![1]!["min"] = new JsonArray(positions[0], 6, 4);
-        root["accessors"]![1]!["max"] = new JsonArray(-positions[0], positions[16], 4);
+        root["accessors"]![0]!["min"] = new JsonArray(-extent, 3, 4);
+        root["accessors"]![0]!["max"] = new JsonArray(extent, positions[7], 4);
+        root["accessors"]![1]!["min"] = new JsonArray(-extent, 6, 4);
+        root["accessors"]![1]!["max"] = new JsonArray(extent, positions[16], 4);
         return Pack(root, bin);
     }
 
-    internal static MapAssetClosure Placements(bool sharedRoofAsset = false)
+    internal static MapAssetClosure Placements(bool sharedRoofAsset = false, bool originVertex = false)
     {
         var source = new Source();
         var resources = new JsonArray();
@@ -46,7 +48,7 @@ internal static partial class NativeRenderAssetFixtures
         }
         Resource("mesh", "Mesh", Glb());
         Resource("lod-1", "Lod", PlacementLod(1));
-        Resource("lod-2", "Lod", PlacementLod(2));
+        Resource("lod-2", "Lod", PlacementLod(2, originVertex));
         var children = new List<MapPrefabChild>();
         foreach (var (id, asset, x, y) in new[] { ("leaf-a", "prop-a", .125f, .25f), ("leaf-b", "prop-a", 2f, 0f),
             ("leaf-c", "prop-b", 4f, 0f), ("roof-a", sharedRoofAsset ? "prop-a" : "cap-a", 0f, 3f),

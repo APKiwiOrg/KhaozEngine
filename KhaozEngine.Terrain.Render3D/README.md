@@ -262,8 +262,12 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
 - `PropRenderer.DrawNative` accepts `NativePropInstance` matrices with exact `RenderAnchor`s and every
   `NativePropLod` part. Caller distances select N tiers through the same boundary and complementary dissolve
   kernels as the released prop overloads. Empty distances preserve base-only rendering.
-  `NativePropClusterRequest` carries the same inventory to the internal CPU builder. The MapDoc adapter must
-  validate routing and effective roof exclusion first. `ApplyNative` retains only publication metadata and an
+  The additive `PropLayer.PlacementLayer(instances, lods, drawRadius, lodDistances, ...)` overload freezes its
+  `NativePlacements`, `NativeLods` and `LodDistances`. All value-copy methods preserve that inventory.
+  `PropRenderer.DrawNative(scene, layer, focus)` and native typed recording consume the same frozen layer,
+  including its casting policy. These native render-only layers do not enter the legacy analytic chunk sink.
+  `NativePropClusterRequest` carries the same per-cell inventory to the internal CPU builder. The MapDoc adapter
+  validates routing, the document storage-cell domain and effective roof exclusion first. `ApplyNative` retains only publication metadata and an
   externally owned accepted mesh. Native typed recording consumes the shared HLOD coverage kernel.
   Native handles are never uploaded or freed by this owner. Legacy `Apply` retains its existing ownership.
 - **`PropClusterRenderer`** - the shared runtime owner for terrain and TileWorld prop clusters.

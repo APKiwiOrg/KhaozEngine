@@ -105,7 +105,7 @@ public sealed class NativeMapPlacementTests
                 routing.Entries["leaf-a"]);
             Assert.Equal(5, routing.Entries.Count);
             using var batch = NativeMapPlacements.Prepare(scene, assets, policies[i], routing);
-            Assert.Equal(i == 2 ? 1 : 0, batch.Clusters.Count);
+            Assert.Equal(i == 2 ? 2 : 0, batch.Clusters.Count);
             Assert.Equal(i == 1 ? 0 : 2, Record(batch).Draws.Count(d => d.Resource.Key.OwnerId == "leaf-a"));
         }
         Assert.Equal(3, partitions.Select(p => p.PolicyDigest).Distinct().Count());
@@ -135,7 +135,7 @@ public sealed class NativeMapPlacementTests
         var closure = NativeRenderAssetFixtures.Placements(); var scene = Scene(closure);
         using var assets = Assets(closure); var policy = Policy(true); var routing = Route(scene, policy);
         using var batch = NativeMapPlacements.Prepare(scene, assets, policy, routing);
-        var request = Assert.Single(batch.Clusters).Request;
+        var request = batch.Clusters[0].Request;
         var roof = scene.Placements.Single(p => p.PlacementId == "roof-a");
         var injected = new NativePropInstance(roof.PlacementId, roof.NumericId, roof.AssetId, Matrix4x4.Identity, request.Anchor);
         var attack = new NativePropClusterRequest(request.Key, request.Generation, request.Area, request.Layer,
@@ -153,30 +153,41 @@ public sealed class NativeMapPlacementTests
         var closure = NativeRenderAssetFixtures.Placements(); var scene = Scene(closure);
         using var assets = Assets(closure); var policy = Policy(true); var routing = Route(scene, policy, "prop-b");
         using var batch = NativeMapPlacements.Prepare(scene, assets, policy, routing);
-        var build = Assert.Single(batch.Clusters);
-        Assert.Equal(new[] { "leaf-a", "leaf-b" }, build.RepresentedIds);
+        Assert.Equal(2, batch.Clusters.Count);
+        Assert.Equal(new[] { "leaf-a", "leaf-b" }, batch.Clusters.SelectMany(c => c.RepresentedIds).Order());
         Assert.Equal(new[] { "room-a", "room-b" }, scene.BuildingIntent.RoofLinks.SelectMany(l => l.Rooms.Select(r => r.Id)).Order());
-        Assert.Equal(4, build.MergedMesh.TriangleCount);
-        Assert.All(build.MergedMesh.Vertices, v => Assert.True(v.Position.Y < 3));
-        batch.AcceptCluster(build.Request.Key, build, new MeshHandle(90));
-        var center = (build.Request.Area.MinX + build.Request.Area.MaxX) * .5f;
-        var centerZ = (build.Request.Area.MinZ + build.Request.Area.MaxZ) * .5f;
-        var frame = Frame with { Focus = new(WorldFrame.Origin, new(center + build.Request.Anchor.X + 30, 0, centerZ + build.Request.Anchor.Z)) };
-        var set = Record(batch, frame);
-        var hlod = set.Draws.Single(d => d.Resource.Key.PartId == "hlod");
-        Assert.Equal(.5f, hlod.Rigid!.Value.Dissolve); Assert.True(hlod.Rigid.Value.InvertShadowDissolve);
-        Assert.Equal(0, hlod.Rigid.Value.DissolveComplement);
-        using var shared = PropClusterRenderer.CreateCpuOnly();
-        shared.ApplyNative(build.Request.Key, build, new MeshHandle(90));
-        var localFocus = new Vector3(center + 30, 0, centerZ);
-        Assert.True(shared.TryGetNativeEmission(build.Request.Key, localFocus, out var coverage, out var emitted));
-        Assert.True(coverage.DrawsMerged); Assert.Equal(new MeshHandle(90), emitted.Mesh);
-        Assert.Equal(hlod.Rigid.Value, new MapRigidFrame(emitted.Tint, emitted.Material, emitted.Dissolve,
-            emitted.DissolveEdgeWidth, emitted.DissolveEdgeColor, emitted.InvertShadowDissolve, emitted.DissolveComplement, emitted.Motion));
-        var solid = PropClusterRenderer.MergedDraw(new MeshHandle(90), build.Request.Layer, 0, true);
-        Assert.False(solid.InvertShadowDissolve);
-        Assert.Equal(4, set.Draws.Count(d => d.Resource.Key.Kind == MapRenderKind.Roof));
-        Assert.All(set.Draws.Where(d => d.Resource.Key.OwnerId is "leaf-a" or "leaf-b"), d => Assert.Equal(.5f, d.Rigid!.Value.Dissolve));
+        Assert.Equal(4, batch.Clusters.Sum(c => c.MergedMesh.TriangleCount));
+        foreach (var build in batch.Clusters)
+        {
+            Assert.All(build.MergedMesh.Vertices, v => Assert.True(v.Position.Y < 3));
+            Assert.Equal(build.RepresentedIds, build.Request.Layer.NativePlacements!.Select(i => i.Id));
+            Assert.Equal(new float[] { 10, 20 }, build.Request.Layer.LodDistances);
+            Assert.Equal(new[] { 0, 1, 2 }, build.Request.Layer.NativeLods!["prop-a"].Select(l => l.Index));
+            batch.AcceptCluster(build.Request.Key, build, new MeshHandle(90));
+        }
+        foreach (var build in batch.Clusters)
+        {
+            var center = (build.Request.Area.MinX + build.Request.Area.MaxX) * .5f;
+            var centerZ = (build.Request.Area.MinZ + build.Request.Area.MaxZ) * .5f;
+            var frame = Frame with { Focus = new(WorldFrame.Origin, new(center + build.Request.Anchor.X + 30, 0, centerZ + build.Request.Anchor.Z)) };
+            var set = Record(batch, frame);
+            var key = build.Request.Key;
+            string owner = FormattableString.Invariant($"cluster/{key.LayerId}/{key.X}/{key.Z}/{key.Plane}");
+            var hlod = set.Draws.Single(d => d.Resource.Key.OwnerId == owner);
+            Assert.Equal(.5f, hlod.Rigid!.Value.Dissolve); Assert.True(hlod.Rigid.Value.InvertShadowDissolve);
+            Assert.Equal(0, hlod.Rigid.Value.DissolveComplement);
+            using var shared = PropClusterRenderer.CreateCpuOnly();
+            shared.ApplyNative(build.Request.Key, build, new MeshHandle(90));
+            var localFocus = new Vector3(center + 30, 0, centerZ);
+            Assert.True(shared.TryGetNativeEmission(build.Request.Key, localFocus, out var coverage, out var emitted));
+            Assert.True(coverage.DrawsMerged); Assert.Equal(new MeshHandle(90), emitted.Mesh);
+            Assert.Equal(hlod.Rigid.Value, new MapRigidFrame(emitted.Tint, emitted.Material, emitted.Dissolve,
+                emitted.DissolveEdgeWidth, emitted.DissolveEdgeColor, emitted.InvertShadowDissolve, emitted.DissolveComplement, emitted.Motion));
+            var solid = PropClusterRenderer.MergedDraw(new MeshHandle(90), build.Request.Layer, 0, true);
+            Assert.False(solid.InvertShadowDissolve);
+            Assert.Equal(4, set.Draws.Count(d => d.Resource.Key.Kind == MapRenderKind.Roof));
+            Assert.All(set.Draws.Where(d => build.RepresentedIds.Contains(d.Resource.Key.OwnerId)), d => Assert.Equal(.5f, d.Rigid!.Value.Dissolve));
+        }
     }
 
     [Fact]
@@ -187,7 +198,7 @@ public sealed class NativeMapPlacementTests
         using var batch = NativeMapPlacements.Prepare(scene, assets, policy, routing);
         var before = Record(batch, Frame with { Focus = new(WorldFrame.Origin, new(50, 0, 0)) });
         Assert.DoesNotContain(before.Draws, d => d.Resource.Key.PartId == "hlod");
-        Assert.Equal(new[] { "leaf-a", "leaf-b" }, Assert.Single(batch.Clusters).RepresentedIds);
+        Assert.Equal(new[] { "leaf-a", "leaf-b" }, batch.Clusters.SelectMany(c => c.RepresentedIds).Order());
         var lods = new Dictionary<string, IReadOnlyList<NativePropLod>>
         {
             ["a"] = new[]
@@ -214,9 +225,12 @@ public sealed class NativeMapPlacementTests
             new float[] { 10, 20 }, 4, 100, 30, 10, 1000, true) }, 100);
         var routing = Route(scene, policy);
         using var batch = NativeMapPlacements.Prepare(scene, assets, policy, routing);
-        var build = Assert.Single(batch.Clusters);
-        Assert.Equal(0, build.MergedMesh.TriangleCount);
-        Assert.Throws<MapDocumentException>(() => batch.AcceptCluster(build.Request.Key, build, new MeshHandle(90)));
+        Assert.Equal(2, batch.Clusters.Count);
+        foreach (var build in batch.Clusters)
+        {
+            Assert.Equal(0, build.MergedMesh.TriangleCount);
+            Assert.Throws<MapDocumentException>(() => batch.AcceptCluster(build.Request.Key, build, new MeshHandle(90)));
+        }
         var set = Record(batch, Frame with { Focus = new(WorldFrame.Origin, new(50, 0, 0)) });
         Assert.Equal(4, set.Draws.Count(d => d.Resource.Key.OwnerId is "leaf-a" or "leaf-b"));
         Assert.DoesNotContain(set.Draws, d => d.Resource.Key.PartId == "hlod");

@@ -11,7 +11,7 @@ public sealed partial class PropClusterRenderer
     readonly Dictionary<PropClusterKey, (NativePropClusterCpuBuild Build, MeshHandle Handle)> _native = new();
 
     /// <summary>Precondition: the upper scene/routing adapter validated every requested instance and effective
-    /// roof exclusion before entry. This internal builder receives no building intent and makes no roof promise.</summary>
+    /// roof exclusion, frozen native inventory and bounded storage cell before entry. This internal builder receives no building intent and makes no roof promise.</summary>
     internal static NativePropClusterCpuBuild BuildNativeCpu(NativePropClusterRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -28,15 +28,20 @@ public sealed partial class PropClusterRenderer
         foreach (var instance in request.Instances)
         {
             var source = sources[instance.AssetId]; var pose = instance.LocalTransform;
-            pose.M41 = (float)((double)instance.Anchor.X - request.Anchor.X + pose.M41);
-            pose.M42 = (float)((double)instance.Anchor.Y - request.Anchor.Y + pose.M42);
-            pose.M43 = (float)((double)instance.Anchor.Z - request.Anchor.Z + pose.M43);
+            double x = (double)instance.Anchor.X - request.Anchor.X + pose.M41;
+            double y = (double)instance.Anchor.Y - request.Anchor.Y + pose.M42;
+            double z = (double)instance.Anchor.Z - request.Anchor.Z + pose.M43;
+            pose.Translation = Vector3.Zero;
             if (!Matrix4x4.Invert(pose, out var inverse)) throw new ArgumentException("Native cluster requires invertible transforms.", nameof(request));
             var normal = Matrix4x4.Transpose(inverse);
             uint start = (uint)vertex;
             foreach (var v in source.Vertices)
             {
-                var output = v; output.Position = Vector3.Transform(v.Position, pose);
+                var output = v;
+                // Cell offsets stay small. Retain their fractional translation until the final vertex rounding.
+                output.Position = new((float)(v.Position.X * (double)pose.M11 + v.Position.Y * (double)pose.M21 + v.Position.Z * (double)pose.M31 + x),
+                    (float)(v.Position.X * (double)pose.M12 + v.Position.Y * (double)pose.M22 + v.Position.Z * (double)pose.M32 + y),
+                    (float)(v.Position.X * (double)pose.M13 + v.Position.Y * (double)pose.M23 + v.Position.Z * (double)pose.M33 + z));
                 output.Normal = Vector3.Normalize(Vector3.TransformNormal(v.Normal, normal)); output.Tangent = Vector4.Zero;
                 vertices[vertex++] = output;
             }

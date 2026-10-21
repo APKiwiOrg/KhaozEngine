@@ -1063,8 +1063,8 @@ It adds no third-party package or direct backend edge, has no editor, TileWorld 
 and belongs to no umbrella. Render3D already carries Metal, D3D11 and Vulkan through Windowing.
 MapDoc grants friend access only, with no renderer reference in the reverse direction.
 Terrain.Render3D also grants MapDoc.Render3D friend access for the shared native prop emitter and
-CPU cluster builder. The upper adapter validates scene routing and excludes effective roofs before
-calling that internal builder. The lower builder has no building intent and makes no roof promise.
+CPU cluster builder. The upper adapter validates scene routing, the frozen native layer inventory and
+bounded document storage-cell domain, and excludes effective roofs before calling that internal builder. The lower builder has no building intent and makes no roof promise.
 Accepted native cluster handles remain externally owned and are never uploaded or freed by ApplyNative.
 MapDoc.Render3D grants Render.Tests test-only friend access to observe the guarded adapter boundary.
 MapDoc grants that test assembly access to its canonical JSON text options for linked native fixtures.

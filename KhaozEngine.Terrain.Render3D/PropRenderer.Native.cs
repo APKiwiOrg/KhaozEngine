@@ -18,6 +18,21 @@ public static partial class PropRenderer
             static (target, instance, draw) => target.DrawAnchored(draw, instance.Anchor));
     }
 
+    /// <summary>Draw a frozen native layer through the same selection and coverage emitter as native recording.</summary>
+    public static int DrawNative(Scene3D scene, PropLayer layer, Vector3 focus)
+    {
+        ArgumentNullException.ThrowIfNull(scene);
+        return EmitNative(layer, focus, scene, static (target, instance, draw) => target.DrawAnchored(draw, instance.Anchor));
+    }
+
+    internal static int EmitNative<T>(PropLayer layer, Vector3 focus, T state,
+        Action<T, NativePropInstance, RigidInstanceDraw> emit, float dissolveFloor = 0, Func<RenderAnchor, Vector3>? localFocus = null)
+    {
+        var instances = layer.NativePlacements ?? throw new ArgumentException("A native placement layer is required.", nameof(layer));
+        return EmitNative(instances, layer.NativeLods!, focus, layer.DrawRadius, layer.LodDistances,
+            layer.LodCrossfadeWidth, state, emit, dissolveFloor, layer.CastsShadows, localFocus);
+    }
+
     /// <summary>The shared device and typed-recorder emission path. Focus is absolute binary32, instances retain
     /// exact anchors. The optional local focus avoids a rounded absolute focus for native frame consumers.</summary>
     internal static int EmitNative<T>(IReadOnlyList<NativePropInstance> instances,

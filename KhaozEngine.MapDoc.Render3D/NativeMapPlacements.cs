@@ -42,6 +42,7 @@ public static class NativeMapPlacements
             var instances = new List<NativePropInstance>();
             var parts = new List<MapPlacementPart>();
             var boundsById = new Dictionary<string, MapBox3>(StringComparer.Ordinal);
+            var posesById = new Dictionary<string, MapEffectiveTransform>(StringComparer.Ordinal);
             var handles = new Dictionary<string, IReadOnlyList<NativePropLod>>(StringComparer.Ordinal);
             int nextHandle = 1;
             foreach (var asset in assets.ById.Values)
@@ -61,6 +62,7 @@ public static class NativeMapPlacements
                 if (routing.Entries[placement.PlacementId] == MapPlacementRoute.Animated) continue;
                 admission.ReserveBytes(256);
                 var pose = Pose(scene, placement); var anchor = Anchor(pose);
+                posesById.Add(placement.PlacementId, pose);
                 var instance = new NativePropInstance(placement.PlacementId, placement.NumericId, placement.AssetId,
                     MapRenderTransform.ToLocal(pose, anchor), new(anchor.X, anchor.Y, anchor.Z));
                 instances.Add(instance);
@@ -83,41 +85,56 @@ public static class NativeMapPlacements
                     }
             }
             var clusters = new List<NativePropClusterCpuBuild>();
-            foreach (var layer in policy.Layers.Where(l => l.HlodDistance > 0))
+            var ordinary = new List<PropLayer>();
+            foreach (var layer in policy.Layers)
             {
-                var selected = instances.Where(i => routing.Entries[i.Id] == MapPlacementRoute.Cluster && layer.AssetIds.Contains(i.AssetId)).ToArray();
+                var selected = instances.Where(i => layer.AssetIds.Contains(i.AssetId)).ToArray();
                 if (selected.Length == 0) continue;
-                var first = selected[0].Anchor;
-                var local = selected.Select(i => (X: (float)((double)i.Anchor.X - first.X + i.LocalTransform.M41),
-                    Z: (float)((double)i.Anchor.Z - first.Z + i.LocalTransform.M43))).ToArray();
-                var area = new RectArea(local.Min(p => p.X), local.Min(p => p.Z), local.Max(p => p.X), local.Max(p => p.Z));
-                var sources = new Dictionary<string, GltfMesh>(StringComparer.Ordinal);
-                foreach (string id in selected.Select(i => i.AssetId).Distinct(StringComparer.Ordinal))
+                if (layer.HlodDistance == 0) { ordinary.Add(Shared(selected, layer)); continue; }
+                foreach (var cell in selected.GroupBy(i => MapPlacementCells.Key(layer.Id, posesById[i.Id], scene.Source.Data.TileSize))
+                    .OrderBy(c => c.Key.X).ThenBy(c => c.Key.Z))
                 {
-                    var source = assets.ById[id].Lods[^1];
-                    admission.ReserveBytes(checked(8 * source.BorrowParts.Sum(p => Bytes(p.Mesh, p.Maps))));
-                    sources.Add(id, Flatten(source.BorrowParts));
+                    var members = cell.ToArray();
+                    var domain = MapPlacementCells.Domain(cell.Key, scene.Source.Data.TileSize);
+                    var sources = new Dictionary<string, GltfMesh>(StringComparer.Ordinal);
+                    foreach (string id in members.Select(i => i.AssetId).Distinct(StringComparer.Ordinal))
+                    {
+                        var source = assets.ById[id].Lods[^1];
+                        admission.ReserveBytes(checked(8 * source.BorrowParts.Sum(p => Bytes(p.Mesh, p.Maps))));
+                        sources.Add(id, Flatten(source.BorrowParts));
+                    }
+                    long mergeBytes = members.Sum(i => Bytes(sources[i.AssetId], default));
+                    admission.ReserveBytes(checked(8 * mergeBytes));
+                    var shared = Shared(members, layer).WithHlod(sources, layer.HlodDistance, layer.HlodWeldCell, layer.HlodCrossfadeWidth);
+                    var request = new NativePropClusterRequest(cell.Key, 0, domain.Area, shared, members, domain.Anchor);
+                    var build = PrepareCluster(scene, routing, request);
+                    clusters.Add(build);
+                    var anchor = new MapSubmissionAnchor(domain.Anchor.X, domain.Anchor.Y, domain.Anchor.Z);
+                    var mesh = build.BorrowMesh;
+                    if (mesh.TriangleCount == 0) continue;
+                    var bounds = members.Select(i => boundsById[i.Id]).Aggregate(Union);
+                    var key = new MapRenderKey(MapRenderKind.Placement, MapPlacementCells.Owner(cell.Key), "hlod", 0);
+                    string inventory = ClusterInventoryDigest(members, assets.Closure.Hash, layer.HlodWeldCell);
+                    parts.Add(new(key, new(nextHandle++), anchor, bounds, new MapRigidResource(mesh, default),
+                        MapPlacementDigest.Hash(w =>
+                        {
+                            w.WriteStartArray(); w.WriteStringValue(routing.SceneWitnessDigest); w.WriteStringValue(routing.PolicyDigest);
+                            w.WriteStringValue(inventory); w.WriteEndArray();
+                        })));
                 }
-                long mergeBytes = selected.Sum(i => Bytes(sources[i.AssetId], default));
-                admission.ReserveBytes(checked(8 * mergeBytes));
-                var shared = PropLayer.PlacementLayer(Array.Empty<PropPlacement>(), new Dictionary<string, MeshHandle>(), layer.DrawRadius,
-                    castsShadows: layer.CastsShadows).WithHlod(sources, layer.HlodDistance, layer.HlodWeldCell, layer.HlodCrossfadeWidth).WithIdentity(layer.Id);
-                // A cluster is the frozen selected inventory, never an inferred spatial or art category.
-                // Including that inventory prevents two different scoped subsets from aliasing one merged owner.
-                string clusterId = layer.Id + "/" + ClusterInventoryDigest(selected, assets.Closure.Hash, layer.HlodWeldCell);
-                var request = new NativePropClusterRequest(new(clusterId, 0, 0, 0), 0, area, shared, selected, first);
-                var build = PrepareCluster(scene, routing, request);
-                clusters.Add(build);
-                var anchor = new MapSubmissionAnchor(first.X, first.Y, first.Z);
-                var mesh = build.BorrowMesh;
-                if (mesh.TriangleCount == 0) continue;
-                var bounds = selected.Select(i => boundsById[i.Id]).Aggregate(Union);
-                var key = new MapRenderKey(MapRenderKind.Placement, "cluster/" + clusterId, "hlod", 0);
-                parts.Add(new(key, new(nextHandle++), anchor, bounds, new MapRigidResource(mesh, default),
-                    MapPlacementDigest.Hash(w =>
-                    { w.WriteStartArray(); w.WriteStringValue(routing.SceneWitnessDigest); w.WriteStringValue(routing.PolicyDigest); w.WriteEndArray(); })));
             }
-            return new(scene.Placements, MapEffectiveAnnotations.Markers(scene), instances, parts, handles, policy, routing, clusters, admission.RetainedBytes);
+            var defaults = instances.Where(i => policy.For(i.AssetId) is null).ToArray();
+            if (defaults.Length > 0) ordinary.Add(Shared(defaults, null));
+            return new(scene.Placements, MapEffectiveAnnotations.Markers(scene), ordinary, parts, routing, clusters, admission.RetainedBytes);
+
+            PropLayer Shared(IReadOnlyList<NativePropInstance> rows, MapPlacementLayer? layer)
+            {
+                var tiers = rows.Select(i => i.AssetId).Distinct(StringComparer.Ordinal).ToDictionary(id => id, id => handles[id], StringComparer.Ordinal);
+                admission.ReserveBytes(checked(256L + 128L * rows.Count + tiers.Values.Sum(t => 64L + 32L * t.Count + 4L * t.Sum(l => l.Parts.Count))));
+                var shared = PropLayer.PlacementLayer(rows, tiers, layer?.DrawRadius ?? policy.DefaultDrawRadius,
+                    layer?.LodDistances ?? Array.Empty<float>(), layer?.LodCrossfadeWidth ?? 0, layer?.CastsShadows ?? true);
+                return layer is null ? shared : shared.WithIdentity(layer.Id);
+            }
         }
         catch (MapSceneCapacityException) { throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, "Placement preparation exceeds its scene allowance."); }
     }
@@ -134,13 +151,19 @@ public static class NativeMapPlacements
         routing.Validate(scene);
         var roofs = scene.BuildingIntent.Roofs.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
         var placements = scene.Placements.ToDictionary(p => p.PlacementId, StringComparer.Ordinal);
+        var domain = MapPlacementCells.Domain(request.Key, scene.Source.Data.TileSize);
+        if (request.Anchor != domain.Anchor || !request.Area.Equals(domain.Area) || request.BorrowLayer.Identity != request.Key.LayerId)
+            throw new MapDocumentException("Native cluster request disagrees with its storage cell.");
         foreach (var instance in request.Instances)
         {
             if (roofs.Contains(instance.Id) || !routing.Entries.TryGetValue(instance.Id, out var route) || route != MapPlacementRoute.Cluster ||
                 !placements.TryGetValue(instance.Id, out var placement) || instance.AssetId != placement.AssetId || instance.NumericId != placement.NumericId ||
-                instance.LocalTransform != MapRenderTransform.ToLocal(Pose(scene, placement), new(instance.Anchor.X, instance.Anchor.Y, instance.Anchor.Z)))
+                instance.LocalTransform != MapRenderTransform.ToLocal(Pose(scene, placement), new(instance.Anchor.X, instance.Anchor.Y, instance.Anchor.Z)) ||
+                MapPlacementCells.Key(request.Key.LayerId, Pose(scene, placement), scene.Source.Data.TileSize) != request.Key)
                 throw new MapDocumentException("Native cluster request disagrees with the effective scene routing.");
         }
+        if (request.BorrowLayer.NativePlacements is not { } native || !native.SequenceEqual(request.Instances))
+            throw new MapDocumentException("Native cluster request disagrees with its frozen layer inventory.");
         return build(request);
     }
     static string ClusterInventoryDigest(IReadOnlyList<NativePropInstance> instances, string closure, float weld) => MapPlacementDigest.Hash(w =>

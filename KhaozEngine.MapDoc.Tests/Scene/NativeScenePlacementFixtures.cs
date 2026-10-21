@@ -11,6 +11,37 @@ namespace KhaozEngine.Tests.MapDoc.Scene;
 
 internal static partial class NativeSceneFixtures
 {
+    internal static NativeSceneFixture SeparatedPlacements(MapAssetClosure closure, float tileSize, params MapEffectiveTransform[] poses)
+    {
+        var fixture = Create("empty") with { Assets = closure };
+        fixture.Document.NativeAssets = closure.Roots.ToList();
+        fixture.Document.TileSize = tileSize;
+        fixture.Document.Bounds = new() { MinX = -32064, MinZ = -32064, MaxX = 32064, MaxZ = 32064 };
+        fixture.Document.PlayableBounds = fixture.Document.Bounds;
+        var transforms = new List<MapStandaloneResourceTransform>();
+        for (int i = 0; i < poses.Length; i++)
+        {
+            string id = "sparse-" + i;
+            var pose = poses[i];
+            fixture.Document.Placements.Add(new()
+            {
+                Id = id,
+                AssetId = "prop-a",
+                Kind = "fixture-kind",
+                NumericId = i + 1,
+                X = (float)pose.X,
+                Y = (float)pose.Y,
+                Z = (float)pose.Z,
+                Yaw = (float)pose.YawRadians,
+                Scale = (float)pose.Scale
+            });
+            transforms.Add(new(MapPrefabChildKind.Placement, id, pose, new string('a', 64)));
+        }
+        fixture.Document.NumericIdHighWaterMark = poses.Length;
+        fixture.Document.NativeResourceTransforms = transforms;
+        return fixture;
+    }
+
     internal static NativeSceneFixture Placements(MapAssetClosure closure)
     {
         var fixture = Create("terrain") with { Assets = closure };

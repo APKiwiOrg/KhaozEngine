@@ -24,32 +24,66 @@ public sealed class RasterGutterTests
                 new(kind, Color.FromHex("#e05030"), Color.FromHex("#202080")))).ToArray()
     };
 
+    /// <summary>Fractional chunk origins must not round a gutter sample across a source cell boundary.</summary>
+    [Fact]
+    public void FractionalGutter_MatchesNeighbourAtVoidBoundary()
+    {
+        var source = new TestWorldMapSource(new(-32f, -4f, 16f, 8f), 0.25f);
+        for (int row = 0; row < 32; row++)
+            for (int column = 0; column < 31; column++)
+                source.SetCell(column, row, Color.White, 0f);
+        var style = new WorldMapStyle { ChunkMetres = 2.7f, PixelsPerMetre = 10f };
+        WorldMapChunkImage west = WorldMapRasterizer.Rasterize(source, style, new(-10, 0), border: 1);
+        WorldMapChunkImage east = WorldMapRasterizer.Rasterize(source, style, new(-9, 0));
+
+        Assert.Equal(new byte[] { 255, 255, 255, 255 }, Pixel(east, 0, 0));
+        Assert.Equal(Pixel(east, 0, 0), Pixel(west, west.Size, 0));
+        foreach (WorldMapChunkCoord coord in new[] { new WorldMapChunkCoord(-10, 0), new(-9, 0) })
+        {
+            WorldMapChunkImage plain = WorldMapRasterizer.Rasterize(source, style, coord);
+            WorldMapChunkImage bordered = WorldMapRasterizer.Rasterize(source, style, coord, border: 1);
+            for (int row = 0; row < plain.Size; row++)
+                Assert.True(plain.Rgba.AsSpan(plain.ByteOffset(0, row), plain.Size * 4)
+                    .SequenceEqual(bordered.Rgba.AsSpan(bordered.ByteOffset(0, row), plain.Size * 4)), $"Row {row} changed.");
+        }
+    }
+
     /// <summary>Every gutter pixel equals the matching edge pixel of the independently rasterized neighbour.</summary>
     [Theory]
-    [InlineData(0, 0, 0)]
-    [InlineData(-1, 0, 0)]
-    [InlineData(0, 0, 1)]
-    [InlineData(-2, -2, 1)]
-    public void Gutter_MatchesAdjacentChunkEdges(int x, int y, int level)
+    [InlineData(0, 0, 0, 8f, 1)]
+    [InlineData(-1, 0, 0, 8f, 1)]
+    [InlineData(0, 0, 1, 8f, 1)]
+    [InlineData(-2, -2, 1, 8f, 1)]
+    [InlineData(-10, 0, 0, 2.7f, 1)]
+    [InlineData(-10, -10, 0, 2.7f, 1)]
+    [InlineData(2, 2, 0, 2.7f, 1)]
+    [InlineData(-5, -3, 1, 2.7f, 1)]
+    [InlineData(2, -3, 2, 2.7f, 1)]
+    [InlineData(2, 2, 0, 2.7f, 30)]
+    public void Gutter_MatchesAdjacentChunkEdges(int x, int y, int level, float chunkMetres, int border)
     {
+        WorldMapStyle style = Style with { ChunkMetres = chunkMetres, PixelsPerMetre = chunkMetres == 8f ? 4f : 10f };
+        int pixels = style.ChunkPixels;
         TestWorldMapSource source = Adversarial();
-        WorldMapChunkImage bordered = WorldMapRasterizer.Rasterize(source, Style, new(x, y, level), border: 1);
+        AddEdgeFootprints(source, style, new(x, y, level));
+        WorldMapChunkImage bordered = WorldMapRasterizer.Rasterize(source, style, new(x, y, level), border);
 
-        Assert.Equal(1, bordered.Border);
-        Assert.Equal(Pixels, bordered.Size);
-        Assert.Equal(Pixels + 2, bordered.TextureSize);
-        Assert.Equal((Pixels + 2) * (Pixels + 2) * 4, bordered.Rgba.Length);
+        Assert.Equal(1, source.SampleCalls);
+        Assert.Equal(border, bordered.Border);
+        Assert.Equal(pixels, bordered.Size);
+        Assert.Equal(pixels + 2 * border, bordered.TextureSize);
+        Assert.Equal(bordered.TextureSize * bordered.TextureSize * 4, bordered.Rgba.Length);
         var neighbours = new Dictionary<(int East, int South), WorldMapChunkImage>();
-        for (int row = -1; row <= Pixels; row++)
-            for (int column = -1; column <= Pixels; column++)
+        for (int row = -border; row < pixels + border; row++)
+            for (int column = -border; column < pixels + border; column++)
             {
-                int east = column < 0 ? -1 : column >= Pixels ? 1 : 0;
-                int south = row < 0 ? -1 : row >= Pixels ? 1 : 0;
+                int east = (int)MathF.Floor((float)column / pixels);
+                int south = (int)MathF.Floor((float)row / pixels);
                 if (east == 0 && south == 0) continue;
                 if (!neighbours.TryGetValue((east, south), out WorldMapChunkImage? neighbour))
                     neighbours[(east, south)] = neighbour =
-                        WorldMapRasterizer.Rasterize(source, Style, new(x + east, y - south, level));
-                Assert.True(Pixel(neighbour, column - east * Pixels, row - south * Pixels)
+                        WorldMapRasterizer.Rasterize(source, style, new(x + east, y - south, level));
+                Assert.True(Pixel(neighbour, column - east * pixels, row - south * pixels)
                         .SequenceEqual(Pixel(bordered, column, row)),
                     $"Gutter pixel ({column}, {row}) of chunk ({x}, {y}, {level}) differs from its neighbour.");
             }
@@ -57,18 +91,25 @@ public sealed class RasterGutterTests
 
     /// <summary>The gutter adds pixels around the chunk without changing a single interior byte.</summary>
     [Theory]
-    [InlineData(0)]
-    [InlineData(1)]
-    public void BorderedInterior_IsByteIdenticalToTheBorderlessRaster(int level)
+    [InlineData(0, 0, 0, 8f)]
+    [InlineData(0, 0, 1, 8f)]
+    [InlineData(-10, 0, 0, 2.7f)]
+    [InlineData(-10, -10, 0, 2.7f)]
+    [InlineData(2, 2, 0, 2.7f)]
+    [InlineData(-5, -3, 1, 2.7f)]
+    [InlineData(2, -3, 2, 2.7f)]
+    public void BorderedInterior_IsByteIdenticalToTheBorderlessRaster(int x, int y, int level, float chunkMetres)
     {
+        WorldMapStyle style = Style with { ChunkMetres = chunkMetres, PixelsPerMetre = chunkMetres == 8f ? 4f : 10f };
         TestWorldMapSource source = Adversarial();
-        WorldMapChunkImage plain = WorldMapRasterizer.Rasterize(source, Style, new(0, 0, level));
-        WorldMapChunkImage bordered = WorldMapRasterizer.Rasterize(source, Style, new(0, 0, level), border: 1);
+        AddEdgeFootprints(source, style, new(x, y, level));
+        WorldMapChunkImage plain = WorldMapRasterizer.Rasterize(source, style, new(x, y, level));
+        WorldMapChunkImage bordered = WorldMapRasterizer.Rasterize(source, style, new(x, y, level), border: 1);
 
         Assert.Equal(plain.Revision, bordered.Revision);
-        for (int row = 0; row < Pixels; row++)
-            Assert.True(plain.Rgba.AsSpan(plain.ByteOffset(0, row), Pixels * 4)
-                .SequenceEqual(bordered.Rgba.AsSpan(bordered.ByteOffset(0, row), Pixels * 4)), $"Row {row} changed.");
+        for (int row = 0; row < plain.Size; row++)
+            Assert.True(plain.Rgba.AsSpan(plain.ByteOffset(0, row), plain.Size * 4)
+                .SequenceEqual(bordered.Rgba.AsSpan(bordered.ByteOffset(0, row), plain.Size * 4)), $"Row {row} changed.");
     }
 
     /// <summary>The borderless overload, explicit zero border and positional constructor share one layout.</summary>
@@ -167,6 +208,15 @@ public sealed class RasterGutterTests
 
     static WorldMapFootprint Footprint(int id, WorldMapSymbolKind kind, Vector2 center, Vector2 halfExtents, float rotation) =>
         new(id, kind.ToString(), center, halfExtents, rotation, [], kind == WorldMapSymbolKind.Building, WorldMapCollision.Solid);
+
+    static void AddEdgeFootprints(TestWorldMapSource source, WorldMapStyle style, WorldMapChunkCoord coord)
+    {
+        MapRect rect = WorldMapChunking.ChunkRect(coord, style.ChunkMetres);
+        foreach (float x in new[] { rect.X, rect.Right })
+            foreach (float y in new[] { rect.Y, rect.Top })
+                source.Footprints.Add(Footprint(source.Footprints.Count + 1, WorldMapSymbolKind.Building,
+                    new(x, y), new(0.3f, 0.5f), 0.3f));
+    }
 
     static byte[] Pixel(WorldMapChunkImage image, int column, int row) =>
         image.Rgba.AsSpan(image.ByteOffset(column, row), 4).ToArray();

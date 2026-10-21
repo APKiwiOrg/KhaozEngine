@@ -45,10 +45,33 @@ public static class WorldMapRasterizer
         // The gutter samples the neighbouring map area with the same reach as the interior.
         var sampler = new SurfaceSampler(source.SampleSurface(canvas.PaintedRect.Expand(margin), maxCellSize: maxCellSize));
         var relief = new ReliefShader(style.Relief);
-        var water = new WaterPainter(sampler, canvas, style.Water);
+        var regions = new List<RasterCanvas>();
+        // Each gutter region keeps its owner's rounded origin and interior sampling lattice.
+        int first = border == 0 ? 0 : -1 - (border - 1) / size;
+        int last = (size + border - 1) / size;
+        for (int south = first; south <= last; south++)
+            for (int east = first; east <= last; east++)
+            {
+                var owner = new WorldMapChunkCoord(checked(chunk.X + east), checked(chunk.Y - south), chunk.Level);
+                var region = new RasterCanvas(canvas, WorldMapChunking.ChunkRect(owner, style.ChunkMetres), east, south);
+                regions.Add(region);
+                PaintSurface(region, sampler, relief, style);
+            }
 
-        for (int row = canvas.First; row < canvas.End; row++)
-            for (int column = canvas.First; column < canvas.End; column++)
+        var footprints = new List<WorldMapFootprint>();
+        float footprintMargin = WorldMapRasterReach.FootprintMetres(style, chunk.Level);
+        source.CollectFootprints(new WorldMapFootprintQuery(canvas.PaintedRect.Expand(footprintMargin), 0.5f / levelPpm), footprints);
+        foreach (RasterCanvas region in regions)
+            new FootprintPainter(region, style).Paint(footprints);
+
+        return new WorldMapChunkImage(chunk, size, canvas.ToBytes(), revision) { Border = border };
+    }
+
+    static void PaintSurface(RasterCanvas canvas, SurfaceSampler sampler, ReliefShader relief, WorldMapStyle style)
+    {
+        var water = new WaterPainter(sampler, canvas, style.Water);
+        for (int row = canvas.Top; row < canvas.Bottom; row++)
+            for (int column = canvas.Left; column < canvas.Right; column++)
             {
                 Vector2 point = canvas.MapPoint(column, row);
                 SurfaceSample sample = sampler.Sample(point);
@@ -60,12 +83,5 @@ public static class WorldMapRasterizer
 
         if (style.Contours is { } contours)
             new ContourPainter(sampler, canvas, contours).Paint();
-
-        var footprints = new List<WorldMapFootprint>();
-        float footprintMargin = WorldMapRasterReach.FootprintMetres(style, chunk.Level);
-        source.CollectFootprints(new WorldMapFootprintQuery(canvas.PaintedRect.Expand(footprintMargin), 0.5f / levelPpm), footprints);
-        new FootprintPainter(canvas, style).Paint(footprints);
-
-        return new WorldMapChunkImage(chunk, size, canvas.ToBytes(), revision) { Border = border };
     }
 }

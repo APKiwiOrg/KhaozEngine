@@ -42,10 +42,10 @@ internal sealed class FootprintPainter(RasterCanvas canvas, WorldMapStyle style)
     {
         MapRect bounds = shape.Bounds;
         if (!bounds.Intersects(canvas.PaintedRect)) return;
-        int left = PixelEdge((bounds.X - canvas.Rect.X) * canvas.EffectivePixelsPerMetre, roundUp: false);
-        int right = PixelEdge((bounds.Right - canvas.Rect.X) * canvas.EffectivePixelsPerMetre, roundUp: true);
-        int top = PixelEdge((canvas.Rect.Top - bounds.Top) * canvas.EffectivePixelsPerMetre, roundUp: false);
-        int bottom = PixelEdge((canvas.Rect.Top - bounds.Y) * canvas.EffectivePixelsPerMetre, roundUp: true);
+        int left = PixelEdge((bounds.X - canvas.Rect.X) * canvas.EffectivePixelsPerMetre, false, canvas.Left, canvas.Right);
+        int right = PixelEdge((bounds.Right - canvas.Rect.X) * canvas.EffectivePixelsPerMetre, true, canvas.Left, canvas.Right);
+        int top = PixelEdge((canvas.Rect.Top - bounds.Top) * canvas.EffectivePixelsPerMetre, false, canvas.Top, canvas.Bottom);
+        int bottom = PixelEdge((canvas.Rect.Top - bounds.Y) * canvas.EffectivePixelsPerMetre, true, canvas.Top, canvas.Bottom);
         for (int row = top; row < bottom; row++)
             for (int column = left; column < right; column++)
             {
@@ -65,6 +65,6 @@ internal sealed class FootprintPainter(RasterCanvas canvas, WorldMapStyle style)
             }
     }
 
-    int PixelEdge(float edge, bool roundUp) =>
-        (int)Math.Clamp(roundUp ? MathF.Ceiling(edge) : MathF.Floor(edge), canvas.First, canvas.End);
+    static int PixelEdge(float edge, bool roundUp, int first, int end) =>
+        (int)Math.Clamp(roundUp ? MathF.Ceiling(edge) : MathF.Floor(edge), first, end);
 }

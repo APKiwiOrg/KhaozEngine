@@ -1,5 +1,9 @@
 # Task 7h K, certified fully lit specialization
 
+**Status:** Blocked by strict colour-byte identity on WARP. The implementation and failing oracles are pushed at
+code commit d140310d950df04093880d2e3c302e84f32c8cfc. No code change, tolerance or new exception has been added after
+that result. Vulkan remains in progress. This is a candidate and reproduction, not a validated exact optimization.
+
 Source branch fix/taa-vis-lit-skip starts at 6c0382161. This record covers correctness only. No timing,
 benchmark, stress, merge, tag or release is part of the task.
 
@@ -103,10 +107,52 @@ The scene comparisons assert every raw history byte on every backend without add
 
 ## Hosted correctness
 
-The single all-leg correctness dispatch will be recorded here after the pushed source commit. It uses legs all,
-tier push and bake false, at the SHA resolved by git rev-parse. The selection is 7g.5's filter plus the four new
+The single all-leg correctness run is [39627795369](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39627795369),
+at d140310d950df04093880d2e3c302e84f32c8cfc. The SHA was resolved with git rev-parse, checked against the remote
+branch before dispatch and verified against the run's headSha. It uses legs all, tier push and bake false. The selection is 7g.5's filter plus the four new
 classes. No timing class, billed workflow or stress test is selected.
 
 ```text
 ((FullyQualifiedName~KhaozEngine.Tests.Gpu.Temporal&FullyQualifiedName!~CostPerf)|((FullyQualifiedName~Shadow|FullyQualifiedName~Golden)&FullyQualifiedName!~Perf&FullyQualifiedName!~Bench)|FullyQualifiedName~MotionTargetLifecycleGpuTests|FullyQualifiedName~D3D11FxcValidationTests|FullyQualifiedName~TemporalLockReleaseProbe|FullyQualifiedName~TemporalVisibilityGatherGpuTests|FullyQualifiedName~TemporalVisibilityFullyLitTests|FullyQualifiedName~TemporalVisibilityFullyLitCompiledTests|FullyQualifiedName~TemporalVisibilityFullyLitGpuTests|FullyQualifiedName~TemporalVisibilityCertificateGpuTests)
 ```
+
+
+| Leg | Job | Passed / failed / skipped | New cases |
+| --- | --- | --- | --- |
+| Hosted Metal, Apple Paravirtual device | 119317681651 | 1793 / 0 / 1 | 53 / 0 |
+| WARP, Microsoft Basic Render Driver | 119317681549 | 1789 / 4 / 1 | 49 / 4 |
+| lavapipe | 119317681783 | Running | Pending |
+| Vulkan sync validation | 119317681712 | 622 / 0 / 0 | Not selected |
+
+Metal and WARP each have one intentional opt-in DumpVisibilityDisassembly skip. All new cases execute. Metal's
+job completed in 18m37s. WARP completed in 27m58s. On both legs the existing entry-identity cases pass 10/10,
+frozen D A/B 12/12, equivalence 6/6 and gather 7/7. All 21 certificate cases, all ten no-check module cases and all
+eight headless policy/lifetime cases pass on WARP. The four failures are exclusively in the new strict scene oracle.
+
+### WARP blocks exactness
+
+CertifiedScenesMatchTheCheckAndBothEntriesOnEveryHistoryByte fails four cases. Scene 1 is the field and scene 2
+is the outlined field. Both presets use a 320 by 180 display, so each colour history comparison has 460800 bytes.
+
+| Preset | Scene | First frame | First differing byte | Comparison |
+| --- | --- | ---: | ---: | --- |
+| Native | Field | 8 | 5084 | Fused certified versus ordinary check |
+| Native | Outlined field | 8 | 5084 | Fused certified versus ordinary check |
+| Quality | Field | 3 | 1938 | Fused certified versus ordinary check |
+| Quality | Outlined field | 3 | 1938 | Fused certified versus ordinary check |
+
+Every fixture's resolved R8 is asserted to be 255 and its current and read-index policy is asserted before these
+comparisons. The failure is a colour byte difference, not a failed certificate assertion. The root cause is not
+yet diagnosed. The fact stops at its first colour assertion, so later channels and fused/split comparisons on the
+failing frame are not proved. The boxes cases, debug/count comparisons and synthetic/fallback cases pass.
+No comparison bound, software exception, frozen D text or visibility decision is changed to accept this result.
+The candidate is blocked and must not be integrated as satisfying Task 7h K. Further diagnosis and a new exact-head
+GPU proof are needed beyond the single correctness dispatch authorized for this brief. No second dispatch, job
+rerun, optional DXBC dump, timing, benchmark or stress run has been started.
+
+### Not changed
+
+The pointer gesture allocation failure above is outside this task and has not been investigated. The public Cost
+paragraph in docs/USING-KHAOZENGINE.md also still says incremental visibility cost has not been measured, although
+the parent branch now holds T4 measurements. Its reconciliation is left to the parent closeout. The new certificate
+paragraph makes no timing claim.

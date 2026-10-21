@@ -24,6 +24,8 @@ internal sealed record RendererPerfRecipeSchedule(int DirectionalCascades, strin
     int DynamicUpdates, int TransientRows, int FacesPerRow, bool Temporal, bool Atmosphere, bool Bloom);
 internal sealed record RendererPerfRecipeFrame(int Index, float TimeSeconds, Vector3 Target, float Azimuth,
     Vector3 LightDirection, Matrix4x4 View, Matrix4x4 Projection, Matrix4x4 ViewProjection, string PoseSha256);
+internal sealed record RendererPerfScenePolicy(bool GpuSkinning, bool FrustumCulling, bool TerrainCastsShadows,
+    SceneDebugView DebugView, Vector3 RenderOrigin);
 
 internal interface IRendererPerfRecipe : IDisposable
 {
@@ -37,6 +39,7 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
     internal const int Width = 1920, Height = 1080, Period = 256;
     internal const float Dt = 1f / 60f;
     internal const uint Seed = 0x51AB_C0DE;
+    static readonly RendererPerfScenePolicy ScenePolicy = new(true, true, true, SceneDebugView.None, Vector3.Zero);
     internal static readonly ImmutableArray<int> WarmupIndices = [.. Enumerable.Range(64, 192)];
     internal static readonly ImmutableArray<int> MeasuredIndices = [.. Enumerable.Range(0, Period)];
     internal static readonly JsonSerializerOptions Json = new()
@@ -87,7 +90,7 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
         return (index <= 128 ? index : Period - index) / 128f;
     }
 
-    void Freeze()
+    internal void Freeze()
     {
         PixelPostProcessSettings post = Settings();
         _frames = Enumerable.Range(0, Period).Select(index =>
@@ -101,6 +104,7 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
                 camera.View, camera.Projection, camera.ViewProjection, PoseDigest(index));
         }).ToArray();
         string geometry = Digest(Geometry), settings = Digest(post), assets = Digest(Assets), sequence = Digest(_frames);
+        string profile = _id == "empty" ? "empty-native-1080/1" : "renderer-full-native-1080/1";
         var schedule = new RendererPerfRecipeSchedule(_id == "empty" ? 0 : 4,
             Actors > 0 ? "recomputed-current-pose" : "reuse-identical-camera-and-sun",
             Actors > 0 ? 1 : 0, Actors > 0 ? 1 : 0, Actors > 0 ? 1 : 0, 0,
@@ -110,7 +114,7 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
             Schema = "khaozengine.renderer-perf-recipe/1",
             Id = _id,
             Version = "1",
-            Profile = _id == "empty" ? "renderer-empty-1080/1" : "renderer-full-native-1080/1",
+            Profile = profile,
             Provenance = "public-engine-primitives/1",
             ExternalAssets = Array.Empty<string>(),
             Seed,
@@ -129,12 +133,13 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
             },
             Settings = post,
             Camera = Camera(),
-            GpuSkinning = true,
-            FrustumCulling = true,
-            TerrainCastsShadows = true,
+            ScenePolicy.GpuSkinning,
+            ScenePolicy.FrustumCulling,
+            ScenePolicy.TerrainCastsShadows,
             Coverage = false,
-            DebugView = SceneDebugView.None,
-            Clear = new Color(.02f, .03f, .06f, 1f),
+            ScenePolicy.DebugView,
+            ScenePolicy.RenderOrigin,
+            Clear = post.BackgroundColor,
             Geometry,
             Assets,
             GeometrySha256 = geometry,
@@ -167,7 +172,7 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
             FinalBlit = 1,
             Schedule = schedule,
         }, Json);
-        Facts = new RendererPerfRecipeFacts(_id, "1", _id == "empty" ? "renderer-empty-1080/1" : "renderer-full-native-1080/1",
+        Facts = new RendererPerfRecipeFacts(_id, "1", profile,
             Terrain.Count, Buildings, Props, Actors, geometry, settings, assets, sequence, Hash(_description), schedule);
     }
 
@@ -182,6 +187,10 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
         _usedScenes.Add(scene);
         _scene = scene;
         PixelPostProcessSettings settings = Settings();
+        if (Digest(settings) != Facts.SettingsSha256)
+            throw new InvalidOperationException("Resolved settings differ from the frozen construction.");
+        int shadowResolution = settings.Quality.Shadows.ShadowMapResolution;
+        int shadowCascades = settings.Quality.Shadows.ShadowCascadeCount;
         // The atlas commits this exact settings object in the Scene3D constructor. Keep that identity
         // while copying its public runtime fields, then request its construction-only layout separately.
         ShadowSettings liveShadows = scene.Post.Quality.Shadows;
@@ -190,17 +199,17 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
         settings.Quality.Shadows = liveShadows;
         foreach (FieldInfo field in typeof(PixelPostProcessSettings).GetFields(BindingFlags.Public | BindingFlags.Instance))
             field.SetValue(scene.Post, field.GetValue(settings));
-        scene.RequestShadowMapLayout(2048, 4);
-        scene.FrustumCulling = true;
-        scene.UseGpuSkinning = true;
-        scene.TerrainCastsShadows = true;
-        scene.DebugView = SceneDebugView.None;
-        scene.RenderOrigin = Vector3.Zero;
+        scene.RequestShadowMapLayout(shadowResolution, shadowCascades);
+        scene.FrustumCulling = ScenePolicy.FrustumCulling;
+        scene.UseGpuSkinning = ScenePolicy.GpuSkinning;
+        scene.TerrainCastsShadows = ScenePolicy.TerrainCastsShadows;
+        scene.DebugView = ScenePolicy.DebugView;
+        scene.RenderOrigin = ScenePolicy.RenderOrigin;
         scene.CameraOverride = null;
         IsoCamera3D camera = Camera();
         foreach (FieldInfo field in typeof(IsoCamera3D).GetFields(BindingFlags.Public | BindingFlags.Instance))
             field.SetValue(scene.Camera, field.GetValue(camera));
-        scene.Camera.RenderOrigin = Vector3.Zero;
+        scene.Camera.RenderOrigin = camera.RenderOrigin;
         Load(scene);
     }
 
@@ -229,6 +238,7 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
         Distance = 150f,
         NearPlane = .1f,
         FarPlane = 500f,
+        RenderOrigin = Vector3.Zero,
     };
 
     protected PixelPostProcessSettings Settings()

@@ -16,6 +16,27 @@ public sealed class RendererPerfProtocolTests
     const string Digest = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
     const string OtherSha = "cccccccccccccccccccccccccccccccccccccccc";
 
+    [Fact]
+    public void Constructed_recipe_identities_satisfy_the_accepted_manifest_contract()
+    {
+        JsonObject json = ManifestJson("full");
+        foreach (var (id, ordinal) in new[] { ("empty", 0), ("village", 1), ("crowd", 3) })
+        {
+            using var recipe = RendererPerfRecipe.Create(id);
+            RendererPerfRecipeFacts facts = recipe.Facts;
+            using JsonDocument description = JsonDocument.Parse(recipe.Describe());
+            Assert.Equal(facts.Profile, description.RootElement.GetProperty("Profile").GetString());
+            JsonNode identity = json["recipes"]![ordinal]!;
+            identity["version"] = facts.Id + "/" + facts.Version;
+            identity["profile"] = facts.Profile;
+            identity["recipeSha256"] = facts.RecipeSha256;
+            identity["settingsSha256"] = facts.SettingsSha256;
+            identity["geometrySha256"] = facts.GeometrySha256;
+            identity["assetSha256"] = facts.AssetSha256;
+        }
+        RendererPerfManifest.Parse(Encoding.UTF8.GetBytes(json.ToJsonString()));
+    }
+
     [Theory]
     [InlineData("duplicate", "Json")]
     [InlineData("nested-duplicate", "Json")]

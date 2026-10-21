@@ -16,9 +16,9 @@ internal class RendererPerfVillageScene : RendererPerfRecipe
         MeshPrimitives.Sphere(1.6f, 10, 12), MeshPrimitives.RoundedBox(1.4f, .3f, 4)];
     readonly GltfMesh _box = MeshPrimitives.Box(1f);
     readonly Matrix4x4[] _terrainWorlds, _propWorlds, _buildingWorlds;
-    readonly SplatLayerImage[] _layers;
-    MeshHandle[] _terrainHandles = [], _propHandles = [];
-    MeshHandle _buildingHandle;
+    readonly SplatConstruction _splat;
+    readonly RigidInstanceDraw[] _draws;
+    MeshHandle[] _handles = [];
     readonly int _side;
     internal RendererPerfVillageScene() : this("village", 8, 1024, 24) { }
     protected RendererPerfVillageScene(string id, int side, int props, int buildings) : base(id)
@@ -42,7 +42,7 @@ internal class RendererPerfVillageScene : RendererPerfRecipe
                 _buildingWorlds[i * 6 + part] = Matrix4x4.CreateScale(components[part].Size)
                     * Matrix4x4.CreateTranslation(components[part].Offset + new Vector3(centre.X, 0f, centre.Y));
         }
-        _layers = Enumerable.Range(0, 5).Select(layer =>
+        SplatLayerImage[] layers = Enumerable.Range(0, 5).Select(layer =>
         {
             var albedo = new byte[4 * 4 * 4];
             var normal = new byte[albedo.Length];
@@ -64,6 +64,13 @@ internal class RendererPerfVillageScene : RendererPerfRecipe
                 Roughness = .85f
             };
         }).ToArray();
+        _splat = new(4, 4, layers, 8f, SplatProjection.Triplanar, .15f,
+            new TerrainSamplerConfig(GpuSamplerFilter.Anisotropic, 16, 0));
+        // Mesh indices identify recipe-local geometry slots, independent of Scene3D allocation history.
+        _draws = _terrainWorlds.Select((world, i) => RigidDraw(i, world, Color.White))
+            .Concat(_propWorlds.Select((world, i) => RigidDraw(_terrain.Length + (i & 3), world, PropTint)))
+            .Concat(_buildingWorlds.Select(world => RigidDraw(_terrain.Length + _props.Length, world, BuildingTint)))
+            .ToArray();
     }
 
     internal override IReadOnlyList<GltfMesh> Terrain => _terrain;
@@ -72,14 +79,14 @@ internal class RendererPerfVillageScene : RendererPerfRecipe
     protected override float WorldExtent => _side * 8f;
     protected override object Assets => new
     {
-        TextureWidth = 4,
-        TextureHeight = 4,
+        TextureWidth = _splat.Width,
+        TextureHeight = _splat.Height,
         Mips = 3,
-        Layers = _layers,
-        TriplanarSharpness = 8f,
-        Projection = SplatProjection.Triplanar,
-        BaseSpecular = .15f,
-        Sampler = new TerrainSamplerConfig(GpuSamplerFilter.Anisotropic, 16, 0),
+        _splat.Layers,
+        _splat.TriplanarSharpness,
+        _splat.Projection,
+        _splat.BaseSpecular,
+        _splat.Sampler,
         PropTint = PropTint,
         BuildingTint = BuildingTint
     };
@@ -102,22 +109,42 @@ internal class RendererPerfVillageScene : RendererPerfRecipe
         PropMeshIndices = Enumerable.Range(0, Props).Select(i => i & 3).ToArray(),
         Building = MeshFacts(_box),
         BuildingWorlds = _buildingWorlds,
+        Draws = _draws,
     };
 
     protected override void Load(Scene3D scene)
     {
-        var material = scene.LoadSplatMaterial(4, 4, _layers, 8f, SplatProjection.Triplanar, .15f,
-            new TerrainSamplerConfig(GpuSamplerFilter.Anisotropic, 16, 0));
-        _terrainHandles = _terrain.Select(mesh => scene.LoadMesh(mesh, material)).ToArray();
-        _propHandles = _props.Select(scene.LoadMesh).ToArray();
-        if (Buildings > 0) _buildingHandle = scene.LoadMesh(_box);
+        var material = scene.LoadSplatMaterial(_splat.Width, _splat.Height, _splat.Layers, _splat.TriplanarSharpness,
+            _splat.Projection, _splat.BaseSpecular, _splat.Sampler);
+        var handles = new List<MeshHandle>();
+        handles.AddRange(_terrain.Select(mesh => scene.LoadMesh(mesh, material)));
+        handles.AddRange(_props.Select(scene.LoadMesh));
+        if (Buildings > 0) handles.Add(scene.LoadMesh(_box));
+        _handles = handles.ToArray();
     }
     protected override void QueueContent(Scene3D scene, int frameIndex)
     {
-        for (int i = 0; i < _terrain.Length; i++) scene.Draw(_terrainHandles[i], _terrainWorlds[i], Color.White);
-        for (int i = 0; i < _propWorlds.Length; i++) scene.Draw(_propHandles[i & 3], _propWorlds[i], PropTint);
-        foreach (Matrix4x4 world in _buildingWorlds) scene.Draw(_buildingHandle, world, BuildingTint);
+        foreach (RigidInstanceDraw draw in _draws)
+            scene.Draw(draw with { Mesh = _handles[draw.Mesh.Index] });
     }
+
+    static RigidInstanceDraw RigidDraw(int meshIndex, Matrix4x4 world, Color tint) => new(new MeshHandle(meshIndex), world)
+    {
+        Tint = tint,
+        Material = new Material(Color.Transparent, 0f, 32f),
+        CastsShadows = true,
+        ShadowOnly = false,
+        Motion = MotionKey.From(0),
+        Dissolve = 0f,
+        DissolveEdgeWidth = 0f,
+        DissolveEdgeColor = Color.Transparent,
+        InvertShadowDissolve = false,
+        DissolveComplement = 0f,
+        CutInsideInteriors = false,
+    };
+
+    sealed record SplatConstruction(int Width, int Height, SplatLayerImage[] Layers, float TriplanarSharpness,
+        SplatProjection Projection, float BaseSpecular, TerrainSamplerConfig Sampler);
 
     static GltfMesh BuildTerrain()
     {

@@ -12,6 +12,24 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 public sealed class RendererPerfRecipeTests
 {
     [Fact]
+    public void Changing_actor_shadow_submission_changes_the_construction_digest()
+    {
+        using var baseline = RendererPerfRecipe.Create("crowd");
+        using var changed = new RendererPerfCrowdScene(RendererPerfCrowdScene.DefaultActorPolicy with { CastsShadows = false });
+        changed.Freeze();
+        Assert.Equal(baseline.Facts.SettingsSha256, changed.Facts.SettingsSha256);
+        Assert.Equal(baseline.Facts.SequenceSha256, changed.Facts.SequenceSha256);
+        Assert.NotEqual(baseline.Facts.RecipeSha256, changed.Facts.RecipeSha256);
+        Assert.NotEqual(baseline.Facts.GeometrySha256, changed.Facts.GeometrySha256);
+
+        using var rig = new HeadlessSceneRig();
+        changed.ResetBlock(rig.Scene);
+        rig.Frame(1920, 1080, scene => changed.Queue(scene, 64));
+        Assert.Equal(32, rig.Scene.DrawnSkinnedInstances);
+        Assert.False(rig.Scene.LastShadowPassDiagnostics.AnySkinnedCaster);
+    }
+
+    [Fact]
     public void Fixed_topology_counts_and_seed_have_stable_digest()
     {
         foreach (var (id, terrain, buildings, props, actors) in new[]

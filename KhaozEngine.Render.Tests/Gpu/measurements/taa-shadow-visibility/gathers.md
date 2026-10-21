@@ -15,7 +15,10 @@ that software-Vulkan rule, bound 0.0625 and share 0.0025. Large-frame and moving
 The historical run sections below retain the decisions and results at their original checkpoints.
 Task 7g.5 recaptured the seven gathered shipped DXBC listings in free run 39561655851, while every D listing stayed
 byte-identical. All fourteen listings have zero precise markings. The existing shader and corpus writers reproduced
-the merged tables without drift. The [merge-round record](7g5-hosted.md) owns the current gates and hosted result.
+the merged tables without drift. Free all-leg run 39571324204 passed 1740 selected tests on each renderer backend,
+with one opt-in dump skip each, and 622 sync tests. The five lavapipe colour cases match the no-gather values at
+reported precision, and all eight software costs are unchanged at full precision. The [merge-round record](7g5-hosted.md)
+owns the current gates and hosted result.
 
 ## Footprints and arithmetic
 

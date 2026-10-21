@@ -1,7 +1,7 @@
 # Task 7g.5 merged visibility correctness
 
 The merge round integrates the barrier-release fixtures, r1 entry identity and the visibility gathers. Hosted
-correctness is pending. No comparison bound, accepted software cost, frozen D text, golden or version changes.
+correctness passed on all three renderer legs and Vulkan sync validation. No comparison bound, accepted software cost, frozen D text, golden or version changes.
 
 ## Integration
 
@@ -14,6 +14,7 @@ The starting branch was fix/taa-shadow-visibility at 7628f382b. The clean-tree a
 | 50c8f39f7 | Merge the gathers candidate |
 | 33bbb69d8 | Restore Vulkan visibility gathers by reverting a43599546 |
 | ea9b398c1 | Recapture all seven gathered shipped DXBC listings and GLSL pins |
+| 211e42544 | Record the merged policy and completed local gates, the hosted run source |
 
 The r1 merge was conflict-free. The gathers merge conflicted only in TemporalVisibilityDxbcRealProgramTests.cs.
 It retains 7g.3b's strict current-source pins rather than the parallel branch's temporary stale-fixture allowance.
@@ -89,18 +90,73 @@ timing class selected. Theory rows gated off at discovery expand when GPU tests 
 
 ## Hosted correctness
 
-One free all-leg run on the pushed integrated candidate is pending. Its selection is 7g.3b's corrected filter plus
-the explicit raw gather class.
+The one free all-leg run is [39571324204](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39571324204), at
+pushed commit 211e425449f664065c516b885752c70bdd3f7862. Its source SHA was resolved with git rev-parse and verified against the run's headSha.
+The dispatch uses legs all, tier push and bake false. No second dispatch was started. The run was awaited with
+gh run watch --exit-status, which returned 0. Its selection is 7g.3b's corrected filter plus the explicit raw gather
+class.
 
 ```text
 ((FullyQualifiedName~KhaozEngine.Tests.Gpu.Temporal&FullyQualifiedName!~CostPerf)|((FullyQualifiedName~Shadow|FullyQualifiedName~Golden)&FullyQualifiedName!~Perf&FullyQualifiedName!~Bench)|FullyQualifiedName~MotionTargetLifecycleGpuTests|FullyQualifiedName~D3D11FxcValidationTests|FullyQualifiedName~TemporalLockReleaseProbe|FullyQualifiedName~TemporalVisibilityGatherGpuTests)
 ```
 
-Lavapipe follow-walk colour is held to the restored bound 0.0625 and share 0.0025. State, R8 and depth stay exact.
-The no-gather comparison values from 39559768823 are Native 0.0073 / 0.007%, Quality 0.0171 / 0.026%,
-Performance 0.0439 / 0.172%, outline control 0.0171 / 0.026% and outline on 0.0112 / 0.022%.
-Large-frame and moving-shadow cases must be exact. The eight accepted software values are checked against the
-full-precision table in owner-release-only.md. No remeasurement is authorized unless one changes, and a worsening
-over 1 percent stops the round.
+| Leg | Job | Main passed / failed / skipped | Entry identity | A/B | Equivalence | Raw gather oracle | DXBC facts |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Hosted Metal | 119125998541 | 1740 / 0 / 1 | 10/10 | 12/12 | 6/6 | 6/6 exact | 108/108 |
+| WARP | 119125998478 | 1740 / 0 / 1 | 10/10 | 12/12 | 6/6 | 6/6 exact | 108/108 |
+| lavapipe | 119125998458 | 1740 / 0 / 1 | 10/10 | 12/12 | 6/6 | 6/6 exact | 108/108 |
+| Vulkan sync | 119125998375 | 622 / 0 / 0 | Separate golden and compute selection | | | | |
+
+Each renderer leg's one skip is the opt-in DXBC dump. The Windows FXC step separately passed 31 cases with its
+one dump skip. Linux's shader-cache cold, warm and disabled checks each passed their case. Each backend's six raw
+readbacks compare 100,253,392 components with zero mismatches. The seventh gather-class fact compiles both oracle
+programs for every backend. The lock-release probe also passes on every leg. WARP and lavapipe report B versus C
+bit mismatches 0 in 4,194,304 cases, with the historical P versus B count 268335 unchanged.
+
+The sync validation artifact was downloaded by its exact name, vulkan-validation-sync. It contains one
+VulkanValidationLogHost producer marker, explicitly arming KE_VULKAN_VALIDATION=sync, and zero warning or error
+severity lines. This confirms the clean-log annotation has an armed producer. The artifact was deleted after
+reading. Hosted Metal uses the Apple Paravirtual device, WARP the Microsoft Basic Render Driver and lavapipe
+llvmpipe (LLVM 20.1.2, 256 bits).
+
+### Lavapipe colour against the no-gather run
+
+The five follow-walk results match run 39559768823 at its reported precision. The current worst column preserves
+the test's printed value. The baseline worst column is the four-decimal value supplied for comparison. Main's
+restored amendment 23 bound remains 0.0625 and share 0.0025, or 0.25%. State, R8 and depth are exact every frame.
+Both large-frame presets have zero colour differences for production and D prime, as well as exact state, R8 and
+depth. All four moving-shadow cases have exact colour, confidence, locks, marks, R8, depth and previous jitter.
+
+| Follow-walk case | Current colour worst | Current share | No-gather worst / share |
+| --- | ---: | ---: | ---: |
+| Native | 0.0073242188 | 0.007% | 0.0073 / 0.007% |
+| Quality | 0.017089844 | 0.026% | 0.0171 / 0.026% |
+| Performance | 0.043945312 | 0.172% | 0.0439 / 0.172% |
+| Outline control | 0.017089844 | 0.026% | 0.0171 / 0.026% |
+| Outline on | 0.011230469 | 0.022% | 0.0112 / 0.022% |
+
+### Accepted software costs
+
+All eight values are unchanged at full precision. No bound, baseline or hardware row changed, no separate
+remeasurement run was needed and no 1 percent stop guard fired. Grain is the Quality textured grain, tail is the
+Native S 8.0 px retreating textured tail, and both rim metrics use Quality M 1.0 leading textured.
+
+| Device | Metric | Accepted value | Merged value | Change |
+| --- | --- | ---: | ---: | ---: |
+| WARP | grain | 0.008013324991270224 | 0.008013324991270224 | 0% |
+| lavapipe | grain | 0.008039903208144449 | 0.008039903208144449 | 0% |
+| WARP | tail | 0.007222797931709032 | 0.007222797931709032 | 0% |
+| lavapipe | tail | 0.007245504857927269 | 0.007245504857927269 | 0% |
+| WARP | rim error | 0.003134108234483462 | 0.003134108234483462 | 0% |
+| WARP | rim temporal | 0.004831370554127536 | 0.004831370554127536 | 0% |
+| lavapipe | rim error | 0.0030749369871157866 | 0.0030749369871157866 | 0% |
+| lavapipe | rim temporal | 0.0047599525602309255 | 0.0047599525602309255 | 0% |
+
+### Handoff
+
+The follow-up evidence commit changes only this record, gathers.md, manifest.json, the spec and the Task 7g plan.
+Code, shader tables, corpus and DXBC fixtures remain those of tested commit 211e42544. The historical workspace
+loading warning and GitHub's macOS runner-capacity notice are not changed. No unrelated finding was actioned.
+No manual validation is needed. The owning orchestrator retains main integration.
 
 No billed workflow, timing, benchmark, stress test, main merge, tag or release is part of this round.

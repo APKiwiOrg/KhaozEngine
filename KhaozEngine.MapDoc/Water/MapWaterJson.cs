@@ -224,7 +224,7 @@ internal static class MapWaterJson
     {
         using var sink = new MapCanonical.HashingBufferWriter();
         sink.Append(Encoding.UTF8.GetBytes(domain + "\0"));
-        using (var w = new Utf8JsonWriter(sink, new JsonWriterOptions { Indented = false }))
+        using (var w = new Utf8JsonWriter(sink, MapJsonTextOptions.IndentedWriter with { Indented = false }))
         {
             body(w);
             w.Flush();

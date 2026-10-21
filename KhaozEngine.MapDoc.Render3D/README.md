@@ -111,3 +111,46 @@ and overflow diagnostics remain authoritative.
 `ISceneUploadReservation` before running any allocation factory. Retirement stays charged until the
 renderer confirms release. Renderer publication, residency and the actual scene sink are later R8a work.
 `ScenePreparedFoliage` declares the immutable 96-byte packed product. Its producer is not implemented here.
+
+`MapWaterScopedCompiler.Compile(scene)` selects complete world-locked 2 m water cells, split at document
+storage borders. Requested coverage and complete-cell dependency coverage have separate witnesses.
+Containment, bed and ceiling reads use the pinned scene source and shared admission. Missing or unresolved
+columns refuse the whole result. Overlapping draw windows retain identical cell keys and payload bytes.
+Canonical payloads remain look-free. Draw membership expands the window by explicit
+`MapSceneScope.MotionPaddingMetres`, retaining whole cells whose displaced surfaces can reach the window.
+The same allowance then acquires separate clip dependencies around those complete draw cells, including
+their portions outside the padded window. Clip dependencies do not become draw memberships on their own.
+
+`NativeMapWater.Prepare(water, look, settings)` resolves every inherited `WaterLook` field against the caller's
+scene `WaterSettings` through the renderer's `WaterLook.ResolveInto` rule. It freezes that explicit effective
+look and prepares typed `MapWaterResource` registrations plus `MapWaterFrame` submissions. Later changes to
+the look or scene settings require preparation again. `MapWaterRenderBatch` exposes the canonical cell inventory,
+retained bytes and preparation charge. Register once per resource generation, then call `Record` for each
+frame. Closed water has no draw. Meshes deduplicate vertices within their canonical cells and retain an
+original-domain clip payload, so displaced fragments cannot fill dry notches.
+The clip payload is a render derivation over the same body's neighbouring free-surface regions within the
+look's certified displacement halo. It is tested at displaced world position. Internal cell borders never
+become shorelines. The render digest includes every consumed neighbour region digest.
+
+Call `NativeMapWater.RequiredMotionPadding(look, settings)` before acquiring the scene, passing the same look
+and scene settings to `Prepare`. It returns the conservative procedural Gerstner reach plus
+`ClipEpsilonMetres`, fixed at 0.001 m. The scene's motion padding must cover
+that whole value or `Prepare` refuses with `MapRenderAssetStatus.Invalid`. Default and partially overridden
+procedural looks inherit before certification. Active component generation uses the effective speed, seed
+and directions, and is validated even at zero horizontal steepness because vertical waves remain active.
+Valid zero-steepness waves retain zero horizontal reach. Nonfinite generated components refuse with `Invalid`,
+including overflow from finite effective inputs.
+FFT remains an explicit `Unsupported` refusal for native MapDoc preparation. R8b owns FFT certification.
+Existing water-plane FFT rendering retains its released behavior. Resource bounds include the certified
+horizontal and vertical motion allowance. No body-wide shared clip resource is retained.
+
+The format-neutral `WaterSurfaceMesh` carries a published `MeshHandle`, integer `RenderAnchor`, local
+transform and look. `Scene3D.LoadWaterMesh` uploads a mesh and original domain together. A resource upload
+producer may instead attach the domain with `LoadWaterDomain` after uploading its mesh. Both creation
+paths belong behind the caller's upload reservation. `Scene3D.DrawWater(in WaterSurfaceMesh)` only queues
+the existing resource and refuses stale handles. `UnloadMesh` retires the domain with the mesh.
+The bounded shader alone binds domain clip data. Existing `WaterPlane` submissions retain their released
+programs and queue behavior. R8b replaces optical inputs behind the same bounded geometry/domain contract,
+including body-local optical depth. R8a adds no camera-driven water level, global sea or horizon extension.
+The current optical packing seam is `WaterRenderer.PackBounded`. R8b #1300 replaces its optical inputs
+while retaining original-domain clipping. Point sampling remains the separate #1358 consumer dependency.

@@ -259,7 +259,7 @@ public sealed class MapSceneSource
             });
             foliageMetadata.Finish();
             scan.RetainBytes(checked(40L * (root.Foliage?.Layers.Sum(l => (long)l.Chunks.Count) ?? 0)));
-            var data = new MapSceneData(generation, manifestDigest, source.SceneDirectory, assets, scan.Limits, native, root.TileSize,
+            var data = new MapSceneData(generation, manifestDigest, source.SceneDirectory, assets, scan.Limits, native, source.Tiles.TileSize,
                 root.Bounds.MinX, root.Bounds.MinZ, root.Bounds.MaxX, root.Bounds.MaxZ, rootDigest, owners, producing,
                 dependenciesByOwner, metadata, new(metadata), Array.AsReadOnly(requiredAssets.Order(StringComparer.Ordinal).ToArray()),
                 foliage, foliageStorage, root.Foliage, scan.Work(true), root.BuildingIntent?.Roofs ?? [], root.BuildingIntent?.Storeys ?? [],

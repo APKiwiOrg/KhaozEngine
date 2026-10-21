@@ -39,6 +39,7 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuCommandList commands = factory.CreateCommandList();
             model.UploadFoliageUniforms(commands, [default]);
             CaptureClipmapPipeline(device, framebuffer.Outputs, commands);
+            CaptureBoundedWaterPipeline(scene);
             // The point-shadow pass is allocated lazily, so a scene that is never asked for one builds none of its
             // four pipelines and the three caster programs would read here as uncaptured.
             Assert.True(scene.EnsurePointShadowAtlas(PointShadowAtlas.MinFaceResolution, 1));
@@ -196,6 +197,14 @@ namespace KhaozEngine.Tests.Gpu
                     match.Groups[3].Value));
             }
             return declarations;
+        }
+
+        static void CaptureBoundedWaterPipeline(Scene3D scene)
+        {
+            var mesh = new GltfMesh(new[] { new ModelVertex(new(0, 0, 0), Vector3.UnitY, Vector4.One),
+                new ModelVertex(new(0, 0, 2), Vector3.UnitY, Vector4.One), new ModelVertex(new(2, 0, 0), Vector3.UnitY, Vector4.One) }, new uint[] { 0, 1, 2 });
+            var handle = scene.LoadWaterMesh(mesh, WaterSurfaceDomain.Encode(new[] { new Vector2(0, 0), new(0, 2), new(2, 0) }));
+            scene.UnloadMesh(handle);
         }
 
         static GpuVertexElementFormat FormatOf(string glslType) => glslType switch

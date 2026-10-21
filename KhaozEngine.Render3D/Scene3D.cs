@@ -756,7 +756,7 @@ namespace KhaozEngine.Render3D
             _fillVerts.Clear();
             _decals.Clear();
             _shadowBlobs.Clear();
-            _waterPlanes.Clear();
+            ClearWaterQueues();
             _overlayMeshDraws.Clear();
             _silhouetteDraws.Clear();
             BeginMeshOutlineFrame();
@@ -1621,19 +1621,7 @@ namespace KhaozEngine.Render3D
             // linear-depth MRT the outline pass reads below) - see Rendering.WaterRenderer / ShaderSources.WaterVert
             // for the full reasoning. Fully skipped when nothing is queued, so a frame with no DrawWater call
             // renders byte-identical to before this pass existed.
-            if (_waterPlanes.Count > 0)
-            {
-                _water.Draw(cl, _res, RelativeWaterPlanes(), vp, displayVp,
-                    Post.LightDirection, Post.LightColor, eye, Post.Water, Post.Sky, EffectTimeSeconds, _frameOrigin, Post.Atmosphere.Enabled);
-                _frameStats.DrawCalls++;
-                // The ocean FFT's remaining GPU drain (the one a frame pays to PRIME its cascades, since #398
-                // ping-ponged the per-frame one away) is a Submit+WaitForIdle stall, not draw-call encode cost, so
-                // it gets its own WaterSyncMs bucket (#374) rather than being misattributed to transparents. It no
-                // longer lands INSIDE this bracket: since #423 the prime runs in PrepareFrame, before the frame's
-                // list is even open, so there is nothing to carve out of transparentsMs - only to report. The water
-                // renderer times that exact span with its own Stopwatch (OceanFftProducer.LastStallMs).
-                if (EnableTiming) waterSyncMs = (float)_water.LastOceanCost.StallMs;
-            }
+            RenderWater(cl, vp, displayVp, eye, ref waterSyncMs);
 
             // Modern particle sprites: after the sky + decals + water (so effects composite over water surfaces),
             // before the post chain, into ColorDepthFB with the depth test on (no write) so geometry occludes

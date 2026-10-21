@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using KhaozEngine.MapDoc.Scene;
 
 namespace KhaozEngine.MapDoc.Water;
 
@@ -23,21 +24,23 @@ internal sealed class MapBoundsIndex
         if (boxes.Count != 0) Build(0, boxes.Count, splitX: true);
     }
 
-    internal List<int> Overlapping(MapWaterPolygons.Bounds query)
+    internal List<int> Overlapping(MapWaterPolygons.Bounds query, MapWaterWorkBudget? budget = null, MapSceneAdmission? admission = null)
     {
+        admission?.ReserveBytes(checked(128L + 64L * (1 + (int)Math.Log2(Math.Max(1, _boxes.Count)))));
         var result = new List<int>();
         if (_nodes.Count == 0) return result;
         var pending = new Stack<int>();
         pending.Push(0);
         while (pending.Count != 0)
         {
+            budget?.Charge(1);
             var node = _nodes[pending.Pop()];
             // A box that overlaps the query lies inside its node's union, so that union overlaps the query too.
             if (!node.Union.OverlapsOpen(query)) continue;
             if (node.Left < 0)
             {
                 for (int i = node.Low; i < node.High; i++)
-                    if (_boxes[_order[i]].OverlapsOpen(query)) result.Add(_order[i]);
+                    if (_boxes[_order[i]].OverlapsOpen(query)) { admission?.ReserveBytes(16); result.Add(_order[i]); }
             }
             else
             {

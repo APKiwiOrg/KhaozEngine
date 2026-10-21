@@ -120,6 +120,7 @@ namespace KhaozEngine.Tests.Gpu
                 ["Starfield"] = "StarfieldRenderer",
                 ["Water"] = "WaterRenderer",
                 ["WaterClipmap"] = "WaterRenderer",
+                ["BoundedWater"] = "WaterRenderer bounded",
 
                 ["PostPalette"] = "PixelPostProcess pal",
                 ["PostEdge"] = "PixelPostProcess edge",
@@ -285,7 +286,7 @@ namespace KhaozEngine.Tests.Gpu
                 .Select(p => p.Pipeline)
                 .ToHashSet(StringComparer.Ordinal);
 
-            Assert.Equal(86, catalog.Length);
+            Assert.Equal(87, catalog.Length);
             Assert.Equal(catalog.Length, ProgramPipelines.Count);
 
             foreach (string program in catalog)

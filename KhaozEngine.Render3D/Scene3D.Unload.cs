@@ -41,7 +41,7 @@ namespace KhaozEngine.Render3D
         {
             if (h.Generation == 0) return;          // default handle: no-op
             _slots.Free(h.Index, h.Generation);     // throws on stale/invalid
-            _interiorRelevance.Forget(h);
+            ForgetWaterAndInteriorRelevance(h);
             _silhouetteRelevance.Forget(h);
             // Retire rather than destroy: queued GPU work may still reference these buffers, and draining the whole
             // device per unload stalled the frame thread on the terrain streaming path (every chunk leaving the ring

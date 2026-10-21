@@ -33,6 +33,32 @@ anchor-local transform and focus, channels and exactly one typed frame. `MapDraw
 without a device. Frozen water and foliage policies capture the caller's mutable objects. Foliage model
 profiles and casting resolve into registration. Per-frame draw options exclude those stable values.
 
+`NativeMapTerrain.Prepare(scene, input, materialIds)` consumes the scene's acquired canonical faces and
+effective paint regions. `MapTerrainRenderBatch.Register` registers typed `MapTerrainResource` payloads.
+`Record` writes explicit rigid defaults and focus in each resource's anchor space. Keep the batch alive
+while consuming its registrations. It retains the prepared input independently of the original caller.
+`RetainedBytes` covers geometry and provenance. `InputRetainedBytes` reports the shared decoded charge,
+and `PreparationChargeBytes` includes intermediate work under the captured scene allowance.
+
+Terrain uses Render3D's ground pipeline, without a TileWorld dependency. Its ordered material sets map
+numeric IDs to albedo layers. Vertex Color carries four underlay weights, Uv.xy and Tangent.xy carry their
+slots, Tangent.z is one, and Tangent.w names the optional overlay slot plus one. The overlay takes the
+remaining weight. Feather tessellation stays on the canonical face, with a 0.2 m inward smoothstep band.
+Canonical geometry never changes with observer distance. Ceilings retain inward normals and wall sides
+retain their compiled winding and normals. Colour and shadows consume the same geometry.
+
+Material zero has no invented layer. Missing selected materials refuse before registration. Sets split
+deterministically at `TileGroundMaterialConfig.MaxMaterials`, keeping every canonical face's materials
+together. A face that cannot fit refuses with `CapacityExceeded`. Albedo images within a set need equal
+dimensions. A textureless layer is solid white at that size with the material's base-colour tint. Terrain
+uses the ground pipeline's default tiling and base specular strength. Declared normal and roughness maps
+produce typed `MapTerrainFinding` entries, since this pipeline consumes albedo only.
+
+`MapRenderTransform` subtracts resource anchors before local pose and focus rounding. The format-neutral
+`Scene3D.DrawAnchored` retains the integer `RenderAnchor` through rigid grouping, both shadow paths and
+previous-frame motion. Its World matrix is local to the anchor. Existing absolute draws retain their
+released queue, culling and zero-origin upload behavior.
+
 `IMapRenderDevice` measures upload demand before creation. An upload must claim its
 `ISceneUploadReservation` before running any allocation factory. Retirement stays charged until the
 renderer confirms release. Renderer publication, residency and the actual scene sink are later R8a work.

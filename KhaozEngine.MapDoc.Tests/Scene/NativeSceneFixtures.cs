@@ -10,6 +10,7 @@ using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Scene;
+using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.Tests.MapDoc.Scene;
 
@@ -27,6 +28,7 @@ internal static partial class NativeSceneFixtures
 {
     internal static NativeSceneFixture Create(string variant)
     {
+        if (variant.StartsWith("terrain", StringComparison.Ordinal)) return Terrain(variant);
         if (variant is not ("spanning" or "empty" or "growth" or "tile-owner")) throw new ArgumentException(variant, nameof(variant));
         var bytes = new Dictionary<string, byte[]>(StringComparer.Ordinal);
         var rows = new JsonArray();
@@ -108,6 +110,78 @@ internal static partial class NativeSceneFixtures
                 Y = 0
             });
         return new(document, closure);
+    }
+
+    static NativeSceneFixture Terrain(string variant)
+    {
+        var fixture = Create("empty");
+        var document = fixture.Document;
+        void Surface(string id, MapSurfaceRole role, ushort underlay, ushort overlay = 0,
+            MapOverlayCut cut = MapOverlayCut.Full, int height = 125, int width = 1)
+        {
+            var patch = new MapSurfacePatch
+            {
+                Key = new(id, id == "last" ? 1 : 0, 0),
+                Width = width,
+                Depth = 1,
+                Heights = Enumerable.Repeat(height, 2 * (width + 1)).ToArray(),
+                Cells = Enumerable.Range(0, width).Select(i => new MapSurfaceCell(
+                    (variant == "terrain-many" && id == "ground") || (variant == "terrain-many-face" && id == "many-paint")
+                        ? (ushort)(underlay + i) : underlay, overlay, cut, 0,
+                    overlay == 0 ? MapCellFlags.None : MapCellFlags.FeatherOverlay, MapCellTopology.ForceSwNe)).ToArray(),
+                Presence = new[] { width == 64 ? ulong.MaxValue : (1UL << width) - 1 },
+            };
+            var surface = new MapSurfaceRef(id, MapLatticeFrame.ImportedMetreCentimetre, role,
+                MapPresencePolicy.Native, role == MapSurfaceRole.PaintOverride ? "ground" : null, null, "");
+            document.Surfaces.Patches.Add(patch.Key, patch);
+            document.Surfaces.Refs.Add(surface with
+            {
+                SemanticSha256 = MapSurfaceSemantics.SurfaceDigest(surface,
+                    new[] { KeyValuePair.Create(patch.Key, MapSurfaceSemantics.PatchDigest(patch)) }),
+            });
+        }
+        Surface("ground", MapSurfaceRole.SupportFloor, variant is "terrain-zero" or "terrain-zero-overlay" ? (ushort)0 : (ushort)10,
+            variant is "terrain-feather" or "terrain-cuts" or "terrain-combined" or "terrain-zero-overlay" ? (ushort)11 : (ushort)0,
+            variant == "terrain-cuts" ? MapOverlayCut.DiagonalHalf : MapOverlayCut.Full,
+            width: variant == "terrain-many" ? 64 : 1);
+        if (variant == "terrain-many") Surface("last", MapSurfaceRole.SupportFloor, 74);
+        if (variant is "terrain-ceiling" or "terrain-posed" or "terrain-combined") Surface("ceiling", MapSurfaceRole.Ceiling, 10, height: 425);
+        if (variant == "terrain-wall")
+        {
+            var patch = document.Surfaces.Patches[new("ground", 0, 0)];
+            foreach (var (id, height) in new[] { ("lower", 125), ("upper", 425) })
+                patch.Records.Add(new MapBoundaryChain(id, MapChainKind.Authored, null, new[]
+                {
+                    new MapChainVertex(new("ground", MapLatticeAddress.Corner(0, 0)), height),
+                    new MapChainVertex(new("ground", MapLatticeAddress.Corner(1, 0)), height),
+                }));
+            patch.Records.Add(new MapWallStrip("wall", new("lower", patch.Key), new("upper", patch.Key), MapStripFacing.TwoSided, 10));
+            var surface = document.Surfaces.Refs[0];
+            document.Surfaces.Refs[0] = surface with
+            {
+                SemanticSha256 = MapSurfaceSemantics.SurfaceDigest(surface,
+                new[] { KeyValuePair.Create(patch.Key, MapSurfaceSemantics.PatchDigest(patch)) })
+            };
+        }
+        if (variant is "terrain-paint" or "terrain-conflict" or "terrain-combined")
+        {
+            Surface("paint-b", MapSurfaceRole.PaintOverride, variant == "terrain-conflict" ? (ushort)11 : (ushort)12, height: 0);
+            Surface("paint-a", MapSurfaceRole.PaintOverride, 12, height: 0);
+            document.NativeResourceTransforms = new[] { "paint-b", "paint-a" }.Select(id =>
+                new MapStandaloneResourceTransform(MapPrefabChildKind.Surface, id,
+                    new(.25, 0, -.25, 0, .5), new string('a', 64))).ToArray();
+        }
+        if (variant == "terrain-many-face")
+        {
+            Surface("many-paint", MapSurfaceRole.PaintOverride, 11, height: 0, width: 64);
+            document.NativeResourceTransforms = new[] { new MapStandaloneResourceTransform(MapPrefabChildKind.Surface, "many-paint",
+                new(.1, 0, -.02, 0, .005), new string('a', 64)) };
+        }
+        if (variant == "terrain-posed")
+            document.NativeResourceTransforms = new[] { "ground", "ceiling" }.Select(id =>
+                new MapStandaloneResourceTransform(MapPrefabChildKind.Surface, id,
+                    new(31999.123456, -499.5, -31999.654321, .371, 1.2), new string('a', 64))).ToArray();
+        return fixture;
     }
 
     internal static NativeSceneFixture Reload(NativeSceneFixture fixture, bool tiled)

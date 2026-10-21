@@ -88,12 +88,16 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   100 km from the origin renders as cleanly as one at it. `Scene3D` subtracts a quantized render origin (default
   `WorldFrame.Nearest(camera.Eye).Anchor`, a 128 m grid point, so the subtraction is exact) from every world
   position on its way to the GPU, which removes the large operands before the matrix concatenation ever meets
-  them. **Adoption: none** - every entry point still takes ABSOLUTE world coordinates, `WorldToScreen` and
+  them. **Adoption: none** - existing draw entry points take ABSOLUTE world coordinates, `WorldToScreen` and
   `ScreenToRay` still speak absolute, and every CPU-side spatial computation (frustum culling, the terrain cull
   fast path, shadow-cascade fitting, caster classification, the transparency sorts) still runs in absolute space,
   byte-identical to before. The origin is LATCHED at `Begin()`. `RenderOrigin = Vector3.Zero` opts out exactly.
   The three engine cameras implement `IRenderOriginAware`. A consumer camera that does not falls the WHOLE
   pipeline back to the absolute path (never half an origin) and `RenderOriginActive` reports `false`.
+  `DrawAnchored(in RigidInstanceDraw, RenderAnchor)` additionally accepts a matrix local to an integer world
+  anchor. The renderer retains that anchor through grouping, shadows and previous-frame motion, reducing it
+  against the render origin in binary64 before one binary32 rounding. This avoids an absolute float translation
+  for geometry already authored in local coordinates. CPU culling still uses an approximate absolute matrix.
   `Transform3D.ToMatrix(Vector3 renderOrigin)` (in `KhaozEngine.Render3D.Ecs`) builds a reduced matrix for a
   consumer that wants one, which `Scene3D` itself never requires. Terrain chunk vertices, terrain texturing at range and depth precision are
   explicitly NOT fixed by it. See docs/USING-KHAOZENGINE.md.

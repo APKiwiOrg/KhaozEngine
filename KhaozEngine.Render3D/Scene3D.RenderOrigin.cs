@@ -213,22 +213,16 @@ namespace KhaozEngine.Render3D
         /// Upload this frame's grouped instances to the GPU in the render frame. <c>_instanceData</c> itself stays
         /// ABSOLUTE for its whole CPU life - <see cref="ComputeMainPassVisibility"/> (including the terrain identity
         /// fast path) and <see cref="BuildShadowCasterSpans"/> both read it after this call - so the reduction lands in
-        /// a reused staging copy that differs only in each matrix's translation column. With no origin in force the
-        /// absolute list is uploaded directly, so the byte traffic and the frame are unchanged.
+        /// a reused staging copy. Anchored draws reduce their retained local matrix and integer anchor in binary64.
+        /// With no origin and no anchored draws the absolute list is uploaded directly, preserving legacy bytes.
         /// </summary>
         void UploadInstancesRelative(IGpuCommandList cl)
         {
             if (_instanceData.Count == 0) return;
             List<ModelRenderer.InstanceData> src = _instanceData;
-            if (_frameOriginActive)
+            if (_frameOriginActive || _instanceAnchors.Exists(a => a.HasValue))
             {
-                _instanceDataRelative.Clear();
-                for (int i = 0; i < src.Count; i++)
-                {
-                    ModelRenderer.InstanceData d = src[i];
-                    d.Model = ToRender(d.Model);
-                    _instanceDataRelative.Add(d);
-                }
+                ReduceRigidInstances(src, _instanceAnchors, _frameOrigin, _instanceDataRelative);
                 src = _instanceDataRelative;
             }
             _model.UploadInstances(cl, CollectionsMarshal.AsSpan(src));

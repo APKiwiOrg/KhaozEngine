@@ -40,6 +40,7 @@ public sealed class MapDrawRecorder : IMapDrawSink
             MapLightResource => resource.Reference.Key.Kind == MapRenderKind.Light,
             MapWaterResource => resource.Reference.Key.Kind == MapRenderKind.Water,
             MapFoliageResource => resource.Reference.Key.Kind == MapRenderKind.Foliage,
+            MapTerrainResource => resource.Reference.Key.Kind == MapRenderKind.Terrain,
             MapRigidResource => resource.Reference.Key.Kind is MapRenderKind.Terrain or MapRenderKind.Placement or MapRenderKind.Roof or MapRenderKind.Marker or MapRenderKind.Foliage,
             _ => false
         };
@@ -66,6 +67,7 @@ public sealed class MapDrawRecorder : IMapDrawSink
         bool matches = resource.Payload switch
         {
             MapRigidResource => draw.Rigid.HasValue,
+            MapTerrainResource => draw.Rigid.HasValue,
             MapLightResource => draw.Light.HasValue,
             MapWaterResource => draw.Water.HasValue,
             MapFoliageResource => draw.Foliage.HasValue,

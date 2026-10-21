@@ -4373,7 +4373,11 @@ inside the matrix concatenation leaves a small difference carrying the rounding 
 geometry swims, shadow edges crawl, and thin geometry vibrates as the camera moves. `Scene3D` now subtracts a
 quantized **render origin** from everything on its way to the GPU, so the GPU never sees the large operands.
 
-**Adoption: none.** The whole public surface still takes ABSOLUTE world coordinates and there is nothing to call.
+**Adoption: none.** Existing draw entry points still take ABSOLUTE world coordinates and need no change.
+For precise local geometry, `DrawAnchored(in RigidInstanceDraw, RenderAnchor)` instead takes a matrix local to
+an integer world anchor. The renderer retains it through grouping, shadows and previous-frame motion, subtracting
+the render origin in binary64 before one binary32 rounding. Do not first add the anchor as a float translation.
+CPU culling keeps an approximate absolute matrix. `WorldToScreen` and `ScreenToRay` remain absolute.
 
 ```csharp
 scene.Begin();                       // latches this frame's origin

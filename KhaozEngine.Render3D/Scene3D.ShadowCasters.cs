@@ -68,7 +68,8 @@ namespace KhaozEngine.Render3D
         /// <summary>One captured caster instance: its uploaded world matrix, dissolve threshold and interior opt-in.
         /// These all change the recorded depth, so a dissolve or cut bit that changes while the light matrices
         /// and transforms hold still must still re-render the atlas.</summary>
-        internal readonly record struct ShadowCasterInstance(Matrix4x4 Model, float Dissolve, bool CutInsideInteriors = false);
+        internal readonly record struct ShadowCasterInstance(Matrix4x4 Model, float Dissolve, bool CutInsideInteriors = false,
+            AnchoredRigidTransform? Anchored = null);
 
         // Per-instance caster classification, index-aligned to _instanceData (filled by GroupInstances, which is the
         // one place that knows each uploaded slot's source instance). Reused, never per-frame allocated.
@@ -241,7 +242,7 @@ namespace KhaozEngine.Render3D
                     for (uint s = 0; s < span.Count; s++)
                     {
                         ModelRenderer.InstanceData d = _instanceData[(int)(span.Start + s)];
-                        instances.Add(new ShadowCasterInstance(d.Model, d.Dissolve.X, d.SpecParams.W > 0.5f));
+                        instances.Add(new ShadowCasterInstance(d.Model, d.Dissolve.X, d.SpecParams.W > 0.5f, InstanceAnchor((int)(span.Start + s))));
                         mesh.Bounds.WorldSphere(d.Model, out Vector3 bc, out float br);
                         _shadowCasterSpheres.Add(new Vector4(bc, br));
                     }

@@ -345,6 +345,7 @@ namespace KhaozEngine.Render3D
                 MixPointSignature(ref hash, SignatureWord((uint)mesh.Index, (uint)mesh.Generation));
                 MixPointSignature(ref hash, SignatureWord(PointDissolveWord(data), (uint)PointCasterKind(slot)));
                 MixPointSignature(ref hash, data.Model);
+                if (InstanceAnchor(slot) is { } anchored) MixAnchoredPointSignature(ref hash, anchored);
             }
             // Casting foliage joins at its rest pose (Scene3D.FoliagePointShadows.cs), so its motion never
             // dirties a row.

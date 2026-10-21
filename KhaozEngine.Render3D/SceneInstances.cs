@@ -25,8 +25,8 @@ namespace KhaozEngine.Render3D
         /// standalone queue is never recorded.</summary>
         public void Add(in RigidInstanceDraw draw) => _items.Add(new Instance(in draw));
 
-        internal void Add(in RigidInstanceDraw draw, bool relevantCut) =>
-            _items.Add(new Instance(in draw, relevantCut));
+        internal void Add(in RigidInstanceDraw draw, bool relevantCut, AnchoredRigidTransform? anchored = null) =>
+            _items.Add(new Instance(in draw, relevantCut) { Anchored = anchored });
 
         internal void SetInteriorCut(int index, bool relevantCut) =>
             _items[index] = _items[index] with { CutInsideInteriors = relevantCut };
@@ -77,6 +77,7 @@ namespace KhaozEngine.Render3D
         {
             public MeshHandle Mesh { get; }
             public Matrix4x4 World { get; }
+            internal AnchoredRigidTransform? Anchored { get; init; }
             public Color Tint { get; }
             public Material Material { get; }
             // Rigid dissolve (issue #253): DissolveThreshold 0 = no dissolve (byte-identical old path). A value > 0 folds the

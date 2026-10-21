@@ -286,9 +286,9 @@ On 2026-10-20 the owner ruled to optimize before merging, with a budget of at mo
 
 ### Task 7h K
 
-**Status:** Blocked. Hosted run 39627795369 found four strict colour-byte failures on WARP in the new field and
-outlined-field comparisons. Metal passed. Vulkan is still running. No bound is relaxed and the candidate must not
-be integrated as a validated exact specialization. The linked record owns the failure details and final result.
+**Status:** Blocked. Hosted run 39627795369 found four strict colour-byte failures against the ordinary check on
+WARP and five strict fused/split colour failures on lavapipe. Metal passed. No bound is relaxed and the candidate
+must not be integrated as a validated exact specialization. The linked record owns every failure and final count.
 
 A scene certifies its resolved R8 only from the actual shared receiver upload used by every opaque family. A
 nonpositive uploaded key-shadow strength makes sampleKeyShadow return exactly one before any atlas sample.

@@ -1,8 +1,8 @@
 # Task 7h K, certified fully lit specialization
 
-**Status:** Blocked by strict colour-byte identity on WARP. The implementation and failing oracles are pushed at
+**Status:** Blocked by strict colour-byte identity on WARP and strict fused/split colour identity on lavapipe. The implementation and failing oracles are pushed at
 code commit d140310d950df04093880d2e3c302e84f32c8cfc. No code change, tolerance or new exception has been added after
-that result. Vulkan remains in progress. This is a candidate and reproduction, not a validated exact optimization.
+that result. All hosted legs are complete. This is a candidate and reproduction, not a validated exact optimization.
 
 Source branch fix/taa-vis-lit-skip starts at 6c0382161. This record covers correctness only. No timing,
 benchmark, stress, merge, tag or release is part of the task.
@@ -121,13 +121,18 @@ classes. No timing class, billed workflow or stress test is selected.
 | --- | --- | --- | --- |
 | Hosted Metal, Apple Paravirtual device | 119317681651 | 1793 / 0 / 1 | 53 / 0 |
 | WARP, Microsoft Basic Render Driver | 119317681549 | 1789 / 4 / 1 | 49 / 4 |
-| lavapipe | 119317681783 | Running | Pending |
+| lavapipe, LLVM 20.1.2, 256 bits | 119317681783 | 1788 / 5 / 1 | 48 / 5 |
 | Vulkan sync validation | 119317681712 | 622 / 0 / 0 | Not selected |
 
-Metal and WARP each have one intentional opt-in DumpVisibilityDisassembly skip. All new cases execute. Metal's
-job completed in 18m37s. WARP completed in 27m58s. On both legs the existing entry-identity cases pass 10/10,
-frozen D A/B 12/12, equivalence 6/6 and gather 7/7. All 21 certificate cases, all ten no-check module cases and all
-eight headless policy/lifetime cases pass on WARP. The four failures are exclusively in the new strict scene oracle.
+Each renderer has one intentional opt-in DumpVisibilityDisassembly skip. All new cases execute. Metal's job
+completed in 18m37s, WARP in 27m58s and lavapipe in 2h11m6s. The run was awaited with gh run watch --exit-status,
+which returned 1. The final run status is completed/failure at the same verified source SHA. Only one dispatch was
+started and no job was rerun. The conditional full-suite placeholder job is not selected by this filtered dispatch.
+
+On every renderer the existing entry-identity cases pass 10/10, frozen D A/B 12/12, equivalence 6/6, gather 7/7 and
+DXBC facts 108/108. FXC validation completes on Windows. The existing software-Vulkan colour rule stays confined
+to its existing entry cases. All 21 certificate cases, all ten no-check module cases and all eight headless
+policy/lifetime cases pass on every renderer. All nine hosted failures are in the new strict scene oracle.
 
 ### WARP blocks exactness
 
@@ -148,7 +153,34 @@ failing frame are not proved. The boxes cases, debug/count comparisons and synth
 No comparison bound, software exception, frozen D text or visibility decision is changed to accept this result.
 The candidate is blocked and must not be integrated as satisfying Task 7h K. Further diagnosis and a new exact-head
 GPU proof are needed beyond the single correctness dispatch authorized for this brief. No second dispatch, job
-rerun, optional DXBC dump, timing, benchmark or stress run has been started.
+rerun, optional DXBC dump, timing, benchmark or stress run was started.
+
+### Lavapipe blocks strict entry identity
+
+The same scene oracle fails five cases on VulkanNative llvmpipe (LLVM 20.1.2, 256 bits). The comparison labelled
+certified fused versus split is strict on this task's new facts. No legacy software colour tolerance is applied.
+
+| Preset | Scene | First frame | First differing byte | Comparison |
+| --- | --- | ---: | ---: | --- |
+| Quality | Boxes | 3 | 179524 | Fused versus split colour |
+| Native | Field | 0 | 220664 | Fused versus split colour |
+| Native | Outlined field | 0 | 220664 | Fused versus split colour |
+| Quality | Field | 0 | 276404 | Fused versus split colour |
+| Quality | Outlined field | 0 | 276404 | Fused versus split colour |
+
+Each comparison has 460800 colour bytes. The four frame-zero cases run the ordinary checked programs because
+the read-index certificate is not yet seeded. The no-check program is not selected on those failing frames. The
+Quality boxes failure is on a selected no-check frame. Both preceding per-entry comparisons against their own
+ordinary-check reference pass on that frame before fused/split colour fails. This establishes the failing
+comparison and selected policy, not its root cause. Later channels on the failing comparison are not proved.
+The Native boxes case, debug/count cases and synthetic/fallback cases pass. The old entry-identity facts retain
+their existing software rule and pass. This task's new byte-exact requirement remains unmet, so no exception,
+tolerance or code workaround is added.
+
+All three renderer logs and the sync-validation log were read. The source code is unchanged from d140310d9.
+The implementation is left on the named branch as a blocked candidate with reproducible failing oracles. The
+orchestrator needs further diagnosis of the WARP colour drift and the lavapipe strict entry differences, followed
+by a newly authorized exact-head GPU proof before integration. No merge, tag or release was performed.
 
 ### Not changed
 

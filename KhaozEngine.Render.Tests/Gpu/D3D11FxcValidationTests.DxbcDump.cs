@@ -9,8 +9,8 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// The recapture source of the visibility DXBC fixtures (<see cref="TemporalVisibilityDxbcRealProgramTests"/>).
     /// Skipped unless <see cref="VisibilityDxbcDumpFactAttribute.EnvironmentVariable"/> is <c>1</c> on Windows. Then it
-    /// prints FXC's full disassembly of the decision helper and of every visibility program, as rewritten to D and as
-    /// shipped, one <c>DXBC|program|D or S|line number|text</c> line each, and fails so the runner prints the output.
+    /// prints FXC's full disassembly of the decision helper and six paired programs as D and shipped, plus every
+    /// additional shipped release-bearing program. Source hashes accompany the listings, one <c>DXBC|program|D or S|line number|text</c> line each, and fails so the runner prints the output.
     /// To recapture, set the variable on the Windows FXC step of <c>cross-platform-gpu.yml</c> in a diagnostic commit
     /// on a diagnostic branch, dispatch the workflow there with <c>legs=direct3d11-native</c>, take each stale fixture's
     /// lines from the job log with carriage returns removed, gzip them over the fixture and store the GLSL hash beside

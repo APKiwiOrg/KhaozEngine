@@ -335,7 +335,7 @@ attachments retain their existing all-white fallback. Uncertified and shadowed f
 This establishes no timing result or budget for shadowed frames. The owner-approved comparison rules are in section 8.
 
 The [Task 7h K record](../../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/7h-k-hosted.md)
-owns local gates, exact history-byte comparisons, compiled-module proof and the single hosted correctness run.
+owns local gates, per-device history comparisons, compiled-module proof and the hosted correctness results.
 
 ## 10. Amendment, version and handoff
 

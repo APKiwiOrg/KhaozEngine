@@ -62,7 +62,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>The programs here are the decision helper and the hosted fact's programs, in its order, and the
-        /// fixture folder holds a listing and a source hash for each side of each, nothing more.</summary>
+        /// fixture folder holds both sides plus the additional shipped release variants, each with its source hash.</summary>
         [Fact]
         public void TheFixturesCoverEveryProgramTheHostedFactChecks()
         {

@@ -447,3 +447,64 @@ The solution build caught CA1416 after moving FXC compilation into the dump prin
 Windows-only, like its sole caller and the existing compiler helper, fixes the platform contract at its source.
 The Release solution build then exits 0 with zero warnings and errors. The extended DXBC red gate has seven
 passing cases and fifteen expected missing-fixture/coverage failures before the authorized recapture.
+
+### Round 3 DXBC recapture
+
+The one free dump run is [39670622412](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39670622412), job
+119467295793, at scratch head 291306a6d40ebbf5ef0f73e760c2e67b04e6f30d. Its sole change over merge candidate
+90656f46f is KE_DUMP_VISIBILITY_DXBC=1 on the Windows FXC step. The local and remote scratch SHAs and the run's
+headSha agree. The dispatch selects direct3d11-native, tier push, bake false and D3D11FxcValidationTests only.
+The run attempt is 1. Windows is windows-2025-vs2026 20261018.275.1 with Microsoft HLSL Shader Compiler 10.1.
+The job has 31 passed, one intentional dump failure and zero skips. That is its only failed step. The watcher
+exits 1. The unselected sync and sharded full-suite jobs are skipped. No second dump is dispatched.
+
+The 28 numbered listings have contiguous indices and a captured GLSL source hash each. The importer first rejects
+the missing retained terminal blank line before writing anything. Restoring the existing fixture newline convention
+makes all fourteen old listings byte-identical, including all D-prime and both helper listings. Fourteen new
+shipped-only listings and their source pins are added. Every listing has zero precise markings. All ten certified
+listings have zero gathers. Ordinary and certified sources both retain Z's positive-zero selection.
+
+The first broad device-free gate has four failures, 921 Render.Tests passes and 233 expected GPU-off skips.
+Those failures come only from an extra shift-location assertion added in this round. The four ordinary/certified
+count programs hoist the shared integer width-sign shift to conditional depth zero. Inspection shows every barrier
+OR and the floating release arithmetic remain inside if_nz at depth one. Ruling: keep Z's established requirement
+that all twelve scalar barrier ORs stay inside the branch, without adding a shift-placement requirement. The corrected fact requires all twelve
+scalar ORs inside a real branch on every shipped program and leaves the programs and captured bytes unchanged.
+
+### Round 3 local gates
+
+All local builds, tests and guards use build-slot, serially. GPU facts are off for device-free verification and
+all four writer flags are unset for the normal gate. No timing, benchmark or stress test is run.
+
+| Gate | Exit and result |
+| --- | --- |
+| Four backend/corpus writer classes | 0, nine passed |
+| WARP and NVIDIA oracle red gate | 1, two expected strict-oracle failures |
+| Rule and compiled-release green gate | 0, 30 passed, no skips |
+| Extended DXBC fixture red gate | 1, seven passed and fifteen missing-fixture/coverage failures |
+| Release solution build after fixture import | 0, zero warnings and errors |
+| Final device-free solution selection | 0, 929 passed, zero failed, 233 expected GPU-off skips |
+| Render.Tests within that selection | 925 passed, including all 129 DXBC facts |
+| Focused Metal | 0, 110 passed, zero failed or skipped, Apple M2 Max |
+| Full solution format verification | 2, only the two allowed ContourTests.cs errors from #1485 |
+| Whole-tree dashes, prose and file-size guards | 0 each |
+| Documentation versions, diff check and capture manifest | 0 each |
+
+The device-free selection is Temporal, ShaderSources, ShippedShader, Spirv, Corpus and LockRelease, plus both
+emitted-language equality classes, excluding Perf and Bench names. Catalog.Tests contributes one pass and
+Game.Tests three. The pointer allocation test from #1529 is not selected. Every new oracle and source-pin fact
+passes. Every normal writer fact reproduces its generated artifacts without drift.
+
+Metal selects K's four original classes and the new rule facts, entry identity, frozen-D A/B, equivalence, gather,
+TemporalLockReleaseProbe and both path-share classes. P and B each write all 4,194,304 cases, with P/B, P/C and B/C
+bit mismatches zero. All twenty path-share stored-lock samples match the production scenes rendered beside them.
+All six channels match exactly in every certified/check and production-entry scene pair. The source and program
+code are unchanged by the later DXBC reader correction.
+
+The full formatter completes with the historical workspace-loading warning and only ContourTests.cs 148:30 and
+150:55 diagnostics. Neither baseline file nor its errors is changed. The guards complete with exit 0, including
+all historical package/capture checks and every current measurements-folder artifact hash.
+
+The scratch dump branch is deleted locally and remotely, and its clean worktree is removed after import and the
+129-case DXBC proof. The remote deletion is checked with ls-remote. Downloaded dump logs are removed after reading.
+The final Release solution build also exits 0 with zero warnings and errors after the reader correction.

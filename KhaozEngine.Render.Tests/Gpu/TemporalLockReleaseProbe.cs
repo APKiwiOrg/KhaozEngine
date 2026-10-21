@@ -74,7 +74,7 @@ void main() {
         + PreciseHelperGlsl + "\n" + EntryPoint("temporalReleaseLock");
 
     /// <summary>B's program, including the extracted production bypass and fallback call.</summary>
-    internal static string BarrierSource => "#version 450\n" + CaseBindings + ProbeBinding
+    internal static string BarrierSource => "#version 450\n" + ShaderSources.TemporalControlFlowGlsl + CaseBindings + ProbeBinding
         + ShaderSources.TemporalResolveTuningGlsl + BarrierHelperGlsl + @"
 layout(location=0) out float oResult;
 void main() {

@@ -456,7 +456,8 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     // scaling may overflow, but each clamp returns [0, 1], so every keep factor and product is finite and
     // nonnegative. The helper therefore maps +0 to +0 exactly. Test bits and the actual selected edge argument,
     // keeping -0, nonzero locks and every non-finite argument on the unchanged ordered path.
-    if (floatBitsToUint(lockValue) != 0u
+    // Keep this selection through SPIR-V and HLSL so FXC branches around the ordered release.
+    [[dont_flatten]] if (floatBitsToUint(lockValue) != 0u
         || (floatBitsToUint(motionPixels) & 0x7f800000u) == 0x7f800000u
         || (floatBitsToUint(reactive) & 0x7f800000u) == 0x7f800000u
         || (floatBitsToUint(releaseEdgeMotion) & 0x7f800000u) == 0x7f800000u) {

@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Text.RegularExpressions;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Tests.Gpu;
 using Xunit;
@@ -18,6 +19,7 @@ public sealed class TemporalLockZeroBypassTests
         Assert.Contains("float releaseEdgeMotion = ownReprojected && useHistory ? 0.0 : edgeMotion;", call,
             StringComparison.Ordinal);
         Assert.Matches(@"if \(floatBitsToUint\(lockValue\) != 0u\s*\|\|", call);
+        Assert.Contains("[[dont_flatten]] if (floatBitsToUint(lockValue)", call, StringComparison.Ordinal);
         foreach (string argument in new[] { "motionPixels", "reactive", "releaseEdgeMotion" })
             Assert.Contains($"(floatBitsToUint({argument}) & 0x7f800000u) == 0x7f800000u", call,
                 StringComparison.Ordinal);
@@ -46,11 +48,29 @@ public sealed class TemporalLockZeroBypassTests
             int nextLabel = Array.FindIndex(instructions, label + 1, i => i.Op == 248);
             Assert.True(barriers.All(n => n > label && n < nextLabel), program.Name + " barriers escaped their block");
             Assert.Equal(247, instructions[label - 2].Op); // OpSelectionMerge
+            Assert.Equal(2u, instructions[label - 2].Words[2]); // SelectionControl DontFlatten
             Assert.Equal(250, instructions[label - 1].Op); // OpBranchConditional
             uint fallback = instructions[label].Words[1], merge = instructions[label - 2].Words[1];
             uint[] branch = instructions[label - 1].Words;
             Assert.True(branch[2] == fallback && branch[3] == merge || branch[3] == fallback && branch[2] == merge,
                 program.Name + " does not branch around the entire ordered release");
+        }
+    }
+
+    [Fact]
+    public void EveryReleaseEmitsAnHlslBranchAroundAllTwelveBarriers()
+    {
+        foreach (var program in ShippedShaderPrograms.GraphicsPrograms()
+            .Where(p => p.FragmentGlsl.Contains(ShaderSources.TemporalLockReleaseGlsl, StringComparison.Ordinal)))
+        {
+            Assert.StartsWith("#version 450\n#extension GL_EXT_control_flow_attributes : require\n", program.FragmentGlsl,
+                StringComparison.Ordinal);
+            string hlsl = SpirvCrossCompile.GlslPairToHlsl(program.VertexGlsl, program.FragmentGlsl, program.Name).FragmentSource;
+            Match branch = Assert.Single(Regex.Matches(hlsl, @"\[branch\]\s+if\s*\([^{}]*\)\s*\{(?<release>[^{}]*)\}"));
+            Assert.Equal(12, Regex.Matches(branch.Groups["release"].Value, @"(?<!\|)\|(?!\|)").Count);
+            string unhinted = program.FragmentGlsl.Replace("[[dont_flatten]] ", "", StringComparison.Ordinal);
+            Assert.DoesNotContain("[branch]", SpirvCrossCompile.GlslPairToHlsl(program.VertexGlsl, unhinted,
+                program.Name + " unhinted").FragmentSource, StringComparison.Ordinal);
         }
     }
 

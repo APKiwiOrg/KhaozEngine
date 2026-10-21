@@ -1,0 +1,32 @@
+{
+  "schema": "khaozengine.coverage-perf-unit/1",
+  "preset": "C1",
+  "unitId": "c1-20261021-a",
+  "workloadSha": "c2e9754520773c5911cd9f9db5b1465b3d15c948",
+  "baselineMainSha": "5d896b33309e5de2a48bd42a03e6d5b5e4b5a39d",
+  "fixture": "coverage-typical-gpu/1",
+  "profile": "full-1280x720/1",
+  "configuration": "Release",
+  "routes": { "ordinarySkinning": "gpu", "coveredSurface": "gpu-built" },
+  "device": { "backend": "vulkan-native", "adapterPolicy": "lavapipe-cpu-only" },
+  "batchFrames": 3,
+  "runner": "ubuntu-26.04",
+  "workflow": "stress-test",
+  "leg": "ubuntu-26.04-vulkan-lavapipe",
+  "iterations": 1,
+  "load": 0,
+  "limits": { "maxUnitSeconds": 600, "maxFrameMilliseconds": 10000, "jobMinutes": 30 },
+  "authorization": {
+    "identity": "coverage-gpu-era-perf-c1-20261021-a",
+    "approvedBy": "repository owner",
+    "reference": "Owner approved measurement run C1 in the equipment coverage program chat on 2026-10-21 after C0 run 39529243572 completed: workload c2e9754520773c5911cd9f9db5b1465b3d15c948, preset C1, six 32-actor blocks of 64 warm-up and 128 measured frames, one iteration, load 0, hosted ubuntu-26.04 lavapipe, unit 600 s, frame limit 10,000 ms on measured frames only, job 30 min."
+  },
+  "blocks": [
+    { "index": 0, "actors": 32, "condition": "DirectOff", "timerLayout": "CpuOnly", "warmupFrames": 64, "measuredFrames": 128, "fixture": "coverage-typical-gpu/1" },
+    { "index": 1, "actors": 32, "condition": "SharedOff", "timerLayout": "CpuOnly", "warmupFrames": 64, "measuredFrames": 128, "fixture": "coverage-typical-gpu/1" },
+    { "index": 2, "actors": 32, "condition": "SharedOn", "timerLayout": "CpuOnly", "warmupFrames": 64, "measuredFrames": 128, "fixture": "coverage-typical-gpu/1" },
+    { "index": 3, "actors": 32, "condition": "SharedOn", "timerLayout": "CpuOnly", "warmupFrames": 64, "measuredFrames": 128, "fixture": "coverage-typical-gpu/1" },
+    { "index": 4, "actors": 32, "condition": "SharedOff", "timerLayout": "CpuOnly", "warmupFrames": 64, "measuredFrames": 128, "fixture": "coverage-typical-gpu/1" },
+    { "index": 5, "actors": 32, "condition": "DirectOff", "timerLayout": "CpuOnly", "warmupFrames": 64, "measuredFrames": 128, "fixture": "coverage-typical-gpu/1" }
+  ]
+}

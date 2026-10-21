@@ -17221,8 +17221,8 @@ the Pass-timings **post** row instead.
 
 **The pass-timing caveat (read it).** The per-pass numbers are **CPU encode time** (wall-clock spent recording a
 pass's commands), **not** true GPU execution time. The optional `IGpuTimestampPool` seam described under
-"GPU timestamps without waiting" is separate and is not connected to this HUD. The full explanation, and why a whole-frame GPU-time number was rejected, is in *Per-pass frame
-timing* below. The turn-key HUD is the zero-config path. The two sections that follow are the manual building
+"GPU timestamps without waiting" is separate and is not connected to this HUD. The CPU bracket contract
+is in *Per-pass frame timing* below. Nonblocking GPU intervals use the separate timestamp and observer seams. The turn-key HUD is the zero-config path. The two sections that follow are the manual building
 blocks (custom rows, a recorder, a bespoke overlay) for a game that wants more than the default panel.
 
 ---
@@ -23137,6 +23137,64 @@ no ring-owned wait, flush, submit or retry. Dispose the submission owner before 
 disposal frees unused pools immediately but retains quarantined pools until the owner's teardown releases
 their exact fences. This lifecycle is covered by headless parity cases against the coverage ring's retained
 submission behavior. Migrating the coverage adapter is a separate change.
+
+`Scene3D.PassObserver` is the optional public render-boundary seam. Implement
+`KhaozEngine.Render3D.Diagnostics.IRenderPassObserver` with `BeginPass(commands, key)`,
+`EndPass(commands, key)`, `SkipPass(commands, key)`, `BeginCpuPhase(id)` and `EndCpuPhase(id)`.
+`RenderPassKey` is the stable `(Id, Occurrence)` pair within a recording. The optional `FusedMotion`
+callback tags motion written by an existing MRT draw. It creates no independent motion interval or draw.
+An observer may insert diagnostic markers in GPU callbacks, but must preserve state and must not bind a
+framebuffer, submit, wait or mutate the scene. CPU callbacks must emit no GPU commands. Attach the observer
+before recording and do not change it during a frame. With null, scopes are inert value structs and the
+renderer retains its original commands, uploads and ordering without allocation or extra GPU work.
+
+A scene shares one observer and failure latch with its atmosphere owner. The first callback exception stops
+further callbacks and invalidates profiling, while rendering continues. `Scene3D.PassObserverFailure` retains
+the callback exception. If rendering succeeds, the render call then throws `InvalidOperationException` with
+that exception as its cause. If rendering also throws, its original exception propagates unchanged. This
+contract includes End/Skip/CPU and fused metadata callbacks, so scope cleanup cannot mask a render failure.
+
+The geometry and atmosphere pass registry is below. Every command inside these owners belongs to one leaf.
+Group intervals contain children and their durations must not be added as extra work.
+
+| Keys | Ownership and occurrences |
+| --- | --- |
+| `geometry.uploads`, `geometry.skinned-uploads` | Shared rigid, foliage, motion and palette/deformed-stream uploads |
+| `shadow.directional` | Whole executed cascade recording, or one skipped subtree when cached or inactive |
+| `shadow.directional.setup`, `.skinned-uploads`, `.finish` | Atlas clear, cascade uniforms and foliage uploads, GPU-skinned shadow slots, final scissor restoration |
+| `shadow.cascade.rigid` | Rigid and CPU-skinned segment, occurrence is cascade index |
+| `shadow.cascade.setup`, `.cpu-skinned` | Cascade bind and CPU-skinned draws, occurrence is cascade index |
+| `shadow.rigid.opaque`, `.cutout`, `.dissolve` | Consecutive same-route spans in original order, occurrence is segment encounter index across cascades |
+| `shadow.cascade.foliage`, `.gpu-skinned` | Later per-cascade segments, occurrence is cascade index, foliage aggregates patches |
+| `shadow.point` | Whole scheduled point recording, or a skipped subtree when inactive or entirely cached |
+| `shadow.point.static`, `.dynamic`, `.transient` | Rebuilt static base, dynamic base and transient rows, occurrence is atlas row |
+| `shadow.point.static.face`, `.dynamic.face`, `.transient.face` | One of six faces under its row, occurrence is `row * 6 + face` |
+| `shadow.point.static.setup`, `.rigid`, `.foliage`, `.gpu-skinned`, `.cpu-skinned`, and the matching `dynamic` or `transient` prefixes | Atlas bind/clear and face leaf work, occurrence is atlas row for setup or `row * 6 + face` for draws |
+| `shadow.point.uploads`, `.finish` | Shared face/proxy/caster uploads and final atlas scissor restoration |
+| `opaque.light-clusters`, `.clear`, `.depth-clear`, `.frame-uniforms` | Cluster uploads, MRT bind and color clears, depth clear, frame uniforms and initial pipeline bind |
+| `motion.clear` | Existing motion-target sentinel clear only |
+| `opaque.rigid`, `.splat`, `.tile-ground`, `.foliage`, `.gpu-skinned`, `.cpu-skinned` | Main geometry routes, with fused motion metadata when the MRT is active |
+| `atmosphere.uniforms`, `.transmittance`, `.multiple-scattering`, `.sky-view` | Shared atmosphere UBO and separate LUT draws, static cached LUTs are skipped |
+| `background.sky`, `background.starfield` | Separate background draws, the unused route is skipped |
+
+All other occurrences are zero. Directional recording visits rigid/CPU work for all cascades, then foliage
+for all cascades, then GPU skinning for all cascades. These are separate measured segments rather than one
+invented contiguous interval per cascade. No draw is reordered to manufacture a profiling parent. Point
+rows keep the existing packed scheduling order and separate base/transient atlas identity. Cached base
+rows emit skipped occurrences before executed rows. Leaf keys use the stable atlas row and row kind rather
+than packed upload indices, so cache reuse cannot rename later dynamic or transient leaves. A frozen layout
+must preserve that event order.
+
+CPU-only phases cover atmosphere lighting/LUT preparation, geometry grouping, visibility and shadow fitting,
+shared upload packing, skinned visibility/packing, cascade caster selection/culling and shadow uploads.
+They also cover work before `Scene3D.PassTimingsMs` starts. None emits a GPU marker.
+
+The test harness `RendererPerfPassObserver` binds the public keys to a frozen recorder layout before
+warming. Unknown keys invalidate that recording. Call its `BeginFrame` with the recorder's frame start to
+reset preallocated fused-motion flags. A total-only adapter ignores all GPU pass and fused callbacks while
+retaining explicit CPU phases. Pass keys and marker capacity must be frozen from the actual recipe schedule,
+including skips. Detailed markers can serialize Vulkan work or split Metal encoders, so retain their results
+separately from the outer-pair-only frame totals and report that instrumentation cost.
 
 The internal renderer adapter is
 [`RendererPerfRecorder`](../KhaozEngine.Render.Tests/Gpu/RendererPerf/RendererPerfRecorder.cs), with

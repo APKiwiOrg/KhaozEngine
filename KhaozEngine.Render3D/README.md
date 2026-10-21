@@ -497,12 +497,24 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   avoiding D3D11's partial-uniform staging path. It shipped off while a windowed swapchain corruption on the Veldrid
   Metal backend was open, and that backend was deleted in 18.0.0. The Showcase 3D room's F key flips the path live
   for a windowed A/B. See `docs/USING-KHAOZENGINE.md`.
+- Optional pass tracing: `Scene3D.PassObserver` accepts `IRenderPassObserver` from
+  `KhaozEngine.Render3D.Diagnostics`. `RenderPassKey(Id, Occurrence)` identifies each logical interval.
+  Begin/End callbacks enclose the existing commands, `SkipPass` records inactive or cached work, and
+  `FusedMotion` tags motion already written by the geometry MRT draw without a second GPU interval.
+  CPU phase callbacks cover grouping, visibility and upload packing, including work before the older timing
+  buckets. Null is the production default and adds no allocation, marker, submission, barrier or target bind.
+  The observer must preserve rendering state and must not submit or wait. CPU callbacks emit no GPU work.
+  The first callback exception invalidates profiling and is exposed by `Scene3D.PassObserverFailure`.
+  Recording continues and a successful frame then throws with that failure as its inner exception. An original
+  rendering failure propagates unchanged. Attach observers before recording and keep them stable for the frame.
+  The geometry, shadow and atmosphere registry and occurrence rules are in `docs/USING-KHAOZENGINE.md`.
 - Per-pass timing: `Scene3D.EnableTiming` (default `false`, no cost when off - a single `bool` check, no
   `Stopwatch` call, no allocation) brackets each render pass with a CPU `Stopwatch` and exposes the result as
   `Scene3D.PassTimingsMs` (a `Scene3DPassTimingsMs`: `ShadowDepthMs`/`ModelMs`/`TransparentsMs`/`PostMs`). This is
   CPU time spent RECORDING each pass's commands. The optional `KhaozEngine.Gpu` timestamp-pool seam
-  separately measures GPU execution on supported devices. `Scene3D.EnableTiming` still reports CPU time. See `docs/USING-KHAOZENGINE.md` for the full explanation and why a whole-frame GPU-time number was
-  considered and rejected (it would need a per-frame `WaitForIdle`, which breaks frame pacing). `Scene3D` has no
+  separately measures GPU execution on supported devices, with completed-frame tails and retained completion
+  fences. `Scene3D.EnableTiming` still reports CPU time. See `docs/USING-KHAOZENGINE.md` for the separate
+  nonblocking GPU measurement contract. `Scene3D` has no
   dependency on `KhaozEngine.Diagnostics`, so feed these numbers into a `KhaozEngine.Diagnostics.PassTimings`
   meter yourself (one `Sample(name, ms)` call per pass per frame) to get rolling avg/min/max and a
   `DiagnosticsOverlay.PassTimingsSection` row set, the same shape `FrameStats`/`PerformanceSection` give you.

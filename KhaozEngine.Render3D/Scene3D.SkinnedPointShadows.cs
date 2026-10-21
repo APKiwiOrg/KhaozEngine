@@ -114,6 +114,8 @@ public sealed partial class Scene3D
     int DrawPointSkinnedCastersForFace(IGpuCommandList cl, PointShadowRenderer renderer,
         in PackedPointShadowSlot packed, int face)
     {
+        using var pass = ProfilePass(cl, PointLeafKey(packed,
+            UseGpuSkinning ? PointProfileLeaf.GpuSkinned : PointProfileLeaf.CpuSkinned, face));
         PointShadowRequest request = _pointRequests[packed.RequestIndex];
         int draws = 0;
         if (UseGpuSkinning)

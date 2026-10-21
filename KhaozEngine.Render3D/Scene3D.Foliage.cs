@@ -199,6 +199,8 @@ public sealed partial class Scene3D
 
     void DrawFoliagePass(IGpuCommandList cl)
     {
+        using var pass = ProfilePass(cl, "opaque.foliage", executed: _foliageDraws.Count > 0,
+            fusedMotion: _res.MotionAllocated);
         int patches = 0, candidates = 0;
         foreach (FoliageDraw draw in _foliageDraws)
         {

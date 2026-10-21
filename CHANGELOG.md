@@ -7,7 +7,10 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 21.11.0
 
-2026-10-21
+2026-10-22
+
+- Add optional Scene3D render-pass observation for geometry, shadows and atmosphere, with explicit cached
+  pass skips, CPU preparation phases and fused motion metadata. Disabled observation preserves command order.
 
 - Add fixed GPU timestamp pools on Vulkan, Direct3D 11 and Metal, with nonblocking resolution and explicit
   Pending, Ready and Invalid results. Completed-frame tails include command-list finalization.

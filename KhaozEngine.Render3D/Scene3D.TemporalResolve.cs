@@ -203,17 +203,18 @@ namespace KhaozEngine.Render3D
         /// </summary>
         void DrawBackground(IGpuCommandList cl)
         {
-            switch (Post.Background)
-            {
-                case BackgroundMode.Sky:
+            using (ProfilePass(cl, "background.sky", executed: Post.Background == BackgroundMode.Sky))
+                if (Post.Background == BackgroundMode.Sky)
+                {
                     _sky.Draw(cl, _res, _currentFrameView.View, _currentFrameView.JitteredProjection, Post.LightDirection, Post.Sky, Post.Atmosphere.Enabled);
                     _frameStats.DrawCalls++;
-                    break;
-                case BackgroundMode.Starfield:
+                }
+            using (ProfilePass(cl, "background.starfield", executed: Post.Background == BackgroundMode.Starfield))
+                if (Post.Background == BackgroundMode.Starfield)
+                {
                     _starfield.Draw(cl, _res, Post.BackgroundColor);
                     _frameStats.DrawCalls++;
-                    break;
-            }
+                }
         }
 
         /// <summary>When this render resolves, after every internal-resolution colour writer and the distortion field and

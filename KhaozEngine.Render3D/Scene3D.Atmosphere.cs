@@ -14,6 +14,7 @@ public sealed partial class Scene3D
     /// before shadow fitting or model uniforms read the lighting. Disabled frames never resolve CPU tables.</summary>
     internal void RecordAtmosphere(IGpuCommandList cl, Vector3 eye)
     {
+        using var cpu = ProfileCpu("cpu.atmosphere.lighting");
         if (Post.Atmosphere.Enabled)
         {
             var model = Post.ResolveAtmosphereModel();

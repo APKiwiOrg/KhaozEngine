@@ -1397,7 +1397,7 @@ namespace KhaozEngine.Render3D
         /// <paramref name="cl"/>, ending on <paramref name="target"/>. The caller owns Begin/End/Submit of
         /// <paramref name="cl"/>. <paramref name="viewportW"/>/<paramref name="viewportH"/> are the target size.
         /// </summary>
-        internal void RenderInternal(IGpuCommandList cl, int viewportW, int viewportH, IGpuFramebuffer target)
+        void RenderCore(IGpuCommandList cl, int viewportW, int viewportH, IGpuFramebuffer target)
         {
             // Reset the always-on frame counters here (not in Begin), so they are finalized per rendered frame the
             // same way DrawnInstances / PassTimingsMs are - a Begin without a render leaves the last render's totals,
@@ -1437,19 +1437,27 @@ namespace KhaozEngine.Render3D
             // GPU instancing: group queued instances by mesh into a flat instance array (ordered by mesh) + a
             // run per unique mesh. Reuses member buffers (cleared, not realloc) to stay per-frame alloc-free. Done
             // BEFORE the model pass so the (optional) shadow depth pass can reuse the same uploaded instance buffer.
-            GroupInstances(_instances.Items, _instanceData, _runs, _meshRunIndex, _instanceCastKinds, CullOptedOutInstances(camFrustum),
-                _groupWriteCursors, _instanceShadowOnly, _res.MotionAllocated ? _instanceMotionKeys : null, _interiorCutPartition);
-            // Fold each mesh's alpha-cutout threshold into its instances' SpecParams.z (the model fragment discards
-            // texels below it, so MASK foliage renders as its silhouette). A mesh with cutoff 0 (OPAQUE, the default)
-            // is untouched, so the instance data - and the render - stays byte-identical to the pre-cutout path.
-            ApplyAlphaCutoffs(_instanceData, _runs);
+            using (ProfileCpu("cpu.geometry.grouping"))
+            {
+                GroupInstances(_instances.Items, _instanceData, _runs, _meshRunIndex, _instanceCastKinds, CullOptedOutInstances(camFrustum),
+                    _groupWriteCursors, _instanceShadowOnly, _res.MotionAllocated ? _instanceMotionKeys : null, _interiorCutPartition);
+                // Fold each mesh's alpha-cutout threshold into its instances' SpecParams.z (the model fragment discards
+                // texels below it, so MASK foliage renders as its silhouette). A mesh with cutoff 0 (OPAQUE, the default)
+                // is untouched, so the instance data - and the render - stays byte-identical to the pre-cutout path.
+                ApplyAlphaCutoffs(_instanceData, _runs);
+            }
             // Reduced into a staging copy, so _instanceData stays absolute for the culling + caster reads below.
-            UploadInstancesRelative(cl);
-            PrepareMotionFrame(cl);   // the motion block and the rigid slots, before any pass (Scene3D.MotionTarget.cs)
-            PrepareFoliageFrame(cl, camFrustum);
+            using (ProfileCpu("cpu.geometry.upload-packing"))
+            using (ProfilePass(cl, "geometry.uploads", executed: _instanceData.Count > 0 || _res.MotionAllocated
+                || _foliageDraws.Count > 0 || _foliageShadowDraws.Count > 0))
+            {
+                UploadInstancesRelative(cl);
+                PrepareMotionFrame(cl);
+                PrepareFoliageFrame(cl, camFrustum);
+            }
 
             // Main-pass visibility is aligned to the grouped stream. Shadows retain offscreen casters.
-            ComputeMainPassVisibility(camFrustum);
+            using (ProfileCpu("cpu.geometry.visibility")) ComputeMainPassVisibility(camFrustum);
 
             // Resolve the shadow tier + (when active) this frame's cascade fit BEFORE the skinned recording below, so an
             // off-camera skinned draw's shadow-caster visibility can be decided up front (see
@@ -1458,18 +1466,9 @@ namespace KhaozEngine.Render3D
             // fitted cascades instead of recomputing them, so the two passes can never disagree on the fit. Under the
             // frustum-slice fit no single cascade bounds the rest, so the caster-visibility test unions ALL cascades'
             // frustums (extracted here), and a degenerate camera (count 0) drops shadows for the frame.
-            bool shadowMapActive = Post.Quality.Shadows.ResolveFor(_gd.Capabilities).Effective == ShadowMode.ShadowMap;
-            int shadowCascadeCount = 0;
-            if (shadowMapActive)
-            {
-                shadowCascadeCount = ComputeShadowCascades();
-                if (shadowCascadeCount == 0) shadowMapActive = false;   // degenerate camera: no shadows this frame
-                for (int i = 0; i < shadowCascadeCount; i++)
-                    _shadowFrustums[i] = FrustumPlanes.Extract(_cascadeCpuVpsAbsolute[i]);
-            }
-
-            bool hasPointShadowRequests = PreparePointShadowRequests(ActiveCamera.Eye);
-            PrepareSkinnedDraws(cl, camFrustum, shadowMapActive, shadowCascadeCount, hasPointShadowRequests);
+            PrepareGeometryShadowVisibility(out bool shadowMapActive, out int shadowCascadeCount, out bool hasPointShadowRequests);
+            using (ProfileCpu("cpu.skinned.visibility-upload-packing"))
+                PrepareSkinnedDraws(cl, camFrustum, shadowMapActive, shadowCascadeCount, hasPointShadowRequests);
             int skinnedCasterCount = CountSkinnedCasters();   // opted-out skinned draws neither cast nor dirty the atlas
 
             float shadowDepthMs = RenderCascadeShadowPass(cl, shadowMapActive, skinnedCasterCount);
@@ -1479,38 +1478,18 @@ namespace KhaozEngine.Render3D
             // Point-light shadow maps (Scene3D.PointShadows.cs): after the key light's pass, because it reuses the
             // same uploaded instances, and before the model pass, which binds the material sets a first atlas
             // allocation rebuilds and uploads the receiver tail written here.
-            PreparePointShadows(cl);
+            using (ProfileCpu("cpu.shadow.point-scheduling")) PreparePointShadows(cl);
 
             timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
-            BuildAndUploadPointLightClusters(cl, vp, eye);
-            _model.BeginModelPass(cl, _res, Post);
-            _model.SetFrameUniforms(cl, vp, eye, Post, CollectionsMarshal.AsSpan(_lights), _frameOrigin, MaterialLod());
-            _model.BindPass(cl);
-
-            if (_instanceData.Count > 0)
+            using (ProfilePass(cl, "opaque.light-clusters")) BuildAndUploadPointLightClusters(cl, vp, eye);
+            _model.BeginModelPass(cl, _res, Post, _profiling);
+            using (ProfilePass(cl, "opaque.frame-uniforms"))
             {
-                foreach (var run in _runs)
-                {
-                    // Skip a run whose mesh was unloaded (stale handle): a destroyed entity may linger a frame.
-                    // The instance data was uploaded contiguously, so skipping a run just leaves its slice undrawn.
-                    if (!_slots.IsValid(run.Mesh.Index, run.Mesh.Generation)) continue;
-                    var m = _meshes[run.Mesh.Index];
-                    if (m is not { } mesh) continue;
-                    if (mesh.SplatMaterial >= 0 || mesh.TileGroundMaterial >= 0) continue;   // drawn in a ground pass below
-                    // Draw only the visible contiguous sub-spans of this run (against the already-uploaded buffer).
-                    uint spanStart = run.Start; uint spanLen = 0;
-                    for (uint s = 0; s < run.Count; s++)
-                    {
-                        if (_instanceVisible[run.Start + s]) { if (spanLen == 0) spanStart = run.Start + s; spanLen++; }
-                        else if (spanLen > 0) { _model.DrawMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, spanStart, spanLen, mesh.MaterialSet); CountMeshDraw(mesh.IndexCount, spanLen); spanLen = 0; }
-                    }
-                    if (spanLen > 0) { _model.DrawMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, spanStart, spanLen, mesh.MaterialSet); CountMeshDraw(mesh.IndexCount, spanLen); }
-                }
-                // The two ground passes, each on its own pipeline against the same uploaded instance buffer:
-                // splat terrain (Scene3D.SplatMaterial.cs) then tile ground (Scene3D.TileGround.cs).
-                DrawSplatRuns(cl);
-                DrawTileGroundRuns(cl);
+                _model.SetFrameUniforms(cl, vp, eye, Post, CollectionsMarshal.AsSpan(_lights), _frameOrigin, MaterialLod());
+                _model.BindPass(cl);
             }
+
+            DrawOpaqueRigidGeometry(cl);
             DrawFoliagePass(cl);
 
             // Blob shadows (receiver-only): with the resolved tier at Blob, turn each queued ShadowBlob into a dark
@@ -1554,24 +1533,7 @@ namespace KhaozEngine.Render3D
             // must not draw here. The GPU path's loop
             // lives in Scene3D.GpuSkinning.cs, beside the palette upload it depends on.
             if (UseGpuSkinning) DrawGpuSkinnedMain(cl);
-            else if (_cpuSkinnedDraws.Count > 0)
-            {
-                // CPU path: the deformed geometry uploaded above, drawn without bones through the pipelines bound below.
-                _model.BindCpuSkinnedPass(cl);   // the CPU-skinned pipeline (the rigid one, or its temporal variant)
-                bool dissolveBound = false;
-                for (int d = 0; d < _cpuSkinnedDraws.Count; d++)
-                {
-                    var dr = _cpuSkinnedDraws[d];
-                    if (!dr.VisibleMain) continue;
-                    if (dr.Dissolve != dissolveBound)   // switch pipelines only when the dissolve state changes
-                    {
-                        if (dr.Dissolve) _model.BindDissolvePass(cl); else _model.BindCpuSkinnedPass(cl);
-                        dissolveBound = dr.Dissolve;
-                    }
-                    _model.DrawCpuSkinned(cl, dr.Ib, dr.IndexCount, dr.IndexFormat, dr.BaseVertex, (uint)d, dr.MaterialSet);
-                    CountSkinnedDraw(dr.IndexCount);
-                }
-            }
+            else DrawCpuSkinnedMain(cl);
 
             if (EnableTiming) modelMs = ElapsedMs(timingStart);
             timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;

@@ -163,7 +163,8 @@ while retaining original-domain clipping. Point sampling remains the separate #1
 `MapRenderPolicy` freezes placement routing, animated asset selection, stable foliage registration, water look
 and terrain material identities. It retains no decoded images. Its canonical digest includes vector fields and
 orders dictionary keys. `MapRenderSourceState` binds that policy to a source, its matching closure, complete
-render extent proofs and explicit windows.
+render extent proofs and explicit windows. The selected-input closure must be the same immutable closure
+instance captured by the source. A hash-equal separate load is rejected before scheduling.
 
 `MapRenderPlan.Prepare` composes one acquired window with one routing partition and a shared preparation
 admission. Terrain reads the passed input's selected materials. Placement and foliage batches share its selected
@@ -197,3 +198,13 @@ adds sharing credit. `MapRenderLifetime` reports the live charged ownership grou
 A queue entry is one atomic composite replacement. Its windows share the source's bounded preparation allowance,
 further narrowed by queue and plan budgets. Disposal cancels pending work without blocking a caller's scheduler.
 Any still-running worker retains its readers and CPU charges until its completion continuation unwinds them.
+
+A captured foliage context has a retained preparation lease. Policy-only replacements share that lease, including
+its density and effective dependency product. Cached generation retention is admitted before generation enters,
+then transferred to the context's lease. Charges remain conservative through context invalidation and end with
+its final reader. GPU handle owners retain identity and handle only. They do not retain obsolete CPU registrations,
+including while waiting in the bounded disposal queue.
+
+Each window narrows the shared allowance before acquisition and preparation. Foliage generation derives its
+support limits and complete candidate-envelope retention bound from that remaining allowance. A dense envelope
+that cannot fit refuses before generation or cache retention. Query limits and generated addresses are unchanged.

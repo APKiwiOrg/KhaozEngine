@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
+using System.Runtime.CompilerServices;
+using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Editing;
@@ -18,8 +20,60 @@ using Xunit;
 
 namespace KhaozEngine.Tests.MapDoc;
 
+[Collection("NativeDeviceLifecycle")]
 public sealed class NativeMapResidencyTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ReusedAndRetiredOwners_DoNotKeepPreparedPayloads(bool retire)
+    {
+        using var f = ResidencyFixture.Placement();
+        var scheduler = new ResidencyScheduler(); var device = new ResidencyDevice();
+        var state = f.State(ResidencyFixture.Window());
+        using var residency = new MapRenderResidency(state, device, new(MaxDisposalsPerUpdate: 1), scheduler);
+        var resources = ReplaceAndReleasePreparation(residency, scheduler, state, retire);
+        if (retire) Assert.NotEmpty(device.Live);
+        else Assert.Equal(7, device.Begins);
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true);
+        Assert.All(resources, weak => Assert.False(weak.TryGetTarget(out _), "A GPU owner retained the released prepared registration."));
+    }
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static WeakReference<MapPreparedResource>[] ReplaceAndReleasePreparation(MapRenderResidency residency,
+        ResidencyScheduler scheduler, MapRenderSourceState state, bool retire)
+    {
+        ResidencyFixture.Complete(residency, scheduler);
+        var resources = residency.AcceptedPlans.Single().Resources.Select(r => new WeakReference<MapPreparedResource>(r)).ToArray();
+        residency.RequestReplacement(retire ? state with { Windows = [] } : state with { Policy = ResidencyFixture.Policy(200) });
+        ResidencyFixture.Complete(residency, scheduler);
+        return resources;
+    }
+
+    [Fact]
+    public void DenseFoliage_NarrowedAdmissionRefusesBeforeGenerationOrRetention()
+    {
+        using var f = ResidencyFixture.Foliage(.125f);
+        var state = f.FoliageState();
+        var original = state.Windows.Single();
+        var scope = original with
+        {
+            DrawBounds = new(0, -500, 0, 4, 500, 4),
+            MotionPaddingMetres = 0,
+            Surfaces = original.Surfaces with { LocalMin = new(0, 0), LocalMax = new(4, 4) }
+        };
+        var scene = state.Source.Acquire(scope).Scene!;
+        var context = MapRenderPlan.CaptureFoliage(state.Source, scope);
+        using var input = MapPreparedInputLease.LoadSelected(state.Closure, ["A", "B"], [], state.Extents, new(new())).Input!;
+        var routing = MapPlacementRouting.Create(scene, state.Policy.Placements, state.Policy.AnimatedAssets).Routing!;
+        var cache = MapFoliageRenderCache.For(context);
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 131_072));
+        using var active = admission.Enter();
+        var error = Record.Exception(() => NativeMapFoliage.Prepare(scene, context, input, state.Policy.Foliage, routing));
+        Assert.NotNull(error);
+        Assert.Equal(0, cache.GenerationCalls); Assert.Equal(0, cache.Count);
+        Assert.InRange(admission.RetainedBytes, 0, 131_072);
+    }
+
     [Fact]
     public void DisposeWithHeldWorker_ReleasesItsChargesOnlyAfterCancellationUnwinds()
     {
@@ -236,7 +290,7 @@ internal sealed class ResidencyScheduler : TaskScheduler
 
 internal sealed class ResidencyDevice : IMapRenderDevice
 {
-    internal readonly Dictionary<MapRenderHandle, MapPreparedResource> Live = new();
+    internal readonly Dictionary<MapRenderHandle, MapRenderKey> Live = new();
     readonly Dictionary<MapRenderHandle, ISceneUploadReservation> _leases = new();
     readonly List<ISceneUploadReservation> _retirements = [];
     long _next;
@@ -265,7 +319,7 @@ internal sealed class ResidencyDevice : IMapRenderDevice
         {
             Assert.True(Ready); Assert.False(_disposed); Assert.False(_published);
             _published = true; var handle = new MapRenderHandle(++owner._next);
-            lease.Published(new(handle.Value)); owner.Live.Add(handle, resource); owner._leases.Add(handle, lease);
+            lease.Published(new(handle.Value)); owner.Live.Add(handle, resource.Reference.Key); owner._leases.Add(handle, lease);
             owner.Publications++; return handle;
         }
         public void Dispose() { if (_disposed) return; _disposed = true; if (!_published) owner.Retire(lease); }
@@ -286,6 +340,41 @@ internal sealed class ResidencyFixture : IDisposable
         doc.Placements = closure.Assets.Where(a => distant || a.Id == "prop-a").OrderBy(a => a.Id == "prop-a" ? 0 : 1).Select((a, i) => new MapPlacement
         { Id = i == 0 ? "near" : "remote-" + i, AssetId = a.Id, Kind = "cosmetic", NumericId = i + 1, Y = 0, X = i == 0 ? 0 : 1000 + i * 64 }).ToList();
         return new(doc, closure);
+    }
+    internal static ResidencyFixture Foliage(float spacing = 1)
+    {
+        var closure = NativeRenderAssetFixtures.Create("foliage");
+        using var fixture = NativeSceneFixtures.Create("terrain");
+        var doc = fixture.Document; doc.NativeAssets = closure.Roots.ToList();
+        var patch = new MapSurfacePatch
+        {
+            Key = new("ground", 0, 0),
+            Width = 64,
+            Depth = 4,
+            Heights = Enumerable.Repeat(100, 65 * 5).ToArray(),
+            Cells = Enumerable.Repeat(new MapSurfaceCell(10, 0, MapOverlayCut.Full, 0, MapCellFlags.None, MapCellTopology.ForceSwNe), 256).ToArray(),
+            Presence = Enumerable.Repeat(ulong.MaxValue, 4).ToArray()
+        };
+        doc.Surfaces.Patches[patch.Key] = patch;
+        var floor = doc.Surfaces.Refs[0] with { Frame = MapLatticeFrame.ImportedMetreCentimetre with { RowDirection = MapRowDirection.PositiveZ } };
+        doc.Surfaces.Refs[0] = floor with
+        {
+            SemanticSha256 = MapSurfaceSemantics.SurfaceDigest(floor,
+            [KeyValuePair.Create(patch.Key, MapSurfaceSemantics.PatchDigest(patch))])
+        };
+        var density = new byte[1024]; Array.Fill(density, (byte)255, 0, 128);
+        doc.Foliage = new(1, [new(1, "cover", new(MapSupportBindingKind.Surface, "ground", null, null, null, null),
+            0, 0, 1, 64, 4, MapRowDirection.PositiveZ, 17, spacing, .8f, 1.4f, -.01f,
+            [new("A", 1), new("B", 1)], [10], [new(10, "paint", MapFoliageMaterialKind.Ordinary)], new("legacy-tile", 1, 0),
+            false, false, 0, 0, [new("ground", 0)], [], [], [], [new(new(0, 0), density)])]);
+        return new(doc, closure);
+    }
+    internal MapRenderSourceState FoliageState()
+    {
+        var policy = new NativeFoliagePolicy(MapFrozenFoliageOptions.Capture(new GroundCoverRenderOptions
+        { UseGpuBatches = true, FadeMode = GroundCoverFadeMode.HeightScale }), Closure.Assets.ToDictionary(a => a.Id,
+            a => new MapFoliageModelExtent(a.Id, a.RenderBounds, a.SourceUnitsToMetres, 0)));
+        return State(Window() with { Channels = MapSceneChannels.Foliage }) with { Policy = Policy(foliage: policy) };
     }
     internal static MapSceneScope Window(float min = -4, float max = 4) => new(new(WorldFrame.Origin,
         new(min, -4), new(max, 4), null, null, Enum.GetValues<MapSurfaceRole>(), null, new()),

@@ -16,20 +16,26 @@ namespace KhaozEngine.MapDoc.Render3D;
 public static class NativeMapFoliage
 {
     public static MapNativeFoliageBatch Prepare(MapScopedScene scene, MapWindowFoliageContext context,
-        MapPreparedInputLease input, NativeFoliagePolicy policy, MapPlacementRouting routing)
+        MapPreparedInputLease input, NativeFoliagePolicy policy, MapPlacementRouting routing) =>
+        Prepare(scene, context, input, policy, routing, null);
+    internal static MapNativeFoliageBatch Prepare(MapScopedScene scene, MapWindowFoliageContext context,
+        MapPreparedInputLease input, NativeFoliagePolicy policy, MapPlacementRouting routing, Action<long>? retainSamples)
     {
         ArgumentNullException.ThrowIfNull(input);
         var retained = input.Retain();
         try
         {
-            var result = Prepare(scene, context, retained.Assets, policy, routing);
+            var result = Prepare(scene, context, retained.Assets, policy, routing, retainSamples);
             result.AttachInput(retained); return result;
         }
         catch { retained.Dispose(); throw; }
     }
 
     public static MapNativeFoliageBatch Prepare(MapScopedScene scene, MapWindowFoliageContext context,
-        MapRenderAssets assets, NativeFoliagePolicy policy, MapPlacementRouting routing)
+        MapRenderAssets assets, NativeFoliagePolicy policy, MapPlacementRouting routing) =>
+        Prepare(scene, context, assets, policy, routing, null);
+    static MapNativeFoliageBatch Prepare(MapScopedScene scene, MapWindowFoliageContext context,
+        MapRenderAssets assets, NativeFoliagePolicy policy, MapPlacementRouting routing, Action<long>? retainSamples)
     {
         ArgumentNullException.ThrowIfNull(scene); ArgumentNullException.ThrowIfNull(context);
         var witness = context.Witness;
@@ -41,11 +47,13 @@ public static class NativeMapFoliage
             ? ((IMapFoliageInputs)context).Foliage?.Layers ?? [] : [];
         // Only admitted density dependencies can require decoded generation models. Off-raster metadata stays cheap.
         Validate(scene, assets, policy, routing, layers.Where(l => l.ChunkDigests.Count != 0).SelectMany(l => l.Models.Select(m => m.AssetId)));
+        var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(scene.Source.Data.Limits);
+        using var activation = admission.Enter();
         var samples = new List<MapFoliageSampleBatch>();
         var cache = MapFoliageRenderCache.For(context);
         var bounds = scene.Scope.DiscoveryBounds;
         var ceilings = scene.Source.Data.Limits;
-        long bytes = 0, faces = 0, scopes = 0, count = 0;
+        long count = 0;
         foreach (var layer in layers)
         {
             if (bounds.MinX >= bounds.MaxX || bounds.MinZ >= bounds.MaxZ) continue;
@@ -58,23 +66,15 @@ public static class NativeMapFoliage
                 foreach (int x in MapFoliageRasterReads.Chunks(layer, x0, x1, true))
                 {
                     if (samples.Count >= ceilings.MaxSelectedResources) throw Capacity();
-                    long available = ceilings.MaxPreparedBytes - bytes, prepared = 0;
-                    // Reserve disjoint allowances for transient support work and the retained sample copies.
-                    var limits = new MapFoliageLimits(MaxPrepareScopes: checked((int)(ceilings.MaxPatchScopes - scopes)),
-                        MaxFaces: checked((int)Math.Min(ceilings.MaxPreparedFaces - faces, available / 2560)), MaxQuerySamples: 262_144 - count,
+                    long available = admission.RemainingPreparedBytes;
+                    // Bound retention and support scratch by the active composite and current window, not source defaults.
+                    var limits = new MapFoliageLimits(MaxPrepareScopes: admission.RemainingPatchScopes,
+                        MaxFaces: checked((int)Math.Min(admission.RemainingPreparedFaces, available / 2560)), MaxQuerySamples: 262_144 - count,
                         MaxQueryRetainedBytes: available / 8)
-                    {
-                        ChargePreparation = charge =>
-                        {
-                            if (charge < 0 || charge > available / 2 - prepared) throw Capacity();
-                            prepared += charge;
-                        }
-                    };
-                    var batch = cache.Get(layer.Id, new(x, z), limits);
-                    bytes = checked(bytes + 4 * batch.Work.RetainedBytes); faces += batch.Work.Faces;
-                    scopes += batch.Work.PrepareScopes; count += batch.Samples.Count;
-                    if (bytes > ceilings.MaxPreparedBytes || faces > ceilings.MaxPreparedFaces || scopes > ceilings.MaxPatchScopes || count > 262_144)
-                        throw Capacity();
+                    { ChargePreparation = bytes => MapFoliageGenerationAdmission.Charge(admission, bytes) };
+                    var batch = cache.Get(layer.Id, new(x, z), limits, admission, retainSamples);
+                    count += batch.Samples.Count;
+                    if (count > 262_144) throw Capacity();
                     samples.Add(batch);
                 }
         }

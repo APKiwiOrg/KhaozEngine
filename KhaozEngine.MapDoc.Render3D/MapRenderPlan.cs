@@ -17,6 +17,7 @@ public sealed class MapRenderPlan : IDisposable
 {
     readonly MapPreparedResource[] _resources;
     readonly MapDrawRecord[] _lights;
+    MapRenderContextLease? _contextOwner;
     bool _disposed;
     public MapResourceStamp Key { get; }
     public MapPreparedInputLease Input { get; }
@@ -25,6 +26,7 @@ public sealed class MapRenderPlan : IDisposable
     public MapRenderInventory Inventory { get; }
     public long PreparationBytes { get; }
     internal MapWindowFoliageContext FoliageContext { get; }
+    internal MapRenderContextLease? RetainContext() => _contextOwner?.Retain();
     internal IReadOnlyList<MapPreparedResource> Resources => _resources;
     MapRenderPlan(MapResourceStamp key, MapScopedScene scene, MapPreparedInputLease input, MapPlacementRouting routing,
         MapRenderInventory inventory, MapWindowFoliageContext context, long bytes, MapPreparedResource[] resources, MapDrawRecord[] lights)
@@ -39,7 +41,8 @@ public sealed class MapRenderPlan : IDisposable
     }
     // Nested roof preparation can share this allowance before any retained allocation.
     internal static MapRenderPlan Prepare(MapSceneSource source, MapScopedScene scene, MapPreparedInputLease input,
-        MapRenderPolicy policy, long generation, MapSceneAdmission admission, MapWindowFoliageContext? captured)
+        MapRenderPolicy policy, long generation, MapSceneAdmission admission, MapWindowFoliageContext? captured,
+        MapRenderContextLease? contextOwner = null, Action<long>? retainSamples = null)
     {
         ArgumentNullException.ThrowIfNull(input); ArgumentNullException.ThrowIfNull(policy);
         if (!ReferenceEquals(source, scene.Source) || !scene.Witness.CompleteForScope || input.ClosureHash != source.ClosureHash ||
@@ -57,7 +60,7 @@ public sealed class MapRenderPlan : IDisposable
             terrain = NativeMapTerrain.Prepare(scene, input, policy.TerrainMaterials);
             placements = NativeMapPlacements.Prepare(scene, input, policy.Placements, routing);
             var water = NativeMapWater.Prepare(MapWaterScopedCompiler.Compile(scene), policy.Water.ToWaterLook(), new WaterSettings());
-            foliage = NativeMapFoliage.Prepare(scene, context, input, policy.Foliage, routing);
+            foliage = NativeMapFoliage.Prepare(scene, context, input, policy.Foliage, routing, retainSamples);
             var stamp = new MapResourceStamp(source.ClosureHash, source.SourceGeneration, scene.Scope.Digest, policy.Digest, generation);
             var recorder = new MapDrawRecorder();
             terrain.Register(stamp, recorder); placements.Register(stamp, recorder); water.Register(stamp, recorder); foliage.Register(stamp, recorder);
@@ -68,7 +71,7 @@ public sealed class MapRenderPlan : IDisposable
             admission.ReserveBytes(checked(128L * resources.Length));
             var inventory = new MapRenderInventory(scene.Witness, terrain, placements, MapEffectiveAnnotations.Lights(scene), water,
                 foliage, MapEffectiveAnnotations.Markers(scene));
-            return new(stamp, scene, input, routing, inventory, context, admission.RetainedBytes - before, resources, snapshot.Draws.ToArray());
+            return new(stamp, scene, input, routing, inventory, context, admission.RetainedBytes - before, resources, snapshot.Draws.ToArray()) { _contextOwner = contextOwner };
         }
         catch
         { foliage?.Dispose(); placements?.Dispose(); terrain?.Dispose(); throw; }
@@ -105,5 +108,5 @@ public sealed class MapRenderPlan : IDisposable
         foreach (var light in _lights) sink.Write(light with { LocalFocus = MapRenderTransform.FocusLocal(frame.Focus, light.Anchor) });
     }
     public void Dispose()
-    { if (_disposed) return; _disposed = true; Inventory.Foliage.Dispose(); Inventory.Placements.Dispose(); Inventory.Terrain.Dispose(); Input.Dispose(); }
+    { if (_disposed) return; _disposed = true; Inventory.Foliage.Dispose(); Inventory.Placements.Dispose(); Inventory.Terrain.Dispose(); Input.Dispose(); _contextOwner?.Dispose(); }
 }

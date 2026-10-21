@@ -16,6 +16,62 @@ namespace KhaozEngine.Tests.MapDoc;
 
 public sealed class NativeMapReplacementTests
 {
+    [Fact]
+    public void PolicyOnlyReplacement_KeepsTheCapturedContextCharged()
+    {
+        using var f = ResidencyFixture.Placement();
+        var scheduler = new ResidencyScheduler(); var device = new ResidencyDevice();
+        var state = f.State(ResidencyFixture.Window());
+        using var residency = new MapRenderResidency(state, device, null, scheduler);
+        ResidencyFixture.Complete(residency, scheduler);
+        var context = residency.AcceptedPlans.Single().FoliageContext;
+        long cpu = residency.Lifetime.CpuBytes;
+        residency.RequestReplacement(state with { Policy = ResidencyFixture.Policy(200) });
+        ResidencyFixture.Complete(residency, scheduler);
+        Assert.Same(context, residency.AcceptedPlans.Single().FoliageContext);
+        Assert.Equal(cpu, residency.Lifetime.CpuBytes);
+    }
+
+    [Fact]
+    public void DensityContextCharge_SurvivesReplacementAndEndsWithTheLastReader()
+    {
+        using var f = ResidencyFixture.Foliage();
+        var state = f.FoliageState(); var scheduler = new ResidencyScheduler(); var device = new ResidencyDevice();
+        using var residency = new MapRenderResidency(state, device, null, scheduler);
+        ResidencyFixture.Complete(residency, scheduler);
+        using var original = residency.AcceptedPlans.Single().RetainContext()!;
+        long bytes = original.CpuBytes;
+        Assert.True(bytes > 1024);
+        residency.RequestReplacement(state with { Policy = ResidencyFixture.Policy(200, state.Policy.Foliage) });
+        ResidencyFixture.Complete(residency, scheduler);
+        using var current = residency.AcceptedPlans.Single().RetainContext()!;
+        Assert.Same(original.Context, current.Context); Assert.Equal(bytes, current.CpuBytes);
+        residency.SetWindows([]); ResidencyFixture.Complete(residency, scheduler);
+        long withReaders = residency.Lifetime.CpuBytes;
+        original.Dispose(); Assert.Equal(withReaders, residency.Lifetime.CpuBytes);
+        current.Dispose(); Assert.Equal(withReaders - bytes, residency.Lifetime.CpuBytes);
+    }
+
+    [Fact]
+    public void EqualContentDistinctClosure_IsRejectedBeforeAnyWorkerOrDecode()
+    {
+        using var f = ResidencyFixture.Placement();
+        var other = NativeRenderAssetFixtures.Create();
+        Assert.NotSame(f.Closure, other); Assert.Equal(f.Closure.Hash, other.Hash);
+        var scheduler = new ResidencyScheduler(); var device = new ResidencyDevice();
+        var state = f.State(ResidencyFixture.Window());
+        using var residency = new MapRenderResidency(state, device, new(MaxResidentCpuBytes: 20_000_000), scheduler);
+        ResidencyFixture.Complete(residency, scheduler);
+        long cpu = residency.Lifetime.CpuBytes; int uploads = device.Begins;
+        var accepted = residency.CurrentTransition.AcceptedWitness;
+        var rejected = residency.RequestReplacement(state with { Closure = other });
+        Assert.Equal(MapSceneStatus.Invalid, rejected.Status);
+        scheduler.RunAll();
+        Assert.Equal(cpu, residency.Lifetime.CpuBytes);
+        Assert.Equal(uploads, device.Begins); Assert.Equal(accepted, rejected.AcceptedWitness);
+        Assert.Null(rejected.PendingWitness);
+    }
+
     [Theory]
     [InlineData("source", false)]
     [InlineData("closure", false)]

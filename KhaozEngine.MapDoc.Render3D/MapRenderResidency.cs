@@ -119,7 +119,7 @@ public sealed class MapRenderResidency : IDisposable
     {
         ArgumentNullException.ThrowIfNull(state.Source); ArgumentNullException.ThrowIfNull(state.Closure);
         ArgumentNullException.ThrowIfNull(state.Extents); ArgumentNullException.ThrowIfNull(state.Policy); ArgumentNullException.ThrowIfNull(state.Windows);
-        if (state.Source.ClosureHash != state.Closure.Hash || state.Extents.ClosureHash != state.Closure.Hash ||
+        if (!ReferenceEquals(state.Source.Data.Assets, state.Closure) || state.Source.ClosureHash != state.Closure.Hash || state.Extents.ClosureHash != state.Closure.Hash ||
             state.Source.RenderExtentsDigest != state.Extents.Digest || state.Source.WithRenderExtents(state.Extents).Source is null)
             throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, "Replacement requires the exact complete proof-bound source and closure.");
         if (state.Windows.Count > _budgets.MaxActiveWindows)
@@ -144,6 +144,7 @@ public sealed class MapRenderResidency : IDisposable
     MapRenderPlan[] Build(Pending pending, long bytes, MapRenderAdmission.CpuLease charge, CancellationToken token)
     {
         var plans = new List<MapRenderPlan>();
+        long transferred = 0;
         var source = pending.State.Source;
         var admission = new MapSceneAdmission(source.Data.Limits with { MaxPreparedBytes = Math.Min(bytes, source.Data.Limits.MaxPreparedBytes) });
         using var activation = admission.Enter();
@@ -152,38 +153,53 @@ public sealed class MapRenderResidency : IDisposable
             foreach (var scope in pending.State.Windows.DistinctBy(s => s.Digest))
             {
                 token.ThrowIfCancellationRequested();
-                long beforeScope = admission.RetainedBytes;
-                var result = MapSceneAcquisition.Run(source, scope, admission);
-                if (result.Scene is not { } scene) throw new MapSceneSourceException(result.Status, string.Join("\n", result.Findings));
-                MapWindowFoliageContext? context;
+                MapRenderContextLease? contextOwner;
                 lock (_gate)
                 {
                     Fence(pending);
-                    context = AcceptedPlans.FirstOrDefault(p => ReferenceEquals(p.Scene.Source, source) && p.Key.SourceGeneration == source.SourceGeneration &&
-                        p.Key.ClosureHash == source.ClosureHash && p.Key.ScopeDigest == scope.Digest && p.Input.ProofDigest == pending.State.Extents.Digest)?.FoliageContext;
+                    contextOwner = AcceptedPlans.FirstOrDefault(p => ReferenceEquals(p.Scene.Source, source) && p.Key.SourceGeneration == source.SourceGeneration &&
+                        p.Key.ClosureHash == source.ClosureHash && p.Key.ScopeDigest == scope.Digest && p.Input.ProofDigest == pending.State.Extents.Digest)?.RetainContext();
                 }
-                context ??= MapRenderPlan.CaptureFoliage(source, scope);
-                if (MapPlacementRouting.Create(scene, pending.State.Policy.Placements, pending.State.Policy.AnimatedAssets).Routing is null)
-                    throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, "Composite routing refused before selected decode.");
-                var selected = MapRenderPlan.SelectedAssets(scene, context);
-                var materials = MapRenderPlan.SelectedMaterials(scene, pending.State.Policy);
-                lock (_gate) Fence(pending);
-                token.ThrowIfCancellationRequested();
-                long remaining = Math.Min(_budgets.MaxPlanBytes, _admission.AvailableCpuBytes);
-                var decode = new GltfDecodeBudget(new(MaxPeakBytes: remaining));
-                var loaded = AssetCache.Acquire(pending.State.Closure, selected, materials, pending.State.Extents, decode, token, pending.SourceCharge!.Encoded);
-                if (loaded.Input is not { } input) throw new MapRenderAssetRefusal(loaded.Status, loaded.Detail ?? "Selected input refused.");
+                long reused = contextOwner?.CpuBytes ?? 0;
+                long beforeScope = admission.RetainedBytes;
                 try
                 {
+                    using var window = admission.LimitPreparation(_budgets.MaxPlanBytes - reused);
+                    var result = MapSceneAcquisition.Run(source, scope, admission);
+                    if (result.Scene is not { } scene) throw new MapSceneSourceException(result.Status, string.Join("\n", result.Findings));
+                    if (contextOwner is null)
+                    {
+                        long beforeCapture = admission.RetainedBytes;
+                        var captured = MapRenderPlan.CaptureFoliage(source, scope);
+                        long retained = admission.RetainedBytes - beforeCapture;
+                        contextOwner = new(captured, charge.Split(retained)); transferred += retained;
+                    }
+                    var context = contextOwner.Context;
+                    if (MapPlacementRouting.Create(scene, pending.State.Policy.Placements, pending.State.Policy.AnimatedAssets).Routing is null)
+                        throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, "Composite routing refused before selected decode.");
+                    var selected = MapRenderPlan.SelectedAssets(scene, context);
+                    var materials = MapRenderPlan.SelectedMaterials(scene, pending.State.Policy);
+                    lock (_gate) Fence(pending);
                     token.ThrowIfCancellationRequested();
-                    var plan = MapRenderPlan.Prepare(source, scene, input, pending.State.Policy, pending.Epoch, admission, context);
-                    plans.Add(plan);
-                    if (admission.RetainedBytes - beforeScope + input.RetainedBytes > _budgets.MaxPlanBytes)
-                        throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, "Prepared plan exceeds its byte capacity.");
+                    long remaining = Math.Min(admission.RemainingPreparedBytes, _admission.AvailableCpuBytes);
+                    var decode = new GltfDecodeBudget(new(MaxPeakBytes: remaining));
+                    var loaded = AssetCache.Acquire(pending.State.Closure, selected, materials, pending.State.Extents, decode, token, pending.SourceCharge!.Encoded);
+                    if (loaded.Input is not { } input) throw new MapRenderAssetRefusal(loaded.Status, loaded.Detail ?? "Selected input refused.");
+                    try
+                    {
+                        token.ThrowIfCancellationRequested();
+                        window.ChargeExternal(input.RetainedBytes);
+                        var plan = MapRenderPlan.Prepare(source, scene, input, pending.State.Policy, pending.Epoch, admission, context, contextOwner,
+                            retained => { contextOwner!.Own(charge.Split(retained)); transferred += retained; });
+                        plans.Add(plan); contextOwner = null;
+                        if (admission.RetainedBytes - beforeScope + input.RetainedBytes + reused > _budgets.MaxPlanBytes)
+                            throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, "Prepared plan exceeds its byte capacity.");
+                    }
+                    catch { if (!plans.Any(p => ReferenceEquals(p.Input, input))) input.Dispose(); throw; }
                 }
-                catch { if (!plans.Any(p => ReferenceEquals(p.Input, input))) input.Dispose(); throw; }
+                finally { contextOwner?.Dispose(); }
             }
-            token.ThrowIfCancellationRequested(); charge.ReduceTo(admission.RetainedBytes);
+            token.ThrowIfCancellationRequested(); charge.ReduceTo(admission.RetainedBytes - transferred);
             return plans.ToArray();
         }
         catch { foreach (var plan in plans) plan.Dispose(); throw; }
@@ -228,7 +244,7 @@ public sealed class MapRenderResidency : IDisposable
         {
             Fence(pending);
             var handle = upload.Publish();
-            var owner = new Owner(id, pending.Resources[id], handle);
+            var owner = new Owner(id, handle);
             pending.Owners.Add(id, owner); pending.Created.Add(owner);
         }
         var references = new Dictionary<MapResourceReference, Owner>();
@@ -383,7 +399,7 @@ public sealed class MapRenderResidency : IDisposable
         internal static Identity Of(MapPreparedResource resource) => new(resource.Reference.Key, resource.PayloadDigest,
             resource.Payload is MapRigidResource && resource.Reference.Key.Kind == MapRenderKind.Foliage ? default : resource.Bounds);
     }
-    sealed record Owner(Identity Identity, MapPreparedResource Resource, MapRenderHandle Handle);
+    sealed record Owner(Identity Identity, MapRenderHandle Handle);
     sealed class Batch(MapRenderPlan[] plans, IDisposable preparation, IDisposable source) : IDisposable
     {
         internal MapRenderPlan[] Plans => plans;

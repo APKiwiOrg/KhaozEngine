@@ -58,6 +58,7 @@ public sealed class MapRenderAdmission
         bool _disposed;
         internal CpuLease(MapRenderAdmission owner, long bytes) => _shared = new(owner, bytes);
         CpuLease(Shared shared) => _shared = shared;
+        internal long Bytes { get { lock (_shared.Gate) { ObjectDisposedException.ThrowIf(_disposed, this); return _shared.Bytes; } } }
         internal int OwnerCount { get { lock (_shared.Gate) return _shared.Owners; } }
         internal CpuLease Retain()
         {

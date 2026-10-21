@@ -126,6 +126,8 @@ internal static class CoverageResearchProposalBuilder
             .Min(i => support.PrecisePositions[i].Z);
         bool[] eligible = host.Triangles.Select(t =>
         {
+            if (settings.EligibleDominantJoints is { } joints
+                && new[] { t.A, t.B, t.C }.Any(v => !joints.Contains(host.DominantJoint(v)))) return false;
             Vector3 a = q[t.A], b = q[t.B], c = q[t.C];
             if (Vector3.Cross(b - a, c - a).Z <= 0) return false;
             return new[] { a, b, c }.All(p => domain.Distance(p.X, p.Y) <= settings.PatchMargin && p.Z >= sheetFloor - settings.PatchDepth);
@@ -301,6 +303,13 @@ internal sealed class HostGeometry
     internal Triangle[] Triangles { get; }
     internal CoverageTopologyEntry[] Topology { get; }
     internal int SurfaceCount { get; }
+
+    internal int DominantJoint(int vertex)
+    {
+        int best = 0;
+        for (int k = 1; k < 4; k++) if (weights[vertex][k] > weights[vertex][best]) best = k;
+        return (int)joints[vertex][best];
+    }
 
     internal static HostGeometry Read(byte[] glb)
     {

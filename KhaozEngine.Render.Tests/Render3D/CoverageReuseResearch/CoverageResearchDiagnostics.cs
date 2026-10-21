@@ -46,6 +46,8 @@ internal sealed class CoverageResearchDiagnostics
     readonly int[][] components;
     readonly (int Part, int First, int Count)[] componentRanges;
 
+    internal CoverageResearchSurfaces Surfaces { get; }
+
     internal CoverageResearchDiagnostics(CoverageResearchFixture fixture)
     {
         this.fixture = fixture;
@@ -56,6 +58,7 @@ internal sealed class CoverageResearchDiagnostics
         composed = new Matrix4x4[fixture.InverseBind.Length];
         posed = new ModelVertex[topology.SourceVertexCount];
         final = new ModelVertex[topology.VertexCount];
+        Surfaces = new(topology);
         regionTriangle = new bool[topology.Source.Triangles.Count];
         foreach (var t in topology.Triangles) if (t.RegionIndex >= 0) regionTriangle[t.SourceTriangle] = true;
         // Equipment witnesses: each part's displayed source, split into connected components by welded position.
@@ -182,7 +185,10 @@ internal sealed class CoverageResearchDiagnostics
             || !CoverageReferenceConstructor.TryInterpolate(topology, posed, scratch, out _))
             throw new InvalidOperationException($"Reference skinning refused {anchor.Key}.");
         var before = scratch.Before.ToArray();
-        bool constructed = CoverageReferenceConstructor.TryConstruct(topology, posed, model, commands, scratch, final, out _);
+        bool constructed = oracle.LastConstructedVertices.Length == final.Length;
+        if (constructed) oracle.LastConstructedVertices.CopyTo(final);
+        bool prepared = CoverageReferenceFrames.TryPrepare(topology, model, commands, scratch, out _);
+        Surfaces.Add(anchor.Key, before, final, constructed, scratch, prepared);
 
         // Requested recession at full weight over every positive-strength refined vertex, with the actual support.
         double maxRequest = 0, cap = double.PositiveInfinity, reserve = double.PositiveInfinity, gap = double.PositiveInfinity;

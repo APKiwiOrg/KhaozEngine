@@ -25,11 +25,13 @@ internal sealed record CoverageResearchPart(uint Id, CoverageResearchFile Glb);
 /// <summary>Settings for a footprint proposal of one host region and one command when no accepted mapping exists. The
 /// support is the selected mesh's triangles facing inward along coverage -Z. The region is the connected outward-facing
 /// host patch within the footprint margin and depth window in the reference anchor. Core triangles lie inside the
-/// support domain by the core inset, away from the patch boundary. All distances are coverage or world metres.</summary>
+/// support domain by the core inset, away from the patch boundary. An optional dominant-joint allowlist restricts every
+/// source corner before patch selection. All distances are coverage or world metres.</summary>
 internal sealed record CoverageResearchProposal(
     uint PartId, int SupportMesh, double InwardCosine, float[] CoverageLocal, string ReferenceAnchor, string RegionKey,
     double CoreInset, double PatchMargin, double PatchDepth, int RefinementLevel,
-    float CollarWidth, float MinZ, float MaxZ, float Clearance, float MaxWorldRecession, string OutputDirectory);
+    float CollarWidth, float MinZ, float MaxZ, float Clearance, float MaxWorldRecession, string OutputDirectory,
+    int[]? EligibleDominantJoints = null);
 
 /// <summary>Research fixture manifest format 1. Every payload is external and hash checked, so a private fixture never
 /// enters the repository and the loader stays generic. Either both HostMap and Coverage are supplied, or Proposal.</summary>

@@ -14,8 +14,16 @@ namespace KhaozEngine.MapDoc.Scene;
 /// <summary>Bounded dependency closure, followed by one atomic neutral snapshot publication.</summary>
 internal static class MapSceneAcquisition
 {
-    internal static MapScopedSceneResult Run(MapSceneSource source, MapSceneScope scope, MapSceneAdmission? sharedAdmission = null,
-        MapFoliageWindowRequest? foliageRequest = null)
+    // Neutral callers bind this signature without a foliage type in their assembly metadata.
+    internal static MapScopedSceneResult Run(MapSceneSource source, MapSceneScope scope, MapSceneAdmission? sharedAdmission = null)
+        => RunCore(source, scope, sharedAdmission, null);
+
+    internal static MapScopedSceneResult Run(MapSceneSource source, MapSceneScope scope, MapSceneAdmission sharedAdmission,
+        MapFoliageWindowRequest foliageRequest)
+        => RunCore(source, scope, sharedAdmission, foliageRequest);
+
+    static MapScopedSceneResult RunCore(MapSceneSource source, MapSceneScope scope, MapSceneAdmission? sharedAdmission,
+        MapFoliageWindowRequest? foliageRequest)
     {
         var data = source.Data;
         var admission = sharedAdmission ?? new MapSceneAdmission(data.Limits);

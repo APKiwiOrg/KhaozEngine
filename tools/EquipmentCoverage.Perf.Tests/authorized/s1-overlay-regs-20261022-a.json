@@ -1,0 +1,35 @@
+{
+  "schema": "khaozengine.coverage-perf-unit/1",
+  "preset": "S1",
+  "unitId": "s1-overlay-regs-20261022-a",
+  "workloadSha": "fb36a3b7361c21403443d693639ee0c068105b3d",
+  "baselineMainSha": "10659a82c766d2d4ec354d9f215af3c890c7c477",
+  "fixture": "coverage-typical-gpu/1",
+  "profile": "full-1280x720/1",
+  "configuration": "Release",
+  "routes": {
+    "ordinarySkinning": "gpu",
+    "coveredSurface": "gpu-built"
+  },
+  "device": {
+    "backend": "vulkan-native",
+    "adapterPolicy": "nvidia-t4"
+  },
+  "batchFrames": 3,
+  "runner": "gpu-t4-linux",
+  "workflow": "gpu-hosted-bench",
+  "leg": "linux-vulkan",
+  "iterations": 1,
+  "load": 0,
+  "limits": {
+    "maxUnitSeconds": 600,
+    "maxFrameMilliseconds": 10000,
+    "jobMinutes": 30
+  },
+  "authorization": {
+    "identity": "coverage-gpu-era-perf-s1-overlay-regs-20261022-a",
+    "approvedBy": "repository owner",
+    "reference": "Owner request of 2026-10-22 in the overlay register experiment brief authorizes exactly two gpu-hosted-bench units under the standing equipment coverage T4 authorization, about USD 0.40 total. This unit is the single S1 cold compiler statistics capture after merging probe dfbe3693e into the separate measurement branch. Public coverage-typical-gpu fixture only, linux-vulkan on gpu-t4-linux, no warm-up or measured frames and no GPU dispatches. Unit limit 600 seconds and job limit 30 minutes. One retry is authorized only for infrastructure failure. No other paid runs or subagents."
+  },
+  "blocks": []
+}

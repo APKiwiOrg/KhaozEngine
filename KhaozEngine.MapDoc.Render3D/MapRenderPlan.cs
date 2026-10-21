@@ -19,6 +19,9 @@ public sealed class MapRenderPlan : IDisposable
     readonly MapDrawRecord[] _lights;
     MapRenderContextLease? _contextOwner;
     bool _disposed;
+    public MapPresentationGeometry PresentationGeometry { get; }
+    public MapRoofEvaluationBuffer RoofEvaluation { get; }
+    internal IReadOnlyDictionary<string, int> RoofIndices { get; }
     public MapResourceStamp Key { get; }
     public MapPreparedInputLease Input { get; }
     public MapScopedScene Scene { get; }
@@ -29,8 +32,8 @@ public sealed class MapRenderPlan : IDisposable
     internal MapRenderContextLease? RetainContext() => _contextOwner?.Retain();
     internal IReadOnlyList<MapPreparedResource> Resources => _resources;
     MapRenderPlan(MapResourceStamp key, MapScopedScene scene, MapPreparedInputLease input, MapPlacementRouting routing,
-        MapRenderInventory inventory, MapWindowFoliageContext context, long bytes, MapPreparedResource[] resources, MapDrawRecord[] lights)
-    { Key = key; Scene = scene; Input = input; Routing = routing; Inventory = inventory; FoliageContext = context; PreparationBytes = bytes; _resources = resources; _lights = lights; }
+        MapRenderInventory inventory, MapWindowFoliageContext context, long bytes, MapPreparedResource[] resources, MapDrawRecord[] lights, MapPresentationGeometry geometry, MapRoofEvaluationBuffer roofs, IReadOnlyDictionary<string, int> roofIndices)
+    { Key = key; Scene = scene; Input = input; Routing = routing; Inventory = inventory; FoliageContext = context; PreparationBytes = bytes; _resources = resources; _lights = lights; PresentationGeometry = geometry; RoofEvaluation = roofs; RoofIndices = roofIndices; }
     public static MapRenderPlan Prepare(MapSceneSource source, MapScopedScene scene, MapPreparedInputLease input,
         MapRenderPolicy policy, long generation)
     {
@@ -61,6 +64,11 @@ public sealed class MapRenderPlan : IDisposable
             placements = NativeMapPlacements.Prepare(scene, input, policy.Placements, routing);
             var water = NativeMapWater.Prepare(MapWaterScopedCompiler.Compile(scene), policy.Water.ToWaterLook(), new WaterSettings());
             foliage = NativeMapFoliage.Prepare(scene, context, input, policy.Foliage, routing, retainSamples);
+            var geometry = MapPresentationGeometry.Prepare(scene, input.Assets.Closure, terrain.CanonicalFaces);
+            var roofResult = MapRoofEvaluationBuffer.Prepare(scene, admission);
+            var roofs = roofResult.Buffer ?? throw new MapSceneSourceException(roofResult.Status, roofResult.Detail ?? "Roof preparation refused.");
+            admission.ReserveBytes(checked(128L + roofs.Roofs.Count * 128L));
+            var roofIndices = roofs.Roofs.Select((r, i) => (r.RoofPlacementId, i)).ToDictionary(r => r.RoofPlacementId, r => r.i, StringComparer.Ordinal);
             var stamp = new MapResourceStamp(source.ClosureHash, source.SourceGeneration, scene.Scope.Digest, policy.Digest, generation);
             var recorder = new MapDrawRecorder();
             terrain.Register(stamp, recorder); placements.Register(stamp, recorder); water.Register(stamp, recorder); foliage.Register(stamp, recorder);
@@ -71,7 +79,7 @@ public sealed class MapRenderPlan : IDisposable
             admission.ReserveBytes(checked(128L * resources.Length));
             var inventory = new MapRenderInventory(scene.Witness, terrain, placements, MapEffectiveAnnotations.Lights(scene), water,
                 foliage, MapEffectiveAnnotations.Markers(scene));
-            return new(stamp, scene, input, routing, inventory, context, admission.RetainedBytes - before, resources, snapshot.Draws.ToArray()) { _contextOwner = contextOwner };
+            return new(stamp, scene, input, routing, inventory, context, admission.RetainedBytes - before, resources, snapshot.Draws.ToArray(), geometry, roofs, roofIndices) { _contextOwner = contextOwner };
         }
         catch
         { foliage?.Dispose(); placements?.Dispose(); terrain?.Dispose(); throw; }
@@ -100,11 +108,15 @@ public sealed class MapRenderPlan : IDisposable
     }
     public void Register(IMapDrawSink sink)
     { ObjectDisposedException.ThrowIf(_disposed, this); ArgumentNullException.ThrowIfNull(sink); foreach (var resource in _resources) sink.Register(resource); }
+    public void Update(MapFrameState frame)
+    { ObjectDisposedException.ThrowIf(_disposed, this); RoofEvaluation.Evaluate(frame.Observer, frame.RoofMode); }
     public void Record(MapFrameState frame, IMapDrawSink sink)
     {
         ObjectDisposedException.ThrowIf(_disposed, this); ArgumentNullException.ThrowIfNull(sink);
+        Update(frame);
         Inventory.Terrain.Record(frame, sink); Inventory.Placements.Record(frame, sink); Inventory.Water.Record(frame, sink);
         Inventory.Foliage.Record(frame, sink);
+        NativeMapRoofs.RecordEvaluated(this, frame, sink);
         foreach (var light in _lights) sink.Write(light with { LocalFocus = MapRenderTransform.FocusLocal(frame.Focus, light.Anchor) });
     }
     public void Dispose()

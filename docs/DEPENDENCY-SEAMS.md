@@ -984,8 +984,9 @@ KhaozEngine.MapDoc.Physics -> KhaozEngine.Locomotion  (the contact shell that ph
 Four forward edges and no backend: the caller picks the `IPhysicsWorld`. It references no renderer, no GPU, no
 TileWorld and no game. `Collider` and `Selection` resources carry `PropCollisionFormat` version 1 bytes, read
 through the existing `Physics` seam, so the package adds no format and no third-party package. The nonpackable test
-project references only `MapDoc.Physics`, `Physics.Bepu`, for proofs against the shipped backend, and `Sharding`,
-for grid equivalence. `ArchitectureTests.MapDocPhysics.cs` pins both project-reference sets, the absence of any
+project references `MapDoc.Physics`, `Physics.Bepu` for proofs against the shipped backend, `Sharding`
+for grid equivalence, and `MapDoc.Render3D` for collider and selection parity against prepared presentation geometry.
+The presentation reference is test-only. The physics package retains its four render-free production edges. `ArchitectureTests.MapDocPhysics.cs` pins both project-reference sets, the absence of any
 package reference and the package's absence from every umbrella closure, and `MapDoc.Physics` is on the
 `OptInBackends` list.
 

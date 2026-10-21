@@ -177,12 +177,14 @@ public static class ShapeRayQueries
     }
     internal static bool CastMesh(ShapeDouble3 origin, ShapeDouble3 direction, double tStart, double tEnd, TriangleMeshShape mesh,
         ShapeDoublePose pose, out double t, out ShapeDouble3 normal)
+        => CastMesh(origin, direction, tStart, tEnd, Centred(pose, mesh.Vertices), mesh.Indices, pose.Position, out t, out normal);
+
+    internal static bool CastMesh(ShapeDouble3 origin, ShapeDouble3 direction, double tStart, double tEnd,
+        ReadOnlySpan<ShapeDouble3> vertices, ReadOnlySpan<int> indices, ShapeDouble3 position, out double t, out ShapeDouble3 normal)
     {
         t = 0d;
         normal = default;
-        ShapeDouble3[] vertices = Centred(pose, mesh.Vertices);
-        ShapeDouble3 o = origin.Subtract(pose.Position);
-        int[] indices = mesh.Indices;
+        ShapeDouble3 o = origin.Subtract(position);
         bool any = false;
         for (int i = 0; i + 2 < indices.Length; i += 3)
         {

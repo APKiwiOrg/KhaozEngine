@@ -3,8 +3,11 @@ namespace KhaozEngine.Render3D;
 /// <summary>Cold support access and entry points for resumable, source-ordered queries.</summary>
 internal static class CoverageGpuSupportGlsl
 {
-    internal static string Source => DataSource + CoverageGpuTriangleHeightGlsl.Source
-        + CoverageGpuHeightQueryGlsl.Source + CoverageGpuBoundaryQueryGlsl.Source + CoverageGpuOverlayQueryGlsl.Source;
+    internal static string Source => QuerySource(overlay: true);
+
+    internal static string QuerySource(bool overlay) => DataSource + CoverageGpuTriangleHeightGlsl.Source
+        + CoverageGpuHeightQueryGlsl.Source + CoverageGpuBoundaryQueryGlsl.Source
+        + (overlay ? CoverageGpuOverlayStateGlsl.Source + CoverageGpuOverlayQueryGlsl.Source : "");
 
     internal const string DataSource = """
 

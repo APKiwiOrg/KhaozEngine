@@ -14,7 +14,8 @@ internal static class CoverageGpuSkinRefineGlsl
 
     internal static string Source(CoverageGpuPhase phase) => "#version 450\nlayout(local_size_x = 64) in;\n"
         + CoverageGpuGuardGlsl.Bindings + CoverageGpuArithmeticGlsl.Source + CoverageGpuExactWordsGlsl.WorkerSource
-        + CoverageGpuRoundingGlsl.Source + CoverageGpuPredicatesGlsl.Source + CoverageGpuSupportGlsl.Source
+        + CoverageGpuRoundingGlsl.Source + CoverageGpuPredicatesGlsl.Source
+        + CoverageGpuSupportGlsl.QuerySource(phase == CoverageGpuPhase.CorrectFacesOverlay)
         + CoverageGpuGuardGlsl.Source + CoverageGpuConformGlsl.Helpers + CoverageGpuQueryWorkLayout.Source + (phase switch
         {
             CoverageGpuPhase.Reset => CoverageGpuGuardGlsl.Reset,

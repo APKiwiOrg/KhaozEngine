@@ -23,7 +23,7 @@ internal static class CoverageGpuSupportProbe
         layout(std430, set = 0, binding = 1) buffer ResultBuf { uint Results[]; };
         layout(std430, set = 0, binding = 2) readonly buffer StaticBuf { uint CovStaticWords[]; };
         """ + CoverageGpuArithmeticGlsl.Source + CoverageGpuExactWordsGlsl.WorkerSource + CoverageGpuRoundingGlsl.Source
-        + CoverageGpuPredicatesGlsl.Source + CoverageGpuSupportGlsl.Source + """
+        + CoverageGpuPredicatesGlsl.Source + CoverageGpuSupportGlsl.QuerySource(operation == 2) + """
         vec3 probePoint(uint offset) { return vec3(uintBitsToFloat(Inputs[offset]),uintBitsToFloat(Inputs[offset+1u]),uintBitsToFloat(Inputs[offset+2u])); }
         void main() {
             uint row = gl_GlobalInvocationID.x;

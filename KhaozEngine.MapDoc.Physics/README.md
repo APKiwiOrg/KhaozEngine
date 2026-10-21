@@ -94,7 +94,7 @@ The additive `Bounds(placement, shapes, out spatialBounds)` overload also return
 envelope union for edit invalidation, from the same geometry resolution. Use that spatial extent for Physics,
 Nav and Residency consequences.
 
-`MapShapeBounds.Of` computes tight world bounds in scalar double under the physics seam's conventions: boxes,
+`MapShapeBounds.Of` delegates to `Physics.PropQueryGeometry.Bounds` and computes tight world bounds in scalar double under the physics seam's conventions: boxes,
 spheres and capsules are centred on their pose, a cylinder stands on its base and spans `Length` along its local Y,
 hull and mesh points are relative to their pose, and compound children compose their local pose.
 
@@ -279,6 +279,9 @@ IReadOnlyList<Vector3> stances = MapStanceCandidates.Find(world, "door-1", actor
 agree. `Pick`, `Distance` and `Within` query interaction envelopes only, clipped to an optional absolute
 `MapInteractionBand`. `PhysicalDistance` queries colliders only. Equal pick distances resolve to the ordinally
 smallest placement id. `MapShapeQueries` holds the same point, capsule and ray tests for one shape at a pose.
+Its ray route delegates to `Physics.ShapeRayQueries`, while movement distances retain their released contract.
+`MapInteractionEnvelope` delegates its upward sweep to `Physics.PropQueryGeometry.RaiseEnvelope` after admission.
+The MapDoc wrappers preserve their exception categories and the 1 m interaction minimum.
 
 Heads agree except for one residual dependency on the platform's double sine and cosine. A placement's world pose
 takes the sine and cosine of half its yaw in double and rounds each to float once, so no float trigonometry enters

@@ -7,6 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
+    <InternalsVisibleTo Include="KhaozEngine.MapDoc.Physics" />
     <InternalsVisibleTo Include="KhaozEngine.Physics.Bepu" />
     <InternalsVisibleTo Include="KhaozEngine.Locomotion" />
     <InternalsVisibleTo Include="KhaozEngine.Movement" />

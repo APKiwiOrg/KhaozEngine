@@ -409,6 +409,13 @@ What it owns today:
   adjacent interval must be shorter than one complete counter wrap. Allocate a fixed caller-owned ring with one
   pool per retained frame. When all pools are pending, record no timestamps that frame and keep rendering.
   The consumer guide's "GPU timestamps without waiting" gives the full lifetime and invalid-result contract.
+  Opt-in performance harnesses use the internal
+  [`GpuPerfTimestampRing`](../KhaozEngine.Render.Tests/Gpu/Performance/GpuPerfTimestampRing.cs) reference
+  lifecycle. It freezes three pools and the marker count before warming, with 2 to 512 queries per pool.
+  Unlike optional overlay collection, a full ring or missing sample invalidates its block. The caller drains
+  once per batch of at most three, including the final short batch, then harvests once. The ring retains the
+  exact submission fence through immutable publication and quarantines pending or invalid results without
+  waiting or polling again. Pass labels and skipped-pass status remain adapter-owned.
 - **`GpuRetireQueue`** (since 17.37.0) - deferred disposal for anything a renderer frees MID-LIFE (a streamed mesh
   unloaded while the scene runs, a sprite atlas whose descriptor set fell out of the working set). `Retire(resource)`
   costs nothing at the call site, `BeginFrame()` seals the frame's retirements into one batch behind a fence and

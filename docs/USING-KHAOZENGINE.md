@@ -23112,6 +23112,32 @@ be detected or reconstructed. No resolve drains, flushes, submits, synchronously
 lock. A too-small output throws `ArgumentException` before polling. Null, foreign and disposed fences and
 disposed or lost devices follow the completion validation contract of `IGpuDevice.TryReadBuffer`.
 
+For opt-in measurement harnesses, the internal
+[`GpuPerfTimestampRing`](../KhaozEngine.Render.Tests/Gpu/Performance/GpuPerfTimestampRing.cs) is the shared
+retention reference, rather than a published package API. Construct one per fixed block with its exact
+sample count and marker count before warm-up. It preallocates three pools and each sample's immutable
+publication storage, supports 2 through 512 queries, and never grows a pool during recording. The renderer's
+outer pair leaves room for 255 scope occurrences. Coverage can supply its existing two- or five-marker
+layout without coupling the lifecycle to its report types.
+
+Call `TryBegin(commands, submission, sampleId, markerCount, out pool)` immediately after native Begin and
+before the host's first clear, bind or upload. Register and retain through that same `GpuFrameSubmission`
+before touching the pool. Write every reserved marker in order, including skipped cached occurrences,
+and retain their `NotExecuted` status in the adapter. Arm the existing completed-End tail for the final
+index. Unexpected occurrences call `InvalidateBlock`, rather than changing the frozen layout. Submit once
+through the retained submission owner. After each caller-owned batch drain, call `PollCompleted` once,
+including for a final batch of one or two frames. Call `CompleteBlock` after the final harvest to refuse
+missing identities. Duplicate identities, changed layouts or a full ring invalidate the block.
+
+Publication uses each sample's storage once and retains its fence until the callback returns successfully.
+Pending results after the drain, invalid or disjoint batches, bad periods or marker order, recording failures
+and callback failures quarantine their slots. Invalid results carry no usable ticks or period. Already
+published samples remain immutable, and other completed slots can still publish partial evidence. There is
+no ring-owned wait, flush, submit or retry. Dispose the submission owner before the ring. An early ring
+disposal frees unused pools immediately but retains quarantined pools until the owner's teardown releases
+their exact fences. This lifecycle is covered by headless parity cases against the coverage ring's retained
+submission behavior. Migrating the coverage adapter is a separate change.
+
 Native Direct3D 11 creates fixed timestamp queries and one disjoint query per pool.
 Timestamp and timestamp-disjoint queries are guaranteed from feature level 10_0. Begin records
 `Begin(disjoint)`, each write records `End(timestamp[index])`, and End records `End(disjoint)` through

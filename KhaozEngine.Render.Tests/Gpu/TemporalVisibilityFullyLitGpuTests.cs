@@ -42,6 +42,7 @@ public sealed class TemporalVisibilityFullyLitGpuTests(ITestOutputHelper output)
                     : TemporalResolveCostPerfGpuTests.FieldScene(stage);
             }
             output.WriteLine($"{fixtures[0].Device.Backend} {fixtures[0].Device.Capabilities.DeviceName}, {preset}, scene {scene}");
+            var oracle = new TemporalFullyLitHistoryOracle(output, TemporalDeviceClass.IsLavapipe(fixtures[0].Device));
             for (int frame = 0; frame < 24; frame++)
             {
                 for (int i = 0; i < fixtures.Length; i++)
@@ -54,10 +55,13 @@ public sealed class TemporalVisibilityFullyLitGpuTests(ITestOutputHelper output)
                     Assert.All(TemporalVisibilityHistoryGpuTests.Read(fx.Device, fx.Scene.ResolvedVisibilityTarget!),
                         b => Assert.Equal(255, b));
                 }
-                Compare(frame, "fused certified vs check", fixtures[0], fixtures[2]);
-                Compare(frame, "split certified vs check", fixtures[1], fixtures[3]);
-                Compare(frame, "certified fused vs split", fixtures[0], fixtures[1]);
+                TemporalFullyLitHistoryOracle.Snapshot[] samples = Array.ConvertAll(fixtures,
+                    TemporalFullyLitHistoryOracle.Snapshot.Read);
+                oracle.Report(frame, "fused certified vs check", samples[0], samples[2]);
+                oracle.Report(frame, "split certified vs check", samples[1], samples[3]);
+                oracle.Report(frame, "certified fused vs split", samples[0], samples[1], entryComparison: true);
             }
+            oracle.AssertComplete();
         }
         finally { foreach (TemporalFixture? fx in fixtures) fx?.Dispose(); }
     }

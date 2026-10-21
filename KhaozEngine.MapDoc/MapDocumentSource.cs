@@ -48,11 +48,13 @@ public sealed class MapDocumentSource : IDisposable
     readonly MapDocumentLoadOptions _options;
     float _sculptCellSize;
     IMapSurfaceSource? _sceneSurfaces;
-    IReadOnlyDictionary<MapTileCoord, IReadOnlyList<MapPlacement>>? _scenePlacements;
+    MapDocument? _sceneDocument;
+    internal bool ScenePartial { get; private init; }
+    internal MapDocument? SceneDocument => _sceneDocument;
     internal string? SceneDirectory => _directory;
     internal MapDocRegistry SceneRegistry => _options.Registry;
     internal IMapSurfaceSource SceneSurfaces => _sceneSurfaces ??= MapStoredSurfaceSource.FromManifest(_directory!, Manifest, Tiles);
-    internal IReadOnlyList<MapPlacement> ScenePlacements(MapTileCoord coord) => _scenePlacements![coord];
+    internal IReadOnlyList<MapPlacement> ScenePlacements(MapTileCoord coord) => _spatial!.PlacementsIn(coord);
 
     MapDocumentSource(MapDocument manifest, MapTileIndex tiles, string? directory,
                       MapSpatialIndex? spatial, MapDocumentLoadOptions options)
@@ -95,15 +97,11 @@ public sealed class MapDocumentSource : IDisposable
 
         MapDocument manifest = MapTiledFile.GlobalsOnly(doc);
         var index = new MapTileIndex(doc.TileSize, MapDocumentHash.SchemeVersion, sourceDirectory: null, entries);
-        if (doc.Tiles is { IsPartial: true } partial)
-            index = new MapTileIndex(partial.TileSize, partial.SchemeVersion, null, partial.Entries,
-                surfaces: partial.Surfaces)
-            { Foliage = partial.Foliage };
         manifest.Tiles = index;
         return new MapDocumentSource(manifest, index, directory: null, spatial, options)
         {
-            _sceneSurfaces = MapDocumentSurfaceSource.Capture(doc),
-            _scenePlacements = spatial.OccupiedTiles.ToDictionary(c => c, c => (IReadOnlyList<MapPlacement>)ClonePlacements(spatial.PlacementsIn(c))),
+            _sceneDocument = doc,
+            ScenePartial = doc.Tiles?.Entries.Any(e => !e.Loaded) == true,
         };
     }
 
@@ -129,7 +127,6 @@ public sealed class MapDocumentSource : IDisposable
 
         if (_spatial is not null)
         {
-            if (!entry.Loaded) throw new MapDocumentException($"In-memory tile ({coord.X}, {coord.Z}) is unloaded.");
             // The spatial index's buckets are the CALLER's own live document objects, bucketed once and never
             // copied since (MapSpatialIndex is itself a frozen snapshot, see Refresh's remarks). Handing those
             // straight out would break the immutability MapTileContent promises: a placement is a mutable class

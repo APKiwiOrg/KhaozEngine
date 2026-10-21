@@ -87,6 +87,83 @@ public sealed class MapSceneAdmissionTests
         Assert.Equal(1, external.Reads);
     }
 
+    [Fact]
+    public void FromDocument_DoesNotCopyScenePayloadBeforeCapture()
+    {
+        var fixture = PrefabFixtures.Create();
+        var entries = new List<string>();
+        var admission = new MapSceneAdmission(new(), entries.Add);
+        using (admission.Enter())
+        using (MapDocumentSource.FromDocument(fixture.Document)) { }
+        Assert.DoesNotContain("clone", entries);
+    }
+
+    [Fact]
+    public void ResidentCapture_ChargesPinnedPayloadBeforeCloning()
+    {
+        using var fixture = NativeSceneFixtures.Create("empty");
+        var patch = PrefabFixtures.Patch("floor", 64, 64, 0);
+        fixture.Document.Surfaces.Refs.Add(PrefabFixtures.Surface("floor", MapSurfaceRole.SupportFloor));
+        fixture.Document.Surfaces.Patches.Add(patch.Key, patch);
+        var placement = new MapPlacement
+        {
+            Id = "resident",
+            Kind = "cosmetic",
+            AssetId = "branch",
+            NumericId = 1,
+            X = 1,
+            Y = 1,
+            Z = 1,
+            Tags = new() { "before" }
+        };
+        fixture.Document.Placements.Add(placement);
+        using var document = MapDocumentSource.FromDocument(fixture.Document);
+        patch.Heights[0] = 123;
+        placement.Tags[0] = "at-pin";
+        var result = MapSceneSource.Capture(document, fixture.Assets);
+        Assert.Equal(MapSceneSourceStatus.Ready, result.Status);
+        Assert.True(result.Work.RetainedBytes >= 4L * 65 * 65 + 8L * 64 * 64);
+        Assert.Equal(123, result.Source!.Data.Surfaces.ReadPatch(patch.Key).Patch!.Heights[0]);
+        placement.Tags[0] = "after-pin";
+        Assert.Equal("at-pin", Assert.Single(result.Source.Data.Owners["Placement:resident"].Input.Placements).Tags[0]);
+        patch.Heights[0] = 456;
+        Assert.Equal(123, result.Source.Data.Surfaces.ReadPatch(patch.Key).Patch!.Heights[0]);
+        var entries = new List<string>();
+        using (new MapSceneAdmission(new(), entries.Add).Enter())
+        {
+            var refused = MapSceneSource.Capture(document, fixture.Assets, new(MaxMetadataBytes: 1024));
+            Assert.Equal(MapSceneSourceStatus.CapacityExceeded, refused.Status);
+            Assert.Null(refused.Source);
+            Assert.Equal(0, refused.Work.RetainedBytes);
+        }
+        Assert.DoesNotContain("clone", entries);
+    }
+
+    [Fact]
+    public void ResidentCapture_GenerationAttestsPlacementValuesAtThePin()
+    {
+        using var fixture = NativeSceneFixtures.Create("empty");
+        var placement = new MapPlacement
+        {
+            Id = "resident",
+            Kind = "cosmetic",
+            AssetId = "branch",
+            NumericId = 1,
+            X = 1,
+            Y = 1,
+            Z = 1,
+            Tags = new() { "before" }
+        };
+        fixture.Document.Placements.Add(placement);
+        using var document = MapDocumentSource.FromDocument(fixture.Document);
+        var before = MapSceneSource.Capture(document, fixture.Assets).Source!;
+        placement.Tags[0] = "at-pin";
+        var after = MapSceneSource.Capture(document, fixture.Assets).Source!;
+        Assert.NotEqual(before.SourceGeneration, after.SourceGeneration);
+        Assert.Equal("before", Assert.Single(before.Data.Owners["Placement:resident"].Input.Placements).Tags[0]);
+        Assert.Equal("at-pin", Assert.Single(after.Data.Owners["Placement:resident"].Input.Placements).Tags[0]);
+    }
+
     sealed class ExternalSource : IMapSurfaceAcquisitionSource
     {
         internal int Reads { get; private set; }

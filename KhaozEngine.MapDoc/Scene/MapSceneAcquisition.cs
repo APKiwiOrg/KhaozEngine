@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Foliage;
+using KhaozEngine.MapDoc.Markers;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
@@ -105,10 +106,19 @@ internal static class MapSceneAcquisition
                 foreach (var placed in enumeration.Children.OfType<MapPrefabPlacementChild>().Where(p => p.Value.Y is null))
                 {
                     var pose = enumeration.Transforms["Placement:" + placed.Value.Id];
-                    Discover(new(pose.X - 2, double.NegativeInfinity, pose.Z - 2, pose.X + 2, double.PositiveInfinity, pose.Z + 2),
-                        k => k.Kind is "Surface" or "Record" or "Patch");
+                    DiscoverSeat(pose.X, pose.Z);
+                }
+                foreach (var marker in MapMarkerExpansion.Capture(owner.Input, data.Assets))
+                {
+                    if (marker.Value.HeightMode != MapMarkerHeightMode.Support) continue;
+                    var position = marker.Value.Position;
+                    var point = new MapExactPoint(MapExactValue.FromSingle(position.X), MapExactValue.FromSingle(position.Y), MapExactValue.FromSingle(position.Z));
+                    if (marker.Frame is { } frame) point = new MapResourceTransform(frame).Point(point);
+                    DiscoverSeat(point.X.ToDouble(), point.Z.ToDouble());
                 }
             }
+            void DiscoverSeat(double x, double z) => Discover(new(x - 2, double.NegativeInfinity, z - 2, x + 2, double.PositiveInfinity, z + 2),
+                k => k.Kind is "Surface" or "Record" or "Patch");
             var selectedFoliage = required.Where(k => k.Kind == "Foliage").ToArray();
             var foliage = AcquireFoliage(data, selectedFoliage, admission, required, present, empty, unavailable);
             if (unavailable.Count != 0) throw new MapSceneSourceException(MapSceneStatus.Incomplete, "Required foliage density is unavailable.");
@@ -147,7 +157,9 @@ internal static class MapSceneAcquisition
             foreach (var key in required) if (!unavailable.Contains(key) && !empty.Contains(key)) present.Add(key);
             if (required.Count > data.Limits.MaxSelectedResources) throw new MapSceneCapacityException();
             if (required.Count == 0 && empty.Count == 0) empty.Add(new("Scene", digest));
-            bool whole = scope.Channels == MapSceneChannels.All && owners.Count == data.Owners.Count &&
+            bool whole = scope.Channels == MapSceneChannels.All && scope.Surfaces.MinY is null && scope.Surfaces.MaxY is null &&
+                scope.Surfaces.SpaceIds is null &&
+                Enum.GetValues<MapSurfaceRole>().All(scope.Surfaces.Roles.Contains) && owners.Count == data.Owners.Count &&
                 selectedFoliage.Length == data.FoliageRows.Count && acquiredNative.Patches.Count == data.NativeEntries.Count && scope.DrawBounds.MinX <= data.MinX && scope.DrawBounds.MaxX >= data.MaxX &&
                 scope.DrawBounds.MinZ <= data.MinZ && scope.DrawBounds.MaxZ >= data.MaxZ && physical.MinX.ToDouble() <= data.MinX &&
                 physical.MaxX.ToDouble() >= data.MaxX && physical.MinZ.ToDouble() <= data.MinZ && physical.MaxZ.ToDouble() >= data.MaxZ;

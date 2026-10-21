@@ -40,8 +40,24 @@ public sealed class MapSceneSource
             if (source.Tiles.Entries.Count > scan.Limits.MaxTiles) throw new MapSceneCapacityException();
             string? manifestDigest = source.Tiles.ManifestSha256;
             CheckManifest(source.SceneDirectory, manifestDigest, scan);
-            var native = source.SceneSurfaces;
+            if (source.ScenePartial) throw new MapSceneSourceException(MapSceneStatus.Incomplete, "Unloaded tile metadata cannot attest a reverse index.");
+            IMapSurfaceSource native;
+            if (source.SceneDocument is { } resident)
+            {
+                // The scene pin owns this detached payload. Admit its retention before the producer clones it.
+                long bytes = 0;
+                foreach (var patch in resident.Surfaces.Patches.Values)
+                    bytes = checked(bytes + 128 + MapSceneAdmission.PatchBytes(patch));
+                scan.RetainBytes(bytes);
+                native = MapDocumentSurfaceSource.Capture(resident);
+            }
+            else native = source.SceneSurfaces;
             var root = source.Manifest;
+            var nativeTransforms = (root.NativeResourceTransforms ?? []).ToArray();
+            var transformsByOwner = nativeTransforms.ToLookup(p => p.OwnerId, StringComparer.Ordinal);
+            var transformsByKey = nativeTransforms.ToLookup(p => (p.Kind, p.OwnerId));
+            var attachmentsByOwner = (root.Prefabs?.Attachments ?? []).ToLookup(a => a.PlacementId, StringComparer.Ordinal);
+            var rootLightIds = (root.BuildingIntent?.Lights ?? []).Select(l => l.Id).ToHashSet(StringComparer.Ordinal);
             MapBoundDocumentValidation.RequireRoots(root.NativeAssets, assets);
             if (!float.IsFinite(root.Bounds.MinX) || !float.IsFinite(root.Bounds.MinZ) || !float.IsFinite(root.Bounds.MaxX) ||
                 !float.IsFinite(root.Bounds.MaxZ) || root.Bounds.MinX > root.Bounds.MaxX || root.Bounds.MinZ > root.Bounds.MaxZ)
@@ -58,7 +74,7 @@ public sealed class MapSceneSource
             foreach (var surface in nativeRefs.Values) scan.Retain(checked(128L + Encoding.UTF8.GetByteCount(surface.Id)));
             foreach (var entry in nativeEntries)
             {
-                var pose = root.NativeResourceTransforms?.FirstOrDefault(p => p.Kind == MapPrefabChildKind.Surface && p.OwnerId == entry.Key.SurfaceId)?.Transform ?? new(0, 0, 0, 0, 1);
+                var pose = transformsByKey[(MapPrefabChildKind.Surface, entry.Key.SurfaceId)].FirstOrDefault()?.Transform ?? new(0, 0, 0, 0, 1);
                 var bounds = MapSceneResourceBounds.Rectangle(entry.Cells, nativeRefs[entry.Key.SurfaceId].Frame, pose);
                 var key = MapSceneAcquisition.PatchKey(entry.Key);
                 rows.Add(key, new(key, default, bounds, entry.SemanticSha256));
@@ -150,9 +166,10 @@ public sealed class MapSceneSource
                 {
                     registry.AddPlacements(new[] { placement });
                     var copy = MapPrefabReferenceWalker.Copy(placement, placement.Id, placement.SupportBinding);
-                    var owned = root.Prefabs?.Attachments.Where(a => a.PlacementId == placement.Id).ToArray() ?? [];
+                    var owned = attachmentsByOwner[placement.Id].ToArray();
                     var prefabs = owned.Length == 0 ? null : new MapPrefabSet(1, 1, [], []) { Attachments = owned };
-                    var posesForOwner = root.NativeResourceTransforms?.Where(p => p.OwnerId == placement.Id || owned.Any(a => a.Children.Any(c => c.WorldId == p.OwnerId))).ToArray();
+                    var posesForOwner = owned.SelectMany(a => a.Children).Select(c => c.WorldId).Prepend(placement.Id)
+                        .Distinct(StringComparer.Ordinal).SelectMany(owner => transformsByOwner[owner]).ToArray();
                     AddOwner("Placement:" + placement.Id, tile.Coord, Empty() with { Placements = new[] { copy }, Prefabs = prefabs, NativeResourceTransforms = posesForOwner });
                 }
             }
@@ -171,11 +188,11 @@ public sealed class MapSceneSource
                     Empty() with { Prefabs = new(1, 1, new[] { MapPrefabJson.Copy(instance) }, []) });
             }
             foreach (var light in root.BuildingIntent?.Lights ?? []) AddOwner("Light:" + light.Id, default,
-                Empty() with { BuildingIntent = new(1, [], [], new[] { light }, []), NativeResourceTransforms = root.NativeResourceTransforms?.Where(p => p.Kind == MapPrefabChildKind.Light && p.OwnerId == light.Id).ToArray() });
+                Empty() with { BuildingIntent = new(1, [], [], new[] { light }, []), NativeResourceTransforms = transformsByKey[(MapPrefabChildKind.Light, light.Id)].ToArray() });
             foreach (var storey in root.BuildingIntent?.Storeys ?? [])
                 scan.Retain(checked(64L + Encoding.UTF8.GetByteCount(storey.Id) + Encoding.UTF8.GetByteCount(storey.Name)));
             foreach (var marker in root.BuildingIntent?.Markers ?? []) AddOwner("Marker:" + marker.Id, default,
-                Empty() with { BuildingIntent = new(1, [], [], [], new[] { MapPrefabJson.Copy(marker) }), NativeResourceTransforms = root.NativeResourceTransforms?.Where(p => p.Kind == MapPrefabChildKind.Marker && p.OwnerId == marker.Id).ToArray() });
+                Empty() with { BuildingIntent = new(1, [], [], [], new[] { MapPrefabJson.Copy(marker) }), NativeResourceTransforms = transformsByKey[(MapPrefabChildKind.Marker, marker.Id)].ToArray() });
             foreach (var link in root.BuildingIntent?.RoofLinks ?? []) AddOwner("RoofLink:" + link.Id, default,
                 Empty() with { BuildingIntent = new(1, new[] { MapPrefabJson.Copy(link) }, [], [], []) });
             foreach (var group in root.BuildingIntent?.RoofGroups ?? []) AddOwner("RoofGroup:" + group.Id, default,
@@ -188,9 +205,9 @@ public sealed class MapSceneSource
             foreach (var reach in externalLights)
             {
                 if (!poses.TryGetValue("Placement:" + reach.Owner, out var ownerPose)) throw new MapDocumentException("Missing scene light owner.");
-                bool explicitFrame = root.NativeResourceTransforms?.Any(p => p.Kind == MapPrefabChildKind.Light && p.OwnerId == reach.Key.Id) == true;
+                bool explicitFrame = transformsByKey.Contains((MapPrefabChildKind.Light, reach.Key.Id));
                 var pose = explicitFrame ? poses.GetValueOrDefault("Light:" + reach.Key.Id, reach.Local)
-                    : root.BuildingIntent?.Lights.Any(l => l.Id == reach.Key.Id) == true ? ownerPose : MapEffectiveTransform.Compose(ownerPose, reach.Local);
+                    : rootLightIds.Contains(reach.Key.Id) ? ownerPose : MapEffectiveTransform.Compose(ownerPose, reach.Local);
                 rows[reach.Key] = rows[reach.Key] with { Bounds = MapSceneResourceBounds.Light(reach.Value, pose) };
             }
             var dependenciesByOwner = owners.Keys.ToDictionary(k => k, _ => new HashSet<string>(StringComparer.Ordinal), StringComparer.Ordinal);
@@ -211,21 +228,23 @@ public sealed class MapSceneSource
                     foreach (var dependency in dependencyEdges[pair.Key]) if (rows.TryGetValue(dependency, out var row)) b = b?.Union(row.Bounds) ?? row.Bounds;
                     if (b is { } box) rows[pair.Key] = pair.Value with { Bounds = box };
                 }
-            var foliage = CaptureFoliage(root.Foliage, source.Tiles.Foliage, assets, rows, scan, requiredAssets);
+            var foliageStorage = source.SceneDocument?.Tiles?.Foliage ?? source.Tiles.Foliage;
+            var foliage = CaptureFoliage(root.Foliage, foliageStorage, assets, rows, scan, requiredAssets);
             CheckManifest(source.SceneDirectory, manifestDigest, scan);
             if (manifestDigest != source.Tiles.ManifestSha256) throw new MapSceneSourceException(MapSceneStatus.Stale, "Source generation changed during capture.");
+            var metadata = Array.AsReadOnly(rows.Values.OrderBy(r => r.Key.Kind, StringComparer.Ordinal).ThenBy(r => r.Key.Id, StringComparer.Ordinal).ToArray());
             string generation = manifestDigest ?? MapCanonical.HashHex(w =>
             {
                 w.WriteStartArray(); w.WriteStringValue(rootDigest); w.WriteStringValue(native.SnapshotId);
                 foreach (var tile in source.Tiles.Entries) { w.WriteNumberValue(tile.Coord.X); w.WriteNumberValue(tile.Coord.Z); w.WriteStringValue(tile.Hash); }
+                foreach (var row in metadata) { w.WriteStringValue(row.Key.Kind); w.WriteStringValue(row.Key.Id); w.WriteStringValue(row.Digest); }
                 w.WriteEndArray();
             });
-            var metadata = Array.AsReadOnly(rows.Values.OrderBy(r => r.Key.Kind, StringComparer.Ordinal).ThenBy(r => r.Key.Id, StringComparer.Ordinal).ToArray());
             var data = new MapSceneData(generation, manifestDigest, source.SceneDirectory, assets, scan.Limits, native,
                 root.Bounds.MinX, root.Bounds.MinZ, root.Bounds.MaxX, root.Bounds.MaxZ, rootDigest, owners, producing,
                 dependenciesByOwner, metadata, new(metadata), Array.AsReadOnly(requiredAssets.Order(StringComparer.Ordinal).ToArray()),
-                foliage, source.Tiles.Foliage, root.Foliage, scan.Work(true), root.BuildingIntent?.Roofs ?? [], root.BuildingIntent?.Storeys ?? [],
-                nativeEntries, Array.AsReadOnly((root.NativeResourceTransforms ?? []).ToArray()), dependencyEdges);
+                foliage, foliageStorage, root.Foliage, scan.Work(true), root.BuildingIntent?.Roofs ?? [], root.BuildingIntent?.Storeys ?? [],
+                nativeEntries, Array.AsReadOnly(nativeTransforms), dependencyEdges);
             return new(MapSceneSourceStatus.Ready, new(data), scan.Work(true));
         }
         catch (Exception error) when (Classify(error) is not null)
@@ -288,7 +307,7 @@ public sealed class MapSceneSource
                 var key = MapSceneAcquisition.FoliageKey(layer.Id, chunk.Key);
                 var bounds = MapSceneResourceBounds.Foliage(layer, chunk.Key, assets);
                 scan.Retain(checked(Encoding.UTF8.GetByteCount(key.Id) + 64L));
-                rows.Add(key, new(key, storage?.Chunks.FirstOrDefault(c => c.LayerId == layer.Id && c.Key == chunk.Key)?.OwnerRegion ?? default, bounds, chunk.Sha256));
+                rows.Add(key, new(key, storage?.TryGetChunk(layer.Id, chunk.Key, out var stored) == true ? stored.OwnerRegion : default, bounds, chunk.Sha256));
             }
         }
         return new(foliage.PayloadVersion, foliage.Layers.Select(l => MapFoliageLayer.FromStorage(l, l.ChunkDigests, [])).ToArray());

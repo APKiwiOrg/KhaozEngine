@@ -292,6 +292,11 @@ internal sealed class MapSceneScan(MapSceneLimits limits)
     {
         if (bytes < 0 || bytes > limits.MaxMetadataBytes - RetainedBytes) throw new MapSceneCapacityException();
     }
+    internal void RetainBytes(long bytes)
+    {
+        Scratch(bytes);
+        RetainedBytes = checked(RetainedBytes + bytes);
+    }
     internal void Retain(long bytes, int memberships = 1)
     {
         bytes = checked(bytes + 512 + memberships * 16L);

@@ -129,6 +129,39 @@ public sealed class MapSceneBoundaryTests
         Assert.True(whole.Witness.WholeWorldComplete);
     }
 
+    [Theory]
+    [InlineData("role")]
+    [InlineData("space")]
+    [InlineData("empty-space")]
+    [InlineData("height-min")]
+    [InlineData("height-max")]
+    public void FilteredWholeBounds_NeverClaimWholeWorldCompleteness(string filter)
+    {
+        using var fixture = NativeSceneFixtures.Create("spanning");
+        var source = NativeSceneFixtures.Open(fixture, false);
+        var scope = MapSceneScopeTests.Window(-32000, 32000);
+        scope = scope with
+        {
+            Surfaces = scope.Surfaces with { LocalMin = new(-32000, -32000), LocalMax = new(32000, 32000) },
+            DrawBounds = new(-32000, -500, -32000, 32000, 500, 32000),
+        };
+        scope = scope with
+        {
+            Surfaces = filter switch
+            {
+                "role" => scope.Surfaces with { Roles = new[] { MapSurfaceRole.SupportFloor } },
+                "space" => scope.Surfaces with { SpaceIds = new[] { "outside" } },
+                "empty-space" => scope.Surfaces with { SpaceIds = Array.Empty<string>() },
+                "height-min" => scope.Surfaces with { MinY = 0 },
+                _ => scope.Surfaces with { MaxY = 0 },
+            }
+        };
+        var result = source.Acquire(scope);
+        Assert.True(result.Witness.CompleteForScope, string.Join("\n", result.Findings));
+        Assert.False(result.Witness.WholeWorldComplete);
+        Assert.Equal(MapSceneStatus.CompleteForScope, result.Status);
+    }
+
     [Fact]
     public void SourceMutation_DoesNotChangeCapturedOwnerRecords()
     {

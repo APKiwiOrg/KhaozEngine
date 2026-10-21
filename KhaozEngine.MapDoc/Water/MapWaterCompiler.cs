@@ -41,7 +41,15 @@ public static class MapWaterCompiler
     }
 
     /// <summary>The state of one body's compile, kept so a refused body still reports what it read.</summary>
-    sealed class BodyCompile(MapScopedSurfaces view, MapWaterSet water, MapWaterBodyDoc body, MapWaterCompileLimits limits)
+    internal static MapCompiledWaterBody CompileCell(MapScopedSurfaces view, MapWaterSet water, MapWaterBodyDoc body,
+        MapEffectiveWaterBody cell, MapWaterCompileLimits limits)
+    {
+        MapWaterConnectivity? graph = null;
+        return new BodyCompile(view, water, body, limits, cell).Run(ref graph);
+    }
+
+    sealed class BodyCompile(MapScopedSurfaces view, MapWaterSet water, MapWaterBodyDoc body, MapWaterCompileLimits limits,
+        MapEffectiveWaterBody? cellBody = null)
     {
         readonly MapWaterWorkMeter _meter = new(limits);
         readonly SortedSet<MapPatchKey> _patches = new();
@@ -121,7 +129,13 @@ public static class MapWaterCompiler
                 return (MapWaterCompileStatus.NotRepresentable, $"{_label}: surfaceY is not representable");
             }
             var errors = new List<string>();
-            if (view.EffectiveContext?.Transform(MapPrefabChildKind.WaterBody, body.Id) is not null)
+            if (cellBody is not null)
+            {
+                _effective = cellBody;
+                _domain = cellBody.Domain;
+                level = cellBody.SurfaceY;
+            }
+            else if (view.EffectiveContext?.Transform(MapPrefabChildKind.WaterBody, body.Id) is not null)
             {
                 _effective = MapEffectiveWater.Resolve(view, body, _meter.Pairs);
                 _domain = _effective.Domain;

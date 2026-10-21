@@ -37,7 +37,7 @@ public sealed class MapWaterDomain
     readonly MapWaterPolygons.Bounds _extent;
     readonly IReadOnlyList<IReadOnlyList<MapWideXz>>?[] _convexParts;
 
-    MapWaterDomain(MapWideXz[][] rings, string[] names)
+    internal MapWaterDomain(MapWideXz[][] rings, string[] names)
     {
         _rings = rings;
         _names = names;

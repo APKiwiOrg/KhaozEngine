@@ -263,7 +263,8 @@ public sealed class MapSceneSource
                 root.Bounds.MinX, root.Bounds.MinZ, root.Bounds.MaxX, root.Bounds.MaxZ, rootDigest, owners, producing,
                 dependenciesByOwner, metadata, new(metadata), Array.AsReadOnly(requiredAssets.Order(StringComparer.Ordinal).ToArray()),
                 foliage, foliageStorage, root.Foliage, scan.Work(true), root.BuildingIntent?.Roofs ?? [], root.BuildingIntent?.Storeys ?? [],
-                nativeEntries, Array.AsReadOnly(nativeTransforms), dependencyEdges, foliageMetadata);
+                nativeEntries, Array.AsReadOnly(nativeTransforms), dependencyEdges, foliageMetadata)
+            { TileSize = source.Tiles.TileSize };
             return new(MapSceneSourceStatus.Ready, new(data), scan.Work(true));
         }
         catch (Exception error) when (Classify(error) is not null)
@@ -342,6 +343,7 @@ internal sealed record MapSceneData(string Generation, string? ManifestDigest, s
     IReadOnlyList<MapPrefabReference> Roofs, IReadOnlyList<KhaozEngine.MapDoc.Interiors.MapStoreyDoc> Storeys, IReadOnlyList<MapSurfaceIndexEntry> NativeEntries,
     IReadOnlyList<MapStandaloneResourceTransform> NativeTransforms, IReadOnlyDictionary<MapSceneResourceKey, HashSet<MapSceneResourceKey>> ResourceDependencies, MapFoliageWindowMetadata FoliageMetadata)
 {
+    internal float TileSize { get; init; }
     internal IReadOnlyDictionary<(MapPrefabChildKind Kind, string Id), MapStandaloneResourceTransform> NativePoseByKey { get; } = NativeTransforms.ToDictionary(t => (t.Kind, t.OwnerId));
     internal IReadOnlyDictionary<MapSceneResourceKey, MapSceneResourceMetadata> MetadataByKey { get; } = Metadata.ToDictionary(r => r.Key);
     internal IReadOnlyDictionary<string, IReadOnlyList<MapSurfaceIndexEntry>> NativeBySurface { get; } = NativeEntries.GroupBy(e => e.Key.SurfaceId).ToDictionary(g => g.Key, g => (IReadOnlyList<MapSurfaceIndexEntry>)Array.AsReadOnly(g.ToArray()), StringComparer.Ordinal);

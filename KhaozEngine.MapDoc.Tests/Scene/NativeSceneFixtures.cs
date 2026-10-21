@@ -28,6 +28,7 @@ internal static partial class NativeSceneFixtures
 {
     internal static NativeSceneFixture Create(string variant)
     {
+        if (variant.StartsWith("water-", StringComparison.Ordinal)) return Water(variant);
         if (variant.StartsWith("terrain", StringComparison.Ordinal)) return Terrain(variant);
         if (variant is not ("spanning" or "empty" or "growth" or "tile-owner")) throw new ArgumentException(variant, nameof(variant));
         var bytes = new Dictionary<string, byte[]>(StringComparer.Ordinal);

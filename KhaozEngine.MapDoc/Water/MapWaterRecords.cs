@@ -36,6 +36,9 @@ public sealed class MapWaterSet
     /// through.</summary>
     public MapWaterSet Clone()
     {
+        Scene.MapSceneAdmission.Current?.ReserveBytes(checked(128L + 8L * Media.Count + Bodies.Sum(b => b is null ? 0L :
+            128L + 32L * (b.Domain?.Rects?.Count ?? 0) + 32L * (b.Covers?.Count ?? 0) +
+            (b.Domain?.Rings?.Sum(r => 32L + 24L * (r?.Vertices?.Count ?? 0)) ?? 0))));
         var copy = new MapWaterSet();
         copy.Media.AddRange(Media);
         copy.Bodies.AddRange(Bodies.Select(CloneBody));

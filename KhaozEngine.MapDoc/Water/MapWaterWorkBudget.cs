@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.MapDoc.Scene;
 
 namespace KhaozEngine.MapDoc.Water;
 
@@ -93,9 +94,14 @@ internal sealed class MapWaterWorkMeter
         foreach (MapWaterRing ring in domain.Rings ?? Array.Empty<MapWaterRing>()) vertices += ring?.Vertices?.Count ?? 0;
         VertexCount = (int)Math.Min(vertices, int.MaxValue);
         if (vertices > _limits.MaxPieceVertices) throw new MapWaterCapacityException(PieceVertices);
+        MapSceneAdmission.Current?.ReserveBytes(checked(128L * pieces + 192L * vertices));
     }
 
-    internal void ChargeFootprintCells(int cells) => CellCount = Charge(CellCount, cells, _limits.MaxFootprintCells, FootprintCells);
+    internal void ChargeFootprintCells(int cells)
+    {
+        CellCount = Charge(CellCount, cells, _limits.MaxFootprintCells, FootprintCells);
+        MapSceneAdmission.Current?.ReserveBytes(checked(64L * cells));
+    }
 
     internal void CountFootprintRects(int rects) => FootprintRects = checked(FootprintRects + rects);
 
@@ -113,6 +119,7 @@ internal sealed class MapWaterWorkMeter
     {
         _boundFaces = checked(_boundFaces + faces);
         if (_boundFaces > _limits.MaxBoundFaces) throw new MapWaterCapacityException(BoundFaces);
+        MapSceneAdmission.Current?.ReserveCompilation(faces);
         BoundReads = checked(BoundReads + 1);
     }
 
@@ -122,7 +129,11 @@ internal sealed class MapWaterWorkMeter
         else LowerFaces = checked(LowerFaces + faces);
     }
 
-    internal void ChargeTriangles(int triangles) => TriangleCount = Charge(TriangleCount, triangles, _limits.MaxTriangles, Triangles);
+    internal void ChargeTriangles(int triangles)
+    {
+        TriangleCount = Charge(TriangleCount, triangles, _limits.MaxTriangles, Triangles);
+        MapSceneAdmission.Current?.ReserveCompilation(triangles);
+    }
 
     static int Charge(int current, int amount, int limit, string detail)
     {

@@ -213,6 +213,8 @@ namespace KhaozEngine.Tests.Gpu
                 ["Water"] = L(T("BathyTex", VF), S("BathySamp", VF), T("OceanMap", VF), S("OceanSamp", VF),
                     T("DepthTex"), S("Samp"), U("Water", VF, dynamic: true),
                     U("Atmosphere", F), T("AtmoSkyView"), S("AtmoSkySampler")),
+                ["BoundedWater"] = L(U("BoundedWaterTransform", VF, dynamic: true),
+                    new GpuResourceLayoutElement("BoundedWaterDomain", GpuResourceKind.StructuredBufferReadOnly, F)),
             };
 
         /// <summary>
@@ -316,6 +318,7 @@ namespace KhaozEngine.Tests.Gpu
             ("TransitionRenderer cross", ["Transition.cross"]),
             ("MotionVectorsView", ["MotionVectorsView"]),
             ("WaterRenderer", ["Water"]),
+            ("WaterRenderer bounded", ["Water", "BoundedWater"]),
         ];
 
         /// <summary>
@@ -326,10 +329,10 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void EveryShippedPipeline_StaysWithinTheRequiredMinimumDynamicUniformBuffers()
         {
-            // The atmosphere producers add three dense layouts and pipeline rows. GpuScaledCopy adds one of each.
+            // Bounded water adds its domain layout and a pipeline beside the existing water layout.
             // Both counts are stated so an emptied table cannot pass by agreeing with itself.
-            Assert.Equal(65, ShippedLayouts.Count);
-            Assert.Equal(70, ShippedPipelines.Count);
+            Assert.Equal(66, ShippedLayouts.Count);
+            Assert.Equal(71, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {

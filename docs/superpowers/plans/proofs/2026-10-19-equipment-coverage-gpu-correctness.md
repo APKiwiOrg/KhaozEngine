@@ -105,7 +105,13 @@ Native packets are `coverage-batch-warm.<backend>.json`, `coverage-batch-mixed32
 `coverage-batch-full-ring.<backend>.json`, emitted only through `KE_COVERAGE_EVIDENCE_DIR`.
 The mixed packet retains independent expected words, actual device words, native headers, decoded
 outcomes and cold wait stacks. The frozen 72 constructions and 144-row manifest remain unchanged.
-CPU 2 ms for 32 actors and native GPU 15 percent overhead remain unmeasured.
+The separately authorized performance harness now has measured gate results. C1 CPU gate PASS in
+[hosted lavapipe run 39544526037](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39544526037):
+32-actor preparation deltas were 1.831 and 1.673 ms against the 2 ms budget. G1 GPU gate FAIL in
+[NVIDIA T4 run 39552826529](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39552826529):
+total frame deltas were +15.99 and +15.88 ms, about 192 percent against the 15 percent budget.
+The follow-up dispatch profile measured coverage compute at 10.8 ms for 1 actor and 16.7 ms for 32.
+GPU optimization is in progress under the owner's rulings. G2 and G3 remain pending.
 
 ## Commit and native gate
 

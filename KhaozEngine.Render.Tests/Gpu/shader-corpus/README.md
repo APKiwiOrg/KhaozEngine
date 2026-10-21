@@ -28,7 +28,8 @@ moved hash cannot tell a one-word header change apart from a permuted binding. T
 committed.
 
 Backend-specific program selection is applied before emission. Temporal visibility's Metal current-load policy
-selects the same GLSL for the MSL row that the renderer builds. SPIR-V and HLSL retain their gathered program.
+selects the same GLSL for the MSL row that the renderer builds. Vulkan's SPIR-V rows retain the pre-gather program,
+and Direct3D 11's HLSL rows retain their gathered program.
 
 `corpus.veldrid-spirv.txt` **cannot be regenerated.** The toolchain that produced it is not
 referenced anywhere in the tree any more. To retake it, check out `5d839de4` into a throwaway

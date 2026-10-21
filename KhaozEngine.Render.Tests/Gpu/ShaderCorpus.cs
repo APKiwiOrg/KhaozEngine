@@ -88,7 +88,10 @@ namespace KhaozEngine.Tests.Gpu
             byte[] vertex = SpirvFrontEnd.ToSpirv(program.VertexGlsl, GpuShaderStages.Vertex, program.Name);
             byte[] fragment = SpirvFrontEnd.ToSpirv(program.FragmentGlsl, GpuShaderStages.Fragment, program.Name);
             rows.Add(Row($"{program.Name}.vertex.spirv", vertex, dump));
-            rows.Add(Row($"{program.Name}.fragment.spirv", fragment, dump));
+            string vulkanSource = TemporalVisibilityGatherPolicy.ForBackend(program.FragmentGlsl, GpuBackendKind.VulkanNative);
+            byte[] vulkanFragment = ReferenceEquals(vulkanSource, program.FragmentGlsl) ? fragment
+                : SpirvFrontEnd.ToSpirv(vulkanSource, GpuShaderStages.Fragment, program.Name);
+            rows.Add(Row($"{program.Name}.fragment.spirv", vulkanFragment, dump));
 
             string metalSource = TemporalVisibilityGatherPolicy.ForBackend(program.FragmentGlsl, GpuBackendKind.MetalNative);
             byte[] metalFragment = ReferenceEquals(metalSource, program.FragmentGlsl) ? fragment

@@ -8,6 +8,7 @@ using System.Security.Cryptography;
 using System.Text;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Internal;
+using KhaozEngine.Render3D.Internal;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -165,7 +166,8 @@ namespace KhaozEngine.Tests.Gpu
                 emitted[program.Name + ".vertex"] = Sha256(
                     SpirvFrontEnd.ToSpirv(program.VertexGlsl, GpuShaderStages.Vertex, program.Name));
                 emitted[program.Name + ".fragment"] = Sha256(
-                    SpirvFrontEnd.ToSpirv(program.FragmentGlsl, GpuShaderStages.Fragment, program.Name));
+                    SpirvFrontEnd.ToSpirv(TemporalVisibilityGatherPolicy.ForBackend(program.FragmentGlsl,
+                        GpuBackendKind.VulkanNative), GpuShaderStages.Fragment, program.Name));
             }
             foreach (ShippedComputeKernel kernel in ShippedShaderPrograms.ComputeKernels())
             {
@@ -191,7 +193,8 @@ namespace KhaozEngine.Tests.Gpu
                 if (!string.Equals(program.Name, name, StringComparison.Ordinal)) continue;
                 return stage == "vertex"
                     ? SpirvFrontEnd.ToSpirv(program.VertexGlsl, GpuShaderStages.Vertex, program.Name)
-                    : SpirvFrontEnd.ToSpirv(program.FragmentGlsl, GpuShaderStages.Fragment, program.Name);
+                    : SpirvFrontEnd.ToSpirv(TemporalVisibilityGatherPolicy.ForBackend(program.FragmentGlsl,
+                        GpuBackendKind.VulkanNative), GpuShaderStages.Fragment, program.Name);
             }
             foreach (ShippedComputeKernel kernel in ShippedShaderPrograms.ComputeKernels())
             {

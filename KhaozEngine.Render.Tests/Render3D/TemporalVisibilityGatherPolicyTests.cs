@@ -26,7 +26,6 @@ public sealed class TemporalVisibilityGatherPolicyTests
 
     [Theory]
     [InlineData(GpuBackendKind.Direct3D11Native)]
-    [InlineData(GpuBackendKind.VulkanNative)]
     public void OtherBackendsRetainTheGatheredProgram(GpuBackendKind backend)
         => Assert.Same(ShaderSources.TemporalAccumulateFrag,
             TemporalVisibilityGatherPolicy.ForBackend(ShaderSources.TemporalAccumulateFrag, backend));

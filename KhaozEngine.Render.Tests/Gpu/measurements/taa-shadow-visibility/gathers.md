@@ -22,10 +22,12 @@ when the centre lies one texel from an edge. No extra border rejection or clamp 
 
 | Visibility path | Before | Candidate |
 | --- | --- | --- |
-| Fast, complete history, Direct3D 11 and Vulkan | 41 loads | 12 gathers, zero loads |
-| Fast, R4 range skip, Direct3D 11 and Vulkan | 25 loads | 8 gathers, zero loads |
+| Fast, complete history, Direct3D 11 | 41 loads | 12 gathers, zero loads |
+| Fast, R4 range skip, Direct3D 11 | 25 loads | 8 gathers, zero loads |
 | Fast, complete history, Metal | 41 loads | 9 loads and 8 gathers |
 | Fast, R4 range skip, Metal | 25 loads | 9 loads and 4 gathers |
+| Fast, complete history, Vulkan | 41 loads | 41 loads, unchanged |
+| Fast, R4 range skip, Vulkan | 25 loads | 25 loads, unchanged |
 | R1 zero-lock skip | Zero | Zero |
 | D slow path | Up to 101 loads | Up to 101 loads, unchanged |
 
@@ -33,11 +35,12 @@ These are source texture instructions per display pixel inside the visibility de
 components. The current gathers return sixteen components covering nine unique texels. These counts do not claim
 physical memory transactions or a measured speedup. The four depth gathers remain after the R4 skip.
 
-Static SPIR-V contracts require 30 `OpImageFetch`, 12 `OpImageGather` and 14 `OpLoopMerge` in each split second-pass
+Canonical Direct3D-source SPIR-V contracts require 30 `OpImageFetch`, 12 `OpImageGather` and 14 `OpLoopMerge` in each split second-pass
 program. The 30 fetches and fourteen loops belong to the surrounding program and the retained D slow path.
 The isolated decision requires seven fetches, twelve gathers and four loops. Metal's selected second-pass program
 requires 39 fetches, eight gathers and fourteen loops, its isolated helper sixteen fetches, eight gathers and four
-loops. Frozen D's contracts stay unchanged.
+loops. Vulkan retains 71 fetches, zero gathers and fourteen loops per second-pass program, and 48 fetches, zero
+gathers and four loops in the decision helper. Frozen D's contracts stay unchanged.
 The new contracts first failed on all five production rows, showing 71/0/14 and 48/0/4 respectively.
 
 ## Exact device oracle
@@ -80,7 +83,7 @@ being exact. The native compiler's precise instruction change is not known.
 TemporalVisibilityGatherPolicy therefore retains the original nine current loads on Metal, selected before
 SPIR-V compilation. Both history blocks still gather. The policy applies to fused, split, display-size split,
 debug and count programs, after test hooks so frozen D remains frozen and path exports share production's choice.
-MSL hash and corpus writers apply the same program selection. Direct3D 11 and Vulkan retain all twelve gathers.
+MSL hash and corpus writers apply the same program selection. Direct3D 11 retains all twelve gathers. Vulkan retains loads as described below.
 The fallback handles LF and CRLF checkouts. No comparison bound changes.
 
 The final Release solution build passed with zero warnings and errors. The nine shader writer facts passed, then
@@ -110,7 +113,39 @@ TAA_CORRECTNESS='((FullyQualifiedName~KhaozEngine.Tests.Gpu.Temporal&FullyQualif
 build-slot --heavy --label taa-vis-gathers-metal -- env KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "$TAA_CORRECTNESS"
 ```
 
-Hosted correctness and formatting verification are pending.
+## Hosted correctness and Vulkan withdrawal
+
+The one authorized free all-leg run is [39550935418](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39550935418),
+source e725692704e86de3f0d952a5df968b63d66aa0aa. Its concurrency group is specific to workflow_dispatch and
+refs/heads/fix/taa-vis-gathers. No NuGet failure or retry occurred.
+
+| Device | Selected cases | Raw gather comparison |
+| --- | --- | --- |
+| Hosted Metal, Apple Paravirtual device | 43 passed, zero failed or skipped | Six cases, 100,253,392 comparisons, zero mismatches |
+| WARP, Microsoft Basic Render Driver | 43 passed, zero failed or skipped | Six cases, 100,253,392 comparisons, zero mismatches |
+| lavapipe, LLVM 20.1.2 | 39 passed, four failed, zero skipped | Six cases, 100,253,392 comparisons, zero mismatches |
+
+All three devices passed all six helper-equivalence cases and all twelve A/B cases. Metal and WARP passed all
+eight entry-identity cases. Lavapipe passed the four moving-shadow entry cases and failed the four real-scene walk
+cases in colour. Quality, Native and the outlined Quality case failed on frame 0, before history or the visibility
+check ran. Performance failed on frame 2. The Vulkan sync-validation job passed. Windows also passed the real FXC
+validation step, without opting into the DXBC dump.
+
+Vulkan gathers are therefore withdrawn at program build. All three source blocks use the original loads on that
+backend, including debug and count programs. The selected whole-program SPIR-V is checked against ten independent
+pre-gather hashes copied from cb2a97e9e's documented Vulkan table. This preserves the baseline compilation rather
+than changing an entry-identity bound. Whether the baseline itself has the same lavapipe colour difference is not
+proved by this run. All ten selected modules match those baseline hashes. The focused fallback gate passed 69 cases. The later normal
+device-free run passed 236 cases with zero failures or skips, and the nine writers passed before it. A focused Metal
+run then passed all 26 equivalence, A/B and entry-identity cases. The selected Metal MSL and Direct3D HLSL hashes
+remain the same as the green hosted run. Vulkan's shader table is byte-identical to cb2a97e9e. Its updated fallback
+still needs a hosted entry-identity proof. No additional hosted run has been started.
+
+The initial full format check reported whitespace in two new test files. Those edits were corrected, and the
+already-failing scan was stopped after collecting its errors. Changed-file whitespace verification passed with dotnet format whitespace in folder mode. The full-solution
+format run was not completed after its known errors. Whole-tree dashes, prose, file-size and doc-version checks
+are recorded separately.
+No timing test, billed workflow, stress run, merge, tag or release was run.
 T4 hardware proof remains with the owning thread's separately approved work. This worker uses only the free
 hosted Metal, WARP and lavapipe correctness matrix.
 

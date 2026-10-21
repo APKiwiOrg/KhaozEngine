@@ -34,19 +34,21 @@ internal static class CoverageGpuHeightQueryGlsl
                     q.triangle = covSupportTriangle(q.support,q.index);
                     vec2 lo, hi; covSupportBounds(q.triangle,lo,hi);
                     if (covLess(q.point.x,lo.x) || covGreater(q.point.x,hi.x) || covLess(q.point.y,lo.y) || covGreater(q.point.y,hi.y)) { q.cursor++; continue; }
-                    job = covEdgeJob(q.triangle.a,q.triangle.b,q.triangle.c); q.phase = CovHArea; return true;
+                    q.area = covSupportInvariant(q.support,q.index);
+                    job = covEdgeJob(q.triangle.b,q.triangle.c,vec3(q.point,0.0)); q.phase = CovHU; return true;
                 }
                 q.phase = CovHDone; return false;
             }
             CovTriangle t = q.triangle; vec3 p = vec3(q.point,0.0);
-            if (q.phase == CovHArea) { q.area = result.predicate; job = covEdgeJob(t.b,t.c,p); q.phase = CovHU; return true; }
             if (q.phase == CovHU) { q.u = result.predicate; job = covEdgeJob(t.c,t.a,p); q.phase = CovHV; return true; }
             if (q.phase == CovHV) { q.v = result.predicate; job = covEdgeJob(t.a,t.b,p); q.phase = CovHW; return true; }
             if (q.phase == CovHW) {
                 CovPredicate w = result.predicate;
                 if (!covFinite(q.area.value) || q.area.sign == 0 || !covFinite(q.u.value) || !covFinite(q.v.value) || !covFinite(w.value)) { q.phase = CovHDone; return false; }
                 if (q.u.sign*q.area.sign < 0 || q.v.sign*q.area.sign < 0 || w.sign*q.area.sign < 0) { q.cursor++; q.phase = CovHCandidate; return false; }
-                q.heightGraph = covTriangleHeightBegin(t,q.point); q.phase = CovHHeight;
+                q.heightGraph = covTriangleHeightBegin(t,q.point);
+                q.heightGraph.u = q.u; q.heightGraph.v = q.v; q.heightGraph.w = w; q.heightGraph.area = q.area;
+                q.heightGraph.cachedSides = true; q.heightGraph.cachedArea = true; q.phase = CovHHeight;
             }
             bool pending = covTriangleHeightStep(q.heightGraph,result,job);
             if (q.heightGraph.phase == CovTHDone) {

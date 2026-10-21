@@ -8,7 +8,7 @@ internal static class CoverageGpuOverlayQueryGlsl
         const int CovOBegin = 0, CovOHostArea = 1, CovOPair = 2, CovOSheetArea = 3, CovOInside = 4, CovOSide = 5,
             CovONextCorner = 6, CovOIntersection = 7, CovONextIntersection = 8, CovOCrossing = 9, CovOHeightBegin = 10, CovOHeight = 11, CovODone = 12;
         struct CovOverlayGraph {
-            int phase; uint support; CovTriangle host; CovTriangle sheet; int hostArea; int sheetArea; uint cursor;
+            int phase; uint support; CovTriangle host; CovTriangle sheet; CovPredicate hostArea; CovPredicate sheetArea; uint cursor;
             int corner; int which; int side; CovSides sides; CovTriangleSides hostSides; CovTriangleSides sheetSides; bool inside;
             int i; int j; vec3 point; int resume; int heightPass; float hostHeight; CovTriangleHeightGraph heightGraph;
             CovCrossingGraph crossing; float maximum; bool ok;
@@ -16,7 +16,7 @@ internal static class CoverageGpuOverlayQueryGlsl
         CovOverlayGraph covOverlayBegin(uint support, vec3 a, vec3 b, vec3 c) {
             CovOverlayGraph q;
             q.phase = CovOBegin; q.support = support; q.host = CovTriangle(a,b,c); q.sheet = q.host; q.cursor = 0u;
-            q.hostArea = 0; q.sheetArea = 0; q.corner = 0; q.which = 0; q.side = 0; q.sides = CovSides(0,0,0);
+            q.hostArea = CovPredicate(0,0.0); q.sheetArea = q.hostArea; q.corner = 0; q.which = 0; q.side = 0; q.sides = CovSides(0,0,0);
             q.hostSides = CovTriangleSides(q.sides,q.sides,q.sides); q.sheetSides = q.hostSides; q.inside = false;
             q.i = 0; q.j = 0; q.point = vec3(0.0); q.resume = CovODone; q.heightPass = 0; q.hostHeight = 0.0;
             q.heightGraph = covTriangleHeightBegin(q.host,vec2(0.0));
@@ -32,17 +32,17 @@ internal static class CoverageGpuOverlayQueryGlsl
             }
             if (q.phase == CovOHostArea) {
                 if (result.predicate.sign == 0 || !covFinite(result.predicate.value)) { q.phase = CovODone; return false; }
-                q.hostArea = result.predicate.sign; q.phase = CovOPair;
+                q.hostArea = result.predicate; q.phase = CovOPair;
             }
             if (q.phase == CovOPair) {
                 if (q.cursor == CovStaticWords[q.support+5u]) { q.ok = true; q.phase = CovODone; return false; }
                 q.sheet = covSupportTriangle(q.support,q.cursor);
                 if (!covFinite3(q.sheet.a) || !covFinite3(q.sheet.b) || !covFinite3(q.sheet.c)) { q.phase = CovODone; return false; }
-                job = covEdgeJob(q.sheet.a,q.sheet.b,q.sheet.c); q.phase = CovOSheetArea; return true;
+                q.sheetArea = covSupportInvariant(q.support,q.cursor); q.phase = CovOSheetArea;
             }
             if (q.phase == CovOSheetArea) {
-                if (result.predicate.sign == 0 || !covFinite(result.predicate.value)) { q.phase = CovODone; return false; }
-                q.sheetArea = result.predicate.sign; q.corner = 0; q.which = 0; q.side = 0; q.phase = CovOInside;
+                if (q.sheetArea.sign == 0 || !covFinite(q.sheetArea.value)) { q.phase = CovODone; return false; }
+                q.corner = 0; q.which = 0; q.side = 0; q.phase = CovOInside;
             }
             if (q.phase == CovOInside) {
                 if (q.side == 0) { q.sides = CovSides(0,0,0); q.inside = true; }
@@ -56,7 +56,7 @@ internal static class CoverageGpuOverlayQueryGlsl
                 if (!covFinite(result.predicate.value)) { q.phase = CovODone; return false; }
                 int sign = result.predicate.sign;
                 if (q.side == 0) q.sides.a = sign; else if (q.side == 1) q.sides.b = sign; else q.sides.c = sign;
-                if (sign*(q.which == 0 ? q.sheetArea : q.hostArea) < 0) q.inside = false;
+                if (sign*(q.which == 0 ? q.sheetArea.sign : q.hostArea.sign) < 0) q.inside = false;
                 q.side++;
                 if (q.side < 3) { q.phase = CovOInside; return false; }
                 if (q.which == 0) covTriangleSidesStore(q.hostSides,q.corner,q.sides);
@@ -108,14 +108,16 @@ internal static class CoverageGpuOverlayQueryGlsl
                 q.phase = CovOHeightBegin;
             }
             if (q.phase == CovOHeightBegin) {
-                q.heightPass = 0; q.heightGraph = covTriangleHeightBegin(q.host,q.point.xy); q.phase = CovOHeight;
+                q.heightPass = 0; q.heightGraph = covTriangleHeightBegin(q.host,q.point.xy);
+                q.heightGraph.area = q.hostArea; q.heightGraph.cachedArea = true; q.phase = CovOHeight;
             }
             if (q.phase == CovOHeight) {
                 bool pending = covTriangleHeightStep(q.heightGraph,result,job);
                 if (q.heightGraph.phase != CovTHDone) return pending;
                 if (q.heightPass == 0) {
                     q.hostHeight = q.heightGraph.height; q.heightPass = 1;
-                    q.heightGraph = covTriangleHeightBegin(q.sheet,q.point.xy); return false;
+                    q.heightGraph = covTriangleHeightBegin(q.sheet,q.point.xy);
+                    q.heightGraph.area = q.sheetArea; q.heightGraph.cachedArea = true; return false;
                 }
                 precise float difference = covSub(q.hostHeight,q.heightGraph.height);
                 if (!covFinite(q.hostHeight) || !covFinite(q.heightGraph.height) || !covFinite(difference)) { q.phase = CovODone; return false; }

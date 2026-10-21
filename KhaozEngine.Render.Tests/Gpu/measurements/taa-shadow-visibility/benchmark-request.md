@@ -150,9 +150,10 @@ Not covered: the bilinear PCF and a real shadow signal. Those need a separate sh
 
 Result: [benchmark-result.md](benchmark-result.md) records the paired run.
 
-## 6. Head-only decomposition and NVIDIA Direct3D 11 rule, approval pending
+## 6. Historical decomposition and NVIDIA Direct3D 11 diagnostic requests
 
-Two new requests, each requiring fresh owner approval. Neither has been dispatched. The exact input ref is
+These requests were approved and ran as 39497171271 and 39497191900. Section 7 supersedes their comparison
+rule and variants. The historical input ref is
 `c3842b762d8d381719bef00091520e1d000c1604`, pushed and verified against the remote branch before writing this
 section. It contains the test-only NVIDIA comparison rule (`e639ef2d6`) and decomposition harness (`c3842b762`).
 The later request-record commit changes documentation only. No production code, shader hash table, bound or
@@ -267,3 +268,101 @@ differences. The NVIDIA branch remains unverified on hardware until this approve
   tables and baselines are unchanged.
 
 Integration, any billed execution, merge and release remain with the owner and orchestrator.
+
+## 7. R3-lite withdrawn, outside-cost and T4 verification approval requests
+
+Fresh owner approval is required for each command below. Neither has been dispatched. Both test the pushed
+commit `5ce5454d6a2b719b1448dd95bf0491145a6a945c`, resolved with `git rev-parse HEAD` and checked against the remote branch before this
+request was written. The later request-record commit changes documentation only.
+
+The [withdrawal record](mask-withdrawal.md) lists source changes, every moved shader program and the local
+verification. Prepare and fused entry no longer compute a current-neighbour mask, PreparedSurface.w is zero,
+and the current side runs in pass two as at 7f.2. R1, R2 with the binade rule and R4 remain. Entry identity is
+exact on every backend. Hardware NVIDIA D3D11 alone allows a fixed two half steps per colour/confidence channel
+in frozen-D A/B, with exact stored locks, R8 and depth. D's paired entries are diagnostic only and never set the
+allowance. This supersedes section 6's measured envelope and V2 mask variant.
+
+### A. Outside-cost decomposition, one dispatch on all legs
+
+```bash
+gh workflow run gpu-hosted-bench.yml --repo APKiwiOrg/KhaozEngine --ref main -f ref=5ce5454d6a2b719b1448dd95bf0491145a6a945c -f filter='FullyQualifiedName~TemporalVisibilityCostDecompositionCostPerfGpuTests' -f legs=all
+```
+
+One dispatch, three NVIDIA T4 GPU jobs. Both original scenes, twelve keyed boxes and the moving thin field,
+remain at 2560x1440 Native and Quality. Nothing is trimmed. Each case interleaves Off and five variants at both
+entries, eleven modes, in the same fifteen rotating rounds of twelve timed frames after two warm frames. All
+modes keep synchronized scene clocks, draw frames, jitter and independent histories. Setup, shader compilation
+and target creation precede measured blocks. No asserted budget is introduced or changed.
+
+| Variant | Test-only injection |
+| --- | --- |
+| V0 shipped | The normal renderer and scene, no rewrite. |
+| V1 check removed | `WithoutCheck`, the check expression replaced with false. |
+| V5 visibility infrastructure off | `TemporalTestResolve.Install(..., disableVisibility: true)` sets the scene seam to the existing no-visibility MRT layout and constructs the renderer and split without visibility bindings. They omit visibility history allocation, uniform updates and copies. `WithoutVisibility` removes the helper, check and three shader declarations. |
+| V4 V5 without precise | V5 plus `WithoutVisibilityOrPrecise`, removing exactly the two shared lock-release precise markings. Device-free SPIR-V checks prove NoContraction markings disappear, and the control renders on Metal. FXC's current output is not yet measured or archived. |
+| V3 frozen D | `TemporalVisibilityFrozenD.ToD`, retaining shipped visibility infrastructure. |
+
+The output prints V0 minus V1 (check), V1 minus V5 (visibility infrastructure), V5 minus V4 (precise), and
+V0 minus V3, with paired-round differences and the existing Off drift control. The scenes have shadows off, so
+this isolates visibility infrastructure and arithmetic without timing PCF. No cost, perf or bench test was run
+locally for this request.
+
+The successful last decomposition [39497171271](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39497171271)
+provides these job and test-step times, read from the completed job records. The failed first Windows Vulkan
+restore produced no measurement. Its successful retry is the Windows Vulkan row below.
+
+| Leg | Successful job duration | Test step | Job |
+| --- | --- | --- | --- |
+| windows-d3d11 | 8 min 3 s | 2 min 12 s | [118909301214](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39497171271/job/118909301214) |
+| windows-vulkan | 7 min 33 s | 1 min 27 s | [118909298673](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39497171271/job/118909298673) |
+| linux-vulkan | 3 min 17 s | 1 min 9 s | [118909300495](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39497171271/job/118909300495) |
+
+The new selection has 44 mode/case combinations and 7920 timed frames, versus the last decomposition's 36 and
+6480, a 22.2 percent increase. It compiles additional controls. [Bench 2](benchmark-result-2.md#1-provenance)
+shows the broader setup variability, D3D11 jobs 9:15 to 10:38, Windows Vulkan 22:46 to 33:40 and Linux 3:09 to
+3:30. Allow roughly three to six minutes for tests and control compilation. This remains comfortably below
+the unchanged 60 minute job timeout, without trimming a scene or Native.
+
+| Leg | Expected complete job duration | Estimated bill |
+| --- | --- | --- |
+| windows-d3d11 | 10 to 18 minutes | $1.02 to $1.84 |
+| windows-vulkan | 10 to 40 minutes | $1.02 to $4.08 |
+| linux-vulkan | 4 to 6 minutes | $0.21 to $0.31 |
+| Dispatch total | About 20 to 58 minutes plus queue time, Windows legs serialize | $2.25 to $6.23 |
+
+Rates checked on 2026-10-21 against [GitHub Actions runner pricing](https://docs.github.com/en/billing/reference/actions-runner-pricing),
+Windows 4-core GPU $0.102/minute and Linux 4-core GPU $0.052/minute. GitHub rounds each job up to a whole
+minute. All three jobs hitting the 60 minute timeout would cost $15.36. These are estimates, not new timings.
+
+### B. NVIDIA T4 D3D11 verification, one dispatch
+
+```bash
+gh workflow run gpu-hosted-bench.yml --repo APKiwiOrg/KhaozEngine --ref main -f ref=5ce5454d6a2b719b1448dd95bf0491145a6a945c -f filter='FullyQualifiedName~TemporalVisibilityResolveAbGpuTests|FullyQualifiedName~TemporalEntryIdentityGpuTests|FullyQualifiedName~TemporalVisibilityEquivalenceGpuTests' -f legs=windows-d3d11
+```
+
+One dispatch, one hardware NVIDIA T4 D3D11 GPU job, 26 correctness cases. No timing, perf or bench class is
+selected. Entry identity is exact, including Quality, Performance and outlined frames. Helper equivalence stays
+exact. A/B uses the fixed two-half-step arithmetic rule described above, with per-frame counts and maxima and
+exact locks, R8 and depth. D's own entry comparison is printed as a diagnostic, never an acceptance envelope.
+
+The last paired D3D11 verification [39497191900](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39497191900)
+took 8 min 44 s for [job 118885229357](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39497191900/job/118885229357),
+including 1 min 26 s in the test step. Bench 2's D3D11 oracle job took 16 min 34 s, with 1.5967 minutes in tests.
+Allowing for the helper equivalence cases and observed Windows setup variation, expect about 10 to 22 minutes
+plus queue time, approximately $1.02 to $2.24 at $0.102/minute. The 60 minute timeout ceiling is $6.12.
+
+### Readiness and limits
+
+Local Release build has zero warnings and errors. Shader writers pass 9/9. The device-free selection passed
+236/243, with only the seven explicitly stale DXBC provenance cases failing, covering eight listings. Metal
+passed 1656/1656 with zero failures or skips, including exact A/B and equivalence. Motion allocation checks
+passed 5/5 with zero steady temporal-frame allocations. Format and tree guard results are in the withdrawal
+record. The comparison rules changed as requested. Baselines, version, tags and releases are unchanged.
+
+The DXBC fixture test remains red until a genuine Windows FXC dump recaptures the eight stale listings and their
+source pins. Neither proposed filter performs that dump. These two approvals therefore do not complete the
+DXBC recapture requirement or authorize integration, a release, another run or an automatic retry. Hardware
+NVIDIA D3D11 after the withdrawal, the outside-cost figures and the stricter entry gate on other unrun backends
+remain unverified until their own checks run. The former software-Vulkan colour exception was removed to
+enforce exact entry identity on every backend, and that tighter gate has not run on software Vulkan here.
+Leave this branch unmerged if either verification fails.

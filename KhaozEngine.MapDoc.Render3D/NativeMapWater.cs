@@ -16,9 +16,12 @@ public static class NativeMapWater
 {
     public const double ClipEpsilonMetres = .001;
 
-    /// <summary>Scope motion padding must cover this value. A look with inherited displacement parameters or
-    /// FFT sea-state inputs cannot certify a bounded clip domain and refuses explicitly.</summary>
-    public static double RequiredMotionPadding(WaterLook look)
+    /// <summary>Resolve scene inheritance before certifying the scope motion padding. FFT displacement
+    /// certification belongs to R8b and refuses explicitly.</summary>
+    public static double RequiredMotionPadding(WaterLook look, WaterSettings settings)
+        => CertifiedMotionPadding(ResolveLook(look, settings));
+
+    static double CertifiedMotionPadding(WaterLook look)
     {
         try { return checked(WaterSurfaceDisplacement.MaximumHorizontal(look) + ClipEpsilonMetres); }
         catch (NotSupportedException error) { throw new MapRenderAssetRefusal(MapRenderAssetStatus.Unsupported, error.Message); }
@@ -26,20 +29,24 @@ public static class NativeMapWater
         { throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, error.Message); }
     }
 
-    public static MapWaterRenderBatch Prepare(MapScopedWaterResult water, WaterLook look)
+    /// <summary>Freeze the renderer's effective look against the caller's scene water settings before
+    /// deriving bounded clip resources. Later scene-setting changes require preparation again.</summary>
+    public static MapWaterRenderBatch Prepare(MapScopedWaterResult water, WaterLook look, WaterSettings settings)
     {
-        ArgumentNullException.ThrowIfNull(water); ArgumentNullException.ThrowIfNull(look);
+        ArgumentNullException.ThrowIfNull(water); ArgumentNullException.ThrowIfNull(look); ArgumentNullException.ThrowIfNull(settings);
         if (water.Status is not (MapSceneStatus.CompleteForScope or MapSceneStatus.WholeWorldComplete) ||
             !water.RequestedWitness.CompleteForScope || !water.AcquiredCellWitness.CompleteForScope)
             throw new MapRenderAssetRefusal(MapRenderAssetStatus.Missing, "Water requires complete requested and canonical-cell coverage.");
-        double halo = RequiredMotionPadding(look);
-        if (!double.IsFinite(water.MotionPaddingMetres) || water.MotionPaddingMetres < halo)
-            throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, "Scene MotionPaddingMetres does not cover this water look's certified displacement and clip epsilon.");
         var admission = new MapSceneAdmission(water.Limits);
         using var admitted = admission.Enter();
         try
         {
-            admission.ReserveBytes(512);
+            // Admit the scratch settings, explicit effective look and frozen frame copy before allocation.
+            admission.ReserveBytes(2048);
+            look = ResolveLook(look, settings);
+            double halo = CertifiedMotionPadding(look);
+            if (!double.IsFinite(water.MotionPaddingMetres) || water.MotionPaddingMetres < halo)
+                throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, "Scene MotionPaddingMetres does not cover this water look's certified displacement and clip epsilon.");
             var clips = new MapWaterClipHalo(water, halo, admission);
             var parts = new List<MapWaterRenderPart>();
             var canonical = new List<MapWaterResourceCell>();
@@ -98,5 +105,52 @@ public static class NativeMapWater
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         { throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, "Water geometry is not representable."); }
         catch (ArgumentException error) { throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, error.Message); }
+    }
+
+    static WaterLook ResolveLook(WaterLook look, WaterSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(look); ArgumentNullException.ThrowIfNull(settings);
+        // Use the released renderer's resolution rule, then detach every per-body field from scene defaults.
+        var effective = look.ResolveInto(new WaterSettings(), settings);
+        return new()
+        {
+            WaveSource = effective.WaveSource,
+            DeepColor = effective.DeepColor,
+            ShallowColor = effective.ShallowColor,
+            AbsorptionPerMetre = effective.AbsorptionPerMetre,
+            ShallowDepth = effective.ShallowDepth,
+            Opacity = effective.Opacity,
+            SwellAmplitude = effective.SwellAmplitude,
+            SwellWavelength = effective.SwellWavelength,
+            SwellDirectionDegrees = effective.SwellDirectionDegrees,
+            SwellSpreadDegrees = effective.SwellSpreadDegrees,
+            SwellSteepness = effective.SwellSteepness,
+            SwellSpeed = effective.SwellSpeed,
+            SwellSeed = effective.SwellSeed,
+            SwellComponents = effective.SwellComponents,
+            ShoalingStrength = effective.ShoalingStrength,
+            SurfStrength = effective.SurfStrength,
+            WaveScale = effective.WaveScale,
+            WaveSpeed = effective.WaveSpeed,
+            NormalStrength = effective.NormalStrength,
+            WaveWarpStrength = effective.WaveWarpStrength,
+            RippleComponents = effective.RippleComponents,
+            RippleLacunarity = effective.RippleLacunarity,
+            RippleGain = effective.RippleGain,
+            RippleSeed = effective.RippleSeed,
+            VarianceToRoughness = effective.VarianceToRoughness,
+            DetailFadeDistance = effective.DetailFadeDistance,
+            DistantDetailScale = effective.DistantDetailScale,
+            GlintStrength = effective.GlintStrength,
+            GlintRoughness = effective.GlintRoughness,
+            GlintDistantRoughness = effective.GlintDistantRoughness,
+            GlintExponent = effective.GlintExponent,
+            FoamColor = effective.FoamColor,
+            FoamStrength = effective.FoamStrength,
+            FoamCrestCoverage = effective.FoamCrestCoverage,
+            FoamShoreWidth = effective.FoamShoreWidth,
+            FoamPatternScale = effective.FoamPatternScale,
+            ShoreFadeDistance = effective.ShoreFadeDistance
+        };
     }
 }

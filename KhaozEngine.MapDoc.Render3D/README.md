@@ -73,8 +73,10 @@ columns refuse the whole result. Overlapping draw windows retain identical cell 
 Canonical payloads remain look-free. Explicit `MapSceneScope.MotionPaddingMetres` acquires neighbouring
 canonical cells around the complete visible cells, including their portions outside a clipped draw window.
 
-`NativeMapWater.Prepare(water, look)` freezes the current `WaterLook` and prepares typed `MapWaterResource`
-registrations plus `MapWaterFrame` submissions. `MapWaterRenderBatch` exposes the canonical cell inventory,
+`NativeMapWater.Prepare(water, look, settings)` resolves every inherited `WaterLook` field against the caller's
+scene `WaterSettings` through the renderer's `WaterLook.ResolveInto` rule. It freezes that explicit effective
+look and prepares typed `MapWaterResource` registrations plus `MapWaterFrame` submissions. Later changes to
+the look or scene settings require preparation again. `MapWaterRenderBatch` exposes the canonical cell inventory,
 retained bytes and preparation charge. Register once per resource generation, then call `Record` for each
 frame. Closed water has no draw. Meshes deduplicate vertices within their canonical cells and retain an
 original-domain clip payload, so displaced fragments cannot fill dry notches.
@@ -82,11 +84,12 @@ The clip payload is a render derivation over the same body's neighbouring free-s
 look's certified displacement halo. It is tested at displaced world position. Internal cell borders never
 become shorelines. The render digest includes every consumed neighbour region digest.
 
-Call `NativeMapWater.RequiredMotionPadding(look)` before acquiring the scene. It returns the conservative
-procedural Gerstner reach plus `ClipEpsilonMetres`, fixed at 0.001 m. The scene's motion padding must cover
-that whole value or `Prepare` refuses with `MapRenderAssetStatus.Invalid`. Source, amplitude, wavelength
-and steepness must be explicit. Inherited displacement inputs and FFT sea state cannot be certified from
-`WaterLook` alone and refuse with `Unsupported`. This restriction applies to native MapDoc preparation.
+Call `NativeMapWater.RequiredMotionPadding(look, settings)` before acquiring the scene, passing the same look
+and scene settings to `Prepare`. It returns the conservative procedural Gerstner reach plus
+`ClipEpsilonMetres`, fixed at 0.001 m. The scene's motion padding must cover
+that whole value or `Prepare` refuses with `MapRenderAssetStatus.Invalid`. Default and partially overridden
+procedural looks inherit before certification. Invalid effective displacement inputs refuse with `Invalid`.
+FFT remains an explicit `Unsupported` refusal for native MapDoc preparation. R8b owns FFT certification.
 Existing water-plane FFT rendering retains its released behavior. Resource bounds include the certified
 horizontal and vertical motion allowance. No body-wide shared clip resource is retained.
 

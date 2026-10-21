@@ -21,10 +21,10 @@ namespace KhaozEngine.Tests.MapDoc;
 public sealed class NativeMapWaterTests
 {
     static readonly MapResourceStamp Stamp = new("closure", "source", "scope", "water", 6);
-    static MapScopedWaterResult Water(string variant)
+    static MapScopedWaterResult Water(string variant, double motionPadding = 1)
     {
         using var fixture = NativeSceneFixtures.Create(variant);
-        var scene = NativeSceneFixtures.Open(fixture, false).Acquire(NativeSceneFixtures.WaterWindow(0, 10, 7) with { MotionPaddingMetres = 1 }).Scene!;
+        var scene = NativeSceneFixtures.Open(fixture, false).Acquire(NativeSceneFixtures.WaterWindow(0, 10, 7) with { MotionPaddingMetres = motionPadding }).Scene!;
         return MapWaterScopedCompiler.Compile(scene);
     }
     static WaterLook Look() => new()
@@ -58,10 +58,113 @@ public sealed class NativeMapWaterTests
     }
 
     [Fact]
+    public void DefaultLook_InheritsDefaultSettingsAndPreparesCertifiedWater()
+    {
+        var look = new WaterLook(); var settings = new WaterSettings();
+        double padding = NativeMapWater.RequiredMotionPadding(look, settings);
+        Assert.True(double.IsFinite(padding) && padding > NativeMapWater.ClipEpsilonMetres);
+        var batch = NativeMapWater.Prepare(Water("water-notch", padding), look, settings);
+        var effective = Assert.Single(Draw(batch).Draws).Water!.Value.Look.ToWaterLook();
+        Assert.Equal(WaterWaveSource.Procedural, effective.WaveSource);
+        Assert.Equal(settings.SwellAmplitude, effective.SwellAmplitude);
+        Assert.Equal(settings.SwellWavelength, effective.SwellWavelength);
+        Assert.Equal(WaterSurfaceDisplacement.MaximumHorizontal(effective) + NativeMapWater.ClipEpsilonMetres, padding);
+        AssertEffectiveLook(settings, effective);
+    }
+
+    [Fact]
+    public void PartialLook_OverridesMixWithInheritedSettingsAndFreezeTogether()
+    {
+        var settings = new WaterSettings
+        {
+            SwellAmplitude = .18f,
+            SwellWavelength = 6,
+            SwellSteepness = .3f,
+            Opacity = .8f,
+            DeepColor = new(.1f, .2f, .3f, .4f),
+            RippleComponents = 7,
+            FoamStrength = .2f
+        };
+        var look = new WaterLook { SwellAmplitude = .09f, Opacity = .5f, FoamStrength = .7f };
+        var expected = look.ResolveInto(new WaterSettings(), settings);
+        double padding = NativeMapWater.RequiredMotionPadding(look, settings);
+        var batch = NativeMapWater.Prepare(Water("water-notch", padding), look, settings);
+        settings.SwellWavelength = 100; settings.DeepColor = Color.White; settings.RippleComponents = 1;
+        look.SwellAmplitude = 4; look.Opacity = 1;
+        var effective = Assert.Single(Draw(batch).Draws).Water!.Value.Look.ToWaterLook();
+        Assert.Equal(.09f, effective.SwellAmplitude); Assert.Equal(6, effective.SwellWavelength);
+        Assert.Equal(.5f, effective.Opacity); Assert.Equal(.7f, effective.FoamStrength);
+        Assert.Equal(7, effective.RippleComponents);
+        AssertEffectiveLook(expected, effective);
+    }
+
+    [Fact]
+    public void EffectiveLook_AllFieldsMatchReleasedRendererResolution()
+    {
+        var settings = new WaterSettings
+        {
+            SwellWavelength = 5,
+            SwellSteepness = .4f,
+            SwellDirectionDegrees = 93,
+            SwellSpreadDegrees = 12,
+            SwellSpeed = .4f,
+            SwellSeed = .7f,
+            SwellComponents = 6,
+            ShallowColor = new(.3f, .4f, .5f, .6f),
+            GlintExponent = 83,
+            RippleSeed = .9f,
+            ShoreFadeDistance = .2f
+        };
+        var look = new WaterLook
+        {
+            SwellSpeed = .2f,
+            SwellComponents = 2,
+            ShoalingStrength = .3f,
+            SurfStrength = 0,
+            AbsorptionPerMetre = new(.2f, .3f, .4f, 0),
+            GlintRoughness = .4f,
+            FoamColor = new(.8f, .7f, .6f, 1)
+        };
+        var rendererEffective = look.ResolveInto(new WaterSettings(), settings);
+        double padding = NativeMapWater.RequiredMotionPadding(look, settings);
+        var batch = NativeMapWater.Prepare(Water("water-notch", padding), look, settings);
+        var effective = Assert.Single(Draw(batch).Draws).Water!.Value.Look.ToWaterLook();
+        AssertEffectiveLook(rendererEffective, effective);
+        AssertEffectiveLook(rendererEffective, effective.ResolveInto(new WaterSettings(), new WaterSettings { SwellWavelength = 100, Opacity = 0 }));
+    }
+
+    [Fact]
+    public void InheritedInvalidAndFftSettings_RefuseWithTypedStatusUnlessOverridden()
+    {
+        var look = new WaterLook(); var settings = new WaterSettings { SwellAmplitude = float.NaN };
+        Assert.Equal(MapRenderAssetStatus.Invalid, Assert.Throws<MapRenderAssetRefusal>(() => NativeMapWater.RequiredMotionPadding(look, settings)).Status);
+        Assert.Equal(MapRenderAssetStatus.Invalid, Assert.Throws<MapRenderAssetRefusal>(() => NativeMapWater.Prepare(Water("water-notch"), look, settings)).Status);
+        look.SwellAmplitude = 0;
+        Assert.Single(Draw(NativeMapWater.Prepare(Water("water-notch"), look, settings)).Draws);
+        settings = new WaterSettings { WaveSource = WaterWaveSource.FftOcean };
+        Assert.Equal(MapRenderAssetStatus.Unsupported, Assert.Throws<MapRenderAssetRefusal>(() => NativeMapWater.RequiredMotionPadding(look, settings)).Status);
+        Assert.Equal(MapRenderAssetStatus.Unsupported, Assert.Throws<MapRenderAssetRefusal>(() => NativeMapWater.Prepare(Water("water-notch"), look, settings)).Status);
+        look.WaveSource = WaterWaveSource.Procedural;
+        Assert.Single(Draw(NativeMapWater.Prepare(Water("water-notch"), look, settings)).Draws);
+    }
+
+    static void AssertEffectiveLook(WaterSettings expected, object actual)
+    {
+        foreach (var field in typeof(WaterLook).GetFields())
+        {
+            var actualField = actual.GetType().GetField(field.Name);
+            Assert.NotNull(actualField);
+            object? value = actualField.GetValue(actual);
+            Assert.NotNull(value);
+            Assert.Equal(typeof(WaterSettings).GetField(field.Name)!.GetValue(expected), value);
+        }
+    }
+
+    [Fact]
     public void BentWaterBody_AreaScaledWorkAndAuthoredShapeSurvive()
     {
-        var one = NativeMapWater.Prepare(Water("water-bent-one"), Look());
-        var sixteen = NativeMapWater.Prepare(Water("water-bent-sixteen"), Look());
+        var one = NativeMapWater.Prepare(Water("water-bent-one"), Look(), new WaterSettings());
+        var sixteen = NativeMapWater.Prepare(Water("water-bent-sixteen"), Look(), new WaterSettings());
         var a = Draw(one); var b = Draw(sixteen);
         var meshes = a.Resources.Select(r => Assert.IsType<MapWaterResource>(r.Payload).Mesh).ToArray();
         Assert.Equal(16d, meshes.Sum(Area));
@@ -97,8 +200,8 @@ public sealed class NativeMapWaterTests
     {
         using var fixture = NativeSceneFixtures.Create("water-notch");
         var source = NativeSceneFixtures.Open(fixture, false);
-        var a = NativeMapWater.Prepare(MapWaterScopedCompiler.Compile(source.Acquire(NativeSceneFixtures.WaterWindow(0, 1.25f) with { MotionPaddingMetres = 1 }).Scene!), Look());
-        var b = NativeMapWater.Prepare(MapWaterScopedCompiler.Compile(source.Acquire(NativeSceneFixtures.WaterWindow(.75f, 2) with { MotionPaddingMetres = 1 }).Scene!), Look());
+        var a = NativeMapWater.Prepare(MapWaterScopedCompiler.Compile(source.Acquire(NativeSceneFixtures.WaterWindow(0, 1.25f) with { MotionPaddingMetres = 1 }).Scene!), Look(), new WaterSettings());
+        var b = NativeMapWater.Prepare(MapWaterScopedCompiler.Compile(source.Acquire(NativeSceneFixtures.WaterWindow(.75f, 2) with { MotionPaddingMetres = 1 }).Scene!), Look(), new WaterSettings());
         var ar = Assert.Single(Draw(a).Resources); var br = Assert.Single(Draw(b).Resources);
         var am = Assert.IsType<MapWaterResource>(ar.Payload); var bm = Assert.IsType<MapWaterResource>(br.Payload);
         Assert.Equal(ar.PayloadDigest, br.PayloadDigest);
@@ -111,8 +214,8 @@ public sealed class NativeMapWaterTests
     [Fact]
     public void ClosedUnresolvedAndMissingWater_NeverBecomeVisibleOcean()
     {
-        Assert.Empty(Draw(NativeMapWater.Prepare(Water("water-closed"), Look())).Draws);
-        Assert.Throws<MapRenderAssetRefusal>(() => NativeMapWater.Prepare(Water("water-missing"), Look()));
+        Assert.Empty(Draw(NativeMapWater.Prepare(Water("water-closed"), Look(), new WaterSettings())).Draws);
+        Assert.Throws<MapRenderAssetRefusal>(() => NativeMapWater.Prepare(Water("water-missing"), Look(), new WaterSettings()));
     }
 
     [Fact]
@@ -126,7 +229,7 @@ public sealed class NativeMapWaterTests
     [Fact]
     public void OriginalDomain_RejectsDisplacedFragmentsInTheDryNotch()
     {
-        var draw = Draw(NativeMapWater.Prepare(Water("water-notch"), Look()));
+        var draw = Draw(NativeMapWater.Prepare(Water("water-notch"), Look(), new WaterSettings()));
         var resource = Assert.IsType<MapWaterResource>(Assert.Single(draw.Resources).Payload);
         Assert.True(WaterSurfaceDomain.Contains(resource.ClipData.Span, new(1.5f, .5f)));
         Assert.True(WaterSurfaceDomain.Contains(resource.ClipData.Span, new(.5f, 1.5f)));
@@ -141,7 +244,7 @@ public sealed class NativeMapWaterTests
     {
         var water = Water("water-notch");
         var look = Look(); look.Opacity = .43f; look.SwellSpeed = .8f;
-        var batch = NativeMapWater.Prepare(water with { Cells = water.Cells.Concat(water.Cells).ToArray() }, look);
+        var batch = NativeMapWater.Prepare(water with { Cells = water.Cells.Concat(water.Cells).ToArray() }, look, new WaterSettings());
         look.Opacity = .99f;
         var recorded = Draw(batch);
         Assert.Single(recorded.Resources);
@@ -150,13 +253,13 @@ public sealed class NativeMapWaterTests
         Assert.Equal(.8f, Assert.Single(recorded.Draws).Water!.Value.Look.SwellSpeed);
         Assert.Throws<InvalidOperationException>(() => batch.Register(Stamp with { Generation = 8 }, new MapDrawRecorder()));
         var changed = water.Cells[0] with { PayloadDigest = "different" };
-        Assert.Throws<MapRenderAssetRefusal>(() => NativeMapWater.Prepare(water with { Cells = [water.Cells[0], changed] }, look));
+        Assert.Throws<MapRenderAssetRefusal>(() => NativeMapWater.Prepare(water with { Cells = [water.Cells[0], changed] }, look, new WaterSettings()));
     }
 
     [Fact]
     public void PublishedWaterQueue_UsesExistingMeshAndClearsAndRefusesStaleHandles()
     {
-        var resource = Assert.IsType<MapWaterResource>(Assert.Single(Draw(NativeMapWater.Prepare(Water("water-notch"), Look())).Resources).Payload);
+        var resource = Assert.IsType<MapWaterResource>(Assert.Single(Draw(NativeMapWater.Prepare(Water("water-notch"), Look(), new WaterSettings())).Resources).Payload);
         using var device = new FakeGpuDevice();
         var factory = (FakeGpuResourceFactory)device.Factory;
         using var target = factory.CreateTexture(GpuTextureDescription.Texture2D(16, 16, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget));
@@ -181,7 +284,7 @@ public sealed class NativeMapWaterTests
     public void AdjacentCells_OriginalDomainClipKeepsWetCoverageAcrossInternalBoundary()
     {
         var look = BoundaryLook();
-        var recorded = Draw(NativeMapWater.Prepare(Water("water-bent-one"), look));
+        var recorded = Draw(NativeMapWater.Prepare(Water("water-bent-one"), look, new WaterSettings()));
         var left = recorded.Draws.Single(d => d.Anchor.X == 0 && d.Anchor.Z == 0);
         var resource = Assert.IsType<MapWaterResource>(recorded.Resources.Single(r => r.Reference == left.Resource).Payload);
         // This point is inside the authored bottom arm [0,10] x [0,1]. A positive horizontal swell at the shared
@@ -196,7 +299,7 @@ public sealed class NativeMapWaterTests
     public void DisplacedPosition_ClipsOutwardShorelineAndDryNotch()
     {
         var look = BoundaryLook();
-        var shoreline = Draw(NativeMapWater.Prepare(Water("water-bent-one"), look));
+        var shoreline = Draw(NativeMapWater.Prepare(Water("water-bent-one"), look, new WaterSettings()));
         var left = shoreline.Draws.Single(d => d.Anchor.X == 0 && d.Anchor.Z == 0);
         var clip = Assert.IsType<MapWaterResource>(shoreline.Resources.Single(r => r.Reference == left.Resource).Payload).ClipData;
         Assert.False(WaterSurfaceDomain.Contains(clip.Span, new(-.125f, .5f)));
@@ -206,7 +309,7 @@ public sealed class NativeMapWaterTests
         Assert.True(outward.X > 10);
         Assert.False(WaterSurfaceDomain.Contains(lastClip.Span, outward - new Vector2(8, 0)));
         look.SwellDirectionDegrees = 180;
-        var notch = Assert.IsType<MapWaterResource>(Assert.Single(Draw(NativeMapWater.Prepare(Water("water-notch"), look)).Resources).Payload).ClipData;
+        var notch = Assert.IsType<MapWaterResource>(Assert.Single(Draw(NativeMapWater.Prepare(Water("water-notch"), look, new WaterSettings())).Resources).Payload).ClipData;
         Assert.False(WaterSurfaceDomain.Contains(notch.Span, new(1.125f, 1.125f)));
         Assert.True(WaterSurfaceDomain.Contains(notch.Span, new(.875f, 1.125f)));
         var intoNotch = Displaced(look, 1, 1.5f);
@@ -220,20 +323,18 @@ public sealed class NativeMapWaterTests
         using var fixture = NativeSceneFixtures.Create("water-notch");
         var source = NativeSceneFixtures.Open(fixture, false);
         var unpadded = MapWaterScopedCompiler.Compile(source.Acquire(NativeSceneFixtures.WaterWindow()).Scene!);
-        Assert.Equal(MapRenderAssetStatus.Invalid, Assert.Throws<MapRenderAssetRefusal>(() => NativeMapWater.Prepare(unpadded, Look())).Status);
-        var unresolved = new WaterLook();
-        Assert.Equal(MapRenderAssetStatus.Unsupported, Assert.Throws<MapRenderAssetRefusal>(() => NativeMapWater.Prepare(Water("water-notch"), unresolved)).Status);
+        Assert.Equal(MapRenderAssetStatus.Invalid, Assert.Throws<MapRenderAssetRefusal>(() => NativeMapWater.Prepare(unpadded, Look(), new WaterSettings())).Status);
         var fft = Look(); fft.WaveSource = WaterWaveSource.FftOcean;
-        Assert.Equal(MapRenderAssetStatus.Unsupported, Assert.Throws<MapRenderAssetRefusal>(() => NativeMapWater.Prepare(Water("water-notch"), fft)).Status);
+        Assert.Equal(MapRenderAssetStatus.Unsupported, Assert.Throws<MapRenderAssetRefusal>(() => NativeMapWater.Prepare(Water("water-notch"), fft, new WaterSettings())).Status);
         var invalid = Look(); invalid.SwellAmplitude = float.NaN;
-        Assert.Equal(MapRenderAssetStatus.Invalid, Assert.Throws<MapRenderAssetRefusal>(() => NativeMapWater.RequiredMotionPadding(invalid)).Status);
+        Assert.Equal(MapRenderAssetStatus.Invalid, Assert.Throws<MapRenderAssetRefusal>(() => NativeMapWater.RequiredMotionPadding(invalid, new WaterSettings())).Status);
         invalid = Look(); invalid.SwellWavelength = 1e-36f;
-        Assert.Equal(MapRenderAssetStatus.Invalid, Assert.Throws<MapRenderAssetRefusal>(() => NativeMapWater.RequiredMotionPadding(invalid)).Status);
-        double required = NativeMapWater.RequiredMotionPadding(Look());
+        Assert.Equal(MapRenderAssetStatus.Invalid, Assert.Throws<MapRenderAssetRefusal>(() => NativeMapWater.RequiredMotionPadding(invalid, new WaterSettings())).Status);
+        double required = NativeMapWater.RequiredMotionPadding(Look(), new WaterSettings());
         var exact = MapWaterScopedCompiler.Compile(source.Acquire(NativeSceneFixtures.WaterWindow() with { MotionPaddingMetres = required }).Scene!);
-        Assert.Single(Draw(NativeMapWater.Prepare(exact, Look())).Draws);
+        Assert.Single(Draw(NativeMapWater.Prepare(exact, Look(), new WaterSettings())).Draws);
         var shortByOneBit = MapWaterScopedCompiler.Compile(source.Acquire(NativeSceneFixtures.WaterWindow() with { MotionPaddingMetres = Math.BitDecrement(required) }).Scene!);
-        Assert.Equal(MapRenderAssetStatus.Invalid, Assert.Throws<MapRenderAssetRefusal>(() => NativeMapWater.Prepare(shortByOneBit, Look())).Status);
+        Assert.Equal(MapRenderAssetStatus.Invalid, Assert.Throws<MapRenderAssetRefusal>(() => NativeMapWater.Prepare(shortByOneBit, Look(), new WaterSettings())).Status);
     }
 
     [Fact]
@@ -242,7 +343,7 @@ public sealed class NativeMapWaterTests
         using var fixture = NativeSceneFixtures.Create("water-bent-one");
         var scope = NativeSceneFixtures.WaterWindow(0, 1, 1) with { MotionPaddingMetres = 1 };
         var before = MapWaterScopedCompiler.Compile(NativeSceneFixtures.Open(fixture, false).Acquire(scope).Scene!);
-        var a = Assert.Single(Draw(NativeMapWater.Prepare(before, Look())).Resources);
+        var a = Assert.Single(Draw(NativeMapWater.Prepare(before, Look(), new WaterSettings())).Resources);
         var body = fixture.Document.Water!.Bodies[0];
         fixture.Document.Water.Bodies[0] = body with
         {
@@ -250,7 +351,7 @@ public sealed class NativeMapWaterTests
             { Rings = [], Rects = [new(0, 0, 2, 1), new(3, 0, 10, 1), new(0, 1, 1, 7)] }
         };
         var after = MapWaterScopedCompiler.Compile(NativeSceneFixtures.Open(fixture, false).Acquire(scope).Scene!);
-        var b = Assert.Single(Draw(NativeMapWater.Prepare(after, Look())).Resources);
+        var b = Assert.Single(Draw(NativeMapWater.Prepare(after, Look(), new WaterSettings())).Resources);
         Assert.Equal(Assert.Single(before.Cells).Key, Assert.Single(after.Cells).Key);
         Assert.Equal(before.Cells[0].PayloadDigest, after.Cells[0].PayloadDigest);
         Assert.NotEqual(a.PayloadDigest, b.PayloadDigest);
@@ -268,7 +369,7 @@ public sealed class NativeMapWaterTests
         };
         var source = NativeSceneFixtures.Open(fixture, false);
         MapDrawSet DrawWindow(float max) => Draw(NativeMapWater.Prepare(MapWaterScopedCompiler.Compile(source
-            .Acquire(NativeSceneFixtures.WaterWindow(0, max, 1) with { MotionPaddingMetres = 1 }).Scene!), Look()));
+            .Acquire(NativeSceneFixtures.WaterWindow(0, max, 1) with { MotionPaddingMetres = 1 }).Scene!), Look(), new WaterSettings()));
         var narrow = DrawWindow(1); var wide = DrawWindow(6);
         MapPreparedResource First(MapDrawSet set) => set.Resources.Single(r => r.Reference == set.Draws.Single(d => d.Anchor.X == 0 && d.Anchor.Z == 0).Resource);
         var a = First(narrow); var b = First(wide);

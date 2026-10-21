@@ -134,17 +134,14 @@ validation step, without opting into the DXBC dump.
 Vulkan gathers are therefore withdrawn at program build. All three source blocks use the original loads on that
 backend, including debug and count programs. The selected whole-program SPIR-V is checked against ten independent
 pre-gather hashes copied from cb2a97e9e's documented Vulkan table. This preserves the baseline compilation rather
-than changing an entry-identity bound. Whether the baseline itself has the same lavapipe colour difference is not
-proved by this run. All ten selected modules match those baseline hashes. The focused fallback gate passed 69 cases. The later normal
+than changing an entry-identity bound. The approved follow-up comparison below establishes that the same colour failures are present in the no-gather baseline. All ten selected modules match those baseline hashes. The focused fallback gate passed 69 cases. The later normal
 device-free run passed 236 cases with zero failures or skips, and the nine writers passed before it. A focused Metal
 run then passed all 26 equivalence, A/B and entry-identity cases. The selected Metal MSL and Direct3D HLSL hashes
-remain the same as the green hosted run. Vulkan's shader table is byte-identical to cb2a97e9e. Its updated fallback
-still needs a hosted entry-identity proof. No additional hosted run has been started.
+remain the same as the green hosted run. Vulkan's shader table is byte-identical to cb2a97e9e. Its updated fallback was then exercised by the approved Vulkan-only follow-up below.
 
 The initial full format check reported whitespace in two new test files. Those edits were corrected, and the
-already-failing scan was stopped after collecting its errors. Changed-file whitespace verification passed with dotnet format whitespace in folder mode. The full-solution
-format run was not completed after its known errors. Whole-tree dashes, prose, file-size and doc-version checks
-are recorded separately.
+already-failing scan was stopped after collecting its errors. Changed-file whitespace verification passed with dotnet format whitespace in folder mode. The interrupted initial full-solution format run is not completion evidence. The completed final run is recorded
+below. Whole-tree dashes, prose, file-size and doc-version checks passed.
 No timing test, billed workflow, stress run, merge, tag or release was run.
 T4 hardware proof remains with the owning thread's separately approved work. This worker uses only the free
 hosted Metal, WARP and lavapipe correctness matrix.
@@ -157,3 +154,48 @@ The D decision helper remains current. `EachFixtureWasCompiledFromTheCurrentGlsl
 sides and prints the post-integration recapture instruction. It still checks the old listings and mutation tests
 as reader-logic evidence. No fixture or source hash is recaptured here. The owning thread must recapture after
 merging this branch with 7g.3b.
+
+
+## Approved Vulkan-only follow-up
+
+The owner authorized exactly one additional free Vulkan-only workflow_dispatch, with the same filtered selection
+as the all-leg run. The branch was verified against the commit resolved with git rev-parse before dispatch.
+[Run 39554929620](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39554929620) checked a435995460cf1798093d336d07d4a3169766027a
+on fix/taa-vis-gathers. No dispatch targeted fix/taa-shadow-visibility, and its active baseline run was not cancelled.
+
+The selected render job completed with 38 passed, four failed and zero skipped, out of 42 cases. There is one fewer
+case than the first run because the Vulkan policy no longer asserts that it retains the gathered program. The raw
+oracle again passed all six cases and 100,253,392 exact component comparisons. Equivalence passed all six cases,
+A/B passed all twelve, and the four moving-shadow entry-identity cases passed. The Vulkan sync job passed too.
+
+The four real-scene failures are identical across the no-gather baseline
+[39544536428](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39544536428) at 2cf9c4820,
+the all-gather Vulkan candidate 39550935418 at e72569270, and the load-fallback run 39554929620 at a43599546.
+Every failure is production fused versus production split colour, with 921,600 compared bytes.
+
+| TemporalEntryIdentityGpuTests case | Frame in all three runs | First differing byte in all three runs |
+| --- | ---: | ---: |
+| Both_entry_points_write_the_same_history_on_every_frame, Native | 0 | 18101 |
+| Both_entry_points_write_the_same_history_on_every_frame, Quality | 0 | 147045 |
+| Both_entry_points_write_the_same_history_with_the_edge_outline_on, Quality | 0 | 147045 |
+| Both_entry_points_write_the_same_history_on_every_frame, Performance | 2 | 321841 |
+
+The baseline's rendering implementation differs from cb2a97e9e only in a generator XML documentation update.
+The case, frame and byte tuples were parsed from each job's log and compared for exact equality. The failures
+therefore predate gathers and are not caused by this task. Per the owner's stop condition, no attempt is made to
+fix that separate full-program arithmetic issue and no comparison bound is changed. The conservative Vulkan load
+fallback remains on this branch. T4 hardware and performance are unverified, and DXBC fixture recapture remains
+with the orchestrator after integration.
+
+
+## Final full-solution format gate
+
+The required command completed through build-slot with exit code 0 after the Vulkan-only follow-up. It reported
+only the workspace-loading warning, with no format errors. The interrupted initial attempt is not used as evidence.
+
+```bash
+build-slot --label taa-vis-gathers-full-format-final -- dotnet format KhaozEngine.slnx --verify-no-changes --no-restore
+```
+
+Both implementation commits and this evidence are on fix/taa-vis-gathers. There was no merge, tag or release.
+The lavapipe full-scene colour failures remain the identical no-gather baseline failures documented above.

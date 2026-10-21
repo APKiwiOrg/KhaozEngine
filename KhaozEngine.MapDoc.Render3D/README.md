@@ -74,17 +74,24 @@ retain annotation identities without adding visible labels. Register every part 
 recording. Geometry is already in metres. Effective placement poses compose once in anchor-local space.
 The typed recorder and `PropRenderer.DrawNative` share N-tier selection and complementary coverage.
 
-Each selected HLOD layer partitions its frozen inventory by the effective origin's document storage cell.
-Cell size is the document storage tile size, independent of the render frame. Assignment floors the precise
-binary64 origin before any absolute float conversion. Keys are `(layer, cell X, cell Z, plane 0)`. The cluster
-anchor is the whole-metre cell anchor at world-datum Y zero, with any fractional cell origin retained locally.
-Merged vertices round once after their bounded cell translation. Content digests retain inventory, transforms,
+Each selected HLOD layer partitions its frozen inventory into native regions of 64 document tiles per edge.
+The region edge is `64 * TileSize` metres. Regions exceeding 1024 m split into `n * n` equal sub-cells,
+where `n = ceil(64 * TileSize / 1024)`, aligned with the region grid. Assignment uses the precise binary64
+effective origin and half-open boundaries before any absolute float conversion. Keys are
+`(layer, cell X, cell Z, plane 0)`, with cell indices counting subdivisions globally from the region grid origin.
+The anchor floors the cell's X/Z origin and the minimum member origin Y to whole metres.
+Fractional cell origins remain local. Before the internal builder enters, every transformed source vertex must
+have an absolute anchor-relative coordinate strictly below 2048 m on every axis, checked in binary64 through
+the same position kernel as the merge. Failure throws `MapRenderAssetRefusal` with `NotRepresentable` and refuses
+preparation. It never silently drops the cluster or falls back to individual geometry.
+Merged vertices round once after certification, within the 0.0001 m binary32 submission allowance.
+Content digests retain inventory, transforms,
 closure and weld settings separately from the stable spatial owner key.
 
 The shared `PropLayer.PlacementLayer` native overload freezes the actual instance inventory, every tier and
 caller thresholds. Both individual fallback and accepted proxies consume that shared layer. The released
 per-cluster centre-distance coverage remains unchanged and uses the complete cell area. Each cell is independent.
-`NativeMapPlacements.PrepareCluster` validates the scene, frozen routes, cell domain, layer inventory and roof exclusion before invoking
+`NativeMapPlacements.PrepareCluster` validates the scene, frozen routes, cell domain, layer inventory, roof exclusion and vertex precision before invoking
 the internal shared CPU builder. That lower builder has no building intent and makes no independent roof promise.
 Ordinary roofs retain separate resources. Individuals remain active until `AcceptCluster` receives the exact
 prepared build and the externally published mesh. It retains metadata only and never uploads or frees that handle.

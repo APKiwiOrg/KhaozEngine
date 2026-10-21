@@ -267,7 +267,9 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   `PropRenderer.DrawNative(scene, layer, focus)` and native typed recording consume the same frozen layer,
   including its casting policy. These native render-only layers do not enter the legacy analytic chunk sink.
   `NativePropClusterRequest` carries the same per-cell inventory to the internal CPU builder. The MapDoc adapter
-  validates routing, the document storage-cell domain and effective roof exclusion first. `ApplyNative` retains only publication metadata and an
+  validates routing, the bounded native region-cell domain, effective roof exclusion and every binary64
+  anchor-relative vertex coordinate before the builder enters. Admission and merge share the same position
+  kernel, with binary32 conversion only after certification. `ApplyNative` retains only publication metadata and an
   externally owned accepted mesh. Native typed recording consumes the shared HLOD coverage kernel.
   Native handles are never uploaded or freed by this owner. Legacy `Apply` retains its existing ownership.
 - **`PropClusterRenderer`** - the shared runtime owner for terrain and TileWorld prop clusters.

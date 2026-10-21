@@ -45,6 +45,7 @@ internal static partial class NativeSceneFixtures
     internal static NativeSceneFixture Placements(MapAssetClosure closure)
     {
         var fixture = Create("terrain") with { Assets = closure };
+        fixture.Document.TileSize = 1;
         fixture.Document.NativeAssets = closure.Roots.ToList();
         var bindings = new List<MapPrefabBinding>();
         string[] leaves = { "leaf-a", "leaf-b", "leaf-c", "roof-a", "roof-b" };

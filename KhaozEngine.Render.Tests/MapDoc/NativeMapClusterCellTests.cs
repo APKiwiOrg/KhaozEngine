@@ -18,16 +18,16 @@ namespace KhaozEngine.Tests.MapDoc;
 
 public sealed class NativeMapClusterCellTests
 {
-    static MapScopedScene Scene(MapAssetClosure closure, float tileSize, params MapEffectiveTransform[] poses)
+    internal static MapScopedScene Scene(MapAssetClosure closure, float tileSize, params MapEffectiveTransform[] poses)
     {
         using var fixture = NativeSceneFixtures.SeparatedPlacements(closure, tileSize, poses);
         var scope = new MapSceneScope(new(WorldFrame.Origin, new(-32064, -32064), new(32064, 32064), null, null,
-            Enum.GetValues<MapSurfaceRole>(), null, new()), new(-32064, -564, -32064, 32064, 564, 32064), MapSceneChannels.Placements);
+            Enum.GetValues<MapSurfaceRole>(), null, new()), new(-32064, poses.Min(p => p.Y) - 564, -32064, 32064, poses.Max(p => p.Y) + 564, 32064), MapSceneChannels.Placements);
         var result = NativeSceneFixtures.Open(fixture, false).Acquire(scope);
         Assert.True(result.Witness.CompleteForScope, string.Join("\n", result.Findings));
         return result.Scene!;
     }
-    static MapPlacementPolicy Policy(float radius) => new(new[] { new MapPlacementLayer("selected", new HashSet<string> { "prop-a" },
+    internal static MapPlacementPolicy Policy(float radius) => new(new[] { new MapPlacementLayer("selected", new HashSet<string> { "prop-a" },
         new float[] { 10, 20 }, 4, radius, 30, 10, 0, true) }, radius);
     static MapDrawSet Record(MapPlacementRenderBatch batch, float focus = 0)
     {
@@ -39,8 +39,8 @@ public sealed class NativeMapClusterCellTests
     static string Owner(PropClusterKey key) => FormattableString.Invariant($"cluster/{key.LayerId}/{key.X}/{key.Z}/{key.Plane}");
 
     [Theory]
-    [InlineData(64)]
-    [InlineData(128)]
+    [InlineData(1)]
+    [InlineData(2)]
     public void AcceptedSeparatedCells_KeepTheInRangeMemberDrawn(float tileSize)
     {
         var closure = NativeRenderAssetFixtures.Placements();
@@ -58,7 +58,7 @@ public sealed class NativeMapClusterCellTests
         Assert.Equal(Owner(near.Request.Key), visibleProxy.Resource.Key.OwnerId);
         Assert.Equal(new[] { "sparse-0" }, near.RepresentedIds);
         Assert.Equal(2, batch.Clusters.Count);
-        Assert.Equal(new[] { new PropClusterKey("selected", 0, 0, 0), new PropClusterKey("selected", (int)Math.Floor(1000 / tileSize), 0, 0) },
+        Assert.Equal(new[] { new PropClusterKey("selected", 0, 0, 0), new PropClusterKey("selected", (int)Math.Floor(1000 / (64 * tileSize)), 0, 0) },
             batch.Clusters.Select(c => c.Request.Key));
         Assert.Equal(before.Draws.Select(d => d.Resource.Key.OwnerId).Distinct(), near.RepresentedIds);
         Assert.Equal(scene.Placements.Select(p => p.PlacementId).Order(), batch.Clusters.SelectMany(c => c.RepresentedIds).Order());
@@ -67,21 +67,21 @@ public sealed class NativeMapClusterCellTests
             Assert.Equal(c.Request.Instances, c.Request.Layer.NativePlacements);
             Assert.Null(c.Request.Layer.Placements);
             Assert.Equal(new float[] { 10, 20 }, c.Request.Layer.LodDistances);
-            Assert.Equal(tileSize, c.Request.Area.MaxX - c.Request.Area.MinX);
-            Assert.Equal(tileSize, c.Request.Area.MaxZ - c.Request.Area.MinZ);
+            Assert.Equal(64 * tileSize, c.Request.Area.MaxX - c.Request.Area.MinX);
+            Assert.Equal(64 * tileSize, c.Request.Area.MaxZ - c.Request.Area.MinZ);
         });
     }
 
     [Theory]
-    [InlineData(64)]
-    [InlineData(96)]
-    [InlineData(512)]
+    [InlineData(1)]
+    [InlineData(20)]
+    [InlineData(65536)]
     public void FarOriginAcceptedCells_KeepSubMillimetreOffsets(float tileSize)
     {
         var closure = NativeRenderAssetFixtures.Placements(originVertex: true);
         var scene = Scene(closure, tileSize, new(-32000 + .0009, 0, 0, 0, 1), new(32000 + .0009, 0, 0, 0, 1));
         using var assets = NativeMapPlacementTests.Assets(closure);
-        var policy = Policy(1000); var routing = MapPlacementRouting.Create(scene, policy, new HashSet<string>()).Routing!;
+        var policy = Policy(100000); var routing = MapPlacementRouting.Create(scene, policy, new HashSet<string>()).Routing!;
         using var batch = NativeMapPlacements.Prepare(scene, assets, policy, routing);
         // Coarsest source vertices, authored independently of the decoder and merge under test.
         Vector3[] source = { new(0, 3 * .01f, .04f), new(.08f, 3 * .01f, .04f), new(-.08f, 16 * .01f, .04f),
@@ -107,7 +107,9 @@ public sealed class NativeMapClusterCellTests
         foreach (float origin in new[] { -32000f, 32000f })
         {
             var set = Record(batch, origin);
-            var draw = Assert.Single(set.Draws, d => d.Resource.Key.PartId == "hlod");
+            string memberId = origin < 0 ? "sparse-0" : "sparse-1";
+            string owner = Owner(batch.Clusters.Single(c => c.RepresentedIds.Contains(memberId)).Request.Key);
+            var draw = Assert.Single(set.Draws, d => d.Resource.Key.PartId == "hlod" && d.Resource.Key.OwnerId == owner);
             var mesh = Assert.IsType<MapRigidResource>(set.Resources.Single(r => r.Reference == draw.Resource).Payload).Mesh;
             Assert.InRange(Math.Abs((double)draw.Anchor.X - origin + mesh.Vertices[0].Position.X - .0009), 0, .0001);
         }
@@ -117,7 +119,7 @@ public sealed class NativeMapClusterCellTests
     public void NativeClusterAdapter_RejectsMembersFromAnotherCellBeforeMerge()
     {
         var closure = NativeRenderAssetFixtures.Placements();
-        var scene = Scene(closure, 64, new(0, 0, 0, 0, 1), new(1000, 0, 0, 0, 1));
+        var scene = Scene(closure, 1, new(0, 0, 0, 0, 1), new(1000, 0, 0, 0, 1));
         using var assets = NativeMapPlacementTests.Assets(closure);
         var policy = Policy(100); var routing = MapPlacementRouting.Create(scene, policy, new HashSet<string>()).Routing!;
         using var batch = NativeMapPlacements.Prepare(scene, assets, policy, routing);
@@ -140,7 +142,7 @@ public sealed class NativeMapClusterCellTests
     public void EffectiveOrigins_SelectHalfOpenCellsBeforeAbsoluteFloatRounding()
     {
         var closure = NativeRenderAssetFixtures.Placements();
-        var scene = Scene(closure, 64, new(-32000 - .0009, 0, -.0009, 0, 1), new(32000 - .0009, 0, .0009, 0, 1));
+        var scene = Scene(closure, 1, new(-32000 - .0009, 0, -.0009, 0, 1), new(32000 - .0009, 0, .0009, 0, 1));
         using var assets = NativeMapPlacementTests.Assets(closure);
         var policy = Policy(1000); var routing = MapPlacementRouting.Create(scene, policy, new HashSet<string>()).Routing!;
         using var batch = NativeMapPlacements.Prepare(scene, assets, policy, routing);

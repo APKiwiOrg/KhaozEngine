@@ -95,7 +95,7 @@ public static class NativeMapPlacements
                     .OrderBy(c => c.Key.X).ThenBy(c => c.Key.Z))
                 {
                     var members = cell.ToArray();
-                    var domain = MapPlacementCells.Domain(cell.Key, scene.Source.Data.TileSize);
+                    var domain = MapPlacementCells.Domain(cell.Key, scene.Source.Data.TileSize, members.Min(i => i.Anchor.Y));
                     var sources = new Dictionary<string, GltfMesh>(StringComparer.Ordinal);
                     foreach (string id in members.Select(i => i.AssetId).Distinct(StringComparer.Ordinal))
                     {
@@ -151,9 +151,7 @@ public static class NativeMapPlacements
         routing.Validate(scene);
         var roofs = scene.BuildingIntent.Roofs.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
         var placements = scene.Placements.ToDictionary(p => p.PlacementId, StringComparer.Ordinal);
-        var domain = MapPlacementCells.Domain(request.Key, scene.Source.Data.TileSize);
-        if (request.Anchor != domain.Anchor || !request.Area.Equals(domain.Area) || request.BorrowLayer.Identity != request.Key.LayerId)
-            throw new MapDocumentException("Native cluster request disagrees with its storage cell.");
+        if (request.Instances.Count == 0) throw new MapDocumentException("Native cluster requires its effective members.");
         foreach (var instance in request.Instances)
         {
             if (roofs.Contains(instance.Id) || !routing.Entries.TryGetValue(instance.Id, out var route) || route != MapPlacementRoute.Cluster ||
@@ -161,10 +159,37 @@ public static class NativeMapPlacements
                 instance.LocalTransform != MapRenderTransform.ToLocal(Pose(scene, placement), new(instance.Anchor.X, instance.Anchor.Y, instance.Anchor.Z)) ||
                 MapPlacementCells.Key(request.Key.LayerId, Pose(scene, placement), scene.Source.Data.TileSize) != request.Key)
                 throw new MapDocumentException("Native cluster request disagrees with the effective scene routing.");
+            var anchor = Anchor(Pose(scene, placement));
+            if (instance.Anchor != new RenderAnchor(anchor.X, anchor.Y, anchor.Z))
+                throw new MapDocumentException("Native cluster member disagrees with its effective anchor.");
         }
+        var domain = MapPlacementCells.Domain(request.Key, scene.Source.Data.TileSize, request.Instances.Min(i => i.Anchor.Y));
+        if (request.Anchor != domain.Anchor || !request.Area.Equals(domain.Area) || request.BorrowLayer.Identity != request.Key.LayerId)
+            throw new MapDocumentException("Native cluster request disagrees with its region cell.");
         if (request.BorrowLayer.NativePlacements is not { } native || !native.SequenceEqual(request.Instances))
             throw new MapDocumentException("Native cluster request disagrees with its frozen layer inventory.");
+        CertifyCluster(request);
         return build(request);
+    }
+
+    static void CertifyCluster(NativePropClusterRequest request)
+    {
+        const double coordinateLimit = 2048;
+        var sources = request.BorrowLayer.HlodSourceMeshes;
+        foreach (var instance in request.Instances)
+        {
+            if (sources is null || !sources.TryGetValue(instance.AssetId, out var source) || source.Vertices.Length == 0)
+                throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, "Native cluster requires every member's source geometry.");
+            var transform = new NativePropClusterTransform(instance, request.Anchor);
+            foreach (var vertex in source.Vertices)
+            {
+                var position = transform.Position(vertex.Position);
+                // Below 2048 m the final binary32 half ULP stays within the 0.0001 m submission allowance.
+                if (!(Math.Abs(position.X) < coordinateLimit && Math.Abs(position.Y) < coordinateLimit && Math.Abs(position.Z) < coordinateLimit))
+                    throw new MapRenderAssetRefusal(MapRenderAssetStatus.NotRepresentable,
+                        "Native cluster vertex exceeds the anchor-relative precision bound: " + instance.Id);
+            }
+        }
     }
     static string ClusterInventoryDigest(IReadOnlyList<NativePropInstance> instances, string closure, float weld) => MapPlacementDigest.Hash(w =>
     {

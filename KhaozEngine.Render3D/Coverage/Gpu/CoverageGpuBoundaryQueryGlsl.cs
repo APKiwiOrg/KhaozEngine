@@ -21,10 +21,8 @@ internal static class CoverageGpuBoundaryQueryGlsl
                 uint boundary = covSupportTable(q.support,10u);
                 q.a = covSupportPosition(q.support,CovStaticWords[boundary+q.edge]);
                 q.b = covSupportPosition(q.support,CovStaticWords[boundary+(q.edge+1u)%q.count]);
-                job = covDotJob(q.a,q.b,q.a,q.b); q.phase = CovBLength; return true;
-            }
-            if (q.phase == CovBLength) {
-                q.squaredLength = result.predicate; job = covDotJob(q.a,vec3(q.point,0.0),q.a,q.b); q.phase = CovBDot; return true;
+                q.squaredLength = covSupportInvariant(q.support,CovStaticWords[q.support+5u]+q.edge);
+                job = covDotJob(q.a,vec3(q.point,0.0),q.a,q.b); q.phase = CovBDot; return true;
             }
             if (q.phase == CovBDot) {
                 if (q.squaredLength.sign <= 0 || !covFinite(q.squaredLength.value) || !covFinite(result.predicate.value)) { q.phase = CovBDone; return false; }

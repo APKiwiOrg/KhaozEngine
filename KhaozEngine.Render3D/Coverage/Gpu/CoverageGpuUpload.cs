@@ -80,8 +80,9 @@ internal static class CoverageGpuUpload
     {
         ArgumentNullException.ThrowIfNull(support);
         var data = support.ReferenceData;
-        int[] counts = [data.Positions.Length, data.SourceIndices.Length, data.Triangles.Length, data.BoundarySourceVertices.Length, data.CellOffsets.Length, data.CellTriangles.Length];
-        uint[] words = Allocate(CoverageGpuLayout.SupportHeaderWords, counts, [3, 1, 8, 1, 1, 1]);
+        int[] counts = [data.Positions.Length, data.SourceIndices.Length, data.Triangles.Length, data.BoundarySourceVertices.Length,
+            data.CellOffsets.Length, data.CellTriangles.Length, data.TriangleCount, data.BoundaryCount];
+        uint[] words = Allocate(CoverageGpuLayout.SupportHeaderWords, counts, [3, 1, 8, 1, 1, 1, 2, 2]);
         words[0] = Bits(data.MaxSlope); words[1] = Bits(data.GridMin.X); words[2] = Bits(data.GridMin.Y);
         words[3] = Bits(data.GridMax.X); words[4] = Bits(data.GridMax.Y);
         words[5] = (uint)data.TriangleCount; words[6] = (uint)data.BoundaryCount;
@@ -94,6 +95,7 @@ internal static class CoverageGpuUpload
         Offset(10); Ints(data.BoundarySourceVertices);
         Offset(11); Ints(data.CellOffsets);
         Offset(12); Ints(data.CellTriangles);
+        CoverageGpuSupportInvariants.Write(data, words.AsSpan(cursor));
         return new(words, data.TriangleCount, data.BoundaryCount);
         void Offset(int header) => words[header] = (uint)cursor;
         void Ints(int[] values) { foreach (int x in values) words[cursor++] = unchecked((uint)x); }

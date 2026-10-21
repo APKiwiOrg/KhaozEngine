@@ -102,7 +102,7 @@ public sealed class CoverageGpuUploadTests
                 Row(actual.Triangles, actual.BoundaryVertices));
             Assert.Equal(support.BoundarySourceVertices.Select(U), Row(actual.BoundaryVertices, actual.CellOffsets));
             Assert.Equal(support.CellOffsets.Select(U), Row(actual.CellOffsets, actual.CellTriangles));
-            Assert.Equal(support.CellTriangles.Select(U), actual.Words[(int)actual.CellTriangles..]);
+            Assert.Equal(support.CellTriangles.Select(U), actual.Words.AsSpan((int)actual.CellTriangles, support.CellTriangles.Length).ToArray());
             Assert.Equal(16u, actual.Positions);
             uint[] Row(uint start, uint end) => actual.Words[(int)start..(int)end];
             uint offset = checked((uint)words.Count);

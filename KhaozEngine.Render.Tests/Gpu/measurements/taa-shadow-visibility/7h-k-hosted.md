@@ -1,8 +1,9 @@
 # Task 7h K, certified fully lit specialization
 
-**Status:** Blocked by strict colour-byte identity on WARP and strict fused/split colour identity on lavapipe. The implementation and failing oracles are pushed at
-code commit d140310d950df04093880d2e3c302e84f32c8cfc. No code change, tolerance or new exception has been added after
-that result. All hosted legs are complete. This is a candidate and reproduction, not a validated exact optimization.
+**Status:** Round 2 fixes the lavapipe entry oracle, but K remains blocked on WARP. The complete report also finds
+confidence differences and structured colour amplification. Neither a production defect nor the brief's pure
+few-ulp, identical-decision explanation is established. All hosted legs are complete. The strict certified-versus-check
+assertion remains unchanged. This is a candidate and reproduction, not a validated exact optimization.
 
 Source branch fix/taa-vis-lit-skip starts at 6c0382161. This record covers correctness only. No timing,
 benchmark, stress, merge, tag or release is part of the task.
@@ -103,7 +104,8 @@ The new tests contribute 53 cases, all passing in the complete Metal selection.
 
 `ForceCheck` is test-only. It restores the ordinary visibility call in the selected specialization through the
 existing fragment rewrite hook. The no-check and check programs compile independently and run in lockstep.
-The scene comparisons assert every raw history byte on every backend without adding a tolerance or exception.
+Round 1 asserted every raw history byte on every backend. Round 2 retains that requirement for certified versus
+ordinary check, and applies the existing software Vulkan colour rule only between the production entries.
 
 ## Hosted correctness
 
@@ -188,3 +190,231 @@ The pointer gesture allocation failure above is outside this task and has not be
 paragraph in docs/USING-KHAOZENGINE.md also still says incremental visibility cost has not been measured, although
 the parent branch now holds T4 measurements. Its reconciliation is left to the parent closeout. The new certificate
 paragraph makes no timing claim.
+
+## Round 2 diagnosis
+
+The oracle change is bdc306bb5637742562f523e6788bda9f27b59bd9. `TemporalFullyLitHistoryOracle` reads each history once
+per frame, reports all three pairs for all 24 frames, then asserts. Each channel reports differing values, compared
+values, share, maximum absolute error and maximum half steps. Its first three examples include frame, texel,
+component, both values and raw storage bits. Confidence and the stored lock are separate. The mark is decoded from
+the lock using the existing entry-identity mark classes. The raw lock comparison still covers every stored bit.
+
+Certified fused versus checked fused and certified split versus checked split remain byte-exact on every device.
+Production fused versus split also remains exact except for colour on `TemporalDeviceClass.IsLavapipe`. That pair
+alone uses `TemporalSoftwareVulkanColourRule`, as the existing entry-identity facts do. Its maximum absolute error
+is 0.0625 and its maximum differing share is 0.0025 over the whole walk. Non-finite differences fail. Confidence,
+lock, mark, R8 and depth remain exact there too. Reporting and the final verdict are separate.
+
+### Round 2 local gates
+
+All builds, tests, shader generation and repository checks used build-slot. Builds and test runs were serial.
+Two initial text scans briefly overlapped, then both were rerun serially after staging the new helper.
+
+| Gate | Exit and result |
+| --- | --- |
+| Release solution build | 0, zero warnings and errors |
+| Focused Metal GPU and existing contracts | 0, 149 passed, zero failed or skipped, Apple M2 Max |
+| Device-free Temporal, ShaderSources, ShippedShader, Spirv and Corpus | 0, 898 passed, 256 GPU cases skipped |
+| Changed-file format application | 0 |
+| Full solution format verification to completion | 0, historical workspace-loading warning only, no Contour errors |
+| Dashes and prose, serial with --tree | 0 |
+| Whole-tree file size, plus the new helper checked separately | 0 each |
+| Doc versions | 0 |
+| Capture manifest verifier | 0, historical sources, packages and capture hashes preserved |
+| Staged and unstaged git diff --check | 0 each |
+
+Metal has zero differences in all six channels of every scene pair. No test loop, timing, benchmark or stress test
+was run. The device-free filter does not select the known PointerGestureTapToleranceAllocationTests failure #1529.
+
+### Generated HLSL colour path
+
+The local scratch tool enumerated `ShippedShaderPrograms.GraphicsPrograms`, compiled both stages with
+`SpirvFrontEnd.ToSpirv`, then called `SpirvCrossCompile.VertexFragmentToHlsl`. It generated the full-precision fused,
+split Quality and split Native pairs. The first scratch invocation lacked the bundled native libraries and exited
+134. Supplying the test output's existing macOS native libraries repaired that scratch setup, and generation exited
+0. No production seam or production source changed.
+
+| Program | Generated fragment HLSL SHA-256 |
+| --- | --- |
+| TemporalResolve | 5120b488fad79b19a9ff07cea6c8f7c8b46423601ce89d5b2c0ea28f380bee05 |
+| TemporalResolveFullyLit | a5cc9e825e9cca9f44bafd17fa6c64e27cc5333e3121e6cc7ac63d8ad2dd10b9 |
+| TemporalAccumulate | 4e99f769fee0f5dfc193afd3e276fde34e8f630d9735b5a616bdc7ac08b1251d |
+| TemporalAccumulateFullyLit | fadbc20708dbe99eaa675407e48489d8a620fe30cc3327f81282231817594d45 |
+| TemporalAccumulateAtDisplaySize | 0db60866a663eee80253eeb73146839bb99624dda78bc60f7a455136f5478b2b |
+| TemporalAccumulateAtDisplaySizeFullyLit | 2227eda2ef33bc8fdf2f9bf200d9697b69b11ba6eb55ec059f8655509282e417 |
+
+For example, the checked fused HLSL computes `_16164 = _8719 ? 0.0f : _10073`, where `_8719` is the visibility
+release, then its hold from `(_15034 || _8719) ? 0.0f : clamp(_16164 * 2.0f, 0.0f, 1.0f)`. The certified HLSL
+retains the same barrier-ordered lock result, with no visibility zeroing, and computes its hold from
+`(_9985 || false) ? 0.0f : clamp(_8073 * 2.0f, 0.0f, 1.0f)`. `_15034` and `_9985` are the unchanged shading release.
+The subsequent luma clipping uses the same subtraction, maximum, division and `lerp` expressions in both programs.
+The clipped-luma blend is `_13373.x = lerp(_15073.x, _12261, _16165)` versus
+`_9061.x = lerp(_10024.x, _8099, _10752)`. The final weighted-colour blend is likewise the same three-component
+`lerp`, followed by the same YCoCg conversion and weighted division.
+
+These colour expressions have no precise qualifier or arithmetic barrier. Removing the visibility dependency
+allows FXC's existing optimization-level-3 compile to simplify the hold feeding the clipped-luma `lerp` and reorder
+or contract its multiply/add arithmetic. This identifies an unchanged colour operation exposed to specialization,
+not a measured instruction-level DXBC bisect. The shader's explicit lock arithmetic barriers are retained.
+
+### Round 2 hosted gate
+
+The one authorized run is [39652578932](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39652578932), at
+bdc306bb5637742562f523e6788bda9f27b59bd9. The local full SHA, remote branch tip and run headSha agree. It uses
+legs all, tier push and bake false, with this filter only. The workflow also retains its own compiler and sync legs.
+
+```text
+FullyQualifiedName~TemporalVisibilityFullyLit|FullyQualifiedName~TemporalVisibilityCertificateGpuTests|FullyQualifiedName~TemporalEntryIdentityGpuTests
+```
+
+| Leg | Job | Passed / failed / skipped |
+| --- | --- | --- |
+| Hosted Metal, Apple Paravirtual device | 119404536470 | 63 / 0 / 0 |
+| WARP, Microsoft Basic Render Driver | 119404536201 | 59 / 4 / 0 |
+| lavapipe, LLVM 20.1.2, 256 bits | 119404535915 | 63 / 0 / 0 |
+| Vulkan sync validation | 119404536175 | 622 / 0 / 0 |
+
+The Windows compiler and struct-layout step separately passed 31 cases with one intentional opt-in dump skip.
+All other steps on that job passed. Its sole failed step was the filtered test suite. The workflow completed
+with failure because of the four strict WARP scene cases. Every selected entry-identity case passed.
+
+Each rendering device supplied 2592 unique frame/channel reports and 108 aggregate channel reports for the six
+scene cases. WARP prints a failed case twice. The two copies agree and the tables below count each case once.
+Colour and state are display-sized. R8 and depth are internal-sized, so their denominators are smaller at Quality.
+
+### WARP per-channel totals
+
+| Pair | Channel | Differing / compared values | Worst absolute difference | Max half steps | Differing share |
+| --- | --- | ---: | ---: | ---: | ---: |
+| fused certified vs check | colour | 88 / 33177600 | 0.011230469 | 23 | 0.000265239198% |
+| fused certified vs check | confidence | 18 / 8294400 | 0.00024414062 | 1 | 0.000217013889% |
+| fused certified vs check | lock | 0 / 8294400 | 0 | 0 | 0% |
+| fused certified vs check | mark | 0 / 8294400 | 0 | 0 | 0% |
+| fused certified vs check | R8 | 0 / 5987520 | 0 | 0 | 0% |
+| fused certified vs check | depth | 0 / 5987520 | 0 | 0 | 0% |
+| split certified vs check | colour | 88 / 33177600 | 0.011230469 | 23 | 0.000265239198% |
+| split certified vs check | confidence | 18 / 8294400 | 0.00024414062 | 1 | 0.000217013889% |
+| split certified vs check | lock | 0 / 8294400 | 0 | 0 | 0% |
+| split certified vs check | mark | 0 / 8294400 | 0 | 0 | 0% |
+| split certified vs check | R8 | 0 / 5987520 | 0 | 0 | 0% |
+| split certified vs check | depth | 0 / 5987520 | 0 | 0 | 0% |
+| certified fused vs split | colour | 0 / 33177600 | 0 | 0 | 0% |
+| certified fused vs split | confidence | 0 / 8294400 | 0 | 0 | 0% |
+| certified fused vs split | lock | 0 / 8294400 | 0 | 0 | 0% |
+| certified fused vs split | mark | 0 / 8294400 | 0 | 0 | 0% |
+| certified fused vs split | R8 | 0 / 5987520 | 0 | 0 | 0% |
+| certified fused vs split | depth | 0 / 5987520 | 0 | 0 | 0% |
+
+### lavapipe per-channel totals
+
+| Pair | Channel | Differing / compared values | Worst absolute difference | Max half steps | Differing share |
+| --- | --- | ---: | ---: | ---: | ---: |
+| fused certified vs check | colour | 0 / 33177600 | 0 | 0 | 0% |
+| fused certified vs check | confidence | 0 / 8294400 | 0 | 0 | 0% |
+| fused certified vs check | lock | 0 / 8294400 | 0 | 0 | 0% |
+| fused certified vs check | mark | 0 / 8294400 | 0 | 0 | 0% |
+| fused certified vs check | R8 | 0 / 5987520 | 0 | 0 | 0% |
+| fused certified vs check | depth | 0 / 5987520 | 0 | 0 | 0% |
+| split certified vs check | colour | 0 / 33177600 | 0 | 0 | 0% |
+| split certified vs check | confidence | 0 / 8294400 | 0 | 0 | 0% |
+| split certified vs check | lock | 0 / 8294400 | 0 | 0 | 0% |
+| split certified vs check | mark | 0 / 8294400 | 0 | 0 | 0% |
+| split certified vs check | R8 | 0 / 5987520 | 0 | 0 | 0% |
+| split certified vs check | depth | 0 / 5987520 | 0 | 0 | 0% |
+| certified fused vs split | colour | 96 / 33177600 | 0.0009765625 | 2 | 0.000289351852% |
+| certified fused vs split | confidence | 0 / 8294400 | 0 | 0 | 0% |
+| certified fused vs split | lock | 0 / 8294400 | 0 | 0 | 0% |
+| certified fused vs split | mark | 0 / 8294400 | 0 | 0 | 0% |
+| certified fused vs split | R8 | 0 / 5987520 | 0 | 0 | 0% |
+| certified fused vs split | depth | 0 / 5987520 | 0 | 0 | 0% |
+
+### Per-case colour and confidence
+
+Every row compares 5529600 colour values and 1382400 confidence values. WARP has the same differences in the fused
+and split certified-versus-check comparisons. Its production entries match each other exactly. On lavapipe both
+certified-versus-check pairs match exactly, and only the production-entry colour comparison differs.
+
+| Preset | Scene | WARP colour count | WARP max colour error | WARP max half steps | WARP confidence count | lavapipe entry colour count | lavapipe max colour error |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Native | Boxes | 0 | 0 | 0 | 0 | 0 | 0 |
+| Native | Field | 14 | 0.0048828125 | 10 | 0 | 21 | 0.0009765625 |
+| Native | Outlined field | 14 | 0.0048828125 | 10 | 0 | 21 | 0.0009765625 |
+| Quality | Boxes | 0 | 0 | 0 | 0 | 20 | 0.00048828125 |
+| Quality | Field | 30 | 0.011230469 | 23 | 9 | 17 | 0.00048828125 |
+| Quality | Outlined field | 30 | 0.011230469 | 23 | 9 | 17 | 0.00048828125 |
+
+### Verdict and first differing texels
+
+The WARP diagnosis remains unresolved. No production defect in (a) has been established, and the full walk does not
+establish (b) under the brief's required few-ulp, identical-decision, unstructured-colour signature. Compiler
+specialization remains a plausible explanation, including for confidence arithmetic, but it is not proved by the
+generated HLSL or by matching lock bytes. No production fix or new device exception was added.
+
+The certificate and selection checks pass. Every current R8 sample is 255, frame 0 selects the ordinary check,
+and frames 1 through 23 select the certified form only with both certificates present. Lock, mark, R8 and depth
+match in every pair on every frame. Both production entries also match each other on every history byte on WARP.
+That narrows the problem to the shared accumulation as specialized against its checked form. It does not establish
+that every intermediate hold, clip, shading-release or moving-share decision is identical.
+
+| WARP example, either field case and either entry | First value and bits | Checked value and bits | Half steps |
+| --- | --- | --- | ---: |
+| Native frame 8, texel (315,1), blue | 0.4650879, 0x3771 | 0.46484375, 0x3770 | 1 |
+| Quality frame 3, texel (242,0), green | 0.86621094, 0x3AEE | 0.86572266, 0x3AED | 1 |
+| Quality frame 6, texel (154,12), confidence | 0.24682617, 0x33E6 | 0.2467041, 0x33E5 | 1 |
+| Quality frame 6, texel (4,46), red | 0.671875, 0x3960 | 0.68310547, 0x3977 | 23 |
+| Native frame 18, texel (241,3), green | 0.54248047, 0x3857 | 0.5473633, 0x3861 | 10 |
+
+The first two examples are exactly round 1's first differing bytes 5084 and 1938. The later results are not a few
+isolated ulps. Native follows the texels (245,3), (243,3), (241,3) and (239,3) over frames 16 through 19. Quality
+follows (4,46), (2,46) and (0,46) over frames 6 through 8. At frame 6, texel (4,46) also differs in green and blue.
+This is spatially and temporally coherent. History amplification is plausible, but those observations alone do not
+prove that it starts only in arithmetic rounding rather than an intermediate decision difference.
+
+Confidence first differs at Quality frame 6, with two pixels per field case. It differs on frames 6 through 10,
+nine values per case, always by one half step, at most 0.000244140625. It never differs at Native. The first
+confidence values above both exceed 1/15. `temporalGather` clamps `sampleWeight` to at most one,
+`MaxAccumulation` is 15, and `MovingShareConfidence` is zero. Therefore both first differing confidence pixels take
+the non-moving-share, admitted-history, non-reset output path. A reset would write at most 1/15. This rules out a
+moving-share zero or a history/shading reset as the explanation at those pixels. It does not isolate which weight
+operation first rounded differently.
+
+The source candidates are the bilinear confidence `dot` in `ShaderSources.TemporalAccumulate.cs`, the accumulated
+weight's multiplication by the reactive factor, and the final `(accumulated + sampleWeight) / MaxAccumulation`.
+The generated checked HLSL writes `min(_16166 + _13699, _8646) * 0.066666670143604278564453125f`. The certified
+HLSL writes `min(_10753 + _9387, _6676) * 0.066666670143604278564453125f`. The expressions and constants agree
+after naming their corresponding values. Like the luma `lerp`, these weight operations have no arithmetic barrier.
+This identifies operations the optimizer can reassociate, but does not show the actual differing FXC instruction
+or the intermediate values it received on WARP.
+
+The next proof needs shared-input WARP traces at the first divergent pixels for history admission, hold, clipping,
+shading release, moving share and the accumulated/sample weights, together with the actual checked and certified
+FXC disassembly. An instrumented probe must first show it preserves the original outputs. Another hosted run is
+outside this round's exactly-one-run authorization. Guessing a production arithmetic fix or relaxing the strict
+comparison would not settle the cause, so neither was done.
+
+The strict certified-versus-check assertion now shows exact identity on local and hosted Metal and on lavapipe,
+for all six cases and every frame. It still fails four WARP cases, including both per-entry comparisons and
+Quality confidence. The lavapipe entry oracle is fixed within the existing amendment 23 rule. K remains blocked.
+
+### Reporter coordinate correction after the hosted run
+
+The complete tables made the internal/display dimension distinction visible. The initial reporter used the display
+width for every example. R8 and depth use the internal width at Quality. The reporter now stores that width and
+uses it for those two channels' texel coordinates, while colour, confidence, lock and mark retain the display width.
+Both snapshots' widths must agree. No byte comparison, numerical bound, count or verdict was relaxed.
+
+The hosted SHA above predates this diagnostic coordinate correction. Every hosted R8 and depth comparison has zero
+differences, so none of its printed differing texels is affected. The hosted measurements and conclusions remain
+valid for the comparison logic, but they are not an exact-head hosted proof of the later reporter commit. The
+coordinate correction receives fresh local verification. No second hosted run was dispatched.
+
+The coordinate correction is pushed at 5fd003f8ee4a5134b3067c903bb9c31095f92bba. Its repeated Release solution build
+exited 0 with zero warnings and errors. The same focused Metal selection exited 0 with 149 passed and no skips.
+The same device-free selection exited 0 with 898 passed and 256 GPU cases skipped. Full solution format verification
+completed with exit 0 and only the workspace-loading warning. The whole-tree file-size check, serial whole-tree
+dashes/prose checks and staged/unstaged diff checks also exited 0. The earlier capture-manifest and doc-version gates
+remain valid because their source pins, assets, packages and version declarations did not change.
+
+No merge, tag, release or other branch change was performed. Raw hosted logs and generated HLSL scratch are removed
+after extracting this evidence. The workflow retains its artifacts. The remaining handoff is an authorized WARP
+decision/weight and disassembly probe, not an assertion change.

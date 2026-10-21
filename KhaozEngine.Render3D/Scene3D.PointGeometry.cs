@@ -26,10 +26,10 @@ public sealed partial class Scene3D
         int draws = 0;
         IGpuBuffer? instances = _model.InstanceBuffer;
         PointShadowAtlas? activeAtlas = null;
-        int profileRequestCursor = 0;
+        ReportSkippedPointRows(cl);
         foreach (PackedPointShadowSlot packed in _packedPointSlots)
         {
-            using var row = ProfilePointRow(cl, packed, ref profileRequestCursor);
+            using var row = ProfilePointRow(cl, packed);
             using (ProfilePointPass(cl, packed, PointProfilePass.Setup))
             {
                 if (!ReferenceEquals(activeAtlas, packed.Atlas))
@@ -80,7 +80,6 @@ public sealed partial class Scene3D
                 else ProfilePointPass(cl, packed, PointProfilePass.Skinned, face, executed: false);
             }
         }
-        ReportRemainingPointRows(cl, ref profileRequestCursor);
         if (activeAtlas is not null)
             using (ProfilePass(cl, "shadow.point.finish")) renderer.EndPass(cl);
         return draws;

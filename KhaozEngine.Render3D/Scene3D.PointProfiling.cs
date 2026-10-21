@@ -8,28 +8,21 @@ public sealed partial class Scene3D
 {
     enum PointProfilePass { Row, Face, Setup, Rigid, Foliage, Skinned }
 
-    RenderProfilingScope ProfilePointRow(IGpuCommandList cl, in PackedPointShadowSlot packed, ref int requestCursor)
+    RenderProfilingScope ProfilePointRow(IGpuCommandList cl, in PackedPointShadowSlot packed)
     {
         if (_profiling is not { } profiling) return default;
-        int before = ReferenceEquals(packed.Atlas, _pointShadowTransientAtlas) ? _pointRequests.Count : packed.RequestIndex;
-        ReportSkippedPointRows(cl, profiling, before, ref requestCursor);
         var key = PointPassKey(packed, PointProfilePass.Row);
         return profiling.Pass(cl, key.Id, key.Occurrence);
     }
 
-    void ReportRemainingPointRows(IGpuCommandList cl, ref int requestCursor)
+    // Announce cached rows before traversal so observers can place them in their frozen schedules.
+    void ReportSkippedPointRows(IGpuCommandList cl)
     {
         if (_profiling is not { } profiling) return;
-        ReportSkippedPointRows(cl, profiling, _pointRequests.Count, ref requestCursor);
-    }
-
-    // Interleave cached rows at their admitted request positions. Never change the packed draw traversal.
-    void ReportSkippedPointRows(IGpuCommandList cl, RenderPassProfiling profiling, int before, ref int requestCursor)
-    {
-        for (; requestCursor < before; requestCursor++)
+        for (int i = 0; i < _pointRequests.Count; i++)
         {
-            var request = _pointRequests[requestCursor];
-            if (request.Slot < 0 || _pointRebuilds.Contains(requestCursor)) continue;
+            var request = _pointRequests[i];
+            if (request.Slot < 0 || _pointRebuilds.Contains(i)) continue;
             string id = request.Mode == LightShadowMode.Dynamic ? "shadow.point.dynamic" : "shadow.point.static";
             profiling.Pass(cl, id, request.Slot, executed: false);
         }

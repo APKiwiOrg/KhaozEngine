@@ -10,6 +10,9 @@ internal sealed class RendererPerfPassObserver : IRenderPassObserver
 {
     readonly RendererPerfRecorder _recorder;
     readonly Dictionary<RenderPassKey, int> _indices;
+    readonly RendererPerfPassDefinition[] _definitions;
+    readonly int[] _pointRows;
+    readonly IGpuCommandList?[] _skippedPointRows;
     readonly bool[] _fusedMotion;
     readonly bool _detailed;
 
@@ -19,13 +22,25 @@ internal sealed class RendererPerfPassObserver : IRenderPassObserver
         _recorder = recorder;
         _detailed = layout == RendererPerfLayout.PerPass;
         _indices = new(definitions.Length);
+        _definitions = definitions.ToArray();
+        _skippedPointRows = new IGpuCommandList?[definitions.Length];
         _fusedMotion = new bool[definitions.Length];
+        var pointRows = new List<int>();
         for (int i = 0; i < definitions.Length; i++)
+        {
             _indices.Add(new(definitions[i].Id, definitions[i].Occurrence), i);
+            if (definitions[i].Id is "shadow.point.static" or "shadow.point.dynamic") pointRows.Add(i);
+        }
+        pointRows.Sort((a, b) => _definitions[a].BeginMarker.CompareTo(_definitions[b].BeginMarker));
+        _pointRows = pointRows.ToArray();
     }
 
-    /// <summary>Reset before each recorded frame. Fused flags carry no independent GPU interval.</summary>
-    internal void BeginFrame() => Array.Clear(_fusedMotion);
+    /// <summary>Reset cached-row notifications and fused flags before each recorded frame.</summary>
+    internal void BeginFrame()
+    {
+        Array.Clear(_fusedMotion);
+        Array.Clear(_skippedPointRows);
+    }
     internal ReadOnlySpan<bool> FusedMotionPasses => _fusedMotion;
     int Index(RenderPassKey key)
     {
@@ -35,15 +50,43 @@ internal sealed class RendererPerfPassObserver : IRenderPassObserver
     }
     public void BeginPass(IGpuCommandList commands, RenderPassKey key)
     {
-        if (_detailed && Index(key) is >= 0 and var index) _recorder.BeginPass(commands, index);
+        if (_detailed && Index(key) is >= 0 and var index)
+        {
+            FlushSkippedPointRows(_definitions[index].BeginMarker);
+            _recorder.BeginPass(commands, index);
+        }
     }
     public void EndPass(IGpuCommandList commands, RenderPassKey key)
     {
-        if (_detailed && Index(key) is >= 0 and var index) _recorder.EndPass(commands, index);
+        if (_detailed && Index(key) is >= 0 and var index)
+        {
+            FlushSkippedPointRows(_definitions[index].EndMarker);
+            _recorder.EndPass(commands, index);
+        }
     }
     public void SkipPass(IGpuCommandList commands, RenderPassKey key)
     {
-        if (_detailed && Index(key) is >= 0 and var index) _recorder.SkipPass(commands, index);
+        if (_detailed && Index(key) is >= 0 and var index)
+        {
+            if (key.Id is "shadow.point.static" or "shadow.point.dynamic")
+            {
+                if (_skippedPointRows[index] is not null) _recorder.Fail("A cached point row was reported twice.");
+                _skippedPointRows[index] = commands;
+                return;
+            }
+            FlushSkippedPointRows(_definitions[index].BeginMarker);
+            _recorder.SkipPass(commands, index);
+        }
+    }
+    // Only cached rows may move. Executed callbacks retain native order and recorder validation.
+    void FlushSkippedPointRows(uint before)
+    {
+        foreach (int index in _pointRows)
+            if (_skippedPointRows[index] is { } commands && _definitions[index].BeginMarker < before)
+            {
+                _skippedPointRows[index] = null;
+                _recorder.SkipPass(commands, index);
+            }
     }
     public void FusedMotion(IGpuCommandList commands, RenderPassKey key)
     {

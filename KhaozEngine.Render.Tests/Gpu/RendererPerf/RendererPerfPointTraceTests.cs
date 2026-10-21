@@ -11,11 +11,14 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
 public sealed class RendererPerfPointTraceTests
 {
-    [Fact]
-    public void Frozen_point_layout_survives_opposite_dirty_subsets_with_one_row_budget()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Frozen_point_layout_survives_opposite_dirty_subsets_with_one_row_budget(bool reverseRequestOrder)
     {
         using var rig = new GeometryRig(true, secondStaticRow: true);
         rig.Frame(); rig.Frame(); rig.Frame();
+        if (reverseRequestOrder) rig.Frame(rigidOffset: .1f);
         rig.Scene.Post.Quality.Shadows.PointShadows.MaxStaticRebuildsPerFrame = 2;
         var observer = new GeometryObserver(rig.Commands);
         rig.Scene.PassObserver = observer;
@@ -23,6 +26,8 @@ public sealed class RendererPerfPointTraceTests
         observer.AssertClosed();
         var definitions = observer.Freeze();
         Assert.Equal(2, definitions.Count(p => p.Id == "shadow.point.static"));
+        Assert.Equal(reverseRequestOrder ? new[] { 1, 0 } : new[] { 0, 1 },
+            definitions.Where(p => p.Id == "shadow.point.static").Select(p => p.Occurrence));
         Assert.Equal(12, definitions.Count(p => p.Id == "shadow.point.static.face"));
         Assert.Equal(12, definitions.Count(p => p.Id == "shadow.point.static.rigid"));
         rig.Scene.Post.Quality.Shadows.PointShadows.MaxStaticRebuildsPerFrame = 1;
@@ -30,8 +35,9 @@ public sealed class RendererPerfPointTraceTests
         var adapter = new RendererPerfPassObserver(recorder, RendererPerfLayout.PerPass, definitions);
         rig.Scene.PassObserver = adapter;
         var traced = RendererPerfCommandList.Wrap(rig.Commands, recorder);
-        CheckFrame(0, .4f, .2f, cachedRow: 1);
-        CheckFrame(1, .4f, .4f, cachedRow: 0);
+        CheckFrame(0, reverseRequestOrder ? .2f : .4f, reverseRequestOrder ? .4f : .2f,
+            cachedRow: reverseRequestOrder ? 0 : 1);
+        CheckFrame(1, .4f, .4f, cachedRow: reverseRequestOrder ? 1 : 0);
 
         void CheckFrame(int frame, float first, float second, int cachedRow)
         {
@@ -42,7 +48,7 @@ public sealed class RendererPerfPointTraceTests
             Assert.Equal(1, rig.Scene.LastShadowPassDiagnostics.PointStaticRebuilds);
             var sample = recorder.Harvest(frame);
             Assert.Empty(sample.Errors);
-            Assert.Equal(definitions.Length, sample.Passes.Length);
+            Assert.Equal(definitions.Select(p => (p.Id, p.Occurrence)), sample.Passes.Select(p => (p.Id, p.Occurrence)));
             foreach (var definition in definitions.Where(p => p.Id.StartsWith("shadow.point.static", StringComparison.Ordinal)))
             {
                 int row = definition.Id is "shadow.point.static" or "shadow.point.static.setup"

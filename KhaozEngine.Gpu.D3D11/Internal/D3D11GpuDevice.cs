@@ -209,6 +209,19 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <inheritdoc/>
         public void Submit(IGpuCommandList cl, IGpuFence fence) => SubmitCore(cl, fence);
 
+        public void Submit(IGpuCommandList cl, ReadOnlySpan<IGpuFence> completions)
+        {
+            GpuCompletionFences.Validate(completions);
+            foreach (var completion in completions)
+            {
+                if (completion is not D3D11GpuFence fence)
+                    throw new ArgumentException("A completion fence belongs to another backend.", nameof(completions));
+                fence.RequireOwner(_fences, nameof(completions));
+                if (fence.Target != 0) throw new InvalidOperationException("Reset completion fences before submitting.");
+            }
+            SubmitCore(cl, null, completions);
+        }
+
         /// <summary>
         /// THE SUBMIT BOUNDARY: the driver's replay under the submit lock, the end-of-replay signal, the ring
         /// bracket, then decision G3's after-replay check and decision G4's debug-layer pump.
@@ -227,11 +240,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// is what bounds the volume either way.
         /// </para>
         /// </summary>
-        void SubmitCore(IGpuCommandList list, IGpuFence? fence)
+        void SubmitCore(IGpuCommandList list, IGpuFence? fence, ReadOnlySpan<IGpuFence> completions = default)
         {
             try
             {
-                D3D11CommandDrivers.Submit(_submitLock, list, ref _emitter, _fences, fence, _rings);
+                D3D11CommandDrivers.Submit(_submitLock, list, ref _emitter, _fences, fence, _rings, completions);
             }
             finally
             {

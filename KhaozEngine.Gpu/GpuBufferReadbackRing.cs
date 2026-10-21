@@ -23,7 +23,7 @@ namespace KhaozEngine.Gpu
     /// <see cref="TryRecord"/> and refused later by the device's read.
     /// </para>
     /// </summary>
-    public sealed class GpuBufferReadbackRing : IDisposable
+    public sealed class GpuBufferReadbackRing : IDisposable, IGpuFrameCompletionConsumer
     {
         readonly IGpuDevice _device;
         readonly uint _slotSizeInBytes;
@@ -144,6 +144,11 @@ namespace KhaozEngine.Gpu
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             ArgumentNullException.ThrowIfNull(completion);
+            Remove(completion);
+        }
+
+        void Remove(IGpuFence completion)
+        {
             int retained = 0;
             for (int i = 0; i < PendingCount; i++)
             {
@@ -155,11 +160,31 @@ namespace KhaozEngine.Gpu
             PendingCount = retained;
         }
 
-        /// <summary>Dispose only owned staging buffers, after all entries have been consumed or validly discarded.</summary>
-        /// <exception cref="InvalidOperationException">Entries remain pending, even if their fences have signalled.</exception>
+        /// <summary>Whether an entry retains this exact fence. A disposed ring retains no entries.</summary>
+        public bool HasPending(IGpuFence completion)
+        {
+            ArgumentNullException.ThrowIfNull(completion);
+            for (int i = 0; i < PendingCount; i++)
+                if (ReferenceEquals(_pending[i].Completion, completion)) return true;
+            return false;
+        }
+
+        /// <summary>Teardown only. The caller proves completion with a signal or host drain before releasing
+        /// these entries. This consumes submitted staging without treating it as an abandoned recording.</summary>
+        public void ReleaseCompleted(IGpuFence completion)
+        {
+            ArgumentNullException.ThrowIfNull(completion);
+            if (_disposed) return;
+            Remove(completion);
+        }
+
+        /// <summary>Dispose owned staging after all entries have completed or been validly discarded.</summary>
+        /// <exception cref="InvalidOperationException">Unsignaled entries remain pending.</exception>
         public void Dispose()
         {
             if (_disposed) return;
+            for (int i = PendingCount - 1; i >= 0; i--)
+                if (i < PendingCount && _pending[i].Completion.Signaled) Remove(_pending[i].Completion);
             if (PendingCount != 0)
                 throw new InvalidOperationException("Consume or discard every pending readback before disposing the ring.");
             _disposed = true;

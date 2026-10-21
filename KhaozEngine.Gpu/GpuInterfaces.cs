@@ -416,7 +416,6 @@ namespace KhaozEngine.Gpu
         /// <exception cref="NotSupportedException">Timestamp commands are not supported by this list.</exception>
         void EndTimestamps(IGpuTimestampPool pool)
             => throw new NotSupportedException("This GPU command list does not support timestamps.");
-
     }
 
     /// <summary>The GPU device: backend info, capabilities, the resource factory, the swapchain framebuffer,
@@ -424,7 +423,7 @@ namespace KhaozEngine.Gpu
     /// backend is hidden inside the impl. Disposing any resource created
     /// by this device AFTER the device itself is disposed is a safe no-op, since device destruction already
     /// freed all child objects (teardown-order stragglers cannot destroy against a dead device).</summary>
-    public interface IGpuDevice : IDisposable
+    public partial interface IGpuDevice : IDisposable
     {
         /// <summary>The active backend.</summary>
         GpuBackendKind Backend { get; }

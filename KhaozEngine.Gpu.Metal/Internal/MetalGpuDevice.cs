@@ -355,11 +355,23 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// a later fence transitively covers every earlier submission.</remarks>
         public void Submit(IGpuCommandList cl, IGpuFence fence) => SubmitCore(cl, fence);
 
+        public void Submit(IGpuCommandList cl, ReadOnlySpan<IGpuFence> completions)
+        {
+            GpuCompletionFences.Validate(completions);
+            foreach (var completion in completions)
+            {
+                var fence = RequireFence(completion, _timeline);
+                fence.RequireOwner(_timeline, nameof(completions));
+                if (fence.Target != 0) throw new InvalidOperationException("Reset completion fences before submitting.");
+            }
+            SubmitCore(cl, null, completions);
+        }
+
         // THE ROUTING IN ONE PLACE rather than at each of the two overloads, so the fenced and unfenced paths
         // cannot drift apart by an edit to one of them. That matters more here than it looks: the two differ by
         // exactly one line inside the submit lock, and a second copy of everything around it is how the two ended
         // up encoding their signal at different points on a sibling backend.
-        void SubmitCore(IGpuCommandList cl, IGpuFence? fence)
+        void SubmitCore(IGpuCommandList cl, IGpuFence? fence, ReadOnlySpan<IGpuFence> completions = default)
         {
             ArgumentNullException.ThrowIfNull(cl);
 
@@ -379,7 +391,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // rather than sealing over a nil one.
             IntPtr buffer = PrepareForCommit(list, _setup, alive: true);
 
-            SubmitOnMacOs(list, buffer, armed);
+            SubmitOnMacOs(list, buffer, armed, completions);
         }
 
         /// <summary>
@@ -429,7 +441,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void SubmitOnMacOs(MetalCommandList list, IntPtr buffer, MetalGpuFence? fence)
+        void SubmitOnMacOs(MetalCommandList list, IntPtr buffer, MetalGpuFence? fence,
+            ReadOnlySpan<IGpuFence> completions)
         {
             using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
 
@@ -447,6 +460,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
                 _timeline.RegisterSubmitted(value);
                 fence?.Arm(value);
+                foreach (var completion in completions) ((MetalGpuFence)completion).Arm(value);
 
                 // INSIDE THE LOCK, which is what this member's own doc has always said and what the ring's gate
                 // needs to be true. The value travels with it because two subsystems gate on exactly the value

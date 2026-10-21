@@ -42,7 +42,7 @@ namespace KhaozEngine.Tests.Gpu
                     c.ClipSpaceYInverted, c.DepthRangeZeroToOne, c.SupportedMsaaSampleCounts, c.DeviceName,
                     c.SamplerAnisotropy, c.SamplerLodBias, c.SupportsShadowMaps, c.SupportsCompute,
                     supportsCompletionFences: false) with
-                { MaxColorAttachments = c.MaxColorAttachments };
+                { MaxColorAttachments = c.MaxColorAttachments, SupportsTimestamps = c.SupportsTimestamps };
             }
         }
 
@@ -69,6 +69,12 @@ namespace KhaozEngine.Tests.Gpu
         {
             WaitForIdleCalls++;
             _inner.WaitForIdle();
+        }
+
+        public void Submit(IGpuCommandList cl, ReadOnlySpan<IGpuFence> completions)
+        {
+            if (!completions.IsEmpty) FencedSubmitCalls++;
+            _inner.Submit(cl, completions);
         }
 
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged

@@ -37,6 +37,7 @@ public sealed class MotionTargetCapabilityTests
 
         public void Submit(IGpuCommandList cl) => _inner.Submit(cl);
         public void Submit(IGpuCommandList cl, IGpuFence fence) => _inner.Submit(cl, fence);
+        public void Submit(IGpuCommandList cl, ReadOnlySpan<IGpuFence> completions) => _inner.Submit(cl, completions);
         public void WaitForIdle() => _inner.WaitForIdle();
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged
             => _inner.UpdateBuffer(b, offsetBytes, data);

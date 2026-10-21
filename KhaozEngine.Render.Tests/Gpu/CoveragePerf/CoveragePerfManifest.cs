@@ -62,6 +62,9 @@ internal sealed record CoveragePerfManifest
             "gpu-t4-windows", "gpu-hosted-bench", "windows-d3d11", 600, 30, GpuBlocks()),
         new("G3", GpuBackendKind.VulkanNative, CoveragePerfAdapterPolicy.NvidiaT4,
             "gpu-t4-windows", "gpu-hosted-bench", "windows-vulkan", 600, 30, GpuBlocks()),
+        // Probe-only cold compiler capture. No warm-up, frame or performance comparison is authorized.
+        new("S1", GpuBackendKind.VulkanNative, CoveragePerfAdapterPolicy.NvidiaT4,
+            "gpu-t4-linux", "gpu-hosted-bench", "linux-vulkan", 600, 30, []),
     ];
 
     CoveragePerfManifest() { }

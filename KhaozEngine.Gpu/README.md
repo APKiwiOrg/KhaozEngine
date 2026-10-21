@@ -598,6 +598,28 @@ there on `build` and on a rid-agnostic `publish`, no-op on Windows, macOS and `p
 because `Foundation` is not in this package's dependency closure, so a project that references this one and no
 umbrella would otherwise get nothing. One physical rule file, so the two copies cannot drift.
 
+## Optional compiler and memory diagnostics
+
+`IGpuPipelineDiagnostics.ReadCompilerReport()` and
+`IGpuResourceMemoryDiagnostics.ReadMemorySnapshot()` are optional cold interfaces. Query them outside
+measured frames. These contracts do not add members to `IGpuPipeline`, `IGpuComputePipeline` or
+`IGpuDevice`. The [Vulkan backend](../KhaozEngine.Gpu.Vulkan/README.md#optional-compiler-and-memory-diagnostics)
+implements both, with compiler capture enabled only on an explicitly requested diagnostic device.
+
+`GpuPipelineCompilerReport` identifies shader artifacts, pipeline state, compiler flags and diagnostic
+configuration by digest. Each executable retains vendor statistic names, descriptions and typed
+Boolean, Int64, UInt64 or Float64 values. `GpuDiagnosticMetric` carries a unit, source, status, reason
+and provenance. Unsupported or invalid values are null with a reason. Intermediate-code temporary
+slots cannot supply physical register or spill fields. Achieved occupancy requires runtime evidence.
+Execution width and maximum threadgroup sizes remain hardware limits. Normalized available fields use
+nonnegative integer `registers`, `bytes`, `threads` or `count` values. Achieved occupancy uses a Float64
+`ratio` between zero and one.
+
+`GpuResourceMemorySnapshot` keeps logical buffer/texture payload, staging/ring capacity, history,
+scratch and peak payload separate from committed backing allocations, residency and budget. Categories
+may overlap as documented by their source. Do not sum payload and backing heaps, call unavailable
+residency zero, or describe unified memory as dedicated VRAM.
+
 ## IGpuFencedReadback
 
 An optional device capability, tested with a type check on the device. The three native devices implement it.

@@ -17595,6 +17595,32 @@ needs a `SpriteBatch`. Like `UpdateOverlayView`, the widget never reads raw inpu
 
 ---
 
+## Optional GPU compiler and memory diagnostics
+
+The GPU seam defines optional cold diagnostics for pipelines and devices. The Vulkan backend implements
+both. Set `KE_VULKAN_PIPELINE_DIAGNOSTICS=1` before device creation to request executable compiler statistics
+on supported drivers. Read them outside frame timing and retain the configuration digests with the evidence.
+Keep the request unset on production timing devices. See the [Vulkan diagnostic configuration](../KhaozEngine.Gpu.Vulkan/README.md#optional-compiler-and-memory-diagnostics).
+
+```csharp
+if (pipeline is IGpuPipelineDiagnostics compiler)
+{
+    GpuPipelineCompilerReport report = compiler.ReadCompilerReport();
+    // Preserve each executable's raw typed statistics and independent support states.
+}
+if (device is IGpuResourceMemoryDiagnostics memory)
+{
+    GpuResourceMemorySnapshot snapshot = memory.ReadMemorySnapshot();
+    // Keep logical payload separate from committed, resident and budget bytes.
+}
+```
+
+Every `GpuDiagnosticMetric` retains its value, unit, source, support status, reason and provenance.
+Unsupported or invalid values are null with a reason. DXBC temporary slots are intermediate-code
+statistics, not physical registers. Execution width is a limit, not achieved occupancy. Unified memory
+and unsupported residency are not dedicated VRAM. See the [GPU package reference](../KhaozEngine.Gpu/README.md#optional-compiler-and-memory-diagnostics)
+for the accounting and typed-scalar contract.
+
 ## Per-pass frame timing (`Scene3D.EnableTiming` / `PassTimings`)
 
 Attributes a rendered frame's CPU cost to `Scene3D`'s passes (shadow depth, model/terrain, transparents/decals,

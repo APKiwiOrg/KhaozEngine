@@ -1,5 +1,10 @@
 # R3-lite withdrawal and outside-cost controls
 
+**Superseded.** The withdrawal below was reverted the same day. Its cost premise measured the mask's overhead
+without its benefit, and the T4 Direct3D 11 confidence difference did not depend on the mask. The plan's Task 7f
+2026-10-21 correction records the restoration and the final NVIDIA Direct3D 11 comparison rule. The
+outside-cost controls described here remain.
+
 The 2026-10-21 ruling withdraws the pass-one current-neighbour mask. T4 Direct3D 11 entry identity passed at
 v21.7.1 and 7f.2 (`f8c4c402f`), then failed after 7f.2. Production confidence differed from frozen D by up to
 32 half steps. The mask measured within 0.1 ms on all three decomposition legs, so it has no demonstrated

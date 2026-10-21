@@ -202,6 +202,8 @@ Local Metal correctness comes first. Then dispatch `cross-platform-gpu.yml` on t
 
 Identity must be exact for lock, confidence, marks, visibility bytes and release/reset decisions. Hardware and WARP colour remains exact. Main already allows a measured software-Vulkan colour exception in `TemporalEntryIdentityGpuTests`. Preserve only that pre-existing exception, without widening it or extending it to visibility or state. Report it explicitly rather than claiming all main colour comparisons are currently zero-tolerance.
 
+The frozen-D A/B of the cost cut compares production's history with D's byte for byte on every backend except hardware NVIDIA Direct3D 11. That driver compiles confidence arithmetic unrelated to the visibility check differently whenever the visibility code changes, even on frame 0 where the check does not run, while WARP running the same DXBC matches D bit for bit (T4 run `39519233674`). There stored locks, R8 and depth must equal D's, and colour and confidence differences are printed as counts and maximum half steps without being asserted. Entry identity on that device stays exact between production's fused and split entries and asserts no comparison with D. Orchestrator ruling of 2026-10-21 under the owner's delegation.
+
 ### Owner-accepted synthetic costs, 2026-10-19
 
 The owner accepted these three costs after the real-scene D clips. One focused MetalNative run on Apple M2 Max remeasured D. It had exactly the three expected failing facts and no other failure, with zero skips. Only the rows below change. Historical point-PCF tables, the other bilinear controls, all reference values, case inventories and tolerances remain unchanged.
@@ -276,7 +278,7 @@ The billed T4 `gpu-hosted-bench.yml` is a separate stop. After correctness and r
 
 The owner-approved T4 bench is recorded in [benchmark-result.md](../../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/benchmark-result.md). Against `v21.7.1` the head adds 3.9 to 4.8 ms on Direct3D 11 and 2.1 to 2.9 ms on Windows and Linux Vulkan to resolve and sharpen at a 2560x1440 display, about twice that at 3456x2234. The growth is all in the split's second pass and follows the display size. Pass one, the outline cost and the `Off` drift control stay within noise. The fixtures run with shadows off, so PCF and a real shadow signal are not in these numbers.
 
-On 2026-10-20 the owner ruled to optimize before merging, with a budget of at most 0.5 ms resolve growth over `v21.7.1` at 1440p on every T4 backend. Phase 1 of the cost cut is exact: every output pixel and every observable visibility decision stays bit-identical to D, proved against a frozen copy of D's text. Any approximation is a separate owner look. The work and its oracles are plan Task 7f. A further billed bench needs fresh owner approval.
+On 2026-10-20 the owner ruled to optimize before merging, with a budget of at most 0.5 ms resolve growth over `v21.7.1` at 1440p on every T4 backend. Phase 1 of the cost cut is exact: every output pixel and every observable visibility decision stays bit-identical to D, proved against a frozen copy of D's text. The one exception is hardware NVIDIA Direct3D 11, where colour and confidence against D are reported rather than asserted, as section 8 records. Any approximation is a separate owner look. The work and its oracles are plan Task 7f. A further billed bench needs fresh owner approval.
 
 ## 10. Amendment, version and handoff
 

@@ -64,23 +64,15 @@ public sealed partial class Scene3D
         var handles = topology.MaterialRanges.Select(range => meshes[Array.FindIndex(uploaded,
             m => m.Coverage!.MaterialSlice == range.MaterialSlice)]).ToArray();
         foreach (var handle in handles) _coveragePaletteBounds.TryAdd((handle.Index, handle.Generation), gpu.Host.Bounds);
-        var indices = new KhaozEngine.Gpu.IGpuBuffer[handles.Length];
         try
         {
-            for (int i = 0; i < indices.Length; i++)
-            {
-                CoverageRefinedMaterialRange range = topology.MaterialRanges[i];
-                uint[] slice = topology.Indices.Slice(range.FirstIndex, range.IndexCount).ToArray();
-                for (int j = 0; j < slice.Length; j++) slice[j] -= (uint)range.FirstVertex;
-                indices[i] = CreateIndexBuffer(slice, KhaozEngine.Gpu.GpuIndexFormat.UInt32);
-            }
             var conformer = new SkinnedHostConformer(this, handles, topology,
-                (Matrix4x4[])uploaded[0].InverseBind.Clone(), indices, gpu);
+                (Matrix4x4[])uploaded[0].InverseBind.Clone(), gpu);
             _coverageArena.Preparations.EnsureCapacity(_coverageConformers.Count + 1);
             _coverageConformers.Add(conformer);
             return conformer;
         }
-        catch { foreach (var buffer in indices) buffer?.Dispose(); _coverageGpu.Release(gpu); throw; }
+        catch { _coverageGpu.Release(gpu); throw; }
     }
 
     static bool SameSkeleton(Skeleton? a, Skeleton b) => a is not null
@@ -91,7 +83,6 @@ public sealed partial class Scene3D
     {
         if (_coverageDisposed) return;
         _coverageGpu?.Release(conformer.Gpu);
-        foreach (var buffer in conformer.Indices) _retired.Retire(buffer);
         _coverageConformers.Remove(conformer);
     }
 
@@ -102,11 +93,7 @@ public sealed partial class Scene3D
         _coverageTransition?.Dispose();
         _coverageMotion.Reset();
         _coverageDisposed = true;
-        foreach (var conformer in _coverageConformers)
-        {
-            conformer.Disposed = true;
-            foreach (var buffer in conformer.Indices) buffer.Dispose();
-        }
+        foreach (var conformer in _coverageConformers) conformer.Disposed = true;
         _coverageConformers.Clear();
         _coverageUploads.Clear(); _coverageHostUploads.Clear(); _coveragePaletteBounds.Clear();
     }

@@ -22,15 +22,6 @@ public sealed partial class Scene3D
         var mesh = _skinnedMeshes[p.Owner.Meshes[slice].Index]!;
         return (mesh.Vb, mesh.Ib);
     }
-    internal bool IsCoverageIndexBufferForTests(SkinnedCoverageFrame frame, KhaozEngine.Gpu.IGpuBuffer? buffer)
-    {
-        var p = RequireCoverage(frame);
-        foreach (var index in p.Owner.Indices) if (ReferenceEquals(index, buffer)) return true;
-        for (int c = 0; c < p.CommandCount; c++)
-            foreach (var draw in p.Equipment[c].Draws)
-                if (_meshes[draw.Mesh.Index] is { } mesh && ReferenceEquals(mesh.Ib, buffer)) return true;
-        return false;
-    }
     /// <summary>Returns the owned staging or resolved presentation result. Foreign and stale tokens throw.</summary>
     public CoverageFrameOutcome GetCoverageOutcome(SkinnedCoverageFrame frame) => RequireCoverage(frame).Outcome;
 

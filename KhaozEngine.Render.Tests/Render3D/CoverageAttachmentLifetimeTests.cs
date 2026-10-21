@@ -274,6 +274,7 @@ internal sealed class CoverageAttachmentFixture : IDisposable
 {
     readonly CoverageSceneFixture render = new(seams: true);
     internal Scene3D Scene => render.Scene;
+    internal CoverageCaptureDevice Capture => render.Capture;
     internal FakeGpuResourceFactory Factory => render.Factory;
     internal AttachmentTestSource Source { get; } = new();
     internal CoverageAttachmentScene Adapter { get; }
@@ -370,6 +371,7 @@ internal sealed class CoverageAttachmentFixture : IDisposable
     }
     internal void Render(bool prepare = true) => render.Render(prepare: prepare);
     internal void RenderUncaptured(IGpuCommandList commands) => render.RenderUncaptured(commands);
+    internal void RecordUncaptured(IGpuCommandList commands, GpuFrameSubmission submission) => render.RecordUncaptured(commands, submission);
     internal RecordingGpuCommandList Record => render.Record;
     internal void DrainRetired()
     {

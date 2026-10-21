@@ -177,7 +177,11 @@ public sealed partial class CoverageAllocationTests(ITestOutputHelper output)
         var upload = Assert.Single(f.Record.Uploads, u => ReferenceEquals(u.Buffer, batch.FrameData));
         var words = MemoryMarshal.Cast<byte, uint>(upload.Data).Slice((int)p.GpuReservation.FrameBase + 16, p.Palette.Length * 16);
         Assert.Equal(MemoryMarshal.Cast<Matrix4x4, uint>(p.Palette).ToArray(), words.ToArray());
-        Assert.DoesNotContain(f.Record.IndexedDraws, d => p.Owner.Indices.Contains(d.IndexBuffer));
+        for (int slice = 0; slice < p.Owner.Meshes.Length; slice++)
+        {
+            var indices = f.Scene.CoverageFallbackSliceForTests(frame, slice).Indices;
+            Assert.DoesNotContain(f.Record.IndexedDraws, d => ReferenceEquals(indices, d.IndexBuffer));
+        }
     }
 
     static void AssertPassInstances(CoverageAttachmentFixture f, SkinnedCoverageFrame frame, ulong own, ulong other)

@@ -2,7 +2,6 @@ using System;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -10,7 +9,7 @@ using Microsoft.CodeAnalysis.Operations;
 
 namespace KhaozEngine.Tests.Gpu;
 
-/// <summary>Narrow source proofs for offsets that are validated at runtime or converted from uint words.</summary>
+/// <summary>Narrow source proofs for offsets that are validated at runtime.</summary>
 internal static class CopyBufferAlignmentProof
 {
     static readonly MetadataReference[] References = new[]
@@ -23,18 +22,7 @@ internal static class CopyBufferAlignmentProof
         => CSharpCompilation.Create("KhaozEngine.Render.Tests", [tree], References,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: true));
 
-    internal static bool Accepts(string expression, string source, int copyIndex, string helper)
-    {
-        if (Regex.IsMatch(expression, @"^CoverageGpuLayout\.Bytes\([^;]+\)$")
-            && BalancedArgument(expression))
-            return !helper.Contains('#', StringComparison.Ordinal)
-                && Regex.Matches(helper, @"\b[A-Za-z_][\w<>?,.\[\]]*\s+Bytes\s*(?:<[^<>]*>)?\s*\(").Count == 1
-                && Regex.Matches(helper, @"\buint\s+Bytes\s*\(\s*uint\s+words\s*\)\s*=>\s*"
-                + @"checked\s*\(\s*words\s*\*\s*sizeof\s*\(\s*uint\s*\)\s*\)\s*;").Count == 1;
-        return RuntimeValidationProves(expression, source, copyIndex);
-    }
-
-    static bool RuntimeValidationProves(string expression, string source, int copyIndex)
+    internal static bool Accepts(string expression, string source, int copyIndex)
     {
         SyntaxTree tree = CSharpSyntaxTree.ParseText(source);
         InvocationExpressionSyntax? copy = tree.GetRoot().DescendantNodes().OfType<InvocationExpressionSyntax>()
@@ -126,20 +114,4 @@ internal static class CopyBufferAlignmentProof
         };
     }
 
-    static bool BalancedArgument(string expression)
-    {
-        int open = expression.IndexOf('(', StringComparison.Ordinal);
-        return Depth(expression[(open + 1)..^1], '(', ')') == 0;
-    }
-
-    static int Depth(string text, char open = '{', char close = '}')
-    {
-        int depth = 0;
-        foreach (char c in text)
-        {
-            if (c == open) depth++;
-            else if (c == close && --depth < 0) return -1;
-        }
-        return depth;
-    }
 }

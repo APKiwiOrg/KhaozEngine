@@ -271,7 +271,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   prepares in `AppWindow.Run`'s `onPrepare` callback, then calls `Render3DSurface.Render` inside `onFrame`.
   `GameApp3D` already follows this order. The surface's repeated preparation is a no-op. Nested preview capture
   refuses at `Render3DPreview.Capture` before changing scene or submission state. Direct ocean-producer calls
-  retain their own named recording refusal. Other calls that refuse mid-frame
+  retain their own named recording refusal. The FFT ocean keeps its priming submission and wait, while dependent
+  storage-buffer dispatches can share one list without a drain. The pre-record phase remains after the incumbent
+  removal ([#690](https://github.com/APKiwiOrg/KhaozEngine/issues/690)). Other calls that refuse mid-frame
   are a mipped `LoadTexture`, `LoadSplatMaterial`, `LoadTileGroundMaterial`, `DebugReadShadowMap`,
   `DebugReadSplatAlbedoMip`,
   `Render3DPreview.Capture`, `Render3DPreview.ReadbackRgba`, and `Scene3D.Begin` on a device with GPU completion

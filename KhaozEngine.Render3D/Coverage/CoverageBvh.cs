@@ -91,8 +91,12 @@ internal struct CoverageBox
 
     internal static CoverageBox Empty => new()
     {
-        MinX = double.PositiveInfinity, MinY = double.PositiveInfinity, MinZ = double.PositiveInfinity,
-        MaxX = double.NegativeInfinity, MaxY = double.NegativeInfinity, MaxZ = double.NegativeInfinity,
+        MinX = double.PositiveInfinity,
+        MinY = double.PositiveInfinity,
+        MinZ = double.PositiveInfinity,
+        MaxX = double.NegativeInfinity,
+        MaxY = double.NegativeInfinity,
+        MaxZ = double.NegativeInfinity,
     };
 
     internal void Add(in CoverageVector p)

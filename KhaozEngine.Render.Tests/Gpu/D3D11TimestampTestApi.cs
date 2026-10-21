@@ -45,8 +45,6 @@ namespace KhaozEngine.Tests.Gpu
         internal int UnsupportedType = -1;
         internal int Failure;
         internal bool Record = true;
-        internal Action<object>? OnEnd;
-        internal Action? OnEmitterEnd;
         internal ulong Frequency = 10_000_000;
         internal bool Disjoint = false;
         public object CreateQuery(int type)

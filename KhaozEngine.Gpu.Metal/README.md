@@ -300,6 +300,11 @@ blocked inside the native call keeps blocking until its current slice expires.
 
 ## GPU timestamps
 
+`Submit(commands, ReadOnlySpan<IGpuFence> completions)` submits the list once and signals every validated
+same-device fence at one completion point. Null, duplicate, disposed, foreign or still-armed fences are
+refused. Keep each fence alive and unreset until its associated consumers release it. The shared host owner
+combines retained diagnostic and caller-owned capture fences through this overload.
+
 A failed command-list `End` abandons the recording and releases its retained command buffer without
 committing it. The list is neither recording nor sealed, Submit and another End refuse it, and the
 next Begin takes a fresh buffer. The original exception and stack are preserved. Secondary descriptor,

@@ -46,7 +46,10 @@ namespace KhaozEngine.Tests.Gpu
                 {
                     MaxColorAttachments = c.MaxColorAttachments,
                     SupportsShaderFloatControls = c.SupportsShaderFloatControls,
-                    SupportsTimestamps = c.SupportsTimestamps
+                    SupportsTimestamps = c.SupportsTimestamps,
+                    PciVendorId = c.PciVendorId,
+                    PciDeviceId = c.PciDeviceId,
+                    DriverVersion = c.DriverVersion
                 };
             }
         }

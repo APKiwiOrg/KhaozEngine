@@ -21,6 +21,13 @@ internal static class WorldMapStyleValidation
         Require(float.IsFinite(style.Water.DeepDepthMetres) && style.Water.DeepDepthMetres > 0f,
             "Water.DeepDepthMetres", "must be finite and positive");
         Require(style.Water.ShorelinePixels >= 0, "Water.ShorelinePixels", "must be non-negative");
+        if (style.Contours is { } contours)
+        {
+            Require(float.IsFinite(contours.IntervalMetres) && contours.IntervalMetres > 0f,
+                "Contours.IntervalMetres", "must be finite and positive");
+            Require(float.IsFinite(contours.WidthPixels) && contours.WidthPixels > 0f,
+                "Contours.WidthPixels", "must be finite and positive");
+        }
         Require(NonNegative(style.WallWidthMetres), nameof(style.WallWidthMetres), "must be finite and non-negative");
         Require(NonNegative(style.OutlinePixels), nameof(style.OutlinePixels), "must be finite and non-negative");
         Require(float.IsFinite(style.BuildingShadowOffsetMetres.X) && float.IsFinite(style.BuildingShadowOffsetMetres.Y),

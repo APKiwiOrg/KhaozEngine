@@ -196,7 +196,10 @@ public sealed class CoverageCostPairTests
             if (r.Manifest!.Coverage) now += publicationMilliseconds;
         }, session: m => new CoverageCostFakeSession
         {
-            Coverage = m.Coverage, Synthetic = false, AllCovered = true, OnFrame = _ => now += 4_200,
+            Coverage = m.Coverage,
+            Synthetic = false,
+            AllCovered = true,
+            OnFrame = _ => now += 4_200,
         });
     }
 

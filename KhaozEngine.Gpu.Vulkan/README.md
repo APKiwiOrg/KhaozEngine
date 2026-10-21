@@ -292,6 +292,11 @@ contract.
 
 ## GPU timestamp query pools
 
+`Submit(commands, ReadOnlySpan<IGpuFence> completions)` submits the list once and signals every validated
+same-device fence at one completion point. Null, duplicate, disposed, foreign or still-armed fences are
+refused. Keep each fence alive and unreset until its associated consumers release it. The shared host owner
+combines retained diagnostic and caller-owned capture fences through this overload.
+
 `SupportsTimestamps` requires the selected graphics queue family's `timestampValidBits` to be nonzero and
 `limits.timestampPeriod` to be finite and positive. There is no software timestamp fallback. Each wrapper
 owns one fixed `VK_QUERY_TYPE_TIMESTAMP` pool and preallocated private scratch, including the native

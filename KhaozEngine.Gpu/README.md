@@ -375,7 +375,8 @@ What it owns today:
   is a caller error. The ring never resets or disposes a fence. It implements `IGpuFrameCompletionConsumer`.
   `HasPending` tests exact fence ownership. Teardown `ReleaseCompleted` consumes submitted entries after the
   caller proves completion by signal or host drain. `Dispose` consumes signaled entries, refuses while
-  unsignaled entries remain, and frees only owned staging buffers. Equipment coverage copies one aggregate actor-result payload per frame,
+  unsignaled entries remain, and frees only owned staging buffers. Keep a shared frame fence alive until every
+  associated consumer has released it. Equipment coverage copies one aggregate actor-result payload per frame,
   tagged with the frame ID, with actor IDs and offsets in the payload. Optional surface verification may share
   that stable frame fence. Submit once with it, and never reset, resubmit or dispose it until every associated
   ring has consumed its entries or discarded an unsubmitted list. A full ring skips diagnostics for that frame
@@ -393,6 +394,10 @@ What it owns today:
   submitted work into an abandoned copy. Failed consumer cleanup or queries quarantine the slot before external
   callbacks can escape, and cleanup still reaches other consumers. `Dispose` abandons unsubmitted recording, drains once at host teardown,
   releases retained consumers and disposes owned fences. Dispose it before the command list and device.
+  `Submit(commands, completions)` combines caller fences with the retained frame fence in that one submission.
+  `IGpuDevice.Submit(commands, ReadOnlySpan<IGpuFence>)` validates nulls and duplicates. Native backends signal
+  every fence at one completion point. Legacy device implementations forward zero or one fence and refuse
+  several with `NotSupportedException`.
   Once teardown starts, new recordings are refused. A failed teardown can be retried without exposing retained
   fences. On devices without completion fences, retention returns false and participant submission remains available.
 - **GPU timestamps** - gate on `GpuCapabilities.SupportsTimestamps`, default false. Native Vulkan probes

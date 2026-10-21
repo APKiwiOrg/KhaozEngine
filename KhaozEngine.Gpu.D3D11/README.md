@@ -632,6 +632,11 @@ the work handed over, and `IGpuFence.Signaled` stays as cheap as the seam's cont
 
 ## Timestamp batches
 
+`Submit(commands, ReadOnlySpan<IGpuFence> completions)` submits the list once and signals every validated
+same-device fence at one completion point. Null, duplicate, disposed, foreign or still-armed fences are
+refused. Keep each fence alive and unreset until its associated consumers release it. The shared host owner
+combines retained diagnostic and caller-owned capture fences through this overload.
+
 A failed command-list `End` abandons the recording. It remains neither recording nor sealed, so
 Submit and another End refuse it. Deferred ops, resource references and payloads are dropped without
 replay. The next Begin resets the selected driver for a fresh recording. Immediate commands already

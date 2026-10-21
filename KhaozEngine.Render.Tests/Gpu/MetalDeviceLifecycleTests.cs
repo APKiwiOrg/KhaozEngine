@@ -240,6 +240,7 @@ namespace KhaozEngine.Tests.Gpu
                 nameof(device.SyncToVerticalBlank));
             Drive(() => device.ResizeSwapchain(640u, 480u), nameof(device.ResizeSwapchain));
             Drive(() => device.Present(), nameof(device.Present));
+            Drive(device.WaitForIdle, nameof(device.WaitForIdle));
 
             // THE THREE UpdateBuffer OVERLOADS, spelled so each one really is a different overload: an array, an
             // explicit span, and a single value by readonly reference.
@@ -269,7 +270,7 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.Equal(0x7f, readback[0]);
             }, nameof(device.TryReadBuffer));
 
-            // AND THE SECOND Submit OVERLOAD, on a real recording, because the fence arm is where the timeline
+            // THE SINGLE-FENCE Submit OVERLOAD, on a real recording, because the fence arm is where the timeline
             // signal is encoded and a device that could submit but not arm a fence would pass a list-only call.
             list.Begin();
             list.End();

@@ -37,7 +37,7 @@ Windowing + input foundation for the custom MonoGame-free stack.
   The loop begins it before preparation, records every scene and diagnostic copy into `Frame.Commands`, and
   submits that list once before Present. Exceptions abandon unsubmitted recording. Completion consumers share
   one retained fence, and submission participants receive their decision even when diagnostic capacity is full.
-  Window teardown disposes the owner before the command list and device. Ordinary frames never drain for outcomes.
+  Window teardown disposes the owner before the command list and device. Ordinary completion polling never drains.
 - **The frame's pre-record phase.** `Run(onFrame, onPrepare)` is the same loop with a second
   callback, invoked each frame after the frame's `Dt` / input / size are latched and **before** the frame's command
   list is opened. `Run(onFrame)` is exactly `Run(onFrame, null)`, so nothing changes for a host that does not want

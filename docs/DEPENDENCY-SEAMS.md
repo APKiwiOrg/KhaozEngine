@@ -981,6 +981,10 @@ Its only edge is the foundation leaf, so a headless tool can produce imagery wit
 The TileWorld adapter adds document reads without pulling in rendering. The Gui arm adds `WorldMapView`
 over the existing UI stack, with frame-thread texture uploads and game-supplied icons, text and fonts.
 
+`KhaozEngine.WorldMap.Gui.Tests` references only `KhaozEngine.WorldMap.Gui` and
+`KhaozEngine.Gpu.TestKit`. The test kit gates opt-in native offscreen capture tests. This test-only
+edge leaves the production package graph above unchanged, and the test project remains non-packable.
+
 All three are opt-in and outside every umbrella. The core is optional for consumers without maps, the
 adapter is optional for worlds using another format, and the view is optional for headless consumers or
 games with another presentation. No third-party package is added. `ArchitectureTests.WorldMap.cs` pins the

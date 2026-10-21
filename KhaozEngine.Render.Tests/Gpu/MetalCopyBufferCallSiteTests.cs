@@ -308,7 +308,8 @@ namespace KhaozEngine.Tests.Gpu
 
                 string helper = all.Single(file => file.Path.Replace('\\', '/').EndsWith(
                     "/KhaozEngine.Render3D/Coverage/Gpu/CoverageGpuLayout.cs", StringComparison.Ordinal)).Text;
-                if (IsAlignedLiteral(argument) || CopyBufferAlignmentProof.Accepts(argument, text, index, helper)) continue;
+                if (IsAlignedLiteral(argument) || CopyBufferAlignmentProof.Accepts(argument, text, index)
+                    || CoverageGpuCopyAlignmentProof.Accepts(argument, helper)) continue;
 
                 if (!Regex.IsMatch(argument, @"^[A-Za-z_]\w*$"))
                 {

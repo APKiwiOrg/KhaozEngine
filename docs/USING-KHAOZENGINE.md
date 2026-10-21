@@ -603,6 +603,10 @@ and prepare, then records in `onFrame`. The original nested-recording failure an
 in [#423](https://github.com/APKiwiOrg/KhaozEngine/issues/423) and
 [#429](https://github.com/APKiwiOrg/KhaozEngine/issues/429).
 
+Existing producers such as the FFT ocean retain their own submission schedule. Dependent storage-buffer
+dispatches can now share one list without a drain. That guarantee does not move existing producers into
+the host list or remove the preparation boundary.
+
 **What belongs where.** `onPrepare` is for update-side work and for filling the frame's queues, which is what
 puts a producer's own command list before the frame's. Do **not** record into `Frame.Commands` there: the list is
 not open yet, and on a render-suppressed (minimized) frame it is never opened at all. Draws belong in `onFrame`.
@@ -2049,6 +2053,8 @@ The world map packages are opt-in and outside every umbrella. A TileWorld client
 `KhaozEngine.TileWorld.WorldMap` and `KhaozEngine.WorldMap.Gui` explicitly, which bring
 `KhaozEngine.WorldMap` transitively. Headless tools can reference the core alone and call
 `WorldMapRasterizer.Rasterize(source, style, chunk)` for a `WorldMapChunkImage` without a GPU.
+Cache-built images carry a one-pixel `Border` of neighbouring map pixels. Read their pixels through
+`ByteOffset(column, row)` and treat `TextureSize`, not `Size`, as the stored edge length.
 
 Map positions are metres with x east and y north. `MapRect` has a south-west origin and half-open bounds.
 Use the source's `ToMap` and `ToMapHeading` for live world poses. Headings are radians clockwise from north,
@@ -2061,10 +2067,45 @@ Null keeps the authored dimensions and existing raster bytes. Raster queries and
 the largest visible drawn half diagonal at every chunk level. Coarse filtering still uses the authored
 footprint to preserve source-side materialization limits. Icon anchors and hover bounds are unchanged.
 
+Set `WorldMapSymbol.Geometry` to replace its default rectangle or ellipse with a normalized polygon
+and independent detail segments:
+
+```csharp
+var geometry = new WorldMapSymbolGeometry(
+    new Vector2[] { new(-1f, -1f), new(1f, -1f), new(0.5f, 1f), new(-0.5f, 1f) },
+    new WorldMapSymbolStroke[] { new(new(-0.5f, 0f), new(0.5f, 0f)) });
+var customSymbol = new WorldMapSymbol(WorldMapSymbolKind.Obstacle, Color.White, Color.Black)
+{
+    Geometry = geometry,
+    SizeMetres = new Vector2(4f, 2f)
+};
+```
+
+`WorldMapSymbolGeometry(IEnumerable<Vector2> outline, IEnumerable<WorldMapSymbolStroke>? strokes = null)`
+snapshots inputs and exposes read-only `Outline` and `Strokes`. Coordinates must be finite in `[-1, 1]`
+on each local axis. Supply at least three vertices enclosing a nonzero area, with no repeated closing
+endpoint, self-crossing, touching or overlapping edges. Concavity and either winding are supported.
+Construction rejects invalid geometry with `ArgumentException`. Existing footprint dimensions,
+optional `SizeMetres`, rotation, wall sizing, collection and invalidation rules still apply.
+`Fill` paints the silhouette. `OutlinePixels` controls its inset `Outline` boundary and centred
+round-capped detail segments in raster pixels, independent of non-square scaling or pyramid level.
+Details blend over polygon fill. Overlapping boundary and detail ink contributes once.
+Detail segments may extend outside a concave fill,
+are clipped to the footprint box and are excluded from building shadows. Transparent fills leave
+terrain visible. Null geometry preserves existing bytes, feature anchors and hover targets.
+
 Keep the `TileWorldDocument` and `TileWorldCatalogs` unchanged while a `TileWorldMapSource` is in use. Its
 `Revision` stays zero and it never raises `Changed`. After edits or loaded-region changes, stop and dispose
 the old map pipeline and create a new source, cache, worker and view. `surfacePlane` selects terrain, objects
 and markers, while roofs on all planes are included.
+
+The optional `groundPalette` constructor argument maps material ids to map-only `Color` values.
+The adapter snapshots it at construction, applies it after underlay and overlay selection, and falls
+back to catalog colours for missing entries. It leaves terrain heights, water roles and catalogs intact.
+`WorldMapStyle.Contours` enables dry-ground lines at multiples of `IntervalMetres` in actual height
+metres. `WidthPixels` stays fixed in raster pixels across pyramid levels, and colour alpha blends over
+relief before footprint symbols. Water, void and flat interval plateaus are excluded. The sampling and
+cache invalidation margins include the bounded contour neighbourhood. Null options preserve existing bytes.
 
 This example borrows the game's loaded document, catalogs, `Render2DSurface`, icon textures and `SpriteFont`.
 `resolveLocalizedMarkerName` is a game-supplied `Func<string, string?>` that maps an authored marker name to
@@ -2073,6 +2114,7 @@ localized text and returns null for an unknown name. Tags and icon keys are game
 game's UI pass, and call `CloseMap` when closing the map.
 
 ```csharp
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
@@ -2081,9 +2123,11 @@ using KhaozEngine.Windowing;
 using KhaozEngine.WorldMap;
 using KhaozEngine.WorldMap.Gui;
 
-var source = new TileWorldMapSource(document, catalogs, surfacePlane: 0);
+var mapPalette = new Dictionary<ushort, Color> { [1] = Color.FromHex("#b8b8b8") };
+var source = new TileWorldMapSource(document, catalogs, surfacePlane: 0, groundPalette: mapPalette);
 var style = new WorldMapStyle
 {
+    Contours = new WorldMapContours(5f, Color.Black, WidthPixels: 0.75f),
     SymbolRules = new[]
     {
         new WorldMapSymbolRule(
@@ -2150,17 +2194,27 @@ thread. `CurrentLevel` reports the level chosen by the last usable update. It is
 `WorldMapChunking.MaxLevel` with `EffectivePixelsPerMetre / 2^level >= PixelsPerMetre`, or zero at native
 raster zoom and above. Only visible chunks of that level are requested, prioritized by distance to the view
 centre. Their uploads take the budget first. Ready coarser ancestors can use the remaining budget without
-additional requests. Missing chunks sample the matching UV sub-rectangle of the nearest uploaded coarser
-ancestor, or use `PlaceholderColor` if none exists. Stale textures remain visible until their replacements
+additional requests. Missing chunks sample the matching interior sub-rectangle of the nearest uploaded
+coarser ancestor, or use `PlaceholderColor` if none exists. Every draw samples only a texture's interior, so
+linear filtering at chunk edges reads the gutter's neighbouring map pixels. Stale textures remain visible until their replacements
 upload. Overlay anchors come only from visible built chunks of `CurrentLevel`. `Update` blocks the viewport
 through `Pointer.BlockRegion`.
 
 `MaxTextures` defaults to 192 and values below one throw `ArgumentOutOfRangeException`. After uploads and
 draw-list construction, `Update` disposes the least recently drawn textures that are absent from this
 frame's draws until the cap is met. Fallback textures count as drawn. Active draws stay protected and can
-temporarily exceed a smaller cap. The default retained chunk payload is 48 MiB per view for 192 textures
-of 256 by 256 RGBA pixels, excluding GPU overhead and temporary active-draw excess. Changing the cap takes
-effect on the next usable `Update`, with all texture disposal on the frame thread.
+temporarily exceed a smaller cap. The default retained chunk payload is about 49 MiB per view for 192
+textures of 258 by 258 RGBA pixels, gutters included, excluding GPU overhead and temporary active-draw excess. Changing the cap takes
+effect on the next usable `Update`, with all surface-owned texture disposal on the frame thread.
+
+For standard offscreen capture, construct `WorldMapView(cache, context)` inside
+`Render2DSnapshot.Capture` or `CaptureToPng`, where `context` is the supplied `Render2DContext`.
+It uses the same update and draw path. The capture owns uploaded textures and the white pixel until
+submission has finished, so eviction and view disposal only release the view's references in this mode.
+`MaxTextures` still bounds the retained view entries, but the context keeps every texture created during
+that capture until teardown. Keep capture work bounded and prepare the required cache chunks before the
+draw. Do not dispose context-created fonts or icon textures inside the callback. The package README has
+the complete offscreen example.
 
 `Viewport`, the pointer and the open batch must use the same coordinates. The example uses UI pixels. A
 design-space host instead opens its own batch with `Begin(IDesignViewport)` and passes a pointer and bounds
@@ -2175,7 +2229,7 @@ screen size, merge by key and radius, and declutter by priority. Labels require 
 maximum. `Hovered` returns the accepted icon or label for a game-resolved tooltip. Live markers draw last,
 skip decluttering and hover, and can be removed with `RemoveMarker(id)`.
 
-Create, update, draw and dispose views on the surface's frame thread. A cache and worker may serve several
+Create, update, draw and dispose surface views on the surface's frame thread. A cache and worker may serve several
 views, each with its own uploaded textures. Dispose all views first, then stop the worker, then dispose the
 cache before releasing its source data. Icon and marker textures, the label font and the surface remain
 caller-owned. A custom `IWorldMapSource` must allow concurrent reads, increment `Revision` and raise `Changed`
@@ -3963,6 +4017,10 @@ cl.Begin();
   changes. Calling the parameterless method twice for one prepared frame is harmless. The sized overload can
   refresh coverage resources before recording after a display or temporal sizing change. Queue every draw
   before preparation so producers observe the complete frame demand.
+
+  The FFT ocean retains its own priming list. Dependent buffer dispatches can share one list without a
+  drain, while opening a separate list still resets the Direct3D11 immediate context (#423). The water
+  producer refuses draws queued after preparation.
 
   **On a windowed host the effective call is the earlier one.** `Render3DSurface.Render` runs inside the frame's
   command list, so its `PrepareFrame` call only accepts an already prepared frame. Queue and prepare the scene in
@@ -8722,7 +8780,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.9.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.11.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -9147,7 +9205,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.9.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.11.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9946,7 +10004,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.9.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.11.0" />
 ```
 
 ```csharp
@@ -17949,7 +18007,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.9.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.11.0" />
 ```
 
 ```csharp
@@ -17985,7 +18043,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.9.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.11.0" />
 ```
 
 ```csharp
@@ -18229,7 +18287,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.9.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.11.0" />
 ```
 
 ```csharp
@@ -22601,7 +22659,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.9.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.11.0" />
 </ItemGroup>
 ```
 
@@ -23102,7 +23160,7 @@ using var outcomes = new GpuBufferReadbackRing(gd, slotCount: 3, slotSizeInBytes
 byte[] outcomeBytes = new byte[resultCapacityBytes];
 
 // After dispatching in the caller's open frame list:
-bool recorded = outcomes.TryRecord(cl, actorResults, 0, resultBytes, frameId, frameFence);
+bool recorded = outcomes.TryRecord(cl, resultBuffer, 0, resultBytes, frameId, frameFence);
 cl.End();
 gd.Submit(cl, frameFence);                       // the caller submits the frame once
 
@@ -23113,11 +23171,12 @@ if (outcomes.TryRead(outcomeBytes, out ulong completedFrameId, out uint sizeInBy
 }
 ```
 
-Equipment coverage (Part C) records one aggregate actor-result copy per frame. The tag is the frame ID, and
-actor IDs and offsets are fields in that copied payload. Optional surface verification can share the same
-stable frame fence. The caller submits once with that fence and cannot reset, resubmit or dispose it until
-every associated ring has consumed its entries, or discarded them if the list was never submitted. If the
-ring is full, skip diagnostics for that frame, keep rendering and preserve the dispatched outcome. On Direct3D
+Several diagnostic consumers can share the same stable frame fence. Equipment coverage (Part C) records
+one aggregate actor-result copy per frame. The tag is the frame ID, and actor IDs and offsets are fields in
+that copied payload. Optional surface verification can share the fence. The caller submits once with it and
+cannot reset, resubmit or dispose it until every associated ring has consumed its entries, or discarded them
+if the list was never submitted. If the ring is full, skip diagnostics for that frame, keep rendering and
+preserve the dispatched outcome and drawing decisions. On Direct3D
 11, a `TryReadBuffer` or timestamp `TryResolve` poll completes only after a `Present` or drain, because
 `Submit` does not flush. Both polls remain non-flushing. A headless correctness test drains once. The ring
 does not introduce a flush policy for headless consumers.
@@ -23144,7 +23203,7 @@ Teardown-only `ReleaseCompleted(completion)` consumes submitted entries after th
 with a signal or a successful host drain. `Dispose` releases signaled entries and throws `InvalidOperationException`
 while unsignaled entries remain. It disposes only owned staging buffers after every entry is released.
 
-### Shared frame submission and coverage outcomes
+### Shared frame submission
 
 `GpuFrameSubmission(device, retainedFrames: 3, consumerCapacity: 8)` precreates its fixed fence and registration
 storage. Call `Begin` before recording and register completion consumers with `TryRetain`. Successful retention
@@ -23168,7 +23227,18 @@ Dispose the owner before its command list and device. Consumer-first disposal mu
 unsignaled staging alive until a completion poll or owner teardown releases it. There is no ordinary-frame wait,
 flush or extra frame submission. `GpuRetireQueue` retains its separate existing retirement fence.
 
-The window exposes its owner as `Frame.Submission`. `Render3DSurface`, `Render3DPreview` and snapshot hosts record
+The window exposes its owner as `Frame.Submission`. The loop calls `Begin` before `onPrepare`, records the
+initial clear, `onFrame` and capture taps in one list, then submits once. Participants receive `Submitted`
+before capture `AfterSubmit` and `Present`. A suppressed frame or failure before submission calls `Abandon`.
+A failure after successful submission does not turn the decision into `Abandoned`.
+
+Use `Submit(commands, ReadOnlySpan<IGpuFence> completions)` when caller-owned capture fences must share
+that submission. The owner combines those fences with its retained frame fence, and all native backends
+signal them at the same completion point. Null or duplicate fences are refused. Keep each caller fence
+alive and unreset until its own consumers release it. Older device implementations inherit a default span
+overload that forwards zero or one fence and throws `NotSupportedException` for several fences.
+
+`Render3DSurface`, `Render3DPreview` and snapshot hosts record
 one aggregate coverage result copy per scene with that owner. The stable scene participant registers before
 result-count and capability checks, including views without a GPU result copy. Preview and snapshot teardown share the owner's
 drain with scene cleanup. Public `Scene3D.Dispose` retains its general scene teardown safety boundary. Existing

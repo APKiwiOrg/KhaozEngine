@@ -134,7 +134,10 @@ internal static class CoverageGeometryOracle
         }
         return new(unmatched, cracks, protectedChanges, folds, intersections, violations, minClearance, recession, equipmentIntersections, minDistance)
         {
-            BreakthroughArea = breakthrough, CoreMovedArea = coreMoved, OpenBoundaryEdges = open, MinimumCoreClearance = minCore,
+            BreakthroughArea = breakthrough,
+            CoreMovedArea = coreMoved,
+            OpenBoundaryEdges = open,
+            MinimumCoreClearance = minCore,
         };
     }
 

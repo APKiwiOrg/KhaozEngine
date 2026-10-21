@@ -10,8 +10,6 @@ namespace KhaozEngine.Tests.Gpu;
 
 public sealed class CopyBufferAlignmentProofTests
 {
-    const string Helper = "internal static uint Bytes(uint words) => checked(words * sizeof(uint));";
-
     [Fact]
     public void Runtime_validation_proves_an_unchanged_offset_in_the_same_method()
         => Assert.True(Proves("GpuCopyAlignment.RequireAlignedOffset(offset, nameof(offset), \"copy\", \"source\");"));
@@ -147,7 +145,7 @@ public sealed class CopyBufferAlignmentProofTests
         SyntaxTree tree = CSharpSyntaxTree.ParseText(source);
         Assert.Contains(CopyBufferAlignmentProof.CreateCompilation(tree).GetDiagnostics(), diagnostic => diagnostic.Id == "CS0103");
         Assert.False(CopyBufferAlignmentProof.Accepts("offset", source,
-            source.IndexOf("commands.CopyBuffer", StringComparison.Ordinal), Helper));
+            source.IndexOf("commands.CopyBuffer", StringComparison.Ordinal)));
     }
 
     [Theory]
@@ -195,21 +193,6 @@ public sealed class CopyBufferAlignmentProofTests
         Assert.False(ProvesSource("offset", source));
     }
 
-    [Fact]
-    public void Checked_word_to_byte_conversion_proves_alignment()
-        => Assert.True(CopyBufferAlignmentProof.Accepts("CoverageGpuLayout.Bytes(reservation.CurrentBase)", "", 0, Helper));
-
-    [Theory]
-    [InlineData("CoverageGpuLayout.Bytes(words) + 1", Helper)]
-    [InlineData("OtherLayout.Bytes(words)", Helper)]
-    [InlineData("CoverageGpuLayout.Bytes(words)", "internal static uint Bytes(uint words) => words * sizeof(uint);")]
-    [InlineData("CoverageGpuLayout.Bytes(words)", "internal static uint Bytes(uint words) => checked(words * 2);")]
-    [InlineData("CoverageGpuLayout.Bytes(words)", "internal static uint Bytes(uint words) => checked(words * sizeof(uint) + 1);")]
-    [InlineData("CoverageGpuLayout.Bytes(words)", Helper + " internal static uint Bytes(long words) => 1;")]
-    [InlineData("CoverageGpuLayout.Bytes(words)", "#if DEBUG\n" + Helper + "\n#endif")]
-    public void Unproven_word_expressions_and_helper_drift_are_refused(string expression, string helper)
-        => Assert.False(CopyBufferAlignmentProof.Accepts(expression, "", 0, helper));
-
     static string BoundSource(string methods)
         => "class Commands { public void CopyBuffer(object source, uint offset, object target, uint destination, uint count) { } "
             + "public void CopyBuffer(object source, int offset, object target, uint destination, uint count) { } "
@@ -239,7 +222,7 @@ public sealed class CopyBufferAlignmentProofTests
     {
         BoundModel(source);
         return CopyBufferAlignmentProof.Accepts(expression, source,
-            source.IndexOf("commands.CopyBuffer", StringComparison.Ordinal), Helper);
+            source.IndexOf("commands.CopyBuffer", StringComparison.Ordinal));
     }
 
     static bool Proves(string prefix)

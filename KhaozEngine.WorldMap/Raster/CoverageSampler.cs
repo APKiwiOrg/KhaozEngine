@@ -3,7 +3,7 @@ using System.Numerics;
 
 namespace KhaozEngine.WorldMap.Raster;
 
-/// <summary>Samples oriented rectangle and ellipse coverage with a fixed four by four pixel pattern.</summary>
+/// <summary>Samples oriented default or custom geometry with a fixed four by four pixel pattern.</summary>
 internal sealed class CoverageSampler
 {
     const int SamplesPerAxis = 4;
@@ -12,6 +12,7 @@ internal sealed class CoverageSampler
     readonly float _cos;
     readonly float _sin;
     readonly bool _ellipse;
+    readonly SymbolGeometrySampler? _geometry;
 
     internal CoverageSampler(WorldMapFootprint footprint, WorldMapSymbol symbol, float wallWidth, Vector2 offset)
     {
@@ -19,7 +20,8 @@ internal sealed class CoverageSampler
         _halfExtents = WorldMapSymbolSizing.HalfExtents(footprint, symbol, wallWidth);
         _cos = MathF.Cos(footprint.Rotation);
         _sin = MathF.Sin(footprint.Rotation);
-        _ellipse = symbol.Kind is WorldMapSymbolKind.Tree or WorldMapSymbolKind.Obstacle;
+        _geometry = symbol.Geometry is { } geometry ? new SymbolGeometrySampler(geometry, _halfExtents) : null;
+        _ellipse = _geometry is null && symbol.Kind is WorldMapSymbolKind.Tree or WorldMapSymbolKind.Obstacle;
         Vector2 extent = _ellipse
             ? new Vector2(MathF.Sqrt(Square(_cos * _halfExtents.X) + Square(_sin * _halfExtents.Y)),
                 MathF.Sqrt(Square(_sin * _halfExtents.X) + Square(_cos * _halfExtents.Y)))
@@ -30,10 +32,10 @@ internal sealed class CoverageSampler
 
     internal MapRect Bounds { get; }
 
-    internal (float Full, float Fill) Sample(RasterCanvas canvas, int column, int row, float inset)
+    internal (float Full, float Fill, float FillUnderDetail) Sample(RasterCanvas canvas, int column, int row, float inset)
     {
         Vector2 inner = _halfExtents - new Vector2(inset);
-        int full = 0, fill = 0;
+        int full = 0, fill = 0, fillUnderDetail = 0;
         for (int y = 0; y < SamplesPerAxis; y++)
             for (int x = 0; x < SamplesPerAxis; x++)
             {
@@ -41,12 +43,20 @@ internal sealed class CoverageSampler
                     row + (y + 0.5f) / SamplesPerAxis - 0.5f) - _center;
                 // The inverse of a clockwise map rotation returns the point to the local axes.
                 var local = new Vector2(_cos * delta.X - _sin * delta.Y, _sin * delta.X + _cos * delta.Y);
+                if (_geometry is not null)
+                {
+                    (bool covered, bool interior, bool underDetail) = _geometry.Sample(local, inset);
+                    if (covered) full++;
+                    if (interior) fill++;
+                    if (underDetail) fillUnderDetail++;
+                    continue;
+                }
                 if (!Contains(local, _halfExtents)) continue;
                 full++;
                 if (Contains(local, inner)) fill++;
             }
         const float sampleCount = SamplesPerAxis * SamplesPerAxis;
-        return (full / sampleCount, fill / sampleCount);
+        return (full / sampleCount, fill / sampleCount, fillUnderDetail / sampleCount);
     }
 
     bool Contains(Vector2 local, Vector2 halfExtents)

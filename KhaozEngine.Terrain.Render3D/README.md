@@ -259,6 +259,13 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   Casting cascade shadows follow motion. Point-light shadows use the authored rest pose and lazily
   allocate a caster-only proxy stream, 128 GPU bytes per casting instance when needed.
   `scene.ReleaseGroundCover(batch)` retires retained data when that source is no longer needed.
+- `PropRenderer.DrawNative` accepts `NativePropInstance` matrices with exact `RenderAnchor`s and every
+  `NativePropLod` part. Caller distances select N tiers through the same boundary and complementary dissolve
+  kernels as the released prop overloads. Empty distances preserve base-only rendering.
+  `NativePropClusterRequest` carries the same inventory to the internal CPU builder. The MapDoc adapter must
+  validate routing and effective roof exclusion first. `ApplyNative` retains only publication metadata and an
+  externally owned accepted mesh. Native typed recording consumes the shared HLOD coverage kernel.
+  Native handles are never uploaded or freed by this owner. Legacy `Apply` retains its existing ownership.
 - **`PropClusterRenderer`** - the shared runtime owner for terrain and TileWorld prop clusters.
   `BuildCpu(PropClusterBuildRequest)` accepts detached placements, a stable `PropClusterKey`, a content
   generation, a cluster area and its `PropLayer`. It performs the pure `PropHlod` merge on a worker with no GPU
@@ -269,7 +276,7 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   merged handle while adopting the failed request's current individual placements and layer. A successful
   replacement uploads first and retires the old handle after the new generation is accepted. `MergeStats` reports
   cumulative builds, uploads, bytes and malformed corners. `Unload` is idempotent,
-  and `Dispose` frees every retained handle exactly once. `Scene3DChunkSink` delegates this ownership while keeping
+  and `Dispose` frees every legacy-owned handle exactly once. `Scene3DChunkSink` delegates this ownership while keeping
   terrain, physics, water and chunk orchestration itself, so existing `PropLayer.WithHlod` callers need no format
   or game-code migration.
   A filter that hides part of a merged HLOD cluster suppresses the merged mesh and submits only the visible

@@ -23,7 +23,7 @@ namespace KhaozEngine.Terrain
     }
 
     /// <summary>Owns CPU HLOD builds, retained GPU handles, generation replacement, and prop cluster drawing.</summary>
-    public sealed class PropClusterRenderer : IDisposable
+    public sealed partial class PropClusterRenderer : IDisposable
     {
         const int MaxBuildAttempts = 3;
 
@@ -276,26 +276,7 @@ namespace KhaozEngine.Terrain
             float dx = centerX - focus.X;
             float dz = centerZ - focus.Z;
             float distance = MathF.Sqrt(dx * dx + dz * dz);
-            if (distance >= cluster.Layer.DrawRadius)
-                return new PropClusterDrawState(false, 0f, false, 0f, false,
-                    cluster.PresentationGeneration, cluster.Generation);
-
-            float t = PropHlod.CrossfadeAt(distance, cluster.Layer.HlodDistance,
-                cluster.Layer.HlodCrossfadeWidth);
-            bool individuals = PropHlod.DrawsHlodProps(t);
-            float exitStart = MathF.Max(0f, cluster.Layer.DrawRadius - cluster.Layer.FadeBandWidth);
-            bool exiting = cluster.Layer.FadeBandWidth > 0f && distance >= exitStart;
-            if (exiting)
-            {
-                float exitWidth = cluster.Layer.DrawRadius - exitStart;
-                float dissolve = exitWidth <= 0f ? 0f
-                    : Math.Clamp((distance - exitStart) / exitWidth, 0f, 1f);
-                return new PropClusterDrawState(individuals, t, true, dissolve, false,
-                    cluster.PresentationGeneration, cluster.Generation);
-            }
-            bool merged = PropHlod.DrawsHlodMerged(t);
-            return new PropClusterDrawState(individuals, t, merged, 1f - t, true,
-                cluster.PresentationGeneration, cluster.Generation);
+            return ResolveCoverage(distance, cluster.Layer, cluster.PresentationGeneration, cluster.Generation);
         }
 
         internal long GenerationOf(PropClusterKey key)
@@ -317,6 +298,7 @@ namespace KhaozEngine.Terrain
                 foreach (Cluster cluster in _clusters.Values)
                     if (cluster.Handle is { } handle) _backend.UnloadMesh(handle);
                 _clusters.Clear();
+                _native.Clear();
                 _latestGenerations.Clear();
                 _epochs.Clear();
                 _retired.Clear();
@@ -391,14 +373,8 @@ namespace KhaozEngine.Terrain
                         lodCrossfadeWidth: layer.LodCrossfadeWidth, cutInsideInteriors: layer.CutsInsideInteriors);
             }
 
-            public void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve, bool invertShadowDissolve)
-            {
-                if (dissolve > 0f || !layer.CastsShadows)
-                    _scene.Draw(handle, Matrix4x4.Identity, Color.White, Material.None, dissolve, 0f, default,
-                        layer.CastsShadows, invertShadowDissolve);
-                else
-                    _scene.Draw(handle, Matrix4x4.Identity, Color.White);
-            }
+            public void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve, bool invertShadowDissolve) =>
+                _scene.Draw(MergedDraw(handle, layer, dissolve, invertShadowDissolve));
         }
 
         sealed class CpuOnlyBackend : IPropClusterRenderBackend

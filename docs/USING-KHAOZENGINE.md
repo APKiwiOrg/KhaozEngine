@@ -4379,6 +4379,12 @@ an integer world anchor. The renderer retains it through grouping, shadows and p
 the render origin in binary64 before one binary32 rounding. Do not first add the anchor as a float translation.
 CPU culling keeps an approximate absolute matrix. `WorldToScreen` and `ScreenToRay` remain absolute.
 
+`AddLightAnchored(localPosition, anchor, colour, radius, intensity, shadow)` retains a native point light's
+local position through receiver buffers, cluster classification and point-shadow binding. Exclusion box corners
+in `shadow` use the same anchor-local space. Absolute light overloads preserve their existing contract.
+The optional MapDoc.Render3D package records every effective emitter and all placement mesh tiers through its
+[typed native composition contract](../KhaozEngine.MapDoc.Render3D/README.md).
+
 ```csharp
 scene.Begin();                       // latches this frame's origin
 scene.Draw(tower, Matrix4x4.CreateTranslation(100_000f, 0f, 100_000f));   // still absolute, as always

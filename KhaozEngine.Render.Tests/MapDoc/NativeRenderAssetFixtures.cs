@@ -14,7 +14,7 @@ using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Tests.MapDoc;
 
-internal static class NativeRenderAssetFixtures
+internal static partial class NativeRenderAssetFixtures
 {
     internal static readonly int[] ModelIndices = [0, 1, 0, 1];
     internal static readonly int[] ExpandedRows = [0, 2, 0, 2, 1, 3];

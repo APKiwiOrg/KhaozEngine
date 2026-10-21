@@ -265,8 +265,8 @@ internal sealed class PointLightClusterBuilder
                 PlaneSetsBuilt++;
             }
             int light = survivors[entry];
-            Vector4 posRadius = lights[light].PosRadius;
-            var center = new Vector3(posRadius.X, posRadius.Y, posRadius.Z) - renderOrigin;
+            Vector4 posRadius = lights[light].RelativePosRadius(renderOrigin);
+            var center = new Vector3(posRadius.X, posRadius.Y, posRadius.Z);
             float radius = posRadius.W;
             float epsilon = GeometryEpsilonScale * MathF.Max(1f,
                 MathF.Max(clusterScale, MathF.Max(MaxAbs(center), radius)));

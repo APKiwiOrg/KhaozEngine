@@ -150,6 +150,7 @@ namespace KhaozEngine.Render3D
                 if (request.Slot < 0 || request.Mode != LightShadowMode.Static) continue;
                 long signature = PointCasterSignature(request.Position, request.Radius, request.NearRadius,
                     request.ExclusionMin, request.ExclusionMax);
+                signature = AnchoredLightSignature(signature, request.LightIndex);
                 // A changed signature can only ADD dirt. A freshly acquired row is already dirty, so a stale
                 // signature left behind by the row's previous owner cannot accidentally report it clean.
                 if (_pointCasterSignatures[request.Slot] != signature) cache.MarkDirty(request.Slot);

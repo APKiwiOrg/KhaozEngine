@@ -170,10 +170,13 @@ namespace KhaozEngine.Render3D
         {
             if (_pointShadows is not { } renderer || targetAtlas is not { } atlas) return;
 
-            Vector3 lightRender = ToRender(lightPosAbsolute);
-            bool boxed = IsExclusionBox(exclusionMin, exclusionMax);
-            Vector3 exclusionMinRender = boxed ? ToRender(exclusionMin) : EmptyExclusionMin;
-            Vector3 exclusionMaxRender = boxed ? ToRender(exclusionMax) : EmptyExclusionMax;
+            ModelRenderer.PointLightData? anchoredLight = requestIndex >= 0 && _lights[_pointRequests[requestIndex].LightIndex].Anchor.HasValue
+                ? _lights[_pointRequests[requestIndex].LightIndex] : null;
+            Vector3 lightRender = anchoredLight is { } light ? AnchoredLightPosition(light, _frameOrigin) : ToRender(lightPosAbsolute);
+            var localShadow = anchoredLight?.RelativeShadow(_frameOrigin);
+            bool boxed = localShadow?.HasExclusionBox ?? IsExclusionBox(exclusionMin, exclusionMax);
+            Vector3 exclusionMinRender = boxed ? localShadow?.ExclusionMin ?? ToRender(exclusionMin) : EmptyExclusionMin;
+            Vector3 exclusionMaxRender = boxed ? localShadow?.ExclusionMax ?? ToRender(exclusionMax) : EmptyExclusionMax;
             // The dissolve noise cell is floored at a few atlas texels for the cascade pass's reason: below that a
             // dither stops resolving. A face texel is widest at the far plane, where it spans 2 * radius / res, so
             // the cascade helper answers this pass correctly with the light radius in the cascade radius's place.

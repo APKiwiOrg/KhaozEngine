@@ -17,6 +17,11 @@ namespace KhaozEngine.Render3D.Internal
     /// array or a load placed behind a per-texel acceptance. Every program is a constant, so the text it writes is
     /// committed as <see cref="ShaderSources.TemporalVisibilityReleasesGlsl"/>, and a device-free test holds the two
     /// equal.</para>
+    /// <para>R3-lite, the current mask: which of the 3x3 lie on the centre's surface, and whether the centre's own
+    /// depth is finite, is <c>temporalVisibilityCurrentMask</c> over the same 3x3 in D's order and arithmetic
+    /// (<see cref="ShaderSources.TemporalVisibilityMaskGlsl"/>). The split's first pass stores it per internal texel and
+    /// the fused entry computes it inline, so the fast path reads no current depth or motion, only the nine current
+    /// visibilities.</para>
     /// <para>R4, the range skip: the history mean is a non-negative weighting of the accepted block values, so it
     /// lies in the block's range, widened by the rounding of 36 fused terms and a division, well under
     /// <c>2^-13</c>. Where the current mean lies within <c>0.1 - 2^-13</c> of both ends, D's change cannot exceed
@@ -26,10 +31,9 @@ namespace KhaozEngine.Render3D.Internal
     /// </summary>
     internal static class TemporalVisibilityFastPath
     {
-        /// <summary>The texel fetches the fast path issues a pixel when it reads the whole block: the centre's motion
-        /// and depth, eight neighbours' motion and depth, nine current visibilities, sixteen previous visibilities and
-        /// sixteen stored depths.</summary>
-        internal const int Fetches = 2 + 8 * 2 + 9 + 16 + 16;
+        /// <summary>The texel fetches the fast path issues a pixel when it reads the whole block: nine current
+        /// visibilities, sixteen previous visibilities and sixteen stored depths.</summary>
+        internal const int Fetches = 9 + 16 + 16;
 
         /// <summary>
         /// THE BINADE RULE, as the generated text tests it per column (row) of the block: whether column
@@ -81,9 +85,10 @@ const float VisibilityRangeSkipMargin = VisibilityReleaseThreshold - 1.220703125
 bool temporalVisibilityPowerOfTwo(int at) { return at > 0 && (at & (at - 1)) == 0; }
 
 // D's decision. Where the nine footprints form one 4x4 block inside the texture, the block is read once and every
-// acceptance, weight and sum follows D's order and arithmetic. Anywhere else D's function runs as it shipped.
+// acceptance, weight and sum follows D's order and arithmetic, with the current acceptances from currentMask, the
+// centre's temporalVisibilityCurrentMask. Anywhere else D's function runs as it shipped.
 bool temporalVisibilityReleases(vec2 uv, ivec2 centre, ivec2 last, vec2 previousUv, float expectedDepth,
-    out float signedChange, out uint path) {
+    uint currentMask, out float signedChange, out uint path) {
     signedChange = 0.0;
     // D's position chain is componentwise, so the diagonal neighbour (k, k) carries column k's x and row k's y.
 ");
@@ -115,32 +120,21 @@ bool temporalVisibilityReleases(vec2 uv, ivec2 centre, ivec2 last, vec2 previous
     }
     path = VisibilityFastPath;
 
-    // Every current input and the block's previous visibility, read before any decision.
-    float centreDepth = temporalViewDepth(texelFetch(sampler2D(MotionTex, LinearClamp), centre, 0).rg,
-        texelFetch(sampler2D(SceneDepth, LinearClamp), centre, 0).r);
+    // The nine current visibilities and the block's previous visibility, read before any decision.
 ");
-            for (int n = 0; n < 9; n++)
-            {
-                if (n == 4) continue;
-                g.Append($"    float depth{n} = temporalViewDepth(texelFetch(sampler2D(MotionTex, LinearClamp), {Texel(n)}, 0).rg,\n");
-                g.Append($"        texelFetch(sampler2D(SceneDepth, LinearClamp), {Texel(n)}, 0).r);\n");
-            }
-            g.Append("    float depth4 = centreDepth;\n");
             for (int n = 0; n < 9; n++)
                 g.Append($"    float current{n} = texelFetch(sampler2D(KeyShadowVisibility, LinearClamp), {Texel(n)}, 0).r;\n");
             g.Append("    ivec2 block = base1 - 1;\n");
             for (int b = 0; b < 16; b++)
                 g.Append($"    float previous{Block(b)} = texelFetch(sampler2D(PreviousKeyShadowVisibility, LinearClamp), "
                     + $"block + ivec2({b % 4}, {b / 4}), 0).r;\n");
-            Verbatim(@"    if (!temporalVisibilityFiniteDepth(centreDepth) || !temporalVisibilityFiniteDepth(expectedDepth)) return false;
-    float currentTolerance = VisibilityDepthTolerance * max(centreDepth, 1.0e-5);
+            Verbatim(@"    if ((currentMask & VisibilityCentreFinite) == 0u || !temporalVisibilityFiniteDepth(expectedDepth)) return false;
     float previousTolerance = VisibilityDepthTolerance * max(expectedDepth, 1.0e-5);
 
-    // D's current rejection, texel by texel, then its sum and count in D's order.
+    // D's current rejection of each texel, from the mask, then its sum and count in D's order.
 ");
             for (int n = 0; n < 9; n++)
-                g.Append($"    bool accepted{n} = temporalVisibilityFiniteDepth(depth{n}) "
-                    + $"&& abs(depth{n} - centreDepth) <= currentTolerance;\n");
+                g.Append($"    bool accepted{n} = (currentMask & {Bit(n)}u) != 0u;\n");
             g.Append("    float currentSum = 0.0;\n    float currentCount = 0.0;\n");
             for (int n = 0; n < 9; n++)
                 g.Append($"    if (accepted{n}) {{ currentSum += current{n}; currentCount += 1.0; }}\n");
@@ -198,6 +192,9 @@ bool temporalVisibilityReleases(vec2 uv, ivec2 centre, ivec2 last, vec2 previous
         }
 
         static string Offset(int offset) => offset.ToString(CultureInfo.InvariantCulture);
+
+        // Step n's bit of the current mask, temporalVisibilityCurrentBit's 1u << n.
+        static string Bit(int n) => (1u << n).ToString(CultureInfo.InvariantCulture);
 
         // Neighbour n of the 3x3 in D's order, rows first: column n % 3 takes chain (n % 3)'s x, row n / 3 chain
         // (n / 3)'s y.

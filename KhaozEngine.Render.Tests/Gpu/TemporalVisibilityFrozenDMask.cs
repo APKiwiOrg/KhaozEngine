@@ -11,7 +11,7 @@ namespace KhaozEngine.Tests.Gpu;
 /// first pass and the fused entry's 3x3 loop, carried in the surface struct and stored in the surface target's fourth
 /// channel, so D's surface struct and prepare signature, its store and read-back, the first pass's 3x3 loop and the
 /// fused entry are held here. <see cref="TemporalVisibilityFrozenD.ToD"/> restores them through <see cref="Restore"/>
-/// so every program the D rig compiles is the program D shipped, which
+/// and drops the mask functions, so every program the D rig compiles is the program D shipped, which
 /// <see cref="ProgramSha256"/> pins. Never edit the texts or their pins. Each piece is found between a first and a
 /// last anchor that D and production share, which may move with production.
 /// </summary>
@@ -149,19 +149,20 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
         (nameof(ShaderSources.TemporalDepthStoreFrag), "9a6ae3c990f3c3982aa036c679fecd7a078aae2316b8c61f86f5149d7a75969e"),
     ];
 
-    /// <summary>Every frozen surface and entry piece restored. After R3-lite withdrawal production already carries
-    /// these pieces. Their pins still protect the full D program against later changes. A program with none comes
-    /// back unchanged. Missing or repeated surface pieces, or both entries, throw.</summary>
+    /// <summary>A program with its current mask functions removed and every frozen piece it carries restored. A
+    /// program with none of them, such as the depth store, comes back unchanged. One with the mask functions but not
+    /// every surface piece once, or with a piece twice, or with both entries, throws.</summary>
     internal static string Restore(string program)
     {
+        int masks = Count(program, ShaderSources.TemporalVisibilityMaskGlsl);
         int[] surfaces = SurfaceHunks.Select(h => Count(program, h.FirstLine)).ToArray();
         int passOne = Count(program, PassOne.FirstLine), fused = Count(program, FusedEntry.FirstLine);
-        if (surfaces.All(n => n == 0) && passOne == 0 && fused == 0) return program;
-        if (surfaces.Any(n => n != 1) || passOne + fused > 1)
-            throw new InvalidOperationException($"the D surface restore found surface pieces "
-                + $"[{string.Join(", ", surfaces)}], {passOne} first passes and {fused} fused entries; "
+        if (masks == 0 && surfaces.All(n => n == 0) && passOne == 0 && fused == 0) return program;
+        if (masks != 1 || surfaces.Any(n => n != 1) || passOne + fused > 1)
+            throw new InvalidOperationException($"the D mask restore found {masks} mask blocks, surface pieces "
+                + $"[{string.Join(", ", surfaces)}], {passOne} first passes and {fused} fused entries; one mask block, "
                 + "each surface piece once and at most one entry expected");
-        string d = program;
+        string d = program.Replace(ShaderSources.TemporalVisibilityMaskGlsl, "", StringComparison.Ordinal);
         foreach (Hunk hunk in SurfaceHunks) d = Replace(d, hunk);
         if (passOne == 1) d = Replace(d, PassOne);
         if (fused == 1) d = Replace(d, FusedEntry);

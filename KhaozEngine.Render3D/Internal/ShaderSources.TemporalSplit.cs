@@ -19,11 +19,12 @@ namespace KhaozEngine.Render3D.Internal
     /// <para><b>EXACT BY CONSTRUCTION.</b> Every value the first pass stores is held exactly: the colours and the
     /// reactive difference in half floats, which both entry points round them to in integer steps
     /// (<c>temporalHalf</c>, since packHalf2x16 rounded three ways on NVIDIA Vulkan), the expected depth and the edge
-    /// motion in single floats, the motion in the half float the motion target itself holds, and the flags as a whole
-    /// number below 256. Alpha is read from the scene colour, whatever its format. So both entry points apply every
-    /// rule to the same values. <c>TemporalEntryIdentityGpuTests</c> compares the two histories bit for bit after every
-    /// frame of a follow walk. The gate requires exact colour and state on every backend, including NVIDIA
-    /// Direct3D 11. The separate frozen-D A/B rule does not relax entry identity.</para>
+    /// motion in single floats, the motion in the half float the motion target itself holds, and the flags and the
+    /// visibility mask as whole numbers below 256 and 1024. Alpha is read from the scene colour, whatever its format.
+    /// So both entry points apply every rule to the same values. <c>TemporalEntryIdentityGpuTests</c> compares the two
+    /// histories bit for bit after every frame of a follow walk, and passes on Metal, on a Tesla T4 on Direct3D 11 and
+    /// Vulkan, and on WARP. On a software Vulkan device (llvmpipe) only the state is identical, the colour within a
+    /// measured bound.</para>
     /// </summary>
     internal static partial class ShaderSources
     {
@@ -36,7 +37,8 @@ layout(set=0, binding=3) uniform texture2D MotionTex;
 layout(set=0, binding=4) uniform sampler LinearClamp;
 // The members are TemporalResolveUniforms.GlslMembers, documented on the struct's fields.
 layout(set=0, binding=5) uniform Resolve {" + TemporalResolveUniforms.GlslMembers + @"};
-" + TemporalCommonGlsl + TemporalResolveTuningGlsl + TemporalNarrowCurrentGlsl + TemporalPrepareGlsl + @"
+" + TemporalCommonGlsl + TemporalResolveTuningGlsl + TemporalNarrowCurrentGlsl + TemporalVisibilityMaskGlsl
+            + TemporalPrepareGlsl + @"
 layout(location=0) in vec2 vUv;
 layout(location=0) out vec4 oPrepared;
 layout(location=1) out vec4 oSurface;
@@ -52,16 +54,22 @@ void main() {
         texelFetch(sampler2D(OpaqueColor, LinearClamp), texel, 0).rgb);
     float closestDepth = 2.0 * BackgroundLinearDepth;
     ivec2 closestTexel = texel;
+    // The texel's own view depth, which the depth store's value is, and the reference of the visibility mask that
+    // each step of the 3x3 adds its bit to.
+    float viewDepth = temporalViewDepth(texelFetch(sampler2D(MotionTex, LinearClamp), texel, 0).rg,
+        texelFetch(sampler2D(SceneDepth, LinearClamp), texel, 0).r);
+    uint visibilityAccepted = 0u;
     for (int y = -1; y <= 1; y++) {
         for (int x = -1; x <= 1; x++) {
             ivec2 at = temporalNeighbourTexel(texel, x, y, maxTexel);
-            temporalDilate(at, temporalViewDepth(texelFetch(sampler2D(MotionTex, LinearClamp), at, 0).rg,
-                texelFetch(sampler2D(SceneDepth, LinearClamp), at, 0).r), closestDepth, closestTexel);
+            float depth = temporalViewDepth(texelFetch(sampler2D(MotionTex, LinearClamp), at, 0).rg,
+                texelFetch(sampler2D(SceneDepth, LinearClamp), at, 0).r);
+            temporalDilate(at, depth, closestDepth, closestTexel);
+            visibilityAccepted |= temporalVisibilityCurrentBit(depth, viewDepth, (y + 1) * 3 + (x + 1));
         }
     }
-    TemporalSurface surface = temporalPrepareSurface(texel, closestTexel, closestDepth, maxTexel);
-    float viewDepth = temporalViewDepth(texelFetch(sampler2D(MotionTex, LinearClamp), texel, 0).rg,
-        texelFetch(sampler2D(SceneDepth, LinearClamp), texel, 0).r);
+    TemporalSurface surface = temporalPrepareSurface(texel, closestTexel, closestDepth, maxTexel,
+        temporalVisibilityCurrentMask(visibilityAccepted, viewDepth));
     oPrepared = temporalPrepared(ycc, reactiveDifference);
     oSurface = temporalStoreSurface(surface);
     oExpected = vec4(surface.expectedDepth, 0.0, 0.0, 1.0);
@@ -91,8 +99,8 @@ layout(set=0, binding=11) uniform Resolve {" + TemporalResolveUniforms.GlslMembe
 layout(set=0, binding=12) uniform texture2D KeyShadowVisibility;
 layout(set=0, binding=13) uniform texture2D PreviousKeyShadowVisibility;
 layout(set=0, binding=14) uniform VisibilityHistory {" + KhaozEngine.Render3D.Rendering.TemporalVisibilityUniforms.GlslMembers + @"};
-" + TemporalCommonGlsl + TemporalResolveTuningGlsl + TemporalVisibilityGlsl + TemporalNarrowBothGlsl + TemporalPrepareGlsl
-            + TemporalAccumulateGlsl + @"
+" + TemporalCommonGlsl + TemporalResolveTuningGlsl + TemporalVisibilityMaskGlsl + TemporalVisibilityGlsl
+            + TemporalNarrowBothGlsl + TemporalPrepareGlsl + TemporalAccumulateGlsl + @"
 // The split's per-pixel resolve: its 3x3 gathered from the first pass's targets (temporalGather), its centre texel's
 // surface read back (temporalStoredSurface), and the accumulation (temporalAccumulatePixel).
 TemporalPixel temporalSplitPixel(ivec2 displayPixel) {

@@ -22,7 +22,7 @@ namespace KhaozEngine.Tests.Gpu
     /// must write production's locks and the same path words less the slow path's reasons. The mutant must differ,
     /// which shows the hook reaches the compiled program and the frames exercise the release. The exported paths must
     /// reach minimum counts of fast-path and range-skip pixels, so the identity is shown on the production program's
-    /// own fast path and skip. This is the one proof that covers the lock gate (R1), the current-side acceptance and
+    /// own fast path and skip. This is the one proof that covers the lock gate (R1), the pass-one mask (R3-lite) and
     /// the range skip (R4) at the call site together.
     /// <para>Two frame sets run. Random frames carry random colour with isolated ridges, two surfaces, random motion
     /// with background texels, moving R8 edges and random stored locks, a third of them exactly zero. Threshold frames
@@ -33,8 +33,8 @@ namespace KhaozEngine.Tests.Gpu
     /// tile centre at the release threshold.</para>
     /// <para>Tolerance-edge tiles (review 7f r2, I-1) put one neighbour of the tile centre at the NDC depth of the
     /// centre's view depth times one plus or minus 0.02, moved up to three float steps either way
-    /// (<see cref="TemporalVisibilityDepthInputs.ToleranceEdge"/>, the shared tolerance texels), so whether it
-    /// lies on the centre's surface turns on the last bit of the view depth the current-side function computes. The levels
+    /// (<see cref="TemporalVisibilityMaskGpuTests.ToleranceEdge"/>, the mask fact's tolerance texels), so whether it
+    /// lies on the centre's surface turns on the last bit of the view depth that pass one now computes. The levels
     /// make that one acceptance bit decide the release: either the sure texels sit 26 R8 steps from L and the edge
     /// texel at L, or they sit 25 steps from L and the edge texel 30 + c beyond it. A view depth one ulp apart from
     /// D's flips the bit, the release and the stored lock. The fact counts the exported paths of the display pixels
@@ -225,7 +225,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             int dw = preset == TemporalUpscale.Native ? iw : iw * 3 / 2, dh = preset == TemporalUpscale.Native ? ih : ih * 3 / 2;
             int dRewrites = 0, mutantRewrites = 0;
-            bool prepareCompiled = false;
+            bool prepareRewritten = false;
             using var production = new TemporalResolveRig(iw, ih, dw, dh, SceneNdc);
             bool nvidia = TemporalDeviceClass.IsHardwareNvidiaD3D11(production.Device);
             var oracle = nvidia ? new TemporalNvidiaHistoryOracle(output) : null;
@@ -235,7 +235,7 @@ namespace KhaozEngine.Tests.Gpu
             {
                 string rewritten = TemporalVisibilityFrozenD.ToD(source);
                 if (!ReferenceEquals(rewritten, source)) dRewrites++;
-                if (source == ShaderSources.TemporalPrepareFrag) prepareCompiled = true;
+                if (source == ShaderSources.TemporalPrepareFrag && rewritten != source) prepareRewritten = true;
                 return rewritten;
             });
             using var mutant = new TemporalResolveRig(iw, ih, dw, dh, SceneNdc, fragmentSource: source =>
@@ -354,7 +354,7 @@ namespace KhaozEngine.Tests.Gpu
                 output.WriteLine($"  {Frames} frames {(nvidia ? "within 2 half steps in colour/confidence, exact locks, R8 and depth" : "byte-identical to D in colour, state, R8 and depth")}, "
                     + $"{zeroLocks} stored locks exactly zero, the never-releasing mutant differs in {mutantDiffers} of "
                     + $"{values} state values, {dRewrites} D and {mutantRewrites} mutant programs rewritten"
-                    + (entry == TemporalResolveEntry.Split ? $", the first pass {(prepareCompiled ? "" : "not ")}as D" : ""));
+                    + (entry == TemporalResolveEntry.Split ? $", the first pass {(prepareRewritten ? "" : "not ")}as D" : ""));
                 output.WriteLine($"  {storedApart} stored depths apart from the depth uploaded as last frame's, so the "
                     + "compared read is this frame's store");
                 output.WriteLine($"  production paths over frames 1 to {Frames - 1}: {paths}");
@@ -369,8 +369,8 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.True(storedApart > 0, $"frame {Frames - 1}: every stored depth equals the uploaded one, so the read may not be this "
                     + "frame's store");
                 Assert.True(dRewrites >= 1 && mutantRewrites >= 1, $"frame {Frames - 1}: the rewrite reached no release program");
-                Assert.True(entry == TemporalResolveEntry.Fused || prepareCompiled,
-                    $"frame {Frames - 1}: the D rig did not compile the split's first pass");
+                Assert.True(entry == TemporalResolveEntry.Fused || prepareRewritten,
+                    $"frame {Frames - 1}: the D rig compiled the split's first pass as production");
                 Assert.True(mutantDiffers > 0, $"frame {Frames - 1}: the never-releasing mutant wrote the production history, so the frames "
                     + "do not exercise the visibility release");
             }
@@ -503,7 +503,7 @@ namespace KhaozEngine.Tests.Gpu
                     if (straddles) straddling![4]++;
                     edgeSites![(y0 + ThresholdSite) * w + x0 + ThresholdSite] = design;
                     bool farther = random.Next(2) == 0;
-                    float edgeNdc = TemporalVisibilityDepthInputs.ToleranceEdge(SceneLinear, farther, random.Next(7) - 3);
+                    float edgeNdc = TemporalVisibilityMaskGpuTests.ToleranceEdge(SceneLinear, farther, random.Next(7) - 3);
                     // A nearer edge texel is the 3x3's nearest, so the centre expects its depth: the tile's previous
                     // depth follows, or every history texel would lie past the previous tolerance.
                     if (!farther)

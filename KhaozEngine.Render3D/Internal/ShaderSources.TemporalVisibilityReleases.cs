@@ -18,9 +18,10 @@ const float VisibilityRangeSkipMargin = VisibilityReleaseThreshold - 1.220703125
 bool temporalVisibilityPowerOfTwo(int at) { return at > 0 && (at & (at - 1)) == 0; }
 
 // D's decision. Where the nine footprints form one 4x4 block inside the texture, the block is read once and every
-// acceptance, weight and sum follows D's order and arithmetic. Anywhere else D's function runs as it shipped.
+// acceptance, weight and sum follows D's order and arithmetic, with the current acceptances from currentMask, the
+// centre's temporalVisibilityCurrentMask. Anywhere else D's function runs as it shipped.
 bool temporalVisibilityReleases(vec2 uv, ivec2 centre, ivec2 last, vec2 previousUv, float expectedDepth,
-    out float signedChange, out uint path) {
+    uint currentMask, out float signedChange, out uint path) {
     signedChange = 0.0;
     // D's position chain is componentwise, so the diagonal neighbour (k, k) carries column k's x and row k's y.
     ivec2 at0 = clamp(centre + ivec2(-1, -1), ivec2(0), last);
@@ -59,26 +60,7 @@ bool temporalVisibilityReleases(vec2 uv, ivec2 centre, ivec2 last, vec2 previous
     }
     path = VisibilityFastPath;
 
-    // Every current input and the block's previous visibility, read before any decision.
-    float centreDepth = temporalViewDepth(texelFetch(sampler2D(MotionTex, LinearClamp), centre, 0).rg,
-        texelFetch(sampler2D(SceneDepth, LinearClamp), centre, 0).r);
-    float depth0 = temporalViewDepth(texelFetch(sampler2D(MotionTex, LinearClamp), ivec2(at0.x, at0.y), 0).rg,
-        texelFetch(sampler2D(SceneDepth, LinearClamp), ivec2(at0.x, at0.y), 0).r);
-    float depth1 = temporalViewDepth(texelFetch(sampler2D(MotionTex, LinearClamp), ivec2(at1.x, at0.y), 0).rg,
-        texelFetch(sampler2D(SceneDepth, LinearClamp), ivec2(at1.x, at0.y), 0).r);
-    float depth2 = temporalViewDepth(texelFetch(sampler2D(MotionTex, LinearClamp), ivec2(at2.x, at0.y), 0).rg,
-        texelFetch(sampler2D(SceneDepth, LinearClamp), ivec2(at2.x, at0.y), 0).r);
-    float depth3 = temporalViewDepth(texelFetch(sampler2D(MotionTex, LinearClamp), ivec2(at0.x, at1.y), 0).rg,
-        texelFetch(sampler2D(SceneDepth, LinearClamp), ivec2(at0.x, at1.y), 0).r);
-    float depth5 = temporalViewDepth(texelFetch(sampler2D(MotionTex, LinearClamp), ivec2(at2.x, at1.y), 0).rg,
-        texelFetch(sampler2D(SceneDepth, LinearClamp), ivec2(at2.x, at1.y), 0).r);
-    float depth6 = temporalViewDepth(texelFetch(sampler2D(MotionTex, LinearClamp), ivec2(at0.x, at2.y), 0).rg,
-        texelFetch(sampler2D(SceneDepth, LinearClamp), ivec2(at0.x, at2.y), 0).r);
-    float depth7 = temporalViewDepth(texelFetch(sampler2D(MotionTex, LinearClamp), ivec2(at1.x, at2.y), 0).rg,
-        texelFetch(sampler2D(SceneDepth, LinearClamp), ivec2(at1.x, at2.y), 0).r);
-    float depth8 = temporalViewDepth(texelFetch(sampler2D(MotionTex, LinearClamp), ivec2(at2.x, at2.y), 0).rg,
-        texelFetch(sampler2D(SceneDepth, LinearClamp), ivec2(at2.x, at2.y), 0).r);
-    float depth4 = centreDepth;
+    // The nine current visibilities and the block's previous visibility, read before any decision.
     float current0 = texelFetch(sampler2D(KeyShadowVisibility, LinearClamp), ivec2(at0.x, at0.y), 0).r;
     float current1 = texelFetch(sampler2D(KeyShadowVisibility, LinearClamp), ivec2(at1.x, at0.y), 0).r;
     float current2 = texelFetch(sampler2D(KeyShadowVisibility, LinearClamp), ivec2(at2.x, at0.y), 0).r;
@@ -105,20 +87,19 @@ bool temporalVisibilityReleases(vec2 uv, ivec2 centre, ivec2 last, vec2 previous
     float previous13 = texelFetch(sampler2D(PreviousKeyShadowVisibility, LinearClamp), block + ivec2(1, 3), 0).r;
     float previous23 = texelFetch(sampler2D(PreviousKeyShadowVisibility, LinearClamp), block + ivec2(2, 3), 0).r;
     float previous33 = texelFetch(sampler2D(PreviousKeyShadowVisibility, LinearClamp), block + ivec2(3, 3), 0).r;
-    if (!temporalVisibilityFiniteDepth(centreDepth) || !temporalVisibilityFiniteDepth(expectedDepth)) return false;
-    float currentTolerance = VisibilityDepthTolerance * max(centreDepth, 1.0e-5);
+    if ((currentMask & VisibilityCentreFinite) == 0u || !temporalVisibilityFiniteDepth(expectedDepth)) return false;
     float previousTolerance = VisibilityDepthTolerance * max(expectedDepth, 1.0e-5);
 
-    // D's current rejection, texel by texel, then its sum and count in D's order.
-    bool accepted0 = temporalVisibilityFiniteDepth(depth0) && abs(depth0 - centreDepth) <= currentTolerance;
-    bool accepted1 = temporalVisibilityFiniteDepth(depth1) && abs(depth1 - centreDepth) <= currentTolerance;
-    bool accepted2 = temporalVisibilityFiniteDepth(depth2) && abs(depth2 - centreDepth) <= currentTolerance;
-    bool accepted3 = temporalVisibilityFiniteDepth(depth3) && abs(depth3 - centreDepth) <= currentTolerance;
-    bool accepted4 = temporalVisibilityFiniteDepth(depth4) && abs(depth4 - centreDepth) <= currentTolerance;
-    bool accepted5 = temporalVisibilityFiniteDepth(depth5) && abs(depth5 - centreDepth) <= currentTolerance;
-    bool accepted6 = temporalVisibilityFiniteDepth(depth6) && abs(depth6 - centreDepth) <= currentTolerance;
-    bool accepted7 = temporalVisibilityFiniteDepth(depth7) && abs(depth7 - centreDepth) <= currentTolerance;
-    bool accepted8 = temporalVisibilityFiniteDepth(depth8) && abs(depth8 - centreDepth) <= currentTolerance;
+    // D's current rejection of each texel, from the mask, then its sum and count in D's order.
+    bool accepted0 = (currentMask & 1u) != 0u;
+    bool accepted1 = (currentMask & 2u) != 0u;
+    bool accepted2 = (currentMask & 4u) != 0u;
+    bool accepted3 = (currentMask & 8u) != 0u;
+    bool accepted4 = (currentMask & 16u) != 0u;
+    bool accepted5 = (currentMask & 32u) != 0u;
+    bool accepted6 = (currentMask & 64u) != 0u;
+    bool accepted7 = (currentMask & 128u) != 0u;
+    bool accepted8 = (currentMask & 256u) != 0u;
     float currentSum = 0.0;
     float currentCount = 0.0;
     if (accepted0) { currentSum += current0; currentCount += 1.0; }

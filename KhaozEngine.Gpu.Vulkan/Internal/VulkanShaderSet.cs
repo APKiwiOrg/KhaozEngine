@@ -56,7 +56,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             VertexModule = modules.GetOrCreate(vertexSpirv);
             FragmentModule = modules.GetOrCreate(fragmentSpirv);
+            DiagnosticIdentity = VulkanShaderIdentity.Graphics(vertexGlsl, fragmentGlsl, vertexSpirv, fragmentSpirv, tag);
         }
+
+        internal VulkanShaderIdentity DiagnosticIdentity { get; }
 
         static byte[] Compile(string glsl, GpuShaderStages stage, string tag, SpirvBytesCache? cache)
             => cache?.GetOrCompile(SpirvFrontEnd.OptionsIdentity(tag), stage, glsl,

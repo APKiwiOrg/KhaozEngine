@@ -177,7 +177,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // candidate it last asked about.
             surfaces?.BindPhysicalDevice(handles[chosen]);
 
-            Device device = CreateDevice(vk, handles[chosen], read.GraphicsQueueFamily, features, windowed);
+            VulkanPipelineDiagnostics? pipelineDiagnostics = VulkanPipelineExecutableApi.Discover(
+                vk, handles[chosen], instance.Validation.ToString());
+            Device device = CreateDevice(vk, handles[chosen], read.GraphicsQueueFamily, features, windowed, pipelineDiagnostics);
             var liveness = new DeviceLiveness();
             var loss = new VulkanDeviceLossLatch(liveness);
 
@@ -185,6 +187,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             {
                 vk.GetDeviceQueue(device, read.GraphicsQueueFamily, 0, out Queue graphicsQueue);
                 Name(instance, device, graphicsQueue);
+                if (pipelineDiagnostics is not null && pipelineDiagnostics.CaptureFlags != 0)
+                    pipelineDiagnostics.Bind(new VulkanPipelineExecutableApi(vk, instance.Handle, device, liveness, loss));
 
                 // THE ONE TIMELINE (V-F1), created with the device because everything else is created against it:
                 // a submission takes its next value, a fence holds one, the retire list gates on one, and the ring
@@ -228,7 +232,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     // THE PIPELINE SEAM (row 13), a pure driver-call adapter like the four above it: the vertex
                     // input derivation, the blend attachment count, the dynamic state list and the whole disk
                     // cache all sit above it in device-free types.
-                    new VulkanPipelineApi(vk, device, loss, liveness),
+                    new VulkanPipelineApi(vk, device, loss, liveness, pipelineDiagnostics),
                     // THE DISK PIPELINE CACHE, OPENED HERE rather than inside the constructor, and keyed on the
                     // device's own identity off the SAME physical-device read, so the file the cache is seeded
                     // from belongs to the device that was actually selected (V-S7). The open also PRUNES stale
@@ -287,7 +291,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // incumbent's cross-family path is not reproduced because its queue-create loop writes the graphics family
         // index for every entry instead of the loop variable, which is a spec violation validation flags.
         static Device CreateDevice(Vk vk, PhysicalDevice physicalDevice, uint queueFamily,
-            in VulkanFeatureSelection features, bool windowed)
+            in VulkanFeatureSelection features, bool windowed, VulkanPipelineDiagnostics? diagnostics)
         {
             float priority = 1.0f;
             var queueInfo = new DeviceQueueCreateInfo(
@@ -296,8 +300,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 queueCount: 1,
                 pQueuePriorities: &priority);
 
+            bool capture = diagnostics is not null && diagnostics.CaptureFlags != 0;
+            var executable = new PhysicalDevicePipelineExecutablePropertiesFeaturesKHR(
+                sType: StructureType.PhysicalDevicePipelineExecutablePropertiesFeaturesKhr,
+                pipelineExecutableInfo: capture);
             var features13 = new PhysicalDeviceVulkan13Features(
                 sType: StructureType.PhysicalDeviceVulkan13Features,
+                pNext: capture ? &executable : null,
                 dynamicRendering: true,
                 synchronization2: true);
 
@@ -320,12 +329,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 pNext: &features12,
                 features: core);
 
-            // ONE DEVICE EXTENSION ON THE WINDOWED PATH AND NONE AT ALL ON THE HEADLESS ONE (V-N6).
-            // VK_KHR_swapchain is windowed-only, and asking for it on a runner with no display server would fail
-            // creation outright, which is every runner the golden suite has.
-            nint extensionNames = windowed
-                ? SilkMarshal.StringArrayToPtr(new[] { VulkanInstanceLayout.SwapchainDeviceExtension })
-                : 0;
+            // Production keeps V-N6. Compiler statistics are a separate, explicitly requested device configuration.
+            var extensions = new List<string>();
+            if (windowed) extensions.Add(VulkanInstanceLayout.SwapchainDeviceExtension);
+            if (capture) extensions.Add(VulkanPipelineExecutableApi.ExtensionName);
+            nint extensionNames = extensions.Count != 0 ? SilkMarshal.StringArrayToPtr(extensions.ToArray()) : 0;
 
             try
             {
@@ -334,7 +342,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     pNext: &features2,
                     queueCreateInfoCount: 1,
                     pQueueCreateInfos: &queueInfo,
-                    enabledExtensionCount: windowed ? 1u : 0u,
+                    enabledExtensionCount: (uint)extensions.Count,
                     ppEnabledExtensionNames: (byte**)extensionNames,
                     // NO LAYERS. Device layers were deprecated in Vulkan 1.0.13 and modern loaders ignore them
                     // entirely, so the incumbent's device-layer list is dead weight that reads as a working

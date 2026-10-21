@@ -19,10 +19,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <see cref="IGpuComputeShader.ThreadGroupSizeX"/> off the shader that made this pipeline rather than a copy
     /// held here that could disagree with the SPIR-V. See <see cref="VulkanComputeShader"/>.</para>
     /// </summary>
-    internal sealed class VulkanComputePipeline : IGpuComputePipeline
+    internal sealed class VulkanComputePipeline : IGpuComputePipeline, IGpuPipelineDiagnostics
     {
         readonly VulkanPipelineOwner _owner;
         readonly ulong[] _setLayouts;
+        readonly VulkanPipelineDiagnosticBinding? _diagnostics;
 
         ulong _handle;
 
@@ -31,8 +32,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="pipelineLayout">The shared <c>VkPipelineLayout</c> it was created with.</param>
         /// <param name="setLayouts">That layout's set-layout handles in slot order. Taken over rather than
         /// copied.</param>
+        /// <param name="diagnostics">Cold compiler-report binding for the exact created pipeline.</param>
         internal VulkanComputePipeline(VulkanPipelineOwner owner, ulong handle, ulong pipelineLayout,
-            ulong[] setLayouts)
+            ulong[] setLayouts, VulkanPipelineDiagnosticBinding? diagnostics = null)
         {
             ArgumentNullException.ThrowIfNull(owner);
             ArgumentNullException.ThrowIfNull(setLayouts);
@@ -41,7 +43,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _handle = handle;
             _setLayouts = setLayouts;
             PipelineLayout = pipelineLayout;
+            _diagnostics = diagnostics;
         }
+
+        public GpuPipelineCompilerReport ReadCompilerReport()
+            => _diagnostics?.Read(Handle) ?? VulkanPipelineDiagnostics.Disabled(IsDisposed);
 
         /// <summary>The <c>VkPipeline</c>, which <c>vkCmdBindPipeline</c> names at the COMPUTE bind point.
         /// </summary>

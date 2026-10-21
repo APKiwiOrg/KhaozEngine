@@ -17439,8 +17439,10 @@ needs a `SpriteBatch`. Like `UpdateOverlayView`, the widget never reads raw inpu
 
 ## Optional GPU compiler and memory diagnostics
 
-The GPU seam defines optional cold diagnostics for pipelines and devices. Native implementations are
-separate work. Read them outside frame timing and retain the configuration digests with the evidence.
+The GPU seam defines optional cold diagnostics for pipelines and devices. The Vulkan backend implements
+both. Set `KE_VULKAN_PIPELINE_DIAGNOSTICS=1` before device creation to request executable compiler statistics
+on supported drivers. Read them outside frame timing and retain the configuration digests with the evidence.
+Keep the request unset on production timing devices. See the [Vulkan diagnostic configuration](../KhaozEngine.Gpu.Vulkan/README.md#optional-compiler-and-memory-diagnostics).
 
 ```csharp
 if (pipeline is IGpuPipelineDiagnostics compiler)

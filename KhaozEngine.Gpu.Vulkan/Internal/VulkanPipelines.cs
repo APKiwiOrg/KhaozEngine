@@ -111,7 +111,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             ulong handle = _owner.Api.CreateGraphicsPipeline(Cache.Handle, spec);
             _graphics++;
 
-            return new VulkanGraphicsPipeline(_owner, handle, pipelineLayout, SetLayoutsOf(layouts));
+            VulkanPipelineDiagnostics diagnostics = (_owner.Api as IVulkanPipelineDiagnosticsSource)?.Diagnostics
+                ?? VulkanPipelineDiagnostics.Production;
+            return new VulkanGraphicsPipeline(_owner, handle, pipelineLayout, SetLayoutsOf(layouts),
+                new(diagnostics, VulkanPipelineIdentity.Graphics(shaders, layouts, spec), diagnostics.CaptureFlags));
         }
 
         /// <summary>Create a compute pipeline: the same resolution over one module and no graphics state at all.
@@ -131,7 +134,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             ulong handle = _owner.Api.CreateComputePipeline(Cache.Handle, spec);
             _compute++;
 
-            return new VulkanComputePipeline(_owner, handle, pipelineLayout, SetLayoutsOf(layouts));
+            VulkanPipelineDiagnostics diagnostics = (_owner.Api as IVulkanPipelineDiagnosticsSource)?.Diagnostics
+                ?? VulkanPipelineDiagnostics.Production;
+            return new VulkanComputePipeline(_owner, handle, pipelineLayout, SetLayoutsOf(layouts),
+                new(diagnostics, VulkanPipelineIdentity.Compute(shader, layouts), diagnostics.CaptureFlags));
         }
 
         /// <summary>

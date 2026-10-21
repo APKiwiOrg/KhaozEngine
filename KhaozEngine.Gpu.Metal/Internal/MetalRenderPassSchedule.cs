@@ -438,10 +438,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// (M-A4), and the pending array consumed. Reached from the first draw of a pass and from the clear-only
         /// flush, and from nowhere else.
         /// <para>
-        /// THE DESCRIPTOR IS RELEASED IN A <c>finally</c>, including on the path where the encoder came back nil,
-        /// because it arrives retained and the ownership rule is exactly one release per acquisition at every
-        /// exit. That is the same rule the encoder itself is under and the same failure if it is broken: a leaked
-        /// object holding a reference to something the queue is counting.
+        /// THE DESCRIPTOR IS RELEASED ON EVERY EXIT, including when the encoder came back nil or opening it
+        /// threw. A release failure propagates unless an earlier failure is already unwinding, in which case
+        /// the release failure is discarded and the original exception is rethrown. The descriptor arrives
+        /// retained and owes exactly one release per acquisition, like the encoder itself.
         /// </para>
         /// <para>
         /// THE PENDING ARRAY IS CONSUMED ONLY ON A SUCCESSFUL OPEN. A descriptor that never became an encoder
@@ -497,10 +497,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
             {
                 encoder = _encoders.EnsureRenderEncoder(descriptor);
             }
-            finally
+            catch
             {
-                _api.ReleaseRenderPassDescriptor(descriptor);
+                try { _api.ReleaseRenderPassDescriptor(descriptor); }
+                catch { }
+                throw;
             }
+            _api.ReleaseRenderPassDescriptor(descriptor);
 
             if (encoder == IntPtr.Zero) return IntPtr.Zero;
 

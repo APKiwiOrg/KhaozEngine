@@ -49,7 +49,8 @@ public sealed class TileWorldInteriorCutCaptureGpuTests
     {
         Assert.Equal(Capture(null), Capture(new TileWorldViewOptions
         {
-            InteriorMeshes = null, RoofMode = RoofVisibility.Interior,
+            InteriorMeshes = null,
+            RoofMode = RoofVisibility.Interior,
         }));
     }
 

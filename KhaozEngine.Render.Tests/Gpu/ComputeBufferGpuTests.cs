@@ -13,9 +13,9 @@ namespace KhaozEngine.Tests.Gpu
     /// Unsigned integers, not floats, so the assertion is exact: 1 + 2 + ... + 4096 == 8390656 regardless of the
     /// order the GPU happened to sum in.
     ///
-    /// The two passes are separated by End + Submit + WaitForIdle, per the ordering contract on
-    /// <see cref="IGpuCommandList"/>: pass 2 reads what pass 1 wrote, and chaining dependent dispatches inside one
-    /// command list is not safe on every backend.
+    /// These passes use separate submissions with End + Submit + WaitForIdle, exercising cross-list ordering.
+    /// <see cref="ComputeBufferOrderingGpuTests"/> proves the same dependent reduction inside one command list,
+    /// where <see cref="IGpuCommandList"/> guarantees visibility without an intermediate drain.
     /// </summary>
     public sealed class ComputeBufferGpuTests
     {
@@ -147,8 +147,8 @@ namespace KhaozEngine.Tests.Gpu
             return b;
         }
 
-        // One dispatch per submission. Pass 2 reads pass 1's output, and a submit boundary plus a device drain is
-        // the only cross-dispatch ordering the seam guarantees (see the IGpuCommandList ordering contract).
+        // One dispatch per submission exercises explicit cross-list ordering. Dependent dispatches recorded in
+        // one list are also ordered, as ComputeBufferOrderingGpuTests proves without an intermediate drain.
         static void Dispatch(IGpuDevice dev, IGpuComputePipeline pipeline, IGpuResourceSet set, uint groups)
         {
             using IGpuCommandList cl = dev.Factory.CreateCommandList();

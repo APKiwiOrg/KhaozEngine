@@ -345,6 +345,70 @@ What it owns today:
     channel-swapped or garbage bytes on the third
     ([#83](https://github.com/APKiwiOrg/KhaozEngine/issues/83)). Resolve a multisampled target first, read one level
     of a mip chain with `ToRgbaMip`, and pass the source's own dimensions.
+- **`IGpuDevice.TryReadBuffer(staging, completion, offsetBytes, destination)`** - the NON-BLOCKING read, separate
+  from `GpuReadback`. It copies bytes a recorded `CopyBuffer` wrote into a `GpuBufferUsage.Staging` buffer once the
+  fence handed to that list's `Submit` reports completion, and answers `false` with the destination untouched
+  until then or while native access is busy. It never drains, flushes, submits or blocks on a lock. The caller
+  keeps the source, staging buffer and fence alive and does not reset the fence until a read succeeds. The default
+  implementation throws `NotSupportedException`, and the three native backends implement it. See the consumer
+  guide's "Reading a completed staging copy without waiting" for the refusals and the Direct3D 11 flush note.
+- **`GpuBufferReadbackRing`** - fixed staging slots over `TryReadBuffer`, allocated once by
+  `new GpuBufferReadbackRing(device, slotCount, slotSizeInBytes)`. `TryRecord(commands, source, sourceOffsetBytes,
+  sizeInBytes, tag, completion)` records a copy in the caller's open list and retains its tag, byte count and
+  caller-owned fence. Full returns `false` without a copy. `TryRead(destination, out tag, out sizeInBytes)` tries
+  only the oldest entry, returns `false` with zero outputs and untouched bytes while pending or busy, and frees
+  the slot only after a successful read. A larger destination keeps its unused tail. Both warmed operations
+  allocate nothing, and neither waits, flushes, submits, synchronously maps or takes a blocking lock.
+  `Capacity` is fixed and `PendingCount` includes unsubmitted recordings. `DiscardUnsubmitted(completion)` stably
+  removes only that fence's entries for an abandoned list that was never submitted. Using it for submitted work
+  is a caller error. The ring never resets or disposes a fence. It implements `IGpuFrameCompletionConsumer`.
+  `HasPending` tests exact fence ownership. Teardown `ReleaseCompleted` consumes submitted entries after the
+  caller proves completion by signal or host drain. `Dispose` consumes signaled entries, refuses while
+  unsignaled entries remain, and frees only owned staging buffers. Keep a shared frame fence alive until every associated
+  consumer has released it. A full ring skips diagnostics for that frame while rendering continues.
+  Direct3D 11 completion needs a `Present` or drain
+  because `Submit` does not flush.
+- **`GpuFrameSubmission`** - one owner for a host's submitted command list and completion fences. Construct
+  with the device and optional fixed `retainedFrames` and `consumerCapacity` (defaults 3 and 8).
+  `Begin` abandons a previous unsubmitted recording and polls completed frames. `TryRetain(consumer, out fence)`
+  gives every retained consumer of this frame the same fence, with a non-null output on true, or returns
+  false when capacity is full.
+  `TryRegister(participant)` is independent of diagnostic capacity. `Submit(commands)` submits exactly once,
+  then delivers `IGpuFrameSubmissionParticipant.Submitted` to every registered participant. `Abandon` delivers
+  `Abandoned` and discards only unsubmitted copies. A backend submission exception abandons logical state but
+  quarantines potentially submitted staging until completion or teardown. Callback exceptions never turn
+  submitted work into an abandoned copy. Failed consumer cleanup or queries quarantine the slot before external
+  callbacks can escape, and cleanup still reaches other consumers. `Dispose` abandons unsubmitted recording, drains once at host teardown,
+  releases retained consumers and disposes owned fences. Dispose it before the command list and device.
+  `Submit(commands, completions)` combines caller fences with the retained frame fence in that one submission.
+  `IGpuDevice.Submit(commands, ReadOnlySpan<IGpuFence>)` validates nulls and duplicates. Native backends signal
+  every fence at one completion point. Legacy device implementations forward zero or one fence and refuse
+  several with `NotSupportedException`.
+  Once teardown starts, new recordings are refused. A failed teardown can be retried without exposing retained
+  fences. On devices without completion fences, retention returns false and participant submission remains available.
+- **GPU timestamps** - gate on `GpuCapabilities.SupportsTimestamps`, default false. Native Vulkan probes
+  the selected queue's counter bits and the device period. Direct3D 11 probes timestamp and disjoint
+  query creation on the actual device. Metal probes the timestamp counter set, supported sampling
+  boundaries and sample-buffer creation. Its tick period comes from correlated CPU/GPU hardware clocks.
+  Marker cost is part of instrumented GPU time and is never subtracted.
+  `CreateTimestampPool(capacity)` and the
+  optional command defaults throw `NotSupportedException` without support. A fixed-capacity
+  `IGpuTimestampPool` records one batch with `BeginTimestamps(pool, count)`, increasing unique
+  `WriteTimestamp(pool, index)` calls from 0 and `EndTimestamps(pool)`. They only encode work, never submit.
+  Completed-frame proof also requires the optional `IGpuCommandListTimestampEnd` interface, implemented by
+  Vulkan, Direct3D 11 and Metal. After writing every earlier index, call `FinishTimestampsOnEnd(pool, count - 1)`. The ordinary End
+  writes that last marker and ends the batch after all GPU finalization and before the native seal. Manual
+  write or end for the armed pool is refused. Lists without the interface cannot prove completed-frame time.
+  Failed End and abandonment clear the tail without resetting the pool, which stays quarantined until teardown.
+  `TryResolve(completion, ticks, out tickPeriodNanoseconds)` polls the same-device fence supplied to the
+  submission containing `EndTimestamps`. Keep it unreset and alive until every associated readback is consumed.
+  `Pending` and `Invalid` preserve caller ticks and return period zero. `Ready` publishes elapsed ticks relative
+  to index 0 with a finite positive nanosecond period, preserving any destination tail. Repeated resolution
+  returns the same terminal result until the next begin. Resolve never waits, flushes, submits or synchronously
+  maps. Native scratch is preallocated and the complete normalization is checked before publication. Each
+  adjacent interval must be shorter than one complete counter wrap. Allocate a fixed caller-owned ring with one
+  pool per retained frame. When all pools are pending, record no timestamps that frame and keep rendering.
+  The consumer guide's "GPU timestamps without waiting" gives the full lifetime and invalid-result contract.
 - **`GpuRetireQueue`** (since 17.37.0) - deferred disposal for anything a renderer frees MID-LIFE (a streamed mesh
   unloaded while the scene runs, a sprite atlas whose descriptor set fell out of the working set). `Retire(resource)`
   costs nothing at the call site, `BeginFrame()` seals the frame's retirements into one batch behind a fence and
@@ -435,16 +499,21 @@ What it owns today:
     silently wrong on Metal, the only backend that reads it). Do declare it: omitting the layout is legal GLSL and
     compiles in the 1x1x1 default, which dispatches one invocation per group rather than failing.
   - **Ordering rules, since there is no barrier call.** Compute writes a storage texture that a graphics pass then
-    samples: record BOTH in the SAME command list and create the texture `Storage | Sampled`. A dispatch that reads
-    what an earlier dispatch wrote: separate them with `End` + `Submit` + `WaitForIdle`. Full reasoning per backend
-    is on `IGpuCommandList`, in `docs/USING-KHAOZENGINE.md`, and in `docs/design/GPU-COMPUTE-DESIGN-2026-07-26.md`.
+    samples: record BOTH in the SAME command list and create the texture `Storage | Sampled`. A dispatch or a draw
+    that reads a storage buffer an earlier dispatch in the SAME command list wrote sees the write, with no drain
+    between them. That covers a dependent dispatch chain and a draw whose vertex stage pulls its vertices from a
+    compute-written buffer. Bind a buffer a command only reads as `StructuredBufferReadOnly` and one a dispatch
+    writes as `StructuredBufferReadWrite`. Ordering between two command lists stays explicit: `End`, `Submit` and
+    a wait before the second list reads. A pulled draw starts at vertex 0 and base vertex 0 and adds any storage
+    base from a uniform, because `gl_VertexIndex` does not carry the draw's bases on Direct3D 11. Full reasoning
+    per backend is on `IGpuCommandList`, in `docs/USING-KHAOZENGINE.md`, and in
+    `docs/design/GPU-COMPUTE-DESIGN-2026-07-26.md`.
   - **A compute-written texture that also needs a mip chain is TWO textures.** A storage-image binding must cover
     exactly one mip level, and resource sets bind whole textures rather than views, so the compute target stays
     single-mip and a second `Sampled | GenerateMipmaps` texture carries the chain.
     `IGpuCommandList.CopyTextureSubresource(src, srcMip, srcLayer, dst, dstMip, dstLayer, w, h)` seeds the second
     one's base level per array layer; `GenerateMipmaps` then fills the rest. Both go in the same list as the
-    dispatch and cost no extra drain - the ordering rule above is about a dispatch reading a dispatch, and a
-    transfer is where every backend synchronises anyway.
+    dispatch and cost no extra drain - a transfer is where every backend synchronises anyway.
 - **`ShaderValidation`** - `ValidatePair(vertexGlsl, fragmentGlsl, label?)` compiles a GLSL 450 vertex/fragment
   pair to SPIR-V and cross-compiles it to every backend target (HLSL, MSL, GLSL, ESSL) with NO `GraphicsDevice`,
   so a shader syntax error or a backend miscompile is caught in a fast GPU-free test loop instead of at first run

@@ -5,6 +5,18 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.11.0
+
+2026-10-21
+
+- Add fixed GPU timestamp pools on Vulkan, Direct3D 11 and Metal, with nonblocking resolution and explicit
+  Pending, Ready and Invalid results. Completed-frame tails include command-list finalization.
+- Recover safely from failed command-list End calls, retaining unresolved timestamp batches through teardown.
+- Guarantee storage-buffer visibility between dependent dispatches and draws in one command list.
+- Add nonblocking completed staging-buffer reads and a fixed `GpuBufferReadbackRing`.
+- Add `GpuFrameSubmission`, completion consumers and participants, and multi-fence submission. Window frames
+  expose `Frame.Submission` and share one submission with capture taps while preserving independent fence lifetimes.
+
 ## 21.10.0
 
 2026-10-21

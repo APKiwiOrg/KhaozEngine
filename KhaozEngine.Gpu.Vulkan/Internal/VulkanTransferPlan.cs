@@ -49,7 +49,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <c>VkBuffer</c> as well, and its memory range is handed to the next staging texture once the frame boundary
     /// frees it, so two readbacks in a row write one range from two submissions. The barrier before the copy is
     /// what orders the second write after the first inside the command stream rather than only through the host's
-    /// wait between them.</para>
+    /// wait between them. A texture copy whose DESTINATION is staging takes the second one as well, once after its
+    /// last region, because a host read of that staging memory needs the same HOST dependency a buffer readback
+    /// does.</para>
     /// </summary>
     internal static unsafe class VulkanTransferBarrier
     {
@@ -62,22 +64,21 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             dstStageMask: PipelineStageFlags2.AllTransferBit,
             dstAccessMask: AccessFlags2.TransferReadBit | AccessFlags2.TransferWriteBit);
 
-        /// <summary>After the copy: the transfer's write becomes visible to every later DEVICE command. It does not
-        /// cover the host, because <c>ALL_COMMANDS</c> excludes the host pseudo-stage, so a staging readback also
-        /// records <see cref="ToHost"/> (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/1430">#1430</see>).
-        /// </summary>
+        /// <summary>After the copy: the transfer's write becomes visible to everything that follows, including the
+        /// HOST, which is what a staging readback is waiting for. The host stage is NAMED rather than assumed:
+        /// <c>ALL_COMMANDS</c> covers the stages commands on the queue run, and the host is not one of them, so a
+        /// completed fence alone does not make a device write visible to a CPU read without this half.</summary>
         internal static MemoryBarrier2 FromTransfer => new(
             sType: StructureType.MemoryBarrier2,
             srcStageMask: PipelineStageFlags2.AllTransferBit,
             srcAccessMask: AccessFlags2.TransferWriteBit,
-            dstStageMask: PipelineStageFlags2.AllCommandsBit,
-            dstAccessMask: AccessFlags2.MemoryReadBit | AccessFlags2.MemoryWriteBit);
+            dstStageMask: PipelineStageFlags2.AllCommandsBit | PipelineStageFlags2.HostBit,
+            dstAccessMask: AccessFlags2.MemoryReadBit | AccessFlags2.MemoryWriteBit | AccessFlags2.HostReadBit);
 
         /// <summary>
         /// After a copy whose DESTINATION is a staging texture: the transfer's write becomes available to the HOST.
-        /// <see cref="FromTransfer"/> does not do this, because <c>ALL_COMMANDS</c> excludes the host pseudo-stage
-        /// and <c>HOST_READ</c> is valid only with it, and a timeline signal's own memory dependency covers device
-        /// access only. This barrier is the device-to-host domain operation a host read after a completed timeline
+        /// Unlike the combined buffer-copy dependency in <see cref="FromTransfer"/>, this names only the host.
+        /// A timeline signal's own memory dependency covers device access only. This barrier is the device-to-host domain operation a host read after a completed timeline
         /// value needs, which the fenced read map relies on because it takes no wait of its own.
         /// </summary>
         internal static MemoryBarrier2 ToHost => new(

@@ -219,10 +219,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// THE ENCODER IS SERIAL (M-H4), AND THAT IS WHAT MAKES RULE 2 HOLD WITH NO HAZARD MACHINERY. Two
         /// dispatches inside one compute encoder do not overlap, so a dependent chain inside ONE recording is
         /// ordered by the encoder itself and this backend needs no barrier batch, no layout tracker and no
-        /// read-after-write analysis. That is a BACKEND PROPERTY and not a contract change: the seam's compute
-        /// rule 2 still says a dependent chain needs <c>End</c>, <c>Submit</c> and <c>WaitForIdle</c>, because
-        /// the other legs need the drain and a consumer that dropped it because this backend tolerates the chain
-        /// would break on them.
+        /// read-after-write analysis. A draw that reads a storage buffer a dispatch in the same recording wrote
+        /// is ordered too: every buffer this backend creates is hazard-tracked, so the driver orders the render
+        /// encoder's vertex or fragment read after the compute encoder's write. That is this backend's half of
+        /// the seam's compute rule 2, which promises in-list storage buffer ordering on every backend and leaves
+        /// ordering between two lists to the caller.
         /// </para>
         /// <para>
         /// OPENING THE COMPUTE ENCODER IS WHAT ENDS AN OPEN RENDER PASS (M-A5), through the scope rather than

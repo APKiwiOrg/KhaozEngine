@@ -6,7 +6,7 @@ using Semaphore = Silk.NET.Vulkan.Semaphore;
 namespace KhaozEngine.Gpu.Vulkan.Internal
 {
     /// <summary>
-    /// THE SEVEN REAL DRIVER CALLS BEHIND <see cref="IVulkanCommandApi"/>, and nothing else. Everything that
+    /// THE REAL DRIVER CALLS BEHIND <see cref="IVulkanCommandApi"/>, and nothing else. Everything that
     /// decides anything is above this line, in <see cref="VulkanCommandPoolRing"/>,
     /// <see cref="VulkanCommandList"/> and <see cref="VulkanSubmitQueue"/>, which is what makes the slot advance,
     /// the wrap, the recording state machine and the whole submit ordering testable with no loader.
@@ -146,6 +146,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             if (_loss.Check(begun, "vkBeginCommandBuffer")) return;
 
             VulkanResultCodes.Require(begun, "vkBeginCommandBuffer");
+        }
+
+        /// <inheritdoc/>
+        public void ReleaseMemoryForReuse(ulong commandBuffer)
+        {
+            if (_liveness.IsDead) return;
+            VulkanMemoryRelease.Record(new VulkanCmdSink(_vk, Buffer(commandBuffer)));
         }
 
         /// <inheritdoc/>

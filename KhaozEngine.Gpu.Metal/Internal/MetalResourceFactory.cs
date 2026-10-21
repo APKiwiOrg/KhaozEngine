@@ -102,6 +102,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
         public IGpuFence CreateFence() => _device.Timeline.CreateFence();
 
         /// <inheritdoc/>
+        public IGpuTimestampPool CreateTimestampPool(uint capacity)
+            => new MetalTimestampPool(_device.TimestampApi
+                ?? throw new NotSupportedException("This Metal device has no timestamp counter API."),
+                _device.Timeline, _device.Liveness, capacity);
+
+        /// <inheritdoc/>
         /// <remarks>
         /// AN AGGREGATE OF BORROWED TEXTURE HANDLES AND NOTHING ELSE. It creates no native object, takes no lock
         /// and issues no command buffer, because a Metal render pass is a descriptor built per pass rather than a

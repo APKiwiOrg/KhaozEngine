@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.ExceptionServices;
 using KhaozEngine.Primitives;
 using KhaozEngine.Platform;
 using Silk.NET.Core;
@@ -742,16 +743,21 @@ namespace KhaozEngine.Windowing
 
         public void Dispose()
         {
-            _nativeGestures?.Dispose();
+            ExceptionDispatchInfo? error = null;
+            try { _nativeGestures?.Dispose(); }
+            catch (Exception failure) { error ??= ExceptionDispatchInfo.Capture(failure); }
             // Unregister the GLFW clipboard provider before GLFW is torn down so a later Clipboard call can
             // never dereference this window's freed GLFW handle.
             try { Clipboard.ClearTextProvider(); } catch { }
             try { _rumble?.StopAll(); } catch { } // leave no motor buzzing after teardown
             try { _input?.Dispose(); } catch { }
+            try { _frame.DisposeSubmission(); }
+            catch (Exception failure) { error ??= ExceptionDispatchInfo.Capture(failure); }
             try { _captureTaps?.Dispose(); } catch { }
             try { _cl?.Dispose(); } catch { }
             try { _gpu?.Dispose(); } catch { }
             try { _window?.Dispose(); } catch { }
+            error?.Throw();
         }
     }
 }

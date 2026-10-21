@@ -1,0 +1,30 @@
+{
+  "schema": "khaozengine.coverage-perf-unit/1",
+  "preset": "C0",
+  "unitId": "c0-20261021-b",
+  "workloadSha": "fbcbb31ab82dcc60adc55be70d42c6fdd1aa2f49",
+  "baselineMainSha": "5d896b33309e5de2a48bd42a03e6d5b5e4b5a39d",
+  "fixture": "coverage-typical-gpu/1",
+  "profile": "full-1280x720/1",
+  "configuration": "Release",
+  "routes": { "ordinarySkinning": "gpu", "coveredSurface": "gpu-built" },
+  "device": { "backend": "vulkan-native", "adapterPolicy": "lavapipe-cpu-only" },
+  "batchFrames": 3,
+  "runner": "ubuntu-26.04",
+  "workflow": "stress-test",
+  "leg": "ubuntu-26.04-vulkan-lavapipe",
+  "iterations": 1,
+  "load": 0,
+  "limits": { "maxUnitSeconds": 300, "maxFrameMilliseconds": 10000, "jobMinutes": 20 },
+  "authorization": {
+    "identity": "coverage-gpu-era-perf-c0-20261021-b",
+    "approvedBy": "repository owner",
+    "reference": "Owner re-approved measurement run C0 in the equipment coverage program chat on 2026-10-21 after the c0-20261021-a dispatch was refused by GitHub before any run existed: workload fbcbb31ab82dcc60adc55be70d42c6fdd1aa2f49, preset C0, one iteration, load 0, hosted ubuntu-26.04 lavapipe, unit 300 s, job 20 min."
+  },
+  "blocks": [
+    { "index": 0, "actors": 0, "condition": "DirectOff", "timerLayout": "CpuOnly", "warmupFrames": 64, "measuredFrames": 32, "fixture": "coverage-typical-gpu/1" },
+    { "index": 1, "actors": 0, "condition": "SharedOff", "timerLayout": "CpuOnly", "warmupFrames": 64, "measuredFrames": 32, "fixture": "coverage-typical-gpu/1" },
+    { "index": 2, "actors": 1, "condition": "SharedOff", "timerLayout": "CpuOnly", "warmupFrames": 64, "measuredFrames": 32, "fixture": "coverage-typical-gpu/1" },
+    { "index": 3, "actors": 1, "condition": "SharedOn", "timerLayout": "CpuOnly", "warmupFrames": 64, "measuredFrames": 32, "fixture": "coverage-typical-gpu/1" }
+  ]
+}

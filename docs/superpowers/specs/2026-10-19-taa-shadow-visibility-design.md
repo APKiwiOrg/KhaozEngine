@@ -1,6 +1,6 @@
 # TAA shadow visibility production design
 
-**Status:** Implemented on the task branch and staged for 21.8.0 as temporal-resolve amendment 35. The owner selected D on 2026-10-19. Final integration, correctness gates, billed benchmark approval, release and consumer adoption remain separate steps.
+**Status:** Implemented on the task branch and staged for 21.11.0 as temporal-resolve amendment 35. The owner selected D on 2026-10-19. Final integration, correctness gates, billed benchmark approval, release and consumer adoption remain separate steps.
 
 **Decision basis:** Owner ruling of 2026-10-19. Hold for the full fix. Bilinear 3x3 PCF and a lit visibility signal ship together in one engine release. A filter-only release or another colour-only lock heuristic does not satisfy the ruling.
 

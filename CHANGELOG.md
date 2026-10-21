@@ -5,6 +5,22 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.11.0
+
+2026-10-21
+
+- Fix grainy and sparkling sun-shadow edges under TAA, especially at low frame rates. Key shadows use bilinear
+  3x3 comparison PCF in every AA mode. Under TAA, lit draws export filtered key-shadow visibility, and a
+  visibility change releases the thin-feature lock and hold while preserving accumulated weight and display share.
+- Lit R8 visibility and its R8 history pair extend the rendering resource contract, at three bytes per internal
+  texel plus a 16-byte previous-jitter buffer. There is no new tuning API.
+- The fused and split resolve entry points produce identical visibility bytes and lock decisions. The carried-lock
+  release is ordered by a zero-valued bit barrier rather than `precise`, so every backend computes it bit for bit.
+- On the visibility fast path, Direct3D 11 and Vulkan gather the current block and both history blocks. Metal
+  gathers both history blocks and loads the current 3x3, which keeps its release decisions exact.
+- Devices with fewer than five colour attachments log the capability once and keep bilinear filtering without
+  visibility release.
+
 ## 21.10.0
 
 2026-10-21

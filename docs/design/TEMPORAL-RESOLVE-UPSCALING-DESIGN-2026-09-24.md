@@ -1,7 +1,7 @@
 # Temporal resolve and upscaling
 
 Status: implemented with the temporal foundations in 20.16.0. Amendment 35 stages the key-shadow visibility
-contract in 21.8.0. Release and consumer adoption remain separate gates.
+contract in 21.11.0. Release and consumer adoption remain separate gates.
 Date: 2026-09-24.
 Issue: [#1149](https://github.com/APKiwiOrg/KhaozEngine/issues/1149).
 Builds on: [`TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md`](TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md), the shared
@@ -1186,7 +1186,7 @@ and changed these details. Its contract amendment blocks carry the evidence.
     +0.27 ms at 3456x2234 Quality, where the ring now runs on moving pixels. Both Vulkan legs measure the same case
     flat or lower.
 
-35. Key-shadow visibility releases held shadow-edge locks (21.8.0, [#1501](https://github.com/APKiwiOrg/KhaozEngine/issues/1501),
+35. Key-shadow visibility releases held shadow-edge locks (21.11.0, [#1501](https://github.com/APKiwiOrg/KhaozEngine/issues/1501),
     [Grimhollow #558](https://github.com/APKiwiOrg/Grimhollow/issues/558)). Amendments 33 and 34 remain the independent
     colour-based shading rule. Their colour-only evidence is no longer the complete key-shadow policy. For the new
     key-shadow decision only, stored-lock preservation, ridge/ring eligibility, the Quality preset ceiling and a

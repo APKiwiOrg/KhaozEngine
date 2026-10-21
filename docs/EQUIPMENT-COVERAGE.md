@@ -84,8 +84,11 @@ bound against the latched render origin. Excessive origin magnitude refuses with
 | Fixed refinement level | 1 to 4 |
 | Refined host vertices and triangles, each | 65,536 |
 
-Source and refinement imports enforce their bounds before allocation. Runtime capacity refusals carry
-`Count` and `Limit` where applicable. Larger limits require new geometry, memory and performance evidence.
+JSON sidecar readers preflight each collection's count before constructing its domain arrays. Refinement
+checks source counts and predicted final counts before allocating final render arrays. GLB decoding and
+source-topology construction happen earlier and may allocate before an over-limit source is refused.
+Runtime capacity refusals carry `Count` and `Limit` where applicable. Larger limits require new geometry,
+memory and performance evidence.
 Material grouping still determines draw count. Regions do not introduce separate draws.
 
 ## Consumer lifetime and complete example

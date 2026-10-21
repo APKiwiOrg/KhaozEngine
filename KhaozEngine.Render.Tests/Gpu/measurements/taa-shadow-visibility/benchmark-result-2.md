@@ -892,3 +892,22 @@ Actual:   [···, 63, 0, 128, 7, 63, ···]
 - Direct3D 11 register pressure grew. FXC DXBC `dcl_temps` for accumulate grows from 30 to 44, with the half, at-display and fused variants detailed in the request. DXBC temps are not the driver's allocated hardware registers. Vulkan compiles SPIR-V, and this record has no equivalent Vulkan register count. Gating texture work does not remove the possible occupancy cost across all shaded pixels.
 - The printed CPU wall-clock blocks include driver submission and a GPU drain. They do not split MRT writes, history copy, visibility decisions and bilinear PCF into GPU timestamps. One pair per ref measures neither run-to-run variance nor a precise error bar.
 - The owner's all-backend budget is not met. The D3D11 production A/B oracle is not green even though helper decisions match D. First failing frame indices are absent from the logs. Integration, diagnosis and any further run approval remain with the orchestrator. This record changes no renderer, test, workflow or release state.
+
+## 7. Historical outside-cost decomposition, run 39519219228
+
+Run [39519219228](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39519219228) timed
+`TemporalVisibilityCostDecompositionCostPerfGpuTests` on all three T4 legs at `5ce5454d6`, the head with the
+pass-one mask withdrawn ([benchmark-request.md section 7A](benchmark-request.md#a-outside-cost-decomposition-one-dispatch-on-all-legs)).
+It is the only run of the V5 and V4 variants, which are now retired. The figures below are the run's printed
+paired differences, summarized across both scenes, both presets and both entries.
+
+| Difference | Measured |
+| --- | --- |
+| V0 minus V1, the check | 1.3 to 1.9 ms in the lock-dense scene, 0.1 to 0.4 ms elsewhere |
+| V1 minus V5, visibility infrastructure (R8 MRT write, history copy, bindings) | -0.18 to +0.19 ms, negligible |
+| V5 minus V4, the lock release's `precise` markings | +0.13 to +0.61 ms on Direct3D 11, about zero on both Vulkan legs |
+
+V5 turned visibility infrastructure off through a switch in the shipped renderer and scene, which the
+production delta of the barrier lock release forbids, so review 7g r1 retired it. V4 measured `precise`, which
+Task 7g.3a removed from production, and its later barrier-removed form never ran. The decomposition now keeps
+V0, V1 and V3 D prime, all rewrites through the existing fragment source hook.

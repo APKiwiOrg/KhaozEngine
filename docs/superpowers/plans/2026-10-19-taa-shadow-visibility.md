@@ -25,7 +25,7 @@
 - All local builds, tests, packs and captures use `build-slot --label <task> -- <command>`. Use `--heavy` for wide GPU selections, captures, packs and final full suites. One command at a time, no retry loop, stress or timing run. Focused RED/GREEN checks run per changed task. The final local broad gate runs once, after integration of the tasks.
 - Tests precede behavior. A missing API compile failure is setup evidence, not a behavioral RED. Introduce the compilable contract first where necessary, then prove the intended assertion fails before implementing it. An expected baseline regression is recorded, never hidden with skip or a raised bound.
 - Keep CPU and GPU evidence distinct. Plain `dotnet test` skips GPU facts. Every selected GPU run sets `KE_GPU_TESTS=1`, records device/backend, and proves zero skipped selected GPU facts from TRX.
-- Do not grow file-size baselines, change golden tolerances, broaden the software-Vulkan identity exception, or hide warnings. A new cohesive concern gets its own partial/type.
+- Do not grow file-size baselines, change golden tolerances, add any entry identity exception, or hide warnings. The former software-Vulkan exception is removed (Task 7f comparison rule). A new cohesive concern gets its own partial/type.
 - Only Task 9 changes the package version/changelog, once for the batch. Reconcile with current main/tags at that point. No automatic tags, release, shared-feed pack, consumer repin or main integration by task workers.
 - Billed T4 cost verification is an explicit stop in Task 12. Fresh owner approval is required. Ordinary hosted correctness and baseline collection are future orchestrator steps, not authorized by this design-only request.
 - Before every commit stage explicit paths, run `sh scripts/check-dashes.sh staged`, `sh scripts/check-prose.sh staged`, `sh scripts/check-file-size.sh staged` and `bash scripts/check-doc-versions.sh`. Use an explicit commit pathspec and `area(scope): summary`, without attribution. Do not bypass hooks.
@@ -257,17 +257,30 @@ texts and pins never change.
 
 The comparison rule, final. NVIDIA's Direct3D 11 driver compiles confidence arithmetic unrelated to the check
 differently whenever the visibility code changes, even on frame 0 where the check does not run, while WARP running
-the same DXBC matches D bit for bit. So on hardware NVIDIA Direct3D 11 only, `TemporalEntryIdentityGpuTests` holds
-production fused equal to production split exactly, its original contract, and prints its comparisons with D
-without asserting them. `TemporalVisibilityResolveAbGpuTests` holds stored locks, R8 and depth exactly equal to
-D's and prints colour and confidence differences, count and maximum half steps per channel, without asserting
-them. Every other backend and device keeps the strict byte comparison. This replaces the fixed two-step bound of
-`91196cdde` and the measured-envelope rule of `e639ef2d6`.
+the same DXBC matches D bit for bit. The A/B reference is D prime (`TemporalVisibilityFrozenD.ToD`), frozen D with
+production's barrier-ordered lock release, on every backend. On Metal production must also equal shipped D
+(`ToShippedD`, D's original `precise` lock release) byte for byte every frame. Elsewhere shipped D is reported only.
 
-The next outside-cost request interleaves V0 shipped, V1 check removed, V5 visibility infrastructure off,
-V4 V5 without the shared lock-release precise markings and V3 frozen D. Both scenes and Native and Quality stay
-at 2560x1440, fused and split. Print V0 minus V1, V1 minus V5, V5 minus V4 and V0 minus V3. Author and compile
-these variants only. The next decomposition and T4 D3D11 correctness dispatches each need fresh owner approval.
+- Entry identity is exact on every backend and device, software Vulkan included. The former software-Vulkan
+  entry-colour exception is removed and must not return. `TemporalEntryIdentityGpuTests` holds production fused
+  equal to production split in colour, state, R8 and depth. Its large-frame case runs both entries on the A/B's
+  large threshold frames, across columns 512 and 1024 and row 512 under positive jitter, and also holds D prime
+  fused equal to D prime split.
+- On hardware NVIDIA Direct3D 11 only, entry identity's production against D comparisons assert that colour and
+  confidence keep D's non-finite class (NaN, positive infinity, negative infinity or finite) and print finite
+  differences. `TemporalVisibilityResolveAbGpuTests` holds stored locks, R8 and depth exactly equal to D prime's,
+  asserts the same non-finite classes, and prints finite colour and confidence differences, count and maximum half
+  steps per channel, without asserting them.
+- Every other backend and device keeps the strict byte comparison against D prime.
+
+This replaces the fixed two-step bound of `91196cdde` and the measured-envelope rule of `e639ef2d6`.
+
+The decomposition keeps V0 shipped, V1 check removed and V3 D prime, each fused and split, all rewrites through the
+existing fragment source hook. Both scenes and Native and Quality stay at 2560x1440. It prints V0 minus V1 and V0
+minus V3. V5 (visibility infrastructure off) and V4 (V5 without the lock-release precise markings, later redefined
+as barriers removed) are retired, because V5 needed a visibility-disable switch in the shipped renderer and scene.
+Their run `39519219228` is history in [benchmark-result-2.md](../../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/benchmark-result-2.md).
+Any further decomposition or T4 D3D11 correctness dispatch needs fresh owner approval.
 
 **Rulings, binding:**
 
@@ -400,7 +413,7 @@ Withdrawn at `d9d72abbd` and restored by the 2026-10-21 correction above, with e
 - Modify only the shared arithmetic/binding seams implicated by a reproduced difference, including `ShaderSources.TemporalAccumulate.cs`, `ShaderSources.TemporalVisibility.cs`, `ShaderSources.TemporalAtDisplaySize.cs` and `TemporalSplitResolve.cs`.
 - Evidence: `KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/entry-identity.md`.
 
-**Interfaces:** Both entries call one helper with identical inputs and reduction order. Visibility histories, lock/confidence/marks and release/reset decisions are exact. Hardware/WARP colour is exact. Preserve only main's existing measured software-Vulkan colour exception, with no new epsilon.
+**Interfaces:** Both entries call one helper with identical inputs and reduction order. Visibility histories, lock/confidence/marks and release/reset decisions are exact. Colour is exact on every backend. The software-Vulkan colour exception this task once preserved is removed by the Task 7f comparison rule, with no epsilon anywhere.
 
 - [ ] Resolve the four exact fused/split identity failures recorded in #1501 without widening any tolerance. Add a moving-shadow entry comparison which actually fires visibility release and the chosen weight response. Compare stored R8 bytes, previous jitter, colour, confidence and locks every resolving frame. Include Native, Quality, Performance and the outlined Quality path already covered by main.
 - [ ] Add `EntryFlipKeepsVisibilityBytesExact`, interleaving entries, resolution changes and a repeated render. Verify shared debug/count evaluation reads the same pre-write history the resolve used.

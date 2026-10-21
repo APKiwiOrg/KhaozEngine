@@ -269,11 +269,24 @@ differences. The NVIDIA branch remains unverified on hardware until this approve
 
 Integration, any billed execution, merge and release remain with the owner and orchestrator.
 
-## 7. R3-lite withdrawn, outside-cost and T4 verification approval requests
+## 7. Historical outside-cost and T4 verification requests, completed
 
-Fresh owner approval is required for each command below. Neither has been dispatched. Both test the pushed
-commit `5ce5454d6a2b719b1448dd95bf0491145a6a945c`, resolved with `git rev-parse HEAD` and checked against the remote branch before this
-request was written. The later request-record commit changes documentation only.
+Completed history, not a pending action. The owner approved both requests on 2026-10-21 and both ran on
+`5ce5454d6a2b719b1448dd95bf0491145a6a945c`, the head with the pass-one mask withdrawn: A as
+[39519219228](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39519219228) and B as
+[39519233674](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39519233674). Do not dispatch these commands
+again. The text below is kept as written before dispatch, as evidence.
+
+- A's results are in [benchmark-result-2.md section 7](benchmark-result-2.md#7-historical-outside-cost-decomposition-run-39519219228).
+  Its V5 and V4 variants are retired.
+- B found confidence against frozen D up to 32 half steps on 233,384 texels with and without the mask, so the
+  mask never caused it. Production fused and split had no differences, and locks against D were identical.
+- What B's evidence superseded: the withdrawal is reverted and R3-lite is restored
+  ([plan Task 7f, 2026-10-21 correction](../../../../docs/superpowers/plans/2026-10-19-taa-shadow-visibility.md#task-7f-cut-the-visibility-check-cost)). The fixed two-half-step NVIDIA allowance is replaced by the
+  report-only finite-value rule: on hardware NVIDIA Direct3D 11 stored locks, R8 and depth equal D prime's,
+  colour and confidence keep D prime's non-finite classes, and finite differences are reported only. D prime
+  (`TemporalVisibilityFrozenD.ToD`) is the A/B reference, and shipped D (`ToShippedD`) is an exact reference on
+  Metal only ([spec section 8](../../../../docs/superpowers/specs/2026-10-19-taa-shadow-visibility-design.md#regression-and-identity-gates)). Entry identity is exact on every backend.
 
 The [withdrawal record](mask-withdrawal.md) lists source changes, every moved shader program and the local
 verification. Prepare and fused entry no longer compute a current-neighbour mask, PreparedSurface.w is zero,
@@ -298,15 +311,14 @@ and target creation precede measured blocks. No asserted budget is introduced or
 | --- | --- |
 | V0 shipped | The normal renderer and scene, no rewrite. |
 | V1 check removed | `WithoutCheck`, the check expression replaced with false. |
-| V5 visibility infrastructure off | `TemporalTestResolve.Install(..., disableVisibility: true)` sets the scene seam to the existing no-visibility MRT layout and constructs the renderer and split without visibility bindings. They omit visibility history allocation, uniform updates and copies. `WithoutVisibility` removes the helper, check and three shader declarations. |
-| V4 V5 without precise | V5 plus `WithoutVisibilityOrPrecise`, removing exactly the two shared lock-release precise markings. Device-free SPIR-V checks prove NoContraction markings disappear, and the control renders on Metal. FXC's current output is not yet measured or archived. |
+| V5 visibility infrastructure off, retired | `TemporalTestResolve.Install(..., disableVisibility: true)` sets the scene seam to the existing no-visibility MRT layout and constructs the renderer and split without visibility bindings. They omit visibility history allocation, uniform updates and copies. `WithoutVisibility` removes the helper, check and three shader declarations. |
+| V4 V5 without precise, retired | V5 plus `WithoutVisibilityOrPrecise`, removing exactly the two shared lock-release precise markings. Device-free SPIR-V checks prove NoContraction markings disappear, and the control renders on Metal. FXC's current output is not yet measured or archived. |
 | V3 frozen D | `TemporalVisibilityFrozenD.ToD`, retaining shipped visibility infrastructure. |
 
-Task 7g.3a removed `precise` from production for the barrier-ordered lock release, so this V4 no longer
-exists. Run 39519219228 measured it on 5ce5454d6, and its V5 minus V4 rows are the precise cost on that head.
-V4 is now V5 plus `WithoutVisibilityOrBarriers`, which makes the twelve lock release barriers the identity.
-Device-free SPIR-V checks prove it removes exactly those twelve barrier ORs. A later run prints V5 minus V4 as
-the barrier cost. V3 is D prime, frozen D with production's lock release helper.
+Task 7g.3a removed `precise` from production for the barrier-ordered lock release. Run 39519219228 measured
+this V4 on 5ce5454d6, and its V5 minus V4 rows are the precise cost on that head. A later barrier-removed V4
+was authored but never ran. Review 7g r1 retired V5 and V4 together, because V5's visibility-disable switch
+lived in the shipped renderer and scene. The decomposition now runs V0, V1 and V3 D prime only.
 
 The output prints V0 minus V1 (check), V1 minus V5 (visibility infrastructure), V5 minus V4 (precise), and
 V0 minus V3, with paired-round differences and the existing Off drift control. The scenes have shadows off, so
@@ -348,8 +360,8 @@ gh workflow run gpu-hosted-bench.yml --repo APKiwiOrg/KhaozEngine --ref main -f 
 
 One dispatch, one hardware NVIDIA T4 D3D11 GPU job, 26 correctness cases. No timing, perf or bench class is
 selected. Entry identity is exact, including Quality, Performance and outlined frames. Helper equivalence stays
-exact. A/B uses the fixed two-half-step arithmetic rule described above, with per-frame counts and maxima and
-exact locks, R8 and depth. D's own entry comparison is printed as a diagnostic, never an acceptance envelope.
+exact. A/B used the fixed two-half-step arithmetic rule described above, since superseded, with per-frame
+counts and maxima and exact locks, R8 and depth. D's own entry comparison is printed as a diagnostic, never an acceptance envelope.
 
 The last paired D3D11 verification [39497191900](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39497191900)
 took 8 min 44 s for [job 118885229357](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39497191900/job/118885229357),
@@ -357,7 +369,7 @@ including 1 min 26 s in the test step. Bench 2's D3D11 oracle job took 16 min 34
 Allowing for the helper equivalence cases and observed Windows setup variation, expect about 10 to 22 minutes
 plus queue time, approximately $1.02 to $2.24 at $0.102/minute. The 60 minute timeout ceiling is $6.12.
 
-### Readiness and limits
+### Readiness and limits, as written before dispatch
 
 Local Release build has zero warnings and errors. Shader writers pass 9/9. The device-free selection passed
 236/243, with only the seven explicitly stale DXBC provenance cases failing, covering eight listings. Metal
@@ -372,3 +384,20 @@ NVIDIA D3D11 after the withdrawal, the outside-cost figures and the stricter ent
 remain unverified until their own checks run. The former software-Vulkan colour exception was removed to
 enforce exact entry identity on every backend, and that tighter gate has not run on software Vulkan here.
 Leave this branch unmerged if either verification fails.
+
+## 8. Current T4 Direct3D 11 verification filter
+
+Not dispatched. The next T4 Direct3D 11 correctness run needs fresh owner approval, and its ref is resolved with
+`git rev-parse` on the pushed candidate at dispatch time. Its filter:
+
+```text
+FullyQualifiedName~TemporalVisibilityResolveAbGpuTests|FullyQualifiedName~TemporalEntryIdentityGpuTests|FullyQualifiedName~TemporalVisibilityEquivalenceGpuTests
+```
+
+`FullyQualifiedName~TemporalEntryIdentityGpuTests` selects the large-frame entry identity case,
+`Both_entry_points_write_the_same_history_across_power_of_two_columns` at Native and Quality, added after review
+7g r1. It runs production fused and split on the A/B's large threshold frames, 1104x612 internal, across columns
+512 and 1024 and row 512 under positive jitter, and holds their colour, state, R8 and depth byte-identical every
+frame. On the same inputs D prime fused must equal D prime split. Neither comparison has an NVIDIA exception.
+The A/B applies the current contracts listed in section 7. The decomposition, if requested again, times V0
+shipped, V1 check removed and V3 D prime only.

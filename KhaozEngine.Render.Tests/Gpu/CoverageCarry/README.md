@@ -1,7 +1,8 @@
 # Design B E1 carry cost floor
 
-This is public F0 research only. Every output is an `uncertified cost floor`.
-There is no certificate, coverage outcome, Scene3D integration or production draw path.
+This is public F0 research only. Every E1 output is an `uncertified cost floor`.
+The separate [E2 offline experiment](Certificates/README.md) certifies continuous palette cells.
+Neither experiment provides a coverage outcome, Scene3D integration or production draw path.
 The fixture remains `coverage-typical-gpu/1` with 1,092 source vertices, 1,258 final
 vertices, 2,332 triangles and two four-triangle inward supports. The signed-zero
 variant changes only source colour and UV words for exactness tests. Timing always

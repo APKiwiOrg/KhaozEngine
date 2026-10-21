@@ -13,6 +13,15 @@ internal sealed class CoverageCarryAnchor
     internal ReadOnlySpan<float> Recession => recession;
     internal ReadOnlySpan<int> Representatives => representatives;
 
+    // E2 research candidates own a new scalar vector. They never modify the exact anchor or its constructor.
+    internal CoverageCarryAnchor(CoverageCarryAnchor exact, ReadOnlySpan<float> candidate)
+    {
+        if (candidate.Length != exact.recession.Length) throw new ArgumentException("Incomplete candidate.", nameof(candidate));
+        Topology = exact.Topology;
+        recession = candidate.ToArray();
+        representatives = (int[])exact.representatives.Clone();
+    }
+
     internal CoverageCarryAnchor(CoverageRefinement topology, ReadOnlySpan<Matrix4x4> palette,
         ReadOnlySpan<CoverageCommandPose> commands)
     {

@@ -92,11 +92,11 @@ namespace KhaozEngine.Tests.Gpu
                     stale.Add($"{fixture}.dxbc.gz was dumped from GLSL hashing {stored}, and the code now builds GLSL "
                         + $"hashing {current}.");
             }
-            Assert.True(stale.Count == 0, string.Join("\n", stale) + "\nRecapture: put the dump test of diagnostic "
-                + "commits a00f69fd5 and a65622ae4 (D3D11FxcValidationTests.DxbcDump.cs) on a diagnostic branch, dispatch "
-                + "cross-platform-gpu.yml there with legs=direct3d11-native, take each stale fixture's DXBC|name|D or "
-                + "DXBC|name|S lines from the log, carriage returns removed, gzip them over the fixture and store the new "
-                + "hash beside it.");
+            Assert.True(stale.Count == 0, string.Join("\n", stale) + "\nRecapture: on a diagnostic branch, set "
+                + VisibilityDxbcDumpFactAttribute.EnvironmentVariable + "=1 on the Windows FXC step of cross-platform-gpu.yml "
+                + "so D3D11FxcValidationTests.DumpVisibilityDisassembly runs, dispatch it there with "
+                + "legs=direct3d11-native, take each stale fixture's DXBC|name|D or DXBC|name|S lines from the log, "
+                + "carriage returns removed, gzip them over the fixture and store the new hash beside it.");
         }
 
         [Theory]

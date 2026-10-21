@@ -81,8 +81,9 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuOutputDescription(null, TemporalFormats.HistoryColor, TemporalFormats.HistoryConfidence));
         }
 
-        // A fragment program's text as compiled: the shipped text unless a test rewrites it.
-        string FragmentSource(string source) => _fragmentSourceForTests?.Invoke(source) ?? source;
+        // Apply fixture rewrites before selecting this backend's current visibility reads.
+        string FragmentSource(string source) => TemporalVisibilityGatherPolicy.ForBackend(
+            _fragmentSourceForTests?.Invoke(source) ?? source, _gd.Backend);
 
         /// <summary>For the cost measurement alone: which pass <see cref="Run"/> leaves out, so each pass can be timed
         /// on its own. The output is then not a resolve.</summary>

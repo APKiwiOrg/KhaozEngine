@@ -60,33 +60,49 @@ bool temporalVisibilityReleases(vec2 uv, ivec2 centre, ivec2 last, vec2 previous
     }
     path = VisibilityFastPath;
 
-    // The nine current visibilities and the block's previous visibility, read before any decision.
-    float current0 = texelFetch(sampler2D(KeyShadowVisibility, LinearClamp), ivec2(at0.x, at0.y), 0).r;
-    float current1 = texelFetch(sampler2D(KeyShadowVisibility, LinearClamp), ivec2(at1.x, at0.y), 0).r;
-    float current2 = texelFetch(sampler2D(KeyShadowVisibility, LinearClamp), ivec2(at2.x, at0.y), 0).r;
-    float current3 = texelFetch(sampler2D(KeyShadowVisibility, LinearClamp), ivec2(at0.x, at1.y), 0).r;
-    float current4 = texelFetch(sampler2D(KeyShadowVisibility, LinearClamp), ivec2(at1.x, at1.y), 0).r;
-    float current5 = texelFetch(sampler2D(KeyShadowVisibility, LinearClamp), ivec2(at2.x, at1.y), 0).r;
-    float current6 = texelFetch(sampler2D(KeyShadowVisibility, LinearClamp), ivec2(at0.x, at2.y), 0).r;
-    float current7 = texelFetch(sampler2D(KeyShadowVisibility, LinearClamp), ivec2(at1.x, at2.y), 0).r;
-    float current8 = texelFetch(sampler2D(KeyShadowVisibility, LinearClamp), ivec2(at2.x, at2.y), 0).r;
+    // R5: gather at integer texel corners, half a texel from any footprint-selection boundary. Coordinates use each
+    // texture's actual size. For a 2x2 with low corner o, sample (o + 1) / textureSize. Components are x (0,1),
+    // y (1,1), z (1,0), w (0,0), with row 1 at higher V. TemporalVisibilityGatherGpuTests compares every component
+    // with Load bits, including R32F NaN payloads and every R8 value, on each backend. Only the source of each value
+    // changes below. D's weights, accumulation order and fma pattern stay as written.
+    // The current 3x3 uses four overlapping 2x2 quads inside at0..at2. No extra texel beyond that footprint is read,
+    // so a centre one texel from any edge needs no stronger precondition. History uses four disjoint 2x2 quads.
+    vec2 currentSize = vec2(textureSize(sampler2D(KeyShadowVisibility, LinearClamp), 0));
+    vec4 currentGather00 = textureGather(sampler2D(KeyShadowVisibility, LinearClamp), vec2(at0 + ivec2(1, 1)) / currentSize, 0);
+    vec4 currentGather10 = textureGather(sampler2D(KeyShadowVisibility, LinearClamp), vec2(at0 + ivec2(2, 1)) / currentSize, 0);
+    vec4 currentGather01 = textureGather(sampler2D(KeyShadowVisibility, LinearClamp), vec2(at0 + ivec2(1, 2)) / currentSize, 0);
+    vec4 currentGather11 = textureGather(sampler2D(KeyShadowVisibility, LinearClamp), vec2(at0 + ivec2(2, 2)) / currentSize, 0);
+    float current0 = currentGather00.w;
+    float current1 = currentGather00.z;
+    float current2 = currentGather10.z;
+    float current3 = currentGather00.x;
+    float current4 = currentGather00.y;
+    float current5 = currentGather10.y;
+    float current6 = currentGather01.x;
+    float current7 = currentGather01.y;
+    float current8 = currentGather11.y;
     ivec2 block = base1 - 1;
-    float previous00 = texelFetch(sampler2D(PreviousKeyShadowVisibility, LinearClamp), block + ivec2(0, 0), 0).r;
-    float previous10 = texelFetch(sampler2D(PreviousKeyShadowVisibility, LinearClamp), block + ivec2(1, 0), 0).r;
-    float previous20 = texelFetch(sampler2D(PreviousKeyShadowVisibility, LinearClamp), block + ivec2(2, 0), 0).r;
-    float previous30 = texelFetch(sampler2D(PreviousKeyShadowVisibility, LinearClamp), block + ivec2(3, 0), 0).r;
-    float previous01 = texelFetch(sampler2D(PreviousKeyShadowVisibility, LinearClamp), block + ivec2(0, 1), 0).r;
-    float previous11 = texelFetch(sampler2D(PreviousKeyShadowVisibility, LinearClamp), block + ivec2(1, 1), 0).r;
-    float previous21 = texelFetch(sampler2D(PreviousKeyShadowVisibility, LinearClamp), block + ivec2(2, 1), 0).r;
-    float previous31 = texelFetch(sampler2D(PreviousKeyShadowVisibility, LinearClamp), block + ivec2(3, 1), 0).r;
-    float previous02 = texelFetch(sampler2D(PreviousKeyShadowVisibility, LinearClamp), block + ivec2(0, 2), 0).r;
-    float previous12 = texelFetch(sampler2D(PreviousKeyShadowVisibility, LinearClamp), block + ivec2(1, 2), 0).r;
-    float previous22 = texelFetch(sampler2D(PreviousKeyShadowVisibility, LinearClamp), block + ivec2(2, 2), 0).r;
-    float previous32 = texelFetch(sampler2D(PreviousKeyShadowVisibility, LinearClamp), block + ivec2(3, 2), 0).r;
-    float previous03 = texelFetch(sampler2D(PreviousKeyShadowVisibility, LinearClamp), block + ivec2(0, 3), 0).r;
-    float previous13 = texelFetch(sampler2D(PreviousKeyShadowVisibility, LinearClamp), block + ivec2(1, 3), 0).r;
-    float previous23 = texelFetch(sampler2D(PreviousKeyShadowVisibility, LinearClamp), block + ivec2(2, 3), 0).r;
-    float previous33 = texelFetch(sampler2D(PreviousKeyShadowVisibility, LinearClamp), block + ivec2(3, 3), 0).r;
+    vec2 previousSize = vec2(textureSize(sampler2D(PreviousKeyShadowVisibility, LinearClamp), 0));
+    vec4 previousGather00 = textureGather(sampler2D(PreviousKeyShadowVisibility, LinearClamp), vec2(block + ivec2(1, 1)) / previousSize, 0);
+    vec4 previousGather10 = textureGather(sampler2D(PreviousKeyShadowVisibility, LinearClamp), vec2(block + ivec2(3, 1)) / previousSize, 0);
+    vec4 previousGather01 = textureGather(sampler2D(PreviousKeyShadowVisibility, LinearClamp), vec2(block + ivec2(1, 3)) / previousSize, 0);
+    vec4 previousGather11 = textureGather(sampler2D(PreviousKeyShadowVisibility, LinearClamp), vec2(block + ivec2(3, 3)) / previousSize, 0);
+    float previous00 = previousGather00.w;
+    float previous10 = previousGather00.z;
+    float previous20 = previousGather10.w;
+    float previous30 = previousGather10.z;
+    float previous01 = previousGather00.x;
+    float previous11 = previousGather00.y;
+    float previous21 = previousGather10.x;
+    float previous31 = previousGather10.y;
+    float previous02 = previousGather01.w;
+    float previous12 = previousGather01.z;
+    float previous22 = previousGather11.w;
+    float previous32 = previousGather11.z;
+    float previous03 = previousGather01.x;
+    float previous13 = previousGather01.y;
+    float previous23 = previousGather11.x;
+    float previous33 = previousGather11.y;
     if ((currentMask & VisibilityCentreFinite) == 0u || !temporalVisibilityFiniteDepth(expectedDepth)) return false;
     float previousTolerance = VisibilityDepthTolerance * max(expectedDepth, 1.0e-5);
 
@@ -133,22 +149,27 @@ bool temporalVisibilityReleases(vec2 uv, ivec2 centre, ivec2 last, vec2 previous
     }
 
     // D's history rejection, once a block texel, then D's 36 bilinear terms in D's order.
-    float stored00 = texelFetch(sampler2D(PrevDepth, LinearClamp), block + ivec2(0, 0), 0).r;
-    float stored10 = texelFetch(sampler2D(PrevDepth, LinearClamp), block + ivec2(1, 0), 0).r;
-    float stored20 = texelFetch(sampler2D(PrevDepth, LinearClamp), block + ivec2(2, 0), 0).r;
-    float stored30 = texelFetch(sampler2D(PrevDepth, LinearClamp), block + ivec2(3, 0), 0).r;
-    float stored01 = texelFetch(sampler2D(PrevDepth, LinearClamp), block + ivec2(0, 1), 0).r;
-    float stored11 = texelFetch(sampler2D(PrevDepth, LinearClamp), block + ivec2(1, 1), 0).r;
-    float stored21 = texelFetch(sampler2D(PrevDepth, LinearClamp), block + ivec2(2, 1), 0).r;
-    float stored31 = texelFetch(sampler2D(PrevDepth, LinearClamp), block + ivec2(3, 1), 0).r;
-    float stored02 = texelFetch(sampler2D(PrevDepth, LinearClamp), block + ivec2(0, 2), 0).r;
-    float stored12 = texelFetch(sampler2D(PrevDepth, LinearClamp), block + ivec2(1, 2), 0).r;
-    float stored22 = texelFetch(sampler2D(PrevDepth, LinearClamp), block + ivec2(2, 2), 0).r;
-    float stored32 = texelFetch(sampler2D(PrevDepth, LinearClamp), block + ivec2(3, 2), 0).r;
-    float stored03 = texelFetch(sampler2D(PrevDepth, LinearClamp), block + ivec2(0, 3), 0).r;
-    float stored13 = texelFetch(sampler2D(PrevDepth, LinearClamp), block + ivec2(1, 3), 0).r;
-    float stored23 = texelFetch(sampler2D(PrevDepth, LinearClamp), block + ivec2(2, 3), 0).r;
-    float stored33 = texelFetch(sampler2D(PrevDepth, LinearClamp), block + ivec2(3, 3), 0).r;
+    vec2 storedSize = vec2(textureSize(sampler2D(PrevDepth, LinearClamp), 0));
+    vec4 storedGather00 = textureGather(sampler2D(PrevDepth, LinearClamp), vec2(block + ivec2(1, 1)) / storedSize, 0);
+    vec4 storedGather10 = textureGather(sampler2D(PrevDepth, LinearClamp), vec2(block + ivec2(3, 1)) / storedSize, 0);
+    vec4 storedGather01 = textureGather(sampler2D(PrevDepth, LinearClamp), vec2(block + ivec2(1, 3)) / storedSize, 0);
+    vec4 storedGather11 = textureGather(sampler2D(PrevDepth, LinearClamp), vec2(block + ivec2(3, 3)) / storedSize, 0);
+    float stored00 = storedGather00.w;
+    float stored10 = storedGather00.z;
+    float stored20 = storedGather10.w;
+    float stored30 = storedGather10.z;
+    float stored01 = storedGather00.x;
+    float stored11 = storedGather00.y;
+    float stored21 = storedGather10.x;
+    float stored31 = storedGather10.y;
+    float stored02 = storedGather01.w;
+    float stored12 = storedGather01.z;
+    float stored22 = storedGather11.w;
+    float stored32 = storedGather11.z;
+    float stored03 = storedGather01.x;
+    float stored13 = storedGather01.y;
+    float stored23 = storedGather11.x;
+    float stored33 = storedGather11.y;
     bool held00 = temporalVisibilityFiniteDepth(stored00) && abs(stored00 - expectedDepth) <= previousTolerance;
     bool held10 = temporalVisibilityFiniteDepth(stored10) && abs(stored10 - expectedDepth) <= previousTolerance;
     bool held20 = temporalVisibilityFiniteDepth(stored20) && abs(stored20 - expectedDepth) <= previousTolerance;

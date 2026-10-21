@@ -61,8 +61,10 @@ namespace KhaozEngine.Tests.Gpu
             rig.Scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
             rig.Scene.TemporalResolveEntryForTests = TemporalResolveEntry.Split;
             TemporalResolvePrecision precision = TemporalResolvePrecisionPolicy.For(backend);
-            string upscaling = ShaderSources.TemporalAccumulateFragment(precision, upscales: true);
-            string atDisplaySize = ShaderSources.TemporalAccumulateFragment(precision, upscales: false);
+            string upscaling = TemporalVisibilityGatherPolicy.ForBackend(
+                ShaderSources.TemporalAccumulateFragment(precision, upscales: true), backend);
+            string atDisplaySize = TemporalVisibilityGatherPolicy.ForBackend(
+                ShaderSources.TemporalAccumulateFragment(precision, upscales: false), backend);
 
             rig.Scene.Post.Temporal.Upscale = TemporalUpscale.Native;
             rig.Frame();
@@ -91,7 +93,9 @@ namespace KhaozEngine.Tests.Gpu
             for (int i = 0; i < 3; i++) rig.Frame();
             Assert.False(rig.Scene.TemporalResolveRendererForTests!.SplitResolveForTests!.AtDisplaySizeBuiltForTests);
             Assert.DoesNotContain(rig.Factory.GraphicsPipelines, p => p.FragmentGlsl
-                == ShaderSources.TemporalAccumulateFragment(TemporalResolvePrecision.Half, upscales: false));
+                == TemporalVisibilityGatherPolicy.ForBackend(
+                    ShaderSources.TemporalAccumulateFragment(TemporalResolvePrecision.Half, upscales: false),
+                    GpuBackendKind.MetalNative));
         }
     }
 }

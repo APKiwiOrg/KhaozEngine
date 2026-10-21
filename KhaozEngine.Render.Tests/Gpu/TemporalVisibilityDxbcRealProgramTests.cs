@@ -76,12 +76,10 @@ namespace KhaozEngine.Tests.Gpu
                 .Order(StringComparer.Ordinal));
         }
 
-        /// <summary>The programs whose fixtures Task 7g.3a left stale. Their lock release lost <c>precise</c> for the
-        /// barrier form, on both sides, since D here is D prime (<see cref="TemporalVisibilityFrozenD.ToD"/>), so the
-        /// GLSL they were dumped from is gone. No Windows FXC dump has run since, and no pin was moved without one.
-        /// Task 7g.3b recaptures them and empties this set. Until then <see cref="EachFixtureWasCompiledFromTheCurrentGlsl"/>
-        /// requires these fixtures to be stale, so a recapture that leaves a program here fails too.</summary>
-        internal static readonly string[] StaleUntil7g3b =
+        /// <summary>The six full programs left stale on both sides by Task 7g.3a's barrier lock release. Task
+        /// 7g.4 also changes their shipped side and the shipped decision helper to gathers. The orchestrator recaptures
+        /// after integration. No fixture or source pin is rewritten on this parallel branch.</summary>
+        internal static readonly string[] StaleUntilIntegrationRecapture =
         [
             "TemporalAccumulateFrag", "TemporalAccumulateHalfFrag", "TemporalAccumulateAtDisplaySizeFrag",
             "TemporalAccumulateAtDisplaySizeHalfFrag", "TemporalResolveFrag", "TemporalResolveHalfFrag",
@@ -89,8 +87,8 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Each fixture is FXC's compile of the GLSL the code builds today (review 7f r4, M-1): the SHA-256 of
         /// that text, LF line endings, UTF-8, equals the one stored beside the fixture, the hash of the text at
-        /// 863bade06, which the restored mask builds again. A program in <see cref="StaleUntil7g3b"/> is expected to
-        /// fail that on both sides, and passes only while it does.</summary>
+        /// 863bade06, which the restored mask built. A program in <see cref="StaleUntilIntegrationRecapture"/> must
+        /// differ on both sides until recaptured. The helper must differ only on its gathered shipped side.</summary>
         [Theory]
         [MemberData(nameof(Programs))]
         public void EachFixtureWasCompiledFromTheCurrentGlsl(string program)
@@ -105,12 +103,15 @@ namespace KhaozEngine.Tests.Gpu
                     stale.Add($"{fixture}.dxbc.gz was dumped from GLSL hashing {stored}, and the code now builds GLSL "
                         + $"hashing {current}.");
             }
-            if (StaleUntil7g3b.Contains(program))
+            int expectedStale = StaleUntilIntegrationRecapture.Contains(program) ? 2 : program == Helper ? 1 : 0;
+            if (expectedStale > 0)
             {
-                foreach (string line in stale) output.WriteLine("expected stale until Task 7g.3b recaptures it: " + line);
-                Assert.True(stale.Count == 2, $"{program} is listed in {nameof(StaleUntil7g3b)}, so both its fixtures "
-                    + $"must be stale until Task 7g.3b recaptures them, and {2 - stale.Count} of them match the current "
-                    + "GLSL. Remove a recaptured program from the list.");
+                foreach (string line in stale) output.WriteLine("expected stale until the post-integration FXC recapture: " + line);
+                Assert.True(stale.Count == expectedStale, $"{program} must have {expectedStale} stale fixtures until the "
+                    + $"post-integration recapture for Task 7g.4, found {stale.Count}. Remove recaptured fixtures from "
+                    + "the stale declaration.");
+                if (program == Helper)
+                    Assert.StartsWith("DecisionHelper.shipped.", Assert.Single(stale), StringComparison.Ordinal);
                 return;
             }
             Assert.True(stale.Count == 0, string.Join("\n", stale) + "\nRecapture: on a diagnostic branch, set "

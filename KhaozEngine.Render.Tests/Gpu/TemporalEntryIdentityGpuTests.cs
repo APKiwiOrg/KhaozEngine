@@ -108,8 +108,9 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.Equal(TemporalResolveEntry.Split, split.Scene.TemporalResolveRendererForTests?.LastEntry);
                 // At Native the split records its second pass compiled without the display-sized reconstruction,
                 // and the fused resolve keeps it, so this walk also holds that program to the rule's own output.
-                Assert.Equal(ShaderSources.TemporalAccumulateFragment(TemporalResolvePrecisionPolicy.For(split.Device),
-                        upscales: preset != TemporalUpscale.Native),
+                Assert.Equal(TemporalVisibilityGatherPolicy.ForBackend(ShaderSources.TemporalAccumulateFragment(
+                        TemporalResolvePrecisionPolicy.For(split.Device), upscales: preset != TemporalUpscale.Native),
+                        split.Device.Backend),
                     split.Scene.TemporalResolveRendererForTests!.LastEntryFragmentsForTests()[1]);
                 var fusedRenderer = fused.Scene.TemporalResolveRendererForTests!;
                 var splitRenderer = split.Scene.TemporalResolveRendererForTests!;

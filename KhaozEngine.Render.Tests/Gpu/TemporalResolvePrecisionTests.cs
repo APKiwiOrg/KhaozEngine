@@ -76,8 +76,9 @@ namespace KhaozEngine.Tests.Gpu
 
             TemporalResolvePrecision precision = TemporalResolvePrecisionPolicy.For(backend);
             string[] requested = rig.Factory.GraphicsPipelines.Select(p => p.FragmentGlsl).ToArray();
-            string[] wanted = [.. TemporalResolveRenderer.EntryFragments(entry, precision, upscales: true),
-                ShaderSources.TemporalDebugFragment(precision), ShaderSources.TemporalProbeFragment(precision)];
+            string[] wanted = [.. TemporalResolveRenderer.EntryFragments(entry, precision, upscales: true, backend),
+                TemporalVisibilityGatherPolicy.ForBackend(ShaderSources.TemporalDebugFragment(precision), backend),
+                TemporalVisibilityGatherPolicy.ForBackend(ShaderSources.TemporalProbeFragment(precision), backend)];
             foreach (string fragment in wanted) Assert.Contains(fragment, requested);
             TemporalResolvePrecision other = precision == TemporalResolvePrecision.Half
                 ? TemporalResolvePrecision.Full : TemporalResolvePrecision.Half;
@@ -88,7 +89,7 @@ namespace KhaozEngine.Tests.Gpu
                 ShaderSources.TemporalDebugFragment(other), ShaderSources.TemporalProbeFragment(other),
             })
             {
-                Assert.DoesNotContain(fragment, requested);
+                Assert.DoesNotContain(TemporalVisibilityGatherPolicy.ForBackend(fragment, backend), requested);
             }
         }
     }

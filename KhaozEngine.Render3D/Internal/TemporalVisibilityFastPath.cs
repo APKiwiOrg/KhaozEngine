@@ -31,9 +31,9 @@ namespace KhaozEngine.Render3D.Internal
     /// </summary>
     internal static class TemporalVisibilityFastPath
     {
-        /// <summary>The texel fetches the fast path issues a pixel when it reads the whole block: nine current
-        /// visibilities, sixteen previous visibilities and sixteen stored depths.</summary>
-        internal const int Fetches = 9 + 16 + 16;
+        /// <summary>The canonical fast path issues no point loads and four gathers per texture. Metal's program-build
+        /// policy retains nine current loads and the eight history gathers. The range skip omits the depth gathers.</summary>
+        internal const int Fetches = 0, Gathers = 4 + 4 + 4;
 
         /// <summary>
         /// THE BINADE RULE, as the generated text tests it per column (row) of the block: whether column
@@ -65,10 +65,14 @@ namespace KhaozEngine.Render3D.Internal
         /// <summary>The GLSL of <c>temporalVisibilityReleases</c> and its path bits, LF line endings.</summary>
         internal static string Generate() => Generate(static block => block);
 
+        internal static string Generate(bool gatherCurrent, bool gatherPrevious, bool gatherDepth)
+            => Generate(static block => block, gatherCurrent, gatherPrevious, gatherDepth);
+
         /// <summary>As <see cref="Generate()"/>, with each verbatim block of this file passed through
         /// <paramref name="checkout"/> first. A verbatim block carries this file's line endings as checked out, so a
         /// test replays a CRLF checkout through it. The text is LF whatever the blocks carry.</summary>
-        internal static string Generate(Func<string, string> checkout)
+        internal static string Generate(Func<string, string> checkout, bool gatherCurrent = true,
+            bool gatherPrevious = true, bool gatherDepth = true)
         {
             var g = new StringBuilder();
             void Verbatim(string text) => g.Append(checkout(text));
@@ -120,14 +124,22 @@ bool temporalVisibilityReleases(vec2 uv, ivec2 centre, ivec2 last, vec2 previous
     }
     path = VisibilityFastPath;
 
-    // The nine current visibilities and the block's previous visibility, read before any decision.
+    // R5: gather at integer texel corners, half a texel from any footprint-selection boundary. Coordinates use each
+    // texture's actual size. For a 2x2 with low corner o, sample (o + 1) / textureSize. Components are x (0,1),
+    // y (1,1), z (1,0), w (0,0), with row 1 at higher V. TemporalVisibilityGatherGpuTests compares every component
+    // with Load bits, including R32F NaN payloads and every R8 value, on each backend. Only the source of each value
+    // changes below. D's weights, accumulation order and fma pattern stay as written.
+    // The current 3x3 uses four overlapping 2x2 quads inside at0..at2. No extra texel beyond that footprint is read,
+    // so a centre one texel from any edge needs no stronger precondition. History uses four disjoint 2x2 quads.
 ");
-            for (int n = 0; n < 9; n++)
-                g.Append($"    float current{n} = texelFetch(sampler2D(KeyShadowVisibility, LinearClamp), {Texel(n)}, 0).r;\n");
+            g.Append(CurrentSources(gatherCurrent));
             g.Append("    ivec2 block = base1 - 1;\n");
+            if (gatherPrevious) GatherBlock(g, "previous", "PreviousKeyShadowVisibility", "block", 2);
             for (int b = 0; b < 16; b++)
-                g.Append($"    float previous{Block(b)} = texelFetch(sampler2D(PreviousKeyShadowVisibility, LinearClamp), "
-                    + $"block + ivec2({b % 4}, {b / 4}), 0).r;\n");
+            {
+                if (gatherPrevious) GatheredTexel(g, "previous", b);
+                else LoadedTexel(g, "previous", "PreviousKeyShadowVisibility", b);
+            }
             Verbatim(@"    if ((currentMask & VisibilityCentreFinite) == 0u || !temporalVisibilityFiniteDepth(expectedDepth)) return false;
     float previousTolerance = VisibilityDepthTolerance * max(expectedDepth, 1.0e-5);
 
@@ -154,9 +166,12 @@ bool temporalVisibilityReleases(vec2 uv, ivec2 centre, ivec2 last, vec2 previous
 
     // D's history rejection, once a block texel, then D's 36 bilinear terms in D's order.
 ");
+            if (gatherDepth) GatherBlock(g, "stored", "PrevDepth", "block", 2);
             for (int b = 0; b < 16; b++)
-                g.Append($"    float stored{Block(b)} = texelFetch(sampler2D(PrevDepth, LinearClamp), "
-                    + $"block + ivec2({b % 4}, {b / 4}), 0).r;\n");
+            {
+                if (gatherDepth) GatheredTexel(g, "stored", b);
+                else LoadedTexel(g, "stored", "PrevDepth", b);
+            }
             for (int b = 0; b < 16; b++)
                 g.Append($"    bool held{Block(b)} = temporalVisibilityFiniteDepth(stored{Block(b)}) "
                     + $"&& abs(stored{Block(b)} - expectedDepth) <= previousTolerance;\n");
@@ -196,9 +211,44 @@ bool temporalVisibilityReleases(vec2 uv, ivec2 centre, ivec2 last, vec2 previous
         // Step n's bit of the current mask, temporalVisibilityCurrentBit's 1u << n.
         static string Bit(int n) => (1u << n).ToString(CultureInfo.InvariantCulture);
 
-        // Neighbour n of the 3x3 in D's order, rows first: column n % 3 takes chain (n % 3)'s x, row n / 3 chain
-        // (n / 3)'s y.
-        static string Texel(int n) => $"ivec2(at{n % 3}.x, at{n / 3}.y)";
+        /// <summary>The current 3x3 source block, selected at program build on Metal. It retains loads there because
+        /// the substitution changes subsequent visibility arithmetic despite matching Load bits in isolation.</summary>
+        internal static string CurrentSources(bool gather)
+        {
+            var g = new StringBuilder();
+            if (gather) GatherBlock(g, "current", "KeyShadowVisibility", "at0", 1);
+            for (int n = 0; n < 9; n++)
+            {
+                int x = n % 3, y = n / 3;
+                int gx = x == 2 ? 1 : 0, gy = y == 2 ? 1 : 0;
+                if (gather)
+                    g.Append($"    float current{n} = currentGather{gx}{gy}.{Component(x - gx, y - gy)};\n");
+                else
+                    g.Append($"    float current{n} = texelFetch(sampler2D(KeyShadowVisibility, LinearClamp), "
+                        + $"ivec2(at{n % 3}.x, at{n / 3}.y), 0).r;\n");
+            }
+            return g.ToString();
+        }
+
+        // Four gather footprints at stride one overlap to cover a 3x3, at stride two partition a 4x4.
+        static void GatherBlock(StringBuilder g, string name, string texture, string origin, int stride)
+        {
+            g.Append($"    vec2 {name}Size = vec2(textureSize(sampler2D({texture}, LinearClamp), 0));\n");
+            for (int y = 0; y < 2; y++)
+                for (int x = 0; x < 2; x++)
+                    g.Append($"    vec4 {name}Gather{x}{y} = textureGather(sampler2D({texture}, LinearClamp), "
+                        + $"vec2({origin} + ivec2({1 + x * stride}, {1 + y * stride})) / {name}Size, 0);\n");
+        }
+
+        static void GatheredTexel(StringBuilder g, string name, int b) => g.Append(
+            $"    float {name}{Block(b)} = {name}Gather{b % 4 / 2}{b / 4 / 2}.{Component(b % 2, b / 4 % 2)};\n");
+
+        static void LoadedTexel(StringBuilder g, string name, string texture, int b) => g.Append(
+            $"    float {name}{Block(b)} = texelFetch(sampler2D({texture}, LinearClamp), "
+            + $"block + ivec2({b % 4}, {b / 4}), 0).r;\n");
+
+        // The independently read-back SPIR-V gather order, indexed by row-major local texel coordinates.
+        static char Component(int x, int y) => "wzxy"[y * 2 + x];
 
         // Block texel b, column b % 4 and row b / 4 from the block's corner, as a two-digit name.
         static string Block(int b) => $"{b % 4}{b / 4}";

@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Internal;
+using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Tests.Gpu
 {
@@ -89,7 +90,10 @@ namespace KhaozEngine.Tests.Gpu
             rows.Add(Row($"{program.Name}.vertex.spirv", vertex, dump));
             rows.Add(Row($"{program.Name}.fragment.spirv", fragment, dump));
 
-            CrossCompiledPair msl = SpirvCrossCompile.VertexFragmentToMsl(vertex, fragment, program.Name);
+            string metalSource = TemporalVisibilityGatherPolicy.ForBackend(program.FragmentGlsl, GpuBackendKind.MetalNative);
+            byte[] metalFragment = ReferenceEquals(metalSource, program.FragmentGlsl) ? fragment
+                : SpirvFrontEnd.ToSpirv(metalSource, GpuShaderStages.Fragment, program.Name);
+            CrossCompiledPair msl = SpirvCrossCompile.VertexFragmentToMsl(vertex, metalFragment, program.Name);
             rows.Add(Row($"{program.Name}.vertex.msl", msl.VertexSource, dump));
             rows.Add(Row($"{program.Name}.fragment.msl", msl.FragmentSource, dump));
             rows.Add(LayoutRow($"{program.Name}.layout.msl", msl.Reflection));

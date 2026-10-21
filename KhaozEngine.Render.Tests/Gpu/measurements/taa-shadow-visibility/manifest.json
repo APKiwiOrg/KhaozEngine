@@ -3653,6 +3653,10 @@
     {
       "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/verify_capture_manifest.py",
       "sha256": "1cc911b742c67d8a9200cb342cf7a5fc10648faf41ca140508f98ac8051e81e4"
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/gathers.md",
+      "sha256": "a6ae73772727e1a26f747f25544bd0b375e462a73de3d99402cf877fb33454bc"
     }
   ],
   "shipping_build": {

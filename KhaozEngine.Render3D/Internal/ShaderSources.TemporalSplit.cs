@@ -23,8 +23,7 @@ namespace KhaozEngine.Render3D.Internal
     /// visibility mask as whole numbers below 256 and 1024. Alpha is read from the scene colour, whatever its format.
     /// So both entry points apply every rule to the same values. <c>TemporalEntryIdentityGpuTests</c> compares the two
     /// histories bit for bit after every frame of a follow walk, and passes on Metal, on a Tesla T4 on Direct3D 11 and
-    /// Vulkan, and on WARP. On a software Vulkan device (llvmpipe) only the state is identical, the colour within a
-    /// measured bound.</para>
+    /// Vulkan, on WARP and on a software Vulkan device (llvmpipe).</para>
     /// </summary>
     internal static partial class ShaderSources
     {

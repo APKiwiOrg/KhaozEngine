@@ -65,10 +65,12 @@ actual source ranges and run the consumer oracle again. A matching label never s
 ## Transforms and bounded capacity
 
 System.Numerics uses row vectors. The rigid draw frame is
-`partLocal * contractBodyAlignment * currentJointModel * actorModel`. Coverage uses
+`BoneSocket.ComposeRigid(partLocal * contractBodyAlignment, currentJointModel, actorModel)`. It preserves
+joint translation while stripping joint scale and shear. Coverage uses
 `coverageLocal * equipmentWorld`, and host-to-coverage is `actorModel * inverse(coverageWorld)`.
 Use one captured palette/model for host, equipment and outlines. Positive nonuniform scale and affine
-shear are supported through the full inverse. Actor, effective rigid and coverage transforms must be finite,
+shear in local, body-alignment, actor and coverage transforms are supported through the full inverse.
+Actor, effective rigid and coverage transforms must be finite,
 affine, invertible, positive-determinant and well-conditioned. Projective transforms, mirrors, singular or
 ill-conditioned frames refuse `UnsupportedTransform`. Coverage also admits the conservative current-palette
 bound against the latched render origin. Excessive origin magnitude refuses with that same code.

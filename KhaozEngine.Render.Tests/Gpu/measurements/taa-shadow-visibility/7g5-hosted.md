@@ -81,6 +81,12 @@ The initial full format scan reported thirteen whitespace diagnostics in two tes
 a43599546 had also formatted those lines. Only that whitespace was restored, with identical non-whitespace text
 before and after. The initial scan completed with exit 2 after 1410.135 seconds. The final full-solution gate runs on the corrected files.
 
+The workspace-loading warning is the formatter's generic one, printed with no project detail at default verbosity
+on every full-solution run since the engine format baseline cleanup
+([#1308](https://github.com/APKiwiOrg/KhaozEngine/issues/1308)). It names no project and does not stop the check
+from reading test projects: the initial scan reported the thirteen diagnostics in KhaozEngine.Render.Tests, and the
+final gate's exit 0 covers the same solution load.
+
 The Metal selection includes TemporalEntryIdentityGpuTests, TemporalVisibilityResolveAbGpuTests,
 TemporalVisibilityEquivalenceGpuTests and TemporalVisibilityGatherGpuTests. No timing case is selected.
 The device-free selection is Temporal, ShaderSources, ShippedShader, Spirv and Corpus, plus the Metal MSL and

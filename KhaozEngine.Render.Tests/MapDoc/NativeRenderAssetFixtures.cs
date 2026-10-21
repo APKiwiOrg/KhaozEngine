@@ -46,6 +46,7 @@ internal static partial class NativeRenderAssetFixtures
 
     internal static MapAssetClosure Create(string variant = "valid")
     {
+        if (variant is "foliage" or "foliage-centimetres") return Foliage(variant == "foliage" ? 1 : .01f);
         var source = new Source();
         var resources = new JsonArray();
         void Resource(string id, string kind, byte[] bytes, params string[] deps)
@@ -109,6 +110,72 @@ internal static partial class NativeRenderAssetFixtures
         MapAssetRef root = source.Add("root", Encoding.UTF8.GetBytes(new JsonObject
         { ["payloadVersion"] = 1, ["assets"] = assets, ["resources"] = resources }.ToJsonString()));
         return MapAssetClosure.Load([root], source);
+    }
+
+    static MapAssetClosure Foliage(float units)
+    {
+        var source = new Source(); var resources = new JsonArray(); var assets = new JsonArray();
+        void Resource(string id, string kind, byte[] bytes)
+        {
+            var reference = source.Add(id, bytes);
+            resources.Add(new JsonObject
+            {
+                ["reference"] = new JsonObject
+                {
+                    ["id"] = id,
+                    ["path"] = reference.Path,
+                    ["sha256"] = reference.Sha256,
+                    ["payloadVersion"] = 1
+                },
+                ["kind"] = kind,
+                ["dependencies"] = new JsonArray()
+            });
+        }
+        Resource("paint", "Material", Encoding.UTF8.GetBytes(Material().Replace("\"image\"", "null", StringComparison.Ordinal)));
+        foreach (string id in new[] { "A", "B", "C", "D", "E" })
+        {
+            byte[] glb = Glb(); int length = BinaryPrimitives.ReadInt32LittleEndian(glb.AsSpan(12));
+            var root = JsonNode.Parse(glb.AsSpan(20, length))!.AsObject(); byte[] bin = glb.AsSpan(28 + length).ToArray();
+            var parts = FoliageParts();
+            for (int part = 0; part < 2; part++)
+            {
+                var vertices = parts[id == "B" ? 2 : part].Mesh.Vertices;
+                for (int v = 0; v < 3; v++)
+                {
+                    var p = vertices[v].Position; int offset = part * 36 + v * 12;
+                    BinaryPrimitives.WriteSingleLittleEndian(bin.AsSpan(offset), p.X); BinaryPrimitives.WriteSingleLittleEndian(bin.AsSpan(offset + 4), p.Y);
+                    BinaryPrimitives.WriteSingleLittleEndian(bin.AsSpan(offset + 8), p.Z);
+                }
+                root["accessors"]![part]!["min"] = new JsonArray(0, id == "B" ? -1 : 0, 0);
+                root["accessors"]![part]!["max"] = new JsonArray(1, 1, 0);
+                root["materials"]![part]!["alphaCutoff"] = parts[id == "B" ? 2 : part].Maps.AlphaCutoff;
+            }
+            if (id == "B") root["meshes"]![0]!["primitives"]!.AsArray().RemoveAt(1);
+            Resource(id + "-mesh", "Mesh", Pack(root, bin));
+            Resource(id + "-lod", "Lod", Pack(root, bin));
+            var bounds = new JsonObject
+            {
+                ["min"] = new JsonObject { ["x"] = 0, ["y"] = -1, ["z"] = 0 },
+                ["max"] = new JsonObject { ["x"] = 1, ["y"] = 1, ["z"] = 0 }
+            };
+            assets.Add(new JsonObject
+            {
+                ["id"] = id,
+                ["meshResourceId"] = id + "-mesh",
+                ["supportResourceIds"] = new JsonArray(),
+                ["materialResourceIds"] = new JsonArray("paint"),
+                ["lodResourceIds"] = new JsonArray(id + "-lod"),
+                ["lightResourceIds"] = new JsonArray(),
+                ["sourceUnitsToMetres"] = units,
+                ["renderBounds"] = bounds,
+                ["lodBounds"] = bounds.DeepClone(),
+                ["source"] = "invented.blend",
+                ["license"] = "CC0",
+                ["textured"] = false
+            });
+        }
+        var manifest = source.Add("root", Encoding.UTF8.GetBytes(new JsonObject { ["payloadVersion"] = 1, ["assets"] = assets, ["resources"] = resources }.ToJsonString(MapJsonTextOptions.CreateSerializer(false))));
+        return MapAssetClosure.Load([manifest], source);
     }
 
     static JsonObject Bounds(int v) => new()

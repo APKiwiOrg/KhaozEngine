@@ -12,9 +12,10 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// The hosted Windows check on FXC's real disassembly of every visibility program. The opt-in dump fact
     /// <see cref="D3D11FxcValidationTests.DumpVisibilityDisassembly"/> printed all fourteen listings in hosted run
-    /// 39543431188, job 119036194789, on windows-2025-vs2026 20261007.264.1, with the compiler banner
-    /// <c>Microsoft (R) HLSL Shader Compiler 10.1</c>. The barrier lock release changed both sides of the six full
-    /// programs, since D here is D prime. The decision helper's listings stayed byte-identical. Every listing has zero
+    /// 39561655851, job 119094161538, on windows-2025-vs2026 20261007.264.1, with the compiler banner
+    /// <c>Microsoft (R) HLSL Shader Compiler 10.1</c>. Task 7g.5 recaptured all seven gathered shipped
+    /// listings. All seven D prime listings stayed byte-identical to 7g.3b. Every shipped listing has twelve gathers
+    /// and every listing has zero
     /// precise markings. D's two in-loop heads are reassociated in both programs, and the fast path adds four
     /// reassociated heads and two written ones. D's in-loop forms agree between fused and split entries too
     /// (<see cref="TemporalVisibilityDxbcBarrierTests"/>). The fixtures hold the printed text, carriage returns
@@ -72,7 +73,7 @@ namespace KhaozEngine.Tests.Gpu
                 .Order(StringComparer.Ordinal));
         }
 
-        /// <summary>Task 7g.3b recaptured every stale fixture in hosted run 39543431188. This set is empty, so every
+        /// <summary>Task 7g.5 recaptured every stale fixture in hosted run 39561655851. This set is empty, so every
         /// source pin must match the current GLSL on both sides.</summary>
         internal static readonly string[] StaleUntil7g3b = [];
 
@@ -120,13 +121,13 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>What FXC made of each program: D's in-loop head forms in D and shipped, the fast path's
         /// straight-line forms, declared temps, precise markings and unread non-chain positions.</summary>
         [Theory]
-        [InlineData("DecisionHelper", "RR", "RR", "RRRRWW", 12, 28, false, 0)]
-        [InlineData("TemporalAccumulateFrag", "RR", "RR", "RRRRWW", 29, 45, false, 10)]
-        [InlineData("TemporalAccumulateHalfFrag", "RR", "RR", "RRRRWW", 32, 46, false, 10)]
-        [InlineData("TemporalAccumulateAtDisplaySizeFrag", "RR", "RR", "RRRRWW", 26, 43, false, 10)]
-        [InlineData("TemporalAccumulateAtDisplaySizeHalfFrag", "RR", "RR", "RRRRWW", 29, 44, false, 10)]
-        [InlineData("TemporalResolveFrag", "RR", "RR", "RRRRWW", 41, 47, false, 10)]
-        [InlineData("TemporalResolveHalfFrag", "RR", "RR", "RRRRWW", 42, 48, false, 10)]
+        [InlineData("DecisionHelper", "RR", "RR", "RRRRWW", 12, 18, false, 0)]
+        [InlineData("TemporalAccumulateFrag", "RR", "RR", "RRRRWW", 29, 36, false, 10)]
+        [InlineData("TemporalAccumulateHalfFrag", "RR", "RR", "RRRRWW", 32, 38, false, 10)]
+        [InlineData("TemporalAccumulateAtDisplaySizeFrag", "RR", "RR", "RRRRWW", 26, 34, false, 10)]
+        [InlineData("TemporalAccumulateAtDisplaySizeHalfFrag", "RR", "RR", "RRRRWW", 29, 36, false, 10)]
+        [InlineData("TemporalResolveFrag", "RR", "RR", "RRRRWW", 41, 46, false, 10)]
+        [InlineData("TemporalResolveHalfFrag", "RR", "RR", "RRRRWW", 42, 47, false, 10)]
         public void EachProgramCompilesItsChainsInTheseForms(string program, string dLoop, string loop, string straight,
             int dTemps, int temps, bool precise, int unreadCount)
         {

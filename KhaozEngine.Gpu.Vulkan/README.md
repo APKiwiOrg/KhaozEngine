@@ -287,7 +287,9 @@ Reports identify the source, actual SPIR-V artifacts, entry points, resolved com
 layout, graphics state, compiler options and diagnostic configuration. Pipeline hashes exclude native
 handles. GLSL entry points are `main` and the backend supplies no specialization constants. Graphics
 source and artifact digests hash length-prefixed vertex and fragment data in that order. The configuration
-digest includes capture flags and the instance validation mode. Disposed pipelines refuse native queries.
+digest includes capture flags, the requested validation mode, the enabled instance layers and the enabled
+validation features. A missing validation layer produces a different identity for the same request.
+Disposed pipelines refuse native queries.
 
 Executable and statistic queries initialize every output structure and repeat the two-call protocol on
 `VK_INCOMPLETE`. Collection allows four attempts per enumeration, at most 64 executables and 256 statistics
@@ -303,6 +305,7 @@ No internal representations or profiler installation are requested.
 
 The device also implements `IGpuResourceMemoryDiagnostics`. `ReadMemorySnapshot()` reports requested live
 buffer bytes and texture texel payload, including mips, expanded cubemap faces, array layers and samples.
+Native image payload uses checked 64-bit arithmetic. The 32-bit mapping ceiling applies only to staging.
 Staging buffers and uniform rings report retained capacity separately, with overlap identified in the
 source. Logical payload stays counted until native resource retirement. Peak payload and resource count
 exclude backing heaps. Committed bytes count each `vkAllocateMemory` result once, including retained empty

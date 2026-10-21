@@ -178,7 +178,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             surfaces?.BindPhysicalDevice(handles[chosen]);
 
             VulkanPipelineDiagnostics? pipelineDiagnostics = VulkanPipelineExecutableApi.Discover(
-                vk, handles[chosen], instance.Validation.ToString());
+                vk, handles[chosen], instance.ValidationConfiguration);
             Device device = CreateDevice(vk, handles[chosen], read.GraphicsQueueFamily, features, windowed, pipelineDiagnostics);
             var liveness = new DeviceLiveness();
             var loss = new VulkanDeviceLossLatch(liveness);

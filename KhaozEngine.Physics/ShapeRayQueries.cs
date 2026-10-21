@@ -34,14 +34,17 @@ public static class ShapeRayQueries
         if (!double.IsFinite(ray.MaxDistance) || ray.MaxDistance < 0d)
             throw new ArgumentOutOfRangeException(nameof(ray), "Ray maximum distance must be finite and nonnegative.");
         var direction = new ShapeDouble3(ray.Dx, ray.Dy, ray.Dz);
-        double length = Math.Sqrt(Dot(direction, direction));
-        if (length == 0d || double.IsInfinity(length))
+        double squaredLength = Dot(direction, direction);
+        // A nonzero subnormal square has already lost relative precision. Scale before its square root,
+        // while keeping the released dot, square-root and normalization operations for float-range rays.
+        if (squaredLength == 0d || double.IsSubnormal(squaredLength) || double.IsInfinity(squaredLength))
         {
             double scale = Math.Max(Math.Abs(ray.Dx), Math.Max(Math.Abs(ray.Dy), Math.Abs(ray.Dz)));
             if (scale == 0d) throw new ArgumentOutOfRangeException(nameof(ray), "Ray direction must not be zero.");
             direction = new(ray.Dx / scale, ray.Dy / scale, ray.Dz / scale);
-            length = Math.Sqrt(Dot(direction, direction));
+            squaredLength = Dot(direction, direction);
         }
+        double length = Math.Sqrt(squaredLength);
         return (new(ray.X, ray.Y, ray.Z), direction.Scale(1d / length));
     }
 

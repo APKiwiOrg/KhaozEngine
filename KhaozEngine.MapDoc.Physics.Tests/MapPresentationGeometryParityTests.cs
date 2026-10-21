@@ -41,6 +41,18 @@ public sealed class MapPresentationGeometryParityTests
         Assert.Equal(new ShapeRayHit(2, -Vector3.UnitX, false), hit);
     }
 
+    [Theory]
+    [InlineData(1.99, false)]
+    [InlineData(3, true)]
+    public void GenericRay_SubnormalSquaredDirectionKeepsMetreLimits(double maximumDistance, bool expectedHit)
+    {
+        bool found = ShapeRayQueries.Cast(new(-3, 0, 0, 1e-161, 0, 0, maximumDistance),
+            new BoxShape(Vector3.One), Pose.Identity, out var hit);
+        Assert.Equal(expectedHit, found);
+        if (expectedHit) Assert.Equal(new ShapeRayHit(2, -Vector3.UnitX, false), hit);
+        else Assert.Equal(default(ShapeRayHit), hit);
+    }
+
     [Fact]
     public void GenericRay_PreservesDoubleOriginInsideFlagsAndFirstTie()
     {

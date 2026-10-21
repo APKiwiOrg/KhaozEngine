@@ -242,6 +242,55 @@ public sealed class MapRoofEvaluationAllocationTests
         Assert.Throws<ArgumentNullException>(() => MapRoofEvaluationBuffer.Prepare(null!));
     }
 
+    [Theory]
+    [InlineData(1, 65536L, MapSceneStatus.CompleteForScope)]
+    [InlineData(2048, 65536L, MapSceneStatus.CapacityExceeded)]
+    [InlineData(2048, 4194304L, MapSceneStatus.CompleteForScope)]
+    public void Prepare_SurfaceOnlyInventoryAdmitsCompleteStorageBeforeConstruction(int surfaceCount, long allowance, MapSceneStatus expected)
+    {
+        using var native = NativeSceneFixtures.Create("empty");
+        for (int i = 0; i < surfaceCount; i++)
+        {
+            var surface = new MapSurfaceRef("empty-surface-" + i, MapLatticeFrame.ImportedMetreCentimetre,
+                MapSurfaceRole.SupportFloor, MapPresencePolicy.Native, null, null, "");
+            native.Document.Surfaces.Refs.Add(surface with
+            {
+                SemanticSha256 = MapSurfaceSemantics.SurfaceDigest(surface,
+                    Array.Empty<System.Collections.Generic.KeyValuePair<MapPatchKey, string>>()),
+            });
+        }
+        var scope = new MapSceneScope(new(WorldFrame.Origin, new(-1, -1), new(1, 1), null, null,
+            Enum.GetValues<MapSurfaceRole>(), null, new()), new(-1, -1, -1, 1, 1, 1), MapSceneChannels.All);
+        var acquired = NativeSceneFixtures.Open(native, false).Acquire(scope);
+        Assert.True(acquired.Scene is not null, string.Join("\n", acquired.Findings));
+        var scene = acquired.Scene!;
+        Assert.Equal(surfaceCount, scene.SurfaceView.Surfaces.Count);
+        Assert.Empty(scene.SurfaceView.Witness.Present);
+        Assert.Empty(scene.SurfaceView.Witness.Records);
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: allowance, MaxPreparedFaces: 0));
+        var prepared = MapRoofEvaluationBuffer.Prepare(scene, admission);
+        Assert.Equal(expected, prepared.Status);
+        Assert.Equal(0, admission.PreparedFaces);
+        if (expected == MapSceneStatus.CompleteForScope)
+        {
+            Assert.NotNull(prepared.Buffer);
+            Assert.InRange(admission.RetainedBytes, 1, allowance);
+            prepared.Buffer!.Evaluate(new(WorldFrame.Origin, default), MapRoofMode.Auto);
+            Assert.Equal(MapMembershipStatus.Outside, prepared.Buffer.Status);
+            return;
+        }
+        Assert.Null(prepared.Buffer);
+        Assert.Equal(0, admission.RetainedBytes);
+        MapRoofEvaluationBufferResult? result = null;
+        long resultBytes = AllocationMeasurement.Measure("surface admission result", () => result = new(expected, null, prepared.Detail));
+        long refusedBytes = AllocationMeasurement.Measure("surface inventory refusal before construction", () =>
+            result = MapRoofEvaluationBuffer.Prepare(scene, admission));
+        Assert.Equal(expected, result!.Status);
+        Assert.Null(result.Buffer);
+        Assert.Equal(0, admission.RetainedBytes);
+        Assert.Equal(resultBytes, refusedBytes);
+    }
+
     [Fact]
     public void Prepare_SharedAdmissionChargesAggregateBeforeCreatingAnotherBuffer()
     {

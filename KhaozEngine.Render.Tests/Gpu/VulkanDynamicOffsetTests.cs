@@ -54,7 +54,10 @@ namespace KhaozEngine.Tests.Gpu
             }
 
             Assert.NotEmpty(shapes);
-            Assert.Equal(VulkanDescriptorLimitTests.ShippedLayouts.Count, shapes.Count);
+            // Includes bounded water and prepared foliage colour, motion,
+            // opaque cascade, cutout cascade and point shadow.
+            // These six R8a pipelines add the BoundedWater and shared SceneAnchor layouts.
+            Assert.Equal(67, shapes.Count);
 
             for (int segment = 0; segment < harness.Rings.FramesInFlight; segment++)
             {

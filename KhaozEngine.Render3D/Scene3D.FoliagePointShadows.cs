@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
-using KhaozEngine.Render3D.Diagnostics;
 using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Render3D.Rendering;
 
@@ -155,7 +154,7 @@ public sealed partial class Scene3D
     /// pipeline. The query runs on the light's first face and is reused by the other five. Returns the draws.</summary>
     int DrawFoliagePointShadowFace(IGpuCommandList cl, PointShadowRenderer renderer, PointShadowAtlas atlas,
         int packedIndex, int face, int row, Vector3 lightPosition, float radius, float nearRadius,
-        Vector3 exclusionMin, Vector3 exclusionMax, RenderPassKey profileKey)
+        Vector3 exclusionMin, Vector3 exclusionMax, in PackedPointShadowSlot packed)
     {
         if (face == 0 || packedIndex != _foliagePointFaceLight)
         {
@@ -172,7 +171,7 @@ public sealed partial class Scene3D
             }
         }
 
-        using var pass = ProfilePass(cl, profileKey,
+        using var pass = ProfilePointPass(cl, packed, PointProfilePass.Foliage, face,
             executed: _foliagePointFaceRuns.Count > 0);
         int draws = 0;
         foreach (FoliagePointFaceRun faceRun in _foliagePointFaceRuns)

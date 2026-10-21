@@ -23181,9 +23181,12 @@ All other occurrences are zero. Directional recording visits rigid/CPU work for 
 for all cascades, then GPU skinning for all cascades. These are separate measured segments rather than one
 invented contiguous interval per cascade. No draw is reordered to manufacture a profiling parent. Point
 rows keep the existing packed scheduling order and separate base/transient atlas identity. Cached base
-rows emit skipped occurrences before executed rows. Leaf keys use the stable atlas row and row kind rather
-than packed upload indices, so cache reuse cannot rename later dynamic or transient leaves. A frozen layout
-must preserve that event order.
+rows emit skipped occurrences at their admitted request positions, interleaved with executed rows rather
+than collected before them. Static requests sort by stable light key, followed by nearest-first dynamic
+requests, then transient rows. Leaf keys use the stable atlas row and row kind rather than packed upload
+indices, so cache reuse cannot rename later dynamic or transient leaves. A frozen layout must preserve
+the native relative order of executed rows. Changing that order requires a new layout. A null observer
+returns before any point row, face or leaf key is evaluated.
 
 CPU-only phases cover atmosphere lighting/LUT preparation, geometry grouping, visibility and shadow fitting,
 shared upload packing, skinned visibility/packing, cascade caster selection/culling and shadow uploads.

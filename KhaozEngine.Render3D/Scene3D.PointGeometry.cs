@@ -26,12 +26,11 @@ public sealed partial class Scene3D
         int draws = 0;
         IGpuBuffer? instances = _model.InstanceBuffer;
         PointShadowAtlas? activeAtlas = null;
+        int profileRequestCursor = 0;
         foreach (PackedPointShadowSlot packed in _packedPointSlots)
         {
-            bool transient = ReferenceEquals(packed.Atlas, _pointShadowTransientAtlas);
-            bool dynamic = packed.RequestIndex >= 0 && _pointRequests[packed.RequestIndex].Mode == LightShadowMode.Dynamic;
-            using var row = ProfilePass(cl, PointRowPass(transient, dynamic), packed.Row);
-            using (ProfilePass(cl, PointLeafKey(packed, PointProfileLeaf.Setup)))
+            using var row = ProfilePointRow(cl, packed, ref profileRequestCursor);
+            using (ProfilePointPass(cl, packed, PointProfilePass.Setup))
             {
                 if (!ReferenceEquals(activeAtlas, packed.Atlas))
                 {
@@ -49,8 +48,8 @@ public sealed partial class Scene3D
                     packed.ExclusionMin, packed.ExclusionMax);
             for (int face = 0; face < PointShadowMath.FaceCount; face++)
             {
-                using var facePass = ProfilePass(cl, PointFacePass(transient, dynamic), packed.Row * 6 + face);
-                using (ProfilePass(cl, PointLeafKey(packed, PointProfileLeaf.Rigid, face), executed: drawRigid && _pointCasterSpans.Count > 0))
+                using var facePass = ProfilePointPass(cl, packed, PointProfilePass.Face, face);
+                using (ProfilePointPass(cl, packed, PointProfilePass.Rigid, face, executed: drawRigid && _pointCasterSpans.Count > 0))
                     if (drawRigid)
                     {
                         ShadowCastKind bound = ShadowCastKind.None;
@@ -74,14 +73,14 @@ public sealed partial class Scene3D
                 if (rigidSet)
                     draws += DrawFoliagePointShadowFace(cl, renderer, packed.Atlas, packed.PackedIndex, face,
                         packed.Row, packed.LightPosAbsolute, packed.Radius, packed.NearRadius,
-                        packed.ExclusionMin, packed.ExclusionMax, PointLeafKey(packed, PointProfileLeaf.Foliage, face));
-                else SkipProfilePass(cl, PointLeafKey(packed, PointProfileLeaf.Foliage, face));
+                        packed.ExclusionMin, packed.ExclusionMax, packed);
+                else ProfilePointPass(cl, packed, PointProfilePass.Foliage, face, executed: false);
                 if ((packed.Casters & PointShadowCasterSet.Skinned) != 0 && packed.RequestIndex >= 0)
                     draws += DrawPointSkinnedCastersForFace(cl, renderer, packed, face);
-                else SkipProfilePass(cl, PointLeafKey(packed,
-                    UseGpuSkinning ? PointProfileLeaf.GpuSkinned : PointProfileLeaf.CpuSkinned, face));
+                else ProfilePointPass(cl, packed, PointProfilePass.Skinned, face, executed: false);
             }
         }
+        ReportRemainingPointRows(cl, ref profileRequestCursor);
         if (activeAtlas is not null)
             using (ProfilePass(cl, "shadow.point.finish")) renderer.EndPass(cl);
         return draws;

@@ -232,7 +232,6 @@ namespace KhaozEngine.Render3D
                     || Array.Exists(_pointDynamicSkinnedRequests, static selected => selected)))
                     PrepareGpuSkinnedPointCasters(cl);
             }
-            ReportSkippedPointRows(cl);
             int draws = RenderPointShadowSlots(cl);
             foreach (int index in _pointRebuilds) cache.MarkClean(_pointRequests[index].Slot, frame);
             return draws;

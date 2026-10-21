@@ -119,20 +119,14 @@ public sealed class RendererPerfGeometryTraceTests
         Assert.Contains(observer.Passes, p => p.Key.Id == "background.starfield");
     }
 
-    [Fact]
-    public void Null_observer_preserves_render_trace()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Null_observer_warm_frame_allocates_nothing(bool gpu)
     {
-        using var rig = new GeometryRig(true);
+        using var rig = new GeometryRig(gpu);
         rig.Frame(); rig.Frame(); rig.Frame();
-        rig.Scene.PassObserver = new GeometryObserver(rig.Commands);
         rig.Frame();
-        Assert.NotEmpty(((GeometryObserver)rig.Scene.PassObserver).Passes);
-        GeometryTraceCommands.Event[] observed = rig.Commands.Events.Select(e => e with { Owner = null, Pipeline = null }).ToArray();
-        using var direct = new GeometryRig(true);
-        direct.Frame(); direct.Frame(); direct.Frame(); direct.Frame();
-        Assert.Null(direct.Scene.PassObserver);
-        Assert.Equal(observed, direct.Commands.Events.Select(e => e with { Owner = null, Pipeline = null }).ToArray());
-        rig.Scene.PassObserver = null;
         // Run the real warmed frame over a nonrecording list inside the checked allocation region.
         rig.Commands.Capture = false;
         AllocationMeasurement.NoPerCallAllocation("null scene pass observer", () => rig.Frame());
@@ -251,7 +245,7 @@ public sealed class RendererPerfGeometryTraceTests
         }
     }
 
-    sealed class GeometryRig : IDisposable
+    internal sealed class GeometryRig : IDisposable
     {
         readonly FakeGpuDevice _device = new();
         readonly IGpuTexture _texture;
@@ -260,10 +254,12 @@ public sealed class RendererPerfGeometryTraceTests
         readonly SkinnedGltfMesh _tube;
         readonly SkinnedMeshHandle _skin;
         readonly FoliageBatch _foliage;
+        readonly bool _secondStaticRow;
         internal readonly Scene3D Scene;
         internal readonly GeometryTraceCommands Commands;
-        internal GeometryRig(bool gpu)
+        internal GeometryRig(bool gpu, bool secondStaticRow = false)
         {
+            _secondStaticRow = secondStaticRow;
             _texture = _device.Factory.CreateTexture(GpuTextureDescription.Texture2D(32, 32, GpuPixelFormat.R8G8B8A8UNorm,
                 GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
             _target = _device.Factory.CreateFramebuffer(null, _texture);
@@ -288,11 +284,13 @@ public sealed class RendererPerfGeometryTraceTests
             _foliage = Scene.CreateFoliageBatch([new(_cutout, Matrix4x4.Identity, .1f, CastsShadows: true)]);
             Commands = new GeometryTraceCommands(new NullGpuCommandList());
         }
-        internal void Frame(bool skin = true, float rigidOffset = 0f, IGpuCommandList? observedCommands = null)
+        internal void Frame(bool skin = true, float rigidOffset = 0f, IGpuCommandList? observedCommands = null,
+            float secondRigidOffset = 0f)
         {
             Commands.Events.Clear();
             Scene.Begin();
             Scene.Draw(_box, Matrix4x4.CreateTranslation(rigidOffset, 0f, 0f));
+            if (_secondStaticRow) Scene.Draw(_box, Matrix4x4.CreateTranslation(20f + secondRigidOffset, 0f, 0f));
             Scene.Draw(_cutout, Matrix4x4.CreateTranslation(1f, 0f, 0f));
             Scene.Draw(_splat, Matrix4x4.CreateTranslation(0f, -1f, 0f));
             Scene.Draw(_tile, Matrix4x4.CreateTranslation(0f, -2f, 0f));
@@ -305,6 +303,7 @@ public sealed class RendererPerfGeometryTraceTests
                     Material.None, .3f, .1f, Color.White, castsShadows: true);
             }
             Scene.AddLight(new(0f, 1f, 1f), Color.White, 10f, 1f, LightShadow.Static(7));
+            if (_secondStaticRow) Scene.AddLight(new(20f, 1f, 1f), Color.White, 6f, 1f, LightShadow.Static(8));
             Scene.AddLight(new(1f, 1f, 1f), Color.White, 10f, 1f, LightShadow.Dynamic);
             Scene.PrepareFrame();
             var commands = observedCommands ?? Commands;

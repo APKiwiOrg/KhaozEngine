@@ -87,8 +87,10 @@ public sealed class MapNativeFoliageBatch : IDisposable
             {
                 var models = group.Models.Select(id => new MapFoliageModelBinding(id, references[id],
                     _policy.Models[id].Motion, _policy.Models[id].CastShadows)).ToArray();
-                var payload = new MapFoliageResource(group.Anchor, group.Cover.Select(i => i.Transform).ToArray(),
-                    group.Cover.Select(i => i.ThinningRank).ToArray(), group.Indices, models);
+                var transforms = group.Cover.Select(i => i.Transform).ToArray();
+                var ranks = group.Cover.Select(i => i.ThinningRank).ToArray();
+                var payload = group.Explicit ? MapFoliageResource.FromAnchorLocal(group.Anchor, transforms, ranks, group.Indices, models)
+                    : new MapFoliageResource(group.Anchor, transforms, ranks, group.Indices, models);
                 var key = new MapRenderKey(MapRenderKind.Foliage, group.OwnerId, "instances", 0);
                 string digest = MapPlacementDigest.Hash(w =>
                 { w.WriteStartArray(); w.WriteStringValue(RenderDigest); w.WriteStringValue(group.Digest); w.WriteEndArray(); });

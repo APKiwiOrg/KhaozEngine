@@ -117,13 +117,11 @@ public static class NativeMapFoliage
                 admission.ReserveBytes(1024);
                 explicitIds.Add(placement.PlacementId);
                 var pose = NativeMapPlacements.Pose(scene, placement);
-                Matrix4x4 transform = MapRenderTransform.ToLocal(pose, default);
+                var anchor = new MapSubmissionAnchor(checked((long)Math.Floor(pose.X)), checked((long)Math.Floor(pose.Y)), checked((long)Math.Floor(pose.Z)));
+                Matrix4x4 transform = MapRenderTransform.ToLocal(pose, anchor);
                 var cover = new GroundCoverBatch(new[] { new GroundCoverInstance(placement.AssetId, transform.Translation, transform, 0) });
-                var bounds = NativeMapPlacements.Bounds(assets.ById[placement.AssetId].Descriptor, pose, includeLights: false);
-                float padding = policy.Extents[placement.AssetId].MotionPaddingMetres;
-                bounds = new(bounds.MinX - padding, bounds.MinY - padding, bounds.MinZ - padding,
-                    bounds.MaxX + padding, bounds.MaxY + padding, bounds.MaxZ + padding);
-                groups.Add(Group(placement.PlacementId, cover, bounds, routing.SceneWitnessDigest, policy, explicitlyPlaced: true));
+                var bounds = ExplicitBounds(policy.Extents[placement.AssetId], transform, anchor);
+                groups.Add(Group(placement.PlacementId, cover, bounds, routing.SceneWitnessDigest, policy, explicitlyPlaced: true, anchorOverride: anchor));
             }
             var parts = new List<MapNativeFoliagePart>();
             foreach (string id in groups.SelectMany(g => g.Cover.Select(i => i.ModelId)).Distinct(StringComparer.Ordinal))
@@ -150,7 +148,7 @@ public static class NativeMapFoliage
         catch (MapSceneCapacityException) { throw Capacity(); }
     }
 
-    static MapNativeFoliageGroup Group(string owner, GroundCoverBatch cover, MapBox3 bounds, string dependency, NativeFoliagePolicy policy, bool explicitlyPlaced = false)
+    static MapNativeFoliageGroup Group(string owner, GroundCoverBatch cover, MapBox3 bounds, string dependency, NativeFoliagePolicy policy, bool explicitlyPlaced = false, MapSubmissionAnchor? anchorOverride = null)
     {
         var models = new List<string>(); var indices = new int[cover.Count];
         var lookup = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -160,12 +158,14 @@ public static class NativeMapFoliage
             { index = models.Count; lookup.Add(cover[i].ModelId, index); models.Add(cover[i].ModelId); }
             indices[i] = index;
         }
-        var anchor = new MapSubmissionAnchor(checked((long)Math.Floor(cover.Min(i => (double)i.Transform.M41))),
+        if (explicitlyPlaced != anchorOverride.HasValue) throw new MapDocumentException("Explicit foliage requires its precise submission anchor.");
+        var anchor = anchorOverride ?? new MapSubmissionAnchor(checked((long)Math.Floor(cover.Min(i => (double)i.Transform.M41))),
             checked((long)Math.Floor(cover.Min(i => (double)i.Transform.M42))), checked((long)Math.Floor(cover.Min(i => (double)i.Transform.M43))));
         string digest = MapPlacementDigest.Hash(w =>
         {
-            w.WriteStartArray(); w.WriteStringValue("kemap/native-foliage-rows/1"); w.WriteStringValue(dependency); w.WriteStringValue(policy.Digest);
-            w.WriteStringValue(owner); w.WriteBooleanValue(explicitlyPlaced); w.WriteNumberValue(anchor.X); w.WriteNumberValue(anchor.Y); w.WriteNumberValue(anchor.Z);
+            w.WriteStartArray(); w.WriteStringValue("kemap/native-foliage-rows/2"); w.WriteStringValue(dependency); w.WriteStringValue(policy.Digest);
+            w.WriteStringValue(owner); w.WriteBooleanValue(explicitlyPlaced);
+            w.WriteNumberValue((int)(explicitlyPlaced ? MapFoliageTransformSpace.AnchorLocal : MapFoliageTransformSpace.World)); w.WriteNumberValue(anchor.X); w.WriteNumberValue(anchor.Y); w.WriteNumberValue(anchor.Z);
             foreach (string id in models) w.WriteStringValue(id);
             for (int i = 0; i < cover.Count; i++)
             {
@@ -179,6 +179,29 @@ public static class NativeMapFoliage
         });
         return new(owner, anchor, bounds, cover, models.ToArray(), indices, explicitlyPlaced, models.Any(id => policy.Models[id].CastShadows), digest);
     }
+    // Use the submitted local matrix for cosmetic bounds, adding the integer anchor only in binary64.
+    static MapBox3 ExplicitBounds(MapFoliageModelExtent extent, Matrix4x4 local, MapSubmissionAnchor anchor)
+    {
+        MapBox3? bounds = null;
+        for (int corner = 0; corner < 8; corner++)
+        {
+            var box = extent.BoundsInSourceUnits;
+            var source = new Vector3((corner & 1) == 0 ? box.Min.X : box.Max.X,
+                (corner & 2) == 0 ? box.Min.Y : box.Max.Y, (corner & 4) == 0 ? box.Min.Z : box.Max.Z);
+            var point = Vector3.Transform(source * extent.SourceUnitsToMetres, local);
+            if (!float.IsFinite(point.X) || !float.IsFinite(point.Y) || !float.IsFinite(point.Z))
+                throw new MapRenderAssetRefusal(MapRenderAssetStatus.NotRepresentable, "Explicit foliage bounds are not representable.");
+            double x = anchor.X + (double)point.X, y = anchor.Y + (double)point.Y, z = anchor.Z + (double)point.Z;
+            var cornerBounds = new MapBox3(x, y, z, x, y, z);
+            bounds = bounds?.Union(cornerBounds) ?? cornerBounds;
+        }
+        const double submissionAllowance = .0001;
+        double padding = extent.MotionPaddingMetres + submissionAllowance;
+        var b = bounds!.Value;
+        return new(Math.BitDecrement(b.MinX - padding), Math.BitDecrement(b.MinY - padding), Math.BitDecrement(b.MinZ - padding),
+            Math.BitIncrement(b.MaxX + padding), Math.BitIncrement(b.MaxY + padding), Math.BitIncrement(b.MaxZ + padding));
+    }
+
     static void Validate(MapScopedScene scene, MapRenderAssets assets, NativeFoliagePolicy policy, MapPlacementRouting routing, IEnumerable<string> generatedModels)
     {
         ArgumentNullException.ThrowIfNull(scene); ArgumentNullException.ThrowIfNull(assets);

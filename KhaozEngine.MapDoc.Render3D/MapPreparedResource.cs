@@ -67,25 +67,43 @@ public sealed class MapFoliageModelBinding
     }
 }
 
+/// <summary>World rows retain generated matrix bits. AnchorLocal rows are already reduced and must not be reduced again.</summary>
+public enum MapFoliageTransformSpace { World, AnchorLocal }
+
 public sealed class MapFoliageResource : MapResourcePayload
 {
     readonly Matrix4x4[] _transforms;
     readonly float[] _ranks;
     readonly int[] _indices;
     public MapSubmissionAnchor Anchor { get; }
-    public ReadOnlyMemory<Matrix4x4> WorldTransforms => _transforms.ToArray();
+    public MapFoliageTransformSpace TransformSpace { get; }
+    public ReadOnlyMemory<Matrix4x4> WorldTransforms => RequireSpace(MapFoliageTransformSpace.World).ToArray();
+    public ReadOnlyMemory<Matrix4x4> AnchorLocalTransforms => RequireSpace(MapFoliageTransformSpace.AnchorLocal).ToArray();
     public ReadOnlyMemory<float> Ranks => _ranks.ToArray();
     public ReadOnlyMemory<int> ModelIndices => _indices.ToArray();
     public IReadOnlyList<MapFoliageModelBinding> Models { get; }
-    internal ReadOnlyMemory<Matrix4x4> BorrowTransforms => _transforms;
+    internal ReadOnlyMemory<Matrix4x4> BorrowWorldTransforms => RequireSpace(MapFoliageTransformSpace.World);
+    internal ReadOnlyMemory<Matrix4x4> BorrowAnchorLocalTransforms => RequireSpace(MapFoliageTransformSpace.AnchorLocal);
     internal ReadOnlyMemory<float> BorrowRanks => _ranks;
     internal ReadOnlyMemory<int> BorrowModelIndices => _indices;
 
     public MapFoliageResource(MapSubmissionAnchor anchor, ReadOnlyMemory<Matrix4x4> worldTransforms,
         ReadOnlyMemory<float> ranks, ReadOnlyMemory<int> modelIndices, IReadOnlyList<MapFoliageModelBinding> models)
+        : this(anchor, worldTransforms, ranks, modelIndices, models, MapFoliageTransformSpace.World) { }
+
+    /// <summary>Registers precise explicit poses after their single anchor-relative conversion.</summary>
+    public static MapFoliageResource FromAnchorLocal(MapSubmissionAnchor anchor, ReadOnlyMemory<Matrix4x4> localTransforms,
+        ReadOnlyMemory<float> ranks, ReadOnlyMemory<int> modelIndices, IReadOnlyList<MapFoliageModelBinding> models) =>
+        new(anchor, localTransforms, ranks, modelIndices, models, MapFoliageTransformSpace.AnchorLocal);
+
+    ReadOnlyMemory<Matrix4x4> RequireSpace(MapFoliageTransformSpace expected) => TransformSpace == expected ? _transforms :
+        throw new InvalidOperationException("Read foliage transforms in their declared coordinate space.");
+
+    MapFoliageResource(MapSubmissionAnchor anchor, ReadOnlyMemory<Matrix4x4> transforms,
+        ReadOnlyMemory<float> ranks, ReadOnlyMemory<int> modelIndices, IReadOnlyList<MapFoliageModelBinding> models, MapFoliageTransformSpace space)
     {
         ArgumentNullException.ThrowIfNull(models);
-        Anchor = anchor; _transforms = worldTransforms.ToArray(); _ranks = ranks.ToArray(); _indices = modelIndices.ToArray();
+        Anchor = anchor; TransformSpace = space; _transforms = transforms.ToArray(); _ranks = ranks.ToArray(); _indices = modelIndices.ToArray();
         Models = Array.AsReadOnly(models.ToArray());
         if (_transforms.Length != _ranks.Length || _indices.Length != _ranks.Length || Models.Any(m => m is null) ||
             Models.Select(m => m.ModelId).Distinct(StringComparer.Ordinal).Count() != Models.Count ||

@@ -35,6 +35,8 @@ public sealed class NativeMapFoliageTests
         using var batch = NativeMapFoliage.Assemble(f.Scene, f.Assets, f.Policy, f.Routing, [samples]);
         var set = Record(batch, f.Stamp);
         var resource = Assert.IsType<MapFoliageResource>(Assert.Single(set.Resources, r => r.Payload is MapFoliageResource).Payload);
+        Assert.Equal(MapFoliageTransformSpace.World, resource.TransformSpace);
+        Assert.Throws<InvalidOperationException>(() => resource.AnchorLocalTransforms);
         Assert.Equal(Bits(source.WorldTransforms.ToArray()), Bits(resource.WorldTransforms.ToArray()));
         Assert.Equal(source.Ranks.ToArray().Select(BitConverter.SingleToInt32Bits), resource.Ranks.ToArray().Select(BitConverter.SingleToInt32Bits));
         Assert.Equal(samples.Samples.Select(s => s.Key), batch.GeneratedIdentities);
@@ -65,7 +67,9 @@ public sealed class NativeMapFoliageTests
         Assert.DoesNotContain(batch.ExplicitIds, id => id == "static");
         Assert.All(batch.GeneratedIdentities, id => Assert.Equal("cover", id.Address.LayerId));
         var plant = Assert.IsType<MapFoliageResource>(set.Resources.Single(r => r.Reference.Key.OwnerId == "plant" && r.Payload is MapFoliageResource).Payload);
-        Assert.Equal(3, Assert.Single(plant.WorldTransforms.ToArray()).M41);
+        Assert.Equal(MapFoliageTransformSpace.AnchorLocal, plant.TransformSpace);
+        Assert.Equal(3, plant.Anchor.X); Assert.Equal(0, Assert.Single(plant.AnchorLocalTransforms.ToArray()).M41);
+        Assert.Throws<InvalidOperationException>(() => plant.WorldTransforms);
         Assert.Equal(new[] { 0f }, plant.Ranks.ToArray());
     }
 
@@ -372,6 +376,65 @@ public sealed class NativeMapFoliageTests
         Assert.Equal(0, MapFoliageRenderCache.For(captured.Context!).GenerationCalls);
     }
 
+    [Theory]
+    [InlineData(32000.0005)]
+    [InlineData(32000.9995)]
+    [InlineData(-32000.0005)]
+    [InlineData(-31999.9995)]
+    public void ExplicitFractionalPose_SubtractsPreciseAnchorBeforeRounding(double x)
+    {
+        var pose = new MapEffectiveTransform(x, -499.0005, -31999.0005, 0, 1);
+        using var f = new Fixture(plants: true, plantPose: pose);
+        using var batch = NativeMapFoliage.Prepare(f.Scene, f.Context, f.Assets, f.Policy, f.Routing);
+        var recorder = new MapDrawRecorder(); batch.Register(f.Stamp, recorder);
+        var frame = WorldFrame.Nearest((float)x, (float)pose.Z);
+        batch.Record(Frame with
+        {
+            Frame = frame,
+            Focus = new(frame,
+            new((float)(x - (double)frame.X * WorldFrame.Grid), (float)pose.Y, (float)(pose.Z - (double)frame.Z * WorldFrame.Grid)))
+        }, recorder);
+        var set = recorder.Snapshot(); var draw = Assert.Single(set.Draws);
+        var registered = Assert.Single(set.Resources, r => r.Payload is MapFoliageResource);
+        var resource = Assert.IsType<MapFoliageResource>(registered.Payload);
+        Assert.Equal(MapFoliageTransformSpace.AnchorLocal, resource.TransformSpace);
+        Assert.Throws<InvalidOperationException>(() => resource.WorldTransforms);
+        var row = Assert.Single(resource.AnchorLocalTransforms.ToArray());
+        var local = row.Translation;
+        var anchor = new MapSubmissionAnchor((long)Math.Floor(x), (long)Math.Floor(pose.Y), (long)Math.Floor(pose.Z));
+        Assert.InRange(Math.Abs((resource.Anchor.X + (double)local.X) - x), 0, .0001);
+        Assert.InRange(Math.Abs((resource.Anchor.Y + (double)local.Y) - pose.Y), 0, .0001);
+        Assert.InRange(Math.Abs((resource.Anchor.Z + (double)local.Z) - pose.Z), 0, .0001);
+        Assert.Equal(anchor, resource.Anchor); Assert.Equal(anchor, draw.Anchor);
+        Assert.InRange(Math.Abs(draw.LocalFocus.X - (x - anchor.X)), 0, .0001);
+        var extent = f.Policy.Extents["A"];
+        var minimum = new Vector3(float.PositiveInfinity); var maximum = new Vector3(float.NegativeInfinity);
+        for (int corner = 0; corner < 8; corner++)
+        {
+            var box = extent.BoundsInSourceUnits;
+            var point = Vector3.Transform(new Vector3((corner & 1) == 0 ? box.Min.X : box.Max.X,
+                (corner & 2) == 0 ? box.Min.Y : box.Max.Y, (corner & 4) == 0 ? box.Min.Z : box.Max.Z) * extent.SourceUnitsToMetres, row);
+            minimum = Vector3.Min(minimum, point); maximum = Vector3.Max(maximum, point);
+        }
+        double p = extent.MotionPaddingMetres + .0001;
+        Assert.Equal(anchor.X + (double)minimum.X - p, registered.Bounds.MinX, 8);
+        Assert.Equal(anchor.Y + (double)minimum.Y - p, registered.Bounds.MinY, 8);
+        Assert.Equal(anchor.Z + (double)minimum.Z - p, registered.Bounds.MinZ, 8);
+        Assert.Equal(anchor.X + (double)maximum.X + p, registered.Bounds.MaxX, 8);
+        Assert.Equal(anchor.Y + (double)maximum.Y + p, registered.Bounds.MaxY, 8);
+        Assert.Equal(anchor.Z + (double)maximum.Z + p, registered.Bounds.MaxZ, 8);
+        foreach (var model in resource.Models)
+            foreach (var part in model.Parts)
+                foreach (var vertex in Assert.IsType<MapRigidResource>(set.Resources.Single(r => r.Reference == part).Payload).Mesh.Vertices)
+                {
+                    var submitted = Vector3.Transform(vertex.Position, row);
+                    Assert.InRange(anchor.X + (double)submitted.X, registered.Bounds.MinX, registered.Bounds.MaxX);
+                    Assert.InRange(anchor.Y + (double)submitted.Y, registered.Bounds.MinY, registered.Bounds.MaxY);
+                    Assert.InRange(anchor.Z + (double)submitted.Z, registered.Bounds.MinZ, registered.Bounds.MaxZ);
+                }
+        Assert.Equal(registered.Bounds, batch.Bounds);
+    }
+
     static MapDrawSet Record(MapNativeFoliageBatch batch, MapResourceStamp stamp)
     {
         var recorder = new MapDrawRecorder(); batch.Register(stamp, recorder); batch.Record(Frame, recorder);
@@ -415,7 +478,7 @@ public sealed class NativeMapFoliageTests
         internal MapPlacementPolicy PlacementPolicy { get; }
         internal MapPlacementRouting Routing { get; }
         internal MapResourceStamp Stamp { get; }
-        internal Fixture(bool plants = false, float units = 1, bool distantLayer = false)
+        internal Fixture(bool plants = false, float units = 1, bool distantLayer = false, MapEffectiveTransform? plantPose = null)
         {
             Closure = NativeRenderAssetFixtures.Create(units == 1 ? "foliage" : "foliage-centimetres");
             using var empty = NativeSceneFixtures.Create("empty");
@@ -459,10 +522,26 @@ public sealed class NativeMapFoliageTests
                 doc.Placements.Add(new() { Id = "clustered", AssetId = "C", Kind = "control", NumericId = 3, X = 10, Y = 0 });
                 doc.NumericIdHighWaterMark = 3;
             }
+            if (plantPose is { } precise)
+            {
+                var plant = doc.Placements.Single(p => p.Id == "plant");
+                plant.X = (float)precise.X; plant.Y = (float)precise.Y; plant.Z = (float)precise.Z;
+                doc.NativeResourceTransforms = [new(MapPrefabChildKind.Placement, "plant", precise, new string('a', 64))];
+                doc.Bounds = new() { MinX = -32064, MinZ = -32064, MaxX = 32064, MaxZ = 32064 };
+                doc.PlayableBounds = doc.Bounds;
+            }
             _fixture = new(doc, Closure);
             var source = NativeSceneFixtures.Open(_fixture, false);
             var scope = new MapSceneScope(new(WorldFrame.Origin, new(-2, -2), new(66, 6), null, null,
                 Enum.GetValues<MapSurfaceRole>(), null, new()), new(-1, -2, -1, 64, 4, 4), MapSceneChannels.All, .35f);
+            if (plantPose is { } focus)
+            {
+                var frame = WorldFrame.Nearest((float)focus.X, (float)focus.Z);
+                double fx = (double)frame.X * WorldFrame.Grid, fz = (double)frame.Z * WorldFrame.Grid;
+                scope = new(new(frame, new((float)(focus.X - fx - 2), (float)(focus.Z - fz - 2)),
+                    new((float)(focus.X - fx + 2), (float)(focus.Z - fz + 2)), null, null, Enum.GetValues<MapSurfaceRole>(), null, new()),
+                    new(focus.X - 2, focus.Y - 2, focus.Z - 2, focus.X + 2, focus.Y + 2, focus.Z + 2), MapSceneChannels.All, .35f);
+            }
             var acquired = source.Acquire(scope); Assert.True(acquired.Witness.CompleteForScope, string.Join("\n", acquired.Findings)); Scene = acquired.Scene!;
             var captured = MapFoliageGenerationContext.CaptureWindow(source, scope); Assert.Equal(MapFoliageStatus.Complete, captured.Status); Context = captured.Context!;
             var ids = distantLayer ? new[] { "A", "B" } : Closure.Assets.Select(a => a.Id).ToArray();

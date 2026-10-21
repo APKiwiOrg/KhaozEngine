@@ -96,6 +96,7 @@ public sealed class CoveragePerfHostTests
 
     [Theory]
     [InlineData("render")]
+    [InlineData("present-forward")]
     [InlineData("outcome-match")]
     public void AFrameThatThrowsKeepsEverySpanWhoseBoundingTicksWereTaken(string failAt)
     {
@@ -110,8 +111,10 @@ public sealed class CoveragePerfHostTests
         var error = Assert.Throws<InvalidOperationException>(() => probe.Session.Frame(1, ref sample));
 
         Assert.Same(expected, error);
+        // A throw inside Present forwarding has passed Present entry but never reaches the host return tick.
+        bool reachedPresent = failAt != "render";
         bool afterHostReturn = failAt == "outcome-match";
-        Assert.Equal(afterHostReturn, probe.Events.Contains("present-forward"));
+        Assert.Equal(reachedPresent, probe.Events.Contains("present-forward"));
         Assert.Equal(CoveragePerfSceneProbe.SnapshotTicks, sample.FrameEntryToAggregateTicks);
         // Present entry to host return needs the host return tick. Frame end is never taken on a throw.
         Assert.Equal(afterHostReturn ? 10 + 10000L : (long?)null, sample.PresentToHostReturnTicks);

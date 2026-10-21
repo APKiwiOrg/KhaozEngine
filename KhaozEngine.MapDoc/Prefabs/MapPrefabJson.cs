@@ -10,6 +10,7 @@ using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Spaces;
+using KhaozEngine.MapDoc.Support;
 using KhaozEngine.MapDoc.Water;
 using KhaozEngine.MapDoc.Markers;
 
@@ -537,25 +538,8 @@ internal static class MapPrefabJson
 
         public override void Write(Utf8JsonWriter w, MapSupportBinding value, JsonSerializerOptions options)
         {
-            w.WriteStartObject();
-            switch (value.Kind)
-            {
-                case MapSupportBindingKind.Surface when value.SurfaceId is { } surface && value.SpaceId is null &&
-                    value.ReferenceY is null && value.SearchBelow is null && value.SearchAbove is null:
-                    w.WriteString("kind", "Surface");
-                    w.WriteString("surfaceId", surface);
-                    break;
-                case MapSupportBindingKind.Space when value.SpaceId is { } space && value.SurfaceId is null &&
-                    value.ReferenceY is { } y && value.SearchBelow is { } below && value.SearchAbove is { } above:
-                    w.WriteString("kind", "Space");
-                    w.WriteString("spaceId", space);
-                    w.WriteNumber("referenceY", y);
-                    w.WriteNumber("searchBelow", below);
-                    w.WriteNumber("searchAbove", above);
-                    break;
-                default: throw new JsonException("A marker support binding carries exactly the members of its kind.");
-            }
-            w.WriteEndObject();
+            if (!MapSupportBindingRules.TryWrite(w, value))
+                throw new JsonException("A marker support binding carries exactly the members of its kind.");
         }
 
         static string Text(JsonElement root, string name) => root.GetProperty(name) is { ValueKind: JsonValueKind.String } value

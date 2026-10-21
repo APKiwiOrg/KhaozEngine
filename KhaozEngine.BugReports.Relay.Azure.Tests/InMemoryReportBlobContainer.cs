@@ -50,4 +50,22 @@ internal sealed class InMemoryReportBlobContainer : IReportBlobContainer
         lock (gate)
             return Task.FromResult(blobs.ContainsKey(path));
     }
+
+    public Task<IReadOnlyList<string>> ListAsync(string prefix, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        lock (gate)
+        {
+            return Task.FromResult<IReadOnlyList<string>>(blobs.Keys
+                .Where(path => path.StartsWith(prefix, StringComparison.Ordinal))
+                .OrderBy(path => path, StringComparer.Ordinal).ToArray());
+        }
+    }
+
+    public Task<bool> DeleteAsync(string path, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        lock (gate)
+            return Task.FromResult(blobs.Remove(path));
+    }
 }

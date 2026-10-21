@@ -9,7 +9,10 @@ internal sealed class NativeSessionSnapshotCommand : EditorCommand, INativeBound
 {
     readonly NativeCompleteSnapshotCommand _snapshot;
     internal NativeSessionSnapshotCommand(string label, MapDocument before, MapDocument after, MapAssetClosure beforeAssets,
-        MapAssetClosure afterAssets, MapNativeEditEffects effects) => _snapshot = new(label, before, after, beforeAssets, afterAssets, effects);
+        MapAssetClosure afterAssets, MapNativeEditEffects effects, MapDocumentFinalizationStamp? stamp = null) =>
+        _snapshot = new(label, before, after, beforeAssets, afterAssets, effects, stamp);
+    /// <summary>The accepted forward finalization, null before acceptance or without foliage.</summary>
+    internal MapDocumentFinalizationStamp? AcceptedStamp => _snapshot.AcceptedStamp;
     public override string Label => _snapshot.Label;
     internal override bool AffectsWorld => true;
     public override void Apply(MapDocument doc) => _snapshot.Apply(doc);

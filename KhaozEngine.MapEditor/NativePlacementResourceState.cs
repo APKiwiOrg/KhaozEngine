@@ -4,6 +4,7 @@ using System.Linq;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Editing;
+using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Surfaces;
 
@@ -29,6 +30,7 @@ internal sealed class NativePlacementResourceState
         _transfers = (document.Prefabs?.Transfers ?? []).Where(t => _keys.Contains((t.Binding.Child.Kind, t.Binding.WorldId)))
             .Select(t => (t.InstanceId, t.Binding.Child)).ToHashSet();
     }
+    // Foliage is an immutable set shared by reference, so capturing it copies no density.
     static MapDocument CopyResources(MapDocument document) => new()
     {
         Placements = document.Placements.Select(NativePlacementTransaction.Copy).ToList(),
@@ -36,9 +38,18 @@ internal sealed class NativePlacementResourceState
         Prefabs = document.Prefabs?.Clone(),
         BuildingIntent = document.BuildingIntent?.Clone(),
         NativeResourceTransforms = document.NativeResourceTransforms?.ToArray(),
+        Foliage = document.Foliage,
     };
     internal static NativePlacementResourceState Capture(MapDocument document, string placementId) => new(document, placementId);
     internal MapNativeWriteSet WriteSet => Writes(_snapshot, _keys);
+
+    /// <summary>The write set between two captures of one edit. It names the foliage root exactly when the logical
+    /// foliage differs, as when a remap moves owner references, never for an unchanged root.</summary>
+    internal static MapNativeWriteSet Between(NativePlacementResourceState before, NativePlacementResourceState after) =>
+        Union(before.WriteSet, after.WriteSet) with
+        {
+            Foliage = MapFoliageProjection.Digest(before._snapshot.Foliage) != MapFoliageProjection.Digest(after._snapshot.Foliage),
+        };
 
     internal static void Restore(MapDocument document, NativePlacementResourceState state)
     {
@@ -80,7 +91,34 @@ internal sealed class NativePlacementResourceState
             document.BuildingIntent = new(intent.PayloadVersion, intent.RoofLinks, intent.RoofGroups,
                 RestoreItems(intent.Lights, savedIntent.Lights, l => keys.Contains((MapPrefabChildKind.Light, l.Id))), intent.Markers)
             { Roofs = intent.Roofs, Storeys = intent.Storeys };
+        document.Foliage = RestoreFoliage(document.Foliage, source.Foliage, keys);
     }
+
+    // Exception masks and owner correspondences that the restored owners own return to their captured rows. Every other
+    // row, layer and density byte is the current one, and an untouched layer keeps its object.
+    static MapFoliageSet? RestoreFoliage(MapFoliageSet? current, MapFoliageSet? saved, HashSet<(MapPrefabChildKind Kind, string Id)> keys)
+    {
+        if (current is null || !References(current, keys) && !References(saved, keys)) return current;
+        bool Owned(MapPrefabReference owner) => owner.Scope == MapPrefabReferenceScope.World && keys.Contains((owner.Kind, owner.Id));
+        var layers = current.Layers.Select(l =>
+        {
+            MapFoliageLayer? old = saved?.Layers.FirstOrDefault(s => string.Equals(s.Id, l.Id, StringComparison.Ordinal));
+            var masks = RestoreItems(l.ExceptionMasks, old?.ExceptionMasks, m => Owned(m.Owner));
+            var owners = RestoreItems(l.OwnerSupports, old?.OwnerSupports, o => Owned(o.Owner));
+            if (masks.SequenceEqual(l.ExceptionMasks) && owners.SequenceEqual(l.OwnerSupports)) return l;
+            var metadata = new MapFoliageLayer(l.PayloadVersion, l.Id, l.Support, l.OriginX, l.OriginZ, l.CellSize, l.Width, l.Depth,
+                l.RowDirection, l.Seed, l.Spacing, l.ScaleMin, l.ScaleMax, l.RootOffset, l.Models, l.AllowedVisibleMaterials, l.Materials,
+                l.Policy, l.ExcludeIndoors, l.ExcludeSolidObjects, l.DoorClearance, l.EdgeFade, l.CompatibilityOrdinals, l.ClearanceRules,
+                masks, owners, l.Chunks);
+            return MapFoliageLayer.FromStorage(metadata, l.ChunkDigests, l.Chunks);
+        }).ToArray();
+        return layers.SequenceEqual(current.Layers) ? current : new(current.PayloadVersion, layers);
+    }
+
+    // True when a mask or owner correspondence names one of the keys as its World owner.
+    static bool References(MapFoliageSet? set, HashSet<(MapPrefabChildKind Kind, string Id)> keys) =>
+        set?.Layers.Any(l => l.ExceptionMasks.Any(m => m.Owner.Scope == MapPrefabReferenceScope.World && keys.Contains((m.Owner.Kind, m.Owner.Id))) ||
+            l.OwnerSupports.Any(o => o.Owner.Scope == MapPrefabReferenceScope.World && keys.Contains((o.Owner.Kind, o.Owner.Id)))) == true;
 
     static IReadOnlyList<T> RestoreItems<T>(IEnumerable<T>? current, IEnumerable<T>? saved, Func<T, bool> affected)
     {
@@ -114,43 +152,10 @@ internal sealed class NativePlacementResourceState
         return Writes(document, Keys(document, placementId));
     }
 
-    internal static MapNativeWriteSet Reseat(MapDocument document, MapAssetClosure assets)
-    {
-        var missing = document.Placements.Where(p => p.Y is null).Select(p => p.Id).ToHashSet(StringComparer.Ordinal);
-        if (missing.Count == 0 || document.ResolverIdentity?.ResolverVersion != 2) return NativeCompleteSnapshotCommand.EmptyWrites;
-        var effective = MapPrefabResolver.Expand(document, assets);
-        var writes = NativeCompleteSnapshotCommand.EmptyWrites;
-        foreach (string id in missing)
-        {
-            var entry = document.NativeResourceTransforms?.SingleOrDefault(t => t.Kind == MapPrefabChildKind.Placement && t.OwnerId == id);
-            if (entry is null) continue;
-            var seated = effective.Transforms[MapEffectiveContext.Key(MapPrefabChildKind.Placement, id)];
-            if (entry.Transform.Y == seated.Y) continue;
-            SetPose(document, id, entry.Transform, entry.Transform with { Y = seated.Y });
-            writes = Union(writes, Writes(document, Keys(document, id)));
-        }
-        return writes;
-    }
+    internal static MapNativeWriteSet Reseat(MapDocument document, MapAssetClosure assets) => MapPlacementSeats.Reseat(document, assets);
 
-    static void SetPose(MapDocument document, string id, MapEffectiveTransform before, MapEffectiveTransform after)
-    {
-        var poses = document.NativeResourceTransforms!.ToDictionary(p => (p.Kind, p.OwnerId));
-        poses[(MapPrefabChildKind.Placement, id)] = poses[(MapPrefabChildKind.Placement, id)] with { Transform = after };
-        var attached = (document.Prefabs?.Attachments ?? []).Where(a => a.PlacementId == id && !a.Retired).SelectMany(a => a.Children).ToArray();
-        foreach (var child in attached)
-        {
-            var key = (child.LocalChild.Kind, child.WorldId);
-            poses[key] = poses[key] with { Transform = MapEffectiveTransform.Compose(after, child.OwnerLocalPose) };
-        }
-        // Explicit owned lights may have their own frame. Keep that frame's relative offset to the owner.
-        foreach (var light in document.BuildingIntent?.Lights ?? [])
-            if (light.Owner is { Kind: MapPrefabChildKind.Placement } owner && owner.Id == id && !attached.Any(c => c.LocalChild.Kind == MapPrefabChildKind.Light && c.WorldId == light.Id) &&
-                poses.TryGetValue((MapPrefabChildKind.Light, light.Id), out var frame))
-                poses[(MapPrefabChildKind.Light, light.Id)] = frame with
-                { Transform = MapEffectiveTransform.Compose(after, MapPrefabEditPreparation.Relative(before, frame.Transform)) };
-        document.NativeResourceTransforms = poses.Values.ToArray();
-        MapPrefabAttachmentDescriptors.Refresh(document);
-    }
+    static void SetPose(MapDocument document, string id, MapEffectiveTransform before, MapEffectiveTransform after) =>
+        MapPlacementSeats.SetPose(document, id, before, after);
 
     internal static MapNativeWriteSet Remove(MapDocument document, string id)
     {
@@ -173,38 +178,7 @@ internal sealed class NativePlacementResourceState
         return writes;
     }
 
-    static HashSet<(MapPrefabChildKind Kind, string Id)> Keys(MapDocument document, string id)
-    {
-        var keys = new HashSet<(MapPrefabChildKind, string)> { (MapPrefabChildKind.Placement, id) };
-        foreach (var row in (document.Prefabs?.Attachments ?? []).Where(a => a.PlacementId == id))
-            foreach (var c in row.Children) keys.Add((c.LocalChild.Kind, c.WorldId));
-        foreach (var light in document.BuildingIntent?.Lights ?? [])
-            if (light.Owner is { Kind: MapPrefabChildKind.Placement } owner && owner.Id == id) keys.Add((MapPrefabChildKind.Light, light.Id));
-        return keys;
-    }
-    static MapNativeWriteSet Writes(MapDocument document, HashSet<(MapPrefabChildKind Kind, string Id)> keys)
-    {
-        var surfaces = keys.Where(k => k.Kind == MapPrefabChildKind.Surface).Select(k => k.Id).ToArray();
-        var records = keys.Where(k => k.Kind == MapPrefabChildKind.Record).Select(k => k.Id).ToArray();
-        var patches = document.Surfaces.Patches.Values.Where(p => surfaces.Contains(p.Key.SurfaceId) || p.Records.Any(r => records.Contains(r.Id))).Select(p => p.Key).ToArray();
-        return new(patches, surfaces, records, [], [], [], true)
-        {
-            Prefabs = document.Prefabs is not null,
-            BuildingIntent = keys.Any(k => k.Kind == MapPrefabChildKind.Light),
-            NativeResourceTransforms = document.NativeResourceTransforms is not null,
-            NumericReservations = true
-        };
-    }
-    internal static MapNativeWriteSet Union(MapNativeWriteSet a, MapNativeWriteSet b) => new(
-        a.Patches.Union(b.Patches).Order().ToArray(), a.SurfaceIds.Union(b.SurfaceIds).Order(StringComparer.Ordinal).ToArray(),
-        a.RecordIds.Union(b.RecordIds).Order(StringComparer.Ordinal).ToArray(), a.SpaceIds.Union(b.SpaceIds).Order(StringComparer.Ordinal).ToArray(),
-        a.OwnerChanges.Union(b.OwnerChanges).ToArray(), a.Materials.Union(b.Materials).ToArray(), a.Placements || b.Placements)
-    {
-        Prefabs = a.Prefabs || b.Prefabs,
-        BuildingIntent = a.BuildingIntent || b.BuildingIntent,
-        NativeResourceTransforms = a.NativeResourceTransforms || b.NativeResourceTransforms,
-        NumericReservations = a.NumericReservations || b.NumericReservations,
-        Water = a.Water || b.Water,
-        NativeAssets = a.NativeAssets || b.NativeAssets
-    };
+    static HashSet<(MapPrefabChildKind Kind, string Id)> Keys(MapDocument document, string id) => MapPlacementSeats.Keys(document, id);
+    static MapNativeWriteSet Writes(MapDocument document, HashSet<(MapPrefabChildKind Kind, string Id)> keys) => MapPlacementSeats.Writes(document, keys);
+    internal static MapNativeWriteSet Union(MapNativeWriteSet a, MapNativeWriteSet b) => MapNativeWriteSet.Union(a, b);
 }

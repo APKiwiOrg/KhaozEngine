@@ -51,6 +51,9 @@ internal static class MapDocumentMembers
 
     static void Check(JsonNode? node, JsonObject schema, string path, bool native)
     {
+        // Foliage has a closed codec for each storage form. It charges all counts before visiting nested records,
+        // so let that codec validate this native block once rather than walking its untrusted arrays first.
+        if (schema["$ref"]?.GetValue<string>() is "#/$defs/foliageInline" or "#/$defs/foliageStored") return;
         schema = Resolve(schema);
         if (node is null)
         {
@@ -160,6 +163,7 @@ internal static class MapDocumentMembers
         string.Equals(name, "surfacePatches", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "surfaceStorage", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "water", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "foliage", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "prefabs", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "buildingIntent", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "nativeResourceTransforms", StringComparison.OrdinalIgnoreCase);

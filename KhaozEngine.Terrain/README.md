@@ -70,6 +70,13 @@ up regardless of load order. Plain `float` math throughout.
   whole query.
   Density zero produces no placement. The candidate budget rejects an accidental unbounded request before it
   samples the surface. The callback keeps this package independent of analytic terrain and tile worlds.
+- **`GroundCoverCandidateEvaluator`** - `GroundCoverDistribution.Prepare(settings)` copies and validates settings once.
+  `Candidate(x, z)` exposes lattice X/Z, jitter and world coordinates, retaining the seed internally. It has no public
+  positional constructor. `DensityPick`, `ModelPick`, `ScalePick`, `YawPick` and `Rank` hash lazily from address and seed.
+  `Evaluate(x, z, surface)` samples once without area clipping, supporting stable-lattice comparison even when jitter
+  crosses a generation rectangle. `GroundCoverTrace.cs` defines `GroundCoverCandidate`, `GroundCoverSurfaceInput`,
+  `GroundCoverDecisionKind` and `GroundCoverDecision`. `GenerateTraced` uses the same kernel and reports provisional
+  decisions until the enclosing operation completes. These are CPU contracts, independent of render styling.
 - **`TerrainStreamer`** + **`StreamerConfig`** - keeps the world loaded in a ring around a viewpoint:
   hysteresis unload band (`UnloadRadius` greater than the outer load radius stops boundary churn), re-LOD
   when a loaded chunk's tier OR residency ring changes, nearest-first ordering. Pure bookkeeping over

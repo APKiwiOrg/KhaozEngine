@@ -76,7 +76,22 @@ internal sealed class WorkClaim(IReportMediaStore media, TimeProvider time)
             overwrite: false, CancellationToken.None).ConfigureAwait(false);
     }
 
-    static string Prefix(ReportWorkKind kind, string reportId) => "claims/" + KindName(kind) + "-" + reportId + "-";
+    /// <summary>Deletes markers before their claims, newest first, so interrupted cleanup can resume.</summary>
+    internal async Task DeleteAllAsync(ReportWorkKind kind, string reportId, CancellationToken ct)
+    {
+        string prefix = Prefix(kind, reportId);
+        int epochs = 0;
+        while (epochs < MaxEpochs && await media.ExistsAsync(ReportArea.Pending, Path(prefix, epochs), ct).ConfigureAwait(false))
+            epochs++;
+        for (int epoch = epochs - 1; epoch >= 0; epoch--)
+        {
+            await media.DeleteAsync(ReportArea.Pending, Path(prefix, epoch, ".done"), ct).ConfigureAwait(false);
+            await media.DeleteAsync(ReportArea.Pending, Path(prefix, epoch, ".released"), ct).ConfigureAwait(false);
+            await media.DeleteAsync(ReportArea.Pending, Path(prefix, epoch), ct).ConfigureAwait(false);
+        }
+    }
+
+    internal static string Prefix(ReportWorkKind kind, string reportId) => "claims/" + KindName(kind) + "-" + reportId + "-";
     static string Path(string prefix, int epoch, string extension = ".json") => prefix + epoch.ToString(CultureInfo.InvariantCulture) + extension;
 
     static string KindName(ReportWorkKind kind) => kind switch

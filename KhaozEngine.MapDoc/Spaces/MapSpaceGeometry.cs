@@ -11,8 +11,12 @@ namespace KhaozEngine.MapDoc.Spaces;
 /// <summary>Exact spatial operations shared by occupied-space queries and validation.</summary>
 internal static class MapSpaceGeometry
 {
+    [ThreadStatic] static long t_recordScans;
+    internal static long ThreadRecordScans => t_recordScans;
+
     internal static IEnumerable<MapTopologyRecord> Records(MapScopedSurfaces view)
     {
+        t_recordScans++;
         foreach (MapRecordRef reference in view.Witness.Records)
             if (view.TryRecord(reference, out MapTopologyRecord? record, out _, borrow: true) && record is not null)
                 yield return record;

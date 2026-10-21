@@ -6,6 +6,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using KhaozEngine.Serialization;
+using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
 
@@ -62,6 +63,14 @@ internal static partial class MapTiledFile
         root.Remove("sculptCellSize");
         root.Remove("tiles");
         root.Remove("surfaceStorage");
+        MapFoliageSet? foliage = null;
+        MapFoliageStorageIndex? foliageIndex = null;
+        if (MapDocumentMembers.TryGetProperty(root, "foliage", out JsonNode? foliageNode))
+        {
+            using var foliageJson = JsonDocument.Parse(foliageNode?.ToJsonString() ?? "null");
+            (foliage, foliageIndex) = MapFoliageStorage.ReadManifest(foliageJson.RootElement);
+            root.Remove("foliage");
+        }
         // $schema is a file-level annotation on the MANIFEST, not document content: the writer emits it and
         // the reader ignores it, exactly as for a tile file. Carrying it onto the document would point a
         // later monolithic save at the manifest's schema.
@@ -78,6 +87,8 @@ internal static partial class MapTiledFile
             throw new MapDocumentException($"{path}: {ex.Message}", ex);
         }
 
+        doc.Foliage = foliage;
+
         // The tiled form hoists the sculpt cell size to the manifest, because per-tile files must not each
         // restate it. The reader rebuilds the block header and the tile reads fill it.
         try { doc.TerrainOverrides = new MapTerrainOverrides(sculptCellSize); }
@@ -90,9 +101,12 @@ internal static partial class MapTiledFile
         if (errors.Count > 0)
             throw new MapDocumentException($"{path}: invalid map manifest:\n  " + string.Join("\n  ", errors));
 
+        foliageIndex = foliageIndex?.WithResidency(directory, foliage);
         index = new MapTileIndex(doc.TileSize, schemeVersion, Normalize(directory), entries, HashManifest(manifestBytes),
-            new MapSurfaceStorageIndex(surfaces, doc.Surfaces.Refs));
+            new MapSurfaceStorageIndex(surfaces, doc.Surfaces.Refs))
+        { Foliage = foliageIndex };
         doc.Tiles = index;
+        if (foliageIndex is not null) MapFoliageStorage.ValidateLayout(doc, foliageIndex);
         return doc;
     }
 
@@ -141,7 +155,8 @@ internal static partial class MapTiledFile
         }
 
         MapSurfaceTiledStore.Load(directory, doc, index, window);
-        doc.Tiles = new MapTileIndex(index.TileSize, index.SchemeVersion, Normalize(directory), entries, index.ManifestSha256, index.Surfaces);
+        doc.Tiles = new MapTileIndex(index.TileSize, index.SchemeVersion, Normalize(directory), entries, index.ManifestSha256, index.Surfaces) { Foliage = index.Foliage };
+        MapFoliageStorage.Load(doc, directory, window);
 
         IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, options.Registry);
         if (errors.Count > 0)
@@ -194,13 +209,14 @@ internal static partial class MapTiledFile
         }
 
         MapSurfaceTiledStore.Verify(directory, doc, index, named, report);
+        MapFoliageStorage.Verify(directory, doc, index, named, report);
         CollectStrays(directory, named, report);
         return report;
     }
 
     /// <summary>A shallow copy of a document carrying only the globals: same references for terrain, layers
     /// and shapes, with the four point-shaped lists empty and the sculpt block reduced to its header. Surfaces
-    /// are a metadata-only copy (copied refs, no patches), and native assets and water are copies, so a later
+    /// are a metadata-only copy (copied refs, no patches), and native assets, water and foliage are copies, so a later
     /// edit published into the document never shows through the copy.</summary>
     internal static MapDocument GlobalsOnly(MapDocument doc) => new()
     {
@@ -223,6 +239,7 @@ internal static partial class MapTiledFile
         ScatterOverrides = doc.ScatterOverrides,
         Regions = doc.Regions,
         Water = doc.Water?.Clone(),
+        Foliage = doc.Foliage?.Clone(),
         Prefabs = doc.Prefabs?.Clone(),
         BuildingIntent = doc.BuildingIntent?.Clone(),
         NativeResourceTransforms = doc.NativeResourceTransforms?.ToArray(),

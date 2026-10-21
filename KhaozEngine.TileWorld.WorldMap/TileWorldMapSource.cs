@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.WorldMap;
 
 namespace KhaozEngine.TileWorld.WorldMap;
@@ -23,6 +24,15 @@ public sealed class TileWorldMapSource : IWorldMapSource
     /// <param name="catalogs">The static ground materials and object archetypes.</param>
     /// <param name="surfacePlane">The terrain, object and marker plane. Roofs on all planes are included.</param>
     public TileWorldMapSource(TileWorldDocument document, TileWorldCatalogs catalogs, int surfacePlane = 0)
+        : this(document, catalogs, surfacePlane, null) { }
+
+    /// <summary>Creates a map source with a copied map-only ground palette.</summary>
+    /// <param name="document">The static authored world.</param>
+    /// <param name="catalogs">The static ground materials and object archetypes.</param>
+    /// <param name="surfacePlane">The terrain, object and marker plane. Roofs on all planes are included.</param>
+    /// <param name="groundPalette">Optional map-only material colours, copied at construction. Missing ids use catalog colours.</param>
+    public TileWorldMapSource(TileWorldDocument document, TileWorldCatalogs catalogs, int surfacePlane,
+        IReadOnlyDictionary<ushort, Color>? groundPalette)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(catalogs);
@@ -34,7 +44,7 @@ public sealed class TileWorldMapSource : IWorldMapSource
         _document = document;
         _tileSize = document.TileSize;
         _surfacePlane = surfacePlane;
-        _surface = new TileWorldMapSurface(document, catalogs, surfacePlane, _tileSize);
+        _surface = new TileWorldMapSurface(document, catalogs, surfacePlane, _tileSize, groundPalette);
         _footprints = new TileWorldMapFootprints(document, catalogs, surfacePlane, _tileSize);
 
         MapRect? bounds = null;

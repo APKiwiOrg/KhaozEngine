@@ -96,10 +96,10 @@ public sealed class WorldMapViewLevelTests
 
         var child = Assert.Single(view.DrawList, item => item.Destination == new Rect(172f, 72f, 256f, 256f));
         Assert.Same(parent, child.Texture);
-        Assert.Equal(new Vector4(0.5f, 0f, 1f, 0.5f), child.SourceUv);
+        ChunkUv.AssertInterior(new Vector4(0.5f, 0f, 1f, 0.5f), child);
         var west = Assert.Single(view.DrawList, item => item.Destination == new Rect(100f, 72f, 72f, 256f));
         Assert.Same(parent, west.Texture);
-        Assert.Equal(new Vector4(0.359375f, 0f, 0.5f, 0.5f), west.SourceUv);
+        ChunkUv.AssertInterior(new Vector4(0.359375f, 0f, 0.5f, 0.5f), west);
         Assert.False(cache.TryGet(new(1, 1), out _));
 
         // The finer upload replaces the fallback on the next update that permits uploads.
@@ -109,7 +109,7 @@ public sealed class WorldMapViewLevelTests
         view.Update(input.At(ScreenCenter), 0f);
         child = Assert.Single(view.DrawList, item => item.Destination == new Rect(172f, 72f, 256f, 256f));
         Assert.Same(textures.Created[1], child.Texture);
-        Assert.Equal(new Vector4(0f, 0f, 1f, 1f), child.SourceUv);
+        ChunkUv.AssertInterior(new Vector4(0f, 0f, 1f, 1f), child);
     }
 
     /// <summary>Negative child addresses sample the correct half-open north-up parent quadrant.</summary>
@@ -138,7 +138,7 @@ public sealed class WorldMapViewLevelTests
 
         var child = Assert.Single(view.DrawList, item => item.Destination == new Rect(172f, 72f, 256f, 256f));
         Assert.Same(parent, child.Texture);
-        Assert.Equal(new Vector4(left, top, right, bottom), child.SourceUv);
+        ChunkUv.AssertInterior(new Vector4(left, top, right, bottom), child);
     }
 
     /// <summary>A two-level fallback samples the matching quarter-width cell, including negative addresses.</summary>
@@ -170,7 +170,7 @@ public sealed class WorldMapViewLevelTests
         Assert.False(cache.TryGet(new(childX >> 1, childY >> 1, 1), out _));
         var child = Assert.Single(view.DrawList, item => item.Destination == new Rect(172f, 72f, 256f, 256f));
         Assert.Same(ancestor, child.Texture);
-        Assert.Equal(new Vector4(left, top, right, bottom), child.SourceUv);
+        ChunkUv.AssertInterior(new Vector4(left, top, right, bottom), child);
         Assert.Single(textures.Created);
     }
 
@@ -201,7 +201,7 @@ public sealed class WorldMapViewLevelTests
 
         var child = Assert.Single(view.DrawList, item => item.Destination == new Rect(172f, 72f, 256f, 256f));
         Assert.Same(parent, child.Texture);
-        Assert.Equal(new Vector4(0.5f, 0f, 1f, 0.5f), child.SourceUv);
+        ChunkUv.AssertInterior(new Vector4(0.5f, 0f, 1f, 0.5f), child);
         Assert.Equal(0, grandparent.Disposals);
     }
 

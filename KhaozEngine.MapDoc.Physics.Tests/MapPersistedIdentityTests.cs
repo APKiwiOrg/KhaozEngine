@@ -97,8 +97,13 @@ public class MapPersistedIdentityTests
         string authoredEight = Authored(RootDigest(manifest, 8), fixture, effectivePolicy: true);
         Assert.Equal("f705ec6f1999a422f34b9933d5caf83cfa80bf5b99f2bd0393595decb21e0eac", authoredEight);
         Assert.Equal("2f4e09f2b77f0b95c5867d7b6a776bdaa7f972019890b5c8973a160258af10d2", Build(authoredEight));
-        Assert.Equal(authoredEight, world.AuthoredHash);
-        Assert.Equal(Build(authoredEight), world.BuildHash);
+
+        // R7 advances the native root to format 9 with the same policy members and no foliage. Only the root's version
+        // moves, so the current world is derived from the format-9 root here, never from product output.
+        string authoredNine = Authored(RootDigest(manifest, 9), fixture, effectivePolicy: true);
+        Assert.NotEqual(authoredEight, authoredNine);
+        Assert.Equal(authoredNine, world.AuthoredHash);
+        Assert.Equal(Build(authoredNine), world.BuildHash);
     }
 
     // Geometry inputs, unchanged by the format advance and checked above against the current build.

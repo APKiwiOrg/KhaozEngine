@@ -58,7 +58,8 @@ Implement `IWorldMapSource` to adapt an authored world:
   thread. Allow concurrent worker reads. Consumers discard results sampled against an older revision.
 
 The source filters to the mapped surface before returning footprints or markers. The contract
-carries neither levels nor top heights, and this round supports oriented rectangles only.
+carries neither levels nor top heights. Footprints remain oriented bounding rectangles, with optional
+symbol geometry changing only their raster silhouette and details.
 
 ## Style
 
@@ -68,6 +69,10 @@ carries neither levels nor top heights, and this round supports oriented rectang
   256 pixels by default. Void colour is `#d9cba6`.
 - `WorldMapRelief` lights from azimuth 315 degrees at altitude 45 degrees, with strength 0.5,
   steep-slope threshold 1 and steep darkening multiplier 0.75.
+- `Contours` defaults to null. Set `new WorldMapContours(5f, Color.Black, WidthPixels: 0.75f)`
+  for five-metre elevation lines on dry ground after relief and before footprint symbols.
+  Intervals use the source's actual metre heights, including negative elevations. Width is measured
+  in image pixels at every pyramid level. Colour alpha controls compositing over the shaded ground.
 - `WorldMapWater` uses shallow `#6f9cc0`, deep `#2a5a9a` and shoreline `#1f3f66`. Water is fully deep
   at four metres, and the shoreline is one pixel wide.
 - `SymbolRules` default to an empty array. Each rule matches an optional archetype key, all-of tags,
@@ -85,6 +90,19 @@ carries neither levels nor top heights, and this round supports oriented rectang
   Coarse admission still uses the authored footprint, not this drawn size. This keeps source filtering
   before materialization bounded without requiring every small prop to be collected to resolve style rules.
   Icons, labels and hover targets remain unchanged.
+- `WorldMapSymbol.Geometry` optionally replaces the default rectangle or ellipse with a
+  `WorldMapSymbolGeometry(outline, strokes: null)`. The constructor snapshots both inputs and exposes
+  read-only `Outline` and `Strokes` collections. Use finite normalized coordinates in `[-1, 1]` on each
+  local axis. The outline needs at least three vertices enclosing a nonzero area, may be concave and
+  accepts either winding. Its last vertex connects to the first. Do not repeat the closing vertex or
+  supply crossing, touching or overlapping edges. Invalid geometry throws `ArgumentException` at construction.
+  Each `WorldMapSymbolStroke(Start, End)` is an independent open detail segment. Geometry follows the
+  existing dimensions, `SizeMetres`, rotation and wall sizing. `Fill` paints the polygon. `Outline`
+  paints its inset boundary and centred round-capped details using `OutlinePixels` in raster pixels,
+  including non-square symbols and coarse levels. Details blend over polygon fill. Overlapping ink
+  shares coverage once. Details can
+  lie outside a concave fill and are clipped to the normalized footprint box. Building shadows use
+  only the filled silhouette. Null preserves existing raster bytes, anchors and hover targets.
 - `IconRules` default to an empty array. Rules select footprint or marker tags, an icon key, a priority
   and a merge radius, defaulting to 24 screen pixels. `Labels` defaults to null. When enabled,
   `WorldMapLabelRules` selects a label tag and tagged tiers with rank, zoom range and text scale.
@@ -98,22 +116,51 @@ pixel. Relief altitude is finite in `(0, 90]`, strength and steep darkening are 
 and the steep slope threshold is finite and non-negative. Deep water depth is finite and positive.
 Shoreline pixels, wall width and outline width are non-negative, with finite floating-point widths.
 Both shadow offset components must be finite.
+Contour interval and pixel width must be finite and strictly positive.
 Symbol size components must be finite and positive, with a finite half-diagonal reach.
-`Coord` identifies the chunk, `Size` is its pixel edge length, and `Rgba` holds `Size * Size * 4`
-opaque RGBA8 bytes. Raster row zero is north, and column zero is west. `Revision` is captured before
-sampling, so a consumer can discard an image when the source changes during the read.
+`Coord` identifies the chunk, `Size` is its interior pixel edge length covering the chunk rectangle, and
+`Border` is the gutter width on each side, defaulting to zero. `TextureSize` is `Size + 2 * Border`, and
+`Rgba` holds `TextureSize * TextureSize * 4` opaque RGBA8 bytes. Raster row zero is north, and column zero
+is west. `ByteOffset(column, row)` addresses interior-relative pixels, so the gutter runs from `-Border`
+to `Size + Border - 1` on each axis. `Revision` is captured before sampling, so a consumer can discard an
+image when the source changes during the read.
+
+`Rasterize(source, style, chunk, border)` paints the gutter from the adjacent map area, using the same
+surface, water, contour and footprint rules as the interior. Gutter pixels therefore match the edge
+pixels of the neighbouring chunks, including void beyond the world bounds, and the interior bytes equal
+the borderless raster. The three-argument overload and the positional constructor keep a zero border.
+`WorldMapChunkCache` builds every image with a one-pixel border, so bilinear display filtering at a chunk
+edge reads real neighbouring imagery rather than wrapping to the chunk's opposite edge. Code that reads
+cache image pixels indexes through `ByteOffset` and uploads `TextureSize`, never `Size`, as the texture
+extent.
 
 At level `L`, the rasterizer uses `levelPpm = EffectivePixelsPerMetre / 2^L` and requests
-`SampleSurface(area, maxCellSize: 2f / levelPpm)`. It samples once over the chunk plus a margin of
-`2 * returnedCellSize + Water.ShorelinePixels / levelPpm` metres. The resolution contract determines
-the returned cell size before sampling, so the margin covers coarse relief samples too. It blends ground colours and
+`SampleSurface(area, maxCellSize: 2f / levelPpm)` once for each chunk that owns output pixels. Each query
+covers that owner's full chunk rectangle plus a margin of
+`2 * returnedCellSize + Water.ShorelinePixels / levelPpm` metres, exactly as its borderless raster would.
+Preserving this query frame also preserves the returned grid origin and fractional source-cell ownership.
+A borderless image makes one surface query. A cache image's one-pixel gutter makes nine. Wider gutters
+query every owner they reach once. The image retains one revision stamp captured before the first query.
+These reads can materialize full owner grids, but pixel painting, contours and shoreline masks cover only each
+owner's clipped output region and its required halo. Neighbour images are never rasterized in full.
+The resolution contract determines the returned cell size before sampling, so the margin covers coarse
+relief samples too.
+When contours are enabled, replace the shoreline pixel radius in that margin with
+`Max(Water.ShorelinePixels, Contours.WidthPixels / 2 + 1)`. This bounded neighbourhood covers
+the contour's height differences and stroke fringe, and participates in cache invalidation.
+It blends ground colours and
 heights between source cell centres, dropping void contributions and renormalizing the remaining
 weights. Pixels whose nearest cell is void retain `VoidColor`. Dry ground receives normalized
 hillshade and the configured steep-slope multiplier. Water blends the depth palette without relief,
 then receives shoreline colour when dry, non-void pixels lie within the configured Chebyshev radius,
 including across chunk edges.
 
-Footprints are collected over the chunk expanded by `BuildingShadowOffsetMetres.Length()` plus
+Optional contours estimate distance to a height-interval multiple from the local height gradient,
+then antialias coverage in raster pixels. They require a height crossing in their bounded
+neighbourhood. Water, void and flat plateaus at an interval are excluded. Null contours retain
+the existing sampling margin and raster bytes.
+
+Footprints are collected over the painted area expanded by `BuildingShadowOffsetMetres.Length()` plus
 half of `WallWidthMetres`, one raster pixel and the largest visible symbol's drawn half diagonal.
 This includes the blocking fallback and excludes hidden symbols. The half diagonal covers any rotation,
 including rectangles whose corners extend beyond their largest local half extent. The same margin widens
@@ -172,8 +219,9 @@ feature anchors together. The cap must be at least one. `MaxRetainedChunks` expo
 After every build completion, including failure, and before a no-work `BuildNext` returns,
 excess images are evicted until `RetainedCount <= MaxRetainedChunks`. Eviction visits chunks without
 pending or active work first, then pending or building chunks, in oldest-request order within each
-group. The 256 default chunks of 256 by 256 RGBA pixels have a 64 MiB retained image payload bound,
-excluding feature metadata and temporary build allocations.
+group. The 256 default chunks hold 258 by 258 RGBA pixels each, a 256-pixel interior plus the one-pixel
+gutter, for a retained image payload bound of about 65 MiB, excluding feature metadata and temporary
+build allocations.
 
 Generations are `long` values allocated by one cache-wide monotonically increasing counter.
 A first request and every touching invalidation assign a fresh generation. A build captures it
@@ -183,7 +231,8 @@ so their queued or active builds still publish. `TryGet` and `IsCurrent` return 
 publishes another image. Other evicted chunks lose their entry too. Requesting those chunks again
 rebuilds them with a never-used generation, permitting views to replace any surviving upload.
 Uploaded view textures are independent of retained cache images. `Invalidate(area)` expands the edit
-separately for each cached level using that level's surface cell size and footprint reach. Builds run outside
+separately for each cached level using that level's surface cell size, footprint reach and one gutter pixel
+at the level's raster scale. Builds run outside
 the bookkeeping lock. An invalidation during a build leaves its result stale, and a failed source
 read quarantines only that generation until invalidation permits a retry.
 

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
@@ -28,6 +29,7 @@ public static class MapDocumentValidator
         MapNativeValidation.Validate(doc, errors);
         MapWaterValidation.Validate(doc, errors);
         errors.AddRange(MapPrefabValidation.Validate(doc, null));
+        MapFoliageValidation.ValidateDocument(doc, errors);
         ValidateTileSize(doc, errors);
         if (doc.TerrainOverrides is { } overrides)
             ValidateOverrides(overrides, doc.Bounds, errors);

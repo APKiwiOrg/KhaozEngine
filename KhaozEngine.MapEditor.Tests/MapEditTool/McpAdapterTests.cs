@@ -29,7 +29,7 @@ namespace KhaozEngine.Tests.MapEditTool
     [Collection(McpWireCollection.Name)]
     public partial class McpAdapterTests
     {
-        /// <summary>All 96 verb names, spelled exactly as the plan header's verb table: the original 39 (including
+        /// <summary>All 101 verb names, spelled exactly as the plan header's verb table: the original 39 (including
         /// the two render verbs added in Task 6) plus the Task 5 naming, layer-targeting, and procedural-setup
         /// verbs (feature/exclusion rename, exclusion layer targeting, the biome band and scatter/companion layer
         /// triads plus their rename verbs, and the procedural_info read verb), the scatter_rule
@@ -97,6 +97,8 @@ namespace KhaozEngine.Tests.MapEditTool
             "interior_volume_add", "interior_volume_set", "interior_volume_remove", "roof_link_set",
             // R6 general markers: set and remove by immutable ID, and the filtered list.
             "marker_set", "marker_remove", "marker_list", "spawns_adopt",
+            // R7 native foliage: layer set, detached read, exact density, metre brush and remove.
+            "foliage_layer_set", "foliage_get", "foliage_density_set", "foliage_paint", "foliage_remove",
         };
 
         [Fact]
@@ -108,6 +110,7 @@ namespace KhaozEngine.Tests.MapEditTool
             HashSet<string> names = tools.Select(t => t.Name).ToHashSet(StringComparer.Ordinal);
 
             Assert.Equal(ExpectedVerbs.ToHashSet(StringComparer.Ordinal), names);
+            Assert.Equal(101, tools.Count);
 
             McpClientTool mapValidate = tools.Single(t => t.Name == "map_validate");
             Assert.True(mapValidate.JsonSchema.GetProperty("properties")

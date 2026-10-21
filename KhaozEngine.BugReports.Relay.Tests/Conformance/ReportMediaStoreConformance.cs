@@ -126,4 +126,65 @@ public abstract class ReportMediaStoreConformance
         Assert.True(await store.ExistsAsync(ReportArea.Public, Path, CancellationToken.None));
         Assert.False(await store.ExistsAsync(ReportArea.Pending, Path, CancellationToken.None));
     }
+
+    [Fact]
+    public async Task List_ReturnsNestedPathsUnderPrefixInOrdinalOrder()
+    {
+        IReportMediaStore store = CreateStore();
+        await store.PutAsync(ReportArea.Public, "g/2026-10/a/x.json", new byte[] { 1 }, Json, false, CancellationToken.None);
+        await store.PutAsync(ReportArea.Public, "g/2026-10/a/n/y.png", new byte[] { 2 },
+            new ReportBlobHeaders("image/png", "no-cache"), false, CancellationToken.None);
+        await store.PutAsync(ReportArea.Public, "g/2026-10/b/z.json", new byte[] { 3 }, Json, false, CancellationToken.None);
+
+        Assert.Equal(new[] { "g/2026-10/a/n/y.png", "g/2026-10/a/x.json" },
+            await store.ListAsync(ReportArea.Public, "g/2026-10/a/", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task List_IsScopedToArea()
+    {
+        IReportMediaStore store = CreateStore();
+        await store.PutAsync(ReportArea.Pending, Path, new byte[] { 1 }, Json, false, CancellationToken.None);
+
+        Assert.Empty(await store.ListAsync(ReportArea.Public, "g/2026-10/a/", CancellationToken.None));
+        Assert.Equal(new[] { Path }, await store.ListAsync(ReportArea.Pending, "g/2026-10/a/", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task List_Absent_ReturnsEmpty()
+    {
+        IReportMediaStore store = CreateStore();
+
+        Assert.Empty(await store.ListAsync(ReportArea.Public, "g/2026-10/a/", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task List_RejectsPrefixWithoutTrailingSlashOrInvalidPath()
+    {
+        IReportMediaStore store = CreateStore();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => store.ListAsync(ReportArea.Public, "g/2026-10/a", CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentException>(() => store.ListAsync(ReportArea.Public, "G/x/", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Delete_RemovesBlobAndAnswersTrue()
+    {
+        IReportMediaStore store = CreateStore();
+        await store.PutAsync(ReportArea.Public, Path, new byte[] { 1 }, Json, false, CancellationToken.None);
+        await store.PutAsync(ReportArea.Pending, Path, new byte[] { 2 }, Json, false, CancellationToken.None);
+
+        Assert.True(await store.DeleteAsync(ReportArea.Public, Path, CancellationToken.None));
+
+        Assert.False(await store.ExistsAsync(ReportArea.Public, Path, CancellationToken.None));
+        Assert.True(await store.ExistsAsync(ReportArea.Pending, Path, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Delete_Absent_AnswersFalse()
+    {
+        IReportMediaStore store = CreateStore();
+
+        Assert.False(await store.DeleteAsync(ReportArea.Public, Path, CancellationToken.None));
+    }
 }

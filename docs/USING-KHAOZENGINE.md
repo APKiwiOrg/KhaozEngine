@@ -6645,6 +6645,27 @@ Version 21 removes the old rigid-only set type names without aliases. See the
 [migration and design record](design/SKINNED-ATTACHMENT-PARTS-DESIGN-2026-10-15.md) and the
 [renderer package reference](../KhaozEngine.Attachments.Render3D/README.md) for the full contract.
 
+#### Equipment coverage consumer contract
+
+The [equipment coverage guide](EQUIPMENT-COVERAGE.md) owns schema authoring, protected regions,
+transform/capacity limits, refusals and CPU/GPU route distinctions. Its complete
+[consumer example](examples/EquipmentCoverageConsumer.cs) is compiled into the existing Render test project
+and exercised by `CoverageConsumerExampleTests`. It loads a strict host sidecar, uploads every exact annotated
+host part, retains one cache and actor binding, equips atomically, prepares once per frame, forwards host and
+equipment tokens through ordinary and outline draws, and explicitly restores uncovered presentation on refusal.
+A legacy adapter in the same example implements only `IAttachmentScene` and remains source-compatible.
+
+Create the example once on the render thread and keep it alive across frames. Use its exact imported
+`Skeleton` when sampling the actor palette. Load failures throw before changing equipped state.
+`TryEquip` returns a structured refusal and retains the previous equipment. Between `Scene3D.Begin` and
+`PrepareFrame`, call `Queue` with one captured palette and model. A false result has already queued the
+explicit uncovered current pose and ordinary equipment. Log the returned failure without retrying that frame.
+After every actor has queued, `Render3DSurface.Prepare(frame)` runs before recording and
+`Render3DSurface.Render(frame)` uses `Frame.Submission` for readbacks and history. The window owns the single
+submission and completion lifetime. Do not submit or wait from the actor. Dispose the example before the
+surface and window. The [shared frame submission contract](#shared-frame-submission-and-coverage-outcomes)
+also applies to custom rendering hosts.
+
 Covered host draws, target outlines, directional cascades and point-shadow faces consume the same selected
 GPU surface. Each material retains its own first-corner range. The selected header chooses the complete
 refined surface or original current pose for all consumers, including a refusal before refinement completed.
@@ -23127,7 +23148,8 @@ while unsignaled entries remain. It disposes only owned staging buffers after ev
 
 `GpuFrameSubmission(device, retainedFrames: 3, consumerCapacity: 8)` precreates its fixed fence and registration
 storage. Call `Begin` before recording and register completion consumers with `TryRetain`. Successful retention
-returns one shared fence for the frame. A full retention window skips diagnostics without blocking rendering.
+returns one shared fence for the frame, with a nullable-flow guarantee that a true result has a non-null
+completion. A full retention window skips diagnostics without blocking rendering.
 Register `IGpuFrameSubmissionParticipant` independently with `TryRegister`, even when diagnostics have no slot.
 If participant registration fails, explicitly abandon that participant's pending logical state.
 
@@ -23165,7 +23187,9 @@ completed outcome after the assertion drain. A CPU admission refusal or unavaila
 outcome or selected-buffer evidence. See [coverage evidence](CROSS-PLATFORM.md#failure-evidence-pngs) for packet
 and golden review ownership.
 
-Rigid mesh upload caches whether `Normal.X`, `Color.X`, `Uv.X` and `Tangent.X` are finite, matching the
+Eligible opaque ordinary rigid mesh upload caches geometry identity, bounds and whether `Normal.X`,
+`Color.X`, `Uv.X` and `Tangent.X` are finite. Permanently ineligible splat, tile-ground and nonzero-alpha-cutoff
+uploads skip that evidence work. The eligible finite checks match the
 vertex inputs consumed by the shadow position sink. Coverage equipment staging refuses a nonfinite lane with
 `IdentityMismatch` before registry or destination mutation. Eligibility belongs to the uploaded snapshot and
 requires no vertex scan during staging.

@@ -15,7 +15,9 @@ namespace KhaozEngine.Render3D
             float alphaCutoff = 0f, int tileGroundMaterial = -1, Vector3[]? outlineNormals = null,
             IGpuTexture? cutoutAlbedo = null)
         {
-            var coverageEvidence = new CoverageUploadEvidence(mesh);
+            // These immutable material routes can never participate in coverage equipment staging.
+            var coverageEvidence = splatMaterial < 0 && tileGroundMaterial < 0 && alphaCutoff == 0f
+                ? new CoverageUploadEvidence(mesh) : null;
             var f = _gd.Factory;
             IGpuBuffer? vb = null, outlineNormalVb = null, ib = null;
             IGpuResourceSet? shadowCutout = null;
@@ -38,7 +40,7 @@ namespace KhaozEngine.Render3D
                     material, outlineMaterial, splatMaterial, alphaCutoff, tileGroundMaterial, shadowCutout);
                 if (index < _meshes.Count) _meshes[index] = slot;
                 else _meshes.Add(slot);
-                _coverageUploads.Add((index, generation), coverageEvidence);
+                if (coverageEvidence is not null) _coverageUploads.Add((index, generation), coverageEvidence);
                 return new MeshHandle(index, generation);
             }
             catch

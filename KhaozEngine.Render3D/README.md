@@ -146,6 +146,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   counts it. A rigid and a skinned draw never collide, and a shadow-only draw is never recorded. `CharacterAvatar`,
   `SkinnedLimb`, `Scene3DBinder.Submit` and `Scene3DTileWorldScene` key or forward keys themselves. See
   docs/USING-KHAOZENGINE.md.
+- The [equipment coverage consumer guide](../docs/EQUIPMENT-COVERAGE.md) owns strict schema authoring,
+  protected regions, transform and capacity limits, refusal handling and the compiled complete consumer example.
+  Coverage is optional and never inferred from materials, bones or UVs.
 - Optional equipment coverage uses `CreateHostConformer` with every uploaded material slice of one
   `HostCoveragePart` source. The actor-owned conformer exposes its exact `Topology` for command binding.
   Its non-mutating `MatchesHostSkin` compares a captured inverse-bind span with the actual uploaded skin
@@ -162,6 +165,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   accounting remains available. GPU timing requires fresh approval and separate instrumentation.
   After `Begin`, `TryStageCoverageEquipment` verifies a complete rigid source against uploaded position and
   index fingerprints and cached finite `Normal.X`, `Color.X`, `Uv.X` and `Tangent.X` upload eligibility.
+  Only opaque ordinary rigid meshes capture this cold evidence. Splat, tile-ground and nonzero-alpha-cutoff
+  uploads cannot participate and skip the position copy, hash, evidence bounds and finite-lane scans.
   It returns frozen descriptors without queuing them. Submit those descriptors through
   `Draw` and the descriptor `DrawMeshOutline` overload. Asset-byte verification is still the caller's job.
   The batch staging overload accepts up to four explicit `CoverageEquipmentCommand` memberships for one

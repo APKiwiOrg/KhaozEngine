@@ -30,9 +30,10 @@ public sealed partial class Scene3D
         RequireCoverageThread();
         ObjectDisposedException.ThrowIf(_coverageDisposed, this);
         uint commandId = commands.IsEmpty ? 0 : commands[0].CommandId;
-        if (_coverageArena.Generation == 0 || _coverageArena.Closed || _framePrepared || actorKey.IsNone || equipmentInstanceId == 0
-            || commands.Length == 1 && commandId == 0)
+        if (_coverageArena.Generation == 0 || _coverageArena.Closed || _framePrepared)
             return Refuse(CoverageFailureCode.StaleFrame, out failure);
+        if (actorKey.IsNone || equipmentInstanceId == 0)
+            return Refuse(CoverageFailureCode.IdentityMismatch, out failure);
         if (commands.Length is < 1 or > CoverageScratch.MaxCommands)
             return Refuse(CoverageFailureCode.CapacityExceeded, out failure, commands.Length, CoverageScratch.MaxCommands);
         CoverageSupportSurface support = commands[0].Support;

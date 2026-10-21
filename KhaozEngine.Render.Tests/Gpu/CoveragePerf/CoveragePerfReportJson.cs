@@ -93,7 +93,13 @@ internal static class CoveragePerfReportJson
         }
 
         void SubmissionCounts(CoveragePerfSharedSubmissionObservation observation, string phase, CoveragePerfSubmissionSummary counts) =>
-            text.AppendLine($"- Block {observation.Block} {observation.Condition} {phase}, {counts.Frames} frames: {counts.Submissions} submissions, {counts.SubmittedCompletionFences} completion fences, {counts.SubmissionParticipants} participants, {counts.CompletionConsumers} consumers, {counts.ProductionWaits} production waits.");
+            text.AppendLine($"- Block {observation.Block} {observation.Condition} {phase}, "
+                + $"{CoveragePerfSharedSubmission.Count(counts.Frames, "frame")}: "
+                + $"{CoveragePerfSharedSubmission.Count(counts.Submissions, "submission")}, "
+                + $"{CoveragePerfSharedSubmission.Count(counts.SubmittedCompletionFences, "completion fence")}, "
+                + $"{CoveragePerfSharedSubmission.Count(counts.SubmissionParticipants, "participant")}, "
+                + $"{CoveragePerfSharedSubmission.Count(counts.CompletionConsumers, "consumer")}, "
+                + $"{CoveragePerfSharedSubmission.Count(counts.ProductionWaits, "production wait")}.");
 
         void WarmupDeviations(CoveragePerfWarmupSubmissionDeviations block)
         {

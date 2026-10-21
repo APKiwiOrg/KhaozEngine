@@ -179,6 +179,11 @@ Calls on the same bound view must not overlap.
 
 ## Optional equipment coverage
 
+The [living coverage guide](../docs/EQUIPMENT-COVERAGE.md) contains the complete
+[compiled consumer example](../docs/examples/EquipmentCoverageConsumer.cs), host/companion authoring,
+protected-region semantics, transforms, capacities and refusal codes. Load maps strictly and regenerate
+both sidecars after any referenced GLB or attachment definition changes. The adapter does not infer regions.
+
 `AttachmentSetCache.GetCoverage(loaded, key, expectedSha256)` verifies the exact companion bytes and its
 attachment-definition byte hash. It resolves rigid part IDs and support ranges against the cache's owned,
 verified displayed GLB bytes. It never reads mesh bytes again or uploads another copy. Companions, sources

@@ -538,6 +538,23 @@ uses the renderer's deferred unload APIs. The shipped tile-world scene implement
 without adding attachment members to `ITileWorldScene`. The tile renderer references the attachment arm,
 and the attachment arm has no dependency back to TileWorld. Dispose attachment caches before their scene.
 
+Equipment coverage preserves those edges. The BCL-only leaf additionally owns strict
+`EquipmentCoverageDefinition` / `EquipmentCoverageJson` companions, independently of attachment JSON v1/v2.
+Render3D owns host maps, source provenance, fixed refinement, supports, the GPU conformation path and the
+headless `CoverageOracle`. It has no Attachments, Ecs or physics edge. Attachments.Render3D owns verified
+companion/source resolution and the actor's `HostCoverageBinding`. `IAttachmentCoverageScene` is a separate
+opt-in capability with stable scene ownership. Legacy `IAttachmentScene` implementations require no new
+members and explicitly refuse requested coverage. Cold `ReserveCoverageSupports` defaults to forwarding
+to the conformer, preserving existing coverage adapters.
+
+`GpuFrameSubmission`, `IGpuFrameCompletionConsumer` and `IGpuFrameSubmissionParticipant` live in the
+GPU seam. They own the host's shared completion retention and logical submission decision,
+with no coverage-specific dependency. Windowing exposes the owner through `Frame.Submission`. Render3D
+hosts register outcomes and history independently. A full diagnostic ring cannot suppress history.
+`GpuRetireQueue` retains its separate retirement fence. See the
+[living consumer contract](EQUIPMENT-COVERAGE.md) and
+[completion contracts](USING-KHAOZENGINE.md#shared-frame-submission-and-coverage-outcomes).
+
 ## Render3D ECS arm: the renderer carries no Ecs edge
 
 `KhaozEngine.Render3D` references no ECS. Entity rendering is its own arm, split off exactly as

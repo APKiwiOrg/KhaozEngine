@@ -384,7 +384,8 @@ What it owns today:
 - **`GpuFrameSubmission`** - one owner for a host's submitted command list and completion fences. Construct
   with the device and optional fixed `retainedFrames` and `consumerCapacity` (defaults 3 and 8).
   `Begin` abandons a previous unsubmitted recording and polls completed frames. `TryRetain(consumer, out fence)`
-  gives every retained consumer of this frame the same fence, or returns false when capacity is full.
+  gives every retained consumer of this frame the same fence, with a non-null output on true, or returns
+  false when capacity is full.
   `TryRegister(participant)` is independent of diagnostic capacity. `Submit(commands)` submits exactly once,
   then delivers `IGpuFrameSubmissionParticipant.Submitted` to every registered participant. `Abandon` delivers
   `Abandoned` and discards only unsubmitted copies. A backend submission exception abandons logical state but

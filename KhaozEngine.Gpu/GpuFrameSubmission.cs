@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.ExceptionServices;
 
 namespace KhaozEngine.Gpu;
@@ -14,6 +15,8 @@ public sealed class GpuFrameSubmission : IDisposable
     int participantCount, current = -1;
     bool recording, disposed, teardown;
 
+    /// <summary>Preallocate fixed frame fences and consumer/participant storage on the owning host thread.
+    /// Devices without completion fences retain participant submission but cannot retain consumers.</summary>
     public GpuFrameSubmission(IGpuDevice device, int retainedFrames = 3, int consumerCapacity = 8)
     {
         ArgumentNullException.ThrowIfNull(device);
@@ -66,7 +69,7 @@ public sealed class GpuFrameSubmission : IDisposable
     }
 
     /// <summary>Retain the recording's shared fence, or return false without blocking or allocating.</summary>
-    public bool TryRetain(IGpuFrameCompletionConsumer consumer, out IGpuFence? completion)
+    public bool TryRetain(IGpuFrameCompletionConsumer consumer, [NotNullWhen(true)] out IGpuFence? completion)
     {
         RequireRecording(); ArgumentNullException.ThrowIfNull(consumer);
         completion = null;
@@ -136,6 +139,8 @@ public sealed class GpuFrameSubmission : IDisposable
         error?.Throw();
     }
 
+    /// <summary>Abandon the open recording, drain submitted work at host teardown, release consumers and dispose
+    /// owned fences. Dispose before the host command list and device. Failed teardown may be retried.</summary>
     public void Dispose()
     {
         if (disposed) return;

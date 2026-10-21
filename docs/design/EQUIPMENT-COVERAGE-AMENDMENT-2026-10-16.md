@@ -5,7 +5,9 @@ Historical construction and display APIs in this document are superseded by the 
 reference remain offline evidence. The CPU cost authorization is retired and cannot start a workload.
 
 
-Status: owner approved. Implementation is pending and no release is authorized.
+Status: owner approved historical amendment, superseded by implemented Amendment R on the task branch.
+The [living consumer guide](../EQUIPMENT-COVERAGE.md) replaces its proposed display API.
+Hosted correctness is complete. Performance acceptance, integration, release and adoption remain open.
 It amends sections 4, 7, 9, 10 and 12 of the
 [approved design](EQUIPMENT-COVERAGE-DESIGN-2026-10-16.md).
 The engine work is tracked by [#1418](https://github.com/APKiwiOrg/KhaozEngine/issues/1418).

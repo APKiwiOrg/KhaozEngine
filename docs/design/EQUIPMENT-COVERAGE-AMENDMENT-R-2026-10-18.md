@@ -2,9 +2,12 @@
 
 Status: owner approved on 2026-10-18, including the model, the GPU approach, the four design sections
 and this written amendment. It replaces the CPU-approach text first committed as `7b786f6cd`.
-Implementation follows only after the plans are approved. Owner ruling NC2, also chosen on 2026-10-18,
-replaces NC1's device tolerance with device exactness.
-Measurements and any release remain unauthorized until their own approvals.
+The approved Parts A, B and C plans are implemented on the task branch. The
+[reconciled hosted correctness gate](../superpowers/plans/proofs/2026-10-19-equipment-coverage-gpu-correctness.md)
+is complete, including the timing harness. Owner ruling NC2, also chosen on 2026-10-18, replaces NC1's
+device tolerance with device exactness. The [living consumer contract](../EQUIPMENT-COVERAGE.md) describes
+the implemented API. Performance acceptance, final integration, release and consumer adoption remain
+open. Measurements and releases require their own approvals.
 It amends sections 7, 8, 10, 11 and 12 of the [approved design](EQUIPMENT-COVERAGE-DESIGN-2026-10-16.md)
 and replaces the actual render-frame error contract of the
 [construction and render-error amendment](EQUIPMENT-COVERAGE-AMENDMENT-2026-10-16.md).

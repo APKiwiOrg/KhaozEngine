@@ -109,6 +109,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="../test-shared/SkinnedAttachmentGlbFixture.cs" Link="Shared/SkinnedAttachmentGlbFixture.cs" />
+    <Compile Include="../docs/examples/EquipmentCoverageConsumer.cs" Link="Examples/EquipmentCoverageConsumer.cs" />
   </ItemGroup>
   <Import Project="../test-shared/AllocationMeasurement.props" />
 </Project>

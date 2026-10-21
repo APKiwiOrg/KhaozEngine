@@ -46,9 +46,13 @@ normal/tangent shading changes for these rear and grazing views. The original ap
 readback, so original-bake vertex provenance remains limited. Front, high and low-backlit retain their
 unchanged grids and images. This import changes no tolerance or frozen contract.
 
-The initial comparison used normal caches, and neither it nor the owning-backend bake is the final cold-cache
-gate. Final all-backend Coverage and synchronization verification remains pending. This record makes no
-final acceptance, performance, integration, release or adoption claim.
+The initial comparison used normal caches, and neither it nor the owning-backend bake was the final cold-cache
+gate. The [reconciled all-leg full suite](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39434393247)
+at `23d9d7886` completed successfully, 29 of 29 jobs. The
+[timing-harness all-leg full suite](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39516630833)
+at `5c503abd1` also completed successfully, 29 of 29 jobs. These complete the hosted correctness gate after
+reconcile and with the timing harness. Performance acceptance, integration, release and consumer adoption
+remain separate gates.
 
 ## Task 16 allocation and batch boundaries
 

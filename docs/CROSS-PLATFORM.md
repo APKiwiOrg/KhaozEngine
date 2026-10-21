@@ -645,11 +645,12 @@ arbitrary machines: a one-per-process headless device probe runs the tests when 
 skips them with the probe's failure reason when it does not.
 
 A test may additionally declare a device CAPABILITY it needs: `[GpuFact(RequiresCompletionFences = true)]`
-skips, naming the backend, on a device that reports no `GpuCapabilities.SupportsCompletionFences` (a
-Vulkan and Metal capability today, so the D3D11 leg skips those two retire-fence tests instead of failing
-an assertion it can never satisfy - issue #423). This is the only skip strict mode allows, and it is not a
-hole in it: if no device can be created at all, the capability probe reports nothing and the test still
-errors, so a leg with a broken device can never go quiet.
+skips, naming the backend, on a device that reports no `GpuCapabilities.SupportsCompletionFences`.
+The historical Veldrid D3D11 route lacked completion fences, tracked by issue #423. Native Vulkan,
+Direct3D11Native and Metal support them. Native D3D11 signals completion through `D3D11FenceSubsystem`,
+`D3D11GpuDevice.Submit` and `D3D11CommandDrivers.Submit`, so its native leg runs these tests.
+This is the only skip strict mode allows. If no device can be created at all, the capability probe reports
+nothing and the test still errors, so a leg with a broken device can never go quiet.
 
 Two further declarations gate on the ADAPTER rather than on a capability.
 `[GpuFact(RequiresRealGpu = true)]` skips on a virtualised adapter, for a row asserting that an effect is

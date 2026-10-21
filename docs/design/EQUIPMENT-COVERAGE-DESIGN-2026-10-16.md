@@ -11,10 +11,11 @@ Date: 2026-10-16. Source audit: `0bd787b5ccf25ea5a79afadc1bcfe315a2886016`.
 Engine program: [#1418](https://github.com/APKiwiOrg/KhaozEngine/issues/1418).
 Execution: [approved implementation plan](../superpowers/plans/2026-10-16-equipment-coverage.md).
 Consumer handoff: [Grimhollow #547](https://github.com/APKiwiOrg/Grimhollow/issues/547).
-This is a design specification, not an implementation plan. All proposed API names below are
-unavailable features. Engine-first ownership, this algorithm and its host-deformation implication
-are approved. The implementation plan and subagent-driven execution are also approved. Load measurements and any release
-retain separate authorization.
+This is the historical design rationale. Amendment R and Parts A, B and C are implemented on the task
+branch, with the reconciled hosted correctness gate complete. Historical API proposals below are not the
+consumer contract. Use the [living equipment coverage guide](../EQUIPMENT-COVERAGE.md) and its compiled
+example. Performance acceptance, final integration, release and consumer adoption remain open. Every
+measurement and release retains its own authorization.
 
 ## 1. Intended outcome and recommendation
 
@@ -39,7 +40,9 @@ A smaller collar contour change remained. This is useful one-pose feasibility ev
 accepted art, an engine GPU proof or acceptance of the full pose domain.
 
 The owner reviewed this written design, the private opaque A/B packet and the implementation plan.
-Execution is in progress. Geometry, native rendering and cost acceptance remain open.
+The GPU implementation and sampled synthetic correctness evidence are recorded in Amendment R and the
+[Part C proof](../superpowers/plans/proofs/2026-10-19-equipment-coverage-gpu-correctness.md). Consumer
+whole-motion geometry and cost acceptance remain open.
 Do not implement a removal-only API that refuses every real case and call that a fix. If every
 exposed contour must remain exact while the required cut has a visible gap around the rigid
 plate, removal and conformation cannot both satisfy that restriction. Authored fit, a visible
@@ -502,7 +505,8 @@ cannot establish the consumer's full supported pose domain.
 
 Run the same synthetic fixtures on **MetalNative, Direct3D11Native and VulkanNative**. The middle
 name is the actual `GpuBackendKind` value in [the desktop matrix](../CROSS-PLATFORM.md#platform--backend-desktop-scope).
-No engine GPU proof has been run for this draft.
+The [Part C correctness record](../superpowers/plans/proofs/2026-10-19-equipment-coverage-gpu-correctness.md)
+records the completed synthetic native-backend gate for the Amendment R implementation.
 
 Inspect labelled normal opaque off/on full-resolution PNGs at identical poses, cameras, materials
 and lights. Include front, rear, both grazing sides, high/low views, contrasting background and

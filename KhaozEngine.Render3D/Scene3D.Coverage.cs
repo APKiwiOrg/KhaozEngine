@@ -40,9 +40,12 @@ public sealed partial class Scene3D
     {
         frame = default;
         CoveragePreparation p = conformer.Request;
-        if (_coverageDisposed || _coverageArena.Generation == 0 || _coverageArena.Closed || _framePrepared || actor.IsNone
-            || fallback != CoverageFallback.UncoveredCurrentPose || p.Generation == _coverageArena.Generation
-            || !conformer.Actor.IsNone && conformer.Actor != actor)
+        if (_coverageDisposed || _coverageArena.Generation == 0 || _coverageArena.Closed || _framePrepared
+            || fallback != CoverageFallback.UncoveredCurrentPose)
+            return Refuse(CoverageFailureCode.StaleFrame, out failure);
+        if (actor.IsNone || !conformer.Actor.IsNone && conformer.Actor != actor)
+            return Refuse(CoverageFailureCode.IdentityMismatch, out failure);
+        if (p.Generation == _coverageArena.Generation)
             return Refuse(CoverageFailureCode.StaleFrame, out failure);
         foreach (var handle in conformer.Meshes)
             if (!_skinnedSlots.IsValid(handle.Index, handle.Generation)) return Refuse(CoverageFailureCode.IdentityMismatch, out failure);

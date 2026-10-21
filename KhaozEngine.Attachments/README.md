@@ -94,3 +94,28 @@ joint. Host joint-name mapping and bind-pose compatibility are renderer-level ch
 
 Version 21 removes the rigid-only set type names without compatibility aliases. See the
 [migration record](../docs/design/SKINNED-ATTACHMENT-PARTS-DESIGN-2026-10-15.md).
+
+## Optional equipment coverage companion
+
+`EquipmentCoverageDefinition` and `EquipmentCoverageJson` remain GPU-free. They describe explicitly
+requested host conformation beside an unchanged attachment JSON v1/v2 definition. `Read(utf8, identity)`
+accepts strict format 1. Unknown/duplicate fields, nonfinite values, invalid ranges or matrices and
+unsupported versions throw `InvalidDataException` with asset context. `Write` fixes member order, sorts
+positive command IDs and source ranges and normalizes negative zero. `SemanticSha256` uses a distinct
+coverage hash domain and differs from the fetched file byte hash.
+
+The root contains `formatVersion`, exact-byte `attachmentSha256`, canonical `hostMapSha256` and `commands`.
+Each `EquipmentCoverageCommand` names a positive `id`, rigid `partId`, ordinal `hostRegion`, 16-number
+row-major `coverageLocal`, `inwardSupport` source ranges (`mesh`, `primitive`, `firstTriangle`, `count`),
+`collarWidth`, `minZ`, `maxZ`, `clearance` and `maxWorldRecession`. Coverage positive Z points outward.
+Collar and caps use coverage coordinates. Clearance and recession are world-space distances.
+The companion supports at most four commands and 1,024 support triangles per command. A renderer resolves
+the selected actual inward sheet, host regions, transforms and source identity. This leaf does not infer
+anatomy or validate the consumer's motion domain.
+
+After a GLB change, re-export and review the source ranges and host map, refresh declared mesh hashes,
+then regenerate companions against the exact attachment bytes and host-map semantic digest. Matching
+part or region names do not make old coverage compatible. Absent coverage retains existing attachment
+bytes and behavior. Requested missing or malformed coverage must fail explicitly.
+See the [authoring and consumer contract](../docs/EQUIPMENT-COVERAGE.md) and the
+[compiled complete example](../docs/examples/EquipmentCoverageConsumer.cs).

@@ -2049,6 +2049,8 @@ The world map packages are opt-in and outside every umbrella. A TileWorld client
 `KhaozEngine.TileWorld.WorldMap` and `KhaozEngine.WorldMap.Gui` explicitly, which bring
 `KhaozEngine.WorldMap` transitively. Headless tools can reference the core alone and call
 `WorldMapRasterizer.Rasterize(source, style, chunk)` for a `WorldMapChunkImage` without a GPU.
+Cache-built images carry a one-pixel `Border` of neighbouring map pixels. Read their pixels through
+`ByteOffset(column, row)` and treat `TextureSize`, not `Size`, as the stored edge length.
 
 Map positions are metres with x east and y north. `MapRect` has a south-west origin and half-open bounds.
 Use the source's `ToMap` and `ToMapHeading` for live world poses. Headings are radians clockwise from north,
@@ -2061,10 +2063,45 @@ Null keeps the authored dimensions and existing raster bytes. Raster queries and
 the largest visible drawn half diagonal at every chunk level. Coarse filtering still uses the authored
 footprint to preserve source-side materialization limits. Icon anchors and hover bounds are unchanged.
 
+Set `WorldMapSymbol.Geometry` to replace its default rectangle or ellipse with a normalized polygon
+and independent detail segments:
+
+```csharp
+var geometry = new WorldMapSymbolGeometry(
+    new Vector2[] { new(-1f, -1f), new(1f, -1f), new(0.5f, 1f), new(-0.5f, 1f) },
+    new WorldMapSymbolStroke[] { new(new(-0.5f, 0f), new(0.5f, 0f)) });
+var customSymbol = new WorldMapSymbol(WorldMapSymbolKind.Obstacle, Color.White, Color.Black)
+{
+    Geometry = geometry,
+    SizeMetres = new Vector2(4f, 2f)
+};
+```
+
+`WorldMapSymbolGeometry(IEnumerable<Vector2> outline, IEnumerable<WorldMapSymbolStroke>? strokes = null)`
+snapshots inputs and exposes read-only `Outline` and `Strokes`. Coordinates must be finite in `[-1, 1]`
+on each local axis. Supply at least three vertices enclosing a nonzero area, with no repeated closing
+endpoint, self-crossing, touching or overlapping edges. Concavity and either winding are supported.
+Construction rejects invalid geometry with `ArgumentException`. Existing footprint dimensions,
+optional `SizeMetres`, rotation, wall sizing, collection and invalidation rules still apply.
+`Fill` paints the silhouette. `OutlinePixels` controls its inset `Outline` boundary and centred
+round-capped detail segments in raster pixels, independent of non-square scaling or pyramid level.
+Details blend over polygon fill. Overlapping boundary and detail ink contributes once.
+Detail segments may extend outside a concave fill,
+are clipped to the footprint box and are excluded from building shadows. Transparent fills leave
+terrain visible. Null geometry preserves existing bytes, feature anchors and hover targets.
+
 Keep the `TileWorldDocument` and `TileWorldCatalogs` unchanged while a `TileWorldMapSource` is in use. Its
 `Revision` stays zero and it never raises `Changed`. After edits or loaded-region changes, stop and dispose
 the old map pipeline and create a new source, cache, worker and view. `surfacePlane` selects terrain, objects
 and markers, while roofs on all planes are included.
+
+The optional `groundPalette` constructor argument maps material ids to map-only `Color` values.
+The adapter snapshots it at construction, applies it after underlay and overlay selection, and falls
+back to catalog colours for missing entries. It leaves terrain heights, water roles and catalogs intact.
+`WorldMapStyle.Contours` enables dry-ground lines at multiples of `IntervalMetres` in actual height
+metres. `WidthPixels` stays fixed in raster pixels across pyramid levels, and colour alpha blends over
+relief before footprint symbols. Water, void and flat interval plateaus are excluded. The sampling and
+cache invalidation margins include the bounded contour neighbourhood. Null options preserve existing bytes.
 
 This example borrows the game's loaded document, catalogs, `Render2DSurface`, icon textures and `SpriteFont`.
 `resolveLocalizedMarkerName` is a game-supplied `Func<string, string?>` that maps an authored marker name to
@@ -2073,6 +2110,7 @@ localized text and returns null for an unknown name. Tags and icon keys are game
 game's UI pass, and call `CloseMap` when closing the map.
 
 ```csharp
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
@@ -2081,9 +2119,11 @@ using KhaozEngine.Windowing;
 using KhaozEngine.WorldMap;
 using KhaozEngine.WorldMap.Gui;
 
-var source = new TileWorldMapSource(document, catalogs, surfacePlane: 0);
+var mapPalette = new Dictionary<ushort, Color> { [1] = Color.FromHex("#b8b8b8") };
+var source = new TileWorldMapSource(document, catalogs, surfacePlane: 0, groundPalette: mapPalette);
 var style = new WorldMapStyle
 {
+    Contours = new WorldMapContours(5f, Color.Black, WidthPixels: 0.75f),
     SymbolRules = new[]
     {
         new WorldMapSymbolRule(
@@ -2150,17 +2190,27 @@ thread. `CurrentLevel` reports the level chosen by the last usable update. It is
 `WorldMapChunking.MaxLevel` with `EffectivePixelsPerMetre / 2^level >= PixelsPerMetre`, or zero at native
 raster zoom and above. Only visible chunks of that level are requested, prioritized by distance to the view
 centre. Their uploads take the budget first. Ready coarser ancestors can use the remaining budget without
-additional requests. Missing chunks sample the matching UV sub-rectangle of the nearest uploaded coarser
-ancestor, or use `PlaceholderColor` if none exists. Stale textures remain visible until their replacements
+additional requests. Missing chunks sample the matching interior sub-rectangle of the nearest uploaded
+coarser ancestor, or use `PlaceholderColor` if none exists. Every draw samples only a texture's interior, so
+linear filtering at chunk edges reads the gutter's neighbouring map pixels. Stale textures remain visible until their replacements
 upload. Overlay anchors come only from visible built chunks of `CurrentLevel`. `Update` blocks the viewport
 through `Pointer.BlockRegion`.
 
 `MaxTextures` defaults to 192 and values below one throw `ArgumentOutOfRangeException`. After uploads and
 draw-list construction, `Update` disposes the least recently drawn textures that are absent from this
 frame's draws until the cap is met. Fallback textures count as drawn. Active draws stay protected and can
-temporarily exceed a smaller cap. The default retained chunk payload is 48 MiB per view for 192 textures
-of 256 by 256 RGBA pixels, excluding GPU overhead and temporary active-draw excess. Changing the cap takes
-effect on the next usable `Update`, with all texture disposal on the frame thread.
+temporarily exceed a smaller cap. The default retained chunk payload is about 49 MiB per view for 192
+textures of 258 by 258 RGBA pixels, gutters included, excluding GPU overhead and temporary active-draw excess. Changing the cap takes
+effect on the next usable `Update`, with all surface-owned texture disposal on the frame thread.
+
+For standard offscreen capture, construct `WorldMapView(cache, context)` inside
+`Render2DSnapshot.Capture` or `CaptureToPng`, where `context` is the supplied `Render2DContext`.
+It uses the same update and draw path. The capture owns uploaded textures and the white pixel until
+submission has finished, so eviction and view disposal only release the view's references in this mode.
+`MaxTextures` still bounds the retained view entries, but the context keeps every texture created during
+that capture until teardown. Keep capture work bounded and prepare the required cache chunks before the
+draw. Do not dispose context-created fonts or icon textures inside the callback. The package README has
+the complete offscreen example.
 
 `Viewport`, the pointer and the open batch must use the same coordinates. The example uses UI pixels. A
 design-space host instead opens its own batch with `Begin(IDesignViewport)` and passes a pointer and bounds
@@ -2175,7 +2225,7 @@ screen size, merge by key and radius, and declutter by priority. Labels require 
 maximum. `Hovered` returns the accepted icon or label for a game-resolved tooltip. Live markers draw last,
 skip decluttering and hover, and can be removed with `RemoveMarker(id)`.
 
-Create, update, draw and dispose views on the surface's frame thread. A cache and worker may serve several
+Create, update, draw and dispose surface views on the surface's frame thread. A cache and worker may serve several
 views, each with its own uploaded textures. Dispose all views first, then stop the worker, then dispose the
 cache before releasing its source data. Icon and marker textures, the label font and the surface remain
 caller-owned. A custom `IWorldMapSource` must allow concurrent reads, increment `Revision` and raise `Changed`
@@ -8722,7 +8772,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.9.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.10.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -9147,7 +9197,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.9.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.10.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9946,7 +9996,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.9.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.10.0" />
 ```
 
 ```csharp
@@ -17537,6 +17587,32 @@ needs a `SpriteBatch`. Like `UpdateOverlayView`, the widget never reads raw inpu
 
 ---
 
+## Optional GPU compiler and memory diagnostics
+
+The GPU seam defines optional cold diagnostics for pipelines and devices. The Vulkan backend implements
+both. Set `KE_VULKAN_PIPELINE_DIAGNOSTICS=1` before device creation to request executable compiler statistics
+on supported drivers. Read them outside frame timing and retain the configuration digests with the evidence.
+Keep the request unset on production timing devices. See the [Vulkan diagnostic configuration](../KhaozEngine.Gpu.Vulkan/README.md#optional-compiler-and-memory-diagnostics).
+
+```csharp
+if (pipeline is IGpuPipelineDiagnostics compiler)
+{
+    GpuPipelineCompilerReport report = compiler.ReadCompilerReport();
+    // Preserve each executable's raw typed statistics and independent support states.
+}
+if (device is IGpuResourceMemoryDiagnostics memory)
+{
+    GpuResourceMemorySnapshot snapshot = memory.ReadMemorySnapshot();
+    // Keep logical payload separate from committed, resident and budget bytes.
+}
+```
+
+Every `GpuDiagnosticMetric` retains its value, unit, source, support status, reason and provenance.
+Unsupported or invalid values are null with a reason. DXBC temporary slots are intermediate-code
+statistics, not physical registers. Execution width is a limit, not achieved occupancy. Unified memory
+and unsupported residency are not dedicated VRAM. See the [GPU package reference](../KhaozEngine.Gpu/README.md#optional-compiler-and-memory-diagnostics)
+for the accounting and typed-scalar contract.
+
 ## Per-pass frame timing (`Scene3D.EnableTiming` / `PassTimings`)
 
 Attributes a rendered frame's CPU cost to `Scene3D`'s passes (shadow depth, model/terrain, transparents/decals,
@@ -17949,7 +18025,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.9.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.10.0" />
 ```
 
 ```csharp
@@ -17985,7 +18061,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.9.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.10.0" />
 ```
 
 ```csharp
@@ -18229,7 +18305,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.9.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.10.0" />
 ```
 
 ```csharp
@@ -22601,7 +22677,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.9.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.10.0" />
 </ItemGroup>
 ```
 

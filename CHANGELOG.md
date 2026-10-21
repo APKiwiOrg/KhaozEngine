@@ -5,6 +5,24 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.10.0
+
+2026-10-21
+
+- Add map-only material palettes to `TileWorldMapSource`, preserving catalog roles and the existing constructor.
+- Add opt-in `WorldMapContours` with pixel-width elevation lines, dry-ground filtering and cache invalidation reach.
+- Add immutable `WorldMapSymbolGeometry` outlines and detail strokes, with rotated coverage and silhouette shadows.
+- Add `WorldMapView` construction from `Render2DContext`, retaining snapshot-owned textures through capture submission.
+- Existing world-map styles retain their default raster bytes. These additions resolve #1520.
+- Fix thin lines along world-map chunk edges at fractional zoom. Linear filtering wrapped each chunk to its
+  own opposite edge. `WorldMapChunkCache` images now carry a one-pixel `WorldMapChunkImage.Border` of real
+  neighbouring map pixels, and `WorldMapView` uploads the whole texture and samples only the interior,
+  including parent fallback. `WorldMapRasterizer.Rasterize(source, style, chunk, border)` adds the gutter,
+  while the three-argument overload and positional constructor stay borderless. Read cache image pixels
+  through `ByteOffset` and upload `TextureSize` (#1524).
+- Keep each gutter owner's borderless surface query frame, preserving fractional source-cell ownership
+  and exact interior bytes. A cache image makes nine surface queries and paints only the clipped regions (#1524).
+
 ## 21.9.0
 
 2026-10-20

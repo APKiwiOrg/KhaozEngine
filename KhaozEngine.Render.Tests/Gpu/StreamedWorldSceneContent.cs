@@ -87,19 +87,27 @@ namespace KhaozEngine.Tests.Gpu
             _props[2] = scene.LoadMesh(MeshPrimitives.Sphere(1.6f, 10, 12));
             _props[3] = scene.LoadMesh(MeshPrimitives.RoundedBox(1.4f, 0.3f, 4));
 
-            uint seed = 0x51AB_C0DE;
-            float Next() { seed = seed * 1664525u + 1013904223u; return (seed >> 8) / (float)(1 << 24); }
-            for (int i = 0; i < PropInstances; i++)
-            {
-                float x = (Next() - 0.5f) * 480f, z = (Next() - 0.5f) * 480f;
-                _propWorlds.Add(Matrix4x4.CreateRotationY(Next() * 6.28f) * Matrix4x4.CreateTranslation(x, 0f, z));
-            }
+            _propWorlds.AddRange(PropWorlds(PropInstances, 480f, 0x51AB_C0DE));
 
-            SkinnedGltfMesh tube = SkinnedMeshBuilder.BuildTube(
-                0.5f, 4f, CharacterRings, CharacterRadial, CharacterBones, Axis.Z);
+            SkinnedGltfMesh tube = CharacterTube();
             _character = scene.LoadSkinnedMesh(tube);
             _palette = (Matrix4x4[])tube.RestPose.Clone();
         }
+
+        internal static Matrix4x4[] PropWorlds(int count, float extent, uint seed)
+        {
+            var worlds = new Matrix4x4[count];
+            float Next() { seed = unchecked(seed * 1664525u + 1013904223u); return (seed >> 8) / (float)(1 << 24); }
+            for (int i = 0; i < count; i++)
+            {
+                float x = (Next() - 0.5f) * extent, z = (Next() - 0.5f) * extent;
+                worlds[i] = Matrix4x4.CreateRotationY(Next() * 6.28f) * Matrix4x4.CreateTranslation(x, 0f, z);
+            }
+            return worlds;
+        }
+
+        internal static SkinnedGltfMesh CharacterTube() => SkinnedMeshBuilder.BuildTube(
+            0.5f, 4f, CharacterRings, CharacterRadial, CharacterBones, Axis.Z);
 
         /// <summary>The live client's shadow tier, which every row measuring this scene builds its scene
         /// with.</summary>

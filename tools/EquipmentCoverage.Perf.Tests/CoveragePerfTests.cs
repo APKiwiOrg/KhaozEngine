@@ -22,9 +22,17 @@ public sealed class CoveragePerfTests
         using var publication = new CoveragePerfPublication(directory, request.Manifest.UnitId);
         var clock = new CoveragePerfClock(Stopwatch.GetTimestamp, Stopwatch.Frequency);
         long start = clock.Now();
+        bool statistics = request.Manifest.Preset == "S1";
         var report = CoveragePerfDriver.Run(request.Bytes, identity,
             (manifest, block, time) => new CoveragePerfNativeSession(manifest, block, CoveragePerfNativeHost.Open, time),
-            clock, _ => { }, publication.StageCandidate);
+            clock, _ => { }, candidate =>
+            {
+                // The zero-frame S1 preset captures only cold diagnostics inside the cooperative unit deadline.
+                if (statistics) CoveragePipelineStatisticsUnit.Capture(directory, request, identity);
+                publication.StageCandidate(candidate);
+            });
+        if (statistics && report.Status == CoveragePerfRunStatus.Completed)
+            report = report with { Reason = "Cold compiler statistics capture completed. No performance frames or budget proof." };
         // Only the returned envelope contains publication and deadline failures. The candidate is never promoted.
         report = publication.PublishReturned(report, clock, start);
         Assert.True(report.Status == CoveragePerfRunStatus.Completed && report.FinalUnitPublished, report.Reason);

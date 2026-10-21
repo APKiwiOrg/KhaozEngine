@@ -261,19 +261,25 @@ internal sealed class WorldMapViewCore<TTexture> : IDisposable where TTexture : 
         }
     }
 
+    // Returned coordinates address the uploaded texture, so linear filtering at a chunk edge reads its gutter.
     TTexture? DrawableTexture(WorldMapChunkCoord coord, MapRect chunk, out WorldMapChunkCoord textureCoord, out Vector4 uv)
     {
         textureCoord = coord;
         uv = new Vector4(0f, 0f, 1f, 1f);
-        if (_textures.Get(coord) is TTexture texture) return texture;
+        if (_textures.Get(coord) is TTexture texture)
+        {
+            uv = _textures.TextureUv(coord, uv);
+            return texture;
+        }
         for (int level = CurrentLevel + 1; level <= _maxLevel; level++)
         {
             WorldMapChunkCoord parent = WorldMapChunking.ChunkAt(chunk.Center, _cache.Style.ChunkMetres, level);
             if (_textures.Get(parent) is not TTexture fallback) continue;
             MapRect parentRect = WorldMapChunking.ChunkRect(parent, _cache.Style.ChunkMetres);
             textureCoord = parent;
-            uv = new Vector4((chunk.X - parentRect.X) / parentRect.Width, (parentRect.Top - chunk.Top) / parentRect.Height,
-                (chunk.Right - parentRect.X) / parentRect.Width, (parentRect.Top - chunk.Y) / parentRect.Height);
+            uv = _textures.TextureUv(parent, new Vector4(
+                (chunk.X - parentRect.X) / parentRect.Width, (parentRect.Top - chunk.Top) / parentRect.Height,
+                (chunk.Right - parentRect.X) / parentRect.Width, (parentRect.Top - chunk.Y) / parentRect.Height));
             return fallback;
         }
         return null;

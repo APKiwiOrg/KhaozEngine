@@ -12,13 +12,14 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// The hosted Windows check, run on FXC's real disassembly of every visibility program (review 7f r3, I-1 and m-1). The
     /// dump test of diagnostic commits a00f69fd5 and a65622ae4 printed each program as shipped and as rewritten to D, at
-    /// the shipped flags. The D listings of the four accumulate programs and the two fused resolve programs come from
-    /// hosted run 39374926165, which run 39376184230 printed again identical, on runner image windows-2025-vs2026
-    /// 20261007.264.1. The pass-one mask withdrawal changed the decision helper on both sides and every shipped program,
-    /// so those eight listings come from hosted run 39519636207, job 118960096615, on runner image windows-2025-vs2026
-    /// 20261018.275.1, whose six D listings match the older ones byte for byte. Every run names the compiler only by its
-    /// banner, <c>Microsoft (R) HLSL Shader Compiler 10.1</c>, and no d3dcompiler build number. The fixtures hold that
-    /// text, carriage returns removed, and beside each the SHA-256 of the GLSL it was compiled from
+    /// the shipped flags. Hosted run 39374926165 printed the four accumulate programs and the two fused resolve programs,
+    /// and run 39376184230 printed those twelve listings again, identical, and the decision helper's two, on runner
+    /// image windows-2025-vs2026 20261007.264.1. The pass-one mask was withdrawn and then restored. After the
+    /// restoration the opt-in fact <see cref="D3D11FxcValidationTests.DumpVisibilityDisassembly"/> printed all fourteen
+    /// listings again in hosted run 39526640607, job 118982787004, on the same runner image, byte for byte the
+    /// fixtures from before the withdrawal, so the eight the withdrawal had replaced are those again. Every run names the
+    /// compiler only by its banner, <c>Microsoft (R) HLSL Shader Compiler 10.1</c>, and no d3dcompiler build number. The
+    /// fixtures hold that text, carriage returns removed, and beside each the SHA-256 of the GLSL it was compiled from
     /// (<see cref="EachFixtureWasCompiledFromTheCurrentGlsl"/>). The r3 reader found no chain in the six full programs,
     /// because FXC marks every instruction there precise and so ends each chain <c>mul S</c> then <c>add -0.5</c> rather
     /// than <c>mad S -0.5</c>. Here every program reads as the check requires: D's in-loop chains equal in both programs,
@@ -76,8 +77,8 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>Each fixture is FXC's compile of the GLSL the code builds today (review 7f r4, M-1): the SHA-256 of
-        /// that text, LF line endings, UTF-8, equals the one stored beside the fixture, the hash of the text the dump
-        /// compiled: 863bade06 for the six full programs' D listings and ff18ed913 for the rest.</summary>
+        /// that text, LF line endings, UTF-8, equals the one stored beside the fixture, the hash of the text at
+        /// 863bade06, which the restored mask builds again.</summary>
         [Theory]
         [MemberData(nameof(Programs))]
         public void EachFixtureWasCompiledFromTheCurrentGlsl(string program)
@@ -118,8 +119,8 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData("TemporalAccumulateHalfFrag", "WW", "WW", "WWWWWW", 31, 45, true)]
         [InlineData("TemporalAccumulateAtDisplaySizeFrag", "WW", "WW", "WWWWWW", 27, 42, true)]
         [InlineData("TemporalAccumulateAtDisplaySizeHalfFrag", "WW", "WW", "WWWWWW", 29, 43, true)]
-        [InlineData("TemporalResolveFrag", "WW", "WW", "WWWWWW", 41, 46, true)]
-        [InlineData("TemporalResolveHalfFrag", "WW", "WW", "WWWWWW", 43, 48, true)]
+        [InlineData("TemporalResolveFrag", "WW", "WW", "WWWWWW", 41, 47, true)]
+        [InlineData("TemporalResolveHalfFrag", "WW", "WW", "WWWWWW", 43, 49, true)]
         public void EachProgramCompilesItsChainsInTheseForms(string program, string dLoop, string loop, string straight,
             int dTemps, int temps, bool precise)
         {

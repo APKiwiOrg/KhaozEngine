@@ -79,7 +79,7 @@ public sealed class RendererPerfRecipeTests
     }
 
     [Fact]
-    public void Measured_sequence_resets_to_zero_after_warmup()
+    public void Periodic_camera_and_pose_use_a_continuous_resettable_block_clock()
     {
         using var recipe = RendererPerfRecipe.Create("crowd");
         Assert.Equal(Enumerable.Range(64, 192), RendererPerfRecipe.WarmupIndices);
@@ -91,21 +91,49 @@ public sealed class RendererPerfRecipeTests
         using var first = new HeadlessSceneRig();
         recipe.ResetBlock(first.Scene);
         Assert.False(first.Scene.TemporalHistory.IsValid);
-        foreach (int index in RendererPerfRecipe.WarmupIndices)
-            first.Frame(1920, 1080, scene => recipe.Queue(scene, index));
-        Assert.Equal(255f / 60f, first.Scene.EffectTimeSeconds, precision: 6);
-        first.Frame(1920, 1080, scene => recipe.Queue(scene, 0));
-        Assert.Equal(0f, first.Scene.EffectTimeSeconds);
-        Assert.True(first.Scene.TemporalHistory.IsValid);
-        Assert.Throws<InvalidOperationException>(() => recipe.ResetBlock(first.Scene));
         using var second = new HeadlessSceneRig();
-        recipe.ResetBlock(second.Scene);
-        Assert.False(second.Scene.TemporalHistory.IsValid);
-        second.Frame(1920, 1080, scene => recipe.Queue(scene, 64));
-        Assert.False(second.Scene.TemporalHistory.IsValid);
-        second.Frame(1920, 1080, scene => recipe.Queue(scene, 0));
-        Assert.Equal(0f, second.Scene.EffectTimeSeconds);
-        Assert.Equal(recipe.Frame(0).ViewProjection, second.Scene.Camera.ViewProjection);
+        foreach (var rig in new[] { first, second })
+        {
+            if (ReferenceEquals(rig, second)) recipe.ResetBlock(rig.Scene);
+            int ordinal = 64;
+            foreach (int index in RendererPerfRecipe.WarmupIndices.Concat(RendererPerfRecipe.MeasuredIndices))
+            {
+                rig.Scene.Begin();
+                recipe.Queue(rig.Scene, index);
+                Assert.Equal(ordinal++ * (1f / 60f), rig.Scene.EffectTimeSeconds);
+                Assert.Equal(recipe.Frame(index).ViewProjection, rig.Scene.Camera.ViewProjection);
+                Assert.Equal(recipe.Frame(index).LightDirection, rig.Scene.Post.LightDirection);
+            }
+            Assert.Equal(512, ordinal);
+            Assert.Equal(511f * (1f / 60f), rig.Scene.EffectTimeSeconds);
+        }
+        Assert.Throws<InvalidOperationException>(() => recipe.ResetBlock(first.Scene));
+    }
+
+    [Theory]
+    [InlineData("empty")]
+    [InlineData("village")]
+    [InlineData("crowd")]
+    [InlineData("outdoors")]
+    [InlineData("effects-ui")]
+    public void Frozen_sequence_includes_absolute_effect_times(string id)
+    {
+        using var recipe = RendererPerfRecipe.Create(id);
+        using var json = JsonDocument.Parse(recipe.Describe());
+        JsonElement frames = json.RootElement.GetProperty("BlockFrames");
+        Assert.Equal(448, frames.GetArrayLength());
+        Assert.Collection(new[] { frames[0], frames[191], frames[192], frames[447] },
+            frame => Check(frame, 64, 64, 64f / 60f),
+            frame => Check(frame, 255, 255, 255f / 60f),
+            frame => Check(frame, 256, 0, 256f / 60f),
+            frame => Check(frame, 511, 255, 511f * (1f / 60f)));
+
+        static void Check(JsonElement frame, int ordinal, int index, float seconds)
+        {
+            Assert.Equal(ordinal, frame.GetProperty("Ordinal").GetInt32());
+            Assert.Equal(index, frame.GetProperty("SequenceIndex").GetInt32());
+            Assert.Equal(seconds, frame.GetProperty("EffectTimeSeconds").GetSingle(), precision: 6);
+        }
     }
 
     [Fact]

@@ -31,6 +31,8 @@ internal sealed record RendererPerfFeatureSchedule
     public int OceanDispatches { get; init; }
     public int OceanMipCopies { get; init; }
     public string? OceanPrime { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public RendererPerfClipmapSchedule? Clipmap { get; init; }
     public int Decals { get; init; }
     public int Particles { get; init; }
     public int TexturedBillboards { get; init; }
@@ -46,9 +48,13 @@ internal sealed record RendererPerfFeatureSchedule
     public int UiTextures { get; init; }
     public int UiClips { get; init; }
 }
+internal sealed record RendererPerfClipmapEvent(int Index, int Plane0Rebuilds, int Plane1Rebuilds);
+internal sealed record RendererPerfClipmapSchedule(RendererPerfClipmapEvent Outward, RendererPerfClipmapEvent Return,
+    int ColdRebuilds, int WarmupRebuilds, int MeasuredRebuilds);
 internal sealed record RendererPerfPoint(Vector3 Position, Color Color, float Radius, float Intensity, LightShadow Shadow);
-internal sealed record RendererPerfRecipeFrame(int Index, float TimeSeconds, Vector3 Target, float Azimuth,
+internal sealed record RendererPerfRecipeFrame(int Index, Vector3 Target, float Azimuth,
     Vector3 LightDirection, Matrix4x4 View, Matrix4x4 Projection, Matrix4x4 ViewProjection, string PoseSha256);
+internal sealed record RendererPerfBlockFrame(int Ordinal, int SequenceIndex, float EffectTimeSeconds);
 internal sealed record RendererPerfScenePolicy(bool GpuSkinning, bool FrustumCulling, bool TerrainCastsShadows,
     SceneDebugView DebugView, Vector3 RenderOrigin);
 
@@ -67,6 +73,8 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
     static readonly RendererPerfScenePolicy ScenePolicy = new(true, true, true, SceneDebugView.None, Vector3.Zero);
     internal static readonly ImmutableArray<int> WarmupIndices = [.. Enumerable.Range(64, 192)];
     internal static readonly ImmutableArray<int> MeasuredIndices = [.. Enumerable.Range(0, Period)];
+    static readonly ImmutableArray<RendererPerfBlockFrame> BlockFrames = [.. Enumerable.Range(64, 192 + Period)
+        .Select(ordinal => new RendererPerfBlockFrame(ordinal, SequenceIndex(ordinal), ordinal * Dt))];
     internal static readonly JsonSerializerOptions Json = new()
     {
         IncludeFields = true,
@@ -77,6 +85,7 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
     byte[] _description = [];
     bool _disposed;
     Scene3D? _scene;
+    int _blockOrdinal;
     RendererPerfRecipeFrame[] _frames = [];
     protected RendererPerfRecipe(string id) => _id = id;
     public RendererPerfRecipeFacts Facts { get; private set; } = null!;
@@ -132,10 +141,11 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
             camera.Target = new Vector3(phase * .25f, 0f, phase * .125f);
             camera.Azimuth += phase * .01f;
             Vector3 sun = post.LightDirection + new Vector3(phase * .02f, 0f, 0f);
-            return new RendererPerfRecipeFrame(index, index * Dt, camera.Target, camera.Azimuth, sun,
+            return new RendererPerfRecipeFrame(index, camera.Target, camera.Azimuth, sun,
                 camera.View, camera.Projection, camera.ViewProjection, PoseDigest(index));
         }).ToArray();
-        string geometry = Digest(Geometry), settings = Digest(post), assets = Digest(Assets), sequence = Digest(_frames);
+        string geometry = Digest(Geometry), settings = Digest(post), assets = Digest(Assets);
+        string sequence = Digest(new { Frames = _frames, BlockFrames });
         string profile = _id == "empty" ? "empty-native-1080/1" : "renderer-full-native-1080/1";
         RendererPerfRecipeSchedule schedule = Schedule;
         _description = JsonSerializer.SerializeToUtf8Bytes(new
@@ -181,6 +191,7 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
             MeasuredIndices,
             Reset = "fresh-scene-before-warmup",
             Frames = _frames,
+            BlockFrames,
             Expected = new
             {
                 TerrainIntended = Terrain.Count,
@@ -215,6 +226,7 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
             throw new InvalidOperationException("A recipe block requires a fresh Scene3D.");
         _usedScenes.Add(scene);
         _scene = scene;
+        _blockOrdinal = WarmupIndices[0];
         PixelPostProcessSettings settings = Settings();
         if (Digest(settings) != Facts.SettingsSha256)
             throw new InvalidOperationException("Resolved settings differ from the frozen construction.");
@@ -250,7 +262,8 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
         scene.Camera.Target = frame.Target;
         scene.Camera.Azimuth = frame.Azimuth;
         scene.Post.LightDirection = frame.LightDirection;
-        scene.EffectTimeSeconds = frame.TimeSeconds;
+        // Simulation advances through the block while camera, sun and pose inputs repeat every period.
+        scene.EffectTimeSeconds = _blockOrdinal++ * Dt;
         QueueContent(scene, frame.Index);
     }
 

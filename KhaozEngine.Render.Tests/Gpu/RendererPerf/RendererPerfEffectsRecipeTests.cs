@@ -118,6 +118,79 @@ public sealed class RendererPerfEffectsRecipeTests
     }
 
     [Fact]
+    public void Every_measured_ocean_frame_has_no_prime_submission_or_wait()
+    {
+        using var recipe = RendererPerfRecipe.Create("outdoors");
+        using var rig = new EffectsRig();
+        recipe.ResetBlock(rig.Scene);
+        int warmupStalls = 0;
+        foreach (int index in RendererPerfRecipe.WarmupIndices)
+        {
+            rig.Frame(recipe, index);
+            warmupStalls += rig.Scene.LastWaterStats.OceanStalls;
+        }
+        Assert.Equal(1, warmupStalls);
+        int submits = rig.Device.Submits, waits = rig.Spy.WaitForIdleCalls;
+        var stalls = new List<int>();
+        var extraSubmits = new List<int>();
+        var extraWaits = new List<int>();
+        foreach (int index in RendererPerfRecipe.MeasuredIndices)
+        {
+            rig.Frame(recipe, index);
+            stalls.Add(rig.Scene.LastWaterStats.OceanStalls);
+            extraSubmits.Add(rig.Device.Submits - submits);
+            extraWaits.Add(rig.Spy.WaitForIdleCalls - waits);
+            submits = rig.Device.Submits;
+            waits = rig.Spy.WaitForIdleCalls;
+        }
+        Assert.Multiple(
+            () => Assert.All(stalls, value => Assert.Equal(0, value)),
+            () => Assert.All(extraSubmits, value => Assert.Equal(0, value)),
+            () => Assert.All(extraWaits, value => Assert.Equal(0, value)));
+    }
+
+    [Fact]
+    public void Foliage_motion_history_keeps_the_continuous_effect_clock()
+    {
+        using var recipe = RendererPerfRecipe.Create("outdoors");
+        using var rig = new EffectsRig();
+        recipe.ResetBlock(rig.Scene);
+        foreach (int index in RendererPerfRecipe.WarmupIndices) rig.Frame(recipe, index);
+        rig.Frame(recipe, 0);
+        var uniforms = rig.Scene.FoliageUniformsForTests.ToArray();
+        Assert.NotEmpty(uniforms);
+        Assert.All(uniforms, u => Assert.Multiple(
+            () => Assert.Equal(256f * (1f / 60f), u.WindTime.Z),
+            () => Assert.Equal(255f * (1f / 60f), u.PrevFocus.W)));
+    }
+
+    [Fact]
+    public void Effect_uniforms_keep_advancing_across_the_periodic_boundary()
+    {
+        using var recipe = RendererPerfRecipe.Create("effects-ui");
+        using var rig = new EffectsRig();
+        recipe.ResetBlock(rig.Scene);
+        foreach (int index in RendererPerfRecipe.WarmupIndices) rig.Frame(recipe, index);
+        rig.Record.CapturePayloads = true;
+        rig.Frame(recipe, 0);
+        float time = 256f * (1f / 60f);
+        Assert.Multiple(
+            () => Assert.Equal(time, Time(ShaderSources.DecalFrag, 512, 320)),
+            () => Assert.Equal(time, Time(ShaderSources.ParticleFrag, 192, 172)),
+            () => Assert.Equal(time, Time(ShaderSources.BeamMotionFrag, 80, 64)),
+            () => Assert.Equal(time, Time(ShaderSources.DistortionFrag, 192, 172)));
+
+        float Time(string fragment, uint bytes, int offset)
+        {
+            var draws = rig.Record.CommandTrace!.Where(c => c.Kind is "draw" or "dispatch").ToArray();
+            int draw = Array.FindIndex(draws, c => (c.Pipeline as FakePipeline)?.Request?.FragmentGlsl == fragment);
+            Assert.InRange(draw, 0, draws.Length - 1);
+            var upload = rig.Record.Uploads.Last(u => u.Bytes == bytes && u.DrawsBefore <= draw);
+            return BitConverter.ToSingle(upload.Data!, offset);
+        }
+    }
+
+    [Fact]
     public void Clipmap_event_sequence_is_repeatable()
     {
         using var recipe = RendererPerfRecipe.Create("outdoors");
@@ -125,13 +198,16 @@ public sealed class RendererPerfEffectsRecipeTests
         using var second = new EffectsRig();
         recipe.ResetBlock(first.Scene);
         int[] indices = RendererPerfRecipe.WarmupIndices.Concat(RendererPerfRecipe.MeasuredIndices).ToArray();
-        int[] a = indices.Select((index, step) =>
+        var rebuiltPlanes = new List<uint[]>();
+        uint vertexBytes = (uint)WaterClipmap.VertexCount(4, 32) * WaterRenderer.ClipVertexBytes;
+        int[] a = indices.Select(index =>
         {
             first.Frame(recipe, index);
-            Assert.Equal(step == 0 || index == 0 ? 1 : 0, first.Scene.LastWaterStats.OceanStalls);
             Assert.Equal(0, first.Scene.CulledInstances);
             Assert.Equal(64, first.Scene.LastFoliageStats.SubmittedPatches);
             Assert.Equal(4096, first.Scene.LastFoliageStats.CandidateInstances);
+            rebuiltPlanes.Add(first.Record.Uploads.Where(u => u.Bytes == vertexBytes)
+                .Select(u => u.Offset / vertexBytes).ToArray());
             return first.Scene.LastWaterStats.ClipmapRebuilds;
         }).ToArray();
         recipe.ResetBlock(second.Scene);
@@ -147,13 +223,43 @@ public sealed class RendererPerfEffectsRecipeTests
             Assert.Equal(expected, a[i]);
             previous = current;
         }
-        Assert.Equal(2, a[0]);
-        Assert.Contains(0, a);
-        Assert.Contains(a.Skip(1), count => count > 0);
+        Assert.Multiple(
+            () => Assert.Equal(new[] { 224 }, a.Take(192).Select((count, step) => (count, step))
+                .Where(pair => pair.step > 0 && pair.count > 0).Select(pair => indices[pair.step])),
+            () => Assert.Equal(new[] { 33, 224 }, a.Skip(192).Select((count, index) => (count, index))
+                .Where(pair => pair.count > 0).Select(pair => pair.index)),
+            () => Assert.Equal(2, a[0]),
+            () => Assert.Equal(2, a.Skip(1).Take(191).Sum()),
+            () => Assert.Equal(4, a.Skip(192).Sum()));
+        foreach (int step in Enumerable.Range(0, indices.Length))
+        {
+            bool rebuild = step == 0 || indices[step] == 224 || step >= 192 && indices[step] == 33;
+            Assert.Equal(rebuild ? 2 : 0, a[step]);
+            Assert.Equal(rebuild ? new uint[] { 0, 1 } : Array.Empty<uint>(), rebuiltPlanes[step]);
+        }
         Assert.False(first.Scene.ShadowPassSkippedLastFrame);
         Assert.Equal(64, first.Scene.LastFoliageStats.SubmittedPatches);
         Assert.Equal(recipe.Frame(0), recipe.Frame(256));
         Assert.True(File.ReadAllBytes(RendererPerfRecipe.RecipePath("outdoors")).AsSpan().SequenceEqual(recipe.Describe()));
+    }
+
+    [Fact]
+    public void Frozen_clipmap_schedule_names_both_events_and_the_affected_planes()
+    {
+        using var recipe = RendererPerfRecipe.Create("outdoors");
+        using var json = JsonDocument.Parse(recipe.Describe());
+        JsonElement schedule = json.RootElement.GetProperty("Schedule").GetProperty("Features").GetProperty("Clipmap");
+        Check(schedule.GetProperty("Outward"), 33);
+        Check(schedule.GetProperty("Return"), 224);
+        Assert.Equal(2, schedule.GetProperty("ColdRebuilds").GetInt32());
+        Assert.Equal(2, schedule.GetProperty("WarmupRebuilds").GetInt32());
+        Assert.Equal(4, schedule.GetProperty("MeasuredRebuilds").GetInt32());
+        static void Check(JsonElement e, int index)
+        {
+            Assert.Equal(index, e.GetProperty("Index").GetInt32());
+            Assert.Equal(1, e.GetProperty("Plane0Rebuilds").GetInt32());
+            Assert.Equal(1, e.GetProperty("Plane1Rebuilds").GetInt32());
+        }
     }
 
     [Fact]
@@ -217,6 +323,7 @@ public sealed class RendererPerfEffectsRecipeTests
     sealed class EffectsRig : IDisposable
     {
         internal readonly OpenListTrackingGpuDevice Device = new();
+        internal readonly SpyGpuDevice Spy;
         readonly IGpuTexture _target;
         internal readonly IGpuFramebuffer Target;
         internal readonly Scene3D Scene;
@@ -227,7 +334,8 @@ public sealed class RendererPerfEffectsRecipeTests
             _target = Device.Factory.CreateTexture(GpuTextureDescription.Texture2D(1920, 1080,
                 GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
             Target = Device.Factory.CreateFramebuffer(null, _target);
-            Scene = new Scene3D(Device, Target.Outputs);
+            Spy = new SpyGpuDevice(Device);
+            Scene = new Scene3D(Spy, Target.Outputs);
             Commands = new CommandTallyGpuCommandList(Device.Factory.CreateCommandList());
             Record = new RecordingGpuCommandList(Commands) { CommandTrace = [] };
         }

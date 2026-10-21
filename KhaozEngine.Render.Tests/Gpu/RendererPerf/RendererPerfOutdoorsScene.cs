@@ -65,7 +65,8 @@ internal sealed class RendererPerfOutdoorsScene : RendererPerfVillageScene
             WaterPlanes = 2,
             OceanDispatches = 2,
             OceanMipCopies = 4,
-            OceanPrime = "first-warmup-and-index-zero-after-255"
+            OceanPrime = "first-warmup-only",
+            Clipmap = new(new(33, 1, 1), new(224, 1, 1), 2, 2, 4)
         },
     };
     protected override object Geometry => new
@@ -98,7 +99,7 @@ internal sealed class RendererPerfOutdoorsScene : RendererPerfVillageScene
             Water = "analytic-river-and-fft-ocean-clipmaps",
             OceanDispatches = 2,
             OceanMipCopies = 4,
-            OceanPrime = "first-warmup-and-index-zero-after-255",
+            OceanPrime = "first-warmup-only",
             OceanSteadyStalls = 0,
             Directional = "four-cascades-recomputed",
             Temporal = "native-history-after-first-frame",
@@ -115,7 +116,7 @@ internal sealed class RendererPerfOutdoorsScene : RendererPerfVillageScene
         post.Water.SeaState.CascadeResolution = 256;
         post.Water.WaveSource = WaterWaveSource.FftOcean;
         post.Water.GridMode = WaterGridMode.Clipmap;
-        post.Water.ClipmapCellSize = .125f;
+        post.Water.ClipmapCellSize = .5f;
         post.Water.ClipmapRingCells = 32;
         post.Water.ClipmapLevels = 4;
     }

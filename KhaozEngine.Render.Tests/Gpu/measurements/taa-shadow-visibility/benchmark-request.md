@@ -302,6 +302,12 @@ and target creation precede measured blocks. No asserted budget is introduced or
 | V4 V5 without precise | V5 plus `WithoutVisibilityOrPrecise`, removing exactly the two shared lock-release precise markings. Device-free SPIR-V checks prove NoContraction markings disappear, and the control renders on Metal. FXC's current output is not yet measured or archived. |
 | V3 frozen D | `TemporalVisibilityFrozenD.ToD`, retaining shipped visibility infrastructure. |
 
+Task 7g.3a removed `precise` from production for the barrier-ordered lock release, so this V4 no longer
+exists. Run 39519219228 measured it on 5ce5454d6, and its V5 minus V4 rows are the precise cost on that head.
+V4 is now V5 plus `WithoutVisibilityOrBarriers`, which makes the twelve lock release barriers the identity.
+Device-free SPIR-V checks prove it removes exactly those twelve barrier ORs. A later run prints V5 minus V4 as
+the barrier cost. V3 is D prime, frozen D with production's lock release helper.
+
 The output prints V0 minus V1 (check), V1 minus V5 (visibility infrastructure), V5 minus V4 (precise), and
 V0 minus V3, with paired-round differences and the existing Off drift control. The scenes have shadows off, so
 this isolates visibility infrastructure and arithmetic without timing PCF. No cost, perf or bench test was run

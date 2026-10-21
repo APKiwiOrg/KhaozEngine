@@ -72,7 +72,7 @@ internal sealed class CoverageDispatchProfiler : IGpuFrameCompletionConsumer, ID
         if (entering)
         {
             uint x = CoverageGpuSkinRefineGlsl.IsReducer(phase) ? 1u : (_batch.Elements(phase) + 63) / 64;
-            slot.Groups[ordinal] = new(x, (uint)_batch.Count, 1);
+            slot.Groups[ordinal] = new(x, (uint)_batch.Count, CoverageGpuPipeline.DispatchDepth(phase));
         }
         commands.WriteTimestamp(slot.Pool, (uint)_marker++);
     }

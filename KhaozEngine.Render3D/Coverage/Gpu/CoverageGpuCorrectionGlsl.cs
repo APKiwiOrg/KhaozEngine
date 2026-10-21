@@ -64,24 +64,6 @@ internal static class CoverageGpuCorrectionGlsl
         }
         """;
 
-    internal const string CorrectFacesOverlay = """
-        void main() {
-            uint f = covFrame(), w = CovFrameWords[f+1u], t = gl_GlobalInvocationID.x;
-            if (t >= CovFrameWords[f+7u] || covCompletedFailure(w)) return;
-            uint continuation = covRow(w,36u)+t*12u;
-            if (CovWorkWords[continuation+11u] != 1u) return;
-            CovFaceWork next = covFaceWorkRead(continuation);
-            uint h = CovFrameWords[f], face = covTable(h,14u)+t*3u;
-            int slot = covRegionSlot(f,int(CovStaticWords[face+1u])); uint command = covCommand(f,uint(slot));
-            CovOverlayGraph overlay = covOverlayBegin(CovFrameWords[command+67u],next.host.a,next.host.b,next.host.c);
-            CovExactResult result = covExactResultZero(); CovExactJob job;
-            [[dont_unroll]] while (overlay.phase != CovODone) if (covOverlayStep(overlay,result,job)) result = covExactWorker(job);
-            if (!overlay.ok) covNote(w,t*3u,4u,slot,t,0u,1u);
-            CovWorkWords[continuation+10u] = floatBitsToUint(overlay.maximum);
-            CovWorkWords[continuation+11u] = overlay.ok ? 2u : 0u;
-        }
-        """;
-
     internal const string CorrectFacesFinish = """
         void main() {
             uint f = covFrame(), w = CovFrameWords[f+1u], t = gl_GlobalInvocationID.x;

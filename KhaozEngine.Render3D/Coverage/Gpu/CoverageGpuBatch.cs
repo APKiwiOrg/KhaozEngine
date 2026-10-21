@@ -92,7 +92,7 @@ internal sealed partial class CoverageGpuBatch : IDisposable
                 CoverageGpuPhase.InterpolateGroups or CoverageGpuPhase.ConformGroups or CoverageGpuPhase.GatherCorrections
                     or CoverageGpuPhase.ConformBoundary or CoverageGpuPhase.ConformResume
                     or CoverageGpuPhase.CheckFullTargets or CoverageGpuPhase.TransitionGroups => frameWords[f + 8],
-                CoverageGpuPhase.CorrectFaces or CoverageGpuPhase.CorrectFacesOverlay or CoverageGpuPhase.CorrectFacesFinish
+                CoverageGpuPhase.CorrectFaces or CoverageGpuPhase.CorrectFacesOverlay or CoverageGpuPhase.CorrectFacesOverlayReplay or CoverageGpuPhase.CorrectFacesFinish
                     or CoverageGpuPhase.PrepareNormalBasis or CoverageGpuPhase.FinishNormalBasis or CoverageGpuPhase.ValidateFaces => frameWords[f + 7],
                 CoverageGpuPhase.Select => Math.Max(frameWords[f + 5], frameWords[f + 6]),
                 _ => frameWords[f + 6]

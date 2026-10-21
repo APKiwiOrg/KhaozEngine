@@ -20,16 +20,18 @@ internal sealed class CoverageGpuTestSession : IDisposable
     readonly int surfaceWordCount;
 
     internal CoverageGpuTestSession(IGpuDevice device, CoverageRefinement[] topologies, Matrix4x4[][] palettes,
-        CoverageCommandPose[][]? commands = null, CoverageReferenceScratch[]? scratch = null)
+        CoverageCommandPose[][]? commands = null, CoverageReferenceScratch[]? scratch = null, int minimumOverlayCapacity = 0)
     {
         if (topologies.Length != palettes.Length) throw new ArgumentException("One palette is required per actor.");
         this.device = device;
         hostIdentities = topologies.Select(t => t.HostIdentity).ToArray();
         hosts = topologies.Select((t, i) => CoverageGpuUpload.Host(t, palettes[i].Length)).ToArray();
-        headers = hosts.Select(CoverageGpuLayout.WorkHeader).ToArray();
+        int[] capacities = hosts.Select((_, i) => Math.Max(minimumOverlayCapacity, commands is null ? 0
+            : commands[i].Select(c => c.Support.InwardTriangles.Count).DefaultIfEmpty(0).Max())).ToArray();
+        headers = hosts.Select((h, i) => CoverageGpuLayout.WorkHeader(h, capacities[i])).ToArray();
         commandSupports = hosts.Select(_ => new uint[4]).ToArray();
         int frames = checked((int)hosts.Sum(h => (long)CoverageGpuLayout.FrameWords(h.BoneCount)));
-        int workWords = checked((int)hosts.Sum(h => (long)CoverageGpuLayout.WorkWords(h)));
+        int workWords = checked((int)hosts.Select((h, i) => (long)CoverageGpuLayout.WorkWords(h, capacities[i])).Sum());
         workWordCount = workWords;
         int surfaces = checked((int)hosts.Sum(h => (long)CoverageGpuLayout.SurfaceWords(h)));
         surfaceWordCount = surfaces;
@@ -44,7 +46,7 @@ internal sealed class CoverageGpuTestSession : IDisposable
         {
             var h = hosts[actor];
             h.Words.CopyTo(cold, (int)staticBase);
-            var reservation = CoverageGpuLayout.CreateReservation(actor, staticBase, frameBase, workBase, surfaceBase, surfaceBase, h);
+            var reservation = CoverageGpuLayout.CreateReservation(actor, staticBase, frameBase, workBase, surfaceBase, surfaceBase, h, capacities[actor]);
             uint[] frame = new uint[CoverageGpuLayout.FrameWords(h.BoneCount)];
             frame[0] = staticBase; frame[1] = workBase; frame[2] = surfaceBase; frame[3] = surfaceBase; frame[4] = (uint)actor * 16;
             frame[5] = (uint)h.SourceCount; frame[6] = (uint)h.VertexCount; frame[7] = (uint)h.TriangleCount;
@@ -67,7 +69,7 @@ internal sealed class CoverageGpuTestSession : IDisposable
             Batch.Add(reservation, frame);
             device.UpdateBuffer(Batch.Work, CoverageGpuLayout.Bytes(workBase), headers[actor]);
             staticBase += (uint)h.Words.Length; frameBase += (uint)frame.Length;
-            workBase += CoverageGpuLayout.WorkWords(h); surfaceBase += CoverageGpuLayout.SurfaceWords(h);
+            workBase += CoverageGpuLayout.WorkWords(h, capacities[actor]); surfaceBase += CoverageGpuLayout.SurfaceWords(h);
         }
         Batch.UploadStatic(cold);
         Batch.UploadFrame();
@@ -103,7 +105,7 @@ internal sealed class CoverageGpuTestSession : IDisposable
 
     internal uint[] ReadWords(int actor, int pair)
     {
-        int stride = pair switch { 0 or 2 or 4 or 6 or 8 or 10 or 32 => 16, 12 => 3, 22 => 2, 24 or 34 => 6, 36 => 12, 42 => 46, _ => 1 };
+        int stride = pair switch { 0 or 2 or 4 or 6 or 8 or 10 or 32 => 16, 12 => 3, 22 => 2, 24 or 34 => 6, 36 => 12, 42 => 46, 44 => 17, _ => 1 };
         int start = checked((int)(Batch.Actors[actor].WorkBase + headers[actor][pair]));
         return captured.AsSpan(start, checked((int)headers[actor][pair + 1] * stride)).ToArray();
     }

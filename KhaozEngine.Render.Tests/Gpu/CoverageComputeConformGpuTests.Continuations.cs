@@ -55,7 +55,7 @@ public sealed partial class CoverageComputeConformGpuTests
             uint[] header = session.ReadHeader(actor);
             Assert.Equal(0u, header[38]); // Overlay loads without overlay state.
             Assert.Equal(0u, header[40]); // Finish loads without finish state.
-            Assert.Equal(actor == 0 ? (uint)coreFaces : 0u, header[39]);
+            Assert.Equal(actor == 0 ? (uint)coreFaces * 4u : 0u, header[39]);
             Assert.Equal(actor == 0 ? (uint)coreFaces : 0u, header[41]);
             uint[] faces = session.ReadWords(actor, 36);
             for (int t = 0; t < c.Topology.TriangleCount; t++)
@@ -98,7 +98,8 @@ public sealed partial class CoverageComputeConformGpuTests
         {
             commands.SetComputePipeline(phase == CoverageGpuPhase.CorrectFacesOverlay ? overlay : phase == CoverageGpuPhase.CorrectFacesFinish ? finish : standard);
             commands.SetComputeResourceSet(0, set);
-            commands.Dispatch(CoverageGpuSkinRefineGlsl.IsReducer(phase) ? 1u : (batch.Elements(phase) + 63) / 64, (uint)batch.Count, 1);
+            commands.Dispatch(CoverageGpuSkinRefineGlsl.IsReducer(phase) ? 1u : (batch.Elements(phase) + 63) / 64,
+                (uint)batch.Count, CoverageGpuPipeline.DispatchDepth(phase));
         }
         session.RecordReadback(commands);
         commands.End(); device.Submit(commands); device.WaitForIdle(); session.CompleteReadback();

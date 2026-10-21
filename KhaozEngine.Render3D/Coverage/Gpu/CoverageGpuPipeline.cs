@@ -9,7 +9,7 @@ internal enum CoverageGpuPhase
     Reset, Skin, ReduceSkin, ValidateSource, ReduceSource, ValidateAliases, ReduceAliases,
     InterpolateGroups, ReduceGroups, ValidateAttributes, ReduceAttributes, FillBefore,
     ConformGroups, ConformBoundary, ConformResume, CopyPointAliases, ReduceConform,
-    CorrectFaces, CorrectFacesOverlay, CorrectFacesFinish, ReduceFaces, GatherCorrections,
+    CorrectFaces, CorrectFacesOverlay, CorrectFacesOverlayReplay, CorrectFacesFinish, ReduceFaces, GatherCorrections,
     CheckFullTargets, ReduceFullTargets, CopyCorrectedAliases, TransitionGroups, StoreTransition,
     ValidateVertices, ReduceVertices, PrepareNormalBasis, FinishNormalBasis, ValidateFaces, ReduceFacesOrientation,
     GatherAttributes, ReduceAttributesFinal, Select
@@ -72,10 +72,13 @@ internal sealed class CoverageGpuPipeline : IDisposable
             commands.SetComputePipeline(pipelines[(int)phase]);
             commands.SetComputeResourceSet(0, set);
             batch.DispatchObserverForTests?.Invoke(commands, phase, true);
-            commands.Dispatch(reduce ? 1u : (elements + 63) / 64, (uint)batch.Count, 1);
+            commands.Dispatch(reduce ? 1u : (elements + 63) / 64, (uint)batch.Count, DispatchDepth(phase));
             batch.DispatchObserverForTests?.Invoke(commands, phase, false);
         }
     }
+
+    internal static uint DispatchDepth(CoverageGpuPhase phase) =>
+        phase == CoverageGpuPhase.CorrectFacesOverlay ? CoverageGpuOverlayWorkLayout.Stripes : 1u;
 
     public void Dispose()
     {

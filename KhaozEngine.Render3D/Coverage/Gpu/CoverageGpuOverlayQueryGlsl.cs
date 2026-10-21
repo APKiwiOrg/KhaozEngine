@@ -8,23 +8,24 @@ internal static class CoverageGpuOverlayQueryGlsl
         const int CovOBegin = 0, CovOHostArea = 1, CovOPair = 2, CovOSheetArea = 3, CovOInside = 4, CovOSide = 5,
             CovONextCorner = 6, CovOIntersection = 7, CovONextIntersection = 8, CovOCrossing = 9, CovOHeightBegin = 10, CovOHeight = 11, CovODone = 12;
         struct CovOverlayGraph {
-            int phase; uint support; CovTriangle host; CovTriangle sheet; CovPredicate hostArea; CovPredicate sheetArea; uint cursor;
+            int phase; uint support; CovTriangle host; CovTriangle sheet; CovPredicate hostArea; CovPredicate sheetArea; uint cursor; uint limit;
             int corner; int which; int side; CovSides sides; CovTriangleSides hostSides; CovTriangleSides sheetSides; bool inside;
             int i; int j; vec3 point; int resume; int heightPass; float hostHeight; CovTriangleHeightGraph heightGraph;
-            CovCrossingGraph crossing; float maximum; bool ok;
+            CovCrossingGraph crossing; float maximum; bool ok; bool sampled; int ordinal; float sampleValue;
         };
         CovOverlayGraph covOverlayBegin(uint support, vec3 a, vec3 b, vec3 c) {
             CovOverlayGraph q;
-            q.phase = CovOBegin; q.support = support; q.host = CovTriangle(a,b,c); q.sheet = q.host; q.cursor = 0u;
+            q.phase = CovOBegin; q.support = support; q.host = CovTriangle(a,b,c); q.sheet = q.host; q.cursor = 0u; q.limit = CovStaticWords[support+5u];
             q.hostArea = CovPredicate(0,0.0); q.sheetArea = q.hostArea; q.corner = 0; q.which = 0; q.side = 0; q.sides = CovSides(0,0,0);
             q.hostSides = CovTriangleSides(q.sides,q.sides,q.sides); q.sheetSides = q.hostSides; q.inside = false;
             q.i = 0; q.j = 0; q.point = vec3(0.0); q.resume = CovODone; q.heightPass = 0; q.hostHeight = 0.0;
             q.heightGraph = covTriangleHeightBegin(q.host,vec2(0.0));
             q.crossing = covCrossingBegin(vec3(0.0),vec3(0.0),vec3(0.0),vec3(0.0));
-            q.maximum = uintBitsToFloat(0xff800000u); q.ok = false;
+            q.maximum = uintBitsToFloat(0xff800000u); q.ok = false; q.sampled = false; q.ordinal = 0; q.sampleValue = 0.0;
             return q;
         }
         bool covOverlayStep(inout CovOverlayGraph q, CovExactResult result, out CovExactJob job) {
+            q.sampled = false;
             job = covScalarJob(0.0,1.0,false);
             if (q.phase == CovOBegin) {
                 if (!covFinite3(q.host.a) || !covFinite3(q.host.b) || !covFinite3(q.host.c)) { q.phase = CovODone; return false; }
@@ -35,7 +36,7 @@ internal static class CoverageGpuOverlayQueryGlsl
                 q.hostArea = result.predicate; q.phase = CovOPair;
             }
             if (q.phase == CovOPair) {
-                if (q.cursor == CovStaticWords[q.support+5u]) { q.ok = true; q.phase = CovODone; return false; }
+                if (q.cursor == q.limit) { q.ok = true; q.phase = CovODone; return false; }
                 q.sheet = covSupportTriangle(q.support,q.cursor);
                 if (!covFinite3(q.sheet.a) || !covFinite3(q.sheet.b) || !covFinite3(q.sheet.c)) { q.phase = CovODone; return false; }
                 q.sheetArea = covSupportInvariant(q.support,q.cursor); q.phase = CovOSheetArea;
@@ -121,6 +122,8 @@ internal static class CoverageGpuOverlayQueryGlsl
                 }
                 precise float difference = covSub(q.hostHeight,q.heightGraph.height);
                 if (!covFinite(q.hostHeight) || !covFinite(q.heightGraph.height) || !covFinite(difference)) { q.phase = CovODone; return false; }
+                q.sampled = true; q.sampleValue = difference;
+                q.ordinal = q.resume == CovONextCorner ? q.corner*2+q.which : 6+q.i*3+q.j;
                 q.maximum = covMax(q.maximum,difference); q.phase = q.resume;
             }
             return false;

@@ -18,20 +18,23 @@ internal static class CoverageGpuLayout
     internal static uint FrameWords(int boneCount) => Words(ActorHeaderWords + (long)boneCount * MatrixWords + MaxCommands * CommandWords + MaxCommands + MaxRegions);
     internal static uint SurfaceWords(CoverageGpuHostUpload host) => Words(FinalHeaderWords + ((long)host.SourceCount + host.VertexCount) * ModelWords);
 
-    internal static uint WorkWords(CoverageGpuHostUpload h)
+    internal static uint WorkWords(CoverageGpuHostUpload h, int supportTriangles = 0)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(supportTriangles);
         long events = Math.Max(Math.Max(h.SourceCount, h.AliasCount), Math.Max(Math.Max(h.PositionGroupCount, h.VertexCount),
             Math.Max(3L * h.TriangleCount, 2L * h.PositionGroupCount)));
         // Posed and flushed source, four refined rows and a private generated-attribute candidate,
         // one XYZ and three scalar group rows, face scalar/validation rows, six words per event,
         // and typed group/face continuations for the split query phases.
-        return Words(WorkHeaderWords + 2L * h.SourceCount * ModelWords + 5L * h.VertexCount * ModelWords
+        return Words(checked(WorkHeaderWords + 2L * h.SourceCount * ModelWords + 5L * h.VertexCount * ModelWords
             + (6L + CoverageGpuQueryWorkLayout.ConformWords) * h.PositionGroupCount
-            + (3L + CoverageGpuQueryWorkLayout.FaceWords + CoverageGpuNormalWorkLayout.Words) * h.TriangleCount + 6L * events);
+            + (3L + CoverageGpuQueryWorkLayout.FaceWords + CoverageGpuNormalWorkLayout.Words + CoverageGpuOverlayWorkLayout.Stripes
+                + (long)supportTriangles * CoverageGpuOverlayWorkLayout.PairWords) * h.TriangleCount + 6L * events));
     }
 
-    internal static uint[] WorkHeader(CoverageGpuHostUpload h)
+    internal static uint[] WorkHeader(CoverageGpuHostUpload h, int supportTriangles = 0)
     {
+        _ = WorkWords(h, supportTriangles);
         var header = new uint[WorkHeaderWords];
         uint cursor = WorkHeaderWords;
         Row(0, h.SourceCount, ModelWords); Row(2, h.SourceCount, ModelWords);
@@ -45,7 +48,10 @@ internal static class CoverageGpuLayout
         Row(ConformContinuations, h.PositionGroupCount, CoverageGpuQueryWorkLayout.ConformWords);
         Row(FaceContinuations, h.TriangleCount, CoverageGpuQueryWorkLayout.FaceWords);
         Row(CoverageGpuNormalWorkLayout.Pair, h.TriangleCount, CoverageGpuNormalWorkLayout.Words);
-        if (cursor != WorkWords(h)) throw new InvalidOperationException("Coverage work layout disagrees with its allocation.");
+        Row(CoverageGpuOverlayWorkLayout.Pair, checked(h.TriangleCount * supportTriangles), CoverageGpuOverlayWorkLayout.PairWords);
+        Row(CoverageGpuOverlayWorkLayout.Guards, checked(h.TriangleCount * CoverageGpuOverlayWorkLayout.Stripes), 1);
+        header[CoverageGpuOverlayWorkLayout.Capacity] = (uint)supportTriangles;
+        if (cursor != WorkWords(h, supportTriangles)) throw new InvalidOperationException("Coverage work layout disagrees with its allocation.");
         return header;
         void Row(int pair, int count, int stride)
         {
@@ -55,13 +61,13 @@ internal static class CoverageGpuLayout
     }
 
     internal static CoverageGpuReservation CreateReservation(int actorSlot, uint staticBase, uint frameBase, uint workBase,
-        uint currentBase, uint previousBase, CoverageGpuHostUpload host)
+        uint currentBase, uint previousBase, CoverageGpuHostUpload host, int supportTriangles = 0)
     {
         ArgumentNullException.ThrowIfNull(host);
         ArgumentOutOfRangeException.ThrowIfNegative(actorSlot);
         _ = Words(((long)actorSlot + 1) * FinalHeaderWords);
         End(staticBase, (uint)host.Words.Length); End(frameBase, FrameWords(host.BoneCount));
-        End(workBase, WorkWords(host)); End(currentBase, SurfaceWords(host)); End(previousBase, SurfaceWords(host));
+        End(workBase, WorkWords(host, supportTriangles)); End(currentBase, SurfaceWords(host)); End(previousBase, SurfaceWords(host));
         return new(actorSlot, staticBase, frameBase, workBase, currentBase, previousBase, host.SourceCount, host.VertexCount, host.TriangleCount);
     }
 

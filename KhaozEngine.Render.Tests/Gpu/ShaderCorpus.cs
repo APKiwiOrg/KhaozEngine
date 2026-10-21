@@ -50,7 +50,7 @@ namespace KhaozEngine.Tests.Gpu
             foreach (ShippedComputeKernel kernel in ShippedShaderPrograms.ComputeKernels())
                 EmitCompute(kernel, rows, dump);
             foreach (ShippedComputeKernel kernel in CoverageKernels())
-                EmitCompute(kernel, rows, dump, new GpuShaderCompileOptions(PreciseMath: true));
+                EmitCompute(kernel, rows, dump, CoverageCarryShaders.Options(kernel.Name));
 
             rows.Sort((a, b) => string.CompareOrdinal(a.Key, b.Key));
             return rows;

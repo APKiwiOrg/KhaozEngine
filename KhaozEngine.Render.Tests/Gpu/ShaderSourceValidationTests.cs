@@ -226,10 +226,11 @@ namespace KhaozEngine.Tests.Gpu
         {
             foreach (ShippedComputeKernel kernel in ShaderCorpus.CoverageKernels())
             {
+                var options = CoverageCarryShaders.Options(kernel.Name);
                 byte[] spirv = SpirvFrontEnd.ToSpirv(kernel.ComputeGlsl, GpuShaderStages.Compute, kernel.Name,
-                    new GpuShaderCompileOptions(PreciseMath: true));
+                    options);
                 CoverageSpirvAccessAudit.Validate(spirv, kernel.Name);
-                ShaderValidation.ValidateCompute(kernel.ComputeGlsl, new GpuShaderCompileOptions(PreciseMath: true), kernel.Name);
+                ShaderValidation.ValidateCompute(kernel.ComputeGlsl, options, kernel.Name);
             }
         }
 

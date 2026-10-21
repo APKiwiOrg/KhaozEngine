@@ -56,14 +56,14 @@ internal static class CoverageShaderSizeAudit
             return f.Instructions + 8L * Math.Max(0, f.Returns - 1) + f.Calls.Sum(Bound);
         }
         int Sites(uint id, string helper) => functions[id].Calls.Sum(c =>
-            (names[c].StartsWith(helper + "(", StringComparison.Ordinal) ? 1 : 0) + Sites(c, helper));
+            (names.GetValueOrDefault(c, "").StartsWith(helper + "(", StringComparison.Ordinal) ? 1 : 0) + Sites(c, helper));
         foreach (string helper in new[] { "covExactWorker", "covPredicateProduct", "covExactAdd", "covRound32", "covRoundOperation", "covCorrectPositive", "covRoundedAtOrBelow", "covResidualProduct" })
         {
-            int expected = functions.Keys.Any(id => names[id].StartsWith(helper + "(", StringComparison.Ordinal)) ? 1 : 0;
+            int expected = functions.Keys.Any(id => names.GetValueOrDefault(id, "").StartsWith(helper + "(", StringComparison.Ordinal)) ? 1 : 0;
             Assert.True(Sites(entry, helper) == expected, $"{label}: {helper} has {Sites(entry, helper)} expanded call sites, expected {expected}");
         }
         foreach (uint id in functions.Keys.Where(id => new[] { "covPredicateProduct", "covResidualProduct", "covExactProduct" }
-            .Any(helper => names[id].StartsWith(helper + "(", StringComparison.Ordinal))))
+            .Any(helper => names.GetValueOrDefault(id, "").StartsWith(helper + "(", StringComparison.Ordinal))))
             Assert.True(Sites(id, "covExactMul32") == 1, $"{label}: {names[id]} must have one word-product site");
         if (label != CoverageGpuExactWordsProbe.Name)
             Assert.Equal(0, Sites(entry, "covExactProduct"));

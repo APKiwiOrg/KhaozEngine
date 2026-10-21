@@ -27,7 +27,7 @@ internal sealed class CoverageCarryDevice : IDisposable
     internal long AnchorBytes => buffers[6].SizeInBytes;
     internal uint[] Groups { get; }
 
-    internal CoverageCarryDevice(IGpuDevice device, CoverageCarryFixture fixture, int count)
+    internal CoverageCarryDevice(IGpuDevice device, CoverageCarryFixture fixture, int count, bool nativeFloat = false)
     {
         this.device = device; this.fixture = fixture;
         if (count is not (1 or 32)) throw new ArgumentOutOfRangeException(nameof(count));
@@ -68,20 +68,22 @@ internal sealed class CoverageCarryDevice : IDisposable
         for (int actor = 0; actor < count; actor++) device.UpdateBuffer(buffers[2], (uint)(workStride * actor * 4), header);
         var zero = new uint[surfaceStride * count];
         device.UpdateBuffer(buffers[3], 0, zero); device.UpdateBuffer(buffers[4], 0, zero);
-        var kernels = CoverageCarryShaders.Kernels().ToArray();
+        var kernels = CoverageCarryShaders.Kernels().Where(k =>
+            k.Name.StartsWith("CoverageCarryNative", StringComparison.Ordinal) == nativeFloat || k.Name == "CoverageCarryOrdinarySkin")
+            .OrderBy(k => k.Name == "CoverageCarryOrdinarySkin" ? 1 : 0).ToArray();
         layouts = new IGpuResourceLayout[kernels.Length]; sets = new IGpuResourceSet[kernels.Length];
         shaders = new IGpuComputeShader[kernels.Length]; pipelines = new IGpuComputePipeline[kernels.Length];
         try
         {
             for (int i = 0; i < kernels.Length; i++)
             {
-                var options = new GpuShaderCompileOptions(PreciseMath: i != 4);
+                var options = CoverageCarryShaders.Options(kernels[i].Name);
                 var description = SpirvCrossCompile.GlslComputeToHlsl(kernels[i].ComputeGlsl, kernels[i].Name, options)
                     .Reflection.ResourceLayouts.Single();
                 layouts[i] = device.Factory.CreateResourceLayout(description);
-                // Ordinary compilation may strip names. The carry ABI binds these buffers positionally.
+                // Ordinary compilation may strip names. Each module has an explicit compact storage ABI.
                 sets[i] = device.Factory.CreateResourceSet(new(layouts[i],
-                    buffers.Take(description.Elements.Length).Cast<IGpuBindableResource>().ToArray()));
+                    CoverageCarryShaders.BufferIndices(kernels[i].Name).Select(index => (IGpuBindableResource)buffers[index]).ToArray()));
                 shaders[i] = device.Factory.CreateComputeShaderFromSpirv(kernels[i].ComputeGlsl, options);
                 pipelines[i] = device.Factory.CreateComputePipeline(new(shaders[i], layouts[i]));
             }
@@ -108,15 +110,17 @@ internal sealed class CoverageCarryDevice : IDisposable
         }
     }
 
-    internal void Record(IGpuCommandList commands, bool ordinary = false)
+    internal void Record(IGpuCommandList commands, bool ordinary = false, IGpuTimestampPool? stagePool = null)
     {
         commands.UpdateBuffer<uint>(buffers[1], 0, frameWords);
         commands.UpdateBuffer<uint>(buffers[5], (uint)(resultSlot * resultReset.Length * 4), resultReset);
         int start = ordinary ? 4 : 0, end = ordinary ? 5 : 4;
         for (int i = start; i < end; i++)
         {
+            if (stagePool is not null) commands.WriteTimestamp(stagePool, (uint)(1 + i * 2));
             commands.SetComputePipeline(pipelines[i]); commands.SetComputeResourceSet(0, sets[i]);
             commands.Dispatch(i == 4 ? Groups[0] : Groups[i], 1, 1);
+            if (stagePool is not null) commands.WriteTimestamp(stagePool, (uint)(2 + i * 2));
         }
     }
 

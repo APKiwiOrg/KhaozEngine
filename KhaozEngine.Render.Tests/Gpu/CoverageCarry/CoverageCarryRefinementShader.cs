@@ -6,23 +6,23 @@ namespace KhaozEngine.Tests.Gpu;
 /// <summary>Refine the invocation's group before its attributes, using the same single scalar worker pump.</summary>
 internal static class CoverageCarryRefinementShader
 {
-    internal static string Source
+    internal static string Source => Adapt(CoverageGpuAttributesGlsl.Source);
+
+    internal static string Adapt(string source)
     {
-        get
-        {
-            string source = CoverageGpuAttributesGlsl.Source;
-            source = Change(source, "void main()", "void carryAttributes()");
-            source = Change(source,
-                "uint target = covRow(w,32u)+i*16u, group = covRow(w,12u)+CovStaticWords[r+6u]*3u;\n    covWrite3(target,covWork3(group));",
-                PositionSetup);
-            source = Change(source, "while (valid && field < 12u)", "while (valid && (positionAxis < 3u || field < 12u))");
-            source = Change(source, "if (direction < 2) {", PositionStep + " else if (direction < 2) {");
-            return source;
-        }
+        source = source.ReplaceLineEndings("\n");
+        source = Change(source, "void main()", "void carryAttributes()");
+        source = Change(source,
+            "uint target = covRow(w,32u)+i*16u, group = covRow(w,12u)+CovStaticWords[r+6u]*3u;\n    covWrite3(target,covWork3(group));",
+            PositionSetup);
+        source = Change(source, "while (valid && field < 12u)", "while (valid && (positionAxis < 3u || field < 12u))");
+        source = Change(source, "if (direction < 2) {", PositionStep + " else if (direction < 2) {");
+        return source;
     }
 
-    static string Change(string source, string before, string after) => source.Contains(before, StringComparison.Ordinal)
-        ? source.Replace(before, after, StringComparison.Ordinal) : throw new InvalidOperationException("Pinned refinement graph changed.");
+    static string Change(string source, string before, string after) => source.Contains(before.ReplaceLineEndings("\n"), StringComparison.Ordinal)
+        ? source.Replace(before.ReplaceLineEndings("\n"), after.ReplaceLineEndings("\n"), StringComparison.Ordinal)
+        : throw new InvalidOperationException("Pinned refinement graph changed.");
 
     const string PositionSetup = """
         uint target = covRow(w,4u)+i*16u, positionGroup = CovStaticWords[r+6u];

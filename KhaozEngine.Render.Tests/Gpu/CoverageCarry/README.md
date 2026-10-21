@@ -61,28 +61,67 @@ vertices with the same palettes. It includes the same frame uploads, tight bound
 and history publication. It has one dispatch and uses ordinary compilation. It is
 a skinning storage floor, not a draw benchmark or an exact coverage substitute.
 
+## Approximate native float experiment
+
+`CoverageCarryNativeSkin`, `CoverageCarryNativeTransport`, `CoverageCarryNativeBasis`
+and `CoverageCarryNativePublish` retain the same four stages, refinement recipes,
+anchor transport and ordered gathers. They replace the entire exact arithmetic
+prefix with native float operations, division and square root. They contain no
+wide integer or corrected-rounding helpers, no inclusive flush emulation and no
+`precise` declarations. `PreciseMath` is false on every backend. Performance
+compilation may contract arithmetic. This is an approximate achievable floor for
+the retained traversal, never an exact path or a geometric certificate.
+
+Native stages compact unused bindings before compilation. Their explicit buffer
+map drives both resource sets and the headless HLSL/MSL layout checks. Shader size
+and corpus generation use the actual compilation options for every program,
+including the ordinary control. No C8 cap is raised.
+
+The native correctness fact compares both poses, zero and partial transition
+weights, changed command frames and both source-word variants to the exact carry
+reference. It reports maxima per actor for Euclidean XYZ position, normal and
+tangent error, and error divided by the reference vector length. Zero reference
+vectors with nonzero errors have undefined relative error and are counted
+separately. Tangent W has a separate absolute error. Native history, tight bounds,
+protected positions relative to native Before, and immutable anchors are checked.
+There is no accepted error tolerance and no claim that these differences are safe.
+
 ## Diagnostic
 
 `CoverageCarryProfileGpuTests` uses the existing `CoverageDispatchProfileFact`
-opt-in and hardware capability checks. It uses 12 warm-up frames, then 9 observed
+opt-in and hardware capability checks. It uses 96 fixed conditioning frames, then 9 observed
 frames on Metal and 32 on the other native backends, for each of 1 and 32 distinct
-actors and both paths. R1 therefore uses the existing ordinary hosted workflow
+actors. Each carry path has an outer row and a separately conditioned stage row.
+The ordinary control has an outer row. The diagnostic uses the existing ordinary hosted workflow
 without an environment or workflow change. `KE_COVERAGE_CARRY_MEASURED_FRAMES`
 can explicitly select 9 or 32. Metal accepts only 9.
 
 One outer timestamp pair brackets frame and bound-reset uploads, every dispatch,
-tight bounds and publication. Three retained slots drain after each batch, outside
+tight bounds and publication. This unchanged two-marker layout is the decision
+number. A separate ten-marker layout adds a pair around skin, refine and transport,
+basis and normals, and gather and publish. Stage intervals include binding and
+dispatch hazards. Their enclosing outer interval also includes uploads and marker
+overhead. Stage medians are not summed to replace an outer measurement.
+
+Three retained slots drain after each batch, outside
 the timed path. There is no readback or completion wait inside a frame. Reports
 retain every raw sample, min, median, p95, p99 and maximum, upload bytes, retained
 GPU storage, warm managed allocations through submission, CPU encoding time and
 separate CPU submission time. Sampled outputs are
-checked after the drain. The ordinary control shares the same retained allocation.
+checked after the entire observed block. Offline reference computation is kept
+out of conditioning and measurement. First-half and second-half means retain
+chronological order and include every measured sample, including an odd tail.
+They expose remaining clock drift rather than trimming it. Each layout conditions
+independently. Conditioning is fixed, not a proof of convergence. The ordinary
+control shares the exact carry harness's retained allocation. Native float rows
+also retain per-actor error maxima over each row's final surface. The separate
+native correctness fact retains errors across all its replay frames and variants.
 
 Shared topology, compiled programs and exact anchors are resident before timing.
 Their first admission, validity, atlas selection, certification, exact refresh and
 drawing are excluded. This optimistic E1 floor does not satisfy those later gates.
 Metal numbers indicate shape only. Root owns all-backend native exactness and the
-T4 R1 decision. No GPU timing fact runs during ordinary CI without `KE_GPU_TESTS=1`.
+T4 decision. No GPU timing fact runs during ordinary CI without `KE_GPU_TESTS=1`.
 
 Results go to `KE_COVERAGE_PROFILE_RESULTS/coverage-carry-profile.json` and the full
 `COVERAGE_CARRY_PROFILE_JSON=` test-output line. The ordinary hosted bench artifact

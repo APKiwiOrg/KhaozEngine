@@ -6,6 +6,20 @@ namespace KhaozEngine.Tests.Gpu;
 /// <summary>Independent CPU tight-bound observation in the GPU's monotonic float-word representation.</summary>
 internal static class CoverageCarryBounds
 {
+    internal static uint[] OfWords(ReadOnlySpan<uint> words)
+    {
+        uint[] bounds = [uint.MaxValue, uint.MaxValue, uint.MaxValue, 0, 0, 0];
+        for (int vertex = 0; vertex < words.Length; vertex += 16)
+            for (int axis = 0; axis < 3; axis++)
+            {
+                uint bits = words[vertex + axis];
+                uint ordered = (bits & 0x80000000u) != 0 ? ~bits : bits ^ 0x80000000u;
+                bounds[axis] = Math.Min(bounds[axis], ordered);
+                bounds[axis + 3] = Math.Max(bounds[axis + 3], ordered);
+            }
+        return bounds;
+    }
+
     internal static uint[] Of(ReadOnlySpan<ModelVertex> vertices)
     {
         uint[] bounds = [uint.MaxValue, uint.MaxValue, uint.MaxValue, 0, 0, 0];

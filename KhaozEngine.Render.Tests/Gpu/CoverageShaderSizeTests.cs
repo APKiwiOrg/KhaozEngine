@@ -37,7 +37,7 @@ public sealed class CoverageShaderSizeTests(ITestOutputHelper output)
     [MemberData(nameof(Kernels))]
     public void Every_coverage_pipeline_has_bounded_inlining_and_rolled_worker_sites(string name)
     {
-        var precise = new GpuShaderCompileOptions(PreciseMath: true);
+        var precise = CoverageCarryShaders.Options(name);
         ShippedComputeKernel kernel = ShaderCorpus.CoverageKernels().Single(k => k.Name == name);
         byte[] spirv = SpirvFrontEnd.ToSpirv(kernel.ComputeGlsl, GpuShaderStages.Compute, name, precise);
         string hlsl = SpirvCrossCompile.ComputeToHlsl(spirv, name, precise).ComputeSource;

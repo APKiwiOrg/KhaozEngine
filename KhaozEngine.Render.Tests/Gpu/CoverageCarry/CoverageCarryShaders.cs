@@ -10,6 +10,27 @@ internal static class CoverageCarryShaders
 {
     internal static IEnumerable<ShippedComputeKernel> Kernels()
     {
+        foreach (var kernel in ExactKernels())
+            yield return kernel with { ComputeGlsl = kernel.ComputeGlsl.ReplaceLineEndings("\n") };
+        foreach (var kernel in ExactKernels())
+            if (kernel.Name != "CoverageCarryOrdinarySkin")
+                yield return new(kernel.Name.Replace("CoverageCarry", "CoverageCarryNative", StringComparison.Ordinal),
+                    CoverageCarryNativeShader.Adapt(kernel.ComputeGlsl, kernel.Name));
+    }
+
+    internal static GpuShaderCompileOptions Options(string name) => new(PreciseMath:
+        !name.StartsWith("CoverageCarryNative", StringComparison.Ordinal) && name != "CoverageCarryOrdinarySkin");
+
+    internal static int[] BufferIndices(string name) => name switch
+    {
+        "CoverageCarryNativeSkin" or "CoverageCarryNativeBasis" => [0, 1, 2, 5],
+        "CoverageCarryNativeTransport" => [0, 1, 2, 5, 6],
+        "CoverageCarryTransport" => [0, 1, 2, 3, 4, 5, 6],
+        _ => [0, 1, 2, 3, 4, 5],
+    };
+
+    static IEnumerable<ShippedComputeKernel> ExactKernels()
+    {
         yield return new("CoverageCarrySkin", Adapt(CoverageGpuSkinRefineGlsl.Source(CoverageGpuPhase.Skin), 1));
         yield return new("CoverageCarryTransport", Prefix(3) + CoverageGpuSkinRefineGlsl.Unit
             + AdaptRefinement() + Transport);

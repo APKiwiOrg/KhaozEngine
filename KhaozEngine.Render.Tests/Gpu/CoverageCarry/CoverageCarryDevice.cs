@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Tests.Gpu;
@@ -10,8 +11,8 @@ internal sealed class CoverageCarryDevice : IDisposable
 {
     readonly IGpuDevice device;
     readonly CoverageCarryFixture fixture;
-    readonly IGpuResourceLayout layout;
-    readonly IGpuResourceSet set;
+    readonly IGpuResourceLayout[] layouts;
+    readonly IGpuResourceSet[] sets;
     readonly IGpuComputeShader[] shaders;
     readonly IGpuComputePipeline[] pipelines;
     readonly IGpuBuffer[] buffers;
@@ -67,23 +68,22 @@ internal sealed class CoverageCarryDevice : IDisposable
         for (int actor = 0; actor < count; actor++) device.UpdateBuffer(buffers[2], (uint)(workStride * actor * 4), header);
         var zero = new uint[surfaceStride * count];
         device.UpdateBuffer(buffers[3], 0, zero); device.UpdateBuffer(buffers[4], 0, zero);
-        layout = device.Factory.CreateResourceLayout(new(
-            new("CovStaticBuf", GpuResourceKind.StructuredBufferReadOnly, GpuShaderStages.Compute),
-            new("CovFrameBuf", GpuResourceKind.StructuredBufferReadOnly, GpuShaderStages.Compute),
-            new("CovWorkBuf", GpuResourceKind.StructuredBufferReadWrite, GpuShaderStages.Compute),
-            new("CovCurrentBuf", GpuResourceKind.StructuredBufferReadWrite, GpuShaderStages.Compute),
-            new("CovPreviousBuf", GpuResourceKind.StructuredBufferReadWrite, GpuShaderStages.Compute),
-            new("CovResultsBuf", GpuResourceKind.StructuredBufferReadWrite, GpuShaderStages.Compute),
-            new("CarryAnchorBuf", GpuResourceKind.StructuredBufferReadOnly, GpuShaderStages.Compute)));
-        set = device.Factory.CreateResourceSet(new(layout, buffers.Cast<IGpuBindableResource>().ToArray()));
         var kernels = CoverageCarryShaders.Kernels().ToArray();
+        layouts = new IGpuResourceLayout[kernels.Length]; sets = new IGpuResourceSet[kernels.Length];
         shaders = new IGpuComputeShader[kernels.Length]; pipelines = new IGpuComputePipeline[kernels.Length];
         try
         {
             for (int i = 0; i < kernels.Length; i++)
             {
-                shaders[i] = device.Factory.CreateComputeShaderFromSpirv(kernels[i].ComputeGlsl, new(PreciseMath: i != 4));
-                pipelines[i] = device.Factory.CreateComputePipeline(new(shaders[i], layout));
+                var options = new GpuShaderCompileOptions(PreciseMath: i != 4);
+                var description = SpirvCrossCompile.GlslComputeToHlsl(kernels[i].ComputeGlsl, kernels[i].Name, options)
+                    .Reflection.ResourceLayouts.Single();
+                layouts[i] = device.Factory.CreateResourceLayout(description);
+                // Ordinary compilation may strip names. The carry ABI binds these buffers positionally.
+                sets[i] = device.Factory.CreateResourceSet(new(layouts[i],
+                    buffers.Take(description.Elements.Length).Cast<IGpuBindableResource>().ToArray()));
+                shaders[i] = device.Factory.CreateComputeShaderFromSpirv(kernels[i].ComputeGlsl, options);
+                pipelines[i] = device.Factory.CreateComputePipeline(new(shaders[i], layouts[i]));
             }
         }
         catch { Dispose(); throw; }
@@ -91,6 +91,7 @@ internal sealed class CoverageCarryDevice : IDisposable
 
         void Row(int pair, int count, int stride)
         { header[pair] = (uint)cursor; header[pair + 1] = (uint)count; cursor += count * stride; }
+
     }
 
     IGpuBuffer Storage(int words, bool writable) => device.Factory.CreateBuffer(new((uint)words * 4,
@@ -114,7 +115,7 @@ internal sealed class CoverageCarryDevice : IDisposable
         int start = ordinary ? 4 : 0, end = ordinary ? 5 : 4;
         for (int i = start; i < end; i++)
         {
-            commands.SetComputePipeline(pipelines[i]); commands.SetComputeResourceSet(0, set);
+            commands.SetComputePipeline(pipelines[i]); commands.SetComputeResourceSet(0, sets[i]);
             commands.Dispatch(i == 4 ? Groups[0] : Groups[i], 1, 1);
         }
     }
@@ -152,7 +153,8 @@ internal sealed class CoverageCarryDevice : IDisposable
     {
         foreach (var pipeline in pipelines) pipeline?.Dispose();
         foreach (var shader in shaders) shader?.Dispose();
-        set.Dispose(); layout.Dispose();
+        foreach (var set in sets) set?.Dispose();
+        foreach (var layout in layouts) layout?.Dispose();
         foreach (var buffer in buffers) buffer.Dispose();
     }
 }

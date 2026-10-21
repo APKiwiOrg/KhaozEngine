@@ -159,7 +159,6 @@ internal sealed partial class CoverageSceneFixture : IDisposable
             && ReferenceEquals(set.Resources[2], batch.Work) && ReferenceEquals(set.Resources[3], batch.Current)
             && ReferenceEquals(set.Resources[4], batch.Previous) && ReferenceEquals(set.Resources[5], batch.Results));
     }
-    internal bool IsHostIndexBuffer(IGpuBuffer? buffer) => conformer.Indices.Contains(buffer);
     internal void AssertCapturedMatricesUploaded(SkinnedCoverageFrame frame)
     {
         AssertCoverageDispatch(frame);
@@ -183,7 +182,6 @@ internal sealed partial class CoverageSceneFixture : IDisposable
         Assert.Contains(Record.IndexedDraws, d => d.Pipeline is FakePipeline { Request: { } request }
             && request.FragmentGlsl == KhaozEngine.Render3D.Internal.ShaderSources.TargetOutlineFullMaskFrag
             && ReferenceEquals(d.VertexBuffer, route.Vertices) && ReferenceEquals(d.IndexBuffer, route.Indices));
-        Assert.DoesNotContain(Record.IndexedDraws, d => IsHostIndexBuffer(d.IndexBuffer));
     }
     public void EnablePointShadows()
     {

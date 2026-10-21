@@ -1,6 +1,5 @@
 using System;
 using System.Numerics;
-using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Render3D;
 
@@ -11,7 +10,6 @@ public sealed class SkinnedHostConformer : IDisposable
     internal readonly CoverageGpuActor Gpu;
     internal readonly CoverageCommandUniforms Uniforms;
     internal readonly SkinnedMeshHandle[] Meshes;
-    internal readonly IGpuBuffer[] Indices;
     internal readonly CoveragePreparation Request;
     internal readonly Matrix4x4[] InverseBind;
     internal readonly int Thread = Environment.CurrentManagedThreadId;
@@ -22,9 +20,9 @@ public sealed class SkinnedHostConformer : IDisposable
     internal readonly CoverageCommandPose[] MotionCommands = new CoverageCommandPose[CoverageScratch.MaxCommands];
 
     internal SkinnedHostConformer(Scene3D scene, SkinnedMeshHandle[] meshes, CoverageRefinement topology,
-        Matrix4x4[] inverseBind, IGpuBuffer[] indices, CoverageGpuActor gpu)
+        Matrix4x4[] inverseBind, CoverageGpuActor gpu)
     {
-        Scene = scene; Meshes = meshes; Topology = topology; InverseBind = inverseBind; Indices = indices;
+        Scene = scene; Meshes = meshes; Topology = topology; InverseBind = inverseBind;
         Gpu = gpu; Uniforms = new(topology, inverseBind.Length);
         Request = new(this, inverseBind.Length, meshes.Length);
     }

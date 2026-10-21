@@ -164,7 +164,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             if (ThrowOnBufferCreate == Buffers.Count + 1)
                 throw new InvalidOperationException("planned buffer creation failure");
-            var b = new FakeBuffer(d.SizeInBytes);
+            var b = new FakeBuffer(d.SizeInBytes, d.Usage);
             Buffers.Add(b);
             return b;
         }
@@ -251,8 +251,10 @@ namespace KhaozEngine.Tests.Gpu
 
     internal sealed class FakeBuffer : IGpuBuffer
     {
-        internal FakeBuffer(uint sizeInBytes) => SizeInBytes = sizeInBytes;
+        internal FakeBuffer(uint sizeInBytes, GpuBufferUsage usage = default)
+        { SizeInBytes = sizeInBytes; Usage = usage; }
         public uint SizeInBytes { get; }
+        internal GpuBufferUsage Usage { get; }
 
         /// <summary>Whether the owner freed this handle, the same one thing <see cref="FakeTexture"/> records and
         /// for the same reason: it is what pins the frame a retired buffer is actually destroyed on.</summary>

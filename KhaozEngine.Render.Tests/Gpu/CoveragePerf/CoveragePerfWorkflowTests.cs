@@ -5,7 +5,7 @@ namespace KhaozEngine.Tests.Gpu;
 
 public sealed class CoveragePerfWorkflowTests
 {
-    const string SharedPin = "b44c61e038646889e9f40281ceb78ca9989d1546";
+    const string SharedPin = "b177e97c34666048e5ce13c8b6c6e8729ada5c4a";
     static string Gpu => CoveragePerfDiscoveryTests.Read(".github/workflows/gpu-hosted-bench.yml");
     static string Stress => CoveragePerfDiscoveryTests.Read(".github/workflows/stress-test.yml");
 
@@ -51,6 +51,10 @@ public sealed class CoveragePerfWorkflowTests
     {
         Assert.Contains("stress-test.yml@" + SharedPin + " #", Stress, StringComparison.Ordinal);
         Assert.DoesNotContain("a0f13d51e", Stress, StringComparison.Ordinal);
+        Assert.DoesNotContain("b44c61e03", Stress, StringComparison.Ordinal);
+        // GitHub refuses an empty value for a required dispatch input, and coverage mode needs an empty filter.
+        Assert.Contains("      filter:\n        description: dotnet test --filter expression selecting the tests to repeat, "
+            + "empty only for coverage-perf-cpu\n        required: false\n        default: ''\n", Stress, StringComparison.Ordinal);
         foreach (string input in new[] { "project", "filter", "iterations", "load", "configuration", "support-cost", "build-target", "artifact-env",
             "coverage-perf-cpu", "coverage-perf-unit", "coverage-perf-manifest-sha256", "coverage-perf-workload-sha", "coverage-perf-preset" })
             Assert.Contains($"      {input}: ${{{{ inputs.{input} }}}}", Stress, StringComparison.Ordinal);

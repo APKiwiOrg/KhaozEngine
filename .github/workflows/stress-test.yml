@@ -26,8 +26,9 @@ on:
         required: true
         type: string
       filter:
-        description: dotnet test --filter expression selecting the tests to repeat
-        required: true
+        description: dotnet test --filter expression selecting the tests to repeat, empty only for coverage-perf-cpu
+        required: false
+        default: ''
         type: string
       iterations:
         description: How many times to run the selection, 1 to 200
@@ -93,7 +94,7 @@ permissions:
 
 jobs:
   stress:
-    uses: APKiwiOrg/ci-workflows/.github/workflows/stress-test.yml@b44c61e038646889e9f40281ceb78ca9989d1546 # opt-in coverage CPU performance proofs, depth-2 coverage checkout
+    uses: APKiwiOrg/ci-workflows/.github/workflows/stress-test.yml@b177e97c34666048e5ce13c8b6c6e8729ada5c4a # opt-in coverage CPU performance proofs, depth-2 checkout, filter optional only for coverage
     with:
       project: ${{ inputs.project }}
       filter: ${{ inputs.filter }}

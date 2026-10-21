@@ -71,7 +71,9 @@ internal sealed class CoverageGpuPipeline : IDisposable
             bool reduce = CoverageGpuSkinRefineGlsl.IsReducer(phase);
             commands.SetComputePipeline(pipelines[(int)phase]);
             commands.SetComputeResourceSet(0, set);
+            batch.DispatchObserverForTests?.Invoke(commands, phase, true);
             commands.Dispatch(reduce ? 1u : (elements + 63) / 64, (uint)batch.Count, 1);
+            batch.DispatchObserverForTests?.Invoke(commands, phase, false);
         }
     }
 

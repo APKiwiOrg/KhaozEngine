@@ -149,15 +149,30 @@ internal static class CoveragePerfValidity
                 Invalid("submission observations cannot be negative.");
             if (measured && sample.ResourceGrowth != 0) Invalid("hot resource growth.");
             if (measured && sample.ProductionWaits != 0) Invalid("production wait inside measurement.");
-            if (result.Block.TimerLayout == CoveragePerfTimerLayout.CpuOnly)
+            // Participants and consumers identify the route on every frame. Fences are cold setup in warm-up, so only
+            // measured frames carry the route's steady fence count. CpuOnly controls keep their established reasons.
+            bool cpu = result.Block.TimerLayout == CoveragePerfTimerLayout.CpuOnly;
+            if (CoveragePerfSharedSubmission.Route(result.Block) is { } route)
+            {
+                bool wrongRoute = sample.SubmissionParticipants != route.Participants || sample.CompletionConsumers != route.Consumers;
+                bool wrongFences = measured && sample.SubmittedCompletionFences != route.CompletionFences;
+                string name = $"{result.Block.Condition} {result.Block.TimerLayout} route requires ";
+                if (cpu && result.Block.Condition != CoveragePerfCondition.SharedOn)
+                {
+                    if (wrongRoute || wrongFences)
+                        Invalid(measured ? "shared-host control requires zero completion fences/consumers and the direct/shared participant schedule."
+                            : "shared-host control requires zero completion consumers and the direct/shared participant schedule.");
+                }
+                else
+                {
+                    if (wrongRoute) Invalid(name + CoveragePerfSharedSubmission.Count(route.Participants, "submission participant") + " and "
+                        + CoveragePerfSharedSubmission.Count(route.Consumers, "completion consumer") + ".");
+                    if (wrongFences) Invalid(name + CoveragePerfSharedSubmission.Count(route.CompletionFences, "completion fence") + ".");
+                }
+            }
+            if (cpu)
             {
                 if (sample.Gpu is not null) Invalid("CPU route contains unexpected query instrumentation.");
-                // Consumers and participants identify the control route on every frame. Fences are cold setup in warm-up.
-                if (result.Block.Condition != CoveragePerfCondition.SharedOn && (measured && sample.SubmittedCompletionFences != 0 ||
-                    sample.CompletionConsumers != 0 || sample.SubmissionParticipants !=
-                    (result.Block.Condition == CoveragePerfCondition.DirectOff ? 0 : 1)))
-                    Invalid(measured ? "shared-host control requires zero completion fences/consumers and the direct/shared participant schedule."
-                        : "shared-host control requires zero completion consumers and the direct/shared participant schedule.");
                 continue;
             }
             if (sample.Gpu is not { } gpu) { Invalid("unresolved GPU baseline/query outcome."); continue; }

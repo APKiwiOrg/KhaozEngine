@@ -9,6 +9,8 @@ public sealed class CoveragePerfWarmupSubmissionTests
 {
     const string NotOne = "submission schedule is not one frame submission.";
     const string Control = "shared-host control requires zero completion fences/consumers and the direct/shared participant schedule.";
+    const string WarmupControl = "shared-host control requires zero completion consumers and the direct/shared participant schedule.";
+    const string Rule = "Warm-up frames may carry cold-setup submissions and completion fences outside every gate. Measured frames require one frame submission and the control fence schedule.";
 
     [Fact]
     public void ASharedOffWarmupFrameWithAColdSetupSubmissionAndFenceIsValid()
@@ -46,8 +48,7 @@ public sealed class CoveragePerfWarmupSubmissionTests
     public void AWarmupFrameWithoutASubmissionIsInvalid(int block)
     {
         var report = Warmup(CoveragePerfReportVectors.Create("C0"), block, 0, s => s with { Submissions = 0 });
-        Assert.Contains(CoveragePerfValidity.Reasons(report),
-            r => r.StartsWith($"Block {block}: warm-up frame 0: submission schedule", StringComparison.Ordinal));
+        Assert.Contains($"Block {block}: warm-up frame 0: submission schedule has no frame submission.", CoveragePerfValidity.Reasons(report));
     }
 
     [Theory]
@@ -61,8 +62,7 @@ public sealed class CoveragePerfWarmupSubmissionTests
     {
         var report = Warmup(CoveragePerfReportVectors.Create("C0"), block, 0, s => field == "consumer"
             ? s with { CompletionConsumers = 1 } : s with { SubmissionParticipants = s.SubmissionParticipants + 1 });
-        Assert.Contains(CoveragePerfValidity.Reasons(report),
-            r => r.StartsWith($"Block {block}: warm-up frame 0: shared-host control", StringComparison.Ordinal));
+        Assert.Contains($"Block {block}: warm-up frame 0: {WarmupControl}", CoveragePerfValidity.Reasons(report));
     }
 
     [Theory]
@@ -123,33 +123,72 @@ public sealed class CoveragePerfWarmupSubmissionTests
         string markdown = CoveragePerfReportJson.Markdown(report);
         string[] lines =
         [
-            "- Block 0 DirectOff warm-up cold setup outside every gate: none. Every warm-up frame matches the measured steady schedule of 1 submissions and 0 completion fences.",
-            "- Block 1 SharedOff warm-up cold setup outside every gate: none. Every warm-up frame matches the measured steady schedule of 1 submissions and 0 completion fences.",
-            "- Block 2 SharedOff warm-up cold setup outside every gate, measured steady schedule 1 submissions and 0 completion fences: frame 0 with 2 submissions and 1 completion fences, frame 5 with 1 submissions and 1 completion fences.",
-            "- Block 3 SharedOn warm-up cold setup outside every gate, measured steady schedule 1 submissions and 1 completion fences: frame 0 with 2 submissions and 2 completion fences.",
+            Rule,
+            "- Block 0 DirectOff warm-up cold setup outside every gate: none. Every warm-up frame matches the measured steady schedule of 1 submission and 0 completion fences.",
+            "- Block 1 SharedOff warm-up cold setup outside every gate: none. Every warm-up frame matches the measured steady schedule of 1 submission and 0 completion fences.",
+            "- Block 2 SharedOff warm-up cold setup outside every gate, measured steady schedule 1 submission and 0 completion fences: frame 0 with 2 submissions and 1 completion fence, frame 5 with 1 submission and 1 completion fence.",
+            "- Block 3 SharedOn warm-up cold setup outside every gate, measured steady schedule 1 submission and 1 completion fence: frame 0 with 2 submissions and 2 completion fences.",
         ];
         int section = markdown.IndexOf("Shared submission", StringComparison.Ordinal), wall = markdown.IndexOf("Frame wall", StringComparison.Ordinal);
         foreach (string line in lines)
         {
-            int at = markdown.IndexOf(line, StringComparison.Ordinal);
+            int at = markdown.IndexOf(Environment.NewLine + line + Environment.NewLine, StringComparison.Ordinal);
             Assert.True(at > section && at < wall, line);
         }
     }
 
     [Fact]
-    public void AnUnresolvedMeasuredScheduleListsNoWarmupDeviation()
+    public void AWarmupFrameThatDiffersOnlyInSubmissionsIsListed()
     {
-        var report = CoveragePerfReportVectors.ChangeSample(CoveragePerfReportVectors.Create("C0"), 3, s => s with { SubmittedCompletionFences = 2 });
+        var report = Warmup(CoveragePerfReportVectors.Create("C0"), 2, 3, s => s with { Submissions = 2 });
+        report = Warmup(report, 3, 4, s => s with { Submissions = 2 });
+        Assert.Equal((0, 1), (report.Blocks[2].Warmup[3].SubmittedCompletionFences, report.Blocks[3].Warmup[4].SubmittedCompletionFences));
+        Assert.Empty(CoveragePerfValidity.Reasons(report));
+        var deviations = CoveragePerfSharedSubmission.WarmupDeviations(report);
+        Assert.Equal(new[] { new CoveragePerfWarmupSubmissionFrame(3, 2, 0) }, deviations[2].Frames.ToArray());
+        Assert.Equal(new[] { new CoveragePerfWarmupSubmissionFrame(4, 2, 1) }, deviations[3].Frames.ToArray());
+        string markdown = CoveragePerfReportJson.Markdown(report);
+        Assert.Contains("- Block 2 SharedOff warm-up cold setup outside every gate, measured steady schedule 1 submission and 0 completion fences: frame 3 with 2 submissions and 0 completion fences.", markdown);
+        Assert.Contains("- Block 3 SharedOn warm-up cold setup outside every gate, measured steady schedule 1 submission and 1 completion fence: frame 4 with 2 submissions and 1 completion fence.", markdown);
+    }
+
+    [Theory]
+    [InlineData("fences")]
+    [InlineData("submissions")]
+    public void TheSteadyScheduleComesFromTheRouteWhenAMeasuredFrameIsOffIt(string field)
+    {
+        var report = CoveragePerfReportVectors.ChangeSample(CoveragePerfReportVectors.Create("C0"), 3,
+            s => field == "fences" ? s with { SubmittedCompletionFences = 2 } : s with { Submissions = 2 });
         report = Warmup(report, 3, 0, s => s with { Submissions = 2, SubmittedCompletionFences = 2 });
+        var block = CoveragePerfSharedSubmission.WarmupDeviations(report)[3];
+        Assert.Equal((1, 1), (block.SteadySubmissions, block.SteadyCompletionFences));
+        Assert.Equal(new[] { new CoveragePerfWarmupSubmissionFrame(0, 2, 2) }, block.Frames.ToArray());
+    }
+
+    [Fact]
+    public void ACoveredBlockWithoutActorsHasNoSteadyFence()
+    {
+        var report = CoveragePerfReportVectors.ChangeBlock(CoveragePerfReportVectors.Create("C0"), 3, b => b with { Block = b.Block with { Actors = 0 } });
+        var block = CoveragePerfSharedSubmission.WarmupDeviations(report)[3];
+        Assert.Equal((1, 0), (block.SteadySubmissions, block.SteadyCompletionFences));
+        Assert.Equal(CoveragePerfManifest.WarmupFrameCount, block.Frames.Length);
+    }
+
+    [Fact]
+    public void AnUnsupportedRouteListsNoWarmupDeviation()
+    {
+        var report = CoveragePerfReportVectors.ChangeBlock(CoveragePerfReportVectors.Create("G1"), 0,
+            b => b with { Block = b.Block with { Condition = CoveragePerfCondition.DirectOff } });
+        report = Warmup(report, 0, 0, s => s with { Submissions = 2, SubmittedCompletionFences = 2 });
         string json = CoveragePerfReportJson.Serialize(report);
         using (var document = JsonDocument.Parse(json))
         {
-            var block = document.RootElement.GetProperty("verdict").GetProperty("warmupSubmissionDeviations")[3];
+            var block = document.RootElement.GetProperty("verdict").GetProperty("warmupSubmissionDeviations")[0];
             Assert.Equal(JsonValueKind.Null, block.GetProperty("steadySubmissions").ValueKind);
             Assert.Equal(JsonValueKind.Null, block.GetProperty("steadyCompletionFences").ValueKind);
             Assert.Equal(0, block.GetProperty("frames").GetArrayLength());
         }
-        Assert.Contains("- Block 3 SharedOn warm-up cold setup outside every gate: the measured steady schedule is unresolved, so no warm-up deviation is listed.",
+        Assert.Contains("- Block 0 DirectOff warm-up cold setup outside every gate: the route has no measured steady schedule, so no warm-up deviation is listed.",
             CoveragePerfReportJson.Markdown(report));
     }
 

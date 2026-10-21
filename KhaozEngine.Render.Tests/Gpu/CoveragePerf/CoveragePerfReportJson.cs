@@ -99,13 +99,19 @@ internal static class CoveragePerfReportJson
         {
             string line = FormattableString.Invariant($"- Block {block.Block} {block.Condition} warm-up cold setup outside every gate");
             if (block.SteadySubmissions is not int submissions || block.SteadyCompletionFences is not int fences)
-                text.AppendLine(line + ": the measured steady schedule is unresolved, so no warm-up deviation is listed.");
-            else if (block.Frames.IsDefaultOrEmpty)
-                text.AppendLine(line + FormattableString.Invariant($": none. Every warm-up frame matches the measured steady schedule of {submissions} submissions and {fences} completion fences."));
+            {
+                text.AppendLine(line + ": the route has no measured steady schedule, so no warm-up deviation is listed.");
+                return;
+            }
+            string steady = Schedule(submissions, fences);
+            if (block.Frames.IsDefaultOrEmpty)
+                text.AppendLine(line + $": none. Every warm-up frame matches the measured steady schedule of {steady}.");
             else
-                text.AppendLine(line + FormattableString.Invariant($", measured steady schedule {submissions} submissions and {fences} completion fences: ")
-                    + string.Join(", ", block.Frames.Select(f => FormattableString.Invariant(
-                        $"frame {f.FrameIndex} with {f.Submissions} submissions and {f.SubmittedCompletionFences} completion fences"))) + ".");
+                text.AppendLine(line + $", measured steady schedule {steady}: " + string.Join(", ", block.Frames.Select(f =>
+                    FormattableString.Invariant($"frame {f.FrameIndex} with ") + Schedule(f.Submissions, f.SubmittedCompletionFences))) + ".");
+
+            static string Schedule(int submissions, int fences) => CoveragePerfSharedSubmission.Count(submissions, "submission") + " and "
+                + CoveragePerfSharedSubmission.Count(fences, "completion fence");
         }
     }
 

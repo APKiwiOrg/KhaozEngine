@@ -21,7 +21,32 @@ internal sealed record RendererPerfRecipeFacts(string Id, string Version, string
     string AssetSha256, string SequenceSha256, string RecipeSha256, RendererPerfRecipeSchedule Schedule);
 internal sealed record RendererPerfRecipeSchedule(int DirectionalCascades, string DirectionalCache,
     int StaticPointRows, int DynamicPointRows, int StaticRebuildBudget, int WarmStaticRebuilds,
-    int DynamicUpdates, int TransientRows, int FacesPerRow, bool Temporal, bool Atmosphere, bool Bloom);
+    int DynamicUpdates, int TransientRows, int FacesPerRow, bool Temporal, bool Atmosphere, bool Bloom,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] RendererPerfFeatureSchedule? Features = null);
+internal sealed record RendererPerfFeatureSchedule
+{
+    public int FoliagePatches { get; init; }
+    public int FoliageInstances { get; init; }
+    public int WaterPlanes { get; init; }
+    public int OceanDispatches { get; init; }
+    public int OceanMipCopies { get; init; }
+    public string? OceanPrime { get; init; }
+    public int Decals { get; init; }
+    public int Particles { get; init; }
+    public int TexturedBillboards { get; init; }
+    public int Beams { get; init; }
+    public int Trails { get; init; }
+    public int Overlays { get; init; }
+    public int Silhouettes { get; init; }
+    public int OutlinedActors { get; init; }
+    public int Distortions { get; init; }
+    public int TemporalOutlineDraws { get; init; }
+    public int UiSprites { get; init; }
+    public int UiGlyphs { get; init; }
+    public int UiTextures { get; init; }
+    public int UiClips { get; init; }
+}
+internal sealed record RendererPerfPoint(Vector3 Position, Color Color, float Radius, float Intensity, LightShadow Shadow);
 internal sealed record RendererPerfRecipeFrame(int Index, float TimeSeconds, Vector3 Target, float Azimuth,
     Vector3 LightDirection, Matrix4x4 View, Matrix4x4 Projection, Matrix4x4 ViewProjection, string PoseSha256);
 internal sealed record RendererPerfScenePolicy(bool GpuSkinning, bool FrustumCulling, bool TerrainCastsShadows,
@@ -55,10 +80,15 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
     RendererPerfRecipeFrame[] _frames = [];
     protected RendererPerfRecipe(string id) => _id = id;
     public RendererPerfRecipeFacts Facts { get; private set; } = null!;
+    internal virtual RendererPerfUiScene? UiScene => null;
     internal virtual IReadOnlyList<GltfMesh> Terrain => Array.Empty<GltfMesh>();
     protected virtual int Buildings => 0;
     protected virtual int Props => 0;
     protected virtual int Actors => 0;
+    protected virtual int Foliage => 0;
+    protected virtual int Water => 0;
+    protected virtual int Effects => 0;
+    protected virtual int Ui => 0;
     protected virtual object Geometry => Array.Empty<object>();
     protected virtual object Assets => Array.Empty<object>();
     protected virtual string PoseDigest(int frame) => Hash(Array.Empty<byte>());
@@ -71,6 +101,8 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
             "empty" => new EmptyRecipe(),
             "village" => new RendererPerfVillageScene(),
             "crowd" => new RendererPerfCrowdScene(),
+            "outdoors" => new RendererPerfOutdoorsScene(),
+            "effects-ui" => new RendererPerfEffectsScene(),
             _ => throw new ArgumentOutOfRangeException(nameof(id)),
         };
         recipe.Freeze();
@@ -105,10 +137,7 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
         }).ToArray();
         string geometry = Digest(Geometry), settings = Digest(post), assets = Digest(Assets), sequence = Digest(_frames);
         string profile = _id == "empty" ? "empty-native-1080/1" : "renderer-full-native-1080/1";
-        var schedule = new RendererPerfRecipeSchedule(_id == "empty" ? 0 : 4,
-            Actors > 0 ? "recomputed-current-pose" : "reuse-identical-camera-and-sun",
-            Actors > 0 ? 1 : 0, Actors > 0 ? 1 : 0, Actors > 0 ? 1 : 0, 0,
-            Actors > 0 ? 1 : 0, Actors > 0 ? 1 : 0, 6, _id != "empty", _id != "empty", _id != "empty");
+        RendererPerfRecipeSchedule schedule = Schedule;
         _description = JsonSerializer.SerializeToUtf8Bytes(new
         {
             Schema = "khaozengine.renderer-perf-recipe/1",
@@ -163,10 +192,10 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
                 ActorIntended = Actors,
                 ActorVisible = Actors,
                 ActorCulled = 0,
-                Foliage = 0,
-                Water = 0,
-                Effects = 0,
-                Ui = 0
+                Foliage,
+                Water,
+                Effects,
+                Ui
             },
             InitialClear = 1,
             FinalBlit = 1,
@@ -225,6 +254,12 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
         QueueContent(scene, frame.Index);
     }
 
+    protected virtual RendererPerfRecipeSchedule Schedule => new RendererPerfRecipeSchedule(_id == "empty" ? 0 : 4,
+            Actors > 0 ? "recomputed-current-pose" : "reuse-identical-camera-and-sun",
+            Actors > 0 ? 1 : 0, Actors > 0 ? 1 : 0, Actors > 0 ? 1 : 0, 0,
+            Actors > 0 ? 1 : 0, Actors > 0 ? 1 : 0, 6, _id != "empty", _id != "empty", _id != "empty");
+
+    protected virtual void ConfigureSettings(PixelPostProcessSettings post) { }
     protected virtual void Load(Scene3D scene) { }
     protected virtual void QueueContent(Scene3D scene, int frameIndex) { }
     protected virtual IsoCamera3D Camera() => new()
@@ -288,6 +323,7 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
         post.Bloom.Enabled = active;
         post.Atmosphere.Enabled = active;
         post.Sky.Enabled = false;
+        ConfigureSettings(post);
         return post;
     }
 
@@ -309,6 +345,6 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
         VertexSha256 = BufferDigest(mesh.Vertices),
         IndexSha256 = BufferDigest(mesh.Indices32)
     };
-    public void Dispose() { _scene = null; _usedScenes.Clear(); _disposed = true; }
+    public virtual void Dispose() { _scene = null; _usedScenes.Clear(); _disposed = true; }
     sealed class EmptyRecipe() : RendererPerfRecipe("empty");
 }

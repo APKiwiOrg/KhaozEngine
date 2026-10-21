@@ -28,7 +28,9 @@ internal static class CoverageCarryNativeShader
         int[] buffers = CoverageCarryShaders.BufferIndices(name.Replace("CoverageCarry", "CoverageCarryNative", StringComparison.Ordinal));
         // Performance compilation removes unused resources. Compact their bindings for Vulkan as well as
         // the dense reflected layouts used by Metal and D3D11. Original storage ownership stays explicit.
-        return Regex.Replace(source, @"(?m)^layout\(std430, set = 0, binding = (\d+)\)[^\n]*", match =>
+        // Source fragments can meet immediately after a closing brace. Match the declaration itself,
+        // rather than assuming it starts a line, or the anchor keeps its old Vulkan binding.
+        return Regex.Replace(source, @"layout\(std430, set = 0, binding = (\d+)\)[^{]*\{[^}]*\};", match =>
         {
             int binding = int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
             int compact = Array.IndexOf(buffers, binding);

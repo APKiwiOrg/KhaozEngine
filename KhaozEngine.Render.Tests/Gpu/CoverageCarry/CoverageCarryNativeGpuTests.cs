@@ -55,6 +55,7 @@ public sealed class CoverageCarryNativeGpuTests(ITestOutputHelper output)
                     }
                     var candidate = expectedByPose[pose];
                     var before = beforeByPose[pose];
+                    Assert.Equal(candidate.Select((value, vertex) => value.Position == before[vertex].Position ? 0u : 1u), carry.Movement(work, actor));
                     AssertWords(expectedWords[pose], carry.Surface(actual, actor), actor, frame, "current");
                     AssertWords(beforeWords[pose], carry.Before(work, actor), actor, frame, "before");
                     AssertWords(frame > 0 ? previous[actor] : new uint[candidate.Length * 16],

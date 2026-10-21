@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using Xunit;
@@ -87,16 +88,21 @@ internal sealed class CoverageCarryLayoutDevice : IGpuDevice, IGpuResourceFactor
         Pipeline? pipeline;
         Set? set;
         internal readonly List<(Pipeline Pipeline, Set Set)> Dispatches = new();
-        public void Begin() { pipeline = null; set = null; Dispatches.Clear(); }
+        internal readonly List<(IGpuBuffer Buffer, uint Offset, uint[] Words)> Uploads = new();
+        internal readonly List<(uint X, uint Y, uint Z)> Groups = new();
+        internal readonly List<uint> Markers = new();
+        public void Begin() { pipeline = null; set = null; Dispatches.Clear(); Uploads.Clear(); Groups.Clear(); Markers.Clear(); }
         public void End() { }
         public void SetComputePipeline(IGpuComputePipeline value) => pipeline = Assert.IsType<Pipeline>(value);
         public void SetComputeResourceSet(uint slot, IGpuResourceSet value)
         { Assert.Equal(0u, slot); set = Assert.IsType<Set>(value); }
         public void SetComputeResourceSet(uint slot, IGpuResourceSet value, uint dynamicOffset) => throw new NotSupportedException();
         public void Dispatch(uint x, uint y, uint z)
-        { Assert.NotNull(pipeline); Assert.NotNull(set); Dispatches.Add((pipeline, set)); }
+        { Assert.NotNull(pipeline); Assert.NotNull(set); Dispatches.Add((pipeline, set)); Groups.Add((x, y, z)); }
+        public void WriteTimestamp(IGpuTimestampPool pool, uint index) => Markers.Add(index);
         public void UpdateBuffer<T>(IGpuBuffer buffer, uint offset, in T data) where T : unmanaged { }
-        public void UpdateBuffer<T>(IGpuBuffer buffer, uint offset, ReadOnlySpan<T> data) where T : unmanaged { }
+        public void UpdateBuffer<T>(IGpuBuffer buffer, uint offset, ReadOnlySpan<T> data) where T : unmanaged
+            => Uploads.Add((buffer, offset, MemoryMarshal.Cast<T, uint>(data).ToArray()));
         public void SetFramebuffer(IGpuFramebuffer framebuffer) => throw new NotSupportedException();
         public void ClearColorTarget(uint index, Color colour) => throw new NotSupportedException();
         public void ClearDepthStencil(float depth) => throw new NotSupportedException();

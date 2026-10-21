@@ -7,6 +7,25 @@ namespace KhaozEngine.Tests.Gpu;
 
 public sealed class CoverageCarryErrorTests
 {
+    [Theory]
+    [InlineData(0)]
+    [InlineData(3)]
+    [InlineData(12)]
+    public void Rounding_envelope_rejects_wrong_binding_scale_errors(int field)
+    {
+        var expected = new ModelVertex[1];
+        expected[0].Position = Vector3.One;
+        expected[0].Normal = Vector3.UnitY;
+        expected[0].Tangent = new(0, 0, 1, 1);
+        uint[] actual = CoverageCarryReferenceTests.Words(expected);
+        var error = new CoverageCarryError(0);
+        error.Include(expected, actual);
+        CoverageCarryRounding.Require(error);
+        actual[field] = BitConverter.SingleToUInt32Bits(.125f);
+        error.Include(expected, actual);
+        Assert.Throws<InvalidOperationException>(() => CoverageCarryRounding.Require(error));
+    }
+
     [Fact]
     public void Vector_errors_retain_maxima_and_report_undefined_zero_reference_relative_errors()
     {

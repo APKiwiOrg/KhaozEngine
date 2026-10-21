@@ -46,6 +46,7 @@ internal sealed class CoverageCarryDevice : IDisposable
         Row(0, t.SourceVertexCount, 16); header[2] = header[0]; header[3] = header[1];
         Row(4, t.VertexCount, 16); Row(8, t.VertexCount, 16); Row(10, t.VertexCount, 16);
         Row(42, t.TriangleCount, 46);
+        Row(44, t.VertexCount, 1);
         workStride = cursor;
         surfaceStride = t.VertexCount * 16;
         var anchors = new uint[t.PositionGroupCount * 2 * count];
@@ -152,6 +153,7 @@ internal sealed class CoverageCarryDevice : IDisposable
 
     internal uint[] Surface(uint[] words, int actor) => words.AsSpan(actor * surfaceStride, surfaceStride).ToArray();
     internal uint[] Before(uint[] words, int actor) => words.AsSpan(actor * workStride + (int)header[4], surfaceStride).ToArray();
+    internal uint[] Movement(uint[] words, int actor) => words.AsSpan(actor * workStride + (int)header[44], fixture.Topology.VertexCount).ToArray();
 
     public void Dispose()
     {

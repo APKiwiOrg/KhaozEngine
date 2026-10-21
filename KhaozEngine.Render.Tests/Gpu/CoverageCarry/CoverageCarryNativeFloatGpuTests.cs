@@ -44,7 +44,16 @@ public sealed class CoverageCarryNativeFloatGpuTests(ITestOutputHelper output)
                         Assert.True(CoverageCarryReference.TryCarry(fixture.Topology, input.Palette, input.Commands,
                             input.Anchor, new(fixture.Topology), expected, out var failure), failure.ToString());
                     uint[] current = carry.Surface(actual, actor), before = carry.Before(work, actor);
+                    uint[] movement = carry.Movement(work, actor);
+                    for (int vertex = 0; vertex < movement.Length; vertex++)
+                    {
+                        bool moved = false;
+                        for (int axis = 0; axis < 3; axis++)
+                            moved |= BitConverter.UInt32BitsToSingle(before[vertex * 16 + axis]) != BitConverter.UInt32BitsToSingle(current[vertex * 16 + axis]);
+                        Assert.Equal(moved ? 1u : 0u, movement[vertex]);
+                    }
                     errors[actor].Include(expected, current);
+                    CoverageCarryRounding.Require(errors[actor]);
                     Assert.Equal(frame > 0 ? previous[actor] : new uint[current.Length], carry.Surface(history, actor));
                     previous[actor] = current;
                     var status = carry.Results(results, actor, frame);

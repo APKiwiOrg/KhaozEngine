@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Internal;
 using Xunit;
@@ -25,6 +26,16 @@ public sealed class CoverageCarryLayoutTests
             var options = CoverageCarryShaders.Options(kernels[index].Name);
             int[] buffers = CoverageCarryShaders.BufferIndices(kernels[index].Name);
             byte[] module = SpirvFrontEnd.ToSpirv(kernels[index].ComputeGlsl, GpuShaderStages.Compute, names[index], options);
+            var words = MemoryMarshal.Cast<byte, uint>(module).ToArray();
+            var bindings = new System.Collections.Generic.List<uint>();
+            for (int at = 5; at < words.Length; at += (int)(words[at] >> 16))
+            {
+                if ((words[at] & 65535) != 71) continue; // OpDecorate
+                if (words[at + 2] == 33) bindings.Add(words[at + 3]); // Binding
+                if (words[at + 2] == 34) Assert.Equal(0u, words[at + 3]); // DescriptorSet
+            }
+            Assert.True(bindings.Order().SequenceEqual(Enumerable.Range(0, buffers.Length).Select(i => (uint)i)),
+                $"{names[index]} Vulkan bindings [{string.Join(",", bindings.Order())}] must be dense and match its {buffers.Length} resources.");
             var hlsl = SpirvCrossCompile.ComputeToHlsl(module, names[index], options).Reflection;
             var msl = SpirvCrossCompile.ComputeToMsl(module, names[index], options).Reflection;
             var expected = Assert.Single(hlsl.ResourceLayouts).Elements;

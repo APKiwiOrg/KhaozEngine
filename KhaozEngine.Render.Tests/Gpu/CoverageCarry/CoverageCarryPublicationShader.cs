@@ -1,8 +1,22 @@
+using System;
+
 namespace KhaozEngine.Tests.Gpu;
 
 /// <summary>Current and previous words plus tight current bounds. Only genuine reduction dependencies use barriers.</summary>
 internal static class CoverageCarryPublicationShader
 {
+    internal static string FusedSource
+    {
+        get
+        {
+            int start = Source.IndexOf("carryGather();", StringComparison.Ordinal);
+            if (start < 0) throw new InvalidOperationException("Carry publication entry changed.");
+            int end = Source.IndexOf("ordered =", start, StringComparison.Ordinal);
+            if (end <= start) throw new InvalidOperationException("Carry bounds boundary changed.");
+            return Source[..start] + "vec3 position; carryGather(position);\n        " + Source[end..];
+        }
+    }
+
     internal const string Source = """
         shared uint carryBounds[384];
         uint carryOrdered(float value) {

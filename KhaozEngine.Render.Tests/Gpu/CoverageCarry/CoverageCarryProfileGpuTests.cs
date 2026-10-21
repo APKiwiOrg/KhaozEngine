@@ -25,27 +25,29 @@ public sealed class CoverageCarryProfileGpuTests(ITestOutputHelper output)
         if (context.Backend == GpuBackendKind.MetalNative) Assert.Equal(9, observed);
         var device = context.GpuDevice;
         var fixture = new CoverageCarryFixture();
+        object[] gatherWork = CoverageCarryGatherWork.Describe(fixture);
         var rows = new List<object>();
         foreach (int count in new[] { 1, 32 })
         {
             using (var carry = new CoverageCarryDevice(device, fixture, count))
             {
-                rows.Add(CoverageCarryMeasurement.Measure(device, carry, observed, ordinary: false));
-                rows.Add(CoverageCarryMeasurement.Measure(device, carry, observed, ordinary: true));
-                rows.Add(CoverageCarryMeasurement.Measure(device, carry, observed, ordinary: false, stages: true));
+                rows.AddRange(CoverageCarryMeasurement.Measure(device, carry, observed, ordinary: false));
+                rows.AddRange(CoverageCarryMeasurement.Measure(device, carry, observed, ordinary: true));
             }
             using var native = new CoverageCarryDevice(device, fixture, count, nativeFloat: true);
-            rows.Add(CoverageCarryMeasurement.Measure(device, native, observed, ordinary: false, nativeFloat: true));
-            rows.Add(CoverageCarryMeasurement.Measure(device, native, observed, ordinary: false, nativeFloat: true, stages: true));
+            rows.AddRange(CoverageCarryMeasurement.Measure(device, native, observed, ordinary: false, nativeFloat: true));
         }
         string json = JsonSerializer.Serialize(new
         {
-            schema = "khaozengine.coverage-carry-profile/2",
+            schema = "khaozengine.coverage-carry-profile/3",
             label = CoverageCarryReference.Label,
             diagnosticOnly = true,
             warmupFrames = CoverageCarryMeasurement.WarmupFrames,
-            conditioning = "96 fixed conditioning frames per path and layout. Every measured frame is retained. Half means expose remaining drift.",
+            conditioning = "96 conditioning frames per layout, replayed in adjacent three-frame batches with alternating layout order. No ordinary pass or offline reference work separates paired layouts. Every observed sample is retained.",
             errors = "Per actor maximum Euclidean XYZ error and error/reference-length ratio over the final surface of each row. The separate correctness fact covers both poses, weights and command frames. Zero reference with nonzero error has undefined relative error and is counted separately. Tangent W is separate.",
+            nativeFloatRegressionEnvelope = new { positionRelative = 32 * CoverageCarryRounding.FloatEpsilon,
+                normalRelative = 256 * CoverageCarryRounding.FloatEpsilon, tangentRelative = 128 * CoverageCarryRounding.FloatEpsilon },
+            gatherWork,
             measuredFrames = observed,
             fixture = CoveragePerfManifest.FixtureVersion,
             fixtureTopology = fixture.Geometry.Topology,

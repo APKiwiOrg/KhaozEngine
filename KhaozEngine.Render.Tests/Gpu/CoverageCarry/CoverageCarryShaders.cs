@@ -34,11 +34,11 @@ internal static class CoverageCarryShaders
         yield return new("CoverageCarrySkin", Adapt(CoverageGpuSkinRefineGlsl.Source(CoverageGpuPhase.Skin), 1));
         yield return new("CoverageCarryTransport", Prefix(3) + CoverageGpuSkinRefineGlsl.Unit
             + AdaptRefinement() + Transport);
-        yield return new("CoverageCarryBasis", Prefix(4) + CoverageGpuNormalBasisGlsl.Unit + CoverageGpuNormalWorkLayout.Source
+        yield return new("CoverageCarryBasis", Prefix(4) + CoverageGpuNormalBasisGlsl.Unit + CoverageCarryGatherShader.MovementSource
             + CoverageCarryBasisShader.Source);
-        string gather = CoverageGpuSkinRefineGlsl.Source(CoverageGpuPhase.GatherAttributes)
-            .Replace("void main()", "void carryGather()", StringComparison.Ordinal);
-        yield return new("CoverageCarryPublish", Adapt(gather + CoverageCarryPublicationShader.Source, 3));
+        yield return new("CoverageCarryPublish", Prefix(3) + CoverageGpuNormalBasisGlsl.Unit + CoverageCarryGatherShader.MovementSource
+            + CoverageCarryGatherShader.Source.Replace("= gl_GlobalInvocationID.x", "= carryIndex()", StringComparison.Ordinal)
+            + CoverageCarryPublicationShader.FusedSource);
         yield return new("CoverageCarryOrdinarySkin", Prefix(1) + CoverageCarryOrdinaryShader.Source
             + CoverageCarryPublicationShader.Source.Replace("carryGather();", "carryOrdinary();", StringComparison.Ordinal)
                 .Replace("CovFrameWords[f+6u]", "CovFrameWords[f+5u]", StringComparison.Ordinal));
@@ -113,6 +113,7 @@ internal static class CoverageCarryShaders
                 }
             }
             covWrite3(covRow(w,8u)+i*16u,position);
+            CovWorkWords[covRow(w,44u)+i] = covEqual3(position,covWork3(before)) ? 0u : 1u;
         }
         """;
 }

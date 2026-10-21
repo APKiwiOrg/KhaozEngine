@@ -49,8 +49,13 @@ recipe, anchor and output records use the existing packed word ABI.
 The basis program fuses preparation and division through one corrected scalar
 worker pump. Carry has no geometric predicate jobs, so its worker excludes those
 unused branches. Every physical program remains under the unchanged C8 caps.
-The publication program copies old current words to previous, publishes all current
-words, and computes tight bounds with one uniform 64-lane reduction per workgroup.
+Transport records the numerically moved flag once per vertex. Basis and gather reuse
+that flag instead of comparing six position words at every visit. Gather loads only
+the six basis vectors consumed by its current direction. It keeps the same ordered
+corner traversal and scalar worker jobs. The publication program copies old current
+words to previous and emits the gathered record directly, removing the intermediate
+16-word candidate write and read. It computes tight bounds with one uniform
+64-lane reduction per workgroup.
 All lanes, including tails, execute every barrier. Only each workgroup's bound
 summary uses global integer atomics. Per-frame uploads initialize bounds and errors
 before any dispatch.
@@ -73,7 +78,10 @@ compilation may contract arithmetic. This is an approximate achievable floor for
 the retained traversal, never an exact path or a geometric certificate.
 
 Native stages compact unused bindings before compilation. Their explicit buffer
-map drives both resource sets and the headless HLSL/MSL layout checks. Shader size
+map drives resource sets and the headless HLSL/MSL layout checks. The layout test
+also checks numeric SPIR-V set and binding decorations, because cross-compilation
+densifies a sparse Vulkan binding table. Declaration rewriting handles fragments
+joined after a closing brace, including the separately stored anchor. Shader size
 and corpus generation use the actual compilation options for every program,
 including the ordinary control. No C8 cap is raised.
 
@@ -84,14 +92,23 @@ tangent error, and error divided by the reference vector length. Zero reference
 vectors with nonzero errors have undefined relative error and are counted
 separately. Tangent W has a separate absolute error. Native history, tight bounds,
 protected positions relative to native Before, and immutable anchors are checked.
-There is no accepted error tolerance and no claim that these differences are safe.
+The F0 regression envelope is 32 binary32 epsilons in relative position, 256 in
+relative normal and 128 in relative tangent error. Tangent W must be unchanged and
+zero-reference vectors must stay zero. These allowances scale the local arithmetic
+roundoff through the skin, refinement, transport and conditioned basis/gather chain.
+They reject wrong bindings. They are not a proved continuous error bound, an
+accepted geometric tolerance, or a claim that the differences are safe.
 
 ## Diagnostic
 
 `CoverageCarryProfileGpuTests` uses the existing `CoverageDispatchProfileFact`
 opt-in and hardware capability checks. It uses 96 fixed conditioning frames, then 9 observed
 frames on Metal and 32 on the other native backends, for each of 1 and 32 distinct
-actors. Each carry path has an outer row and a separately conditioned stage row.
+actors. Each carry path pairs outer and stages layouts on the same frame constants
+and retained resources in adjacent three-frame batches. Which layout runs first
+alternates each batch, during both conditioning and observation. No ordinary pass
+or offline reference computation separates a pair. Each layout still gets 96
+conditioning frames and every observed frame is retained.
 The ordinary control has an outer row. The diagnostic uses the existing ordinary hosted workflow
 without an environment or workflow change. `KE_COVERAGE_CARRY_MEASURED_FRAMES`
 can explicitly select 9 or 32. Metal accepts only 9.
@@ -111,11 +128,19 @@ separate CPU submission time. Sampled outputs are
 checked after the entire observed block. Offline reference computation is kept
 out of conditioning and measurement. First-half and second-half means retain
 chronological order and include every measured sample, including an odd tail.
-They expose remaining clock drift rather than trimming it. Each layout conditions
-independently. Conditioning is fixed, not a proof of convergence. The ordinary
-control shares the exact carry harness's retained allocation. Native float rows
+They expose remaining clock drift rather than trimming it. The paired layouts share
+conditioning chronology. Conditioning is fixed, not a proof of convergence. This removes the former sequential-order confound, where ordinary
+skinning and offline work ran between exact outer and stages. Historical T4 timing
+alone does not distinguish clocks, cache state and marker-induced scheduling. Both
+historical 32-actor layouts also followed the invalid one-actor native transport
+dispatch with its unbound anchor. Those Vulkan samples cannot establish an exact
+carry budget or a physical cause for the layout gap. Re-measure after the binding
+repair using the paired chronology. The ordinary control shares the exact carry harness's retained allocation. Native float rows
 also retain per-actor error maxima over each row's final surface. The separate
 native correctness fact retains errors across all its replay frames and variants.
+An offline F0 operation inventory reports moved vertices, ordered corner visits,
+contributing direction counts and scalar job counts. It also reports the candidate
+traffic and basis reads removed by this revision. These counts are not GPU counters.
 
 Shared topology, compiled programs and exact anchors are resident before timing.
 Their first admission, validity, atlas selection, certification, exact refresh and

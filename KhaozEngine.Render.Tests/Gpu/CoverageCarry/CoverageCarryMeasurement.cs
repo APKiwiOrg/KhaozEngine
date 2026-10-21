@@ -8,33 +8,40 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Gpu;
 
-/// <summary>Separate outer and stage layouts, each conditioned independently. Readbacks stay outside frame timing.</summary>
+/// <summary>Paired outer and stage layouts with alternating order. Readbacks stay outside frame timing.</summary>
 internal static class CoverageCarryMeasurement
 {
     internal const int WarmupFrames = 96;
     static readonly string[] StageNames = ["skin", "refine and transport", "basis and normals", "gather and publish"];
 
-    internal static object Measure(IGpuDevice device, CoverageCarryDevice carry, int observed,
-        bool ordinary, bool nativeFloat = false, bool stages = false)
+    internal static object[] Measure(IGpuDevice device, CoverageCarryDevice carry, int observed,
+        bool ordinary, bool nativeFloat = false)
     {
-        if (ordinary && stages) throw new ArgumentException("The ordinary control uses the outer layout only.");
-        int markers = stages ? 10 : 2;
-        var slots = Enumerable.Range(0, 3).Select(_ => new Slot(device, markers)).ToArray();
-        var samples = new List<Sample>(observed);
+        int capacity = ordinary ? 2 : 10;
+        var slots = Enumerable.Range(0, 3).Select(_ => new Slot(device, capacity)).ToArray();
+        var samples = new List<Sample>(observed * (ordinary ? 1 : 2));
         var errors = Enumerable.Range(0, carry.Count).Select(actor => new CoverageCarryError(actor)).ToArray();
         try
         {
-            Run(0, WarmupFrames, retain: false);
-            Run(WarmupFrames, observed, retain: true);
-            Assert.Equal(observed, samples.Count);
+            Paired(0, WarmupFrames, retain: false);
+            Paired(WarmupFrames, observed, retain: true);
+            Assert.Equal(observed * (ordinary ? 1 : 2), samples.Count);
             CheckSurface(WarmupFrames + observed - 1, carry.Read(5));
+            return ordinary ? [Row(false)] : [Row(false), Row(true)];
+        }
+        finally { foreach (var slot in slots) slot.Dispose(); }
+
+        object Row(bool stages)
+        {
+            var selected = samples.Where(sample => sample.Stages == stages).ToArray();
+            Assert.Equal(observed, selected.Length);
             return new
             {
                 actors = carry.Count,
                 path = ordinary ? "ordinary skinning compute control" : nativeFloat ? CoverageCarryNativeShader.Label : CoverageCarryReference.Label,
                 exact = !ordinary && !nativeFloat,
                 timingLayout = stages ? "stages (diagnostic only)" : "outer pair (decision number)",
-                timestampMarkers = markers,
+                timestampMarkers = stages ? 10 : 2,
                 verticesPerActor = ordinary ? carry.Actors[0].Anchor.Topology.SourceVertexCount : carry.Actors[0].Anchor.Topology.VertexCount,
                 dispatches = ordinary ? 1 : 4,
                 groupsX = ordinary ? carry.Groups[..1] : carry.Groups,
@@ -43,21 +50,34 @@ internal static class CoverageCarryMeasurement
                 carry.ScratchBytes,
                 carry.PersistentBytes,
                 carry.AnchorBytes,
-                gpuMicroseconds = Stats(samples.Select(s => s.GpuMicroseconds)),
-                halfMeans = HalfMeans(samples.Select(s => s.GpuMicroseconds).ToArray()),
+                gpuMicroseconds = Stats(selected.Select(s => s.GpuMicroseconds)),
+                halfMeans = HalfMeans(selected.Select(s => s.GpuMicroseconds).ToArray()),
                 stageGpuMicroseconds = stages ? StageNames.Select((name, stage) => new
-                { name, stats = Stats(samples.Select(s => s.StageMicroseconds[stage])) }).ToArray() : null,
-                cpuEncodingMicroseconds = Stats(samples.Select(s => s.CpuEncodingMicroseconds)),
-                cpuSubmissionMicroseconds = Stats(samples.Select(s => s.CpuSubmissionMicroseconds)),
-                warmManagedAllocatedBytes = Stats(samples.Select(s => (double)s.AllocatedBytes)),
+                { name, stats = Stats(selected.Select(s => s.StageMicroseconds[stage])) }).ToArray() : null,
+                cpuEncodingMicroseconds = Stats(selected.Select(s => s.CpuEncodingMicroseconds)),
+                cpuSubmissionMicroseconds = Stats(selected.Select(s => s.CpuSubmissionMicroseconds)),
+                warmManagedAllocatedBytes = Stats(selected.Select(s => (double)s.AllocatedBytes)),
                 nativeFloatErrorsPerActor = nativeFloat ? errors : null,
-                samples,
+                samples = selected,
             };
         }
-        finally { foreach (var slot in slots) slot.Dispose(); }
 
-        void Run(int start, int count, bool retain)
+        void Paired(int start, int count, bool retain)
         {
+            for (int offset = 0; offset < count; offset += slots.Length)
+            {
+                int batch = Math.Min(slots.Length, count - offset);
+                // The same prepared frames, resources and uploads are replayed in adjacent batches.
+                // Alternate which layout goes first, without an ordinary pass or offline work between them.
+                bool firstStages = !ordinary && (offset / slots.Length % 2 != 0);
+                Run(start + offset, batch, retain, firstStages);
+                if (!ordinary) Run(start + offset, batch, retain, !firstStages);
+            }
+        }
+
+        void Run(int start, int count, bool retain, bool stages)
+        {
+            int markers = stages ? 10 : 2;
             for (int offset = 0; offset < count; offset += slots.Length)
             {
                 int batch = Math.Min(slots.Length, count - offset);
@@ -91,10 +111,10 @@ internal static class CoverageCarryMeasurement
                         for (int axis = 0; axis < 3; axis++) Assert.True(status[axis] <= status[axis + 3]);
                     }
                     Assert.Equal(GpuTimestampStatus.Ready, slot.Pool.TryResolve(slot.Fence, slot.Ticks, out double period));
-                    Assert.True(double.IsFinite(period) && period > 0 && slot.Ticks[0] == 0 && slot.Ticks[^1] > 0);
+                    Assert.True(double.IsFinite(period) && period > 0 && slot.Ticks[0] == 0 && slot.Ticks[markers - 1] > 0);
                     for (int marker = 1; marker < markers; marker++) Assert.True(slot.Ticks[marker] >= slot.Ticks[marker - 1]);
-                    if (retain) samples.Add(new(start + offset + i, slot.Ticks[^1] * period / 1000, slot.Cpu,
-                        slot.Allocated, slot.Submission, (ulong[])slot.Ticks.Clone(), period, stages
+                    if (retain) samples.Add(new(start + offset + i, stages, samples.Count, slot.Ticks[markers - 1] * period / 1000, slot.Cpu,
+                        slot.Allocated, slot.Submission, slot.Ticks[..markers], period, stages
                             ? Enumerable.Range(0, 4).Select(stage => (slot.Ticks[stage * 2 + 2] - slot.Ticks[stage * 2 + 1]) * period / 1000).ToArray() : []));
                     slot.Fence.Reset();
                 }
@@ -120,7 +140,11 @@ internal static class CoverageCarryMeasurement
                         new(topology), expected, out var failure), failure.ToString());
                 }
                 uint[] actual = carry.Surface(current, actor);
-                if (nativeFloat) errors[actor].Include(expected, actual);
+                if (nativeFloat)
+                {
+                    errors[actor].Include(expected, actual);
+                    CoverageCarryRounding.Require(errors[actor]);
+                }
                 else if (!ordinary) Assert.Equal(CoverageCarryReferenceTests.Words(expected), actual);
                 else
                     for (int vertex = 0; vertex < expected.Length; vertex++)
@@ -154,7 +178,7 @@ internal static class CoverageCarryMeasurement
         return new { min = sorted[0], median = Percentile(.5), p95 = Percentile(.95), p99 = Percentile(.99), max = sorted[^1] };
     }
 
-    sealed record Sample(int Frame, double GpuMicroseconds, double CpuEncodingMicroseconds, long AllocatedBytes,
+    sealed record Sample(int Frame, bool Stages, int Sequence, double GpuMicroseconds, double CpuEncodingMicroseconds, long AllocatedBytes,
         double CpuSubmissionMicroseconds, ulong[] Ticks, double PeriodNanoseconds, double[] StageMicroseconds);
 
     sealed class Slot : IDisposable

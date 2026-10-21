@@ -64,7 +64,8 @@ internal static class TemporalLockReleaseSpirv
 /// No <c>precise</c> survives in any shipped temporal program, on any backend, and every program with the lock release
 /// carries its twelve barriers (Task 7g.3a). The GLSL holds no <c>precise</c>, the SPIR-V no <c>NoContraction</c>, the
 /// emitted HLSL no <c>precise</c> and the emitted MSL none of the <c>spvF</c> wrappers SPIRV-Cross writes for it. The ten
-/// programs that include the release compile exactly twelve barrier ORs each, and TemporalPrepare includes none.
+/// programs that include the release compile exactly twelve barrier ORs each, all inside the non-bypass branch
+/// since Task 7h Z. TemporalPrepare includes none. <see cref="TemporalLockZeroBypassTests"/> checks the branch.
 /// Device-free.
 /// </summary>
 public sealed class TemporalLockReleaseCompiledTests

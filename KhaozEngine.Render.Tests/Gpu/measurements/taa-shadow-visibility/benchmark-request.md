@@ -319,7 +319,10 @@ and target creation precede measured blocks. No asserted budget is introduced or
 Task 7g.3a removed `precise` from production for the barrier-ordered lock release. Run 39519219228 measured
 this V4 on 5ce5454d6, and its V5 minus V4 rows are the precise cost on that head. A later barrier-removed V4
 was authored but never ran. Review 7g r1 retired V5 and V4 together, because V5's visibility-disable switch
-lived in the shipped renderer and scene. The decomposition now runs V0, V1 and V3 D prime only.
+lived in the shipped renderer and scene. Task 7h Z adds V6 no check with identity barriers beside V0, V1 and V3 D
+prime. V1 minus V6 measures the remaining lock barriers. The source bypass is flattened by FXC, as recorded in
+7h-zero-lock.md. Readbacks before and after all timed blocks report colour, confidence and
+lock differences, and require the boxes to retain positive-zero locks. No new timing run is authorized here.
 
 The output prints V0 minus V1 (check), V1 minus V5 (visibility infrastructure), V5 minus V4 (precise), and
 V0 minus V3, with paired-round differences and the existing Off drift control. The scenes have shadows off, so

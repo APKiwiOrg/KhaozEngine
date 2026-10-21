@@ -451,7 +451,18 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     // sub-texel feature missed for a few frames keeps its luma, and it lets go over the rest of the lock.
     float lockValue = useHistory && !heldFromFarther ? max(historyState.y - LockDecay, 0.0) : 0.0;
     if (ridge) lockValue = 1.0;
-    lockValue = temporalReleaseLock(lockValue, motionPixels, reactive, ownReprojected && useHistory ? 0.0 : edgeMotion);
+    float releaseEdgeMotion = ownReprojected && useHistory ? 0.0 : edgeMotion;
+    // With positive width the ordered barriers preserve bits. Finite arguments cannot make a NaN factor:
+    // scaling may overflow, but each clamp returns [0, 1], so every keep factor and product is finite and
+    // nonnegative. The helper therefore maps +0 to +0 exactly. Test bits and the actual selected edge argument,
+    // keeping -0, nonzero locks and every non-finite argument on the unchanged ordered path.
+    // Keep this selection through SPIR-V and HLSL so FXC branches around the ordered release.
+    [[dont_flatten]] if (floatBitsToUint(lockValue) != 0u
+        || (floatBitsToUint(motionPixels) & 0x7f800000u) == 0x7f800000u
+        || (floatBitsToUint(reactive) & 0x7f800000u) == 0x7f800000u
+        || (floatBitsToUint(releaseEdgeMotion) & 0x7f800000u) == 0x7f800000u) {
+        lockValue = temporalReleaseLock(lockValue, motionPixels, reactive, releaseEdgeMotion);
+    }
     // Preserve the colour release's carried-lock classification before visibility clears the stored lock.
     bool carriedLock = !ridge && lockValue > 0.0;
     // A visibility release only clears this lock and the hold it gives, so a lock whose bits are +0.0 runs no check:

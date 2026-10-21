@@ -276,9 +276,8 @@ production's barrier-ordered lock release, on every backend. On Metal production
 
 This replaces the fixed two-step bound of `91196cdde` and the measured-envelope rule of `e639ef2d6`.
 
-The decomposition keeps V0 shipped, V1 check removed and V3 D prime, each fused and split, all rewrites through the
-existing fragment source hook. Both scenes and Native and Quality stay at 2560x1440. It prints V0 minus V1 and V0
-minus V3. V5 (visibility infrastructure off) and V4 (V5 without the lock-release precise markings, later redefined
+The decomposition keeps V0 shipped, V1 check removed, V3 D prime and V6 no check with identity barriers, each fused
+and split, all rewrites through the existing fragment source hook. Both scenes and Native and Quality stay at 2560x1440. It prints V0 minus V1, V0 minus V3 and V1 minus V6. V5 (visibility infrastructure off) and V4 (V5 without the lock-release precise markings, later redefined
 as barriers removed) are retired, because V5 needed a visibility-disable switch in the shipped renderer and scene.
 Their run `39519219228` is history in [benchmark-result-2.md](../../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/benchmark-result-2.md).
 Any further decomposition or T4 D3D11 correctness dispatch needs fresh owner approval.
@@ -415,6 +414,23 @@ Withdrawn at `d9d72abbd` and restored by the 2026-10-21 correction above, with e
 - [x] Task 7g.5 ran all nine backend hash and corpus writers without drift and recaptured the seven gathered shipped DXBC fixtures in free scratch run 39561655851. All seven D listings remain byte-identical. Every DXBC rule stays exact. See [the merge-round record](../../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/7g5-hosted.md).
 - [x] Task 7g.5 completed the Release build with zero warnings, 878 device-free passes, 35 focused Metal passes, the full format check with exit 0 and all tree guards. The initial format scan completed with exit 2 before its whitespace-only fixes. Capture manifest verification passed.
 - [x] Task 7g.5 pushed 211e42544 and ran the one free all-leg dispatch 39571324204 with 7g.3b's filter plus `TemporalVisibilityGatherGpuTests`. Each renderer passed 1740 cases with one opt-in dump skip, and sync passed 622. All five lavapipe colour cases match run 39559768823 at reported precision, large-frame and moving-shadow cases are exact, and all eight software costs are unchanged at full precision. No billed run, timing, stress, main merge, tag or release.
+
+### Task 7h Z: Bypass exact positive-zero lock release
+
+Keep the ordered helper and C# twin unchanged. After decay and ridge classification, positive-zero bits and finite
+actual motion, reactive and selected edge arguments permit an exact bypass. Add V6 with no check and identity
+barriers, preserve every existing byte and NaN contract, regenerate tables through their writers and recapture
+DXBC with one free scratch dispatch. Run the required local gates and one free all-leg correctness dispatch on
+the pushed task head. See [the design and results](../../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/7h-zero-lock.md).
+
+Task 7h Z round 2 keeps the design and adds only GL_EXT_control_flow_attributes with `[[dont_flatten]]` on the
+fallback selection. The unchanged compiler path retains SelectionControl DontFlatten and emits HLSL `[branch]`.
+Free dump 39636752557 recaptures all six shipped DXBC programs with twelve scalar barriers inside the branch and
+zero precise markings. The six branch facts and local correctness pass. Frozen-D text pins remain unchanged,
+and the fixture records the measured 34-to-35 temporary change. Free all-leg run 39641073352 at pushed candidate
+722a21059 passes with 1754 passed, zero failed and one opt-in dump skip on each renderer leg, plus 625/625 Vulkan
+sync tests. All 114 DXBC cases pass on every renderer leg, including the six conditional-barrier facts. The
+watcher returns 0. Round 2 is ready for orchestrator review and integration, with no performance claim.
 
 ### Task 8: Prove exact entry identity and integration edges
 

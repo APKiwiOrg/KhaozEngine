@@ -281,6 +281,43 @@ public sealed class NativeMapWaterTests
     }
 
     [Fact]
+    public void MotionPadding_DrawsDisplacedTrianglesIntoTheNarrowWindow()
+    {
+        using var fixture = NativeSceneFixtures.Create("water-bent-one");
+        var source = NativeSceneFixtures.Open(fixture, false);
+        var look = BoundaryLook(); look.SwellDirectionDegrees = 180;
+        MapDrawSet Window(float maxX) => Draw(NativeMapWater.Prepare(MapWaterScopedCompiler.Compile(source.Acquire(
+            NativeSceneFixtures.WaterWindow(0, maxX, 1) with { MotionPaddingMetres = 1 }).Scene!), look, new WaterSettings()));
+        var narrow = Window(2); var wide = Window(4);
+        var wetPoint = new Vector2(1.9f, .5f);
+        Assert.True(Displaced(look, 2, .5f).X < wetPoint.X);
+        Assert.True(Covers(wide), "The wider-window control must cover the authored wet point.");
+        Assert.Equal(Covers(wide), Covers(narrow));
+
+        bool Covers(MapDrawSet set)
+        {
+            foreach (var draw in set.Draws)
+            {
+                var resource = Assert.IsType<MapWaterResource>(set.Resources.Single(r => r.Reference == draw.Resource).Payload);
+                if (!WaterSurfaceDomain.Contains(resource.ClipData.Span, wetPoint - new Vector2(draw.Anchor.X, draw.Anchor.Z))) continue;
+                var mesh = resource.Mesh;
+                Vector2 Vertex(uint index) => Displaced(look, mesh.Vertices[index].Position.X + draw.Anchor.X,
+                    mesh.Vertices[index].Position.Z + draw.Anchor.Z);
+                for (int i = 0; i < mesh.Indices32.Length; i += 3)
+                {
+                    var a = Vertex(mesh.Indices32[i]); var b = Vertex(mesh.Indices32[i + 1]); var c = Vertex(mesh.Indices32[i + 2]);
+                    float area = Cross(b - a, c - a);
+                    if (area == 0) continue;
+                    float ab = Cross(b - a, wetPoint - a), bc = Cross(c - b, wetPoint - b), ca = Cross(a - c, wetPoint - c);
+                    if (area > 0 ? ab >= 0 && bc >= 0 && ca >= 0 : ab <= 0 && bc <= 0 && ca <= 0) return true;
+                }
+            }
+            return false;
+        }
+        static float Cross(Vector2 a, Vector2 b) => a.X * b.Y - a.Y * b.X;
+    }
+
+    [Fact]
     public void AdjacentCells_OriginalDomainClipKeepsWetCoverageAcrossInternalBoundary()
     {
         var look = BoundaryLook();
@@ -375,6 +412,41 @@ public sealed class NativeMapWaterTests
         var a = First(narrow); var b = First(wide);
         Assert.Equal(a.PayloadDigest, b.PayloadDigest);
         Assert.Equal(Assert.IsType<MapWaterResource>(a.Payload).ClipData.ToArray(), Assert.IsType<MapWaterResource>(b.Payload).ClipData.ToArray());
+    }
+
+    [Theory]
+    [InlineData(1e-38f, 0f, 0f, 0f)]
+    [InlineData(2f, 0f, float.MaxValue, 0f)]
+    [InlineData(2f, .5f, float.MaxValue, 0f)]
+    [InlineData(2f, 0f, 0f, float.MaxValue)]
+    [InlineData(2f, .5f, 0f, float.MaxValue)]
+    public void ActiveGenerationOverflow_RefusesInvalidEvenWhenHorizontalSteepnessIsZero(float wavelength, float steepness, float speed, float seed)
+    {
+        var look = BoundaryLook(); look.SwellWavelength = wavelength; look.SwellSteepness = steepness;
+        look.SwellSpeed = null; look.SwellSeed = null;
+        var settings = new WaterSettings { SwellSpeed = speed, SwellSeed = seed };
+        var components = new GerstnerWaves.Component[1];
+        GerstnerWaves.BuildComponents(.12f, wavelength, 0, 0, steepness, speed, seed, 1, components);
+        var offset = GerstnerWaves.Evaluate(.5f, .5f, 1, steepness, components).Offset;
+        Assert.False(float.IsFinite(offset.X) && float.IsFinite(offset.Y) && float.IsFinite(offset.Z));
+        Assert.Equal(MapRenderAssetStatus.Invalid, Assert.Throws<MapRenderAssetRefusal>(() => NativeMapWater.RequiredMotionPadding(look, settings)).Status);
+        Assert.Equal(MapRenderAssetStatus.Invalid, Assert.Throws<MapRenderAssetRefusal>(() => NativeMapWater.Prepare(Water("water-notch"), look, settings)).Status);
+    }
+
+    [Fact]
+    public void ValidZeroSteepness_CertifiesZeroHorizontalReachWithActiveVerticalWaves()
+    {
+        var look = BoundaryLook(); look.SwellSteepness = 0; look.SwellSpeed = .8f; look.SwellSeed = .37f;
+        var settings = new WaterSettings();
+        Assert.Equal(0, WaterSurfaceDisplacement.MaximumHorizontal(look));
+        double padding = NativeMapWater.RequiredMotionPadding(look, settings);
+        Assert.Equal(NativeMapWater.ClipEpsilonMetres, padding);
+        Assert.Single(Draw(NativeMapWater.Prepare(Water("water-notch", padding), look, settings)).Draws);
+        var components = new GerstnerWaves.Component[1];
+        GerstnerWaves.BuildComponents(.12f, 2, 0, 0, 0, .8f, .37f, 1, components);
+        var offset = GerstnerWaves.Evaluate(.25f, .5f, 0, 0, components).Offset;
+        Assert.Equal(0, offset.X); Assert.Equal(0, offset.Z);
+        Assert.True(float.IsFinite(offset.Y)); Assert.NotEqual(0, offset.Y);
     }
 
     [Theory]

@@ -51,13 +51,15 @@ public static class MapWaterScopedCompiler
                 var parts = Enumerable.Range(0, effective.Domain.Pieces.Count).SelectMany(i => effective.Domain.ConvexParts(i, pairs)).ToArray();
                 admission.ReserveBytes(checked(256L + parts.Length * 256L));
                 var index = new MapBoundsIndex(parts.Select(MapWaterPolygons.Bounds.Of).ToArray());
-                var cells = Candidates(parts, scene.Scope.DrawBounds, scene.Source.Data.TileSize, cellMetres, admission, pairs, ref candidates);
+                var drawBounds = scene.Scope.DiscoveryBounds;
+                var drawCells = Candidates(parts, drawBounds, scene.Source.Data.TileSize, cellMetres, admission, pairs, ref candidates);
+                var cells = drawCells;
                 if (scene.Scope.MotionPaddingMetres > 0)
                 {
-                    // Expand from complete visible cells, not from the caller's clipped rectangle. This also
-                    // covers a selected cell whose far edge lies outside a narrow overlapping window.
+                    // Motion selects potential draw cells first. Their complete extents then select the
+                    // separate clip dependencies, including cells beyond the padded draw window.
                     var expanded = new HashSet<Cell>(cells);
-                    foreach (var selected in cells)
+                    foreach (var selected in drawCells)
                     {
                         double padding = scene.Scope.MotionPaddingMetres;
                         var bounds = new MapBox3(selected.Min.X.ToDouble() - padding, -float.MaxValue, selected.Min.Z.ToDouble() - padding,
@@ -124,7 +126,7 @@ public static class MapWaterScopedCompiler
                         { CellBounds = new(cell.Min.X.ToDouble(), compiled.SurfaceY, cell.Min.Z.ToDouble(), cell.Max.X.ToDouble(), compiled.SurfaceY, cell.Max.Z.ToDouble()) };
                         allCells.Add(canonical);
                         // Membership is evaluated against the already complete canonical payload.
-                        if (Intersects(canonical, scene.Scope.DrawBounds, pairs, admission)) output.Add(canonical);
+                        if (drawCells.Contains(cell) && Intersects(canonical, drawBounds, pairs, admission)) output.Add(canonical);
                     }
                 }
             }
@@ -178,7 +180,7 @@ public static class MapWaterScopedCompiler
         }
     }
 
-    static IReadOnlyCollection<Cell> Candidates(IReadOnlyList<IReadOnlyList<MapWideXz>> parts, MapBox3 window, float tileSize,
+    static HashSet<Cell> Candidates(IReadOnlyList<IReadOnlyList<MapWideXz>> parts, MapBox3 window, float tileSize,
         float size, MapSceneAdmission admission, MapWaterWorkBudget pairs, ref long candidates)
     {
         var result = new HashSet<Cell>();

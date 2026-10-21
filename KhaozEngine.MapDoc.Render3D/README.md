@@ -70,8 +70,10 @@ renderer confirms release. Renderer publication, residency and the actual scene 
 storage borders. Requested coverage and complete-cell dependency coverage have separate witnesses.
 Containment, bed and ceiling reads use the pinned scene source and shared admission. Missing or unresolved
 columns refuse the whole result. Overlapping draw windows retain identical cell keys and payload bytes.
-Canonical payloads remain look-free. Explicit `MapSceneScope.MotionPaddingMetres` acquires neighbouring
-canonical cells around the complete visible cells, including their portions outside a clipped draw window.
+Canonical payloads remain look-free. Draw membership expands the window by explicit
+`MapSceneScope.MotionPaddingMetres`, retaining whole cells whose displaced surfaces can reach the window.
+The same allowance then acquires separate clip dependencies around those complete draw cells, including
+their portions outside the padded window. Clip dependencies do not become draw memberships on their own.
 
 `NativeMapWater.Prepare(water, look, settings)` resolves every inherited `WaterLook` field against the caller's
 scene `WaterSettings` through the renderer's `WaterLook.ResolveInto` rule. It freezes that explicit effective
@@ -88,7 +90,10 @@ Call `NativeMapWater.RequiredMotionPadding(look, settings)` before acquiring the
 and scene settings to `Prepare`. It returns the conservative procedural Gerstner reach plus
 `ClipEpsilonMetres`, fixed at 0.001 m. The scene's motion padding must cover
 that whole value or `Prepare` refuses with `MapRenderAssetStatus.Invalid`. Default and partially overridden
-procedural looks inherit before certification. Invalid effective displacement inputs refuse with `Invalid`.
+procedural looks inherit before certification. Active component generation uses the effective speed, seed
+and directions, and is validated even at zero horizontal steepness because vertical waves remain active.
+Valid zero-steepness waves retain zero horizontal reach. Nonfinite generated components refuse with `Invalid`,
+including overflow from finite effective inputs.
 FFT remains an explicit `Unsupported` refusal for native MapDoc preparation. R8b owns FFT certification.
 Existing water-plane FFT rendering retains its released behavior. Resource bounds include the certified
 horizontal and vertical motion allowance. No body-wide shared clip resource is retained.

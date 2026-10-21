@@ -135,6 +135,24 @@ public sealed class MapScopedWaterTests
     }
 
     [Fact]
+    public void MotionPaddingSelectsWholeDrawCells_BeforeTheirClipDependencies()
+    {
+        using var fixture = NativeSceneFixtures.Create("water-bent-one");
+        var source = NativeSceneFixtures.Open(fixture, false);
+        var scope = NativeSceneFixtures.WaterWindow(0, 2, 1) with { MotionPaddingMetres = 1 };
+        var water = MapWaterScopedCompiler.Compile(source.Acquire(scope).Scene!);
+        Assert.Equal(MapSceneStatus.CompleteForScope, water.Status);
+        Assert.True(water.RequestedWitness.CompleteForScope);
+        Assert.True(water.AcquiredCellWitness.CompleteForScope);
+        Assert.Equal(new[] { (0L, 0L), (1L, 0L) }, water.Cells.Select(c => (c.Key.X, c.Key.Z)));
+        // Motion selection reaches x=3, but the selected x=1 cell retains its full [2,4] x [0,1] surface.
+        Assert.Equal(2, Area(water.Cells.Single(c => c.Key.X == 1)));
+        Assert.Contains(water.AcquiredCells, c => c.Key.X == 2 && c.Key.Z == 0);
+        Assert.Contains(water.AcquiredCells, c => c.Key.X == 0 && c.Key.Z == 1);
+        Assert.DoesNotContain(water.Cells, c => c.Key.X == 2 || c.Key.Z == 1);
+    }
+
+    [Fact]
     public void MotionPaddingAcquiresNeighbours_WithoutChangingCanonicalPayloads()
     {
         using var fixture = NativeSceneFixtures.Create("water-bent-one");

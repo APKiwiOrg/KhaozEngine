@@ -46,6 +46,7 @@ public sealed class MapEffectiveResources
 internal sealed class MapEffectiveContext
 {
     readonly IReadOnlyDictionary<string, MapSurfaceRef> _surfaces;
+    readonly Dictionary<string, MapEffectiveTransform> _transformValues;
     internal MapSurfaceSet Surfaces { get; }
     internal IReadOnlyDictionary<string, MapEffectiveTransform> Transforms { get; }
     internal string Digest { get; }
@@ -60,7 +61,8 @@ internal sealed class MapEffectiveContext
         WaterSources = new ReadOnlyDictionary<string, MapWaterBodyDoc>(water.Clone().Bodies.ToDictionary(b => b.Id, StringComparer.Ordinal));
         Surfaces = surfaces.Clone();
         _surfaces = new ReadOnlyDictionary<string, MapSurfaceRef>(Surfaces.Refs.ToDictionary(s => s.Id, StringComparer.Ordinal));
-        Transforms = new ReadOnlyDictionary<string, MapEffectiveTransform>(new Dictionary<string, MapEffectiveTransform>(transforms, StringComparer.Ordinal));
+        _transformValues = new(transforms, StringComparer.Ordinal);
+        Transforms = new ReadOnlyDictionary<string, MapEffectiveTransform>(_transformValues);
         Digest = digest;
     }
     internal MapSurfaceRef Surface(string id) => _surfaces.TryGetValue(id, out var surface) ? surface : throw new MapDocumentException($"Missing effective surface '{id}'.");
@@ -70,6 +72,17 @@ internal sealed class MapEffectiveContext
     internal bool IsPartialPaint(MapSurfaceRef surface) => surface.Role == MapSurfaceRole.PaintOverride &&
         Transforms.ContainsKey(Key(MapPrefabChildKind.Surface, surface.Id));
     internal static string Key(MapPrefabChildKind kind, string id) => kind + ":" + id;
+    // Preparation preflight must not allocate a concatenated key or a transform wrapper.
+    internal bool TryGeometryTransform(MapPrefabChildKind kind, string id, out MapEffectiveTransform value)
+    {
+        string prefix = kind == MapPrefabChildKind.Surface ? "Surface:" : "Record:";
+        foreach (var entry in _transformValues)
+            if (entry.Key.AsSpan().StartsWith(prefix, StringComparison.Ordinal) &&
+                entry.Key.AsSpan(prefix.Length).SequenceEqual(id.AsSpan()))
+            { value = entry.Value; return true; }
+        value = default;
+        return false;
+    }
     internal MapResourceTransform? Transform(MapPrefabChildKind kind, string id) =>
         Transforms.TryGetValue(Key(kind, id), out var transform) ? new(transform) : null;
     internal MapExactPoint Point(MapPrefabChildKind kind, string id, MapExactPoint local) => Transform(kind, id)?.Point(local) ?? local;

@@ -15,4 +15,5 @@
   <ItemGroup>
     <None Include="Fixtures/**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <Import Project="../test-shared/AllocationMeasurement.props" />
 </Project>

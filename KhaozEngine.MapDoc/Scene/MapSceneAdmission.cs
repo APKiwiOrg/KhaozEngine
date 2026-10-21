@@ -73,6 +73,25 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
         PatchScopes++;
     }
 
+    internal bool CanReservePreparation(long bytes, long faces) => bytes >= 0 && faces >= 0 &&
+        bytes <= limits.MaxPreparedBytes - RetainedBytes && faces <= limits.MaxPreparedFaces - PreparedFaces;
+    internal bool TryReservePreparation(long bytes, long faces)
+    {
+        if (!CanReservePreparation(bytes, faces)) return false;
+        RetainedBytes += bytes;
+        PreparedFaces += faces;
+        return true;
+    }
+
+    // A prepared product already charged its complete demand before creating any payload.
+    internal static Suspension Suspend() => new(t_current);
+    internal readonly struct Suspension : IDisposable
+    {
+        readonly MapSceneAdmission? _previous;
+        internal Suspension(MapSceneAdmission? previous) { _previous = previous; t_current = null; }
+        public void Dispose() => t_current = _previous;
+    }
+
     internal void ReserveBytes(long bytes)
     {
         if (bytes < 0 || bytes > limits.MaxPreparedBytes - RetainedBytes) throw new MapSceneCapacityException();

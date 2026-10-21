@@ -11,12 +11,14 @@ namespace KhaozEngine.MapDoc.Spaces;
 /// <summary>Compiles room polygons with the shared R4 world-edge ownership and R5 point-freeze policy.</summary>
 public static class MapPrismGeometry
 {
-    public static MapWaterDomain Compile(MapScopedSurfaces view, MapPrismDomain domain)
+    public static MapWaterDomain Compile(MapScopedSurfaces view, MapPrismDomain domain) => Compile(view, domain, pointBudget: true);
+    internal static MapWaterDomain Prepare(MapScopedSurfaces view, MapPrismDomain domain) => Compile(view, domain, pointBudget: false);
+    static MapWaterDomain Compile(MapScopedSurfaces view, MapPrismDomain domain, bool pointBudget)
     {
         ArgumentNullException.ThrowIfNull(view);
         ArgumentNullException.ThrowIfNull(domain);
         RequirePayload(domain);
-        if (Cost(domain) > view.Scope.Limits.MaxInspectedFaces) throw new MapDocumentException("capacity exceeded: prism vertices");
+        if (pointBudget && Cost(domain) > view.Scope.Limits.MaxInspectedFaces) throw new MapDocumentException("capacity exceeded: prism vertices");
         var local = MapWaterDomain.Compile(domain.Footprint);
         var kernel = view.EffectiveContext?.Transform(MapPrefabChildKind.Record, domain.Id);
         if (kernel is null) return local;

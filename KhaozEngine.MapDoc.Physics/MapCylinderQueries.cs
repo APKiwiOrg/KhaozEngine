@@ -154,47 +154,6 @@ internal static class MapCylinderQueries
     }
 
     internal static bool Cast(MapDouble3 origin, MapDouble3 direction, double tStart, double tEnd, CylinderShape cylinder,
-        MapDoublePose pose, out double t, out MapDouble3 normal, out bool inside)
-    {
-        t = 0d;
-        normal = default;
-        inside = false;
-        MapDoublePose inverse = Inverse(pose);
-        MapDouble3 o = inverse.Rotate(origin.Subtract(pose.Position)), d = inverse.Rotate(direction);
-        double r = cylinder.Radius, length = cylinder.Length;
-
-        // The slab between the base and the top cap.
-        double enter = double.NegativeInfinity, exit = double.PositiveInfinity, cap = d.Y > 0d ? -1d : 1d;
-        if (!ClipRay(o.Y, d.Y, 0d, length, 0d, ref enter, ref exit)) return false;
-
-        // The infinite side wall.
-        double sideEnter = double.NegativeInfinity, sideExit = double.PositiveInfinity;
-        double qa = d.X * d.X + d.Z * d.Z, qb = o.X * d.X + o.Z * d.Z, qc = o.X * o.X + o.Z * o.Z - r * r;
-        if (qa == 0d)
-        {
-            if (qc > 0d) return false;
-        }
-        else
-        {
-            double discriminant = qb * qb - qa * qc;
-            if (discriminant < 0d) return false;
-            double root = Math.Sqrt(discriminant);
-            sideEnter = (-qb - root) / qa;
-            sideExit = (-qb + root) / qa;
-        }
-
-        bool side = sideEnter > enter;
-        double tEnter = Math.Max(enter, sideEnter), tExit = Math.Min(exit, sideExit);
-        if (tEnter > tExit || tExit < tStart || tEnter > tEnd) return false;
-        if (tEnter < tStart)
-        {
-            t = tStart;
-            inside = true;
-            return true;
-        }
-        t = tEnter;
-        MapDouble3 hit = o.Add(d.Scale(tEnter));
-        normal = pose.Rotate(side ? new MapDouble3(hit.X, 0d, hit.Z) : new MapDouble3(0d, cap, 0d));
-        return true;
-    }
+        MapDoublePose pose, out double t, out MapDouble3 normal, out bool inside) =>
+        ShapeRayQueries.CastCylinder(origin, direction, tStart, tEnd, cylinder, pose, out t, out normal, out inside);
 }

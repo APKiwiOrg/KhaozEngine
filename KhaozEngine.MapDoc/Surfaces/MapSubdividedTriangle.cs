@@ -51,10 +51,10 @@ internal static class MapSubdividedTriangle
         }
     }
 
-    static bool Between(int step, int segments, int start, int end) =>
+    internal static bool Between(int step, int segments, int start, int end) =>
         2 * step > Math.Min(start, end) * segments && 2 * step < Math.Max(start, end) * segments;
 
-    static bool Edge(MapLatticePoint from, MapLatticePoint to, out MapCellEdge edge, out int start, out int end)
+    internal static bool Edge(MapLatticePoint from, MapLatticePoint to, out MapCellEdge edge, out int start, out int end)
     {
         (int ax, int az) = MapSurfaceTopology.LocalTwice(from);
         (int bx, int bz) = MapSurfaceTopology.LocalTwice(to);

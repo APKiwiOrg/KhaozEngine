@@ -650,12 +650,12 @@ also persists placement-attached support and light descriptors, including precis
 Empty attachment, roof and storey collections and false retirement flags are omitted. `Clone` detaches mutable
 collections and `Digest` hashes the same canonical bytes used by persistence.
 
-`MapRoofPolicy.Evaluate(resources, view, observer, mode)` returns one `MapRoofIntent` per inventoried roof,
-including unlinked shelters. `Auto` uses the acquired R2 room membership and world height. A link matches its
-direct rooms and the union of exactly its attached groups. Groups may join rooms in different instances, but
-unrelated groups, portals and parent membership do not widen a link. Any eligible link may conceal its roof.
-Missing or ambiguous membership retains its status and witness and keeps all Auto roofs visible.
-`AlwaysVisible` and `AlwaysHidden` still enumerate the complete inventory.
+`MapRoofPolicy.Evaluate(resources, view, observer, mode)` and `Evaluate(scene, observer, mode)` return detached
+intent per inventoried roof, including unlinked shelters. `Auto` uses acquired room membership and world height.
+A link matches direct rooms and exactly its attached groups, including groups spanning instances. Unrelated groups,
+portals and parents never widen a link. Any eligible link may conceal its roof. Missing or ambiguous membership
+keeps Auto roofs visible. Always modes enumerate the inventory. `MapRoofEvaluationBuffer.Prepare(scene)` returns a
+typed result. Its admitted `Buffer.Evaluate(observer, mode)` reuses exact membership scratch and a live `Roofs` list.
 
 The four intent flags have separate consumers. Hidden roofs have `ColourVisible = false`, `CastShadows = true`,
 `CameraBoomBlocks = false` and `SkyPickingBlocks = true`. Visible roofs set all four true. This policy never

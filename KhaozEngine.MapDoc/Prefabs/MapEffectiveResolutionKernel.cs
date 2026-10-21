@@ -321,6 +321,7 @@ internal sealed class MapEffectiveResolutionProduct
     public IReadOnlyDictionary<string, MapEffectiveTransform> Transforms => _context.Transforms;
     public MapWaterSet? Water => _water?.Clone();
     public MapBuildingIntent BuildingIntent => _intent.Clone();
+    internal MapBuildingIntent CapturedBuildingIntent => _intent;
     public string Digest => _context.Digest;
     public IMapSurfaceSource SurfaceSource { get; }
     /// <summary>Render-only partitions compiled once per affected physical target at strict expansion.</summary>

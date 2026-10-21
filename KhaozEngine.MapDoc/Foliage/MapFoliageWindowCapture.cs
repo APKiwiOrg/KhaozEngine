@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Editing;
+using KhaozEngine.MapDoc.Markers;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.MapDoc.Storage;
@@ -32,6 +33,7 @@ internal static class MapFoliageWindowCapture
             var metadata = source.Data.FoliageMetadata;
             var chunks = new List<(MapFoliageLayer Layer, MapFoliageChunkKey Chunk)>();
             var owners = new HashSet<MapSceneResourceKey>();
+            var seats = new Dictionary<MapSceneResourceKey, MapSurfaceScope>();
             Bounds? bounds = null;
             var b = scope.DiscoveryBounds;
             foreach (var layer in source.Data.Foliage?.Layers ?? [])
@@ -51,7 +53,11 @@ internal static class MapFoliageWindowCapture
                         if (MapFoliageDistribution.KnownOffRaster(layer, MapFoliageDistribution.Rectangle(layer, key))) continue;
                         var read = MapFoliageSupport.Scope(layer, key, metadata.FloorsFor(layer, key), metadata.Transforms).WorldRectangle();
                         bounds = Bounds.Union(bounds, Bounds.Of(read));
-                        foreach (var owner in metadata.OwnersFor(layer, read)) owners.Add(owner);
+                        foreach (var owner in metadata.OwnersFor(layer, read))
+                        {
+                            owners.Add(owner);
+                            if (metadata.SeatFor(layer, owner) is { } seat) seats.TryAdd(owner, seat);
+                        }
                         Binding(layer.Support);
                     }
                 void Binding(MapSupportBinding binding)
@@ -62,7 +68,7 @@ internal static class MapFoliageWindowCapture
             }
             // Source knowledge stays borrowed. Only the selected density payloads and effective dependency product are retained.
             var admission = new MapSceneAdmission(source.Data.Limits, foliageLimits: limits);
-            var requested = new MapFoliageWindowRequest(chunks, owners);
+            var requested = new MapFoliageWindowRequest(chunks, owners, seats.Values.ToArray());
             Bounds r = bounds ?? new(b.MinX, b.MinZ, b.MaxX, b.MaxZ);
             var frame = WorldFrame.Nearest((float)((r.MinX + r.MaxX) / 2), (float)((r.MinZ + r.MaxZ) / 2));
             double ax = (double)frame.X * WorldFrame.Grid, az = (double)frame.Z * WorldFrame.Grid;
@@ -108,7 +114,7 @@ internal static class MapFoliageWindowCapture
 }
 
 internal sealed record MapFoliageWindowRequest(IReadOnlyList<(MapFoliageLayer Layer, MapFoliageChunkKey Chunk)> Chunks,
-    IReadOnlySet<MapSceneResourceKey> Owners);
+    IReadOnlySet<MapSceneResourceKey> Owners, IReadOnlyList<MapSurfaceScope> Seats);
 
 /// <summary>Source-generation metadata only. Floor and clearance proxies have no retained world payloads.</summary>
 internal sealed class MapFoliageWindowMetadata
@@ -118,6 +124,7 @@ internal sealed class MapFoliageWindowMetadata
     readonly List<Bounds> _floorBounds = new();
     readonly Dictionary<string, MapEffectiveTransform> _transforms = new(StringComparer.Ordinal);
     readonly Dictionary<string, List<(MapSceneResourceKey Key, Bounds Bounds)>> _owners = new(StringComparer.Ordinal);
+    readonly Dictionary<MapSceneResourceKey, MapEffectiveTransform> _exceptionalPoses = new();
     readonly Dictionary<MapSceneResourceKey, Bounds> _placementProxies = new();
     readonly Dictionary<string, List<Bounds>> _maskProxies = new(StringComparer.Ordinal);
     readonly Dictionary<string, SpatialIndex> _maskIndices = new(StringComparer.Ordinal);
@@ -160,17 +167,32 @@ internal sealed class MapFoliageWindowMetadata
             var world = new MapResourceTransform(pose).Point(new(MapExactValue.FromSingle(p.X), MapExactValue.FromSingle(p.Y), MapExactValue.FromSingle(p.Z)));
             pose = pose with { X = world.X.ToDouble(), Y = world.Y.ToDouble(), Z = world.Z.ToDouble(), YawRadians = pose.YawRadians + marker.Value.YawRadians };
         }
+        if (child is MapPrefabPlacementChild { Value.Y: not null } or MapPrefabMarkerChild { Value.HeightMode: not MapMarkerHeightMode.Support })
+            AddExceptionalPose(child.Key, pose, scan);
+        AddOwner(child.Key, (child as MapPrefabPlacementChild)?.Value, pose, scan);
+    }
+
+    internal void AddNative(MapPrefabChildKey owner, MapEffectiveTransform pose, MapSceneScan scan)
+    {
+        if (_foliage is null) return;
+        AddExceptionalPose(owner, pose, scan);
+        AddOwner(owner, null, pose, scan);
+    }
+
+    void AddOwner(MapPrefabChildKey owner, MapPlacement? placement, MapEffectiveTransform pose, MapSceneScan scan)
+    {
+        if (_foliage is null) return;
         foreach (var layer in _foliage.Layers)
         {
             Bounds? proxy = null;
-            if (child is MapPrefabPlacementChild placement)
+            if (placement is not null)
                 foreach (var rule in layer.ClearanceRules)
-                    if (rule.AssetId == placement.Value.AssetId && (rule.PlacementTag is not { } tag ||
-                        placement.Value.Tags.Any(t => string.Equals(t, tag, StringComparison.OrdinalIgnoreCase))))
+                    if (rule.AssetId == placement.AssetId && (rule.PlacementTag is not { } tag ||
+                        placement.Tags.Any(t => string.Equals(t, tag, StringComparison.OrdinalIgnoreCase))))
                         proxy = Bounds.Union(proxy, MapFoliageGenerationContext.Proxy(pose, rule.Footprint,
                             rule.Kind == MapFoliageClearanceKind.Door ? layer.DoorClearance : null));
             foreach (var mask in layer.ExceptionMasks)
-                if (mask.Owner.Kind == child.Key.Kind && mask.Owner.Id == child.Key.Key)
+                if (mask.Owner.Kind == owner.Kind && mask.Owner.Id == owner.Key)
                 {
                     Bounds maskProxy = MapFoliageGenerationContext.Proxy(pose, mask.Footprint,
                         mask.Kind == MapFoliageClearanceKind.Door ? layer.DoorClearance : null);
@@ -180,13 +202,27 @@ internal sealed class MapFoliageWindowMetadata
                     masks.Add(maskProxy);
                 }
             if (proxy is not { } value) continue;
-            scan.Retain(192 + 2L * (layer.Id.Length + child.Key.Key.Length));
+            scan.Retain(192 + 2L * (layer.Id.Length + owner.Key.Length));
             if (!_owners.TryGetValue(layer.Id, out var list)) _owners.Add(layer.Id, list = new());
-            var key = new MapSceneResourceKey(child.Key.Kind.ToString(), child.Key.Key);
+            var key = new MapSceneResourceKey(owner.Kind.ToString(), owner.Key);
             list.Add((key, value));
-            if (child is MapPrefabPlacementChild)
+            if (placement is not null)
                 _placementProxies[key] = Bounds.Union(_placementProxies.TryGetValue(key, out var old) ? old : null, value);
         }
+    }
+
+    void AddExceptionalPose(MapPrefabChildKey owner, MapEffectiveTransform pose, MapSceneScan scan)
+    {
+        if (_foliage?.Layers.Any(l => l.OwnerSupports.Any(o => o.Owner.Kind == owner.Kind && o.Owner.Id == owner.Key)) != true) return;
+        scan.RetainBytes(checked(128 + 2L * owner.Key.Length));
+        _exceptionalPoses.Add(new(owner.Kind.ToString(), owner.Key), pose);
+    }
+
+    internal MapSurfaceScope? SeatFor(MapFoliageLayer layer, MapSceneResourceKey owner)
+    {
+        if (!layer.OwnerSupports.Any(o => o.Owner.Kind.ToString() == owner.Kind && o.Owner.Id == owner.Id) ||
+            !_exceptionalPoses.TryGetValue(owner, out var pose)) return null;
+        return MapFoliageOwners.SeatScope(new MapResourceTransform(pose).Point(new(default, default, default)));
     }
 
     internal void Finish()

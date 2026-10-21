@@ -28,6 +28,7 @@ internal sealed class MapFoliageOwners
     internal MapFoliageOwners(MapFoliageSet? set, MapEffectiveResolutionProduct resources,
         Func<MapSurfaceScope, MapScopedSurfaces> acquire, bool scoped = false, Func<string, MapFoliageRect, long>? maskCandidates = null)
     {
+        var present = scoped ? PresentOwners(resources) : null;
         _acquire = acquire;
         _maskCandidates = maskCandidates;
         _bindings = (set?.Layers ?? []).ToDictionary(l => l.Id, l => l.OwnerSupports.ToDictionary(o => o.Owner, o => o.Support), StringComparer.Ordinal);
@@ -40,8 +41,7 @@ internal sealed class MapFoliageOwners
             var bounds = new List<Bounds>();
             foreach (var mask in layer.ExceptionMasks)
             {
-                if (scoped && !resources.Transforms.ContainsKey(MapEffectiveContext.Key(mask.Owner.Kind, mask.Owner.Id)) &&
-                    !resources.EffectiveMarkers.Any(m => m.Id == mask.Owner.Id)) continue;
+                if (present is not null && !present.Contains(mask.Owner)) continue;
                 MapEffectiveTransform pose = Pose(resources, mask.Owner);
                 masks.Add(new(layer.Id, mask, pose));
                 bounds.Add(MapFoliageGenerationContext.Proxy(pose, mask.Footprint,
@@ -49,6 +49,16 @@ internal sealed class MapFoliageOwners
             }
             _masks.Add(layer.Id, (masks.ToArray(), bounds.ToArray(), new(bounds)));
         }
+    }
+
+    static HashSet<MapPrefabReference> PresentOwners(MapEffectiveResolutionProduct resources)
+    {
+        var owners = resources.Placements.Select(p => World(MapPrefabChildKind.Placement, p.PlacementId))
+            .Concat(resources.SurfaceSource.Surfaces.Select(s => World(MapPrefabChildKind.Surface, s.Id)))
+            .Concat(resources.EffectiveMarkers.Select(m => World(MapPrefabChildKind.Marker, m.Id))).ToHashSet();
+        if (resources.SurfaceSource is IMapEffectiveSurfaceContext context)
+            foreach (var record in context.EffectiveContext.Surfaces.AllRecords()) owners.Add(World(MapPrefabChildKind.Record, record.Id));
+        return owners;
     }
 
     internal IReadOnlyList<MaskOwner> Masks(string layerId, MapFoliageRect rect, out long candidates)
@@ -88,6 +98,15 @@ internal sealed class MapFoliageOwners
         return pose;
     }
 
+    /// <summary>The released exceptional-owner read rectangle, shared with window dependency acquisition.</summary>
+    internal static MapSurfaceScope SeatScope(MapExactPoint point)
+    {
+        var frame = WorldFrame.Nearest(point.X.ToSingle(), point.Z.ToSingle());
+        float x = point.X.ToSingle() - frame.Anchor.X, z = point.Z.ToSingle() - frame.Anchor.Z;
+        return new(frame, new(x - SeatReach, z - SeatReach), new(x + SeatReach, z + SeatReach), null, null,
+            Enum.GetValues<MapSurfaceRole>(), null, new MapQueryLimits());
+    }
+
     internal string Seated(MapFoliageLayer layer, MapPrefabReference owner, MapEffectiveTransform pose,
         MapFoliageLimits limits, ref MapFoliageWork work, List<string> dependencies)
     {
@@ -106,10 +125,7 @@ internal sealed class MapFoliageOwners
         work = work with { PrepareScopes = checked(work.PrepareScopes + 1) };
         if (work.PrepareScopes > limits.MaxPrepareScopes) throw new MapFoliageRefusal(MapFoliageStatus.CapacityExceeded, work, "owner support scopes");
         var point = new MapResourceTransform(pose).Point(new(default, default, default));
-        var frame = WorldFrame.Nearest(point.X.ToSingle(), point.Z.ToSingle());
-        float x = point.X.ToSingle() - frame.Anchor.X, z = point.Z.ToSingle() - frame.Anchor.Z;
-        var scope = new MapSurfaceScope(frame, new(x - SeatReach, z - SeatReach), new(x + SeatReach, z + SeatReach), null, null,
-            Enum.GetValues<MapSurfaceRole>(), null, new MapQueryLimits());
+        var scope = SeatScope(point);
         MapScopedSurfaces view = _acquire(scope);
         var prepared = MapSupportPreparation.PrepareFoliage(view);
         var xz = new MapExactXz(point.X, point.Z);

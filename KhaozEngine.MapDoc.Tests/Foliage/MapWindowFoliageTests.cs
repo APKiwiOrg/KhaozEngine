@@ -49,6 +49,9 @@ public sealed class MapWindowFoliageTests
     public void WindowedFoliage_ThreeLatticesUseOneDerivedReadClosure(float edge)
     {
         var f = WindowFoliageFixtures.ThreeLattices(edge);
+        var instance = Assert.Single(Assert.IsType<MapPrefabSet>(f.Document.Prefabs).Instances);
+        Assert.Equal(0.371f, instance.Transform.YawRadians);
+        Assert.Equal(1.2f, instance.Transform.Scale);
         foreach (bool tiled in new[] { false, true })
         {
             using var saved = WindowFoliageFixtures.Scene(f);
@@ -56,9 +59,25 @@ public sealed class MapWindowFoliageTests
             var layer = f.Document.Foliage!.Layers[0];
             var result = MapFoliageGenerationContext.CaptureWindow(source, WindowFoliageFixtures.Scope(layer, new(0, 0)));
             Assert.True(result.Status == MapFoliageStatus.Complete, result.Status + " " + result.Work + " " + string.Join("|", result.Findings));
-            Same(MapFoliageDistribution.Generate(FoliageFixtures.Context(f), layer.Id, new(0, 0)),
-                MapFoliageDistribution.Generate(result.Context!, layer.Id, new(0, 0)));
-            Assert.Contains(result.Context!.Witness.Required, k => k.Kind == "Patch" && k.Id.StartsWith("fine/", StringComparison.Ordinal));
+            var full = FoliageFixtures.Context(f);
+            var fullRows = new List<MapFoliageDecision>();
+            var windowRows = new List<MapFoliageDecision>();
+            Same(MapFoliageDistribution.Generate(full, layer.Id, new(0, 0), observe: fullRows.Add),
+                MapFoliageDistribution.Generate(result.Context!, layer.Id, new(0, 0), observe: windowRows.Add));
+            foreach (string id in new[] { "coarse", "medium", "p/fine" })
+                Assert.Contains(fullRows, r => r.Surface is { Face: not null } s && s.SupportOwnerId == id);
+            Assert.Contains(fullRows, r => r.Reason == MapFoliageReason.Solid && r.Surface?.SupportOwnerId == "p/fine");
+            Assert.Equal(fullRows.Select(r => (r.Address, r.Reason)), windowRows.Select(r => (r.Address, r.Reason)));
+            var clearance = MapFoliageClearance.Prepare(full, full.Foliage!.Layers[0], new(0, 0), new());
+            Assert.Contains(clearance.DependencyParts, p => p.StartsWith("owner-seat|Placement|p/prop|p/fine|", StringComparison.Ordinal));
+            Assert.Equal("coarse", clearance.Support.Sample(80.25f, -10.25f).SupportOwnerId);
+            Assert.Equal("medium", clearance.Support.Sample(82, -6).SupportOwnerId);
+            var neighbour = clearance.Support.Sample(86, -10);
+            Assert.Equal("p/fine", neighbour.SupportOwnerId);
+            Assert.Equal(MapFoliageReason.Solid, clearance.Evaluate(neighbour, 86, -10).Reason);
+            Assert.Equal(new[] { 0.5, 2, 4 }, clearance.Support.Grids.Select(g => g.Surface.Frame.CellUnitMetres.Exact().ToDouble()).Order().ToArray());
+            if (edge > 0) Assert.Contains(fullRows, r => r.Surface is { Density: > 0 and < 1 });
+            Assert.Contains(result.Context!.Witness.Required, k => k.Kind == "Surface" && k.Id == "p/fine");
             Assert.Contains(result.Context.Witness.Required, k => k.Kind == "Patch" && k.Id.StartsWith("medium/", StringComparison.Ordinal));
         }
     }
@@ -273,7 +292,7 @@ public sealed class MapWindowFoliageTests
         }
     }
 
-    static void Same(MapFoliageSampleBatch expected, MapFoliageSampleBatch actual)
+    internal static void Same(MapFoliageSampleBatch expected, MapFoliageSampleBatch actual)
     {
         Assert.Equal(MapFoliageStatus.Complete, expected.Status);
         Assert.Equal(expected.Status, actual.Status);

@@ -84,6 +84,12 @@ internal static class MapSceneAcquisition
             if (foliageRequest is null || scope.Channels != 0)
                 Discover(new(physical.MinX.ToDouble(), double.NegativeInfinity, physical.MinZ.ToDouble(),
                     physical.MaxX.ToDouble(), double.PositiveInfinity, physical.MaxZ.ToDouble()), k => k.Kind is "Surface" or "Record" or "Patch");
+            foreach (var seat in foliageRequest?.Seats ?? [])
+            {
+                var rect = seat.WorldRectangle();
+                Discover(new(rect.MinX.ToDouble(), double.NegativeInfinity, rect.MinZ.ToDouble(), rect.MaxX.ToDouble(),
+                    double.PositiveInfinity, rect.MaxZ.ToDouble()), k => k.Kind is "Surface" or "Record" or "Patch");
+            }
             while (pending.Count != 0)
             {
                 string id = pending.Dequeue();
@@ -141,25 +147,30 @@ internal static class MapSceneAcquisition
             // so preparation never re-enters storage or spends one point query's page allowance over the whole closure.
             var product = MapEffectiveResolutionKernel.Resolve(input, data.Assets, foliageRequest is null ? nativeSource : null);
             var view = product.Acquire(scope.Surfaces with { SceneAdmission = admission });
-            foreach (var patch in view.Witness.Present)
+            Record(view);
+            foreach (var seat in foliageRequest?.Seats ?? []) Record(product.Acquire(seat with { SceneAdmission = admission }));
+            void Record(MapScopedSurfaces acquired)
             {
-                var key = PatchKey(patch.Key); required.Add(key); present.Add(key);
-            }
-            foreach (var missing in view.Witness.Unavailable)
-            {
-                var key = PatchKey(missing.Key); required.Add(key); unavailable.Add(key);
-            }
-            foreach (var range in view.Witness.KnownEmpty) empty.Add(new("SurfaceRange", RangeId(range)));
-            if (view.Status != MapAcquireStatus.Complete)
-            {
-                var status = view.Status switch
+                foreach (var patch in acquired.Witness.Present)
                 {
-                    MapAcquireStatus.CapacityExceeded => MapSceneStatus.CapacityExceeded,
-                    MapAcquireStatus.NotRepresentable => MapSceneStatus.NotRepresentable,
-                    _ => view.Witness.Unavailable.Any(u => u.Status == MapPatchStatus.Corrupt) ? MapSceneStatus.Corrupt
-                        : view.Witness.Unavailable.Any(u => u.Status == MapPatchStatus.Missing) ? MapSceneStatus.Missing : MapSceneStatus.Incomplete,
-                };
-                throw new MapSceneSourceException(status, view.Detail ?? "Incomplete surface dependencies.");
+                    var key = PatchKey(patch.Key); required.Add(key); present.Add(key);
+                }
+                foreach (var missing in acquired.Witness.Unavailable)
+                {
+                    var key = PatchKey(missing.Key); required.Add(key); unavailable.Add(key);
+                }
+                foreach (var range in acquired.Witness.KnownEmpty) empty.Add(new("SurfaceRange", RangeId(range)));
+                if (acquired.Status != MapAcquireStatus.Complete)
+                {
+                    var status = acquired.Status switch
+                    {
+                        MapAcquireStatus.CapacityExceeded => MapSceneStatus.CapacityExceeded,
+                        MapAcquireStatus.NotRepresentable => MapSceneStatus.NotRepresentable,
+                        _ => acquired.Witness.Unavailable.Any(u => u.Status == MapPatchStatus.Corrupt) ? MapSceneStatus.Corrupt
+                            : acquired.Witness.Unavailable.Any(u => u.Status == MapPatchStatus.Missing) ? MapSceneStatus.Missing : MapSceneStatus.Incomplete,
+                    };
+                    throw new MapSceneSourceException(status, acquired.Detail ?? "Incomplete surface dependencies.");
+                }
             }
             foreach (var key in required) if (!unavailable.Contains(key) && !empty.Contains(key)) present.Add(key);
             if (required.Count > data.Limits.MaxSelectedResources) throw new MapSceneCapacityException();

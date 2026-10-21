@@ -96,6 +96,13 @@ public sealed class MapSceneSource
                 var pose = transformsByKey[(MapPrefabChildKind.Surface, surface.Id)].FirstOrDefault()?.Transform ?? new(0, 0, 0, 0, 1);
                 foliageMetadata.AddFloor(surface, entry.Cells, pose, scan);
             }
+            foreach (var surface in nativeRefs.Values)
+                foliageMetadata.AddNative(new(MapPrefabChildKind.Surface, surface.Id),
+                    transformsByKey[(MapPrefabChildKind.Surface, surface.Id)].FirstOrDefault()?.Transform ?? new(0, 0, 0, 0, 1), scan);
+            foreach (var entry in nativeEntries)
+                foreach (string record in entry.RecordIds)
+                    foliageMetadata.AddNative(new(MapPrefabChildKind.Record, record),
+                        transformsByKey[(MapPrefabChildKind.Record, record)].FirstOrDefault()?.Transform ?? new(0, 0, 0, 0, 1), scan);
             var poses = new Dictionary<string, MapEffectiveTransform>(StringComparer.Ordinal);
             var requiredAssets = new HashSet<string>(StringComparer.Ordinal);
             var dependencyEdges = new Dictionary<MapSceneResourceKey, HashSet<MapSceneResourceKey>>();

@@ -107,6 +107,7 @@ namespace KhaozEngine.Tests.Gpu
         // Coverage helpers have a dynamic probe until their production entry points arrive in later tasks.
         internal static IEnumerable<ShippedComputeKernel> CoverageKernels()
         {
+            foreach (var kernel in CoverageCarryShaders.Kernels()) yield return kernel;
             yield return new(CoverageGpuArithmeticProbe.Name, CoverageGpuArithmeticProbe.Source);
             yield return new(CoverageGpuExactWordsProbe.Name, CoverageGpuExactWordsProbe.Source);
             yield return new(CoverageGpuResidualProbe.Name, CoverageGpuResidualProbe.Source);

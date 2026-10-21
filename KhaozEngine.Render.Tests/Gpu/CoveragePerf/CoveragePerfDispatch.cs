@@ -55,6 +55,8 @@ internal static class CoveragePerfDispatch
             leg = "ubuntu-26.04-vulkan-lavapipe";
             if (Required(environment, "RUNNER_ENVIRONMENT") != "github-hosted")
                 throw new InvalidDataException("CPU measurement requires the GitHub-hosted runner.");
+            if (Required(environment, "KE_COVERAGE_PERF_PRESET") != request.Manifest.Preset)
+                throw new InvalidDataException("KE_COVERAGE_PERF_PRESET differs from the approved manifest preset.");
         }
         else if (workflow == "gpu-hosted-bench")
         {
@@ -81,7 +83,7 @@ internal static class CoveragePerfDispatch
             {
                 HostCpu = HostCpu(environment),
                 Environment = new[] { "RUNNER_NAME", "RUNNER_OS", "RUNNER_ARCH", "RUNNER_ENVIRONMENT", "GITHUB_JOB",
-                    "VK_DRIVER_FILES", "VK_ICD_FILENAMES", "KE_GRAPHICS_BACKEND", "KE_D3D11_RECORD" }
+                    "VK_DRIVER_FILES", "VK_ICD_FILENAMES", "KE_GRAPHICS_BACKEND", "KE_D3D11_RECORD", "KE_COVERAGE_PERF_PRESET" }
                     .Select(key => new CoveragePerfEnvironmentValue(key, environment(key) ?? "unset")).ToImmutableArray(),
             },
         };

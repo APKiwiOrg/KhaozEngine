@@ -110,6 +110,7 @@ public sealed class CoveragePerfAuthorizationCommitTests
         ["KE_COVERAGE_PERF_UNIT"] = run.Identity.UnitId,
         ["KE_COVERAGE_PERF_MANIFEST_SHA256"] = run.Identity.ManifestSha256,
         ["KE_COVERAGE_PERF_WORKLOAD_SHA"] = workload,
+        ["KE_COVERAGE_PERF_PRESET"] = CoveragePerfManifest.Parse(run.Json).Preset,
         ["GITHUB_SHA"] = run.Identity.WorkflowSha,
         ["GITHUB_RUN_ID"] = run.Identity.WorkflowRunId,
         ["GITHUB_RUN_ATTEMPT"] = "1",

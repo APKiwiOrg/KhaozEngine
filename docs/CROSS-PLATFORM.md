@@ -970,6 +970,10 @@ explicitly. C0 has a 20-minute job limit and C1 has 120, because lavapipe takes 
 each 32-actor frame. This route proves CPU preparation only. The
 existing stress behavior stays unchanged when the switch is false and the four coverage strings are
 empty.
+After checkout and before installation, preflight parses the selected manifest and refuses unless its
+`preset` matches the requested timeout preset. The fixed environment forwards `KE_COVERAGE_PERF_PRESET`,
+which the entrypoint requires and compares with the manifest before creating a clock or device.
+GPU presets retain their named-leg authorization binding and common 30-minute cap.
 
 Before either dispatch, root obtains exact owner approval for that single run. The committed manifest
 binds only approval-time facts: the unit, exact byte hash, workload SHA, baseline main SHA, preset,

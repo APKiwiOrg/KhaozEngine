@@ -197,3 +197,25 @@ adds sharing credit. `MapRenderLifetime` reports the live charged ownership grou
 A queue entry is one atomic composite replacement. Its windows share the source's bounded preparation allowance,
 further narrowed by queue and plan budgets. Disposal cancels pending work without blocking a caller's scheduler.
 Any still-running worker retains its readers and CPU charges until its completion continuation unwinds them.
+
+## Roof channels and presentation picks
+
+`MapRenderPlan` prepares `PresentationGeometry` and `RoofEvaluation` against the same aggregate admission
+as its terrain, placement and foliage products. `Update`, `Record` and `MapPresentationPicker.Pick` reuse
+that buffer for observer motion and roof mode changes. No detached roof result is built in a frame.
+
+`NativeMapRoofs.Record` alone emits registered roof parts. Ordinary placement recording excludes them.
+Hidden roofs retain their registered references, bounds, meshes, draw ranges and shadow coverage. Their
+colour, selection and camera channels are absent. Sky and physical channels remain present. The device
+sink maps a roof with shadow and no colour to `ShadowOnly`. Neither concealment nor picking changes
+registration, uploads or accepted non-roof HLOD coverage.
+
+`MapPresentationPicker` selects raised interaction envelopes, preferring an explicit selection resource
+to the collider. The shared minimum height is 1 m. Camera, sky and physical queries use unchanged
+colliders and acquired canonical faces. Assets with neither shape remain cosmetic. Prepared vertices,
+ordered candidate storage and visited flags are admitted before frame queries. Equal distances resolve
+by ordinal owner ID. Rejected hidden or cut hits continue to the next candidate.
+
+`MapPresentationHit.LocalPoint` is relative to the supplied frame's horizontal origin, with world-datum
+Y. `IMapPresentationCut` defaults to accepting every hit. R8b owns its cut classification and frame
+synchronization. Each plan and its pickers are serial frame consumers sharing one prepared scratch area.

@@ -26,11 +26,11 @@ public static partial class PropRenderer
     }
 
     internal static int EmitNative<T>(PropLayer layer, Vector3 focus, T state,
-        Action<T, NativePropInstance, RigidInstanceDraw> emit, float dissolveFloor = 0, Func<RenderAnchor, Vector3>? localFocus = null)
+        Action<T, NativePropInstance, RigidInstanceDraw> emit, float dissolveFloor = 0, Func<RenderAnchor, Vector3>? localFocus = null, Func<T, RenderAnchor, Vector3>? resolveFocus = null)
     {
         var instances = layer.NativePlacements ?? throw new ArgumentException("A native placement layer is required.", nameof(layer));
         return EmitNative(instances, layer.NativeLods!, focus, layer.DrawRadius, layer.LodDistances,
-            layer.LodCrossfadeWidth, state, emit, dissolveFloor, layer.CastsShadows, localFocus);
+            layer.LodCrossfadeWidth, state, emit, dissolveFloor, layer.CastsShadows, localFocus, resolveFocus);
     }
 
     /// <summary>The shared device and typed-recorder emission path. Focus is absolute binary32, instances retain
@@ -38,14 +38,15 @@ public static partial class PropRenderer
     internal static int EmitNative<T>(IReadOnlyList<NativePropInstance> instances,
         IReadOnlyDictionary<string, IReadOnlyList<NativePropLod>> lods, Vector3 focus, float drawRadius,
         IReadOnlyList<float> lodDistances, float crossfadeWidth, T state, Action<T, NativePropInstance, RigidInstanceDraw> emit,
-        float dissolveFloor = 0, bool castsShadows = true, Func<RenderAnchor, Vector3>? localFocus = null)
+        float dissolveFloor = 0, bool castsShadows = true, Func<RenderAnchor, Vector3>? localFocus = null, Func<T, RenderAnchor, Vector3>? resolveFocus = null)
     {
         ArgumentNullException.ThrowIfNull(instances); ArgumentNullException.ThrowIfNull(lods); ArgumentNullException.ThrowIfNull(lodDistances);
         int count = 0;
-        foreach (var instance in instances)
+        for (int row = 0; row < instances.Count; row++)
         {
+            var instance = instances[row];
             if (!lods.TryGetValue(instance.AssetId, out var tiers) || tiers.Count == 0) continue;
-            var relative = localFocus?.Invoke(instance.Anchor) ?? new Vector3((float)((double)focus.X - instance.Anchor.X),
+            var relative = resolveFocus?.Invoke(state, instance.Anchor) ?? localFocus?.Invoke(instance.Anchor) ?? new Vector3((float)((double)focus.X - instance.Anchor.X),
                 (float)((double)focus.Y - instance.Anchor.Y), (float)((double)focus.Z - instance.Anchor.Z));
             float d2 = HorizontalDistanceSquared(instance.LocalTransform.M41, instance.LocalTransform.M43, relative);
             if (d2 > drawRadius * drawRadius) continue;
@@ -55,8 +56,9 @@ public static partial class PropRenderer
             count++;
             void Submit(int tier, float dissolve, float complement)
             {
-                foreach (var handle in tiers[tier].Parts)
-                    emit(state, instance, new RigidInstanceDraw(handle, instance.LocalTransform)
+                var parts = tiers[tier].Parts;
+                for (int part = 0; part < parts.Count; part++)
+                    emit(state, instance, new RigidInstanceDraw(parts[part], instance.LocalTransform)
                     { Tint = Color.White, Material = Material.None, Dissolve = dissolve, DissolveComplement = complement, CastsShadows = castsShadows });
             }
         }

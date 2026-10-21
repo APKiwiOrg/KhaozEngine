@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.MapDoc.Editing;
+using KhaozEngine.MapDoc.Interiors;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.Primitives;
@@ -16,7 +17,9 @@ internal sealed record MapPlacementPart(MapRenderKey Key, MeshHandle Handle, Map
 /// <summary>Frozen placement inventory and CPU resources. Accepted HLOD handles are borrowed from publication.</summary>
 public sealed class MapPlacementRenderBatch : IDisposable
 {
-    readonly IReadOnlyList<PropLayer> _ordinary;
+    readonly PropLayer[] _ordinary, _roofs;
+    readonly Dictionary<(string Owner, int Index, int Generation), int> _partIndices;
+    readonly int[] _clusterParts;
     readonly IReadOnlyList<MapPlacementPart> _parts;
     MapPreparedInputLease? _input;
     readonly PropClusterRenderer _clusters = PropClusterRenderer.CreateCpuOnly();
@@ -30,12 +33,22 @@ public sealed class MapPlacementRenderBatch : IDisposable
     public long PreparationChargeBytes { get; }
     public long InputRetainedBytes => _input?.RetainedBytes ?? 0;
     internal void AttachInput(MapPreparedInputLease input) => _input = input;
-    internal MapPlacementRenderBatch(IReadOnlyList<MapResolvedPlacement> inventory, IReadOnlyList<MapEffectiveMarker> markers, IReadOnlyList<PropLayer> ordinary,
+    internal MapPlacementRenderBatch(IReadOnlyList<MapResolvedPlacement> inventory, IReadOnlyList<MapEffectiveMarker> markers, IReadOnlyList<PropLayer> ordinary, IReadOnlyList<PropLayer> roofs,
         IReadOnlyList<MapPlacementPart> parts, MapPlacementRouting routing, IReadOnlyList<NativePropClusterCpuBuild> clusters, long charge)
     {
-        Inventory = Array.AsReadOnly(inventory.ToArray()); Markers = Array.AsReadOnly(markers.ToArray()); _ordinary = Array.AsReadOnly(ordinary.ToArray());
+        Inventory = Array.AsReadOnly(inventory.ToArray()); Markers = Array.AsReadOnly(markers.ToArray()); _ordinary = ordinary.ToArray(); _roofs = roofs.ToArray();
         _parts = Array.AsReadOnly(parts.ToArray()); Routing = routing;
         Clusters = Array.AsReadOnly(clusters.ToArray()); PreparationChargeBytes = charge;
+        _partIndices = new();
+        for (int i = 0; i < _parts.Count; i++) _partIndices.Add((_parts[i].Key.OwnerId, _parts[i].Handle.Index, _parts[i].Handle.Generation), i);
+        _clusterParts = new int[Clusters.Count];
+        for (int i = 0; i < Clusters.Count; i++)
+        {
+            string owner = MapPlacementCells.Owner(Clusters[i].Request.Key);
+            _clusterParts[i] = -1;
+            for (int p = 0; p < _parts.Count; p++)
+                if (_parts[p].Key.OwnerId == owner && _parts[p].Key.PartId == "hlod") { _clusterParts[i] = p; break; }
+        }
     }
     public void Register(MapResourceStamp stamp, IMapDrawSink sink)
     {
@@ -60,39 +73,58 @@ public sealed class MapPlacementRenderBatch : IDisposable
             if (part is not null) AcceptCluster(build.Request.Key, build, part.Handle);
         }
     }
+    readonly record struct Emission(MapPlacementRenderBatch Batch, MapFrameState Frame, IMapDrawSink Sink,
+        MapRoofEvaluationBuffer? Roofs, IReadOnlyDictionary<string, int>? RoofIndices);
     public void Record(MapFrameState frame, IMapDrawSink sink)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this); ArgumentNullException.ThrowIfNull(sink);
-        if (_registered is null) throw new InvalidOperationException("Register placements before recording frames.");
-        var references = _parts.Select((p, i) => (p, _registered[i].Reference)).ToDictionary(p => (p.p.Key.OwnerId, p.p.Handle), p => p.Reference);
-        foreach (var layer in _ordinary) Emit(layer, 0);
-        foreach (var cluster in Clusters)
+        RequireRecord(sink);
+        var emission = new Emission(this, frame, sink, null, null);
+        foreach (var layer in _ordinary) Emit(layer, emission, 0);
+        for (int i = 0; i < Clusters.Count; i++)
         {
-            var request = cluster.Request; var layer = request.BorrowLayer;
+            var request = Clusters[i].Request;
             var anchor = new MapSubmissionAnchor(request.Anchor.X, request.Anchor.Y, request.Anchor.Z);
             var focus = MapRenderTransform.FocusLocal(frame.Focus, anchor);
             var state = _clusters.TryGetNativeEmission(request.Key, focus, out var accepted, out var mergedDraw) ? accepted
                 : PropClusterRenderer.NativeDrawState(request, false, focus);
-            if (state.DrawsIndividuals) Emit(layer, state.IndividualDissolveFloor);
-            if (state.DrawsMerged)
-            {
-                int part = _parts.ToList().FindIndex(p => p.Key.OwnerId == MapPlacementCells.Owner(request.Key) && p.Key.PartId == "hlod");
-                if (part >= 0) Write(_registered[part].Reference, anchor, mergedDraw);
-            }
+            if (state.DrawsIndividuals) Emit(request.BorrowLayer, emission, state.IndividualDissolveFloor);
+            int part = _clusterParts[i];
+            if (state.DrawsMerged && part >= 0) Write(_registered![part].Reference, anchor, mergedDraw, Channels(mergedDraw.CastsShadows), frame, sink);
         }
-
-        void Emit(PropLayer layer, float floor) => PropRenderer.EmitNative(layer, default, sink,
-            (_, instance, draw) =>
-            {
-                var anchor = new MapSubmissionAnchor(instance.Anchor.X, instance.Anchor.Y, instance.Anchor.Z);
-                Write(references[(instance.Id, draw.Mesh)], anchor, draw);
-            }, floor, a => MapRenderTransform.FocusLocal(frame.Focus, new(a.X, a.Y, a.Z)));
-        void Write(MapResourceReference reference, MapSubmissionAnchor anchor, RigidInstanceDraw draw) =>
-            sink.Write(new(reference, Channels(draw.CastsShadows), anchor, draw.World,
-                MapRenderTransform.FocusLocal(frame.Focus, anchor), new MapRigidFrame(draw.Tint, draw.Material,
-                    draw.Dissolve, draw.DissolveEdgeWidth, draw.DissolveEdgeColor, draw.InvertShadowDissolve,
-                    draw.DissolveComplement, draw.Motion), null, null, null));
     }
+    internal void RecordRoofs(MapFrameState frame, MapRoofEvaluationBuffer roofs, IReadOnlyDictionary<string, int> indices, IMapDrawSink sink)
+    {
+        RequireRecord(sink);
+        var emission = new Emission(this, frame, sink, roofs, indices);
+        foreach (var layer in _roofs) Emit(layer, emission, 0);
+    }
+    void RequireRecord(IMapDrawSink sink)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this); ArgumentNullException.ThrowIfNull(sink);
+        if (_registered is null) throw new InvalidOperationException("Register placements before recording frames.");
+    }
+    static void Emit(PropLayer layer, Emission state, float floor) => PropRenderer.EmitNative(layer, default, state,
+        static (e, instance, draw) =>
+        {
+            var anchor = new MapSubmissionAnchor(instance.Anchor.X, instance.Anchor.Y, instance.Anchor.Z);
+            var channels = Channels(draw.CastsShadows);
+            if (e.Roofs is not null)
+            {
+                var intent = e.Roofs.Roofs[e.RoofIndices![instance.Id]];
+                channels = MapDrawChannels.Physical;
+                if (intent.ColourVisible) channels |= MapDrawChannels.Colour | MapDrawChannels.Selection;
+                if (intent.CastShadows) channels |= MapDrawChannels.Shadow;
+                if (intent.CameraBoomBlocks) channels |= MapDrawChannels.Camera;
+                if (intent.SkyPickingBlocks) channels |= MapDrawChannels.Sky;
+            }
+            int part = e.Batch._partIndices[(instance.Id, draw.Mesh.Index, draw.Mesh.Generation)];
+            Write(e.Batch._registered![part].Reference, anchor, draw, channels, e.Frame, e.Sink);
+        }, floor, resolveFocus: static (e, a) => MapRenderTransform.FocusLocal(e.Frame.Focus, new(a.X, a.Y, a.Z)));
+    static void Write(MapResourceReference reference, MapSubmissionAnchor anchor, RigidInstanceDraw draw, MapDrawChannels channels, MapFrameState frame, IMapDrawSink sink) =>
+        sink.Write(new(reference, channels, anchor, draw.World,
+            MapRenderTransform.FocusLocal(frame.Focus, anchor), new MapRigidFrame(draw.Tint, draw.Material,
+                draw.Dissolve, draw.DissolveEdgeWidth, draw.DissolveEdgeColor, draw.InvertShadowDissolve,
+                draw.DissolveComplement, draw.Motion), null, null, null));
     static MapDrawChannels Channels(bool shadows) => MapDrawChannels.Colour | MapDrawChannels.Camera | MapDrawChannels.Sky |
         MapDrawChannels.Selection | MapDrawChannels.Physical | (shadows ? MapDrawChannels.Shadow : MapDrawChannels.None);
     public void Dispose() { if (_disposed) return; _disposed = true; _clusters.Dispose(); _input?.Dispose(); }

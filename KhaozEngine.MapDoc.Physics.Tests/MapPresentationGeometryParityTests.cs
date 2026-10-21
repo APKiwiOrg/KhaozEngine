@@ -14,7 +14,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.MapDoc.Physics;
 
-public sealed class MapPresentationGeometryParityTests
+public sealed partial class MapPresentationGeometryParityTests
 {
     [Fact]
     public void ReleasedSyntheticShapes_FreezeBeforeExtraction()

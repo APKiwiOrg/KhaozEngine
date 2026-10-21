@@ -86,11 +86,19 @@ public static class NativeMapPlacements
             }
             var clusters = new List<NativePropClusterCpuBuild>();
             var ordinary = new List<PropLayer>();
+            var roofLayers = new List<PropLayer>();
             foreach (var layer in policy.Layers)
             {
                 var selected = instances.Where(i => layer.AssetIds.Contains(i.AssetId)).ToArray();
                 if (selected.Length == 0) continue;
-                if (layer.HlodDistance == 0) { ordinary.Add(Shared(selected, layer)); continue; }
+                if (layer.HlodDistance == 0)
+                {
+                    var plain = selected.Where(i => !roofs.Contains(i.Id)).ToArray();
+                    var caps = selected.Where(i => roofs.Contains(i.Id)).ToArray();
+                    if (plain.Length > 0) ordinary.Add(Shared(plain, layer));
+                    if (caps.Length > 0) roofLayers.Add(Shared(caps, layer));
+                    continue;
+                }
                 foreach (var cell in selected.GroupBy(i => MapPlacementCells.Key(layer.Id, posesById[i.Id], scene.Source.Data.TileSize))
                     .OrderBy(c => c.Key.X).ThenBy(c => c.Key.Z))
                 {
@@ -124,8 +132,13 @@ public static class NativeMapPlacements
                 }
             }
             var defaults = instances.Where(i => policy.For(i.AssetId) is null).ToArray();
-            if (defaults.Length > 0) ordinary.Add(Shared(defaults, null));
-            return new(scene.Placements, MapEffectiveAnnotations.Markers(scene), ordinary, parts, routing, clusters, admission.RetainedBytes);
+            var ordinaryDefaults = defaults.Where(i => !roofs.Contains(i.Id)).ToArray();
+            var roofDefaults = defaults.Where(i => roofs.Contains(i.Id)).ToArray();
+            if (ordinaryDefaults.Length > 0) ordinary.Add(Shared(ordinaryDefaults, null));
+            if (roofDefaults.Length > 0) roofLayers.Add(Shared(roofDefaults, null));
+            // Frozen bindings, cluster lookup slots and the batch's copied list storage.
+            admission.ReserveBytes(checked(1024L + parts.Count * 192L + clusters.Count * 32L + (ordinary.Count + roofLayers.Count) * 32L));
+            return new(scene.Placements, MapEffectiveAnnotations.Markers(scene), ordinary, roofLayers, parts, routing, clusters, admission.RetainedBytes);
 
             PropLayer Shared(IReadOnlyList<NativePropInstance> rows, MapPlacementLayer? layer)
             {

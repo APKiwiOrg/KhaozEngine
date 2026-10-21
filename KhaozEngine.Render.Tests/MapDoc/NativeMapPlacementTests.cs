@@ -185,7 +185,7 @@ public sealed class NativeMapPlacementTests
                 emitted.DissolveEdgeWidth, emitted.DissolveEdgeColor, emitted.InvertShadowDissolve, emitted.DissolveComplement, emitted.Motion));
             var solid = PropClusterRenderer.MergedDraw(new MeshHandle(90), build.Request.Layer, 0, true);
             Assert.False(solid.InvertShadowDissolve);
-            Assert.Equal(4, set.Draws.Count(d => d.Resource.Key.Kind == MapRenderKind.Roof));
+            Assert.DoesNotContain(set.Draws, d => d.Resource.Key.Kind == MapRenderKind.Roof);
             Assert.All(set.Draws.Where(d => build.RepresentedIds.Contains(d.Resource.Key.OwnerId)), d => Assert.Equal(.5f, d.Rigid!.Value.Dissolve));
         }
     }

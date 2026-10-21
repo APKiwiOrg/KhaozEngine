@@ -245,7 +245,8 @@ public class TileWorldBuildQueueScopedPrimeTests
             return request.Input;
         }, applied.Add, new TileWorldBuildQueueOptions
         {
-            MaxConcurrentBuilds = 1, MaxInteriorCutAppliesPerPump = 0,
+            MaxConcurrentBuilds = 1,
+            MaxInteriorCutAppliesPerPump = 0,
         }, dispatcher);
         var key = new TileWorldBuildKey(default, -1, TileWorldBuildKind.InteriorCut);
         queue.Request(new TileWorldBuildRequest<int>(key, 1, 1));

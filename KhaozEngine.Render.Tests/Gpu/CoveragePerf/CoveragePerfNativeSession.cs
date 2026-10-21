@@ -113,68 +113,88 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
 
     public void Frame(int frameIndex, ref CoveragePerfFrameSample sample)
     {
-        // Wall spans use the injected clock and preallocated fields only. None is added to the aggregate.
+        // Wall spans use the injected clock and locals only. None is added to the aggregate.
         long entry = _clock.Now();
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_timerLayout != CoveragePerfTimerLayout.CpuOnly && _timestamps is null)
-            throw new NotSupportedException("The device cannot establish GPU timestamp proof.");
-        if (frameIndex != _nextFrame || _pendingCount == _pending.Length)
-            throw new InvalidOperationException("Frames must be sequential and completed in fixed batches.");
-        _frameIndex = frameIndex;
-        _presented = false; _aggregateTicks = _resolutionTicks = _surfaceTicks = _beginTicks = _submitTicks = _endAndPreSubmitTicks = 0;
-        long allocated = GC.GetAllocatedBytesForCurrentThread();
-        int gen0 = GC.CollectionCount(0), gen1 = GC.CollectionCount(1), gen2 = GC.CollectionCount(2);
-        int creations = _device.Creations, waits = _device.Waits, submits = _device.Submissions;
-        int completionFences = _device.SubmittedCompletionFences;
-        var counters = _device.Counters;
-        // This tick precedes BeginSubmission and Scene.Begin. PresentEntry owns the matching closing tick.
-        _aggregateStart = _clock.Now();
-        Observe("aggregate-start");
-        if (_legacy) CoveragePerfLegacyHost.Run(_frame, true, _device, _commands, Color.Black, _prepare, _record);
-        else FramePhases.Run(_frame, true, _device, _commands, Color.Black, _prepare, _record);
-        long hostReturn = _clock.Now();
-        if (!_presented) throw new InvalidOperationException("The production host never reached Present.");
-        MatchOutcomes();
-        var schedule = Typical.PassSchedule();
-        bool stageComplete = Typical.Actors.All(a => a.Staged);
-        bool fallback = !EffectiveRoutesValid || Typical.Covered && Typical.Actors.Any(a =>
-            Typical.Scene.GetCoverageOutcome(a.Frame).Presentation != CoveragePresentation.Dispatched);
-        var pending = _pending[_pendingCount++];
-        pending.Begin(frameIndex, Typical);
-        sample = new CoveragePerfFrameSample
+        long? aggregateStart = null, presentEntry = null, hostReturn = null, frameEnd = null;
+        try
         {
-            FrameIndex = frameIndex,
-            PoseId = frameIndex % 2,
-            FrameTicks = _aggregateTicks,
-            CpuFramePreparationTicks = _aggregateTicks,
-            CpuChildren = [new("host.beginSubmission", _beginTicks), new("host.endAndPreSubmit", _endAndPreSubmitTicks), new("device.submit", _submitTicks),
-                new("coverage.resolution", _resolutionTicks), new("coverage.surface", _surfaceTicks)],
-            AllocatedBytes = _endAllocated - allocated,
-            Gen0Collections = _endGen0 - gen0,
-            Gen1Collections = _endGen1 - gen1,
-            Gen2Collections = _endGen2 - gen2,
-            Actors = Typical.Actors.Length,
-            MainVisibleActors = Typical.MainVisibleActors(),
-            Passes = schedule.Passes,
-            PointShadowFaces = schedule.Faces,
-            UploadedBytes = Typical.Scene.LastFrameStats.BufferUpdateBytes,
-            ResourceGrowth = _endCreations - creations,
-            ProductionWaits = checked(Math.Max(_endWaits - waits, (int)(_endCounters.DrainCount - counters.DrainCount))
-                + (int)(_endCounters.BackpressureStallCount - counters.BackpressureStallCount)
-                + (int)(_endCounters.AcquireWaitCount - counters.AcquireWaitCount)),
-            Submissions = _endSubmits - submits,
-            SubmittedCompletionFences = _endCompletionFences - completionFences,
-            SubmissionParticipants = _submissionCounts.Participants,
-            CompletionConsumers = _submissionCounts.Consumers,
-            StageComplete = stageComplete,
-            Fallback = fallback,
-            PoseFingerprint = Typical.PoseFingerprint(),
-            PassFingerprint = schedule.Fingerprint,
-            FrameEntryToAggregateTicks = checked(_aggregateStart - entry),
-            PresentToHostReturnTicks = checked(hostReturn - _presentEntry),
-        };
-        sample.HostReturnToFrameEndTicks = checked(_clock.Now() - hostReturn);
-        _nextFrame++;
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_timerLayout != CoveragePerfTimerLayout.CpuOnly && _timestamps is null)
+                throw new NotSupportedException("The device cannot establish GPU timestamp proof.");
+            if (frameIndex != _nextFrame || _pendingCount == _pending.Length)
+                throw new InvalidOperationException("Frames must be sequential and completed in fixed batches.");
+            _frameIndex = frameIndex;
+            _presented = false; _aggregateTicks = _resolutionTicks = _surfaceTicks = _beginTicks = _submitTicks = _endAndPreSubmitTicks = 0;
+            long allocated = GC.GetAllocatedBytesForCurrentThread();
+            int gen0 = GC.CollectionCount(0), gen1 = GC.CollectionCount(1), gen2 = GC.CollectionCount(2);
+            int creations = _device.Creations, waits = _device.Waits, submits = _device.Submissions;
+            int completionFences = _device.SubmittedCompletionFences;
+            var counters = _device.Counters;
+            // This tick precedes BeginSubmission and Scene.Begin. PresentEntry owns the matching closing tick.
+            _aggregateStart = _clock.Now();
+            aggregateStart = _aggregateStart;
+            Observe("aggregate-start");
+            if (_legacy) CoveragePerfLegacyHost.Run(_frame, true, _device, _commands, Color.Black, _prepare, _record);
+            else FramePhases.Run(_frame, true, _device, _commands, Color.Black, _prepare, _record);
+            hostReturn = _clock.Now();
+            if (!_presented) throw new InvalidOperationException("The production host never reached Present.");
+            // _presented is reset above, so this is this frame's Present entry tick.
+            presentEntry = _presentEntry;
+            MatchOutcomes();
+            var schedule = Typical.PassSchedule();
+            bool stageComplete = Typical.Actors.All(a => a.Staged);
+            bool fallback = !EffectiveRoutesValid || Typical.Covered && Typical.Actors.Any(a =>
+                Typical.Scene.GetCoverageOutcome(a.Frame).Presentation != CoveragePresentation.Dispatched);
+            var pending = _pending[_pendingCount++];
+            pending.Begin(frameIndex, Typical);
+            sample = new CoveragePerfFrameSample
+            {
+                FrameIndex = frameIndex,
+                PoseId = frameIndex % 2,
+                FrameTicks = _aggregateTicks,
+                CpuFramePreparationTicks = _aggregateTicks,
+                CpuChildren = [new("host.beginSubmission", _beginTicks), new("host.endAndPreSubmit", _endAndPreSubmitTicks), new("device.submit", _submitTicks),
+                    new("coverage.resolution", _resolutionTicks), new("coverage.surface", _surfaceTicks)],
+                AllocatedBytes = _endAllocated - allocated,
+                Gen0Collections = _endGen0 - gen0,
+                Gen1Collections = _endGen1 - gen1,
+                Gen2Collections = _endGen2 - gen2,
+                Actors = Typical.Actors.Length,
+                MainVisibleActors = MainVisibleActors(),
+                Passes = schedule.Passes,
+                PointShadowFaces = schedule.Faces,
+                UploadedBytes = Typical.Scene.LastFrameStats.BufferUpdateBytes,
+                ResourceGrowth = _endCreations - creations,
+                ProductionWaits = checked(Math.Max(_endWaits - waits, (int)(_endCounters.DrainCount - counters.DrainCount))
+                    + (int)(_endCounters.BackpressureStallCount - counters.BackpressureStallCount)
+                    + (int)(_endCounters.AcquireWaitCount - counters.AcquireWaitCount)),
+                Submissions = _endSubmits - submits,
+                SubmittedCompletionFences = _endCompletionFences - completionFences,
+                SubmissionParticipants = _submissionCounts.Participants,
+                CompletionConsumers = _submissionCounts.Consumers,
+                StageComplete = stageComplete,
+                Fallback = fallback,
+                PoseFingerprint = Typical.PoseFingerprint(),
+                PassFingerprint = schedule.Fingerprint,
+            };
+            frameEnd = _clock.Now();
+            _nextFrame++;
+        }
+        finally
+        {
+            // A span is recorded when both of its bounding ticks were taken in this frame, on a throw as well.
+            // One whose closing tick was never taken stays null.
+            if (aggregateStart is long opened) sample.FrameEntryToAggregateTicks = checked(opened - entry);
+            if (presentEntry is long present && hostReturn is long returned) sample.PresentToHostReturnTicks = checked(returned - present);
+            if (hostReturn is long host && frameEnd is long end) sample.HostReturnToFrameEndTicks = checked(end - host);
+        }
+    }
+
+    int MainVisibleActors()
+    {
+        // A fake host observes this call to place the final Frame clock read after the sample initializer.
+        Observe("sample-initializer");
+        return Typical.MainVisibleActors();
     }
 
     void Prepare(Frame frame)

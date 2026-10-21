@@ -149,7 +149,7 @@ internal static class CoveragePerfDriver
             if (failure.Failed) return;
             for (int j = batchStart; j < count; j++)
             {
-                string? invalid = ValidateSample(block, storage[j], offset + j, offset != 0);
+                string? invalid = ValidateSample(block, storage[j], offset + j, measured);
                 if (invalid is null) continue;
                 failure.Add("outcome", new InvalidDataException(invalid));
                 return;

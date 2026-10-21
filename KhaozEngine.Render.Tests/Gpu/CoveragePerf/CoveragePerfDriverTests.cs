@@ -593,6 +593,37 @@ public sealed class CoveragePerfDriverTests
         Assert.Equal(300000, block.Warmup[3].FrameWallTicks);
     }
 
+    [Theory]
+    [InlineData(false, 250)]
+    [InlineData(true, 10000)]
+    public void AThrowingFrameRecordsItsWallAndItsOwnExceptionFirst(bool measured, long ticks)
+    {
+        int failing = measured ? CoveragePerfManifest.WarmupFrameCount + 1 : 2;
+        var run = new CoveragePerfFakeRun();
+        run.Setup = s => s.OnFrame = (CoveragePerfFakeSession _, int i, ref CoveragePerfFrameSample sample) =>
+        {
+            if (s.Block.Index != 0 || i != failing) return;
+            run.Time.Advance(ticks);
+            throw new InvalidOperationException("frame failure");
+        };
+
+        var report = run.Run();
+
+        const string own = "frame: InvalidOperationException: frame failure";
+        Assert.Equal(CoveragePerfRunStatus.Failed, report.Status);
+        Assert.Equal(own, report.Reason);
+        var block = Assert.Single(report.Blocks);
+        Assert.Equal(own, block.Errors[0]);
+        // A measured frame over the limit adds the frame deadline after the frame's own exception.
+        Assert.Equal(measured ? new[] { own, "frame: TimeoutException: Frame deadline reached after frame." } : [own],
+            block.Errors);
+        var sample = measured ? block.Samples[^1] : block.Warmup[^1];
+        Assert.Equal(failing, sample.FrameIndex);
+        Assert.Equal(ticks, sample.FrameWallTicks);
+        Assert.Equal(own, sample.Error);
+        Assert.Equal(measured ? 2 : 3, measured ? block.Samples.Length : block.Warmup.Length);
+    }
+
     [Fact]
     public void JustBelowTheUnitLimitDoesNotExpireOrResetAtTheNextBlock()
     {

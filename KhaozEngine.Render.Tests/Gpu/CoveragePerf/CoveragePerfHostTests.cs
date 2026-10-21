@@ -53,9 +53,9 @@ public sealed class CoveragePerfHostTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void WallSpansAreOrderedInsideTheFrameWallAndNeverEnterTheAggregate(bool legacy)
+    [InlineData(false, 1010)]
+    [InlineData(true, 1000)]
+    public void WallSpansAreOrderedInsideTheFrameWallAndNeverEnterTheAggregate(bool legacy, long postHost)
     {
         using var probe = legacy ? CoveragePerfSceneProbe.OpenDirect(1)
             : CoveragePerfSceneProbe.Open(1, covered: true, completeOutcomes: true);
@@ -72,19 +72,53 @@ public sealed class CoveragePerfHostTests
             Assert.NotNull(recorded.HostReturnToFrameEndTicks);
             Assert.Null(recorded.FrameWallTicks);
         }
+        // The counter snapshot advances 100 ticks before the aggregate opens. Present entry to host return is the
+        // aggregate-stop trace plus the 10000 tick Present forwarding. Post-host work is one 10 tick trace per
+        // outcome match plus the 1000 tick call the sample initializer makes, before the final clock read.
+        Assert.Equal(CoveragePerfSceneProbe.SnapshotTicks, sample.FrameEntryToAggregateTicks);
+        Assert.Equal(10 + 10000, sample.PresentToHostReturnTicks);
+        Assert.Equal(postHost, sample.HostReturnToFrameEndTicks);
+        Assert.Equal(1, probe.InitializerCalls);
         Assert.Equal(probe.TickAtStart - start, sample.FrameEntryToAggregateTicks);
         Assert.Equal(probe.TickAtPresentEntry - probe.TickAtStart, sample.CpuFramePreparationTicks);
         Assert.Equal(probe.TickAfterPresentForward - probe.TickAtPresentEntry, sample.PresentToHostReturnTicks);
         Assert.Equal(end - probe.TickAfterPresentForward, sample.HostReturnToFrameEndTicks);
         Assert.Equal(end - start, sample.FrameEntryToAggregateTicks + sample.CpuFramePreparationTicks
             + sample.PresentToHostReturnTicks + sample.HostReturnToFrameEndTicks);
-        Assert.InRange(sample.PresentToHostReturnTicks!.Value, 10000, end - start);
         Assert.InRange(sample.CpuFramePreparationTicks, 1, 9999);
         Assert.Equal(sample.CpuFramePreparationTicks, sample.FrameTicks);
-        Assert.Equal(10 * probe.Events.Count(e => e == "outcome-match"), sample.HostReturnToFrameEndTicks);
-        if (!legacy) Assert.True(sample.HostReturnToFrameEndTicks > 0);
+        Assert.Equal(10 * probe.Events.Count(e => e == "outcome-match") + CoveragePerfSceneProbe.InitializerTicks,
+            sample.HostReturnToFrameEndTicks);
+        Assert.Equal(legacy ? 0 : 1, probe.Events.Count(e => e == "outcome-match"));
         Assert.Equal(1, probe.Events.Count(e => e == "present-forward"));
         Assert.True(probe.Events.IndexOf("aggregate-stop") < probe.Events.IndexOf("present-forward"));
+    }
+
+    [Theory]
+    [InlineData("render")]
+    [InlineData("outcome-match")]
+    public void AFrameThatThrowsKeepsEverySpanWhoseBoundingTicksWereTaken(string failAt)
+    {
+        using var probe = CoveragePerfSceneProbe.Open(1, covered: true, completeOutcomes: true);
+        probe.Frame(0);
+        probe.CompletePendingOutcomes();
+        probe.Events.Clear();
+        var expected = new InvalidOperationException("frame failure");
+        probe.OnTrace = name => { if (name == failAt) throw expected; };
+        var sample = new CoveragePerfFrameSample { FrameIndex = 1 };
+
+        var error = Assert.Throws<InvalidOperationException>(() => probe.Session.Frame(1, ref sample));
+
+        Assert.Same(expected, error);
+        bool afterHostReturn = failAt == "outcome-match";
+        Assert.Equal(afterHostReturn, probe.Events.Contains("present-forward"));
+        Assert.Equal(CoveragePerfSceneProbe.SnapshotTicks, sample.FrameEntryToAggregateTicks);
+        // Present entry to host return needs the host return tick. Frame end is never taken on a throw.
+        Assert.Equal(afterHostReturn ? 10 + 10000L : (long?)null, sample.PresentToHostReturnTicks);
+        Assert.Null(sample.HostReturnToFrameEndTicks);
+        Assert.Null(sample.FrameWallTicks);
+        Assert.Equal(0, sample.CpuFramePreparationTicks);
+        Assert.Equal(1, sample.FrameIndex);
     }
 
     [Theory]

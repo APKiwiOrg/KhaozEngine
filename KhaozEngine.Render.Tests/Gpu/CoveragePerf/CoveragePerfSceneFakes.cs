@@ -24,6 +24,10 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
     internal List<string> Events { get; } = [];
     internal int UploadCalls;
     internal long TickAtStart, TickAtPresentEntry, TickAfterPresentForward, Ticks;
+    // Silent advances, so event order assertions are unchanged. Snapshot reads only count outside the aggregate.
+    internal const long SnapshotTicks = 100, InitializerTicks = 1000;
+    internal int InitializerCalls;
+    bool _inAggregate;
     internal bool HistoryCommittedAtPresent;
     internal int ParticipantsAtReadback;
     internal int LastSubmittedFenceCount;
@@ -83,7 +87,7 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
 
     internal CoveragePerfFrameSample Frame(int frame)
     {
-        Events.Clear(); UploadCalls = 0;
+        Events.Clear(); UploadCalls = 0; InitializerCalls = 0; _inAggregate = false;
         CoveragePerfFrameSample sample = default;
         Session.Frame(frame, ref sample);
         return sample;
@@ -91,10 +95,11 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
 
     void Observe(string name, Frame frame)
     {
-        if (name == "aggregate-start") TickAtStart = Ticks;
+        if (name == "sample-initializer") { Ticks += InitializerTicks; InitializerCalls++; return; }
+        if (name == "aggregate-start") { TickAtStart = Ticks; _inAggregate = true; }
         if (name == "aggregate-stop")
         {
-            TickAtPresentEntry = Ticks;
+            TickAtPresentEntry = Ticks; _inAggregate = false;
             HistoryCommittedAtPresent = Session.Typical.Actors.All(a =>
                 !Session.Typical.Covered || a.Frame.Preparation!.MotionPresented);
         }
@@ -166,6 +171,15 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
         internal ProbeDevice(CoveragePerfSceneProbe probe)
         { _probe = probe; _factory = new(new CoverageRecordingFactory((FakeGpuResourceFactory)_inner.Factory, false), probe); }
         public GpuBackendKind Backend => _inner.Backend;
+        public GpuDeviceCounters Counters
+        {
+            get
+            {
+                // The counter snapshot before the aggregate opens takes time, so a misplaced Frame entry tick shows.
+                if (!_probe._inAggregate) _probe.Ticks += SnapshotTicks;
+                return default;
+            }
+        }
         public GpuCapabilities Capabilities => _probe.ReportedCapabilities ?? new(false, true, deviceName: "semantic coverage probe", supportsCompute: true,
             supportsCompletionFences: _probe._completeOutcomes)
         { MaxColorAttachments = 8, SupportsTimestamps = _probe._layout != CoveragePerfTimerLayout.CpuOnly };

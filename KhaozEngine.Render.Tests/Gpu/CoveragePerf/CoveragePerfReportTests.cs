@@ -107,10 +107,13 @@ public sealed class CoveragePerfReportTests
     public void WallDiagnosticsRoundTripAppearInTheMarkdownSummaryAndNeverEnterAGate()
     {
         var plain = CoveragePerfReportVectors.Create("C0");
+        // Each span's maximum sits on a different frame from the maximum wall, so the Markdown must print one frame's spans.
         var report = CoveragePerfReportVectors.ChangeBlock(plain, 3, b => b with
         {
-            Warmup = b.Warmup.Select(s => Wall(s, s.FrameIndex == 7 ? 9500000000 : 20000000, 1000, 8200000000, 3000)).ToImmutableArray(),
-            Samples = b.Samples.Select(s => Wall(s, s.FrameIndex == 70 ? 40000000 : 30000000, 2000, 7000000, 4000)).ToImmutableArray(),
+            Warmup = b.Warmup.Select(s => s.FrameIndex == 7 ? Wall(s, 9500000000, 1000, 8200000000, 3000)
+                : Wall(s, 20000000, 5000, 10000000, 9000)).ToImmutableArray(),
+            Samples = b.Samples.Select(s => s.FrameIndex == 70 ? Wall(s, 40000000, 2000, null, null)
+                : Wall(s, 30000000, 2500, 7000000, 4000)).ToImmutableArray(),
         });
         var json = CoveragePerfReportJson.Serialize(report);
         var copy = CoveragePerfReportJson.Deserialize(json);
@@ -126,8 +129,8 @@ public sealed class CoveragePerfReportTests
         Assert.Equal(7, warm.GetProperty("maxFrameWallFrame").GetInt32());
         Assert.Equal(9500, warm.GetProperty("frameWall").GetProperty("maximum").GetDouble());
         Assert.Equal(8200, warm.GetProperty("presentToHostReturn").GetProperty("maximum").GetDouble());
-        Assert.Equal(.001, warm.GetProperty("frameEntryToAggregate").GetProperty("maximum").GetDouble());
-        Assert.Equal(.003, warm.GetProperty("hostReturnToFrameEnd").GetProperty("maximum").GetDouble());
+        Assert.Equal(.005, warm.GetProperty("frameEntryToAggregate").GetProperty("maximum").GetDouble());
+        Assert.Equal(.009, warm.GetProperty("hostReturnToFrameEnd").GetProperty("maximum").GetDouble());
         var measured = summary.GetProperty("measuredWall");
         Assert.Equal(70, measured.GetProperty("maxFrameWallFrame").GetInt32());
         Assert.Equal(40, measured.GetProperty("frameWall").GetProperty("maximum").GetDouble());
@@ -135,9 +138,11 @@ public sealed class CoveragePerfReportTests
             .GetProperty("warmupWall").GetProperty("frameWall").ValueKind);
 
         string markdown = CoveragePerfReportJson.Markdown(report);
-        Assert.Contains("- Block 3 SharedOn warm-up wall, 64 frames: maximum frame wall 9500 ms at frame 7, frame entry to aggregate maximum 0.001 ms, Present entry to host return maximum 8200 ms, host return to frame end maximum 0.003 ms.", markdown);
-        Assert.Contains("- Block 3 SharedOn measured wall, 32 frames: maximum frame wall 40 ms at frame 70, frame entry to aggregate maximum 0.002 ms, Present entry to host return maximum 7 ms, host return to frame end maximum 0.004 ms.", markdown);
-        Assert.Contains("- Block 2 SharedOff warm-up wall, 64 frames: maximum frame wall unresolved ms at frame unresolved,", markdown);
+        Assert.Contains("- Block 3 SharedOn warm-up wall, 64 frames: maximum frame wall 9500 ms at frame 7. That frame spent 0.001 ms from frame entry to aggregate, 8200 ms from Present entry to host return and 0.003 ms from host return to frame end.", markdown);
+        Assert.Contains("- Block 3 SharedOn measured wall, 32 frames: maximum frame wall 40 ms at frame 70. That frame spent 0.002 ms from frame entry to aggregate, no recorded time from Present entry to host return and no recorded time from host return to frame end.", markdown);
+        Assert.Contains("- Block 2 SharedOff warm-up wall, 64 frames: no frame wall recorded.", markdown);
+        Assert.DoesNotContain(markdown.Split('\n'), line => line.Contains(" wall, ", StringComparison.Ordinal)
+            && line.Contains("unresolved", StringComparison.Ordinal));
         Assert.Contains("The 10000 ms frame limit applies to measured frames only.", markdown);
 
         var before = CoveragePerfBudgets.Evaluate(plain);
@@ -147,7 +152,7 @@ public sealed class CoveragePerfReportTests
         Assert.Equal(CoveragePerfStatistics.Summarize(plain.Blocks[3], 1000000000).Cpu,
             CoveragePerfStatistics.Summarize(report.Blocks[3], 1000000000).Cpu);
 
-        static CoveragePerfFrameSample Wall(CoveragePerfFrameSample s, long wall, long entry, long present, long post) => s with
+        static CoveragePerfFrameSample Wall(CoveragePerfFrameSample s, long wall, long entry, long? present, long? post) => s with
         { FrameWallTicks = wall, FrameEntryToAggregateTicks = entry, PresentToHostReturnTicks = present, HostReturnToFrameEndTicks = post };
         static void AssertWall(CoveragePerfFrameSample expected, CoveragePerfFrameSample actual)
         {

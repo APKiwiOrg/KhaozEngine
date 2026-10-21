@@ -60,8 +60,8 @@ internal static class CoveragePerfReportJson
         long frequency = report.Identity.Execution.ClockFrequency;
         foreach (var block in report.Blocks)
         {
-            Wall(block, "warm-up", CoveragePerfStatistics.Wall(block.Warmup, frequency));
-            Wall(block, "measured", CoveragePerfStatistics.Wall(block.Samples, frequency));
+            Wall(block, "warm-up", block.Warmup, frequency);
+            Wall(block, "measured", block.Samples, frequency);
         }
         text.AppendLine();
         foreach (var block in report.Blocks)
@@ -73,8 +73,21 @@ internal static class CoveragePerfReportJson
         foreach (string reason in reasons) text.AppendLine("- Unproved: " + reason.Replace('\r', ' ').Replace('\n', ' '));
         return text.ToString();
 
-        void Wall(CoveragePerfBlockResult block, string phase, CoveragePerfWallSummary wall) =>
-            text.AppendLine(FormattableString.Invariant($"- Block {block.Block.Index} {block.Block.Condition} {phase} wall, {wall.Frames} frames: maximum frame wall {Number(wall.FrameWall?.Maximum)} ms at frame {wall.MaxFrameWallFrame?.ToString(CultureInfo.InvariantCulture) ?? "unresolved"}, frame entry to aggregate maximum {Number(wall.FrameEntryToAggregate?.Maximum)} ms, Present entry to host return maximum {Number(wall.PresentToHostReturn?.Maximum)} ms, host return to frame end maximum {Number(wall.HostReturnToFrameEnd?.Maximum)} ms."));
+        // The spans printed beside the maximum wall all belong to that one frame, never to independent maxima.
+        void Wall(CoveragePerfBlockResult block, string phase, ImmutableArray<CoveragePerfFrameSample> samples, long frequency)
+        {
+            var wall = CoveragePerfStatistics.Wall(samples, frequency);
+            string line = FormattableString.Invariant($"- Block {block.Block.Index} {block.Block.Condition} {phase} wall, {wall.Frames} frames: ");
+            if (wall.MaxFrameWallFrame is not int frame || wall.FrameWall is not { } frameWall)
+            {
+                text.AppendLine(line + "no frame wall recorded.");
+                return;
+            }
+            var worst = samples.First(s => s.FrameIndex == frame);
+            text.AppendLine(line + FormattableString.Invariant($"maximum frame wall {Number(frameWall.Maximum)} ms at frame {frame}. That frame spent {Spent(worst.FrameEntryToAggregateTicks)} from frame entry to aggregate, {Spent(worst.PresentToHostReturnTicks)} from Present entry to host return and {Spent(worst.HostReturnToFrameEndTicks)} from host return to frame end."));
+
+            string Spent(long? ticks) => ticks is >= 0 && frequency > 0 ? Number(ticks.Value * 1000d / frequency) + " ms" : "no recorded time";
+        }
 
         void SubmissionCounts(CoveragePerfSharedSubmissionObservation observation, string phase, CoveragePerfSubmissionSummary counts) =>
             text.AppendLine($"- Block {observation.Block} {observation.Condition} {phase}, {counts.Frames} frames: {counts.Submissions} submissions, {counts.SubmittedCompletionFences} completion fences, {counts.SubmissionParticipants} participants, {counts.CompletionConsumers} consumers, {counts.ProductionWaits} production waits.");

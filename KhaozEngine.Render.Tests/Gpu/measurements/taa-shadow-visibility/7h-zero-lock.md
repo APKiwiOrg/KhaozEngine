@@ -105,6 +105,9 @@ The scratch branch was deleted remotely and locally, and its worktree removed af
 is not run after this blocker. The known ContourTests.cs formatting issue #1485 is not changed. No all-leg
 correctness run is dispatched, so there are no Metal/WARP/lavapipe correctness counts to claim for this candidate.
 The last solution build after preserving the blocked candidate finished with exit 0, zero warnings and errors.
-The final artifact guards are the pre-commit gate. They run dashes, prose and file size with --tree, doc versions,
-git diff --check and the capture manifest verifier through build-slot. The commit report records their exit code.
+The final artifact gate finished with exit 0. Dashes, prose and file size with --tree, doc versions,
+git diff --check and the capture manifest verifier all passed through build-slot. The complete guard invocation
+took 1234.425 seconds. The commit hook also passed the staged guards, including the four newly added files.
+Candidate commit 8efe31117741c723426bcef67a162b9c1310d216 is pushed to fix/taa-vis-zero-lock, with the remote SHA
+verified. This evidence-only closeout does not change the candidate programs.
 No manual validation is needed for the captured compiler failure. Integration remains held.

@@ -10,7 +10,11 @@
          matter of ABI, and the staging-map tests write through a pinned span. Both are test-side mirrors of what
          KhaozEngine.Gpu.Vulkan is unsafe by construction for. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <DefineConstants Condition="'$(CoverageFilterStudy)' == 'true'">$(DefineConstants);COVERAGE_FILTER_STUDY</DefineConstants>
   </PropertyGroup>
+  <ItemGroup Condition="'$(CoverageFilterStudy)' == 'true'">
+    <Compile Include="obj/coverage-filter-study/*.g.cs" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />

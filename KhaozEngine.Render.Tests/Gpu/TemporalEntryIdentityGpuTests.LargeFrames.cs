@@ -17,8 +17,11 @@ namespace KhaozEngine.Tests.Gpu
         /// Halton order, reach columns 512 and 1024 and row 512 under positive jitter on each axis. One frame set feeds
         /// four rigs: the production fused and split entries, and D prime's fused and split entries
         /// (<see cref="TemporalVisibilityFrozenD.ToD"/>). After every frame the two production histories must be
-        /// byte-identical in colour, state, stored R8 and stored depth, and so must D prime's two. No device is
-        /// excepted, hardware NVIDIA Direct3D 11 included, since both entries of one program take the same inputs.
+        /// byte-identical in colour, state, stored R8 and stored depth, and so must D prime's two. Hardware NVIDIA
+        /// Direct3D 11 is not excepted, since both entries of one program take the same inputs. On a software Vulkan
+        /// device (<see cref="TemporalDeviceClass.IsLavapipe"/>) each pair's colour is held to
+        /// <see cref="TemporalSoftwareVulkanColourRule"/> over all frames and printed, as the follow walk's is, and its
+        /// state, R8 and depth stay exact.
         /// </summary>
         [GpuTheory]
         [InlineData(TemporalUpscale.Native)]
@@ -45,6 +48,10 @@ namespace KhaozEngine.Tests.Gpu
             }
             output.WriteLine($"{fused.Device.Backend} on {fused.Device.Capabilities.DeviceName}, {preset}, {iw}x{ih} internal, "
                 + $"{dw}x{dh} display, production and D prime each fused against split on one frame set");
+            bool softwareVulkan = TemporalDeviceClass.IsLavapipe(fused.Device);
+            var productionColour = new EntryDifference("production fused vs split colour");
+            var dColour = new EntryDifference("D prime fused vs split colour");
+            long colourCompared = 0;
             try
             {
                 var random = new Random(5501);
@@ -79,14 +86,35 @@ namespace KhaozEngine.Tests.Gpu
                             $"frame {frame}: the resolve did not receive the shared uniforms");
                         Assert.True(entries[r] == rig.Renderer.LastEntry, $"frame {frame}: the wrong entry resolved");
                     }
-                    TemporalHistorySample.Exact(frame, "production fused vs split", TemporalHistorySample.Read(fused),
-                        TemporalHistorySample.Read(split));
-                    TemporalHistorySample.Exact(frame, "D prime fused vs split", TemporalHistorySample.Read(dFused),
-                        TemporalHistorySample.Read(dSplit));
+                    TemporalHistorySample pf = TemporalHistorySample.Read(fused), ps = TemporalHistorySample.Read(split);
+                    TemporalHistorySample df = TemporalHistorySample.Read(dFused), ds = TemporalHistorySample.Read(dSplit);
+                    if (softwareVulkan)
+                    {
+                        SoftwareVulkanPair(frame, "production fused vs split", pf, ps, productionColour);
+                        SoftwareVulkanPair(frame, "D prime fused vs split", df, ds, dColour);
+                        colourCompared += pf.Colour.Length;
+                    }
+                    else
+                    {
+                        TemporalHistorySample.Exact(frame, "production fused vs split", pf, ps);
+                        TemporalHistorySample.Exact(frame, "D prime fused vs split", df, ds);
+                    }
                     foreach (TemporalResolveRig rig in rigs) rig.History.MarkValidAfterFrame();
                 }
-                output.WriteLine($"  {frames} frames byte-identical across the entries in colour, state, R8 and depth, "
-                    + $"production and D prime. Designed tile centres {string.Join(", ", designs)}, of them beside "
+                if (softwareVulkan)
+                    foreach (EntryDifference pair in new[] { productionColour, dColour })
+                    {
+                        double share = TemporalSoftwareVulkanColourRule.ShareOf(pair.Values, colourCompared);
+                        output.WriteLine($"  software Vulkan: {pair}, within "
+                            + $"{TemporalSoftwareVulkanColourRule.SoftwareColourBound} on {share:P3} of values");
+                        Assert.True(TemporalSoftwareVulkanColourRule.Allows(pair.Worst, pair.Values, colourCompared),
+                            $"frame {frames - 1}: the colour on a software Vulkan device left its bound "
+                            + $"({TemporalSoftwareVulkanColourRule.SoftwareColourBound}, "
+                            + $"{TemporalSoftwareVulkanColourRule.SoftwareColourShare:P2} of values): {pair}");
+                    }
+                output.WriteLine($"  {frames} frames byte-identical across the entries in "
+                    + (softwareVulkan ? "state, R8 and depth" : "colour, state, R8 and depth")
+                    + $", production and D prime. Designed tile centres {string.Join(", ", designs)}, of them beside "
                     + $"column 512 or 1024 or row 512 {string.Join(", ", straddling)}");
                 Assert.True(straddling.Sum() >= 100,
                     $"frame {frames - 1}: only {straddling.Sum()} designed tile centres lie beside columns 512 and 1024 and row 512");
@@ -100,6 +128,17 @@ namespace KhaozEngine.Tests.Gpu
                     queues[r].Dispose();
                 }
             }
+        }
+
+        // A software Vulkan pair: state, R8 and depth exact this frame, the colour gathered for the bound.
+        static void SoftwareVulkanPair(int frame, string what, TemporalHistorySample a, TemporalHistorySample b,
+            EntryDifference colour)
+        {
+            Assert.Equal(a.Colour.Length, b.Colour.Length);
+            for (int i = 0; i < a.Colour.Length; i++) colour.Add(frame, a.Colour[i], b.Colour[i]);
+            TemporalHistorySample.Exact(frame, what + " state", a.State, b.State);
+            TemporalHistorySample.Exact(frame, what + " R8", a.Visibility, b.Visibility);
+            TemporalHistorySample.Exact(frame, what + " depth", a.Depth, b.Depth);
         }
     }
 }

@@ -107,6 +107,26 @@ public sealed class TemporalHistoryComparisonRuleTests
             colour, [0.5f, -0f])));
     }
 
+    // A software Vulkan device holds the entries' colour within amendment 23's bound, inclusive, and its share. A
+    // non-finite worst or an empty comparison never passes.
+    [Fact]
+    public void SoftwareVulkanColourHoldsTheBoundAndTheShare()
+    {
+        const float bound = TemporalSoftwareVulkanColourRule.SoftwareColourBound;
+        Assert.Equal(0.0625f, bound);
+        Assert.Equal(0.0025f, TemporalSoftwareVulkanColourRule.SoftwareColourShare);
+        Assert.True(TemporalSoftwareVulkanColourRule.Allows(0f, 0, 1));
+        Assert.True(TemporalSoftwareVulkanColourRule.Allows(0.0439f, 118, 100_000));
+        Assert.True(TemporalSoftwareVulkanColourRule.Allows(bound, 24, 10_000));
+        Assert.False(TemporalSoftwareVulkanColourRule.Allows(BitConverter.Int32BitsToSingle(
+            BitConverter.SingleToInt32Bits(bound) + 1), 1, 10_000));
+        Assert.False(TemporalSoftwareVulkanColourRule.Allows(0.001f, 26, 10_000));
+        Assert.False(TemporalSoftwareVulkanColourRule.Allows(float.NaN, 1, 10_000));
+        Assert.False(TemporalSoftwareVulkanColourRule.Allows(float.PositiveInfinity, 1, 10_000));
+        Assert.False(TemporalSoftwareVulkanColourRule.Allows(0f, 0, 0));
+        Assert.Equal(0.0025, TemporalSoftwareVulkanColourRule.ShareOf(25, 10_000), 12);
+    }
+
     static float Half(int bits) => (float)BitConverter.Int16BitsToHalf((short)bits);
 
     static TemporalHistoryDifference Difference(float red = 0.5f, float green = 0.5f,

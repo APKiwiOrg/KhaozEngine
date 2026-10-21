@@ -4,6 +4,16 @@ Candidate branch `fix/taa-vis-gathers`, based on `cb2a97e9e`. This branch is sep
 `fix/taa-shadow-visibility` worktree. No bounds, tolerances, frozen D text, package version or golden changes.
 No timing, billed workflow, merge, tag or release is part of this task.
 
+## Merged policy, Task 7g.5
+
+Direct3D 11 and Vulkan use all twelve visibility gathers. Metal retains nine current-block loads and gathers both
+history blocks, as in e72569270. Task 7g.5 reverts a43599546. The lavapipe colour failures used to justify the
+withdrawal occurred at identical frames and bytes with gathers in 39550935418 and without gathers in 39544536428
+and 39554929620. The raw gather oracle had zero mismatches. They are llvmpipe's pre-existing fused versus split
+colour divergence, bounded on main by amendment 23, rather than evidence against gathers. The merged r1 restores
+that software-Vulkan rule, bound 0.0625 and share 0.0025. Large-frame and moving-shadow comparisons remain exact.
+The historical run sections below retain the decisions and results at their original checkpoints.
+
 ## Footprints and arithmetic
 
 Only the fast path's sources of texel values change. The existing consecutive-base, interior-block and binade
@@ -26,8 +36,8 @@ when the centre lies one texel from an edge. No extra border rejection or clamp 
 | Fast, R4 range skip, Direct3D 11 | 25 loads | 8 gathers, zero loads |
 | Fast, complete history, Metal | 41 loads | 9 loads and 8 gathers |
 | Fast, R4 range skip, Metal | 25 loads | 9 loads and 4 gathers |
-| Fast, complete history, Vulkan | 41 loads | 41 loads, unchanged |
-| Fast, R4 range skip, Vulkan | 25 loads | 25 loads, unchanged |
+| Fast, complete history, Vulkan | 41 loads | 12 gathers, zero loads |
+| Fast, R4 range skip, Vulkan | 25 loads | 8 gathers, zero loads |
 | R1 zero-lock skip | Zero | Zero |
 | D slow path | Up to 101 loads | Up to 101 loads, unchanged |
 
@@ -39,8 +49,8 @@ Canonical Direct3D-source SPIR-V contracts require 30 `OpImageFetch`, 12 `OpImag
 program. The 30 fetches and fourteen loops belong to the surrounding program and the retained D slow path.
 The isolated decision requires seven fetches, twelve gathers and four loops. Metal's selected second-pass program
 requires 39 fetches, eight gathers and fourteen loops, its isolated helper sixteen fetches, eight gathers and four
-loops. Vulkan retains 71 fetches, zero gathers and fourteen loops per second-pass program, and 48 fetches, zero
-gathers and four loops in the decision helper. Frozen D's contracts stay unchanged.
+loops. Vulkan matches Direct3D 11 with 30 fetches, twelve gathers and fourteen loops per second-pass program, and seven
+fetches, twelve gathers and four loops in the decision helper. Frozen D's contracts stay unchanged.
 The new contracts first failed on all five production rows, showing 71/0/14 and 48/0/4 respectively.
 
 ## Exact device oracle

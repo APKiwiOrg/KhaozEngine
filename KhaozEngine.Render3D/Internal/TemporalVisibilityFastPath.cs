@@ -136,7 +136,12 @@ bool temporalVisibilityReleases(vec2 uv, ivec2 centre, ivec2 last, vec2 previous
 ");
             g.Append(CurrentSources(gatherCurrent));
             g.Append("    ivec2 block = base1 - 1;\n");
-            g.Append(BlockSources("previous", "PreviousKeyShadowVisibility", gatherPrevious));
+            if (gatherPrevious) GatherBlock(g, "previous", "PreviousKeyShadowVisibility", "block", 2);
+            for (int b = 0; b < 16; b++)
+            {
+                if (gatherPrevious) GatheredTexel(g, "previous", b);
+                else LoadedTexel(g, "previous", "PreviousKeyShadowVisibility", b);
+            }
             Verbatim(@"    if ((currentMask & VisibilityCentreFinite) == 0u || !temporalVisibilityFiniteDepth(expectedDepth)) return false;
     float previousTolerance = VisibilityDepthTolerance * max(expectedDepth, 1.0e-5);
 
@@ -163,7 +168,12 @@ bool temporalVisibilityReleases(vec2 uv, ivec2 centre, ivec2 last, vec2 previous
 
     // D's history rejection, once a block texel, then D's 36 bilinear terms in D's order.
 ");
-            g.Append(BlockSources("stored", "PrevDepth", gatherDepth));
+            if (gatherDepth) GatherBlock(g, "stored", "PrevDepth", "block", 2);
+            for (int b = 0; b < 16; b++)
+            {
+                if (gatherDepth) GatheredTexel(g, "stored", b);
+                else LoadedTexel(g, "stored", "PrevDepth", b);
+            }
             for (int b = 0; b < 16; b++)
                 g.Append($"    bool held{Block(b)} = temporalVisibilityFiniteDepth(stored{Block(b)}) "
                     + $"&& abs(stored{Block(b)} - expectedDepth) <= previousTolerance;\n");
@@ -218,19 +228,6 @@ bool temporalVisibilityReleases(vec2 uv, ivec2 centre, ivec2 last, vec2 previous
                 else
                     g.Append($"    float current{n} = texelFetch(sampler2D(KeyShadowVisibility, LinearClamp), "
                         + $"ivec2(at{n % 3}.x, at{n / 3}.y), 0).r;\n");
-            }
-            return g.ToString();
-        }
-
-        /// <summary>One history block's sources, with the same per-texel names in either form.</summary>
-        internal static string BlockSources(string name, string texture, bool gather)
-        {
-            var g = new StringBuilder();
-            if (gather) GatherBlock(g, name, texture, "block", 2);
-            for (int b = 0; b < 16; b++)
-            {
-                if (gather) GatheredTexel(g, name, b);
-                else LoadedTexel(g, name, texture, b);
             }
             return g.ToString();
         }

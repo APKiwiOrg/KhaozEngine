@@ -74,31 +74,20 @@ void main() {
             { nameof(ShaderSources.TemporalAccumulateAtDisplaySizeFrag) + " (Metal)", false, 39, 8, 14 },
             { nameof(ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag) + " (Metal)", false, 39, 8, 14 },
             { "shipped decision helper (Metal)", false, 16, 8, 4 },
-            { nameof(ShaderSources.TemporalAccumulateFrag) + " (Vulkan)", false, 71, 0, 14 },
-            { nameof(ShaderSources.TemporalAccumulateHalfFrag) + " (Vulkan)", false, 71, 0, 14 },
-            { nameof(ShaderSources.TemporalAccumulateAtDisplaySizeFrag) + " (Vulkan)", false, 71, 0, 14 },
-            { nameof(ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag) + " (Vulkan)", false, 71, 0, 14 },
-            { "shipped decision helper (Vulkan)", false, 48, 0, 4 },
         };
 
-        static string Program(string name)
+        static string Program(string name) => name.EndsWith(" (Metal)", StringComparison.Ordinal)
+            ? TemporalVisibilityGatherPolicy.ForBackend(Program(name[..^8]), GpuBackendKind.MetalNative) : name switch
         {
-            if (name.EndsWith(" (Metal)", StringComparison.Ordinal))
-                return TemporalVisibilityGatherPolicy.ForBackend(Program(name[..^8]), GpuBackendKind.MetalNative);
-            if (name.EndsWith(" (Vulkan)", StringComparison.Ordinal))
-                return TemporalVisibilityGatherPolicy.ForBackend(Program(name[..^9]), GpuBackendKind.VulkanNative);
-            return name switch
-            {
-                nameof(ShaderSources.TemporalAccumulateFrag) => ShaderSources.TemporalAccumulateFrag,
-                nameof(ShaderSources.TemporalAccumulateHalfFrag) => ShaderSources.TemporalAccumulateHalfFrag,
-                nameof(ShaderSources.TemporalAccumulateAtDisplaySizeFrag) => ShaderSources.TemporalAccumulateAtDisplaySizeFrag,
-                nameof(ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag)
-                    => ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag,
-                "frozen D helper" => HelperProgram,
-                "shipped decision helper" => DecisionHelperProgram,
-                _ => throw new ArgumentOutOfRangeException(nameof(name), name, "not a counted program"),
-            };
-        }
+            nameof(ShaderSources.TemporalAccumulateFrag) => ShaderSources.TemporalAccumulateFrag,
+            nameof(ShaderSources.TemporalAccumulateHalfFrag) => ShaderSources.TemporalAccumulateHalfFrag,
+            nameof(ShaderSources.TemporalAccumulateAtDisplaySizeFrag) => ShaderSources.TemporalAccumulateAtDisplaySizeFrag,
+            nameof(ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag)
+                => ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag,
+            "frozen D helper" => HelperProgram,
+            "shipped decision helper" => DecisionHelperProgram,
+            _ => throw new ArgumentOutOfRangeException(nameof(name), name, "not a counted program"),
+        };
 
         [Theory]
         [MemberData(nameof(Counts))]

@@ -66,6 +66,7 @@ public sealed partial class MapSurfacePatch
     }
     public MapSurfacePatch Clone()
     {
+        Scene.MapSceneAdmission.Current?.BeforeClone(this);
         var copy = new MapSurfacePatch
         {
             Key = Key,

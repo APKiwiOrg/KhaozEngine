@@ -160,6 +160,44 @@ incomplete identity. A complete scoped acquisition from a partial editing window
 whole current-edit identity. `CompleteView(set)` captures all resident patches and records without bound
 enumeration for complete in-memory surface sets.
 
+## Scoped native scenes
+
+`KhaozEngine.MapDoc.Scene.MapSceneSource.Capture(documentSource, assets, limits)` captures one source generation.
+It verifies the placement tile hashes while streaming metadata, including skipped sculpt values, and retains a
+reverse bounds hierarchy beside the pinned native surface and foliage producers. No index sidecar or format field
+is written. Missing or unloaded owner metadata refuses capture rather than certifying an empty window.
+
+`Acquire(new MapSceneScope(surfaceScope, drawBounds, channels, MotionPaddingMetres: 0))` publishes a neutral
+`MapScopedScene` only when every selected resource and dependency is available within the captured allowances.
+`Surfaces` contains detached selected surface payloads and `SurfaceView` carries the acquired physical query witness.
+Placements, exact transforms, paint regions, water, building intent and foliage remain separate channels.
+`MapEffectiveAnnotations.Lights(scene)` and `Markers(scene)` read the captured annotations.
+The complete prefab, world and foliage builders still require complete documents.
+
+Discovery includes descriptor render bounds, every LOD, light reach and explicit finite nonnegative motion padding.
+Generated foliage bounds cover source-unit model bounds, maximum scale, root offset and support-aligned orientations.
+Y is unbounded during discovery until support seating. Padding participates in scope identity.
+`RequiredAssetIds` names every placement and foliage model in the source, including off-window owners.
+`WithRenderExtents(proofs)` attaches verified bounds/provenance only after exact closure and complete model coverage
+checks. The original source remains unchanged. Its new witness carries `RenderExtentsDigest`, which native render
+consumers must require before accepting a render plan. Neutral simulation acquisitions leave that digest null.
+
+`MapSceneWitness` distinguishes required, present, known-empty and unavailable resources. A refusal has no usable
+scene, no completeness claim and a finding. Whole-world completeness additionally requires checked source coverage.
+`scene.AcquireDependencies(scope)` uses the same immutable source generation and ceilings. It cannot refresh or
+increase the captured query budgets. A manifest replacement is Stale even when the requested payloads still exist.
+
+Source ceilings bound tiles, metadata rows, memberships, scanned bytes and retained metadata before retention.
+Acquisition ceilings separately bound selected resources, patch scopes, prepared faces and copied/prepared bytes.
+The internal admission allowance covers stored reads, resident/generated copies, support queries and paint compilation.
+External surface producers cannot participate in this internal protocol and scene acquisition refuses them before reads.
+Released surface calls without an admission allowance keep their existing behavior and refusal order.
+`MapSceneWork.PayloadReads` counts logical acquisitions, including cache hits. `IndexNodesVisited` counts hierarchy
+nodes tested, including rejected siblings. The stable median tree has leaves of at most eight rows. An isolated
+separated-growth query visits at most `1 + 2 * ceil(log2(ceil(N / 8)))` nodes. Dependency discoveries report their own
+additional visits. Copied/prepared byte charges include intermediate work and are separate from decoded render asset
+retention, which is owned by the optional rendering package's selected input lease.
+
 ## Frame-local compiled geometry
 
 `MapFrameLocal.ToFrame` converts a compiled patch or strip into a `MapFrameMesh` in one `WorldFrame` with

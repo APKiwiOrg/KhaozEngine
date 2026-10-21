@@ -131,6 +131,7 @@ internal sealed class MapEffectiveSurfaceSource : IMapSurfaceAcquisitionSource, 
         void Reserve(MapPatchKey key)
         {
             if (!_reserved.Contains(key) && _reserved.Count >= _scope.Limits.MaxCandidatePatches) throw new MapSurfaceCapacityException();
+            _scope.SceneAdmission?.BeforeResource(Scene.MapSceneAcquisition.PatchKey(key));
             _reserved.Add(key);
         }
         public MapPatchRead ReadPatch(MapPatchKey key)
@@ -141,12 +142,14 @@ internal sealed class MapEffectiveSurfaceSource : IMapSurfaceAcquisitionSource, 
         }
         MapPatchRead Serve(MapPatchKey key)
         {
+            using var admitted = _scope.SceneAdmission?.Enter();
             if (_served.Add(key) && _source.EffectiveContext.Surfaces.Patches.TryGetValue(key, out var patch))
             {
                 long next = checked(_recordsCharged + patch.Records.Count);
                 if (next > _scope.Limits.MaxRecordReads) throw new MapSurfaceCapacityException();
                 _recordsCharged = next;
             }
+            Scene.MapSceneAdmission.Current?.BeforePayload(0);
             return _source.ReadPatch(key);
         }
         public bool TryGetIncidentRecords(MapPatchKey acquiredKey, out IReadOnlyList<MapRecordRef>? records)

@@ -36,6 +36,12 @@ public static class MapEffectiveAnnotations
     public static IReadOnlyList<MapEffectiveMarker> Markers(MapEffectiveResources resources)
     { ArgumentNullException.ThrowIfNull(resources); return resources.EffectiveMarkers; }
 
+    public static IReadOnlyList<MapEffectiveLight> Lights(Scene.MapScopedScene scene)
+    { ArgumentNullException.ThrowIfNull(scene); return scene.EffectiveLights; }
+
+    public static IReadOnlyList<MapEffectiveMarker> Markers(Scene.MapScopedScene scene)
+    { ArgumentNullException.ThrowIfNull(scene); return scene.EffectiveMarkers; }
+
     /// <summary>An explicit light frame takes precedence over its placement owner's frame.</summary>
     internal static MapEffectiveTransform? LightFrame(IReadOnlyDictionary<string, MapEffectiveTransform> transforms, MapLocalLightDoc light)
     {

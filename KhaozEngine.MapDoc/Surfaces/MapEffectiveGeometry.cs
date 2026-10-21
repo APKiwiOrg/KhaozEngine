@@ -25,6 +25,7 @@ internal static class MapEffectiveGeometry
     }
     internal static MapCompiledPatch Patch(MapScopedSurfaces view, MapPatchKey key)
     {
+        using var admitted = view.Scope.SceneAdmission?.Enter();
         if (!view.TryAcquiredPatch(key, out var patch, out var status) || patch is null)
             throw new MapDocumentException($"Missing effective patch '{key}' ({status}).");
         return TransformPatch(view, MapSurfaceCompiler.Compile(MapSpaceGeometry.Surface(view, key.SurfaceId), patch));
@@ -36,6 +37,9 @@ internal static class MapEffectiveGeometry
     {
         var kernel = view.EffectiveContext?.Transform(MapPrefabChildKind.Surface, local.Key.SurfaceId);
         if (kernel is null || local.ExactVertices.Count == 0) return local;
+        Scene.MapSceneAdmission.Current?.ReserveBytes(checked(local.ExactVertices.Count *
+            (long)(System.Runtime.CompilerServices.Unsafe.SizeOf<MapExactPoint>() + System.Runtime.CompilerServices.Unsafe.SizeOf<Vector3>()) +
+            local.Faces.Count * (long)System.Runtime.CompilerServices.Unsafe.SizeOf<MapCompiledFace>()));
         var vertices = local.ExactVertices.Select(kernel.Point).ToArray();
         var anchor = new MapSubmissionAnchor(vertices.Min(v => v.X.Floor()), vertices.Min(v => v.Y.Floor()), vertices.Min(v => v.Z.Floor()));
         var faces = local.Faces.Select(f => f with { Normal = Normal(new(vertices[f.A], vertices[f.B], vertices[f.C])) }).ToArray();

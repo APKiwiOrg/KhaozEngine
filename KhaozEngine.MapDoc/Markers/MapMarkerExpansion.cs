@@ -16,7 +16,10 @@ internal sealed record MapMarkerCandidate(MapLocalMarkerDoc Value, MapEffectiveT
 /// never reads geometry and never allocates an identity.</summary>
 internal static class MapMarkerExpansion
 {
-    internal static IReadOnlyList<MapMarkerCandidate> Capture(MapDocument document, MapAssetClosure assets)
+    internal static IReadOnlyList<MapMarkerCandidate> Capture(MapDocument document, MapAssetClosure assets) =>
+        Capture(MapEffectiveResolutionInput.FromDocument(document), assets);
+
+    internal static IReadOnlyList<MapMarkerCandidate> Capture(MapEffectiveResolutionInput document, MapAssetClosure assets)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(assets);

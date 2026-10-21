@@ -16,6 +16,7 @@ public static class MapPartialPaintCompiler
     public static MapPaintRegionSet Compile(MapScopedSurfaces view, string targetSurfaceId, MapRefinementLimits? limits = null)
     {
         ArgumentNullException.ThrowIfNull(view);
+        using var admitted = view.Scope.SceneAdmission?.Enter();
         ArgumentException.ThrowIfNullOrWhiteSpace(targetSurfaceId);
         var budget = limits ?? new();
         if (view.Status != MapAcquireStatus.Complete)

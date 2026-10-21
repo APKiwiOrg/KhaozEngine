@@ -32,6 +32,7 @@ public static class MapSurfaceCompiler
         if (maxFaces < 0) throw new ArgumentOutOfRangeException(nameof(maxFaces));
         MapSurfaceRef surface = validated.Surface;
         MapSurfacePatch patch = validated.Patch;
+        Scene.MapSceneAdmission.Current?.BeforeCompile(patch, cells, surface, logical);
         try
         {
             long count = CountFaces(validated, cells, logical);
@@ -54,6 +55,7 @@ public static class MapSurfaceCompiler
         ArgumentNullException.ThrowIfNull(cells);
         MapSurfaceRef surface = validated.Surface;
         MapSurfacePatch patch = validated.Patch;
+        Scene.MapSceneAdmission.Current?.ReserveBytes(checked(16L * patch.Width * patch.Depth));
         int[] subdivisions = Subdivisions(patch);
         long count = 0;
         for (int z = 0; z < patch.Depth; z++)
@@ -103,6 +105,7 @@ public static class MapSurfaceCompiler
         var faces = new List<MapCompiledFace>(count);
         var paint = new List<MapPaintCoverage>(count);
         var fallback = new List<MapFallbackCell>();
+        Scene.MapSceneAdmission.Current?.ReserveBytes(checked(16L * patch.Width * patch.Depth));
         int[] subdivisions = Subdivisions(patch);
         Span<MapLatticeTriangle> parents = stackalloc MapLatticeTriangle[4];
         Span<MapSurfaceVertex> boundary = stackalloc MapSurfaceVertex[MaxChildrenPerParent];

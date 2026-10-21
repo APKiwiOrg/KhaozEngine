@@ -62,16 +62,22 @@ public sealed class MapScopedSurfaces
         int queryPolicyVersion, int buildPolicyVersion, MapAcquisitionWork? work)
     {
         ArgumentNullException.ThrowIfNull(source);
+        if (Scene.MapSceneAdmission.Current is { } active && !Scene.MapSceneAdmission.Supports(source))
+            throw new Scene.MapSceneSourceException(Scene.MapSceneStatus.Invalid, "Surface source cannot participate in scene admission.");
         if (source is not IMapSurfaceAcquisitionSource capable)
             throw new MapDocumentException("surface source does not support bounded scoped acquisition");
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(assetSha256);
         scope.Validate();
+        var admission = scope.SceneAdmission ?? Scene.MapSceneAdmission.Current;
+        admission?.BeforeScope(source);
+        using var admitted = admission?.Enter();
         MapSurfaceScope request = scope with
         {
             Roles = Array.AsReadOnly(scope.Roles.ToArray()),
             SpaceIds = scope.SpaceIds is null ? null : Array.AsReadOnly(scope.SpaceIds.ToArray()),
             Limits = scope.Limits with { },
+            SceneAdmission = admission,
         };
         string[] assets = assetSha256.ToArray();
         foreach (string asset in assets) MapSurfaceStorageLayout.RequireDigest(asset);

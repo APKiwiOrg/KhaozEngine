@@ -43,7 +43,10 @@ internal static class MapEffectiveAttachments
         return result.AsReadOnly();
     }
 
-    internal static IReadOnlyList<MapPrefabChild> Reuse(MapDocument document, MapPrefabAttachmentTransfer attachment)
+    internal static IReadOnlyList<MapPrefabChild> Reuse(MapDocument document, MapPrefabAttachmentTransfer attachment) =>
+        Reuse(MapEffectiveResolutionInput.FromDocument(document), attachment);
+
+    internal static IReadOnlyList<MapPrefabChild> Reuse(MapEffectiveResolutionInput document, MapPrefabAttachmentTransfer attachment)
     {
         if (attachment.Retired) return Array.Empty<MapPrefabChild>();
         var result = new List<MapPrefabChild>();

@@ -40,6 +40,7 @@ public static class MapWallStripCompiler
         if (!Enum.IsDefined(strip.Facing)) throw new MapDocumentException("invalid strip facing");
         if (lower.Points.Count is < 2 or > 4097 || lower.Points.Count != upper.Points.Count)
             throw new MapDocumentException("wall strip vertex sequence mismatch");
+        Scene.MapSceneAdmission.Current?.ReserveCompilation(checked(4L * (lower.Points.Count - 1)));
         try
         {
             int count = lower.Points.Count;

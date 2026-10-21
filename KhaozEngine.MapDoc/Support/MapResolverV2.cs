@@ -26,7 +26,7 @@ public static class MapResolverV2
         return new(resolved, effective.PlacementSupports);
     }
 
-    internal static IReadOnlyList<MapResolvedPlacement> ResolveEffectivePlacements(MapDocument authored, MapAssetClosure assets,
+    internal static IReadOnlyList<MapResolvedPlacement> ResolveEffectivePlacements(MapAssetClosure assets,
         IReadOnlyList<MapPlacement> effective, IReadOnlyDictionary<string, MapEffectiveTransform> transforms,
         IMapSurfaceSource surfaces, out IReadOnlyList<MapPlacementSupport> supports, IReadOnlyDictionary<string, string>? owners = null)
     {

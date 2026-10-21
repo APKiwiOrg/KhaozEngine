@@ -15,97 +15,30 @@ namespace KhaozEngine.MapDoc.Prefabs;
 /// <summary>The immutable effective resource snapshot shared by support and geometry consumers.</summary>
 public sealed class MapEffectiveResources
 {
-    readonly MapEffectiveContext _context;
-    readonly MapWaterSet? _water;
-    readonly MapBuildingIntent _intent;
-    readonly IReadOnlyDictionary<string, MapSupportBinding> _supportRequests =
-        new ReadOnlyDictionary<string, MapSupportBinding>(new Dictionary<string, MapSupportBinding>(StringComparer.Ordinal));
-    public IReadOnlyList<MapResolvedPlacement> Placements { get; }
-    public IReadOnlyList<MapPlacementSupport> PlacementSupports { get; }
-    public MapSurfaceSet Surfaces => _context.Surfaces.Clone();
-    /// <summary>Mathematical poses keyed by Kind:world-ID. Backend presentation is a separate approximation.</summary>
-    public IReadOnlyDictionary<string, MapEffectiveTransform> Transforms => _context.Transforms;
-    public MapWaterSet? Water => _water?.Clone();
-    public MapBuildingIntent BuildingIntent => _intent.Clone();
-    public string Digest => _context.Digest;
-    public IMapSurfaceSource SurfaceSource { get; }
-    /// <summary>Render-only partitions compiled once per affected physical target at strict expansion.</summary>
-    public IReadOnlyDictionary<string, MapPaintRegionSet> PaintRegions { get; }
-    internal IReadOnlyDictionary<string, MapExactPoint> LightPoints { get; }
-    internal IReadOnlyList<MapEffectiveLight> EffectiveLights { get; }
-    internal IReadOnlyList<MapEffectiveMarker> EffectiveMarkers { get; }
-    /// <summary>The support answer of every Support-height marker, disabled ones included, in ordinal marker ID order.
-    /// Each carries its acquisition witness, so this channel stays out of annotation digests and marker equality.</summary>
-    public IReadOnlyList<MapMarkerSupport> MarkerSupports { get; }
-    /// <summary>Versioned roof, light and marker intent, empty without annotations.</summary>
-    public string AnnotationDigest { get; }
-    internal IReadOnlyDictionary<string, IReadOnlyList<MapExactPoint>> WaterCorners { get; }
-    internal IReadOnlyList<MapPrefabAttachmentTransfer> Attachments { get; }
-    /// <summary>The hash of the verified closure this snapshot was expanded against.</summary>
+    readonly MapEffectiveResolutionProduct _product;
+    internal MapEffectiveResources(MapEffectiveResolutionProduct product) => _product = product;
+    public IReadOnlyList<MapResolvedPlacement> Placements => _product.Placements;
+    public IReadOnlyList<MapPlacementSupport> PlacementSupports => _product.PlacementSupports;
+    public MapSurfaceSet Surfaces => _product.Surfaces;
+    public IReadOnlyDictionary<string, MapEffectiveTransform> Transforms => _product.Transforms;
+    public MapWaterSet? Water => _product.Water;
+    public MapBuildingIntent BuildingIntent => _product.BuildingIntent;
+    public string Digest => _product.Digest;
+    public IMapSurfaceSource SurfaceSource => _product.SurfaceSource;
+    public IReadOnlyDictionary<string, MapPaintRegionSet> PaintRegions => _product.PaintRegions;
+    internal IReadOnlyDictionary<string, MapExactPoint> LightPoints => _product.LightPoints;
+    internal IReadOnlyList<MapEffectiveLight> EffectiveLights => _product.EffectiveLights;
+    internal IReadOnlyList<MapEffectiveMarker> EffectiveMarkers => _product.EffectiveMarkers;
+    public IReadOnlyList<MapMarkerSupport> MarkerSupports => _product.MarkerSupports;
+    public string AnnotationDigest => _product.AnnotationDigest;
+    internal IReadOnlyDictionary<string, IReadOnlyList<MapExactPoint>> WaterCorners => _product.WaterCorners;
+    internal IReadOnlyList<MapPrefabAttachmentTransfer> Attachments => _product.Attachments;
     internal string? ClosureHash { get; init; }
-
-    /// <summary>The fingerprint, without foliage, of the document this snapshot was expanded from, recorded when the
-    /// document holds foliage or when finalization expands it. Foliage contexts verify it before reusing the snapshot.</summary>
     internal string? SourceFingerprint { get; set; }
-
-    /// <summary>World-space support requests of prefab-local placements, keyed by world placement ID. Each is computed
-    /// from the placement's pre-seat frame. Standalone placements keep their authored request and are absent.</summary>
-    internal IReadOnlyDictionary<string, MapSupportBinding> SupportRequests
-    {
-        get => _supportRequests;
-        init => _supportRequests = new ReadOnlyDictionary<string, MapSupportBinding>(
-            value.ToDictionary(p => p.Key, p => p.Value with { }, StringComparer.Ordinal));
-    }
-
-    internal MapEffectiveResources(MapEffectiveContext context, IMapSurfaceSource source,
-        IReadOnlyList<MapResolvedPlacement> placements, IReadOnlyList<MapPlacementSupport> supports,
-        MapWaterSet? water, MapBuildingIntent intent, IReadOnlyDictionary<string, MapExactPoint> lights,
-        IReadOnlyDictionary<string, IReadOnlyList<MapExactPoint>> waterCorners, IReadOnlyList<MapPrefabAttachmentTransfer> attachments,
-        IReadOnlyList<MapEffectiveMarker> markers, IReadOnlyList<MapMarkerSupport> markerSupports)
-    {
-        _context = context;
-        SurfaceSource = source;
-        Placements = Array.AsReadOnly(placements.ToArray());
-        PlacementSupports = Array.AsReadOnly(supports.ToArray());
-        _water = water?.Clone();
-        _intent = intent.Clone();
-        _intent = new(_intent.PayloadVersion, _intent.RoofLinks.OrderBy(r => r.Id, StringComparer.Ordinal).Select(link =>
-            link with { AboveY = context.Transform(MapPrefabChildKind.RoofLink, link.Id)?.Height(MapExactValue.FromSingle(link.AboveY)).ToSingle() ?? link.AboveY }).ToArray(),
-            _intent.RoofGroups.OrderBy(g => g.Id, StringComparer.Ordinal).ToArray(), _intent.Lights, _intent.Markers)
-        { Roofs = _intent.Roofs.DistinctBy(r => (r.Kind, r.Id)).OrderBy(r => r.Id, StringComparer.Ordinal).ToArray(), Storeys = _intent.Storeys };
-        MapPrefabValidation.RequireEffectiveAnnotations(_intent, placements, context.Surfaces);
-        EffectiveLights = MapEffectiveAnnotations.CaptureLights(_intent, lights);
-        EffectiveMarkers = Array.AsReadOnly(markers.OrderBy(m => m.Id, StringComparer.Ordinal).ToArray());
-        MarkerSupports = Array.AsReadOnly(markerSupports.OrderBy(m => m.MarkerId, StringComparer.Ordinal).ToArray());
-        AnnotationDigest = MapEffectiveAnnotations.Digest(_intent, EffectiveLights, EffectiveMarkers);
-        LightPoints = new ReadOnlyDictionary<string, MapExactPoint>(new Dictionary<string, MapExactPoint>(lights, StringComparer.Ordinal));
-        WaterCorners = new ReadOnlyDictionary<string, IReadOnlyList<MapExactPoint>>(waterCorners.ToDictionary(p => p.Key,
-            p => (IReadOnlyList<MapExactPoint>)Array.AsReadOnly(p.Value.ToArray()), StringComparer.Ordinal));
-        Attachments = Array.AsReadOnly(attachments.ToArray());
-        var paintTargets = context.Surfaces.Refs.Where(context.IsPartialPaint)
-            .Select(s => s.PaintTargetSurfaceId ?? throw new MapDocumentException("PaintOverride requires a target surface."))
-            .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
-        var paintRegions = new Dictionary<string, MapPaintRegionSet>(StringComparer.Ordinal);
-        if (paintTargets.Length != 0)
-        {
-            var scope = MapScopedSurfaces.CompleteEffective(context).Scope with
-            {
-                DiscoverySurfaces = context.Surfaces.Refs.Where(context.IsPartialPaint).Select(s => s.Id)
-                    .Concat(paintTargets).ToHashSet(StringComparer.Ordinal),
-            };
-            var view = SurfaceSource is MapComposedSurfaceSource ? Acquire(scope) : MapScopedSurfaces.CompleteEffective(context);
-            foreach (string target in paintTargets) paintRegions.Add(target, MapPartialPaintCompiler.Compile(view, target));
-        }
-        PaintRegions = new ReadOnlyDictionary<string, MapPaintRegionSet>(paintRegions);
-    }
-    internal void RequireView(MapScopedSurfaces view)
-    {
-        if (view.EffectiveContext?.Digest != Digest) throw new ArgumentException("Acquired view differs from effective resources.", nameof(view));
-    }
-    public MapScopedSurfaces CompleteView() => SurfaceSource is MapComposedSurfaceSource
-        ? Acquire(MapScopedSurfaces.CompleteEffective(_context).Scope) : MapScopedSurfaces.CompleteEffective(_context);
-    public MapScopedSurfaces Acquire(MapSurfaceScope scope) => MapScopedSurfaces.Acquire(SurfaceSource, scope, new[] { Digest },
-        MapScopedSurfaces.EffectiveQueryPolicyVersion, MapScopedSurfaces.EffectiveBuildPolicyVersion);
+    internal IReadOnlyDictionary<string, MapSupportBinding> SupportRequests => _product.SupportRequests;
+    internal void RequireView(MapScopedSurfaces view) => _product.RequireView(view);
+    public MapScopedSurfaces CompleteView() => _product.CompleteView();
+    public MapScopedSurfaces Acquire(MapSurfaceScope scope) => _product.Acquire(scope);
 }
 
 /// <summary>Owned local descriptors and unfrozen poses. Acquired views retain this captured context.</summary>

@@ -31,6 +31,7 @@ internal static class MapSurfaceStorageLayout
         string path = PathOf(root, kind, digest);
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
         if (stream.Length is < 1 or > MaxPageBytes) throw new MapDocumentException("surface storage byte limit");
+        if (kind == 'p') Scene.MapSceneAdmission.Current?.BeforePayload(stream.Length);
         byte[] bytes = new byte[(int)stream.Length];
         stream.ReadExactly(bytes);
         if (stream.ReadByte() != -1 || Digest(bytes) != digest)

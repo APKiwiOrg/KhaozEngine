@@ -29,6 +29,7 @@ public static class MapOpeningBoundary
         MapSurfacePatch patch = validated.Patch;
         if (opening.Patch != patch.Key || opening.SlotCells.Count == 0)
             throw new MapDocumentException("opening must name absent cells in its patch");
+        Scene.MapSceneAdmission.Current?.ReserveCompilation(checked(4L * opening.SlotCells.Count));
         try
         {
             MapSubmissionAnchor anchor = MapSurfaceCompiler.Anchor(surface, patch);

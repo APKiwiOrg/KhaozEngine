@@ -34,6 +34,17 @@ internal static class MapSurfaceQuery
         catch (MapSurfaceCapacityException) { return Capacity(source, scope, budget) with { PagesRead = budget.Reads - before }; }
     }
 
+    static IEnumerable<MapSurfaceRef> SceneDescriptors(IMapSurfaceSource source, MapSurfaceScope scope)
+    {
+        if (scope.SceneAdmission is null || scope.DiscoverySurfaces is null) return source.Surfaces;
+        return scope.DiscoverySurfaces.Order(StringComparer.Ordinal).Select(id => source switch
+        {
+            MapStoredSurfaceSource stored => stored.SceneSurface(id),
+            MapDocumentSurfaceSource resident => resident.SceneSurface(id),
+            _ => source.Surfaces.FirstOrDefault(s => s.Id == id),
+        }).OfType<MapSurfaceRef>();
+    }
+
     static MapPatchFindResult FindCore(IMapSurfaceSource source, MapSurfaceStorageIndex index, MapSurfaceScope scope,
         Func<MapDirectoryPageRef, MapPageBudget, MapPatchStatus> directory,
         Func<MapDirectoryPageRef, MapIndexPageRef, MapPageBudget, MapPatchStatus> page,
@@ -43,7 +54,7 @@ internal static class MapSurfaceQuery
         var empty = new List<MapCoveredRange>();
         var unavailable = new List<MapPatchRead>();
         MapExactRect world = scope.WorldRectangle();
-        foreach (MapSurfaceRef surface in source.Surfaces)
+        foreach (MapSurfaceRef surface in SceneDescriptors(source, scope))
         {
             budget.BeforeMetadata();
             if ((scope.DiscoverySurfaces is { } ids && !ids.Contains(surface.Id)) || !scope.Roles.Contains(surface.Role)) continue;

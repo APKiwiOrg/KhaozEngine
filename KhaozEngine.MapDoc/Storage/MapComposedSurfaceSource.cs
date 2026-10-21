@@ -12,6 +12,7 @@ namespace KhaozEngine.MapDoc.Storage;
 internal sealed partial class MapComposedSurfaceSource : IMapSurfaceAcquisitionSource, IMapEffectiveSurfaceContext
 {
     readonly IMapSurfaceSource _native;
+    internal bool SupportsSceneAdmission => Scene.MapSceneAdmission.Supports(_native);
     readonly MapEffectiveSurfaceSource _generated;
     readonly string _nativeSnapshot, _nativeRoot;
     readonly IReadOnlyDictionary<string, MapEffectiveTransform?> _nativePoses;

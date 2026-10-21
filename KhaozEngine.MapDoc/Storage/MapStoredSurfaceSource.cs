@@ -10,7 +10,9 @@ namespace KhaozEngine.MapDoc.Storage;
 public sealed partial class MapStoredSurfaceSource : IMapSurfaceAcquisitionSource
 {
     readonly string _directory;
+    internal string SceneDirectory => _directory;
     readonly IReadOnlyDictionary<string, MapSurfaceRef> _surfaceLookup;
+    internal MapSurfaceRef? SceneSurface(string id) => _surfaceLookup.GetValueOrDefault(id);
     readonly IReadOnlyList<MapAssetRef> _nativeAssets;
     readonly MapTileIndex _pinnedTiles;
     readonly float _sculptCellSize;

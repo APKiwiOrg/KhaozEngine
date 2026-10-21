@@ -99,8 +99,10 @@ public sealed partial class MapDocumentSurfaceSource
 
         MapPatchRead Payload(MapSurfaceIndexEntry entry)
         {
+            using var admitted = state.Scope.SceneAdmission?.Enter();
             IReadOnlyList<MapRecordRef>? incidents = source._index.ByKey.TryGetValue(entry.Key, out MapSurfaceIndexEntry? stored)
                 ? stored.IncidentRecords : null;
+            Scene.MapSceneAdmission.Current?.BeforePayload(0);
             state.Serve(entry.Key, incidents);
             if (state.Budget.Work is { } work) work.PayloadReads++;
             return source._surfaces.Patches.TryGetValue(entry.Key, out MapSurfacePatch? patch)

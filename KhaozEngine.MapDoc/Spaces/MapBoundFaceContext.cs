@@ -69,6 +69,7 @@ internal sealed class MapBoundFaceContext
         Func<MapValidatedSurfacePatch, MapSlotCellMask, MapCompiledPatch>? compile = null, Action<long>? chargeOpeningFaces = null)
     {
         ArgumentNullException.ThrowIfNull(view);
+        using var admitted = view.Scope.SceneAdmission?.Enter();
         ArgumentNullException.ThrowIfNull(demands);
         preparation?.RequireView(view);
         if (maxPatches < 0 || maxFaces < 0) throw new ArgumentOutOfRangeException(nameof(maxPatches));

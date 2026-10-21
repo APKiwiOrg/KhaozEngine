@@ -10,9 +10,11 @@ namespace KhaozEngine.MapDoc.Storage;
 public sealed partial class MapDocumentSurfaceSource : IMapSurfaceAcquisitionSource
 {
     readonly MapSurfaceSet _surfaces;
+    internal MapSurfaceStorageIndex SceneMetadataIndex => _index;
     readonly MapSurfaceStorageIndex _index;
     readonly MapSurfaceStorageIndex _residentIndex;
     readonly IReadOnlyDictionary<string, MapSurfaceRef> _surfaceLookup;
+    internal MapSurfaceRef? SceneSurface(string id) => _surfaceLookup.GetValueOrDefault(id);
     MapDocumentSurfaceSource(MapDocument doc)
     {
         _surfaces = doc.Surfaces.Clone();

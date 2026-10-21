@@ -24,9 +24,11 @@ public static partial class MapSurfacePatchCodec
             writer.WritePropertyName("key"); WriteKey(writer, patch.Key);
             writer.WriteNumber("cellMinX", patch.CellMinX); writer.WriteNumber("cellMinZ", patch.CellMinZ);
             writer.WriteNumber("width", patch.Width); writer.WriteNumber("depth", patch.Depth);
+            Scene.MapSceneAdmission.Current?.ReserveBytes(checked(patch.Heights.Length * 4L));
             byte[] heights = new byte[patch.Heights.Length * 4];
             for (int i = 0; i < patch.Heights.Length; i++) BinaryPrimitives.WriteInt32LittleEndian(heights.AsSpan(i * 4), patch.Heights[i]);
             writer.WriteBase64String("heights", heights);
+            Scene.MapSceneAdmission.Current?.ReserveBytes(checked(patch.Cells.Length * 8L));
             byte[] cells = new byte[patch.Cells.Length * 8];
             for (int i = 0; i < patch.Cells.Length; i++)
             {
@@ -36,6 +38,7 @@ public static partial class MapSurfacePatchCodec
                 b[4] = (byte)cell.Cut; b[5] = cell.Rotation; b[6] = (byte)cell.Flags; b[7] = (byte)cell.Topology;
             }
             writer.WriteBase64String("cells", cells);
+            Scene.MapSceneAdmission.Current?.ReserveBytes(checked(patch.Presence.Length * 8L));
             byte[] presence = new byte[patch.Presence.Length * 8];
             for (int i = 0; i < patch.Presence.Length; i++) BinaryPrimitives.WriteUInt64LittleEndian(presence.AsSpan(i * 8), patch.Presence[i]);
             writer.WriteBase64String("presence", presence);
@@ -63,6 +66,7 @@ public static partial class MapSurfacePatchCodec
     public static MapSurfacePatch Decode(ReadOnlySpan<byte> bytes, MapPatchKey expectedKey)
     {
         if (bytes.Length > MaxEncodedBytes) throw Limit();
+        Scene.MapSceneAdmission.Current?.ReserveBytes(bytes.Length);
         try
         {
             // The parser's storage is bounded by the input cap. Size-based payload arrays follow dimension/length checks.
@@ -79,6 +83,7 @@ public static partial class MapSurfacePatchCodec
             if (!MapSurfacePatch.ValidRectangle(minX, minZ, width, depth))
                 throw new MapDocumentException("invalid patch width, depth or cell minimum");
             int cornerCount = (width + 1) * (depth + 1), cellCount = width * depth, wordCount = (cellCount + 63) / 64;
+            Scene.MapSceneAdmission.Current?.ReserveBytes(checked(2L * (cornerCount * 4L + cellCount * 8L + wordCount * 8L) + bytes.Length));
             byte[] heightBytes = Base64(root.GetProperty("heights"), cornerCount * 4, "heights");
             byte[] cellBytes = Base64(root.GetProperty("cells"), cellCount * 8, "cells");
             byte[] presenceBytes = Base64(root.GetProperty("presence"), wordCount * 8, "presence");
@@ -191,7 +196,8 @@ public static partial class MapSurfacePatchCodec
     sealed class BoundedOutput : Stream
     {
         readonly MemoryStream _stream = new();
-        public byte[] Bytes() => _stream.ToArray();
+        public byte[] Bytes()
+        { Scene.MapSceneAdmission.Current?.ReserveBytes(_stream.Length); return _stream.ToArray(); }
         public override bool CanRead => false;
         public override bool CanSeek => false;
         public override bool CanWrite => true;
@@ -201,6 +207,7 @@ public static partial class MapSurfacePatchCodec
         public override void Write(ReadOnlySpan<byte> buffer)
         {
             if (buffer.Length > MaxEncodedBytes - _stream.Length) throw Limit();
+            Scene.MapSceneAdmission.Current?.ReserveBytes(buffer.Length);
             _stream.Write(buffer);
         }
         public override void Flush() { }

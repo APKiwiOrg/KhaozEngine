@@ -13,6 +13,7 @@ public sealed record MapSurfaceScope(WorldFrame Frame, Vector2 LocalMin, Vector2
 {
     // Composition carries one before-work allowance and a discovery-only ownership filter.
     internal MapPageBudget? SharedBudget { get; init; }
+    internal Scene.MapSceneAdmission? SceneAdmission { get; init; }
     internal IReadOnlySet<string>? DiscoverySurfaces { get; init; }
     public Vector2 LocalMin { get; init; } = ValidateInitial(LocalMin, LocalMax, MinY, MaxY, Roles, SpaceIds, Limits);
     public IReadOnlyList<MapSurfaceRole> Roles { get; init; } = Array.AsReadOnly(Roles.ToArray());

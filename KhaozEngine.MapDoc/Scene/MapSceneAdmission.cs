@@ -1,0 +1,126 @@
+using System;
+using System.Runtime.CompilerServices;
+using System.Collections.Generic;
+using KhaozEngine.MapDoc.Spaces;
+using KhaozEngine.MapDoc.Storage;
+using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.MapDoc.Water;
+
+namespace KhaozEngine.MapDoc.Scene;
+
+/// <summary>One synchronous acquisition allowance, shared by every nested session, copy and compilation.</summary>
+internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? entering = null)
+{
+    [ThreadStatic] static MapSceneAdmission? t_current;
+    internal static MapSceneAdmission? Current => t_current;
+    internal long RetainedBytes { get; private set; }
+    internal long PreparedFaces { get; private set; }
+    internal long PayloadReads { get; private set; }
+    readonly HashSet<MapSceneResourceKey> _resources = new();
+    internal void BeforeResource(MapSceneResourceKey key)
+    {
+        if (_resources.Contains(key)) return;
+        if (_resources.Count >= limits.MaxSelectedResources) throw new MapSceneCapacityException();
+        _resources.Add(key);
+    }
+    internal int PatchScopes { get; private set; }
+
+    // Lower-level released clone and compile entry points have no scope argument. The synchronous extent of
+    // an acquisition supplies their same allowance, then restores its predecessor even after a refusal.
+    internal IDisposable Enter() => new Activation(this);
+    sealed class Activation : IDisposable
+    {
+        readonly MapSceneAdmission? _previous = t_current;
+        internal Activation(MapSceneAdmission value) => t_current = value;
+        public void Dispose() => t_current = _previous;
+    }
+
+    internal static bool Supports(IMapSurfaceSource source) => source is MapDocumentSurfaceSource or MapStoredSurfaceSource or MapEffectiveSurfaceSource ||
+        source is MapComposedSurfaceSource composed && composed.SupportsSceneAdmission || source is MapSceneSurfaceSource scoped && Supports(scoped.Inner);
+
+    internal void BeforeScope(IMapSurfaceSource source)
+    {
+        if (!Supports(source)) throw new MapSceneSourceException(MapSceneStatus.Invalid, "Surface source cannot participate in scene admission.");
+        if (PatchScopes >= limits.MaxPatchScopes) throw new MapSceneCapacityException();
+        PatchScopes++;
+    }
+
+    internal void ReserveBytes(long bytes)
+    {
+        if (bytes < 0 || bytes > limits.MaxPreparedBytes - RetainedBytes) throw new MapSceneCapacityException();
+        RetainedBytes = checked(RetainedBytes + bytes);
+    }
+
+    internal void BeforePayload(long bytes)
+    {
+        ReserveBytes(bytes);
+        PayloadReads = checked(PayloadReads + 1);
+        entering?.Invoke("payload");
+    }
+
+    internal void BeforeClone(MapSurfacePatch patch)
+    {
+        ReserveBytes(PatchBytes(patch));
+        entering?.Invoke("clone");
+    }
+
+    internal void BeforeCompile(MapSurfacePatch patch, MapSlotCellMask cells, MapSurfaceRef surface, bool logical)
+    {
+        long faces = 0;
+        for (int z = 0; z < patch.Depth; z++)
+            for (int x = 0; x < patch.Width; x++)
+            {
+                int slot = (z + patch.CellMinZ) * 64 + x + patch.CellMinX;
+                if (!cells.Contains(slot) || !patch.IsPresent(x, z)) continue;
+                // Count the actual subdivision demand without the compiler's subdivision array allocation.
+                // Logical fallback cells conservatively admit every possible parent child.
+                faces = checked(faces + (logical && MapSurfaceCompiler.Fallback(surface, patch.Cells[z * patch.Width + x])
+                    ? 4L * MapSurfaceCompiler.MaxChildrenPerParent : MapSurfaceCompiler.CountFaces(surface, patch, slot)));
+            }
+        ReserveCompilation(faces);
+    }
+
+    internal void ReserveCompilation(long faces)
+    {
+        if (faces < 0 || faces > limits.MaxPreparedFaces - PreparedFaces) throw new MapSceneCapacityException();
+        long bytes = checked(faces * 1280);
+        ReserveBytes(bytes);
+        PreparedFaces = checked(PreparedFaces + faces);
+        entering?.Invoke("compile");
+    }
+
+    /// <summary>Copied payload values, excluding shared immutable strings and CLR object headers.</summary>
+    internal static long PatchBytes(MapSurfacePatch patch)
+    {
+        long bytes = checked(4L * patch.Heights.Length + 8L * patch.Cells.Length + 8L * patch.Presence.Length +
+            (long)Unsafe.SizeOf<MapCornerDependency>() * patch.CornerDependencies.Count +
+            (long)Unsafe.SizeOf<MapEdgeSubdivision>() * patch.EdgeSubdivisions.Count + IntPtr.Size * (long)patch.Records.Count);
+        foreach (var record in patch.Records)
+            bytes = checked(bytes + (record switch
+            {
+                MapSurfaceSeam seam => (long)Unsafe.SizeOf<(MapLatticeVertex, MapLatticeVertex)>() * seam.Pairs.Count,
+                MapBoundaryChain chain => IntPtr.Size * (long)chain.Vertices.Count,
+                MapCavePortal portal => (long)Unsafe.SizeOf<MapLatticeVertex>() * portal.Interval.Count,
+                MapHorizontalOpening opening => 4L * opening.SlotCells.Count,
+                MapSpaceFootprint footprint => 4L * footprint.SlotCells.Count,
+                MapVerticalLink link => IntPtr.Size * (long)(link.Openings.Count + link.Portals.Count + link.GeometryOwners.Count),
+                MapSpaceDoc space => IntPtr.Size * (long)(space.DomainTags.Count + space.Walls.Count + space.Portals.Count + space.Links.Count),
+                MapPrismDomain prism => 32L * prism.Footprint.Rects.Count + IntPtr.Size * (long)prism.Footprint.Rings.Count +
+                    RingBytes(prism.Footprint),
+                _ => 0,
+            }));
+        return bytes;
+    }
+
+    static long RingBytes(MapWaterDomainDoc domain)
+    {
+        long bytes = 0;
+        foreach (var ring in domain.Rings) bytes = checked(bytes + (long)Unsafe.SizeOf<MapLatticeAddress>() * ring.Vertices.Count);
+        return bytes;
+    }
+}
+
+internal sealed class MapSceneSourceException(MapSceneStatus status, string message) : Exception(message)
+{
+    internal MapSceneStatus Status { get; } = status;
+}

@@ -2056,6 +2056,8 @@ The world map packages are opt-in and outside every umbrella. A TileWorld client
 `KhaozEngine.TileWorld.WorldMap` and `KhaozEngine.WorldMap.Gui` explicitly, which bring
 `KhaozEngine.WorldMap` transitively. Headless tools can reference the core alone and call
 `WorldMapRasterizer.Rasterize(source, style, chunk)` for a `WorldMapChunkImage` without a GPU.
+Cache-built images carry a one-pixel `Border` of neighbouring map pixels. Read their pixels through
+`ByteOffset(column, row)` and treat `TextureSize`, not `Size`, as the stored edge length.
 
 Map positions are metres with x east and y north. `MapRect` has a south-west origin and half-open bounds.
 Use the source's `ToMap` and `ToMapHeading` for live world poses. Headings are radians clockwise from north,
@@ -2068,10 +2070,45 @@ Null keeps the authored dimensions and existing raster bytes. Raster queries and
 the largest visible drawn half diagonal at every chunk level. Coarse filtering still uses the authored
 footprint to preserve source-side materialization limits. Icon anchors and hover bounds are unchanged.
 
+Set `WorldMapSymbol.Geometry` to replace its default rectangle or ellipse with a normalized polygon
+and independent detail segments:
+
+```csharp
+var geometry = new WorldMapSymbolGeometry(
+    new Vector2[] { new(-1f, -1f), new(1f, -1f), new(0.5f, 1f), new(-0.5f, 1f) },
+    new WorldMapSymbolStroke[] { new(new(-0.5f, 0f), new(0.5f, 0f)) });
+var customSymbol = new WorldMapSymbol(WorldMapSymbolKind.Obstacle, Color.White, Color.Black)
+{
+    Geometry = geometry,
+    SizeMetres = new Vector2(4f, 2f)
+};
+```
+
+`WorldMapSymbolGeometry(IEnumerable<Vector2> outline, IEnumerable<WorldMapSymbolStroke>? strokes = null)`
+snapshots inputs and exposes read-only `Outline` and `Strokes`. Coordinates must be finite in `[-1, 1]`
+on each local axis. Supply at least three vertices enclosing a nonzero area, with no repeated closing
+endpoint, self-crossing, touching or overlapping edges. Concavity and either winding are supported.
+Construction rejects invalid geometry with `ArgumentException`. Existing footprint dimensions,
+optional `SizeMetres`, rotation, wall sizing, collection and invalidation rules still apply.
+`Fill` paints the silhouette. `OutlinePixels` controls its inset `Outline` boundary and centred
+round-capped detail segments in raster pixels, independent of non-square scaling or pyramid level.
+Details blend over polygon fill. Overlapping boundary and detail ink contributes once.
+Detail segments may extend outside a concave fill,
+are clipped to the footprint box and are excluded from building shadows. Transparent fills leave
+terrain visible. Null geometry preserves existing bytes, feature anchors and hover targets.
+
 Keep the `TileWorldDocument` and `TileWorldCatalogs` unchanged while a `TileWorldMapSource` is in use. Its
 `Revision` stays zero and it never raises `Changed`. After edits or loaded-region changes, stop and dispose
 the old map pipeline and create a new source, cache, worker and view. `surfacePlane` selects terrain, objects
 and markers, while roofs on all planes are included.
+
+The optional `groundPalette` constructor argument maps material ids to map-only `Color` values.
+The adapter snapshots it at construction, applies it after underlay and overlay selection, and falls
+back to catalog colours for missing entries. It leaves terrain heights, water roles and catalogs intact.
+`WorldMapStyle.Contours` enables dry-ground lines at multiples of `IntervalMetres` in actual height
+metres. `WidthPixels` stays fixed in raster pixels across pyramid levels, and colour alpha blends over
+relief before footprint symbols. Water, void and flat interval plateaus are excluded. The sampling and
+cache invalidation margins include the bounded contour neighbourhood. Null options preserve existing bytes.
 
 This example borrows the game's loaded document, catalogs, `Render2DSurface`, icon textures and `SpriteFont`.
 `resolveLocalizedMarkerName` is a game-supplied `Func<string, string?>` that maps an authored marker name to
@@ -2080,6 +2117,7 @@ localized text and returns null for an unknown name. Tags and icon keys are game
 game's UI pass, and call `CloseMap` when closing the map.
 
 ```csharp
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
@@ -2088,9 +2126,11 @@ using KhaozEngine.Windowing;
 using KhaozEngine.WorldMap;
 using KhaozEngine.WorldMap.Gui;
 
-var source = new TileWorldMapSource(document, catalogs, surfacePlane: 0);
+var mapPalette = new Dictionary<ushort, Color> { [1] = Color.FromHex("#b8b8b8") };
+var source = new TileWorldMapSource(document, catalogs, surfacePlane: 0, groundPalette: mapPalette);
 var style = new WorldMapStyle
 {
+    Contours = new WorldMapContours(5f, Color.Black, WidthPixels: 0.75f),
     SymbolRules = new[]
     {
         new WorldMapSymbolRule(
@@ -2157,17 +2197,27 @@ thread. `CurrentLevel` reports the level chosen by the last usable update. It is
 `WorldMapChunking.MaxLevel` with `EffectivePixelsPerMetre / 2^level >= PixelsPerMetre`, or zero at native
 raster zoom and above. Only visible chunks of that level are requested, prioritized by distance to the view
 centre. Their uploads take the budget first. Ready coarser ancestors can use the remaining budget without
-additional requests. Missing chunks sample the matching UV sub-rectangle of the nearest uploaded coarser
-ancestor, or use `PlaceholderColor` if none exists. Stale textures remain visible until their replacements
+additional requests. Missing chunks sample the matching interior sub-rectangle of the nearest uploaded
+coarser ancestor, or use `PlaceholderColor` if none exists. Every draw samples only a texture's interior, so
+linear filtering at chunk edges reads the gutter's neighbouring map pixels. Stale textures remain visible until their replacements
 upload. Overlay anchors come only from visible built chunks of `CurrentLevel`. `Update` blocks the viewport
 through `Pointer.BlockRegion`.
 
 `MaxTextures` defaults to 192 and values below one throw `ArgumentOutOfRangeException`. After uploads and
 draw-list construction, `Update` disposes the least recently drawn textures that are absent from this
 frame's draws until the cap is met. Fallback textures count as drawn. Active draws stay protected and can
-temporarily exceed a smaller cap. The default retained chunk payload is 48 MiB per view for 192 textures
-of 256 by 256 RGBA pixels, excluding GPU overhead and temporary active-draw excess. Changing the cap takes
-effect on the next usable `Update`, with all texture disposal on the frame thread.
+temporarily exceed a smaller cap. The default retained chunk payload is about 49 MiB per view for 192
+textures of 258 by 258 RGBA pixels, gutters included, excluding GPU overhead and temporary active-draw excess. Changing the cap takes
+effect on the next usable `Update`, with all surface-owned texture disposal on the frame thread.
+
+For standard offscreen capture, construct `WorldMapView(cache, context)` inside
+`Render2DSnapshot.Capture` or `CaptureToPng`, where `context` is the supplied `Render2DContext`.
+It uses the same update and draw path. The capture owns uploaded textures and the white pixel until
+submission has finished, so eviction and view disposal only release the view's references in this mode.
+`MaxTextures` still bounds the retained view entries, but the context keeps every texture created during
+that capture until teardown. Keep capture work bounded and prepare the required cache chunks before the
+draw. Do not dispose context-created fonts or icon textures inside the callback. The package README has
+the complete offscreen example.
 
 `Viewport`, the pointer and the open batch must use the same coordinates. The example uses UI pixels. A
 design-space host instead opens its own batch with `Begin(IDesignViewport)` and passes a pointer and bounds
@@ -2182,7 +2232,7 @@ screen size, merge by key and radius, and declutter by priority. Labels require 
 maximum. `Hovered` returns the accepted icon or label for a game-resolved tooltip. Live markers draw last,
 skip decluttering and hover, and can be removed with `RemoveMarker(id)`.
 
-Create, update, draw and dispose views on the surface's frame thread. A cache and worker may serve several
+Create, update, draw and dispose surface views on the surface's frame thread. A cache and worker may serve several
 views, each with its own uploaded textures. Dispose all views first, then stop the worker, then dispose the
 cache before releasing its source data. Icon and marker textures, the label font and the surface remain
 caller-owned. A custom `IWorldMapSource` must allow concurrent reads, increment `Revision` and raise `Changed`
@@ -3458,14 +3508,30 @@ suppress duplicate messages.
 
 To revoke a report:
 
-1. Call `BugReportRelay.RevokeAsync(reportId, cancellationToken)`.
-2. Delete its public capability folder.
-3. Delete it again after the 10-minute claim lease. A holder that passed its check before the call can
-   still finish a write inside its lease. Holders running beyond that lease are outside the guarantee.
+1. Call `BugReportRelay.RevokeReportAsync(idOrReference, cancellationToken)`, or forward an authorized
+   operator request to `RevokeRequestAsync(request, cancellationToken)`. Use the intake request adapter,
+   an Admin-level HTTP trigger and a body of `{"report":"<code or id>"}` capped at 1024 bytes.
+2. Delete the returned issue with an identity that may delete issues, following a moved issue's new URL.
+   The relay redacts and closes it, but only deletion removes its original title and body history.
 
-Retain the private `revoked/` tombstone and idempotency state for at least the report retention and the
-client queue's 7-day maximum age. A missing public manifest is also treated as revoked. Late snapshots
-and full-bundle resends return 202 without enqueueing revoked work.
+Nothing else is manual. The relay deletes public media immediately and schedules `PurgeRevoked` twelve
+minutes later. The purge repeats public cleanup and issue redaction, then removes private state and
+claim files. The non-personal tombstone and `references/<lowercase code>/<reportId>.json` index remain
+until lifecycle expiry. Keep both for the report retention, 180 days for the first consumer.
+Reference-code lookup covers reports accepted on 21.8.0 or later. Lookup by report id always works.
+When an issue number is known, the result carries its page URL even for `Failed` or `Gone` redaction.
+`IGitHubIssueClient.IssuePageUrl` supplies that URL when the update returned none, and defaults to null
+for clients that cannot construct it. An HTTP timeout with an uncancelled caller token is reported as
+`Failed` and the purge is still scheduled. A redaction failure during purge propagates for redelivery.
+
+`RevokeRequestAsync` maps `Revoked` and `AlreadyRevoked` to 200, `NotFound` to 404, `Ambiguous` to 409,
+and `Invalid` or malformed JSON to 400. Oversized bodies return 413. Forward its JSON and headers.
+The host authenticates the operator. The engine request method does not do so.
+A holder that passed its check can still write inside the ten-minute lease. The purge removes those
+writes, but holders running beyond their lease remain outside the guarantee. A late issue discovered
+by the purge is redacted and logged for operator deletion. A transferred late issue logs a warning with
+its report id, issue number and destination URL before the purge completes. A missing public manifest is also treated
+as revoked. Late snapshots and full-bundle resends return 202 without enqueueing revoked work.
 
 The [relay README](../KhaozEngine.BugReports.Relay/README.md) has the isolated-worker host sketch and status
 codes. Read its [Host duties](../KhaozEngine.BugReports.Relay/README.md#host-duties) for the 5-dequeue poison
@@ -8582,7 +8648,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.8.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.11.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -9007,7 +9073,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.8.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.11.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9806,7 +9872,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.8.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.11.0" />
 ```
 
 ```csharp
@@ -11099,7 +11165,8 @@ version or the load fails. The engine's own steps are pre-registered: v1 to v2 d
 `LegacyXzCallbackV1` support recipe. The v5 to v6 step (`MapWaterMigration.Upgrade`) adds no member.
 The v6 to v7 step (`MapPrefabMigration.Upgrade`) clones input and changes only `formatVersion`.
 The v7 to v8 step (`MapMarkerMigration.Upgrade`) clones input and changes only `formatVersion`.
-`MapDocumentFile.CurrentFormatVersion` is 8, and saving always writes it. Version and layout are independent
+The v8 to v9 step (`MapFoliageMigration.Upgrade`) clones input and changes only `formatVersion`.
+`MapDocumentFile.CurrentFormatVersion` is 9, and saving always writes it. Version and layout are independent
 axes, so a monolithic file at the current version is legal. Format 5 and the v4 to v5 step arrived in
 20.30.0. Format 6 adds optional bounded water in 20.32.0, format 7 adds rigid prefabs and building intent
 in 20.40.0, and format 8 adds general markers in 21.5.0. Releases up to 20.29.1 write format 4.
@@ -11111,13 +11178,49 @@ or tile, including open feature payloads, where the last value previously won.
 
 Format 7 moves every native root digest and resolver-2 authored identity once, including documents without
 prefabs. Format 8 is another pure version-only migration and moves every native identity once again. Rebuild
-identity-keyed caches and navigation captures after either migration.
+identity-keyed caches and navigation captures after either migration. Format 9 moves those identities once again,
+including documents without foliage. Absent foliage stays absent.
 
 From 20.30.0, a format-4 document migrates on load with no action from the game. Its authored
 identity token changes exactly once at that format advance, with no continuity to the old token, so
 recompute any stored token after the first load. That token change arrives with 20.30.0 too. Resolver-v1
 options, including the caller's `OptionsHash`, and resolver-v1 execution are unchanged. The authored-surface
 resolver version 2 is new in 20.30.0 and is opt-in through a document's resolver identity.
+
+### Native foliage and the R8 handoff
+
+Format 9 carries optional `MapFoliageSet` payload 1 independently of scatter, companions and explicit placements.
+Capture a complete immutable context once and reuse it across chunk calls. Partial terrain/content/foliage returns
+`PartialResidency`. R8 must add a windowed constructor and closure/completeness contract before streamed generation.
+
+```csharp
+using KhaozEngine.MapDoc.Foliage;
+
+var captured = MapFoliageGenerationContext.Capture(document, closure);
+if (captured.Status == MapFoliageStatus.Complete)
+{
+    var batch = MapFoliageDistribution.Generate(captured.Context!, "cover-a", new(0, 0));
+    var extents = batch.Samples.Select(s => s.AssetId).Distinct().Select(id =>
+    {
+        var asset = closure.GetAsset(id);
+        return new MapFoliageModelExtent(id, asset.RenderBounds, asset.SourceUnitsToMetres, 0.35f);
+    }).ToArray();
+    var handoff = MapFoliageRenderHandoff.Create(batch, extents);
+    // Only Complete is usable. Empty complete batches have null Bounds.
+}
+```
+
+Motion padding is explicit caller policy in metres. Transform all eight source-unit-adjusted mesh corners by each
+sample's exact CPU matrix, then expand XYZ. Preserve CPU selection, live blade/shrub profiles and shadow flags. Use the
+render dependency digest plus generation to reject stale work. Keep one owned batch across every intersected residency
+membership and release after the last leaves. The R8 handoff does not upload, stream, draw or certify appearance.
+
+The [MapDoc foliage contract](../KhaozEngine.MapDoc/README.md#native-foliage-consumer-contract) is the living reference
+for payload/storage ceilings, compatibility owner fallback, paint tie-break, typed refusals, aggregate budgets,
+`MapFoliageEffectSet(Chunks, Layers)`, whole-layer stale entries and public acceptance evidence. Bounds and density are
+cosmetic and never join statics, navigation captures or world bounds. Interactive painting stays R9, complete verb
+parity stays R10, actual import/source acceptance stays R11/G2 and appearance stays R8/G3. The
+[private harness](../KhaozEngine.MapDoc.OracleHarness.Tests/README.md) owns its test-only dependency boundary.
 
 ### Free buildings and effective resources
 
@@ -11486,7 +11589,7 @@ patch keys and semantic digests, the effective resource policy and query policy 
 the builder ID and version, the options hash and the resolver version. The content digest
 (`kemap/native-content/1`) covers placements, including explicit `Y`
 and `SupportBinding`, spawns, player spawns and sculpt tiles, normalized as scheme 1 normalizes them with
-placement display names stripped. `MapSurfaceSemantics.RootDigest` covers native globals, including format-8
+placement display names stripped. `MapSurfaceSemantics.RootDigest` covers native globals, including format-9
 prefab and building intent,
 and surface metadata, never tile content. Scoped identity covers its acquired effective facts and policies.
 Repacking, embedding and incident bookkeeping do not change the token.
@@ -13413,7 +13516,7 @@ the MCP boundary as raw JSON strings parsed with the open document's own seriali
 typed parameters. A lake feature: `{"type": "lake", "centerX": 34, "centerZ": -14, "radius": 22,
 "depth": 6}`. A disc shape: `{"type": "disc", "centerX": 0, "centerZ": 0, "radius": 26}`.
 
-**Verb surface (96 tools).**
+**Verb surface (101 tools).**
 
 | Group | Verbs |
 |---|---|
@@ -13431,6 +13534,16 @@ typed parameters. A lake feature: `{"type": "lake", "centerX": 34, "centerZ": -1
 | Prefabs | `prefab_open`, `prefab_edit`, `prefab_save`, `prefab_extract`, `prefab_place`, `prefab_list`, `prefab_override`, `prefab_unpack`, `prefab_undo`, `prefab_redo` |
 | Interiors | `interior_volume_add`, `interior_volume_set`, `interior_volume_remove`, `roof_link_set` |
 | Markers | `marker_set`, `marker_remove`, `marker_list`, `spawns_adopt` |
+| Foliage | `foliage_layer_set`, `foliage_get`, `foliage_density_set`, `foliage_paint`, `foliage_remove` |
+
+The five native foliage verbs use the shared command history and finalized effects. `foliage_layer_set` takes
+`layerJson`, optional `expectedDifferentialDigest` and `dryRun`. A policy change needs the exact proposal's preview
+token and publishes alone. A new-layer dry run refuses because no differential is needed. `foliage_density_set` takes
+`layerId`, `x`, `z`, `width`, `depth`, `density`. `foliage_paint` takes `layerId`, `worldX`, `worldZ`, `radiusMetres`,
+`target`, `hardness`. `foliage_remove` takes `layerId`. `foliage_get` takes optional `layerId`, the complete optional
+sample rectangle and `previewChunkJson`. Omitted layer lists detached metadata in authored order. A named layer returns
+copied bytes and optional CPU preview, including every matrix/quaternion component. See the
+[wire contract](../KhaozEngine.MapEdit.Tool/README.md#foliage) for results and refusal semantics.
 
 `sculpt_apply(brush, x, z, radius, strength, dt, targetHeight?)` applies one terrain-sculpt brush dab
 (`raise`/`lower`/`smooth`/`flatten`/`set_height`) at a world point as a single `TerrainSculptStrokeCommand`
@@ -17761,7 +17874,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.8.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.11.0" />
 ```
 
 ```csharp
@@ -17797,7 +17910,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.8.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.11.0" />
 ```
 
 ```csharp
@@ -18041,7 +18154,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.8.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.11.0" />
 ```
 
 ```csharp
@@ -22412,7 +22525,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.8.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.11.0" />
 </ItemGroup>
 ```
 

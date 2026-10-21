@@ -42,6 +42,183 @@ public sealed class GitHubAppIssueClientTests : IDisposable
     void IssueResponse() => handler.Enqueue(HttpStatusCode.Created, "{\"number\":42,\"id\":123,\"state\":\"open\"}");
 
     [Fact]
+    public async Task Revoke_FailedAppRedaction_ReturnsConfiguredIssuePageForDeletion()
+    {
+        var harness = new RelayHarness();
+        await WorkerFixtures.AcceptAsync(harness);
+        await WorkerFixtures.ProcessAsync(harness);
+        TokenResponse();
+        handler.Enqueue(HttpStatusCode.ServiceUnavailable, "unavailable");
+        using var client = new GitHubAppIssueClient(http, Credentials, "other-owner", "other-reports", clock);
+        var relay = new BugReportRelay(harness.Options, harness.Authenticator, harness.Media, harness.Work,
+            harness.Quotas, client, harness.Clock);
+
+        ReportRevocationResult result = await relay.RevokeReportAsync(RelayHarness.Id, CancellationToken.None);
+
+        Assert.Equal(ReportIssueRevocation.Failed, result.Issue);
+        Assert.Equal(7, result.IssueNumber);
+        Assert.Equal(new Uri("https://github.com/other-owner/other-reports/issues/7"), result.IssueUrl);
+    }
+
+    [Fact]
+    public async Task UpdateIssue_SendsPatchWithTitleBodyAndNotPlannedClose()
+    {
+        TokenResponse();
+        handler.Enqueue(HttpStatusCode.OK, "{\"html_url\":\"https://github.com/o/r/issues/12\"}");
+        using var client = new GitHubAppIssueClient(http, Credentials, "o", "r", clock);
+        var update = new GitHubIssueUpdate("Revoked bug report ABC123",
+            "This report was revoked at the reporter's request. Its files and private record are being deleted.");
+
+        var result = await client.UpdateIssueAsync(12, update, CancellationToken.None);
+
+        Assert.Equal(GitHubIssueUpdateOutcome.Updated, result.Outcome);
+        Assert.Equal(new Uri("https://github.com/o/r/issues/12"), result.IssueUrl);
+        Assert.Equal(2, handler.Requests.Length);
+        var request = handler.Requests[1];
+        Assert.Equal(HttpMethod.Patch, request.Method);
+        Assert.Equal(new Uri("https://api.github.com/repos/o/r/issues/12"), request.Uri);
+        Assert.Equal("Bearer " + Token, request.Authorization);
+        Assert.Equal("application/vnd.github+json", request.Headers["Accept"]);
+        Assert.Equal("2022-11-28", request.Headers["X-GitHub-Api-Version"]);
+        Assert.Equal("KhaozEngine-BugReports", request.Headers["User-Agent"]);
+        using var json = JsonDocument.Parse(request.Body);
+        Assert.Equal(4, json.RootElement.EnumerateObject().Count());
+        Assert.Equal(update.Title, json.RootElement.GetProperty("title").GetString());
+        Assert.Equal(update.Body, json.RootElement.GetProperty("body").GetString());
+        Assert.Equal("closed", json.RootElement.GetProperty("state").GetString());
+        Assert.Equal("not_planned", json.RootElement.GetProperty("state_reason").GetString());
+    }
+
+    [Theory]
+    [InlineData(404)]
+    [InlineData(410)]
+    public async Task UpdateIssue_404Or410_AnswersGone(int status)
+    {
+        TokenResponse();
+        handler.Enqueue((HttpStatusCode)status, "not json");
+        using var client = Client();
+
+        var result = await client.UpdateIssueAsync(12, new GitHubIssueUpdate("Title", "Body"), CancellationToken.None);
+
+        Assert.Equal(GitHubIssueUpdateOutcome.Gone, result.Outcome);
+        Assert.Null(result.IssueUrl);
+        Assert.Equal(2, handler.Requests.Length);
+    }
+
+    [Fact]
+    public async Task UpdateIssue_301_AnswersMovedToTheNewIssuePage()
+    {
+        TokenResponse();
+        handler.Enqueue(HttpStatusCode.MovedPermanently, "not json", ("Location", "https://api.github.com/repos/o/other/issues/3"));
+        using var client = Client();
+
+        var result = await client.UpdateIssueAsync(12, new GitHubIssueUpdate("Title", "Body"), CancellationToken.None);
+
+        Assert.Equal(GitHubIssueUpdateOutcome.Moved, result.Outcome);
+        Assert.Equal(new Uri("https://github.com/o/other/issues/3"), result.IssueUrl);
+        Assert.Equal(2, handler.Requests.Length);
+    }
+
+    [Theory]
+    [InlineData(200)]
+    [InlineData(404)]
+    [InlineData(410)]
+    [InlineData(500)]
+    public async Task UpdateIssue_RedirectedFinalRequest_AnswersMoved(int status)
+    {
+        TokenResponse();
+        using var finalRequest = new HttpRequestMessage(HttpMethod.Patch, "https://api.github.com/repos/o/other/issues/3");
+        handler.Enqueue((_, _) => Task.FromResult(new HttpResponseMessage((HttpStatusCode)status)
+        {
+            RequestMessage = finalRequest,
+            Content = new StringContent("not json"),
+        }));
+        using var client = Client();
+
+        var result = await client.UpdateIssueAsync(12, new GitHubIssueUpdate("Title", "Body"), CancellationToken.None);
+
+        Assert.Equal(GitHubIssueUpdateOutcome.Moved, result.Outcome);
+        Assert.Equal(new Uri("https://github.com/o/other/issues/3"), result.IssueUrl);
+        Assert.Equal(2, handler.Requests.Length);
+    }
+
+    [Fact]
+    public async Task UpdateIssue_500_ThrowsGitHubApiException()
+    {
+        TokenResponse();
+        handler.Enqueue(HttpStatusCode.InternalServerError, "{\"message\":\"Upstream failed\"}");
+        using var client = Client();
+
+        var error = await Assert.ThrowsAsync<GitHubApiException>(() =>
+            client.UpdateIssueAsync(12, new GitHubIssueUpdate("Title", "Body"), CancellationToken.None));
+
+        Assert.Equal(500, error.StatusCode);
+        Assert.False(error.IsRateLimited);
+        Assert.Null(error.RetryAfter);
+        Assert.Contains("Upstream failed", error.Message);
+        Assert.Equal(2, handler.Requests.Length);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"html_url\":null}")]
+    [InlineData("{\"html_url\":12}")]
+    [InlineData("{\"html_url\":\"not a url\"}")]
+    [InlineData("[]")]
+    [InlineData("not json ghs_installation_secret PRIVATE KEY")]
+    public async Task UpdateIssue_UnreadableIssueUrl_ThrowsSafeApiException(string json)
+    {
+        TokenResponse();
+        handler.Enqueue(HttpStatusCode.OK, json);
+        using var client = Client();
+
+        var error = await Assert.ThrowsAsync<GitHubApiException>(() =>
+            client.UpdateIssueAsync(12, new GitHubIssueUpdate("Title", "Body"), CancellationToken.None));
+
+        Assert.Equal(200, error.StatusCode);
+        Assert.Contains("invalid response", error.Message);
+        AssertNoSecrets(error);
+        Assert.Null(error.InnerException);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("not a url")]
+    [InlineData("/repos/o/other/issues/3")]
+    [InlineData("https://api.github.com/not-an-issue")]
+    public async Task UpdateIssue_UnreadableLocation_ThrowsSafeApiException(string? location)
+    {
+        TokenResponse();
+        handler.Enqueue(HttpStatusCode.MovedPermanently, "not json ghs_installation_secret PRIVATE KEY",
+            location is null ? Array.Empty<(string, string)>() : new[] { ("Location", location) });
+        using var client = Client();
+
+        var error = await Assert.ThrowsAsync<GitHubApiException>(() =>
+            client.UpdateIssueAsync(12, new GitHubIssueUpdate("Title", "Body"), CancellationToken.None));
+
+        Assert.Equal(301, error.StatusCode);
+        Assert.Contains("invalid response", error.Message);
+        AssertNoSecrets(error);
+    }
+
+    [Fact]
+    public async Task IssueClientWithoutUpdate_ThrowsNotSupportedNamingTheMember()
+    {
+        IGitHubIssueClient client = new IssueClientWithoutUpdate();
+
+        var error = await Assert.ThrowsAsync<NotSupportedException>(() =>
+            client.UpdateIssueAsync(12, new GitHubIssueUpdate("Title", "Body"), CancellationToken.None));
+
+        Assert.Contains("IGitHubIssueClient.UpdateIssueAsync", error.Message);
+    }
+
+    sealed class IssueClientWithoutUpdate : IGitHubIssueClient
+    {
+        public Task<int> CreateIssueAsync(GitHubIssueDraft issue, CancellationToken cancellationToken) => Task.FromResult(1);
+        public Task AddCommentAsync(int issueNumber, string body, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    [Fact]
     public async Task CreateIssue_ExchangesTokenThenPostsIssue_ReturnsNumber()
     {
         TokenResponse();
@@ -322,7 +499,12 @@ public sealed class GitHubAppIssueClientTests : IDisposable
     [InlineData(422)]
     [InlineData(429)]
     [InlineData(502)]
-    public async Task Exceptions_NeverContainTokenOrJwt(int status)
+    [InlineData(401, true)]
+    [InlineData(403, true)]
+    [InlineData(422, true)]
+    [InlineData(429, true)]
+    [InlineData(502, true)]
+    public async Task Exceptions_NeverContainTokenOrJwt(int status, bool update = false)
     {
         TokenResponse();
         handler.Enqueue((request, _) => Task.FromResult(new HttpResponseMessage((HttpStatusCode)status)
@@ -333,7 +515,9 @@ public sealed class GitHubAppIssueClientTests : IDisposable
             })),
         }));
         using var client = Client();
-        var error = await Assert.ThrowsAsync<GitHubApiException>(() => client.CreateIssueAsync(Draft, CancellationToken.None));
+        var error = await Assert.ThrowsAsync<GitHubApiException>(() => update
+            ? client.UpdateIssueAsync(12, new GitHubIssueUpdate("Title", "Body"), CancellationToken.None)
+            : client.CreateIssueAsync(Draft, CancellationToken.None));
         AssertNoSecrets(error);
     }
 
@@ -351,14 +535,18 @@ public sealed class GitHubAppIssueClientTests : IDisposable
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task TransportExceptions_CannotLeakRequestSecrets(bool tokenExchange)
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task TransportExceptions_CannotLeakRequestSecrets(bool tokenExchange, bool update = false)
     {
         if (!tokenExchange) TokenResponse();
         for (int attempt = 0; attempt < (tokenExchange ? 3 : 1); attempt++)
             handler.Enqueue((request, _) => throw new HttpRequestException(request.Authorization,
                 new Exception(Credentials.PrivateKeyPem)));
         using var client = Client();
-        var error = await Assert.ThrowsAsync<HttpRequestException>(() => client.CreateIssueAsync(Draft, CancellationToken.None));
+        var error = await Assert.ThrowsAsync<HttpRequestException>(() => update
+            ? client.UpdateIssueAsync(12, new GitHubIssueUpdate("Title", "Body"), CancellationToken.None)
+            : client.CreateIssueAsync(Draft, CancellationToken.None));
         AssertNoSecrets(error);
         Assert.Null(error.InnerException);
         Assert.Equal(tokenExchange ? 3 : 2, handler.Requests.Length);

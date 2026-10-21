@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc.Assets;
+using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
 
@@ -22,6 +23,7 @@ public static class MapAuthoredIdentityV2
         ArgumentNullException.ThrowIfNull(assets);
         ArgumentNullException.ThrowIfNull(options);
         Validate(document.ResolverIdentity, document.SupportRecipe, options);
+        MapFoliageStorage.RequireComplete(document.Foliage);
         MapBoundDocumentValidation.Validate(document, assets);
         return MapAuthoredIdentityProjection.Compute(MapSurfaceSemantics.RootDigest(document),
             MapAuthoredContentDigest.Compute(document),

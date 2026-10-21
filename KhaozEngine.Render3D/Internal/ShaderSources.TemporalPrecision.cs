@@ -21,7 +21,9 @@ namespace KhaozEngine.Render3D.Internal
     internal static partial class ShaderSources
     {
         // ---- The two headers, each right after #version ----
-        internal const string TemporalFullPrecisionGlsl = @"#define afloat float
+        internal const string TemporalControlFlowGlsl = "#extension GL_EXT_control_flow_attributes : require\n";
+
+        internal const string TemporalFullPrecisionGlsl = TemporalControlFlowGlsl + @"#define afloat float
 #define avec3 vec3
 #define avec4 vec4
 #define toAfloat(v) (v)
@@ -34,7 +36,7 @@ namespace KhaozEngine.Render3D.Internal
 ";
 
         internal const string TemporalHalfPrecisionGlsl =
-            "#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require\n" + @"#define afloat float16_t
+            TemporalControlFlowGlsl + "#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require\n" + @"#define afloat float16_t
 #define avec3 f16vec3
 #define avec4 f16vec4
 #define toAfloat(v) float16_t(v)

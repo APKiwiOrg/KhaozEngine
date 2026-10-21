@@ -87,7 +87,7 @@ internal sealed class NativePlacementEdit
         var writes = NativePlacementResourceState.ApplyPose(doc, p.Id, fields);
         if (assets is not null && p.Y is null) writes = NativePlacementResourceState.Union(writes, NativePlacementResourceState.Reseat(doc, assets));
         var after = NativePlacementResourceState.Capture(doc, p.Id);
-        writes = NativePlacementResourceState.Union(writes, NativePlacementResourceState.Union(before.WriteSet, after.WriteSet));
+        writes = NativePlacementResourceState.Union(writes, NativePlacementResourceState.Between(before, after));
         string afterId = p.Id;
         return () => { _before = before; _after = after; _beforeId = id; _afterId = afterId; _writes = writes; };
     }

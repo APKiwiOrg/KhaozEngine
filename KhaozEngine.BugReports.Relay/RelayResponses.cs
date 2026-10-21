@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
 using KhaozEngine.BugReports.Contracts;
 
 namespace KhaozEngine.BugReports.Relay;
@@ -15,6 +16,19 @@ internal static class RelayResponses
 
     public static RelayResponse Error(int status, string error)
         => new(status, Encoding.UTF8.GetString(BugReportJson.SerializeRelayError(new RelayError(error))), Headers());
+
+    public static RelayResponse Revocation(ReportRevocationResult result)
+    {
+        int status = result.Status switch
+        {
+            ReportRevocationStatus.Revoked or ReportRevocationStatus.AlreadyRevoked => 200,
+            ReportRevocationStatus.NotFound => 404,
+            ReportRevocationStatus.Ambiguous => 409,
+            ReportRevocationStatus.Invalid => 400,
+            _ => throw new ArgumentOutOfRangeException(nameof(result), result.Status, "Unknown revocation status."),
+        };
+        return new RelayResponse(status, JsonSerializer.Serialize(result, RelayJson.Options), Headers());
+    }
 
     public static RelayResponse Unauthorized()
     {

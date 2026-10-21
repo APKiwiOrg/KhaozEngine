@@ -23,6 +23,7 @@ public sealed class TemporalVisibilityCostProgramsTests
             {
                 TemporalVisibilityCostPrograms.WithoutCheck, TemporalVisibilityCostPrograms.WithoutBarriers,
                 TemporalVisibilityFrozenD.ToD, TemporalVisibilityFrozenD.ToShippedD,
+                source => TemporalVisibilityCostPrograms.WithoutBarriers(TemporalVisibilityCostPrograms.WithoutCheck(source)),
             })
                 ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, rewrite(source), "visibility cost variant");
     }
@@ -53,7 +54,7 @@ public sealed class TemporalVisibilityCostProgramsTests
     [Fact]
     public void TheDecompositionRunsOnlyHookRewrites()
     {
-        Assert.Equal(["V0 shipped", "V1 check removed", "V3 D"],
+        Assert.Equal(["V0 shipped", "V1 check removed", "V3 D", "V6 no check, identity barriers"],
             Array.ConvertAll(TemporalVisibilityCostDecompositionCostPerfGpuTests.Variants, v => v.Label));
         Assert.Null(TemporalVisibilityCostDecompositionCostPerfGpuTests.Variants[0].Rewrite);
     }

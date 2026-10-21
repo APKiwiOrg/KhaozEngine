@@ -797,6 +797,166 @@ documents refuse. Resolver (1, 1) requires `MapResolverAdoption.ConvertToAuthore
 still load and save, but native editing changes them only through adoption and its exact captured undo restoration.
 `MapNativeWriteSet.LegacySpawns` publishes both lists together and does not itself authorize a legacy-list change.
 
+## Native foliage consumer contract
+
+Format 9 adds optional root `foliage` payload 1, independent of analytic scatter, companion layers and explicit
+placements. `MapFoliageMigration.Upgrade` is a pure 8 to 9 version-only migration. Absent foliage stays absent and
+released prefab payload 1 and annotation digests keep their contracts. The format advance moves native root digests
+and resolver-2 authored identities once even without foliage. Rebuild identity-keyed caches and navigation captures.
+Foliage edits subsequently change authored/whole identity and foliage dependencies, never physical world bounds,
+statics, navigation captures or annotation identity.
+
+### Payload, storage and refusal
+
+Each `MapFoliageLayer` binds explicitly to a Surface or Space through `MapSupportBinding`, with seed, spacing,
+scale range, root offset, ordered weighted models, visible materials, policy, clearance and a sparse byte raster.
+Raster row 0 starts at `originZ`, X advances within a row and rows advance positive world Z. Each immutable
+`MapFoliageChunk` is 32 by 32 bytes, indexed by `MapFoliageChunkKey`. Missing chunks read zero. Advertised unavailable
+chunks refuse. Boundary padding is zero, including last-row padding, and an explicit all-zero chunk retains authored
+identity. `CopyDensity()` returns detached bytes.
+
+| Payload 1 ceiling | Value |
+| --- | --- |
+| Width and depth | 1,048,576 samples each |
+| Stored chunks per layer and region memberships per chunk | 16,384 and 4096 |
+| Layers and document decoded density bytes | 256 and 67,108,864 |
+| Models and materials per layer | 256 and 65,535 |
+| Clearance rules, exception masks and owner correspondences per layer | 4096, 4096 and 65,536 |
+| Foliage JSON and base64 chunk token | 134,217,728 UTF-8 bytes and 1368 characters |
+
+The closed codec checks counts, sizes and arithmetic before allocation. Monolithic storage embeds density.
+Tiled storage writes one verified content-addressed pack per (layer, storage region), with logical chunk digests
+independent of pack layout. The stored schema accepts pack references, the inline schema accepts inline bytes, and
+`VerifyTiled` plus `map_validate` check every advertised pack and its memberships. Sparse addressability is not a
+promise of full-area allocation. Partial storage saves preserve unloaded chunks and verify their advertised data.
+
+`MapFoliageGenerationContext.Capture(document, assets, limits?)` admits construction separately, expands effective
+resources once and detaches one complete snapshot. Reuse it across `MapFoliageDistribution.Generate` and `Query`.
+`MapFoliageContextLimits` defaults to 134,217,728 source UTF-8 bytes, 65,536 chunk descriptors, 65,536 placements,
+65,536 surface patches and 4096 paint targets. Construction is counted before expansion, cloning or index staging,
+alongside the released prefab expansion limits. `MapFoliageContextWork` reports charges and actual expansion and
+snapshot-serialization counts.
+R7 capture requires all terrain, content and foliage resident. Partial snapshots return `PartialResidency` before
+capture. R8 must add a windowed context constructor with an immutable closure and explicit completeness contract
+before claiming streamed native generation. Sparse storage and partial save/verification are not partial-generation
+proof. That constructor must preserve public finalization, full-request support selection, canonical surface identity
+and the observer atomic-completion contract described here.
+
+Only `MapFoliageStatus.Complete` publishes usable samples. MissingSupport, Unavailable, PartialResidency, Ambiguous,
+CapacityExceeded, NotRepresentable and Invalid refuse without truncation, a substituted floor or budget inflation.
+Outside a known domain produces no sample. `MapFoliageLimits` retains per-chunk ceilings. Query also caps total samples
+at 262,144 and retained bytes at 67,108,864 before retention. `MapFoliageDifferential.Compare` caps total candidates at
+64,000,000 and changes at 4,000,000, with reconciliation bytes at 134,217,728 per stable 64 by 64 lattice-address block. Byte charges are
+conservative accounting, not measured allocation. Generate, Query and Compare observer rows remain provisional until
+the enclosing result is Complete. A refusal discards all usable output and issues no differential token.
+
+### Compatibility support and paint
+
+Payload 1 supports `legacy-tile/1` with explicit boundary/material metadata, resolver identity (1, 2) and
+`AuthoredBindingsV2`. It preserves legacy interpolation, smoothed global-corner central-difference normals,
+and additive NoDraw triangles. NoDraw and Blocked flags do not veto density under this compatibility policy.
+Full-request prepared support selection is shared with the
+seat query. A later geometric policy needs its own version and differential. Equal-priority world paint chooses the
+ascending ordinal ID winner. R8 must preserve that winner rather than choose paint by draw order.
+
+Both binding kinds normalize to the selected support surface owner. Occupied Space is a separate field. Clearance
+rules apply to effective placements after their effective transform once. Their seated support, not a roof's clearing
+target or geometric Y, supplies applicability through the layer's compatibility ordinal table.
+
+| Owner seated support | Solid and Door | RoofAbove |
+| --- | --- | --- |
+| Owner and layer have mapped ordinals | Equal ordinals only | Owner ordinal strictly greater than layer ordinal |
+| Owner support is unmapped | Canonical support surface identity must match | Never matches |
+
+`MapFoliageOwnerSupport` supplies exceptional typed seated bindings without clearing geometry. Asset ID and placement
+tag rules share the same per-owner applicability even for mixed owners. Solid/roof clearing remains cell-based,
+DoorClearance scales once and EdgeFade remains world metres. The one-metre interaction envelope is never foliage
+geometry. Explicit trees, shrubs and flora retain placement IDs and collision independently of density.
+
+### Edits and invalidation
+
+`MapFoliageEdits` and `MapFoliageBrush` return pure proposals. A policy definition change needs its
+`PreviewPolicyChange` token, bound to the exact committed candidate, so publish a policy change alone.
+A new layer requires no differential and its tool dry run refuses. Same-layer advertisements can carry density only
+when their keys and digests match the before document's resident chunks. Brush density is 0 to 255 with ToEven rounding,
+hardness 0 to 1, at most 64 chunks and 65,536 addresses. Hardness 1 includes the radius at full strength. Lower hardness
+has zero weight on that boundary. Refusal is atomic and allocates no accepted history entry.
+
+Complete document transactions use public `MapDocumentEditFinalizer`, shared by pure consumers, MapEditor commands,
+callbacks and wire paths. `MapNativeInvalidation.Foliage` is 256 and never adds Physics, Nav or Residency.
+`Finalize(before, prepared, assets)` uses one closure. Its four-argument overload takes separate before/after closures
+for an asset switch. Both admit the proposed foliage context against its target closure before expansion or stamp reuse,
+including whole-layer and chunkless changes, then validate the candidate and preserve every other effect and write.
+`MapFoliageEffects.Describe(before, after, oldContext, newContext, trigger)` returns
+`MapFoliageEffectSet(Chunks, Layers)`, with contexts captured from those exact snapshots and closures.
+
+`MapNativeEditEffects.FoliageChunks` contains per-chunk rows only when a side is added or removed, its bounds change
+or its digest changes. When preparation completes, a side's digest equals `MapFoliageSampleBatch.DependencyDigest`,
+including the raster-only digest off-raster. Deterministically refused preparation instead carries the refusal digest
+from `MapFoliageDependents`. It binds `kemap/foliage-batch-refused/1`, the layer ID, batch chunk X/Z and refusal status,
+plus the density chunks read by float bilinear sampling over points owned by the rounded binary32 generation rectangle.
+This can include the preceding density chunk at a rounded lower edge. Each present read position contributes
+a digest of its chunk address, density SHA-256 and canonical authored layer settings excluding the chunk list.
+Missing positions contribute `absent`. A refused batch from `MapFoliageDistribution` carries an empty
+`DependencyDigest`, so consumers must check status and never compare a refused effect side to a refused batch by digest
+equality. Bounds are cosmetic XZ candidate extents, not padded model bounds. `FoliageLayers` names layers
+whose every batch is stale. Entry presence is authoritative even when before/after digests are equal, since those
+digests describe stored settings/chunks only and a dependency selection past the per-edit ceiling degrades to an entry.
+Whole-layer settings are policy, seed, spacing, density settings, raster geometry, models, materials, clearance rules,
+binding, clearance flags, edge fade and door clearance. Raster chunks, masks, compatibility ordinal rows and owner
+correspondences are localized. A layer appears in at most one list.
+
+### Padded immutable R8 handoff
+
+`MapFoliageModelExtent(AssetId, BoundsInSourceUnits, SourceUnitsToMetres, MotionPaddingMetres)` takes
+`MapResolvedAsset.RenderBounds` and `SourceUnitsToMetres`, plus explicit finite non-negative caller motion padding in
+metres. Zero is valid only when supplied. `MapFoliageRenderHandoff.Create(batch, extents)` returns
+`MapFoliageRenderBatch(Samples, Status, Bounds, DependencyDigest)`, without renderer or GPU types. Samples retain keys,
+canonical support and occupied space, exact CPU matrices and poses, ordered material references, visible material,
+model, scale, thinning rank and completeness. Lists and nested values are detached or immutable.
+
+For each sample, multiply all eight source-box corners by source units exactly once, transform by the original CPU
+matrix, then expand XYZ by that model's motion padding. Never rebuild a matrix from the decomposed quaternion or
+apply the instance scale twice. Bounds union those padded boxes. Empty complete batches have null bounds. Missing or
+duplicate extents, invalid units/bounds, nonfinite or negative padding and nonfinite transformed corners return Invalid
+with null bounds and no usable render digest. Incomplete source status propagates. The render dependency digest binds
+the distribution digest and the used model extents, units and padding in ordinal asset order. Unused model extents do
+not broaden invalidation. It is separate from distribution identity and never resamples or changes CPU selection.
+
+Styling remains caller policy. Preserve live blade/shrub motion profiles and shadow flags. Use dependency digest plus
+generation to reject stale work. Keep one owned batch with every residency membership intersecting its padded bounds
+and release it only after its last membership leaves. Actual residency, upload, viewport drawing, captures and appearance
+remain R8/G3. The bounds are cosmetic and never union into world/nav bounds or static descriptors.
+
+### Public foliage acceptance and deferred ownership
+
+| Evidence | Contract proved |
+| --- | --- |
+| `NativeFoliageAcceptanceTests.StackedLayerFoliageAndExclusions_RemainInOwnedDomain` | OA9 owned stacked support and exclusions |
+| `NativeFoliageAcceptanceTests.SurfaceDensity_DoesNotPopulateDeepCave` | OA9 exterior density stays out of the released prefab cave topology |
+| `NativeFoliageAcceptanceTests.CaveOwnerTransform_InvalidatesOnlyDependentSamples` | OA9 transformed cave ownership and narrow effects |
+| `MapFoliageWorldTests` | Independent client/server heads in monolithic/tiled forms, unchanged statics/nav/world bounds and collider builder type boundary |
+| `FoliageAcceptanceWorkflowTests.StackedDomains_WireEditsInvalidateOnlyTheirOwnLayer` | Shared commands, real MCP edits, owner isolation and history |
+| `FoliageWireTests.FoliageWire_ContainsEveryByteQuaternionAndMatrixComponent` | Reachable generated pose and every wire component |
+| `MapFoliageHandoffTests` and `MapFoliageHandoffBoundaryTests` | Exact CPU matrices, padded cosmetic bounds, immutability and physical isolation |
+| [foliage-conformance](../.github/workflows/foliage-conformance.yml) | Fixed public platform pins and trace on ubuntu-26.04, macos-26 and windows-latest, nonzero totals, no skipped tests |
+
+Scale/rank bits, keys, models and decisions compare exactly. Position tolerance is 0.00001 m per component and
+orientation tolerance 0.000001 radians. The workflow does not regenerate literals or run the private harness.
+The private comparison boundary and its seven test-only references are defined only in the
+[oracle harness README](../KhaozEngine.MapDoc.OracleHarness.Tests/README.md). That harness is not an importer or actual
+source acceptance. Public CPU proofs certify no pixels or windowed acceptance.
+
+| Later owner | Remaining contract or proof |
+| --- | --- |
+| R8, R7-R1 | Windowed context constructor with immutable closure/completeness and full-request support semantics before streamed native generation |
+| R8 and [#1474](https://github.com/APKiwiOrg/KhaozEngine/issues/1474) | MapDoc interior-cut adapter, actual residency/upload and viewport rendering/captures |
+| R8 and G3 | Appearance with live motion profiles, styling and shadow flags |
+| R9 | Interactive painting and native GUI input |
+| R9 and [#1516](https://github.com/APKiwiOrg/KhaozEngine/issues/1516) | Authoring decision for space footprints left over removed floor cells by presence edits |
+| R10 | Complete verb parity and native placement ID rename wire verb |
+| R11 and G2 | Actual-source refreeze, importer and source acceptance |
+
 ## Public synthetic village acceptance
 
 `PrefabFixtures.Village()` in `MapDoc.Tests/Prefabs/PrefabVillageFixtures.cs` is invented public data.
@@ -854,7 +1014,7 @@ policy.
 
 | Later owner | Remaining proof |
 | --- | --- |
-| R7 | Distribution and foliage exclusions over effective canonical paint owners |
+| R7 | Complete native foliage CPU contract, see [foliage acceptance](#public-foliage-acceptance-and-deferred-ownership) |
 | R8 | Partial-face drawing, roof colour and shadows, camera boom, sky picking, local-light pixels, bounded streaming, eviction, HLOD and on-demand navigation |
 | R9 and #1349 | GUI closure/bounds binding, prefab mode, inspectors and real pointer/key input |
 | R10 | Whole verb-map wire parity beyond the registered prefab, interior and marker commands |
@@ -866,8 +1026,8 @@ policy.
 
 ## Format versioning
 
-`MapDocumentFile.CurrentFormatVersion` is the version this engine build reads and writes, currently 8.
-Format 8 adds marker payload 2. Format 7 added rigid prefabs and building intent. Version 6 added bounded water, version 5 added the support recipe
+`MapDocumentFile.CurrentFormatVersion` is the version this engine build reads and writes, currently 9.
+Format 9 adds optional foliage payload 1. Format 8 adds marker payload 2. Format 7 added rigid prefabs and building intent. Version 6 added bounded water, version 5 added the support recipe
 and surface metadata and version 4 added native metadata. Loading a document with an
 older `formatVersion` runs migrations
 (`MapDocumentLoadOptions.RegisterMigration`, each a pure `JsonObject -> JsonObject` step from N to N+1)
@@ -888,6 +1048,8 @@ identity once. Rebuild identity-keyed caches and navigation captures after eithe
 analytic execution and document hashing. Portals remain AuthoredOpen, with live state gated by #1363.
 Headless doorway clearance and roof intent are available. Native controller routes and R8 rendering retain
 the separate gates in the handoff table above.
+v8 -> v9 (`MapFoliageMigration.Upgrade`) clones input and changes only `formatVersion`, accepting 8 or 9.
+Absent foliage stays absent. Format 9 moves native root digests and resolver-2 authored identity once.
 
 `MapDocument.SupportRecipe` pairs resolver 1 with `LegacyXzCallbackV1` and resolver 2 with
 `AuthoredBindingsV2`. Resolver 1 refuses authored surfaces and placement support bindings. A placement

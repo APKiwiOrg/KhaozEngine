@@ -8,7 +8,8 @@ namespace KhaozEngine.MapEditor;
 /// <summary>The authoritative visitor for typed authored-placement references.</summary>
 public static class NativePlacementReferences
 {
-    /// <summary>Remaps typed references only. Format 4 has none. Tags, resource IDs, asset IDs and Kind are not placement references.</summary>
+    /// <summary>Remaps typed references only, including foliage mask and owner correspondence owners. Format 4 has none.
+    /// Tags, resource IDs, asset IDs and Kind are not placement references.</summary>
     public static void Remap(MapDocument document, string oldId, string newId)
     {
         ArgumentNullException.ThrowIfNull(document);
@@ -18,6 +19,8 @@ public static class NativePlacementReferences
         document.Prefabs = remapped.Prefabs;
         document.BuildingIntent = remapped.BuildingIntent;
         document.NativeResourceTransforms = remapped.NativeResourceTransforms;
+        // Foliage owners are typed World references, remapped by the same authoritative walker.
+        document.Foliage = remapped.Foliage;
         if (document.Prefabs is { } set)
             document.Prefabs = new(set.PayloadVersion, set.ExpansionVersion,
                 set.Instances.Select(i => !i.Unpacked ? i : i with

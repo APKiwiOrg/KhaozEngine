@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 
 namespace KhaozEngine.WorldMap.Gui;
 
@@ -21,6 +22,15 @@ internal sealed class ChunkTextureStore<TTexture> : IDisposable where TTexture :
 
     internal TTexture? Get(WorldMapChunkCoord coord) =>
         _textures.TryGetValue(coord, out UploadedChunk? uploaded) ? uploaded.Texture : null;
+
+    /// <summary>Maps chunk-interior texture coordinates into an uploaded chunk's full texture, excluding its gutter.</summary>
+    internal Vector4 TextureUv(WorldMapChunkCoord coord, Vector4 interiorUv)
+    {
+        UploadedChunk uploaded = _textures[coord];
+        if (uploaded.Border == 0) return interiorUv;
+        float textureSize = uploaded.Size + 2f * uploaded.Border;
+        return (new Vector4(uploaded.Border) + interiorUv * uploaded.Size) / textureSize;
+    }
 
     internal void BeginFrame() => _frame++;
 
@@ -57,8 +67,8 @@ internal sealed class ChunkTextureStore<TTexture> : IDisposable where TTexture :
         if (old?.Generation == built.Generation) return false;
 
         // Creation can fail. Keep the previous upload owned and drawable until a replacement exists.
-        TTexture texture = _createTexture(image.Rgba, image.Size, image.Size);
-        _textures[image.Coord] = new UploadedChunk(texture, built.Generation);
+        TTexture texture = _createTexture(image.Rgba, image.TextureSize, image.TextureSize);
+        _textures[image.Coord] = new UploadedChunk(texture, built.Generation, image.Size, image.Border);
         if (old is not null) _disposeTexture(old.Texture);
         return true;
     }
@@ -69,7 +79,7 @@ internal sealed class ChunkTextureStore<TTexture> : IDisposable where TTexture :
         _textures.Clear();
     }
 
-    sealed record UploadedChunk(TTexture Texture, long Generation)
+    sealed record UploadedChunk(TTexture Texture, long Generation, int Size, int Border)
     {
         internal long LastDrawnFrame { get; set; }
     }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Editing;
+using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.MapEditor;
@@ -10,8 +11,14 @@ namespace KhaozEngine.MapEditor;
 /// <summary>Detached native candidates and identity-preserving publication at transaction boundaries.</summary>
 internal static class NativeDocumentSnapshot
 {
+    [ThreadStatic] static long t_clones;
+
+    /// <summary>The snapshot clones this thread entered, counted at entry, so a refusal before any copy shows zero.</summary>
+    internal static long ThreadClones => t_clones;
+
     internal static MapDocument Clone(MapDocument document, MapDocRegistry registry)
     {
+        t_clones++;
         if (document.Tiles is { IsPartial: true })
             throw new MapDocumentException("Native snapshots require a complete document, not a windowed document.");
         // Snapshotting a complete tiled world is independent of the small-file embedding limit.
@@ -51,6 +58,11 @@ internal static class NativeDocumentSnapshot
             new MapDocumentLoadOptions { Registry = registry });
         candidate.Surfaces = document.Surfaces.Clone();
         candidate.Water = document.Water?.Clone();
+        candidate.Foliage = document.Foliage?.Clone();
+        MapFoliageStorage.RequireComplete(candidate.Foliage);
+        var foliageErrors = new List<string>();
+        MapFoliageValidation.ValidateDocument(candidate, foliageErrors);
+        if (foliageErrors.Count > 0) throw new MapDocumentException(string.Join("\n", foliageErrors));
         candidate.Tiles = document.Tiles;
         return candidate;
     }
@@ -89,6 +101,7 @@ internal static class NativeDocumentSnapshot
             target.NumericIdHighWaterMark = Math.Max(target.NumericIdHighWaterMark, candidate.NumericIdHighWaterMark);
         if (writeSet.NativeAssets) target.NativeAssets = new List<MapAssetRef>(candidate.NativeAssets);
         if (writeSet.Water) target.Water = candidate.Water?.Clone();
+        if (writeSet.Foliage) target.Foliage = candidate.Foliage?.Clone();
     }
 
     /// <summary>Replaces a ref in place, or inserts it before the first existing ref that follows it in
@@ -140,6 +153,7 @@ internal static class NativeDocumentSnapshot
         target.SupportRecipe = candidate.SupportRecipe;
         target.Surfaces = candidate.Surfaces;
         target.Water = candidate.Water?.Clone();
+        target.Foliage = candidate.Foliage?.Clone();
         target.Prefabs = candidate.Prefabs?.Clone();
         target.BuildingIntent = candidate.BuildingIntent?.Clone();
         target.NativeResourceTransforms = candidate.NativeResourceTransforms?.ToArray();

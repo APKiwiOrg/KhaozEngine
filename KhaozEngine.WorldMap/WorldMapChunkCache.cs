@@ -9,6 +9,9 @@ namespace KhaozEngine.WorldMap;
 /// <summary>Caches generation-tagged chunks with thread-safe requests, invalidation and publication.</summary>
 public sealed class WorldMapChunkCache : IDisposable
 {
+    // One gutter pixel keeps bilinear display filtering at chunk edges on real neighbouring imagery.
+    internal const int ImageBorder = 1;
+
     readonly object _gate = new();
     readonly Dictionary<WorldMapChunkCoord, Entry> _chunks = [];
     long _generationCounter;
@@ -77,6 +80,7 @@ public sealed class WorldMapChunkCache : IDisposable
     }
 
     /// <summary>Reads the latest retained chunk, including a stale result during rebuilds.</summary>
+    /// <remarks>Cache images carry a one-pixel <see cref="WorldMapChunkImage.Border"/> of neighbouring map imagery.</remarks>
     /// <param name="chunk">The map-space chunk address.</param>
     /// <param name="built">The latest retained chunk, or null when no image is retained.</param>
     /// <returns>Whether a built chunk is available.</returns>
@@ -106,7 +110,7 @@ public sealed class WorldMapChunkCache : IDisposable
     }
 
     /// <summary>Advances touched generations, clears their failures and queues requested chunks again.</summary>
-    /// <remarks>The change area includes each cached level's shared surface and footprint raster reaches.</remarks>
+    /// <remarks>The change area includes each cached level's shared surface and footprint raster reaches and the image gutter.</remarks>
     /// <param name="area">The map-space area affected by an authored change.</param>
     public void Invalidate(MapRect area)
     {
@@ -120,7 +124,7 @@ public sealed class WorldMapChunkCache : IDisposable
             {
                 float cellSize = WorldMapRasterReach.SampleCellSize(Source.SurfaceCellSize, 2f / Style.LevelPixelsPerMetre(level));
                 float margin = WorldMapRasterReach.SurfaceMetres(Style, cellSize, level) +
-                    WorldMapRasterReach.FootprintMetres(Style, level);
+                    WorldMapRasterReach.FootprintMetres(Style, level) + ImageBorder / Style.LevelPixelsPerMetre(level);
                 MapRect affected = area.Expand(margin);
                 // Visit requested entries rather than every possible chunk in a large change rectangle.
                 foreach (var pair in _chunks)
@@ -173,7 +177,7 @@ public sealed class WorldMapChunkCache : IDisposable
         Exception? failure = null;
         try
         {
-            WorldMapChunkImage image = WorldMapRasterizer.Rasterize(Source, Style, chunk);
+            WorldMapChunkImage image = WorldMapRasterizer.Rasterize(Source, Style, chunk, ImageBorder);
             WorldMapChunkFeatures features = WorldMapFeatureCollector.Collect(Source, Style, chunk);
             built = new WorldMapChunk(image, features, generation);
         }

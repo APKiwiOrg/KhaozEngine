@@ -11,6 +11,8 @@ public sealed class PrefabAssetEditCommand : EditorCommand, INativeBoundDocument
     readonly MapUpdatePrefabAsset _edit;
     readonly MapAssetClosure _before, _after;
     readonly NativePrefabCommandState _state = new();
+    /// <summary>The accepted forward finalization, null before acceptance or without foliage.</summary>
+    internal MapDocumentFinalizationStamp? AcceptedStamp => _state.AcceptedStamp;
     public PrefabAssetEditCommand(MapPrefabEdit edit, MapAssetClosure before, MapAssetClosure after)
     {
         _edit = edit as MapUpdatePrefabAsset ?? throw new ArgumentException("Asset commands require an asset update.", nameof(edit));
@@ -23,5 +25,5 @@ public sealed class PrefabAssetEditCommand : EditorCommand, INativeBoundDocument
     public override void Revert(MapDocument doc) => NativeDocumentTransaction.Run(doc, this, true, _before);
     public MapAssetClosure Closure(bool undo) => undo ? _before : _after;
     NativeDocumentPreparation INativeBoundDocumentCommand.Prepare(MapDocument candidate, bool undo, MapAssetClosure assets) =>
-        _state.Prepare(candidate, undo, () => MapPrefabEdits.PrepareAssetUpdate(candidate, _before, _after, _edit));
+        _state.Prepare(candidate, undo, Closure(!undo), Closure(undo), () => MapPrefabEdits.PrepareAssetUpdate(candidate, _before, _after, _edit));
 }

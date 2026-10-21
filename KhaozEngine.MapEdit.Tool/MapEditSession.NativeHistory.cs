@@ -5,6 +5,7 @@ using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Editing;
+using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapEditor;
 
@@ -23,6 +24,10 @@ public sealed partial class MapEditSession
     long _nativeEvents;
     internal Action? BeforeNativePublication { get; set; }
     internal MapNativeEditEffects? LastNativeEffects { get; private set; }
+    /// <summary>The finalization of the last published native edit, undo or redo, null without foliage.</summary>
+    internal MapDocumentFinalizationStamp? LastNativeStamp { get; private set; }
+    /// <summary>The finalization of the publication staged inside the current session mutation, if any.</summary>
+    internal MapDocumentFinalizationStamp? PendingNativeStamp => _pendingNative?.Stamp;
     internal (int Cursor, int Depth, long Events) NativeHistoryState
     {
         get { lock (_lock) return (_nativeHistory.UndoDepth, _nativeHistory.UndoDepth + _nativeHistory.RedoDepth, _nativeEvents); }
@@ -40,11 +45,13 @@ public sealed partial class MapEditSession
         _nativeHistory = new() { Registry = _registry };
         _nativeHistory.RebindNativeAssets(_nativeAssets, NativePlacementBoundsProvider.Instance);
         LastNativeEffects = null;
+        LastNativeStamp = null;
     }
     void BindNativeAssetsLocked(MapAssetClosure assets)
     {
         bool same = _nativeAssets?.Hash == assets.Hash && _nativeAssets.Roots.SequenceEqual(assets.Roots);
         _nativeAssets = assets;
+        NewSnapshotLocked();
         if (!same) ResetNativeHistory();
         else _nativeHistory.RebindNativeAssets(assets, NativePlacementBoundsProvider.Instance);
     }
@@ -84,6 +91,8 @@ public sealed partial class MapEditSession
     {
         if (_nativeAssets is null) throw new MapDocumentException("Native editing requires an explicit asset closure binding.");
         if (_nativeMutation) throw new MapDocumentException("Nested native mutations are not supported.");
+        // The live source and its verified closure pass the foliage context preflight before either clone.
+        MapDocumentEditFinalizer.Preflight(_doc!, _nativeAssets);
         MapDocument before = NativeDocumentSnapshot.Clone(_doc!, _registry);
         MapDocument candidate = NativeDocumentSnapshot.Clone(_doc!, _registry);
         // The live document does not change until publication, so its lists are serialized once for every check.
@@ -94,6 +103,10 @@ public sealed partial class MapEditSession
         {
             T result = fn(candidate, _registry);
             var staged = _pendingNative;
+            // Foliage is immutable and every publication copies it, so a callback never edits foliage it shares with the
+            // staged candidate. A later foliage change on its own candidate joins the staged candidate as a late edit.
+            if (staged is not null && MapFoliageProjection.Digest(candidate.Foliage) != MapFoliageProjection.Digest(staged.Candidate.Foliage))
+                staged.Candidate.Foliage = candidate.Foliage?.Clone();
             if (staged is not null) NativeLegacySpawnAdmission.RequireAdmitted(staged.Candidate, candidate, null);
             NativeLegacySpawnAdmission.RequireAdmitted(_doc!, staged?.Candidate ?? candidate, staged?.LegacySpawns, liveLists);
             string published = SemanticHash(staged?.Candidate ?? candidate);
@@ -109,14 +122,15 @@ public sealed partial class MapEditSession
             // so the final candidate is staged again like a generic callback edit, as one complete snapshot from before
             // under the command's label. The published document, its effects, marker bounds and redo state then describe
             // one edit, and staging validates it again. The snapshot carries no adoption permit, so it refuses any
-            // legacy list change.
+            // legacy list change. The staged finalization travels with it, so its unchanged before side is reused and only
+            // the stale after side is captured again.
             if (staged is null || editedAfterStaging)
             {
                 var effects = new MapNativeEditEffects(null, null, [], [], [], [],
                     worldChanged ? MapNativeInvalidation.Terrain | MapNativeInvalidation.Nav | MapNativeInvalidation.Residency | MapNativeInvalidation.Unbounded : MapNativeInvalidation.None);
                 string label = staged is not null && _pendingNativeStamp is { } late ? late.Label : "Native document edit";
                 var command = new NativeSessionSnapshotCommand(label, before, staged?.Candidate ?? candidate, _nativeAssets,
-                    staged?.Assets ?? _nativeAssets, effects);
+                    staged?.Assets ?? _nativeAssets, effects, staged?.Stamp);
                 staged = _nativeHistory.StageExecute(before, command, liveLists);
             }
             PublishNative(staged, worldChanged: worldChanged, liveLists: liveLists);
@@ -135,10 +149,12 @@ public sealed partial class MapEditSession
         checkpoint?.Invoke();
         NativeDocumentTransaction.Publish(_doc!, staged, liveLists);
         _nativeAssets = staged.Assets;
+        NewSnapshotLocked();
         staged.Accept();
         _dirty = true;
         if (worldChanged) _field = null;
         LastNativeEffects = staged.Effects;
+        LastNativeStamp = staged.Stamp;
         _nativeEvents++;
         NativeEdited?.Invoke(staged.Effects);
         return staged.Effects;

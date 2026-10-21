@@ -120,20 +120,17 @@ internal static class TemporalNvidiaComparisonRule
     internal static bool Allows(TemporalHistoryDifference d) => d.Locks.Count == 0 && ClassesMatch(d);
 }
 
-// The colour between the two entry points on a software Vulkan device (TemporalDeviceClass.IsLavapipe), from
-// TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23. Mesa llvmpipe's compiler orders the two programs' arithmetic
-// differently, so their colour may differ from frame 0, while the confidence, the lock, the mark, R8 and depth stay
-// identical. llvmpipe (LLVM 20.1.2) measured its largest colour difference 0.0049 at Native, 0.0154 at Quality and
-// 0.0439 at Performance, over 0.010, 0.052 and 0.118 percent of the values compared. The bounds keep about 1.4 and
-// 2 times that. A non-finite difference never passes.
-internal static class TemporalSoftwareVulkanColourRule
+// Software-device compile divergence, with the single bound pair accepted in temporal amendment 23. llvmpipe's
+// production entry colour and WARP's certified-versus-check colour and confidence use this rule. Each channel is
+// measured separately. Callers keep every other channel exact. A non-finite difference never passes.
+internal static class TemporalSoftwareCompileDivergenceRule
 {
-    internal const float SoftwareColourBound = 0.0625f, SoftwareColourShare = 0.0025f;
+    internal const float AbsoluteBound = 0.0625f, DifferingShareBound = 0.0025f;
 
     internal static double ShareOf(long differing, long compared) => (double)differing / compared;
 
     internal static bool Allows(float worst, long differing, long compared)
-        => compared > 0 && worst <= SoftwareColourBound && ShareOf(differing, compared) <= SoftwareColourShare;
+        => compared > 0 && worst <= AbsoluteBound && ShareOf(differing, compared) <= DifferingShareBound;
 }
 
 // Only hardware NVIDIA D3D11 creates this oracle. D's paired entries are diagnostic only. Entry identity's production

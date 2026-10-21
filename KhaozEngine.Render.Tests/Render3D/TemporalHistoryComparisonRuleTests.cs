@@ -112,19 +112,19 @@ public sealed class TemporalHistoryComparisonRuleTests
     [Fact]
     public void SoftwareVulkanColourHoldsTheBoundAndTheShare()
     {
-        const float bound = TemporalSoftwareVulkanColourRule.SoftwareColourBound;
+        const float bound = TemporalSoftwareCompileDivergenceRule.AbsoluteBound;
         Assert.Equal(0.0625f, bound);
-        Assert.Equal(0.0025f, TemporalSoftwareVulkanColourRule.SoftwareColourShare);
-        Assert.True(TemporalSoftwareVulkanColourRule.Allows(0f, 0, 1));
-        Assert.True(TemporalSoftwareVulkanColourRule.Allows(0.0439f, 118, 100_000));
-        Assert.True(TemporalSoftwareVulkanColourRule.Allows(bound, 24, 10_000));
-        Assert.False(TemporalSoftwareVulkanColourRule.Allows(BitConverter.Int32BitsToSingle(
+        Assert.Equal(0.0025f, TemporalSoftwareCompileDivergenceRule.DifferingShareBound);
+        Assert.True(TemporalSoftwareCompileDivergenceRule.Allows(0f, 0, 1));
+        Assert.True(TemporalSoftwareCompileDivergenceRule.Allows(0.0439f, 118, 100_000));
+        Assert.True(TemporalSoftwareCompileDivergenceRule.Allows(bound, 24, 10_000));
+        Assert.False(TemporalSoftwareCompileDivergenceRule.Allows(BitConverter.Int32BitsToSingle(
             BitConverter.SingleToInt32Bits(bound) + 1), 1, 10_000));
-        Assert.False(TemporalSoftwareVulkanColourRule.Allows(0.001f, 26, 10_000));
-        Assert.False(TemporalSoftwareVulkanColourRule.Allows(float.NaN, 1, 10_000));
-        Assert.False(TemporalSoftwareVulkanColourRule.Allows(float.PositiveInfinity, 1, 10_000));
-        Assert.False(TemporalSoftwareVulkanColourRule.Allows(0f, 0, 0));
-        Assert.Equal(0.0025, TemporalSoftwareVulkanColourRule.ShareOf(25, 10_000), 12);
+        Assert.False(TemporalSoftwareCompileDivergenceRule.Allows(0.001f, 26, 10_000));
+        Assert.False(TemporalSoftwareCompileDivergenceRule.Allows(float.NaN, 1, 10_000));
+        Assert.False(TemporalSoftwareCompileDivergenceRule.Allows(float.PositiveInfinity, 1, 10_000));
+        Assert.False(TemporalSoftwareCompileDivergenceRule.Allows(0f, 0, 0));
+        Assert.Equal(0.0025, TemporalSoftwareCompileDivergenceRule.ShareOf(25, 10_000), 12);
     }
 
     static float Half(int bits) => (float)BitConverter.Int16BitsToHalf((short)bits);

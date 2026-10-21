@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -69,4 +70,17 @@ internal sealed class BlobContainerAdapter : IReportBlobContainer
             return false;
         }
     }
+
+    public async Task<IReadOnlyList<string>> ListAsync(string prefix, CancellationToken ct)
+    {
+        var paths = new List<string>();
+        await foreach (BlobItem blob in container.GetBlobsAsync(BlobTraits.None, BlobStates.None, prefix: prefix, cancellationToken: ct)
+            .ConfigureAwait(false))
+            paths.Add(blob.Name);
+        paths.Sort(StringComparer.Ordinal);
+        return paths;
+    }
+
+    public async Task<bool> DeleteAsync(string path, CancellationToken ct)
+        => (await container.GetBlobClient(path).DeleteIfExistsAsync(cancellationToken: ct).ConfigureAwait(false)).Value;
 }

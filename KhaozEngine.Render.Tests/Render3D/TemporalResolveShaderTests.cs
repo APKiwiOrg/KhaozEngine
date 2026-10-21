@@ -484,8 +484,10 @@ namespace KhaozEngine.Tests.Render3D
                 StringComparison.Ordinal);
             Assert.DoesNotContain("textureLod(sampler2D(HistoryConfidence", core, StringComparison.Ordinal);
             Assert.Contains("edgeMotion = length((closestMotion - centreOwn) * internalSize);", core, StringComparison.Ordinal);
-            Assert.Contains("lockValue = temporalReleaseLock(lockValue, motionPixels, reactive, "
-                + "ownReprojected && useHistory ? 0.0 : edgeMotion);", core, StringComparison.Ordinal);
+            Assert.Contains("float releaseEdgeMotion = ownReprojected && useHistory ? 0.0 : edgeMotion;", core,
+                StringComparison.Ordinal);
+            Assert.Contains("lockValue = temporalReleaseLock(lockValue, motionPixels, reactive, releaseEdgeMotion);", core,
+                StringComparison.Ordinal);
             Assert.Contains("float edgeKeep = temporalOrdered(1.0 - clamp(temporalOrdered(edgeMotion) * LockEdgeRelease, "
                 + "0.0, 1.0));", core, StringComparison.Ordinal);
             Assert.Contains(ShaderSources.TemporalLockReleaseGlsl, core, StringComparison.Ordinal);

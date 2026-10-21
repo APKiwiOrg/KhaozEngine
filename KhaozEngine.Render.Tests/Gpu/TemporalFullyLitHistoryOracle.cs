@@ -9,7 +9,7 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Gpu;
 
 // Measure the whole walk before asserting. A colour mismatch must not hide later state or later frames.
-internal sealed class TemporalFullyLitHistoryOracle(ITestOutputHelper output, bool softwareVulkan)
+internal sealed class TemporalFullyLitHistoryOracle(ITestOutputHelper output, bool softwareVulkan, bool warp = false, bool nvidia = false)
 {
     internal sealed record Snapshot(int Width, int InternalWidth, byte[] Colour, byte[] State, byte[] Visibility, byte[] Depth)
     {
@@ -21,6 +21,19 @@ internal sealed class TemporalFullyLitHistoryOracle(ITestOutputHelper output, bo
                 ReadTexture(h.Confidence(h.WriteIndex)),
                 ReadTexture(fx.Scene.TemporalResolveRendererForTests!.VisibilityHistory.Texture(h.WriteIndex)),
                 ReadTexture(h.PreviousDepth(h.WriteIndex)));
+        }
+
+        internal TemporalHistorySample Sample() => new(Decode(Colour, half: true), Decode(State, half: true),
+            Visibility, Decode(Depth, half: false));
+
+        static float[] Decode(byte[] bytes, bool half)
+        {
+            int stride = half ? 2 : 4;
+            var values = new float[bytes.Length / stride];
+            for (int i = 0; i < values.Length; i++)
+                values[i] = half ? (float)BitConverter.UInt16BitsToHalf(BitConverter.ToUInt16(bytes, i * stride))
+                    : BitConverter.ToSingle(bytes, i * stride);
+            return values;
         }
     }
 
@@ -58,7 +71,9 @@ internal sealed class TemporalFullyLitHistoryOracle(ITestOutputHelper output, bo
             + (Examples.Count == 0 ? "" : ", first " + string.Join(" | ", Examples));
     }
 
-    readonly Dictionary<(string Pair, string Channel, bool BoundedColour), Difference> _totals = [];
+    enum Rule { Exact, SoftwareBound, NvidiaReport }
+    readonly Dictionary<(string Pair, string Channel, Rule Rule), Difference> _totals = [];
+    readonly TemporalNvidiaHistoryOracle? _nvidia = nvidia ? new(output) : null;
 
     internal void Report(int frame, string pair, Snapshot a, Snapshot b, bool entryComparison = false)
     {
@@ -70,6 +85,7 @@ internal sealed class TemporalFullyLitHistoryOracle(ITestOutputHelper output, bo
         Channel("mark", a.State, b.State, 2, 2, offset: 1, mark: true);
         Channel("R8", a.Visibility, b.Visibility, 1, 1, width: a.InternalWidth);
         Channel("depth", a.Depth, b.Depth, 4, 1, width: a.InternalWidth);
+        if (!entryComparison) _nvidia?.Compare(frame, pair, a.Sample(), b.Sample());
 
         void Channel(string name, byte[] left, byte[] right, int bytes, int components, int offset = -1,
             bool mark = false, int? width = null)
@@ -87,7 +103,11 @@ internal sealed class TemporalFullyLitHistoryOracle(ITestOutputHelper output, bo
                     bytes == 2 && !mark);
             }
             output.WriteLine($"history-frame {frame} {pair} {name}: {difference}");
-            var key = (pair, name, softwareVulkan && entryComparison && name == "colour");
+            bool arithmetic = name is "colour" or "confidence";
+            Rule rule = !entryComparison && nvidia && arithmetic ? Rule.NvidiaReport
+                : !entryComparison && warp && arithmetic
+                    || softwareVulkan && entryComparison && name == "colour" ? Rule.SoftwareBound : Rule.Exact;
+            var key = (pair, name, rule);
             if (!_totals.TryGetValue(key, out Difference? total)) _totals.Add(key, total = new());
             total.Include(difference);
         }
@@ -100,14 +120,18 @@ internal sealed class TemporalFullyLitHistoryOracle(ITestOutputHelper output, bo
         {
             string summary = $"{key.Pair} {key.Channel}: {difference}";
             output.WriteLine("history-summary " + summary);
-            // Amendment 23 applies only between the production entries on llvmpipe. Certified vs check is exact.
-            bool allowed = key.BoundedColour
-                ? TemporalSoftwareVulkanColourRule.Allows(difference.Worst, difference.Count, difference.Compared)
-                : difference.Count == 0;
+            // NVIDIA's A/B oracle has already checked each certified pair's classes and exact stored channels.
+            bool allowed = key.Rule switch
+            {
+                Rule.NvidiaReport => true,
+                Rule.SoftwareBound => TemporalSoftwareCompileDivergenceRule.Allows(difference.Worst,
+                    difference.Count, difference.Compared),
+                _ => difference.Count == 0,
+            };
             if (!allowed) failures.Add(summary);
-            if (key.BoundedColour)
+            if (key.Rule == Rule.SoftwareBound)
                 output.WriteLine(string.Create(CultureInfo.InvariantCulture,
-                    $"software Vulkan entry colour bound {TemporalSoftwareVulkanColourRule.SoftwareColourBound}, share bound {TemporalSoftwareVulkanColourRule.SoftwareColourShare}"));
+                    $"software compile divergence absolute bound {TemporalSoftwareCompileDivergenceRule.AbsoluteBound}, share bound {TemporalSoftwareCompileDivergenceRule.DifferingShareBound}"));
         }
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
     }

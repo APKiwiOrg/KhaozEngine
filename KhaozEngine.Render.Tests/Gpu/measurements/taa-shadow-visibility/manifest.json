@@ -2955,8 +2955,20 @@
       "sha256": "c0afe3dc0d22aabff6ca0e6dbaaebcdcf968b670f2cf2a15e1e3ca36e933822a"
     },
     {
+      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/7g5-hosted.md",
+      "sha256": "3f004982e788c176b61913a22150b063241b451e576b891819a4b5b7fdedb7c3"
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/7h-k-hosted.md",
+      "sha256": "1f05f383babb19ebf12a65bfd34e76f50f27d19fbabcc7d262188580cc7b1ad7"
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/7h-zero-lock.md",
+      "sha256": "f781db2e1bacee2e766f3f5a41d308ab135d791dbb82002363d449b6a0f92501"
+    },
+    {
       "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/benchmark-request.md",
-      "sha256": "df99215ba0e648b5838b13afac9ac01ce4d68a96d90b674ccc38c4c4fdc0d8a8"
+      "sha256": "7b432fbb01c39a0c093118f036ee6052549f35ab4514bc119007cab0c3e20700"
     },
     {
       "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/benchmark-result-2.md",
@@ -3359,12 +3371,20 @@
       "sha256": "dd2533c8f2ecbe089a56bc737698d60b7113dea2ec2ae6e50e8f47f9c05b2fcc"
     },
     {
+      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/field-path-share.md",
+      "sha256": "15daefafd65fbb95688efc59f6a4c02e3a65a34e5ac1690711df938bdf11cebd"
+    },
+    {
       "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/filter-baseline.md",
       "sha256": "206265a2042f6a248961ccf234192a479c0186af05069acda35397a5b1a1c5c8"
     },
     {
       "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/filter.md",
       "sha256": "163ba6bc7a69bec14c0f0717f5824f39dc9ee2a007914588db17781f83a13852"
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/gathers.md",
+      "sha256": "77e364e197257f11f6454b4f854d00f75df737560735d98fa2800e5ef08f8cdb"
     },
     {
       "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/guards.md",
@@ -3657,18 +3677,6 @@
     {
       "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/verify_capture_manifest.py",
       "sha256": "1cc911b742c67d8a9200cb342cf7a5fc10648faf41ca140508f98ac8051e81e4"
-    },
-    {
-      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/gathers.md",
-      "sha256": "77e364e197257f11f6454b4f854d00f75df737560735d98fa2800e5ef08f8cdb"
-    },
-    {
-      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/7g5-hosted.md",
-      "sha256": "3f004982e788c176b61913a22150b063241b451e576b891819a4b5b7fdedb7c3"
-    },
-    {
-      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/7h-k-hosted.md",
-      "sha256": "4d401e16413025c142188641f5279119455934960ba6844b39805a3b7c153a5f"
     }
   ],
   "shipping_build": {

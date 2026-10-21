@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Azure;
@@ -55,6 +56,30 @@ public sealed class AzureLiveTests
     [BugReportsAzureFact]
     public Task Live_Media_Exists_ReflectsPut()
         => RunMedia(suite => suite.Exists_ReflectsPut());
+
+    [BugReportsAzureFact]
+    public Task Live_Media_List_ReturnsNestedPathsUnderPrefixInOrdinalOrder()
+        => RunMedia(suite => suite.List_ReturnsNestedPathsUnderPrefixInOrdinalOrder());
+
+    [BugReportsAzureFact]
+    public Task Live_Media_List_IsScopedToArea()
+        => RunMedia(suite => suite.List_IsScopedToArea());
+
+    [BugReportsAzureFact]
+    public Task Live_Media_List_Absent_ReturnsEmpty()
+        => RunMedia(suite => suite.List_Absent_ReturnsEmpty());
+
+    [BugReportsAzureFact]
+    public Task Live_Media_List_RejectsPrefixWithoutTrailingSlashOrInvalidPath()
+        => RunMedia(suite => suite.List_RejectsPrefixWithoutTrailingSlashOrInvalidPath());
+
+    [BugReportsAzureFact]
+    public Task Live_Media_Delete_RemovesBlobAndAnswersTrue()
+        => RunMedia(suite => suite.Delete_RemovesBlobAndAnswersTrue());
+
+    [BugReportsAzureFact]
+    public Task Live_Media_Delete_Absent_AnswersFalse()
+        => RunMedia(suite => suite.Delete_Absent_AnswersFalse());
 
     [BugReportsAzureFact]
     public Task Live_Quota_Read_Absent_ReturnsNull()
@@ -173,6 +198,13 @@ public sealed class AzureLiveTests
             => inner.GetAsync(area, prefix + path, maxBytes, cancellationToken);
         public Task<bool> ExistsAsync(ReportArea area, string path, CancellationToken cancellationToken)
             => inner.ExistsAsync(area, prefix + path, cancellationToken);
+        public async Task<IReadOnlyList<string>> ListAsync(ReportArea area, string pathPrefix, CancellationToken cancellationToken)
+        {
+            IReadOnlyList<string> paths = await inner.ListAsync(area, prefix + pathPrefix, cancellationToken);
+            return paths.Select(path => path[prefix.Length..]).ToArray();
+        }
+        public Task<bool> DeleteAsync(ReportArea area, string path, CancellationToken cancellationToken)
+            => inner.DeleteAsync(area, prefix + path, cancellationToken);
     }
 
     sealed class LiveQuotaConformance : ReportQuotaStoreConformance, IAsyncDisposable

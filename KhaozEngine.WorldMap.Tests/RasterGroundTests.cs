@@ -241,7 +241,7 @@ public sealed class RasterGroundTests
     [Fact]
     public void Canvas_MapPoint_UsesPixelCentresAndNorthUp()
     {
-        var canvas = new RasterCanvas(32, new MapRect(-8f, -16f, 8f, 8f), 4f);
+        var canvas = new RasterCanvas(32, 0, new MapRect(-8f, -16f, 8f, 8f), 4f);
         Assert.Equal(new Vector2(-7.875f, -8.125f), canvas.MapPoint(0f, 0f));
         Assert.Equal(new Vector2(-0.125f, -15.875f), canvas.MapPoint(31f, 31f));
         Assert.Equal(new Vector2(-8.125f, -7.875f), canvas.MapPoint(-1f, -1f));
@@ -251,7 +251,7 @@ public sealed class RasterGroundTests
     [Fact]
     public void Canvas_Blend_UsesCoverageAndAlpha_ClipsOutsidePixels()
     {
-        var canvas = new RasterCanvas(1, new MapRect(0f, 0f, 1f, 1f), 1f);
+        var canvas = new RasterCanvas(1, 0, new MapRect(0f, 0f, 1f, 1f), 1f);
         canvas.Set(0, 0, Color.Black);
         canvas.Blend(0, 0, new Color(1f, 0.5f, 0f, 0.5f), 0.5f);
         canvas.Blend(-1, 0, Color.White, 1f);

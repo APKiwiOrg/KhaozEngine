@@ -123,9 +123,9 @@ public sealed class MapPrefabFormatTests
     }
 
     [Fact]
-    public void FormatNine_RefusesWithUpdateGuidance()
+    public void FormatTen_RefusesWithUpdateGuidance()
     {
-        var error = Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText(PrefabFixtures.FormatSixJson(true).Replace("\"formatVersion\":6", "\"formatVersion\":9", StringComparison.Ordinal)));
+        var error = Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText(PrefabFixtures.FormatSixJson(true).Replace("\"formatVersion\":6", "\"formatVersion\":10", StringComparison.Ordinal)));
         Assert.Contains("newer than this engine supports", error.Message);
     }
 

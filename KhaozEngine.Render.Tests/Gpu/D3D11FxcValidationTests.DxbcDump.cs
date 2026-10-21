@@ -29,19 +29,23 @@ namespace KhaozEngine.Tests.Gpu
         [SupportedOSPlatform("windows")]
         void Dump()
         {
-            Print("DecisionHelper", "D", Disassemble(DHelperProgram, "visibility decision as D"));
-            Print("DecisionHelper", "S", Disassemble(TemporalVisibilityCompiledFormTests.DecisionHelperProgram,
-                "visibility decision"));
+            Print("DecisionHelper", "D", DHelperProgram);
+            Print("DecisionHelper", "S", TemporalVisibilityCompiledFormTests.DecisionHelperProgram);
             foreach ((string name, string source) in VisibilityPrograms)
             {
-                Print(name, "D", Disassemble(TemporalVisibilityFrozenD.ToD(source), name + " as D"));
-                Print(name, "S", Disassemble(source, name));
+                Print(name, "D", TemporalVisibilityFrozenD.ToD(source));
+                Print(name, "S", source);
             }
+            foreach ((string name, string source) in TemporalLockReleaseDxbcPrograms.Additional)
+                Print(name, "S", source);
             Assert.Fail("visibility DXBC dump printed, failing so the runner shows it");
         }
 
-        void Print(string name, string side, string disassembly)
+        [SupportedOSPlatform("windows")]
+        void Print(string name, string side, string source)
         {
+            _output?.WriteLine($"DXBCSOURCE|{name}|{side}|{TemporalVisibilityFrozenD.Sha256(source)}");
+            string disassembly = Disassemble(source, name + " " + side);
             int n = 0;
             foreach (string line in disassembly.Split('\n'))
                 _output?.WriteLine($"DXBC|{name}|{side}|{n++}|{line.TrimEnd('\r')}");

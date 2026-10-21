@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Text.Json;
 using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Water;
 
 namespace KhaozEngine.MapDoc;
@@ -81,8 +82,12 @@ internal static class MapCanonical
     }
 
     /// <summary>Native persistence metadata. Kept separate from the legacy analytic hash globals.</summary>
-    internal static void WriteNativeGlobals(Utf8JsonWriter w, MapDocument doc, JsonSerializerOptions options)
+    internal static void WriteNativeGlobals(Utf8JsonWriter w, MapDocument doc, JsonSerializerOptions options) =>
+        WriteNativeGlobals(w, doc, options, includeFoliage: true);
+
+    internal static void WriteNativeGlobals(Utf8JsonWriter w, MapDocument doc, JsonSerializerOptions options, bool includeFoliage)
     {
+        if (includeFoliage) MapFoliageProjection.WriteProperty(w, doc.Foliage);
         w.WritePropertyName("supportRecipe");
         JsonSerializer.Serialize(w, doc.SupportRecipe, options);
         w.WritePropertyName("surfaces");

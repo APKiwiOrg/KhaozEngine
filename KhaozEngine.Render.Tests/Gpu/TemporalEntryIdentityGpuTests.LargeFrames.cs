@@ -20,7 +20,7 @@ namespace KhaozEngine.Tests.Gpu
         /// byte-identical in colour, state, stored R8 and stored depth, and so must D prime's two. Hardware NVIDIA
         /// Direct3D 11 is not excepted, since both entries of one program take the same inputs. On a software Vulkan
         /// device (<see cref="TemporalDeviceClass.IsLavapipe"/>) each pair's colour is held to
-        /// <see cref="TemporalSoftwareVulkanColourRule"/> over all frames and printed, as the follow walk's is, and its
+        /// <see cref="TemporalSoftwareCompileDivergenceRule"/> over all frames and printed, as the follow walk's is, and its
         /// state, R8 and depth stay exact.
         /// </summary>
         [GpuTheory]
@@ -104,13 +104,13 @@ namespace KhaozEngine.Tests.Gpu
                 if (softwareVulkan)
                     foreach (EntryDifference pair in new[] { productionColour, dColour })
                     {
-                        double share = TemporalSoftwareVulkanColourRule.ShareOf(pair.Values, colourCompared);
+                        double share = TemporalSoftwareCompileDivergenceRule.ShareOf(pair.Values, colourCompared);
                         output.WriteLine($"  software Vulkan: {pair}, within "
-                            + $"{TemporalSoftwareVulkanColourRule.SoftwareColourBound} on {share:P3} of values");
-                        Assert.True(TemporalSoftwareVulkanColourRule.Allows(pair.Worst, pair.Values, colourCompared),
+                            + $"{TemporalSoftwareCompileDivergenceRule.AbsoluteBound} on {share:P3} of values");
+                        Assert.True(TemporalSoftwareCompileDivergenceRule.Allows(pair.Worst, pair.Values, colourCompared),
                             $"frame {frames - 1}: the colour on a software Vulkan device left its bound "
-                            + $"({TemporalSoftwareVulkanColourRule.SoftwareColourBound}, "
-                            + $"{TemporalSoftwareVulkanColourRule.SoftwareColourShare:P2} of values): {pair}");
+                            + $"({TemporalSoftwareCompileDivergenceRule.AbsoluteBound}, "
+                            + $"{TemporalSoftwareCompileDivergenceRule.DifferingShareBound:P2} of values): {pair}");
                     }
                 output.WriteLine($"  {frames} frames byte-identical across the entries in "
                     + (softwareVulkan ? "state, R8 and depth" : "colour, state, R8 and depth")

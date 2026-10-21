@@ -1,6 +1,6 @@
 # TAA shadow visibility production design
 
-**Status:** Implemented on the task branch and staged for 21.8.0 as temporal-resolve amendment 35. The owner selected D on 2026-10-19. Final integration, correctness gates, billed benchmark approval, release and consumer adoption remain separate steps.
+**Status:** Implemented on the task branch and staged for 21.11.0 as temporal-resolve amendment 35. The owner selected D on 2026-10-19. Final integration, correctness gates, billed benchmark approval, release and consumer adoption remain separate steps.
 
 **Decision basis:** Owner ruling of 2026-10-19. Hold for the full fix. Bilinear 3x3 PCF and a lit visibility signal ship together in one engine release. A filter-only release or another colour-only lock heuristic does not satisfy the ruling.
 
@@ -200,13 +200,40 @@ Run every `Temporal*GpuTests` correctness class, excluding only temporal timing-
 
 Local Metal correctness comes first. Then dispatch `cross-platform-gpu.yml` on the exact candidate for Metal, Direct3D 11 and Vulkan. A filtered correctness run excludes timing, retains compiler/validation checks and records device-class outputs. The ordinary full default-input workflow remains the later release gate under the release ritual. New or changed goldens and shader-corpus baselines follow the relevant hosted bake procedure, with reviewed deltas and no tolerance changes.
 
-Entry identity is exact on Metal, on the T4 on Direct3D 11 (under the NVIDIA D3D11 rule) and Vulkan, and on WARP. There production's fused and split entries store byte-identical colour, confidence, locks, marks, R8 visibility and depth, with the same release and reset decisions. On llvmpipe (software Vulkan) the state, R8 and depth are exact and the colour is within main's amendment 23 bound, `0.0625` on at most `0.0025` of the values compared (`TemporalSoftwareVulkanColourRule`), since llvmpipe's compiler orders the two programs' arithmetic differently from frame 0. A large-frame case runs both entries on the frozen-D A/B's large threshold frames, which reach columns 512 and 1024 and row 512 under positive jitter, and holds D prime's fused and split entries byte-identical on the same inputs under the same llvmpipe colour rule (review 7g r1).
+Entry identity is exact on Metal, on the T4 on Direct3D 11 (under the NVIDIA D3D11 rule) and Vulkan, and on WARP. There production's fused and split entries store byte-identical colour, confidence, locks, marks, R8 visibility and depth, with the same release and reset decisions. On llvmpipe (software Vulkan) the state, R8 and depth are exact and the colour is within main's amendment 23 bound, `0.0625` on at most `0.0025` of the values compared (`TemporalSoftwareCompileDivergenceRule`), since llvmpipe's compiler orders the two programs' arithmetic differently from frame 0. A large-frame case runs both entries on the frozen-D A/B's large threshold frames, which reach columns 512 and 1024 and row 512 under positive jitter, and holds D prime's fused and split entries byte-identical on the same inputs under the same llvmpipe colour rule (review 7g r1).
+
+The owner ruling of 2026-10-22 applies the A/B device rules to K's certified-versus-ordinary-check pairs.
+Metal, NVIDIA Vulkan and every other exact hardware device compare every channel byte for byte. Hardware NVIDIA
+Direct3D 11 reuses `TemporalNvidiaHistoryOracle.Compare`, exactly as the A/B does. Stored locks, marks, R8 and depth
+are exact. Colour and confidence must preserve each value's non-finite class, with finite differences reported only.
+WARP is identified by `TemporalDeviceClass.IsWarp`, Direct3D11Native with SoftwareAdapter true. Its certified pairs
+keep locks, marks, R8 and depth exact and bound colour and confidence separately by worst absolute difference
+`0.0625` and differing share `0.0025`. `TemporalSoftwareCompileDivergenceRule` owns the one shared constant pair
+and implementation used by WARP and amendment 23's llvmpipe colour rule. Every pair prints worst and share per
+channel. llvmpipe's certified-versus-check pairs remain exact. Production fused versus split stays byte-exact on
+every device except the existing llvmpipe colour rule. No other comparison or visibility decision changes.
 
 The frozen-D A/B of the cost cut has two references. D prime (`TemporalVisibilityFrozenD.ToD`) is frozen D with production's barrier-ordered lock release, and every rule below compares against it. Shipped D (`ToShippedD`) keeps D's original `precise` lock release. On Metal, which lowered that helper as the barrier form computes, production must also equal shipped D byte for byte every frame. Elsewhere shipped D is reported only, since WARP and lavapipe divide by three where the barrier form multiplies by its rounded reciprocal. The A/B compares production's history with D prime's byte for byte on every backend except hardware NVIDIA Direct3D 11. That driver compiles confidence arithmetic unrelated to the visibility check differently whenever the visibility code changes, even on frame 0 where the check does not run, while WARP running the same DXBC matches D bit for bit (T4 run `39519233674`). There stored locks, R8 and depth must equal D's. Every colour and confidence value must keep D's non-finite class (NaN, positive infinity, negative infinity or finite), and only finite colour and confidence differences are printed as counts and maximum half steps without being asserted. Entry identity on that device stays exact between production's fused and split entries, and its production against D comparisons assert only the same non-finite classes. Orchestrator rulings of 2026-10-21 under the owner's delegation.
 
 Task 7g.5 integrates the barrier lock release, the r1 entry-identity cases and the 7g.4 gather policy. Direct3D 11 and Vulkan use twelve gathers for the exact current and history footprints. Metal retains nine current-block loads and uses eight history gathers, since the current-block substitution changes subsequent arithmetic there despite exact raw reads. The Vulkan withdrawal a43599546 is reverted because identical lavapipe follow-walk colour failures occur with and without gathers, while its raw gather oracle has zero mismatches. Main's amendment 23 software-Vulkan colour bound above applies unchanged. Large-frame and moving-shadow comparisons must remain exact. DXBC was recaptured after integration, and the existing writers reproduced all backend hashes and corpus rows without drift. Free all-leg correctness run 39571324204 at 211e42544 passed all three renderer legs and Vulkan sync validation, with exact large-frame and moving-shadow cases and unchanged accepted software costs. The [merge-round record](../../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/7g5-hosted.md) holds the per-case proof. Gather instruction counts do not establish a measured speedup.
 
-The outside-cost variants V5 (visibility infrastructure off) and V4 (V5 without the lock release's precise markings, redefined by Task 7g.3a as barriers removed and never run in that form) are retired. V5 needed a visibility-disable switch inside the shipped renderer and scene, which the production delta forbids. Their one run, `39519219228`, is kept as history in `benchmark-result-2.md`. The decomposition keeps V0 shipped, V1 check removed and V3 D prime, all rewrites through the existing fragment source hook.
+The outside-cost variants V5 (visibility infrastructure off) and V4 (V5 without the lock release's precise markings, redefined by Task 7g.3a as barriers removed and never run in that form) are retired. V5 needed a visibility-disable switch inside the shipped renderer and scene, which the production delta forbids. Their one run, `39519219228`, is kept as history in `benchmark-result-2.md`. The decomposition keeps V0 shipped, V1 check removed, V3 D prime and V6 no check with identity barriers, all rewrites through the existing fragment source hook.
+
+Task 7h Z bypasses the ordered release after decay and ridge classification only for an incoming positive-zero
+lock with three finite actual release arguments, qualified by exponent bits. It keeps negative zero, nonzero
+locks and non-finite arguments on the unchanged twelve-barrier helper. The C# twin already returns positive zero
+bit-exactly for the qualified inputs and stays unchanged. V6 composes the existing no-check and identity-barrier
+rewrites, retaining this bypass and every resource operation. Exactness, local gates, DXBC recapture and the one
+free hosted correctness run are recorded in [7h-zero-lock.md](../../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/7h-zero-lock.md).
+
+Task 7h Z round 2 requires GL_EXT_control_flow_attributes and marks only the fallback selection
+`[[dont_flatten]]`. The unchanged shaderc options retain SelectionControl DontFlatten, and the existing
+SPIRV-Cross HLSL emitter writes `[branch]` without an option change. Free dump 39636752557 confirms that all six
+shipped DXBC programs place the twelve scalar barriers inside a real conditional branch, with zero precise
+markings. The helper arithmetic and frozen-D text remain unchanged. Local correctness passes. Free all-leg run
+39641073352 at pushed candidate 722a21059 passes all three renderer legs with 1754 passed, zero failed and the
+one opt-in dump skip each, plus 625/625 Vulkan sync tests. All 114 DXBC cases pass on each renderer leg, including
+the six conditional-barrier facts. No comparison bound or accepted cost changes, and no speedup is claimed.
 
 ### Owner-accepted synthetic costs, 2026-10-19
 
@@ -286,9 +313,8 @@ On 2026-10-20 the owner ruled to optimize before merging, with a budget of at mo
 
 ### Task 7h K
 
-**Status:** Blocked. Hosted run 39627795369 found four strict colour-byte failures against the ordinary check on
-WARP and five strict fused/split colour failures on lavapipe. Metal passed. No bound is relaxed and the candidate
-must not be integrated as a validated exact specialization. The linked record owns every failure and final count.
+**Status:** Round 3 integrates Z and applies the owner's certified-versus-check device rules in section 8.
+Local verification and the single free all-leg correctness run are recorded with the results in K's record.
 
 A scene certifies its resolved R8 only from the actual shared receiver upload used by every opaque family. A
 nonpositive uploaded key-shadow strength makes sampleKeyShadow return exactly one before any atlas sample.
@@ -306,7 +332,7 @@ helpers and their footprint loads disappear. Colour release, carried-lock classi
 release, hold and clipping remain intact. Fused, split, Native, both precisions, debug views and count re-evaluation
 use cached program and binding variants. All R8 attachments, histories and copies remain. Devices below five
 attachments retain their existing all-white fallback. Uncertified and shadowed frames keep the ordinary check.
-This changes no comparison bound and establishes no timing result or budget for shadowed frames.
+This establishes no timing result or budget for shadowed frames. The owner-approved comparison rules are in section 8.
 
 The [Task 7h K record](../../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/7h-k-hosted.md)
 owns local gates, exact history-byte comparisons, compiled-module proof and the single hosted correctness run.

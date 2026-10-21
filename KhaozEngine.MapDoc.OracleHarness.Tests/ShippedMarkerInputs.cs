@@ -99,7 +99,9 @@ internal sealed class ShippedMarkerInputs
         }
         byte[] nativeBytes = source.Bytes(Text(comparison, "nativeDocumentPath")).ToArray();
         var nativeJson = source.Json(Text(comparison, "nativeDocumentPath"));
-        Require(nativeJson.GetProperty("formatVersion").GetInt32() == MapDocumentFile.CurrentFormatVersion, "marker scaffold must declare current format");
+        // Accepted R6 scaffolds declare format 8 and load through the pure migration. Never regenerate them for a number.
+        Require(nativeJson.GetProperty("formatVersion").GetInt32() is 8 or MapDocumentFile.CurrentFormatVersion,
+            "marker scaffold must declare format eight or the current format");
         var native = MapDocumentFile.LoadText(Encoding.UTF8.GetString(nativeBytes));
         Require(native.ResolverIdentity?.ResolverVersion == 2 && native.SupportRecipe == MapSupportRecipe.AuthoredBindingsV2 &&
             native.Tiles is null && native.Spawns.Count == 0 && native.PlayerSpawns.Count == 0, "marker scaffold requires monolithic adopted resolver two markers");

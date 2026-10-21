@@ -36,7 +36,8 @@ public static class MapPrefabResolver
         var numericErrors = new List<string>();
         _ = MapNativeValidation.ValidateNumericIds(document, numericErrors);
         if (numericErrors.Count != 0) throw new MapDocumentException(string.Join("\n", numericErrors));
-        var authored = MapDocumentFile.LoadText(MapDocumentFile.SaveText(document));
+        // Expansion never reads foliage, so the authored copy shares it rather than encoding the density payload.
+        var authored = MapDocumentFile.CopyWithSharedFoliage(document);
         var transforms = new Dictionary<string, MapEffectiveTransform>(StringComparer.Ordinal);
         foreach (var value in authored.NativeResourceTransforms ?? []) transforms.Add(MapEffectiveContext.Key(value.Kind, value.OwnerId), value.Transform);
         var children = new List<MapPrefabChild>();
@@ -267,8 +268,18 @@ public static class MapPrefabResolver
             Roofs = roofs.Where(r => r.Scope != MapPrefabReferenceScope.World || !inactivePlacementIds.Contains(r.Id) || livePlacementIds.Contains(r.Id)).ToArray(),
             Storeys = Storeys(),
         };
-        return new(context, source, placements, supports, water, intent, lightPoints, waterCorners, attachments, markers.Markers, markers.Supports)
-        { SupportRequests = supportRequests };
+        var resources = new MapEffectiveResources(context, source, placements, supports, water, intent, lightPoints, waterCorners,
+            attachments, markers.Markers, markers.Supports)
+        {
+            SupportRequests = supportRequests,
+            ClosureHash = assets.Hash,
+            // Provenance for foliage contexts, recorded only for documents that hold foliage, so released expansions do no
+            // extra work.
+            SourceFingerprint = document.Foliage is null ? null : Editing.MapDocumentEditFinalizer.BaseFingerprint(document),
+        };
+        var foliageErrors = Foliage.MapFoliageReferences.ValidateOwners(authored, resources);
+        if (foliageErrors.Count != 0) throw new MapDocumentException(string.Join("\n", foliageErrors));
+        return resources;
     }
 
     /// <summary>F-R7. The one frame choice an owner placement declares in an instance, shared by expansion and

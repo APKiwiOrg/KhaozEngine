@@ -19,7 +19,10 @@ public static class MapInteriorEdits
 {
     public static MapPrefabEditResult Prepare(MapDocument document, MapAssetClosure assets, MapInteriorEdit edit)
     {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(assets);
         ArgumentNullException.ThrowIfNull(edit);
+        MapDocumentEditFinalizer.Preflight(document, assets);
         var before = MapPrefabEditPreparation.Begin(document, assets);
         var after = MapPrefabEditPreparation.Copy(document);
         var affected = new List<MapPrefabBinding>();
@@ -79,6 +82,7 @@ public static class MapInteriorEdits
                 break;
             default: throw new MapDocumentException("Unknown interior edit.");
         }
-        return MapPrefabEditPreparation.Finish(after, assets, before, [], affected, interiors: true);
+        return MapDocumentEditFinalizer.Complete(document, MapPrefabEditPreparation.Finish(after, assets, before, [], affected, interiors: true),
+            assets, assets);
     }
 }

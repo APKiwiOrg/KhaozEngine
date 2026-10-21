@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Support;
 
 namespace KhaozEngine.MapDoc.Markers;
 
@@ -58,33 +59,10 @@ public static class MapMarkerValidation
                 // The one canonical encoding. Negative zero is a second spelling and refuses.
                 if (BitConverter.SingleToUInt32Bits(marker.Position.Y) != 0) errors.Add(at + "a Support height stores Position.Y exactly +0.");
                 if (marker.SupportBinding is not { } binding) errors.Add(at + "a Support height requires a support binding.");
-                else Binding(binding, at, errors);
+                else MapSupportBindingRules.Validate(binding, at, errors);
                 break;
             default:
                 errors.Add(at + "payload 2 requires heightMode Explicit or Support.");
-                break;
-        }
-    }
-
-    static void Binding(MapSupportBinding binding, string at, List<string> errors)
-    {
-        switch (binding.Kind)
-        {
-            case MapSupportBindingKind.Surface:
-                if (string.IsNullOrWhiteSpace(binding.SurfaceId) || binding.SpaceId is not null ||
-                    binding.ReferenceY is not null || binding.SearchBelow is not null || binding.SearchAbove is not null)
-                    errors.Add(at + "a Surface binding names only a surfaceId.");
-                break;
-            case MapSupportBindingKind.Space:
-                if (string.IsNullOrWhiteSpace(binding.SpaceId) || binding.SurfaceId is not null)
-                    errors.Add(at + "a Space binding names a spaceId and no surfaceId.");
-                if (binding.ReferenceY is not { } y || !float.IsFinite(y) ||
-                    binding.SearchBelow is not { } below || !float.IsFinite(below) || below < 0 ||
-                    binding.SearchAbove is not { } above || !float.IsFinite(above) || above < 0)
-                    errors.Add(at + "a Space binding requires a finite referenceY and finite nonnegative searchBelow and searchAbove.");
-                break;
-            default:
-                errors.Add(at + "unsupported support binding kind.");
                 break;
         }
     }

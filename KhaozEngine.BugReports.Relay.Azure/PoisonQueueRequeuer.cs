@@ -83,7 +83,7 @@ public sealed class PoisonQueueRequeuer
                         log.Warn($"Poison message {message.Id} reached its requeue cap.");
                         continue;
                     }
-                    await work.SendAsync(ReportWorkItemJson.Serialize(item with { Requeues = item.Requeues + 1 }), run.Token).ConfigureAwait(false);
+                    await work.SendAsync(ReportWorkItemJson.Serialize(item with { Requeues = item.Requeues + 1 }), null, run.Token).ConfigureAwait(false);
                     await poison.DeleteAsync(message, run.Token).ConfigureAwait(false);
                     held.Remove(message.Id);
                     moved++;

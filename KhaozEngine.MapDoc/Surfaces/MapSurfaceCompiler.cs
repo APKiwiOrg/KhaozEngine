@@ -20,7 +20,13 @@ public static class MapSurfaceCompiler
     internal static MapCompiledPatch Compile(MapSurfaceRef surface, MapSurfacePatch patch, MapSlotCellMask cells, int maxFaces) =>
         Compile(new MapValidatedSurfacePatch(surface, patch), cells, maxFaces);
 
-    internal static MapCompiledPatch Compile(MapValidatedSurfacePatch validated, MapSlotCellMask cells, int maxFaces)
+    internal static MapCompiledPatch Compile(MapValidatedSurfacePatch validated, MapSlotCellMask cells, int maxFaces) =>
+        Compile(validated, cells, maxFaces, logical: false);
+
+    // The shared triangulation entry. Logical compilation also emits the legacy fallback cells (NoDraw or a zero
+    // underlay) through the same kernel, for consumers that sample them without installing them. Physical
+    // compilation never takes the logical path, so its faces and fallback list are unchanged.
+    internal static MapCompiledPatch Compile(MapValidatedSurfacePatch validated, MapSlotCellMask cells, int maxFaces, bool logical)
     {
         ArgumentNullException.ThrowIfNull(cells);
         if (maxFaces < 0) throw new ArgumentOutOfRangeException(nameof(maxFaces));
@@ -28,11 +34,11 @@ public static class MapSurfaceCompiler
         MapSurfacePatch patch = validated.Patch;
         try
         {
-            long count = CountFaces(validated, cells);
+            long count = CountFaces(validated, cells, logical);
             if (count > maxFaces) throw new MapDocumentException($"compiled patch exceeds face budget {maxFaces}");
             if (surface.Role == MapSurfaceRole.PaintOverride)
                 throw new MapDocumentException("paint override has no physical faces. Use ApplyPaintOverride.");
-            return CompileCore(surface, patch, cells, (int)count);
+            return CompileCore(surface, patch, cells, (int)count, logical);
         }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         {
@@ -41,9 +47,9 @@ public static class MapSurfaceCompiler
     }
 
     internal static long CountFaces(MapSurfaceRef surface, MapSurfacePatch patch, MapSlotCellMask cells) =>
-        CountFaces(new MapValidatedSurfacePatch(surface, patch), cells);
+        CountFaces(new MapValidatedSurfacePatch(surface, patch), cells, logical: false);
 
-    static long CountFaces(MapValidatedSurfacePatch validated, MapSlotCellMask cells)
+    internal static long CountFaces(MapValidatedSurfacePatch validated, MapSlotCellMask cells, bool logical)
     {
         ArgumentNullException.ThrowIfNull(cells);
         MapSurfaceRef surface = validated.Surface;
@@ -55,7 +61,7 @@ public static class MapSurfaceCompiler
             {
                 if (!cells.Contains(SlotCell(patch, x, z)) || !patch.IsPresent(x, z)) continue;
                 MapSurfaceCell cell = patch.Cells[z * patch.Width + x];
-                if (Fallback(surface, cell)) continue;
+                if (!logical && Fallback(surface, cell)) continue;
                 ReadOnlySpan<int> segments = subdivisions.AsSpan(4 * (z * patch.Width + x), 4);
                 count = checked(count + CountParents(patch, x, z, segments));
             }
@@ -86,7 +92,7 @@ public static class MapSurfaceCompiler
         return count;
     }
 
-    static MapCompiledPatch CompileCore(MapSurfaceRef surface, MapSurfacePatch patch, MapSlotCellMask cells, int count)
+    static MapCompiledPatch CompileCore(MapSurfaceRef surface, MapSurfacePatch patch, MapSlotCellMask cells, int count, bool logical)
     {
         MapSubmissionAnchor anchor = Anchor(surface, patch);
         var vertexBuilder = new MapSurfaceVertexBuilder(surface, patch, anchor);
@@ -106,7 +112,7 @@ public static class MapSurfaceCompiler
                 int primitive = SlotCell(patch, x, z);
                 if (!cells.Contains(primitive) || !patch.IsPresent(x, z)) continue;
                 MapSurfaceCell cell = patch.Cells[z * patch.Width + x];
-                if (Fallback(surface, cell))
+                if (!logical && Fallback(surface, cell))
                 {
                     fallback.Add(new(primitive, patch.Height(x, z), patch.Height(x + 1, z),
                         patch.Height(x, z + 1), patch.Height(x + 1, z + 1)));
@@ -185,6 +191,24 @@ public static class MapSurfaceCompiler
         foreach (MapEdgeSubdivision edge in patch.EdgeSubdivisions)
             segments[4 * (edge.CellZ * patch.Width + edge.CellX) + (int)edge.Edge] = edge.Segments;
         return segments;
+    }
+
+    /// <summary>The legacy fallback cells a physical compile of <paramref name="cells"/> lists, in the same z then x order,
+    /// for a caller that reuses faces from another compile and must not compile the patch again.</summary>
+    internal static IReadOnlyList<MapFallbackCell> FallbackCells(MapValidatedSurfacePatch validated, MapSlotCellMask cells)
+    {
+        ArgumentNullException.ThrowIfNull(cells);
+        MapSurfacePatch patch = validated.Patch;
+        var fallback = new List<MapFallbackCell>();
+        for (int z = 0; z < patch.Depth; z++)
+            for (int x = 0; x < patch.Width; x++)
+            {
+                if (!cells.Contains(SlotCell(patch, x, z)) || !patch.IsPresent(x, z) ||
+                    !Fallback(validated.Surface, patch.Cells[z * patch.Width + x])) continue;
+                fallback.Add(new(SlotCell(patch, x, z), patch.Height(x, z), patch.Height(x + 1, z),
+                    patch.Height(x, z + 1), patch.Height(x + 1, z + 1)));
+            }
+        return fallback;
     }
 
     static int SlotCell(MapSurfacePatch patch, int x, int z) =>

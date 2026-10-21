@@ -42,7 +42,7 @@ public sealed class TemporalVisibilityFullyLitGpuTests(ITestOutputHelper output)
                     : TemporalResolveCostPerfGpuTests.FieldScene(stage);
             }
             output.WriteLine($"{fixtures[0].Device.Backend} {fixtures[0].Device.Capabilities.DeviceName}, {preset}, scene {scene}");
-            var oracle = new TemporalFullyLitHistoryOracle(output, TemporalDeviceClass.IsLavapipe(fixtures[0].Device));
+            var oracle = Oracle(fixtures[0].Device);
             for (int frame = 0; frame < 24; frame++)
             {
                 for (int i = 0; i < fixtures.Length; i++)
@@ -81,6 +81,7 @@ public sealed class TemporalVisibilityFullyLitGpuTests(ITestOutputHelper output)
         selected.Scene.TemporalResolveEntryForTests = checkedFx.Scene.TemporalResolveEntryForTests = (TemporalResolveEntry)choice;
         var drawA = TemporalResolveCostPerfGpuTests.FieldScene(a);
         var drawB = TemporalResolveCostPerfGpuTests.FieldScene(b);
+        var oracle = Oracle(selected.Device);
         SceneDebugView[] views = [SceneDebugView.History, SceneDebugView.Disocclusion, SceneDebugView.Reactive];
         for (int frame = 0; frame < 6; frame++)
         {
@@ -90,12 +91,14 @@ public sealed class TemporalVisibilityFullyLitGpuTests(ITestOutputHelper output)
             selected.Scene.RequestTemporalCounts();
             checkedFx.Scene.RequestTemporalCounts();
             TemporalHistorySample.Exact(frame, "debug image", selected.Frame(drawA), checkedFx.Frame(drawB));
-            Compare(frame, "debug and counts", selected, checkedFx);
+            oracle.Report(frame, "debug and counts", TemporalFullyLitHistoryOracle.Snapshot.Read(selected),
+                TemporalFullyLitHistoryOracle.Snapshot.Read(checkedFx));
             Assert.Equal(frame is 1 or 2 or 5, selected.Scene.TemporalResolveRendererForTests!.LastVisibilityDecisionSkipped);
             Assert.Equal(selected.Scene.LastTemporalDiagnostics.DisoccludedPixels, checkedFx.Scene.LastTemporalDiagnostics.DisoccludedPixels);
             Assert.Equal(selected.Scene.LastTemporalDiagnostics.ReactivePixels, checkedFx.Scene.LastTemporalDiagnostics.ReactivePixels);
             Assert.Equal(selected.Scene.LastTemporalDiagnostics.ClippedPixels, checkedFx.Scene.LastTemporalDiagnostics.ClippedPixels);
         }
+        oracle.AssertComplete();
         Assert.True(selected.Scene.TemporalCountReadbacksForTests > 0);
         Assert.True(selected.Scene.TemporalDebugViewBuiltForTests);
     }
@@ -138,15 +141,8 @@ public sealed class TemporalVisibilityFullyLitGpuTests(ITestOutputHelper output)
         return source.Replace("bool visibilityReleased = false;", decision, StringComparison.Ordinal);
     }
 
-    static void Compare(int frame, string what, TemporalFixture a, TemporalFixture b)
-    {
-        TemporalHistory ha = a.Scene.TemporalHistory, hb = b.Scene.TemporalHistory;
-        TemporalHistorySample.Exact(frame, what + " colour", Bytes(a.Device, ha.Color(ha.WriteIndex)), Bytes(b.Device, hb.Color(hb.WriteIndex)));
-        TemporalHistorySample.Exact(frame, what + " confidence lock mark", Bytes(a.Device, ha.Confidence(ha.WriteIndex)), Bytes(b.Device, hb.Confidence(hb.WriteIndex)));
-        TemporalHistorySample.Exact(frame, what + " depth", Bytes(a.Device, ha.PreviousDepth(ha.WriteIndex)), Bytes(b.Device, hb.PreviousDepth(hb.WriteIndex)));
-        TemporalHistorySample.Exact(frame, what + " R8", Bytes(a.Device, a.Scene.TemporalResolveRendererForTests!.VisibilityHistory.Texture(ha.WriteIndex)),
-            Bytes(b.Device, b.Scene.TemporalResolveRendererForTests!.VisibilityHistory.Texture(hb.WriteIndex)));
-    }
+    TemporalFullyLitHistoryOracle Oracle(IGpuDevice device) => new(output, TemporalDeviceClass.IsLavapipe(device),
+        TemporalDeviceClass.IsWarp(device), TemporalDeviceClass.IsHardwareNvidiaD3D11(device));
 
     internal static byte[] Bytes(IGpuDevice device, IGpuTexture source)
     {

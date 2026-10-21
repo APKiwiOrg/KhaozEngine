@@ -1,9 +1,8 @@
 # Task 7h K, certified fully lit specialization
 
-**Status:** Round 2 fixes the lavapipe entry oracle, but K remains blocked on WARP. The complete report also finds
-confidence differences and structured colour amplification. Neither a production defect nor the brief's pure
-few-ulp, identical-decision explanation is established. All hosted legs are complete. The strict certified-versus-check
-assertion remains unchanged. This is a candidate and reproduction, not a validated exact optimization.
+**Status:** Round 3 is in progress under the owner's 2026-10-22 device ruling. Rounds 1 and 2 below are
+historical strict-oracle failures. Round 3 integrates Z's conditional positive-zero bypass and verifies K under
+the owner-approved rules.
 
 Source branch fix/taa-vis-lit-skip starts at 6c0382161. This record covers correctness only. No timing,
 benchmark, stress, merge, tag or release is part of the task.
@@ -418,3 +417,33 @@ remain valid because their source pins, assets, packages and version declaration
 No merge, tag, release or other branch change was performed. Raw hosted logs and generated HLSL scratch are removed
 after extracting this evidence. The workflow retains its artifacts. The remaining handoff is an authorized WARP
 decision/weight and disassembly probe, not an assertion change.
+
+## Round 3
+
+The starting guards passed on fix/taa-vis-lit-skip at 3d5f0b500, clean, with the integrated remote at 5c2de244c.
+The no-fast-forward merge retains both tasks. Generated table conflicts are resolved only by the four repository
+writers, which passed all nine cases. The plan retains both K and Z. The compiled-lock comment retains twenty
+includers and Z's branch contract. The manifest keeps both branches' evidence and hashes every current file.
+
+Z's GL_EXT_control_flow_attributes header and `[[dont_flatten]]` positive-zero fallback are shared by every
+checked and certified program. K still compiles out only the visibility decision. The source/SPIR-V/HLSL release
+facts cover all twenty includers. DXBC coverage is extended from the six checked resolve/accumulate programs to
+all twenty release-bearing shipped programs, including ten certified and four ordinary debug/count programs.
+The fourteen additional listings are shipped-only. Existing D-prime association fixtures retain their rules.
+
+The certified-versus-check oracle reuses TemporalNvidiaHistoryOracle.Compare on hardware NVIDIA Direct3D 11.
+Locks, marks, R8 and depth stay exact. Finite colour and confidence differences are diagnostic only and non-finite
+classes must match. WARP uses the existing TemporalDeviceClass.IsWarp predicate. Its colour and confidence each
+use TemporalSoftwareCompileDivergenceRule, with AbsoluteBound 0.0625 and DifferingShareBound 0.0025. The same
+implementation and named constant pair serve llvmpipe's existing production-entry colour comparison. llvmpipe's
+certified pairs and every other device's pairs stay exact. Production entries remain exact except llvmpipe colour.
+Every frame and aggregate pair prints each channel's worst absolute difference and differing share.
+
+The device-free WARP and NVIDIA oracle facts first failed, 0 passed and 2 failed, against the strict oracle.
+After the rule change both pass, including over-bound, over-share, non-finite, exact stored-channel and exact
+production-entry mutations. The focused rule and compiled-release gate passes 30 cases with no skips.
+
+The solution build caught CA1416 after moving FXC compilation into the dump printer. Marking that private helper
+Windows-only, like its sole caller and the existing compiler helper, fixes the platform contract at its source.
+The Release solution build then exits 0 with zero warnings and errors. The extended DXBC red gate has seven
+passing cases and fifteen expected missing-fixture/coverage failures before the authorized recapture.

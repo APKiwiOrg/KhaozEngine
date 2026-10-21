@@ -190,7 +190,7 @@ public sealed partial class Scene3D
         if (!_coverageEncodingComplete || _coverageMotionCommitted || _coverageMotionFrame != CurrentFrameView.FrameIndex) return;
         foreach (var p in _coverageArena.Preparations)
         {
-            if (!p.MotionPresented) continue;
+            if (!p.MotionPresented || !p.Owner.Gpu.Live) continue;
             p.Owner.Gpu.CommitHistory(_coverageGpu!.Batch!, p.GpuReservation);
             p.Owner.MotionRevision = p.MotionRevision;
             p.Owner.MotionCommandCount = p.CommandCount;

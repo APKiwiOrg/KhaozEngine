@@ -18,13 +18,13 @@ public sealed record MapScopedWorldResult(MapSceneStatus Status, MapScopedWorld?
 /// <summary>Physical descriptors complete only for their witnessed domain. This is never a complete built world.</summary>
 public sealed class MapScopedWorld
 {
-    internal MapScopedWorld(MapScopedScene scene, IReadOnlyList<MapPlacementGeometry> placements, MapTerrainChunkSet terrain,
+    internal MapScopedWorld(MapScopedScene scene, MapSceneScope domain, IReadOnlyList<MapPlacementGeometry> placements, MapTerrainChunkSet terrain,
         IReadOnlyList<MapStaticDescriptor> statics, IReadOnlyList<MapCompiledWaterBody> water, MapSceneWitness witness)
     {
         Witness = witness with { WholeWorldComplete = false };
         Placements = placements; Terrain = terrain; Statics = statics; Water = water;
         Lights = MapEffectiveAnnotations.Lights(scene); Markers = MapEffectiveAnnotations.Markers(scene);
-        Surfaces = scene.SurfaceView; Scope = scene.Scope;
+        Surfaces = scene.SurfaceView; Scope = domain; TileSize = scene.Source.Data.TileSize;
         Admission = scene.SurfaceView.Scope.SceneAdmission!;
         var physical = statics.Select(s => s.Bounds).Concat(water.Where(b => b.Bounds is not null).Select(b => b.Bounds!.Value));
         double? minY = null, maxY = null;
@@ -47,6 +47,8 @@ public sealed class MapScopedWorld
     public string SourceGeneration => Witness.SourceGeneration;
     public string ScopeIdentity => Witness.ScopeDigest;
     public MapBox3 Bounds { get; }
+    /// <summary>The storage tile edge captured with the source generation, in metres.</summary>
+    public float TileSize { get; }
     public MapScopedSurfaces Surfaces { get; }
     internal MapSceneScope Scope { get; }
     internal MapSceneAdmission Admission { get; }
@@ -71,25 +73,40 @@ public static class MapScopedWorldBuilder
             var admission = scene.SurfaceView.Scope.SceneAdmission
                 ?? throw new ArgumentException("Scoped physics needs an admitted scene.");
             using var admitted = admission.Enter();
+            var domain = scene.Scope;
+            var rectangle = domain.Surfaces.WorldRectangle();
+            // Draw bounds remain the partition's cell. Acquire the full physical capture separately, including
+            // placements and their dependencies in the seam margin, under this same preparation allowance.
+            admission.ReserveBytes(512);
+            var dependencyScope = domain with
+            {
+                DrawBounds = domain.DrawBounds with
+                {
+                    MinX = Math.Min(domain.DrawBounds.MinX, rectangle.MinX.ToDouble()),
+                    MinZ = Math.Min(domain.DrawBounds.MinZ, rectangle.MinZ.ToDouble()),
+                    MaxX = Math.Max(domain.DrawBounds.MaxX, rectangle.MaxX.ToDouble()),
+                    MaxZ = Math.Max(domain.DrawBounds.MaxZ, rectangle.MaxZ.ToDouble()),
+                },
+                Channels = domain.Channels | MapSceneChannels.Terrain | MapSceneChannels.Placements |
+                    MapSceneChannels.Water | MapSceneChannels.Annotations | MapSceneChannels.Rooms,
+            };
+            if (dependencyScope != domain)
+            {
+                var dependency = MapSceneAcquisition.Run(scene.Source, dependencyScope, admission);
+                witness = MapRequiredDomainCoverage.Extend(witness, dependency.Witness);
+                if (dependency.Scene is null)
+                    return new(dependency.Status, null, witness with { CompleteForScope = false });
+                scene = dependency.Scene;
+            }
             // Account descriptor containers before preparation. Canonical compilation charges its own face demand.
             admission.ReserveBytes(checked(512L * (scene.Placements.Count + scene.SurfaceView.Witness.Present.Count)));
-            foreach (string id in scene.Placements.Select(p => p.AssetId).Distinct(StringComparer.Ordinal))
-            {
-                var asset = assets.GetAsset(id);
-                foreach (string resource in new[] { asset.CollisionResourceId, asset.SelectionResourceId }.OfType<string>())
-                {
-                    // Decode and scaled shape copies are bounded by the verified payload before the decoder runs.
-                    int bytes = assets.GetResource(resource).ByteLength;
-                    admission.ReserveBytes(checked(256L + 15L * bytes));
-                    admission.BeforePayload(bytes);
-                }
-            }
             var scope = scene.Scope.Surfaces;
-            bool MeetsHeight(MapBox3 bounds) => (scope.MinY is null || bounds.MaxY >= scope.MinY) &&
-                (scope.MaxY is null || bounds.MinY <= scope.MaxY);
+            bool MeetsDomain(MapBox3 bounds) => bounds.MaxX >= rectangle.MinX.ToDouble() && bounds.MinX <= rectangle.MaxX.ToDouble() &&
+                bounds.MaxZ >= rectangle.MinZ.ToDouble() && bounds.MinZ <= rectangle.MaxZ.ToDouble() &&
+                (scope.MinY is null || bounds.MaxY >= scope.MinY) && (scope.MaxY is null || bounds.MinY <= scope.MaxY);
             var compiled = MapTerrainPhysics.Compile(scene.SurfaceView, options.Chunks);
             admission.ReserveBytes(checked(128L + compiled.Chunks.Count * 8L));
-            var terrain = new MapTerrainChunkSet(Array.AsReadOnly(compiled.Chunks.Where(c => MeetsHeight(c.Bounds)).ToArray()),
+            var terrain = new MapTerrainChunkSet(Array.AsReadOnly(compiled.Chunks.Where(c => MeetsDomain(c.Bounds)).ToArray()),
                 compiled.Witness, compiled.LegacyFallbackCellsSkipped);
             var placements = MapPlacementShapes.Prepare(scene.Placements, assets, scene.Transforms);
             IReadOnlyList<MapCompiledWaterBody> water = Array.Empty<MapCompiledWaterBody>();
@@ -111,16 +128,17 @@ public static class MapScopedWorldBuilder
                     throw new MapSceneSourceException(MapSceneStatus.NotRepresentable, body.Detail ?? "Water is not representable.");
                 MapWorldBuilder.RequireWaterBody(body);
             }
-            // Dependency closure can retain other vertical layers. Only physical geometry meeting this domain installs.
-            var physical = placements.Where(p => p.ColliderBounds is not { } bounds || MeetsHeight(bounds)).ToArray();
+            // Neutral discovery can retain distant cosmetic extents and dependency layers. Only physical bounds
+            // meeting the capture domain contribute statics or navigation heights.
+            var physical = placements.Where(p => MeetsDomain(p.ColliderBounds ?? p.Envelope.Bounds)).ToArray();
             admission.ReserveBytes(checked(128L + water.Count * 8L));
-            water = Array.AsReadOnly(water.Where(b => b.Bounds is not { } bounds || MeetsHeight(bounds)).ToArray());
+            water = Array.AsReadOnly(water.Where(b => b.Bounds is not { } bounds || MeetsDomain(bounds)).ToArray());
             var statics = MapWorldBuilder.Statics(physical, terrain);
             var owners = statics.Select(s => s.OwnerId).ToHashSet(StringComparer.Ordinal);
             foreach (var body in water)
                 if (owners.Contains(MapResidencyOwnership.WaterOwnerId(body.BodyId)))
                     throw new MapDocumentException("Water and statics share an owner.");
-            return new(MapSceneStatus.CompleteForScope, new(scene, placements, terrain, statics, water, witness), witness);
+            return new(MapSceneStatus.CompleteForScope, new(scene, domain, physical, terrain, statics, water, witness), witness);
         }
         catch (Exception error) when (MapSceneSource.Classify(error) is not null)
         {

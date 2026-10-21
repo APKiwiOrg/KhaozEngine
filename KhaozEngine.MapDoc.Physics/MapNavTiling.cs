@@ -368,7 +368,7 @@ public static class MapNavTiling
         ArgumentNullException.ThrowIfNull(world);
         ArgumentNullException.ThrowIfNull(grids);
         ValidateOptions(options);
-        _ = grids.NavTileOf(default);
+        grids.ValidateDomain(world.TileSize, world.Bounds);
         (int minX, int maxX) = TileAxis(world.Bounds.MinX, world.Bounds.MaxX, grids.Origin.X, grids.NavTileSize);
         (int minZ, int maxZ) = TileAxis(world.Bounds.MinZ, world.Bounds.MaxZ, grids.Origin.Y, grids.NavTileSize);
         long count = RequirePartitionCount(minX, maxX, minZ, maxZ);
@@ -407,7 +407,7 @@ public static class MapNavTiling
     {
         ArgumentNullException.ThrowIfNull(world);
         ArgumentNullException.ThrowIfNull(grids);
-        _ = grids.NavTileOf(default);
+        grids.ValidateDomain(world.TileSize, world.Bounds);
         try
         {
             using var admitted = world.Admission.Enter();

@@ -240,7 +240,7 @@ public sealed class MapSceneSource
                 foreach (var row in metadata) { w.WriteStringValue(row.Key.Kind); w.WriteStringValue(row.Key.Id); w.WriteStringValue(row.Digest); }
                 w.WriteEndArray();
             });
-            var data = new MapSceneData(generation, manifestDigest, source.SceneDirectory, assets, scan.Limits, native,
+            var data = new MapSceneData(generation, manifestDigest, source.SceneDirectory, assets, scan.Limits, native, root.TileSize,
                 root.Bounds.MinX, root.Bounds.MinZ, root.Bounds.MaxX, root.Bounds.MaxZ, rootDigest, owners, producing,
                 dependenciesByOwner, metadata, new(metadata), Array.AsReadOnly(requiredAssets.Order(StringComparer.Ordinal).ToArray()),
                 foliage, foliageStorage, root.Foliage, scan.Work(true), root.BuildingIntent?.Roofs ?? [], root.BuildingIntent?.Storeys ?? [],
@@ -316,7 +316,7 @@ public sealed class MapSceneSource
 
 internal sealed record MapSceneOwner(string Id, MapTileCoord StorageOwner, MapEffectiveResolutionInput Input, IReadOnlyList<MapSceneResourceKey> Resources);
 internal sealed record MapSceneData(string Generation, string? ManifestDigest, string? Directory, MapAssetClosure Assets, MapSceneLimits Limits,
-    IMapSurfaceSource Surfaces, double MinX, double MinZ, double MaxX, double MaxZ, string RootDigest,
+    IMapSurfaceSource Surfaces, float TileSize, double MinX, double MinZ, double MaxX, double MaxZ, string RootDigest,
     IReadOnlyDictionary<string, MapSceneOwner> Owners, IReadOnlyDictionary<MapSceneResourceKey, string> Producing,
     IReadOnlyDictionary<string, HashSet<string>> Dependencies, IReadOnlyList<MapSceneResourceMetadata> Metadata, MapSceneSpatialIndex Index,
     IReadOnlyList<string> RequiredAssets, MapFoliageSet? Foliage, MapFoliageStorageIndex? FoliageStorage, MapFoliageSet? ResidentFoliage, MapSceneWork CaptureWork,

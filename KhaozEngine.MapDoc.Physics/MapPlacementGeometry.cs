@@ -9,6 +9,7 @@ using System.Text;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.Physics;
 using KhaozEngine.Primitives;
 
@@ -81,6 +82,7 @@ public static class MapPlacementShapes
     internal static IReadOnlyList<MapPlacementGeometry> Prepare(IReadOnlyList<MapResolvedPlacement> placements,
         MapAssetClosure closure, IReadOnlyDictionary<string, MapEffectiveTransform>? transforms)
     {
+        MapSceneAdmission.Current?.ReserveBytes(checked(256L + placements.Count * 32L));
         var assets = new Dictionary<string, MapAssetShapes>(StringComparer.Ordinal);
         var result = new List<MapPlacementGeometry>(placements.Count);
         foreach (MapResolvedPlacement placement in placements.OrderBy(p => p.PlacementId, StringComparer.Ordinal))
@@ -132,6 +134,7 @@ public static class MapPlacementShapes
             !float.IsFinite(transform.Position.Z) || !float.IsFinite(transform.YawRadians))
             throw new MapDocumentException($"Placement '{placement.PlacementId}' has a nonfinite position or yaw.");
 
+        MapSceneAdmission.Current?.BeforeGeometry(MapPlacementPreparation.InstanceBytes(placement, shapes, scale));
         var worldPose = MapBackendPoseAdapter.Pose(effective, WorldFrame.Origin);
         PhysicsShape? collider = shapes.Collider is null ? null : PhysicsShapeScale.Uniform(shapes.Collider, scale);
         PhysicsShape? selection = shapes.Selection is null ? null : PhysicsShapeScale.Uniform(shapes.Selection, scale);

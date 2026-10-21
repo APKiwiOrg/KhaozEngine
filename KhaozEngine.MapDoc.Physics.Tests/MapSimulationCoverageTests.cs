@@ -140,22 +140,31 @@ public sealed class MapSimulationCoverageTests
     public void CosmeticBounds_NeverSetNavigationTileHeights()
     {
         using var fixture = Create();
+        fixture.Document.Placements.Add(new()
+        {
+            Id = "cosmetically-discovered",
+            Kind = "crate",
+            AssetId = "crate",
+            X = 160,
+            Y = 50,
+            Z = 10,
+        });
         var beforeSource = NativeSceneFixtures.Open(fixture, false);
-        using var before = new MapSimulationCoverage(beforeSource, fixture.Assets, Options).Acquire([Domain(0)]);
-        fixture.Document.BuildingIntent = withLight();
+        var domain = Domain(0, maxY: 60);
+        Assert.DoesNotContain(beforeSource.Acquire(domain).Scene!.Placements, p => p.PlacementId == "cosmetically-discovered");
+        using var before = new MapSimulationCoverage(beforeSource, fixture.Assets, Options).Acquire([domain]);
         var cosmeticAssets = CosmeticAssets(fixture);
         var afterSource = NativeSceneFixtures.Open(fixture with { Assets = cosmeticAssets }, false);
-        using var after = new MapSimulationCoverage(afterSource, cosmeticAssets, Options).Acquire([Domain(0) with { MotionPaddingMetres = 1000 }]);
+        Assert.Contains(afterSource.Acquire(domain).Scene!.Placements, p => p.PlacementId == "cosmetically-discovered");
+        using var after = new MapSimulationCoverage(afterSource, cosmeticAssets, Options).Acquire([domain]);
+        Assert.Contains(after.Witness.Required, k => k == new MapSceneResourceKey("Placement", "cosmetically-discovered"));
         var beforeCosmeticEditTileHeights = Heights(before);
         var afterCosmeticEditTileHeights = Heights(after);
         Assert.Equal(beforeCosmeticEditTileHeights, afterCosmeticEditTileHeights);
         Assert.InRange(beforeCosmeticEditTileHeights.Single().Item1, 4, 6);
-        Assert.InRange(beforeCosmeticEditTileHeights.Single().Item2, 5, 8);
+        Assert.Equal(38, beforeCosmeticEditTileHeights.Single().Item2);
         Assert.Equal(NavDigests(before), NavDigests(after));
-
-        KhaozEngine.MapDoc.Prefabs.MapBuildingIntent withLight() => new(1, [], [],
-            [fixture.Document.BuildingIntent!.Lights.Single() with { Radius = 1000, Position = new(65, 900, 10) }],
-            fixture.Document.BuildingIntent.Markers);
+        Assert.DoesNotContain(after.Worlds.Single().Statics, s => s.OwnerId == "cosmetically-discovered");
     }
 
     [Fact]

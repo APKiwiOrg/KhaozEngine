@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using KhaozEngine.MapDoc.Assets;
+using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.Physics;
 
@@ -83,6 +84,12 @@ public sealed class MapAssetShapes
             throw new MapDocumentException(
                 $"Asset '{assetId}' requires {kind} resource '{resourceId}', which is {resource.Kind}.");
 
+        if (MapSceneAdmission.Current is { } admission)
+        {
+            // Shared decode demand is charged once per asset read, separately from every placement's output.
+            admission.ReserveBytes(checked(256L + 15L * resource.ByteLength));
+            admission.BeforePayload(resource.ByteLength);
+        }
         // Bytes already returns a fresh copy, so read that buffer in place rather than copying it again.
         ReadOnlyMemory<byte> bytes = resource.Bytes;
         ArraySegment<byte> segment = MemoryMarshal.TryGetArray(bytes, out ArraySegment<byte> array)

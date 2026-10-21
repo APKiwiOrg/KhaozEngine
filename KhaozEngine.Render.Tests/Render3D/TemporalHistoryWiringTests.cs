@@ -166,13 +166,16 @@ public sealed class TemporalHistoryWiringTests
         scene.TemporalResolveEntryForTests = (TemporalResolveEntry)choice;
         rig.Frame(commands: commands);
         TemporalResolveRenderer renderer = scene.TemporalResolveRendererForTests!;
+        IGpuBuffer visibilityBuffer = Assert.IsAssignableFrom<IGpuBuffer>(
+            Assert.IsType<FakeResourceSet>(renderer.CurrentSet).Resources[^1]);
         void AssertJitter(Vector4 expected)
         {
             Assert.Equal(expected, renderer.LastVisibilityUniforms.PreviousJitter);
             FakeResourceSet set = Assert.IsType<FakeResourceSet>(renderer.CurrentSet);
-            IGpuBuffer buffer = Assert.IsAssignableFrom<IGpuBuffer>(set.Resources[^1]);
-            Assert.Equal(16u, buffer.SizeInBytes);
-            RecordingGpuCommandList.Upload upload = commands.ToBuffersOfSize(16).Last(u => ReferenceEquals(u.Buffer, buffer));
+            if (renderer.LastVisibilityDecisionSkipped) Assert.DoesNotContain(visibilityBuffer, set.Resources);
+            else Assert.Same(visibilityBuffer, set.Resources[^1]);
+            Assert.Equal(16u, visibilityBuffer.SizeInBytes);
+            RecordingGpuCommandList.Upload upload = commands.ToBuffersOfSize(16).Last(u => ReferenceEquals(u.Buffer, visibilityBuffer));
             Assert.True(upload.IsWholeBuffer);
             Assert.Equal(expected, MemoryMarshal.Read<Vector4>(upload.Data!));
         }

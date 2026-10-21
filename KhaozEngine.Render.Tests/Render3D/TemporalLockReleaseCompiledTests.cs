@@ -63,25 +63,25 @@ internal static class TemporalLockReleaseSpirv
 /// <summary>
 /// No <c>precise</c> survives in any shipped temporal program, on any backend, and every program with the lock release
 /// carries its twelve barriers (Task 7g.3a). The GLSL holds no <c>precise</c>, the SPIR-V no <c>NoContraction</c>, the
-/// emitted HLSL no <c>precise</c> and the emitted MSL none of the <c>spvF</c> wrappers SPIRV-Cross writes for it. The ten
+/// emitted HLSL no <c>precise</c> and the emitted MSL none of the <c>spvF</c> wrappers SPIRV-Cross writes for it. The twenty
 /// programs that include the release compile exactly twelve barrier ORs each, all inside the non-bypass branch
 /// since Task 7h Z. TemporalPrepare includes none. <see cref="TemporalLockZeroBypassTests"/> checks the branch.
 /// Device-free.
 /// </summary>
 public sealed class TemporalLockReleaseCompiledTests
 {
-    static readonly string[] Includers =
-    [
+    static readonly string[] Includers = new string[]
+    {
         "TemporalResolve", "TemporalResolveHalf", "TemporalAccumulate", "TemporalAccumulateHalf",
         "TemporalAccumulateAtDisplaySize", "TemporalAccumulateAtDisplaySizeHalf", "TemporalCountProbe",
         "TemporalCountProbeHalf", "TemporalDebugView", "TemporalDebugViewHalf",
-    ];
+    }.SelectMany(name => new[] { name, name + "FullyLit" }).ToArray();
 
     static IEnumerable<ShippedGraphicsProgram> Temporal() => ShippedShaderPrograms.GraphicsPrograms()
         .Where(p => p.Name.Contains("Temporal", StringComparison.Ordinal));
 
     [Fact]
-    public void ExactlyTheTenIncludersCarryTheLockRelease()
+    public void ExactlyTheCheckedAndFullyLitIncludersCarryTheLockRelease()
     {
         string[] including = ShippedShaderPrograms.GraphicsPrograms()
             .Where(p => p.FragmentGlsl.Contains(ShaderSources.TemporalLockReleaseGlsl, StringComparison.Ordinal))

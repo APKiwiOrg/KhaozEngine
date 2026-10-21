@@ -21,6 +21,9 @@ internal sealed partial class TemporalResolveRenderer
     readonly IGpuBuffer _visibilityBuffer;
     Vector2 _savedJitter;
     IGpuTexture? _visibilityInput;
+    bool _fullyLitFallback, _readVisibilityFullyLit;
+    internal bool LastVisibilityDecisionSkipped { get; private set; }
+    internal bool LastCurrentVisibilityFullyLit { get; private set; }
     internal TemporalVisibilityHistory VisibilityHistory { get; } = new();
     internal TemporalVisibilityUniforms LastVisibilityUniforms { get; private set; }
 
@@ -40,8 +43,10 @@ internal sealed partial class TemporalResolveRenderer
             FreeSets(retired);
             VisibilityHistory.Ensure(_gd, history, retired);
             _savedJitter = default;
+            _readVisibilityFullyLit = false;
             LastVisibilityUniforms = default;
         }
+        _fullyLitFallback = inputs.KeyShadowVisibility is null;
         _visibilityInput = inputs.KeyShadowVisibility ?? VisibilityHistory.FullyLit();
         return inputs with { KeyShadowVisibility = _visibilityInput };
     }
@@ -50,11 +55,14 @@ internal sealed partial class TemporalResolveRenderer
     {
         // Re-evaluation in the same frame must keep the original previous jitter, just as it keeps the read texture.
         if (!VisibilityHistory.StoredThisFrame)
+        {
+            _readVisibilityFullyLit = VisibilityHistory.ReadFullyLit;
             LastVisibilityUniforms = new TemporalVisibilityUniforms
             {
                 PreviousJitter = new Vector4(_savedJitter,
                     VisibilityHistory.Ready && resolve.Jitter.W > 0f ? 1f : 0f, 0f),
             };
+        }
         TemporalVisibilityUniforms uniforms = LastVisibilityUniforms;
         commands.UpdateBuffer(_visibilityBuffer, 0, in uniforms);
     }
@@ -62,7 +70,7 @@ internal sealed partial class TemporalResolveRenderer
     void StoreVisibility(IGpuCommandList commands, TemporalHistory history)
     {
         if (VisibilityHistory.StoredThisFrame) return;
-        VisibilityHistory.Store(commands, _visibilityInput!, history.WriteIndex);
+        VisibilityHistory.Store(commands, _visibilityInput!, history.WriteIndex, LastCurrentVisibilityFullyLit);
         // Only publish jitter after the copy was successfully recorded for this frame.
         _savedJitter = new Vector2(LastUniforms.Jitter.X, LastUniforms.Jitter.Y);
     }
@@ -71,6 +79,8 @@ internal sealed partial class TemporalResolveRenderer
     {
         VisibilityHistory.Release(retired);
         _visibilityInput = null;
+        _fullyLitFallback = _readVisibilityFullyLit = false;
+        LastVisibilityDecisionSkipped = LastCurrentVisibilityFullyLit = false;
         _savedJitter = default;
         LastVisibilityUniforms = default;
     }

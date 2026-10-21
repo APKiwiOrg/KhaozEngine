@@ -264,7 +264,7 @@ production's barrier-ordered lock release, on every backend. On Metal production
 - Entry identity is exact on Metal, on the T4 on Direct3D 11 (under the NVIDIA D3D11 rule) and Vulkan, and on
   WARP. `TemporalEntryIdentityGpuTests` holds production fused equal to production split in colour, state, R8 and
   depth there. On llvmpipe the state, R8 and depth are exact and the colour is within main's amendment 23 bound
-  (`TemporalSoftwareVulkanColourRule`). Its large-frame case runs both entries on the A/B's large threshold
+  (`TemporalSoftwareCompileDivergenceRule`). Its large-frame case runs both entries on the A/B's large threshold
   frames, across columns 512 and 1024 and row 512 under positive jitter, and also holds D prime fused equal to
   D prime split, under the same llvmpipe colour rule.
 - On hardware NVIDIA Direct3D 11 only, entry identity's production against D comparisons assert that colour and
@@ -415,6 +415,43 @@ Withdrawn at `d9d72abbd` and restored by the 2026-10-21 correction above, with e
 - [x] Task 7g.5 completed the Release build with zero warnings, 878 device-free passes, 35 focused Metal passes, the full format check with exit 0 and all tree guards. The initial format scan completed with exit 2 before its whitespace-only fixes. Capture manifest verification passed.
 - [x] Task 7g.5 pushed 211e42544 and ran the one free all-leg dispatch 39571324204 with 7g.3b's filter plus `TemporalVisibilityGatherGpuTests`. Each renderer passed 1740 cases with one opt-in dump skip, and sync passed 622. All five lavapipe colour cases match run 39559768823 at reported precision, large-frame and moving-shadow cases are exact, and all eight software costs are unchanged at full precision. No billed run, timing, stress, main merge, tag or release.
 
+### Task 7h K
+
+**Status:** Round 3 passes under the owner's 2026-10-22 certified-versus-check ruling and is ready for
+orchestrator review. It integrates Z and verifies all twenty release-bearing programs. The linked K record owns
+the DXBC recapture, local gates and successful free all-leg run 39674360441 at fbd7a2985.
+
+A scene certifies its resolved R8 only from the actual shared receiver upload used by every opaque family. A
+nonpositive uploaded key-shadow strength makes sampleKeyShadow return exactly one before any atlas sample.
+The white clear, discards, destination-preserving writers and MSAA resolve keep every stored byte at 255.
+An active cached atlas remains uncertified. Supplied synthetic R8 is unknown. The owned all-white fallback
+can certify directly. Requested shadow mode and a skipped atlas update do not certify anything.
+
+StoreVisibility publishes the certificate with the copied write index, generation and resolve frame. Selection
+requires both the current certificate and the ready read-index certificate, so both transitions use the ordinary
+check whenever either side lacks evidence. Resets, target recreation, resize and owner/device changes clear
+readiness. Same-frame re-evaluation keeps the original read certificate and never republishes the stored one.
+
+The compiled specialization makes only visibilityReleased false in the shared accumulation source. Both decision
+helpers and their footprint loads disappear. Colour release, carried-lock classification, barrier-ordered lock
+release, hold and clipping remain intact. Fused, split, Native, both precisions, debug views and count re-evaluation
+use cached program and binding variants. All R8 attachments, histories and copies remain. Devices below five
+attachments retain their existing all-white fallback. Uncertified and shadowed frames keep the ordinary check.
+This establishes no timing result or budget for shadowed frames.
+
+The owner ruling of 2026-10-22 applies the A/B device rules to K's certified-versus-ordinary-check pairs.
+Metal, NVIDIA Vulkan and every other exact hardware device compare every channel byte for byte. Hardware NVIDIA
+Direct3D 11 reuses `TemporalNvidiaHistoryOracle.Compare`, exactly as the A/B does. Stored locks, marks, R8 and depth
+are exact. Colour and confidence must preserve each value's non-finite class, with finite differences reported only.
+WARP is identified by `TemporalDeviceClass.IsWarp`, Direct3D11Native with SoftwareAdapter true. Its certified pairs
+keep locks, marks, R8 and depth exact and bound colour and confidence separately by worst absolute difference
+`0.0625` and differing share `0.0025`. `TemporalSoftwareCompileDivergenceRule` owns the one shared constant pair
+and implementation used by WARP and amendment 23's llvmpipe colour rule. Every pair prints worst and share per
+channel. llvmpipe's certified-versus-check pairs remain exact. Production fused versus split stays byte-exact on
+every device except the existing llvmpipe colour rule. No other comparison or visibility decision changes.
+
+The [Task 7h K record](../../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/7h-k-hosted.md)
+owns local gates, per-device history comparisons, compiled-module proof and the hosted correctness results.
 ### Task 7h Z: Bypass exact positive-zero lock release
 
 Keep the ordered helper and C# twin unchanged. After decay and ridge classification, positive-zero bits and finite

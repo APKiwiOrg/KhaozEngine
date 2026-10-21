@@ -365,7 +365,7 @@ namespace KhaozEngine.Tests.Render3D
             int before = factory.ResourceSets.Count;
             renderer.BindInputs(new TemporalResolveInputs(Texture(), opaque, depth, motion), history, retired);
             FakeResourceSet[] first = factory.ResourceSets.GetRange(before, factory.ResourceSets.Count - before).ToArray();
-            Assert.Equal(3, first.Length);   // the resolve set for each read index and the depth store set
+            Assert.Equal(5, first.Length);   // checked and fully lit sets for each read index, plus depth store
             renderer.BindInputs(new TemporalResolveInputs(Texture(), opaque, depth, motion), history, retired);
             Assert.True(factory.ResourceSets.Count > before + first.Length, "new inputs did not rebuild the sets");
             Assert.All(first, set => Assert.False(set.Disposed,

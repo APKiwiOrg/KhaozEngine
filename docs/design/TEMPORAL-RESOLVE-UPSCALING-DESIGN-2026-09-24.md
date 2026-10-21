@@ -1258,6 +1258,16 @@ and changed these details. Its contract amendment blocks carry the evidence.
     binding sets before their textures and retire through `GpuRetireQueue`. TAA off and scene disposal retire the
     histories. Steady frames create no resources and allocate zero managed bytes.
 
+    **Certified fully lit frames, Task 7h K.** The actual shared receiver upload certifies the scene's R8 only
+    when its key-shadow strength is nonpositive. StoreVisibility publishes that certificate with the copied write
+    index. When the current and ready read-index certificates both hold, a separately compiled accumulation sets
+    visibility release to false, removing both decision helpers and footprint loads. Colour release, carried-lock
+    classification and barrier-ordered lock release are unchanged. Fused, split, Native, precision and debug/count
+    paths cache matching programs and binding sets. R8 storage and copies remain. Both transitions and every
+    uncertified frame retain the ordinary check. Synthetic R8 stays unknown and the owned all-white fallback can
+    certify. This is no timing claim for shadowed frames. The [implementation record](../superpowers/specs/2026-10-19-taa-shadow-visibility-design.md#task-7h-k)
+    links the exactness and lifecycle evidence.
+
     **Capability policy.** Motion plus visibility requires five colour attachments. A device below five keeps the
     four-attachment lit layout and the existing supported fused resolve without visibility evidence. Bilinear PCF
     still applies and the existing capability log reports the missing visibility path once. There is no unsupported

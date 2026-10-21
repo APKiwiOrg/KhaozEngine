@@ -24,7 +24,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Whether the headless device this process creates is lavapipe (<see cref="Warp"/>).</summary>
         public static bool Lavapipe => s_class.Value.Lavapipe;
 
-        /// <summary>Whether <paramref name="device"/> is WARP.</summary>
+        /// <summary>Whether <paramref name="device"/> is WARP, including the certified-versus-check software rule.</summary>
         public static bool IsWarp(IGpuDevice device) =>
             device.Backend == GpuBackendKind.Direct3D11Native && device.Diagnostics.SoftwareAdapter == true;
 

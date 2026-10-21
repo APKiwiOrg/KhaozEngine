@@ -9,7 +9,14 @@ public static partial class ShippedShaderPrograms
     /// <summary>Base programs plus every layout-selected lit or destination-preserving visibility variant.</summary>
     public static IEnumerable<ShippedGraphicsProgram> GraphicsPrograms()
     {
-        foreach (ShippedGraphicsProgram program in BaseGraphicsPrograms()) yield return program;
+        foreach (ShippedGraphicsProgram program in BaseGraphicsPrograms())
+        {
+            yield return program;
+            if (program.Name.StartsWith("Temporal", StringComparison.Ordinal)
+                && program.FragmentGlsl.Contains("bool visibilityReleased = ", StringComparison.Ordinal))
+                yield return new(program.Name + "FullyLit", program.VertexGlsl,
+                    TemporalVisibilityPrograms.WithoutDecision(program.FragmentGlsl));
+        }
         foreach (ShippedGraphicsProgram program in BaseGraphicsPrograms())
         {
             bool lit = program.Name is "Model" or "Foliage" or "ModelDissolve" or "SkinnedModel"

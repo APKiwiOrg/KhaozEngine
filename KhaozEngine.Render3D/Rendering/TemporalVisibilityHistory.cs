@@ -10,6 +10,7 @@ namespace KhaozEngine.Render3D.Rendering;
 internal sealed class TemporalVisibilityHistory
 {
     readonly IGpuTexture?[] _textures = new IGpuTexture?[2];
+    readonly bool[] _fullyLit = new bool[2];
     IGpuTexture? _fallback;
     IGpuDevice? _device;
     TemporalHistory? _owner;
@@ -19,6 +20,7 @@ internal sealed class TemporalVisibilityHistory
     internal bool Allocated => _textures[0] is not null && _textures[1] is not null;
     internal bool Ready => _owner is { IsValid: true } owner && _generation == owner.TargetGeneration
         && _seededIndex == owner.ReadIndex;
+    internal bool ReadFullyLit => Ready && _fullyLit[_owner!.ReadIndex];
     internal bool StoredThisFrame => _owner is { } owner && _storedFrame >= 0
         && _storedFrame == owner.ResolveFrameIndex;
 
@@ -58,12 +60,13 @@ internal sealed class TemporalVisibilityHistory
     internal IGpuTexture Texture(int index) => _textures[index]
         ?? throw new InvalidOperationException("Visibility history is not allocated.");
 
-    internal void Store(IGpuCommandList commands, IGpuTexture source, int writeIndex)
+    internal void Store(IGpuCommandList commands, IGpuTexture source, int writeIndex, bool fullyLit = false)
     {
         if (StoredThisFrame) return;
         if (_owner is null || _owner.ResolveFrameIndex < 0 || writeIndex != _owner.WriteIndex)
             throw new InvalidOperationException("Visibility must store the colour owner's active write index.");
         commands.CopyTexture(source, Texture(writeIndex));
+        _fullyLit[writeIndex] = fullyLit;
         _seededIndex = writeIndex;
         _storedFrame = _owner.ResolveFrameIndex;
     }
@@ -82,5 +85,6 @@ internal sealed class TemporalVisibilityHistory
         _owner = null;
         _generation = _seededIndex = -1;
         _storedFrame = -1;
+        Array.Clear(_fullyLit);
     }
 }

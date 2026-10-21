@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
@@ -24,18 +23,15 @@ namespace KhaozEngine.Render3D.Rendering
             SceneDebugView.History, SceneDebugView.Disocclusion, SceneDebugView.Reactive,
         };
 
-        readonly IGpuShaderSet _shaders;
         readonly IGpuResourceLayout _modeLayout;
         readonly IGpuBuffer[] _modeBuffers = new IGpuBuffer[3];
         readonly IGpuResourceSet[] _modeSets = new IGpuResourceSet[3];
-        readonly IGpuPipeline _pipeline;
+        readonly TemporalVisibilityPipelinePair _programs;
 
-        public TemporalDebugViewPass(IGpuDevice gd, IGpuResourceLayout resolveLayout, GpuOutputDescription targetOutput)
+        public TemporalDebugViewPass(IGpuDevice gd, IGpuResourceLayout resolveLayout,
+            IGpuResourceLayout fullyLitLayout, GpuOutputDescription targetOutput, Func<string, string>? rewrite = null)
         {
             IGpuResourceFactory f = gd.Factory;
-            _shaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
-                TemporalVisibilityGatherPolicy.ForBackend(
-                    ShaderSources.TemporalDebugFragment(TemporalResolvePrecisionPolicy.For(gd)), gd.Backend));
             _modeLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 new GpuResourceLayoutElement("DebugView", GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment)));
             for (int i = 0; i < Views.Length; i++)
@@ -45,24 +41,14 @@ namespace KhaozEngine.Render3D.Rendering
                 gd.UpdateBuffer(_modeBuffers[i], 0, new DebugViewUbo { Mode = new Vector4((int)Views[i], 0f, 0f, 0f) });
                 _modeSets[i] = f.CreateResourceSet(new GpuResourceSetDescription(_modeLayout, _modeBuffers[i]));
             }
-            _pipeline = f.CreateGraphicsPipeline(new GpuPipelineDescription
-            {
-                BlendFactor = Vector4.Zero,
-                BlendAttachments = new[] { GpuBlendAttachment.OverrideBlend },   // replaces the final image
-                DepthStencil = GpuDepthStencilState.Disabled,
-                Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise,
-                    depthClipEnabled: false, scissorTestEnabled: false),
-                Topology = GpuPrimitiveTopology.TriangleList,
-                ResourceLayouts = new[] { resolveLayout, _modeLayout },
-                ShaderSet = _shaders,
-                VertexLayouts = new List<GpuVertexLayoutDescription>(),   // fullscreen triangle from gl_VertexIndex
-                Outputs = targetOutput,
-            });
+            _programs = new TemporalVisibilityPipelinePair(gd,
+                ShaderSources.TemporalDebugFragment(TemporalResolvePrecisionPolicy.For(gd)),
+                [resolveLayout, _modeLayout], [fullyLitLayout, _modeLayout], targetOutput, rewrite);
         }
 
         /// <summary>Replace <paramref name="target"/>'s image with <paramref name="view"/>. Any other view draws
         /// nothing.</summary>
-        public void Draw(IGpuCommandList cl, SceneDebugView view, IGpuResourceSet resolveSet, IGpuFramebuffer target)
+        public void Draw(IGpuCommandList cl, SceneDebugView view, IGpuResourceSet resolveSet, IGpuFramebuffer target, bool withoutVisibility = false)
         {
             int slot = view switch
             {
@@ -73,7 +59,7 @@ namespace KhaozEngine.Render3D.Rendering
             };
             if (slot < 0) return;
             cl.SetFramebuffer(target);
-            cl.SetPipeline(_pipeline);
+            cl.SetPipeline(_programs.Select(withoutVisibility));
             cl.SetGraphicsResourceSet(0, resolveSet);
             cl.SetGraphicsResourceSet(1, _modeSets[slot]);
             cl.Draw(3);
@@ -81,10 +67,9 @@ namespace KhaozEngine.Render3D.Rendering
 
         public void Dispose()
         {
-            _pipeline.Dispose();
+            _programs.Dispose();
             for (int i = 0; i < _modeSets.Length; i++) { _modeSets[i].Dispose(); _modeBuffers[i].Dispose(); }
             _modeLayout.Dispose();
-            _shaders.Dispose();
         }
     }
 }

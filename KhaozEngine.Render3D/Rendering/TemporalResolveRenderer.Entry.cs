@@ -44,11 +44,14 @@ namespace KhaozEngine.Render3D.Rendering
         /// (<see cref="TemporalSplitResolve.Upscales"/>). For tests that find the resolve in recorded
         /// commands.</summary>
         internal static string[] EntryFragments(TemporalResolveEntry entry, TemporalResolvePrecision precision,
-            bool upscales, GpuBackendKind? backend = null)
+            bool upscales, GpuBackendKind? backend = null, bool withoutVisibility = false)
         {
             string[] fragments = entry == TemporalResolveEntry.Split
                 ? [ShaderSources.TemporalPrepareFrag, ShaderSources.TemporalAccumulateFragment(precision, upscales)]
                 : [ShaderSources.TemporalResolveFragment(precision), ShaderSources.TemporalDepthStoreFrag];
+            if (withoutVisibility)
+                for (int i = 0; i < fragments.Length; i++)
+                    fragments[i] = TemporalVisibilityPrograms.WithoutDecision(fragments[i]);
             if (backend is { } selected)
                 for (int i = 0; i < fragments.Length; i++)
                     fragments[i] = TemporalVisibilityGatherPolicy.ForBackend(fragments[i], selected);
@@ -59,7 +62,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// last <see cref="Run"/>. For tests.</summary>
         internal string[] LastEntryFragmentsForTests() => EntryFragments(
             LastEntry ?? throw new System.InvalidOperationException("the resolve recorded no entry point"),
-            TemporalResolvePrecisionPolicy.For(_gd), TemporalSplitResolve.Upscales(LastUniforms), _gd.Backend);
+            TemporalResolvePrecisionPolicy.For(_gd), TemporalSplitResolve.Upscales(LastUniforms), _gd.Backend, LastVisibilityDecisionSkipped);
 
         // BindInputs builds the chosen entry point's own objects after aligning visibility. A renderer used outside a scene, which
         // never selects, retires nothing, so the fused entry point there releases the split's targets by draining.
@@ -79,7 +82,7 @@ namespace KhaozEngine.Render3D.Rendering
         bool RunSplit(IGpuCommandList cl, TemporalHistory history)
         {
             if (Entry != TemporalResolveEntry.Split) return false;
-            _split!.Run(cl, history, TemporalSplitResolve.Upscales(LastUniforms));
+            _split!.Run(cl, history, TemporalSplitResolve.Upscales(LastUniforms), LastVisibilityDecisionSkipped);
             return true;
         }
     }

@@ -9,8 +9,7 @@ namespace KhaozEngine.Render3D.Rendering
     /// kept beside it, so a change of preset switches between two built pipelines.</summary>
     internal sealed partial class TemporalSplitResolve
     {
-        IGpuShaderSet? _atDisplaySizeShaders;
-        IGpuPipeline? _atDisplaySizePipeline;
+        TemporalVisibilityPipelinePair? _atDisplaySizePrograms;
 
         /// <summary>Whether a frame upscales: its display over internal ratio (<c>Jitter.z</c>) is above 1, the test
         /// <c>temporalDisplayShare</c> makes before a pixel may take the display-sized reconstruction. Under the
@@ -22,30 +21,26 @@ namespace KhaozEngine.Render3D.Rendering
         internal bool UpscalingProgramForTests { get; set; }
 
         /// <summary>Whether the second pass compiled for the display's own size has been built. For tests.</summary>
-        internal bool AtDisplaySizeBuiltForTests => _atDisplaySizePipeline is not null;
+        internal bool AtDisplaySizeBuiltForTests => _atDisplaySizePrograms is not null;
 
-        IGpuPipeline AccumulatePipeline(bool upscales)
+        TemporalVisibilityPipelinePair AccumulatePrograms(bool upscales)
         {
-            if (upscales || UpscalingProgramForTests) return _accumulatePipeline;
-            if (_atDisplaySizePipeline is null)
-            {
-                IGpuResourceFactory f = _gd.Factory;
-                _atDisplaySizeShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
-                    FragmentSource(ShaderSources.TemporalAccumulateFragment(TemporalResolvePrecisionPolicy.For(_gd),
-                        upscales: false)));
-                _atDisplaySizePipeline = TemporalResolveRenderer.Fullscreen(f, _atDisplaySizeShaders,
-                    _accumulateLayout,
-                    new GpuOutputDescription(null, TemporalFormats.HistoryColor, TemporalFormats.HistoryConfidence));
-            }
-            return _atDisplaySizePipeline;
+            if (upscales || UpscalingProgramForTests) return _accumulatePrograms;
+            _atDisplaySizePrograms ??= new TemporalVisibilityPipelinePair(_gd,
+                ShaderSources.TemporalAccumulateFragment(TemporalResolvePrecisionPolicy.For(_gd), upscales: false),
+                [_accumulateLayout], [_fullyLitAccumulateLayout],
+                new GpuOutputDescription(null, TemporalFormats.HistoryColor, TemporalFormats.HistoryConfidence),
+                _fragmentSourceForTests);
+            return _atDisplaySizePrograms;
         }
+
+        internal bool UsesVisibility(bool upscales, bool withoutVisibility)
+            => AccumulatePrograms(upscales).UsesVisibility(withoutVisibility);
 
         void DisposeAtDisplaySize()
         {
-            _atDisplaySizePipeline?.Dispose();
-            _atDisplaySizeShaders?.Dispose();
-            _atDisplaySizePipeline = null;
-            _atDisplaySizeShaders = null;
+            _atDisplaySizePrograms?.Dispose();
+            _atDisplaySizePrograms = null;
         }
     }
 }

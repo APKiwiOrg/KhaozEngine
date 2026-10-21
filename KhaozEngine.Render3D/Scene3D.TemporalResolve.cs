@@ -227,7 +227,7 @@ namespace KhaozEngine.Render3D
                 _post.RunTemporalOutline(cl, _res, _temporalPost!.OpaqueColor, _retired);
                 _frameStats.DrawCalls += PixelPostProcess.TemporalOutlineDrawCalls;
             }
-            _temporalResolve!.Run(cl, TemporalHistory);
+            _temporalResolve!.Run(cl, TemporalHistory, ResolvedVisibilityFullyLit);
             _frameStats.DrawCalls += TemporalResolveRenderer.DrawCallsPerFrame;
         }
 

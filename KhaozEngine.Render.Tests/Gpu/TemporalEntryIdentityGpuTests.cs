@@ -25,8 +25,8 @@ namespace KhaozEngine.Tests.Gpu
     /// (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23). On a software Vulkan device (Mesa llvmpipe) the colour
     /// differs, since its compiler orders the two programs' arithmetic differently, while the confidence, the lock,
     /// the mark, R8 and depth stay identical. There the fact holds those exact and the colour within
-    /// <see cref="TemporalSoftwareVulkanColourRule.SoftwareColourBound"/> and
-    /// <see cref="TemporalSoftwareVulkanColourRule.SoftwareColourShare"/> of the values compared. Everywhere else
+    /// <see cref="TemporalSoftwareCompileDivergenceRule.AbsoluteBound"/> and
+    /// <see cref="TemporalSoftwareCompileDivergenceRule.DifferingShareBound"/> of the values compared. Everywhere else
     /// stored colour, confidence, locks, R8 and depth are exact. Hardware NVIDIA Direct3D 11 additionally prints each
     /// production entry and D's paired entries against D. Against D only the non-finite classes of colour and
     /// confidence are asserted. The large-frame case (<c>TemporalEntryIdentityGpuTests.LargeFrames.cs</c>) holds both
@@ -117,10 +117,12 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.Equal(TemporalResolveEntry.Split, split.Scene.TemporalResolveRendererForTests?.LastEntry);
                 // At Native the split records its second pass compiled without the display-sized reconstruction,
                 // and the fused resolve keeps it, so this walk also holds that program to the rule's own output.
-                Assert.Equal(TemporalVisibilityGatherPolicy.ForBackend(ShaderSources.TemporalAccumulateFragment(
-                        TemporalResolvePrecisionPolicy.For(split.Device), upscales: preset != TemporalUpscale.Native),
-                        split.Device.Backend),
-                    split.Scene.TemporalResolveRendererForTests!.LastEntryFragmentsForTests()[1]);
+                string splitProgram = ShaderSources.TemporalAccumulateFragment(
+                    TemporalResolvePrecisionPolicy.For(split.Device), upscales: preset != TemporalUpscale.Native);
+                if (split.Scene.TemporalResolveRendererForTests!.LastVisibilityDecisionSkipped)
+                    splitProgram = TemporalVisibilityPrograms.WithoutDecision(splitProgram);
+                Assert.Equal(TemporalVisibilityGatherPolicy.ForBackend(splitProgram, split.Device.Backend),
+                    split.Scene.TemporalResolveRendererForTests.LastEntryFragmentsForTests()[1]);
                 var fusedRenderer = fused.Scene.TemporalResolveRendererForTests!;
                 var splitRenderer = split.Scene.TemporalResolveRendererForTests!;
                 Assert.Equal(fusedRenderer.LastVisibilityUniforms.PreviousJitter,
@@ -178,13 +180,13 @@ namespace KhaozEngine.Tests.Gpu
                 $"the entry points stored different state:\n{differences}");
             if (softwareVulkan)
             {
-                double share = TemporalSoftwareVulkanColourRule.ShareOf(colour.Values, colourCompared);
-                output.WriteLine($"  software Vulkan: colour within {TemporalSoftwareVulkanColourRule.SoftwareColourBound} "
+                double share = TemporalSoftwareCompileDivergenceRule.ShareOf(colour.Values, colourCompared);
+                output.WriteLine($"  software Vulkan: colour within {TemporalSoftwareCompileDivergenceRule.AbsoluteBound} "
                     + $"on {share:P3} of values");
-                Assert.True(TemporalSoftwareVulkanColourRule.Allows(colour.Worst, colour.Values, colourCompared),
+                Assert.True(TemporalSoftwareCompileDivergenceRule.Allows(colour.Worst, colour.Values, colourCompared),
                     $"the colour on a software Vulkan device left its bound "
-                    + $"({TemporalSoftwareVulkanColourRule.SoftwareColourBound}, "
-                    + $"{TemporalSoftwareVulkanColourRule.SoftwareColourShare:P2} of values):\n{differences}");
+                    + $"({TemporalSoftwareCompileDivergenceRule.AbsoluteBound}, "
+                    + $"{TemporalSoftwareCompileDivergenceRule.DifferingShareBound:P2} of values):\n{differences}");
             }
             else Assert.True(colour.Values == 0, $"the entry points wrote different histories:\n{differences}");
             // The band reaches two internal texels beside the followed box, which this walk stores only while

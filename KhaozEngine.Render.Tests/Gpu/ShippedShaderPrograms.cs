@@ -25,7 +25,7 @@ namespace KhaozEngine.Tests.Gpu
     /// a program from this list.
     ///
     /// <para>
-    /// DEDUPLICATED BY SOURCE PAIR, not by call site. The catalog contains 111 graphics pairs and eight compute
+    /// DEDUPLICATED BY SOURCE PAIR, not by call site. The catalog contains 121 graphics pairs and eight compute
     /// kernels. The <c>Line</c> pair is created three times (<c>DepthLineRenderer</c>, and <c>LineRenderer</c> plus
     /// <c>FillRenderer</c> through <c>OverlayRenderer</c>), and identical sources cross-compile to identical
     /// HLSL, so three rows would be three copies of one fact. Where a pair has several call sites the name is its

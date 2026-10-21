@@ -62,7 +62,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>The programs here are the decision helper and the hosted fact's programs, in its order, and the
-        /// fixture folder holds a listing and a source hash for each side of each, nothing more.</summary>
+        /// fixture folder holds both sides plus the additional shipped release variants, each with its source hash.</summary>
         [Fact]
         public void TheFixturesCoverEveryProgramTheHostedFactChecks()
         {
@@ -70,7 +70,10 @@ namespace KhaozEngine.Tests.Gpu
             string[] hosted = [Helper, .. D3D11FxcValidationTests.VisibilityPrograms.Select(p => p.Name)];
             Assert.Equal(hosted, programs);
             string[] expected = programs.SelectMany(p => new[] { "d", "shipped" }.SelectMany(side =>
-                new[] { $"{p}.{side}.dxbc.gz", $"{p}.{side}.glsl.sha256" })).Order(StringComparer.Ordinal).ToArray();
+                new[] { $"{p}.{side}.dxbc.gz", $"{p}.{side}.glsl.sha256" }))
+                .Concat(TemporalLockReleaseDxbcPrograms.Additional.SelectMany(p => new[]
+                    { $"{p.Name}.shipped.dxbc.gz", $"{p.Name}.shipped.glsl.sha256" }))
+                .Order(StringComparer.Ordinal).ToArray();
             Assert.Equal(expected, Directory.GetFiles(Fixtures).Select(f => Path.GetRelativePath(Fixtures, f))
                 .Order(StringComparer.Ordinal));
         }

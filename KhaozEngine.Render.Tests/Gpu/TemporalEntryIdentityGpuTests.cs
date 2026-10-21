@@ -22,12 +22,9 @@ namespace KhaozEngine.Tests.Gpu
     /// from a rule that decided otherwise. Through packHalf2x16 the values differed on every Vulkan device it ran on,
     /// and the locks with them, so both entries round in integer steps (<c>temporalHalf</c>). This fact is what shows
     /// they agree on a given backend: bit for bit on Metal, on a Tesla T4 on Direct3D 11 and Vulkan, and on WARP
-    /// (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23). On a software Vulkan device (Mesa llvmpipe) the colour
-    /// differs, since its compiler orders the two programs' arithmetic differently, while the confidence, the lock
-    /// and the mark stay identical. There the fact holds those three exact and the colour within
-    /// <see cref="SoftwareColourBound"/> and <see cref="SoftwareColourShare"/>. Hardware NVIDIA Direct3D 11 alone
-    /// compares colour and confidence within D's own fused/split half-step envelope measured on the same frames.
-    /// Locks, R8 and stored depth remain exact, including when that envelope is nonzero.
+    /// (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23). Entry identity requires exact stored colour, confidence,
+    /// locks, R8 and depth on every backend. Hardware NVIDIA Direct3D 11 additionally prints paired D-entry
+    /// diagnostics and compares each production entry against D under the separate fixed two-step A/B rule.
     /// </summary>
     public sealed class TemporalEntryIdentityGpuTests(ITestOutputHelper output) : TemporalResolveGpuFacts
     {
@@ -35,11 +32,6 @@ namespace KhaozEngine.Tests.Gpu
         const float Speed = 2f, BladeTexels = 0.375f, MoverTexels = 1f, MoverStep = 3f, MoverHeight = 3f,
             MoverNearer = 4f;
         const ulong MoverKey = 71;
-
-        // The colour on a software Vulkan device: llvmpipe (LLVM 20.1.2) measured its largest difference 0.0049 at
-        // Native, 0.0154 at Quality and 0.0439 at Performance, over 0.010, 0.052 and 0.118 percent of the values
-        // compared. The bounds keep about 1.4 and 2 times that.
-        const float SoftwareColourBound = 0.0625f, SoftwareColourShare = 0.0025f;
 
         [GpuTheory]
         [InlineData(TemporalUpscale.Native)]
@@ -83,8 +75,6 @@ namespace KhaozEngine.Tests.Gpu
             split.Scene.TemporalResolveEntryForTests = TemporalResolveEntry.Split;
             output.WriteLine($"{fused.Device.Backend} on {fused.Device.Capabilities.DeviceName}, {W}x{H} {preset}"
                 + (outline ? ", the edge outline on" : ""));
-            bool softwareVulkan = fused.Device.Backend == GpuBackendKind.VulkanNative
-                && fused.Device.Diagnostics.SoftwareAdapter == true;
             bool nvidia = TemporalDeviceClass.IsHardwareNvidiaD3D11(fused.Device);
             var oracle = nvidia ? new TemporalNvidiaHistoryOracle(output) : null;
             var dFusedWalk = new PerspectiveFollowLines(W, H, Speed, preset, BladeTexels);
@@ -98,7 +88,6 @@ namespace KhaozEngine.Tests.Gpu
                 dFused.Scene.TemporalResolveEntryForTests = TemporalResolveEntry.Fused;
                 dSplit.Scene.TemporalResolveEntryForTests = TemporalResolveEntry.Split;
             }
-            long colourCompared = 0;
 
             int frames = TemporalFollowLinesRuns.Last + 1 + StopFrames, compared = 0, band = 0, followed = 0,
                 movingShare = 0, outlinePixels = 0;
@@ -136,7 +125,6 @@ namespace KhaozEngine.Tests.Gpu
                 float[] a = Read(fused, static h => h.Color(h.WriteIndex));
                 float[] b = Read(split, static h => h.Color(h.WriteIndex));
                 for (int i = 0; i < a.Length; i++) colour.Add(n, a[i], b[i]);
-                colourCompared += a.Length;
                 outlinePixels = 0;
                 for (int i = 0; i < a.Length; i += 4) if (IsOutline(a, i)) outlinePixels++;
                 float[] state = Read(fused, static h => h.Confidence(h.WriteIndex));
@@ -151,8 +139,9 @@ namespace KhaozEngine.Tests.Gpu
                     TemporalHistorySample pf = TemporalHistorySample.Read(fused), ps = TemporalHistorySample.Read(split);
                     oracle.Compare(n, "production fused vs D fused", pf, df);
                     oracle.Compare(n, "production split vs D split", ps, ds);
-                    oracle.Compare(n, "production fused vs production split", pf, ps);
                 }
+                TemporalHistorySample.Exact(n, "production entries colour", a, b);
+                TemporalHistorySample.Exact(n, "production entries state", state, other);
                 for (int i = 0; i < state.Length; i += 2)
                 {
                     confidence.Add(n, state[i], other[i]);
@@ -174,18 +163,9 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(compared > TemporalFollowLinesRuns.Last, $"only {compared} frames resolved");
             Assert.Equal(outline, fused.Scene.TemporalOutlineBuiltForTests);
             Assert.Equal(outline, split.Scene.TemporalOutlineBuiltForTests);
-            if (nvidia) oracle!.Complete();
-            else Assert.True(confidence.Values + locks.Values + marks.Values == 0,
-                $"the entry points stored different state:\n{differences}");
-            if (softwareVulkan)
-            {
-                double share = (double)colour.Values / colourCompared;
-                output.WriteLine($"  software Vulkan: colour within {SoftwareColourBound} on {share:P3} of values");
-                Assert.True(colour.Worst <= SoftwareColourBound && share <= SoftwareColourShare,
-                    $"the colour on a software Vulkan device left its bound ({SoftwareColourBound}, "
-                    + $"{SoftwareColourShare:P2} of values):\n{differences}");
-            }
-            else if (!nvidia) Assert.True(colour.Values == 0, $"the entry points wrote different histories:\n{differences}");
+            oracle?.Complete();
+            Assert.True(confidence.Values + locks.Values + marks.Values + colour.Values == 0,
+                $"the entry points wrote different histories:\n{differences}");
             // The band reaches two internal texels beside the followed box, which this walk stores only while
             // upscaling.
             Assert.True(followed > 0 && (band > 0 || preset == TemporalUpscale.Native) && movingShare > 0,
@@ -280,9 +260,8 @@ namespace KhaozEngine.Tests.Gpu
                     oracle!.ObserveD(frame, df, ds);
                     oracle.Compare(frame, "production fused vs D fused", pf, df);
                     oracle.Compare(frame, "production split vs D split", ps, ds);
-                    oracle.Compare(frame, "production fused vs production split", pf, ps);
                 }
-                else TemporalHistorySample.Exact(frame, "production entries", pf, ps);
+                TemporalHistorySample.Exact(frame, "production entries", pf, ps);
                 if (frame == 0)
                 {
                     Assert.InRange(fused.ReadState()[pixel], 0.01f, 0.15f);
@@ -310,7 +289,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(2, rises);
             Assert.Equal(2, falls);
             oracle?.Complete();
-            output.WriteLine($"  {edges.Length} frames {(nvidia ? "within D's measured arithmetic envelope" : "exact in colour and confidence")}, "
+            output.WriteLine($"  {edges.Length} frames exact in colour and confidence, "
                 + "exact locks, marks, R8 bytes, depth and previous jitter");
         }
 

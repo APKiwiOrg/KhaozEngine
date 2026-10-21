@@ -32,7 +32,7 @@ namespace KhaozEngine.Tests.Gpu
         public static bool IsLavapipe(IGpuDevice device) =>
             device.Backend == GpuBackendKind.VulkanNative && device.Diagnostics.SoftwareAdapter == true;
 
-        /// <summary>The owner's measured-envelope rule is limited to hardware NVIDIA Direct3D 11.</summary>
+        /// <summary>The owner's fixed two-half-step A/B rule is limited to hardware NVIDIA Direct3D 11.</summary>
         public static bool IsHardwareNvidiaD3D11(IGpuDevice device) =>
             device.Backend == GpuBackendKind.Direct3D11Native && !IsWarp(device)
             && device.Diagnostics.SoftwareAdapter == false

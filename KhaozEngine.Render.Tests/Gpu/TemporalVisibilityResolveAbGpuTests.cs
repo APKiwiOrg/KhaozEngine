@@ -17,8 +17,8 @@ namespace KhaozEngine.Tests.Gpu
     /// their path bits exported twice (<see cref="TemporalVisibilityProductionPaths.Rewrite"/> and
     /// <see cref="TemporalVisibilityProductionPaths.RewriteKeepingTheDecision"/>). After every frame the production and
     /// D histories must be byte-identical in colour, state, stored visibility and stored depth, except hardware NVIDIA
-    /// Direct3D 11 uses D's own fused/split half-step envelope for colour and confidence. Locks, R8 and depth stay
-    /// exact on every device. Both exporting rigs
+    /// Direct3D 11 allows a fixed two half steps per colour/confidence channel. D's paired entries are diagnostic
+    /// only. Locks, R8 and depth stay exact on every device. Both exporting rigs
     /// must write production's locks and the same path words less the slow path's reasons. The mutant must differ,
     /// which shows the hook reaches the compiled program and the frames exercise the release. The exported paths must
     /// reach minimum counts of fast-path and range-skip pixels, so the identity is shown on the production program's
@@ -351,7 +351,7 @@ namespace KhaozEngine.Tests.Gpu
                     foreach (TemporalResolveRig rig in rigs) rig.History.MarkValidAfterFrame();
                 }
                 oracle?.Complete();
-                output.WriteLine($"  {Frames} frames {(nvidia ? "within D's measured arithmetic envelope, exact locks, R8 and depth" : "byte-identical to D in colour, state, R8 and depth")}, "
+                output.WriteLine($"  {Frames} frames {(nvidia ? "within 2 half steps in colour/confidence, exact locks, R8 and depth" : "byte-identical to D in colour, state, R8 and depth")}, "
                     + $"{zeroLocks} stored locks exactly zero, the never-releasing mutant differs in {mutantDiffers} of "
                     + $"{values} state values, {dRewrites} D and {mutantRewrites} mutant programs rewritten"
                     + (entry == TemporalResolveEntry.Split ? $", the first pass {(prepareCompiled ? "" : "not ")}as D" : ""));

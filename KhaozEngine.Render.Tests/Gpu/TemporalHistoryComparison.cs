@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using KhaozEngine.Render3D.Internal;
@@ -83,7 +82,7 @@ internal sealed class TemporalHistoryDifference
     }
 
     // Ordered half encodings count representable steps on either side of zero. The two zeros share an ordinal,
-    // but Channel.Count retains their bit difference so a zero envelope still requires exact bytes.
+    // but Channel.Count retains their bit difference for exact lock comparisons.
     internal static int HalfSteps(float a, float b) => Math.Abs(Ordinal(a) - Ordinal(b));
     static int Ordinal(float value)
     {
@@ -95,56 +94,39 @@ internal sealed class TemporalHistoryDifference
         + $"], confidence [{Confidence}], any lock differs {Locks.Count > 0} ({Locks.Count})";
 }
 
-internal sealed class TemporalHistoryEnvelope
+// The fixed NVIDIA hardware D3D11 A/B allowance. Entry identity never uses this rule.
+internal static class TemporalNvidiaComparisonRule
 {
-    readonly int[] _colour = new int[4];
-    int _confidence;
+    internal const int MaxHalfSteps = 2;
 
-    internal void Include(TemporalHistoryDifference d)
-    {
-        Assert.False(d.Confidence.NonFinite || d.Colour.Any(c => c.NonFinite),
-            "D's entries have a non-finite arithmetic difference");
-        for (int c = 0; c < 4; c++) _colour[c] = Math.Max(_colour[c], d.Colour[c].MaxSteps);
-        _confidence = Math.Max(_confidence, d.Confidence.MaxSteps);
-    }
-
-    internal bool Allows(TemporalHistoryDifference d) => d.Locks.Count == 0 && d.Confidence.Within(_confidence)
-        && Enumerable.Range(0, 4).All(c => d.Colour[c].Within(_colour[c]));
-
-    public override string ToString() => $"colour RGBA [{string.Join(", ", _colour)}], confidence {_confidence} half steps";
+    internal static bool Allows(TemporalHistoryDifference d) => d.Locks.Count == 0
+        && d.Confidence.Within(MaxHalfSteps) && d.Colour.All(c => c.Within(MaxHalfSteps));
 }
 
-// Only the hardware NVIDIA D3D11 branch creates this oracle. It measures D's envelope over the complete frame set
-// before checking any arithmetic difference, so an early frame is judged against the same envelope as a late one.
+// Only the hardware NVIDIA D3D11 A/B branch creates this oracle. D's paired entries are diagnostic only.
 internal sealed class TemporalNvidiaHistoryOracle(ITestOutputHelper output)
 {
-    readonly TemporalHistoryEnvelope _envelope = new();
-    readonly List<(int Frame, string What, TemporalHistoryDifference Difference)> _comparisons = [];
-
     internal void ObserveD(int frame, TemporalHistorySample fused, TemporalHistorySample split)
     {
-        TemporalHistoryDifference d = Compare(frame, "D fused vs D split", fused, split, record: false);
-        _envelope.Include(d);
-        output.WriteLine($"  frame {frame}: D envelope so far: {_envelope}");
+        TemporalHistoryDifference difference = TemporalHistoryDifference.Measure(fused.Colour, fused.State,
+            split.Colour, split.State);
+        output.WriteLine($"  frame {frame}: D fused vs D split (diagnostic only): {difference}, "
+            + $"R8 equal {fused.Visibility.AsSpan().SequenceEqual(split.Visibility)}, "
+            + $"depth bits equal {MemoryMarshal.AsBytes(fused.Depth.AsSpan()).SequenceEqual(MemoryMarshal.AsBytes(split.Depth.AsSpan()))}");
     }
 
     internal TemporalHistoryDifference Compare(int frame, string what, TemporalHistorySample a,
-        TemporalHistorySample b, bool record = true)
+        TemporalHistorySample b)
     {
         TemporalHistoryDifference difference = TemporalHistoryDifference.Measure(a.Colour, a.State, b.Colour, b.State);
         output.WriteLine($"  frame {frame}: {what}: {difference}");
-        Assert.True(difference.Locks.Count == 0, $"frame {frame}: {what}: stored locks differ: {difference}");
         TemporalHistorySample.Exact(frame, what + " R8", a.Visibility, b.Visibility);
         TemporalHistorySample.Exact(frame, what + " depth", a.Depth, b.Depth);
-        if (record) _comparisons.Add((frame, what, difference));
+        Assert.True(TemporalNvidiaComparisonRule.Allows(difference),
+            $"frame {frame}: {what} exceeds the fixed 2 half-step colour/confidence bound or has different locks: {difference}");
         return difference;
     }
 
-    internal void Complete()
-    {
-        output.WriteLine($"  NVIDIA Direct3D 11 measured D envelope: {_envelope}");
-        foreach ((int frame, string what, TemporalHistoryDifference difference) in _comparisons)
-            Assert.True(_envelope.Allows(difference),
-                $"frame {frame}: {what} exceeds D's measured envelope ({_envelope}): {difference}");
-    }
+    internal void Complete() => output.WriteLine("  NVIDIA Direct3D 11 A/B: fixed 2 half steps per colour/confidence "
+        + "channel, exact stored locks, R8 and depth. D entry differences do not change this bound.");
 }

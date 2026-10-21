@@ -34,7 +34,8 @@ namespace KhaozEngine.Render3D.Rendering
         {
             IGpuResourceFactory f = gd.Factory;
             _shaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
-                ShaderSources.TemporalDebugFragment(TemporalResolvePrecisionPolicy.For(gd)));
+                TemporalVisibilityGatherPolicy.ForBackend(
+                    ShaderSources.TemporalDebugFragment(TemporalResolvePrecisionPolicy.For(gd)), gd.Backend));
             _modeLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 new GpuResourceLayoutElement("DebugView", GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment)));
             for (int i = 0; i < Views.Length; i++)

@@ -46,7 +46,8 @@ namespace KhaozEngine.Render3D.Rendering
             _staging = f.CreateTexture(GpuTextureDescription.Texture2D(GridWidth, GridHeight,
                 GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Staging));
             _shaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
-                ShaderSources.TemporalProbeFragment(TemporalResolvePrecisionPolicy.For(gd)));
+                TemporalVisibilityGatherPolicy.ForBackend(
+                    ShaderSources.TemporalProbeFragment(TemporalResolvePrecisionPolicy.For(gd)), gd.Backend));
             _pipeline = f.CreateGraphicsPipeline(new GpuPipelineDescription
             {
                 BlendFactor = Vector4.Zero,

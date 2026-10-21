@@ -72,19 +72,21 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         /// <summary>Past the precondition the decision has no loop, no array and no dynamic index, and it issues exactly
-        /// the fast path's fetches: 41 where D issues 101. None is a current depth or motion, which the current mask
-        /// carries.</summary>
+        /// the fast path's twelve gathers where D issues 101 loads. None is a current depth or motion, which the
+        /// current mask carries.</summary>
         [Fact]
         public void TheFastPathIsStraightLineWithItsFetchesCounted()
         {
             string text = ShaderSources.TemporalVisibilityReleasesGlsl;
             string fast = text[text.IndexOf("    path = VisibilityFastPath;", StringComparison.Ordinal)..];
             Assert.DoesNotMatch(@"\bfor\s*\(|\bwhile\s*\(|\bdo\s*\{|\[", text);
-            Assert.Equal(TemporalVisibilityFastPath.Fetches, Regex.Matches(fast, @"\btexelFetch\(").Count);
-            Assert.Equal(41, TemporalVisibilityFastPath.Fetches);
+            Assert.Empty(Regex.Matches(fast, @"\btexelFetch\("));
+            Assert.Equal(0, TemporalVisibilityFastPath.Fetches);
+            Assert.Equal(12, TemporalVisibilityFastPath.Gathers);
+            Assert.Equal(TemporalVisibilityFastPath.Gathers, Regex.Matches(fast, @"\btextureGather\(").Count);
             Assert.DoesNotMatch(@"sampler2D\((MotionTex|SceneDepth),", fast);
-            Assert.Equal(9, Regex.Matches(fast, @"texelFetch\(sampler2D\(KeyShadowVisibility, LinearClamp\)").Count);
-            Assert.Equal(16, Regex.Matches(fast, @"texelFetch\(sampler2D\(PrevDepth, LinearClamp\)").Count);
+            foreach (string texture in new[] { "KeyShadowVisibility", "PreviousKeyShadowVisibility", "PrevDepth" })
+                Assert.Equal(4, Regex.Matches(fast, @"textureGather\(sampler2D\(" + texture + ", LinearClamp\\)").Count);
             // Every stored depth is read only after the range skip has declined.
             Assert.True(fast.IndexOf("path |= VisibilityRangeSkip;", StringComparison.Ordinal)
                 < fast.IndexOf("sampler2D(PrevDepth", StringComparison.Ordinal));

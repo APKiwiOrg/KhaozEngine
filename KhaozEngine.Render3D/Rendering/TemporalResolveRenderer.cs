@@ -87,8 +87,9 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuOutputDescription(null, TemporalFormats.PreviousDepth));
         }
 
-        // A fragment program's text as compiled: the shipped text unless a test rewrites it.
-        string FragmentSource(string source) => _fragmentSourceForTests?.Invoke(source) ?? source;
+        // Apply fixture rewrites before selecting this backend's current visibility reads.
+        string FragmentSource(string source) => TemporalVisibilityGatherPolicy.ForBackend(
+            _fragmentSourceForTests?.Invoke(source) ?? source, _gd.Backend);
 
         /// <summary>The resolve's resource layout, for a pass that binds the resolve's own set to re-evaluate
         /// it.</summary>

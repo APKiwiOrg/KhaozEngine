@@ -454,7 +454,8 @@ void main() {
 
     /// <summary>A probe drawing <paramref name="hardwareSize"/> squared cases a draw, or
     /// <paramref name="softwareSize"/> squared on a software adapter.</summary>
-    internal TemporalVisibilityEquivalenceProbe(int hardwareSize, int softwareSize)
+    internal TemporalVisibilityEquivalenceProbe(int hardwareSize, int softwareSize,
+        Func<string, string>? productionSourceForTests = null)
     {
         Size = Device.Diagnostics.SoftwareAdapter == true ? softwareSize : hardwareSize;
         IGpuResourceFactory f = Device.Factory;
@@ -473,9 +474,11 @@ void main() {
         _case = MakePass("case", CaseSource, _caseLayout, CaseTargets.Length);
         _caseTargets = _case.Targets;
         _d = MakePass("frozen D", DSource, _layout, 2);
-        _production = MakePass("production decision", ProductionSource, _layout, 2);
+        _production = MakePass("production decision", productionSourceForTests?.Invoke(ProductionSource)
+            ?? TemporalVisibilityGatherPolicy.ForBackend(ProductionSource, Device.Backend), _layout, 2);
         _classifier = MakePass("classifier", ClassifierSource, _layout, 2);
-        _unruled = MakePass("without the binade rule", UnruledSource, _layout, 2);
+        _unruled = MakePass("without the binade rule",
+            TemporalVisibilityGatherPolicy.ForBackend(UnruledSource, Device.Backend), _layout, 2);
     }
 
     Pass MakePass(string name, string source, IGpuResourceLayout layout, int targets)

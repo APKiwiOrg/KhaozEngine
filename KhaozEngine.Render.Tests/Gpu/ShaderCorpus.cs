@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Internal;
+using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Tests.Gpu
 {
@@ -87,9 +88,15 @@ namespace KhaozEngine.Tests.Gpu
             byte[] vertex = SpirvFrontEnd.ToSpirv(program.VertexGlsl, GpuShaderStages.Vertex, program.Name);
             byte[] fragment = SpirvFrontEnd.ToSpirv(program.FragmentGlsl, GpuShaderStages.Fragment, program.Name);
             rows.Add(Row($"{program.Name}.vertex.spirv", vertex, dump));
-            rows.Add(Row($"{program.Name}.fragment.spirv", fragment, dump));
+            string vulkanSource = TemporalVisibilityGatherPolicy.ForBackend(program.FragmentGlsl, GpuBackendKind.VulkanNative);
+            byte[] vulkanFragment = ReferenceEquals(vulkanSource, program.FragmentGlsl) ? fragment
+                : SpirvFrontEnd.ToSpirv(vulkanSource, GpuShaderStages.Fragment, program.Name);
+            rows.Add(Row($"{program.Name}.fragment.spirv", vulkanFragment, dump));
 
-            CrossCompiledPair msl = SpirvCrossCompile.VertexFragmentToMsl(vertex, fragment, program.Name);
+            string metalSource = TemporalVisibilityGatherPolicy.ForBackend(program.FragmentGlsl, GpuBackendKind.MetalNative);
+            byte[] metalFragment = ReferenceEquals(metalSource, program.FragmentGlsl) ? fragment
+                : SpirvFrontEnd.ToSpirv(metalSource, GpuShaderStages.Fragment, program.Name);
+            CrossCompiledPair msl = SpirvCrossCompile.VertexFragmentToMsl(vertex, metalFragment, program.Name);
             rows.Add(Row($"{program.Name}.vertex.msl", msl.VertexSource, dump));
             rows.Add(Row($"{program.Name}.fragment.msl", msl.FragmentSource, dump));
             rows.Add(LayoutRow($"{program.Name}.layout.msl", msl.Reflection));

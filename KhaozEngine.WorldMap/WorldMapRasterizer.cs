@@ -38,12 +38,10 @@ public static class WorldMapRasterizer
         long revision = source.Revision;
         float levelPpm = style.LevelPixelsPerMetre(chunk.Level);
         float maxCellSize = 2f / levelPpm;
-        // The resolution contract fixes the returned cell size before allocating the expanded grid.
+        // The resolution contract fixes the returned cell size before allocating each owner's grid.
         float cellSize = WorldMapRasterReach.SampleCellSize(source.SurfaceCellSize, maxCellSize);
         float margin = WorldMapRasterReach.SurfaceMetres(style, cellSize, chunk.Level);
         var canvas = new RasterCanvas(size, border, rect, levelPpm);
-        // The gutter samples the neighbouring map area with the same reach as the interior.
-        var sampler = new SurfaceSampler(source.SampleSurface(canvas.PaintedRect.Expand(margin), maxCellSize: maxCellSize));
         var relief = new ReliefShader(style.Relief);
         var regions = new List<RasterCanvas>();
         // Each gutter region keeps its owner's rounded origin and interior sampling lattice.
@@ -55,6 +53,8 @@ public static class WorldMapRasterizer
                 var owner = new WorldMapChunkCoord(checked(chunk.X + east), checked(chunk.Y - south), chunk.Level);
                 var region = new RasterCanvas(canvas, WorldMapChunking.ChunkRect(owner, style.ChunkMetres), east, south);
                 regions.Add(region);
+                // Cropping changes the grid origin, so preserve each owner's borderless query frame as well as its pixels.
+                var sampler = new SurfaceSampler(source.SampleSurface(region.Rect.Expand(margin), maxCellSize: maxCellSize));
                 PaintSurface(region, sampler, relief, style);
             }
 

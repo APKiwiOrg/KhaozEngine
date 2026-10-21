@@ -20,6 +20,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   including parent fallback. `WorldMapRasterizer.Rasterize(source, style, chunk, border)` adds the gutter,
   while the three-argument overload and positional constructor stay borderless. Read cache image pixels
   through `ByteOffset` and upload `TextureSize` (#1524).
+- Keep each gutter owner's borderless surface query frame, preserving fractional source-cell ownership
+  and exact interior bytes. A cache image makes nine surface queries and paints only the clipped regions (#1524).
 
 ## 21.9.0
 

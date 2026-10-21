@@ -135,10 +135,16 @@ cache image pixels indexes through `ByteOffset` and uploads `TextureSize`, never
 extent.
 
 At level `L`, the rasterizer uses `levelPpm = EffectivePixelsPerMetre / 2^L` and requests
-`SampleSurface(area, maxCellSize: 2f / levelPpm)`. It samples once over the chunk plus a margin of
-`2 * returnedCellSize + Water.ShorelinePixels / levelPpm` metres beyond the painted area, which is the
-chunk grown by `border / levelPpm`. The resolution contract determines
-the returned cell size before sampling, so the margin covers coarse relief samples too.
+`SampleSurface(area, maxCellSize: 2f / levelPpm)` once for each chunk that owns output pixels. Each query
+covers that owner's full chunk rectangle plus a margin of
+`2 * returnedCellSize + Water.ShorelinePixels / levelPpm` metres, exactly as its borderless raster would.
+Preserving this query frame also preserves the returned grid origin and fractional source-cell ownership.
+A borderless image makes one surface query. A cache image's one-pixel gutter makes nine. Wider gutters
+query every owner they reach once. The image retains one revision stamp captured before the first query.
+These reads can materialize full owner grids, but pixel painting, contours and shoreline masks cover only each
+owner's clipped output region and its required halo. Neighbour images are never rasterized in full.
+The resolution contract determines the returned cell size before sampling, so the margin covers coarse
+relief samples too.
 When contours are enabled, replace the shoreline pixel radius in that margin with
 `Max(Water.ShorelinePixels, Contours.WidthPixels / 2 + 1)`. This bounded neighbourhood covers
 the contour's height differences and stroke fringe, and participates in cache invalidation.

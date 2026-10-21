@@ -3667,6 +3667,10 @@
       "sha256": "3f004982e788c176b61913a22150b063241b451e576b891819a4b5b7fdedb7c3"
     },
     {
+      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/benchmark-result-3.md",
+      "sha256": "3ea851841b9fb66571a632df3f3cb5820e852caf0110ff521f7079a4eada63f7"
+    },
+    {
       "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/field-path-share.md",
       "sha256": "15daefafd65fbb95688efc59f6a4c02e3a65a34e5ac1690711df938bdf11cebd"
     },

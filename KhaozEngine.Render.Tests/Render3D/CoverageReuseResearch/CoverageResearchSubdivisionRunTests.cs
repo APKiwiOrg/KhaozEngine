@@ -16,6 +16,7 @@ public sealed class CoverageResearchSubdivisionRunTests
 {
     sealed record Configuration(CoverageResearchFile SourceManifest, CoverageResearchFile Recipes);
     sealed record Recipes(CoverageResearchSubdivisionVertex[] Vertices);
+    sealed record Run(CoverageResearchFile Manifest, CoverageResearchFile Subdivision);
 
     [CoverageResearchFact]
     public void External_subdivision_uses_the_unchanged_constructor_and_certifier_on_the_original_posed_surface()
@@ -23,11 +24,30 @@ public sealed class CoverageResearchSubdivisionRunTests
         string? configurationPath = Environment.GetEnvironmentVariable("KE_COVERAGE_RESEARCH_SUBDIVISION");
         if (string.IsNullOrEmpty(configurationPath)) return;
         var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        using var document = JsonDocument.Parse(File.ReadAllBytes(configurationPath));
+        if (document.RootElement.ValueKind == JsonValueKind.Array)
+        {
+            var runs = JsonSerializer.Deserialize<Run[]>(document, options)!;
+            Assert.NotEmpty(runs);
+            foreach (var run in runs)
+            {
+                run.Manifest.Read();
+                run.Subdivision.Read();
+                Measure(run.Manifest.Path, run.Subdivision.Path);
+            }
+            return;
+        }
+        Measure(Environment.GetEnvironmentVariable(CoverageResearchManifest.Variable)!, configurationPath);
+    }
+
+    static void Measure(string manifestPath, string configurationPath)
+    {
+        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
         var configuration = JsonSerializer.Deserialize<Configuration>(File.ReadAllBytes(configurationPath), options)!;
         configuration.SourceManifest.Read();
         var source = CoverageResearchFixture.Load(CoverageResearchManifest.Load(configuration.SourceManifest.Path));
         var recipes = JsonSerializer.Deserialize<Recipes>(configuration.Recipes.Read(), options)!.Vertices;
-        var manifest = CoverageResearchManifest.Load(Environment.GetEnvironmentVariable(CoverageResearchManifest.Variable)!);
+        var manifest = CoverageResearchManifest.Load(manifestPath);
         var target = CoverageResearchFixture.Load(manifest);
         Assert.Equal(target.Topology.SourceVertexCount, recipes.Length);
         Assert.Equal(source.Anchors.Select(a => a.Key), target.Anchors.Select(a => a.Key));

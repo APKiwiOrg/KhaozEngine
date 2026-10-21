@@ -219,8 +219,10 @@ Task 7h Z round 2 requires GL_EXT_control_flow_attributes and marks only the fal
 `[[dont_flatten]]`. The unchanged shaderc options retain SelectionControl DontFlatten, and the existing
 SPIRV-Cross HLSL emitter writes `[branch]` without an option change. Free dump 39636752557 confirms that all six
 shipped DXBC programs place the twelve scalar barriers inside a real conditional branch, with zero precise
-markings. The helper arithmetic and frozen-D text remain unchanged. Local correctness passes. The remaining
-gate is one free all-leg correctness dispatch on the pushed task head.
+markings. The helper arithmetic and frozen-D text remain unchanged. Local correctness passes. Free all-leg run
+39641073352 at pushed candidate 722a21059 passes all three renderer legs with 1754 passed, zero failed and the
+one opt-in dump skip each, plus 625/625 Vulkan sync tests. All 114 DXBC cases pass on each renderer leg, including
+the six conditional-barrier facts. No comparison bound or accepted cost changes, and no speedup is claimed.
 
 ### Owner-accepted synthetic costs, 2026-10-19
 

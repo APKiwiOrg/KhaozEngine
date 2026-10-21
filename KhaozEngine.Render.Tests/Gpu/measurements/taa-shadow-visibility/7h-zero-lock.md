@@ -114,6 +114,8 @@ No manual validation is needed for the captured compiler failure. Integration re
 
 ## Round 2 selection control
 
+The round 2 starting guard passed on fix/taa-vis-zero-lock at `5da276913`, with a clean worktree.
+
 Round 2 keeps the exact qualification and the ordered helper arithmetic. The only production behavior change
 is `[[dont_flatten]]` on the existing fallback selection. Both temporal precision headers first require
 `GL_EXT_control_flow_attributes`. The isolated B probe enables the same extension before including the extracted
@@ -212,3 +214,51 @@ remain valid. The updated record's final hash is reverified before its commit.
 
 The final Release solution build after the fixture and oracle-header updates also returned 0, with zero
 warnings and errors, in 25.992 seconds through build-slot.
+
+### Round 2 hosted correctness
+
+The single free all-leg run is [39641073352](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39641073352),
+on pushed candidate `722a2105981e6ed8de0a07f3959e62709934407e`. The source SHA was resolved with git rev-parse,
+verified against the remote branch and checked against the run's headSha. The dispatch uses legs all, tier push,
+bake false and exactly the selection recorded for 7g.5 run 39571324204:
+
+```text
+((FullyQualifiedName~KhaozEngine.Tests.Gpu.Temporal&FullyQualifiedName!~CostPerf)|((FullyQualifiedName~Shadow|FullyQualifiedName~Golden)&FullyQualifiedName!~Perf&FullyQualifiedName!~Bench)|FullyQualifiedName~MotionTargetLifecycleGpuTests|FullyQualifiedName~D3D11FxcValidationTests|FullyQualifiedName~TemporalLockReleaseProbe|FullyQualifiedName~TemporalVisibilityGatherGpuTests)
+```
+
+| Leg | Job | Main passed / failed / skipped | Entry identity | A/B | Equivalence | Gather class | DXBC |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Hosted Metal | 119364505820 | 1754 / 0 / 1 | 10/10 | 12/12 | 6/6 | 7/7 | 114/114 |
+| WARP | 119364506025 | 1754 / 0 / 1 | 10/10 | 12/12 | 6/6 | 7/7 | 114/114 |
+| lavapipe | 119364505750 | 1754 / 0 / 1 | 10/10 | 12/12 | 6/6 | 7/7 | 114/114 |
+| Vulkan sync | 119364505746 | 625 / 0 / 0 | Separate golden and compute selection | | | | |
+
+All three renderer logs report all 4,194,304 probe cases written by both P and B, with B/C bit mismatches zero.
+Metal's P/B and P/C counts are zero. WARP's and lavapipe's historical P/B and P/C counts remain 268335.
+Each has six raw gather readbacks totaling 100,253,392 component comparisons with zero mismatches, twelve
+equivalence decision rows with zero mismatches and twenty path-share stored-lock samples with zero differences.
+The Windows FXC step separately passed 31 cases with its one opt-in dump skip. Hosted Metal is Apple Paravirtual
+device, WARP is Microsoft Basic Render Driver and lavapipe is llvmpipe (LLVM 20.1.2, 256 bits).
+
+The watcher returned 0 after the last leg completed. The run's final conclusion and the five requested job
+conclusions, including leg selection, are success at the verified source SHA. The conditional sharded full-suite
+aggregator is skipped on this filtered dispatch, as its workflow condition requires. The renderer legs' one
+test skip each is the opt-in DXBC dump. No second correctness run was dispatched. Linux's cold, warm and disabled
+shader-cache checks each passed their one test.
+
+All six branch facts pass on every leg. Large-frame production and D prime fused/split readbacks have no colour
+differences and exact state, R8 and depth on lavapipe. Its moving-shadow cases are exact, and its follow-walk
+colour checks retain the unchanged main software-Vulkan rule of 0.0625 on at most 0.0025 of compared values.
+No oracle, comparison rule, accepted cost or bound was changed for this hint.
+
+The exact vulkan-validation-sync artifact contains one armed VulkanValidationLogHost producer marker,
+explicitly naming KE_VULKAN_VALIDATION='sync', and zero warning or error severity lines. Its 625 tests all pass,
+with no skip. The downloaded artifact was deleted after reading.
+
+The closeout changes only this record, its manifest hash, the spec and the Task 7h Z plan paragraph. Programs,
+tables, corpus and DXBC remain those tested at `722a2105981e6ed8de0a07f3959e62709934407e`. All downloaded logs and
+scratch data are deleted after their summaries are recorded. The known ContourTests.cs formatting errors and
+generic workspace-loading warning are not changed. No other out-of-scope finding was actioned.
+
+No manual validation is needed. Integration belongs to the owning orchestrator. No main merge, tag, release,
+timing, benchmark, stress or billed workflow is part of this round, and no performance saving is claimed.

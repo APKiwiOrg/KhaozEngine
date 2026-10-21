@@ -427,8 +427,10 @@ Task 7h Z round 2 keeps the design and adds only GL_EXT_control_flow_attributes 
 fallback selection. The unchanged compiler path retains SelectionControl DontFlatten and emits HLSL `[branch]`.
 Free dump 39636752557 recaptures all six shipped DXBC programs with twelve scalar barriers inside the branch and
 zero precise markings. The six branch facts and local correctness pass. Frozen-D text pins remain unchanged,
-and the fixture records the measured 34-to-35 temporary change. The remaining gate is one free all-leg
-correctness dispatch on the pushed task head. Integration remains the orchestrator's.
+and the fixture records the measured 34-to-35 temporary change. Free all-leg run 39641073352 at pushed candidate
+722a21059 passes with 1754 passed, zero failed and one opt-in dump skip on each renderer leg, plus 625/625 Vulkan
+sync tests. All 114 DXBC cases pass on every renderer leg, including the six conditional-barrier facts. The
+watcher returns 0. Round 2 is ready for orchestrator review and integration, with no performance claim.
 
 ### Task 8: Prove exact entry identity and integration edges
 

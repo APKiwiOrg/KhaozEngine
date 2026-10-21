@@ -51,6 +51,9 @@ internal static class CoveragePerfReportJson
             SubmissionCounts(observation, "measured", observation.Measured);
         }
         text.AppendLine();
+        text.AppendLine("Warm-up frames may carry cold-setup submissions and completion fences outside every gate. Measured frames require one frame submission and the control fence schedule.");
+        foreach (var block in verdict.WarmupSubmissionDeviations) WarmupDeviations(block);
+        text.AppendLine();
         foreach (string disclosure in verdict.SharedSubmissionDisclosure) text.AppendLine("- " + disclosure);
         text.AppendLine();
         text.AppendLine("Frame wall");
@@ -91,6 +94,19 @@ internal static class CoveragePerfReportJson
 
         void SubmissionCounts(CoveragePerfSharedSubmissionObservation observation, string phase, CoveragePerfSubmissionSummary counts) =>
             text.AppendLine($"- Block {observation.Block} {observation.Condition} {phase}, {counts.Frames} frames: {counts.Submissions} submissions, {counts.SubmittedCompletionFences} completion fences, {counts.SubmissionParticipants} participants, {counts.CompletionConsumers} consumers, {counts.ProductionWaits} production waits.");
+
+        void WarmupDeviations(CoveragePerfWarmupSubmissionDeviations block)
+        {
+            string line = FormattableString.Invariant($"- Block {block.Block} {block.Condition} warm-up cold setup outside every gate");
+            if (block.SteadySubmissions is not int submissions || block.SteadyCompletionFences is not int fences)
+                text.AppendLine(line + ": the measured steady schedule is unresolved, so no warm-up deviation is listed.");
+            else if (block.Frames.IsDefaultOrEmpty)
+                text.AppendLine(line + FormattableString.Invariant($": none. Every warm-up frame matches the measured steady schedule of {submissions} submissions and {fences} completion fences."));
+            else
+                text.AppendLine(line + FormattableString.Invariant($", measured steady schedule {submissions} submissions and {fences} completion fences: ")
+                    + string.Join(", ", block.Frames.Select(f => FormattableString.Invariant(
+                        $"frame {f.FrameIndex} with {f.Submissions} submissions and {f.SubmittedCompletionFences} completion fences"))) + ".");
+        }
     }
 
     internal static void WriteReturnedReport(CoveragePerfReport report, string jsonPath, string markdownPath)

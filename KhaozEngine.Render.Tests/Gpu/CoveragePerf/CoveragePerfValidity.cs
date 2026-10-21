@@ -141,7 +141,10 @@ internal static class CoveragePerfValidity
             if (sample.Fallback) Invalid("GPU fallback or route refusal.");
             if (sample.Actors != result.Block.Actors || sample.MainVisibleActors != result.Block.Actors) Invalid("actual or visible actor count differs.");
             if (sample.CpuFramePreparationTicks < 0 || frequency <= 0) Invalid("CPU aggregate or clock identity is invalid.");
-            if (sample.Submissions != 1) Invalid("submission schedule is not one frame submission.");
+            // Warm-up absorbs cold setup, such as the retire barrier that seals equip-time replacements on the first
+            // Begin. Every frame still needs its frame submission. Measured frames need exactly that one.
+            if (measured ? sample.Submissions != 1 : sample.Submissions < 1)
+                Invalid(measured ? "submission schedule is not one frame submission." : "submission schedule has no frame submission.");
             if (sample.SubmittedCompletionFences < 0 || sample.SubmissionParticipants < 0 || sample.CompletionConsumers < 0)
                 Invalid("submission observations cannot be negative.");
             if (measured && sample.ResourceGrowth != 0) Invalid("hot resource growth.");
@@ -149,10 +152,12 @@ internal static class CoveragePerfValidity
             if (result.Block.TimerLayout == CoveragePerfTimerLayout.CpuOnly)
             {
                 if (sample.Gpu is not null) Invalid("CPU route contains unexpected query instrumentation.");
-                if (result.Block.Condition != CoveragePerfCondition.SharedOn && (sample.SubmittedCompletionFences != 0 ||
+                // Consumers and participants identify the control route on every frame. Fences are cold setup in warm-up.
+                if (result.Block.Condition != CoveragePerfCondition.SharedOn && (measured && sample.SubmittedCompletionFences != 0 ||
                     sample.CompletionConsumers != 0 || sample.SubmissionParticipants !=
                     (result.Block.Condition == CoveragePerfCondition.DirectOff ? 0 : 1)))
-                    Invalid("shared-host control requires zero completion fences/consumers and the direct/shared participant schedule.");
+                    Invalid(measured ? "shared-host control requires zero completion fences/consumers and the direct/shared participant schedule."
+                        : "shared-host control requires zero completion consumers and the direct/shared participant schedule.");
                 continue;
             }
             if (sample.Gpu is not { } gpu) { Invalid("unresolved GPU baseline/query outcome."); continue; }

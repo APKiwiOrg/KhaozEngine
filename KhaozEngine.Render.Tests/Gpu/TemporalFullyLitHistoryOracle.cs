@@ -11,13 +11,13 @@ namespace KhaozEngine.Tests.Gpu;
 // Measure the whole walk before asserting. A colour mismatch must not hide later state or later frames.
 internal sealed class TemporalFullyLitHistoryOracle(ITestOutputHelper output, bool softwareVulkan)
 {
-    internal sealed record Snapshot(int Width, byte[] Colour, byte[] State, byte[] Visibility, byte[] Depth)
+    internal sealed record Snapshot(int Width, int InternalWidth, byte[] Colour, byte[] State, byte[] Visibility, byte[] Depth)
     {
         internal static Snapshot Read(TemporalFixture fx)
         {
             TemporalHistory h = fx.Scene.TemporalHistory;
             byte[] ReadTexture(IGpuTexture texture) => TemporalVisibilityFullyLitGpuTests.Bytes(fx.Device, texture);
-            return new((int)h.Color(h.WriteIndex).Width, ReadTexture(h.Color(h.WriteIndex)),
+            return new((int)h.Color(h.WriteIndex).Width, (int)h.PreviousDepth(h.WriteIndex).Width, ReadTexture(h.Color(h.WriteIndex)),
                 ReadTexture(h.Confidence(h.WriteIndex)),
                 ReadTexture(fx.Scene.TemporalResolveRendererForTests!.VisibilityHistory.Texture(h.WriteIndex)),
                 ReadTexture(h.PreviousDepth(h.WriteIndex)));
@@ -63,15 +63,16 @@ internal sealed class TemporalFullyLitHistoryOracle(ITestOutputHelper output, bo
     internal void Report(int frame, string pair, Snapshot a, Snapshot b, bool entryComparison = false)
     {
         Assert.Equal(a.Width, b.Width);
+        Assert.Equal(a.InternalWidth, b.InternalWidth);
         Channel("colour", a.Colour, b.Colour, 2, 4);
         Channel("confidence", a.State, b.State, 2, 2, offset: 0);
         Channel("lock", a.State, b.State, 2, 2, offset: 1);
         Channel("mark", a.State, b.State, 2, 2, offset: 1, mark: true);
-        Channel("R8", a.Visibility, b.Visibility, 1, 1);
-        Channel("depth", a.Depth, b.Depth, 4, 1);
+        Channel("R8", a.Visibility, b.Visibility, 1, 1, width: a.InternalWidth);
+        Channel("depth", a.Depth, b.Depth, 4, 1, width: a.InternalWidth);
 
         void Channel(string name, byte[] left, byte[] right, int bytes, int components, int offset = -1,
-            bool mark = false)
+            bool mark = false, int? width = null)
         {
             Assert.Equal(left.Length, right.Length);
             var difference = new Difference();
@@ -81,7 +82,8 @@ internal sealed class TemporalFullyLitHistoryOracle(ITestOutputHelper output, bo
                 (float vb, uint bb) = Value(right, i * bytes, bytes);
                 if (mark) { va = Mark(va); vb = Mark(vb); ba = (uint)va; bb = (uint)vb; }
                 int texel = i / components;
-                difference.Add(va, vb, ba, bb, $"f{frame} ({texel % a.Width},{texel / a.Width}) c{i % components}",
+                int rowWidth = width ?? a.Width;
+                difference.Add(va, vb, ba, bb, $"f{frame} ({texel % rowWidth},{texel / rowWidth}) c{i % components}",
                     bytes == 2 && !mark);
             }
             output.WriteLine($"history-frame {frame} {pair} {name}: {difference}");

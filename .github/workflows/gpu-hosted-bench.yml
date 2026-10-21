@@ -134,6 +134,47 @@ jobs:
           ref: ${{ inputs.ref }}
           fetch-depth: ${{ inputs.coverage-perf-unit != '' && 2 || 1 }}
 
+      # The partner GPU images ship no PowerShell 7, which every coverage step uses. Measurement mode installs one
+      # pinned release, checks its published SHA-256 and puts it first on PATH. Ordinary benches skip both steps.
+      - name: Install PowerShell for coverage measurement (Linux)
+        if: inputs.coverage-perf-unit != '' && runner.os == 'Linux'
+        shell: bash
+        env:
+          PWSH_URL: https://github.com/PowerShell/PowerShell/releases/download/v7.6.7/powershell-7.6.7-linux-x64.tar.gz
+          PWSH_SHA256: 6896f9e3a6b0a354bf470835a96da76d2f801cd50dcf047ad7c4563bf93bf431
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/pwsh"
+          archive="$RUNNER_TEMP/pwsh.tar.gz"
+          mkdir -p "$dir"
+          curl -fsSL --retry 3 -o "$archive" "$PWSH_URL"
+          echo "$PWSH_SHA256  $archive" | sha256sum -c -
+          tar -xzf "$archive" -C "$dir"
+          chmod +x "$dir/pwsh"
+          "$dir/pwsh" -NoProfile -Command "\$PSVersionTable.PSVersion.ToString()"
+          echo "$dir" >> "$GITHUB_PATH"
+
+      - name: Install PowerShell for coverage measurement (Windows)
+        if: inputs.coverage-perf-unit != '' && runner.os == 'Windows'
+        shell: powershell
+        env:
+          PWSH_URL: https://github.com/PowerShell/PowerShell/releases/download/v7.6.7/PowerShell-7.6.7-win-x64.zip
+          PWSH_SHA256: d2f952ebdbf24386cb8923553aa58e41a846db35a6155ea04c58142a4b16dbb7
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          $dir = Join-Path $env:RUNNER_TEMP 'pwsh'
+          $archive = Join-Path $env:RUNNER_TEMP 'pwsh.zip'
+          Invoke-WebRequest -Uri $env:PWSH_URL -OutFile $archive -UseBasicParsing
+          $actual = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          if ($actual -ne $env:PWSH_SHA256) { throw "PowerShell archive SHA-256 $actual does not match $env:PWSH_SHA256" }
+          Expand-Archive -Path $archive -DestinationPath $dir -Force
+          & (Join-Path $dir 'pwsh.exe') -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # An explicit BOM-free UTF-8 append, rather than Windows PowerShell 5.1 Out-File, keeps the file byte-exact.
+          [IO.File]::AppendAllText($env:GITHUB_PATH, $dir + [Environment]::NewLine)
+
       - name: Verify coverage authorization commit
         if: inputs.coverage-perf-unit != ''
         shell: pwsh

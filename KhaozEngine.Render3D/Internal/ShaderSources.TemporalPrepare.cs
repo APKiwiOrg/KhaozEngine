@@ -30,31 +30,6 @@ float temporalNarrowThere(ivec2 at, bool current) {
 }
 ";
 
-        // ---- The current half of the visibility decision's footprint, per internal texel: which of the texel's 3x3
-        //      lie on its own surface, and whether its own view depth is finite. Every program that prepares a texel
-        //      or runs the decision places it before TemporalVisibilityGlsl and TemporalPrepareGlsl ----
-        internal const string TemporalVisibilityMaskGlsl = @"
-// The mask the visibility decision reads in place of this frame's 3x3 depths. Bit n is set where step n of the 3x3, in
-// the visit order of temporalNeighbourTexel and of D's own loop, lies within VisibilityDepthTolerance of the centre's
-// view depth, by D's finite test and D's arithmetic. VisibilityCentreFinite is set where the centre's own view depth is
-// finite, and the mask is zero where it is not, since the decision returns before its 3x3 there. It is a whole number
-// below 1024, which the half-float surface target holds exactly. The split's first pass stores it and the fused entry
-// computes it inline, both through these two functions over the view depths their 3x3 already holds.
-const uint VisibilityCentreFinite = 512u;
-
-// Step n's bit: D's current rejection of a neighbour's view depth against the centre's.
-uint temporalVisibilityCurrentBit(float depth, float centreDepth, int n) {
-    float currentTolerance = VisibilityDepthTolerance * max(centreDepth, 1.0e-5);
-    bool depthFinite = (floatBitsToUint(depth) & 0x7f800000u) != 0x7f800000u;
-    return depthFinite && abs(depth - centreDepth) <= currentTolerance ? 1u << uint(n) : 0u;
-}
-
-// The mask from the accepted bits and the centre's view depth.
-uint temporalVisibilityCurrentMask(uint accepted, float centreDepth) {
-    return (floatBitsToUint(centreDepth) & 0x7f800000u) != 0x7f800000u ? accepted | VisibilityCentreFinite : 0u;
-}
-";
-
         // ---- The per-texel rules ----
         internal const string TemporalPrepareGlsl = @"
 float temporalLuma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
@@ -181,15 +156,13 @@ bool temporalNarrowDepth(ivec2 texel, float depth, ivec2 maxTexel, bool current)
 // What every display pixel whose 3x3 is centred on a texel reprojects by, from that texel's 3x3 alone: the motion and
 // whether it reprojects as background, by the camera's rotation (temporalPreviousUv), the expected depth and whether
 // the depth test runs (step 3), steps 1 and 3's marks (nearerMoved, band, followed, ownReprojected), whether the fast
-// feature is narrow (narrowMoving, step 5), step 6's edge signal (movingEdge and edgeMotion), and the visibility
-// decision's current mask (temporalVisibilityCurrentMask), which the caller computes over the same 3x3.
+// feature is narrow (narrowMoving, step 5), and step 6's edge signal (movingEdge and edgeMotion).
 struct TemporalSurface {
     vec2 motion; bool background; float expectedDepth; bool depthTested; bool nearerMoved; bool band; bool followed;
-    bool ownReprojected; bool narrowMoving; bool movingEdge; float edgeMotion; uint visibilityMask;
+    bool ownReprojected; bool narrowMoving; bool movingEdge; float edgeMotion;
 };
 
-TemporalSurface temporalPrepareSurface(ivec2 centreTexel, ivec2 closestTexel, float closestDepth, ivec2 maxTexel,
-    uint visibilityMask) {
+TemporalSurface temporalPrepareSurface(ivec2 centreTexel, ivec2 closestTexel, float closestDepth, ivec2 maxTexel) {
     vec2 internalSize = Sizes.xy;
     vec2 jitter = Jitter.xy;
     bool historyValid = Jitter.w > 0.5;
@@ -332,13 +305,12 @@ TemporalSurface temporalPrepareSurface(ivec2 centreTexel, ivec2 closestTexel, fl
     surface.narrowMoving = narrowMoving;
     surface.movingEdge = movingEdge;
     surface.edgeMotion = edgeMotion;
-    surface.visibilityMask = visibilityMask;
     return surface;
 }
 
-// The split stores a texel's surface for its second pass in three targets: the motion, the flags and the visibility
-// mask in a half-float target, which holds the motion target's own half floats and whole numbers below 2048 exactly, and
-// the expected depth and the edge motion in single-float targets.
+// The split stores a texel's surface for its second pass in three targets: the motion and the flags in a half-float
+// target, which holds the motion target's own half floats and a whole number below 256 exactly, and the expected depth
+// and the edge motion in single-float targets.
 const int SurfaceBackground = 1;
 const int SurfaceDepthTested = 2;
 const int SurfaceNearerMoved = 4;
@@ -353,7 +325,7 @@ vec4 temporalStoreSurface(TemporalSurface s) {
         | (s.nearerMoved ? SurfaceNearerMoved : 0) | (s.band ? SurfaceBand : 0) | (s.followed ? SurfaceFollowed : 0)
         | (s.ownReprojected ? SurfaceOwnReprojected : 0) | (s.narrowMoving ? SurfaceNarrowMoving : 0)
         | (s.movingEdge ? SurfaceMovingEdge : 0);
-    return vec4(s.motion, float(flags), float(s.visibilityMask));
+    return vec4(s.motion, float(flags), 0.0);
 }
 
 TemporalSurface temporalStoredSurface(vec4 motionAndFlags, float expectedDepth, float edgeMotion) {
@@ -370,7 +342,6 @@ TemporalSurface temporalStoredSurface(vec4 motionAndFlags, float expectedDepth, 
     s.narrowMoving = (flags & SurfaceNarrowMoving) != 0;
     s.movingEdge = (flags & SurfaceMovingEdge) != 0;
     s.edgeMotion = edgeMotion;
-    s.visibilityMask = uint(motionAndFlags.w + 0.5);
     return s;
 }
 ";

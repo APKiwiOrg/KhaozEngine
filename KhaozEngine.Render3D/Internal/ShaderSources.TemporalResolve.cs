@@ -126,12 +126,11 @@ layout(set=0, binding=8) uniform Resolve {" + TemporalResolveUniforms.GlslMember
 layout(set=0, binding=9) uniform texture2D KeyShadowVisibility;
 layout(set=0, binding=10) uniform texture2D PreviousKeyShadowVisibility;
 layout(set=0, binding=11) uniform VisibilityHistory {" + KhaozEngine.Render3D.Rendering.TemporalVisibilityUniforms.GlslMembers + @"};
-" + TemporalCommonGlsl + TemporalResolveTuningGlsl + TemporalVisibilityMaskGlsl + TemporalVisibilityGlsl
-            + TemporalNarrowBothGlsl + TemporalPrepareGlsl + TemporalAccumulateGlsl + @"
+" + TemporalCommonGlsl + TemporalResolveTuningGlsl + TemporalVisibilityGlsl + TemporalNarrowBothGlsl + TemporalPrepareGlsl
+            + TemporalAccumulateGlsl + @"
 // The fused entry point: one display pixel, its 3x3 read from the scene's inputs and prepared inline
-// (temporalWeighted, temporalReactiveDifference, temporalDilate, temporalVisibilityCurrentBit), gathered
-// (temporalGather), its centre texel's surface prepared (temporalPrepareSurface), and the accumulation
-// (temporalAccumulatePixel).
+// (temporalWeighted, temporalReactiveDifference, temporalDilate), gathered (temporalGather), its centre texel's
+// surface prepared (temporalPrepareSurface), and the accumulation (temporalAccumulatePixel).
 TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     vec2 uv;
     vec2 pixelCentre;
@@ -143,10 +142,6 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     float closestDepth = 2.0 * BackgroundLinearDepth;
     ivec2 closestTexel = centreTexel;
     afloat lumas[9];
-    // The reference of the visibility mask, which each step of the 3x3 adds its bit to, as the split's first pass does.
-    float centreViewDepth = temporalViewDepth(texelFetch(sampler2D(MotionTex, LinearClamp), centreTexel, 0).rg,
-        texelFetch(sampler2D(SceneDepth, LinearClamp), centreTexel, 0).r);
-    uint visibilityAccepted = 0u;
 
     ivec2 nextTexel = temporalFirstTexel(centreTexel, maxTexel);
     vec4 nextScene = texelFetch(sampler2D(SceneColor, LinearClamp), nextTexel, 0);
@@ -171,14 +166,11 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
             lumas[(y + 1) * 3 + (x + 1)] = toAfloat(prepared.x);
             temporalGather(neighbourhood, kernels, x + 1, y + 1, toAvec3(prepared.xyz), toAfloat(sceneColor.a),
                 toAfloat(prepared.w));
-            float viewDepth = temporalViewDepth(motion, ndcDepth);
-            temporalDilate(texel, viewDepth, closestDepth, closestTexel);
-            visibilityAccepted |= temporalVisibilityCurrentBit(viewDepth, centreViewDepth, (y + 1) * 3 + (x + 1));
+            temporalDilate(texel, temporalViewDepth(motion, ndcDepth), closestDepth, closestTexel);
         }
     }
 
-    TemporalSurface surface = temporalPrepareSurface(centreTexel, closestTexel, closestDepth, maxTexel,
-        temporalVisibilityCurrentMask(visibilityAccepted, centreViewDepth));
+    TemporalSurface surface = temporalPrepareSurface(centreTexel, closestTexel, closestDepth, maxTexel);
     bool ridge = temporalRidge(lumas[0], lumas[1], lumas[2], lumas[3], lumas[4], lumas[5], lumas[6], lumas[7],
         lumas[8]);
     return temporalAccumulatePixel(uv, centreTexel, maxTexel, neighbourhood, kernels, ridge, surface);

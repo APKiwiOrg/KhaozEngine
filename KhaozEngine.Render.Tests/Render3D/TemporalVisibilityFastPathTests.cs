@@ -72,8 +72,7 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         /// <summary>Past the precondition the decision has no loop, no array and no dynamic index, and it issues exactly
-        /// the fast path's fetches: 41 where D issues 101. None is a current depth or motion, which the current mask
-        /// carries.</summary>
+        /// the fast path's fetches: 59 where D issues 101, including its own current depth and motion.</summary>
         [Fact]
         public void TheFastPathIsStraightLineWithItsFetchesCounted()
         {
@@ -81,8 +80,9 @@ namespace KhaozEngine.Tests.Render3D
             string fast = text[text.IndexOf("    path = VisibilityFastPath;", StringComparison.Ordinal)..];
             Assert.DoesNotMatch(@"\bfor\s*\(|\bwhile\s*\(|\bdo\s*\{|\[", text);
             Assert.Equal(TemporalVisibilityFastPath.Fetches, Regex.Matches(fast, @"\btexelFetch\(").Count);
-            Assert.Equal(41, TemporalVisibilityFastPath.Fetches);
-            Assert.DoesNotMatch(@"sampler2D\((MotionTex|SceneDepth),", fast);
+            Assert.Equal(59, TemporalVisibilityFastPath.Fetches);
+            Assert.Equal(9, Regex.Matches(fast, @"texelFetch\(sampler2D\(MotionTex, LinearClamp\)").Count);
+            Assert.Equal(9, Regex.Matches(fast, @"texelFetch\(sampler2D\(SceneDepth, LinearClamp\)").Count);
             Assert.Equal(9, Regex.Matches(fast, @"texelFetch\(sampler2D\(KeyShadowVisibility, LinearClamp\)").Count);
             Assert.Equal(16, Regex.Matches(fast, @"texelFetch\(sampler2D\(PrevDepth, LinearClamp\)").Count);
             // Every stored depth is read only after the range skip has declined.

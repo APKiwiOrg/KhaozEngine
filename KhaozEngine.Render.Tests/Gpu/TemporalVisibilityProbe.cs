@@ -66,7 +66,7 @@ void main() {
         _layout = Own(f.CreateResourceLayout(new GpuResourceLayoutDescription(elements.ToArray())));
         IGpuShaderSet shaders = Own(f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
             "#version 450\n" + Header + ShaderSources.TemporalCommonGlsl + ShaderSources.TemporalResolveTuningGlsl
-            + ShaderSources.TemporalVisibilityMaskGlsl + ShaderSources.TemporalVisibilityGlsl + Main));
+            + ShaderSources.TemporalVisibilityGlsl + Main));
         _pipeline = Own(f.CreateGraphicsPipeline(new GpuPipelineDescription
         {
             BlendAttachments = [GpuBlendAttachment.OverrideBlend],

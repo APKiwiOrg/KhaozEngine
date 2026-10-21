@@ -43,8 +43,7 @@ internal sealed class TemporalVisibilityEquivalenceProbe : IDisposable
 
     /// <summary>
     /// THE PRODUCTION SIDE: the shipped decision, <c>temporalVisibilityReleases</c>, and the path bits it reports, with
-    /// the current mask the shipped mask functions give the case's centre
-    /// (<see cref="TemporalVisibilityMaskProbe.MaskAtGlsl"/>). A range skip leaves <c>computed</c> false where D
+    /// current depth and motion read by the decision itself. A range skip leaves <c>computed</c> false where D
     /// computed a change, and only there may the validities differ.
     /// </summary>
     internal const string ProductionDecisionGlsl = @"
@@ -54,7 +53,7 @@ bool productionReleases(vec2 uv, ivec2 centre, ivec2 last, vec2 previousUv, floa
     change = 0.0;
     uint shipped = 0u;
     bool release = temporalVisibilityReleases(uv, centre, last, previousUv, expectedDepth,
-        inlineVisibilityMask(centre, last), change, shipped);
+        change, shipped);
     computed = (shipped & VisibilityChangeComputed) != 0u;
     path = ((shipped & VisibilityFastPath) != 0u ? ReportedFast : 0u)
         | ((shipped & VisibilitySlowPath) != 0u ? ReportedSlow : 0u)
@@ -410,8 +409,7 @@ void main() {
         + DMain);
 
     /// <summary>The shipped decision alone.</summary>
-    internal static string ProductionSource => Program(ShaderSources.TemporalVisibilityMaskGlsl
-        + ShaderSources.TemporalVisibilityGlsl + TemporalVisibilityMaskProbe.MaskAtGlsl + ProductionDecisionGlsl
+    internal static string ProductionSource => Program(ShaderSources.TemporalVisibilityGlsl + ProductionDecisionGlsl
         + CaseStructGlsl + ReadCaseGlsl + ProductionMain);
 
     /// <summary>The shipped decision with the binade rule written out, for the diagnostic count only: its blocks at a

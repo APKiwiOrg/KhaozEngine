@@ -14,6 +14,37 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
 {
     [ThreadStatic] static MapSceneAdmission? t_current;
     internal static MapSceneAdmission? Current => t_current;
+    long _preparationCeiling = limits.MaxPreparedBytes;
+    internal long RemainingPreparedBytes => _preparationCeiling - RetainedBytes;
+    internal long RemainingPreparedFaces => limits.MaxPreparedFaces - PreparedFaces;
+    internal int RemainingPatchScopes => limits.MaxPatchScopes - PatchScopes;
+    internal PreparationWindow LimitPreparation(long bytes) => new(this, bytes);
+    internal sealed class PreparationWindow : IDisposable
+    {
+        readonly MapSceneAdmission _owner;
+        readonly long _previous, _start;
+        long _ceiling;
+        internal PreparationWindow(MapSceneAdmission owner, long bytes)
+        {
+            if (bytes < 0) throw new MapSceneCapacityException();
+            _owner = owner; _start = owner.RetainedBytes; _previous = owner._preparationCeiling;
+            _ceiling = Math.Min(_previous, checked(_start + bytes)); owner._preparationCeiling = _ceiling;
+        }
+        internal void ChargeExternal(long bytes)
+        {
+            if (bytes < 0 || bytes > _ceiling - _start) throw new MapSceneCapacityException();
+            _ceiling -= bytes;
+            if (_owner.RetainedBytes > _ceiling) throw new MapSceneCapacityException();
+            _owner._preparationCeiling = _ceiling;
+        }
+        public void Dispose() => _owner._preparationCeiling = _previous;
+    }
+    // Only unused, pre-admitted generation capacity is returned. Retained batches keep their actual charge.
+    internal void ReleaseUnusedBytes(long bytes)
+    {
+        if (bytes < 0 || bytes > RetainedBytes) throw new ArgumentOutOfRangeException(nameof(bytes));
+        RetainedBytes -= bytes;
+    }
     internal long RetainedBytes { get; private set; }
     internal long PreparedFaces { get; private set; }
     internal long PayloadReads { get; private set; }
@@ -74,7 +105,7 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
     }
 
     internal bool CanReservePreparation(long bytes, long faces) => bytes >= 0 && faces >= 0 &&
-        bytes <= limits.MaxPreparedBytes - RetainedBytes && faces <= limits.MaxPreparedFaces - PreparedFaces;
+        bytes <= RemainingPreparedBytes && faces <= limits.MaxPreparedFaces - PreparedFaces;
     internal bool TryReservePreparation(long bytes, long faces)
     {
         if (!CanReservePreparation(bytes, faces)) return false;
@@ -94,7 +125,7 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
 
     internal void ReserveBytes(long bytes)
     {
-        if (bytes < 0 || bytes > limits.MaxPreparedBytes - RetainedBytes) throw new MapSceneCapacityException();
+        if (bytes < 0 || bytes > RemainingPreparedBytes) throw new MapSceneCapacityException();
         RetainedBytes = checked(RetainedBytes + bytes);
     }
 

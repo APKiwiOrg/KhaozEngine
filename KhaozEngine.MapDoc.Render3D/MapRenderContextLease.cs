@@ -1,0 +1,51 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using KhaozEngine.MapDoc.Foliage;
+
+namespace KhaozEngine.MapDoc.Render3D;
+
+/// <summary>Captured dependencies and cached samples retain their CPU charge across policy-only replacements.</summary>
+internal sealed class MapRenderContextLease : IDisposable
+{
+    sealed class Shared(MapWindowFoliageContext context, MapRenderAdmission.CpuLease capture)
+    {
+        internal readonly object Gate = new();
+        internal readonly List<MapRenderAdmission.CpuLease> Charges = [capture];
+        internal MapWindowFoliageContext Context => context;
+        internal int Owners = 1;
+    }
+    readonly Shared _shared;
+    bool _disposed;
+    internal MapRenderContextLease(MapWindowFoliageContext context, MapRenderAdmission.CpuLease capture) => _shared = new(context, capture);
+    MapRenderContextLease(Shared shared) => _shared = shared;
+    internal MapWindowFoliageContext Context => _shared.Context;
+    internal long CpuBytes { get { lock (_shared.Gate) return _shared.Charges.Sum(c => c.Bytes); } }
+    internal MapRenderContextLease Retain()
+    {
+        lock (_shared.Gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            checked { _shared.Owners++; }
+            return new(_shared);
+        }
+    }
+    internal void Own(MapRenderAdmission.CpuLease charge)
+    {
+        lock (_shared.Gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _shared.Charges.Add(charge);
+        }
+    }
+    public void Dispose()
+    {
+        lock (_shared.Gate)
+        {
+            if (_disposed) return; _disposed = true;
+            if (--_shared.Owners != 0) return;
+            foreach (var charge in _shared.Charges) charge.Dispose();
+            _shared.Charges.Clear();
+        }
+    }
+}

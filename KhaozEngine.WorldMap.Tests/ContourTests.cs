@@ -145,9 +145,11 @@ public sealed class ContourTests
     {
         var style = new WorldMapStyle
         {
-            ChunkMetres = 8f, PixelsPerMetre = 4f,
+            ChunkMetres = 8f,
+            PixelsPerMetre = 4f,
             Relief = new(Strength: 0f, SteepDarken: 1f),
-            BuildingShadowOffsetMetres = Vector2.Zero, WallWidthMetres = 0f,
+            BuildingShadowOffsetMetres = Vector2.Zero,
+            WallWidthMetres = 0f,
             Contours = new(interval, color ?? Color.Black, width)
         };
         return style;

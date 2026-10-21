@@ -256,9 +256,9 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Whether the owner freed this handle, the same one thing <see cref="FakeTexture"/> records and
         /// for the same reason: it is what pins the frame a retired buffer is actually destroyed on.</summary>
-        internal bool Disposed { get; private set; }
-
-        public void Dispose() => Disposed = true;
+        internal bool Disposed => DisposeCalls != 0;
+        internal int DisposeCalls { get; private set; }
+        public void Dispose() => DisposeCalls++;
     }
 
     internal sealed class FakeTexture : IGpuTexture
@@ -342,9 +342,9 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Whether the owner freed this binding. Paired with
         /// <see cref="FakeGpuResourceFactory.ResourceSets"/> to pin the frame a retired set is destroyed on.</summary>
-        internal bool Disposed { get; private set; }
-
-        public void Dispose() => Disposed = true;
+        internal bool Disposed => DisposeCalls != 0;
+        internal int DisposeCalls { get; private set; }
+        public void Dispose() => DisposeCalls++;
     }
 
     internal sealed class FakeShaderSet : IGpuShaderSet

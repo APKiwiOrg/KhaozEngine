@@ -151,3 +151,34 @@ LAG|hardware|Native M object 8.0 px|0.009826070723057532|0.006882819716845152|0.
 LAG|hardware|Native MS object 1.0 px, shadow 1.0 px|0.008765962861558492|0.0028258855794343575|0.00365282899835195|0.004046214619887871|0.0005211043611250356|0.0006815080535504294|0.016221043912514933|0.014954760942294674|0.011660912162469408
 LAG|hardware|Native MS object 2.0 px, shadow 1.0 px|0.007940460129971382|0.0033098723715936766|0.003529603861391688|0.0035142623649293057|0.0005180501750890543|0.0006815080535504294|0.015852466658737022|0.015042869207341195|0.011548165054642514
 ```
+
+
+## Barrier lock release remeasurement, 2026-10-21
+
+The owner chose the barrier lock release on every backend. Free hosted run [39544536428](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39544536428) measured source `2cf9c4820d737889ed9b2be7e894865e5f373f37`. The written reason is `owner choice of barrier lock release, 2026-10-21, re-measured in run 39544536428`.
+
+Every accepted WARP and lavapipe value is unchanged at full precision. Each still passes its existing bound, and no row or bound changed. The 1 percent stop guard did not fire. Hardware rows remain untouched. These measurements do not waive the run's lavapipe follow-walk entry-identity colour failures. The [hosted proof](7g3b-hosted.md) records that blocker and the verification results.
+
+| Driver | Accepted cost | Old measurement | New measurement | Stored row changed |
+| --- | --- | ---: | ---: | --- |
+| WARP | Quality grain | 0.008013324991270224 | 0.008013324991270224 | No |
+| lavapipe | Quality grain | 0.008039903208144449 | 0.008039903208144449 | No |
+| WARP | Native S 8.0 px retreating tail textured | 0.007222797931709032 | 0.007222797931709032 | No |
+| lavapipe | Native S 8.0 px retreating tail textured | 0.007245504857927269 | 0.007245504857927269 | No |
+| WARP | Quality M 1.0 leading textured rim error | 0.003134108234483462 | 0.003134108234483462 | No |
+| WARP | Quality M 1.0 leading textured rim temporal | 0.004831370554127536 | 0.004831370554127536 | No |
+| lavapipe | Quality M 1.0 leading textured rim error | 0.0030749369871157866 | 0.0030749369871157866 | No |
+| lavapipe | Quality M 1.0 leading textured rim temporal | 0.0047599525602309255 | 0.0047599525602309255 | No |
+
+The grain bounds remain WARP `0.008014` and lavapipe `0.008040`. Tail baselines remain `0.007222797931709032` and `0.007245504857927269`, with `baseline + 0.0000005`. Rim error/temporal baselines remain WARP `0.003134 / 0.004831` and lavapipe `0.003075 / 0.004760`, with `(baseline + 0.0000005) * 1.1`. Rim change and spatial reference values remain historical controls.
+
+The six printed rows preserve the paired controls as well as every accepted measurement. Repeated grain callers printed identical values.
+
+```text
+GRAIN-EXACT|WARP|Quality|0.008013324991270224
+GRAIN-EXACT|lavapipe|Quality|0.008039903208144449
+RIM-EXACT|WARP|Quality M 1.0 leading textured|0.003134108234483462|0.03170317222128858|0.004831370554127536|0.03180486729511848
+RIM-EXACT|lavapipe|Quality M 1.0 leading textured|0.0030749369871157866|0.03164495558856608|0.0047599525602309255|0.03173446361835186
+TAIL|WARP|Native S 8.0 px retreating|0.007222797931709032|0.007152403227222303|0.00035064034392796005|0.00035064034392796005
+TAIL|lavapipe|Native S 8.0 px retreating|0.007245504857927269|0.00716773283842791|0.00035064034392796005|0.00035064034392796005
+```

@@ -2951,6 +2951,10 @@
       "sha256": "6ddb3d908f2024d725404abc1f3229b521fe9d871143206ce446dbd59e230544"
     },
     {
+      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/7g3b-hosted.md",
+      "sha256": "c0afe3dc0d22aabff6ca0e6dbaaebcdcf968b670f2cf2a15e1e3ca36e933822a"
+    },
+    {
       "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/benchmark-request.md",
       "sha256": "60dc680c820214cc83c1df6eaf0c778ba8f95b8c9b554b0c82e9d4eb3b01af33"
     },
@@ -3580,7 +3584,7 @@
     },
     {
       "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/owner-release-only.md",
-      "sha256": "3547ac42145c546372c2c94f80b24a6ba3fbc1864ea875990bd07bfe901d553a"
+      "sha256": "b3818d7ba8ea679092e1210cb995a299dd859e9daecbb5242822a32a7da5718a"
     },
     {
       "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/point-d3d11.txt",

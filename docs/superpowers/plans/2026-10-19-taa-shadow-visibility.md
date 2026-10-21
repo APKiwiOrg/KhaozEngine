@@ -246,15 +246,33 @@ Task 7b's rising-only zero response was provisional. Task 7c and the final real-
 
 In reading order this task follows Task 7d and its Task 7e non-finite depth fix and precedes Task 8. It runs after Task 12's billed result, [benchmark-result.md](../../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/benchmark-result.md). That bench measured head adding 2.1 to 2.9 ms on both Vulkan legs and 3.9 to 4.8 ms on Direct3D 11 to resolve and sharpen at 1440p on a T4. All of it sits in the split's second pass and grows with the display size. The Task 7f design review traces it to `temporalVisibilityChange`, about 101 point fetches and 950 ALU operations per display pixel, and names the restructures R0 to R5 used below.
 
+**2026-10-21 correction, binding:** R3-lite is withdrawn after the T4 bisect. Entry identity passed at
+`v21.7.1` and `f8c4c402f` (7f.2), then failed after the mask moved current-depth arithmetic into pass one and the
+fused entry. Confidence differed from frozen D by up to 32 half steps. The decomposition found the mask within
+0.1 ms on every leg, so retaining it has no measured benefit. Restore the 7f.2 current side in pass two, the
+pre-mask prepare and fused programs and zero `PreparedSurface.w`. Keep R1, R2 with the binade rule, R4, the LF
+generator, TrySelect and the allocation fix. The frozen D texts and pins never change.
+
+Entry identity is exact on every backend, including NVIDIA Direct3D 11, with no envelope. Frozen-D A/B is exact
+on IEEE-preserving backends. On hardware NVIDIA Direct3D 11 only, stored locks, R8 and depth are exact and each
+colour and confidence channel allows at most two half-float steps. Print counts and maxima per frame. D's paired
+entry comparison remains diagnostic and cannot enlarge that fixed allowance. This replaces the measured-envelope
+rule from `e639ef2d6` and the historical software entry-identity exception for this gate.
+
+The next outside-cost request interleaves V0 shipped, V1 check removed, V5 visibility infrastructure off,
+V4 V5 without the shared lock-release precise markings and V3 frozen D. Both scenes and Native and Quality stay
+at 2560x1440, fused and split. Print V0 minus V1, V1 minus V5, V5 minus V4 and V0 minus V3. Author and compile
+these variants only. The next decomposition and T4 D3D11 correctness dispatches each need fresh owner approval.
+
 **Rulings, binding:**
 
 - Owner, 2026-10-20: optimize before merging. The budget is at most 0.5 ms resolve growth over `v21.7.1` (`6c6529589`) at 1440p on every T4 backend, Direct3D 11, Windows Vulkan and Linux Vulkan. Any further billed bench needs fresh owner approval.
-- Phase 1 is exact. Every output pixel and every observable decision stays bit-identical to D, so the owner's accepted look stays valid. Phase 1 implements R1 (gate the check on the post-release `lockValue` bits, exact on outputs), R2 (shared 4x4 history block, separable positions, a generated straight-line fast path, D's function verbatim as the slow path), R3-lite (a 9-bit current acceptance mask and a centre-finite flag from pass one in `PreparedSurface.w`, computed inline by the fused entry) and R4 (value-range early-out with the `2^-13` margin). All of them use loads.
+- Phase 1 preserves D under the corrected comparison contract above. Phase 1 implements R1 (gate the check on the post-release `lockValue` bits, exact on outputs), R2 (shared 4x4 history block, separable positions, a generated straight-line fast path, D's function verbatim as the slow path), R4 (value-range early-out with the `2^-13` margin). All of them use loads.
 - R5 (gathers) is deferred until a T4 oracle proves gather equals load. R0 (CPU constant-input skip) is rejected because it would only make the bench free.
 - The shadows-on whole-frame cost case, the request's Proposal B, is authored in 7f.4 and not run.
 - If any oracle shows a mismatch, the affected restructure is withdrawn, never adjusted toward close.
 
-**Global for Task 7f:** no bound, baseline, golden or tolerance changes, no timing, perf or benchmark run before the 7f.6 approval, no merge, tag or release. The frozen D fixture never changes after 7f.1. Each sub-step commits explicit paths, pushes `fix/taa-shadow-visibility` and verifies the remote SHA. Approximations (Phase 2 of the design review) need a new owner look and are outside this task.
+**Global for Task 7f:** only the comparison-rule changes above are authorized, with no other bound, baseline, golden or tolerance changes, no timing, perf or benchmark run before the 7f.6 approval, no merge, tag or release. The frozen D fixture never changes after 7f.1. Each sub-step commits explicit paths, pushes `fix/taa-shadow-visibility` and verifies the remote SHA. Approximations (Phase 2 of the design review) need a new owner look and are outside this task.
 
 #### Task 7f.1: Freeze the D oracles
 
@@ -321,9 +339,12 @@ bool temporalVisibilityReleases(vec2 uv, ivec2 centre, ivec2 last, vec2 previous
 - [x] Run the Release build, the device-free classes of 7f.1 plus `TemporalResolveShaderTests|ShaderCorpusTests|VulkanSpirvByteEqualityTests`, then one `--heavy` Metal run of `TemporalVisibilityEquivalence|TemporalVisibilityResolveAb|TemporalVisibilityComparisonGpuTests|TemporalEntryIdentityGpuTests|TemporalCountProbeGpuTests|TemporalDebugViewGoldenTests`.
 - [x] Commit `perf(taa): share the visibility history block and skip uniform footprints`.
 
-**Definition of done:** zero mismatches, bitwise-equal change, every path covered, reported paths equal the predicted ones, the A/B and entry identity stay exact, and the frozen pins are unchanged.
+**Definition of done:** zero mismatches, bitwise-equal change, every path covered, reported paths equal the predicted ones, the A/B meets the corrected comparison rule, entry identity stays exact, and the frozen pins are unchanged.
 
-#### Task 7f.3: Move the current acceptance mask to pass one (R3-lite)
+#### Task 7f.3: Withdrawn current acceptance mask (R3-lite)
+
+Historical implementation below. The 2026-10-21 ruling above restores the 7f.2 current side and removes the mask-only facts.
+The pass-two fast path again issues 59 fetches (43 under R4), with 89 static OpImageFetch and 14 OpLoopMerge per accumulate program.
 
 **Files:**
 - Modify: `KhaozEngine.Render3D/Internal/ShaderSources.TemporalSplit.cs` (`TemporalPrepareFrag` writes the mask and the centre-finite flag to `oSurface.w`), `ShaderSources.TemporalPrepare.cs` (store and decode), `ShaderSources.TemporalVisibility.cs` (decision takes the mask), `ShaderSources.TemporalResolve.cs` (fused computes it inline with the same function).
@@ -355,7 +376,7 @@ bool temporalVisibilityReleases(vec2 uv, ivec2 centre, ivec2 last, vec2 previous
 
 - [x] Full headless: `build-slot --heavy --label taa-7f-headless -- env KE_GPU_TESTS=0 dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket"`, zero failures and zero warnings.
 - [x] Broad local Metal: the Task 11 `TAA_CORRECTNESS` selection once with `--heavy`, which includes the new classes. Zero failed and zero skipped in the TRX. Since the review 7f r2 fix round the selection excludes every `CostPerf` class, and `--list-tests` under it names no cost, perf or bench class.
-- [ ] Hosted correctness: the orchestrator dispatches `cross-platform-gpu.yml` on the candidate with `renderTestFilter` equal to that selection, legs all, plus the DXBC compile-only fact. Software Vulkan keeps the entry-identity treatment, state exact and colour within the existing bound, with no new epsilon.
+- [ ] Hosted correctness: the orchestrator dispatches `cross-platform-gpu.yml` on the candidate with `renderTestFilter` equal to that selection, legs all, plus the DXBC compile-only fact. Entry identity is exact on every backend under the 2026-10-21 correction.
 - [x] Shipping capture: rerun back15 and ground15 with the commands in [real-scene.md](../../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/real-scene.md) under the consumer-probe authorization. Contact-sheet pixels and region masks must be byte-identical to the shipping D record.
 - [ ] Review by the task reviewer over 7f.1 to 7f.4. Record the gate in `verification.md` and commit `test(taa): record visibility cost cut correctness`.
 
@@ -434,7 +455,7 @@ bool temporalVisibilityReleases(vec2 uv, ivec2 centre, ivec2 last, vec2 previous
 - [ ] Run `build-slot --label taa-final-build -- dotnet build KhaozEngine.slnx -c Release`, then `build-slot --heavy --label taa-final-headless -- env KE_GPU_TESTS=0 dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket"`. Require zero failures and warnings. GPU skips in this headless pass are expected and do not satisfy the GPU gate. Run the single final broad Metal correctness process below through `build-slot --heavy`. Inventory discovered names before execution. It includes every temporal correctness GPU class, not only classes ending exactly in `GpuTests`, plus shadows/goldens. Every temporal cost class is excluded from the temporal branch by `FullyQualifiedName!~CostPerf`, which since the review 7f r2 fix round also covers `TemporalShadowedFrameCostPerfGpuTests`.
 
 ```bash
-TAA_CORRECTNESS='((FullyQualifiedName~KhaozEngine.Tests.Gpu.Temporal&FullyQualifiedName!~CostPerf)|((FullyQualifiedName~Shadow|FullyQualifiedName~Golden)&FullyQualifiedName!~Perf&FullyQualifiedName!~Bench))'
+TAA_CORRECTNESS='((FullyQualifiedName~KhaozEngine.Tests.Gpu.Temporal&FullyQualifiedName!~Perf&FullyQualifiedName!~Bench)|((FullyQualifiedName~Shadow|FullyQualifiedName~Golden)&FullyQualifiedName!~Perf&FullyQualifiedName!~Bench))'
 build-slot --heavy --label taa-final-metal -- env KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "$TAA_CORRECTNESS" --logger 'console;verbosity=detailed' --logger 'trx;LogFileName=taa-final-metal.trx' --results-directory artifacts/taa-shadow-visibility/local-metal
 ```
 

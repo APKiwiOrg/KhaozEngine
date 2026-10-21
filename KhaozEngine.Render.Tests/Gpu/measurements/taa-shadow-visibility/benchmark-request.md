@@ -286,7 +286,8 @@ again. The text below is kept as written before dispatch, as evidence.
   report-only finite-value rule: on hardware NVIDIA Direct3D 11 stored locks, R8 and depth equal D prime's,
   colour and confidence keep D prime's non-finite classes, and finite differences are reported only. D prime
   (`TemporalVisibilityFrozenD.ToD`) is the A/B reference, and shipped D (`ToShippedD`) is an exact reference on
-  Metal only ([spec section 8](../../../../docs/superpowers/specs/2026-10-19-taa-shadow-visibility-design.md#regression-and-identity-gates)). Entry identity is exact on every backend.
+  Metal only ([spec section 8](../../../../docs/superpowers/specs/2026-10-19-taa-shadow-visibility-design.md#regression-and-identity-gates)). Entry identity is exact except llvmpipe colour,
+  which keeps main's amendment 23 bound.
 
 The [withdrawal record](mask-withdrawal.md) lists source changes, every moved shader program and the local
 verification. Prepare and fused entry no longer compute a current-neighbour mask, PreparedSurface.w is zero,
@@ -399,5 +400,8 @@ FullyQualifiedName~TemporalVisibilityResolveAbGpuTests|FullyQualifiedName~Tempor
 7g r1. It runs production fused and split on the A/B's large threshold frames, 1104x612 internal, across columns
 512 and 1024 and row 512 under positive jitter, and holds their colour, state, R8 and depth byte-identical every
 frame. On the same inputs D prime fused must equal D prime split. Neither comparison has an NVIDIA exception.
+Entry identity is exact on Metal, on the T4 on Direct3D 11 (under the NVIDIA D3D11 rule) and Vulkan, and on WARP.
+On llvmpipe the state, R8 and depth are exact and the colour of each pair is within main's amendment 23 bound,
+`0.0625` on at most `0.0025` of the values compared.
 The A/B applies the current contracts listed in section 7. The decomposition, if requested again, times V0
 shipped, V1 check removed and V3 D prime only.

@@ -24,7 +24,7 @@ Constructors validate programmatic data as well. `HostCoverageMapJson.Write` wri
 | `topology` | Entries with `mesh`, `primitive`, `vertex`, `surfaceId`. Ordinals are source ordinals, before material grouping. |
 | `regions` | Unique ordinal `key`, `triangles` ranges with `role` equal to `core` or `collar`, and `strengths` entries with `surfaceId` and `strength`. |
 | `refinement` | Source ranges with fixed `level`. Each range uses `mesh`, `primitive`, `firstTriangle`, `count`. |
-| `authoring` | `exporter` and source `revision`, for diagnostics rather than compatibility. |
+| `authoring` | `exporter` and source `revision`, included in the canonical bytes and host-map semantic hash. Changing either requires regenerating the equipment companion. |
 
 A core triangle's strengths are all exactly 1. Collar strengths are finite in `[0,1]`. The boundary and
 all unselected surface points have strength 0 and remain protected. Positive regions cannot overlap.

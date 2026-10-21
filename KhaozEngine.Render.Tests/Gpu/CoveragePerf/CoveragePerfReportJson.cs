@@ -51,7 +51,7 @@ internal static class CoveragePerfReportJson
             SubmissionCounts(observation, "measured", observation.Measured);
         }
         text.AppendLine();
-        text.AppendLine("Warm-up frames may carry cold-setup submissions and completion fences outside every gate. Measured frames require one frame submission and the control fence schedule.");
+        text.AppendLine("Warm-up frames may carry cold-setup submissions and completion fences outside every gate. Measured frames require one frame submission and the route fence schedule.");
         foreach (var block in verdict.WarmupSubmissionDeviations) WarmupDeviations(block);
         text.AppendLine();
         foreach (string disclosure in verdict.SharedSubmissionDisclosure) text.AppendLine("- " + disclosure);

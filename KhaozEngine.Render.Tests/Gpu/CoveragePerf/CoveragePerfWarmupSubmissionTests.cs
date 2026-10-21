@@ -10,7 +10,7 @@ public sealed class CoveragePerfWarmupSubmissionTests
     const string NotOne = "submission schedule is not one frame submission.";
     const string Control = "shared-host control requires zero completion fences/consumers and the direct/shared participant schedule.";
     const string WarmupControl = "shared-host control requires zero completion consumers and the direct/shared participant schedule.";
-    const string Rule = "Warm-up frames may carry cold-setup submissions and completion fences outside every gate. Measured frames require one frame submission and the control fence schedule.";
+    const string Rule = "Warm-up frames may carry cold-setup submissions and completion fences outside every gate. Measured frames require one frame submission and the route fence schedule.";
 
     [Fact]
     public void ASharedOffWarmupFrameWithAColdSetupSubmissionAndFenceIsValid()

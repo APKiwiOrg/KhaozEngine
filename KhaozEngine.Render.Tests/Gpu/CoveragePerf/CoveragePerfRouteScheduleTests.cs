@@ -52,6 +52,10 @@ public sealed class CoveragePerfRouteScheduleTests
                 "SharedOff Total route requires 1 completion fence."),
             ("G1", 5, 2, 2, 1, "SharedOn Total route requires 2 submission participants and 2 completion consumers.", null,
                 "SharedOn Total route requires 1 completion fence."),
+            ("G2", 1, 2, 2, 1, "SharedOn Phases route requires 2 submission participants and 2 completion consumers.", null,
+                "SharedOn Phases route requires 1 completion fence."),
+            ("G3", 4, 2, 1, 1, "SharedOff Total route requires 2 submission participants and 1 completion consumer.", null,
+                "SharedOff Total route requires 1 completion fence."),
         ];
         foreach (var (preset, block, participants, consumers, fences, measuredReason, warmupReason, fenceReason) in routes)
         {
@@ -89,5 +93,28 @@ public sealed class CoveragePerfRouteScheduleTests
         var reasons = CoveragePerfValidity.Reasons(report);
         if (reason is null) Assert.Empty(reasons);
         else Assert.Equal(new[] { $"Block {block}: {(measured ? "measured" : "warm-up")} frame {frame}: {reason}" }, reasons.ToArray());
+    }
+
+    [Fact]
+    public void AGpuFrameOffItsRouteWithoutAGpuOutcomeReportsBoth()
+    {
+        // The route check runs before the missing GPU outcome ends the frame's checks, so neither diagnostic hides the other.
+        var report = CoveragePerfReportVectors.ChangeBlock(CoveragePerfReportVectors.Create("G1"), 1, b =>
+            b with { Samples = b.Samples.SetItem(1, b.Samples[1] with { SubmissionParticipants = 1, Gpu = null }) });
+        int frame = report.Blocks[1].Samples[1].FrameIndex;
+        var reasons = CoveragePerfValidity.Reasons(report);
+        Assert.Contains($"Block 1: measured frame {frame}: SharedOn Phases route requires 2 submission participants and 2 completion consumers.", reasons);
+        Assert.Contains($"Block 1: measured frame {frame}: unresolved GPU baseline/query outcome.", reasons);
+    }
+
+    [Fact]
+    public void AGpuLayoutWarmupFrameOffItsSteadyScheduleIsListed()
+    {
+        var report = CoveragePerfReportVectors.ChangeBlock(CoveragePerfReportVectors.Create("G1"), 1, b =>
+            b with { Warmup = b.Warmup.SetItem(0, b.Warmup[0] with { Submissions = 2, SubmittedCompletionFences = 2 }) });
+        Assert.Empty(CoveragePerfValidity.Reasons(report));
+        var deviations = CoveragePerfSharedSubmission.WarmupDeviations(report)[1];
+        Assert.Equal((1, 1), (deviations.SteadySubmissions, deviations.SteadyCompletionFences));
+        Assert.Equal(new[] { new CoveragePerfWarmupSubmissionFrame(report.Blocks[1].Warmup[0].FrameIndex, 2, 2) }, deviations.Frames.ToArray());
     }
 }

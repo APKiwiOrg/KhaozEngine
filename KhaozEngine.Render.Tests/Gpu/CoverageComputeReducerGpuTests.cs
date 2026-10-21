@@ -39,14 +39,18 @@ public sealed class CoverageComputeReducerGpuTests(ITestOutputHelper output)
             using var session = Session(device, cases.Select(_ => c).ToArray(), cases.Select(_ => Prepare(c)).ToArray());
             var batch = session.Batch;
             uint[] header = CoverageGpuLayout.WorkHeader(CoverageGpuUpload.Host(topology, 2));
-            Assert.True(header[25] >= 264 && header[23] >= 264);
-            (int countWord, int notes, uint stage) = Shape(phase);
+            Assert.All(cases, item =>
+            {
+                Assert.True(header[25] >= item.Events.Length / 6);
+                Assert.True(header[23] >= item.Faces.Length / 2);
+            });
+            (int countWord, uint stage) = Shape(phase);
             for (int actor = 0; actor < cases.Length; actor++)
             {
                 var item = cases[actor];
                 uint w = batch.Actors[actor].WorkBase;
                 uint[] state = [item.Completed ? 3u : 0u, item.Completed ? 1u : uint.MaxValue,
-                    item.Completed ? 17u : 0u, item.Completed ? 6u : 0u, item.Completed || Enumerable.Range(0, item.Events.Length / 6).Any(i => item.Events[i * 6] != 0) ? 1u : 0u];
+                    item.Completed ? 17u : 0u, item.Completed ? 6u : 0u, item.Completed || Enumerable.Range(0, item.NoteCount).Any(i => item.Events[i * 6] != 0) ? 1u : 0u];
                 device.UpdateBuffer(batch.Work, CoverageGpuLayout.Bytes(w + 26), state);
                 device.UpdateBuffer(batch.Work, CoverageGpuLayout.Bytes(w + header[24]), item.Events);
                 device.UpdateBuffer(batch.Work, CoverageGpuLayout.Bytes(w + header[22]), item.Faces);
@@ -54,7 +58,7 @@ public sealed class CoverageComputeReducerGpuTests(ITestOutputHelper output)
                 device.UpdateBuffer(batch.Results, CoverageGpuLayout.Bytes((uint)actor * 16 + 8), result);
                 // Only the reducer runs. Synthetic extents stay within the allocated event/face rows.
                 device.UpdateBuffer(batch.FrameData, CoverageGpuLayout.Bytes(batch.Actors[actor].FrameBase + (uint)countWord),
-                    new uint[] { (uint)((item.Count + notes - 1) / notes) });
+                    new uint[] { (uint)item.TopologyCount });
             }
             using var set = factory.CreateResourceSet(new(layout, batch.StaticData, batch.FrameData, batch.Work, batch.Current, batch.Previous, batch.Results));
             using var shader = factory.CreateComputeShaderFromSpirv(CoverageGpuSkinRefineGlsl.Source(phase), new(PreciseMath: true));
@@ -66,35 +70,37 @@ public sealed class CoverageComputeReducerGpuTests(ITestOutputHelper output)
             for (int actor = 0; actor < cases.Length; actor++)
             {
                 var item = cases[actor];
-                uint expectedStage = item.Completed ? 6u : item.Code == 0 ? 0u : stage;
+                var expected = CoverageReducerReference.Evaluate(phase, item);
+                uint expectedStage = item.Completed ? 6u : expected.Code == 0 ? 0u : stage;
                 uint[] state = session.ReadHeader(actor);
                 Assert.Equal(expectedStage, state[29]);
-                Assert.Equal(item.Slot, state[27]);
-                ulong equipment = item.Slot == uint.MaxValue ? 0 : item.Slot == 0 ? poses[1].EquipmentInstanceId : poses[0].EquipmentInstanceId;
-                uint commandId = item.Slot == uint.MaxValue ? 0 : item.Slot == 0 ? 10u : 20u;
-                Failure(item.ExpectedFailure(topology.HostIdentity, equipment, commandId), session, actor);
+                Assert.Equal(expected.Slot, state[27]);
+                ulong equipment = expected.Slot == uint.MaxValue ? 0 : expected.Slot == 0 ? poses[1].EquipmentInstanceId : poses[0].EquipmentInstanceId;
+                uint commandId = expected.Slot == uint.MaxValue ? 0 : expected.Slot == 0 ? 10u : 20u;
+                Failure(expected.Failure(topology.HostIdentity, equipment, commandId), session, actor);
                 Assert.Equal(item.Events, session.ReadWords(actor, 24).Take(item.Events.Length));
                 Assert.Equal(item.Faces, session.ReadWords(actor, 22).Take(item.Faces.Length));
                 compared++;
             }
-            output.WriteLine($"{phase}: {cases.Length} actor streams matched literal serial outcomes");
+            output.WriteLine($"{phase}: {cases.Length} actor streams matched serial reference outcomes");
         }
-        Assert.Equal(219, compared);
+        Assert.Equal(Enum.GetValues<CoverageGpuPhase>().Where(CoverageGpuSkinRefineGlsl.IsReducer)
+            .Sum(phase => CoverageReducerCase.For(phase).Length), compared);
     }
 
-    static (int CountWord, int Notes, uint Stage) Shape(CoverageGpuPhase phase) => phase switch
+    static (int CountWord, uint Stage) Shape(CoverageGpuPhase phase) => phase switch
     {
-        CoverageGpuPhase.ReduceSkin => (5, 1, 1),
-        CoverageGpuPhase.ReduceSource => (5, 1, 2),
-        CoverageGpuPhase.ReduceAliases => (9, 1, 3),
-        CoverageGpuPhase.ReduceGroups => (8, 1, 4),
-        CoverageGpuPhase.ReduceAttributes => (6, 1, 5),
-        CoverageGpuPhase.ReduceConform => (8, 1, 6),
-        CoverageGpuPhase.ReduceFaces => (7, 3, 7),
-        CoverageGpuPhase.ReduceFullTargets => (8, 2, 8),
-        CoverageGpuPhase.ReduceVertices => (6, 1, 9),
-        CoverageGpuPhase.ReduceFacesOrientation => (7, 1, 10),
-        CoverageGpuPhase.ReduceAttributesFinal => (6, 1, 11),
+        CoverageGpuPhase.ReduceSkin => (5, 1),
+        CoverageGpuPhase.ReduceSource => (5, 2),
+        CoverageGpuPhase.ReduceAliases => (9, 3),
+        CoverageGpuPhase.ReduceGroups => (8, 4),
+        CoverageGpuPhase.ReduceAttributes => (6, 5),
+        CoverageGpuPhase.ReduceConform => (8, 6),
+        CoverageGpuPhase.ReduceFaces => (7, 7),
+        CoverageGpuPhase.ReduceFullTargets => (8, 8),
+        CoverageGpuPhase.ReduceVertices => (6, 9),
+        CoverageGpuPhase.ReduceFacesOrientation => (7, 10),
+        CoverageGpuPhase.ReduceAttributesFinal => (6, 11),
         _ => throw new ArgumentOutOfRangeException(nameof(phase))
     };
 }

@@ -57,8 +57,9 @@ internal static class CoverageGpuReductionGlsl
     internal static string Reduce(int countWord, int stage) => Helpers + $$"""
         void main() {
             uint f = covFrame(), w = CovFrameWords[f+1u], lane = gl_LocalInvocationID.x;
-            if (covCompletedFailure(w)) return;
-            uint events = covRow(w,24u), count = CovFrameWords[f+{{countWord}}u], first = 0xffffffffu;
+            // Buffer-derived flags predicate work, never participation in a group barrier.
+            bool completed = covCompletedFailure(w);
+            uint events = covRow(w,24u), count = completed ? 0u : CovFrameWords[f+{{countWord}}u], first = 0xffffffffu;
             [[dont_unroll]] for (uint i = lane; i < count; i += 64u) {
                 if (CovWorkWords[events+i*6u] != 0u) { first = i; break; }
             }
@@ -70,21 +71,25 @@ internal static class CoverageGpuReductionGlsl
     internal static string ReduceTally(int countWord, int notes, int stage, bool slotFirst) => Helpers + $$"""
         void main() {
             uint f = covFrame(), w = CovFrameWords[f+1u], lane = gl_LocalInvocationID.x;
-            if (covCompletedFailure(w)) return;
-            uint events = covRow(w,24u), count = CovFrameWords[f+{{countWord}}u]*{{notes}}u, first = 0xffffffffu;
+            bool completed = covCompletedFailure(w);
+            uint events = covRow(w,24u), count = completed ? 0u : CovFrameWords[f+{{countWord}}u]*{{notes}}u, first = 0xffffffffu;
             [[dont_unroll]] for (uint i = lane; i < count; i += 64u) {
                 if (CovWorkWords[events+i*6u] != 0u) first = covGuardEarlier(events,first,i,{{(slotFirst ? "true" : "false")}});
             }
             first = covGuardFirst(events,first,{{(slotFirst ? "true" : "false")}});
-            if (first == 0xffffffffu) return;
-            uint code = CovWorkWords[events+first*6u], slot = CovWorkWords[events+first*6u+1u], matching = 0u;
-            [[dont_unroll]] for (uint i = lane; i < count; i += 64u) {
+            uint code = 0u, slot = 0xffffffffu, matching = 0u;
+            if (first != 0xffffffffu) {
+                code = CovWorkWords[events+first*6u]; slot = CovWorkWords[events+first*6u+1u];
+            }
+            uint matchingCount = first == 0xffffffffu ? 0u : count;
+            [[dont_unroll]] for (uint i = lane; i < matchingCount; i += 64u) {
                 uint e = events+i*6u;
                 if (CovWorkWords[e] == code && CovWorkWords[e+1u] == slot)
                     matching += min(CovWorkWords[e+4u],2147483647u-matching);
             }
+            // Even an empty winner contributes zero through every barrier before publication.
             matching = covGuardSum(matching);
-            if (lane != 0u) return;
+            if (lane != 0u || first == 0xffffffffu) return;
             CovWorkWords[w+26u] = code; CovWorkWords[w+27u] = slot;
             CovWorkWords[w+28u] = matching; CovWorkWords[w+29u] = {{stage}}u;
             uint original = CovFrameWords[covCommands(f)+320u+slot], command = covCommand(f,slot);
@@ -106,8 +111,8 @@ internal static class CoverageGpuReductionGlsl
         int covGuardSign(uint faces, uint row) { return row == 0xffffffffu ? 0 : int(CovWorkWords[faces+row*2u+1u]); }
         void main() {
             uint f = covFrame(), w = CovFrameWords[f+1u], lane = gl_LocalInvocationID.x;
-            if (covCompletedFailure(w)) return;
-            uint events = covRow(w,24u), faces = covRow(w,22u), count = CovFrameWords[f+7u];
+            bool completed = covCompletedFailure(w);
+            uint events = covRow(w,24u), faces = covRow(w,22u), count = completed ? 0u : CovFrameWords[f+7u];
             uint first0 = 0xffffffffu, first1 = 0xffffffffu, first2 = 0xffffffffu, first3 = 0xffffffffu;
             [[dont_unroll]] for (uint t = lane; t < count; t += 64u) {
                 if (CovWorkWords[events+t*6u] != 0u) continue;

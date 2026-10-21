@@ -14,20 +14,30 @@ public sealed class CoverageGpuReducerTests
     public static IEnumerable<object[]> Reducers() => Enum.GetValues<CoverageGpuPhase>()
         .Where(CoverageGpuSkinRefineGlsl.IsReducer).Select(p => new object[] { p.ToString() });
 
-    [Fact]
-    public void Every_adversarial_outcome_is_constructible_before_opening_a_device()
+    public static IEnumerable<object[]> AdversarialCases()
     {
-        int count = 0;
         foreach (var phase in Enum.GetValues<CoverageGpuPhase>().Where(CoverageGpuSkinRefineGlsl.IsReducer))
-            foreach (var item in CoverageReducerCase.For(phase))
-            {
-                var expected = item.ExpectedFailure("reducer-boundaries", 1, 10);
-                Assert.Equal((CoverageFailureCode)item.Code, expected.Code);
-                Assert.Equal((int)item.Matching, expected.Count);
-                Assert.Equal(item.Code == 0, expected.IsSuccess);
-                count++;
-            }
-        Assert.Equal(219, count);
+        {
+            CoverageReducerCase[] cases = CoverageReducerCase.For(phase);
+            for (int i = 0; i < cases.Length; i++) yield return new object[] { phase.ToString(), i, cases[i].Name };
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(AdversarialCases))]
+    public void Serial_reference_preserves_each_adversarial_outcome(string name, int index, string scenario)
+    {
+        var phase = Enum.Parse<CoverageGpuPhase>(name);
+        var item = CoverageReducerCase.For(phase)[index];
+        Assert.Equal(scenario, item.Name);
+        var expected = CoverageReducerReference.Evaluate(phase, item);
+        Assert.Equal(item.Code, expected.Code);
+        Assert.Equal(item.Slot, expected.Slot);
+        Assert.Equal(item.Matching, expected.Matching);
+        var failure = expected.Failure("reducer-boundaries", 1, 10);
+        Assert.Equal((CoverageFailureCode)item.Code, failure.Code);
+        Assert.Equal((int)item.Matching, failure.Count);
+        Assert.Equal(item.Code == 0, failure.IsSuccess);
     }
 
     [Theory]

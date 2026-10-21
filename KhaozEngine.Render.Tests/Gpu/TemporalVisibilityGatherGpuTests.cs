@@ -12,10 +12,13 @@ namespace KhaozEngine.Tests.Gpu;
 
 /// <summary>
 /// Gather and Load must return the same bits at every interior 2x2 footprint, including those touching each texture
-/// edge, at the real internal sizes. Separate programs store all four components as integer bits encoded in RGBA8,
-/// so neither shared compiler expressions nor a float render target can hide a rounding or NaN payload difference.
+/// edge, at the real internal sizes, except that stored-depth NaNs need only remain NaN. NVIDIA gathers canonicalize
+/// their bits. The consumer rejects every NaN by exponent bits before accepting history, so payload and sign cannot
+/// affect its decision. Separate programs store all four components as integer bits encoded in RGBA8,
+/// so neither shared compiler expressions nor a float render target can hide a rounding or NaN bit difference.
 /// R8 inputs cover every UNORM value in every component. R32F inputs include distinct finite values, signed zeros,
-/// infinities and NaNs of both signs with quiet and signalling payloads. No tolerance is admitted.
+/// infinities and NaNs of both signs with quiet and signalling payloads. Every non-NaN depth and every non-depth
+/// value stays bit-exact. No numeric tolerance is admitted.
 /// </summary>
 public sealed class TemporalVisibilityGatherGpuTests(ITestOutputHelper output)
 {
@@ -77,7 +80,7 @@ void main() {
         var misses = new long[4];
         var seen = new bool[4, 256];
         var examples = new List<string>();
-        long edgeComponents = 0, nan = 0, positiveInfinity = 0, negativeInfinity = 0;
+        long edgeComponents = 0, nan = 0, nanBitChanges = 0, positiveInfinity = 0, negativeInfinity = 0;
         for (int c = 0; c < 4; c++)
         {
             Assert.Equal((width - 1) * (height - 1) * 4, loaded[c].Length);
@@ -94,7 +97,15 @@ void main() {
                         uint expected = Bits(input, texel * 4);
                         if (l != expected) Assert.Fail($"Load component {c} at ({x},{y}) changed raw R32F bits "
                             + $"0x{expected:x8} to 0x{l:x8}");
-                        if ((l & 0x7fffffff) > 0x7f800000) nan++;
+                        if ((l & 0x7fffffff) > 0x7f800000)
+                        {
+                            nan++;
+                            if ((g & 0x7fffffff) > 0x7f800000)
+                            {
+                                if (g != l) nanBitChanges++;
+                                continue;
+                            }
+                        }
                         else if (l == 0x7f800000) positiveInfinity++;
                         else if (l == 0xff800000) negativeInfinity++;
                     }
@@ -115,7 +126,7 @@ void main() {
         output.WriteLine($"{device.Backend} on {device.Capabilities.DeviceName}, {width}x{height} {format}: "
             + $"{4L * (width - 1) * (height - 1)} component comparisons, mismatches x/y/z/w "
             + $"{string.Join("/", misses)}, {edgeComponents} edge components, NaN {nan}, +inf {positiveInfinity}, "
-            + $"-inf {negativeInfinity}");
+            + $"-inf {negativeInfinity}, NaN-to-NaN bit changes {nanBitChanges}");
         foreach (string example in examples) output.WriteLine(example);
         Assert.True(edgeComponents > 0);
         if (depth) Assert.True(nan > 0 && positiveInfinity > 0 && negativeInfinity > 0);
@@ -123,7 +134,9 @@ void main() {
             for (int c = 0; c < 4; c++)
                 for (int value = 0; value < 256; value++)
                     Assert.True(seen[c, value], $"R8 {value} never read in component {c}");
-        Assert.True(misses.Sum() == 0, "Gather must equal Load bit for bit. " + string.Join("; ", examples));
+        Assert.True(misses.Sum() == 0, (depth
+            ? "Gather must preserve Load NaNs as NaN and every other depth bit for bit. "
+            : "Gather must equal Load bit for bit. ") + string.Join("; ", examples));
     }
 
     static uint Bits(byte[] bytes, int at) => BitConverter.ToUInt32(bytes, at);

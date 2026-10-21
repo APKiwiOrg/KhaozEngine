@@ -20,6 +20,45 @@ with one opt-in dump skip each, and 622 sync tests. The five lavapipe colour cas
 reported precision, and all eight software costs are unchanged at full precision. The [merge-round record](7g5-hosted.md)
 owns the current gates and hosted result.
 
+## NVIDIA stored-depth NaN contract correction
+
+Billed T4 run [39591902724](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39591902724) checked
+1b7ba67c4 on NVIDIA Tesla T4 with Direct3D 11, Windows Vulkan and Linux Vulkan. Each leg passed 32 of 35 cases.
+Only the three R32Float raw gather cases failed, at 3342x2160, 1707x960 and 2560x1440. Every non-depth case,
+entry-identity case, frozen D A/B case and helper-equivalence case passed on all three legs.
+
+For example, each 1707x960 R32Float case made 6,544,216 component comparisons. The mismatch counts for x/y/z/w
+were 384952/384952/384954/384954. Their sum is exactly the 1,539,812 NaN loads. The 384,956 positive infinities,
+384,954 negative infinities and every finite value matched bit for bit. All NaN inputs, including 0xffbfffff,
+0x7fc00000, 0xffc12345 and signalling 0x7f800001, gathered as canonical 0x7fffffff. Metal, WARP and lavapipe had
+preserved those NaN bits in the earlier free runs.
+
+The stored-depth oracle now requires bit equality wherever Load is not NaN and a NaN gather wherever Load is
+NaN. It retains the adversarial signed quiet and signalling payload inputs and the independent raw Load check.
+A non-NaN gather for a NaN load, or any finite or infinite mismatch, still fails. Every non-depth value remains
+bit-exact. The log separately counts NaN-to-NaN bit changes alongside contract mismatches, NaNs and infinities.
+No numeric tolerance is introduced.
+
+The consumer is insensitive to NaN payload and sign. Each gathered stored depth is used only in its declaration
+and its matching history-acceptance expression, for example
+
+```glsl
+bool held00 = temporalVisibilityFiniteDepth(stored00) && abs(stored00 - expectedDepth) <= previousTolerance;
+```
+
+`temporalVisibilityFiniteDepth` returns `(floatBitsToUint(depth) & 0x7f800000u) != 0x7f800000u`, which tests only
+exponent bits. Every NaN therefore makes `held` false regardless of canonicalisation. The device-free fact
+`TemporalVisibilityFastPathTests.GatheredStoredDepthCannotObserveNanPayloadOrSign` pins that helper body and
+each stored value's declaration and exact acceptance expression in every shipped program selected for Metal,
+Direct3D 11 and Vulkan. It also disallows another use of a gathered vector that could bypass the scalar check.
+Any added scalar use, changed acceptance expression or payload-sensitive finite check fails the fact.
+The local mutation `float payloadProbe = stored00;` made the fact fail with four identifier uses instead of
+three (exit 1, one failed case). The temporary use was then removed before the final verification.
+
+This correction changes tests and evidence only. Production shaders, shader hash tables, the corpus and DXBC
+fixtures remain byte-identical to 1b7ba67c4. The historical sections below retain their original contracts and
+results. A T4 re-run belongs to the orchestrator.
+
 ## Footprints and arithmetic
 
 Only the fast path's sources of texel values change. The existing consecutive-base, interior-block and binade

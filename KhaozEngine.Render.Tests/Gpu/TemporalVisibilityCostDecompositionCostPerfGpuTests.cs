@@ -14,9 +14,10 @@ namespace KhaozEngine.Tests.Gpu;
 
 /// <summary>
 /// Head-only diagnostic, never a budget assertion. The resolve cost fixture's exact boxes and moving field at
-/// 2560x1440 Native and Quality, with V0 shipped, V1 without the check, V5 without visibility infrastructure,
-/// V4 as V5 with the lock release's barriers removed, and V3 frozen D prime,
-/// each fused and split, plus Off at the internal size. Fifteen rounds rotate blocks of twelve frames after two
+/// 2560x1440 Native and Quality, with V0 shipped, V1 without the check and V3 frozen D prime, each fused and split,
+/// plus Off at the internal size. Every variant is a rewrite through the renderer's fragment source hook. The
+/// retired V5 (visibility infrastructure off) and V4 (V5 without the lock release's precise markings) needed a
+/// production switch, and their run 39519219228 is recorded in benchmark-result-2.md. Fifteen rounds rotate blocks of twelve frames after two
 /// warm frames. Independent fixture copies keep every mode on the same scene frame and jitter phase, with its own
 /// history, rather than letting the moving field advance between variants. Nothing compiles inside a timed block.
 /// </summary>
@@ -24,6 +25,13 @@ namespace KhaozEngine.Tests.Gpu;
 public sealed class TemporalVisibilityCostDecompositionCostPerfGpuTests(ITestOutputHelper output)
 {
     const int W = 2560, H = 1440, Rounds = 15, Warm = 2, Block = 12, Settle = 10;
+
+    // V0 runs the scene's own renderer. The others install a rewrite before the first resolve.
+    internal static readonly (string Label, Func<string, string>? Rewrite)[] Variants =
+    [
+        ("V0 shipped", null), ("V1 check removed", TemporalVisibilityCostPrograms.WithoutCheck),
+        ("V3 D", TemporalVisibilityFrozenD.ToD),
+    ];
 
     [GpuFact(RequiresRealGpu = true)]
     public void TheBoxesAtNativeAreDecomposedAt1440p() => Run(field: false, TemporalUpscale.Native);
@@ -42,17 +50,15 @@ public sealed class TemporalVisibilityCostDecompositionCostPerfGpuTests(ITestOut
         internal readonly string Label;
         internal readonly TemporalFixture Fx;
         internal readonly TemporalResolveEntry? Entry;
-        internal readonly bool VisibilityOff;
         internal readonly List<double> Wall = [], Submit = [];
         internal int LastFrame = -1;
         readonly Action<Scene3D, int> _draw;
 
         internal Mode(string label, TemporalUpscale preset, bool field, TemporalResolveEntry? entry,
-            Func<string, string>? rewrite, int iw = 0, int ih = 0, bool visibilityOff = false)
+            Func<string, string>? rewrite, int iw = 0, int ih = 0)
         {
             Label = label;
             Entry = entry;
-            VisibilityOff = visibilityOff;
             var stage = new FrontStage(W, H, 4.5f);
             Fx = new TemporalFixture(W, H, s => stage.Setup(s,
                 entry is null ? AntiAliasing.Off : AntiAliasing.Temporal, preset));
@@ -60,7 +66,7 @@ public sealed class TemporalVisibilityCostDecompositionCostPerfGpuTests(ITestOut
                 : TemporalResolveCostPerfGpuTests.BoxesScene(stage);
             _draw = (s, n) => { LastFrame = n; draw(s, n); };
             Fx.Scene.TemporalResolveEntryForTests = entry;
-            if (rewrite is not null) TemporalTestResolve.Install(Fx, rewrite, visibilityOff);
+            if (rewrite is not null) TemporalTestResolve.Install(Fx, rewrite);
             if (entry is null)
             {
                 Fx.Scene.Post.RenderScale = RenderScale.FixedInternal;
@@ -93,18 +99,11 @@ public sealed class TemporalVisibilityCostDecompositionCostPerfGpuTests(ITestOut
             TemporalDiagnostics counts = shipped.Fx.Scene.LastTemporalDiagnostics;
             Assert.True(counts.CountsFrameIndex >= 0, "the resolve's counts were never sampled");
             int iw = counts.InternalWidth, ih = counts.InternalHeight;
-            (string Label, Func<string, string>? Rewrite, bool VisibilityOff)[] variants =
-            [
-                ("V0 shipped", null, false), ("V1 check removed", TemporalVisibilityCostPrograms.WithoutCheck, false),
-                ("V5 visibility infrastructure off", TemporalVisibilityCostPrograms.WithoutVisibility, true),
-                ("V4 visibility off without barriers", TemporalVisibilityCostPrograms.WithoutVisibilityOrBarriers, true),
-                ("V3 D", TemporalVisibilityFrozenD.ToD, false),
-            ];
             foreach (TemporalResolveEntry entry in new[] { TemporalResolveEntry.Fused, TemporalResolveEntry.Split })
-                foreach ((string label, Func<string, string>? rewrite, bool visibilityOff) in variants)
+                foreach ((string label, Func<string, string>? rewrite) in Variants)
                 {
                     if (entry == TemporalResolveEntry.Fused && rewrite is null) continue;
-                    var mode = new Mode(label + " " + entry.ToString().ToLowerInvariant(), preset, field, entry, rewrite, visibilityOff: visibilityOff);
+                    var mode = new Mode(label + " " + entry.ToString().ToLowerInvariant(), preset, field, entry, rewrite);
                     modes.Add(mode);
                     mode.Frames(Settle);
                 }
@@ -132,9 +131,9 @@ public sealed class TemporalVisibilityCostDecompositionCostPerfGpuTests(ITestOut
                     {
                         var renderer = mode.Fx.Scene.TemporalResolveRendererForTests!;
                         Assert.Equal(entry, renderer.LastEntry);
-                        Assert.Equal(!mode.VisibilityOff, mode.Fx.Scene.ResolvedVisibilityTarget is not null);
-                        Assert.Equal(!mode.VisibilityOff, renderer.VisibilityHistory.Allocated);
-                        Assert.Equal(!mode.VisibilityOff, renderer.VisibilityHistory.StoredThisFrame);
+                        Assert.NotNull(mode.Fx.Scene.ResolvedVisibilityTarget);
+                        Assert.True(renderer.VisibilityHistory.Allocated);
+                        Assert.True(renderer.VisibilityHistory.StoredThisFrame);
                     }
                 }
             double offMedian = Median(off.Wall);
@@ -154,9 +153,7 @@ public sealed class TemporalVisibilityCostDecompositionCostPerfGpuTests(ITestOut
             {
                 Mode[] v = modes.Where(m => m.Entry == entry).ToArray();
                 PrintPair(entry + " V0 minus V1 (check)", v[0], v[1]);
-                PrintPair(entry + " V1 minus V5 (visibility infrastructure)", v[1], v[2]);
-                PrintPair(entry + " V5 minus V4 (lock release barriers)", v[2], v[3]);
-                PrintPair(entry + " V0 minus V3 (7f against D)", v[0], v[4]);
+                PrintPair(entry + " V0 minus V3 (7f against D)", v[0], v[2]);
             }
             output.WriteLine($"  policy {TemporalResolvePolicy.Measured}, forced {TemporalResolvePolicy.Forced}, "
                 + $"counts frame {counts.CountsFrameIndex}: {counts.DisoccludedPixels} disoccluded, "

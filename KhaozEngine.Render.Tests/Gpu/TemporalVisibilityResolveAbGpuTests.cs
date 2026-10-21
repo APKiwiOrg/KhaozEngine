@@ -60,11 +60,11 @@ namespace KhaozEngine.Tests.Gpu
     {
         const int Iw = 40, Ih = 24, Frames = 6;
         const int ThresholdIw = 96, ThresholdIh = 60, ThresholdTile = 6, ThresholdSite = 3;
-        const int LargeIw = 1104, LargeIh = 612;
+        internal const int LargeIw = 1104, LargeIh = 612;
 
         // The large frames' Halton phases, frame by frame: the designed frames 1, 3 and 5 take jitter (-, +), (+, -) and
         // (+, +), so each axis meets both signs where the tiles decide.
-        static readonly int[] LargePhases = [0, 1, 3, 2, 5, 4];
+        internal static readonly int[] LargePhases = [0, 1, 3, 2, 5, 4];
 
         [GpuTheory]
         [InlineData(0, TemporalUpscale.Native)]
@@ -411,7 +411,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         // EdgeSites holds, per internal texel, which tolerance-edge design is centred there, or zero.
-        sealed record Frame(float[] Colour, float[] Motion, float[] Ndc, byte[] Visibility, float[] HistoryColour,
+        internal sealed record Frame(float[] Colour, float[] Motion, float[] Ndc, byte[] Visibility, float[] HistoryColour,
             float[] HistoryState, float[] PreviousDepth, int ZeroLocks, int[]? EdgeSites = null);
 
         const int EdgePullsBelow = 1, EdgePullsAbove = 2;
@@ -496,7 +496,7 @@ namespace KhaozEngine.Tests.Gpu
         // colour, no motion, the previous depth on the shared surface and a full lock everywhere, so every centre away
         // from the border meets the fast path and its decision is the threshold's. designs counts the centres by kind,
         // 4 for a tolerance-edge tile.
-        static Frame MakeThresholdFrame(Random random, int frame, int w, int h, int dw, int dh, int[] levels, int[] designs,
+        internal static Frame MakeThresholdFrame(Random random, int frame, int w, int h, int dw, int dh, int[] levels, int[] designs,
             int[]? straddling = null)
         {
             int tiles = w / ThresholdTile;

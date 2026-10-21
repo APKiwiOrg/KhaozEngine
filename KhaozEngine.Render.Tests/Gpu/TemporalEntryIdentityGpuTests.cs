@@ -24,9 +24,11 @@ namespace KhaozEngine.Tests.Gpu
     /// they agree on a given backend: bit for bit on Metal, on a Tesla T4 on Direct3D 11 and Vulkan, and on WARP
     /// (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23). Entry identity requires exact stored colour, confidence,
     /// locks, R8 and depth on every backend. Hardware NVIDIA Direct3D 11 additionally prints each production entry
-    /// and D's paired entries against D, diagnostic only. No comparison with D is asserted here.
+    /// and D's paired entries against D. Against D only the non-finite classes of colour and confidence are asserted.
+    /// The large-frame case (<c>TemporalEntryIdentityGpuTests.LargeFrames.cs</c>) holds both entries, and D prime's
+    /// two, byte-identical across columns 512 and 1024 and row 512 under positive jitter.
     /// </summary>
-    public sealed class TemporalEntryIdentityGpuTests(ITestOutputHelper output) : TemporalResolveGpuFacts
+    public sealed partial class TemporalEntryIdentityGpuTests(ITestOutputHelper output) : TemporalResolveGpuFacts
     {
         const int W = 320, H = 180, StopFrames = 8, MoverSweep = 12;
         const float Speed = 2f, BladeTexels = 0.375f, MoverTexels = 1f, MoverStep = 3f, MoverHeight = 3f,

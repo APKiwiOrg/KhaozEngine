@@ -11,12 +11,24 @@ public sealed partial class Scene3D
     /// <summary>Submit a published foliage stream in its authored anchor-local space. Only frame selection and
     /// uniforms vary. Model expansion, policy resolution, layout and instance uploads are already complete.</summary>
     public int DrawPreparedFoliage(SceneResourceHandle handle, Vector3 localFocus, in FoliageRenderSettings settings,
-        RenderAnchor anchor, ReadOnlySpan<FoliageInteractor> interactors = default)
+        RenderAnchor anchor, ReadOnlySpan<FoliageInteractor> interactors = default, bool colour = true, bool shadows = true,
+        double? timeSeconds = null, int windSeed = 0)
     {
         var resource = ResourceOf(handle);
         if (resource.PublishedFoliage is not { } batch || batch.PreparedAnchor != anchor)
             throw new ArgumentException("Foliage requires a published product with the same anchor.", nameof(handle));
-        return DrawFoliage(batch, localFocus, settings, interactors);
+        int firstColour = _foliageDraws.Count, firstShadow = _foliageShadowDraws.Count;
+        float previousTime = EffectTimeSeconds;
+        try
+        {
+            // Seed selects a repeatable wind phase. Zero preserves the released phase and layout.
+            if (timeSeconds is { } time) EffectTimeSeconds = (float)(time + (uint)windSeed % 65536 * (1d / 256));
+            int count = DrawFoliage(batch, localFocus, settings, interactors);
+            if (!colour) _foliageDraws.RemoveRange(firstColour, _foliageDraws.Count - firstColour);
+            if (!shadows) _foliageShadowDraws.RemoveRange(firstShadow, _foliageShadowDraws.Count - firstShadow);
+            return count;
+        }
+        finally { EffectTimeSeconds = previousTime; }
     }
     void UploadPreparedFoliageAnchors(IGpuCommandList cl)
     {

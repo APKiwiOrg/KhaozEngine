@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Globalization;
 using ModelContextProtocol.Protocol;
+using KhaozEngine.MapDoc.Render3D;
 using ModelContextProtocol.Server;
 
 namespace KhaozEngine.MapEdit.Tools;
@@ -25,8 +26,9 @@ public sealed class RenderTools(RenderService render)
         [Description("Image width in pixels. Defaults to 1024.")] int width = 1024,
         [Description("Image height in pixels. Defaults to 1024.")] int height = 1024,
         [Description("When true, draw the exclusion, region, and feature overlay fills. Defaults to true.")] bool includeOverlays = true,
-        [Description("When true (the default), a manifest entry flagged textured shows its baked materials, matching the editor's TexturedProps toggle. When false, every prop renders flattened regardless of the manifest flag.")] bool textured = true)
-        => ToolGuard.Guard(() => TopDownBlocks(minX, minZ, maxX, maxZ, width, height, includeOverlays, textured));
+        [Description("When true (the default), a manifest entry flagged textured shows its baked materials, matching the editor's TexturedProps toggle. When false, every prop renders flattened regardless of the manifest flag.")] bool textured = true,
+        [Description("Complete closed native request JSON. Required for native documents and refused for analytic documents.")] string? nativeRequestJson = null)
+        => ToolGuard.Guard(() => render.NativeBlocks(nativeRequestJson, MapCaptureRoute.TopDown) ?? TopDownBlocks(minX, minZ, maxX, maxZ, width, height, includeOverlays, textured));
 
     [McpServerTool(Name = "render_view"), Description("Renders a perspective PNG of the open map from an eye point looking toward a target point, with a vertical field of view. Returns a text block naming the eye, target, image size, and field of view, then the PNG image. Eye and target must not coincide. Renders terrain only when no asset manifests were supplied. Needs a headless GPU device.")]
     public IEnumerable<ContentBlock> RenderView(
@@ -39,8 +41,9 @@ public sealed class RenderTools(RenderService render)
         [Description("Image width in pixels. Defaults to 1024.")] int width = 1024,
         [Description("Image height in pixels. Defaults to 720.")] int height = 720,
         [Description("Vertical field of view in degrees. Defaults to 60.")] float fovDegrees = 60f,
-        [Description("When true (the default), a manifest entry flagged textured shows its baked materials, matching the editor's TexturedProps toggle. When false, every prop renders flattened regardless of the manifest flag.")] bool textured = true)
-        => ToolGuard.Guard(() => ViewBlocks(eyeX, eyeY, eyeZ, targetX, targetY, targetZ, width, height, fovDegrees, textured));
+        [Description("When true (the default), a manifest entry flagged textured shows its baked materials, matching the editor's TexturedProps toggle. When false, every prop renders flattened regardless of the manifest flag.")] bool textured = true,
+        [Description("Complete closed native request JSON. Required for native documents and refused for analytic documents.")] string? nativeRequestJson = null)
+        => ToolGuard.Guard(() => render.NativeBlocks(nativeRequestJson, MapCaptureRoute.View) ?? ViewBlocks(eyeX, eyeY, eyeZ, targetX, targetY, targetZ, width, height, fovDegrees, textured));
 
     IEnumerable<ContentBlock> TopDownBlocks(float? minX, float? minZ, float? maxX, float? maxZ,
         int width, int height, bool includeOverlays, bool textured)

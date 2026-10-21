@@ -12,7 +12,7 @@ namespace KhaozEngine.Tests.Gpu
     /// library, so a renderer can be driven under a plain <c>dotnet test</c> on any machine and any OS.
     /// <para>
     /// This exists for ONE job: letting a test assert the SHAPE of what a renderer records (see
-    /// <see cref="CommandTallyGpuCommandList"/>). It renders nothing, so it can never replace a
+    /// <c>CommandTallyGpuCommandList</c>). It renders nothing, so it can never replace a
     /// <c>[GpuFact]</c> golden. It is the counting harness, not a software rasterizer.
     /// </para>
     /// <para>
@@ -376,7 +376,7 @@ namespace KhaozEngine.Tests.Gpu
         public void Dispose() { }
     }
 
-    /// <summary>Drops every recorded command. The terminal sink <see cref="CommandTallyGpuCommandList"/> forwards
+    /// <summary>Drops every recorded command. The terminal sink <c>CommandTallyGpuCommandList</c> forwards
     /// to when there is no real device behind it.</summary>
     internal sealed class NullGpuCommandList : IGpuCommandList
     {
@@ -417,7 +417,7 @@ namespace KhaozEngine.Tests.Gpu
         public void Dispose() { }
     }
 
-    /// <summary>Shared list of the command kinds <see cref="CommandTallyGpuCommandList"/> counts. Ordered the way
+    /// <summary>Shared list of the command kinds <c>CommandTallyGpuCommandList</c> counts. Ordered the way
     /// a failure message reads best: uploads first (the historical regression), then binds, then draws.</summary>
     internal enum GpuCommandKind
     {

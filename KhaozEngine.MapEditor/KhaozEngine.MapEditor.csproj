@@ -8,12 +8,15 @@
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Dungeon/KhaozEngine.Dungeon.csproj" />
     <ProjectReference Include="../KhaozEngine.MapDoc/KhaozEngine.MapDoc.csproj" />
+    <ProjectReference Include="../KhaozEngine.MapDoc.Render3D/KhaozEngine.MapDoc.Render3D.csproj" />
     <ProjectReference Include="../KhaozEngine.Gui/KhaozEngine.Gui.csproj" />
     <ProjectReference Include="../KhaozEngine.Persistence/KhaozEngine.Persistence.csproj" />
     <ProjectReference Include="../KhaozEngine.Terrain.Render3D/KhaozEngine.Terrain.Render3D.csproj" />
     <ProjectReference Include="../KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
     <ProjectReference Include="../KhaozEngine.Game/KhaozEngine.Game.csproj" />
     <ProjectReference Include="../KhaozEngine.Game.Render3D/KhaozEngine.Game.Render3D.csproj" />
+    <EmbeddedResource Include="../KhaozEngine.MapEdit.Tool/native-render-request.schema.json" />
+    <EmbeddedResource Include="../KhaozEngine.MapEdit.Tool/native-render-policy.schema.json" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <ItemGroup>

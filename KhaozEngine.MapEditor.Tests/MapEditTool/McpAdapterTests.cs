@@ -421,7 +421,8 @@ namespace KhaozEngine.Tests.MapEditTool
                 Client = client;
             }
 
-            public static async Task<McpHarness> StartAsync(CancellationToken cancellationToken)
+            public static Task<McpHarness> StartAsync(CancellationToken cancellationToken) => StartAsync(cancellationToken, null);
+            public static async Task<McpHarness> StartAsync(CancellationToken cancellationToken, string? nativePolicyPath)
             {
                 var clientToServer = new Pipe();
                 var serverToClient = new Pipe();
@@ -429,6 +430,7 @@ namespace KhaozEngine.Tests.MapEditTool
                 HostApplicationBuilder builder = Host.CreateApplicationBuilder();
                 builder.Logging.ClearProviders();
                 builder.Services.AddMapEditServices();
+                if (nativePolicyPath is not null) builder.Services.AddSingleton<KhaozEngine.MapDoc.Render3D.IMapNativeRenderHost>(new KhaozEngine.MapEdit.FileNativeRenderHost(nativePolicyPath));
                 builder.Services.AddMcpServer()
                     .WithStreamServerTransport(clientToServer.Reader.AsStream(), serverToClient.Writer.AsStream())
                     .WithMapEditTools();

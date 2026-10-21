@@ -7,10 +7,15 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using KhaozEngine.MapEdit.Tools;
+using KhaozEngine.MapEdit;
+using KhaozEngine.MapDoc.Render3D;
 
 var builder = Host.CreateApplicationBuilder(args);
 builder.Logging.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
 builder.Services.AddMapEditServices();
+string? nativePolicy = builder.Configuration["NativeRenderPolicy"];
+if (!string.IsNullOrWhiteSpace(nativePolicy))
+    builder.Services.AddSingleton<IMapNativeRenderHost>(new FileNativeRenderHost(nativePolicy));
 builder.Services.AddMcpServer()
     .WithStdioServerTransport()
     .WithMapEditTools();

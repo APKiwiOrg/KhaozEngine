@@ -99,7 +99,9 @@ def gpu(*prefixes):
 # included. "~" is containment. A class rule ends in "." so it cannot reach a longer class name, and a
 # prefix rule such as gpu("S") takes every Gpu class whose name starts with that letter that no earlier
 # rule took.
-NATIVE_RESOURCE_UPLOAD = [("~", "KhaozEngine.Tests.MapDoc.NativeResourceUploadGpuTests.")]
+# Task 12 actual sink facts stay beside the prepared upload producer on every backend.
+NATIVE_RESOURCE_UPLOAD = [("~", "KhaozEngine.Tests.MapDoc.NativeResourceUploadGpuTests."),
+                          ("~", "KhaozEngine.Tests.MapDoc.NativeMapReadinessTests.")]
 
 RENDER_SLICES = {
     "metal-native": [

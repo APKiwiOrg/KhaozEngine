@@ -11,12 +11,15 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.MapDoc/KhaozEngine.MapDoc.csproj" />
+    <ProjectReference Include="../KhaozEngine.MapDoc.Render3D/KhaozEngine.MapDoc.Render3D.csproj" />
     <!-- NativeCollisionService reads and measures native colliders through MapAssetShapes and MapPlacementShapes. -->
     <ProjectReference Include="../KhaozEngine.MapDoc.Physics/KhaozEngine.MapDoc.Physics.csproj" />
     <ProjectReference Include="../KhaozEngine.MapEditor/KhaozEngine.MapEditor.csproj" />
     <ProjectReference Include="../KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />
     <PackageReference Include="ModelContextProtocol" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <EmbeddedResource Include="native-render-request.schema.json" />
+    <EmbeddedResource Include="native-render-policy.schema.json" />
     <None Include="README.md" Pack="true" PackagePath="\" />
     <InternalsVisibleTo Include="KhaozEngine.MapEditor.Tests" />
   </ItemGroup>

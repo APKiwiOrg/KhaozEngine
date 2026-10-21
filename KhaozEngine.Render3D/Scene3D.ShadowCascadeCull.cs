@@ -188,7 +188,7 @@ namespace KhaozEngine.Render3D
             _shadowCasterCandidateCount = instances;
             ReadOnlySpan<ShadowCasterSpan> source = CollectionsMarshal.AsSpan(_shadowCasterRunsScratch);
 
-            if (ShadowCascadeCulling)
+            if (ShadowCascadeCulling || _captureShadowDomain is not null)
             {
                 if (_shadowCasterMasks.Length < instances)
                     _shadowCasterMasks = new byte[Math.Max(instances, _shadowCasterMasks.Length * 2)];
@@ -198,12 +198,13 @@ namespace KhaozEngine.Render3D
                     culls[c] = ShadowCascadeCull.FromLightViewProj(_cascadeCpuVpsAbsolute[c], resolution);
                 ComputeCascadeMasks(CollectionsMarshal.AsSpan(_shadowCasterSpheres), culls, count,
                     _shadowCasterMasks.AsSpan(0, instances));
+                ConstrainCaptureCasterMasks(instances);
             }
 
             for (int c = 0; c < count; c++)
             {
                 List<ShadowCasterSpan> dst = _cascadeCasterSpans[c];
-                if (ShadowCascadeCulling)
+                if (ShadowCascadeCulling || _captureShadowDomain is not null)
                     BuildCascadeSpans(source, _shadowCasterMasks.AsSpan(0, instances), c, ShadowCullMergeGap, dst);
                 else
                 {

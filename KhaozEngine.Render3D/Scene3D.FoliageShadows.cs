@@ -44,6 +44,7 @@ public sealed partial class Scene3D
         foreach (FoliageDraw draw in _foliageShadowDraws)
         {
             if (!FoliageDrawValid(draw) || draw.Batch.Buffer is null ||
+                _captureShadowDomain is { } domain && !domain.ContainsCaster(draw.Bounds) ||
                 !FoliageShadowSelection.IntersectsCascade(draw.Bounds, frustum)) continue;
             Mesh mesh = _meshes[draw.Patch.Mesh.Index]!.Value;
             if (draw.Batch.AnchorSet is { } anchor)

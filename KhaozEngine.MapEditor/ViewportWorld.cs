@@ -265,6 +265,7 @@ public sealed partial class ViewportWorld : IDisposable
     {
         ThrowIfDisposed();
         if (!_built) throw new InvalidOperationException("ViewportWorld has not been built; call Build first.");
+        if (RefreshNative(doc)) return;
         TeardownStreaming();
         BuildCore(doc, registry, FocusFor(doc));
     }
@@ -289,7 +290,7 @@ public sealed partial class ViewportWorld : IDisposable
     {
         ThrowIfDisposed();
         ThrowIfNotBuilt();
-        _streamer!.Update(viewPos, dt);
+        if (!UpdateNative(viewPos, dt)) _streamer!.Update(viewPos, dt);
     }
 
     /// <summary>Draws the streamed world plus the authored content, filtered by <paramref name="visibility"/>. The
@@ -312,6 +313,7 @@ public sealed partial class ViewportWorld : IDisposable
         ThrowIfDisposed();
         ThrowIfNotBuilt();
         ArgumentNullException.ThrowIfNull(visibility);
+        if (DrawNative()) return;
 
         // One water plane per frame, camera-centred at the live water level so its rim stays outside the frustum
         // (see BuildWaterPlane). Submitted for legacy water while the Water group is on: the
@@ -396,6 +398,7 @@ public sealed partial class ViewportWorld : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        DisposeNative();
         if (_built)
         {
             TeardownStreaming();
@@ -411,6 +414,7 @@ public sealed partial class ViewportWorld : IDisposable
         ArgumentNullException.ThrowIfNull(doc);
         ArgumentNullException.ThrowIfNull(registry);
 
+        if (TryBuildNative(doc, primeFocus)) return;
         _doc = doc;
         _field = MapRuntime.BuildField(doc, registry);
         LoadKitMeshes();

@@ -123,6 +123,9 @@ public sealed class FrameViewConsumerSweepTests
     /// </summary>
     internal static readonly Site[] Sites =
     {
+        // R-GPU-1 and T8-R1. Exactly one CPU unprojection of the frozen, unjittered native capture camera.
+        new("ShadowCaptureDomain.cs", "ShadowMapMath.FrustumCornersWorld(", 1, @"^\s*viewProjection,\s*corners\s*$", CpuForbidden,
+            "native capture dependency acquisition and renderer cascade fitting share this frozen domain"),
         new("Scene3D.cs", "_model.SetFrameUniforms(", 1, @"\bvp\b", RasterForbidden,
             "the frame block the model, splat, tile ground, foliage and skinned pipelines rasterise with"),
         new("Scene3D.cs", "BuildAndUploadPointLightClusters(", 1, @"\bvp\b", RasterForbidden,

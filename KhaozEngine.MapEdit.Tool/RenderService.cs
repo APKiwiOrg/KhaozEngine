@@ -21,7 +21,7 @@ namespace KhaozEngine.MapEdit;
 /// session without asset manifests renders terrain-only (the world tolerates unknown kinds and simply loads no
 /// meshes). When no headless GPU device can be created the render fails with a precise
 /// <see cref="InvalidOperationException"/> the adapter turns into a clean client error.</summary>
-public sealed class RenderService(MapEditSession session)
+public sealed partial class RenderService(MapEditSession session)
 {
     // Straight-down would degenerate the LookAt (view up parallel to forward), so tip the top-down camera a
     // seventeen-milliradian hair off vertical, matching the editor's own top view.

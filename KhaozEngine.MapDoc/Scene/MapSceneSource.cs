@@ -27,6 +27,7 @@ public sealed class MapSceneSource
     public string ClosureHash => _data.Assets.Hash;
     public IReadOnlyList<string> RequiredAssetIds => _data.RequiredAssets;
     public string? RenderExtentsDigest => _proofs?.Digest;
+    internal MapAssetExtentProofSet? RenderExtents => _proofs;
     internal MapSceneData Data => _data;
 
     public static MapSceneSourceResult Capture(MapDocumentSource source, MapAssetClosure assets, MapSceneLimits? limits = null)

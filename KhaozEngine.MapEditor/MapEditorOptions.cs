@@ -130,6 +130,10 @@ public sealed class MapEditorOptions
     /// exception it throws, or a null closure, is reported as a <see cref="MapDocumentException"/>: readouts show
     /// unavailable with that diagnostic, and a windowed open or reload refuses as a load failure.</summary>
     public Func<MapDocument, MapAssetClosure>? MarkerAssets;
+    public KhaozEngine.MapDoc.Render3D.IMapNativeRenderHost? NativeRenderHost;
+    public string NativeStyleId = "";
+    public Func<MapFramePoint>? NativeObserver;
+    public Func<string?>? NativeObserverSpaceId;
 
     /// <summary>When true (the default) the editor OWNS the host <c>Scene3D</c>'s look: it applies its own sky,
     /// lighting, and water settings to that scene's post-process block from the settings menu (preset plus slider

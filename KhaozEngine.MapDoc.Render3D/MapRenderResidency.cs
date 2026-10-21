@@ -12,7 +12,7 @@ using KhaozEngine.Render3D;
 namespace KhaozEngine.MapDoc.Render3D;
 
 /// <summary>Generation-owned composite residency. Draws and their witness change together after every resource is ready.</summary>
-public sealed class MapRenderResidency : IDisposable
+public sealed partial class MapRenderResidency : IDisposable
 {
     readonly object _gate = new();
     readonly MapRenderBudgets _budgets;
@@ -103,6 +103,9 @@ public sealed class MapRenderResidency : IDisposable
                         pending.Resources.Add(id, resource);
                         if (_owners.TryGetValue(id, out var existing)) pending.Owners.Add(id, existing);
                     }
+                    if (Device is MapScene3DSink sink) sink.Declare(plans.SelectMany(p => p.Resources),
+                        plans.SelectMany(p => p.Resources).Where(r => pending.Owners.ContainsKey(Identity.Of(r)))
+                            .ToDictionary(r => r.Reference, r => pending.Owners[Identity.Of(r)].Handle));
                 }
                 if (_pending?.Batch is not null) Advance(_pending);
             }
@@ -217,6 +220,7 @@ public sealed class MapRenderResidency : IDisposable
             if (pending.Owners.ContainsKey(id) || pending.Uploads.ContainsKey(id)) continue;
             if (applies >= _budgets.MaxAppliesPerUpdate) break;
             Fence(pending);
+            if (Device is IMapRenderUploadDependencies dependencies && !dependencies.CanBeginUpload(resource)) continue;
             var demand = Device.MeasureUpload(resource);
             using var reservation = _admission.TryReserve(demand);
             if (reservation is null) break;
@@ -235,6 +239,7 @@ public sealed class MapRenderResidency : IDisposable
             if (written < 0 || written > available) throw new InvalidOperationException("Device exceeded its incremental upload allowance.");
             available -= written; Lifetime.Uploaded(written);
         }
+        PublishDependencies(pending);
         pending.PublishNext = pending.Owners.Count + pending.Uploads.Count == pending.Resources.Count && pending.Uploads.Values.All(u => u.Ready);
     }
     void Publish(Pending pending)
@@ -255,6 +260,7 @@ public sealed class MapRenderResidency : IDisposable
         var oldOwners = _owners.Values.ToArray(); _owners.Clear();
         foreach (var pair in pending.Owners) _owners.Add(pair.Key, pair.Value);
         _acceptedReferences.Clear(); foreach (var pair in references) _acceptedReferences.Add(pair.Key, pair.Value);
+        if (Device is MapScene3DSink sink) sink.AcceptReferences(_acceptedReferences.Keys);
         _accepted = pending.Batch; pending.Batch = null; _acceptedState = pending.State;
         _transition = new(pending.Epoch, MapSceneStatus.CompleteForScope, _transition.PendingWitness! with { CompleteForScope = true }, null);
         _pending = null;

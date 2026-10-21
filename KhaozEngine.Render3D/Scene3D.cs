@@ -1313,6 +1313,7 @@ namespace KhaozEngine.Render3D
         /// </summary>
         int ComputeShadowCascades()
         {
+            if (_captureShadowDomain is { } domain) return FitCaptureShadowDomain(domain);
             var shadows = Post.Quality.Shadows;
             // ABSOLUTE: the fit, the radii and the caster classification stay byte-identical at any render origin.
             if (!Internal.ShadowMapMath.FrustumCornersWorld(_currentFrameView.AbsoluteViewProjection, _frustumCornersScratch))
@@ -1322,8 +1323,7 @@ namespace KhaozEngine.Render3D
             }
             Vector3 eye = ActiveCamera.Eye;
             Vector3 fwd = ActiveCamera.Forward;
-            // View depths of the near/far planes read off the unprojected corners (camera-type-agnostic: no
-            // reliance on perspective-projection matrix fields, so iso/ortho cameras fit identically).
+            // Read view depths from the unprojected corners for either camera type.
             Vector3 nearC = (_frustumCornersScratch[0] + _frustumCornersScratch[1] + _frustumCornersScratch[2] + _frustumCornersScratch[3]) * 0.25f;
             Vector3 farC = (_frustumCornersScratch[4] + _frustumCornersScratch[5] + _frustumCornersScratch[6] + _frustumCornersScratch[7]) * 0.25f;
             float camNear = Vector3.Dot(nearC - eye, fwd);

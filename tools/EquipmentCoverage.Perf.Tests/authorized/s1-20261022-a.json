@@ -1,0 +1,35 @@
+{
+  "schema": "khaozengine.coverage-perf-unit/1",
+  "preset": "S1",
+  "unitId": "s1-20261022-a",
+  "workloadSha": "1314044c334d9dd78c13081db721c5f562170b6d",
+  "baselineMainSha": "6a8831105a7daf06f064afe9701449f57d233476",
+  "fixture": "coverage-typical-gpu/1",
+  "profile": "full-1280x720/1",
+  "configuration": "Release",
+  "routes": {
+    "ordinarySkinning": "gpu",
+    "coveredSurface": "gpu-built"
+  },
+  "device": {
+    "backend": "vulkan-native",
+    "adapterPolicy": "nvidia-t4"
+  },
+  "batchFrames": 3,
+  "runner": "gpu-t4-linux",
+  "workflow": "gpu-hosted-bench",
+  "leg": "linux-vulkan",
+  "iterations": 1,
+  "load": 0,
+  "limits": {
+    "maxUnitSeconds": 600,
+    "maxFrameMilliseconds": 10000,
+    "jobMinutes": 30
+  },
+  "authorization": {
+    "identity": "coverage-gpu-era-perf-s1-20261022-a",
+    "approvedBy": "repository owner",
+    "reference": "Owner standing equipment coverage T4 authorization of 2026-10-21, applied under overnight auto-approval in the pipeline statistics brief. One S1 cold capture of compiler executable statistics for all 36 option A coverage compute pipelines on gpu-hosted-bench from main, linux-vulkan on gpu-t4-linux. Public coverage-typical-gpu fixture only. No warm-up, measured frames or GPU dispatches. Unit limit 600 seconds, job limit 30 minutes, estimated cost about USD 0.25. One retry only for infrastructure failure, no other paid runs."
+  },
+  "blocks": []
+}

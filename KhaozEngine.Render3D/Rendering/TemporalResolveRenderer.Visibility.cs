@@ -18,6 +18,9 @@ internal struct TemporalVisibilityUniforms
 /// <summary>The visibility resources and completed-frame jitter shared by both resolve entry points.</summary>
 internal sealed partial class TemporalResolveRenderer
 {
+    // Fixed at construction. The cost controls omit visibility resources without changing the real device caps.
+    internal bool VisibilityDisabledForTests { get; }
+
     readonly IGpuBuffer _visibilityBuffer;
     Vector2 _savedJitter;
     IGpuTexture? _visibilityInput;
@@ -26,6 +29,7 @@ internal sealed partial class TemporalResolveRenderer
 
     TemporalResolveInputs BindVisibility(in TemporalResolveInputs inputs, TemporalHistory history, GpuRetireQueue? retired)
     {
+        if (VisibilityDisabledForTests) return inputs;
         bool matches = VisibilityHistory.Matches(_gd, history);
         if (_storeSet is not null && retired is null && (!matches || !SameInputs(inputs, _boundInputs)))
         {
@@ -48,6 +52,7 @@ internal sealed partial class TemporalResolveRenderer
 
     void PrepareVisibilityUniforms(IGpuCommandList commands, in TemporalResolveUniforms resolve)
     {
+        if (VisibilityDisabledForTests) return;
         // Re-evaluation in the same frame must keep the original previous jitter, just as it keeps the read texture.
         if (!VisibilityHistory.StoredThisFrame)
             LastVisibilityUniforms = new TemporalVisibilityUniforms
@@ -61,7 +66,7 @@ internal sealed partial class TemporalResolveRenderer
 
     void StoreVisibility(IGpuCommandList commands, TemporalHistory history)
     {
-        if (VisibilityHistory.StoredThisFrame) return;
+        if (VisibilityDisabledForTests || VisibilityHistory.StoredThisFrame) return;
         VisibilityHistory.Store(commands, _visibilityInput!, history.WriteIndex);
         // Only publish jitter after the copy was successfully recorded for this frame.
         _savedJitter = new Vector2(LastUniforms.Jitter.X, LastUniforms.Jitter.Y);

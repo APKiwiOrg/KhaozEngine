@@ -57,6 +57,9 @@ public sealed class MapRenderAssets : IDisposable
         _budget = budget; RetainedBytes = retainedBytes;
     }
 
+    internal static MapRenderAssets Borrow(MapAssetClosure closure, IEnumerable<MapRenderAsset> assets) =>
+        new(closure, assets.ToDictionary(a => a.AssetId, StringComparer.Ordinal), new(new(MaxPeakBytes: 0)), 0);
+
     public static MapRenderAssetResult LoadSelected(MapAssetClosure closure, IReadOnlyList<string> assetIds,
         MapAssetExtentProofSet proofs, GltfDecodeBudget budget, MapRenderAssetLimits? limits = null)
     {

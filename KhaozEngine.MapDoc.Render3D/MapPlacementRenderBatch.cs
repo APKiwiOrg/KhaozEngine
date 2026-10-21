@@ -52,6 +52,14 @@ public sealed class MapPlacementRenderBatch : IDisposable
             throw new MapDocumentException("Cluster publication belongs to another prepared inventory.");
         _clusters.ApplyNative(key, build, acceptedMesh);
     }
+    internal void AcceptPublishedClusters()
+    {
+        foreach (var build in Clusters)
+        {
+            var part = _parts.SingleOrDefault(p => p.Key.OwnerId == MapPlacementCells.Owner(build.Request.Key) && p.Key.PartId == "hlod");
+            if (part is not null) AcceptCluster(build.Request.Key, build, part.Handle);
+        }
+    }
     public void Record(MapFrameState frame, IMapDrawSink sink)
     {
         ObjectDisposedException.ThrowIf(_disposed, this); ArgumentNullException.ThrowIfNull(sink);

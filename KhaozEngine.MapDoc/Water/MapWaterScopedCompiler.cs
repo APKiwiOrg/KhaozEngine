@@ -25,7 +25,7 @@ public static class MapWaterScopedCompiler
         ArgumentNullException.ThrowIfNull(scene);
         if (!float.IsFinite(cellMetres) || cellMetres <= 0 || cellMetres > 2) throw new ArgumentOutOfRangeException(nameof(cellMetres));
         limits ??= new(); limits.Validate();
-        var admission = new MapSceneAdmission(scene.Source.Data.Limits);
+        var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(scene.Source.Data.Limits);
         using var admitted = admission.Enter();
         var pairs = new MapWaterWorkBudget(limits.MaxPairChecks, compile: true);
         var witnesses = new List<MapSceneWitness>();

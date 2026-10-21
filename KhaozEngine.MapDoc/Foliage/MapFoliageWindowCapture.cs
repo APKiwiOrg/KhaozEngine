@@ -67,7 +67,7 @@ internal static class MapFoliageWindowCapture
                 }
             }
             // Source knowledge stays borrowed. Only the selected density payloads and effective dependency product are retained.
-            var admission = new MapSceneAdmission(source.Data.Limits, foliageLimits: limits);
+            var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(source.Data.Limits, foliageLimits: limits);
             var requested = new MapFoliageWindowRequest(chunks, owners, seats.Values.ToArray());
             Bounds r = bounds ?? new(b.MinX, b.MinZ, b.MaxX, b.MaxZ);
             var frame = WorldFrame.Nearest((float)((r.MinX + r.MaxX) / 2), (float)((r.MinZ + r.MaxZ) / 2));

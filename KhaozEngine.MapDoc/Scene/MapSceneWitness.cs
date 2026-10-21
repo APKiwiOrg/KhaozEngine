@@ -21,5 +21,7 @@ public sealed record MapSceneWitness(string ClosureHash, string SourceGeneration
     IReadOnlyList<MapSceneResourceKey> KnownEmpty, IReadOnlyList<MapSceneResourceKey> Unavailable,
     bool CompleteForScope, bool WholeWorldComplete)
 {
+    public string? PolicyDigest { get; init; }
+    public long Epoch { get; init; }
     public string? RenderExtentsDigest { get; init; }
 }

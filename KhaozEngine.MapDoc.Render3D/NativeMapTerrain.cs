@@ -28,7 +28,7 @@ public static class NativeMapTerrain
         if (maxMaterials is < 1 or > TileGroundMaterialConfig.MaxMaterials) throw new ArgumentOutOfRangeException(nameof(maxMaterials));
         if (!scene.Witness.CompleteForScope) throw new MapRenderAssetRefusal(MapRenderAssetStatus.Missing, "Terrain requires complete acquired surfaces.");
         if (input.ClosureHash != scene.Witness.ClosureHash) throw new MapRenderAssetRefusal(MapRenderAssetStatus.Stale, "Terrain and prepared input closures differ.");
-        var admission = new MapSceneAdmission(scene.Source.Data.Limits);
+        var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(scene.Source.Data.Limits);
         using var admitted = admission.Enter();
         try
         {

@@ -16,6 +16,8 @@ public sealed class MapPreparedInputLease : IDisposable
     {
         internal readonly object Gate = new();
         internal int Owners = 1;
+        internal Action? FinalRelease;
+        internal long? RetainedOverride;
         internal MapRenderAssets Assets => assets;
         internal MapRenderMaterials.MaterialSet Materials => materials;
         internal string ProofDigest => proofDigest;
@@ -28,7 +30,7 @@ public sealed class MapPreparedInputLease : IDisposable
     public IReadOnlyDictionary<string, MapRenderMaterial> Materials { get { RequireLive(); return _shared.Materials; } }
     public string ClosureHash => Assets.Closure.Hash;
     public string ProofDigest { get { RequireLive(); return _shared.ProofDigest; } }
-    public long RetainedBytes { get { RequireLive(); return _shared.Assets.RetainedBytes + _shared.Materials.RetainedBytes; } }
+    public long RetainedBytes { get { RequireLive(); return _shared.RetainedOverride ?? (_shared.Assets.RetainedBytes + _shared.Materials.RetainedBytes); } }
 
     public static MapPreparedInputResult LoadSelected(MapAssetClosure closure, IReadOnlyList<string> assetIds,
         IReadOnlyList<string> materialIds, MapAssetExtentProofSet proofs, GltfDecodeBudget budget)
@@ -51,6 +53,35 @@ public sealed class MapPreparedInputLease : IDisposable
         finally { if (!success) { materials?.Dispose(); assets.Dispose(); } }
     }
 
+    internal static MapPreparedInputLease AssetOnly(MapRenderAssets assets, string proof, GltfDecodeBudget budget)
+    {
+        if (!budget.TryReserve(256, 0)) throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, "Asset lease metadata exceeds decoder allowance.");
+        return new(new(assets, new(new(StringComparer.Ordinal), budget, 256), proof));
+    }
+    internal static MapPreparedInputLease MaterialsOnly(MapAssetClosure closure, MapRenderMaterials.MaterialSet materials, string proof) =>
+        new(new(MapRenderAssets.Borrow(closure, []), materials, proof));
+    internal static MapPreparedInputLease Compose(MapAssetClosure closure, string proof, IReadOnlyList<MapPreparedInputLease> pieces, GltfDecodeBudget budget)
+    {
+        long bytes = checked(512L + 64L * pieces.Sum(p => p.Assets.ById.Count + p.Materials.Count));
+        if (!budget.TryReserve(bytes, bytes)) throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, "Selected input composition exceeds decoder allowance.");
+        var retained = new List<MapPreparedInputLease>();
+        try
+        {
+            foreach (var piece in pieces) retained.Add(piece.Retain());
+            var assets = MapRenderAssets.Borrow(closure, pieces.SelectMany(p => p.Assets.ById.Values));
+            var materials = new MapRenderMaterials.MaterialSet(pieces.SelectMany(p => p.Materials).ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal), budget, bytes);
+            var lease = new MapPreparedInputLease(new(assets, materials, proof) { RetainedOverride = bytes + pieces.Sum(p => p.RetainedBytes) });
+            lease.OnFinalRelease(() => { foreach (var piece in retained) piece.Dispose(); });
+            return lease;
+        }
+        catch { foreach (var piece in retained) piece.Dispose(); budget.ReleaseOwned(bytes); throw; }
+        finally { budget.ReleaseTemporary(bytes); }
+    }
+
+    internal int OwnerCount { get { lock (_shared.Gate) return _shared.Owners; } }
+    internal void OnFinalRelease(Action release)
+    { lock (_shared.Gate) { RequireLive(); _shared.FinalRelease += release; } }
+
     public MapPreparedInputLease Retain()
     {
         lock (_shared.Gate)
@@ -65,7 +96,8 @@ public sealed class MapPreparedInputLease : IDisposable
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
             if (--_shared.Owners != 0) return;
-            _shared.Materials.Dispose(); _shared.Assets.Dispose();
+            try { _shared.Materials.Dispose(); _shared.Assets.Dispose(); }
+            finally { _shared.FinalRelease?.Invoke(); }
         }
     }
 }

@@ -110,9 +110,9 @@ and overflow diagnostics remain authoritative.
 `IMapRenderDevice` measures upload demand before creation. An upload must claim its
 `ISceneUploadReservation` before running any allocation factory. Retirement stays charged until the
 renderer confirms release. Render3D now supplies admitted upload, publication and `SceneResourceAccess`.
-The composite residency owner and actual scene sink remain later R8a work. Explicit plant resources convert to
+The composite residency owner is `MapRenderResidency`. The actual scene sink remains Task 12 work. Explicit plant resources convert to
 `SceneFoliageSource` with `SceneFoliageTransformSpace.AnchorLocal`. Generated world rows use `World`.
-`ScenePreparedFoliage` declares the immutable 96-byte packed product. Its producer is not implemented here.
+`ScenePreparedFoliage` declares the immutable 96-byte packed product. It is produced by `Scene3D.PrepareResourceUpload`.
 
 `MapWaterScopedCompiler.Compile(scene)` selects complete world-locked 2 m water cells, split at document
 storage borders. Requested coverage and complete-cell dependency coverage have separate witnesses.
@@ -156,3 +156,44 @@ programs and queue behavior. R8b replaces optical inputs behind the same bounded
 including body-local optical depth. R8a adds no camera-driven water level, global sea or horizon extension.
 The current optical packing seam is `WaterRenderer.PackBounded`. R8b #1300 replaces its optical inputs
 while retaining original-domain clipping. Point sampling remains the separate #1358 consumer dependency.
+
+
+## Composite residency and replacement
+
+`MapRenderPolicy` freezes placement routing, animated asset selection, stable foliage registration, water look
+and terrain material identities. It retains no decoded images. Its canonical digest includes vector fields and
+orders dictionary keys. `MapRenderSourceState` binds that policy to a source, its matching closure, complete
+render extent proofs and explicit windows.
+
+`MapRenderPlan.Prepare` composes one acquired window with one routing partition and a shared preparation
+admission. Terrain reads the passed input's selected materials. Placement and foliage batches share its selected
+assets. Preparation succeeds by taking ownership of the input lease. A refusal leaves that lease with its caller.
+Register the plan before recording frames, and dispose it when its CPU inventory is no longer required.
+
+`MapRenderResidency` prepares replacement generations on a bounded worker queue. `RequestReplacement`,
+`Invalidate` and `SetWindows` share one epoch and cancellation owner. Validation and preparation refusals retain
+the accepted draws and witness, and restore the accepted desired state. A pending replacement reports Incomplete.
+Source, closure, proof, policy and scope identities are checked before decode, upload and publication. Every
+resource must finish its incremental upload before one atomic accepted-plan publication. Ready resources wait
+until the next update, allowing a completed unpublished generation to be superseded safely.
+
+Resource owners are keyed by stable logical identity, verified payload and bounds. Intersecting windows borrow
+one owner, including complete canonical water cells and all placement tiers. Removing the first membership keeps
+the handle. Removing the last queues its release under the disposal allowance. HLOD keeps individual geometry
+until the composite's merged registration is published. Recorded aliases retain their window stamps and resolve
+to the same owner through `TryGetHandle`.
+
+`MapRenderAssetCache` shares immutable selected mesh and material pieces by verified content, including across
+closure changes that preserve the selected bytes. It retains an owner lease and returns independent caller leases.
+Idle composition entries and pieces are evicted after the last plan or upload reader ends. A material change can
+replace its image while retaining an identical mesh. Frames borrow admitted input and never decode again.
+
+`MapRenderAdmission` charges source metadata, encoded closure retention, decoder peaks, prepared plans and the
+renderer-measured upload demand. `MapUploadReservation` is claimed before factories, and claimed credit returns
+only on the renderer's final `Released` callback. Published and retiring allocations keep their original charge.
+The staging allowance and decoded upload borrow remain held through retirement. `MaxRetiredGpuBytes` never
+adds sharing credit. `MapRenderLifetime` reports the live charged ownership groups and actual transfer bytes.
+
+A queue entry is one atomic composite replacement. Its windows share the source's bounded preparation allowance,
+further narrowed by queue and plan budgets. Disposal cancels pending work without blocking a caller's scheduler.
+Any still-running worker retains its readers and CPU charges until its completion continuation unwinds them.

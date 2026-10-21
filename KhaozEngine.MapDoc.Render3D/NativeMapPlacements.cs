@@ -36,7 +36,7 @@ public static class NativeMapPlacements
         if (scene.Witness.ClosureHash != assets.Closure.Hash) throw new MapDocumentException("Placement assets belong to another closure.");
         foreach (var placement in scene.Placements)
             if (!assets.ById.ContainsKey(placement.AssetId)) throw new MapRenderAssetRefusal(MapRenderAssetStatus.Missing, "Placement has no selected asset: " + placement.AssetId);
-        var admission = new MapSceneAdmission(scene.Source.Data.Limits);
+        var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(scene.Source.Data.Limits);
         try
         {
             var instances = new List<NativePropInstance>();

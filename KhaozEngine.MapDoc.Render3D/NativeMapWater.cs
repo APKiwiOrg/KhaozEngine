@@ -37,7 +37,7 @@ public static class NativeMapWater
         if (water.Status is not (MapSceneStatus.CompleteForScope or MapSceneStatus.WholeWorldComplete) ||
             !water.RequestedWitness.CompleteForScope || !water.AcquiredCellWitness.CompleteForScope)
             throw new MapRenderAssetRefusal(MapRenderAssetStatus.Missing, "Water requires complete requested and canonical-cell coverage.");
-        var admission = new MapSceneAdmission(water.Limits);
+        var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(water.Limits);
         using var admitted = admission.Enter();
         try
         {
@@ -45,7 +45,8 @@ public static class NativeMapWater
             admission.ReserveBytes(2048);
             look = ResolveLook(look, settings);
             double halo = CertifiedMotionPadding(look);
-            if (!double.IsFinite(water.MotionPaddingMetres) || water.MotionPaddingMetres < halo)
+            if (!double.IsFinite(water.MotionPaddingMetres) || water.MotionPaddingMetres < 0 ||
+                water.Cells.Count > 0 && water.MotionPaddingMetres < halo)
                 throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, "Scene MotionPaddingMetres does not cover this water look's certified displacement and clip epsilon.");
             var clips = new MapWaterClipHalo(water, halo, admission);
             var parts = new List<MapWaterRenderPart>();

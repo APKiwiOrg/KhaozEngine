@@ -87,7 +87,7 @@ public static class NativeMapFoliage
     {
         ArgumentNullException.ThrowIfNull(samples);
         Validate(scene, assets, policy, routing, samples.SelectMany(b => b.Samples.Select(s => s.AssetId)));
-        var admission = new MapSceneAdmission(scene.Source.Data.Limits);
+        var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(scene.Source.Data.Limits);
         try
         {
             var groups = new List<MapNativeFoliageGroup>();

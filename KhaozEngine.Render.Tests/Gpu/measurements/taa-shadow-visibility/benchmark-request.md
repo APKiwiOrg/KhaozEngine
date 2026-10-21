@@ -1,6 +1,6 @@
 # TAA shadow visibility cost benchmark request
 
-Status: request only, plan Task 12. Nothing has been dispatched. The billed T4 run needs fresh explicit owner approval. If approval is declined, the hold is recorded here and integration and release stay with the orchestrator.
+Status: sections 1 to 7 are completed history. Their results are in `benchmark-result.md` and `benchmark-result-2.md`. Section 8 is the current request and is not dispatched. Every billed T4 run needs fresh explicit owner approval. If approval is declined, the hold is recorded here and integration and release stay with the orchestrator.
 
 ## 1. Current evidence
 

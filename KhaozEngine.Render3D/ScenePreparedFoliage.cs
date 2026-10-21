@@ -19,6 +19,8 @@ public sealed class ScenePreparedFoliage
     public IReadOnlyList<SceneFoliagePatch> Patches { get; }
     public ReadOnlyMemory<byte> PackedInstances => _packed.ToArray();
     public SceneUploadDemand Demand { get; }
+    internal Internal.FoliagePatchLayout? Layout { get; set; }
+    internal Internal.FoliagePointShadowStream? PointStream { get; set; }
     internal ReadOnlySpan<int> BorrowExpandedSourceRows => _rows;
     internal ReadOnlyMemory<byte> BorrowPackedInstances => _packed;
 

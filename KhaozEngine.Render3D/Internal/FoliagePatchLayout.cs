@@ -8,15 +8,16 @@ internal sealed class FoliagePatchLayout
 {
     internal FoliageInstance[] Instances { get; }
     internal FoliagePatch[] Patches { get; }
+    internal int[] InputOrder { get; }
 
-    FoliagePatchLayout(FoliageInstance[] instances, FoliagePatch[] patches)
+    FoliagePatchLayout(FoliageInstance[] instances, FoliagePatch[] patches, int[] inputOrder)
     {
         Instances = instances;
-        Patches = patches;
+        Patches = patches; InputOrder = inputOrder;
     }
 
     internal static FoliagePatchLayout Build(ReadOnlySpan<FoliageInstance> instances,
-        Func<MeshHandle, MeshBounds?> boundsForMesh, float patchSize = 8f)
+        Func<MeshHandle, MeshBounds?> boundsForMesh, float patchSize = 8f, RenderAnchor? anchor = null, ReadOnlySpan<Vector2> absoluteRoots = default)
     {
         ArgumentNullException.ThrowIfNull(boundsForMesh);
         if (!float.IsFinite(patchSize) || patchSize <= 0f)
@@ -40,8 +41,8 @@ internal sealed class FoliagePatchLayout
 
             MeshBounds world = TransformBounds(bounds, instance.Transform, out float height);
             // Double division keeps tiny cells and large finite coordinates away from integer overflow.
-            var key = new PatchKey(Math.Floor((double)instance.Transform.M41 / patchSize),
-                Math.Floor((double)instance.Transform.M43 / patchSize), meshKey.Index, meshKey.Generation,
+            var key = new PatchKey(Math.Floor((absoluteRoots.IsEmpty ? (double)(anchor?.X ?? 0) + instance.Transform.M41 : absoluteRoots[i].X) / patchSize),
+                Math.Floor((absoluteRoots.IsEmpty ? (double)(anchor?.Z ?? 0) + instance.Transform.M43 : absoluteRoots[i].Y) / patchSize), meshKey.Index, meshKey.Generation,
                 instance.CastsShadows);
             entries.Add(new Entry(key, instance, world, height, i));
         }
@@ -58,6 +59,7 @@ internal sealed class FoliagePatchLayout
         });
 
         var ordered = new FoliageInstance[entries.Count];
+        var inputOrder = new int[entries.Count];
         var patches = new List<FoliagePatch>();
         int start = 0;
         while (start < entries.Count)
@@ -73,6 +75,7 @@ internal sealed class FoliagePatchLayout
             {
                 Entry entry = entries[end];
                 ordered[end] = entry.Instance;
+                inputOrder[end] = entry.InputOrder;
                 min = Vector3.Min(min, entry.Bounds.Min);
                 max = Vector3.Max(max, entry.Bounds.Max);
                 Vector2 root = Root(entry.Instance);
@@ -92,7 +95,7 @@ internal sealed class FoliagePatchLayout
                 maxLeanHeight, shiverHeight, windScaleHeight, customMotion));
             start = end;
         }
-        return new FoliagePatchLayout(ordered, patches.ToArray());
+        return new FoliagePatchLayout(ordered, patches.ToArray(), inputOrder);
     }
 
     static Vector2 Root(in FoliageInstance instance) => new(instance.Transform.M41, instance.Transform.M43);

@@ -7,7 +7,7 @@ using KhaozEngine.Render3D.Internal;
 namespace KhaozEngine.Render3D.Rendering;
 
 /// <summary>Displaced foliage depth pipelines sharing the cascade atlas and retained foliage stream.</summary>
-internal sealed class FoliageShadowRenderer : IDisposable
+internal sealed partial class FoliageShadowRenderer : IDisposable
 {
     internal const int CascadePayloadBytes = 144;
     internal const uint CascadeSlotBytes = 256;
@@ -104,6 +104,7 @@ internal sealed class FoliageShadowRenderer : IDisposable
 
     public void Dispose()
     {
+        DisposePrepared();
         _cutout?.Dispose();
         _opaque?.Dispose();
         _cutoutShaders?.Dispose();

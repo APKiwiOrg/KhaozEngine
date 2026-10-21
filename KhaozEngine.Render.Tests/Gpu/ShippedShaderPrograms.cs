@@ -25,7 +25,7 @@ namespace KhaozEngine.Tests.Gpu
     /// a program from this list.
     ///
     /// <para>
-    /// DEDUPLICATED BY SOURCE PAIR, not by call site. The catalog contains 87 graphics pairs and eight compute
+    /// DEDUPLICATED BY SOURCE PAIR, not by call site. The catalog contains 92 graphics pairs and eight compute
     /// kernels. The <c>Line</c> pair is created three times (<c>DepthLineRenderer</c>, and <c>LineRenderer</c> plus
     /// <c>FillRenderer</c> through <c>OverlayRenderer</c>), and identical sources cross-compile to identical
     /// HLSL, so three rows would be three copies of one fact. Where a pair has several call sites the name is its
@@ -49,7 +49,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>The cascade resolutions <c>OceanFftProducer</c> can compile a kernel for.</summary>
         public static readonly int[] OceanResolutions = { 32, 64, 128, 256 };
 
-        /// <summary>Every distinct shipped vertex and fragment pair, 87 of them.</summary>
+        /// <summary>Every distinct shipped vertex and fragment pair, 92 of them.</summary>
         public static IEnumerable<ShippedGraphicsProgram> GraphicsPrograms()
         {
             // Render2D.
@@ -61,6 +61,11 @@ namespace KhaozEngine.Tests.Gpu
             // Render3D model and terrain.
             yield return new("Model", ShaderSources.ModelVert, ShaderSources.ModelFrag);
             yield return new("Foliage", ShaderSources.FoliageVert, ShaderSources.ModelFrag);
+            yield return new("PreparedFoliage", ShaderSources.PreparedFoliage(ShaderSources.FoliageVert, 2), ShaderSources.ModelFrag);
+            yield return new("PreparedFoliageMotion", ShaderSources.PreparedFoliage(ShaderSources.FoliageMotionVert, 3), ShaderSources.ModelMotionFrag);
+            yield return new("PreparedFoliageDepth", ShaderSources.PreparedFoliage(ShaderSources.FoliageDepthVert, 3), ShaderSources.ShadowDepthFrag);
+            yield return new("PreparedFoliageDepthCutout", ShaderSources.PreparedFoliage(ShaderSources.FoliageDepthVert, 3), ShaderSources.FoliageDepthCutoutFrag);
+            yield return new("PreparedFoliagePoint", ShaderSources.PreparedPointFoliageVert, ShaderSources.PointShadowRigidFrag);
             yield return new("ModelDissolve", ShaderSources.ModelVert, ShaderSources.ModelDissolveFrag);
             yield return new("SkinnedModel", ShaderSources.SkinnedModelVert, ShaderSources.SkinnedModelFrag);
             yield return new("SkinnedModelDissolve",

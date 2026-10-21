@@ -46,6 +46,7 @@ namespace KhaozEngine.Tests.Gpu
             CaptureTargetOutlinePipelines(scene, framebuffer, commands);
             CaptureTemporalPipelines(device, commands);
             CaptureFoliageShadowPipelines(scene, framebuffer, commands);
+            CapturePreparedFoliagePipelines(device);
 
             ShippedGraphicsProgram[] expectedPrograms = ShippedShaderPrograms.GraphicsPrograms()
                 .Where(program => Parse(program.VertexGlsl).Count > 0)
@@ -184,6 +185,33 @@ namespace KhaozEngine.Tests.Gpu
             scene.PrepareFrame();
             scene.RenderInternal(commands, 64, 64, framebuffer);
             Assert.True(scene.FoliageShadowDrawCalls > 0);
+        }
+
+        static void CapturePreparedFoliagePipelines(FakeGpuDevice device)
+        {
+            using var host = new KhaozEngine.Tests.MapDoc.NativeUploadTestScene(device);
+            var scene = host.Scene;
+            KhaozEngine.Tests.MapDoc.NativeResourceUploadTests.LoadParts(scene);
+            var data = new SceneUploadData(null, null,
+                KhaozEngine.Tests.MapDoc.NativeRenderAssetFixtures.FoliageSource(), default);
+            var handle = KhaozEngine.Tests.MapDoc.NativeResourceUploadTests.Publish(scene, data);
+            scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
+            scene.Begin();
+            scene.DrawPreparedFoliage(handle, Vector3.Zero, new() { DrawRadius = 100, DistantDensity = 1 }, default);
+            scene.AddLight(new(1, 2, 1), Color.White, 6, 1, LightShadow.Static(71));
+            host.Render();
+            Assert.True(scene.FoliageShadowDrawCalls > 0);
+            // The first request admits the atlas at the next explicit frame boundary.
+            scene.Begin();
+            scene.DrawPreparedFoliage(handle, Vector3.Zero, new() { DrawRadius = 100, DistantDensity = 1 }, default);
+            scene.AddLight(new(1, 2, 1), Color.White, 6, 1, LightShadow.Static(71));
+            host.Render();
+            Assert.True(scene.FoliagePointShadowDrawCalls > 0);
+            scene.ForceTemporalForTests = true;
+            scene.Begin();
+            scene.DrawPreparedFoliage(handle, Vector3.Zero, new() { DrawRadius = 100, DistantDensity = 1 }, default);
+            host.Render();
+            scene.ReleaseResource(handle);
         }
 
         static IReadOnlyList<VertexDeclaration> Parse(string glsl)

@@ -1484,3 +1484,33 @@ foliage pays no point-proxy cost.
 Dispose the batch when placements change or unload. The scene owns GPU buffers and retires them safely.
 Mesh handles remain caller-owned and must belong to that scene. `LastFoliageStats` reports workload and
 upload counts. `CandidateInstances` includes instances the shader rejects, rather than exact visible blades.
+
+
+## Admitted resource publication
+
+`Scene3D.MeasureResourceUpload(SceneUploadData)` measures aligned vertex, outline-normal and index buffers,
+full RGBA8 mip chains, water-domain bytes, expanded 96-byte foliage instances, anchor uniforms and preparation
+and staging peaks. Measurement allocates the returned demand token, with no payload copies or GPU factories.
+Detached inputs compute their digest when constructed. `PrepareResourceUpload(data, reservation)` verifies
+that digest and the complete demand, then calls `ISceneUploadReservation.Claim` before preparing or allocating.
+`Advance(bytes)` copies at most that allowance through bounded buffers and texture rows/mips. A budget smaller
+than the next aligned element makes no progress. Native mip staging samples source texel centres bilinearly.
+`Ready` includes completion of the final GPU fence. Publication refuses until ready and succeeds once.
+
+`SceneResourceAccess(scene)` resolves published mesh handles through `MeshOf` and submits rigid descriptors
+through `DrawResourceAnchored`. It replaces only the mesh. Water uses the same published mesh and its retained
+original domain. `SceneGroundMaterialData` binds terrain through the shared tile-ground material and mesh path.
+An empty light registration owns no mesh bytes and never resolves as a mesh. Unready, released, foreign-scene
+and non-mesh handles refuse. A mesh returned by `MeshOf` is borrowed, so release it through `ReleaseResource`.
+Cancellation and release retain the aggregate lease until actual destruction behind the scene's retire queue.
+Scene disposal also cancels pending uploads and releases published resources.
+
+`SceneFoliageSource` freezes model/part indices, profiles and casting. World transforms subtract their integer
+anchor once during preparation. `SceneFoliageTransformSpace.AnchorLocal` preserves already-local transform bits.
+Absolute patch ownership, source-row correspondence and literal packed parameters survive sorting.
+`SceneResourceUpload.PreparedFoliage` exposes the immutable production layout and packed bytes before publication.
+`DrawPreparedFoliage` and Terrain.Render3D's `GroundCoverRenderer.DrawPrepared` take local focus and interactors
+unchanged. They select existing patches with frame settings, without expansion, profile lookup or resource upload.
+Native colour, motion and shadow shaders adjust their view-projection matrices by anchor minus render origin.
+Point shadows reuse the published 96-byte instance stream at rest, with no lazy proxy upload or origin rebuild.
+Frame uniforms remain dynamic. The legacy `DrawFoliage` and `DrawGroundCover` paths retain lazy upload behavior.

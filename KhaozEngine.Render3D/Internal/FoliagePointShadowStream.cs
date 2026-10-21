@@ -24,17 +24,20 @@ internal readonly record struct FoliagePointShadowRange(int Start, int Count);
 /// stored, in layout order, so the proxies of one patch occupy consecutive slots. The 128-byte rigid instance
 /// stream behind them is uploaded lazily, rebased by the frame's render origin, and reused until that origin moves.
 /// Wind, agitation and motion profiles never reach it, so a static point-shadow map over animated foliage stays
-/// cached.
+/// cached. Prepared native batches borrow their expanded stream and retain exact local poses for signatures.
 /// </summary>
 internal sealed class FoliagePointShadowStream : IDisposable
 {
     readonly FoliagePointShadowCaster[] _casters;
+    readonly RenderAnchor? _anchor;
+    readonly Matrix4x4[]? _localTransforms;
     IGpuBuffer? _buffer;
     GpuRetireQueue? _retired;
     Vector3 _uploadedOrigin;
-    bool _disposed;
+    bool _disposed, _prepared;
 
-    FoliagePointShadowStream(FoliagePointShadowCaster[] casters) => _casters = casters;
+    FoliagePointShadowStream(FoliagePointShadowCaster[] casters, RenderAnchor? anchor = null, Matrix4x4[]? localTransforms = null)
+    { _casters = casters; _anchor = anchor; _localTransforms = localTransforms; }
 
     /// <summary>The uploaded proxy stream, or null before the first upload and after disposal.</summary>
     internal IGpuBuffer? Buffer => _buffer;
@@ -45,30 +48,36 @@ internal sealed class FoliagePointShadowStream : IDisposable
     /// <summary>Collect the casting instances of a batch layout. An instance whose mesh has no bounds (a stale
     /// handle) is left out, as the patch layout leaves it out.</summary>
     internal static FoliagePointShadowStream Build(ReadOnlySpan<FoliageInstance> instances,
-        Func<MeshHandle, MeshBounds?> boundsForMesh)
+        Func<MeshHandle, MeshBounds?> boundsForMesh, RenderAnchor? anchor = null)
     {
         ArgumentNullException.ThrowIfNull(boundsForMesh);
         var casters = new List<FoliagePointShadowCaster>();
+        var localTransforms = anchor.HasValue ? new Matrix4x4[instances.Length] : null;
         for (int i = 0; i < instances.Length; i++)
         {
             ref readonly FoliageInstance instance = ref instances[i];
             if (!instance.CastsShadows || boundsForMesh(instance.Mesh) is not MeshBounds bounds) continue;
-            PointShadowCasterSphere sphere = PointShadowCasterSphere.FromRestBounds(bounds, instance.Transform, 1f);
-            casters.Add(new FoliagePointShadowCaster(instance.Mesh, instance.Transform,
-                new Vector4(sphere.Center, sphere.Radius), (uint)casters.Count, i));
+            if (localTransforms is not null) localTransforms[i] = instance.Transform;
+            var transform = anchor is { } a ? new AnchoredRigidTransform(instance.Transform, a).Absolute : instance.Transform;
+            PointShadowCasterSphere sphere = PointShadowCasterSphere.FromRestBounds(bounds, transform, 1f);
+            casters.Add(new FoliagePointShadowCaster(instance.Mesh, transform,
+                new Vector4(sphere.Center, sphere.Radius), anchor.HasValue ? (uint)i : (uint)casters.Count, i));
         }
-        return new FoliagePointShadowStream(casters.ToArray());
+        return new FoliagePointShadowStream(casters.ToArray(), anchor, localTransforms);
     }
 
     /// <summary>Upload the proxies in render space when nothing is uploaded yet or the render origin moved.
     /// Returns the bytes written. Must run outside a render pass. The retire queue is kept so
     /// <see cref="Dispose"/> retires the buffer behind the frames that may still read it.</summary>
+    internal void AttachPreparedBuffer(IGpuBuffer? buffer) { _prepared = true; _buffer = buffer; }
+
     internal long EnsureUploaded(IGpuDevice device, IGpuCommandList cl, Vector3 renderOrigin, GpuRetireQueue retired)
     {
         ArgumentNullException.ThrowIfNull(device);
         ArgumentNullException.ThrowIfNull(cl);
         ArgumentNullException.ThrowIfNull(retired);
         ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_prepared) return 0;
         _retired = retired;
         if (_casters.Length == 0 || (_buffer is not null && _uploadedOrigin == renderOrigin)) return 0;
 
@@ -121,6 +130,16 @@ internal sealed class FoliagePointShadowStream : IDisposable
         }
     }
 
+    /// <summary>GPU run slots index the expanded native stream, whose non-casting rows are absent here.</summary>
+    internal ReadOnlySpan<FoliagePointShadowCaster> CastersIn(FoliagePointShadowRun run)
+    {
+        int start = _anchor.HasValue ? FirstAtOrAfter(checked((int)run.Start)) : checked((int)run.Start);
+        return _casters.AsSpan(start, checked((int)run.Count));
+    }
+
+    internal AnchoredRigidTransform? AnchoredPose(in FoliagePointShadowCaster caster) =>
+        _anchor is { } anchor ? new(_localTransforms![caster.SourceIndex], anchor) : null;
+
     static void Append(List<FoliagePointShadowRun> runs, in FoliagePointShadowCaster caster)
     {
         int last = runs.Count - 1;
@@ -154,7 +173,7 @@ internal sealed class FoliagePointShadowStream : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        if (_buffer is not null) _retired!.Retire(_buffer);
+        if (_buffer is not null && !_prepared) _retired!.Retire(_buffer);
         _buffer = null;
     }
 }

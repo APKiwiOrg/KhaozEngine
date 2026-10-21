@@ -67,7 +67,7 @@ public sealed class GroundCoverRenderOptions
 }
 
 /// <summary>Queues precomputed ground cover through immediate or retained instancing.</summary>
-public static class GroundCoverRenderer
+public static partial class GroundCoverRenderer
 {
     static readonly ConditionalWeakTable<Scene3D, GroundCoverGpuCache> GpuCaches = new();
 

@@ -65,9 +65,8 @@ internal sealed class GroundCoverGpuBindings
             GroundCoverInstance placement = _cover.Items[i];
             FoliageMotionProfile motion = _motion[model];
             bool casts = _casts[model];
-            for (int part = 0; part < parts.Length; part++)
-                result[next++] = new FoliageInstance(
-                    parts[part], placement.Transform, placement.ThinningRank, motion, casts);
+            next += FoliageModelExpansion.WriteParts(parts, placement.Transform, placement.ThinningRank,
+                motion, casts, result.AsSpan(next));
         }
         return result;
     }

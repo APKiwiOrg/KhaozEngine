@@ -31,13 +31,8 @@ namespace KhaozEngine.Render3D
                 _gd.UpdateBuffer(outlineNormalVb, 0, outlineNormals);
                 ib = CreateIndexBuffer(mesh.Indices32, mesh.IndexFormat);
 
-                MeshBounds bounds = MeshBounds.FromVertices(mesh.Vertices);
-                int index = _slots.Alloc(out int generation);
-                var slot = new Mesh(vb, outlineNormalVb, ib, mesh.Indices32.Length, mesh.IndexFormat, in bounds,
-                    material, outlineMaterial, splatMaterial, alphaCutoff, tileGroundMaterial, shadowCutout);
-                if (index < _meshes.Count) _meshes[index] = slot;
-                else _meshes.Add(slot);
-                return new MeshHandle(index, generation);
+                return PublishMesh(mesh, vb, outlineNormalVb, ib, material, outlineMaterial,
+                    splatMaterial, alphaCutoff, tileGroundMaterial, shadowCutout);
             }
             catch
             {

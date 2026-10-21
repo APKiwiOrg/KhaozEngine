@@ -99,9 +99,11 @@ def gpu(*prefixes):
 # included. "~" is containment. A class rule ends in "." so it cannot reach a longer class name, and a
 # prefix rule such as gpu("S") takes every Gpu class whose name starts with that letter that no earlier
 # rule took.
+NATIVE_RESOURCE_UPLOAD = [("~", "KhaozEngine.Tests.MapDoc.NativeResourceUploadGpuTests.")]
+
 RENDER_SLICES = {
     "metal-native": [
-        ("render-1", gpu("TemporalFollow", "TemporalLongHoldFollowGpuTests.")),
+        ("render-1", gpu("TemporalFollow", "TemporalLongHoldFollowGpuTests.") + NATIVE_RESOURCE_UPLOAD),
         ("render-2", []),
     ],
     "direct3d11-native": [
@@ -109,7 +111,7 @@ RENDER_SLICES = {
         ("render-2", [("=", ORTHO_N), ("=", ORTHO_Q), ("=", PERSPECTIVE_NQ), ("=", STOP)]
          + gpu("TemporalFollowCameraGpuTests.", "TemporalFollowStopGpuTests.", "TemporalG", "TemporalR",
                "TemporalS")),
-        ("render-3", gpu("Temporal")),
+        ("render-3", gpu("Temporal") + NATIVE_RESOURCE_UPLOAD),
         ("render-4", []),
     ],
     "vulkan-native": [
@@ -125,7 +127,7 @@ RENDER_SLICES = {
         ("render-9", [("=", STOP)] + gpu("S", "Tab", "Target", "Telegraph", "Terrain", "Text", "Tile",
                                        "Tool", "H", "L", "N")),
         ("render-10", gpu("TemporalFollowCameraGpuTests.", "TemporalP", "O", "W", "V")),
-        ("render-11", gpu("TemporalG", "TemporalFollowLinesGpuTests.", "F", "TemporalN", "TemporalO")),
+        ("render-11", gpu("TemporalG", "TemporalFollowLinesGpuTests.", "F", "TemporalN", "TemporalO") + NATIVE_RESOURCE_UPLOAD),
         ("render-12", []),
     ],
 }

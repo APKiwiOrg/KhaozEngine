@@ -109,7 +109,9 @@ and overflow diagnostics remain authoritative.
 
 `IMapRenderDevice` measures upload demand before creation. An upload must claim its
 `ISceneUploadReservation` before running any allocation factory. Retirement stays charged until the
-renderer confirms release. Renderer publication, residency and the actual scene sink are later R8a work.
+renderer confirms release. Render3D now supplies admitted upload, publication and `SceneResourceAccess`.
+The composite residency owner and actual scene sink remain later R8a work. Explicit plant resources convert to
+`SceneFoliageSource` with `SceneFoliageTransformSpace.AnchorLocal`. Generated world rows use `World`.
 `ScenePreparedFoliage` declares the immutable 96-byte packed product. Its producer is not implemented here.
 
 `MapWaterScopedCompiler.Compile(scene)` selects complete world-locked 2 m water cells, split at document

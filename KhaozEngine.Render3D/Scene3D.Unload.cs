@@ -39,6 +39,8 @@ namespace KhaozEngine.Render3D
         /// </summary>
         public void UnloadMesh(MeshHandle h)
         {
+            if (_publishedResourceMeshes.Contains(h))
+                throw new System.InvalidOperationException("A published resource mesh is borrowed. Use ReleaseResource.");
             if (h.Generation == 0) return;          // default handle: no-op
             _slots.Free(h.Index, h.Generation);     // throws on stale/invalid
             ForgetWaterAndInteriorRelevance(h);

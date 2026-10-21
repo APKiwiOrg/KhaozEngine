@@ -20,9 +20,10 @@ internal sealed partial class WaterRenderer
     byte[] _boundedTransformImage = Array.Empty<byte>();
     int _boundedCapacity, _boundedGeneration;
     readonly Dictionary<MeshHandle, DomainGpu> _boundedDomains = new();
-    sealed class DomainGpu(IGpuBuffer buffer)
+    sealed class DomainGpu(IGpuBuffer buffer, bool ownsBuffer = true)
     {
         internal readonly IGpuBuffer Buffer = buffer;
+        internal readonly bool OwnsBuffer = ownsBuffer;
         internal IGpuResourceSet? Set;
         internal int Generation;
     }
@@ -53,11 +54,13 @@ internal sealed partial class WaterRenderer
         try { _gd.UpdateBuffer(buffer, 0, bytes); _boundedDomains.Add(handle, new(buffer)); }
         catch { buffer.Dispose(); throw; }
     }
+    internal void RegisterPublishedDomain(MeshHandle handle, IGpuBuffer buffer) =>
+        _boundedDomains.Add(handle, new(buffer, false));
     internal bool HasBoundedDomain(MeshHandle handle) => _boundedDomains.ContainsKey(handle);
     internal void ForgetBoundedDomain(MeshHandle handle)
     {
         if (!_boundedDomains.Remove(handle, out var domain)) return;
-        _retired.Retire(domain.Set); _retired.Retire(domain.Buffer);
+        _retired.Retire(domain.Set); if (domain.OwnsBuffer) _retired.Retire(domain.Buffer);
     }
     void EnsureBoundedPipeline()
     {
@@ -141,7 +144,7 @@ internal sealed partial class WaterRenderer
     }
     void DisposeBounded()
     {
-        foreach (var domain in _boundedDomains.Values) { domain.Set?.Dispose(); domain.Buffer.Dispose(); }
+        foreach (var domain in _boundedDomains.Values) { domain.Set?.Dispose(); if (domain.OwnsBuffer) domain.Buffer.Dispose(); }
         _boundedDomains.Clear(); _boundedTransforms?.Dispose(); _boundedPipe?.Dispose();
         _boundedShaders?.Dispose(); _boundedLayout?.Dispose();
     }

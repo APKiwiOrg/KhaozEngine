@@ -46,9 +46,14 @@ public sealed partial class Scene3D
             if (!FoliageDrawValid(draw) || draw.Batch.Buffer is null ||
                 !FoliageShadowSelection.IntersectsCascade(draw.Bounds, frustum)) continue;
             Mesh mesh = _meshes[draw.Patch.Mesh.Index]!.Value;
-            _foliageShadowRenderer!.Draw(cl, cascade, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat,
-                draw.Batch.Buffer, (uint)draw.Patch.Start, (uint)draw.Count, _model.FoliageSet, (uint)draw.UniformSlot,
-                mesh.CutsOutShadow ? mesh.ShadowCutoutSet : null);
+            if (draw.Batch.AnchorSet is { } anchor)
+                _foliageShadowRenderer!.DrawPrepared(cl, cascade, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat,
+                    draw.Batch.Buffer, (uint)draw.Patch.Start, (uint)draw.Count, _model.FoliageSet, (uint)draw.UniformSlot,
+                    mesh.CutsOutShadow ? mesh.ShadowCutoutSet : null, anchor, _model.PreparedAnchorLayout);
+            else
+                _foliageShadowRenderer!.Draw(cl, cascade, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat,
+                    draw.Batch.Buffer, (uint)draw.Patch.Start, (uint)draw.Count, _model.FoliageSet, (uint)draw.UniformSlot,
+                    mesh.CutsOutShadow ? mesh.ShadowCutoutSet : null);
             FoliageShadowDrawCalls++;
             CountMeshDraw(mesh.IndexCount, (uint)draw.Count);
         }

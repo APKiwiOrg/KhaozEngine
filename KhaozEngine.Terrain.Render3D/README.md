@@ -378,3 +378,9 @@ statics). See the 3D World room (`Room3D`) in `KhaozEngine.Showcase` for the wal
 (its foliage scatter uses this multi-part form so the re-baked textured pine/oak/rock kit renders textured).
 
 Part of [KhaozEngine](https://github.com/APKiwiOrg/KhaozEngine).
+
+
+`GroundCoverRenderer.DrawPrepared(scene, foliage, localFocus, settings, anchor, interactors)` submits a previously
+published `SceneResourceHandle`. Stable model expansion, motion profiles, casting, patch layout and instance
+packing belong to the admitted upload. The draw validates the anchor and carries focus and frame policy unchanged.
+Release the handle through `Scene3D.ReleaseResource`. `DrawGroundCover` retains its existing ownership and behavior.

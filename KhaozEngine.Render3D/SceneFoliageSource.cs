@@ -19,12 +19,15 @@ public sealed class SceneFoliageModelBinding
     }
 }
 
+public enum SceneFoliageTransformSpace { World, AnchorLocal }
+
 public sealed class SceneFoliageSource
 {
     readonly Matrix4x4[] _transforms;
     readonly float[] _ranks;
     readonly int[] _indices;
     public RenderAnchor Anchor { get; }
+    public SceneFoliageTransformSpace TransformSpace { get; }
     public ReadOnlyMemory<Matrix4x4> WorldTransforms => _transforms.ToArray();
     public ReadOnlyMemory<float> Ranks => _ranks.ToArray();
     public ReadOnlyMemory<int> ModelIndices => _indices.ToArray();
@@ -34,14 +37,16 @@ public sealed class SceneFoliageSource
     internal ReadOnlySpan<int> BorrowModelIndices => _indices;
 
     public SceneFoliageSource(RenderAnchor anchor, ReadOnlyMemory<Matrix4x4> worldTransforms,
-        ReadOnlyMemory<float> ranks, ReadOnlyMemory<int> modelIndices, IReadOnlyList<SceneFoliageModelBinding> models)
+        ReadOnlyMemory<float> ranks, ReadOnlyMemory<int> modelIndices, IReadOnlyList<SceneFoliageModelBinding> models,
+        SceneFoliageTransformSpace transformSpace = SceneFoliageTransformSpace.World)
     {
         ArgumentNullException.ThrowIfNull(models);
         _transforms = worldTransforms.ToArray(); _ranks = ranks.ToArray(); _indices = modelIndices.ToArray();
-        Models = Array.AsReadOnly(models.ToArray()); Anchor = anchor;
+        Models = Array.AsReadOnly(models.ToArray()); Anchor = anchor; TransformSpace = transformSpace;
+        if (!Enum.IsDefined(transformSpace)) throw new ArgumentOutOfRangeException(nameof(transformSpace));
         if (_transforms.Length != _ranks.Length || _indices.Length != _ranks.Length ||
             Models.Any(m => m is null) || Models.Select(m => m.ModelId).Distinct(StringComparer.Ordinal).Count() != Models.Count ||
-            _indices.Any(i => i < 0 || i >= Models.Count) || _ranks.Any(r => !float.IsFinite(r) || r < 0 || r > 1))
+            _indices.Any(i => i < 0 || i >= Models.Count) || _ranks.Any(r => !float.IsFinite(r) || r < 0 || r >= 1))
             throw new ArgumentException("Foliage rows require matching transforms, ranks and valid model indices.");
     }
 }

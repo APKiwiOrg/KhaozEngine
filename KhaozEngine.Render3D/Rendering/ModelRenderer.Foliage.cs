@@ -190,6 +190,7 @@ internal sealed partial class ModelRenderer
 
     void DisposeFoliageResources()
     {
+        DisposePreparedFoliage();
         _foliagePipeline?.Dispose();
         _foliageShaders?.Dispose();
         _foliageSet?.Dispose();

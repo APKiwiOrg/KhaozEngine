@@ -6,14 +6,20 @@ using KhaozEngine.Render3D.Internal;
 namespace KhaozEngine.Tests.Gpu;
 
 /// <summary>
-/// D AS SHIPPED AT 583a3ae7b, FROZEN. The visibility helper, the call-site block that decides the lock release and the
-/// later hold release, copied verbatim from <c>ShaderSources.TemporalVisibility.cs</c> and
-/// <c>ShaderSources.TemporalAccumulate.cs</c>. The cost cut (plan Task 7f) must keep every output and every observable
-/// decision bit-identical to this text, so it is the oracle the equivalence and resolve-level facts compare against.
-/// Never edit the three texts or their pins. <see cref="ToD"/> finds the production pieces through anchors, which may
-/// move with production. It also restores what the current mask (Task 7f.3) changed in the first pass, the surface and
-/// the fused entry, frozen in <see cref="TemporalVisibilityFrozenDMask"/>, so a D program is the whole program D
-/// shipped.
+/// D AS SHIPPED AT 583a3ae7b, FROZEN. The visibility helper, the call-site block that decides the lock release, the
+/// later hold release and the <c>precise</c> lock release helper, copied verbatim from
+/// <c>ShaderSources.TemporalVisibility.cs</c> and <c>ShaderSources.TemporalAccumulate.cs</c>. The cost cut (plan Task
+/// 7f) must keep every output and every observable decision bit-identical to this text, so it is the oracle the
+/// equivalence and resolve-level facts compare against. Never edit the four texts or their pins. <see cref="ToD"/>
+/// finds the production pieces through anchors, which may move with production. It also restores what the current
+/// mask (Task 7f.3) changed in the first pass, the surface and the fused entry, frozen in
+/// <see cref="TemporalVisibilityFrozenDMask"/>.
+/// <para><b>TWO D PROGRAMS SINCE 7g.3a.</b> Production's lock release lost <c>precise</c> for an ordered barrier form
+/// (<c>ShaderSources.TemporalLockReleaseGlsl</c>). <see cref="ToShippedD"/> also restores D's precise helper
+/// (<see cref="LockReleaseGlsl"/>), so its program is the whole program D shipped, which the pins hold. It must match
+/// production byte for byte on Metal, which lowered the precise helper as the barrier form computes. <see cref="ToD"/>,
+/// D prime, keeps production's helper, so D and production share one lock arithmetic on every backend. Every other
+/// rule compares against D prime.</para>
 /// </summary>
 internal static class TemporalVisibilityFrozenD
 {
@@ -88,10 +94,27 @@ bool temporalVisibilityChange(vec2 uv, ivec2 centre, ivec2 last,
     /// <summary>D's second effect of the release, after the colour release block.</summary>
     internal const string HoldReleaseGlsl = "    if (released || visibilityReleased) hold = 0.0;";
 
+    /// <summary>D's lock release helper, its comment and the blank line before it, with its two <c>precise</c>
+    /// markings. <see cref="ToShippedD"/> puts it where production's <c>ShaderSources.TemporalLockReleaseGlsl</c>
+    /// stands.</summary>
+    internal const string LockReleaseGlsl = @"
+// Keep only the carried-lock release arithmetic ordered. Visibility adds another use of this value, which
+// exposed different contractions in the fused and split programs on Metal. Unqualified function inputs keep
+// precise from propagating into history sampling, reconstruction or surface preparation.
+float temporalReleaseLock(float value, float motionPixels, float reactive, float edgeMotion) {
+    precise float motionRelease = clamp((motionPixels - LockMotionStartPixels)
+        / (LockMotionEndPixels - LockMotionStartPixels), 0.0, 1.0);
+    precise float result = value * ((1.0 - motionRelease) * (1.0 - clamp(reactive * LockReactiveRelease, 0.0, 1.0))
+        * (1.0 - clamp(edgeMotion * LockEdgeRelease, 0.0, 1.0)));
+    return result;
+}
+";
+
     /// <summary>SHA-256 of each text, LF line endings, UTF-8, at 583a3ae7b.</summary>
     internal const string VisibilitySha256 = "a4e2f6fcc9d3857ce66d1857ff395a6057f2db31b0f2beea3ac5fa84dbc982b6";
     internal const string CallSiteSha256 = "e94fbb15a8c2745e3aee38d21aa692bf72838c532b3d4e4bdfbcd70ec1020734";
     internal const string HoldReleaseSha256 = "20758e966da369cc0a6f9ca592544251d6ee3dfaed722d8655439c5621c0ce7e";
+    internal const string LockReleaseSha256 = "e2ae2ac8655f07847f1000a363bfd301d3cea93c8377ebe6739b4698d0c96695";
 
     // Where the production call-site block starts and ends and its hold release. They equal D's lines at 583a3ae7b. A
     // later production change that moves one updates the anchor here, never the frozen text above.
@@ -105,14 +128,30 @@ bool temporalVisibilityChange(vec2 uv, ivec2 centre, ivec2 last,
     internal static string Sha256(string text) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text.Replace("\r\n", "\n")))).ToLowerInvariant();
 
-    /// <summary>A production fragment program as D: the production visibility block, call-site block and hold release
-    /// replaced by the frozen texts, then the current mask's changes undone by
-    /// <see cref="TemporalVisibilityFrozenDMask.Restore"/>. A program that holds none of them, such as the depth store,
-    /// comes back unchanged, and the split's first pass takes only the mask restore. One that holds only some of the
-    /// release pieces, or holds one twice, or holds the release without the mask's pieces, throws, so a production
-    /// change cannot leave the D program half rewritten. Every program the renderer compiles comes out as the program
-    /// D shipped, which <c>TemporalVisibilityFrozenDTests</c> holds to <see cref="TemporalVisibilityFrozenDMask.ProgramSha256"/>.</summary>
+    /// <summary>A production fragment program as D prime: the production visibility block, call-site block and hold
+    /// release replaced by the frozen texts, then the current mask's changes undone by
+    /// <see cref="TemporalVisibilityFrozenDMask.Restore"/>. Production's lock release helper stays. A program that holds
+    /// none of them, such as the depth store, comes back unchanged, and the split's first pass takes only the mask
+    /// restore. One that holds only some of the release pieces, or holds one twice, or holds the release without the
+    /// mask's pieces, throws, so a production change cannot leave the D program half rewritten.</summary>
     internal static string ToD(string program) => Rewrite(program, VisibilityGlsl, CallSiteGlsl, HoldReleaseGlsl);
+
+    /// <summary>A production fragment program as the program D shipped: <see cref="ToD"/>, then production's lock
+    /// release helper replaced by <see cref="LockReleaseGlsl"/>. Every program the renderer compiles comes out as the
+    /// program D shipped, which <c>TemporalVisibilityFrozenDTests</c> holds to
+    /// <see cref="TemporalVisibilityFrozenDMask.ProgramSha256"/>. A program without the helper comes back as
+    /// <see cref="ToD"/> gives it. One that holds the visibility release without the helper, or the helper twice,
+    /// throws.</summary>
+    internal static string ToShippedD(string program)
+    {
+        string d = ToD(program);
+        int helpers = Count(d, ShaderSources.TemporalLockReleaseGlsl);
+        bool release = Count(d, CallSiteGlsl) > 0;
+        if (helpers == 0 && !release) return d;
+        if (helpers != 1)
+            throw new InvalidOperationException($"the shipped D rewrite found {helpers} lock release helpers, one expected");
+        return d.Replace(ShaderSources.TemporalLockReleaseGlsl, LockReleaseGlsl, StringComparison.Ordinal);
+    }
 
     /// <summary>As <see cref="ToD"/> with the call site's text transformed first, for mutant controls that prove a
     /// rewrite reaches the compiled program.</summary>

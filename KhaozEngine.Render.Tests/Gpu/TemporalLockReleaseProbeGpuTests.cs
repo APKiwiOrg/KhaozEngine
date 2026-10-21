@@ -8,8 +8,10 @@ using Branch = KhaozEngine.Tests.Gpu.TemporalLockReleaseProbe.Branch;
 namespace KhaozEngine.Tests.Gpu;
 
 /// <summary>
-/// Task 7g.3 step 0, a measurement before any production change. P (the shipped <c>precise</c> lock release) and B
-/// (the barrier form) run as separate programs on the same cases, and B's float32 C# twin C runs beside them. The
+/// Task 7g.3 step 0, the measurement that chose the barrier form. P (the <c>precise</c> lock release frozen D shipped)
+/// and B (the barrier form production ships since 7g.3a) run as separate programs on the same cases, and B's float32
+/// C# twin C, production's <see cref="KhaozEngine.Render3D.Internal.TemporalResolveMath.ReleaseLock"/>, runs beside
+/// them. The
 /// fact prints how many cases differ in bits between each pair, with the first inputs that do, and asserts only that
 /// every case was written by both programs and that B equals C on the device. P against B is reported, never
 /// asserted.

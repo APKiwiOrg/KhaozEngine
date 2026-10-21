@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
@@ -26,6 +27,12 @@ namespace KhaozEngine.Tests.Gpu
     /// reach minimum counts of fast-path and range-skip pixels, so the identity is shown on the production program's
     /// own fast path and skip. This is the one proof that covers the lock gate (R1), the pass-one mask (R3-lite) and
     /// the range skip (R4) at the call site together.
+    /// <para><b>D PRIME AND SHIPPED D (Task 7g.3a).</b> The D rig is D prime (<see cref="TemporalVisibilityFrozenD.ToD"/>),
+    /// D with production's barrier-ordered lock release, and every rule above compares against it. A sixth rig compiles
+    /// the program D shipped (<see cref="TemporalVisibilityFrozenD.ToShippedD"/>), its <c>precise</c> lock release
+    /// included. On Metal, which lowered that helper as the barrier form computes, production's history must equal it
+    /// byte for byte every frame. Elsewhere the differences are printed only, since WARP and lavapipe divided by three
+    /// where the barrier form multiplies by its rounded reciprocal.</para>
     /// <para>Two frame sets run. Random frames carry random colour with isolated ridges, two surfaces, random motion
     /// with background texels, moving R8 edges and random stored locks, a third of them exactly zero. Threshold frames
     /// alternate a uniform R8 level per 6 by 6 tile with a frame whose tile centre has c texels on a shared depth, the
@@ -251,8 +258,11 @@ namespace KhaozEngine.Tests.Gpu
                 fragmentSource: TemporalVisibilityProductionPaths.Rewrite);
             using var kept = new TemporalResolveRig(iw, ih, dw, dh, SceneNdc,
                 fragmentSource: TemporalVisibilityProductionPaths.RewriteKeepingTheDecision);
-            TemporalResolveRig[] rigs = otherD is null ? [production, d, mutant, exported, kept]
-                : [production, d, mutant, exported, kept, otherD];
+            using var shippedD = new TemporalResolveRig(iw, ih, dw, dh, SceneNdc,
+                fragmentSource: TemporalVisibilityFrozenD.ToShippedD);
+            bool metal = production.Device.Backend == GpuBackendKind.MetalNative;
+            TemporalResolveRig[] rigs = otherD is null ? [production, d, mutant, exported, kept, shippedD]
+                : [production, d, mutant, exported, kept, shippedD, otherD];
             var queues = new GpuRetireQueue[rigs.Length];
             var signals = new IGpuTexture[rigs.Length];
             for (int r = 0; r < rigs.Length; r++)
@@ -308,6 +318,18 @@ namespace KhaozEngine.Tests.Gpu
                         oracle.Compare(frame, $"production {entry} vs D {entry}", actual, reference);
                     }
                     else TemporalHistorySample.Exact(frame, "production vs D", actual, reference);
+                    TemporalHistorySample shipped = TemporalHistorySample.Read(shippedD);
+                    if (metal) TemporalHistorySample.Exact(frame, "production vs shipped D", actual, shipped);
+                    else
+                    {
+                        TemporalHistoryDifference apart = TemporalHistoryDifference.Measure(actual.Colour, actual.State,
+                            shipped.Colour, shipped.State);
+                        bool r8 = actual.Visibility.AsSpan().SequenceEqual(shipped.Visibility);
+                        bool depth = MemoryMarshal.AsBytes(actual.Depth.AsSpan())
+                            .SequenceEqual(MemoryMarshal.AsBytes(shipped.Depth.AsSpan()));
+                        output.WriteLine($"  frame {frame}: production vs shipped D (reported only off Metal): {apart}, "
+                            + $"R8 equal {r8}, depth bits equal {depth}");
+                    }
                     // The depth this frame stored, read from the write target before the next frame fills the read one.
                     float[] storedDepth = actual.Depth;
                     for (int i = 0; i < storedDepth.Length; i++)
@@ -354,6 +376,7 @@ namespace KhaozEngine.Tests.Gpu
                 }
                 oracle?.Complete();
                 output.WriteLine($"  {Frames} frames {(nvidia ? "exact in locks, R8 and depth, colour and confidence reported above" : "byte-identical to D in colour, state, R8 and depth")}, "
+                    + (metal ? "byte-identical to shipped D in colour, state, R8 and depth, " : "shipped D reported above, ")
                     + $"{zeroLocks} stored locks exactly zero, the never-releasing mutant differs in {mutantDiffers} of "
                     + $"{values} state values, {dRewrites} D and {mutantRewrites} mutant programs rewritten"
                     + (entry == TemporalResolveEntry.Split ? $", the first pass {(prepareRewritten ? "" : "not ")}as D" : ""));

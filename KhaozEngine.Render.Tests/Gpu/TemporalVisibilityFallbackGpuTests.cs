@@ -14,16 +14,16 @@ public sealed class TemporalVisibilityFallbackGpuTests(ITestOutputHelper output)
     [InlineData(1, false)]
     [InlineData(0, true)]
     [InlineData(1, true)]
-    public void VisibilityFreeControlsRenderThroughBothEntries(int entry, bool removePrecise)
+    public void VisibilityFreeControlsRenderThroughBothEntries(int entry, bool removeBarriers)
     {
         var stage = new FrontStage(96, 54, 4.5f);
         using var fx = new TemporalFixture(96, 54, s => stage.Setup(s, AntiAliasing.Temporal, TemporalUpscale.Quality));
         fx.Scene.TemporalResolveEntryForTests = (TemporalResolveEntry)entry;
-        Func<string, string> rewrite = removePrecise ? TemporalVisibilityCostPrograms.WithoutVisibilityOrPrecise
+        Func<string, string> rewrite = removeBarriers ? TemporalVisibilityCostPrograms.WithoutVisibilityOrBarriers
             : TemporalVisibilityCostPrograms.WithoutVisibility;
         var renderer = TemporalTestResolve.Install(fx, rewrite, disableVisibility: true);
         output.WriteLine($"{fx.Device.Backend} on {fx.Device.Capabilities.DeviceName}, entry {entry}, "
-            + $"precise removed {removePrecise}");
+            + $"lock release barriers removed {removeBarriers}");
         var draw = TemporalResolveCostPerfGpuTests.BoxesScene(stage);
         foreach (TemporalUpscale preset in new[] { TemporalUpscale.Quality, TemporalUpscale.Native })
         {

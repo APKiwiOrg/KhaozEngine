@@ -28,19 +28,24 @@ internal static class TemporalVisibilityCostPrograms
             "", RegexOptions.Multiline);
     }
 
-    internal static string WithoutVisibilityOrPrecise(string source)
+    /// <summary>The lock release barrier as production writes it.</summary>
+    internal const string Barrier =
+        "float temporalOrdered(float v) { return uintBitsToFloat(floatBitsToUint(v) | (floatBitsToUint(Sizes.x) >> 31u)); }";
+    /// <summary>The barrier as V4 writes it, the identity, so a compiler may fuse and reorder the release arithmetic
+    /// again.</summary>
+    internal const string NoBarrier = "float temporalOrdered(float v) { return v; }";
+
+    /// <summary>Production's lock release with its barriers made the identity. A program without the release comes
+    /// back unchanged, and one holding the barrier more than once, or the release without it, throws.</summary>
+    internal static string WithoutBarriers(string source)
     {
-        string rewritten = WithoutVisibility(source).Replace("\r\n", "\n", StringComparison.Ordinal);
-        const string first = "float temporalReleaseLock(", last = "    return result;\n}";
-        int start = rewritten.IndexOf(first, StringComparison.Ordinal);
-        if (start < 0) return rewritten;
-        int end = rewritten.IndexOf(last, start, StringComparison.Ordinal);
-        if (end < 0 || rewritten.IndexOf(first, start + first.Length, StringComparison.Ordinal) >= 0)
-            throw new InvalidOperationException("the precise cost rewrite expects one complete lock-release function");
-        end += last.Length;
-        string release = rewritten[start..end];
-        if (Regex.Matches(release, @"\bprecise\b").Count != 2)
-            throw new InvalidOperationException("the precise cost rewrite expects two lock-release markings");
-        return rewritten[..start] + release.Replace("precise float", "float", StringComparison.Ordinal) + rewritten[end..];
+        int barriers = Regex.Matches(source, Regex.Escape(Barrier)).Count;
+        if (barriers == 0 && !source.Contains("float temporalReleaseLock(", StringComparison.Ordinal)) return source;
+        if (barriers != 1)
+            throw new InvalidOperationException($"the barrier cost rewrite found {barriers} lock release barriers, one expected");
+        return source.Replace(Barrier, NoBarrier, StringComparison.Ordinal);
     }
+
+    /// <summary>V4: V5's program with the lock release barriers removed.</summary>
+    internal static string WithoutVisibilityOrBarriers(string source) => WithoutBarriers(WithoutVisibility(source));
 }

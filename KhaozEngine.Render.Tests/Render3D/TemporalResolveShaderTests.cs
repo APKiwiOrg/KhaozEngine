@@ -39,6 +39,10 @@ namespace KhaozEngine.Tests.Render3D
             { "const float LockRidgeRelative = 0.1;", TemporalResolveTuning.LockRidgeRelative, 0.1f },
             { "const float LockMotionStartPixels = 1.0;", TemporalResolveTuning.LockMotionStartPixels, 1f },
             { "const float LockMotionEndPixels = 4.0;", TemporalResolveTuning.LockMotionEndPixels, 4f },
+            {
+                "const float LockMotionReleaseScale = 0.3333333432674407958984375;",
+                TemporalResolveTuning.LockMotionReleaseScale, 0.3333333432674407958984375f
+            },
             { "const float LockReactiveRelease = 2.0;", TemporalResolveTuning.LockReactiveRelease, 2f },
             { "const float LockDecay = 0.125;", TemporalResolveTuning.LockDecay, 0.125f },
             { "const float LockHoldGain = 2.0;", TemporalResolveTuning.LockHoldGain, 2f },
@@ -482,7 +486,10 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Contains("edgeMotion = length((closestMotion - centreOwn) * internalSize);", core, StringComparison.Ordinal);
             Assert.Contains("lockValue = temporalReleaseLock(lockValue, motionPixels, reactive, "
                 + "ownReprojected && useHistory ? 0.0 : edgeMotion);", core, StringComparison.Ordinal);
-            Assert.Contains("* (1.0 - clamp(edgeMotion * LockEdgeRelease, 0.0, 1.0)))", core, StringComparison.Ordinal);
+            Assert.Contains("float edgeKeep = temporalOrdered(1.0 - clamp(temporalOrdered(edgeMotion) * LockEdgeRelease, "
+                + "0.0, 1.0));", core, StringComparison.Ordinal);
+            Assert.Contains(ShaderSources.TemporalLockReleaseGlsl, core, StringComparison.Ordinal);
+            Assert.DoesNotMatch(@"\bprecise\b", core);
             Assert.Contains("bool ownReprojected = !depthTested", core, StringComparison.Ordinal);
             Assert.DoesNotContain("surfaceTravel", core, StringComparison.Ordinal);
             Assert.Contains("float hold = clamp(lockValue * LockHoldGain, 0.0, 1.0);", core, StringComparison.Ordinal);

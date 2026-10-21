@@ -7,9 +7,9 @@ using Xunit;
 namespace KhaozEngine.Tests.Render3D
 {
     /// <summary>
-    /// The frozen D oracle cannot drift. Its texts hash to the pins taken from production at 583a3ae7b, and the D
-    /// rewrite turns every program the resolve renderer and its split compile into the program D shipped, the first
-    /// pass and the depth store included. Device-free.
+    /// The frozen D oracle cannot drift. Its texts hash to the pins taken from production at 583a3ae7b, and the shipped
+    /// D rewrite turns every program the resolve renderer and its split compile into the program D shipped, the first
+    /// pass and the depth store included. D prime is that program with production's lock release helper. Device-free.
     /// </summary>
     public sealed class TemporalVisibilityFrozenDTests
     {
@@ -32,6 +32,8 @@ namespace KhaozEngine.Tests.Render3D
                 TemporalVisibilityFrozenD.Sha256(TemporalVisibilityFrozenD.CallSiteGlsl));
             Assert.Equal(TemporalVisibilityFrozenD.HoldReleaseSha256,
                 TemporalVisibilityFrozenD.Sha256(TemporalVisibilityFrozenD.HoldReleaseGlsl));
+            Assert.Equal(TemporalVisibilityFrozenD.LockReleaseSha256,
+                TemporalVisibilityFrozenD.Sha256(TemporalVisibilityFrozenD.LockReleaseGlsl));
         }
 
         /// <summary>Permanent. The first pass, surface and fused entry pieces are the text D shipped.</summary>
@@ -47,22 +49,56 @@ namespace KhaozEngine.Tests.Render3D
             }
         }
 
-        /// <summary>Every program the D rig compiles is the program D shipped at 583a3ae7b, byte for byte. The split's
-        /// first pass is the one the current mask moved into, and it is D's again.</summary>
+        /// <summary>Every program the shipped D rig compiles is the program D shipped at 583a3ae7b, byte for byte. The
+        /// split's first pass is the one the current mask moved into, and it is D's again.</summary>
         [Theory]
         [MemberData(nameof(RigPrograms))]
         public void TheDRewriteIsTheProgramDShipped(string program, string sha256)
-            => Assert.Equal(sha256, TemporalVisibilityFrozenD.Sha256(TemporalVisibilityFrozenD.ToD(Program(program))));
+            => Assert.Equal(sha256,
+                TemporalVisibilityFrozenD.Sha256(TemporalVisibilityFrozenD.ToShippedD(Program(program))));
+
+        /// <summary>D prime is the program D shipped with production's lock release helper in place of D's, and
+        /// nothing else apart.</summary>
+        [Theory]
+        [MemberData(nameof(RigProgramNames))]
+        public void DPrimeDiffersFromShippedDInTheLockReleaseHelperAlone(string program)
+        {
+            string prime = TemporalVisibilityFrozenD.ToD(Program(program));
+            string shipped = TemporalVisibilityFrozenD.ToShippedD(Program(program));
+            int helpers = Count(prime, ShaderSources.TemporalLockReleaseGlsl);
+            Assert.Equal(helpers, Count(shipped, TemporalVisibilityFrozenD.LockReleaseGlsl));
+            Assert.Equal(prime.Replace(ShaderSources.TemporalLockReleaseGlsl, TemporalVisibilityFrozenD.LockReleaseGlsl,
+                StringComparison.Ordinal), shipped);
+            Assert.DoesNotContain("temporalOrdered", shipped, StringComparison.Ordinal);
+            Assert.DoesNotMatch(@"\bprecise\b", prime);
+            Assert.True(helpers == (Program(program).Contains("temporalReleaseLock(", StringComparison.Ordinal) ? 1 : 0),
+                $"{program}: {helpers} lock release helpers in D prime");
+        }
+
+        [Fact]
+        public void TheShippedDRewriteRefusesAProgramWithALostHelper()
+        {
+            string lostHelper = ShaderSources.TemporalAccumulateFrag.Replace(ShaderSources.TemporalLockReleaseGlsl,
+                TemporalVisibilityFrozenD.LockReleaseGlsl, StringComparison.Ordinal);
+            Assert.Throws<InvalidOperationException>(() => TemporalVisibilityFrozenD.ToShippedD(lostHelper));
+        }
 
         [Fact]
         public void TheDPrepareProgramIsTheOneDShipped()
         {
-            string d = TemporalVisibilityFrozenD.ToD(ShaderSources.TemporalPrepareFrag);
+            string d = TemporalVisibilityFrozenD.ToShippedD(ShaderSources.TemporalPrepareFrag);
             Assert.Equal(TemporalVisibilityFrozenDMask.ProgramSha256.Single(p => p.Program
                 == nameof(ShaderSources.TemporalPrepareFrag)).Sha256, TemporalVisibilityFrozenD.Sha256(d));
             Assert.DoesNotContain("temporalVisibilityCurrent", d, StringComparison.Ordinal);
             Assert.Contains(TemporalVisibilityFrozenDMask.PassOne.D, d, StringComparison.Ordinal);
             Assert.NotEqual(ShaderSources.TemporalPrepareFrag, d);
+        }
+
+        public static TheoryData<string> RigProgramNames()
+        {
+            var data = new TheoryData<string>();
+            foreach ((string program, _) in TemporalVisibilityFrozenDMask.ProgramSha256) data.Add(program);
+            return data;
         }
 
         public static TheoryData<string, string> RigPrograms()

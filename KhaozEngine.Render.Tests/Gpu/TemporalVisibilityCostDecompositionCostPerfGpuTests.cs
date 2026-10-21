@@ -15,7 +15,7 @@ namespace KhaozEngine.Tests.Gpu;
 /// <summary>
 /// Head-only diagnostic, never a budget assertion. The resolve cost fixture's exact boxes and moving field at
 /// 2560x1440 Native and Quality, with V0 shipped, V1 without the check, V5 without visibility infrastructure,
-/// V4 as V5 without lock-release precise markings, and V3 frozen D,
+/// V4 as V5 with the lock release's barriers removed, and V3 frozen D prime,
 /// each fused and split, plus Off at the internal size. Fifteen rounds rotate blocks of twelve frames after two
 /// warm frames. Independent fixture copies keep every mode on the same scene frame and jitter phase, with its own
 /// history, rather than letting the moving field advance between variants. Nothing compiles inside a timed block.
@@ -97,7 +97,7 @@ public sealed class TemporalVisibilityCostDecompositionCostPerfGpuTests(ITestOut
             [
                 ("V0 shipped", null, false), ("V1 check removed", TemporalVisibilityCostPrograms.WithoutCheck, false),
                 ("V5 visibility infrastructure off", TemporalVisibilityCostPrograms.WithoutVisibility, true),
-                ("V4 visibility off without precise", TemporalVisibilityCostPrograms.WithoutVisibilityOrPrecise, true),
+                ("V4 visibility off without barriers", TemporalVisibilityCostPrograms.WithoutVisibilityOrBarriers, true),
                 ("V3 D", TemporalVisibilityFrozenD.ToD, false),
             ];
             foreach (TemporalResolveEntry entry in new[] { TemporalResolveEntry.Fused, TemporalResolveEntry.Split })
@@ -155,7 +155,7 @@ public sealed class TemporalVisibilityCostDecompositionCostPerfGpuTests(ITestOut
                 Mode[] v = modes.Where(m => m.Entry == entry).ToArray();
                 PrintPair(entry + " V0 minus V1 (check)", v[0], v[1]);
                 PrintPair(entry + " V1 minus V5 (visibility infrastructure)", v[1], v[2]);
-                PrintPair(entry + " V5 minus V4 (precise)", v[2], v[3]);
+                PrintPair(entry + " V5 minus V4 (lock release barriers)", v[2], v[3]);
                 PrintPair(entry + " V0 minus V3 (7f against D)", v[0], v[4]);
             }
             output.WriteLine($"  policy {TemporalResolvePolicy.Measured}, forced {TemporalResolvePolicy.Forced}, "

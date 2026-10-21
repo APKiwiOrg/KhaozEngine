@@ -11,7 +11,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// The compiled form of the split's second pass, through the shipped GLSL front end, as SPIR-V instruction counts:
     /// texel fetches, gathers and structured loops. Each pass-two program is pinned twice: as it ships, and rewritten
-    /// to D (<see cref="TemporalVisibilityFrozenD.ToD"/>), which keeps D's counts at 583a3ae7b for good. The shipped
+    /// to D as shipped (<see cref="TemporalVisibilityFrozenD.ToShippedD"/>), which keeps D's counts at 583a3ae7b for good. The shipped
     /// decision keeps D's function, with its 7 fetches and 4 loops, as the slow path and adds the straight-line fast
     /// path's 41 fetches, no gather and no loop. A pixel on the fast path issues those 41 where D issues 101, or 25
     /// where the range skip declines the stored depths, since the current mask the first pass stores replaces this
@@ -89,7 +89,7 @@ void main() {
         [MemberData(nameof(Counts))]
         public void PassTwoHasItsPinnedOpcodeCounts(string program, bool asD, int fetches, int gathers, int loops)
         {
-            string source = asD ? TemporalVisibilityFrozenD.ToD(Program(program)) : Program(program);
+            string source = asD ? TemporalVisibilityFrozenD.ToShippedD(Program(program)) : Program(program);
             byte[] spirv = SpirvFrontEnd.ToSpirv(source, GpuShaderStages.Fragment, "visibility form " + program);
             (int f, int g, int l) = (Count(spirv, OpImageFetch), Count(spirv, OpImageGather), Count(spirv, OpLoopMerge));
             output.WriteLine($"{program}{(asD ? " as D" : "")}: {f} OpImageFetch, {g} OpImageGather, {l} OpLoopMerge, "

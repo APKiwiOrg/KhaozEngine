@@ -8,17 +8,17 @@ using KhaozEngine.Render3D.Internal;
 namespace KhaozEngine.Tests.Gpu;
 
 /// <summary>
-/// Task 7g.3 step 0: the carried-lock release as it ships (P, its two <c>precise</c> markings included) and the barrier
-/// form (B, every input and rounded intermediate through <c>temporalOrdered</c>, the division by three written as a
-/// multiply by <c>fl(1/3)</c>, no <c>precise</c>), each compiled as its own program, on the same cases, one case per
-/// fragment. The cases are built in C# and uploaded as single-float textures, so both programs read them bit for bit
+/// Task 7g.3 step 0: the carried-lock release as it shipped until 7g.3a (P, its two <c>precise</c> markings included)
+/// and the barrier form that ships since (B, every input and rounded intermediate through <c>temporalOrdered</c>, the
+/// division by three written as a multiply by <c>fl(1/3)</c>, no <c>precise</c>), each compiled as its own program, on
+/// the same cases, one case per fragment. The cases are built in C# and uploaded as single-float textures, so both programs read them bit for bit
 /// and no compiler sees a constant. <see cref="Barrier"/> is B's C# twin, every step rounded to float32.
 /// <see cref="Division"/> is P's twin with a correctly rounded division, reported only.
 /// </summary>
 internal sealed class TemporalLockReleaseProbe : IDisposable
 {
-    /// <summary>P: <c>temporalReleaseLock</c> as it ships, verbatim. A device-free fact holds it to the production
-    /// text.</summary>
+    /// <summary>P: <c>temporalReleaseLock</c> as it shipped from frozen D until 7g.3a, the historical <c>precise</c>
+    /// helper, frozen. A device-free fact holds it to D's pinned text.</summary>
     internal const string PreciseHelperGlsl = @"float temporalReleaseLock(float value, float motionPixels, float reactive, float edgeMotion) {
     precise float motionRelease = clamp((motionPixels - LockMotionStartPixels)
         / (LockMotionEndPixels - LockMotionStartPixels), 0.0, 1.0);
@@ -30,12 +30,12 @@ internal sealed class TemporalLockReleaseProbe : IDisposable
     /// <summary>fl(1 / (LockMotionEndPixels - LockMotionStartPixels)), the float32 0x3EAAAAAB written exactly.</summary>
     internal const float MotionReleaseScale = 0.3333333432674407958984375f;
 
-    /// <summary>B: the barrier form. <c>Sizes.x</c> is positive, so its sign bit is clear and every barrier ORs in
-    /// zero, a value no compiler can see.</summary>
+    /// <summary>B: the barrier form, as it ships. <c>Sizes.x</c> is positive, so its sign bit is clear and every
+    /// barrier ORs in zero, a value no compiler can see. A device-free fact holds it to the production text.</summary>
     internal const string BarrierHelperGlsl = @"
 const float LockMotionReleaseScale = 0.3333333432674407958984375;
 float temporalOrdered(float v) { return uintBitsToFloat(floatBitsToUint(v) | (floatBitsToUint(Sizes.x) >> 31u)); }
-float temporalReleaseLockOrdered(float value, float motionPixels, float reactive, float edgeMotion) {
+float temporalReleaseLock(float value, float motionPixels, float reactive, float edgeMotion) {
     float moved = temporalOrdered(temporalOrdered(motionPixels) - LockMotionStartPixels);
     float motionKeep = temporalOrdered(1.0 - clamp(temporalOrdered(moved * LockMotionReleaseScale), 0.0, 1.0));
     float reactiveKeep = temporalOrdered(1.0 - clamp(temporalOrdered(reactive) * LockReactiveRelease, 0.0, 1.0));
@@ -74,7 +74,7 @@ void main() {
 
     /// <summary>B's program.</summary>
     internal static string BarrierSource => "#version 450\n" + CaseBindings + ProbeBinding
-        + ShaderSources.TemporalResolveTuningGlsl + BarrierHelperGlsl + EntryPoint("temporalReleaseLockOrdered");
+        + ShaderSources.TemporalResolveTuningGlsl + BarrierHelperGlsl + EntryPoint("temporalReleaseLock");
 
     /// <summary>Every program the probe compiles, by name.</summary>
     internal static (string Name, string Source)[] Sources => [("P", PreciseSource), ("B", BarrierSource)];

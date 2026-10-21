@@ -3,6 +3,7 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
+using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Tests.Gpu;
 using Xunit;
@@ -92,6 +93,56 @@ namespace KhaozEngine.Tests.Render3D
                 < fast.IndexOf("sampler2D(PrevDepth", StringComparison.Ordinal));
             // D's emitted Fma pattern, pinned: one position fma a chain, then two fma a bilinear term.
             Assert.Equal(3 + 2 * 36, Regex.Matches(text, @"\bfma\(").Count);
+        }
+
+        /// <summary>NVIDIA may canonicalize gathered depth NaNs. Every selected program must reject them solely
+        /// through exponent bits and use each stored value only in its own finite-depth-qualified held expression.</summary>
+        [Fact]
+        public void GatheredStoredDepthCannotObserveNanPayloadOrSign()
+        {
+            foreach (GpuBackendKind backend in new[]
+            {
+                GpuBackendKind.MetalNative, GpuBackendKind.Direct3D11Native, GpuBackendKind.VulkanNative,
+            })
+            {
+                int programs = 0;
+                foreach (ShippedGraphicsProgram program in ShippedShaderPrograms.GraphicsPrograms())
+                {
+                    string source = TemporalVisibilityGatherPolicy.ForBackend(program.FragmentGlsl, backend);
+                    if (!source.Contains("bool temporalVisibilityReleases(", StringComparison.Ordinal)) continue;
+                    programs++;
+                    source = Regex.Replace(source, @"//[^\r\n]*|/\*[\s\S]*?\*/", "");
+                    Match finite = Assert.Single(Regex.Matches(source,
+                        @"\bbool\s+temporalVisibilityFiniteDepth\s*\(\s*float\s+depth\s*\)\s*\{([^{}]*)\}"));
+                    Assert.Equal("return(floatBitsToUint(depth)&0x7f800000u)!=0x7f800000u;",
+                        Regex.Replace(finite.Groups[1].Value, @"\s+", ""));
+
+                    const string declaration = @"\bfloat\s+(stored[0-3][0-3])\s*=\s*(storedGather[01][01])\.[xyzw]\s*;";
+                    MatchCollection depths = Regex.Matches(source, declaration);
+                    Assert.Equal(16, depths.Count);
+                    foreach (Match depth in depths)
+                    {
+                        string value = depth.Groups[1].Value;
+                        Assert.Equal(3, Regex.Matches(source, @"\b" + value + @"\b").Count);
+                        string held = @"\bbool\s+held" + value[6..] + @"\s*=\s*temporalVisibilityFiniteDepth\(\s*"
+                            + value + @"\s*\)\s*&&\s*abs\(\s*" + value
+                            + @"\s*-\s*expectedDepth\s*\)\s*<=\s*previousTolerance\s*;";
+                        Assert.Single(Regex.Matches(source, held));
+                        string remaining = Regex.Replace(source.Replace(depth.Value, "", StringComparison.Ordinal), held, "");
+                        Assert.True(Regex.Matches(remaining, @"\b" + value + @"\b").Count == 0,
+                            $"{backend} {program.Name}: {value} is used outside its declaration and held expression.");
+                    }
+
+                    // A vector use could bypass the scalar checks, so only declarations and extraction may read it.
+                    string vectors = Regex.Replace(source, declaration, "");
+                    Assert.Equal(4, Regex.Matches(vectors,
+                        @"\bvec4\s+storedGather[01][01]\s*=\s*textureGather\(sampler2D\(PrevDepth, LinearClamp\)[^;]*;").Count);
+                    vectors = Regex.Replace(vectors,
+                        @"\bvec4\s+storedGather[01][01]\s*=\s*textureGather\(sampler2D\(PrevDepth, LinearClamp\)[^;]*;", "");
+                    Assert.DoesNotMatch(@"\bstoredGather[01][01]\b", vectors);
+                }
+                Assert.True(programs > 0, $"No gathered stored-depth programs checked for {backend}.");
+            }
         }
 
         static string CommittedFile(string glsl) =>

@@ -23,7 +23,7 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
     internal CoveragePerfNativeSession Session { get; }
     internal List<string> Events { get; } = [];
     internal int UploadCalls;
-    internal long TickAtStart, TickAtPresentEntry, Ticks;
+    internal long TickAtStart, TickAtPresentEntry, TickAfterPresentForward, Ticks;
     internal bool HistoryCommittedAtPresent;
     internal int ParticipantsAtReadback;
     internal int LastSubmittedFenceCount;
@@ -114,7 +114,11 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
     }
 
     internal void Trace(string name)
-    { Events.Add(name); Ticks += name == "present-forward" ? 10000 : 10; OnTrace?.Invoke(name); }
+    {
+        Events.Add(name); Ticks += name == "present-forward" ? 10000 : 10;
+        if (name == "present-forward") TickAfterPresentForward = Ticks;
+        OnTrace?.Invoke(name);
+    }
     public void Dispose() => Session.Dispose();
 
     sealed class Participant(IGpuFrameSubmissionParticipant inner, Action submitted) : IGpuFrameSubmissionParticipant

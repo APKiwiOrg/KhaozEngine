@@ -53,6 +53,17 @@ internal static class CoveragePerfReportJson
         text.AppendLine();
         foreach (string disclosure in verdict.SharedSubmissionDisclosure) text.AppendLine("- " + disclosure);
         text.AppendLine();
+        text.AppendLine("Frame wall");
+        text.AppendLine();
+        string limit = report.Manifest?.MaxFrameMilliseconds.ToString(CultureInfo.InvariantCulture) ?? "unresolved";
+        text.AppendLine($"Wall spans are outside the aggregate and never enter cpu.framePreparation or a gate. The {limit} ms frame limit applies to measured frames only. Warm-up frames are bounded by the cooperative unit deadline.");
+        long frequency = report.Identity.Execution.ClockFrequency;
+        foreach (var block in report.Blocks)
+        {
+            Wall(block, "warm-up", CoveragePerfStatistics.Wall(block.Warmup, frequency));
+            Wall(block, "measured", CoveragePerfStatistics.Wall(block.Samples, frequency));
+        }
+        text.AppendLine();
         foreach (var block in report.Blocks)
             if (block.Session is { } info)
                 text.AppendLine($"Block {block.Block.Index} adapter {info.Adapter}, vendor {info.Vendor}, device {info.Device}, hardware identity {info.HardwareIdentityBasis}.");
@@ -61,6 +72,9 @@ internal static class CoveragePerfReportJson
             .Concat(verdict.SharedSubmission.SelectMany(p => p.Reasons)).Concat(verdict.OneActor?.Reasons ?? []).Distinct();
         foreach (string reason in reasons) text.AppendLine("- Unproved: " + reason.Replace('\r', ' ').Replace('\n', ' '));
         return text.ToString();
+
+        void Wall(CoveragePerfBlockResult block, string phase, CoveragePerfWallSummary wall) =>
+            text.AppendLine(FormattableString.Invariant($"- Block {block.Block.Index} {block.Block.Condition} {phase} wall, {wall.Frames} frames: maximum frame wall {Number(wall.FrameWall?.Maximum)} ms at frame {wall.MaxFrameWallFrame?.ToString(CultureInfo.InvariantCulture) ?? "unresolved"}, frame entry to aggregate maximum {Number(wall.FrameEntryToAggregate?.Maximum)} ms, Present entry to host return maximum {Number(wall.PresentToHostReturn?.Maximum)} ms, host return to frame end maximum {Number(wall.HostReturnToFrameEnd?.Maximum)} ms."));
 
         void SubmissionCounts(CoveragePerfSharedSubmissionObservation observation, string phase, CoveragePerfSubmissionSummary counts) =>
             text.AppendLine($"- Block {observation.Block} {observation.Condition} {phase}, {counts.Frames} frames: {counts.Submissions} submissions, {counts.SubmittedCompletionFences} completion fences, {counts.SubmissionParticipants} participants, {counts.CompletionConsumers} consumers, {counts.ProductionWaits} production waits.");

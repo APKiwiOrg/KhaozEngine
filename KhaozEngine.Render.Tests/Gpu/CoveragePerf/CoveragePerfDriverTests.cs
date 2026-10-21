@@ -530,21 +530,67 @@ public sealed class CoveragePerfDriverTests
     [InlineData(9999, true)]
     [InlineData(10000, false)]
     [InlineData(10001, false)]
-    public void FrameDeadlineUsesInjectedElapsedTicks(long ticks, bool completes)
+    public void MeasuredFrameDeadlineUsesInjectedElapsedTicks(long ticks, bool completes)
     {
         var run = new CoveragePerfFakeRun();
         run.Setup = s => s.OnFrame = (CoveragePerfFakeSession _, int i, ref CoveragePerfFrameSample sample) =>
-        { if (s.Block.Index == 0 && i == 0) run.Time.Advance(ticks); };
+        { if (s.Block.Index == 0 && i == CoveragePerfManifest.WarmupFrameCount) run.Time.Advance(ticks); };
 
         var report = run.Run();
 
         Assert.Equal(completes ? CoveragePerfRunStatus.Completed : CoveragePerfRunStatus.Failed, report.Status);
+        Assert.Equal(ticks, report.Blocks[0].Samples[0].FrameWallTicks);
         if (!completes)
         {
-            Assert.Contains("frame deadline", report.Reason, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal("frame: TimeoutException: Frame deadline reached after frame.", report.Reason);
             Assert.Single(run.Sessions);
-            Assert.Single(report.Blocks[0].Warmup);
+            Assert.Equal(CoveragePerfManifest.WarmupFrameCount, report.Blocks[0].Warmup.Length);
+            Assert.Single(report.Blocks[0].Samples);
         }
+    }
+
+    [Theory]
+    [InlineData(10000)]
+    [InlineData(10001)]
+    [InlineData(250000)]
+    public void WarmupFrameOverTheFrameLimitIsReportedAsTheBlockMaximumNotRefused(long ticks)
+    {
+        var run = new CoveragePerfFakeRun();
+        run.Setup = s => s.OnFrame = (CoveragePerfFakeSession _, int i, ref CoveragePerfFrameSample sample) =>
+        { if (s.Block.Index == 3 && i == 5) run.Time.Advance(ticks); };
+
+        var report = run.Run();
+
+        Assert.Equal(CoveragePerfRunStatus.Completed, report.Status);
+        Assert.Equal(4, run.Sessions.Count);
+        var block = report.Blocks[3];
+        Assert.Equal(CoveragePerfManifest.WarmupFrameCount, block.Warmup.Length);
+        Assert.Equal(CoveragePerfManifest.SmokeMeasuredFrames, block.Samples.Length);
+        Assert.All(report.Blocks.SelectMany(b => b.Warmup.Concat(b.Samples)), s => Assert.NotNull(s.FrameWallTicks));
+        Assert.Equal(ticks, block.Warmup[5].FrameWallTicks);
+        var wall = CoveragePerfStatistics.Summarize(block, 1000).WarmupWall!;
+        Assert.Equal(5, wall.MaxFrameWallFrame);
+        Assert.Equal(ticks, wall.FrameWall!.Maximum);
+        Assert.Equal(0, CoveragePerfStatistics.Summarize(block, 1000).MeasuredWall!.FrameWall!.Maximum);
+        Assert.Equal(1, block.Warmup[5].CpuFramePreparationTicks);
+    }
+
+    [Fact]
+    public void UnitDeadlineStillStopsABlockDuringWarmup()
+    {
+        var run = new CoveragePerfFakeRun();
+        run.Setup = s => s.OnFrame = (CoveragePerfFakeSession _, int i, ref CoveragePerfFrameSample sample) =>
+        { if (s.Block.Index == 0 && i == 3) run.Time.Advance(300000); };
+
+        var report = run.Run();
+
+        Assert.Equal(CoveragePerfRunStatus.Failed, report.Status);
+        Assert.Equal("frame: TimeoutException: Unit deadline reached after frame.", report.Reason);
+        Assert.Single(run.Sessions);
+        var block = Assert.Single(report.Blocks);
+        Assert.Equal(4, block.Warmup.Length);
+        Assert.Empty(block.Samples);
+        Assert.Equal(300000, block.Warmup[3].FrameWallTicks);
     }
 
     [Fact]

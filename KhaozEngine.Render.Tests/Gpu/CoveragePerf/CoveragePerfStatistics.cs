@@ -19,7 +19,16 @@ internal sealed record CoveragePerfBlockSummary(int Index, CoveragePerfDistribut
     internal long ObservedAllocatedBytes { get; init; }
     internal CoveragePerfSubmissionSummary? WarmupSubmission { get; init; }
     internal CoveragePerfSubmissionSummary? MeasuredSubmission { get; init; }
+    internal CoveragePerfWallSummary? WarmupWall { get; init; }
+    internal CoveragePerfWallSummary? MeasuredWall { get; init; }
 }
+
+/// <summary>
+/// Wall diagnostics in milliseconds over recorded raw values only. They are never part of cpu.framePreparation or a gate.
+/// </summary>
+internal sealed record CoveragePerfWallSummary(int Frames, CoveragePerfDistribution? FrameWall, int? MaxFrameWallFrame,
+    CoveragePerfDistribution? FrameEntryToAggregate, CoveragePerfDistribution? PresentToHostReturn,
+    CoveragePerfDistribution? HostReturnToFrameEnd);
 
 internal static class CoveragePerfStatistics
 {
@@ -48,7 +57,30 @@ internal static class CoveragePerfStatistics
         ObservedAllocatedBytes = block.Samples.Sum(s => s.AllocatedBytes),
         WarmupSubmission = CoveragePerfSharedSubmission.Summarize(block.Warmup),
         MeasuredSubmission = CoveragePerfSharedSubmission.Summarize(block.Samples),
+        WarmupWall = Wall(block.Warmup, frequency),
+        MeasuredWall = Wall(block.Samples, frequency),
     };
+
+    internal static CoveragePerfWallSummary Wall(ImmutableArray<CoveragePerfFrameSample> samples, long frequency)
+    {
+        int? maxFrame = null;
+        long maxTicks = 0;
+        foreach (var sample in samples)
+            if (sample.FrameWallTicks is long ticks && ticks >= 0 && (maxFrame is null || ticks > maxTicks))
+            { maxTicks = ticks; maxFrame = sample.FrameIndex; }
+        return new(samples.Length, Recorded(samples, s => s.FrameWallTicks, frequency), maxFrame,
+            Recorded(samples, s => s.FrameEntryToAggregateTicks, frequency),
+            Recorded(samples, s => s.PresentToHostReturnTicks, frequency),
+            Recorded(samples, s => s.HostReturnToFrameEndTicks, frequency));
+    }
+
+    static CoveragePerfDistribution? Recorded(ImmutableArray<CoveragePerfFrameSample> samples,
+        Func<CoveragePerfFrameSample, long?> select, long frequency)
+    {
+        if (frequency <= 0) return null;
+        var values = samples.Select(select).Where(v => v is >= 0).Select(v => v!.Value * 1000d / frequency).ToImmutableArray();
+        return values.IsEmpty ? null : Summarize(values);
+    }
 
     internal static double? CpuMilliseconds(CoveragePerfFrameSample sample, long frequency) =>
         frequency > 0 && sample.CpuFramePreparationTicks >= 0 ? sample.CpuFramePreparationTicks * 1000d / frequency : null;

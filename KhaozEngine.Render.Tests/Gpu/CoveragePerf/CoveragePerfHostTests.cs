@@ -53,6 +53,41 @@ public sealed class CoveragePerfHostTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void WallSpansAreOrderedInsideTheFrameWallAndNeverEnterTheAggregate(bool legacy)
+    {
+        using var probe = legacy ? CoveragePerfSceneProbe.OpenDirect(1)
+            : CoveragePerfSceneProbe.Open(1, covered: true, completeOutcomes: true);
+        var first = probe.Frame(0);
+        probe.CompletePendingOutcomes();
+        // These two reads stand in for the driver's ticks around Frame.
+        long start = probe.Ticks;
+        var sample = probe.Frame(1);
+        long end = probe.Ticks;
+        foreach (var recorded in new[] { first, sample })
+        {
+            Assert.NotNull(recorded.FrameEntryToAggregateTicks);
+            Assert.NotNull(recorded.PresentToHostReturnTicks);
+            Assert.NotNull(recorded.HostReturnToFrameEndTicks);
+            Assert.Null(recorded.FrameWallTicks);
+        }
+        Assert.Equal(probe.TickAtStart - start, sample.FrameEntryToAggregateTicks);
+        Assert.Equal(probe.TickAtPresentEntry - probe.TickAtStart, sample.CpuFramePreparationTicks);
+        Assert.Equal(probe.TickAfterPresentForward - probe.TickAtPresentEntry, sample.PresentToHostReturnTicks);
+        Assert.Equal(end - probe.TickAfterPresentForward, sample.HostReturnToFrameEndTicks);
+        Assert.Equal(end - start, sample.FrameEntryToAggregateTicks + sample.CpuFramePreparationTicks
+            + sample.PresentToHostReturnTicks + sample.HostReturnToFrameEndTicks);
+        Assert.InRange(sample.PresentToHostReturnTicks!.Value, 10000, end - start);
+        Assert.InRange(sample.CpuFramePreparationTicks, 1, 9999);
+        Assert.Equal(sample.CpuFramePreparationTicks, sample.FrameTicks);
+        Assert.Equal(10 * probe.Events.Count(e => e == "outcome-match"), sample.HostReturnToFrameEndTicks);
+        if (!legacy) Assert.True(sample.HostReturnToFrameEndTicks > 0);
+        Assert.Equal(1, probe.Events.Count(e => e == "present-forward"));
+        Assert.True(probe.Events.IndexOf("aggregate-stop") < probe.Events.IndexOf("present-forward"));
+    }
+
+    [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
     [InlineData(false, true)]

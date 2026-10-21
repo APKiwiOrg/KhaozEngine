@@ -49,6 +49,15 @@ internal struct CoveragePerfFrameSample
     internal long HarnessDrainTicks { get; set; }
     internal bool CompletedFrameTail { get; set; }
     internal string? Error { get; set; }
+    // Wall diagnostics outside the aggregate. Null is not recorded. None enters CpuFramePreparationTicks or a gate.
+    /// <summary>The driver's tick before Frame to its tick after Frame returns or throws.</summary>
+    internal long? FrameWallTicks { get; set; }
+    /// <summary>Frame entry to the aggregate's opening tick: counter and allocation snapshots.</summary>
+    internal long? FrameEntryToAggregateTicks { get; set; }
+    /// <summary>Present entry, the aggregate's closing tick, to the host Run return: Present forwarding, the device frame boundary and retire drain, and remaining host work.</summary>
+    internal long? PresentToHostReturnTicks { get; set; }
+    /// <summary>The host Run return to the end of Frame: harness outcome matching, schedule and sample construction.</summary>
+    internal long? HostReturnToFrameEndTicks { get; set; }
 }
 
 /// <summary>Read outside measurement. Defaults disclose missing evidence and cannot establish native proof.</summary>

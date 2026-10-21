@@ -82,7 +82,7 @@ internal static class CoveragePerfDriver
             if (refusal is not null) failure.Refuse(refusal);
             else
             {
-                RunFrames(session, manifest, block, deadline, warmup, 0, ref warmCount, failure);
+                RunFrames(session, manifest, block, deadline, warmup, 0, measured: false, ref warmCount, failure);
                 if (!failure.Failed && block.TimerLayout != CoveragePerfTimerLayout.CpuOnly)
                 {
                     info = session.ReadInfo();
@@ -91,7 +91,7 @@ internal static class CoveragePerfDriver
                     if (refusal is not null) failure.Refuse(refusal);
                 }
                 if (!failure.Failed)
-                    RunFrames(session, manifest, block, deadline, samples, warmup.Length, ref sampleCount, failure);
+                    RunFrames(session, manifest, block, deadline, samples, warmup.Length, measured: true, ref sampleCount, failure);
                 if (!failure.Failed)
                 {
                     info = session.ReadInfo();
@@ -115,7 +115,7 @@ internal static class CoveragePerfDriver
     }
 
     static void RunFrames(ICoveragePerfSession session, CoveragePerfManifest manifest, CoveragePerfBlock block,
-        Deadline deadline, CoveragePerfFrameSample[] storage, int offset, ref int count, FailureState failure)
+        Deadline deadline, CoveragePerfFrameSample[] storage, int offset, bool measured, ref int count, FailureState failure)
     {
         int batchStart = 0;
         for (int i = 0; i < storage.Length; i++)
@@ -130,7 +130,13 @@ internal static class CoveragePerfDriver
                 failure.Add("frame", ex);
                 sample.Error ??= failure.Reason;
             }
-            try { deadline.CheckFrame(start); }
+            try
+            {
+                // The wall is recorded before either limit can refuse, so a refused frame still reports it.
+                long end = deadline.Read();
+                sample.FrameWallTicks = checked(end - start);
+                deadline.CheckFrame(start, end, measured);
+            }
             catch (Exception ex) { failure.Add("frame", ex); }
             if (failure.Failed) return;
             if (count - batchStart != manifest.BatchFrames && count != storage.Length) continue;
@@ -244,19 +250,27 @@ internal static class CoveragePerfDriver
             _frameTicksTimes1000 = (Int128)clock.Frequency * manifest.MaxFrameMilliseconds;
         }
 
-        internal long Check(string phase)
+        internal long Check(string phase) => CheckUnit(Read(), phase);
+
+        internal long Read()
         {
             long now = _clock.Now();
             if (now < _last) throw new InvalidDataException("Injected clock moved backwards.");
             _last = now;
+            return now;
+        }
+
+        long CheckUnit(long now, string phase)
+        {
             if ((Int128)now - _start >= _unitTicks) throw new TimeoutException($"Unit deadline reached {phase}.");
             return now;
         }
 
-        internal void CheckFrame(long start)
+        // Warm-up absorbs cold setup, so only the unit deadline bounds a warm-up frame. The frame limit is measured only.
+        internal void CheckFrame(long start, long now, bool measured)
         {
-            long now = Check("after frame");
-            if (((Int128)now - start) * 1000 >= _frameTicksTimes1000)
+            CheckUnit(now, "after frame");
+            if (measured && ((Int128)now - start) * 1000 >= _frameTicksTimes1000)
                 throw new TimeoutException("Frame deadline reached after frame.");
         }
     }

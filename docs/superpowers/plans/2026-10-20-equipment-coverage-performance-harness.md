@@ -319,7 +319,7 @@ Use the reconciled contributor instructions if these command contracts changed. 
 
 ## Proposed runs, each separately unauthorized
 
-All counts below are per condition block. Every block starts with fresh condition history and fixed pose index 0, then the declared warm-up. Every run is one workflow iteration and has load=0. No retries or automatic repeats. Proposed frame limit is 10,000 ms, checked after return. Unit deadline includes all blocks, setup, pacing, validation, cleanup and final publication. The job timeout is the hard outer bound.
+All counts below are per condition block. Every block starts with fresh condition history and fixed pose index 0, then the declared warm-up. Every run is one workflow iteration and has load=0. No retries or automatic repeats. Proposed frame limit is 10,000 ms, checked after return for measured frames only. Warm-up frames are bounded by the unit deadline, and the report states each block's maximum warm-up frame wall and which frame it was. Unit deadline includes all blocks, setup, pacing, validation, cleanup and final publication. The job timeout is the hard outer bound.
 
 Notation: D is direct legacy host with coverage off, S is production shared host with coverage off, and C is production shared host with coverage on. All CPU rows use timestamps disabled. T is a two-query GPU total block, P is a five-query phase diagnostic block. Within a pair, the entire configuration other than coverage/host condition matches.
 

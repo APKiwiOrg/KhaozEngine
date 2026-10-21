@@ -104,6 +104,61 @@ public sealed class CoveragePerfReportTests
     }
 
     [Fact]
+    public void WallDiagnosticsRoundTripAppearInTheMarkdownSummaryAndNeverEnterAGate()
+    {
+        var plain = CoveragePerfReportVectors.Create("C0");
+        var report = CoveragePerfReportVectors.ChangeBlock(plain, 3, b => b with
+        {
+            Warmup = b.Warmup.Select(s => Wall(s, s.FrameIndex == 7 ? 9500000000 : 20000000, 1000, 8200000000, 3000)).ToImmutableArray(),
+            Samples = b.Samples.Select(s => Wall(s, s.FrameIndex == 70 ? 40000000 : 30000000, 2000, 7000000, 4000)).ToImmutableArray(),
+        });
+        var json = CoveragePerfReportJson.Serialize(report);
+        var copy = CoveragePerfReportJson.Deserialize(json);
+        for (int i = 0; i < report.Blocks[3].Warmup.Length; i++)
+            AssertWall(report.Blocks[3].Warmup[i], copy.Blocks[3].Warmup[i]);
+        for (int i = 0; i < report.Blocks[3].Samples.Length; i++)
+            AssertWall(report.Blocks[3].Samples[i], copy.Blocks[3].Samples[i]);
+        Assert.Equal(json, CoveragePerfReportJson.Serialize(copy));
+
+        var summary = JsonDocument.Parse(json).RootElement.GetProperty("summaries")[3];
+        var warm = summary.GetProperty("warmupWall");
+        Assert.Equal(64, warm.GetProperty("frames").GetInt32());
+        Assert.Equal(7, warm.GetProperty("maxFrameWallFrame").GetInt32());
+        Assert.Equal(9500, warm.GetProperty("frameWall").GetProperty("maximum").GetDouble());
+        Assert.Equal(8200, warm.GetProperty("presentToHostReturn").GetProperty("maximum").GetDouble());
+        Assert.Equal(.001, warm.GetProperty("frameEntryToAggregate").GetProperty("maximum").GetDouble());
+        Assert.Equal(.003, warm.GetProperty("hostReturnToFrameEnd").GetProperty("maximum").GetDouble());
+        var measured = summary.GetProperty("measuredWall");
+        Assert.Equal(70, measured.GetProperty("maxFrameWallFrame").GetInt32());
+        Assert.Equal(40, measured.GetProperty("frameWall").GetProperty("maximum").GetDouble());
+        Assert.Equal(JsonValueKind.Null, JsonDocument.Parse(json).RootElement.GetProperty("summaries")[2]
+            .GetProperty("warmupWall").GetProperty("frameWall").ValueKind);
+
+        string markdown = CoveragePerfReportJson.Markdown(report);
+        Assert.Contains("- Block 3 SharedOn warm-up wall, 64 frames: maximum frame wall 9500 ms at frame 7, frame entry to aggregate maximum 0.001 ms, Present entry to host return maximum 8200 ms, host return to frame end maximum 0.003 ms.", markdown);
+        Assert.Contains("- Block 3 SharedOn measured wall, 32 frames: maximum frame wall 40 ms at frame 70, frame entry to aggregate maximum 0.002 ms, Present entry to host return maximum 7 ms, host return to frame end maximum 0.004 ms.", markdown);
+        Assert.Contains("- Block 2 SharedOff warm-up wall, 64 frames: maximum frame wall unresolved ms at frame unresolved,", markdown);
+        Assert.Contains("The 10000 ms frame limit applies to measured frames only.", markdown);
+
+        var before = CoveragePerfBudgets.Evaluate(plain);
+        var after = CoveragePerfBudgets.Evaluate(report);
+        Assert.Equal(before.Cpu.Status, after.Cpu.Status);
+        Assert.Equal(before.Cpu.Pairs.Select(p => (p.Microseconds, p.Status)), after.Cpu.Pairs.Select(p => (p.Microseconds, p.Status)));
+        Assert.Equal(CoveragePerfStatistics.Summarize(plain.Blocks[3], 1000000000).Cpu,
+            CoveragePerfStatistics.Summarize(report.Blocks[3], 1000000000).Cpu);
+
+        static CoveragePerfFrameSample Wall(CoveragePerfFrameSample s, long wall, long entry, long present, long post) => s with
+        { FrameWallTicks = wall, FrameEntryToAggregateTicks = entry, PresentToHostReturnTicks = present, HostReturnToFrameEndTicks = post };
+        static void AssertWall(CoveragePerfFrameSample expected, CoveragePerfFrameSample actual)
+        {
+            Assert.Equal(expected.FrameWallTicks, actual.FrameWallTicks);
+            Assert.Equal(expected.FrameEntryToAggregateTicks, actual.FrameEntryToAggregateTicks);
+            Assert.Equal(expected.PresentToHostReturnTicks, actual.PresentToHostReturnTicks);
+            Assert.Equal(expected.HostReturnToFrameEndTicks, actual.HostReturnToFrameEndTicks);
+        }
+    }
+
+    [Fact]
     public void MarkdownCarriesVerdictsNumbersAndExplicitUnprovedReasons()
     {
         var report = CoveragePerfReportVectors.Cpu(CoveragePerfReportVectors.Create(), 2, 13);

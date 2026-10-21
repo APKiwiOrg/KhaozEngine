@@ -37,7 +37,7 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
     long _beginTicks, _submitStart, _submitTicks;
     long _endAndPreSubmitStart, _endAndPreSubmitTicks;
     CoveragePerfSubmissionCounts _submissionCounts;
-    long _aggregateStart, _aggregateTicks, _resolutionStart, _surfaceStart, _resolutionTicks, _surfaceTicks;
+    long _aggregateStart, _aggregateTicks, _presentEntry, _resolutionStart, _surfaceStart, _resolutionTicks, _surfaceTicks;
     int _frameIndex, _pendingCount, _nextFrame, _bufferedOutcomeCount;
     bool _presented, _disposed, _outcomeOverflow;
     int _endCreations, _endWaits, _endSubmits, _endCompletionFences, _endGen0, _endGen1, _endGen2;
@@ -113,6 +113,8 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
 
     public void Frame(int frameIndex, ref CoveragePerfFrameSample sample)
     {
+        // Wall spans use the injected clock and preallocated fields only. None is added to the aggregate.
+        long entry = _clock.Now();
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_timerLayout != CoveragePerfTimerLayout.CpuOnly && _timestamps is null)
             throw new NotSupportedException("The device cannot establish GPU timestamp proof.");
@@ -130,6 +132,7 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
         Observe("aggregate-start");
         if (_legacy) CoveragePerfLegacyHost.Run(_frame, true, _device, _commands, Color.Black, _prepare, _record);
         else FramePhases.Run(_frame, true, _device, _commands, Color.Black, _prepare, _record);
+        long hostReturn = _clock.Now();
         if (!_presented) throw new InvalidOperationException("The production host never reached Present.");
         MatchOutcomes();
         var schedule = Typical.PassSchedule();
@@ -167,7 +170,10 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
             Fallback = fallback,
             PoseFingerprint = Typical.PoseFingerprint(),
             PassFingerprint = schedule.Fingerprint,
+            FrameEntryToAggregateTicks = checked(_aggregateStart - entry),
+            PresentToHostReturnTicks = checked(hostReturn - _presentEntry),
         };
+        sample.HostReturnToFrameEndTicks = checked(_clock.Now() - hostReturn);
         _nextFrame++;
     }
 
@@ -207,7 +213,8 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
 
     void PresentEntry()
     {
-        _aggregateTicks = checked(_clock.Now() - _aggregateStart);
+        _presentEntry = _clock.Now();
+        _aggregateTicks = checked(_presentEntry - _aggregateStart);
         _endCreations = _device.Creations; _endWaits = _device.Waits; _endSubmits = _device.Submissions;
         _endCompletionFences = _device.SubmittedCompletionFences;
         _endCounters = _device.Counters;

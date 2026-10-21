@@ -6,7 +6,7 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Gpu;
 
 /// <summary>Requires the real FXC listings to branch around the shipped release's twelve scalar barrier ORs.
-/// Task 7h Z's capture exposes flattening and fails this gate. D prime retains its unqualified helper call.</summary>
+/// Task 7h Z round 2 retains the branch through FXC. D prime keeps its unqualified helper call.</summary>
 public sealed class TemporalLockReleaseDxbcTests(ITestOutputHelper output)
 {
     public static TheoryData<string> Programs => new()

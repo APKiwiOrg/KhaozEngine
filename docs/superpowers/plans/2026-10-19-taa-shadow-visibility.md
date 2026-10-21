@@ -423,10 +423,12 @@ barriers, preserve every existing byte and NaN contract, regenerate tables throu
 DXBC with one free scratch dispatch. Run the required local gates and one free all-leg correctness dispatch on
 the pushed task head. See [the design and results](../../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/7h-zero-lock.md).
 
-Task 7h Z is blocked at FXC. Free dump 39627482960 shows the source branch flattened into unconditional
-barrier arithmetic and movc in all six shipped programs. The candidate is held on fix/taa-vis-zero-lock with
-a failing structural gate. Another program change and DXBC recapture need the orchestrator, and no all-leg
-correctness run has started.
+Task 7h Z round 2 keeps the design and adds only GL_EXT_control_flow_attributes with `[[dont_flatten]]` on the
+fallback selection. The unchanged compiler path retains SelectionControl DontFlatten and emits HLSL `[branch]`.
+Free dump 39636752557 recaptures all six shipped DXBC programs with twelve scalar barriers inside the branch and
+zero precise markings. The six branch facts and local correctness pass. Frozen-D text pins remain unchanged,
+and the fixture records the measured 34-to-35 temporary change. The remaining gate is one free all-leg
+correctness dispatch on the pushed task head. Integration remains the orchestrator's.
 
 ### Task 8: Prove exact entry identity and integration edges
 

@@ -12,9 +12,9 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// The hosted Windows check on FXC's real disassembly of every visibility program. The opt-in dump fact
     /// <see cref="D3D11FxcValidationTests.DumpVisibilityDisassembly"/> printed all fourteen listings in hosted run
-    /// 39627482960, job 119316518921, on windows-2025-vs2026 20261018.275.1, with the compiler banner
-    /// <c>Microsoft (R) HLSL Shader Compiler 10.1</c>. Task 7h Z recaptured the six full shipped programs with the
-    /// positive-zero qualification. FXC flattened its source branch, leaving all twelve barriers unconditional.
+    /// 39636752557, job 119349307880, on windows-2025-vs2026 20261018.275.1, with the compiler banner
+    /// <c>Microsoft (R) HLSL Shader Compiler 10.1</c>. Task 7h Z round 2 recaptured the six full shipped programs with
+    /// DontFlatten selection control. FXC keeps all twelve scalar barriers inside the non-bypass branch.
     /// Both decision helpers and all seven D prime listings stayed
     /// byte-identical to 7g.5. Every shipped listing has twelve gathers
     /// and every listing has zero
@@ -75,7 +75,7 @@ namespace KhaozEngine.Tests.Gpu
                 .Order(StringComparer.Ordinal));
         }
 
-        /// <summary>Task 7h Z recaptured every stale fixture in hosted run 39627482960. This set is empty, so every
+        /// <summary>Task 7h Z recaptured every stale fixture in hosted run 39636752557. This set is empty, so every
         /// source pin must match the current GLSL on both sides.</summary>
         internal static readonly string[] StaleUntil7g3b = [];
 
@@ -126,7 +126,7 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData("DecisionHelper", "RR", "RR", "RRRRWW", 12, 18, false, 0)]
         [InlineData("TemporalAccumulateFrag", "RR", "RR", "RRRRWW", 29, 36, false, 10)]
         [InlineData("TemporalAccumulateHalfFrag", "RR", "RR", "RRRRWW", 32, 38, false, 10)]
-        [InlineData("TemporalAccumulateAtDisplaySizeFrag", "RR", "RR", "RRRRWW", 26, 34, false, 10)]
+        [InlineData("TemporalAccumulateAtDisplaySizeFrag", "RR", "RR", "RRRRWW", 26, 35, false, 10)]
         [InlineData("TemporalAccumulateAtDisplaySizeHalfFrag", "RR", "RR", "RRRRWW", 29, 36, false, 10)]
         [InlineData("TemporalResolveFrag", "RR", "RR", "RRRRWW", 41, 46, false, 10)]
         [InlineData("TemporalResolveHalfFrag", "RR", "RR", "RRRRWW", 42, 47, false, 10)]

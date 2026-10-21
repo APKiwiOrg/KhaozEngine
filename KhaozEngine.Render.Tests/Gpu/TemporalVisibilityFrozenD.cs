@@ -182,6 +182,8 @@ float temporalReleaseLock(float value, float motionPixels, float reactive, float
         if (last < 0) throw new InvalidOperationException("the D rewrite found no end to the production call site");
         int end = last + ProductionCallSiteLastLine.Length;
         string rewritten = program[..start] + callSite + program[end..];
+        // D has no attributed release selection. Restore its original header as well as its call site.
+        rewritten = rewritten.Replace(ShaderSources.TemporalControlFlowGlsl, "", StringComparison.Ordinal);
         rewritten = rewritten.Replace(ShaderSources.TemporalVisibilityGlsl, visibility, StringComparison.Ordinal);
         int hold = rewritten.IndexOf(ProductionHoldRelease, StringComparison.Ordinal);
         return rewritten[..hold] + holdRelease + rewritten[(hold + ProductionHoldRelease.Length)..];

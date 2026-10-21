@@ -215,10 +215,12 @@ bit-exactly for the qualified inputs and stays unchanged. V6 composes the existi
 rewrites, retaining this bypass and every resource operation. Exactness, local gates, DXBC recapture and the one
 free hosted correctness run are recorded in [7h-zero-lock.md](../../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/7h-zero-lock.md).
 
-Task 7h Z is blocked at FXC. Free dump 39627482960 shows the source branch flattened into unconditional
-barrier arithmetic and movc in all six shipped programs. The candidate is held on fix/taa-vis-zero-lock with
-a failing structural gate. Another program change and DXBC recapture need the orchestrator, and no all-leg
-correctness run has started.
+Task 7h Z round 2 requires GL_EXT_control_flow_attributes and marks only the fallback selection
+`[[dont_flatten]]`. The unchanged shaderc options retain SelectionControl DontFlatten, and the existing
+SPIRV-Cross HLSL emitter writes `[branch]` without an option change. Free dump 39636752557 confirms that all six
+shipped DXBC programs place the twelve scalar barriers inside a real conditional branch, with zero precise
+markings. The helper arithmetic and frozen-D text remain unchanged. Local correctness passes. The remaining
+gate is one free all-leg correctness dispatch on the pushed task head.
 
 ### Owner-accepted synthetic costs, 2026-10-19
 

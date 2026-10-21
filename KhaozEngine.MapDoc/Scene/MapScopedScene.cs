@@ -13,6 +13,7 @@ public sealed class MapScopedScene
 {
     readonly MapSceneSource _source;
     readonly MapEffectiveResolutionProduct _effective;
+    internal MapEffectiveResolutionProduct Product => _effective;
     readonly MapSurfaceSet _surfaces;
     readonly MapFoliageSet? _foliage;
     internal MapScopedScene(MapSceneSource source, MapSceneScope scope, MapSceneWitness witness,
@@ -32,6 +33,7 @@ public sealed class MapScopedScene
     public IReadOnlyDictionary<string, MapPaintRegionSet> PaintRegions => _effective.PaintRegions;
     public MapWaterSet? Water => _effective.Water;
     public MapBuildingIntent BuildingIntent => _effective.BuildingIntent;
+    internal MapFoliageSet? CapturedFoliage => _foliage;
     public MapFoliageSet? Foliage => _foliage?.Clone();
     internal IReadOnlyList<MapEffectiveLight> EffectiveLights => _effective.EffectiveLights;
     internal IReadOnlyList<MapEffectiveMarker> EffectiveMarkers => _effective.EffectiveMarkers;

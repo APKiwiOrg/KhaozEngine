@@ -9,7 +9,8 @@ using KhaozEngine.MapDoc.Surfaces;
 namespace KhaozEngine.MapDoc.Foliage;
 
 /// <summary>Context construction ceilings, admitted before expansion, cloning or index staging. Released prefab
-/// expansion limits still apply beside these.</summary>
+/// expansion limits still apply beside these. Window capture applies them to admitted scoped input bytes, generation
+/// and density descriptors, placements, patches and paint targets through the scene admission allowance.</summary>
 public sealed record MapFoliageContextLimits(long MaxSourceUtf8Bytes = 134_217_728, int MaxChunkDescriptors = 65_536,
     int MaxPlacements = 65_536, int MaxSurfacePatches = 65_536, int MaxPaintTargets = 4096);
 

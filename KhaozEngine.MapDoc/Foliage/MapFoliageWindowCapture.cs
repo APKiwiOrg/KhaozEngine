@@ -1,0 +1,231 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using KhaozEngine.MapDoc.Assets;
+using KhaozEngine.MapDoc.Editing;
+using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Scene;
+using KhaozEngine.MapDoc.Storage;
+using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.Primitives;
+using Bounds = KhaozEngine.MapDoc.Foliage.MapFoliageGenerationContext.Bounds;
+using SpatialIndex = KhaozEngine.MapDoc.Foliage.MapFoliageGenerationContext.SpatialIndex;
+
+namespace KhaozEngine.MapDoc.Foliage;
+
+/// <summary>Derives density, support and owner dependencies before entering the scene's single admission path.</summary>
+internal static class MapFoliageWindowCapture
+{
+    internal static MapWindowFoliageContextResult Capture(MapSceneSource source, MapSceneScope scope, MapFoliageContextLimits limits)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(scope);
+        ArgumentNullException.ThrowIfNull(limits);
+        if (limits.MaxSourceUtf8Bytes < 0 || limits.MaxChunkDescriptors < 0 || limits.MaxPlacements < 0 ||
+            limits.MaxSurfacePatches < 0 || limits.MaxPaintTargets < 0) throw new ArgumentOutOfRangeException(nameof(limits));
+        var work = new MapFoliageContextWork(0, 0, 0, 0, 0, 0, 0);
+        long expansions = MapPrefabResolver.ThreadExpansions, writes = MapFoliageJson.ThreadPayloadWrites;
+        try
+        {
+            scope.Validate();
+            MapSceneSource.CheckManifest(source.Data.Directory, source.Data.ManifestDigest);
+            var metadata = source.Data.FoliageMetadata;
+            var chunks = new List<(MapFoliageLayer Layer, MapFoliageChunkKey Chunk)>();
+            var owners = new HashSet<MapSceneResourceKey>();
+            Bounds? bounds = null;
+            var b = scope.DiscoveryBounds;
+            foreach (var layer in source.Data.Foliage?.Layers ?? [])
+            {
+                if (b.MinX >= b.MaxX || b.MinZ >= b.MaxZ) continue;
+                int x0 = MapFoliageRasterReads.Owner(layer, MapFoliageSupport.Outward(b.MinX, true), true);
+                int z0 = MapFoliageRasterReads.Owner(layer, MapFoliageSupport.Outward(b.MinZ, true), false);
+                int x1 = MapFoliageRasterReads.Owner(layer, MathF.BitDecrement(MapFoliageSupport.Outward(b.MaxX, false)), true);
+                int z1 = MapFoliageRasterReads.Owner(layer, MathF.BitDecrement(MapFoliageSupport.Outward(b.MaxZ, false)), false);
+                foreach (int z in MapFoliageRasterReads.Chunks(layer, z0, z1, false))
+                    foreach (int x in MapFoliageRasterReads.Chunks(layer, x0, x1, true))
+                    {
+                        work = work with { ChunkDescriptors = checked(work.ChunkDescriptors + 1) };
+                        if (work.ChunkDescriptors > limits.MaxChunkDescriptors) return new(MapFoliageStatus.CapacityExceeded, null, work);
+                        var key = new MapFoliageChunkKey(x, z);
+                        chunks.Add((layer, key));
+                        if (MapFoliageDistribution.KnownOffRaster(layer, MapFoliageDistribution.Rectangle(layer, key))) continue;
+                        var read = MapFoliageSupport.Scope(layer, key, metadata.FloorsFor(layer, key), metadata.Transforms).WorldRectangle();
+                        bounds = Bounds.Union(bounds, Bounds.Of(read));
+                        foreach (var owner in metadata.OwnersFor(layer, read)) owners.Add(owner);
+                        Binding(layer.Support);
+                    }
+                void Binding(MapSupportBinding binding)
+                {
+                    if (binding.SurfaceId is { } id) owners.Add(new("Surface", id));
+                    if (binding.SpaceId is { } space) owners.Add(new("Record", space));
+                }
+            }
+            // Source knowledge stays borrowed. Only the selected density payloads and effective dependency product are retained.
+            var admission = new MapSceneAdmission(source.Data.Limits, foliageLimits: limits);
+            var requested = new MapFoliageWindowRequest(chunks, owners);
+            Bounds r = bounds ?? new(b.MinX, b.MinZ, b.MaxX, b.MaxZ);
+            var frame = WorldFrame.Nearest((float)((r.MinX + r.MaxX) / 2), (float)((r.MinZ + r.MaxZ) / 2));
+            double ax = (double)frame.X * WorldFrame.Grid, az = (double)frame.Z * WorldFrame.Grid;
+            var surfaces = new MapSurfaceScope(frame, new(MapFoliageSupport.Outward(r.MinX - ax, true), MapFoliageSupport.Outward(r.MinZ - az, true)),
+                new(MapFoliageSupport.Outward(r.MaxX - ax, false), MapFoliageSupport.Outward(r.MaxZ - az, false)), null, null,
+                Enum.GetValues<MapSurfaceRole>(), null, scope.Surfaces.Limits);
+            var dependencyScope = new MapSceneScope(surfaces, new(r.MinX, scope.DrawBounds.MinY, r.MinZ, r.MaxX, scope.DrawBounds.MaxY, r.MaxZ),
+                bounds is null ? 0 : MapSceneChannels.Terrain | MapSceneChannels.Rooms | MapSceneChannels.Annotations);
+            var acquired = MapSceneAcquisition.Run(source, dependencyScope, admission, requested);
+            work = work with
+            {
+                SourceUtf8Bytes = admission.FoliageSourceUtf8Bytes,
+                ChunkDescriptors = Math.Max(work.ChunkDescriptors, admission.FoliageChunks),
+                Placements = admission.FoliagePlacements,
+                SurfacePatches = admission.FoliagePatches,
+                PaintTargets = admission.FoliagePaintTargets
+            };
+            if (acquired.Scene is not { } scene) return new(Status(acquired.Status), null, Observed()) { Findings = acquired.Findings };
+            // The admitted effective context owns every acquired patch. Retained reads never return to the live producer.
+            var kernel = new MapFoliageInputKernel(scene.CapturedFoliage, source.Data.Assets, scene.Product, scene.Product.SurfaceSource, metadata, scope.Surfaces.Limits);
+            work = Observed();
+            var witness = acquired.Witness with { ScopeDigest = scope.Digest, WholeWorldComplete = false };
+            MapSceneSource.CheckManifest(source.Data.Directory, source.Data.ManifestDigest);
+            return new(MapFoliageStatus.Complete, new(kernel, source, scope, witness, chunks, work), work);
+        }
+        catch (MapFoliageRefusal refusal) { return new(refusal.Status, null, Observed()); }
+        catch (Exception error) when (MapSceneSource.Classify(error) is not null)
+        { return new(Status(Enum.Parse<MapSceneStatus>(MapSceneSource.Classify(error)!.Value.ToString())), null, Observed()); }
+        MapFoliageContextWork Observed() => work with
+        {
+            Expansions = MapPrefabResolver.ThreadExpansions - expansions,
+            SnapshotSerializations = MapFoliageJson.ThreadPayloadWrites - writes,
+        };
+    }
+
+    static MapFoliageStatus Status(MapSceneStatus status) => status switch
+    {
+        MapSceneStatus.CapacityExceeded => MapFoliageStatus.CapacityExceeded,
+        MapSceneStatus.NotRepresentable => MapFoliageStatus.NotRepresentable,
+        MapSceneStatus.Invalid => MapFoliageStatus.Invalid,
+        _ => MapFoliageStatus.Unavailable,
+    };
+}
+
+internal sealed record MapFoliageWindowRequest(IReadOnlyList<(MapFoliageLayer Layer, MapFoliageChunkKey Chunk)> Chunks,
+    IReadOnlySet<MapSceneResourceKey> Owners);
+
+/// <summary>Source-generation metadata only. Floor and clearance proxies have no retained world payloads.</summary>
+internal sealed class MapFoliageWindowMetadata
+{
+    MapFoliageSet? _foliage;
+    readonly List<MapSurfaceRef> _floors = new();
+    readonly List<Bounds> _floorBounds = new();
+    readonly Dictionary<string, MapEffectiveTransform> _transforms = new(StringComparer.Ordinal);
+    readonly Dictionary<string, List<(MapSceneResourceKey Key, Bounds Bounds)>> _owners = new(StringComparer.Ordinal);
+    readonly Dictionary<MapSceneResourceKey, Bounds> _placementProxies = new();
+    readonly Dictionary<string, List<Bounds>> _maskProxies = new(StringComparer.Ordinal);
+    readonly Dictionary<string, SpatialIndex> _maskIndices = new(StringComparer.Ordinal);
+    MapSceneResourceKey[] _placementKeys = Array.Empty<MapSceneResourceKey>();
+    SpatialIndex _placementIndex = new(Array.Empty<Bounds>());
+    SpatialIndex _floorIndex = new(Array.Empty<Bounds>());
+    readonly Dictionary<string, SpatialIndex> _ownerIndices = new(StringComparer.Ordinal);
+    internal IReadOnlyDictionary<string, MapEffectiveTransform> Transforms => _transforms;
+
+    internal MapFoliageWindowMetadata(MapFoliageSet? foliage) => _foliage = foliage;
+    internal void AddFloor(MapSurfaceRef surface, MapCellRect cells, MapEffectiveTransform pose, MapSceneScan scan)
+    {
+        if (_foliage is null || surface.Role != MapSurfaceRole.SupportFloor) return;
+        scan.Retain(256 + 2L * surface.Id.Length);
+        _floors.Add(surface);
+        var transform = new MapResourceTransform(pose);
+        var corners = new[] { MapLatticeAddress.Corner(cells.MinX, cells.MinZ), MapLatticeAddress.Corner(cells.MaxXExclusive, cells.MinZ),
+            MapLatticeAddress.Corner(cells.MaxXExclusive, cells.MaxZExclusive), MapLatticeAddress.Corner(cells.MinX, cells.MaxZExclusive) };
+        _floorBounds.Add(Bounds.Of(MapEffectiveGeometry.Bounds(corners.Select(a =>
+        {
+            var local = surface.Frame.WorldXz(a);
+            var world = transform.Point(new(local.X, default, local.Z));
+            return new MapExactXz(world.X, world.Z);
+        }))));
+        _transforms.TryAdd(MapEffectiveContext.Key(MapPrefabChildKind.Surface, surface.Id), pose);
+    }
+
+    internal void Add(MapPrefabChild child, MapEffectiveTransform pose, MapSceneScan scan)
+    {
+        if (_foliage is null) return;
+        if (child is MapPrefabSurfaceChild surface)
+            foreach (var patch in surface.Patches)
+            {
+                long x = checked(patch.Key.SlotX * 64 + patch.CellMinX), z = checked(patch.Key.SlotZ * 64 + patch.CellMinZ);
+                AddFloor(surface.Surface, new(x, z, checked(x + patch.Width), checked(z + patch.Depth)), pose, scan);
+            }
+        if (child is MapPrefabMarkerChild marker)
+        {
+            var p = marker.Value.Position;
+            var world = new MapResourceTransform(pose).Point(new(MapExactValue.FromSingle(p.X), MapExactValue.FromSingle(p.Y), MapExactValue.FromSingle(p.Z)));
+            pose = pose with { X = world.X.ToDouble(), Y = world.Y.ToDouble(), Z = world.Z.ToDouble(), YawRadians = pose.YawRadians + marker.Value.YawRadians };
+        }
+        foreach (var layer in _foliage.Layers)
+        {
+            Bounds? proxy = null;
+            if (child is MapPrefabPlacementChild placement)
+                foreach (var rule in layer.ClearanceRules)
+                    if (rule.AssetId == placement.Value.AssetId && (rule.PlacementTag is not { } tag ||
+                        placement.Value.Tags.Any(t => string.Equals(t, tag, StringComparison.OrdinalIgnoreCase))))
+                        proxy = Bounds.Union(proxy, MapFoliageGenerationContext.Proxy(pose, rule.Footprint,
+                            rule.Kind == MapFoliageClearanceKind.Door ? layer.DoorClearance : null));
+            foreach (var mask in layer.ExceptionMasks)
+                if (mask.Owner.Kind == child.Key.Kind && mask.Owner.Id == child.Key.Key)
+                {
+                    Bounds maskProxy = MapFoliageGenerationContext.Proxy(pose, mask.Footprint,
+                        mask.Kind == MapFoliageClearanceKind.Door ? layer.DoorClearance : null);
+                    proxy = Bounds.Union(proxy, maskProxy);
+                    scan.Retain(96);
+                    if (!_maskProxies.TryGetValue(layer.Id, out var masks)) _maskProxies.Add(layer.Id, masks = new());
+                    masks.Add(maskProxy);
+                }
+            if (proxy is not { } value) continue;
+            scan.Retain(192 + 2L * (layer.Id.Length + child.Key.Key.Length));
+            if (!_owners.TryGetValue(layer.Id, out var list)) _owners.Add(layer.Id, list = new());
+            var key = new MapSceneResourceKey(child.Key.Kind.ToString(), child.Key.Key);
+            list.Add((key, value));
+            if (child is MapPrefabPlacementChild)
+                _placementProxies[key] = Bounds.Union(_placementProxies.TryGetValue(key, out var old) ? old : null, value);
+        }
+    }
+
+    internal void Finish()
+    {
+        // The builder input can own resident density. Finished knowledge retains only its metadata indexes.
+        _foliage = null;
+        _floorIndex = new(_floorBounds);
+        _placementKeys = _placementProxies.Keys.ToArray();
+        _placementIndex = new(_placementKeys.Select(k => _placementProxies[k]).ToArray());
+        foreach (var (id, values) in _maskProxies) _maskIndices.Add(id, new(values));
+        foreach (var (id, values) in _owners) _ownerIndices.Add(id, new(values.Select(v => v.Bounds).ToArray()));
+    }
+    internal IReadOnlyList<MapSurfaceRef> FloorsFor(MapFoliageLayer layer, MapFoliageChunkKey chunk) =>
+        MapFoliageSupport.FloorsFor(layer, chunk, _transforms, bounds => _floorIndex.Query(bounds, out _).Select(i => _floors[i]));
+    internal long PlacementCandidates(Bounds rect)
+    {
+        _placementIndex.Query(rect, out long candidates);
+        return candidates;
+    }
+    internal long MaskCandidates(string layer, MapFoliageRect rect)
+    {
+        if (!_maskIndices.TryGetValue(layer, out var index)) return 0;
+        index.Query(new(rect.MinX, rect.MinZ, rect.MaxX, rect.MaxZ), out long candidates);
+        return candidates;
+    }
+    internal IEnumerable<MapSceneResourceKey> OwnersFor(MapFoliageLayer layer, MapExactRect bounds)
+    {
+        foreach (int i in _placementIndex.Query(Bounds.Of(bounds), out _)) yield return _placementKeys[i];
+        if (!_ownerIndices.TryGetValue(layer.Id, out var index)) yield break;
+        foreach (int i in index.Query(Bounds.Of(bounds), out _))
+        {
+            var key = _owners[layer.Id][i].Key;
+            yield return key;
+            foreach (var binding in layer.OwnerSupports.Where(o => o.Owner.Kind.ToString() == key.Kind && o.Owner.Id == key.Id).Select(o => o.Support)
+                .Concat(layer.ExceptionMasks.Where(m => m.Owner.Kind.ToString() == key.Kind && m.Owner.Id == key.Id).Select(m => m.Support)))
+            {
+                if (binding.SurfaceId is { } id) yield return new("Surface", id);
+                if (binding.SpaceId is { } space) yield return new("Record", space);
+            }
+        }
+    }
+}

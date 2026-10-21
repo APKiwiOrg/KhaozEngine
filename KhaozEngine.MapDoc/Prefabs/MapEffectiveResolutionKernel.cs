@@ -381,7 +381,11 @@ internal sealed class MapEffectiveResolutionProduct
                     .Concat(paintTargets).ToHashSet(StringComparer.Ordinal),
             };
             var view = SurfaceSource is MapComposedSurfaceSource ? Acquire(scope) : MapScopedSurfaces.CompleteEffective(context);
-            foreach (string target in paintTargets) paintRegions.Add(target, MapPartialPaintCompiler.Compile(view, target));
+            foreach (string target in paintTargets)
+            {
+                Scene.MapSceneAdmission.Current?.BeforePaintTarget(target);
+                paintRegions.Add(target, MapPartialPaintCompiler.Compile(view, target));
+            }
         }
         PaintRegions = new ReadOnlyDictionary<string, MapPaintRegionSet>(paintRegions);
     }

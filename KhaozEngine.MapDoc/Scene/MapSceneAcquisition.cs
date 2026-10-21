@@ -14,10 +14,11 @@ namespace KhaozEngine.MapDoc.Scene;
 /// <summary>Bounded dependency closure, followed by one atomic neutral snapshot publication.</summary>
 internal static class MapSceneAcquisition
 {
-    internal static MapScopedSceneResult Run(MapSceneSource source, MapSceneScope scope)
+    internal static MapScopedSceneResult Run(MapSceneSource source, MapSceneScope scope, MapSceneAdmission? sharedAdmission = null,
+        MapFoliageWindowRequest? foliageRequest = null)
     {
         var data = source.Data;
-        var admission = new MapSceneAdmission(data.Limits);
+        var admission = sharedAdmission ?? new MapSceneAdmission(data.Limits);
         long visits = 0, metadataRows = 0, memberships = 0;
         string digest = "";
         var required = new HashSet<MapSceneResourceKey>();
@@ -77,10 +78,12 @@ internal static class MapSceneAcquisition
                 }
                 finally { visits = checked(visits + read); }
             }
+            if (foliageRequest is not null) foreach (var key in foliageRequest.Owners) AddKey(key);
             Discover(scope.DiscoveryBounds, k => Included(k.Kind, scope.Channels));
             var physical = scope.Surfaces.WorldRectangle();
-            Discover(new(physical.MinX.ToDouble(), double.NegativeInfinity, physical.MinZ.ToDouble(),
-                physical.MaxX.ToDouble(), double.PositiveInfinity, physical.MaxZ.ToDouble()), k => k.Kind is "Surface" or "Record" or "Patch");
+            if (foliageRequest is null || scope.Channels != 0)
+                Discover(new(physical.MinX.ToDouble(), double.NegativeInfinity, physical.MinZ.ToDouble(),
+                    physical.MaxX.ToDouble(), double.PositiveInfinity, physical.MaxZ.ToDouble()), k => k.Kind is "Surface" or "Record" or "Patch");
             while (pending.Count != 0)
             {
                 string id = pending.Dequeue();
@@ -120,11 +123,13 @@ internal static class MapSceneAcquisition
             void DiscoverSeat(double x, double z) => Discover(new(x - 2, double.NegativeInfinity, z - 2, x + 2, double.PositiveInfinity, z + 2),
                 k => k.Kind is "Surface" or "Record" or "Patch");
             var selectedFoliage = required.Where(k => k.Kind == "Foliage").ToArray();
-            var foliage = AcquireFoliage(data, selectedFoliage, admission, required, present, empty, unavailable);
+            var foliage = AcquireFoliage(data, selectedFoliage, admission, required, present, empty, unavailable, foliageRequest);
             if (unavailable.Count != 0) throw new MapSceneSourceException(MapSceneStatus.Incomplete, "Required foliage density is unavailable.");
             var input = Merge(data, owners.Select(id => data.Owners[id]).ToArray());
             var acquiredNative = AcquireNative(data, nativeNeeded, admission);
             foreach (var patch in acquiredNative.Patches) input.Surfaces.Patches.Add(patch.Key, patch.Value);
+            foreach (var surface in acquiredNative.Refs.Where(s => s.Role == MapSurfaceRole.PaintOverride))
+                admission.BeforePaintTarget(surface.PaintTargetSurfaceId ?? surface.Id);
             var nativeIds = acquiredNative.Refs.Select(s => s.Id).Concat(nativeDeclared).ToHashSet(StringComparer.Ordinal);
             foreach (string id in nativeIds) input.Surfaces.Refs.Add(data.NativeRefs[id]);
             var nativeSource = new MapSceneSurfaceSource(data.Surfaces, nativeIds, nativeIds.Select(id => data.NativeRefs[id]).ToArray());
@@ -132,7 +137,9 @@ internal static class MapSceneAcquisition
                 .Concat(acquiredNative.AllRecords().Select(r => (Kind: MapPrefabChildKind.Record, Id: r.Id)));
             var rootTransforms = poseKeys.Select(k => data.NativePoseByKey.GetValueOrDefault(k)).OfType<MapStandaloneResourceTransform>();
             input = input with { NativeResourceTransforms = (input.NativeResourceTransforms ?? []).Concat(rootTransforms).DistinctBy(t => (t.Kind, t.OwnerId)).ToArray() };
-            var product = MapEffectiveResolutionKernel.Resolve(input, data.Assets, nativeSource);
+            // Foliage has already acquired its complete native read closure. Resolve those admitted payloads directly,
+            // so preparation never re-enters storage or spends one point query's page allowance over the whole closure.
+            var product = MapEffectiveResolutionKernel.Resolve(input, data.Assets, foliageRequest is null ? nativeSource : null);
             var view = product.Acquire(scope.Surfaces with { SceneAdmission = admission });
             foreach (var patch in view.Witness.Present)
             {
@@ -247,11 +254,12 @@ internal static class MapSceneAcquisition
     }
 
     static MapFoliageSet? AcquireFoliage(MapSceneData data, IReadOnlyList<MapSceneResourceKey> selected, MapSceneAdmission admission,
-        HashSet<MapSceneResourceKey> required, HashSet<MapSceneResourceKey> present, HashSet<MapSceneResourceKey> empty, HashSet<MapSceneResourceKey> unavailable)
+        HashSet<MapSceneResourceKey> required, HashSet<MapSceneResourceKey> present, HashSet<MapSceneResourceKey> empty, HashSet<MapSceneResourceKey> unavailable,
+        MapFoliageWindowRequest? window = null)
     {
         if (data.Foliage is null) return null;
         var layers = new List<MapFoliageLayer>();
-        foreach (var grouping in selected.Select(k => data.FoliageRows[k]).GroupBy(v => v.Layer.Id))
+        foreach (var grouping in (window?.Chunks ?? selected.Select(k => data.FoliageRows[k]).ToArray()).GroupBy(v => v.Layer.Id))
         {
             var layer = grouping.First().Layer;
             var chunks = new List<MapFoliageChunk>();
@@ -270,13 +278,17 @@ internal static class MapSceneAcquisition
                 if (data.FoliageStorage is { } stored) read = stored.Read(layer.Id, chunkKey);
                 else
                 {
-                    var resident = data.ResidentFoliage?.Layers.FirstOrDefault(l => l.Id == layer.Id)?.Chunks.FirstOrDefault(c => c.Key == chunkKey);
+                    var resident = data.ResidentFoliageChunks.GetValueOrDefault(key);
                     read = new(resident is null ? MapFoliageReadStatus.Unavailable : MapFoliageReadStatus.Found, resident);
                 }
                 if (read.Status != MapFoliageReadStatus.Found || read.Chunk is null) { unavailable.Add(key); continue; }
                 chunks.Add(read.Chunk); present.Add(key);
             }
-            layers.Add(MapFoliageLayer.FromStorage(layer, layer.ChunkDigests.Where(d => keys.Contains(d.Key)).ToArray(), chunks));
+            long metadataBytes = checked(MapSceneResourceBounds.FoliageMetadataBytes(layer) - layer.ChunkDigests.Count * 80L + keys.Length * 80L);
+            admission.BeforeInputBytes(metadataBytes);
+            var digests = keys.Where(k => data.MetadataByKey.ContainsKey(FoliageKey(layer.Id, k)))
+                .Select(k => new MapFoliageChunkDigest(k, data.MetadataByKey[FoliageKey(layer.Id, k)].Digest)).ToArray();
+            layers.Add(MapFoliageLayer.FromStorage(layer, digests, chunks));
         }
         return new(data.Foliage.PayloadVersion, layers);
     }

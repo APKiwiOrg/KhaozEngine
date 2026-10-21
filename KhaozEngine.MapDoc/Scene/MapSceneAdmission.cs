@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.MapDoc.Foliage;
 using System.Runtime.CompilerServices;
 using System.Collections.Generic;
 using KhaozEngine.MapDoc.Spaces;
@@ -9,18 +10,45 @@ using KhaozEngine.MapDoc.Water;
 namespace KhaozEngine.MapDoc.Scene;
 
 /// <summary>One synchronous acquisition allowance, shared by every nested session, copy and compilation.</summary>
-internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? entering = null)
+internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? entering = null, MapFoliageContextLimits? foliageLimits = null)
 {
     [ThreadStatic] static MapSceneAdmission? t_current;
     internal static MapSceneAdmission? Current => t_current;
     internal long RetainedBytes { get; private set; }
     internal long PreparedFaces { get; private set; }
     internal long PayloadReads { get; private set; }
+    internal long FoliageSourceUtf8Bytes { get; private set; }
+    internal long FoliageChunks { get; private set; }
+    internal long FoliagePlacements { get; private set; }
+    internal long FoliagePatches { get; private set; }
+    internal long FoliagePaintTargets { get; private set; }
+    readonly HashSet<string> _paintTargets = new(StringComparer.Ordinal);
+    internal void BeforePaintTarget(string id)
+    {
+        if (!_paintTargets.Add(id)) return;
+        if (foliageLimits is not null && FoliagePaintTargets >= foliageLimits.MaxPaintTargets) throw new MapSceneCapacityException();
+        FoliagePaintTargets++;
+    }
     readonly HashSet<MapSceneResourceKey> _resources = new();
     internal void BeforeResource(MapSceneResourceKey key)
     {
         if (_resources.Contains(key)) return;
         if (_resources.Count >= limits.MaxSelectedResources) throw new MapSceneCapacityException();
+        if (key.Kind == "Foliage")
+        {
+            if (foliageLimits is not null && FoliageChunks >= foliageLimits.MaxChunkDescriptors) throw new MapSceneCapacityException();
+            FoliageChunks++;
+        }
+        if (key.Kind == "Placement")
+        {
+            if (foliageLimits is not null && FoliagePlacements >= foliageLimits.MaxPlacements) throw new MapSceneCapacityException();
+            FoliagePlacements++;
+        }
+        if (key.Kind == "Patch")
+        {
+            if (foliageLimits is not null && FoliagePatches >= foliageLimits.MaxSurfacePatches) throw new MapSceneCapacityException();
+            FoliagePatches++;
+        }
         _resources.Add(key);
     }
     internal int PatchScopes { get; private set; }
@@ -51,9 +79,16 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
         RetainedBytes = checked(RetainedBytes + bytes);
     }
 
+    internal void BeforeInputBytes(long bytes)
+    {
+        if (foliageLimits is not null && bytes > foliageLimits.MaxSourceUtf8Bytes - FoliageSourceUtf8Bytes) throw new MapSceneCapacityException();
+        ReserveBytes(bytes);
+        FoliageSourceUtf8Bytes = checked(FoliageSourceUtf8Bytes + bytes);
+    }
+
     internal void BeforePayload(long bytes)
     {
-        ReserveBytes(bytes);
+        BeforeInputBytes(bytes);
         PayloadReads = checked(PayloadReads + 1);
         entering?.Invoke("payload");
     }

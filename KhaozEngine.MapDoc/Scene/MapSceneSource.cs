@@ -59,6 +59,8 @@ public sealed class MapSceneSource
             var attachmentsByOwner = (root.Prefabs?.Attachments ?? []).ToLookup(a => a.PlacementId, StringComparer.Ordinal);
             var rootLightIds = (root.BuildingIntent?.Lights ?? []).Select(l => l.Id).ToHashSet(StringComparer.Ordinal);
             MapBoundDocumentValidation.RequireRoots(root.NativeAssets, assets);
+            if (MapFoliageValidation.ValidateBound(root, assets).Count != 0)
+                throw new MapSceneSourceException(MapSceneStatus.Invalid, "Foliage metadata does not bind to the verified closure.");
             if (!float.IsFinite(root.Bounds.MinX) || !float.IsFinite(root.Bounds.MinZ) || !float.IsFinite(root.Bounds.MaxX) ||
                 !float.IsFinite(root.Bounds.MaxZ) || root.Bounds.MinX > root.Bounds.MaxX || root.Bounds.MinZ > root.Bounds.MaxZ)
                 throw new ArgumentException("Invalid scene world bounds.");
@@ -87,6 +89,13 @@ public sealed class MapSceneSource
                     rows.Add(key, new(key, default, new(root.Bounds.MinX, double.NegativeInfinity, root.Bounds.MinZ,
                         root.Bounds.MaxX, double.PositiveInfinity, root.Bounds.MaxZ), surface.SemanticSha256));
                 }
+            var foliageMetadata = new MapFoliageWindowMetadata(root.Foliage);
+            foreach (var entry in nativeEntries)
+            {
+                var surface = nativeRefs[entry.Key.SurfaceId];
+                var pose = transformsByKey[(MapPrefabChildKind.Surface, surface.Id)].FirstOrDefault()?.Transform ?? new(0, 0, 0, 0, 1);
+                foliageMetadata.AddFloor(surface, entry.Cells, pose, scan);
+            }
             var poses = new Dictionary<string, MapEffectiveTransform>(StringComparer.Ordinal);
             var requiredAssets = new HashSet<string>(StringComparer.Ordinal);
             var dependencyEdges = new Dictionary<MapSceneResourceKey, HashSet<MapSceneResourceKey>>();
@@ -120,7 +129,7 @@ public sealed class MapSceneSource
                     poses.TryAdd(MapEffectiveContext.Key(child.Key.Kind, child.Key.Key), pose);
                     var bounds = MapSceneResourceBounds.Child(child, pose, assets);
                     if (bounds is { } b) groupBounds = groupBounds?.Union(b) ?? b;
-                    AddRow(key, bounds, child);
+                    AddRow(key, bounds, child, pose);
                     if (child is MapPrefabLightChild light && expanded.WorldLightFrames.TryGetValue(light.Value.Id, out var local) && light.Value.Owner is { } owner)
                         externalLights.Add((key, owner.Id, MapEffectiveTransform.From(local), light.Value));
                 }
@@ -148,8 +157,9 @@ public sealed class MapSceneSource
                 foreach (var key in ownerRows) if (double.IsNaN(rows[key].Bounds.MinX)) rows[key] = rows[key] with { Bounds = fallback };
                 owners.Add(id, new(id, storage, input, Array.AsReadOnly(ownerRows.ToArray())));
 
-                void AddRow(MapSceneResourceKey key, MapBox3? bounds, MapPrefabChild child)
+                void AddRow(MapSceneResourceKey key, MapBox3? bounds, MapPrefabChild child, MapEffectiveTransform? pose = null)
                 {
+                    foliageMetadata.Add(child, pose ?? transformsByKey[(child.Key.Kind, child.Key.Key)].FirstOrDefault()?.Transform ?? new(0, 0, 0, 0, 1), scan);
                     var dependencies = MapSceneResourceBounds.Dependencies(child).ToHashSet();
                     long bytes = MapSceneResourceBounds.MetadataBytes(child);
                     scan.Retain(checked(bytes + Encoding.UTF8.GetByteCount(id)), checked(dependencies.Count + 1));
@@ -240,11 +250,13 @@ public sealed class MapSceneSource
                 foreach (var row in metadata) { w.WriteStringValue(row.Key.Kind); w.WriteStringValue(row.Key.Id); w.WriteStringValue(row.Digest); }
                 w.WriteEndArray();
             });
+            foliageMetadata.Finish();
+            scan.RetainBytes(checked(40L * (root.Foliage?.Layers.Sum(l => (long)l.Chunks.Count) ?? 0)));
             var data = new MapSceneData(generation, manifestDigest, source.SceneDirectory, assets, scan.Limits, native,
                 root.Bounds.MinX, root.Bounds.MinZ, root.Bounds.MaxX, root.Bounds.MaxZ, rootDigest, owners, producing,
                 dependenciesByOwner, metadata, new(metadata), Array.AsReadOnly(requiredAssets.Order(StringComparer.Ordinal).ToArray()),
                 foliage, foliageStorage, root.Foliage, scan.Work(true), root.BuildingIntent?.Roofs ?? [], root.BuildingIntent?.Storeys ?? [],
-                nativeEntries, Array.AsReadOnly(nativeTransforms), dependencyEdges);
+                nativeEntries, Array.AsReadOnly(nativeTransforms), dependencyEdges, foliageMetadata);
             return new(MapSceneSourceStatus.Ready, new(data), scan.Work(true));
         }
         catch (Exception error) when (Classify(error) is not null)
@@ -321,7 +333,7 @@ internal sealed record MapSceneData(string Generation, string? ManifestDigest, s
     IReadOnlyDictionary<string, HashSet<string>> Dependencies, IReadOnlyList<MapSceneResourceMetadata> Metadata, MapSceneSpatialIndex Index,
     IReadOnlyList<string> RequiredAssets, MapFoliageSet? Foliage, MapFoliageStorageIndex? FoliageStorage, MapFoliageSet? ResidentFoliage, MapSceneWork CaptureWork,
     IReadOnlyList<MapPrefabReference> Roofs, IReadOnlyList<KhaozEngine.MapDoc.Interiors.MapStoreyDoc> Storeys, IReadOnlyList<MapSurfaceIndexEntry> NativeEntries,
-    IReadOnlyList<MapStandaloneResourceTransform> NativeTransforms, IReadOnlyDictionary<MapSceneResourceKey, HashSet<MapSceneResourceKey>> ResourceDependencies)
+    IReadOnlyList<MapStandaloneResourceTransform> NativeTransforms, IReadOnlyDictionary<MapSceneResourceKey, HashSet<MapSceneResourceKey>> ResourceDependencies, MapFoliageWindowMetadata FoliageMetadata)
 {
     internal IReadOnlyDictionary<(MapPrefabChildKind Kind, string Id), MapStandaloneResourceTransform> NativePoseByKey { get; } = NativeTransforms.ToDictionary(t => (t.Kind, t.OwnerId));
     internal IReadOnlyDictionary<MapSceneResourceKey, MapSceneResourceMetadata> MetadataByKey { get; } = Metadata.ToDictionary(r => r.Key);
@@ -331,6 +343,9 @@ internal sealed record MapSceneData(string Generation, string? ManifestDigest, s
     internal IReadOnlyDictionary<MapSceneResourceKey, MapSurfaceIndexEntry> NativePatches { get; } = NativeEntries.ToDictionary(e => MapSceneAcquisition.PatchKey(e.Key));
     internal IReadOnlyDictionary<string, MapSurfaceRef> NativeRefs { get; } = Surfaces.Surfaces.ToDictionary(s => s.Id, StringComparer.Ordinal);
     internal IReadOnlyDictionary<string, MapPatchKey> NativeRecords { get; } = NativeEntries.SelectMany(e => e.RecordIds.Select(id => (Id: id, e.Key))).ToDictionary(v => v.Id, v => v.Key, StringComparer.Ordinal);
+    internal IReadOnlyDictionary<MapSceneResourceKey, MapFoliageChunk> ResidentFoliageChunks { get; } =
+        (ResidentFoliage?.Layers ?? []).SelectMany(l => l.Chunks.Select(c => (Key: MapSceneAcquisition.FoliageKey(l.Id, c.Key), Chunk: c)))
+        .ToDictionary(v => v.Key, v => v.Chunk);
     internal IReadOnlyDictionary<MapSceneResourceKey, (MapFoliageLayer Layer, MapFoliageChunkKey Chunk)> FoliageRows { get; } =
         (Foliage?.Layers ?? []).SelectMany(l => l.ChunkDigests.Select(c => (Key: MapSceneAcquisition.FoliageKey(l.Id, c.Key), Layer: l, Chunk: c.Key)))
         .ToDictionary(v => v.Key, v => (v.Layer, v.Chunk));

@@ -13,6 +13,14 @@ public static class MapFoliageDistribution
 {
     public static MapFoliageSampleBatch Generate(MapFoliageGenerationContext context, string layerId, MapFoliageChunkKey chunk,
         MapFoliageLimits? limits = null, Action<MapFoliageDecision>? observe = null)
+ => Generate((IMapFoliageInputs)context, layerId, chunk, limits, observe);
+
+    public static MapFoliageSampleBatch Generate(MapWindowFoliageContext context, string layerId, MapFoliageChunkKey chunk,
+        MapFoliageLimits? limits = null, Action<MapFoliageDecision>? observe = null)
+ => Generate((IMapFoliageInputs)context, layerId, chunk, limits, observe);
+
+    static MapFoliageSampleBatch Generate(IMapFoliageInputs context, string layerId, MapFoliageChunkKey chunk,
+        MapFoliageLimits? limits = null, Action<MapFoliageDecision>? observe = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         MapFoliageLimits admitted = Limits(limits);
@@ -28,6 +36,14 @@ public static class MapFoliageDistribution
     }
 
     public static MapFoliageQueryResult Query(MapFoliageGenerationContext context, string layerId, RectArea area,
+        MapFoliageLimits? limits = null, Action<MapFoliageDecision>? observe = null)
+ => Query((IMapFoliageInputs)context, layerId, area, limits, observe);
+
+    public static MapFoliageQueryResult Query(MapWindowFoliageContext context, string layerId, RectArea area,
+        MapFoliageLimits? limits = null, Action<MapFoliageDecision>? observe = null)
+ => Query((IMapFoliageInputs)context, layerId, area, limits, observe);
+
+    static MapFoliageQueryResult Query(IMapFoliageInputs context, string layerId, RectArea area,
         MapFoliageLimits? limits = null, Action<MapFoliageDecision>? observe = null)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -62,9 +78,10 @@ public static class MapFoliageDistribution
         catch (MapFoliageRefusal refusal) { return new(refusal.Status, [], meter.Work(budget.Bytes)); }
     }
 
-    static MapFoliageSampleBatch GenerateCore(MapFoliageGenerationContext context, MapFoliageLayer layer, MapFoliageChunkKey chunk,
+    static MapFoliageSampleBatch GenerateCore(IMapFoliageInputs context, MapFoliageLayer layer, MapFoliageChunkKey chunk,
         RectArea area, MapFoliageLimits limits, MapFoliageRetentionBudget budget, Meter meter, Action<MapFoliageDecision>? observe)
     {
+        context.RequireChunk(layer, chunk);
         MapFoliageLatticeRange range = MapFoliageLatticeRange.Of(area.MinX, area.MinZ, area.MaxX, area.MaxZ, layer.Spacing);
         if (range.Count > limits.MaxCandidates) throw Refuse(MapFoliageStatus.CapacityExceeded, "chunk candidates");
         if (!budget.TryRetainBatch()) throw Refuse(MapFoliageStatus.CapacityExceeded, "retained batch bytes");
@@ -115,7 +132,7 @@ public static class MapFoliageDistribution
             MapFoliageSupport.RasterCoordinate(chunk.MinZ, layer.OriginZ, layer.CellSize) > layer.Depth - 1;
     }
 
-    internal static MapFoliageLayer Layer(MapFoliageGenerationContext context, string id) =>
+    internal static MapFoliageLayer Layer(IMapFoliageInputs context, string id) =>
         context.Foliage?.Layers.FirstOrDefault(l => string.Equals(l.Id, id, StringComparison.Ordinal)) ??
         throw Refuse(MapFoliageStatus.Invalid, "unknown foliage layer");
 
@@ -168,7 +185,7 @@ public static class MapFoliageDistribution
 
     /// <summary>Shared candidate-to-sample sink for generation and reconciliation. Prepared entries have FIFO ownership
     /// and are charged against a shared block budget on both proposals before preparation or retention.</summary>
-    internal sealed class Evaluation(MapFoliageGenerationContext context, MapFoliageLayer layer, MapFoliageLimits limits, Meter meter,
+    internal sealed class Evaluation(IMapFoliageInputs context, MapFoliageLayer layer, MapFoliageLimits limits, Meter meter,
         Reconciliation? reconciliation = null)
     {
         readonly GroundCoverCandidateEvaluator _evaluator = GroundCoverDistribution.Prepare(new()

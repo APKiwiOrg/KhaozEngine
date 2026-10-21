@@ -11114,8 +11114,10 @@ resolver version 2 is new in 20.30.0 and is opt-in through a document's resolver
 ### Native foliage and the R8 handoff
 
 Format 9 carries optional `MapFoliageSet` payload 1 independently of scatter, companions and explicit placements.
-Capture a complete immutable context once and reuse it across chunk calls. Partial terrain/content/foliage returns
-`PartialResidency`. R8 must add a windowed constructor and closure/completeness contract before streamed generation.
+Capture a complete immutable context once and reuse it across chunk calls. Complete capture rejects partial residency.
+`MapFoliageGenerationContext.CaptureWindow(sceneSource, sceneScope, limits?)` publishes a separate window context with
+`SnapshotId`, `ClosureHash` and an explicit dependency `Witness`. Its `Generate` and `Query` overloads preserve complete
+generation's exact keys, matrices, ranks, dependencies and atomic refusals within the captured generation window.
 
 ```csharp
 using KhaozEngine.MapDoc.Foliage;

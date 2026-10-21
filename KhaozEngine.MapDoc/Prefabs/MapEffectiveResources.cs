@@ -16,6 +16,7 @@ namespace KhaozEngine.MapDoc.Prefabs;
 public sealed class MapEffectiveResources
 {
     readonly MapEffectiveResolutionProduct _product;
+    internal MapEffectiveResolutionProduct Product => _product;
     internal MapEffectiveResources(MapEffectiveResolutionProduct product) => _product = product;
     public IReadOnlyList<MapResolvedPlacement> Placements => _product.Placements;
     public IReadOnlyList<MapPlacementSupport> PlacementSupports => _product.PlacementSupports;

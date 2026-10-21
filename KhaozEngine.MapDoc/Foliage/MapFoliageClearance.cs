@@ -19,6 +19,10 @@ public static class MapFoliageClearance
 {
     public static MapPreparedFoliageClearance Prepare(MapFoliageGenerationContext context, MapFoliageLayer layer,
         MapFoliageChunkKey chunk, MapFoliageLimits limits)
+ => Prepare((IMapFoliageInputs)context, layer, chunk, limits);
+
+    internal static MapPreparedFoliageClearance Prepare(IMapFoliageInputs context, MapFoliageLayer layer,
+        MapFoliageChunkKey chunk, MapFoliageLimits limits)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(layer);
@@ -56,7 +60,7 @@ public static class MapFoliageClearance
                         if (work.RuleCandidates > limits.MaxRuleCandidates) throw new MapFoliageRefusal(MapFoliageStatus.CapacityExceeded, work, "clearance rules");
                         if (!Enabled(layer, rule.Kind) || rule.PlacementTag is { } tag && !placement.Tags.Any(t => string.Equals(t, tag, StringComparison.OrdinalIgnoreCase))) continue;
                         var owner = MapFoliageOwners.World(MapPrefabChildKind.Placement, placement.PlacementId);
-                        var pose = MapFoliageOwners.Pose(context.Resources, owner);
+                        var pose = context.Pose(owner);
                         limits.ChargePreparation?.Invoke(4096);
                         entries.Add(new(Seat(owner, pose), pose, rule.Kind, rule.Footprint, null, layer.DoorClearance));
                         Part("rule|" + rule.Id + "|" + rule.AssetId + "|" + rule.PlacementTag + "|" + rule.Kind + "|" + Describe(rule.Footprint));

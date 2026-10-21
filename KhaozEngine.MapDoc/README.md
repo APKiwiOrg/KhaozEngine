@@ -874,11 +874,15 @@ resources once and detaches one complete snapshot. Reuse it across `MapFoliageDi
 65,536 surface patches and 4096 paint targets. Construction is counted before expansion, cloning or index staging,
 alongside the released prefab expansion limits. `MapFoliageContextWork` reports charges and actual expansion and
 snapshot-serialization counts.
-R7 capture requires all terrain, content and foliage resident. Partial snapshots return `PartialResidency` before
-capture. R8 must add a windowed context constructor with an immutable closure and explicit completeness contract
-before claiming streamed native generation. Sparse storage and partial save/verification are not partial-generation
-proof. That constructor must preserve public finalization, full-request support selection, canonical surface identity
-and the observer atomic-completion contract described here.
+Complete capture requires all terrain, content and foliage resident. Partial snapshots return `PartialResidency`.
+`MapFoliageGenerationContext.CaptureWindow(sceneSource, sceneScope, limits?)` instead publishes a distinct
+`MapWindowFoliageContext` with immutable `SnapshotId`, `ClosureHash` and a complete dependency `Witness`. Its
+`MapFoliageDistribution.Generate` and `Query` overloads share the released input and evaluation kernels. Generation
+chunks intersect the half-open draw bounds, including motion padding. Requests for other chunks refuse `Unavailable`.
+Support scopes use the same derived read reach as complete generation. Actual rounded bilinear density reads include
+advertised absent zero chunks, while unavailable or stale inputs refuse atomically. Off-raster chunks bind raster
+facts alone. Context ceilings apply to selected input bytes and descriptors beside unchanged scene and point-query
+limits. A window context retains its admitted inputs and never reconstructs a partial document for a complete builder.
 
 Only `MapFoliageStatus.Complete` publishes usable samples. MissingSupport, Unavailable, PartialResidency, Ambiguous,
 CapacityExceeded, NotRepresentable and Invalid refuse without truncation, a substituted floor or budget inflation.

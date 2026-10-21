@@ -19,36 +19,22 @@ public sealed record MapFoliageContextResult(MapFoliageStatus Status, MapFoliage
 /// metadata spatially. Every chunk-scoped read is answered from those captured facts, never by another expansion or a
 /// whole payload serialization, so one context serves any number of Generate and Query calls. A later document edit
 /// needs a new context and never reaches this one. A partially resident document refuses, since generation needs every
-/// tile, surface page and foliage chunk loaded. A windowed context over partial residency is a later addition.</summary>
-public sealed class MapFoliageGenerationContext
+/// tile, surface page and foliage chunk loaded. Windowed acquisition uses the separate MapWindowFoliageContext.</summary>
+public sealed class MapFoliageGenerationContext : IMapFoliageInputs
 {
     [ThreadStatic] static long t_captures;
-    readonly SpatialIndex _owners;
-    readonly MapResolvedPlacement[] _ownerPlacements;
-    readonly Bounds[] _ownerBounds;
-    readonly SpatialIndex _paint;
-    readonly SpatialIndex _floorIndex;
-    readonly MapSurfaceRef[] _floorEntries;
-    readonly IReadOnlyDictionary<string, IReadOnlyDictionary<MapFoliageChunkKey, string>> _densityDigests;
-    readonly PaintEntry[] _paintEntries;
-
+    readonly MapFoliageInputKernel _inputs;
     MapFoliageGenerationContext(MapFoliageSet? foliage, MapAssetClosure assets, MapEffectiveResources resources, MapFoliageContextWork work,
         string sourceFingerprint)
     {
         SourceFingerprint = sourceFingerprint;
         ClosureHash = assets.Hash;
         Foliage = foliage;
-        _densityDigests = (foliage?.Layers ?? []).ToDictionary(l => l.Id,
-            l => (IReadOnlyDictionary<MapFoliageChunkKey, string>)new ReadOnlyDictionary<MapFoliageChunkKey, string>(
-                l.ChunkDigests.ToDictionary(d => d.Key, d => d.Sha256)), StringComparer.Ordinal);
         Assets = assets;
         Resources = resources;
         Work = work;
-        (_ownerPlacements, _ownerBounds, _owners) = Owners(foliage, resources);
-        (_paintEntries, _paint) = Paint(resources);
-        (_floorEntries, _floorIndex) = SupportInfluences(resources);
-        ClearanceOwners = new(foliage, resources);
-        SnapshotId = Snapshot(foliage, assets, resources, _paintEntries);
+        _inputs = new(foliage, assets, resources.Product);
+        SnapshotId = _inputs.SnapshotId;
         t_captures++;
     }
 
@@ -61,7 +47,7 @@ public sealed class MapFoliageGenerationContext
     public MapAssetClosure Assets { get; }
     /// <summary>The effective resources of the snapshot, expanded once.</summary>
     public MapEffectiveResources Resources { get; }
-    internal MapFoliageOwners ClearanceOwners { get; }
+    internal MapFoliageOwners ClearanceOwners => _inputs.ClearanceOwners;
     /// <summary>Identifies the captured snapshot from facts already captured: effective resources, annotations, the
     /// closure, logical foliage, every effective placement and the paint partition.</summary>
     public string SnapshotId { get; }
@@ -124,97 +110,24 @@ public sealed class MapFoliageGenerationContext
         return Resources.Acquire(scope);
     }
 
-    internal IReadOnlyDictionary<MapFoliageChunkKey, string> DensityDigests(MapFoliageLayer layer) => _densityDigests[layer.Id];
+    internal IReadOnlyDictionary<MapFoliageChunkKey, string> DensityDigests(MapFoliageLayer layer) => _inputs.DensityDigests(layer);
+    internal IReadOnlyList<MapSurfaceRef> SupportFloorsFor(MapFoliageLayer layer, MapFoliageChunkKey chunk) => _inputs.SupportFloorsFor(layer, chunk);
+    public IReadOnlyDictionary<string, MapPaintRegionSet> PaintFor(MapSurfaceScope scope) => _inputs.PaintFor(scope);
+    public IReadOnlyList<MapResolvedPlacement> PlacementsIn(MapFoliageRect bounds) => _inputs.PlacementsIn(bounds);
+    internal IReadOnlyList<MapResolvedPlacement> PlacementsIn(MapFoliageRect bounds, out long candidates) => _inputs.PlacementsIn(bounds, out candidates);
+    internal IEnumerable<(MapResolvedPlacement Placement, Bounds Proxy)> OwnerProxies() => _inputs.OwnerProxies();
+    IReadOnlyList<MapSurfaceRef> IMapFoliageInputs.DeclaredSurfaces => _inputs.DeclaredSurfaces;
+    IReadOnlyDictionary<string, MapEffectiveTransform> IMapFoliageInputs.Transforms => _inputs.Transforms;
+    MapFoliageOwners IMapFoliageInputs.ClearanceOwners => ClearanceOwners;
+    IReadOnlyDictionary<MapFoliageChunkKey, string> IMapFoliageInputs.DensityDigests(MapFoliageLayer layer) => DensityDigests(layer);
+    IReadOnlyList<MapSurfaceRef> IMapFoliageInputs.SupportFloorsFor(MapFoliageLayer layer, MapFoliageChunkKey chunk) => SupportFloorsFor(layer, chunk);
+    IReadOnlyList<MapResolvedPlacement> IMapFoliageInputs.PlacementsIn(MapFoliageRect bounds, out long candidates) => PlacementsIn(bounds, out candidates);
+    MapEffectiveTransform IMapFoliageInputs.Pose(MapPrefabReference owner) => _inputs.Pose(owner);
+    void IMapFoliageInputs.RequireChunk(MapFoliageLayer layer, MapFoliageChunkKey chunk) { }
 
-    // A captured per-patch world-bounds index. Only reached floors size the normal and clearance halo, so a
-    // distant coarse prefab never sizes a local request. Iterate the reached set to closure: a newly reached lattice
-    // may enlarge the clearance read chain. Acquisition, grids and clearance still use the single ReadReach recipe.
-    internal IReadOnlyList<MapSurfaceRef> SupportFloorsFor(MapFoliageLayer layer, MapFoliageChunkKey chunk)
-    {
-        var rect = MapFoliageSupport.Rect(layer, chunk);
-        var found = new Dictionary<string, MapSurfaceRef>(StringComparer.Ordinal);
-        double pad = 0.01;
-        while (true)
-        {
-            int previous = found.Count;
-            foreach (int i in _floorIndex.Query(new(rect.MinX - pad, rect.MinZ - pad, rect.MaxX + pad, rect.MaxZ + pad), out _))
-                found.TryAdd(_floorEntries[i].Id, _floorEntries[i]);
-            if (found.Count == previous) return found.Values.OrderBy(s => s.Id, StringComparer.Ordinal).ToArray();
-            var floors = found.Values.Select(s => (Surface: s, Pose: Resources.Transforms.TryGetValue(
-                MapEffectiveContext.Key(MapPrefabChildKind.Surface, s.Id), out MapEffectiveTransform t) ? t : (MapEffectiveTransform?)null)).ToArray();
-            double cell = floors.Max(f => f.Surface.Frame.CellUnitMetres.Exact().ToDouble() * (f.Pose?.Scale ?? 1));
-            pad = 3 * cell + MapFoliageSupport.ReadReach(layer, floors) + 0.01;
-        }
-    }
-
-    static (MapSurfaceRef[], SpatialIndex) SupportInfluences(MapEffectiveResources resources)
-    {
-        var entries = new List<MapSurfaceRef>();
-        var bounds = new List<Bounds>();
-        if (resources.SurfaceSource is not IMapEffectiveSurfaceContext source)
-            throw new MapDocumentException("foliage context requires captured effective surface bounds");
-        MapEffectiveContext effective = source.EffectiveContext;
-        var floors = effective.Surfaces.Refs.Where(s => s.Role == MapSurfaceRole.SupportFloor).ToDictionary(s => s.Id, StringComparer.Ordinal);
-        foreach (MapSurfacePatch patch in effective.Surfaces.Patches.Values)
-        {
-            if (!floors.TryGetValue(patch.Key.SurfaceId, out MapSurfaceRef? surface)) continue;
-            long x = checked(patch.Key.SlotX * 64 + patch.CellMinX), z = checked(patch.Key.SlotZ * 64 + patch.CellMinZ);
-            MapExactRect rect = MapEffectiveGeometry.Bounds(new[] { MapLatticeAddress.Corner(x, z), MapLatticeAddress.Corner(x + patch.Width, z),
-                MapLatticeAddress.Corner(x + patch.Width, z + patch.Depth), MapLatticeAddress.Corner(x, z + patch.Depth) }
-                .Select(a => MapEffectiveGeometry.Vertex(effective, new(surface.Id, a))));
-            Bounds b = Bounds.Of(rect);
-            entries.Add(surface);
-            bounds.Add(b);
-        }
-        return (entries.ToArray(), new SpatialIndex(bounds));
-    }
-
-    /// <summary>The captured paint partition restricted to the scope: per target, the regions whose exact XZ bounds
-    /// touch the scope's world rectangle, in published order. Targets with no such region are absent. Each subset has
-    /// its own digest over only its regions.</summary>
-    public IReadOnlyDictionary<string, MapPaintRegionSet> PaintFor(MapSurfaceScope scope)
-    {
-        ArgumentNullException.ThrowIfNull(scope);
-        scope.Validate();
-        MapExactRect rect = scope.WorldRectangle();
-        List<int> hits = _paint.Query(Bounds.Of(rect), out _);
-        var result = new Dictionary<string, MapPaintRegionSet>(StringComparer.Ordinal);
-        foreach (var target in hits.Where(i => _paintEntries[i].Rect.Touches(rect)).Select(i => _paintEntries[i])
-            .GroupBy(e => e.Target, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal))
-        {
-            PaintEntry[] entries = target.OrderBy(e => e.Order).ToArray();
-            string digest = MapCanonical.HashHex(w =>
-            {
-                w.WriteStartArray(); w.WriteStringValue("kemap/foliage-scoped-paint/1"); w.WriteStringValue(target.Key);
-                foreach (PaintEntry entry in entries) w.WriteStringValue(entry.Digest);
-                w.WriteEndArray();
-            });
-            result.Add(target.Key, new MapPaintRegionSet(entries.Select(e => e.Region).ToArray(), digest));
-        }
-        return new ReadOnlyDictionary<string, MapPaintRegionSet>(result);
-    }
-
-    /// <summary>The effective placements that own foliage clearing whose proxy bounds meet <paramref name="bounds"/>, in
-    /// effective order. A proxy is the union of the placement's applicable clearance rule and exception mask footprints
-    /// through its effective transform, each Door footprint widened to include its origin and the layer's door
-    /// clearance. Interaction envelopes never enter a proxy. Callers pad <paramref name="bounds"/> by the clearance read reach.</summary>
-    public IReadOnlyList<MapResolvedPlacement> PlacementsIn(MapFoliageRect bounds) => PlacementsIn(bounds, out _);
-
-    /// <summary><see cref="PlacementsIn(MapFoliageRect)"/>, also reporting how many indexed owners it inspected.</summary>
-    /// <summary>Every indexed clearance owner with its proxy bounds, in effective order.</summary>
-    internal IEnumerable<(MapResolvedPlacement Placement, Bounds Proxy)> OwnerProxies() =>
-        _ownerPlacements.Select((p, i) => (p, _ownerBounds[i]));
-
-    internal IReadOnlyList<MapResolvedPlacement> PlacementsIn(MapFoliageRect bounds, out long candidates)
-    {
-        if (!float.IsFinite(bounds.MinX) || !float.IsFinite(bounds.MinZ) || !float.IsFinite(bounds.MaxX) || !float.IsFinite(bounds.MaxZ) ||
-            bounds.MinX > bounds.MaxX || bounds.MinZ > bounds.MaxZ)
-            throw new ArgumentException("foliage bounds must be finite and ordered.", nameof(bounds));
-        var query = new Bounds(bounds.MinX, bounds.MinZ, bounds.MaxX, bounds.MaxZ);
-        List<int> hits = _owners.Query(query, out candidates);
-        hits.Sort();
-        return Array.AsReadOnly(hits.Select(i => _ownerPlacements[i]).ToArray());
-    }
+    /// <summary>Captures foliage for the requested generation window against its pinned scene source.</summary>
+    public static MapWindowFoliageContextResult CaptureWindow(Scene.MapSceneSource source, Scene.MapSceneScope scope,
+        MapFoliageContextLimits? limits = null) => MapFoliageWindowCapture.Capture(source, scope, limits ?? new());
 
     static MapFoliageContextResult Build(MapDocument document, MapAssetClosure assets, MapEffectiveResources resources,
         MapFoliageContextWork measured, long expansions, long writes, string baseline)
@@ -265,46 +178,6 @@ public sealed class MapFoliageGenerationContext
         return document.Surfaces.Refs.All(s => surfaces.Contains(s.Id));
     }
 
-    // Owner proxies, indexed spatially. Rules are looked up by asset and masks by owner, never scanned per placement.
-    static (MapResolvedPlacement[], Bounds[], SpatialIndex) Owners(MapFoliageSet? set, MapEffectiveResources resources)
-    {
-        var rules = new Dictionary<string, List<(MapFoliageLayer Layer, MapFoliageClearanceRule Rule)>>(StringComparer.Ordinal);
-        var masks = new Dictionary<string, List<(MapFoliageLayer Layer, MapFoliageMask Mask)>>(StringComparer.Ordinal);
-        foreach (MapFoliageLayer layer in set?.Layers ?? [])
-        {
-            foreach (MapFoliageClearanceRule rule in layer.ClearanceRules)
-            {
-                if (!rules.TryGetValue(rule.AssetId, out var list)) rules.Add(rule.AssetId, list = new());
-                list.Add((layer, rule));
-            }
-            foreach (MapFoliageMask mask in layer.ExceptionMasks.Where(m => m.Owner is { Scope: MapPrefabReferenceScope.World, Kind: MapPrefabChildKind.Placement }))
-            {
-                if (!masks.TryGetValue(mask.Owner.Id, out var list)) masks.Add(mask.Owner.Id, list = new());
-                list.Add((layer, mask));
-            }
-        }
-        var placements = new List<MapResolvedPlacement>();
-        var bounds = new List<Bounds>();
-        if (rules.Count == 0 && masks.Count == 0) return (placements.ToArray(), bounds.ToArray(), new SpatialIndex(bounds));
-        foreach (MapResolvedPlacement placement in resources.Placements)
-        {
-            Bounds? proxy = null;
-            MapEffectiveTransform pose = resources.Transforms.TryGetValue(MapEffectiveContext.Key(MapPrefabChildKind.Placement, placement.PlacementId),
-                out MapEffectiveTransform effective) ? effective : MapEffectiveTransform.From(placement.Transform);
-            if (rules.TryGetValue(placement.AssetId, out var applicable))
-                foreach (var (layer, rule) in applicable)
-                    if (rule.PlacementTag is not { } tag || placement.Tags.Any(t => string.Equals(t, tag, StringComparison.OrdinalIgnoreCase)))
-                        proxy = Bounds.Union(proxy, Proxy(pose, rule.Footprint, rule.Kind == MapFoliageClearanceKind.Door ? layer.DoorClearance : null));
-            if (masks.TryGetValue(placement.PlacementId, out var owned))
-                foreach (var (layer, mask) in owned)
-                    proxy = Bounds.Union(proxy, Proxy(pose, mask.Footprint, mask.Kind == MapFoliageClearanceKind.Door ? layer.DoorClearance : null));
-            if (proxy is not { } value) continue;
-            placements.Add(placement);
-            bounds.Add(value);
-        }
-        return (placements.ToArray(), bounds.ToArray(), new SpatialIndex(bounds));
-    }
-
     // A local footprint through the effective pose, as MapTransform.TransformPoint applies it, padded outward by a
     // millimetre so exact downstream arithmetic never falls outside it. A Door footprint first widens to include the
     // owner's origin, then by the door clearance in owner units, which the pose scales once.
@@ -329,67 +202,6 @@ public sealed class MapFoliageGenerationContext
             throw new MapExactOverflowException();
         return new(b.MinX - pad, b.MinZ - pad, b.MaxX + pad, b.MaxZ + pad);
     }
-
-    sealed record PaintEntry(string Target, int Order, MapPaintRegion Region, MapExactRect Rect, string Digest);
-
-    // Every published paint region with its exact XZ bounds and its own content digest, indexed spatially.
-    static (PaintEntry[], SpatialIndex) Paint(MapEffectiveResources resources)
-    {
-        var entries = new List<PaintEntry>();
-        foreach (var (target, set) in resources.PaintRegions.OrderBy(p => p.Key, StringComparer.Ordinal))
-            for (int i = 0; i < set.Regions.Count; i++)
-            {
-                MapPaintRegion region = set.Regions[i];
-                if (region.Polygon.Count == 0) continue;
-                MapExactValue minX = region.Polygon[0].X, maxX = minX, minZ = region.Polygon[0].Z, maxZ = minZ;
-                foreach (MapExactPoint p in region.Polygon)
-                {
-                    if (p.X.CompareTo(minX) < 0) minX = p.X;
-                    if (p.X.CompareTo(maxX) > 0) maxX = p.X;
-                    if (p.Z.CompareTo(minZ) < 0) minZ = p.Z;
-                    if (p.Z.CompareTo(maxZ) > 0) maxZ = p.Z;
-                }
-                entries.Add(new(target, i, region, new(minX, minZ, maxX, maxZ), RegionDigest(region)));
-            }
-        return (entries.ToArray(), new SpatialIndex(entries.Select(e => Bounds.Of(e.Rect)).ToList()));
-    }
-
-    static string RegionDigest(MapPaintRegion region) => MapCanonical.HashHex(w =>
-    {
-        w.WriteStartArray(); w.WriteStringValue("kemap/foliage-paint-region/1");
-        MapFaceKey face = region.Face;
-        w.WriteStringValue(face.OwnerId); w.WriteStringValue(face.Patch?.SurfaceId);
-        w.WriteStringValue(face.Patch?.SlotX.ToString(CultureInfo.InvariantCulture));
-        w.WriteStringValue(face.Patch?.SlotZ.ToString(CultureInfo.InvariantCulture));
-        w.WriteNumberValue(face.Primitive); w.WriteNumberValue(face.ParentTriangle); w.WriteNumberValue(face.Child); w.WriteNumberValue((byte)face.Side);
-        w.WriteStringValue(region.PaintId); w.WriteNumberValue(region.Priority);
-        w.WriteNumberValue(region.Material.Underlay); w.WriteNumberValue(region.Material.Overlay);
-        w.WriteBooleanValue(region.Material.OverlayCovers); w.WriteBooleanValue(region.Material.Feather);
-        foreach (MapExactPoint p in region.Polygon)
-            foreach (MapExactValue value in new[] { p.X, p.Y, p.Z })
-            { w.WriteNumberValue(value.Numerator); w.WriteNumberValue(value.Denominator); }
-        w.WriteEndArray();
-    });
-
-    static string Snapshot(MapFoliageSet? foliage, MapAssetClosure assets, MapEffectiveResources resources, PaintEntry[] paint) =>
-        MapCanonical.HashHex(w =>
-        {
-            w.WriteStartArray(); w.WriteStringValue("kemap/foliage-context/1");
-            w.WriteStringValue(resources.Digest); w.WriteStringValue(resources.AnnotationDigest); w.WriteStringValue(assets.Hash);
-            w.WriteStringValue(MapFoliageProjection.Digest(foliage));
-            foreach (MapResolvedPlacement p in resources.Placements)
-            {
-                w.WriteStartArray();
-                w.WriteStringValue(p.PlacementId); w.WriteStringValue(p.Kind); w.WriteStringValue(p.AssetId);
-                if (p.NumericId is { } id) w.WriteNumberValue(id); else w.WriteNullValue();
-                foreach (float value in new[] { p.Transform.Position.X, p.Transform.Position.Y, p.Transform.Position.Z, p.Transform.YawRadians, p.Transform.Scale })
-                    w.WriteNumberValue(BitConverter.SingleToInt32Bits(value));
-                foreach (string tag in p.Tags) w.WriteStringValue(tag);
-                w.WriteEndArray();
-            }
-            foreach (PaintEntry entry in paint) { w.WriteStringValue(entry.Target); w.WriteStringValue(entry.Digest); }
-            w.WriteEndArray();
-        });
 
     internal readonly record struct Bounds(double MinX, double MinZ, double MaxX, double MaxZ)
     {

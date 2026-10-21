@@ -392,7 +392,7 @@ Not dispatched. The next T4 Direct3D 11 correctness run needs fresh owner approv
 `git rev-parse` on the pushed candidate at dispatch time. Its filter:
 
 ```text
-FullyQualifiedName~TemporalVisibilityResolveAbGpuTests|FullyQualifiedName~TemporalEntryIdentityGpuTests|FullyQualifiedName~TemporalVisibilityEquivalenceGpuTests
+FullyQualifiedName~TemporalVisibilityResolveAbGpuTests|FullyQualifiedName~TemporalEntryIdentityGpuTests|FullyQualifiedName~TemporalVisibilityEquivalenceGpuTests|FullyQualifiedName~TemporalVisibilityGatherGpuTests
 ```
 
 `FullyQualifiedName~TemporalEntryIdentityGpuTests` selects the large-frame entry identity case,
@@ -405,3 +405,8 @@ On llvmpipe the state, R8 and depth are exact and the colour of each pair is wit
 `0.0625` on at most `0.0025` of the values compared.
 The A/B applies the current contracts listed in section 7. The decomposition, if requested again, times V0
 shipped, V1 check removed and V3 D prime only.
+
+Task 7g.5 adds the exact raw gather oracle to this selection. Direct3D 11 and Vulkan use all visibility gathers,
+while Metal retains current-block loads. The software-Vulkan rule is unchanged. The separately authorized free
+all-leg correctness dispatch uses the filter from `7g3b-hosted.md` plus `TemporalVisibilityGatherGpuTests`, with no
+timing, perf or bench cases. This does not authorize the T4 dispatch described in this section.

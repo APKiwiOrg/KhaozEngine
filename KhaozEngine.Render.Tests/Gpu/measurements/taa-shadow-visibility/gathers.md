@@ -1,8 +1,8 @@
 # Task 7g.4 visibility gathers
 
-Candidate branch `fix/taa-vis-gathers`, based on `cb2a97e9e`. This branch is separate from the owning
-`fix/taa-shadow-visibility` worktree. No bounds, tolerances, frozen D text, package version or golden changes.
-No timing, billed workflow, merge, tag or release is part of this task.
+The Task 7g.4 candidate `fix/taa-vis-gathers`, based on `cb2a97e9e`, is integrated into
+`fix/taa-shadow-visibility` by Task 7g.5. No bounds, tolerances, frozen D text, package version or goldens change.
+No timing, billed workflow, main merge, tag or release is part of the merge round.
 
 ## Merged policy, Task 7g.5
 
@@ -13,6 +13,9 @@ and 39554929620. The raw gather oracle had zero mismatches. They are llvmpipe's 
 colour divergence, bounded on main by amendment 23, rather than evidence against gathers. The merged r1 restores
 that software-Vulkan rule, bound 0.0625 and share 0.0025. Large-frame and moving-shadow comparisons remain exact.
 The historical run sections below retain the decisions and results at their original checkpoints.
+Task 7g.5 recaptured the seven gathered shipped DXBC listings in free run 39561655851, while every D listing stayed
+byte-identical. All fourteen listings have zero precise markings. The existing shader and corpus writers reproduced
+the merged tables without drift. The [merge-round record](7g5-hosted.md) owns the current gates and hosted result.
 
 ## Footprints and arithmetic
 
@@ -69,7 +72,7 @@ origins are visited, including footprints touching each edge. The oracle admits 
 The equivalence, frozen D A/B and entry-identity oracles are unchanged. They additionally exercise the actual
 generated component selection, ordered sums, fast-path edge preconditions and slow-path fallback.
 
-## Verification status
+## Task 7g.4 verification history
 
 Release solution build passed with zero warnings and errors. The documented writers passed all nine facts and
 changed exactly ten temporal fragment rows in each backend table and thirty matching corpus rows. TemporalPrepare,
@@ -123,7 +126,7 @@ TAA_CORRECTNESS='((FullyQualifiedName~KhaozEngine.Tests.Gpu.Temporal&FullyQualif
 build-slot --heavy --label taa-vis-gathers-metal -- env KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "$TAA_CORRECTNESS"
 ```
 
-## Hosted correctness and Vulkan withdrawal
+## Historical hosted correctness and Vulkan withdrawal
 
 The one authorized free all-leg run is [39550935418](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39550935418),
 source e725692704e86de3f0d952a5df968b63d66aa0aa. Its concurrency group is specific to workflow_dispatch and
@@ -156,7 +159,7 @@ No timing test, billed workflow, stress run, merge, tag or release was run.
 T4 hardware proof remains with the owning thread's separately approved work. This worker uses only the free
 hosted Metal, WARP and lavapipe correctness matrix.
 
-## DXBC recapture handoff
+## Historical DXBC recapture handoff
 
 Thirteen source pins are deliberately stale relative to the inherited fixtures. The six full programs were
 already stale on both sides after 7g.3a. Gathers also stale their shipped sides and the shipped decision helper.
@@ -166,7 +169,7 @@ as reader-logic evidence. No fixture or source hash is recaptured here. The owni
 merging this branch with 7g.3b.
 
 
-## Approved Vulkan-only follow-up
+## Historical approved Vulkan-only follow-up
 
 The owner authorized exactly one additional free Vulkan-only workflow_dispatch, with the same filtered selection
 as the all-leg run. The branch was verified against the commit resolved with git rev-parse before dispatch.
@@ -198,7 +201,7 @@ fallback remains on this branch. T4 hardware and performance are unverified, and
 with the orchestrator after integration.
 
 
-## Final full-solution format gate
+## Task 7g.4 final full-solution format gate
 
 The required command completed through build-slot with exit code 0 after the Vulkan-only follow-up. It reported
 only the workspace-loading warning, with no format errors. The interrupted initial attempt is not used as evidence.

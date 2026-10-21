@@ -171,7 +171,10 @@ void main() {
                 DepthStencil = GpuDepthStencilState.Disabled,
                 Rasterizer = new(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, false, false),
                 Topology = GpuPrimitiveTopology.TriangleList,
-                ResourceLayouts = [layout], ShaderSet = shaders, VertexLayouts = [], Outputs = framebuffer.Outputs,
+                ResourceLayouts = [layout],
+                ShaderSet = shaders,
+                VertexLayouts = [],
+                Outputs = framebuffer.Outputs,
             }));
             using IGpuResourceSet set = factory.CreateResourceSet(new GpuResourceSetDescription(layout, source,
                 device.LinearSampler));

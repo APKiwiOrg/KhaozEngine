@@ -78,16 +78,16 @@ void main() {
 
         static string Program(string name) => name.EndsWith(" (Metal)", StringComparison.Ordinal)
             ? TemporalVisibilityGatherPolicy.ForBackend(Program(name[..^8]), GpuBackendKind.MetalNative) : name switch
-        {
-            nameof(ShaderSources.TemporalAccumulateFrag) => ShaderSources.TemporalAccumulateFrag,
-            nameof(ShaderSources.TemporalAccumulateHalfFrag) => ShaderSources.TemporalAccumulateHalfFrag,
-            nameof(ShaderSources.TemporalAccumulateAtDisplaySizeFrag) => ShaderSources.TemporalAccumulateAtDisplaySizeFrag,
-            nameof(ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag)
-                => ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag,
-            "frozen D helper" => HelperProgram,
-            "shipped decision helper" => DecisionHelperProgram,
-            _ => throw new ArgumentOutOfRangeException(nameof(name), name, "not a counted program"),
-        };
+            {
+                nameof(ShaderSources.TemporalAccumulateFrag) => ShaderSources.TemporalAccumulateFrag,
+                nameof(ShaderSources.TemporalAccumulateHalfFrag) => ShaderSources.TemporalAccumulateHalfFrag,
+                nameof(ShaderSources.TemporalAccumulateAtDisplaySizeFrag) => ShaderSources.TemporalAccumulateAtDisplaySizeFrag,
+                nameof(ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag)
+                    => ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag,
+                "frozen D helper" => HelperProgram,
+                "shipped decision helper" => DecisionHelperProgram,
+                _ => throw new ArgumentOutOfRangeException(nameof(name), name, "not a counted program"),
+            };
 
         [Theory]
         [MemberData(nameof(Counts))]

@@ -302,3 +302,49 @@ The committed capture inputs retain lossless RGB, masks, metrics and provenance.
 
 
 The guarded source already had three stale artifact hashes (filter-baseline.md, non-finite-depths.md and reset-tuning.md) and four omitted artifact entries (benchmark-request.md, benchmark-result.md, local-metal-inventory.jsonl and verification.md). Their bytes were checked against the source commit. The three stale documents are unchanged. The artifact ledger now hashes the current source documents and includes the omitted entries. The [drift record](7f-preexisting-manifest-drift.json) preserves the old hashes. Every historical source, package, capture, baseline, D-reference and owner-acceptance check remains unchanged.
+
+
+## 7g.3a barrier lock release shipping capture
+
+Source `ef97639b6d2b33973715652a35858d55e0665a0f`, private package `21.8.0-svbar.1`, probe `bd396fd8bdbf6e811d35848fd2983337eec21a4c`. The source replaces the `precise` lock release with the barrier-ordered form, the same arithmetic on every backend. The detached pack changed only the version declaration and wrote exclusively to `/Users/antonio/.cache/khaozengine-probe-feed/taa-shadow-visibility`. The version did not exist in that feed or the NuGet cache before packing. All 222 package hashes and relevant source hashes are recorded in the manifest's separate `barrier_build` record. The pack scratch worktree was removed. The diagnostic probe pin and both tool pins were committed and pushed before capture, and its remote SHA was verified.
+
+| Identity | SHA256 |
+| --- | --- |
+| Render3D nupkg | `f896ca17f41f4acacc2aee30999032fdd261b5fde79bfef54111e2de3c538e7e` |
+| Render3D symbols | `702db3d112af8ad7768bdd37dee42b1ab8bccd546e76a43ed7593a8ae244bd36` |
+| Loaded renderer, build and both captures | `d96d16e01a1909547e2195fdff70ae4810aff8beb9b1e62e84574389f30d5766` |
+
+The two captures each ran once through build-slot --heavy with shadowgrain, MetalNative on Apple M2 Max, 2560x1440, dt 1/15, a five-minute day, start time 0.49777777777777776, 80 warm-up frames and 16 measured frames. Native, Quality and FXAA retained continuous histories. The built renderer matched the vendored nupkg before capture. Both provenance records match that hash and name the source. Both runs exited 0 and each deleted 160 per-frame images. No per-frame images remain.
+
+Run from the guarded Grimhollow probe worktree, with logs redirected under `/tmp/grimhollow-taa-7g3a/`.
+
+```bash
+build-slot --heavy --label taa-7g3a-back15 -- env KE_GRAPHICS_BACKEND=metal-native dotnet run --project tools/SnapshotTool -c Release --no-build -- shadowgrain /tmp/grimhollow-taa-7g3a/capture/back15 --spot back-edge --frame-time 1/15 --day-minutes 5 --start-time 0.49777777777777776 --warmup 80 --frames 16
+build-slot --heavy --label taa-7g3a-ground15 -- env KE_GRAPHICS_BACKEND=metal-native dotnet run --project tools/SnapshotTool -c Release --no-build -- shadowgrain /tmp/grimhollow-taa-7g3a/capture/ground15 --spot ground-edge --frame-time 1/15 --day-minutes 5 --start-time 0.49777777777777776 --warmup 80 --frames 16
+```
+
+The unchanged archive `read_run` replay agrees with the tool within 1e-12. The [7g.3a summary](7g3a-summary.json) is byte-identical to the [shipping D summary](shipping-summary.json), and the [comparison](7g3a-comparison.json) retains the exact values. Each numeric cell below is shipping D / 7g.3a, using full Python printed precision.
+
+| Condition | Region | Mode | Grain mean | Grain p95 | Change mean | Dots |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| back15 | character | taa-native | 0.005474607155653376 / 0.005474607155653376 | 0.029102745098039118 / 0.029102745098039118 | 0.017496411969800285 / 0.017496411969800285 | 364 / 364 |
+| back15 | ground | taa-native | 0.00526385609353138 / 0.00526385609353138 | 0.020472941176470583 / 0.020472941176470583 | 0.012355875438918482 / 0.012355875438918482 | 45 / 45 |
+| back15 | character | taa-quality | 0.008704202242702883 / 0.008704202242702883 | 0.04507215686274513 / 0.04507215686274513 | 0.017329273445767134 / 0.017329273445767134 | 759 / 759 |
+| back15 | ground | taa-quality | 0.0062244609736071465 / 0.0062244609736071465 | 0.024378823529411675 / 0.024378823529411675 | 0.01227338604965782 / 0.01227338604965782 | 821 / 821 |
+| back15 | character | fxaa | 0.0026071029228602943 / 0.0026071029228602943 | 0.015403137254901944 / 0.015403137254901944 | 0.018394583895005687 / 0.018394583895005687 | 0 / 0 |
+| back15 | ground | fxaa | 0.0016548521211947336 / 0.0016548521211947336 | 0.0075599999999999 / 0.0075599999999999 | 0.013100857420120631 / 0.013100857420120631 | 0 / 0 |
+| ground15 | character | taa-native | 0.00293740035335003 / 0.00293740035335003 | 0.01121411764705893 / 0.01121411764705893 | 0.0011689773847883102 / 0.0011689773847883102 | 371 / 371 |
+| ground15 | ground | taa-native | 0.004815313021091819 / 0.004815313021091819 | 0.017416470588235367 / 0.017416470588235367 | 0.003688204569631017 / 0.003688204569631017 | 262 / 262 |
+| ground15 | character | taa-quality | 0.0030111794193593325 / 0.0030111794193593325 | 0.011816470588235206 / 0.011816470588235206 | 0.0011939310203571874 / 0.0011939310203571874 | 330 / 330 |
+| ground15 | ground | taa-quality | 0.005046020977145357 / 0.005046020977145357 | 0.020724705882352867 / 0.020724705882352867 | 0.0037393807392348626 / 0.0037393807392348626 | 782 / 782 |
+| ground15 | character | fxaa | 0.002280812938047255 / 0.002280812938047255 | 0.012598431372548957 / 0.012598431372548957 | 0.0013507738528787314 / 0.0013507738528787314 | 0 / 0 |
+| ground15 | ground | fxaa | 0.0022932411255083716 / 0.0022932411255083716 | 0.007575686274509774 / 0.007575686274509774 | 0.003328692573683128 / 0.003328692573683128 | 0 / 0 |
+
+Identical verdict: true. All 12 rows match exactly. Both lossless RGB streams and region-mask streams are byte-identical to shipping D. Differing pixel counts are zero for Native, Quality and FXAA in each condition. Locked share and lock overlays remain unavailable with the historical explicit reason.
+
+| Condition | RGB SHA256, shipping D and 7g.3a | Region-mask SHA256, shipping D and 7g.3a |
+| --- | --- | --- |
+| back15 | `42a6ad43168c03470b5138a51ea26ba6d1d3b2affd30ac4cd3e0314d448ecb94` | `adfbc3c6c2f74775770413f0290d8ac6f62fe717c8e294139e7e144888394986` |
+| ground15 | `fac3d2356e5d35d4aa8a44bb71f89d9aa957a0e4444f373f493af0a1545bdc9c` | `fe19a50ced8e1ce8100f896cfc14e82573291993588a08de0689b922890bd9cf` |
+
+The committed capture inputs retain lossless RGB, masks, metrics and provenance. The [local gate record](verification.md#7g3a-barrier-lock-release-local-gate-and-byte-identical-shipping-capture) records the build, the headless suite, the Metal gate and the resolve A/B against the program D shipped. This round supplies no timing or other-backend proof.

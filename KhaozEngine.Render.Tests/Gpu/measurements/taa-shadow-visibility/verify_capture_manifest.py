@@ -242,6 +242,112 @@ def verify_cost_cut(engine, probe, data):
     print('PASS. 7f local gate, 222 private packages, loaded renderer, 12 exact metric rows, RGB and region-mask identity to shipping D verified.')
 
 
+def verify_barrier(engine, probe, data):
+    record = data['barrier_build']
+    source = record['source_commit']
+    version = '21.8.0-svbar.1'
+    commit = record['probe_commit']
+    cut = data['cost_cut_build']
+    assert record['package_version'] == version
+    assert git(engine, 'rev-parse', source+'^{tree}').decode().strip() == record['source_tree']
+    subprocess.run(['git', '-C', str(engine), 'merge-base', '--is-ancestor', cut['source_commit'], source], check=True)
+    subprocess.run(['git', '-C', str(probe), 'merge-base', '--is-ancestor', cut['probe_commit'], commit], check=True)
+    assert f'<KhaozEngineVersion>{version}</KhaozEngineVersion>'.encode() in git(probe, 'show', commit+':Directory.Build.props')
+    tools = json.loads(git(probe, 'show', commit+':.config/dotnet-tools.json'))['tools']
+    assert tools['khaozengine.tileedit.tool']['version'] == tools['khaozengine.sfx.tool']['version'] == version
+    for item in record['source_files']:
+        assert sha(git(engine, 'show', source+':'+str(relative(item['path'])))) == item['sha256']
+    paths = {item['path'] for item in cut['source_files']}
+    paths.update(git(engine, 'diff', '--name-only', cut['source_commit'], source,
+                     '--', 'KhaozEngine.Render3D').decode().splitlines())
+    assert {item['path'] for item in record['source_files']} == paths
+    lock = git(engine, 'show', source+':KhaozEngine.Render3D/Internal/ShaderSources.TemporalLockRelease.cs').decode()
+    assert 'precise' not in lock.split('@"', 1)[1] and '0.3333333432674407958984375' in lock
+    packages = record['packages']
+    assert len(packages) == 222
+    actual = set(git(probe, 'ls-tree', '-r', '--name-only', commit, 'vendor/khaozengine').decode().splitlines())
+    assert {str(relative(p['path'])) for p in packages} == {p for p in actual if p.endswith(('.nupkg', '.snupkg'))}
+    renderer = None
+    for package in packages:
+        blob = git(probe, 'show', commit+':'+package['path'])
+        assert sha(blob) == package['sha256'], f'7g.3a package hash mismatch {package["path"]}'
+        assert package['path'].endswith(('.'+version+'.nupkg', '.'+version+'.snupkg'))
+        if 'renderer_member' in package:
+            assert package['path'] == f'vendor/khaozengine/KhaozEngine.Render3D.{version}.nupkg'
+            with zipfile.ZipFile(io.BytesIO(blob)) as z:
+                renderer = sha(z.read(package['renderer_member']))
+                assert renderer == package['renderer_sha256'] == record['loaded_renderer_sha256']
+                nuspec = ET.fromstring(z.read(next(n for n in z.namelist() if n.endswith('.nuspec'))))
+                repository = next(n for n in nuspec.iter() if n.tag.rsplit('}', 1)[-1] == 'repository')
+                assert repository.attrib['commit'] == source == package['repository_commit']
+    assert renderer is not None and renderer != cut['loaded_renderer_sha256']
+    summary = json.loads((engine/relative(record['summary_path'])).read_text())
+    shipping = data['shipping_build']
+    old = json.loads((engine/relative(shipping['summary_path'])).read_text())
+    assert summary == old, '7g.3a full-precision metric rows differ from shipping D'
+    assert record['identical_to_shipping_D'] is True
+    comparison = json.loads((engine/relative(record['comparison_path'])).read_text())
+    assert comparison['identical'] is True and len(comparison['all_rows']) == 12
+    assert all(r['identical'] for r in comparison['all_rows'])
+    assert set(record['captures']) == set(summary) == {'back15', 'ground15'}
+    assert record['lock_overlay'] == shipping['lock_overlay']
+    for condition, capture in record['captures'].items():
+        run = engine/relative(capture['path'])
+        prior = engine/relative(shipping['captures'][condition]['path'])
+        metrics = json.loads((run/'metrics.json').read_text())
+        old_metrics = json.loads((prior/'metrics.json').read_text())
+        assert {k:v for k,v in metrics['Options'].items() if k != 'Output'} == {k:v for k,v in old_metrics['Options'].items() if k != 'Output'}
+        assert metrics['TemporalResolveOverride'] is None and metrics['ValidRegions']
+        assert metrics['SheetColumns'] == list(MODES)
+        meta = json.loads((run/'analysis-provenance.json').read_text())
+        old_meta = json.loads((prior/'analysis-provenance.json').read_text())
+        assert {k:v for k,v in meta.items() if k not in ('RendererSha256', 'RendererVersion')} == {k:v for k,v in old_meta.items() if k not in ('RendererSha256', 'RendererVersion')}
+        assert meta['RendererSha256'] == renderer == capture['loaded_renderer_sha256']
+        assert version in meta['RendererVersion'] and source in meta['RendererVersion']
+        assert capture['command_exit_code'] == 0 and capture['deleted_intermediate_images'] == 160
+        raw = gzip.decompress((run/'analysis-regions.bin.gz').read_bytes())
+        pixels = lzma.decompress((run/'analysis-frames.rgb.xz').read_bytes())
+        assert len(raw) == meta['Width']*meta['Height']*16
+        assert len(pixels) == meta['Width']*meta['Height']*3*3*16
+        assert sha(pixels) == capture['normal_rgb_sha256']
+        assert sha(raw) == capture['region_bits_sha256']
+        assert pixels == lzma.decompress((prior/'analysis-frames.rgb.xz').read_bytes()), '7g.3a RGB differs from shipping D'
+        assert raw == gzip.decompress((prior/'analysis-regions.bin.gz').read_bytes()), '7g.3a region masks differ from shipping D'
+        assert not list(run.rglob('frame-*.png')) and not list(run.rglob('crop-*.png'))
+        assert len(metrics['Modes']) == 3 and {m['Name'] for m in metrics['Modes']} == set(MODES)
+        for mode in metrics['Modes']:
+            assert len(mode['Frames']) == 16
+            assert all(f['Diagnostics']['Backend'] == 'MetalNative' and f['Diagnostics']['ShadowActive'] for f in mode['Frames'])
+            if mode['Name'] != 'fxaa':
+                assert all(f['Diagnostics']['HistoryValid'] for f in mode['Frames'])
+            assert all(f['Diagnostics']['DisplayWidth'] == 2560 and f['Diagnostics']['DisplayHeight'] == 1440 for f in mode['Frames'])
+            for region in ('character', 'ground'):
+                row, original = summary[condition][mode['Name']][region], mode['Regions'][region]
+                for key, name in [('grain', 'GrainMean'), ('p95', 'GrainP95'), ('change', 'ChangeMean')]:
+                    assert abs(row[key]-original[name]) < 1e-12
+                assert row['grain_samples'] == original['Pixels'] and row['change_samples'] == original['ChangePixels']
+    local = json.loads((engine/relative(record['local_results_path'])).read_text())
+    assert local['source_commit'] == source
+    assert local['build'] == {'exit_code': 0, 'warnings': 0, 'errors': 0}
+    headless, metal = local['headless'], local['metal']
+    assert len(headless['assemblies']) == 41
+    assert headless['totals'] == {'failed': 1, 'passed': 37158, 'skipped': 1491, 'total': 38650}
+    assert [r['assembly'] for r in headless['assemblies'] if r['failed']] == ['KhaozEngine.Catalog.Tests.dll']
+    assert len(headless['failures']) == 1 and headless['failures'][0]['isolated_rerun']['exit_code'] == 0
+    assert metal['resolve_ab_production_vs_shipped_D_byte_identical_cases'] == 12
+    assert local['allocation']['bytes_per_steady_frame'] == 0
+    assert metal['exit_code'] == metal['inventory_exit_code'] == 0
+    assert metal['inventory_count'] == metal['executed'] == metal['passed'] == 1692
+    assert metal['failed'] == metal['skipped'] == metal['missing'] == metal['extra'] == 0
+    assert metal['skipped_names'] == []
+    inventory = [json.loads(line) for line in (engine/relative(record['metal_inventory_path'])).read_text().splitlines()]
+    assert len(inventory) == 1692 and all(r['outcome'] == 'Passed' for r in inventory)
+    names = sorted(r['name'] for r in inventory)
+    assert sha(('\n'.join(names)+'\n').encode()) == metal['inventory_names_sha256']
+    assert all(not any(word in name.split('(')[0].rsplit('.', 1)[0].lower() for word in ('cost', 'perf', 'bench')) for name in names)
+    print('PASS. 7g.3a local gate, 222 private packages, loaded renderer, 12 exact metric rows, RGB and region-mask identity to shipping D verified.')
+
+
 def verify(path):
     engine = Path(__file__).resolve().parents[4]
     common = Path(git(engine, 'rev-parse', '--path-format=absolute', '--git-common-dir').decode().strip())
@@ -355,6 +461,7 @@ def verify(path):
                         assert abs(row[key]-original[name]) < 1e-12
     matches = verify_shipping(engine, probe, data)
     verify_cost_cut(engine, probe, data)
+    verify_barrier(engine, probe, data)
     print('PASS. Three historical source and package sets, 12 captures and 72 rows retain every check. Shipping source and 222 packages, loaded renderer, two captures and 12 rows verified. D match '+str(matches)+'. Acceptance '+data['acceptance']['status']+'. All artifact hashes verified. Locks unavailable with explicit reason. No rendering performed.')
 
 

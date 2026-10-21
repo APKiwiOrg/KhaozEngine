@@ -478,3 +478,52 @@ The guarded source already had three stale artifact hashes (filter-baseline.md, 
 
 
 The manifest verifier exited 0 with 72 historical rows, 12 shipping rows and 12 new 7f rows checked. The final whole-tree dashes, prose and file-size checks also exited 0 after the evidence additions. Local and capture checkboxes in 7f.5 are complete. Hosted correctness and review checkboxes remain open.
+
+
+## 7g.3a barrier lock release local gate and byte-identical shipping capture
+
+Tested source `485c030a4` on `fix/taa-shadow-visibility`, packed and captured at `ef97639b6d2b33973715652a35858d55e0665a0f`, which adds only the benchmark-request note on V4. Production's `temporalReleaseLock` is the probe's B helper (`ShaderSources.TemporalLockReleaseGlsl`), with no `precise` in any temporal program. `LockMotionReleaseScale` is `0x3EAAAAAB`, written as its exact decimal, and `TemporalResolveMath.ReleaseLock` is its C# twin. `Sizes.x` is documented as the barrier source and `BuildUniforms` holds it at 1 or more, which a device-free theory checks down to `int.MinValue`. The guarded engine and probe worktrees started clean. Every build, test, pack, capture and replay ran through build-slot. No bound, tolerance, baseline, golden or accepted-cost row changed.
+
+| Command label | Exit | Result |
+| --- | ---: | --- |
+| taa-7g3a-writer | 0 | SPIR-V, HLSL, MSL and corpus writers. Exactly 10 fragment rows per table and 30 corpus rows moved, TemporalPrepare and every vertex row unchanged |
+| taa-7g3a-build | 0 | Release solution, 0 warnings, 0 errors |
+| taa-7g3a-headless | 1 | 41 assemblies, 37,158 passed, 1 failed, 1,491 skipped, 38,650 total |
+| taa-7g3a-catalog-diag | 0 | The failing class alone, 4 passed in 6 s |
+| taa-7g3a-metal-inventory | 0 | 1,692 cases, 211 classes, no cost, perf or bench class |
+| taa-7g3a-metal | 0 | 1,692 executed and passed, 0 failed, 0 skipped |
+| taa-7g3a-alloc | 0 | MotionFrameAllocationTests 5 passed, 0 bytes a steady frame |
+| taa-7g3a-format | 0 | Formatting verification, the historical workspace-loading warning only |
+| taa-7g3a-pack | 0 | 222 private package files, no compiler or package warning or error |
+| taa-7g3a-probe-build | 0 | SnapshotTool Release, 0 warnings, 0 errors |
+| taa-7g3a-back15 | 0 | 3 continuous mode histories, 16 measured frames each, 160 intermediate images deleted |
+| taa-7g3a-ground15 | 0 | 3 continuous mode histories, 16 measured frames each, 160 intermediate images deleted |
+| taa-7g3a-analysis | 0 | 12 full-precision rows, RGB and masks identical to shipping D |
+
+```bash
+TAA_CORRECTNESS='((FullyQualifiedName~KhaozEngine.Tests.Gpu.Temporal&FullyQualifiedName!~CostPerf)|((FullyQualifiedName~Shadow|FullyQualifiedName~Golden)&FullyQualifiedName!~Perf&FullyQualifiedName!~Bench)|FullyQualifiedName~MotionTargetLifecycleGpuTests|FullyQualifiedName~TemporalLockReleaseProbeGpuTests)'
+build-slot --label taa-7g3a-build -- dotnet build KhaozEngine.slnx -c Release
+build-slot --heavy --label taa-7g3a-headless -- env KE_GPU_TESTS=0 dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket"
+build-slot --label taa-7g3a-metal-inventory -- env KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "$TAA_CORRECTNESS" --list-tests
+build-slot --heavy --label taa-7g3a-metal -- env KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "$TAA_CORRECTNESS" --logger 'console;verbosity=detailed' --logger 'trx;LogFileName=taa-7g3a-metal.trx' --results-directory /tmp/grimhollow-taa-7g3a/metal
+```
+
+The one headless failure is `ContentUpgradePublishCleanupTests.AnOlderPublishLeavesTheNextRunnersFrozenDraftOwnedByItsPublish(sqlite: True, sweepFails: False)` in KhaozEngine.Catalog.Tests. It hit its own 20 s deadline (`OperationCanceledException` after 43 s) while the full suite ran in parallel, and passed alone. The change touches no catalog code. It is not the known [PhysicsRebaseCostTests flake](https://github.com/APKiwiOrg/KhaozEngine/issues/1512), which did not recur. The ledger holds no issue for it. The headless gate is therefore not clean, and that decision stays with the orchestrator.
+
+Metal used MetalNative on Apple M2 Max hardware. The [inventory](7g3a-metal-inventory.jsonl) retains every result. Discovery and TRX name multisets match with zero missing or extra cases, and the selected skipped list is `[]`. The discovered-name multiset SHA256 is `01adc742168e5e8f3d184d461252d6ac6af9b4dc4ad802d48e24ffab13370b02`. TemporalVisibilityResolveAbGpuTests passed 12 cases, TemporalEntryIdentityGpuTests 8, TemporalVisibilityEquivalenceGpuTests 6, MotionTargetLifecycleGpuTests 2, TemporalMovingShadeRimGpuTests 2, TemporalVisibilityFallbackGpuTests 4 and TemporalLockReleaseProbeGpuTests 1. The probe printed 4,194,304 cases written by both programs, with P vs B, P vs C and B vs C bit mismatches all 0.
+
+Frozen D is split. `TemporalVisibilityFrozenD.LockReleaseGlsl` freezes D's `precise` helper, its comment and the blank line before it as a fourth pinned text (SHA256 `e2ae2ac8655f07847f1000a363bfd301d3cea93c8377ebe6739b4698d0c96695` at 583a3ae7b). `ToShippedD` is `ToD` with production's helper replaced by it, and the unchanged whole-program pins now hold `ToShippedD`. `ToD`, D prime, keeps production's helper, and a device-free theory proves the two differ in that helper alone. Every other rule, the entry identity, the equivalence probe and its counters, the NVIDIA Direct3D 11 rule and the DXBC D listings, compares against D prime. The resolve A/B adds a shipped D rig. On Metal production equalled it byte for byte in colour, state, R8 and depth on every frame of all 12 cases. Off Metal the differences are printed only.
+
+Device-free facts in TemporalLockReleaseCompiledTests: no `precise` in the GLSL of any of the shipped temporal programs, zero NoContraction decorations in each of their vertex and fragment SPIR-V modules, zero `precise` in their emitted HLSL and zero `spvF` wrapper names in their emitted MSL. The program D shipped is the control that has all three. Exactly ten programs include the release, TemporalResolve, TemporalResolveHalf, TemporalAccumulate, TemporalAccumulateHalf, TemporalAccumulateAtDisplaySize, TemporalAccumulateAtDisplaySizeHalf, TemporalCountProbe, TemporalCountProbeHalf, TemporalDebugView and TemporalDebugViewHalf. Each compiles exactly 12 barrier ORs, an `OpBitwiseOr` of an unsigned shift right by 31, and TemporalPrepare compiles none. The barrier-free rewrite compiles none either.
+
+V4 is redefined as V5 with the barriers made the identity (`WithoutVisibilityOrBarriers`), and a device-free fact proves it removes exactly the 12 barrier ORs from each visibility-free program. The fallback control renders it through both entries on Metal. The [benchmark request](benchmark-request.md) records that run 39519219228 measured the earlier precise V4. No cost, perf or bench class ran.
+
+The six visibility programs' DXBC fixtures are stale on both sides, since D here is D prime. `EachFixtureWasCompiledFromTheCurrentGlsl` lists them in `StaleUntil7g3b` and passes only while both of each program's source pins differ, so a recapture that leaves one listed fails. The fixtures, their chain-form pins and `TheRealProgramPassesTheCheck` still read the 7g.2 listings. No pin was moved without a Windows FXC dump. Task 7g.3b recaptures them and empties the list.
+
+Private package `21.8.0-svbar.1` was packed from a detached scratch worktree at the source, with only Directory.Build.props changed. The feed was `/Users/antonio/.cache/khaozengine-probe-feed/taa-shadow-visibility`. All 222 vendored packages match it. The pin and both tool pins were committed and pushed on `probe/taa-shadow-visibility` at `bd396fd8bdbf6e811d35848fd2983337eec21a4c`, with the remote SHA verified before capture. The [7g.3a real-scene record](real-scene.md#7g3a-barrier-lock-release-shipping-capture) contains every full-precision row and the RGB and mask hashes. Every row and retained pixel is identical to shipping D.
+
+The guarded source already had one stale artifact hash (benchmark-request.md) and two omitted artifact entries (benchmark-result-2.md and mask-withdrawal.md). The [drift record](7g3a-preexisting-manifest-drift.json) preserves the old hash. The artifact ledger now hashes the current documents and includes the omitted and new entries. The verifier extension adds the 7g.3a source, all 222 package hashes, the local gate and capture checks, and leaves every historical check unchanged.
+
+Hosted WARP, lavapipe and NVIDIA runs, the DXBC recapture and the re-measured accepted-cost rows remain with 7g.3b and the orchestrator. This worker ran no workflow dispatch, timing, perf or bench class, merge, tag or release.
+
+The manifest verifier exited 0 with 72 historical rows, 12 shipping rows, 12 7f rows and 12 new 7g.3a rows checked.

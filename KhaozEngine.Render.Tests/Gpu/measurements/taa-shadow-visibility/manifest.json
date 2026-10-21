@@ -2931,8 +2931,32 @@
       "sha256": "6ddb3d908f2024d725404abc1f3229b521fe9d871143206ce446dbd59e230544"
     },
     {
+      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/7g3a-comparison.json",
+      "sha256": "66549164ad980bec19f4e30026a589a2e0a2f6606b87625bbbe3679917d129a2"
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/7g3a-local-results.json",
+      "sha256": "ab7a98d72d30c209a95e119a403b9ec5ead4cdf05c28d5660339ed695e22a2c6"
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/7g3a-metal-inventory.jsonl",
+      "sha256": "56fc39b114ac95591c92e02349586035154f4a15bf433ed7b488814fcb1123dd"
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/7g3a-preexisting-manifest-drift.json",
+      "sha256": "214282111441f16608ba103d8e95000e4488b7e6c8f7623b5a6267a714a5b56d"
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/7g3a-summary.json",
+      "sha256": "6ddb3d908f2024d725404abc1f3229b521fe9d871143206ce446dbd59e230544"
+    },
+    {
       "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/benchmark-request.md",
-      "sha256": "bae7e9af9dca6028ae77e11f59a9a817ed3d022852e0c54116e9621bb8ae1f52"
+      "sha256": "60dc680c820214cc83c1df6eaf0c778ba8f95b8c9b554b0c82e9d4eb3b01af33"
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/benchmark-result-2.md",
+      "sha256": "0c0d83e61d90fd9c99b1ac5eac5a5232b9de93285ebf194800108d3ebccfabfc"
     },
     {
       "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/benchmark-result.md",
@@ -2992,6 +3016,46 @@
     },
     {
       "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/captures/7f/ground15/metrics.txt",
+      "sha256": "60c0d73032895dd0dada7c9cb1d264445a952a27ac198707e3e74b45df7fadf6"
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/captures/7g3a/back15/analysis-frames.rgb.xz",
+      "sha256": "53616f5526a89e993f260fcea84fae876dc69baaea03e3264b591e7c1b2a35ed"
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/captures/7g3a/back15/analysis-provenance.json",
+      "sha256": "78044f1c9be817257316c1719184bf50dc1cdf012d700b97a3abfb4b10b8cbda"
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/captures/7g3a/back15/analysis-regions.bin.gz",
+      "sha256": "ef027a6e07881c181434e849042fbefe4ba2324206c31eee11ec35b2e1bc35bb"
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/captures/7g3a/back15/metrics.json",
+      "sha256": "7b1e3f4566a314386346646d7c942f01ab94923944ba2f50ea891c15e8f943c6"
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/captures/7g3a/back15/metrics.txt",
+      "sha256": "677aadb1401fc00ae881d44eeccd845fd5c419057a54a05f3e5fc0764e51fad1"
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/captures/7g3a/ground15/analysis-frames.rgb.xz",
+      "sha256": "469ed89e6d25a31d742519f7946244c7a6c4167ce14efc8dc4371f10765b03bc"
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/captures/7g3a/ground15/analysis-provenance.json",
+      "sha256": "78044f1c9be817257316c1719184bf50dc1cdf012d700b97a3abfb4b10b8cbda"
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/captures/7g3a/ground15/analysis-regions.bin.gz",
+      "sha256": "82f3daa7f20c11a2e0f7a0f1cae92b5a61219b02b04bfe081042091213d9b33c"
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/captures/7g3a/ground15/metrics.json",
+      "sha256": "fc6a631e1a1e29485cc78568c115a93c2756200d59f33d6df25becdd5b3bbde0"
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/captures/7g3a/ground15/metrics.txt",
       "sha256": "60c0d73032895dd0dada7c9cb1d264445a952a27ac198707e3e74b45df7fadf6"
     },
     {
@@ -3315,6 +3379,10 @@
       "sha256": "29f5f20da04162f7b38d2faf163fcc279ea4a113eaec5f53a5cf6798def80cb9"
     },
     {
+      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/mask-withdrawal.md",
+      "sha256": "7c066e8a438f1a7405334162c7a0451f1b19a53da0fe55075cfdf1def8e24ba1"
+    },
+    {
       "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/non-finite-depths.md",
       "sha256": "d215f93a93d93e9183910944085ba3e4b8c73bac54c8de088dce5a9b3518e74e"
     },
@@ -3540,7 +3608,7 @@
     },
     {
       "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/real-scene.md",
-      "sha256": "cb2aa3e75a1d72e60edddb5372999d56d0aa1d4afb68d959330985b12b26ef7b"
+      "sha256": "1c73dffde71cbb1d118244e39401673eeebf5ba00a7f8097de4b4444cc06e10a"
     },
     {
       "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/reset-tuning.md",
@@ -3580,11 +3648,11 @@
     },
     {
       "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/verification.md",
-      "sha256": "65e9b32ed0c9b01e4941b7db5979f31dce4187e58575890ceb6104a42ddcda12"
+      "sha256": "dc7bd199a23f074544f107fa9a4de4a2f84ad76258a819a50a8f46bd4b2471dc"
     },
     {
       "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/verify_capture_manifest.py",
-      "sha256": "063109cd112bd1fb3db2906df617992ae8cd6c0b1aa4f6618698e1848b443690"
+      "sha256": "1cc911b742c67d8a9200cb342cf7a5fc10648faf41ca140508f98ac8051e81e4"
     }
   ],
   "shipping_build": {
@@ -5760,6 +5828,1244 @@
       "ground15": {
         "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/captures/7f/ground15",
         "loaded_renderer_sha256": "d831e1f1b591df59e49a70028b791351eb6e6e48dd0cd514d44d746350db6a90",
+        "normal_rgb_sha256": "fac3d2356e5d35d4aa8a44bb71f89d9aa957a0e4444f373f493af0a1545bdc9c",
+        "region_bits_sha256": "fe19a50ced8e1ce8100f896cfc14e82573291993588a08de0689b922890bd9cf",
+        "command_exit_code": 0,
+        "deleted_intermediate_images": 160
+      }
+    }
+  },
+  "barrier_build": {
+    "source_commit": "ef97639b6d2b33973715652a35858d55e0665a0f",
+    "source_tree": "88bac8a94780b648c2c98d5270ce72756276eba6",
+    "package_version": "21.8.0-svbar.1",
+    "probe_commit": "bd396fd8bdbf6e811d35848fd2983337eec21a4c",
+    "loaded_renderer_sha256": "d96d16e01a1909547e2195fdff70ae4810aff8beb9b1e62e84574389f30d5766",
+    "source_files": [
+      {
+        "path": "KhaozEngine.Render3D/Internal/ShaderSources.Foliage.cs",
+        "sha256": "46b4525e14166d412588e68aef66b48ffa827fd5629119fcc52a62b311c5e702"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Internal/ShaderSources.InteriorCut.cs",
+        "sha256": "ca6e69ec709bfa83bd91fda907ca7611dec5b91a8e873a51e46ec62c3b7ffe03"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Internal/ShaderSources.Lighting.cs",
+        "sha256": "11e43534fe07707dc5c2160e4175ea9bfd1899009fec58f94e5c2a2aca186655"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Internal/ShaderSources.Model.cs",
+        "sha256": "1c0925c0e667da730b7b1a5da657305ac1da6c03201abf60dfd6b92216d7c7d6"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Internal/ShaderSources.MotionFrame.cs",
+        "sha256": "a19b179be7f4dbfe47bdfb8d2cd5a3e18632188603f2c1b3e9b8a4cc2bbbd0de"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Internal/ShaderSources.PointShadow.cs",
+        "sha256": "2f28a88cadd3aa34755959436a957568ad71372fdcb9782be59ea12ca680ba90"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Internal/ShaderSources.Shadow.cs",
+        "sha256": "987d1553be31a82fce69d317e5a60ad6df0806e4650029973442f8c08da5f8a8"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Internal/ShaderSources.Silhouette.cs",
+        "sha256": "1c14d7fedf4d743616ca623938f8c8c762dc51800de5e7feff056a567f884f10"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Internal/ShaderSources.TargetOutline.cs",
+        "sha256": "50c07be5b9001fcc3e87fe2c61ba9ee6cd165d27f57dff10302c8f5d4dc88107"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Internal/ShaderSources.TemporalAccumulate.cs",
+        "sha256": "5bc6a933efdbfd2644e84bddc0c366948c2b8fc252f9ab0ac0b9f90764d5ffec"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Internal/ShaderSources.TemporalDisplayKernel.cs",
+        "sha256": "4e5699f120391f5dc0826af7eaa0711a5603a8deb79061a38cc68259bada781c"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Internal/ShaderSources.TemporalLockRelease.cs",
+        "sha256": "07e11dc9c5cfcae6ce0245e9f8eb7fc3f40ddb2ac29c6b21442cd7eaed997826"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Internal/ShaderSources.TemporalPrepare.cs",
+        "sha256": "b6b01ea13003af87b7c56bc34e057061828a1e2828ff09a758cc3413f0deb594"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Internal/ShaderSources.TemporalResolve.cs",
+        "sha256": "e0318afc643b739281049c46c1eeb1ae1d1bd0c5d3f93d1cccc224bef4cee3c3"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Internal/ShaderSources.TemporalSplit.cs",
+        "sha256": "0aab67457c5c94e3465a3b08d1f7aea0a94a6f0ad7006a6cde6eaaf46135bbe0"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Internal/ShaderSources.TemporalVisibility.cs",
+        "sha256": "90cf189b3f6bfc726a000b3834c7a5d41a31a2ff864191b9612ba2c89dd1194c"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Internal/ShaderSources.TemporalVisibilityReleases.cs",
+        "sha256": "957ca1a6e08d40c04989b1f2e28763b412b293c6bd6fac2f85f4eaab37d1fd73"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Internal/ShaderSources.Terrain.cs",
+        "sha256": "2d427b98e89cb0bd163438eba97446f53b3e766c6ba96b6fdeff4f791b3c8413"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Internal/ShaderSources.TileGround.cs",
+        "sha256": "9767b87ee39dbcc74809cdac52f10cafbb4e5f1cbd9b1750d7f987d8e39b7be5"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Internal/TemporalResolveMath.cs",
+        "sha256": "50987ca26848d67e59b9861d25b2c00acfa0a87e0da8520dc8751bc55b35f6df"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Internal/TemporalResolveTuning.cs",
+        "sha256": "5dc3f02e1e14c162b9e0da55aa941fdafa6f1c2638d73c0a3fdf2e8d98dbb624"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Internal/TemporalResolveUniforms.cs",
+        "sha256": "9df518d45ccc8f2106b0b6c78ae5ee8d2784ffed223a43bf2c013f485b95f408"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Internal/TemporalSplitFormats.cs",
+        "sha256": "d2864296657e84183accdb2a97ec80dc8a808e6731f18d57877dbeb11c7e235f"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Internal/TemporalVisibilityFastPath.cs",
+        "sha256": "26bce97687f4747c6f356439841f6c718dadbaa6118b2a5bf02daf88b8ccc867"
+      },
+      {
+        "path": "KhaozEngine.Render3D/README.md",
+        "sha256": "26640aa7f8ead7dbe6544f4709674b2d2757c67e74a63208aade8e655ffa9484"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/BeamRenderer.cs",
+        "sha256": "d61c488d025c5542f853c6de9aa8110a1f541c4f934ab20727fb9d955f5c3bd8"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/InteriorCutBinding.cs",
+        "sha256": "e9b5f8c56ee446cfb5b283f743e14627a36ca88bd9126e28305d22d38da6f0cd"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/InteriorCutInstancePartition.cs",
+        "sha256": "43ab7110df7f53f0b2fb94589b7b2430d4899be20849dfbbc75496b386004790"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/InteriorCutRelevanceCache.cs",
+        "sha256": "4d07a20404d4f042f47b754c4da8fea4add4db2609048718697d29020981385b"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/InteriorCutResources.cs",
+        "sha256": "54bda073962d7df49036f6870d21eb66e9fbf89b9cb4a008671b322bc1947f1e"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/InteriorCutUniforms.cs",
+        "sha256": "0edc2859cb9f0f212220f86a2cba738bb4c867b201c26a129af6bc8d1cd101f8"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/ModelRenderer.Foliage.cs",
+        "sha256": "26cfdbf3c20f73321f02099505116133e4cb16985a068e7e63e606e11c217e20"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/ModelRenderer.FrameUbo.cs",
+        "sha256": "fe69e96ca2c0fa8606c7216eaa5941576274f9c59046a2455bb8ec00314800ce"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/ModelRenderer.InteriorCut.cs",
+        "sha256": "1f494b0aaf2537c1d812961c2d248676b52ec7d27794c7f5a033740c9dbfc28e"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/ModelRenderer.Motion.cs",
+        "sha256": "c87daece2dc4ec875fad8e71128d4707f7eeb00f457eb000f527e972887c2e12"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/ModelRenderer.ShadowLayoutReplacement.cs",
+        "sha256": "e47396322cf8fc7182c5f3648d51acecb3ebec506f6ce77792f5731dc5d16783"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/ModelRenderer.Splat.cs",
+        "sha256": "7c0d53a86812023da9c1e815d639b87b10933010dc058352ace779bf457200a9"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/ModelRenderer.TileGround.cs",
+        "sha256": "c128113036711e9459208d6f1a205e68c1192b816c907a00464ea06bd78512d3"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/ModelRenderer.cs",
+        "sha256": "e2f5aa79d558965dff3eb3a46354c276c8e3659ec0bfd9dbfd2e657852b447c6"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/ModelVisibilityShaders.cs",
+        "sha256": "15edc05082e05a07ca581f39d4b3a26ad3fad62437e4bc168a6d1a23c0889717"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/OverlayMeshRenderer.cs",
+        "sha256": "1a8ab00c082d440f45b2c2ac0e5c9f1e3a4095865507ebe284922520f5e41572"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/PointShadowRenderer.InteriorCut.cs",
+        "sha256": "13313fddcb2c8d50f3b3bb6fb8d4233b5c53a4ae2ff2991127247b9cb2de355f"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/PointShadowRenderer.Skinned.cs",
+        "sha256": "b1f379e481efedca3b567c5bf6648ee9a3624ebd900ef19d937d0233463d0f97"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/PointShadowRenderer.cs",
+        "sha256": "9ff93d5a35e17d11489ea185849fa69f5e52b6750ebd9b0a5a1ef007a4afe860"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/ShadowMapRenderer.InteriorCut.cs",
+        "sha256": "8e6f0f359222d1a4a470c1b630c26331feba96c29b411756f0c3777eafde4150"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/ShadowMapRenderer.cs",
+        "sha256": "89eb9cc57a155a229e7178c566a319840a255e68a6191e11d10e5df0c67ba015"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/SilhouetteRenderer.InteriorCut.cs",
+        "sha256": "e1bfb13aa1f0290952177c7596870f064a5f0b6fa0b7c6ae5c75104913c4046e"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/SilhouetteRenderer.cs",
+        "sha256": "9d02bf121d31262919e66b349bebf0fc5be6e0003e8ac56b76142b058c0b19cc"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/TargetOutlineRenderer.InteriorCut.cs",
+        "sha256": "3f374be4e86508b7378fb8c44d6196c237cec6b183f4a4b40363314e27928cd4"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/TargetOutlineRenderer.Skinned.cs",
+        "sha256": "ca320bca85c11f6e49fb5019d1f06fa5b6ee6fe474dacebcb1c8cb4db16e9b80"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/TargetOutlineRenderer.cs",
+        "sha256": "b6c15db3baa53ad40433926322cc723fd073888d3d58c359a41e1130663a4415"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/TemporalResolveRenderer.Entry.cs",
+        "sha256": "d74dee4a7f06acb50b4e0b50b9c4d61ebefd6513fefe91d06692dcc48b891463"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/TemporalResolveRenderer.Visibility.cs",
+        "sha256": "73a12ea87b05ae0794e54664cfb30fc60c170a059f9c4d48c67120b4e0e32081"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/TemporalResolveRenderer.cs",
+        "sha256": "9cd95b38a4f4e601d313d071fc56f3af22de078f152352b874637cea9dd1d850"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/TemporalSplitResolve.AtDisplaySize.cs",
+        "sha256": "49e23361319ba79188d5f1e9f6481ecb7c1e44f67daa29c275a7bee3cc311017"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/TemporalSplitResolve.cs",
+        "sha256": "75130cdc2b9d925d981c5e34b25e2cf61f01fe1435f48fc02e317ee6923369eb"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/TexturedBillboardRenderer.cs",
+        "sha256": "27c497c3fef7e6fda8fc61bfc303c5b43f0831620ce70cff7d4d4f18c242d0ee"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Rendering/TrailRenderer.cs",
+        "sha256": "50519bca0d8e443ffcb26f0873d9d8043e4e218489bc77b3550af7e5107be3f0"
+      },
+      {
+        "path": "KhaozEngine.Render3D/RigidInstanceDraw.cs",
+        "sha256": "e5fe25756912a16d8cce926b5613b20636cee7066dba5c036cd7940ee0af3bc8"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Scene3D.CascadeShadowPass.cs",
+        "sha256": "79b795b5403eba049630c2e0c73dfb15937bb92f849cf7e904dc00b99ad5d264"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Scene3D.DrawDescriptors.cs",
+        "sha256": "7ef6fd217f65426f73aa7cc533da03c78510bc4ae68157b0812e073de80370db"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Scene3D.FrameView.cs",
+        "sha256": "80a1de933a0114fabe7d3b2ef8053559085452a2c8fd4dc837d7bd6717f01995"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Scene3D.InstanceGrouping.cs",
+        "sha256": "c6a1ae44781fd4fee9f83309dd0987691669b9548be4d79cf763385c09eaf6e6"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Scene3D.InteriorCut.cs",
+        "sha256": "c7b44ee3231d2b12eaab442b3ffcac765a71f118b23a846c2ddf288193ef1e6a"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Scene3D.InteriorRelevance.cs",
+        "sha256": "9ff70a69318d95876dcdc0f8f0fe539e94e355a63c3c1a41b8d2c1d741451c28"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Scene3D.PointShadowPass.cs",
+        "sha256": "5e1e68f39498636a31b398df8227c17072f1dde089df9624025d2b710d3a35d8"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Scene3D.PointShadows.cs",
+        "sha256": "0c5fe47b6e819171c69e3a852f4b51a31172ef2e3350d022fc42096f4592a8c7"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Scene3D.RenderTargets.cs",
+        "sha256": "9b148e20531a2eed193fcb694724259c162e6221cbad21c95d04a9b5e4e4445f"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Scene3D.ShadowCasters.cs",
+        "sha256": "c449f874a5f73a6e69c182e291a2fcf86add522adc034fd6f415cab649a18ec4"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Scene3D.ShadowDirtyState.cs",
+        "sha256": "91f83a3a33bf03ff734932c68c583ece73dbd70bc4832939993c76eb4e77996d"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Scene3D.SilhouettePass.cs",
+        "sha256": "2175504d58827dde91b276e6b0acd1dd8d9367a4819bc54f62627f9bb4738f2f"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Scene3D.TargetOutlinePass.cs",
+        "sha256": "f71f718efb99b27a51842ebea5839b96c1b8a35e3dc4964c08c7315e1719b27a"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Scene3D.TemporalResolve.cs",
+        "sha256": "1897e5e50e3e68be0692b9ead847ff03c8a2155195999a1ccbdb5ea462106cb7"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Scene3D.Unload.cs",
+        "sha256": "6b0c9c042dd711541e169699f47fdcdae51c09e03f7b8d5a0a0e70ecd6aab32f"
+      },
+      {
+        "path": "KhaozEngine.Render3D/Scene3D.cs",
+        "sha256": "2dd02e5ce44aad2618c292fa1c82661b4e6bad1bf3807cfc17809e698fa3678a"
+      },
+      {
+        "path": "KhaozEngine.Render3D/SceneInstances.cs",
+        "sha256": "81be76c40556395cae6d8a0398755343c9bafc6dfd2fee541a6bbffe728c7c90"
+      },
+      {
+        "path": "KhaozEngine.Render3D/ShadowPassDiagnostics.cs",
+        "sha256": "adc40e3ff901a5c80ad70e655e775e2e3950f84f87ded2b336631319f94f450b"
+      }
+    ],
+    "packages": [
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Accounts.21.8.0-svbar.1.nupkg",
+        "sha256": "7f2c42810400f8143a17ea609a4bd0b2793d4bf5543b1f0b5d976bc8864e8550"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Accounts.21.8.0-svbar.1.snupkg",
+        "sha256": "bc07176d91a3f14d99ccbb13ecf08524baa4bbf09ef25098cfcfc1deb20082d7"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Accounts.SqlServer.21.8.0-svbar.1.nupkg",
+        "sha256": "7766e59905f6c8222481135bad91659399bba6c4fc489883e8f25c27c01af435"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Accounts.SqlServer.21.8.0-svbar.1.snupkg",
+        "sha256": "442e1ea397698115378e24beba06bf597453cbbf27ea584a649d07e3741ca8da"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Accounts.Sqlite.21.8.0-svbar.1.nupkg",
+        "sha256": "a7bb20ab4bb4cb9458c16b933e685f0f97a0cc9bebd3619b5e7d8b5a806016bd"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Accounts.Sqlite.21.8.0-svbar.1.snupkg",
+        "sha256": "0a810bd56508b7d28bf91ad4050881518538234e11ef4c526467cb86b6508504"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.App.21.8.0-svbar.1.nupkg",
+        "sha256": "54e7ee89b31a5a0dca8156f21f18cd7058b8ad1ea1bb2adb5957c6236435dfec"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.App.21.8.0-svbar.1.snupkg",
+        "sha256": "9609f6e4517f218cb86a728320202f0929fbcda38d1a3dbd6c4190e18f4673e4"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Attachments.21.8.0-svbar.1.nupkg",
+        "sha256": "1394f311702c2a075f29fe61744aef3126f2faeccd48fb27a515b82835df6bca"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Attachments.21.8.0-svbar.1.snupkg",
+        "sha256": "06985c8b83176a46aef1c3ef02d41f27dbe7896abfd4d8630afc1d55da2c8651"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Attachments.Render3D.21.8.0-svbar.1.nupkg",
+        "sha256": "64555afc31369ff2738a83fa36ffa8ee398cccdbcf9f5461e53acebf45211604"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Attachments.Render3D.21.8.0-svbar.1.snupkg",
+        "sha256": "2207ab42c083a95ba305564d53d7c630873bfbc880da4dc7721be5b512f17920"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Audio.21.8.0-svbar.1.nupkg",
+        "sha256": "f16149a560c6ac0e1bad8757554294a279e30d6d9a15c89b11f682e047b86711"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Audio.21.8.0-svbar.1.snupkg",
+        "sha256": "b211236993abfaf003e4fd4d5c0e74a6a1011eda6cc40d40c0f9c52ce3af247d"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Automation.21.8.0-svbar.1.nupkg",
+        "sha256": "45e9212556f7cb1601a7ee871ab52edcb9ef3b7d47533de71ceb90a06d784e7b"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Automation.21.8.0-svbar.1.snupkg",
+        "sha256": "35b83d31039f2d8c7e4f01326f20c0d7924bd129274c86b0fd9823fb1b24407e"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.BugReports.21.8.0-svbar.1.nupkg",
+        "sha256": "0013f611c7966f11672040ecdc699e72fd6658bd83ff2c395bcc492f3ad633a5"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.BugReports.21.8.0-svbar.1.snupkg",
+        "sha256": "3a179df51cf8bb15437358dcc2003c105d2647b6e5d8fd018dfc78cb3075da37"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.BugReports.Client.21.8.0-svbar.1.nupkg",
+        "sha256": "64459f53c804c389ed6df8e1e9f08130888a871993f26f4f0962f9205da4698b"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.BugReports.Client.21.8.0-svbar.1.snupkg",
+        "sha256": "027c562c3af50e5f5f0b8ebbf1a39213f5fd153e418402dc0b3cfed9ca5d61c0"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.BugReports.Contracts.21.8.0-svbar.1.nupkg",
+        "sha256": "212c41d5ac76457aa939f64934adae14f71c3573dcdca22357023b28fc901bfd"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.BugReports.Contracts.21.8.0-svbar.1.snupkg",
+        "sha256": "28111c478e99f3038d7ad84fa121a849c8eefbb1e1df05d8cec37239b4478760"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.BugReports.Relay.21.8.0-svbar.1.nupkg",
+        "sha256": "a416c1074df5935a334d09c4aac73e0ff186a47631f291761b53c4b28e4c1150"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.BugReports.Relay.21.8.0-svbar.1.snupkg",
+        "sha256": "76e6d4ac78836f4ffe5f05bb59f6069d1f864ed7c859d9861e84220f0c4df4e7"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.BugReports.Relay.Azure.21.8.0-svbar.1.nupkg",
+        "sha256": "36b43583d553d1b70af450def92cc97949b9a732dc1996f287c9e6d81caf754b"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.BugReports.Relay.Azure.21.8.0-svbar.1.snupkg",
+        "sha256": "2339921913c6eaab09828d01ed1a905df23229a062d4cca1ad3649c571cc278b"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Catalog.21.8.0-svbar.1.nupkg",
+        "sha256": "ebfb7c5579258b35f052ecfea7c2d4a1d7adc4f5641c45312bd4c7d432a0fbe6"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Catalog.21.8.0-svbar.1.snupkg",
+        "sha256": "338b5f8beb0ae4a789fe71d2c3fdb21e9c39c193f8990de804ab515daa712416"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Catalog.Authoring.21.8.0-svbar.1.nupkg",
+        "sha256": "97a7667db4b48e4dc3c9bad5aa5d4c8ea995909a13a32bb03914114f708f1df3"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Catalog.Authoring.21.8.0-svbar.1.snupkg",
+        "sha256": "e56be7d5566a56a60f1ec473a50fd5e20dfd07a8960873a8f98a367a98518049"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Catalog.AzureBlob.21.8.0-svbar.1.nupkg",
+        "sha256": "db6b0bee392393387a30236e0e162715d577a6b1fae5d8a76686c801fcd7e966"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Catalog.AzureBlob.21.8.0-svbar.1.snupkg",
+        "sha256": "5684630d454da6326f0a0a704162612649e2a7197578be469d88875d42937d8b"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Catalog.GameTypes.21.8.0-svbar.1.nupkg",
+        "sha256": "7bf89e1e5b3c3c2a8d2ce6f8a1f617a8782a8b0ac001fbb1329bb35bf39aa18a"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Catalog.GameTypes.21.8.0-svbar.1.snupkg",
+        "sha256": "88893c95dac52daf517c335389933eb59a7f7a58864d2f5db0d781fb1bf328a2"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Catalog.Netcode.21.8.0-svbar.1.nupkg",
+        "sha256": "028264f0626f8916e8a99154f0158a160ac73b47574cbfb0ccda9145296d14f3"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Catalog.Netcode.21.8.0-svbar.1.snupkg",
+        "sha256": "4d32b81fd7b4d5edf58c8c3c555f761f21b119a105bd366a9f83c7bf41fae9a2"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Catalog.SqlServer.21.8.0-svbar.1.nupkg",
+        "sha256": "ea0058c69dc6f8a13eb12a5e1b4be16f8de86238cb6267bd2ee9344e01ce206e"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Catalog.SqlServer.21.8.0-svbar.1.snupkg",
+        "sha256": "2c80b75bda7aa0eda70690ef58dfc20952651d8b0bcc1383b13ac9bec24e4d26"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Catalog.Sqlite.21.8.0-svbar.1.nupkg",
+        "sha256": "8f96ee13f809b00fb29e7c6e7fabd976e0fbb8f6ecbe2c766eccecfb6f78db0f"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Catalog.Sqlite.21.8.0-svbar.1.snupkg",
+        "sha256": "527613a61d2b3b16c8966f474111493a4c99b736501c4c534c1fb9528b14e9e1"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.CodeHealth.Analyzers.21.8.0-svbar.1.nupkg",
+        "sha256": "c428dc16e815f110de00c2892c38f181fe687cc2f657c7ded8402eff196d90fd"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Collision.21.8.0-svbar.1.nupkg",
+        "sha256": "dab224b9aca2f71b78d2a59b415aa67918af7cdaaa5ec2cd0aced5f8b2993caf"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Collision.21.8.0-svbar.1.snupkg",
+        "sha256": "1c2ed8a6771fb24574cd930b0b3fd3ed8de28e4ddec0f48b34ba16f560f26ffa"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Commerce.21.8.0-svbar.1.nupkg",
+        "sha256": "da29a03553214ee9fd4349d5a9e7e439c72f6f54efda2250b2b1be059116993b"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Commerce.21.8.0-svbar.1.snupkg",
+        "sha256": "01a3ad7126ba873519d1e5a5e8bf8f932ebcdfe7d42c8c74fdbf542a0ac8b0e7"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Commerce.SqlServer.21.8.0-svbar.1.nupkg",
+        "sha256": "7b9de8263ee6bc339c295a7e284265402aca59bc2be282178f5d6faf48c1ea58"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Commerce.SqlServer.21.8.0-svbar.1.snupkg",
+        "sha256": "9c2af663b30c79943b7a5d3a0654be6b85854af29df7b8ede51543c996d4003a"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Commerce.Sqlite.21.8.0-svbar.1.nupkg",
+        "sha256": "f14c53adbdd7b55184bcb6381fe14d708150ccc70ca9a79e70d587e93bef9cc8"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Commerce.Sqlite.21.8.0-svbar.1.snupkg",
+        "sha256": "181edd647a59f251e737901a0ecb42189b5a2ea5126318e86dc73c7c26b8cd73"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Content.21.8.0-svbar.1.nupkg",
+        "sha256": "fe10953be661394a983443e57787bcd8c08b69d02edc2c54b2e23d816f004b75"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Content.21.8.0-svbar.1.snupkg",
+        "sha256": "c83f1b90ec40d2deadbd22420577d41ec9b1cca135f02790fc9c995d2a8f6b3c"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Determinism.21.8.0-svbar.1.nupkg",
+        "sha256": "dd508cc675ec1f9b4a80be15fa0ed7d92acc7ddef5ae1f4e8b09fc389d734712"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Determinism.21.8.0-svbar.1.snupkg",
+        "sha256": "26fcf94af8eea6eaeb9d36be26e66aeaab4ddf234d8d3207091142698237b8d1"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Diagnostics.21.8.0-svbar.1.nupkg",
+        "sha256": "5a5d4bab4e7ccc331c89c37a4fa967f4d3ef0a8ba83782187e28549c9b97cc04"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Diagnostics.21.8.0-svbar.1.snupkg",
+        "sha256": "a8dc9da26672ac1bf5369975d2c8ab2c75811de35b495b7da4236028d7327104"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Dungeon.21.8.0-svbar.1.nupkg",
+        "sha256": "e18af9c5a59a03cf5a47fa2e5dbbfc73cf139b9c2d0e8839815f6506a59c661b"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Dungeon.21.8.0-svbar.1.snupkg",
+        "sha256": "2db5de829af4db5718c0055808d992f0865de53636ae42396909e4c90687f3e9"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Ecs.21.8.0-svbar.1.nupkg",
+        "sha256": "4905a6deed7ac9da686792acc6d5d192bb4ccf7fbf56932561ef13444c0f660b"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Ecs.21.8.0-svbar.1.snupkg",
+        "sha256": "2e45ca854eccbe4e35c476ae72c3da222dae5ca8917cdb2fdb8c617b0f1327e2"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Foundation.21.8.0-svbar.1.nupkg",
+        "sha256": "6b05745024ba88c0441f676eb54f5863c75309fca4c5a64e45f8244d1190d6d0"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Foundation.21.8.0-svbar.1.snupkg",
+        "sha256": "607d67af97cddb5db49ffccabc6c86abe53286d4cbc9929329f050e61490eceb"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Game.21.8.0-svbar.1.nupkg",
+        "sha256": "5cfa3d85328d6e889f9116fce55bd356358a1ada73b4d22da91cd3193ea2dfba"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Game.21.8.0-svbar.1.snupkg",
+        "sha256": "cbebc649a0f5c93930736ad7b5a213e842e1eac811394ffd9b33a212181d6bbe"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Game.Render3D.21.8.0-svbar.1.nupkg",
+        "sha256": "65f760facce78dcb73acf7ae0508020377cff1eb7e2fa206a0190f9206283861"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Game.Render3D.21.8.0-svbar.1.snupkg",
+        "sha256": "71f15e24ae38d49dbfc9ed68254b2b09730b33604f8dd9391edcb6c27019906a"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Game2D.21.8.0-svbar.1.nupkg",
+        "sha256": "6aa7046f1385483a6bdb3d789cca3f2b83a6444d9d3961fb64b12f4619c7aa4f"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Game2D.21.8.0-svbar.1.snupkg",
+        "sha256": "2f9f0d51aa4eb70c2af840a1709a77c4548bee403bdc4de28679173f5b0e17bb"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Game3D.21.8.0-svbar.1.nupkg",
+        "sha256": "b2beaa684e52ad16516e5c2bbbc2510ca568212c51bdac7de80ec9b431dac119"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Game3D.21.8.0-svbar.1.snupkg",
+        "sha256": "b24b52f27096c9bd16c4a695c2e26833d8e95ef50d204641da87e493fc1cab30"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Gpu.21.8.0-svbar.1.nupkg",
+        "sha256": "4caf0360f47c568283d0d48e24d3f408910ac386d4c4a5233fbaed8bd98e7597"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Gpu.21.8.0-svbar.1.snupkg",
+        "sha256": "7bc06107650d1fb41829cabdd3c5b60571de50774780a2e2e83ec8a7ffb209cc"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Gpu.D3D11.21.8.0-svbar.1.nupkg",
+        "sha256": "150108dc40e60f9a12785e642f76730b8e3d70441aba8bacd49a518535a788d0"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Gpu.D3D11.21.8.0-svbar.1.snupkg",
+        "sha256": "542608e469475b37ce304c8e873a595d5edb328000b459e6ee5f063a08c9f36e"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Gpu.Metal.21.8.0-svbar.1.nupkg",
+        "sha256": "46e90174edc4e1aaac5d83d4dae8b8533f5903c6fc01508900e4c06b1394f430"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Gpu.Metal.21.8.0-svbar.1.snupkg",
+        "sha256": "94ad44c49f8da7efe2b93808c8938a01f8e8540268799c8dd95ec11ac91613b9"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Gpu.TestKit.21.8.0-svbar.1.nupkg",
+        "sha256": "aaddba30446d2358385c69f968c13090509706fbf93de65bae7f7665b4de7a91"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Gpu.TestKit.21.8.0-svbar.1.snupkg",
+        "sha256": "cd568c794cb670ef578330ef8e22214d2fef96766853fcde7a56a79b45fb599f"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Gpu.Vulkan.21.8.0-svbar.1.nupkg",
+        "sha256": "c90712ac0530dca07c38550c9e4906622a756b357ea56a113c55fb6ad6d3996f"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Gpu.Vulkan.21.8.0-svbar.1.snupkg",
+        "sha256": "e252d36d881b6b48493d5cbbcc58c4b1704d5a0c339d0d9a71ad395b8a704c0a"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Gui.21.8.0-svbar.1.nupkg",
+        "sha256": "f9b1410b362c78f0d9e2eb235787d10cbd17208153f7af564f26b1ebc73f0eab"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Gui.21.8.0-svbar.1.snupkg",
+        "sha256": "bd0408e0e82522f6923083354ac9efe9a40df96a6ce927d2736199e7b46a6839"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Http.21.8.0-svbar.1.nupkg",
+        "sha256": "ee0feec8ef1e54478c4a3a620eab1b152ab4572a8f694a3f8a1c7e7445caff80"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Http.21.8.0-svbar.1.snupkg",
+        "sha256": "7d5a1aa9bc8f692aa5f36173b05434d7c737159122012ccac79942e6cb267cb0"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Identity.21.8.0-svbar.1.nupkg",
+        "sha256": "bad73b17ff7a054cfd4e09d46d2157a69859861afef7ee53d31b36a50c81c6eb"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Identity.21.8.0-svbar.1.snupkg",
+        "sha256": "b8b9ffb9a07e346265d7e10f61474da2063c6ce436228c917f3e54da596b4221"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Identity.Discord.21.8.0-svbar.1.nupkg",
+        "sha256": "20f0df7c1c2f17dd19efc446192e518028a4711b96193a3f8bf789f8d8713388"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Identity.Discord.21.8.0-svbar.1.snupkg",
+        "sha256": "18f439f084d44b32c3bcbdeb6f3154d78d28cdbe83f2bc731ce08fdeb20211b3"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Identity.Exchange.21.8.0-svbar.1.nupkg",
+        "sha256": "66ac5beabc4840aae797cbab14b194dc4e36783cf297cf2d764f8c3cfd7b74ec"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Identity.Exchange.21.8.0-svbar.1.snupkg",
+        "sha256": "64e658b044c397ffc9283c108103a9c97b82b15b50a636f1eebc0dd670b88594"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Identity.Exchange.AspNetCore.21.8.0-svbar.1.nupkg",
+        "sha256": "4989b672d9a0eee23152ca6af9cd18249bc0b21e3b51f92fd297b36d2df972c9"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Identity.Exchange.AspNetCore.21.8.0-svbar.1.snupkg",
+        "sha256": "716d3f217133607accb15e7235e85a5a78389a60c5665f4c13422d57ba23da07"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Identity.Oidc.21.8.0-svbar.1.nupkg",
+        "sha256": "05e80db1e46c5f1ae2419a7f283b493fab3a2d1f07e810317f4fcbc976f95e2d"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Identity.Oidc.21.8.0-svbar.1.snupkg",
+        "sha256": "7f5b22cda512d5cb4621120531d93e73ad5caaed786a3b2a51f1f61927f3696f"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Imaging.21.8.0-svbar.1.nupkg",
+        "sha256": "515cf1c34b59ff200dbfb0f35c6476b7dbe9fd175012f23edf28745936cb3867"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Imaging.21.8.0-svbar.1.snupkg",
+        "sha256": "02cc1178bdbf522cbbc632c271dc92b3c1e44eb7798363ad90af7f458447037a"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.ItemInstances.21.8.0-svbar.1.nupkg",
+        "sha256": "210e25d53d32dffe452bfdd61c4e02d5be85aa16d300b68236239cb3331d48ff"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.ItemInstances.21.8.0-svbar.1.snupkg",
+        "sha256": "b0e98fb4b057af9726b75910b8c4062e6ded25ffa8a97e1b03cdeba486bece93"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.ItemInstances.Journal.21.8.0-svbar.1.nupkg",
+        "sha256": "de1a79d0e1f64ebda30adc10eb6973b088876c4704f0f2eba05b64f7217b1860"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.ItemInstances.Journal.21.8.0-svbar.1.snupkg",
+        "sha256": "0dd60a8678b790c7c8396af5388f2ec0d501f765774935954cfdb6370be77886"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Items.21.8.0-svbar.1.nupkg",
+        "sha256": "ee9d5d2328893882ba7b635dc151b24262cee88589749b32489b45400ec3a0b4"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Items.21.8.0-svbar.1.snupkg",
+        "sha256": "b0beedea9ad5e397375e227e999075d0316ff389dac82988f37d5b0696921726"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Localization.Analyzers.21.8.0-svbar.1.nupkg",
+        "sha256": "34ea7962a9ee613a65618a6876f765f33476880337fd72b80f3f3a14ff9f99fb"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Localization.TestKit.21.8.0-svbar.1.nupkg",
+        "sha256": "5ca0332e70c824ab96ae0dda90d248c2d48ff3e29728e8182cf4918a1e769114"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Localization.TestKit.21.8.0-svbar.1.snupkg",
+        "sha256": "078579994c3f0e6449cc8fa40c5d9b6520ec314a9163876dbec6a5add36f023e"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Locomotion.21.8.0-svbar.1.nupkg",
+        "sha256": "59df534bdf133e9b508f269e7853a7d52327d7699dd39c27c45dda6526bd16a1"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Locomotion.21.8.0-svbar.1.snupkg",
+        "sha256": "01299ed1b45db6ce387aedec5a323164d1be480a11066ccd31268624da4d2197"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.MapDoc.21.8.0-svbar.1.nupkg",
+        "sha256": "bde17e50383684d853db79224b214154b2ac4c0833efc4263ac1dd7fa306c873"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.MapDoc.21.8.0-svbar.1.snupkg",
+        "sha256": "7f9f20d2ed6242f87727d924298deb86667101705080d1e2da8a5c34958570a3"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.MapDoc.Physics.21.8.0-svbar.1.nupkg",
+        "sha256": "c9fe2e556e9a12ac9c5c0d2062b2ffde8c4e4bd6d19d4a5f44e9dbdfc01370c9"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.MapDoc.Physics.21.8.0-svbar.1.snupkg",
+        "sha256": "02e21a13c64321f151d16d0c64eca5a2911b1b6b245fce326536e904cd2c3503"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.MapEdit.Tool.21.8.0-svbar.1.nupkg",
+        "sha256": "417527133fb44e778b1ae52157bdb8e2044de93f86a61ac845320e29392be383"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.MapEdit.Tool.21.8.0-svbar.1.snupkg",
+        "sha256": "f87f3d76438e4e4e197b5ab7c6efd950057ce9e6c81c2c223e1eb9b81a78f69f"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.MapEditor.21.8.0-svbar.1.nupkg",
+        "sha256": "227387784c013da2b3fcae162789d5d36538f116978b9e21281de4bb9de18519"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.MapEditor.21.8.0-svbar.1.snupkg",
+        "sha256": "b67126ba1e8ede38bfb39cd657be9499d97e74822a156aa762aad88f1fa88682"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Movement.21.8.0-svbar.1.nupkg",
+        "sha256": "ccd1b0c38219ce1d4e7907a8d8256ade3ad194b70100a90849645a8eb567eb56"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Movement.21.8.0-svbar.1.snupkg",
+        "sha256": "14065e394ca7fd30212ef023331bf3493c5b96a9ee4a0d718359a035b053f246"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Navigation.21.8.0-svbar.1.nupkg",
+        "sha256": "161e9dbba35d21ef89c4aa3bb873fe4dfa049cfe551dd1e53fa4888c834d01e8"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Navigation.21.8.0-svbar.1.snupkg",
+        "sha256": "2882080c359f109ccc8b499a6c0f604be8e56e55be1f14d47b885e0b199a30c4"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.NetWorld.21.8.0-svbar.1.nupkg",
+        "sha256": "190c52eb35dfd2d57df8dd7f3342c9b884fc6129d689b280b5a9eb989d832632"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.NetWorld.21.8.0-svbar.1.snupkg",
+        "sha256": "a1471df2889337b010ed817a9da583b428d34e757526d1f845a0331b3ce2b596"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Netcode.21.8.0-svbar.1.nupkg",
+        "sha256": "58162a351f0ec756ce04f9ec77276e7e260694a2a463e2c6e22d86960cb844f2"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Netcode.21.8.0-svbar.1.snupkg",
+        "sha256": "d8c2889b27aee48e658af9b73a6d410ef41ca32e4d11ea534bb43b61bac2e3b1"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Netcode.Abstractions.21.8.0-svbar.1.nupkg",
+        "sha256": "c500cbbeb9d0072a3854831214dcbcc7173ff8c4d8b0fd1e063ef929b144f8b6"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Netcode.Abstractions.21.8.0-svbar.1.snupkg",
+        "sha256": "27d72e4083cd8e63bb16c7c66e2e5742fa48ae8a6269fe53911825518b22fe07"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Netcode.LiteNetLib.21.8.0-svbar.1.nupkg",
+        "sha256": "86fdcaddd625dd19fd80fbb16090fa5d15551c8091472f1b5538f51b3e88268e"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Netcode.LiteNetLib.21.8.0-svbar.1.snupkg",
+        "sha256": "f002e6a74378696915242f1719ff97567880afccb74b3e94725eba7829abda83"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Objectives.21.8.0-svbar.1.nupkg",
+        "sha256": "0f4d426c327462fd387fcf5b16402c4d76f466013d7150498a96044208d2820f"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Objectives.21.8.0-svbar.1.snupkg",
+        "sha256": "f8d45ba05e30978d1316e98a1bf6b1fef7f83a342bea400b07e821f8e3c9f8d2"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Particles.21.8.0-svbar.1.nupkg",
+        "sha256": "f6121f2b1d49a4f6fd3109fec13fa11b8e88bf1ddbdcdd33b227ef7015c9bbb1"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Particles.21.8.0-svbar.1.snupkg",
+        "sha256": "a3168994fea73ced885fc2782c6f7e74ad29bc037fe9d48dfbeabe780a1a3bab"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Particles.Render3D.21.8.0-svbar.1.nupkg",
+        "sha256": "ffc8e09e8fa3f751ebaf9b0d827bed9bfc9fce8b23734bacb1575f84f0c9442c"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Particles.Render3D.21.8.0-svbar.1.snupkg",
+        "sha256": "39f59fe3c8943fef200d7463951ca2d937a9e2cc3ff29e688c0b34711c04e688"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Persistence.21.8.0-svbar.1.nupkg",
+        "sha256": "dc46755b257d3a98e5b4f3d7e03d442281af7abac318b491640c4f394e4fe40d"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Persistence.21.8.0-svbar.1.snupkg",
+        "sha256": "addf622b5ae6baf097eb24c2f69577fc5701319562238ea4cd3101c5b6b44823"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Physics.21.8.0-svbar.1.nupkg",
+        "sha256": "7fb8c7bfce3afc05c13a69099b07088fecca3c0213b710788581ba90d529a69e"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Physics.21.8.0-svbar.1.snupkg",
+        "sha256": "d343b64ea1441d9c67a62eca03a889cb3253f81fb8fe8b35892db59aaafd567f"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Physics.Bepu.21.8.0-svbar.1.nupkg",
+        "sha256": "95b32477c800a3ce09eab7c8983fd43522bcfbc08c1a5296543262215a54a80b"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Physics.Bepu.21.8.0-svbar.1.snupkg",
+        "sha256": "a51e4c0b3f9af0ef3ae7f766030778a3a31f81972b06a5f7aa996b36567bb49b"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Platform.21.8.0-svbar.1.nupkg",
+        "sha256": "23a90f530f7604aedd0cf0ec2bfd87d8142b0cddb2d3cc06894dfd74d588138d"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Platform.21.8.0-svbar.1.snupkg",
+        "sha256": "8dc84e13ba012e8afe4be3f19122990d78e3c39318ba39d5a4537f80f99e9d2f"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Primitives.21.8.0-svbar.1.nupkg",
+        "sha256": "61cfa2e0750cd386be1e1a82cdd1db91fad155f757d1baa92a47019d98fe8097"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Primitives.21.8.0-svbar.1.snupkg",
+        "sha256": "346470f0f1172aa02326e9349238ff306e871ca8be8502e66b82e167f8ceba13"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Progression.21.8.0-svbar.1.nupkg",
+        "sha256": "b83a61d773c93165899f1996600ec83e5311ce3abce9fd92969d60321343c15b"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Progression.21.8.0-svbar.1.snupkg",
+        "sha256": "885dd7416b2780c3fc7cc587c3594940702694aa622ab029b56c46b32b606f20"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.PropSurface.Tool.21.8.0-svbar.1.nupkg",
+        "sha256": "776139e222f51b6654551810ba2ea4fc007e0654bc88198a25f8a0bc7e73348f"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.PropSurface.Tool.21.8.0-svbar.1.snupkg",
+        "sha256": "16b05b8af0b914117b32108ff0344f6621549dc1314c88e931ddc6cf8aa7aebd"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Render2D.21.8.0-svbar.1.nupkg",
+        "sha256": "51713e5bd7adc33003c191853b4e29983e1ac60e046426931ce1fce82887dfda"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Render2D.21.8.0-svbar.1.snupkg",
+        "sha256": "97289b42c666c9ab45e1b501a8a0fc99e376a0a21ee59a408cf045f6b95f9ad4"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Render3D.21.8.0-svbar.1.nupkg",
+        "sha256": "f896ca17f41f4acacc2aee30999032fdd261b5fde79bfef54111e2de3c538e7e",
+        "renderer_member": "lib/net10.0/KhaozEngine.Render3D.dll",
+        "renderer_sha256": "d96d16e01a1909547e2195fdff70ae4810aff8beb9b1e62e84574389f30d5766",
+        "repository_commit": "ef97639b6d2b33973715652a35858d55e0665a0f"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Render3D.21.8.0-svbar.1.snupkg",
+        "sha256": "702db3d112af8ad7768bdd37dee42b1ab8bccd546e76a43ed7593a8ae244bd36"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Render3D.Ecs.21.8.0-svbar.1.nupkg",
+        "sha256": "fbba45ad88f4dc445237bd320a11d180730b1bcfc9d879d40d1b97cb310fe6c2"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Render3D.Ecs.21.8.0-svbar.1.snupkg",
+        "sha256": "554035cf562872d587e80423bd08235e710162373c9126f5effbb9c7d564b074"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Replication.21.8.0-svbar.1.nupkg",
+        "sha256": "355ecbb9d8f613a6c72960fa6e73a58df1a78604775acce22704dee4c4e3a073"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Replication.21.8.0-svbar.1.snupkg",
+        "sha256": "2d2dbd18a9d13f189ed61031ed4d60be51e8c3647f7ef478e4db9ac06c09931a"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.SegmentRig.21.8.0-svbar.1.nupkg",
+        "sha256": "92ce49edda01add8a5ae2e7db850a89ebcea1aefc74314c30bc9cf0b9babfd25"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.SegmentRig.21.8.0-svbar.1.snupkg",
+        "sha256": "7490245936d87e127a1a37adb35ceee88b83f85237718e828e371bcab9cd9157"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Serialization.21.8.0-svbar.1.nupkg",
+        "sha256": "7289e24b6a4c5a5544b7390b80a39db1bbaab30c799ef9337e09e89e6628a45c"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Serialization.21.8.0-svbar.1.snupkg",
+        "sha256": "90037a88fdb5e43fab6f1abed2dcabe577e0b62e6c44f0a0f0f97f1f47e49781"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Server.21.8.0-svbar.1.nupkg",
+        "sha256": "ded11bcf53f8a942d01af453658e6a706720651b499131e4ee4008790752496a"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Server.21.8.0-svbar.1.snupkg",
+        "sha256": "d688326d0bd2ef5d2fc52189381fce5ac5128734148c4067da9e5ad954ef72ec"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Server.Admin.21.8.0-svbar.1.nupkg",
+        "sha256": "668dbf8ea431ed41be902020cd338a1cefa2da90081c774a5fdd19672593c6d1"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Server.Admin.21.8.0-svbar.1.snupkg",
+        "sha256": "ed84cc16cc77aa4a53ddb4a1e31d1ff38576148ceb8c41c23e61f061181e8fa8"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.ServerStatus.21.8.0-svbar.1.nupkg",
+        "sha256": "bfe2c1ad6d0a2762049a67c28a418d7783f42508108f39734b3591672b9942da"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.ServerStatus.21.8.0-svbar.1.snupkg",
+        "sha256": "6a6ccdb03bcd4ec0565c63e6a1f97b311884a2d19bb9e92be0471667713546e0"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Sfx.Tool.21.8.0-svbar.1.nupkg",
+        "sha256": "29cf3155287bca5b15b90fe6c0f67636dff5920e702ba525efb6a8500f6cdf16"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Sfx.Tool.21.8.0-svbar.1.snupkg",
+        "sha256": "83a5a8db58ddbf6a08e3592658302c3e582bb0e29d8dbf86b7dd0a2c577d5c27"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Sharding.21.8.0-svbar.1.nupkg",
+        "sha256": "c52de4e53b3ab511cc58f5ce5d67042635b128021ba407fd01360153507e7984"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Sharding.21.8.0-svbar.1.snupkg",
+        "sha256": "7875d6dedea97a404b9092dd44d22506eb2ad74f1894a0543d9ac936313030ef"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Simulation.21.8.0-svbar.1.nupkg",
+        "sha256": "5b8fd9dbbaf5078640057eae1e48fb4674798bdc172c4dc136f1b5afbf96f9eb"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Simulation.21.8.0-svbar.1.snupkg",
+        "sha256": "d808d700033c66171469e480a7dfaa68feef45b09fc32490660a28a29febd61e"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Skills.21.8.0-svbar.1.nupkg",
+        "sha256": "e6d98ae8bcc08cd91047e577162b1c41f11cbb331d6ddbb6fa2e6d12a3ebb8b4"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Skills.21.8.0-svbar.1.snupkg",
+        "sha256": "e3ae3e25c169c0522b2657e78b753486d1dfccc4b12e7bb0e492e13a8928fe29"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Snapshot.21.8.0-svbar.1.nupkg",
+        "sha256": "fed14043d6f44f7922321cee167e9d9689dad7942c8b8d9a00d4168fdcb8ab91"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Snapshot.21.8.0-svbar.1.snupkg",
+        "sha256": "76379cd0371e663d44b0f5c1c22d7aadd25806933d40b70d55a463d8ef533e16"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Snapshot.Render3D.21.8.0-svbar.1.nupkg",
+        "sha256": "e3b971e2ad84c6abb9113151541ca42b7995c7415e6feaed4044652145a77192"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Snapshot.Render3D.21.8.0-svbar.1.snupkg",
+        "sha256": "66e8465b957b8d6b8f7a2d57fbe6272c50c077d9f7b6845562dcba1d89656a76"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Social.21.8.0-svbar.1.nupkg",
+        "sha256": "37c065b2ede738e4dcd93d0e43fcacd929123bf3d4c344c7d5bc29df3633e379"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Social.21.8.0-svbar.1.snupkg",
+        "sha256": "10430e52a1d94224b8962b144d52649e8fda211913212fd8fee03f1b07f0b665"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Social.Discord.21.8.0-svbar.1.nupkg",
+        "sha256": "bf4ae47a6dfbb8f0ed7675c8395c4096cf27d6704f268cabd8fe2697504d2639"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Social.Discord.21.8.0-svbar.1.snupkg",
+        "sha256": "13fbed536bc1d03c5535fa2dcf18cf6f273201558b0aac1ba8ba5c3a0971c876"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Sqlite.21.8.0-svbar.1.nupkg",
+        "sha256": "2d753dfba6a19d0656063714ef90680dd930f76c6f810815d93b2f698cc64d87"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Sqlite.21.8.0-svbar.1.snupkg",
+        "sha256": "12b7ed57a549b1a34afed6cbc89127ef10854ae3f4b8669542652cd2f553c026"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Stats.21.8.0-svbar.1.nupkg",
+        "sha256": "29480d0527b47c7197bbd34e985101d57ac6cf72c704176be6aa57bde2f3c6e5"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Stats.21.8.0-svbar.1.snupkg",
+        "sha256": "6e1753b93f8f2cd008b30ebb75fd5e91404067013885ea03876895682bf4d750"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Telegraphs.21.8.0-svbar.1.nupkg",
+        "sha256": "7ab3f9c20b5336c37d66d93e31b60a68b78076c90b02f12a028fe66bff6fd7e0"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Telegraphs.21.8.0-svbar.1.snupkg",
+        "sha256": "dac9db2ec76c9418cacffa25d5845c2b168605b7b56d8e0e338dab8b0bab6333"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Telegraphs.Render3D.21.8.0-svbar.1.nupkg",
+        "sha256": "ebd098193bf5e38da9e731657e10c177b2f2ef1180c64712947d69cdd3cb8555"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Telegraphs.Render3D.21.8.0-svbar.1.snupkg",
+        "sha256": "305ec71ab5cb58f9d9bbda4679bb71a432dac653b441623e9417142de79a0818"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Terrain.21.8.0-svbar.1.nupkg",
+        "sha256": "068b7844de342ecc45321b17353f319515a11c4235e505e3a4fbc10075949123"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Terrain.21.8.0-svbar.1.snupkg",
+        "sha256": "cd735b29f90385cf4d7cef51b4a4f2ad6589c5a9530c7c9e47ad38c72f8638a0"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Terrain.Render3D.21.8.0-svbar.1.nupkg",
+        "sha256": "210fd9ba9da459bdd75eac3b472a1a9b27e02ccd3ebe278cfd871067cb1d270e"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Terrain.Render3D.21.8.0-svbar.1.snupkg",
+        "sha256": "d885f901664341169c91f039d9de25d3e7e06e2a3b5ea5a71e7b9e188a250ffd"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.TileEdit.Tool.21.8.0-svbar.1.nupkg",
+        "sha256": "5b3586c8a909779dbfed9b4681ffc41e410fee2788f9ab0553825041a00c419a"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.TileEdit.Tool.21.8.0-svbar.1.snupkg",
+        "sha256": "66fdd022b3273fb4ae88bb0204cdfa1c59316bdd3939b8fd31a7268a42b30447"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.TileWorld.21.8.0-svbar.1.nupkg",
+        "sha256": "46322cd7528b39c1ef811f43399f1a8bf0bf68cf6fb461a9cc85b54b16c51cc8"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.TileWorld.21.8.0-svbar.1.snupkg",
+        "sha256": "07e523751ef2e9cff329cdc8921f1fff3b351479d689aa9929d6f382296426a7"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.TileWorld.Editing.21.8.0-svbar.1.nupkg",
+        "sha256": "8328029f674ff333cf2809edd33ed439933a5bbb15175d4dd9b6e830092d7f9f"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.TileWorld.Editing.21.8.0-svbar.1.snupkg",
+        "sha256": "3b89b5d243bd8443dcef887ab776e8f2e033ebd1c5317f82d37ea747f9ebf70e"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.TileWorld.Netcode.21.8.0-svbar.1.nupkg",
+        "sha256": "bf927b7816878ce9065616bf1edfd4151b1ca6be335f08fbe75e6dea89453a39"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.TileWorld.Netcode.21.8.0-svbar.1.snupkg",
+        "sha256": "681302fd105b7e37538ccd6cdef5f2a8f8289590d5f9841964ac0211cc1770b4"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.TileWorld.Physics.21.8.0-svbar.1.nupkg",
+        "sha256": "faa06a70d9c8b87fd2e03d2a8313bd552cfd3a14207e89760c89738ec7c6655b"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.TileWorld.Physics.21.8.0-svbar.1.snupkg",
+        "sha256": "6df8c2d2c0f8f2477338471db7c35c803d6bbae3b3f1225f71b298c1e17c89ae"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.TileWorld.Render3D.21.8.0-svbar.1.nupkg",
+        "sha256": "88e3d9734613ed365784c256bdcded4cc8b80034f4ee6236c6824c735e7e5232"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.TileWorld.Render3D.21.8.0-svbar.1.snupkg",
+        "sha256": "0b968b00231e3a407f90be7ceaa334aad77fd67005456371f1474f675f647732"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.TileWorld.WorldMap.21.8.0-svbar.1.nupkg",
+        "sha256": "664a2dad51e47d150e9e39a2a11460a994d1890db7192b16c15cd9eba3a159fa"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.TileWorld.WorldMap.21.8.0-svbar.1.snupkg",
+        "sha256": "113b44b7f0a86afc89f5e9c757bb490d439b53db57bbe7e129d9b43357d65e27"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Updates.21.8.0-svbar.1.nupkg",
+        "sha256": "52e4e8b5feac0674fd40ced73e427ef90396c0c41c73bdc6b6904e80061f6661"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Updates.21.8.0-svbar.1.snupkg",
+        "sha256": "91af922b3450ed6aa707aceef572f51883bd62f84aab3050d805faf37544cc90"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Updates.Tool.21.8.0-svbar.1.nupkg",
+        "sha256": "98b7ef94d29f25e8b22ddc4b6c87a233652da3298acfa5fd65a09a279d65a1e2"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Updates.Tool.21.8.0-svbar.1.snupkg",
+        "sha256": "53898d7c01429b2e9d3a73f790340f2e8897ce645ce4f0d5bf5d64dedc90c171"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Windowing.21.8.0-svbar.1.nupkg",
+        "sha256": "fa171603c1e7e3b82ddf99976462c9d1c16a25354f6673d45539960e6a35447d"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.Windowing.21.8.0-svbar.1.snupkg",
+        "sha256": "70258a1e135270f268badfe0df11160713e3849c4d33be3c834c7be3b6165968"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.WorldMap.21.8.0-svbar.1.nupkg",
+        "sha256": "ed6efeab0c567c3704f882c9b646f481f12c60c7edd6f85a0ded5063e8888637"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.WorldMap.21.8.0-svbar.1.snupkg",
+        "sha256": "b69449bd15321666c35bd910e53d5aeada45598185117c2e1041520aa0e03b1b"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.WorldMap.Gui.21.8.0-svbar.1.nupkg",
+        "sha256": "18305ec9302cf101fe6bbbbc7bbb8b48c1ea9bd7e3bbb4893d9ee80c6ae75540"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.WorldMap.Gui.21.8.0-svbar.1.snupkg",
+        "sha256": "276da213ce589c1038184a4b4e6e7f5f5d4f1653096f2f7c360e3f753622f2ba"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.WorldStore.21.8.0-svbar.1.nupkg",
+        "sha256": "c99b16a3afcf9517f16013f793bc3898e68fc2c5af0b97639bfdb0bcd730e393"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.WorldStore.21.8.0-svbar.1.snupkg",
+        "sha256": "c6e0a335eb6f545df79987b95162656bdd8788fb755ca73e255d4d6d38a7d3ba"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.WorldStore.SqlServer.21.8.0-svbar.1.nupkg",
+        "sha256": "89bdfc72916de1a94b5014dd5139db88e6402a72ba9b0f4470aa2b60a6834a43"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.WorldStore.SqlServer.21.8.0-svbar.1.snupkg",
+        "sha256": "8f4efe970bbdb639a602be64c521ca364c86ba5b65349cc90a6ecd676a016951"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.WorldStore.Sqlite.21.8.0-svbar.1.nupkg",
+        "sha256": "b91e7dda181a9f6f85b6b36d8ba413444fcc0f5be6e3cc53a184668b41691563"
+      },
+      {
+        "path": "vendor/khaozengine/KhaozEngine.WorldStore.Sqlite.21.8.0-svbar.1.snupkg",
+        "sha256": "82d410e533640dd037beb774b1527663feb403793bb17b3cc84204d5e7163413"
+      }
+    ],
+    "summary_path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/7g3a-summary.json",
+    "local_results_path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/7g3a-local-results.json",
+    "metal_inventory_path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/7g3a-metal-inventory.jsonl",
+    "comparison_path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/7g3a-comparison.json",
+    "identical_to_shipping_D": true,
+    "lock_overlay": {
+      "status": "unavailable",
+      "reason": "SceneDebugView.History re-evaluates resolve decisions and t.stability >= 0.5. It is not a stored-lock overlay. SnapshotTool has no lock-view request. No engine instrumentation was added.",
+      "normal_overlay_pairs": []
+    },
+    "captures": {
+      "back15": {
+        "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/captures/7g3a/back15",
+        "loaded_renderer_sha256": "d96d16e01a1909547e2195fdff70ae4810aff8beb9b1e62e84574389f30d5766",
+        "normal_rgb_sha256": "42a6ad43168c03470b5138a51ea26ba6d1d3b2affd30ac4cd3e0314d448ecb94",
+        "region_bits_sha256": "adfbc3c6c2f74775770413f0290d8ac6f62fe717c8e294139e7e144888394986",
+        "command_exit_code": 0,
+        "deleted_intermediate_images": 160
+      },
+      "ground15": {
+        "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/captures/7g3a/ground15",
+        "loaded_renderer_sha256": "d96d16e01a1909547e2195fdff70ae4810aff8beb9b1e62e84574389f30d5766",
         "normal_rgb_sha256": "fac3d2356e5d35d4aa8a44bb71f89d9aa957a0e4444f373f493af0a1545bdc9c",
         "region_bits_sha256": "fe19a50ced8e1ce8100f896cfc14e82573291993588a08de0689b922890bd9cf",
         "command_exit_code": 0,

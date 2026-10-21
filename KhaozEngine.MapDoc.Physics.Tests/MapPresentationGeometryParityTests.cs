@@ -91,7 +91,7 @@ public sealed class MapPresentationGeometryParityTests
         var fixture = PrefabFixtures.LinkedBuildings();
         using var native = new NativeSceneFixture(fixture.Document, fixture.Assets);
         var scene = NativeSceneFixtures.Open(native, tiled).Acquire(Scope()).Scene!;
-        var buffer = new MapRoofEvaluationBuffer(scene);
+        var buffer = MapRoofEvaluationBuffer.Prepare(scene).Buffer!;
         var retained = buffer.Roofs;
         MapRoofIntentResult Evaluate(Vector3 local, MapRoofMode mode = MapRoofMode.Auto)
         {
@@ -129,7 +129,7 @@ public sealed class MapPresentationGeometryParityTests
         Assert.Equal(MapMembershipStatus.Ambiguous, result.Status);
         Assert.NotEmpty(result.Roofs);
         Assert.All(result.Roofs, Visible);
-        var buffer = new MapRoofEvaluationBuffer(scene);
+        var buffer = MapRoofEvaluationBuffer.Prepare(scene).Buffer!;
         buffer.Evaluate(point, MapRoofMode.Auto);
         Assert.Equal(MapMembershipStatus.Ambiguous, buffer.Status);
         Assert.Null(buffer.SpaceId);
@@ -153,7 +153,7 @@ public sealed class MapPresentationGeometryParityTests
         var scene = acquired.Scene!;
         var ceiling = scene.SurfaceView.Witness.Present.Where(p => p.Key.SurfaceId == "cave-ceiling").ToArray();
         Assert.NotEmpty(ceiling);
-        var buffer = new MapRoofEvaluationBuffer(scene);
+        var buffer = MapRoofEvaluationBuffer.Prepare(scene).Buffer!;
         var point = new MapFramePoint(scene.SurfaceView.Scope.Frame, new(37, -4, -21));
         var detached = MapRoofPolicy.Evaluate(scene, point, MapRoofMode.Auto);
         Assert.Equal("village-cave", detached.SpaceId);

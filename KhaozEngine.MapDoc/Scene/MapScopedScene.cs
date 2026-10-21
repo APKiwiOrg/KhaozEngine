@@ -33,6 +33,7 @@ public sealed class MapScopedScene
     public IReadOnlyDictionary<string, MapPaintRegionSet> PaintRegions => _effective.PaintRegions;
     public MapWaterSet? Water => _effective.Water;
     public MapBuildingIntent BuildingIntent => _effective.BuildingIntent;
+    internal MapBuildingIntent CapturedBuildingIntent => _effective.CapturedBuildingIntent;
     internal MapFoliageSet? CapturedFoliage => _foliage;
     public MapFoliageSet? Foliage => _foliage?.Clone();
     internal IReadOnlyList<MapEffectiveLight> EffectiveLights => _effective.EffectiveLights;

@@ -6,7 +6,7 @@ namespace KhaozEngine.MapDoc.Surfaces;
 internal readonly record struct MapSurfaceVertex(MapLatticeAddress Address, MapExactPoint Exact, Vector3 Offset);
 
 /// <summary>Owns exact lattice positions and the policy-specific float conversion.</summary>
-internal sealed class MapSurfaceVertexBuilder(MapSurfaceRef surface, MapSurfacePatch patch, MapSubmissionAnchor anchor)
+internal readonly struct MapSurfaceVertexBuilder(MapSurfaceRef surface, MapSurfacePatch patch, MapSubmissionAnchor anchor)
 {
     internal MapSurfaceVertex Point(int cellX, int cellZ, MapLatticePoint point)
     {

@@ -1,6 +1,7 @@
 using System;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Scene;
+using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
 
@@ -17,16 +18,21 @@ public static class MapRoofPolicy
         ArgumentNullException.ThrowIfNull(view);
         if (!Enum.IsDefined(mode)) throw new ArgumentOutOfRangeException(nameof(mode));
         resources.RequireView(view);
-        var buffer = new MapRoofEvaluationBuffer(resources.BuildingIntent, view);
-        buffer.Evaluate(observer, mode);
-        return buffer.Detach();
+        var membership = new MapSpaceMembership(view).Query(observer);
+        var intent = new MapRoofIntentRows(resources.BuildingIntent);
+        intent.Evaluate(new(membership.Status, membership.SpaceId, membership.ExactPoint, membership.Witness), mode);
+        return new(membership.Status, membership.SpaceId, intent.Detach(), membership.Witness);
     }
 
     public static MapRoofIntentResult Evaluate(MapScopedScene scene, MapFramePoint observer, MapRoofMode mode)
     {
         ArgumentNullException.ThrowIfNull(scene);
         if (!Enum.IsDefined(mode)) throw new ArgumentOutOfRangeException(nameof(mode));
-        var buffer = new MapRoofEvaluationBuffer(scene);
+        var prepared = MapRoofEvaluationBuffer.Prepare(scene);
+        if (prepared.Buffer is not { } buffer)
+            return new(prepared.Status == MapSceneStatus.CapacityExceeded ? MapMembershipStatus.CapacityExceeded :
+                prepared.Status == MapSceneStatus.NotRepresentable ? MapMembershipStatus.NotRepresentable : MapMembershipStatus.Invalid,
+                null, Array.Empty<MapRoofIntent>(), scene.SurfaceView.ReadWitness);
         buffer.Evaluate(observer, mode);
         return buffer.Detach();
     }

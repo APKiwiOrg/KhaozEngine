@@ -1,82 +1,79 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using KhaozEngine.MapDoc.Identity;
-using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.MapDoc.Spaces;
-using KhaozEngine.MapDoc.Storage;
-using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.MapDoc.Interiors;
 
-/// <summary>Reusable roof intent over one immutable acquisition. The roof list is a live read-only view.
-/// Membership retains the released point-query budgets, status and witness. Detached policy results copy the list.</summary>
+/// <summary>A complete prepared roof buffer or a typed refusal, with no partial buffer.</summary>
+public sealed record MapRoofEvaluationBufferResult(MapSceneStatus Status, MapRoofEvaluationBuffer? Buffer, string? Detail);
+
+/// <summary>Prepared scoped membership and reusable roof intent. Roofs is a live read-only view.</summary>
 public sealed class MapRoofEvaluationBuffer
 {
-    readonly record struct Link(int Roof, HashSet<string> Rooms, MapExactValue AboveY);
-
+    readonly MapScopedScene _scene;
     readonly MapSpaceMembership _membership;
-    readonly MapReadWitness _witness;
-    readonly MapRoofIntent[] _visible, _concealed, _rows;
-    readonly Link[] _links;
-    readonly bool[] _hidden;
-    MapFramePoint _observer;
-    MapMembershipResult? _resolved;
+    readonly MapSpaceMembershipScratch _scratch;
+    readonly MapRoofIntentRows _intent;
+    MapMembershipObservation _observation;
 
-    public MapRoofEvaluationBuffer(MapScopedScene scene)
-        : this(Intent(scene), scene.SurfaceView) { }
-
-    internal MapRoofEvaluationBuffer(MapBuildingIntent intent, MapScopedSurfaces view)
+    MapRoofEvaluationBuffer(MapScopedScene scene, MapMembershipPreparation demand)
     {
-        var records = MapSpaceGeometry.Records(view).OrderBy(r => r.Id, StringComparer.Ordinal).ToArray();
-        _membership = new(view, () => records);
-        _witness = view.ReadWitness;
-        _visible = intent.Roofs.Select(r => new MapRoofIntent(r.Id, true, true, true, true)).ToArray();
-        _concealed = intent.Roofs.Select(r => new MapRoofIntent(r.Id, false, true, false, true)).ToArray();
-        _rows = (MapRoofIntent[])_visible.Clone();
-        Roofs = Array.AsReadOnly(_rows);
-        // One reusable membership flag per prepared roof bounds scratch by the captured inventory.
-        _hidden = new bool[_rows.Length];
-        var indices = intent.Roofs.Select((roof, index) => (roof.Id, index)).ToDictionary(r => r.Id, r => r.index, StringComparer.Ordinal);
-        var groups = intent.RoofGroups.ToDictionary(g => g.Id, g => g.Rooms.Select(r => r.Id).ToArray(), StringComparer.Ordinal);
-        _links = intent.RoofLinks.Select(link => new Link(indices[link.Roof.Id],
-            link.Rooms.Select(r => r.Id).Concat(link.Groups.SelectMany(g => groups[g.Id])).ToHashSet(StringComparer.Ordinal),
-            MapExactValue.FromSingle(link.AboveY))).ToArray();
+        _scene = scene;
+        _membership = new(scene.SurfaceView);
+        _scratch = new(scene.SurfaceView, demand);
+        _intent = new(scene.CapturedBuildingIntent);
+        _observation = new(MapMembershipStatus.Outside, null, default, scene.SurfaceView.ReadWitness);
     }
-
-    public MapMembershipStatus Status { get; private set; } = MapMembershipStatus.Outside;
-    public string? SpaceId { get; private set; }
-    public IReadOnlyList<MapRoofIntent> Roofs { get; }
+    /// <summary>Admits the complete scoped membership product against a fresh allowance from the scene's limits.
+    /// Capacity, precision and input refusals carry no partial buffer. The returned Roofs view is reused by Evaluate.</summary>
+    public static MapRoofEvaluationBufferResult Prepare(MapScopedScene scene)
+    {
+        ArgumentNullException.ThrowIfNull(scene);
+        var status = MapMembershipPreparation.Measure(scene, out var demand, out string? detail);
+        if (status != MapSceneStatus.CompleteForScope) return new(status, null, detail);
+        var limits = scene.Source.Data.Limits;
+        if (demand.Bytes > limits.MaxPreparedBytes || demand.Faces > limits.MaxPreparedFaces)
+            return new(MapSceneStatus.CapacityExceeded, null, "Membership preparation exceeds the scene allowance.");
+        status = MapMembershipPreflight.Check(scene, demand);
+        if (status != MapSceneStatus.CompleteForScope) return Refused(status);
+        return PrepareAdmitted(scene, new MapSceneAdmission(limits), demand);
+    }
+    internal static MapRoofEvaluationBufferResult Prepare(MapScopedScene scene, MapSceneAdmission admission)
+    {
+        ArgumentNullException.ThrowIfNull(scene);
+        ArgumentNullException.ThrowIfNull(admission);
+        var status = MapMembershipPreparation.Measure(scene, out var demand, out string? detail);
+        if (status != MapSceneStatus.CompleteForScope) return new(status, null, detail);
+        if (!admission.CanReservePreparation(demand.Bytes, demand.Faces))
+            return new(MapSceneStatus.CapacityExceeded, null, "Membership preparation exceeds the scene allowance.");
+        status = MapMembershipPreflight.Check(scene, demand);
+        return status == MapSceneStatus.CompleteForScope ? PrepareAdmitted(scene, admission, demand) : Refused(status);
+    }
+    static MapRoofEvaluationBufferResult PrepareAdmitted(MapScopedScene scene, MapSceneAdmission admission, MapMembershipPreparation demand)
+    {
+        if (!admission.TryReservePreparation(demand.Bytes, demand.Faces))
+            return new(MapSceneStatus.CapacityExceeded, null, "Membership preparation exceeds the scene allowance.");
+        using var precharged = MapSceneAdmission.Suspend();
+        var buffer = new MapRoofEvaluationBuffer(scene, demand);
+        return new(scene.Witness.WholeWorldComplete ? MapSceneStatus.WholeWorldComplete : MapSceneStatus.CompleteForScope, buffer, null);
+    }
+    static MapRoofEvaluationBufferResult Refused(MapSceneStatus status) => new(status, null, status switch
+    {
+        MapSceneStatus.NotRepresentable => "Membership exact precision cannot be prepared.",
+        MapSceneStatus.CapacityExceeded => "Membership preparation exceeds the scene allowance.",
+        _ => "Invalid acquired membership geometry.",
+    });
+    public MapMembershipStatus Status => _observation.Status;
+    public string? SpaceId => _observation.SpaceId;
+    public IReadOnlyList<MapRoofIntent> Roofs => _intent.Roofs;
 
     public void Evaluate(MapFramePoint observer, MapRoofMode mode)
     {
-        if (!Enum.IsDefined(mode)) throw new ArgumentOutOfRangeException(nameof(mode));
-        if (_resolved is null || observer != _observer)
-        {
-            _resolved = _membership.Query(observer);
-            _observer = observer;
-        }
-        Status = _resolved.Status;
-        SpaceId = _resolved.SpaceId;
-        Array.Clear(_hidden);
-        if (Status == MapMembershipStatus.Resolved && SpaceId is { } room)
-            foreach (var link in _links)
-                if (_resolved.ExactPoint.Y.CompareTo(link.AboveY) < 0 && link.Rooms.Contains(room))
-                    _hidden[link.Roof] = true;
-        for (int i = 0; i < _rows.Length; i++)
-        {
-            bool visible = mode != MapRoofMode.AlwaysHidden && (mode == MapRoofMode.AlwaysVisible || !_hidden[i]);
-            _rows[i] = visible ? _visible[i] : _concealed[i];
-        }
+        if (mode is not (MapRoofMode.Auto or MapRoofMode.AlwaysVisible or MapRoofMode.AlwaysHidden))
+            throw new ArgumentOutOfRangeException(nameof(mode));
+        _observation = _membership.Query(observer, _scratch);
+        _intent.Evaluate(_observation, mode);
     }
-
-    internal MapRoofIntentResult Detach() => new(Status, SpaceId,
-        Array.AsReadOnly((MapRoofIntent[])_rows.Clone()), _witness);
-
-    static MapBuildingIntent Intent(MapScopedScene scene)
-    {
-        ArgumentNullException.ThrowIfNull(scene);
-        return scene.BuildingIntent;
-    }
+    internal MapRoofIntentResult Detach() => new(Status, SpaceId, _intent.Detach(), _scene.SurfaceView.ReadWitness);
 }

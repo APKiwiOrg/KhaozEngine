@@ -9,15 +9,17 @@ namespace KhaozEngine.MapDoc.Storage;
 /// <summary>Detached facts built before publication. Consumer access never returns owned mutable lists.</summary>
 internal sealed class MapAcquiredFacts
 {
-    readonly SortedDictionary<MapPatchKey, MapPatchRead> _reads = new();
+    // A value-key dictionary avoids the sorted collection's boxed-key comparisons during refusal preflight.
+    // Canonical enumeration still follows key order at each enumerable boundary.
+    readonly Dictionary<MapPatchKey, MapPatchRead> _reads = new();
     readonly SortedDictionary<string, MapSurfaceRef> _surfaces = new(StringComparer.Ordinal);
     readonly Dictionary<string, MapRecordRef> _recordIds = new(StringComparer.Ordinal);
     readonly HashSet<MapCoveredRange> _empty = new();
     readonly HashSet<MapUnavailable> _unavailable = new();
 
-    internal IEnumerable<MapPatchRead> Reads => _reads.Values;
+    internal IEnumerable<MapPatchRead> Reads => _reads.Values.OrderBy(r => r.Key);
     internal IEnumerable<MapSurfaceRef> Surfaces => _surfaces.Values;
-    internal IEnumerable<KeyValuePair<MapPatchKey, string>> Present => _reads.Values.Where(r => r.Status == MapPatchStatus.Present)
+    internal IEnumerable<KeyValuePair<MapPatchKey, string>> Present => Reads.Where(r => r.Status == MapPatchStatus.Present)
         .Select(r => new KeyValuePair<MapPatchKey, string>(r.Key, r.SemanticSha256!));
     internal IEnumerable<MapCoveredRange> KnownEmpty => _empty.OrderBy(r => r.SurfaceId, StringComparer.Ordinal)
         .ThenBy(r => r.Slots.MinZ).ThenBy(r => r.Slots.MinX).ThenBy(r => r.Slots.MaxZExclusive).ThenBy(r => r.Slots.MaxXExclusive);
@@ -73,7 +75,7 @@ internal sealed class MapAcquiredFacts
     internal MapPatchStatus Status(MapPatchKey key) => _reads.TryGetValue(key, out MapPatchRead? read) ? read.Status : MapPatchStatus.Unloaded;
     internal MapSurfacePatch? OwnedPatch(MapPatchKey key) => _reads.TryGetValue(key, out MapPatchRead? read) ? read.Patch : null;
     internal bool HasRecord(MapRecordRef reference) => OwnedPatch(reference.Anchor)?.Records.Any(r => r.Id == reference.Id) == true;
-    internal IEnumerable<MapTopologyRecord> OwnedRecords => _reads.Values.Where(r => r.Patch is not null).SelectMany(r => r.Patch!.Records);
+    internal IEnumerable<MapTopologyRecord> OwnedRecords => Reads.Where(r => r.Patch is not null).SelectMany(r => r.Patch!.Records);
 
     internal MapPatchRead CopyPatch(MapPatchKey key) => _reads.TryGetValue(key, out MapPatchRead? read) &&
         read.Status is MapPatchStatus.Present or MapPatchStatus.KnownEmpty
@@ -89,7 +91,10 @@ internal sealed class MapAcquiredFacts
     {
         ArgumentNullException.ThrowIfNull(reference);
         status = Status(reference.Anchor);
-        record = OwnedPatch(reference.Anchor)?.Records.FirstOrDefault(r => r.Id == reference.Id);
+        record = null;
+        if (OwnedPatch(reference.Anchor) is { } patch)
+            for (int i = 0; i < patch.Records.Count; i++)
+                if (patch.Records[i].Id == reference.Id) { record = patch.Records[i]; break; }
         if (record is not null) return true;
         if (status == MapPatchStatus.Present) status = MapPatchStatus.Missing;
         return false;

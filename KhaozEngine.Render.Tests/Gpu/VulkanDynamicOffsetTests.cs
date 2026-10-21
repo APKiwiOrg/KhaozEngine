@@ -53,9 +53,8 @@ namespace KhaozEngine.Tests.Gpu
                 shapes.Add((name, harness.Set(name)));
             }
 
-            // Includes atmosphere producers, target outlines, the point-skinned caster header,
-            // split resolves, the foliage cascade block, GpuScaledCopy, interior cut and its rigid cascade frame.
-            Assert.Equal(65, shapes.Count);
+            Assert.NotEmpty(shapes);
+            Assert.Equal(VulkanDescriptorLimitTests.ShippedLayouts.Count, shapes.Count);
 
             for (int segment = 0; segment < harness.Rings.FramesInFlight; segment++)
             {

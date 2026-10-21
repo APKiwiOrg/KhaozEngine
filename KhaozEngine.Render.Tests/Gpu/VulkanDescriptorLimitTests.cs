@@ -85,6 +85,8 @@ namespace KhaozEngine.Tests.Gpu
                     T("NormalMap"), T("RoughnessMap"), S("Sampler"), T("ShadowMap"), S("ShadowSamp"),
                     T("PointShadowMap"), T("PointShadowTransientMap")), T("InteriorCut")]),
                 ["Foliage"] = L(U("Foliage", V, dynamic: true)),
+                // ModelRenderer.PreparedFoliage.cs. Shared by colour, temporal, cascade and point passes.
+                ["SceneAnchor"] = L(U("SceneAnchor", V)),
                 // The shared frame block, fragment-only point lights and per-draw vertex block in binding order.
                 // The two uniform buffers retain their relative order from #604.
                 ["Model.skinnedMain"] = L(AtmosphereBindings.AppendLayout(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F),
@@ -259,6 +261,8 @@ namespace KhaozEngine.Tests.Gpu
             ("ModelRenderer", ["Model"]),
             ("ModelRenderer foliage", ["Model", "Foliage"]),
             ("ModelRenderer foliage motion", ["Model", "Foliage", "Motion.frame"]),
+            ("ModelRenderer prepared foliage", ["Model", "Foliage", "SceneAnchor"]),
+            ("ModelRenderer prepared foliage motion", ["Model", "Foliage", "Motion.frame", "SceneAnchor"]),
             ("ModelRenderer dissolve", ["Model"]),
             ("ModelRenderer splat", ["Model.splatFrame", "Model.splatMaterial"]),
             ("ModelRenderer tile ground", ["Model.tileGroundFrame", "Model.tileGroundMaterial"]),
@@ -300,12 +304,16 @@ namespace KhaozEngine.Tests.Gpu
             ("TemporalSplitResolve accumulate", ["Temporal.accumulate"]),
             // Rigid dissolve pipelines add the shared interior image and sampler, with no extra uniform buffer.
             ("PointShadowRenderer", ["PointShadow"]),
+            ("PointShadowRenderer prepared foliage", ["PointShadow", "SceneAnchor"]),
             ("PointShadowRenderer dissolve", ["PointShadow", "InteriorCut"]),
             ("PointShadowRenderer skinned", ["PointShadow", "PointShadow.skinnedCaster", "SkinnedBonePalette"]),
             ("PointShadowRenderer skinned dissolve", ["PointShadow", "PointShadow.skinnedCaster", "SkinnedBonePalette"]),
             ("PointShadowRenderer skinned dissolve inverted", ["PointShadow", "PointShadow.skinnedCaster", "SkinnedBonePalette"]),
             ("FoliageShadowRenderer depth", ["FoliageShadow", "Foliage"]),
             ("FoliageShadowRenderer cutout depth", ["FoliageShadow", "Foliage", "Shadow.cutout"]),
+            // Opaque and cutout prepared depth retain the material slot so both use anchor set 3.
+            ("FoliageShadowRenderer prepared depth", ["FoliageShadow", "Foliage", "Shadow.cutout", "SceneAnchor"]),
+            ("FoliageShadowRenderer prepared cutout depth", ["FoliageShadow", "Foliage", "Shadow.cutout", "SceneAnchor"]),
             ("ShadowMapRenderer depth", ["Shadow"]),
             ("ShadowMapRenderer skinned depth", ["Shadow.skinned", "SkinnedBonePalette"]),
             ("ShadowMapRenderer dissolve depth", ["Shadow.interiorFrame", "InteriorCut"]),
@@ -329,10 +337,13 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void EveryShippedPipeline_StaysWithinTheRequiredMinimumDynamicUniformBuffers()
         {
-            // Bounded water adds its domain layout and a pipeline beside the existing water layout.
-            // Both counts are stated so an emptied table cannot pass by agreeing with itself.
-            Assert.Equal(66, ShippedLayouts.Count);
-            Assert.Equal(71, ShippedPipelines.Count);
+            // Program-map completeness and the renderer capture guard check the catalog independently.
+            // Here every layout must be used and pipeline names must be unique, without stale count literals.
+            Assert.NotEmpty(ShippedPipelines);
+            Assert.Equal(ShippedPipelines.Count,
+                ShippedPipelines.Select(p => p.Pipeline).Distinct(StringComparer.Ordinal).Count());
+            Assert.Equal(ShippedLayouts.Keys.Order(StringComparer.Ordinal),
+                ShippedPipelines.SelectMany(p => p.Slots).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal));
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {

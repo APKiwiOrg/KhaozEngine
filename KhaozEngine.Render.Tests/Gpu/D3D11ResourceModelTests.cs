@@ -393,6 +393,8 @@ namespace KhaozEngine.Tests.Gpu
                 ("SkinnedMotionPalette slot", SkinnedMotionPalette.SlotBytes),
                 ("ShadowMapRenderer cascade slot", 256u),          // private const, ShadowMapRenderer.cs:41
                 ("WaterRenderer plane slot", WaterRenderer.SlotBytes),
+                ("WaterRenderer bounded transform slot", 256u),   // private BoundedSlotBytes, WaterRenderer.Bounded.cs
+                ("Prepared foliage anchor", 256u),               // SceneResourceUpload.cs anchor buffer, all prepared passes
                 ("PixelPostProcess palette", PixelPostProcess.PaletteBufferBytes),
                 ("PixelPostProcess blur", PixelPostProcess.BlurBufferBytes),
                 ("PixelPostProcess edge", PixelPostProcess.EdgeBufferBytes),

@@ -91,6 +91,42 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [Fact]
+        public void R8aResourceCatalogMatchesActualRendererPipelineLayouts()
+        {
+            using var device = new FakeGpuDevice();
+            var factory = (FakeGpuResourceFactory)device.Factory;
+            using IGpuTexture target = factory.CreateTexture(GpuTextureDescription.Texture2D(
+                64, 64, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget));
+            using IGpuFramebuffer framebuffer = factory.CreateFramebuffer(null, target);
+            using var scene = new Scene3D(device, framebuffer.Outputs);
+            CaptureBoundedWaterPipeline(scene);
+            CapturePreparedFoliagePipelines(device);
+
+            string[] programs = ["BoundedWater", "PreparedFoliage", "PreparedFoliageMotion",
+                "PreparedFoliageDepth", "PreparedFoliageDepthCutout", "PreparedFoliagePoint"];
+            var catalog = ShippedShaderPrograms.GraphicsPrograms().ToDictionary(program => program.Name);
+            foreach (string name in programs)
+            {
+                var problems = new List<string>();
+                string[] slots = VulkanShaderBindingTableTests.SlotsOf(name, problems);
+                Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
+                var program = catalog[name];
+                var captured = factory.GraphicsPipelines.Where(request => PairOf(request) == PairOf(program)).ToArray();
+                Assert.NotEmpty(captured);
+                foreach (var request in captured)
+                {
+                    Assert.Equal(slots.Length, request.Description.ResourceLayouts.Length);
+                    for (int slot = 0; slot < slots.Length; slot++)
+                    {
+                        var actual = Assert.IsType<FakeResourceLayout>(request.Description.ResourceLayouts[slot]);
+                        Assert.Equal(VulkanDescriptorLimitTests.ShippedLayouts[slots[slot]].Elements,
+                            actual.Description.Elements);
+                    }
+                }
+            }
+        }
+
+        [Fact]
         public void CompletenessDistinguishesProgramsThatShareAVertexSource()
         {
             ShippedGraphicsProgram model = ShippedShaderPrograms.GraphicsPrograms()

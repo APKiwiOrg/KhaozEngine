@@ -190,7 +190,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         public IGpuSampler CreateSampler(in GpuSamplerDescription d) => new FakeSampler();
-        public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d) => new FakeResourceLayout();
+        public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d) => new FakeResourceLayout(d);
         public IGpuResourceSet CreateResourceSet(in GpuResourceSetDescription d)
         {
             if (ThrowOnResourceSetCreate == ResourceSets.Count + 1)
@@ -322,7 +322,11 @@ namespace KhaozEngine.Tests.Gpu
     }
 
     internal sealed class FakeSampler : IGpuSampler { public void Dispose() { } }
-    internal sealed class FakeResourceLayout : IGpuResourceLayout { public void Dispose() { } }
+    internal sealed class FakeResourceLayout(GpuResourceLayoutDescription description = default) : IGpuResourceLayout
+    {
+        internal GpuResourceLayoutDescription Description { get; } = description;
+        public void Dispose() { }
+    }
 
     internal sealed class FakeResourceSet : IGpuResourceSet
     {

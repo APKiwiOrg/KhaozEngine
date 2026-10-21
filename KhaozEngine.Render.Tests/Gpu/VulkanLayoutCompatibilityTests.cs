@@ -45,7 +45,9 @@ namespace KhaozEngine.Tests.Gpu
             using var harness = new VulkanBindHarness();
             IReadOnlyList<(string Name, string[] Slots, VulkanBoundPipeline Bound)> pipelines = Build(harness);
 
-            Assert.Equal(70, pipelines.Count);   // Includes the separate rigid cascade and point dissolve cut layouts.
+            int expectedPipelines = VulkanDescriptorLimitTests.ShippedPipelines.Count;
+            Assert.NotEmpty(pipelines);
+            Assert.Equal(expectedPipelines, pipelines.Count);
 
             int pairs = 0;
             var seen = new HashSet<int>();
@@ -70,7 +72,7 @@ namespace KhaozEngine.Tests.Gpu
                 }
             }
 
-            Assert.Equal(70 * 70, pairs);
+            Assert.Equal(expectedPipelines * expectedPipelines, pairs);
 
             // AND THE GUARD IS NOT VACUOUS. A walk over pairs that were all incompatible would pass an
             // always-answer-zero implementation, so the shipped table has to actually contain compatible pairs.

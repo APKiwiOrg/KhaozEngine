@@ -943,6 +943,8 @@ untouched.
 Linux Vulkan legs. An empty `coverage-perf-unit` retains its existing filtered Render.Tests behavior,
 including the default filter and 60-minute limit. GRID setup, the NVIDIA-only Linux Vulkan ICD and
 the adapter checks still run before any measurement.
+Direct3D 11 sessions record the device's effective `immediate` or `deferred` recording mode and refuse
+an unresolved mode before any frame. The environment request is recorded separately as `KE_D3D11_RECORD`.
 
 A separately approved coverage unit selects exactly one leg with `legs`, never `all`. Supply
 `coverage-perf-unit` (1 to 64 lowercase ASCII letters, digits or hyphens), `coverage-perf-manifest-sha256`

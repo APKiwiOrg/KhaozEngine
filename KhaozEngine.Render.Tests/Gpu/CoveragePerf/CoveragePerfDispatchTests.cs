@@ -7,6 +7,18 @@ namespace KhaozEngine.Tests.Gpu;
 
 public sealed class CoveragePerfDispatchTests
 {
+    [Fact]
+    public void Identity_records_the_backend_recording_environment_key()
+    {
+        using var files = new Files();
+        var env = files.Environment();
+        env["KE_D3D11_RECORD"] = "immediate";
+        var request = CoveragePerfDispatch.Load(files.Path, name => env.GetValueOrDefault(name), (_, _) => Files.Authorization);
+        var identity = CoveragePerfDispatch.Identity(request, name => env.GetValueOrDefault(name));
+        Assert.Contains(identity.Execution.Environment, value => value.Name == "KE_D3D11_RECORD" && value.Value == "immediate");
+        Assert.DoesNotContain(identity.Execution.Environment, value => value.Name == "KE_D3D11_RECORDING_MODE");
+    }
+
     [Theory]
     [InlineData("KE_COVERAGE_PERF_UNIT", "../inline-driver")]
     [InlineData("KE_COVERAGE_PERF_UNIT", "INLINE")]

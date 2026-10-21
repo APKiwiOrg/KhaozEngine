@@ -5,6 +5,7 @@ using System.Numerics;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.D3D11.Internal;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using KhaozEngine.Tests.Render3D;
@@ -37,9 +38,14 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
     internal List<CoveragePerfTimestampTestPool> TimestampPools { get; } = [];
     internal FakeGpuResourceFactory Resources => _device.Resources;
     internal GpuCapabilities? ReportedCapabilities { get; set; }
+    readonly bool _d3d;
+    readonly D3D11RecordMode _recordMode;
 
-    CoveragePerfSceneProbe(int actors, bool covered, bool completeOutcomes, CoveragePerfTimerLayout layout, bool direct = false)
+    CoveragePerfSceneProbe(int actors, bool covered, bool completeOutcomes, CoveragePerfTimerLayout layout, bool direct = false,
+        bool d3d = false, string? recordingRequest = null)
     {
+        _d3d = d3d;
+        _recordMode = D3D11RecordModes.Resolve(recordingRequest, out _);
         _completeOutcomes = completeOutcomes;
         _layout = layout;
         _device = new(this);
@@ -57,6 +63,8 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
         CoveragePerfTimerLayout layout = CoveragePerfTimerLayout.CpuOnly)
         => new(actors, covered, completeOutcomes, layout);
     internal static CoveragePerfSceneProbe OpenDirect(int actors) => new(actors, false, false, CoveragePerfTimerLayout.CpuOnly, true);
+    internal static CoveragePerfSceneProbe OpenD3D(string? recordingRequest)
+        => new(1, false, false, CoveragePerfTimerLayout.CpuOnly, d3d: true, recordingRequest: recordingRequest);
     internal void CompletePendingOutcomes()
     {
         foreach (var fence in _submittedFences) fence.Signaled = true;
@@ -170,7 +178,8 @@ internal sealed class CoveragePerfSceneProbe : IDisposable
         internal FakeGpuResourceFactory Resources => (FakeGpuResourceFactory)_inner.Factory;
         internal ProbeDevice(CoveragePerfSceneProbe probe)
         { _probe = probe; _factory = new(new CoverageRecordingFactory((FakeGpuResourceFactory)_inner.Factory, false), probe); }
-        public GpuBackendKind Backend => _inner.Backend;
+        public GpuBackendKind Backend => _probe._d3d ? GpuBackendKind.Direct3D11Native : _inner.Backend;
+        internal D3D11RecordMode RecordMode => _probe._recordMode;
         public GpuDeviceCounters Counters
         {
             get

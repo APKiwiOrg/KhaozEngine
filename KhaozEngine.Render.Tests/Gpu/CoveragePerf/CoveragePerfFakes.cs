@@ -39,6 +39,7 @@ internal sealed class CoveragePerfFakeSession : ICoveragePerfSession
         {
             Synthetic = true,
             Backend = manifest.Backend,
+            D3DRecordingMode = manifest.Backend == GpuBackendKind.Direct3D11Native ? "deferred" : "unavailable",
             Adapter = "synthetic",
             Vendor = "synthetic",
             Device = "synthetic",

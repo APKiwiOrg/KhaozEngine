@@ -81,7 +81,7 @@ internal static class CoveragePerfDispatch
             {
                 HostCpu = HostCpu(environment),
                 Environment = new[] { "RUNNER_NAME", "RUNNER_OS", "RUNNER_ARCH", "RUNNER_ENVIRONMENT", "GITHUB_JOB",
-                    "VK_DRIVER_FILES", "VK_ICD_FILENAMES", "KE_GRAPHICS_BACKEND", "KE_D3D11_RECORDING_MODE" }
+                    "VK_DRIVER_FILES", "VK_ICD_FILENAMES", "KE_GRAPHICS_BACKEND", "KE_D3D11_RECORD" }
                     .Select(key => new CoveragePerfEnvironmentValue(key, environment(key) ?? "unset")).ToImmutableArray(),
             },
         };

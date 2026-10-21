@@ -7,6 +7,18 @@ namespace KhaozEngine.Tests.Gpu;
 
 public sealed class CoveragePerfDispatchTests
 {
+    [Fact]
+    public void Identity_records_the_backend_recording_environment_key()
+    {
+        using var files = new Files();
+        var env = files.Environment();
+        env["KE_D3D11_RECORD"] = "immediate";
+        var request = CoveragePerfDispatch.Load(files.Path, name => env.GetValueOrDefault(name), (_, _) => Files.Authorization);
+        var identity = CoveragePerfDispatch.Identity(request, name => env.GetValueOrDefault(name));
+        Assert.Contains(identity.Execution.Environment, value => value.Name == "KE_D3D11_RECORD" && value.Value == "immediate");
+        Assert.DoesNotContain(identity.Execution.Environment, value => value.Name == "KE_D3D11_RECORDING_MODE");
+    }
+
     [Theory]
     [InlineData("KE_COVERAGE_PERF_UNIT", "../inline-driver")]
     [InlineData("KE_COVERAGE_PERF_UNIT", "INLINE")]
@@ -55,6 +67,7 @@ public sealed class CoveragePerfDispatchTests
 
     [Theory]
     [InlineData("C0", "Linux", "vulkan-native", "")]
+    [InlineData("C1", "Linux", "vulkan-native", "")]
     [InlineData("G1", "Linux", "vulkan-native", "linux-vulkan")]
     [InlineData("G2", "Windows", "direct3d11-native", "windows-d3d11")]
     [InlineData("G3", "Windows", "vulkan-native", "windows-vulkan")]
@@ -65,6 +78,7 @@ public sealed class CoveragePerfDispatchTests
         env["RUNNER_OS"] = os;
         env["KE_GRAPHICS_BACKEND"] = backend;
         env["KE_COVERAGE_PERF_LEG"] = leg;
+        if (preset.StartsWith('G')) env.Remove("KE_COVERAGE_PERF_PRESET");
         var request = CoveragePerfDispatch.Load(files.Path, name => env.GetValueOrDefault(name), (_, _) => Files.Authorization);
         var identity = CoveragePerfDispatch.Identity(request, name => env.GetValueOrDefault(name));
         Assert.Equal(files.Run.Identity.WorkloadSha, identity.WorkloadSha);
@@ -74,6 +88,29 @@ public sealed class CoveragePerfDispatchTests
         Assert.Equal(files.Run.Identity.Runner, identity.Runner);
         Assert.Equal(Environment.ProcessId, identity.ProcessId);
         Assert.Equal("123456789-1-" + Environment.ProcessId, identity.RunId);
+        if (preset.StartsWith('C'))
+            Assert.Contains(identity.Execution.Environment, value => value.Name == "KE_COVERAGE_PERF_PRESET" && value.Value == preset);
+    }
+
+    [Theory]
+    [InlineData("C0", "C1")]
+    [InlineData("C1", "C0")]
+    [InlineData("C0", null)]
+    [InlineData("C1", null)]
+    [InlineData("C0", "")]
+    [InlineData("C1", "")]
+    [InlineData("C0", " C0")]
+    [InlineData("C1", "C1\n")]
+    public void CPU_timeout_preset_must_match_the_approved_manifest(string approved, string? selected)
+    {
+        using var files = new Files(approved);
+        var env = files.Environment();
+        if (selected is null) env.Remove("KE_COVERAGE_PERF_PRESET");
+        else env["KE_COVERAGE_PERF_PRESET"] = selected;
+        var request = CoveragePerfDispatch.Load(files.Path, name => env.GetValueOrDefault(name), (_, _) => Files.Authorization);
+
+        var error = Assert.Throws<InvalidDataException>(() => CoveragePerfDispatch.Identity(request, name => env.GetValueOrDefault(name)));
+        Assert.Contains("KE_COVERAGE_PERF_PRESET", error.Message, StringComparison.Ordinal);
     }
 
     // The run's facts exist only at dispatch. They are recorded beside the workload and never matched to the manifest.
@@ -165,6 +202,7 @@ public sealed class CoveragePerfDispatchTests
             ["KE_COVERAGE_PERF_UNIT"] = Run.Identity.UnitId,
             ["KE_COVERAGE_PERF_MANIFEST_SHA256"] = Run.Identity.ManifestSha256,
             ["KE_COVERAGE_PERF_WORKLOAD_SHA"] = Run.Identity.WorkloadSha,
+            ["KE_COVERAGE_PERF_PRESET"] = CoveragePerfManifest.Parse(Run.Json).Preset,
             ["GITHUB_SHA"] = Run.Identity.WorkflowSha,
             ["GITHUB_RUN_ID"] = Run.Identity.WorkflowRunId,
             ["GITHUB_RUN_ATTEMPT"] = "1",

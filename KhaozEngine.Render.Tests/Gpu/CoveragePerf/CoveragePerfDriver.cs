@@ -164,6 +164,8 @@ internal static class CoveragePerfDriver
         if (info.OrdinarySkinningRoute != manifest.OrdinarySkinning || info.CoveredSurfaceRoute != manifest.CoveredSurface)
             return "Effective routes do not match the approved GPU routes.";
         if (info.Backend != manifest.Backend) return "Effective backend does not match the approved backend.";
+        if (info.Backend == KhaozEngine.Gpu.GpuBackendKind.Direct3D11Native && info.D3DRecordingMode is not ("immediate" or "deferred"))
+            return "D3D recording mode configuration is unresolved.";
         if (!info.Synthetic && !info.NativeDevice) return "Session has no native device evidence.";
         if (block.TimerLayout == CoveragePerfTimerLayout.CpuOnly) return null;
         if (info.SoftwareAdapter) return "Software adapter cannot establish GPU proof.";

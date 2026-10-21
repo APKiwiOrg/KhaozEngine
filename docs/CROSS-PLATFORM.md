@@ -946,6 +946,8 @@ including the default filter and 60-minute limit. GRID setup, the NVIDIA-only Li
 the adapter checks still run before any measurement. The partner T4 images ship no PowerShell 7, so measurement mode first
 installs PowerShell 7.6.7 from its official release, checks the published SHA-256 and puts it first on
 `PATH`. Ordinary benches skip that install.
+Direct3D 11 sessions record the device's effective `immediate` or `deferred` recording mode and refuse
+an unresolved mode before any frame. The environment request is recorded separately as `KE_D3D11_RECORD`.
 
 A separately approved coverage unit selects exactly one leg with `legs`, never `all`. Supply
 `coverage-perf-unit` (1 to 64 lowercase ASCII letters, digits or hyphens), `coverage-perf-manifest-sha256`
@@ -971,6 +973,10 @@ explicitly. C0 has a 20-minute job limit and C1 has 120, because lavapipe takes 
 each 32-actor frame. This route proves CPU preparation only. The
 existing stress behavior stays unchanged when the switch is false and the four coverage strings are
 empty.
+After checkout and before installation, preflight parses the selected manifest and refuses unless its
+`preset` matches the requested timeout preset. The fixed environment forwards `KE_COVERAGE_PERF_PRESET`,
+which the entrypoint requires and compares with the manifest before creating a clock or device.
+GPU presets retain their named-leg authorization binding and common 30-minute cap.
 
 Before either dispatch, root obtains exact owner approval for that single run. The committed manifest
 binds only approval-time facts: the unit, exact byte hash, workload SHA, baseline main SHA, preset,

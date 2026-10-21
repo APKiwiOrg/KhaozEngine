@@ -5,7 +5,7 @@ namespace KhaozEngine.Tests.Gpu;
 
 public sealed class CoveragePerfWorkflowTests
 {
-    const string SharedPin = "48e77b6b3b22185bb94f3f95d84b29b35bd38401";
+    const string SharedPin = "be83a7eccc1584d31582c33709e76753d821e2ef";
     static string Gpu => CoveragePerfDiscoveryTests.Read(".github/workflows/gpu-hosted-bench.yml");
     static string Stress => CoveragePerfDiscoveryTests.Read(".github/workflows/stress-test.yml");
 
@@ -50,6 +50,7 @@ public sealed class CoveragePerfWorkflowTests
     public void Stress_preserves_the_existing_contract_and_pins_the_reviewed_shared_workflow()
     {
         Assert.Contains("stress-test.yml@" + SharedPin + " #", Stress, StringComparison.Ordinal);
+        Assert.DoesNotContain("48e77b6b3b22185bb94f3f95d84b29b35bd38401", Stress, StringComparison.Ordinal);
         Assert.DoesNotContain("a0f13d51e", Stress, StringComparison.Ordinal);
         Assert.DoesNotContain("b44c61e03", Stress, StringComparison.Ordinal);
         Assert.DoesNotContain("b177e97c3", Stress, StringComparison.Ordinal);

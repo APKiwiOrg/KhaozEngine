@@ -339,6 +339,7 @@ internal sealed class CoveragePerfNativeSession : ICoveragePerfSession
         Synthetic = _host.Synthetic,
         NativeDevice = !_host.Synthetic,
         Backend = _device.Backend,
+        D3DRecordingMode = CoveragePerfNativeHost.RecordingMode(_host.Device),
         Adapter = _device.Capabilities.DeviceName ?? "unavailable",
         Vendor = CoveragePerfHardwareIdentity.FormatId(_device.Capabilities.PciVendorId),
         Device = CoveragePerfHardwareIdentity.FormatId(_device.Capabilities.PciDeviceId),

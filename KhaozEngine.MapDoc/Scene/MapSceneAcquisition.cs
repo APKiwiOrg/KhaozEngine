@@ -14,10 +14,10 @@ namespace KhaozEngine.MapDoc.Scene;
 /// <summary>Bounded dependency closure, followed by one atomic neutral snapshot publication.</summary>
 internal static class MapSceneAcquisition
 {
-    internal static MapScopedSceneResult Run(MapSceneSource source, MapSceneScope scope)
+    internal static MapScopedSceneResult Run(MapSceneSource source, MapSceneScope scope, MapSceneAdmission? shared = null)
     {
         var data = source.Data;
-        var admission = new MapSceneAdmission(data.Limits);
+        var admission = shared ?? new MapSceneAdmission(data.Limits);
         long visits = 0, metadataRows = 0, memberships = 0;
         string digest = "";
         var required = new HashSet<MapSceneResourceKey>();

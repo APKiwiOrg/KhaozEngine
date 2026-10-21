@@ -93,9 +93,15 @@ internal sealed class MapWaterWorkMeter
         foreach (MapWaterRing ring in domain.Rings ?? Array.Empty<MapWaterRing>()) vertices += ring?.Vertices?.Count ?? 0;
         VertexCount = (int)Math.Min(vertices, int.MaxValue);
         if (vertices > _limits.MaxPieceVertices) throw new MapWaterCapacityException(PieceVertices);
+        Scene.MapSceneAdmission.Current?.ReserveBytes(checked(pieces * 512L + vertices * 128L));
     }
 
-    internal void ChargeFootprintCells(int cells) => CellCount = Charge(CellCount, cells, _limits.MaxFootprintCells, FootprintCells);
+    internal void ChargeFootprintCells(int cells)
+    {
+        int next = Charge(CellCount, cells, _limits.MaxFootprintCells, FootprintCells);
+        Scene.MapSceneAdmission.Current?.ReserveBytes(checked(cells * 128L));
+        CellCount = next;
+    }
 
     internal void CountFootprintRects(int rects) => FootprintRects = checked(FootprintRects + rects);
 
@@ -106,6 +112,7 @@ internal sealed class MapWaterWorkMeter
         _boundSlots += slots;
         _boundCells += cells;
         if (_boundSlots + _boundCells > _limits.MaxBoundCells) throw new MapWaterCapacityException(BoundCells);
+        Scene.MapSceneAdmission.Current?.ReserveBytes(checked((long)(slots + cells) * 16L));
     }
 
     /// <summary>Charges one bound read and the faces its preflight counted, before the read runs.</summary>
@@ -113,6 +120,7 @@ internal sealed class MapWaterWorkMeter
     {
         _boundFaces = checked(_boundFaces + faces);
         if (_boundFaces > _limits.MaxBoundFaces) throw new MapWaterCapacityException(BoundFaces);
+        Scene.MapSceneAdmission.Current?.ReserveBytes(checked(128L + faces * 1280L));
         BoundReads = checked(BoundReads + 1);
     }
 
@@ -122,7 +130,12 @@ internal sealed class MapWaterWorkMeter
         else LowerFaces = checked(LowerFaces + faces);
     }
 
-    internal void ChargeTriangles(int triangles) => TriangleCount = Charge(TriangleCount, triangles, _limits.MaxTriangles, Triangles);
+    internal void ChargeTriangles(int triangles)
+    {
+        int next = Charge(TriangleCount, triangles, _limits.MaxTriangles, Triangles);
+        Scene.MapSceneAdmission.Current?.ReserveCompilation(triangles);
+        TriangleCount = next;
+    }
 
     static int Charge(int current, int amount, int limit, string detail)
     {

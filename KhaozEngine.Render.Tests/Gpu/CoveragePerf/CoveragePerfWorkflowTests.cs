@@ -195,17 +195,33 @@ public sealed class CoveragePerfWorkflowTests
         }
     }
 
-    // Each line must appear exactly once and in this order, so a removed, duplicated or reordered guard fails.
+    // Each line must appear exactly once anywhere in the step and in this order, so a removed, duplicated (before or
+    // after its place) or reordered guard fails.
     static void AssertOrderedLines(string step, string[] lines)
     {
         int at = 0;
         foreach (string line in lines)
         {
-            int found = step.IndexOf(line, at, StringComparison.Ordinal);
-            Assert.True(found >= 0, "Missing or out of order: " + line);
-            Assert.Equal(found, step.LastIndexOf(line, StringComparison.Ordinal));
-            at = found + line.Length;
+            int first = step.IndexOf(line, StringComparison.Ordinal);
+            Assert.True(first >= 0, "Missing: " + line);
+            Assert.True(first == step.LastIndexOf(line, StringComparison.Ordinal), "Duplicated: " + line);
+            Assert.True(first >= at, "Out of order: " + line);
+            at = first + line.Length;
         }
+    }
+
+    [Theory]
+    [InlineData("a\nb\nc\n", true)]
+    [InlineData("a\nc\n", false)]
+    [InlineData("b\na\nc\n", false)]
+    [InlineData("a\nb\nc\nb\n", false)]
+    [InlineData("b\na\nb\nc\n", false)]
+    [InlineData("a\nc\nb\nc\n", false)]
+    public void Ordered_line_pins_refuse_missing_reordered_and_duplicated_lines(string step, bool accepted)
+    {
+        string[] lines = { "a\n", "b\n", "c\n" };
+        if (accepted) AssertOrderedLines(step, lines);
+        else Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => AssertOrderedLines(step, lines));
     }
 
     [Fact]

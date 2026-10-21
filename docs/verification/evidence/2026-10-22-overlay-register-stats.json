@@ -1,0 +1,1307 @@
+{
+  "run": 39645167978,
+  "authorizationCommit": "3701f4454578adfc80b6837f6116b427c5c1ebd1",
+  "workload": "fb36a3b7361c21403443d693639ee0c068105b3d",
+  "manifestSha256": "845280f6125a404bfb5d343b7465b0fe92c6695db44bf8a614a9422da151fd17",
+  "captureJsonSha256": "aafcd7cb0afcdbfd58abed08fd4320e5f8cc7ffb39ef9d9920e5bc7bfbb25ad9",
+  "device": {
+    "backend": "VulkanNative",
+    "adapter": "Tesla T4",
+    "driver": "NVIDIA: 590.48.01",
+    "vendor": 4318,
+    "device": 7864
+  },
+  "dispatchPlan": {
+    "fixture": "coverage-typical-gpu/1",
+    "topologyFingerprint": "1503853b3534a414f7fdf74b8f03fd74d13c83a96eca6a99c32448001d2bf928",
+    "actors": 32,
+    "kernels": [
+      {
+        "name": "CoverageCorrectFacesOverlay",
+        "phase": "CorrectFacesOverlay",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 37,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageReset",
+        "phase": "Reset",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 110,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageSkin",
+        "phase": "Skin",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 18,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageReduceSkin",
+        "phase": "ReduceSkin",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 1,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageValidateSource",
+        "phase": "ValidateSource",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 18,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageReduceSource",
+        "phase": "ReduceSource",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 1,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageValidateAliases",
+        "phase": "ValidateAliases",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 1,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageReduceAliases",
+        "phase": "ReduceAliases",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 1,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageInterpolateGroups",
+        "phase": "InterpolateGroups",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 20,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageReduceGroups",
+        "phase": "ReduceGroups",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 1,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageValidateAttributes",
+        "phase": "ValidateAttributes",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 20,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageReduceAttributes",
+        "phase": "ReduceAttributes",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 1,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageFillBefore",
+        "phase": "FillBefore",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 20,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageConformGroups",
+        "phase": "ConformGroups",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 20,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageConformBoundary",
+        "phase": "ConformBoundary",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 20,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageConformResume",
+        "phase": "ConformResume",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 20,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageCopyPointAliases",
+        "phase": "CopyPointAliases",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 20,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageReduceConform",
+        "phase": "ReduceConform",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 1,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageCorrectFaces",
+        "phase": "CorrectFaces",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 37,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageCorrectFacesFinish",
+        "phase": "CorrectFacesFinish",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 37,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageReduceFaces",
+        "phase": "ReduceFaces",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 1,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageGatherCorrections",
+        "phase": "GatherCorrections",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 20,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageCheckFullTargets",
+        "phase": "CheckFullTargets",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 20,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageReduceFullTargets",
+        "phase": "ReduceFullTargets",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 1,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageCopyCorrectedAliases",
+        "phase": "CopyCorrectedAliases",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 20,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageTransitionGroups",
+        "phase": "TransitionGroups",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 20,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageStoreTransition",
+        "phase": "StoreTransition",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 20,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageValidateVertices",
+        "phase": "ValidateVertices",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 20,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageReduceVertices",
+        "phase": "ReduceVertices",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 1,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoveragePrepareNormalBasis",
+        "phase": "PrepareNormalBasis",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 37,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageFinishNormalBasis",
+        "phase": "FinishNormalBasis",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 37,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageValidateFaces",
+        "phase": "ValidateFaces",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 37,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageReduceFacesOrientation",
+        "phase": "ReduceFacesOrientation",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 1,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageGatherAttributes",
+        "phase": "GatherAttributes",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 20,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageReduceAttributesFinal",
+        "phase": "ReduceAttributesFinal",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 1,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      },
+      {
+        "name": "CoverageSelect",
+        "phase": "Select",
+        "localSize": {
+          "x": 64,
+          "y": 1,
+          "z": 1
+        },
+        "groups": {
+          "x": 20,
+          "y": 32,
+          "z": 1
+        },
+        "compiler": null
+      }
+    ]
+  },
+  "registerGoalPassed": false,
+  "conditionalResidentBlocks": 6,
+  "conditionalOccupancyPercent": 37.5,
+  "measurementTestCounters": {
+    "total": "1",
+    "executed": "1",
+    "passed": "1",
+    "failed": "0",
+    "error": "0",
+    "timeout": "0",
+    "aborted": "0",
+    "inconclusive": "0",
+    "passedButRunAborted": "0",
+    "notRunnable": "0",
+    "notExecuted": "0",
+    "disconnected": "0",
+    "warning": "0",
+    "completed": "0",
+    "inProgress": "0",
+    "pending": "0"
+  },
+  "unitStatus": "Completed",
+  "cpuStatus": "Unproved",
+  "gpuStatus": "Unproved",
+  "rows": [
+    {
+      "phase": "CorrectFacesOverlay",
+      "groups": {
+        "x": 37,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 164,
+        "Binary Size": 68480,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 4864
+      },
+      "sourceSha256": "f506697ed4956970b644b4cb96c0ae8e743801269890eb3551b632e0276e0845",
+      "shaderArtifactSha256": "80c9ade18f48245783841f5a5578059690e8b2309fad8e3282f2b2f59ebbd67a",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "Reset",
+      "groups": {
+        "x": 110,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 16,
+        "Binary Size": 3584,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 0
+      },
+      "sourceSha256": "927ad2398b59fa2ac9f0d41ee967bf54dc39672914b6c0c5f494a6ed41da9a97",
+      "shaderArtifactSha256": "bc4f47bf6fdb77b54d6ae67f36820cc34c5f82052e5ac454b108afa554502ed2",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "Skin",
+      "groups": {
+        "x": 18,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 58,
+        "Binary Size": 28800,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 0
+      },
+      "sourceSha256": "cd796af9adc383e4380f77363ec8f76d166764bf52d634e1a72c1d2e972836f1",
+      "shaderArtifactSha256": "88b2a71fec9fd136a182e6e2df6acc52c3a41699d0ab759357019d5579f14aec",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "ReduceSkin",
+      "groups": {
+        "x": 1,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 19,
+        "Binary Size": 2304,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 256
+      },
+      "sourceSha256": "2829df19fa7d2afd8f148ae77c75c65578a035f4fafe62c1b83b31d060cc7259",
+      "shaderArtifactSha256": "5004ad68d627acc6d3669f90cbdde978a7cfd3dee1f2099c3cfd6a782474c2cf",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "ValidateSource",
+      "groups": {
+        "x": 18,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 30,
+        "Binary Size": 6016,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 0
+      },
+      "sourceSha256": "9ddf84b029c87d7b34512261ef8453b2e2157daa27ec9d90e099d528a55866ef",
+      "shaderArtifactSha256": "0401d6f59ef6350ca0602d5cdcac7df2d5354054a1f3228473dba346e7c3f6f1",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "ReduceSource",
+      "groups": {
+        "x": 1,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 19,
+        "Binary Size": 2304,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 256
+      },
+      "sourceSha256": "3fc35740073dc54edefc55d4ef43008ca6e0394825690b1ac8bce8e778c658da",
+      "shaderArtifactSha256": "f411f49a654916e3efe028778d48f91cae59a7450183fe83593585245147050f",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "ValidateAliases",
+      "groups": {
+        "x": 1,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 16,
+        "Binary Size": 3200,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 0
+      },
+      "sourceSha256": "9b688628239f3347461ba8398dab64d7a48f0d6f615e3d03053e4479730dcebf",
+      "shaderArtifactSha256": "3df1d13fc996f1ffd357c8b71d1cfbf412044a729e41b17a19b9381e467b8ba0",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "ReduceAliases",
+      "groups": {
+        "x": 1,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 19,
+        "Binary Size": 2304,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 256
+      },
+      "sourceSha256": "bd211e062ae2db3e731f38e0d22ed066cf3e5266bfed83a6f3c7578189283716",
+      "shaderArtifactSha256": "0132b61d436bdbeb1816fe1608f4d500d0df872309e70a145b00bc1e05436f26",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "InterpolateGroups",
+      "groups": {
+        "x": 20,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 36,
+        "Binary Size": 9216,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 0
+      },
+      "sourceSha256": "8ef2b01e7bb16baf0b8c1b8b5ad6c737824ad30c35666429fd18ae4f52e56990",
+      "shaderArtifactSha256": "ea582182abc9d0c780f74464a153cc3991fea441c0006e4fb28d392616fb855b",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "ReduceGroups",
+      "groups": {
+        "x": 1,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 19,
+        "Binary Size": 2304,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 256
+      },
+      "sourceSha256": "2d92908b1a706826dc9c4978f70d6cafe801bf74fee250b7afcc450794c834bc",
+      "shaderArtifactSha256": "df5855565af45e01da81c4edd9eabf7fd5c99d0ffb18c1c57d639e3d5fbeab14",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "ValidateAttributes",
+      "groups": {
+        "x": 20,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 55,
+        "Binary Size": 24192,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 0
+      },
+      "sourceSha256": "b10e7e66db02569145b40edb9578eb8da8bbf4007094a843b24537b0094fbdc6",
+      "shaderArtifactSha256": "2b9e58e78c99602a1581a2c5ed917d195e083d3ef74c2d0d49d42a40d0ffe027",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "ReduceAttributes",
+      "groups": {
+        "x": 1,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 19,
+        "Binary Size": 2304,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 256
+      },
+      "sourceSha256": "931b32f7576137230fc16af0fa27ce0e70dc6f7bcbea757617a031c922b0aad3",
+      "shaderArtifactSha256": "1f272ffec405ad7b6cfec0deeaedfcaf9dc90cedf72d07d39e676dd071e9a2d2",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "FillBefore",
+      "groups": {
+        "x": 20,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 18,
+        "Binary Size": 3840,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 0
+      },
+      "sourceSha256": "00feec8c73e812eb378616c7f9f125e7a7a9aebbc48791951dccea6c1f6877fa",
+      "shaderArtifactSha256": "0abac26e2b52781248f88201115bf69caba4aba50281796dfefb16110bba7843",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "ConformGroups",
+      "groups": {
+        "x": 20,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 122,
+        "Binary Size": 60800,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 0
+      },
+      "sourceSha256": "3a52e297abea3c138f90303a4c31a24a84cd63ba036648a151b5fba6fe4068d8",
+      "shaderArtifactSha256": "2277e030dc1de92ec2e04c26bf18b9a95725fc6b0644d3c93aa50198c0fe8f83",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "ConformBoundary",
+      "groups": {
+        "x": 20,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 80,
+        "Binary Size": 39424,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 3328
+      },
+      "sourceSha256": "3bb3b91c54e71dc57d9a2b76d3f34bad8fd4a6fab1f137ad9e3a0d6dc3b2c45e",
+      "shaderArtifactSha256": "5f5288f0108169d77b13839c89d10764791044337a9c2ab092895288f3f7941d",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "ConformResume",
+      "groups": {
+        "x": 20,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 42,
+        "Binary Size": 13568,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 0
+      },
+      "sourceSha256": "57f1b71fde68249694e22b4ddc679fec2cd06a40c91adbc35d8365c9e73abaaa",
+      "shaderArtifactSha256": "47bf4fb454ca39c955eb8209935397830501dc8737564e2ea37fd8bc7eb7204b",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "CopyPointAliases",
+      "groups": {
+        "x": 20,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 22,
+        "Binary Size": 4736,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 0
+      },
+      "sourceSha256": "6b61a54f8fa657afce52a17f4c29dab4141e068b9a5519dba842334df06a83bf",
+      "shaderArtifactSha256": "760cd8f72b9caa22568db476e6994f665c2c83fd98fbcaf9d35825fbb9b24957",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "ReduceConform",
+      "groups": {
+        "x": 1,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 17,
+        "Binary Size": 6528,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 256
+      },
+      "sourceSha256": "4da8c7eb08b9486866b963f2299d47b0a60ed5abda21cdc38fea6a975b6d840e",
+      "shaderArtifactSha256": "a4d5b5d6e9e42cb1a29f12f4f7facf193492b10095a8052a0f1c397dc13c72f7",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "CorrectFaces",
+      "groups": {
+        "x": 37,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 128,
+        "Binary Size": 74368,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 1792
+      },
+      "sourceSha256": "d07bcc07682e73625f229b25b5a587ec1269078f9ec02f78a802f2b539ba35c8",
+      "shaderArtifactSha256": "332a2857b3059816da8763e880bdbadd17a94b1d3788e3e2ab51e06324faff3a",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "CorrectFacesFinish",
+      "groups": {
+        "x": 37,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 31,
+        "Binary Size": 12416,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 0
+      },
+      "sourceSha256": "e91101330b4464df3f43e1123cb994c2df6fb2ab540e46e3db4892e63e902de2",
+      "shaderArtifactSha256": "db23822f6de0847a9f506f26cde33960d151f63fc5678105db2a4df2e39f5586",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "ReduceFaces",
+      "groups": {
+        "x": 1,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 18,
+        "Binary Size": 7168,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 256
+      },
+      "sourceSha256": "9a80d2eb0aa18b3a444278c783c8f38249298bd46d26cac17c19cfbf9235d1b4",
+      "shaderArtifactSha256": "14763b3b73d60d3ab937490b983476d1dbaedefcc9ddf29456f99f62cb94a4f2",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "GatherCorrections",
+      "groups": {
+        "x": 20,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 19,
+        "Binary Size": 5888,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 0
+      },
+      "sourceSha256": "9af3660fedaa178938948a9d85e8ad0eafa11587ebae6791b6a816487de90e0b",
+      "shaderArtifactSha256": "03359959cdb46f4858e7fb66974dd10a349abde218cdded9a68d0636ff3471d2",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "CheckFullTargets",
+      "groups": {
+        "x": 20,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 41,
+        "Binary Size": 20352,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 0
+      },
+      "sourceSha256": "4099d7c29711ae9cb2ac5014a80dd7abeb55b0d126c41dc4815138fcddd599cc",
+      "shaderArtifactSha256": "6cc43791e6968b9fded323bd13a554d3bce0e176efcfc36ecaa41e40267a9c49",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "ReduceFullTargets",
+      "groups": {
+        "x": 1,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 17,
+        "Binary Size": 6528,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 256
+      },
+      "sourceSha256": "e8341658381894fccd5452e627cdb6f00629524e97a1db6c856d918c9a1d7be8",
+      "shaderArtifactSha256": "d17cf3b3cf344ea91e723428a5b54e8ac3fbd05228db3c82089e83c5a54f0faa",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "CopyCorrectedAliases",
+      "groups": {
+        "x": 20,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 16,
+        "Binary Size": 2304,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 0
+      },
+      "sourceSha256": "3c9873fb739f73696601b23125cb865ceb4bfbddcfce14e20412ddd04cdc49f8",
+      "shaderArtifactSha256": "90c38d3ee007aef5499ffd1a584ec4ebd02256b46a2c37a353b5975c8fb605af",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "TransitionGroups",
+      "groups": {
+        "x": 20,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 19,
+        "Binary Size": 4992,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 0
+      },
+      "sourceSha256": "b88324567144056d38dc1e4128a435fb5b33f3b025c849f86231edb8359e61db",
+      "shaderArtifactSha256": "21d889613c8f38929a5d3fac4a49c2dbbe9532960ad159259055a6bd102f203e",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "StoreTransition",
+      "groups": {
+        "x": 20,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 23,
+        "Binary Size": 5760,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 0
+      },
+      "sourceSha256": "c7a66523fc6709b59c26f0eedd280689b06e0a0a3bcfd45e647a2c7ca31cc8ee",
+      "shaderArtifactSha256": "a04d1b0fad4e225f89e16cd2ffcb77f4dc4156b10d676dc5d3c2dc119cc3ff39",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "ValidateVertices",
+      "groups": {
+        "x": 20,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 33,
+        "Binary Size": 5760,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 0
+      },
+      "sourceSha256": "3e9fa3ddb7f286e0864aa8c899905b6eb3247f0d994aea8711a015b3f46c8a3e",
+      "shaderArtifactSha256": "a11959c16313d853152def15f82964b7d7738b8f3cbec0c4c91d85dad0cc4095",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "ReduceVertices",
+      "groups": {
+        "x": 1,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 19,
+        "Binary Size": 2304,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 256
+      },
+      "sourceSha256": "64f90ab6b36e7a60eea9bde8a15fa394c870c3416dc2c2b05e4218e2d9de6d53",
+      "shaderArtifactSha256": "db12f35cfd1c43386d1d12889f422916d358b70d220324f1b05388a8ec7fbb50",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "PrepareNormalBasis",
+      "groups": {
+        "x": 37,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 71,
+        "Binary Size": 34432,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 0
+      },
+      "sourceSha256": "d0b0a92e52ba9af0918badc26a61e5a2f763a01d554734862ea2818ab7b2c60e",
+      "shaderArtifactSha256": "4f4aad6735a73b6a134604e87fa9b1cae3a2bdd0e519f8f2fdc97afa272d608f",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "FinishNormalBasis",
+      "groups": {
+        "x": 37,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 72,
+        "Binary Size": 15104,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 0
+      },
+      "sourceSha256": "56a540c0803ceb681b69566d93db737798ce5dd3a8345b9fd81eff9d90abb4e5",
+      "shaderArtifactSha256": "6f4161873af4d4f055dbdd0940a8e734848d43ab62403adbc062654beef7994b",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "ValidateFaces",
+      "groups": {
+        "x": 37,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 72,
+        "Binary Size": 53120,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 0
+      },
+      "sourceSha256": "72c89553d35597782c85691c611261e6f9cf7ce149102a696764142fe7f7bfba",
+      "shaderArtifactSha256": "9d1471241b07edff7b7f7dcc93a3b4c565cf30fe5c21be7d76eb64728d3ca43f",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "ReduceFacesOrientation",
+      "groups": {
+        "x": 1,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 22,
+        "Binary Size": 5504,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 1280
+      },
+      "sourceSha256": "04e1f4ac2a4d0421c99b0edb628d5dd41a029710937260f5a0ce34005389b99f",
+      "shaderArtifactSha256": "8c5d3dbacd95e0c594b65e98959978d1f7718a35cf598cf084cc0b9aa309b28c",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "GatherAttributes",
+      "groups": {
+        "x": 20,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 72,
+        "Binary Size": 40320,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 0
+      },
+      "sourceSha256": "f0a8859dc4185316fa1bc6148b07e678b0ac4600cb200c36f9fc7c37d8f5ea89",
+      "shaderArtifactSha256": "3efa1b107bfccf3614c5f354ab832695ffad5def21ea933fea2192d32d0e9b30",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "ReduceAttributesFinal",
+      "groups": {
+        "x": 1,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 19,
+        "Binary Size": 2304,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 256
+      },
+      "sourceSha256": "b2eb26aa653b142088e0ccdfe6a644faf60bee3bd37b7bd2ea5f7793446d1b90",
+      "shaderArtifactSha256": "c3a732454417919fa3e9fb71e498818e959b49e61c0974f497f53675f9bfdf72",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    },
+    {
+      "phase": "Select",
+      "groups": {
+        "x": 20,
+        "y": 32,
+        "z": 1
+      },
+      "values": {
+        "Register Count": 22,
+        "Binary Size": 11904,
+        "Stack Size": 0,
+        "Local Memory Size": 68719476736,
+        "Shared Memory Size": 0
+      },
+      "sourceSha256": "57138dd97502c259cdf3c0efa920463ba7548a09f5799755499dda934e7682fa",
+      "shaderArtifactSha256": "3574f7cd02dfc0ada0538621409e32d975d73de88650f95f739501420fc1ed49",
+      "layoutSha256": "3941ff2b9fe51d81c956f8e9e2b70b996ade0dbc2270f12e175a05f2d816df3d",
+      "configurationSha256": "0d0dc88811be13ff74e076543b20b06007328be7398e28e92242aadf5108fd98",
+      "compilerFlags": "shaderc/spirv;debug=0;opt=Zero;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main;ieee32=1;msl-zero-seed=1;label=compute shader;precise=1"
+    }
+  ]
+}

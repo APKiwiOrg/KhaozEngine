@@ -1,0 +1,129 @@
+{
+  "baselineRun": 39593539869,
+  "warmupFrames": 12,
+  "measuredFrames": 9,
+  "gateThresholdUs": 6162.567999999999,
+  "timingGatePassed": false,
+  "results": [
+    {
+      "actors": 1,
+      "baselineResolutionUs": 10642.026666666667,
+      "resolutionUs": 9472.291555555556,
+      "outsideBracketsUs": 57.91288888888812,
+      "stages": {
+        "CorrectFacesOverlay": {
+          "baselineMeanUs": 6811.491555555555,
+          "meanUs": 6048.938666666666,
+          "improvementPercent": 11.195094094581085,
+          "medianUs": 4351.776,
+          "rangeUs": [
+            3917.824,
+            10511.008
+          ],
+          "samplesUs": [
+            10511.008,
+            9429.792,
+            9650.144,
+            3935.328,
+            4342.432,
+            3940,
+            4351.776,
+            3917.824,
+            4362.144
+          ],
+          "groups": {
+            "X": 37,
+            "Y": 1,
+            "Z": 1
+          }
+        },
+        "CorrectFaces": {
+          "baselineMeanUs": 1836.291555555556,
+          "meanUs": 1640.1031111111113,
+          "improvementPercent": 10.683948518463312,
+          "medianUs": 1120.672,
+          "rangeUs": [
+            1099.936,
+            2726.144
+          ],
+          "samplesUs": [
+            2726.144,
+            2636.032,
+            2718.208,
+            1108.224,
+            1122.144,
+            1099.936,
+            1120.288,
+            1109.28,
+            1120.672
+          ],
+          "groups": {
+            "X": 37,
+            "Y": 1,
+            "Z": 1
+          }
+        }
+      }
+    },
+    {
+      "actors": 32,
+      "baselineResolutionUs": 11634.464,
+      "resolutionUs": 10072.504888888889,
+      "outsideBracketsUs": 50.10488888888722,
+      "stages": {
+        "CorrectFacesOverlay": {
+          "baselineMeanUs": 8216.757333333333,
+          "meanUs": 6564.6720000000005,
+          "improvementPercent": 20.106293350434424,
+          "medianUs": 6525.632,
+          "rangeUs": [
+            6327.072,
+            7277.984
+          ],
+          "samplesUs": [
+            7277.984,
+            6671.072,
+            6558.656,
+            6333.6,
+            6525.632,
+            6483.968,
+            6327.072,
+            6368.8,
+            6535.264
+          ],
+          "groups": {
+            "X": 37,
+            "Y": 32,
+            "Z": 1
+          }
+        },
+        "CorrectFaces": {
+          "baselineMeanUs": 1820.5937777777779,
+          "meanUs": 1887.111111111111,
+          "improvementPercent": -3.6536065400885023,
+          "medianUs": 1868.576,
+          "rangeUs": [
+            1765.504,
+            2088.96
+          ],
+          "samplesUs": [
+            2088.96,
+            2056.192,
+            1869.728,
+            1865.728,
+            1873.92,
+            1765.504,
+            1812.48,
+            1782.912,
+            1868.576
+          ],
+          "groups": {
+            "X": 37,
+            "Y": 32,
+            "Z": 1
+          }
+        }
+      }
+    }
+  ]
+}

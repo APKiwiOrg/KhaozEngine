@@ -118,13 +118,26 @@ Shoreline pixels, wall width and outline width are non-negative, with finite flo
 Both shadow offset components must be finite.
 Contour interval and pixel width must be finite and strictly positive.
 Symbol size components must be finite and positive, with a finite half-diagonal reach.
-`Coord` identifies the chunk, `Size` is its pixel edge length, and `Rgba` holds `Size * Size * 4`
-opaque RGBA8 bytes. Raster row zero is north, and column zero is west. `Revision` is captured before
-sampling, so a consumer can discard an image when the source changes during the read.
+`Coord` identifies the chunk, `Size` is its interior pixel edge length covering the chunk rectangle, and
+`Border` is the gutter width on each side, defaulting to zero. `TextureSize` is `Size + 2 * Border`, and
+`Rgba` holds `TextureSize * TextureSize * 4` opaque RGBA8 bytes. Raster row zero is north, and column zero
+is west. `ByteOffset(column, row)` addresses interior-relative pixels, so the gutter runs from `-Border`
+to `Size + Border - 1` on each axis. `Revision` is captured before sampling, so a consumer can discard an
+image when the source changes during the read.
+
+`Rasterize(source, style, chunk, border)` paints the gutter from the adjacent map area, using the same
+surface, water, contour and footprint rules as the interior. Gutter pixels therefore match the edge
+pixels of the neighbouring chunks, including void beyond the world bounds, and the interior bytes equal
+the borderless raster. The three-argument overload and the positional constructor keep a zero border.
+`WorldMapChunkCache` builds every image with a one-pixel border, so bilinear display filtering at a chunk
+edge reads real neighbouring imagery rather than wrapping to the chunk's opposite edge. Code that reads
+cache image pixels indexes through `ByteOffset` and uploads `TextureSize`, never `Size`, as the texture
+extent.
 
 At level `L`, the rasterizer uses `levelPpm = EffectivePixelsPerMetre / 2^L` and requests
 `SampleSurface(area, maxCellSize: 2f / levelPpm)`. It samples once over the chunk plus a margin of
-`2 * returnedCellSize + Water.ShorelinePixels / levelPpm` metres. The resolution contract determines
+`2 * returnedCellSize + Water.ShorelinePixels / levelPpm` metres beyond the painted area, which is the
+chunk grown by `border / levelPpm`. The resolution contract determines
 the returned cell size before sampling, so the margin covers coarse relief samples too.
 When contours are enabled, replace the shoreline pixel radius in that margin with
 `Max(Water.ShorelinePixels, Contours.WidthPixels / 2 + 1)`. This bounded neighbourhood covers
@@ -141,7 +154,7 @@ then antialias coverage in raster pixels. They require a height crossing in thei
 neighbourhood. Water, void and flat plateaus at an interval are excluded. Null contours retain
 the existing sampling margin and raster bytes.
 
-Footprints are collected over the chunk expanded by `BuildingShadowOffsetMetres.Length()` plus
+Footprints are collected over the painted area expanded by `BuildingShadowOffsetMetres.Length()` plus
 half of `WallWidthMetres`, one raster pixel and the largest visible symbol's drawn half diagonal.
 This includes the blocking fallback and excludes hidden symbols. The half diagonal covers any rotation,
 including rectangles whose corners extend beyond their largest local half extent. The same margin widens
@@ -200,8 +213,9 @@ feature anchors together. The cap must be at least one. `MaxRetainedChunks` expo
 After every build completion, including failure, and before a no-work `BuildNext` returns,
 excess images are evicted until `RetainedCount <= MaxRetainedChunks`. Eviction visits chunks without
 pending or active work first, then pending or building chunks, in oldest-request order within each
-group. The 256 default chunks of 256 by 256 RGBA pixels have a 64 MiB retained image payload bound,
-excluding feature metadata and temporary build allocations.
+group. The 256 default chunks hold 258 by 258 RGBA pixels each, a 256-pixel interior plus the one-pixel
+gutter, for a retained image payload bound of about 65 MiB, excluding feature metadata and temporary
+build allocations.
 
 Generations are `long` values allocated by one cache-wide monotonically increasing counter.
 A first request and every touching invalidation assign a fresh generation. A build captures it
@@ -211,7 +225,8 @@ so their queued or active builds still publish. `TryGet` and `IsCurrent` return 
 publishes another image. Other evicted chunks lose their entry too. Requesting those chunks again
 rebuilds them with a never-used generation, permitting views to replace any surviving upload.
 Uploaded view textures are independent of retained cache images. `Invalidate(area)` expands the edit
-separately for each cached level using that level's surface cell size and footprint reach. Builds run outside
+separately for each cached level using that level's surface cell size, footprint reach and one gutter pixel
+at the level's raster scale. Builds run outside
 the bookkeeping lock. An invalidation during a build leaves its result stale, and a failed source
 read quarantines only that generation until invalidation permits a retry.
 

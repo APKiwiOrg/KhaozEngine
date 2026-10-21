@@ -2056,6 +2056,8 @@ The world map packages are opt-in and outside every umbrella. A TileWorld client
 `KhaozEngine.TileWorld.WorldMap` and `KhaozEngine.WorldMap.Gui` explicitly, which bring
 `KhaozEngine.WorldMap` transitively. Headless tools can reference the core alone and call
 `WorldMapRasterizer.Rasterize(source, style, chunk)` for a `WorldMapChunkImage` without a GPU.
+Cache-built images carry a one-pixel `Border` of neighbouring map pixels. Read their pixels through
+`ByteOffset(column, row)` and treat `TextureSize`, not `Size`, as the stored edge length.
 
 Map positions are metres with x east and y north. `MapRect` has a south-west origin and half-open bounds.
 Use the source's `ToMap` and `ToMapHeading` for live world poses. Headings are radians clockwise from north,
@@ -2195,16 +2197,17 @@ thread. `CurrentLevel` reports the level chosen by the last usable update. It is
 `WorldMapChunking.MaxLevel` with `EffectivePixelsPerMetre / 2^level >= PixelsPerMetre`, or zero at native
 raster zoom and above. Only visible chunks of that level are requested, prioritized by distance to the view
 centre. Their uploads take the budget first. Ready coarser ancestors can use the remaining budget without
-additional requests. Missing chunks sample the matching UV sub-rectangle of the nearest uploaded coarser
-ancestor, or use `PlaceholderColor` if none exists. Stale textures remain visible until their replacements
+additional requests. Missing chunks sample the matching interior sub-rectangle of the nearest uploaded
+coarser ancestor, or use `PlaceholderColor` if none exists. Every draw samples only a texture's interior, so
+linear filtering at chunk edges reads the gutter's neighbouring map pixels. Stale textures remain visible until their replacements
 upload. Overlay anchors come only from visible built chunks of `CurrentLevel`. `Update` blocks the viewport
 through `Pointer.BlockRegion`.
 
 `MaxTextures` defaults to 192 and values below one throw `ArgumentOutOfRangeException`. After uploads and
 draw-list construction, `Update` disposes the least recently drawn textures that are absent from this
 frame's draws until the cap is met. Fallback textures count as drawn. Active draws stay protected and can
-temporarily exceed a smaller cap. The default retained chunk payload is 48 MiB per view for 192 textures
-of 256 by 256 RGBA pixels, excluding GPU overhead and temporary active-draw excess. Changing the cap takes
+temporarily exceed a smaller cap. The default retained chunk payload is about 49 MiB per view for 192
+textures of 258 by 258 RGBA pixels, gutters included, excluding GPU overhead and temporary active-draw excess. Changing the cap takes
 effect on the next usable `Update`, with all surface-owned texture disposal on the frame thread.
 
 For standard offscreen capture, construct `WorldMapView(cache, context)` inside

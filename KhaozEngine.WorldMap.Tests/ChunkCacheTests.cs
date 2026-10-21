@@ -34,7 +34,8 @@ public sealed class ChunkCacheTests
         Assert.True(cache.TryGet(new(0, 0), out var built));
         Assert.Equal(new WorldMapChunkCoord(0, 0), built.Image.Coord);
         Assert.Equal(32, built.Image.Size);
-        Assert.Equal(32 * 32 * 4, built.Image.Rgba.Length);
+        Assert.Equal(1, built.Image.Border);
+        Assert.Equal(34 * 34 * 4, built.Image.Rgba.Length);
         Assert.Equal(7, built.Image.Revision);
         Assert.Equal("bank", Assert.Single(built.Features.Icons).IconKey);
         Assert.True(cache.IsCurrent(new(0, 0)));

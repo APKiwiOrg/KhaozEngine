@@ -60,6 +60,11 @@ change its scissor. Chunk destination rectangles are clipped to the viewport on 
 source UV endpoints shrink by the same fractions. Quads also clip to the authored world bounds, including
 letterboxed small worlds. The caller can keep drawing other UI in that batch.
 
+Each upload covers the image's full `TextureSize`, gutter included. Chunk and fallback UVs address only the
+interior, so the batch's default linear sampler blends chunk-edge pixels with the neighbouring map pixels
+held in the gutter. The view needs no sampler change and no particular address mode. A zero-border image
+keeps the full `(0, 0, 1, 1)` mapping.
+
 ## Navigation
 
 Map x runs east and map y runs north, in metres. Canvas coordinates are `(mapX, -mapY)`, so north is
@@ -104,13 +109,13 @@ one. A snapshot view leaves disposal to its capture.
 building the draw list, `Update` evicts the least recently drawn texture that is absent from this frame's
 draws until retention reaches the cap. Textures used for fallback count as drawn. If active draws alone
 exceed the cap, they remain protected until a later update can evict them. Setting the cap does not dispose
-textures until `Update`. Default retained chunk imagery is 48 MiB per view, for 192 textures of
-256 by 256 RGBA pixels, excluding GPU overhead and any temporary active-draw excess. Every remaining
+textures until `Update`. Default retained chunk imagery is about 49 MiB per view, for 192 textures of
+258 by 258 RGBA pixels including their gutters, excluding GPU overhead and any temporary active-draw excess. Every remaining
 surface-owned texture is disposed with the view. Snapshot textures remain capture-owned through eviction
 and view disposal. Eviction and disposal stay on the rendering thread.
 
-A chunk with no uploaded texture samples the matching north-up UV sub-rectangle of its nearest uploaded
-coarser ancestor. With no uploaded ancestor it draws a filled rectangle in `PlaceholderColor`, which
+A chunk with no uploaded texture samples the matching north-up sub-rectangle of its nearest uploaded
+coarser ancestor's interior. With no uploaded ancestor it draws a filled rectangle in `PlaceholderColor`, which
 defaults to `cache.Style.VoidColor`. Uploaded chunks draw with `Color.White` to preserve their authored colours.
 
 The internal `WorldMapViewCore<TTexture>` separates navigation, requests, uploads and clipped draw

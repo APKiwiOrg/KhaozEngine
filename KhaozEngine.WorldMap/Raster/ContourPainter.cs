@@ -14,8 +14,8 @@ internal sealed class ContourPainter(SurfaceSampler sampler, RasterCanvas canvas
         float pixelMetres = 1f / canvas.EffectivePixelsPerMetre;
         float derivativeStep = pixelMetres * 0.5f;
         float reach = (settings.WidthPixels * 0.5f + 0.5f) * pixelMetres;
-        for (int row = 0; row < canvas.Size; row++)
-            for (int column = 0; column < canvas.Size; column++)
+        for (int row = canvas.First; row < canvas.End; row++)
+            for (int column = canvas.First; column < canvas.End; column++)
             {
                 Vector2 point = canvas.MapPoint(column, row);
                 SurfaceSample sample = sampler.Sample(point);

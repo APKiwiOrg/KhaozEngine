@@ -7,6 +7,7 @@ internal sealed class WaterPainter
 {
     readonly WorldMapWater _settings;
     readonly int _radius;
+    readonly int _offset;
     readonly int _maskSize;
     readonly bool[] _dry;
 
@@ -14,13 +15,15 @@ internal sealed class WaterPainter
     {
         _settings = settings;
         _radius = settings.ShorelinePixels;
-        _maskSize = checked(canvas.Size + 2 * _radius);
+        // The mask spans every painted pixel, gutter included, plus the shoreline radius.
+        _offset = checked(canvas.Border + _radius);
+        _maskSize = checked(canvas.TextureSize + 2 * _radius);
         _dry = _radius > 0 ? new bool[checked(_maskSize * _maskSize)] : [];
         if (_radius <= 0) return;
         for (int row = 0; row < _maskSize; row++)
             for (int column = 0; column < _maskSize; column++)
             {
-                SurfaceSample sample = sampler.Sample(canvas.MapPoint(column - _radius, row - _radius));
+                SurfaceSample sample = sampler.Sample(canvas.MapPoint(column - _offset, row - _offset));
                 _dry[row * _maskSize + column] = sample.HasGround && !sample.IsWet;
             }
     }
@@ -29,7 +32,7 @@ internal sealed class WaterPainter
     {
         for (int dy = -_radius; dy <= _radius; dy++)
             for (int dx = -_radius; dx <= _radius; dx++)
-                if (_radius > 0 && _dry[(y + _radius + dy) * _maskSize + x + _radius + dx])
+                if (_radius > 0 && _dry[(y + _offset + dy) * _maskSize + x + _offset + dx])
                     return _settings.Shoreline;
 
         float depth = MathUtil.Clamp01((sample.WaterSurface - sample.Height) / _settings.DeepDepthMetres);

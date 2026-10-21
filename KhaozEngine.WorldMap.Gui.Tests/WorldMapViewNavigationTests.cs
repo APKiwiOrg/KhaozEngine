@@ -161,7 +161,7 @@ public sealed class WorldMapViewNavigationTests
         var item = Assert.Single(view.DrawList);
         Assert.NotNull(item.Texture);
         Assert.Equal(new Rect(172f, 136f, 256f, 128f), item.Destination);
-        Assert.Equal(new Vector4(0.25f, 0.375f, 0.75f, 0.625f), item.SourceUv);
+        ChunkUv.AssertInterior(new Vector4(0.25f, 0.375f, 0.75f, 0.625f), item);
     }
 
     /// <summary>Empty authored bounds allow navigation without queuing work or drawing chunks.</summary>

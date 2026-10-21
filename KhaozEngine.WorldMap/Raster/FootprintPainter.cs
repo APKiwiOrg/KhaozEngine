@@ -41,7 +41,7 @@ internal sealed class FootprintPainter(RasterCanvas canvas, WorldMapStyle style)
     void PaintShape(CoverageSampler shape, Color fill, Color outline, float inset)
     {
         MapRect bounds = shape.Bounds;
-        if (!bounds.Intersects(canvas.Rect)) return;
+        if (!bounds.Intersects(canvas.PaintedRect)) return;
         int left = PixelEdge((bounds.X - canvas.Rect.X) * canvas.EffectivePixelsPerMetre, roundUp: false);
         int right = PixelEdge((bounds.Right - canvas.Rect.X) * canvas.EffectivePixelsPerMetre, roundUp: true);
         int top = PixelEdge((canvas.Rect.Top - bounds.Top) * canvas.EffectivePixelsPerMetre, roundUp: false);
@@ -66,5 +66,5 @@ internal sealed class FootprintPainter(RasterCanvas canvas, WorldMapStyle style)
     }
 
     int PixelEdge(float edge, bool roundUp) =>
-        (int)Math.Clamp(roundUp ? MathF.Ceiling(edge) : MathF.Floor(edge), 0f, canvas.Size);
+        (int)Math.Clamp(roundUp ? MathF.Ceiling(edge) : MathF.Floor(edge), canvas.First, canvas.End);
 }

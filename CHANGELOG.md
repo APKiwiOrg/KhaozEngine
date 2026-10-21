@@ -14,6 +14,12 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Add immutable `WorldMapSymbolGeometry` outlines and detail strokes, with rotated coverage and silhouette shadows.
 - Add `WorldMapView` construction from `Render2DContext`, retaining snapshot-owned textures through capture submission.
 - Existing world-map styles retain their default raster bytes. These additions resolve #1520.
+- Fix thin lines along world-map chunk edges at fractional zoom. Linear filtering wrapped each chunk to its
+  own opposite edge. `WorldMapChunkCache` images now carry a one-pixel `WorldMapChunkImage.Border` of real
+  neighbouring map pixels, and `WorldMapView` uploads the whole texture and samples only the interior,
+  including parent fallback. `WorldMapRasterizer.Rasterize(source, style, chunk, border)` adds the gutter,
+  while the three-argument overload and positional constructor stay borderless. Read cache image pixels
+  through `ByteOffset` and upload `TextureSize` (#1524).
 
 ## 21.9.0
 

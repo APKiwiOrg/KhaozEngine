@@ -78,7 +78,7 @@ public sealed class CoverageDispatchProfileGpuTests(ITestOutputHelper output)
             var stages = CoverageDispatchProfiler.Phases.Select((phase, i) => new
             {
                 stage = phase.ToString(),
-                localSizeX = CoverageGpuSkinRefineGlsl.IsReducer(phase) ? 1 : 64,
+                localSizeX = 64,
                 groups = frames[0].Groups[i],
                 meanMicroseconds = frames.Average(f => f.StageMicroseconds[i]),
                 maxMicroseconds = frames.Max(f => f.StageMicroseconds[i]),

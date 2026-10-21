@@ -263,11 +263,24 @@ namespace KhaozEngine.Tests.Gpu
             Drive(() => _ = device.Map(buffer, GpuMapMode.Read), nameof(device.Map));
             Drive(() => device.Unmap(buffer), nameof(device.Unmap));
 
-            // AND THE SECOND Submit OVERLOAD, on a real recording, because the fence arm is where the timeline
+            // THE SINGLE-FENCE Submit OVERLOAD, on a real recording, because the fence arm is where the timeline
             // signal is encoded and a device that could submit but not arm a fence would pass a list-only call.
             list.Begin();
             list.End();
             Drive(() => device.Submit(list, fence), nameof(device.Submit));
+
+            // THE NON-BLOCKING READ, on the staging buffer and that submission's fence. Either completion state
+            // is built: this row asks whether the member works, not whether the GPU has already finished.
+            Drive(() => _ = device.TryReadBuffer(buffer, fence, 0u, new byte[16]), nameof(device.TryReadBuffer));
+
+            // AND THE MULTI-FENCE Submit OVERLOAD, on a fresh recording and two fresh completions, so the seam's
+            // default single-fence fallback cannot satisfy this call.
+            using IGpuFence firstCompletion = device.Factory.CreateFence();
+            using IGpuFence secondCompletion = device.Factory.CreateFence();
+            list.Begin();
+            list.End();
+            Drive(() => device.Submit(list, (ReadOnlySpan<IGpuFence>)new[] { firstCompletion, secondCompletion }),
+                nameof(device.Submit));
 
             // AND THE REFUSAL THAT IS LEFT IS ABOUT THE CALLER, not about the package. Asserted by its message
             // rather than by its type, because both shapes are exceptions and only the message tells a reader

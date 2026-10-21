@@ -48,6 +48,15 @@ public sealed class TemporalVisibilityCostDecompositionCostPerfGpuTests(ITestOut
     [GpuFact(RequiresRealGpu = true)]
     public void TheMovingFieldAtQualityIsDecomposedAt1440p() => Run(field: true, TemporalUpscale.Quality);
 
+    // temporalStoredLock: a mark's level is an odd whole number below zero, so the remainder of minus one minus the
+    // stored value over two is the lock.
+    static float StoredLock(float stored)
+    {
+        if (!(stored < -0.5f)) return stored;
+        float x = -1f - stored;
+        return x - 2f * MathF.Floor(x / 2f);
+    }
+
     sealed class Mode : IDisposable
     {
         internal readonly string Label;
@@ -191,9 +200,11 @@ public sealed class TemporalVisibilityCostDecompositionCostPerfGpuTests(ITestOut
                 + $"confidence {difference.Confidence}, locks {difference.Locks}");
             foreach ((string label, float[] state) in new[] { ("V1", a.State), ("V6", b.State) })
             {
+                // The stored lock also marks moved, band and followed pixels as -1, -3 or -5 minus the lock, so the
+                // boxes' own drifting pixels store -1 with a zero lock. Decode it as temporalStoredLock does.
                 int nonzero = 0;
                 for (int i = 1; i < state.Length; i += 2)
-                    if (BitConverter.SingleToUInt32Bits(state[i]) != 0u) nonzero++;
+                    if (BitConverter.SingleToUInt32Bits(StoredLock(state[i])) != 0u) nonzero++;
                 output.WriteLine($"    {label} {nonzero} locks without positive-zero bits of {state.Length / 2}");
                 if (!field) Assert.Equal(0, nonzero);
             }

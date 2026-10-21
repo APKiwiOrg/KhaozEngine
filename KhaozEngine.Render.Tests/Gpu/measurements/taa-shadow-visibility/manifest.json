@@ -3665,6 +3665,10 @@
     {
       "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/7g5-hosted.md",
       "sha256": "3f004982e788c176b61913a22150b063241b451e576b891819a4b5b7fdedb7c3"
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/7h-k-hosted.md",
+      "sha256": "936c8a80f21beb2860e441b787d2c418c8eeff03843d65a45c4fbaafdbe4d62c"
     }
   ],
   "shipping_build": {

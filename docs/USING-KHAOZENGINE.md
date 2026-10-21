@@ -4479,6 +4479,9 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   The threshold uses stored R8 values. Under round-to-nearest UNORM conversion, an exact input 0.1 stores as
   26/255. A driver that truncates stores 25/255 instead, so the exact boundary case differs because release
   compares stored values. There is no public tuning knob.
+  A fully lit receiver frame can bypass the visibility check once the read-index R8 history is certified fully lit
+  too. This uses a separate compiled program and retains R8 storage and copies. Shadowed and uncertified frames
+  keep the ordinary check.
   Motion plus visibility needs five colour attachments. Below five, the engine logs the capability once and keeps
   the supported four-attachment layout with bilinear filtering and no visibility release.
 - **Transparent content.** Particles, billboards, beams, trails, decals and water draw no motion. The resolve lowers

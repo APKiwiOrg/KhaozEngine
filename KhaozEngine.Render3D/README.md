@@ -300,6 +300,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   stored values. Under round-to-nearest UNORM conversion, an exact input 0.1 stores as 26/255. A driver that
   truncates stores 25/255 instead, so the exact boundary case differs because release compares stored values.
   No public tuning API is added.
+  Certified fully lit current and read-index frames use a separate compiled program without the visibility check.
+  R8 storage and copies remain. Shadowed and uncertified frames keep the ordinary check.
   The signal and two R8 histories cost three bytes per internal texel, plus a 16-byte previous-jitter buffer.
   Histories follow colour indices, resets and target generations, copy once per resolving frame, and retire with
   TAA off or scene disposal. Repeated renders retain read history and jitter. Standalone resolves without lit

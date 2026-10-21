@@ -34,12 +34,14 @@ namespace KhaozEngine.Render3D.Rendering
     internal sealed partial class TemporalSplitResolve : IDisposable
     {
         readonly IGpuDevice _gd;
-        readonly IGpuShaderSet _prepareShaders, _accumulateShaders;
-        readonly IGpuResourceLayout _prepareLayout, _accumulateLayout;
-        readonly IGpuPipeline _preparePipeline, _accumulatePipeline;
+        readonly IGpuShaderSet _prepareShaders;
+        readonly TemporalVisibilityPipelinePair _accumulatePrograms;
+        readonly IGpuResourceLayout _prepareLayout, _accumulateLayout, _fullyLitAccumulateLayout;
+        readonly IGpuPipeline _preparePipeline;
         readonly IGpuTexture?[] _targets = new IGpuTexture?[TemporalSplitFormats.Targets.Length];
         readonly IGpuFramebuffer?[] _prepareFramebuffers = new IGpuFramebuffer?[2];
         readonly IGpuResourceSet?[] _accumulateSets = new IGpuResourceSet?[2];
+        readonly IGpuResourceSet?[] _fullyLitAccumulateSets = new IGpuResourceSet?[2];
         IGpuResourceSet? _prepareSet;
         int _targetWidth, _targetHeight;
         TemporalResolveInputs _boundInputs;
@@ -56,8 +58,6 @@ namespace KhaozEngine.Render3D.Rendering
             IGpuResourceFactory f = gd.Factory;
             _prepareShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
                 FragmentSource(ShaderSources.TemporalPrepareFrag));
-            _accumulateShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
-                FragmentSource(ShaderSources.TemporalAccumulateFragment(TemporalResolvePrecisionPolicy.For(gd))));
             _prepareLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 T("SceneColor"), T("OpaqueColor"), T("SceneDepth"), T("MotionTex"), S("LinearClamp"), U("Resolve")));
             _accumulateLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
@@ -65,13 +65,19 @@ namespace KhaozEngine.Render3D.Rendering
                 T("HistoryConfidence"), T("PreparedColour"), T("PreparedSurface"), T("PreparedExpected"),
                 T("PreparedEdge"), S("LinearClamp"), U("Resolve"),
                 T("KeyShadowVisibility"), T("PreviousKeyShadowVisibility"), U("VisibilityHistory")));
+            _fullyLitAccumulateLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
+                T("SceneColor"), T("SceneDepth"), T("MotionTex"), T("PrevDepth"), T("HistoryColor"),
+                T("HistoryConfidence"), T("PreparedColour"), T("PreparedSurface"), T("PreparedExpected"),
+                T("PreparedEdge"), S("LinearClamp"), U("Resolve")));
             var prepareOutputs = new GpuPixelFormat[TemporalSplitFormats.FirstPassAttachments];
             TemporalSplitFormats.Targets.CopyTo(prepareOutputs, 0);
             prepareOutputs[^1] = TemporalFormats.PreviousDepth;
             _preparePipeline = TemporalResolveRenderer.Fullscreen(f, _prepareShaders, _prepareLayout,
                 new GpuOutputDescription(null, prepareOutputs));
-            _accumulatePipeline = TemporalResolveRenderer.Fullscreen(f, _accumulateShaders, _accumulateLayout,
-                new GpuOutputDescription(null, TemporalFormats.HistoryColor, TemporalFormats.HistoryConfidence));
+            _accumulatePrograms = new TemporalVisibilityPipelinePair(gd,
+                ShaderSources.TemporalAccumulateFragment(TemporalResolvePrecisionPolicy.For(gd)), [_accumulateLayout], [_fullyLitAccumulateLayout],
+                new GpuOutputDescription(null, TemporalFormats.HistoryColor, TemporalFormats.HistoryConfidence),
+                _fragmentSourceForTests);
         }
 
         // Apply fixture rewrites before selecting this backend's current visibility reads.
@@ -130,6 +136,9 @@ namespace KhaozEngine.Render3D.Rendering
                     inputs.SceneColor, inputs.SceneDepth, inputs.Motion, history.PreviousDepth(i), history.Color(i),
                     history.Confidence(i), targets[0], targets[1], targets[2], targets[3], clamp, uniforms,
                     inputs.KeyShadowVisibility!, visibility.Texture(i), visibilityUniforms));
+                _fullyLitAccumulateSets[i] = f.CreateResourceSet(new GpuResourceSetDescription(_fullyLitAccumulateLayout,
+                    inputs.SceneColor, inputs.SceneDepth, inputs.Motion, history.PreviousDepth(i), history.Color(i),
+                    history.Confidence(i), targets[0], targets[1], targets[2], targets[3], clamp, uniforms));
             }
             _boundInputs = inputs;
             _boundTargets = history.TargetGeneration;
@@ -140,7 +149,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// into the write index's colour and confidence, reading the read index's history and previous depth. A frame
         /// that does not upscale (<see cref="Upscales"/>) records the second pass compiled for the display's own
         /// size.</summary>
-        public void Run(IGpuCommandList cl, TemporalHistory history, bool upscales)
+        public void Run(IGpuCommandList cl, TemporalHistory history, bool upscales, bool withoutVisibility = false)
         {
             if (SkipPassForTests != TemporalSplitPass.Prepare)
             {
@@ -153,8 +162,9 @@ namespace KhaozEngine.Render3D.Rendering
             if (SkipPassForTests != TemporalSplitPass.Accumulate)
             {
                 cl.SetFramebuffer(history.ResolveFramebuffer(history.WriteIndex));
-                cl.SetPipeline(AccumulatePipeline(upscales));
-                cl.SetGraphicsResourceSet(0, _accumulateSets[history.ReadIndex]
+                cl.SetPipeline(AccumulatePrograms(upscales).Select(withoutVisibility));
+                cl.SetGraphicsResourceSet(0, (UsesVisibility(upscales, withoutVisibility) ? _accumulateSets
+                    : _fullyLitAccumulateSets)[history.ReadIndex]
                     ?? throw new InvalidOperationException("TemporalSplitResolve.Run was called before Bind."));
                 cl.Draw(3);
             }
@@ -168,6 +178,7 @@ namespace KhaozEngine.Render3D.Rendering
             for (int i = 0; i < 2; i++)
             {
                 Free(ref _accumulateSets[i], retired);
+                Free(ref _fullyLitAccumulateSets[i], retired);
                 Free(ref _prepareFramebuffers[i], retired);
             }
             Free(ref _prepareSet, retired);
@@ -197,12 +208,12 @@ namespace KhaozEngine.Render3D.Rendering
         {
             ReleaseTargets(null);
             _preparePipeline.Dispose();
-            _accumulatePipeline.Dispose();
+            _accumulatePrograms.Dispose();
             DisposeAtDisplaySize();
             _prepareLayout.Dispose();
             _accumulateLayout.Dispose();
+            _fullyLitAccumulateLayout.Dispose();
             _prepareShaders.Dispose();
-            _accumulateShaders.Dispose();
         }
     }
 }

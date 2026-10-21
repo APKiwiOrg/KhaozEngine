@@ -416,6 +416,29 @@ Withdrawn at `d9d72abbd` and restored by the 2026-10-21 correction above, with e
 - [x] Task 7g.5 completed the Release build with zero warnings, 878 device-free passes, 35 focused Metal passes, the full format check with exit 0 and all tree guards. The initial format scan completed with exit 2 before its whitespace-only fixes. Capture manifest verification passed.
 - [x] Task 7g.5 pushed 211e42544 and ran the one free all-leg dispatch 39571324204 with 7g.3b's filter plus `TemporalVisibilityGatherGpuTests`. Each renderer passed 1740 cases with one opt-in dump skip, and sync passed 622. All five lavapipe colour cases match run 39559768823 at reported precision, large-frame and moving-shadow cases are exact, and all eight software costs are unchanged at full precision. No billed run, timing, stress, main merge, tag or release.
 
+### Task 7h K
+
+A scene certifies its resolved R8 only from the actual shared receiver upload used by every opaque family. A
+nonpositive uploaded key-shadow strength makes sampleKeyShadow return exactly one before any atlas sample.
+The white clear, discards, destination-preserving writers and MSAA resolve keep every stored byte at 255.
+An active cached atlas remains uncertified. Supplied synthetic R8 is unknown. The owned all-white fallback
+can certify directly. Requested shadow mode and a skipped atlas update do not certify anything.
+
+StoreVisibility publishes the certificate with the copied write index, generation and resolve frame. Selection
+requires both the current certificate and the ready read-index certificate, so both transitions use the ordinary
+check whenever either side lacks evidence. Resets, target recreation, resize and owner/device changes clear
+readiness. Same-frame re-evaluation keeps the original read certificate and never republishes the stored one.
+
+The compiled specialization makes only visibilityReleased false in the shared accumulation source. Both decision
+helpers and their footprint loads disappear. Colour release, carried-lock classification, barrier-ordered lock
+release, hold and clipping remain intact. Fused, split, Native, both precisions, debug views and count re-evaluation
+use cached program and binding variants. All R8 attachments, histories and copies remain. Devices below five
+attachments retain their existing all-white fallback. Uncertified and shadowed frames keep the ordinary check.
+This changes no comparison bound and establishes no timing result or budget for shadowed frames.
+
+The [Task 7h K record](../../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/7h-k-hosted.md)
+owns local gates, exact history-byte comparisons, compiled-module proof and the single hosted correctness run.
+
 ### Task 8: Prove exact entry identity and integration edges
 
 **Files:**

@@ -284,6 +284,29 @@ The owner-approved T4 bench is recorded in [benchmark-result.md](../../../KhaozE
 
 On 2026-10-20 the owner ruled to optimize before merging, with a budget of at most 0.5 ms resolve growth over `v21.7.1` at 1440p on every T4 backend. Phase 1 of the cost cut is exact: every output pixel and every observable visibility decision stays bit-identical to D, proved against a frozen copy of D's text. The one exception is hardware NVIDIA Direct3D 11, where finite colour and confidence differences against D are reported rather than asserted, as section 8 records. Any approximation is a separate owner look. The work and its oracles are plan Task 7f. A further billed bench needs fresh owner approval.
 
+### Task 7h K
+
+A scene certifies its resolved R8 only from the actual shared receiver upload used by every opaque family. A
+nonpositive uploaded key-shadow strength makes sampleKeyShadow return exactly one before any atlas sample.
+The white clear, discards, destination-preserving writers and MSAA resolve keep every stored byte at 255.
+An active cached atlas remains uncertified. Supplied synthetic R8 is unknown. The owned all-white fallback
+can certify directly. Requested shadow mode and a skipped atlas update do not certify anything.
+
+StoreVisibility publishes the certificate with the copied write index, generation and resolve frame. Selection
+requires both the current certificate and the ready read-index certificate, so both transitions use the ordinary
+check whenever either side lacks evidence. Resets, target recreation, resize and owner/device changes clear
+readiness. Same-frame re-evaluation keeps the original read certificate and never republishes the stored one.
+
+The compiled specialization makes only visibilityReleased false in the shared accumulation source. Both decision
+helpers and their footprint loads disappear. Colour release, carried-lock classification, barrier-ordered lock
+release, hold and clipping remain intact. Fused, split, Native, both precisions, debug views and count re-evaluation
+use cached program and binding variants. All R8 attachments, histories and copies remain. Devices below five
+attachments retain their existing all-white fallback. Uncertified and shadowed frames keep the ordinary check.
+This changes no comparison bound and establishes no timing result or budget for shadowed frames.
+
+The [Task 7h K record](../../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/7h-k-hosted.md)
+owns local gates, exact history-byte comparisons, compiled-module proof and the single hosted correctness run.
+
 ## 10. Amendment, version and handoff
 
 This is **amendment 35** in [the canonical temporal-resolve design](../../design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md). Task 9 reconciled main and the document before allocation. The amendment records the shared visibility-release contract, history/format/lifetime rules, controlled rebaseline rationale, owner-selected lock release and measured evidence. Only the affected key-shadow decisions from amendments 33/34 are superseded. Their independent colour-based shading behavior remains. Algorithm and memory sections, living docs and `docs/INDEX.md` carry the current contract.

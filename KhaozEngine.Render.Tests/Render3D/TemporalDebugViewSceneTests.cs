@@ -39,7 +39,8 @@ public sealed class TemporalDebugViewSceneTests
     }
 
     static bool IsDebugView(IGpuPipeline? p)
-        => (p as FakePipeline)?.Request?.FragmentGlsl == ShaderSources.TemporalDebugFrag;
+        => Is(p, ShaderSources.TemporalDebugFrag)
+            || Is(p, TemporalVisibilityPrograms.WithoutDecision(ShaderSources.TemporalDebugFrag));
 
     static bool Is(IGpuPipeline? p, string fragment) => (p as FakePipeline)?.Request?.FragmentGlsl == fragment;
 
@@ -47,8 +48,9 @@ public sealed class TemporalDebugViewSceneTests
     // at the precision of the rig's backend, upscaling or at the display's own size.
     static bool IsResolve(IGpuPipeline? p)
         => Enum.GetValues<TemporalResolveEntry>().Any(e => new[] { false, true }.Any(upscales =>
-            TemporalResolveRenderer.EntryFragments(e, TemporalResolvePrecisionPolicy.For(Backend), upscales)
-                .Any(fragment => Is(p, fragment))));
+            new[] { false, true }.Any(fullyLit => TemporalResolveRenderer.EntryFragments(e,
+                TemporalResolvePrecisionPolicy.For(Backend), upscales, withoutVisibility: fullyLit)
+                .Any(fragment => Is(p, fragment)))));
 
     [Theory]
     [MemberData(nameof(ResolveViews))]
@@ -93,8 +95,10 @@ public sealed class TemporalDebugViewSceneTests
         // Into the target the post chain ended on, the draw right before it.
         Assert.Same(capture.Draws[viewDraw - 1].Framebuffer, drawn.Framebuffer);
         FakeGraphicsPipelineRequest pipeline = Assert.Single(rig.Factory.GraphicsPipelines,
-            p => p.FragmentGlsl == ShaderSources.TemporalDebugFrag);
-        Assert.Same(resolve.ResolveLayout, pipeline.Description.ResourceLayouts[0]);
+            p => p.FragmentGlsl == (resolve.LastVisibilityDecisionSkipped
+                ? TemporalVisibilityPrograms.WithoutDecision(ShaderSources.TemporalDebugFrag) : ShaderSources.TemporalDebugFrag));
+        Assert.Same(resolve.LastVisibilityDecisionSkipped ? resolve.FullyLitResolveLayout : resolve.ResolveLayout,
+            pipeline.Description.ResourceLayouts[0]);
         Assert.Equal(2, pipeline.Description.ResourceLayouts.Length);
         Assert.True(rig.Scene.TemporalDebugViewBuiltForTests);
 

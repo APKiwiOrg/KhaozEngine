@@ -417,8 +417,9 @@ Withdrawn at `d9d72abbd` and restored by the 2026-10-21 correction above, with e
 
 ### Task 7h K
 
-**Status:** Round 3 integrates Z and applies the owner's 2026-10-22 certified-versus-check device ruling.
-The linked record owns the merge resolution, DXBC recapture, local gates and single free all-leg correctness run.
+**Status:** Round 3 passes under the owner's 2026-10-22 certified-versus-check ruling and is ready for
+orchestrator review. It integrates Z and verifies all twenty release-bearing programs. The linked K record owns
+the DXBC recapture, local gates and successful free all-leg run 39674360441 at fbd7a2985.
 
 A scene certifies its resolved R8 only from the actual shared receiver upload used by every opaque family. A
 nonpositive uploaded key-shadow strength makes sampleKeyShadow return exactly one before any atlas sample.

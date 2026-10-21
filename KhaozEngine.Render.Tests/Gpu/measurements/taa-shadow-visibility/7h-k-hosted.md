@@ -1,8 +1,9 @@
 # Task 7h K, certified fully lit specialization
 
-**Status:** Round 3 is in progress under the owner's 2026-10-22 device ruling. Rounds 1 and 2 below are
-historical strict-oracle failures. Round 3 integrates Z's conditional positive-zero bypass and verifies K under
-the owner-approved rules.
+**Status:** Round 3 passes under the owner's 2026-10-22 device ruling, with Z's conditional positive-zero bypass
+retained in every checked and certified program. Free run 39674360441 passes all three renderer legs, each with
+1824 passed, zero failed and one opt-in dump skip. Sync validation passes 625. Ready for orchestrator review and
+integration of fix/taa-vis-lit-skip. Rounds 1 and 2 below preserve the historical strict-oracle failures.
 
 Source branch fix/taa-vis-lit-skip starts at 6c0382161. This record covers correctness only. No timing,
 benchmark, stress, merge, tag or release is part of the task.
@@ -508,3 +509,74 @@ all historical package/capture checks and every current measurements-folder arti
 The scratch dump branch is deleted locally and remotely, and its clean worktree is removed after import and the
 129-case DXBC proof. The remote deletion is checked with ls-remote. Downloaded dump logs are removed after reading.
 The final Release solution build also exits 0 with zero warnings and errors after the reader correction.
+
+### Round 3 hosted correctness
+
+The single free all-leg dispatch is [39674360441](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39674360441)
+on pushed candidate `fbd7a2985089cc8d1cabbad65062962d9dec1562`. The local SHA was resolved with git rev-parse and
+matched the remote branch before dispatch. The run's headSha matches. It selects all legs, tier push and bake false.
+The filter is 7g.5 run 39571324204's selection plus K's classes, including the two new device-free rule facts.
+
+```text
+((FullyQualifiedName~KhaozEngine.Tests.Gpu.Temporal&FullyQualifiedName!~CostPerf)|((FullyQualifiedName~Shadow|FullyQualifiedName~Golden)&FullyQualifiedName!~Perf&FullyQualifiedName!~Bench)|FullyQualifiedName~MotionTargetLifecycleGpuTests|FullyQualifiedName~D3D11FxcValidationTests|FullyQualifiedName~TemporalLockReleaseProbe|FullyQualifiedName~TemporalVisibilityGatherGpuTests|FullyQualifiedName~TemporalVisibilityFullyLitTests|FullyQualifiedName~TemporalVisibilityFullyLitCompiledTests|FullyQualifiedName~TemporalVisibilityFullyLitGpuTests|FullyQualifiedName~TemporalVisibilityCertificateGpuTests|FullyQualifiedName~TemporalFullyLitComparisonRuleTests)
+```
+
+| Leg | Job | Main passed / failed / skipped | K cases | Entry identity | A/B | Equivalence | Gather | DXBC |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Hosted Metal, Apple Paravirtual device | 119480275688 | 1824 / 0 / 1 | 55/55 | 10/10 | 12/12 | 6/6 | 7/7 | 129/129 |
+| WARP, Microsoft Basic Render Driver | 119480275806 | 1824 / 0 / 1 | 55/55 | 10/10 | 12/12 | 6/6 | 7/7 | 129/129 |
+| lavapipe, llvmpipe LLVM 20.1.2, 256 bits | 119480275716 | 1824 / 0 / 1 | 55/55 | 10/10 | 12/12 | 6/6 | 7/7 | 129/129 |
+| Vulkan sync validation | 119480275642 | 625 / 0 / 0 across 16 assemblies | Separate golden, compute and foliage selection | | | | | |
+
+Each renderer's sole skip is the opt-in DXBC dump. All selected GPU facts execute. The Windows FXC/struct-layout
+step separately passes 31 cases with its one intentional dump skip. All selected jobs and every executed step conclude
+success, with the unselected sharded full-suite aggregator skipped by its workflow condition. The final run is
+completed/success at the verified source SHA, run attempt 1. It runs from 20:54:35 to 23:09:45 UTC on 2026-10-21.
+
+The first watcher exits 1 after a GitHub API EOF transport error while lavapipe is still running. A fresh API read
+confirms the same run and its three completed successful jobs. Reconnecting the watcher to that run finishes with
+exit 0. No test job is rerun and no second correctness dispatch is started.
+
+Every renderer writes all 4,194,304 probe cases in P and B. B/C mismatches are zero. Metal's P/B and P/C counts are
+zero, and WARP's and lavapipe's historical reported-only counts remain 268335. Each renderer has six raw gather
+readbacks totalling 100,253,392 component comparisons with zero mismatches and twenty path-share stored-lock
+samples with zero differences from the production scene rendered beside them. Both path-share classes execute.
+
+Metal has zero differences in all six channels of every pair. llvmpipe's certified/check pairs remain exact in all
+six channels. Its production fused/split colour has 96 differing values out of 33,177,600, worst 0.0009765625, two
+half steps and aggregate share 0.0000028935185185185184. Its confidence, lock, mark, R8 and depth are exact.
+Its debug/count pair is exact. The unchanged amendment 23 rule accepts only that production-entry colour channel.
+
+### Round 3 WARP pair metrics
+
+The table aggregates each pair across its six scene cases, or four debug/count cases. The rule is asserted per
+case over all its frames, with colour and confidence measured separately. Share is a ratio, not a percentage.
+All locks, marks, R8 and depth have zero differences, worst zero and share zero in every pair.
+
+| Pair | Channel | Differing / compared values | Worst absolute difference | Aggregate share | Maximum case share | Max half steps |
+| --- | --- | --- | --- | --- | --- | --- |
+| debug and counts | colour | 0 / 1382400 | 0 | 0 | 0 | 0 |
+| debug and counts | confidence | 0 / 345600 | 0 | 0 | 0 | 0 |
+| fused certified vs check | colour | 88 / 33177600 | 0.011230469 | 2.6523919753086419e-06 | 5.4253472222222224e-06 | 23 |
+| fused certified vs check | confidence | 18 / 8294400 | 0.00024414062 | 2.1701388888888889e-06 | 6.5104166666666671e-06 | 1 |
+| split certified vs check | colour | 88 / 33177600 | 0.011230469 | 2.6523919753086419e-06 | 5.4253472222222224e-06 | 23 |
+| split certified vs check | confidence | 18 / 8294400 | 0.00024414062 | 2.1701388888888889e-06 | 6.5104166666666671e-06 | 1 |
+| certified fused vs split | colour | 0 / 33177600 | 0 | 0 | 0 | 0 |
+| certified fused vs split | confidence | 0 / 8294400 | 0 | 0 | 0 | 0 |
+
+Both certified/check pairs pass the shared 0.0625 absolute and 0.0025 share limits for each arithmetic channel.
+The production fused/split pair remains byte-identical on WARP. Debug/count colour and confidence also remain
+exact. These measurements match round 2's differences, now accepted by the owner's explicit round 3 rule.
+
+The exact vulkan-validation-sync artifact contains one VulkanValidationLogHost producer marker explicitly arming
+KE_VULKAN_VALIDATION='sync', and zero warning or error severity lines. This confirms the producer behind the clean
+validation log. All 625 selected sync tests pass, including 459 Render.Tests cases. The artifact is deleted after
+reading. Every leg's complete log is read and downloaded logs are deleted after the metrics are extracted.
+
+The closeout changes only this record, its manifest hash and the spec/plan status. All shader programs, generated
+tables, corpus, comparison logic and DXBC fixtures remain those tested at fbd7a2985089cc8d1cabbad65062962d9dec1562.
+The measurements manifest is refreshed for every file and verified again before committing the closeout.
+
+No manual validation is needed. Integration belongs to the owning orchestrator. The named task branch is the only
+retained branch changed by this round. No main merge, tag, release, billed workflow, timing, benchmark or stress
+run is performed. No performance saving is claimed. The known #1485 and #1529 findings remain outside scope.

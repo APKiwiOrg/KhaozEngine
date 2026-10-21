@@ -313,8 +313,9 @@ On 2026-10-20 the owner ruled to optimize before merging, with a budget of at mo
 
 ### Task 7h K
 
-**Status:** Round 3 integrates Z and applies the owner's certified-versus-check device rules in section 8.
-Local verification and the single free all-leg correctness run are recorded with the results in K's record.
+**Status:** Round 3 passes under the owner's 2026-10-22 certified-versus-check ruling and is ready for
+orchestrator review. It integrates Z and verifies all twenty release-bearing programs. The linked K record owns
+the DXBC recapture, local gates and successful free all-leg run 39674360441 at fbd7a2985.
 
 A scene certifies its resolved R8 only from the actual shared receiver upload used by every opaque family. A
 nonpositive uploaded key-shadow strength makes sampleKeyShadow return exactly one before any atlas sample.

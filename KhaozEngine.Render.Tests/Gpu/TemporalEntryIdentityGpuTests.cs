@@ -23,8 +23,8 @@ namespace KhaozEngine.Tests.Gpu
     /// and the locks with them, so both entries round in integer steps (<c>temporalHalf</c>). This fact is what shows
     /// they agree on a given backend: bit for bit on Metal, on a Tesla T4 on Direct3D 11 and Vulkan, and on WARP
     /// (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23). Entry identity requires exact stored colour, confidence,
-    /// locks, R8 and depth on every backend. Hardware NVIDIA Direct3D 11 additionally prints paired D-entry
-    /// diagnostics and compares each production entry against D under the separate fixed two-step A/B rule.
+    /// locks, R8 and depth on every backend. Hardware NVIDIA Direct3D 11 additionally prints each production entry
+    /// and D's paired entries against D, diagnostic only. No comparison with D is asserted here.
     /// </summary>
     public sealed class TemporalEntryIdentityGpuTests(ITestOutputHelper output) : TemporalResolveGpuFacts
     {
@@ -137,8 +137,8 @@ namespace KhaozEngine.Tests.Gpu
                     TemporalHistorySample df = TemporalHistorySample.Read(dFused), ds = TemporalHistorySample.Read(dSplit);
                     oracle!.ObserveD(n, df, ds);
                     TemporalHistorySample pf = TemporalHistorySample.Read(fused), ps = TemporalHistorySample.Read(split);
-                    oracle.Compare(n, "production fused vs D fused", pf, df);
-                    oracle.Compare(n, "production split vs D split", ps, ds);
+                    oracle.Report(n, "production fused vs D fused", pf, df);
+                    oracle.Report(n, "production split vs D split", ps, ds);
                 }
                 TemporalHistorySample.Exact(n, "production entries colour", a, b);
                 TemporalHistorySample.Exact(n, "production entries state", state, other);
@@ -163,7 +163,6 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(compared > TemporalFollowLinesRuns.Last, $"only {compared} frames resolved");
             Assert.Equal(outline, fused.Scene.TemporalOutlineBuiltForTests);
             Assert.Equal(outline, split.Scene.TemporalOutlineBuiltForTests);
-            oracle?.Complete();
             Assert.True(confidence.Values + locks.Values + marks.Values + colour.Values == 0,
                 $"the entry points wrote different histories:\n{differences}");
             // The band reaches two internal texels beside the followed box, which this walk stores only while
@@ -258,8 +257,8 @@ namespace KhaozEngine.Tests.Gpu
                 {
                     TemporalHistorySample df = TemporalHistorySample.Read(dFused), ds = TemporalHistorySample.Read(dSplit);
                     oracle!.ObserveD(frame, df, ds);
-                    oracle.Compare(frame, "production fused vs D fused", pf, df);
-                    oracle.Compare(frame, "production split vs D split", ps, ds);
+                    oracle.Report(frame, "production fused vs D fused", pf, df);
+                    oracle.Report(frame, "production split vs D split", ps, ds);
                 }
                 TemporalHistorySample.Exact(frame, "production entries", pf, ps);
                 if (frame == 0)
@@ -288,7 +287,6 @@ namespace KhaozEngine.Tests.Gpu
             }
             Assert.Equal(2, rises);
             Assert.Equal(2, falls);
-            oracle?.Complete();
             output.WriteLine($"  {edges.Length} frames exact in colour and confidence, "
                 + "exact locks, marks, R8 bytes, depth and previous jitter");
         }

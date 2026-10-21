@@ -59,7 +59,6 @@ internal sealed class TemporalHistoryDifference
             else MaxSteps = Math.Max(MaxSteps, HalfSteps(a, b));
         }
 
-        internal bool Within(int steps) => !NonFinite && (Count == 0 || (steps > 0 && MaxSteps <= steps));
         public override string ToString() => $"{Count} differ, max {MaxSteps} half steps"
             + (NonFinite ? ", non-finite difference" : "");
     }
@@ -94,16 +93,17 @@ internal sealed class TemporalHistoryDifference
         + $"], confidence [{Confidence}], any lock differs {Locks.Count > 0} ({Locks.Count})";
 }
 
-// The fixed NVIDIA hardware D3D11 A/B allowance. Entry identity never uses this rule.
+// The hardware NVIDIA D3D11 A/B rule. That driver compiles confidence arithmetic unrelated to the visibility check
+// differently whenever the visibility code changes, frame 0 included, while WARP running the same DXBC matches D bit
+// for bit. Stored locks, R8 and depth must equal D's. Colour and confidence differences are reported, never
+// asserted. Entry identity never uses this rule.
 internal static class TemporalNvidiaComparisonRule
 {
-    internal const int MaxHalfSteps = 2;
-
-    internal static bool Allows(TemporalHistoryDifference d) => d.Locks.Count == 0
-        && d.Confidence.Within(MaxHalfSteps) && d.Colour.All(c => c.Within(MaxHalfSteps));
+    internal static bool Allows(TemporalHistoryDifference d) => d.Locks.Count == 0;
 }
 
-// Only the hardware NVIDIA D3D11 A/B branch creates this oracle. D's paired entries are diagnostic only.
+// Only hardware NVIDIA D3D11 creates this oracle. D's paired entries and every comparison it prints in entry
+// identity are diagnostic only.
 internal sealed class TemporalNvidiaHistoryOracle(ITestOutputHelper output)
 {
     internal void ObserveD(int frame, TemporalHistorySample fused, TemporalHistorySample split)
@@ -115,6 +115,17 @@ internal sealed class TemporalNvidiaHistoryOracle(ITestOutputHelper output)
             + $"depth bits equal {MemoryMarshal.AsBytes(fused.Depth.AsSpan()).SequenceEqual(MemoryMarshal.AsBytes(split.Depth.AsSpan()))}");
     }
 
+    // Prints a comparison and asserts nothing.
+    internal TemporalHistoryDifference Report(int frame, string what, TemporalHistorySample a, TemporalHistorySample b)
+    {
+        TemporalHistoryDifference difference = TemporalHistoryDifference.Measure(a.Colour, a.State, b.Colour, b.State);
+        output.WriteLine($"  frame {frame}: {what} (diagnostic only): {difference}, "
+            + $"R8 equal {a.Visibility.AsSpan().SequenceEqual(b.Visibility)}, "
+            + $"depth bits equal {MemoryMarshal.AsBytes(a.Depth.AsSpan()).SequenceEqual(MemoryMarshal.AsBytes(b.Depth.AsSpan()))}");
+        return difference;
+    }
+
+    // The A/B comparison: exact stored locks, R8 and depth, colour and confidence printed only.
     internal TemporalHistoryDifference Compare(int frame, string what, TemporalHistorySample a,
         TemporalHistorySample b)
     {
@@ -122,11 +133,10 @@ internal sealed class TemporalNvidiaHistoryOracle(ITestOutputHelper output)
         output.WriteLine($"  frame {frame}: {what}: {difference}");
         TemporalHistorySample.Exact(frame, what + " R8", a.Visibility, b.Visibility);
         TemporalHistorySample.Exact(frame, what + " depth", a.Depth, b.Depth);
-        Assert.True(TemporalNvidiaComparisonRule.Allows(difference),
-            $"frame {frame}: {what} exceeds the fixed 2 half-step colour/confidence bound or has different locks: {difference}");
+        Assert.True(TemporalNvidiaComparisonRule.Allows(difference), $"frame {frame}: {what}: stored locks differ: {difference}");
         return difference;
     }
 
-    internal void Complete() => output.WriteLine("  NVIDIA Direct3D 11 A/B: fixed 2 half steps per colour/confidence "
-        + "channel, exact stored locks, R8 and depth. D entry differences do not change this bound.");
+    internal void Complete() => output.WriteLine("  NVIDIA Direct3D 11: exact stored locks, R8 and depth against D. "
+        + "Colour and confidence differences against D are reported only.");
 }

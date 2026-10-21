@@ -317,62 +317,44 @@ namespace KhaozEngine.Gpu
 
         // ---- Compute ----
         //
-        // ORDERING CONTRACT. There is no explicit barrier call on this seam, because the backend layer has none:
-        // what ordering exists comes from each backend's implicit handling, and no two backends agree. Two rules
-        // fall out of that, and both are proved by the compute [GpuFact] suite on every backend.
+        // ORDERING CONTRACT. There is no explicit barrier call on this seam, and there does not need to be one
+        // inside a command list: what ordering a list needs, each backend provides from what the bound sets name.
+        // Two rules cover it, and both are proved by the compute [GpuFact] suite on every backend.
         //
         // THE MECHANISMS BELOW ARE NAMED PER IMPLEMENTATION RATHER THAN PER API, and that is not pedantry. Every
         // API the engine renders on had two backends behind it until 18.0.0 (Veldrid's and the engine's own
         // KhaozEngine.Gpu.Direct3D11, .Vulkan and .Metal), and the pairs did NOT handle either rule the same way.
-        // A sentence that said "on Vulkan" was true of the one implementation that existed when it was written and
-        // false of the other. The Metal pair was the one place a single sentence covered both, and that was a
-        // measured coincidence rather than a licence to write to the API: both ended the compute encoder when the
-        // render encoder began, because that is Metal's own rule and neither backend got to choose. What does
-        // NOT vary is the rule: write to the rule, never to the mechanism, because the mechanism is the part a
-        // second implementation of the same API is free to change.
+        // What does NOT vary is the rule: write to the rule, never to the mechanism, because the mechanism is the
+        // part a second implementation of the same API is free to change.
         //
         //   1. Compute writes a storage texture, then a GRAPHICS pass samples it: record BOTH in the SAME command
         //      list, and create the texture with Storage | Sampled (see GpuTextureUsage.Storage). Every backend
         //      then handles the handoff. The native Vulkan backend tracks image layouts list-locally and
-        //      transitions at the DRAW, from what the bound sets name, so the restore is not something it can
-        //      skip (the Veldrid Vulkan backend, deleted in 18.0.0, queued a layout restore at dispatch time
-        //      instead and drained it before the next draw, per command list and armed by the Sampled flag). The
-        //      Metal backend ends the compute encoder when the render encoder begins, and the Direct3D 11 backend
-        //      unbinds the UAV as the SRV is bound.
-        //      Split across two command lists, the Veldrid Vulkan restore was silently skipped, and that split
-        //      stays NOT safe on this seam.
+        //      transitions at the DRAW, from what the bound sets name. The Metal backend ends the compute encoder
+        //      when the render encoder begins, and the Direct3D 11 backend unbinds the UAV as the SRV is bound.
+        //      Split across two command lists, the handoff is NOT safe on this seam.
         //
-        //   2. A dispatch that READS what an earlier dispatch WROTE (the classic ping-pong: an FFT stage, a
-        //      multi-pass reduction) must be separated by End + IGpuDevice.Submit + IGpuDevice.WaitForIdle.
-        //      Chaining dependent dispatches inside one command list is NOT safe on this seam: on the Veldrid
-        //      Vulkan backend (deleted in 18.0.0) no memory barrier was emitted between them at all (storage
-        //      buffers were not tracked, and a storage image stayed in the same layout so the transition was a
-        //      no-op), and dispatches inside a command buffer may overlap. A submit boundary plus a device drain
-        //      is the only ordering this seam guarantees.
+        //   2. A dispatch or a draw that READS a storage buffer an earlier dispatch in the SAME command list
+        //      WROTE sees that write. A dependent dispatch chain (an FFT stage, a multi-pass reduction) and a
+        //      compute writer followed by a draw that reads the result are both ordered inside one list, with no
+        //      End, Submit or WaitForIdle between them. The reader may be any stage: a vertex shader that fetches
+        //      its own entry from a GpuResourceKind.StructuredBufferReadOnly binding is ordered exactly as a
+        //      later dispatch is. Bind a buffer the reader only reads as StructuredBufferReadOnly and one a
+        //      dispatch writes as StructuredBufferReadWrite: the kind is how a backend tells the two apart, and a
+        //      read-only reader of a buffer no dispatch wrote owes nothing.
+        //      The native Vulkan backend emits one global memory barrier before the first command that binds a
+        //      buffer an earlier dispatch in the recording wrote, ending an open rendering scope first when that
+        //      command is a draw. The Direct3D 11 backend unbinds the UAV as the SRV is bound and the runtime
+        //      orders the pair. The Metal backend dispatches on a serial compute encoder and creates its buffers
+        //      hazard-tracked, so the driver orders both edges.
+        //      Ordering BETWEEN command lists stays explicit: End plus IGpuDevice.Submit plus a wait (a drain or
+        //      a completion fence) before a second list reads what the first wrote.
         //
-        //      THE NATIVE VULKAN BACKEND IS MORE PERMISSIVE, AND THAT CHANGES NOTHING ABOVE. It emits a global
-        //      memory barrier before a dispatch that binds a resource an earlier dispatch in the same recording
-        //      wrote, so the chain is ordered there without the drain. That is a BACKEND PROPERTY, exactly like
-        //      the nested-Begin permissiveness on IGpuCommandList.Begin, and dropping the End plus Submit plus
-        //      WaitForIdle because it works on that backend is writing to the backend rather than to the seam
-        //      (until 18.0.0 it broke outright on the Veldrid backend the same machine fell back to). It is
-        //      evidence for an automatic-hazard seam capability
-        //      (https://github.com/APKiwiOrg/KhaozEngine/issues/461), which is where a consumer-visible version
-        //      of this would have to live.
-        //
-        //      SO IS THE NATIVE METAL BACKEND, BY A THIRD MECHANISM, AND IT IS THE ONE THAT COMPLETES A QUORUM.
-        //      Its compute encoder is created with the default SERIAL dispatch type, where consecutive dispatches
-        //      in one encoder are ordered and their hazards tracked by the driver, so a dependent chain is ordered
-        //      there without a barrier and without the drain. That is three of three engine-owned backends
-        //      honouring rule 2 natively by three different mechanisms (hazard tracking on Direct3D 11, a real
-        //      barrier on Vulkan, serial ordering on Metal), and the two Veldrid legs that still needed the drain
-        //      went away in 18.0.0. It is still a backend property and it still changes nothing above: the drain
-        //      is what this SEAM guarantees, the quorum is evidence for #461 rather than a contract change, and
-        //      consumer code that drops it because the machine it was written on tolerated it is relying on a
-        //      property the seam never promised.
-        //
-        // Rule 2 costs a GPU stall per dependent stage, which is real: it is the current ceiling on any multi-pass
-        // compute chain built against this seam.
+        // VERTEX PULLING. A draw that fetches its vertices from a storage buffer by gl_VertexIndex declares no
+        // vertex layout and binds no vertex buffer. Issue it with first vertex 0 and, for DrawIndexed, base vertex
+        // 0, and pass any storage base as an explicit per-draw uniform the shader adds to the index. The vertex
+        // index does not carry the draw's bases portably: Vulkan's gl_VertexIndex includes them and Direct3D 11's
+        // SV_VertexID leaves them out, the same gap SV_InstanceID has for the first instance.
 
         /// <summary>Bind a compute pipeline. Compute and graphics pipeline bindings are tracked separately, so
         /// this does not disturb a bound graphics pipeline (and vice versa).</summary>
@@ -395,8 +377,10 @@ namespace KhaozEngine.Gpu
         /// thread counts: the total invocation count is the group count multiplied by the shader's
         /// <see cref="IGpuComputeShader.ThreadGroupSizeX"/>/<c>Y</c>/<c>Z</c>, so cover N elements with
         /// <c>(N + groupSize - 1) / groupSize</c> groups and bounds-check in the shader (the tail group runs on
-        /// out-of-range indices). See the ordering contract above before chaining dependent dispatches.</summary>
+        /// out-of-range indices). See the ordering contract above for what a later command in the same list may
+        /// read.</summary>
         void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ);
+
     }
 
     /// <summary>The GPU device: backend info, capabilities, the resource factory, the swapchain framebuffer,
@@ -523,6 +507,52 @@ namespace KhaozEngine.Gpu
         MappedData Map(IGpuBuffer staging, GpuMapMode mode);
         /// <summary>Unmap a previously mapped staging buffer.</summary>
         void Unmap(IGpuBuffer staging);
+
+        /// <summary>
+        /// Copy <paramref name="destination"/>'s length of bytes out of a <see cref="GpuBufferUsage.Staging"/>
+        /// buffer at <paramref name="offsetBytes"/> IF the submission <paramref name="completion"/> was handed to
+        /// has completed, WITHOUT EVER WAITING. Answers false, with <paramref name="destination"/> untouched, while
+        /// the fence is unsignalled (including a fence never submitted) or the backend's native access is busy,
+        /// so a caller polls it again on a later frame. True means the bytes were copied and any native mapping
+        /// was closed before returning.
+        /// <para>
+        /// SEPARATE FROM <see cref="GpuReadback"/> AND FROM <see cref="Map(IGpuBuffer, GpuMapMode)"/>, which are
+        /// synchronous: a read map drains the device on Metal and Vulkan and waits on the resource on Direct3D 11.
+        /// This member never drains, flushes, submits or blocks on a lock, on any backend. The bytes are the ones
+        /// an <see cref="IGpuCommandList.CopyBuffer"/> recorded into <paramref name="staging"/> wrote, inside the
+        /// list submitted with <paramref name="completion"/> through
+        /// <see cref="Submit(IGpuCommandList, IGpuFence)"/>.
+        /// </para>
+        /// <para>
+        /// THE CALLER OWNS THE LIFETIMES. Keep the copy's source, the staging buffer and the fence alive until
+        /// the read succeeds, and never <see cref="IGpuFence.Reset"/> or resubmit the fence before then. A reset
+        /// or reused fence is a caller error, not a new completion. The fence must come from this device.
+        /// </para>
+        /// <para>
+        /// Refused, before any poll or native access: a disposed or lost device, a fence or buffer from another
+        /// device or backend, a disposed fence or buffer, a buffer without <see cref="GpuBufferUsage.Staging"/>,
+        /// an <paramref name="offsetBytes"/> that is not a multiple of four, and a window that leaves the buffer.
+        /// </para>
+        /// <para>
+        /// THE EXCEPTIONS. A disposed or lost device throws <see cref="InvalidOperationException"/>. Its subclass
+        /// <see cref="ObjectDisposedException"/> is what most backends throw, and a caller catches the base type
+        /// because a backend may throw either. A disposed fence or buffer throws
+        /// <see cref="ObjectDisposedException"/>. A null argument throws <see cref="ArgumentNullException"/>. A
+        /// fence or buffer from another device or backend, and a buffer without
+        /// <see cref="GpuBufferUsage.Staging"/>, throw <see cref="ArgumentException"/> naming the parameter. An
+        /// unaligned or past-the-end <paramref name="offsetBytes"/> throws
+        /// <see cref="ArgumentOutOfRangeException"/> naming <c>offsetBytes</c>, and a window that starts inside
+        /// the buffer but runs off its end names <c>destination</c>.
+        /// </para>
+        /// <para>
+        /// DEFAULT-IMPLEMENTED to throw <see cref="NotSupportedException"/>, so an implementer that cannot read
+        /// without waiting says so rather than hiding a wait. The three native backends implement it.
+        /// </para>
+        /// </summary>
+        bool TryReadBuffer(IGpuBuffer staging, IGpuFence completion, uint offsetBytes, Span<byte> destination)
+            => throw new NotSupportedException(
+                "This GPU device cannot read a completed staging copy without waiting. Use GpuReadback for a "
+                + "synchronous read.");
 
         /// <summary>Resize the main swapchain.</summary>
         void ResizeSwapchain(uint w, uint h);

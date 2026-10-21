@@ -10,21 +10,17 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// The hosted Windows check, run on FXC's real disassembly of every visibility program (review 7f r3, I-1 and m-1). The
-    /// dump test of diagnostic commits a00f69fd5 and a65622ae4 printed each program as shipped and as rewritten to D, at
-    /// the shipped flags. Hosted run 39374926165 printed the four accumulate programs and the two fused resolve programs,
-    /// and run 39376184230 printed those twelve listings again, identical, and the decision helper's two, on runner
-    /// image windows-2025-vs2026 20261007.264.1. The pass-one mask was withdrawn and then restored. After the
-    /// restoration the opt-in fact <see cref="D3D11FxcValidationTests.DumpVisibilityDisassembly"/> printed all fourteen
-    /// listings again in hosted run 39526640607, job 118982787004, on the same runner image, byte for byte the
-    /// fixtures from before the withdrawal, so the eight the withdrawal had replaced are those again. Every run names the
-    /// compiler only by its banner, <c>Microsoft (R) HLSL Shader Compiler 10.1</c>, and no d3dcompiler build number. The
-    /// fixtures hold that text, carriage returns removed, and beside each the SHA-256 of the GLSL it was compiled from
-    /// (<see cref="EachFixtureWasCompiledFromTheCurrentGlsl"/>). The r3 reader found no chain in the six full programs,
-    /// because FXC marks every instruction there precise and so ends each chain <c>mul S</c> then <c>add -0.5</c> rather
-    /// than <c>mad S -0.5</c>. Here every program reads as the check requires: D's in-loop chains equal in both programs,
-    /// and six straight-line chains for the fast path. Mutated copies of the real text, one per rule, must fail it on that
-    /// rule alone (<see cref="TemporalVisibilityDxbcRuleMutationTests"/>). Device-free on every leg.
+    /// The hosted Windows check on FXC's real disassembly of every visibility program. The opt-in dump fact
+    /// <see cref="D3D11FxcValidationTests.DumpVisibilityDisassembly"/> printed all fourteen listings in hosted run
+    /// 39543431188, job 119036194789, on windows-2025-vs2026 20261007.264.1, with the compiler banner
+    /// <c>Microsoft (R) HLSL Shader Compiler 10.1</c>. The barrier lock release changed both sides of the six full
+    /// programs, since D here is D prime. The decision helper's listings stayed byte-identical. Every listing has zero
+    /// precise markings. D's two in-loop heads are reassociated in both programs, and the fast path adds four
+    /// reassociated heads and two written ones. D's in-loop forms agree between fused and split entries too
+    /// (<see cref="TemporalVisibilityDxbcBarrierTests"/>). The fixtures hold the printed text, carriage returns
+    /// removed, beside the SHA-256 of the GLSL it was compiled from. The unchanged check compares D's in-loop chains
+    /// exactly and checks all six fast-path chains. Mutated copies must still fail each rule on its own
+    /// (<see cref="TemporalVisibilityDxbcRuleMutationTests"/>). Device-free on every leg.
     /// </summary>
     public sealed class TemporalVisibilityDxbcRealProgramTests(ITestOutputHelper output)
     {
@@ -76,21 +72,13 @@ namespace KhaozEngine.Tests.Gpu
                 .Order(StringComparer.Ordinal));
         }
 
-        /// <summary>The programs whose fixtures Task 7g.3a left stale. Their lock release lost <c>precise</c> for the
-        /// barrier form, on both sides, since D here is D prime (<see cref="TemporalVisibilityFrozenD.ToD"/>), so the
-        /// GLSL they were dumped from is gone. No Windows FXC dump has run since, and no pin was moved without one.
-        /// Task 7g.3b recaptures them and empties this set. Until then <see cref="EachFixtureWasCompiledFromTheCurrentGlsl"/>
-        /// requires these fixtures to be stale, so a recapture that leaves a program here fails too.</summary>
-        internal static readonly string[] StaleUntil7g3b =
-        [
-            "TemporalAccumulateFrag", "TemporalAccumulateHalfFrag", "TemporalAccumulateAtDisplaySizeFrag",
-            "TemporalAccumulateAtDisplaySizeHalfFrag", "TemporalResolveFrag", "TemporalResolveHalfFrag",
-        ];
+        /// <summary>Task 7g.3b recaptured every stale fixture in hosted run 39543431188. This set is empty, so every
+        /// source pin must match the current GLSL on both sides.</summary>
+        internal static readonly string[] StaleUntil7g3b = [];
 
-        /// <summary>Each fixture is FXC's compile of the GLSL the code builds today (review 7f r4, M-1): the SHA-256 of
-        /// that text, LF line endings, UTF-8, equals the one stored beside the fixture, the hash of the text at
-        /// 863bade06, which the restored mask builds again. A program in <see cref="StaleUntil7g3b"/> is expected to
-        /// fail that on both sides, and passes only while it does.</summary>
+        /// <summary>Each fixture is FXC's compile of the GLSL the code builds today: the SHA-256 of that text,
+        /// LF line endings, UTF-8, equals the one stored beside the fixture. A program in
+        /// <see cref="StaleUntil7g3b"/> passes only while both source pins differ.</summary>
         [Theory]
         [MemberData(nameof(Programs))]
         public void EachFixtureWasCompiledFromTheCurrentGlsl(string program)
@@ -129,20 +117,18 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(failures.Count == 0, string.Join("\n", failures));
         }
 
-        /// <summary>What FXC made of each program: the head forms of D's in-loop chains in D's program and in the
-        /// shipped one, the fast path's straight-line forms, and the temps each declares. In the full programs every
-        /// chain is precise and written. The decision helper, compiled without a precise output, reassociates D's chains
-        /// in both programs and four of the fast path's six.</summary>
+        /// <summary>What FXC made of each program: D's in-loop head forms in D and shipped, the fast path's
+        /// straight-line forms, declared temps, precise markings and unread non-chain positions.</summary>
         [Theory]
-        [InlineData("DecisionHelper", "RR", "RR", "RRRRWW", 12, 28, false)]
-        [InlineData("TemporalAccumulateFrag", "WW", "WW", "WWWWWW", 30, 44, true)]
-        [InlineData("TemporalAccumulateHalfFrag", "WW", "WW", "WWWWWW", 31, 45, true)]
-        [InlineData("TemporalAccumulateAtDisplaySizeFrag", "WW", "WW", "WWWWWW", 27, 42, true)]
-        [InlineData("TemporalAccumulateAtDisplaySizeHalfFrag", "WW", "WW", "WWWWWW", 29, 43, true)]
-        [InlineData("TemporalResolveFrag", "WW", "WW", "WWWWWW", 41, 47, true)]
-        [InlineData("TemporalResolveHalfFrag", "WW", "WW", "WWWWWW", 43, 49, true)]
+        [InlineData("DecisionHelper", "RR", "RR", "RRRRWW", 12, 28, false, 0)]
+        [InlineData("TemporalAccumulateFrag", "RR", "RR", "RRRRWW", 29, 45, false, 10)]
+        [InlineData("TemporalAccumulateHalfFrag", "RR", "RR", "RRRRWW", 32, 46, false, 10)]
+        [InlineData("TemporalAccumulateAtDisplaySizeFrag", "RR", "RR", "RRRRWW", 26, 43, false, 10)]
+        [InlineData("TemporalAccumulateAtDisplaySizeHalfFrag", "RR", "RR", "RRRRWW", 29, 44, false, 10)]
+        [InlineData("TemporalResolveFrag", "RR", "RR", "RRRRWW", 41, 47, false, 10)]
+        [InlineData("TemporalResolveHalfFrag", "RR", "RR", "RRRRWW", 42, 48, false, 10)]
         public void EachProgramCompilesItsChainsInTheseForms(string program, string dLoop, string loop, string straight,
-            int dTemps, int temps, bool precise)
+            int dTemps, int temps, bool precise, int unreadCount)
         {
             string d = Load(program, d: true), shipped = Load(program, d: false);
             List<TemporalVisibilityDxbc.Chain> dChains = TemporalVisibilityDxbc.Found(d), chains = TemporalVisibilityDxbc.Found(shipped);
@@ -151,18 +137,18 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(loop, Forms(chains.Where(c => c.LoopDepth > 0)));
             Assert.Equal(straight, Forms(chains.Where(c => c.LoopDepth == 0)));
             Assert.Equal((dTemps, temps), (TemporalVisibilityDxbc.Declarations(d).Temps, TemporalVisibilityDxbc.Declarations(shipped).Temps));
-            // A precise chain ends in a mul and an add of -0.5, which the r3 reader did not read. The helper's end in a mad.
+            // Every current chain ends in a mad. The reader also retains the historical precise mul/add form.
             string end = precise ? " > add [precise] l(-0.500000)" : "l(-0.500000)";
             Assert.All(dChains.Concat(chains), c => Assert.EndsWith(end, c.Signature, StringComparison.Ordinal));
             Assert.All(dChains.Concat(chains), c => Assert.Equal(precise, c.Signature.StartsWith("itof [precise]", StringComparison.Ordinal)));
             // The -0.5 positions left unread have no itof behind them. In each full program six are a sample position,
-            // uv times a constant-buffer size less 0.5, and two are a bicubic weight's mad by a register.
+            // uv times a constant-buffer size less 0.5. Four are bicubic weight mads, two by a register and two by a literal.
             foreach (string text in new[] { d, shipped })
             {
                 List<string> unread = TemporalVisibilityDxbc.Unread(text);
-                Assert.Equal(precise ? 8 : 0, unread.Count);
+                Assert.Equal(unreadCount, unread.Count);
                 Assert.All(unread, u => Assert.DoesNotContain("itof", u, StringComparison.Ordinal));
-                Assert.Equal(precise ? 6 : 0, unread.Count(u => Regex.IsMatch(u, @"^component [xyzw]: mad[^,]*, r\d+\.[xyzw]+, cb\d+\[")));
+                Assert.Equal(unreadCount == 0 ? 0 : 6, unread.Count(u => Regex.IsMatch(u, @"^component [xyzw]: mad[^,]*, r\d+\.[xyzw]+, cb\d+\[")));
             }
 
             static string Forms(IEnumerable<TemporalVisibilityDxbc.Chain> list) => string.Concat(list
@@ -181,8 +167,8 @@ namespace KhaozEngine.Tests.Gpu
         /// own remainder (review 7f r4, N-1).</summary>
         [Theory]
         [InlineData("DecisionHelper", 2)]
-        [InlineData("TemporalAccumulateFrag", 4)]
-        [InlineData("TemporalResolveHalfFrag", 4)]
+        [InlineData("TemporalAccumulateFrag", 2)]
+        [InlineData("TemporalResolveHalfFrag", 2)]
         public void MutatedRealTextFailsTheCheck(string program, int shared)
         {
             string d = Load(program, d: true), shipped = Load(program, d: false);

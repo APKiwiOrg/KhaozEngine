@@ -17,17 +17,6 @@ namespace KhaozEngine.Tests.Gpu
     {
         public static TheoryData<string> Programs => TemporalVisibilityDxbcRealProgramTests.Programs;
 
-        /// <summary>The six full programs, whose every chain step FXC marks precise.</summary>
-        public static TheoryData<string> PrecisePrograms
-        {
-            get
-            {
-                var data = new TheoryData<string>();
-                foreach ((string name, _) in D3D11FxcValidationTests.VisibilityPrograms) data.Add(name);
-                return data;
-            }
-        }
-
         static (string D, string Shipped) Load(string program) =>
             (TemporalVisibilityDxbcRealProgramTests.Load(program, d: true), TemporalVisibilityDxbcRealProgramTests.Load(program, d: false));
 
@@ -141,15 +130,15 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Single(Only(program, d, mutated, "the straight-line chains subtract ["));
         }
 
-        /// <summary>Rule: head precise markings (review 7f r4, M-2). The half add of the first fast path head loses its
-        /// precise marking, which no chain of D's lacks, so a driver could fold it with the jitter. Taken off D's
-        /// in-loop head inside the shipped program, it fails as an in-loop difference.</summary>
+        /// <summary>Rule: head precise markings (review 7f r4, M-2). The half add of the first fast path head gains a
+        /// precise marking, which no chain of D's has. Added to D's in-loop head inside the shipped program, it fails
+        /// as an in-loop difference.</summary>
         [Theory]
-        [MemberData(nameof(PrecisePrograms))]
-        public void AHeadAddWithoutItsPreciseMarkingFails(string program)
+        [MemberData(nameof(Programs))]
+        public void AHeadAddWithAnExtraPreciseMarkingFails(string program)
         {
             (string d, string shipped) = Load(program);
-            string fast = UnmarkHalf(shipped, inLoop: false), slow = UnmarkHalf(shipped, inLoop: true);
+            string fast = MarkHalf(shipped, inLoop: false), slow = MarkHalf(shipped, inLoop: true);
             Assert.NotEqual(shipped, fast);
             Assert.NotEqual(shipped, slow);
             Only(program, d, fast, "a straight-line position chain whose head precise markings differ from every chain of D's "

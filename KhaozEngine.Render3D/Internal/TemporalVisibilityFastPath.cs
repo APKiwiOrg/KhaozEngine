@@ -41,8 +41,10 @@ namespace KhaozEngine.Render3D.Internal
         /// <para>Why. D's chain begins <c>(at + 0.5) - J</c>, and FXC at the shipped flags compiles each chain either
         /// as written or reassociated, <c>(at - J) + 0.5</c>. In the decision helper of hosted run 39362804399 D's
         /// chain came out reassociated, and of the fast path's six components two came out as written and four
-        /// reassociated. In the full accumulate and resolve programs, where FXC marks every instruction precise, every
-        /// chain is as written (hosted run 39374926165). Take integer <c>at</c> with <c>0 &lt;= at &lt; 2^22</c> and
+        /// reassociated. The barrier lock release leaves the full accumulate and resolve programs without precise
+        /// markings too. Their captured DXBC must keep D's in-loop chains equal to D's own program and their head
+        /// forms equal between fused and split entries. Every fast-path head must remain in one of the two analysed
+        /// orders. Take integer <c>at</c> with <c>0 &lt;= at &lt; 2^22</c> and
         /// float <c>J</c> in (-0.5, 0.5). <c>at + 0.5</c> is exact, so the written form rounds once, at
         /// <c>t + 0.5</c> where <c>t = at - J</c>. The reassociated form rounds <c>t</c>, then <c>fl(t) + 0.5</c>.
         /// Where <c>t</c> and <c>t + 0.5</c> lie in one closed binade <c>[2^e, 2^(e+1)]</c>, both are rounded to the

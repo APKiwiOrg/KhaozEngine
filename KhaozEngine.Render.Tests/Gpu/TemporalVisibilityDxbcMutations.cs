@@ -129,13 +129,13 @@ internal static partial class TemporalVisibilityDxbcMutations
         return string.Join('\n', lines);
     }
 
-    /// <summary>The text with the precise marking taken off the half add beside the first jitter subtract in
-    /// straight-line code, or in a loop (review 7f r4, M-2).</summary>
-    internal static string UnmarkHalf(string text, bool inLoop)
+    /// <summary>The text with a precise marking added to the half add beside the first jitter subtract in
+    /// straight-line code, or in a loop, so its head markings differ from D's (review 7f r4, M-2).</summary>
+    internal static string MarkHalf(string text, bool inLoop)
     {
         string[] lines = text.Split('\n');
         int half = HalfBesideJitter(lines, inLoop);
-        lines[half] = Regex.Replace(lines[half], @" \[precise[^\]]*\]", "");
+        lines[half] = lines[half].Replace("add ", "add [precise] ", StringComparison.Ordinal);
         return string.Join('\n', lines);
     }
 

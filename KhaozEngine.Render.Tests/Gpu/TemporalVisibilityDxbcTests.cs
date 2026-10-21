@@ -327,7 +327,7 @@ loop
 endloop
 ";
 
-        /// <summary>The shape every full program shows: precise markings read as <c>[precise]</c> on the steps they
+        /// <summary>The historical precise full-program shape: precise markings read as <c>[precise]</c> on the steps they
         /// cover, a mul and an add of -0.5 end the chain, the immediate constant buffer's lines are skipped, and the
         /// resource types glued to a marking are parsed off it.</summary>
         [Fact]

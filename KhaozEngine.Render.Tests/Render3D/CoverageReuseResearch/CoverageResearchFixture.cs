@@ -183,7 +183,7 @@ internal static class CoverageResearchProposalBuilder
             settings.ReferenceAnchor, inside, inset));
     }
 
-    static CoverageTriangleRange[] SupportRanges(CoverageSourceTopology part, int mesh, Matrix4x4 coverageLocal, double cosine)
+    internal static CoverageTriangleRange[] SupportRanges(CoverageSourceTopology part, int mesh, Matrix4x4 coverageLocal, double cosine)
     {
         if (!Matrix4x4.Invert(coverageLocal, out Matrix4x4 inverse)) throw new InvalidDataException("Singular coverage frame.");
         var selected = new List<CoverageSourceTriangle>();

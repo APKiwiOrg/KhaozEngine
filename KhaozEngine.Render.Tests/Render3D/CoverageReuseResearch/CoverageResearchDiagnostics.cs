@@ -92,7 +92,7 @@ internal sealed class CoverageResearchDiagnostics
             fixture.Parts.Select(Solid).ToArray());
     }
 
-    static CoverageResearchSolidReport Solid(CoverageSourceTopology source)
+    internal static CoverageResearchSolidReport Solid(CoverageSourceTopology source)
     {
         var ids = new Dictionary<Vector3, int>();
         var weld = source.Positions.ToArray().Select(p => ids.TryGetValue(p, out int id) ? id : ids[p] = ids.Count).ToArray();

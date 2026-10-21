@@ -416,6 +416,13 @@ What it owns today:
   once per batch of at most three, including the final short batch, then harvests once. The ring retains the
   exact submission fence through immutable publication and quarantines pending or invalid results without
   waiting or polling again. Pass labels and skipped-pass status remain adapter-owned.
+  The internal renderer harness adds `RendererPerfRecorder`, `RendererPerfDevice` and
+  `RendererPerfCommandList` beside its protocol records. They retain fixed command-owner, CPU-span,
+  dispatch-size and framebuffer-format storage before recording. Logical requested calls, redundant bind
+  requests, upload bytes and copy bytes stay separate from optional native emitted-state counters.
+  Disabled tracing returns the native objects unchanged. Enabled forwarding preserves optional capture,
+  fenced readback, memory, lifecycle, backend command-list and completed-End interfaces without wrapping
+  resource handles or adding a submit or wait. These are test-harness references, not package APIs.
 - **`GpuRetireQueue`** (since 17.37.0) - deferred disposal for anything a renderer frees MID-LIFE (a streamed mesh
   unloaded while the scene runs, a sprite atlas whose descriptor set fell out of the working set). `Retire(resource)`
   costs nothing at the call site, `BeginFrame()` seals the frame's retirements into one batch behind a fence and

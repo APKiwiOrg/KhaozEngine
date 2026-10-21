@@ -23138,6 +23138,55 @@ disposal frees unused pools immediately but retains quarantined pools until the 
 their exact fences. This lifecycle is covered by headless parity cases against the coverage ring's retained
 submission behavior. Migrating the coverage adapter is a separate change.
 
+The internal renderer adapter is
+[`RendererPerfRecorder`](../KhaozEngine.Render.Tests/Gpu/RendererPerf/RendererPerfRecorder.cs), with
+`RendererPerfDevice` and `RendererPerfCommandList` forwarding the native seam. Construct the recorder,
+fixed pass definitions, sample storage, CPU-span capacity and resource metadata capacity before warming.
+Pass definitions freeze IDs, occurrences, parents and increasing reserved marker pairs. The device factory
+records pipeline topology, compiled local sizes and texture layers while returning native resource handles.
+Unknown imported texture layers or pipeline metadata remain explicit incomplete metrics, never zero work.
+Requested resource bytes are creation totals, not live memory, physical traffic or residency.
+
+Call `BeginFrame(localSampleId, frameId, sequenceIndex, submission)` at the host's outer boundary, before
+native Begin, and `EndFrame` only after the host returns from submission and Present/end-frame work. The
+command wrapper begins the ring immediately after native Begin and arms its sole final marker through the
+native completed-End interface. Pass callbacks consume the frozen marker order. `SkipPass` writes every
+reserved marker in a skipped subtree and retains `NotExecuted`. A total-only layout uses two queries,
+ignores pass callbacks and publishes no pass intervals. Missing, foreign or unexpected occurrences and
+fixed-capacity exhaustion invalidate the trace without expanding its storage.
+
+Logical counters partition into the deepest active pass or the explicit `unattributed` owner. Parents do
+not receive a second copy of child work. Both device and command-list buffer uploads count once even when
+one forwards through the other. Texture uploads count the requested region payload. Whole-texture copies
+include known mip, layer and sample payloads, subresource copies use their requested rectangle, and resolves
+retain separate logical read/write byte estimates. These bytes are not measured off-chip traffic. Repeated
+binds are still forwarded in order, with redundant logical requests counted independently of emitted native
+state calls. An optional cold-supplied native cumulative counter can report emitted state calls. Without it,
+that metric is unsupported. Device wait/frame/acquire counters retain their native support status.
+
+`BeginCpuPhase(id)` and `EndCpuPhase(id)` produce exclusive CPU timeline segments. A nested phase pauses
+its parent and a later segment resumes it, retaining the logical parent ID without overlapping durations.
+The wrappers own begin/acquire, command-list End, Submit and Present segments. The host and renderer own
+pose/queue, preparation, grouping/culling, packing and pass scopes. Remaining time is `cpu.unattributed`.
+The outer CPU wall interval is authoritative, not a sum of inclusive parent spans. Batch drain, result harvest
+and immutable record construction happen after `EndFrame`, outside that wall interval.
+
+Managed allocation deltas retain separate scope labels. Current-thread bytes use the exact
+[`GC.GetAllocatedBytesForCurrentThread`](https://learn.microsoft.com/dotnet/api/system.gc.getallocatedbytesforcurrentthread)
+delta. Process bytes use the approximate
+[`GC.GetTotalAllocatedBytes(false)`](https://learn.microsoft.com/dotnet/api/system.gc.gettotalallocatedbytes)
+delta, include worker activity and overlap the thread total. Never add them. GC generation deltas have process
+scope. The recorder forces no collection and opens no no-GC region. A recording-thread change invalidates
+the thread delta. Working-set, private-byte, managed-live-heap and native-memory snapshots belong outside
+measured spans. `Harvest(sampleId, timestampResult)` creates Task 1 immutable records only after recording.
+
+With `enabled: false`, both wrapper factories return the original objects. With tracing enabled, cold-selected
+forwarders preserve the presence and absence of every current optional device/list interface, including native
+End tails, Vulkan rendering closure and D3D11 swapchain tracking. Submissions and swapchain captures unwrap
+only the harness command-list layer. No reflection, formatting, storage growth or extra native marker occurs
+inside recording. Headless allocation-region tests cover disabled forwarding and warmed enabled recording.
+They do not claim that native rendering, resource creation or result harvest allocates nothing.
+
 Native Direct3D 11 creates fixed timestamp queries and one disjoint query per pool.
 Timestamp and timestamp-disjoint queries are guaranteed from feature level 10_0. Begin records
 `Begin(disjoint)`, each write records `End(timestamp[index])`, and End records `End(disjoint)` through

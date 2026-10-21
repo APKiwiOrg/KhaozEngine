@@ -1062,6 +1062,15 @@ R10 complete verbs and R11 actual import remain separate gates.
 It adds no third-party package or direct backend edge, has no editor, TileWorld or MapDoc.Physics edge,
 and belongs to no umbrella. Render3D already carries Metal, D3D11 and Vulkan through Windowing.
 MapDoc grants friend access only, with no renderer reference in the reverse direction.
+Terrain.Render3D also grants MapDoc.Render3D friend access for the shared native prop emitter and
+CPU cluster builder and its binary64 position kernel. The upper adapter validates scene routing, the frozen
+native layer inventory and bounded native region-cell domain, excludes effective roofs, and certifies every
+anchor-relative vertex coordinate before calling that internal builder. Native regions span 64 document tiles,
+with equal subdivisions capped at 1024 m. Render.Tests pins the native region constant to TileRegion.Size
+without adding a production TileWorld reference. The lower builder has no building intent and makes no roof promise.
+Accepted native cluster handles remain externally owned and are never uploaded or freed by ApplyNative.
+MapDoc.Render3D grants Render.Tests test-only friend access to observe the guarded adapter boundary.
+MapDoc grants that test assembly access to its canonical JSON text options for linked native fixtures.
 Terrain.Render3D already carries the neutral Physics seam, so this adapter is a deliberate combined
 MapDoc/Physics consumer. Foundation, Server and the GPU-free native builders remain independent.
 

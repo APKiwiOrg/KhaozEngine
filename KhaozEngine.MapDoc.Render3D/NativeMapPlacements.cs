@@ -1,0 +1,257 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
+using KhaozEngine.MapDoc.Editing;
+using KhaozEngine.MapDoc.Assets;
+using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Scene;
+using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.Render3D;
+using KhaozEngine.Terrain;
+
+namespace KhaozEngine.MapDoc.Render3D;
+
+public static class NativeMapPlacements
+{
+    public static MapPlacementRenderBatch Prepare(MapScopedScene scene, MapPreparedInputLease input,
+        MapPlacementPolicy policy, MapPlacementRouting routing)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        var retained = input.Retain();
+        try
+        {
+            var batch = Prepare(scene, retained.Assets, policy, routing);
+            batch.AttachInput(retained); return batch;
+        }
+        catch { retained.Dispose(); throw; }
+    }
+
+    public static MapPlacementRenderBatch Prepare(MapScopedScene scene, MapRenderAssets assets,
+        MapPlacementPolicy policy, MapPlacementRouting routing)
+    {
+        ArgumentNullException.ThrowIfNull(scene); ArgumentNullException.ThrowIfNull(assets);
+        ArgumentNullException.ThrowIfNull(policy); ArgumentNullException.ThrowIfNull(routing);
+        routing.Validate(scene, policy);
+        if (scene.Witness.ClosureHash != assets.Closure.Hash) throw new MapDocumentException("Placement assets belong to another closure.");
+        foreach (var placement in scene.Placements)
+            if (!assets.ById.ContainsKey(placement.AssetId)) throw new MapRenderAssetRefusal(MapRenderAssetStatus.Missing, "Placement has no selected asset: " + placement.AssetId);
+        var admission = new MapSceneAdmission(scene.Source.Data.Limits);
+        try
+        {
+            var instances = new List<NativePropInstance>();
+            var parts = new List<MapPlacementPart>();
+            var boundsById = new Dictionary<string, MapBox3>(StringComparer.Ordinal);
+            var posesById = new Dictionary<string, MapEffectiveTransform>(StringComparer.Ordinal);
+            var handles = new Dictionary<string, IReadOnlyList<NativePropLod>>(StringComparer.Ordinal);
+            int nextHandle = 1;
+            foreach (var asset in assets.ById.Values)
+            {
+                var tiers = new List<NativePropLod>();
+                foreach (var lod in asset.Lods)
+                {
+                    var ids = new List<MeshHandle>();
+                    foreach (var part in lod.BorrowParts) { ids.Add(new(nextHandle++)); }
+                    tiers.Add(new(lod.Index, ids));
+                }
+                handles.Add(asset.AssetId, Array.AsReadOnly(tiers.ToArray()));
+            }
+            var roofs = scene.BuildingIntent.Roofs.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
+            foreach (var placement in scene.Placements)
+            {
+                if (routing.Entries[placement.PlacementId] == MapPlacementRoute.Animated) continue;
+                admission.ReserveBytes(256);
+                var pose = Pose(scene, placement); var anchor = Anchor(pose);
+                posesById.Add(placement.PlacementId, pose);
+                var instance = new NativePropInstance(placement.PlacementId, placement.NumericId, placement.AssetId,
+                    MapRenderTransform.ToLocal(pose, anchor), new(anchor.X, anchor.Y, anchor.Z));
+                instances.Add(instance);
+                var bounds = Bounds(assets.ById[placement.AssetId].Descriptor, pose);
+                boundsById.Add(placement.PlacementId, bounds);
+                var kind = roofs.Contains(placement.PlacementId) ? MapRenderKind.Roof : MapRenderKind.Placement;
+                foreach (var lod in assets.ById[placement.AssetId].Lods)
+                    for (int i = 0; i < lod.BorrowParts.Count; i++)
+                    {
+                        var part = lod.BorrowParts[i];
+                        admission.ReserveBytes(checked(512L + 4 * Bytes(part.Mesh, part.Maps)));
+                        var key = new MapRenderKey(kind, placement.PlacementId, "part/" + i, lod.Index);
+                        var payload = new MapRigidResource(part.Mesh, part.Maps);
+                        string digest = MapPlacementDigest.Hash(w =>
+                        {
+                            w.WriteStartArray(); w.WriteStringValue(assets.Closure.GetResource(lod.ResourceId).Reference.Sha256);
+                            w.WriteNumberValue(assets.ById[placement.AssetId].Descriptor.SourceUnitsToMetres); w.WriteNumberValue(i); w.WriteEndArray();
+                        });
+                        parts.Add(new(key, handles[placement.AssetId][lod.Index].Parts[i], anchor, bounds, payload, digest));
+                    }
+            }
+            var clusters = new List<NativePropClusterCpuBuild>();
+            var ordinary = new List<PropLayer>();
+            foreach (var layer in policy.Layers)
+            {
+                var selected = instances.Where(i => layer.AssetIds.Contains(i.AssetId)).ToArray();
+                if (selected.Length == 0) continue;
+                if (layer.HlodDistance == 0) { ordinary.Add(Shared(selected, layer)); continue; }
+                foreach (var cell in selected.GroupBy(i => MapPlacementCells.Key(layer.Id, posesById[i.Id], scene.Source.Data.TileSize))
+                    .OrderBy(c => c.Key.X).ThenBy(c => c.Key.Z))
+                {
+                    var members = cell.ToArray();
+                    var domain = MapPlacementCells.Domain(cell.Key, scene.Source.Data.TileSize, members.Min(i => i.Anchor.Y));
+                    var sources = new Dictionary<string, GltfMesh>(StringComparer.Ordinal);
+                    foreach (string id in members.Select(i => i.AssetId).Distinct(StringComparer.Ordinal))
+                    {
+                        var source = assets.ById[id].Lods[^1];
+                        admission.ReserveBytes(checked(8 * source.BorrowParts.Sum(p => Bytes(p.Mesh, p.Maps))));
+                        sources.Add(id, Flatten(source.BorrowParts));
+                    }
+                    long mergeBytes = members.Sum(i => Bytes(sources[i.AssetId], default));
+                    admission.ReserveBytes(checked(8 * mergeBytes));
+                    var shared = Shared(members, layer).WithHlod(sources, layer.HlodDistance, layer.HlodWeldCell, layer.HlodCrossfadeWidth);
+                    var request = new NativePropClusterRequest(cell.Key, 0, domain.Area, shared, members, domain.Anchor);
+                    var build = PrepareCluster(scene, routing, request);
+                    clusters.Add(build);
+                    var anchor = new MapSubmissionAnchor(domain.Anchor.X, domain.Anchor.Y, domain.Anchor.Z);
+                    var mesh = build.BorrowMesh;
+                    if (mesh.TriangleCount == 0) continue;
+                    var bounds = members.Select(i => boundsById[i.Id]).Aggregate(Union);
+                    var key = new MapRenderKey(MapRenderKind.Placement, MapPlacementCells.Owner(cell.Key), "hlod", 0);
+                    string inventory = ClusterInventoryDigest(members, assets.Closure.Hash, layer.HlodWeldCell);
+                    parts.Add(new(key, new(nextHandle++), anchor, bounds, new MapRigidResource(mesh, default),
+                        MapPlacementDigest.Hash(w =>
+                        {
+                            w.WriteStartArray(); w.WriteStringValue(routing.SceneWitnessDigest); w.WriteStringValue(routing.PolicyDigest);
+                            w.WriteStringValue(inventory); w.WriteEndArray();
+                        })));
+                }
+            }
+            var defaults = instances.Where(i => policy.For(i.AssetId) is null).ToArray();
+            if (defaults.Length > 0) ordinary.Add(Shared(defaults, null));
+            return new(scene.Placements, MapEffectiveAnnotations.Markers(scene), ordinary, parts, routing, clusters, admission.RetainedBytes);
+
+            PropLayer Shared(IReadOnlyList<NativePropInstance> rows, MapPlacementLayer? layer)
+            {
+                var tiers = rows.Select(i => i.AssetId).Distinct(StringComparer.Ordinal).ToDictionary(id => id, id => handles[id], StringComparer.Ordinal);
+                admission.ReserveBytes(checked(256L + 128L * rows.Count + tiers.Values.Sum(t => 64L + 32L * t.Count + 4L * t.Sum(l => l.Parts.Count))));
+                var shared = PropLayer.PlacementLayer(rows, tiers, layer?.DrawRadius ?? policy.DefaultDrawRadius,
+                    layer?.LodDistances ?? Array.Empty<float>(), layer?.LodCrossfadeWidth ?? 0, layer?.CastsShadows ?? true);
+                return layer is null ? shared : shared.WithIdentity(layer.Id);
+            }
+        }
+        catch (MapSceneCapacityException) { throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, "Placement preparation exceeds its scene allowance."); }
+    }
+
+    /// <summary>The sole upper entry to native cluster merging. Validate the entire request before the lower
+    /// builder enters. Effective roofs must remain independently addressable for every presentation channel.</summary>
+    public static NativePropClusterCpuBuild PrepareCluster(MapScopedScene scene, MapPlacementRouting routing, NativePropClusterRequest request) =>
+        PrepareCluster(scene, routing, request, PropClusterRenderer.BuildNativeCpu);
+
+    internal static NativePropClusterCpuBuild PrepareCluster(MapScopedScene scene, MapPlacementRouting routing,
+        NativePropClusterRequest request, Func<NativePropClusterRequest, NativePropClusterCpuBuild> build)
+    {
+        ArgumentNullException.ThrowIfNull(scene); ArgumentNullException.ThrowIfNull(routing); ArgumentNullException.ThrowIfNull(request);
+        routing.Validate(scene);
+        var roofs = scene.BuildingIntent.Roofs.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
+        var placements = scene.Placements.ToDictionary(p => p.PlacementId, StringComparer.Ordinal);
+        if (request.Instances.Count == 0) throw new MapDocumentException("Native cluster requires its effective members.");
+        foreach (var instance in request.Instances)
+        {
+            if (roofs.Contains(instance.Id) || !routing.Entries.TryGetValue(instance.Id, out var route) || route != MapPlacementRoute.Cluster ||
+                !placements.TryGetValue(instance.Id, out var placement) || instance.AssetId != placement.AssetId || instance.NumericId != placement.NumericId ||
+                instance.LocalTransform != MapRenderTransform.ToLocal(Pose(scene, placement), new(instance.Anchor.X, instance.Anchor.Y, instance.Anchor.Z)) ||
+                MapPlacementCells.Key(request.Key.LayerId, Pose(scene, placement), scene.Source.Data.TileSize) != request.Key)
+                throw new MapDocumentException("Native cluster request disagrees with the effective scene routing.");
+            var anchor = Anchor(Pose(scene, placement));
+            if (instance.Anchor != new RenderAnchor(anchor.X, anchor.Y, anchor.Z))
+                throw new MapDocumentException("Native cluster member disagrees with its effective anchor.");
+        }
+        var domain = MapPlacementCells.Domain(request.Key, scene.Source.Data.TileSize, request.Instances.Min(i => i.Anchor.Y));
+        if (request.Anchor != domain.Anchor || !request.Area.Equals(domain.Area) || request.BorrowLayer.Identity != request.Key.LayerId)
+            throw new MapDocumentException("Native cluster request disagrees with its region cell.");
+        if (request.BorrowLayer.NativePlacements is not { } native || !native.SequenceEqual(request.Instances))
+            throw new MapDocumentException("Native cluster request disagrees with its frozen layer inventory.");
+        CertifyCluster(request);
+        return build(request);
+    }
+
+    static void CertifyCluster(NativePropClusterRequest request)
+    {
+        const double coordinateLimit = 2048;
+        var sources = request.BorrowLayer.HlodSourceMeshes;
+        foreach (var instance in request.Instances)
+        {
+            if (sources is null || !sources.TryGetValue(instance.AssetId, out var source) || source.Vertices.Length == 0)
+                throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, "Native cluster requires every member's source geometry.");
+            var transform = new NativePropClusterTransform(instance, request.Anchor);
+            foreach (var vertex in source.Vertices)
+            {
+                var position = transform.Position(vertex.Position);
+                // Below 2048 m the final binary32 half ULP stays within the 0.0001 m submission allowance.
+                if (!(Math.Abs(position.X) < coordinateLimit && Math.Abs(position.Y) < coordinateLimit && Math.Abs(position.Z) < coordinateLimit))
+                    throw new MapRenderAssetRefusal(MapRenderAssetStatus.NotRepresentable,
+                        "Native cluster vertex exceeds the anchor-relative precision bound: " + instance.Id);
+            }
+        }
+    }
+    static string ClusterInventoryDigest(IReadOnlyList<NativePropInstance> instances, string closure, float weld) => MapPlacementDigest.Hash(w =>
+    {
+        w.WriteStartArray(); w.WriteStringValue("kemap/native-cluster/1"); w.WriteStringValue(closure); w.WriteNumberValue(weld);
+        foreach (var instance in instances.OrderBy(i => i.Id, StringComparer.Ordinal))
+        {
+            w.WriteStringValue(instance.Id); w.WriteStringValue(instance.AssetId);
+            w.WriteNumberValue(instance.Anchor.X); w.WriteNumberValue(instance.Anchor.Y); w.WriteNumberValue(instance.Anchor.Z);
+            var m = instance.LocalTransform;
+            foreach (float value in new[] { m.M11, m.M12, m.M13, m.M14, m.M21, m.M22, m.M23, m.M24,
+                m.M31, m.M32, m.M33, m.M34, m.M41, m.M42, m.M43, m.M44 }) w.WriteNumberValue(value);
+        }
+        w.WriteEndArray();
+    });
+
+    internal static MapEffectiveTransform Pose(MapScopedScene scene, MapResolvedPlacement placement) =>
+        scene.Transforms.TryGetValue(MapEffectiveContext.Key(MapPrefabChildKind.Placement, placement.PlacementId), out var pose)
+            ? pose : MapEffectiveTransform.From(placement.Transform);
+    // Discovery metadata deliberately has unbounded height. Render registrations instead retain finite 3D
+    // descriptor coverage, including every tier and declared light reach. The submission error allowance also
+    // covers the final local binary32 matrix and vertex arithmetic at the culling boundary.
+    internal static MapBox3 Bounds(MapResolvedAsset asset, MapEffectiveTransform pose, bool includeLights = true)
+    {
+        const double submissionAllowance = .0001;
+        double minX = double.PositiveInfinity, minY = double.PositiveInfinity, minZ = double.PositiveInfinity;
+        double maxX = double.NegativeInfinity, maxY = double.NegativeInfinity, maxZ = double.NegativeInfinity;
+        var (sin, cos) = Math.SinCos(pose.YawRadians);
+        foreach (var bounds in new MapLocalBounds?[] { asset.RenderBounds, asset.LodBounds, includeLights ? asset.LightBounds : null })
+        {
+            if (bounds is not { } box) continue;
+            for (int corner = 0; corner < 8; corner++)
+            {
+                double x = ((corner & 1) == 0 ? box.Min.X : box.Max.X) * (double)asset.SourceUnitsToMetres * pose.Scale;
+                double y = ((corner & 2) == 0 ? box.Min.Y : box.Max.Y) * (double)asset.SourceUnitsToMetres * pose.Scale;
+                double z = ((corner & 4) == 0 ? box.Min.Z : box.Max.Z) * (double)asset.SourceUnitsToMetres * pose.Scale;
+                double wx = pose.X + cos * x + sin * z, wy = pose.Y + y, wz = pose.Z - sin * x + cos * z;
+                minX = Math.Min(minX, wx); minY = Math.Min(minY, wy); minZ = Math.Min(minZ, wz);
+                maxX = Math.Max(maxX, wx); maxY = Math.Max(maxY, wy); maxZ = Math.Max(maxZ, wz);
+            }
+        }
+        return new(Math.BitDecrement(minX - submissionAllowance), Math.BitDecrement(minY - submissionAllowance), Math.BitDecrement(minZ - submissionAllowance),
+            Math.BitIncrement(maxX + submissionAllowance), Math.BitIncrement(maxY + submissionAllowance), Math.BitIncrement(maxZ + submissionAllowance));
+    }
+
+    static MapSubmissionAnchor Anchor(MapEffectiveTransform pose) => new(checked((long)Math.Floor(pose.X)), checked((long)Math.Floor(pose.Y)), checked((long)Math.Floor(pose.Z)));
+    static long Bytes(GltfMesh mesh, GltfMaterialMaps maps) => checked(256L + (long)mesh.Vertices.Length * ModelVertex.SizeInBytes +
+        4L * mesh.Indices32.Length + (maps.Albedo?.Rgba.LongLength ?? 0) + (maps.Normal?.Rgba.LongLength ?? 0) + (maps.Roughness?.Rgba.LongLength ?? 0));
+    static MapBox3 Union(MapBox3 a, MapBox3 b) => new(Math.Min(a.MinX, b.MinX), Math.Min(a.MinY, b.MinY), Math.Min(a.MinZ, b.MinZ),
+        Math.Max(a.MaxX, b.MaxX), Math.Max(a.MaxY, b.MaxY), Math.Max(a.MaxZ, b.MaxZ));
+    static GltfMesh Flatten(IReadOnlyList<GltfMeshPart> parts)
+    {
+        var vertices = new List<ModelVertex>(); var indices = new List<uint>();
+        foreach (var part in parts)
+        {
+            uint start = (uint)vertices.Count;
+            var albedo = part.Maps.Albedo is { } image ? GltfLoader.AverageAlbedo(image) : Vector3.One;
+            foreach (var v in part.Mesh.Vertices)
+            {
+                var output = v; output.Color *= new Vector4(albedo, 1); vertices.Add(output);
+            }
+            indices.AddRange(part.Mesh.Indices32.Select(i => start + i));
+        }
+        return new(vertices.ToArray(), indices.ToArray());
+    }
+}

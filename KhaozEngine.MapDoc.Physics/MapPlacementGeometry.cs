@@ -6,8 +6,10 @@ using System.Linq;
 using System.Numerics;
 using System.Security.Cryptography;
 using System.Text;
+using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.Physics;
 using KhaozEngine.Primitives;
 
@@ -74,13 +76,20 @@ public static class MapPlacementShapes
     public static IReadOnlyList<MapPlacementGeometry> Resolve(MapResolvedDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);
+        return Prepare(document.Placements, document.AssetClosure, document.EffectiveResources?.Transforms);
+    }
+
+    internal static IReadOnlyList<MapPlacementGeometry> Prepare(IReadOnlyList<MapResolvedPlacement> placements,
+        MapAssetClosure closure, IReadOnlyDictionary<string, MapEffectiveTransform>? transforms)
+    {
+        MapSceneAdmission.Current?.ReserveBytes(checked(256L + placements.Count * 32L));
         var assets = new Dictionary<string, MapAssetShapes>(StringComparer.Ordinal);
-        var result = new List<MapPlacementGeometry>(document.Placements.Count);
-        foreach (MapResolvedPlacement placement in document.Placements.OrderBy(p => p.PlacementId, StringComparer.Ordinal))
+        var result = new List<MapPlacementGeometry>(placements.Count);
+        foreach (MapResolvedPlacement placement in placements.OrderBy(p => p.PlacementId, StringComparer.Ordinal))
         {
             if (!assets.TryGetValue(placement.AssetId, out MapAssetShapes? shapes))
-                assets.Add(placement.AssetId, shapes = MapAssetShapes.Read(document.AssetClosure, placement.AssetId));
-            MapEffectiveTransform? precise = document.EffectiveResources?.Transforms.GetValueOrDefault("Placement:" + placement.PlacementId);
+                assets.Add(placement.AssetId, shapes = MapAssetShapes.Read(closure, placement.AssetId));
+            MapEffectiveTransform? precise = transforms?.GetValueOrDefault("Placement:" + placement.PlacementId);
             result.Add(Build(placement, shapes, precise));
         }
         return result.AsReadOnly();
@@ -125,6 +134,7 @@ public static class MapPlacementShapes
             !float.IsFinite(transform.Position.Z) || !float.IsFinite(transform.YawRadians))
             throw new MapDocumentException($"Placement '{placement.PlacementId}' has a nonfinite position or yaw.");
 
+        MapSceneAdmission.Current?.BeforeGeometry(MapPlacementPreparation.InstanceBytes(placement, shapes, scale));
         var worldPose = MapBackendPoseAdapter.Pose(effective, WorldFrame.Origin);
         PhysicsShape? collider = shapes.Collider is null ? null : PhysicsShapeScale.Uniform(shapes.Collider, scale);
         PhysicsShape? selection = shapes.Selection is null ? null : PhysicsShapeScale.Uniform(shapes.Selection, scale);

@@ -29,8 +29,9 @@ internal sealed class GroundCoverGpuBindings
         {
             string id = _cover.ModelId(model);
             if (!meshes.TryGetValue(id, out IReadOnlyList<MeshHandle>? live)) live = null;
-            FoliageMotionProfile motion = Motion(options, id);
-            bool casts = Casts(options, id);
+            var policy = options is null ? default : GroundCoverModelPolicy.Resolve(options, id);
+            FoliageMotionProfile motion = policy.Motion;
+            bool casts = policy.CastShadows;
             bool sameParts = SameParts(_parts[model], live);
             if (sameParts && (_parts[model] is null || (_motion[model] == motion && _casts[model] == casts)))
                 continue;
@@ -75,20 +76,6 @@ internal sealed class GroundCoverGpuBindings
     {
         int model = _cover.ModelIndex(placement);
         return model < 0 ? null : _parts[model];
-    }
-
-    static FoliageMotionProfile Motion(GroundCoverRenderOptions? options, string id) =>
-        options is not null && options.MotionProfiles.Count != 0 &&
-        options.MotionProfiles.TryGetValue(id, out FoliageMotionProfile motion)
-            ? motion
-            : FoliageMotionProfile.Blade;
-
-    static bool Casts(GroundCoverRenderOptions? options, string id)
-    {
-        if (options is null) return false;
-        return options.ModelCastsShadows.Count != 0 && options.ModelCastsShadows.TryGetValue(id, out bool casts)
-            ? casts
-            : options.CastsShadows;
     }
 
     static bool SameParts(MeshHandle[]? snapshot, IReadOnlyList<MeshHandle>? live)

@@ -191,10 +191,9 @@ namespace KhaozEngine.Render3D.Rendering
             Vector4[] colorIntensity, Vector3 renderOrigin = default)
         {
             int mirrored = Math.Min(lights.Length, MaxPointLights);
-            var originXyz = new Vector4(renderOrigin, 0f);   // the radius (w) is a distance and is frame-invariant
             for (int i = 0; i < mirrored; i++)
             {
-                posRadius[i] = lights[i].PosRadius - originXyz;
+                posRadius[i] = lights[i].RelativePosRadius(renderOrigin);
                 colorIntensity[i] = lights[i].ColorIntensity;
             }
             for (int i = mirrored; i < MaxPointLights; i++)

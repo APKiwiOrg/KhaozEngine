@@ -106,17 +106,6 @@ namespace KhaozEngine.Render3D.Rendering
             public Vector4 NormalOffsets;     // 288: per-cascade normal-offset world size (x=c0..w=c3)
         }
 
-        /// <summary>One dynamic point light, packed for the std140 UBO arrays: <see cref="PosRadius"/> is
-        /// (worldX, worldY, worldZ, radius); <see cref="ColorIntensity"/> is (r, g, b, intensity).</summary>
-        public struct PointLightData
-        {
-            public Vector4 PosRadius;
-            public Vector4 ColorIntensity;
-            // The caller's omnidirectional shadow REQUEST. Read by the point shadow pass when it picks which
-            // lights get a slot, never by BuildLightArrays: nothing here reaches the GPU through this struct.
-            public LightShadow Shadow;
-        }
-
         // Reused per-frame upload scratch (cleared/refilled, never realloc) for the two UBO light arrays.
         readonly Vector4[] _lightPosRadius = new Vector4[MaxPointLights];
         readonly Vector4[] _lightColorIntensity = new Vector4[MaxPointLights];

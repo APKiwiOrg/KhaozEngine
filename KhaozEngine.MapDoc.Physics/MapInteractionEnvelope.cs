@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using KhaozEngine.MapDoc.Editing;
+using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.Physics;
 
 namespace KhaozEngine.MapDoc.Physics;
@@ -62,6 +63,7 @@ public sealed class MapInteractionEnvelope
                 derivedFromCollider);
 
         // World up expressed in the shape's own frame. A yaw-only placement keeps it exactly vertical.
+        MapSceneAdmission.Current?.ReserveBytes(MapPlacementPreparation.SweepBytes(source));
         Vector3 up = Vector3.Transform(new Vector3(0f, raise, 0f), Quaternion.Conjugate(worldPose.Orientation));
         (PhysicsShape swept, Vector3 offset) = Sweep(placementId, source, up);
         var pose = new Pose(worldPose.Position + Vector3.Transform(offset, worldPose.Orientation), worldPose.Orientation);

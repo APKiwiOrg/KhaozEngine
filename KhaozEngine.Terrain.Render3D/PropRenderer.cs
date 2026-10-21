@@ -28,7 +28,7 @@ namespace KhaozEngine.Terrain
     /// <see cref="ShadowMode.Blob"/> - null (the default) never registers anything.</para>
     /// The headless <see cref="Queue(SceneInstances, IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, Vector3, float, Color?, float, IReadOnlyDictionary{string, MeshHandle}, float, float, bool)"/> overload is testable without a GPU. <c>DrawProps</c> is the Scene3D
     /// convenience a consumer with <c>using KhaozEngine.Terrain;</c> gets in scope.</summary>
-    public static class PropRenderer
+    public static partial class PropRenderer
     {
         // The per-call state an emit sink needs, carried by value through the generic emit loops so every sink
         // delegate below can be STATIC and therefore allocated once for the process (issue #393). Each of the four
@@ -60,8 +60,11 @@ namespace KhaozEngine.Terrain
         {
             s.Scene.Draw(new RigidInstanceDraw(handle, world)
             {
-                Tint = s.Tint, Dissolve = dissolve, DissolveComplement = complement,
-                CastsShadows = s.CastsShadows, CutInsideInteriors = s.CutInsideInteriors,
+                Tint = s.Tint,
+                Dissolve = dissolve,
+                DissolveComplement = complement,
+                CastsShadows = s.CastsShadows,
+                CutInsideInteriors = s.CutInsideInteriors,
             });
         };
 
@@ -302,19 +305,13 @@ namespace KhaozEngine.Terrain
             float fadeInner = MathF.Max(0f, drawRadius - fadeBandWidth);   // fade starts here (band clamped to radius)
             float fadeBand = drawRadius - fadeInner;                        // = min(fadeBandWidth, drawRadius); 0 = hard cut
             bool useLod = lodMeshes != null && lodDistance > 0f;
-            float lod2 = lodDistance * lodDistance;
-            float lodHalfWidth = MathF.Max(0f, lodCrossfadeWidth) * 0.5f;
-            float lodInner = MathF.Max(0f, lodDistance - lodHalfWidth);
-            float lodOuter = lodDistance + lodHalfWidth;
-            float lodBand = lodOuter - lodInner;
             bool emitBlobs = blobRadii != null && blobSink != null;         // issue #388: per-kit blob opt-in
             int count = 0;
             for (int i = 0; i < placements.Count; i++)
             {
                 PropPlacement p = placements[i];
                 if (drawFilter is not null && !drawFilter(layerIdentity, p.Id)) continue;
-                float dx = p.X - focus.X, dz = p.Z - focus.Z;
-                float d2 = dx * dx + dz * dz;
+                float d2 = HorizontalDistanceSquared(p.X, p.Z, focus);
                 if (d2 > r2) continue;                                      // horizontal distance cull
                 if (!meshes.TryGetValue(p.Id, out MeshHandle handle)) continue;
                 MeshHandle lodHandle = default;
@@ -325,27 +322,11 @@ namespace KhaozEngine.Terrain
                                   * Matrix4x4.CreateTranslation(p.X, p.Y, p.Z);
                 // Per-placement fade band OR the uniform HLOD crossfade floor, whichever discards more.
                 float dissolve = MathF.Max(DissolveAt(d2, fadeInner, fadeBand), dissolveFloor);
-                if (hasLod && lodBand > 0f)
-                {
-                    float dist = MathF.Sqrt(d2);
-                    if (dist < lodInner)
-                        sink(state, handle, world, dissolve, 0f);
-                    else if (dist >= lodOuter)
-                        sink(state, lodHandle, world, dissolve, 0f);
-                    else
-                    {
-                        float transition = Math.Clamp((dist - lodInner) / lodBand, 0f, 1f);
-                        (float nearDissolve, float farDissolve) =
-                            ComposeLodDissolve(transition, dissolve);
-                        sink(state, handle, world, nearDissolve, 0f);
-                        sink(state, lodHandle, world, farDissolve, 1f);
-                    }
-                }
-                else
-                {
-                    if (hasLod && d2 > lod2) handle = lodHandle;
-                    sink(state, handle, world, dissolve, 0f);
-                }
+                var selection = hasLod ? SelectLodBoundary(d2, lodDistance, lodCrossfadeWidth) : (Near: 0, Far: -1, Transition: 0f);
+                var coverage = ComposeLodDissolve(selection.Transition, dissolve);
+                sink(state, selection.Near == 0 ? handle : lodHandle, world,
+                    selection.Far >= 0 ? coverage.Near : dissolve, 0f);
+                if (selection.Far >= 0) sink(state, lodHandle, world, coverage.Far, 1f);
                 // A fully dissolved prop draws nothing, so it gets no ground blob either (issue #388): otherwise a
                 // faded-out tree would leave a floating blob with no visible caster.
                 if (emitBlobs && dissolve < 1f && blobRadii!.TryGetValue(p.Id, out float baseRadius))
@@ -386,19 +367,13 @@ namespace KhaozEngine.Terrain
             float fadeInner = MathF.Max(0f, drawRadius - fadeBandWidth);
             float fadeBand = drawRadius - fadeInner;
             bool useLod = lodParts != null && lodDistance > 0f;
-            float lod2 = lodDistance * lodDistance;
-            float lodHalfWidth = MathF.Max(0f, lodCrossfadeWidth) * 0.5f;
-            float lodInner = MathF.Max(0f, lodDistance - lodHalfWidth);
-            float lodOuter = lodDistance + lodHalfWidth;
-            float lodBand = lodOuter - lodInner;
             bool emitBlobs = blobRadii != null && blobSink != null;         // issue #388: per-kit blob opt-in
             int count = 0;
             for (int i = 0; i < placements.Count; i++)
             {
                 PropPlacement p = placements[i];
                 if (drawFilter is not null && !drawFilter(layerIdentity, p.Id)) continue;
-                float dx = p.X - focus.X, dz = p.Z - focus.Z;
-                float d2 = dx * dx + dz * dz;
+                float d2 = HorizontalDistanceSquared(p.X, p.Z, focus);
                 if (d2 > r2) continue;                                      // horizontal distance cull
                 if (!parts.TryGetValue(p.Id, out IReadOnlyList<MeshHandle>? handles) || handles == null) continue;
                 IReadOnlyList<MeshHandle>? lodHandles = null;
@@ -410,33 +385,13 @@ namespace KhaozEngine.Terrain
                                   * Matrix4x4.CreateTranslation(p.X, p.Y, p.Z);
                 // Whole prop shares one dissolve: per-placement fade band OR the uniform HLOD crossfade floor, max.
                 float dissolve = MathF.Max(DissolveAt(d2, fadeInner, fadeBand), dissolveFloor);
-                if (hasLod && lodBand > 0f)
-                {
-                    float dist = MathF.Sqrt(d2);
-                    if (dist < lodInner)
-                    {
-                        for (int j = 0; j < handles.Count; j++) sink(state, handles[j], world, dissolve, 0f);
-                    }
-                    else if (dist >= lodOuter)
-                    {
-                        for (int j = 0; j < lodHandles!.Count; j++) sink(state, lodHandles[j], world, dissolve, 0f);
-                    }
-                    else
-                    {
-                        float transition = Math.Clamp((dist - lodInner) / lodBand, 0f, 1f);
-                        (float nearDissolve, float farDissolve) =
-                            ComposeLodDissolve(transition, dissolve);
-                        for (int j = 0; j < handles.Count; j++)
-                            sink(state, handles[j], world, nearDissolve, 0f);
-                        for (int j = 0; j < lodHandles!.Count; j++)
-                            sink(state, lodHandles[j], world, farDissolve, 1f);
-                    }
-                }
-                else
-                {
-                    if (hasLod && d2 > lod2) handles = lodHandles!;
-                    for (int j = 0; j < handles.Count; j++) sink(state, handles[j], world, dissolve, 0f);
-                }
+                var selection = hasLod ? SelectLodBoundary(d2, lodDistance, lodCrossfadeWidth) : (Near: 0, Far: -1, Transition: 0f);
+                var coverage = ComposeLodDissolve(selection.Transition, dissolve);
+                var selected = selection.Near == 0 ? handles : lodHandles!;
+                for (int j = 0; j < selected.Count; j++) sink(state, selected[j], world,
+                    selection.Far >= 0 ? coverage.Near : dissolve, 0f);
+                if (selection.Far >= 0)
+                    for (int j = 0; j < lodHandles!.Count; j++) sink(state, lodHandles[j], world, coverage.Far, 1f);
                 // One blob per PLACEMENT, not one per part (the whole prop shares one footprint). Same full-dissolve
                 // skip as Emit (issue #388).
                 if (emitBlobs && dissolve < 1f && blobRadii!.TryGetValue(p.Id, out float baseRadius))

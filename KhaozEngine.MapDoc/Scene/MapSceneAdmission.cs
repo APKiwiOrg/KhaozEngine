@@ -93,6 +93,12 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
         entering?.Invoke("payload");
     }
 
+    internal void BeforeGeometry(long bytes)
+    {
+        ReserveBytes(bytes);
+        entering?.Invoke("geometry");
+    }
+
     internal void BeforeClone(MapSurfacePatch patch)
     {
         ReserveBytes(PatchBytes(patch));

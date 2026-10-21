@@ -129,7 +129,7 @@ public static class MapWorldBuilder
             throw new MapDocumentException($"water: body '{body.BodyId}' has occupied regions but no fragment bounds");
     }
 
-    static void ValidateOptions(MapWorldBuildOptions options)
+    internal static void ValidateOptions(MapWorldBuildOptions options)
     {
         ArgumentNullException.ThrowIfNull(options.Resolve, nameof(options));
         ArgumentNullException.ThrowIfNull(options.Chunks, nameof(options));
@@ -144,7 +144,7 @@ public static class MapWorldBuilder
                 $"MaxTrianglesPerChunk must be {MapTerrainPhysics.MinTrianglesPerChunk} to {MapTerrainPhysics.MaxTrianglesPerChunk}.");
     }
 
-    static IReadOnlyList<MapStaticDescriptor> Statics(IReadOnlyList<MapPlacementGeometry> placements, MapTerrainChunkSet terrain)
+    internal static IReadOnlyList<MapStaticDescriptor> Statics(IReadOnlyList<MapPlacementGeometry> placements, MapTerrainChunkSet terrain)
     {
         var statics = new List<MapStaticDescriptor>();
         var owners = new HashSet<string>(StringComparer.Ordinal);

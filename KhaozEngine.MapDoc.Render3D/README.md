@@ -61,6 +61,52 @@ produce typed `MapTerrainFinding` entries, since this pipeline consumes albedo o
 previous-frame motion. Its World matrix is local to the anchor. Existing absolute draws retain their
 released queue, culling and zero-origin upload behavior.
 
+`MapPlacementPolicy` freezes disjoint caller asset selections and increasing positive LOD thresholds.
+An empty threshold list keeps base geometry. Otherwise each asset needs one threshold per declared far tier.
+`MapPlacementRouting.Create` freezes one ordinary, cluster or animated route for every placement. Cluster and
+animated selections cannot overlap. Every effective roof stays ordinary, including a shared roof/non-roof asset.
+Invalid policies refuse before preparation. Pass the same partition object to the rigid and animated producers.
+
+`NativeMapPlacements.Prepare(scene, input, policy, routing)` retains the selected prepared input lease.
+The `MapRenderAssets` overload instead owns detached copies and has no lease on the caller's input.
+`MapPlacementRenderBatch` retains placement identities, numeric IDs, kinds and ordered tags. Its `Markers`
+retain annotation identities without adding visible labels. Register every part of every declared tier before
+recording. Geometry is already in metres. Effective placement poses compose once in anchor-local space.
+The typed recorder and `PropRenderer.DrawNative` share N-tier selection and complementary coverage.
+
+Each selected HLOD layer partitions its frozen inventory into native regions of 64 document tiles per edge.
+The region edge is `64 * TileSize` metres. Regions exceeding 1024 m split into `n * n` equal sub-cells,
+where `n = ceil(64 * TileSize / 1024)`, aligned with the region grid. Assignment uses the precise binary64
+effective origin and half-open boundaries before any absolute float conversion. Keys are
+`(layer, cell X, cell Z, plane 0)`, with cell indices counting subdivisions globally from the region grid origin.
+The anchor floors the cell's X/Z origin and the minimum member origin Y to whole metres.
+Fractional cell origins remain local. Before the internal builder enters, every transformed source vertex must
+have an absolute anchor-relative coordinate strictly below 2048 m on every axis, checked in binary64 through
+the same position kernel as the merge. Failure throws `MapRenderAssetRefusal` with `NotRepresentable` and refuses
+preparation. It never silently drops the cluster or falls back to individual geometry.
+Merged vertices round once after certification, within the 0.0001 m binary32 submission allowance.
+Content digests retain inventory, transforms,
+closure and weld settings separately from the stable spatial owner key.
+
+The shared `PropLayer.PlacementLayer` native overload freezes the actual instance inventory, every tier and
+caller thresholds. Both individual fallback and accepted proxies consume that shared layer. The released
+per-cluster centre-distance coverage remains unchanged and uses the complete cell area. Each cell is independent.
+`NativeMapPlacements.PrepareCluster` validates the scene, frozen routes, cell domain, layer inventory, roof exclusion and vertex precision before invoking
+the internal shared CPU builder. That lower builder has no building intent and makes no independent roof promise.
+Ordinary roofs retain separate resources. Individuals remain active until `AcceptCluster` receives the exact
+prepared build and the externally published mesh. It retains metadata only and never uploads or frees that handle.
+An empty welded proxy cannot be accepted, so individuals remain active. Placement registration bounds are
+finite in all three dimensions and include all declared tiers and light reach, with the 0.0001 m local submission
+allowance. Discovery metadata remains conservative in height. HLOD colour and shadow descriptors use the released
+shared emitter, including shadow inversion and the unchanged solid endpoint.
+
+`NativeMapLights.Record` registers and records every effective resident emitter, with no nearest-N cap.
+It carries the full descriptor, scaled reach, exact local position, shadow intent and fixture owner exclusion.
+An optional stamp overload binds these registrations to a composite generation. Light shadow exclusion corners
+are anchor-local. `Scene3D.AddLightAnchored` retains that space through receiver buffers, the light cluster grid
+and point-shadow binding. Released absolute light overloads keep their existing behavior. Device light capacity
+and overflow diagnostics remain authoritative.
+
 `IMapRenderDevice` measures upload demand before creation. An upload must claim its
 `ISceneUploadReservation` before running any allocation factory. Retirement stays charged until the
 renderer confirms release. Renderer publication, residency and the actual scene sink are later R8a work.

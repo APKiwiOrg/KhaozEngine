@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Render3D.Internal;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render3D.Rendering;
 
 namespace KhaozEngine.Render3D;
@@ -28,6 +29,46 @@ public sealed partial class Scene3D
     /// <summary>Queue a rigid draw whose World matrix is local to an integer world anchor. The anchor and local
     /// matrix survive grouping, temporal history and shadow submission without an absolute binary32 round trip.</summary>
     public void DrawAnchored(in RigidInstanceDraw draw, RenderAnchor anchor) => QueueRigid(in draw, anchor);
+
+    /// <summary>Queue a local point light and retain its exact anchor through receiver and point-shadow binding.
+    /// Exclusion box corners in shadow use the same anchor-local space as localPosition.</summary>
+    public void AddLightAnchored(Vector3 localPosition, RenderAnchor anchor, Color colour, float radius, float intensity, LightShadow shadow)
+    {
+        if (!(radius > 0) || !float.IsFinite(radius) || !float.IsFinite(localPosition.X) ||
+            !float.IsFinite(localPosition.Y) || !float.IsFinite(localPosition.Z)) return;
+        Vector4 c = colour;
+        var light = new ModelRenderer.PointLightData
+        {
+            PosRadius = new Vector4(0, 0, 0, radius),
+            ColorIntensity = new(c.X, c.Y, c.Z, intensity),
+            Anchor = anchor,
+            LocalPosition = localPosition,
+            LocalShadow = shadow,
+        };
+        light.PosRadius = light.RelativePosRadius(Vector3.Zero);
+        light.Shadow = light.RelativeShadow(Vector3.Zero);
+        _lights.Add(light);
+    }
+
+    internal static Vector3 AnchoredLightPosition(ModelRenderer.PointLightData light, Vector3 origin)
+    {
+        var position = light.RelativePosRadius(origin);
+        return new(position.X, position.Y, position.Z);
+    }
+
+    long AnchoredLightSignature(long signature, int index)
+    {
+        var light = _lights[index];
+        if (light.Anchor is not { } anchor) return signature;
+        ulong hash = unchecked((ulong)signature);
+        MixAnchoredPointSignature(ref hash, new(Matrix4x4.CreateTranslation(light.LocalPosition), anchor));
+        if (light.LocalShadow.HasExclusionBox)
+        {
+            MixPointSignature(ref hash, Matrix4x4.CreateTranslation(light.LocalShadow.ExclusionMin));
+            MixPointSignature(ref hash, Matrix4x4.CreateTranslation(light.LocalShadow.ExclusionMax));
+        }
+        return unchecked((long)hash);
+    }
 
     void QueueRigid(in RigidInstanceDraw draw, RenderAnchor? anchor)
     {

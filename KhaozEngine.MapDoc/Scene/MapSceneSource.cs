@@ -259,12 +259,11 @@ public sealed class MapSceneSource
             });
             foliageMetadata.Finish();
             scan.RetainBytes(checked(40L * (root.Foliage?.Layers.Sum(l => (long)l.Chunks.Count) ?? 0)));
-            var data = new MapSceneData(generation, manifestDigest, source.SceneDirectory, assets, scan.Limits, native,
+            var data = new MapSceneData(generation, manifestDigest, source.SceneDirectory, assets, scan.Limits, native, source.Tiles.TileSize,
                 root.Bounds.MinX, root.Bounds.MinZ, root.Bounds.MaxX, root.Bounds.MaxZ, rootDigest, owners, producing,
                 dependenciesByOwner, metadata, new(metadata), Array.AsReadOnly(requiredAssets.Order(StringComparer.Ordinal).ToArray()),
                 foliage, foliageStorage, root.Foliage, scan.Work(true), root.BuildingIntent?.Roofs ?? [], root.BuildingIntent?.Storeys ?? [],
-                nativeEntries, Array.AsReadOnly(nativeTransforms), dependencyEdges, foliageMetadata)
-            { TileSize = source.Tiles.TileSize };
+                nativeEntries, Array.AsReadOnly(nativeTransforms), dependencyEdges, foliageMetadata);
             return new(MapSceneSourceStatus.Ready, new(data), scan.Work(true));
         }
         catch (Exception error) when (Classify(error) is not null)
@@ -336,14 +335,13 @@ public sealed class MapSceneSource
 
 internal sealed record MapSceneOwner(string Id, MapTileCoord StorageOwner, MapEffectiveResolutionInput Input, IReadOnlyList<MapSceneResourceKey> Resources);
 internal sealed record MapSceneData(string Generation, string? ManifestDigest, string? Directory, MapAssetClosure Assets, MapSceneLimits Limits,
-    IMapSurfaceSource Surfaces, double MinX, double MinZ, double MaxX, double MaxZ, string RootDigest,
+    IMapSurfaceSource Surfaces, float TileSize, double MinX, double MinZ, double MaxX, double MaxZ, string RootDigest,
     IReadOnlyDictionary<string, MapSceneOwner> Owners, IReadOnlyDictionary<MapSceneResourceKey, string> Producing,
     IReadOnlyDictionary<string, HashSet<string>> Dependencies, IReadOnlyList<MapSceneResourceMetadata> Metadata, MapSceneSpatialIndex Index,
     IReadOnlyList<string> RequiredAssets, MapFoliageSet? Foliage, MapFoliageStorageIndex? FoliageStorage, MapFoliageSet? ResidentFoliage, MapSceneWork CaptureWork,
     IReadOnlyList<MapPrefabReference> Roofs, IReadOnlyList<KhaozEngine.MapDoc.Interiors.MapStoreyDoc> Storeys, IReadOnlyList<MapSurfaceIndexEntry> NativeEntries,
     IReadOnlyList<MapStandaloneResourceTransform> NativeTransforms, IReadOnlyDictionary<MapSceneResourceKey, HashSet<MapSceneResourceKey>> ResourceDependencies, MapFoliageWindowMetadata FoliageMetadata)
 {
-    internal float TileSize { get; init; }
     internal IReadOnlyDictionary<(MapPrefabChildKind Kind, string Id), MapStandaloneResourceTransform> NativePoseByKey { get; } = NativeTransforms.ToDictionary(t => (t.Kind, t.OwnerId));
     internal IReadOnlyDictionary<MapSceneResourceKey, MapSceneResourceMetadata> MetadataByKey { get; } = Metadata.ToDictionary(r => r.Key);
     internal IReadOnlyDictionary<string, IReadOnlyList<MapSurfaceIndexEntry>> NativeBySurface { get; } = NativeEntries.GroupBy(e => e.Key.SurfaceId).ToDictionary(g => g.Key, g => (IReadOnlyList<MapSurfaceIndexEntry>)Array.AsReadOnly(g.ToArray()), StringComparer.Ordinal);

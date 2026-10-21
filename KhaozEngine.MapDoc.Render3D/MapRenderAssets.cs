@@ -9,7 +9,7 @@ using KhaozEngine.Terrain;
 
 namespace KhaozEngine.MapDoc.Render3D;
 
-public enum MapRenderAssetStatus { Complete, Missing, Stale, Unsupported, Invalid, CapacityExceeded }
+public enum MapRenderAssetStatus { Complete, Missing, Stale, Unsupported, Invalid, CapacityExceeded, NotRepresentable }
 public sealed record MapRenderAssetLimits(long MaxDecodedBytes = 268435456, int MaxParts = 4096, int MaxLods = 16);
 public sealed record MapRenderAssetResult(MapRenderAssetStatus Status, MapRenderAssets? Assets, string? Detail);
 public sealed class MapRenderAssetRefusal(MapRenderAssetStatus status, string detail) : Exception(detail)

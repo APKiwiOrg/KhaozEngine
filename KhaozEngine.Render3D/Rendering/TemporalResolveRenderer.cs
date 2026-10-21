@@ -53,24 +53,16 @@ namespace KhaozEngine.Render3D.Rendering
 
         /// <summary>A renderer on <paramref name="gd"/>. <paramref name="fragmentSourceForTests"/> is for tests alone:
         /// it rewrites the text of every fragment program this renderer and its split compile, so an oracle can run a
-        /// frozen copy of the rules through the same objects. Null everywhere else.
-        /// <paramref name="disableVisibilityForTests"/> omits visibility resources for outside-cost controls only,
-        /// paired with a fragment rewrite that removes visibility inputs.</summary>
-        public TemporalResolveRenderer(IGpuDevice gd, Func<string, string>? fragmentSourceForTests = null,
-            bool disableVisibilityForTests = false)
+        /// frozen copy of the rules through the same objects. Null everywhere else.</summary>
+        public TemporalResolveRenderer(IGpuDevice gd, Func<string, string>? fragmentSourceForTests = null)
         {
             _gd = gd;
-            VisibilityDisabledForTests = disableVisibilityForTests;
             _fragmentSourceForTests = fragmentSourceForTests;
             IGpuResourceFactory f = gd.Factory;
-            GpuResourceLayoutElement[] resolveElements =
-            [
+            _resolveLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 T("SceneColor"), T("OpaqueColor"), T("SceneDepth"), T("MotionTex"), T("PrevDepth"),
                 T("HistoryColor"), T("HistoryConfidence"), S("LinearClamp"), U("Resolve"),
-                T("KeyShadowVisibility"), T("PreviousKeyShadowVisibility"), U("VisibilityHistory"),
-            ];
-            if (VisibilityDisabledForTests) Array.Resize(ref resolveElements, 9);
-            _resolveLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(resolveElements));
+                T("KeyShadowVisibility"), T("PreviousKeyShadowVisibility"), U("VisibilityHistory")));
             _storeLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 T("SceneDepth"), T("MotionTex"), S("Samp"), U("DepthStore")));
             _resolveBuffer = f.CreateBuffer(new GpuBufferDescription(TemporalResolveUniforms.SizeInBytes, GpuBufferUsage.UniformBuffer));
@@ -149,14 +141,10 @@ namespace KhaozEngine.Render3D.Rendering
             FreeSets(retired);
             IGpuResourceFactory f = _gd.Factory;
             for (int read = 0; read < 2; read++)
-                _resolveSets[read] = f.CreateResourceSet(VisibilityDisabledForTests
-                    ? new GpuResourceSetDescription(_resolveLayout,
-                        inputs.SceneColor, inputs.OpaqueColor, inputs.SceneDepth, inputs.Motion, history.PreviousDepth(read),
-                        history.Color(read), history.Confidence(read), _clampSampler, _resolveBuffer)
-                    : new GpuResourceSetDescription(_resolveLayout,
-                        inputs.SceneColor, inputs.OpaqueColor, inputs.SceneDepth, inputs.Motion, history.PreviousDepth(read),
-                        history.Color(read), history.Confidence(read), _clampSampler, _resolveBuffer, effective.KeyShadowVisibility!,
-                        VisibilityHistory.Texture(read), _visibilityBuffer));
+                _resolveSets[read] = f.CreateResourceSet(new GpuResourceSetDescription(_resolveLayout,
+                    inputs.SceneColor, inputs.OpaqueColor, inputs.SceneDepth, inputs.Motion, history.PreviousDepth(read),
+                    history.Color(read), history.Confidence(read), _clampSampler, _resolveBuffer, effective.KeyShadowVisibility!,
+                    VisibilityHistory.Texture(read), _visibilityBuffer));
             _storeSet = f.CreateResourceSet(new GpuResourceSetDescription(_storeLayout,
                 inputs.SceneDepth, inputs.Motion, _clampSampler, _storeBuffer));
             _boundInputs = inputs;

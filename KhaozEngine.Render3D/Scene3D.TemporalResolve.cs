@@ -36,9 +36,6 @@ namespace KhaozEngine.Render3D
         // The display size the frame's first render latched, for the jitter cycle and the history key.
         int _latchedDisplayWidth, _latchedDisplayHeight;
 
-        /// <summary>Test-only outside-cost control, set before the first render and never changed.</summary>
-        internal bool DisableTemporalVisibilityForTests { get; set; }
-
         /// <summary>Whether temporal anti-aliasing is in effect: the effective anti-aliasing mode is
         /// <see cref="AntiAliasingMode.Temporal"/>, which <see cref="PixelPostProcessSettings.Pixelated"/> refuses. It
         /// requests temporal rendering and sizes the internal target by

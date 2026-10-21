@@ -22,11 +22,18 @@ namespace KhaozEngine.Tests.Gpu
     /// from a rule that decided otherwise. Through packHalf2x16 the values differed on every Vulkan device it ran on,
     /// and the locks with them, so both entries round in integer steps (<c>temporalHalf</c>). This fact is what shows
     /// they agree on a given backend: bit for bit on Metal, on a Tesla T4 on Direct3D 11 and Vulkan, and on WARP
-    /// (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23). Entry identity requires exact stored colour, confidence,
-    /// locks, R8 and depth on every backend. Hardware NVIDIA Direct3D 11 additionally prints each production entry
-    /// and D's paired entries against D, diagnostic only. No comparison with D is asserted here.
+    /// (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23). On a software Vulkan device (Mesa llvmpipe) the colour
+    /// differs, since its compiler orders the two programs' arithmetic differently, while the confidence, the lock,
+    /// the mark, R8 and depth stay identical. There the fact holds those exact and the colour within
+    /// <see cref="TemporalSoftwareVulkanColourRule.SoftwareColourBound"/> and
+    /// <see cref="TemporalSoftwareVulkanColourRule.SoftwareColourShare"/> of the values compared. Everywhere else
+    /// stored colour, confidence, locks, R8 and depth are exact. Hardware NVIDIA Direct3D 11 additionally prints each
+    /// production entry and D's paired entries against D. Against D only the non-finite classes of colour and
+    /// confidence are asserted. The large-frame case (<c>TemporalEntryIdentityGpuTests.LargeFrames.cs</c>) holds both
+    /// entries, and D prime's two, byte-identical across columns 512 and 1024 and row 512 under positive jitter,
+    /// under the same software Vulkan colour rule.
     /// </summary>
-    public sealed class TemporalEntryIdentityGpuTests(ITestOutputHelper output) : TemporalResolveGpuFacts
+    public sealed partial class TemporalEntryIdentityGpuTests(ITestOutputHelper output) : TemporalResolveGpuFacts
     {
         const int W = 320, H = 180, StopFrames = 8, MoverSweep = 12;
         const float Speed = 2f, BladeTexels = 0.375f, MoverTexels = 1f, MoverStep = 3f, MoverHeight = 3f,
@@ -75,6 +82,7 @@ namespace KhaozEngine.Tests.Gpu
             split.Scene.TemporalResolveEntryForTests = TemporalResolveEntry.Split;
             output.WriteLine($"{fused.Device.Backend} on {fused.Device.Capabilities.DeviceName}, {W}x{H} {preset}"
                 + (outline ? ", the edge outline on" : ""));
+            bool softwareVulkan = TemporalDeviceClass.IsLavapipe(fused.Device);
             bool nvidia = TemporalDeviceClass.IsHardwareNvidiaD3D11(fused.Device);
             var oracle = nvidia ? new TemporalNvidiaHistoryOracle(output) : null;
             var dFusedWalk = new PerspectiveFollowLines(W, H, Speed, preset, BladeTexels);
@@ -88,6 +96,7 @@ namespace KhaozEngine.Tests.Gpu
                 dFused.Scene.TemporalResolveEntryForTests = TemporalResolveEntry.Fused;
                 dSplit.Scene.TemporalResolveEntryForTests = TemporalResolveEntry.Split;
             }
+            long colourCompared = 0;
 
             int frames = TemporalFollowLinesRuns.Last + 1 + StopFrames, compared = 0, band = 0, followed = 0,
                 movingShare = 0, outlinePixels = 0;
@@ -125,6 +134,7 @@ namespace KhaozEngine.Tests.Gpu
                 float[] a = Read(fused, static h => h.Color(h.WriteIndex));
                 float[] b = Read(split, static h => h.Color(h.WriteIndex));
                 for (int i = 0; i < a.Length; i++) colour.Add(n, a[i], b[i]);
+                colourCompared += a.Length;
                 outlinePixels = 0;
                 for (int i = 0; i < a.Length; i += 4) if (IsOutline(a, i)) outlinePixels++;
                 float[] state = Read(fused, static h => h.Confidence(h.WriteIndex));
@@ -140,7 +150,7 @@ namespace KhaozEngine.Tests.Gpu
                     oracle.Report(n, "production fused vs D fused", pf, df);
                     oracle.Report(n, "production split vs D split", ps, ds);
                 }
-                TemporalHistorySample.Exact(n, "production entries colour", a, b);
+                if (!softwareVulkan) TemporalHistorySample.Exact(n, "production entries colour", a, b);
                 TemporalHistorySample.Exact(n, "production entries state", state, other);
                 for (int i = 0; i < state.Length; i += 2)
                 {
@@ -163,8 +173,19 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(compared > TemporalFollowLinesRuns.Last, $"only {compared} frames resolved");
             Assert.Equal(outline, fused.Scene.TemporalOutlineBuiltForTests);
             Assert.Equal(outline, split.Scene.TemporalOutlineBuiltForTests);
-            Assert.True(confidence.Values + locks.Values + marks.Values + colour.Values == 0,
-                $"the entry points wrote different histories:\n{differences}");
+            Assert.True(confidence.Values + locks.Values + marks.Values == 0,
+                $"the entry points stored different state:\n{differences}");
+            if (softwareVulkan)
+            {
+                double share = TemporalSoftwareVulkanColourRule.ShareOf(colour.Values, colourCompared);
+                output.WriteLine($"  software Vulkan: colour within {TemporalSoftwareVulkanColourRule.SoftwareColourBound} "
+                    + $"on {share:P3} of values");
+                Assert.True(TemporalSoftwareVulkanColourRule.Allows(colour.Worst, colour.Values, colourCompared),
+                    $"the colour on a software Vulkan device left its bound "
+                    + $"({TemporalSoftwareVulkanColourRule.SoftwareColourBound}, "
+                    + $"{TemporalSoftwareVulkanColourRule.SoftwareColourShare:P2} of values):\n{differences}");
+            }
+            else Assert.True(colour.Values == 0, $"the entry points wrote different histories:\n{differences}");
             // The band reaches two internal texels beside the followed box, which this walk stores only while
             // upscaling.
             Assert.True(followed > 0 && (band > 0 || preset == TemporalUpscale.Native) && movingShare > 0,

@@ -109,8 +109,7 @@ namespace KhaozEngine.Render3D
             bool hdrChanged = _res.HdrColor != Post.Hdr.Enabled;
             // The motion attachment changes the model framebuffer's attachment COUNT, which every pipeline drawing into
             // it bakes, so gaining or losing it rebuilds them exactly like a sample-count or colour-format change.
-            bool motion = TemporalActive, visibility = Internal.ShadowVisibilityTargets.Requested(
-                !DisableTemporalVisibilityForTests && (motion || _requestLitVisibility), _gd);
+            bool motion = TemporalActive, visibility = Internal.ShadowVisibilityTargets.Requested(motion || _requestLitVisibility, _gd);
             bool motionChanged = _res.MotionAllocated != motion || _res.VisibilityAllocated != visibility;
             if (_res.Width != tw || _res.Height != th || _res.Mipped != wantMips || sampleChanged || bloomChanged || hdrChanged
                 || motionChanged)

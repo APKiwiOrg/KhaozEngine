@@ -46,15 +46,12 @@ namespace KhaozEngine.Render3D.Rendering
         int _boundTargets = int.MinValue;
         TemporalHistory? _boundHistory;
         readonly Func<string, string>? _fragmentSourceForTests;
-        readonly bool _visibilityDisabledForTests;
 
         /// <summary>The split's objects on <paramref name="gd"/>. <paramref name="fragmentSourceForTests"/> is the
         /// owning renderer's test rewrite of each fragment program's text, null outside tests.</summary>
-        public TemporalSplitResolve(IGpuDevice gd, Func<string, string>? fragmentSourceForTests = null,
-            bool disableVisibilityForTests = false)
+        public TemporalSplitResolve(IGpuDevice gd, Func<string, string>? fragmentSourceForTests = null)
         {
             _gd = gd;
-            _visibilityDisabledForTests = disableVisibilityForTests;
             _fragmentSourceForTests = fragmentSourceForTests;
             IGpuResourceFactory f = gd.Factory;
             _prepareShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
@@ -63,15 +60,11 @@ namespace KhaozEngine.Render3D.Rendering
                 FragmentSource(ShaderSources.TemporalAccumulateFragment(TemporalResolvePrecisionPolicy.For(gd))));
             _prepareLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 T("SceneColor"), T("OpaqueColor"), T("SceneDepth"), T("MotionTex"), S("LinearClamp"), U("Resolve")));
-            GpuResourceLayoutElement[] accumulateElements =
-            [
+            _accumulateLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 T("SceneColor"), T("SceneDepth"), T("MotionTex"), T("PrevDepth"), T("HistoryColor"),
                 T("HistoryConfidence"), T("PreparedColour"), T("PreparedSurface"), T("PreparedExpected"),
                 T("PreparedEdge"), S("LinearClamp"), U("Resolve"),
-                T("KeyShadowVisibility"), T("PreviousKeyShadowVisibility"), U("VisibilityHistory"),
-            ];
-            if (_visibilityDisabledForTests) Array.Resize(ref accumulateElements, 12);
-            _accumulateLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(accumulateElements));
+                T("KeyShadowVisibility"), T("PreviousKeyShadowVisibility"), U("VisibilityHistory")));
             var prepareOutputs = new GpuPixelFormat[TemporalSplitFormats.FirstPassAttachments];
             TemporalSplitFormats.Targets.CopyTo(prepareOutputs, 0);
             prepareOutputs[^1] = TemporalFormats.PreviousDepth;
@@ -132,14 +125,10 @@ namespace KhaozEngine.Render3D.Rendering
                 colour[^1] = history.PreviousDepth(i);
                 _prepareFramebuffers[i] = f.CreateFramebuffer(null, colour);
                 // Read index i: last frame's history and depths.
-                _accumulateSets[i] = f.CreateResourceSet(_visibilityDisabledForTests
-                    ? new GpuResourceSetDescription(_accumulateLayout,
-                        inputs.SceneColor, inputs.SceneDepth, inputs.Motion, history.PreviousDepth(i), history.Color(i),
-                        history.Confidence(i), targets[0], targets[1], targets[2], targets[3], clamp, uniforms)
-                    : new GpuResourceSetDescription(_accumulateLayout,
-                        inputs.SceneColor, inputs.SceneDepth, inputs.Motion, history.PreviousDepth(i), history.Color(i),
-                        history.Confidence(i), targets[0], targets[1], targets[2], targets[3], clamp, uniforms,
-                        inputs.KeyShadowVisibility!, visibility.Texture(i), visibilityUniforms));
+                _accumulateSets[i] = f.CreateResourceSet(new GpuResourceSetDescription(_accumulateLayout,
+                    inputs.SceneColor, inputs.SceneDepth, inputs.Motion, history.PreviousDepth(i), history.Color(i),
+                    history.Confidence(i), targets[0], targets[1], targets[2], targets[3], clamp, uniforms,
+                    inputs.KeyShadowVisibility!, visibility.Texture(i), visibilityUniforms));
             }
             _boundInputs = inputs;
             _boundTargets = history.TargetGeneration;

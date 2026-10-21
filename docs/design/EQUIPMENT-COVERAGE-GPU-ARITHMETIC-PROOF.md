@@ -562,3 +562,32 @@ Its typed continuations use invocation-owned Work records with checked layout re
 Every physical module enters the same size manifest and native gates. Future Gather/ValidateFaces
 modules must enter those gates too. These isolated queries do not establish a complete
 construction or a future combined phase's feasibility.
+
+## Addendum: cold support predicates and their locator
+
+The face-query optimization appends exact triangle areas followed by boundary squared lengths
+to each cold support upload. Every entry is two uint words: the exact signed predicate sign
+encoded as uint, then the binary32 bits of its RN32 value after F. Triangle i stores
+`Edge(a,b,c)` for that source-ordered support triangle. Boundary edge e stores `Dot(a,b,a,b)`
+for the same ordered endpoint pair used by the boundary query. The values come from
+`CoverageReferenceArithmetic`, the authority for the device predicate jobs. It applies the
+same XY operand flush, exact sign, RN32 conversion and result flush. Non-finite XY retains the
+sign-zero/NaN refusal input. Nonzero exact signs survive rounded or flushed signed-zero values.
+
+All existing header and table words retain their Task 3 offsets and order. Reserved header
+words 13 to 15 stay zero. If S is the relocated absolute header offset, the trailing table begins
+at `S + header[12] + CellOffsets[256]`. The final offset of the 16-by-16 grid equals
+`CellTriangles.Length` for every intact support, so this expression ends exactly after the
+candidate table. `CovSupportGridCellCount` names the 256-cell locator index. Entry i begins at
+that trailing base plus `2*i`. Boundary entry e uses index `TriangleCount + e`.
+The invariant test checks the final grid offset for every intact probe support. The one
+deliberately cleared grid is retained to prove that height queries use the uploaded cell list.
+
+These predicates depend only on immutable uploaded support coordinates and topology. They are
+computed at cold upload time, not per pose. `CoverageGpuResources` caches each upload by its
+`CoverageSupportSurface` instance, and a distinct support receives its own upload. Geometry
+and prior upload words are not rewritten. Device readers consume the same sign and flushed
+value words at the existing query refusal points. Candidate order, first invalid candidate,
+boundary ties, corner branches, canonical edge branches and the height arithmetic trees remain
+unchanged. Reusing a query's accepted sides and area in its triangle-height continuation also
+retains those same operands and branches. This addendum leaves the frozen proof text above intact.

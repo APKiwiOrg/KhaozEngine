@@ -11,8 +11,12 @@ public sealed class CoverageGpuSupportInvariantTests
     [Fact]
     public void Cold_predicates_preserve_every_probe_supports_reference_signs_and_words()
     {
+        int clearedGrids = 0;
         CoverageGpuSupportProbe.Data((words, support) =>
         {
+            // The empty-cell probe deliberately clears its offsets while retaining the candidates.
+            if (Array.TrueForAll(support.CellOffsets, offset => offset == 0)) clearedGrids++;
+            else Assert.Equal(support.CellTriangles.Length, support.CellOffsets[256]);
             var upload = CoverageGpuUpload.Support(support.Support);
             int cursor = checked((int)upload.CellTriangles + support.CellTriangles.Length);
             Assert.Equal(cursor + 2 * (support.TriangleCount + support.BoundaryCount), upload.Words.Length);
@@ -35,6 +39,7 @@ public sealed class CoverageGpuSupportInvariantTests
                 Assert.Equal(BitConverter.SingleToUInt32Bits(expected.Value), upload.Words[cursor++]);
             }
         });
+        Assert.Equal(1, clearedGrids);
     }
 
     [Theory]
@@ -53,7 +58,7 @@ public sealed class CoverageGpuSupportInvariantTests
     }
 
     [Fact]
-    public void A_replacement_support_upload_uses_its_own_geometry_and_keeps_the_previous_words()
+    public void Separate_support_uploads_encode_their_own_geometry_without_mutating_prior_words()
     {
         var first = CoverageGpuUpload.Support(Triangle(1));
         var frozen = (uint[])first.Words.Clone();

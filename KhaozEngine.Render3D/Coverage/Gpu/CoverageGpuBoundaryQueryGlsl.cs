@@ -5,7 +5,7 @@ internal static class CoverageGpuBoundaryQueryGlsl
 {
     internal const string Source = """
 
-        const int CovBBegin = 0, CovBEdge = 1, CovBLength = 2, CovBDot = 3, CovBProjection = 4, CovBRoot = 5, CovBDone = 6;
+        const int CovBBegin = 0, CovBEdge = 1, CovBDot = 3, CovBProjection = 4, CovBRoot = 5, CovBDone = 6;
         struct CovBoundaryGraph { int phase; uint support; vec2 point; uint edge; uint count; vec3 a; vec3 b; CovPredicate squaredLength; float best; float height; float distance; bool ok; };
         CovBoundaryGraph covBoundaryBegin(uint support, vec2 point) {
             return CovBoundaryGraph(CovBBegin,support,point,0u,0u,vec3(0.0),vec3(0.0),CovPredicate(0,0.0),uintBitsToFloat(0x7f800000u),0.0,0.0,false);

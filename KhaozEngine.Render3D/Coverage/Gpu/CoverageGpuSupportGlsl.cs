@@ -22,7 +22,8 @@ internal static class CoverageGpuSupportGlsl
         // Cold exact triangle areas, then boundary squared lengths, follow the candidate table as sign and F word pairs.
         // The grid's final offset is the candidate count. Existing tables and reserved words stay unchanged.
         CovPredicate covSupportInvariant(uint support, uint index) {
-            uint end = CovStaticWords[covSupportTable(support,11u)+256u];
+            const uint CovSupportGridCellCount = 256u;
+            uint end = CovStaticWords[covSupportTable(support,11u)+CovSupportGridCellCount];
             uint p = covSupportTable(support,12u)+end+index*2u;
             return CovPredicate(int(CovStaticWords[p]),covRead(CovStaticWords[p+1u]));
         }

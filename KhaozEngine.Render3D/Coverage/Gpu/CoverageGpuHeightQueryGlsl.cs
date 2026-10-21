@@ -5,7 +5,7 @@ internal static class CoverageGpuHeightQueryGlsl
 {
     internal const string Source = """
 
-        const int CovHBegin = 0, CovHCellY = 1, CovHCellX = 2, CovHCandidate = 3, CovHArea = 4, CovHU = 5, CovHV = 6, CovHW = 7, CovHHeight = 8, CovHDone = 9;
+        const int CovHBegin = 0, CovHCellY = 1, CovHCellX = 2, CovHCandidate = 3, CovHU = 5, CovHV = 6, CovHW = 7, CovHHeight = 8, CovHDone = 9;
         struct CovHeightGraph { int phase; uint support; vec2 point; vec2 minimum; vec2 maximum; int cellRow; uint cursor; uint end; uint index; CovTriangle triangle; CovPredicate area; CovPredicate u; CovPredicate v; CovTriangleHeightGraph heightGraph; bool ok; float height; int sourceTriangle; };
         CovHeightGraph covHeightBegin(uint support, vec2 point) {
             CovTriangle t = CovTriangle(vec3(0.0),vec3(0.0),vec3(0.0)); CovPredicate zero = CovPredicate(0,0.0);

@@ -172,7 +172,7 @@ jobs:
           Expand-Archive -Path $archive -DestinationPath $dir -Force
           & (Join-Path $dir 'pwsh.exe') -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          # Windows PowerShell 5.1 writes a byte order mark with -Encoding utf8, which would corrupt the PATH entry.
+          # An explicit BOM-free UTF-8 append, rather than Windows PowerShell 5.1 Out-File, keeps the file byte-exact.
           [IO.File]::AppendAllText($env:GITHUB_PATH, $dir + [Environment]::NewLine)
 
       - name: Verify coverage authorization commit

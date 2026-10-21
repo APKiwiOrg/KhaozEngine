@@ -152,25 +152,59 @@ public sealed class CoveragePerfWorkflowTests
     public void Gpu_measurement_installs_pinned_powershell_before_its_first_pwsh_step()
     {
         // The partner T4 images ship no PowerShell 7, so measurement mode installs a hash-pinned release first.
+        // Every line that downloads, rejects a mismatch, extracts, starts and publishes the binary is pinned exactly.
         string text = CoveragePerfWorkflowText.Lf(Gpu);
         string linux = CoveragePerfWorkflowText.Step(text, "Install PowerShell for coverage measurement (Linux)");
-        Assert.Contains("        if: inputs.coverage-perf-unit != '' && runner.os == 'Linux'\n        shell: bash\n", linux, StringComparison.Ordinal);
-        Assert.Contains("v7.6.7/powershell-7.6.7-linux-x64.tar.gz\n", linux, StringComparison.Ordinal);
-        Assert.Contains("PWSH_SHA256: 6896f9e3a6b0a354bf470835a96da76d2f801cd50dcf047ad7c4563bf93bf431\n", linux, StringComparison.Ordinal);
-        Assert.Contains("sha256sum -c -", linux, StringComparison.Ordinal);
-        Assert.Contains(">> \"$GITHUB_PATH\"", linux, StringComparison.Ordinal);
+        string[] linuxLines =
+        {
+            "        if: inputs.coverage-perf-unit != '' && runner.os == 'Linux'\n        shell: bash\n",
+            "          PWSH_URL: https://github.com/PowerShell/PowerShell/releases/download/v7.6.7/powershell-7.6.7-linux-x64.tar.gz\n",
+            "          PWSH_SHA256: 6896f9e3a6b0a354bf470835a96da76d2f801cd50dcf047ad7c4563bf93bf431\n",
+            "          set -euo pipefail\n",
+            "          curl -fsSL --retry 3 -o \"$archive\" \"$PWSH_URL\"\n",
+            "          echo \"$PWSH_SHA256  $archive\" | sha256sum -c -\n",
+            "          tar -xzf \"$archive\" -C \"$dir\"\n",
+            "          chmod +x \"$dir/pwsh\"\n",
+            "          \"$dir/pwsh\" -NoProfile -Command \"\\$PSVersionTable.PSVersion.ToString()\"\n",
+            "          echo \"$dir\" >> \"$GITHUB_PATH\"\n",
+        };
+        AssertOrderedLines(linux, linuxLines);
+        Assert.DoesNotContain("||", linux, StringComparison.Ordinal);
         string windows = CoveragePerfWorkflowText.Step(text, "Install PowerShell for coverage measurement (Windows)");
-        Assert.Contains("        if: inputs.coverage-perf-unit != '' && runner.os == 'Windows'\n        shell: powershell\n", windows, StringComparison.Ordinal);
-        Assert.Contains("v7.6.7/PowerShell-7.6.7-win-x64.zip\n", windows, StringComparison.Ordinal);
-        Assert.Contains("PWSH_SHA256: d2f952ebdbf24386cb8923553aa58e41a846db35a6155ea04c58142a4b16dbb7\n", windows, StringComparison.Ordinal);
-        Assert.Contains("Get-FileHash -Algorithm SHA256", windows, StringComparison.Ordinal);
-        Assert.Contains("[IO.File]::AppendAllText($env:GITHUB_PATH", windows, StringComparison.Ordinal);
+        string[] windowsLines =
+        {
+            "        if: inputs.coverage-perf-unit != '' && runner.os == 'Windows'\n        shell: powershell\n",
+            "          PWSH_URL: https://github.com/PowerShell/PowerShell/releases/download/v7.6.7/PowerShell-7.6.7-win-x64.zip\n",
+            "          PWSH_SHA256: d2f952ebdbf24386cb8923553aa58e41a846db35a6155ea04c58142a4b16dbb7\n",
+            "          $ErrorActionPreference = 'Stop'\n",
+            "          Invoke-WebRequest -Uri $env:PWSH_URL -OutFile $archive -UseBasicParsing\n",
+            "          $actual = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()\n",
+            "          if ($actual -ne $env:PWSH_SHA256) { throw \"PowerShell archive SHA-256 $actual does not match $env:PWSH_SHA256\" }\n",
+            "          Expand-Archive -Path $archive -DestinationPath $dir -Force\n",
+            "          & (Join-Path $dir 'pwsh.exe') -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'\n",
+            "          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\n",
+            "          [IO.File]::AppendAllText($env:GITHUB_PATH, $dir + [Environment]::NewLine)\n",
+        };
+        AssertOrderedLines(windows, windowsLines);
         int firstPwsh = text.IndexOf("        shell: pwsh\n", StringComparison.Ordinal);
         Assert.True(firstPwsh > 0);
         foreach (string name in new[] { "Install PowerShell for coverage measurement (Linux)", "Install PowerShell for coverage measurement (Windows)" })
         {
             int step = text.IndexOf("      - name: " + name + "\n", StringComparison.Ordinal);
             Assert.InRange(step, 1, firstPwsh - 1);
+        }
+    }
+
+    // Each line must appear exactly once and in this order, so a removed, duplicated or reordered guard fails.
+    static void AssertOrderedLines(string step, string[] lines)
+    {
+        int at = 0;
+        foreach (string line in lines)
+        {
+            int found = step.IndexOf(line, at, StringComparison.Ordinal);
+            Assert.True(found >= 0, "Missing or out of order: " + line);
+            Assert.Equal(found, step.LastIndexOf(line, StringComparison.Ordinal));
+            at = found + line.Length;
         }
     }
 

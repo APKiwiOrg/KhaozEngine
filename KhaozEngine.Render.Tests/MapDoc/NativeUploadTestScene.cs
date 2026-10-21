@@ -20,6 +20,9 @@ internal sealed class NativeUploadTestScene : IDisposable
         _target = Device.Factory.CreateFramebuffer(null, _colour);
         Scene = new(Device, _target.Outputs);
         Scene.Post.Starfield = false;
+        Scene.Post.RenderWidth = 64;
+        Scene.Post.RenderHeight = 48;
+        Scene.Post.Quality.AntiAliasing = AntiAliasing.Off;
         Scene.Post.Quality.Shadows.Mode = ShadowMode.Off;
         Scene.Camera.Frame(Vector3.Zero, new Vector3(4));
         Device.ResetCounters();
@@ -43,8 +46,9 @@ internal sealed class NativeUploadTestDevice(IGpuDevice inner) : IGpuDevice
 {
     internal IGpuDevice Inner => inner;
     internal long UploadBytes { get; private set; }
-    internal void ResetCounters() { UploadBytes = 0; BufferWrites = 0; TextureWrites = 0; TextureCopies.Clear(); }
+    internal void ResetCounters() { UploadBytes = 0; BufferWrites = 0; TextureWrites = 0; TextureCopies.Clear(); BufferCopies.Clear(); }
     internal List<(uint X, uint Y, uint Width, uint Mip, byte[] Bytes)> TextureCopies { get; } = new();
+    internal Dictionary<IGpuBuffer, byte[]> BufferCopies { get; } = new();
     internal int BufferWrites { get; private set; }
     internal int TextureWrites { get; private set; }
     public GpuBackendKind Backend => inner.Backend;
@@ -58,7 +62,12 @@ internal sealed class NativeUploadTestDevice(IGpuDevice inner) : IGpuDevice
     public void Submit(IGpuCommandList cl, IGpuFence fence) => inner.Submit(cl, fence);
     public void WaitForIdle() => inner.WaitForIdle();
     public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged
-    { UploadBytes += data.Length * Marshal.SizeOf<T>(); BufferWrites++; inner.UpdateBuffer(b, offsetBytes, data); }
+    {
+        UploadBytes += data.Length * Marshal.SizeOf<T>(); BufferWrites++;
+        if (!BufferCopies.TryGetValue(b, out var image)) BufferCopies.Add(b, image = new byte[b.SizeInBytes]);
+        MemoryMarshal.AsBytes(data).CopyTo(image.AsSpan(checked((int)offsetBytes)));
+        inner.UpdateBuffer(b, offsetBytes, data);
+    }
     public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, T[] data) where T : unmanaged => UpdateBuffer(b, offsetBytes, (ReadOnlySpan<T>)data);
     public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, in T data) where T : unmanaged
     { UploadBytes += Marshal.SizeOf<T>(); BufferWrites++; inner.UpdateBuffer(b, offsetBytes, in data); }

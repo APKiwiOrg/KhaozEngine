@@ -77,10 +77,14 @@ public sealed partial class Scene3D
         if (data.Foliage is { } source)
         {
             long expanded = 0;
-            foreach (var binding in source.Models)
-                foreach (var part in binding.Parts)
-                    if (FoliageBounds(part) is null) throw new ArgumentException("Foliage requires live scene mesh parts.", nameof(data));
-            foreach (var model in source.BorrowModelIndices) expanded = checked(expanded + source.Models[model].Parts.Count);
+            for (int model = 0; model < source.Models.Count; model++)
+            {
+                var parts = source.Models[model].Parts;
+                for (int part = 0; part < parts.Count; part++)
+                    if (FoliageBounds(parts[part]) is null) throw new ArgumentException("Foliage requires live scene mesh parts.", nameof(data));
+            }
+            var indices = source.BorrowModelIndices;
+            for (int row = 0; row < indices.Length; row++) expanded = checked(expanded + source.Models[indices[row]].Parts.Count);
             if (expanded > int.MaxValue) throw new ArgumentOutOfRangeException(nameof(data));
             if (expanded > 0) Buffer(checked(expanded * ScenePreparedFoliage.InstanceStride));
             Buffer(256); // Per-resource anchor uniform, independent of the legacy foliage block.

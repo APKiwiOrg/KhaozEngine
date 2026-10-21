@@ -11,7 +11,8 @@ namespace KhaozEngine.Tests.Gpu;
 /// Task 7g.3 step 0: the carried-lock release as it shipped until 7g.3a (P, its two <c>precise</c> markings included)
 /// and the barrier form that ships since (B, every input and rounded intermediate through <c>temporalOrdered</c>, the
 /// division by three written as a multiply by <c>fl(1/3)</c>, no <c>precise</c>), each compiled as its own program, on
-/// the same cases, one case per fragment. The cases are built in C# and uploaded as single-float textures, so both programs read them bit for bit
+/// the same cases, one case per fragment. B also executes production's positive-zero bypass call site since Task
+/// 7h Z. The cases are built in C# and uploaded as single-float textures, so both programs read them bit for bit
 /// and no compiler sees a constant. <see cref="Barrier"/> is B's C# twin, every step rounded to float32.
 /// <see cref="Division"/> is P's twin with a correctly rounded division, reported only.
 /// </summary>
@@ -72,9 +73,22 @@ void main() {
     internal static string PreciseSource => "#version 450\n" + CaseBindings + ShaderSources.TemporalResolveTuningGlsl
         + PreciseHelperGlsl + "\n" + EntryPoint("temporalReleaseLock");
 
-    /// <summary>B's program.</summary>
+    /// <summary>B's program, including the extracted production bypass and fallback call.</summary>
     internal static string BarrierSource => "#version 450\n" + CaseBindings + ProbeBinding
-        + ShaderSources.TemporalResolveTuningGlsl + BarrierHelperGlsl + EntryPoint("temporalReleaseLock");
+        + ShaderSources.TemporalResolveTuningGlsl + BarrierHelperGlsl + @"
+layout(location=0) out float oResult;
+void main() {
+    ivec2 f = ivec2(gl_FragCoord.xy);
+    float lockValue = texelFetch(sampler2D(CaseValue, LinearClamp), f, 0).r;
+    float motionPixels = texelFetch(sampler2D(CaseMotion, LinearClamp), f, 0).r;
+    float reactive = texelFetch(sampler2D(CaseReactive, LinearClamp), f, 0).r;
+    float edgeMotion = texelFetch(sampler2D(CaseEdge, LinearClamp), f, 0).r;
+    bool ownReprojected = false;
+    bool useHistory = false;
+" + TemporalLockZeroBypass.CallSite + @"
+    oResult = lockValue;
+}
+";
 
     /// <summary>Every program the probe compiles, by name.</summary>
     internal static (string Name, string Source)[] Sources => [("P", PreciseSource), ("B", BarrierSource)];
@@ -142,6 +156,14 @@ void main() {
             reactive[i] = Around(hr, 0.5f);
             edge[i] = Around(he, 1f);
             value[i] = HalfGrid(hv);
+            // Change only existing +0 rows. P and B already agree on these, preserving the historical P/B
+            // difference count while exercising finite overflow and each argument's zero-lock qualification.
+            if (value[i] == 0f)
+            {
+                motion[i] = (i % 3) == 0 ? float.MaxValue : motion[i];
+                reactive[i] = (i % 3) == 1 ? float.MaxValue : reactive[i];
+                edge[i] = (i % 3) == 2 ? float.MaxValue : edge[i];
+            }
         }
         return new Cases(value, motion, reactive, edge);
     }

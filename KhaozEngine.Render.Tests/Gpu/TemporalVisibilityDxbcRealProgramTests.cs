@@ -12,9 +12,11 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// The hosted Windows check on FXC's real disassembly of every visibility program. The opt-in dump fact
     /// <see cref="D3D11FxcValidationTests.DumpVisibilityDisassembly"/> printed all fourteen listings in hosted run
-    /// 39561655851, job 119094161538, on windows-2025-vs2026 20261007.264.1, with the compiler banner
-    /// <c>Microsoft (R) HLSL Shader Compiler 10.1</c>. Task 7g.5 recaptured all seven gathered shipped
-    /// listings. All seven D prime listings stayed byte-identical to 7g.3b. Every shipped listing has twelve gathers
+    /// 39627482960, job 119316518921, on windows-2025-vs2026 20261018.275.1, with the compiler banner
+    /// <c>Microsoft (R) HLSL Shader Compiler 10.1</c>. Task 7h Z recaptured the six full shipped programs with the
+    /// positive-zero qualification. FXC flattened its source branch, leaving all twelve barriers unconditional.
+    /// Both decision helpers and all seven D prime listings stayed
+    /// byte-identical to 7g.5. Every shipped listing has twelve gathers
     /// and every listing has zero
     /// precise markings. D's two in-loop heads are reassociated in both programs, and the fast path adds four
     /// reassociated heads and two written ones. D's in-loop forms agree between fused and split entries too
@@ -73,7 +75,7 @@ namespace KhaozEngine.Tests.Gpu
                 .Order(StringComparer.Ordinal));
         }
 
-        /// <summary>Task 7g.5 recaptured every stale fixture in hosted run 39561655851. This set is empty, so every
+        /// <summary>Task 7h Z recaptured every stale fixture in hosted run 39627482960. This set is empty, so every
         /// source pin must match the current GLSL on both sides.</summary>
         internal static readonly string[] StaleUntil7g3b = [];
 

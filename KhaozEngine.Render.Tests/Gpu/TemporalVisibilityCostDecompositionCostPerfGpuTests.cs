@@ -14,7 +14,8 @@ namespace KhaozEngine.Tests.Gpu;
 
 /// <summary>
 /// Head-only diagnostic, never a budget assertion. The resolve cost fixture's exact boxes and moving field at
-/// 2560x1440 Native and Quality, with V0 shipped, V1 without the check and V3 frozen D prime, each fused and split,
+/// 2560x1440 Native and Quality, with V0 shipped, V1 without the check, V3 frozen D prime and V6 without the check
+/// and with identity lock barriers, each fused and split,
 /// plus Off at the internal size. Every variant is a rewrite through the renderer's fragment source hook. The
 /// retired V5 (visibility infrastructure off) and V4 (V5 without the lock release's precise markings) needed a
 /// production switch, and their run 39519219228 is recorded in benchmark-result-2.md. Fifteen rounds rotate blocks of twelve frames after two
@@ -31,6 +32,8 @@ public sealed class TemporalVisibilityCostDecompositionCostPerfGpuTests(ITestOut
     [
         ("V0 shipped", null), ("V1 check removed", TemporalVisibilityCostPrograms.WithoutCheck),
         ("V3 D", TemporalVisibilityFrozenD.ToD),
+        ("V6 no check, identity barriers", source =>
+            TemporalVisibilityCostPrograms.WithoutBarriers(TemporalVisibilityCostPrograms.WithoutCheck(source))),
     ];
 
     [GpuFact(RequiresRealGpu = true)]
@@ -110,6 +113,7 @@ public sealed class TemporalVisibilityCostDecompositionCostPerfGpuTests(ITestOut
             var off = new Mode("Off drift control", preset, field, null, null, iw, ih);
             modes.Insert(0, off);
             off.Frames(Settle);
+            ReportBarrierControl(modes, field, "settled");
             for (int round = 0; round < Rounds; round++)
                 for (int k = 0; k < modes.Count; k++)
                 {
@@ -136,6 +140,7 @@ public sealed class TemporalVisibilityCostDecompositionCostPerfGpuTests(ITestOut
                         Assert.True(renderer.VisibilityHistory.StoredThisFrame);
                     }
                 }
+            ReportBarrierControl(modes, field, "completed");
             double offMedian = Median(off.Wall);
             output.WriteLine($"  {W}x{H} {preset}, {(field ? "moving thin field" : "twelve keyed boxes")}, internal {iw}x{ih}: "
                 + $"{Rounds} rounds of {Block} frames after {Warm}, one block a mode a round, the order rotating");
@@ -154,6 +159,7 @@ public sealed class TemporalVisibilityCostDecompositionCostPerfGpuTests(ITestOut
                 Mode[] v = modes.Where(m => m.Entry == entry).ToArray();
                 PrintPair(entry + " V0 minus V1 (check)", v[0], v[1]);
                 PrintPair(entry + " V0 minus V3 (7f against D)", v[0], v[2]);
+                PrintPair(entry + " V1 minus V6 (lock barriers)", v[1], v[3]);
             }
             output.WriteLine($"  policy {TemporalResolvePolicy.Measured}, forced {TemporalResolvePolicy.Forced}, "
                 + $"counts frame {counts.CountsFrameIndex}: {counts.DisoccludedPixels} disoccluded, "
@@ -170,6 +176,28 @@ public sealed class TemporalVisibilityCostDecompositionCostPerfGpuTests(ITestOut
         List<double> paired = a.Wall.Zip(b.Wall, (x, y) => x - y).ToList();
         output.WriteLine($"  {what}: {F(Median(a.Wall) - Median(b.Wall))} ms from the medians, paired round differences "
             + $"median {F(Median(paired))} min {F(paired.Min())} max {F(paired.Max())}");
+    }
+
+    // Read before and after all timed blocks, never inside one. V6 can change nonzero-lock rounding, so report
+    // colour, confidence and locks rather than silently timing a different workload. Boxes must stay lockless.
+    void ReportBarrierControl(List<Mode> modes, bool field, string phase)
+    {
+        foreach (TemporalResolveEntry entry in new[] { TemporalResolveEntry.Fused, TemporalResolveEntry.Split })
+        {
+            Mode[] v = modes.Where(m => m.Entry == entry).ToArray();
+            TemporalHistorySample a = TemporalHistorySample.Read(v[1].Fx), b = TemporalHistorySample.Read(v[3].Fx);
+            TemporalHistoryDifference difference = TemporalHistoryDifference.Measure(a.Colour, a.State, b.Colour, b.State);
+            output.WriteLine($"  {phase} {entry} V1/V6 readback: colour [{string.Join(", ", difference.Colour.Select(c => c.ToString()))}], "
+                + $"confidence {difference.Confidence}, locks {difference.Locks}");
+            foreach ((string label, float[] state) in new[] { ("V1", a.State), ("V6", b.State) })
+            {
+                int nonzero = 0;
+                for (int i = 1; i < state.Length; i += 2)
+                    if (BitConverter.SingleToUInt32Bits(state[i]) != 0u) nonzero++;
+                output.WriteLine($"    {label} {nonzero} locks without positive-zero bits of {state.Length / 2}");
+                if (!field) Assert.Equal(0, nonzero);
+            }
+        }
     }
 
     static double Median(IEnumerable<double> xs)

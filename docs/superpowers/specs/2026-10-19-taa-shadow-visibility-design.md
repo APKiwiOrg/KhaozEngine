@@ -206,7 +206,19 @@ The frozen-D A/B of the cost cut has two references. D prime (`TemporalVisibilit
 
 Task 7g.5 integrates the barrier lock release, the r1 entry-identity cases and the 7g.4 gather policy. Direct3D 11 and Vulkan use twelve gathers for the exact current and history footprints. Metal retains nine current-block loads and uses eight history gathers, since the current-block substitution changes subsequent arithmetic there despite exact raw reads. The Vulkan withdrawal a43599546 is reverted because identical lavapipe follow-walk colour failures occur with and without gathers, while its raw gather oracle has zero mismatches. Main's amendment 23 software-Vulkan colour bound above applies unchanged. Large-frame and moving-shadow comparisons must remain exact. DXBC was recaptured after integration, and the existing writers reproduced all backend hashes and corpus rows without drift. Free all-leg correctness run 39571324204 at 211e42544 passed all three renderer legs and Vulkan sync validation, with exact large-frame and moving-shadow cases and unchanged accepted software costs. The [merge-round record](../../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/7g5-hosted.md) holds the per-case proof. Gather instruction counts do not establish a measured speedup.
 
-The outside-cost variants V5 (visibility infrastructure off) and V4 (V5 without the lock release's precise markings, redefined by Task 7g.3a as barriers removed and never run in that form) are retired. V5 needed a visibility-disable switch inside the shipped renderer and scene, which the production delta forbids. Their one run, `39519219228`, is kept as history in `benchmark-result-2.md`. The decomposition keeps V0 shipped, V1 check removed and V3 D prime, all rewrites through the existing fragment source hook.
+The outside-cost variants V5 (visibility infrastructure off) and V4 (V5 without the lock release's precise markings, redefined by Task 7g.3a as barriers removed and never run in that form) are retired. V5 needed a visibility-disable switch inside the shipped renderer and scene, which the production delta forbids. Their one run, `39519219228`, is kept as history in `benchmark-result-2.md`. The decomposition keeps V0 shipped, V1 check removed, V3 D prime and V6 no check with identity barriers, all rewrites through the existing fragment source hook.
+
+Task 7h Z bypasses the ordered release after decay and ridge classification only for an incoming positive-zero
+lock with three finite actual release arguments, qualified by exponent bits. It keeps negative zero, nonzero
+locks and non-finite arguments on the unchanged twelve-barrier helper. The C# twin already returns positive zero
+bit-exactly for the qualified inputs and stays unchanged. V6 composes the existing no-check and identity-barrier
+rewrites, retaining this bypass and every resource operation. Exactness, local gates, DXBC recapture and the one
+free hosted correctness run are recorded in [7h-zero-lock.md](../../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/7h-zero-lock.md).
+
+Task 7h Z is blocked at FXC. Free dump 39627482960 shows the source branch flattened into unconditional
+barrier arithmetic and movc in all six shipped programs. The candidate is held on fix/taa-vis-zero-lock with
+a failing structural gate. Another program change and DXBC recapture need the orchestrator, and no all-leg
+correctness run has started.
 
 ### Owner-accepted synthetic costs, 2026-10-19
 

@@ -252,8 +252,8 @@ public sealed class CoveragePerfManifestTests
         Assert.Equal(0, manifest.Load);
         Assert.Equal("Release", manifest.Configuration);
         Assert.Equal(10000, manifest.MaxFrameMilliseconds);
-        Assert.Equal(preset == "C0" ? 300 : 600, manifest.MaxUnitSeconds);
-        Assert.Equal(preset == "C0" ? 20 : 30, manifest.JobMinutes);
+        Assert.Equal(preset switch { "C0" => 300, "C1" => 5400, _ => 600 }, manifest.MaxUnitSeconds);
+        Assert.Equal(preset switch { "C0" => 20, "C1" => 120, _ => 30 }, manifest.JobMinutes);
         if (preset == "C0")
             Assert.Collection(manifest.Blocks,
                 b => Block(b, 0, 0, CoveragePerfCondition.DirectOff, CoveragePerfTimerLayout.CpuOnly, 32),
@@ -360,8 +360,8 @@ public sealed class CoveragePerfManifestTests
         root["preset"] = preset;
         if (preset != "C0")
         {
-            root["limits"]!["maxUnitSeconds"] = 600;
-            root["limits"]!["jobMinutes"] = 30;
+            root["limits"]!["maxUnitSeconds"] = preset == "C1" ? 5400 : 600;
+            root["limits"]!["jobMinutes"] = preset == "C1" ? 120 : 30;
         }
         if (preset == "C1") root["blocks"] = JsonNode.Parse(CpuProofBlocks);
         else if (preset is "G1" or "G2" or "G3")

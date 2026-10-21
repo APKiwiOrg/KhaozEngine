@@ -94,7 +94,7 @@ permissions:
 
 jobs:
   stress:
-    uses: APKiwiOrg/ci-workflows/.github/workflows/stress-test.yml@b177e97c34666048e5ce13c8b6c6e8729ada5c4a # opt-in coverage CPU performance proofs, depth-2 checkout, filter optional only for coverage
+    uses: APKiwiOrg/ci-workflows/.github/workflows/stress-test.yml@48e77b6b3b22185bb94f3f95d84b29b35bd38401 # opt-in coverage CPU performance proofs, depth-2 checkout, filter optional only for coverage, C1 capped at 120 min
     with:
       project: ${{ inputs.project }}
       filter: ${{ inputs.filter }}

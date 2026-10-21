@@ -964,7 +964,8 @@ No caller filter extends that selection. The measurement job is capped at 30 min
 `filter` and `artifact-env=KE_COVERAGE_PERF_REPORTS`. Dispatch it with `--ref` naming the authorization
 commit. The pinned shared workflow checks that commit out at depth 2 in coverage mode. It installs
 Vulkan and Mesa, discovers lavapipe's ICD from the package file list and selects software Vulkan
-explicitly. C0 has a 20-minute job limit and C1 has 30. This route proves CPU preparation only. The
+explicitly. C0 has a 20-minute job limit and C1 has 120, because lavapipe takes about 2.7 s to execute
+each 32-actor frame. This route proves CPU preparation only. The
 existing stress behavior stays unchanged when the switch is false and the four coverage strings are
 empty.
 

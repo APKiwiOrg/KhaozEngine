@@ -49,7 +49,7 @@ internal sealed record CoveragePerfManifest
              Block(2, 1, CoveragePerfCondition.SharedOff, CoveragePerfTimerLayout.CpuOnly, SmokeMeasuredFrames),
              Block(3, 1, CoveragePerfCondition.SharedOn, CoveragePerfTimerLayout.CpuOnly, SmokeMeasuredFrames)]),
         new("C1", GpuBackendKind.VulkanNative, CoveragePerfAdapterPolicy.LavapipeCpuOnly,
-            "ubuntu-26.04", "stress-test", "ubuntu-26.04-vulkan-lavapipe", 600, 30,
+            "ubuntu-26.04", "stress-test", "ubuntu-26.04-vulkan-lavapipe", 5400, 120,
             [Block(0, 32, CoveragePerfCondition.DirectOff, CoveragePerfTimerLayout.CpuOnly, ProofMeasuredFrames),
              Block(1, 32, CoveragePerfCondition.SharedOff, CoveragePerfTimerLayout.CpuOnly, ProofMeasuredFrames),
              Block(2, 32, CoveragePerfCondition.SharedOn, CoveragePerfTimerLayout.CpuOnly, ProofMeasuredFrames),

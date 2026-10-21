@@ -165,13 +165,13 @@ conformance on a real device. It supplies neither a geometric certificate nor a 
 | `FoldedPatch`, `EquipmentIntersection`, `HostIntersection` | Construction or offline geometry predicate refused. Exact intersection certification is offline. |
 | `OverlappingConformers` | Positive regions overlap. |
 | `CapacityExceeded` | An admitted bounded capacity was exceeded. |
-| `StaleFrame` | Staging/token lifecycle or frozen frame mismatch. An unsupported cast fallback value still returns this code pending API policy review. |
+| `StaleFrame` | Staging/token lifecycle or frozen frame mismatch. |
 | `UnsupportedAdapter` | Adapter/resource capability or GPU coverage capability unavailable. |
 
 Malformed authoring throws during load rather than returning a frame refusal. `CoverageFailure` carries
 host, instance, command and count/limit context. The only supported fallback is
-`CoverageFallback.UncoveredCurrentPose`. Do not cast other enum values. HostCoverageBinding rejects them in
-its constructor. Low-level unsupported fallback classification remains a separately reported API question.
+`CoverageFallback.UncoveredCurrentPose`. Unsupported enum values throw `ArgumentOutOfRangeException` in
+both the `HostCoverageBinding` constructor and low-level `SkinnedHostConformer.TryPrepare`.
 
 Custom `IAttachmentScene` implementations remain valid without new members. Requested coverage requires
 `IAttachmentCoverageScene`, a stable non-null `CoverageResourceOwner`, complete descriptor forwarding and

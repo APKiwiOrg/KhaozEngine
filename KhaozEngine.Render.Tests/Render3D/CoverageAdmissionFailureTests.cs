@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using KhaozEngine.Render3D;
 using Xunit;
@@ -6,6 +7,23 @@ namespace KhaozEngine.Tests.Render3D;
 
 public sealed class CoverageAdmissionFailureTests
 {
+    [Theory]
+    [InlineData(-1, false)]
+    [InlineData(-1, true)]
+    [InlineData(1, false)]
+    [InlineData(1, true)]
+    public void Unsupported_fallback_throws_before_staging_and_keeps_preparation_usable(int fallback, bool opened)
+    {
+        using var h = new CoverageSceneFixture();
+        if (opened) h.Begin();
+        var error = Assert.Throws<ArgumentOutOfRangeException>(() => h.Conformer.TryPrepare(h.Palette,
+            Matrix4x4.Identity, h.CommandPoses, MotionKey.From(10), (CoverageFallback)fallback, out _, out _));
+        Assert.Equal("fallback", error.ParamName);
+        Assert.Empty(h.Scene.QueuedSkinnedInstancesForTests);
+        if (!opened) h.Begin();
+        _ = h.Stage();
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

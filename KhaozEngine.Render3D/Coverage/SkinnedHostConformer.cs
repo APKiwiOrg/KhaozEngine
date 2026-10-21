@@ -48,12 +48,14 @@ public sealed class SkinnedHostConformer : IDisposable
 
     /// <summary>Stages immutable palette and command inputs after CPU admission. Accepted requests remain pending
     /// until encoding. Construction and numerical refusal happen on the GPU, without blocking drawing.</summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="fallback"/> is unsupported.</exception>
     public bool TryPrepare(ReadOnlySpan<Matrix4x4> palette, in Matrix4x4 model,
         ReadOnlySpan<CoverageCommandPose> commands, MotionKey actorKey, CoverageFallback fallback,
         out SkinnedCoverageFrame frame, out CoverageFailure failure)
     {
         RequireThread();
         if (Disposed) throw new ObjectDisposedException(nameof(SkinnedHostConformer));
+        if (fallback != CoverageFallback.UncoveredCurrentPose) throw new ArgumentOutOfRangeException(nameof(fallback));
         if (Busy) throw new InvalidOperationException("Coverage preparation is not reentrant.");
         Busy = true;
         try { return Scene.StageCoverage(this, palette, model, commands, actorKey, fallback, out frame, out failure); }

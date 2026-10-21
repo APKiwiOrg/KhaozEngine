@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.Numerics;
+using KhaozEngine.MapDoc.Editing;
 
 namespace KhaozEngine.MapDoc.Physics;
 
@@ -38,12 +39,17 @@ public sealed record MapWorldGrids(float StorageTileSize, int NavTileStorageTile
     public void Validate(MapBuiltWorld world)
     {
         ArgumentNullException.ThrowIfNull(world);
+        ValidateDomain(world.TileSize, world.Bounds);
+    }
+
+    internal void ValidateDomain(float tileSize, MapBox3 bounds)
+    {
         RequireAligned();
-        if (StorageTileSize != world.TileSize)
+        if (StorageTileSize != tileSize)
             throw Misaligned(FormattableString.Invariant(
-                $"storage tile size {StorageTileSize} m differs from the document's tile size {world.TileSize} m"));
-        RequireIndexable(world.Bounds.MinX, world.Bounds.MaxX, Origin.X, "X");
-        RequireIndexable(world.Bounds.MinZ, world.Bounds.MaxZ, Origin.Y, "Z");
+                $"storage tile size {StorageTileSize} m differs from the document's tile size {tileSize} m"));
+        RequireIndexable(bounds.MinX, bounds.MaxX, Origin.X, "X");
+        RequireIndexable(bounds.MinZ, bounds.MaxZ, Origin.Y, "Z");
     }
 
     /// <summary>The navigation tile holding storage tile <paramref name="tile"/>. Throws
@@ -65,12 +71,12 @@ public sealed record MapWorldGrids(float StorageTileSize, int NavTileStorageTile
     }
 
     /// <summary><see cref="NavTileOf"/> without the alignment checks, for callers that have already run
-    /// <see cref="Validate"/>.</summary>
+    /// <see cref="Validate(MapBuiltWorld)"/>.</summary>
     internal MapNavTileCoord AlignedNavTileOf(MapTileCoord tile) =>
         new(Block(tile.X, Origin.X, NavTileStorageTiles), Block(tile.Z, Origin.Y, NavTileStorageTiles));
 
     /// <summary><see cref="ServerCellOf"/> without the alignment checks, for callers that have already run
-    /// <see cref="Validate"/>.</summary>
+    /// <see cref="Validate(MapBuiltWorld)"/>.</summary>
     internal MapServerCellCoord AlignedServerCellOf(MapTileCoord tile) =>
         new(Block(tile.X, Origin.X, ServerCellStorageTiles), Block(tile.Z, Origin.Y, ServerCellStorageTiles));
 

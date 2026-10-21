@@ -153,6 +153,107 @@ public sealed class NativeMapTerrainTests
             vertices.Skip(i * 3).Take(3).All(v => v.Color.X > 0 && v.Color.X < 1 && v.Tangent.W == 2));
     }
 
+    [Fact]
+    public void Feather_SharedCanonicalDiagonalHasFullOverlay()
+    {
+        var (closure, ids) = NativeRenderAssetFixtures.TexturelessMaterials(3);
+        using var fixture = Fixture("terrain-feather", closure);
+        using var input = Input(closure, ids);
+        using var batch = NativeMapTerrain.Prepare(Acquire(fixture), input, Materials);
+        AssertPackedOverlayAtVertex(Record(batch), .5, -.5, 1);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Feather_SharedCollinearSubdivisionsHaveFullOverlay(bool tiled)
+    {
+        var (closure, ids) = NativeRenderAssetFixtures.TexturelessMaterials(3);
+        using var fixture = Fixture("terrain-feather-collinear", closure);
+        using var input = Input(closure, ids);
+        using var batch = NativeMapTerrain.Prepare(Acquire(fixture, tiled), input, Materials);
+        var set = Record(batch);
+        AssertGeometry(batch, set);
+        AssertPackedOverlayAtVertex(set, 64, -.25, 1);
+        AssertPackedOverlayAtVertex(set, 64, -.5, 1);
+        AssertPackedOverlayAtVertex(set, 64, -.75, 1);
+    }
+
+    [Theory]
+    [InlineData(.8)]
+    [InlineData(1.6)]
+    [InlineData(3.2)]
+    public void Feather_ScaledFacesKeepPackedBandWeightsInWorldMetres(double scale)
+    {
+        var (closure, ids) = NativeRenderAssetFixtures.TexturelessMaterials(3);
+        using var fixture = Fixture("terrain-feather", closure);
+        ScaleTerrain(fixture, scale);
+        using var input = Input(closure, ids);
+        using var batch = NativeMapTerrain.Prepare(Acquire(fixture), input, Materials);
+        var set = Record(batch);
+        AssertPackedOverlayAtVertex(set, 0, -scale / 2, 0);
+        AssertPackedOverlayAtVertex(set, .1, -scale / 2, .5f);
+        AssertPackedOverlayAtVertex(set, .2, -scale / 2, 1);
+    }
+
+    [Fact]
+    public void Feather_RefusesScaledFaceBeforeRegisteringAWidenedBand()
+    {
+        var (closure, ids) = NativeRenderAssetFixtures.TexturelessMaterials(3);
+        using var fixture = Fixture("terrain-feather", closure);
+        ScaleTerrain(fixture, 64);
+        using var input = Input(closure, ids);
+        var scene = Acquire(fixture);
+        var recorder = new MapDrawRecorder();
+        Assert.Equal(MapRenderAssetStatus.CapacityExceeded, Assert.Throws<MapRenderAssetRefusal>(() =>
+        {
+            using var batch = NativeMapTerrain.Prepare(scene, input, Materials);
+            batch.Register(Stamp, recorder);
+        }).Status);
+        Assert.Empty(recorder.Snapshot().Resources);
+    }
+
+    [Fact]
+    public void MismatchedAlbedoDimensions_RefuseBeforeRegistration()
+    {
+        var closure = NativeRenderAssetFixtures.Create("terrain-mismatched-albedo");
+        using var fixture = Fixture("terrain-feather", closure);
+        using var input = Input(closure, "paint", "wide-paint");
+        Assert.Equal((1, 1), (input.Materials["paint"].Maps.Albedo!.Value.Width, input.Materials["paint"].Maps.Albedo!.Value.Height));
+        Assert.Equal((2, 1), (input.Materials["wide-paint"].Maps.Albedo!.Value.Width, input.Materials["wide-paint"].Maps.Albedo!.Value.Height));
+        var recorder = new MapDrawRecorder();
+        Assert.Equal(MapRenderAssetStatus.Unsupported, Assert.Throws<MapRenderAssetRefusal>(() =>
+        {
+            using var batch = NativeMapTerrain.Prepare(Acquire(fixture), input,
+                new Dictionary<ushort, string> { [10] = "paint", [11] = "wide-paint" });
+            batch.Register(Stamp, recorder);
+        }).Status);
+        Assert.Empty(recorder.Snapshot().Resources);
+    }
+
+    static void ScaleTerrain(NativeSceneFixture fixture, double scale) =>
+        fixture.Document.NativeResourceTransforms = new[] { new MapStandaloneResourceTransform(MapPrefabChildKind.Surface, "ground",
+            new(0, 0, 0, 0, scale), new string('a', 64)) };
+
+    static void AssertPackedOverlayAtVertex(MapDrawSet set, double x, double z, float expected)
+    {
+        var selected = set.Resources.SelectMany(resource =>
+        {
+            var terrain = Assert.IsType<MapTerrainResource>(resource.Payload);
+            var draw = set.Draws.Single(d => d.Resource == resource.Reference);
+            return terrain.Mesh.Vertices.Where(v => Math.Abs(draw.Anchor.X + (double)v.Position.X - x) < .000001 &&
+                Math.Abs(draw.Anchor.Z + (double)v.Position.Z - z) < .000001);
+        }).ToArray();
+        Assert.NotEmpty(selected);
+        Assert.All(selected, vertex =>
+        {
+            Assert.Equal(Vector2.Zero, vertex.Uv);
+            Assert.Equal(new Vector4(0, 0, 1, 2), vertex.Tangent);
+            Assert.Equal(Vector3.Zero, new(vertex.Color.Y, vertex.Color.Z, vertex.Color.W));
+            Assert.InRange(Math.Abs(1 - vertex.Color.X - expected), 0, .00001);
+        });
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

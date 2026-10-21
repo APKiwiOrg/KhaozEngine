@@ -141,9 +141,27 @@ internal static partial class NativeSceneFixtures
             });
         }
         Surface("ground", MapSurfaceRole.SupportFloor, variant is "terrain-zero" or "terrain-zero-overlay" ? (ushort)0 : (ushort)10,
-            variant is "terrain-feather" or "terrain-cuts" or "terrain-combined" or "terrain-zero-overlay" ? (ushort)11 : (ushort)0,
+            variant is "terrain-feather" or "terrain-feather-collinear" or "terrain-cuts" or "terrain-combined" or "terrain-zero-overlay" ? (ushort)11 : (ushort)0,
             variant == "terrain-cuts" ? MapOverlayCut.DiagonalHalf : MapOverlayCut.Full,
             width: variant == "terrain-many" ? 64 : 1);
+        if (variant == "terrain-feather-collinear")
+        {
+            var left = document.Surfaces.Patches[new("ground", 0, 0)];
+            left.CellMinX = 63;
+            left.EdgeSubdivisions.Add(new(0, 0, MapCellEdge.East, 4));
+            var right = left.Clone();
+            right.Key = new("ground", 1, 0);
+            right.CellMinX = 0;
+            right.EdgeSubdivisions.Clear();
+            right.EdgeSubdivisions.Add(new(0, 0, MapCellEdge.West, 2));
+            document.Surfaces.Patches.Add(right.Key, right);
+            var surface = document.Surfaces.Refs[0];
+            document.Surfaces.Refs[0] = surface with
+            {
+                SemanticSha256 = MapSurfaceSemantics.SurfaceDigest(surface, new[] { left, right }.Select(p =>
+                    KeyValuePair.Create(p.Key, MapSurfaceSemantics.PatchDigest(p))))
+            };
+        }
         if (variant == "terrain-many") Surface("last", MapSurfaceRole.SupportFloor, 74);
         if (variant is "terrain-ceiling" or "terrain-posed" or "terrain-combined") Surface("ceiling", MapSurfaceRole.Ceiling, 10, height: 425);
         if (variant == "terrain-wall")

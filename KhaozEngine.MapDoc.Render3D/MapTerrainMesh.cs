@@ -16,10 +16,24 @@ internal static class MapTerrainMesh
 {
     const double FeatherWidthMetres = .2;
 
+    internal static void Admit(IEnumerable<MapTerrainPartition> partitions,
+        IReadOnlyDictionary<MapFaceKey, MapTerrainCanonicalFace> canonical, MapSceneAdmission admission)
+    {
+        // Admit the uncapped world-space refinement demand before any render grid or vertex stream exists.
+        foreach (var partition in partitions)
+        {
+            if (NativeMapTerrain.LayerIds(partition.Paint).Length == 0) continue;
+            foreach (var triangle in Triangles(partition, canonical[partition.Face].Face.Role))
+            {
+                int divisions = Divisions(triangle, IsFeather(partition.Paint));
+                admission.ReserveCompilation((long)divisions * divisions);
+            }
+        }
+    }
+
     internal static MapTerrainResource Build(IEnumerable<MapTerrainPartition> partitions,
         IReadOnlyDictionary<MapFaceKey, MapTerrainCanonicalFace> canonical, MapSubmissionAnchor anchor,
-        MapTerrainMaterialSet materials, IReadOnlyDictionary<MapTerrainPaint.FeatherKey, IReadOnlyList<MapTerrainPaint.Edge>> boundaries,
-        MapSceneAdmission admission)
+        MapTerrainMaterialSet materials, IReadOnlyDictionary<MapTerrainPaint.FeatherKey, IReadOnlyList<MapTerrainPaint.Edge>> boundaries)
     {
         var vertices = new List<ModelVertex>();
         var keys = new List<MapFaceKey>();
@@ -29,22 +43,14 @@ internal static class MapTerrainMesh
             var paint = partition.Paint;
             if (NativeMapTerrain.LayerIds(paint).Length == 0) continue;
             var face = canonical[partition.Face];
-            bool feather = paint.Feather && paint.OverlayCovers && paint.Overlay != 0 && paint.Underlay != 0 && paint.Underlay != paint.Overlay;
+            bool feather = IsFeather(paint);
             var boundary = feather ? boundaries[MapTerrainPaint.Key(partition)] : Array.Empty<MapTerrainPaint.Edge>();
             int underlaySlot = slots[paint.OverlayCovers && paint.Overlay != 0 && !feather ? paint.Overlay : paint.Underlay];
             int overlaySlot = feather ? slots[paint.Overlay] : -1;
-            for (int i = 1; i + 1 < partition.Polygon.Count; i++)
+            foreach (var triangle in Triangles(partition, face.Face.Role))
             {
-                MapExactPoint a = partition.Polygon[0], b = partition.Polygon[i], c = partition.Polygon[i + 1];
-                if (face.Face.Role != MapFaceRole.Wall && MapEffectiveGeometry.AreaWide(new[]
-                    { MapWidePoint.From(a).Xz, MapWidePoint.From(b).Xz, MapWidePoint.From(c).Xz }).Sign == 0) continue;
-                int divisions = 1;
-                if (feather)
-                {
-                    double extent = Math.Max(Distance(a, b), Math.Max(Distance(a, c), Distance(b, c)));
-                    while (divisions < 64 && divisions * FeatherWidthMetres < extent * 2) divisions *= 2;
-                }
-                admission.ReserveCompilation(checked((long)divisions * divisions));
+                MapExactPoint a = triangle.A, b = triangle.B, c = triangle.C;
+                int divisions = Divisions(triangle, feather);
                 var grid = new ModelVertex[(divisions + 1) * (divisions + 1)];
                 for (int y = 0; y <= divisions; y++)
                     for (int x = 0; x <= divisions - y; x++)
@@ -80,6 +86,35 @@ internal static class MapTerrainMesh
             }
         }
         return new(new(vertices.ToArray(), Enumerable.Range(0, vertices.Count).Select(i => (uint)i).ToArray()), materials, keys);
+    }
+
+    static bool IsFeather(MapPaintCoverage paint) => paint.Feather && paint.OverlayCovers &&
+        paint.Overlay != 0 && paint.Underlay != 0 && paint.Underlay != paint.Overlay;
+
+    static IEnumerable<MapExactTriangle> Triangles(MapTerrainPartition partition, MapFaceRole role)
+    {
+        for (int i = 1; i + 1 < partition.Polygon.Count; i++)
+        {
+            MapExactPoint a = partition.Polygon[0], b = partition.Polygon[i], c = partition.Polygon[i + 1];
+            if (role != MapFaceRole.Wall && MapEffectiveGeometry.AreaWide(new[]
+                { MapWidePoint.From(a).Xz, MapWidePoint.From(b).Xz, MapWidePoint.From(c).Xz }).Sign == 0) continue;
+            yield return new(a, b, c);
+        }
+    }
+
+    static int Divisions(MapExactTriangle triangle, bool feather)
+    {
+        if (!feather) return 1;
+        double extent = Math.Max(Distance(triangle.A, triangle.B),
+            Math.Max(Distance(triangle.A, triangle.C), Distance(triangle.B, triangle.C)));
+        int divisions = 1;
+        while (divisions * FeatherWidthMetres < extent * 2)
+        {
+            if (divisions > int.MaxValue / 2)
+                throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, "Terrain feather refinement exceeds representable capacity.");
+            divisions *= 2;
+        }
+        return divisions;
     }
 
     static float Local(MapWideRational coordinate, long anchor) =>

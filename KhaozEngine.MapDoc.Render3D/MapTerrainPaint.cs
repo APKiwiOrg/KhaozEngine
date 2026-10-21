@@ -85,8 +85,9 @@ internal static class MapTerrainPaint
                     var line = new Line(vertical, slope, vertical ? a.X : a.Z.Subtract(slope.Multiply(a.X)));
                     if (!lines.TryGetValue(line, out var events)) lines.Add(line, events = new());
                     var first = vertical ? a.Z : a.X; var last = vertical ? b.Z : b.X;
-                    int direction = first.CompareTo(last) < 0 ? 1 : -1;
-                    Add(first, a, direction); Add(last, b, -direction);
+                    // Keep the polygon's direction. Sorting the events then cancels opposite copies,
+                    // including one long edge opposed by several collinear subedges.
+                    Add(first, a, 1); Add(last, b, -1);
                     void Add(MapWideRational coordinate, MapWideXz point, int delta)
                     {
                         events.TryGetValue(coordinate, out var before);

@@ -50,14 +50,15 @@ public static class NativeMapTerrain
                 if (material.BorrowMaps.Roughness.HasValue) findings.Add(new(MapTerrainFindingKind.RoughnessMapNotConsumed, id, resourceId));
             }
             var materials = palettes.Sets.Select(ids => new MapTerrainMaterialSet(ids.Order().Select(id => layers[id]))).ToArray();
-            var boundaries = MapTerrainPaint.Boundaries(partitions, admission);
             var byKey = canonical.ToDictionary(f => f.Face.Key);
+            MapTerrainMesh.Admit(partitions, byKey, admission);
+            var boundaries = MapTerrainPaint.Boundaries(partitions, admission);
             var parts = new List<MapTerrainPart>();
             foreach (var group in partitions.Where(p => palettes.ByFace.ContainsKey(p.Face)).GroupBy(p =>
                 (p.Face.OwnerId, p.Face.Patch, byKey[p.Face].Anchor, Palette: palettes.ByFace[p.Face])))
             {
                 var material = materials[group.Key.Palette];
-                var mesh = MapTerrainMesh.Build(group, byKey, group.Key.Anchor, material, boundaries, admission);
+                var mesh = MapTerrainMesh.Build(group, byKey, group.Key.Anchor, material, boundaries);
                 if (mesh.Mesh.TriangleCount == 0) continue;
                 string partId = group.Key.Patch is { } patch
                     ? FormattableString.Invariant($"patch/{patch.SlotX}/{patch.SlotZ}/set/{palettes.LocalOrdinals[group.Key.Palette]}")

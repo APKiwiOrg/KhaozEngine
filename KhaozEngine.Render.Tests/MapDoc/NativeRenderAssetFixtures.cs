@@ -68,6 +68,11 @@ internal static class NativeRenderAssetFixtures
         string material = variant == "terrain-extra-maps" ? Material().Replace("\"normal\":null,\"roughnessMap\":null",
             "\"normal\":\"image\",\"roughnessMap\":\"image\"", StringComparison.Ordinal) : Material();
         Resource("paint", "Material", Encoding.UTF8.GetBytes(variant == "opaque" ? "opaque" : material), "image");
+        if (variant == "terrain-mismatched-albedo")
+        {
+            Resource("wide-image", "Material", Png(2, 1));
+            Resource("wide-paint", "Material", Encoding.UTF8.GetBytes(Material().Replace("\"image\"", "\"wide-image\"", StringComparison.Ordinal)), "wide-image");
+        }
         Resource("light", "Light", Encoding.UTF8.GetBytes("""
             {"resourceSchema":"kemap/light-resource","payloadVersion":1,"id":"bulb","owner":null,
              "position":{"x":0,"y":1,"z":0},"colour":{"x":1,"y":0,"z":0},

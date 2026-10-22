@@ -1,9 +1,8 @@
 # Task 7h K, certified fully lit specialization
 
-**Status:** Round 3 passes under the owner's 2026-10-22 device ruling, with Z's conditional positive-zero bypass
-retained in every checked and certified program. Free run 39674360441 passes all three renderer legs, each with
-1824 passed, zero failed and one opt-in dump skip. Sync validation passes 625. Ready for orchestrator review and
-integration of fix/taa-vis-lit-skip. Rounds 1 and 2 below preserve the historical strict-oracle failures.
+**Status:** The certified-program layout fix passes all local gates on fix/taa-shadow-visibility. Final Release
+coverage has 39,742 passed, zero failed and 400 skipped. The final all-leg hosted correctness run is pending.
+Earlier rounds below preserve their historical results.
 
 Source branch fix/taa-vis-lit-skip starts at 6c0382161. This record covers correctness only. No timing,
 benchmark, stress, merge, tag or release is part of the task.
@@ -580,3 +579,60 @@ The measurements manifest is refreshed for every file and verified again before 
 No manual validation is needed. Integration belongs to the owning orchestrator. The named task branch is the only
 retained branch changed by this round. No main merge, tag, release, billed workflow, timing, benchmark or stress
 run is performed. No performance saving is claimed. The known #1485 and #1529 findings remain outside scope.
+
+
+## Layout fix
+
+The compact certified layouts omit KeyShadowVisibility, PreviousKeyShadowVisibility and the VisibilityHistory
+uniform block. Their GLSL still declared all three. The specialization now removes those declarations and the
+unused visibility helpers. Forced-check GPU tests restore the complete ordinary program with its full layout.
+No earlier filtered run included VulkanShaderBindingTableTests, so neither its stale 111-program inventory nor
+the missing ten certified pipeline mappings had been checked. The inventory now covers all 121 programs,
+67 layout shapes and 74 pipeline shapes. The source regression and binding gates pass 35 cases with no skips.
+
+The four repository writers pass nine cases. Only the ten certified fragment rows change in each backend hash
+table, plus their 30 corpus rows. Free Windows dump run
+[39711883365](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39711883365), job 119604913982, uses scratch
+head ec396cb365ff716574534a28705d16d87359a1cb and the documented FXC-only selection. Attempt 1 has 31 passed,
+one intentional dump failure and zero skipped. That is the only failed step. Windows is windows-2025-vs2026
+20261018.275.1 with Microsoft HLSL Shader Compiler 10.1. The watcher exits 1 as expected.
+
+All 28 listings have contiguous numbered lines. The ten certified source pins change, but every recaptured
+listing is byte-identical to its existing fixture, so no compressed listing is rewritten. The other 18 source
+pins are unchanged. All 129 DXBC facts pass without skips, including zero precise markings and all twelve scalar
+barrier ORs inside a real branch in every shipped checked and certified program. The scratch branch and worktree
+are deleted after import. The layout fix is on fix/taa-shadow-visibility.
+
+The first full Release pass exits 1 with 39,716 passed, 16 failed and 400 skipped. Fourteen failures come from
+frozen-D rewrites that still require the omitted visibility helpers. Two inventory facts still expect 65 layouts
+and 70 pipelines. The ten-case device-free regression fails first with the same missing-helper exception. The
+frozen-D hook then restores the complete ordinary source before rewriting it, and the inventory facts require
+67 layouts, 74 pipelines and all 74 x 74 ordered pairs. All 102 focused repair cases pass on Metal without skips.
+These repairs change tests only. Shader sources, generated tables and recaptured DXBC remain unchanged.
+
+Only the affected Render.Tests project is rerun in full. It passes 12,520 cases, with zero failures and the two
+expected skips (the opt-in dump and the Windows-only timestamp fact). Retaining every other project's first pass
+and the isolated pointer pass gives 39,742 passed, zero failed and 400 skipped across all 38 test projects.
+[Per-project counts](layout-fix-suite.json) record both the initial failures and the corrected replacement.
+The full suite uses Release through build-slot, with KE_GPU_TESTS=1 and KE_GRAPHICS_BACKEND=metal-native,
+excluding Category LiveSocket and Benchmark and names containing Perf or Bench. The pointer allocation fact
+runs alone. The known #1507, #1512 and #1529 failures do not recur. Both Release solution builds exit 0 with zero
+warnings and errors. The full solution formatter completes with exit 0 and only its documented workspace-loading
+warning. All final guards pass.
+
+| Layout fix gate | Exit and result |
+| --- | --- |
+| Final Release solution build | 0, zero warnings and errors |
+| Retained projects and corrected Render.Tests | 0 each, 39,742 passed, zero failed and 400 skipped |
+| Full solution format verification | 0, workspace-loading warning only |
+| Documentation versions | 0 |
+| Dashes, prose, file size and instructions, each with --tree | 0 each |
+| Working and staged diff checks | 0 each |
+| Capture manifest verification | 0, every artifact hash and historical source, package and capture check retained |
+
+The one final free hosted correctness dispatch will use legs all, tier push, bake false and the exact 7g.5 filter
+plus explicit certificate, fully-lit and Vulkan binding coverage. TemporalLockReleaseProbe is already explicit.
+
+```text
+((FullyQualifiedName~KhaozEngine.Tests.Gpu.Temporal&FullyQualifiedName!~CostPerf)|((FullyQualifiedName~Shadow|FullyQualifiedName~Golden)&FullyQualifiedName!~Perf&FullyQualifiedName!~Bench)|FullyQualifiedName~MotionTargetLifecycleGpuTests|FullyQualifiedName~D3D11FxcValidationTests|FullyQualifiedName~TemporalLockReleaseProbe|FullyQualifiedName~TemporalVisibilityGatherGpuTests|FullyQualifiedName~TemporalVisibilityCertificateGpuTests|FullyQualifiedName~TemporalVisibilityFullyLitGpuTests|FullyQualifiedName~VulkanShaderBindingTableTests)
+```

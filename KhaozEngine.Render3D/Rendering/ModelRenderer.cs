@@ -481,6 +481,7 @@ namespace KhaozEngine.Render3D.Rendering
                 VertexLayouts = new List<GpuVertexLayoutDescription> { skinnedVertexLayout },
                 Outputs = modelOutputs,
             });
+            SetDualQuaternionOutputs(modelOutputs, skinnedVertexLayout);
         }
 
         /// <summary>Bind + clear the model framebuffer once per frame, before drawing instances.</summary>
@@ -637,6 +638,7 @@ namespace KhaozEngine.Render3D.Rendering
             if (_ownsRetired) _retired.Dispose();
             DisposeFoliageResources();
             DisposeMotionResources();
+            DisposeDualQuaternionMaterials();
             _shadowMap.Dispose();
             _pipeline.Dispose(); _defaultSet.Dispose(); _layout.Dispose();
             _white.Dispose(); _flatNormal.Dispose(); _defaultRough.Dispose(); // _sampler is the device built-in (non-owning); do not dispose it.

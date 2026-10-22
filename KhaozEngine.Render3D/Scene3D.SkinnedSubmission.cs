@@ -49,6 +49,11 @@ public sealed partial class Scene3D
                 if (visibleMain) _drawnSkinnedInstances++;
                 else if (!it.ShadowOnly) _culledSkinnedInstances++;
 
+                PreparedSkinningPose prepared = _submittedSkinningPoses[i];
+                if (prepared.Profile.Method == SkinningMethod.DualQuaternionRigid &&
+                    (_res.MotionAllocated || visibleShadow || visiblePointShadow))
+                    throw new NotSupportedException("DQ shadow and temporal consumers are unavailable for ordinary material submission.");
+
                 bool dissolving = it.Dissolving;
                 ShadowCastKind shadowKind = ShadowDepthSelection.ClassifySkinnedCaster(it);   // issue #387
                 // During a dissolve the emissive channel carries the edge colour. The cutoff remains in
@@ -63,7 +68,7 @@ public sealed partial class Scene3D
                 {
                     // Record the prepared pose after culling. Each method compacts its own palette slots.
                     // Keep the submission-indexed LBS matrix slice for the existing motion-history path.
-                    var paletteSlot = new PreparedSkinningSlot(_submittedSkinningPoses[i], ref lbsSlots, ref dqSlots);
+                    var paletteSlot = new PreparedSkinningSlot(prepared, ref lbsSlots, ref dqSlots);
                     _gpuSkinnedDraws.Add(new GpuSkinnedDraw(entry.Vb, entry.Ib, entry.IndexCount, entry.IndexFormat,
                         entry.SkinnedMaterialSet, i * cap, entry.InverseBind.Length, (uint)_gpuSkinnedDraws.Count, paletteSlot,
                         ToRender(it.World), it.Tint, emissive, specParams, dissolveParams, it.DissolveComplement,
@@ -73,8 +78,10 @@ public sealed partial class Scene3D
                 {
                     int baseVertex = _cpuSkinnedVerts.Count;
                     var palette = boneSpan.Slice(i * cap, cap);   // this draw's composed bone window (slot i)
+                    ReadOnlySpan<RigidDualQuaternion> dqPalette = prepared.Profile.Method == SkinningMethod.DualQuaternionRigid
+                        ? prepared.Owner.Dq(prepared) : default;
                     for (int v = 0; v < src.Length; v++)
-                        _cpuSkinnedVerts.Add(SkinningMath.SkinVertex(src[v], palette));
+                        _cpuSkinnedVerts.Add(SkinningEvaluation.Vertex(src[v], prepared.Profile, palette, dqPalette));
                     _cpuSkinnedInstances.Add(new ModelRenderer.InstanceData
                     {
                         Model = ToRender(it.World),   // reduced AFTER the absolute visibility classification above

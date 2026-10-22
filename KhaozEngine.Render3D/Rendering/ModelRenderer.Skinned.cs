@@ -199,11 +199,16 @@ internal sealed partial class ModelRenderer
     /// number, and it is the caller that knows so.
     /// </para></summary>
     public void DrawGpuSkinned(IGpuCommandList cl, IGpuBuffer restVb, IGpuBuffer ib, int indexCount,
-        GpuIndexFormat indexFormat, uint slot, uint paletteSlot, IGpuResourceSet? skinnedFragSet)
+        GpuIndexFormat indexFormat, uint slot, uint paletteSlot, IGpuResourceSet? skinnedFragSet,
+        SkinningProfile? profile = null)
     {
+        bool dq = profile?.Method == SkinningMethod.DualQuaternionRigid;
+        if (dq && _motion is not null)
+            throw new NotSupportedException("DQ material motion is unavailable until the DQ temporal consumer is ready.");
         cl.SetGraphicsResourceSet(0, _skinnedMainSet!, slot * SkinnedMainSlotBytes);
         cl.SetGraphicsResourceSet(1, skinnedFragSet ?? _skinnedDefaultFragSet);
-        cl.SetGraphicsResourceSet(2, _bonePalette.Set, SkinnedBonePalette.OffsetFor(paletteSlot));
+        if (dq) cl.SetGraphicsResourceSet(2, _dqPalette.Set, _dqPalette.OffsetFor(paletteSlot));
+        else cl.SetGraphicsResourceSet(2, _bonePalette.Set, SkinnedBonePalette.OffsetFor(paletteSlot));
         // The skinned variant's set 3: the motion block and this caster's last frame, at its own slot.
         if (_motion is { } motion)
             cl.SetGraphicsResourceSet(3, motion.SkinnedPalette.Set, SkinnedMotionPalette.OffsetFor(paletteSlot));

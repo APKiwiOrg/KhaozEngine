@@ -74,20 +74,20 @@ namespace KhaozEngine.Render3D
             if (packedMainSlots) _frameStats.AddSkinnedUniformUpload(_model.UploadSkinnedMainSlots(cl));
 
             bool dissolveBound = false;
-            _model.BindSkinnedPass(cl);
+            SkinningProfile? profileBound = null;
             for (int d = 0; d < _gpuSkinnedDraws.Count; d++)
             {
                 GpuSkinnedDraw dr = _gpuSkinnedDraws[d];
                 if (!dr.VisibleMain) continue;
-                if (dr.Dissolve != dissolveBound)   // switch pipelines only when the dissolve state changes
+                if (dr.Dissolve != dissolveBound || dr.PreparedPose.Profile != profileBound)
                 {
-                    if (dr.Dissolve) _model.BindSkinnedDissolvePass(cl); else _model.BindSkinnedPass(cl);
+                    _model.BindSkinnedMaterialPass(cl, dr.PreparedPose.Profile, dr.Dissolve);
                     dissolveBound = dr.Dissolve;
+                    profileBound = dr.PreparedPose.Profile;
                 }
-                // Slot indexes the header window and paletteSlot the shared palette. They are the same number here
-                // (both are the caster's compacted index), which is exactly what the depth pass cannot say.
-                _model.DrawGpuSkinned(cl, dr.RestVb, dr.Ib, dr.IndexCount, dr.IndexFormat, dr.Slot, dr.Slot,
-                    dr.SkinnedMaterialSet);
+                // Headers compact all methods together. Each palette compacts only its own method.
+                _model.DrawGpuSkinned(cl, dr.RestVb, dr.Ib, dr.IndexCount, dr.IndexFormat, dr.Slot, dr.PaletteSlot,
+                    dr.SkinnedMaterialSet, dr.PreparedPose.Profile);
                 CountSkinnedDraw(dr.IndexCount);
             }
         }

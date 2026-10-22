@@ -27,6 +27,21 @@ internal static class CpuSkinnedMotion
         }
     }
 
+    /// <summary>Evaluate the retained previous profile and prepared payload without extracting a DQ palette again.
+    /// Placement is last frame's absolute world reduced against the current render origin by the caller.</summary>
+    public static void AppendPrevious(ReadOnlySpan<SkinnedVertex> source, SkinningProfile profile,
+        ReadOnlySpan<Matrix4x4> lbs, ReadOnlySpan<RigidDualQuaternion> dq,
+        in Matrix4x4 previousWorld, List<Vector3> destination)
+    {
+        if (profile.Method == SkinningMethod.LinearBlend)
+        {
+            AppendPrevious(source, lbs, previousWorld, destination);
+            return;
+        }
+        for (int v = 0; v < source.Length; v++)
+            destination.Add(Vector3.Transform(SkinningEvaluation.Position(source[v], profile, lbs, dq), previousWorld));
+    }
+
     /// <summary>This frame's deformed vertices placed with this frame's render-relative world.</summary>
     public static void AppendCurrent(ReadOnlySpan<ModelVertex> skinned, in Matrix4x4 world, List<Vector3> destination)
     {

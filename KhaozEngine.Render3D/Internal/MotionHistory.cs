@@ -16,8 +16,8 @@ namespace KhaozEngine.Render3D.Internal;
 /// </para>
 /// <para>
 /// Transforms are ABSOLUTE, exactly as submitted, so a render origin step between the two frames adds no error. The
-/// reader reduces both frames against the current origin. Skinned palettes are the composed palettes the renderer
-/// uploads (bone times inverse-bind), one span per key.
+/// reader reduces both frames against the current origin. Skinned palettes retain the renderer's prepared matrix
+/// or DQ words, source identity and profile, with absolute bounds for local history rejection.
 /// </para>
 /// <para>
 /// Grow-only. The maps keep their capacity across the swap and the palette arrays only ever grow, so once a scene's
@@ -30,7 +30,8 @@ namespace KhaozEngine.Render3D.Internal;
 /// </summary>
 internal sealed class MotionHistory
 {
-    readonly record struct SkinnedEntry(Matrix4x4 World, int Offset, int Length);
+    readonly record struct SkinnedEntry(Matrix4x4 World, SkinnedMotionIdentity? Identity,
+        int Offset, int Length, int DqOffset, int DqLength, MeshBounds? WorldBounds);
 
     sealed class Generation
     {
@@ -38,22 +39,25 @@ internal sealed class MotionHistory
         public readonly Dictionary<ulong, SkinnedEntry> Skinned = new();
         public Matrix4x4[] Palettes = Array.Empty<Matrix4x4>();
         public int PaletteCount;
+        public RigidDualQuaternion[] DqPalettes = Array.Empty<RigidDualQuaternion>();
+        public int DqPaletteCount;
 
         public void Clear()
         {
             Rigid.Clear();
             Skinned.Clear();
             PaletteCount = 0;
+            DqPaletteCount = 0;
         }
 
         // Appends one palette and returns where it starts. A collision appends again and leaves the loser's
         // region unused until the next Clear, which bounds the waste to one frame.
-        public int AppendPalette(ReadOnlySpan<Matrix4x4> palette)
+        public static int AppendPalette<T>(ref T[] storage, ref int count, ReadOnlySpan<T> palette)
         {
-            int offset = PaletteCount, need = offset + palette.Length;
-            if (need > Palettes.Length) Array.Resize(ref Palettes, Math.Max(need, Palettes.Length * 2));
-            palette.CopyTo(Palettes.AsSpan(offset));
-            PaletteCount = need;
+            int offset = count, need = checked(offset + palette.Length);
+            if (need > storage.Length) Array.Resize(ref storage, Math.Max(need, storage.Length * 2));
+            palette.CopyTo(storage.AsSpan(offset));
+            count = need;
             return offset;
         }
     }
@@ -110,22 +114,35 @@ internal sealed class MotionHistory
     /// <summary>Record a keyed skinned draw's absolute model transform and composed palette for this frame. The
     /// palette is copied. <see cref="MotionKey.None"/> records nothing.</summary>
     public void RecordSkinned(MotionKey key, in Matrix4x4 world, ReadOnlySpan<Matrix4x4> palette)
+        => RecordSkinned(key, world, null, palette, default, null);
+
+    /// <summary>Copy the uploaded source identity, prepared payload words and absolute posed bounds. Replacing an
+    /// actor never erases its previous bounds or any other actor's history.</summary>
+    public void RecordSkinned(MotionKey key, in Matrix4x4 world, in SkinnedMotionIdentity identity,
+        ReadOnlySpan<Matrix4x4> lbs, ReadOnlySpan<RigidDualQuaternion> dq, in MeshBounds worldBounds)
+        => RecordSkinned(key, world, identity, lbs, dq, (MeshBounds?)worldBounds);
+
+    void RecordSkinned(MotionKey key, in Matrix4x4 world, SkinnedMotionIdentity? identity,
+        ReadOnlySpan<Matrix4x4> lbs, ReadOnlySpan<RigidDualQuaternion> dq, MeshBounds? worldBounds)
     {
         if (key.IsNone) return;
         KeyedSkinned++;
-        int offset = _current.AppendPalette(palette);
+        int offset = Generation.AppendPalette(ref _current.Palettes, ref _current.PaletteCount, lbs);
+        int dqOffset = Generation.AppendPalette(ref _current.DqPalettes, ref _current.DqPaletteCount, dq);
         ref SkinnedEntry slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_current.Skinned, key.Value, out bool exists);
         if (exists) Collisions++;
-        slot = new SkinnedEntry(world, offset, palette.Length);
+        slot = new SkinnedEntry(world, identity, offset, lbs.Length, dqOffset, dq.Length, worldBounds);
     }
 
-    /// <summary>Last frame's absolute model transform and composed palette for <paramref name="key"/>, if it was
-    /// drawn. The span stays valid until the next <see cref="BeginFrame"/> or <see cref="Reset"/>. Its length is the
+    /// <summary>Legacy LBS view of last frame's absolute model transform and composed palette, if it was drawn.
+    /// DQ records require the identity-aware overload. The span stays valid until the next <see cref="BeginFrame"/>
+    /// or <see cref="Reset"/>. Its length is the
     /// bone count at record time, so a length that differs from the current draw's means a different mesh under the
     /// same key, which the caller treats as no previous state.</summary>
     public bool TryGetPreviousSkinned(MotionKey key, out Matrix4x4 world, out ReadOnlySpan<Matrix4x4> palette)
     {
-        if (!key.IsNone && _previous.Skinned.TryGetValue(key.Value, out SkinnedEntry entry))
+        if (!key.IsNone && _previous.Skinned.TryGetValue(key.Value, out SkinnedEntry entry)
+            && (entry.Identity is null || entry.Identity.Value.Profile.Method == SkinningMethod.LinearBlend))
         {
             world = entry.World;
             palette = new ReadOnlySpan<Matrix4x4>(_previous.Palettes, entry.Offset, entry.Length);
@@ -133,6 +150,45 @@ internal sealed class MotionHistory
         }
         world = default;
         palette = default;
+        return false;
+    }
+
+    /// <summary>Read last frame's exact prepared words only when source, generation and profile correspond.
+    /// The spans remain valid until the next BeginFrame or Reset, including across this frame's replacements.</summary>
+    public bool TryGetPreviousSkinned(MotionKey key, in SkinnedMotionIdentity expected, out Matrix4x4 world,
+        out ReadOnlySpan<Matrix4x4> lbs, out ReadOnlySpan<RigidDualQuaternion> dq)
+    {
+        if (!key.IsNone && _previous.Skinned.TryGetValue(key.Value, out SkinnedEntry entry)
+            && entry.Identity == expected)
+        {
+            world = entry.World;
+            lbs = _previous.Palettes.AsSpan(entry.Offset, entry.Length);
+            dq = _previous.DqPalettes.AsSpan(entry.DqOffset, entry.DqLength);
+            return true;
+        }
+        world = default;
+        lbs = default;
+        dq = default;
+        return false;
+    }
+
+    /// <summary>Last frame's absolute bounds, even when its source no longer corresponds to this frame's.</summary>
+    public bool TryGetPreviousBounds(MotionKey key, out MeshBounds worldBounds)
+        => TryGetBounds(_previous, key, out worldBounds);
+
+    /// <summary>This frame's absolute bounds, retained beside the old bounds for projected history rejection.</summary>
+    public bool TryGetCurrentBounds(MotionKey key, out MeshBounds worldBounds)
+        => TryGetBounds(_current, key, out worldBounds);
+
+    static bool TryGetBounds(Generation generation, MotionKey key, out MeshBounds worldBounds)
+    {
+        if (!key.IsNone && generation.Skinned.TryGetValue(key.Value, out SkinnedEntry entry)
+            && entry.WorldBounds is { } bounds)
+        {
+            worldBounds = bounds;
+            return true;
+        }
+        worldBounds = default;
         return false;
     }
 }

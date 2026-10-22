@@ -90,6 +90,7 @@ namespace KhaozEngine.Render3D
             int slot = _skinnedInstances.Items.Count;
             var prepared = PrepareSkinning(entry, boneMatrices,
                 UseGpuSkinning ? "ordinary GPU colour/shadow/motion" : "ordinary CPU colour/shadow/motion");
+            MeshBounds worldBounds = SkinnedMotionBounds(entry, prepared, draw);
             ReadOnlySpan<Matrix4x4> palette = _preparedSkinning.Lbs(prepared);
             for (int bone = 0; bone < SkinningMath.MaxBonesPerDraw; bone++)
                 _boneMatrices.Add(bone < palette.Length ? palette[bone] : Matrix4x4.Identity);
@@ -97,7 +98,7 @@ namespace KhaozEngine.Render3D
                 Array.Resize(ref _submittedSkinningPoses, Math.Max(slot + 1, _submittedSkinningPoses.Length * 2));
             _submittedSkinningPoses[slot] = prepared;
             _skinnedInstances.Add(in draw);
-            RecordSkinnedMotion(in draw, slot, boneMatrices.Length);
+            RecordSkinnedMotion(in draw, in prepared, in worldBounds);
         }
 
         /// <summary>Queue one skinned draw. <paramref name="boneMatrices"/> are this frame's joint world

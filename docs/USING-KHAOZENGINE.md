@@ -12236,7 +12236,9 @@ record depth for the key light and draw no colour, and the room under them stays
 reached the scene at all and the sun landed on the interior floor of the building the player was standing in.
 `LastShadowOnlyProps` counts them, apart from `LastDrawnProps`, which stays the VISIBLE total. The same focus
 and `PropDrawRadius` cull both ordinary passes. Roof layers use their own `DrawRadius` for colour and shadows,
-with the layer policy described below. A roof outside its applicable radius casts nothing, and silhouettes and target outlines are unchanged: a hidden roof still draws no hull.
+with the layer policy described below. A roof outside its applicable radius casts nothing. Layered target
+outlines share the colour draw's effective representation, generation and fade floor, including individual
+fallbacks after failed HLOD rebuilds. A hidden roof draws no outline or silhouette hull.
 
 The fill is bounded at `TileWorldView.MaxInteriorTiles` (4096). A world that flags a whole region indoors by
 mistake would otherwise walk tens of thousands of tiles on the frame the observer steps into it, so the walk
@@ -12341,8 +12343,9 @@ transforms and fades when `CastsShadows` is true. All-visible merged clusters dr
 submit merged shadow-only. A partly hidden cluster never submits merged colour. It falls back to resident
 individuals without the HLOD fade floor, or to merged shadow-only if individuals are unavailable. Roof layers
 retain their merged clusters in Decor, and queue neither colour nor shadows beyond `DrawRadius`.
-Selected outlines check the roof rule separately against their retained individual and merged snapshots while
-a replacement builds. Non-roof snapshots carry no roof footprints. Warmed layer visibility checks allocate
+Selected outlines use `PropClusterVisibilityDecision.Resolve` to follow the colour draw's effective source
+generation and fade floor, including resident individual fallbacks after failed rebuilds. Shadow-only
+representations receive no outline. Non-roof snapshots carry no roof footprints. Warmed layer visibility checks allocate
 no managed memory per frame.
 
 For long-distance buildings, select walls and roofs into separate layers, each with `DrawRadius = 576`,

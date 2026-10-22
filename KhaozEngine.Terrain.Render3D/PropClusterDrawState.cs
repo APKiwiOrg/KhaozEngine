@@ -8,4 +8,8 @@ public readonly record struct PropClusterDrawState(
     float MergedDissolve,
     bool MergedComplement,
     long IndividualSourceGeneration,
-    long MergedSourceGeneration);
+    long MergedSourceGeneration)
+{
+    /// <summary>Whether the current individual source generation has resident placement geometry.</summary>
+    public bool HasIndividualGeometry { get; init; }
+}

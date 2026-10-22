@@ -20,6 +20,7 @@ public sealed partial class RecordingTileWorldScene
     public List<(MeshHandle Handle, float Dissolve, bool Complement)> ClusterShadowMergedDraws { get; } = new();
     public int LiveClusterMeshCount => _liveClusterMeshes.Count;
     public int ClusterDrawPasses { get; private set; }
+    public bool FailClusterBuilds { get; set; }
 
     public global::KhaozEngine.TileWorld.ITileWorldPropClusterOwner CreatePropClusterOwner() => new RecordingClusterOwner(this);
 
@@ -38,7 +39,10 @@ public sealed partial class RecordingTileWorldScene
         public PropClusterCpuBuild BuildCpu(PropClusterBuildRequest request)
         {
             _scene.ClusterBuildRequests.Enqueue(request);
-            return _renderer.BuildCpu(request);
+            PropClusterCpuBuild build = _renderer.BuildCpu(request);
+            return !_scene.FailClusterBuilds ? build : new PropClusterCpuBuild(build.Key, build.Generation,
+                build.Area, build.Layer, build.PlacementBatch, null, false, true,
+                new InvalidOperationException("fixture rebuild failure"), build.Epoch);
         }
         public void Apply(PropClusterKey key, PropClusterCpuBuild build) => _renderer.Apply(key, build);
         public void Invalidate(PropClusterKey key) => _renderer.Invalidate(key);

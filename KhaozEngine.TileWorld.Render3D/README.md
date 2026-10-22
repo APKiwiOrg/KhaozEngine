@@ -529,8 +529,9 @@ catalog archetype up front, so a region load is placements alone.
   draws its merged handle shadow-only. A partly hidden cluster uses resident individuals without the HLOD fade
   floor, or merged shadow-only if individuals are unavailable. Merged colour never exposes hidden roofs.
   Roof clusters survive Decor residency, and neither pass queues anything beyond the layer's `DrawRadius`.
-  Selected outlines apply the same roof rule to each retained individual and merged generation, so pending
-  replacements cannot reveal a hidden roof. Non-roof snapshots carry no roof footprints, and warmed layer
+  Selected outlines share the draw's effective representation decision, source generation and fade floor,
+  including the individual fallback after a failed HLOD rebuild. Only colour-submitted roofs receive outlines.
+  Non-roof snapshots carry no roof footprints, and warmed layer
   visibility checks allocate no managed memory per frame.
   Use separate structures and roof layers with `LodDistance = 0`, `HlodDistance = 192`, `HlodCrossfadeWidth = 32`,
   `DrawRadius = 576` and `HlodWeldCell = 0` to merge buildings without welding their straight edges.

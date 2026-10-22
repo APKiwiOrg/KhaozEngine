@@ -291,6 +291,9 @@ namespace KhaozEngine.Terrain
         }
 
         static PropClusterDrawState ResolveDrawState(Cluster cluster, Vector3 focus)
+            => ResolveDistanceDrawState(cluster, focus) with { HasIndividualGeometry = cluster.Placements.Count > 0 };
+
+        static PropClusterDrawState ResolveDistanceDrawState(Cluster cluster, Vector3 focus)
         {
             if (cluster.Handle is null)
                 return new PropClusterDrawState(true, 0f, false, 0f, false,

@@ -269,7 +269,10 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   the same transforms, LOD and fades. The visibility source retains metadata for both generations reported by
   `PropClusterDrawState`. A partly hidden merged cluster falls back to resident individuals without its HLOD fade
   floor, or merged shadow-only when individuals are unavailable. All-hidden merged geometry keeps its shadow,
-  subject to `CastsShadows`. The returned `PropClusterDrawCounts` counts represented placements, with each
+  subject to `CastsShadows`. `PropClusterDrawState.HasIndividualGeometry` reports resident fallback availability.
+  `PropClusterVisibilityDecision.Resolve` shares the effective representations, source generations, fade floor
+  and per-placement colour eligibility between the draw and selected outlines, including failed rebuilds.
+  The returned `PropClusterDrawCounts` counts represented placements, with each
   complementary individual and merged pair counted once. An initial HLOD failure retries three times,
   logs once for that key and generation, and retains individual props. A rebuild failure keeps the last accepted
   merged handle while adopting the failed request's current individual placements and layer. A successful

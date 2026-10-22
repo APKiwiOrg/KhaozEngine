@@ -16,28 +16,16 @@ internal sealed class PropClusterVisibilityDraw
         PropClusterDrawState state, Vector3 focus, IPropClusterVisibility visibility)
     {
         if (!state.DrawsIndividuals && !state.DrawsMerged) return default;
-        bool controlled = visibility.Controls(key);
-        int mergedCount = controlled && state.DrawsMerged
-            ? visibility.PlacementCount(key, state.MergedSourceGeneration) : representedCount;
-        int mergedHidden = 0;
-        if (controlled && state.DrawsMerged)
-            for (int i = 0; i < mergedCount; i++)
-                if (visibility.IsHidden(key, state.MergedSourceGeneration, i)) mergedHidden++;
-
-        // A merged colour draw cannot express visibility per building. Drop the HLOD fade floor when the
-        // individual batch replaces it, so the entire visible part survives even beyond the HLOD transition.
-        bool mixed = mergedHidden > 0 && mergedHidden < mergedCount;
-        if (mixed && placements.Count > 0)
-            return DrawIndividuals(backend, key, layer, placements, state.IndividualSourceGeneration,
-                focus, 0f, visibility, controlled);
+        PropClusterVisibilityDecision decision = PropClusterVisibilityDecision.Resolve(key, state, visibility);
+        state = decision.State;
+        int mergedCount = decision.Controlled ? decision.MergedPlacementCount : representedCount;
 
         PropClusterDrawCounts individual = state.DrawsIndividuals
-            ? DrawIndividuals(backend, key, layer, placements, state.IndividualSourceGeneration,
-                focus, state.IndividualDissolveFloor, visibility, controlled) : default;
+            ? DrawIndividuals(backend, key, layer, placements, focus, decision, visibility) : default;
         PropClusterDrawCounts merged = default;
         if (state.DrawsMerged && handle is { } mesh)
         {
-            if (mergedHidden == 0)
+            if (decision.DrawsMergedColour)
             {
                 backend.DrawMerged(mesh, layer, state.MergedDissolve, state.MergedComplement);
                 merged = new(mergedCount, 0);
@@ -53,16 +41,17 @@ internal sealed class PropClusterVisibilityDraw
     }
 
     PropClusterDrawCounts DrawIndividuals(IPropClusterRenderBackend backend, PropClusterKey key, PropLayer layer,
-        IReadOnlyList<PropPlacement> placements, long generation, Vector3 focus, float dissolveFloor,
-        IPropClusterVisibility visibility, bool controlled)
+        IReadOnlyList<PropPlacement> placements, Vector3 focus, PropClusterVisibilityDecision decision,
+        IPropClusterVisibility visibility)
     {
-        if (!controlled) return new(backend.DrawProps(placements, layer, focus, dissolveFloor), 0);
+        float dissolveFloor = decision.State.IndividualDissolveFloor;
+        if (!decision.Controlled) return new(backend.DrawProps(placements, layer, focus, dissolveFloor), 0);
         _visible.Clear();
         _hidden.Clear();
         for (int i = 0; i < placements.Count; i++)
         {
-            if (visibility.IsHidden(key, generation, i)) _hidden.Add(placements[i]);
-            else _visible.Add(placements[i]);
+            if (decision.DrawsIndividualColour(key, i, visibility)) _visible.Add(placements[i]);
+            else _hidden.Add(placements[i]);
         }
         int visible = _visible.Count == 0 ? 0 : backend.DrawProps(_visible, layer, focus, dissolveFloor);
         int hidden = !layer.CastsShadows || _hidden.Count == 0 ? 0

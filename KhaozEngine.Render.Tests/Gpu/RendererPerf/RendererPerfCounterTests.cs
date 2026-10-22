@@ -179,6 +179,9 @@ public sealed class RendererPerfCounterTests
         native.Commands.EventCount = 0;
         var direct = RendererPerfCommandList.Wrap(native.Commands, disabled);
         Action disabledWork = () => { direct.Begin(); direct.UpdateBuffer<byte>(buffer, 0, bytes); direct.Draw(3); direct.End(); };
+        // Warm the exact interface path, including the runtime's generic virtual dispatch cache.
+        disabledWork();
+        native.Commands.EventCount = 0;
         AllocationMeasurement.NoPerCallAllocation("disabled renderer forwarding", disabledWork);
         Assert.Equal(expected, native.Commands.Events[..native.Commands.EventCount]);
         using var ring = new GpuPerfTimestampRing(native, 1, 2, (_, result) => Assert.True(result.Valid));

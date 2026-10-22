@@ -92,7 +92,7 @@ public sealed class MapScene3DSink : IMapRenderDevice, IMapDrawSink, IMapRenderU
         var anchor = new RenderAnchor(draw.Anchor.X, draw.Anchor.Y, draw.Anchor.Z);
         if (draw.Rigid is { } rigid)
         {
-            bool colour = channels.HasFlag(MapDrawChannels.Colour), shadow = channels.HasFlag(MapDrawChannels.Shadow);
+            bool colour = (channels & MapDrawChannels.Colour) != 0, shadow = (channels & MapDrawChannels.Shadow) != 0;
             if (!colour && !shadow) return;
             var appearance = new RigidInstanceDraw(default, draw.LocalTransform)
             {
@@ -113,8 +113,8 @@ public sealed class MapScene3DSink : IMapRenderDevice, IMapDrawSink, IMapRenderU
         {
             _scene.AddLightAnchored(draw.LocalTransform.Translation, anchor, light.Colour, light.Radius, light.Intensity, light.Shadow);
         }
-        else if (draw.Water is { } water && channels.HasFlag(MapDrawChannels.Colour))
-            _scene.DrawWater(new WaterSurfaceMesh(_access.MeshOf(new(handle.Value)), anchor, draw.LocalTransform, water.Look.ToWaterLook()));
+        else if (draw.Water is { } water && (channels & MapDrawChannels.Colour) != 0)
+            _scene.DrawWater(new WaterSurfaceMesh(_access.MeshOf(new(handle.Value)), anchor, draw.LocalTransform, water.Look.PreparedLook));
         else if (draw.Foliage is { } foliage)
         {
             var o = foliage.Options; var s = foliage.State;
@@ -133,7 +133,7 @@ public sealed class MapScene3DSink : IMapRenderDevice, IMapDrawSink, IMapRenderU
                 WindSpatialFrequency = s.WindSpatialFrequency
             };
             Span<FoliageInteractor> interactors = stackalloc FoliageInteractor[4] { s.I0, s.I1, s.I2, s.I3 };
-            _scene.DrawPreparedFoliage(new(handle.Value), draw.LocalFocus, settings, anchor, interactors[..s.InteractorCount], channels.HasFlag(MapDrawChannels.Colour), channels.HasFlag(MapDrawChannels.Shadow), foliage.TimeSeconds, foliage.WindSeed);
+            _scene.DrawPreparedFoliage(new(handle.Value), draw.LocalFocus, settings, anchor, interactors[..s.InteractorCount], (channels & MapDrawChannels.Colour) != 0, (channels & MapDrawChannels.Shadow) != 0, foliage.TimeSeconds, foliage.WindSeed);
         }
     }
     public void Release(MapRenderHandle handle)

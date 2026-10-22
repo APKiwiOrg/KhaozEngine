@@ -99,9 +99,13 @@ def gpu(*prefixes):
 # included. "~" is containment. A class rule ends in "." so it cannot reach a longer class name, and a
 # prefix rule such as gpu("S") takes every Gpu class whose name starts with that letter that no earlier
 # rule took.
-# Task 12 actual sink facts stay beside the prepared upload producer on every backend.
+# R8a Tasks 8, 12 and 13. Every required native fact, including theory rows and the GPU
+# allocation fact, stays beside the prepared upload producer on exactly one slice per backend.
 NATIVE_RESOURCE_UPLOAD = [("~", "KhaozEngine.Tests.MapDoc.NativeResourceUploadGpuTests."),
-                          ("~", "KhaozEngine.Tests.MapDoc.NativeMapReadinessTests.")]
+                          ("~", "KhaozEngine.Tests.MapDoc.NativeMapReadinessTests."),
+                          ("~", "KhaozEngine.Tests.MapDoc.NativeMapGoldenGpuTests."),
+                          ("~", "KhaozEngine.Tests.MapDoc.NativeMapSnapshotGpuTests."),
+                          ("=", "KhaozEngine.Tests.MapDoc.NativeMapAllocationTests.WarmGpuQueueUpdateDraw_AllocateZero")]
 
 RENDER_SLICES = {
     "metal-native": [
@@ -392,6 +396,11 @@ def cmd_check_render(args):
         print(f"  unassigned: {name}")
     for name, hit_slices in doubled[:20]:
         print(f"  assigned to {', '.join(hit_slices)}: {name}")
+    for op, value in NATIVE_RESOURCE_UPLOAD:
+        native = [name for name in names if rule_matches(op, value, name)]
+        print(f"{backend} required native {value}: {len(native)} methods")
+        if not native:
+            fail(f"required native tests are missing from {listing}: {value}")
     if unassigned or doubled:
         fail(f"the {backend} Render.Tests slices do not partition the listed tests exactly once")
 

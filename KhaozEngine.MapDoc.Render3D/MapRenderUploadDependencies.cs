@@ -18,9 +18,16 @@ public sealed partial class MapRenderResidency
         lock (_gate)
         {
             RequireLive();
-            return new(_transition, _pending is null ? 0 : Math.Max(1, _pending.Resources.Count - _pending.Owners.Count),
-                _owners.Count, Lifetime.CpuBytes, Lifetime.GpuBytes, Lifetime.QueuedBytes);
+            return SnapshotReadiness();
         }
+    }
+    MapRenderReadiness SnapshotReadiness()
+    {
+        int pending = _pending is null ? 0 : Math.Max(1, _pending.Resources.Count - _pending.Owners.Count);
+        long cpu = Lifetime.CpuBytes, gpu = Lifetime.GpuBytes, queued = Lifetime.QueuedBytes;
+        if (_lastReadiness is { } old && ReferenceEquals(old.Transition, _transition) && old.Pending == pending &&
+            old.Ready == _owners.Count && old.CpuBytes == cpu && old.GpuBytes == gpu && old.QueuedBytes == queued) return old;
+        return _lastReadiness = new(_transition, pending, _owners.Count, cpu, gpu, queued);
     }
     internal void CompletePreparation()
     {

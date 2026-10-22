@@ -105,6 +105,7 @@
     <ProjectReference Include="../KhaozEngine.TestSupport.Gpu/KhaozEngine.TestSupport.Gpu.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="../KhaozEngine.MapDoc.Tests/Foliage/FarFoliageGenerationFixtures.cs" Link="MapDoc/FarFoliageGenerationFixtures.cs" />
     <Compile Include="../KhaozEngine.MapDoc.Tests/Scene/*Fixtures.cs" Link="MapDoc/Scene/%(Filename)%(Extension)" />
     <Compile Include="../test-shared/SkinnedAttachmentGlbFixture.cs" Link="Shared/SkinnedAttachmentGlbFixture.cs" />
   </ItemGroup>

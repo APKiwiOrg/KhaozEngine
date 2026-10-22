@@ -25,6 +25,10 @@ public sealed partial class MapRenderResidency : IDisposable
     readonly Queue<Owner> _retired = new();
     readonly Dictionary<Identity, Owner> _owners = new();
     readonly Dictionary<MapResourceReference, Owner> _acceptedReferences = new();
+    readonly CompositeSink _recording = new();
+    MapRenderAdmission.CpuLease? _recordingCharge;
+    int _recordingCapacity;
+    MapRenderReadiness? _lastReadiness;
     Pending? _pending;
     Batch? _accepted;
     MapRenderSourceState? _acceptedState;
@@ -89,23 +93,7 @@ public sealed partial class MapRenderResidency : IDisposable
                 Schedule();
                 if (_pending is { Job.Completion.IsCompleted: true } pending && pending.Batch is null)
                 {
-                    var plans = pending.Job.Completion.GetAwaiter().GetResult();
-                    _queue.Remove(pending.Job);
-                    pending.Batch = new(plans, pending.Job.Charge, pending.SourceCharge!);
-                    pending.SourceCharge = null;
-                    pending.Job = null;
-                    Fence(pending);
-                    _transition = _transition with { PendingWitness = Witness(pending.State, pending.Epoch, plans) };
-                    foreach (var resource in plans.SelectMany(p => p.Resources))
-                    {
-                        var id = Identity.Of(resource);
-                        if (pending.Resources.ContainsKey(id)) continue;
-                        pending.Resources.Add(id, resource);
-                        if (_owners.TryGetValue(id, out var existing)) pending.Owners.Add(id, existing);
-                    }
-                    if (Device is MapScene3DSink sink) sink.Declare(plans.SelectMany(p => p.Resources),
-                        plans.SelectMany(p => p.Resources).Where(r => pending.Owners.ContainsKey(Identity.Of(r)))
-                            .ToDictionary(r => r.Reference, r => pending.Owners[Identity.Of(r)].Handle));
+                    PrepareCompleted(pending);
                 }
                 if (_pending?.Batch is not null) Advance(_pending);
             }
@@ -114,9 +102,28 @@ public sealed partial class MapRenderResidency : IDisposable
                 long epoch = _transition.Epoch; CancelPending(); Refuse(Refusal(error)!.Value, epoch);
             }
             DrainRetirement(); AssetCache.TryTrim(); TrimRetention();
-            return new(_transition, _pending is null ? 0 : Math.Max(1, _pending.Resources.Count - _pending.Owners.Count),
-                _owners.Count, Lifetime.CpuBytes, Lifetime.GpuBytes, Lifetime.QueuedBytes);
+            return SnapshotReadiness();
         }
+    }
+    void PrepareCompleted(Pending pending)
+    {
+        var plans = pending.Job!.Completion.GetAwaiter().GetResult();
+        _queue.Remove(pending.Job);
+        pending.Batch = new(plans, pending.Job.Charge, pending.SourceCharge!);
+        pending.SourceCharge = null;
+        pending.Job = null;
+        Fence(pending);
+        _transition = _transition with { PendingWitness = Witness(pending.State, pending.Epoch, plans) };
+        foreach (var resource in plans.SelectMany(p => p.Resources))
+        {
+            var id = Identity.Of(resource);
+            if (pending.Resources.ContainsKey(id)) continue;
+            pending.Resources.Add(id, resource);
+            if (_owners.TryGetValue(id, out var existing)) pending.Owners.Add(id, existing);
+        }
+        if (Device is MapScene3DSink sink) sink.Declare(plans.SelectMany(p => p.Resources),
+            plans.SelectMany(p => p.Resources).Where(r => pending.Owners.ContainsKey(Identity.Of(r)))
+                .ToDictionary(r => r.Reference, r => pending.Owners[Identity.Of(r)].Handle));
     }
     void Validate(MapRenderSourceState state)
     {
@@ -133,7 +140,10 @@ public sealed partial class MapRenderResidency : IDisposable
     }
     void Schedule()
     {
-        if (_pending is not { Job: null, Batch: null } pending) return;
+        if (_pending is { Job: null, Batch: null } pending) SchedulePending(pending);
+    }
+    void SchedulePending(Pending pending)
+    {
         long bytes = Math.Min(_budgets.MaxQueuedBytes, Math.Min(pending.State.Source.Data.Limits.MaxPreparedBytes,
             checked(_budgets.MaxPlanBytes * pending.State.Windows.Count)));
         if (!_queue.CanEnqueue(1, bytes)) return;
@@ -255,6 +265,7 @@ public sealed partial class MapRenderResidency : IDisposable
         var references = new Dictionary<MapResourceReference, Owner>();
         foreach (var plan in pending.Batch!.Plans)
             foreach (var resource in plan.Resources) references.Add(resource.Reference, pending.Owners[Identity.Of(resource)]);
+        PrepareRecording(references.Count);
         foreach (var plan in pending.Batch.Plans) plan.Inventory.Placements.AcceptPublishedClusters();
         var old = _accepted;
         var oldOwners = _owners.Values.ToArray(); _owners.Clear();
@@ -268,6 +279,15 @@ public sealed partial class MapRenderResidency : IDisposable
         foreach (var owner in oldOwners) if (!_owners.ContainsKey(owner.Identity)) _retired.Enqueue(owner);
         old?.Dispose();
     }
+    void PrepareRecording(int references)
+    {
+        if (references <= _recordingCapacity) return;
+        // The old maps coexist with their replacements during growth. Reserve before allocating any buckets.
+        using var charge = _admission.TryReserveCpu(checked(512L + references * 512L))
+            ?? throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, "Frame recording scratch exceeds aggregate CPU capacity.");
+        _recording.Prepare(references);
+        _recordingCharge?.Dispose(); _recordingCharge = charge.Retain(); _recordingCapacity = references;
+    }
     public bool TryGetHandle(MapResourceReference resource, out MapRenderHandle handle)
     {
         lock (_gate)
@@ -279,9 +299,11 @@ public sealed partial class MapRenderResidency : IDisposable
         lock (_gate)
         {
             RequireLive();
-            var forwarding = new CompositeSink(sink, _acceptedReferences);
-            foreach (var plan in AcceptedPlans) plan.Register(forwarding);
-            foreach (var plan in AcceptedPlans) plan.Record(frame, forwarding);
+            _recording.Reset(sink, _acceptedReferences);
+            var plans = _accepted?.Plans;
+            if (plans is null) return;
+            foreach (var plan in plans) plan.Register(_recording);
+            foreach (var plan in plans) plan.Record(frame, _recording);
         }
     }
     void Fence(Pending pending)
@@ -298,8 +320,9 @@ public sealed partial class MapRenderResidency : IDisposable
     }
     void DrainCancelled()
     {
-        foreach (var pending in _cancelled.ToArray())
+        for (int i = _cancelled.Count - 1; i >= 0; i--)
         {
+            var pending = _cancelled[i];
             if (pending.Job is { } job)
             {
                 if (!job.Completion.IsCompleted) continue;
@@ -307,7 +330,7 @@ public sealed partial class MapRenderResidency : IDisposable
                 else _ = job.Completion.Exception;
                 _queue.Remove(job); job.Charge.Dispose();
             }
-            pending.Batch?.Dispose(); pending.SourceCharge?.Dispose(); _cancelled.Remove(pending);
+            pending.Batch?.Dispose(); pending.SourceCharge?.Dispose(); _cancelled.RemoveAt(i);
         }
     }
     void DrainRetirement()
@@ -359,6 +382,7 @@ public sealed partial class MapRenderResidency : IDisposable
             foreach (var owner in _owners.Values) _retired.Enqueue(owner); _owners.Clear(); _acceptedReferences.Clear();
             while (_retired.TryDequeue(out var owner)) Device.Release(owner.Handle);
             _accepted?.Dispose(); _accepted = null;
+            _recording.Clear(); _recordingCharge?.Dispose(); _recordingCharge = null;
             if (_cancelled.Count == 0) AssetCache.Dispose(); else AssetCache.TryTrim();
             foreach (var lease in _metadataCharges.Values.Concat(_proofCharges.Values).Concat(_encodedCharges.Values)) lease.Dispose();
             _metadataCharges.Clear(); _proofCharges.Clear(); _encodedCharges.Clear();
@@ -390,8 +414,8 @@ public sealed partial class MapRenderResidency : IDisposable
         Trim(_metadataCharges); Trim(_proofCharges); Trim(_encodedCharges);
         static void Trim<T>(Dictionary<T, MapRenderAdmission.CpuLease> entries) where T : notnull
         {
-            foreach (var key in entries.Where(p => p.Value.OwnerCount == 1).Select(p => p.Key).ToArray())
-            { entries[key].Dispose(); entries.Remove(key); }
+            foreach (var pair in entries)
+                if (pair.Value.OwnerCount == 1) { pair.Value.Dispose(); entries.Remove(pair.Key); }
         }
     }
     sealed class SourceRetention(MapRenderAdmission.CpuLease metadata, MapRenderAdmission.CpuLease proof,
@@ -424,24 +448,32 @@ public sealed partial class MapRenderResidency : IDisposable
         internal readonly List<Owner> Created = [];
         internal bool PublishNext;
     }
-    sealed class CompositeSink(IMapDrawSink sink, Dictionary<MapResourceReference, Owner> owners) : IMapDrawSink
+    sealed class CompositeSink : IMapDrawSink
     {
+        IMapDrawSink _sink = null!;
+        Dictionary<MapResourceReference, Owner> _owners = null!;
+        internal void Prepare(int count)
+        { _canonical.EnsureCapacity(count); _drawn.EnsureCapacity(count); _aliases.EnsureCapacity(count); }
+        internal void Clear()
+        { _canonical.Clear(); _drawn.Clear(); _aliases.Clear(); _sink = null!; _owners = null!; }
+        internal void Reset(IMapDrawSink sink, Dictionary<MapResourceReference, Owner> owners)
+        { _sink = sink; _owners = owners; _canonical.Clear(); _drawn.Clear(); _aliases.Clear(); }
         readonly Dictionary<Identity, MapResourceReference> _canonical = new();
         readonly HashSet<MapResourceReference> _drawn = new();
         readonly Dictionary<MapResourceReference, MapResourceReference> _aliases = new();
         public void Register(MapPreparedResource resource)
         {
             if (_aliases.ContainsKey(resource.Reference)) return;
-            if (!owners.TryGetValue(resource.Reference, out var owner)) throw new InvalidOperationException("Only accepted resources can be recorded.");
+            if (!_owners.TryGetValue(resource.Reference, out var owner)) throw new InvalidOperationException("Only accepted resources can be recorded.");
             if (!_canonical.TryGetValue(owner.Identity, out var reference))
             { reference = resource.Reference; _canonical.Add(owner.Identity, reference); }
-            sink.Register(resource);
+            _sink.Register(resource);
             _aliases.Add(resource.Reference, reference);
         }
         public void Write(in MapDrawRecord draw)
         {
             var reference = _aliases[draw.Resource];
-            if (_drawn.Add(reference)) sink.Write(draw with { Resource = reference });
+            if (_drawn.Add(reference)) _sink.Write(draw with { Resource = reference });
         }
     }
 }

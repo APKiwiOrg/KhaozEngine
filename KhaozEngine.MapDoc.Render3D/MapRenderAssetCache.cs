@@ -137,8 +137,9 @@ public sealed class MapRenderAssetCache : IDisposable
         Evict(_inputs); Evict(_pieces);
         static void Evict(Dictionary<string, MapPreparedInputLease> entries)
         {
-            foreach (string key in entries.Where(p => p.Value.OwnerCount == 1).Select(p => p.Key).ToArray())
-            { entries[key].Dispose(); entries.Remove(key); }
+            // Remove preserves Dictionary enumeration on our .NET target. No frame scratch is needed.
+            foreach (var pair in entries)
+                if (pair.Value.OwnerCount == 1) { pair.Value.Dispose(); entries.Remove(pair.Key); }
         }
     }
     public void Dispose()

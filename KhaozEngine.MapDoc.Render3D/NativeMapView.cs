@@ -17,7 +17,13 @@ public sealed class NativeMapView : IDisposable
         _scene = scene ?? throw new ArgumentNullException(nameof(scene)); _residency = residency ?? throw new ArgumentNullException(nameof(residency));
         _readiness = Readiness(residency.Update());
     }
-    MapRenderReadiness Readiness(MapRenderReadiness raw) => raw with { Ready = _residency.AcceptedPlans.Count };
+    MapRenderReadiness Readiness(MapRenderReadiness raw)
+    {
+        int ready = _residency.AcceptedPlans.Count;
+        if (_readiness is { } old && old.Transition == raw.Transition && old.Pending == raw.Pending && old.Ready == ready &&
+            old.CpuBytes == raw.CpuBytes && old.GpuBytes == raw.GpuBytes && old.QueuedBytes == raw.QueuedBytes) return old;
+        return raw with { Ready = ready };
+    }
     public MapRenderReadiness Update(MapFrameState frame)
     {
         TrackFrame(frame); return _readiness = Readiness(_residency.Update());
@@ -39,8 +45,9 @@ public sealed class NativeMapView : IDisposable
     public MapPresentationHit? Pick(MapPresentationRay ray, MapPresentationChannel channel, MapFrameState frame)
     {
         MapPresentationHit? nearest = null;
-        foreach (var plan in _residency.AcceptedPlans)
-            if (new MapPresentationPicker(plan).Pick(ray, channel, frame) is { } hit && (nearest is null || hit.Distance < nearest.Value.Distance)) nearest = hit;
+        var plans = _residency.AcceptedPlans;
+        for (int i = 0; i < plans.Count; i++)
+            if (plans[i].PresentationPicker.Pick(ray, channel, frame) is { } hit && (nearest is null || hit.Distance < nearest.Value.Distance)) nearest = hit;
         return nearest;
     }
     public MapRenderReadiness SettleForCapture(int maxOperations)

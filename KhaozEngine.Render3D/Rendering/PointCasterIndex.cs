@@ -51,7 +51,7 @@ namespace KhaozEngine.Render3D.Rendering
         const int MaxCell = CellBias - 1;
 
         // Per SLOT, and only meaningful for the slots added this frame: the world sphere (centre in xyz, radius in
-        // w) and the mesh run the slot belongs to. Indexed by slot so a candidate list sorted by slot reads them
+        // w) and the mesh run the slot belongs to. Indexed by slot so a candidate reads them
         // directly, and a slot not added this frame is never a candidate, so a stale entry is never read.
         Vector4[] _spheres = Array.Empty<Vector4>();
         int[] _runs = Array.Empty<int>();
@@ -78,6 +78,10 @@ namespace KhaozEngine.Render3D.Rendering
         /// the count tests, which assert it follows the casters near each light rather than every caster.</summary>
         internal int TouchTests { get; private set; }
 
+        /// <summary>How many slots the queries since the last <see cref="Reset"/> handed to their slot sort.
+        /// Counts real sort input so the query's sorting work can be checked independently of timing.</summary>
+        internal int SortInputs { get; private set; }
+
         /// <summary>Forget the last frame's casters and make room for slots below <paramref name="slotCount"/>.
         /// Grows the per-slot arrays only when this frame has more slots than any frame before it.</summary>
         internal void Reset(int slotCount)
@@ -86,6 +90,7 @@ namespace KhaozEngine.Render3D.Rendering
             _oversizeCount = 0;
             _sealed = false;
             TouchTests = 0;
+            SortInputs = 0;
             if (_spheres.Length >= slotCount) return;
             int capacity = GrownCapacity(_spheres.Length, slotCount);
             _spheres = new Vector4[capacity];
@@ -134,7 +139,6 @@ namespace KhaozEngine.Render3D.Rendering
             if (!_sealed) throw new InvalidOperationException("Seal the point caster index before querying it.");
             hits.Clear();
             Span<int> candidates = _candidates.AsSpan(0, GatherCandidates(lightPosAbsolute, radius));
-            candidates.Sort();   // the full walk's order, which the signature and the span grouping both rely on
             foreach (int slot in candidates)
             {
                 Vector4 sphere = _spheres[slot];
@@ -143,6 +147,8 @@ namespace KhaozEngine.Render3D.Rendering
                     lightPosAbsolute, radius, nearRadius, exclusionMin, exclusionMax))
                     hits.Add(slot);
             }
+            SortInputs += hits.Count;
+            hits.Sort();   // only exact hits need the full walk's order for the signature and span grouping
         }
 
         /// <summary>Copy every caster that could touch the light into the candidate scratch and return how many.

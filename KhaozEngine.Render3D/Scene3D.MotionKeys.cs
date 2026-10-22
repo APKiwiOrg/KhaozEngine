@@ -76,10 +76,7 @@ public sealed partial class Scene3D
                 throw new ArgumentException("DQ motion history requires finite representable world bounds.", nameof(draw));
             return bounds;
         }
-        // Keep the established LBS culling envelope. Only DQ has a certified posed envelope.
-        entry.Bounds.WorldSphere(draw.Model, out Vector3 center, out float radius);
-        Vector3 extent = new(radius * SkinnedCullSafetyFactor);
-        return new MeshBounds(center - extent, center + extent);
+        return entry.LbsMotionBounds.BoundWorld(pose.Owner.Lbs(pose), draw.Model);
     }
 
     // Copy the exact prepared words the current draw consumes. No previous pose is re-extracted from matrices.

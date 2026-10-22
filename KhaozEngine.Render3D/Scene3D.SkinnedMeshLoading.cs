@@ -47,6 +47,8 @@ public sealed partial class Scene3D
         mesh = RetainSkinningSource(mesh);
         DqBoundsSource? dqBounds = mesh.Profile.Method == SkinningMethod.DualQuaternionRigid
             ? new DqBoundsSource(mesh.Vertices, mesh.BoneCount) : null;
+        LinearBlendMotionBounds lbsMotionBounds = mesh.Profile.Method == SkinningMethod.LinearBlend
+            ? new LinearBlendMotionBounds(mesh.Vertices) : default;
         IGpuBuffer? vertexBuffer = null;
         IGpuBuffer? indexBuffer = null;
         IGpuResourceSet? material = null;
@@ -79,7 +81,7 @@ public sealed partial class Scene3D
             var handle = new SkinnedMeshHandle(index, generation);
             var entry = new SkinnedMeshEntry(
                 vertexBuffer, indexBuffer, mesh.Indices32.Length, mesh.IndexFormat,
-                material, skinnedMaterial, outlineMaterial, alphaCutoff, mesh, handle, dqBounds, in bounds);
+                material, skinnedMaterial, outlineMaterial, alphaCutoff, mesh, handle, dqBounds, lbsMotionBounds, in bounds);
             if (index < _skinnedMeshes.Count)
             {
                 _skinnedMeshes[index] = entry;
@@ -133,6 +135,7 @@ public sealed partial class Scene3D
         public readonly SkinnedMeshHandle SourceIdentity;
         public readonly SkinnedGltfMesh Source;
         public readonly DqBoundsSource? DqBounds;
+        public readonly LinearBlendMotionBounds LbsMotionBounds;
         public readonly SkinningValidationContext ValidationContext;
 
         public SkinnedMeshEntry(
@@ -147,6 +150,7 @@ public sealed partial class Scene3D
             SkinnedGltfMesh source,
             SkinnedMeshHandle sourceIdentity,
             DqBoundsSource? dqBounds,
+            LinearBlendMotionBounds lbsMotionBounds,
             in MeshBounds bounds)
         {
             Vb = vb;
@@ -161,6 +165,7 @@ public sealed partial class Scene3D
             Profile = source.Profile;
             SourceIdentity = sourceIdentity;
             DqBounds = dqBounds;
+            LbsMotionBounds = lbsMotionBounds;
             InverseBind = source.InverseBind;
             ValidationContext = new SkinningValidationContext(
                 $"skinned mesh {sourceIdentity.Index}:{sourceIdentity.Generation}", null, -1);

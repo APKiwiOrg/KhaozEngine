@@ -65,8 +65,102 @@ public sealed class DqMotionHistoryTests
         MotionHistory history = scene.ActiveMotionHistory!;
         Assert.True(history.TryGetPreviousBounds(A, out MeshBounds oldBounds));
         Assert.True(history.TryGetCurrentBounds(A, out MeshBounds currentBounds));
-        Assert.Equal(new Vector3(.5f, .5f, 0), oldBounds.Center);
-        Assert.Equal(new Vector3(20.5f, .5f, 0), currentBounds.Center);
+        AssertContains(oldBounds, [new(4, 0, 0), new(3, 1, 0), new(3, 0, 0)]);
+        AssertContains(currentBounds, [new(21, 0, 0), new(20, 1, 0), new(20, 0, 0)]);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void LBS_history_contains_previous_and_current_large_joint_motion(bool gpu, bool scale)
+    {
+        using var harness = new MotionTestScene();
+        Scene3D scene = harness.Scene;
+        scene.UseGpuSkinning = gpu;
+        scene.ForceTemporalForTests = true;
+        SkinnedGltfMesh mesh = Mesh();
+        // The bound must use prepared inverseBind * jointWorld, not the supplied joint alone.
+        mesh.InverseBind[0] = Matrix4x4.CreateTranslation(5, -7, 3);
+        SkinnedMeshHandle handle = scene.LoadSkinnedMesh(mesh);
+        Matrix4x4 oldJoint = (scale ? Matrix4x4.CreateScale(32, 17, 9) : Matrix4x4.Identity)
+            * Matrix4x4.CreateTranslation(500, -400, 250);
+        Matrix4x4 currentJoint = (scale ? Matrix4x4.CreateScale(72, 4, 18) : Matrix4x4.Identity)
+            * Matrix4x4.CreateTranslation(-600, 800, -300);
+        Matrix4x4 oldWorld = Matrix4x4.CreateScale(2, -3, 4) * Matrix4x4.CreateTranslation(20, 30, -40);
+        oldWorld.M21 = .5f;
+        Matrix4x4 currentWorld = Matrix4x4.CreateScale(-4, 2, 3) * Matrix4x4.CreateTranslation(-50, 60, 70);
+        scene.Begin();
+        scene.DrawSkinned(new SkinnedInstanceDraw(handle, oldWorld) { Motion = A }, [oldJoint]);
+        scene.Begin();
+        scene.DrawSkinned(new SkinnedInstanceDraw(handle, currentWorld) { Motion = A }, [currentJoint]);
+
+        MotionHistory history = scene.ActiveMotionHistory!;
+        Assert.True(history.TryGetPreviousBounds(A, out MeshBounds previous));
+        Assert.True(history.TryGetCurrentBounds(A, out MeshBounds current));
+        AssertContainsLbs(previous, mesh, [mesh.InverseBind[0] * oldJoint], oldWorld);
+        AssertContainsLbs(current, mesh, [mesh.InverseBind[0] * currentJoint], currentWorld);
+    }
+
+    [Theory]
+    [InlineData(2f, -1f, 301f)]
+    [InlineData(3f, 0f, 303f)]
+    [InlineData(.25f, .75f, -49f)]
+    [InlineData(2f, -1.5f, 350.5f)]
+    [InlineData(0f, 0f, 1f)]
+    [InlineData(1e-9f, 0f, 1f)]
+    public void LBS_history_contains_raw_weight_results_without_changing_admission(float x, float y, float expectedX)
+    {
+        using var harness = new MotionTestScene();
+        Scene3D scene = harness.Scene;
+        scene.ForceTemporalForTests = true;
+        SkinnedVertex[] vertices = [Vertex(Vector3.UnitX), Vertex(-Vector3.UnitY), Vertex(Vector3.Zero)];
+        for (int i = 0; i < vertices.Length; i++)
+        {
+            vertices[i].BoneIndices = new Vector4(0, 1, 0, 1);
+            vertices[i].BoneWeights = new Vector4(x, y, 0, 0);
+        }
+        var mesh = new SkinnedGltfMesh(vertices, new ushort[] { 0, 1, 2 },
+            [Matrix4x4.Identity, Matrix4x4.Identity], [Matrix4x4.Identity, Matrix4x4.Identity]);
+        SkinnedMeshHandle handle = scene.LoadSkinnedMesh(mesh);
+        Matrix4x4[] palette = [Matrix4x4.CreateTranslation(100, 0, 0), Matrix4x4.CreateTranslation(-100, 0, 0)];
+        Assert.Equal(expectedX, SkinningMath.SkinVertex(vertices[0], palette).Position.X);
+        scene.Begin();
+        scene.DrawSkinned(new SkinnedInstanceDraw(handle, Matrix4x4.Identity) { Motion = A }, palette);
+        scene.Begin();
+        scene.DrawSkinned(new SkinnedInstanceDraw(handle, Matrix4x4.CreateTranslation(20, 0, 0)) { Motion = A }, palette);
+        Assert.True(scene.ActiveMotionHistory!.TryGetPreviousBounds(A, out MeshBounds previous));
+        Assert.True(scene.ActiveMotionHistory.TryGetCurrentBounds(A, out MeshBounds current));
+        AssertContainsLbs(previous, mesh, palette, Matrix4x4.Identity);
+        AssertContainsLbs(current, mesh, palette, Matrix4x4.CreateTranslation(20, 0, 0));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Method_replacement_retains_boxes_containing_both_posed_surfaces(bool previousDq)
+    {
+        using var harness = new MotionTestScene();
+        Scene3D scene = harness.Scene;
+        scene.ForceTemporalForTests = true;
+        SkinnedGltfMesh oldMesh = Mesh(previousDq ? SkinningProfile.DualQuaternionRigid : SkinningProfile.LinearBlend);
+        SkinnedGltfMesh currentMesh = Mesh(previousDq ? SkinningProfile.LinearBlend : SkinningProfile.DualQuaternionRigid);
+        SkinnedMeshHandle oldHandle = scene.LoadSkinnedMesh(oldMesh), currentHandle = scene.LoadSkinnedMesh(currentMesh);
+        scene.Begin();
+        RecordAtSeam(scene, oldMesh, oldHandle, Matrix4x4.CreateTranslation(10, 0, 0),
+            Matrix4x4.CreateTranslation(300, -400, 500));
+        scene.Begin();
+        RecordAtSeam(scene, currentMesh, currentHandle, Matrix4x4.CreateTranslation(-20, 0, 0),
+            Matrix4x4.CreateTranslation(-600, 700, -800));
+        ulong source = ((ulong)(uint)currentHandle.Generation << 32) | (uint)currentHandle.Index;
+        var identity = new SkinnedMotionIdentity(currentHandle.Index, currentHandle.Generation, source, currentMesh.Profile);
+        MotionHistory history = scene.ActiveMotionHistory!;
+        Assert.False(history.TryGetPreviousSkinned(A, identity, out _, out _, out _));
+        Assert.True(history.TryGetPreviousBounds(A, out MeshBounds previous));
+        Assert.True(history.TryGetCurrentBounds(A, out MeshBounds current));
+        AssertContains(previous, [new(311, -400, 500), new(310, -399, 500), new(310, -400, 500)]);
+        AssertContains(current, [new(-619, 700, -800), new(-620, 701, -800), new(-620, 700, -800)]);
     }
 
     [Fact]
@@ -334,4 +428,46 @@ public sealed class DqMotionHistoryTests
 
     static Vector3[] PreviousPositions(Scene3D scene) => ((List<Vector3>)typeof(Scene3D)
         .GetField("_cpuSkinnedPrevious", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(scene)!).ToArray();
+
+    static void AssertContains(MeshBounds bounds, ReadOnlySpan<Vector3> positions)
+    {
+        for (int axis = 0; axis < 3; axis++)
+        {
+            Assert.True(float.IsFinite(bounds.Min[axis]));
+            Assert.True(float.IsFinite(bounds.Max[axis]));
+        }
+        foreach (Vector3 position in positions)
+            for (int axis = 0; axis < 3; axis++)
+                Assert.InRange(position[axis], bounds.Min[axis], bounds.Max[axis]);
+    }
+
+    static void AssertContainsLbs(MeshBounds bounds, SkinnedGltfMesh mesh, Matrix4x4[] palette, Matrix4x4 world)
+    {
+        foreach (SkinnedVertex vertex in mesh.Vertices)
+        {
+            AssertContains(bounds, [Vector3.Transform(SkinningMath.SkinVertex(vertex, palette).Position, world)]);
+            // The GPU retains the blended homogeneous W through model placement and projection.
+            // Raw signed weights can make its Cartesian surface larger than the CPU result.
+            Matrix4x4 skin = SkinningMath.BlendSkinMatrix(palette, vertex.BoneIndices, vertex.BoneWeights);
+            Vector4 placed = Vector4.Transform(Vector4.Transform(new Vector4(vertex.Position, 1), skin), world);
+            AssertContains(bounds, [new Vector3(placed.X, placed.Y, placed.Z) / placed.W]);
+        }
+    }
+
+    static void RecordAtSeam(Scene3D scene, SkinnedGltfMesh mesh, SkinnedMeshHandle handle, Matrix4x4 world, Matrix4x4 joint)
+    {
+        if (mesh.Profile.Method == SkinningMethod.LinearBlend)
+        {
+            scene.DrawSkinned(new SkinnedInstanceDraw(handle, world) { Motion = A }, [joint]);
+            return;
+        }
+        // The public DQ gate remains closed. Use the existing recording seam without rendering a DQ actor.
+        var draw = new SkinnedInstanceDraw(handle, world) { Motion = A };
+        PreparedSkinningPose pose = DqGpuReadback.Queue(scene, mesh, draw, [joint]);
+        var entries = (System.Collections.IList)DqGpuReadback.Field(scene, "_skinnedMeshes");
+        var bounds = (MeshBounds)typeof(Scene3D).GetMethod("SkinnedMotionBounds", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(scene, [entries[handle.Index], pose, draw])!;
+        typeof(Scene3D).GetMethod("RecordSkinnedMotion", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(scene, [draw, pose, bounds]);
+    }
 }

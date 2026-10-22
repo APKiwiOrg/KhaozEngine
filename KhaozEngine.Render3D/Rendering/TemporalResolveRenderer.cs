@@ -8,9 +8,9 @@ using static KhaozEngine.Render3D.Internal.FragmentPassResources;
 namespace KhaozEngine.Render3D.Rendering
 {
     /// <summary>The internal-resolution inputs of one resolve. The renderer rebuilds its resource sets when any of the
-    /// four textures is a different one from those it last bound.</summary>
+    /// textures is a different one from those it last bound.</summary>
     internal readonly record struct TemporalResolveInputs(IGpuTexture SceneColor, IGpuTexture OpaqueColor,
-        IGpuTexture SceneDepth, IGpuTexture Motion);
+        IGpuTexture SceneDepth, IGpuTexture Motion, IGpuTexture? Rejection = null);
 
     /// <summary>
     /// THE TEMPORAL RESOLVE (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3): one fullscreen fragment pass at the display
@@ -44,6 +44,7 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuPipeline? _resolvePipeline, _storePipeline;
         readonly IGpuBuffer _resolveBuffer, _storeBuffer;
         readonly IGpuSampler _clampSampler;
+        readonly IGpuTexture _zeroRejection;
         readonly IGpuResourceSet?[] _resolveSets = new IGpuResourceSet?[2];
         IGpuResourceSet? _storeSet;
         TemporalResolveInputs _boundInputs;
@@ -56,12 +57,15 @@ namespace KhaozEngine.Render3D.Rendering
             IGpuResourceFactory f = gd.Factory;
             _resolveLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 T("SceneColor"), T("OpaqueColor"), T("SceneDepth"), T("MotionTex"), T("PrevDepth"),
-                T("HistoryColor"), T("HistoryConfidence"), S("LinearClamp"), U("Resolve")));
+                T("HistoryColor"), T("HistoryConfidence"), S("LinearClamp"), U("Resolve"), T("HistoryRejection")));
             _storeLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 T("SceneDepth"), T("MotionTex"), S("Samp"), U("DepthStore")));
             _resolveBuffer = f.CreateBuffer(new GpuBufferDescription(TemporalResolveUniforms.SizeInBytes, GpuBufferUsage.UniformBuffer));
             _storeBuffer = f.CreateBuffer(new GpuBufferDescription(TemporalDepthStoreUniforms.SizeInBytes, GpuBufferUsage.UniformBuffer));
             _clampSampler = f.CreateSampler(GpuSamplerDescription.Linear);
+            _zeroRejection = f.CreateTexture(GpuTextureDescription.Texture2D(1, 1, GpuPixelFormat.R8UNorm,
+                GpuTextureUsage.Sampled));
+            gd.UpdateTexture(_zeroRejection, new byte[1], 0, 0, 1, 1);
         }
 
         // The fused entry point's programs and pipelines, built on the first frame that records it, so a device that
@@ -115,7 +119,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// <summary>Whether the resolve and depth store sets exist. For tests.</summary>
         internal bool HoldsSetsForTests => _storeSet is not null;
 
-        /// <summary>Build the resolve sets for both read indices and the depth store set, unless the four input textures
+        /// <summary>Build the resolve sets for both read indices and the depth store set, unless the input textures
         /// are the very ones already bound and the history targets are the same generation of the same owner. The
         /// fused sets are built on either entry point, since the debug views and counts re-evaluate through them, and
         /// the chosen entry point's own objects first (Entry partial). What either replaces goes to
@@ -123,8 +127,9 @@ namespace KhaozEngine.Render3D.Rendering
         /// split drains and the sets go at once.</summary>
         public void BindInputs(in TemporalResolveInputs inputs, TemporalHistory history, GpuRetireQueue? retired = null)
         {
-            BindEntry(inputs, history, retired);
-            if (_storeSet is not null && SameInputs(inputs, _boundInputs) && ReferenceEquals(history, _boundHistory)
+            TemporalResolveInputs resolved = inputs with { Rejection = inputs.Rejection ?? _zeroRejection };
+            BindEntry(resolved, history, retired);
+            if (_storeSet is not null && SameInputs(resolved, _boundInputs) && ReferenceEquals(history, _boundHistory)
                 && history.TargetGeneration == _boundTargets)
                 return;
             FreeSets(retired);
@@ -132,10 +137,10 @@ namespace KhaozEngine.Render3D.Rendering
             for (int read = 0; read < 2; read++)
                 _resolveSets[read] = f.CreateResourceSet(new GpuResourceSetDescription(_resolveLayout,
                     inputs.SceneColor, inputs.OpaqueColor, inputs.SceneDepth, inputs.Motion, history.PreviousDepth(read),
-                    history.Color(read), history.Confidence(read), _clampSampler, _resolveBuffer));
+                    history.Color(read), history.Confidence(read), _clampSampler, _resolveBuffer, resolved.Rejection));
             _storeSet = f.CreateResourceSet(new GpuResourceSetDescription(_storeLayout,
                 inputs.SceneDepth, inputs.Motion, _clampSampler, _storeBuffer));
-            _boundInputs = inputs;
+            _boundInputs = resolved;
             _boundTargets = history.TargetGeneration;
             _boundHistory = history;
         }
@@ -143,7 +148,8 @@ namespace KhaozEngine.Render3D.Rendering
         // By reference: the sets name these objects, and holding them keeps a replacement from ever being the same one.
         internal static bool SameInputs(in TemporalResolveInputs a, in TemporalResolveInputs b)
             => ReferenceEquals(a.SceneColor, b.SceneColor) && ReferenceEquals(a.OpaqueColor, b.OpaqueColor)
-                && ReferenceEquals(a.SceneDepth, b.SceneDepth) && ReferenceEquals(a.Motion, b.Motion);
+                && ReferenceEquals(a.SceneDepth, b.SceneDepth) && ReferenceEquals(a.Motion, b.Motion)
+                && ReferenceEquals(a.Rejection, b.Rejection);
 
         /// <summary>Let go of the sets, which name the history targets and the scene's inputs, and keep the pipelines,
         /// layouts, buffers and sampler. The sets go to <paramref name="retired"/>, since a frame the device has not
@@ -223,6 +229,7 @@ namespace KhaozEngine.Render3D.Rendering
             _resolveBuffer.Dispose();
             _storeBuffer.Dispose();
             _clampSampler.Dispose();
+            _zeroRejection.Dispose();
         }
     }
 }

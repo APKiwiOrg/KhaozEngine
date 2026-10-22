@@ -153,13 +153,15 @@ namespace KhaozEngine.Render3D
             IGpuTexture motion = _res.MotionTex ?? throw new InvalidOperationException(
                 "The temporal resolve runs only while temporal rendering is active, which allocates the motion target.");
             _temporalResolve.SelectEntry(ChooseTemporalEntry(), _retired);   // TemporalEntry
+            CollectSkinningHistoryRejection();
             // With the outline on, RunTemporalResolve outlines the lit colour into PingA and the opaque copy into PingB
             // first, and the resolve reads those (PixelPostProcess.TemporalOutline.cs). Both entry points key their
             // sets on the input textures, so turning the outline on or off rebinds them.
             bool outline = PixelPostProcess.TemporalOutlineRuns(Post);
             if (!outline) _post.ReleaseTemporalOutline(_retired);   // the outline turned off: let the pass go
             _temporalResolve.BindInputs(new TemporalResolveInputs(outline ? _res.PingA : _res.ColorTex,
-                outline ? _res.PingB : _temporalPost.OpaqueColor, _res.DepthColorTex, motion), TemporalHistory, _retired);
+                outline ? _res.PingB : _temporalPost.OpaqueColor, _res.DepthColorTex, motion,
+                _skinningHistoryRejection!.Texture), TemporalHistory, _retired);
 
             // The previous view is the one the motion target reprojects with (Scene3D.MotionTarget.cs): the last frame's
             // first render rebased to this frame's origin, or null without history. The starfield places its stars by
@@ -222,6 +224,8 @@ namespace KhaozEngine.Render3D
         void RunTemporalResolve(IGpuCommandList cl)
         {
             if (!_resolveThisRender) return;
+            _skinningHistoryRejection!.Prepare(cl, _currentFrameView, PreviousFrameView);
+            _frameStats.DrawCalls += _skinningHistoryRejection.DrawCalls;
             if (PixelPostProcess.TemporalOutlineRuns(Post))
             {
                 _post.RunTemporalOutline(cl, _res, _temporalPost!.OpaqueColor, _retired);
@@ -241,6 +245,7 @@ namespace KhaozEngine.Render3D
         {
             TemporalHistory.ReleaseTargets(_retired);
             _temporalResolve?.ReleaseSets(_retired);
+            ReleaseSkinningHistoryRejection();
             _post.ReleaseTemporalOutline(_retired);
             _temporalPost?.Release();
             if (_laterRenderPost is null) return;
@@ -254,6 +259,7 @@ namespace KhaozEngine.Render3D
         {
             _temporalPost?.Dispose();
             _temporalResolve?.Dispose();
+            _skinningHistoryRejection?.Dispose();
             _laterRenderPost?.Dispose();
             TemporalHistory.ReleaseTargets();
         }

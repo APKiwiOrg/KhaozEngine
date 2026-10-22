@@ -71,7 +71,7 @@ public sealed class DqHistoryRejectionGpuTests(DqHistoryRejectionScene fixture, 
             }
             byte[] retained = ReadMask(fx.Device, mask, 128, 64);
             int read = scene.TemporalHistory.ReadIndex, write = scene.TemporalHistory.WriteIndex;
-            fx.RenderSecond(128, 64);
+            fx.RenderSecond(96, 48);
             Assert.False(scene.ResolvedLastRenderForTests);
             Assert.Equal(read, scene.TemporalHistory.ReadIndex);
             Assert.Equal(write, scene.TemporalHistory.WriteIndex);
@@ -103,8 +103,8 @@ public sealed class DqHistoryRejectionGpuTests(DqHistoryRejectionScene fixture, 
         // Parity after the shared scene crossed every configuration, against a fresh scene at the same input.
         using var fresh = new TemporalFixture(128, 64, RejectionWitness.Configure);
         fresh.Frame((s, _) => { });
-        Assert.All(ReadMask(fresh.Device, RejectionWitness.Texture(RejectionWitness.SceneMask(fresh.Scene)), 128, 64),
-            value => Assert.Equal(0, value));
+        Assert.Equal(ReadMask(fx.Device, RejectionWitness.Texture(RejectionWitness.SceneMask(fx.Scene)), 128, 64),
+            ReadMask(fresh.Device, RejectionWitness.Texture(RejectionWitness.SceneMask(fresh.Scene)), 128, 64));
     }
 
     static void AssertConfidence(float[] state, (int X, int Y) site, int scale, float expected) =>
@@ -150,49 +150,49 @@ public sealed class DqHistoryRejectionGpuTests(DqHistoryRejectionScene fixture, 
     }
 
     // Flat, stationary background with eight stored samples. There is no depth, motion, shading or clipping reason
-    // to lose history. Only the production actor mask can change confidence from 9/15 to 1/15.
+    // to lose history. At native size only the actor mask can change confidence from 9/15 to 1/15.
     static float[] Resolve(IGpuDevice device, IGpuTexture? mask, TemporalResolveEntry entry, int scale, bool historyValid = true)
     {
         const int w = 128, h = 64;
         var history = new TemporalHistory();
         try
         {
-        history.EnsureTargets(device, w * scale, h * scale, w, h);
-        history.BeginResolve(1);
-        using var renderer = new TemporalResolveRenderer(device);
-        using var retired = GpuRetireQueue.Create(device);
-        renderer.SelectEntry(entry, retired);
-        using var scene = Input(GpuPixelFormat.R16G16B16A16Float);
-        using var depth = Input(GpuPixelFormat.R32Float);
-        using var motion = Input(GpuPixelFormat.R16G16Float);
-        float[] colour = Enumerable.Range(0, w * h * 4).Select(i => i % 4 == 3 ? 1f : .3f).ToArray();
-        TemporalTextureIo.Upload(device, scene, colour);
-        TemporalTextureIo.Upload(device, depth, new float[w * h]);
-        TemporalTextureIo.Upload(device, motion, Enumerable.Repeat(MotionMath.Sentinel, w * h * 2).ToArray());
-        TemporalTextureIo.Upload(device, history.Color(history.ReadIndex),
-            Enumerable.Range(0, w * h * scale * scale * 4).Select(i => i % 4 == 3 ? 1f : .3f).ToArray());
-        TemporalTextureIo.Upload(device, history.Confidence(history.ReadIndex),
-            Enumerable.Range(0, w * h * scale * scale * 2).Select(i => i % 2 == 0 ? 8f / 15f : 0).ToArray());
-        TemporalTextureIo.Upload(device, history.PreviousDepth(history.ReadIndex), Enumerable.Repeat(1e30f, w * h).ToArray());
-        object?[] inputs = typeof(TemporalResolveInputs).GetConstructors().Any(c => c.GetParameters().Length == 5)
-            ? [scene, scene, depth, motion, mask] : [scene, scene, depth, motion];
-        renderer.BindInputs((TemporalResolveInputs)Activator.CreateInstance(typeof(TemporalResolveInputs), inputs)!, history);
-        var lens = Matrix4x4.CreateOrthographic(8, 4, .1f, 100);
-        var view = new TemporalViewInput(Matrix4x4.Identity, lens);
-        var uniforms = TemporalResolveMath.BuildUniforms(view, view, Vector2.Zero, w, h, w * scale, h * scale, historyValid,
-            screenFixedBackground: true);
-        using var commands = device.Factory.CreateCommandList();
-        using (GpuRecording.Open(device, commands, "DQ history rejection witness"))
-        {
-            renderer.PrepareUniforms(commands, uniforms, TemporalResolveMath.BuildDepthStore(lens));
-            renderer.Run(commands, history);
-        }
-        device.Submit(commands);
-        device.WaitForIdle();
-        return TemporalTextureIo.Read(device, history.Confidence(history.WriteIndex));
+            history.EnsureTargets(device, w * scale, h * scale, w, h);
+            history.BeginResolve(1);
+            using var renderer = new TemporalResolveRenderer(device);
+            using var retired = GpuRetireQueue.Create(device);
+            renderer.SelectEntry(entry, retired);
+            using var scene = Input(GpuPixelFormat.R16G16B16A16Float);
+            using var depth = Input(GpuPixelFormat.R32Float);
+            using var motion = Input(GpuPixelFormat.R16G16Float);
+            float[] colour = Enumerable.Range(0, w * h * 4).Select(i => i % 4 == 3 ? 1f : .3f).ToArray();
+            TemporalTextureIo.Upload(device, scene, colour);
+            TemporalTextureIo.Upload(device, depth, new float[w * h]);
+            TemporalTextureIo.Upload(device, motion, Enumerable.Repeat(MotionMath.Sentinel, w * h * 2).ToArray());
+            TemporalTextureIo.Upload(device, history.Color(history.ReadIndex),
+                Enumerable.Range(0, w * h * scale * scale * 4).Select(i => i % 4 == 3 ? 1f : .3f).ToArray());
+            TemporalTextureIo.Upload(device, history.Confidence(history.ReadIndex),
+                Enumerable.Range(0, w * h * scale * scale * 2).Select(i => i % 2 == 0 ? 8f / 15f : 0).ToArray());
+            TemporalTextureIo.Upload(device, history.PreviousDepth(history.ReadIndex), Enumerable.Repeat(1e30f, w * h).ToArray());
+            object?[] inputs = typeof(TemporalResolveInputs).GetConstructors().Any(c => c.GetParameters().Length == 5)
+                ? [scene, scene, depth, motion, mask] : [scene, scene, depth, motion];
+            renderer.BindInputs((TemporalResolveInputs)Activator.CreateInstance(typeof(TemporalResolveInputs), inputs)!, history);
+            var lens = Matrix4x4.CreateOrthographic(8, 4, .1f, 100);
+            var view = new TemporalViewInput(Matrix4x4.Identity, lens);
+            var uniforms = TemporalResolveMath.BuildUniforms(view, view, Vector2.Zero, w, h, w * scale, h * scale, historyValid,
+                screenFixedBackground: true);
+            using var commands = device.Factory.CreateCommandList();
+            using (GpuRecording.Open(device, commands, "DQ history rejection witness"))
+            {
+                renderer.PrepareUniforms(commands, uniforms, TemporalResolveMath.BuildDepthStore(lens));
+                renderer.Run(commands, history);
+            }
+            device.Submit(commands);
+            device.WaitForIdle();
+            return TemporalTextureIo.Read(device, history.Confidence(history.WriteIndex));
 
-        IGpuTexture Input(GpuPixelFormat format) => device.Factory.CreateTexture(
-            GpuTextureDescription.Texture2D(w, h, format, GpuTextureUsage.Sampled));
+            IGpuTexture Input(GpuPixelFormat format) => device.Factory.CreateTexture(
+                GpuTextureDescription.Texture2D(w, h, format, GpuTextureUsage.Sampled));
         }
         finally { history.ReleaseTargets(); }
     }

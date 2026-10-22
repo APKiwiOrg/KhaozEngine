@@ -50,6 +50,8 @@ public sealed class DqHistoryRejectionTests
         Assert.Equal(0f, AtWorld(3));
         var owner = RejectionWitness.SceneMask(scene);
         Assert.NotNull(owner);
+        var resolveSet = Assert.IsType<FakeResourceSet>(scene.TemporalResolveRendererForTests!.CurrentSet);
+        Assert.Same(RejectionWitness.Texture(owner), resolveSet.Resources[^1]);
         commands.Clear();
         scene.Camera.Target += Vector3.UnitX;
         scene.RenderInternal(commands, MotionTestScene.Width, MotionTestScene.Height, harness.Target);
@@ -133,6 +135,15 @@ public sealed class DqHistoryRejectionTests
         mask.Prepare(commands, view, null);
         Assert.Same(texture, mask.Texture);
         Assert.Empty(RejectionWitness.Vertices(commands));
+        var resized = new FrameView(view.View, view.Projection, view.ViewProjection, view.AbsoluteViewProjection,
+            view.RenderOrigin, 200, 100, 2, Vector2.Zero);
+        mask.Prepare(commands, resized, null);
+        Assert.NotSame(texture, mask.Texture);
+        Assert.False(Assert.IsType<FakeTexture>(texture).Disposed);
+        var replacement = Assert.IsType<FakeTexture>(mask.Texture);
+        mask.Dispose();
+        Assert.True(Assert.IsType<FakeTexture>(texture).Disposed);
+        Assert.True(replacement.Disposed);
     }
 
     [Fact]
@@ -187,7 +198,7 @@ internal static class RejectionWitness
     // The pre-feature baseline has no mask. It means zero rejection, not a compilation failure at a missing type.
     internal sealed class Mask : IDisposable
     {
-        readonly object? _mask;
+        object? _mask;
         internal Mask(IGpuDevice device)
         {
             Type? type = typeof(Scene3D).Assembly.GetType("KhaozEngine.Render3D.Rendering.TemporalHistoryRejection");
@@ -198,6 +209,10 @@ internal static class RejectionWitness
         internal void Clear() => Call("Clear");
         internal void Prepare(IGpuCommandList commands, FrameView current, FrameView? previous) => Call("Prepare", commands, current, previous);
         void Call(string name, params object?[] args) => _mask?.GetType().GetMethod(name)!.Invoke(_mask, args);
-        public void Dispose() => (_mask as IDisposable)?.Dispose();
+        public void Dispose()
+        {
+            (_mask as IDisposable)?.Dispose();
+            _mask = null;
+        }
     }
 }

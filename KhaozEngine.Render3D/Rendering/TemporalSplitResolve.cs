@@ -58,7 +58,7 @@ namespace KhaozEngine.Render3D.Rendering
             _accumulateLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 T("SceneColor"), T("SceneDepth"), T("MotionTex"), T("PrevDepth"), T("HistoryColor"),
                 T("HistoryConfidence"), T("PreparedColour"), T("PreparedSurface"), T("PreparedExpected"),
-                T("PreparedEdge"), S("LinearClamp"), U("Resolve")));
+                T("PreparedEdge"), S("LinearClamp"), U("Resolve"), T("HistoryRejection")));
             var prepareOutputs = new GpuPixelFormat[TemporalSplitFormats.FirstPassAttachments];
             TemporalSplitFormats.Targets.CopyTo(prepareOutputs, 0);
             prepareOutputs[^1] = TemporalFormats.PreviousDepth;
@@ -114,7 +114,7 @@ namespace KhaozEngine.Render3D.Rendering
                 // Read index i: last frame's history and depths.
                 _accumulateSets[i] = f.CreateResourceSet(new GpuResourceSetDescription(_accumulateLayout,
                     inputs.SceneColor, inputs.SceneDepth, inputs.Motion, history.PreviousDepth(i), history.Color(i),
-                    history.Confidence(i), targets[0], targets[1], targets[2], targets[3], clamp, uniforms));
+                    history.Confidence(i), targets[0], targets[1], targets[2], targets[3], clamp, uniforms, inputs.Rejection!));
             }
             _boundInputs = inputs;
             _boundTargets = history.TargetGeneration;

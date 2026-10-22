@@ -46,11 +46,7 @@ public sealed partial class Scene3D
         float widthPixels,
         MeshOutlineOcclusion occlusion)
     {
-        if (!float.IsFinite(widthPixels) || widthPixels < 0.5f || widthPixels > 8f)
-            throw new ArgumentOutOfRangeException(nameof(widthPixels), widthPixels,
-                "outline width must be finite and between 0.5 and 8 pixels.");
-        if (!Enum.IsDefined(occlusion))
-            throw new ArgumentOutOfRangeException(nameof(occlusion), occlusion, "unknown outline occlusion.");
+        ValidateMeshOutlineStyle(widthPixels, occlusion);
         if (!_skinnedSlots.IsValid(mesh.Index, mesh.Generation)) return;
         if (_skinnedMeshes[mesh.Index] is not { } entry) return;
         PreparedSkinningPose prepared = PrepareSkinning(entry, boneMatrices, "independent target outline");

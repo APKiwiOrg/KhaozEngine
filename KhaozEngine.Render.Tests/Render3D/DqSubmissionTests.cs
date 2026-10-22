@@ -64,6 +64,39 @@ public sealed class DqSubmissionTests
         AssertAtomic(scene, () => scene.DrawSkinned(draw, joints));
     }
 
+    [Theory]
+    [InlineData(float.NaN, MeshOutlineOcclusion.SceneDepth, "widthPixels")]
+    [InlineData(float.PositiveInfinity, MeshOutlineOcclusion.SceneDepth, "widthPixels")]
+    [InlineData(float.NegativeInfinity, MeshOutlineOcclusion.SceneDepth, "widthPixels")]
+    [InlineData(0.49f, MeshOutlineOcclusion.SceneDepth, "widthPixels")]
+    [InlineData(8.01f, MeshOutlineOcclusion.SceneDepth, "widthPixels")]
+    [InlineData(1f, (MeshOutlineOcclusion)2, "occlusion")]
+    [InlineData(0f, (MeshOutlineOcclusion)2, "widthPixels")]
+    public void Invalid_outline_style_leaves_no_prepared_state(
+        float widthPixels, MeshOutlineOcclusion occlusion, string parameter)
+    {
+        using var device = new FakeGpuDevice();
+        using var scene = Scene(device);
+        SkinnedGltfMesh mesh = Mesh(SkinningProfile.LinearBlend);
+        SkinnedMeshHandle handle = scene.LoadSkinnedMesh(mesh);
+        scene.Begin();
+
+        AssertAtomic(scene, () =>
+        {
+            ArgumentOutOfRangeException error = Assert.Throws<ArgumentOutOfRangeException>(() =>
+                scene.BeginMeshOutline(Color.White, widthPixels, occlusion));
+            Assert.Equal(parameter, error.ParamName);
+        });
+        AssertAtomic(scene, () =>
+        {
+            ArgumentOutOfRangeException error = Assert.Throws<ArgumentOutOfRangeException>(() =>
+                scene.DrawSkinnedOutline(handle, mesh.RestPose, Matrix4x4.Identity, Color.White,
+                    widthPixels, occlusion));
+            Assert.Equal(parameter, error.ParamName);
+        });
+        Assert.Equal(0, PreparedCount(scene));
+    }
+
     [Fact]
     public void Upload_retains_profile_and_source_generation()
     {

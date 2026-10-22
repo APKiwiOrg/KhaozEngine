@@ -39,15 +39,20 @@ public sealed partial class Scene3D
     /// </exception>
     public MeshOutlineGroup BeginMeshOutline(Color color, float widthPixels, MeshOutlineOcclusion occlusion)
     {
+        ValidateMeshOutlineStyle(widthPixels, occlusion);
+
+        int index = _meshOutlineGroups.Count;
+        _meshOutlineGroups.Add(new MeshOutlineDrawGroup(color, widthPixels, occlusion));
+        return new MeshOutlineGroup(_outlineOwner, _outlineFrame, index);
+    }
+
+    static void ValidateMeshOutlineStyle(float widthPixels, MeshOutlineOcclusion occlusion)
+    {
         if (!float.IsFinite(widthPixels) || widthPixels < 0.5f || widthPixels > 8f)
             throw new ArgumentOutOfRangeException(nameof(widthPixels), widthPixels,
                 "outline width must be finite and between 0.5 and 8 pixels.");
         if (!Enum.IsDefined(occlusion))
             throw new ArgumentOutOfRangeException(nameof(occlusion), occlusion, "unknown outline occlusion.");
-
-        int index = _meshOutlineGroups.Count;
-        _meshOutlineGroups.Add(new MeshOutlineDrawGroup(color, widthPixels, occlusion));
-        return new MeshOutlineGroup(_outlineOwner, _outlineFrame, index);
     }
 
     /// <summary>Adds one mesh part to a group returned by <see cref="BeginMeshOutline(Color, float, MeshOutlineOcclusion)"/> this frame.</summary>

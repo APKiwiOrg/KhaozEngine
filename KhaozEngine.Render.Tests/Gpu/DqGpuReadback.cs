@@ -9,7 +9,7 @@ using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Tests.Gpu;
 
-/// <summary>Captures the ordinary material vertex's actual local attributes into ten R32F texels.
+/// <summary>Captures the ordinary material vertex's actual local attribute words into ten RGBA8 texels.
 /// Only the world/clip/output tail is replaced. The production palette, blend and direction graph remain.
 /// Reflection keeps this test revision runnable against the pre-DQ renderer for the hosted red proof.</summary>
 internal static class DqGpuReadback
@@ -30,42 +30,51 @@ internal static class DqGpuReadback
         new GpuVertexElement("BoneWeights", GpuVertexElementFormat.Float4),
         new GpuVertexElement("Tangent", GpuVertexElementFormat.Float4));
 
-    internal static ModelVertex Capture(IGpuDevice device, in SkinnedVertex source,
-        RigidDualQuaternion[] dq, Matrix4x4[] lbs)
+    internal static string CaptureVertex()
     {
         string production = MaterialVertex;
-        bool dualQuaternion = production != ShaderSources.SkinnedModelVert;
         int paletteStart = production.IndexOf("layout(set=2, binding=0) uniform Palette", StringComparison.Ordinal);
         int worldStart = production.IndexOf("    vec4 world = Model * localPos;", StringComparison.Ordinal);
         string vertex = "#version 450\n" + production[paletteStart..worldStart]
             .Replace("set=2, binding=0", "set=0, binding=0", StringComparison.Ordinal);
         vertex = Regex.Replace(vertex, @"layout\(location=\d+\) out [^\n]+\n", "");
         vertex = vertex.Replace("void main() {", @"
-layout(location=0) flat out vec3 capturedPosition;
-layout(location=1) flat out vec3 capturedNormal;
-layout(location=2) flat out vec4 capturedTangent;
+layout(location=0) flat out uvec3 capturedPosition;
+layout(location=1) flat out uvec3 capturedNormal;
+layout(location=2) flat out uvec4 capturedTangent;
 void main() {", StringComparison.Ordinal) + @"
-    capturedPosition = localPos.xyz;
-    capturedNormal = nLocal;
-    capturedTangent = tLocal;
+    // Capture the vertex's words before floating-point indexing and raster/output transport.
+    capturedPosition = floatBitsToUint(localPos.xyz);
+    capturedNormal = floatBitsToUint(nLocal);
+    capturedTangent = floatBitsToUint(tLocal);
     vec2 clip = gl_VertexIndex == 0 ? vec2(-1,-1) : gl_VertexIndex == 1 ? vec2(3,-1) : vec2(-1,3);
     // Keep the full material vertex input signature live on FXC, without touching the captured words.
     gl_Position = vec4(clip, (Color.x + Color.y + Color.z + Color.w + TexCoord.x + TexCoord.y) * 1e-30, 1);
 }";
-        const string fragment = @"#version 450
-layout(location=0) flat in vec3 capturedPosition;
-layout(location=1) flat in vec3 capturedNormal;
-layout(location=2) flat in vec4 capturedTangent;
-layout(location=0) out float word;
+        return vertex;
+    }
+
+    internal const string CaptureFragment = @"#version 450
+layout(location=0) flat in uvec3 capturedPosition;
+layout(location=1) flat in uvec3 capturedNormal;
+layout(location=2) flat in uvec4 capturedTangent;
+layout(location=0) out vec4 word;
 void main() {
     int i = int(gl_FragCoord.x);
-    word = i < 3 ? capturedPosition[i] : i < 6 ? capturedNormal[i-3] : capturedTangent[i-6];
+    uint bits = i < 3 ? capturedPosition[i] : i < 6 ? capturedNormal[i-3] : capturedTangent[i-6];
+    uvec4 bytes = uvec4(bits, bits >> 8, bits >> 16, bits >> 24) & uvec4(255);
+    word = vec4(bytes) / 255.0;
 }";
+
+    internal static ModelVertex Capture(IGpuDevice device, in SkinnedVertex source,
+        RigidDualQuaternion[] dq, Matrix4x4[] lbs)
+    {
+        bool dualQuaternion = MaterialVertex != ShaderSources.SkinnedModelVert;
         var factory = device.Factory;
         using var texture = factory.CreateTexture(GpuTextureDescription.Texture2D(10, 1,
-            GpuPixelFormat.R32Float, GpuTextureUsage.RenderTarget));
+            GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget));
         using var target = factory.CreateFramebuffer(null, texture);
-        using var shaders = factory.CreateShadersFromSpirv(vertex, fragment);
+        using var shaders = factory.CreateShadersFromSpirv(CaptureVertex(), CaptureFragment);
         using var layout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
             new GpuResourceLayoutElement("Palette", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex)));
         using var palette = factory.CreateBuffer(new GpuBufferDescription(dualQuaternion ? 4096u : 8192u,
@@ -90,14 +99,19 @@ void main() {
         using (GpuRecording.Open(device, commands, "DQ material attribute capture"))
         {
             commands.SetFramebuffer(target);
-            commands.ClearColorTarget(0, new KhaozEngine.Primitives.Color(12345, 12345, 12345, 1));
+            // All-white decodes to NaN words, so a missing draw cannot pass a finite attribute assertion.
+            commands.ClearColorTarget(0, KhaozEngine.Primitives.Color.White);
             commands.SetPipeline(pipeline);
             commands.SetGraphicsResourceSet(0, set);
             commands.SetVertexBuffer(0, vertices);
             commands.Draw(3);
         }
         device.Submit(commands);
-        float[] words = TemporalTextureIo.Read(device, texture);
+        byte[] bytes = GpuReadback.ToRgba(device, texture, 10, 1);
+        var words = new float[10];
+        for (int i = 0; i < words.Length; i++)
+            words[i] = BitConverter.UInt32BitsToSingle((uint)bytes[i * 4] | ((uint)bytes[i * 4 + 1] << 8)
+                | ((uint)bytes[i * 4 + 2] << 16) | ((uint)bytes[i * 4 + 3] << 24));
         return new ModelVertex(new Vector3(words[0], words[1], words[2]), new Vector3(words[3], words[4], words[5]),
             source.Color, source.Uv, new Vector4(words[6], words[7], words[8], words[9]));
     }

@@ -167,6 +167,8 @@ public sealed class DqMaterialScene : IDisposable
         scene.Post.AmbientColor = new Color(.15f, .15f, .15f, 1);
         scene.Post.Quality.Shadows.Mode = ShadowMode.Off;
         scene.Post.Quality.AntiAliasing = AntiAliasing.Off;
+        // Compare per-fragment keep sets at native size. The default 1600x900 target blurs alpha on a 128px blit.
+        scene.Post.RenderScale = RenderScale.MatchViewport;
         scene.Camera.Frame(Vector3.Zero, new Vector3(0, 0, 4));
         _meshes[0] = DqGpuReadback.Patch(SkinningProfile.DualQuaternionRigid);
         _meshes[1] = DqGpuReadback.Patch(SkinningProfile.DualQuaternionRigid, right: true);

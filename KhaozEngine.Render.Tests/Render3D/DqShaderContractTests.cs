@@ -87,6 +87,10 @@ public sealed class DqShaderContractTests
         Assert.Equal(new uint[] { 0, 256, 512, 768 }, draws.Select(d => d.Sets[0].DynamicOffset));
         Assert.Equal(new uint[] { 0, 8192, 0, 4096 }, draws.Select(d => d.Sets[2].DynamicOffset));
         Assert.NotSame(draws[0].Sets[2].Set, draws[2].Sets[2].Set);
+        CrossCompiledPair capture = SpirvCrossCompile.GlslPairToHlsl(
+            DqGpuReadback.CaptureVertex(), DqGpuReadback.CaptureFragment, "DQ attribute word capture");
+        Assert.Contains("nointerpolation uint", capture.VertexSource);
+        Assert.Contains("nointerpolation uint", capture.FragmentSource);
     }
 
     [Fact]

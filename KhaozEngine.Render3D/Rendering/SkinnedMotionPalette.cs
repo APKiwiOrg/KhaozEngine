@@ -65,6 +65,9 @@ internal sealed class SkinnedMotionPalette : IDisposable
 
     internal static uint DqOffsetFor(uint slot) => checked(slot * DqSlotBytes);
 
+    /// <summary>Select the stride belonging to this palette's immutable deformation method.</summary>
+    internal uint OffsetForSlot(uint slot) => _dq?.OffsetFor(slot) ?? OffsetFor(slot);
+
     /// <summary>Hold at least <paramref name="slotCount"/> casters, growing geometrically and retiring what it
     /// replaces. The CPU image carries across a grow.</summary>
     internal void EnsureCapacity(uint slotCount)

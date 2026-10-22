@@ -204,15 +204,13 @@ internal sealed partial class ModelRenderer
         SkinningProfile? profile = null)
     {
         bool dq = profile?.Method == SkinningMethod.DualQuaternionRigid;
-        if (dq && _motion is not null)
-            throw new NotSupportedException("DQ material motion is unavailable until the DQ temporal consumer is ready.");
         cl.SetGraphicsResourceSet(0, _skinnedMainSet!, slot * SkinnedMainSlotBytes);
         cl.SetGraphicsResourceSet(1, skinnedFragSet ?? _skinnedDefaultFragSet);
         if (dq) cl.SetGraphicsResourceSet(2, _dqPalette.Set, _dqPalette.OffsetFor(paletteSlot));
         else cl.SetGraphicsResourceSet(2, _bonePalette.Set, SkinnedBonePalette.OffsetFor(paletteSlot));
         // The skinned variant's set 3: the motion block and this caster's last frame, at its own slot.
-        if (_motion is { } motion)
-            cl.SetGraphicsResourceSet(3, motion.SkinnedPalette.Set, SkinnedMotionPalette.OffsetFor(paletteSlot));
+        if (_motion is not null)
+            BindSkinnedMotion(cl, paletteSlot, profile ?? SkinningProfile.LinearBlend);
         cl.SetVertexBuffer(0, restVb);
         cl.SetIndexBuffer(ib, indexFormat);
         cl.DrawIndexed((uint)indexCount, 1, 0, 0, 0);

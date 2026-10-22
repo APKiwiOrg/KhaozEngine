@@ -31,12 +31,15 @@ public sealed class DqMotionGpuTests(DqMotionScene fixture, ITestOutputHelper ou
         // Identity plus an exact half-turn blends to a quarter-turn under DQ. LBS collapses XY to zero.
         // Current identity is deliberate: the red witness isolates missing PREVIOUS DQ evaluation.
         Vector3 expectedPrevious = new(.5f, .25f, .125f);
+        foreach (bool rotatedCurrent in new[] { false, true })
         foreach (bool history in new[] { true, false })
         {
-            var native = DqMotionWitness.Capture(device, vertex, history);
-            AssertPosition(vertex.Position, native.Current);
-            AssertPosition(history ? expectedPrevious : vertex.Position, native.Previous);
-            Vector2 expectedMotion = history ? new Vector2(-.125f, .375f) : Vector2.Zero;
+            var native = DqMotionWitness.Capture(device, vertex, history, rotatedCurrent);
+            Vector3 expectedCurrent = rotatedCurrent ? new Vector3(-.25f, .5f, .125f) : vertex.Position;
+            AssertPosition(expectedCurrent, native.Current);
+            AssertPosition(history ? expectedPrevious : expectedCurrent, native.Previous);
+            Vector2 expectedMotion = !history ? Vector2.Zero : rotatedCurrent
+                ? new Vector2(-.375f, -.125f) : new Vector2(-.125f, .375f);
             Assert.InRange(Vector2.Distance(expectedMotion, native.Motion), 0f, 2e-5f);
             if (!history) Assert.Equal(Vector2.Zero, native.Motion);
             Vector3 cpu = SkinningEvaluation.Position(vertex, SkinningProfile.DualQuaternionRigid, [],
@@ -120,7 +123,7 @@ void main() {
 }";
 
     internal static (Vector3 Current, Vector3 Previous, Vector2 Motion) Capture(IGpuDevice device,
-        SkinnedVertex vertex, bool history)
+        SkinnedVertex vertex, bool history, bool rotatedCurrent)
     {
         IGpuResourceFactory f = device.Factory;
         using var texture = f.CreateTexture(GpuTextureDescription.Texture2D(6, 1,
@@ -138,14 +141,15 @@ void main() {
         device.UpdateBuffer(frame, 0, new MotionFrameUbo
         { CurViewProj = Matrix4x4.Identity, PrevViewProj = Matrix4x4.Identity, Params = new Vector4(history ? 1 : 0, 0, 0, 0) });
         device.UpdateBuffer(previous, 0, Matrix4x4.Identity);
+        Matrix4x4[] currentPose = rotatedCurrent ? [Previous[1], Previous[1]] : Current;
         if (HasDq)
         {
-            device.UpdateBuffer(current, 0, Prepare(Current));
+            device.UpdateBuffer(current, 0, Prepare(currentPose));
             device.UpdateBuffer(previous, 64, Prepare(Previous));
         }
         else
         {
-            device.UpdateBuffer(current, 0, Current);
+            device.UpdateBuffer(current, 0, currentPose);
             device.UpdateBuffer(previous, 64, Previous);
         }
         using var currentSet = f.CreateResourceSet(new GpuResourceSetDescription(currentLayout, current));
@@ -269,7 +273,8 @@ public sealed class DqMotionScene : IDisposable
         _preview.Capture(s =>
         {
             for (int i = 0; i < 4; i++)
-                DqMotionWitness.Queue(s, meshes[i], handles[i], keys[i], World(i, true), DqMotionWitness.Current, threshold);
+                DqMotionWitness.Queue(s, meshes[i], handles[i], keys[i], World(i, true),
+                    i == 2 ? [DqMotionWitness.Previous[1], DqMotionWitness.Previous[1]] : DqMotionWitness.Current, threshold);
         });
         MotionTargetReadback motion = scene.ReadMotionTargetForTests();
         Assert.NotNull(scene.PreviousFrameView);
@@ -280,11 +285,12 @@ public sealed class DqMotionScene : IDisposable
         {
             bool seed = i == 0 && (scenario is "absent" or "mesh" or "method") || i == 1 && scenario == "method";
             // These are literal independent surfaces. Half-turn blended with identity is a DQ quarter-turn,
-            // or collapsed XY for LBS. Every current joint is identity.
+            // or collapsed XY for LBS. Actor B also proves a nonidentity current DQ surface.
             Vector3 Previous(Vector3 p) => seed || scenario == "placement" ? p : i % 2 == 0
                 ? new Vector3(-p.Y, p.X, p.Z) : new Vector3(0, 0, p.Z);
+            Vector3 Current(Vector3 p) => i == 2 ? new Vector3(-p.X, -p.Y, p.Z) : p;
             int[] corners = [0, 1, 3];
-            Vector2[] now = corners.Select(v => Project(camera, Vector3.Transform(meshes[i].Vertices[v].Position, World(i, true)))).ToArray();
+            Vector2[] now = corners.Select(v => Project(camera, Vector3.Transform(Current(meshes[i].Vertices[v].Position), World(i, true)))).ToArray();
             Vector2[] then = corners.Select(v => Project(oldCamera,
                 Vector3.Transform(Previous(meshes[i].Vertices[v].Position), World(i, seed)))).ToArray();
             actors[i] = new ActorExpectation(now, then, seed, scene.CurrentFrameView.JitterPixels);

@@ -23,9 +23,8 @@ internal sealed partial class ModelRenderer
 
     void EnsureDualQuaternionPipelines()
     {
-        if (_motion is not null)
-            throw new NotSupportedException("DQ material motion is unavailable until the DQ temporal consumer is ready.");
         if (_dqSkinnedPipeline is not null) return;
+        if (_motion is not null) { EnsureDualQuaternionMotionPipelines(); return; }
         var factory = _gd.Factory;
         _dqSkinnedShaders ??= factory.CreateShadersFromSpirv(ShaderSources.DqSkinnedModelVert, ShaderSources.SkinnedModelFrag);
         _dqSkinnedDissolveShaders ??= factory.CreateShadersFromSpirv(ShaderSources.DqSkinnedModelVert, ShaderSources.SkinnedModelDissolveFrag);

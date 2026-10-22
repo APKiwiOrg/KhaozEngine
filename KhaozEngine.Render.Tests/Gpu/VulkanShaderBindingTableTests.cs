@@ -178,6 +178,17 @@ namespace KhaozEngine.Tests.Gpu
                 // The second pass at the display's own size binds exactly as the upscaling one.
                 ["TemporalAccumulateAtDisplaySize"] = "TemporalSplitResolve accumulate",
                 ["TemporalAccumulateAtDisplaySizeHalf"] = "TemporalSplitResolve accumulate",
+                // Certified programs omit the visibility resources from their compact layouts.
+                ["TemporalResolveFullyLit"] = "TemporalResolveRenderer fully lit resolve",
+                ["TemporalResolveHalfFullyLit"] = "TemporalResolveRenderer fully lit resolve",
+                ["TemporalDebugViewFullyLit"] = "TemporalResolveRenderer fully lit debug view",
+                ["TemporalDebugViewHalfFullyLit"] = "TemporalResolveRenderer fully lit debug view",
+                ["TemporalCountProbeFullyLit"] = "TemporalResolveRenderer fully lit count probe",
+                ["TemporalCountProbeHalfFullyLit"] = "TemporalResolveRenderer fully lit count probe",
+                ["TemporalAccumulateFullyLit"] = "TemporalSplitResolve fully lit accumulate",
+                ["TemporalAccumulateHalfFullyLit"] = "TemporalSplitResolve fully lit accumulate",
+                ["TemporalAccumulateAtDisplaySizeFullyLit"] = "TemporalSplitResolve fully lit accumulate",
+                ["TemporalAccumulateAtDisplaySizeHalfFullyLit"] = "TemporalSplitResolve fully lit accumulate",
             };
 
         /// <summary>
@@ -315,7 +326,8 @@ namespace KhaozEngine.Tests.Gpu
                 .Select(p => p.Pipeline)
                 .ToHashSet(StringComparer.Ordinal);
 
-            Assert.Equal(111, catalog.Length);
+            // Ten certified FullyLit variants cover resolve, debug/count and both split sizes at both precisions.
+            Assert.Equal(121, catalog.Length);
             Assert.Equal(catalog.Length, ProgramPipelines.Count);
 
             foreach (string program in catalog)

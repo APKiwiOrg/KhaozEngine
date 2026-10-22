@@ -65,11 +65,22 @@ namespace KhaozEngine.Render3D
         /// <see cref="AnimationClip"/>s on the mesh.</summary>
         public Skeleton? Skeleton { get; }
 
+        /// <summary>The immutable deformation method and algorithm version for this source skin.</summary>
+        public SkinningProfile Profile { get; }
+
         public int BoneCount => InverseBind.Length;
         public int TriangleCount => Indices32.Length / 3;
 
         /// <summary>Construct from 16-bit indices (the common path: <see cref="SkinnedMeshBuilder"/> + small rigs).</summary>
         public SkinnedGltfMesh(SkinnedVertex[] vertices, ushort[] indices, Matrix4x4[] inverseBind, Matrix4x4[] restPose, Skeleton? skeleton = null)
+            : this(vertices, indices, inverseBind, restPose, skeleton, SkinningProfile.LinearBlend)
+        {
+        }
+
+        /// <summary>Construct from 16-bit indices with an explicit profile. Rigid DQ source data is validated
+        /// without changing its weights or indices.</summary>
+        public SkinnedGltfMesh(SkinnedVertex[] vertices, ushort[] indices, Matrix4x4[] inverseBind, Matrix4x4[] restPose,
+            Skeleton? skeleton, SkinningProfile profile)
         {
             Vertices = vertices ?? throw new ArgumentNullException(nameof(vertices));
             if (indices is null) throw new ArgumentNullException(nameof(indices));
@@ -81,11 +92,22 @@ namespace KhaozEngine.Render3D
             if (RestPose.Length != InverseBind.Length)
                 throw new ArgumentException("RestPose and InverseBind must have one entry per bone.");
             Skeleton = skeleton;
+            Profile = profile ?? throw new ArgumentNullException(nameof(profile));
+            SkinningValidation.ValidateSource(Vertices, BoneCount, Profile,
+                new SkinningValidationContext(nameof(SkinnedGltfMesh), null, -1));
         }
 
         /// <summary>Construct from 32-bit indices. <see cref="IndexFormat"/> is chosen from the largest index value,
         /// enabling skinned meshes past the 65,536-vertex ceiling.</summary>
         public SkinnedGltfMesh(SkinnedVertex[] vertices, uint[] indices, Matrix4x4[] inverseBind, Matrix4x4[] restPose, Skeleton? skeleton = null)
+            : this(vertices, indices, inverseBind, restPose, skeleton, SkinningProfile.LinearBlend)
+        {
+        }
+
+        /// <summary>Construct from 32-bit indices with an explicit profile. Rigid DQ source data is validated
+        /// without changing its weights or indices.</summary>
+        public SkinnedGltfMesh(SkinnedVertex[] vertices, uint[] indices, Matrix4x4[] inverseBind, Matrix4x4[] restPose,
+            Skeleton? skeleton, SkinningProfile profile)
         {
             Vertices = vertices ?? throw new ArgumentNullException(nameof(vertices));
             Indices32 = indices ?? throw new ArgumentNullException(nameof(indices));
@@ -95,6 +117,9 @@ namespace KhaozEngine.Render3D
             if (RestPose.Length != InverseBind.Length)
                 throw new ArgumentException("RestPose and InverseBind must have one entry per bone.");
             Skeleton = skeleton;
+            Profile = profile ?? throw new ArgumentNullException(nameof(profile));
+            SkinningValidation.ValidateSource(Vertices, BoneCount, Profile,
+                new SkinningValidationContext(nameof(SkinnedGltfMesh), null, -1));
         }
     }
 }

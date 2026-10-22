@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
@@ -18,7 +19,8 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
 internal sealed record RendererPerfRecipeFacts(string Id, string Version, string Profile, int TerrainChunks,
     int BuildingComponents, int PropInstances, int ActorInstances, string GeometrySha256, string SettingsSha256,
-    string AssetSha256, string SequenceSha256, string RecipeSha256, RendererPerfRecipeSchedule Schedule);
+    string AssetSha256, string SequenceSha256, string RecipeSha256, RendererPerfRecipeSchedule Schedule,
+    string PlatformFamily, RendererPerfDerivedDigests Derived);
 internal sealed record RendererPerfRecipeSchedule(int DirectionalCascades, string DirectionalCache,
     int StaticPointRows, int DynamicPointRows, int StaticRebuildBudget, int WarmStaticRebuilds,
     int DynamicUpdates, int TransientRows, int FacesPerRow, bool Temporal, bool Atmosphere, bool Bloom,
@@ -115,14 +117,27 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
             _ => throw new ArgumentOutOfRangeException(nameof(id)),
         };
         recipe.Freeze();
-        if (verifyFrozen && !File.ReadAllBytes(RecipePath(id)).AsSpan().SequenceEqual(recipe._description))
-            throw new InvalidOperationException($"The {id}/1 construction differs from its frozen recipe.");
+        try
+        {
+            if (verifyFrozen) recipe.VerifyFrozen();
+        }
+        catch
+        {
+            recipe.Dispose();
+            throw;
+        }
         return recipe;
     }
 
     internal static string RecipePath(string id, [CallerFilePath] string source = "") =>
         Path.Combine(Path.GetDirectoryName(source)!, "recipes", id + ".json");
     internal byte[] Describe() => (byte[])_description.Clone();
+    internal void VerifyFrozen()
+    {
+        var (authored, derived) = RendererPerfFrozenRecipe.Capture(_description);
+        RendererPerfFrozenRecipe.Verify(JsonNode.Parse(File.ReadAllBytes(RecipePath(_id)))!.AsObject(), authored,
+            derived, RendererPerfFrozenRecipe.PlatformFamily);
+    }
     internal RendererPerfRecipeFrame Frame(int frameIndex) => _frames[SequenceIndex(frameIndex)];
     internal static int SequenceIndex(int frameIndex) => ((frameIndex % Period) + Period) % Period;
     internal static float Phase(int frameIndex)
@@ -212,8 +227,10 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
             FinalBlit = 1,
             Schedule = schedule,
         }, Json);
+        var (authored, derived) = RendererPerfFrozenRecipe.Capture(_description);
         Facts = new RendererPerfRecipeFacts(_id, "1", profile,
-            Terrain.Count, Buildings, Props, Actors, geometry, settings, assets, sequence, Hash(_description), schedule);
+            Terrain.Count, Buildings, Props, Actors, Digest(authored["Geometry"]), settings, assets, sequence,
+            Digest(authored), schedule, RendererPerfFrozenRecipe.PlatformFamily, derived);
     }
 
     // Reset all renderer-owned history, jitter, atmosphere and shadow caches by admitting only a fresh scene.

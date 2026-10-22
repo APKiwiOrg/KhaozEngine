@@ -12,6 +12,7 @@ internal sealed class RendererPerfEffectsScene : RendererPerfVillageScene
     readonly GltfMesh _overlay = MeshPrimitives.Box(1f);
     readonly SkinnedInstanceDraw[] _actors;
     readonly Matrix4x4[][] _poses;
+    readonly float[] _poseAngles = Enumerable.Range(0, Period).Select(frame => .1f + Phase(frame) * .25f).ToArray();
     readonly string[] _poseDigests;
     readonly GroundDecal[] _decals;
     readonly ParticleSprite[] _particles;
@@ -46,7 +47,7 @@ internal sealed class RendererPerfEffectsScene : RendererPerfVillageScene
         }).ToArray();
         _poses = Enumerable.Range(0, Period).Select(i =>
         {
-            Matrix4x4[] pose = SkinnedPointShadowScene.BentPose(_tube, .1f + Phase(i) * .25f);
+            Matrix4x4[] pose = SkinnedPointShadowScene.BentPose(_tube, _poseAngles[i]);
             for (int bone = 0; bone < pose.Length; bone++) pose[bone] = _tube.RestPose[bone] * pose[bone];
             return pose;
         }).ToArray();
@@ -150,6 +151,7 @@ internal sealed class RendererPerfEffectsScene : RendererPerfVillageScene
         },
         ActorDraws = _actors,
         Palettes = _poses,
+        PoseAngles = _poseAngles,
         Points = _points,
         Decals = _decals,
         Particles = _particles,

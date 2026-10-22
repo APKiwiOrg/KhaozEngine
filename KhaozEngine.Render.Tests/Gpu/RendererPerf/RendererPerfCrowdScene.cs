@@ -11,6 +11,7 @@ internal sealed class RendererPerfCrowdScene : RendererPerfVillageScene
     readonly SkinnedGltfMesh _tube = StreamedWorldSceneContent.CharacterTube();
     readonly Matrix4x4[] _worlds;
     readonly Matrix4x4[][] _poses;
+    readonly float[] _poseAngles = Enumerable.Range(0, Period).Select(frame => .1f + Phase(frame) * .25f).ToArray();
     readonly string[] _poseDigests;
     readonly SkinnedInstanceDraw[] _actorDraws;
     internal static readonly SkinnedInstanceDraw DefaultActorPolicy = new(default, Matrix4x4.Identity)
@@ -48,7 +49,7 @@ internal sealed class RendererPerfCrowdScene : RendererPerfVillageScene
         {
             // The shared fixture returns model-space deformations. DrawSkinned accepts joint worlds,
             // so compose each deformation with its rest joint before the engine applies inverse-bind.
-            Matrix4x4[] deformations = SkinnedPointShadowScene.BentPose(_tube, .1f + Phase(frame) * .25f);
+            Matrix4x4[] deformations = SkinnedPointShadowScene.BentPose(_tube, _poseAngles[frame]);
             for (int bone = 0; bone < deformations.Length; bone++)
                 deformations[bone] = _tube.RestPose[bone] * deformations[bone];
             return deformations;
@@ -82,6 +83,7 @@ internal sealed class RendererPerfCrowdScene : RendererPerfVillageScene
         ActorWorlds = _worlds,
         MotionKeys = Enumerable.Range(1, 32).ToArray(),
         PaletteAtZero = _poses[0],
+        PoseAngles = _poseAngles,
         ActorDraws = _actorDraws,
         Points = _points,
     };

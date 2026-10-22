@@ -114,7 +114,7 @@ public sealed class RendererPerfEffectsRecipeTests
         Assert.Equal("319cff6e7a31f0f2a41c475dca42890aa5d19fe16017e2290f8c1d4e14f76481", ui.FontSha256);
         using var second = RendererPerfRecipe.Create("effects-ui");
         Assert.Equal(recipe.Facts, second.Facts);
-        Assert.True(File.ReadAllBytes(RendererPerfRecipe.RecipePath("effects-ui")).AsSpan().SequenceEqual(recipe.Describe()));
+        Assert.Equal(recipe.Describe(), second.Describe());
     }
 
     [Fact]
@@ -214,7 +214,7 @@ public sealed class RendererPerfEffectsRecipeTests
         int[] b = indices.Select(i => { second.Frame(recipe, i); return second.Scene.LastWaterStats.ClipmapRebuilds; }).ToArray();
         Assert.Equal(a, b);
         using var json = JsonDocument.Parse(File.ReadAllBytes(RendererPerfRecipe.RecipePath("outdoors")));
-        JsonElement states = json.RootElement.GetProperty("Geometry").GetProperty("ClipmapStates");
+        JsonElement states = json.RootElement.GetProperty("Authored").GetProperty("Geometry").GetProperty("ClipmapStates");
         string[]? previous = null;
         for (int i = 0; i < indices.Length; i++)
         {
@@ -240,7 +240,7 @@ public sealed class RendererPerfEffectsRecipeTests
         Assert.False(first.Scene.ShadowPassSkippedLastFrame);
         Assert.Equal(64, first.Scene.LastFoliageStats.SubmittedPatches);
         Assert.Equal(recipe.Frame(0), recipe.Frame(256));
-        Assert.True(File.ReadAllBytes(RendererPerfRecipe.RecipePath("outdoors")).AsSpan().SequenceEqual(recipe.Describe()));
+        recipe.VerifyFrozen();
     }
 
     [Fact]

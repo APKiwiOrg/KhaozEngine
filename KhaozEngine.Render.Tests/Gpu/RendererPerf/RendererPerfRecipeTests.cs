@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using System.Linq;
 using System.Text.Json;
 using KhaozEngine.Render3D;
@@ -43,7 +42,7 @@ public sealed class RendererPerfRecipeTests
                 (recipe.Facts.TerrainChunks, recipe.Facts.BuildingComponents,
                     recipe.Facts.PropInstances, recipe.Facts.ActorInstances));
             Assert.Equal(recipe.Facts, repeated.Facts);
-            Assert.Equal(File.ReadAllBytes(RendererPerfRecipe.RecipePath(id)), recipe.Describe());
+            Assert.Equal(recipe.Describe(), repeated.Describe());
             using JsonDocument frozen = JsonDocument.Parse(recipe.Describe());
             Assert.Equal(0x51ABC0DEu, frozen.RootElement.GetProperty("Seed").GetUInt32());
             Assert.All(recipe.Terrain, mesh =>

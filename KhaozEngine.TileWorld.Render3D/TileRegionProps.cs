@@ -22,7 +22,7 @@ public sealed record TilePropLayerSnapshot
     /// <summary>The authored plane used by the shared roof visibility rule.</summary>
     public int Plane { get; init; }
 
-    /// <summary>Roof footprints parallel to placements and object IDs for a roof layer.</summary>
+    /// <summary>Roof footprints parallel to placements and object IDs for a roof layer, empty otherwise.</summary>
     public IReadOnlyList<TileRect> RoofFootprints { get; init; } = Array.Empty<TileRect>();
 
     /// <summary>Resolved full, optional LOD, and optional flattened-HLOD inputs for this batch.</summary>

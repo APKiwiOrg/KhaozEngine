@@ -122,7 +122,7 @@ public readonly record struct TileRect(int X, int Z, int Width, int Height)
         return (int)edge;
     }
 
-    static TileRect Create(long x, long z, long width, long height, string parameterName, object actualValue)
+    static TileRect Create<T>(long x, long z, long width, long height, string parameterName, T actualValue)
     {
         long x1 = x + width, z1 = z + height;
         if (x < int.MinValue || x > int.MaxValue || z < int.MinValue || z > int.MaxValue

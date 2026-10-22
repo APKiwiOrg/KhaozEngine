@@ -27,6 +27,7 @@ public sealed partial class TileWorldPropClusters : IDisposable
         _catalogs = catalogs;
         _archetypeLayers = validated.ArchetypeLayers;
         _layers = new LayerResources[validated.Layers.Length];
+        _roofVisibility = new TileRoofLayerVisibility(_presentationSnapshots, validated.Layers);
         ITileLodMeshResolver? lodResolver = resolver as ITileLodMeshResolver;
         try
         {
@@ -136,26 +137,26 @@ public sealed partial class TileWorldPropClusters : IDisposable
         var snapshots = new Dictionary<string, TilePropLayerSnapshot>(StringComparer.Ordinal);
         for (int i = 0; i < _layers.Length; i++)
         {
+            LayerResources resources = _layers[i];
             selected[i].Sort(static (a, b) => a.Id.CompareTo(b.Id));
             var ids = new long[selected[i].Count];
             var placements = new PropPlacement[selected[i].Count];
-            var layerFootprints = new TileRect[selected[i].Count];
+            TileRect[]? layerFootprints = resources.IsRoofLayer ? new TileRect[selected[i].Count] : null;
             for (int at = 0; at < selected[i].Count; at++)
             {
                 ids[at] = selected[i][at].Id;
                 placements[at] = selected[i][at].Placement;
-                layerFootprints[at] = selected[i][at].Footprint;
+                if (layerFootprints is not null) layerFootprints[at] = selected[i][at].Footprint;
             }
             IReadOnlyList<long> frozenIds = Array.AsReadOnly(ids);
             IReadOnlyList<PropPlacement> frozenPlacements = Array.AsReadOnly(placements);
-            LayerResources resources = _layers[i];
             snapshots.Add(resources.Definition.Id, new TilePropLayerSnapshot
             {
                 Id = resources.Definition.Id,
                 ObjectIds = frozenIds,
                 IsRoofLayer = resources.IsRoofLayer,
                 Plane = plane,
-                RoofFootprints = Array.AsReadOnly(layerFootprints),
+                RoofFootprints = layerFootprints is null ? Array.Empty<TileRect>() : Array.AsReadOnly(layerFootprints),
                 Placements = frozenPlacements,
                 Layer = resources.CreateLayer(frozenPlacements),
             });

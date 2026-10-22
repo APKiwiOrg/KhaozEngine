@@ -12341,6 +12341,9 @@ transforms and fades when `CastsShadows` is true. All-visible merged clusters dr
 submit merged shadow-only. A partly hidden cluster never submits merged colour. It falls back to resident
 individuals without the HLOD fade floor, or to merged shadow-only if individuals are unavailable. Roof layers
 retain their merged clusters in Decor, and queue neither colour nor shadows beyond `DrawRadius`.
+Selected outlines check the roof rule separately against their retained individual and merged snapshots while
+a replacement builds. Non-roof snapshots carry no roof footprints. Warmed layer visibility checks allocate
+no managed memory per frame.
 
 For long-distance buildings, select walls and roofs into separate layers, each with `DrawRadius = 576`,
 `LodDistance = 0`, `HlodDistance = 192`, `HlodCrossfadeWidth = 32`, `HlodWeldCell = 0`, `CastsShadows = true`

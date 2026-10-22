@@ -13,6 +13,7 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   merged HLOD and Decor residency. Mixed roof and non-roof layers fail before upload.
 - Keep hidden layered roofs in the shadow pass with matching transforms and fades. Partly hidden clusters fall
   back to individual roofs, or merged shadow-only when individual geometry is unavailable.
+- Keep selected outlines on each retained roof generation's visibility while replacement geometry builds.
 - Include prop-layer placements in the visible and shadow-only view counters.
 
 ## 21.11.0

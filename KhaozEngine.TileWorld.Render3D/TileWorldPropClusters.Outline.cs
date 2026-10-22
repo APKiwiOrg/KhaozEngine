@@ -36,7 +36,7 @@ public sealed partial class TileWorldPropClusters
                 && generations.TryGetValue(state.IndividualSourceGeneration, out TilePropLayerSnapshot? individual))
             {
                 int individualIndex = IndexOf(individual.ObjectIds, objectId);
-                if (individualIndex >= 0)
+                if (individualIndex >= 0 && !_roofVisibility.IsHidden(individual, individualIndex))
                     DrawIndividualOutline(group, individual, individualIndex, focus,
                         state.IndividualDissolveFloor);
             }
@@ -67,7 +67,8 @@ public sealed partial class TileWorldPropClusters
     {
         if (!generations.TryGetValue(state.MergedSourceGeneration, out TilePropLayerSnapshot? accepted)) return;
         int placementIndex = IndexOf(accepted.ObjectIds, objectId);
-        if (placementIndex < 0 || accepted.Layer.HlodSourceMeshes is null) return;
+        if (placementIndex < 0 || _roofVisibility.IsHidden(accepted, placementIndex)
+            || accepted.Layer.HlodSourceMeshes is null) return;
 
         if (!_outlineHlodCached || _outlineHlodKey != key
             || _outlineHlodGeneration != state.MergedSourceGeneration || _outlineHlodObject != objectId)

@@ -11,7 +11,7 @@ public sealed partial class TileWorldPropClusters
     TileWorldBuildQueue<PropClusterBuildRequest, PropClusterCpuBuild>? _clusterBuilds;
     readonly HashSet<PropClusterKey> _requestedClusters = new();
     float _tileSize;
-    TileRoofLayerVisibility? _roofVisibility;
+    readonly TileRoofLayerVisibility _roofVisibility;
 
     void InitializeRendering(float tileSize, TileWorldBuildQueueOptions? options, IChunkBuildDispatcher? dispatcher)
     {
@@ -62,7 +62,6 @@ public sealed partial class TileWorldPropClusters
     internal PropClusterDrawCounts Draw(Vector3 focus, TileRoofVisibilityRule rule)
     {
         if (_clusterOwner is null) return default;
-        _roofVisibility ??= new TileRoofLayerVisibility(_presentationSnapshots);
         _roofVisibility.Rule = rule;
         return _clusterOwner.DrawWithVisibility(focus, _roofVisibility);
     }

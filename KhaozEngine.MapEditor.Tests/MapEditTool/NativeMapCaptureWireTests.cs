@@ -49,12 +49,17 @@ public sealed partial class NativeMapCaptureWireTests
             Assert.False((await harness.Client.CallAsync("map_open", new Dictionary<string, object?> { ["path"] = path })).IsError == true);
             var session = harness.Services.GetRequiredService<MapEditSession>(); var host = new WireHost(); session.NativeRenderHost = host;
             foreach (string invalid in NativeRenderRequestTests.InvalidRequests())
-                Assert.True((await harness.Client.CallAsync("render_view", Arguments(invalid))).IsError == true);
+            {
+                var refused = await harness.Client.CallAsync("render_view", Arguments(invalid));
+                Assert.True(refused.IsError == true, WireText(refused));
+            }
             var missing = Arguments(NativeRenderRequestTests.Json); missing.Remove("nativeRequestJson");
-            Assert.True((await harness.Client.CallAsync("render_view", missing)).IsError == true);
+            var missingResult = await harness.Client.CallAsync("render_view", missing);
+            Assert.True(missingResult.IsError == true, WireText(missingResult));
             Assert.Equal(0, host.Entries);
             session.Create(Path.Combine(directory, "analytic.map.json"), "analytic", "Analytic", -32, -32, 32, 32);
-            Assert.True((await harness.Client.CallAsync("render_view", Arguments(NativeRenderRequestTests.Json))).IsError == true);
+            var analytic = await harness.Client.CallAsync("render_view", Arguments(NativeRenderRequestTests.Json));
+            Assert.True(analytic.IsError == true, WireText(analytic));
             Assert.Equal(0, host.Entries);
         }
         finally { Directory.Delete(directory, true); }
@@ -90,6 +95,7 @@ public sealed partial class NativeMapCaptureWireTests
         using var refused = JsonDocument.Parse(JsonSerializer.Serialize(refusal, NativeJson.Options));
         Assert.Equal(JsonValueKind.Null, refused.RootElement.GetProperty("focus").ValueKind); Assert.Equal("Unresolved", refusal.FocusSource);
     }
+    static string WireText(CallToolResult result) => string.Join(" | ", result.Content.OfType<TextContentBlock>().Select(block => block.Text));
     static void Keys(JsonElement value, string names) => Assert.Equal(names.Split(' ').Order(StringComparer.Ordinal), value.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
     static void Point(JsonElement p) { Keys(p, "frame local"); Keys(p.GetProperty("frame"), "x z"); Keys(p.GetProperty("local"), "x y z"); }
     static void Scope(JsonElement s) { Keys(s, "frame min max spaceIds channels motionPaddingMetres"); Keys(s.GetProperty("frame"), "x z"); Keys(s.GetProperty("min"), "x y z"); Keys(s.GetProperty("max"), "x y z"); }

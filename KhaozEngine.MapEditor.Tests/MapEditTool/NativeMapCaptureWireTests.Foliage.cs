@@ -56,9 +56,9 @@ public sealed partial class NativeMapCaptureWireTests
                 return prepared;
             };
             var first = await harness.Client.CallAsync("render_view", Arguments(FocusRequest(5)));
-            Assert.True(first.IsError != true, string.Join(" | ", first.Content.OfType<TextContentBlock>().Select(b => b.Text)));
+            Assert.True(first.IsError != true, WireText(first));
             var second = await harness.Client.CallAsync("render_view", Arguments(FocusRequest(0)));
-            Assert.True(second.IsError != true, string.Join(" | ", second.Content.OfType<TextContentBlock>().Select(b => b.Text)));
+            Assert.True(second.IsError != true, WireText(second));
             Assert.Equal(2, submissions);
         }
         finally { Directory.Delete(dir, true); }

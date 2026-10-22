@@ -30,7 +30,7 @@ public sealed partial class NativeMapCaptureWireTests
             string policyPath = Path.Combine(dir, "policy.json"); File.WriteAllText(policyPath, NativeRenderMaterialSchemaTests.PolicyJson());
             await using var harness = await McpWire.StartAsync(policyPath);
             var opened = await harness.Client.CallAsync("map_open", new Dictionary<string, object?> { ["path"] = path }); Assert.False(opened.IsError == true);
-            var output = await harness.Client.CallAsync("render_view", Arguments(NativeRenderRequestTests.Json)); Assert.False(output.IsError == true);
+            var output = await harness.Client.CallAsync("render_view", Arguments(NativeRenderRequestTests.Json)); Assert.False(output.IsError == true, WireText(output));
             var text = Assert.IsType<TextContentBlock>(output.Content[0]); var image = Assert.IsType<ImageContentBlock>(output.Content[1]);
             using var json = JsonDocument.Parse(text.Text); var root = json.RootElement;
             Assert.Equal("Incomplete", root.GetProperty("status").GetString()); Assert.True(root.GetProperty("capped").GetBoolean());
@@ -70,8 +70,8 @@ public sealed partial class NativeMapCaptureWireTests
                 if (request.StyleId == "windy") { AssertSubmittedFocus(scene, request); submitted++; }
                 else Assert.Empty(scene.FoliageUniformsForTests.ToArray());
             });
-            var first = await harness.Client.CallAsync("render_view", Arguments(FocusRequest(5))); Assert.False(first.IsError == true);
-            var second = await harness.Client.CallAsync("render_view", Arguments(FocusRequest(0))); Assert.False(second.IsError == true);
+            var first = await harness.Client.CallAsync("render_view", Arguments(FocusRequest(5))); Assert.False(first.IsError == true, WireText(first));
+            var second = await harness.Client.CallAsync("render_view", Arguments(FocusRequest(0))); Assert.False(second.IsError == true, WireText(second));
             Assert.True(submitted >= 2);
             using var a = JsonDocument.Parse(((TextContentBlock)first.Content[0]).Text);
             using var b = JsonDocument.Parse(((TextContentBlock)second.Content[0]).Text);
@@ -80,8 +80,8 @@ public sealed partial class NativeMapCaptureWireTests
             Assert.Equal(0, b.RootElement.GetProperty("focus").GetProperty("local").GetProperty("x").GetDouble());
             var left = ImageRgba.Decode(((ImageContentBlock)first.Content[1]).DecodedData.ToArray()).Pixels;
             var right = ImageRgba.Decode(((ImageContentBlock)second.Content[1]).DecodedData.ToArray()).Pixels;
-            var bareFirst = await harness.Client.CallAsync("render_view", Arguments(FocusRequest(5, "bare"))); Assert.False(bareFirst.IsError == true);
-            var bareSecond = await harness.Client.CallAsync("render_view", Arguments(FocusRequest(0, "bare"))); Assert.False(bareSecond.IsError == true);
+            var bareFirst = await harness.Client.CallAsync("render_view", Arguments(FocusRequest(5, "bare"))); Assert.False(bareFirst.IsError == true, WireText(bareFirst));
+            var bareSecond = await harness.Client.CallAsync("render_view", Arguments(FocusRequest(0, "bare"))); Assert.False(bareSecond.IsError == true, WireText(bareSecond));
             var bareLeft = ImageRgba.Decode(((ImageContentBlock)bareFirst.Content[1]).DecodedData.ToArray()).Pixels;
             var bareRight = ImageRgba.Decode(((ImageContentBlock)bareSecond.Content[1]).DecodedData.ToArray()).Pixels;
             int foliagePixels = 0, propPixels = 0;

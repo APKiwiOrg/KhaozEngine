@@ -181,6 +181,11 @@ public sealed class FrameViewConsumerSweepTests
             "the resolve reprojects with the unjittered views, the jitter handed separately"),
         new("Scene3D.Foliage.cs", "MetresPerPixel(", 1, Snapshot + @"\.Projection\b", CpuForbidden,
             "the foliage pixel scale"),
+        // R-GPU-1 / T8-R1. Exactly two prepared cascade shader transforms share the frozen cascade frame UBO.
+        // Both anchor at set 3. The opaque pipeline's material gap is empty, as the reflected-layout guard proves.
+        new("Rendering/FoliageShadowRenderer.Prepared.cs", "ShaderSources.PreparedFoliage(", 2,
+            @"^\s*ShaderSources\.FoliageDepthVert,\s*3\s*$", CpuForbidden,
+            "opaque and cutout prepared depth share light raster and unjittered camera wind-fade matrices"),
         new("Scene3D.FoliageShadows.cs", "_foliageShadowRenderer.UploadCascades(", 1,
             Snapshot + @"\.ViewProjection\b", CpuForbidden,
             "camera depth for cascade foliage wind fade, independent of the light projection"),

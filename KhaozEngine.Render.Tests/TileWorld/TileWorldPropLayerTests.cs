@@ -63,31 +63,24 @@ public class TileWorldPropLayerTests
         Assert.Empty(scene.PropMeshLoads);
     }
 
-    [Theory]
-    [InlineData(RoofVisibility.Interior)]
-    [InlineData(RoofVisibility.AlwaysHidden)]
-    public void Roof_archetypes_cannot_join_a_prop_layer_that_bypasses_visibility(RoofVisibility mode)
+    [Fact]
+    public void Mixed_roof_and_non_roof_layer_is_refused_before_uploading()
     {
-        TileWorldDocument doc = TileRenderTestData.HouseWorld();
-        TilePropLayerDefinition roofs = Trees() with
-        {
-            Id = "roofs",
-            ArchetypeIds = new HashSet<string>(StringComparer.Ordinal) { "roof_flat" },
-        };
-
-        ArgumentException error = Assert.Throws<ArgumentException>(() =>
-            TileWorldPropClusters.Validate(TileRenderTestData.Catalogs, new[] { roofs }));
-        Assert.Contains("roof_flat", error.Message, StringComparison.Ordinal);
-
         var scene = new RecordingTileWorldScene();
-        using var view = new TileWorldView(scene, doc, TileRenderTestData.Catalogs, new GreyboxMeshResolver());
-        view.LoadRegion(TileRenderTestData.Region);
-        view.RoofMode = mode;
-        view.Observer = new TileCoord(TileRenderTestData.HouseMinX, TileRenderTestData.HouseMinZ, 0);
-        view.Draw(Vector3.Zero);
+        TilePropLayerDefinition mixed = Trees() with
+        {
+            Id = "mixed-buildings",
+            ArchetypeIds = new HashSet<string>(StringComparer.Ordinal) { "roof_flat", "wall" },
+        };
+        ArgumentException error = Assert.Throws<ArgumentException>(() =>
+            new TileWorldView(scene, TileRenderTestData.HouseWorld(), TileRenderTestData.Catalogs,
+                new GreyboxMeshResolver(), new TileWorldViewOptions { PropLayers = new[] { mixed } }));
 
-        Assert.DoesNotContain(scene.PropDraws.SelectMany(draw => draw.Placements),
-            placement => placement.Id == "roof_flat");
+        Assert.Contains("mixed-buildings", error.Message, StringComparison.Ordinal);
+        Assert.Contains("roof_flat", error.Message, StringComparison.Ordinal);
+        Assert.Contains("wall", error.Message, StringComparison.Ordinal);
+        Assert.Empty(scene.MaterialLoads);
+        Assert.Empty(scene.PropMeshLoads);
     }
 
     [Fact]

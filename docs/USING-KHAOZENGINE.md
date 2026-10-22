@@ -8637,7 +8637,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.11.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.12.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -9062,7 +9062,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.11.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.12.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9861,7 +9861,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.11.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.12.0" />
 ```
 
 ```csharp
@@ -12235,8 +12235,8 @@ roofs the rule takes off are queued through `ITileWorldScene.DrawShadowOnlyProps
 record depth for the key light and draw no colour, and the room under them stays shaded. Before this they never
 reached the scene at all and the sun landed on the interior floor of the building the player was standing in.
 `LastShadowOnlyProps` counts them, apart from `LastDrawnProps`, which stays the VISIBLE total. The same focus
-and `PropDrawRadius` cull both passes, so a roof too far away to draw is too far away to cast either, and
-silhouettes and target outlines are unchanged: a hidden roof still draws no hull.
+and `PropDrawRadius` cull both ordinary passes. Roof layers use their own `DrawRadius` for colour and shadows,
+with the layer policy described below. A roof outside its applicable radius casts nothing, and silhouettes and target outlines are unchanged: a hidden roof still draws no hull.
 
 The fill is bounded at `TileWorldView.MaxInteriorTiles` (4096). A world that flags a whole region indoors by
 mistake would otherwise walk tens of thousands of tiles on the frame the observer steps into it, so the walk
@@ -12325,13 +12325,30 @@ var regions = new TileRegionResidency(
 ```
 
 Each definition owns a disjoint, non-empty archetype set. The view validates finite distances, unique layer IDs,
-known non-roof archetypes, and that LOD and HLOD do not exceed the draw radius. Roof archetypes are rejected so
-they stay on the ordinary path governed by `RoofVisibility`. When HLOD is enabled, its positive distance must
+known archetypes, and that LOD and HLOD do not exceed the draw radius. Each layer selects either only catalog
+roofs or no roofs. A mixed layer fails before upload and names both kinds. Roof layers cannot enable
+`CutInsideInteriors`. When HLOD is enabled, its positive distance must
 also exceed `LodDistance`. A selected object is removed from ordinary prop submission and
 appears in exactly one `TilePropLayerSnapshot`, so it cannot double-draw. `TileRegionProps` is an immutable,
 generation-tagged region-plane snapshot. It carries object IDs and detached placements in stable order. Worker
 builds read that snapshot and resolved CPU mesh data only. They never read the live document, overrides, resolver
 caches or scene.
+
+A roof layer preserves `RoofVisibility` through the same observer, plane and footprint predicate as ordinary
+roofs. Its snapshots retain authored object IDs, planes and roof footprints for each presentation generation.
+Visible individuals use the normal layer fades and LODs. Hidden individuals submit shadow-only with the same
+transforms and fades when `CastsShadows` is true. All-visible merged clusters draw normally. All-hidden clusters
+submit merged shadow-only. A partly hidden cluster never submits merged colour. It falls back to resident
+individuals without the HLOD fade floor, or to merged shadow-only if individuals are unavailable. Roof layers
+retain their merged clusters in Decor, and queue neither colour nor shadows beyond `DrawRadius`.
+
+For long-distance buildings, select walls and roofs into separate layers, each with `DrawRadius = 576`,
+`LodDistance = 0`, `HlodDistance = 192`, `HlodCrossfadeWidth = 32`, `HlodWeldCell = 0`, `CastsShadows = true`
+and `CutInsideInteriors = false`. Zero weld cell merges geometry without decimating the straight edges.
+`LastDrawnProps` includes visible layer placements, while `LastShadowOnlyProps` includes hidden roof-layer
+placements. A merged handle counts its represented placements once, including during a complementary crossfade.
+Indoor detection, roof links and interior-cut source geometry still read the authored document independently
+of the drawing path. With no roof layer, ordinary roofs retain `PropDrawRadius` and the editor profile is unchanged.
 
 | Stage | Range | Representation |
 |---|---:|---|
@@ -17864,7 +17881,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.11.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.12.0" />
 ```
 
 ```csharp
@@ -17900,7 +17917,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.11.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.12.0" />
 ```
 
 ```csharp
@@ -18144,7 +18161,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.11.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.12.0" />
 ```
 
 ```csharp
@@ -22515,7 +22532,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.11.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.12.0" />
 </ItemGroup>
 ```
 

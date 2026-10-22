@@ -264,7 +264,13 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   generation, a cluster area and its `PropLayer`. It performs the pure `PropHlod` merge on a worker with no GPU
   access. `Apply(key, build)`, `Draw(focus)`, `Draw(focus, filter)`, `Invalidate(key)` and `Unload(key)` belong on
   the scene thread. Apply
-  discards stale generations and results completed after unload. An initial HLOD failure retries three times,
+  discards stale generations and results completed after unload.
+  `DrawWithVisibility(focus, IPropClusterVisibility)` routes hidden placements into shadow-only submission with
+  the same transforms, LOD and fades. The visibility source retains metadata for both generations reported by
+  `PropClusterDrawState`. A partly hidden merged cluster falls back to resident individuals without its HLOD fade
+  floor, or merged shadow-only when individuals are unavailable. All-hidden merged geometry keeps its shadow,
+  subject to `CastsShadows`. The returned `PropClusterDrawCounts` counts represented placements, with each
+  complementary individual and merged pair counted once. An initial HLOD failure retries three times,
   logs once for that key and generation, and retains individual props. A rebuild failure keeps the last accepted
   merged handle while adopting the failed request's current individual placements and layer. A successful
   replacement uploads first and retires the old handle after the new generation is accepted. `MergeStats` reports

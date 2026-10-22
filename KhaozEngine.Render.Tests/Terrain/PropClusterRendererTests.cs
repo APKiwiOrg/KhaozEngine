@@ -485,7 +485,7 @@ namespace KhaozEngine.Tests.Terrain
                 UnloadCount++;
             }
 
-            public void DrawProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus,
+            public int DrawProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus,
                                   float dissolveFloor)
             {
                 if (placements.Count > 0)
@@ -493,6 +493,7 @@ namespace KhaozEngine.Tests.Terrain
                     LastDrawX = placements[0].X;
                     DrawCount++;
                 }
+                return placements.Count;
             }
 
             public void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve, bool invertShadowDissolve)

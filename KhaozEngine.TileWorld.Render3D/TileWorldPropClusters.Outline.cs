@@ -10,7 +10,7 @@ namespace KhaozEngine.TileWorld;
 
 public sealed partial class TileWorldPropClusters
 {
-    readonly Dictionary<PropClusterKey, SortedDictionary<long, TilePropLayerSnapshot>> _outlineSnapshots = new();
+    readonly Dictionary<PropClusterKey, SortedDictionary<long, TilePropLayerSnapshot>> _presentationSnapshots = new();
     readonly SinglePlacementList _outlinePlacement = new();
     MeshHandle? _outlineHlodMesh;
     PropClusterKey _outlineHlodKey;
@@ -28,7 +28,7 @@ public sealed partial class TileWorldPropClusters
             PropClusterKey key = Key(item.Key, regionProps.Region, regionProps.Plane);
             if (_clusterOwner is null || !_clusterOwner.TryGetDrawState(key, focus, out PropClusterDrawState state))
                 return true;
-            if (!_outlineSnapshots.TryGetValue(key,
+            if (!_presentationSnapshots.TryGetValue(key,
                 out SortedDictionary<long, TilePropLayerSnapshot>? generations)) return true;
 
             MeshOutlineGroup group = _scene.BeginMeshOutline(color, widthPixels, occlusion);
@@ -87,19 +87,19 @@ public sealed partial class TileWorldPropClusters
                 state.MergedComplement, false);
     }
 
-    void RememberOutlineSnapshot(PropClusterKey key, long generation, TilePropLayerSnapshot snapshot)
+    void RememberPresentationSnapshot(PropClusterKey key, long generation, TilePropLayerSnapshot snapshot)
     {
-        if (!_outlineSnapshots.TryGetValue(key, out SortedDictionary<long, TilePropLayerSnapshot>? generations))
+        if (!_presentationSnapshots.TryGetValue(key, out SortedDictionary<long, TilePropLayerSnapshot>? generations))
         {
             generations = new SortedDictionary<long, TilePropLayerSnapshot>();
-            _outlineSnapshots.Add(key, generations);
+            _presentationSnapshots.Add(key, generations);
         }
         generations[generation] = snapshot;
     }
 
-    void PruneOutlineSnapshots(Vector3 focus)
+    void PrunePresentationSnapshots(Vector3 focus)
     {
-        foreach (KeyValuePair<PropClusterKey, SortedDictionary<long, TilePropLayerSnapshot>> item in _outlineSnapshots)
+        foreach (KeyValuePair<PropClusterKey, SortedDictionary<long, TilePropLayerSnapshot>> item in _presentationSnapshots)
         {
             if (item.Value.Count <= 2) continue;
             long latest = LastKey(item.Value);
@@ -119,12 +119,12 @@ public sealed partial class TileWorldPropClusters
         }
     }
 
-    void ForgetOutlineSnapshots(RegionCoord region, int plane)
+    void ForgetPresentationSnapshots(RegionCoord region, int plane)
     {
         var remove = new List<PropClusterKey>();
-        foreach (PropClusterKey key in _outlineSnapshots.Keys)
+        foreach (PropClusterKey key in _presentationSnapshots.Keys)
             if (key.X == region.Rx && key.Z == region.Rz && key.Plane == plane) remove.Add(key);
-        foreach (PropClusterKey key in remove) _outlineSnapshots.Remove(key);
+        foreach (PropClusterKey key in remove) _presentationSnapshots.Remove(key);
         if (_outlineHlodCached && _outlineHlodKey.X == region.Rx
             && _outlineHlodKey.Z == region.Rz && _outlineHlodKey.Plane == plane)
             ClearOutlineHlodMesh();
@@ -133,7 +133,7 @@ public sealed partial class TileWorldPropClusters
     void ClearOutlineState()
     {
         ClearOutlineHlodMesh();
-        _outlineSnapshots.Clear();
+        _presentationSnapshots.Clear();
     }
 
     internal void ClearOutlineSelection() => ClearOutlineHlodMesh();

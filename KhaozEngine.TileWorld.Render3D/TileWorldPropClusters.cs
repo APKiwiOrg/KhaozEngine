@@ -76,22 +76,28 @@ public sealed partial class TileWorldPropClusters : IDisposable
                     $"Prop layer '{definition.Id}' distances must satisfy LOD < HLOD <= draw radius.");
             var archetypeIds = new string[definition.ArchetypeIds.Count];
             int archetypeIndex = 0;
+            string? roofId = null, ordinaryId = null;
             foreach (string archetypeId in definition.ArchetypeIds)
             {
                 TileObjectArchetype? archetype = catalogs.Archetype(archetypeId);
                 if (string.IsNullOrWhiteSpace(archetypeId) || archetype is null)
                     throw new ArgumentException($"Prop layer '{definition.Id}' names unknown archetype '{archetypeId}'.",
                         nameof(definitions));
-                if (archetype.IsRoof)
-                    throw new ArgumentException(
-                        $"Prop layer '{definition.Id}' cannot select roof archetype '{archetypeId}'. Roofs must stay on the visibility-aware ordinary path.",
-                        nameof(definitions));
+                if (archetype.IsRoof) roofId ??= archetypeId;
+                else ordinaryId ??= archetypeId;
                 if (!selected.TryAdd(archetypeId, i))
                     throw new ArgumentException($"Archetype '{archetypeId}' is selected by more than one prop layer.",
                         nameof(definitions));
                 archetypeIds[archetypeIndex++] = archetypeId;
             }
-            layers[i] = new ValidatedLayer(definition, archetypeIds);
+            if (roofId is not null && ordinaryId is not null)
+                throw new ArgumentException(
+                    $"Prop layer '{definition.Id}' mixes roof archetype '{roofId}' and non-roof archetype '{ordinaryId}'.",
+                    nameof(definitions));
+            if (roofId is not null && definition.CutInsideInteriors)
+                throw new ArgumentException($"Roof prop layer '{definition.Id}' cannot enable CutInsideInteriors.",
+                    nameof(definitions));
+            layers[i] = new ValidatedLayer(definition, archetypeIds, roofId is not null);
         }
         return new ValidatedLayers(layers, selected);
     }
@@ -108,7 +114,7 @@ public sealed partial class TileWorldPropClusters : IDisposable
         if (_layers.Length == 0)
             return raw with { Region = region, Plane = plane, Generation = generation };
 
-        var selected = new List<(long Id, PropPlacement Placement)>[_layers.Length];
+        var selected = new List<(long Id, PropPlacement Placement, TileRect Footprint)>[_layers.Length];
         for (int i = 0; i < selected.Length; i++) selected[i] = new();
         var ground = new List<(long Id, PropPlacement Placement)>();
         Split(raw.Ground, raw.GroundObjectIds, ground, selected);
@@ -116,12 +122,12 @@ public sealed partial class TileWorldPropClusters : IDisposable
         for (int i = 0; i < raw.Roofs.Count; i++)
         {
             long id = i < raw.RoofObjectIds.Count ? raw.RoofObjectIds[i] : 0;
+            TileRect footprint = i < raw.RoofFootprints.Count ? raw.RoofFootprints[i] : default;
             if (_archetypeLayers.TryGetValue(raw.Roofs[i].Id, out int layer) && id != 0)
             {
-                selected[layer].Add((id, raw.Roofs[i]));
+                selected[layer].Add((id, raw.Roofs[i], footprint));
                 continue;
             }
-            TileRect footprint = i < raw.RoofFootprints.Count ? raw.RoofFootprints[i] : default;
             roofs.Add((id, raw.Roofs[i], footprint));
         }
         ground.Sort(static (a, b) => a.Id.CompareTo(b.Id));
@@ -133,10 +139,12 @@ public sealed partial class TileWorldPropClusters : IDisposable
             selected[i].Sort(static (a, b) => a.Id.CompareTo(b.Id));
             var ids = new long[selected[i].Count];
             var placements = new PropPlacement[selected[i].Count];
+            var layerFootprints = new TileRect[selected[i].Count];
             for (int at = 0; at < selected[i].Count; at++)
             {
                 ids[at] = selected[i][at].Id;
                 placements[at] = selected[i][at].Placement;
+                layerFootprints[at] = selected[i][at].Footprint;
             }
             IReadOnlyList<long> frozenIds = Array.AsReadOnly(ids);
             IReadOnlyList<PropPlacement> frozenPlacements = Array.AsReadOnly(placements);
@@ -145,6 +153,9 @@ public sealed partial class TileWorldPropClusters : IDisposable
             {
                 Id = resources.Definition.Id,
                 ObjectIds = frozenIds,
+                IsRoofLayer = resources.IsRoofLayer,
+                Plane = plane,
+                RoofFootprints = Array.AsReadOnly(layerFootprints),
                 Placements = frozenPlacements,
                 Layer = resources.CreateLayer(frozenPlacements),
             });
@@ -181,14 +192,14 @@ public sealed partial class TileWorldPropClusters : IDisposable
 
     void Split(IReadOnlyList<PropPlacement> source, IReadOnlyList<long> ids,
                List<(long Id, PropPlacement Placement)> ordinary,
-               List<(long Id, PropPlacement Placement)>[] selected)
+               List<(long Id, PropPlacement Placement, TileRect Footprint)>[] selected)
     {
         for (int i = 0; i < source.Count; i++)
         {
             long id = i < ids.Count ? ids[i] : 0;
             if (_archetypeLayers.TryGetValue(source[i].Id, out int layer) && id != 0)
             {
-                selected[layer].Add((id, source[i]));
+                selected[layer].Add((id, source[i], default));
                 continue;
             }
             ordinary.Add((id, source[i]));
@@ -224,7 +235,7 @@ public sealed partial class TileWorldPropClusters : IDisposable
             foreach (IReadOnlyList<MeshHandle> handles in uploaded) _scene.UnloadPropMeshes(handles);
             throw;
         }
-        return new LayerResources(definition,
+        return new LayerResources(definition, validated.IsRoofLayer,
             new ReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>(full),
             lod.Count == 0 ? null : new ReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>(lod),
             new ReadOnlyDictionary<string, GltfMesh>(flat),
@@ -253,23 +264,25 @@ public sealed partial class TileWorldPropClusters : IDisposable
 
     internal sealed record ValidatedLayers(ValidatedLayer[] Layers, Dictionary<string, int> ArchetypeLayers);
 
-    internal sealed record ValidatedLayer(TilePropLayerDefinition Definition, string[] ArchetypeIds);
+    internal sealed record ValidatedLayer(TilePropLayerDefinition Definition, string[] ArchetypeIds, bool IsRoofLayer);
 
     sealed class LayerResources
     {
         readonly IReadOnlyList<IReadOnlyList<MeshHandle>> _uploadedLod;
         public TilePropLayerDefinition Definition { get; }
+        public bool IsRoofLayer { get; }
         public IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> Full { get; }
         public IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? Lod { get; }
         public IReadOnlyDictionary<string, GltfMesh> Flat { get; }
 
-        public LayerResources(TilePropLayerDefinition definition,
+        public LayerResources(TilePropLayerDefinition definition, bool isRoofLayer,
                               IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> full,
                               IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lod,
                               IReadOnlyDictionary<string, GltfMesh> flat,
                               IReadOnlyList<IReadOnlyList<MeshHandle>> uploadedLod)
         {
             Definition = definition;
+            IsRoofLayer = isRoofLayer;
             Full = full;
             Lod = lod;
             Flat = flat;

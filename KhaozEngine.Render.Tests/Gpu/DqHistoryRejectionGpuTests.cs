@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Numerics;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
@@ -9,6 +10,7 @@ using KhaozEngine.Render3D.Rendering;
 using KhaozEngine.Tests.Render3D;
 using Xunit;
 using Xunit.Abstractions;
+using static KhaozEngine.Render3D.Internal.FragmentPassResources;
 
 namespace KhaozEngine.Tests.Gpu;
 
@@ -146,8 +148,21 @@ public sealed class DqHistoryRejectionGpuTests(DqHistoryRejectionScene fixture, 
                 .Replace($"layout(set=0, binding={(entry == TemporalResolveEntry.Fused ? 9 : 12)}) uniform texture2D HistoryRejection;\n",
                     "", StringComparison.Ordinal);
             using var shaders = device.Factory.CreateShadersFromSpirv(ShaderSources.FullscreenVert, frozen);
-            IGpuResourceLayout layout = entry == TemporalResolveEntry.Fused ? renderer.ResolveLayout
-                : renderer.SplitResolveForTests!.LayoutsForTests.Accumulate;
+            // The frozen shader owns the pre-change layout too. Metal requires an exact reflected shape.
+            using var layout = device.Factory.CreateResourceLayout(entry == TemporalResolveEntry.Fused
+                ? new GpuResourceLayoutDescription(T("SceneColor"), T("OpaqueColor"), T("SceneDepth"), T("MotionTex"),
+                    T("PrevDepth"), T("HistoryColor"), T("HistoryConfidence"), S("LinearClamp"), U("Resolve"))
+                : new GpuResourceLayoutDescription(T("SceneColor"), T("SceneDepth"), T("MotionTex"), T("PrevDepth"),
+                    T("HistoryColor"), T("HistoryConfidence"), T("PreparedColour"), T("PreparedSurface"),
+                    T("PreparedExpected"), T("PreparedEdge"), S("LinearClamp"), U("Resolve")));
+            using var clamp = device.Factory.CreateSampler(GpuSamplerDescription.Linear);
+            using var buffer = device.Factory.CreateBuffer(new GpuBufferDescription(TemporalResolveUniforms.SizeInBytes,
+                GpuBufferUsage.UniformBuffer));
+            IGpuTexture?[]? prepared = entry == TemporalResolveEntry.Split
+                ? (IGpuTexture?[])typeof(TemporalSplitResolve).GetField("_targets", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .GetValue(renderer.SplitResolveForTests)! : null;
+            using var oldRead0 = FrozenSet(0);
+            using var oldRead1 = FrozenSet(1);
             using var pipeline = TemporalResolveRenderer.Fullscreen(device.Factory, shaders, layout,
                 new GpuOutputDescription(null, TemporalFormats.HistoryColor, TemporalFormats.HistoryConfidence));
             var lens = Matrix4x4.CreateOrthographic(8, 4, .1f, 100);
@@ -161,13 +176,10 @@ public sealed class DqHistoryRejectionGpuTests(DqHistoryRejectionScene fixture, 
                     var uniforms = TemporalResolveMath.BuildUniforms(view, view, new Vector2(.25f, -.25f), w, h,
                         w * scale, h * scale, historyValid: true, screenFixedBackground: true);
                     using var native = device.Factory.CreateCommandList();
-                    var commands = new RecordingGpuCommandList(native);
-                    IGpuResourceSet? accumulationSet = null;
-                    commands.UniformWindowsOfSet = set => { accumulationSet = set; return Array.Empty<UniformWindow>(); };
                     using (GpuRecording.Open(device, native, "Current zero-mask accumulation"))
                     {
-                        renderer.PrepareUniforms(commands, uniforms, TemporalResolveMath.BuildDepthStore(lens));
-                        renderer.Run(commands, history);
+                        renderer.PrepareUniforms(native, uniforms, TemporalResolveMath.BuildDepthStore(lens));
+                        renderer.Run(native, history);
                     }
                     device.Submit(native);
                     device.WaitForIdle();
@@ -180,9 +192,10 @@ public sealed class DqHistoryRejectionGpuTests(DqHistoryRejectionScene fixture, 
                     using var old = device.Factory.CreateCommandList();
                     using (GpuRecording.Open(device, old, "Frozen pre-S3.10 accumulation on identical inputs"))
                     {
+                        old.UpdateBuffer(buffer, 0, in uniforms);
                         old.SetFramebuffer(history.ResolveFramebuffer(history.WriteIndex));
                         old.SetPipeline(pipeline);
-                        old.SetGraphicsResourceSet(0, entry == TemporalResolveEntry.Fused ? renderer.CurrentSet! : accumulationSet!);
+                        old.SetGraphicsResourceSet(0, history.ReadIndex == 0 ? oldRead0 : oldRead1);
                         old.Draw(3);
                     }
                     device.Submit(old);
@@ -196,6 +209,11 @@ public sealed class DqHistoryRejectionGpuTests(DqHistoryRejectionScene fixture, 
             }
             finally { renderer.ReleaseSets(retired); history.ReleaseTargets(retired); }
 
+            IGpuResourceSet FrozenSet(int read) => device.Factory.CreateResourceSet(entry == TemporalResolveEntry.Fused
+                ? new GpuResourceSetDescription(layout, scene, scene, depth, motion, history.PreviousDepth(read),
+                    history.Color(read), history.Confidence(read), clamp, buffer)
+                : new GpuResourceSetDescription(layout, scene, depth, motion, history.PreviousDepth(read),
+                    history.Color(read), history.Confidence(read), prepared![0]!, prepared[1]!, prepared[2]!, prepared[3]!, clamp, buffer));
             IGpuTexture Input(GpuPixelFormat format) => device.Factory.CreateTexture(
                 GpuTextureDescription.Texture2D(w, h, format, GpuTextureUsage.Sampled));
         }

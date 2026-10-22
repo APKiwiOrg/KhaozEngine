@@ -134,10 +134,15 @@ namespace KhaozEngine.Render3D
                 return (_post, _res);
             }
             if (!_resolveThisRender)
-                return (_laterRenderPost ??= new PixelPostProcess(_gd, _res.PingAFB.Outputs, _targetOutput), _res);
+            {
+                _laterRenderPost ??= new PixelPostProcess(_gd, _res.PingAFB.Outputs, _targetOutput);
+                _laterRenderPost.Profiling = _profiling;
+                return (_laterRenderPost, _res);
+            }
 
             FrameView current = _currentFrameView;
             _temporalResolve ??= new TemporalResolveRenderer(_gd);
+            _temporalResolve.Profiling = _profiling;
             _temporalPost ??= new TemporalPostTargets(_gd);
             // New targets hold nothing. A new display or internal size already reset the history through the frame key,
             // so this catches a replacement the key cannot see, and the resolve never reads new targets as history.
@@ -182,13 +187,16 @@ namespace KhaozEngine.Render3D
         /// </summary>
         void CaptureOpaqueForTemporal(IGpuCommandList cl)
         {
-            if (!_resolveThisRender) return;
+            if (!_resolveThisRender) { SkipProfilePass(cl, "copy.opaque-temporal"); return; }
             DrawBackground(cl);
             // A framebuffer change ends the model pass, so a clear with no draw after it (a Solid background with
             // nothing opaque) lands before the copy. A blit alone leaves a clear-only pass's clear owed.
-            cl.SetFramebuffer(_res.ColorDepthFB);
-            _temporalPost!.CopyOpaque(cl);
-            cl.SetFramebuffer(_res.ModelFB);
+            using (ProfilePass(cl, "copy.opaque-temporal", 0))
+            {
+                cl.SetFramebuffer(_res.ColorDepthFB);
+                _temporalPost!.CopyOpaque(cl);
+                cl.SetFramebuffer(_res.ModelFB);
+            }
         }
 
         /// <summary>
@@ -222,12 +230,19 @@ namespace KhaozEngine.Render3D
         /// on, the outline pass's one draw runs first on the internal images the resolve reads.</summary>
         void RunTemporalResolve(IGpuCommandList cl)
         {
-            if (!_resolveThisRender) return;
-            if (PixelPostProcess.TemporalOutlineRuns(Post))
+            if (!_resolveThisRender)
             {
-                _post.RunTemporalOutline(cl, _res, _temporalPost!.OpaqueColor, _retired);
-                _frameStats.DrawCalls += PixelPostProcess.TemporalOutlineDrawCalls;
+                SkipProfilePass(cl, "temporal.outline-inputs");
+                SkipProfilePass(cl, "temporal.resolve");
+                SkipProfilePass(cl, "temporal.depth-store");
+                return;
             }
+            using (ProfilePass(cl, "temporal.outline-inputs", executed: PixelPostProcess.TemporalOutlineRuns(Post)))
+                if (PixelPostProcess.TemporalOutlineRuns(Post))
+                {
+                    _post.RunTemporalOutline(cl, _res, _temporalPost!.OpaqueColor, _retired);
+                    _frameStats.DrawCalls += PixelPostProcess.TemporalOutlineDrawCalls;
+                }
             _temporalResolve!.Run(cl, TemporalHistory);
             _frameStats.DrawCalls += TemporalResolveRenderer.DrawCallsPerFrame;
         }

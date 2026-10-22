@@ -1518,14 +1518,17 @@ namespace KhaozEngine.Render3D
                     // incomplete one. Safe because FramePass.BlobShadow disables the main-pass receiver gate and
                     // never samples NormalTex. The MAIN decal pass, which sits after every normal writer, takes
                     // ResolveDepthNormal instead.
-                    _res.ResolveDepth(cl);
+                    using (ProfilePass(cl, "copy.blob-depth-resolve", executed: _res.Msaa)) _res.ResolveDepth(cl);
                     // Batched decal pass: one instanced draw per blend run, so count the runs it issued (not a flat 1).
                     // Blob-shadow decals are legacy Solid fills (no pattern/energy/feather), so time+quality are inert here.
                     // FramePass.BlobShadow: runs BEFORE the skinned draws and resolves only depth (not the normal
                     // target the reject reads), and it reads its OWN frame-UBO slot rather than a shared range (#483).
-                    _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, vp, EffectTimeSeconds, DecalQuality, Post.Hdr.Enabled, Rendering.GroundDecalRenderer.FramePass.BlobShadow, _frameOrigin, RelativeDecals(_shadowDecals));
-                    cl.SetFramebuffer(_res.ModelFB);
-                    _model.BindPass(cl);
+                    using (ProfilePass(cl, "effects.blob-decals", 0))
+                    {
+                        _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, vp, EffectTimeSeconds, DecalQuality, Post.Hdr.Enabled, Rendering.GroundDecalRenderer.FramePass.BlobShadow, _frameOrigin, RelativeDecals(_shadowDecals));
+                        cl.SetFramebuffer(_res.ModelFB);
+                        _model.BindPass(cl);
+                    }
                 }
             }
 
@@ -1562,7 +1565,7 @@ namespace KhaozEngine.Render3D
             // reconstruct the surface, the normal so a void-fallback decal can tell a terrain dip from the top of a
             // cliff face), and before the post edge pass which also samples them. Every normal writer binds ModelFB
             // and is complete by this line. Nothing after it does. No-op when not multisampled.
-            _res.ResolveDepthNormal(cl);
+            using (ProfilePass(cl, "copy.depth-normal-resolve", executed: _res.Msaa)) _res.ResolveDepthNormal(cl);
 
             // Background pass, before the decals (Scene3D.TemporalResolve.cs). When this render resolves it already ran,
             // before the transparent model-pass writers, so the opaque-only copy holds it.
@@ -1571,11 +1574,12 @@ namespace KhaozEngine.Render3D
             // Ground decals: after the model pass wrote depth (meshes + textured billboards + beams), paint the
             // queued decals onto the reconstructed surface into ColorTex, BEFORE post - so they conform to the
             // ground, are occluded by geometry (Y-band), and flow through the pixel post like the meshes.
-            if (_decals.Count > 0)
-                // Batched decal pass: one instanced draw per blend run (see GroundDecalRenderer), so add the run count.
-                // FramePass.Main: after ResolveDepthNormal, so the normal target carries the model pass's dynamic tags -
-                // reject skinned pixels so decals stay off characters (#235) - and it reads its OWN UBO slot (#483).
-                _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, vp, EffectTimeSeconds, DecalQuality, Post.Hdr.Enabled, Rendering.GroundDecalRenderer.FramePass.Main, _frameOrigin, RelativeDecals(_decals));
+            using (ProfilePass(cl, "effects.decals", executed: _decals.Count > 0))
+                if (_decals.Count > 0)
+                    // Batched decal pass: one instanced draw per blend run (see GroundDecalRenderer), so add the run count.
+                    // FramePass.Main: after ResolveDepthNormal, so the normal target carries the model pass's dynamic tags -
+                    // reject skinned pixels so decals stay off characters (#235) - and it reads its OWN UBO slot (#483).
+                    _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, vp, EffectTimeSeconds, DecalQuality, Post.Hdr.Enabled, Rendering.GroundDecalRenderer.FramePass.Main, _frameOrigin, RelativeDecals(_decals));
 
             // Animated water (Rendering gap #5): after the sky + ground decals, sampling the resolved scene depth
             // (already valid via the ResolveDepthNormal call above the sky pass) for the shore fade. Depth test ON (so
@@ -1583,19 +1587,20 @@ namespace KhaozEngine.Render3D
             // linear-depth MRT the outline pass reads below) - see Rendering.WaterRenderer / ShaderSources.WaterVert
             // for the full reasoning. Fully skipped when nothing is queued, so a frame with no DrawWater call
             // renders byte-identical to before this pass existed.
-            if (_waterPlanes.Count > 0)
-            {
-                _water.Draw(cl, _res, RelativeWaterPlanes(), vp, displayVp,
-                    Post.LightDirection, Post.LightColor, eye, Post.Water, Post.Sky, EffectTimeSeconds, _frameOrigin, Post.Atmosphere.Enabled);
-                _frameStats.DrawCalls++;
-                // The ocean FFT's remaining GPU drain (the one a frame pays to PRIME its cascades, since #398
-                // ping-ponged the per-frame one away) is a Submit+WaitForIdle stall, not draw-call encode cost, so
-                // it gets its own WaterSyncMs bucket (#374) rather than being misattributed to transparents. It no
-                // longer lands INSIDE this bracket: since #423 the prime runs in PrepareFrame, before the frame's
-                // list is even open, so there is nothing to carve out of transparentsMs - only to report. The water
-                // renderer times that exact span with its own Stopwatch (OceanFftProducer.LastStallMs).
-                if (EnableTiming) waterSyncMs = (float)_water.LastOceanCost.StallMs;
-            }
+            using (ProfilePass(cl, "water", executed: _waterPlanes.Count > 0))
+                if (_waterPlanes.Count > 0)
+                {
+                    _water.Draw(cl, _res, RelativeWaterPlanes(), vp, displayVp,
+                        Post.LightDirection, Post.LightColor, eye, Post.Water, Post.Sky, EffectTimeSeconds, _frameOrigin, Post.Atmosphere.Enabled);
+                    _frameStats.DrawCalls++;
+                    // The ocean FFT's remaining GPU drain (the one a frame pays to PRIME its cascades, since #398
+                    // ping-ponged the per-frame one away) is a Submit+WaitForIdle stall, not draw-call encode cost, so
+                    // it gets its own WaterSyncMs bucket (#374) rather than being misattributed to transparents. It no
+                    // longer lands INSIDE this bracket: since #423 the prime runs in PrepareFrame, before the frame's
+                    // list is even open, so there is nothing to carve out of transparentsMs - only to report. The water
+                    // renderer times that exact span with its own Stopwatch (OceanFftProducer.LastStallMs).
+                    if (EnableTiming) waterSyncMs = (float)_water.LastOceanCost.StallMs;
+                }
 
             // Modern particle sprites: after the sky + decals + water (so effects composite over water surfaces),
             // before the post chain, into ColorDepthFB with the depth test on (no write) so geometry occludes
@@ -1605,16 +1610,17 @@ namespace KhaozEngine.Render3D
             // samples that equal the background clear marker (Post.BackgroundColor red channel) so sprites never
             // dim against empty sky. Fully skipped when nothing is queued, so a frame with no DrawParticle call
             // renders byte-identical to before this pass existed.
-            if (_particleSprites.Count > 0)
-            {
-                BuildSortedParticles();
-                BillboardGeometry.CameraBasis(ActiveCamera.Forward, out Vector3 pRight, out Vector3 pUp);
-                _particleTexResolver ??= ResolveTextureByListIndex;
-                _frameStats.DrawCalls += _particleRenderer.Draw(cl, _res, vp, eye, pRight, pUp,
-                    EffectTimeSeconds, ParticleSoftFade, ParticleQuality, Post.BackgroundColor.R,
-                    CollectionsMarshal.AsSpan(_particleSorted), _particleTexResolver);
-                _frameStats.Instances += _particleSorted.Count;
-            }
+            using (ProfilePass(cl, "effects.particles", executed: _particleSprites.Count > 0))
+                if (_particleSprites.Count > 0)
+                {
+                    BuildSortedParticles();
+                    BillboardGeometry.CameraBasis(ActiveCamera.Forward, out Vector3 pRight, out Vector3 pUp);
+                    _particleTexResolver ??= ResolveTextureByListIndex;
+                    _frameStats.DrawCalls += _particleRenderer.Draw(cl, _res, vp, eye, pRight, pUp,
+                        EffectTimeSeconds, ParticleSoftFade, ParticleQuality, Post.BackgroundColor.R,
+                        CollectionsMarshal.AsSpan(_particleSorted), _particleTexResolver);
+                    _frameStats.Instances += _particleSorted.Count;
+                }
 
             // Depth-tested debug wire volumes (DebugDepthMode.DepthTested): drawn into ColorDepthFB after the sky +
             // decals + water, which still holds the opaque meshes' depth, so terrain/props occlude the buried parts.
@@ -1623,16 +1629,17 @@ namespace KhaozEngine.Render3D
             // fills every far-plane background pixel, and these lines don't write depth, so an earlier draw would be
             // painted over where a volume rises above the horizon. Flows through the post chain like the model pass.
             // The always-on-top variant instead feeds the post-pass line overlay below (_lineVerts). No-op when empty.
-            if (_depthLineVerts.Count > 0)
-            {
-                _depthLines.Draw(cl, vp, CollectionsMarshal.AsSpan(_depthLineVerts), _res.ColorDepthFB);
-                _frameStats.DrawCalls++;
-            }
+            using (ProfilePass(cl, "effects.depth-lines", executed: _depthLineVerts.Count > 0))
+                if (_depthLineVerts.Count > 0)
+                {
+                    _depthLines.Draw(cl, vp, CollectionsMarshal.AsSpan(_depthLineVerts), _res.ColorDepthFB);
+                    _frameStats.DrawCalls++;
+                }
 
             // Resolve the multisampled lit COLOUR into the single-sample target the post chain samples (after all
             // colour writers: geometry + decals + water). The encoded normal is NOT resolved here: it lands earlier,
             // with the depth, because the ground-decal pass reads it. No-op when not multisampled.
-            _res.ResolveColor(cl);
+            using (ProfilePass(cl, "copy.color-resolve", executed: _res.Msaa)) _res.ResolveColor(cl);
             // ColorTex now holds this frame's resolved colour: mark it so next frame's crossfade capture knows a real
             // previous frame exists (guards against sampling a blank target the frame right after a resize).
             _transitions.NoteFrameResolved();
@@ -1643,14 +1650,15 @@ namespace KhaozEngine.Render3D
             // pass is _post.Run's FIRST pass). Same camera basis + background marker as the particle pass. resRatio
             // (the full-res/offset-res divisor) matches EnsureDistortion's divisor so the fragment scales its
             // half/quarter-res gl_FragCoord to the full-res depth texel. Fully skipped when nothing is queued.
-            if (distortionActive && _res.DistortAllocated)
-            {
-                BillboardGeometry.CameraBasis(ActiveCamera.Forward, out Vector3 dRight, out Vector3 dUp);
-                float resRatio = DistortionQuality == DistortionQuality.Full ? 2f : 4f;
-                _frameStats.DrawCalls += _distortionRenderer.Draw(cl, _res, displayVp, eye, dRight, dUp,
-                    EffectTimeSeconds, ParticleSoftFade, DistortionQuality, Post.BackgroundColor.R, resRatio,
-                    RelativeDistortionSprites());
-            }
+            using (ProfilePass(cl, "effects.distortion", executed: distortionActive && _res.DistortAllocated))
+                if (distortionActive && _res.DistortAllocated)
+                {
+                    BillboardGeometry.CameraBasis(ActiveCamera.Forward, out Vector3 dRight, out Vector3 dUp);
+                    float resRatio = DistortionQuality == DistortionQuality.Full ? 2f : 4f;
+                    _frameStats.DrawCalls += _distortionRenderer.Draw(cl, _res, displayVp, eye, dRight, dUp,
+                        EffectTimeSeconds, ParticleSoftFade, DistortionQuality, Post.BackgroundColor.R, resRatio,
+                        RelativeDistortionSprites());
+                }
 
             // Pure encode cost now: the ocean-FFT prime stall this bracket used to swallow (issue #374) is paid in
             // PrepareFrame, outside the frame's list and outside this bracket, so there is nothing to subtract.
@@ -1666,35 +1674,39 @@ namespace KhaozEngine.Render3D
 
             // Filled overlay: rebind `target` and draw the accumulated translucent triangles over the post image,
             // BEFORE the lines so an outline on a fill reads crisp. Depth off, alpha blend, unjittered like picking.
-            if (_fillVerts.Count > 0)
-            {
-                _fills.Draw(cl, displayVp, CollectionsMarshal.AsSpan(_fillVerts), target);
-                _frameStats.DrawCalls++;
-            }
+            using (ProfilePass(cl, "display.fills", executed: _fillVerts.Count > 0))
+                if (_fillVerts.Count > 0)
+                {
+                    _fills.Draw(cl, displayVp, CollectionsMarshal.AsSpan(_fillVerts), target);
+                    _frameStats.DrawCalls++;
+                }
 
             // Debug overlay: rebind `target` and draw the accumulated lines over the post image, depth off, alpha
             // blend, unjittered so they line up with ScreenToGround picking.
-            if (_lineVerts.Count > 0)
-            {
-                _lines.Draw(cl, displayVp, CollectionsMarshal.AsSpan(_lineVerts), target);
-                _frameStats.DrawCalls++;
-            }
+            using (ProfilePass(cl, "display.lines", executed: _lineVerts.Count > 0))
+                if (_lineVerts.Count > 0)
+                {
+                    _lines.Draw(cl, displayVp, CollectionsMarshal.AsSpan(_lineVerts), target);
+                    _frameStats.DrawCalls++;
+                }
 
             // Billboards: after the line pass, additive first (glow) then alpha, same overlay framebuffer +
             // ViewProjection. Each rebinds `target` (no clear) and uploads its own vertex span. Additive is
             // order-independent (kept in submission order); the alpha stream is built back-to-front so overlapping
             // translucent billboards composite far-to-near regardless of the order the host queued them.
-            if (_billboardAdditive.Count > 0)
-            {
-                _billboards.Draw(cl, displayVp, CollectionsMarshal.AsSpan(_billboardAdditive), target, additive: true);
-                _frameStats.DrawCalls++;
-            }
+            using (ProfilePass(cl, "display.billboards-additive", executed: _billboardAdditive.Count > 0))
+                if (_billboardAdditive.Count > 0)
+                {
+                    _billboards.Draw(cl, displayVp, CollectionsMarshal.AsSpan(_billboardAdditive), target, additive: true);
+                    _frameStats.DrawCalls++;
+                }
             BuildSortedAlphaBillboards();
-            if (_billboardAlpha.Count > 0)
-            {
-                _billboards.Draw(cl, displayVp, CollectionsMarshal.AsSpan(_billboardAlpha), target, additive: false);
-                _frameStats.DrawCalls++;
-            }
+            using (ProfilePass(cl, "display.billboards-alpha", executed: _billboardAlpha.Count > 0))
+                if (_billboardAlpha.Count > 0)
+                {
+                    _billboards.Draw(cl, displayVp, CollectionsMarshal.AsSpan(_billboardAlpha), target, additive: false);
+                    _frameStats.DrawCalls++;
+                }
 
             // Screen-space teleport transition (blink / frozen-frame crossfade): a fullscreen pass over everything,
             // last so it masks the whole 3D frame. No-op (and byte-identical) when none is active.
@@ -1785,6 +1797,7 @@ namespace KhaozEngine.Render3D
         /// nothing is queued.</summary>
         void DrawTexturedBillboards(IGpuCommandList cl)
         {
+            using var profile = ProfilePass(cl, "effects.textured-billboards", executed: _texBillboardItems.Count > 0);
             if (_texBillboardItems.Count == 0) return;
 
             SortTexturedBillboardsBackToFront();
@@ -1847,6 +1860,7 @@ namespace KhaozEngine.Render3D
         /// queued.</summary>
         void DrawBeams(IGpuCommandList cl)
         {
+            using var profile = ProfilePass(cl, "effects.beams", executed: _beamItems.Count > 0);
             if (_beamItems.Count == 0) return;
 
             Vector3 viewDir = ActiveCamera.Forward;   // constant across the frame, matching the billboard basis
@@ -1872,6 +1886,7 @@ namespace KhaozEngine.Render3D
         /// queued.</summary>
         void DrawTrails(IGpuCommandList cl)
         {
+            using var profile = ProfilePass(cl, "effects.trails", executed: _trailItems.Count > 0);
             if (_trailItems.Count == 0) return;
 
             Vector3 viewDir = ActiveCamera.Forward;   // constant across the frame, matching the beam/billboard basis

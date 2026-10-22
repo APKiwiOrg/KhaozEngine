@@ -18,6 +18,12 @@ public sealed partial class Scene3D
         {
             _profiling = value is null ? null : new(value);
             _atmosphere.Profiling = _profiling;
+            _water.Profiling = _profiling;
+            _post.Profiling = _profiling;
+            _transitions.Profiling = _profiling;
+            _targetOutlines.Profiling = _profiling;
+            if (_temporalResolve is not null) _temporalResolve.Profiling = _profiling;
+            if (_laterRenderPost is not null) _laterRenderPost.Profiling = _profiling;
         }
     }
 
@@ -27,7 +33,7 @@ public sealed partial class Scene3D
 
     internal void RenderInternal(IGpuCommandList cl, int viewportW, int viewportH, IGpuFramebuffer target)
     {
-        _profiling?.Reset();
+        if (!_framePrepared) _profiling?.Reset();
         RenderCore(cl, viewportW, viewportH, target);
         _profiling?.ThrowIfFailed();
     }

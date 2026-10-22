@@ -48,12 +48,16 @@ namespace KhaozEngine.Render3D
         public void PrepareFrame()
         {
             if (_framePrepared) return;
-            EnsurePointLightCapacity();
-            _framePrepared = true;
-            HarvestTemporalCounts();   // an armed temporal count request: its one readback, here before any recording
-            var frame = new FramePrepare(Post.Water, RelativeWaterPlanes(), EffectTimeSeconds);
-            IFramePreparer[] preparers = _preparers ??= new IFramePreparer[] { _water };
-            for (int i = 0; i < preparers.Length; i++) preparers[i].PrepareFrame(frame);
+            _profiling?.Reset();
+            using (ProfileCpu("cpu.water.prepare"))
+            {
+                EnsurePointLightCapacity();
+                _framePrepared = true;
+                HarvestTemporalCounts();   // an armed temporal count request: its one readback, here before any recording
+                var frame = new FramePrepare(Post.Water, RelativeWaterPlanes(), EffectTimeSeconds);
+                IFramePreparer[] preparers = _preparers ??= new IFramePreparer[] { _water };
+                for (int i = 0; i < preparers.Length; i++) preparers[i].PrepareFrame(frame);
+            }
         }
     }
 }

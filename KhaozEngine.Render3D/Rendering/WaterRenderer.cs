@@ -1,3 +1,4 @@
+using KhaozEngine.Render3D.Diagnostics;
 using System;
 using System.Collections.Generic;
 using System.Numerics;
@@ -21,6 +22,8 @@ namespace KhaozEngine.Render3D.Rendering
     /// </summary>
     internal sealed partial class WaterRenderer : IDisposable, IFramePreparer
     {
+        internal RenderPassProfiling? Profiling { set => _ocean.Profiling = value; get => _ocean.Profiling; }
+
         /// <summary>Packed water-plane UBO matching the <c>Water</c> block in <see cref="ShaderSources.WaterFrag"/>
         /// (2 mat4 + 34 vec4 + three vec4[8] disc arrays; every member 16-byte aligned, so std140 needs no extra padding).</summary>
         [StructLayout(LayoutKind.Sequential)]
@@ -612,6 +615,7 @@ namespace KhaozEngine.Render3D.Rendering
             ShoreMaps shore = _bathymetry.Snapshot();
             // Nothing the view can reach: no slots, no geometry and no pass. The ocean demand compare and its record
             // above still ran over the whole queue, because PrepareFrame planned against the whole queue.
+            using var profile = Profiling?.Pass(cl, "water.surface", executed: drawn > 0) ?? default;
             if (drawn == 0) return;
             BindTargets(res);
 

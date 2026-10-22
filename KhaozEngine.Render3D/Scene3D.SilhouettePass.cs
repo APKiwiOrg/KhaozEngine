@@ -53,6 +53,7 @@ namespace KhaozEngine.Render3D
         /// </summary>
         void DrawSilhouettes(IGpuCommandList cl, Matrix4x4 vp)
         {
+            using var profile = ProfilePass(cl, "effects.silhouettes", executed: _silhouetteDraws.Count > 0);
             if (_silhouetteDraws.Count == 0) return;
 
             cl.SetFramebuffer(_res.ModelFB);

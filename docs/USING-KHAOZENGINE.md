@@ -23148,7 +23148,10 @@ framebuffer, submit, wait or mutate the scene. CPU callbacks must emit no GPU co
 before recording and do not change it during a frame. With null, scopes are inert value structs and the
 renderer retains its original commands, uploads and ordering without allocation or extra GPU work.
 
-A scene shares one observer and failure latch with its atmosphere owner. The first callback exception stops
+A scene shares one observer and failure latch with its atmosphere, water, temporal, post, outline and
+transition owners. Attach it before `PrepareFrame` to observe cold FFT work. A callback failure during
+preparation remains latched through render entry and is reported after rendering, with the original render
+exception winning if both fail. The first callback exception stops
 further callbacks and invalidates profiling, while rendering continues. `Scene3D.PassObserverFailure` retains
 the callback exception. If rendering succeeds, the render call then throws `InvalidOperationException` with
 that exception as its cause. If rendering also throws, its original exception propagates unchanged. This
@@ -23176,6 +23179,33 @@ Group intervals contain children and their durations must not be added as extra 
 | `opaque.rigid`, `.splat`, `.tile-ground`, `.foliage`, `.gpu-skinned`, `.cpu-skinned` | Main geometry routes, with fused motion metadata when the MRT is active |
 | `atmosphere.uniforms`, `.transmittance`, `.multiple-scattering`, `.sky-view` | Shared atmosphere UBO and separate LUT draws, static cached LUTs are skipped |
 | `background.sky`, `background.starfield` | Separate background draws, the unused route is skipped |
+
+The effect, copy and display owners add these keys. Every occurrence is zero unless listed otherwise.
+
+| Keys | Ownership and occurrences |
+| --- | --- |
+| `startup.ocean-prime` | Cold row FFT on its own preparer command list, separate from the frame layout and steady summaries |
+| `water`, `ocean` | Parents only, with skipped subtrees when inactive |
+| `ocean.uniforms`, `.next-row`, `.column` | Shared ocean parameter upload, next frame's row FFT, current frame's column FFT, in native recording order |
+| `ocean.mip-copy`, `ocean.mips` | Base-level seed copy per array layer (occurrence is layer), then the existing whole-chain mip-generation command |
+| `water.surface` | Surface uploads, route binds and all queued water draws, after FFT work |
+| `copy.blob-depth-resolve`, `.depth-normal-resolve`, `.color-resolve` | Existing MSAA resolves, explicitly skipped on single-sample targets |
+| `copy.opaque-temporal`, `copy.transition-snapshot` | Opaque temporal copy and its existing target restores, previous resolved frame snapshot on transition activation |
+| `effects.textured-billboards`, `.beams`, `.trails`, `.overlay-meshes`, `.silhouettes` | Transparent model-target routes and their uploads |
+| `effects.blob-decals`, `.decals`, `.particles`, `.depth-lines`, `.distortion` | Blob and ground decals, particles, depth-tested lines and offset field |
+| `temporal.uniforms`, `.outline-inputs`, `.resolve`, `.depth-store` | Resolve UBOs, the one MRT outline-input draw, fused-entry resolve and separate depth store |
+| `temporal.prepare`, `.accumulate` | Split-entry draws instead of fused resolve and depth store. The prepare draw also stores depth, so there is no independent depth-store duration |
+| `post.uniforms`, `.distortion-apply`, `.tonemap`, `.sharpen`, `.quantize`, `.edge`, `.fxaa` | Shared post UBOs and individual fullscreen draws, inactive draws are skipped |
+| `post.bloom.bright`, `.horizontal`, `.vertical`, `.composite` | Each of the four existing bloom draws, including both blur directions |
+| `post.mips`, `post.blit` | Existing source mip generation, final display bind/clear/blit |
+| `outline.uploads`, `.mask`, `.mask-resolve`, `.mask-mips`, `.visible-mask`, `.visible-resolve`, `.visible-mips`, `.composite` | Per-group target outlines, occurrence is the frame-local group index. Width growth is part of the composite shader, with no separate draw or duration |
+| `display.debug`, `.temporal-count-probe`, `.fills`, `.lines`, `.billboards-additive`, `.billboards-alpha`, `.transition` | Developer views and count-probe draw/copy, display overlays and transition writer |
+
+`GenerateMipmaps` is one command at the GPU seam. Its interval includes the native chain, with no fabricated
+per-level duration or extra copy, barrier or framebuffer bind. UI stays a harness-owned interval around the
+existing SpriteBatch calls, including their texture and scissor runs. Startup prime callbacks name their own
+command list. A frame-layout observer must not put those markers in a steady-frame pool.
+`cpu.water.prepare` covers the preparer CPU phase, including an actual cold prime wait when needed.
 
 All other occurrences are zero. Directional recording visits rigid/CPU work for all cascades, then foliage
 for all cascades, then GPU skinning for all cascades. These are separate measured segments rather than one

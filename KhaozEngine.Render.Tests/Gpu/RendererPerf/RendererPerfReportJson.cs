@@ -16,7 +16,7 @@ internal static class RendererPerfReportJson
     {
         try
         {
-            byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(report, JsonOptions);
+            byte[] bytes = RendererPerfRawJson.Serialize(report, MaximumBytes);
             _ = Parse(bytes);
             return bytes;
         }
@@ -28,7 +28,7 @@ internal static class RendererPerfReportJson
 
     internal static RendererPerfReport Parse(ReadOnlySpan<byte> utf8)
     {
-        RendererPerfReport report = ReadJson<RendererPerfReport>(utf8, MaximumBytes);
+        RendererPerfReport report = RendererPerfRawJson.Parse(utf8, MaximumBytes);
         Validate(report);
         return report;
     }
@@ -64,6 +64,7 @@ internal static class RendererPerfReportJson
         Metric(publication.EstimatedCostUsd);
         Metrics(report.Assessment.Metrics);
         Metrics(report.Memory.Process);
+        RendererPerfMemoryEvidence.Validate(report);
         ValidateWorkModels(report.Assessment.WorkModels);
         if (report.Assessment.ValidForPromotion)
         {
@@ -215,7 +216,12 @@ internal static class RendererPerfReportJson
                 }
             }
         }
-        foreach (GpuResourceMemorySnapshot memory in report.Memory.Native)
+        ValidateMemory(report.Memory.Native);
+    }
+
+    internal static void ValidateMemory(ImmutableArray<GpuResourceMemorySnapshot> snapshots)
+    {
+        foreach (GpuResourceMemorySnapshot memory in snapshots)
         {
             foreach (GpuDiagnosticMetric logical in new[] { memory.LogicalBufferBytes, memory.LogicalTextureBytes,
                 memory.StagingCapacityBytes, memory.HistoryPayloadBytes, memory.ScratchPayloadBytes,

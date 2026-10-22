@@ -39,8 +39,9 @@ public sealed class RendererPerfDeviceReportTests
             Assert.Equal(sample.Passes.ToArray(), restored.Blocks[1].Measured[0].Passes.ToArray());
             using JsonDocument json = JsonDocument.Parse(bytes);
             foreach (JsonElement pass in json.RootElement.GetProperty("blocks")[1].GetProperty("measured")[0].GetProperty("passes").EnumerateArray())
-                Assert.Equal(pass.GetProperty("id").GetString()!.StartsWith("device.", StringComparison.Ordinal),
-                    pass.GetProperty("deviceOnly").GetBoolean());
+                Assert.Equal(json.RootElement.GetProperty("raw").GetProperty("passes")[pass.GetProperty("schema").GetInt32()]
+                    .GetProperty("id").GetString()!.StartsWith("device.", StringComparison.Ordinal),
+                    json.RootElement.GetProperty("raw").GetProperty("passes")[pass.GetProperty("schema").GetInt32()].GetProperty("deviceOnly").GetBoolean());
         }
     }
 
@@ -83,7 +84,7 @@ public sealed class RendererPerfDeviceReportTests
     public void Device_rows_cannot_claim_gpu_intervals(string fault)
     {
         var json = JsonNode.Parse(RendererPerfReportJson.Serialize(RendererPerfProtocolTests.CompleteReport()))!.AsObject();
-        var pass = new JsonObject
+        JsonNode pass = new JsonObject
         {
             ["id"] = "device.water.geometry",
             ["occurrence"] = 0,
@@ -102,6 +103,7 @@ public sealed class RendererPerfDeviceReportTests
                 ["reason"] = fault == "duration" ? null : "no GPU interval"
             }
         };
+        pass = RendererPerfRawTestJson.Pass(json, pass);
         ((JsonArray)json["blocks"]![1]!["measured"]![0]!["passes"]!).Add(pass);
         var error = Assert.Throws<RendererPerfProtocolException>(() => RendererPerfReportJson.Parse(Encoding.UTF8.GetBytes(json.ToJsonString())));
         Assert.Equal("Sample", error.Code);

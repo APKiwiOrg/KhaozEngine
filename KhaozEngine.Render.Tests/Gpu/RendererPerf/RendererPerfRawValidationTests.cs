@@ -1,0 +1,116 @@
+using System;
+using System.Collections.Immutable;
+using System.Text;
+using System.Text.Json.Nodes;
+using Xunit;
+
+namespace KhaozEngine.Tests.Gpu.RendererPerf;
+
+public sealed class RendererPerfRawValidationTests
+{
+    [Theory]
+    [InlineData("missing-raw")]
+    [InlineData("unknown-format")]
+    [InlineData("missing-table")]
+    [InlineData("unknown-field")]
+    [InlineData("duplicate-field")]
+    [InlineData("duplicate-schema")]
+    [InlineData("duplicate-layout")]
+    [InlineData("null-schema")]
+    [InlineData("missing-reason-field")]
+    [InlineData("empty-source")]
+    [InlineData("unknown-status")]
+    [InlineData("empty-name")]
+    [InlineData("negative-layout")]
+    [InlineData("foreign-layout")]
+    [InlineData("negative-schema")]
+    [InlineData("foreign-schema")]
+    [InlineData("duplicate-name")]
+    [InlineData("wrong-slot-type")]
+    [InlineData("missing-values")]
+    [InlineData("extra-values")]
+    [InlineData("negative-run")]
+    [InlineData("extra-zero")]
+    [InlineData("explicit-positive-zero")]
+    [InlineData("null-value")]
+    [InlineData("unknown-vector-field")]
+    [InlineData("numeric-unavailable")]
+    [InlineData("missing-scalar-value")]
+    [InlineData("foreign-cpu")]
+    [InlineData("foreign-pass")]
+    public void Malformed_compact_data_cannot_bypass_strict_validation(string fault)
+    {
+        var report = RendererPerfProtocolTests.CompleteReport();
+        var metrics = ImmutableDictionary<string, RendererPerfMetric>.Empty
+            .Add("a", new(2, "count", "test counter", RendererPerfMetricStatus.Available, null))
+            .Add("b", new(0, "bytes", "test payload", RendererPerfMetricStatus.Available, null))
+            .Add("c", new(null, "count", "optional counter", RendererPerfMetricStatus.Unsupported, "no counter"));
+        report = report with { Conditioning = report.Conditioning.SetItem(0, report.Conditioning[0] with { Metrics = metrics }) };
+        var json = JsonNode.Parse(RendererPerfReportJson.Serialize(report))!.AsObject();
+        var raw = json["raw"]!.AsObject();
+        var schemas = raw["metrics"]!.AsArray();
+        var layouts = raw["layouts"]!.AsArray();
+        var frame = json["conditioning"]![0]!;
+        var vector = frame["metrics"]!.AsObject();
+        var layout = layouts[vector["layout"]!.GetValue<int>()]!.AsArray();
+        int first = layout[0]!.GetValue<int>();
+        switch (fault)
+        {
+            case "missing-raw": json.Remove("raw"); break;
+            case "unknown-format": raw["format"] = "metric-vectors/2"; break;
+            case "missing-table": raw.Remove("metrics"); break;
+            case "unknown-field": raw["unknown"] = true; break;
+            case "duplicate-schema": schemas.Add(schemas[first]!.DeepClone()); break;
+            case "duplicate-layout": layouts.Add(layout.DeepClone()); break;
+            case "null-schema": schemas[first] = null; break;
+            case "missing-reason-field": schemas[first]!.AsObject().Remove("reason"); break;
+            case "empty-source": schemas[first]!["source"] = ""; break;
+            case "unknown-status": schemas[first]!["status"] = "unmeasured-success"; break;
+            case "empty-name": schemas[first]!["name"] = ""; break;
+            case "negative-layout": vector["layout"] = -1; break;
+            case "foreign-layout": vector["layout"] = int.MaxValue; break;
+            case "negative-schema": layout[0] = -1; break;
+            case "foreign-schema": layout[0] = int.MaxValue; break;
+            case "duplicate-name": layout.Add(layout[0]!.DeepClone()); break;
+            case "wrong-slot-type": vector["values"]![0] = "two"; break;
+            case "missing-values": vector["values"]!.AsArray().Clear(); break;
+            case "extra-values": vector["values"]!.AsArray().Add(3); break;
+            case "negative-run": vector["zeroRuns"]![0] = -1; break;
+            case "extra-zero": vector["zeroRuns"]![1] = 2; break;
+            case "explicit-positive-zero": vector["values"]![0] = 0; break;
+            case "null-value": vector["values"]![0] = null; break;
+            case "unknown-vector-field": vector["extra"] = 1; break;
+            case "numeric-unavailable":
+                RendererPerfRawTestJson.Unavailable(json, frame["gpuFrame"]!, "no timing");
+                frame["gpuFrame"]!["value"] = 0; break;
+            case "missing-scalar-value": frame["gpuFrame"]!.AsObject().Remove("value"); break;
+            case "foreign-cpu":
+                frame["cpuPhases"]!.AsArray().Add(new JsonObject { ["schema"] = int.MaxValue, ["startTicks"] = 0, ["endTicks"] = 0 }); break;
+            case "foreign-pass":
+                json["blocks"]![1]!["measured"]![0]!["passes"]!.AsArray().Add(new JsonObject
+                { ["schema"] = int.MaxValue, ["elapsedTicks"] = null, ["duration"] = frame["gpuFrame"]!.DeepClone() }); break;
+        }
+        string text = json.ToJsonString();
+        if (fault == "duplicate-field") text = text.Insert(1, "\"raw\":{},");
+        Assert.Throws<RendererPerfProtocolException>(() => RendererPerfReportJson.Parse(Encoding.UTF8.GetBytes(text)));
+    }
+
+    [Fact]
+    public void Zero_runs_preserve_signed_values_and_every_unavailable_reason()
+    {
+        var report = RendererPerfProtocolTests.CompleteReport();
+        var metrics = ImmutableDictionary<string, RendererPerfMetric>.Empty
+            .Add("negative", new(-5, "count", "signed delta", RendererPerfMetricStatus.Available, null))
+            .Add("negative-zero", new(-0d, "count", "signed delta", RendererPerfMetricStatus.Available, null))
+            .Add("zero", new(0, "count", "signed delta", RendererPerfMetricStatus.Available, null))
+            .Add("missing", new(null, "count", "optional", RendererPerfMetricStatus.Unsupported, "counter absent"))
+            .Add("invalid", new(null, "count", "optional", RendererPerfMetricStatus.Invalid, "counter lost"));
+        report = report with { Conditioning = report.Conditioning.SetItem(0, report.Conditioning[0] with { Metrics = metrics }) };
+        var restored = RendererPerfReportJson.Parse(RendererPerfReportJson.Serialize(report)).Conditioning[0].Metrics;
+        Assert.Equal(-5, restored["negative"].Value);
+        Assert.Equal(long.MinValue, BitConverter.DoubleToInt64Bits(restored["negative-zero"].Value!.Value));
+        Assert.Equal(0, BitConverter.DoubleToInt64Bits(restored["zero"].Value!.Value));
+        Assert.Equal(metrics["missing"], restored["missing"]);
+        Assert.Equal(metrics["invalid"], restored["invalid"]);
+    }
+}

@@ -140,8 +140,9 @@ public sealed class RendererPerfProtocolTests
         RendererPerfReport report = PartialReport();
         byte[] bytes = RendererPerfReportJson.Serialize(report);
         using JsonDocument json = JsonDocument.Parse(bytes);
-        JsonElement metric = json.RootElement.GetProperty("assessment").GetProperty("metrics").GetProperty("gpu");
-        Assert.Equal(JsonValueKind.Null, metric.GetProperty("value").ValueKind);
+        JsonElement metric = json.RootElement.GetProperty("raw").GetProperty("metrics").EnumerateArray()
+            .Single(m => m.GetProperty("name").GetString() == "gpu");
+        Assert.Equal(0, json.RootElement.GetProperty("assessment").GetProperty("metrics").GetProperty("values").GetArrayLength());
         Assert.Equal("unsupported", metric.GetProperty("status").GetString());
         Assert.Equal("no timestamp counter", metric.GetProperty("reason").GetString());
         RendererPerfReport restored = RendererPerfReportJson.Parse(bytes);
@@ -280,9 +281,7 @@ public sealed class RendererPerfProtocolTests
         if (fault == "missing-frame-field") frame.Remove("errors");
         if (fault == "invalid-gpu")
         {
-            frame["gpuFrame"]!["status"] = "invalid";
-            frame["gpuFrame"]!["value"] = null;
-            frame["gpuFrame"]!["reason"] = "disjoint timestamp query";
+            RendererPerfRawTestJson.Unavailable(json, frame["gpuFrame"]!, "disjoint timestamp query");
             frame["gpuElapsedTicks"] = null;
         }
         if (fault == "frame-error") ((JsonArray)frame["errors"]!).Add("unexpected production wait");
@@ -304,7 +303,7 @@ public sealed class RendererPerfProtocolTests
         {
             case "negative": frame["gpuFrame"]!["value"] = -1; break;
             case "inconsistent": frame["gpuFrame"]!["value"] = 11; break;
-            case "wrong-unit": frame["gpuFrame"]!["unit"] = "ms"; break;
+            case "wrong-unit": RendererPerfRawTestJson.Set(json, frame["gpuFrame"]!, "unit", "ms"); break;
             case "conversion-overflow": frame["gpuPeriodNs"] = 1e308; break;
             case "tiny-nonzero-rounded-to-zero":
                 frame["gpuElapsedTicks"] = 1;
@@ -365,6 +364,7 @@ public sealed class RendererPerfProtocolTests
         JsonNode frame = json["blocks"]![1]!["measured"]![0]!;
         JsonNode pass = JsonSerializer.SerializeToNode(new RendererPerfPassSample("opaque", 0, null, null, 1, 2, 10,
             new(10, "ns", "pass timestamp pair", RendererPerfMetricStatus.Available, null), false), RendererPerfManifest.JsonOptions)!;
+        pass = RendererPerfRawTestJson.Pass(json, pass);
         ((JsonArray)frame["passes"]!).Add(pass);
         switch (fault)
         {
@@ -372,14 +372,12 @@ public sealed class RendererPerfProtocolTests
             case "missing-period": frame["gpuPeriodNs"] = null; break;
             case "inconsistent": pass["duration"]!["value"] = 11; break;
             case "negative": pass["duration"]!["value"] = -1; break;
-            case "wrong-unit": pass["duration"]!["unit"] = "ms"; break;
+            case "wrong-unit": RendererPerfRawTestJson.Set(json, pass["duration"]!, "unit", "ms"); break;
             case "conversion-overflow": frame["gpuPeriodNs"] = 1e308; break;
         }
         if (fault is "missing-period" or "conversion-overflow")
         {
-            frame["gpuFrame"]!["value"] = null;
-            frame["gpuFrame"]!["status"] = "invalid";
-            frame["gpuFrame"]!["reason"] = "outer query invalid";
+            RendererPerfRawTestJson.Unavailable(json, frame["gpuFrame"]!, "outer query invalid");
             json["assessment"]!["validForPromotion"] = false;
         }
         RendererPerfProtocolException error = Assert.Throws<RendererPerfProtocolException>(

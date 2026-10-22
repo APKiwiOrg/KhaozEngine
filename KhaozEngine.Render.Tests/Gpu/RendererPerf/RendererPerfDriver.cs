@@ -27,7 +27,7 @@ internal static class RendererPerfDriver
         readonly List<RendererPerfBatchReport> _batches = [];
         readonly List<RendererPerfStartupReport> _startup = [];
         readonly List<string> _reasons = [], _errors = [];
-        readonly List<RendererPerfMemoryReport> _memory = [];
+        readonly RendererPerfMemoryEvidence _memory = new();
         ImmutableArray<RendererPerfFrameSample> _conditioning = [];
         string? _failure;
         long _start, _deadline;
@@ -66,7 +66,7 @@ internal static class RendererPerfDriver
             RendererPerfMetric unknownCost = new(null, "USD", "workflow billing", RendererPerfMetricStatus.Unsupported, "Actual billed minutes are supplied after the workflow completes.");
             var report = new RendererPerfReport("khaozengine.renderer-perf-report/1", manifest, identity,
                 [.. manifest.Recipes.Where(r => _recipes.ContainsKey(r.SceneId)).Select(r => _recipes[r.SceneId])],
-                [.. _blocks], new([.. _memory.SelectMany(m => m.Native)], _memory.LastOrDefault()?.Process ?? ImmutableDictionary<string, RendererPerfMetric>.Empty),
+                [.. _blocks], _memory.Report(),
                 [], [.. _controls], new(_failure is null && _reasons.Count == 0, [.. _reasons.Distinct()], RendererPerfDriverAssessment.WindowMetrics(_blocks, _conditioning), []),
                 new(_failure is null ? RendererPerfPublicationState.Completed : RendererPerfPublicationState.Failed, false, false,
                     _failure, [.. _errors], elapsed, unknownCost,
@@ -96,6 +96,8 @@ internal static class RendererPerfDriver
                     _started = true;
                 }
                 CheckDeadline();
+                string operation = $"{block.SceneId}/{block.Layout}/{block.Iteration}";
+                _memory.Observe(operation, "startup", null, clock.Now(), clock.Frequency, info.Memory);
                 while (_failure is null && recorded < samples.Length)
                 {
                     int first = recorded;
@@ -130,6 +132,7 @@ internal static class RendererPerfDriver
                         if (recorded > first)
                         {
                             RendererPerfSessionInfo? batchInfo = null;
+                            string? observationFailure = null;
                             // One drain and one harvest even for a failed or final short batch.
                             try
                             {
@@ -140,9 +143,11 @@ internal static class RendererPerfDriver
                                     try { batchInfo = session.ReadInfo(); info = batchInfo; }
                                     catch (Exception observationError)
                                     {
+                                        observationFailure = observationError.Message;
                                         _errors.Add(observationError.Message);
                                         Fail(observationError.Message);
                                     }
+                                    _memory.Observe(operation, "batch", first, clock.Now(), clock.Frequency, batchInfo?.Memory, observationFailure);
                                     _batches.Add(new($"{block.SceneId}/{block.Layout}/{block.Iteration}", first, recorded - first,
                                         batchStart, clock.Now(), clock.Frequency, batchInfo?.Drain, batchInfo?.Harvest, batchInfo?.Telemetry ?? ImmutableDictionary<string, RendererPerfMetric>.Empty));
                                 }
@@ -169,7 +174,6 @@ internal static class RendererPerfDriver
                         }
                     }
                 }
-                if (info.Memory is { } memory) _memory.Add(memory);
             }
             catch (Exception error)
             {

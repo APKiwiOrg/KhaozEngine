@@ -253,6 +253,40 @@ After explicit approval, authorization commit B has exactly one parent A and add
 
 Every optional metric has a value/unit/source/status/reason. Invalid or absent is null with a reason, never a zero-valued success. Warm-up is retained separately. GPU frame totals use the outer pair, never the sum of nested scope durations. Keep parent/leaf relationships and unattributed gaps so a bad partition is visible.
 
+The raw JSON requires `raw.format = "metric-vectors/1"`. `raw.metrics` is a shared table of
+`{name, unit, source, status, reason}` descriptors. Named entries retain their complete original metric
+key, including `logical.unattributed`, `logical.pass.<id>.<occurrence>` and `logical.total` ownership.
+Scalar metric descriptors have `name = null`, with identity supplied by their containing field.
+`raw.layouts` contains ordered arrays of zero-based descriptor indices with unique names per layout.
+Every metric dictionary is `{layout, values, zeroRuns}`. The layout includes every metric and support reason.
+The numeric `values` vector retains nonzero Available values in layout order. `zeroRuns` explicitly counts
+the positive zeros before, between and after those values, with exactly `values.Length + 1` nonnegative
+counts. The expanded value count must exactly match the Available descriptor count. Signed negative zero
+retains its numeric slot and sign. Unavailable descriptors consume no value slot and reconstruct null.
+Standalone metrics, including GPU durations and publication accounting, are `{schema, value}` references.
+`raw.passes` shares pass IDs, occurrences, parents, marker pairs and DeviceOnly ownership. Pass rows are
+`{schema, elapsedTicks, duration}`, with duration using the scalar metric reference. `raw.cpuSpans` shares
+CPU ID/parent metadata, with each span retaining `{schema, startTicks, endTicks}`. Native diagnostic typed
+scalars retain their existing Boolean/Int64/UInt64/Float64 representation.
+
+All frames, CPU spans, pass occurrences, marker pairs, DeviceOnly flags and errors remain present.
+The reader expands these references before applying the existing semantic and promotion checks.
+All raw fields are required, including nullable descriptor and scalar fields. Duplicate descriptors,
+duplicate layouts, duplicate metric names, unknown fields/formats, foreign or negative indices, wrong
+value counts, nonfinite values and unsupported values with numbers are rejected. The 256 MiB byte cap
+and depth 32 stay fixed. Serialization enforces the byte cap while writing, before allocating an
+oversized output. No frame sampling, counter omission, uncounted zeros or support-reason loss is allowed.
+
+`memory.observations` retains each startup and batch observation with operation, stage, first frame
+(null for startup), monotonic ticks/frequency, process metrics and native snapshots. A failed observation
+retains its reason and empty values rather than reusing an earlier sample. The count is bounded by the
+manifest operations plus retained batches. `memory.peaks` maps each observed available process/managed
+metric to its maximum metric with the original source and observation index. Equal maxima keep the first
+observation. `memory.process` and `memory.native` are the last available snapshot, not a peak substitute.
+Task 14 readers must expand the compact schema and use observations and peak references when deriving
+memory summaries. Task 15 must integrate this raw format with its publication/sidecar readers and verify
+native artifact sizes, without changing the cap or dropping raw evidence.
+
 Every pass row carries required `deviceOnly` ownership. CPU-only device rows have `deviceOnly=true`, zero
 begin/end markers, null elapsed ticks and null GPU duration, with `Unsupported` when executed or
 `NotExecuted` when skipped. They survive partial and completed publication and do not prevent promotion

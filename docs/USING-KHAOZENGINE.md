@@ -23253,6 +23253,22 @@ records pipeline topology, compiled local sizes and texture layers while returni
 Unknown imported texture layers or pipeline metadata remain explicit incomplete metrics, never zero work.
 Requested resource bytes are creation totals, not live memory, physical traffic or residency.
 
+The internal renderer report JSON uses `raw.format = "metric-vectors/1"` under the existing
+`khaozengine.renderer-perf-report/1` schema and 256 MiB cap. `raw.metrics` stores metric name, unit,
+source, status and reason once. `raw.layouts` lists zero-based descriptor indices for each metric map.
+Maps encode `{layout, values, zeroRuns}`. Nonzero Available values retain layout order. The zero-run array
+explicitly counts positive zeros before, between and after those values. Its length is one more than
+the value count, and their expansion must match every Available slot exactly. Negative zero retains its
+sign and numeric slot. Unavailable descriptors retain their reason and reconstruct null without a slot.
+Scalar metrics encode `{schema, value}` against descriptors whose name is null. Use
+`RendererPerfReportJson.Parse` to restore the complete records before analysis. Native diagnostic typed
+scalars keep their original representation. `raw.passes` shares the pass identity, parent, marker and
+DeviceOnly metadata. Pass rows retain `{schema, elapsedTicks, duration}`. `raw.cpuSpans` shares CPU ID/parent
+metadata while each span retains `{schema, startTicks, endTicks}`. Every frame, counter, ownership flag and error
+is retained. The reader rejects malformed schemas, indices and value counts before semantic validation.
+Memory observations retain startup/batch identity and failure reasons. Process and managed peaks refer
+to their exact observation and original metric source instead of replacing those raw snapshots.
+
 Call `BeginFrame(localSampleId, frameId, sequenceIndex, submission)` at the host's outer boundary, before
 native Begin, and `EndFrame` only after the host returns from submission and Present/end-frame work. The
 command wrapper begins the ring immediately after native Begin and arms its sole final marker through the

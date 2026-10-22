@@ -58,7 +58,17 @@ internal sealed record RendererPassWorkModel(string PassId, int Occurrence,
     ImmutableDictionary<string, RendererPerfWorkRange> Components, ImmutableArray<string> SerialDependencies,
     ImmutableArray<string> MissingEvidence);
 internal sealed record RendererPerfMemoryReport(ImmutableArray<GpuResourceMemorySnapshot> Native,
-    ImmutableDictionary<string, RendererPerfMetric> Process);
+    ImmutableDictionary<string, RendererPerfMetric> Process)
+{
+    [JsonRequired]
+    public ImmutableArray<RendererPerfMemoryObservation> Observations { get; init; } = [];
+    [JsonRequired]
+    public ImmutableDictionary<string, RendererPerfMemoryPeak> Peaks { get; init; } = ImmutableDictionary<string, RendererPerfMemoryPeak>.Empty;
+}
+internal sealed record RendererPerfMemoryObservation(string Operation, string Stage, int? FirstFrame,
+    long AtTicks, long Frequency, ImmutableArray<GpuResourceMemorySnapshot> Native,
+    ImmutableDictionary<string, RendererPerfMetric> Process, string? Reason);
+internal sealed record RendererPerfMemoryPeak(RendererPerfMetric Metric, int Observation);
 internal sealed record RendererPerfAssessment(bool ValidForPromotion, ImmutableArray<string> Reasons,
     ImmutableDictionary<string, RendererPerfMetric> Metrics, ImmutableArray<RendererPassWorkModel> WorkModels);
 internal sealed record RendererPerfPublication(RendererPerfPublicationState State, bool ReturnedByRun,

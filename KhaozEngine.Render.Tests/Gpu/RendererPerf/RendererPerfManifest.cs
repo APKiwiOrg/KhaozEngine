@@ -141,17 +141,27 @@ internal sealed record RendererPerfManifest(string Schema, string UnitId, string
     {
         try
         {
-            if (utf8.Length == 0 || utf8.Length > maximumBytes) throw new JsonException("Document exceeds its bounded byte capacity or is empty.");
-            var reader = new Utf8JsonReader(utf8, new JsonReaderOptions { MaxDepth = 32 });
-            using JsonDocument document = JsonDocument.ParseValue(ref reader);
-            if (reader.Read()) throw new JsonException("Trailing JSON content is forbidden.");
-            CheckJson(document.RootElement);
-            return JsonSerializer.Deserialize<T>(utf8, JsonOptions) ?? throw new JsonException("Null document is forbidden.");
+            using JsonDocument document = ReadDocument(utf8, maximumBytes);
+            return document.RootElement.Deserialize<T>(JsonOptions) ?? throw new JsonException("Null document is forbidden.");
         }
         catch (JsonException error)
         {
             throw new RendererPerfProtocolException("Json", error.Message, error);
         }
+    }
+
+    internal static JsonDocument ReadDocument(ReadOnlySpan<byte> utf8, int maximumBytes)
+    {
+        if (utf8.Length == 0 || utf8.Length > maximumBytes) throw new JsonException("Document exceeds its bounded byte capacity or is empty.");
+        var reader = new Utf8JsonReader(utf8, new JsonReaderOptions { MaxDepth = 32 });
+        JsonDocument document = JsonDocument.ParseValue(ref reader);
+        try
+        {
+            if (reader.Read()) throw new JsonException("Trailing JSON content is forbidden.");
+            CheckJson(document.RootElement);
+            return document;
+        }
+        catch { document.Dispose(); throw; }
     }
 
     static void CheckJson(JsonElement element)

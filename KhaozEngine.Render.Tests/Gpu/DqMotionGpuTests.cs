@@ -246,13 +246,25 @@ public sealed class DqMotionScene : IDisposable
         float threshold = dissolve ? .25f : 0;
         Matrix4x4 World(int actor, bool current) => Matrix4x4.CreateTranslation(-3 + actor * 2 +
             (current && scenario == "placement" ? .15f : 0), current && scenario == "placement" ? .12f : 0, 0);
+        scene.CameraCut();
         _preview.Capture(s =>
         {
             for (int i = 0; i < 4; i++)
                 if (scenario != "absent" || i != 0)
                     DqMotionWitness.Queue(s, meshes[i], handles[i], keys[i], World(i, false), oldPose, threshold);
         });
-        Device.WaitForIdle();
+        // With no previous frame the shader aliases previous clip to current clip, exactly. Actor-local
+        // current-data seeding on a continuing frame instead keeps the established projection rounding bound.
+        Assert.Null(scene.PreviousFrameView);
+        MotionTargetReadback firstSight = scene.ReadMotionTargetForTests();
+        Assert.True(MotionExpectation.AssertDrawnPixels(firstSight, (_, _) => Vector2.Zero, 0f) > 20);
+        for (int y = 0; y < firstSight.Height; y++)
+            for (int x = 0; x < firstSight.Width; x++)
+                if (!firstSight.IsBackground(x, y))
+                {
+                    Vector2 firstSightMotionWithStationaryCamera = firstSight.UvAt(x, y);
+                    Assert.Equal(Vector2.Zero, firstSightMotionWithStationaryCamera);
+                }
         Device.Present();
         IsoCamera3D oldCamera = MotionExpectation.Snapshot(scene.Camera);
         if (scenario is "mesh" or "method")
@@ -293,7 +305,7 @@ public sealed class DqMotionScene : IDisposable
             Vector2[] now = corners.Select(v => Project(camera, Vector3.Transform(Current(meshes[i].Vertices[v].Position), World(i, true)))).ToArray();
             Vector2[] then = corners.Select(v => Project(oldCamera,
                 Vector3.Transform(Previous(meshes[i].Vertices[v].Position), World(i, seed)))).ToArray();
-            actors[i] = new ActorExpectation(now, then, seed, scene.CurrentFrameView.JitterPixels);
+            actors[i] = new ActorExpectation(now, then, scene.CurrentFrameView.JitterPixels);
         }
         foreach (SkinnedMeshHandle handle in handles) scene.UnloadSkinnedMesh(handle);
         return new CaptureResult(motion, actors);
@@ -318,7 +330,7 @@ public sealed class DqMotionScene : IDisposable
         return screen;
     }
 
-    internal sealed record ActorExpectation(Vector2[] Now, Vector2[] Then, bool Seed, Vector2 Jitter)
+    internal sealed record ActorExpectation(Vector2[] Now, Vector2[] Then, Vector2 Jitter)
     {
         internal bool Contains(int x, int y) => x + .5f >= Now.Min(p => p.X) - 1 && x + .5f <= Now.Max(p => p.X) + 1
             && y + .5f >= Now.Min(p => p.Y) - 1 && y + .5f <= Now.Max(p => p.Y) + 1;
@@ -343,10 +355,6 @@ public sealed class DqMotionScene : IDisposable
                 int count = MotionExpectation.AssertDrawnPixels(Motion, actor.MotionAt, .08f, actor.Contains);
                 Assert.True(count > 20, $"Only {count} actor pixels drew.");
                 Drawn += count;
-                if (actor.Seed)
-                    for (int y = 0; y < Motion.Height; y++)
-                        for (int x = 0; x < Motion.Width; x++)
-                            if (actor.Contains(x, y) && !Motion.IsBackground(x, y)) Assert.Equal(Vector2.Zero, Motion.UvAt(x, y));
             }
         }
     }

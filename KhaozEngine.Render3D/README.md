@@ -361,7 +361,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   while retaining key and point shadows. A skinned shadow-only draw without casting is refused before palette
   or queue mutation. `DissolveComplement = 1f` keeps the opposite noise samples in colour and ordinary shadow
   dissolve, including no colour coverage at threshold zero and complementary coverage at threshold one.
-  `InvertShadowDissolve` independently selects the inverted shadow dither while dissolving, leaving colour
+  HLOD handoffs use `DissolveComplement` with the individuals' threshold for both colour and shadow. They do not
+  use the independent shadow-only inversion. `InvertShadowDissolve` selects the inverted shadow dither, leaving colour
   coverage unchanged. These policies work with CPU and GPU skinning. `DrawShadowOnly(handle, transform)` is the opposite
   of the opt-out: the instance records depth for the key light and never draws in the COLOUR pass, so a view can
   hide geometry from the eye and keep the shadow the world still throws (a tile world's hidden roof), counted by

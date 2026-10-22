@@ -21,9 +21,9 @@ namespace KhaozEngine.Terrain
         int DrawProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus, float dissolveFloor);
         int DrawShadowOnlyProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus,
             float dissolveFloor) => throw new NotSupportedException("This cluster backend has no shadow-only prop path.");
-        void DrawShadowOnlyMerged(MeshHandle handle, PropLayer layer, float dissolve, bool invertShadowDissolve) =>
+        void DrawShadowOnlyMerged(MeshHandle handle, PropLayer layer, float dissolve, bool complement) =>
             throw new NotSupportedException("This cluster backend has no shadow-only merged path.");
-        void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve, bool invertShadowDissolve);
+        void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve, bool complement);
     }
 
     /// <summary>Owns CPU HLOD builds, retained GPU handles, generation replacement, and prop cluster drawing.</summary>
@@ -322,7 +322,9 @@ namespace KhaozEngine.Terrain
                     cluster.PresentationGeneration, cluster.Generation);
             }
             bool merged = PropHlod.DrawsHlodMerged(t);
-            return new PropClusterDrawState(individuals, t, merged, 1f - t, true,
+            // A completed handoff stays on the solid fast path instead of sampling a full-coverage mask.
+            bool complement = individuals && merged;
+            return new PropClusterDrawState(individuals, t, merged, complement ? t : 0f, complement,
                 cluster.PresentationGeneration, cluster.Generation);
         }
 
@@ -424,21 +426,11 @@ namespace KhaozEngine.Terrain
                 PropClusterShadowSubmission.Draw(_scene, placements, layer, focus, dissolveFloor);
 
             public void DrawShadowOnlyMerged(MeshHandle handle, PropLayer layer, float dissolve,
-                bool invertShadowDissolve) => _scene.Draw(new RigidInstanceDraw(handle, Matrix4x4.Identity)
-                {
-                    ShadowOnly = true,
-                    Dissolve = dissolve,
-                    InvertShadowDissolve = invertShadowDissolve,
-                });
+                bool complement) => PropClusterMergedSubmission.Draw(_scene, handle, layer, dissolve,
+                    complement, shadowOnly: true);
 
-            public void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve, bool invertShadowDissolve)
-            {
-                if (dissolve > 0f || !layer.CastsShadows)
-                    _scene.Draw(handle, Matrix4x4.Identity, Color.White, Material.None, dissolve, 0f, default,
-                        layer.CastsShadows, invertShadowDissolve);
-                else
-                    _scene.Draw(handle, Matrix4x4.Identity, Color.White);
-            }
+            public void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve, bool complement) =>
+                PropClusterMergedSubmission.Draw(_scene, handle, layer, dissolve, complement, shadowOnly: false);
         }
 
         sealed class CpuOnlyBackend : IPropClusterRenderBackend
@@ -448,7 +440,7 @@ namespace KhaozEngine.Terrain
             public void UnloadMesh(MeshHandle handle) => throw NoScene();
             public int DrawProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus,
                                   float dissolveFloor) => throw NoScene();
-            public void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve, bool invertShadowDissolve) =>
+            public void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve, bool complement) =>
                 throw NoScene();
         }
     }

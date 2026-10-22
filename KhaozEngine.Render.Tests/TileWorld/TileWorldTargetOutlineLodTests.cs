@@ -77,12 +77,12 @@ public sealed class TileWorldTargetOutlineLodTests
 
         scene.OutlineGroups.Clear();
         Vector3 regionCenter = new(32f, 0f, -32f);
-        view.Draw(regionCenter + new Vector3(192f, 0f, 0f));
+        view.Draw(regionCenter + new Vector3(184f, 0f, 0f));
 
         RecordedOutlineGroup hlod = Assert.Single(scene.OutlineGroups);
         Assert.Equal(MeshOutlineOcclusion.None, hlod.Occlusion);
-        Assert.Contains(hlod.Parts, part => part.Complement);
-        Assert.Contains(hlod.Parts, part => !part.Complement);
+        Assert.Contains(hlod.Parts, part => part.Complement && MathF.Abs(part.Dissolve - .25f) < .001f);
+        Assert.Contains(hlod.Parts, part => !part.Complement && MathF.Abs(part.Dissolve - .25f) < .001f);
         Assert.True(scene.MeshLoads.Count > 0, "selected HLOD mask mesh was not uploaded");
 
         int unloads = scene.MeshUnloads.Count;

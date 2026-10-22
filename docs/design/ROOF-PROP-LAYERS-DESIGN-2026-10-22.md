@@ -24,3 +24,10 @@ Zero weld cell preserves the authored geometry while merging it, so straight wal
 Headless tests cover construction gates, ordinary-path exclusion, per-house hiding, mode overrides, Decor,
 partial-cluster fallback with and without individuals, generation replacement, transforms, fades and radius culls.
 The living API contract is in `docs/USING-KHAOZENGINE.md` and the TileWorld.Render3D and Terrain.Render3D READMEs.
+
+## HLOD coverage correction (21.12.1)
+
+Visible and shadow-only merged roofs use the individuals' dissolve threshold with `DissolveComplement = 1`.
+Colour, shadow and selected outlines therefore keep the exact opposite noise set at coincident surfaces.
+Mixed visibility still falls back to resident individuals without the HLOD floor. The exit at `DrawRadius`
+remains an ordinary dissolve. Distance-based transitions between different silhouettes remain tracked in #1296.

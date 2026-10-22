@@ -5,6 +5,13 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.12.1
+
+2026-10-23
+
+- Keep individual and merged HLOD colour, shadow and selected-outline coverage complementary throughout the
+  distance band. Roof layers use the same split for visible and hidden geometry, while exit fades remain ordinary.
+
 ## 21.12.0
 
 2026-10-23

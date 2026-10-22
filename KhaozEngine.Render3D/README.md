@@ -467,7 +467,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `PointDynamicSkinnedDrawCalls`/`PointStaticTransientSkinnedDrawCalls`/`PointFaceDrawCalls`/`PointSlotsInUse` on
   `ShadowPassDiagnostics`. `PointStaticRebuilds` counts rigid base rebuilds only.
   Point-light MASK alpha testing remains [#1098](https://github.com/APKiwiOrg/KhaozEngine/issues/1098).
-  Skinned colour and outline cutouts are available, while key-light skinned cutout remains
+  Skinned colour and outline cutouts are available. Ordinary DQ also supports key-light cutout,
+  while the legacy LBS key-light cutout follow-up remains
   [#1097](https://github.com/APKiwiOrg/KhaozEngine/issues/1097). No draw overload or point-shadow quality
   field was added.
 - Frustum culling: `Scene3D.FrustumCulling` (on by default) skips any queued mesh instance whose world-space
@@ -482,12 +483,28 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   Skinned draws (`DrawSkinned`) get the same treatment BEFORE they are recorded, so an off-screen character skips
   its skin or palette upload entirely, not just its draw call: a camera-culled draw is kept only if it casts and is
   ALSO inside the active shadow map's own ortho volume (so an off-camera caster still throws an on-screen shadow -
-  the shadow pass is never camera-culled, matching the rigid contract). Rest-pose bounds are inflated by a safety
-  factor (`Scene3D.SkinnedCullSafetyFactor`) to cover a pose swinging a limb outside the rest silhouette. Read the
+  the shadow pass is never camera-culled, matching the rigid contract). LBS retains its 1.5x rest-sphere heuristic
+  (`Scene3D.SkinnedCullSafetyFactor`). DQ uses `DualQuaternionBounds`' finite posed envelope, transformed outward
+  into absolute world space for camera, cascade and point retention. Read the
   win from `Scene3D.DrawnSkinnedInstances` / `Scene3D.CulledSkinnedInstances`.
-- GPU skinning (`Scene3D.UseGpuSkinning`, default ON): the vertex shader blends the bone palette instead of
-  the CPU (`SkinningMath.SkinVertex`), so the rest-pose vertex buffer uploads once at load and only the per-draw
-  palette + matrices upload each frame - the win at MMO crowd scale. Pixel-parity with the CPU path, same culling +
+- Ordinary rigid DQ is explicit opt-in through `SkinningProfile.DualQuaternionRigid` on a mesh constructor or
+  `GltfLoader.LoadSkinned`/material-part import overload. Existing overloads select `SkinningProfile.LinearBlend`.
+  The immutable profile belongs to the uploaded skin and all its material parts and garment bindings.
+  `UseGpuSkinning` selects execution location only. DQ works through colour, normal/tangent maps, cutout,
+  both dissolve senses, every directional cascade, point faces, shadow-only draws, independent outlines and
+  previous-pose motion. Grounding uses the profile-aware `SkinnedGrounding.MinimumY` overload and
+  `ContractJointMap.SkinAtBase` reads the mesh profile. `SkinningMath` remains the LBS API.
+  DQ validates composed `inverseBind * jointWorld` transforms. Animated uniform/nonuniform scale, shear,
+  reflection, collapsed bases and projective transforms are unsupported outside the rigid rounding allowance.
+  Separate finite affine model placement may scale, shear or reflect. Missing source metadata or an unrepresentable
+  posed/placed envelope refuses before palette, queue or history mutation. There is no per-pose LBS fallback.
+  Ordinary DQ needs no compute capability. Covered actors, including covered Grimhollow bodies, remain held for
+  stage 4 NC2 reconciliation, Preserve Volume/export comparisons, new fit/oracle evidence and owner look approval.
+- GPU skinning (`Scene3D.UseGpuSkinning`, default ON): the vertex shader evaluates the selected profile instead of
+  the CPU (`SkinningEvaluation.Vertex`, or `SkinningMath.SkinVertex` for LBS), so the rest-pose vertex buffer uploads once at load and only the per-draw
+  palette + matrices upload each frame - the win at MMO crowd scale. Ordinary DQ CPU/GPU model-space position
+  agreement is componentwise `2e-5 * L`, with `L` the maximum of one, source-position norm and prepared joint-translation
+  norm. Normalized direction error is at most `2e-5`, with angle at most `1e-4` radians. Both paths use the same culling +
   shadow pass. Set it `false` for CPU skinning, which stays supported and is flippable per frame. Set 0 binding 0 is
   the shared frame block both stages read, binding 3 the per-draw `{ Model; P }`
   the vertex reads at its dynamic offset, material maps at set 1, and the per-CASTER bone palette at set 2. It was
@@ -1017,7 +1034,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   silhouette. `Scene3D` copies the composed pose during each submission, and the group is valid only for the
   scene and frame that created it. An outline can be submitted without an ordinary `DrawSkinned`, and an ordinary
   draw with another pose does not change the outline pose. `UseGpuSkinning` selects the outline deformation path
-  when the frame renders. The GPU and CPU paths consume the same copied pose. The full mask applies geometry and
+  when the frame renders. The GPU and CPU paths consume the same copied pose and immutable skin profile.
+  DQ outline-only submission validates its finite placed envelope before preparing or queueing a part. The full mask applies geometry and
   alpha cutout while ignoring partial dissolve. The visible mask follows the ordinary or complement dissolve
   keep rule. `SurfaceMaps.AlphaCutoff` reaches plain and dissolved ordinary skinned colour draws and both target
   outline masks. `Scene3DTileWorldScene` forwards the grouped methods, while the `ITileWorldScene` defaults keep

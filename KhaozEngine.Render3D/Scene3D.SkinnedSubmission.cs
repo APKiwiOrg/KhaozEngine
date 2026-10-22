@@ -34,11 +34,11 @@ public sealed partial class Scene3D
                 var src = _skinnedCpuVerts[it.Mesh.Index];
                 if (src is null) continue;
 
-                var (visibleMain, visibleShadow) = ClassifySkinnedVisibility(entry.Bounds, it.World, FrustumCulling,
-                    camFrustum, shadowMapActive && it.CastsShadows, _shadowFrustums.AsSpan(0, shadowCascadeCount));
+                PreparedSkinningPose prepared = _submittedSkinningPoses[i];
+                var (visibleMain, visibleShadow) = ClassifyPreparedSkinnedVisibility(prepared, entry.Bounds, it.World,
+                    FrustumCulling, camFrustum, shadowMapActive && it.CastsShadows,
+                    _shadowFrustums.AsSpan(0, shadowCascadeCount), out PointShadowCasterSphere pointSphere);
                 visibleMain &= !it.ShadowOnly;
-                PointShadowCasterSphere pointSphere = PointShadowCasterSphere.FromRestBounds(
-                    entry.Bounds, it.World, SkinnedCullSafetyFactor);
                 bool visiblePointShadow = hasPointShadowRequests && it.CastsShadows
                     && PointRequestCanRetainSkinned(pointSphere, Post.Quality.Shadows.PointShadows);
                 if (!visibleMain && !visibleShadow && !visiblePointShadow)
@@ -49,7 +49,6 @@ public sealed partial class Scene3D
                 if (visibleMain) _drawnSkinnedInstances++;
                 else if (!it.ShadowOnly) _culledSkinnedInstances++;
 
-                PreparedSkinningPose prepared = _submittedSkinningPoses[i];
                 bool dissolving = it.Dissolving;
                 ShadowCastKind shadowKind = ShadowDepthSelection.ClassifySkinnedCaster(it);   // issue #387
                 // During a dissolve the emissive channel carries the edge colour. The cutoff remains in

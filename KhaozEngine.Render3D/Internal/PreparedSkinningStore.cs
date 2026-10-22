@@ -42,10 +42,11 @@ internal sealed class PreparedSkinningStore
     public PreparedSkinningPose Prepare(SkinnedGltfMesh mesh, ReadOnlySpan<Matrix4x4> joints,
         in SkinningValidationContext context) => Prepare(mesh, joints, context, null, null);
 
-    // A scene supplies retained source metadata and its unavailable consumer before any words are appended.
-    // The three-argument entry prepares internal math payloads without activating any rendering consumer.
+    // Scene admission supplies retained source metadata and validates placement before any words append.
+    // Internal callers can still name an unavailable consumer. The three-argument entry prepares math only.
     internal PreparedSkinningPose Prepare(SkinnedGltfMesh mesh, ReadOnlySpan<Matrix4x4> joints,
-        in SkinningValidationContext context, DqBoundsSource? sourceBounds, string? unavailableDqConsumer)
+        in SkinningValidationContext context, DqBoundsSource? sourceBounds, string? unavailableDqConsumer,
+        Matrix4x4? world = null, string consumer = "ordinary skinning")
     {
         ArgumentNullException.ThrowIfNull(mesh);
         bool dq = mesh.Profile.Method == SkinningMethod.DualQuaternionRigid;
@@ -94,6 +95,10 @@ internal sealed class PreparedSkinningStore
         if (unavailableDqConsumer is not null)
             throw new NotSupportedException($"Asset '{context.Asset}', profile {mesh.Profile.Method} version " +
                 $"{mesh.Profile.AlgorithmVersion}: DQ consumer '{unavailableDqConsumer}' is unavailable.");
+
+        if (world.HasValue && !DualQuaternionBounds.TryBoundWorld(bounds, world.Value, out _))
+            throw SkinningValidation.InvalidPose(context, -1,
+                $"DQ consumer '{consumer}' requires a finite representable affine world envelope.", nameof(world));
 
         int start = _dq.Count;
         _dq.EnsureCapacity(checked(start + prepared.Length));

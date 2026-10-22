@@ -49,7 +49,7 @@ public sealed partial class Scene3D
         ValidateMeshOutlineStyle(widthPixels, occlusion);
         if (!_skinnedSlots.IsValid(mesh.Index, mesh.Generation)) return;
         if (_skinnedMeshes[mesh.Index] is not { } entry) return;
-        PreparedSkinningPose prepared = PrepareSkinning(entry, boneMatrices, "independent target outline");
+        PreparedSkinningPose prepared = PrepareSkinning(entry, boneMatrices, "independent target outline", world);
         MeshOutlineGroup group = BeginMeshOutline(color, widthPixels, occlusion);
         AppendSkinnedOutlinePart(RequireMeshOutlineGroup(group), mesh, world, 0f, false, prepared);
     }
@@ -66,7 +66,7 @@ public sealed partial class Scene3D
         if (!_skinnedSlots.IsValid(mesh.Index, mesh.Generation)) return;
         if (_skinnedMeshes[mesh.Index] is not { } entry) return;
 
-        PreparedSkinningPose prepared = PrepareSkinning(entry, boneMatrices, "independent target outline");
+        PreparedSkinningPose prepared = PrepareSkinning(entry, boneMatrices, "independent target outline", world);
         AppendSkinnedOutlinePart(drawGroup, mesh, world, dissolve, dissolveComplement, prepared);
     }
 

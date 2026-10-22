@@ -72,7 +72,7 @@ namespace KhaozEngine.Render3D
         /// transform and composed palette are remembered for the next frame. Presentation only - never feed
         /// sim/RNG/netcode from bone state. Shadow-only without casting throws <see cref="ArgumentException"/>
         /// before changing either the palette or the queue.
-        /// A DQ profile is validated and then refused while its rendering consumers are unavailable.
+        /// DQ requires a validated rigid palette and a finite affine posed envelope before any queue changes.
         /// </summary>
         public void DrawSkinned(in SkinnedInstanceDraw draw, ReadOnlySpan<Matrix4x4> boneMatrices)
         {
@@ -89,9 +89,10 @@ namespace KhaozEngine.Render3D
             // N * SlotBytes and to instance buffer element N in the render loop.
             int slot = _skinnedInstances.Items.Count;
             var prepared = PrepareSkinning(entry, boneMatrices,
-                UseGpuSkinning ? "ordinary GPU colour/shadow/motion" : "ordinary CPU colour/shadow/motion");
+                UseGpuSkinning ? "ordinary GPU colour/shadow/motion" : "ordinary CPU colour/shadow/motion", draw.Model);
             MeshBounds worldBounds = SkinnedMotionBounds(entry, prepared, draw);
-            ReadOnlySpan<Matrix4x4> palette = _preparedSkinning.Lbs(prepared);
+            ReadOnlySpan<Matrix4x4> palette = prepared.Profile.Method == SkinningMethod.LinearBlend
+                ? _preparedSkinning.Lbs(prepared) : default;
             for (int bone = 0; bone < SkinningMath.MaxBonesPerDraw; bone++)
                 _boneMatrices.Add(bone < palette.Length ? palette[bone] : Matrix4x4.Identity);
             if (_submittedSkinningPoses.Length <= slot)

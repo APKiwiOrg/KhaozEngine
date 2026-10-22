@@ -62,10 +62,21 @@ public sealed class DqConsumerMatrixGpuTests(DqConsumerMatrixScene fixture, ITes
         PreparedSkinningPose pose = store.Prepare(mesh, joints, new("consumer matrix readback", null, 0));
         Matrix4x4 world = Matrix4x4.CreateTranslation(-39.1f, 0, 0);
         Assert.True(DualQuaternionBounds.TryBoundWorld(pose.ModelBounds, world, out MeshBounds worldBounds));
+        foreach (bool gpu in new[] { false, true })
         foreach (SkinnedVertex vertex in mesh.Vertices)
         {
-            Vector3 nativePosition = Vector3.Transform(DqGpuReadback.Capture(fixture.Device, vertex,
-                store.Dq(pose).ToArray(), joints).Position, world);
+            SkinnedVertex input = vertex;
+            if (!gpu)
+            {
+                // Transport the production CPU evaluator's output through the exact unweighted GPU path.
+                // The scene readbacks above independently exercise its actual CPU stream and placement.
+                ModelVertex cpu = SkinningEvaluation.Vertex(vertex, mesh.Profile, [], store.Dq(pose));
+                input.Position = cpu.Position;
+                input.BoneWeights = Vector4.Zero;
+            }
+            Vector3 nativeModel = DqGpuReadback.Capture(fixture.Device, input, store.Dq(pose).ToArray(), joints).Position;
+            DqCullingTests.Contains(pose.ModelBounds, nativeModel);
+            Vector3 nativePosition = Vector3.Transform(nativeModel, world);
             Vector3 independent = new(.9f - vertex.Position.Y, vertex.Position.X, 0);
             Assert.InRange(Vector3.Distance(independent, nativePosition), 0, 2e-5f * 40);
             for (int axis = 0; axis < 3; axis++)
@@ -73,17 +84,17 @@ public sealed class DqConsumerMatrixGpuTests(DqConsumerMatrixScene fixture, ITes
         }
         Assert.True(mainObserved && cascadeObserved && pointObserved && outlineObserved);
         Assert.Equal(12, cases);
-        output.WriteLine("12/12 public consumer cases and four native position readbacks inside the finite posed envelope");
+        output.WriteLine("12/12 public consumer cases and eight CPU/GPU native position readbacks inside the finite posed envelope");
     }
 
     [GpuFact]
     public void Reused_scene_matches_fresh_with_frozen_pose_inputs()
     {
-        fixture.Capture(false, true, 1, internalAdmission: true);
-        fixture.Capture(true, false, 2, internalAdmission: true);
-        var aged = fixture.Capture(true, true, 0, internalAdmission: true);
+        fixture.Capture(false, true, 1);
+        fixture.Capture(true, false, 2);
+        var aged = fixture.Capture(true, true, 0);
         using var fresh = new DqConsumerMatrixScene(fixture.Device);
-        var baseline = fresh.Capture(true, true, 0, internalAdmission: true);
+        var baseline = fresh.Capture(true, true, 0);
         Assert.True(aged.Drawn == 1, "A reused scene must retain the posed surface beyond its rest bound.");
         Assert.Equal(baseline.Colour, aged.Colour);
         Assert.Equal(baseline.Cascades, aged.Cascades);

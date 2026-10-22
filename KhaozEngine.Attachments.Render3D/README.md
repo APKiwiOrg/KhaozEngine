@@ -78,8 +78,12 @@ binds, rest poses and selected profile as immutable metadata. Loading allocates 
 The existing `Get(key, expectedSha256)` overload selects `SkinningProfile.LinearBlend`.
 `Get(key, expectedSha256, profile)` selects one immutable method/version before import and upload for
 every garment material part. Different profiles produce distinct cached views and garment leases.
-`LoadedAttachmentSet.Profile` reports that selection. DQ submission remains unavailable through the
-public scene API while the remaining rendering consumers are being integrated.
+`LoadedAttachmentSet.Profile` reports that selection. Matching ordinary DQ garments can use public
+`Queue` and `QueueOutline` with either `UseGpuSkinning` setting. Every material part retains the same
+method/version as its host. Uniform/nonuniform scale, reflection and shear in the composed skin palette
+are unsupported by rigid DQ, with no per-pose LBS fallback. Finite affine model placement remains separate.
+Covered actors remain held for stage 4 NC2 reconciliation, Preserve Volume/export comparisons, new
+fit/oracle evidence and owner look approval. Ordinary garment rendering does not establish coverage fit.
 
 ```csharp
 using var scene = new Scene3D(device, output);

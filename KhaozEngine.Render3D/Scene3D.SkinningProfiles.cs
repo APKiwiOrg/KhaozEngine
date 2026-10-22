@@ -20,17 +20,23 @@ public sealed partial class Scene3D
     }
 
     PreparedSkinningPose PrepareSkinning(SkinnedMeshEntry entry, ReadOnlySpan<Matrix4x4> boneMatrices,
-        string consumer)
+        string consumer, in Matrix4x4 world)
     {
         try
         {
-            // Stage 3 entry gate. No public draw may reach an LBS consumer with a DQ payload.
+            // Every ordinary consumer has a profile-aware implementation. Retained source metadata and
+            // the posed placement envelope remain admission requirements, independent of execution location.
+            if (entry.Profile.Method == SkinningMethod.DualQuaternionRigid && !entry.DqBounds.HasValue)
+                throw new NotSupportedException($"Asset '{entry.ValidationContext.Asset}', profile " +
+                    $"{entry.Profile.Method} version {entry.Profile.AlgorithmVersion}: DQ consumer '{consumer}' " +
+                    "requires its retained source envelope.");
             return _preparedSkinning.Prepare(entry.Source, boneMatrices, entry.ValidationContext,
-                entry.DqBounds, consumer);
+                entry.DqBounds, null, world, consumer);
         }
         catch (ArgumentException error)
         {
-            throw new ArgumentException(error.Message, nameof(boneMatrices), error);
+            throw new ArgumentException(error.Message,
+                error.ParamName == nameof(world) ? nameof(world) : nameof(boneMatrices), error);
         }
     }
 }

@@ -5,6 +5,7 @@ using System.Numerics;
 using System.Text.RegularExpressions;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Vulkan.Internal;
+using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Render3D;
@@ -122,6 +123,32 @@ namespace KhaozEngine.Tests.Gpu
                         Assert.Equal(VulkanDescriptorLimitTests.ShippedLayouts[slots[slot]].Elements,
                             actual.Description.Elements);
                     }
+                }
+            }
+        }
+
+        [Fact]
+        public void PreparedFoliageShadowLayoutsMatchMetalReflectionIncludingTheOpaqueGap()
+        {
+            using var device = new FakeGpuDevice();
+            var factory = (FakeGpuResourceFactory)device.Factory;
+            CapturePreparedFoliagePipelines(device);
+            var programs = ShippedShaderPrograms.GraphicsPrograms()
+                .Where(p => p.Name is "PreparedFoliageDepth" or "PreparedFoliageDepthCutout").ToArray();
+            Assert.Equal(2, programs.Length); // Both shipped cascade variants must be exercised.
+            foreach (var program in programs)
+            {
+                var captured = factory.GraphicsPipelines.Where(r => PairOf(r) == PairOf(program)).ToArray();
+                Assert.NotEmpty(captured);
+                var reflected = MetalShaderBuild.Pair(program.VertexGlsl, program.FragmentGlsl, null, program.Name);
+                foreach (var request in captured)
+                {
+                    var layouts = request.Description.ResourceLayouts
+                        .Select(layout => Assert.IsType<FakeResourceLayout>(layout).Description).ToArray();
+                    // Real pipeline declarations must agree with the shader before any Metal device is created.
+                    reflected.Table.RequireLayoutShape(layouts, program.Name);
+                    Assert.Equal(program.Name == "PreparedFoliageDepth" ? new[] { 1, 1, 0, 1 } : new[] { 1, 1, 2, 1 },
+                        layouts.Select(layout => layout.Elements?.Length ?? 0));
                 }
             }
         }

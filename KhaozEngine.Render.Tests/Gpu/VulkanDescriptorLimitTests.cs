@@ -87,6 +87,8 @@ namespace KhaozEngine.Tests.Gpu
                 ["Foliage"] = L(U("Foliage", V, dynamic: true)),
                 // ModelRenderer.PreparedFoliage.cs. Shared by colour, temporal, cascade and point passes.
                 ["SceneAnchor"] = L(U("SceneAnchor", V)),
+                // R-GPU-1 / T8-R1. Opaque prepared cascade depth has zero material bindings before anchor set 3.
+                ["FoliageShadow.emptyCutout"] = L(),
                 // The shared frame block, fragment-only point lights and per-draw vertex block in binding order.
                 // The two uniform buffers retain their relative order from #604.
                 ["Model.skinnedMain"] = L(AtmosphereBindings.AppendLayout(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F),
@@ -311,8 +313,8 @@ namespace KhaozEngine.Tests.Gpu
             ("PointShadowRenderer skinned dissolve inverted", ["PointShadow", "PointShadow.skinnedCaster", "SkinnedBonePalette"]),
             ("FoliageShadowRenderer depth", ["FoliageShadow", "Foliage"]),
             ("FoliageShadowRenderer cutout depth", ["FoliageShadow", "Foliage", "Shadow.cutout"]),
-            // Opaque and cutout prepared depth retain the material slot so both use anchor set 3.
-            ("FoliageShadowRenderer prepared depth", ["FoliageShadow", "Foliage", "Shadow.cutout", "SceneAnchor"]),
+            // Both prepared depth variants retain anchor set 3, with an empty material gap for opaque depth.
+            ("FoliageShadowRenderer prepared depth", ["FoliageShadow", "Foliage", "FoliageShadow.emptyCutout", "SceneAnchor"]),
             ("FoliageShadowRenderer prepared cutout depth", ["FoliageShadow", "Foliage", "Shadow.cutout", "SceneAnchor"]),
             ("ShadowMapRenderer depth", ["Shadow"]),
             ("ShadowMapRenderer skinned depth", ["Shadow.skinned", "SkinnedBonePalette"]),
@@ -412,7 +414,9 @@ namespace KhaozEngine.Tests.Gpu
                         VulkanDescriptorType.Sampler,
                     }));
 
-                Assert.True(bindings.Length > 0, site + " declares no elements, which no shipped layout does.");
+                // R-GPU-1 / T8-R1. Only opaque prepared depth carries an intentionally empty material gap.
+                if (site == "FoliageShadow.emptyCutout") Assert.Empty(bindings);
+                else Assert.NotEmpty(bindings);
             }
         }
 

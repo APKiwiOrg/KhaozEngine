@@ -134,6 +134,7 @@ public sealed class DqConsumerMatrixScene : IDisposable
 
     internal Surfaces Capture(bool gpu, bool shifted, int submission, bool reference = false, bool internalAdmission = false)
     {
+        bool cold = _preview is null;
         if (_preview is null)
         {
             _preview = new Render3DPreview(Device, Size, Size,
@@ -151,16 +152,13 @@ public sealed class DqConsumerMatrixScene : IDisposable
                 vertices[i].Position = new Vector3(-vertices[i].Position.Y, vertices[i].Position.X, 0);
             _reference = new SkinnedGltfMesh(vertices, _mesh.Indices32, _mesh.InverseBind, _mesh.RestPose, null);
             _referenceHandle = initial.LoadSkinnedMesh(_reference);
-            // Resolve static residency and allocate the current-pose transient row before readback.
-            _preview.Capture(Lights);
-            _preview.Capture(Lights);
         }
         Scene3D scene = _preview.Scene;
         scene.UseGpuSkinning = gpu;
         scene.RenderOrigin = shifted ? new Vector3(32, -16, 8) : Vector3.Zero;
         scene.Camera.Target = shifted ? new Vector3(.1f, -.1f, 0) : Vector3.Zero;
         scene.Camera.Azimuth = shifted ? .15f : 0;
-        _preview.Capture(s =>
+        void Frame(Scene3D s)
         {
             Lights(s);
             SkinnedGltfMesh mesh = reference ? _reference! : _mesh;
@@ -180,11 +178,23 @@ public sealed class DqConsumerMatrixScene : IDisposable
                 if (internalAdmission) DqOutlineScene.Queue(s, mesh, group, handle, joints, world);
                 else s.DrawSkinnedOutline(group, handle, joints, world);
             }
-        });
-        // A static point row becomes resident on its following frame. Dynamic and transient current-pose
-        // surfaces are read independently, so none of these comparisons uses cached skinned geometry.
+        }
+        // Base residency and transient capacity consume demand at the following Begin. Prime with this
+        // same pose, view and origin, so a fresh scene has the same admitted point rows as a reused scene.
+        if (cold)
+        {
+            _preview.Capture(Frame);
+            _preview.Capture(Frame);
+        }
+        _preview.Capture(Frame);
+        if (submission != 2)
+        {
+            Assert.NotNull(scene.PointShadowTransientTexture);
+            Assert.Equal(0, scene.PointShadowTransientSlotForLight(0));
+            Assert.Equal(-1, scene.PointShadowTransientSlotForLight(1));
+        }
         float[] point = submission == 2 ? [] : ReadDepth(scene.PointShadowTexture!)
-            .Concat(scene.PointShadowTransientTexture is { } transient ? ReadDepth(transient) : []).ToArray();
+            .Concat(ReadDepth(scene.PointShadowTransientTexture!)).ToArray();
         var renderer = (ModelRenderer)DqGpuReadback.Field(scene, "_model");
         byte[] outline = submission == 1 ? [] : ReadBytes((IGpuTexture)DqGpuReadback.Field(
             DqGpuReadback.Field(scene, "_targetOutlines"), "_fullCoverage"));

@@ -39,6 +39,12 @@ internal sealed record ShippedSourceProvenance
 
     internal static ShippedSourceProvenance Parse(byte[] bytes)
     {
+        using (JsonDocument json = JsonDocument.Parse(bytes))
+        {
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var property in json.RootElement.EnumerateObject())
+                if (!names.Add(property.Name)) throw new InvalidDataException("duplicate provenance member");
+        }
         var value = JsonSerializer.Deserialize<ShippedSourceProvenance>(bytes, JsonOptions)
             ?? throw new InvalidDataException("invalid provenance");
         if (string.IsNullOrWhiteSpace(value.SourceRepository) || value.Tag is null ||

@@ -110,7 +110,7 @@ and overflow diagnostics remain authoritative.
 `IMapRenderDevice` measures upload demand before creation. An upload must claim its
 `ISceneUploadReservation` before running any allocation factory. Retirement stays charged until the
 renderer confirms release. Render3D now supplies admitted upload, publication and `SceneResourceAccess`.
-The composite residency owner is `MapRenderResidency`. The actual scene sink remains Task 12 work. Explicit plant resources convert to
+The composite residency owner is `MapRenderResidency`. `MapScene3DSink` consumes the same typed registrations and frames in viewport and capture. Explicit plant resources convert to
 `SceneFoliageSource` with `SceneFoliageTransformSpace.AnchorLocal`. Generated world rows use `World`.
 `ScenePreparedFoliage` declares the immutable 96-byte packed product. It is produced by `Scene3D.PrepareResourceUpload`.
 
@@ -230,3 +230,54 @@ by ordinal owner ID. Rejected hidden or cut hits continue to the next candidate.
 `MapPresentationHit.LocalPoint` is relative to the supplied frame's horizontal origin, with world-datum
 Y. `IMapPresentationCut` defaults to accepting every hit. R8b owns its cut classification and frame
 synchronization. Each plan and its pickers are serial frame consumers sharing one prepared scratch area.
+
+## Native view and snapshot contract
+
+`IMapNativeRenderHost.Resolve` returns a `MapNativeRenderContext` with verified closure, proof-bound
+source, extent proofs, frozen render policy, capture lighting and style. The editor and ke-mapedit use
+this host contract. Native input failure refuses before any terrain-only success. The adapter adds no
+root field. MapDoc stays format 9, prefab payload 1 and foliage payload 1.
+
+`NativeMapView` drives `MapRenderResidency` and `MapScene3DSink`. `MapDrawRecorder` records the same
+complete registrations and typed frame values without a device, window or backend. A draw set contains
+resources as well as draws. Registration carries multipart geometry, material maps, every LOD, light
+descriptors, water domains and foliage model-part tables. Foliage rows carry model indices, original
+matrices and ranks. Stable profile/casting changes require replacement. Dynamic frame values carry
+dissolve, complementary phase, shadow inversion, light colour/radius/intensity/exclusion, frozen water
+look, local focus, foliage quality, wind, interactors, time and seed.
+
+`MapRenderResidency.RequestReplacement`, `Invalidate` and `SetWindows` retain accepted and pending
+witnesses separately. Source, closure, scope, policy and generation fence preparation, completion,
+upload and publication. A completed unpublished generation can still be superseded. Each head checks
+its own stamp, process-local generation counters are not identities shared between independent heads.
+Every logical owner retains all intersecting memberships, all LODs, light radius and explicit motion
+padding. Last-membership release retires the resource, retaining its charge until renderer completion.
+
+`MapSnapshotRequest` freezes closure, scope, framing, observer, roof mode, time, wind seed, style, AA,
+lighting and completeness requirement. Explicit focus is a `MapFramePoint`. Omitted View focus uses the
+eye. TopDown focus uses `MapCaptureFocus.Resolve` over the declared support domain. No frame consumer
+infers focus from the observer. A refused unresolved focus stays null in the transport result.
+`MapCaptureDependencies.Compute` expands directional and point-light caster coverage from frozen lighting.
+Its witness keeps requested, required and acquired scopes separate. `MapCapturePreparation.Prepare`
+proves dependency and focus admission without a device. `NativeMapSnapshot` uses the same residency and
+submission path. Resources must be ready before the default 16 temporal warm-up frames. The default
+settle allowance is 1024 operations. Temporal warm-up never repairs incomplete dependency coverage.
+
+`MapCaptureRequirement.CompleteScope` refuses missing coverage. Preview can return an image with typed
+findings, but a capped result sets both `CompleteForScope` and `WholeWorldComplete` false. A scoped
+witness does not certify the whole world or simulation residency. `MapSimulationResidency` remains a
+separate GPU-free owner of required statics and navigation domains.
+
+Sparse verification covers X/Z from -32,000 to +32,000 m, Y from -500 to +500 m and 64 m padding.
+That envelope is not a dense allocation requirement or a content limit. Anchor subtraction precedes
+binary32 rounding with at most 0.0001 m additional local submission error. Independent generation pins
+belong to each location. An origin-only precision comparison reuses one absolute realization.
+Steady-state frame work reuses admitted geometry, membership and roof buffers. Decode, preparation,
+upload, accepted, pending and retirement retention remain separately budgeted, with no RSS or timing SLA.
+
+R8b consumes bounded-water optical inputs, including body-local depth, and the scoped room/roof/mesh
+inventory for `IInteriorSource`. `IMapPresentationCut` is the explicit classification seam. Cave lighting,
+sky/camera domain policy and appearance acceptance remain R8b work. R9 consumes the viewport and commands,
+R10 adds render findings and complete tool parity, and R11 consumes the independent draw-set comparison.
+G3 uses this view/snapshot contract and also needs the separate native CPU world-map source
+[#1370](https://github.com/APKiwiOrg/KhaozEngine/issues/1370). None of these interfaces claims that gate passed.

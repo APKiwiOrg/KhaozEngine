@@ -337,8 +337,12 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   `MapDocumentException`.
 
 R5's format-7 effective prefab resources retain this one-way leaf mesh loader. Prefabs have no mesh of their
-own. Partial-face paint drawing, room-based roof colour/shadows, camera policy and local-light presentation
-remain R8 work. Consume the effective MapDoc snapshot rather than re-expanding children in this adapter.
+own. Native partial paint, roof channels, local lights and residency live in the optional
+[MapDoc.Render3D adapter](../KhaozEngine.MapDoc.Render3D/README.md). It shares the N-tier emitter,
+complementary dissolve and cluster coverage. Profiles and casting belong to stable foliage registration,
+while frame submissions carry local focus, wind, time, seed and interactors. Stable edits require replacement.
+Consume the effective snapshot rather than re-expanding children in this leaf adapter. R8b retains interior
+cuts and domain-aware camera/sky policy.
 
 ## Usage
 

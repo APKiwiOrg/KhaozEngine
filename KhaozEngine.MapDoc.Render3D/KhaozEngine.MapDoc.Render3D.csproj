@@ -14,5 +14,6 @@
     <None Include="README.md" Pack="true" PackagePath="\" />
     <EmbeddedResource Include="map-render-material.schema.json" />
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
+    <InternalsVisibleTo Include="KhaozEngine.MapDoc.OracleHarness.Tests" />
   </ItemGroup>
 </Project>

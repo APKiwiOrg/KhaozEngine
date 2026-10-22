@@ -298,9 +298,9 @@ so no later read touches the producer, even one pinned to the same generation.
 **Later rounds.** R3 owns physics sidedness, floor support and headroom, picking, placement supports, movement
 integration and tiled nav capture. R4 owns flooded and dry containment and water bed semantics over R2
 space geometry. R5 provides free prefab transforms, interior domains and roof links over the R2 compiler
-and queries in local space, described below. R8 owns bounded surface and asset residency, lighting, occlusion,
-HLOD, render-origin
-adapters and backend water captures. Each must keep legacy fallback cells non-capture and emit no physics,
+and queries in local space, described below. R8a supplies bounded scene and asset residency, native lighting, HLOD, roof channels and
+render-origin adapters in the optional [MapDoc.Render3D package](../KhaozEngine.MapDoc.Render3D/README.md).
+R8b retains water optics, cave policy, interior cuts and appearance acceptance. Each must keep legacy fallback cells non-capture and emit no physics,
 nav or water faces for them. R2 claims no physics, nav, water or rendering capability.
 
 ## Bounded water
@@ -659,8 +659,8 @@ typed result. Its admitted `Buffer.Evaluate(observer, mode)` reuses exact member
 
 The four intent flags have separate consumers. Hidden roofs have `ColourVisible = false`, `CastShadows = true`,
 `CameraBoomBlocks = false` and `SkyPickingBlocks = true`. Visible roofs set all four true. This policy never
-changes collision, interaction geometry or static registration. R8 owns colour, shadows, camera boom and sky-ray
-integration.
+changes collision, interaction geometry or static registration. `NativeMapRoofs` and `MapPresentationPicker`
+consume those channels in MapDoc.Render3D. R8b adds cut-aware classification.
 
 Typed Light and Support resource payloads begin with the discriminant `"resourceSchema"`, valued
 `kemap/light-resource` or `kemap/support-resource`. Their writers emit it first and their closed decoders require it.
@@ -899,7 +899,7 @@ Payload 1 supports `legacy-tile/1` with explicit boundary/material metadata, res
 and additive NoDraw triangles. NoDraw and Blocked flags do not veto density under this compatibility policy.
 Full-request prepared support selection is shared with the
 seat query. A later geometric policy needs its own version and differential. Equal-priority world paint chooses the
-ascending ordinal ID winner. R8 must preserve that winner rather than choose paint by draw order.
+ascending ordinal ID winner. The native renderer preserves that winner independently of draw order.
 
 Both binding kinds normalize to the selected support surface owner. Occupied Space is a separate field. Clearance
 rules apply to effective placements after their effective transform once. Their seated support, not a roof's clearing
@@ -968,7 +968,7 @@ not broaden invalidation. It is separate from distribution identity and never re
 Styling remains caller policy. Preserve live blade/shrub motion profiles and shadow flags. Use dependency digest plus
 generation to reject stale work. Keep one owned batch with every residency membership intersecting its padded bounds
 and release it only after its last membership leaves. Actual residency, upload, viewport drawing, captures and appearance
-remain R8/G3. The bounds are cosmetic and never union into world/nav bounds or static descriptors.
+belong to R8b appearance and G3 acceptance. R8a provides native residency and drawing. The bounds are cosmetic and never union into world/nav bounds or static descriptors.
 
 ### Public foliage acceptance and deferred ownership
 
@@ -985,7 +985,7 @@ remain R8/G3. The bounds are cosmetic and never union into world/nav bounds or s
 
 Scale/rank bits, keys, models and decisions compare exactly. Position tolerance is 0.00001 m per component and
 orientation tolerance 0.000001 radians. The workflow does not regenerate literals or run the private harness.
-The private comparison boundary and its seven test-only references are defined only in the
+The private comparison boundary and its eight test-only references are defined only in the
 [oracle harness README](../KhaozEngine.MapDoc.OracleHarness.Tests/README.md). That harness is not an importer or actual
 source acceptance. Public CPU proofs certify no pixels or windowed acceptance.
 
@@ -1383,3 +1383,22 @@ and the `ke-mapedit` MCP tool are later frontends over this model, see
 [`docs/design/MAP-EDITOR-DESIGN.md`](../docs/design/MAP-EDITOR-DESIGN.md).
 
 Part of [KhaozEngine](https://github.com/APKiwiOrg/KhaozEngine).
+
+## Scoped native scene consumers
+
+`MapSceneSource.Capture` scans verified metadata with explicit bootstrap ceilings. Defaults are 65,536
+tiles, 65,536 metadata rows, 262,144 memberships, 4096 memberships per owner, 134,217,728 scanned
+UTF-8 bytes and 67,108,864 retained metadata bytes. It streams one tile at a time and retains bounds and
+provenance. `MapRenderExtentValidator` separately streams every mesh tier and light reach, retaining no
+global decoded inventory. `MapPreparedInputLease` owns selected decoded materials and meshes only.
+
+`MapScopedScene` is separate from complete `MapEffectiveResources`. Its witness names required,
+present, known-empty and unavailable resources. `CompleteForScope` certifies the requested acquisition,
+not the whole world. Scope defaults admit 4096 selected resources, 256 patch scopes, 262,144 prepared
+faces and 67,108,864 prepared bytes before work. Point-query limits remain 256 patches, 4096 faces,
+64 intersections, 32 page reads, 64 record reads and depth 8. `IndexNodesVisited` counts rejected siblings.
+
+`MapWindowFoliageContext` uses the shared derived read reach and immutable dependencies. Complete
+constructors still refuse partial documents. No scoped consumer constructs a partial `MapDocument`
+and passes it to a complete builder. Foliage motion and all-LOD/light bounds remain cosmetic and do
+not widen navigation heights. See the [render contract](../KhaozEngine.MapDoc.Render3D/README.md).

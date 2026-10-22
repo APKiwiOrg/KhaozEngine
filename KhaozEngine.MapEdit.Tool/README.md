@@ -293,8 +293,8 @@ material references. Support bindings use the closed foliage shape of their kind
 
 The [MapDoc foliage contract](../KhaozEngine.MapDoc/README.md#native-foliage-consumer-contract) owns storage limits,
 compatibility/refusal semantics and the padded CPU handoff. The inventory is 101 verbs. R7 supplies CPU preview only.
-Windowed generation/residency and interior cut remain R8, interactive painting R9, complete verb parity and native
-placement ID rename R10, actual import/source acceptance R11/G2 and appearance R8/G3.
+R8a supplies windowed generation, residency and native rendering. Interior cuts and appearance remain R8b,
+interactive painting R9, complete verb parity and native placement ID rename R10, and actual import/source acceptance R11/G2.
 
 ## Native colliders
 
@@ -566,3 +566,18 @@ Full document format, the runtime builders, and the GUI editor sharing this same
 session model.
 
 Part of [KhaozEngine](https://github.com/APKiwiOrg/KhaozEngine).
+
+## Native snapshot transport
+
+Configure `MapEditSession.NativeRenderHost` or construct `RenderService(session, nativeHost)` with an
+`IMapNativeRenderHost`. Native render routes require `nativeRequestJson`. The existing render verbs
+retain the exact 101-tool inventory. `NativeRenderRequest.Read` accepts closed DTOs and rejects unknown,
+duplicate and case-variant properties. Frame indices are checked signed 16-bit values. Native refusal
+and success results use the same `NativeRenderWire` shape and echo explicit host policy and scope.
+
+`RenderService.RenderNative` calls `NativeMapSnapshot`. View requests default omitted focus to the
+framed eye. Top-down requests use the single `MapCaptureFocus` support rule. Explicit focus is carried
+through registration-independent frame submission. Unresolved refusal returns null focus. The result
+carries required/acquired scopes, completeness, readiness, framing, observer, roofs, time, seed, style,
+lighting and AA. A capped Preview cannot claim `CompleteForScope` or `WholeWorldComplete`.
+See the [snapshot contract](../KhaozEngine.MapDoc.Render3D/README.md#native-view-and-snapshot-contract).

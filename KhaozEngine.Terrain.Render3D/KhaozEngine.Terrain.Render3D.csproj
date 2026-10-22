@@ -13,6 +13,7 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
+    <InternalsVisibleTo Include="KhaozEngine.MapDoc.OracleHarness.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.Game.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.TileWorld.Render3D" />
     <InternalsVisibleTo Include="KhaozEngine.MapDoc.Render3D" />

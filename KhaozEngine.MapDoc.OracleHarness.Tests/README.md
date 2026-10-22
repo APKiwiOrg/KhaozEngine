@@ -127,9 +127,9 @@ recorder, synthetic guard and private inventory runs.
 `ShippedBuildingInputs.Read` and `ShippedBuildingComparison.Compare` are test-only. The shipped building
 entry runs through the existing private entry boundary. It has no discovery-time reads. Implementers select
 only `ShippedBuildingInputGuardTests` and `PrivateOracleGuardTests`, never the shipped building fact.
-The architecture guard pins exactly seven direct engine references, MapDoc, MapDoc.Physics, Physics.Bepu,
-TileWorld, TileWorld.Netcode, TileWorld.Physics and the test-only TileWorld.Render3D that the
-foliage comparison samples through. The harness remains outside the solution and public CI and is
+The architecture guard pins exactly eight direct engine references, MapDoc, MapDoc.Physics, MapDoc.Render3D,
+Physics.Bepu, TileWorld, TileWorld.Netcode, TileWorld.Physics and TileWorld.Render3D. Both render edges
+are test-only. The source and native recorders create no device, window or provider. The harness remains outside the solution and public CI and is
 not packable.
 
 The controller freezes the source and creates a fresh extraction and its provenance outside git. Nothing here searches a game
@@ -684,3 +684,97 @@ support owners, head matches and failure counts, then each failed category with 
 details. Successes stream as aggregates and the full candidate corpus is never retained. Public output is
 the sanitized category and report digest only. This is a comparison, neither R11 importer acceptance nor
 game adoption.
+
+## Scene extraction contract
+
+`ShippedSceneInputs.Read`, `ShippedSceneManifest.Read`, `LegacySceneRecorder.Record` and
+`ShippedSceneComparison.Compare` are test-only. The private fact is
+`ShippedScene_DrawSetsAndStreamingPreserveEveryResource`. It has no discovery-time reads and enters
+through `PrivateOracleEntry.Run`. Implementers select only `ShippedSceneInputGuardTests` and
+`PrivateOracleGuardTests`, plus the explicitly named building/marker/foliage guard regression filter.
+Never run this project unfiltered or use a broad ShippedScene filter. Only the controller runs the
+private fact, once per fully gated candidate, into a fresh absent report path.
+
+Scope is full resource and typed submission comparison, complete versus streamed union, lifetime and
+replacement. It is comparison scaffolding, not R11 conversion, importer acceptance, appearance or game
+adoption. R8b owns private appearance. Correspondence maps keys only. It cannot contain expected
+geometry, bounds, transforms or draw lists. Original catalogs and source routes supply expected data.
+Native data never supplies the expected inventory. Each head validates its own closure/source/scope/
+policy/generation stamp. Local generation counters need not agree between independent heads.
+
+The controller retains generator/helper sources, their build pin and all comparison inputs privately.
+Include exactly one attested source world manifest, every indexed region, catalogs, prefabs, membership,
+roles, foliage correspondence, original meshes and every LOD, texture, collider, selection and light
+input. Include the native monolithic document, tiled manifest, every page/patch/record/foliage pack and
+complete asset/material graph. Include live source render/roof/cluster/foliage/light policy and native
+policy. Every file participates in the existing ordinal path TAB SHA256 LF aggregate. Verify the
+provenance byte digest before parsing. Reads use captured attested bytes with no ambient dependency
+lookup. The released file readers are followed by a complete source recheck. Missing inputs fail.
+
+### Closed scene manifest, schema 1
+
+Every object has exactly the named case-sensitive fields. Unknown, missing, duplicate and case-variant
+members refuse. All lists are required, including empty categories. String IDs are nonempty and ordinal.
+Paths are attested extraction-relative paths, without roots, drives, backslashes, dot segments or links.
+Source and native keys are unique, with complete source coverage checked before draw comparison.
+
+| Row | Exact fields and constraints |
+| --- | --- |
+| Root | `schemaVersion`, `generator`, `nativeDocumentPath`, `nativeTiledManifestPath`, `buildingManifestPath`, `markerManifestPath`, `foliageManifestPath`, `materials`, `placements`, `lights`, `roofs`, `water`, `foliage`, `windows`, `sequence`, `policy`, `expectations`. `schemaVersion` is 1 |
+| generator | `{path,helpers}` with unique attested paths, including every retained helper and pinned helper-build input |
+| materials | `{sourceMaterialId,nativeResourceId}`. Source IDs are positive ushort values |
+| placements | `{sourceObjectId,nativePlacementId,lods}`. Object IDs are positive canonical decimal int64 strings |
+| lods | `{sourcePath,nativeResourceId}` in original base/LOD order, checked against the original catalog |
+| lights | `{sourceObjectId,sourceProfileId,nativeLightId}`. Multiple profile instances require independent original source declarations |
+| roofs | `{sourceObjectId,nativePlacementId}`, checked against retained building links/groups and original roof inventory |
+| water | `{sourceBodyKey,nativeBodyId,nativeSpaceIds}` with unique space IDs |
+| foliage | `{sourceLayerId,nativeLayerId}`, checked against the full retained R7 correspondence |
+| windows | `{id,minX,minY,minZ,maxX,maxY,maxZ,spaceIds,motionPaddingMetres}`. Bounds are finite ordered doubles, padding is explicit and nonnegative, space IDs are null or unique |
+| sequence | `{operation,windowId}`. Operation is `Load`, `Unload` or `Recenter`, referring to valid named windows with valid transitions |
+| policy | `{sourcePolicyPath,nativePolicyPath,probes}`, two attested files and nonempty probes |
+| probes | `{id,windowId,observerX,observerY,observerZ,roofMode,timeSeconds,windSeed,focusX,focusY,focusZ}`. Coordinates/time are finite, seed is int32, roof mode is `Auto`, `AlwaysVisible` or `AlwaysHidden` |
+| expectations | Exactly nonnegative integer `terrainFaces`, `placements`, `parts`, `lods`, `lights`, `roofs`, `waterRegions`, `foliageSamples`, `windows`, `sequenceSteps`. Counts are independently derived from source, never copied from native output |
+
+Linked building and marker paths retain their existing full comparison objects and their transitive
+manifest dependencies. The foliage path retains the full R7 manifest. A participating category requires
+its linked correspondence, an absent category requires null. Retain accepted earlier scaffold format
+policies in those existing readers. The new scene document and tiled store use current format 9.
+
+Load introduces an inactive named window. Unload removes an active window. Recenter introduces the
+new named window while preserving other active memberships, so load A/load B/unload A/recenter C/
+unload B/unload C ends with zero live resources. The sequence must end empty.
+
+A policy file has exactly `placements`, `animatedAssets`, `foliage`, `water`, `lights`, `modelExtents`. Placements has
+`layers` and `defaultDrawRadius`. Layer rows have exactly the released `MapPlacementLayer` serialized
+properties `id`, `assetIds`, `lodDistances`, `lodCrossfadeWidth`, `drawRadius`, `hlodDistance`,
+`hlodCrossfadeWidth`, `hlodWeldCell`, `castsShadows`. Source selections name original archetypes and
+native selections name mapped assets. Foliage and water are complete closed camel-case serializations
+of the candidate's `GroundCoverRenderOptions` and `WaterLook`, including nullable members and vector
+fields. Stable profiles/casting are model registration inputs. Frame policy excludes stable values.
+`modelExtents` is the explicit list of released `MapFoliageModelExtent` rows with `assetId`,
+`boundsInSourceUnits`, `sourceUnitsToMetres`, `motionPaddingMetres`. Source extents come from original
+meshes and the retained source motion policy, native extents name mapped assets. No padding is inferred.
+Light extractor rows are `{sourceObjectId,sourceProfileId,offset,colour,intensity,radius,castShadows}`,
+with finite vectors, positive radius, nonnegative intensity and unique source object/profile pairs.
+The retained extractor derives them from the original live source policy. Legacy routes independently
+execute the source settings, which are checked against native settings after key mapping.
+
+Probe focus coordinates are either all explicit or all null. Explicit values become a checked framed
+point and are compared as actual anchor-local submission inputs. Scope probes with omitted focus use the single TopDown
+`MapCaptureFocus` support resolver. View requests retain their real framed-eye default. The comparator cannot infer a separate focus from the observer.
+Midpoint probes must retain complementary 0/1 LOD phases, never two opaque overlapping tiers.
+
+Geometry/translation tolerance is 0.00001 m, normal component and rotation-angle tolerance are
+0.000001. Other scalar bits remain exact. Streaming duplicates require identical payloads. Compare
+canonical terrain/material/paint coverage independently of render-only triangulation order, every
+placement part/LOD/pose, selected/HLOD identities, full light owner/descriptors, four roof channels,
+water body/space/free regions/area/level with closed regions excluded, and foliage keys/matrices/ranks/
+padded bounds/model bindings. Both native storage forms load independently twice. Stream successes
+into aggregates and retain bounded private discrepancy examples, never a full sample corpus.
+
+Before attestation, retain one non-attesting diagnostic draft with every discrepancy kind/count and
+bounded examples. A semantic rule difference needs a controller ruling, never a looser tolerance.
+After correction, produce two fresh byte-identical extractions and audit closure/build pins. Only
+after exact-candidate CI and the full three-backend gate does the controller run the private fact.
+Public evidence is pass/fail and the private record reference. No private paths, names, coordinates,
+counts, hashes, meshes, pixels or detailed reports enter public git, CI or logs.

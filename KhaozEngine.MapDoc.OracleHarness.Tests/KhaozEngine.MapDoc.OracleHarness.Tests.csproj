@@ -16,10 +16,12 @@
     <ProjectReference Include="../KhaozEngine.MapDoc.Physics/KhaozEngine.MapDoc.Physics.csproj" />
     <ProjectReference Include="../KhaozEngine.TileWorld.Physics/KhaozEngine.TileWorld.Physics.csproj" />
     <ProjectReference Include="../KhaozEngine.Physics.Bepu/KhaozEngine.Physics.Bepu.csproj" />
+    <ProjectReference Include="../KhaozEngine.MapDoc.Render3D/KhaozEngine.MapDoc.Render3D.csproj" />
     <!-- Test-only: the private foliage comparison samples the released legacy foliage surface. -->
     <ProjectReference Include="../KhaozEngine.TileWorld.Render3D/KhaozEngine.TileWorld.Render3D.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="../KhaozEngine.MapDoc/MapJsonTextOptions.cs" Link="MapJsonTextOptions.cs" />
     <Compile Include="../KhaozEngine.MapDoc.Tests/NativeFixtures.cs" Link="NativeFixtures.cs" />
     <Compile Include="../KhaozEngine.MapDoc.Tests/NativeAssetFixtures.cs" Link="NativeAssetFixtures.cs" />
     <Compile Include="../KhaozEngine.MapDoc.Tests/FormatFourFixtures.cs" Link="FormatFourFixtures.cs" />

@@ -34,13 +34,12 @@ public partial class ArchitectureTests
         IReadOnlyDictionary<string, Project> graph = LoadGraph();
         Assert.DoesNotContain(graph.Values, p => p.ProjectRefs.Contains(Harness));
         Assert.False(graph[Harness].IsPackableLibrary);
-        // The seventh, TileWorld.Render3D, is test-only: the private foliage comparison samples the released legacy
-        // foliage surface through it.
+        // The legacy and native render edges belong only to this device-free comparison harness.
         List<string> harnessDirectEngineReferences = graph[Harness].ProjectRefs.OrderBy(name => name, StringComparer.Ordinal).ToList();
-        Assert.Equal(7, harnessDirectEngineReferences.Count);
+        Assert.Equal(8, harnessDirectEngineReferences.Count);
         Assert.Equal(new[]
         {
-            "KhaozEngine.MapDoc", "KhaozEngine.MapDoc.Physics", "KhaozEngine.Physics.Bepu",
+            "KhaozEngine.MapDoc", "KhaozEngine.MapDoc.Physics", "KhaozEngine.MapDoc.Render3D", "KhaozEngine.Physics.Bepu",
             "KhaozEngine.TileWorld", "KhaozEngine.TileWorld.Netcode", "KhaozEngine.TileWorld.Physics",
             "KhaozEngine.TileWorld.Render3D",
         }, harnessDirectEngineReferences);

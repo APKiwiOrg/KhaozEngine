@@ -45,9 +45,10 @@ internal sealed class ShippedMarkerInputs
         Supports = supports; Expectations = expectations; _source = source; _native = native; ReportDirectory = reportDirectory;
     }
 
-    internal static ShippedMarkerInputs Read(PrivateOracleInputs inputs)
+    internal static ShippedMarkerInputs Read(PrivateOracleInputs inputs) => Read(inputs, inputs.Provenance.Comparison);
+
+    internal static ShippedMarkerInputs Read(PrivateOracleInputs inputs, JsonElement comparison)
     {
-        var comparison = inputs.Provenance.Comparison;
         UniqueMembers(comparison);
         Shape(comparison, "schemaVersion", "nativeDocumentPath", "roleManifestPath", "markerManifestPath", "expectations");
         Schema(comparison);

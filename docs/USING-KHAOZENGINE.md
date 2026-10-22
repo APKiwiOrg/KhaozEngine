@@ -4384,6 +4384,30 @@ local position through receiver buffers, cluster classification and point-shadow
 in `shadow` use the same anchor-local space. Absolute light overloads preserve their existing contract.
 The optional MapDoc.Render3D package records every effective emitter and all placement mesh tiers through its
 [typed native composition contract](../KhaozEngine.MapDoc.Render3D/README.md).
+`MapSceneSource` supplies bounded scoped snapshots with independent required/present/known-empty/
+unavailable witnesses. `CompleteForScope` never implies whole-world or simulation completeness.
+Extent validation streams verified geometry, retaining metadata only. Selected decoded assets/materials
+belong to `MapPreparedInputLease`, with before-work peak decode admission. No global decoded inventory
+is required at bootstrap. Point-query defaults remain unchanged.
+
+Reference the package explicitly. `NativeMapView` and `NativeMapSnapshot` share `MapRenderResidency`,
+`MapScene3DSink` and typed registration/frame inputs. One owner spans all intersecting memberships,
+all LODs, light radius and motion padding. `RequestReplacement` and `Invalidate` preserve accepted draws
+until the entire pending generation is publishable. Retirement retains its upload charge until release.
+Canonical water cells keep identical payloads across windows and separate requested/acquired witnesses.
+Hidden roofs keep shadows and sky blocking while colour and camera blocking are disabled.
+
+A host supplies `IMapNativeRenderHost`, closure/source/proofs, policy and lighting. Native JSON transports
+closed request/result DTOs with checked signed-16-bit frames and explicit focus. Omitted View focus uses
+the eye, TopDown uses the shared support rule. Warm-up starts after readiness, with defaults of 16 frames
+and 1024 settle operations. A capped Preview cannot claim complete scope or whole-world coverage.
+Independent generation expectations are per location. Origin-only comparisons reuse one absolute realization.
+The sparse proof envelope is X/Z +/-32,000 m, Y +/-500 m with 64 m padding, and local submission adds
+at most 0.0001 m error. It is not a content limit, dense allocation mandate, timing or RSS guarantee.
+R8b retains bounded-water optics, caves, interior cuts, domain-aware sky/camera and private appearance.
+R9 owns interactive authoring, R10 findings/tool parity and R11 actual import acceptance. G3 also needs
+[#1370](https://github.com/APKiwiOrg/KhaozEngine/issues/1370), the separate native CPU world-map source.
+
 
 ```csharp
 scene.Begin();                       // latches this frame's origin
@@ -11224,7 +11248,8 @@ so they do not invent a role or fall back to the analytic terrain field.
 Doors remain AuthoredOpen. `MapRoofPolicy.Evaluate(scene, observer, mode)` returns detached roof intent.
 `MapRoofEvaluationBuffer.Prepare(scene)` admits reusable exact membership and returns a typed result. Auto uses room links/groups
 and leaves unlinked shelters visible. Hidden roofs cast shadows and block sky picking without changing statics.
-R8 owns rendering and cameras. Live door state waits for [#1363](https://github.com/APKiwiOrg/KhaozEngine/issues/1363).
+The optional MapDoc.Render3D package consumes roof drawing and presentation query channels.
+R8b retains cut-aware sky/camera policy. Live door state waits for [#1363](https://github.com/APKiwiOrg/KhaozEngine/issues/1363).
 Native controller walking and layered routes remain gated by G1b and #438. Physical doorway clearance
 is headless R5 evidence. R9 owns the GUI host and real input, and R10 owns the remaining verb-map parity.
 

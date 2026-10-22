@@ -1048,14 +1048,14 @@ MapDoc.Physics edge. MapDoc.Physics never consumes generated foliage for statics
 
 `GroundCoverCandidateEvaluator` and the lazy-channel trace remain Terrain CPU APIs. The frozen released legacy sampler
 is unchanged. The [private oracle harness README](../KhaozEngine.MapDoc.OracleHarness.Tests/README.md) is authoritative
-for its seven test-only references and comparison protocol. It is nonpackable, unreferenced, outside the solution and
+for its eight test-only references and comparison protocol. It is nonpackable, unreferenced, outside the solution and
 public CI. Do not copy that dependency into runtime code. Earlier private marker/building scaffolds keep their own
 format policies, they do not become format-9-only requirements.
 
 The [MapDoc foliage handoff](../KhaozEngine.MapDoc/README.md#public-foliage-acceptance-and-deferred-ownership) consolidates
-OA9, both-head/storage proofs, real wire acceptance and hosted foliage-conformance. R8 must add its windowed immutable
-context/completeness contract before streamed native generation. Actual rendering/residency and appearance, R9 input,
-R10 complete verbs and R11 actual import remain separate gates.
+OA9, both-head/storage proofs, real wire acceptance and hosted foliage-conformance. R8a adds
+`MapWindowFoliageContext`, scoped completeness, native drawing and composite residency. R8b appearance,
+R9 input, R10 complete verbs and R11 actual import remain separate gates.
 
 ### Optional native map rendering
 
@@ -1070,7 +1070,10 @@ anchor-relative vertex coordinate before calling that internal builder. Native r
 with equal subdivisions capped at 1024 m. Render.Tests pins the native region constant to TileRegion.Size
 without adding a production TileWorld reference. The lower builder has no building intent and makes no roof promise.
 Accepted native cluster handles remain externally owned and are never uploaded or freed by ApplyNative.
-MapDoc.Render3D grants Render.Tests test-only friend access to observe the guarded adapter boundary.
+MapDoc.Render3D and Terrain.Render3D grant the oracle harness test-only friend access to the
+existing CPU completion and emission seams. This adds no runtime dependency. The harness alone directly
+references both native and legacy render adapters and is excluded from the solution and public CI.
+MapDoc.Render3D also grants Render.Tests test-only friend access to observe the guarded adapter boundary.
 MapDoc grants that test assembly access to its canonical JSON text options for linked native fixtures.
 Terrain.Render3D already carries the neutral Physics seam, so this adapter is a deliberate combined
 MapDoc/Physics consumer. Foundation, Server and the GPU-free native builders remain independent.
@@ -1080,6 +1083,12 @@ live in the adapter. Bounded glTF/image admission and model-bound upload contrac
 the render packages, without referencing upper-package exceptions or DTOs. The adapter alone maps
 lower refusals to `MapRenderAssetStatus`. CPU recording needs no device or backend. See the
 [package contract](../KhaozEngine.MapDoc.Render3D/README.md) for ownership and policy details.
+`MapDoc`, `MapDoc.Physics`, Foundation and Server acquire no GPU edge. `MapSimulationResidency` has
+independent required-domain leases. Visual windows cannot certify cell collision or navigation coverage.
+R8b consumes bounded water optical inputs, scoped room/roof/mesh inventory for `IInteriorSource`,
+`IMapPresentationCut` and domain-aware sky/camera policy. R9 consumes the viewport and commands,
+R10 adds render findings and R11 consumes the draw-set contract. G3 also requires the separate native
+CPU world-map source [#1370](https://github.com/APKiwiOrg/KhaozEngine/issues/1370).
 
 ## Content catalog package edges
 

@@ -4,9 +4,9 @@ Umbrella metapackage for a desktop 3D game on the MonoGame-free KhaozEngine stac
 code, it is a curated dependency group and a strict superset of `KhaozEngine.Game2D`: one
 `<PackageReference>` gives the full 2D + 3D + game-loop stack.
 
-Format-7 MapDoc and GPU-free prefab/interior preparation arrive through `Foundation`. Add `MapDoc.Physics`
-and a physics backend explicitly for headless native builds. R5 roof/light intent does not wire a native view,
-which remains R8 work. The editor and ke-mapedit are separate authoring tools.
+Format-9 MapDoc and GPU-free prefab/interior preparation arrive through `Foundation`. Add `MapDoc.Physics`
+and a physics backend explicitly for headless native builds. Add `MapDoc.Render3D` explicitly for the native view, snapshots and composite residency.
+It belongs to no umbrella. The editor and ke-mapedit are separate authoring tools.
 
 Pulls in:
 

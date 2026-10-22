@@ -256,13 +256,14 @@ to model extents and motion padding. This package consumes no foliage render bat
 | Consumer | Boundary and remaining proof |
 | --- | --- |
 | R7 | Complete CPU ownership and independent-head acceptance, with the [MapDoc evidence table](../KhaozEngine.MapDoc/README.md#public-foliage-acceptance-and-deferred-ownership) |
-| R8 | Cosmetic padded mesh bounds and one owned batch across intersected memberships. Actual residency/upload, windowed context, viewport drawing and interior-cut adapter [#1474](https://github.com/APKiwiOrg/KhaozEngine/issues/1474) remain |
+| R8a and R8b | R8a supplies windowed context, one render owner across memberships, upload and viewport drawing. R8b retains the interior-cut adapter [#1474](https://github.com/APKiwiOrg/KhaozEngine/issues/1474) |
 | R9 and R10 | Interactive painting/input and complete wire parity, including native placement ID rename |
 | R11/G2 and R8/G3 | Actual importer/source acceptance and appearance acceptance, respectively |
 
 The [MapDoc foliage contract](../KhaozEngine.MapDoc/README.md#native-foliage-consumer-contract) owns full-request support,
 canonical identity, ordinal fallback, typed refusal and atomic observer completion. Sparse storage does not prove
-partial-residency generation. R8 must add its immutable windowed closure/completeness constructor first.
+partial-residency generation by itself. `MapWindowFoliageContext` now supplies the separate scoped closure
+and witness. `MapSimulationResidency` uses independent required-domain leases for statics and navigation.
 
 ## Pick, reach and stances
 

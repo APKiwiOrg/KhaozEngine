@@ -54,7 +54,7 @@ public sealed partial class Scene3D
     public FoliageBatch CreateFoliageBatch(ReadOnlySpan<FoliageInstance> instances, float patchSize = 8f)
     {
         ObjectDisposedException.ThrowIf(_foliageDisposed, this);
-        FoliagePatchLayout layout = FoliagePatchLayout.Build(instances, FoliageBounds, patchSize);
+        FoliagePatchLayout layout = FoliagePatchLayout.Build(instances, FoliageBounds, patchSize, meshOrder: FoliageMeshOrder);
         var data = PackFoliage(layout);
         var batch = new FoliageBatch(this, layout, data);
         _foliageBatches.Add(batch);
@@ -69,6 +69,9 @@ public sealed partial class Scene3D
             throw new ArgumentException("Foliage requires a model mesh, not a terrain material.", nameof(handle));
         return mesh.Bounds;
     }
+
+    // Storage indices are recycled in free-list order. Keep cold-scene draw order for coplanar multipart foliage.
+    long FoliageMeshOrder(MeshHandle handle) => _slots.AllocationOrder(handle.Index, handle.Generation);
 
     /// <summary>Queue conservative patch prefixes. Wind and exact distance fades run on the GPU.
     /// Returns candidate mesh instances, including blades the shader may reject. At most four cosmetic

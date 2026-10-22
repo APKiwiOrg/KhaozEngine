@@ -42,7 +42,8 @@ public sealed partial class Scene3D
                 next++;
             }
         }
-        var layout = FoliagePatchLayout.Build(instances, FoliageBounds, anchor: source.Anchor, absoluteRoots: roots);
+        var layout = FoliagePatchLayout.Build(instances, FoliageBounds, anchor: source.Anchor, absoluteRoots: roots,
+            meshOrder: FoliageMeshOrder);
         var ordered = new SceneFoliageExpandedPart[count];
         for (int i = 0; i < count; i++) ordered[i] = parts[layout.InputOrder[i]];
         var patches = new SceneFoliagePatch[layout.Patches.Length];

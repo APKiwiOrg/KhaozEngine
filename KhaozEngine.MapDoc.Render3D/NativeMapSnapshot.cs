@@ -8,11 +8,18 @@ public static class NativeMapSnapshot
 {
     public static MapSnapshotResult Capture(MapSnapshotRequest request)
     {
+        return Capture(request, null);
+    }
+    /// <summary>Capture with a synchronous diagnostic callback after each actual submission, before rendering.
+    /// The scene belongs to this call and must not be retained or disposed by the callback.</summary>
+    public static MapSnapshotResult Capture(MapSnapshotRequest request, Action<Scene3D>? afterSubmit)
+    {
         MapSnapshotResult? result = null;
-        CaptureSequence(request, 1, (_, frame) => result = frame);
+        CaptureSequence(request, 1, (_, frame) => result = frame, afterSubmit);
         return result!;
     }
-    public static void CaptureSequence(MapSnapshotRequest request, int count, Action<int, MapSnapshotResult> onFrame)
+    public static void CaptureSequence(MapSnapshotRequest request, int count, Action<int, MapSnapshotResult> onFrame) => CaptureSequence(request, count, onFrame, null);
+    static void CaptureSequence(MapSnapshotRequest request, int count, Action<int, MapSnapshotResult> onFrame, Action<Scene3D>? afterSubmit)
     {
         if (count < 1) throw new ArgumentOutOfRangeException(nameof(count));
         ArgumentNullException.ThrowIfNull(onFrame);
@@ -45,7 +52,7 @@ public static class NativeMapSnapshot
                 view = new(scene, new(state, sink, new(MaxActiveWindows: 256)));
                 readiness = view.SettleForCapture(echo.Policy.MaxSettleOperations);
                 if (readiness.Pending != 0 || readiness.Transition.Status != MapSceneStatus.CompleteForScope) throw new CaptureNotReady();
-            }, (_, _) => view!.Draw(frameState), checked(echo.Policy.WarmupFrames + count), (index, image) =>
+            }, (scene, _) => { view!.Draw(frameState); afterSubmit?.Invoke(scene); }, checked(echo.Policy.WarmupFrames + count), (index, image) =>
             {
                 var witness = prepared.Witness with
                 {

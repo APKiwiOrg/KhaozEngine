@@ -13,6 +13,8 @@ using KhaozEngine.Tests.Gpu;
 using KhaozEngine.Tests.MapDoc;
 using ModelContextProtocol.Protocol;
 using Xunit;
+using KhaozEngine.Render3D;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace KhaozEngine.Tests.MapEditTool;
 
@@ -43,7 +45,7 @@ public sealed partial class NativeMapCaptureWireTests
             Assert.True(root.GetProperty("readiness").GetProperty("gpuBytes").GetInt64() <= 536870912);
             Assert.Contains(root.GetProperty("findings").EnumerateArray(), f => f.GetString() == "scope.capped");
             Assert.False(string.IsNullOrEmpty(root.GetProperty("backend").GetString()));
-            var decoded = ImageRgba.Decode(image.Data.ToArray()); Assert.Equal(640, decoded.Width); Assert.Equal(480, decoded.Height);
+            var decoded = ImageRgba.Decode(image.DecodedData.ToArray()); Assert.Equal(640, decoded.Width); Assert.Equal(480, decoded.Height);
             var actual = harness.Services.GetService(typeof(RenderService)) as RenderService;
             var direct = actual!.RenderNative(NativeRenderRequestTests.Json);
             Assert.Equal(direct.Image!.Value.Backend.ToString(), root.GetProperty("backend").GetString());
@@ -59,29 +61,42 @@ public sealed partial class NativeMapCaptureWireTests
         string dir = Temp();
         try
         {
-            var (doc, _) = CaptureDependencyFixtures.Create(dir);
-            doc.Placements.RemoveAll(p => p.Id == "unrelated-far");
-            doc.Placements[0].X = -3; doc.Placements[0].Y = .5f; doc.Placements[1].X = 3; doc.Placements[1].Y = .5f;
-            string path = Path.Combine(dir, "world.map.json"); MapDocumentFile.Save(doc, path);
-            var file = NativeRenderMaterialSchemaTests.PolicyFile(); var row = file.Styles[0];
-            file = file with { Styles = [row with { Render = row.Render with { Placements = new([], 4) } }] };
-            string policy = Path.Combine(dir, "policy.json"); File.WriteAllText(policy, JsonSerializer.Serialize(file, NativePolicyJson.Options));
-            await using var harness = await McpWire.StartAsync(policy);
-            Assert.False((await harness.Client.CallAsync("map_open", new Dictionary<string, object?> { ["path"] = path })).IsError == true);
-            var first = await harness.Client.CallAsync("render_view", Arguments(NativeRenderRequestTests.Json)); Assert.False(first.IsError == true);
-            var changed = JsonNode.Parse(NativeRenderRequestTests.Json)!; changed["focus"]!["local"]!["x"] = 0;
-            var second = await harness.Client.CallAsync("render_view", Arguments(changed.ToJsonString())); Assert.False(second.IsError == true);
+            var fixture = FocusFixture(dir);
+            await using var harness = await McpWire.StartAsync(fixture.Policy);
+            Assert.False((await harness.Client.CallAsync("map_open", new Dictionary<string, object?> { ["path"] = fixture.World })).IsError == true);
+            int submitted = 0;
+            harness.Services.GetRequiredService<RenderService>().NativeCapture = request => NativeMapSnapshot.Capture(request, scene =>
+            {
+                if (request.StyleId == "windy") { AssertSubmittedFocus(scene, request); submitted++; }
+                else Assert.Empty(scene.FoliageUniformsForTests.ToArray());
+            });
+            var first = await harness.Client.CallAsync("render_view", Arguments(FocusRequest(5))); Assert.False(first.IsError == true);
+            var second = await harness.Client.CallAsync("render_view", Arguments(FocusRequest(0))); Assert.False(second.IsError == true);
+            Assert.True(submitted >= 2);
             using var a = JsonDocument.Parse(((TextContentBlock)first.Content[0]).Text);
             using var b = JsonDocument.Parse(((TextContentBlock)second.Content[0]).Text);
             Assert.Equal("Explicit", a.RootElement.GetProperty("focusSource").GetString()); Assert.Equal("Explicit", b.RootElement.GetProperty("focusSource").GetString());
             Assert.Equal(5, a.RootElement.GetProperty("focus").GetProperty("local").GetProperty("x").GetDouble());
             Assert.Equal(0, b.RootElement.GetProperty("focus").GetProperty("local").GetProperty("x").GetDouble());
-            var left = ImageRgba.Decode(((ImageContentBlock)first.Content[1]).Data.ToArray()).Pixels;
-            var right = ImageRgba.Decode(((ImageContentBlock)second.Content[1]).Data.ToArray()).Pixels;
-            int pixels = 0;
-            for (int y = 0; y < 480; y++) for (int x = 320; x < 640; x++)
-            { int offset = (y * 640 + x) * 4; if (Math.Abs(left[offset] - right[offset]) >= 8 || Math.Abs(left[offset + 1] - right[offset + 1]) >= 8) pixels++; }
-            Assert.True(pixels >= 64, "Explicit focus must change at least 64 pixels in the right prop region.");
+            var left = ImageRgba.Decode(((ImageContentBlock)first.Content[1]).DecodedData.ToArray()).Pixels;
+            var right = ImageRgba.Decode(((ImageContentBlock)second.Content[1]).DecodedData.ToArray()).Pixels;
+            var bareFirst = await harness.Client.CallAsync("render_view", Arguments(FocusRequest(5, "bare"))); Assert.False(bareFirst.IsError == true);
+            var bareSecond = await harness.Client.CallAsync("render_view", Arguments(FocusRequest(0, "bare"))); Assert.False(bareSecond.IsError == true);
+            var bareLeft = ImageRgba.Decode(((ImageContentBlock)bareFirst.Content[1]).DecodedData.ToArray()).Pixels;
+            var bareRight = ImageRgba.Decode(((ImageContentBlock)bareSecond.Content[1]).DecodedData.ToArray()).Pixels;
+            int foliagePixels = 0, propPixels = 0;
+            for (int y = 0; y < 480; y++) for (int x = 0; x < 640; x++)
+            {
+                int offset = (y * 640 + x) * 4;
+                bool propChanged = Math.Abs(bareLeft[offset] - bareRight[offset]) >= 8 || Math.Abs(bareLeft[offset + 1] - bareRight[offset + 1]) >= 8;
+                if (x >= 320 && propChanged) propPixels++;
+                // The top foliage ROI is clear of both props. Subtract the no-foliage focus control's pixel change.
+                if (y is >= 48 and < 160 &&
+                    (Math.Abs((left[offset] - right[offset]) - (bareLeft[offset] - bareRight[offset])) >= 8 ||
+                     Math.Abs((left[offset + 1] - right[offset + 1]) - (bareLeft[offset + 1] - bareRight[offset + 1])) >= 8)) foliagePixels++;
+            }
+            Assert.True(foliagePixels >= 64, $"Explicit focus changed {foliagePixels} foliage ROI pixels after the bare control, expected at least 64.");
+            Assert.True(propPixels >= 64, $"Explicit focus changed {propPixels} right prop pixels in the bare control, expected at least 64.");
         }
         finally { Directory.Delete(dir, true); }
     }

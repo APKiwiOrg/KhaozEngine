@@ -15,6 +15,9 @@ public sealed class SceneGroundMaterialData
     public IReadOnlyList<TileGroundLayerImage> Layers => Array.AsReadOnly(_layers.Select(Copy).ToArray());
     internal IReadOnlyList<TileGroundLayerImage> BorrowLayers => _layers;
 
+    internal SceneGroundDescription Describe() => new(Width, Height, _layers.Select(l =>
+        new SceneGroundLayerDescription(l.AlbedoRgba, l.Tint, l.TilesPerMetre, l.Steep)).ToArray(), BaseSpecularStrength, Sampler);
+
     public SceneGroundMaterialData(int width, int height, IReadOnlyList<TileGroundLayerImage> layers,
         float baseSpecularStrength = .15f, TerrainSamplerConfig? sampler = null)
     {

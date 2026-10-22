@@ -11,12 +11,32 @@ using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.MapEdit;
 using KhaozEngine.Tests.MapDoc;
 using Xunit;
+using KhaozEngine.Gpu;
+using KhaozEngine.Render3D;
+using KhaozEngine.Render2D;
+using ModelContextProtocol.Protocol;
 
 namespace KhaozEngine.Tests.MapEditTool;
 
 [Collection(McpWireCollection.Name)]
 public sealed partial class NativeMapCaptureWireTests
 {
+    [Fact]
+    public void NativeResult_ImageRoundTripsThroughMcpContentBlockDeserialization()
+    {
+        var result = MapCapturePreparation.Prepare(CaptureDependencyFixtures.Request());
+        byte[] rgba = [255, 0, 0, 255, 0, 255, 0, 255];
+        result = result with { Image = new Render3DCapture(rgba, 2, 1, GpuBackendKind.Vulkan) };
+        var wire = new CallToolResult { Content = RenderService.NativeResultBlocks(result).ToList() };
+        var decoded = JsonSerializer.Deserialize<CallToolResult>(JsonSerializer.Serialize(wire))!;
+        Assert.IsType<TextContentBlock>(decoded.Content[0]);
+        var image = Assert.IsType<ImageContentBlock>(decoded.Content[1]);
+        Assert.Equal("image/png", image.MimeType);
+        Assert.Equal(rgba, ImageRgba.Decode(image.DecodedData.ToArray()).Pixels);
+        var noImage = JsonSerializer.Deserialize<CallToolResult>(JsonSerializer.Serialize(new CallToolResult
+        { Content = RenderService.NativeResultBlocks(result with { Image = null }).ToList() }))!;
+        Assert.IsType<TextContentBlock>(Assert.Single(noImage.Content));
+    }
     [Fact]
     public async Task NativeRequest_InvalidDomainRefusesBeforeHost()
     {

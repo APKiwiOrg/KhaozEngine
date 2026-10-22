@@ -37,19 +37,14 @@ public sealed class MapScene3DSink : IMapRenderDevice, IMapDrawSink, IMapRenderU
         var data = Input(resource);
         return new Upload(this, resource, _scene.PrepareResourceUpload(data, reservation));
     }
-    SceneUploadData Input(MapPreparedResource resource)
+    SceneUploadDescription Input(MapPreparedResource resource)
     {
         switch (resource.Payload)
         {
             case MapRigidResource rigid: return new(rigid.BorrowMesh, rigid.BorrowMaps, null, default);
             case MapTerrainResource terrain:
                 var m = terrain.Materials;
-                var layers = m.Layers.Select(l => new TileGroundLayerImage
-                {
-                    AlbedoRgba = l.BorrowAlbedo?.Rgba ?? Enumerable.Repeat((byte)255, checked(m.Width * m.Height * 4)).ToArray(),
-                    Tint = (KhaozEngine.Primitives.Color)l.Tint,
-                    TilesPerMetre = l.TilesPerMetre
-                }).ToArray();
+                var layers = m.Layers.Select(l => new SceneGroundLayerDescription(l.BorrowAlbedo?.Rgba, (KhaozEngine.Primitives.Color)l.Tint, l.TilesPerMetre)).ToArray();
                 return new(terrain.BorrowMesh, null, null, default, new(m.Width, m.Height, layers, m.BaseSpecularStrength));
             case MapWaterResource water: return new(water.BorrowMesh, null, null, water.BorrowClipData);
             case MapFoliageResource foliage:

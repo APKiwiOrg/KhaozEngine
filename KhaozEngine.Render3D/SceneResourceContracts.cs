@@ -35,6 +35,7 @@ public sealed class SceneUploadData
     public SceneFoliageSource? Foliage { get; }
     public SceneGroundMaterialData? GroundMaterial { get; }
     internal string InputDigest { get; }
+    internal SceneUploadDescription Description { get; }
     public ReadOnlyMemory<byte> ClipData => _clipData.ToArray();
     internal GltfMesh? BorrowMesh => _mesh;
     internal GltfMaterialMaps? BorrowMaps => _maps;
@@ -45,7 +46,8 @@ public sealed class SceneUploadData
     {
         _mesh = mesh is null ? null : Copy(mesh); _maps = maps is { } m ? Copy(m) : null;
         Foliage = foliage; _clipData = clipData.ToArray(); GroundMaterial = groundMaterial;
-        InputDigest = SceneUploadFingerprint.Compute(this);
+        Description = new(_mesh, _maps, foliage?.Describe(), _clipData, groundMaterial?.Describe());
+        InputDigest = SceneUploadFingerprint.Compute(Description);
     }
     internal static GltfMesh Copy(GltfMesh mesh) => new(mesh.Vertices.ToArray(), mesh.Indices32.ToArray());
     internal static GltfMaterialMaps Copy(GltfMaterialMaps maps) => new(Copy(maps.Albedo), Copy(maps.Normal), Copy(maps.Roughness), maps.AlphaCutoff);

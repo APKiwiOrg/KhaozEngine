@@ -36,6 +36,8 @@ public sealed class SceneFoliageSource
     internal ReadOnlySpan<float> BorrowRanks => _ranks;
     internal ReadOnlySpan<int> BorrowModelIndices => _indices;
 
+    internal SceneFoliageDescription Describe() => new(Anchor, _transforms, _ranks, _indices, Models, TransformSpace);
+
     public SceneFoliageSource(RenderAnchor anchor, ReadOnlyMemory<Matrix4x4> worldTransforms,
         ReadOnlyMemory<float> ranks, ReadOnlyMemory<int> modelIndices, IReadOnlyList<SceneFoliageModelBinding> models,
         SceneFoliageTransformSpace transformSpace = SceneFoliageTransformSpace.World)

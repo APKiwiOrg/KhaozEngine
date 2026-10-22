@@ -26,6 +26,11 @@ internal sealed class SkinnedAttachmentUpload : ISkinnedAttachmentMeshLease, IAt
     {
         ArgumentNullException.ThrowIfNull(parts);
         if (parts.Count == 0) throw new ArgumentException("An attachment upload needs material parts.", nameof(parts));
+        SkinningProfile profile = parts[0].Mesh.Profile;
+        for (int i = 1; i < parts.Count; i++)
+            if (parts[i].Mesh.Profile != profile)
+                throw new ArgumentException($"Attachment material part {i} profile must match the source skin profile " +
+                    $"{profile.Method} version {profile.AlgorithmVersion} before upload.", nameof(parts));
         var upload = new SkinnedAttachmentUpload(scene, parts.Count);
         try
         {

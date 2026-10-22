@@ -10,6 +10,7 @@ namespace KhaozEngine.Attachments.Render3D;
 internal sealed class AttachmentPartResources
 {
     internal bool IsSkinned { get; }
+    internal SkinningProfile Profile { get; } = SkinningProfile.LinearBlend;
     internal IReadOnlyList<MeshHandle> RigidHandles { get; } = Array.Empty<MeshHandle>();
     internal IReadOnlyList<SkinnedMeshHandle> SkinnedHandles { get; } = Array.Empty<SkinnedMeshHandle>();
     internal IReadOnlyList<string> JointNames { get; } = Array.Empty<string>();
@@ -22,6 +23,7 @@ internal sealed class AttachmentPartResources
     internal AttachmentPartResources(IReadOnlyList<SkinnedMeshHandle> handles, SkinnedGltfMesh skin)
     {
         IsSkinned = true;
+        Profile = skin.Profile;
         SkinnedHandles = Array.AsReadOnly(handles.ToArray());
         Skeleton skeleton = skin.Skeleton ?? throw new ArgumentException("An attachment skin needs a skeleton.", nameof(skin));
         JointNames = Array.AsReadOnly(skeleton.JointToNode.Select(node => skeleton.NodeNames[node]).ToArray());

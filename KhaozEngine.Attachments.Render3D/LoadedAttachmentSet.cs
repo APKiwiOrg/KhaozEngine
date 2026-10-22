@@ -9,14 +9,16 @@ public sealed class LoadedAttachmentSet
     readonly AttachmentSetCache _owner;
     readonly AttachmentSetDefinition _definition;
     readonly string _definitionSha256;
+    readonly SkinningProfile _profile;
     readonly IReadOnlyList<AttachmentPartResources> _resources;
 
     internal LoadedAttachmentSet(AttachmentSetCache owner, AttachmentSetDefinition definition,
-        string definitionSha256, AttachmentPartResources[] resources)
+        string definitionSha256, SkinningProfile profile, AttachmentPartResources[] resources)
     {
         _owner = owner;
         _definition = definition;
         _definitionSha256 = definitionSha256;
+        _profile = profile;
         _resources = System.Array.AsReadOnly(resources);
     }
 
@@ -31,6 +33,12 @@ public sealed class LoadedAttachmentSet
         get { _owner.ThrowIfDisposed(); return _definitionSha256; }
     }
 
+    /// <summary>The pre-upload profile selected for all garment parts in this cached view.</summary>
+    public SkinningProfile Profile
+    {
+        get { _owner.ThrowIfDisposed(); return _profile; }
+    }
+
     internal IReadOnlyList<AttachmentPartResources> Resources
     {
         get { _owner.ThrowIfDisposed(); return _resources; }
@@ -43,7 +51,7 @@ public sealed class LoadedAttachmentSet
         return new BoundAttachmentSet(_owner, _definition, _resources, new AttachmentSetBinding(_definition, map));
     }
 
-    /// <summary>Bind garment metadata to the explicit host skin and snapshot every joint index once.</summary>
+    /// <summary>Require matching garment and host profiles, then snapshot every joint index once.</summary>
     public BoundAttachmentSet Bind(ContractJointMap map, SkinnedGltfMesh hostMesh)
     {
         _owner.ThrowIfDisposed();

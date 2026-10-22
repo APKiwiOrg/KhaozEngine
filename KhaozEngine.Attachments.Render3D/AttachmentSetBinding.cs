@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
+using System.Security.Cryptography;
+using System.Text;
 using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Attachments.Render3D;
@@ -69,10 +71,19 @@ public sealed class AttachmentSetBinding
             }
         }
         _worlds = new Matrix4x4[_parts.Length];
+        SkinningProfile profile = hostMesh?.Profile ?? SkinningProfile.LinearBlend;
+        // Preserve the established LBS identity. A changed body surface invalidates fit and history even
+        // for a rigid-only set, although its socket composition remains unchanged.
+        FitIdentity = profile == SkinningProfile.LinearBlend ? definition.SemanticSha256
+            : Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
+                $"{definition.SemanticSha256}\nskinning:{(int)profile.Method}:{profile.AlgorithmVersion}")));
     }
 
     public Skeleton Skeleton { get; }
     public int PartCount => _parts.Length;
+
+    /// <summary>Canonical definition and host deformation identity for fit evidence and motion history.</summary>
+    public string FitIdentity { get; }
 
     /// <summary>The garment palette capacity for a named part, or zero for a rigid part.</summary>
     public int SkinnedJointCount(uint partId) => Part(partId).Skin?.JointCount ?? 0;

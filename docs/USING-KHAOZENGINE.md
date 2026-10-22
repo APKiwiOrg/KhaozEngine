@@ -6628,13 +6628,21 @@ within an inclusive absolute `1e-4` per element over all 16 elements. Binding pr
 table. Rigid parts retain part-local correction, body alignment and scale-free joint composition.
 Rigid-only `loaded.Bind(map)` remains valid and refuses garments with `InvalidDataException`.
 
-One cache owns uploads for one scene, shares verified mesh revisions by key, hash and kind, and
+One cache owns uploads for one scene, shares verified garment revisions by key, hash, kind and profile, and
 refuses a mesh reference requested under both kinds even when its upload is warm. Dispose it before
 the scene. Loaded and bound views borrow resources and throw `ObjectDisposedException` after cache
 disposal. Use each cache and bound view on its scene's render thread without overlapping calls.
 Binding allocates scratch and one garment palette per skinned part, shared by that part's materials.
 Valid frame calls load, hash, search names and allocate nothing. They never advance animation.
 The host palette contains joint model matrices. Scene3D alone applies garment inverse binds.
+
+`Get(key, hash)` retains the LBS default. `Get(key, hash, profile)` selects one immutable profile for
+all garment materials before import and upload. Binding requires that profile to match the host,
+in addition to joint names and inverse binds. `FitIdentity` on the binding or bound view identifies
+the canonical definition and host profile for fit evidence and motion keys. A changed host profile
+invalidates rigid-item fit identity too, without changing socket matrices. `AttachmentDraw.Profile`
+retains the garment profile and is null for rigid draws. DQ public scene submission remains refused
+while rendering integration is incomplete. See the package README for the detailed cache contract.
 
 The convenience `Queue` overload uses opaque white tint, `Material.None`, no dissolve and shadow
 casting. Its `RigidInstanceDraw` template overload replaces mesh, world or model, and motion while

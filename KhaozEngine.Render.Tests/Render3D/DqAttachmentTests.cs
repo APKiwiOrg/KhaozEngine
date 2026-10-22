@@ -29,6 +29,7 @@ public sealed class DqAttachmentTests
         using var cache = new AttachmentSetCache(recording, source.Assets);
         SkinningProfile profile = dq ? SkinningProfile.DualQuaternionRigid : SkinningProfile.LinearBlend;
         LoadedAttachmentSet loaded = DqAttachmentSource.Get(cache, source.Hash, profile);
+        Assert.Equal(profile, loaded.Profile);
         BoundAttachmentSet bound = loaded.Bind(source.Map, source.Host(profile));
         var draws = new AttachmentDraw[bound.DrawCount];
         Assert.Equal(2, bound.WriteDraws(source.Skeleton, DqCascadeScene.HalfTurn, Matrix4x4.Identity,
@@ -87,8 +88,14 @@ public sealed class DqAttachmentTests
         Assert.Equal((0, 0, 0), harness.Scene.MotionKeyCounts);
         Assert.Equal(0, ((KhaozEngine.Render3D.Internal.PreparedSkinningStore)
             DqGpuReadback.Field(harness.Scene, "_preparedSkinning")).PoseCount);
-        a.Bind(source.Map, source.Host(first));
-        b.Bind(source.Map, source.Host(second));
+        BoundAttachmentSet boundA = a.Bind(source.Map, source.Host(first));
+        BoundAttachmentSet boundB = b.Bind(source.Map, source.Host(second));
+        Assert.NotEqual(boundA.FitIdentity, boundB.FitIdentity);
+        var drawsA = new AttachmentDraw[2];
+        var drawsB = new AttachmentDraw[2];
+        boundA.WriteDraws(source.Skeleton, DqCascadeScene.HalfTurn, Matrix4x4.Identity, MotionKey.From(7), new(default, Matrix4x4.Identity), drawsA);
+        boundB.WriteDraws(source.Skeleton, DqCascadeScene.HalfTurn, Matrix4x4.Identity, MotionKey.From(7), new(default, Matrix4x4.Identity), drawsB);
+        Assert.All(drawsA, draw => Assert.DoesNotContain(draw.Skinned.Motion, drawsB.Select(b => b.Skinned.Motion)));
     }
 
     [Fact]
@@ -102,6 +109,28 @@ public sealed class DqAttachmentTests
             source.Definition, source.Map, source.Host(SkinningProfile.LinearBlend), meshes));
         Assert.Contains("part 7", error.Message);
         Assert.Contains("host", error.Message);
+        var binding = new AttachmentSetBinding(source.Definition, source.Map,
+            source.Host(SkinningProfile.DualQuaternionRigid), meshes);
+        var palette = new Matrix4x4[2];
+        binding.CopySkinnedPalette(source.Skeleton, DqCascadeScene.HalfTurn, 7, palette);
+        Assert.Equal(DqCascadeScene.HalfTurn.Reverse(), palette);
+    }
+
+    [Fact]
+    public void Upload_refuses_incoherent_material_profiles_before_mutation()
+    {
+        using var harness = new AttachmentAssetHarness();
+        var source = new DqAttachmentSource();
+        byte[] bytes = source.Assets.Bytes["garment.glb"];
+        var dq = GltfLoader.LoadSkinnedPartsWithMaterials(bytes, "synthetic garment", SkinningProfile.DualQuaternionRigid);
+        var lbs = GltfLoader.LoadSkinnedPartsWithMaterials(bytes, "synthetic garment");
+        var adapter = new Scene3DAttachmentScene(harness.Scene);
+        int buffers = harness.Factory.Buffers.Count, textures = harness.Factory.Textures.Count;
+        ArgumentException error = Assert.Throws<ArgumentException>(() => adapter.UploadSkinnedAttachment([dq[0], lbs[1]]));
+        Assert.Contains("material part 1", error.Message);
+        Assert.Equal(buffers, harness.Factory.Buffers.Count);
+        Assert.Equal(textures, harness.Factory.Textures.Count);
+        Assert.Equal(0, harness.Scene.LiveSkinnedMeshCount);
     }
 
     [Fact]

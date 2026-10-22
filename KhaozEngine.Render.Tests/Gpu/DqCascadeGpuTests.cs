@@ -23,12 +23,17 @@ public sealed class DqCascadeGpuTests(DqCascadeScene fixture, ITestOutputHelper 
         foreach (bool gpu in new[] { false, true })
         foreach (bool cutout in new[] { false, true })
         {
+            output.WriteLine($"{fixture.Device.Backend} {fixture.Device.Capabilities.DeviceName}: " +
+                $"checking count={cascades} actor={actor} gpu={gpu} cutout={cutout}");
             float[][] solid = fixture.Capture(cascades, actor, gpu, cutout, 0, false);
             float[][] lbs = fixture.Capture(cascades, actor, gpu, cutout, 0, false, lbs: true);
             float[][] plain = fixture.Capture(cascades, actor, gpu, cutout, 1, false);
             float[][] complement = fixture.Capture(cascades, actor, gpu, cutout, 2, false);
             float[][] inverted = fixture.Capture(cascades, actor, gpu, cutout, 3, false);
             float[][] shifted = fixture.Capture(cascades, actor, gpu, cutout, 1, true);
+            float[][] shiftedCpu = fixture.Capture(cascades, actor, false, cutout, 1, true);
+            float[][] shiftedSolid = fixture.Capture(cascades, actor, gpu, cutout, 0, true);
+            float[][] shiftedLbs = fixture.Capture(cascades, actor, gpu, cutout, 0, true, lbs: true);
             float[][] cpu = fixture.Capture(cascades, actor, false, cutout, 1, false);
             requestedCascadeCount += cascades;
             for (int c = 0; c < cascades; c++)
@@ -46,7 +51,14 @@ public sealed class DqCascadeGpuTests(DqCascadeScene fixture, ITestOutputHelper 
                     Assert.False(Written(plain[c][p]) && Written(complement[c][p]));
                 }
                 AssertDepthNear(complement[c], inverted[c]);
-                AssertDepthNear(plain[c], shifted[c]);
+                // FitCascade snaps in render-relative light space. Different origins can move the atlas grid
+                // by a fraction of a texel. Compare execution methods at each origin's own grid, not raw pixels
+                // from two different projections. The CPU rigid-depth path supplies the independent reference.
+                AssertDepthNear(shiftedCpu[c], shifted[c]);
+                Assert.True(shiftedSolid[c].Count(Written) > 0);
+                Assert.Equal(0, shiftedLbs[c].Count(Written));
+                Assert.False(shiftedSolid[c].SequenceEqual(shiftedLbs[c]));
+                Assert.InRange(shifted[c].Count(Written), 1, shiftedSolid[c].Count(Written) - 1);
                 AssertDepthNear(plain[c], cpu[c]);
                 observedCascadeCount++;
                 output.WriteLine($"{fixture.Device.Backend} {fixture.Device.Capabilities.DeviceName}: " +

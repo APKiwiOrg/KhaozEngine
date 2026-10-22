@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Primitives;
+using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D;
 
@@ -45,8 +46,16 @@ public sealed partial class Scene3D
         float widthPixels,
         MeshOutlineOcclusion occlusion)
     {
+        if (!float.IsFinite(widthPixels) || widthPixels < 0.5f || widthPixels > 8f)
+            throw new ArgumentOutOfRangeException(nameof(widthPixels), widthPixels,
+                "outline width must be finite and between 0.5 and 8 pixels.");
+        if (!Enum.IsDefined(occlusion))
+            throw new ArgumentOutOfRangeException(nameof(occlusion), occlusion, "unknown outline occlusion.");
+        if (!_skinnedSlots.IsValid(mesh.Index, mesh.Generation)) return;
+        if (_skinnedMeshes[mesh.Index] is not { } entry) return;
+        PreparedSkinningPose prepared = PrepareSkinning(entry, boneMatrices, "independent target outline");
         MeshOutlineGroup group = BeginMeshOutline(color, widthPixels, occlusion);
-        DrawSkinnedOutline(group, mesh, boneMatrices, world);
+        AppendSkinnedOutlinePart(RequireMeshOutlineGroup(group), mesh, world, 0f, false, prepared);
     }
 
     void AddSkinnedOutlinePart(
@@ -61,30 +70,19 @@ public sealed partial class Scene3D
         if (!_skinnedSlots.IsValid(mesh.Index, mesh.Generation)) return;
         if (_skinnedMeshes[mesh.Index] is not { } entry) return;
 
-        (int start, int count) = AppendOutlinePose(_outlineBoneMatrices, boneMatrices, entry.InverseBind);
-        drawGroup.Parts.Add(MeshOutlinePart.Skinned(mesh, world, Math.Clamp(dissolve, 0f, 1f),
-            dissolveComplement, start, count));
-        _meshOutlinePartCount++;
+        PreparedSkinningPose prepared = PrepareSkinning(entry, boneMatrices, "independent target outline");
+        AppendSkinnedOutlinePart(drawGroup, mesh, world, dissolve, dissolveComplement, prepared);
     }
 
-    static (int Start, int Count) AppendOutlinePose(
-        List<Matrix4x4> destination,
-        ReadOnlySpan<Matrix4x4> boneMatrices,
-        Matrix4x4[] inverseBind)
+    void AppendSkinnedOutlinePart(MeshOutlineDrawGroup group, SkinnedMeshHandle mesh, Matrix4x4 world,
+        float dissolve, bool dissolveComplement, in PreparedSkinningPose prepared)
     {
-        if (boneMatrices.Length != inverseBind.Length)
-            throw new ArgumentException(
-                $"boneMatrices length {boneMatrices.Length} must equal the mesh bone count {inverseBind.Length}.",
-                nameof(boneMatrices));
-        if (boneMatrices.Length > SkinningMath.MaxBonesPerDraw)
-            throw new ArgumentException(
-                $"a skinned mesh has {boneMatrices.Length} bones, over the {SkinningMath.MaxBonesPerDraw}-bone per-draw cap.",
-                nameof(boneMatrices));
-
-        int start = destination.Count;
-        for (int i = 0; i < boneMatrices.Length; i++)
-            destination.Add(SkinningMath.Compose(boneMatrices[i], inverseBind[i]));
-        return (start, boneMatrices.Length);
+        ReadOnlySpan<Matrix4x4> palette = _preparedSkinning.Lbs(prepared);
+        int start = _outlineBoneMatrices.Count;
+        foreach (Matrix4x4 bone in palette) _outlineBoneMatrices.Add(bone);
+        group.Parts.Add(MeshOutlinePart.Skinned(mesh, world, Math.Clamp(dissolve, 0f, 1f),
+            dissolveComplement, start, prepared.BoneCount));
+        _meshOutlinePartCount++;
     }
 
     internal int OutlinePoseMatrixCount => _outlineBoneMatrices.Count;

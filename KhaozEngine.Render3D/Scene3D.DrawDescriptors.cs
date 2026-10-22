@@ -72,6 +72,7 @@ namespace KhaozEngine.Render3D
         /// transform and composed palette are remembered for the next frame. Presentation only - never feed
         /// sim/RNG/netcode from bone state. Shadow-only without casting throws <see cref="ArgumentException"/>
         /// before changing either the palette or the queue.
+        /// A DQ profile is validated and then refused while its rendering consumers are unavailable.
         /// </summary>
         public void DrawSkinned(in SkinnedInstanceDraw draw, ReadOnlySpan<Matrix4x4> boneMatrices)
         {
@@ -87,7 +88,11 @@ namespace KhaozEngine.Render3D
             // dynamic-offset bind selects exactly this draw's palette. Slot N maps to bone byte offset
             // N * SlotBytes and to instance buffer element N in the render loop.
             int slot = _skinnedInstances.Items.Count;
-            ComposeBonesIntoSlot(_boneMatrices, slot, boneMatrices, entry.InverseBind);
+            var prepared = PrepareSkinning(entry, boneMatrices,
+                UseGpuSkinning ? "ordinary GPU colour/shadow/motion" : "ordinary CPU colour/shadow/motion");
+            ReadOnlySpan<Matrix4x4> palette = _preparedSkinning.Lbs(prepared);
+            for (int bone = 0; bone < SkinningMath.MaxBonesPerDraw; bone++)
+                _boneMatrices.Add(bone < palette.Length ? palette[bone] : Matrix4x4.Identity);
             _skinnedInstances.Add(in draw);
             RecordSkinnedMotion(in draw, slot, boneMatrices.Length);
         }

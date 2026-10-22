@@ -46,5 +46,7 @@ public sealed class RendererPerfBatchFailureTests
         Assert.Null(failed.Drain);
         Assert.Null(failed.Harvest);
         Assert.Equal(6, rig.Device.Submissions);
+        Assert.NotEmpty(samples[^1].Metrics);
+        Assert.NotEmpty(samples[^1].Passes);
     }
 }

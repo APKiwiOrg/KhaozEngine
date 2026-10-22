@@ -147,20 +147,21 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
             if (samples[i].FrameId != _consumed + i) throw new InvalidOperationException("A foreign or duplicated frame entered harvest.");
         _drain = _harvest = null;
         long start = _clock.Now();
-        _native.WaitForIdle();
+        try { _native.WaitForIdle(); }
+        catch (Exception error)
+        {
+            _failure ??= error.Message;
+            // Completion failed, but CPU spans, counters and DeviceOnly ownership already exist.
+            try { HarvestPending(samples); }
+            catch (Exception harvest) { error.Data[ConstructionCleanupErrors] = ImmutableArray.Create(harvest.Message); }
+            throw;
+        }
         long drained = _clock.Now();
         _drain = new("batch.completionDrain", null, start, drained);
         try { _ring.PollCompleted(); }
         finally
         {
-            for (int i = 0; i < samples.Length; i++)
-            {
-                var result = _results[_consumed + i];
-                samples[i] = _recorder.Harvest(_consumed + i, result);
-                if (result is { Valid: true } && result.Period != _info.Identity.TimestampPeriodNs)
-                    samples[i] = samples[i] with { Errors = samples[i].Errors.Add("The native timestamp period changed from admission.") };
-            }
-            _consumed = _next;
+            HarvestPending(samples);
             _harvest = new("batch.harvest", null, drained, _clock.Now());
         }
         if (_next == _results.Length)
@@ -168,6 +169,18 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
             if (!_ring.CompleteBlock()) _failure ??= _ring.Failure;
             _work.ValidateOutput();
         }
+    }
+
+    void HarvestPending(Span<RendererPerfFrameSample> samples)
+    {
+        for (int i = 0; i < samples.Length; i++)
+        {
+            var result = _results[_consumed + i];
+            samples[i] = _recorder.Harvest(_consumed + i, result);
+            if (result is { Valid: true } && result.Period != _info.Identity.TimestampPeriodNs)
+                samples[i] = samples[i] with { Errors = samples[i].Errors.Add("The native timestamp period changed from admission.") };
+        }
+        _consumed = _next;
     }
 
     public RendererPerfSessionInfo ReadInfo() => _info with

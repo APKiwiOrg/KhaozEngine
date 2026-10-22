@@ -7,7 +7,7 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 21.12.0
 
-2026-10-22
+2026-10-23
 
 - Let roof-only TileWorld prop layers retain per-house roof visibility and shadows through individual LOD,
   merged HLOD and Decor residency. Mixed roof and non-roof layers fail before upload.

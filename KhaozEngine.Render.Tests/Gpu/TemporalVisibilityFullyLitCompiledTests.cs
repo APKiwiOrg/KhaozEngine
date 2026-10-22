@@ -15,6 +15,18 @@ public sealed class TemporalVisibilityFullyLitCompiledTests
 
     [Theory]
     [MemberData(nameof(Programs))]
+    public void CertifiedSourcesOmitTheResourcesTheirCompactLayoutsDoNotBind(string name)
+    {
+        string source = ShippedShaderPrograms.GraphicsPrograms().Single(p => p.Name == name).FragmentGlsl;
+        Assert.DoesNotContain("KeyShadowVisibility", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("uniform VisibilityHistory", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("temporalVisibilityReleases(", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("temporalVisibilityChange(", source, StringComparison.Ordinal);
+        Assert.Contains("bool visibilityReleased = false;", source, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [MemberData(nameof(Programs))]
     public void CertifiedModulesHaveNoVisibilityReadsDecisionHelperOrGathers(string name)
     {
         ShippedGraphicsProgram program = ShippedShaderPrograms.GraphicsPrograms().Single(p => p.Name == name);

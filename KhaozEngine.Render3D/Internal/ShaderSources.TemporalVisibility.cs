@@ -3,6 +3,16 @@ namespace KhaozEngine.Render3D.Internal;
 /// <summary>One depth-qualified visibility footprint and reduction for every temporal entry and re-evaluation.</summary>
 internal static partial class ShaderSources
 {
+    internal const string TemporalResolveVisibilityBindingsGlsl = @"layout(set=0, binding=9) uniform texture2D KeyShadowVisibility;
+layout(set=0, binding=10) uniform texture2D PreviousKeyShadowVisibility;
+layout(set=0, binding=11) uniform VisibilityHistory {" + KhaozEngine.Render3D.Rendering.TemporalVisibilityUniforms.GlslMembers + @"};
+";
+
+    internal const string TemporalAccumulateVisibilityBindingsGlsl = @"layout(set=0, binding=12) uniform texture2D KeyShadowVisibility;
+layout(set=0, binding=13) uniform texture2D PreviousKeyShadowVisibility;
+layout(set=0, binding=14) uniform VisibilityHistory {" + KhaozEngine.Render3D.Rendering.TemporalVisibilityUniforms.GlslMembers + @"};
+";
+
     internal const string TemporalVisibilityGlsl = @"
 // Integer exponent bits retain the non-finite rejection when FXC optimizes negated ordered comparisons.
 bool temporalVisibilityFiniteDepth(float depth) {

@@ -131,14 +131,17 @@ public sealed class TemporalVisibilityFullyLitGpuTests(ITestOutputHelper output)
         }
     }
 
-    // Only the new specialization's literal false changes. The ordinary check program is independently compiled
-    // through the existing test hook, retaining the exact shipped decision and all its footprint reads.
+    // Restore the complete ordinary program, including the declarations and helpers the certified source omits.
+    // It is independently compiled through the existing hook with its full resource layout.
     internal static string ForceCheck(string source)
     {
-        const string decision = @"bool visibilityReleased = floatBitsToUint(lockValue) != 0u && useHistory && !surface.background
-        && PreviousJitter.z > 0.5 && temporalVisibilityReleases(uv, centreTexel, maxTexel, previousUv, expectedDepth,
-            surface.visibilityMask, signedVisibilityChange, visibilityPath);";
-        return source.Replace("bool visibilityReleased = false;", decision, StringComparison.Ordinal);
+        if (!source.Contains("bool visibilityReleased = false;", StringComparison.Ordinal)) return source;
+        foreach (ShippedGraphicsProgram program in ShippedShaderPrograms.GraphicsPrograms())
+            if (program.Name.StartsWith("Temporal", StringComparison.Ordinal)
+                && !program.Name.EndsWith("FullyLit", StringComparison.Ordinal)
+                && source == TemporalVisibilityPrograms.WithoutDecision(program.FragmentGlsl))
+                return program.FragmentGlsl;
+        throw new InvalidOperationException("The forced check requires a known certified temporal program.");
     }
 
     TemporalFullyLitHistoryOracle Oracle(IGpuDevice device) => new(output, TemporalDeviceClass.IsLavapipe(device),

@@ -1,7 +1,7 @@
 # Dual quaternion skinning: design
 
 - **Date:** 2026-10-22
-- **Status:** proposed for owner review. No implementation is authorized by this document.
+- **Status:** design approved on 2026-10-22. Implementation awaits plan review and an execution choice.
 - **Issue:** https://github.com/APKiwiOrg/KhaozEngine/issues/1534
 - **Consumer:** https://github.com/APKiwiOrg/Grimhollow/issues/547
 - **Baseline:** `27fd915731b362305cc2d029f62557a89b2a4d71`, branch `feature/dual-quaternion-skinning`.
@@ -506,7 +506,10 @@ This is the delivery order for a later approved plan, not an instruction to impl
    the game for explicit asset opt-in, weight/clip judgement and wardrobe re-certification. Engine
    release, game pin and owner art approval remain separate authorized actions.
 
-## 12. Owner decisions required
+## 12. Owner decisions approved
+
+The owner approved this design and every decision DQ1 to DQ6 as written on 2026-10-22
+("yes to all"). Every row below is approved. The approval preserves each decision's substance.
 
 | Id | Decision | Recommendation and implication |
 | --- | --- | --- |
@@ -517,5 +520,5 @@ This is the delivery order for a later approved plan, not an instruction to impl
 | DQ5 | Delivery gate for the consumer | Require coverage-compatible DQ before the covered Grimhollow body opts in. Ordinary DQ can land as an earlier engine milestone, with no wardrobe-completion claim. |
 | DQ6 | Carry scope and budget | Approve a separate DQ carry feasibility gate with new continuous-domain proofs and unchanged budget. If useful domains or cost fail, return supported content, scheduling or budget choices to the owner. Do not weaken no-clipping claims or numerical comparisons. |
 
-Approval of issue #1534's feature direction does not settle these method, coverage or supported-domain
-choices. The written design needs owner review before an implementation plan and execution choice.
+This records approval of the written method, coverage and supported-domain choices, beyond issue
+#1534's feature direction. The implementation plan and execution choice remain separate review steps.

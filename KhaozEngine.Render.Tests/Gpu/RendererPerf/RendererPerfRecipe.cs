@@ -271,6 +271,10 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
         Load(scene);
     }
 
+    internal virtual void PrepareCold(Scene3D scene, int firstFrameIndex) { }
+
+    internal void StartBlockClock(int firstFrameIndex) => _blockOrdinal = SequenceIndex(firstFrameIndex);
+
     public void Queue(Scene3D scene, int frameIndex)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

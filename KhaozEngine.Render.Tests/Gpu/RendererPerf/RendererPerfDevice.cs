@@ -10,6 +10,8 @@ internal class RendererPerfDevice : IGpuDevice, IGpuResourceFactory
 {
     readonly IGpuDevice _native;
     readonly RendererPerfRecorder _recorder;
+    IGpuFramebuffer? _frameTarget;
+    internal void UseFrameTarget(IGpuFramebuffer target) => _frameTarget = target;
     RendererPerfDevice(IGpuDevice native, RendererPerfRecorder recorder)
     {
         _native = native; _recorder = recorder; recorder.AttachDevice(native);
@@ -63,7 +65,7 @@ internal class RendererPerfDevice : IGpuDevice, IGpuResourceFactory
     public GpuCapabilities Capabilities => _native.Capabilities;
     public GpuDeviceDiagnostics Diagnostics => _native.Diagnostics;
     public GpuDeviceCounters Counters => _native.Counters;
-    public IGpuFramebuffer? SwapchainFramebuffer => _native.SwapchainFramebuffer;
+    public IGpuFramebuffer? SwapchainFramebuffer => _frameTarget ?? _native.SwapchainFramebuffer;
     public IGpuSampler PointSampler => _native.PointSampler;
     public IGpuSampler LinearSampler => _native.LinearSampler;
     public bool SyncToVerticalBlank { get => _native.SyncToVerticalBlank; set => _native.SyncToVerticalBlank = value; }

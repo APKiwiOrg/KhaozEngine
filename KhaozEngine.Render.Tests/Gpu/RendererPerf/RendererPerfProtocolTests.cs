@@ -530,7 +530,7 @@ public sealed class RendererPerfProtocolTests
                 Errors = []
             }
         };
-        return report;
+        return RendererPerfExecutionEvidenceTests.WithTrace(report);
     }
 
     static readonly string[] FullOrder =
@@ -543,7 +543,7 @@ public sealed class RendererPerfProtocolTests
         "S0/2/TotalOnly", "S0/2/PerPass", "S1/2/PerPass", "S1/2/TotalOnly"
     ];
 
-    static JsonObject ManifestJson(string preset = "pilot", string leg = "linux-vulkan")
+    internal static JsonObject ManifestJson(string preset = "pilot", string leg = "linux-vulkan")
     {
         var root = JsonNode.Parse($$"""
         {

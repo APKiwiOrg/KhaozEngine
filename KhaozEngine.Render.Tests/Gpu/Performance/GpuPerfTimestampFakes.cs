@@ -73,6 +73,7 @@ internal sealed class GpuPerfTimestampTestDevice : IGpuDevice, IGpuResourceFacto
     internal Func<uint, IGpuTimestampPool>? PoolFactory { get; set; }
     internal GpuCapabilities Features { get; set; } = new(false, true, supportsCompletionFences: true) { SupportsTimestamps = true };
     internal bool Software { get; set; }
+    internal Action<string>? Trace { get; set; }
     public GpuDeviceDiagnostics Diagnostics => new(softwareAdapter: Software);
     public IGpuResourceFactory Factory => this;
     public GpuBackendKind Backend => GpuBackendKind.VulkanNative;
@@ -85,19 +86,20 @@ internal sealed class GpuPerfTimestampTestDevice : IGpuDevice, IGpuResourceFacto
     public void Submit(IGpuCommandList commands, IGpuFence completion) => Submit(commands, [completion]);
     public void Submit(IGpuCommandList commands, ReadOnlySpan<IGpuFence> completions)
     {
+        Trace?.Invoke("submit");
         Submissions++; CompletionCount = completions.Length;
         completions.CopyTo(SubmittedFences);
         if (commands is GpuPerfTimestampTestCommands { Pool: { } pool }) pool.SubmittedFence = completions[0];
         if (FailSubmit) throw new InvalidOperationException("submit failure");
     }
-    public void WaitForIdle() { Waits++; foreach (var fence in Fences) fence.Signaled = true; }
+    public void WaitForIdle() { Trace?.Invoke("drain"); Waits++; foreach (var fence in Fences) fence.Signaled = true; }
     public IGpuTimestampPool CreateTimestampPool(uint capacity)
     {
         if (PoolFactory is not null) return PoolFactory(capacity);
         var pool = new GpuPerfTimestampTestPool(capacity) { Owners = Fences }; Pools.Add(pool); return pool;
     }
     public IGpuFence CreateFence() { var fence = new SubmissionTestFence(); Fences.Add(fence); return fence; }
-    public IGpuCommandList CreateCommandList() => new GpuPerfTimestampTestCommands();
+    public IGpuCommandList CreateCommandList() => new GpuPerfTimestampTestCommands { Trace = op => Trace?.Invoke(op) };
     public IGpuBuffer CreateBuffer(in GpuBufferDescription d) => new SubmissionTestBuffer(d.SizeInBytes, d.Usage);
     public IGpuTexture CreateTexture(in GpuTextureDescription d) => _inner.Factory.CreateTexture(d);
     public IGpuFramebuffer CreateFramebuffer(IGpuTexture? depth, params IGpuTexture[] colour) => _inner.Factory.CreateFramebuffer(depth, colour);
@@ -124,7 +126,7 @@ internal sealed class GpuPerfTimestampTestDevice : IGpuDevice, IGpuResourceFacto
     public void Unmap(IGpuTexture t) => throw new NotSupportedException();
     public void Unmap(IGpuBuffer b) => throw new NotSupportedException();
     public void ResizeSwapchain(uint w, uint h) => throw new NotSupportedException();
-    public void Present() => throw new NotSupportedException();
+    public void Present() => Trace?.Invoke("present");
     public void Dispose() => _inner.Dispose();
 }
 
@@ -132,11 +134,12 @@ internal sealed class GpuPerfTimestampTestCommands : IGpuCommandList, IGpuComman
 {
     GpuPerfTimestampTestPool? _pool;
     internal GpuPerfTimestampTestPool? Pool => _pool;
+    internal Action<string>? Trace { get; set; }
     uint _tail;
     bool _armed;
-    public void Begin() { _pool = null; _armed = false; }
+    public void Begin() { Trace?.Invoke("begin"); _pool = null; _armed = false; }
     public void BeginTimestamps(IGpuTimestampPool pool, uint count) { _pool = (GpuPerfTimestampTestPool)pool; _pool.Begin(count); }
-    public void WriteTimestamp(IGpuTimestampPool pool, uint index) => ((GpuPerfTimestampTestPool)pool).Write(index);
+    public void WriteTimestamp(IGpuTimestampPool pool, uint index) { Trace?.Invoke("marker:" + index); ((GpuPerfTimestampTestPool)pool).Write(index); }
     public void EndTimestamps(IGpuTimestampPool pool) => ((GpuPerfTimestampTestPool)pool).End();
     public void FinishTimestampsOnEnd(IGpuTimestampPool pool, uint finalIndex)
     {
@@ -144,9 +147,9 @@ internal sealed class GpuPerfTimestampTestCommands : IGpuCommandList, IGpuComman
             throw new InvalidOperationException("Incorrect timestamp tail.");
         _tail = finalIndex; _armed = true;
     }
-    public void End() { if (_armed) { _pool!.Write(_tail); _pool.End(); _armed = false; } }
-    public void SetFramebuffer(IGpuFramebuffer fb) { }
-    public void ClearColorTarget(uint index, Color rgba) { }
+    public void End() { Trace?.Invoke("native.finalize"); if (_armed) { Trace?.Invoke("marker:" + _tail); _pool!.Write(_tail); _pool.End(); _armed = false; } }
+    public void SetFramebuffer(IGpuFramebuffer fb) => Trace?.Invoke("bind");
+    public void ClearColorTarget(uint index, Color rgba) => Trace?.Invoke("clear");
     public void ClearDepthStencil(float depth) { }
     public void SetPipeline(IGpuPipeline p) { }
     public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set) { }
@@ -157,7 +160,7 @@ internal sealed class GpuPerfTimestampTestCommands : IGpuCommandList, IGpuComman
     public void SetScissorRect(uint index, uint x, uint y, uint w, uint h) { }
     public void SetFullScissorRects() { }
     public void Draw(uint vertexCount, uint instanceCount, uint vertexStart, uint instanceStart) { }
-    public void Draw(uint vertexCount) { }
+    public void Draw(uint vertexCount) => Trace?.Invoke("draw");
     public void DrawIndexed(uint indexCount, uint instanceCount, uint indexStart, int vertexOffset, uint instanceStart) { }
     public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, in T data) where T : unmanaged { }
     public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged { }

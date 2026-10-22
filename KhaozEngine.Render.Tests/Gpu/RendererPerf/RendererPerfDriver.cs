@@ -1,0 +1,211 @@
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
+
+namespace KhaozEngine.Tests.Gpu.RendererPerf;
+
+internal static class RendererPerfDriver
+{
+    internal static RendererPerfReport Run(RendererPerfManifest manifest, RendererPerfRunIdentity identity,
+        RendererPerfSessionFactory factory, RendererPerfClock clock, IRendererPerfPublication publication)
+    {
+        ArgumentNullException.ThrowIfNull(factory);
+        ArgumentNullException.ThrowIfNull(publication);
+        ArgumentNullException.ThrowIfNull(clock.Now);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(clock.Frequency);
+        RendererPerfAdmission.Identity(manifest, identity);
+        return new RunState(manifest, identity, factory, clock, publication).Run();
+    }
+
+    sealed class RunState(RendererPerfManifest manifest, RendererPerfRunIdentity identity,
+        RendererPerfSessionFactory factory, RendererPerfClock clock, IRendererPerfPublication publication)
+    {
+        readonly List<RendererPerfBlockReport> _blocks = [];
+        readonly List<RendererPerfControlReport> _controls = [];
+        readonly Dictionary<string, RendererPerfRecipeReport> _recipes = new(StringComparer.Ordinal);
+        readonly List<RendererPerfBatchReport> _batches = [];
+        readonly List<RendererPerfStartupReport> _startup = [];
+        readonly List<string> _reasons = [], _errors = [];
+        readonly List<RendererPerfMemoryReport> _memory = [];
+        ImmutableArray<RendererPerfFrameSample> _conditioning = [];
+        string? _failure;
+        long _start, _deadline;
+        bool _started;
+
+        internal RendererPerfReport Run()
+        {
+            // Construct and admit the first session before reading any clock.
+            var conditioning = new RendererPerfBlock("conditioning:S3", RendererPerfLayout.TotalOnly, 0, 0, manifest.ConditioningFrames);
+            Execute(conditioning, (warm, measured, info, errors) => _conditioning = measured);
+            foreach (var block in manifest.Blocks)
+            {
+                if (_failure is not null) break;
+                Execute(block, (warm, measured, info, errors) =>
+                {
+                    _blocks.Add(new(block, warm, measured, errors));
+                    if (info?.Recipe is { } recipe) _recipes.TryAdd(block.SceneId, recipe);
+                });
+            }
+            foreach (var control in manifest.Controls)
+            {
+                if (_failure is not null) break;
+                var block = new RendererPerfBlock($"control:{control.Id}", RendererPerfLayout.TotalOnly, 0,
+                    control.WarmupFrames, control.MeasuredFrames);
+                Execute(block, (warm, measured, info, errors) =>
+                {
+                    string state = info?.ControlStateSha256 ?? control.WorkSha256;
+                    if (info?.ControlStateSha256 is null) Fail("The control omitted its retained-output state identity.");
+                    _controls.Add(new(control, state, warm, measured, info?.Telemetry ?? ImmutableDictionary<string, RendererPerfMetric>.Empty));
+                });
+            }
+            RendererPerfDriverAssessment.Drift(_blocks, _reasons);
+            if (_failure is null && manifest.Recipes.Any(r => !_recipes.ContainsKey(r.SceneId))) Fail("Recipe construction evidence is incomplete.");
+            if (_failure is not null) _reasons.Add(_failure);
+            var elapsed = Value(_started ? (clock.Now() - _start) * 1000d / clock.Frequency : 0, "ms", "unit monotonic clock");
+            RendererPerfMetric unknownCost = new(null, "USD", "workflow billing", RendererPerfMetricStatus.Unsupported, "Actual billed minutes are supplied after the workflow completes.");
+            var report = new RendererPerfReport("khaozengine.renderer-perf-report/1", manifest, identity,
+                [.. manifest.Recipes.Where(r => _recipes.ContainsKey(r.SceneId)).Select(r => _recipes[r.SceneId])],
+                [.. _blocks], new([.. _memory.SelectMany(m => m.Native)], _memory.LastOrDefault()?.Process ?? ImmutableDictionary<string, RendererPerfMetric>.Empty),
+                [], [.. _controls], new(_failure is null && _reasons.Count == 0, [.. _reasons.Distinct()], RendererPerfDriverAssessment.WindowMetrics(_blocks, _conditioning), []),
+                new(_failure is null ? RendererPerfPublicationState.Completed : RendererPerfPublicationState.Failed, false, false,
+                    _failure, [.. _errors], elapsed, unknownCost,
+                    Value(elapsed.Value!.Value / 60000d * (double)manifest.Budget.RatePerMinute, "USD", "elapsed running time estimate, excludes external setup and teardown")), [])
+            { Conditioning = _conditioning, Batches = [.. _batches], Startup = [.. _startup] };
+            return publication.Publish(report, clock, _deadline);
+        }
+
+        void Execute(RendererPerfBlock block, Action<ImmutableArray<RendererPerfFrameSample>, ImmutableArray<RendererPerfFrameSample>, RendererPerfSessionInfo?, ImmutableArray<string>> retain)
+        {
+            IRendererPerfSession? session = null;
+            RendererPerfSessionInfo? info = null;
+            var samples = new RendererPerfFrameSample[checked(block.WarmupFrames + block.MeasuredFrames)];
+            int recorded = 0, harvested = 0;
+            var localErrors = new List<string>();
+            try
+            {
+                if (_started) CheckDeadline();
+                session = factory(manifest, block, clock);
+                info = session.ReadInfo();
+                RendererPerfAdmission.Session(identity, info);
+                if (info.Startup is { } startup) _startup.Add(startup);
+                if (!_started)
+                {
+                    _start = info.Startup?.Wall.StartTicks ?? clock.Now();
+                    _deadline = checked(_start + manifest.Limits.UnitSeconds * clock.Frequency);
+                    _started = true;
+                }
+                CheckDeadline();
+                while (_failure is null && recorded < samples.Length)
+                {
+                    int first = recorded;
+                    long batchStart = clock.Now();
+                    try
+                    {
+                        int batchEnd = Math.Min(first + manifest.BatchSize, samples.Length);
+                        while (recorded < batchEnd)
+                        {
+                            CheckDeadline();
+                            long frameStart = clock.Now();
+                            int before = recorded;
+                            try { session.Frame(recorded - block.WarmupFrames, ref samples[recorded]); }
+                            finally
+                            {
+                                // A throwing Frame may still return its failed partial sample.
+                                if (samples[recorded].GpuFrame is not null) recorded++;
+                            }
+                            if (recorded == before) throw new InvalidOperationException("The session returned without a frame sample.");
+                            if (!samples[before].Errors.IsEmpty) throw new InvalidOperationException(samples[before].Errors[0]);
+                            CheckFrame(frameStart, clock.Now());
+                            CheckDeadline();
+                        }
+                    }
+                    catch (Exception frameError)
+                    {
+                        Fail(frameError.Message);
+                        throw;
+                    }
+                    finally
+                    {
+                        if (recorded > first)
+                        {
+                            // One drain and one harvest even for a failed or final short batch.
+                            try
+                            {
+                                try { session.CompleteBatch(samples.AsSpan(first, recorded - first)); }
+                                finally
+                                {
+                                    harvested = recorded;
+                                    try { info = session.ReadInfo(); }
+                                    catch (Exception observationError)
+                                    {
+                                        _errors.Add(observationError.Message);
+                                        Fail(observationError.Message);
+                                    }
+                                    _batches.Add(new($"{block.SceneId}/{block.Layout}/{block.Iteration}", first, recorded - first,
+                                        batchStart, clock.Now(), clock.Frequency, info?.Drain, info?.Harvest, info?.Telemetry ?? ImmutableDictionary<string, RendererPerfMetric>.Empty));
+                                }
+                                CheckFrame(batchStart, clock.Now());
+                                CheckDeadline();
+                                if (info is not null) RendererPerfAdmission.Session(identity, info);
+                                for (int i = first; i < recorded; i++)
+                                {
+                                    var sample = samples[i];
+                                    int expectedSequence = RendererPerfRecipe.SequenceIndex(i - block.WarmupFrames);
+                                    if (sample.FrameId != i || sample.SequenceIndex != expectedSequence || sample.CpuFrequency != clock.Frequency)
+                                        throw new InvalidOperationException("A frame was dropped, duplicated or used the wrong deterministic sequence.");
+                                    if (!sample.Errors.IsEmpty || sample.GpuFrame.Status != RendererPerfMetricStatus.Available)
+                                        throw new InvalidOperationException(sample.Errors.FirstOrDefault() ?? "Invalid GPU frame timing.");
+                                }
+                            }
+                            catch (Exception completionError)
+                            {
+                                if (_failure is null) throw;
+                                if (completionError.Message != _failure) _errors.Add(completionError.Message);
+                            }
+                        }
+                    }
+                }
+                if (info.Memory is { } memory) _memory.Add(memory);
+            }
+            catch (Exception error)
+            {
+                // A pre-clock admission failure must remain observable without creating timing evidence.
+                if (!_started && error is RendererPerfProtocolException) throw;
+                if (error.Data[RendererPerfNativeSession.ConstructionCleanupErrors] is ImmutableArray<string> cleanupErrors)
+                    _errors.AddRange(cleanupErrors);
+                localErrors.Add(error.Message); Fail(error.Message);
+            }
+            finally
+            {
+                if (session is not null)
+                {
+                    try { session.Dispose(); }
+                    catch (Exception cleanup) { _errors.Add(cleanup.Message); Fail(cleanup.Message); }
+                }
+                if (_started)
+                {
+                    if (clock.Now() >= _deadline) Fail("UnitTimeout, including cleanup.");
+                    int kept = Math.Min(recorded, harvested);
+                    int warm = Math.Min(kept, block.WarmupFrames);
+                    retain([.. samples.AsSpan(0, warm)], [.. samples.AsSpan(warm, kept - warm)], info, [.. localErrors]);
+                }
+            }
+        }
+
+        void CheckDeadline()
+        {
+            if (clock.Now() >= _deadline) throw new TimeoutException("UnitTimeout.");
+        }
+        void CheckFrame(long start, long end)
+        {
+            if (end < start) throw new InvalidOperationException("The monotonic clock moved backwards.");
+            if ((end - start) * 1000d / clock.Frequency > manifest.Limits.FrameMilliseconds)
+                throw new TimeoutException("FrameTimeout, including retained completion.");
+        }
+        void Fail(string reason) => _failure ??= reason;
+    }
+
+    internal static RendererPerfMetric Value(double value, string unit, string source)
+        => new(value, unit, source, RendererPerfMetricStatus.Available, null);
+}

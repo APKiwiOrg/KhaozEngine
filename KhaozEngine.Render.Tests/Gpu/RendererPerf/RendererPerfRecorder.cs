@@ -75,6 +75,13 @@ internal sealed class RendererPerfRecorder
     }
 
     internal bool Enabled { get; }
+    internal IGpuCommandList? FrameCommands { get; set; }
+    internal string? FrameFailure(int sampleId) => _frames[sampleId + 1].Error;
+    internal void UseSubmission(GpuFrameSubmission submission)
+    {
+        if (_frame < 0 || _commands is not null) throw new InvalidOperationException("Attach the host submission before recording.");
+        _submission = submission;
+    }
     internal uint MarkerCount => _layout == RendererPerfLayout.TotalOnly ? 2U : (uint)(_passes.Length - _devicePasses.Count) * 2 + 2;
     Frame Current => _frames[_frame + 1];
     internal void AttachDevice(IGpuDevice device) => _device = device;
@@ -159,7 +166,7 @@ internal sealed class RendererPerfRecorder
 
     internal void BeginCommands(IGpuCommandList commands)
     {
-        if (_frame < 0) return;
+        if (_frame < 0 || FrameCommands is not null && !ReferenceEquals(commands, FrameCommands)) return;
         if (++_recordings != 1) { Fail("An unexpected extra production recording occurred."); return; }
         _commands = commands;
         if (_timestamps is null) return;

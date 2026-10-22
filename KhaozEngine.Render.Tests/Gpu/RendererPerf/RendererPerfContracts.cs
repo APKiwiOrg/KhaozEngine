@@ -69,7 +69,15 @@ internal sealed record RendererPerfReport(string Schema, RendererPerfManifest Ma
     ImmutableArray<RendererPerfRecipeReport> Recipes, ImmutableArray<RendererPerfBlockReport> Blocks,
     RendererPerfMemoryReport Memory, ImmutableArray<GpuPipelineCompilerReport> Pipelines,
     ImmutableArray<RendererPerfControlReport> Controls, RendererPerfAssessment Assessment,
-    RendererPerfPublication Publication, ImmutableArray<RendererPerfSidecar> Sidecars);
+    RendererPerfPublication Publication, ImmutableArray<RendererPerfSidecar> Sidecars)
+{
+    [JsonRequired]
+    public ImmutableArray<RendererPerfFrameSample> Conditioning { get; init; } = [];
+    [JsonRequired]
+    public ImmutableArray<RendererPerfBatchReport> Batches { get; init; } = [];
+    [JsonRequired]
+    public ImmutableArray<RendererPerfStartupReport> Startup { get; init; } = [];
+}
 
 internal sealed class RendererPerfProtocolException(string code, string message, Exception? inner = null)
     : Exception(message, inner)

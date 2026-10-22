@@ -109,6 +109,7 @@ internal static class RendererPerfReportJson
             Require(report.Blocks.All(b => b.Errors.IsEmpty && b.Warmup.Concat(b.Measured).All(Promotable))
                 && report.Controls.All(c => c.Warmup.Concat(c.Measured).All(Promotable)),
                 "Publication", "Invalid GPU queries, frame failures or incomplete pass timing cannot support promotion.");
+        RendererPerfExecutionEvidence.Validate(report);
         ValidateNative(report);
         foreach (RendererPerfSidecar sidecar in report.Sidecars)
         {
@@ -136,7 +137,7 @@ internal static class RendererPerfReportJson
         for (int i = 0; i < measured.Length; i++) ValidateFrame(measured[i], i % 256, frameIds);
     }
 
-    static void ValidateFrame(RendererPerfFrameSample frame, int sequenceIndex, HashSet<int> frameIds)
+    internal static void ValidateFrame(RendererPerfFrameSample frame, int sequenceIndex, HashSet<int> frameIds)
     {
         Metrics(frame.Metrics);
         Require(frame.FrameId >= 0 && frameIds.Add(frame.FrameId) && frame.SequenceIndex == sequenceIndex
@@ -261,7 +262,7 @@ internal static class RendererPerfReportJson
             "Sample", $"{scope} GPU duration must be nonnegative and match raw elapsed ticks times period within relative tolerance 1e-12.");
     }
 
-    static void Metric(RendererPerfMetric? metric)
+    internal static void Metric(RendererPerfMetric? metric)
     {
         if (metric == null) throw new RendererPerfProtocolException("Metric", "Metric object is missing. Use an unavailable value with a reason.");
         Require(Text(metric.Unit) && Text(metric.Source) && (metric.Status == RendererPerfMetricStatus.Available
@@ -269,7 +270,7 @@ internal static class RendererPerfReportJson
             "Metric", "Every metric needs value/unit/source/status/reason. Unsupported or invalid values must be null with a cause.");
     }
 
-    static void Metric(GpuDiagnosticMetric metric)
+    internal static void Metric(GpuDiagnosticMetric metric)
     {
         Require(Text(metric.Unit) && Text(metric.Source) && (metric.Status == GpuDiagnosticStatus.Available
             ? metric.Value != null && metric.Provenance != GpuDiagnosticProvenance.Unknown : metric.Value == null && Text(metric.Reason)),

@@ -152,6 +152,13 @@ internal sealed class RendererPerfOutdoorsScene : RendererPerfVillageScene
         MeshHandle mesh = scene.LoadMesh(_shrub, new Scene3D.SurfaceMaps(texture, _surface.Normal, _surface.Roughness, _surface.AlphaCutoff));
         _batch = scene.CreateFoliageBatch(_instances.Select(i => i with { Mesh = mesh }).ToArray(), PatchSize);
     }
+    internal override void PrepareCold(Scene3D scene, int firstFrameIndex)
+    {
+        // Prime only the preparer. Do not consume a Scene3D Begin, pose or foliage history index.
+        scene.EffectTimeSeconds = SequenceIndex(firstFrameIndex) * Dt;
+        foreach (WaterPlane plane in _water) scene.DrawWater(plane);
+        scene.PrepareFrame();
+    }
     protected override void QueueContent(Scene3D scene, int frameIndex)
     {
         base.QueueContent(scene, frameIndex);

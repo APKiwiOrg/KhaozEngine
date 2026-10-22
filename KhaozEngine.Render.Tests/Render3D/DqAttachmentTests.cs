@@ -41,13 +41,11 @@ public sealed class DqAttachmentTests
         harness.Scene.Begin();
         if (dq)
         {
-            Assert.Throws<NotSupportedException>(() => bound.Queue(source.Skeleton, DqCascadeScene.HalfTurn,
-                Matrix4x4.Identity, MotionKey.None));
-            Assert.Empty(harness.Scene.QueuedSkinnedInstancesForTests);
+            bound.Queue(source.Skeleton, DqCascadeScene.HalfTurn, Matrix4x4.Identity, MotionKey.None);
+            Assert.Equal(2, harness.Scene.QueuedSkinnedInstancesForTests.Count);
             MeshOutlineGroup group = harness.Scene.BeginMeshOutline(Color.White, 2);
-            Assert.Throws<NotSupportedException>(() => bound.QueueOutline(source.Skeleton, DqCascadeScene.HalfTurn,
-                Matrix4x4.Identity, group));
-            Assert.Equal(0, harness.Scene.MeshOutlinePartCount);
+            bound.QueueOutline(source.Skeleton, DqCascadeScene.HalfTurn, Matrix4x4.Identity, group);
+            Assert.Equal(2, harness.Scene.MeshOutlinePartCount);
         }
     }
 

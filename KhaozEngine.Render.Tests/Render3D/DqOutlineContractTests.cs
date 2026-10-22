@@ -32,15 +32,17 @@ public sealed class DqOutlineContractTests
             mesh.RestPose, Matrix4x4.Identity, Color.White, 1, (MeshOutlineOcclusion)2));
         Assert.Throws<ArgumentException>(() => scene.DrawSkinnedOutline(handle,
             [Matrix4x4.Identity, Matrix4x4.CreateScale(2)], Matrix4x4.Identity, Color.White, 1));
-        Assert.Throws<NotSupportedException>(() => scene.DrawSkinnedOutline(handle,
-            mesh.RestPose, Matrix4x4.Identity, Color.White, 1));
+        Matrix4x4 invalidPlacement = Matrix4x4.Identity;
+        invalidPlacement.M14 = .5f;
+        Assert.Throws<ArgumentException>(() => scene.DrawSkinnedOutline(handle,
+            mesh.RestPose, invalidPlacement, Color.White, 1));
         Assert.Equal(0, store.PoseCount);
         Assert.Equal(0, scene.MeshOutlinePartCount);
         Assert.Equal(0, scene.MeshOutlineGroupCount);
 
         Matrix4x4[] joints = DqCascadeScene.HalfTurn;
         MeshOutlineGroup group = scene.BeginMeshOutline(Color.White, 2);
-        DqOutlineScene.Queue(scene, mesh, group, handle, joints, Matrix4x4.Identity);
+        scene.DrawSkinnedOutline(group, handle, joints, Matrix4x4.Identity);
         joints[1] = Matrix4x4.CreateScale(99);
         Assert.Equal(1, store.PoseCount);
         scene.PrepareFrame();
@@ -123,7 +125,7 @@ public sealed class DqOutlineContractTests
     }
 
     [Fact]
-    public void DQ_motion_remains_refused()
+    public void DQ_motion_is_admitted_with_its_selected_profile()
     {
         using var harness = new MotionTestScene();
         Scene3D scene = harness.Scene;
@@ -131,7 +133,11 @@ public sealed class DqOutlineContractTests
         SkinnedGltfMesh mesh = DqOutlineScene.Patch(SkinningProfile.DualQuaternionRigid);
         SkinnedMeshHandle handle = scene.LoadSkinnedMesh(mesh);
         scene.Begin();
-        DqGpuReadback.Queue(scene, mesh, new SkinnedInstanceDraw(handle, Matrix4x4.Identity), mesh.RestPose);
-        Assert.Contains("temporal", Assert.Throws<NotSupportedException>(harness.Render).Message);
+        scene.DrawSkinned(new SkinnedInstanceDraw(handle, Matrix4x4.Identity)
+            { Motion = MotionKey.From(12) }, DqCascadeScene.HalfTurn);
+        harness.Render();
+        Assert.Equal(1, scene.DrawnSkinnedInstances);
+        Assert.True(scene.ActiveMotionHistory!.TryGetCurrentBounds(MotionKey.From(12), out MeshBounds bounds));
+        DqCullingTests.Contains(bounds, new Vector3(.45f, -.7f, 0));
     }
 }

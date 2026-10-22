@@ -154,7 +154,7 @@ public sealed class DqCascadeContractTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void Unready_consumers_still_refuse_DQ(bool gpu)
+    public void Ready_consumers_admit_DQ_without_compute(bool gpu)
     {
         using var harness = new MotionTestScene();
         Scene3D scene = harness.Scene;
@@ -162,16 +162,18 @@ public sealed class DqCascadeContractTests
         var mesh = DqCascadeScene.Patch(SkinningProfile.DualQuaternionRigid);
         var handle = scene.LoadSkinnedMesh(mesh);
         scene.Begin();
-        Assert.Throws<NotSupportedException>(() => scene.DrawSkinned(handle, DqCascadeScene.HalfTurn,
-            Matrix4x4.Identity, Color.White));
+        Assert.False(harness.Device.Capabilities.SupportsCompute);
+        scene.DrawSkinned(handle, DqCascadeScene.HalfTurn, Matrix4x4.Identity, Color.White);
         foreach (MeshOutlineOcclusion occlusion in new[] { MeshOutlineOcclusion.SceneDepth, MeshOutlineOcclusion.None })
-            Assert.Throws<NotSupportedException>(() => scene.DrawSkinnedOutline(handle, DqCascadeScene.HalfTurn,
-                Matrix4x4.Identity, Color.White, 1, occlusion));
-        Assert.Empty(scene.QueuedSkinnedInstancesForTests);
+            scene.DrawSkinnedOutline(handle, DqCascadeScene.HalfTurn, Matrix4x4.Identity, Color.White, 1, occlusion);
+        Assert.Single(scene.QueuedSkinnedInstancesForTests);
+        Assert.Equal(2, scene.MeshOutlinePartCount);
 
         scene.ForceTemporalForTests = true;
-        DqGpuReadback.Queue(scene, mesh, new SkinnedInstanceDraw(handle, Matrix4x4.Identity)
-            { CastsShadows = false }, DqCascadeScene.HalfTurn);
-        Assert.Throws<NotSupportedException>(() => harness.Render());
+        scene.DrawSkinned(new SkinnedInstanceDraw(handle, Matrix4x4.Identity)
+            { CastsShadows = false, Motion = MotionKey.From(32) }, DqCascadeScene.HalfTurn);
+        harness.Render();
+        Assert.Equal(2, scene.DrawnSkinnedInstances);
+        Assert.Equal(1, scene.MotionKeyCounts.KeyedSkinned);
     }
 }

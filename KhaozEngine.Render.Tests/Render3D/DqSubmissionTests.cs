@@ -33,6 +33,7 @@ public sealed class DqSubmissionTests
         SkinnedGltfMesh dq = Mesh(SkinningProfile.DualQuaternionRigid);
         if (failure == "overflow") dq.InverseBind[1] = Matrix4x4.CreateTranslation(float.MaxValue, 0, 0);
         SkinnedMeshHandle handle = scene.LoadSkinnedMesh(dq);
+        if (failure == "consumer") Entry(scene, handle).GetType().GetField("DqBounds")!.SetValue(Entry(scene, handle), null);
         Seed(scene);
         Matrix4x4[] joints = (Matrix4x4[])dq.RestPose.Clone();
         if (failure == "joint") joints[1] = Matrix4x4.CreateScale(2);
@@ -280,11 +281,8 @@ public sealed class DqSubmissionTests
         Assert.Equal(Field(before, "DqBounds"), Field(after, "DqBounds"));
         Assert.Equal(Field(before, "LbsMotionBounds"), Field(after, "LbsMotionBounds"));
         scene.Begin();
-        if (dq)
-            AssertAtomic(scene, () => Assert.Throws<NotSupportedException>(() =>
-                scene.DrawSkinned(handle, source.RestPose, Matrix4x4.Identity, Color.White)));
-        else
-            scene.DrawSkinned(handle, source.RestPose, Matrix4x4.Identity, Color.White);
+        scene.DrawSkinned(handle, source.RestPose, Matrix4x4.Identity, Color.White);
+        Assert.Single(scene.QueuedSkinnedInstancesForTests);
     }
 
     [Theory]
@@ -299,6 +297,7 @@ public sealed class DqSubmissionTests
         SkinnedGltfMesh mesh = Mesh(SkinningProfile.DualQuaternionRigid);
         if (failure == "overflow") mesh.InverseBind[1] = Matrix4x4.CreateTranslation(float.MaxValue, 0, 0);
         SkinnedMeshHandle handle = scene.LoadSkinnedMesh(mesh);
+        if (failure == "consumer") Entry(scene, handle).GetType().GetField("DqBounds")!.SetValue(Entry(scene, handle), null);
         scene.Begin();
         MeshOutlineGroup group = scene.BeginMeshOutline(Color.White, 1);
         Matrix4x4[] joints = (Matrix4x4[])mesh.RestPose.Clone();

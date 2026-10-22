@@ -364,7 +364,7 @@ public sealed class RendererPerfProtocolTests
         var json = JsonNode.Parse(RendererPerfReportJson.Serialize(CompleteReport()))!.AsObject();
         JsonNode frame = json["blocks"]![1]!["measured"]![0]!;
         JsonNode pass = JsonSerializer.SerializeToNode(new RendererPerfPassSample("opaque", 0, null, null, 1, 2, 10,
-            new(10, "ns", "pass timestamp pair", RendererPerfMetricStatus.Available, null)), RendererPerfManifest.JsonOptions)!;
+            new(10, "ns", "pass timestamp pair", RendererPerfMetricStatus.Available, null), false), RendererPerfManifest.JsonOptions)!;
         ((JsonArray)frame["passes"]!).Add(pass);
         switch (fault)
         {
@@ -397,7 +397,7 @@ public sealed class RendererPerfProtocolTests
         {
             GpuPeriodNs = 0.25,
             GpuFrame = block.Measured[0].GpuFrame with { Value = 2.5 },
-            Passes = [new("opaque", 0, null, null, 1, 2, 8, new(2, "ns", "pass timestamp pair", RendererPerfMetricStatus.Available, null))]
+            Passes = [new("opaque", 0, null, null, 1, 2, 8, new(2, "ns", "pass timestamp pair", RendererPerfMetricStatus.Available, null), false)]
         };
         report = report with { Blocks = report.Blocks.SetItem(1, block with { Measured = block.Measured.SetItem(0, frame) }) };
         RendererPerfReport restored = RendererPerfReportJson.Parse(RendererPerfReportJson.Serialize(report));
@@ -419,7 +419,7 @@ public sealed class RendererPerfProtocolTests
         RendererPerfBlockReport block = report.Blocks[1];
         RendererPerfFrameSample frame = block.Measured[0] with
         {
-            Passes = [new("opaque", 0, null, null, 1, 2, null, new(null, "ns", "pass timestamp pair", status, "no usable pass duration"))]
+            Passes = [new("opaque", 0, null, null, 1, 2, null, new(null, "ns", "pass timestamp pair", status, "no usable pass duration"), false)]
         };
         report = report with
         {
@@ -505,7 +505,7 @@ public sealed class RendererPerfProtocolTests
         Assert.Equal(reason == null ? [] : new[] { reason }, restored.Assessment.WorkModels[0].MissingEvidence.ToArray());
     }
 
-    static RendererPerfReport CompleteReport()
+    internal static RendererPerfReport CompleteReport()
     {
         RendererPerfReport report = PartialReport();
         RendererPerfMetric available = new(10, "ns", "outer timestamp pair", RendererPerfMetricStatus.Available, null);

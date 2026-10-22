@@ -249,6 +249,13 @@ After explicit approval, authorization commit B has exactly one parent A and add
 
 Every optional metric has a value/unit/source/status/reason. Invalid or absent is null with a reason, never a zero-valued success. Warm-up is retained separately. GPU frame totals use the outer pair, never the sum of nested scope durations. Keep parent/leaf relationships and unattributed gaps so a bad partition is visible.
 
+Every pass row carries required `deviceOnly` ownership. CPU-only device rows have `deviceOnly=true`, zero
+begin/end markers, null elapsed ticks and null GPU duration, with `Unsupported` when executed or
+`NotExecuted` when skipped. They survive partial and completed publication and do not prevent promotion
+when all GPU rows and the frame satisfy the existing timing requirements. GPU rows carry `deviceOnly=false`,
+retain positive ordered marker pairs and still require supported timing for promotion. Task 15 must integrate
+this report shape with the device leaf registry.
+
 `RendererPerfComparison.Compare(baseline, candidate)` compares only identical scene/profile/control versions, layout, backend/adapter, driver, relevant runtime/recording/capture settings and completion policy. Source/shader hashes may change because they identify the candidate being evaluated. Explain all identity differences, separate unlike rows and refuse a regression verdict on incompatible pairs. Compare total-only frame means and distributions, per-pass diagnostic deltas and reference-gap deltas. Preserve three iteration means instead of treating every correlated frame as an independent replicate. The first baseline supplies no universal pass/fail percentage. Recommend focused optimizations from measured excess and then agree regression budgets with the owner.
 
 Raw artifacts stay on the workflow. A later checked-in baseline summary includes immutable run links, hashes and configuration, not thousands of frames or private captures. Future changes never overwrite the original baseline. A changed recipe, driver or protocol starts a new series with the old result retained.

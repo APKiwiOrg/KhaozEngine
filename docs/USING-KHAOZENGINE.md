@@ -23241,7 +23241,11 @@ The internal renderer adapter is
 fixed pass definitions, sample storage, CPU-span capacity and resource metadata capacity before warming.
 Pass definitions freeze IDs, occurrences, parents and increasing reserved marker pairs for GPU intervals.
 The `DeviceOnly` definitions for `device.*` CPU phases have marker indices zero and no GPU interval. They own
-device operations through those existing CPU callbacks. The device factory
+device operations through those existing CPU callbacks. Harvest preserves that distinction as the required
+`deviceOnly` Boolean on every report pass row. CPU-only rows require zero begin/end markers, null elapsed
+ticks and null GPU duration, with `Unsupported` when executed or `NotExecuted` when skipped. They can be
+published and promoted alongside valid frame/GPU timings. GPU rows carry `deviceOnly=false` and keep
+positive ordered marker pairs and supported-timing promotion checks. The device factory
 records pipeline topology, compiled local sizes and texture layers while returning native resource handles.
 Unknown imported texture layers or pipeline metadata remain explicit incomplete metrics, never zero work.
 Requested resource bytes are creation totals, not live memory, physical traffic or residency.

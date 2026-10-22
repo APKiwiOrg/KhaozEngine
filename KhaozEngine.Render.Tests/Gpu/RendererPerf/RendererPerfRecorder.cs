@@ -384,7 +384,8 @@ internal sealed class RendererPerfRecorder
                 : Missing("ns", "native GPU timestamps", definition.DeviceOnly ? "Device work has CPU ownership only, without a GPU interval."
                     : _layout == RendererPerfLayout.TotalOnly ? "Total-only layout has no pass timestamps." : "No valid pass timestamp result.");
             passes.Add(new(definition.Id, definition.Occurrence, definition.Parent < 0 ? null : _passes[definition.Parent].Id,
-                definition.Parent < 0 ? null : _passes[definition.Parent].Occurrence, definition.BeginMarker, definition.EndMarker, ticks, duration));
+                definition.Parent < 0 ? null : _passes[definition.Parent].Occurrence, definition.BeginMarker, definition.EndMarker,
+                ticks, duration, definition.DeviceOnly));
         }
         ulong? totalTicks = validTiming ? timing!.Ticks[^1] : null;
         return new(frame.FrameId, frame.SequenceIndex, frame.Start, frame.End, _frequency, totalTicks, timing?.Period,

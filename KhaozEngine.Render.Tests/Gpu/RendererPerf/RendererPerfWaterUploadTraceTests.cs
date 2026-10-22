@@ -53,6 +53,7 @@ public sealed class RendererPerfWaterUploadTraceTests
         var surface = Assert.Single(sample.Passes, p => p.Id == "water.surface");
         Assert.Equal(culled ? RendererPerfMetricStatus.NotExecuted : RendererPerfMetricStatus.Available, surface.Duration.Status);
         Assert.Equal(culled ? 0 : 1, recorded.Commands.Events.Count(e => e.Op == "draw-indexed"));
+        RendererPerfDeviceReportTests.AssertPublishable(sample);
     }
 
     [Theory]
@@ -121,7 +122,9 @@ public sealed class RendererPerfWaterUploadTraceTests
         recorder.BeginFrame(0, 0, 0); adapter.BeginFrame();
         rig.Frame(list: RendererPerfCommandList.Wrap(rig.Commands, recorder), water: false);
         recorder.EndFrame();
-        var sample = recorder.Harvest(0);
+        var timing = new GpuPerfTimestampResult(Enumerable.Range(0, (int)recorder.MarkerCount)
+            .Select(i => (ulong)i).ToImmutableArray(), 1d, true, "synthetic marker ticks");
+        var sample = recorder.Harvest(0, timing);
         Assert.Empty(sample.Errors);
         foreach (string id in new[] { "device.water.geometry", "device.water.bathymetry" })
         {
@@ -132,6 +135,7 @@ public sealed class RendererPerfWaterUploadTraceTests
             Assert.Equal(0u, pass.BeginMarker);
             Assert.Equal(0u, pass.EndMarker);
         }
+        RendererPerfDeviceReportTests.AssertPublishable(sample);
     }
 
     static GeometryTraceCommands.Event[] Trace(GeometryTraceCommands commands) =>

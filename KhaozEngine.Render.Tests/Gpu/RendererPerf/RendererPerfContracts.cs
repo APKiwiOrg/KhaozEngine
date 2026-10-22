@@ -46,7 +46,7 @@ internal readonly record struct RendererPerfFrameSample(int FrameId, int Sequenc
     ImmutableDictionary<string, RendererPerfMetric> Metrics, ImmutableArray<string> Errors);
 internal sealed record RendererPerfCpuSpan(string Id, string? ParentId, long StartTicks, long EndTicks);
 internal sealed record RendererPerfPassSample(string Id, int Occurrence, string? ParentId, int? ParentOccurrence,
-    uint BeginMarker, uint EndMarker, ulong? ElapsedTicks, RendererPerfMetric Duration);
+    uint BeginMarker, uint EndMarker, ulong? ElapsedTicks, RendererPerfMetric Duration, bool DeviceOnly);
 internal sealed record RendererPerfBlockReport(RendererPerfBlock Block, ImmutableArray<RendererPerfFrameSample> Warmup,
     ImmutableArray<RendererPerfFrameSample> Measured, ImmutableArray<string> Errors);
 internal sealed record RendererPerfControlReport(RendererPerfControl Control, string StateSha256,

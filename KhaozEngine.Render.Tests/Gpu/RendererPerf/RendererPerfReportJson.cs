@@ -120,8 +120,9 @@ internal static class RendererPerfReportJson
 
     static bool Promotable(RendererPerfFrameSample frame) => frame.Errors.IsEmpty
         && frame.GpuFrame.Status == RendererPerfMetricStatus.Available && frame.GpuElapsedTicks > 0
-        && frame.Passes.All(p => p.Duration.Status is RendererPerfMetricStatus.Available
-            or RendererPerfMetricStatus.NotExecuted or RendererPerfMetricStatus.BelowResolution);
+        && frame.Passes.All(p => p.DeviceOnly
+            ? p.Duration.Status is RendererPerfMetricStatus.Unsupported or RendererPerfMetricStatus.NotExecuted
+            : p.Duration.Status is RendererPerfMetricStatus.Available or RendererPerfMetricStatus.NotExecuted or RendererPerfMetricStatus.BelowResolution);
 
     static void ValidateSamples(ImmutableArray<RendererPerfFrameSample> warmup, ImmutableArray<RendererPerfFrameSample> measured,
         int expectedWarmup, int expectedMeasured, bool completed)
@@ -148,8 +149,15 @@ internal static class RendererPerfReportJson
         foreach (RendererPerfPassSample pass in frame.Passes)
         {
             Duration(pass.Duration, pass.ElapsedTicks, frame.GpuPeriodNs, $"Pass '{pass.Id}/{pass.Occurrence}'");
-            Require(Text(pass.Id) && pass.Occurrence >= 0 && pass.BeginMarker >= 1 && pass.BeginMarker < pass.EndMarker
-                && pass.EndMarker <= 510 && (pass.ParentId == null) == (pass.ParentOccurrence == null), "Sample", "Pass key, parent or reserved marker pair is invalid.");
+            Require(Text(pass.Id) && pass.Occurrence >= 0 && (pass.ParentId == null) == (pass.ParentOccurrence == null),
+                "Sample", "Pass key or parent is invalid.");
+            if (pass.DeviceOnly)
+                Require(pass.BeginMarker == 0 && pass.EndMarker == 0 && pass.ElapsedTicks == null && pass.Duration.Value == null
+                    && pass.Duration.Status is RendererPerfMetricStatus.Unsupported or RendererPerfMetricStatus.NotExecuted,
+                    "Sample", "CPU-only device ownership cannot carry GPU markers, ticks or duration.");
+            else
+                Require(pass.BeginMarker >= 1 && pass.BeginMarker < pass.EndMarker && pass.EndMarker <= 510,
+                    "Sample", "GPU pass reserved marker pair is invalid.");
         }
         foreach (RendererPerfCpuSpan span in frame.CpuPhases)
             Require(Text(span.Id) && span.StartTicks >= frame.CpuStartTicks && span.EndTicks >= span.StartTicks

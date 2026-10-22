@@ -8,10 +8,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
     ///
     /// <para><b>EXACTLY ONE ENCODER IS OPEN AT A TIME, WHICH IS METAL'S RULE RATHER THAN A POLICY THIS DESIGN
     /// INVENTS.</b> A command buffer hands out one encoder and refuses a second until the first has been sent
-    /// <c>-endEncoding</c>. Every command in the backend routes through one of the helpers here, so the
+    /// <c>-endEncoding</c>. Ordinary encoders route through the helpers here, so their
     /// transition is written ONCE: <see cref="EnsureRenderEncoder"/>, <see cref="EnsureBlitEncoder"/>,
     /// <see cref="EnsureComputeEncoder"/> and <see cref="EnsureNoEncoder"/>. A command that opened an encoder
-    /// itself would be a second copy of the rule, and the rule is the thing that must not drift.</para>
+    /// itself must close this scope first. Dedicated timestamp blits report their begin/end epoch through
+    /// <see cref="RecordExternalEncoderBoundary"/> after the native API closes them.</para>
     ///
     /// <para><b>THE EPOCH IS THE INVALIDATION, AND IT COUNTS BOUNDARIES RATHER THAN ENCODERS.</b> It starts at 1,
     /// never reaches 0, and increments on EVERY transition: each begin and each end. A record stamped through
@@ -242,6 +243,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             _sink.EndEncoding(ended, encoder);
             return ended;
+        }
+
+        /// <summary>Account for a dedicated native encoder that was opened and closed outside the sink.</summary>
+        internal void RecordExternalEncoderBoundary()
+        {
+            if (_kind != MetalEncoderKind.None)
+                throw new InvalidOperationException("End the current encoder before recording a timestamp boundary.");
+            _epoch += 2;
         }
 
         // THE ONE READ OF THE BUFFER, so no Ensure can hand a stale handle to the sink. Two states reach the

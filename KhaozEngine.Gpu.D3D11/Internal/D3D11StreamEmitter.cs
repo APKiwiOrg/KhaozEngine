@@ -165,6 +165,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             => _stream.Append(new D3D11Op(D3D11OpCode.SetComputeResourceSetDynamic, _stream.AddReference(set),
                 a0: slot, a1: dynamicOffset));
 
+        public void BeginTimestamps(IGpuTimestampPool pool, uint count)
+            => _stream.Append(new D3D11Op(D3D11OpCode.BeginTimestamps, _stream.AddReference(pool), a0: count));
+        public void WriteTimestamp(IGpuTimestampPool pool, uint index)
+            => _stream.Append(new D3D11Op(D3D11OpCode.WriteTimestamp, _stream.AddReference(pool), a0: index));
+        public void EndTimestamps(IGpuTimestampPool pool)
+            => _stream.Append(new D3D11Op(D3D11OpCode.EndTimestamps, _stream.AddReference(pool)));
+
         public void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ)
             => _stream.Append(new D3D11Op(D3D11OpCode.Dispatch, a0: groupCountX, a1: groupCountY, a2: groupCountZ));
     }

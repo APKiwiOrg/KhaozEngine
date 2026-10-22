@@ -100,6 +100,79 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// THE BUFFER FORM OF THE SAME HANDOFF, AT THE VERTEX STAGE, which is compute rule 2's dispatch-to-draw
+        /// edge on this backend. A dispatch writes a read-write structured buffer through its unordered access
+        /// view and a draw then reads the same buffer as a read-only vertex-stage shader resource view, the vertex
+        /// pulling shape. The draw's flush nulls the <c>u</c> register before it fills the vertex <c>t</c> one,
+        /// so the runtime's hazard tracking orders the read after the write.
+        /// </summary>
+        [Fact]
+        public void AVertexSrvOfAComputeWrittenBuffer_UnbindsItsUavInTheSameFlush()
+        {
+            var harness = new D3D11BindFixtures.Harness();
+            var buffer = new FakeBuffer(256);
+            using D3D11ResourceLayout computeLayout = D3D11BindFixtures.Layout(D3D11BindFixtures.StructRW("Work"));
+            using D3D11ResourceLayout drawLayout = D3D11BindFixtures.Layout(
+                D3D11BindFixtures.StructRO("Entries", GpuShaderStages.Vertex));
+            using D3D11ResourceSet computeSet = D3D11BindFixtures.Set(computeLayout, buffer);
+            using D3D11ResourceSet drawSet = D3D11BindFixtures.Set(drawLayout, buffer);
+            D3D11NativeTraceEmitter emitter = harness.Emitter;
+
+            emitter.SetComputePipeline(new D3D11BindFlushTests.FakeComputePipeline(computeLayout));
+            emitter.SetComputeResourceSet(0, computeSet);
+            emitter.Dispatch(1, 1, 1);
+
+            emitter.SetPipeline(D3D11BindFixtures.Pipeline(drawLayout));
+            emitter.SetGraphicsResourceSet(0, drawSet);
+            harness.Log.Reset();
+            emitter.Draw(3, 1, 0, 0);
+
+            Assert.Equal(
+                new[]
+                {
+                    "CSSetUnorderedAccessViews(0,1,-)",
+                    $"VSSetShaderResources(0,1,{harness.Log.Id(buffer)})",
+                },
+                harness.BindTrace());
+        }
+
+        /// <summary>
+        /// AND THE REVERSE HANDOFF: a dispatch that writes a buffer a draw left bound as a vertex shader resource
+        /// view nulls that view before it binds the unordered access view, and raises the graphics slot so the
+        /// next draw binds the view again rather than reading a null register.
+        /// </summary>
+        [Fact]
+        public void AComputeUavOfAVertexReadBuffer_InvalidatesTheGraphicsBinding()
+        {
+            var harness = new D3D11BindFixtures.Harness();
+            var buffer = new FakeBuffer(256);
+            using D3D11ResourceLayout drawLayout = D3D11BindFixtures.Layout(
+                D3D11BindFixtures.StructRO("Entries", GpuShaderStages.Vertex));
+            using D3D11ResourceLayout computeLayout = D3D11BindFixtures.Layout(D3D11BindFixtures.StructRW("Work"));
+            using D3D11ResourceSet drawSet = D3D11BindFixtures.Set(drawLayout, buffer);
+            using D3D11ResourceSet computeSet = D3D11BindFixtures.Set(computeLayout, buffer);
+            D3D11NativeTraceEmitter emitter = harness.Emitter;
+
+            emitter.SetPipeline(D3D11BindFixtures.Pipeline(drawLayout));
+            emitter.SetGraphicsResourceSet(0, drawSet);
+            emitter.Draw(3, 1, 0, 0);
+
+            emitter.SetComputePipeline(new D3D11BindFlushTests.FakeComputePipeline(computeLayout));
+            emitter.SetComputeResourceSet(0, computeSet);
+            harness.Log.Reset();
+            emitter.Dispatch(1, 1, 1);
+
+            Assert.Equal(
+                new[]
+                {
+                    "VSSetShaderResources(0,1,-)",
+                    $"CSSetUnorderedAccessViews(0,1,{harness.Log.Id(buffer)})",
+                },
+                harness.BindTrace());
+            Assert.Equal(D3D11SlotDirty.Full, harness.Binds.GraphicsDirty(0));
+        }
+
+        /// <summary>
         /// THE UNBIND OBEYS THE SAME BATCHING LAW AS THE BIND, which is what "under array batching this costs
         /// nothing extra" means in the spec: two conflicting registers are ONE array call over the span, not two
         /// calls. A per-register unbind would be the #418 fan-out defect arriving on the compute side.

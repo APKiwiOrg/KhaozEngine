@@ -7,17 +7,27 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 21.11.0
 
-2026-10-21
+2026-10-22
 
+- Add fixed GPU timestamp pools on Vulkan, Direct3D 11 and Metal, with nonblocking resolution and explicit
+  Pending, Ready and Invalid results. Completed-frame tails include command-list finalization.
+- Recover safely from failed command-list End calls, retaining unresolved timestamp batches through teardown.
+- Guarantee storage-buffer visibility between dependent dispatches and draws in one command list.
+- Add nonblocking completed staging-buffer reads and a fixed `GpuBufferReadbackRing`.
+- Add `GpuFrameSubmission`, completion consumers and participants, and multi-fence submission. Window frames
+  expose `Frame.Submission` and share one submission with capture taps while preserving independent fence lifetimes.
 - Fix grainy and sparkling sun-shadow edges under TAA, especially at low frame rates. Key shadows use bilinear
   3x3 comparison PCF in every AA mode. Under TAA, lit draws export filtered key-shadow visibility, and a
   visibility change releases the thin-feature lock and hold while preserving accumulated weight and display share.
 - Lit R8 visibility and its R8 history pair extend the rendering resource contract, at three bytes per internal
   texel plus a 16-byte previous-jitter buffer. There is no new tuning API.
 - The fused and split resolve entry points produce identical visibility bytes and lock decisions. The carried-lock
-  release is ordered by a zero-valued bit barrier rather than `precise`, so every backend computes it bit for bit.
+  release is ordered by a zero-valued bit barrier rather than `precise`. An exact positive-zero incoming lock
+  skips that release, preserving bit-for-bit results.
 - On the visibility fast path, Direct3D 11 and Vulkan gather the current block and both history blocks. Metal
   gathers both history blocks and loads the current 3x3, which keeps its release decisions exact.
+- Certified fully lit current and history visibility select a compiled program without the visibility check,
+  for example with key shadows off. Visibility storage and history copies remain.
 - Devices with fewer than five colour attachments log the capability once and keep bilinear filtering without
   visibility release.
 

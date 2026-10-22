@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.D3D11.Internal;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Tests.Gpu
 {
@@ -55,6 +56,12 @@ namespace KhaozEngine.Tests.Gpu
         /// the dial a test turns to reach decision G3's failure arm through the real map path.</summary>
         internal int MapResult { get; set; } = D3D11DeviceLossCodes.Ok;
 
+        /// <summary>The <c>HRESULT</c> the next <c>DO_NOT_WAIT</c> read map answers.
+        /// <see cref="D3D11StagingAccess.WasStillDrawing"/> is the "still in use" answer a non-blocking read turns
+        /// into false, and any other failure reaches decision G3's site exactly as <see cref="MapResult"/> does.
+        /// </summary>
+        internal int TryMapResult { get; set; } = D3D11DeviceLossCodes.Ok;
+
         /// <summary>The row pitch a texture map reports. Deliberately unlike any packed width, so a test asserting
         /// the mapped size cannot pass on an arithmetic that ignored the pitch.</summary>
         internal uint RowPitch { get; set; } = 64;
@@ -83,6 +90,18 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <inheritdoc/>
         public void UnmapBuffer(object buffer) => UnmapAny(nameof(UnmapBuffer), buffer);
+
+        /// <inheritdoc/>
+        public int TryMapBufferRead(object buffer, out IntPtr data)
+        {
+            if (!D3D11DeviceLossCodes.IsFailure(TryMapResult))
+                return MapAny(nameof(TryMapBufferRead), buffer, out data, out _);
+
+            // A failed DO_NOT_WAIT map maps nothing, still drawing included, so it leaves no mapping behind.
+            Record(nameof(TryMapBufferRead));
+            data = IntPtr.Zero;
+            return TryMapResult;
+        }
 
         /// <inheritdoc/>
         public int MapTexture(object texture, GpuMapMode mode, out IntPtr data, out uint rowPitchBytes)
@@ -149,12 +168,20 @@ namespace KhaozEngine.Tests.Gpu
     /// reached off Windows. The map target is a bare <see cref="object"/> standing in for the
     /// <c>ID3D11Buffer</c>, exactly as the real one hands its native handle over.
     /// </summary>
-    internal sealed class FakeStagingBuffer : IGpuBuffer, ID3D11MappableResource
+    internal sealed class FakeStagingBuffer : IGpuBuffer, ID3D11ReadableStaging
     {
-        internal FakeStagingBuffer(uint sizeInBytes = 256, bool mappable = true)
+        /// <param name="sizeInBytes">The buffer's size.</param>
+        /// <param name="mappable">Whether a map is allowed at all.</param>
+        /// <param name="staging">Whether the usage was staging, which is what a non-blocking read requires. False
+        /// stands in for a dynamic buffer: mappable, and write-only.</param>
+        /// <param name="owner">The creating device's liveness token, or a fresh one nothing else holds.</param>
+        internal FakeStagingBuffer(uint sizeInBytes = 256, bool mappable = true, bool staging = true,
+            IDeviceLiveness? owner = null)
         {
             SizeInBytes = sizeInBytes;
             IsMappable = mappable;
+            IsStagingUsage = staging;
+            Owner = owner ?? new FakeD3D11DeviceLiveness();
         }
 
         public uint SizeInBytes { get; }
@@ -165,9 +192,16 @@ namespace KhaozEngine.Tests.Gpu
         /// <inheritdoc/>
         public bool IsMappable { get; }
 
-        public void Dispose()
-        {
-        }
+        /// <inheritdoc/>
+        public bool IsStagingUsage { get; }
+
+        /// <inheritdoc/>
+        public IDeviceLiveness Owner { get; }
+
+        /// <inheritdoc/>
+        public bool IsDisposed { get; private set; }
+
+        public void Dispose() => IsDisposed = true;
     }
 
     /// <summary>The texture half of <see cref="FakeStagingBuffer"/>, carrying the height a mapped size is

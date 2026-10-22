@@ -194,7 +194,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             IVulkanShaderApi shaderApi, IVulkanPipelineApi pipelineApi,
             VulkanPipelineCacheFile? pipelineCache, SpirvBytesCache? spirvBytes,
             uint maxDynamicUniformBuffers, int framesInFlight,
-            VulkanWindowedParts? windowed)
+            VulkanWindowedParts? windowed, Func<IVulkanTimestampApi>? createTimestampApi = null,
+            VulkanTimestampSupport timestamps = default)
         {
             _instance = instance;
             _device = device;
@@ -207,6 +208,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _commands = commands;
             _framesInFlight = framesInFlight;
             Capabilities = capabilities;
+            TimestampSupport = timestamps;
 
             // BUILT HERE for the same reason the allocator below is: the lock that orders vkQueueSubmit and the
             // timeline it allocates values from are both this device's, and a submit queue handed in would either
@@ -273,7 +275,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             _factory = new VulkanResourceFactory(_resources, _rings, _setup, _descriptors, _modules, _pipelines,
                 () => CreateCommandList(), () => _timeline.CreateFence(), capabilities,
-                memoryFacts.MinUniformBufferOffsetAlignment, spirvBytes);
+                memoryFacts.MinUniformBufferOffsetAlignment, spirvBytes, createTimestampApi, timestamps);
 
             // THE SHARED PAIR WRAPS ON ALL THREE AXES (section 14), built from VulkanSharedSamplers and NOT from
             // the identically named GpuSamplerDescription statics, which default every axis to CLAMP. Neither
@@ -315,6 +317,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         /// <inheritdoc/>
         public GpuCapabilities Capabilities { get; }
+        internal VulkanTimestampSupport TimestampSupport { get; }
 
         /// <summary>The ONE queue this device has, graphics and (on a windowed device) presentation both (V-N5).
         /// Held here because it is the device's, and read by the command-list row

@@ -174,22 +174,4 @@ public sealed class DqCascadeContractTests
             { CastsShadows = false }, DqCascadeScene.HalfTurn);
         Assert.Throws<NotSupportedException>(() => harness.Render());
     }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Internal_point_shadow_draws_still_refuse_DQ(bool gpu)
-    {
-        using var harness = new MotionTestScene();
-        var scene = harness.Scene;
-        scene.UseGpuSkinning = gpu;
-        scene.FrustumCulling = false;
-        scene.Begin();
-        scene.AddLight(new Vector3(0, 0, 3), Color.White, 10, 1, LightShadow.Dynamic);
-        var mesh = DqCascadeScene.Patch(SkinningProfile.DualQuaternionRigid);
-        var handle = scene.LoadSkinnedMesh(mesh);
-        DqGpuReadback.Queue(scene, mesh, new SkinnedInstanceDraw(handle, Matrix4x4.Identity)
-            { ShadowOnly = true }, DqCascadeScene.HalfTurn);
-        Assert.Throws<NotSupportedException>(() => harness.Render());
-    }
 }

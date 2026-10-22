@@ -50,9 +50,8 @@ public sealed partial class Scene3D
                 else if (!it.ShadowOnly) _culledSkinnedInstances++;
 
                 PreparedSkinningPose prepared = _submittedSkinningPoses[i];
-                if (prepared.Profile.Method == SkinningMethod.DualQuaternionRigid &&
-                    (_res.MotionAllocated || visiblePointShadow))
-                    throw new NotSupportedException("DQ shadow and temporal consumers are unavailable for ordinary material submission.");
+                if (prepared.Profile.Method == SkinningMethod.DualQuaternionRigid && _res.MotionAllocated)
+                    throw new NotSupportedException("DQ temporal consumers are unavailable for ordinary material submission.");
 
                 bool dissolving = it.Dissolving;
                 ShadowCastKind shadowKind = ShadowDepthSelection.ClassifySkinnedCaster(it);   // issue #387

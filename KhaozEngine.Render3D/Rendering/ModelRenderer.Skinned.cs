@@ -17,6 +17,7 @@ internal sealed partial class ModelRenderer
 
     internal IGpuResourceLayout SkinnedBonePaletteLayout => _bonePalette.Layout;
     internal IGpuResourceSet SkinnedBonePaletteSet => _bonePalette.Set;
+    internal DualQuaternionPaletteBuffer SkinnedDualQuaternionPalette => _dqPalette;
     internal IGpuBuffer? CpuSkinnedVertexBuffer => _skinnedVertexBuffer;
     internal IGpuBuffer? CpuSkinnedInstanceBuffer => _skinnedInstanceBuffer;
 

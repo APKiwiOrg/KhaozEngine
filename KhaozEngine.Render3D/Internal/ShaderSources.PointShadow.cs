@@ -1,3 +1,5 @@
+using System;
+
 namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
@@ -298,6 +300,26 @@ void main() {
     vDissolve = vec2(Dissolve.x, 0.0);
     vDissolveComplement = Dissolve.y;
 }";
+
+        public static readonly string DqPointShadowSkinnedVert = DqPointShadowVertex(PointShadowSkinnedVert);
+        public static readonly string DqPointShadowSkinnedDissolveVert = DqPointShadowVertex(PointShadowSkinnedDissolveVert);
+
+        static string DqPointShadowVertex(string lbs)
+        {
+            // Replace the independent matrix blend only in this method's new shader family. Keep the LBS
+            // programs, face/caster headers and distance/dissolve tails byte-for-byte unchanged.
+            int blend = lbs.IndexOf("mat4 pointShadowSkin()", StringComparison.Ordinal);
+            int varyings = lbs.IndexOf("layout(location=0) out", blend, StringComparison.Ordinal);
+            string prefix = lbs[..blend].Replace("mat4 bones[128];", "vec4 dqBones[256];", StringComparison.Ordinal);
+            return prefix + DualQuaternionGlsl.Source("dqBones") + lbs[varyings..].Replace(
+                "    vec4 localPos = pointShadowSkin() * vec4(Position, 1.0);", @"
+    vec3 dqPosition; vec3 dqNormal; vec4 dqTangent;
+    if (!dqBonesSkin(Position, Normal, Tangent, BoneIndices, BoneWeights, dqPosition, dqNormal, dqTangent)) {
+        gl_Position = vec4(0.0, 0.0, -1.0, 1.0);
+        return;
+    }
+    vec4 localPos = vec4(dqPosition, 1.0);", StringComparison.Ordinal);
+        }
 
         // ---- The per-row CLEAR (design decision 7). One light row is cleared by drawing a fullscreen triangle at
         //      z = 1 under the row's scissor, through a depth-ALWAYS depth-writing pipeline, rather than by

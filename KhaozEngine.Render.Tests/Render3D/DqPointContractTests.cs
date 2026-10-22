@@ -12,6 +12,40 @@ namespace KhaozEngine.Tests.Render3D;
 
 public sealed class DqPointContractTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Camera_culled_point_casters_keep_DQ_and_renderer_replacement_frees_variants(bool gpu)
+    {
+        using var harness = new MotionTestScene();
+        Scene3D scene = harness.Scene;
+        DqPointScene.Configure(scene);
+        scene.UseGpuSkinning = gpu;
+        var mesh = DqPointScene.Patch(SkinningProfile.DualQuaternionRigid);
+        var handle = scene.LoadSkinnedMesh(mesh);
+        for (int frame = 0; frame < 3; frame++)
+        {
+            scene.Begin();
+            DqPointScene.Lights(scene, new Vector3(0, 0, 32));
+            foreach (int variant in new[] { 0, 1, 2 })
+                DqGpuReadback.Queue(scene, mesh, new SkinnedInstanceDraw(handle, Matrix4x4.CreateTranslation(0, 0, 32))
+                { Dissolve = variant == 0 ? 0 : .5f, InvertShadowDissolve = variant == 2 }, DqCascadeScene.HalfTurn);
+            harness.Render();
+        }
+        Assert.Equal(0, scene.DrawnSkinnedInstances);
+        Assert.Equal(3, scene.CulledSkinnedInstances);
+        Assert.Equal(18, scene.LastShadowPassDiagnostics.PointStaticTransientSkinnedDrawCalls);
+        Assert.Equal(18, scene.LastShadowPassDiagnostics.PointDynamicSkinnedDrawCalls);
+        var shaders = ((FakeGpuResourceFactory)harness.Device.Factory).ShaderSets.Where(s =>
+            s.VertexGlsl.Contains("dqBonesSkin", StringComparison.Ordinal)
+            && s.VertexGlsl.Contains("LightPosRadius", StringComparison.Ordinal)).ToArray();
+        Assert.Equal(gpu ? 3 : 0, shaders.Length);
+        Assert.All(shaders, s => Assert.False(s.Disposed));
+        scene.RequestPointShadowSettings(new PointShadowSettings { Enabled = false });
+        scene.Begin();
+        Assert.All(shaders, s => Assert.True(s.Disposed));
+    }
+
     [Fact]
     public void Point_variant_selection_covers_all_face_row_kinds()
     {

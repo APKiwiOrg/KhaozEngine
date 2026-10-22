@@ -123,4 +123,43 @@ public sealed class RendererPerfRawValidationTests
         Assert.Equal(metrics["invalid"], restored["invalid"]);
     }
 
+    [Fact]
+    public void Positive_zero_vector_is_rejected_after_a_matching_negative_zero_cache_entry()
+    {
+        var report = RendererPerfProtocolTests.CompleteReport();
+        var metrics = ImmutableDictionary<string, RendererPerfMetric>.Empty
+            .Add("signed", new(-0d, "count", "signed delta", RendererPerfMetricStatus.Available, null));
+        report = report with
+        {
+            Conditioning = report.Conditioning.SetItem(0, report.Conditioning[0] with { Metrics = metrics })
+                .SetItem(1, report.Conditioning[1] with { Metrics = metrics })
+        };
+        var json = JsonNode.Parse(RendererPerfReportJson.Serialize(report))!;
+        json["conditioning"]![1]!["metrics"]!["values"]![0] = 0d;
+        Assert.Throws<RendererPerfProtocolException>(() => RendererPerfReportJson.Parse(Encoding.UTF8.GetBytes(json.ToJsonString())));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Pass_duration_cache_preserves_both_zero_signs(bool positiveFirst)
+    {
+        var report = RendererPerfProtocolTests.CompleteReport();
+        var block = report.Blocks[1];
+        RendererPerfPassSample Pass(double value) => new("post.blit", 0, null, null, 1, 2, 0,
+            new(value, "ns", "held zero interval", RendererPerfMetricStatus.Available, null), false);
+        var first = Pass(positiveFirst ? 0d : -0d);
+        var second = Pass(positiveFirst ? -0d : 0d);
+        report = report with
+        {
+            Blocks = report.Blocks.SetItem(1, block with
+            {
+                Measured = block.Measured.SetItem(0, block.Measured[0] with { Passes = [first] })
+                    .SetItem(1, block.Measured[1] with { Passes = [second] })
+            })
+        };
+        var restored = RendererPerfReportJson.Parse(RendererPerfReportJson.Serialize(report)).Blocks[1].Measured;
+        Assert.Equal(positiveFirst ? 0L : long.MinValue, BitConverter.DoubleToInt64Bits(restored[0].Passes[0].Duration.Value!.Value));
+        Assert.Equal(positiveFirst ? long.MinValue : 0L, BitConverter.DoubleToInt64Bits(restored[1].Passes[0].Duration.Value!.Value));
+    }
 }

@@ -48,7 +48,6 @@ namespace KhaozEngine.Render3D
         public void PrepareFrame()
         {
             if (_framePrepared) return;
-            _profiling?.Reset();
             using (ProfileCpu("cpu.water.prepare"))
             {
                 EnsurePointLightCapacity();

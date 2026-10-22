@@ -127,6 +127,7 @@ Use stable IDs with occurrence keys for cascade, light/row/face and outline grou
 | Group | Required scopes |
 | --- | --- |
 | Host/preparation | Initial clear, preparer submissions and FFT prime, motion-target clear, frame-tail finalization/unattributed work |
+| Scene begin | CPU-only `device.scene.begin` owns the existing pending-layout and retirement operations in `Scene3D.Begin` before command-list begin/acquire. It includes any retirement fallback wait without a GPU marker pair |
 | Atmosphere/background | Transmittance LUT, multiple-scattering LUT, sky-view LUT, sky draw and starfield draw. Cached LUTs record a skipped occurrence |
 | Directional shadows | Each cascade and rigid opaque/cutout/dissolve, skinned and displaced-foliage work under it. Keep parent and leaf totals distinct |
 | Point shadows | Static rebuild, dynamic base and transient row, each face 0 to 5, rigid/foliage/skinned children and atlas copy/clear work |
@@ -140,10 +141,13 @@ Use stable IDs with occurrence keys for cascade, light/row/face and outline grou
 
 A command-counting recorder attributes every Draw/DrawIndexed, Dispatch, copy, resolve, clear and buffer/texture update to one leaf or the explicit unattributed bucket. It records requested pipeline/resource/framebuffer/scissor switches and redundant consecutive binds. Native emitted state calls are a separate optional counter, not inferred from requested calls. Registry completeness tests compare an all-feature command trace with assigned leaves and detect newly unowned work. Inactive feature branches get bounded correctness fixtures even if they are not added to the paid suite.
 
-Device upload leaves use the existing CPU phase callbacks and carry `DeviceOnly` in the frozen logical registry.
+Device leaves use the existing CPU phase callbacks and carry `DeviceOnly` in the frozen logical registry.
 They participate in exclusive counter ownership, with marker indices zero and an unsupported GPU duration even
 when the frame's GPU timestamps are valid. Skipping their GPU parent skips their logical rows too. Completeness
-checks include both device and command-list uploads and reject exclusive counters assigned to nonleaf parents.
+checks observe the full device, including waits and resource creation, and command-list uploads, and reject
+exclusive counters assigned to nonleaf parents. All-feature warmed fixtures finish and verify cold retirement
+before freezing. A separate bounded MSAA/blob fixture retains the cold retirement wait and proves CPU-only
+ownership before rendering. Task 15 must retain both coverage paths and the scene-begin owner.
 
 ### Upload, memory and allocation data
 

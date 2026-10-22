@@ -738,7 +738,7 @@ namespace KhaozEngine.Render3D
         internal int SkinnedInstanceCount => _skinnedInstances.Items.Count;
 
         /// <summary>Start a frame: apply pending scene changes, latch <see cref="RenderOrigin"/>, take the next frame index, and clear the per-frame draw queues.</summary>
-        public void Begin()
+        void BeginCore()
         {
             ApplyPendingShadowLayout();
             ApplyPendingPointShadowLayout();

@@ -19,10 +19,14 @@ public sealed class RendererPerfPostTraceTests
     public void Attributes_every_post_copy_and_effect(string mode)
     {
         using var rig = new PostTraceRig(mode);
-        rig.Frame(64); rig.Frame(65);
+        rig.Frame(64); rig.Frame(65); rig.Frame(66); rig.Frame(67);
+        Assert.Equal(0, rig.Scene.RetiredResourceCount);
+        int discoveryWaits = rig.Device.Waits;
         var observer = new PostTraceObserver(rig.Commands);
         rig.Scene.PassObserver = observer;
-        rig.Frame(66);
+        rig.Frame(68);
+        Assert.Equal(discoveryWaits, rig.Device.Waits);
+        Assert.Equal(0, rig.Scene.RetiredResourceCount);
         observer.AssertClosed();
         Assert.Contains(observer.Passes, p => p.Key.Id == "post.blit");
         Assert.All(rig.Commands.Events.Where(e => e.Op is not ("begin" or "end")), e =>
@@ -80,20 +84,19 @@ public sealed class RendererPerfPostTraceTests
         Assert.InRange(definitions.Length, 1, 255);
         var recorder = new RendererPerfRecorder(1, RendererPerfLayout.PerPass, definitions, () => 0, 1000);
         var adapter = new RendererPerfPassObserver(recorder, RendererPerfLayout.PerPass, definitions);
-        rig.Device.UploadRecorder = RendererPerfDevice.Wrap(rig.Device.Native, recorder);
-        rig.Scene.PassObserver = adapter;
+        using var recorded = new PostTraceRig(mode, recorder);
+        recorded.Frame(64); recorded.Frame(65); recorded.Frame(66); recorded.Frame(67); recorded.Frame(68);
+        Assert.Equal(0, recorded.Scene.RetiredResourceCount);
+        int measuredWaits = recorded.Device.Waits;
+        recorded.Scene.PassObserver = adapter;
         recorder.BeginFrame(0, 0, 0); adapter.BeginFrame();
-        rig.Frame(67, RendererPerfCommandList.Wrap(rig.Commands, recorder));
+        recorded.Frame(69, RendererPerfCommandList.Wrap(recorded.Commands, recorder));
         recorder.EndFrame();
         Assert.Empty(recorder.Harvest(0).Errors);
-        foreach (RendererPerfCounter counter in Enum.GetValues<RendererPerfCounter>())
-        {
-            Assert.True(recorder.ReadCounter(0, counter, owner: 0) == 0, $"Unattributed {counter}");
-            for (int parent = 0; parent < definitions.Length; parent++)
-                if (definitions.Any(p => p.Parent == parent))
-                    Assert.True(recorder.ReadCounter(0, counter, owner: parent + 1) == 0,
-                        $"Exclusive {counter} on parent {definitions[parent].Id}");
-        }
+        Assert.Equal(measuredWaits, recorded.Device.Waits);
+        Assert.Equal(0, recorded.Scene.RetiredResourceCount);
+        Assert.Equal(0, recorder.ReadCounter(0, RendererPerfCounter.WaitForIdleCalls));
+        RendererPerfFrameBoundaryTraceTests.AssertLeafOwnership(recorder, definitions);
     }
 
     [Fact]

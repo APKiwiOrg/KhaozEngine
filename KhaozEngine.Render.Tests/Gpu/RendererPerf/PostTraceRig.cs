@@ -21,20 +21,21 @@ internal sealed class PostTraceRig : IDisposable
     internal readonly GeometryTraceCommands Commands;
     internal readonly Scene3D Scene;
     internal int PreparationSubmits;
-    internal PostTraceRig(string mode)
+    internal PostTraceRig(string mode, RendererPerfRecorder? recorder = null)
     {
         _mode = mode;
         _recipe = RendererPerfRecipe.Create(mode == "outdoors" ? "outdoors" : "effects-ui");
-        _texture = Device.Factory.CreateTexture(GpuTextureDescription.Texture2D(1920, 1080,
+        IGpuDevice device = recorder is null ? Device : RendererPerfDevice.Wrap(Device, recorder);
+        _texture = device.Factory.CreateTexture(GpuTextureDescription.Texture2D(1920, 1080,
             GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
-        _target = Device.Factory.CreateFramebuffer(null, _texture);
-        Scene = new Scene3D(Device, _target.Outputs);
+        _target = device.Factory.CreateFramebuffer(null, _texture);
+        Scene = new Scene3D(device, _target.Outputs);
         _recipe.ResetBlock(Scene);
         Scene.TemporalResolveEntryForTests = mode == "split" ? TemporalResolveEntry.Split : TemporalResolveEntry.Fused;
         if (_recipe.UiScene is { } ui)
         {
-            ui.Load(Device);
-            _ui = new SpriteBatch(Device, _target.Outputs);
+            ui.Load(device);
+            _ui = new SpriteBatch(device, _target.Outputs);
         }
         Commands = (GeometryTraceCommands)Device.Factory.CreateCommandList();
         Device.UploadTrace = Commands;
@@ -104,9 +105,6 @@ internal sealed class PostTraceDevice : IGpuDevice
     internal System.Collections.Generic.List<GeometryTraceCommands> Lists => _factory.Lists;
     internal int Waits;
     internal GeometryTraceCommands? UploadTrace;
-    // Upload coverage uses the real device adapter. Lifecycle and creation counters have separate host fixtures.
-    internal IGpuDevice? UploadRecorder;
-    IGpuDevice UploadTarget => UploadRecorder ?? Native;
     public GpuBackendKind Backend => Native.Backend;
     public GpuCapabilities Capabilities { get; } = new(false, true, "post trace", maxMsaaSampleCount: 4,
         supportsCompute: true, supportsShadowMaps: true)
@@ -120,15 +118,15 @@ internal sealed class PostTraceDevice : IGpuDevice
     public void Submit(IGpuCommandList cl, IGpuFence fence) => Native.Submit(cl, fence);
     public void WaitForIdle() { Waits++; Native.WaitForIdle(); }
     public void UpdateBuffer<T>(IGpuBuffer b, uint offset, in T data) where T : unmanaged
-    { UploadTrace?.DeviceBuffer(b, offset, MemoryMarshal.CreateReadOnlySpan(in data, 1)); UploadTarget.UpdateBuffer(b, offset, in data); }
+    { UploadTrace?.DeviceBuffer(b, offset, MemoryMarshal.CreateReadOnlySpan(in data, 1)); Native.UpdateBuffer(b, offset, in data); }
     public void UpdateBuffer<T>(IGpuBuffer b, uint offset, ReadOnlySpan<T> data) where T : unmanaged
-    { UploadTrace?.DeviceBuffer(b, offset, data); UploadTarget.UpdateBuffer(b, offset, data); }
+    { UploadTrace?.DeviceBuffer(b, offset, data); Native.UpdateBuffer(b, offset, data); }
     public void UpdateBuffer<T>(IGpuBuffer b, uint offset, T[] data) where T : unmanaged
-    { UploadTrace?.DeviceBuffer<T>(b, offset, data); UploadTarget.UpdateBuffer(b, offset, data); }
+    { UploadTrace?.DeviceBuffer<T>(b, offset, data); Native.UpdateBuffer(b, offset, data); }
     public void UpdateTexture(IGpuTexture t, byte[] data, uint x, uint y, uint w, uint h)
-    { UploadTrace?.DeviceTexture(t, data, x, y, w, h); UploadTarget.UpdateTexture(t, data, x, y, w, h); }
+    { UploadTrace?.DeviceTexture(t, data, x, y, w, h); Native.UpdateTexture(t, data, x, y, w, h); }
     public void UpdateTexture(IGpuTexture t, byte[] data, uint x, uint y, uint w, uint h, uint mip, uint layer)
-    { UploadTrace?.DeviceTexture(t, data, x, y, w, h, mip, layer); UploadTarget.UpdateTexture(t, data, x, y, w, h, mip, layer); }
+    { UploadTrace?.DeviceTexture(t, data, x, y, w, h, mip, layer); Native.UpdateTexture(t, data, x, y, w, h, mip, layer); }
     public MappedData Map(IGpuTexture t, GpuMapMode mode) => Native.Map(t, mode);
     public void Unmap(IGpuTexture t) => Native.Unmap(t);
     public MappedData Map(IGpuBuffer b, GpuMapMode mode) => Native.Map(b, mode);

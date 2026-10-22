@@ -23149,7 +23149,8 @@ before recording and do not change it during a frame. With null, scopes are iner
 renderer retains its original commands, uploads and ordering without allocation or extra GPU work.
 
 A scene shares one observer and failure latch with its atmosphere, water, temporal, post, outline and
-transition owners. Attach it before `PrepareFrame` to observe cold FFT work. A callback failure during
+transition owners. Attach it before `Begin` to observe scene-boundary work and before `PrepareFrame` to
+observe cold FFT work. The failure latch resets at `Begin`. A callback failure during scene begin or
 preparation remains latched through render entry and is reported after rendering, with the original render
 exception winning if both fail. The first callback exception stops
 further callbacks and invalidates profiling, while rendering continues. `Scene3D.PassObserverFailure` retains
@@ -23162,6 +23163,7 @@ Group intervals contain children and their durations must not be added as extra 
 
 | Keys | Ownership and occurrences |
 | --- | --- |
+| `device.scene.begin` | CPU-only leaf for the existing `Scene3D.Begin` operations, including pending-layout changes, retirement sealing/freeing and any fallback wait, before command-list begin/acquire. No GPU markers or duration |
 | `geometry.uploads`, `geometry.skinned-uploads` | Shared rigid, foliage, motion and palette/deformed-stream uploads |
 | `shadow.directional` | Whole executed cascade recording, or one skipped subtree when cached or inactive |
 | `shadow.directional.setup`, `.skinned-uploads`, `.finish` | Atlas clear, cascade uniforms and foliage uploads, GPU-skinned shadow slots, final scissor restoration |
@@ -23207,9 +23209,10 @@ per-level duration or extra copy, barrier or framebuffer bind. UI stays a harnes
 existing SpriteBatch calls, including their texture and scissor runs. Startup prime callbacks name their own
 command list. A frame-layout observer must not put those markers in a steady-frame pool.
 `cpu.water.prepare` covers the preparer CPU phase, including an actual cold prime wait when needed.
-Device upload scopes do not bracket the frame command list's GPU work. They reserve no GPU markers and
+CPU-only device scopes do not bracket the frame command list's GPU work. They reserve no GPU markers and
 publish an unsupported GPU duration with null ticks, including when valid frame timestamps are available.
-Their logical counters remain exclusive leaf work, and skipping the water parent also skips these owners.
+Their logical counters remain exclusive leaf work. Skipping the water parent also skips its two device
+upload leaves.
 
 All other occurrences are zero. Directional recording visits rigid/CPU work for all cascades, then foliage
 for all cascades, then GPU skinning for all cascades. These are separate measured segments rather than one

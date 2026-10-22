@@ -23,7 +23,7 @@ namespace KhaozEngine.Render3D
     }
 
     /// <summary>The optional textures auto-read from a glTF material by <see cref="GltfLoader.LoadWithMaterial"/> /
-    /// <see cref="GltfLoader.LoadSkinnedWithMaterial"/>, each decoded to raw RGBA8 (the loader has no GPU device, so
+    /// <see cref="GltfLoader.LoadSkinnedWithMaterial(string)"/>, each decoded to raw RGBA8 (the loader has no GPU device, so
     /// it never creates a <see cref="Scene3D.TextureHandle"/>; the upload stays in <see cref="Scene3D"/>). Any map a
     /// material doesn't reference - or whose image is missing/external-unresolved/undecodable - is left
     /// <c>null</c> (absent, never a throw), so a material with no textures yields an all-null
@@ -85,7 +85,7 @@ namespace KhaozEngine.Render3D
     /// over the computed one). By
     /// default material textures (normal/roughness) are NOT auto-read - bind them explicitly via
     /// <see cref="Scene3D.SurfaceMaps"/>. Opt into auto-read with <see cref="LoadWithMaterial"/> /
-    /// <see cref="LoadSkinnedWithMaterial"/>, which also return the material's decoded
+    /// <see cref="LoadSkinnedWithMaterial(string)"/>, which also return the material's decoded
     /// <see cref="GltfMaterialMaps"/>.</summary>
     public static partial class GltfLoader
     {

@@ -111,7 +111,7 @@ namespace KhaozEngine.Render3D
 
         // Graph step 1: all 16 coefficients use four scalar products and three left-associated adds.
         // No Matrix4x4/vector multiplication or implicit FMA substitutes. LBS Compose stays unchanged.
-        static Matrix4x4 Compose(in Matrix4x4 a, in Matrix4x4 b) => new(
+        internal static Matrix4x4 Compose(in Matrix4x4 a, in Matrix4x4 b) => new(
             Dot4(a.M11, a.M12, a.M13, a.M14, b.M11, b.M21, b.M31, b.M41),
             Dot4(a.M11, a.M12, a.M13, a.M14, b.M12, b.M22, b.M32, b.M42),
             Dot4(a.M11, a.M12, a.M13, a.M14, b.M13, b.M23, b.M33, b.M43),

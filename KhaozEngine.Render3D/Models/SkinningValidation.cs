@@ -34,17 +34,7 @@ namespace KhaozEngine.Render3D
                 if (!IsFinite(source.Tangent))
                     throw InvalidSource(context, profile, $"vertex {vertex} Tangent must have finite components.");
 
-                for (int slot = 0; slot < 4; slot++)
-                {
-                    float index = source.BoneIndices[slot];
-                    if (!float.IsFinite(index) || index < 0f || index >= boneCount || index != MathF.Truncate(index))
-                        throw InvalidSource(context, profile,
-                            $"vertex {vertex} BoneIndices[{slot}] must be a finite integer in [0, {boneCount}).");
-                    float weight = source.BoneWeights[slot];
-                    if (!float.IsFinite(weight) || weight < 0f)
-                        throw InvalidSource(context, profile,
-                            $"vertex {vertex} BoneWeights[{slot}] must be finite and nonnegative.");
-                }
+                ValidateRawInfluences(source.BoneIndices, source.BoneWeights, boneCount, context, vertex);
 
                 // Exactly three scalar binary32 additions, left-associated in stored X/Y/Z/W order.
                 float total = ((source.BoneWeights.X + source.BoneWeights.Y) + source.BoneWeights.Z) + source.BoneWeights.W;
@@ -52,6 +42,57 @@ namespace KhaozEngine.Render3D
                 if (!float.IsFinite(total) || (total >= 1e-8f && MathF.Abs(total - 1f) > totalTolerance))
                     throw InvalidSource(context, profile,
                         $"vertex {vertex} BoneWeights total must be below 1e-8 or within 2^-20 of one.");
+            }
+        }
+
+        // Import calls this before normalization can erase invalid raw weights. Source validation shares
+        // the same slot checks, including unused indices. The return counts slots, not distinct joints.
+        internal static int ValidateRawInfluences(Vector4 indices, Vector4 weights, int boneCount,
+            in SkinningValidationContext context, int vertex)
+        {
+            int positives = 0;
+            for (int slot = 0; slot < 4; slot++)
+            {
+                float index = indices[slot];
+                if (!float.IsFinite(index) || index < 0f || index >= boneCount || index != MathF.Truncate(index))
+                    throw InvalidSource(context, SkinningProfile.DualQuaternionRigid,
+                        $"vertex {vertex} BoneIndices[{slot}] must be a finite integer in [0, {boneCount}).");
+                float weight = weights[slot];
+                if (!float.IsFinite(weight) || weight < 0f)
+                    throw InvalidSource(context, SkinningProfile.DualQuaternionRigid,
+                        $"vertex {vertex} BoneWeights[{slot}] must be finite and nonnegative.");
+                if (weight > 0f) positives++;
+            }
+            return positives;
+        }
+
+        /// <summary>Audits only the supplied joint-world sample using the mesh's inverse binds and profile.
+        /// Reports skin-joint indices and skeleton names. Linear blend poses retain their scale support.</summary>
+        /// <remarks>A successful audit does not certify unsampled clip times, blends or procedural poses.
+        /// Runtime pose validation remains mandatory before DQ presentation.</remarks>
+        public static void ValidatePose(SkinnedGltfMesh mesh, ReadOnlySpan<Matrix4x4> jointWorld,
+            in SkinningValidationContext context)
+        {
+            ArgumentNullException.ThrowIfNull(mesh);
+            if (mesh.Profile.Method == SkinningMethod.LinearBlend) return;
+            if (jointWorld.Length != mesh.BoneCount)
+                throw InvalidPose(context, -1, "Joint-world and inverse-bind counts must match.", nameof(jointWorld));
+            ValidateSource(mesh.Vertices, mesh.BoneCount, mesh.Profile, context);
+            for (int joint = 0; joint < jointWorld.Length; joint++)
+            {
+                try
+                {
+                    Matrix4x4 composed = DualQuaternionPalette.Compose(mesh.InverseBind[joint], jointWorld[joint]);
+                    _ = DualQuaternionPalette.FromComposed(composed, context, joint);
+                }
+                catch (ArgumentException error)
+                {
+                    string name = "<unnamed>";
+                    if (mesh.Skeleton is Skeleton skeleton && joint < skeleton.JointToNode.Length &&
+                        (uint)skeleton.JointToNode[joint] < (uint)skeleton.NodeNames.Count)
+                        name = skeleton.NodeNames[skeleton.JointToNode[joint]];
+                    throw new ArgumentException($"{error.Message} Joint name '{name}'.", error.ParamName, error);
+                }
             }
         }
 

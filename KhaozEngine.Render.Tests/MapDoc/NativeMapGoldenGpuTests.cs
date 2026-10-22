@@ -39,11 +39,12 @@ public sealed class NativeMapGoldenGpuTests(NativeMapGoldenScene scene) : IClass
             Assert.Equal(17, evidence.Lights); Assert.Equal(17, control.Lights);
             var roofs = evidence.Submitted.Where(d => d.Resource.Key.Kind == MapRenderKind.Roof).ToArray(); Assert.Equal(2, roofs.Length);
             Assert.All(roofs, r => { Assert.False((r.Channels & MapDrawChannels.Colour) != 0); Assert.True((r.Channels & MapDrawChannels.Shadow) != 0); });
-            Assert.Equal(2, evidence.ShadowOnlyInstances); Assert.Equal(0, control.ShadowOnlyInstances); Assert.True(evidence.ShadowDrawCalls > 0);
+            Assert.Equal(2, evidence.ShadowOnlyInstances); Assert.Equal(0, control.ShadowOnlyInstances);
+            NativeMapGoldenAssertions.HiddenRoofsCast(evidence);
             var receiver = NativeMapGoldenAssertions.GroundRoi(evidence, 4.5f, 3, 6, 4.5f);
             Assert.True(NativeMapGoldenAssertions.Darkened(positive, omitted, receiver) >= 64);
             Assert.Equal(0, NativeMapGoldenAssertions.Darkened(omitted, omitted, receiver));
-            var colourRoi = NativeMapGoldenAssertions.GroundRoi(evidence, 1, 1, 2, 2);
+            var colourRoi = NativeMapGoldenAssertions.GroundRoi(evidence, 1, 1, 1.75f, 1.75f);
             Assert.Equal(0, NativeMapGoldenAssertions.Changed(positive, omitted, colourRoi, 1));
             var visible = scene.Capture(variant, false, false, MapRoofMode.AlwaysVisible, null);
             NativeMapGoldenAssertions.FeatureVisible(visible, positive, colourRoi);
@@ -93,6 +94,23 @@ public sealed class NativeMapGoldenGpuTests(NativeMapGoldenScene scene) : IClass
         NativeMapGoldenAssertions.OriginPair(a, ea, b, eb);
         var omitted = scene.Capture("origin", omitFeature: true, farOrigin: true);
         NativeMapGoldenAssertions.FeatureVisible(b, omitted);
+        var withoutLight = scene.Capture("origin", false, true, MapRoofMode.AlwaysHidden, null, omitFarLight: true);
+        var noLight = scene.LastEvidence;
+        Assert.Equal(0, noLight.Lights); Assert.DoesNotContain(noLight.Submitted, d => d.Resource.Key.OwnerId == "far-light");
+        Assert.ThrowsAny<XunitException>(() => NativeMapGoldenAssertions.OriginPair(a, ea, withoutLight, noLight));
+        Assert.ThrowsAny<XunitException>(() => NativeMapGoldenAssertions.OriginPair(withoutLight, noLight, withoutLight, noLight));
+    }
+
+    [GpuFact]
+    public void SelectiveFoliagePatchLoss_FailsCompleteSubmissionWhileOtherFoliageRemainsVisible()
+    {
+        scene.Capture("foliage"); NativeMapGoldenAssertions.Complete(scene.LastEvidence);
+        var dropped = scene.Capture("foliage", false, false, MapRoofMode.AlwaysHidden, null, omitFoliagePatch: true);
+        var evidence = scene.LastEvidence;
+        Assert.True(evidence.SubmittedFoliageInstances > 0); Assert.True(evidence.SubmittedFoliagePatches > 0);
+        Assert.ThrowsAny<XunitException>(() => NativeMapGoldenAssertions.Complete(evidence));
+        var bare = scene.Capture("foliage", omitFeature: true);
+        NativeMapGoldenAssertions.FeatureVisible(dropped, bare);
     }
 
     [GpuFact]
@@ -114,7 +132,7 @@ public sealed class NativeMapGoldenGpuTests(NativeMapGoldenScene scene) : IClass
         var proxy = Assert.Single(evidence.Submitted, d => d.Resource.Key.PartId == "hlod");
         Assert.Equal(.5f, proxy.Rigid!.Value.Dissolve, 4); Assert.Equal(0, proxy.Rigid.Value.DissolveComplement); Assert.True(proxy.Rigid.Value.InvertShadowDissolve);
         Assert.All(evidence.Submitted.Where(d => d.Resource.Key.OwnerId == "solid"), d => Assert.Equal(.5f, d.Rigid!.Value.Dissolve, 4));
-        Assert.Equal(2, evidence.ShadowOnlyInstances); Assert.True(evidence.ShadowDrawCalls > 0);
+        Assert.Equal(2, evidence.ShadowOnlyInstances); NativeMapGoldenAssertions.HiddenRoofsCast(evidence);
         var omitted = scene.Capture("roofs", true, false, MapRoofMode.AlwaysHidden, focus);
         NativeMapGoldenAssertions.FeatureVisible(image, omitted);
     }

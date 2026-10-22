@@ -63,11 +63,45 @@ internal static class NativeMapGoldenAssertions
         return new(Math.Clamp((int)Math.Ceiling(corners.Min(c => c.X)), 0, 640), Math.Clamp((int)Math.Ceiling(corners.Min(c => c.Y)), 0, 480),
             Math.Clamp((int)Math.Floor(corners.Max(c => c.X)), 0, 640), Math.Clamp((int)Math.Floor(corners.Max(c => c.Y)), 0, 480));
     }
+    internal static void FarLightDraw(System.Collections.Generic.IEnumerable<MapDrawRecord> draws, Vector3 origin)
+    {
+        var draw = Assert.Single(draws, d => d.Resource.Key.OwnerId == "far-light");
+        Assert.Equal(MapRenderKind.Light, draw.Resource.Key.Kind); Assert.NotNull(draw.Light);
+        var actual = draw.LocalTransform.Translation + new Vector3((float)(draw.Anchor.X - origin.X),
+            (float)(draw.Anchor.Y - origin.Y), (float)(draw.Anchor.Z - origin.Z));
+        Assert.Equal(FarLightReference(origin), actual);
+    }
+    internal static void FarLightSubmitted(Scene3D scene, Vector3 origin)
+    {
+        var lights = (System.Collections.IEnumerable)typeof(Scene3D).GetField("_lights",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(scene)!;
+        var light = Assert.Single(lights.Cast<KhaozEngine.Render3D.Rendering.ModelRenderer.PointLightData>());
+        Assert.Equal(1, scene.LightCount); Assert.Equal(1, scene.PointLightClusters.SubmittedLightCount);
+        Assert.Equal(FarLightReference(origin), Scene3D.AnchoredLightPosition(light, origin));
+    }
+    static Vector3 FarLightReference(Vector3 origin) => new((float)(32003.125d - origin.X),
+        (float)(4d - origin.Y), (float)(-31999.625d - origin.Z));
+    internal static void HiddenRoofsCast(NativeMapGoldenEvidence evidence)
+    {
+        Assert.Equal(NativeMapGoldenScene.Warmup + 1, evidence.Frames.Length);
+        foreach (var frame in evidence.Frames)
+        {
+            var roofs = frame.Submitted.Where(d => d.Resource.Key.Kind == MapRenderKind.Roof).ToArray();
+            Assert.Equal(2, roofs.Length); Assert.Equal(2, roofs.Select(d => d.Resource).Distinct().Count());
+            Assert.All(roofs, r => Assert.Equal(MapDrawChannels.Shadow | MapDrawChannels.Sky | MapDrawChannels.Physical, r.Channels));
+            Assert.Equal(2, frame.ShadowOnlyInstances);
+        }
+        // Cached frames report zero draw calls. Prove the roof submission on an atlas-recording frame.
+        Assert.Contains(evidence.Frames, f => f.Shadow.Active && f.Shadow.Rendered && !f.Shadow.Skipped &&
+            f.Shadow.RigidDrawCalls > 0 && f.ShadowOnlyInstances == 2 &&
+            f.Submitted.Count(d => d.Resource.Key.Kind == MapRenderKind.Roof && (d.Channels & MapDrawChannels.Shadow) != 0) == 2);
+    }
     internal static void OriginPair(Render3DCapture a, NativeMapGoldenEvidence ea, Render3DCapture b, NativeMapGoldenEvidence eb)
     {
         Assert.Equal(ea.SampleKeys, eb.SampleKeys); Assert.NotEmpty(ea.SampleKeys);
         Assert.Equal(ea.Submitted.Select(d => d.Resource.Key), eb.Submitted.Select(d => d.Resource.Key));
-        Assert.Equal(ea.ColourInstances, eb.ColourInstances); Assert.Equal(ea.Lights, eb.Lights);
+        Assert.Equal(ea.ColourInstances, eb.ColourInstances); Assert.Equal(1, ea.Lights); Assert.Equal(1, eb.Lights);
+        FarLightDraw(ea.Submitted, new(32000, 0, -32000)); FarLightDraw(eb.Submitted, new(31872, 0, -31872));
         long error = 0;
         for (int i = 0; i < a.Rgba.Length; i++) if (i % 4 != 3) error += Math.Abs(a.Rgba[i] - b.Rgba[i]);
         double mean = error / (255d * a.Width * a.Height * 3);
@@ -79,5 +113,7 @@ internal static class NativeMapGoldenAssertions
         Assert.True(evidence.Ready.Transition.AcceptedWitness!.CompleteForScope);
         Assert.True(evidence.Created > 0); Assert.True(evidence.UploadBytes > 0);
         Assert.True(evidence.ColourInstances > 0); Assert.NotEmpty(evidence.Submitted);
+        Assert.Equal(evidence.ExpectedFoliageInstances, evidence.SubmittedFoliageInstances);
+        Assert.Equal(evidence.ExpectedFoliagePatches, evidence.SubmittedFoliagePatches);
     }
 }

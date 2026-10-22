@@ -17,9 +17,12 @@ public sealed class NativeMapAllocationTests
     public void WarmIdleUpdateDrawPick_AllocateZero() => MeasureView(false);
 
     [GpuFact]
-    public void WarmGpuQueueUpdateDraw_AllocateZero() => MeasureView(true);
+    public void WarmGpuQueueUpdateDraw_AllocateZero() => MeasureView(true, true);
 
-    static void MeasureView(bool gpu)
+    [Fact]
+    public void WarmDrawSubmission_AllocateZeroWithoutDevice() => MeasureView(false, true);
+
+    static void MeasureView(bool gpu, bool drawSubmission = false)
     {
         using var context = gpu ? GpuDeviceContext.CreateHeadless() : null;
         using var host = new NativeUploadTestScene(context?.GpuDevice);
@@ -80,7 +83,35 @@ public sealed class NativeMapAllocationTests
         Assert.Equal("object-behind", hidden!.Value.OwnerId); Assert.True(queued > 0);
         Assert.Equal(created, residency.Lifetime.Created + lod.Lifetime.Created);
         Assert.Equal(uploads, residency.Lifetime.UploadBytes + lod.Lifetime.UploadBytes);
-        if (gpu) host.Capture();
+        if (drawSubmission)
+        {
+            // Reuse the same native list and tally through warm-up and measurement. Readback is separate.
+            using var commands = host.Device.Factory.CreateCommandList();
+            var tally = new CommandTallyGpuCommandList(commands);
+            int nativeDraws = 0, indexedDraws = 0;
+            host.Scene.FrustumCulling = false;
+            void DrawSubmit()
+            {
+                nativeDraws = 0; indexedDraws = 0;
+                for (int i = 0; i < 4; i++)
+                {
+                    host.Scene.Begin(); tally.Clear();
+                    var frame = NativePresentationFixtures.Frame(i % 2 == 0 ? 1 : 9, modes[i]);
+                    view.Update(frame); lodView.Update(LodFrame(i)); originView.Update(originFrame);
+                    view.Draw(frame); lodView.Draw(LodFrame(i)); originView.Draw(originFrame);
+                    host.Render(tally, commands);
+                    nativeDraws += host.Scene.DrawnInstances;
+                    indexedDraws += tally.Tally[GpuCommandKind.DrawIndexed];
+                }
+            }
+            DrawSubmit(); DrawSubmit();
+            long beforeSubmissions = host.Device.Submissions;
+            long warmedGpuDrawSubmissionAllocatedBytes = AllocationMeasurement.Measure("native prepared render and GPU submission", DrawSubmit);
+            Assert.Equal(4, host.Device.Submissions - beforeSubmissions);
+            Assert.True(nativeDraws > 0); Assert.True(indexedDraws > 0);
+            Assert.Equal(0L, warmedGpuDrawSubmissionAllocatedBytes);
+            if (gpu) host.Readback();
+        }
     }
 
     [Fact]

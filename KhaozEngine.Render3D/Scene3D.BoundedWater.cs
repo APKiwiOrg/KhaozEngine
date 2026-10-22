@@ -11,6 +11,7 @@ public sealed partial class Scene3D
 {
     readonly List<WaterSurfaceMesh> _boundedWater = new();
     readonly List<BoundedWaterDraw> _boundedWaterDraws = new();
+    readonly List<WaterPlane> _waterDemand = new();
     internal int BoundedWaterCount => _boundedWater.Count;
 
     /// <summary>Upload a bounded mesh and its original domain once. Residency upload producers call this only
@@ -48,8 +49,16 @@ public sealed partial class Scene3D
             transform.M44 != 1 || !Matrix4x4.Invert(transform, out _))
             throw new ArgumentException("Water requires a finite invertible horizontal affine transform.", nameof(transform));
     }
-    void ClearWaterQueues() { _waterPlanes.Clear(); _boundedWater.Clear(); _boundedWaterDraws.Clear(); }
-    ReadOnlySpan<WaterPlane> WaterDemandPlanes() => WaterRenderer.LegacyPlanesWithBoundedDemand(RelativeWaterPlanes(), CollectionsMarshal.AsSpan(_boundedWater));
+    void ClearWaterQueues() { _waterPlanes.Clear(); _boundedWater.Clear(); _boundedWaterDraws.Clear(); _waterDemand.Clear(); }
+    ReadOnlySpan<WaterPlane> WaterDemandPlanes()
+    {
+        var legacy = RelativeWaterPlanes();
+        if (_boundedWater.Count == 0) return legacy;
+        _waterDemand.Clear();
+        foreach (var plane in legacy) _waterDemand.Add(plane);
+        foreach (var surface in _boundedWater) _waterDemand.Add(new(0, 0, 0, 0, look: surface.Look));
+        return CollectionsMarshal.AsSpan(_waterDemand);
+    }
     void ForgetWaterAndInteriorRelevance(MeshHandle mesh) { _water.ForgetBoundedDomain(mesh); _interiorRelevance.Forget(mesh); }
     void RenderWater(IGpuCommandList cl, Matrix4x4 vp, Matrix4x4 displayVp, Vector3 eye, ref float waterSyncMs)
     {

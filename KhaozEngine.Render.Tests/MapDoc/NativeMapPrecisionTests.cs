@@ -77,11 +77,9 @@ public sealed class NativeMapPrecisionTests
                     }
                 }
             }
-            foreach (var draw in draws.Draws.Where(d => d.Resource.Key.OwnerId == "far-light"))
-            {
-                Assert.Equal(new Vector3(3.125f, 4, .375f), draw.LocalTransform.Translation +
-                    new Vector3((float)(draw.Anchor.X - 32000), (float)draw.Anchor.Y, (float)(draw.Anchor.Z + 32000)));
-            }
+            var renderOrigin = host.Scene.CurrentFrameView.RenderOrigin;
+            NativeMapGoldenAssertions.FarLightDraw(draws.Draws, renderOrigin);
+            NativeMapGoldenAssertions.FarLightSubmitted(host.Scene, renderOrigin);
             var hit = view.Pick(new(point, -Vector3.UnitY, 64), MapPresentationChannel.Physical, frame);
             Assert.NotNull(hit); Assert.Equal(6, hit.Value.Distance, 8); Assert.Equal(new(.375f, 0, .375f), hit.Value.LocalPoint);
         }
@@ -103,6 +101,33 @@ public sealed class NativeMapPrecisionTests
         Assert.Equal(.371, pose.YawRadians); Assert.Equal(1.2, pose.Scale);
         Assert.InRange(maxExactToLocalErrorMetres, 0d, .0001d);
         Assert.InRange(maxAdditionalFoliageSubmissionErrorMetres, 0d, .0001d);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MissingFarLight_CannotPassThePrecisionProof(bool omitEmitter)
+    {
+        var realization = NativeOriginRealizationFixtures.Create(); using var fixture = realization.Scene;
+        using var host = new NativeUploadTestScene(); host.Scene.CameraOverride = realization.Framing.Camera;
+        var scheduler = new ResidencyScheduler(); var sink = new MapScene3DSink(host.Scene);
+        using var residency = new MapRenderResidency(NativeOriginRealizationFixtures.State(realization), sink, null, scheduler);
+        scheduler.RunAll(); using var view = new NativeMapView(host.Scene, residency); Assert.Equal(0, view.SettleForCapture(1024).Pending);
+        var point = realization.PickOrigin; var frame = new MapFrameState(point.Frame, point, MapRoofMode.AlwaysVisible, 12, 17, point);
+        foreach (var origin in new[] { NativeOriginRealizationFixtures.OriginA, NativeOriginRealizationFixtures.OriginB })
+        {
+            var renderOrigin = new Vector3((float)origin.X, (float)origin.Y, (float)origin.Z);
+            host.Scene.RenderOrigin = renderOrigin; host.Scene.Begin(); sink.BeginFrame();
+            residency.Record(frame, omitEmitter ? new WithoutFarLight(sink) : sink); host.Render();
+            var recorder = new MapDrawRecorder(); residency.Record(frame, recorder); var draws = recorder.Snapshot().Draws;
+            if (omitEmitter) Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => NativeMapGoldenAssertions.FarLightSubmitted(host.Scene, renderOrigin));
+            else Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => NativeMapGoldenAssertions.FarLightDraw(draws.Where(d => d.Resource.Key.OwnerId != "far-light"), renderOrigin));
+        }
+    }
+    sealed class WithoutFarLight(IMapDrawSink sink) : IMapDrawSink
+    {
+        public void Register(MapPreparedResource resource) => sink.Register(resource);
+        public void Write(in MapDrawRecord draw) { if (draw.Resource.Key.OwnerId != "far-light") sink.Write(draw); }
     }
 
     [Theory]

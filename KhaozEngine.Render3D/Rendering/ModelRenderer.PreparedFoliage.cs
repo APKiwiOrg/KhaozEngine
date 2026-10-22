@@ -1,3 +1,4 @@
+using System;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
 
@@ -30,7 +31,9 @@ internal sealed partial class ModelRenderer
     }
     void EnsurePreparedFoliagePipeline()
     {
-        if (_preparedFoliagePipeline is not null && _preparedFoliageOutputs.Equals(_foliageOutputs)) return;
+        if (_preparedFoliagePipeline is not null && _preparedFoliageOutputs.Depth == _foliageOutputs.Depth &&
+            _preparedFoliageOutputs.SampleCount == _foliageOutputs.SampleCount &&
+            _preparedFoliageOutputs.Colour.AsSpan().SequenceEqual(_foliageOutputs.Colour)) return;
         if (_preparedFoliagePipeline is not null) _retired.Retire(_preparedFoliagePipeline);
         if (_preparedFoliageShaders is not null) _retired.Retire(_preparedFoliageShaders);
         bool motion = _motion is not null && MotionMath.IsTemporal(_foliageOutputs);

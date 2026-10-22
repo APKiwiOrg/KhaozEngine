@@ -58,7 +58,7 @@ public sealed class NativeMapGoldenScene : IDisposable
     public Render3DCapture Capture(string variant, bool omitFeature = false, bool farOrigin = false) =>
         Capture(variant, omitFeature, farOrigin, MapRoofMode.AlwaysHidden, null);
     internal Render3DCapture Capture(string variant, bool omitFeature, bool farOrigin, MapRoofMode roofs, Vector3? focus,
-        bool omitRoofShadow = false)
+        bool omitRoofShadow = false, bool omitFoliagePatch = false, bool omitFarLight = false)
     {
         Open();
         using var setup = NativeMapGoldenSetup.Create(variant);
@@ -75,17 +75,24 @@ public sealed class NativeMapGoldenScene : IDisposable
         if (focus is { } f) frame = frame with { Focus = new(frame.Frame, f) };
         Configure(setup.Framing, variant, farOrigin);
         long uploads = residency.Lifetime.UploadBytes, created = residency.Lifetime.Created;
-        var filter = new NativeMapGoldenSubmission(sink, variant.StartsWith("water-", StringComparison.Ordinal) ? "water" : variant, omitFeature, omitRoofShadow);
-        ValidatePreparedFoliage(Scene, residency, frame);
+        var filter = new NativeMapGoldenSubmission(sink, variant.StartsWith("water-", StringComparison.Ordinal) ? "water" : variant, omitFeature, omitRoofShadow, omitFarLight);
+        var expectedFoliage = ValidatePreparedFoliage(Scene, residency, frame);
+        var frames = new NativeMapGoldenFrame[Warmup + 1];
         for (int i = 0; i <= Warmup; i++)
         {
             Scene.Begin(); sink.BeginFrame(); filter.Reset();
             Scene.EffectTimeSeconds = 12;
             residency.Record(frame, filter);
+            if (omitFoliagePatch)
+            {
+                var patches = (System.Collections.IList)typeof(Scene3D).GetField("_foliageDraws", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(Scene)!;
+                Assert.True(patches.Count > 1); patches.RemoveAt(0);
+            }
             Scene.PrepareFrame();
             using (GpuRecording.Open(_gpu!.GpuDevice, _commands!, "NativeMapGoldenScene.Capture"))
                 Scene.RenderInternal(_commands!, Width, Height, _framebuffer!);
             _gpu.GpuDevice.Submit(_commands!);
+            frames[i] = new(Scene.LastShadowPassDiagnostics, Scene.ShadowOnlyInstances, filter.Draws.ToArray());
         }
         _gpu!.GpuDevice.WaitForIdle();
         Assert.Equal(uploads, residency.Lifetime.UploadBytes); Assert.Equal(created, residency.Lifetime.Created);
@@ -95,10 +102,22 @@ public sealed class NativeMapGoldenScene : IDisposable
         var inventory = recorder.Snapshot();
         int actualLights = Scene.PointLightClusters.SubmittedLightCount;
         Assert.Equal(Scene.LightCount, actualLights);
+        if (variant == "origin" && !omitFarLight)
+        {
+            NativeMapGoldenAssertions.FarLightDraw(filter.Draws, Scene.CurrentFrameView.RenderOrigin);
+            NativeMapGoldenAssertions.FarLightSubmitted(Scene, Scene.CurrentFrameView.RenderOrigin);
+        }
         LastEvidence = new(inventory, filter.Draws.ToArray(), Scene.DrawnInstances, Scene.ShadowOnlyInstances,
             actualLights, Scene.LastShadowPassDiagnostics.RigidDrawCalls, ready, uploads, created, setup.Framing,
             Scene.FoliageUniformsForTests.ToArray().Select(u => u.FocusRadius).ToArray(),
-            residency.AcceptedPlans.SelectMany(p => p.Inventory.Foliage.GeneratedIdentities).ToArray());
+            residency.AcceptedPlans.SelectMany(p => p.Inventory.Foliage.GeneratedIdentities).ToArray())
+        {
+            ExpectedFoliageInstances = expectedFoliage.Instances,
+            ExpectedFoliagePatches = expectedFoliage.Patches,
+            SubmittedFoliageInstances = Scene.LastFoliageStats.CandidateInstances,
+            SubmittedFoliagePatches = Scene.LastFoliageStats.SubmittedPatches,
+            Frames = frames
+        };
         return new(rgba, Width, Height, _gpu.GpuDevice.Backend);
     }
     void Configure(MapSnapshotFraming framing, string variant, bool farOrigin)
@@ -114,31 +133,24 @@ public sealed class NativeMapGoldenScene : IDisposable
         typeof(Scene3D).GetField("_frameIndex", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(Scene, 0L);
         Scene.CameraCut();
     }
-    internal static void ValidatePreparedFoliage(Scene3D scene, MapRenderResidency residency, MapFrameState frame)
+    internal static (int Instances, int Patches) ValidatePreparedFoliage(Scene3D scene, MapRenderResidency residency, MapFrameState frame)
     {
         var recorder = new MapDrawRecorder(); residency.Record(frame, recorder);
-        var data = recorder.Snapshot();
+        var data = recorder.Snapshot(); int instances = 0, patchCount = 0;
         foreach (var resource in data.Resources.Where(r => r.Payload is MapFoliageResource))
         {
             var source = (MapFoliageResource)resource.Payload;
             Assert.True(residency.TryGetHandle(resource.Reference, out var handle));
             var prepared = scene.ResourceOf(new(handle.Value)).PreparedFoliage!;
-            var bytes = prepared.PackedInstances.Span;
-            for (int i = 0; i < prepared.ExpandedParts.Count; i++)
+            MeshHandle Resolve(MapResourceReference reference)
             {
-                var part = prepared.ExpandedParts[i];
-                Assert.Equal(source.ModelIndices.Span[part.SourceRow], part.ModelIndex);
-                var model = source.Models[part.ModelIndex];
-                Assert.True(residency.TryGetHandle(model.Parts[part.PartIndex], out var mesh));
-                Assert.Equal(new SceneResourceAccess(scene).MeshOf(new(mesh.Value)), part.Mesh);
-                Assert.All(prepared.Patches.Where(p => p.Mesh.Equals(part.Mesh)), p => Assert.Equal(model.CastShadows, p.CastShadows));
-                var motion = model.Motion.ToVector4();
-                Assert.Equal(motion.X, BinaryPrimitives.ReadSingleLittleEndian(bytes[(i * 96 + 80)..]));
-                Assert.Equal(motion.Y, BinaryPrimitives.ReadSingleLittleEndian(bytes[(i * 96 + 84)..]));
-                Assert.Equal(motion.Z, BinaryPrimitives.ReadSingleLittleEndian(bytes[(i * 96 + 88)..]));
-                Assert.Equal(motion.W, BinaryPrimitives.ReadSingleLittleEndian(bytes[(i * 96 + 92)..]));
+                Assert.True(residency.TryGetHandle(reference, out var part));
+                return new SceneResourceAccess(scene).MeshOf(new(part.Value));
             }
+            var counts = NativeMapFoliageEvidence.AssertComplete(source, prepared.ExpandedParts, prepared.Patches, prepared.PackedInstances, Resolve);
+            instances += counts.Instances; patchCount += counts.Patches;
         }
+        return (instances, patchCount);
     }
     internal void CaptureFocusPair()
     {
@@ -198,12 +210,21 @@ public sealed class NativeMapGoldenScene : IDisposable
     }
 }
 
+internal sealed record NativeMapGoldenFrame(ShadowPassDiagnostics Shadow, int ShadowOnlyInstances, MapDrawRecord[] Submitted);
+
 internal sealed record NativeMapGoldenEvidence(MapDrawSet Inventory, MapDrawRecord[] Submitted, int ColourInstances,
     int ShadowOnlyInstances, int Lights, int ShadowDrawCalls, MapRenderReadiness Ready, long UploadBytes, long Created,
-    MapSnapshotFraming Framing, Vector4[] FoliageUniforms, MapFoliageSampleKey[] SampleKeys);
+    MapSnapshotFraming Framing, Vector4[] FoliageUniforms, MapFoliageSampleKey[] SampleKeys)
+{
+    internal int ExpectedFoliageInstances { get; init; }
+    internal int ExpectedFoliagePatches { get; init; }
+    internal int SubmittedFoliageInstances { get; init; }
+    internal int SubmittedFoliagePatches { get; init; }
+    internal NativeMapGoldenFrame[] Frames { get; init; } = [];
+}
 
 /// <summary>Omission controls remove the actual submitted feature, after complete preparation and publication.</summary>
-internal sealed class NativeMapGoldenSubmission(MapScene3DSink sink, string variant, bool omit, bool omitRoofShadow) : IMapDrawSink
+internal sealed class NativeMapGoldenSubmission(MapScene3DSink sink, string variant, bool omit, bool omitRoofShadow, bool omitFarLight = false) : IMapDrawSink
 {
     internal List<MapDrawRecord> Draws { get; } = [];
     internal void Reset() => Draws.Clear();
@@ -219,7 +240,7 @@ internal sealed class NativeMapGoldenSubmission(MapScene3DSink sink, string vari
             "foliage" or "origin" => draw.Foliage.HasValue,
             _ => throw new ArgumentException(variant)
         };
-        if (omit && feature) return;
+        if (omit && feature || omitFarLight && draw.Resource.Key.OwnerId == "far-light") return;
         var value = omitRoofShadow && draw.Resource.Key.Kind == MapRenderKind.Roof ? draw with { Channels = draw.Channels & ~MapDrawChannels.Shadow } : draw;
         sink.Write(value); Draws.Add(value);
     }

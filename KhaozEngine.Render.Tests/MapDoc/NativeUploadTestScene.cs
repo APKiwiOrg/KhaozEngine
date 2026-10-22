@@ -31,13 +31,21 @@ internal sealed class NativeUploadTestScene : IDisposable
     internal Scene3D Scene { get; }
     internal void Render()
     {
-        Scene.PrepareFrame();
         using var commands = Device.Factory.CreateCommandList();
-        commands.Begin();
-        Scene.RenderInternal(commands, 64, 48, _target);
-        commands.End();
-        Device.Submit(commands);
+        Render(commands, commands);
     }
+    internal void Render(IGpuCommandList recording, IGpuCommandList submission)
+    {
+        Scene.PrepareFrame();
+        Record(recording);
+        Device.Submit(submission);
+    }
+    internal void Record(IGpuCommandList recording)
+    {
+        using (GpuRecording.Open(Device, recording, "NativeUploadTestScene.Render"))
+            Scene.RenderInternal(recording, 64, 48, _target);
+    }
+    internal byte[] Readback() => GpuReadback.ToRgba(Device, _colour, 64, 48);
     internal byte[] Capture() { Render(); return GpuReadback.ToRgba(Device, _colour, 64, 48); }
     public void Dispose() { Scene.Dispose(); _target.Dispose(); _colour.Dispose(); Device.Dispose(); }
 }
@@ -46,6 +54,7 @@ internal sealed class NativeUploadTestDevice(IGpuDevice inner) : IGpuDevice
 {
     internal IGpuDevice Inner => inner;
     internal long UploadBytes { get; private set; }
+    internal long Submissions { get; private set; }
     internal void ResetCounters() { UploadBytes = 0; BufferWrites = 0; TextureWrites = 0; TextureCopies.Clear(); BufferCopies.Clear(); }
     internal List<(uint X, uint Y, uint Width, uint Mip, byte[] Bytes)> TextureCopies { get; } = new();
     internal Dictionary<IGpuBuffer, byte[]> BufferCopies { get; } = new();
@@ -58,8 +67,8 @@ internal sealed class NativeUploadTestDevice(IGpuDevice inner) : IGpuDevice
     public IGpuSampler PointSampler => inner.PointSampler;
     public IGpuSampler LinearSampler => inner.LinearSampler;
     public bool SyncToVerticalBlank { get => inner.SyncToVerticalBlank; set => inner.SyncToVerticalBlank = value; }
-    public void Submit(IGpuCommandList cl) => inner.Submit(cl);
-    public void Submit(IGpuCommandList cl, IGpuFence fence) => inner.Submit(cl, fence);
+    public void Submit(IGpuCommandList cl) { inner.Submit(cl); Submissions++; }
+    public void Submit(IGpuCommandList cl, IGpuFence fence) { inner.Submit(cl, fence); Submissions++; }
     public void WaitForIdle() => inner.WaitForIdle();
     public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged
     {

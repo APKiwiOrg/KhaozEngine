@@ -5,10 +5,9 @@ namespace KhaozEngine.Render3D
 {
     /// <summary>Where a posed skin meets the floor: the lowest world height of its DEFORMED vertices, not of its rest
     /// box, so a body lowered into a crouch or lifted on a stride can be set down on the ground it stands on.</summary>
-    /// <remarks>Only the height is wanted, so each bone's skinning matrix is folded with the model once and reduced
-    /// to the one column that writes world y. The blend is linear, so weighting those columns is exactly the height
-    /// <see cref="SkinningMath.SkinVertex"/> and the skinned shader put the vertex at. Called per body per frame, so it
-    /// allocates nothing. Pure presentation. GPU-free.</remarks>
+    /// <remarks>The LBS path folds each bone's skinning matrix with the model once and reduces it to the column
+    /// that writes world y. The DQ path evaluates source positions through the selected profile before applying
+    /// model placement. Called per body per frame, so it allocates nothing. Pure presentation. GPU-free.</remarks>
     public static class SkinnedGrounding
     {
         /// <summary>The lowest world y of a skin deformed by <paramref name="palette"/> and drawn through
@@ -40,6 +39,43 @@ namespace KhaozEngine.Render3D
                 Matrix4x4 skin = inverseBind[bone] * palette[bone] * model;
                 heights[bone] = new Vector4(skin.M12, skin.M22, skin.M32, skin.M42);
             }
+            return MinimumY(vertices, heights, model);
+        }
+
+        /// <summary>The lowest world y using the skin's profile and its already prepared palette, or positive
+        /// infinity for a skin with no vertices. Model placement may include nonuniform scale.</summary>
+        /// <param name="vertices">Validated source vertices for this skin and palette.</param>
+        /// <param name="profile">The skin's immutable deformation profile.</param>
+        /// <param name="composedLbs">Inverse-bind times joint-world matrices for LBS, unused for DQ.</param>
+        /// <param name="preparedDq">Validated, prepared rigid DQ palette, unused for LBS.</param>
+        /// <param name="model">The separate model placement transform.</param>
+        public static float MinimumY(ReadOnlySpan<SkinnedVertex> vertices, SkinningProfile profile,
+            ReadOnlySpan<Matrix4x4> composedLbs, ReadOnlySpan<RigidDualQuaternion> preparedDq, in Matrix4x4 model)
+        {
+            ArgumentNullException.ThrowIfNull(profile);
+            if (profile.Method == SkinningMethod.LinearBlend)
+            {
+                Span<Vector4> heights = stackalloc Vector4[composedLbs.Length];
+                for (int bone = 0; bone < composedLbs.Length; bone++)
+                {
+                    Matrix4x4 skin = composedLbs[bone] * model;
+                    heights[bone] = new Vector4(skin.M12, skin.M22, skin.M32, skin.M42);
+                }
+                return MinimumY(vertices, heights, model);
+            }
+
+            float minimum = float.PositiveInfinity;
+            for (int i = 0; i < vertices.Length; i++)
+            {
+                Vector3 position = SkinningEvaluation.Position(vertices[i], profile, composedLbs, preparedDq);
+                minimum = MathF.Min(minimum, Vector3.Transform(position, model).Y);
+            }
+            return minimum;
+        }
+
+        static float MinimumY(ReadOnlySpan<SkinnedVertex> vertices, ReadOnlySpan<Vector4> heights,
+            in Matrix4x4 model)
+        {
             var fromModel = new Vector4(model.M12, model.M22, model.M32, model.M42);
             float minimum = float.PositiveInfinity;
             for (int i = 0; i < vertices.Length; i++)

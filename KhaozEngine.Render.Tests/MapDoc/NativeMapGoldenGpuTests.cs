@@ -79,6 +79,8 @@ public sealed class NativeMapGoldenGpuTests(NativeMapGoldenScene scene) : IClass
     [InlineData("origin")]
     public void NativeMapFamilies_AgedSceneMatchesFresh(string variant)
     {
+        // Seed multipart mesh slots so this proof also reaches recycling when run on its own.
+        scene.Capture("foliage");
         scene.Capture("props"); scene.Capture("water", omitFeature: true); scene.Capture("origin", farOrigin: true);
         var aged = scene.Capture(variant); var evidence = scene.LastEvidence;
         var fresh = NativeMapGoldenScene.Fresh(variant);

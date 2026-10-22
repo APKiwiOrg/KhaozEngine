@@ -17,6 +17,37 @@ namespace KhaozEngine.Tests.MapDoc;
 public sealed partial class NativeMapReadinessTests
 {
     [Fact]
+    public void IndexedCapture_PointAStaticKeySurvivesPreparationDescriptorAndDeviceSink()
+    {
+        // point-a: signed Int64 little-endian from the first eight SHA-256 bytes of its UTF-8 ID.
+        // Task 13 consumes this fixed source-derived descriptor key (T12-R1).
+        const long pointAKey = 3068690713473075190;
+        var request = CaptureDependencyFixtures.Request();
+        var prepared = MapCapturePreparation.Prepare(request);
+        Assert.Equal(MapSceneStatus.CompleteForScope, prepared.Status);
+        var point = new MapFramePoint(WorldFrame.Origin, Vector3.Zero);
+        var frame = new MapFrameState(WorldFrame.Origin, point, request.RoofMode, request.TimeSeconds, request.WindSeed, request.Focus!.Value);
+        var mapped = new MapDrawRecorder();
+        foreach (var scope in prepared.Witness.AcquiredScopes)
+            NativeMapLights.Record(request.Source.Acquire(scope).Scene!, frame, mapped);
+        var descriptors = mapped.Snapshot().Draws.Where(d => d.Resource.Key.OwnerId == "point-a").ToArray();
+        Assert.NotEmpty(descriptors); Assert.All(descriptors, d => Assert.Equal(pointAKey, d.Light!.Value.Shadow.Key));
+        using var host = new NativeUploadTestScene();
+        var scheduler = new ResidencyScheduler();
+        var state = new MapRenderSourceState(request.Source, request.Closure, request.Source.RenderExtents!, request.Policy.Render, prepared.Witness.AcquiredScopes);
+        using var residency = new MapRenderResidency(state, new MapScene3DSink(host.Scene), null, scheduler);
+        scheduler.RunAll(); using var view = new NativeMapView(host.Scene, residency);
+        Assert.Equal(0, view.SettleForCapture(1024).Pending);
+        var captureDescriptors = ResidencyFixture.Draw(residency).Draws.Where(d => d.Light.HasValue && d.Resource.Key.OwnerId == "point-a").ToArray();
+        Assert.NotEmpty(captureDescriptors);
+        Assert.All(captureDescriptors, d => Assert.Equal(descriptors[0].Light, d.Light));
+        host.Scene.Begin(); view.Draw(frame);
+        var lights = (System.Collections.IEnumerable)typeof(Scene3D).GetField("_lights", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(host.Scene)!;
+        var light = Assert.Single(lights.Cast<KhaozEngine.Render3D.Rendering.ModelRenderer.PointLightData>());
+        Assert.Equal(pointAKey, light.LocalShadow.Key);
+        Assert.Equal(captureDescriptors[0].Light!.Value.Shadow, light.LocalShadow);
+    }
+    [Fact]
     public void NativeSink_LightPreservesAnchorExclusionBoxAndStaticKey17()
     {
         using var host = new NativeUploadTestScene(); var sink = new MapScene3DSink(host.Scene);

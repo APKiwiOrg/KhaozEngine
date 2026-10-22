@@ -8,7 +8,7 @@ internal sealed partial class FoliageShadowRenderer
 {
     IGpuPipeline? _preparedOpaque, _preparedCutout;
     IGpuShaderSet? _preparedOpaqueShaders, _preparedCutoutShaders;
-    IGpuResourceLayout? _preparedAnchorLayout;
+    IGpuResourceLayout? _preparedAnchorLayout, _preparedEmptyMaterialLayout;
     GpuOutputDescription _preparedOutputs;
 
     internal void DrawPrepared(IGpuCommandList cl, int cascade, IGpuBuffer vb, IGpuBuffer ib, int indexCount,
@@ -21,6 +21,8 @@ internal sealed partial class FoliageShadowRenderer
             if (_preparedOpaque is not null) _retired.Retire(_preparedOpaque);
             if (_preparedCutout is not null) _retired.Retire(_preparedCutout);
             _preparedAnchorLayout = anchorLayout;
+            // Opaque depth has no material resources. Keep an empty set 2 so both shaders retain anchor set 3.
+            _preparedEmptyMaterialLayout ??= _device.Factory.CreateResourceLayout(new(Array.Empty<GpuResourceLayoutElement>()));
             _preparedOpaqueShaders ??= _device.Factory.CreateShadersFromSpirv(
                 ShaderSources.PreparedFoliage(ShaderSources.FoliageDepthVert, 3), ShaderSources.ShadowDepthFrag);
             _preparedCutoutShaders ??= _device.Factory.CreateShadersFromSpirv(
@@ -45,11 +47,11 @@ internal sealed partial class FoliageShadowRenderer
             DepthStencil = GpuDepthStencilState.DepthOnlyLessEqual,
             Rasterizer = new(cutout ? GpuFaceCull.None : GpuFaceCull.Front, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, true, true),
             Topology = GpuPrimitiveTopology.TriangleList,
-            ResourceLayouts = [_layout, _foliageLayout, _shadows.CutoutMaterialLayout, _preparedAnchorLayout!],
+            ResourceLayouts = [_layout, _foliageLayout, cutout ? _shadows.CutoutMaterialLayout : _preparedEmptyMaterialLayout!, _preparedAnchorLayout!],
             ShaderSet = shaders,
             VertexLayouts = new(FoliageVertexLayouts.Create()),
             Outputs = outputs
         });
     void DisposePrepared()
-    { _preparedOpaque?.Dispose(); _preparedCutout?.Dispose(); _preparedOpaqueShaders?.Dispose(); _preparedCutoutShaders?.Dispose(); }
+    { _preparedOpaque?.Dispose(); _preparedCutout?.Dispose(); _preparedOpaqueShaders?.Dispose(); _preparedCutoutShaders?.Dispose(); _preparedEmptyMaterialLayout?.Dispose(); }
 }

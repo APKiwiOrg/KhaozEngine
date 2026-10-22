@@ -16,6 +16,8 @@ namespace KhaozEngine.Render3D
         readonly List<int> _generations = new();
         readonly List<bool> _free = new();
         readonly Stack<int> _freeList = new();
+        readonly List<long> _allocationOrders = new();
+        long _lastAllocationOrder;
 
         /// <summary>Number of slots ever allocated (live + freed). Indices range [0, <see cref="SlotCount"/>).</summary>
         public int SlotCount => _generations.Count;
@@ -31,6 +33,7 @@ namespace KhaozEngine.Render3D
             {
                 int index = _freeList.Pop();
                 _free[index] = false;
+                _allocationOrders[index] = ++_lastAllocationOrder;
                 generation = _generations[index];   // already bumped on Free
                 return index;
             }
@@ -38,8 +41,16 @@ namespace KhaozEngine.Render3D
             int newIndex = _generations.Count;
             _generations.Add(1);
             _free.Add(false);
+            _allocationOrders.Add(++_lastAllocationOrder);
             generation = 1;
             return newIndex;
+        }
+
+        /// <summary>The live mesh's load order, independent of the recycled storage index.</summary>
+        internal long AllocationOrder(int index, int generation)
+        {
+            if (!IsValid(index, generation)) throw new ArgumentException("Mesh order requires a live handle.");
+            return _allocationOrders[index];
         }
 
         /// <summary>True if <paramref name="index"/>/<paramref name="generation"/> names a live slot (in range,

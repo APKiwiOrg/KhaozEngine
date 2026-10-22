@@ -9,6 +9,7 @@ using System.Text.Json.Nodes;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Interiors;
+using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Render3D;
 using KhaozEngine.MapDoc.Scene;
@@ -47,9 +48,25 @@ internal static class CaptureDependencyFixtures
         }), new Dictionary<string, KhaozEngine.MapDoc.Foliage.MapFoliageModelExtent>()),
         MapFrozenWaterLook.Capture(new WaterLook { SwellAmplitude = 0, WaveSource = WaterWaveSource.Procedural }), ["floor-material"],
         new Dictionary<ushort, string> { [10] = "floor-material" });
-    internal static (MapDocument Document, MapAssetClosure Closure) Create(string? directory = null)
+    // Task 7 density, fade and mixed-model policy, shared by the actual wire and CPU submission proofs.
+    internal static GroundCoverRenderOptions FoliageOptions() => new()
     {
-        var closure = NativeRenderAssetFixtures.Capture(directory);
+        UseGpuBatches = true,
+        FadeMode = GroundCoverFadeMode.HeightScale,
+        DrawRadius = 4,
+        DensityRadius = 2,
+        FadeBandWidth = 1,
+        QualityDensity = 1,
+        DistantDensity = .35f,
+        InstanceFadeBandWidth = .5f,
+        WindFadeBladePixels = 2,
+        WindStrength = .7f,
+        MotionProfiles = new Dictionary<string, FoliageMotionProfile> { ["A"] = new(.3f, .15f, .4f, .035f), ["B"] = new(.6f, .2f, .1f, .07f) },
+        ModelCastsShadows = new Dictionary<string, bool> { ["A"] = true, ["B"] = false }
+    };
+    internal static (MapDocument Document, MapAssetClosure Closure) Create(string? directory = null, bool foliage = false)
+    {
+        var closure = NativeRenderAssetFixtures.Capture(directory, foliage);
         var document = new MapDocument
         {
             Id = "invented-capture",
@@ -84,12 +101,21 @@ internal static class CaptureDependencyFixtures
             new() { Id = "point-caster", Kind = "cosmetic", AssetId = "point", NumericId = 2, X = 5, Y = 2.5f, Z = 0 },
             new() { Id = "unrelated-far", Kind = "cosmetic", AssetId = "sun", NumericId = 3, X = 80, Y = 0, Z = 80 }];
         document.BuildingIntent = new(1, [], [], [new MapLocalLightDoc(1, "point-a", null, new(6, 4, 0), Vector3.One, 2, 10, true)], []);
+        if (foliage)
+        {
+            var density = new byte[1024];
+            for (int z = 0; z < 8; z++) Array.Fill(density, (byte)255, z * 32, 8);
+            document.Foliage = new(1, [new(1, "cover", new(MapSupportBindingKind.Surface, "capture-floor", null, null, null, null),
+                -4, -4, 1, 8, 8, MapRowDirection.PositiveZ, 17, 1, .8f, 1.4f, -.01f,
+                [new("A", 1), new("B", 1)], [10], [new(10, "floor-material", MapFoliageMaterialKind.Ordinary)], new("legacy-tile", 1, 0),
+                false, false, 0, 0, [new("capture-floor", 0)], [], [], [], [new(new(0, 0), density)])]);
+        }
         return (document, closure);
     }
 }
 internal static partial class NativeRenderAssetFixtures
 {
-    internal static MapAssetClosure Capture(string? directory = null)
+    internal static MapAssetClosure Capture(string? directory = null, bool foliage = false)
     {
         var source = new Source(); var resources = new JsonArray(); var assets = new JsonArray();
         void Write(MapAssetRef reference, byte[] bytes)
@@ -135,6 +161,11 @@ internal static partial class NativeRenderAssetFixtures
             });
         }
         Asset("sun", new(-1, 0, -1), new(1, 2, 1)); Asset("point", new(-.5f, 0, -.5f), new(.5f, 1.25f, .5f));
+        if (foliage)
+        {
+            Asset("A", new(-.18f, 0, -.18f), new(.18f, .65f, .18f));
+            Asset("B", new(-.25f, 0, -.25f), new(.25f, .8f, .25f));
+        }
         var root = source.Add("root", Encoding.UTF8.GetBytes(new JsonObject { ["payloadVersion"] = 1, ["assets"] = assets, ["resources"] = resources }.ToJsonString(MapJsonTextOptions.CreateSerializer(false))));
         Write(root, source.Read(root).ToArray());
         return MapAssetClosure.Load([root], source);

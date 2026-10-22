@@ -19,6 +19,7 @@ public sealed class MapRenderPlan : IDisposable
     readonly MapDrawRecord[] _lights;
     MapRenderContextLease? _contextOwner;
     bool _disposed;
+    internal MapPresentationPicker PresentationPicker { get; }
     public MapPresentationGeometry PresentationGeometry { get; }
     public MapRoofEvaluationBuffer RoofEvaluation { get; }
     internal IReadOnlyDictionary<string, int> RoofIndices { get; }
@@ -33,7 +34,7 @@ public sealed class MapRenderPlan : IDisposable
     internal IReadOnlyList<MapPreparedResource> Resources => _resources;
     MapRenderPlan(MapResourceStamp key, MapScopedScene scene, MapPreparedInputLease input, MapPlacementRouting routing,
         MapRenderInventory inventory, MapWindowFoliageContext context, long bytes, MapPreparedResource[] resources, MapDrawRecord[] lights, MapPresentationGeometry geometry, MapRoofEvaluationBuffer roofs, IReadOnlyDictionary<string, int> roofIndices)
-    { Key = key; Scene = scene; Input = input; Routing = routing; Inventory = inventory; FoliageContext = context; PreparationBytes = bytes; _resources = resources; _lights = lights; PresentationGeometry = geometry; RoofEvaluation = roofs; RoofIndices = roofIndices; }
+    { Key = key; Scene = scene; Input = input; Routing = routing; Inventory = inventory; FoliageContext = context; PreparationBytes = bytes; _resources = resources; _lights = lights; PresentationGeometry = geometry; RoofEvaluation = roofs; RoofIndices = roofIndices; PresentationPicker = new(this); }
     public static MapRenderPlan Prepare(MapSceneSource source, MapScopedScene scene, MapPreparedInputLease input,
         MapRenderPolicy policy, long generation)
     {

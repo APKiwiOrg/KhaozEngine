@@ -56,8 +56,9 @@ namespace KhaozEngine.Tests.Gpu
             Assert.NotEmpty(shapes);
             // Includes bounded water and prepared foliage colour, motion,
             // opaque cascade, cutout cascade and point shadow.
-            // These six R8a pipelines add the BoundedWater and shared SceneAnchor layouts.
-            Assert.Equal(67, shapes.Count);
+            // These six R8a pipelines add BoundedWater, shared SceneAnchor and the empty opaque material gap.
+            // R-GPU-1 / T8-R1: include the empty gap in the literal completeness pin as well as real bindings.
+            Assert.Equal(68, shapes.Count);
 
             for (int segment = 0; segment < harness.Rings.FramesInFlight; segment++)
             {

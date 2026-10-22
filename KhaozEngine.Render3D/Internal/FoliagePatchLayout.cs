@@ -17,7 +17,8 @@ internal sealed class FoliagePatchLayout
     }
 
     internal static FoliagePatchLayout Build(ReadOnlySpan<FoliageInstance> instances,
-        Func<MeshHandle, MeshBounds?> boundsForMesh, float patchSize = 8f, RenderAnchor? anchor = null, ReadOnlySpan<Vector2> absoluteRoots = default)
+        Func<MeshHandle, MeshBounds?> boundsForMesh, float patchSize = 8f, RenderAnchor? anchor = null,
+        ReadOnlySpan<Vector2> absoluteRoots = default, Func<MeshHandle, long>? meshOrder = null)
     {
         ArgumentNullException.ThrowIfNull(boundsForMesh);
         if (!float.IsFinite(patchSize) || patchSize <= 0f)
@@ -42,7 +43,8 @@ internal sealed class FoliagePatchLayout
             MeshBounds world = TransformBounds(bounds, instance.Transform, out float height);
             // Double division keeps tiny cells and large finite coordinates away from integer overflow.
             var key = new PatchKey(Math.Floor((absoluteRoots.IsEmpty ? (double)(anchor?.X ?? 0) + instance.Transform.M41 : absoluteRoots[i].X) / patchSize),
-                Math.Floor((absoluteRoots.IsEmpty ? (double)(anchor?.Z ?? 0) + instance.Transform.M43 : absoluteRoots[i].Y) / patchSize), meshKey.Index, meshKey.Generation,
+                Math.Floor((absoluteRoots.IsEmpty ? (double)(anchor?.Z ?? 0) + instance.Transform.M43 : absoluteRoots[i].Y) / patchSize),
+                meshOrder?.Invoke(instance.Mesh) ?? meshKey.Index, meshKey.Index, meshKey.Generation,
                 instance.CastsShadows);
             entries.Add(new Entry(key, instance, world, height, i));
         }
@@ -51,6 +53,7 @@ internal sealed class FoliagePatchLayout
         {
             int comparison = a.Key.X.CompareTo(b.Key.X);
             if (comparison == 0) comparison = a.Key.Z.CompareTo(b.Key.Z);
+            if (comparison == 0) comparison = a.Key.MeshOrder.CompareTo(b.Key.MeshOrder);
             if (comparison == 0) comparison = a.Key.MeshIndex.CompareTo(b.Key.MeshIndex);
             if (comparison == 0) comparison = a.Key.MeshGeneration.CompareTo(b.Key.MeshGeneration);
             if (comparison == 0) comparison = a.Key.CastsShadows.CompareTo(b.Key.CastsShadows);
@@ -149,6 +152,6 @@ internal sealed class FoliagePatchLayout
 
     static bool Finite(Vector3 value) => float.IsFinite(value.X) && float.IsFinite(value.Y) && float.IsFinite(value.Z);
 
-    readonly record struct PatchKey(double X, double Z, int MeshIndex, int MeshGeneration, bool CastsShadows);
+    readonly record struct PatchKey(double X, double Z, long MeshOrder, int MeshIndex, int MeshGeneration, bool CastsShadows);
     readonly record struct Entry(PatchKey Key, FoliageInstance Instance, MeshBounds Bounds, float Height, int InputOrder);
 }

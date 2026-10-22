@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using KhaozEngine.Terrain;
@@ -18,6 +19,9 @@ public readonly record struct MapFoliageFrame(MapFoliageFrameOptions Options, Ma
 /// <summary>All per-plane overrides, copied by value from the caller's mutable look.</summary>
 public sealed record MapFrozenWaterLook
 {
+    // Keep the internal renderer copy out of record equality. Weak ownership follows the frozen prepared policy.
+    static readonly ConditionalWeakTable<MapFrozenWaterLook, WaterLook> PreparedLooks = new();
+    internal WaterLook PreparedLook => PreparedLooks.GetValue(this, static frozen => frozen.ToWaterLook());
     public WaterWaveSource? WaveSource { get; }
     public Color? DeepColor { get; }
     public Color? ShallowColor { get; }
@@ -94,6 +98,7 @@ public sealed record MapFrozenWaterLook
         FoamShoreWidth = look.FoamShoreWidth;
         FoamPatternScale = look.FoamPatternScale;
         ShoreFadeDistance = look.ShoreFadeDistance;
+        PreparedLooks.Add(this, ToWaterLook());
     }
     public static MapFrozenWaterLook Capture(WaterLook look)
     { ArgumentNullException.ThrowIfNull(look); return new(look); }

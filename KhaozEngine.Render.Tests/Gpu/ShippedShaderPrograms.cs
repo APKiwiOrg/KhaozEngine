@@ -63,6 +63,7 @@ namespace KhaozEngine.Tests.Gpu
             yield return new("Foliage", ShaderSources.FoliageVert, ShaderSources.ModelFrag);
             yield return new("PreparedFoliage", ShaderSources.PreparedFoliage(ShaderSources.FoliageVert, 2), ShaderSources.ModelFrag);
             yield return new("PreparedFoliageMotion", ShaderSources.PreparedFoliage(ShaderSources.FoliageMotionVert, 3), ShaderSources.ModelMotionFrag);
+            // R-GPU-1 / T8-R1. Both depth programs keep anchor set 3. Opaque has an empty set 2 in the resource catalog.
             yield return new("PreparedFoliageDepth", ShaderSources.PreparedFoliage(ShaderSources.FoliageDepthVert, 3), ShaderSources.ShadowDepthFrag);
             yield return new("PreparedFoliageDepthCutout", ShaderSources.PreparedFoliage(ShaderSources.FoliageDepthVert, 3), ShaderSources.FoliageDepthCutoutFrag);
             yield return new("PreparedFoliagePoint", ShaderSources.PreparedPointFoliageVert, ShaderSources.PointShadowRigidFrag);

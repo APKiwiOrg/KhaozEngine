@@ -37,19 +37,14 @@ public sealed class MapScene3DSink : IMapRenderDevice, IMapDrawSink, IMapRenderU
         var data = Input(resource);
         return new Upload(this, resource, _scene.PrepareResourceUpload(data, reservation));
     }
-    SceneUploadData Input(MapPreparedResource resource)
+    SceneUploadDescription Input(MapPreparedResource resource)
     {
         switch (resource.Payload)
         {
             case MapRigidResource rigid: return new(rigid.BorrowMesh, rigid.BorrowMaps, null, default);
             case MapTerrainResource terrain:
                 var m = terrain.Materials;
-                var layers = m.Layers.Select(l => new TileGroundLayerImage
-                {
-                    AlbedoRgba = l.BorrowAlbedo?.Rgba ?? Enumerable.Repeat((byte)255, checked(m.Width * m.Height * 4)).ToArray(),
-                    Tint = (KhaozEngine.Primitives.Color)l.Tint,
-                    TilesPerMetre = l.TilesPerMetre
-                }).ToArray();
+                var layers = m.Layers.Select(l => new SceneGroundLayerDescription(l.BorrowAlbedo?.Rgba, (KhaozEngine.Primitives.Color)l.Tint, l.TilesPerMetre)).ToArray();
                 return new(terrain.BorrowMesh, null, null, default, new(m.Width, m.Height, layers, m.BaseSpecularStrength));
             case MapWaterResource water: return new(water.BorrowMesh, null, null, water.BorrowClipData);
             case MapFoliageResource foliage:
@@ -97,7 +92,7 @@ public sealed class MapScene3DSink : IMapRenderDevice, IMapDrawSink, IMapRenderU
         var anchor = new RenderAnchor(draw.Anchor.X, draw.Anchor.Y, draw.Anchor.Z);
         if (draw.Rigid is { } rigid)
         {
-            bool colour = channels.HasFlag(MapDrawChannels.Colour), shadow = channels.HasFlag(MapDrawChannels.Shadow);
+            bool colour = (channels & MapDrawChannels.Colour) != 0, shadow = (channels & MapDrawChannels.Shadow) != 0;
             if (!colour && !shadow) return;
             var appearance = new RigidInstanceDraw(default, draw.LocalTransform)
             {
@@ -118,8 +113,8 @@ public sealed class MapScene3DSink : IMapRenderDevice, IMapDrawSink, IMapRenderU
         {
             _scene.AddLightAnchored(draw.LocalTransform.Translation, anchor, light.Colour, light.Radius, light.Intensity, light.Shadow);
         }
-        else if (draw.Water is { } water && channels.HasFlag(MapDrawChannels.Colour))
-            _scene.DrawWater(new WaterSurfaceMesh(_access.MeshOf(new(handle.Value)), anchor, draw.LocalTransform, water.Look.ToWaterLook()));
+        else if (draw.Water is { } water && (channels & MapDrawChannels.Colour) != 0)
+            _scene.DrawWater(new WaterSurfaceMesh(_access.MeshOf(new(handle.Value)), anchor, draw.LocalTransform, water.Look.PreparedLook));
         else if (draw.Foliage is { } foliage)
         {
             var o = foliage.Options; var s = foliage.State;
@@ -138,7 +133,7 @@ public sealed class MapScene3DSink : IMapRenderDevice, IMapDrawSink, IMapRenderU
                 WindSpatialFrequency = s.WindSpatialFrequency
             };
             Span<FoliageInteractor> interactors = stackalloc FoliageInteractor[4] { s.I0, s.I1, s.I2, s.I3 };
-            _scene.DrawPreparedFoliage(new(handle.Value), draw.LocalFocus, settings, anchor, interactors[..s.InteractorCount], channels.HasFlag(MapDrawChannels.Colour), channels.HasFlag(MapDrawChannels.Shadow), foliage.TimeSeconds, foliage.WindSeed);
+            _scene.DrawPreparedFoliage(new(handle.Value), draw.LocalFocus, settings, anchor, interactors[..s.InteractorCount], (channels & MapDrawChannels.Colour) != 0, (channels & MapDrawChannels.Shadow) != 0, foliage.TimeSeconds, foliage.WindSeed);
         }
     }
     public void Release(MapRenderHandle handle)

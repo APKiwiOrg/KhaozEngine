@@ -262,15 +262,6 @@ namespace KhaozEngine.Tests.Gpu
 
                 for (int set = 0; set < slots.Length; set++)
                 {
-                    // Opaque prepared depth reserves the cutout material set so both variants keep anchor set 3.
-                    // The actual-renderer capture guard verifies this shared array, including the unused slot.
-                    if (program == "PreparedFoliageDepth" && set == 2)
-                    {
-                        Assert.Equal("Shadow.cutout", slots[set]);
-                        Assert.Equal(SlotsOf("PreparedFoliageDepthCutout", problems), slots);
-                        Assert.DoesNotContain(declared, binding => binding.Set == set);
-                        continue;
-                    }
                     GpuResourceLayoutElement[] elements =
                         VulkanDescriptorLimitTests.ShippedLayouts[slots[set]].Elements ?? [];
 

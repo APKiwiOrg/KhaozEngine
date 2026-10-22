@@ -5,10 +5,10 @@ using System.Text;
 
 namespace KhaozEngine.Render3D;
 
-/// <summary>Hash detached input once, before measurement or upload admission. No payload copies at measurement.</summary>
+/// <summary>Hash borrowed or detached input without payload copies, including virtual white ground layers.</summary>
 internal static class SceneUploadFingerprint
 {
-    internal static string Compute(SceneUploadData data)
+    internal static string Compute(SceneUploadDescription data)
     {
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         void Value<T>(T value) where T : unmanaged => hash.AppendData(MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref value, 1)));
@@ -19,20 +19,20 @@ internal static class SceneUploadFingerprint
             if (image is not { } i) return;
             Value(i.Width); Value(i.Height); Bytes(i.Rgba);
         }
-        Value(data.BorrowMesh is not null);
-        if (data.BorrowMesh is { } mesh)
+        Value(data.Mesh is not null);
+        if (data.Mesh is { } mesh)
         { Bytes(MemoryMarshal.AsBytes(mesh.Vertices.AsSpan())); Bytes(MemoryMarshal.AsBytes(mesh.Indices32.AsSpan())); }
-        Value(data.BorrowMaps.HasValue);
-        if (data.BorrowMaps is { } maps)
+        Value(data.Maps.HasValue);
+        if (data.Maps is { } maps)
         { Image(maps.Albedo); Image(maps.Normal); Image(maps.Roughness); Value(maps.AlphaCutoff); }
-        Bytes(data.BorrowClipData.Span);
+        Bytes(data.ClipData.Span);
         Value(data.Foliage is not null);
         if (data.Foliage is { } f)
         {
             Value(f.Anchor); Value((int)f.TransformSpace);
-            Bytes(MemoryMarshal.AsBytes(f.BorrowTransforms));
-            Bytes(MemoryMarshal.AsBytes(f.BorrowRanks));
-            Bytes(MemoryMarshal.AsBytes(f.BorrowModelIndices));
+            Bytes(MemoryMarshal.AsBytes(f.Transforms.Span));
+            Bytes(MemoryMarshal.AsBytes(f.Ranks.Span));
+            Bytes(MemoryMarshal.AsBytes(f.ModelIndices.Span));
             Value(f.Models.Count);
             foreach (var model in f.Models)
             {
@@ -45,10 +45,17 @@ internal static class SceneUploadFingerprint
         {
             Value(g.Width); Value(g.Height); Value(g.BaseSpecularStrength); Value(g.Sampler.HasValue);
             if (g.Sampler is { } sampler) { Value((int)sampler.Filter); Value(sampler.MaximumAnisotropy); Value(sampler.MipLodBias); }
-            Value(g.BorrowLayers.Count);
-            foreach (var layer in g.BorrowLayers)
+            Value(g.Layers.Count);
+            Span<byte> white = stackalloc byte[1024]; white.Fill(255);
+            foreach (var layer in g.Layers)
             {
-                Bytes(layer.AlbedoRgba); Value(layer.Tint); Value(layer.TilesPerMetre); Value(layer.Steep is not null);
+                if (layer.AlbedoRgba is { } pixels) Bytes(pixels);
+                else
+                {
+                    int remaining = checked(g.Width * g.Height * 4); Value(remaining);
+                    while (remaining > 0) { int count = Math.Min(remaining, white.Length); hash.AppendData(white[..count]); remaining -= count; }
+                }
+                Value(layer.Tint); Value(layer.TilesPerMetre); Value(layer.Steep is not null);
                 if (layer.Steep is { } steep) { Value(steep.CompanionSlot); Value(steep.FromDegrees); Value(steep.ToDegrees); }
             }
         }

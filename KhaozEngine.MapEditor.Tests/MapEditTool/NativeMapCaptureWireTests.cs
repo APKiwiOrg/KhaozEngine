@@ -11,12 +11,32 @@ using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.MapEdit;
 using KhaozEngine.Tests.MapDoc;
 using Xunit;
+using KhaozEngine.Gpu;
+using KhaozEngine.Render3D;
+using KhaozEngine.Render2D;
+using ModelContextProtocol.Protocol;
 
 namespace KhaozEngine.Tests.MapEditTool;
 
 [Collection(McpWireCollection.Name)]
 public sealed partial class NativeMapCaptureWireTests
 {
+    [Fact]
+    public void NativeResult_ImageRoundTripsThroughMcpContentBlockDeserialization()
+    {
+        var result = MapCapturePreparation.Prepare(CaptureDependencyFixtures.Request());
+        byte[] rgba = [255, 0, 0, 255, 0, 255, 0, 255];
+        result = result with { Image = new Render3DCapture(rgba, 2, 1, GpuBackendKind.Vulkan) };
+        var wire = new CallToolResult { Content = RenderService.NativeResultBlocks(result).ToList() };
+        var decoded = JsonSerializer.Deserialize<CallToolResult>(JsonSerializer.Serialize(wire))!;
+        Assert.IsType<TextContentBlock>(decoded.Content[0]);
+        var image = Assert.IsType<ImageContentBlock>(decoded.Content[1]);
+        Assert.Equal("image/png", image.MimeType);
+        Assert.Equal(rgba, ImageRgba.Decode(image.DecodedData.ToArray()).Pixels);
+        var noImage = JsonSerializer.Deserialize<CallToolResult>(JsonSerializer.Serialize(new CallToolResult
+        { Content = RenderService.NativeResultBlocks(result with { Image = null }).ToList() }))!;
+        Assert.IsType<TextContentBlock>(Assert.Single(noImage.Content));
+    }
     [Fact]
     public async Task NativeRequest_InvalidDomainRefusesBeforeHost()
     {
@@ -29,12 +49,17 @@ public sealed partial class NativeMapCaptureWireTests
             Assert.False((await harness.Client.CallAsync("map_open", new Dictionary<string, object?> { ["path"] = path })).IsError == true);
             var session = harness.Services.GetRequiredService<MapEditSession>(); var host = new WireHost(); session.NativeRenderHost = host;
             foreach (string invalid in NativeRenderRequestTests.InvalidRequests())
-                Assert.True((await harness.Client.CallAsync("render_view", Arguments(invalid))).IsError == true);
+            {
+                var refused = await harness.Client.CallAsync("render_view", Arguments(invalid));
+                Assert.True(refused.IsError == true, WireText(refused));
+            }
             var missing = Arguments(NativeRenderRequestTests.Json); missing.Remove("nativeRequestJson");
-            Assert.True((await harness.Client.CallAsync("render_view", missing)).IsError == true);
+            var missingResult = await harness.Client.CallAsync("render_view", missing);
+            Assert.True(missingResult.IsError == true, WireText(missingResult));
             Assert.Equal(0, host.Entries);
             session.Create(Path.Combine(directory, "analytic.map.json"), "analytic", "Analytic", -32, -32, 32, 32);
-            Assert.True((await harness.Client.CallAsync("render_view", Arguments(NativeRenderRequestTests.Json))).IsError == true);
+            var analytic = await harness.Client.CallAsync("render_view", Arguments(NativeRenderRequestTests.Json));
+            Assert.True(analytic.IsError == true, WireText(analytic));
             Assert.Equal(0, host.Entries);
         }
         finally { Directory.Delete(directory, true); }
@@ -70,6 +95,7 @@ public sealed partial class NativeMapCaptureWireTests
         using var refused = JsonDocument.Parse(JsonSerializer.Serialize(refusal, NativeJson.Options));
         Assert.Equal(JsonValueKind.Null, refused.RootElement.GetProperty("focus").ValueKind); Assert.Equal("Unresolved", refusal.FocusSource);
     }
+    static string WireText(CallToolResult result) => string.Join(" | ", result.Content.OfType<TextContentBlock>().Select(block => block.Text));
     static void Keys(JsonElement value, string names) => Assert.Equal(names.Split(' ').Order(StringComparer.Ordinal), value.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
     static void Point(JsonElement p) { Keys(p, "frame local"); Keys(p.GetProperty("frame"), "x z"); Keys(p.GetProperty("local"), "x y z"); }
     static void Scope(JsonElement s) { Keys(s, "frame min max spaceIds channels motionPaddingMetres"); Keys(s.GetProperty("frame"), "x z"); Keys(s.GetProperty("min"), "x y z"); Keys(s.GetProperty("max"), "x y z"); }

@@ -160,6 +160,8 @@ float temporalReleaseLock(float value, float motionPixels, float reactive, float
 
     static string Rewrite(string program, string visibility, string callSite, string holdRelease)
     {
+        // Test pipelines compile both members. Restore omitted resources before applying the frozen decision.
+        program = TemporalVisibilityFullyLitGpuTests.ForceCheck(program);
         string released = RewriteRelease(program, visibility, callSite, holdRelease);
         string restored = TemporalVisibilityFrozenDMask.Restore(released);
         if (!ReferenceEquals(released, program) && ReferenceEquals(restored, released))

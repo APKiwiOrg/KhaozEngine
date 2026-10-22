@@ -27,6 +27,19 @@ public sealed class TemporalVisibilityFullyLitCompiledTests
 
     [Theory]
     [MemberData(nameof(Programs))]
+    public void FrozenDRewritesRestoreTheOrdinaryProgramBeforeReplacingItsDecision(string name)
+    {
+        ShippedGraphicsProgram certified = ShippedShaderPrograms.GraphicsPrograms().Single(p => p.Name == name);
+        ShippedGraphicsProgram ordinary = ShippedShaderPrograms.GraphicsPrograms()
+            .Single(p => p.Name == name[..^"FullyLit".Length]);
+        Assert.Equal(TemporalVisibilityFrozenD.ToD(ordinary.FragmentGlsl),
+            TemporalVisibilityFrozenD.ToD(certified.FragmentGlsl));
+        Assert.Equal(TemporalVisibilityFrozenD.ToShippedD(ordinary.FragmentGlsl),
+            TemporalVisibilityFrozenD.ToShippedD(certified.FragmentGlsl));
+    }
+
+    [Theory]
+    [MemberData(nameof(Programs))]
     public void CertifiedModulesHaveNoVisibilityReadsDecisionHelperOrGathers(string name)
     {
         ShippedGraphicsProgram program = ShippedShaderPrograms.GraphicsPrograms().Single(p => p.Name == name);

@@ -30,7 +30,14 @@ namespace KhaozEngine.Render3D
             _model.EnsureSkinnedMainCapacity((uint)_gpuSkinnedDraws.Count);
             // ONE palette slot per CASTER, whatever the cascade count. The depth slots stay one per (cascade,
             // caster) because each folds that cascade's own light matrix, and that is all they hold now.
-            _model.EnsureSkinnedBonePaletteCapacity((uint)_gpuSkinnedDraws.Count);
+            uint lbsSlots = 0, dqSlots = 0;
+            foreach (GpuSkinnedDraw draw in _gpuSkinnedDraws)
+            {
+                if (draw.PreparedPose.Profile.Method == SkinningMethod.DualQuaternionRigid) dqSlots++;
+                else lbsSlots++;
+            }
+            if (lbsSlots > 0) _model.EnsureSkinnedBonePaletteCapacity(lbsSlots, SkinningMethod.LinearBlend);
+            if (dqSlots > 0) _model.EnsureSkinnedBonePaletteCapacity(dqSlots, SkinningMethod.DualQuaternionRigid);
             if (shadowMapActive)
                 _model.EnsureSkinnedShadowCapacity((uint)(_gpuSkinnedDraws.Count * Math.Max(1, _cascadeCount)));
 
@@ -38,10 +45,10 @@ namespace KhaozEngine.Render3D
             for (int d = 0; d < _gpuSkinnedDraws.Count; d++)
             {
                 GpuSkinnedDraw dr = _gpuSkinnedDraws[d];
-                _model.PackSkinnedBonePalette(dr.Slot, boneSpan.Slice(dr.BoneSpanStart, dr.BoneCount));
-                _frameStats.AddSkinnedUniformUpload((long)dr.BoneCount * 64);
+                _model.PackPreparedSkinningPalette(dr.PaletteSlot, dr.PreparedPose);
             }
-            _model.UploadSkinnedBonePalette(cl);
+            if (lbsSlots > 0) _frameStats.AddSkinnedUniformUpload(_model.UploadSkinningPalette(cl, SkinningMethod.LinearBlend));
+            if (dqSlots > 0) _frameStats.AddSkinnedUniformUpload(_model.UploadSkinningPalette(cl, SkinningMethod.DualQuaternionRigid));
             if (_res.MotionAllocated) PrepareGpuSkinnedMotion(cl, boneSpan);   // Scene3D.MotionTarget.cs
         }
 
@@ -62,11 +69,9 @@ namespace KhaozEngine.Render3D
                 if (!dr.VisibleMain) continue;
                 _model.PackSkinnedMainSlot(dr.Slot, dr.World, dr.Tint, dr.Emissive, dr.SpecParams,
                     dr.DissolveParams, dissolveComplement: dr.DissolveComplement);
-                // Model + P alone: 1072 bytes left with #604's frame block and 3072 more with #407's palette.
-                _frameStats.AddSkinnedUniformUpload(ModelRenderer.SkinnedHeaderBytes);
                 packedMainSlots = true;
             }
-            if (packedMainSlots) _model.UploadSkinnedMainSlots(cl);
+            if (packedMainSlots) _frameStats.AddSkinnedUniformUpload(_model.UploadSkinnedMainSlots(cl));
 
             bool dissolveBound = false;
             _model.BindSkinnedPass(cl);

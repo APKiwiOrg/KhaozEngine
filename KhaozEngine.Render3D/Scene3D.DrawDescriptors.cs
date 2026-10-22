@@ -93,6 +93,9 @@ namespace KhaozEngine.Render3D
             ReadOnlySpan<Matrix4x4> palette = _preparedSkinning.Lbs(prepared);
             for (int bone = 0; bone < SkinningMath.MaxBonesPerDraw; bone++)
                 _boneMatrices.Add(bone < palette.Length ? palette[bone] : Matrix4x4.Identity);
+            if (_submittedSkinningPoses.Length <= slot)
+                Array.Resize(ref _submittedSkinningPoses, Math.Max(slot + 1, _submittedSkinningPoses.Length * 2));
+            _submittedSkinningPoses[slot] = prepared;
             _skinnedInstances.Add(in draw);
             RecordSkinnedMotion(in draw, slot, boneMatrices.Length);
         }

@@ -3,6 +3,7 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
+using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D.Rendering;
 
@@ -12,6 +13,8 @@ namespace KhaozEngine.Render3D.Rendering;
 /// lighting work and the shared retirement queue landed in the same release.</summary>
 internal sealed partial class ModelRenderer
 {
+    readonly DualQuaternionPaletteBuffer _dqPalette;
+
     internal IGpuResourceLayout SkinnedBonePaletteLayout => _bonePalette.Layout;
     internal IGpuResourceSet SkinnedBonePaletteSet => _bonePalette.Set;
     internal IGpuBuffer? CpuSkinnedVertexBuffer => _skinnedVertexBuffer;
@@ -149,12 +152,30 @@ internal sealed partial class ModelRenderer
     public void PackSkinnedBonePalette(uint slot, ReadOnlySpan<Matrix4x4> bones) => _bonePalette.Pack(slot, bones);
 
     /// <summary>Upload every packed palette in ONE whole-buffer write, before either pass draws.</summary>
-    public void UploadSkinnedBonePalette(IGpuCommandList cl) => _bonePalette.Upload(cl);
+    public long UploadSkinnedBonePalette(IGpuCommandList cl) => _bonePalette.Upload(cl);
+
+    internal void EnsureSkinnedBonePaletteCapacity(uint slots, SkinningMethod method)
+    {
+        if (method == SkinningMethod.DualQuaternionRigid) _dqPalette.EnsureCapacity(slots);
+        else _bonePalette.EnsureCapacity(slots);
+    }
+
+    internal void PackPreparedSkinningPalette(uint slot, in PreparedSkinningPose pose)
+    {
+        if (pose.Profile.Method == SkinningMethod.DualQuaternionRigid) _dqPalette.Pack(slot, pose.Owner.Dq(pose));
+        else _bonePalette.Pack(slot, pose.Owner.Lbs(pose));
+    }
+
+    internal long UploadSkinningPalette(IGpuCommandList commands, SkinningMethod method) =>
+        method == SkinningMethod.DualQuaternionRigid ? _dqPalette.Upload(commands) : _bonePalette.Upload(commands);
 
     /// <summary>Upload every packed GPU-skinned main slot in one whole-buffer write. Slots without a visible-main
     /// draw may retain old bytes because no draw binds them this frame.</summary>
-    public void UploadSkinnedMainSlots(IGpuCommandList cl)
-        => cl.UpdateBuffer(_skinnedMainUbo!, 0, (ReadOnlySpan<byte>)_skinnedMainImage);
+    public long UploadSkinnedMainSlots(IGpuCommandList cl)
+    {
+        cl.UpdateBuffer(_skinnedMainUbo!, 0, (ReadOnlySpan<byte>)_skinnedMainImage);
+        return _skinnedMainImage.Length;
+    }
 
     /// <summary>Bind the GPU-skinning model pipeline. Call after <see cref="BeginModelPass"/>/
     /// <see cref="SetFrameUniforms"/>, before the skinned draw loop.</summary>

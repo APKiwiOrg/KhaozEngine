@@ -24,6 +24,7 @@ public sealed partial class Scene3D
         {
             var boneSpan = CollectionsMarshal.AsSpan(_boneMatrices);
             const int cap = SkinningMath.MaxBonesPerDraw;
+            uint lbsSlots = 0, dqSlots = 0;
             for (int i = 0; i < skinnedItems.Count; i++)
             {
                 var it = skinnedItems[i];
@@ -60,10 +61,11 @@ public sealed partial class Scene3D
 
                 if (UseGpuSkinning)
                 {
-                    // Record the draw. The GPU deforms the rest-pose buffer. The palette lives at slot i of
-                    // _boneMatrices (submission index), packed into the shared palette at the compacted slot.
+                    // Record the prepared pose after culling. Each method compacts its own palette slots.
+                    // Keep the submission-indexed LBS matrix slice for the existing motion-history path.
+                    var paletteSlot = new PreparedSkinningSlot(_submittedSkinningPoses[i], ref lbsSlots, ref dqSlots);
                     _gpuSkinnedDraws.Add(new GpuSkinnedDraw(entry.Vb, entry.Ib, entry.IndexCount, entry.IndexFormat,
-                        entry.SkinnedMaterialSet, i * cap, entry.InverseBind.Length, (uint)_gpuSkinnedDraws.Count,
+                        entry.SkinnedMaterialSet, i * cap, entry.InverseBind.Length, (uint)_gpuSkinnedDraws.Count, paletteSlot,
                         ToRender(it.World), it.Tint, emissive, specParams, dissolveParams, it.DissolveComplement,
                         visibleMain, dissolving, shadowKind, pointSphere, it.Motion));   // reduced after the absolute classify
                 }

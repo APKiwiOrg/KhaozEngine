@@ -11,6 +11,10 @@ internal sealed class TargetOutlineSkinningStore : IDisposable
     internal static readonly uint PaletteSlotBytes =
         (uint)SkinningMath.MaxBonesPerDraw * 64;
 
+    internal const uint DqPaletteSlotBytes = DualQuaternionPaletteBuffer.SlotBytes;
+    DualQuaternionPaletteBuffer? _dq;
+    GpuRetireQueue? _dqRetired;
+    readonly bool _ownsDqRetired;
     readonly IGpuDevice _device;
     readonly List<IDisposable> _retired = new();
     IGpuBuffer? _paletteBuffer;
@@ -21,9 +25,11 @@ internal sealed class TargetOutlineSkinningStore : IDisposable
     ModelVertex[] _cpuVertexImage = Array.Empty<ModelVertex>();
     int _cpuVertexCapacity;
 
-    internal TargetOutlineSkinningStore(IGpuDevice device)
+    internal TargetOutlineSkinningStore(IGpuDevice device, GpuRetireQueue? retired = null)
     {
         _device = device;
+        _dqRetired = retired;
+        _ownsDqRetired = retired is null;
         PaletteLayout = device.Factory.CreateResourceLayout(new GpuResourceLayoutDescription(
             new GpuResourceLayoutElement("Palette", GpuResourceKind.UniformBuffer,
                 GpuShaderStages.Vertex, dynamic: true)));
@@ -32,6 +38,26 @@ internal sealed class TargetOutlineSkinningStore : IDisposable
     internal IGpuResourceLayout PaletteLayout { get; }
     internal IGpuResourceSet PaletteSet => _paletteSet
         ?? throw new InvalidOperationException("outline palette capacity has not been allocated.");
+
+    DualQuaternionPaletteBuffer Dq => _dq ??= new DualQuaternionPaletteBuffer(_device,
+        _dqRetired ??= GpuRetireQueue.Create(_device));
+
+    internal IGpuResourceLayout PaletteLayoutFor(SkinningMethod method) => method == SkinningMethod.DualQuaternionRigid
+        ? Dq.Layout : PaletteLayout;
+    internal IGpuResourceSet PaletteSetFor(SkinningMethod method) => method == SkinningMethod.DualQuaternionRigid
+        ? Dq.Set : PaletteSet;
+
+    internal uint PaletteOffsetFor(uint slot, SkinningMethod method) => method == SkinningMethod.DualQuaternionRigid
+        ? Dq.OffsetFor(slot) : checked(slot * PaletteSlotBytes);
+
+    internal void EnsurePaletteCapacity(int slotCount, SkinningMethod method)
+    {
+        if (method == SkinningMethod.DualQuaternionRigid) Dq.EnsureCapacity(checked((uint)slotCount));
+        else EnsurePaletteCapacity(slotCount);
+    }
+
+    internal void PackPalette(int slot, ReadOnlySpan<RigidDualQuaternion> bones) => Dq.Pack(checked((uint)slot), bones);
+    internal long UploadDqPalette(IGpuCommandList commands) => _dq?.Upload(commands) ?? 0;
 
     internal void EnsurePaletteCapacity(int slotCount)
     {
@@ -111,6 +137,8 @@ internal sealed class TargetOutlineSkinningStore : IDisposable
 
     public void Dispose()
     {
+        _dq?.Dispose();
+        if (_ownsDqRetired) _dqRetired?.Dispose();
         _paletteSet?.Dispose();
         _paletteBuffer?.Dispose();
         _cpuVertexBuffer?.Dispose();

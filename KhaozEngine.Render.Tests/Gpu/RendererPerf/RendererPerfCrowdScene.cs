@@ -8,7 +8,7 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 /// <summary>Distinct public tubes with current joint palettes, stable motion keys and two point-shadow rows.</summary>
 internal sealed class RendererPerfCrowdScene : RendererPerfVillageScene
 {
-    readonly SkinnedGltfMesh _tube = StreamedWorldSceneContent.CharacterTube();
+    readonly SkinnedGltfMesh _tube = RendererPerfTubeInputs.Character.Build();
     readonly Matrix4x4[] _worlds;
     readonly Matrix4x4[][] _poses;
     readonly float[] _poseAngles = Enumerable.Range(0, Period).Select(frame => .1f + Phase(frame) * .25f).ToArray();
@@ -63,6 +63,7 @@ internal sealed class RendererPerfCrowdScene : RendererPerfVillageScene
         Rigid = base.Geometry,
         Actor = new
         {
+            Inputs = RendererPerfTubeInputs.Character,
             Vertices = _tube.Vertices.Length,
             Indices = _tube.Indices32.Length,
             _tube.IndexFormat,

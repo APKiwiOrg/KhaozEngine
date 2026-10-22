@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Xunit;
@@ -8,6 +9,44 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 public sealed class RendererPerfRecipeIdentityTests
 {
     static readonly RendererPerfDerivedDigests Actual = new(new string('a', 64), new string('b', 64), new string('c', 64));
+
+    [Theory]
+    [InlineData("empty")]
+    [InlineData("village")]
+    [InlineData("crowd")]
+    [InlineData("outdoors")]
+    [InlineData("effects-ui")]
+    public void Frozen_recipe_matches_the_running_platform_family(string id)
+    {
+        using var recipe = RendererPerfRecipe.Create(id);
+    }
+
+    [Fact]
+    public void Explicit_geometry_inputs_preserve_the_existing_public_workload()
+    {
+        var placements = RendererPerfPropPlacement.Create(1024, 64f, RendererPerfRecipe.Seed);
+        Assert.Equal(StreamedWorldSceneContent.PropWorlds(1024, 64f, RendererPerfRecipe.Seed), placements.Select(p => p.World));
+        var tube = RendererPerfTubeInputs.Character.Build();
+        var original = StreamedWorldSceneContent.CharacterTube();
+        Assert.Equal(original.Vertices, tube.Vertices);
+        Assert.Equal(original.Indices32, tube.Indices32);
+        Assert.Equal(original.RestPose, tube.RestPose);
+        Assert.Equal(original.InverseBind, tube.InverseBind);
+    }
+
+    [Fact]
+    public void Seeded_prop_rotation_matrices_are_derived_outputs()
+    {
+        using var recipe = RendererPerfRecipe.Create("village", verifyFrozen: false);
+        byte[] original = recipe.Describe();
+        JsonObject live = JsonNode.Parse(original)!.AsObject();
+        live["Geometry"]!["PropWorlds"]![0]!["M11"] = 123f;
+        live["Geometry"]!["Draws"]![64]!["World"]!["M11"] = 123f;
+        var (authored, derived) = RendererPerfFrozenRecipe.Capture(original);
+        var (changedAuthored, changedDerived) = RendererPerfFrozenRecipe.Capture(JsonSerializer.SerializeToUtf8Bytes(live));
+        Assert.Equal(RendererPerfRecipe.Digest(authored), RendererPerfRecipe.Digest(changedAuthored));
+        Assert.NotEqual(derived.ConstructionSha256, changedDerived.ConstructionSha256);
+    }
 
     [Theory]
     [InlineData("empty")]
@@ -53,6 +92,8 @@ public sealed class RendererPerfRecipeIdentityTests
     [InlineData("BlockFrames")]
     [InlineData("Schedule")]
     [InlineData("Frames")]
+    [InlineData("PropPlacements")]
+    [InlineData("TubeInputs")]
     public void Live_authored_mutations_remain_portable_failures(string input)
     {
         using var recipe = RendererPerfRecipe.Create("crowd", verifyFrozen: false);
@@ -68,6 +109,8 @@ public sealed class RendererPerfRecipeIdentityTests
             case "BlockFrames": live["BlockFrames"]![0]!["EffectTimeSeconds"] = 99f; break;
             case "Schedule": live["Schedule"]!["StaticRebuildBudget"] = 2; break;
             case "Frames": live["Frames"]![0]!["Azimuth"] = .7f; break;
+            case "PropPlacements": live["Geometry"]!["Rigid"]!["PropPlacements"]![0]!["Azimuth"] = 2f; break;
+            case "TubeInputs": live["Geometry"]!["Actor"]!["Inputs"]!["Radius"] = .6f; break;
         }
         var (authored, derived) = RendererPerfFrozenRecipe.Capture(JsonSerializer.SerializeToUtf8Bytes(live));
         JsonObject frozen = JsonNode.Parse(RendererPerfFrozenRecipe.Freeze(original))!.AsObject();

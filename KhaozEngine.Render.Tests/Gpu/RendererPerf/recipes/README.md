@@ -3,12 +3,14 @@
 The frozen-recipe envelope uses `khaozengine.renderer-perf-frozen-recipe/2`.
 `Authored` contains one portable construction for every platform. It retains geometry,
 settings, assets, camera fields, per-frame camera and light inputs, pose bend angles,
-absolute block times, clipmap states and the expected schedules. Changes to these inputs
+absolute block times, clipmap states, prop positions and yaw angles, tube construction
+parameters and the expected schedules. Changes to these inputs
 fail on every platform.
 
 `DerivedByPlatform` freezes the actual CPU renderer outputs for each runtime OS and
 process architecture, such as `osx-arm64`, `linux-x64` and `win-x64`. Camera outputs,
-frame matrix and pose digests, inverse-bind matrices and their digest, and joint palettes
+frame matrix and pose digests, rest and inverse-bind matrices and their digests, seeded
+prop rotation matrices, draw-world copies, and joint palettes
 are excluded from `Authored`. Renderer math is unchanged. Portable render math remains
 [D1 in #1530](https://github.com/APKiwiOrg/KhaozEngine/issues/1530).
 

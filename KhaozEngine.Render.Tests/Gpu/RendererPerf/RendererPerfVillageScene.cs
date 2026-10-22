@@ -16,6 +16,7 @@ internal class RendererPerfVillageScene : RendererPerfRecipe
         MeshPrimitives.Sphere(1.6f, 10, 12), MeshPrimitives.RoundedBox(1.4f, .3f, 4)];
     readonly GltfMesh _box = MeshPrimitives.Box(1f);
     readonly Matrix4x4[] _terrainWorlds, _propWorlds, _buildingWorlds;
+    readonly RendererPerfPropPlacement[] _propPlacements;
     readonly SplatConstruction _splat;
     readonly RigidInstanceDraw[] _draws;
     MeshHandle[] _handles = [];
@@ -27,7 +28,8 @@ internal class RendererPerfVillageScene : RendererPerfRecipe
         _terrain = Enumerable.Range(0, side * side).Select(_ => BuildTerrain()).ToArray();
         _terrainWorlds = Enumerable.Range(0, side * side).Select(i => Matrix4x4.CreateTranslation(
             (i % side - (side - 1) * .5f) * 8f, 0f, (i / side - (side - 1) * .5f) * 8f)).ToArray();
-        _propWorlds = StreamedWorldSceneContent.PropWorlds(props, side * 8f, Seed);
+        _propPlacements = RendererPerfPropPlacement.Create(props, side * 8f, Seed);
+        _propWorlds = _propPlacements.Select(placement => placement.World).ToArray();
         _buildingWorlds = new Matrix4x4[buildings * 6];
         (Vector3 Size, Vector3 Offset)[] components =
         [
@@ -106,6 +108,7 @@ internal class RendererPerfVillageScene : RendererPerfRecipe
         },
         Props = _props.Select(MeshFacts).ToArray(),
         PropWorlds = _propWorlds,
+        PropPlacements = _propPlacements,
         PropMeshIndices = Enumerable.Range(0, Props).Select(i => i & 3).ToArray(),
         Building = MeshFacts(_box),
         BuildingWorlds = _buildingWorlds,

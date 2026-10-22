@@ -8,7 +8,7 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 /// <summary>The public transparent, target-outline, temporal post and display UI feature mix.</summary>
 internal sealed class RendererPerfEffectsScene : RendererPerfVillageScene
 {
-    readonly SkinnedGltfMesh _tube = StreamedWorldSceneContent.CharacterTube();
+    readonly SkinnedGltfMesh _tube = RendererPerfTubeInputs.Character.Build();
     readonly GltfMesh _overlay = MeshPrimitives.Box(1f);
     readonly SkinnedInstanceDraw[] _actors;
     readonly Matrix4x4[][] _poses;
@@ -134,6 +134,7 @@ internal sealed class RendererPerfEffectsScene : RendererPerfVillageScene
         Rigid = base.Geometry,
         Actor = new
         {
+            Inputs = RendererPerfTubeInputs.Character,
             Vertices = _tube.Vertices.Length,
             Indices = _tube.Indices32.Length,
             _tube.IndexFormat,

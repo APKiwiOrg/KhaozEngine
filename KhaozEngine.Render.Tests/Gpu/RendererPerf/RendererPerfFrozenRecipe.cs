@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -32,17 +33,28 @@ internal static class RendererPerfFrozenRecipe
             var inputs = frame!.AsObject();
             foreach (string field in new[] { "View", "Projection", "ViewProjection", "PoseSha256" }) inputs.Remove(field);
         }
-        if (authored["Geometry"] is JsonObject geometry)
+        StripDerivedGeometry(authored["Geometry"]);
+        return (authored, derived);
+    }
+
+    static void StripDerivedGeometry(JsonNode? node)
+    {
+        if (node is JsonObject geometry)
         {
+            StripDerivedGeometry(geometry["Rigid"]);
+            geometry.Remove("PropWorlds");
+            if (geometry["Draws"] is JsonArray draws)
+                foreach (JsonNode? draw in draws) draw!.AsObject().Remove("World");
             if (geometry["Actor"] is JsonObject actor)
             {
+                actor.Remove("RestPose");
+                actor.Remove("RestPoseSha256");
                 actor.Remove("InverseBind");
                 actor.Remove("InverseBindSha256");
             }
             geometry.Remove("PaletteAtZero");
             geometry.Remove("Palettes");
         }
-        return (authored, derived);
     }
 
     internal static byte[] Freeze(byte[] description)
@@ -62,12 +74,31 @@ internal static class RendererPerfFrozenRecipe
         if (frozen["Schema"]?.GetValue<string>() != "khaozengine.renderer-perf-frozen-recipe/2")
             throw new InvalidOperationException($"The {id} frozen recipe has an unsupported identity schema.");
         string actualAuthored = RendererPerfRecipe.Digest(authored);
-        if (RendererPerfRecipe.Digest(frozen["Authored"]) != actualAuthored)
-            throw new InvalidOperationException($"The {id} portable authored construction differs. Actual AuthoredSha256={actualAuthored}.");
         string actual = JsonSerializer.Serialize(derived, RendererPerfRecipe.Json);
+        if (RendererPerfRecipe.Digest(frozen["Authored"]) != actualAuthored)
+            throw new InvalidOperationException($"The {id} portable authored construction differs for {family} at "
+                + $"{Difference(frozen["Authored"], authored, "$")}. Actual AuthoredSha256={actualAuthored}. ActualDerived={actual}");
         if (frozen["DerivedByPlatform"] is not JsonObject families || families[family] is not JsonObject expected)
             throw new InvalidOperationException($"The {id} recipe has no frozen derived digests for {family}. ActualDerived={actual}");
         if (expected.Deserialize<RendererPerfDerivedDigests>(RendererPerfRecipe.Json) != derived)
             throw new InvalidOperationException($"The {id} derived construction differs for {family}. ActualDerived={actual}");
+    }
+
+    static string Difference(JsonNode? expected, JsonNode? actual, string path)
+    {
+        if (expected is JsonObject left && actual is JsonObject right)
+        {
+            foreach (string key in left.Select(pair => pair.Key).Union(right.Select(pair => pair.Key)))
+                if (RendererPerfRecipe.Digest(left[key]) != RendererPerfRecipe.Digest(right[key]))
+                    return Difference(left[key], right[key], path + "." + key);
+        }
+        if (expected is JsonArray a && actual is JsonArray b)
+        {
+            if (a.Count != b.Count) return path + ".Length";
+            for (int i = 0; i < a.Count; i++)
+                if (RendererPerfRecipe.Digest(a[i]) != RendererPerfRecipe.Digest(b[i]))
+                    return Difference(a[i], b[i], path + "[" + i + "]");
+        }
+        return path;
     }
 }

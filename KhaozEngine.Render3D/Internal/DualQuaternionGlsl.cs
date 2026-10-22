@@ -9,7 +9,7 @@ internal static class DualQuaternionGlsl
     internal static string Source(string paletteName) => Graph.Replace("__PALETTE__", paletteName, StringComparison.Ordinal);
 
     // Transcribes DualQuaternionSkinning, with scalar precise intermediates to prohibit contraction.
-    // Per positive slot: four dot products, three ordered adds, eight weighted products and eight adds.
+    // Per positive slot: four products for the dot, three ordered adds, eight weighted products and eight adds.
     // Rotation: four squares, six cross products, three diagonals and six doubled off-diagonals.
     // Each rotated row has three products, two ordered adds and one inverse-norm multiplication.
     // Translation has four products, three ordered adds/subtracts and one doubling per component.

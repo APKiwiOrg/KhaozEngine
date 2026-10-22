@@ -1,3 +1,5 @@
+using System;
+
 namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
@@ -463,5 +465,44 @@ void main() {
     vDissolve = vec2(DissolveParams.y, 0.0);
     vDissolveComplement = DissolveParams.z;
 }";
+
+        // Independent programs share the ordinary DQ graph. The projection, pancake and live-input sink
+        // below the blend stay identical to LBS. No draw selects its skinning method inside a vertex.
+        public static readonly string DqSkinnedShadowDepthVert = DqShadowVertex(SkinnedShadowDepthVert);
+        public static readonly string DqSkinnedShadowDepthDissolveVert = DqShadowVertex(SkinnedShadowDepthDissolveVert);
+        public static readonly string DqSkinnedShadowDepthCutoutVert = DqSkinnedShadowDepthDissolveVert
+            .Replace("void main() {", "layout(location=4) out vec2 vUv;\nlayout(location=5) out float vCutoff;\nvoid main() {", StringComparison.Ordinal)
+            .Replace("vDissolveComplement = DissolveParams.z;",
+                "vDissolveComplement = DissolveParams.z;\n    vUv = TexCoord;\n    vCutoff = DissolveParams.w;", StringComparison.Ordinal);
+        public static readonly string DqSkinnedShadowDepthCutoutFrag = DqShadowCutoutFragment(SkinnedShadowDepthDissolveFrag);
+        public static readonly string DqSkinnedShadowDepthCutoutInvertedFrag = DqShadowCutoutFragment(SkinnedShadowDepthDissolveInvertedFrag);
+
+        static string DqShadowVertex(string lbs)
+        {
+            int blend = lbs.IndexOf("    float wsum =", StringComparison.Ordinal);
+            int tail = lbs.IndexOf("    float sink =", StringComparison.Ordinal);
+            string prefix = lbs[..blend].Replace("mat4 bones[128];", "vec4 dqBones[256];", StringComparison.Ordinal)
+                .Replace("void main() {", DualQuaternionGlsl.Source("dqBones") + "\nvoid main() {", StringComparison.Ordinal);
+            return prefix + @"
+    vec3 dqPosition; vec3 dqNormal; vec4 dqTangent;
+    if (!dqBonesSkin(Position, Normal, Tangent, BoneIndices, BoneWeights, dqPosition, dqNormal, dqTangent)) {
+        gl_Position = vec4(0.0, 0.0, -1.0, 1.0);
+        return;
+    }
+    vec4 localPos = vec4(dqPosition, 1.0);
+" + lbs[tail..];
+        }
+
+        static string DqShadowCutoutFragment(string dissolve) => dissolve
+            .Replace("void main() {", @"
+layout(location=4) in vec2 vUv;
+layout(location=5) in float vCutoff;
+layout(set=2, binding=0) uniform texture2D Albedo;
+layout(set=2, binding=1) uniform sampler Samp;
+void main() {
+    float alpha = texture(sampler2D(Albedo, Samp), vUv).a;
+    // Keep the inverted fragment's location 3 live below the cutout interpolants on FXC.
+    if (alpha < vCutoff + vDissolveComplement * 1e-30) discard;
+", StringComparison.Ordinal);
     }
 }

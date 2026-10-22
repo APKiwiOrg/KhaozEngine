@@ -51,7 +51,7 @@ public sealed partial class Scene3D
 
                 PreparedSkinningPose prepared = _submittedSkinningPoses[i];
                 if (prepared.Profile.Method == SkinningMethod.DualQuaternionRigid &&
-                    (_res.MotionAllocated || visibleShadow || visiblePointShadow))
+                    (_res.MotionAllocated || visiblePointShadow))
                     throw new NotSupportedException("DQ shadow and temporal consumers are unavailable for ordinary material submission.");
 
                 bool dissolving = it.Dissolving;

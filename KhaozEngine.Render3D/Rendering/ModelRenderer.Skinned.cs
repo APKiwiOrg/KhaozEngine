@@ -234,26 +234,44 @@ internal sealed partial class ModelRenderer
     /// <paramref name="dissolveComplement"/>. Forwards
     /// to <see cref="ShadowMapRenderer"/>.</summary>
     public void PackSkinnedShadowSlot(uint slot, in Matrix4x4 model, in Matrix4x4 cascadeDepthMat,
-        Vector3 renderOrigin, float noiseScale, float dissolveThreshold, float dissolveComplement = 0f) =>
+        Vector3 renderOrigin, float noiseScale, float dissolveThreshold, float dissolveComplement = 0f,
+        float alphaCutoff = 0f) =>
         _shadowMap.PackSkinnedShadowSlot(slot, model, cascadeDepthMat, renderOrigin, noiseScale, dissolveThreshold,
-            dissolveComplement);
+            dissolveComplement, alphaCutoff);
 
     /// <summary>Upload every packed GPU-skinned shadow slot in one whole-buffer write.</summary>
-    public void UploadSkinnedShadowSlots(IGpuCommandList cl) => _shadowMap.UploadSkinnedShadowSlots(cl);
+    public long UploadSkinnedShadowSlots(IGpuCommandList cl) => _shadowMap.UploadSkinnedShadowSlots(cl);
 
     /// <summary>Bind cascade <paramref name="cascade"/> for the GPU-skinning depth draws: scissor its atlas column
     /// and switch to the skinned depth pipeline, or its dissolve-aware sibling when <paramref name="dissolve"/> is
     /// set (issue #387), inverted when <paramref name="invertedDissolve"/> is set. Call per cascade after the
     /// rigid runs. Forwards to <see cref="ShadowMapRenderer"/>.</summary>
     public void BindShadowCascadeSkinned(IGpuCommandList cl, int cascade, bool dissolve = false,
-        bool invertedDissolve = false) =>
-        _shadowMap.BindCascadeSkinned(cl, cascade, dissolve, invertedDissolve);
+        bool invertedDissolve = false, SkinningProfile? profile = null, bool cutout = false) =>
+        _shadowMap.BindCascadeSkinned(cl, cascade, profile ?? SkinningProfile.LinearBlend, _dqPalette,
+            dissolve, invertedDissolve, cutout);
 
     /// <summary>Draw one GPU-skinned caster into the CURRENTLY-BOUND cascade (rest-pose vertex buffer, the
     /// caster-cascade light-matrix slot at <paramref name="slot"/>, and the shared per-caster palette at
     /// <paramref name="paletteSlot"/>). <see cref="BindShadowCascadeSkinned"/> must be bound. Forwards to
     /// <see cref="ShadowMapRenderer"/>.</summary>
     public void DrawGpuSkinnedShadowCaster(IGpuCommandList cl, IGpuBuffer restVb, IGpuBuffer ib, int indexCount,
-        GpuIndexFormat indexFormat, uint slot, uint paletteSlot) =>
-        _shadowMap.DrawGpuSkinnedCaster(cl, restVb, ib, indexCount, indexFormat, slot, paletteSlot);
+        GpuIndexFormat indexFormat, uint slot, uint paletteSlot, SkinningProfile? profile = null) =>
+        _shadowMap.DrawGpuSkinnedCaster(cl, restVb, ib, indexCount, indexFormat, slot, paletteSlot,
+            profile ?? SkinningProfile.LinearBlend, _dqPalette);
+
+    internal void BindDqShadowCutoutMaterial(IGpuCommandList commands, IGpuResourceSet? material, bool gpu)
+    {
+        material ??= gpu ? _skinnedDefaultFragSet : _defaultSet;
+        if (!_shadowSamplingBindings.TryGetValue(material, out ShadowSamplingBinding? binding))
+            throw new InvalidOperationException("A DQ cutout caster requires a tracked material.");
+        IGpuTexture? albedo = null;
+        IGpuSampler? sampler = null;
+        foreach (IGpuBindableResource resource in binding.MaterialResources)
+        {
+            if (resource is IGpuTexture texture) albedo ??= texture;
+            if (resource is IGpuSampler candidate) sampler ??= candidate;
+        }
+        _shadowMap.BindDqCutoutMaterial(commands, albedo ?? _white, sampler ?? _sampler, gpu);
+    }
 }

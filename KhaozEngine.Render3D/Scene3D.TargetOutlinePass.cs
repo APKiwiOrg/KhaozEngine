@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Runtime.InteropServices;
 using System.Threading;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
+using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D;
 
@@ -146,6 +146,7 @@ public sealed partial class Scene3D
         int BoneCount)
     {
         public bool InteriorCutRequested { get; init; }
+        public PreparedSkinningPose Pose { get; init; }
 
         public static MeshOutlinePart Rigid(
             MeshHandle mesh, Matrix4x4 world, float dissolve, bool complement, bool cutInsideInteriors) =>
@@ -185,23 +186,8 @@ public sealed partial class Scene3D
                     groupDraws++;
                     continue;
                 }
-                if (!_skinnedSlots.IsValid(part.SkinnedMesh.Index, part.SkinnedMesh.Generation)) continue;
-                if (_skinnedMeshes[part.SkinnedMesh.Index] is not { } skinned) continue;
-                ReadOnlySpan<Matrix4x4> pose = CollectionsMarshal.AsSpan(_outlineBoneMatrices)
-                    .Slice(part.BoneStart, part.BoneCount);
-                if (UseGpuSkinning)
-                {
-                    _targetOutlines.EnqueueSkinnedGpu(skinned.Vb, skinned.Ib, skinned.IndexCount,
-                        skinned.IndexFormat, skinned.OutlineMaterialSet, pose, drawIndex++, ToRender(part.World),
-                        skinned.AlphaCutoff, part.Dissolve, part.DissolveComplement, _frameOrigin);
-                }
-                else
-                {
-                    if (_skinnedCpuVerts[part.SkinnedMesh.Index] is not { } source) continue;
-                    _targetOutlines.EnqueueSkinnedCpu(source, skinned.Ib, skinned.IndexCount,
-                        skinned.IndexFormat, skinned.OutlineMaterialSet, pose, drawIndex++, ToRender(part.World),
-                        skinned.AlphaCutoff, part.Dissolve, part.DissolveComplement, _frameOrigin);
-                }
+                if (!EnqueueSkinnedOutlinePart(part, drawIndex)) continue;
+                drawIndex++;
                 groupDraws++;
             }
             if (!_targetOutlines.HasQueuedDraws) continue;

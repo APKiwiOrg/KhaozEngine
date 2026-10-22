@@ -20,55 +20,55 @@ public sealed class DqOutlineGpuTests(DqOutlineScene fixture, ITestOutputHelper 
     {
         int observed = 0;
         foreach (bool gpu in new[] { false, true })
-        foreach (MeshOutlineOcclusion occlusion in new[] { MeshOutlineOcclusion.None, MeshOutlineOcclusion.SceneDepth })
-        foreach (bool cutout in new[] { false, true })
-        foreach (bool mixed in new[] { false, true })
-        foreach (bool shifted in new[] { false, true })
-        {
-            output.WriteLine($"{fixture.Device.Backend} {fixture.Device.Capabilities.DeviceName}: gpu={gpu} occlusion={occlusion} cutout={cutout} mixed={mixed} shifted={shifted}");
-            var solid = fixture.Capture(gpu, occlusion, cutout, mixed, shifted, 0);
-            var lbs = fixture.Capture(gpu, occlusion, cutout, mixed, shifted, 0, lbs: true);
-            var reference = fixture.Capture(false, occlusion, cutout, mixed, shifted, 0, reference: true);
-            byte[] dqMaskWords = solid.Full, lbsMaskWords = lbs.Full;
-            int outlineOnlyMaskPixels = dqMaskWords.Count(p => p > 0);
-            Assert.True(outlineOnlyMaskPixels > 0);
-            Assert.False(dqMaskWords.SequenceEqual(lbsMaskWords));
-            Assert.True(outlineOnlyMaskPixels > lbsMaskWords.Count(p => p > 0));
-            AssertMaskNear(reference.FullMask, solid.FullMask);
-            Assert.True(solid.RimPixels > 0);
-            if (!mixed)
-            {
-                int colourDrawCount = solid.ColourDrawCount;
-                Assert.Equal(0, colourDrawCount);
-            }
-            else Assert.Equal(1, solid.ColourDrawCount);
-            if (cutout)
-            {
-                var uncut = fixture.Capture(gpu, occlusion, false, mixed, shifted, 0);
-                Assert.True(outlineOnlyMaskPixels < uncut.Full.Count(p => p > 0));
-            }
-            var plain = fixture.Capture(gpu, occlusion, cutout, mixed, shifted, 1);
-            var complement = fixture.Capture(gpu, occlusion, cutout, mixed, shifted, 2);
-            // Existing through-geometry outlines deliberately keep the complete cutout silhouette.
-            Assert.Equal(solid.Full, plain.Full);
-            Assert.Equal(solid.Full, complement.Full);
-            if (occlusion == MeshOutlineOcclusion.SceneDepth)
-            {
-                var cpuPlain = fixture.Capture(false, occlusion, cutout, mixed, shifted, 1);
-                AssertMaskNear(cpuPlain.VisibleMask, plain.VisibleMask);
-                AssertMaskNear(reference.VisibleMask, solid.VisibleMask);
-                int written = solid.VisibleMask.Count(p => p);
-                Assert.InRange(plain.VisibleMask.Count(p => p), 1, written - 1);
-                Assert.InRange(complement.VisibleMask.Count(p => p), 1, written - 1);
-                for (int p = 0; p < solid.Full.Length; p++)
-                {
-                    Assert.Equal(solid.VisibleMask[p], plain.VisibleMask[p] || complement.VisibleMask[p]);
-                    Assert.False(plain.VisibleMask[p] && complement.VisibleMask[p]);
-                }
-            }
-            observed++;
-            output.WriteLine($"DQ={outlineOnlyMaskPixels} LBS={lbs.Full.Count(p => p > 0)} rim={solid.RimPixels} colour={solid.ColourDrawCount}");
-        }
+            foreach (MeshOutlineOcclusion occlusion in new[] { MeshOutlineOcclusion.None, MeshOutlineOcclusion.SceneDepth })
+                foreach (bool cutout in new[] { false, true })
+                    foreach (bool mixed in new[] { false, true })
+                        foreach (bool shifted in new[] { false, true })
+                        {
+                            output.WriteLine($"{fixture.Device.Backend} {fixture.Device.Capabilities.DeviceName}: gpu={gpu} occlusion={occlusion} cutout={cutout} mixed={mixed} shifted={shifted}");
+                            var solid = fixture.Capture(gpu, occlusion, cutout, mixed, shifted, 0);
+                            var lbs = fixture.Capture(gpu, occlusion, cutout, mixed, shifted, 0, lbs: true);
+                            var reference = fixture.Capture(false, occlusion, cutout, mixed, shifted, 0, reference: true);
+                            byte[] dqMaskWords = solid.Full, lbsMaskWords = lbs.Full;
+                            int outlineOnlyMaskPixels = dqMaskWords.Count(p => p > 0);
+                            Assert.True(outlineOnlyMaskPixels > 0);
+                            Assert.False(dqMaskWords.SequenceEqual(lbsMaskWords));
+                            Assert.True(outlineOnlyMaskPixels > lbsMaskWords.Count(p => p > 0));
+                            AssertMaskNear(reference.FullMask, solid.FullMask);
+                            Assert.True(solid.RimPixels > 0);
+                            if (!mixed)
+                            {
+                                int colourDrawCount = solid.ColourDrawCount;
+                                Assert.Equal(0, colourDrawCount);
+                            }
+                            else Assert.Equal(1, solid.ColourDrawCount);
+                            if (cutout)
+                            {
+                                var uncut = fixture.Capture(gpu, occlusion, false, mixed, shifted, 0);
+                                Assert.True(outlineOnlyMaskPixels < uncut.Full.Count(p => p > 0));
+                            }
+                            var plain = fixture.Capture(gpu, occlusion, cutout, mixed, shifted, 1);
+                            var complement = fixture.Capture(gpu, occlusion, cutout, mixed, shifted, 2);
+                            // Existing through-geometry outlines deliberately keep the complete cutout silhouette.
+                            Assert.Equal(solid.Full, plain.Full);
+                            Assert.Equal(solid.Full, complement.Full);
+                            if (occlusion == MeshOutlineOcclusion.SceneDepth)
+                            {
+                                var cpuPlain = fixture.Capture(false, occlusion, cutout, mixed, shifted, 1);
+                                AssertMaskNear(cpuPlain.VisibleMask, plain.VisibleMask);
+                                AssertMaskNear(reference.VisibleMask, solid.VisibleMask);
+                                int written = solid.VisibleMask.Count(p => p);
+                                Assert.InRange(plain.VisibleMask.Count(p => p), 1, written - 1);
+                                Assert.InRange(complement.VisibleMask.Count(p => p), 1, written - 1);
+                                for (int p = 0; p < solid.Full.Length; p++)
+                                {
+                                    Assert.Equal(solid.VisibleMask[p], plain.VisibleMask[p] || complement.VisibleMask[p]);
+                                    Assert.False(plain.VisibleMask[p] && complement.VisibleMask[p]);
+                                }
+                            }
+                            observed++;
+                            output.WriteLine($"DQ={outlineOnlyMaskPixels} LBS={lbs.Full.Count(p => p > 0)} rim={solid.RimPixels} colour={solid.ColourDrawCount}");
+                        }
         Assert.Equal(32, observed);
         output.WriteLine($"{fixture.Device.Backend} {fixture.Device.Capabilities.DeviceName}: matched 32/32 outline witnesses");
     }
@@ -145,12 +145,12 @@ public sealed class DqOutlineScene : IDisposable
             _preview.Scene.Camera.OrthoSize = 3;
             var mask = _preview.Scene.LoadTexture([255, 255, 255, 0, 255, 255, 255, 255], 2, 1);
             for (int method = 0; method < 2; method++)
-            for (int actor = 0; actor < 2; actor++)
-            {
-                _handles[method, 0, actor] = _preview.Scene.LoadSkinnedMesh(_meshes[method]);
-                _handles[method, 1, actor] = _preview.Scene.LoadSkinnedMesh(_meshes[method],
-                    new Scene3D.SurfaceMaps(mask, alphaCutoff: .5f));
-            }
+                for (int actor = 0; actor < 2; actor++)
+                {
+                    _handles[method, 0, actor] = _preview.Scene.LoadSkinnedMesh(_meshes[method]);
+                    _handles[method, 1, actor] = _preview.Scene.LoadSkinnedMesh(_meshes[method],
+                        new Scene3D.SurfaceMaps(mask, alphaCutoff: .5f));
+                }
         }
         Scene3D scene = _preview.Scene;
         scene.UseGpuSkinning = gpu;

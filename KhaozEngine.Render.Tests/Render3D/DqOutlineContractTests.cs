@@ -45,7 +45,7 @@ public sealed class DqOutlineContractTests
         Assert.Equal(1, store.PoseCount);
         scene.PrepareFrame();
         using var commands = new RecordingGpuCommandList(new NullGpuCommandList())
-            { CaptureBindings = true, CapturePayloads = true };
+        { CaptureBindings = true, CapturePayloads = true };
         scene.RenderInternal(commands, MotionTestScene.Width, MotionTestScene.Height, harness.Target);
         int colourDrawCount = scene.DrawnSkinnedInstances;
         Assert.Equal(0, colourDrawCount);
@@ -103,7 +103,7 @@ public sealed class DqOutlineContractTests
             }
             scene.PrepareFrame();
             using var commands = new RecordingGpuCommandList(new NullGpuCommandList())
-                { CaptureBindings = true, CapturePayloads = true };
+            { CaptureBindings = true, CapturePayloads = true };
             scene.RenderInternal(commands, MotionTestScene.Width, MotionTestScene.Height, harness.Target);
             var masks = commands.Bindings.Where(d => d.Pipeline is FakePipeline { Request: { } p }
                 && p.FragmentGlsl.Contains("oCoverage", StringComparison.Ordinal)).ToArray();

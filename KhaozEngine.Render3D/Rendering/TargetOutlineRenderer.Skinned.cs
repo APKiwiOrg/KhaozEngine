@@ -63,6 +63,10 @@ internal sealed partial class TargetOutlineRenderer
 
     void BeginSkinnedFrame()
     {
+        _skinning.BeginFrame();
+        _nextDqPaletteSlot = 0;
+        _groupDqPaletteSlotStart = 0;
+        _gpuDqPaletteBones.Clear();
         _nextGpuPaletteSlot = 0;
         _groupPaletteSlotStart = 0;
         _gpuPaletteBones.Clear();
@@ -71,6 +75,8 @@ internal sealed partial class TargetOutlineRenderer
 
     void BeginSkinnedGroup()
     {
+        _gpuDqPaletteBones.Clear();
+        _groupDqPaletteSlotStart = _nextDqPaletteSlot;
         _gpuPaletteBones.Clear();
         _cpuVertices.Clear();
         _groupPaletteSlotStart = _nextGpuPaletteSlot;
@@ -78,6 +84,7 @@ internal sealed partial class TargetOutlineRenderer
 
     void PrepareGpuPalette(IGpuCommandList commands)
     {
+        PrepareDqPalette(commands);
         int groupPaletteSlotCount = _nextGpuPaletteSlot - _groupPaletteSlotStart;
         if (groupPaletteSlotCount > 0) _skinning.EnsurePaletteCapacity(_nextGpuPaletteSlot);
         IGpuBuffer? cpuVertexBuffer = _cpuVertices.Count > 0
@@ -115,7 +122,7 @@ internal sealed partial class TargetOutlineRenderer
     }
 
     IGpuPipeline BuildSkinnedMaskPipeline(IGpuResourceFactory factory, IGpuShaderSet shaders,
-        GpuOutputDescription outputs, bool full)
+        GpuOutputDescription outputs, bool full, IGpuResourceLayout? paletteLayout = null)
     {
         var vertexLayout = new GpuVertexLayoutDescription(
             new GpuVertexElement("Position", GpuVertexElementFormat.Float3),
@@ -136,7 +143,7 @@ internal sealed partial class TargetOutlineRenderer
             Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid,
                 GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
             Topology = GpuPrimitiveTopology.TriangleList,
-            ResourceLayouts = new[] { _drawLayout, _materialLayout, _skinning.PaletteLayout },
+            ResourceLayouts = new[] { _drawLayout, _materialLayout, paletteLayout ?? _skinning.PaletteLayout },
             ShaderSet = shaders,
             VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout },
             Outputs = outputs,

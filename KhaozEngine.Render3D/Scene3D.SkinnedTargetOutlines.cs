@@ -73,12 +73,31 @@ public sealed partial class Scene3D
     void AppendSkinnedOutlinePart(MeshOutlineDrawGroup group, SkinnedMeshHandle mesh, Matrix4x4 world,
         float dissolve, bool dissolveComplement, in PreparedSkinningPose prepared)
     {
-        ReadOnlySpan<Matrix4x4> palette = _preparedSkinning.Lbs(prepared);
         int start = _outlineBoneMatrices.Count;
-        foreach (Matrix4x4 bone in palette) _outlineBoneMatrices.Add(bone);
+        if (prepared.Profile.Method == SkinningMethod.LinearBlend)
+            foreach (Matrix4x4 bone in prepared.Owner.Lbs(prepared)) _outlineBoneMatrices.Add(bone);
         group.Parts.Add(MeshOutlinePart.Skinned(mesh, world, Math.Clamp(dissolve, 0f, 1f),
-            dissolveComplement, start, prepared.BoneCount));
+            dissolveComplement, start, prepared.BoneCount) with
+        { Pose = prepared });
         _meshOutlinePartCount++;
+    }
+
+    bool EnqueueSkinnedOutlinePart(in MeshOutlinePart part, int drawIndex)
+    {
+        if (!_skinnedSlots.IsValid(part.SkinnedMesh.Index, part.SkinnedMesh.Generation)) return false;
+        if (_skinnedMeshes[part.SkinnedMesh.Index] is not { } skinned) return false;
+        if (UseGpuSkinning)
+            _targetOutlines.EnqueueSkinnedGpu(skinned.Vb, skinned.Ib, skinned.IndexCount,
+                skinned.IndexFormat, skinned.OutlineMaterialSet, part.Pose, drawIndex, ToRender(part.World),
+                skinned.AlphaCutoff, part.Dissolve, part.DissolveComplement, _frameOrigin);
+        else
+        {
+            if (_skinnedCpuVerts[part.SkinnedMesh.Index] is not { } source) return false;
+            _targetOutlines.EnqueueSkinnedCpu(source, skinned.Ib, skinned.IndexCount,
+                skinned.IndexFormat, skinned.OutlineMaterialSet, part.Pose, drawIndex, ToRender(part.World),
+                skinned.AlphaCutoff, part.Dissolve, part.DissolveComplement, _frameOrigin);
+        }
+        return true;
     }
 
     internal int OutlinePoseMatrixCount => _outlineBoneMatrices.Count;

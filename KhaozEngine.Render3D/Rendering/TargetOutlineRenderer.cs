@@ -197,15 +197,20 @@ internal sealed partial class TargetOutlineRenderer : IDisposable
     {
         foreach (QueuedDraw draw in _queue)
         {
-            IGpuPipeline pipeline = draw.Geometry == QueuedGeometry.GpuSkinned
+            IGpuPipeline pipeline = draw.Geometry == QueuedGeometry.DqGpuSkinned ? DqMaskPipeline(full)
+                : draw.Geometry == QueuedGeometry.GpuSkinned
                 ? full ? _skinnedFullPipeline! : _skinnedVisiblePipeline!
                 : full ? _fullPipeline! : _visiblePipeline!;
             cl.SetPipeline(pipeline);
             cl.SetGraphicsResourceSet(0, _drawSet!, (uint)(draw.DrawIndex * DrawSlotBytes));
             cl.SetGraphicsResourceSet(1, draw.MaterialSet);
-            if (draw.Geometry == QueuedGeometry.GpuSkinned)
-                cl.SetGraphicsResourceSet(2, _skinning.PaletteSet,
-                    (uint)draw.PaletteSlot * TargetOutlineSkinningStore.PaletteSlotBytes);
+            if (draw.Geometry is QueuedGeometry.GpuSkinned or QueuedGeometry.DqGpuSkinned)
+            {
+                SkinningMethod method = draw.Geometry == QueuedGeometry.DqGpuSkinned
+                    ? SkinningMethod.DualQuaternionRigid : SkinningMethod.LinearBlend;
+                cl.SetGraphicsResourceSet(2, _skinning.PaletteSetFor(method),
+                    _skinning.PaletteOffsetFor((uint)draw.PaletteSlot, method));
+            }
             else cl.SetGraphicsResourceSet(2, _interiorCutBinding.Set!);
             cl.SetVertexBuffer(0, draw.VertexBuffer ?? throw new InvalidOperationException(
                 "outline draw has no prepared vertex buffer."));
@@ -337,6 +342,7 @@ internal sealed partial class TargetOutlineRenderer : IDisposable
     void DisposeTargets()
     {
         if (_fullFramebuffer != null) _gd.WaitForIdle();
+        DisposeDqMaskPipelines();
         foreach (IGpuResourceSet set in _compositeSets) set.Dispose();
         _compositeSets.Clear();
         _fullPipeline?.Dispose();
@@ -379,6 +385,7 @@ internal sealed partial class TargetOutlineRenderer : IDisposable
     {
         Rigid,
         GpuSkinned,
+        DqGpuSkinned,
         CpuSkinned,
     }
 
@@ -415,6 +422,7 @@ internal sealed partial class TargetOutlineRenderer : IDisposable
         _visibleShaders.Dispose();
         _skinnedFullShaders.Dispose();
         _skinnedVisibleShaders.Dispose();
+        foreach (IGpuShaderSet? shaders in _dqMaskShaders) shaders?.Dispose();
         _compositeShaders.Dispose();
     }
 }

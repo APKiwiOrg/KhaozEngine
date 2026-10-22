@@ -59,6 +59,11 @@ internal sealed class TargetOutlineSkinningStore : IDisposable
     internal void PackPalette(int slot, ReadOnlySpan<RigidDualQuaternion> bones) => Dq.Pack(checked((uint)slot), bones);
     internal long UploadDqPalette(IGpuCommandList commands) => _dq?.Upload(commands) ?? 0;
 
+    internal void BeginFrame()
+    {
+        if (_ownsDqRetired) _dqRetired?.BeginFrame();
+    }
+
     internal void EnsurePaletteCapacity(int slotCount)
     {
         if (slotCount <= 0 || _paletteBuffer is not null && _paletteCapacity >= slotCount) return;

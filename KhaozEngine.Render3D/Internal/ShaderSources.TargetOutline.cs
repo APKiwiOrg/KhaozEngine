@@ -1,3 +1,5 @@
+using System;
+
 namespace KhaozEngine.Render3D.Internal;
 
 internal static partial class ShaderSources
@@ -59,6 +61,25 @@ void main() {
     vWorldPos = world.xyz + RenderOrigin.xyz;
     gl_Position = ViewProj * world;
 }";
+
+    public static readonly string DqTargetOutlineSkinnedMaskVert = DqTargetOutlineVertex();
+
+    static string DqTargetOutlineVertex()
+    {
+        const string lbs = TargetOutlineSkinnedMaskVert;
+        int main = lbs.IndexOf("void main() {", StringComparison.Ordinal);
+        int tail = lbs.IndexOf("    vec4 world = World * localPos;", main, StringComparison.Ordinal);
+        return lbs[..main].Replace("mat4 bones[128];", "vec4 dqBones[256];", StringComparison.Ordinal)
+            + DualQuaternionGlsl.Source("dqBones") + @"
+void main() {
+    vec3 dqPosition; vec3 dqNormal; vec4 dqTangent;
+    if (!dqBonesSkin(Position, Normal, Tangent, BoneIndices, BoneWeights, dqPosition, dqNormal, dqTangent)) {
+        gl_Position = vec4(0.0, 0.0, -1.0, 1.0);
+        return;
+    }
+    vec4 localPos = vec4(dqPosition, 1.0);
+" + lbs[tail..];
+    }
 
     public const string TargetOutlineFullMaskFrag = @"#version 450
 layout(set=0, binding=0) uniform Draw { mat4 ViewProj; mat4 World; vec4 Params; vec4 RenderOrigin; };

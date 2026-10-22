@@ -1128,8 +1128,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   the spec says it is. So a kit piece painted from a palette in Blender keeps its authored colours with no
   texture and no material per shade, and a white `COLOR_0` changes nothing. A per-vertex colour also enters the
   rigid weld key, so two coplanar faces in different shades stay two vertices at their shared edge instead of the
-  first shade winning. That gating is on the attribute being present, not on the colour: an asset without
-  `COLOR_0` loads and welds byte-for-byte as before, so existing goldens hold. A colour seam splits the
+  first shade winning. Flat material colours also enter the rigid weld key, using exact float identity so
+  distinct material factors stay split when flattened for HLOD. Equal flat colours still weld, and per-vertex
+  paint retains its existing quantization. A colour seam splits the
   smooth-normal and tangent accumulation too, so a mesh with no source `NORMAL` gains a shading crease where two
   shades meet, exactly as a UV seam has always done.
 - Alpha cutout (foliage / leaf cards): `GltfLoader` reads each material's glTF `alphaMode` into

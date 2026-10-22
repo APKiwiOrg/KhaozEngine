@@ -10691,6 +10691,7 @@ blobby, canopy shape and colour hold), 0 keeps the full-detail merge. Decor-ring
 so the far field is visible forest rather than bare terrain, while staying render-only for physics (no scatter, no
 prop colliders). The bake is a **runtime** merge+weld at chunk load (`PropHlod.BuildMergedMesh`, pure and
 deterministic), built through `PropClusterRenderer.BuildCpu` without GPU access and applied on the scene thread.
+Flattening preserves coincident corners with distinct flat material colours. Equal flat colours still weld.
 There is no offline artifact to generate and no manifest field to stamp. Everything defaults off, so a layer
 without `WithHlod` draws its props at every distance exactly as before. `PropHlod.Merge` / `Weld` /
 `CrossfadeAt` are public if you want the pieces directly (a bake tool, a custom sink).

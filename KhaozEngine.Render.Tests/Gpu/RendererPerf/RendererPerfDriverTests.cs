@@ -192,12 +192,15 @@ public sealed class RendererPerfDriverTests
         internal string? Fault;
         internal int Disposals, ClockCalls;
         internal long Tick;
+        internal long FirstBatchFrameTicks = 1, FirstDrainTicks = 1, ColdReadbackTicks;
+        internal bool ObserveMemory;
         internal RendererPerfClock Clock => new(() => { ClockCalls++; return Tick; }, 1000);
         internal RendererPerfReport Run(RendererPerfRunIdentity? identity = null)
         {
             var publication = new RendererPerfPublicationWriter((report, final) =>
             {
                 Writes.Add((report, final));
+                if (final && Fault == "slow-final" && Writes.Count(w => w.Final) == 1) Tick += 5000;
                 if (final && Fault == "late-final") Tick += 601000;
                 if (final && Fault == "final-write") throw new InvalidOperationException("final write failed");
                 if (!final && Fault == "partial-write" && Writes.Count == 1) throw new InvalidOperationException("partial write failed");
@@ -212,18 +215,23 @@ public sealed class RendererPerfDriverTests
         sealed class Session(DriverRig rig, RendererPerfBlock block, RendererPerfRunIdentity identity) : IRendererPerfSession
         {
             int _next, _pending;
+            RendererPerfCpuSpan? _drain, _harvest;
             public void Frame(int frameIndex, ref RendererPerfFrameSample sample)
             {
                 rig.Frames.Add((block, frameIndex));
                 _pending++;
                 if (_pending > 3) throw new InvalidOperationException("Undrained batch.");
                 long start = rig.Tick;
-                rig.Tick += rig.Fault == "frame-timeout" ? 10001 : 1;
+                rig.Tick += rig.Fault == "frame-timeout" ? 10001
+                    : rig.Created.Count == 1 && _next < 3 ? rig.FirstBatchFrameTicks : 1;
                 ulong duration = rig.Drift && frameIndex >= 64 ? 120UL : 100UL;
+                if (rig.Fault == "gpu-timeout") duration = 10000000001;
                 bool slow = rig.Outlier && block.SceneId == "S3" && frameIndex == 17;
                 if (slow) duration = 10000;
                 sample = new(_next++, RendererPerfRecipe.SequenceIndex(frameIndex), start, rig.Tick, 1000,
-                    duration, 1, Value(duration, "ns"), [], [],
+                    duration, 1, Value(duration, "ns"), block.Layout == RendererPerfLayout.PerPass
+                        ? [new("device.scene.begin", 0, null, null, 0, 0, null,
+                            new(null, "ns", "CPU-only device owner", RendererPerfMetricStatus.Unsupported, "no GPU interval"), true)] : [], [],
                     ImmutableDictionary<string, RendererPerfMetric>.Empty.Add("gc.gen2.collections", Value(slow ? 1 : 0, "count")), rig.Fault == "sample-failure" ? ["known frame failed"] : []);
                 if (rig.Fault is "frame-failure" or "frame-and-drain-failure") throw new InvalidOperationException("frame failed");
             }
@@ -232,18 +240,32 @@ public sealed class RendererPerfDriverTests
                 Assert.Equal(_pending, samples.Length);
                 rig.BatchSizes.Add(samples.Length);
                 _pending = 0;
-                rig.Tick += rig.Fault == "drain-timeout" ? 10001 : rig.Fault == "unit-timeout" ? 601000 : 1;
+                _drain = _harvest = null;
+                long start = rig.Tick;
+                rig.Tick += rig.Fault == "drain-timeout" ? 10001 : rig.Fault == "unit-timeout" ? 601000
+                    : rig.Created.Count == 1 && _next == 3 ? rig.FirstDrainTicks : 1;
                 if (rig.Fault == "frame-and-drain-failure") throw new InvalidOperationException("drain failed");
+                if (rig.Fault == "second-drain" && block.Layout == RendererPerfLayout.PerPass && _next == 6)
+                    throw new InvalidOperationException("second drain failed");
+                _drain = new("batch.completionDrain", null, start, rig.Tick);
+                _harvest = new("batch.harvest", null, rig.Tick, rig.Tick);
+                if (rig.Created.Count == 1 && _next == block.MeasuredFrames) rig.Tick += rig.ColdReadbackTicks;
             }
             public RendererPerfSessionInfo ReadInfo()
             {
                 if (rig.Fault == "observation-failure" && _next > 0) throw new InvalidOperationException("observation failed");
+                if (rig.Fault == "second-observation" && block.Layout == RendererPerfLayout.PerPass && _next == 6)
+                    throw new InvalidOperationException("second observation failed");
                 return new(identity, rig.Enabled, true,
                     rig.Template.Manifest.Recipes.FirstOrDefault(r => r.SceneId == block.SceneId) is { } recipe
                         ? new(recipe, "public primitives", new string('b', 64), ImmutableDictionary<string, long>.Empty,
                             ImmutableDictionary<string, long>.Empty, ImmutableDictionary<string, RendererPerfMetric>.Empty) : null,
                     ImmutableDictionary<string, RendererPerfMetric>.Empty.Add("clock.observedMHz", Value(900, "MHz")),
                     ControlStateSha256: block.SceneId.StartsWith("control:", StringComparison.Ordinal) ? new string('b', 64) : null,
+                    Memory: rig.ObserveMemory ? new([], ImmutableDictionary<string, RendererPerfMetric>.Empty
+                        .Add("process.workingSet.bytes", Value(rig.Created.Count == 1 && _next == 3 ? 9000 : 100, "bytes"))
+                        .Add("managed.live.bytes", Value(rig.Created.Count == 1 && _next == 3 ? 6000 : 50, "bytes"))) : null,
+                    Drain: _drain, Harvest: _harvest,
                     Startup: rig.Fault == "startup-timeout" ? new(block.SceneId, new("startup.cold", null, -601000, 0), 1000,
                         ImmutableDictionary<string, RendererPerfMetric>.Empty) : null);
             }

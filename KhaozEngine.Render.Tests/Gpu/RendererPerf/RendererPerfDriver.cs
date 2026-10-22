@@ -129,6 +129,7 @@ internal static class RendererPerfDriver
                     {
                         if (recorded > first)
                         {
+                            RendererPerfSessionInfo? batchInfo = null;
                             // One drain and one harvest even for a failed or final short batch.
                             try
                             {
@@ -136,18 +137,18 @@ internal static class RendererPerfDriver
                                 finally
                                 {
                                     harvested = recorded;
-                                    try { info = session.ReadInfo(); }
+                                    try { batchInfo = session.ReadInfo(); info = batchInfo; }
                                     catch (Exception observationError)
                                     {
                                         _errors.Add(observationError.Message);
                                         Fail(observationError.Message);
                                     }
                                     _batches.Add(new($"{block.SceneId}/{block.Layout}/{block.Iteration}", first, recorded - first,
-                                        batchStart, clock.Now(), clock.Frequency, info?.Drain, info?.Harvest, info?.Telemetry ?? ImmutableDictionary<string, RendererPerfMetric>.Empty));
+                                        batchStart, clock.Now(), clock.Frequency, batchInfo?.Drain, batchInfo?.Harvest, batchInfo?.Telemetry ?? ImmutableDictionary<string, RendererPerfMetric>.Empty));
                                 }
                                 CheckFrame(batchStart, clock.Now());
                                 CheckDeadline();
-                                if (info is not null) RendererPerfAdmission.Session(identity, info);
+                                if (batchInfo is not null) RendererPerfAdmission.Session(identity, batchInfo);
                                 for (int i = first; i < recorded; i++)
                                 {
                                     var sample = samples[i];

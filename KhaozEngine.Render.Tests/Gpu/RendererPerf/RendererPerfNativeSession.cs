@@ -145,6 +145,7 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
             throw new InvalidOperationException("A batch must consume every pending frame exactly once.");
         for (int i = 0; i < samples.Length; i++)
             if (samples[i].FrameId != _consumed + i) throw new InvalidOperationException("A foreign or duplicated frame entered harvest.");
+        _drain = _harvest = null;
         long start = _clock.Now();
         _native.WaitForIdle();
         long drained = _clock.Now();

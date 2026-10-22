@@ -38,6 +38,7 @@ public sealed class DqPointGpuTests(DqPointScene fixture, ITestOutputHelper outp
                 int cell = row * 6 + face;
                 float[] dqDepthWords = solid[cell], lbsDepthWords = lbs[cell];
                 int written = dqDepthWords.Count(Written);
+                output.WriteLine($"row={row} face={face} DQ={written} LBS={lbsDepthWords.Count(Written)} dissolve={plain[cell].Count(Written)}/{complement[cell].Count(Written)}");
                 Assert.True(written > 0, $"Missing DQ face={face} row={row} actor={actor} gpu={gpu}");
                 Assert.False(dqDepthWords.SequenceEqual(lbsDepthWords));
                 Assert.Equal(0, lbsDepthWords.Count(Written));
@@ -53,7 +54,6 @@ public sealed class DqPointGpuTests(DqPointScene fixture, ITestOutputHelper outp
                 AssertDepthNear(cpu[cell], plain[cell]);
                 observedFaceMask |= 1 << face;
                 observed++;
-                output.WriteLine($"row={row} face={face} DQ={written} LBS=0 dissolve={plain[cell].Count(Written)}/{complement[cell].Count(Written)}");
             }
             Assert.False(solid.SelectMany(c => c).SequenceEqual(rest.SelectMany(c => c)));
         }
@@ -131,7 +131,9 @@ public sealed class DqPointScene : IDisposable
         DqCascadeScene.Configure(scene);
         scene.Camera.OrthoSize = 6;
         scene.Post.Quality.Shadows.Mode = ShadowMode.Off;
-        scene.Post.Quality.Shadows.PointShadows.FaceResolution = 64;
+        // At radius 10, 64 pixels coarsens the noise to 0.8 cells per metre. Some small quads then
+        // lie wholly on one side of the threshold. Use enough cells to exercise both senses on every face.
+        scene.Post.Quality.Shadows.PointShadows.FaceResolution = 256;
         scene.Post.Quality.Shadows.PointShadows.MaxShadowedLights = 2;
         scene.Post.Quality.Shadows.PointShadows.MaxDynamicLightsPerFrame = 1;
     }
@@ -194,14 +196,15 @@ public sealed class DqPointScene : IDisposable
         using (GpuRecording.Open(Device, commands, "DQ point face readback")) commands.CopyTexture(atlas, staging);
         Device.Submit(commands);
         Device.WaitForIdle();
-        var result = Enumerable.Range(0, 6).Select(_ => new float[64 * 64]).ToArray();
+        int resolution = checked((int)atlas.Width / 6);
+        var result = Enumerable.Range(0, 6).Select(_ => new float[resolution * resolution]).ToArray();
         MappedData map = Device.Map(staging, GpuMapMode.Read);
         try
         {
-            for (int y = 0; y < 64; y++)
+            for (int y = 0; y < resolution; y++)
             for (int face = 0; face < 6; face++)
-                Marshal.Copy(IntPtr.Add(map.Data, checked((row * 64 + y) * (int)map.RowPitch + face * 64 * 4)),
-                    result[face], y * 64, 64);
+                Marshal.Copy(IntPtr.Add(map.Data, checked((row * resolution + y) * (int)map.RowPitch + face * resolution * 4)),
+                    result[face], y * resolution, resolution);
         }
         finally { Device.Unmap(staging); }
         return result;

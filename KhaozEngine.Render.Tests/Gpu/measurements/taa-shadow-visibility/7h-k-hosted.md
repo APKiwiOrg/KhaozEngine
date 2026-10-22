@@ -1,8 +1,9 @@
 # Task 7h K, certified fully lit specialization
 
-**Status:** The certified-program layout fix passes all local gates on fix/taa-shadow-visibility. Final Release
-coverage has 39,742 passed, zero failed and 400 skipped. The final all-leg hosted correctness run is pending.
-Earlier rounds below preserve their historical results.
+**Status:** The certified-program layout fix passes all local gates and free hosted run 39717871617.
+Each renderer has 1841 passed, zero failed and one opt-in dump skip. Synchronization validation passes
+648 with zero failures or skips and a confirmed armed producer. Ready for orchestrator review of
+fix/taa-shadow-visibility. Earlier rounds below preserve their historical results.
 
 Source branch fix/taa-vis-lit-skip starts at 6c0382161. This record covers correctness only. No timing,
 benchmark, stress, merge, tag or release is part of the task.
@@ -630,9 +631,33 @@ warning. All final guards pass.
 | Working and staged diff checks | 0 each |
 | Capture manifest verification | 0, every artifact hash and historical source, package and capture check retained |
 
-The one final free hosted correctness dispatch will use legs all, tier push, bake false and the exact 7g.5 filter
+The one final free hosted correctness dispatch uses legs all, tier push, bake false and the exact 7g.5 filter
 plus explicit certificate, fully-lit and Vulkan binding coverage. TemporalLockReleaseProbe is already explicit.
 
 ```text
 ((FullyQualifiedName~KhaozEngine.Tests.Gpu.Temporal&FullyQualifiedName!~CostPerf)|((FullyQualifiedName~Shadow|FullyQualifiedName~Golden)&FullyQualifiedName!~Perf&FullyQualifiedName!~Bench)|FullyQualifiedName~MotionTargetLifecycleGpuTests|FullyQualifiedName~D3D11FxcValidationTests|FullyQualifiedName~TemporalLockReleaseProbe|FullyQualifiedName~TemporalVisibilityGatherGpuTests|FullyQualifiedName~TemporalVisibilityCertificateGpuTests|FullyQualifiedName~TemporalVisibilityFullyLitGpuTests|FullyQualifiedName~VulkanShaderBindingTableTests)
 ```
+
+
+### Layout fix hosted correctness
+
+The one free all-leg run is [39717871617](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39717871617),
+at pushed head a596ae23b9a0b3c091bc0531fe68d263040d2423. git rev-parse, the remote branch and the run's headSha agree.
+Attempt 1 uses the filter above. The watcher exits 0. No second correctness dispatch is started.
+
+| Leg | Job | Passed | Failed | Skipped |
+| --- | --- | ---: | ---: | ---: |
+| Hosted Metal | 119624266356 | 1841 | 0 | 1 |
+| WARP | 119624266381 | 1841 | 0 | 1 |
+| lavapipe | 119624266487 | 1841 | 0 | 1 |
+| Vulkan synchronization validation, 16 assemblies | 119624266362 | 648 | 0 | 0 |
+
+Each renderer's only skip is the opt-in DXBC dump. All selected GPU facts execute. Each renderer passes all
+21 certificate cases, 14 certified/check GPU cases, the lock-release GPU probe, seven Vulkan binding-table facts
+and all 129 DXBC facts. The separate Windows FXC step passes 31 cases with the opt-in dump skipped.
+Synchronization validation has the VulkanValidationLogHost producer explicitly arming KE_VULKAN_VALIDATION='sync'
+and zero warning or error severity lines. Every selected leg and its validation steps are read before closeout.
+
+The closeout changes only this record and its manifest hash. All code, shader tables, corpus and DXBC fixtures
+remain those of the tested head above. Downloaded logs are removed after reading. No timing, benchmark or stress
+workflow is dispatched, and no fact or accepted bound is weakened.

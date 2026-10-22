@@ -5,18 +5,16 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 // Mutate one wire metric without changing other samples that share its schema.
 internal static class RendererPerfRawTestJson
 {
-    internal static JsonObject Pass(JsonObject report, JsonNode expanded)
+    internal static JsonNode Pass(JsonObject report, JsonNode expanded)
     {
         var schema = new JsonObject();
         foreach (string field in new[] { "id", "occurrence", "parentId", "parentOccurrence", "beginMarker", "endMarker", "deviceOnly" })
             schema[field] = expanded[field]?.DeepClone();
-        return new JsonObject
-        {
-            ["schema"] = Intern((JsonArray)report["raw"]!["passes"]!, schema),
-            ["elapsedTicks"] = expanded["elapsedTicks"]?.DeepClone(),
-            ["duration"] = Metric(report, expanded["duration"]!)
-        };
+        var duration = Metric(report, expanded["duration"]!);
+        return new JsonArray(Intern((JsonArray)report["raw"]!["passes"]!, schema),
+            Optional(expanded["elapsedTicks"]), duration["schema"]!.DeepClone(), Optional(duration["value"]));
     }
+    static JsonArray Optional(JsonNode? value) => value is null ? new() : new(value.DeepClone());
     internal static void Unavailable(JsonObject report, JsonNode metric, string reason)
     {
         var schemas = (JsonArray)report["raw"]!["metrics"]!;

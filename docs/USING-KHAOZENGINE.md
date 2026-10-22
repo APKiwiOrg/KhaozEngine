@@ -23253,19 +23253,27 @@ records pipeline topology, compiled local sizes and texture layers while returni
 Unknown imported texture layers or pipeline metadata remain explicit incomplete metrics, never zero work.
 Requested resource bytes are creation totals, not live memory, physical traffic or residency.
 
-The internal renderer report JSON uses `raw.format = "metric-vectors/1"` under the existing
+The internal renderer report JSON uses `raw.format = "metric-vectors/2"` under the existing
 `khaozengine.renderer-perf-report/1` schema and 256 MiB cap. `raw.metrics` stores metric name, unit,
 source, status and reason once. `raw.layouts` lists zero-based descriptor indices for each metric map.
-Maps encode `{layout, values, zeroRuns}`. Nonzero Available values retain layout order. The zero-run array
-explicitly counts positive zeros before, between and after those values. Its length is one more than
-the value count, and their expansion must match every Available slot exactly. Negative zero retains its
-sign and numeric slot. Unavailable descriptors retain their reason and reconstruct null without a slot.
+Maps encode `{layout, values, zeroRuns}`. Nonzero Available values retain layout order. The zero-run
+reference indexes a shared `raw.zeroRuns` pattern that explicitly counts positive zeros before, between
+and after those values. Each pattern's length is one more than the value count, and its expansion must
+match every Available slot exactly. Negative zero retains its sign and numeric slot. Unavailable descriptors retain their reason and reconstruct null without a slot.
 Scalar metrics encode `{schema, value}` against descriptors whose name is null. Use
 `RendererPerfReportJson.Parse` to restore the complete records before analysis. Native diagnostic typed
 scalars keep their original representation. `raw.passes` shares the pass identity, parent, marker and
-DeviceOnly metadata. Pass rows retain `{schema, elapsedTicks, duration}`. `raw.cpuSpans` shares CPU ID/parent
-metadata while each span retains `{schema, startTicks, endTicks}`. Every frame, counter, ownership flag and error
-is retained. The reader rejects malformed schemas, indices and value counts before semantic validation.
+DeviceOnly metadata. Pass rows are `[schema, elapsedTicks, durationSchema, durationValue]`. The last two
+entries retain the scalar metric reference, including nullable values and signed zero. Ticks and duration
+values use empty arrays for null or singleton numeric arrays for present values, preserving the ban
+on null array entries. Both optional arrays are bounded to one number. `raw.cpuSpans` shares
+CPU ID/parent metadata. Frame CPU intervals use `{originTicks, schemas, startOffsets, durations}` with
+equally sized columns in original segment order. The origin is the smallest Int64 start tick, or zero
+for no segments. Offsets and durations are exact UInt64 differences. Checked integer addition reconstructs
+every absolute start and end tick without rounding, including the full Int64 range. Standalone drain,
+harvest and startup spans retain `{schema, startTicks, endTicks}`. Every frame, segment, counter, ownership
+flag and error is retained. The reader rejects malformed schemas, indices, value counts, column lengths
+and overflowing ticks before semantic validation.
 Memory observations retain startup/batch identity and failure reasons. Process and managed peaks refer
 to their exact observation and original metric source instead of replacing those raw snapshots.
 

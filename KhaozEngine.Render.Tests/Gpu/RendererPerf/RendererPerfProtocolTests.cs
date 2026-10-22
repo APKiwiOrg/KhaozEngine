@@ -368,11 +368,14 @@ public sealed class RendererPerfProtocolTests
         ((JsonArray)frame["passes"]!).Add(pass);
         switch (fault)
         {
-            case "missing-ticks": pass["elapsedTicks"] = null; break;
+            case "missing-ticks": pass[1] = new JsonArray(); break;
             case "missing-period": frame["gpuPeriodNs"] = null; break;
-            case "inconsistent": pass["duration"]!["value"] = 11; break;
-            case "negative": pass["duration"]!["value"] = -1; break;
-            case "wrong-unit": RendererPerfRawTestJson.Set(json, pass["duration"]!, "unit", "ms"); break;
+            case "inconsistent": pass[3]![0] = 11; break;
+            case "negative": pass[3]![0] = -1; break;
+            case "wrong-unit":
+                var scalar = new JsonObject { ["schema"] = pass[2]!.DeepClone(), ["value"] = pass[3]![0]!.DeepClone() };
+                RendererPerfRawTestJson.Set(json, scalar, "unit", "ms");
+                pass[2] = scalar["schema"]!.DeepClone(); break;
             case "conversion-overflow": frame["gpuPeriodNs"] = 1e308; break;
         }
         if (fault is "missing-period" or "conversion-overflow")

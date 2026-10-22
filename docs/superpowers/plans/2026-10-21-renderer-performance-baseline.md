@@ -253,28 +253,36 @@ After explicit approval, authorization commit B has exactly one parent A and add
 
 Every optional metric has a value/unit/source/status/reason. Invalid or absent is null with a reason, never a zero-valued success. Warm-up is retained separately. GPU frame totals use the outer pair, never the sum of nested scope durations. Keep parent/leaf relationships and unattributed gaps so a bad partition is visible.
 
-The raw JSON requires `raw.format = "metric-vectors/1"`. `raw.metrics` is a shared table of
+The raw JSON requires `raw.format = "metric-vectors/2"`. `raw.metrics` is a shared table of
 `{name, unit, source, status, reason}` descriptors. Named entries retain their complete original metric
 key, including `logical.unattributed`, `logical.pass.<id>.<occurrence>` and `logical.total` ownership.
 Scalar metric descriptors have `name = null`, with identity supplied by their containing field.
 `raw.layouts` contains ordered arrays of zero-based descriptor indices with unique names per layout.
 Every metric dictionary is `{layout, values, zeroRuns}`. The layout includes every metric and support reason.
-The numeric `values` vector retains nonzero Available values in layout order. `zeroRuns` explicitly counts
+The numeric `values` vector retains nonzero Available values in layout order. `zeroRuns` is a zero-based
+reference to `raw.zeroRuns`, a shared table of explicit positive-zero run patterns. Each pattern counts
 the positive zeros before, between and after those values, with exactly `values.Length + 1` nonnegative
-counts. The expanded value count must exactly match the Available descriptor count. Signed negative zero
-retains its numeric slot and sign. Unavailable descriptors consume no value slot and reconstruct null.
+counts. Sharing identical patterns does not omit a count or value from any frame. The expanded value count
+must exactly match the Available descriptor count. Signed negative zero retains its numeric slot and sign. Unavailable descriptors consume no value slot and reconstruct null.
 Standalone metrics, including GPU durations and publication accounting, are `{schema, value}` references.
 `raw.passes` shares pass IDs, occurrences, parents, marker pairs and DeviceOnly ownership. Pass rows are
-`{schema, elapsedTicks, duration}`, with duration using the scalar metric reference. `raw.cpuSpans` shares
-CPU ID/parent metadata, with each span retaining `{schema, startTicks, endTicks}`. Native diagnostic typed
-scalars retain their existing Boolean/Int64/UInt64/Float64 representation.
+`[schema, elapsedTicks, durationSchema, durationValue]`, with the last two entries retaining the complete
+scalar duration reference. Ticks and duration values are empty arrays for null or singleton numeric
+arrays for present values. These optional arrays have at most one number, so null array entries remain
+forbidden. `raw.cpuSpans` shares CPU ID/parent metadata. Each frame's `cpuPhases` is
+`{originTicks, schemas, startOffsets, durations}` with equally sized columns in original segment order.
+The Int64 origin is the smallest start tick, or zero for an empty trace. Start offsets and durations are
+exact UInt64 differences, so even the full Int64 tick range round-trips without floating-point conversion.
+Each start is origin plus offset, and each end is start plus duration, with checked Int64 reconstruction.
+Standalone CPU spans, including drain and harvest, retain `{schema, startTicks, endTicks}`. Native diagnostic
+typed scalars retain their existing Boolean/Int64/UInt64/Float64 representation.
 
 All frames, CPU spans, pass occurrences, marker pairs, DeviceOnly flags and errors remain present.
 The reader expands these references before applying the existing semantic and promotion checks.
 All raw fields are required, including nullable descriptor and scalar fields. Duplicate descriptors,
-duplicate layouts, duplicate metric names, unknown fields/formats, foreign or negative indices, wrong
-value counts, nonfinite values and unsupported values with numbers are rejected. The 256 MiB byte cap
-and depth 32 stay fixed. Serialization enforces the byte cap while writing, before allocating an
+duplicate layouts or zero-run patterns, duplicate metric names, unknown fields/formats, foreign or negative
+indices, wrong value or CPU column counts, tick overflow, nonfinite values and unsupported values with
+numbers are rejected. The 256 MiB byte cap and depth 32 stay fixed. Serialization enforces the byte cap while writing, before allocating an
 oversized output. No frame sampling, counter omission, uncounted zeros or support-reason loss is allowed.
 
 `memory.observations` retains each startup and batch observation with operation, stage, first frame
@@ -283,9 +291,11 @@ retains its reason and empty values rather than reusing an earlier sample. The c
 manifest operations plus retained batches. `memory.peaks` maps each observed available process/managed
 metric to its maximum metric with the original source and observation index. Equal maxima keep the first
 observation. `memory.process` and `memory.native` are the last available snapshot, not a peak substitute.
-Task 14 readers must expand the compact schema and use observations and peak references when deriving
-memory summaries. Task 15 must integrate this raw format with its publication/sidecar readers and verify
-native artifact sizes, without changing the cap or dropping raw evidence.
+Task 14 readers must expand version 2 zero-run references, pass tuples and CPU interval columns before
+analysis, and use observations and peak references when deriving memory summaries. Task 15 must integrate
+this raw format with its publication/sidecar readers and verify native artifact sizes. Retain the full-unit
+recorder-built size fixture with populated pass counters, target/dispatch facts, CPU traces and errors.
+Do not change the cap or drop raw evidence. The synthetic size proof makes no hardware performance claim.
 
 Publication captures its completion instant from the injected unit clock after the final JSON and Markdown
 payloads have been serialized and written. Returned elapsed time and estimated cost include that work.

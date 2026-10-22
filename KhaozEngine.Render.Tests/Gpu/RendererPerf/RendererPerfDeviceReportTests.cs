@@ -39,9 +39,9 @@ public sealed class RendererPerfDeviceReportTests
             Assert.Equal(sample.Passes.ToArray(), restored.Blocks[1].Measured[0].Passes.ToArray());
             using JsonDocument json = JsonDocument.Parse(bytes);
             foreach (JsonElement pass in json.RootElement.GetProperty("blocks")[1].GetProperty("measured")[0].GetProperty("passes").EnumerateArray())
-                Assert.Equal(json.RootElement.GetProperty("raw").GetProperty("passes")[pass.GetProperty("schema").GetInt32()]
+                Assert.Equal(json.RootElement.GetProperty("raw").GetProperty("passes")[pass[0].GetInt32()]
                     .GetProperty("id").GetString()!.StartsWith("device.", StringComparison.Ordinal),
-                    json.RootElement.GetProperty("raw").GetProperty("passes")[pass.GetProperty("schema").GetInt32()].GetProperty("deviceOnly").GetBoolean());
+                    json.RootElement.GetProperty("raw").GetProperty("passes")[pass[0].GetInt32()].GetProperty("deviceOnly").GetBoolean());
         }
     }
 

@@ -18,11 +18,12 @@ internal static class RendererPerfRawJson
         uint BeginMarker, uint EndMarker, bool DeviceOnly);
     internal sealed record CpuSchema(string Id, string? ParentId);
     internal sealed record Schema(string Format, List<MetricSchema> Metrics, List<int[]> Layouts,
-        List<PassSchema> Passes, List<CpuSchema> CpuSpans);
+        List<PassSchema> Passes, List<CpuSchema> CpuSpans, List<int[]> ZeroRuns);
     sealed record PassValue(int Schema, ulong? ElapsedTicks, RendererPerfMetric Duration);
     sealed record CpuValue(int Schema, long StartTicks, long EndTicks);
     sealed record Scalar(int Schema, double? Value);
-    sealed record Vector(int Layout, ImmutableArray<double> Values, ImmutableArray<int> ZeroRuns);
+    sealed record Vector(int Layout, ImmutableArray<double> Values, int ZeroRuns);
+    sealed record CpuIntervals(long OriginTicks, int[] Schemas, ulong[] StartOffsets, ulong[] Durations);
     sealed record WireReport(string Schema, RendererPerfManifest Manifest, RendererPerfRunIdentity Identity,
         ImmutableArray<RendererPerfRecipeReport> Recipes, ImmutableArray<RendererPerfBlockReport> Blocks,
         RendererPerfMemoryReport Memory, ImmutableArray<GpuPipelineCompilerReport> Pipelines,
@@ -38,7 +39,7 @@ internal static class RendererPerfRawJson
 
     internal static byte[] Serialize(RendererPerfReport report, int maximumBytes)
     {
-        var tables = new Tables(new("metric-vectors/1", [], [], [], []));
+        var tables = new Tables(new("metric-vectors/2", [], [], [], [], []));
         var wire = new WireReport(report.Schema, report.Manifest, report.Identity, report.Recipes, report.Blocks,
             report.Memory, report.Pipelines, report.Controls, report.Assessment, report.Publication, report.Sidecars,
             report.Conditioning, report.Batches, report.Startup, tables.Schema);
@@ -70,6 +71,7 @@ internal static class RendererPerfRawJson
         internal readonly JsonSerializerOptions Options;
         readonly Dictionary<MetricSchema, int> _metrics = [];
         readonly Dictionary<string, int> _layouts = new(StringComparer.Ordinal);
+        readonly Dictionary<string, int> _zeroRuns = new(StringComparer.Ordinal);
         readonly Dictionary<ImmutableDictionary<string, RendererPerfMetric>, Vector> _encoded = new(ReferenceEqualityComparer.Instance);
         readonly Dictionary<Vector, ImmutableDictionary<string, RendererPerfMetric>> _decoded = new(new VectorComparer());
         readonly Dictionary<(int, long?), RendererPerfMetric> _scalars = [];
@@ -84,10 +86,11 @@ internal static class RendererPerfRawJson
             Options.Converters.Add(new MapConverter(this));
             Options.Converters.Add(new PassConverter(this));
             Options.Converters.Add(new CpuConverter(this));
+            Options.Converters.Add(new CpuIntervalsConverter(this));
         }
         internal void Validate()
         {
-            if (Schema.Format != "metric-vectors/1") throw new JsonException("Unknown raw metric format.");
+            if (Schema.Format != "metric-vectors/2") throw new JsonException("Unknown raw metric format.");
             if (Schema.Passes.Distinct().Count() != Schema.Passes.Count || Schema.CpuSpans.Distinct().Count() != Schema.CpuSpans.Count)
                 throw new JsonException("Duplicate pass or CPU schema.");
             foreach (var pass in Schema.Passes)
@@ -116,6 +119,10 @@ internal static class RendererPerfRawJson
                     if (metric.Name is null || !names.Add(metric.Name)) throw new JsonException("Layout requires unique named metrics.");
                 }
             }
+            var runs = new HashSet<string>(StringComparer.Ordinal);
+            foreach (int[] pattern in Schema.ZeroRuns)
+                if (pattern is null || pattern.Length == 0 || pattern.Any(n => n < 0) || !runs.Add(string.Join(',', pattern)))
+                    throw new JsonException("Empty, negative or duplicate zero-run pattern.");
         }
         MetricSchema Get(int id) => (uint)id < (uint)Schema.Metrics.Count ? Schema.Metrics[id]
             : throw new JsonException("Metric schema reference is outside the table.");
@@ -161,23 +168,28 @@ internal static class RendererPerfRawJson
             if (!_layouts.TryGetValue(key, out int layout))
             { layout = Schema.Layouts.Count; _layouts.Add(key, layout); Schema.Layouts.Add([.. ids]); }
             zeros.Add(run);
-            vector = new(layout, values.ToImmutable(), zeros.ToImmutable());
+            string pattern = string.Join(',', zeros);
+            if (!_zeroRuns.TryGetValue(pattern, out int zeroRuns))
+            { zeroRuns = Schema.ZeroRuns.Count; _zeroRuns.Add(pattern, zeroRuns); Schema.ZeroRuns.Add([.. zeros]); }
+            vector = new(layout, values.ToImmutable(), zeroRuns);
             _encoded.Add(metrics, vector);
             return vector;
         }
         internal ImmutableDictionary<string, RendererPerfMetric> Decode(Vector vector)
         {
             if ((uint)vector.Layout >= (uint)Schema.Layouts.Count) throw new JsonException("Metric layout reference is outside the table.");
+            if ((uint)vector.ZeroRuns >= (uint)Schema.ZeroRuns.Count) throw new JsonException("Zero-run reference is outside the table.");
             if (_decoded.TryGetValue(vector, out var cached)) return cached;
             int[] layout = Schema.Layouts[vector.Layout];
+            int[] runs = Schema.ZeroRuns[vector.ZeroRuns];
             long count = vector.Values.Length;
-            if (vector.ZeroRuns.Length != vector.Values.Length + 1 || vector.ZeroRuns.Any(n => n < 0)
+            if (runs.Length != vector.Values.Length + 1
                 || vector.Values.Any(n => BitConverter.DoubleToInt64Bits(n) == 0))
                 throw new JsonException("Invalid zero-run metric vector.");
-            foreach (int run in vector.ZeroRuns) count += run;
+            foreach (int run in runs) count += run;
             if (count != layout.Count(id => Get(id).Status == RendererPerfMetricStatus.Available))
                 throw new JsonException("A metric vector has missing or extra values.");
-            int offset = 0, zeros = vector.ZeroRuns[0];
+            int offset = 0, zeros = runs[0];
             var metrics = ImmutableDictionary.CreateBuilder<string, RendererPerfMetric>(StringComparer.Ordinal);
             foreach (int id in layout)
             {
@@ -186,7 +198,7 @@ internal static class RendererPerfRawJson
                 if (schema.Status == RendererPerfMetricStatus.Available)
                 {
                     if (zeros > 0) { value = 0; zeros--; }
-                    else { value = vector.Values[offset++]; zeros = vector.ZeroRuns[offset]; }
+                    else { value = vector.Values[offset++]; zeros = runs[offset]; }
                 }
                 metrics.Add(schema.Name!, Decode(id, value));
             }
@@ -205,7 +217,28 @@ internal static class RendererPerfRawJson
         {
             public override RendererPerfPassSample Read(ref Utf8JsonReader reader, Type type, JsonSerializerOptions options)
             {
-                var value = JsonSerializer.Deserialize<PassValue>(ref reader, options) ?? throw new JsonException("Null pass.");
+                if (reader.TokenType != JsonTokenType.StartArray || !reader.Read() || !reader.TryGetInt32(out int id)
+                    || !reader.Read()) throw new JsonException("Invalid pass tuple.");
+                if (reader.TokenType != JsonTokenType.StartArray || !reader.Read()) throw new JsonException("Invalid optional pass ticks.");
+                ulong? ticks = null;
+                if (reader.TokenType != JsonTokenType.EndArray)
+                {
+                    if (!reader.TryGetUInt64(out ulong number)) throw new JsonException("Invalid pass ticks.");
+                    ticks = number;
+                    if (!reader.Read() || reader.TokenType != JsonTokenType.EndArray) throw new JsonException("Extra pass ticks.");
+                }
+                if (!reader.Read() || !reader.TryGetInt32(out int durationId) || !reader.Read()) throw new JsonException("Invalid pass duration.");
+                if (reader.TokenType != JsonTokenType.StartArray || !reader.Read()) throw new JsonException("Invalid optional pass duration.");
+                double? duration = null;
+                if (reader.TokenType != JsonTokenType.EndArray)
+                {
+                    if (!reader.TryGetDouble(out double number)) throw new JsonException("Invalid pass duration value.");
+                    duration = number;
+                    if (!reader.Read() || reader.TokenType != JsonTokenType.EndArray) throw new JsonException("Extra pass duration values.");
+                }
+                if (!reader.Read() || reader.TokenType != JsonTokenType.EndArray || tables.Get(durationId).Name is not null)
+                    throw new JsonException("A pass requires one scalar duration and exactly four tuple entries.");
+                var value = new PassValue(id, ticks, tables.Decode(durationId, duration));
                 if ((uint)value.Schema >= (uint)tables.Schema.Passes.Count) throw new JsonException("Foreign pass schema.");
                 if (tables._decodedPasses.TryGetValue(value, out var cached)) return cached;
                 var schema = tables.Schema.Passes[value.Schema];
@@ -219,7 +252,51 @@ internal static class RendererPerfRawJson
                 var schema = new PassSchema(value.Id, value.Occurrence, value.ParentId, value.ParentOccurrence,
                     value.BeginMarker, value.EndMarker, value.DeviceOnly);
                 int id = Intern(schema, tables.Schema.Passes, tables._passes);
-                JsonSerializer.Serialize(writer, new PassValue(id, value.ElapsedTicks, value.Duration), options);
+                writer.WriteStartArray(); writer.WriteNumberValue(id);
+                writer.WriteStartArray();
+                if (value.ElapsedTicks is { } ticks) writer.WriteNumberValue(ticks);
+                writer.WriteEndArray();
+                writer.WriteNumberValue(tables.Register(null, value.Duration));
+                writer.WriteStartArray();
+                if (value.Duration.Value is { } number) writer.WriteNumberValue(number);
+                writer.WriteEndArray();
+                writer.WriteEndArray();
+            }
+        }
+        sealed class CpuIntervalsConverter(Tables tables) : JsonConverter<ImmutableArray<RendererPerfCpuSpan>>
+        {
+            public override ImmutableArray<RendererPerfCpuSpan> Read(ref Utf8JsonReader reader, Type type, JsonSerializerOptions options)
+            {
+                var columns = JsonSerializer.Deserialize<CpuIntervals>(ref reader, RendererPerfManifest.JsonOptions)
+                    ?? throw new JsonException("Null CPU intervals.");
+                if (columns.Schemas.Length != columns.StartOffsets.Length || columns.Schemas.Length != columns.Durations.Length)
+                    throw new JsonException("CPU interval column lengths differ.");
+                var spans = ImmutableArray.CreateBuilder<RendererPerfCpuSpan>(columns.Schemas.Length);
+                for (int i = 0; i < columns.Schemas.Length; i++)
+                {
+                    if ((uint)columns.Schemas[i] >= (uint)tables.Schema.CpuSpans.Count) throw new JsonException("Foreign CPU schema.");
+                    var schema = tables.Schema.CpuSpans[columns.Schemas[i]];
+                    Int128 start = (Int128)columns.OriginTicks + columns.StartOffsets[i];
+                    Int128 end = start + columns.Durations[i];
+                    if (start > long.MaxValue || end > long.MaxValue) throw new JsonException("CPU interval ticks overflow Int64.");
+                    spans.Add(new(schema.Id, schema.ParentId, (long)start, (long)end));
+                }
+                return spans.MoveToImmutable();
+            }
+            public override void Write(Utf8JsonWriter writer, ImmutableArray<RendererPerfCpuSpan> spans, JsonSerializerOptions options)
+            {
+                long origin = spans.IsEmpty ? 0 : spans.Min(s => s.StartTicks);
+                int[] schemas = new int[spans.Length];
+                ulong[] starts = new ulong[spans.Length], durations = new ulong[spans.Length];
+                for (int i = 0; i < spans.Length; i++)
+                {
+                    var span = spans[i];
+                    if (span.EndTicks < span.StartTicks) throw new JsonException("CPU interval ends before it starts.");
+                    schemas[i] = Intern(new CpuSchema(span.Id, span.ParentId), tables.Schema.CpuSpans, tables._cpuSpans);
+                    starts[i] = (ulong)((Int128)span.StartTicks - origin);
+                    durations[i] = (ulong)((Int128)span.EndTicks - span.StartTicks);
+                }
+                JsonSerializer.Serialize(writer, new CpuIntervals(origin, schemas, starts, durations), RendererPerfManifest.JsonOptions);
             }
         }
         sealed class CpuConverter(Tables tables) : JsonConverter<RendererPerfCpuSpan>
@@ -262,12 +339,12 @@ internal static class RendererPerfRawJson
     {
         public bool Equals(Vector? x, Vector? y) => ReferenceEquals(x, y) || x is not null && y is not null
             && x.Layout == y.Layout && x.Values.AsSpan().SequenceEqual(y.Values.AsSpan())
-            && x.ZeroRuns.AsSpan().SequenceEqual(y.ZeroRuns.AsSpan());
+            && x.ZeroRuns == y.ZeroRuns;
         public int GetHashCode(Vector value)
         {
             var hash = new HashCode(); hash.Add(value.Layout);
             foreach (double item in value.Values) hash.Add(item);
-            foreach (int run in value.ZeroRuns) hash.Add(run);
+            hash.Add(value.ZeroRuns);
             return hash.ToHashCode();
         }
     }

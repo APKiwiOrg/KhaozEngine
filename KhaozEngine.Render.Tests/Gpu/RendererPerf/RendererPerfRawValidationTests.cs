@@ -38,6 +38,9 @@ public sealed class RendererPerfRawValidationTests
     [InlineData("missing-scalar-value")]
     [InlineData("foreign-cpu")]
     [InlineData("foreign-pass")]
+    [InlineData("foreign-zero-run")]
+    [InlineData("duplicate-zero-run")]
+    [InlineData("empty-zero-run")]
     public void Malformed_compact_data_cannot_bypass_strict_validation(string fault)
     {
         var report = RendererPerfProtocolTests.CompleteReport();
@@ -53,11 +56,12 @@ public sealed class RendererPerfRawValidationTests
         var frame = json["conditioning"]![0]!;
         var vector = frame["metrics"]!.AsObject();
         var layout = layouts[vector["layout"]!.GetValue<int>()]!.AsArray();
+        var zeroRuns = raw["zeroRuns"]![vector["zeroRuns"]!.GetValue<int>()]!.AsArray();
         int first = layout[0]!.GetValue<int>();
         switch (fault)
         {
             case "missing-raw": json.Remove("raw"); break;
-            case "unknown-format": raw["format"] = "metric-vectors/2"; break;
+            case "unknown-format": raw["format"] = "metric-vectors/unknown"; break;
             case "missing-table": raw.Remove("metrics"); break;
             case "unknown-field": raw["unknown"] = true; break;
             case "duplicate-schema": schemas.Add(schemas[first]!.DeepClone()); break;
@@ -75,8 +79,11 @@ public sealed class RendererPerfRawValidationTests
             case "wrong-slot-type": vector["values"]![0] = "two"; break;
             case "missing-values": vector["values"]!.AsArray().Clear(); break;
             case "extra-values": vector["values"]!.AsArray().Add(3); break;
-            case "negative-run": vector["zeroRuns"]![0] = -1; break;
-            case "extra-zero": vector["zeroRuns"]![1] = 2; break;
+            case "negative-run": zeroRuns[0] = -1; break;
+            case "extra-zero": zeroRuns[1] = 2; break;
+            case "foreign-zero-run": vector["zeroRuns"] = int.MaxValue; break;
+            case "duplicate-zero-run": raw["zeroRuns"]!.AsArray().Add(zeroRuns.DeepClone()); break;
+            case "empty-zero-run": zeroRuns.Clear(); break;
             case "explicit-positive-zero": vector["values"]![0] = 0; break;
             case "null-value": vector["values"]![0] = null; break;
             case "unknown-vector-field": vector["extra"] = 1; break;
@@ -85,10 +92,12 @@ public sealed class RendererPerfRawValidationTests
                 frame["gpuFrame"]!["value"] = 0; break;
             case "missing-scalar-value": frame["gpuFrame"]!.AsObject().Remove("value"); break;
             case "foreign-cpu":
-                frame["cpuPhases"]!.AsArray().Add(new JsonObject { ["schema"] = int.MaxValue, ["startTicks"] = 0, ["endTicks"] = 0 }); break;
+                frame["cpuPhases"]!["schemas"]!.AsArray().Add(int.MaxValue);
+                frame["cpuPhases"]!["startOffsets"]!.AsArray().Add(0);
+                frame["cpuPhases"]!["durations"]!.AsArray().Add(0); break;
             case "foreign-pass":
-                json["blocks"]![1]!["measured"]![0]!["passes"]!.AsArray().Add(new JsonObject
-                { ["schema"] = int.MaxValue, ["elapsedTicks"] = null, ["duration"] = frame["gpuFrame"]!.DeepClone() }); break;
+                json["blocks"]![1]!["measured"]![0]!["passes"]!.AsArray().Add(new JsonArray(
+                    int.MaxValue, new JsonArray(), frame["gpuFrame"]!["schema"]!.DeepClone(), new JsonArray())); break;
         }
         string text = json.ToJsonString();
         if (fault == "duplicate-field") text = text.Insert(1, "\"raw\":{},");
@@ -113,4 +122,5 @@ public sealed class RendererPerfRawValidationTests
         Assert.Equal(metrics["missing"], restored["missing"]);
         Assert.Equal(metrics["invalid"], restored["invalid"]);
     }
+
 }

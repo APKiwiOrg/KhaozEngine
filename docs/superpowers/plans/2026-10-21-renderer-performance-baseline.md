@@ -134,10 +134,16 @@ Use stable IDs with occurrence keys for cascade, light/row/face and outline grou
 | Depth/copies | Blob-shadow depth resolve, depth/normal resolve, color resolve, opaque temporal copy, temporal depth store and transition snapshot copy |
 | Transparent/effects | Textured billboards, beams, trails, overlay meshes, silhouettes, blob and ground decals, water surface, particles, depth-tested lines and distortion field |
 | Ocean | Current column FFT, next row FFT and every mip reduction occurrence. Separate these from the water surface draw |
+| Water device uploads | CPU-only `device.water.geometry` owns buffer setup and initial flat/focused index uploads before ocean recording. CPU-only `device.water.bathymetry` owns field updates after ocean recording, including culled surfaces. Neither reserves GPU markers or claims a GPU duration |
 | Temporal/post | Temporal outline inputs, resolve, depth store, bloom bright, blur horizontal, blur vertical, composite, tonemap, sharpen, quantize, edge, FXAA, distortion apply and final blit |
 | Display/UI | Target-outline mask/grow/composite per group, fills, lines, additive/alpha billboards, transition overlay, SpriteBatch UI and scissor/texture runs, developer debug views |
 
 A command-counting recorder attributes every Draw/DrawIndexed, Dispatch, copy, resolve, clear and buffer/texture update to one leaf or the explicit unattributed bucket. It records requested pipeline/resource/framebuffer/scissor switches and redundant consecutive binds. Native emitted state calls are a separate optional counter, not inferred from requested calls. Registry completeness tests compare an all-feature command trace with assigned leaves and detect newly unowned work. Inactive feature branches get bounded correctness fixtures even if they are not added to the paid suite.
+
+Device upload leaves use the existing CPU phase callbacks and carry `DeviceOnly` in the frozen logical registry.
+They participate in exclusive counter ownership, with marker indices zero and an unsupported GPU duration even
+when the frame's GPU timestamps are valid. Skipping their GPU parent skips their logical rows too. Completeness
+checks include both device and command-list uploads and reject exclusive counters assigned to nonleaf parents.
 
 ### Upload, memory and allocation data
 

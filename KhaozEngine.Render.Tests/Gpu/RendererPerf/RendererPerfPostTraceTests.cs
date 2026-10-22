@@ -80,13 +80,20 @@ public sealed class RendererPerfPostTraceTests
         Assert.InRange(definitions.Length, 1, 255);
         var recorder = new RendererPerfRecorder(1, RendererPerfLayout.PerPass, definitions, () => 0, 1000);
         var adapter = new RendererPerfPassObserver(recorder, RendererPerfLayout.PerPass, definitions);
+        rig.Device.UploadRecorder = RendererPerfDevice.Wrap(rig.Device.Native, recorder);
         rig.Scene.PassObserver = adapter;
         recorder.BeginFrame(0, 0, 0); adapter.BeginFrame();
         rig.Frame(67, RendererPerfCommandList.Wrap(rig.Commands, recorder));
         recorder.EndFrame();
         Assert.Empty(recorder.Harvest(0).Errors);
         foreach (RendererPerfCounter counter in Enum.GetValues<RendererPerfCounter>())
-            Assert.Equal(0, recorder.ReadCounter(0, counter, owner: 0));
+        {
+            Assert.True(recorder.ReadCounter(0, counter, owner: 0) == 0, $"Unattributed {counter}");
+            for (int parent = 0; parent < definitions.Length; parent++)
+                if (definitions.Any(p => p.Parent == parent))
+                    Assert.True(recorder.ReadCounter(0, counter, owner: parent + 1) == 0,
+                        $"Exclusive {counter} on parent {definitions[parent].Id}");
+        }
     }
 
     [Fact]

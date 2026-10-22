@@ -23186,6 +23186,7 @@ The effect, copy and display owners add these keys. Every occurrence is zero unl
 | --- | --- |
 | `startup.ocean-prime` | Cold row FFT on its own preparer command list, separate from the frame layout and steady summaries |
 | `water`, `ocean` | Parents only, with skipped subtrees when inactive |
+| `device.water.geometry`, `device.water.bathymetry` | CPU-only leaf owners through `BeginCpuPhase`/`EndCpuPhase`. Geometry setup includes initial flat/focused index uploads before ocean recording. Bathymetry texture updates follow ocean recording and still run when every surface is culled |
 | `ocean.uniforms`, `.next-row`, `.column` | Shared ocean parameter upload, next frame's row FFT, current frame's column FFT, in native recording order |
 | `ocean.mip-copy`, `ocean.mips` | Base-level seed copy per array layer (occurrence is layer), then the existing whole-chain mip-generation command |
 | `water.surface` | Surface uploads, route binds and all queued water draws, after FFT work |
@@ -23206,6 +23207,9 @@ per-level duration or extra copy, barrier or framebuffer bind. UI stays a harnes
 existing SpriteBatch calls, including their texture and scissor runs. Startup prime callbacks name their own
 command list. A frame-layout observer must not put those markers in a steady-frame pool.
 `cpu.water.prepare` covers the preparer CPU phase, including an actual cold prime wait when needed.
+Device upload scopes do not bracket the frame command list's GPU work. They reserve no GPU markers and
+publish an unsupported GPU duration with null ticks, including when valid frame timestamps are available.
+Their logical counters remain exclusive leaf work, and skipping the water parent also skips these owners.
 
 All other occurrences are zero. Directional recording visits rigid/CPU work for all cascades, then foliage
 for all cascades, then GPU skinning for all cascades. These are separate measured segments rather than one
@@ -23235,7 +23239,9 @@ The internal renderer adapter is
 [`RendererPerfRecorder`](../KhaozEngine.Render.Tests/Gpu/RendererPerf/RendererPerfRecorder.cs), with
 `RendererPerfDevice` and `RendererPerfCommandList` forwarding the native seam. Construct the recorder,
 fixed pass definitions, sample storage, CPU-span capacity and resource metadata capacity before warming.
-Pass definitions freeze IDs, occurrences, parents and increasing reserved marker pairs. The device factory
+Pass definitions freeze IDs, occurrences, parents and increasing reserved marker pairs for GPU intervals.
+The `DeviceOnly` definitions for `device.*` CPU phases have marker indices zero and no GPU interval. They own
+device operations through those existing CPU callbacks. The device factory
 records pipeline topology, compiled local sizes and texture layers while returning native resource handles.
 Unknown imported texture layers or pipeline metadata remain explicit incomplete metrics, never zero work.
 Requested resource bytes are creation totals, not live memory, physical traffic or residency.
@@ -23248,7 +23254,8 @@ reserved marker in a skipped subtree and retains `NotExecuted`. A total-only lay
 ignores pass callbacks and publishes no pass intervals. Missing, foreign or unexpected occurrences and
 fixed-capacity exhaustion invalidate the trace without expanding its storage.
 
-Logical counters partition into the deepest active pass or the explicit `unattributed` owner. Parents do
+Logical counters partition into the deepest active GPU pass or CPU-only device leaf, or the explicit
+`unattributed` owner. Parents receive no exclusive commands when their work has leaf owners and do
 not receive a second copy of child work. Both device and command-list buffer uploads count once even when
 one forwards through the other. Texture uploads count the requested region payload. Whole-texture copies
 include known mip, layer and sample payloads, subresource copies use their requested rectangle, and resolves

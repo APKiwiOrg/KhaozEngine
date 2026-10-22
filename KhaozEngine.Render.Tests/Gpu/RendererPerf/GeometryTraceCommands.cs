@@ -36,6 +36,13 @@ internal sealed class GeometryTraceCommands(IGpuCommandList inner) : IGpuCommand
         foreach (byte b in bytes) hash = unchecked((hash ^ b) * 1099511628211UL);
         return hash;
     }
+    internal void DeviceBuffer<T>(IGpuBuffer buffer, uint offset, ReadOnlySpan<T> data) where T : unmanaged
+        => Note("device-buffer", buffer, x: offset, y: (uint)MemoryMarshal.AsBytes(data).Length,
+            data: Capture ? Hash(MemoryMarshal.AsBytes(data)) : 0);
+    internal void DeviceTexture(IGpuTexture texture, byte[] data, uint x, uint y, uint width, uint height,
+        uint mip = 0, uint layer = 0)
+        => Note("device-texture", texture, x: ((ulong)x << 32) | y, y: ((ulong)width << 32) | height,
+            z: mip, w: layer, data: Capture ? Hash(data) : 0);
     public void Begin() { _ids.Clear(); _pipeline = null; Note("begin"); inner.Begin(); }
     public void End() { Note("end"); inner.End(); }
     public void SetFramebuffer(IGpuFramebuffer fb) { Note("framebuffer", fb); inner.SetFramebuffer(fb); }

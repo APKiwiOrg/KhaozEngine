@@ -217,8 +217,25 @@ public sealed class RendererPerfGeometryTraceTests
             commands.Owner = _stack.TryPeek(out var parent) ? parent : null;
         }
         public void SkipPass(IGpuCommandList cl, RenderPassKey key) { Skipped.Add(key); _events.Add((key, 2)); }
-        public void BeginCpuPhase(string id) { Cpu.Add(id); _cpu.Push(id); }
-        public void EndCpuPhase(string id) => Assert.Equal(id, _cpu.Pop());
+        public void BeginCpuPhase(string id)
+        {
+            Cpu.Add(id); _cpu.Push(id);
+            if (!id.StartsWith("device.", StringComparison.Ordinal)) return;
+            var key = new RenderPassKey(id);
+            Assert.DoesNotContain(Passes, p => p.Key == key);
+            _events.Add((key, 3));
+            Passes.Add((key, _stack.TryPeek(out var parent) ? parent : null));
+            _stack.Push(key); commands.Owner = key;
+        }
+        public void EndCpuPhase(string id)
+        {
+            Assert.Equal(id, _cpu.Pop());
+            if (!id.StartsWith("device.", StringComparison.Ordinal)) return;
+            var key = new RenderPassKey(id);
+            _events.Add((key, 4));
+            Assert.Equal(key, _stack.Pop());
+            commands.Owner = _stack.TryPeek(out var parent) ? parent : null;
+        }
         public void FusedMotion(IGpuCommandList cl, RenderPassKey key) => Fused.Add(key);
         internal void AssertClosed() { Assert.Empty(_stack); Assert.Empty(_cpu); }
         internal RendererPerfPassDefinition[] Freeze()
@@ -228,17 +245,17 @@ public sealed class RendererPerfGeometryTraceTests
             uint marker = 1;
             foreach (var entry in _events)
             {
-                if (entry.Kind == 1)
+                if (entry.Kind is 1 or 4)
                 {
                     int index = stack.Pop();
-                    definitions[index] = definitions[index] with { EndMarker = marker++ };
+                    if (entry.Kind == 1) definitions[index] = definitions[index] with { EndMarker = marker++ };
                 }
                 else
                 {
                     int index = definitions.Count;
                     definitions.Add(new(entry.Key.Id, entry.Key.Occurrence, stack.TryPeek(out int parent) ? parent : -1,
-                        marker++, entry.Kind == 2 ? marker++ : 0));
-                    if (entry.Kind == 0) stack.Push(index);
+                        entry.Kind == 3 ? 0 : marker++, entry.Kind == 2 ? marker++ : 0, DeviceOnly: entry.Kind == 3));
+                    if (entry.Kind is 0 or 3) stack.Push(index);
                 }
             }
             return definitions.ToArray();

@@ -1,35 +1,18 @@
 using System;
 using System.Collections.Immutable;
 using System.IO;
-using System.Text;
 
 namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
 // A separate partial artifact survives a final write failure. Publication never starts another measurement.
-internal sealed class RendererPerfPublicationWriter(Action<RendererPerfReport, bool> write) : IRendererPerfPublication
+internal sealed class RendererPerfPublicationWriter(Action<RendererPerfReport, bool> write,
+    Action<RendererPerfReport> recordCompletion) : IRendererPerfPublication
 {
     internal static RendererPerfPublicationWriter Files(string directory)
     {
         Directory.CreateDirectory(directory);
-        return new((report, final) =>
-        {
-            byte[] json = RendererPerfReportJson.Serialize(report);
-            string stem = Path.Combine(directory, report.Manifest.UnitId + (final ? "" : ".partial"));
-            Atomic(stem + ".json", json);
-            string markdown = $"# Renderer performance unit {report.Manifest.UnitId}\n\n"
-                + $"State {report.Publication.State}. Promotion {report.Assessment.ValidForPromotion}.\n\n"
-                + $"Blocks {report.Blocks.Length}/{report.Manifest.Blocks.Length}. Controls {report.Controls.Length}/{report.Manifest.Controls.Length}.\n\n"
-                + $"{report.Publication.OriginalFailure}\n"
-                + string.Join("\n", report.Assessment.Reasons) + "\n";
-            Atomic(stem + ".md", Encoding.UTF8.GetBytes(markdown));
-        });
-    }
-
-    static void Atomic(string path, byte[] bytes)
-    {
-        string temporary = path + ".tmp";
-        File.WriteAllBytes(temporary, bytes);
-        File.Move(temporary, path, overwrite: true);
+        var files = new RendererPerfPublicationFiles(directory);
+        return new(files.Write, files.RecordCompletion);
     }
 
     public RendererPerfReport Publish(RendererPerfReport report, RendererPerfClock clock, long deadline)
@@ -58,6 +41,10 @@ internal sealed class RendererPerfPublicationWriter(Action<RendererPerfReport, b
             completed = UpdateElapsed(completed);
             finalAttempted = true;
             write(completed, true);
+            long completedAt = clock.Now();
+            if (completedAt >= deadline) throw new TimeoutException("UnitTimeout during publication.");
+            completed = UpdateElapsed(completed, completedAt);
+            recordCompletion(completed);
             CheckDeadline();
             return completed;
         }
@@ -82,10 +69,10 @@ internal sealed class RendererPerfPublicationWriter(Action<RendererPerfReport, b
         {
             if (clock.Now() >= deadline) throw new TimeoutException("UnitTimeout during publication.");
         }
-        RendererPerfReport UpdateElapsed(RendererPerfReport value)
+        RendererPerfReport UpdateElapsed(RendererPerfReport value, long? completedAt = null)
         {
             double elapsed = report.Publication.ElapsedMilliseconds.Value ?? 0;
-            elapsed += (clock.Now() - publicationStart) * 1000d / clock.Frequency;
+            elapsed += ((completedAt ?? clock.Now()) - publicationStart) * 1000d / clock.Frequency;
             return value with
             {
                 Publication = value.Publication with

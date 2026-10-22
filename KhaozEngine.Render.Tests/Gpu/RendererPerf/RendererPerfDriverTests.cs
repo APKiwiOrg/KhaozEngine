@@ -73,6 +73,8 @@ public sealed class RendererPerfDriverTests
     [InlineData("late-final")]
     [InlineData("partial-write")]
     [InlineData("frame-failure")]
+    [InlineData("completion-stamp")]
+    [InlineData("late-stamp")]
     public void Timeout_or_failed_publication_preserves_partial_report(string fault)
     {
         var rig = new DriverRig { Fault = fault };
@@ -203,6 +205,11 @@ public sealed class RendererPerfDriverTests
                 if (final && Fault == "late-final") Tick += 601000;
                 if (final && Fault == "final-write") throw new InvalidOperationException("final write failed");
                 if (!final && Fault == "partial-write" && Writes.Count == 1) throw new InvalidOperationException("partial write failed");
+            }, completed =>
+            {
+                if (Fault == "completion-stamp") throw new InvalidOperationException("completion stamp failed");
+                if (Fault == "late-stamp") Tick += 601000;
+                Writes[^1] = (completed, true);
             });
             return RendererPerfDriver.Run(Template.Manifest, identity ?? Template.Identity, (m, b, c) =>
             {

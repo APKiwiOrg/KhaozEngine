@@ -287,7 +287,15 @@ Task 14 readers must expand the compact schema and use observations and peak ref
 memory summaries. Task 15 must integrate this raw format with its publication/sidecar readers and verify
 native artifact sizes, without changing the cap or dropping raw evidence.
 
-Every pass row carries required `deviceOnly` ownership. CPU-only device rows have `deviceOnly=true`, zero
+Publication captures its completion instant from the injected unit clock after the final JSON and Markdown
+payloads have been serialized and written. Returned elapsed time and estimated cost include that work.
+The file sink reserves two fixed-width JSON numeric slots within the same byte cap, then stamps those
+completion values without serializing or copying the frame payload again. The stamp records that completed
+instant and is deadline checked. A failed or late stamp follows failed-final correction and partial recovery.
+Task 14 readers accept ordinary JSON whitespace in these slots. Task 15 retains this two-stage sink contract.
+
+Every decoded pass row carries required `deviceOnly` ownership through its raw pass schema.
+CPU-only device rows have `deviceOnly=true`, zero
 begin/end markers, null elapsed ticks and null GPU duration, with `Unsupported` when executed or
 `NotExecuted` when skipped. They survive partial and completed publication and do not prevent promotion
 when all GPU rows and the frame satisfy the existing timing requirements. GPU rows carry `deviceOnly=false`,

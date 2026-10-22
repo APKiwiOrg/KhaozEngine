@@ -10,7 +10,7 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
 internal static class RendererPerfReportJson
 {
-    const int MaximumBytes = 256 * 1024 * 1024;
+    internal const int MaximumBytes = 256 * 1024 * 1024;
 
     internal static byte[] Serialize(RendererPerfReport report)
     {

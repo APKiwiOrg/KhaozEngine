@@ -146,12 +146,14 @@ internal static class RendererPerfDriver
                                     _batches.Add(new($"{block.SceneId}/{block.Layout}/{block.Iteration}", first, recorded - first,
                                         batchStart, clock.Now(), clock.Frequency, batchInfo?.Drain, batchInfo?.Harvest, batchInfo?.Telemetry ?? ImmutableDictionary<string, RendererPerfMetric>.Empty));
                                 }
-                                CheckFrame(batchStart, clock.Now());
                                 CheckDeadline();
                                 if (batchInfo is not null) RendererPerfAdmission.Session(identity, batchInfo);
                                 for (int i = first; i < recorded; i++)
                                 {
                                     var sample = samples[i];
+                                    CheckFrame(sample.CpuStartTicks, sample.CpuEndTicks);
+                                    if (sample.GpuFrame.Value / 1000000d > manifest.Limits.FrameMilliseconds)
+                                        throw new TimeoutException("FrameTimeout in retained GPU duration.");
                                     int expectedSequence = RendererPerfRecipe.SequenceIndex(i - block.WarmupFrames);
                                     if (sample.FrameId != i || sample.SequenceIndex != expectedSequence || sample.CpuFrequency != clock.Frequency)
                                         throw new InvalidOperationException("A frame was dropped, duplicated or used the wrong deterministic sequence.");

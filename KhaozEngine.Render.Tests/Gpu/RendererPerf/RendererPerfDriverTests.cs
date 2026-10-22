@@ -68,7 +68,6 @@ public sealed class RendererPerfDriverTests
 
     [Theory]
     [InlineData("frame-timeout")]
-    [InlineData("drain-timeout")]
     [InlineData("unit-timeout")]
     [InlineData("final-write")]
     [InlineData("late-final")]
@@ -90,7 +89,7 @@ public sealed class RendererPerfDriverTests
         Assert.Equal(rig.Created.Count, rig.Disposals);
         _ = RendererPerfReportJson.Serialize(report);
         if (fault == "frame-failure") Assert.Contains("frame failed", report.Publication.OriginalFailure);
-        if (fault is "frame-timeout" or "drain-timeout") Assert.Single(rig.Created);
+        if (fault == "frame-timeout") Assert.Single(rig.Created);
     }
 
     [Theory]

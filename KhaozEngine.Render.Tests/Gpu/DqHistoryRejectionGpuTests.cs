@@ -77,11 +77,12 @@ public sealed class DqHistoryRejectionGpuTests(DqHistoryRejectionScene fixture, 
             Assert.Equal(write, scene.TemporalHistory.WriteIndex);
             Assert.Equal(retained, ReadMask(fx.Device, mask, 128, 64));
             fx.Frame((s, _) => { Queue(next, replacement, 1, 0); Queue(b, mesh, 2, 3); });
-            Assert.Same(mask, RejectionWitness.Texture(RejectionWitness.SceneMask(scene)));
-            Assert.All(ReadMask(fx.Device, mask, 128, 64), value => Assert.Equal(0, value));
+            IGpuTexture? zeroSelection = RejectionWitness.Texture(RejectionWitness.SceneMask(scene));
+            Assert.Null(zeroSelection);
+            Assert.Equal(retained, ReadMask(fx.Device, mask, 128, 64));
             foreach (TemporalResolveEntry entry in new[] { TemporalResolveEntry.Fused, TemporalResolveEntry.Split })
             {
-                float[] warm = Resolve(fx.Device, mask, entry, 1);
+                float[] warm = Resolve(fx.Device, zeroSelection, entry, 1);
                 AssertConfidence(warm, current, 1, 9f / 15f);
                 AssertConfidence(warm, other, 1, 9f / 15f);
                 float[] defaultMask = Resolve(fx.Device, null, entry, 1);

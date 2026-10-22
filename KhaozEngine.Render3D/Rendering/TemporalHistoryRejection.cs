@@ -21,7 +21,8 @@ internal sealed class TemporalHistoryRejection : IDisposable
     (MeshBounds? Current, MeshBounds? Previous)[] _regions = [];
     Vector2[] _vertices = [];
     uint[] _indices = [];
-    int _count, _vertexCount;
+    int _count, _vertexCount, _width, _height;
+    IGpuTexture? _maskTexture;
     IGpuBuffer? _vb, _ib;
     IGpuFramebuffer? _framebuffer;
     IGpuShaderSet? _shaders;
@@ -49,23 +50,33 @@ internal sealed class TemporalHistoryRejection : IDisposable
         _regions[_count++] = (currentWorld, previousWorld);
     }
 
-    // The scene binds the final texture before recording any passes, then prepares the mask before accumulation.
-    internal void EnsureSize(int width, int height)
+    void EnsureSize(int width, int height)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
-        if (Texture is { } current && current.Width == width && current.Height == height) return;
+        if (_maskTexture is { } current && current.Width == width && current.Height == height) return;
         Free(ref _framebuffer, _retired);
-        _retired.Retire(Texture);
-        Texture = _gd.Factory.CreateTexture(GpuTextureDescription.Texture2D((uint)width, (uint)height,
+        _retired.Retire(_maskTexture);
+        _maskTexture = _gd.Factory.CreateTexture(GpuTextureDescription.Texture2D((uint)width, (uint)height,
             GpuPixelFormat.R8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
-        _framebuffer = _gd.Factory.CreateFramebuffer(null, Texture);
+        _framebuffer = _gd.Factory.CreateFramebuffer(null, _maskTexture);
     }
 
     public void Prepare(IGpuCommandList commands, in FrameView current, FrameView? previous)
     {
+        Select(current, previous);
+        Record(commands);
+    }
+
+    // Select before the resolve binds inputs, but record only immediately before accumulation. An empty selection
+    // uses the resolve's persistent zero texel. The retained full-size target can contain an older active mask.
+    internal void Select(in FrameView current, FrameView? previous)
+    {
         if (_ownsRetired) _retired.BeginFrame();
-        EnsureSize(current.Width, current.Height);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(current.Width);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(current.Height);
+        _width = current.Width;
+        _height = current.Height;
         ReserveGeometry(checked(_count * 3));
         _vertexCount = 0;
         for (int i = 0; i < _count; i++)
@@ -77,15 +88,21 @@ internal sealed class TemporalHistoryRejection : IDisposable
             if (previous is { } last) Project(old, last);
         }
         DrawCalls = _vertexCount > 0 ? 1 : 0;
-        if (_vertexCount > 0)
-        {
-            EnsurePipeline();
-            commands.UpdateBuffer<Vector2>(_vb!, 0, _vertices.AsSpan(0, _vertexCount));
-            commands.UpdateBuffer<uint>(_ib!, 0, _indices.AsSpan(0, _vertexCount / 4 * 6));
-        }
+        Texture = null;
+        if (_vertexCount == 0) return;
+        EnsureSize(_width, _height);
+        Texture = _maskTexture;
+    }
+
+    internal void Record(IGpuCommandList commands)
+    {
+        if (_vertexCount == 0) return;
+        EnsurePipeline();
+        EnsureGeometry();
+        commands.UpdateBuffer<Vector2>(_vb!, 0, _vertices.AsSpan(0, _vertexCount));
+        commands.UpdateBuffer<uint>(_ib!, 0, _indices.AsSpan(0, _vertexCount / 4 * 6));
         commands.SetFramebuffer(_framebuffer!);
         commands.ClearColorTarget(0, new Color(0f, 0f, 0f, 0f));
-        if (_vertexCount == 0) return;
         commands.SetPipeline(_pipeline!);
         commands.SetVertexBuffer(0, _vb!);
         commands.SetIndexBuffer(_ib!, GpuIndexFormat.UInt32);
@@ -106,9 +123,15 @@ internal sealed class TemporalHistoryRejection : IDisposable
             _indices[at] = v; _indices[at + 1] = v + 1; _indices[at + 2] = v + 2;
             _indices[at + 3] = v; _indices[at + 4] = v + 2; _indices[at + 5] = v + 3;
         }
+    }
+
+    void EnsureGeometry()
+    {
+        uint bytes = checked((uint)_vertices.Length * 8);
+        if (_vb is not null && _vb.SizeInBytes >= bytes) return;
         Free(ref _vb, _retired);
         Free(ref _ib, _retired);
-        _vb = _gd.Factory.CreateBuffer(new GpuBufferDescription(checked((uint)vertices * 8), GpuBufferUsage.VertexBuffer));
+        _vb = _gd.Factory.CreateBuffer(new GpuBufferDescription(bytes, GpuBufferUsage.VertexBuffer));
         _ib = _gd.Factory.CreateBuffer(new GpuBufferDescription(checked((uint)_indices.Length * 4), GpuBufferUsage.IndexBuffer));
     }
 
@@ -196,7 +219,7 @@ internal sealed class TemporalHistoryRejection : IDisposable
             Include(c.X, c.W, error, ref minX, ref maxX);
             Include(c.Y, c.W, error, ref minY, ref maxY);
         }
-        int width = (int)Texture!.Width, height = (int)Texture.Height;
+        int width = _width, height = _height;
         double left = Math.Floor((minX * .5 + .5) * width) - 2;
         double right = Math.Ceiling((maxX * .5 + .5) * width) + 2;
         double bottom = Math.Floor((minY * .5 + .5) * height) - 2;
@@ -239,7 +262,7 @@ internal sealed class TemporalHistoryRejection : IDisposable
     {
         if (_ownsRetired) _retired.Dispose();
         _framebuffer?.Dispose();
-        Texture?.Dispose();
+        _maskTexture?.Dispose();
         _vb?.Dispose(); _ib?.Dispose();
         _pipeline?.Dispose(); _shaders?.Dispose();
         Texture = null;

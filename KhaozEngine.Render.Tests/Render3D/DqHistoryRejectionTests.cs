@@ -4,8 +4,10 @@ using System.Numerics;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
+using KhaozEngine.Render3D.Rendering;
 using KhaozEngine.Tests.Gpu;
 using Xunit;
 
@@ -13,6 +15,107 @@ namespace KhaozEngine.Tests.Render3D;
 
 public sealed class DqHistoryRejectionTests
 {
+    // Reintroducing an unconditional mask target or its bind/clear makes each empty-path case fail.
+    [Theory]
+    [InlineData("empty", false)]
+    [InlineData("unchanged", false)]
+    [InlineData("offscreen", false)]
+    [InlineData("after-active", false)]
+    [InlineData("empty", true)]
+    [InlineData("unchanged", true)]
+    [InlineData("offscreen", true)]
+    [InlineData("after-active", true)]
+    public void No_projected_rejection_records_no_mask_traffic(string scenario, bool split)
+    {
+        using var harness = new MotionTestScene();
+        Scene3D scene = harness.Scene;
+        RejectionWitness.Configure(scene);
+        scene.TemporalResolveEntryForTests = split ? TemporalResolveEntry.Split : TemporalResolveEntry.Fused;
+        var factory = (FakeGpuResourceFactory)harness.Device.Factory;
+        SkinnedGltfMesh mesh = DqMotionWitness.Patch(SkinningProfile.DualQuaternionRigid);
+        SkinnedMeshHandle handle = scene.LoadSkinnedMesh(mesh);
+        float x = scenario == "offscreen" ? 10000 : 0;
+        using var first = Frame();
+        Assert.Equal((0, 0, 0), (first.Binds, first.Clears, first.Draws));
+        Assert.Empty(MaskTargets()); // No previous history, even when an actor is queued.
+        if (scenario is "offscreen" or "after-active")
+        {
+            scene.UnloadSkinnedMesh(handle);
+            mesh = DqMotionWitness.Patch(SkinningProfile.LinearBlend);
+            handle = scene.LoadSkinnedMesh(mesh);
+        }
+        IGpuTexture? retained = null;
+        if (scenario == "after-active")
+        {
+            using var active = Frame();
+            Assert.Equal((1, 1, 1), (active.Binds, active.Clears, active.Draws));
+            retained = Assert.Single(MaskTargets());
+        }
+        using var empty = Frame();
+        Assert.Equal((0, 0, 0), (empty.Binds, empty.Clears, empty.Draws));
+        if (retained is null) Assert.Empty(MaskTargets());
+        else Assert.Same(retained, Assert.Single(MaskTargets()));
+        var set = Assert.IsType<FakeResourceSet>(scene.TemporalResolveRendererForTests!.CurrentSet);
+        var zero = Assert.IsType<FakeTexture>(set.Resources[^1]);
+        Assert.Equal((1u, 1u), (zero.Width, zero.Height));
+        Assert.Equal(GpuTextureUsage.Sampled, zero.Usage);
+
+        FakeTexture[] MaskTargets() => factory.Textures.Where(t => t.Format == GpuPixelFormat.R8UNorm
+            && (t.Usage & GpuTextureUsage.RenderTarget) != 0).ToArray();
+        RejectionMaskCommands Frame()
+        {
+            scene.Begin();
+            if (scenario != "empty") DqMotionWitness.Queue(scene, mesh, handle, MotionKey.From(1),
+                Matrix4x4.CreateTranslation(x, 0, 0), DqMotionWitness.Current, 0);
+            scene.PrepareFrame();
+            var commands = new RejectionMaskCommands();
+            scene.RenderInternal(commands, MotionTestScene.Width, MotionTestScene.Height, harness.Target);
+            return commands;
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Warm_zero_and_active_resolve_sets_survive_both_transitions(bool split)
+    {
+        using var device = new FakeGpuDevice();
+        var factory = (FakeGpuResourceFactory)device.Factory;
+        var history = new TemporalHistory();
+        history.EnsureTargets(device, 32, 24, 32, 24);
+        using var retired = GpuRetireQueue.Create(device);
+        using var renderer = new TemporalResolveRenderer(device);
+        renderer.SelectEntry(split ? TemporalResolveEntry.Split : TemporalResolveEntry.Fused, retired);
+        using var colour = Input(GpuPixelFormat.R16G16B16A16Float);
+        using var depth = Input(GpuPixelFormat.R32Float);
+        using var motion = Input(GpuPixelFormat.R16G16Float);
+        using var mask = Input(GpuPixelFormat.R8UNorm);
+        var inputs = new TemporalResolveInputs(colour, colour, depth, motion);
+        using var commands = RejectionWitness.Commands();
+        try
+        {
+            IGpuResourceSet zero = Bind(null);
+            IGpuResourceSet active = Bind(mask);
+            int sets = factory.ResourceSets.Count, textures = factory.Textures.Count, framebuffers = factory.Framebuffers.Count;
+            Assert.Same(zero, Bind(null));
+            Assert.Same(active, Bind(mask));
+            Assert.Same(zero, Bind(null));
+            Assert.Equal(sets, factory.ResourceSets.Count);
+            Assert.Equal(textures, factory.Textures.Count);
+            Assert.Equal(framebuffers, factory.Framebuffers.Count);
+        }
+        finally { renderer.ReleaseSets(retired); history.ReleaseTargets(retired); }
+
+        IGpuTexture Input(GpuPixelFormat format) => device.Factory.CreateTexture(
+            GpuTextureDescription.Texture2D(32, 24, format, GpuTextureUsage.Sampled));
+        IGpuResourceSet Bind(IGpuTexture? rejection)
+        {
+            renderer.BindInputs(inputs with { Rejection = rejection }, history, retired);
+            renderer.Run(commands, history);
+            return renderer.CurrentSet!;
+        }
+    }
+
     [Theory]
     [InlineData(false, false)]
     [InlineData(false, true)]
@@ -133,8 +236,11 @@ public sealed class DqHistoryRejectionTests
         mask.Clear();
         commands.Clear();
         mask.Prepare(commands, view, null);
-        Assert.Same(texture, mask.Texture);
+        Assert.Null(mask.Texture);
+        Assert.Equal(0, commands.FramebufferBinds);
+        Assert.Empty(commands.ColourClears);
         Assert.Empty(RejectionWitness.Vertices(commands));
+        mask.Add(new MeshBounds(new Vector3(-.01f, -.01f, -.3f), new Vector3(.01f, .01f, -.2f)), null);
         var resized = new FrameView(view.View, view.Projection, view.ViewProjection, view.AbsoluteViewProjection,
             view.RenderOrigin, 200, 100, 2, Vector2.Zero);
         mask.Prepare(commands, resized, null);
@@ -215,4 +321,47 @@ internal static class RejectionWitness
             _mask = null;
         }
     }
+}
+
+// Counts mask framebuffer operations even when no draw follows the clear.
+internal sealed class RejectionMaskCommands : IGpuCommandList
+{
+    bool _maskBound;
+    internal int Binds, Clears, Draws;
+    public void Begin() { }
+    public void End() { }
+    public void SetFramebuffer(IGpuFramebuffer fb)
+    {
+        _maskBound = fb is FakeFramebuffer f && f.Colour.Any(t => t.Format == GpuPixelFormat.R8UNorm);
+        if (_maskBound) Binds++;
+    }
+    public void ClearColorTarget(uint index, Color rgba) { if (_maskBound) Clears++; }
+    public void ClearDepthStencil(float depth) { }
+    public void SetPipeline(IGpuPipeline p) { }
+    public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set) { }
+    public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset) { }
+    public void SetVertexBuffer(uint slot, IGpuBuffer b) { }
+    public void SetVertexBuffer(uint slot, IGpuBuffer b, uint offsetBytes) { }
+    public void SetIndexBuffer(IGpuBuffer b, GpuIndexFormat fmt) { }
+    public void SetScissorRect(uint index, uint x, uint y, uint w, uint h) { }
+    public void SetFullScissorRects() { }
+    public void Draw(uint vertexCount, uint instanceCount, uint vertexStart, uint instanceStart) { if (_maskBound) Draws++; }
+    public void Draw(uint vertexCount) { if (_maskBound) Draws++; }
+    public void DrawIndexed(uint indexCount, uint instanceCount, uint indexStart, int vertexOffset, uint instanceStart) { if (_maskBound) Draws++; }
+    public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, in T data) where T : unmanaged { }
+    public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged { }
+    public void CopyBuffer(IGpuBuffer src, uint srcOffsetBytes, IGpuBuffer dst, uint dstOffsetBytes, uint sizeInBytes) { }
+    public void CopyTexture(IGpuTexture src, IGpuTexture dst) { }
+    public void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer, IGpuTexture dst, uint width, uint height) { }
+    public void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer,
+        IGpuTexture dst, uint dstMipLevel, uint dstArrayLayer, uint width, uint height)
+    { }
+    public void GenerateMipmaps(IGpuTexture texture) { }
+
+    public void ResolveTexture(IGpuTexture src, IGpuTexture dst) { }
+    public void SetComputePipeline(IGpuComputePipeline p) { }
+    public void SetComputeResourceSet(uint slot, IGpuResourceSet set) { }
+    public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset) { }
+    public void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ) { }
+    public void Dispose() { }
 }

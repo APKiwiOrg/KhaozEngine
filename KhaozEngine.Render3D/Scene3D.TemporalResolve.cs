@@ -224,7 +224,7 @@ namespace KhaozEngine.Render3D
         void RunTemporalResolve(IGpuCommandList cl)
         {
             if (!_resolveThisRender) return;
-            _skinningHistoryRejection!.Prepare(cl, _currentFrameView, PreviousFrameView);
+            _skinningHistoryRejection!.Record(cl);
             _frameStats.DrawCalls += _skinningHistoryRejection.DrawCalls;
             if (PixelPostProcess.TemporalOutlineRuns(Post))
             {

@@ -39,7 +39,9 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuPipeline _preparePipeline, _accumulatePipeline;
         readonly IGpuTexture?[] _targets = new IGpuTexture?[TemporalSplitFormats.Targets.Length];
         readonly IGpuFramebuffer?[] _prepareFramebuffers = new IGpuFramebuffer?[2];
-        readonly IGpuResourceSet?[] _accumulateSets = new IGpuResourceSet?[2];
+        readonly IGpuResourceSet?[] _accumulateSets = new IGpuResourceSet?[4];
+        readonly IGpuTexture?[] _rejectionTextures = new IGpuTexture?[2];
+        int _accumulateSlot;
         IGpuResourceSet? _prepareSet;
         int _targetWidth, _targetHeight;
         TemporalResolveInputs _boundInputs;
@@ -87,10 +89,10 @@ namespace KhaozEngine.Render3D.Rendering
         {
             if (TargetsAllocated && (_targetWidth != history.InternalWidth || _targetHeight != history.InternalHeight))
                 ReleaseTargets(retired);
-            if (_prepareSet is not null && TemporalResolveRenderer.SameInputs(inputs, _boundInputs)
-                && ReferenceEquals(history, _boundHistory) && history.TargetGeneration == _boundTargets)
-                return;
-            ReleaseSets(retired);
+            if (_prepareSet is null
+                || !TemporalResolveRenderer.SameInputs(inputs with { Rejection = _boundInputs.Rejection }, _boundInputs)
+                || !ReferenceEquals(history, _boundHistory) || history.TargetGeneration != _boundTargets)
+                ReleaseSets(retired);
             IGpuResourceFactory f = _gd.Factory;
             if (!TargetsAllocated)
             {
@@ -101,21 +103,33 @@ namespace KhaozEngine.Render3D.Rendering
                         (uint)_targetHeight, TemporalSplitFormats.Targets[t],
                         GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
             }
-            IGpuTexture[] targets = Array.ConvertAll(_targets, t => t!);
-            _prepareSet = f.CreateResourceSet(new GpuResourceSetDescription(_prepareLayout,
-                inputs.SceneColor, inputs.OpaqueColor, inputs.SceneDepth, inputs.Motion, clamp, uniforms));
-            for (int i = 0; i < 2; i++)
+            if (_prepareSet is null)
             {
-                // Write index i: the first pass writes this frame's depth into that previous depth.
-                var colour = new IGpuTexture[targets.Length + 1];
-                targets.CopyTo(colour, 0);
-                colour[^1] = history.PreviousDepth(i);
-                _prepareFramebuffers[i] = f.CreateFramebuffer(null, colour);
-                // Read index i: last frame's history and depths.
-                _accumulateSets[i] = f.CreateResourceSet(new GpuResourceSetDescription(_accumulateLayout,
-                    inputs.SceneColor, inputs.SceneDepth, inputs.Motion, history.PreviousDepth(i), history.Color(i),
-                    history.Confidence(i), targets[0], targets[1], targets[2], targets[3], clamp, uniforms, inputs.Rejection!));
+                _prepareSet = f.CreateResourceSet(new GpuResourceSetDescription(_prepareLayout,
+                    inputs.SceneColor, inputs.OpaqueColor, inputs.SceneDepth, inputs.Motion, clamp, uniforms));
+                for (int i = 0; i < 2; i++)
+                {
+                    // Write index i: the first pass writes this frame's depth into that previous depth.
+                    var colour = new IGpuTexture[_targets.Length + 1];
+                    for (int t = 0; t < _targets.Length; t++) colour[t] = _targets[t]!;
+                    colour[^1] = history.PreviousDepth(i);
+                    _prepareFramebuffers[i] = f.CreateFramebuffer(null, colour);
+                }
             }
+            // Match the fused resolve's two-input cache without disturbing preparation targets or framebuffers.
+            int slot = ReferenceEquals(inputs.Rejection, _rejectionTextures[0]) ? 0
+                : ReferenceEquals(inputs.Rejection, _rejectionTextures[1]) ? 1
+                : _rejectionTextures[0] is null ? 0 : _rejectionTextures[1] is null ? 1 : 1 - _accumulateSlot;
+            if (!ReferenceEquals(inputs.Rejection, _rejectionTextures[slot]))
+            {
+                for (int i = 0; i < 2; i++) Free(ref _accumulateSets[slot * 2 + i], retired);
+                _rejectionTextures[slot] = inputs.Rejection;
+            }
+            for (int i = 0; i < 2; i++)
+                _accumulateSets[slot * 2 + i] ??= f.CreateResourceSet(new GpuResourceSetDescription(_accumulateLayout,
+                    inputs.SceneColor, inputs.SceneDepth, inputs.Motion, history.PreviousDepth(i), history.Color(i),
+                    history.Confidence(i), _targets[0]!, _targets[1]!, _targets[2]!, _targets[3]!, clamp, uniforms, inputs.Rejection!));
+            _accumulateSlot = slot;
             _boundInputs = inputs;
             _boundTargets = history.TargetGeneration;
             _boundHistory = history;
@@ -139,7 +153,7 @@ namespace KhaozEngine.Render3D.Rendering
             {
                 cl.SetFramebuffer(history.ResolveFramebuffer(history.WriteIndex));
                 cl.SetPipeline(AccumulatePipeline(upscales));
-                cl.SetGraphicsResourceSet(0, _accumulateSets[history.ReadIndex]
+                cl.SetGraphicsResourceSet(0, _accumulateSets[_accumulateSlot * 2 + history.ReadIndex]
                     ?? throw new InvalidOperationException("TemporalSplitResolve.Run was called before Bind."));
                 cl.Draw(3);
             }
@@ -150,11 +164,10 @@ namespace KhaozEngine.Render3D.Rendering
         /// without one. The targets and pipelines stay.</summary>
         public void ReleaseSets(GpuRetireQueue? retired)
         {
-            for (int i = 0; i < 2; i++)
-            {
-                Free(ref _accumulateSets[i], retired);
-                Free(ref _prepareFramebuffers[i], retired);
-            }
+            for (int i = 0; i < 2; i++) Free(ref _prepareFramebuffers[i], retired);
+            for (int i = 0; i < _accumulateSets.Length; i++) Free(ref _accumulateSets[i], retired);
+            Array.Clear(_rejectionTextures);
+            _accumulateSlot = 0;
             Free(ref _prepareSet, retired);
             _boundInputs = default;
             _boundTargets = int.MinValue;

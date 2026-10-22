@@ -9,10 +9,14 @@ public sealed partial class Scene3D
     static SkinnedGltfMesh RetainSkinningSource(SkinnedGltfMesh mesh)
     {
         ArgumentNullException.ThrowIfNull(mesh);
-        if (mesh.Profile.Method == SkinningMethod.LinearBlend) return mesh;
-        // Upload and CPU execution use the same admitted source words, even if the caller edits its asset.
+        // Every profile retains one upload-time snapshot for GPU/CPU execution, bounds and history identity.
+        // Copy the retained rig too, so later caller edits cannot change pose diagnostics.
+        Skeleton? skeleton = mesh.Skeleton;
+        if (skeleton is not null)
+            skeleton = new Skeleton((int[])skeleton.ParentIndices.Clone(), (JointPose[])skeleton.RestLocal.Clone(),
+                (int[])skeleton.NodeLogicalIndex.Clone(), (int[])skeleton.JointToNode.Clone(), skeleton.NodeNames);
         return new SkinnedGltfMesh((SkinnedVertex[])mesh.Vertices.Clone(), (uint[])mesh.Indices32.Clone(),
-            (Matrix4x4[])mesh.InverseBind.Clone(), (Matrix4x4[])mesh.RestPose.Clone(), mesh.Skeleton, mesh.Profile);
+            (Matrix4x4[])mesh.InverseBind.Clone(), (Matrix4x4[])mesh.RestPose.Clone(), skeleton, mesh.Profile);
     }
 
     PreparedSkinningPose PrepareSkinning(SkinnedMeshEntry entry, ReadOnlySpan<Matrix4x4> boneMatrices,

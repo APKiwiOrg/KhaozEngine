@@ -10,8 +10,8 @@ public sealed partial class Scene3D
     /// <summary>Upload a skinned mesh to the GPU once. Returns a handle to draw it with
     /// <see cref="DrawSkinned(KhaozEngine.Render3D.SkinnedMeshHandle, System.ReadOnlySpan{System.Numerics.Matrix4x4}, System.Numerics.Matrix4x4, KhaozEngine.Primitives.Color)"/>.
     /// Untextured meshes sample the 1x1 white default, so their colour is the baked vertex colour times any
-    /// per-instance tint. DQ uploads retain a validated source snapshot and immutable profile. Draw submission
-    /// refuses DQ while its rendering consumers are unavailable.</summary>
+    /// per-instance tint. Every upload retains a private source snapshot and immutable profile. DQ sources are
+    /// validated, and draw submission refuses DQ while its rendering consumers are unavailable.</summary>
     public SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh) =>
         LoadSkinnedInternal(mesh, null, null, null, 0f);
 

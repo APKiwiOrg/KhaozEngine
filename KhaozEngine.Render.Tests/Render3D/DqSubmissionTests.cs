@@ -97,34 +97,44 @@ public sealed class DqSubmissionTests
         Assert.Equal(0, PreparedCount(scene));
     }
 
-    [Fact]
-    public void Upload_retains_profile_and_source_generation()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Upload_retains_profile_and_source_generation(bool dq)
     {
         using var device = new UploadDevice();
         using var scene = Scene(device);
-        SkinnedGltfMesh original = Mesh(SkinningProfile.DualQuaternionRigid);
+        SkinningProfile profile = dq ? SkinningProfile.DualQuaternionRigid : SkinningProfile.LinearBlend;
+        SkinnedGltfMesh original = Mesh(profile);
         SkinnedMeshHandle first = scene.LoadSkinnedMesh(original);
         object entry = Entry(scene, first);
         SkinnedGltfMesh snapshot = Assert.IsType<SkinnedGltfMesh>(Field(entry, "Source"));
-        Assert.Equal(SkinningProfile.DualQuaternionRigid, Field(entry, "Profile"));
+        Assert.Equal(profile, Field(entry, "Profile"));
         Assert.Equal(first, Field(entry, "SourceIdentity"));
         Assert.NotSame(original.Vertices, snapshot.Vertices);
+        Assert.NotSame(original.Indices32, snapshot.Indices32);
         Assert.NotSame(original.InverseBind, snapshot.InverseBind);
+        Assert.NotSame(original.RestPose, snapshot.RestPose);
         Assert.Same(snapshot.Vertices, ((IList)Field(scene, "_skinnedCpuVerts"))[first.Index]);
 
         original.Vertices[0].Position = new Vector3(99);
         original.Vertices[0].BoneIndices.W = float.NaN;
+        original.Indices32[0] = 99;
         original.InverseBind[1] = Matrix4x4.CreateScale(99);
+        original.RestPose[1] = Matrix4x4.CreateScale(99);
         Assert.Equal(Vector3.UnitX, snapshot.Vertices[0].Position);
         Assert.Equal(0f, snapshot.Vertices[0].BoneIndices.W);
+        Assert.Equal(0u, snapshot.Indices32[0]);
         Assert.Equal(Matrix4x4.Identity, snapshot.InverseBind[1]);
+        Assert.Equal(Matrix4x4.Identity, snapshot.RestPose[1]);
         IGpuBuffer vertexBuffer = Assert.IsAssignableFrom<IGpuBuffer>(Field(entry, "Vb"));
         Assert.Equal(device.Uploads[vertexBuffer], MemoryMarshal.AsBytes(snapshot.Vertices.AsSpan()).ToArray());
-        Assert.IsType<DqBoundsSource>(Field(entry, "DqBounds"));
+        if (dq) Assert.IsType<DqBoundsSource>(Field(entry, "DqBounds"));
         var store = new PreparedSkinningStore();
         PreparedSkinningPose prepared = store.Prepare(snapshot,
             [Matrix4x4.Identity, Matrix4x4.CreateTranslation(1, 2, 3)], new SkinningValidationContext("snapshot", null, 0));
-        Assert.Equal(new Vector4(.5f, 1, 1.5f, -0f), store.Dq(prepared)[1].Dual);
+        if (dq) Assert.Equal(new Vector4(.5f, 1, 1.5f, -0f), store.Dq(prepared)[1].Dual);
+        else Assert.Equal(Matrix4x4.CreateTranslation(1, 2, 3), store.Lbs(prepared)[1]);
 
         scene.UnloadSkinnedMesh(first);
         SkinnedMeshHandle second = scene.LoadSkinnedMesh(Mesh(SkinningProfile.LinearBlend));
@@ -135,14 +145,125 @@ public sealed class DqSubmissionTests
     }
 
     [Theory]
-    [InlineData(false)]
     [InlineData(true)]
-    public void Atlas_replacement_preserves_source_profile_and_generation(bool textured)
+    [InlineData(false)]
+    public void LBS_source_edits_after_upload_preserve_CPU_GPU_surface_and_temporal_bounds(bool editWeights)
+    {
+        using var device = new UploadDevice();
+        using var scene = Scene(device);
+        scene.Post.Starfield = false;
+        scene.Post.Quality.Shadows.Mode = ShadowMode.Off;
+        scene.FrustumCulling = false;
+        scene.RenderOrigin = Vector3.Zero;
+        scene.ForceTemporalForTests = true;
+        using var colour = device.Factory.CreateTexture(GpuTextureDescription.Texture2D(32, 24,
+            GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
+        using var target = device.Factory.CreateFramebuffer(null, colour);
+        var mesh = new SkinnedGltfMesh(
+            [Vertex(Vector3.UnitX), Vertex(Vector3.UnitY), Vertex(Vector3.Zero)], new ushort[] { 0, 1, 2 },
+            [Matrix4x4.Identity], [Matrix4x4.Identity]);
+        SkinnedMeshHandle handle = scene.LoadSkinnedMesh(mesh);
+        var vertexBuffer = (IGpuBuffer)Field(Entry(scene, handle), "Vb");
+        SkinnedVertex[] uploaded = MemoryMarshal.Cast<byte, SkinnedVertex>(device.Uploads[vertexBuffer]).ToArray();
+        Assert.Equal(Vector3.UnitX, uploaded[0].Position);
+        if (editWeights) mesh.Vertices[0].BoneWeights = new Vector4(100, 0, 0, 0);
+        else mesh.Vertices[0].Position = new Vector3(100, 0, 0);
+        MotionKey key = MotionKey.From(71);
+
+        scene.UseGpuSkinning = false;
+        scene.Begin();
+        scene.DrawSkinned(new SkinnedInstanceDraw(handle, Matrix4x4.Identity) { Motion = key }, [Matrix4x4.Identity]);
+        Render();
+        var cpu = (List<ModelVertex>)Field(scene, "_cpuSkinnedVerts");
+        Assert.True(scene.ActiveMotionHistory!.TryGetCurrentBounds(key, out MeshBounds firstBounds));
+        for (int i = 0; i < uploaded.Length; i++)
+        {
+            Assert.Equal(uploaded[i].Position, cpu[i].Position);
+            Contains(firstBounds, cpu[i].Position);
+        }
+
+        scene.UseGpuSkinning = true;
+        scene.Begin();
+        scene.DrawSkinned(new SkinnedInstanceDraw(handle, Matrix4x4.CreateTranslation(10, 20, 30)) { Motion = key },
+            [Matrix4x4.CreateTranslation(2, 3, 4)]);
+        Render();
+        Assert.Single((IList)Field(scene, "_gpuSkinnedDraws"));
+        Assert.Empty(cpu);
+
+        scene.UseGpuSkinning = false;
+        scene.Begin();
+        scene.DrawSkinned(new SkinnedInstanceDraw(handle, Matrix4x4.CreateTranslation(-20, 30, -40)) { Motion = key },
+            [Matrix4x4.CreateTranslation(-4, -5, -6)]);
+        Render();
+        var previous = (List<Vector3>)Field(scene, "_cpuSkinnedPrevious");
+        MotionHistory history = scene.ActiveMotionHistory!;
+        Assert.True(history.TryGetPreviousBounds(key, out MeshBounds previousBounds));
+        Assert.True(history.TryGetCurrentBounds(key, out MeshBounds currentBounds));
+        Assert.True(history.TryGetPreviousSkinned(key, out Matrix4x4 previousWorld, out ReadOnlySpan<Matrix4x4> previousPalette));
+        Assert.Equal(Matrix4x4.CreateTranslation(10, 20, 30), previousWorld);
+        Assert.Equal(Matrix4x4.CreateTranslation(2, 3, 4), previousPalette[0]);
+        for (int i = 0; i < uploaded.Length; i++)
+        {
+            // Uploaded weights are exactly (1,0,0,0). These literal offsets are the GPU Cartesian graph.
+            Vector3 previousGpu = uploaded[i].Position + new Vector3(12, 23, 34);
+            Vector3 currentGpu = uploaded[i].Position + new Vector3(-24, 25, -46);
+            Vector3 currentCpu = cpu[i].Position + new Vector3(-20, 30, -40);
+            Assert.Equal(previousGpu, previous[i]);
+            Assert.Equal(currentGpu, currentCpu);
+            Contains(previousBounds, previous[i]);
+            Contains(currentBounds, currentCpu);
+        }
+
+        static SkinnedVertex Vertex(Vector3 position) => new()
+        {
+            Position = position, Normal = Vector3.UnitZ, Color = Vector4.One, BoneWeights = Vector4.UnitX,
+        };
+        static void Contains(MeshBounds bounds, Vector3 position)
+        {
+            for (int axis = 0; axis < 3; axis++)
+            {
+                Assert.True(float.IsFinite(bounds.Min[axis]) && float.IsFinite(bounds.Max[axis]));
+                Assert.InRange(position[axis], bounds.Min[axis], bounds.Max[axis]);
+            }
+        }
+        void Render()
+        {
+            scene.PrepareFrame();
+            using var commands = new RecordingGpuCommandList(new NullGpuCommandList());
+            scene.RenderInternal(commands, 32, 24, target);
+        }
+    }
+
+    [Fact]
+    public void Upload_retains_joint_names_for_pose_diagnostics_after_caller_edits()
+    {
+        using var device = new FakeGpuDevice();
+        using var scene = Scene(device);
+        var skeleton = new Skeleton([-1, 0], [JointPose.Identity, JointPose.Identity], [0, 1], [0, 1], ["root", "tip"]);
+        SkinnedGltfMesh mesh = Mesh(SkinningProfile.DualQuaternionRigid);
+        var source = new SkinnedGltfMesh(mesh.Vertices, mesh.Indices32, mesh.InverseBind, mesh.RestPose, skeleton, mesh.Profile);
+        SkinnedMeshHandle handle = scene.LoadSkinnedMesh(source);
+        skeleton.JointToNode[1] = 0;
+        scene.Begin();
+
+        ArgumentException error = Assert.Throws<ArgumentException>(() => scene.DrawSkinned(handle,
+            [Matrix4x4.Identity, Matrix4x4.CreateScale(2)], Matrix4x4.Identity, Color.White));
+
+        Assert.Contains("Joint name 'tip'", error.Message);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void Atlas_replacement_preserves_source_profile_and_generation(bool textured, bool dq)
     {
         using var device = new FakeGpuDevice();
         using var scene = new Scene3D(device, new GpuOutputDescription(null, GpuPixelFormat.R8G8B8A8UNorm),
             new ShadowSettings { Mode = ShadowMode.ShadowMap, ShadowMapResolution = 2048, ShadowCascadeCount = 3 });
-        SkinnedGltfMesh source = Mesh(SkinningProfile.DualQuaternionRigid);
+        SkinningProfile profile = dq ? SkinningProfile.DualQuaternionRigid : SkinningProfile.LinearBlend;
+        SkinnedGltfMesh source = Mesh(profile);
         SkinnedMeshHandle handle = textured
             ? scene.LoadSkinnedMesh(source, scene.LoadTexture([255, 255, 255, 255], 1, 1))
             : scene.LoadSkinnedMesh(source);
@@ -154,12 +275,16 @@ public sealed class DqSubmissionTests
         Assert.NotSame(before, after);
         Assert.Same(Field(before, "Source"), Field(after, "Source"));
         Assert.Same(Field(before, "InverseBind"), Field(after, "InverseBind"));
-        Assert.Equal(SkinningProfile.DualQuaternionRigid, Field(after, "Profile"));
+        Assert.Equal(profile, Field(after, "Profile"));
         Assert.Equal(handle, Field(after, "SourceIdentity"));
         Assert.Equal(Field(before, "DqBounds"), Field(after, "DqBounds"));
+        Assert.Equal(Field(before, "LbsMotionBounds"), Field(after, "LbsMotionBounds"));
         scene.Begin();
-        AssertAtomic(scene, () => Assert.Throws<NotSupportedException>(() =>
-            scene.DrawSkinned(handle, source.RestPose, Matrix4x4.Identity, Color.White)));
+        if (dq)
+            AssertAtomic(scene, () => Assert.Throws<NotSupportedException>(() =>
+                scene.DrawSkinned(handle, source.RestPose, Matrix4x4.Identity, Color.White)));
+        else
+            scene.DrawSkinned(handle, source.RestPose, Matrix4x4.Identity, Color.White);
     }
 
     [Theory]

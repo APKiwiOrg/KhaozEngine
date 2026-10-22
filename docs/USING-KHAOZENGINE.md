@@ -5831,6 +5831,11 @@ limbs, cables, soft-body) without authored animation tracks. One skinned draw re
 rigid-segment draws. Skinning deforms on the GPU by default, with the CPU path one flag away
 (`Scene3D.UseGpuSkinning`, see below).
 
+`LoadSkinnedMesh` copies the vertices, indices, inverse binds, rest pose and optional skeleton once at upload.
+CPU and GPU execution and temporal bounds share that private source snapshot. Later edits to the caller's
+mesh arrays do not change the uploaded mesh. Upload a new mesh to change its source. Joint matrices supplied
+to each draw remain the per-frame animation input.
+
 ```csharp
 // Procedural: a tube weighted to a bone chain.
 SkinnedGltfMesh tube = SkinnedMeshBuilder.BuildTube(radius: 0.4f, length: 5f,

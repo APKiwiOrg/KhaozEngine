@@ -24,6 +24,19 @@ internal sealed partial class CoverageSceneFixture
     internal sealed record NativeHistoryDraw(CoverageGpuSurfaceView Surface, uint[] DrawWords, Matrix4x4 PreviousModel, int FirstCorner, int CornerCount);
     internal IGpuDevice NativeDevice => nativeContext!.GpuDevice;
 
+    internal (IGpuTexture Coverage, IGpuTexture Ordinary) BoundRejectionInputs
+    {
+        get
+        {
+            var resolve = Scene.TemporalResolveRendererForTests!;
+            var set = resolve.LastEntry == TemporalResolveEntry.Split
+                ? resolve.SplitResolveForTests!.CoverageAccumulateSetForTests(Scene.TemporalHistory.ReadIndex)
+                : resolve.CurrentSet!;
+            var resources = tracker.ResourcesOf(set).Resources;
+            return ((IGpuTexture)resources[^2], (IGpuTexture)resources[^1]);
+        }
+    }
+
     internal float[] Mask()
     {
         var texture = Scene.CoverageTransitionForTests.Texture!;

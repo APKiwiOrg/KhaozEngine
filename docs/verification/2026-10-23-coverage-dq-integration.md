@@ -100,3 +100,40 @@ The full suite ran once. Its nine failures remain recorded rather than replaced 
 The CPU-only shader emission updated only the ten shared temporal fragment identities in each SPIR-V, MSL and HLSL table. The full suite verified those tables without update flags. New shader resources retain both rejection inputs. This does not establish native output equality at the integrated revision.
 
 Root independently reviews and pushes this reconciliation, then owns its exact reviewed native correctness gate. [Vulkan validation issue 1539](https://github.com/APKiwiOrg/KhaozEngine/issues/1539) remains separate from word equality. S4.1 and all subsequent runtime, private fit, cost and release gates remain pending.
+
+## Fix round1: ordinary DQ restoration bounds
+
+Review finding J0-R0-1 identified a missing restoration consumer. The legacy coverage cache correctly excludes
+DQ, but `UncoveredCoverageBounds` treated that cache miss as uncertainty even after ordinary DQ admission had
+proved a finite posed envelope. Restoring a previously covered actor therefore rejected the entire viewport.
+
+Restoration now reads the exact submitted prepared pose and its frozen world placement. It places that ordinary
+DQ model envelope with `DualQuaternionBounds.TryBoundWorld`, then uses `CoverageSurfaceBounds.FromWorld` and the
+existing outward anchored builder. It retains the previous FINAL coverage envelope. An invalid envelope still
+fails closed. The LBS cache guard, current-pose seeding, separate rejection owners and covered-DQ refusal remain.
+No new palette conversion, precise DQ coverage graph or shader change is involved.
+
+`DqCoverageRestorationTests` covers committed LBS coverage replaced by ordinary LBS or DQ, CPU and GPU execution,
+fused and split resolve, ordinary replacement without previous coverage, an unrelated actor with retained
+history, exact current-pose seeding, bounded old/current rejection and explicit invalid-bound refusal. Existing
+near-plane transition controls remain unchanged. The initial test assertion comparing two differently
+conservative LBS boxes was corrected to check actual posed vertices. DQ retains containment of its admitted
+envelope. The resulting behavioral red has four DQ failures and thirteen passing controls.
+
+The additional native definitions are `DqCoverageUnionGpuTests.Disjoint_production_inputs_reject_the_union_and_preserve_stable_history`
+(fused and split) and `Reused_union_scene_matches_fresh_scene_at_all_three_actor_probes`. They obtain both mask
+textures from the actual production resolve bindings. Ordinary source/profile replacement and coverage's
+GPU Select transition flag must produce disjoint nonzero regions, while a third stable actor retains history.
+The definitions require complete pixel-union confidence checks, independent single-input negative controls,
+a steady zero-condition frame, and active-to-absent binding over still-dirty retained mask targets. A lazy
+shared scene and fresh-scene probe parity keep native lifetime and reuse behavior covered.
+
+These native definitions have not been executed. Root owns their exact reviewed native gate and authorization.
+The original full-suite exit 1, nine corrected failures and 110 covering passes above remain historical evidence.
+This scoped correction does not repeat or relabel that full suite. Fix-round commands and retained outcomes are
+under `/tmp/khaozengine-coverage-dq-j0-fix-r1/` and in the owning task report.
+
+Final fix-round verification passed a zero-warning Release solution build, 153 focused headless tests and all
+repository guards. Eleven native facts or definitions were skipped, including both new native definitions.
+Whole-solution format verification changed 0 of 9,220 files. Shader identities and the frozen LBS output
+manifest remain byte-identical to the starting proof head. Native execution and fresh root review remain pending.

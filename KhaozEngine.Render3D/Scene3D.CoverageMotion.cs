@@ -153,6 +153,15 @@ public sealed partial class Scene3D
                 || !CoverageHasMainFragments(item.DissolveThreshold, item.DissolveComplement)) continue;
             if (TryFrozenCoverage(item.Coverage, out var preparation)
                 && preparation.Outcome.Presentation == CoveragePresentation.Dispatched) continue;
+            var pose = _submittedSkinningPoses[i];
+            if (pose.Profile.Method == SkinningMethod.DualQuaternionRigid)
+            {
+                // Restore from this submission's admitted ordinary envelope, independently of the LBS cache.
+                if (!DualQuaternionBounds.TryBoundWorld(pose.ModelBounds, item.World, out var worldBounds))
+                    return CoverageSurfaceBounds.FromHomogeneousRender(default, _frameOrigin, CoverageIntervals.Invalid);
+                bounds.AddBounds(CoverageSurfaceBounds.FromWorld(worldBounds, _frameOrigin));
+                continue;
+            }
             if (!_coveragePaletteBounds.TryGetValue((item.Mesh.Index, item.Mesh.Generation), out var envelope))
                 return CoverageSurfaceBounds.FromHomogeneousRender(default, _frameOrigin, CoverageIntervals.Invalid);
             int count = _skinnedMeshes[item.Mesh.Index]!.InverseBind.Length;

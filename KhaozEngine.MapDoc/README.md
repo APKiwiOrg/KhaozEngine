@@ -658,7 +658,8 @@ collections and `Digest` hashes the same canonical bytes used by persistence.
 intent per inventoried roof, including unlinked shelters. `Auto` uses acquired room membership and world height.
 A link matches direct rooms and exactly its attached groups, including groups spanning instances. Unrelated groups,
 portals and parents never widen a link. Any eligible link may conceal its roof. Missing or ambiguous membership
-keeps Auto roofs visible. Always modes enumerate the inventory. `MapRoofEvaluationBuffer.Prepare(scene)` returns a
+keeps Auto roofs visible. Always modes enumerate the inventory. Roof preparation refusals expose the
+failed byte or face reservation in `Capacity`, including the active plan window and its declared allowance. `MapRoofEvaluationBuffer.Prepare(scene)` returns a
 typed result. Its admitted `Buffer.Evaluate(observer, mode)` reuses exact membership scratch and a live `Roofs` list.
 
 The four intent flags have separate consumers. Hidden roofs have `ColourVisible = false`, `CastShadows = true`,

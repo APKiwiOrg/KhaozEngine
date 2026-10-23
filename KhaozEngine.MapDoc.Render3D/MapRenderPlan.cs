@@ -68,7 +68,7 @@ public sealed class MapRenderPlan : IDisposable
             foliage = NativeMapFoliage.Prepare(scene, context, input, policy.Foliage, routing, retainSamples);
             var geometry = MapPresentationGeometry.Prepare(scene, input.Assets.Closure, terrain.CanonicalFaces);
             var roofResult = MapRoofEvaluationBuffer.Prepare(scene, admission);
-            var roofs = roofResult.Buffer ?? throw new MapSceneSourceException(roofResult.Status, roofResult.Detail ?? "Roof preparation refused.");
+            var roofs = roofResult.Buffer ?? throw new MapSceneSourceException(roofResult.Status, roofResult.Detail ?? "Roof preparation refused.", roofResult.Capacity);
             admission.ReserveBytes(checked(128L + roofs.Roofs.Count * 128L));
             var roofIndices = roofs.Roofs.Select((r, i) => (r.RoofPlacementId, i)).ToDictionary(r => r.RoofPlacementId, r => r.i, StringComparer.Ordinal);
             var stamp = new MapResourceStamp(source.ClosureHash, source.SourceGeneration, scene.Scope.Digest, policy.Digest, generation);

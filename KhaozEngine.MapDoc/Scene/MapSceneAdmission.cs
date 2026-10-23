@@ -22,8 +22,9 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
     PreparationWindow? _preparationWindow;
     internal PreparationWindow LimitPreparation(long bytes, string limitName = nameof(MapSceneLimits.MaxPreparedBytes), long reused = 0)
         => new(this, bytes, limitName, reused);
-    MapSceneCapacityException PreparationCapacity(long bytes) => _preparationWindow?.Capacity(bytes)
-        ?? new(preparationLimitName, (decimal)RetainedBytes + bytes, limits.MaxPreparedBytes);
+    MapSceneCapacityException PreparationCapacity(long bytes) => new(PreparedByteCapacity(bytes));
+    internal MapSceneCapacity PreparedByteCapacity(decimal bytes) => _preparationWindow?.Capacity(bytes)
+        ?? new(preparationLimitName, RetainedBytes + bytes, limits.MaxPreparedBytes);
     internal sealed class PreparationWindow : IDisposable
     {
         readonly MapSceneAdmission _owner;
@@ -41,13 +42,13 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
             _ceiling = _start + Math.Min(bytes, _previous - _start);
             owner._preparationCeiling = _ceiling; owner._preparationWindow = this;
         }
-        internal MapSceneCapacityException Capacity(decimal bytes) => _binding
+        internal MapSceneCapacity Capacity(decimal bytes) => _binding
             ? new(_limitName, (decimal)_owner.RetainedBytes - _start + _reused + _external + bytes, _allowance)
             : _previousWindow?.Capacity(_external + bytes)
                 ?? new(_owner.PreparationLimitName, (decimal)_owner.RetainedBytes + _external + bytes, _owner.PreparationAllowance);
         internal void ChargeExternal(long bytes)
         {
-            if (bytes < 0 || bytes > _owner.RemainingPreparedBytes) throw Capacity(bytes);
+            if (bytes < 0 || bytes > _owner.RemainingPreparedBytes) throw new MapSceneCapacityException(Capacity(bytes));
             _ceiling -= bytes; _external = _external + bytes;
             _owner._preparationCeiling = _ceiling;
         }
@@ -123,9 +124,17 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
 
     internal bool CanReservePreparation(long bytes, long faces) => bytes >= 0 && faces >= 0 &&
         bytes <= RemainingPreparedBytes && faces <= limits.MaxPreparedFaces - PreparedFaces;
-    internal bool TryReservePreparation(long bytes, long faces)
+    internal MapSceneCapacity? PreparationRefusal(long bytes, long faces)
     {
-        if (!CanReservePreparation(bytes, faces)) return false;
+        if (bytes < 0 || bytes > RemainingPreparedBytes) return PreparedByteCapacity(bytes);
+        return faces < 0 || faces > RemainingPreparedFaces
+            ? new(nameof(MapSceneLimits.MaxPreparedFaces), (decimal)PreparedFaces + faces, limits.MaxPreparedFaces) : null;
+    }
+    internal bool TryReservePreparation(long bytes, long faces) => TryReservePreparation(bytes, faces, out _);
+    internal bool TryReservePreparation(long bytes, long faces, out MapSceneCapacity? capacity)
+    {
+        capacity = PreparationRefusal(bytes, faces);
+        if (capacity is not null) return false;
         RetainedBytes += bytes;
         PreparedFaces += faces;
         return true;

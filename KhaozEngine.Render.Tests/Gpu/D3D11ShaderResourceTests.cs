@@ -15,13 +15,13 @@ public sealed class D3D11ShaderResourceTests
         byte[] bytes = [0x44, 0x58, 0x42, 0x43, 4];
         var compilation = D3D11ShaderCompilation<byte[]>.Start(() => bytes);
         int creates = 0;
-        using var resource = new D3D11ShaderResource<byte[], Native>(new DeviceLiveness(), compilation, compiled =>
+        using var resource = new D3D11DeferredResource<byte[], Native>(new DeviceLiveness(), compilation.Join, compiled =>
         {
             creates++;
             return new Native(compiled);
         });
 
-        Assert.Same(bytes, resource.Compiled);
+        Assert.Same(bytes, resource.Prepared);
         Assert.Equal(0, creates);
         var native = resource.Value;
         Assert.Same(bytes, native.Bytes);
@@ -49,7 +49,7 @@ public sealed class D3D11ShaderResourceTests
             return [7];
         });
         int creates = 0;
-        var resource = new D3D11ShaderResource<byte[], Native>(new DeviceLiveness(), compilation, compiled =>
+        var resource = new D3D11DeferredResource<byte[], Native>(new DeviceLiveness(), compilation.Join, compiled =>
         {
             creates++;
             return new Native(compiled);
@@ -80,7 +80,7 @@ public sealed class D3D11ShaderResourceTests
             return [2];
         });
         int creates = 0;
-        using var resource = new D3D11ShaderResource<byte[], Native>(liveness, compilation, compiled =>
+        using var resource = new D3D11DeferredResource<byte[], Native>(liveness, compilation.Join, compiled =>
         {
             creates++;
             return new Native(compiled);
@@ -89,7 +89,7 @@ public sealed class D3D11ShaderResourceTests
         release.Set();
         Assert.Equal(new byte[] { 2 }, compilation.Join());
         Assert.Throws<ObjectDisposedException>(() => resource.Value);
-        Assert.Throws<ObjectDisposedException>(() => resource.Compiled);
+        Assert.Throws<ObjectDisposedException>(() => resource.Prepared);
         Assert.Equal(0, creates);
     }
 
@@ -98,7 +98,7 @@ public sealed class D3D11ShaderResourceTests
     {
         var liveness = new DeviceLiveness();
         var compilation = D3D11ShaderCompilation<byte[]>.Start(() => [3]);
-        using var resource = new D3D11ShaderResource<byte[], Native>(liveness, compilation, bytes => new Native(bytes));
+        using var resource = new D3D11DeferredResource<byte[], Native>(liveness, compilation.Join, bytes => new Native(bytes));
         var native = resource.Value;
         liveness.MarkDead();
         resource.Dispose();
@@ -111,7 +111,7 @@ public sealed class D3D11ShaderResourceTests
         var failure = new ShaderValidationException("program: original FXC diagnostic");
         var compilation = D3D11ShaderCompilation<byte[]>.Start(() => throw failure);
         int creates = 0;
-        using var resource = new D3D11ShaderResource<byte[], Native>(new DeviceLiveness(), compilation, bytes =>
+        using var resource = new D3D11DeferredResource<byte[], Native>(new DeviceLiveness(), compilation.Join, bytes =>
         {
             creates++;
             return new Native(bytes);

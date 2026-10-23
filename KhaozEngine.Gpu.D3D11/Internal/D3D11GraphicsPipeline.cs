@@ -6,44 +6,12 @@ using Vortice.Direct3D11;
 
 namespace KhaozEngine.Gpu.D3D11.Internal
 {
-    /// <summary>
-    /// <see cref="IGpuPipeline"/> for the native Direct3D 11 backend. Every state object a draw needs is built
-    /// HERE, at pipeline creation, and stored: the blend state, the depth-stencil state, the rasterizer state and
-    /// the input layout, plus the topology, the per-slot vertex strides, the two shaders and the resource layouts
-    /// the register scheme flattens across.
-    /// <para>
-    /// THE INPUT LAYOUT IS WHY THIS IS THE RIGHT MOMENT. Direct3D 11 validates an input layout against a real
-    /// compiled vertex shader signature, and pipeline creation is the one point where the vertex layouts and the
-    /// vertex bytecode are both in hand.
-    /// </para>
-    /// <para>
-    /// THERE IS NO STATE CACHE, and its absence is decision X2 rather than an omission. The incumbent carried a
-    /// 328-line resource cache keyed on each state description. The Direct3D 11 runtime already returns an
-    /// existing object for an identical state description, so the cache duplicates a service the runtime provides,
-    /// and it is a lock plus four dictionaries on the creation path to do it. That is a claimed runtime behaviour
-    /// rather than one this design measured. If the claim is wrong, the cost is a few more state objects than
-    /// necessary at load time, which is an allocation count and not a correctness failure, and the measurement
-    /// that would settle it is a creation-time allocation count on WARP.
-    /// </para>
-    /// <para>
-    /// Everything here is created eagerly and disposed under the liveness gate. A pipeline creates four objects
-    /// and a draw creates none.
-    /// </para>
-    /// <para>
-    /// IT ALSO ANSWERS <see cref="ID3D11PipelineState"/>, which is how the redundancy caches of decision R6 read
-    /// it: get-only members over the state above, EXPLICITLY implemented because most of them collide by
-    /// name with the typed properties the emitter uses to make the calls. That is the split the interface
-    /// describes, with this seam answering what changed and the typed members answering with what, and it costs
-    /// no downcast per bind either way. Every member returns a stored field, because the caches compare by
-    /// reference identity and a value built per access is never equal to the last one. Two of them are the
-    /// ARGUMENTS that ride a state object (the blend factor and the stencil reference, issue #454) rather than
-    /// objects, so those are compared by value.
-    /// </para>
-    /// </summary>
+    /// <summary>A managed pipeline plan. Native shaders, state and input layout are realized at first bind.
+    /// Creation never joins CPU compiles, so constructing a batch can queue every independent program.</summary>
     [SupportedOSPlatform("windows")]
     internal sealed class D3D11GraphicsPipeline : IGpuPipeline, ID3D11PipelineState, ID3D11PipelineLayouts
     {
-        readonly DeviceLiveness _liveness;
+        readonly D3D11DeferredResource<D3D11GraphicsPipelineNative.Shaders, D3D11GraphicsPipelineNative> _resource;
 
         // The topology's D3D_PRIMITIVE_TOPOLOGY value, resolved once here rather than read from Topology per
         // access. A uint field, not a Vortice enum one: a Vortice VALUE-TYPE field anywhere in this package makes
@@ -52,13 +20,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         // for anyway, so the conversion happens once per pipeline instead of once per bind.
         readonly uint _primitiveTopology;
 
-        internal D3D11GraphicsPipeline(ID3D11Device device, DeviceLiveness liveness,
+        internal D3D11GraphicsPipeline(ID3D11Device device, DeviceLiveness liveness, D3D11CreationGate creation,
             in GpuPipelineDescription description)
         {
             ArgumentNullException.ThrowIfNull(device);
             ArgumentNullException.ThrowIfNull(liveness);
-
-            _liveness = liveness;
 
             if (description.ShaderSet is not ID3D11ShaderSet shaders)
             {
@@ -70,8 +36,6 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                     nameof(description));
             }
 
-            VertexShader = shaders.VertexShader;
-            PixelShader = shaders.PixelShader;
             TopologyKind = description.Topology;
             _primitiveTopology = TopologyValueWindows(description.Topology);
             BlendFactor = description.BlendFactor;
@@ -80,34 +44,28 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             InputElements = D3D11InputLayoutPlan.Build(description.VertexLayouts, out uint[] strides);
             VertexStrides = strides;
 
-            // DECISION S5, THE SECOND SITE. The shader path checks every module it compiles, and this checks the
-            // bytes an input layout is about to be validated against, whatever produced them: a set from the disk
-            // cache never passed through a compiler in this process, and a set built by hand never passed through
-            // the shader path at all. It costs one reflection per pipeline on the creation path, and it buys a
-            // failure that names the shader instead of a frame that renders with no colour in it.
-            RequireContiguousSignatureWindows(shaders.VertexShaderBytecode.Span);
-
-            bool multisampled = description.Outputs.SampleCount > 1;
-            BlendState = CreateBlendStateWindows(device, description);
-            DepthStencilState = CreateDepthStencilStateWindows(device, description.DepthStencil);
-            RasterizerState = CreateRasterizerStateWindows(device, description.Rasterizer, multisampled);
-            InputLayout = InputElements.Length == 0
-                ? null
-                : CreateInputLayoutWindows(device, InputElements, shaders.VertexShaderBytecode.Span);
+            // Snapshot mutable caller data now, just as eager native creation did. The element plan and
+            // resource layouts above already own their arrays. Only these blend values are read at first bind.
+            GpuPipelineDescription snapshot = description;
+            snapshot.BlendAttachments = description.BlendAttachments is null ? []
+                : (GpuBlendAttachment[])description.BlendAttachments.Clone();
+            _resource = new(liveness,
+                () => new(shaders.VertexShader, shaders.PixelShader, shaders.VertexShaderBytecode),
+                program => new(device, liveness, creation, snapshot, InputElements, program));
         }
 
         /// <summary>The compiled vertex shader.</summary>
-        internal ID3D11VertexShader VertexShader { get; }
+        internal ID3D11VertexShader VertexShader => _resource.Value.Program.Vertex;
         /// <summary>The compiled pixel shader.</summary>
-        internal ID3D11PixelShader PixelShader { get; }
+        internal ID3D11PixelShader PixelShader => _resource.Value.Program.Pixel;
         /// <summary>The blend state object.</summary>
-        internal ID3D11BlendState BlendState { get; }
+        internal ID3D11BlendState BlendState => _resource.Value.BlendState;
         /// <summary>The depth-stencil state object.</summary>
-        internal ID3D11DepthStencilState DepthStencilState { get; }
+        internal ID3D11DepthStencilState DepthStencilState => _resource.Value.DepthStencilState;
         /// <summary>The rasterizer state object.</summary>
-        internal ID3D11RasterizerState RasterizerState { get; }
+        internal ID3D11RasterizerState RasterizerState => _resource.Value.RasterizerState;
         /// <summary>The input layout, or null for a pass with no vertex buffers (the fullscreen ones).</summary>
-        internal ID3D11InputLayout? InputLayout { get; }
+        internal ID3D11InputLayout? InputLayout => _resource.Value.InputLayout;
         /// <summary>The engine-side input element plan the layout was built from, kept for diagnostics.</summary>
         internal D3D11InputElement[] InputElements { get; }
         /// <summary>Per-slot vertex stride, indexed by vertex buffer slot.</summary>
@@ -133,11 +91,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         internal D3D11ResourceLayout[] ResourceLayouts { get; }
 
         /// <summary>True once disposed, whether or not anything native was released.</summary>
-        internal bool IsDisposed { get; private set; }
+        internal bool IsDisposed => _resource.IsDisposed;
 
         // ---- ID3D11PipelineState: what the redundancy caches read (decision R6) ----
         //
-        // Seven upcasts of stored fields and nothing else. Each one hands back the SAME instance on every read,
+        // Seven upcasts of the same realized state on every read. Each one hands back the SAME instance on every read,
         // which is the whole contract: the cache asks whether what it holds is what is already bound, so a value
         // built per access would never compare equal, every bind would report a change and the cache would be
         // defeated without anything throwing or logging. Every Direct3D handle here is a reference type, so the
@@ -161,7 +119,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         /// <summary>
         /// ALWAYS ZERO, and stated here rather than left implicit. The GPU seam carries no stencil state at all,
-        /// so <see cref="CreateDepthStencilStateWindows"/> builds every object with <c>StencilEnable = false</c>
+        /// so <c>D3D11GraphicsPipelineNative</c> builds every object with <c>StencilEnable = false</c>
         /// and there is no engine value a reference could come from. It is part of the depth-stencil cache key
         /// anyway (issue #454), so the day the seam grows a stencil pass the key is already right.
         /// </summary>
@@ -185,17 +143,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// the seven.</summary>
         D3D11ResourceLayout[] ID3D11PipelineLayouts.ResourceLayouts => ResourceLayouts;
 
-        public void Dispose()
-        {
-            if (IsDisposed) return;
-            IsDisposed = true;
-            if (_liveness.IsDead) return;   // the device already freed every child object
-
-            BlendState.Dispose();
-            DepthStencilState.Dispose();
-            RasterizerState.Dispose();
-            InputLayout?.Dispose();
-        }
+        public void Dispose() => _resource.Dispose();
 
         // The one Vortice-touching body this seam added, and it is behind the package's usual boundary: NoInlining
         // with no interop type in the signature, so nothing resolves the assembly until this actually runs, which
@@ -203,99 +151,5 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         static uint TopologyValueWindows(GpuPrimitiveTopology topology) => (uint)D3D11Formats.ToTopology(topology);
 
-        // A vertex-input-free pipeline (the fullscreen passes) has nothing to reflect and nothing to hole, so the
-        // empty case passes rather than throwing: the seam builds those pipelines with no vertex layouts at all.
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        static void RequireContiguousSignatureWindows(ReadOnlySpan<byte> vertexBytecode)
-        {
-            if (vertexBytecode.IsEmpty) return;
-            const string label = "graphics pipeline vertex shader";
-            D3D11ShaderSignature.RequireContiguousUserSemantics(
-                D3D11Fxc.ReflectVertexInputs(vertexBytecode, label), label);
-        }
-
-        // IndependentBlendEnable is on, so each attachment keeps its own state. The engine's multiple-render-target
-        // model pass relies on it: one attachment blends while another is set to preserve its destination.
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        static ID3D11BlendState CreateBlendStateWindows(ID3D11Device device, in GpuPipelineDescription description)
-        {
-            GpuBlendAttachment[] attachments = description.BlendAttachments ?? Array.Empty<GpuBlendAttachment>();
-            var d = new BlendDescription { AlphaToCoverageEnable = false, IndependentBlendEnable = true };
-
-            for (int i = 0; i < attachments.Length && i < d.RenderTarget.Length; i++)
-            {
-                GpuBlendAttachment a = attachments[i];
-                d.RenderTarget[i].IsBlendEnabled = a.BlendEnabled;
-                d.RenderTarget[i].RenderTargetWriteMask = ColorWriteEnable.All;
-                d.RenderTarget[i].SourceBlend = D3D11Formats.ToBlend(a.SourceColorFactor);
-                d.RenderTarget[i].DestinationBlend = D3D11Formats.ToBlend(a.DestinationColorFactor);
-                d.RenderTarget[i].BlendOperation = D3D11Formats.ToBlendOperation(a.ColorFunction);
-                d.RenderTarget[i].SourceBlendAlpha = D3D11Formats.ToBlend(a.SourceAlphaFactor);
-                d.RenderTarget[i].DestinationBlendAlpha = D3D11Formats.ToBlend(a.DestinationAlphaFactor);
-                d.RenderTarget[i].BlendOperationAlpha = D3D11Formats.ToBlendOperation(a.AlphaFunction);
-            }
-
-            return device.CreateBlendState(d);
-        }
-
-        // No stencil anywhere in the seam, so the stencil half stays at its defaults rather than being mapped from
-        // engine values that do not exist.
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        static ID3D11DepthStencilState CreateDepthStencilStateWindows(ID3D11Device device,
-            in GpuDepthStencilState state)
-        {
-            var d = new DepthStencilDescription
-            {
-                DepthEnable = state.DepthTestEnabled,
-                DepthWriteMask = state.DepthWriteEnabled ? DepthWriteMask.All : DepthWriteMask.Zero,
-                DepthFunc = D3D11Formats.ToComparison(state.Comparison),
-                StencilEnable = false,
-            };
-            return device.CreateDepthStencilState(d);
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        static ID3D11RasterizerState CreateRasterizerStateWindows(ID3D11Device device,
-            in GpuRasterizerState state, bool multisampled)
-        {
-            var d = new RasterizerDescription
-            {
-                CullMode = D3D11Formats.ToCullMode(state.CullMode),
-                FillMode = D3D11Formats.ToFillMode(state.FillMode),
-                DepthClipEnable = state.DepthClipEnabled,
-                ScissorEnable = state.ScissorTestEnabled,
-                FrontCounterClockwise = state.FrontFace == GpuFrontFace.CounterClockwise,
-                MultisampleEnable = multisampled,
-            };
-            return device.CreateRasterizerState(d);
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        static ID3D11InputLayout CreateInputLayoutWindows(ID3D11Device device, D3D11InputElement[] elements,
-            ReadOnlySpan<byte> vertexBytecode)
-        {
-            if (vertexBytecode.IsEmpty)
-            {
-                throw new ArgumentException(
-                    "An input layout is validated against the vertex shader's compiled signature, so the vertex "
-                    + "bytecode cannot be empty.", nameof(vertexBytecode));
-            }
-
-            var native = new InputElementDescription[elements.Length];
-            for (int i = 0; i < elements.Length; i++)
-            {
-                D3D11InputElement e = elements[i];
-                native[i] = new InputElementDescription(
-                    e.SemanticName,
-                    (int)e.SemanticIndex,
-                    D3D11Formats.ToDxgiFormat(e.Format),
-                    (int)e.OffsetBytes,
-                    (int)e.Slot,
-                    e.PerInstance ? InputClassification.PerInstanceData : InputClassification.PerVertexData,
-                    (int)e.InstanceStepRate);
-            }
-
-            return device.CreateInputLayout(native, vertexBytecode.ToArray());
-        }
     }
 }

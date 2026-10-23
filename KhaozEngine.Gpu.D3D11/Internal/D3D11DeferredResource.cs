@@ -4,24 +4,27 @@ using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu.D3D11.Internal;
 
-/// <summary>Joins CPU bytecode work before realizing a native shader on its consuming caller.</summary>
-internal sealed class D3D11ShaderResource<TCompiled, TNative>(DeviceLiveness liveness,
-    D3D11ShaderCompilation<TCompiled> compilation, Func<TCompiled, TNative> create) : IDisposable
+/// <summary>Prepares managed inputs before realizing native shader or pipeline state on its consuming caller.</summary>
+internal sealed class D3D11DeferredResource<TPrepared, TNative>(DeviceLiveness liveness,
+    Func<TPrepared> prepare, Func<TPrepared, TNative> create) : IDisposable
     where TNative : class, IDisposable
 {
     readonly object gate = new();
-    Func<TCompiled, TNative>? createNative = create;
+    Func<TPrepared>? prepareInputs = prepare;
+    Func<TPrepared, TNative>? createNative = create;
     TNative? native;
     volatile bool disposed;
 
     internal bool IsDisposed => disposed;
 
-    internal TCompiled Compiled
+    internal TPrepared Prepared
     {
         get
         {
             RequireLive();
-            var compiled = compilation.Join();
+            var prepare = Volatile.Read(ref prepareInputs);
+            ObjectDisposedException.ThrowIf(prepare is null, this);
+            var compiled = prepare();
             RequireLive();
             return compiled;
         }
@@ -32,11 +35,10 @@ internal sealed class D3D11ShaderResource<TCompiled, TNative>(DeviceLiveness liv
         get
         {
             RequireLive();
-            // Pipelines resolve the shader before taking the native creation gate. Their getters then use
-            // this lock-free path, preserving that gate's leaf-lock rule.
+            // Shader joins and realization finish before pipeline creation enters the native creation gate.
             var ready = Volatile.Read(ref native);
             if (ready is not null) return ready;
-            var compiled = Compiled;
+            var compiled = Prepared;
             lock (gate)
             {
                 RequireLive();
@@ -59,6 +61,7 @@ internal sealed class D3D11ShaderResource<TCompiled, TNative>(DeviceLiveness liv
             if (liveness.IsAlive) native?.Dispose();
             native = null;
             createNative = null;
+            prepareInputs = null;
             // A pending compile owns only managed sources/cache data. Its captured failure is data too, so
             // abandoning it neither waits under teardown locks nor creates an unobserved task exception.
         }

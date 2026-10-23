@@ -30,28 +30,28 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     [SupportedOSPlatform("windows")]
     internal sealed class D3D11ComputeShader : IGpuComputeShader
     {
-        readonly D3D11ShaderResource<D3D11CompiledCompute, ID3D11ComputeShader> _resource;
+        readonly D3D11DeferredResource<D3D11CompiledCompute, ID3D11ComputeShader> _resource;
 
         internal D3D11ComputeShader(ID3D11Device device, DeviceLiveness liveness, D3D11CreationGate creation,
             D3D11ShaderCompilation<D3D11CompiledCompute> compilation)
         {
-            _resource = new(liveness, compilation, compiled => CreateWindows(device, creation, compiled));
+            _resource = new(liveness, compilation.Join, compiled => CreateWindows(device, liveness, creation, compiled));
         }
 
         /// <summary>The compiled compute module, which a compute pipeline binds.</summary>
         internal ID3D11ComputeShader Shader => _resource.Value;
 
         /// <summary>The module's DXBC bytes.</summary>
-        internal ReadOnlyMemory<byte> Bytecode => _resource.Compiled.Dxbc;
+        internal ReadOnlyMemory<byte> Bytecode => _resource.Prepared.Dxbc;
 
         /// <inheritdoc/>
-        public uint ThreadGroupSizeX => _resource.Compiled.ThreadGroupSizeX;
+        public uint ThreadGroupSizeX => _resource.Prepared.ThreadGroupSizeX;
 
         /// <inheritdoc/>
-        public uint ThreadGroupSizeY => _resource.Compiled.ThreadGroupSizeY;
+        public uint ThreadGroupSizeY => _resource.Prepared.ThreadGroupSizeY;
 
         /// <inheritdoc/>
-        public uint ThreadGroupSizeZ => _resource.Compiled.ThreadGroupSizeZ;
+        public uint ThreadGroupSizeZ => _resource.Prepared.ThreadGroupSizeZ;
 
         /// <summary>True once disposed, whether or not anything native was released.</summary>
         internal bool IsDisposed => _resource.IsDisposed;
@@ -61,10 +61,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         public void Dispose() => _resource.Dispose();
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static ID3D11ComputeShader CreateWindows(ID3D11Device device, D3D11CreationGate creation,
+        static ID3D11ComputeShader CreateWindows(ID3D11Device device, DeviceLiveness liveness, D3D11CreationGate creation,
             in D3D11CompiledCompute compiled)
         {
             using var scope = creation.Enter();
+            ObjectDisposedException.ThrowIf(liveness.IsDead, device);
             return device.CreateComputeShader(compiled.Dxbc);
         }
     }

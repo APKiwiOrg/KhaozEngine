@@ -26,12 +26,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     [SupportedOSPlatform("windows")]
     internal sealed class D3D11ShaderSet : ID3D11ShaderSet
     {
-        readonly D3D11ShaderResource<D3D11CompiledPair, Native> _resource;
+        readonly D3D11DeferredResource<D3D11CompiledPair, Native> _resource;
 
         internal D3D11ShaderSet(ID3D11Device device, DeviceLiveness liveness, D3D11CreationGate creation,
             D3D11ShaderCompilation<D3D11CompiledPair> compilation)
         {
-            _resource = new(liveness, compilation, compiled => CreateWindows(device, liveness, creation, compiled));
+            _resource = new(liveness, compilation.Join, compiled => CreateWindows(device, liveness, creation, compiled));
         }
 
         /// <inheritdoc/>
@@ -41,7 +41,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         public ID3D11PixelShader PixelShader => _resource.Value.Pixel;
 
         /// <inheritdoc/>
-        public ReadOnlyMemory<byte> VertexShaderBytecode => _resource.Compiled.VertexDxbc;
+        public ReadOnlyMemory<byte> VertexShaderBytecode => _resource.Prepared.VertexDxbc;
 
         /// <summary>True once disposed, whether or not anything native was released.</summary>
         internal bool IsDisposed => _resource.IsDisposed;
@@ -55,6 +55,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             in D3D11CompiledPair compiled)
         {
             using var scope = creation.Enter();
+            ObjectDisposedException.ThrowIf(liveness.IsDead, device);
             var vertex = device.CreateVertexShader(compiled.VertexDxbc);
             try { return new Native(vertex, device.CreatePixelShader(compiled.FragmentDxbc)); }
             catch

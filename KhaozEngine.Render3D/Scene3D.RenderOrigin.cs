@@ -257,17 +257,21 @@ namespace KhaozEngine.Render3D
         /// <para>
         /// This REBUILDS each plane, so anything the constructor takes has to be carried across by hand or it is
         /// dropped. <see cref="WaterPlane.Look"/> is the one that would fail silently: a rebased frame would just
-        /// stop honouring the per-plane look, and only while the origin happened to be active.
+        /// stop honouring the per-plane look, and only while the origin happened to be active. Optical mappings
+        /// carry their field identity and extent unchanged, with their origin reduced from the absolute queue once.
         /// </para></summary>
-        ReadOnlySpan<WaterPlane> RelativeWaterPlanes()
+        internal ReadOnlySpan<WaterPlane> RelativeWaterPlanes()
         {
             if (!_frameOriginActive) return CollectionsMarshal.AsSpan(_waterPlanes);
             _waterPlanesRelative.Clear();
             for (int i = 0; i < _waterPlanes.Count; i++)
             {
                 WaterPlane p = _waterPlanes[i];
+                WaterOpticsBinding optics = p.Optics;
+                if (optics.IsBound)
+                    optics = new WaterOpticsBinding(optics.Field, optics.Origin - _frameOrigin, optics.Size);
                 _waterPlanesRelative.Add(new WaterPlane(p.CenterX - _frameOrigin.X, p.SurfaceY - _frameOrigin.Y,
-                    p.CenterZ - _frameOrigin.Z, p.HalfExtentX, p.HalfExtentZ, p.Look));
+                    p.CenterZ - _frameOrigin.Z, p.HalfExtentX, p.HalfExtentZ, p.Look, optics));
             }
             return CollectionsMarshal.AsSpan(_waterPlanesRelative);
         }

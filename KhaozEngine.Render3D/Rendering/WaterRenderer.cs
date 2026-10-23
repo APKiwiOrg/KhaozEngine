@@ -109,6 +109,7 @@ namespace KhaozEngine.Render3D.Rendering
         // them. This is the same lifetime rule as ModelRenderer.EnsureInstanceCapacity.
         readonly GpuRetireQueue _retired;
         readonly bool _ownsRetired;
+        internal WaterOpticsResources Optics { get; }
         int _capacity;
         IGpuResourceSet? _set;
         RenderResources? _bound;
@@ -192,6 +193,7 @@ namespace KhaozEngine.Render3D.Rendering
         {
             _gd = gd;
             _retired = retired;
+            Optics = new WaterOpticsResources(gd, retired);
             _atmosphere = atmosphere ?? new AtmosphereBindings(gd);
             _ownsAtmosphere = atmosphere is null;
             _outputs = colorOutput;
@@ -709,6 +711,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         public void Dispose()
         {
+            Optics.Dispose();
             if (_ownsRetired) _retired.Dispose();
             _ocean.Dispose();
             _bathymetry.Dispose();

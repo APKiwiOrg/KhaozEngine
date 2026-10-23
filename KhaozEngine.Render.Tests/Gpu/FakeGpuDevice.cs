@@ -74,10 +74,14 @@ namespace KhaozEngine.Tests.Gpu
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged { }
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, T[] data) where T : unmanaged { }
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, in T data) where T : unmanaged { }
-        public void UpdateTexture(IGpuTexture texture, byte[] data, uint x, uint y, uint width, uint height) { }
+        /// <summary>Observes or refuses an upload at the device boundary without replacing resource ownership.</summary>
+        internal Action<IGpuTexture, byte[]>? OnTextureUpload { get; set; }
+
+        public void UpdateTexture(IGpuTexture texture, byte[] data, uint x, uint y, uint width, uint height)
+            => OnTextureUpload?.Invoke(texture, data);
         public void UpdateTexture(IGpuTexture texture, byte[] data, uint x, uint y, uint width, uint height,
             uint mipLevel, uint arrayLayer)
-        { }
+            => OnTextureUpload?.Invoke(texture, data);
 
         // Readback is the one thing a fake genuinely cannot do: there are no pixels behind it. Throwing beats
         // handing back zeros, which would let a snapshot test "pass" against a black image.

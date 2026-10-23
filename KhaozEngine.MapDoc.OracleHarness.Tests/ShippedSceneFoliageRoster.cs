@@ -29,11 +29,13 @@ internal static class ShippedSceneFoliageRoster
     {
         var result = new List<SceneSourceFoliageGeneration>();
         if (!scope.Channels.HasFlag(MapSceneChannels.Foliage)) return result;
-        var b = scope.DrawBounds; double pad = scope.MotionPaddingMetres;
+        var b = scope.DrawBounds;
+        int examined = 0;
         if (b.MinX >= b.MaxX || b.MinZ >= b.MaxZ) return result;
         foreach (var binding in inputs.FoliageBindings)
         {
             var layer = binding.Source;
+            double pad = scope.MotionPaddingMetres + ModelReach(inputs, layer);
             int x0 = Owner(layer.OriginX, layer.CellSize, Outward(b.MinX - pad, true));
             int x1 = Owner(layer.OriginX, layer.CellSize, MathF.BitDecrement(Outward(b.MaxX + pad, false)));
             int z0 = Owner(layer.OriginZ, layer.CellSize, Outward(b.MinZ - pad, true));
@@ -42,10 +44,16 @@ internal static class ShippedSceneFoliageRoster
             for (long z = z0; z <= z1; z++)
                 for (long x = x0; x <= x1; x++)
                 {
-                    ShippedFoliageManifest.Require(result.Count < 4096, "source foliage roster exceeds scope allowance");
+                    ShippedFoliageManifest.Require(examined++ < 4096, "source foliage roster exceeds scope allowance");
                     var area = new RectArea(Edge(layer.OriginX, layer.CellSize, x), Edge(layer.OriginZ, layer.CellSize, z),
                         Edge(layer.OriginX, layer.CellSize, x + 1), Edge(layer.OriginZ, layer.CellSize, z + 1));
                     if (area.MinX >= area.MaxX || area.MinZ >= area.MaxZ) continue;
+                    // Match the legacy sampler's closed raster domain, including its binary32 arithmetic.
+                    // Empty on-raster generations still belong to the roster, regardless of density or eligibility.
+                    if ((MathF.BitDecrement(area.MaxX) - layer.OriginX) / layer.CellSize < 0 ||
+                        (area.MinX - layer.OriginX) / layer.CellSize > layer.Width - 1 ||
+                        (MathF.BitDecrement(area.MaxZ) - layer.OriginZ) / layer.CellSize < 0 ||
+                        (area.MinZ - layer.OriginZ) / layer.CellSize > layer.Height - 1) continue;
                     var decisions = ShippedFoliageComparison.Expected(surface, ShippedFoliageComparison.Settings(layer), area, out _);
                     var rows = decisions.Values.Where(r => r.Decision.Instance.HasValue).Select(r => new SceneSourceFoliageRow(
                         new(new(binding.Row.NativeLayerId, binding.Row.SupportSurfaceId, r.Decision.Candidate.X, r.Decision.Candidate.Z), 1,
@@ -54,6 +62,21 @@ internal static class ShippedSceneFoliageRoster
                 }
         }
         return result;
+    }
+    static double ModelReach(ShippedSceneInputs inputs, TileFoliageLayer layer)
+    {
+        double radius = Math.Abs(layer.RootOffset);
+        foreach (var model in layer.Archetypes)
+        {
+            var extent = inputs.SourcePolicy.ModelExtents[model.Id];
+            var bounds = extent.BoundsInSourceUnits;
+            double x = Math.Max(Math.Abs(bounds.Min.X), Math.Abs(bounds.Max.X));
+            double y = Math.Max(Math.Abs(bounds.Min.Y), Math.Abs(bounds.Max.Y));
+            double z = Math.Max(Math.Abs(bounds.Min.Z), Math.Abs(bounds.Max.Z));
+            // The source extent sphere covers yaw and support-aligned orientation without any native owner input.
+            radius = Math.Max(radius, Math.Sqrt(x * x + y * y + z * z) * extent.SourceUnitsToMetres * layer.ScaleMax + Math.Abs(layer.RootOffset));
+        }
+        return radius;
     }
     static float Edge(float origin, float cell, long index) => (float)(origin + index * (32d * cell));
     static int Owner(float origin, float cell, float value)

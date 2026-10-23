@@ -712,10 +712,12 @@ selects the expected frame roster. Every expected terrain, light, water and foli
 before its complete typed frame values are compared.
 
 `LegacySceneRecorder.RecordFoliage` independently traces the source sampler for every logical
-generation intersecting the declared window and motion padding. Empty generations are retained in
-that roster. Generation multisets, complete sample key multisets and per-generation row counts are
-checked in both directions. Source matrices, ranks, model bindings and padded bounds are checked
-against observed payloads. Both explicit plants and generated models compare every original part's
+generation whose source model reach intersects the declared window and motion padding. Owners proven
+outside the legacy sampler's closed raster domain are excluded before generation. Empty generations
+inside that domain are retained regardless of density or eligibility. Selection uses only source
+layer settings and attested source model extents. Generation multisets, complete sample key multisets
+and per-generation row counts are checked in both directions. Source matrices, ranks, model bindings
+and padded bounds are checked against observed payloads. Both explicit plants and generated models compare every original part's
 albedo, normal, roughness and alpha cutoff. Hidden roof expectations retain Shadow, Sky and Physical
 while removing Colour, Selection and Camera. Camera and sky flags are checked independently.
 

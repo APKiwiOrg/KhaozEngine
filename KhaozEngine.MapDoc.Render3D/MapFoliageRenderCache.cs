@@ -27,18 +27,19 @@ public sealed class MapFoliageRenderCache
     internal MapFoliageSampleBatch Get(string layer, MapFoliageChunkKey chunk, MapFoliageLimits limits) =>
         Get(layer, chunk, limits, null, null);
     internal MapFoliageSampleBatch Get(string layer, MapFoliageChunkKey chunk, MapFoliageLimits limits,
-        MapSceneAdmission? admission, Action<long>? retainSamples)
+        MapSceneAdmission? admission, Action<long>? retainSamples, long? aggregateAllowance = null)
     {
         lock (_gate)
         {
             var key = new MapFoliageCacheKey(layer, chunk);
             if (_batches.TryGetValue(key, out var existing)) return existing;
-            var bounded = limits with { MaxQueryRetainedBytes = Math.Min(limits.MaxQueryRetainedBytes, 67_108_864 - _retainedBytes) };
+            long allowance = aggregateAllowance ?? limits.MaxQueryRetainedBytes;
+            var bounded = limits with { MaxQueryRetainedBytes = Math.Min(limits.MaxQueryRetainedBytes, Math.Max(0, allowance - _retainedBytes)) };
             long reserved = 0, retained = 0;
             if (admission is not null)
             {
                 var definition = ((IMapFoliageInputs)_context).Foliage!.Layers.Single(l => l.Id == layer);
-                reserved = MapFoliageGenerationAdmission.RetentionDemand(_context, definition, chunk, bounded);
+                reserved = MapFoliageGenerationAdmission.RetentionDemand(_context, definition, chunk, limits, _retainedBytes, allowance);
                 MapFoliageGenerationAdmission.Charge(admission, reserved);
                 bounded = bounded with { MaxQueryRetainedBytes = reserved };
             }

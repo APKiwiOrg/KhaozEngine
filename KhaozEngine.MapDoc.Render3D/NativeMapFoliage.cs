@@ -53,7 +53,8 @@ public static class NativeMapFoliage
         var cache = MapFoliageRenderCache.For(context);
         var ceilings = scene.Source.Data.Limits;
         var declared = ceilings.Preparation?.Foliage;
-        long sampleLimit = declared?.MaxQuerySamples ?? 262_144;
+        var requested = declared ?? new MapFoliageLimits();
+        long sampleLimit = requested.MaxQuerySamples;
         long count = 0;
         foreach (var layer in layers)
         {
@@ -65,7 +66,7 @@ public static class NativeMapFoliage
                 if (samples.Count >= ceilings.MaxSelectedResources) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxSelectedResources), (long)samples.Count + 1, ceilings.MaxSelectedResources);
                 long available = admission.RemainingPreparedBytes;
                 // Bound retention and support scratch by the active composite and current window, not source defaults.
-                var limits = (declared ?? new MapFoliageLimits()) with
+                var limits = requested with
                 {
                     MaxPrepareScopes = Math.Min(declared?.MaxPrepareScopes ?? int.MaxValue, admission.RemainingPatchScopes),
                     MaxFaces = checked((int)Math.Min(declared?.MaxFaces ?? int.MaxValue, Math.Min(admission.RemainingPreparedFaces, available / 2560))),
@@ -73,7 +74,7 @@ public static class NativeMapFoliage
                     MaxQueryRetainedBytes = Math.Min(declared?.MaxQueryRetainedBytes ?? long.MaxValue, available / 8),
                     ChargePreparation = bytes => MapFoliageGenerationAdmission.Charge(admission, bytes),
                 };
-                var batch = cache.Get(layer.Id, key, limits, admission, retainSamples);
+                var batch = cache.Get(layer.Id, key, limits, admission, retainSamples, requested.MaxQueryRetainedBytes);
                 count += batch.Samples.Count;
                 if (count > sampleLimit) throw new MapSceneCapacityException(nameof(MapFoliageLimits.MaxQuerySamples), count, sampleLimit);
                 samples.Add(batch);

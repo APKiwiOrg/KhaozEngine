@@ -17,7 +17,8 @@ public sealed class NativeMapFoliageContextPolicyTests
         var original = fixture.FoliageState();
         var state = fixture.StateWithLimits(new(MaxPreparedBytes: 134_217_728)
         { Preparation = new(FoliageContext: new(MaxSourceUtf8Bytes: sourceBytes)) }, original.Windows.ToArray())
-            with { Policy = original.Policy };
+            with
+        { Policy = original.Policy };
         var scheduler = new ResidencyScheduler();
         using var residency = new MapRenderResidency(state, new ResidencyDevice(),
             new(MaxQueuedBytes: 134_217_728, MaxPlanBytes: 134_217_728, MaxResidentCpuBytes: 536_870_912), scheduler);

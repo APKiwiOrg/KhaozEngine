@@ -9,21 +9,26 @@ namespace KhaozEngine.MapDoc.Render3D;
 internal static class MapFoliageGenerationAdmission
 {
     internal static long RetentionDemand(MapWindowFoliageContext context, MapFoliageLayer layer, MapFoliageChunkKey chunk,
-        MapFoliageLimits limits)
+        MapFoliageLimits limits, long retainedBytes = 0, long? aggregateAllowance = null)
     {
         var rectangle = MapFoliageDistribution.Rectangle(layer, chunk);
         var range = MapFoliageLatticeRange.Of(rectangle.MinX, rectangle.MinZ, rectangle.MaxX, rectangle.MaxZ, layer.Spacing);
         if (range.Count > limits.MaxCandidates) throw new MapSceneCapacityException(nameof(MapFoliageLimits.MaxCandidates), (decimal)range.Count, limits.MaxCandidates);
-        if (MapFoliageDistribution.KnownOffRaster(layer, rectangle)) return 256;
-        var inputs = (IMapFoliageInputs)context;
-        long sample = 0;
-        foreach (var model in layer.Models)
+        long demand = 256;
+        if (!MapFoliageDistribution.KnownOffRaster(layer, rectangle))
         {
-            var asset = inputs.Assets.GetAsset(model.AssetId);
-            foreach (var surface in inputs.DeclaredSurfaces)
-                sample = Math.Max(sample, MapFoliageRetentionBudget.ChargeSample(layer.Id, surface.Id, asset.Id, layer.Policy.Id, asset.MaterialResourceIds));
+            var inputs = (IMapFoliageInputs)context;
+            long sample = 0;
+            foreach (var model in layer.Models)
+            {
+                var asset = inputs.Assets.GetAsset(model.AssetId);
+                foreach (var surface in inputs.DeclaredSurfaces)
+                    sample = Math.Max(sample, MapFoliageRetentionBudget.ChargeSample(layer.Id, surface.Id, asset.Id, layer.Policy.Id, asset.MaterialResourceIds));
+            }
+            demand = checked(demand + Math.Min(checked((long)range.Count), Math.Min(limits.MaxSamples, limits.MaxQuerySamples)) * sample);
         }
-        long demand = checked(256 + Math.Min(checked((long)range.Count), Math.Min(limits.MaxSamples, limits.MaxQuerySamples)) * sample);
+        if (aggregateAllowance is { } allowance && demand > allowance - retainedBytes)
+            throw new MapSceneCapacityException(nameof(MapFoliageLimits.MaxQueryRetainedBytes), (decimal)retainedBytes + demand, allowance);
         if (demand > limits.MaxQueryRetainedBytes) throw new MapSceneCapacityException(nameof(MapFoliageLimits.MaxQueryRetainedBytes), demand, limits.MaxQueryRetainedBytes);
         return demand;
     }

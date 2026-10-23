@@ -155,22 +155,7 @@ public static class MapFoliageDistribution
             l.MaxMaskCandidates < 0 || l.MaxQueryChunks < 0 || l.MaxQuerySamples < 0 || l.MaxQueryRetainedBytes < 0 ||
             l.MaxDifferentialCandidates < 0 || l.MaxChangeRows < 0 || l.MaxComparisonPreparedChunks < 0 || l.MaxComparisonRetainedBytes < 0)
             throw new ArgumentOutOfRangeException(nameof(requested));
-        return l with
-        {
-            MaxCandidates = Math.Min(l.MaxCandidates, 4_000_000),
-            MaxSamples = Math.Min(l.MaxSamples, 262_144),
-            MaxPrepareScopes = Math.Min(l.MaxPrepareScopes, 256),
-            MaxFaces = Math.Min(l.MaxFaces, 262_144),
-            MaxRuleCandidates = Math.Min(l.MaxRuleCandidates, 4096),
-            MaxMaskCandidates = Math.Min(l.MaxMaskCandidates, 4096),
-            MaxQueryChunks = Math.Min(l.MaxQueryChunks, 64),
-            MaxQuerySamples = Math.Min(l.MaxQuerySamples, 262_144),
-            MaxQueryRetainedBytes = Math.Min(l.MaxQueryRetainedBytes, 67_108_864),
-            MaxDifferentialCandidates = Math.Min(l.MaxDifferentialCandidates, 64_000_000),
-            MaxChangeRows = Math.Min(l.MaxChangeRows, 4_000_000),
-            MaxComparisonPreparedChunks = Math.Min(l.MaxComparisonPreparedChunks, 64),
-            MaxComparisonRetainedBytes = Math.Min(l.MaxComparisonRetainedBytes, 134_217_728),
-        };
+        return l;
     }
 
     internal sealed class Meter

@@ -48,12 +48,17 @@ public sealed partial class RendererPerfMetalDiagnosticsTests
         Assert.Equal(first, Assert.Single(rig.Native.Released));
         Assert.Equal(2, rig.Native.Created.Count);
         Assert.Equal((2560u, 1440u), (rig.Native.Created[1].Width, rig.Native.Created[1].Height));
+        IntPtr resizedOrphan = rig.Boundary.Framebuffer.Attachment.Texture;
+        Assert.NotEqual(first, resizedOrphan);
 
-        rig.Native.BeforeRelease = _ =>
+        rig.Native.BeforeRelease = released =>
         {
             Assert.True(rig.Api.Handed[^1].HasDrawable);
             Assert.False(rig.Boundary.IsOrphanBound);
-            Assert.Equal(rig.Api.Handed[^1].Texture, rig.Boundary.Framebuffer.Attachment.Texture);
+            IntPtr incomingDrawable = rig.Api.Handed[^1].Texture;
+            Assert.Equal(resizedOrphan, released);
+            Assert.NotEqual(resizedOrphan, incomingDrawable);
+            Assert.Equal(incomingDrawable, rig.Boundary.Framebuffer.Attachment.Texture);
         };
         rig.Api.ScriptDrawable();
         rig.Boundary.Present();
@@ -143,7 +148,9 @@ public sealed partial class RendererPerfMetalDiagnosticsTests
 
     sealed class OrphanNative(MetalMemoryDiagnostics memory, object submitLock) : IMetalResourceNative
     {
-        int _next = 1000;
+        // Owned textures use a separate range from FakeMetalSwapchainApi's borrowed handles.
+        const int FirstOwnedTextureHandle = 0x100000;
+        int _next = FirstOwnedTextureHandle;
         internal bool RefuseTexture;
         internal Action<IntPtr>? BeforeRelease;
         internal readonly List<GpuTextureDescription> Created = [];

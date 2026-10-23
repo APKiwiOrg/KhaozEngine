@@ -97,7 +97,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // leaves nothing in the cache. The cache is never evicted, so an entry made for a shader set that was
             // never handed out would sit there for the device's life. A table rebuilt from the DISK cache arrives
             // here through this same call, so it deduplicates exactly as a freshly emitted one does (M-R9).
-            return new MetalShaderSet(_liveness, CompileOnMacOs(program), _tables.Canonical(program.Table));
+            var evidence = new[] { MetalShaderEvidence.Capture(program.StageOf(MetalShaderStage.Vertex), vertexGlsl),
+                MetalShaderEvidence.Capture(program.StageOf(MetalShaderStage.Fragment), fragmentGlsl) };
+            return new MetalShaderSet(_liveness, CompileOnMacOs(program), _tables.Canonical(program.Table), evidence);
         }
 
         /// <summary>Emit a GLSL 450 compute source to MSL and compile it.</summary>
@@ -108,8 +110,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal MetalComputeShader CreateComputeShader(string computeGlsl)
         {
             (MetalMslProgram program, uint x, uint y, uint z) = MetalShaderBuild.Compute(computeGlsl, _cache);
+            var evidence = MetalShaderEvidence.Capture(program.StageOf(MetalShaderStage.Compute), computeGlsl);
             MetalCompiledStage[] stages = CompileOnMacOs(program);
-            return new MetalComputeShader(_liveness, stages[0], _tables.Canonical(program.Table), x, y, z);
+            return new MetalComputeShader(_liveness, stages[0], _tables.Canonical(program.Table), x, y, z, evidence);
         }
 
         /// <summary>

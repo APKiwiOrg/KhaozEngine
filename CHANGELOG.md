@@ -18,6 +18,11 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   diagnostics, and separate asynchronous invocation blocks. Reflection temporaries remain intermediate-code
   facts, and unavailable native allocation, residency and budget fields retain their reasons.
 
+- Add Metal cold counter capabilities, compute limits and exact source/pipeline identities, plus owned
+  resource payload, ring/staging capacity and native device allocation diagnostics with unified-memory
+  provenance. Unsupported compiler artifacts, physical registers, spills, occupancy, residency and budget
+  retain their reasons. Ordinary pipelines keep their existing compilation and timestamp configuration.
+
 ## 21.12.1
 
 2026-10-23

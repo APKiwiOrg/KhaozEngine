@@ -17486,8 +17486,8 @@ needs a `SpriteBatch`. Like `UpdateOverlayView`, the widget never reads raw inpu
 
 ## Optional GPU compiler and memory diagnostics
 
-The GPU seam defines optional cold diagnostics for pipelines and devices. Vulkan and D3D11 implement
-both. Set `KE_VULKAN_PIPELINE_DIAGNOSTICS=1` before device creation to request executable compiler statistics
+The GPU seam defines optional cold diagnostics for pipelines and devices. Vulkan, D3D11 and Metal
+implement both. Set `KE_VULKAN_PIPELINE_DIAGNOSTICS=1` before device creation to request executable compiler statistics
 on supported drivers. Read them outside frame timing and retain the configuration digests with the evidence.
 Keep the request unset on production timing devices. See the [Vulkan diagnostic configuration](../KhaozEngine.Gpu.Vulkan/README.md#optional-compiler-and-memory-diagnostics).
 
@@ -17528,6 +17528,16 @@ or retries internally.
 Dispose the block after reading. An unsupported block does not call the callback. No invocation query
 is automatically inserted into the production pipeline or timestamp path. See the
 [D3D11 package reference](../KhaozEngine.Gpu.D3D11/README.md#optional-compiler-and-memory-diagnostics).
+
+For Metal, the same optional reads need no capture switch. Reports retain exact GLSL/emitted MSL
+source identity, resolved pipeline state and the active compile/validation configuration. Counter
+names and sampling points are advertised capabilities, not sampled runtime values. Compute execution
+width and maximum threadgroup size are limits. Native compiler artifacts, physical registers, spills
+and achieved occupancy remain unsupported. Memory snapshots distinguish logical payload and ring/staging
+capacity from device-wide `currentAllocatedSize`. `hasUnifiedMemory` identifies shared CPU/GPU memory.
+Residency and hard budget remain unsupported, and the working-set recommendation is not either field.
+See the [Metal diagnostic contract](../KhaozEngine.Gpu.Metal/README.md#optional-compiler-and-memory-diagnostics)
+for ownership, exclusion and failure semantics. Cold compiler collection and native proof are separate work.
 
 ## Per-pass frame timing (`Scene3D.EnableTiming` / `PassTimings`)
 

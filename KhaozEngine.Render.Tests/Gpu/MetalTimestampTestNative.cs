@@ -4,7 +4,7 @@ using KhaozEngine.Gpu.Metal.Internal;
 
 namespace KhaozEngine.Tests.Gpu
 {
-    internal sealed class MetalTimestampTestNative : IMetalTimestampNative
+    internal sealed class MetalTimestampTestNative : IMetalTimestampNative, IMetalCounterMetadataNative
     {
         int _next = 10;
         internal bool CounterSet = true, Stage = true, Blit, FailSamples;
@@ -20,8 +20,20 @@ namespace KhaozEngine.Tests.Gpu
         internal readonly List<(ulong Start, ulong End)> Attachments = new();
         internal readonly List<IntPtr> Released = new();
         internal readonly List<ulong> Signals = new();
-        public bool HasTimestampCounterSet => CounterSet;
-        public bool SupportsSampling(uint point) => point == 0 ? Stage : Blit;
+        internal System.Collections.Immutable.ImmutableArray<MetalCounterSetMetadata> CounterSets = [];
+        internal int MetadataReads;
+        internal Exception? MetadataFailure;
+        internal Exception? DiscoveryFailure;
+        internal readonly List<uint> SamplingQueries = new();
+        public string? SampleBufferFailureReason => FailSamples ? "injected sample allocation refused" : null;
+        public System.Collections.Immutable.ImmutableArray<MetalCounterSetMetadata> ReadCounterSets()
+        {
+            MetadataReads++;
+            if (MetadataFailure is not null) throw MetadataFailure;
+            return CounterSets;
+        }
+        public bool HasTimestampCounterSet => DiscoveryFailure is null ? CounterSet : throw DiscoveryFailure;
+        public bool SupportsSampling(uint point) { SamplingQueries.Add(point); return point == 0 ? Stage : point == 4 && Blit; }
         IntPtr Allocate() { Allocations++; return new IntPtr(_next++); }
         public IntPtr CreateSampleBuffer(uint capacity) => FailSamples ? IntPtr.Zero : Allocate();
         public IntPtr CreateBuffer(uint bytes) { if (Record) Trace.Add($"allocate {bytes}"); return Allocate(); }

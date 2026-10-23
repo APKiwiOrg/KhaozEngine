@@ -315,8 +315,9 @@ IDs. The entrypoint re-reads the final stamped JSON with the strict renderer cod
 upload preserves partial reports, exact manifest bytes, admission facts, frozen layouts, shader source
 hashes, control definitions, per-block work models and host telemetry, including failures.
 The current driver emits no compiler pipeline reports. Separate cold diagnostic collection remains
-a preparation dependency, alongside the held D3D11 and Metal diagnostic implementations. Backend
-interfaces alone do not establish native compiler retention or achieved occupancy.
+a preparation dependency. D3D11 and Metal now implement optional backend diagnostics, but these
+interfaces alone do not establish native compiler retention or achieved occupancy. See the
+[backend evidence boundary](RENDERER-PERFORMANCE.md#cold-backend-evidence).
 
 Implementation ships no executable approval manifest and authorizes no dispatch or measurement.
 Task 15 must reconcile and review integration, obtain each precise pilot approval, verify native

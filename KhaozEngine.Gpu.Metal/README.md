@@ -313,7 +313,8 @@ otherwise successful path still propagates. Pending pass state and the swapchain
 discarded, while staging blocks keep their arena ownership. Manual timestamp writes and batch ends
 also preserve the primary exception if closing their private blit or recording its boundary fails.
 
-`SupportsTimestamps` requires `MTLCommonCounterSetTimestamp`, stage-boundary or blit-command sampling,
+`SupportsTimestamps` requires `MTLCommonCounterTimestamp` within `MTLCommonCounterSetTimestamp`,
+stage-boundary or blit-command sampling,
 and a successful trial sample-buffer allocation. The probe releases that buffer immediately. Stage
 boundaries are preferred, including on Apple GPUs that do not support the blit sample command.
 
@@ -351,6 +352,59 @@ Metal retains encoded resources and disposal adds no drain. `MetalTimestampTests
 policy and `ComputeTimestampGpuTests` logs the native probe, branch and calibrated period. Apple
 Paravirtual may run the explicit unsupported branch. Real-hardware budget measurements require
 separate owner approval and a chosen device.
+
+## Optional compiler and memory diagnostics
+
+Metal pipelines implement `IGpuPipelineDiagnostics` and the device implements
+`IGpuResourceMemoryDiagnostics`. Read both outside measured frames. No diagnostic switch enables
+reflection, capture or invocation queries on ordinary pipelines. Cold reads enumerate the device's
+actual counter-set/counter names and supported stage, draw, dispatch, tile and blit sampling points.
+Enumeration is bounded to 64 sets and 256 counters per set. Overflow or malformed metadata is Invalid
+with its cause, never silently truncated. Advertised counters are Boolean capability metadata with
+HardwareLimit provenance. They are not sampled counter values. The independent timestamp capability
+requires the actual timestamp counter and a usable sample buffer, and retains unsupported/error reasons.
+A hosted device without that route remains usable for correctness and CPU work but cannot supply GPU timing.
+
+Reports retain exact input GLSL hashes, emitted MSL source hashes, entry points, local sizes, resolved
+layouts/render state and compile/configuration identity. Identity includes the pinned MSL language,
+fast-math and invariance options, front-end/cross-compiler pins, loaded SPIR-V toolchain identity,
+launch validation state and OS version. No native compiler version is exposed here. MSL source is not
+a native compiler artifact, so `ShaderArtifactSha256` stays empty with an Unsupported report reason.
+Physical registers, spills and achieved occupancy also remain unsupported. Cold compute reads expose
+`threadExecutionWidth` and `maxTotalThreadsPerThreadgroup` as hardware limits with UInt64 values.
+They never populate achieved occupancy. Failed queries retain Invalid status and their native cause.
+Reads after pipeline/shader/device disposal or loss are Invalid and do not query native state.
+
+The memory ledger counts successful owned buffer/texture creation and disposal once. Buffer payload
+uses the requested logical window. Texture payload uses the existing packed upload layout, including
+mips, cube faces, layers and samples. In particular, the software D32FloatS8UInt upload layout is five
+bytes per texel, not the native texture allocation size. Ring capacity includes all aligned frame
+segments. Staging capacity includes texture staging buffers, setup uploads, arena blocks and timestamp
+result/marker buffers. Reused arena subleases do not allocate another block. Capacity overlaps logical
+ring windows and staging payload and must not be added to it. Logical peaks exclude extra staging
+capacity. Live resource count includes internal staging buffers but excludes borrowed drawables,
+views, shaders and opaque counter sample storage. Counts end at the existing explicit owner release
+or managed abandonment, not when the GPU becomes idle. Internal peak counts are retained, but the
+shared snapshot has no typed peak-count field. History and scratch roles are not supplied by this
+resource API and remain unsupported.
+
+Cold `MTLDevice.currentAllocatedSize` snapshots use the existing NSUInteger binding under the device's
+lifecycle lock. They describe device-wide native allocation, including internal/driver resources, and
+are separate from logical payload. `hasUnifiedMemory` supplies true, false or unknown provenance.
+Unified memory is shared CPU/GPU memory, not dedicated VRAM. Missing selectors and query failures
+retain typed Unsupported/Invalid allocation values with reasons. Residency and a hard budget remain
+unsupported. `recommendedMaxWorkingSetSize` is a performance recommendation, not residency or a budget.
+
+Apple defines [counter sampling](https://developer.apple.com/documentation/metal/sampling-gpu-data-into-counter-sample-buffers),
+[execution width](https://developer.apple.com/documentation/metal/mtlcomputepipelinestate/threadexecutionwidth),
+[threadgroup limits](https://developer.apple.com/documentation/metal/mtlcomputepipelinestate/maxtotalthreadsperthreadgroup),
+[device allocation](https://developer.apple.com/documentation/metal/mtldevice/currentallocatedsize),
+[unified memory](https://developer.apple.com/documentation/metal/mtldevice/hasunifiedmemory) and the
+[working-set recommendation](https://developer.apple.com/documentation/metal/mtldevice/recommendedmaxworkingsetsize).
+These APIs do not supply native compiler artifacts or physical register/spill/occupancy evidence here.
+Headless injected checks do not establish native availability or performance. The separate cold
+compiler collection session and native renderer acceptance remain later work. See the
+[renderer protocol](../docs/RENDERER-PERFORMANCE.md#cold-backend-evidence).
 
 ## Resources, and the one creation this backend refuses
 

@@ -121,8 +121,11 @@ Scene3D shrink advisory. These checks establish consistency only, without supply
 ## Outstanding native and preparation gates
 
 Task10 adds D3D11 optional cold compiler/memory contracts and separate explicit invocation blocks.
-Its headless evidence still requires root's independent review and later native proof. Task11 remains
-held, and Metal does not implement these diagnostic interfaces. Vulkan also implements both contracts.
+Task10 is independently accepted and pushed. Task11 adds Metal source/configuration identity, cold
+counter metadata, compute limits and typed memory diagnostics through actual resource owners. Its
+injected headless evidence requires root's independent review and later native proof. Native compiler
+artifacts, physical registers, spills, occupancy, residency and hard budget remain unavailable on
+this Metal path. Vulkan also implements both contracts.
 The timed entrypoint rejects captured diagnostic pipelines, and the driver currently constructs
 reports with an empty pipeline array. There is no separate
 cold compiler-collection session in this entrypoint. A later preparation task must supply or explicitly

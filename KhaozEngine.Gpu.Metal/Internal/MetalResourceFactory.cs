@@ -227,7 +227,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         IGpuBuffer CreateBufferOnMacOs(in GpuBufferDescription d)
         {
             using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
-            return MetalBuffer.Create(_device.Handle, _device.Liveness, d, _device.Rings);
+            return MetalBuffer.Create(_device.Handle, _device.Liveness, d, _device.Rings, _device.Memory);
         }
 
         [SupportedOSPlatform("macos")]
@@ -235,7 +235,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         IGpuTexture CreateTextureOnMacOs(in GpuTextureDescription d)
         {
             using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
-            return MetalTexture.Create(_device.Handle, _device.Liveness, d);
+            return MetalTexture.Create(_device.Handle, _device.Liveness, d, _device.Memory);
         }
 
         [SupportedOSPlatform("macos")]
@@ -265,12 +265,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         IGpuPipeline CreateGraphicsPipelineOnMacOs(in GpuPipelineDescription d)
-            => MetalGraphicsPipeline.Create(_device.Handle, _device.Liveness, d);
+            => MetalGraphicsPipeline.Create(_device.Handle, _device.Liveness, d, _device.ReadCounterMetadata);
 
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         IGpuComputePipeline CreateComputePipelineOnMacOs(in GpuComputePipelineDescription d)
-            => MetalComputePipeline.Create(_device.Handle, _device.Liveness, d);
+            => MetalComputePipeline.Create(_device.Handle, _device.Liveness, d, _device.ReadCounterMetadata);
 
         // Created on first use rather than in the constructor, so a device that never compiles a shader never
         // builds one, and so the factory's constructor stays free of anything that could throw.

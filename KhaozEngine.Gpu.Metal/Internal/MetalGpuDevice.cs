@@ -120,8 +120,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         MetalGpuDevice(MTLDevice device, MTLCommandQueue queue, GpuCapabilities capabilities,
             DeviceLiveness liveness, MetalDeviceLossLatch loss, MetalTimeline timeline,
             MetalUncommittedBuffers uncommitted, IMetalSetupNative setupNative, int framesInFlight,
-            IMetalStagingSource staging, uint bufferOffsetAlignment, bool supportsBorderColor)
+            IMetalStagingSource staging, uint bufferOffsetAlignment, bool supportsBorderColor, MetalMemoryDiagnostics? memory = null)
         {
+            Memory = memory ?? new();
             _device = device;
             Queue = queue;
             _liveness = liveness;
@@ -130,9 +131,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _uncommitted = uncommitted;
             _commandBuffers = new MetalCommandBufferSource(queue);
             Capabilities = capabilities;
-            _setup = new MetalSetupCommands(setupNative, liveness);
+            _setup = new MetalSetupCommands(new MetalMemorySetupNative(setupNative, Memory), liveness);
             _framesInFlight = framesInFlight;
-            _staging = staging;
+            _staging = new MetalMemoryStagingSource(staging, Memory);
             _renderApi = new MetalRenderApi();
             _computeApi = new MetalComputeApi();
             _bufferOffsetAlignment = bufferOffsetAlignment;

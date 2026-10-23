@@ -160,7 +160,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 MetalCompletionHandler.Register(queue.Handle, new MetalCompletionErrorRoute(loss));
                 registered = true;
 
-                var timestamps = new MetalTimestampApi(new MTLTimestampInterop(device.Handle));
+                var memory = new MetalMemoryDiagnostics();
+                var timestamps = new MetalTimestampApi(new MTLTimestampInterop(device.Handle, memory));
                 MetalGpuDevice created = new(device, queue, ReadCapabilities(selected.Facts, device, timestamps), liveness, loss,
                     timeline, new MetalUncommittedBuffers(framesInFlight), new MetalSetupNative(device, queue),
                     framesInFlight, new MetalStagingSource(device),
@@ -171,7 +172,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     // AND THE BORDER-COLOUR ANSWER, from the same snapshot for the same reason: the probe already
                     // asked supportsFamily: for Mac2 to clear the floor, and a sampler cannot ask a device this
                     // question safely (building one to find out IS the abort under MTL_DEBUG_LAYER=1).
-                    MetalSamplerPolicy.DeviceSupportsBorderColor(selected.Facts));
+                    MetalSamplerPolicy.DeviceSupportsBorderColor(selected.Facts), memory);
                 created.TimestampApi = timestamps;
 
                 // THE SHARED SAMPLER PAIR, from MetalSharedSamplers and not from the engine's same-named

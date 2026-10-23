@@ -59,6 +59,7 @@ internal static class MapSceneAcquisition
             {
                 if (required.Contains(key)) return;
                 admission.BeforeResource(key);
+                admission.ReserveBytes(512);
                 required.Add(key);
                 metadataRows++;
                 if (data.Producing.TryGetValue(key, out var id)) AddOwner(id);
@@ -141,6 +142,7 @@ internal static class MapSceneAcquisition
             var selectedFoliage = required.Where(k => k.Kind == "Foliage").ToArray();
             var foliage = AcquireFoliage(data, selectedFoliage, admission, required, present, empty, unavailable, foliageRequest);
             if (unavailable.Count != 0) throw new MapSceneSourceException(MapSceneStatus.Incomplete, "Required foliage density is unavailable.");
+            admission.ReserveBytes(4096);
             var input = Merge(data, owners.Select(id => data.Owners[id]).ToArray());
             var acquiredNative = AcquireNative(data, nativeNeeded, admission, scope.Surfaces.Limits);
             foreach (var patch in acquiredNative.Patches) input.Surfaces.Patches.Add(patch.Key, patch.Value);

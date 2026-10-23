@@ -33,20 +33,21 @@ internal sealed class MapSceneInventory
     {
         if (!_seen.Add(context)) return 0;
         return checked(Surfaces(context.Surfaces) + 128L + 96L * context.Transforms.Count +
-            8L * context.Storeys.Count + 128L * context.WaterSources.Count);
+            8L * context.Storeys.Count + context.WaterSources.Values.Sum(Body));
     }
     internal long Product(MapEffectiveResolutionProduct product)
     {
         if (!_seen.Add(product)) return 0;
         return checked(Context(product.CapturedContext) + Water(product.CapturedWater) + 256L +
-            128L * product.Placements.Count + 96L * product.PlacementSupports.Count + 96L * product.Transforms.Count +
+            128L * product.Placements.Count + 96L * product.PlacementSupports.Count +
             product.PaintRegions.Values.Sum(p => 128L + p.Regions.Sum(r => 128L + 48L * r.Polygon.Count)) +
             128L * (product.EffectiveLights.Count + product.EffectiveMarkers.Count + product.MarkerSupports.Count));
     }
     internal long Water(MapWaterSet? water)
     {
         if (water is null || !_seen.Add(water)) return 0;
-        return checked(128L + 8L * water.Media.Count + water.Bodies.Sum(b => 128L + 32L * b.Domain.Rects.Count +
-            32L * b.Covers.Count + b.Domain.Rings.Sum(r => 32L + 24L * r.Vertices.Count)));
-    }
+        return checked(128L + 8L * water.Media.Count + water.Bodies.Sum(Body));
+    }    static long Body(MapWaterBodyDoc body) => checked(128L + 32L * body.Domain.Rects.Count +
+        32L * body.Covers.Count + body.Domain.Rings.Sum(r => 32L + 24L * r.Vertices.Count));
+
 }

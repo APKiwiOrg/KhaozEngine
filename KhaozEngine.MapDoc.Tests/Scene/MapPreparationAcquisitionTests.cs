@@ -7,6 +7,24 @@ namespace KhaozEngine.Tests.MapDoc.Scene;
 public sealed class MapPreparationAcquisitionTests
 {
     [Fact]
+    public void Acquisition_AdmitsSelectedMetadataBeforePatchCopies()
+    {
+        using var fixture = NativeSceneFixtures.Create("empty");
+        fixture.Document.Surfaces.Refs.Clear(); fixture.Document.Surfaces.Patches.Clear();
+        var patch = KhaozEngine.Tests.MapDoc.Prefabs.PrefabFixtures.Patch("tiny", 1, 1, 0);
+        fixture.Document.Surfaces.Refs.Add(KhaozEngine.Tests.MapDoc.Prefabs.PrefabFixtures.Surface("tiny", KhaozEngine.MapDoc.Surfaces.MapSurfaceRole.SupportFloor));
+        fixture.Document.Surfaces.Patches.Add(patch.Key, patch);
+        var source = NativeSceneFixtures.Open(fixture, false);
+        long minimum = long.MaxValue;
+        MapSceneAdmission? admission = null;
+        admission = new(new(MaxPreparedBytes: 100_000), stage =>
+        { if (stage == "clone") minimum = System.Math.Min(minimum, admission!.WorkspaceBytes + admission.RetainedBytes); });
+        var result = MapSceneAcquisition.Run(source, MapSceneScopeTests.Window(), admission);
+        Assert.NotNull(result.Scene);
+        Assert.InRange(minimum, 544, 100_000);
+    }
+
+    [Fact]
     public void CoverageLease_ReleasesItsUniqueRetainedInventory()
     {
         using var fixture = NativeSceneFixtures.Create("tile-owner");

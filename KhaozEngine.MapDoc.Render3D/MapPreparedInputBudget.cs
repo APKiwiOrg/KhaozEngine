@@ -70,7 +70,7 @@ internal sealed class MapPreparedInputBudget : IDisposable
                     var window = admission.WindowIdentity;
                     if (!entry.Views.TryGetValue(window, out var view))
                     {
-                        view = new(window == entry.Origin ? null : admission.ReferenceWindow(entry.Reservation.Bytes));
+                        view = new(window == entry.Origin ? null : admission.ReferenceWindow(entry.Reservation.Bytes, entry.Origin, entry.Views.Keys));
                         entry.Views.Add(window, view);
                     }
                     view.Owners++; entry.Owners++;

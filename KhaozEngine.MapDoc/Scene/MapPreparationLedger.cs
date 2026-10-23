@@ -13,7 +13,16 @@ internal sealed class MapPreparationLedger(long allowance, string limitName)
     internal long RetainedBytes { get; private set; }
     internal long PeakBytes { get; private set; }
     internal object WindowIdentity => (object?)_window ?? this;
-    internal IDisposable? ReferenceWindow(long bytes) => _window?.Reference(bytes);
+    internal IDisposable? ReferenceWindow(long bytes, object? origin, ICollection<object>? references)
+    {
+        if (_window is null) return null;
+        var covered = new HashSet<object>(ReferenceEqualityComparer.Instance);
+        Cover(origin);
+        foreach (var reference in references ?? []) Cover(reference);
+        return _window.Reference(bytes, covered);
+        void Cover(object? key)
+        { for (var view = key as Window; view is not null; view = view.Parent) covered.Add(view); }
+    }
     internal long Remaining
     {
         get
@@ -86,19 +95,24 @@ internal sealed class MapPreparationLedger(long allowance, string limitName)
             owner._window = this;
         }
         internal MapSceneCapacity Capacity(decimal bytes) => new(_name, (decimal)Live + _reused + bytes, _allowance);
-        internal IDisposable Reference(long bytes)
+        internal IDisposable Reference(long bytes, HashSet<object> covered)
         {
-            Window binding = this;
-            for (var view = Parent; view is not null; view = view.Parent)
-                if (view.Remaining < binding.Remaining) binding = view;
-            if (bytes < 0 || bytes > binding.Remaining) throw new MapSceneCapacityException(binding.Capacity(bytes));
-            Adjust(this, bytes);
-            return new ReferenceLease(this, bytes);
+            Window? stop = this;
+            while (stop is not null && !covered.Contains(stop)) stop = stop.Parent;
+            Window? binding = null;
+            for (var view = this; view != stop; view = view!.Parent)
+                if (binding is null || view!.Remaining < binding.Remaining) binding = view;
+            if (bytes < 0 || binding is not null && bytes > binding.Remaining)
+                throw new MapSceneCapacityException((binding ?? this).Capacity(bytes));
+            AdjustReference(this, stop, bytes);
+            return new ReferenceLease(this, stop, bytes);
         }
-        sealed class ReferenceLease(Window window, long bytes) : IDisposable
+        static void AdjustReference(Window start, Window? stop, long bytes)
+        { for (var view = start; view != stop; view = view!.Parent) view!.Live = checked(view.Live + bytes); }
+        sealed class ReferenceLease(Window window, Window? stop, long bytes) : IDisposable
         {
             bool _disposed;
-            public void Dispose() { if (_disposed) return; _disposed = true; Adjust(window, -bytes); }
+            public void Dispose() { if (_disposed) return; _disposed = true; AdjustReference(window, stop, -bytes); }
         }
         internal void ChargeExternal(long bytes)
         {

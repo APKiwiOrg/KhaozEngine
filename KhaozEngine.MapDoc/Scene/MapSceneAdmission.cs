@@ -15,6 +15,7 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
 {
     readonly MapFoliageContextLimits? _foliageLimits = foliageLimits ?? limits.Preparation?.FoliageContext;
     [ThreadStatic] static MapSceneAdmission? t_current;
+    [ThreadStatic] static int t_suspensions;
     internal static MapSceneAdmission? Current => t_current;
     readonly MapPreparationLedger _bytes = new(limits.MaxPreparedBytes, preparationLimitName);
     internal long RemainingPreparedBytes => _bytes.Remaining;
@@ -22,7 +23,8 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
     internal long RetainedBytes => _bytes.RetainedBytes;
     internal long PeakBytes => _bytes.PeakBytes;
     internal object WindowIdentity => _bytes.WindowIdentity;
-    internal IDisposable? ReferenceWindow(long bytes) => _bytes.ReferenceWindow(bytes);
+    internal IDisposable? ReferenceWindow(long bytes, object? origin = null, ICollection<object>? references = null)
+        => _bytes.ReferenceWindow(bytes, origin, references);
     internal long RemainingPreparedFaces => limits.MaxPreparedFaces - PreparedFaces;
     internal int RemainingPatchScopes => limits.MaxPatchScopes - PatchScopes;
     internal MapPreparationReservation Workspace() => _bytes.Workspace();
@@ -82,8 +84,9 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
     sealed class Activation : IDisposable
     {
         readonly MapSceneAdmission? _previous = t_current;
-        internal Activation(MapSceneAdmission value) => t_current = value;
-        public void Dispose() => t_current = _previous;
+        bool _disposed;
+        internal Activation(MapSceneAdmission value) { if (t_suspensions == 0) t_current = value; }
+        public void Dispose() { if (_disposed) return; _disposed = true; t_current = _previous; }
     }
 
     internal static bool Supports(IMapSurfaceSource source) => source is MapDocumentSurfaceSource or MapStoredSurfaceSource or MapEffectiveSurfaceSource ||
@@ -116,11 +119,14 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
 
     // A prepared product already charged its complete demand before creating any payload.
     internal static Suspension Suspend() => new(t_current);
-    internal readonly struct Suspension : IDisposable
+    internal sealed class Suspension : IDisposable
     {
         readonly MapSceneAdmission? _previous;
-        internal Suspension(MapSceneAdmission? previous) { _previous = previous; t_current = null; }
-        public void Dispose() => t_current = _previous;
+        bool _disposed;
+        internal Suspension(MapSceneAdmission? previous)
+        { _previous = previous; t_current = null; t_suspensions++; }
+        public void Dispose()
+        { if (_disposed) return; _disposed = true; t_suspensions--; t_current = _previous; }
     }
 
     internal void ReserveBytes(long bytes)

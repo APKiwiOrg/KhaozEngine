@@ -7,6 +7,40 @@ namespace KhaozEngine.Tests.MapDoc.Scene;
 public sealed class MapPreparationLifetimeTests
 {
     [Fact]
+    public void NestedBorrow_ChargesOnlyTheViewsThatDoNotAlreadyOwnIt()
+    {
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 100));
+        using var parent = admission.LimitPreparation(50, "ParentPlan");
+        using var retained = admission.Workspace(); retained.Reserve(40);
+        object origin = admission.WindowIdentity;
+        using var child = admission.LimitPreparation(50, "ChildPlan");
+        using var borrowed = admission.ReferenceWindow(40, origin);
+        using var next = admission.Workspace(); next.Reserve(10);
+        Assert.Equal(50, admission.WorkspaceBytes);
+    }
+
+    [Fact]
+    public void FailedDemandAboveInt64_PreservesLiveCountersAndPeak()
+    {
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: long.MaxValue));
+        admission.ReserveBytes(1);
+        var error = Assert.Throws<MapSceneCapacityException>(() => admission.ReserveBytes(long.MaxValue));
+        Assert.Equal(new MapSceneCapacity("MaxPreparedBytes", 1m + long.MaxValue, long.MaxValue), error.Capacity);
+        Assert.Equal(1, admission.RetainedBytes);
+        Assert.Equal(1, admission.PeakBytes);
+    }
+
+    [Fact]
+    public void PrechargedSuspension_CannotBeReactivatedByANestedView()
+    {
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 0));
+        using var active = admission.Enter();
+        using (MapSceneAdmission.Suspend())
+        using (admission.Enter()) Assert.Null(MapSceneAdmission.Current);
+        Assert.Same(admission, MapSceneAdmission.Current);
+    }
+
+    [Fact]
     public void BorrowedInventory_ConstrainsChildWithoutDuplicatingRootOwnership()
     {
         var admission = new MapSceneAdmission(new(MaxPreparedBytes: 100));

@@ -56,7 +56,7 @@ internal sealed class MapPlacementCellInventory
         if (key.Cohort == 1)
         {
             complete = MapRoofPolicyAcquisition.Complete(complete);
-            var prepared = MapRoofEvaluationBuffer.Prepare(complete, admission);
+            var prepared = MapRoofEvaluationBuffer.Prepare(complete, admission, requireCompletePolicy: true);
             evaluation = prepared.Buffer ?? throw new MapSceneSourceException(prepared.Status, prepared.Detail ?? "Canonical roof policy refused.", prepared.Capacity);
         }
         admission.ReserveBytes(checked(128L + 64L * complete.Placements.Count));

@@ -41,7 +41,7 @@ public sealed class MapRoofEvaluationBuffer
         status = MapMembershipPreflight.Check(scene, demand);
         return status == MapSceneStatus.CompleteForScope ? PrepareAdmitted(scene, new MapSceneAdmission(limits), demand) : Refused(status);
     }
-    internal static MapRoofEvaluationBufferResult Prepare(MapScopedScene scene, MapSceneAdmission admission)
+    internal static MapRoofEvaluationBufferResult Prepare(MapScopedScene scene, MapSceneAdmission admission, bool requireCompletePolicy = false)
     {
         ArgumentNullException.ThrowIfNull(scene);
         ArgumentNullException.ThrowIfNull(admission);
@@ -49,12 +49,17 @@ public sealed class MapRoofEvaluationBuffer
         if (status != MapSceneStatus.CompleteForScope) return new(status, null, detail);
         if (admission.PreparationRefusal(demand.Bytes, demand.Faces) is { } capacity) return Refused(capacity);
         status = MapMembershipPreflight.Check(scene, demand);
-        return status == MapSceneStatus.CompleteForScope ? PrepareAdmitted(scene, admission, demand) : Refused(status);
+        return status == MapSceneStatus.CompleteForScope ? PrepareAdmitted(scene, admission, demand, requireCompletePolicy) : Refused(status);
     }
-    static MapRoofEvaluationBufferResult PrepareAdmitted(MapScopedScene scene, MapSceneAdmission admission, MapMembershipPreparation demand)
+    static MapRoofEvaluationBufferResult PrepareAdmitted(MapScopedScene scene, MapSceneAdmission admission, MapMembershipPreparation demand, bool requireCompletePolicy = false)
     {
         if (!admission.TryReservePreparation(demand.Bytes, demand.Faces, out var capacity)) return Refused(capacity!);
         using var precharged = MapSceneAdmission.Suspend();
+        if (requireCompletePolicy)
+        {
+            var errors = MapPrismCoverage.Validate(scene.SurfaceView, scene.Scope.Surfaces.Limits.Refinement ?? new());
+            if (errors.Count != 0) return new(MapSceneStatus.Invalid, null, "Incomplete canonical roof policy. " + string.Join("\n", errors));
+        }
         var buffer = new MapRoofEvaluationBuffer(scene, demand);
         return new(scene.Witness.WholeWorldComplete ? MapSceneStatus.WholeWorldComplete : MapSceneStatus.CompleteForScope, buffer, null);
     }

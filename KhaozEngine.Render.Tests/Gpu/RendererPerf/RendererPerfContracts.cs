@@ -73,7 +73,11 @@ internal sealed record RendererPerfAssessment(bool ValidForPromotion, ImmutableA
     ImmutableDictionary<string, RendererPerfMetric> Metrics, ImmutableArray<RendererPassWorkModel> WorkModels);
 internal sealed record RendererPerfPublication(RendererPerfPublicationState State, bool ReturnedByRun,
     bool FinalUnitPublished, string? OriginalFailure, ImmutableArray<string> Errors, RendererPerfMetric ElapsedMilliseconds,
-    RendererPerfMetric ActualCostUsd, RendererPerfMetric EstimatedCostUsd);
+    RendererPerfMetric ActualCostUsd, RendererPerfMetric EstimatedCostUsd)
+{
+    [JsonRequired]
+    public RendererPerfFailureTextEvidence FailureText { get; init; } = new(false, 0, 0);
+}
 internal sealed record RendererPerfSidecar(string Path, string Sha256);
 internal sealed record RendererPerfReport(string Schema, RendererPerfManifest Manifest, RendererPerfRunIdentity Identity,
     ImmutableArray<RendererPerfRecipeReport> Recipes, ImmutableArray<RendererPerfBlockReport> Blocks,
@@ -81,6 +85,8 @@ internal sealed record RendererPerfReport(string Schema, RendererPerfManifest Ma
     ImmutableArray<RendererPerfControlReport> Controls, RendererPerfAssessment Assessment,
     RendererPerfPublication Publication, ImmutableArray<RendererPerfSidecar> Sidecars)
 {
+    [JsonRequired]
+    public RendererPerfCompilerEvidence Compiler { get; init; } = RendererPerfCompilerEvidence.Pending;
     [JsonRequired]
     public ImmutableArray<RendererPerfFrameSample> Conditioning { get; init; } = [];
     [JsonRequired]

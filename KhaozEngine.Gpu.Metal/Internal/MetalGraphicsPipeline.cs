@@ -39,7 +39,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <para><b>DISPOSAL RELEASES BOTH HANDLES AND NEVER ON A DEAD DEVICE (M-F6)</b>, and the nil depth state
     /// makes its own release a no-op, so the colour-only case needs no branch.</para>
     /// </summary>
-    internal sealed class MetalGraphicsPipeline : IGpuPipeline, IMetalOwnedResource, IGpuPipelineDiagnostics
+    internal sealed class MetalGraphicsPipeline : IGpuPipeline, IMetalOwnedResource, IGpuPipelineDiagnostics, IGpuPipelineConstructionDiagnostics
     {
         readonly IDeviceLiveness _liveness;
         readonly object _diagnosticGate = new();
@@ -193,6 +193,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <inheritdoc/>
         /// <remarks>Releases both state objects, once, and never on a dead device (M-F6).</remarks>
+        public GpuPipelineConstructionIdentity ConstructionIdentity => _diagnostics.ConstructionIdentity;
+
         public GpuPipelineCompilerReport ReadCompilerReport()
         {
             lock (_diagnosticGate) return _diagnostics.Read(IsDisposed || Plan.Shaders.IsDisposed || _liveness.IsDead);

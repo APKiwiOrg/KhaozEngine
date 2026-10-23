@@ -47,8 +47,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             // AFTER the size read, so a module the parser rejects never reaches the driver and never lands in the
             // cache under bytes nothing can dispatch.
-            Module = modules.GetOrCreate(spirv);
             DiagnosticIdentity = VulkanShaderIdentity.Compute(computeGlsl, spirv, tag);
+            Module = modules.GetOrCreate(spirv);
         }
 
         internal VulkanShaderIdentity DiagnosticIdentity { get; }

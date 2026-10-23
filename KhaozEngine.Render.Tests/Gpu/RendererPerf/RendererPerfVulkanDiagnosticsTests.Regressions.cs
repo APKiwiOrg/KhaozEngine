@@ -98,6 +98,6 @@ public sealed partial class RendererPerfVulkanDiagnosticsTests
     static string ValidationConfigurationIdentity(VulkanInstanceValidation validation)
     {
         var diagnostics = new VulkanPipelineDiagnostics(false, false, false, null, validation.DiagnosticConfiguration);
-        return diagnostics.Read(73, 0, Identity).DiagnosticConfigurationSha256;
+        return diagnostics.Read(73, 0, Identity).Identity.DiagnosticConfigurationSha256.Sha256!;
     }
 }

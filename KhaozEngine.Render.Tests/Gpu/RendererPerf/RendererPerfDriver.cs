@@ -64,10 +64,10 @@ internal static class RendererPerfDriver
             if (_failure is not null) _reasons.Add(_failure);
             var elapsed = Value(_started ? (clock.Now() - _start) * 1000d / clock.Frequency : 0, "ms", "unit monotonic clock");
             RendererPerfMetric unknownCost = new(null, "USD", "workflow billing", RendererPerfMetricStatus.Unsupported, "Actual billed minutes are supplied after the workflow completes.");
-            var report = new RendererPerfReport("khaozengine.renderer-perf-report/1", manifest, identity,
+            var report = new RendererPerfReport("khaozengine.renderer-perf-report/2", manifest, identity,
                 [.. manifest.Recipes.Where(r => _recipes.ContainsKey(r.SceneId)).Select(r => _recipes[r.SceneId])],
                 [.. _blocks], _memory.Report(),
-                [], [.. _controls], new(_failure is null && _reasons.Count == 0, [.. _reasons.Distinct()], RendererPerfDriverAssessment.WindowMetrics(_blocks, _conditioning), []),
+                [], [.. _controls], new(false, [.. _reasons.Distinct(), RendererPerfCompilerEvidence.Pending.Reason!], RendererPerfDriverAssessment.WindowMetrics(_blocks, _conditioning), []),
                 new(_failure is null ? RendererPerfPublicationState.Completed : RendererPerfPublicationState.Failed, false, false,
                     _failure, [.. _errors], elapsed, unknownCost,
                     Value(elapsed.Value!.Value / 60000d * (double)manifest.Budget.RatePerMinute, "USD", "elapsed running time estimate, excludes external setup and teardown")), [])

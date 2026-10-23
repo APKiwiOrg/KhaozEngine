@@ -143,7 +143,7 @@ public sealed partial class RendererPerfMetalDiagnosticsTests
         {
             using var shader = new MetalComputeShader(live, default, table, x, 1, 1, e);
             using var pipeline = new MetalComputePipeline(live, shader, [], default);
-            return pipeline.ReadCompilerReport().PipelineSha256;
+            return pipeline.ReadCompilerReport().Identity.PipelineSha256.Sha256!;
         }
         string original = Identity(evidence);
         Assert.Equal(original, Identity(evidence));
@@ -156,8 +156,8 @@ public sealed partial class RendererPerfMetalDiagnosticsTests
         using var missingShader = new MetalComputeShader(live, default, table, 8, 1, 1);
         using var missingPipeline = new MetalComputePipeline(live, missingShader, [], default);
         var missing = missingPipeline.ReadCompilerReport();
-        Assert.Empty(missing.PipelineSha256);
-        Assert.Empty(missing.SourceSha256);
+        Assert.Null(missing.Identity.PipelineSha256.Sha256);
+        Assert.Null(missing.Identity.SourceSha256.Sha256);
         Assert.Empty(missing.Executables);
     }
 
@@ -183,9 +183,9 @@ public sealed partial class RendererPerfMetalDiagnosticsTests
         Assert.Equal(2, report.Executables.Length);
         d.Outputs.Colour[0] = GpuPixelFormat.R16G16B16A16Float;
         using var changed = new MetalGraphicsPipeline(live, MetalGraphicsPipelinePlan.Build(live, d), default, default);
-        Assert.NotEqual(report.PipelineSha256, changed.ReadCompilerReport().PipelineSha256);
+        Assert.NotEqual(report.Identity.PipelineSha256.Sha256, changed.ReadCompilerReport().Identity.PipelineSha256.Sha256);
         evidence[0] = evidence[0] with { Msl = "different emitted MSL" };
-        Assert.Equal(report.PipelineSha256, first.ReadCompilerReport().PipelineSha256);
+        Assert.Equal(report.Identity.PipelineSha256.Sha256, first.ReadCompilerReport().Identity.PipelineSha256.Sha256);
         first.Dispose();
         Assert.Equal(GpuDiagnosticStatus.Invalid, first.ReadCompilerReport().Status);
         shaders.Dispose();

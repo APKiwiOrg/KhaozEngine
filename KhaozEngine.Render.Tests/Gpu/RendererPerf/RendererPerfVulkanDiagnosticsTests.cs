@@ -9,7 +9,14 @@ namespace KhaozEngine.Tests.Gpu;
 
 public sealed partial class RendererPerfVulkanDiagnosticsTests
 {
-    static readonly VulkanPipelineIdentity Identity = new("pipeline", "source", "spirv", "layout", "compiler", 8, 4, 2);
+    static readonly VulkanPipelineIdentity Identity = TestIdentity();
+    static VulkanPipelineIdentity TestIdentity()
+    {
+        var shader = VulkanShaderIdentity.Compute("source", new byte[] { 1, 2, 3 }, "fixture");
+        return new(VulkanPipelineIdentity.HashText("pipeline"), shader.Source, shader.Artifact,
+            VulkanPipelineIdentity.HashText("layout"), shader.CompilerFlags, 8, 4, 2)
+        { Stages = shader.Stages, CodeGeneration = shader.CodeGeneration };
+    }
 
     [Theory]
     [InlineData(false, true, true, true)]
@@ -33,7 +40,7 @@ public sealed partial class RendererPerfVulkanDiagnosticsTests
         }
         else
         {
-            Assert.Equal(GpuDiagnosticStatus.Unsupported, report.Status);
+            Assert.Equal(requested && extension && feature ? GpuDiagnosticStatus.Invalid : GpuDiagnosticStatus.Unsupported, report.Status);
             Assert.NotEmpty(report.Reason!);
             Assert.Equal(0, api.Calls);
         }
@@ -90,7 +97,7 @@ public sealed partial class RendererPerfVulkanDiagnosticsTests
         }
         Assert.Equal(8u, executable.LocalSizeX);
         Assert.Equal("main", executable.EntryPoint);
-        Assert.Equal("spirv", report.ShaderArtifactSha256);
+        Assert.Equal("039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81", report.Identity.ShaderArtifactSha256.Sha256);
     }
 
     [Fact]

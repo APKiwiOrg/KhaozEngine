@@ -14,6 +14,6 @@ internal sealed record MetalShaderEvidence(MetalShaderStage Stage, string EntryP
             + ";capture=none;reflection=none;nativeCompilerVersion=unavailable;debugLayer="
             + validation.DebugLayerArmed + ";shaderValidation=" + validation.ShaderValidationArmed
             + ";os=" + System.Environment.OSVersion.VersionString;
-        return new(stage.Stage, stage.EntryPointName, MetalShaderKey.HashUtf8(glsl), stage.Msl, configuration);
+        return new(stage.Stage, stage.EntryPointName, GpuDiagnosticIdentityEncoding.Text(glsl, "glsl.utf8/1").Sha256 ?? "", stage.Msl, configuration);
     }
 }

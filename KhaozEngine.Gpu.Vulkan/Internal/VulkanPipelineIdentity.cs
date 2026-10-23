@@ -1,27 +1,48 @@
 using System;
 using System.IO;
+using System.Collections.Immutable;
 using System.Security.Cryptography;
 using System.Text;
 using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu.Vulkan.Internal;
 
-internal sealed record VulkanShaderIdentity(string Source, string Artifact, string CompilerFlags)
+internal sealed record VulkanShaderIdentity(string Source, string Artifact, string CompilerFlags,
+    ImmutableArray<GpuPipelineStageIdentity> Stages, GpuDiagnosticDigest CodeGeneration)
 {
+    static GpuPipelineStageIdentity Stage(string stage, string source, ReadOnlySpan<byte> artifact)
+        => new(stage, "main", GpuDiagnosticIdentityEncoding.Text(source, "glsl.utf8/1"), null,
+            GpuDiagnosticIdentityEncoding.Bytes(artifact, "spirv.bytes/1"));
+    static GpuDiagnosticDigest Options() => GpuDiagnosticIdentityEncoding.CodeGeneration(GpuBackendKind.VulkanNative,
+        [new("frontend", SpirvFrontEndPin.Identity), new("toolchain", SpirvToolchainVersion.Identity)]);
     internal static VulkanShaderIdentity Compute(string source, ReadOnlySpan<byte> artifact, string label)
-        => new(VulkanPipelineIdentity.HashText(source), Convert.ToHexStringLower(SHA256.HashData(artifact)),
-            SpirvFrontEnd.OptionsIdentity(label));
-
+    {
+        ImmutableArray<GpuPipelineStageIdentity> stages = [Stage("compute", source, artifact)];
+        return Create(stages, label);
+    }
     internal static VulkanShaderIdentity Graphics(string vertex, string fragment, byte[] vertexArtifact,
-        byte[] fragmentArtifact, string label)
-        => new(VulkanPipelineIdentity.HashParts(Encoding.UTF8.GetBytes(vertex), Encoding.UTF8.GetBytes(fragment)),
-            VulkanPipelineIdentity.HashParts(vertexArtifact, fragmentArtifact), SpirvFrontEnd.OptionsIdentity(label));
+        byte[] fragmentArtifact, string label) => Create([Stage("vertex", vertex, vertexArtifact),
+            Stage("fragment", fragment, fragmentArtifact)], label);
+    static VulkanShaderIdentity Create(ImmutableArray<GpuPipelineStageIdentity> stages, string label)
+    {
+        int bytes = checked(GpuDiagnosticIdentityEncoding.Utf8.GetByteCount(SpirvFrontEndPin.Identity) + 7
+            + GpuDiagnosticIdentityEncoding.Utf8.GetByteCount(label));
+        if (bytes > 16384)
+            throw new GpuDiagnosticFailureException([new("vulkan.shader-evidence",
+                new InvalidOperationException("CompilerFlags exceeds 16384 UTF-8 bytes before retention."))]);
+        return new(GpuDiagnosticIdentityEncoding.Stages("source", stages).Sha256 ?? "",
+            GpuDiagnosticIdentityEncoding.Stages("artifact", stages).Sha256 ?? "", SpirvFrontEnd.OptionsIdentity(label), stages, Options());
+    }
 }
 
 /// <summary>Content identity. Never hashes native handles, which vary between equivalent device lifetimes.</summary>
 internal sealed record VulkanPipelineIdentity(string PipelineSha256, string SourceSha256, string ShaderArtifactSha256,
     string LayoutSha256, string CompilerFlags, uint LocalSizeX = 0, uint LocalSizeY = 0, uint LocalSizeZ = 0)
 {
+    internal ImmutableArray<GpuPipelineStageIdentity> Stages { get; init; } = [];
+    internal GpuDiagnosticDigest CodeGeneration { get; init; } = new(null, "khaozengine.pipeline-code-generation/1",
+        GpuDiagnosticStatus.Invalid, "Code-generation inputs were not retained.");
+
     internal static VulkanPipelineIdentity Compute(VulkanComputeShader shader, VulkanResourceLayout[] layouts)
     {
         string layout = Layout(layouts);
@@ -35,7 +56,8 @@ internal sealed record VulkanPipelineIdentity(string PipelineSha256, string Sour
             writer.Write(shader.ThreadGroupSizeZ);
         });
         return new(pipeline, shader.DiagnosticIdentity.Source, shader.DiagnosticIdentity.Artifact, layout,
-            shader.DiagnosticIdentity.CompilerFlags, shader.ThreadGroupSizeX, shader.ThreadGroupSizeY, shader.ThreadGroupSizeZ);
+            shader.DiagnosticIdentity.CompilerFlags, shader.ThreadGroupSizeX, shader.ThreadGroupSizeY, shader.ThreadGroupSizeZ)
+        { Stages = shader.DiagnosticIdentity.Stages, CodeGeneration = shader.DiagnosticIdentity.CodeGeneration };
     }
 
     internal static VulkanPipelineIdentity Graphics(VulkanShaderSet shaders, VulkanResourceLayout[] layouts,
@@ -81,7 +103,8 @@ internal sealed record VulkanPipelineIdentity(string PipelineSha256, string Sour
             writer.Write(spec.SampleCount);
         });
         return new(pipeline, shaders.DiagnosticIdentity.Source, shaders.DiagnosticIdentity.Artifact, layout,
-            shaders.DiagnosticIdentity.CompilerFlags);
+            shaders.DiagnosticIdentity.CompilerFlags)
+        { Stages = shaders.DiagnosticIdentity.Stages, CodeGeneration = shaders.DiagnosticIdentity.CodeGeneration };
     }
 
     static string Layout(VulkanResourceLayout[] layouts) => Digest(writer =>

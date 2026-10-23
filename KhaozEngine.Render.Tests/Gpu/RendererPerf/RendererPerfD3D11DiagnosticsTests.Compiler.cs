@@ -21,9 +21,9 @@ public sealed partial class RendererPerfD3D11DiagnosticsTests
         using var pipeline = new D3D11ComputePipeline(new GpuComputePipelineDescription(shader));
         var report = pipeline.ReadCompilerReport();
         Assert.Equal(GpuDiagnosticStatus.Available, report.Status);
-        Assert.Equal("039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81", report.ShaderArtifactSha256);
+        Assert.Equal("039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81", report.Identity.ShaderArtifactSha256.Sha256);
         Assert.Equal(8u, Assert.Single(report.Executables).LocalSizeX);
-        Assert.Contains("cs_5_0", report.CompilerFlags);
+        Assert.Contains("cs_5_0", report.Identity.CompilerFlags);
         using var shaders = compiler.CreateShaderSet("exact vertex source", "exact pixel source");
         Assert.Equal("exact vertex source", native.LastVertex);
         Assert.Equal("exact pixel source", native.LastPixel);
@@ -46,8 +46,10 @@ public sealed partial class RendererPerfD3D11DiagnosticsTests
         using var shader = compiler.CreateComputeShader("compute source");
         using var pipeline = new D3D11ComputePipeline(new GpuComputePipelineDescription(shader));
         Assert.Same(native.Handles[0], ((ID3D11ComputePipelineState)pipeline).ComputeShader);
-        Assert.Equal(GpuDiagnosticStatus.Unsupported, pipeline.ReadCompilerReport().Status);
-        Assert.Contains("reflection unavailable", pipeline.ReadCompilerReport().Reason);
+        Assert.Equal(GpuDiagnosticStatus.Invalid, pipeline.ReadCompilerReport().Status);
+        var result = pipeline.ReadCompilerReport(D3D11PipelineDiagnostics.Request, _ => { }, default);
+        Assert.IsType<NotSupportedException>(Assert.Single(result.Failures).Error);
+        Assert.Equal("reflection unavailable", result.Failures[0].Error.Message);
         Assert.Equal(0, native.Handles[0].Disposals);
     }
 
@@ -67,13 +69,35 @@ public sealed partial class RendererPerfD3D11DiagnosticsTests
             using var second = new D3D11ComputeShader(new DeviceLiveness(), new NativeHandle(), new byte[] { 1, 2, 3 }, 8, 4, 2, alternate);
             using var secondPipeline = new D3D11ComputePipeline(new GpuComputePipelineDescription(second));
             var report = secondPipeline.ReadCompilerReport();
-            Assert.NotEqual(baseline.DiagnosticConfigurationSha256, report.DiagnosticConfigurationSha256);
-            Assert.Equal(baseline.PipelineSha256, report.PipelineSha256);
-            Assert.Equal(baseline.ShaderArtifactSha256, report.ShaderArtifactSha256);
+            Assert.NotEqual(baseline.Identity.DiagnosticConfigurationSha256.Sha256, report.Identity.DiagnosticConfigurationSha256.Sha256);
+            Assert.Equal(baseline.Identity.PipelineSha256.Sha256, report.Identity.PipelineSha256.Sha256);
+            Assert.Equal(baseline.Identity.ShaderArtifactSha256.Sha256, report.Identity.ShaderArtifactSha256.Sha256);
         }
         using var localShader = new D3D11ComputeShader(new DeviceLiveness(), new NativeHandle(), new byte[] { 1, 2, 3 }, 16, 4, 2, evidence);
         using var localPipeline = new D3D11ComputePipeline(new GpuComputePipelineDescription(localShader));
-        Assert.NotEqual(baseline.PipelineSha256, localPipeline.ReadCompilerReport().PipelineSha256);
+        Assert.NotEqual(baseline.Identity.PipelineSha256.Sha256, localPipeline.ReadCompilerReport().Identity.PipelineSha256.Sha256);
+    }
+
+    [Fact]
+    public void Budgeted_reader_keeps_original_aggregate_and_repeated_native_occurrences()
+    {
+        var original = new AggregateException(new InvalidOperationException("native aggregate"));
+        var reflection = new ReflectionApi { Failure = original };
+        var options = new D3D11DiagnosticOptions(true, D3D11RecordMode.Deferred, false, false);
+        var vertex = D3D11ShaderEvidence.Capture("vertex", new byte[] { 1, 2, 3 }, "vertex", 0, options, reflection);
+        var pixel = D3D11ShaderEvidence.Capture("pixel", new byte[] { 1, 2, 3 }, "pixel", 0, options, reflection);
+        var owner = new D3D11PipelineDiagnostics([vertex, pixel], new('a', 64), new('b', 64));
+        var result = owner.Read(false, D3D11PipelineDiagnostics.Request, _ => { }, default);
+        Assert.False(result.Complete);
+        Assert.Equal(2, result.Failures.Length);
+        Assert.Same(original, result.Failures[0].Error);
+        Assert.Same(original, result.Failures[1].Error);
+        Assert.NotSame(result.Failures[0], result.Failures[1]);
+        var transport = new GpuDiagnosticFailureException(result.Failures);
+        reflection.Failure = transport;
+        var carried = D3D11ShaderEvidence.Capture("source", new byte[] { 1, 2, 3 }, "compute", 0, options, reflection);
+        Assert.Same(result.Failures[0], carried.Failures[0]);
+        Assert.Same(result.Failures[1], carried.Failures[1]);
     }
 
     sealed class CompilerApi : ID3D11ShaderCompilerApi

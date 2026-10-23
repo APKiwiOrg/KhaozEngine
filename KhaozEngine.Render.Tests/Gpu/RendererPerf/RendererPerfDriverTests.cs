@@ -15,7 +15,9 @@ public sealed class RendererPerfDriverTests
         var rig = new DriverRig();
         RendererPerfReport report = rig.Run();
         Assert.True(report.Publication.FinalUnitPublished);
-        Assert.True(report.Assessment.ValidForPromotion);
+        Assert.False(report.Assessment.ValidForPromotion);
+        Assert.Equal(RendererPerfCollectionState.Incomplete, report.Compiler.State);
+        Assert.Empty(report.Pipelines);
         Assert.Equal(1260, rig.Frames.Count);
         Assert.Equal(new[] { "conditioning:S3", "S3", "S3", "control:1", "control:4", "control:5", "control:7", "control:9", "control:11" },
             rig.Created.Select(b => b.SceneId));
@@ -127,7 +129,8 @@ public sealed class RendererPerfDriverTests
             Assert.Equal(256, b.Measured.Length);
         });
         Assert.True(report.Publication.FinalUnitPublished);
-        Assert.True(report.Assessment.ValidForPromotion);
+        Assert.False(report.Assessment.ValidForPromotion);
+        Assert.Equal(RendererPerfCollectionState.Incomplete, report.Compiler.State);
         _ = RendererPerfReportJson.Serialize(report);
     }
 

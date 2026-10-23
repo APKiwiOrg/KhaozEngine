@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Immutable;
 using System.Linq;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu.Metal.Internal;
 
@@ -10,7 +11,7 @@ internal readonly record struct MetalComputeLimits(ulong Width, ulong MaximumThr
 internal sealed class MetalPipelineDiagnostics
 {
     readonly ImmutableArray<MetalShaderEvidence> _stages;
-    readonly string _pipeline, _layout, _source, _configuration, _flags;
+    internal GpuPipelineConstructionIdentity ConstructionIdentity { get; }
     readonly uint _x, _y, _z;
     readonly Func<MetalComputeLimits>? _readLimits;
     readonly Func<MetalCounterMetadata>? _readCounters;
@@ -19,26 +20,33 @@ internal sealed class MetalPipelineDiagnostics
         Func<MetalComputeLimits>? readLimits = null, Func<MetalCounterMetadata>? readCounters = null,
         uint x = 0, uint y = 0, uint z = 0)
     {
-        _stages = stages; _pipeline = stages.IsEmpty ? "" : pipeline; _layout = layout;
+        _stages = stages;
         _x = x; _y = y; _z = z; _readLimits = readLimits; _readCounters = readCounters;
-        _source = Join(s => s.SourceSha256);
-        _configuration = Join(s => MetalShaderKey.HashUtf8(s.Configuration));
-        _flags = string.Join(" | ", stages.Select(s => s.Stage + ": " + s.Configuration));
+        var stageIdentities = stages.Select(s => new GpuPipelineStageIdentity(s.Stage.ToString().ToLowerInvariant(),
+            s.EntryPoint, GpuDiagnosticIdentityEncoding.Known(s.SourceSha256, "glsl.utf8/1"),
+            GpuDiagnosticIdentityEncoding.Text(s.Msl, "msl.utf8/1"), new(null, "metal.native-artifact/1",
+                GpuDiagnosticStatus.Unsupported, "The source-compilation path retains no native Metal compiler artifact. MSL is source."))).ToImmutableArray();
+        ConstructionIdentity = new(GpuDiagnosticIdentityEncoding.Known(stages.IsEmpty ? null : pipeline, "metal.pipeline/1"),
+            GpuDiagnosticIdentityEncoding.Stages("source", stageIdentities), GpuDiagnosticIdentityEncoding.Stages("artifact", stageIdentities),
+            GpuDiagnosticIdentityEncoding.Known(layout, "metal.layout/1"),
+            GpuDiagnosticIdentityEncoding.Text(string.Join(" | ", stages.Select(s => s.Configuration)), "metal.diagnostic-configuration/1"),
+            GpuDiagnosticIdentityEncoding.CodeGeneration(GpuBackendKind.MetalNative,
+                [new("frontend", SpirvFrontEndPin.Identity), new("msl.compile", MslCompilePin.Identity),
+                    new("msl.cross", MslCrossCompilePin.Identity), new("toolchain", SpirvToolchainVersion.Identity)]),
+            string.Join(" | ", stages.Select(s => s.Stage + ": " + s.Configuration)), x, y, z, stageIdentities);
     }
-
-    string Join(Func<MetalShaderEvidence, string> field) => _stages.IsEmpty ? "" : _stages.Length == 1
-        ? field(_stages[0]) : MetalShaderKey.Digest(w =>
-        {
-            w.Write(_stages.Length); foreach (var stage in _stages) w.Write(field(stage));
-        });
 
     internal GpuPipelineCompilerReport Read(bool invalid)
     {
         const string unavailable = "The source-compilation path retains no native Metal compiler artifact, physical registers or spills. "
             + "MSL is source. Counter availability and compute limits are not compiler statistics or measured occupancy.";
         if (invalid) return Report(GpuDiagnosticStatus.Invalid, "The pipeline or its shader/device was disposed or lost.", []);
-        GpuDiagnosticStatus status = GpuDiagnosticStatus.Unsupported;
-        string reason = unavailable;
+        bool missingIdentity = ConstructionIdentity.PipelineSha256.Status == GpuDiagnosticStatus.Invalid
+            || ConstructionIdentity.SourceSha256.Status == GpuDiagnosticStatus.Invalid
+            || ConstructionIdentity.LayoutSha256.Status == GpuDiagnosticStatus.Invalid
+            || ConstructionIdentity.Stages.Any(s => s.EmittedSourceSha256?.Status == GpuDiagnosticStatus.Invalid);
+        GpuDiagnosticStatus status = missingIdentity ? GpuDiagnosticStatus.Invalid : GpuDiagnosticStatus.Unsupported;
+        string reason = unavailable + (missingIdentity ? " Construction identity is missing or invalid." : "");
         var width = Missing("threads", "No compute pipeline limit was queried.");
         var maximum = width;
         if (_readLimits is not null)
@@ -91,7 +99,7 @@ internal sealed class MetalPipelineDiagnostics
                 }, "MTLDevice.supportsCounterSampling, advertised boundary only, no runtime sample"));
         }
         if (_stages.IsEmpty) reason += " Shader source metadata was not retained.";
-        var executables = _stages.Select(s => new GpuPipelineExecutableReport("MSL source SHA256 " + MetalShaderKey.HashUtf8(s.Msl),
+        var executables = _stages.Select((s, index) => new GpuPipelineExecutableReport("MSL source SHA256 " + (ConstructionIdentity.Stages[index].EmittedSourceSha256?.Sha256 ?? "unavailable"),
             s.Stage.ToString().ToLowerInvariant(), s.EntryPoint,
             s.Stage == MetalShaderStage.Compute ? _x : 0, s.Stage == MetalShaderStage.Compute ? _y : 0,
             s.Stage == MetalShaderStage.Compute ? _z : 0, statistics.ToImmutable(),
@@ -104,7 +112,7 @@ internal sealed class MetalPipelineDiagnostics
     }
 
     GpuPipelineCompilerReport Report(GpuDiagnosticStatus status, string reason, ImmutableArray<GpuPipelineExecutableReport> executables)
-        => new(_pipeline, _source, "", _layout, _configuration, _flags, status, reason, executables);
+        => new(ConstructionIdentity, status, reason, executables);
 
     static GpuPipelineStatistic Advertised(string name, string source) => new(name, source,
         new(new(GpuDiagnosticValueType.Boolean, Boolean: true), "boolean", source,

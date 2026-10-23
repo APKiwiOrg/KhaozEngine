@@ -515,6 +515,7 @@ public sealed class RendererPerfProtocolTests
                 10, 1, available, [], [], ImmutableDictionary<string, RendererPerfMetric>.Empty, [])).ToImmutableArray();
         report = report with
         {
+            Compiler = RendererPerfCompilerFixture.Complete,
             Recipes = report.Manifest.Recipes.Select(r => new RendererPerfRecipeReport(r, "public primitives", Digest,
                 ImmutableDictionary<string, long>.Empty, ImmutableDictionary<string, long>.Empty,
                 ImmutableDictionary<string, RendererPerfMetric>.Empty)).ToImmutableArray(),
@@ -528,6 +529,7 @@ public sealed class RendererPerfProtocolTests
                 State = RendererPerfPublicationState.Completed,
                 FinalUnitPublished = true,
                 OriginalFailure = null,
+                FailureText = new(true, 0, 0),
                 Errors = []
             }
         };
@@ -623,14 +625,14 @@ public sealed class RendererPerfProtocolTests
             GpuDiagnosticStatus.Available, null, GpuDiagnosticProvenance.IntermediateCode));
         var executable = new GpuPipelineExecutableReport("main", "vertex", "vs_main", 1, 1, 1,
             [raw], unavailable, unavailable, unavailable, unavailable, unavailable);
-        return new("khaozengine.renderer-perf-report/1", manifest,
+        return new("khaozengine.renderer-perf-report/2", manifest,
             new("pilot-linux", Digest, Sha, Sha, OtherSha, OtherSha, "123", 1, 42, Digest,
                 "Linux", "hosted-image", "hosted CPU", "10.0.0", "workstation", true, ImmutableDictionary<string, string>.Empty,
                 "NVIDIA T4", 0x10de, 0x1eb8, "driver-1", "vulkan", "native", false, 64, 1, true,
                 "none", "none", "retained-fence-batch-3/1"),
             [], [], new([new(unavailable, unavailable, unavailable, unavailable, unavailable, unavailable,
                 unavailable, unavailable, unavailable, unavailable, false)], ImmutableDictionary<string, RendererPerfMetric>.Empty),
-            [new(Digest, Digest, Digest, Digest, Digest, "optimized", GpuDiagnosticStatus.Available, null, [executable])],
+            [new(RendererPerfCompilerFixture.Identity(Digest), GpuDiagnosticStatus.Available, null, [executable])],
             [], new(false, ["device lost"], ImmutableDictionary<string, RendererPerfMetric>.Empty.Add("gpu", missing), []),
             new(RendererPerfPublicationState.Failed, true, false, "device lost", ["cleanup failed", "publication failed"], missing, missing, missing), []);
     }

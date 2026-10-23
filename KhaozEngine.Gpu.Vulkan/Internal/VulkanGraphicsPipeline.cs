@@ -25,11 +25,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// that bound it can still be executing, and destroying a pipeline a command buffer in flight names is
     /// undefined behaviour of the quiet kind.</para>
     /// </summary>
-    internal sealed class VulkanGraphicsPipeline : IGpuPipeline, IGpuPipelineDiagnostics
+    internal sealed class VulkanGraphicsPipeline : IGpuPipeline, IGpuPipelineDiagnostics, IGpuPipelineConstructionDiagnostics, IGpuBudgetedPipelineDiagnostics
     {
         readonly VulkanPipelineOwner _owner;
         readonly ulong[] _setLayouts;
         readonly VulkanPipelineDiagnosticBinding? _diagnostics;
+        readonly GpuPipelineConstructionIdentity _constructionIdentity;
 
         ulong _handle;
 
@@ -50,7 +51,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _setLayouts = setLayouts;
             PipelineLayout = pipelineLayout;
             _diagnostics = diagnostics;
+            _constructionIdentity = diagnostics?.ConstructionIdentity ?? VulkanPipelineDiagnostics.DisabledIdentity;
         }
+
+        public GpuPipelineConstructionIdentity ConstructionIdentity => _constructionIdentity;
+        public GpuPipelineCompilerReadResult ReadCompilerReport(GpuPipelineCompilerReadRequest request,
+            System.Action<string> checkOperation, System.Threading.CancellationToken cancellation)
+            => _diagnostics?.Read(Handle, request, checkOperation, cancellation)
+                ?? VulkanPipelineDiagnostics.Production.Read(0, 0, new("", "", "", "", "unavailable"), request, checkOperation, cancellation, _constructionIdentity);
 
         public GpuPipelineCompilerReport ReadCompilerReport()
             => _diagnostics?.Read(Handle) ?? VulkanPipelineDiagnostics.Disabled(IsDisposed);

@@ -25,7 +25,7 @@ public sealed partial class RendererPerfMetalDiagnosticsTests
         var diagnostics = Assert.IsAssignableFrom<IGpuPipelineDiagnostics>(pipeline);
         var report = diagnostics.ReadCompilerReport();
         Assert.Equal(GpuDiagnosticStatus.Unsupported, report.Status);
-        Assert.Empty(report.ShaderArtifactSha256);
+        Assert.Null(report.Identity.ShaderArtifactSha256.Sha256);
         Assert.NotNull(report.Reason);
         var executable = Assert.Single(report.Executables);
         Assert.Equal("kernel_entry", executable.EntryPoint);
@@ -36,13 +36,32 @@ public sealed partial class RendererPerfMetalDiagnosticsTests
         Assert.Null(executable.AchievedOccupancy.Value);
         Assert.Null(executable.PhysicalRegisters.Value);
         Assert.Null(executable.SpillBytes.Value);
-        Assert.Equal("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", report.SourceSha256);
-        Assert.Equal(64, report.PipelineSha256.Length);
-        Assert.Contains("fastMath=1", report.CompilerFlags);
+        Assert.Equal("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", report.Identity.SourceSha256.Sha256);
+        Assert.Equal(64, report.Identity.PipelineSha256.Sha256!.Length);
+        Assert.Contains("fastMath=1", report.Identity.CompilerFlags);
         Assert.Equal(1, reads);
+        var witness = ((IGpuPipelineConstructionDiagnostics)pipeline).ConstructionIdentity;
+        Assert.Same(witness, report.Identity);
+        Assert.Same(witness, ((IGpuPipelineConstructionDiagnostics)pipeline).ConstructionIdentity);
         live.MarkDead();
+        Assert.Same(witness, ((IGpuPipelineConstructionDiagnostics)pipeline).ConstructionIdentity);
         Assert.Equal(GpuDiagnosticStatus.Invalid, diagnostics.ReadCompilerReport().Status);
         Assert.Equal(1, reads);
+    }
+
+    [Fact]
+    public void Empty_sources_are_invalid_and_never_gain_available_empty_byte_hashes()
+    {
+        var live = new DeviceLiveness();
+        var evidence = MetalShaderEvidence.Capture(new(MetalShaderStage.Compute, "main", ""), "");
+        using var shader = new MetalComputeShader(live, default, MetalShaderIndexTable.Build([], [], "empty"), 1, 1, 1, evidence);
+        using var pipeline = new MetalComputePipeline(live, shader, [], default);
+        var report = pipeline.ReadCompilerReport();
+        Assert.Equal(GpuDiagnosticStatus.Invalid, report.Status);
+        Assert.Equal(GpuDiagnosticStatus.Invalid, report.Identity.SourceSha256.Status);
+        Assert.Null(report.Identity.SourceSha256.Sha256);
+        Assert.Equal(GpuDiagnosticStatus.Invalid, report.Identity.Stages[0].EmittedSourceSha256!.Status);
+        Assert.Null(report.Identity.ShaderArtifactSha256.Sha256);
     }
 
     [Fact]
@@ -143,8 +162,8 @@ public sealed partial class RendererPerfMetalDiagnosticsTests
         var timing = Assert.Single(executable.Statistics.Where(s => s.Name == "timestamp-counters-usable"));
         Assert.Null(timing.Metric.Value);
         Assert.Contains("injected sample allocation refused", timing.Metric.Reason);
-        Assert.Contains("reflection=none", report.CompilerFlags);
-        Assert.Contains("capture=none", report.CompilerFlags);
+        Assert.Contains("reflection=none", report.Identity.CompilerFlags);
+        Assert.Contains("capture=none", report.Identity.CompilerFlags);
         Assert.Empty(native.Trace);
         Assert.Equal(0, native.ClockReads);
     }
@@ -193,7 +212,7 @@ public sealed partial class RendererPerfMetalDiagnosticsTests
         var report = failed.ReadCompilerReport();
         Assert.Equal(GpuDiagnosticStatus.Invalid, report.Status);
         Assert.Contains("native pipeline limit query failed", report.Reason);
-        Assert.Equal(64, report.PipelineSha256.Length);
+        Assert.Equal(64, report.Identity.PipelineSha256.Sha256!.Length);
         var executable = Assert.Single(report.Executables);
         Assert.Equal(GpuDiagnosticStatus.Invalid, executable.ExecutionWidth.Status);
         Assert.Null(executable.ExecutionWidth.Value);

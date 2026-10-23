@@ -40,10 +40,10 @@ public sealed partial class RendererPerfD3D11DiagnosticsTests
             Assert.Null(field.Value);
             Assert.False(string.IsNullOrWhiteSpace(field.Reason));
         }
-        Assert.Equal("039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81", report.ShaderArtifactSha256);
-        Assert.Contains("0x00008000", report.CompilerFlags);
-        Assert.Contains("record=Deferred", report.CompilerFlags);
-        Assert.Contains("test compiler 1", report.CompilerFlags);
+        Assert.Equal("039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81", report.Identity.ShaderArtifactSha256.Sha256);
+        Assert.Contains("0x00008000", report.Identity.CompilerFlags);
+        Assert.Contains("record=Deferred", report.Identity.CompilerFlags);
+        Assert.Contains("test compiler 1", report.Identity.CompilerFlags);
         Assert.Equal(1, api.Reads);
         Assert.Equal(report, ((IGpuPipelineDiagnostics)pipeline).ReadCompilerReport());
         Assert.Equal(1, api.Reads);
@@ -93,9 +93,10 @@ public sealed partial class RendererPerfD3D11DiagnosticsTests
         internal int Reads;
         internal Exception? Failure;
         internal bool Empty;
-        public D3D11ShaderReflection Read(ReadOnlySpan<byte> dxbc)
+        public D3D11ShaderReflection Read(ReadOnlySpan<byte> dxbc, int maximumCreatorUtf8Bytes)
         {
             Assert.Equal(new byte[] { 1, 2, 3 }, dxbc.ToArray());
+            Assert.Equal(4096, maximumCreatorUtf8Bytes);
             Reads++;
             if (Failure is not null) throw Failure;
             return new("test compiler 1", Empty ? [] : [new("TempRegisterCount", "The number of temporary registers in the compiled shader.", 17),

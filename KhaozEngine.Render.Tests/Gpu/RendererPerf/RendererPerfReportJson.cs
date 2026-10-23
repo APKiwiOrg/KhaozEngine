@@ -35,7 +35,7 @@ internal static class RendererPerfReportJson
 
     static void Validate(RendererPerfReport report)
     {
-        Require(report.Schema == "khaozengine.renderer-perf-report/1", "Schema", "Expected renderer-perf-report/1.");
+        Require(report.Schema == "khaozengine.renderer-perf-report/2", "Schema", "Expected renderer-perf-report/2.");
         RendererPerfManifest.Validate(report.Manifest);
         RendererPerfRunIdentity identity = report.Identity;
         foreach (string sha in new[] { identity.WorkloadSha, identity.BaselineMainSha, identity.AuthorizationSha, identity.WorkflowSha }) Hash(sha, 40);
@@ -195,27 +195,7 @@ internal static class RendererPerfReportJson
 
     static void ValidateNative(RendererPerfReport report)
     {
-        foreach (GpuPipelineCompilerReport pipeline in report.Pipelines)
-        {
-            foreach (string hash in new[] { pipeline.PipelineSha256, pipeline.SourceSha256, pipeline.ShaderArtifactSha256,
-                pipeline.LayoutSha256, pipeline.DiagnosticConfigurationSha256 }) Hash(hash, 64);
-            Require(Text(pipeline.CompilerFlags) && (pipeline.Status == GpuDiagnosticStatus.Available
-                ? !pipeline.Executables.IsEmpty : Text(pipeline.Reason)), "Metric", "Compiler collection needs executable evidence or an unavailable reason.");
-            foreach (GpuPipelineExecutableReport executable in pipeline.Executables)
-            {
-                Require(Text(executable.Name) && Text(executable.Stage) && Text(executable.EntryPoint), "Metric", "Executable identity is missing.");
-                Provenance(executable.PhysicalRegisters, GpuDiagnosticProvenance.VendorCompiler, "registers");
-                Provenance(executable.SpillBytes, GpuDiagnosticProvenance.VendorCompiler, "bytes");
-                Provenance(executable.AchievedOccupancy, GpuDiagnosticProvenance.RuntimeCounter, "ratio", ratio: true);
-                Provenance(executable.ExecutionWidth, GpuDiagnosticProvenance.HardwareLimit, "threads");
-                Provenance(executable.MaximumThreadsPerGroup, GpuDiagnosticProvenance.HardwareLimit, "threads");
-                foreach (GpuPipelineStatistic statistic in executable.Statistics)
-                {
-                    Require(Text(statistic.Name) && Text(statistic.Description), "Metric", "Raw compiler statistics must retain their names and descriptions.");
-                    Metric(statistic.Metric);
-                }
-            }
-        }
+        RendererPerfCompilerValidation.Validate(report);
         ValidateMemory(report.Memory.Native);
     }
 
@@ -233,7 +213,7 @@ internal static class RendererPerfReportJson
         }
     }
 
-    static void Provenance(GpuDiagnosticMetric metric, GpuDiagnosticProvenance provenance, string unit, bool ratio = false)
+    internal static void Provenance(GpuDiagnosticMetric metric, GpuDiagnosticProvenance provenance, string unit, bool ratio = false)
     {
         Metric(metric);
         if (metric.Status != GpuDiagnosticStatus.Available) return;

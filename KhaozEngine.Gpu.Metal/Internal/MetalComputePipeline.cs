@@ -32,7 +32,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// declaration-order arithmetic section 2.2b forbids on a shipped path. The default infers the same
     /// mutability from the function's own <c>const device</c> and <c>constant</c> qualifiers.</para>
     /// </summary>
-    internal sealed class MetalComputePipeline : IGpuComputePipeline, IMetalOwnedResource, IGpuPipelineDiagnostics
+    internal sealed class MetalComputePipeline : IGpuComputePipeline, IMetalOwnedResource, IGpuPipelineDiagnostics, IGpuPipelineConstructionDiagnostics
     {
         readonly IDeviceLiveness _liveness;
         readonly object _diagnosticGate = new();
@@ -217,6 +217,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <inheritdoc/>
         /// <remarks>Releases the state object, once, and never on a dead device (M-F6).</remarks>
+        public GpuPipelineConstructionIdentity ConstructionIdentity => _diagnostics.ConstructionIdentity;
+
         public GpuPipelineCompilerReport ReadCompilerReport()
         {
             lock (_diagnosticGate) return _diagnostics.Read(IsDisposed || Shader.IsDisposed || _liveness.IsDead);

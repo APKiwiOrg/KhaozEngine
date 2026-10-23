@@ -40,7 +40,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// objects, so those are compared by value.
     /// </para>
     /// </summary>
-    internal sealed class D3D11GraphicsPipeline : IGpuPipeline, ID3D11PipelineState, ID3D11PipelineLayouts, IGpuPipelineDiagnostics
+    internal sealed class D3D11GraphicsPipeline : IGpuPipeline, ID3D11PipelineState, ID3D11PipelineLayouts, IGpuPipelineDiagnostics, IGpuPipelineConstructionDiagnostics, IGpuBudgetedPipelineDiagnostics
     {
         readonly DeviceLiveness _liveness;
         readonly ID3D11ShaderSet _shaderSet;
@@ -175,6 +175,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// separate from <see cref="ID3D11PipelineState"/> because a compute pipeline answers this one and none of
         /// the seven.</summary>
         D3D11ResourceLayout[] ID3D11PipelineLayouts.ResourceLayouts => ResourceLayouts;
+
+        public GpuPipelineConstructionIdentity ConstructionIdentity => _diagnostics.ConstructionIdentity;
+        public GpuPipelineCompilerReadResult ReadCompilerReport(GpuPipelineCompilerReadRequest request,
+            System.Action<string> checkOperation, System.Threading.CancellationToken cancellation)
+            => _diagnostics.Read(IsDisposed || _liveness.IsDead
+                || _shaderSet is D3D11ShaderSet s && (s.IsDisposed || s.DeviceIsDead), request, checkOperation, cancellation);
 
         public GpuPipelineCompilerReport ReadCompilerReport()
             => _diagnostics.Read(IsDisposed || _liveness.IsDead

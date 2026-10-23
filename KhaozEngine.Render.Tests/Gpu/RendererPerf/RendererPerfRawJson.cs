@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Tests.Gpu.RendererPerf;
@@ -30,11 +31,11 @@ internal static class RendererPerfRawJson
         ImmutableArray<RendererPerfControlReport> Controls, RendererPerfAssessment Assessment,
         RendererPerfPublication Publication, ImmutableArray<RendererPerfSidecar> Sidecars,
         ImmutableArray<RendererPerfFrameSample> Conditioning, ImmutableArray<RendererPerfBatchReport> Batches,
-        ImmutableArray<RendererPerfStartupReport> Startup, [property: JsonPropertyOrder(100)] Schema Raw)
+        ImmutableArray<RendererPerfStartupReport> Startup, RendererPerfCompilerEvidence Compiler, [property: JsonPropertyOrder(100)] Schema Raw)
     {
         internal RendererPerfReport Report() => new(Schema, Manifest, Identity, Recipes, Blocks, Memory,
             Pipelines, Controls, Assessment, Publication, Sidecars)
-        { Conditioning = Conditioning, Batches = Batches, Startup = Startup };
+        { Conditioning = Conditioning, Batches = Batches, Startup = Startup, Compiler = Compiler };
     }
 
     internal static byte[] Serialize(RendererPerfReport report, int maximumBytes)
@@ -42,7 +43,7 @@ internal static class RendererPerfRawJson
         var tables = new Tables(new("metric-vectors/2", [], [], [], [], []));
         var wire = new WireReport(report.Schema, report.Manifest, report.Identity, report.Recipes, report.Blocks,
             report.Memory, report.Pipelines, report.Controls, report.Assessment, report.Publication, report.Sidecars,
-            report.Conditioning, report.Batches, report.Startup, tables.Schema);
+            report.Conditioning, report.Batches, report.Startup, report.Compiler, tables.Schema);
         using var stream = new BoundedStream(maximumBytes);
         JsonSerializer.Serialize(stream, wire, tables.Options);
         return stream.ToArray();
@@ -81,7 +82,13 @@ internal static class RendererPerfRawJson
         internal Tables(Schema schema)
         {
             Schema = schema;
-            Options = new(RendererPerfManifest.JsonOptions);
+            Options = new(RendererPerfManifest.JsonOptions)
+            {
+                TypeInfoResolver = new DefaultJsonTypeInfoResolver
+                {
+                    Modifiers = { RendererPerfCompilerValidation.RequireScalarMembers }
+                }
+            };
             Options.Converters.Add(new MetricConverter(this));
             Options.Converters.Add(new MapConverter(this));
             Options.Converters.Add(new PassConverter(this));

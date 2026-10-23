@@ -171,24 +171,24 @@ internal static class RendererPerfComparison
         // Pipeline/artifact hashes identify the candidate. Capture configuration still needs to match.
         Compare("pipelines", baseline.Pipelines.Select(p => new
         {
-            p.PipelineSha256,
-            p.SourceSha256,
-            p.ShaderArtifactSha256,
-            p.LayoutSha256,
-            p.DiagnosticConfigurationSha256,
-            p.CompilerFlags
+            p.Identity.PipelineSha256,
+            p.Identity.SourceSha256,
+            p.Identity.ShaderArtifactSha256,
+            p.Identity.LayoutSha256,
+            p.Identity.DiagnosticConfigurationSha256,
+            p.Identity.CompilerFlags
         }).ToArray(),
             candidate.Pipelines.Select(p => new
             {
-                p.PipelineSha256,
-                p.SourceSha256,
-                p.ShaderArtifactSha256,
-                p.LayoutSha256,
-                p.DiagnosticConfigurationSha256,
-                p.CompilerFlags
+                p.Identity.PipelineSha256,
+                p.Identity.SourceSha256,
+                p.Identity.ShaderArtifactSha256,
+                p.Identity.LayoutSha256,
+                p.Identity.DiagnosticConfigurationSha256,
+                p.Identity.CompilerFlags
             }).ToArray(),
-            p => p.EndsWith(".pipelineSha256", StringComparison.Ordinal) || p.EndsWith(".sourceSha256", StringComparison.Ordinal)
-                || p.EndsWith(".shaderArtifactSha256", StringComparison.Ordinal));
+            p => p.EndsWith(".pipelineSha256.sha256", StringComparison.Ordinal) || p.EndsWith(".sourceSha256.sha256", StringComparison.Ordinal)
+                || p.EndsWith(".shaderArtifactSha256.sha256", StringComparison.Ordinal));
         return changes.ToImmutable();
     }
 

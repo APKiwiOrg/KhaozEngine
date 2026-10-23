@@ -68,24 +68,30 @@ public sealed partial class RendererPerfVulkanDiagnosticsTests
         using IGpuPipeline graphics = pipelines.CreateGraphics(description);
         GpuPipelineCompilerReport first = ((IGpuPipelineDiagnostics)graphics).ReadCompilerReport();
         Assert.Equal(GpuDiagnosticStatus.Available, first.Status);
-        Assert.Equal(64, first.PipelineSha256.Length);
-        Assert.Equal(64, first.SourceSha256.Length);
-        Assert.Equal(64, first.ShaderArtifactSha256.Length);
-        Assert.Equal(64, first.LayoutSha256.Length);
-        Assert.Contains("opt=", first.CompilerFlags);
+        Assert.Equal(64, first.Identity.PipelineSha256.Sha256!.Length);
+        Assert.Equal(64, first.Identity.SourceSha256.Sha256!.Length);
+        Assert.Equal(64, first.Identity.ShaderArtifactSha256.Sha256!.Length);
+        Assert.Equal(64, first.Identity.LayoutSha256.Sha256!.Length);
+        Assert.Contains("opt=", first.Identity.CompilerFlags);
 
         using IGpuPipeline repeat = pipelines.CreateGraphics(description);
-        Assert.Equal(first.PipelineSha256, ((IGpuPipelineDiagnostics)repeat).ReadCompilerReport().PipelineSha256);
+        Assert.Equal(first.Identity.PipelineSha256.Sha256, ((IGpuPipelineDiagnostics)repeat).ReadCompilerReport().Identity.PipelineSha256.Sha256);
         description.Topology = GpuPrimitiveTopology.LineList;
         using IGpuPipeline changed = pipelines.CreateGraphics(description);
-        Assert.NotEqual(first.PipelineSha256, ((IGpuPipelineDiagnostics)changed).ReadCompilerReport().PipelineSha256);
+        Assert.NotEqual(first.Identity.PipelineSha256.Sha256, ((IGpuPipelineDiagnostics)changed).ReadCompilerReport().Identity.PipelineSha256.Sha256);
 
         using IGpuComputePipeline kernel = pipelines.CreateCompute(new GpuComputePipelineDescription(compute));
         GpuPipelineCompilerReport report = ((IGpuPipelineDiagnostics)kernel).ReadCompilerReport();
         Assert.Equal(GpuDiagnosticStatus.Available, report.Status);
         Assert.Equal(8u, Assert.Single(report.Executables).LocalSizeX);
+        var witness = ((IGpuPipelineConstructionDiagnostics)kernel).ConstructionIdentity;
+        int getterCalls = executable.Calls;
+        Assert.Same(witness, ((IGpuPipelineConstructionDiagnostics)kernel).ConstructionIdentity);
+        Assert.Same(report.Identity, witness);
+        Assert.Equal(getterCalls, executable.Calls);
         kernel.Dispose();
         graphics.Dispose();
+        Assert.Same(witness, ((IGpuPipelineConstructionDiagnostics)kernel).ConstructionIdentity);
         int calls = executable.Calls;
         Assert.Equal(GpuDiagnosticStatus.Invalid, ((IGpuPipelineDiagnostics)kernel).ReadCompilerReport().Status);
         Assert.Equal(GpuDiagnosticStatus.Invalid, ((IGpuPipelineDiagnostics)graphics).ReadCompilerReport().Status);
@@ -102,10 +108,10 @@ public sealed partial class RendererPerfVulkanDiagnosticsTests
         using IGpuComputePipeline pipeline = fixture.Device.Factory.CreateComputePipeline(new GpuComputePipelineDescription(shader));
         GpuPipelineCompilerReport report = ((IGpuPipelineDiagnostics)pipeline).ReadCompilerReport();
         Assert.Equal(GpuDiagnosticStatus.Unsupported, report.Status);
-        Assert.Equal(64, report.PipelineSha256.Length);
-        Assert.Equal(64, report.SourceSha256.Length);
-        Assert.Equal(64, report.DiagnosticConfigurationSha256.Length);
-        Assert.Contains("opt=", report.CompilerFlags);
+        Assert.Equal(64, report.Identity.PipelineSha256.Sha256!.Length);
+        Assert.Equal(64, report.Identity.SourceSha256.Sha256!.Length);
+        Assert.Equal(64, report.Identity.DiagnosticConfigurationSha256.Sha256!.Length);
+        Assert.Contains("opt=", report.Identity.CompilerFlags);
         Assert.Empty(report.Executables);
     }
 

@@ -105,17 +105,6 @@ public sealed record GpuPipelineExecutableReport(string Name, string Stage, stri
     GpuDiagnosticMetric PhysicalRegisters, GpuDiagnosticMetric SpillBytes, GpuDiagnosticMetric AchievedOccupancy,
     GpuDiagnosticMetric ExecutionWidth, GpuDiagnosticMetric MaximumThreadsPerGroup);
 
-/// <summary>Cold compiler report identifying the exact pipeline and capture configuration. An absent
-/// extension, empty statistic list or failed query remains unsupported or invalid with its original cause.</summary>
-/// <param name="PipelineSha256">Pipeline digest, including specialization/local size, layout and render state.</param>
-/// <param name="SourceSha256">Shader source digest.</param>
-/// <param name="ShaderArtifactSha256">Actual SPIR-V, DXBC or compiler artifact digest.</param>
-/// <param name="LayoutSha256">Bound resource layout digest.</param>
-/// <param name="DiagnosticConfigurationSha256">Capture flags, compiler version and validation configuration digest.</param>
-/// <param name="CompilerFlags">Active optimization and precision flags.</param>
-/// <param name="Status">Overall collection status. Individual fields have independent support.</param>
-/// <param name="Reason">Cause when collection is unsupported or invalid.</param>
-/// <param name="Executables">All returned executables or entry stages.</param>
-public sealed record GpuPipelineCompilerReport(string PipelineSha256, string SourceSha256, string ShaderArtifactSha256,
-    string LayoutSha256, string DiagnosticConfigurationSha256, string CompilerFlags,
+/// <summary>Cold compiler evidence and its detached construction witness.</summary>
+public sealed record GpuPipelineCompilerReport(GpuPipelineConstructionIdentity Identity,
     GpuDiagnosticStatus Status, string? Reason, ImmutableArray<GpuPipelineExecutableReport> Executables);

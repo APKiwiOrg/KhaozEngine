@@ -35,18 +35,18 @@ public sealed partial class RendererPerfD3D11DiagnosticsTests
         var report = first.ReadCompilerReport();
         Assert.Equal(GpuDiagnosticStatus.Available, report.Status);
         Assert.Equal(new[] { "vertex", "pixel" }, report.Executables.Select(x => x.Stage));
-        Assert.Equal(64, report.PipelineSha256.Length);
-        Assert.Equal(64, report.LayoutSha256.Length);
+        Assert.Equal(64, report.Identity.PipelineSha256.Sha256!.Length);
+        Assert.Equal(64, report.Identity.LayoutSha256.Sha256!.Length);
         Assert.Same(vertexHandle, ((ID3D11PipelineState)first).VertexShader);
         using var repeat = new D3D11GraphicsPipeline(live, d, native);
-        Assert.Equal(report.PipelineSha256, repeat.ReadCompilerReport().PipelineSha256);
+        Assert.Equal(report.Identity.PipelineSha256.Sha256, repeat.ReadCompilerReport().Identity.PipelineSha256.Sha256);
         d.Topology = GpuPrimitiveTopology.LineList;
         using var changed = new D3D11GraphicsPipeline(live, d, native);
-        Assert.NotEqual(report.PipelineSha256, changed.ReadCompilerReport().PipelineSha256);
+        Assert.NotEqual(report.Identity.PipelineSha256.Sha256, changed.ReadCompilerReport().Identity.PipelineSha256.Sha256);
         d.Outputs.Colour[0] = GpuPixelFormat.R16G16B16A16Float;
         Assert.Same(report, first.ReadCompilerReport());
         using var output = new D3D11GraphicsPipeline(live, d, native);
-        Assert.NotEqual(changed.ReadCompilerReport().PipelineSha256, output.ReadCompilerReport().PipelineSha256);
+        Assert.NotEqual(changed.ReadCompilerReport().Identity.PipelineSha256.Sha256, output.ReadCompilerReport().Identity.PipelineSha256.Sha256);
         Assert.Equal(2, api.Reads);
         first.Dispose();
         first.Dispose();
@@ -64,7 +64,7 @@ public sealed partial class RendererPerfD3D11DiagnosticsTests
         var api = new ReflectionApi { Failure = new InvalidOperationException("native reflection failure") };
         var failed = D3D11ShaderEvidence.Capture("source", new byte[] { 1, 2, 3 }, "compute", 0, options, api);
         Assert.Equal(GpuDiagnosticStatus.Invalid, failed.Status);
-        Assert.Contains("native reflection failure", failed.Reason);
+        Assert.Same(api.Failure, Assert.Single(failed.Failures).Error);
         api.Failure = null;
         api.Empty = true;
         var empty = D3D11ShaderEvidence.Capture("source", new byte[] { 1, 2, 3 }, "compute", 0, options, api);
@@ -80,8 +80,8 @@ public sealed partial class RendererPerfD3D11DiagnosticsTests
         Assert.NotEqual(failed.Configuration, disabled.Configuration);
         api.Failure = new NotSupportedException("missing reflection entry point");
         var unavailable = D3D11ShaderEvidence.Capture("source", new byte[] { 1, 2, 3 }, "compute", 0, options, api);
-        Assert.Equal(GpuDiagnosticStatus.Unsupported, unavailable.Status);
-        Assert.Contains("missing reflection entry point", unavailable.Reason);
+        Assert.Equal(GpuDiagnosticStatus.Invalid, unavailable.Status);
+        Assert.Same(api.Failure, Assert.Single(unavailable.Failures).Error);
     }
 
     [Fact]
@@ -171,7 +171,10 @@ public sealed partial class RendererPerfD3D11DiagnosticsTests
         var report = pipeline.ReadCompilerReport();
         Assert.Equal(GpuDiagnosticStatus.Invalid, report.Status);
         Assert.Contains("not requested", report.Reason);
-        Assert.Contains("pixel reflection failed natively", report.Reason);
+        var result = pipeline.ReadCompilerReport(D3D11PipelineDiagnostics.Request, _ => { }, default);
+        Assert.Same(api.Failure, result.Failures[0].Error);
+        Assert.Contains("not captured", result.Failures[1].Error.Message);
+        Assert.Equal("pixel reflection failed natively", result.Failures[0].Error.Message);
     }
 
     [Fact]
@@ -181,9 +184,9 @@ public sealed partial class RendererPerfD3D11DiagnosticsTests
         using var pipeline = new D3D11ComputePipeline(new GpuComputePipelineDescription(shader));
         var report = pipeline.ReadCompilerReport();
         Assert.Equal(GpuDiagnosticStatus.Unsupported, report.Status);
-        Assert.Empty(report.PipelineSha256);
-        Assert.Empty(report.SourceSha256);
-        Assert.Empty(report.ShaderArtifactSha256);
+        Assert.Null(report.Identity.PipelineSha256.Sha256);
+        Assert.Null(report.Identity.SourceSha256.Sha256);
+        Assert.Null(report.Identity.ShaderArtifactSha256.Sha256);
         Assert.Empty(report.Executables);
     }
 

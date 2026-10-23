@@ -36,7 +36,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// </para>
     /// </summary>
     internal sealed class D3D11ComputePipeline : IGpuComputePipeline, ID3D11ComputePipelineState,
-        ID3D11PipelineLayouts, IGpuPipelineDiagnostics
+        ID3D11PipelineLayouts, IGpuPipelineDiagnostics, IGpuPipelineConstructionDiagnostics, IGpuBudgetedPipelineDiagnostics
     {
         readonly D3D11PipelineDiagnostics _diagnostics;
 
@@ -72,6 +72,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         /// <inheritdoc/>
         D3D11ResourceLayout[] ID3D11PipelineLayouts.ResourceLayouts => ResourceLayouts;
+
+        public GpuPipelineConstructionIdentity ConstructionIdentity => _diagnostics.ConstructionIdentity;
+        public GpuPipelineCompilerReadResult ReadCompilerReport(GpuPipelineCompilerReadRequest request,
+            System.Action<string> checkOperation, System.Threading.CancellationToken cancellation)
+            => _diagnostics.Read(IsDisposed || Shader.IsDisposed || Shader.DeviceIsDead, request, checkOperation, cancellation);
 
         public GpuPipelineCompilerReport ReadCompilerReport()
             => _diagnostics.Read(IsDisposed || Shader.IsDisposed || Shader.DeviceIsDead);

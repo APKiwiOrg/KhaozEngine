@@ -9,19 +9,17 @@ namespace KhaozEngine.Tests.MapDoc;
 public sealed class NativeMapDecodeCapacityTests
 {
     [Fact]
-    public void CacheDecode_ReservesScenePeakBeforeModelEntry()
+    public void CacheDecode_AdmitsActualLiveDemandWithinALargerDeclaredEnvelope()
     {
         using var fixture = ResidencyFixture.Placement();
         var state = fixture.State(ResidencyFixture.Window());
-        var scene = new MapSceneAdmission(new(MaxPreparedBytes: 8192));
+        var scene = new MapSceneAdmission(new(MaxPreparedBytes: 32768));
         using var active = scene.Enter();
         using var cache = new MapRenderAssetCache();
-        int model = GltfDecodeAdmission.ModelDecodeEntries;
-        var result = cache.Acquire(state.Closure, ["prop-a"], [], state.Extents, new(new(MaxPeakBytes: 32768)));
-        Assert.Equal(MapRenderAssetStatus.CapacityExceeded, result.Status);
-        Assert.Null(result.Input);
-        Assert.Equal(new MapSceneCapacity("MaxPreparedBytes", 32768, 8192), result.Capacity);
-        Assert.Equal(model, GltfDecodeAdmission.ModelDecodeEntries);
+        var result = cache.Acquire(state.Closure, ["prop-a"], [], state.Extents, new(new(MaxPeakBytes: 65536)));
+        Assert.True(result.Status == MapRenderAssetStatus.Complete, result.Detail);
+        Assert.True(scene.RetainedBytes > 0);
+        result.Input!.Dispose();
         Assert.Equal(0, scene.WorkspaceBytes);
         Assert.Equal(0, scene.RetainedBytes);
     }

@@ -7,6 +7,36 @@ namespace KhaozEngine.Tests.MapDoc.Scene;
 public sealed class MapPreparationLifetimeTests
 {
     [Fact]
+    public void BorrowedInventory_ConstrainsChildWithoutDuplicatingRootOwnership()
+    {
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 100));
+        admission.ReserveBytes(40);
+        using var window = admission.LimitPreparation(50, "MaxPlanBytes");
+        using var borrowed = admission.ReferenceWindow(40);
+        Assert.Equal(40, admission.RetainedBytes);
+        using var workspace = admission.Workspace();
+        workspace.Reserve(10);
+        var refused = Assert.Throws<MapSceneCapacityException>(() => workspace.Reserve(1));
+        Assert.Equal(new MapSceneCapacity("MaxPlanBytes", 51, 50), refused.Capacity);
+    }
+
+    [Fact]
+    public void PublishedChild_SurvivesItsPreparationCollector()
+    {
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 100));
+        MapPreparationReservation owned;
+        using (var parent = admission.BeginPreparation())
+        {
+            using var child = admission.BeginPreparation();
+            admission.ReserveBytes(60); owned = child.Complete(40);
+            parent.Publish(owned);
+        }
+        Assert.Equal(40, admission.RetainedBytes);
+        owned.Dispose();
+        Assert.Equal(0, admission.RetainedBytes);
+    }
+
+    [Fact]
     public void ParentFailure_ReleasesUnpublishedChildProducts()
     {
         var admission = new MapSceneAdmission(new(MaxPreparedBytes: 100));

@@ -12,6 +12,8 @@ internal sealed class MapPreparationLedger(long allowance, string limitName)
     internal long WorkspaceBytes { get; private set; }
     internal long RetainedBytes { get; private set; }
     internal long PeakBytes { get; private set; }
+    internal object WindowIdentity => (object?)_window ?? this;
+    internal IDisposable? ReferenceWindow(long bytes) => _window?.Reference(bytes);
     internal long Remaining
     {
         get
@@ -84,6 +86,20 @@ internal sealed class MapPreparationLedger(long allowance, string limitName)
             owner._window = this;
         }
         internal MapSceneCapacity Capacity(decimal bytes) => new(_name, (decimal)Live + _reused + bytes, _allowance);
+        internal IDisposable Reference(long bytes)
+        {
+            Window binding = this;
+            for (var view = Parent; view is not null; view = view.Parent)
+                if (view.Remaining < binding.Remaining) binding = view;
+            if (bytes < 0 || bytes > binding.Remaining) throw new MapSceneCapacityException(binding.Capacity(bytes));
+            Adjust(this, bytes);
+            return new ReferenceLease(this, bytes);
+        }
+        sealed class ReferenceLease(Window window, long bytes) : IDisposable
+        {
+            bool _disposed;
+            public void Dispose() { if (_disposed) return; _disposed = true; Adjust(window, -bytes); }
+        }
         internal void ChargeExternal(long bytes)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);

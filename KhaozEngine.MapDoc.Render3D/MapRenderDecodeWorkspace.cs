@@ -4,27 +4,29 @@ using KhaozEngine.Render3D;
 
 namespace KhaozEngine.MapDoc.Render3D;
 
-/// <summary>The decoder's already bounded peak is live workspace until selected input ownership takes over.</summary>
-internal sealed class MapRenderDecodeWorkspace : IDisposable
+/// <summary>Mirrors actual decoder ownership and temporary reservations into the enclosing live ledger.</summary>
+internal sealed class MapRenderDecodeWorkspace : IGltfDecodeReservationObserver, IDisposable
 {
-    [ThreadStatic] static GltfDecodeBudget? t_budget;
-    readonly GltfDecodeBudget? _previous;
+    readonly GltfDecodeBudget _budget;
     readonly MapPreparationReservation? _workspace;
+    readonly bool _observing;
     bool _disposed;
+    internal MapPreparationReservation? Workspace => _workspace;
     internal MapRenderDecodeWorkspace(GltfDecodeBudget budget)
     {
-        _previous = t_budget;
-        if (_previous != budget)
-        {
-            _workspace = MapSceneAdmission.Current?.Workspace();
-            try { _workspace?.Reserve(budget.RemainingBytes); }
-            catch { _workspace?.Dispose(); throw; }
-        }
-        t_budget = budget;
+        _budget = budget;
+        _workspace = MapSceneAdmission.Current?.Workspace();
+        try { _observing = _workspace is not null && budget.Observe(this); }
+        catch { _workspace?.Dispose(); throw; }
     }
+    public void Reserve(long bytes) => _workspace?.Reserve(bytes);
+    public void Release(long bytes) => _workspace?.Release(bytes);
+    internal void Finish() { if (_observing) _budget.StopObserving(this); }
     public void Dispose()
     {
         if (_disposed) return;
-        _disposed = true; t_budget = _previous; _workspace?.Dispose();
+        _disposed = true;
+        Finish();
+        _workspace?.Dispose();
     }
 }

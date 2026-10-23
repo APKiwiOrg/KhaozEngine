@@ -10,6 +10,19 @@ public sealed class GltfDecodeBudget
 {
     readonly object _gate = new();
     long _owned, _temporary, _peak;
+    IGltfDecodeReservationObserver? _observer;
+    internal bool Observe(IGltfDecodeReservationObserver observer)
+    {
+        lock (_gate)
+        {
+            if (_observer is not null) return false;
+            observer.Reserve(checked(_owned + _temporary));
+            _observer = observer;
+            return true;
+        }
+    }
+    internal void StopObserving(IGltfDecodeReservationObserver observer)
+    { lock (_gate) { if (ReferenceEquals(_observer, observer)) _observer = null; } }
     public GltfDecodeLimits Limits { get; }
     public long RemainingBytes { get { lock (_gate) return Limits.MaxPeakBytes - _owned - _temporary; } }
     public long PeakBytes { get { lock (_gate) return _peak; } }
@@ -33,6 +46,7 @@ public sealed class GltfDecodeBudget
             long remaining = Limits.MaxPeakBytes - _owned - _temporary;
             if (ownedBytes > remaining || temporaryBytes > remaining - ownedBytes)
             { capacity = PeakCapacity((decimal)ownedBytes + temporaryBytes); return false; }
+            _observer?.Reserve(checked(ownedBytes + temporaryBytes));
             _owned += ownedBytes;
             _temporary += temporaryBytes;
             _peak = Math.Max(_peak, _owned + _temporary);
@@ -48,6 +62,7 @@ public sealed class GltfDecodeBudget
         lock (_gate)
         {
             if (bytes < 0 || bytes > _temporary) throw new ArgumentOutOfRangeException(nameof(bytes));
+            _observer?.Release(bytes);
             _temporary -= bytes;
         }
     }
@@ -57,6 +72,7 @@ public sealed class GltfDecodeBudget
         lock (_gate)
         {
             if (bytes < 0 || bytes > _owned) throw new ArgumentOutOfRangeException(nameof(bytes));
+            _observer?.Release(bytes);
             _owned -= bytes;
         }
     }

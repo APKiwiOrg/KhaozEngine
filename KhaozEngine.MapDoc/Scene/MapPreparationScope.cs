@@ -20,13 +20,17 @@ internal sealed class MapPreparationScope : IDisposable
     internal void Reserve(long bytes) => _workspace.Reserve(bytes);
     internal void Release(long bytes) => _workspace.Release(bytes);
     internal void Track(MapPreparationReservation product) => _products.Add(product);
-    internal MapPreparationReservation Complete(long bytes)
+    internal void Publish(MapPreparationReservation product)
+    {
+        if (!_products.Remove(product)) throw new InvalidOperationException("The product is not owned by this preparation collector.");
+    }
+    internal MapPreparationReservation Complete(long bytes, bool publishToParent = true)
     {
         ObjectDisposedException.ThrowIf(_disposed || _completed, this);
         foreach (var product in _products) _workspace.Absorb(product);
         if (bytes > Bytes) Reserve(bytes - Bytes);
         var result = _workspace.Transfer(bytes);
-        _previous?.Track(result);
+        if (publishToParent) _previous?.Track(result);
         _completed = true;
         return result;
     }

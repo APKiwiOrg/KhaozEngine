@@ -7,7 +7,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 {
     /// <summary>
     /// THE SHIPPED <see cref="ID3D11StagingMemory"/>: <c>ID3D11DeviceContext.Map</c> and <c>Unmap</c> at
-    /// subresource 0, and nothing else. Four native calls, which is the entire point of the interface it
+    /// subresource 0, and nothing else. Five native calls, which is the entire point of the interface it
     /// implements, and the same shape <see cref="D3D11BufferRingMemory"/> takes for the ring's two.
     /// <para>
     /// THE <c>MappedSubresource</c> NEVER BECOMES A FIELD. It is a Vortice VALUE TYPE, and a field of one would
@@ -47,7 +47,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             if (!KhaozEngineD3D11.IsPlatformSupported) throw D3D11PlatformGuard.NotOnThisPlatform("staging map");
 
-            return MapWindows(buffer, mode, out data, out _);
+            return MapWindows(buffer, mode, doNotWait: false, out data, out _);
         }
 
         /// <inheritdoc/>
@@ -59,11 +59,19 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         }
 
         /// <inheritdoc/>
+        public int TryMapBufferRead(object buffer, out IntPtr data)
+        {
+            if (!KhaozEngineD3D11.IsPlatformSupported) throw D3D11PlatformGuard.NotOnThisPlatform("staging map");
+
+            return MapWindows(buffer, GpuMapMode.Read, doNotWait: true, out data, out _);
+        }
+
+        /// <inheritdoc/>
         public int MapTexture(object texture, GpuMapMode mode, out IntPtr data, out uint rowPitchBytes)
         {
             if (!KhaozEngineD3D11.IsPlatformSupported) throw D3D11PlatformGuard.NotOnThisPlatform("staging map");
 
-            return MapWindows(texture, mode, out data, out rowPitchBytes);
+            return MapWindows(texture, mode, doNotWait: false, out data, out rowPitchBytes);
         }
 
         /// <inheritdoc/>
@@ -99,13 +107,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         // THE ONE NATIVE MAP, and the whole of what this type carries that a device-free test cannot reach.
         [MethodImpl(MethodImplOptions.NoInlining)]
         [SupportedOSPlatform("windows")]
-        int MapWindows(object resource, GpuMapMode mode, out IntPtr data, out uint rowPitchBytes)
+        int MapWindows(object resource, GpuMapMode mode, bool doNotWait, out IntPtr data, out uint rowPitchBytes)
         {
             // A local, never a field: a SharpGen value-type FIELD would resolve the interop assembly the moment
             // this type is loaded, and the load-path guard asserts process-wide that nothing pulls it in off
             // Windows.
             var result = _context.Map(RequireResource(resource), D3D11StagingMaps.Subresource, ToMapMode(mode),
-                MapFlags.None, out MappedSubresource mapped);
+                doNotWait ? MapFlags.DoNotWait : MapFlags.None, out MappedSubresource mapped);
 
             // THE POINTER AND THE PITCH ARE READ ONLY ONCE THE RESULT IS KNOWN GOOD, because a failed map fills
             // neither in. The result itself goes back untouched: interpreting it (and asking the device-loss

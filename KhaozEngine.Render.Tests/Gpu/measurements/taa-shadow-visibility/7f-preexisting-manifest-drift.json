@@ -1,0 +1,26 @@
+{
+  "source_commit": "8fe6c5927",
+  "stale_artifact_hashes": [
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/filter-baseline.md",
+      "old_manifest_sha256": "037aafae3587df2da24a9f58032524f274440560f2cfc9479113e6eb29f1ebf8",
+      "guarded_source_sha256": "206265a2042f6a248961ccf234192a479c0186af05069acda35397a5b1a1c5c8"
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/non-finite-depths.md",
+      "old_manifest_sha256": "fad1d5db0c8e8874be87ba1401642b17e8c66ca6fd8b8a97a3fa2750507db362",
+      "guarded_source_sha256": "d215f93a93d93e9183910944085ba3e4b8c73bac54c8de088dce5a9b3518e74e"
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/reset-tuning.md",
+      "old_manifest_sha256": "239119a2e6add65701df8f258328840d2067956ec47bc69b328af93558ee06da",
+      "guarded_source_sha256": "7d44d7de79f717d4e6a31727fa77ed6750a437d88d4db488c8b71f3e7235cd6b"
+    }
+  ],
+  "missing_artifact_paths": [
+    "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/benchmark-request.md",
+    "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/benchmark-result.md",
+    "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/local-metal-inventory.jsonl",
+    "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/verification.md"
+  ]
+}

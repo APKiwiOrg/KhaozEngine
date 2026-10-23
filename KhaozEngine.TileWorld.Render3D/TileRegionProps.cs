@@ -16,6 +16,15 @@ public sealed record TilePropLayerSnapshot
     /// <summary>Detached placement values in ascending object-ID order.</summary>
     public required IReadOnlyList<PropPlacement> Placements { get; init; }
 
+    /// <summary>Whether every selected archetype is a catalog roof.</summary>
+    public bool IsRoofLayer { get; init; }
+
+    /// <summary>The authored plane used by the shared roof visibility rule.</summary>
+    public int Plane { get; init; }
+
+    /// <summary>Roof footprints parallel to placements and object IDs for a roof layer, empty otherwise.</summary>
+    public IReadOnlyList<TileRect> RoofFootprints { get; init; } = Array.Empty<TileRect>();
+
     /// <summary>Resolved full, optional LOD, and optional flattened-HLOD inputs for this batch.</summary>
     public required PropLayer Layer { get; init; }
 }

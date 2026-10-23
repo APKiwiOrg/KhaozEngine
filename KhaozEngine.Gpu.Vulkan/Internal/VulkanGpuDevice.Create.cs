@@ -255,7 +255,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                             surface,
                             new VulkanExtent(window.Request.Width, window.Request.Height),
                             window.Request.SyncToVerticalBlank,
-                            window.Acquire));
+                            window.Acquire),
+                    createTimestampApi: () => new VulkanTimestampApi(vk, device, loss, liveness),
+                    timestamps: new VulkanTimestampSupport(read.TimestampValidBits, read.TimestampPeriodNanoseconds));
 
                 log.Info(created.Memory.Describe());
 
@@ -372,7 +374,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 // The intersection over the engine's three MRT targets, preserving holes such as lavapipe's
                 // 1x and 4x with no 2x.
                 supportedMsaaSampleCounts: read.SupportedMsaaSampleCounts,
-                maxColorAttachments: (int)Math.Min(read.MaxColorAttachments, int.MaxValue));
+                maxColorAttachments: (int)Math.Min(read.MaxColorAttachments, int.MaxValue),
+                timestamps: new VulkanTimestampSupport(read.TimestampValidBits, read.TimestampPeriodNanoseconds));
 
         static PhysicalDevice[] EnumeratePhysicalDevices(Vk vk, Instance instance)
         {

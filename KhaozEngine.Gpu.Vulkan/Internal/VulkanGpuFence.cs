@@ -84,6 +84,26 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         public void Dispose() => _disposed = true;
 
         /// <summary>
+        /// Refuse this fence unless it is live and was created on <paramref name="owner"/>, the timeline of the
+        /// device it is being polled for. Each device has exactly one timeline, so timeline identity is device
+        /// identity, and a fence of another device would read signalled for work this device never ran. A
+        /// disposed fence is a caller's lifetime error rather than a completion.
+        /// </summary>
+        /// <param name="owner">The polling device's timeline.</param>
+        /// <param name="parameterName">The calling entry point's own parameter name, for the exception.</param>
+        internal void RequireOwner(VulkanTimeline owner, string parameterName = "completion")
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+
+            if (ReferenceEquals(_owner, owner)) return;
+
+            throw new ArgumentException(
+                "That fence was created by a DIFFERENT native Vulkan device, so it names a value on another "
+                + "device's timeline and would read signalled for work this device never ran. Use a fence from the "
+                + "device that submitted the copy.", parameterName);
+        }
+
+        /// <summary>
         /// Bind this fence to <paramref name="target"/>, the value allocated to the submission it was handed to.
         /// Called by the submit path (row 7, https://github.com/APKiwiOrg/KhaozEngine/issues/517) and by nothing
         /// else.

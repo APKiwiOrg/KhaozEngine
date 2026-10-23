@@ -22,6 +22,10 @@ namespace KhaozEngine.Render3D.Internal
     /// </summary>
     internal static class TemporalResolveTuning
     {
+        /// <summary>Qualified visibility changes release locks strictly above this magnitude.</summary>
+        public const float VisibilityReleaseThreshold = 0.1f;
+        /// <summary>Relative current and previous surface depth qualification.</summary>
+        public const float VisibilityDepthTolerance = 0.02f;
         /// <summary>Step 1. The motion target clears both channels to <see cref="MotionMath.Sentinel"/> where no opaque
         /// geometry drew. An x channel whose magnitude passes this reads as background, as
         /// <see cref="MotionMath.IsBackground"/> reads it. Written motion is clamped to <see cref="MotionMath.MaxMotionUv"/>
@@ -87,6 +91,11 @@ namespace KhaozEngine.Render3D.Internal
         public const float LockMotionStartPixels = 1f;
         /// <summary>Step 6. Display pixels of motion per frame where locks are fully released.</summary>
         public const float LockMotionEndPixels = 4f;
+        /// <summary>Step 6. The motion release's slope, the float32 nearest one over the span between
+        /// <see cref="LockMotionStartPixels"/> and <see cref="LockMotionEndPixels"/>, <c>0x3EAAAAAB</c>. The release
+        /// multiplies by it instead of dividing by the span, so every backend rounds the same single product. The shader
+        /// writes it as its exact decimal (<c>ShaderSources.TemporalLockReleaseGlsl</c>).</summary>
+        public const float LockMotionReleaseScale = 1f / (LockMotionEndPixels - LockMotionStartPixels);
         /// <summary>Step 6. Lock lost per unit of reactive estimate.</summary>
         public const float LockReactiveRelease = 2f;
         /// <summary>Step 6. Lock lost per frame, the same at every preset. A thin feature shows when a jittered sample

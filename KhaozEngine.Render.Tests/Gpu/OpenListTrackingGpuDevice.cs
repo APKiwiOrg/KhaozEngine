@@ -68,6 +68,10 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>How many of <see cref="Submits"/> carried a fence.</summary>
         internal int FencedSubmits { get; private set; }
+        internal int SubmittedFenceCount { get; private set; }
+        internal IGpuFence? FirstSubmittedFence { get; private set; }
+        internal IGpuFence? SecondSubmittedFence { get; private set; }
+        internal bool CompleteSubmissions { get; set; }
 
         /// <summary>How many times <see cref="Present"/> ran.</summary>
         internal int Presents { get; private set; }
@@ -141,6 +145,18 @@ namespace KhaozEngine.Tests.Gpu
         }
         public void WaitForIdle() { }
 
+        public void Submit(IGpuCommandList cl, ReadOnlySpan<IGpuFence> completions)
+        {
+            GpuCompletionFences.Validate(completions);
+            if (completions.IsEmpty) Submit(cl);
+            else Submit(cl, completions[0]);
+            SubmittedFenceCount = completions.Length;
+            FirstSubmittedFence = completions.IsEmpty ? null : completions[0];
+            SecondSubmittedFence = completions.Length < 2 ? null : completions[1];
+            if (CompleteSubmissions)
+                foreach (var completion in completions) ((StubFence)completion).Signaled = true;
+        }
+
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged { }
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, T[] data) where T : unmanaged { }
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, in T data) where T : unmanaged { }
@@ -207,8 +223,8 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>A fence that is never signaled, which is all a recording-order test needs from one.</summary>
         sealed class StubFence : IGpuFence
         {
-            public bool Signaled => false;
-            public void Reset() { }
+            public bool Signaled { get; internal set; }
+            public void Reset() => Signaled = false;
             public void Dispose() { }
         }
 

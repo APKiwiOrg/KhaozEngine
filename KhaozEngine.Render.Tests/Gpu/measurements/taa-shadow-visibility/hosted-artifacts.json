@@ -1,0 +1,548 @@
+{
+  "runId": 39173269032,
+  "source": "02f0bd1fc885770f90e948028ef35509ad9153af",
+  "url": "https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39173269032",
+  "conclusion": "failure",
+  "receipts": [
+    {
+      "backend": "metal-native",
+      "deviceClass": "hardware",
+      "job": "macos-26 / metal-native",
+      "jobId": 117810632281,
+      "conclusion": "failure",
+      "artifact": "filtered-render-measurements-metal-native",
+      "file": "suite-output.log",
+      "sha256": "56c839f13e0c861743a4daa8a79c45de093fdab9cd86bfe07448cc038e4a5010",
+      "results": {
+        "Passed": 1097,
+        "Failed": 2,
+        "Skipped": 0,
+        "Total": 1099
+      },
+      "selectedControlFacts": 5,
+      "selectedControlSkips": 0,
+      "nativeTrx": false,
+      "task2GateResults": [
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.TemporalShadowGatherCompileTests.The_gather_candidate_cross_compiles_to_msl_and_hlsl_gathers"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.TemporalShadowGatherCompileTests.The_shipped_filter_uses_explicit_fetches_and_no_gather"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.TemporalShadowGatherCompileTests.The_gather_candidate_compiles_to_a_spirv_image_gather"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.TemporalShadowFilterGpuTests.The_gather_candidate_reproduces_the_explicit_footprint"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.TemporalShadowFilterGpuTests.Gather_returns_an_asymmetric_quad_in_the_documented_component_order"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.TemporalShadowFilterGpuTests.The_cascade_filter_matches_the_sixteen_comparison_oracle"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.VulkanSpirvByteEqualityTests.EveryShippedProgramsSpirv_MatchesItsPinnedHash"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.MetalMslByteEqualityTests.EveryShippedProgramsEmittedMsl_MatchesItsPinnedHash"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheOverlayMeshVertexSink_KeepsTheEmittedInputSignatureGapFree"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowDepthFragments_ReadAGapFreeInterpolantPrefix(programName: \"ShadowDepthCutoutInverted\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowDepthFragments_ReadAGapFreeInterpolantPrefix(programName: \"FoliageDepth\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowDepthFragments_ReadAGapFreeInterpolantPrefix(programName: \"ShadowDepthCutout\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowDepthFragments_ReadAGapFreeInterpolantPrefix(programName: \"FoliageDepthCutout\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowDepthFragments_ReadAGapFreeInterpolantPrefix(programName: \"SkinnedShadowDepthDissolve\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowVertexSink_KeepsTheEmittedInputSignatureGapFree(programName: \"ShadowDepthDissolveInverted\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowVertexSink_KeepsTheEmittedInputSignatureGapFree(programName: \"ShadowDepthDissolve\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowVertexSink_KeepsTheEmittedInputSignatureGapFree(programName: \"ShadowDepthCutout\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowVertexSink_KeepsTheEmittedInputSignatureGapFree(programName: \"SkinnedShadowDepthDissolve\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowVertexSink_KeepsTheEmittedInputSignatureGapFree(programName: \"SkinnedShadowDepth\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowVertexSink_KeepsTheEmittedInputSignatureGapFree(programName: \"FoliageDepth\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowVertexSink_KeepsTheEmittedInputSignatureGapFree(programName: \"FoliageDepthCutout\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowVertexSink_KeepsTheEmittedInputSignatureGapFree(programName: \"ShadowDepthCutoutInverted\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowVertexSink_KeepsTheEmittedInputSignatureGapFree(programName: \"ShadowDepth\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheTerrainInterpolantOrdering_KeepsTheFragmentInputsAGapFreePrefix"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.EveryShippedGraphicsProgram_SurvivesFxcWithAContiguousSignature"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.EveryCatalogProgram_EmitsAGapFreeVertexInputSignature"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.Skinned_target_outline_keeps_the_complete_seven_element_vertex_signature(programName: \"TargetOutlineSkinnedFull\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.Skinned_target_outline_keeps_the_complete_seven_element_vertex_signature(programName: \"TargetOutlineSkinnedVisible\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheEmittedSignatureParse_ReadsTheSemanticsItClaimsTo"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.Point_skinned_casters_keep_the_complete_seven_element_vertex_signature(programName: \"PointShadowSkinned\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.Point_skinned_casters_keep_the_complete_seven_element_vertex_signature(programName: \"PointShadowSkinnedDissolveInverted\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.Point_skinned_casters_keep_the_complete_seven_element_vertex_signature(programName: \"PointShadowSkinnedDissolve\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.HlslThatFxcRejects_FailsTheLeg"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.Golden_TargetOutlineCompositeDynamicKernel_SurvivesFxc"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowFilterKernels_ExplicitAndGather_SurviveFxc"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheTileGroundInterpolants_AreGapFreeAndEntirelyRead"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.EveryShippedComputeKernel_SurvivesFxc"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11HlslByteEqualityTests.EveryShippedProgramsEmittedHlsl_MatchesItsPinnedHash"
+        }
+      ],
+      "summaryLines": [
+        "Test Run Failed.",
+        "Total tests: 1099",
+        "     Passed: 1097",
+        "     Failed: 2",
+        " Total time: 2.7446 Minutes"
+      ]
+    },
+    {
+      "backend": "direct3d11-native",
+      "deviceClass": "WARP",
+      "job": "windows-latest / direct3d11-native",
+      "jobId": 117810632167,
+      "conclusion": "failure",
+      "artifact": "filtered-render-measurements-direct3d11-native",
+      "file": "suite-output.log",
+      "sha256": "b2ee152c1b9cbd37947708a7702dacfba8df12b6f07ff894aa920b4c27917ce2",
+      "results": {
+        "Passed": 1097,
+        "Failed": 2,
+        "Skipped": 0,
+        "Total": 1099
+      },
+      "selectedControlFacts": 5,
+      "selectedControlSkips": 0,
+      "nativeTrx": false,
+      "task2GateResults": [
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.TemporalShadowGatherCompileTests.The_gather_candidate_cross_compiles_to_msl_and_hlsl_gathers"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.TemporalShadowGatherCompileTests.The_shipped_filter_uses_explicit_fetches_and_no_gather"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.TemporalShadowGatherCompileTests.The_gather_candidate_compiles_to_a_spirv_image_gather"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11HlslByteEqualityTests.EveryShippedProgramsEmittedHlsl_MatchesItsPinnedHash"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.VulkanSpirvByteEqualityTests.EveryShippedProgramsSpirv_MatchesItsPinnedHash"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheOverlayMeshVertexSink_KeepsTheEmittedInputSignatureGapFree"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowDepthFragments_ReadAGapFreeInterpolantPrefix(programName: \"ShadowDepthCutoutInverted\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowDepthFragments_ReadAGapFreeInterpolantPrefix(programName: \"FoliageDepth\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowDepthFragments_ReadAGapFreeInterpolantPrefix(programName: \"ShadowDepthCutout\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowDepthFragments_ReadAGapFreeInterpolantPrefix(programName: \"FoliageDepthCutout\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowDepthFragments_ReadAGapFreeInterpolantPrefix(programName: \"SkinnedShadowDepthDissolve\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowVertexSink_KeepsTheEmittedInputSignatureGapFree(programName: \"ShadowDepthDissolveInverted\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowVertexSink_KeepsTheEmittedInputSignatureGapFree(programName: \"ShadowDepthDissolve\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowVertexSink_KeepsTheEmittedInputSignatureGapFree(programName: \"ShadowDepthCutout\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowVertexSink_KeepsTheEmittedInputSignatureGapFree(programName: \"SkinnedShadowDepthDissolve\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowVertexSink_KeepsTheEmittedInputSignatureGapFree(programName: \"SkinnedShadowDepth\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowVertexSink_KeepsTheEmittedInputSignatureGapFree(programName: \"FoliageDepth\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowVertexSink_KeepsTheEmittedInputSignatureGapFree(programName: \"FoliageDepthCutout\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowVertexSink_KeepsTheEmittedInputSignatureGapFree(programName: \"ShadowDepthCutoutInverted\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowVertexSink_KeepsTheEmittedInputSignatureGapFree(programName: \"ShadowDepth\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheTerrainInterpolantOrdering_KeepsTheFragmentInputsAGapFreePrefix"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.EveryShippedGraphicsProgram_SurvivesFxcWithAContiguousSignature"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.EveryCatalogProgram_EmitsAGapFreeVertexInputSignature"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.Skinned_target_outline_keeps_the_complete_seven_element_vertex_signature(programName: \"TargetOutlineSkinnedFull\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.Skinned_target_outline_keeps_the_complete_seven_element_vertex_signature(programName: \"TargetOutlineSkinnedVisible\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheEmittedSignatureParse_ReadsTheSemanticsItClaimsTo"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.Point_skinned_casters_keep_the_complete_seven_element_vertex_signature(programName: \"PointShadowSkinned\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.Point_skinned_casters_keep_the_complete_seven_element_vertex_signature(programName: \"PointShadowSkinnedDissolveInverted\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.Point_skinned_casters_keep_the_complete_seven_element_vertex_signature(programName: \"PointShadowSkinnedDissolve\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.HlslThatFxcRejects_FailsTheLeg"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.Golden_TargetOutlineCompositeDynamicKernel_SurvivesFxc"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowFilterKernels_ExplicitAndGather_SurviveFxc"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheTileGroundInterpolants_AreGapFreeAndEntirelyRead"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.EveryShippedComputeKernel_SurvivesFxc"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.MetalMslByteEqualityTests.EveryShippedProgramsEmittedMsl_MatchesItsPinnedHash"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.TemporalShadowFilterGpuTests.The_gather_candidate_reproduces_the_explicit_footprint"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.TemporalShadowFilterGpuTests.Gather_returns_an_asymmetric_quad_in_the_documented_component_order"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.TemporalShadowFilterGpuTests.The_cascade_filter_matches_the_sixteen_comparison_oracle"
+        }
+      ],
+      "summaryLines": [
+        "Test Run Failed.",
+        "Total tests: 1099",
+        "     Passed: 1097",
+        "     Failed: 2",
+        " Total time: 36.1169 Minutes"
+      ]
+    },
+    {
+      "backend": "vulkan-native",
+      "deviceClass": "lavapipe",
+      "job": "ubuntu-latest / vulkan-native",
+      "jobId": 117810632138,
+      "conclusion": "failure",
+      "artifact": "filtered-render-measurements-vulkan-native",
+      "file": "suite-output.log",
+      "sha256": "1af0e126b17fd7a662ab3bf693e05733d74d9c2b9a81f53fc68976ba66cb81ce",
+      "results": {
+        "Passed": 1097,
+        "Failed": 2,
+        "Skipped": 0,
+        "Total": 1099
+      },
+      "selectedControlFacts": 5,
+      "selectedControlSkips": 0,
+      "nativeTrx": false,
+      "task2GateResults": [
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11HlslByteEqualityTests.EveryShippedProgramsEmittedHlsl_MatchesItsPinnedHash"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheOverlayMeshVertexSink_KeepsTheEmittedInputSignatureGapFree"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowDepthFragments_ReadAGapFreeInterpolantPrefix(programName: \"ShadowDepthCutoutInverted\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowDepthFragments_ReadAGapFreeInterpolantPrefix(programName: \"FoliageDepth\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowDepthFragments_ReadAGapFreeInterpolantPrefix(programName: \"ShadowDepthCutout\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowDepthFragments_ReadAGapFreeInterpolantPrefix(programName: \"FoliageDepthCutout\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowDepthFragments_ReadAGapFreeInterpolantPrefix(programName: \"SkinnedShadowDepthDissolve\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowVertexSink_KeepsTheEmittedInputSignatureGapFree(programName: \"ShadowDepthDissolveInverted\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowVertexSink_KeepsTheEmittedInputSignatureGapFree(programName: \"ShadowDepthDissolve\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowVertexSink_KeepsTheEmittedInputSignatureGapFree(programName: \"ShadowDepthCutout\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowVertexSink_KeepsTheEmittedInputSignatureGapFree(programName: \"SkinnedShadowDepthDissolve\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowVertexSink_KeepsTheEmittedInputSignatureGapFree(programName: \"SkinnedShadowDepth\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowVertexSink_KeepsTheEmittedInputSignatureGapFree(programName: \"FoliageDepth\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowVertexSink_KeepsTheEmittedInputSignatureGapFree(programName: \"FoliageDepthCutout\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowVertexSink_KeepsTheEmittedInputSignatureGapFree(programName: \"ShadowDepthCutoutInverted\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowVertexSink_KeepsTheEmittedInputSignatureGapFree(programName: \"ShadowDepth\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheTerrainInterpolantOrdering_KeepsTheFragmentInputsAGapFreePrefix"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.EveryShippedGraphicsProgram_SurvivesFxcWithAContiguousSignature"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.EveryCatalogProgram_EmitsAGapFreeVertexInputSignature"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.Skinned_target_outline_keeps_the_complete_seven_element_vertex_signature(programName: \"TargetOutlineSkinnedFull\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.Skinned_target_outline_keeps_the_complete_seven_element_vertex_signature(programName: \"TargetOutlineSkinnedVisible\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheEmittedSignatureParse_ReadsTheSemanticsItClaimsTo"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.Point_skinned_casters_keep_the_complete_seven_element_vertex_signature(programName: \"PointShadowSkinned\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.Point_skinned_casters_keep_the_complete_seven_element_vertex_signature(programName: \"PointShadowSkinnedDissolveInverted\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.Point_skinned_casters_keep_the_complete_seven_element_vertex_signature(programName: \"PointShadowSkinnedDissolve\")"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.HlslThatFxcRejects_FailsTheLeg"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.Golden_TargetOutlineCompositeDynamicKernel_SurvivesFxc"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheShadowFilterKernels_ExplicitAndGather_SurviveFxc"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.TheTileGroundInterpolants_AreGapFreeAndEntirelyRead"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.D3D11FxcValidationTests.EveryShippedComputeKernel_SurvivesFxc"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.TemporalShadowFilterGpuTests.The_gather_candidate_reproduces_the_explicit_footprint"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.TemporalShadowFilterGpuTests.Gather_returns_an_asymmetric_quad_in_the_documented_component_order"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.TemporalShadowFilterGpuTests.The_cascade_filter_matches_the_sixteen_comparison_oracle"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.VulkanSpirvByteEqualityTests.EveryShippedProgramsSpirv_MatchesItsPinnedHash"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.MetalMslByteEqualityTests.EveryShippedProgramsEmittedMsl_MatchesItsPinnedHash"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.TemporalShadowGatherCompileTests.The_gather_candidate_cross_compiles_to_msl_and_hlsl_gathers"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.TemporalShadowGatherCompileTests.The_shipped_filter_uses_explicit_fetches_and_no_gather"
+        },
+        {
+          "outcome": "Passed",
+          "test": "KhaozEngine.Tests.Gpu.TemporalShadowGatherCompileTests.The_gather_candidate_compiles_to_a_spirv_image_gather"
+        }
+      ],
+      "summaryLines": [
+        "Test Run Failed.",
+        "Total tests: 1099",
+        "     Passed: 1097",
+        "     Failed: 2",
+        " Total time: 33.4115 Minutes"
+      ]
+    }
+  ]
+}

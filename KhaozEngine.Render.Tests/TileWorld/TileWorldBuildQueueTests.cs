@@ -377,8 +377,12 @@ public class TileWorldBuildQueueTests
         var dispatcher = new ManualTileBuildDispatcher();
         var applied = new List<TileWorldBuildResult<int>>();
         using var queue = new TileWorldBuildQueue<int, int>(request => request.Input, applied.Add,
-            new TileWorldBuildQueueOptions { MaxConcurrentBuilds = 5, MaxInteriorCutAppliesPerPump = 1,
-                MaxHlodAppliesPerPump = 0 }, dispatcher);
+            new TileWorldBuildQueueOptions
+            {
+                MaxConcurrentBuilds = 5,
+                MaxInteriorCutAppliesPerPump = 1,
+                MaxHlodAppliesPerPump = 0
+            }, dispatcher);
         queue.Request(Request(0, TileWorldBuildKind.InteriorCut, 1));
         queue.Request(Request(1, TileWorldBuildKind.InteriorCut, 1));
         queue.Request(Request(2, TileWorldBuildKind.Hlod, 1));

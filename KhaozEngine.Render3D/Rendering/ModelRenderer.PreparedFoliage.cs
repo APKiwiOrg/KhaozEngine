@@ -37,9 +37,12 @@ internal sealed partial class ModelRenderer
         if (_preparedFoliagePipeline is not null) _retired.Retire(_preparedFoliagePipeline);
         if (_preparedFoliageShaders is not null) _retired.Retire(_preparedFoliageShaders);
         bool motion = _motion is not null && MotionMath.IsTemporal(_foliageOutputs);
-        _preparedFoliageShaders = _gd.Factory.CreateShadersFromSpirv(
-            ShaderSources.PreparedFoliage(motion ? ShaderSources.FoliageMotionVert : ShaderSources.FoliageVert, motion ? 3 : 2),
-            motion ? ShaderSources.ModelMotionFrag : ShaderSources.ModelFrag);
+        _preparedFoliageShaders = null;
+        string vertex = ShaderSources.PreparedFoliage(motion ? ShaderSources.FoliageMotionVert : ShaderSources.FoliageVert, motion ? 3 : 2);
+        string fragment = motion ? ShaderSources.ModelMotionFrag : ShaderSources.ModelFrag;
+        IGpuShaderSet shaders = _visibilityShaders.TrySelect(_gd.Factory, _foliageOutputs, vertex, fragment,
+            preserve: false, out IGpuShaderSet visibilityShaders) ? visibilityShaders
+                : (_preparedFoliageShaders = _gd.Factory.CreateShadersFromSpirv(vertex, fragment));
         _preparedFoliagePipeline = _gd.Factory.CreateGraphicsPipeline(new()
         {
             BlendAttachments = ModelTargetBlends.Opaque(_foliageOutputs),
@@ -48,7 +51,7 @@ internal sealed partial class ModelRenderer
             Topology = GpuPrimitiveTopology.TriangleList,
             ResourceLayouts = motion ? [_layout, _foliageLayout!, _motion!.FrameLayout, PreparedAnchorLayout]
                 : [_layout, _foliageLayout!, PreparedAnchorLayout],
-            ShaderSet = _preparedFoliageShaders,
+            ShaderSet = shaders,
             VertexLayouts = new(FoliageVertexLayouts.Create()),
             Outputs = _foliageOutputs
         });

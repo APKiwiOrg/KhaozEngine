@@ -39,7 +39,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// </para>
     /// </summary>
     [SupportedOSPlatform("windows")]
-    internal sealed class D3D11Buffer : IGpuBuffer, ID3D11RingBacked, ID3D11BindableViews, ID3D11MappableResource
+    internal sealed class D3D11Buffer : IGpuBuffer, ID3D11RingBacked, ID3D11BindableViews, ID3D11ReadableStaging
     {
         readonly DeviceLiveness _liveness;
         readonly D3D11RingAllocator _rings;
@@ -137,6 +137,17 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// they genuinely carry CPU write access, which keeps the map path's refusal a refusal of the impossible
         /// rather than a divergence from the incumbent.</remarks>
         bool ID3D11MappableResource.IsMappable => Views.Staging || Views.Dynamic || Views.Ring;
+
+        // ---- ID3D11ReadableStaging: what a non-blocking staging read checks before it polls anything ----
+
+        /// <inheritdoc/>
+        bool ID3D11ReadableStaging.IsStagingUsage => Views.Staging;
+
+        /// <inheritdoc/>
+        IDeviceLiveness ID3D11ReadableStaging.Owner => _liveness;
+
+        /// <inheritdoc/>
+        bool ID3D11ReadableStaging.IsDisposed => IsDisposed;
 
         public void Dispose()
         {

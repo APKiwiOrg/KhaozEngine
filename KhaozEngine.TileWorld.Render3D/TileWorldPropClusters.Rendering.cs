@@ -11,6 +11,7 @@ public sealed partial class TileWorldPropClusters
     TileWorldBuildQueue<PropClusterBuildRequest, PropClusterCpuBuild>? _clusterBuilds;
     readonly HashSet<PropClusterKey> _requestedClusters = new();
     float _tileSize;
+    readonly TileRoofLayerVisibility _roofVisibility;
 
     void InitializeRendering(float tileSize, TileWorldBuildQueueOptions? options, IChunkBuildDispatcher? dispatcher)
     {
@@ -25,15 +26,17 @@ public sealed partial class TileWorldPropClusters
             dispatcher);
     }
 
-    internal void Request(TileRegionProps snapshot)
+    internal void Request(TileRegionProps snapshot, TileRegionProps? previous = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_clusterBuilds is null) return;
 
         foreach (KeyValuePair<string, TilePropLayerSnapshot> item in snapshot.Layers)
         {
+            if (previous is not null && previous.Layers.TryGetValue(item.Key, out TilePropLayerSnapshot? prior)
+                && TilePropLayerChanges.SameContent(prior, item.Value)) continue;
             PropClusterKey key = Key(item.Key, snapshot.Region, snapshot.Plane);
-            RememberOutlineSnapshot(key, snapshot.Generation, item.Value);
+            RememberPresentationSnapshot(key, snapshot.Generation, item.Value);
             if (!_requestedClusters.Add(key)) _clusterOwner!.Invalidate(key);
             _clusterBuilds.Request(new TileWorldBuildRequest<PropClusterBuildRequest>(
                 new TileWorldBuildKey(snapshot.Region, snapshot.Plane, TileWorldBuildKind.Hlod, item.Key),
@@ -53,10 +56,15 @@ public sealed partial class TileWorldPropClusters
         int x = (int)MathF.Floor(TileWorldSpace.TileX(focus.X, _tileSize));
         int z = (int)MathF.Floor(TileWorldSpace.TileZ(focus.Z, _tileSize));
         _clusterBuilds.Pump(RegionCoord.Of(x, z));
-        PruneOutlineSnapshots(focus);
+        PrunePresentationSnapshots(focus);
     }
 
-    internal void Draw(Vector3 focus) => _clusterOwner?.Draw(focus);
+    internal PropClusterDrawCounts Draw(Vector3 focus, TileRoofVisibilityRule rule)
+    {
+        if (_clusterOwner is null) return default;
+        _roofVisibility.Rule = rule;
+        return _clusterOwner.DrawWithVisibility(focus, _roofVisibility);
+    }
 
     internal void PrimeForCapture(RegionCoord focus) => _clusterBuilds?.PrimeHlod(focus);
 
@@ -71,7 +79,7 @@ public sealed partial class TileWorldPropClusters
             _clusterOwner!.Unload(key);
             _requestedClusters.Remove(key);
         }
-        ForgetOutlineSnapshots(region, plane);
+        ForgetPresentationSnapshots(region, plane);
     }
 
     void DisposeRendering()

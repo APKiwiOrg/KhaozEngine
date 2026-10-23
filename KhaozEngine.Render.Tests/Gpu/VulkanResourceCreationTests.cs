@@ -526,6 +526,7 @@ namespace KhaozEngine.Tests.Gpu
                 nameof(IGpuResourceFactory.CreateSampler),
                 nameof(IGpuResourceFactory.CreateCommandList),
                 nameof(IGpuResourceFactory.CreateFence),
+                nameof(IGpuResourceFactory.CreateTimestampPool),
 
                 // Row 10 (https://github.com/APKiwiOrg/KhaozEngine/issues/520) took these two off the refusal
                 // list below, which is the movement this pair of sets exists to make visible.

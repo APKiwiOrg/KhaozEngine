@@ -45,8 +45,11 @@ internal static class TileWorldBuildSnapshot
         _ = window.NeedsRecentre(window.Min, 64f);
         var snapshot = new TileWorldDocument
         {
-            Id = document.Id, DisplayName = document.DisplayName, TileSize = document.TileSize,
-            PlaneCount = document.PlaneCount, PlaneHeight = document.PlaneHeight,
+            Id = document.Id,
+            DisplayName = document.DisplayName,
+            TileSize = document.TileSize,
+            PlaneCount = document.PlaneCount,
+            PlaneHeight = document.PlaneHeight,
         };
         // H2 derives the encoding from the whole source. Keep all resolved height and indoor dependencies,
         // including distant storeys and roofs whose footprints overlap the window from anchors outside it.

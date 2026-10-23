@@ -8,12 +8,13 @@ using KhaozEngine.Windowing;
 namespace KhaozEngine.WorldMap.Gui;
 
 /// <summary>A north-up map widget drawn inside the caller's already-open UI sprite batch.</summary>
-/// <remarks>Update and draw on the surface's frame thread. The caller owns the shared cache and any chunk worker.</remarks>
+/// <remarks>Use on the rendering thread. The caller owns the shared cache and any chunk worker.</remarks>
 public sealed class WorldMapView : IDisposable
 {
     readonly WorldMapViewCore<Texture2D> _core;
     readonly Texture2D _white;
     readonly PrimitiveRenderer _primitives;
+    readonly bool _ownsTextures;
     readonly Dictionary<string, WorldMapSprite> _markerSprites = new(StringComparer.Ordinal);
     SpriteFont? _labelFont;
     bool _disposed;
@@ -22,11 +23,23 @@ public sealed class WorldMapView : IDisposable
     /// <param name="cache">The shared map cache, whose lifetime remains with the caller.</param>
     /// <param name="surface">The surface that creates this view's textures.</param>
     public WorldMapView(WorldMapChunkCache cache, Render2DSurface surface)
+        : this(cache, (surface ?? throw new ArgumentNullException(nameof(surface))).CreateTexture, ownsTextures: true)
+    { }
+
+    /// <summary>Creates a view whose uploaded chunks and placeholder pixel belong to the snapshot capture.</summary>
+    /// <param name="cache">The shared map cache, whose lifetime remains with the caller.</param>
+    /// <param name="context">The capture context that retains textures until command submission finishes.</param>
+    public WorldMapView(WorldMapChunkCache cache, Render2DContext context)
+        : this(cache, (context ?? throw new ArgumentNullException(nameof(context))).CreateTexture, ownsTextures: false)
+    { }
+
+    WorldMapView(WorldMapChunkCache cache, Func<byte[], int, int, Texture2D> createTexture, bool ownsTextures)
     {
-        ArgumentNullException.ThrowIfNull(surface);
-        _core = new WorldMapViewCore<Texture2D>(cache, surface.CreateTexture, static texture => texture.Dispose());
+        _ownsTextures = ownsTextures;
+        _core = new WorldMapViewCore<Texture2D>(cache, createTexture,
+            ownsTextures ? static texture => texture.Dispose() : static _ => { });
         _core.IconSizes = key => IconSprites?.Invoke(key)?.Size;
-        _white = Render2DTextures.White(surface);
+        _white = createTexture([255, 255, 255, 255], 1, 1);
         _primitives = new PrimitiveRenderer(_white);
     }
 
@@ -158,7 +171,7 @@ public sealed class WorldMapView : IDisposable
         }
     }
 
-    /// <summary>Disposes every texture created by this view, retaining the caller's cache and surface.</summary>
+    /// <summary>Releases view state and surface-owned textures. Snapshot textures remain capture-owned.</summary>
     public void Dispose()
     {
         if (_disposed) return;
@@ -166,6 +179,6 @@ public sealed class WorldMapView : IDisposable
         _core.Dispose();
         _markerSprites.Clear();
         _primitives.Dispose();
-        _white.Dispose();
+        if (_ownsTextures) _white.Dispose();
     }
 }

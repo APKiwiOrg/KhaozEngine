@@ -56,9 +56,9 @@ public sealed class ChunkWorkerTests
     public void Worker_SurvivesThrowingSource()
     {
         var source = new TestWorldMapSource(new(0f, 0f, 16f, 8f));
-        source.BeforeSample = area =>
+        source.BeforeSample = _ =>
         {
-            if (area.X < 0f) throw new InvalidOperationException("First chunk failure.");
+            if (source.SampleCalls == 1) throw new InvalidOperationException("First chunk failure.");
         };
         using var cache = new WorldMapChunkCache(source, Style);
         cache.Request(new(0, 0), 0f);
@@ -124,7 +124,7 @@ public sealed class ChunkWorkerTests
             cache.Request(new(1, 0), 1f);
             Assert.True(cache.BuildNext());
             Assert.True(cache.IsCurrent(new(1, 0)));
-            Assert.Equal(2, source.SampleCalls);
+            Assert.Equal(18, source.SampleCalls);
         }
         finally
         {

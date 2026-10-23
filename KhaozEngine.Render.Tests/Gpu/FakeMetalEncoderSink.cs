@@ -243,8 +243,12 @@ namespace KhaozEngine.Tests.Gpu
         /// double end plus a leak would net back to zero.</summary>
         internal int UnbalancedEncoderReleases { get; private set; }
 
+        internal Action<MetalEncoderKind>? BeforeBegin;
+        internal Action<MetalEncoderKind>? AfterEnd;
+
         internal IntPtr BeginEncoder(MetalEncoderKind kind, IntPtr commandBuffer, IntPtr descriptor)
         {
+            BeforeBegin?.Invoke(kind);
             // THE FAKE IS STRICT ABOUT THE ONE ARGUMENT IT WOULD OTHERWISE HIDE. The real
             // renderCommandEncoderWithDescriptor: takes a nonnull descriptor, so a nil one is undefined on a
             // device, and a fake that ignores the argument hands back a perfectly good encoder for it and keeps
@@ -289,6 +293,7 @@ namespace KhaozEngine.Tests.Gpu
 
             _releasedEncoders.Add(encoder);
             if (!_live.Remove(encoder)) UnbalancedEncoderReleases++;
+            AfterEnd?.Invoke(kind);
         }
 
         /// <summary>

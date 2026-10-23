@@ -10,7 +10,8 @@ namespace KhaozEngine.Tests.Gpu
 
     /// <summary>v21.2.0 measurements per device class. Error and temporal error stay within a tenth. Diagonal lines
     /// also bound raw change. Moving rims report raw change against the reference, since better tracking can raise it
-    /// legitimately. The half unit in the last printed place covers rounding of the stored six-decimal figures.</summary>
+    /// legitimately. Rim checks use the separate bilinear-input control and retain this table as point-PCF history.
+    /// The half unit in the last printed place covers rounding of the stored six-decimal figures.</summary>
     internal static class TemporalReviewBaseline
     {
         const double Tolerance = 0.1, Rounding = 0.0000005;
@@ -261,10 +262,19 @@ namespace KhaozEngine.Tests.Gpu
         };
 
         public static void Check(string kind, string name, TemporalReviewFigures figures, List<string> failures)
+            => Check(TemporalDeviceClass.Name, kind, name, figures, failures);
+
+        internal static void Check(string device, string kind, string name, TemporalReviewFigures figures,
+            List<string> failures)
         {
-            if (!Before.TryGetValue((TemporalDeviceClass.Name, kind, name), out TemporalReviewFigures before))
+            string source = kind == "rim" ? "recorded bilinear-input baseline" : "v21.2.0";
+            TemporalReviewFigures before;
+            bool found = kind == "rim"
+                ? TemporalShadowFilterBaseline.TryGetValue(device, name, out before)
+                : Before.TryGetValue((device, kind, name), out before);
+            if (!found)
             {
-                failures.Add($"Missing v21.2.0 baseline for {TemporalDeviceClass.Name} {kind} {name}");
+                failures.Add($"Missing {source} baseline for {device} {kind} {name}");
                 return;
             }
             CheckValue("error", figures.Error, before.Error);
@@ -276,7 +286,7 @@ namespace KhaozEngine.Tests.Gpu
             void CheckValue(string metric, double actual, double baseline)
             {
                 if (!double.IsFinite(actual) || actual < 0 || actual > (baseline + Rounding) * (1 + Tolerance))
-                    failures.Add($"{name}: {metric} {actual:0.000000} above v21.2.0 {baseline:0.000000} plus a tenth");
+                    failures.Add($"{name}: {metric} {actual:0.000000} above {source} {baseline:0.000000} plus a tenth");
             }
         }
     }

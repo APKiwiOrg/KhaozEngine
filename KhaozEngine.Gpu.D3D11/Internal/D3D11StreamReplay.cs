@@ -136,6 +136,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                     emitter.SetComputeResourceSet(op.Arg0, stream.Reference<IGpuResourceSet>(op.Reference), op.Arg1);
                     break;
 
+                case D3D11OpCode.BeginTimestamps:
+                    emitter.BeginTimestamps(stream.Reference<IGpuTimestampPool>(op.Reference), op.Arg0);
+                    break;
+                case D3D11OpCode.WriteTimestamp:
+                    emitter.WriteTimestamp(stream.Reference<IGpuTimestampPool>(op.Reference), op.Arg0);
+                    break;
+                case D3D11OpCode.EndTimestamps:
+                    emitter.EndTimestamps(stream.Reference<IGpuTimestampPool>(op.Reference));
+                    break;
                 case D3D11OpCode.Dispatch:
                     emitter.Dispatch(op.Arg0, op.Arg1, op.Arg2);
                     break;

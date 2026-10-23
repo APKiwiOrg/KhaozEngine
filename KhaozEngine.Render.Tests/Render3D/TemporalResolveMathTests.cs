@@ -296,6 +296,23 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(5f, TemporalResolveMath.CameraTravel(current.View, previous.View), 4);
         }
 
+        /// <summary>Sizes.x is the lock release's barrier source, so its sign bit must be clear for any internal size,
+        /// zero and negative included, which read as 1.</summary>
+        [Theory]
+        [InlineData(1280)]
+        [InlineData(1)]
+        [InlineData(0)]
+        [InlineData(-7)]
+        [InlineData(int.MinValue)]
+        public void TheBarrierSourceIsPositiveForEveryInternalWidth(int internalWidth)
+        {
+            TemporalViewInput current = View(new Vector3(0f, 2f, 10f), Vector3.Zero);
+            float x = TemporalResolveMath.BuildUniforms(current, current, Vector2.Zero, internalWidth, 720, 1920, 1080,
+                historyValid: true).Sizes.X;
+            Assert.True(x >= 1f, $"Sizes.x {x:R}");
+            Assert.Equal(0u, BitConverter.SingleToUInt32Bits(x) >> 31);
+        }
+
         static TemporalViewInput View(Vector3 eye, Vector3 target)
         {
             Matrix4x4 view = Matrix4x4.CreateLookAt(eye, target, Vector3.UnitY);

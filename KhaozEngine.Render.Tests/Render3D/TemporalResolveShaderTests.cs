@@ -22,6 +22,8 @@ namespace KhaozEngine.Tests.Render3D
         {
             { "const float MotionSentinel = 60000.0;", TemporalResolveTuning.MotionSentinel, 60000f },
             { "const float BackgroundLinearDepth = 1.0e30;", TemporalResolveTuning.BackgroundLinearDepth, 1.0e30f },
+            { "const float VisibilityReleaseThreshold = 0.1;", TemporalResolveTuning.VisibilityReleaseThreshold, 0.1f },
+            { "const float VisibilityDepthTolerance = 0.02;", TemporalResolveTuning.VisibilityDepthTolerance, 0.02f },
             { "const float DisocclusionTolerance = 0.02;", TemporalResolveTuning.DisocclusionTolerance, 0.02f },
             { "const float MovingSurfaceInternalPixels = 0.5;", TemporalResolveTuning.MovingSurfaceInternalPixels, 0.5f },
             { "const float MovingSurfaceMotionFraction = 0.0009765625;", TemporalResolveTuning.MovingSurfaceMotionFraction, 1f / 1024f },
@@ -37,6 +39,10 @@ namespace KhaozEngine.Tests.Render3D
             { "const float LockRidgeRelative = 0.1;", TemporalResolveTuning.LockRidgeRelative, 0.1f },
             { "const float LockMotionStartPixels = 1.0;", TemporalResolveTuning.LockMotionStartPixels, 1f },
             { "const float LockMotionEndPixels = 4.0;", TemporalResolveTuning.LockMotionEndPixels, 4f },
+            {
+                "const float LockMotionReleaseScale = 0.3333333432674407958984375;",
+                TemporalResolveTuning.LockMotionReleaseScale, 0.3333333432674407958984375f
+            },
             { "const float LockReactiveRelease = 2.0;", TemporalResolveTuning.LockReactiveRelease, 2f },
             { "const float LockDecay = 0.125;", TemporalResolveTuning.LockDecay, 0.125f },
             { "const float LockHoldGain = 2.0;", TemporalResolveTuning.LockHoldGain, 2f },
@@ -89,7 +95,21 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void The_core_declares_the_nine_bindings_in_layout_order_and_no_stage_inputs_or_outputs()
+        public void AllVisibilityConsumersIncludeExactlyOneSharedComparisonAndNoRetentionSink()
+        {
+            string[] programs = [ShaderSources.TemporalResolveFrag, ShaderSources.TemporalAccumulateFrag,
+                ShaderSources.TemporalAccumulateAtDisplaySizeFrag, ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag,
+                ShaderSources.TemporalDebugFrag, ShaderSources.TemporalProbeFrag];
+            foreach (string program in programs)
+            {
+                Assert.Contains(ShaderSources.TemporalVisibilityGlsl, program, StringComparison.Ordinal);
+                Assert.Single(Regex.Matches(program, "bool temporalVisibilityChange\\("));
+                Assert.DoesNotContain("temporalRetainVisibilityBindings", program, StringComparison.Ordinal);
+            }
+        }
+
+        [Fact]
+        public void The_core_declares_the_twelve_bindings_in_layout_order_and_no_stage_inputs_or_outputs()
         {
             string[] bindings =
             {
@@ -102,6 +122,9 @@ namespace KhaozEngine.Tests.Render3D
                 "layout(set=0, binding=6) uniform texture2D HistoryConfidence;",
                 "layout(set=0, binding=7) uniform sampler LinearClamp;",
                 "layout(set=0, binding=8) uniform Resolve {",
+                "layout(set=0, binding=9) uniform texture2D KeyShadowVisibility;",
+                "layout(set=0, binding=10) uniform texture2D PreviousKeyShadowVisibility;",
+                "layout(set=0, binding=11) uniform VisibilityHistory {",
             };
             int last = -1;
             foreach (string binding in bindings)
@@ -396,8 +419,9 @@ namespace KhaozEngine.Tests.Render3D
         {
             const GpuResourceKind T = GpuResourceKind.TextureReadOnly;
             AssertSurvives(ShaderSources.TemporalResolveFrag, "TemporalResolve",
-                new[] { "t0", "t1", "t2", "t3", "t4", "t5", "t6", "s0", "b0" },
-                T, T, T, T, T, T, T, GpuResourceKind.Sampler, GpuResourceKind.UniformBuffer);
+                new[] { "t0", "t1", "t2", "t3", "t4", "t5", "t6", "s0", "b0", "t7", "t8", "b1" },
+                T, T, T, T, T, T, T, GpuResourceKind.Sampler, GpuResourceKind.UniformBuffer,
+                T, T, GpuResourceKind.UniformBuffer);
             AssertSurvives(ShaderSources.TemporalDepthStoreFrag, "TemporalDepthStore", new[] { "t0", "t1", "s0", "b0" },
                 T, T, GpuResourceKind.Sampler, GpuResourceKind.UniformBuffer);
         }
@@ -460,8 +484,14 @@ namespace KhaozEngine.Tests.Render3D
                 StringComparison.Ordinal);
             Assert.DoesNotContain("textureLod(sampler2D(HistoryConfidence", core, StringComparison.Ordinal);
             Assert.Contains("edgeMotion = length((closestMotion - centreOwn) * internalSize);", core, StringComparison.Ordinal);
-            Assert.Contains("* (1.0 - clamp((ownReprojected && useHistory ? 0.0 : edgeMotion) * LockEdgeRelease, 0.0, "
-                + "1.0));", core, StringComparison.Ordinal);
+            Assert.Contains("float releaseEdgeMotion = ownReprojected && useHistory ? 0.0 : edgeMotion;", core,
+                StringComparison.Ordinal);
+            Assert.Contains("lockValue = temporalReleaseLock(lockValue, motionPixels, reactive, releaseEdgeMotion);", core,
+                StringComparison.Ordinal);
+            Assert.Contains("float edgeKeep = temporalOrdered(1.0 - clamp(temporalOrdered(edgeMotion) * LockEdgeRelease, "
+                + "0.0, 1.0));", core, StringComparison.Ordinal);
+            Assert.Contains(ShaderSources.TemporalLockReleaseGlsl, core, StringComparison.Ordinal);
+            Assert.DoesNotMatch(@"\bprecise\b", core);
             Assert.Contains("bool ownReprojected = !depthTested", core, StringComparison.Ordinal);
             Assert.DoesNotContain("surfaceTravel", core, StringComparison.Ordinal);
             Assert.Contains("float hold = clamp(lockValue * LockHoldGain, 0.0, 1.0);", core, StringComparison.Ordinal);

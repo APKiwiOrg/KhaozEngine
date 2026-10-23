@@ -132,7 +132,7 @@ public sealed class NativeMapGoldenGpuTests(NativeMapGoldenScene scene) : IClass
         var image = scene.Capture("roofs", false, false, MapRoofMode.AlwaysHidden, focus);
         var evidence = scene.LastEvidence;
         var proxy = Assert.Single(evidence.Submitted, d => d.Resource.Key.PartId == "hlod");
-        Assert.Equal(.5f, proxy.Rigid!.Value.Dissolve, 4); Assert.Equal(0, proxy.Rigid.Value.DissolveComplement); Assert.True(proxy.Rigid.Value.InvertShadowDissolve);
+        Assert.Equal(.5f, proxy.Rigid!.Value.Dissolve, 4); Assert.Equal(1, proxy.Rigid.Value.DissolveComplement); Assert.False(proxy.Rigid.Value.InvertShadowDissolve);
         Assert.All(evidence.Submitted.Where(d => d.Resource.Key.OwnerId == "solid"), d => Assert.Equal(.5f, d.Rigid!.Value.Dissolve, 4));
         Assert.Equal(2, evidence.ShadowOnlyInstances); NativeMapGoldenAssertions.HiddenRoofsCast(evidence);
         var omitted = scene.Capture("roofs", true, false, MapRoofMode.AlwaysHidden, focus);

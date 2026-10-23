@@ -121,7 +121,9 @@ namespace KhaozEngine.Tests.Gpu
             // The catalog deduplicates identical source pairs such as Line while retaining every target-outline
             // mask and composite pair. The count moves with every pipeline the renderers gain. Two compute kernels
             // span the four reachable cascade resolutions.
-            Assert.Equal(92, graphics.Length);
+            // Includes main's visibility and fully lit variants, plus R8a bounded water and five
+            // prepared-foliage programs and their two visibility variants.
+            Assert.Equal(129, graphics.Length);
             Assert.Equal(8, compute.Length);
 
             Assert.Equal(graphics.Length, graphics.Select(p => p.Name).Distinct(StringComparer.Ordinal).Count());

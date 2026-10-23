@@ -118,10 +118,13 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Set to make the next build answer nil, which is Metal refusing a descriptor.</summary>
         internal bool NextCreateFails { get; set; }
+        internal Action? BeforeCreate;
+        internal Action? AfterRelease;
 
         internal IntPtr CreateDescriptor(ReadOnlySpan<MetalColourAttachment> colour,
             in MetalDepthAttachment depth)
         {
+            BeforeCreate?.Invoke();
             _passes.Add(new RecordedRenderPass(colour.ToArray(), depth));
 
             if (NextCreateFails)
@@ -146,6 +149,7 @@ namespace KhaozEngine.Tests.Gpu
             _log.Add($"release descriptor {descriptor}");
             _released++;
             if (!_liveDescriptors.Remove(descriptor)) UnbalancedDescriptorReleases++;
+            AfterRelease?.Invoke();
         }
 
         internal IntPtr CreateResolveDescriptor(IntPtr source, IntPtr destination)

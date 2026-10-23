@@ -5,7 +5,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <summary>
     /// THE PRE-COMMAND ORDERING, IN ONE PLACE: everything that has to happen before a <c>vkCmdDraw</c>,
     /// a <c>vkCmdDrawIndexed</c> or a <c>vkCmdDispatch</c>, in the one order that is correct, plus the vertex and
-    /// index bind state and the dependent-dispatch hazard set that feed it. Work-breakdown row 15
+    /// index bind state and the draw/dispatch hazard set that feed it. Work-breakdown row 15
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/525).
     ///
     /// <para><b>IT IS ITS OWN TYPE BECAUSE THE ORDER IS THE THING THAT CAN BE WRONG</b>
@@ -15,13 +15,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     ///
     /// <para><b>THE DRAW ORDER, AND WHY EACH STEP IS WHERE IT IS.</b>
     /// <list type="number">
-    /// <item><description><b>The bound sets' images are transitioned FIRST, OUTSIDE any render pass instance.</b>
-    /// This is the compute rule 1 barrier (V-C1): a storage texture a dispatch left in <c>GENERAL</c> goes to
+    /// <item><description><b>The buffer dependency and the bound sets' image transitions come FIRST, OUTSIDE any
+    /// render pass instance.</b> When a set the draw binds names a storage buffer an earlier dispatch in this
+    /// recording wrote, the same <see cref="VulkanComputeHazards"/> question a dependent dispatch asks answers
+    /// yes and one <see cref="VulkanDispatchBarrier.ReadAfterWrite"/> is emitted ahead of the transitions. A set
+    /// bound before the dispatch and never rebound is asked too, because the walk covers declared slots rather
+    /// than dirty ones. The transitions are the compute rule 1 barrier (V-C1): a storage texture a dispatch left in <c>GENERAL</c> goes to
     /// <c>SHADER_READ_ONLY_OPTIMAL</c> where the sampled bind is assembled, and so does a render target the
     /// previous pass wrote and this one samples. It has to be outside, because a barrier inside an open render
     /// pass instance is a different and much narrower call than the one section 10.3's table describes, and the
     /// incumbent drains its own queued restores before <c>EnsureRenderPassActive</c> for the same reason. So a
-    /// pass that is ALREADY OPEN is ended here, and only when a transition is really owed: the FIRST draw of a
+    /// pass that is ALREADY OPEN is ended here, and only when a transition or the dependency is really owed: the FIRST draw of a
     /// pass finds nothing open and the invariant costs it nothing, and a LATER draw whose newly bound set needs a
     /// layout change would otherwise emit its barrier inside the instance, where <c>oldLayout</c> must equal
     /// <c>newLayout</c> and this one does not. That is not a hypothetical shape: the ocean chain reaches it, where
@@ -44,9 +48,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// </list></para>
     ///
     /// <para><b>THE DISPATCH ORDER IS THE SAME SHAPE WITH TWO DIFFERENCES.</b> It ENDS any pending rendering
-    /// first (V-A4), because a dispatch is illegal inside a render pass instance, and between the transitions and
-    /// the command it emits the read-after-write barrier when
-    /// <see cref="VulkanComputeHazards"/> says an earlier dispatch wrote something this one binds (V-C2). A
+    /// first and unconditionally (V-A4), because a dispatch is illegal inside a render pass instance, and it emits
+    /// the read-after-write barrier between the transitions and the command, when
+    /// <see cref="VulkanComputeHazards"/> says an earlier draw or dispatch has a conflicting access (V-C2). A
     /// compute set's STORAGE images go to <c>GENERAL</c> and its sampled ones to
     /// <c>SHADER_READ_ONLY_OPTIMAL</c>, which is the same walk with the layout taken off the binding rather than
     /// off the texture.</para>
@@ -60,7 +64,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// a second scan makes no call at all, where closing every pass unconditionally would cost a
     /// <c>vkCmdEndRendering</c> and a <c>vkCmdBeginRendering</c> per draw. That is what keeps V-T2's gated
     /// invariant true: no pipeline barrier, and no pass boundary either, between two draws that touch no new
-    /// texture.</para>
+    /// texture and read no buffer a dispatch wrote since the last barrier.</para>
     ///
     /// <para><b>AND DECLARED IS WHERE IT STOPS, WHICH IS A DIFFERENT BOUND FROM DIRTY AND NOT A RETREAT TOWARDS IT</b>
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/626). A switch to a pipeline declaring FEWER sets leaves the
@@ -102,12 +106,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// and because the device-free tests drive the run cutting through it.</summary>
         internal VulkanGeometryBinds Geometry => _geometry;
 
-        /// <summary>The dependent-dispatch hazard set (V-C2), exposed for the tests that assert a barrier is
-        /// emitted for a chain and not for two independent dispatches.</summary>
+        /// <summary>The draw/dispatch hazard set (V-C2), exposed for tests of dependencies and independent work.</summary>
         internal VulkanComputeHazards Hazards => _hazards;
 
         /// <summary>
-        /// FORGET EVERY BIND AND EVERY WRITE, which is what a fresh <c>VkCommandBuffer</c> holds. Called from
+        /// FORGET EVERY BIND AND EVERY ACCESS, which is what a fresh <c>VkCommandBuffer</c> holds. Called from
         /// <c>VulkanCommandList.Begin</c> alongside the other recorder resets, for the reason they are all called
         /// there: the state belonged to a recording that was discarded, and keeping it would let the next one skip
         /// a bind as redundant against a command buffer nobody submitted.
@@ -128,6 +131,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             PrepareGraphics(commandBuffer, rendering, binds);
             _emitter.Draw(commandBuffer, binds, in call);
+            _hazards.NoteAccesses(binds);
         }
 
         /// <summary><c>vkCmdDrawIndexed</c>, with the identical four steps.</summary>
@@ -136,11 +140,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             PrepareGraphics(commandBuffer, rendering, binds);
             _emitter.DrawIndexed(commandBuffer, binds, in call);
+            _hazards.NoteAccesses(binds);
         }
 
         /// <summary>
         /// <c>vkCmdDispatch</c>, with the pass ended, the compute set's images in the layouts their bindings need,
-        /// and the read-after-write barrier when this dispatch depends on an earlier one.
+        /// and the dependency barrier when this dispatch conflicts with an earlier draw or dispatch.
         /// </summary>
         /// <param name="commandBuffer">The buffer being recorded into.</param>
         /// <param name="rendering">The list's rendering schedule, whose pending instance this ends (V-A4).</param>
@@ -160,9 +165,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             TransitionBoundImages(commandBuffer, binds);
 
-            // THE DEPENDENCY, IF THERE IS ONE. Asked before the writes of THIS dispatch are recorded, because a
+            // THE DEPENDENCY, IF THERE IS ONE. Asked before the accesses of THIS dispatch are recorded, because a
             // dispatch does not depend on itself, and cleared by the barrier because a global memory barrier
-            // orders every earlier write at once.
+            // orders every earlier shader access at once.
             if (_hazards.NeedsBarrier(binds))
             {
                 _emitter.DependencyBarrier(commandBuffer);
@@ -170,7 +175,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             }
 
             _emitter.Dispatch(commandBuffer, binds, groupCountX, groupCountY, groupCountZ);
-            _hazards.NoteWrites(binds);
+            _hazards.NoteAccesses(binds);
         }
 
         // STEPS 1 TO 3 OF THE DRAW ORDER. Step 4 is the emitter's, because the descriptor flush and the command
@@ -180,10 +185,22 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             ArgumentNullException.ThrowIfNull(rendering);
             ArgumentNullException.ThrowIfNull(binds);
 
-            // THE PASS IS CLOSED FIRST, AND ONLY WHEN A TRANSITION IS REALLY OWED. See the class note's step 1:
-            // an open instance has to be ended before the walk emits, and asking first is what keeps the common
+            // THE BUFFER DEPENDENCY IS ASKED FIRST, with the same hazard set and the same question a dependent
+            // dispatch asks. Conflicting storage accesses from earlier draws or dispatches are ordered against
+            // this draw by one global memory barrier, and that barrier is not legal inside a render pass
+            // instance, so it joins the transitions as a reason to close the pass.
+            bool dependency = _hazards.NeedsBarrier(binds);
+
+            // THE PASS IS CLOSED FIRST, AND ONLY WHEN A BARRIER IS REALLY OWED. See the class note's step 1:
+            // an open instance has to be ended before anything emits, and asking first is what keeps the common
             // draw free of an end and a begin it does not need.
-            if (rendering.IsRendering && NeedsTransition(binds)) rendering.EndRendering(commandBuffer);
+            if (rendering.IsRendering && (dependency || NeedsTransition(binds))) rendering.EndRendering(commandBuffer);
+
+            if (dependency)
+            {
+                _emitter.DependencyBarrier(commandBuffer);
+                _hazards.Clear();
+            }
 
             TransitionBoundImages(commandBuffer, binds);
             rendering.PrepareDraw(commandBuffer);

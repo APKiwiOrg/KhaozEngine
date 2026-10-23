@@ -29,15 +29,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// of a cache that describes the shared device context. See the seam for the full reasoning.
         /// </para>
         /// </summary>
-        internal static IGpuCommandList Create<TEmitter>(D3D11RecordMode mode, TEmitter emitter)
+        internal static IGpuCommandList Create<TEmitter>(D3D11RecordMode mode, TEmitter emitter, D3D11FenceSubsystem? timestampFences = null)
             where TEmitter : struct, ID3D11Emitter
             => mode == D3D11RecordMode.Immediate
-                ? new D3D11CommandRecorder<TEmitter>(emitter)
-                : CreateDeferred();
+                ? new D3D11CommandRecorder<TEmitter>(emitter, timestampFences)
+                : CreateDeferred(timestampFences);
 
         /// <summary>Create a command list on the deferred driver explicitly.</summary>
-        internal static D3D11CommandRecorder<D3D11StreamEmitter> CreateDeferred()
-            => new(new D3D11StreamEmitter(new D3D11CommandStream()));
+        internal static D3D11CommandRecorder<D3D11StreamEmitter> CreateDeferred(D3D11FenceSubsystem? timestampFences = null)
+            => new(new D3D11StreamEmitter(new D3D11CommandStream()), timestampFences);
 
         /// <summary>
         /// Section 5.1's submit, verbatim: take the submit lock, replay, release. The lock is a PARAMETER because
@@ -101,7 +101,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// </para>
         /// </summary>
         internal static void Submit<TEmitter>(object submitLock, IGpuCommandList list, ref TEmitter emitter,
-            ID3D11SubmitSignal? signal = null, IGpuFence? fence = null, D3D11RingAllocator? rings = null)
+            ID3D11SubmitSignal? signal = null, IGpuFence? fence = null, D3D11RingAllocator? rings = null,
+            ReadOnlySpan<IGpuFence> completions = default)
             where TEmitter : struct, ID3D11Emitter
         {
             if (submitLock is null) throw new ArgumentNullException(nameof(submitLock));
@@ -110,7 +111,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             // a defect that goes quiet: the fence stays unarmed, so it reads unsignalled forever and whatever is
             // waiting on it waits forever. That is a hang rather than a wrong pixel, and it surfaces in the
             // retire pool rather than here, so it is refused at the call that made it.
-            if (signal is null && fence is not null)
+            if (signal is null && (fence is not null || !completions.IsEmpty))
             {
                 throw new ArgumentException(
                     "A fence was handed to a Direct3D 11 submit that has no signal sink, so nothing would ever "
@@ -142,6 +143,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
                 Replay(list, ref emitter);
                 ulong completionValue = signal?.SignalEndOfReplay(fence) ?? 0UL;
+                if (completionValue != 0)
+                    foreach (var completion in completions) ((D3D11GpuFence)completion).Arm(completionValue);
                 rings?.OnSubmitted(completionValue);
             }
         }

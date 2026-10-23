@@ -1,6 +1,4 @@
 using System;
-using System.Collections.Generic;
-using System.Numerics;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
@@ -31,12 +29,12 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuDevice _gd;
         readonly IGpuTexture _target, _staging;
         readonly IGpuFramebuffer _framebuffer;
-        readonly IGpuShaderSet _shaders;
-        readonly IGpuPipeline _pipeline;
+        readonly TemporalVisibilityPipelinePair _programs;
         readonly byte[] _row = new byte[GridWidth * 4];
         bool _recorded;
 
-        public TemporalCountProbe(IGpuDevice gd, IGpuResourceLayout resolveLayout)
+        public TemporalCountProbe(IGpuDevice gd, IGpuResourceLayout resolveLayout, IGpuResourceLayout fullyLitLayout,
+            Func<string, string>? rewrite = null)
         {
             _gd = gd;
             IGpuResourceFactory f = gd.Factory;
@@ -45,21 +43,9 @@ namespace KhaozEngine.Render3D.Rendering
             _framebuffer = f.CreateFramebuffer(null, _target);
             _staging = f.CreateTexture(GpuTextureDescription.Texture2D(GridWidth, GridHeight,
                 GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Staging));
-            _shaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
-                ShaderSources.TemporalProbeFragment(TemporalResolvePrecisionPolicy.For(gd)));
-            _pipeline = f.CreateGraphicsPipeline(new GpuPipelineDescription
-            {
-                BlendFactor = Vector4.Zero,
-                BlendAttachments = new[] { GpuBlendAttachment.OverrideBlend },
-                DepthStencil = GpuDepthStencilState.Disabled,
-                Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise,
-                    depthClipEnabled: false, scissorTestEnabled: false),
-                Topology = GpuPrimitiveTopology.TriangleList,
-                ResourceLayouts = new[] { resolveLayout },
-                ShaderSet = _shaders,
-                VertexLayouts = new List<GpuVertexLayoutDescription>(),
-                Outputs = _framebuffer.Outputs,
-            });
+            _programs = new TemporalVisibilityPipelinePair(gd,
+                ShaderSources.TemporalProbeFragment(TemporalResolvePrecisionPolicy.For(gd)),
+                [resolveLayout], [fullyLitLayout], _framebuffer.Outputs, rewrite);
         }
 
         /// <summary>How many times the grid has been mapped for reading. For tests.</summary>
@@ -67,10 +53,10 @@ namespace KhaozEngine.Render3D.Rendering
 
         /// <summary>Record the probe over this frame's resolve set and copy the grid into the staging
         /// texture.</summary>
-        public void Record(IGpuCommandList cl, IGpuResourceSet resolveSet)
+        public void Record(IGpuCommandList cl, IGpuResourceSet resolveSet, bool withoutVisibility = false)
         {
             cl.SetFramebuffer(_framebuffer);
-            cl.SetPipeline(_pipeline);
+            cl.SetPipeline(_programs.Select(withoutVisibility));
             cl.SetGraphicsResourceSet(0, resolveSet);
             cl.Draw(3);
             cl.CopyTexture(_target, _staging);
@@ -112,8 +98,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         public void Dispose()
         {
-            _pipeline.Dispose();
-            _shaders.Dispose();
+            _programs.Dispose();
             _framebuffer.Dispose();
             _staging.Dispose();
             _target.Dispose();

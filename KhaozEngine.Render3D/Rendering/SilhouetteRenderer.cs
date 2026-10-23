@@ -29,6 +29,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         readonly IGpuDevice _gd;
         readonly IGpuShaderSet _shaders;
+        readonly ModelVisibilityShaders _visibilityShaders = new();
         IGpuShaderSet? _motionShaders;   // SilhouetteMotionFrag, built only for a temporal model target
         readonly IGpuResourceLayout _layout;
         IGpuPipeline _pipeline;
@@ -95,9 +96,11 @@ namespace KhaozEngine.Render3D.Rendering
                     GpuFrontFace.CounterClockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout, _interiorCutLayout },
-                ShaderSet = MotionMath.IsTemporal(modelOutputs)
-                    ? _motionShaders ??= f.CreateShadersFromSpirv(ShaderSources.SilhouetteVert, ShaderSources.SilhouetteMotionFrag)
-                    : _shaders,
+                ShaderSet = _visibilityShaders.TrySelect(f, modelOutputs, ShaderSources.SilhouetteVert,
+                    MotionMath.IsTemporal(modelOutputs) ? ShaderSources.SilhouetteMotionFrag : ShaderSources.SilhouetteFrag, preserve: true, out IGpuShaderSet visibilityShaders)
+                    ? visibilityShaders : MotionMath.IsTemporal(modelOutputs)
+                        ? _motionShaders ??= f.CreateShadersFromSpirv(ShaderSources.SilhouetteVert, ShaderSources.SilhouetteMotionFrag)
+                        : _shaders,
                 VertexLayouts = new List<GpuVertexLayoutDescription> { positionLayout, normalLayout },
                 Outputs = modelOutputs,
             });
@@ -166,7 +169,7 @@ namespace KhaozEngine.Render3D.Rendering
             _interiorCutBinding.Dispose();
             _interiorCutLayout.Dispose();
             _layout.Dispose();
-            _shaders.Dispose();
+            _shaders.Dispose(); _visibilityShaders.Dispose();
             _motionShaders?.Dispose();
             _ubo?.Dispose();
             foreach (var r in _retired) r.Dispose();

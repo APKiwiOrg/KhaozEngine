@@ -40,24 +40,24 @@ layout(std430, set=0, binding=2) readonly buffer PointLightClusterBuffer {
         //      copied byte-for-byte from the old duplicated blocks (only vWorldPos was renamed to the `worldPos`
         //      parameter), so behaviour is bit-identical on every backend.
         public const string LightingCommonGlsl = @"
-// Cascaded 3x3 PCF shadow lookup. Returns 1 = fully lit, 0 = fully in shadow, from the key light's CASCADED depth
-// atlas: N frustum-slice ortho cascades (tightest first) packed side-by-side in one R32F texture. Picks the tightest
-// cascade whose light-clip projection of worldPos lands inside its map, manual-depth-compares a 3x3 PCF kernel in
-// that cascade's atlas column, and either cross-fades toward the NEXT cascade's result near an INNER cascade's
-// border (so the texel-density step at a hand-off is invisible) or fades the term to fully lit toward the
-// OUTERMOST cascade's UV border AND beyond the view-distance limit (so the coverage edge is invisible, no hard
+// Cascaded bilinear 3x3 PCF shadow lookup. Returns 1 = fully lit, 0 = fully in shadow, from the key light's
+// CASCADED depth atlas: N frustum-slice ortho cascades (tightest first) packed side-by-side in one R32F texture. Picks
+// the tightest cascade whose light-clip projection of worldPos lands inside its map, manual-depth-compares a bilinear
+// 3x3 PCF kernel in that cascade's atlas column, and either cross-fades toward the NEXT cascade's result near an
+// INNER cascade's border (so the texel-density step at a hand-off is invisible) or fades the term to fully lit toward
+// the OUTERMOST cascade's UV border AND beyond the view-distance limit (so the coverage edge is invisible, no hard
 // box). worldPos is pushed off the surface along Ngeo by a PER-CASCADE normal offset (grows with the cascade's
 // texel world size) before projecting - the standard normal-offset bias, scaled per cascade so far cascades do not
 // acne and near ones do not detach, plus a constant + slope-scaled depth bias. This lives in the shared block so
 // ModelFrag and SplatFrag shadow identically, and is factored into two helpers: projectCascade (light-clip
-// projection + map-bounds test) and pcfCascade (the 3x3 atlas-column average), so sampleKeyShadow can call either
-// twice, once for the selected cascade and once more for its neighbour inside the blend band. It reads the frame
-// UBO shadow tail directly (like computeLighting): ShadowMat[4] = per-cascade world->light-clip, ShadowParams =
-// (cascadeCount, strength, constBias, slopeBias), ShadowParams2 = (texelStep, maxDistance, borderFrac,
-// cascadeBlendFrac), ShadowNormalOffsets = per-cascade normal-offset world size. Only the atlas texture + sampler
-// are parameters, because their set/binding differ per fragment and GLSL cannot reference a fragment's own
-// bindings from a shared function. Texture + sampler are passed SEPARATELY (Vulkan-style) and combined at the
-// point of use inside. GLSL forbids a sampler2D(...) constructor as a call ARGUMENT.
+// projection + map-bounds test) and pcfCascade (CascadeShadowFilterGlsl, the bilinear 3x3 comparison filter), so
+// sampleKeyShadow can call either twice, once for the selected cascade and once more for its neighbour inside the
+// blend band. It reads the frame UBO shadow tail directly (like computeLighting): ShadowMat[4] = per-cascade
+// world->light-clip, ShadowParams = (cascadeCount, strength, constBias, slopeBias), ShadowParams2 = (texelStep,
+// maxDistance, borderFrac, cascadeBlendFrac), ShadowNormalOffsets = per-cascade normal-offset world size. Only the
+// atlas texture + sampler are parameters, because their set/binding differ per fragment and GLSL cannot reference a
+// fragment's own bindings from a shared function. Texture + sampler are passed SEPARATELY (Vulkan-style) and combined
+// at the point of use inside. GLSL forbids a sampler2D(...) constructor as a call ARGUMENT.
 bool projectCascade(int i, vec3 worldPos, vec3 Ngeo, float slopeSin, float margin, out vec2 uv, out float z) {
     vec3 samplePos = worldPos + Ngeo * (ShadowNormalOffsets[i] * slopeSin);
     vec4 lc = ShadowMat[i] * vec4(samplePos, 1.0);
@@ -75,30 +75,7 @@ bool projectCascade(int i, vec3 worldPos, vec3 Ngeo, float slopeSin, float margi
     // just outside a cascade's depth range and still claim it (issue #394).
     return !(uv.x < margin || uv.x > 1.0 - margin || uv.y < margin || uv.y > 1.0 - margin || z < 0.0 || z > 1.0);
 }
-
-// One cascade's 3x3 PCF average inside its atlas column. uv is cascade-local, depth is already biased. Each
-// tap is CLAMPED inside the column then mapped to atlas U so it never bleeds into a neighbour cascade.
-// COMPARE FIRST, FILTER AFTER. The nine taps each fetch ONE stored depth (the atlas sampler is POINT, see
-// ShadowMapRenderer's ctor), compare it, and only the 0/1 comparison RESULTS are averaged. Averaging stored
-// depths instead would blend the atlas clear value (1.0 = no caster) into every tap next to a gap, which can only
-// ever lighten the result, and erases a dithered caster's shadow outright outside cascade 0 (issue #391).
-float pcfCascade(texture2D shadowAtlas, sampler shadowSamp, int cascade, int count, vec2 uv, float depth, float texelStep) {
-    float atlasScaleX = 1.0 / float(count);
-    float atlasBiasX = float(cascade) * atlasScaleX;
-    float halfTexel = texelStep * 0.5;
-    float lit = 0.0;
-    for (int oy = -1; oy <= 1; oy++) {
-        for (int ox = -1; ox <= 1; ox++) {
-            vec2 luv = uv + vec2(float(ox), float(oy)) * texelStep;
-            luv = clamp(luv, vec2(halfTexel), vec2(1.0 - halfTexel));
-            vec2 auv = vec2(luv.x * atlasScaleX + atlasBiasX, luv.y);
-            float d = texture(sampler2D(shadowAtlas, shadowSamp), auv).r;
-            lit += (depth <= d) ? 1.0 : 0.0;            // receiver in front of the stored caster depth => lit
-        }
-    }
-    return lit / 9.0;
-}
-
+" + CascadeShadowFilterGlsl + @"
 float sampleKeyShadow(texture2D shadowAtlas, sampler shadowSamp, vec3 worldPos, vec3 Ngeo, float ndl) {
     float strength = ShadowParams.y;
     if (strength <= 0.0) return 1.0;                    // shadow atlas inactive this frame => fully lit

@@ -473,6 +473,9 @@ still refuses the call on a scene without skinned meshes.
 `CreatePropClusterOwner()` is the opt-in cluster seam. Its default throws `NotSupportedException`, so a custom
 scene can continue to host an ordinary view and fails clearly only when `PropLayers` asks it for large-world
 clusters. `Scene3DTileWorldScene` adapts the shared Terrain.Render3D `PropClusterRenderer` directly.
+`ITileWorldPropClusterOwner.DrawWithVisibility` adds generation-aware visibility and placement counts. Its default
+keeps the old `Draw` path for uncontrolled layers and returns no counts. Roof layers require the new capability
+and throw on an older adapter instead of exposing hidden geometry.
 The older optional members remain default interface implementations, so an implementation written before
 textured ground, water, silhouettes or rigid dissolves existed keeps compiling. It draws untextured ground, no
 water, no rims, and a solid body where a dissolve was requested. The view's own door is
@@ -512,12 +515,27 @@ catalog archetype up front, so a region load is placements alone.
   ordinary `PropDrawRadius` submission. Each `TilePropLayerDefinition` names a stable `Id`, a non-empty set of
   `ArchetypeIds`, `DrawRadius`, `LodDistance`, `LodCrossfadeWidth`, `HlodDistance`, `HlodCrossfadeWidth`,
   `HlodWeldCell`, and `CastsShadows` (default true). Construction rejects missing archetypes, duplicate layer IDs,
-  duplicate archetype selection, roof archetypes, non-finite or negative tuning, and a LOD or HLOD distance past
-  the draw radius. Roofs stay on the ordinary visibility-aware path and cannot join a prop layer.
+  duplicate archetype selection, non-finite or negative tuning, and a LOD or HLOD distance past
+  the draw radius. A layer selects either only catalog roofs or no roofs. Mixing them fails before upload,
+  naming the layer and both kinds. Roof layers cannot enable `CutInsideInteriors`.
   When HLOD is enabled, its positive distance must also be greater than `LodDistance`.
   A selected object leaves the ordinary prop list and enters exactly one `TilePropLayerSnapshot`, so it cannot
   double-submit. `TileRegionProps` publishes these detached, object-ID-ordered batches with region, plane and
   content generation. Worker builds never read the live document, override table, resolver cache or scene.
+- **Roof layers keep the roof rule at every distance.** Layer snapshots retain object IDs, planes and footprints.
+  `RoofMode` and the observer's connected interior drive the same predicate as ordinary roofs. Visible individuals
+  use the layer's LOD and HLOD fades. Hidden individuals keep the same transforms and fades as shadow-only
+  casters when `CastsShadows` is true. An all-visible cluster draws its merged colour handle. An all-hidden cluster
+  draws its merged handle shadow-only. A partly hidden cluster uses resident individuals without the HLOD fade
+  floor, or merged shadow-only if individuals are unavailable. Merged colour never exposes hidden roofs.
+  Roof clusters survive Decor residency, and neither pass queues anything beyond the layer's `DrawRadius`.
+  Selected outlines share the draw's effective representation decision, source generation and fade floor,
+  including the individual fallback after a failed HLOD rebuild. Only colour-submitted roofs receive outlines.
+  Non-roof snapshots carry no roof footprints, and warmed layer
+  visibility checks allocate no managed memory per frame.
+  Use separate structures and roof layers with `LodDistance = 0`, `HlodDistance = 192`, `HlodCrossfadeWidth = 32`,
+  `DrawRadius = 576` and `HlodWeldCell = 0` to merge buildings without welding their straight edges.
+
 - **Water is queued every frame, collected once per mesh.** `Draw` calls `DrawWaterPlanes()` after the ground and
   the props unless `TileWorldViewOptions.DrawWater` is false, and
   `TileWorldViewOptions.WaterLook` (default `TileWaterLooks.River`, null for the scene's own water settings) is
@@ -574,7 +592,9 @@ catalog archetype up front, so a region load is placements alone.
 - **A hidden roof still CASTS.** Whatever `RoofMode` takes off the screen is queued through
   `ITileWorldScene.DrawShadowOnlyProps` instead of dropped, so it writes depth for the key light and draws no
   colour and the room under it stays shaded. `LastShadowOnlyProps` counts those, apart from `LastDrawnProps`,
-  which stays the visible total. Both passes cull on the same focus and `PropDrawRadius`, and a hidden roof still
+  which stays the visible total. Both counters include roof layers, and a merged handle counts its represented
+  placements once even during a complementary transition. Ordinary roofs cull on the same focus and
+  `PropDrawRadius`, and a hidden roof still
   draws no silhouette and no target outline.
 - **`RoofMode`** picks between `RoofVisibility.Interior` (the default above), `AlwaysVisible` (nothing is ever
   hidden, the map-authoring view) and `AlwaysHidden` (every roof on every plane goes, the OSRS "roofs off"

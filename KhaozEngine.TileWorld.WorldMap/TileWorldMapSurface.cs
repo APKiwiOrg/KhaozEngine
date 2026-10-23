@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Primitives;
 using KhaozEngine.WorldMap;
@@ -14,14 +15,17 @@ internal sealed class TileWorldMapSurface
     readonly int _plane;
     readonly float _tileSize;
     readonly ConcurrentDictionary<ushort, Color> _colours = new();
+    readonly Dictionary<ushort, Color>? _groundPalette;
     readonly ConcurrentDictionary<RegionCoord, float[]> _waterSurfaces = new();
 
-    internal TileWorldMapSurface(TileWorldDocument document, TileWorldCatalogs catalogs, int plane, float tileSize)
+    internal TileWorldMapSurface(TileWorldDocument document, TileWorldCatalogs catalogs, int plane, float tileSize,
+        IReadOnlyDictionary<ushort, Color>? groundPalette)
     {
         _document = document;
         _catalogs = catalogs;
         _plane = plane;
         _tileSize = tileSize;
+        _groundPalette = groundPalette is null ? null : new Dictionary<ushort, Color>(groundPalette);
     }
 
     internal WorldMapSurfaceGrid Sample(MapRect area, float maxCellSize)
@@ -58,7 +62,8 @@ internal sealed class TileWorldMapSurface
         return grid;
     }
 
-    Color ParseColour(ushort material) => Color.FromHex(_catalogs.Material(material)!.Color);
+    Color ParseColour(ushort material) => _groundPalette is not null && _groundPalette.TryGetValue(material, out Color colour)
+        ? colour : Color.FromHex(_catalogs.Material(material)!.Color);
 
     float[] CollectWater(RegionCoord region)
     {

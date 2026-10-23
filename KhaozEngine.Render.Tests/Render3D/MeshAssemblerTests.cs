@@ -146,15 +146,17 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void A_Flat_Colour_Difference_Does_Not_Split_The_Weld()
+        public void A_Flat_Material_Colour_Seam_Stays_Split_For_Hlod()
         {
-            // The same six corners with the flag off, which is every non-COLOR_0 caller: the colour stays out of
-            // the key, the shared edge welds, and the first corner to claim a vertex keeps its colour, exactly as
-            // before per-vertex colour existed. This is the guarantee the goldens rest on.
             var mesh = MeshAssembler.Build(Seam(Flat));
 
-            Assert.Equal(4, mesh.Vertices.Length);
+            Assert.Equal(6, mesh.Vertices.Length);
             Assert.Equal(6, mesh.Indices.Length);
+            for (int i = 0; i < 3; i++)
+            {
+                Assert.Equal(new Vector4(1, 0, 0, 1), mesh.Vertices[mesh.Indices[i]].Color);
+                Assert.Equal(new Vector4(0, 0, 1, 1), mesh.Vertices[mesh.Indices[i + 3]].Color);
+            }
         }
 
         // Hash quality, pinned without timing anything. A ValueTuple past seven elements hashes only its

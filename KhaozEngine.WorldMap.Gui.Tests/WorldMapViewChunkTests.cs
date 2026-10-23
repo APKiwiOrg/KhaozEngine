@@ -60,7 +60,7 @@ public sealed class WorldMapViewChunkTests
         Assert.Equal(12, textures.Created.Count);
         view.Update(input.At(ScreenCenter), 0f);
         Assert.Equal(12, textures.Created.Count);
-        Assert.All(textures.Created, texture => { Assert.Equal(256, texture.Width); Assert.Equal(256, texture.Height); });
+        Assert.All(textures.Created, texture => { Assert.Equal(258, texture.Width); Assert.Equal(258, texture.Height); });
     }
 
     /// <summary>Invalidation and a zero upload budget preserve the old texture until one replacement uploads.</summary>

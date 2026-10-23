@@ -8,7 +8,8 @@ public sealed record TilePropLayerDefinition
     /// <summary>Stable layer identity used in region cluster keys.</summary>
     public required string Id { get; init; }
 
-    /// <summary>Non-roof archetypes represented by this layer instead of the ordinary TileWorld prop draw.</summary>
+    /// <summary>Archetypes represented instead of the ordinary draw. Select either all roofs or no roofs.
+    /// Roof layers preserve the roof visibility rule and cannot enable CutInsideInteriors.</summary>
     public required IReadOnlySet<string> ArchetypeIds { get; init; }
 
     /// <summary>Horizontal distance at which the layer has fully faded out.</summary>

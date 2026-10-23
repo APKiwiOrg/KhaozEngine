@@ -45,7 +45,7 @@ namespace KhaozEngine.Tests.Gpu
     /// leg ships alongside indefinitely.
     /// </para>
     /// </summary>
-    public sealed class D3D11FxcValidationTests
+    public sealed partial class D3D11FxcValidationTests
     {
         // ---- the Windows FXC leg -------------------------------------------------------------------------
 
@@ -87,6 +87,19 @@ namespace KhaozEngine.Tests.Gpu
 
             KhaozEngineD3D11.ValidateShaderPair(ShaderSources.FullscreenVert,
                 ShaderSources.TargetOutlineCompositeFrag, "TargetOutlineComposite");
+        }
+
+        /// <summary>The shadow filter readback kernels, the shipped explicit filter and the gather candidate, which
+        /// <c>TemporalShadowGatherCompileTests</c> holds to SPIR-V, MSL and HLSL off Windows.</summary>
+        [Fact]
+        public void TheShadowFilterKernels_ExplicitAndGather_SurviveFxc()
+        {
+            if (!KhaozEngineD3D11.IsPlatformSupported) return;
+
+            KhaozEngineD3D11.ValidateShaderPair(ComputeShaders.FullscreenVert,
+                TemporalShadowGatherCompileTests.ShippedKernel, "shadow filter explicit");
+            KhaozEngineD3D11.ValidateShaderPair(ComputeShaders.FullscreenVert,
+                TemporalShadowGatherCompileTests.GatherKernel, "shadow filter gather");
         }
 
         /// <summary>The compute kernels, across the four cascade resolutions shipped code can reach.</summary>

@@ -153,14 +153,16 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="frame">The swapchain's binary pair for this frame, taken once by the FIRST submit after
         /// an acquire and default for every other one (V-W3). Default on every headless device, which has no
         /// swapchain at all.</param>
+        /// <param name="completions">Additional fences sharing this submission's timeline value.</param>
         /// <returns>The timeline value this submission signals, or 0 when the device was already dead and nothing
         /// was submitted.</returns>
         /// <exception cref="InvalidOperationException">The list is not sealed, the fence is already armed, or the
         /// submit failed with a non-loss result.</exception>
         internal ulong Submit(VulkanCommandList list, VulkanGpuFence? fence,
-            in VulkanFrameSemaphores frame = default)
+            in VulkanFrameSemaphores frame = default, ReadOnlySpan<IGpuFence> completions = default)
         {
             ArgumentNullException.ThrowIfNull(list);
+            ValidateCompletions(completions);
 
             // Read OUTSIDE the lock, and it is the sealed-record check rather than a race: a list is one thread's
             // at a time, so a caller that has not sealed one is refused before it can contend for the lock.
@@ -181,6 +183,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 // rather than after work has been queued against it. The value it takes is unregistered until the
                 // submit succeeds, and the failure path below unarms it again.
                 fence?.Arm(value);
+                foreach (var completion in completions) ((VulkanGpuFence)completion).Arm(value);
 
                 VulkanSubmitStatus status = _api.Submit(buffer, value, frame, out string? failure);
 
@@ -196,6 +199,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 }
 
                 fence?.Reset();
+                foreach (var completion in completions) completion.Reset();
 
                 if (status == VulkanSubmitStatus.DeviceLost)
                 {
@@ -215,6 +219,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     + "submission took is never signalled and never waited for, so WaitForIdle still terminates "
                     + "and every outstanding fence still resolves. Both results that reach here mean the process "
                     + "or the device is out of memory.");
+            }
+        }
+
+        internal void ValidateCompletions(ReadOnlySpan<IGpuFence> completions)
+        {
+            GpuCompletionFences.Validate(completions);
+            foreach (var completion in completions)
+            {
+                if (completion is not VulkanGpuFence fence)
+                    throw new ArgumentException("A completion fence belongs to another backend.", nameof(completions));
+                fence.RequireOwner(_timeline, nameof(completions));
+                if (fence.Target != 0) throw new InvalidOperationException("Reset completion fences before submitting.");
             }
         }
     }

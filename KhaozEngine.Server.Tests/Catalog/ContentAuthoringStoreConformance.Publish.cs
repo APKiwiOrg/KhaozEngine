@@ -274,8 +274,8 @@ public abstract partial class ContentAuthoringStoreConformance
         IContentAuthoringStore store = await OpenAsync();
         await PublishAsync(
             store,
-            ContentEdit.Add(Thing, new ContentKey("one"), CatalogFixtures.Fields(11)),
-            ContentEdit.Add(Thing, new ContentKey("two"), CatalogFixtures.Fields(22)),
+            ContentEdit.Import(Thing, 1, new ContentKey("one"), CatalogFixtures.Fields(11)),
+            ContentEdit.Import(Thing, 2, new ContentKey("two"), CatalogFixtures.Fields(22)),
             ContentEdit.Import(Thing, FarId, new ContentKey("far"), CatalogFixtures.Fields(33)));
 
         // Version 2 moves chunk 0 and leaves chunk 1 alone, and the retire is what appends the rule.

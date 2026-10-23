@@ -22,8 +22,8 @@ namespace KhaozEngine.Catalog.Authoring;
 static class ContentIdAllocation
 {
     /// <summary>
-    /// Issues an id for every row that introduces a new definition, in edit ordinal order, then seeds the
-    /// high-water marks from the ids that were CARRIED.
+    /// Seeds the high-water marks from every CARRIED id, then issues ids for the remaining new definitions
+    /// in edit ordinal order.
     /// </summary>
     /// <param name="rows">Every candidate row, in edit ordinal order for the ones that need an id.</param>
     /// <param name="allocator">The reserve-then-issue allocator.</param>
@@ -36,9 +36,27 @@ static class ContentIdAllocation
         IContentIdPersistence persistence,
         CancellationToken cancellationToken)
     {
-        var entries = new List<ContentIdAllocationEntry>();
         var carried = new Dictionary<ushort, int>();
+        for (int i = 0; i < rows.Count; i++)
+        {
+            ContentCandidateRow row = rows[i];
+            if (row.IsNewDefinition && !row.NeedsId)
+            {
+                // Branch 1: the edit CARRIED the id, which a bulk import and a content upgrade write and no
+                // other path does. Carrying it is what makes an adoption a no-op for stored player data,
+                // where ordering alone would not preserve a single one, and what makes an upgrade's rows
+                // land under the numbers the committed bundle names them by.
+                ushort type = row.Registration.Type.Value;
+                carried[type] = carried.TryGetValue(type, out int held)
+                    ? Math.Max(held, row.DefinitionId)
+                    : row.DefinitionId;
+            }
+        }
 
+        IReadOnlyList<ContentIdSeed> seeds = await SeedAsync(carried, persistence, cancellationToken)
+            .ConfigureAwait(false);
+
+        var entries = new List<ContentIdAllocationEntry>();
         for (int i = 0; i < rows.Count; i++)
         {
             ContentCandidateRow row = rows[i];
@@ -48,23 +66,13 @@ static class ContentIdAllocation
             }
 
             ContentTypeId type = row.Registration.Type;
-            if (!row.NeedsId)
-            {
-                // Branch 1: the edit CARRIED the id, which a bulk import and a content upgrade write and no
-                // other path does. Carrying it is what makes an adoption a no-op for stored player data,
-                // where ordering alone would not preserve a single one, and what makes an upgrade's rows
-                // land under the numbers the committed bundle names them by.
-                carried[type.Value] = carried.TryGetValue(type.Value, out int held)
-                    ? Math.Max(held, row.DefinitionId)
-                    : row.DefinitionId;
-            }
-            else if (row.FamilyId is long familyId && row.Source == ContentIdSource.Family)
+            if (row.NeedsId && row.FamilyId is long familyId && row.Source == ContentIdSource.Family)
             {
                 // Branch 2: the edit names a family, so the id comes from the family's aligned blocks.
                 row.DefinitionId = await allocator
                     .AllocateInFamilyAsync(familyId, cancellationToken).ConfigureAwait(false);
             }
-            else
+            else if (row.NeedsId)
             {
                 // Branch 3: the plain per-type counter, including forks whose source has no family.
                 row.DefinitionId = await allocator
@@ -75,18 +83,14 @@ static class ContentIdAllocation
                 row.EditOrdinal, type, row.Key, row.DefinitionId, row.Source, row.FamilyId));
         }
 
-        IReadOnlyList<ContentIdSeed> seeds = await SeedAsync(carried, persistence, cancellationToken)
-            .ConfigureAwait(false);
         return new ContentIdAllocationRecord(entries, seeds);
     }
 
     /// <summary>
-    /// Moves each type's two marks up to the largest CARRIED id of that type, after every add has an id
-    /// (spec 6.3).
+    /// Moves each type's two marks up to the largest CARRIED id of that type before allocating any new id.
     /// <para>
-    /// <b>Without it the first ordinary add after an import allocates id 1 straight onto an imported row.</b>
-    /// The step is a no-op for an ordinary publish, because nothing carries an id there, and that is the
-    /// property a test pins rather than one the step arrives at quietly.
+    /// <b>Without it an ordinary add in the same candidate can allocate an id an imported row carries.</b>
+    /// The step is a no-op for a publish without carried ids.
     /// </para>
     /// </summary>
     static async Task<IReadOnlyList<ContentIdSeed>> SeedAsync(

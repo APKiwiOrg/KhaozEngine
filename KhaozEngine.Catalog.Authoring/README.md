@@ -284,9 +284,11 @@ There is ONE allocation path with two sources, and which one runs is a property 
 kind and no others: a bulk import into an empty database, and a content upgrade adding a row the committed
 bundle already names by id. Both carry the number because a game states a definition id as a code constant,
 and the allocator's durable mark sits above the highest row id whenever an earlier publish was refused after
-it reserved. After every add has an id, the high-water marks are SEEDED from the largest carried id per type,
-so the first ordinary add after one of those does not allocate id 1 straight onto a row that already holds
-it. `ContentIdAllocationRecord.Seeds` is empty for an ordinary publish.
+it reserved. Before allocating any new id, the high-water marks are SEEDED from the largest carried id per
+type. A single ordinary `ApplyEditsAsync` and `PublishAsync` candidate can therefore combine `Import` and
+`Add` for the same type in either edit order, preserving the imported ids and allocating plain additions above
+the carried maximum. Additions still allocate in edit ordinal order, and new family blocks open above the
+carried maximum. `ContentIdAllocationRecord.Seeds` is empty when a publish carries no ids.
 
 The seeding raises each mark to the greater of its current value and the carried id, and the store makes that
 comparison inside the same commit as the write. Two upgrade runners seed one type without a lock spanning

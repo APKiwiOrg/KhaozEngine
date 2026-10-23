@@ -67,6 +67,17 @@ public sealed class MapLightShadowExclusionTests
     }
 
     [Fact]
+    public void ExplicitNull_LeafLightWritesTheReleasedOmittedBytes()
+    {
+        byte[] omitted = MapLightFile.Write(PrefabFixtures.GlowLight());
+        var json = JsonNode.Parse(omitted)!;
+        json["shadowExclusion"] = null;
+        var light = MapLightFile.Read(Encoding.UTF8.GetBytes(json.ToJsonString()), "glow-light");
+        Assert.Null(light.ShadowExclusion);
+        Assert.Equal(omitted, MapLightFile.Write(light));
+    }
+
+    [Fact]
     public void UndeclaredExclusion_PreservesReleasedLightBytes()
     {
         byte[] before = MapLightFile.Write(PrefabFixtures.GlowLight());

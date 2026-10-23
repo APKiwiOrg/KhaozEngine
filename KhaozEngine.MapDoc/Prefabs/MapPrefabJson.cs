@@ -318,7 +318,7 @@ internal static class MapPrefabJson
                     throw new MapDocumentException("Prefab aggregate collection limit exceeded.");
                 foreach (JsonElement item in node.EnumerateArray()) Visit(item, name, parent);
             }
-            else if (node.ValueKind == JsonValueKind.Null && !(parent == "supportBinding" && name is ("surfaceId" or "spaceId" or "referenceY" or "searchBelow" or "searchAbove")) && name is not ("numericId" or "parentSpace" or "owner" or "instanceId" or "previous" or "transform" or "assetId" or "tags" or
+            else if (node.ValueKind == JsonValueKind.Null && !(parent == "supportBinding" && name is ("surfaceId" or "spaceId" or "referenceY" or "searchBelow" or "searchAbove")) && name is not ("numericId" or "parentSpace" or "owner" or "shadowExclusion" or "instanceId" or "previous" or "transform" or "assetId" or "tags" or
                 "parent" or "aliasOf" or "sourcePatch" or "heightUnits" or "opening" or "surfaceId" or "bandTop" or "paintTargetSurfaceId" or "indoorSpan" or "anchor"))
                 throw new MapDocumentException("Prefab member '" + name + "' must not be null.");
         }

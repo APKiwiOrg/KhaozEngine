@@ -271,9 +271,10 @@ their intentional no-match assemblies without that setting.
 Leave it empty for release verification and the standard full-suite policy. The filter is passed through
 a quoted environment value, never interpolated into shell source.
 
-A filtered dispatch retains all side correctness steps. Windows still checks FXC and struct layout, Metal
-collects its device facts, and Vulkan runs its shader-cache cold/warm/off probes. A selected non-bake Vulkan
-dispatch also runs the separate sync job with its fixed golden/compute/foliage selection, including timestamp
+A filtered dispatch keeps the existing conditions on side correctness steps. Windows still checks FXC
+and struct layout, and Metal collects its device facts. Vulkan runs its shader-cache cold/warm/off probes
+when `disableGpuDiskCache=false`. Setting it to `true` disables the caches and skips those probes.
+A selected non-bake Vulkan dispatch also runs the separate sync job with its fixed golden/compute/foliage selection, including timestamp
 API correctness facts. The matrix filter does not narrow that job. Sync writes actual per-assembly TRX under
 `TestResults/sync-trx/`, retained alone as `vulkan-sync-trx` for seven days on `always()`. Missing TRX fails
 that upload too. The existing validation logs remain separate. A native authorization must include these

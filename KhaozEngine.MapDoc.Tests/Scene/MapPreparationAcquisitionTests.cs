@@ -7,6 +7,18 @@ namespace KhaozEngine.Tests.MapDoc.Scene;
 public sealed class MapPreparationAcquisitionTests
 {
     [Fact]
+    public void CoverageLease_ReleasesItsUniqueRetainedInventory()
+    {
+        using var fixture = NativeSceneFixtures.Create("tile-owner");
+        var source = NativeSceneFixtures.Open(fixture, false);
+        var lease = MapRequiredDomainCoverage.Acquire(source, [MapSceneScopeTests.Window()]);
+        Assert.Equal(MapSceneStatus.CompleteForScope, lease.Status);
+        Assert.True(lease.PreparationOwnership!.Bytes > 0);
+        lease.Dispose(); lease.Dispose();
+        Assert.Equal(0, lease.PreparationOwnership.Bytes);
+    }
+
+    [Fact]
     public void FoliageContext_HasItsOwnRetainedReceipt()
     {
         using var fixture = NativeSceneFixtures.Create("tile-owner");

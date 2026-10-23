@@ -7,8 +7,9 @@ namespace KhaozEngine.Render3D.Rendering
     /// <summary>
     /// The frame's rigid point-shadow casters, binned by where they stand, so a light tests the casters near it
     /// instead of every queued instance (issue #1110). A pure CPU structure with no device and no scene, filled once
-    /// per point-shadow frame by <see cref="Scene3D"/> and asked once per static signature and once per row the pass
-    /// draws.
+    /// per point-shadow frame by <see cref="Scene3D"/> for rigid casters and by its foliage adapter
+    /// <c>FoliagePointCasterIndex</c> for rest-pose proxies. Asked once per static signature and once per row the
+    /// pass draws.
     /// <para>
     /// THE ANSWER IS THE FULL WALK'S ANSWER. A query returns exactly the slots a walk over every added caster keeps,
     /// in ascending slot order, because the grid only decides which casters are TESTED. The test is

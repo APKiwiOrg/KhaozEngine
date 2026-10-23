@@ -50,7 +50,7 @@
 - Expose internal `int TouchTests { get; }` for deterministic work-count assertions. Query clears its result first. Counts accumulate within the current sealed frame and reset on the next frame.
 - If range selection is extracted, use `internal ReadOnlySpan<FoliagePointShadowCaster> SelectRange(FoliagePointShadowRange range)` on the stream. Preserve the old long end calculation, including empty/out-of-range inputs.
 
-- [ ] **Step 1: Add the full-scan oracle and failing work-count contract.**
+- [x] **Step 1: Add the full-scan oracle and failing work-count contract.**
 
   Use two sources with 2,048 casting proxies each. Source 0 has X = 64 * i and source 1 has
   X = 64 * (2048 + i), for i from 0 through 2047. Y and Z are zero.
@@ -76,7 +76,7 @@
   adjacent float values, a sphere larger than the 8 m cell, nonfinite transforms and an unbinnable centre.
   Each input asserts exact equality to the same full-scan oracle, rather than a weakened superset.
 
-- [ ] **Step 2: Run the focused RED once.**
+- [x] **Step 2: Run the focused RED once.**
 
   ```bash
   build-slot --label foliage-point-index-red -- dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter 'FullyQualifiedName~FoliagePointCasterIndexTests' --logger 'trx;LogFileName=foliage-point-index-red.trx' --results-directory /tmp/khaozengine-mac-frame-performance
@@ -84,7 +84,7 @@
 
   Expected failure is the sparse work-count assertion, with 4,096 exact tests. Membership and ordering pass.
 
-- [ ] **Step 3: Build and query the shared spatial index.**
+- [x] **Step 3: Build and query the shared spatial index.**
 
   `Add` appends selected proxy references and cached absolute spheres in source/range/proxy order.
   `Seal` resets and fills one `PointCasterIndex` with those sequential slots, then seals it. `Query` maps
@@ -97,7 +97,7 @@
   by source ordinal, mesh identity and consecutive original proxy slot. Preserve its buffer and mesh checks,
   six-face reuse, and stream upload/retirement paths.
 
-- [ ] **Step 4: Add scene-transition and warmed-allocation assertions.**
+- [x] **Step 4: Add scene-transition and warmed-allocation assertions.**
 
   Test omitted/replaced/disposed batches, reduced and empty prefixes, mesh handle reuse, camera changes,
   render-origin moves and motion-only replacements. Reuse current fake-device point-shadow rigs and assert
@@ -119,7 +119,7 @@
   Assert.Equal(0, allocatedBytes);
   ```
 
-- [ ] **Step 5: Run the focused GREEN and native contracts.**
+- [x] **Step 5: Run the focused GREEN and native contracts.**
 
   ```bash
   build-slot --label foliage-point-index-green -- dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter 'FullyQualifiedName~FoliagePoint|FullyQualifiedName~PointCaster|FullyQualifiedName~PointSignature|FullyQualifiedName~PointShadowResidency|FullyQualifiedName~PointShadowReconfigure|FullyQualifiedName~InteriorCutShadow' --logger 'trx;LogFileName=foliage-point-index-green.trx' --results-directory /tmp/khaozengine-mac-frame-performance
@@ -129,12 +129,27 @@
   Expected result is zero failures, warnings or native skips. Run commands sequentially and finish them before
   reporting. New failures get diagnosis, not repeated runs. Full verification remains parent-owned.
 
-- [ ] **Step 6: Run relevant guards, update evidence and commit.**
+- [x] **Step 6: Run relevant guards, update evidence and commit.**
 
   Run the repository dash, prose, file-size, instruction-budget and doc-version guards, plus `git diff --check`.
   Record exact exits and operation counts under the scratch root. Update plan/spec state without claiming an
   FPS gain. Commit only owned files with a `perf(render3d)` subject. Return the exact commit and verification
   evidence to the parent. Do not push, merge, tag, launch a client or change a consumer pin.
+
+## Worker verification record
+
+- Starting guard passed at clean `5f26816a27b03e434beb822d8d4bdf2b2bba595b` on the required worktree and branch.
+- RED exited 1 with six passed and the sole expected sparse work-count failure, at 4,096 exact tests.
+- Focused GREEN exited 0 with 103 passed, zero failures and five GPU-only interior-shadow skips.
+  Sparse index queries use 1 exact test against the oracle's 4,096. Warmed frame allocation is zero bytes.
+- Two earlier GREEN attempts exposed test fixture errors, an out-of-range wind value and an eager-upload
+  expectation. The fixtures now preserve the existing valid wind range and lazy shadow-row upload policy.
+- Native Metal verification exited 0 with all 14 selected tests passed, zero failures and zero skips,
+  with the Metal validation layer enabled.
+- Whole-tree dash, prose, file-size, instruction-budget and doc-version guards passed, along with
+  `git diff --check HEAD`. The file-size result is a fresh complete scan, independent of the earlier
+  interrupted docs-checkpoint scan. The owned-path commit completes worker execution.
+- Full suites, independent review, runtime measurement, integration and release remain parent-owned.
 
 ## Parent verification and measurement
 

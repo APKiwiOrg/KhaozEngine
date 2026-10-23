@@ -1,6 +1,6 @@
 # Foliage point-shadow query index
 
-Status: approved by the owner on 2026-10-23 for one Codex implementation task and independent review. Implementation has not started.
+Status: implemented under the owner's approved plan. Focused CPU and native Metal contracts passed, with independent review and runtime measurement still pending.
 Date: 2026-10-23.
 
 ## Outcome and evidence
@@ -19,10 +19,11 @@ assigning all of that time to individual callees. These shares are not pure CPU 
 The [consumer evidence](https://github.com/APKiwiOrg/Grimhollow/blob/c2ba1a5e7/docs/verification/mac-frame-performance-2026-10-23.json)
 records the direct comparison separately from profiling.
 
-Source proves that `MixFoliagePointSignature` visits every submitted foliage source for every static
-light. `FoliagePointShadowStream.Query` scans every proxy inside its submitted ranges and applies the
-exact shell predicate. Rendering a rebuilt row repeats these queries on its first face. Rigid casters
-already use `PointCasterIndex` to avoid this full scan.
+Before this change, `MixFoliagePointSignature` visited every submitted foliage source for every static
+light. `FoliagePointShadowStream.Query` scanned every proxy inside its submitted ranges and applied the
+exact shell predicate. Rendering a rebuilt row repeated these queries on its first face. Rigid casters
+already used `PointCasterIndex` to avoid this full scan. Both foliage consumers now query the frame-local
+adapter, while the stream's direct query remains available to the contract tests.
 
 ## Decision
 
@@ -82,3 +83,21 @@ client frame intervals at the same quality and slow view. The 144 FPS target rem
 The [implementation plan](../superpowers/plans/2026-10-23-foliage-point-index.md) assigns the code and
 tests. The parent owns final full verification, current-main reconciliation, version/changelog work,
 integration and released engine adoption. Private diagnostic archives never merge into `main`.
+
+## Implementation evidence
+
+The sparse 4,096-proxy fixture passed exact membership and ordering against an independent selected-range
+walk. Its full-scan scaffold failed only the work-count assertion with 4,096 exact tests. The spatial
+adapter reduced that count to 1. A warmed frame build and query allocated zero bytes.
+
+Focused CPU verification passed 103 tests with no failures. The prescribed filter also selected five
+GPU-only interior-shadow tests, which were skipped without the GPU opt-in. Scene contracts cover omitted,
+disposed and replaced batches, reduced and empty prefixes, mesh generations, source ordering, mesh and slot
+gaps, off-camera casters, motion-only replacements, unuploaded proxy signatures and lazy origin rebasing.
+These results prove operation counts and correctness contracts, not a measured FPS gain.
+
+Native Metal verification passed all 14 selected foliage and point-shadow byte-identity tests with no
+failures or skips, using the Metal validation layer. The worker ran only focused commands through
+`build-slot`. Full-suite verification and independent review remain with the parent.
+Whole-tree dash, prose, file-size, instruction-budget and doc-version guards also passed, along with
+the diff whitespace check. No baseline increase or guard bypass was used.

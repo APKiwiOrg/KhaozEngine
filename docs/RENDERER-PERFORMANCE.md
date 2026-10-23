@@ -26,6 +26,15 @@ The outer GPU pair precedes the host clear and follows native command-list End f
 reserved skip slots. Detailed markers may change synchronization or encoder boundaries. Its frame
 total is diagnostic and never substitutes for a total-only frame result.
 
+The [consumer reference](USING-KHAOZENGINE.md#gpu-timestamps-without-waiting) owns the public observer
+registry. `device.scene.begin`, `device.water.geometry` and `device.water.bathymetry` are CPU-only
+leaves. Their counters are exclusive, their marker indices are zero, and their elapsed ticks and GPU
+durations are null. Executed rows are Unsupported and skipped rows are NotExecuted. These rows
+remain in strict raw publication beside valid GPU timing without inventing GPU intervals.
+Both warmed all-feature traces and cold MSAA/blob retirement traces are required correctness proofs.
+The [integration verification record](verification/2026-10-21-renderer-performance-baseline.md) separates
+those proofs from outstanding native acceptance and diagnostic collection work.
+
 ## Raw artifact and strict reader
 
 `khaozengine.renderer-perf-report/1` JSON is canonical. Keep its exact manifest, workflow and source

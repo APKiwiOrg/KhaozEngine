@@ -878,6 +878,10 @@ instance queue throws. The skinned default keeps the tint as well, drops the key
 and `CastsShadows`, and still throws `NotSupportedException` where the older skinned draws do.
 `CreatePropClusterOwner()` returns the view-owned `ITileWorldPropClusterOwner` used for detached CPU builds,
 scene-thread apply and draw, invalidation, unload and disposal. Its default also throws `NotSupportedException`.
+The owner's `DrawWithVisibility` accepts generation-aware `IPropClusterVisibility` and returns visible and
+shadow-only placement counts. Its default retains `Draw` for uncontrolled layers and returns no counts, keeping
+older non-roof adapters working. When `RequiresVisibility` is true it throws, so a roof layer cannot silently
+expose hidden geometry. The shipped adapter implements the full colour and shadow-only paths.
 An older custom scene can still host the default empty `TileWorldViewOptions.PropLayers`, while an opted-in
 large-world view reports the missing capability at construction instead of drawing a partial horizon. Defaults
 rather than abstract

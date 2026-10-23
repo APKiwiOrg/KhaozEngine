@@ -16,11 +16,12 @@ internal sealed class MotionTestScene : IDisposable
 {
     public const int Width = 32, Height = 24;
 
-    readonly FakeGpuDevice _device = new();
+    readonly FakeGpuDevice _device;
     readonly IGpuTexture _colour;
 
-    public MotionTestScene()
+    public MotionTestScene(int maxColorAttachments = 8)
     {
+        _device = new FakeGpuDevice(maxColorAttachments: maxColorAttachments);
         _colour = _device.Factory.CreateTexture(GpuTextureDescription.Texture2D(
             Width, Height, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
         Target = _device.Factory.CreateFramebuffer(null, _colour);

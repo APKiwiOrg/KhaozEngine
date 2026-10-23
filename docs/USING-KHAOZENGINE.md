@@ -4524,6 +4524,21 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   coming and going keeps history. `Post.Pixelated` forces anti-aliasing off, so toggling it counts as an
   anti-aliasing change while a mode is selected. The frame after a reset renders exactly like a fresh scene's first
   frame.
+- **Key-shadow stability.** Bilinear 3x3 comparison PCF filters the key shadow in every AA mode. Under TAA,
+  lit rigid/skinned models, foliage, splat terrain and tile ground also export final key-shadow visibility to R8.
+  Transparent writers preserve the opaque signal, and cutout/dissolve discards reveal the surface below.
+  Depth-qualified current and reprojected previous means use relative tolerance 0.02. Both reference depths must
+  be finite, and non-finite samples contribute nothing. A stored-value difference strictly above 0.1 clears the
+  thin-feature lock and clip hold for either sign at every preset. It retains accumulated weight and display
+  reconstruction share. The independent colour-based shading release still has its existing reset behavior.
+  The threshold uses stored R8 values. Under round-to-nearest UNORM conversion, an exact input 0.1 stores as
+  26/255. A driver that truncates stores 25/255 instead, so the exact boundary case differs because release
+  compares stored values. There is no public tuning knob.
+  A fully lit receiver frame can bypass the visibility check once the read-index R8 history is certified fully lit
+  too. This uses a separate compiled program and retains R8 storage and copies. Shadowed and uncertified frames
+  keep the ordinary check.
+  Motion plus visibility needs five colour attachments. Below five, the engine logs the capability once and keeps
+  the supported four-attachment layout with bilinear filtering and no visibility release.
 - **Transparent content.** Particles, billboards, beams, trails, decals and water draw no motion. The resolve lowers
   the history weight wherever they changed the opaque image, so a smoke puff or a splash leaves no trail.
 - **Background.** The sky reprojects by the camera's rotation, so its sun stays put in the world while the camera
@@ -4563,10 +4578,17 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   than five colour attachments. Both paths write the same history: bit for bit on Apple, NVIDIA under Direct3D 11
   and Vulkan, and WARP, and on a software Vulkan device (llvmpipe) with the same confidence, thin-feature lock and
   motion marks and the colour within 0.0625 on at most 0.25 percent of the values (`TemporalEntryIdentityGpuTests`).
+  Visibility bytes, previous jitter and release decisions are exact on both paths, including software Vulkan.
+  Both use the same R8 history pair and copy current visibility to the write index once after a resolving render.
+  Repeated renders and debug/count evaluation retain the original read history and jitter. Visibility follows
+  colour resets, owner/device changes and target generations, with an additional unseeded-generation guard.
+  Binding sets retire before textures through the existing GPU retire queue. Missing standalone lit input uses
+  an owned fully lit R8 fallback. Turning TAA off or disposing the scene retires the histories.
   `KE_TEMPORAL_RESOLVE=fused` or `KE_TEMPORAL_RESOLVE=split` forces one path for every scene the process creates,
   still subject to the attachment limit, to tell a fault in one path from the other on a player's machine. It is a
   diagnostic, read once, and not a setting a game ships with.
-- **Cost.** Against anti-aliasing off at the same internal size, the resolve and the sharpen together measured at most
+- **Cost.** The following timings predate the visibility resources and comparison. Their incremental GPU cost has
+  not been measured. Against anti-aliasing off at the same internal size, the resolve and the sharpen together measured at most
   about 1.8 to 2.2 ms at `Quality` and 1.9 to 2.5 ms at `Native` at a 2560x1440 display on an Apple M2 Max, and about
   1.8 to 2.4 ms at `Quality` and 2.1 to 3.1 ms at `Native` on an NVIDIA Tesla T4 under Direct3D 11 and Vulkan. At a
   3456x2234 display the M2 Max measured about 3.5 to 4.3 ms at `Quality` and 4.0 to 5.0 ms at `Native`. The low end is
@@ -4582,7 +4604,11 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   212.7 MB of history (two display-size RGBA16F colours and two RG16F confidence targets, and two internal-size
   R32F previous depths), 82.3 MB of the resolve's internal-size working targets (24 bytes a texel), 154.4 MB of
   display-size post targets (a ping pair and, with bloom on, a half-size bloom pair), a 27.4 MB internal-size copy
-  of the opaque image and a 13.7 MB internal-size motion target, about 491 MB in all (10^6 bytes a MB). The edge
+  of the opaque image and a 13.7 MB internal-size motion target. The R8 lit visibility and two R8 histories add
+  10.3 MB there, plus a 16-byte previous-jitter buffer, about 501 MB in all (10^6 bytes a MB), excluding alignment,
+  retirement overlap and an optional fully lit fallback. Visibility costs three bytes per internal texel and
+  allocates only while needed. A visibility-only MSAA layout also owns a matched multisampled R8 attachment
+  and explicitly resolves it before sampling. The edge
   outline adds two internal-size colour targets, 54.9 MB there, only while it is on under temporal anti-aliasing.
   With HDR off the post targets, the opaque copy and the outline's pair are 8-bit and take half as much. Apart from
   that pair, the internal targets carry no bloom or ping pair under the resolve, since the display chain has its
@@ -4725,7 +4751,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     still lands in a near cascade, and the fit no longer depends on where the camera looks, so there is no
     gaze-ground-ray jump on a pan), texel-snapped per cascade to kill shimmer under camera pan. The slices run from
     the tight near cascade (`ShadowNearDistance`) out to `ShadowMaxDistance`. The model AND terrain fragments pick
-    the TIGHTEST cascade containing each fragment and sample it with 3x3 PCF + slope-scaled bias to shadow the KEY
+    the TIGHTEST cascade containing each fragment and sample it with bilinear 3x3 comparison PCF plus slope-scaled bias to shadow the KEY
     light's diffuse+spec only (fill + ambient untouched, so a shadow reads as shade, not blackness), cross-fading
     toward the next cascade inside a `ShadowCascadeBlend` UV border band so a cascade hand-off is invisible instead
     of a visible square seam, and fading the shadow to fully lit toward the outermost cascade's border so the
@@ -8611,7 +8637,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.11.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.13.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -9036,7 +9062,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.11.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.13.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9835,7 +9861,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.11.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.13.0" />
 ```
 
 ```csharp
@@ -10654,12 +10680,18 @@ that was already removed. Zero keeps the old hard swap.
 
 Beyond `hlodDistance` (chunk-centre to focus, in metres) the cluster draws its merged mesh instead of the props.
 Across `crossfadeWidth` the two crossfade - the props dissolve out and the merged mesh dissolves in, both through
-the 14.5.0 rigid-dissolve primitive, deterministic by distance with no per-frame randomness (a `crossfadeWidth` of
-0 is a hard swap). `weldCell` is the vertex-cluster weld size (metres): bigger cells decimate harder (trunks go
+the rigid-dissolve primitive. Both halves use the same threshold `t`: individuals keep `mask >= t`, and the merged
+half sets `DissolveComplement = 1` to keep `mask < t` in colour and shadow. Selected outlines use the same split.
+With one active representation handoff, coincident surfaces cover each noise value exactly once.
+Overlapping individual LOD and HLOD bands retain their existing three-way gap composition.
+Different silhouettes can still expose holes because
+they sample different world positions (#1296). The transition remains deterministic by distance with no
+per-frame randomness (a `crossfadeWidth` of 0 is a hard swap). `weldCell` is the vertex-cluster weld size (metres): bigger cells decimate harder (trunks go
 blobby, canopy shape and colour hold), 0 keeps the full-detail merge. Decor-ring chunks show the merged mesh too,
 so the far field is visible forest rather than bare terrain, while staying render-only for physics (no scatter, no
 prop colliders). The bake is a **runtime** merge+weld at chunk load (`PropHlod.BuildMergedMesh`, pure and
 deterministic), built through `PropClusterRenderer.BuildCpu` without GPU access and applied on the scene thread.
+Flattening preserves coincident corners with distinct flat material colours. Equal flat colours still weld.
 There is no offline artifact to generate and no manifest field to stamp. Everything defaults off, so a layer
 without `WithHlod` draws its props at every distance exactly as before. `PropHlod.Merge` / `Weld` /
 `CrossfadeAt` are public if you want the pieces directly (a bake tool, a custom sink).
@@ -10672,9 +10704,12 @@ the failed request's current individual placements and layer for near drawing. U
 invalidation, draw and unload stay on the scene thread. `Unload` is idempotent. `Dispose` releases
 every retained handle exactly once.
 
-Under `ShadowMode.ShadowMap`, both halves of the crossfade now cast in proportion to their dissolve (issue #287):
-the props' shadow thins out as the merged mesh's thins in, instead of both casting at full strength across the whole
-band. `castsShadows: false` on the layer covers both too - the merged mesh follows the layer's policy, so casting
+Under `ShadowMode.ShadowMap`, both halves use the same complementary coverage as colour, preserving the full
+caster at coincident surfaces (#391). The HLOD handoff does not use the independent shadow-only inversion flag.
+At `DrawRadius`, the merged exit fade is an ordinary dissolve with no complementary partner.
+The `Scene3D.Draw` overload ending in `castsShadows, invertShadowDissolve` remains available for independent
+shadow-only inversion, along with `RigidInstanceDraw.InvertShadowDissolve`.
+`castsShadows: false` on the layer covers both too, so casting
 does not switch back on at the HLOD swap.
 
 **Teardown / rebuild.** Both `Scene3DChunkSink` and `TerrainStreamer` are `IDisposable`. Steady-state
@@ -12209,8 +12244,10 @@ roofs the rule takes off are queued through `ITileWorldScene.DrawShadowOnlyProps
 record depth for the key light and draw no colour, and the room under them stays shaded. Before this they never
 reached the scene at all and the sun landed on the interior floor of the building the player was standing in.
 `LastShadowOnlyProps` counts them, apart from `LastDrawnProps`, which stays the VISIBLE total. The same focus
-and `PropDrawRadius` cull both passes, so a roof too far away to draw is too far away to cast either, and
-silhouettes and target outlines are unchanged: a hidden roof still draws no hull.
+and `PropDrawRadius` cull both ordinary passes. Roof layers use their own `DrawRadius` for colour and shadows,
+with the layer policy described below. A roof outside its applicable radius casts nothing. Layered target
+outlines share the colour draw's effective representation, generation and fade floor, including individual
+fallbacks after failed HLOD rebuilds. A hidden roof draws no outline or silhouette hull.
 
 The fill is bounded at `TileWorldView.MaxInteriorTiles` (4096). A world that flags a whole region indoors by
 mistake would otherwise walk tens of thousands of tiles on the frame the observer steps into it, so the walk
@@ -12299,13 +12336,34 @@ var regions = new TileRegionResidency(
 ```
 
 Each definition owns a disjoint, non-empty archetype set. The view validates finite distances, unique layer IDs,
-known non-roof archetypes, and that LOD and HLOD do not exceed the draw radius. Roof archetypes are rejected so
-they stay on the ordinary path governed by `RoofVisibility`. When HLOD is enabled, its positive distance must
+known archetypes, and that LOD and HLOD do not exceed the draw radius. Each layer selects either only catalog
+roofs or no roofs. A mixed layer fails before upload and names both kinds. Roof layers cannot enable
+`CutInsideInteriors`. When HLOD is enabled, its positive distance must
 also exceed `LodDistance`. A selected object is removed from ordinary prop submission and
 appears in exactly one `TilePropLayerSnapshot`, so it cannot double-draw. `TileRegionProps` is an immutable,
 generation-tagged region-plane snapshot. It carries object IDs and detached placements in stable order. Worker
 builds read that snapshot and resolved CPU mesh data only. They never read the live document, overrides, resolver
 caches or scene.
+
+A roof layer preserves `RoofVisibility` through the same observer, plane and footprint predicate as ordinary
+roofs. Its snapshots retain authored object IDs, planes and roof footprints for each presentation generation.
+Visible individuals use the normal layer fades and LODs. Hidden individuals submit shadow-only with the same
+transforms and fades when `CastsShadows` is true. All-visible merged clusters draw normally. All-hidden clusters
+submit merged shadow-only. A partly hidden cluster never submits merged colour. It falls back to resident
+individuals without the HLOD fade floor, or to merged shadow-only if individuals are unavailable. Roof layers
+retain their merged clusters in Decor, and queue neither colour nor shadows beyond `DrawRadius`.
+Selected outlines use `PropClusterVisibilityDecision.Resolve` to follow the colour draw's effective source
+generation and fade floor, including resident individual fallbacks after failed rebuilds. Shadow-only
+representations receive no outline. Non-roof snapshots carry no roof footprints. Warmed layer visibility checks allocate
+no managed memory per frame.
+
+For long-distance buildings, select walls and roofs into separate layers, each with `DrawRadius = 576`,
+`LodDistance = 0`, `HlodDistance = 192`, `HlodCrossfadeWidth = 32`, `HlodWeldCell = 0`, `CastsShadows = true`
+and `CutInsideInteriors = false`. Zero weld cell merges geometry without decimating the straight edges.
+`LastDrawnProps` includes visible layer placements, while `LastShadowOnlyProps` includes hidden roof-layer
+placements. A merged handle counts its represented placements once, including during a complementary crossfade.
+Indoor detection, roof links and interior-cut source geometry still read the authored document independently
+of the drawing path. With no roof layer, ordinary roofs retain `PropDrawRadius` and the editor profile is unchanged.
 
 | Stage | Range | Representation |
 |---|---:|---|
@@ -17864,7 +17922,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.11.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.13.0" />
 ```
 
 ```csharp
@@ -17900,7 +17958,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.11.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.13.0" />
 ```
 
 ```csharp
@@ -18144,7 +18202,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.11.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.13.0" />
 ```
 
 ```csharp
@@ -22515,7 +22573,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.11.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.13.0" />
 </ItemGroup>
 ```
 
@@ -23177,7 +23235,7 @@ Group intervals contain children and their durations must not be added as extra 
 | `shadow.point.static.setup`, `.rigid`, `.foliage`, `.gpu-skinned`, `.cpu-skinned`, and the matching `dynamic` or `transient` prefixes | Atlas bind/clear and face leaf work, occurrence is atlas row for setup or `row * 6 + face` for draws |
 | `shadow.point.uploads`, `.finish` | Shared face/proxy/caster uploads and final atlas scissor restoration |
 | `opaque.light-clusters`, `.clear`, `.depth-clear`, `.frame-uniforms` | Cluster uploads, MRT bind and color clears, depth clear, frame uniforms and initial pipeline bind |
-| `motion.clear` | Existing motion-target sentinel clear only |
+| `motion.clear`, `opaque.visibility-clear` | Existing motion sentinel and independent key-shadow visibility clears, in native order |
 | `opaque.rigid`, `.splat`, `.tile-ground`, `.foliage`, `.gpu-skinned`, `.cpu-skinned` | Main geometry routes, with fused motion metadata when the MRT is active |
 | `atmosphere.uniforms`, `.transmittance`, `.multiple-scattering`, `.sky-view` | Shared atmosphere UBO and separate LUT draws, static cached LUTs are skipped |
 | `background.sky`, `background.starfield` | Separate background draws, the unused route is skipped |
@@ -23197,6 +23255,7 @@ The effect, copy and display owners add these keys. Every occurrence is zero unl
 | `effects.textured-billboards`, `.beams`, `.trails`, `.overlay-meshes`, `.silhouettes` | Transparent model-target routes and their uploads |
 | `effects.blob-decals`, `.decals`, `.particles`, `.depth-lines`, `.distortion` | Blob and ground decals, particles, depth-tested lines and offset field |
 | `temporal.uniforms`, `.outline-inputs`, `.resolve`, `.depth-store` | Resolve UBOs, the one MRT outline-input draw, fused-entry resolve and separate depth store |
+| `temporal.visibility-store` | Existing once-per-resolved-frame R8 visibility history copy after either entry point, separate from depth storage |
 | `temporal.prepare`, `.accumulate` | Split-entry draws instead of fused resolve and depth store. The prepare draw also stores depth, so there is no independent depth-store duration |
 | `post.uniforms`, `.distortion-apply`, `.tonemap`, `.sharpen`, `.quantize`, `.edge`, `.fxaa` | Shared post UBOs and individual fullscreen draws, inactive draws are skipped |
 | `post.bloom.bright`, `.horizontal`, `.vertical`, `.composite` | Each of the four existing bloom draws, including both blur directions |
@@ -23210,7 +23269,9 @@ existing SpriteBatch calls, including their texture and scissor runs. Startup pr
 command list. A frame-layout observer must not put those markers in a steady-frame pool.
 `cpu.water.prepare` covers the preparer CPU phase, including an actual cold prime wait when needed.
 CPU-only device scopes do not bracket the frame command list's GPU work. They reserve no GPU markers and
-publish an unsupported GPU duration with null ticks, including when valid frame timestamps are available.
+publish `deviceOnly=true`, zero begin/end markers, null elapsed ticks and a null Unsupported GPU duration,
+including when valid frame timestamps are available. A skipped device row is NotExecuted. GPU rows retain
+`deviceOnly=false` and positive ordered markers. These rules apply to `device.scene.begin` as well as water.
 Their logical counters remain exclusive leaf work. Skipping the water parent also skips its two device
 upload leaves.
 

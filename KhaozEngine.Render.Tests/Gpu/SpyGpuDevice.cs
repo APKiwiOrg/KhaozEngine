@@ -12,15 +12,17 @@ namespace KhaozEngine.Tests.Gpu
     {
         readonly IGpuDevice _inner;
         readonly bool _suppressFences;
+        readonly int? _maxColorAttachments;
 
         /// <summary><paramref name="suppressFences"/> reports <see cref="GpuCapabilities.SupportsCompletionFences"/>
         /// as false while forwarding everything else to a device that really does have them. That is how the
         /// retired-resource A/B runs both ripeness policies in ONE process on ONE device: a number measured against
         /// a second process is not comparable.</summary>
-        public SpyGpuDevice(IGpuDevice inner, bool suppressFences = false)
+        public SpyGpuDevice(IGpuDevice inner, bool suppressFences = false, int? maxColorAttachments = null)
         {
             _inner = inner;
             _suppressFences = suppressFences;
+            _maxColorAttachments = maxColorAttachments;
         }
 
         /// <summary>How many times <see cref="WaitForIdle"/> has been called through this wrapper.</summary>
@@ -37,12 +39,12 @@ namespace KhaozEngine.Tests.Gpu
             get
             {
                 GpuCapabilities c = _inner.Capabilities;
-                if (!_suppressFences) return c;
+                if (!_suppressFences) return c with { MaxColorAttachments = _maxColorAttachments ?? c.MaxColorAttachments };
                 return GpuCapabilities.FromSupportedMsaaSampleCounts(
                     c.ClipSpaceYInverted, c.DepthRangeZeroToOne, c.SupportedMsaaSampleCounts, c.DeviceName,
                     c.SamplerAnisotropy, c.SamplerLodBias, c.SupportsShadowMaps, c.SupportsCompute,
                     supportsCompletionFences: false) with
-                { MaxColorAttachments = c.MaxColorAttachments, SupportsTimestamps = c.SupportsTimestamps };
+                { MaxColorAttachments = _maxColorAttachments ?? c.MaxColorAttachments, SupportsTimestamps = c.SupportsTimestamps };
             }
         }
 

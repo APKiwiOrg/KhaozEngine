@@ -24,13 +24,20 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Whether the headless device this process creates is lavapipe (<see cref="Warp"/>).</summary>
         public static bool Lavapipe => s_class.Value.Lavapipe;
 
-        /// <summary>Whether <paramref name="device"/> is WARP.</summary>
+        /// <summary>Whether <paramref name="device"/> is WARP, including the certified-versus-check software rule.</summary>
         public static bool IsWarp(IGpuDevice device) =>
             device.Backend == GpuBackendKind.Direct3D11Native && device.Diagnostics.SoftwareAdapter == true;
 
         /// <summary>Whether <paramref name="device"/> is lavapipe.</summary>
         public static bool IsLavapipe(IGpuDevice device) =>
             device.Backend == GpuBackendKind.VulkanNative && device.Diagnostics.SoftwareAdapter == true;
+
+        /// <summary>The report-only colour and confidence rule against frozen D is limited to hardware NVIDIA Direct3D 11.</summary>
+        public static bool IsHardwareNvidiaD3D11(IGpuDevice device) =>
+            device.Backend == GpuBackendKind.Direct3D11Native && !IsWarp(device)
+            && device.Diagnostics.SoftwareAdapter == false
+            && !TemporalResolveCostPerfGpuTests.IsSoftwareDevice(device.Capabilities.DeviceName)
+            && device.Capabilities.DeviceName.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase);
 
         /// <summary>The class's name for a measurement's output: WARP, lavapipe or hardware.</summary>
         public static string Name => Warp ? "WARP" : Lavapipe ? "lavapipe" : "hardware";

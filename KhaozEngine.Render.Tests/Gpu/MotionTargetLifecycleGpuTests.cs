@@ -73,7 +73,7 @@ public sealed class MotionTargetLifecycleGpuTests
         rig.Scene.DebugView = SceneDebugView.MotionVectors;
         rig.Frame();
         Assert.NotNull(rig.Scene.MotionResourcesForTests);
-        Assert.True(rig.Scene.TransparentMotionShadersHeldForTests);
+        Assert.Equal(rig.Scene.ResolvedVisibilityTarget is null, rig.Scene.TransparentMotionShadersHeldForTests);
         Assert.True(rig.Scene.MotionVectorsViewBuiltForTests);
 
         rig.Scene.ForceTemporalForTests = false;

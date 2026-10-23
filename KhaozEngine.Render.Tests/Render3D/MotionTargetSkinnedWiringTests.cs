@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -26,35 +25,23 @@ public sealed class MotionTargetSkinnedWiringTests
         return cl;
     }
 
-    static readonly Dictionary<string, string> Names = new(StringComparer.Ordinal)
-    {
-        [ShaderSources.ModelVert] = nameof(ShaderSources.ModelVert),
-        [ShaderSources.ModelFrag] = nameof(ShaderSources.ModelFrag),
-        [ShaderSources.ModelDissolveFrag] = nameof(ShaderSources.ModelDissolveFrag),
-        [ShaderSources.ModelMotionVert] = nameof(ShaderSources.ModelMotionVert),
-        [ShaderSources.ModelMotionFrag] = nameof(ShaderSources.ModelMotionFrag),
-        [ShaderSources.ModelCpuSkinnedMotionVert] = nameof(ShaderSources.ModelCpuSkinnedMotionVert),
-        [ShaderSources.ModelDissolveMotionFrag] = nameof(ShaderSources.ModelDissolveMotionFrag),
-    };
-
-    // The program a recorded draw's pipeline was built from, as "vertex + fragment", or null for another program.
-    static string? Program(IGpuPipeline? pipeline)
-    {
-        if (pipeline is not FakePipeline { Request: { } request }) return null;
-        return Names.TryGetValue(request.VertexGlsl, out string? vertex)
-            ? vertex + " + " + Names.GetValueOrDefault(request.FragmentGlsl, "another fragment")
-            : null;
-    }
-
-    // The model-pass draws that went through a rigid or CPU-skinned program. The frames below queue no rigid instance,
-    // so these are exactly the CPU-skinned draws.
+    // The frames below queue no rigid instances, so these are exactly the CPU-skinned draws.
     static RecordingGpuCommandList.DrawBindings[] ModelDraws(RecordingGpuCommandList cl) =>
-        cl.Bindings.Where(d => Program(d.Pipeline) is not null).ToArray();
+        cl.Bindings.Where(d => d.Pipeline is FakePipeline { Request: { } r }
+            && (r.VertexGlsl == ShaderSources.ModelVert || r.VertexGlsl == ShaderSources.ModelMotionVert
+                || r.VertexGlsl == ShaderSources.ModelCpuSkinnedMotionVert)).ToArray();
 
-    [Fact]
-    public void CpuSkinnedDrawsBindTheirTemporalVariantsThroughTheScenesBindSitesAndTheBasePipelinesOtherwise()
+    static FakeGraphicsPipelineRequest Request(RecordingGpuCommandList.DrawBindings draw) =>
+        ((FakePipeline)draw.Pipeline!).Request!.Value;
+
+    [Theory]
+    [InlineData(4, 4, "ModelCpuSkinnedMotion", "ModelCpuSkinnedDissolveMotion")]
+    [InlineData(5, 5, "ModelCpuSkinnedMotionVisibility", "ModelCpuSkinnedDissolveMotionVisibility")]
+    [InlineData(8, 5, "ModelCpuSkinnedMotionVisibility", "ModelCpuSkinnedDissolveMotionVisibility")]
+    public void CpuSkinnedDrawsBindTheirTemporalVariantsThroughTheScenesBindSitesAndTheBasePipelinesOtherwise(
+        int maxColorAttachments, int outputs, string plain, string dissolve)
     {
-        using var harness = new MotionTestScene();
+        using var harness = new MotionTestScene(maxColorAttachments);
         Scene3D scene = harness.Scene;
         scene.UseGpuSkinning = false;
         SkinnedMeshHandle tube = harness.LoadTube(out SkinnedGltfMesh mesh);
@@ -75,10 +62,12 @@ public sealed class MotionTargetSkinnedWiringTests
 
         using RecordingGpuCommandList off = Frame(harness, Queue);
         RecordingGpuCommandList.DrawBindings[] baseDraws = ModelDraws(off);
-        Assert.Equal(new[] { "ModelVert + ModelFrag", "ModelVert + ModelDissolveFrag", "ModelVert + ModelFrag" },
-            baseDraws.Select(d => Program(d.Pipeline)).ToArray());
+        Assert.Equal(new[] { "Model", "ModelDissolve", "Model" },
+            baseDraws.Select(d => MotionTargetPrograms.Name(Request(d))).ToArray());
         Assert.All(baseDraws, draw =>
         {
+            MotionTargetPrograms.AssertLayout(Request(draw), 3);
+            Assert.Single(Request(draw).Description.ResourceLayouts);
             Assert.Equal(new uint[] { 0 }, draw.Sets.Keys.Order().ToArray());
             Assert.Equal(new uint[] { 0, 1 }, draw.VertexBuffers.Keys.Order().ToArray());
         });
@@ -87,15 +76,15 @@ public sealed class MotionTargetSkinnedWiringTests
         using RecordingGpuCommandList on = Frame(harness, Queue);
         ModelMotionResources motion = scene.MotionResourcesForTests!;
         RecordingGpuCommandList.DrawBindings[] temporalDraws = ModelDraws(on);
-        Assert.Equal(new[]
-        {
-            "ModelCpuSkinnedMotionVert + ModelMotionFrag", "ModelCpuSkinnedMotionVert + ModelDissolveMotionFrag",
-            "ModelCpuSkinnedMotionVert + ModelMotionFrag",
-        }, temporalDraws.Select(d => Program(d.Pipeline)).ToArray());
+        Assert.Equal(new[] { plain, dissolve, plain },
+            temporalDraws.Select(d => MotionTargetPrograms.Name(Request(d))).ToArray());
         Assert.All(temporalDraws, draw =>
         {
+            MotionTargetPrograms.AssertLayout(Request(draw), outputs);
+            Assert.Equal(2, Request(draw).Description.ResourceLayouts.Length);
             Assert.Equal(new uint[] { 0, 1 }, draw.Sets.Keys.Order().ToArray());
             Assert.Same(motion.FrameSet, draw.Sets[1].Set);
+            Assert.Equal(0u, draw.Sets[1].Item2);
             Assert.Equal(new uint[] { 0, 1, 2 }, draw.VertexBuffers.Keys.Order().ToArray());
             Assert.Same(motion.CpuPrevious, draw.VertexBuffers[2]);
         });

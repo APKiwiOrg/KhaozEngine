@@ -1,4 +1,5 @@
 using KhaozEngine.Gpu;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render3D.Diagnostics;
 using KhaozEngine.Render3D.Internal;
 
@@ -33,6 +34,8 @@ internal sealed partial class ModelRenderer
         // Background carries the sentinel, which marks no opaque geometry for every motion reader (MotionMath).
         using (profiling?.Pass(cl, "motion.clear", executed: res.MotionAllocated) ?? default)
             if (res.MotionAllocated) cl.ClearColorTarget(MotionMath.Attachment, MotionMath.SentinelColor);
+        using (profiling?.Pass(cl, "opaque.visibility-clear", executed: res.VisibilityAllocated) ?? default)
+            if (res.VisibilityAllocated) cl.ClearColorTarget((uint)ShadowVisibilityTargets.Attachment(res.MotionAllocated), Color.White);
         using (profiling?.Pass(cl, "opaque.depth-clear") ?? default) cl.ClearDepthStencil(1f);
     }
 

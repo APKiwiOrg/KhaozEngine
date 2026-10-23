@@ -27,9 +27,6 @@ namespace KhaozEngine.Tests.Catalog.Upgrade;
 /// </summary>
 public sealed class ContentUpgradeRivalVersionTests
 {
-    /// <summary>The deadline a run is given, well under the stand-off budget, so a stall fails fast.</summary>
-    static readonly TimeSpan Deadline = TimeSpan.FromSeconds(20);
-
     /// <summary>The one definition this build ships, whose plan grows once the marker row is published.</summary>
     const string TwoStepId = "adds-other-in-two-steps";
 
@@ -49,15 +46,14 @@ public sealed class ContentUpgradeRivalVersionTests
         ContentUpgradeDefinition definition = TwoStep(target);
         var rival = new RivalAdvancesTheVersionStore(harness.Store, harness.Registry, definition);
 
-        using var deadline = new CancellationTokenSource(Deadline);
         ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
             rival,
             harness.Registry,
             new ContentUpgradeSet(definition),
-            UpgradeFixtures.Apply(),
-            deadline.Token);
+            UpgradeFixtures.Apply());
 
         Assert.True(rival.Raced, "the rival never took the version, so the interleaving was not exercised.");
+        Assert.Equal(6, rival.Looks);
         string lines = string.Join(" | ", report.Lines);
         Assert.NotEqual(ContentUpgradeOutcome.OperatorDraftOpen, report.Outcome);
         Assert.True(report.Success, lines);
@@ -92,9 +88,8 @@ public sealed class ContentUpgradeRivalVersionTests
         await harness.SeedOlderCatalogAsync();
         var moving = new VersionMovesDuringClassificationStore(harness.Store);
 
-        using var deadline = new CancellationTokenSource(Deadline);
         ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
-            moving, harness.Registry, harness.Set, UpgradeFixtures.Apply(expectedVersion: 1), deadline.Token);
+            moving, harness.Registry, harness.Set, UpgradeFixtures.Apply(expectedVersion: 1));
 
         Assert.True(moving.Moved, "the version never moved, so the interleaving was not exercised.");
         Assert.Equal(ContentUpgradeOutcome.BaselineMoved, report.Outcome);
@@ -218,6 +213,7 @@ internal sealed class VersionMovesDuringClassificationStore(InMemoryContentAutho
         }
 
         ActiveReadsAfterTheMove++;
+        Assert.True(ActiveReadsAfterTheMove <= 1, "the runner kept observing a baseline that already stopped it.");
         return active + 1;
     }
 
@@ -275,7 +271,8 @@ internal sealed class RivalAdvancesTheVersionStore(
     /// <summary>The look the rival publishes the draft it is holding on, which lets the run finish.</summary>
     const int PublishAtLook = 5;
 
-    int _looks;
+    /// <summary>How many draft observations the runner made, including its stand-off progress read.</summary>
+    public int Looks { get; private set; }
 
     /// <summary>Whether the rival took the version, which a test asserts the interleaving happened by.</summary>
     public bool Raced { get; private set; }
@@ -283,12 +280,15 @@ internal sealed class RivalAdvancesTheVersionStore(
     /// <inheritdoc />
     public override async Task<ContentDraft?> GetOpenDraftAsync(CancellationToken cancellationToken = default)
     {
-        _looks++;
-        if (_looks == 2)
+        Looks++;
+        // The rival commits during the frozen-draft read, then the failed freeze gets one recovery read.
+        // Fail on another observation, without putting a wall-clock budget on the real pack I/O.
+        Assert.True(Looks <= PublishAtLook + 1, "the runner kept waiting after the rival completed its upgrade.");
+        if (Looks == 2)
         {
             await TakeTheVersionAsync(cancellationToken);
         }
-        else if (_looks == PublishAtLook && Raced)
+        else if (Looks == PublishAtLook && Raced)
         {
             await PublishItsOwnDraftAsync(cancellationToken);
         }

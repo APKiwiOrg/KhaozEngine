@@ -20,8 +20,8 @@ public sealed partial class Scene3D
     /// nothing the consumer opted out of ever casts. Terrain always RECEIVES via the shared lighting block,
     /// whichever way that flag is set.
     /// Every draw takes the pipeline <see cref="ShadowDepthSelection"/> names for it, switched only when it differs
-    /// from the one bound: a dissolving span takes the dissolve-aware pipeline (or its inverted sibling, for the
-    /// merged half of an HLOD crossfade) so its shadow erodes with its mesh, a span of a MASK mesh takes a cutout
+    /// from the one bound: a dissolving span takes the dissolve-aware pipeline (or its independently inverted
+    /// sibling) so its shadow erodes with its mesh, a span of a MASK mesh takes a cutout
     /// pipeline so its shadow is its silhouette (issue #15), and a dissolving skinned caster takes a dissolve-aware
     /// pipeline on either skinning path (issue #387). NEVER camera-frustum-culled - every casting entry in the
     /// skinned draw lists is drawn (an entry only got there because it is visible to the main pass, the shadow

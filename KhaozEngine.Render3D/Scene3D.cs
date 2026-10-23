@@ -380,9 +380,9 @@ namespace KhaozEngine.Render3D
         /// <summary>Size of the legacy frame UBO point-light arrays retained for compatibility. This value is not
         /// an active receiver limit. <see cref="AddLight(Vector3,Color,float,float)"/> uploads every queued light.</summary>
         public const int MaxPointLights = ModelRenderer.MaxPointLights;
-        internal Scene3D(IGpuDevice gd, GpuOutputDescription targetOutput, ShadowSettings? initialShadows = null, KhaozEngine.Diagnostics.ILogger? shadowReconfigureLogger = null)
+        internal Scene3D(IGpuDevice gd, GpuOutputDescription targetOutput, ShadowSettings? initialShadows = null, KhaozEngine.Diagnostics.ILogger? shadowReconfigureLogger = null, bool requestLitVisibility = false)
         {
-            _gd = gd;
+            _gd = gd; _requestLitVisibility = requestLitVisibility;
             // Bound once, here, to a method group: the delegate object is allocated exactly once for this Scene3D's
             // lifetime rather than once per frame (see the field doc comment above and AlphaCutoffFor below).
             _alphaCutoffLookup = AlphaCutoffFor;

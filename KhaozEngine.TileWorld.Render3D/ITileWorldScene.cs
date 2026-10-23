@@ -27,6 +27,17 @@ public interface ITileWorldPropClusterOwner : IDisposable
     /// <summary>Draw all retained layers once for this frame.</summary>
     void Draw(Vector3 focus);
 
+    /// <summary>Draw retained layers with generation-aware colour and shadow visibility, returning placement
+    /// totals. Older adapters retain their existing Draw path for uncontrolled layers and return no counts.
+    /// A roof layer requires an implementation that supports visibility-aware submission.</summary>
+    PropClusterDrawCounts DrawWithVisibility(Vector3 focus, IPropClusterVisibility visibility)
+    {
+        if (visibility.RequiresVisibility)
+            throw new NotSupportedException("This prop cluster owner does not support visibility-aware draws.");
+        Draw(focus);
+        return default;
+    }
+
     /// <summary>Reports the exact individual and merged choices used by the retained cluster's draw.</summary>
     bool TryGetDrawState(PropClusterKey key, Vector3 focus, out PropClusterDrawState state)
     {
@@ -435,6 +446,8 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene, IAttachmentScene
         public void Invalidate(PropClusterKey key) => _renderer.Invalidate(key);
         public void Unload(PropClusterKey key) => _renderer.Unload(key);
         public void Draw(Vector3 focus) => _renderer.Draw(focus);
+        public PropClusterDrawCounts DrawWithVisibility(Vector3 focus, IPropClusterVisibility visibility) =>
+            _renderer.DrawWithVisibility(focus, visibility);
         public bool TryGetDrawState(PropClusterKey key, Vector3 focus, out PropClusterDrawState state) =>
             _renderer.TryGetDrawState(key, focus, out state);
         public void Dispose() => _renderer.Dispose();

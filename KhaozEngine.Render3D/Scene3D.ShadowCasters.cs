@@ -19,8 +19,8 @@ namespace KhaozEngine.Render3D
         /// The fragment removes the dissolve noise mask and any opted-in interior span.</summary>
         Dissolving = 2,
         /// <summary>A dissolving caster whose SHADOW dither is inverted (issue #391): drawn through the inverted
-        /// dissolve depth pipeline, which keeps exactly what <see cref="Dissolving"/> discards. The merged half of an
-        /// HLOD crossfade, so the two halves cover the mask between them instead of nesting.</summary>
+        /// dissolve depth pipeline at the mirrored threshold. Retained for independent shadow-only control.
+        /// LOD and HLOD handoffs use the shared complement phase through <see cref="Dissolving"/>.</summary>
         DissolvingInverted = 3,
     }
 
@@ -39,12 +39,9 @@ namespace KhaozEngine.Render3D
     /// hills needs and the flat ground the receive-only rule was written for did not.
     /// </para>
     /// <para>
-    /// Across an HLOD crossfade the two halves' shadow dithers are COMPLEMENTARY, which is what
-    /// <see cref="ShadowCastKind.DissolvingInverted"/> exists for (issue #391). It was not always: both halves ran
-    /// the same "discard where mask &lt; threshold" test, at thresholds t and 1 - t, and those keep-sets NEST rather
-    /// than complement (for t &lt; 0.5 one contains the other), so the union bottomed out at half the mask at band
-    /// centre and the canopy shadow visibly thinned mid-band. The merged half now inverts its test, so the union is
-    /// the whole mask at every t while each end stays continuous with the single-half draws that bracket the band.
+    /// Across an HLOD crossfade both halves use one threshold and opposite DissolveComplement phases in the
+    /// ordinary dissolve-aware depth pipeline. The shadow-only inversion introduced for #391 remains available
+    /// independently, but the shared phase now keeps colour and shadow ownership identical.
     /// </para>
     /// <para>
     /// A MASK caster (a leaf card, issue #15) is not a fourth kind: whether a mesh alpha-tests is fixed at load, so
@@ -100,13 +97,8 @@ namespace KhaozEngine.Render3D
                 CastsShadows = castsShadows,
             });
 
-        /// <summary>The dissolve + opt-out overload plus the inverted SHADOW dither (issue #391):
-        /// <paramref name="invertShadowDissolve"/> true records this instance's depth through the inverted dissolve
-        /// pipeline, which keeps exactly what the plain one discards. Pass it on ONE of two instances dithering at
-        /// mirrored thresholds (an HLOD crossfade's merged half against its fading props) so their shadows cover the
-        /// noise mask between them instead of nesting, which is what left the shadow at half density mid-band. It
-        /// changes the SHADOW only: same uploaded instance bytes, same colour pass, and <c>false</c> is
-        /// byte-identical to the overload above.</summary>
+        /// <summary>Independent inverted shadow dither at the mirrored threshold (#391). Colour is unchanged.
+        /// LOD and HLOD handoffs use <see cref="RigidInstanceDraw.DissolveComplement"/> instead.</summary>
         public void Draw(MeshHandle mesh, Matrix4x4 world, Color tint, Material material,
             float dissolve, float edgeWidth, Color edgeColor, bool castsShadows, bool invertShadowDissolve)
             => Draw(new RigidInstanceDraw(mesh, world)

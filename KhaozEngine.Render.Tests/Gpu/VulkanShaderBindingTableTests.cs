@@ -73,6 +73,33 @@ namespace KhaozEngine.Tests.Gpu
                 ["OverlayMeshMotion"] = "OverlayMeshRenderer",
                 ["SilhouetteMotion"] = "SilhouetteRenderer",
 
+                // Visibility adds fragment outputs and preserves each program's resource layout.
+                ["ModelVisibility"] = "ModelRenderer",
+                ["FoliageVisibility"] = "ModelRenderer foliage",
+                ["ModelDissolveVisibility"] = "ModelRenderer dissolve",
+                ["SkinnedModelVisibility"] = "ModelRenderer skinned",
+                ["SkinnedModelDissolveVisibility"] = "ModelRenderer skinned dissolve",
+                ["SplatVisibility"] = "ModelRenderer splat",
+                ["TileGroundVisibility"] = "ModelRenderer tile ground",
+                ["ModelMotionVisibility"] = "ModelRenderer motion",
+                ["SkinnedModelMotionVisibility"] = "ModelRenderer skinned motion",
+                ["SkinnedModelDissolveMotionVisibility"] = "ModelRenderer skinned motion",
+                ["ModelCpuSkinnedMotionVisibility"] = "ModelRenderer cpu skinned motion",
+                ["ModelCpuSkinnedDissolveMotionVisibility"] = "ModelRenderer cpu skinned motion",
+                ["FoliageMotionVisibility"] = "ModelRenderer foliage motion",
+                ["SplatMotionVisibility"] = "ModelRenderer splat motion",
+                ["TileGroundMotionVisibility"] = "ModelRenderer tile ground motion",
+                ["TexturedBillboardVisibility"] = "TexturedBillboardRenderer",
+                ["TexturedBillboardMotionVisibility"] = "TexturedBillboardRenderer",
+                ["BeamVisibility"] = "BeamRenderer",
+                ["BeamMotionVisibility"] = "BeamRenderer",
+                ["TrailVisibility"] = "TrailRenderer",
+                ["TrailMotionVisibility"] = "TrailRenderer",
+                ["OverlayMeshVisibility"] = "OverlayMeshRenderer",
+                ["OverlayMeshMotionVisibility"] = "OverlayMeshRenderer",
+                ["SilhouetteVisibility"] = "SilhouetteRenderer",
+                ["SilhouetteMotionVisibility"] = "SilhouetteRenderer",
+
                 // Rigid dissolve adds the cut set, while opaque and excluded skinned depth keep their layouts.
                 ["FoliageDepth"] = "FoliageShadowRenderer depth",
                 ["FoliageDepthCutout"] = "FoliageShadowRenderer cutout depth",
@@ -151,6 +178,17 @@ namespace KhaozEngine.Tests.Gpu
                 // The second pass at the display's own size binds exactly as the upscaling one.
                 ["TemporalAccumulateAtDisplaySize"] = "TemporalSplitResolve accumulate",
                 ["TemporalAccumulateAtDisplaySizeHalf"] = "TemporalSplitResolve accumulate",
+                // Certified programs omit the visibility resources from their compact layouts.
+                ["TemporalResolveFullyLit"] = "TemporalResolveRenderer fully lit resolve",
+                ["TemporalResolveHalfFullyLit"] = "TemporalResolveRenderer fully lit resolve",
+                ["TemporalDebugViewFullyLit"] = "TemporalResolveRenderer fully lit debug view",
+                ["TemporalDebugViewHalfFullyLit"] = "TemporalResolveRenderer fully lit debug view",
+                ["TemporalCountProbeFullyLit"] = "TemporalResolveRenderer fully lit count probe",
+                ["TemporalCountProbeHalfFullyLit"] = "TemporalResolveRenderer fully lit count probe",
+                ["TemporalAccumulateFullyLit"] = "TemporalSplitResolve fully lit accumulate",
+                ["TemporalAccumulateHalfFullyLit"] = "TemporalSplitResolve fully lit accumulate",
+                ["TemporalAccumulateAtDisplaySizeFullyLit"] = "TemporalSplitResolve fully lit accumulate",
+                ["TemporalAccumulateAtDisplaySizeHalfFullyLit"] = "TemporalSplitResolve fully lit accumulate",
             };
 
         /// <summary>
@@ -180,7 +218,10 @@ namespace KhaozEngine.Tests.Gpu
         {
             foreach (var program in ShippedShaderPrograms.GraphicsPrograms())
             {
-                int prefix = program.Name switch
+                const string visibilitySuffix = "Visibility";
+                string baseName = program.Name.EndsWith(visibilitySuffix, StringComparison.Ordinal)
+                    ? program.Name[..^visibilitySuffix.Length] : program.Name;
+                int prefix = baseName switch
                 {
                     "Model" or "ModelDissolve" or "Foliage" or "ModelMotion" or "ModelCpuSkinnedMotion"
                         or "ModelCpuSkinnedDissolveMotion" or "FoliageMotion" => 11,
@@ -285,7 +326,8 @@ namespace KhaozEngine.Tests.Gpu
                 .Select(p => p.Pipeline)
                 .ToHashSet(StringComparer.Ordinal);
 
-            Assert.Equal(86, catalog.Length);
+            // Ten certified FullyLit variants cover resolve, debug/count and both split sizes at both precisions.
+            Assert.Equal(121, catalog.Length);
             Assert.Equal(catalog.Length, ProgramPipelines.Count);
 
             foreach (string program in catalog)

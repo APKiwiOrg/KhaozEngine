@@ -292,6 +292,21 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   a material mip bias (`Post.Temporal.MipBiasOffset`). It is single-sample and never combines with MSAA. Moving draws
   pass a `MotionKey` through `RigidInstanceDraw` or `SkinnedInstanceDraw`, camera jumps call `Scene3D.CameraCut()`,
   and `Scene3D.DebugView`, `Scene3D.RequestTemporalCounts()` and `LastTemporalDiagnostics` show what the resolve did.
+  Lit rigid/skinned, foliage and ground paths export final key-shadow visibility to an R8 attachment. Transparent
+  writers preserve it and cutout/dissolve discards expose the receiver below. Depth-qualified current/history
+  means use relative tolerance 0.02 and finite reference/sample depths. A stored R8 difference strictly above 0.1
+  releases the thin-feature lock and hold without changing accumulated weight or display share. This applies to
+  either sign at every preset, independently of the existing colour-based shading release. The threshold is on
+  stored values. Under round-to-nearest UNORM conversion, an exact input 0.1 stores as 26/255. A driver that
+  truncates stores 25/255 instead, so the exact boundary case differs because release compares stored values.
+  No public tuning API is added.
+  Certified fully lit current and read-index frames use a separate compiled program without the visibility check.
+  R8 storage and copies remain. Shadowed and uncertified frames keep the ordinary check.
+  The signal and two R8 histories cost three bytes per internal texel, plus a 16-byte previous-jitter buffer.
+  Histories follow colour indices, resets and target generations, copy once per resolving frame, and retire with
+  TAA off or scene disposal. Repeated renders retain read history and jitter. Standalone resolves without lit
+  input bind a fully lit fallback. Motion plus visibility needs five colour attachments. Below five, the engine
+  logs the capability once and keeps bilinear filtering without visibility release on its supported layout.
   See docs/USING-KHAOZENGINE.md for the presets, the edge outline, cost, memory and known limits.
 - Shadows: `PixelPostProcessSettings.Quality.Shadows` (a `ShadowSettings`) picks the shadow tier via `Shadows.Mode`
   - `ShadowMode.Off` (default, byte-stable), `ShadowMode.Blob` (soft dark ground blob under each caster), or
@@ -324,7 +339,7 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   not a fixed-radius circle around a focus point, so shadow sharpness no longer depends on where the camera looks and
   there is no gaze-ground-ray jump on a pan), texel-snapped per cascade to kill shimmer. The slices run from the tight
   near cascade (`ShadowNearDistance`) out to `ShadowMaxDistance`. The shared lighting block picks the tightest cascade
-  per fragment and PCF-samples it (3x3 + slope-scaled bias) to shadow the KEY light's diffuse+spec only for BOTH
+  per fragment and samples it with bilinear 3x3 comparison PCF plus slope-scaled bias to shadow the KEY light's diffuse+spec only for BOTH
   models and terrain, cross-fading toward the next cascade inside a `ShadowCascadeBlend` UV border band so a cascade
   hand-off is invisible instead of a visible square seam, and fading the outermost cascade's term to lit at its border
   so the coverage limit is invisible (no hard box, no sliding coverage). Caster visibility for the shadow pass unions
@@ -346,7 +361,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   while retaining key and point shadows. A skinned shadow-only draw without casting is refused before palette
   or queue mutation. `DissolveComplement = 1f` keeps the opposite noise samples in colour and ordinary shadow
   dissolve, including no colour coverage at threshold zero and complementary coverage at threshold one.
-  `InvertShadowDissolve` independently selects the inverted shadow dither while dissolving, leaving colour
+  HLOD handoffs use `DissolveComplement` with the individuals' threshold for both colour and shadow. They do not
+  use the independent shadow-only inversion. `InvertShadowDissolve` selects the inverted shadow dither, leaving colour
   coverage unchanged. These policies work with CPU and GPU skinning. `DrawShadowOnly(handle, transform)` is the opposite
   of the opt-out: the instance records depth for the key light and never draws in the COLOUR pass, so a view can
   hide geometry from the eye and keep the shadow the world still throws (a tile world's hidden roof), counted by
@@ -507,7 +523,10 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   The first callback exception invalidates profiling and is exposed by `Scene3D.PassObserverFailure`.
   Recording continues and a successful frame then throws with that failure as its inner exception. An original
   rendering failure propagates unchanged. Attach observers before recording and keep them stable for the frame.
-  The geometry, shadow and atmosphere registry and occurrence rules are in `docs/USING-KHAOZENGINE.md`.
+  Attach before `Begin` for scene-boundary work. The failure latch resets there and preserves preparation
+  failures through rendering. CPU-only device leaves own scene begin, water geometry setup and bathymetry
+  updates without GPU markers. The complete geometry, shadow, water, effect, temporal, post and display
+  registry and occurrence rules are in `docs/USING-KHAOZENGINE.md`.
 - Per-pass timing: `Scene3D.EnableTiming` (default `false`, no cost when off - a single `bool` check, no
   `Stopwatch` call, no allocation) brackets each render pass with a CPU `Stopwatch` and exposes the result as
   `Scene3D.PassTimingsMs` (a `Scene3DPassTimingsMs`: `ShadowDepthMs`/`ModelMs`/`TransparentsMs`/`PostMs`). This is
@@ -1124,8 +1143,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   the spec says it is. So a kit piece painted from a palette in Blender keeps its authored colours with no
   texture and no material per shade, and a white `COLOR_0` changes nothing. A per-vertex colour also enters the
   rigid weld key, so two coplanar faces in different shades stay two vertices at their shared edge instead of the
-  first shade winning. That gating is on the attribute being present, not on the colour: an asset without
-  `COLOR_0` loads and welds byte-for-byte as before, so existing goldens hold. A colour seam splits the
+  first shade winning. Flat material colours also enter the rigid weld key, using exact float identity so
+  distinct material factors stay split when flattened for HLOD. Equal flat colours still weld, and per-vertex
+  paint retains its existing quantization. A colour seam splits the
   smooth-normal and tangent accumulation too, so a mesh with no source `NORMAL` gains a shading crease where two
   shades meet, exactly as a UV seam has always done.
 - Alpha cutout (foliage / leaf cards): `GltfLoader` reads each material's glTF `alphaMode` into

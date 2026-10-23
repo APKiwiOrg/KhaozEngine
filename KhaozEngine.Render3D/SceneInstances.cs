@@ -50,8 +50,8 @@ namespace KhaozEngine.Render3D
         /// <summary>As the dissolve + opt-out overload, plus the inverted SHADOW dither (issue #391):
         /// <paramref name="invertShadowDissolve"/> true draws this instance's depth through the inverted dissolve
         /// pipeline, which keeps exactly what the plain one discards, so it complements a sibling instance dithering
-        /// at the mirrored threshold instead of nesting inside it. For the merged half of an HLOD crossfade. Affects
-        /// the SHADOW only: the colour pass is untouched, and false is the unchanged default everywhere else.</summary>
+        /// at the mirrored threshold instead of nesting inside it. This independent shadow-only control leaves
+        /// colour untouched. LOD and HLOD handoffs use the shared complement phase instead.</summary>
         public void Add(MeshHandle mesh, Matrix4x4 world, Color tint, Material material,
             float dissolveThreshold, float dissolveEdgeWidth, Color dissolveEdge, bool castsShadows, bool invertShadowDissolve)
             => _items.Add(new Instance(mesh, world, tint, material, dissolveThreshold, dissolveEdgeWidth, dissolveEdge,

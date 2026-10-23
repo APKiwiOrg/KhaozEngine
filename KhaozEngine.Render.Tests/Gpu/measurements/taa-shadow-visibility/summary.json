@@ -1,0 +1,896 @@
+{
+  "baseline": {
+    "back15": {
+      "taa-native": {
+        "character": {
+          "grain": 0.014286626057339897,
+          "p95": 0.0749929411764706,
+          "change": 0.01794876200884231,
+          "dots": 1742,
+          "band_pixels": 39873,
+          "grain_samples": 39873,
+          "change_samples": 34664,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        },
+        "ground": {
+          "grain": 0.006708473663071531,
+          "p95": 0.026345098039215586,
+          "change": 0.012495261513367842,
+          "dots": 485,
+          "band_pixels": 229695,
+          "grain_samples": 229695,
+          "change_samples": 201381,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        }
+      },
+      "taa-quality": {
+        "character": {
+          "grain": 0.014156209828952021,
+          "p95": 0.07334117647058824,
+          "change": 0.01757448009575397,
+          "dots": 1733,
+          "band_pixels": 39873,
+          "grain_samples": 39873,
+          "change_samples": 34664,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        },
+        "ground": {
+          "grain": 0.007330378847653472,
+          "p95": 0.028300392156862753,
+          "change": 0.012354458912191708,
+          "dots": 1881,
+          "band_pixels": 229695,
+          "grain_samples": 229695,
+          "change_samples": 201381,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        }
+      },
+      "fxaa": {
+        "character": {
+          "grain": 0.0029614145500198425,
+          "p95": 0.016488627450980453,
+          "change": 0.019114271776561994,
+          "dots": 0,
+          "band_pixels": 39873,
+          "grain_samples": 39873,
+          "change_samples": 34664,
+          "locked_share": null,
+          "lock_status": "not-applicable"
+        },
+        "ground": {
+          "grain": 0.0021299782243204856,
+          "p95": 0.008692549019607698,
+          "change": 0.013105155423370258,
+          "dots": 0,
+          "band_pixels": 229695,
+          "grain_samples": 229695,
+          "change_samples": 201381,
+          "locked_share": null,
+          "lock_status": "not-applicable"
+        }
+      }
+    },
+    "day30": {
+      "taa-native": {
+        "character": {
+          "grain": 0.008412865877905129,
+          "p95": 0.049967058823529475,
+          "change": 0.0037099783690826868,
+          "dots": 1097,
+          "band_pixels": 48669,
+          "grain_samples": 48669,
+          "change_samples": 43692,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        },
+        "ground": {
+          "grain": 0.005930306295009488,
+          "p95": 0.02326196078431364,
+          "change": 0.0023417736969022444,
+          "dots": 310,
+          "band_pixels": 194398,
+          "grain_samples": 194398,
+          "change_samples": 179700,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        }
+      },
+      "taa-quality": {
+        "character": {
+          "grain": 0.009148068485032345,
+          "p95": 0.05206588235294113,
+          "change": 0.003660313531619733,
+          "dots": 1117,
+          "band_pixels": 48669,
+          "grain_samples": 48669,
+          "change_samples": 43692,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        },
+        "ground": {
+          "grain": 0.0063548689135630165,
+          "p95": 0.025243921568627536,
+          "change": 0.0023788507992623872,
+          "dots": 906,
+          "band_pixels": 194398,
+          "grain_samples": 194398,
+          "change_samples": 179700,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        }
+      },
+      "fxaa": {
+        "character": {
+          "grain": 0.002975726433744715,
+          "p95": 0.016236862745098113,
+          "change": 0.0040179486350980925,
+          "dots": 0,
+          "band_pixels": 48669,
+          "grain_samples": 48669,
+          "change_samples": 43692,
+          "locked_share": null,
+          "lock_status": "not-applicable"
+        },
+        "ground": {
+          "grain": 0.0020713998550376425,
+          "p95": 0.008676862745098046,
+          "change": 0.0020233069058452537,
+          "dots": 0,
+          "band_pixels": 194398,
+          "grain_samples": 194398,
+          "change_samples": 179700,
+          "locked_share": null,
+          "lock_status": "not-applicable"
+        }
+      }
+    },
+    "back60": {
+      "taa-native": {
+        "character": {
+          "grain": 0.009675405988198549,
+          "p95": 0.05483450980392157,
+          "change": 0.004882044966439167,
+          "dots": 1355,
+          "band_pixels": 52722,
+          "grain_samples": 52722,
+          "change_samples": 48662,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        },
+        "ground": {
+          "grain": 0.006054923879335896,
+          "p95": 0.02352941176470591,
+          "change": 0.0032823196011388905,
+          "dots": 379,
+          "band_pixels": 199455,
+          "grain_samples": 199455,
+          "change_samples": 183963,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        }
+      },
+      "taa-quality": {
+        "character": {
+          "grain": 0.01047169087429365,
+          "p95": 0.05965725490196083,
+          "change": 0.004995076256304995,
+          "dots": 1535,
+          "band_pixels": 52722,
+          "grain_samples": 52722,
+          "change_samples": 48662,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        },
+        "ground": {
+          "grain": 0.006729396707990057,
+          "p95": 0.027178823529411922,
+          "change": 0.00326809573067389,
+          "dots": 1303,
+          "band_pixels": 199455,
+          "grain_samples": 199455,
+          "change_samples": 183963,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        }
+      },
+      "fxaa": {
+        "character": {
+          "grain": 0.002955329731756138,
+          "p95": 0.015953725490196025,
+          "change": 0.0047003041387530305,
+          "dots": 0,
+          "band_pixels": 52722,
+          "grain_samples": 52722,
+          "change_samples": 48662,
+          "locked_share": null,
+          "lock_status": "not-applicable"
+        },
+        "ground": {
+          "grain": 0.0020898212609753728,
+          "p95": 0.008676862745097935,
+          "change": 0.0030677536670044372,
+          "dots": 0,
+          "band_pixels": 199455,
+          "grain_samples": 199455,
+          "change_samples": 183963,
+          "locked_share": null,
+          "lock_status": "not-applicable"
+        }
+      }
+    },
+    "ground15": {
+      "taa-native": {
+        "character": {
+          "grain": 0.002956868702026795,
+          "p95": 0.011481568627450978,
+          "change": 0.001161595673785438,
+          "dots": 371,
+          "band_pixels": 85845,
+          "grain_samples": 85845,
+          "change_samples": 78500,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        },
+        "ground": {
+          "grain": 0.005274223532774322,
+          "p95": 0.019367058823529404,
+          "change": 0.0037260847903801916,
+          "dots": 512,
+          "band_pixels": 247244,
+          "grain_samples": 247244,
+          "change_samples": 228023,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        }
+      },
+      "taa-quality": {
+        "character": {
+          "grain": 0.003024464786625232,
+          "p95": 0.01176470588235301,
+          "change": 0.0011816012489072065,
+          "dots": 340,
+          "band_pixels": 85845,
+          "grain_samples": 85845,
+          "change_samples": 78500,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        },
+        "ground": {
+          "grain": 0.0056950537486030305,
+          "p95": 0.02242352941176473,
+          "change": 0.003777728937388754,
+          "dots": 1305,
+          "band_pixels": 247244,
+          "grain_samples": 247244,
+          "change_samples": 228023,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        }
+      },
+      "fxaa": {
+        "character": {
+          "grain": 0.0022800892991129695,
+          "p95": 0.012598431372548902,
+          "change": 0.001350941955788685,
+          "dots": 0,
+          "band_pixels": 85845,
+          "grain_samples": 85845,
+          "change_samples": 78500,
+          "locked_share": null,
+          "lock_status": "not-applicable"
+        },
+        "ground": {
+          "grain": 0.0023432190697702435,
+          "p95": 0.007843137254901933,
+          "change": 0.0033394466794844303,
+          "dots": 0,
+          "band_pixels": 247244,
+          "grain_samples": 247244,
+          "change_samples": 228023,
+          "locked_share": null,
+          "lock_status": "not-applicable"
+        }
+      }
+    }
+  },
+  "control": {
+    "back15": {
+      "taa-native": {
+        "character": {
+          "grain": 0.008027196842190835,
+          "p95": 0.03893254901960791,
+          "change": 0.017636893947494663,
+          "dots": 851,
+          "band_pixels": 39074,
+          "grain_samples": 39074,
+          "change_samples": 33557,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        },
+        "ground": {
+          "grain": 0.005311956784593644,
+          "p95": 0.02074039215686274,
+          "change": 0.012357555614849771,
+          "dots": 108,
+          "band_pixels": 225555,
+          "grain_samples": 225555,
+          "change_samples": 197751,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        }
+      },
+      "taa-quality": {
+        "character": {
+          "grain": 0.011052577924039556,
+          "p95": 0.054351372549019505,
+          "change": 0.017510300355204806,
+          "dots": 1166,
+          "band_pixels": 39074,
+          "grain_samples": 39074,
+          "change_samples": 33557,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        },
+        "ground": {
+          "grain": 0.0063699321368945695,
+          "p95": 0.02463058823529407,
+          "change": 0.012263842604201896,
+          "dots": 1034,
+          "band_pixels": 225555,
+          "grain_samples": 225555,
+          "change_samples": 197751,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        }
+      },
+      "fxaa": {
+        "character": {
+          "grain": 0.0026071029228602943,
+          "p95": 0.015403137254901944,
+          "change": 0.018394583895005687,
+          "dots": 0,
+          "band_pixels": 39074,
+          "grain_samples": 39074,
+          "change_samples": 33557,
+          "locked_share": null,
+          "lock_status": "not-applicable"
+        },
+        "ground": {
+          "grain": 0.0016548521211947336,
+          "p95": 0.0075599999999999,
+          "change": 0.013100857420120631,
+          "dots": 0,
+          "band_pixels": 225555,
+          "grain_samples": 225555,
+          "change_samples": 197751,
+          "locked_share": null,
+          "lock_status": "not-applicable"
+        }
+      }
+    },
+    "day30": {
+      "taa-native": {
+        "character": {
+          "grain": 0.005353814490793535,
+          "p95": 0.028819607843137196,
+          "change": 0.0034056750877704545,
+          "dots": 506,
+          "band_pixels": 48539,
+          "grain_samples": 48539,
+          "change_samples": 43574,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        },
+        "ground": {
+          "grain": 0.004652244547073339,
+          "p95": 0.018490980392156908,
+          "change": 0.002145992680389253,
+          "dots": 16,
+          "band_pixels": 191820,
+          "grain_samples": 191820,
+          "change_samples": 177589,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        }
+      },
+      "taa-quality": {
+        "character": {
+          "grain": 0.007043855416041032,
+          "p95": 0.03833019607843141,
+          "change": 0.0031851256865715024,
+          "dots": 784,
+          "band_pixels": 48539,
+          "grain_samples": 48539,
+          "change_samples": 43574,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        },
+        "ground": {
+          "grain": 0.0052882157046741105,
+          "p95": 0.02097647058823504,
+          "change": 0.002089614740534959,
+          "dots": 275,
+          "band_pixels": 191820,
+          "grain_samples": 191820,
+          "change_samples": 177589,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        }
+      },
+      "fxaa": {
+        "character": {
+          "grain": 0.0025000475946368576,
+          "p95": 0.014301960784313672,
+          "change": 0.003693384038151911,
+          "dots": 0,
+          "band_pixels": 48539,
+          "grain_samples": 48539,
+          "change_samples": 43574,
+          "locked_share": null,
+          "lock_status": "not-applicable"
+        },
+        "ground": {
+          "grain": 0.0016019140207015963,
+          "p95": 0.007292549019607963,
+          "change": 0.0020011718929332204,
+          "dots": 0,
+          "band_pixels": 191820,
+          "grain_samples": 191820,
+          "change_samples": 177589,
+          "locked_share": null,
+          "lock_status": "not-applicable"
+        }
+      }
+    },
+    "back60": {
+      "taa-native": {
+        "character": {
+          "grain": 0.00632078628111784,
+          "p95": 0.033842352941176546,
+          "change": 0.004511940017326158,
+          "dots": 742,
+          "band_pixels": 52224,
+          "grain_samples": 52224,
+          "change_samples": 48210,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        },
+        "ground": {
+          "grain": 0.004765995650187833,
+          "p95": 0.01905725490196064,
+          "change": 0.0030035590639644035,
+          "dots": 28,
+          "band_pixels": 195564,
+          "grain_samples": 195564,
+          "change_samples": 180392,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        }
+      },
+      "taa-quality": {
+        "character": {
+          "grain": 0.00814247039900519,
+          "p95": 0.04368784313725488,
+          "change": 0.0043389027091442255,
+          "dots": 1065,
+          "band_pixels": 52224,
+          "grain_samples": 52224,
+          "change_samples": 48210,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        },
+        "ground": {
+          "grain": 0.0056832071823636485,
+          "p95": 0.02326196078431375,
+          "change": 0.002993479346503779,
+          "dots": 423,
+          "band_pixels": 195564,
+          "grain_samples": 195564,
+          "change_samples": 180392,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        }
+      },
+      "fxaa": {
+        "character": {
+          "grain": 0.00254693780637255,
+          "p95": 0.013416470588235363,
+          "change": 0.0043563983877724505,
+          "dots": 0,
+          "band_pixels": 52224,
+          "grain_samples": 52224,
+          "change_samples": 48210,
+          "locked_share": null,
+          "lock_status": "not-applicable"
+        },
+        "ground": {
+          "grain": 0.001610823536630703,
+          "p95": 0.007292549019607852,
+          "change": 0.0029824239890643388,
+          "dots": 0,
+          "band_pixels": 195564,
+          "grain_samples": 195564,
+          "change_samples": 180392,
+          "locked_share": null,
+          "lock_status": "not-applicable"
+        }
+      }
+    },
+    "ground15": {
+      "taa-native": {
+        "character": {
+          "grain": 0.002952663914328035,
+          "p95": 0.011481568627450922,
+          "change": 0.0011616942675159237,
+          "dots": 371,
+          "band_pixels": 85845,
+          "grain_samples": 85845,
+          "change_samples": 78500,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        },
+        "ground": {
+          "grain": 0.004950930330861038,
+          "p95": 0.017920000000000158,
+          "change": 0.003674703589711836,
+          "dots": 396,
+          "band_pixels": 247242,
+          "grain_samples": 247242,
+          "change_samples": 228010,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        }
+      },
+      "taa-quality": {
+        "character": {
+          "grain": 0.0030274278744522446,
+          "p95": 0.011780392156862662,
+          "change": 0.0011812858948420134,
+          "dots": 341,
+          "band_pixels": 85845,
+          "grain_samples": 85845,
+          "change_samples": 78500,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        },
+        "ground": {
+          "grain": 0.005404709920628687,
+          "p95": 0.02157882352941176,
+          "change": 0.0037281600514597305,
+          "dots": 948,
+          "band_pixels": 247242,
+          "grain_samples": 247242,
+          "change_samples": 228010,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        }
+      },
+      "fxaa": {
+        "character": {
+          "grain": 0.002280812938047255,
+          "p95": 0.012598431372548957,
+          "change": 0.0013507738528787314,
+          "dots": 0,
+          "band_pixels": 85845,
+          "grain_samples": 85845,
+          "change_samples": 78500,
+          "locked_share": null,
+          "lock_status": "not-applicable"
+        },
+        "ground": {
+          "grain": 0.0022932411255083716,
+          "p95": 0.007575686274509774,
+          "change": 0.003328692573683128,
+          "dots": 0,
+          "band_pixels": 247242,
+          "grain_samples": 247242,
+          "change_samples": 228010,
+          "locked_share": null,
+          "lock_status": "not-applicable"
+        }
+      }
+    }
+  },
+  "final": {
+    "back15": {
+      "taa-native": {
+        "character": {
+          "grain": 0.005471380437520763,
+          "p95": 0.029102745098039173,
+          "change": 0.01750155816822065,
+          "dots": 364,
+          "band_pixels": 39074,
+          "grain_samples": 39074,
+          "change_samples": 33557,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        },
+        "ground": {
+          "grain": 0.00526385609353138,
+          "p95": 0.020472941176470583,
+          "change": 0.012355875438918482,
+          "dots": 45,
+          "band_pixels": 225555,
+          "grain_samples": 225555,
+          "change_samples": 197751,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        }
+      },
+      "taa-quality": {
+        "character": {
+          "grain": 0.008700160740756352,
+          "p95": 0.04507215686274513,
+          "change": 0.01732992921029305,
+          "dots": 760,
+          "band_pixels": 39074,
+          "grain_samples": 39074,
+          "change_samples": 33557,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        },
+        "ground": {
+          "grain": 0.0062244609736071465,
+          "p95": 0.024378823529411675,
+          "change": 0.01227338604965782,
+          "dots": 821,
+          "band_pixels": 225555,
+          "grain_samples": 225555,
+          "change_samples": 197751,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        }
+      },
+      "fxaa": {
+        "character": {
+          "grain": 0.0026071029228602943,
+          "p95": 0.015403137254901944,
+          "change": 0.018394583895005687,
+          "dots": 0,
+          "band_pixels": 39074,
+          "grain_samples": 39074,
+          "change_samples": 33557,
+          "locked_share": null,
+          "lock_status": "not-applicable"
+        },
+        "ground": {
+          "grain": 0.0016548521211947336,
+          "p95": 0.0075599999999999,
+          "change": 0.013100857420120631,
+          "dots": 0,
+          "band_pixels": 225555,
+          "grain_samples": 225555,
+          "change_samples": 197751,
+          "locked_share": null,
+          "lock_status": "not-applicable"
+        }
+      }
+    },
+    "day30": {
+      "taa-native": {
+        "character": {
+          "grain": 0.00494775075146769,
+          "p95": 0.0271317647058823,
+          "change": 0.003423068082513677,
+          "dots": 437,
+          "band_pixels": 48539,
+          "grain_samples": 48539,
+          "change_samples": 43574,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        },
+        "ground": {
+          "grain": 0.00455855831345154,
+          "p95": 0.017904313725490062,
+          "change": 0.002139648152116823,
+          "dots": 0,
+          "band_pixels": 191820,
+          "grain_samples": 191820,
+          "change_samples": 177589,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        }
+      },
+      "taa-quality": {
+        "character": {
+          "grain": 0.0062684856042583914,
+          "p95": 0.03330745098039217,
+          "change": 0.0031888323402064728,
+          "dots": 602,
+          "band_pixels": 48539,
+          "grain_samples": 48539,
+          "change_samples": 43574,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        },
+        "ground": {
+          "grain": 0.005219135492628913,
+          "p95": 0.020709019607843104,
+          "change": 0.0020730947807556088,
+          "dots": 156,
+          "band_pixels": 191820,
+          "grain_samples": 191820,
+          "change_samples": 177589,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        }
+      },
+      "fxaa": {
+        "character": {
+          "grain": 0.0025000475946368576,
+          "p95": 0.014301960784313672,
+          "change": 0.003693384038151911,
+          "dots": 0,
+          "band_pixels": 48539,
+          "grain_samples": 48539,
+          "change_samples": 43574,
+          "locked_share": null,
+          "lock_status": "not-applicable"
+        },
+        "ground": {
+          "grain": 0.0016019140207015963,
+          "p95": 0.007292549019607963,
+          "change": 0.0020011718929332204,
+          "dots": 0,
+          "band_pixels": 191820,
+          "grain_samples": 191820,
+          "change_samples": 177589,
+          "locked_share": null,
+          "lock_status": "not-applicable"
+        }
+      }
+    },
+    "back60": {
+      "taa-native": {
+        "character": {
+          "grain": 0.005666259040993849,
+          "p95": 0.030487058823529423,
+          "change": 0.004494207385173525,
+          "dots": 601,
+          "band_pixels": 52224,
+          "grain_samples": 52224,
+          "change_samples": 48210,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        },
+        "ground": {
+          "grain": 0.004691012191585845,
+          "p95": 0.01853803921568631,
+          "change": 0.003001565962231272,
+          "dots": 4,
+          "band_pixels": 195564,
+          "grain_samples": 195564,
+          "change_samples": 180392,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        }
+      },
+      "taa-quality": {
+        "character": {
+          "grain": 0.007693413666017878,
+          "p95": 0.04168549019607837,
+          "change": 0.0042758561034038165,
+          "dots": 961,
+          "band_pixels": 52224,
+          "grain_samples": 52224,
+          "change_samples": 48210,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        },
+        "ground": {
+          "grain": 0.0056569382110906175,
+          "p95": 0.02326196078431375,
+          "change": 0.002983260041965253,
+          "dots": 316,
+          "band_pixels": 195564,
+          "grain_samples": 195564,
+          "change_samples": 180392,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        }
+      },
+      "fxaa": {
+        "character": {
+          "grain": 0.00254693780637255,
+          "p95": 0.013416470588235363,
+          "change": 0.0043563983877724505,
+          "dots": 0,
+          "band_pixels": 52224,
+          "grain_samples": 52224,
+          "change_samples": 48210,
+          "locked_share": null,
+          "lock_status": "not-applicable"
+        },
+        "ground": {
+          "grain": 0.001610823536630703,
+          "p95": 0.007292549019607852,
+          "change": 0.0029824239890643388,
+          "dots": 0,
+          "band_pixels": 195564,
+          "grain_samples": 195564,
+          "change_samples": 180392,
+          "locked_share": null,
+          "lock_status": "not-applicable"
+        }
+      }
+    },
+    "ground15": {
+      "taa-native": {
+        "character": {
+          "grain": 0.0030871229244682904,
+          "p95": 0.011481568627450978,
+          "change": 0.0017824068939677785,
+          "dots": 393,
+          "band_pixels": 85845,
+          "grain_samples": 85845,
+          "change_samples": 78500,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        },
+        "ground": {
+          "grain": 0.0050058077574547475,
+          "p95": 0.018501960784313765,
+          "change": 0.006519368218284199,
+          "dots": 216,
+          "band_pixels": 247242,
+          "grain_samples": 247242,
+          "change_samples": 228010,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        }
+      },
+      "taa-quality": {
+        "character": {
+          "grain": 0.0033277630658996656,
+          "p95": 0.012315294117647035,
+          "change": 0.002078011539902585,
+          "dots": 405,
+          "band_pixels": 85845,
+          "grain_samples": 85845,
+          "change_samples": 78500,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        },
+        "ground": {
+          "grain": 0.005513591116808472,
+          "p95": 0.022916078431372555,
+          "change": 0.007835931420276542,
+          "dots": 987,
+          "band_pixels": 247242,
+          "grain_samples": 247242,
+          "change_samples": 228010,
+          "locked_share": null,
+          "lock_status": "unavailable"
+        }
+      },
+      "fxaa": {
+        "character": {
+          "grain": 0.002280812938047255,
+          "p95": 0.012598431372548957,
+          "change": 0.0013507738528787314,
+          "dots": 0,
+          "band_pixels": 85845,
+          "grain_samples": 85845,
+          "change_samples": 78500,
+          "locked_share": null,
+          "lock_status": "not-applicable"
+        },
+        "ground": {
+          "grain": 0.0022932411255083716,
+          "p95": 0.007575686274509774,
+          "change": 0.003328692573683128,
+          "dots": 0,
+          "band_pixels": 247242,
+          "grain_samples": 247242,
+          "change_samples": 228010,
+          "locked_share": null,
+          "lock_status": "not-applicable"
+        }
+      }
+    }
+  }
+}

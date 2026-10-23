@@ -143,7 +143,8 @@ namespace KhaozEngine.Render3D.Internal
         /// not. <paramref name="screenFixedBackground"/> sets <see cref="TemporalResolveUniforms.Params"/>.y for a
         /// background that stays on its pixels, the starfield, and z is the camera's travel since last frame
         /// (<see cref="CameraTravel"/>) where history is readable. Its other lanes are reserved and written as
-        /// 0.</summary>
+        /// 0. Every size below 1 is read as 1, so <see cref="TemporalResolveUniforms.Sizes"/>.x, the lock release's
+        /// barrier source, is always positive.</summary>
         public static TemporalResolveUniforms BuildUniforms(in TemporalViewInput current, TemporalViewInput? previous,
             Vector2 jitterPixels, int internalWidth, int internalHeight, int displayWidth, int displayHeight,
             bool historyValid, bool screenFixedBackground = false)
@@ -201,5 +202,24 @@ namespace KhaozEngine.Render3D.Internal
 
         /// <summary>The inverse of <see cref="ToWeighted"/>. Mirrors <c>fromWeighted</c>.</summary>
         public static Vector3 FromWeighted(Vector3 w) => w / MathF.Max(1f - Luma(w), 1.0e-4f);
+
+        /// <summary>Step 6's carried-lock release, bit for bit what <c>temporalReleaseLock</c>
+        /// (<c>ShaderSources.TemporalLockReleaseGlsl</c>) computes on every backend: each step one float32 operation in
+        /// the shader's order, nothing fused, and the clamps as GLSL's <c>min(max(x, 0), 1)</c>.</summary>
+        public static float ReleaseLock(float value, float motionPixels, float reactive, float edgeMotion)
+        {
+            float moved = motionPixels - TemporalResolveTuning.LockMotionStartPixels;
+            float motionScaled = moved * TemporalResolveTuning.LockMotionReleaseScale;
+            float motionKeep = 1f - UnitClamp(motionScaled);
+            float reactiveScaled = reactive * TemporalResolveTuning.LockReactiveRelease;
+            float reactiveKeep = 1f - UnitClamp(reactiveScaled);
+            float edgeScaled = edgeMotion * TemporalResolveTuning.LockEdgeRelease;
+            float edgeKeep = 1f - UnitClamp(edgeScaled);
+            float pair = motionKeep * reactiveKeep;
+            float keep = pair * edgeKeep;
+            return value * keep;
+        }
+
+        static float UnitClamp(float x) => MathF.Min(MathF.Max(x, 0f), 1f);
     }
 }

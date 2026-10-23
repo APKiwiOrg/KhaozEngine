@@ -35,7 +35,7 @@ namespace KhaozEngine.Tests.Gpu
                 samplerAnisotropy: false, samplerLodBias: false, maxMsaaSampleCount: 1,
                 supportsShadowMaps: supportsShadowMaps, supportsCompute: false, supportsCompletionFences: false)
             { MaxColorAttachments = maxColorAttachments };
-            _factory = new FakeGpuResourceFactory();
+            _factory = new FakeGpuResourceFactory(maxColorAttachments);
             PointSampler = new FakeSampler();
             LinearSampler = new FakeSampler();
         }
@@ -96,6 +96,8 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>Hands out the inert resource handles <see cref="FakeGpuDevice"/> is built on.</summary>
     internal sealed class FakeGpuResourceFactory : IGpuResourceFactory
     {
+        readonly int _maxColorAttachments;
+        internal FakeGpuResourceFactory(int maxColorAttachments = 8) => _maxColorAttachments = maxColorAttachments;
         /// <summary>Every resource set this factory has handed out, in creation order, so a test can ask WHEN one
         /// was freed rather than only whether the count changed. That is the question deferred retirement raises:
         /// a set dropped from a cache and a set actually destroyed are no longer the same moment (#84).</summary>
@@ -181,6 +183,7 @@ namespace KhaozEngine.Tests.Gpu
 
         public IGpuFramebuffer CreateFramebuffer(IGpuTexture? depth, params IGpuTexture[] colour)
         {
+            if (colour.Length > _maxColorAttachments) throw new InvalidOperationException("Framebuffer exceeds attachment capability.");
             if (ThrowOnFramebufferCreate == Framebuffers.Count + 1)
                 throw new InvalidOperationException("the fake refused framebuffer creation");
             var formats = new GpuPixelFormat[colour.Length];
@@ -222,6 +225,7 @@ namespace KhaozEngine.Tests.Gpu
 
         public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d)
         {
+            if (d.Outputs.Colour.Length > _maxColorAttachments) throw new InvalidOperationException("Pipeline exceeds attachment capability.");
             if (d.ShaderSet is not FakeShaderSet shaders) return new FakePipeline();
             var request = new FakeGraphicsPipelineRequest(shaders.VertexGlsl, shaders.FragmentGlsl, d);
             GraphicsPipelines.Add(request);

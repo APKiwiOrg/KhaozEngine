@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Text.RegularExpressions;
 using KhaozEngine.Diagnostics;
 using Xunit;
 
@@ -80,7 +79,7 @@ public sealed class ReporterIdentityRedactionTests
     [Fact]
     public void Regex_syntax_in_a_term_is_literal_even_on_adversarial_input()
     {
-        ReportRedactor redactor = With(new ReportRedactor("", Regex.InfiniteMatchTimeout), () => ["(a+)+$"]);
+        ReportRedactor redactor = With(new ReportRedactor(""), () => ["(a+)+$"]);
         string prefix = new('a', 20_000);
 
         Assert.Equal(prefix + "! [redacted]", redactor.Redact(prefix + "! (a+)+$"));
@@ -115,14 +114,6 @@ public sealed class ReporterIdentityRedactionTests
         Assert.Equal(ReportRedactor.Mask, redactor.Redact("player Rowan Vale"));
     }
 
-    [Fact]
-    public void Timeout_still_masks_the_whole_string()
-    {
-        ReportRedactor redactor = With(new ReportRedactor("", TimeSpan.FromTicks(1)), () => ["Aster Dawn"]);
-
-        Assert.Equal(ReportRedactor.Mask, redactor.Redact(new string('a', 2_000_000) + " Aster Dawn"));
-    }
-
     static IEnumerable<string> BrokenTerms()
     {
         yield return "Aster Dawn";
@@ -140,7 +131,7 @@ public sealed class ReporterIdentityAllocationTests
     public void Clean_text_does_not_allocate_after_a_full_collection()
     {
         ReportRedactor redactor = ReporterIdentityRedactionTests.With(
-            new ReportRedactor("", Regex.InfiniteMatchTimeout), () => ["Aster Dawn", "discord:12345"]);
+            new ReportRedactor(""), () => ["Aster Dawn", "discord:12345"]);
         const string text = "Loaded 12 tiles in 3.2 ms";
         void Run() => redactor.Redact(text);
         Run();

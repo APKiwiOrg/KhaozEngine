@@ -8,10 +8,8 @@ namespace KhaozEngine.Render3D
     /// One corner of a triangle fed to <see cref="MeshAssembler"/>: a position, an optional source normal
     /// (null = "compute a smooth normal from face winding"), a base color, a UV, and an optional source tangent
     /// (xyz = model-space direction, w = +/-1 handedness; null = compute from UV+position gradient).
-    /// <para><c>hasVertexColor</c> marks a corner whose color came from a PER-VERTEX source (a glTF COLOR_0
-    /// accessor) rather than from the flat per-material factor. It is what puts the color in the weld key, so an
-    /// authored color seam survives. Leave it false for a flat color, which is what every non-COLOR_0 caller
-    /// does, and the weld is exactly the position/normal/uv one it has always been.</para>
+    /// <para><c>hasVertexColor</c> identifies a per-vertex source (glTF COLOR_0). Those colours retain the
+    /// quantized paint weld. Flat material colours use exact identity so material seams survive flattening.</para>
     /// </summary>
     internal readonly struct MeshCorner
     {
@@ -19,7 +17,7 @@ namespace KhaozEngine.Render3D
         public readonly Vector3 Normal;   // meaningful only when HasNormal
         public readonly bool HasNormal;
         public readonly Vector4 Color;
-        public readonly bool HasVertexColor;   // color is per-vertex (COLOR_0), so it belongs in the weld key
+        public readonly bool HasVertexColor;   // distinguishes quantized vertex paint from exact flat material color
         public readonly Vector2 Uv;
         public readonly Vector4? Tangent;  // source tangent (xyz dir, w handedness); null => compute from UV+pos
 
@@ -46,8 +44,8 @@ namespace KhaozEngine.Render3D
     /// </summary>
     internal readonly struct MeshWeldKey : IEquatable<MeshWeldKey>
     {
-        // Quantization scales: positions to 1e-4, normals (unit) to 1e-3, uvs to 1e-4, vertex colors to 1e-3
-        // (a 0..1 channel, so the same resolution a unit normal gets).
+        // Quantize positions to 1e-4, normals and vertex paint to 1e-3, and UVs to 1e-4.
+        // Flat material colors use exact float bits so distinct materials cannot collapse at a shared corner.
         const float PosScale = 1e4f, NormalScale = 1e3f, UvScale = 1e4f, ColorScale = 1e3f;
 
         readonly long _px, _py, _pz;
@@ -57,6 +55,9 @@ namespace KhaozEngine.Render3D
         readonly bool _hasNormal, _hasVertexColor;
 
         static long Q(float v, float scale) => (long)MathF.Round(v * scale);
+
+        static long ColorLane(float value, bool perVertex) =>
+            perVertex ? Q(value, ColorScale) : BitConverter.SingleToInt32Bits(value);
 
         MeshWeldKey(in MeshCorner c)
         {
@@ -69,12 +70,12 @@ namespace KhaozEngine.Render3D
             _nz = c.HasNormal ? Q(c.Normal.Z, NormalScale) : 0L;
             _ux = Q(c.Uv.X, UvScale);
             _uy = Q(c.Uv.Y, UvScale);
-            // Zeroed when the color is flat, so a non-COLOR_0 asset welds byte-for-byte as before.
+            // Preserve flat material seams as well as authored COLOR_0 seams.
             _hasVertexColor = c.HasVertexColor;
-            _cx = c.HasVertexColor ? Q(c.Color.X, ColorScale) : 0L;
-            _cy = c.HasVertexColor ? Q(c.Color.Y, ColorScale) : 0L;
-            _cz = c.HasVertexColor ? Q(c.Color.Z, ColorScale) : 0L;
-            _cw = c.HasVertexColor ? Q(c.Color.W, ColorScale) : 0L;
+            _cx = ColorLane(c.Color.X, c.HasVertexColor);
+            _cy = ColorLane(c.Color.Y, c.HasVertexColor);
+            _cz = ColorLane(c.Color.Z, c.HasVertexColor);
+            _cw = ColorLane(c.Color.W, c.HasVertexColor);
         }
 
         public static MeshWeldKey From(in MeshCorner c) => new MeshWeldKey(c);
@@ -111,20 +112,12 @@ namespace KhaozEngine.Render3D
 
     /// <summary>
     /// Welds a triangle-soup of <see cref="MeshCorner"/>s into an indexed <see cref="GltfMesh"/>. Two corners
-    /// merge only when their position, normal, uv AND per-vertex color all match (quantized) - so hard edges
-    /// (distinct normals), UV seams (distinct uvs) and authored COLOR_0 seams (distinct vertex colors) are all
-    /// preserved, unlike a position-only weld. The color only enters the key for corners flagged
-    /// <see cref="MeshCorner.HasVertexColor"/>, because a FLAT per-material color is uniform over a primitive
-    /// and adding it unconditionally would split coincident corners across materials in the whole-scene weld.
-    /// <para>The flag is itself part of the key, so a flagged corner never merges with an unflagged one even
-    /// when every other lane matches. A COLOR_0 primitive sharing a coincident corner with a non-COLOR_0
-    /// primitive inside the same weld (the whole-scene weld, or one material's weld in
-    /// <c>LoadPartsWithMaterials</c>) therefore keeps both corners instead of the first one's color winning.
-    /// That is deliberate: the two corners carry colors from different sources, and keeping both is the answer
-    /// that loses no authored data.</para>
+    /// merge only when position, normal, UV and color match. Hard edges, UV seams, flat material seams and
+    /// authored COLOR_0 seams are preserved. Flat colors use exact identity and vertex paint retains its
+    /// quantization. The source flag is also part of the key, keeping painted and flat corners separate.
     /// When a corner has no source
     /// normal, an area-weighted face normal is accumulated across the faces that share it (a smooth default),
-    /// and such corners weld on position+uv only. Also computes per-vertex tangents via the Lengyel UV+position
+    /// and such corners weld on position, UV and color. Also computes per-vertex tangents via the Lengyel UV+position
     /// method, accumulated and Gram-Schmidt orthogonalized against the finalized normal. A supplied source
     /// tangent on the corner wins over the computed one. Degenerate UVs (no UV gradient) yield a zero tangent
     /// (the shader falls back to the geometric normal). Emits 32-bit indices and lets <see cref="GltfMesh"/>

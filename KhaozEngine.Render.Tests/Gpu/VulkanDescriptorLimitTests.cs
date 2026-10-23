@@ -160,6 +160,9 @@ namespace KhaozEngine.Tests.Gpu
                 // Render3D/Rendering/TemporalResolveRenderer.cs, the resolve and the depth store. Fragment-stage,
                 // none dynamic.
                 ["Temporal.resolve"] = L(T("SceneColor"), T("OpaqueColor"), T("SceneDepth"), T("MotionTex"),
+                    T("PrevDepth"), T("HistoryColor"), T("HistoryConfidence"), S("LinearClamp"), U("Resolve", F),
+                    T("KeyShadowVisibility"), T("PreviousKeyShadowVisibility"), U("VisibilityHistory", F)),
+                ["Temporal.fullyLitResolve"] = L(T("SceneColor"), T("OpaqueColor"), T("SceneDepth"), T("MotionTex"),
                     T("PrevDepth"), T("HistoryColor"), T("HistoryConfidence"), S("LinearClamp"), U("Resolve", F)),
                 ["Temporal.depthStore"] = L(T("SceneDepth"), T("MotionTex"), S("Samp"), U("DepthStore", F)),
                 // Render3D/Rendering/TemporalSplitResolve.cs, the split entry point's two passes. Fragment-stage, none
@@ -167,6 +170,10 @@ namespace KhaozEngine.Tests.Gpu
                 ["Temporal.prepare"] = L(T("SceneColor"), T("OpaqueColor"), T("SceneDepth"), T("MotionTex"),
                     S("LinearClamp"), U("Resolve", F)),
                 ["Temporal.accumulate"] = L(T("SceneColor"), T("SceneDepth"), T("MotionTex"), T("PrevDepth"),
+                    T("HistoryColor"), T("HistoryConfidence"), T("PreparedColour"), T("PreparedSurface"),
+                    T("PreparedExpected"), T("PreparedEdge"), S("LinearClamp"), U("Resolve", F),
+                    T("KeyShadowVisibility"), T("PreviousKeyShadowVisibility"), U("VisibilityHistory", F)),
+                ["Temporal.fullyLitAccumulate"] = L(T("SceneColor"), T("SceneDepth"), T("MotionTex"), T("PrevDepth"),
                     T("HistoryColor"), T("HistoryConfidence"), T("PreparedColour"), T("PreparedSurface"),
                     T("PreparedExpected"), T("PreparedEdge"), S("LinearClamp"), U("Resolve", F)),
                 // Render3D/Rendering/TemporalDebugViewPass.cs, the debug views' immutable mode block at set 1, after
@@ -296,6 +303,11 @@ namespace KhaozEngine.Tests.Gpu
             ("TemporalResolveRenderer count probe", ["Temporal.resolve"]),
             ("TemporalSplitResolve prepare", ["Temporal.prepare"]),
             ("TemporalSplitResolve accumulate", ["Temporal.accumulate"]),
+            // TemporalVisibilityPipelinePair selects the compact layout for each certified program.
+            ("TemporalResolveRenderer fully lit resolve", ["Temporal.fullyLitResolve"]),
+            ("TemporalResolveRenderer fully lit debug view", ["Temporal.fullyLitResolve", "Temporal.debugMode"]),
+            ("TemporalResolveRenderer fully lit count probe", ["Temporal.fullyLitResolve"]),
+            ("TemporalSplitResolve fully lit accumulate", ["Temporal.fullyLitAccumulate"]),
             // Rigid dissolve pipelines add the shared interior image and sampler, with no extra uniform buffer.
             ("PointShadowRenderer", ["PointShadow"]),
             ("PointShadowRenderer dissolve", ["PointShadow", "InteriorCut"]),
@@ -328,8 +340,9 @@ namespace KhaozEngine.Tests.Gpu
         {
             // The atmosphere producers add three dense layouts and pipeline rows. GpuScaledCopy adds one of each.
             // Both counts are stated so an emptied table cannot pass by agreeing with itself.
-            Assert.Equal(65, ShippedLayouts.Count);
-            Assert.Equal(70, ShippedPipelines.Count);
+            // Certified resolve and accumulation add two compact layouts and four pipeline shapes.
+            Assert.Equal(67, ShippedLayouts.Count);
+            Assert.Equal(74, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {

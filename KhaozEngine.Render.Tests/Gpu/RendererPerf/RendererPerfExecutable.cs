@@ -23,6 +23,7 @@ internal static class RendererPerfExecutable
             foreach (var field in type.GetFields(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
                 .Where(f => f.FieldType == typeof(string) && (f.IsLiteral || f.IsInitOnly)))
                 result.Add(type.FullName + "." + field.Name, (string)field.GetValue(null)!);
+        RendererPerfShaderVariants.AddTo(result);
         // The frozen outdoors recipe builds these two specialized FFT kernels at 256 points.
         result.Add("ocean.row/256", OceanComputeShaders.RowPass(256));
         result.Add("ocean.column/256", OceanComputeShaders.ColumnPass(256));

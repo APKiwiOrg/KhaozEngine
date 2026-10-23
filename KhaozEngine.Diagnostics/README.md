@@ -179,7 +179,7 @@ string anonymous = reporter.Redact(line);
   `password=`, `"apiKey": "..."` or `AccountKey=` (the key and separator are kept).
 - `WithReporterIdentityTerms(source)` calls the game source once now and returns an independent snapshot. It masks
   complete escaped literal terms, including occurrences inside longer text, after secrets and before home. Matching
-  is invariant case-insensitive, longest first, with the non-backtracking engine and the same timeout. Null, blank
+  is invariant case-insensitive, longest first, with the non-backtracking engine and no wall-clock deadline. Null, blank
   and terms shorter than three characters are ignored. A source or enumeration that throws, a null result, an
   unsupported pattern, or a combined escaped pattern above 4096 characters fails closed by masking every string.
   The source must finish promptly. `BugReportServiceOptions.ReporterIdentityTerms` takes this snapshot at each
@@ -187,17 +187,21 @@ string anonymous = reporter.Redact(line);
 - The home directory becomes `~`, matched case-insensitively with either separator and only where the path ends,
   so `/Users/anna` survives a home of `/Users/ann`. Trailing separators on the home are ignored, and a home
   shorter than three characters turns the rule off.
-- Every secret rule runs on the non-backtracking engine, so it is linear in the input by construction. A JWT
+- Every rule runs on the non-backtracking engine, so it is linear in the input by construction. A JWT
   may start only at the start of the text or after a character that cannot be in a token, and that character is
-  kept. The home rule stays on the backtracking engine for its look-ahead, and its body is an escaped literal
-  path.
+  kept. The home rule matches an escaped literal path and its following boundary, preserving that boundary for
+  adjacent paths. An unsupported home pattern or one above 4096 escaped characters masks every string.
+- Secret key/value pairs match the key, quotes and separator with a non-backtracking prefix pattern, then scan
+  the value up to the original whitespace, quote, comma, semicolon or ampersand boundary. This avoids growing a
+  combined key/value automaton across reports while retaining the same masked values.
 - The linear guarantee has a one-time cost. The engine turns each pattern into an automaton, so building the
-  shared default rules allocates about 11.8 MB once per process, when the first redactor is constructed.
+  shared default rules allocates once per process, when the first redactor is constructed.
   `BugReportService` builds its redactor at construction, so that lands at game startup. The automaton grows
-  lazily as it meets new input, so the first report pays about 70 ms of matcher setup. Redaction runs over
+  lazily as it meets new input, so the first report also pays matcher setup. Redaction runs over
   log text a player can influence, and linear time keeps that bounded whatever the text holds.
-- Every pattern also has a 250 ms match timeout as a backstop. A timeout fails closed: the whole string comes
-  back as `[redacted]`.
+- Matchers explicitly disable wall-clock timeouts, so machine load cannot erase ordinary report text. Input and
+  intermediate strings above 4,194,304 UTF-16 code units fail closed as `[redacted]`. This bounds matching work
+  without depending on elapsed time. Replacement growth is checked before the next pass and before returning.
 - Thread-safe. Clean text is returned as the same instance without allocating.
 - `SelectEnvironment` keeps only `KE_` variables, chosen and sorted exactly as
   `TelemetrySessionHeader.SelectEngineVariables` does. A name containing `TOKEN`, `SECRET`, `PASSWORD`,

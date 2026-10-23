@@ -164,7 +164,7 @@ namespace KhaozEngine.Render3D
             bool outline = PixelPostProcess.TemporalOutlineRuns(Post);
             if (!outline) _post.ReleaseTemporalOutline(_retired);   // the outline turned off: let the pass go
             _temporalResolve.BindInputs(new TemporalResolveInputs(outline ? _res.PingA : _res.ColorTex,
-                outline ? _res.PingB : _temporalPost.OpaqueColor, _res.DepthColorTex, motion), TemporalHistory, _retired);
+                outline ? _res.PingB : _temporalPost.OpaqueColor, _res.DepthColorTex, motion, _res.LitVisibilityTex), TemporalHistory, _retired);
 
             // The previous view is the one the motion target reprojects with (Scene3D.MotionTarget.cs): the last frame's
             // first render rebased to this frame's origin, or null without history. The starfield places its stars by
@@ -235,6 +235,7 @@ namespace KhaozEngine.Render3D
                 SkipProfilePass(cl, "temporal.outline-inputs");
                 SkipProfilePass(cl, "temporal.resolve");
                 SkipProfilePass(cl, "temporal.depth-store");
+                SkipProfilePass(cl, "temporal.visibility-store");
                 return;
             }
             using (ProfilePass(cl, "temporal.outline-inputs", executed: PixelPostProcess.TemporalOutlineRuns(Post)))
@@ -243,7 +244,7 @@ namespace KhaozEngine.Render3D
                     _post.RunTemporalOutline(cl, _res, _temporalPost!.OpaqueColor, _retired);
                     _frameStats.DrawCalls += PixelPostProcess.TemporalOutlineDrawCalls;
                 }
-            _temporalResolve!.Run(cl, TemporalHistory);
+            _temporalResolve!.Run(cl, TemporalHistory, ResolvedVisibilityFullyLit);
             _frameStats.DrawCalls += TemporalResolveRenderer.DrawCallsPerFrame;
         }
 
@@ -255,8 +256,8 @@ namespace KhaozEngine.Render3D
         // count probe's textures and the post chain's sharpen pass.
         void ReleaseTemporalResolve()
         {
-            TemporalHistory.ReleaseTargets(_retired);
             _temporalResolve?.ReleaseSets(_retired);
+            TemporalHistory.ReleaseTargets(_retired);
             _post.ReleaseTemporalOutline(_retired);
             _temporalPost?.Release();
             if (_laterRenderPost is null) return;

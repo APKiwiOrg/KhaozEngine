@@ -1,0 +1,419 @@
+{
+  "source_commit": "8fe6c5927c6fd0fa4960bcd6dda88e2c209f8ff5",
+  "build": {
+    "exit_code": 0,
+    "warnings": 0,
+    "errors": 0
+  },
+  "headless": {
+    "exit_code": 0,
+    "assemblies": [
+      {
+        "assembly": "KhaozEngine.BugReports.Relay.Azure.Tests.dll",
+        "failed": 0,
+        "passed": 97,
+        "skipped": 15,
+        "total": 112
+      },
+      {
+        "assembly": "KhaozEngine.Audio.Tests.dll",
+        "failed": 0,
+        "passed": 206,
+        "skipped": 3,
+        "total": 209
+      },
+      {
+        "assembly": "KhaozEngine.Attachments.Tests.dll",
+        "failed": 0,
+        "passed": 261,
+        "skipped": 0,
+        "total": 261
+      },
+      {
+        "assembly": "KhaozEngine.Catalog.AzureBlob.Tests.dll",
+        "failed": 0,
+        "passed": 25,
+        "skipped": 7,
+        "total": 32
+      },
+      {
+        "assembly": "KhaozEngine.BugReports.Relay.Tests.dll",
+        "failed": 0,
+        "passed": 494,
+        "skipped": 0,
+        "total": 494
+      },
+      {
+        "assembly": "KhaozEngine.Automation.Tests.dll",
+        "failed": 0,
+        "passed": 110,
+        "skipped": 0,
+        "total": 110
+      },
+      {
+        "assembly": "KhaozEngine.CodeHealth.Analyzers.Tests.dll",
+        "failed": 0,
+        "passed": 51,
+        "skipped": 0,
+        "total": 51
+      },
+      {
+        "assembly": "KhaozEngine.BugReports.Tests.dll",
+        "failed": 0,
+        "passed": 442,
+        "skipped": 0,
+        "total": 442
+      },
+      {
+        "assembly": "KhaozEngine.Localization.Analyzers.Tests.dll",
+        "failed": 0,
+        "passed": 46,
+        "skipped": 0,
+        "total": 46
+      },
+      {
+        "assembly": "KhaozEngine.Gui.Tests.dll",
+        "failed": 0,
+        "passed": 1532,
+        "skipped": 0,
+        "total": 1532
+      },
+      {
+        "assembly": "KhaozEngine.Identity.Exchange.Tests.dll",
+        "failed": 0,
+        "passed": 177,
+        "skipped": 0,
+        "total": 177
+      },
+      {
+        "assembly": "KhaozEngine.BugReports.Client.Tests.dll",
+        "failed": 0,
+        "passed": 205,
+        "skipped": 0,
+        "total": 205
+      },
+      {
+        "assembly": "KhaozEngine.Accounts.Tests.dll",
+        "failed": 0,
+        "passed": 286,
+        "skipped": 46,
+        "total": 332
+      },
+      {
+        "assembly": "KhaozEngine.MapDoc.Compatibility.Tests.dll",
+        "failed": 0,
+        "passed": 14,
+        "skipped": 0,
+        "total": 14
+      },
+      {
+        "assembly": "KhaozEngine.Netcode.Abstractions.DecouplingTests.dll",
+        "failed": 0,
+        "passed": 4,
+        "skipped": 0,
+        "total": 4
+      },
+      {
+        "assembly": "KhaozEngine.Foundation.Tests.dll",
+        "failed": 0,
+        "passed": 1585,
+        "skipped": 0,
+        "total": 1585
+      },
+      {
+        "assembly": "KhaozEngine.Netcode.DecouplingTests.dll",
+        "failed": 0,
+        "passed": 4,
+        "skipped": 0,
+        "total": 4
+      },
+      {
+        "assembly": "KhaozEngine.Particles.Tests.dll",
+        "failed": 0,
+        "passed": 106,
+        "skipped": 0,
+        "total": 106
+      },
+      {
+        "assembly": "KhaozEngine.Showcase.Tests.dll",
+        "failed": 0,
+        "passed": 83,
+        "skipped": 0,
+        "total": 83
+      },
+      {
+        "assembly": "KhaozEngine.Physics.HeadlessLoaderTests.dll",
+        "failed": 0,
+        "passed": 5,
+        "skipped": 0,
+        "total": 5
+      },
+      {
+        "assembly": "KhaozEngine.MapDoc.Tests.dll",
+        "failed": 0,
+        "passed": 1398,
+        "skipped": 0,
+        "total": 1398
+      },
+      {
+        "assembly": "KhaozEngine.Simulation.Tests.dll",
+        "failed": 0,
+        "passed": 309,
+        "skipped": 0,
+        "total": 309
+      },
+      {
+        "assembly": "KhaozEngine.TileWorld.Physics.Tests.dll",
+        "failed": 0,
+        "passed": 159,
+        "skipped": 0,
+        "total": 159
+      },
+      {
+        "assembly": "KhaozEngine.TileWorld.Netcode.Tests.dll",
+        "failed": 0,
+        "passed": 1389,
+        "skipped": 0,
+        "total": 1389
+      },
+      {
+        "assembly": "KhaozEngine.TileEdit.Tests.dll",
+        "failed": 0,
+        "passed": 110,
+        "skipped": 7,
+        "total": 117
+      },
+      {
+        "assembly": "KhaozEngine.TileWorld.WorldMap.Tests.dll",
+        "failed": 0,
+        "passed": 30,
+        "skipped": 0,
+        "total": 30
+      },
+      {
+        "assembly": "KhaozEngine.Windowing.Tests.dll",
+        "failed": 0,
+        "passed": 147,
+        "skipped": 0,
+        "total": 147
+      },
+      {
+        "assembly": "KhaozEngine.TileWorld.Tests.dll",
+        "failed": 0,
+        "passed": 650,
+        "skipped": 0,
+        "total": 650
+      },
+      {
+        "assembly": "KhaozEngine.WorldMap.Gui.Tests.dll",
+        "failed": 0,
+        "passed": 66,
+        "skipped": 0,
+        "total": 66
+      },
+      {
+        "assembly": "KhaozEngine.WorldMap.Tests.dll",
+        "failed": 0,
+        "passed": 238,
+        "skipped": 0,
+        "total": 238
+      },
+      {
+        "assembly": "KhaozEngine.MapDoc.Physics.Tests.dll",
+        "failed": 0,
+        "passed": 242,
+        "skipped": 0,
+        "total": 242
+      },
+      {
+        "assembly": "KeDungeon.Tests.dll",
+        "failed": 0,
+        "passed": 13,
+        "skipped": 0,
+        "total": 13
+      },
+      {
+        "assembly": "PixelLabSheetAssembler.Tests.dll",
+        "failed": 0,
+        "passed": 32,
+        "skipped": 0,
+        "total": 32
+      },
+      {
+        "assembly": "KhaozEngine.ItemInstances.Tests.dll",
+        "failed": 0,
+        "passed": 895,
+        "skipped": 0,
+        "total": 895
+      },
+      {
+        "assembly": "KhaozEngine.Movement.Tests.dll",
+        "failed": 0,
+        "passed": 1463,
+        "skipped": 3,
+        "total": 1466
+      },
+      {
+        "assembly": "KhaozEngine.Render.Tests.dll",
+        "failed": 0,
+        "passed": 10520,
+        "skipped": 1076,
+        "total": 11596
+      },
+      {
+        "assembly": "KhaozEngine.Tests.dll",
+        "failed": 0,
+        "passed": 88,
+        "skipped": 0,
+        "total": 88
+      },
+      {
+        "assembly": "KhaozEngine.Game.Tests.dll",
+        "failed": 0,
+        "passed": 6329,
+        "skipped": 1,
+        "total": 6330
+      },
+      {
+        "assembly": "KhaozEngine.Catalog.Tests.dll",
+        "failed": 0,
+        "passed": 1521,
+        "skipped": 0,
+        "total": 1521
+      },
+      {
+        "assembly": "KhaozEngine.Server.Tests.dll",
+        "failed": 0,
+        "passed": 4072,
+        "skipped": 317,
+        "total": 4389
+      },
+      {
+        "assembly": "KhaozEngine.MapEditor.Tests.dll",
+        "failed": 0,
+        "passed": 1706,
+        "skipped": 9,
+        "total": 1715
+      }
+    ],
+    "totals": {
+      "failed": 0,
+      "passed": 37110,
+      "skipped": 1484,
+      "total": 38594
+    },
+    "known_flake_observed": false
+  },
+  "metal": {
+    "exit_code": 0,
+    "inventory_exit_code": 0,
+    "inventory_count": 1687,
+    "executed": 1687,
+    "passed": 1687,
+    "failed": 0,
+    "skipped": 0,
+    "skipped_names": [],
+    "missing": 0,
+    "extra": 0,
+    "filter": "((FullyQualifiedName~KhaozEngine.Tests.Gpu.Temporal&FullyQualifiedName!~CostPerf)|((FullyQualifiedName~Shadow|FullyQualifiedName~Golden)&FullyQualifiedName!~Perf&FullyQualifiedName!~Bench)|FullyQualifiedName~MotionTargetLifecycleGpuTests)",
+    "inventory_names_sha256": "0fa46ceab93cdffe8371b00a579a257bddd80b06845013884a8bf2852695c25c",
+    "display_name_duplicates": {
+      "KhaozEngine.Tests.Gpu.TemporalVisibilityDxbcTests.ACopyInAnotherOrderReadsDifferently(copy: \"\\n  itof r5.xy, r6.xyxx\\n  add r5.xy, r5.xyxx, -cb\"\u00b7\u00b7\u00b7)": 3
+    },
+    "classes": 209,
+    "unique_test_ids": 1687
+  },
+  "pack": {
+    "exit_code": 0,
+    "package_files": 222,
+    "warnings": 0,
+    "errors": 0,
+    "scratch_worktree_removed": true
+  },
+  "probe_build": {
+    "exit_code": 0,
+    "warnings": 0,
+    "errors": 0
+  },
+  "raw_evidence": {
+    "root": "/tmp/grimhollow-taa-7f5",
+    "metal_trx_sha256": "d0e3b442008bbc331c2209fd51c87002c148c42fdc88ed90e2ad5eaf8580e4a3",
+    "build_log_sha256": "00965724fce5d317e48b173fcbf517401fbc303fbe564ad04952732deb2e2d8a",
+    "headless_log_sha256": "5f0fed6b25295381c05af5f3ae9df129226273cd095296e21527651ab6fab1e2",
+    "metal_log_sha256": "7ef6ea98599978d9381182f60eccb8d0f7fd3f548cb410e9a116fb70d7fd5688"
+  },
+  "guards": {
+    "dashes": {
+      "command": [
+        "sh",
+        "scripts/check-dashes.sh",
+        "--tree"
+      ],
+      "exit_code": 0
+    },
+    "prose": {
+      "command": [
+        "sh",
+        "scripts/check-prose.sh",
+        "--tree"
+      ],
+      "exit_code": 0
+    },
+    "file-size": {
+      "command": [
+        "sh",
+        "scripts/check-file-size.sh",
+        "--tree"
+      ],
+      "exit_code": 0
+    },
+    "instructions": {
+      "command": [
+        "sh",
+        "scripts/check-agent-instructions.sh",
+        "--tree"
+      ],
+      "exit_code": 0
+    },
+    "doc-versions": {
+      "command": [
+        "bash",
+        "scripts/check-doc-versions.sh"
+      ],
+      "exit_code": 0
+    },
+    "diff": {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0
+    }
+  },
+  "format": {
+    "exit_code": 0,
+    "workspace_loading_warning": "Warnings were encountered while loading the workspace. Set the verbosity option to the 'diagnostic' level to log warnings.",
+    "warning_details_expanded": false
+  },
+  "final_tree_guards": {
+    "dashes": {
+      "exit_code": 0
+    },
+    "prose": {
+      "exit_code": 0
+    },
+    "file-size": {
+      "exit_code": 0
+    }
+  },
+  "manifest_verifier": {
+    "exit_code": 0,
+    "historical_rows": 72,
+    "shipping_rows": 12,
+    "cost_cut_rows": 12,
+    "historical_checks_unchanged": true,
+    "historical_artifact_ledger_stale_hashes_refreshed": 3,
+    "historical_artifact_ledger_omitted_entries_added": 4
+  }
+}

@@ -320,6 +320,7 @@ game.Run();
 ```
 
 `GameAppOptions` (a struct): `Title`, `Width`/`Height`, `DesignWidth`/`DesignHeight`, `ScaleMode`, `ClearColor`,
+`RendererInitializesSwapchain` (explicit opt-in, see the frame initialization policy below),
 `ResumeGapThresholdSeconds` (see the resume hook below), `PresentMode` + `FrameCapHz` + `WindowMode` (see below), and optional
 `WindowFactory` / `ViewportFactory` (e.g. `AppWindow.Scaled` for a display-fitted window, or an `AdaptiveViewport`
 for responsive layout), `AppUserModelId` (Windows taskbar identity), `SuppressParentConsoleAttach` (opt out of
@@ -575,8 +576,18 @@ below), `OnDispose()`. Properties you read: `Window`, `Clock`, `Viewport`, `Poin
 
 The windowed loop runs **two** callbacks per frame. `onPrepare` runs first, after the frame's `Dt` / `Input` /
 size are latched and **before** the frame's command list is opened. `onFrame` runs second, with that list open,
-bound to the swapchain and cleared. `Run(onFrame)` is exactly `Run(onFrame, null)`, so a host that wants one
+bound to the swapchain and cleared by default. `Run(onFrame)` is exactly `Run(onFrame, null)`, so a host that wants one
 callback keeps writing one.
+
+`AppWindow.RendererInitializesSwapchain` and `GameAppOptions.RendererInitializesSwapchain` default to false,
+including `default(GameAppOptions)` and raw struct initializers. Setting the option true skips both the host's
+initial swapchain bind and its `ClearColor` clear. `GameApp` applies it to both default and factory windows.
+The caller must ensure the renderer binds and initializes the entire output inside this frame's recording
+before any 2D draws or capture taps, including empty, loading and menu frames. The normal full-output 3D
+composition still binds, clears and overwrites its final target. `GameApp3D` does not opt in automatically:
+an overridden `OnRenderWorld` can render only part of the output or no world at all. Keep the default for
+those renderers and for 2D callbacks that rely on the host clear. The policy changes no preparation,
+recording, capture, submission, present or suppression ordering.
 
 ```csharp
 window.Run(
@@ -18219,7 +18230,9 @@ next `Present` after a drain, so they take no lock, make no native call and are 
 burst of thirty size events between two presents costs one apply. And the drawable acquire is counted and timed
 into `AcquireWaitCount` and `AcquireWaitMs`, one entry per acquired frame, because `-nextDrawable` BLOCKS and
 Metal offers no zero-timeout probe. Acquisition happens at the first swapchain framebuffer bind, including a
-cached wrapper, after `FramePhases` preparation. Repeated binds reuse the resolved frame, including nil.
+cached wrapper, after `FramePhases` preparation. The default host initialization binds before `onFrame`.
+With `RendererInitializesSwapchain` enabled, offscreen rendering can precede acquisition at final composition.
+Repeated binds reuse the resolved frame, including nil.
 Construction publishes metadata only, and `Present` leaves the next frame unresolved. A present-only call
 acquires its own current drawable before presenting it. Resize dimensions still publish at the present boundary.
 This timing is an optimization candidate with no proven FPS gain. Expect that pair to be non-zero under vsync:
@@ -23086,7 +23099,8 @@ unsignaled staging alive until a completion poll or owner teardown releases it. 
 flush or extra frame submission. `GpuRetireQueue` retains its separate existing retirement fence.
 
 The window exposes its owner as `Frame.Submission`. The loop calls `Begin` before `onPrepare`, records the
-initial clear, `onFrame` and capture taps in one list, then submits once. Participants receive `Submitted`
+host initialization (unless `RendererInitializesSwapchain` is enabled), `onFrame` and capture taps in one list,
+then submits once. Participants receive `Submitted`
 before capture `AfterSubmit` and `Present`. A suppressed frame or failure before submission calls `Abandon`.
 A failure after successful submission does not turn the decision into `Abandoned`.
 

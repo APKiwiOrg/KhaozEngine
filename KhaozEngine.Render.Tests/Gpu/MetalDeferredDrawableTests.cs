@@ -166,7 +166,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(2, h.Api.AcquireCount);
         }
 
-        sealed class Harness : IDisposable
+        internal sealed class Harness : IDisposable
         {
             internal FakeMetalSwapchainApi Api { get; } = new();
             internal FakeMetalOrphanTarget Orphan { get; }
@@ -192,9 +192,10 @@ namespace KhaozEngine.Tests.Gpu
             public void Dispose() => Boundary.Dispose();
         }
 
-        sealed class FrameDevice(MetalPresentBoundary boundary) : IGpuDevice
+        internal sealed class FrameDevice(MetalPresentBoundary boundary) : IGpuDevice
         {
             readonly FakeGpuDevice _inner = new();
+            internal int Submits, Presents;
             public GpuBackendKind Backend => _inner.Backend;
             public GpuCapabilities Capabilities => _inner.Capabilities;
             public IGpuResourceFactory Factory => _inner.Factory;
@@ -202,11 +203,11 @@ namespace KhaozEngine.Tests.Gpu
             public IGpuSampler PointSampler => _inner.PointSampler;
             public IGpuSampler LinearSampler => _inner.LinearSampler;
             public bool SyncToVerticalBlank { get => boundary.SyncToVerticalBlank; set => boundary.SyncToVerticalBlank = value; }
-            public void Present() => boundary.Present();
+            public void Present() { Presents++; boundary.Present(); }
             public void ResizeSwapchain(uint w, uint h) => boundary.QueueResize(w, h);
-            public void Submit(IGpuCommandList cl) { }
-            public void Submit(IGpuCommandList cl, IGpuFence fence) => throw new NotSupportedException();
-            public void Submit(IGpuCommandList cl, ReadOnlySpan<IGpuFence> fences) => _inner.Submit(cl, fences);
+            public void Submit(IGpuCommandList cl) { Submits++; }
+            public void Submit(IGpuCommandList cl, IGpuFence fence) { Submits++; _inner.Submit(cl, fence); }
+            public void Submit(IGpuCommandList cl, ReadOnlySpan<IGpuFence> fences) { Submits++; _inner.Submit(cl, fences); }
             public void WaitForIdle() { }
             public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged => throw new NotSupportedException();
             public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, T[] data) where T : unmanaged => throw new NotSupportedException();

@@ -246,8 +246,12 @@ ring's segment acquire ALONE, where the same field on the native Vulkan backend 
 waiting on its own oldest buffer slot: this backend has no command-buffer pool to wait on, so a non-zero
 reading is unambiguously a pipeline-depth statement about `KE_METAL_FRAMES_IN_FLIGHT`. The off-timeline pair is
 deliberately NOT part of that number, because a deferred write blocks nobody and usually happens at load time.
-`FramesBegun` and the acquire pair belong to the present boundary, so a headless device reports zero for all
-three, which is literally true rather than a placeholder.
+`FramesBegun` counts present boundaries, including skipped presents. `AcquireWaitCount` and `AcquireWaitMs`
+record every current-frame drawable-resolution API attempt and its full duration, including nonblocking and
+nil attempts. Resolution happens at the first swapchain framebuffer bind, or on demand for a present-only
+call. Repeated binds reuse the resolved frame, including nil. Construction and `Present` do not pre-acquire
+the next frame. The recorded duration includes API work and is not isolated blocking time. A headless device
+with no swapchain reports zero for `FramesBegun` and both acquire fields.
 
 **`GpuDeviceDiagnostics.SoftwareAdapter` is FALSE with confidence rather than null**, because Apple ships no
 software Metal rasterizer at all. That is a different fact from "nobody asked", which is what null means and

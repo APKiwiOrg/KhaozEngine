@@ -18501,8 +18501,13 @@ Metal path**, which is the difference between a capture that carries GPU columns
 cumulative since the device was created, so a window is the difference between two sampled rows.
 `BackpressureStallCount` here counts the uniform ring's segment acquire alone, so a non-zero reading is
 unambiguously about `KE_METAL_FRAMES_IN_FLIGHT`, where the same field on `VulkanNative` also folds in a command
-list waiting on its own oldest buffer slot. `FramesBegun` and the acquire pair belong to the present boundary,
-so a headless device reports zero for all three, truthfully rather than as a placeholder.
+list waiting on its own oldest buffer slot. `FramesBegun` counts present boundaries, including skipped
+presents. `AcquireWaitCount` and `AcquireWaitMs` record every current-frame drawable-resolution API attempt
+and its full duration, including nonblocking and nil attempts. Resolution happens at the first swapchain
+framebuffer bind, or on demand for a present-only call. Repeated binds reuse the resolved frame, including nil.
+Construction and `Present` do not pre-acquire the next frame. The recorded duration includes API work and is
+not isolated blocking time. A headless device with no swapchain reports zero for `FramesBegun` and both
+acquire fields.
 `GpuDeviceDiagnostics.SoftwareAdapter` is `false` with confidence rather than null, because Apple ships no
 software Metal rasterizer, where the deleted Veldrid Metal path correctly reported null because it could not
 answer.
@@ -18927,13 +18932,13 @@ the session log naming the site and what the reason means, and the `deviceLossRe
 session header. Nothing you write has to catch anything, and there is no recovery path: a lost device stays lost,
 which is what the liveness token makes safe.
 
-**The device counts what it waited for, and a telemetry recording can carry it.** `AppWindow.Counters` (a
+**The device reports counters that a telemetry recording can carry.** `AppWindow.Counters` (a
 `GpuDeviceCounters`, also on `GpuDeviceContext.Counters` and `IGpuDevice.Counters`) reports, cumulative since the
 device was created: `FramesBegun`, `DrainCount` / `DrainMs` (time spent waiting for the GPU to go idle),
 `BackpressureStallCount` / `BackpressureStallMs` (frame boundaries that blocked on a uniform ring segment the GPU
 was still reading), `OffTimelineDeferred` / `OffTimelineOutstanding`, and `AcquireWaitCount` / `AcquireWaitMs`
-(present boundaries that blocked waiting for the presentation engine to hand back the next swapchain image). Add
-them to a session's sample rows in one line:
+(recorded acquisition entries and their full API-call durations, with backend-specific recording rules below).
+Add them to a session's sample rows in one line:
 
 ```csharp
 var row = new List<TelemetryChannel> { new("fps", _stats.Fps), new("frameMs", _stats.FrameMsAvg) };
@@ -18947,13 +18952,16 @@ The deleted Veldrid paths had neither a fence drain nor a segment ring to count,
 and `AppendTo` wrote no columns for them. That matters because ZERO STALLS IS THE GOOD RESULT: a capture full of
 zeros from a backend that never looked would read exactly like a clean run.
 
-**The acquire pair is what tells the two acquire models apart, and on a machine at a pinned refresh rate it is
-the ONLY thing that does.** `AcquireWaitCount` counts present boundaries that actually BLOCKED waiting for the
-next swapchain image, and it is a reading rather than a count of calls: the native Vulkan backend probes with a
-zero timeout first and records only the blocking call that follows. A backend that acquires with a semaphore and
-lets the GPU do the waiting reports zero here, and one that blocks the CPU reports one per frame, while both
-produce the same mean frame time by construction. Zero is a real reading rather than a gap on a backend with no
-acquire to wait on and on a headless device with no swapchain, which is exactly what `HasValue` is for.
+**The acquire pair has backend-specific recording rules.** `AcquireWaitCount` counts recorded acquisition
+entries, and `AcquireWaitMs` sums their full durations. Metal records every current-frame drawable-resolution
+API attempt, including nonblocking and nil attempts, at the first swapchain framebuffer bind or on demand for
+a present-only call. Repeated binds reuse the resolved frame, including nil. Its `FramesBegun` still counts
+present boundaries. Construction and `Present` do not pre-acquire the next frame. Vulkan's semaphore path
+probes with a zero timeout and records only the subsequent blocking call when the probe reports not ready.
+Its explicit CPU-stall path records each stalling acquire. The recorded durations include API work and are
+not isolated blocking time. Direct3D 11 has no acquire step and reports zero for the pair. A headless device
+with no swapchain also reports zero, which is a reading rather than a gap. `HasValue` distinguishes a device
+that keeps counters from one that reports no counters.
 
 **The numbers are cumulative on purpose, so your sampling cadence stops mattering.** A row carrying "the frame
 that just ended" describes one frame in however many you skipped between rows. Subtract the first row's

@@ -10,16 +10,23 @@ namespace KhaozEngine.Gpu.D3D11;
 
 /// <summary>One FXC attempt or DXBC cache hit. HLSL metadata is unavailable for cache hits, which do not
 /// recreate HLSL or invoke FXC. Milliseconds excludes cross-compilation, fingerprinting and cache I/O.</summary>
-public readonly record struct D3D11ShaderCompileRecord(string SourceKey, string Program, GpuShaderStages Stage,
-    int? HlslByteLength, string? HlslSha256, bool CacheHit, double Milliseconds);
+internal readonly record struct D3D11ShaderCompileRecord(string SourceKey, string Program, GpuShaderStages Stage,
+    int? HlslByteLength, string? HlslSha256, bool CacheHit, double Milliseconds,
+    long? StartedTimestamp = null, long? EndedTimestamp = null);
+
+/// <summary>FXC work summed across workers versus the monotonic span from first start to last completion.</summary>
+internal readonly record struct D3D11ShaderCompileSummary(int PeakConcurrency, double SummedMilliseconds,
+    double ElapsedMilliseconds);
 
 /// <summary>Opt-in shader compile records for the current execution flow and its workers. Without an active
 /// scope, diagnostic calls return before reading the clock, encoding or hashing, and allocate nothing.</summary>
-public sealed class D3D11ShaderCompileDiagnostics
+internal sealed class D3D11ShaderCompileDiagnostics
 {
     static AsyncLocal<Scope?>? current;
     readonly object gate = new();
     readonly List<D3D11ShaderCompileRecord> records = [];
+    int active, peak;
+    long firstStarted, lastEnded;
 
     /// <summary>Routes records from this execution flow to this collector. Dispose scopes in reverse creation
     /// order. Activate at the compile caller when a transport does not carry the caller's execution context.</summary>
@@ -41,6 +48,44 @@ public sealed class D3D11ShaderCompileDiagnostics
     public D3D11ShaderCompileRecord[] GetRecords()
     {
         lock (gate) return records.ToArray();
+    }
+
+    internal D3D11ShaderCompileSummary GetSummary()
+    {
+        lock (gate)
+        {
+            double summed = 0;
+            foreach (var record in records) summed += record.Milliseconds;
+            double elapsed = peak == 0 ? 0 : Stopwatch.GetElapsedTime(firstStarted,
+                active == 0 ? lastEnded : Stopwatch.GetTimestamp()).TotalMilliseconds;
+            return new(peak, summed, elapsed);
+        }
+    }
+
+    long Start()
+    {
+        lock (gate)
+        {
+            long timestamp = Stopwatch.GetTimestamp();
+            if (peak == 0) firstStarted = timestamp;
+            peak = Math.Max(peak, ++active);
+            return timestamp;
+        }
+    }
+
+    void Finish(D3D11ShaderCompileRecord record, long started)
+    {
+        lock (gate)
+        {
+            lastEnded = Stopwatch.GetTimestamp();
+            active--;
+            records.Add(record with
+            {
+                StartedTimestamp = started,
+                EndedTimestamp = lastEnded,
+                Milliseconds = Stopwatch.GetElapsedTime(started, lastEnded).TotalMilliseconds
+            });
+        }
     }
 
     internal static Measurement MeasureCompile(string key, string program, D3D11ShaderStage stage, string hlsl)
@@ -81,13 +126,13 @@ public sealed class D3D11ShaderCompileDiagnostics
             byte[] bytes = Encoding.UTF8.GetBytes(hlsl);
             string hash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
             record = new(key, program, ToGpuStage(stage), bytes.Length, hash, false, 0);
-            started = Stopwatch.GetTimestamp();
+            started = owner.Start();
         }
 
         public void Dispose()
         {
             if (owner is not null)
-                owner.Add(record with { Milliseconds = Stopwatch.GetElapsedTime(started).TotalMilliseconds });
+                owner.Finish(record, started);
         }
     }
 

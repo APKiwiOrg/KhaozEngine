@@ -15,6 +15,18 @@ internal sealed partial class FoliageShadowRenderer
         GpuIndexFormat format, IGpuBuffer instances, uint start, uint count, IGpuResourceSet foliageSet,
         uint foliageSlot, IGpuResourceSet? cutout, IGpuResourceSet anchorSet, IGpuResourceLayout anchorLayout)
     {
+        PrepareAnchoredPipelines(anchorLayout);
+        cl.SetPipeline(cutout is null ? _preparedOpaque! : _preparedCutout!);
+        _shadows.SetCascadeScissor(cl, cascade);
+        cl.SetGraphicsResourceSet(0, _set, (uint)cascade * CascadeSlotBytes);
+        cl.SetGraphicsResourceSet(1, foliageSet, foliageSlot * ModelRenderer.FoliageUniforms.SlotBytes);
+        if (cutout is not null) cl.SetGraphicsResourceSet(2, cutout);
+        cl.SetGraphicsResourceSet(3, anchorSet);
+        cl.SetVertexBuffer(0, vb); cl.SetVertexBuffer(1, instances); cl.SetIndexBuffer(ib, format);
+        cl.DrawIndexed((uint)indexCount, count, 0, 0, start);
+    }
+    internal void PrepareAnchoredPipelines(IGpuResourceLayout anchorLayout)
+    {
         var outputs = _shadows.Outputs;
         if (_preparedOpaque is null || !_preparedOutputs.Equals(outputs))
         {
@@ -31,14 +43,6 @@ internal sealed partial class FoliageShadowRenderer
             _preparedCutout = PreparedPipeline(_preparedCutoutShaders, true, outputs);
             _preparedOutputs = outputs;
         }
-        cl.SetPipeline(cutout is null ? _preparedOpaque! : _preparedCutout!);
-        _shadows.SetCascadeScissor(cl, cascade);
-        cl.SetGraphicsResourceSet(0, _set, (uint)cascade * CascadeSlotBytes);
-        cl.SetGraphicsResourceSet(1, foliageSet, foliageSlot * ModelRenderer.FoliageUniforms.SlotBytes);
-        if (cutout is not null) cl.SetGraphicsResourceSet(2, cutout);
-        cl.SetGraphicsResourceSet(3, anchorSet);
-        cl.SetVertexBuffer(0, vb); cl.SetVertexBuffer(1, instances); cl.SetIndexBuffer(ib, format);
-        cl.DrawIndexed((uint)indexCount, count, 0, 0, start);
     }
     IGpuPipeline PreparedPipeline(IGpuShaderSet shaders, bool cutout, GpuOutputDescription outputs) =>
         _device.Factory.CreateGraphicsPipeline(new()

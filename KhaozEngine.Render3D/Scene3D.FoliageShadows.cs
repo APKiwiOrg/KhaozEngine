@@ -34,8 +34,14 @@ public sealed partial class Scene3D
     {
         if (_foliageShadowDraws.Count == 0) return;
         _foliageShadowRenderer ??= new FoliageShadowRenderer(_gd, _model.ShadowMap, _model.FoliageLayout, _retired);
+        bool ordinary = false, anchored = false;
+        foreach (var draw in _foliageShadowDraws)
+        {
+            if (draw.Batch.AnchorSet is null) ordinary = true;
+            else anchored = true;
+        }
         _foliageShadowRenderer.UploadCascades(cl, _cascadeDepthVps.AsSpan(0, _cascadeCount),
-            _currentFrameView.ViewProjection, _frameOrigin);
+            _currentFrameView.ViewProjection, _frameOrigin, ordinary, anchored ? _model.PreparedAnchorLayout : null);
     }
 
     void DrawFoliageShadowCascade(IGpuCommandList cl, int cascade)

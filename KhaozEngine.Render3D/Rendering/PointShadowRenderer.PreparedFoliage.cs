@@ -11,6 +11,14 @@ internal sealed partial class PointShadowRenderer
         GpuIndexFormat format, IGpuBuffer instances, uint start, uint count, IGpuResourceSet anchor,
         IGpuResourceLayout anchorLayout)
     {
+        PrepareFoliagePipeline(anchorLayout);
+        cl.SetPipeline(_preparedFoliagePipeline!);
+        cl.SetGraphicsResourceSet(1, anchor);
+        cl.SetVertexBuffer(0, vb); cl.SetVertexBuffer(1, instances); cl.SetIndexBuffer(ib, format);
+        cl.DrawIndexed((uint)indices, count, 0, 0, start);
+    }
+    internal void PrepareFoliagePipeline(IGpuResourceLayout anchorLayout)
+    {
         if (_preparedFoliagePipeline is null)
         {
             _preparedFoliageShaders = _gd.Factory.CreateShadersFromSpirv(
@@ -27,10 +35,6 @@ internal sealed partial class PointShadowRenderer
                 Outputs = new(GpuPixelFormat.D32FloatS8UInt, GpuPixelFormat.R32Float)
             });
         }
-        cl.SetPipeline(_preparedFoliagePipeline);
-        cl.SetGraphicsResourceSet(1, anchor);
-        cl.SetVertexBuffer(0, vb); cl.SetVertexBuffer(1, instances); cl.SetIndexBuffer(ib, format);
-        cl.DrawIndexed((uint)indices, count, 0, 0, start);
     }
     void DisposePreparedFoliage()
     { _preparedFoliagePipeline?.Dispose(); _preparedFoliageShaders?.Dispose(); }

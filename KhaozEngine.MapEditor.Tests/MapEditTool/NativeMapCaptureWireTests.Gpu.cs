@@ -54,11 +54,14 @@ public sealed partial class NativeMapCaptureWireTests(ITestOutputHelper testOutp
         string CompileTable()
         {
             var records = compileDiagnostics.GetRecords();
-            var table = new StringBuilder(FormattableString.Invariant($"D3D11 FXC compile records: entries={records.Length}, attempts={records.Count(record => !record.CacheHit)}, cacheHits={records.Count(record => record.CacheHit)}, totalMs={records.Sum(record => record.Milliseconds):F3}"));
+            var summary = compileDiagnostics.GetSummary();
+            var table = new StringBuilder(FormattableString.Invariant($"D3D11 FXC compile records: entries={records.Length}, attempts={records.Count(record => !record.CacheHit)}, cacheHits={records.Count(record => record.CacheHit)}, peakConcurrency={summary.PeakConcurrency}, summedMs={summary.SummedMilliseconds:F3}, elapsedMs={summary.ElapsedMilliseconds:F3}"));
             table.AppendLine().AppendLine("Top 20 by FXC milliseconds. HLSL metadata is unavailable for DXBC hits.");
-            table.Append("stage | cache | HLSL bytes | FXC ms | program | source key | HLSL SHA-256");
+            table.Append("stage | cache | HLSL bytes | FXC ms | start ms | end ms | program | source key | HLSL SHA-256");
+            string Timestamp(long? ticks) => ticks is { } value
+                ? Stopwatch.GetElapsedTime(started, value).TotalMilliseconds.ToString("F3", CultureInfo.InvariantCulture) : "-";
             foreach (var record in records.OrderByDescending(record => record.Milliseconds).Take(20))
-                table.AppendLine().Append(FormattableString.Invariant($"{record.Stage} | {(record.CacheHit ? "hit" : "miss")} | {record.HlslByteLength?.ToString(CultureInfo.InvariantCulture) ?? "-"} | {record.Milliseconds:F3} | {record.Program} | {record.SourceKey} | {record.HlslSha256 ?? "-"}"));
+                table.AppendLine().Append(FormattableString.Invariant($"{record.Stage} | {(record.CacheHit ? "hit" : "miss")} | {record.HlslByteLength?.ToString(CultureInfo.InvariantCulture) ?? "-"} | {record.Milliseconds:F3} | {Timestamp(record.StartedTimestamp)} | {Timestamp(record.EndedTimestamp)} | {record.Program} | {record.SourceKey} | {record.HlslSha256 ?? "-"}"));
             return table.ToString();
         }
         async Task<T> WithPhaseDiagnostics<T>(Task<T> call)
@@ -88,6 +91,7 @@ public sealed partial class NativeMapCaptureWireTests(ITestOutputHelper testOutp
                 {
                     // The first callback follows setup, SettleForCapture and the first view.Draw.
                     if (frame == 0) Stamp($"capture {current} setup/resources ready (first pre-render callback)");
+                    if (frame == 1) Stamp($"capture {current} first frame complete (second pre-render callback)");
                     Stamp($"capture {current} pre-render {frame++}");
                 });
                 Stamp($"capture {current} return (readback/disposal complete)");

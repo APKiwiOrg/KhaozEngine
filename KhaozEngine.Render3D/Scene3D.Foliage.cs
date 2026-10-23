@@ -149,6 +149,9 @@ public sealed partial class Scene3D
         }
         _foliageDraws.RemoveRange(kept, _foliageDraws.Count - kept);
         PrepareFoliageShadowDraws();
+        // A mixed retained/anchored batch must queue the anchored program before the first colour bind.
+        foreach (var draw in _foliageDraws)
+            if (draw.Batch.AnchorSet is not null) { _model.EnsurePreparedFoliagePipeline(); break; }
         long uploaded = 0;
         foreach (FoliageDraw draw in _foliageDraws) uploaded += draw.Batch.UploadPending(_gd, cl);
         foreach (FoliageDraw draw in _foliageShadowDraws) uploaded += draw.Batch.UploadPending(_gd, cl);

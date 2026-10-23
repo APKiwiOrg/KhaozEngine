@@ -228,6 +228,9 @@ namespace KhaozEngine.Render3D
             if (_pointShadows is not { } renderer || _pointShadowAtlas is null
                 || _packedPointSlots.Count == 0) return 0;
 
+            foreach (var source in _foliagePointSources)
+                if (source.Batch.AnchorSet is not null)
+                { renderer.PrepareFoliagePipeline(_model.PreparedAnchorLayout); break; }
             int draws = 0;
             IGpuBuffer? instances = _model.InstanceBuffer;
             PointShadowAtlas? activeAtlas = null;

@@ -595,7 +595,7 @@ namespace KhaozEngine.Tests.Gpu
         /// every draw.
         /// <para>
         /// STRUCTURAL RATHER THAN BEHAVIOURAL, and deliberately so. <c>D3D11GraphicsPipeline</c> takes an
-        /// <c>ID3D11Device</c> and builds four state objects in its constructor, so there is no way to make one
+        /// <c>ID3D11Device</c> and realizes state at first bind, so there is no way to make one
         /// off Windows and no way to read what it returns without a device. The behaviour on the far side of this
         /// relationship is already pinned device-free in <c>D3D11StateCacheTests</c> through a fake that
         /// implements the same interface, so what is left to check here is that the SHIPPED pipeline is the shape

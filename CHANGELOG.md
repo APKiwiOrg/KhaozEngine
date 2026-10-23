@@ -9,6 +9,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-10-23
 
+- Compile independent Direct3D 11 shader programs concurrently on bounded workers, joining at first use
+  without changing shader bytecode. Keep compile diagnostics internal (#1545).
 - Keep individual and merged HLOD colour, shadow and selected-outline coverage complementary throughout the
   distance band. Roof layers use the same split for visible and hidden geometry, while exit fades remain ordinary.
 - Preserve flat material colour seams when source meshes are flattened for HLOD, including small colour

@@ -731,9 +731,10 @@ each set's base for a file is the sum of the earlier sets' counts for that file.
 nothing. A device-free table test covers every layout the renderers declare, because a numbering error compiles,
 draws and renders every pixel wrong.
 
-**Pipelines build their blend, depth-stencil, rasterizer and input-layout objects at creation** and store them.
-The input layout needs the compiled vertex shader signature, which is in hand at exactly that moment. There is
-no state cache: the Direct3D 11 runtime already returns an existing object for an identical state description,
+**Pipeline creation stores a managed plan without joining shader compiles.** First bind realizes and retains
+the blend, depth-stencil, rasterizer and input-layout objects through the existing native creation gate.
+The shader join and signature reflection happen before entering that gate. Unbound pipeline disposal creates
+nothing, and a partial native creation failure releases the state already built. There is no state cache: the Direct3D 11 runtime already returns an existing object for an identical state description,
 so the incumbent's was dropped.
 
 **Disposal after device death is a no-op.** `DeviceLiveness` is a volatile token the device flips inside its
@@ -939,6 +940,20 @@ takes it from the module while the seam's `IGpuComputeShader.ThreadGroupSize*` h
 
 Owning the FXC call is what buys the three things below.
 
+**Independent programs compile concurrently.** Creating a graphics or compute shader queues its unchanged
+GLSL-to-DXBC build on a process-wide worker scheduler, bounded to `max(1, processor count - 1)`. The first
+bytecode, compute workgroup-size or pipeline bind joins that program. Creating graphics and compute pipelines
+never joins, so renderer construction and output-rebuild batches queue all their programs before first use.
+Native shaders are created on the consuming caller before pipeline state enters the native creation gate. Shader creation
+still rejects null sources immediately. Compiler failures rethrow their original type and message at the
+first-use join, without an `AggregateException` wrapper.
+
+Concurrent requests for the same program and cache directory share an active compile, including its cache
+writes. Completed flights are removed and subsequent requests use the existing disk cache. Disabling the
+cache also disables this sharing. Disposing a pending shader abandons only managed CPU work, whose failures
+are captured even if nobody joins it. No worker creates native objects, and first use after shader disposal
+or device loss refuses before native creation.
+
 **The cross-compile options are pinned, and the emitted HLSL is hashed.** `HlslCrossCompilePin` states the exact
 option set every HLSL emission in the engine runs under, with the citation from the Veldrid fork behind it, and a
 device-free test hashes the emitted HLSL of all 34 shipped graphics programs and 8 compute kernels against a
@@ -961,11 +976,16 @@ too. Every failure is a miss: a cache that cannot be read or written is a slower
 alone because any OTHER value is taken as a directory path verbatim, so a narrower vocabulary would quietly turn
 `KE_D3D11_SHADER_CACHE=0` into a cache directory named `0` beside whatever the process's working directory is.
 
-**Per-stage FXC timings are opt-in.** Create `D3D11ShaderCompileDiagnostics`, activate `diagnostics.Use()`
+**Per-stage FXC timings are opt-in internal diagnostics.** Engine tests create `D3D11ShaderCompileDiagnostics`,
+activate `diagnostics.Use()`
 around the actual compile, render or capture call, then read `GetRecords()`. The scope follows the current
 execution flow and its workers. Activate on the server when a transport does not carry execution context.
 Each FXC attempt records the existing source/cache key, original program label, stage, UTF-8 HLSL byte length,
-HLSL SHA-256 and wall-clock milliseconds. The HLSL hash can be matched against the shader corpus. Timings
+HLSL SHA-256, monotonic start/end timestamps and elapsed milliseconds. `GetSummary()` reports peak concurrent
+FXC attempts, their summed milliseconds and the elapsed span from first start to last completion (or the
+current timestamp while attempts remain active). Cache hits never increase concurrency. The wire capture
+fact prints these totals beside its phase table and prints start/end offsets for the slowest attempts.
+The HLSL hash can be matched against the shader corpus. Timings
 exclude GLSL/SPIR-V cross-compilation, diagnostic fingerprinting, cache I/O and native shader creation.
 DXBC hits record zero FXC time with unavailable HLSL length/hash, without recreating HLSL to fill diagnostics.
 Failed FXC attempts are recorded while their original exceptions propagate. With no active scope, calls return
@@ -1235,16 +1255,14 @@ its boundary W5.
   patch that the segment's next acquire applies. A caller who already holds the lock re-enters for free. See the
   ring section above.
 - **Resource creation is free-threaded, serialized behind a short creation lock when the driver reports
-  `DriverConcurrentCreates` false.** That is `D3D11CreationGate`, the second and last lock in the package, taken
+  `DriverConcurrentCreates` false.** That is `D3D11CreationGate`, the second native-device lock, taken
   around one native creation call and nothing longer. A driver that creates concurrently gets no lock at all, and
   an UNKNOWN answer (the threading probe did not run, or could not answer) serializes, because the probe degrades
-  to unknown on every failure and its silence is not a licence. Five factory members are ungated by design, in two
-  groups: the four that create no native object (framebuffer, resource layout, resource set, command list), and
-  `CreateFence`, which creates none either, because the device's one timeline object was created with the device
-  and a fence here is an engine-side target against it. `CreateComputePipeline` creates no native object either
-  and IS gated anyway, to keep the two pipeline members symmetric and because a pipeline is the member most
-  likely to grow a native call later.
-- **The two locks nest in one direction only.** The submit lock is OUTER, the creation gate is INNER, and the
+  to unknown on every failure and its silence is not a licence. Factory members that create no native object are ungated:
+  framebuffer, resource layout, resource set, command list, and fence (the timeline was created with the device).
+  Shader creation queues CPU compiles. Both pipeline creation methods return managed plans. Native shader and
+  graphics pipeline realization at first bind take this gate after joining their CPU work.
+- **The two native-device locks nest in one direction only.** The submit lock is OUTER, the creation gate is INNER, and the
   gate is a strict leaf: nothing is acquired while it is held. A creation path that one day needs the immediate
   context takes the submit lock BEFORE entering the gate, never inside it.
 - **Staging `Map` and `Unmap` take the lock for the duration of that one call and nothing longer.** Two calls

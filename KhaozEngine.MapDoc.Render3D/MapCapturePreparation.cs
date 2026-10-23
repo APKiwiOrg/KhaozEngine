@@ -51,12 +51,14 @@ public static class MapCapturePreparation
                 var b = request.Scope.DrawBounds; double x = b.MinX / 2 + b.MaxX / 2, z = b.MinZ / 2 + b.MaxZ / 2;
                 var support = request.Source.Acquire(MapCaptureDependencies.Scope(request.Scope, new(x - .001, b.MinY, z - .001, x + .001, b.MaxY, z + .001)));
                 if (support.Scene is null) { capacity = support.Capacity; return Result(support.Status, "FocusUnavailable"); }
+                using var supportOwner = support.Scene.PreparationOwnership;
                 echo = request with { Focus = MapCaptureFocus.Resolve(request, support.Scene) }; source = MapCaptureFocusSource.TopDownSupport;
             }
             int limit = request.Requirement == MapCaptureRequirement.Preview ? request.PreviewWindowLimit : 256;
             capped = dependencies.Status != MapSceneStatus.CompleteForScope || dependencies.RequiredScopes.Count > limit;
             var admission = new MapSceneAdmission(request.Source.Data.Limits);
             using var activation = admission.Enter();
+            using var preparation = admission.BeginPreparation();
             foreach (var scope in dependencies.RequiredScopes.Take(limit))
             {
                 var read = MapSceneAcquisition.Run(request.Source, scope, admission); witnesses.Add(read.Witness);
@@ -66,9 +68,10 @@ public static class MapCapturePreparation
                     if (request.Requirement == MapCaptureRequirement.CompleteScope) return Result(read.Status, "closure.unavailable");
                     capped = true; break;
                 }
+                read.Scene.PreparationOwnership?.Dispose();
                 acquired.Add(scope);
             }
-            readiness = readiness with { Pending = acquired.Count, CpuBytes = admission.RetainedBytes };
+            readiness = readiness with { Pending = acquired.Count };
             if (acquired.Count == 0) return Result(MapSceneStatus.Incomplete, capped ? "scope.capped" : "closure.unavailable");
             return capped ? Result(MapSceneStatus.Incomplete, "scope.capped") : Result(MapSceneStatus.CompleteForScope);
         }

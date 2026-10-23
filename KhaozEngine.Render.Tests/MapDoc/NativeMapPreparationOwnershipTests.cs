@@ -9,6 +9,34 @@ namespace KhaozEngine.Tests.MapDoc;
 public sealed class NativeMapPreparationOwnershipTests
 {
     [Fact]
+    public void SampleInvalidation_WaitsForTheLastHeldReader()
+    {
+        using var fixture = ResidencyFixture.Foliage();
+        var state = fixture.FoliageState(); var scheduler = new ResidencyScheduler();
+        using var residency = new MapRenderResidency(state, new ResidencyDevice(), null, scheduler);
+        ResidencyFixture.Complete(residency, scheduler);
+        var plan = residency.AcceptedPlans.Single(); var key = plan.Inventory.Foliage.GenerationKeys[0];
+        var cache = MapFoliageRenderCache.For(plan.FoliageContext);
+        var reader = cache.Acquire(key.LayerId, key.Chunk, new(), null, null, null);
+        long before = residency.Lifetime.CpuBytes, samples = cache.RetainedBytes;
+        long held = reader.Batch.Work.RetainedBytes;
+        cache.Invalidate(new(null, null, [], [], [], [], KhaozEngine.MapDoc.Editing.MapNativeInvalidation.Unbounded));
+        Assert.Equal(0, cache.Count);
+        Assert.Equal(before - samples + held, residency.Lifetime.CpuBytes);
+        reader.Dispose(); reader.Dispose();
+        Assert.Equal(before - samples, residency.Lifetime.CpuBytes);
+    }
+
+    [Fact]
+    public void CaptureAdmission_DoesNotPublishTemporaryScenesAsResidentCpu()
+    {
+        var result = MapCapturePreparation.Prepare(CaptureDependencyFixtures.Request());
+        Assert.True(result.Witness.Scene.CompleteForScope);
+        Assert.True(result.Readiness.Pending > 0);
+        Assert.Equal(0, result.Readiness.CpuBytes);
+    }
+
+    [Fact]
     public void SettledFoliageCpu_EqualsUniqueLiveReceiptInventory()
     {
         using var fixture = ResidencyFixture.Foliage();

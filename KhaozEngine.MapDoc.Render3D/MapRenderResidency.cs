@@ -198,8 +198,8 @@ public sealed partial class MapRenderResidency : IDisposable
                     var materials = MapRenderPlan.SelectedMaterials(scene, pending.State.Policy);
                     lock (_gate) Fence(pending);
                     token.ThrowIfCancellationRequested();
-                    var decode = new MapRenderDecodeAllowance(admission, _admission, _budgets);
-                    var loaded = AssetCache.Acquire(pending.State.Closure, selected, materials, pending.State.Extents, decode.Budget, token, pending.SourceCharge!.Encoded);
+                    var decode = new MapRenderDecodeAllowance(admission, _admission, _budgets, pending.State.DecodeLimits);
+                    var loaded = AssetCache.Acquire(pending.State.Closure, selected, materials, pending.State.Extents, decode.Budget, token, pending.SourceCharge!.Encoded, pending.State.AssetLimits);
                     if (loaded.Capacity is { } capacity) throw new MapSceneCapacityException(decode.Resolve(capacity));
                     if (loaded.Input is not { } input) throw new MapRenderAssetRefusal(loaded.Status, loaded.Detail ?? "Selected input refused.");
                     try

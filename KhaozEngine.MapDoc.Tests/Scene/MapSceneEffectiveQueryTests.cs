@@ -1,9 +1,12 @@
+using System;
 using System.Linq;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Spaces;
+using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.Primitives;
 using KhaozEngine.Tests.MapDoc.Prefabs;
 using Xunit;
 
@@ -11,6 +14,22 @@ namespace KhaozEngine.Tests.MapDoc.Scene;
 
 public sealed class MapSceneEffectiveQueryTests
 {
+    [Theory]
+    [InlineData(1, false)]
+    [InlineData(256, true)]
+    public void EffectivePaint_UsesDeclaredRefinementFaces(int faces, bool accepts)
+    {
+        var fixture = PrefabFixtures.Create("uneven-painted");
+        var queries = new MapQueryLimits { Refinement = new(MaxSourceFacesPerBound: faces) };
+        if (accepts)
+            Assert.NotEmpty(MapPrefabResolver.ExpandWithLimits(fixture.Document, fixture.Assets, queries).PaintRegions["ground"].Regions);
+        else
+        {
+            var error = Assert.Throws<MapDocumentException>(() => MapPrefabResolver.ExpandWithLimits(fixture.Document, fixture.Assets, queries));
+            Assert.Equal(new MapSceneCapacity("MaxSourceFacesPerBound", 8, faces), MapSceneCapacity.From(error));
+        }
+    }
+
     [Theory]
     [InlineData(32, false)]
     [InlineData(65536, true)]
@@ -26,18 +45,21 @@ public sealed class MapSceneEffectiveQueryTests
                 Enumerable.Range(0, 4096).ToArray(), new(MapBoundKind.SupportFloor, "ground", null), new(MapBoundKind.OpenTop, null, null)));
         }
         var queries = new MapQueryLimits(MaxCandidatePatches: 128, MaxPageReads: pages, MaxRecordReads: 128, MaxRecordDepth: 128);
+        using var document = MapDocumentSource.FromDocument(fixture.Document);
+        var capture = MapSceneSource.Capture(document, fixture.Assets);
+        Assert.True(capture.Source is not null, string.Join("\n", capture.Findings));
+        var scope = new MapSceneScope(new(WorldFrame.Origin, new(0, -8), new(8, 0), null, null,
+            Enum.GetValues<MapSurfaceRole>(), null, queries), new(0, -100, -8, 8, 1000, 0), MapSceneChannels.All);
+        var acquired = capture.Source.Acquire(scope);
         if (accepts)
         {
-            var product = MapEffectiveResolutionKernel.Resolve(MapEffectiveResolutionInput.FromDocument(fixture.Document),
-                fixture.Assets, MapDocumentSurfaceSource.Capture(fixture.Document), queryLimits: queries);
-            Assert.NotEmpty(product.PaintRegions["ground"].Regions);
+            Assert.True(acquired.Scene is not null, string.Join("\n", acquired.Findings));
+            Assert.NotEmpty(acquired.Scene.Product.PaintRegions["ground"].Regions);
         }
         else
         {
-            var error = Assert.Throws<MapDocumentException>(() => MapEffectiveResolutionKernel.Resolve(
-                MapEffectiveResolutionInput.FromDocument(fixture.Document), fixture.Assets,
-                MapDocumentSurfaceSource.Capture(fixture.Document), queryLimits: queries));
-            Assert.Equal(new MapSceneCapacity("MaxPageMetadataChecks", 32770, 32769), MapSceneCapacity.From(error));
+            Assert.Equal(MapSceneStatus.CapacityExceeded, acquired.Status);
+            Assert.Equal(new MapSceneCapacity("MaxPageMetadataChecks", 32770, 32769), acquired.Capacity);
         }
     }
 

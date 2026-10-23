@@ -162,7 +162,9 @@ public sealed class MapSpaceMembership
             if (_view.Status == MapAcquireStatus.NotRepresentable) return Failure(MapMembershipStatus.NotRepresentable, _view.Detail);
             if (_view.EffectiveContext is not null && _view.Status == MapAcquireStatus.Incomplete) return Failure(MapMembershipStatus.MissingGeometry, Unavailable());
             MapQueryLimits budgets = scope.Limits;
-            var limits = new MapRefinementLimits(MaxContextPatches: budgets.MaxCandidatePatches, MaxContextFaces: budgets.MaxInspectedFaces);
+            var limits = budgets.Refinement is { } declared ? declared with
+            { MaxContextPatches = Math.Min(declared.MaxContextPatches, budgets.MaxCandidatePatches), MaxContextFaces = Math.Min(declared.MaxContextFaces, budgets.MaxInspectedFaces) }
+                : new MapRefinementLimits(MaxContextPatches: budgets.MaxCandidatePatches, MaxContextFaces: budgets.MaxInspectedFaces);
             var bounds = supplied is null ? new MapSpacePointBounds(_view, limits, work) : new(supplied, limits);
             MapTopologyRecord[] records = _preparedRecords?.Invoke() ?? MapSpaceGeometry.Records(_view).OrderBy(r => r.Id, StringComparer.Ordinal).ToArray();
             var prisms = records.OfType<MapPrismDomain>().ToArray();

@@ -18,7 +18,10 @@ public sealed record MapPatchRead(MapPatchKey Key, MapPatchStatus Status, MapSur
 /// while exhausting their traversal or bookkeeping limit. MaxCandidatePatches still bounds patch output.
 /// </remarks>
 public sealed record MapQueryLimits(int MaxCandidatePatches = 256, int MaxInspectedFaces = 4096,
-    int MaxSupportIntersections = 64, int MaxPageReads = 32, int MaxRecordReads = 64, int MaxRecordDepth = 8);
+    int MaxSupportIntersections = 64, int MaxPageReads = 32, int MaxRecordReads = 64, int MaxRecordDepth = 8)
+{
+    public Spaces.MapRefinementLimits? Refinement { get; init; }
+}
 public sealed record MapCoveredRange(string SurfaceId, MapSlotRect Slots);
 public enum MapFindStatus { Complete, Incomplete, CapacityExceeded }
 /// <summary>Atomic acquisition. CapacityExceeded has no patches, known-empty ranges or unavailable results.</summary>

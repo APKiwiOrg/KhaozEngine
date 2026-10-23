@@ -388,7 +388,7 @@ internal sealed class MapEffectiveResolutionProduct
             foreach (string target in paintTargets)
             {
                 Scene.MapSceneAdmission.Current?.BeforePaintTarget(target);
-                paintRegions.Add(target, MapPartialPaintCompiler.Compile(view, target));
+                paintRegions.Add(target, MapPartialPaintCompiler.Compile(view, target, _queryLimits.Refinement));
             }
         }
         PaintRegions = new ReadOnlyDictionary<string, MapPaintRegionSet>(paintRegions);

@@ -83,6 +83,7 @@ internal sealed class MapFoliageInputKernel : IMapFoliageInputs
                 Limits = new(Math.Min(l.MaxCandidatePatches, cap.MaxCandidatePatches), Math.Min(l.MaxInspectedFaces, cap.MaxInspectedFaces),
                 Math.Min(l.MaxSupportIntersections, cap.MaxSupportIntersections), Math.Min(l.MaxPageReads, cap.MaxPageReads),
                 Math.Min(l.MaxRecordReads, cap.MaxRecordReads), Math.Min(l.MaxRecordDepth, cap.MaxRecordDepth))
+                { Refinement = l.Refinement is { } reads && cap.Refinement is { } maximum ? reads.Intersect(maximum) : l.Refinement ?? cap.Refinement }
             };
         }
         return _retainedSource is null ? Resources.Acquire(scope) : MapScopedSurfaces.Acquire(_retainedSource, scope, new[] { Resources.Digest },

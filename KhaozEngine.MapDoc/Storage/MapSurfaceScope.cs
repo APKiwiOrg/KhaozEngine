@@ -34,7 +34,9 @@ public sealed record MapSurfaceScope(WorldFrame Frame, Vector2 LocalMin, Vector2
             (minY is { } low && !float.IsFinite(low)) || (maxY is { } high && !float.IsFinite(high)) || minY > maxY ||
             roles is null || roles.Any(r => !Enum.IsDefined(r)) || spaces?.Any(string.IsNullOrWhiteSpace) == true || limits is null ||
             limits.MaxCandidatePatches < 0 || limits.MaxPageReads < 0 || limits.MaxInspectedFaces < 0 ||
-            limits.MaxSupportIntersections < 0 || limits.MaxRecordReads < 0 || limits.MaxRecordDepth < 0)
+            limits.MaxSupportIntersections < 0 || limits.MaxRecordReads < 0 || limits.MaxRecordDepth < 0 ||
+            (limits.Refinement is { } reads && (reads.MaxSourceFacesPerBound < 0 || reads.MaxPairChecks < 0 ||
+                reads.MaxRefinementFaces < 0 || reads.MaxRefinementVertices < 0 || reads.MaxContextPatches < 0 || reads.MaxContextFaces < 0)))
             throw new ArgumentException("invalid surface scope bounds or limits");
     }
     public string Digest
@@ -55,6 +57,9 @@ public sealed record MapSurfaceScope(WorldFrame Frame, Vector2 LocalMin, Vector2
                 else { w.WriteStartArray(); foreach (string id in SpaceIds.Distinct().OrderBy(s => s, StringComparer.Ordinal)) w.WriteStringValue(id); w.WriteEndArray(); }
                 foreach (int limit in new[] { Limits.MaxCandidatePatches, Limits.MaxInspectedFaces, Limits.MaxSupportIntersections,
                     Limits.MaxPageReads, Limits.MaxRecordReads, Limits.MaxRecordDepth }) w.WriteNumberValue(limit);
+                if (Limits.Refinement is { } refinement)
+                    foreach (int limit in new[] { refinement.MaxSourceFacesPerBound, refinement.MaxPairChecks, refinement.MaxRefinementFaces,
+                        refinement.MaxRefinementVertices, refinement.MaxContextPatches, refinement.MaxContextFaces }) w.WriteNumberValue(limit);
                 w.WriteEndArray();
             });
         }

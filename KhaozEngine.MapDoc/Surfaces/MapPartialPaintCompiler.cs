@@ -48,7 +48,7 @@ public static class MapPartialPaintCompiler
         var refs = paints.ToDictionary(s => s.Id, StringComparer.Ordinal);
         var present = view.Witness.Present.Select(p => p.Key).Order().ToArray();
         var paintKeys = present.Where(k => refs.ContainsKey(k.SurfaceId)).ToArray();
-        work.Require(paintKeys.Length <= limits.MaxContextPatches, "context patches");
+        work.Require(paintKeys.Length, limits.MaxContextPatches, nameof(MapRefinementLimits.MaxContextPatches), "context patches");
         var inputs = paintKeys.Select(key =>
         {
             var patch = Acquired(view, key);
@@ -58,8 +58,8 @@ public static class MapPartialPaintCompiler
                 Faces: MapSurfaceCompiler.CountFaces(adapter, patch, MapSlotCellMask.All));
         }).ToArray();
         long paintCount = inputs.Sum(p => p.Faces);
-        work.Require(paintCount <= limits.MaxSourceFacesPerBound, "source faces");
-        work.Require(paintCount <= limits.MaxContextFaces, "context faces");
+        work.Require(paintCount, limits.MaxSourceFacesPerBound, nameof(MapRefinementLimits.MaxSourceFacesPerBound), "source faces");
+        work.Require(paintCount, limits.MaxContextFaces, nameof(MapRefinementLimits.MaxContextFaces), "context faces");
         var source = inputs.Select(p => (p.Surface, Geometry: MapSurfaceCompiler.Compile(p.Adapter, p.Patch))).GroupBy(p => p.Surface)
             .SelectMany(group => PaintSources(view, group.Key, group.Select(p => p.Geometry), work))
             .OrderByDescending(p => p.Priority).ThenBy(p => p.Id, StringComparer.Ordinal).ThenBy(p => p.Material.Face).ToArray();
@@ -67,11 +67,11 @@ public static class MapPartialPaintCompiler
         // The cell filter refuses at the first hit target slot past the patch allowance, before marking it.
         var cells = TargetCells(view, target, sourceBounds, present.Where(k => k.SurfaceId == target.Id).ToArray(),
             limits.MaxContextPatches - paintKeys.Length);
-        work.Require(cells is not null && paintKeys.Length + cells.Count <= limits.MaxContextPatches, "context patches");
+        work.Require(cells is null ? (long)limits.MaxContextPatches + 1 : (long)paintKeys.Length + cells.Count, limits.MaxContextPatches, nameof(MapRefinementLimits.MaxContextPatches), "context patches");
         var targets = cells!.Select(entry => (Patch: Acquired(view, entry.Key), Cells: entry.Value)).ToArray();
         long targetCount = targets.Sum(p => MapSurfaceCompiler.CountFaces(target, p.Patch, p.Cells));
-        work.Require(targetCount <= limits.MaxSourceFacesPerBound, "source faces");
-        work.Require(targetCount + paintCount <= limits.MaxContextFaces, "context faces");
+        work.Require(targetCount, limits.MaxSourceFacesPerBound, nameof(MapRefinementLimits.MaxSourceFacesPerBound), "source faces");
+        work.Require(targetCount + paintCount, limits.MaxContextFaces, nameof(MapRefinementLimits.MaxContextFaces), "context faces");
         var faces = targets.SelectMany(p =>
         {
             var geometry = MapEffectiveGeometry.TransformPatch(view, MapSurfaceCompiler.Compile(target, p.Patch, p.Cells, MapSurfaceCompiler.MaxFacesPerPatch));
@@ -79,7 +79,7 @@ public static class MapPartialPaintCompiler
         }).Select(f => (f.Face, f.Triangle, Parent: Polygon(f.Triangle))).ToArray();
         // Every candidate is charged below, so more candidates than the remaining allowance refuse before listing them.
         var pairs = MapWaterBoundsSweep.Cross(faces.Select(f => MapWaterPolygons.Bounds.Of(f.Parent)).ToArray(), sourceBounds, work.RemainingPairs);
-        work.Require(pairs is not null, "pair checks");
+        work.Require(pairs is null ? (long)limits.MaxPairChecks + 1 : 0, limits.MaxPairChecks, nameof(MapRefinementLimits.MaxPairChecks), "pair checks");
         var regions = new List<MapPaintRegion>();
         for (int next = 0; next < pairs!.Count;)
         {
@@ -353,25 +353,33 @@ public static class MapPartialPaintCompiler
     sealed class Work(MapRefinementLimits limits)
     {
         long _pairs, _regions, _vertices, _sources, _sourceVertices;
-        internal void Require(bool condition, string detail)
-        { if (!condition) throw new MapDocumentException("CapacityExceeded: paint " + detail + " budget exceeded."); }
-        internal void Pair() => Require(++_pairs <= limits.MaxPairChecks, "pair checks");
+        internal void Require(long requested, long allowance, string name, string detail)
+        {
+            if (requested <= allowance) return;
+            var capacity = new Scene.MapSceneCapacity(name, requested, allowance);
+            throw new MapDocumentException("CapacityExceeded: paint " + detail + " budget exceeded. " + capacity.Message,
+                new Scene.MapSceneCapacityException(capacity));
+        }
+        internal void Pair() => Require(++_pairs, limits.MaxPairChecks, nameof(MapRefinementLimits.MaxPairChecks), "pair checks");
         internal long RemainingPairs => Math.Max(0, limits.MaxPairChecks - _pairs);
         internal void Source(int vertices)
         {
             _sourceVertices += vertices;
-            Require(++_sources <= limits.MaxRefinementFaces && _sourceVertices <= limits.MaxRefinementVertices, "source regions");
+            Require(++_sources, limits.MaxRefinementFaces, nameof(MapRefinementLimits.MaxRefinementFaces), "source regions");
+            Require(_sourceVertices, limits.MaxRefinementVertices, nameof(MapRefinementLimits.MaxRefinementVertices), "source regions");
         }
         internal void Polygons(IEnumerable<IReadOnlyList<MapWideXz>> polygons)
         {
             long count = 0, vertices = 0;
             foreach (var p in polygons) { count++; vertices += p.Count; }
-            Require(count <= limits.MaxRefinementFaces && vertices <= limits.MaxRefinementVertices, "intermediate regions");
+            Require(count, limits.MaxRefinementFaces, nameof(MapRefinementLimits.MaxRefinementFaces), "intermediate regions");
+            Require(vertices, limits.MaxRefinementVertices, nameof(MapRefinementLimits.MaxRefinementVertices), "intermediate regions");
         }
         internal void Emit(int vertices)
         {
             _vertices += vertices;
-            Require(++_regions <= limits.MaxRefinementFaces && _vertices <= limits.MaxRefinementVertices, "output regions");
+            Require(++_regions, limits.MaxRefinementFaces, nameof(MapRefinementLimits.MaxRefinementFaces), "output regions");
+            Require(_vertices, limits.MaxRefinementVertices, nameof(MapRefinementLimits.MaxRefinementVertices), "output regions");
         }
     }
 }

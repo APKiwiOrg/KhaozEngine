@@ -104,7 +104,7 @@ public static class MapWaterScopedCompiler
                             MapWaterCompileStatus.NotRepresentable => MapSceneStatus.NotRepresentable,
                             MapWaterCompileStatus.Invalid => MapSceneStatus.Invalid,
                             _ => MapSceneStatus.Incomplete,
-                        }, compiled.Detail ?? "Water cell compilation refused.");
+                        }, compiled.Capacity?.Message ?? compiled.Detail ?? "Water cell compilation refused.", compiled.Capacity);
                     foreach (var group in compiled.Regions.GroupBy(r => (r.SpaceId, Fragment: r.Fragment?.Id ?? ""))
                         .OrderBy(g => g.Key.SpaceId, StringComparer.Ordinal).ThenBy(g => g.Key.Fragment, StringComparer.Ordinal))
                     {
@@ -133,7 +133,7 @@ public static class MapWaterScopedCompiler
             return Result(MapSceneStatus.CompleteForScope, output);
         }
         catch (Exception error) when (error is MapSceneCapacityException or MapWaterCapacityException)
-        { return Refuse(MapSceneStatus.CapacityExceeded, error.Message, MapSceneCapacity.From(error)); }
+        { return Refuse(MapSceneStatus.CapacityExceeded, MapSceneCapacity.From(error)?.Message ?? error.Message, MapSceneCapacity.From(error)); }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         { return Refuse(MapSceneStatus.NotRepresentable, "Water cell coordinates are not representable."); }
         catch (MapDocumentException error) { return Refuse(MapSceneStatus.Invalid, error.Message); }

@@ -72,9 +72,10 @@ public static class MapWaterCompiler
         internal MapCompiledWaterBody Run(ref MapWaterConnectivity? graph)
         {
             MapWaterCompileStatus status;
+            Scene.MapSceneCapacity? capacity = null;
             string? detail;
             try { (status, detail) = Compile(ref graph); }
-            catch (MapWaterCapacityException limit) { (status, detail) = (MapWaterCompileStatus.CapacityExceeded, limit.Message); }
+            catch (MapWaterCapacityException limit) { (status, detail) = (MapWaterCompileStatus.CapacityExceeded, limit.Message); capacity = limit.Capacity; }
             catch (Exception error) when (error is MapExactOverflowException or OverflowException)
             {
                 (status, detail) = (MapWaterCompileStatus.NotRepresentable, $"{_label}: not representable");
@@ -108,6 +109,7 @@ public static class MapWaterCompiler
             return new MapCompiledWaterBody(body.Id, Level, medium, body.RenderMaterial, _regions, deepest, bounds, status, detail,
                 _meter.Work, digest)
             {
+                Capacity = capacity,
                 Domain = _domain,
                 Footprints = _footprints.ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal),
                 ClosedContours = _closedContours,

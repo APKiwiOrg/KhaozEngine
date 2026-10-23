@@ -25,8 +25,19 @@ public static class MapPrefabResolver
     public static MapEffectiveResources Expand(MapDocument document, MapAssetClosure assets, MapPrefabExpansionLimits? limits = null) =>
         Expand(document, assets, limits ?? new(), null);
 
+    /// <summary>Expands a complete document with explicit surface and bound-read allowances.</summary>
+    public static MapEffectiveResources ExpandWithLimits(MapDocument document, MapAssetClosure assets, MapQueryLimits queryLimits,
+        MapPrefabExpansionLimits? limits = null)
+    {
+        ArgumentNullException.ThrowIfNull(queryLimits);
+        return Expand(document, assets, limits ?? new(), null, null, queryLimits);
+    }
+
     internal static MapEffectiveResources Expand(MapDocument document, MapAssetClosure assets, MapPrefabExpansionLimits limits,
-        MapPrefabExpansionObserver? observer, IMapSurfaceSource? nativeSource = null)
+        MapPrefabExpansionObserver? observer, IMapSurfaceSource? nativeSource = null) => Expand(document, assets, limits, observer, nativeSource, null);
+
+    internal static MapEffectiveResources Expand(MapDocument document, MapAssetClosure assets, MapPrefabExpansionLimits limits,
+        MapPrefabExpansionObserver? observer, IMapSurfaceSource? nativeSource, MapQueryLimits? queryLimits)
     {
         t_expansions++;
         _ = MapPrefabPreflight.Count(document, assets, limits);
@@ -38,7 +49,7 @@ public static class MapPrefabResolver
         if (numericErrors.Count != 0) throw new MapDocumentException(string.Join("\n", numericErrors));
         // Expansion never reads foliage, so the authored copy shares it rather than encoding the density payload.
         var authored = MapDocumentSnapshot.Copy(document, MapDocRegistry.CreateDefault());
-        var product = MapEffectiveResolutionKernel.Resolve(MapEffectiveResolutionInput.FromDocument(authored, MapSurfaceSemantics.RootDigest(authored)), assets, nativeSource, observer);
+        var product = MapEffectiveResolutionKernel.Resolve(MapEffectiveResolutionInput.FromDocument(authored, MapSurfaceSemantics.RootDigest(authored)), assets, nativeSource, observer, queryLimits);
         var resources = new MapEffectiveResources(product)
         {
             ClosureHash = assets.Hash,

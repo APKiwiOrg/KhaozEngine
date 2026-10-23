@@ -23,12 +23,12 @@ namespace KhaozEngine.Tests.MapDoc;
 
 internal static partial class NativeRenderAssetFixtures
 {
-    internal static MapAssetClosure Presentation()
+    internal static MapAssetClosure Presentation(IReadOnlyDictionary<string, byte[]>? replacements = null)
     {
         var source = new Source(); var resources = new JsonArray(); var assets = new JsonArray();
         void Resource(string id, string kind, byte[] bytes)
         {
-            var r = source.Add(id, bytes);
+            var r = source.Add(id, replacements is not null && replacements.TryGetValue(id, out var replacement) ? replacement : bytes);
             resources.Add(new JsonObject
             {
                 ["reference"] = new JsonObject

@@ -65,7 +65,8 @@ internal sealed record FrameDiagnosticsSummary(double FramesPerSecond, double Me
 
     static bool Valid(FrameDiagnosticsWindowState value, FrameDiagnosticsWindowState baseline) =>
         value.Focused && !value.Minimized && !value.RenderSuppressed && value.Width > 0 && value.Height > 0
-        && value.Width == baseline.Width && value.Height == baseline.Height;
+        && value.Width == baseline.Width && value.Height == baseline.Height
+        && value.RendererInitializesSwapchain == baseline.RendererInitializesSwapchain;
 
     static bool Capped(FrameDiagnosticsWindowState value) => value.EffectiveBaseCapHz > 0 || value.Vsync;
 }

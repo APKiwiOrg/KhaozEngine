@@ -20,6 +20,7 @@ public sealed partial class MapPlacementRenderBatch : IDisposable
     readonly PropLayer[] _ordinary, _roofs;
     readonly Dictionary<(string Owner, int Index, int Generation), int> _partIndices;
     readonly int[] _clusterParts;
+    readonly Dictionary<string, int> _roofOutlineParts = new(StringComparer.Ordinal);
     readonly MapRoofCohort?[] _roofCohorts;
     readonly IReadOnlyList<MapPlacementPart> _parts;
     MapPreparedInputLease? _input;
@@ -41,7 +42,11 @@ public sealed partial class MapPlacementRenderBatch : IDisposable
         _parts = Array.AsReadOnly(parts.ToArray()); Routing = routing;
         Clusters = Array.AsReadOnly(clusters.ToArray()); PreparationChargeBytes = charge;
         _partIndices = new();
-        for (int i = 0; i < _parts.Count; i++) _partIndices.Add((_parts[i].Key.OwnerId, _parts[i].Handle.Index, _parts[i].Handle.Generation), i);
+        for (int i = 0; i < _parts.Count; i++)
+        {
+            _partIndices.Add((_parts[i].Key.OwnerId, _parts[i].Handle.Index, _parts[i].Handle.Generation), i);
+            if (_parts[i].Key.PartId == "outline-hlod") _roofOutlineParts.Add(_parts[i].Key.OwnerId, i);
+        }
         _clusterParts = new int[Clusters.Count];
         _roofCohorts = new MapRoofCohort?[Clusters.Count];
         for (int i = 0; i < Clusters.Count; i++)

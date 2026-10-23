@@ -10,7 +10,7 @@ namespace KhaozEngine.MapDoc.Render3D;
 public sealed partial class MapPlacementRenderBatch
 {
     /// <summary>Records effective colour geometry for one clustered roof into an optional outline consumer.
-    /// Proxy outlines reuse only that roof's retained HLOD-source parts, never its neighbours' merged mesh.</summary>
+    /// Proxy outlines reuse only that roof's cached flattened HLOD source, never its neighbours' merged mesh.</summary>
     public void RecordRoofOutline<TSink>(string roofId, MapFrameState frame, TSink sink) where TSink : IMapDrawSink =>
         RecordRoofOutline(roofId, frame, sink, null, null);
 
@@ -37,10 +37,9 @@ public sealed partial class MapPlacementRenderBatch
             if (decision.DrawsMergedColour)
             {
                 var instance = request.Instances[member];
-                var source = request.BorrowLayer.NativeLods![instance.AssetId][^1];
-                foreach (var part in source.Parts)
-                    WriteOutline(emission, instance, new(part, instance.LocalTransform)
-                    { Dissolve = decision.State.MergedDissolve, DissolveComplement = decision.State.MergedComplement ? 1 : 0 });
+                var source = _parts[_roofOutlineParts[roofId]];
+                WriteOutline(emission, instance, new(source.Handle, instance.LocalTransform)
+                { Dissolve = decision.State.MergedDissolve, DissolveComplement = decision.State.MergedComplement ? 1 : 0 });
             }
         }
     }

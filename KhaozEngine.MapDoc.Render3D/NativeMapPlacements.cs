@@ -124,6 +124,19 @@ public static class NativeMapPlacements
                         admission.ReserveBytes(checked(8 * source.BorrowParts.Sum(p => Bytes(p.Mesh, p.Maps))));
                         sources.Add(id, Flatten(source.BorrowParts));
                     }
+                    if (cell.Key.Cohort == 1)
+                        foreach (var member in members)
+                        {
+                            var source = sources[member.AssetId];
+                            admission.ReserveBytes(checked(512L + 4 * Bytes(source, default)));
+                            var outlineKey = new MapRenderKey(MapRenderKind.Roof, member.Id, "outline-hlod", 0);
+                            string digest = MapPlacementDigest.Hash(w =>
+                            {
+                                w.WriteStartArray(); w.WriteStringValue("kemap/roof-outline-source/1");
+                                w.WriteStringValue(assets.Closure.Hash); w.WriteStringValue(member.AssetId); w.WriteEndArray();
+                            });
+                            parts.Add(new(outlineKey, new(nextHandle++), Anchor(posesById[member.Id]), boundsById[member.Id], new MapRigidResource(source, default), digest));
+                        }
                     long mergeBytes = members.Sum(i => Bytes(sources[i.AssetId], default));
                     admission.ReserveBytes(checked(8 * mergeBytes));
                     var shared = Shared(members, layer).WithHlod(sources, layer.HlodDistance, layer.HlodWeldCell, layer.HlodCrossfadeWidth);

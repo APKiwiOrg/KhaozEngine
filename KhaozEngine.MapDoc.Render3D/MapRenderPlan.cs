@@ -47,7 +47,7 @@ public sealed class MapRenderPlan : IDisposable
     // Nested roof preparation can share this allowance before any retained allocation.
     internal static MapRenderPlan Prepare(MapSceneSource source, MapScopedScene scene, MapPreparedInputLease input,
         MapRenderPolicy policy, long generation, MapSceneAdmission admission, MapWindowFoliageContext? captured,
-        MapRenderContextLease? contextOwner = null, Action<long>? retainSamples = null, MapPlacementCellInventory? cells = null)
+        MapRenderContextLease? contextOwner = null, Func<long, IDisposable>? retainSamples = null, MapPlacementCellInventory? cells = null)
     {
         ArgumentNullException.ThrowIfNull(input); ArgumentNullException.ThrowIfNull(policy);
         if (!ReferenceEquals(source, scene.Source) || !scene.Witness.CompleteForScope || input.ClosureHash != source.ClosureHash ||
@@ -130,5 +130,5 @@ public sealed class MapRenderPlan : IDisposable
         foreach (var light in _lights) sink.Write(light with { LocalFocus = MapRenderTransform.FocusLocal(frame.Focus, light.Anchor) });
     }
     public void Dispose()
-    { if (_disposed) return; _disposed = true; Inventory.Foliage.Dispose(); Inventory.Placements.Dispose(); Inventory.Terrain.Dispose(); Input.Dispose(); _contextOwner?.Dispose(); Inventory.Water.Dispose(); PreparationOwnership?.Dispose(); Scene.PreparationOwnership?.Dispose(); }
+    { if (_disposed) return; _disposed = true; Inventory.Foliage.Dispose(); Inventory.Placements.Dispose(); Inventory.Terrain.Dispose(); Input.Dispose(); _contextOwner?.Dispose(); if (_contextOwner is null) MapFoliageRenderCache.For(FoliageContext).Clear(); Inventory.Water.Dispose(); PreparationOwnership?.Dispose(); Scene.PreparationOwnership?.Dispose(); }
 }

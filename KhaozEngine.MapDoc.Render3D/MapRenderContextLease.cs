@@ -12,6 +12,7 @@ internal sealed class MapRenderContextLease : IDisposable
     {
         internal readonly object Gate = new();
         internal readonly List<MapRenderAdmission.CpuLease> Charges = [capture];
+        internal MapRenderAdmission.CpuLease Capture => capture;
         internal MapWindowFoliageContext Context => context;
         internal int Owners = 1;
     }
@@ -30,12 +31,25 @@ internal sealed class MapRenderContextLease : IDisposable
             return new(_shared);
         }
     }
-    internal void Own(MapRenderAdmission.CpuLease charge)
+    internal IDisposable Own(MapRenderAdmission.CpuLease charge)
     {
         lock (_shared.Gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             _shared.Charges.Add(charge);
+            return new SampleCharge(_shared, charge);
+        }
+    }
+    sealed class SampleCharge(Shared shared, MapRenderAdmission.CpuLease charge) : IDisposable
+    {
+        bool _disposed;
+        public void Dispose()
+        {
+            lock (shared.Gate)
+            {
+                if (_disposed) return; _disposed = true;
+                shared.Charges.Remove(charge); charge.Dispose();
+            }
         }
     }
     public void Dispose()
@@ -44,8 +58,9 @@ internal sealed class MapRenderContextLease : IDisposable
         {
             if (_disposed) return; _disposed = true;
             if (--_shared.Owners != 0) return;
-            foreach (var charge in _shared.Charges) charge.Dispose();
-            _shared.Charges.Clear();
+            _shared.Charges.Remove(_shared.Capture);
         }
+        MapFoliageRenderCache.For(_shared.Context).Clear();
+        _shared.Capture.Dispose(); _shared.Context.PreparationOwnership?.Dispose();
     }
 }

@@ -159,7 +159,6 @@ public sealed partial class MapRenderResidency : IDisposable
     MapRenderPlan[] Build(Pending pending, long bytes, MapRenderAdmission.CpuLease charge, CancellationToken token)
     {
         var plans = new List<MapRenderPlan>();
-        long transferred = 0;
         var source = pending.State.Source;
         var admission = new MapSceneAdmission(source.Data.Limits with { MaxPreparedBytes = Math.Min(bytes, source.Data.Limits.MaxPreparedBytes) },
             preparationLimitName: bytes < source.Data.Limits.MaxPreparedBytes && bytes == _budgets.MaxQueuedBytes ? nameof(MapRenderBudgets.MaxQueuedBytes) : nameof(MapSceneLimits.MaxPreparedBytes));
@@ -177,18 +176,18 @@ public sealed partial class MapRenderResidency : IDisposable
                         p.Key.ClosureHash == source.ClosureHash && p.Key.ScopeDigest == scope.Digest && p.Input.ProofDigest == pending.State.Extents.Digest)?.RetainContext();
                 }
                 long reused = contextOwner?.CpuBytes ?? 0;
-                long beforeScope = admission.RetainedBytes;
                 try
                 {
                     using var window = admission.LimitPreparation(_budgets.MaxPlanBytes - reused, nameof(MapRenderBudgets.MaxPlanBytes), reused);
+                    using var attempt = admission.BeginPreparation();
                     var result = MapSceneAcquisition.Run(source, scope, admission);
                     if (result.Scene is not { } scene) throw new MapSceneSourceException(result.Status, string.Join("\n", result.Findings), result.Capacity);
                     if (contextOwner is null)
                     {
-                        long beforeCapture = admission.RetainedBytes;
                         var captured = MapRenderPlan.CaptureFoliage(source, scope);
-                        long retained = admission.RetainedBytes - beforeCapture;
-                        contextOwner = new(captured, charge.Split(retained)); transferred += retained;
+                        var receipt = captured.PreparationOwnership ?? throw new InvalidOperationException("Captured context has no ownership receipt.");
+                        attempt.Publish(receipt);
+                        contextOwner = new(captured, charge.Split(receipt.Bytes));
                     }
                     var context = contextOwner.Context;
                     var routing = MapPlacementRouting.Create(scene, pending.State.Policy.Placements, pending.State.Policy.AnimatedAssets).Routing
@@ -205,18 +204,17 @@ public sealed partial class MapRenderResidency : IDisposable
                     try
                     {
                         token.ThrowIfCancellationRequested();
-                        window.ChargeExternal(input.RetainedBytes);
                         var plan = MapRenderPlan.Prepare(source, scene, input, pending.State.Policy, pending.Epoch, admission, context, contextOwner,
-                            retained => { contextOwner!.Own(charge.Split(retained)); transferred += retained; }, cells);
+                            retained => contextOwner!.Own(charge.Split(retained)), cells);
+                        attempt.Publish(scene.PreparationOwnership!); attempt.Publish(plan.PreparationOwnership!);
                         plans.Add(plan); contextOwner = null;
-                        if (admission.RetainedBytes - beforeScope + input.RetainedBytes + reused > _budgets.MaxPlanBytes)
-                            throw new MapSceneCapacityException(nameof(MapRenderBudgets.MaxPlanBytes), checked(admission.RetainedBytes - beforeScope + input.RetainedBytes + reused), _budgets.MaxPlanBytes);
                     }
                     catch { if (!plans.Any(p => ReferenceEquals(p.Input, input))) input.Dispose(); throw; }
                 }
                 finally { contextOwner?.Dispose(); }
             }
-            token.ThrowIfCancellationRequested(); charge.ReduceTo(admission.RetainedBytes - transferred);
+            token.ThrowIfCancellationRequested();
+            charge.ReduceTo(plans.Sum(p => checked(p.PreparationOwnership!.Bytes + p.Scene.PreparationOwnership!.Bytes)));
             return plans.ToArray();
         }
         catch { foreach (var plan in plans) plan.Dispose(); throw; }

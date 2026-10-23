@@ -19,7 +19,7 @@ public static class NativeMapFoliage
         MapPreparedInputLease input, NativeFoliagePolicy policy, MapPlacementRouting routing) =>
         Prepare(scene, context, input, policy, routing, null);
     internal static MapNativeFoliageBatch Prepare(MapScopedScene scene, MapWindowFoliageContext context,
-        MapPreparedInputLease input, NativeFoliagePolicy policy, MapPlacementRouting routing, Action<long>? retainSamples)
+        MapPreparedInputLease input, NativeFoliagePolicy policy, MapPlacementRouting routing, Func<long, IDisposable>? retainSamples)
     {
         ArgumentNullException.ThrowIfNull(input);
         var retained = input.Retain();
@@ -35,7 +35,7 @@ public static class NativeMapFoliage
         MapRenderAssets assets, NativeFoliagePolicy policy, MapPlacementRouting routing) =>
         Prepare(scene, context, assets, policy, routing, null);
     static MapNativeFoliageBatch Prepare(MapScopedScene scene, MapWindowFoliageContext context,
-        MapRenderAssets assets, NativeFoliagePolicy policy, MapPlacementRouting routing, Action<long>? retainSamples)
+        MapRenderAssets assets, NativeFoliagePolicy policy, MapPlacementRouting routing, Func<long, IDisposable>? retainSamples)
     {
         ArgumentNullException.ThrowIfNull(scene); ArgumentNullException.ThrowIfNull(context);
         var witness = context.Witness;
@@ -50,6 +50,7 @@ public static class NativeMapFoliage
         var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(scene.Source.Data.Limits);
         using var activation = admission.Enter();
         var samples = new List<MapFoliageSampleBatch>();
+        using var readers = new MapFoliageRenderCache.Readers();
         var cache = MapFoliageRenderCache.For(context);
         var ceilings = scene.Source.Data.Limits;
         var declared = ceilings.Preparation?.Foliage;
@@ -74,7 +75,7 @@ public static class NativeMapFoliage
                     MaxQueryRetainedBytes = Math.Min(declared?.MaxQueryRetainedBytes ?? long.MaxValue, available / 8),
                     ChargePreparation = bytes => MapFoliageGenerationAdmission.Charge(admission, bytes),
                 };
-                var batch = cache.Get(layer.Id, key, limits, admission, retainSamples, requested.MaxQueryRetainedBytes);
+                var batch = readers.Add(cache.Acquire(layer.Id, key, limits, admission, retainSamples, requested.MaxQueryRetainedBytes));
                 count += batch.Samples.Count;
                 if (count > sampleLimit) throw new MapSceneCapacityException(nameof(MapFoliageLimits.MaxQuerySamples), count, sampleLimit);
                 samples.Add(batch);

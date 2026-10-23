@@ -76,7 +76,8 @@ namespace KhaozEngine.Render3D.Rendering
             if (_motion is { } motion && MotionMath.IsTemporal(modelOutputs))
             {
                 // The temporal variant: the ground's two sets, then the motion block at set 2.
-                _tileGroundPipeline = OpaqueMotionPipeline(factory, modelOutputs, motion.TileGroundShaders,
+                _tileGroundPipeline = OpaqueMotionPipeline(factory, modelOutputs, _visibilityShaders.TrySelect(factory, modelOutputs, ShaderSources.TileGroundMotionVert, ShaderSources.TileGroundMotionFrag, preserve: false, out IGpuShaderSet motionVisibilityShaders)
+                    ? motionVisibilityShaders : motion.TileGroundShaders,
                     new[] { _tileGroundFrameLayout, _tileGroundMaterialLayout, motion.FrameLayout },
                     new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout });
                 return;
@@ -89,7 +90,8 @@ namespace KhaozEngine.Render3D.Rendering
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _tileGroundFrameLayout, _tileGroundMaterialLayout },
-                ShaderSet = _tileGroundShaders,
+                ShaderSet = _visibilityShaders.TrySelect(factory, modelOutputs, ShaderSources.TileGroundVert, ShaderSources.TileGroundFrag, preserve: false, out IGpuShaderSet visibilityShaders)
+                    ? visibilityShaders : _tileGroundShaders,
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout },
                 Outputs = modelOutputs,
             });

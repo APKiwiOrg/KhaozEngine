@@ -82,6 +82,26 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         public void Dispose() => _disposed = true;
 
         /// <summary>
+        /// Refuse this fence unless it is live and was created by <paramref name="owner"/>, the subsystem of the
+        /// device it is being polled for. A fence of another Direct3D 11 device compares against THAT device's
+        /// counter, so it would read signalled for work this device never ran, and a disposed fence is a caller's
+        /// lifetime error rather than a completion.
+        /// </summary>
+        /// <param name="owner">The polling device's fence subsystem.</param>
+        /// <param name="parameterName">The calling entry point's own parameter name, for the exception.</param>
+        internal void RequireOwner(D3D11FenceSubsystem owner, string parameterName = "completion")
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+
+            if (ReferenceEquals(_owner, owner)) return;
+
+            throw new ArgumentException(
+                "That fence was created by a DIFFERENT native Direct3D 11 device, so it names a value on another "
+                + "device's timeline and would read signalled for work this device never ran. Use a fence from the "
+                + "device that submitted the copy.", parameterName);
+        }
+
+        /// <summary>
         /// Bind this fence to <paramref name="target"/>, the value the submission it was handed to signalled.
         /// Called by <see cref="D3D11FenceSubsystem"/> at the end of that submission's replay and by nothing
         /// else.

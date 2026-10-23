@@ -1,0 +1,406 @@
+{
+  "source_commit": "a1d7a9e4e1786305eceb43fdea261a927875e5d8",
+  "configuration": "Release",
+  "environment": {
+    "KE_GPU_TESTS": "1",
+    "KE_GRAPHICS_BACKEND": "metal-native"
+  },
+  "filter": "Category!=LiveSocket&Category!=Benchmark&FullyQualifiedName!~Perf&FullyQualifiedName!~Bench",
+  "pointer_allocation_isolated": true,
+  "initial_full_suite": {
+    "exit": 1,
+    "passed": 39716,
+    "failed": 16,
+    "skipped": 400,
+    "total": 40132
+  },
+  "initial_failure_groups": {
+    "TemporalVisibilityResolveAbGpuTests": 12,
+    "TemporalEntryIdentityGpuTests": 2,
+    "VulkanLayoutCompatibilityTests": 1,
+    "VulkanDynamicOffsetTests": 1
+  },
+  "frozen_d_regression_red": {
+    "exit": 1,
+    "passed": 0,
+    "failed": 10,
+    "skipped": 0
+  },
+  "focused_repair_green": {
+    "exit": 0,
+    "passed": 102,
+    "failed": 0,
+    "skipped": 0
+  },
+  "replacement_render_suite": {
+    "exit": 0,
+    "passed": 12520,
+    "failed": 0,
+    "skipped": 2,
+    "total": 12522
+  },
+  "final_suite_counts": {
+    "passed": 39742,
+    "failed": 0,
+    "skipped": 400,
+    "total": 40142
+  },
+  "projects": [
+    {
+      "project": "KhaozEngine.Attachments.Tests/KhaozEngine.Attachments.Tests.csproj",
+      "invocation": "KhaozEngine.Attachments.Tests",
+      "exit": 0,
+      "passed": 261,
+      "failed": 0,
+      "skipped": 0,
+      "total": 261
+    },
+    {
+      "project": "KhaozEngine.BugReports.Client.Tests/KhaozEngine.BugReports.Client.Tests.csproj",
+      "invocation": "KhaozEngine.BugReports.Client.Tests",
+      "exit": 0,
+      "passed": 203,
+      "failed": 0,
+      "skipped": 0,
+      "total": 203
+    },
+    {
+      "project": "KhaozEngine.BugReports.Relay.Azure.Tests/KhaozEngine.BugReports.Relay.Azure.Tests.csproj",
+      "invocation": "KhaozEngine.BugReports.Relay.Azure.Tests",
+      "exit": 0,
+      "passed": 112,
+      "failed": 0,
+      "skipped": 21,
+      "total": 133
+    },
+    {
+      "project": "KhaozEngine.BugReports.Relay.Tests/KhaozEngine.BugReports.Relay.Tests.csproj",
+      "invocation": "KhaozEngine.BugReports.Relay.Tests",
+      "exit": 0,
+      "passed": 623,
+      "failed": 0,
+      "skipped": 0,
+      "total": 623
+    },
+    {
+      "project": "KhaozEngine.BugReports.Tests/KhaozEngine.BugReports.Tests.csproj",
+      "invocation": "KhaozEngine.BugReports.Tests",
+      "exit": 0,
+      "passed": 442,
+      "failed": 0,
+      "skipped": 0,
+      "total": 442
+    },
+    {
+      "project": "KhaozEngine.CodeHealth.Analyzers.Tests/KhaozEngine.CodeHealth.Analyzers.Tests.csproj",
+      "invocation": "KhaozEngine.CodeHealth.Analyzers.Tests",
+      "exit": 0,
+      "passed": 51,
+      "failed": 0,
+      "skipped": 0,
+      "total": 51
+    },
+    {
+      "project": "KhaozEngine.Localization.Analyzers.Tests/KhaozEngine.Localization.Analyzers.Tests.csproj",
+      "invocation": "KhaozEngine.Localization.Analyzers.Tests",
+      "exit": 0,
+      "passed": 46,
+      "failed": 0,
+      "skipped": 0,
+      "total": 46
+    },
+    {
+      "project": "KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj",
+      "invocation": "KhaozEngine.Movement.Tests",
+      "exit": 0,
+      "passed": 1463,
+      "failed": 0,
+      "skipped": 3,
+      "total": 1466
+    },
+    {
+      "project": "KhaozEngine.MapDoc.Tests/KhaozEngine.MapDoc.Tests.csproj",
+      "invocation": "KhaozEngine.MapDoc.Tests",
+      "exit": 0,
+      "passed": 1777,
+      "failed": 0,
+      "skipped": 0,
+      "total": 1777
+    },
+    {
+      "project": "KhaozEngine.MapDoc.Compatibility.Tests/KhaozEngine.MapDoc.Compatibility.Tests.csproj",
+      "invocation": "KhaozEngine.MapDoc.Compatibility.Tests",
+      "exit": 0,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "total": 14
+    },
+    {
+      "project": "KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj",
+      "invocation": "KhaozEngine.MapDoc.Physics.Tests",
+      "exit": 0,
+      "passed": 247,
+      "failed": 0,
+      "skipped": 0,
+      "total": 247
+    },
+    {
+      "project": "KhaozEngine.WorldMap.Tests/KhaozEngine.WorldMap.Tests.csproj",
+      "invocation": "KhaozEngine.WorldMap.Tests",
+      "exit": 0,
+      "passed": 352,
+      "failed": 0,
+      "skipped": 0,
+      "total": 352
+    },
+    {
+      "project": "KhaozEngine.WorldMap.Gui.Tests/KhaozEngine.WorldMap.Gui.Tests.csproj",
+      "invocation": "KhaozEngine.WorldMap.Gui.Tests",
+      "exit": 0,
+      "passed": 75,
+      "failed": 0,
+      "skipped": 0,
+      "total": 75
+    },
+    {
+      "project": "KhaozEngine.Tests/KhaozEngine.Tests.csproj",
+      "invocation": "KhaozEngine.Tests",
+      "exit": 0,
+      "passed": 89,
+      "failed": 0,
+      "skipped": 0,
+      "total": 89
+    },
+    {
+      "project": "KhaozEngine.Foundation.Tests/KhaozEngine.Foundation.Tests.csproj",
+      "invocation": "KhaozEngine.Foundation.Tests",
+      "exit": 0,
+      "passed": 1584,
+      "failed": 0,
+      "skipped": 0,
+      "total": 1584
+    },
+    {
+      "project": "KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj",
+      "invocation": "KhaozEngine.Catalog.Tests",
+      "exit": 0,
+      "passed": 1521,
+      "failed": 0,
+      "skipped": 0,
+      "total": 1521
+    },
+    {
+      "project": "KhaozEngine.Accounts.Tests/KhaozEngine.Accounts.Tests.csproj",
+      "invocation": "KhaozEngine.Accounts.Tests",
+      "exit": 0,
+      "passed": 286,
+      "failed": 0,
+      "skipped": 46,
+      "total": 332
+    },
+    {
+      "project": "KhaozEngine.Catalog.AzureBlob.Tests/KhaozEngine.Catalog.AzureBlob.Tests.csproj",
+      "invocation": "KhaozEngine.Catalog.AzureBlob.Tests",
+      "exit": 0,
+      "passed": 25,
+      "failed": 0,
+      "skipped": 7,
+      "total": 32
+    },
+    {
+      "project": "KhaozEngine.ItemInstances.Tests/KhaozEngine.ItemInstances.Tests.csproj",
+      "invocation": "KhaozEngine.ItemInstances.Tests",
+      "exit": 0,
+      "passed": 895,
+      "failed": 0,
+      "skipped": 0,
+      "total": 895
+    },
+    {
+      "project": "KhaozEngine.Simulation.Tests/KhaozEngine.Simulation.Tests.csproj",
+      "invocation": "KhaozEngine.Simulation.Tests",
+      "exit": 0,
+      "passed": 309,
+      "failed": 0,
+      "skipped": 0,
+      "total": 309
+    },
+    {
+      "project": "KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj",
+      "invocation": "KhaozEngine.Server.Tests",
+      "exit": 0,
+      "passed": 4015,
+      "failed": 0,
+      "skipped": 317,
+      "total": 4332
+    },
+    {
+      "project": "KhaozEngine.Identity.Exchange.Tests/KhaozEngine.Identity.Exchange.Tests.csproj",
+      "invocation": "KhaozEngine.Identity.Exchange.Tests",
+      "exit": 0,
+      "passed": 177,
+      "failed": 0,
+      "skipped": 0,
+      "total": 177
+    },
+    {
+      "project": "KhaozEngine.Audio.Tests/KhaozEngine.Audio.Tests.csproj",
+      "invocation": "KhaozEngine.Audio.Tests",
+      "exit": 0,
+      "passed": 206,
+      "failed": 0,
+      "skipped": 3,
+      "total": 209
+    },
+    {
+      "project": "KhaozEngine.Automation.Tests/KhaozEngine.Automation.Tests.csproj",
+      "invocation": "KhaozEngine.Automation.Tests",
+      "exit": 0,
+      "passed": 110,
+      "failed": 0,
+      "skipped": 0,
+      "total": 110
+    },
+    {
+      "project": "KhaozEngine.Particles.Tests/KhaozEngine.Particles.Tests.csproj",
+      "invocation": "KhaozEngine.Particles.Tests",
+      "exit": 0,
+      "passed": 105,
+      "failed": 0,
+      "skipped": 0,
+      "total": 105
+    },
+    {
+      "project": "KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj",
+      "invocation": "KhaozEngine.Render.Tests-pointer-isolated",
+      "exit": 0,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "total": 1
+    },
+    {
+      "project": "KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj",
+      "invocation": "KhaozEngine.Render.Tests",
+      "exit": 0,
+      "passed": 12520,
+      "failed": 0,
+      "skipped": 2,
+      "total": 12522
+    },
+    {
+      "project": "KhaozEngine.Gui.Tests/KhaozEngine.Gui.Tests.csproj",
+      "invocation": "KhaozEngine.Gui.Tests",
+      "exit": 0,
+      "passed": 1529,
+      "failed": 0,
+      "skipped": 0,
+      "total": 1529
+    },
+    {
+      "project": "KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj",
+      "invocation": "KhaozEngine.MapEditor.Tests",
+      "exit": 0,
+      "passed": 1756,
+      "failed": 0,
+      "skipped": 0,
+      "total": 1756
+    },
+    {
+      "project": "KhaozEngine.TileWorld.Tests/KhaozEngine.TileWorld.Tests.csproj",
+      "invocation": "KhaozEngine.TileWorld.Tests",
+      "exit": 0,
+      "passed": 650,
+      "failed": 0,
+      "skipped": 0,
+      "total": 650
+    },
+    {
+      "project": "KhaozEngine.TileWorld.Netcode.Tests/KhaozEngine.TileWorld.Netcode.Tests.csproj",
+      "invocation": "KhaozEngine.TileWorld.Netcode.Tests",
+      "exit": 0,
+      "passed": 1389,
+      "failed": 0,
+      "skipped": 0,
+      "total": 1389
+    },
+    {
+      "project": "KhaozEngine.TileWorld.Physics.Tests/KhaozEngine.TileWorld.Physics.Tests.csproj",
+      "invocation": "KhaozEngine.TileWorld.Physics.Tests",
+      "exit": 0,
+      "passed": 159,
+      "failed": 0,
+      "skipped": 0,
+      "total": 159
+    },
+    {
+      "project": "KhaozEngine.TileWorld.WorldMap.Tests/KhaozEngine.TileWorld.WorldMap.Tests.csproj",
+      "invocation": "KhaozEngine.TileWorld.WorldMap.Tests",
+      "exit": 0,
+      "passed": 35,
+      "failed": 0,
+      "skipped": 0,
+      "total": 35
+    },
+    {
+      "project": "KhaozEngine.TileEdit.Tests/KhaozEngine.TileEdit.Tests.csproj",
+      "invocation": "KhaozEngine.TileEdit.Tests",
+      "exit": 0,
+      "passed": 117,
+      "failed": 0,
+      "skipped": 0,
+      "total": 117
+    },
+    {
+      "project": "KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj",
+      "invocation": "KhaozEngine.Game.Tests",
+      "exit": 0,
+      "passed": 6323,
+      "failed": 0,
+      "skipped": 1,
+      "total": 6324
+    },
+    {
+      "project": "KhaozEngine.Showcase.Tests/KhaozEngine.Showcase.Tests.csproj",
+      "invocation": "KhaozEngine.Showcase.Tests",
+      "exit": 0,
+      "passed": 83,
+      "failed": 0,
+      "skipped": 0,
+      "total": 83
+    },
+    {
+      "project": "KhaozEngine.Windowing.Tests/KhaozEngine.Windowing.Tests.csproj",
+      "invocation": "KhaozEngine.Windowing.Tests",
+      "exit": 0,
+      "passed": 147,
+      "failed": 0,
+      "skipped": 0,
+      "total": 147
+    },
+    {
+      "project": "tools/PixelLabSheetAssembler.Tests/PixelLabSheetAssembler.Tests.csproj",
+      "invocation": "PixelLabSheetAssembler.Tests",
+      "exit": 0,
+      "passed": 32,
+      "failed": 0,
+      "skipped": 0,
+      "total": 32
+    },
+    {
+      "project": "tools/KeDungeon.Tests/KeDungeon.Tests.csproj",
+      "invocation": "KeDungeon.Tests",
+      "exit": 0,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0,
+      "total": 13
+    }
+  ],
+  "known_flakes": {
+    "1507": "did not recur",
+    "1512": "did not recur",
+    "1529": "isolated test passed"
+  }
+}

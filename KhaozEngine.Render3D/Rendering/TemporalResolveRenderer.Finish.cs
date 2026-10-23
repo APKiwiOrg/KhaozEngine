@@ -20,7 +20,7 @@ namespace KhaozEngine.Render3D.Rendering
             GpuOutputDescription targetOutput)
         {
             if (CurrentSet is not { } set) return;
-            (_debugView ??= new TemporalDebugViewPass(_gd, ResolveLayout, targetOutput)).Draw(cl, view, set, target);
+            (_debugView ??= new TemporalDebugViewPass(_gd, ResolveLayout, FullyLitResolveLayout, targetOutput, _fragmentSourceForTests)).Draw(cl, view, set, target, LastVisibilityDecisionSkipped);
         }
 
         TemporalCountProbe? _countProbe;
@@ -42,7 +42,7 @@ namespace KhaozEngine.Render3D.Rendering
         {
             if (!_countsArmed || CurrentSet is not { } set) return;
             _countsArmed = false;
-            (_countProbe ??= new TemporalCountProbe(_gd, ResolveLayout)).Record(cl, set);
+            (_countProbe ??= new TemporalCountProbe(_gd, ResolveLayout, FullyLitResolveLayout, _fragmentSourceForTests)).Record(cl, set, LastVisibilityDecisionSkipped);
         }
 
         /// <summary>Harvest the armed frame's grid (TemporalCountProbe.TryHarvest). Drains on Metal and

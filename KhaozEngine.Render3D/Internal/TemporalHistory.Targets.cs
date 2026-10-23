@@ -55,6 +55,8 @@ internal sealed partial class TemporalHistory
     /// <summary>The pair the resolve reads this frame: last frame's output.</summary>
     public int ReadIndex => _readIndex;
 
+    internal long ResolveFrameIndex => _resolveFrame;
+
     /// <summary>The pair the resolve writes this frame, which the display post chain then reads.</summary>
     public int WriteIndex => _writeIndex;
 

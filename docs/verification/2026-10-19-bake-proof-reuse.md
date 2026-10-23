@@ -674,11 +674,15 @@ Hold result is the independent initial-step control. Current and copied-Hold pro
 verdict, including original refusals. Real output feet after centre/feet round trips compare by
 bits across independent leases and payload hits. No arithmetic order or epsilon is changed.
 
-WorkerPhaseThreadChangeCannotInheritAReuseSession constructs one worker on the caller, then
-runs three phases on three distinct dedicated threads. Construction and ungrouped admission have
-no session. Each grouped phase opens lazily, closes its session and starts another group cold.
-Four distinct sessions stay on their two executing phase threads. Retention is zero at every
-group and phase boundary. Reference policy reaches callbacks on all worker phases and seeds
+WorkerPhaseThreadChangeCannotInheritAReuseSession constructs one worker on the caller and keeps
+the production phase runner. Its callbacks dispatch proof execution synchronously to test-owned
+dedicated threads that remain alive across phases. One case runs Admission, Edges and Links on
+the same thread. The other moves Links to a second thread. Thread object assertions prove the
+chosen placement without assuming that terminated threads have distinct managed IDs. Construction
+and ungrouped admission have no session. Each grouped phase opens lazily, starts cold, records
+real footprint and initial-Hold hits, closes its session and starts another group cold. Four
+distinct sessions stay on their chosen executing threads. Retention is zero at every group and
+phase boundary. Reference policy reaches callbacks on all worker phases and seeds
 neither layer. Existing forced-band, cutoff, partial setup, interrupted join and disposal
 precedence checks now run in all three modes. ReuseFailureSelectionMatchesSerialUnderForcedBands
 retains the lowest serial producer failure when the later band finishes first.

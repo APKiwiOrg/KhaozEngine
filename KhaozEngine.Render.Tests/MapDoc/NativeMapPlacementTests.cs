@@ -174,8 +174,8 @@ public sealed class NativeMapPlacementTests
             var key = build.Request.Key;
             string owner = FormattableString.Invariant($"cluster/{key.LayerId}/{key.X}/{key.Z}/{key.Plane}");
             var hlod = set.Draws.Single(d => d.Resource.Key.OwnerId == owner);
-            Assert.Equal(.5f, hlod.Rigid!.Value.Dissolve); Assert.True(hlod.Rigid.Value.InvertShadowDissolve);
-            Assert.Equal(0, hlod.Rigid.Value.DissolveComplement);
+            Assert.Equal(.5f, hlod.Rigid!.Value.Dissolve); Assert.False(hlod.Rigid.Value.InvertShadowDissolve);
+            Assert.Equal(1, hlod.Rigid.Value.DissolveComplement);
             using var shared = PropClusterRenderer.CreateCpuOnly();
             shared.ApplyNative(build.Request.Key, build, new MeshHandle(90));
             var localFocus = new Vector3(center + 30, 0, centerZ);

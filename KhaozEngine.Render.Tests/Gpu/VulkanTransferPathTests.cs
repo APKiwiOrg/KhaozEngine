@@ -75,7 +75,9 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(PipelineStageFlags2.AllTransferBit, after.SrcStageMask);
             Assert.Equal(AccessFlags2.TransferWriteBit, after.SrcAccessMask);
-            Assert.Equal(PipelineStageFlags2.AllCommandsBit, after.DstStageMask);
+            Assert.Equal(PipelineStageFlags2.AllCommandsBit | PipelineStageFlags2.HostBit, after.DstStageMask);
+            Assert.Equal(AccessFlags2.MemoryReadBit | AccessFlags2.MemoryWriteBit | AccessFlags2.HostReadBit,
+                after.DstAccessMask);
         }
 
         /// <summary>A window that leaves either buffer is refused rather than clipped, because
@@ -279,7 +281,8 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Two staging textures have no image at all, so the copy is a plain byte copy between two
         /// software layouts and nothing is transitioned. It is ordered by the one global barrier before it, as
-        /// every copy with a staging side is.</summary>
+        /// every copy with a staging side is, and made host visible by the one after it, as every copy into
+        /// staging is.</summary>
         [Fact]
         public void TwoStagingTextures_AreAPlainBufferCopyWithNoTransition()
         {
@@ -303,6 +306,7 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.Single(fixture.TransferSink.BufferCopies);
                 Assert.Equal(0, fixture.Barriers.CallCount);
                 Assert.Equal([true], fixture.TransferSink.MemoryBarriers);
+                Assert.Single(fixture.TransferSink.Trace, call => call == "HostReadBarrier");
             }
             finally
             {

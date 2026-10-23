@@ -477,6 +477,9 @@ namespace KhaozEngine.Tests.Gpu
             nameof(IGpuCommandList.CopyTextureSubresource),     // row 15, both overloads
             nameof(IGpuCommandList.GenerateMipmaps),            // row 15, the blit chain
             nameof(IGpuCommandList.ResolveTexture),             // row 15, vkCmdResolveImage at mip 0 layer 0
+            nameof(IGpuCommandList.BeginTimestamps),            // native query range reset
+            nameof(IGpuCommandList.WriteTimestamp),             // native timestamp write
+            nameof(IGpuCommandList.EndTimestamps),              // timestamp sequence close
         };
 
         // ---- Fixtures ----

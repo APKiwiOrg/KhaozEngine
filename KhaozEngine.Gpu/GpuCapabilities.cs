@@ -69,6 +69,11 @@ namespace KhaozEngine.Gpu
         /// <c>CreateComputeShaderFromSpirv</c> / <c>CreateComputePipeline</c> throw on a device without it.</summary>
         public bool SupportsCompute { get; }
 
+        /// <summary>True if the device implements fixed timestamp pools and non-blocking resolution of usable
+        /// elapsed ticks. Defaults to false. Unsupported pool creation throws <see cref="System.NotSupportedException"/>,
+        /// so a caller omits GPU timing rather than estimating it.</summary>
+        public bool SupportsTimestamps { get; init; }
+
         /// <summary>True if a fence handed to <see cref="IGpuDevice.Submit(IGpuCommandList,IGpuFence)"/> is signaled
         /// by GPU COMPLETION rather than by the CPU-side submit call returning. Only a fence with that property can
         /// stand in for <see cref="IGpuDevice.WaitForIdle"/>, which is what deferred GPU-resource destruction needs.

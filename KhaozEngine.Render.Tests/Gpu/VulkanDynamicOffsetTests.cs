@@ -53,12 +53,11 @@ namespace KhaozEngine.Tests.Gpu
                 shapes.Add((name, harness.Set(name)));
             }
 
-            Assert.NotEmpty(shapes);
-            // Includes bounded water and prepared foliage colour, motion,
-            // opaque cascade, cutout cascade and point shadow.
-            // These six R8a pipelines add BoundedWater, shared SceneAnchor and the empty opaque material gap.
-            // R-GPU-1 / T8-R1: include the empty gap in the literal completeness pin as well as real bindings.
-            Assert.Equal(68, shapes.Count);
+            // Main adds certified temporal resolve and accumulation layouts.
+            // R8a bounded water and prepared foliage colour, motion, opaque cascade, cutout cascade
+            // and point shadow add BoundedWater, SceneAnchor and the empty opaque material gap.
+            // T8-R1 includes that gap in this independent literal completeness pin.
+            Assert.Equal(70, shapes.Count);
 
             for (int segment = 0; segment < harness.Rings.FramesInFlight; segment++)
             {

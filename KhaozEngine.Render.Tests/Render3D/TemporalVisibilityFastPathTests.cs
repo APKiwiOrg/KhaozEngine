@@ -1,0 +1,167 @@
+using System;
+using System.IO;
+using System.Runtime.CompilerServices;
+using System.Text;
+using System.Text.RegularExpressions;
+using KhaozEngine.Gpu;
+using KhaozEngine.Render3D.Internal;
+using KhaozEngine.Tests.Gpu;
+using Xunit;
+
+namespace KhaozEngine.Tests.Render3D
+{
+    /// <summary>
+    /// The shipped visibility decision as text (TAA shadow visibility plan, Task 7f.2). Its committed GLSL is what
+    /// <see cref="TemporalVisibilityFastPath"/> generates, D's helper stays in front of it verbatim as the slow path,
+    /// and the fast path is straight-line code with every fetch it issues counted. Device-free.
+    /// <para>TO REWRITE THE COMMITTED TEXT after a generator change: <c>KE_WRITE_VISIBILITY_FAST_PATH=1 dotnet test
+    /// KhaozEngine.Render.Tests --filter TemporalVisibilityFastPathTests</c>, then read the diff. The rewrite writes LF
+    /// and refuses to run where <c>CI</c> is set, so a leaked variable fails a CI run instead of passing it.</para>
+    /// </summary>
+    public sealed class TemporalVisibilityFastPathTests
+    {
+        const string WriteEnvVar = "KE_WRITE_VISIBILITY_FAST_PATH";
+
+        [Fact]
+        public void TheCommittedDecisionIsTheGeneratorsText()
+        {
+            string generated = TemporalVisibilityFastPath.Generate();
+            if (Environment.GetEnvironmentVariable(WriteEnvVar) == "1")
+            {
+                Assert.True(string.IsNullOrEmpty(Environment.GetEnvironmentVariable("CI")),
+                    $"{WriteEnvVar}=1 rewrites ShaderSources.TemporalVisibilityReleases.cs and is refused where CI is set. "
+                    + $"Unset {WriteEnvVar} in this environment.");
+                File.WriteAllText(CommittedPath(), CommittedFile(generated), new UTF8Encoding(false));
+                return;
+            }
+            Assert.True(generated == Lf(ShaderSources.TemporalVisibilityReleasesGlsl),
+                $"ShaderSources.TemporalVisibilityReleasesGlsl is not the generator's text. Rewrite it with {WriteEnvVar}=1.");
+        }
+
+        /// <summary>A CRLF checkout gives the generator's verbatim blocks and the committed constant CRLF line endings.
+        /// The generator's text stays LF, and the comparison above still holds.</summary>
+        [Fact]
+        public void TheComparisonHoldsOnACrlfCheckout()
+        {
+            int blocks = 0;
+            string fromCrlf = TemporalVisibilityFastPath.Generate(block =>
+            {
+                blocks++;
+                return Crlf(block);
+            });
+            Assert.Equal(TemporalVisibilityFastPath.Generate(), fromCrlf);
+            Assert.DoesNotContain('\r', fromCrlf);
+            Assert.Equal(Lf(ShaderSources.TemporalVisibilityReleasesGlsl), Lf(Crlf(ShaderSources.TemporalVisibilityReleasesGlsl)));
+            Assert.Equal(fromCrlf, Lf(Crlf(ShaderSources.TemporalVisibilityReleasesGlsl)));
+            Assert.DoesNotContain('\r', CommittedFile(fromCrlf));
+
+            // Every verbatim block in the generator's source passes through the replay, so none escapes it.
+            string source = File.ReadAllText(SourcePath("KhaozEngine.Render3D", "Internal", "TemporalVisibilityFastPath.cs"));
+            int verbatim = Regex.Matches(source, "@\"").Count;
+            Assert.Equal(verbatim, Regex.Matches(source, @"\bVerbatim\(@""").Count);
+            Assert.Equal(verbatim, blocks);
+        }
+
+        /// <summary>D's function ships unchanged in front of the decision, which calls it as the slow path.</summary>
+        [Fact]
+        public void DShipsVerbatimAsTheSlowPath()
+        {
+            Assert.Equal(TemporalVisibilityFrozenD.VisibilityGlsl + ShaderSources.TemporalVisibilityReleasesGlsl,
+                ShaderSources.TemporalVisibilityGlsl);
+            Assert.Single(Regex.Matches(ShaderSources.TemporalVisibilityReleasesGlsl,
+                @"temporalVisibilityChange\(uv, centre, last, previousUv, expectedDepth, signedChange\)"));
+        }
+
+        /// <summary>Past the precondition the decision has no loop, no array and no dynamic index, and it issues exactly
+        /// the fast path's twelve gathers where D issues 101 loads. None is a current depth or motion, which the
+        /// current mask carries.</summary>
+        [Fact]
+        public void TheFastPathIsStraightLineWithItsFetchesCounted()
+        {
+            string text = ShaderSources.TemporalVisibilityReleasesGlsl;
+            string fast = text[text.IndexOf("    path = VisibilityFastPath;", StringComparison.Ordinal)..];
+            Assert.DoesNotMatch(@"\bfor\s*\(|\bwhile\s*\(|\bdo\s*\{|\[", text);
+            Assert.Empty(Regex.Matches(fast, @"\btexelFetch\("));
+            Assert.Equal(0, TemporalVisibilityFastPath.Fetches);
+            Assert.Equal(12, TemporalVisibilityFastPath.Gathers);
+            Assert.Equal(TemporalVisibilityFastPath.Gathers, Regex.Matches(fast, @"\btextureGather\(").Count);
+            Assert.DoesNotMatch(@"sampler2D\((MotionTex|SceneDepth),", fast);
+            foreach (string texture in new[] { "KeyShadowVisibility", "PreviousKeyShadowVisibility", "PrevDepth" })
+                Assert.Equal(4, Regex.Matches(fast, @"textureGather\(sampler2D\(" + texture + ", LinearClamp\\)").Count);
+            // Every stored depth is read only after the range skip has declined.
+            Assert.True(fast.IndexOf("path |= VisibilityRangeSkip;", StringComparison.Ordinal)
+                < fast.IndexOf("sampler2D(PrevDepth", StringComparison.Ordinal));
+            // D's emitted Fma pattern, pinned: one position fma a chain, then two fma a bilinear term.
+            Assert.Equal(3 + 2 * 36, Regex.Matches(text, @"\bfma\(").Count);
+        }
+
+        /// <summary>NVIDIA may canonicalize gathered depth NaNs. Every selected program must reject them solely
+        /// through exponent bits and use each stored value only in its own finite-depth-qualified held expression.</summary>
+        [Fact]
+        public void GatheredStoredDepthCannotObserveNanPayloadOrSign()
+        {
+            foreach (GpuBackendKind backend in new[]
+            {
+                GpuBackendKind.MetalNative, GpuBackendKind.Direct3D11Native, GpuBackendKind.VulkanNative,
+            })
+            {
+                int programs = 0;
+                foreach (ShippedGraphicsProgram program in ShippedShaderPrograms.GraphicsPrograms())
+                {
+                    string source = TemporalVisibilityGatherPolicy.ForBackend(program.FragmentGlsl, backend);
+                    if (!source.Contains("bool temporalVisibilityReleases(", StringComparison.Ordinal)) continue;
+                    programs++;
+                    source = Regex.Replace(source, @"//[^\r\n]*|/\*[\s\S]*?\*/", "");
+                    Match finite = Assert.Single(Regex.Matches(source,
+                        @"\bbool\s+temporalVisibilityFiniteDepth\s*\(\s*float\s+depth\s*\)\s*\{([^{}]*)\}"));
+                    Assert.Equal("return(floatBitsToUint(depth)&0x7f800000u)!=0x7f800000u;",
+                        Regex.Replace(finite.Groups[1].Value, @"\s+", ""));
+
+                    const string declaration = @"\bfloat\s+(stored[0-3][0-3])\s*=\s*(storedGather[01][01])\.[xyzw]\s*;";
+                    MatchCollection depths = Regex.Matches(source, declaration);
+                    Assert.Equal(16, depths.Count);
+                    foreach (Match depth in depths)
+                    {
+                        string value = depth.Groups[1].Value;
+                        Assert.Equal(3, Regex.Matches(source, @"\b" + value + @"\b").Count);
+                        string held = @"\bbool\s+held" + value[6..] + @"\s*=\s*temporalVisibilityFiniteDepth\(\s*"
+                            + value + @"\s*\)\s*&&\s*abs\(\s*" + value
+                            + @"\s*-\s*expectedDepth\s*\)\s*<=\s*previousTolerance\s*;";
+                        Assert.Single(Regex.Matches(source, held));
+                        string remaining = Regex.Replace(source.Replace(depth.Value, "", StringComparison.Ordinal), held, "");
+                        Assert.True(Regex.Matches(remaining, @"\b" + value + @"\b").Count == 0,
+                            $"{backend} {program.Name}: {value} is used outside its declaration and held expression.");
+                    }
+
+                    // A vector use could bypass the scalar checks, so only declarations and extraction may read it.
+                    string vectors = Regex.Replace(source, declaration, "");
+                    Assert.Equal(4, Regex.Matches(vectors,
+                        @"\bvec4\s+storedGather[01][01]\s*=\s*textureGather\(sampler2D\(PrevDepth, LinearClamp\)[^;]*;").Count);
+                    vectors = Regex.Replace(vectors,
+                        @"\bvec4\s+storedGather[01][01]\s*=\s*textureGather\(sampler2D\(PrevDepth, LinearClamp\)[^;]*;", "");
+                    Assert.DoesNotMatch(@"\bstoredGather[01][01]\b", vectors);
+                }
+                Assert.True(programs > 0, $"No gathered stored-depth programs checked for {backend}.");
+            }
+        }
+
+        static string CommittedFile(string glsl) =>
+            "namespace KhaozEngine.Render3D.Internal;\n\n"
+            + "/// <summary>The shipped visibility decision, <c>temporalVisibilityReleases</c>. GENERATED by\n"
+            + "/// <see cref=\"TemporalVisibilityFastPath\"/>, never edited by hand. TemporalVisibilityFastPathTests holds it\n"
+            + "/// equal to the generator and rewrites it under KE_WRITE_VISIBILITY_FAST_PATH=1.</summary>\n"
+            + "internal static partial class ShaderSources\n{\n"
+            + "    internal const string TemporalVisibilityReleasesGlsl = @\"" + glsl.Replace("\"", "\"\"", StringComparison.Ordinal)
+            + "\";\n}\n";
+
+        static string CommittedPath() => SourcePath("KhaozEngine.Render3D", "Internal",
+            "ShaderSources.TemporalVisibilityReleases.cs");
+
+        static string SourcePath(string project, string folder, string file, [CallerFilePath] string thisFile = "")
+            => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(thisFile)!, "..", "..", project, folder, file));
+
+        static string Lf(string text) => text.Replace("\r\n", "\n", StringComparison.Ordinal);
+
+        static string Crlf(string text) => Lf(text).Replace("\n", "\r\n", StringComparison.Ordinal);
+    }
+}

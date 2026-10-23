@@ -72,7 +72,8 @@ internal static class FarFoliageGenerationFixtures
         m.M21, m.M22, m.M23, m.M24, m.M31, m.M32, m.M33, m.M34, m.M41, m.M42, m.M43, m.M44 }.Select(BitConverter.SingleToInt32Bits);
 
     // Filled once from released 5d896b333, never derived from a window constructor or translated samples.
-    internal static string Pins(int x) => x switch
+    // Raw literals take the checkout's line endings (CRLF on Windows autocrlf). Capture builds LF, so normalize here.
+    internal static string Pins(int x) => (x switch
     {
         0 => """
             far-cover|far-floor|-1|-1|1|legacy-tile|1|B|3f9ac879,00000000,bebb66d8,00000000,00000000,3fa1b7db,00000000,00000000,3ebb66d8,00000000,3f9ac879,00000000,bf1c9a6e,bc23d70a,bf98a912,3f800000|3edea1aa
@@ -103,7 +104,7 @@ internal static class FarFoliageGenerationFixtures
             far-cover|far-floor|-32001|32001|1|legacy-tile|1|A|bf0a56ec,00000000,3f3ec51e,00000000,00000000,3f6ba674,00000000,00000000,bf3ec51e,00000000,bf0a56ec,00000000,c6fa0175,bc23d70a,46fa01b4,3f800000|3ec80a1a
             """,
         _ => throw new ArgumentOutOfRangeException(nameof(x))
-    };
+    }).ReplaceLineEndings("\n");
 
     internal static string Capture(MapFoliageSampleBatch batch) => string.Join("\n", batch.Samples.Select(s =>
         $"{s.Key.Address.LayerId}|{s.Key.Address.SupportOwnerId}|{s.Key.Address.X}|{s.Key.Address.Z}|{s.Key.DistributionVersion}|{s.Key.Policy.Id}|{s.Key.Policy.Version}|{s.AssetId}|" +

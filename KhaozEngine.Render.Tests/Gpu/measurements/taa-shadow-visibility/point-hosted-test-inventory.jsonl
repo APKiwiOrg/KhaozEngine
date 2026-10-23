@@ -1,0 +1,9 @@
+{"backend":"metal-native","outcome":"Passed","test":"KhaozEngine.Tests.Gpu.TemporalMovingShadeRimGpuTests.A_reused_rim_scene_matches_a_fresh_scene_after_other_configurations"}
+{"backend":"metal-native","outcome":"Passed","test":"KhaozEngine.Tests.Gpu.TemporalMovingShadeRimGpuTests.Moving_shadow_receivers_keep_their_leading_and_trailing_rims"}
+{"backend":"metal-native","outcome":"Passed","test":"KhaozEngine.Tests.Gpu.TemporalMovingShadeLagGpuTests.Shadow_edge_lag_on_moving_pixels_and_fast_shadows_stays_within_its_bounds"}
+{"backend":"direct3d11-native","outcome":"Passed","test":"KhaozEngine.Tests.Gpu.TemporalMovingShadeRimGpuTests.A_reused_rim_scene_matches_a_fresh_scene_after_other_configurations"}
+{"backend":"direct3d11-native","outcome":"Passed","test":"KhaozEngine.Tests.Gpu.TemporalMovingShadeRimGpuTests.Moving_shadow_receivers_keep_their_leading_and_trailing_rims"}
+{"backend":"direct3d11-native","outcome":"Passed","test":"KhaozEngine.Tests.Gpu.TemporalMovingShadeLagGpuTests.Shadow_edge_lag_on_moving_pixels_and_fast_shadows_stays_within_its_bounds"}
+{"backend":"vulkan-native","outcome":"Passed","test":"KhaozEngine.Tests.Gpu.TemporalMovingShadeLagGpuTests.Shadow_edge_lag_on_moving_pixels_and_fast_shadows_stays_within_its_bounds"}
+{"backend":"vulkan-native","outcome":"Passed","test":"KhaozEngine.Tests.Gpu.TemporalMovingShadeRimGpuTests.A_reused_rim_scene_matches_a_fresh_scene_after_other_configurations"}
+{"backend":"vulkan-native","outcome":"Passed","test":"KhaozEngine.Tests.Gpu.TemporalMovingShadeRimGpuTests.Moving_shadow_receivers_keep_their_leading_and_trailing_rims"}

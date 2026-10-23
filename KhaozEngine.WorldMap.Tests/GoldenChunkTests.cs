@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using KhaozEngine.Imaging;
 using KhaozEngine.Primitives;
 using KhaozEngine.WorldMap;
@@ -12,6 +13,15 @@ namespace KhaozEngine.Tests.WorldMap;
 /// <summary>Pins a complete, north-up CPU raster fixture across terrain, water and footprints.</summary>
 public sealed class GoldenChunkTests
 {
+    /// <summary>Opt-in additions preserve every byte of the existing terrain and footprint fixture.</summary>
+    [Fact]
+    public void FixtureChunk_DefaultOptions_PreserveExactBytes()
+    {
+        WorldMapChunkImage image = WorldMapRasterizer.Rasterize(Fixture(), Style(), new(0, 0));
+        Assert.Equal("1C6D888AEAD1893EBF5E4FC284E46B2DFF0B2958C3AF6CF695E28BE33DE78274",
+            Convert.ToHexString(SHA256.HashData(image.Rgba)));
+    }
+
     /// <summary>Compares every RGBA channel within two bytes, or explicitly bakes the committed reference.</summary>
     [Fact]
     public void FixtureChunk_MatchesGolden()

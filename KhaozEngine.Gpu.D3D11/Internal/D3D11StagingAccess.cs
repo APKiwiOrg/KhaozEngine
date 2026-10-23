@@ -1,4 +1,6 @@
 using System;
+using System.Threading;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu.D3D11.Internal
 {
@@ -54,7 +56,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         readonly object _submitLock;
         readonly D3D11DeviceLossLatch? _loss;
 
-        /// <param name="memory">The four native calls. <see cref="D3D11ContextStagingMemory"/> over the device's
+        /// <param name="memory">The five native calls. <see cref="D3D11ContextStagingMemory"/> over the device's
         /// one immediate context in production, a recording fake in the lock tests.</param>
         /// <param name="submitLock">The device's single submit lock (decision W4). Not created here, for the same
         /// reason the ring allocator and the fence subsystem do not create theirs: there is exactly one of it and
@@ -111,6 +113,97 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 Maps.Close(staging);
                 _memory.UnmapBuffer(buffer.MapTarget);
             }
+        }
+
+        /// <summary><c>DXGI_ERROR_WAS_STILL_DRAWING</c>: what a <c>DO_NOT_WAIT</c> map answers while the runtime
+        /// still counts the resource as in use. The one failed HRESULT a non-blocking read treats as "not yet".
+        /// </summary>
+        internal const int WasStillDrawing = unchecked((int)0x887A000A);
+
+        /// <summary>
+        /// COPY <paramref name="destination"/>'s length of bytes out of a staging BUFFER at
+        /// <paramref name="offsetBytes"/> WITHOUT WAITING, answering false with the destination untouched when the
+        /// immediate context is busy on another thread or the runtime still counts the buffer as in use.
+        /// <para>
+        /// THE LOCK IS TRIED, NEVER WAITED FOR, and it is held across the copy and the unmap, which is the one
+        /// deliberate difference from <see cref="Map(IGpuBuffer, GpuMapMode)"/>. The synchronous pair releases the
+        /// lock between map and unmap because the caller's walk of the pointer is unbounded. Here the copy is a
+        /// bounded memcpy inside this method and the map never outlives it, so taking the lock once keeps a
+        /// concurrent submit from finding a half-open mapping. <see cref="Monitor.TryEnter(object)"/> is
+        /// re-entrant, so a caller that already took the lock to poll a fence under it (see
+        /// <see cref="D3D11CompletedReads"/>) always gets it here.
+        /// </para>
+        /// <para>
+        /// The caller has established that the copy into this buffer completed. This member does not know which
+        /// fence that was, and <c>DO_NOT_WAIT</c> is what keeps a caller who got that wrong from blocking.
+        /// </para>
+        /// </summary>
+        internal bool TryReadBuffer(IGpuBuffer staging, uint offsetBytes, Span<byte> destination)
+        {
+            ID3D11ReadableStaging buffer = RequireReadable(staging, offsetBytes, destination.Length);
+
+            if (!Monitor.TryEnter(_submitLock)) return false;
+            try
+            {
+                Maps.Open(staging, GpuMapMode.Read);
+                try
+                {
+                    int hresult = _memory.TryMapBufferRead(buffer.MapTarget, out IntPtr data);
+                    if (hresult == WasStillDrawing) return false;
+
+                    D3D11StagingMaps.RequireMapped(hresult, _loss);
+                    try
+                    {
+                        GpuReadWindow.CopyOut(data, offsetBytes, destination);
+                    }
+                    finally
+                    {
+                        _memory.UnmapBuffer(buffer.MapTarget);
+                    }
+
+                    return true;
+                }
+                finally
+                {
+                    Maps.Close(staging);
+                }
+            }
+            finally
+            {
+                Monitor.Exit(_submitLock);
+            }
+        }
+
+        /// <summary>
+        /// The staging buffer <paramref name="staging"/> is, refused by name unless it is a live
+        /// <see cref="GpuBufferUsage.Staging"/> buffer of this backend and the window of
+        /// <paramref name="count"/> bytes at <paramref name="offsetBytes"/> is four-byte aligned and inside it.
+        /// Device-free, and checked before any lock, poll or native call. Ownership is the caller's, because only
+        /// the caller knows which device it is.
+        /// </summary>
+        internal static ID3D11ReadableStaging RequireReadable(IGpuBuffer? staging, uint offsetBytes, int count)
+        {
+            ArgumentNullException.ThrowIfNull(staging);
+
+            if (staging is not ID3D11ReadableStaging buffer)
+            {
+                throw new ArgumentException(
+                    $"A {staging.GetType().Name} was handed to the native Direct3D 11 backend as a staging buffer to "
+                    + "read. A buffer this backend created carries the ID3D11Buffer a map names, and a buffer from "
+                    + "another backend carries another backend's.", nameof(staging));
+            }
+
+            ObjectDisposedException.ThrowIf(buffer.IsDisposed, staging);
+
+            if (!buffer.IsStagingUsage)
+            {
+                throw new ArgumentException(
+                    "This buffer was not created with GpuBufferUsage.Staging, so it has no CPU read access on "
+                    + "Direct3D 11. Record a CopyBuffer into a staging buffer and read that.", nameof(staging));
+            }
+
+            GpuReadWindow.Require(staging.SizeInBytes, offsetBytes, count);
+            return buffer;
         }
 
         /// <summary>

@@ -18,8 +18,12 @@ namespace KhaozEngine.Terrain
     {
         MeshHandle LoadMesh(GltfMesh mesh);
         void UnloadMesh(MeshHandle handle);
-        void DrawProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus, float dissolveFloor);
-        void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve, bool invertShadowDissolve);
+        int DrawProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus, float dissolveFloor);
+        int DrawShadowOnlyProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus,
+            float dissolveFloor) => throw new NotSupportedException("This cluster backend has no shadow-only prop path.");
+        void DrawShadowOnlyMerged(MeshHandle handle, PropLayer layer, float dissolve, bool complement) =>
+            throw new NotSupportedException("This cluster backend has no shadow-only merged path.");
+        void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve, bool complement);
     }
 
     /// <summary>Owns CPU HLOD builds, retained GPU handles, generation replacement, and prop cluster drawing.</summary>
@@ -38,6 +42,7 @@ namespace KhaozEngine.Terrain
         readonly HashSet<PropClusterKey> _invalidated = new();
         readonly HashSet<(PropClusterKey Key, long Generation)> _loggedFailures = new();
         readonly List<PropPlacement> _filteredPlacements = new();
+        readonly PropClusterVisibilityDraw _visibilityDraw = new();
         long _hlodBuilt;
         long _hlodBuiltBytes;
         long _hlodUploaded;
@@ -233,6 +238,26 @@ namespace KhaozEngine.Terrain
             }
         }
 
+        /// <summary>Draw retained clusters with per-placement visibility. Hidden geometry submits depth only,
+        /// and a mixed-visibility merged cluster falls back to resident individual geometry.</summary>
+        public PropClusterDrawCounts DrawWithVisibility(Vector3 focus, IPropClusterVisibility visibility)
+        {
+            ArgumentNullException.ThrowIfNull(visibility);
+            ThrowIfDisposed();
+            lock (_sync)
+            {
+                PropClusterDrawCounts counts = default;
+                foreach (var entry in _clusters)
+                {
+                    Cluster cluster = entry.Value;
+                    counts += _visibilityDraw.Draw(_backend, entry.Key, cluster.Layer, cluster.Placements,
+                        cluster.FilterPlacements.Count, cluster.Handle, ResolveDrawState(cluster, focus), focus,
+                        visibility);
+                }
+                return counts;
+            }
+        }
+
         static FilterResult Filter(Cluster cluster, PropDrawFilter? filter, List<PropPlacement> visible)
         {
             if (filter is null) return FilterResult.All;
@@ -266,6 +291,9 @@ namespace KhaozEngine.Terrain
         }
 
         static PropClusterDrawState ResolveDrawState(Cluster cluster, Vector3 focus)
+            => ResolveDistanceDrawState(cluster, focus) with { HasIndividualGeometry = cluster.Placements.Count > 0 };
+
+        static PropClusterDrawState ResolveDistanceDrawState(Cluster cluster, Vector3 focus)
         {
             if (cluster.Handle is null)
                 return new PropClusterDrawState(true, 0f, false, 0f, false,
@@ -356,25 +384,33 @@ namespace KhaozEngine.Terrain
             public MeshHandle LoadMesh(GltfMesh mesh) => _scene.LoadMesh(mesh);
             public void UnloadMesh(MeshHandle handle) => _scene.UnloadMesh(handle);
 
-            public void DrawProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus,
+            public int DrawProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus,
                                   float dissolveFloor)
             {
                 if (layer.PartMeshes is { } partMeshes)
-                    _scene.DrawProps(placements, partMeshes, focus, layer.DrawRadius,
+                    return _scene.DrawProps(placements, partMeshes, focus, layer.DrawRadius,
                         tint: null, fadeBandWidth: layer.FadeBandWidth, lodParts: layer.LodPartMeshes,
                         lodDistance: layer.LodDistance, dissolveFloor: dissolveFloor,
                         castsShadows: layer.CastsShadows, blobRadii: layer.BlobRadii,
                         lodCrossfadeWidth: layer.LodCrossfadeWidth, cutInsideInteriors: layer.CutsInsideInteriors);
                 else
-                    _scene.DrawProps(placements, layer.Meshes, focus, layer.DrawRadius,
+                    return _scene.DrawProps(placements, layer.Meshes, focus, layer.DrawRadius,
                         tint: null, fadeBandWidth: layer.FadeBandWidth, lodMeshes: layer.LodMeshes,
                         lodDistance: layer.LodDistance, dissolveFloor: dissolveFloor,
                         castsShadows: layer.CastsShadows, blobRadii: layer.BlobRadii,
                         lodCrossfadeWidth: layer.LodCrossfadeWidth, cutInsideInteriors: layer.CutsInsideInteriors);
             }
 
-            public void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve, bool invertShadowDissolve) =>
-                _scene.Draw(MergedDraw(handle, layer, dissolve, invertShadowDissolve));
+            public int DrawShadowOnlyProps(IReadOnlyList<PropPlacement> placements, PropLayer layer,
+                Vector3 focus, float dissolveFloor) =>
+                PropClusterShadowSubmission.Draw(_scene, placements, layer, focus, dissolveFloor);
+
+            public void DrawShadowOnlyMerged(MeshHandle handle, PropLayer layer, float dissolve,
+                bool complement) => PropClusterMergedSubmission.Draw(_scene, handle, layer, dissolve,
+                    complement, shadowOnly: true);
+
+            public void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve, bool complement) =>
+                PropClusterMergedSubmission.Draw(_scene, handle, layer, dissolve, complement, shadowOnly: false);
         }
 
         sealed class CpuOnlyBackend : IPropClusterRenderBackend
@@ -382,9 +418,9 @@ namespace KhaozEngine.Terrain
             static InvalidOperationException NoScene() => new("This prop cluster owner has no Scene3D backend.");
             public MeshHandle LoadMesh(GltfMesh mesh) => throw NoScene();
             public void UnloadMesh(MeshHandle handle) => throw NoScene();
-            public void DrawProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus,
+            public int DrawProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus,
                                   float dissolveFloor) => throw NoScene();
-            public void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve, bool invertShadowDissolve) =>
+            public void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve, bool complement) =>
                 throw NoScene();
         }
     }

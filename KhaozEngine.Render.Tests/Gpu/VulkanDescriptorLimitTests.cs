@@ -164,6 +164,9 @@ namespace KhaozEngine.Tests.Gpu
                 // Render3D/Rendering/TemporalResolveRenderer.cs, the resolve and the depth store. Fragment-stage,
                 // none dynamic.
                 ["Temporal.resolve"] = L(T("SceneColor"), T("OpaqueColor"), T("SceneDepth"), T("MotionTex"),
+                    T("PrevDepth"), T("HistoryColor"), T("HistoryConfidence"), S("LinearClamp"), U("Resolve", F),
+                    T("KeyShadowVisibility"), T("PreviousKeyShadowVisibility"), U("VisibilityHistory", F)),
+                ["Temporal.fullyLitResolve"] = L(T("SceneColor"), T("OpaqueColor"), T("SceneDepth"), T("MotionTex"),
                     T("PrevDepth"), T("HistoryColor"), T("HistoryConfidence"), S("LinearClamp"), U("Resolve", F)),
                 ["Temporal.depthStore"] = L(T("SceneDepth"), T("MotionTex"), S("Samp"), U("DepthStore", F)),
                 // Render3D/Rendering/TemporalSplitResolve.cs, the split entry point's two passes. Fragment-stage, none
@@ -171,6 +174,10 @@ namespace KhaozEngine.Tests.Gpu
                 ["Temporal.prepare"] = L(T("SceneColor"), T("OpaqueColor"), T("SceneDepth"), T("MotionTex"),
                     S("LinearClamp"), U("Resolve", F)),
                 ["Temporal.accumulate"] = L(T("SceneColor"), T("SceneDepth"), T("MotionTex"), T("PrevDepth"),
+                    T("HistoryColor"), T("HistoryConfidence"), T("PreparedColour"), T("PreparedSurface"),
+                    T("PreparedExpected"), T("PreparedEdge"), S("LinearClamp"), U("Resolve", F),
+                    T("KeyShadowVisibility"), T("PreviousKeyShadowVisibility"), U("VisibilityHistory", F)),
+                ["Temporal.fullyLitAccumulate"] = L(T("SceneColor"), T("SceneDepth"), T("MotionTex"), T("PrevDepth"),
                     T("HistoryColor"), T("HistoryConfidence"), T("PreparedColour"), T("PreparedSurface"),
                     T("PreparedExpected"), T("PreparedEdge"), S("LinearClamp"), U("Resolve", F)),
                 // Render3D/Rendering/TemporalDebugViewPass.cs, the debug views' immutable mode block at set 1, after
@@ -304,6 +311,11 @@ namespace KhaozEngine.Tests.Gpu
             ("TemporalResolveRenderer count probe", ["Temporal.resolve"]),
             ("TemporalSplitResolve prepare", ["Temporal.prepare"]),
             ("TemporalSplitResolve accumulate", ["Temporal.accumulate"]),
+            // TemporalVisibilityPipelinePair selects the compact layout for each certified program.
+            ("TemporalResolveRenderer fully lit resolve", ["Temporal.fullyLitResolve"]),
+            ("TemporalResolveRenderer fully lit debug view", ["Temporal.fullyLitResolve", "Temporal.debugMode"]),
+            ("TemporalResolveRenderer fully lit count probe", ["Temporal.fullyLitResolve"]),
+            ("TemporalSplitResolve fully lit accumulate", ["Temporal.fullyLitAccumulate"]),
             // Rigid dissolve pipelines add the shared interior image and sampler, with no extra uniform buffer.
             ("PointShadowRenderer", ["PointShadow"]),
             ("PointShadowRenderer prepared foliage", ["PointShadow", "SceneAnchor"]),
@@ -339,9 +351,12 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void EveryShippedPipeline_StaysWithinTheRequiredMinimumDynamicUniformBuffers()
         {
-            // Program-map completeness and the renderer capture guard check the catalog independently.
-            // Here every layout must be used and pipeline names must be unique, without stale count literals.
-            Assert.NotEmpty(ShippedPipelines);
+            // Main adds certified temporal resolve and accumulation layouts and four pipeline shapes.
+            // R8a adds bounded water and prepared foliage colour, motion, opaque cascade, cutout cascade
+            // and point shadow, with BoundedWater, SceneAnchor and the empty opaque material gap.
+            // T8-R1 keeps completeness independent of the catalogs themselves.
+            Assert.Equal(70, ShippedLayouts.Count);
+            Assert.Equal(80, ShippedPipelines.Count);
             Assert.Equal(ShippedPipelines.Count,
                 ShippedPipelines.Select(p => p.Pipeline).Distinct(StringComparer.Ordinal).Count());
             Assert.Equal(ShippedLayouts.Keys.Order(StringComparer.Ordinal),

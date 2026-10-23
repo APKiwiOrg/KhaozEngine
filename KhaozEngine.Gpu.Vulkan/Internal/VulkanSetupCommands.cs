@@ -267,8 +267,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         /// <summary>
-        /// Append a device-level BUFFER upload: stage the bytes and record the copy, bracketed by the two barriers
-        /// narrowed to what actually reads the destination.
+        /// Append a device-level BUFFER upload: stage the bytes and bracket the copy with destination range
+        /// dependencies. Shared seal-time release orders recycled allocations before the next owner uses them.
         /// <para>
         /// A RING-BACKED UNIFORM BUFFER NEVER COMES HERE. Its device-level write reaches every segment as a memcpy
         /// into persistently mapped memory and records no command at all (9.2), which is the whole contrast
@@ -340,8 +340,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     return 0;
                 }
 
-                _ring.EndRecording(_slot);
-                _open = false;
+                // Sealing can fail after vkEndCommandBuffer invalidates the buffer. Never append or retry
+                // this batch. EnsureOpen advances to the next slot, and wrap resets the abandoned pool.
+                try { _ring.EndRecording(_slot); }
+                finally { _open = false; }
 
                 // THE SUBMIT LOCK IS TAKEN INSIDE THIS ONE, by SubmitSetup. See the class note for the whole
                 // ordering argument.

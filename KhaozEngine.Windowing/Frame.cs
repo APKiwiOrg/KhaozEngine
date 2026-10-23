@@ -4,7 +4,7 @@ namespace KhaozEngine.Windowing
 {
     /// <summary>One render frame: timing, the input snapshot, and the GPU command list to draw into
     /// (the swapchain is already bound and cleared by <see cref="AppWindow"/>).</summary>
-    public sealed class Frame
+    public sealed partial class Frame
     {
         float _contentScale;
 

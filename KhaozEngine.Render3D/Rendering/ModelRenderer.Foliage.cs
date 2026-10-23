@@ -134,8 +134,6 @@ internal sealed partial class ModelRenderer
             new GpuResourceLayoutElement("Foliage", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex, dynamic: true)));
         // The temporal variant against a target with the motion attachment, the base program otherwise.
         ModelMotionResources? motion = MotionMath.IsTemporal(_foliageOutputs) ? _motion : null;
-        IGpuShaderSet shaders = motion?.FoliageShaders
-            ?? (_foliageShaders ??= factory.CreateShadersFromSpirv(ShaderSources.FoliageVert, ShaderSources.ModelFrag));
         _foliagePipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription
         {
             BlendFactor = Vector4.Zero,
@@ -147,7 +145,10 @@ internal sealed partial class ModelRenderer
             ResourceLayouts = motion is null
                 ? new[] { _layout, _foliageLayout }
                 : new[] { _layout, _foliageLayout, motion.FrameLayout },
-            ShaderSet = shaders,
+            ShaderSet = _visibilityShaders.TrySelect(factory, _foliageOutputs, motion is null ? ShaderSources.FoliageVert : ShaderSources.FoliageMotionVert,
+                motion is null ? ShaderSources.ModelFrag : ShaderSources.ModelMotionFrag, preserve: false, out IGpuShaderSet visibilityShaders)
+                ? visibilityShaders : motion?.FoliageShaders
+                    ?? (_foliageShaders ??= factory.CreateShadersFromSpirv(ShaderSources.FoliageVert, ShaderSources.ModelFrag)),
             VertexLayouts = new(FoliageVertexLayouts.Create()),
             Outputs = _foliageOutputs,
         });

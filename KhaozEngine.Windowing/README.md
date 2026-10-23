@@ -33,19 +33,20 @@ Windowing + input foundation for the custom MonoGame-free stack.
   - A custom host still calls a package's own `KhaozEngineMetal.Register()` / `KhaozEngineD3D11.Register()` /
     `KhaozEngineVulkan.Register()` when it wants exactly one backend, or one this platform does not default to.
     Registration is idempotent and last-writer-wins per kind, so the two mix freely and in any order.
+- **Shared frame completion.** `Frame.Submission` exposes the window's lazily created `GpuFrameSubmission`.
+  The loop begins it before preparation, records every scene and diagnostic copy into `Frame.Commands`, and
+  submits that list once before Present. Exceptions abandon unsubmitted recording. Completion consumers share
+  one retained fence, and submission participants receive their decision even when diagnostic capacity is full.
+  Window teardown disposes the owner before the command list and device. Ordinary completion polling never drains.
 - **The frame's pre-record phase.** `Run(onFrame, onPrepare)` is the same loop with a second
   callback, invoked each frame after the frame's `Dt` / input / size are latched and **before** the frame's command
   list is opened. `Run(onFrame)` is exactly `Run(onFrame, null)`, so nothing changes for a host that does not want
-  it. Reach for it when something in your frame has to submit GPU work on a command list of its **own**: opening
-  one while the frame's list is recording is the nested recording the GPU seam refuses by name, on every backend
-  ([#423](https://github.com/APKiwiOrg/KhaozEngine/issues/423),
-  [#429](https://github.com/APKiwiOrg/KhaozEngine/issues/429)). The phase was built for the vendored Veldrid
-  Direct3D11 leg, where the same nesting was a silent corruption instead of a refusal, and it **outlived** that leg
-  by decision in 18.0.0 ([#690](https://github.com/APKiwiOrg/KhaozEngine/issues/690)): the seam offers no
-  dispatch-to-dispatch barrier, so a dependent compute chain still needs a list of its own, and this phase is still
-  the only place on a windowed frame where one may be opened. That is where a `Scene3D`'s `Begin` + draws +
-  `PrepareFrame` belong on a windowed host. `GameApp` / `GameApp3D` already run there, so a game on those needs no
-  change. Do NOT record into `Frame.Commands` from `onPrepare` - the list is not open yet (and on a
+  it. Use it for scene resource reservation and producers that submit GPU work on their own lists. The engine
+  permits one recording per device. Prepare scenes and run producers before opening the host list. The sequence
+  is `Begin`, queue draws, `PrepareFrame`, then render in `onFrame`. `GameApp` and `GameApp3D` already provide
+  this ordering. A repeated
+  preparation of an already prepared frame is a no-op. Do not record into `Frame.Commands` from `onPrepare`,
+  because that list is not open yet (and on a
   render-suppressed frame never is). Both callbacks run on a render-suppressed frame, so update-side work keeps
   advancing while minimized.
 - **Present mode + frame cap** (since 9.23.0). The `AppWindow` ctor / `Scaled(...)` take a `PresentMode`

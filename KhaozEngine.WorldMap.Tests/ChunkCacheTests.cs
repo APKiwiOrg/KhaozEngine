@@ -34,7 +34,8 @@ public sealed class ChunkCacheTests
         Assert.True(cache.TryGet(new(0, 0), out var built));
         Assert.Equal(new WorldMapChunkCoord(0, 0), built.Image.Coord);
         Assert.Equal(32, built.Image.Size);
-        Assert.Equal(32 * 32 * 4, built.Image.Rgba.Length);
+        Assert.Equal(1, built.Image.Border);
+        Assert.Equal(34 * 34 * 4, built.Image.Rgba.Length);
         Assert.Equal(7, built.Image.Revision);
         Assert.Equal("bank", Assert.Single(built.Features.Icons).IconKey);
         Assert.True(cache.IsCurrent(new(0, 0)));
@@ -86,7 +87,7 @@ public sealed class ChunkCacheTests
         cache.Request(new(0, 0), 0f);
 
         Assert.False(cache.BuildNext());
-        Assert.Equal(1, source.SampleCalls);
+        Assert.Equal(9, source.SampleCalls);
     }
 
     /// <summary>Chunks beyond or only touching the authored bounds are ignored.</summary>
@@ -235,7 +236,7 @@ public sealed class ChunkCacheTests
         Assert.True(await build.WaitAsync(Timeout));
         Assert.True(cache.IsCurrent(new(0, 0)));
         Assert.False(cache.BuildNext());
-        Assert.Equal(1, source.SampleCalls);
+        Assert.Equal(9, source.SampleCalls);
     }
 
     /// <summary>The source event invalidates automatically and disposal detaches the subscriber.</summary>
@@ -280,7 +281,7 @@ public sealed class ChunkCacheTests
         Assert.False(cache.IsFailed(new(0, 0)));
         Assert.True(cache.BuildNext());
         Assert.True(cache.IsCurrent(new(0, 0)));
-        Assert.Equal(2, source.SampleCalls);
+        Assert.Equal(10, source.SampleCalls);
     }
 
     /// <summary>An older build failure cannot quarantine a generation invalidated while it was running.</summary>

@@ -49,6 +49,9 @@ public sealed record WorldMapStyle
     /// <summary>The terrain relief settings.</summary>
     public WorldMapRelief Relief { get; init; } = new();
 
+    /// <summary>Optional elevation contours on dry ground. Null preserves the existing terrain raster.</summary>
+    public WorldMapContours? Contours { get; init; }
+
     /// <summary>The surface-water palette and shoreline settings.</summary>
     public WorldMapWater Water { get; init; } = new(
         Color.FromHex("#6f9cc0"), Color.FromHex("#2a5a9a"), Color.FromHex("#1f3f66"));

@@ -28,11 +28,16 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <param name="Images">Every image this set binds, with the layout that binding needs it in (row 15,
     /// https://github.com/APKiwiOrg/KhaozEngine/issues/525). Null for a set that binds none, which is most of
     /// them.</param>
-    /// <param name="StorageBuffers">The <c>VkBuffer</c> of every STORAGE buffer this set binds, which is the
-    /// buffer half of the dependent-dispatch hazard set (V-C2). Null when it binds none.</param>
+    /// <param name="StorageBuffers">The <c>VkBuffer</c> of every STORAGE buffer this set binds, read-only and
+    /// read-write alike, which is what a command READS and therefore what the hazard question asks about (V-C2).
+    /// Null when it binds none.</param>
+    /// <param name="WritableStorageBuffers">The subset bound through
+    /// <see cref="GpuResourceKind.StructuredBufferReadWrite"/>, which is what a dispatch can WRITE. A real set
+    /// always supplies it, empty when every storage binding is read-only. Null only on a record built without it,
+    /// which falls back to <paramref name="StorageBuffers"/> so an unclassified binding stays a write.</param>
     internal readonly record struct VulkanBoundSet(
         ulong DescriptorSet, ulong SetLayout, VulkanDynamicUniform[]? DynamicUniforms,
-        VulkanBoundImage[]? Images, ulong[]? StorageBuffers)
+        VulkanBoundImage[]? Images, ulong[]? StorageBuffers, ulong[]? WritableStorageBuffers = null)
     {
         /// <summary>Whether this record names a set at all. False for a slot never bound and for one bound to
         /// null, which the flush treats identically because they are.</summary>
@@ -47,6 +52,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         /// <summary>The storage buffers this set binds, empty rather than null when it binds none.</summary>
         internal ReadOnlySpan<ulong> BoundStorageBuffers => StorageBuffers;
+
+        /// <summary>The storage buffers this set can write, empty when it binds none. A record with no writable
+        /// array answers every storage buffer, which is the conservative reading.</summary>
+        internal ReadOnlySpan<ulong> BoundWritableStorageBuffers => WritableStorageBuffers ?? StorageBuffers;
     }
 
     /// <summary>

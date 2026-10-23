@@ -744,8 +744,9 @@ Source and native keys are unique, with complete source coverage checked before 
 
 | Row | Exact fields and constraints |
 | --- | --- |
-| Root | `schemaVersion`, `generator`, `nativeDocumentPath`, `nativeTiledManifestPath`, `buildingManifestPath`, `markerManifestPath`, `foliageManifestPath`, `materials`, `placements`, `lights`, `roofs`, `water`, `foliage`, `windows`, `sequence`, `policy`, `expectations`. `schemaVersion` is 1. `nativeDocumentPath` is an attested path or null, and `nativeTiledManifestPath` is required and non-null |
+| Root | `schemaVersion`, `generator`, `nativeDocumentPath`, `nativeTiledManifestPath`, `buildingManifestPath`, `markerManifestPath`, `foliageManifestPath`, `assetSelections`, `materials`, `placements`, `lights`, `roofs`, `water`, `foliage`, `windows`, `sequence`, `policy`, `expectations`. `schemaVersion` is 1. `nativeDocumentPath` is an attested path or null, and `nativeTiledManifestPath` is required and non-null |
 | generator | `{path,helpers}` with unique attested paths, including every retained helper and pinned helper-build input |
+| assetSelections | `{sourceArchetypeId,nativeAssetIds}`. Unique source catalog IDs, each with nonempty unique native asset catalog IDs. Required for every declared source selection, including unplaced selections and foliage policy model IDs. Observed placement and foliage bindings must be included. Extra catalog mappings are permitted |
 | materials | `{sourceMaterialId,nativeResourceId}`. Source IDs are positive ushort values |
 | placements | `{sourceObjectId,nativePlacementId,lods}`. Object IDs are positive canonical decimal int64 strings |
 | lods | `{sourcePath,nativeResourceId}` in original base/LOD order, checked against the original catalog |
@@ -772,7 +773,9 @@ A policy file has exactly `placements`, `animatedAssets`, `foliage`, `water`, `l
 `layers` and `defaultDrawRadius`. Layer rows have exactly the released `MapPlacementLayer` serialized
 properties `id`, `assetIds`, `lodDistances`, `lodCrossfadeWidth`, `drawRadius`, `hlodDistance`,
 `hlodCrossfadeWidth`, `hlodWeldCell`, `castsShadows`. Source selections name original catalog archetypes and
-native selections name mapped catalog assets. Declared selections may have no placements. Their attested
+native selections name mapped catalog assets. Correspondence comes from the attested `assetSelections` rows,
+independently of placements and both policies. Missing mappings refuse, and equal IDs are never assumed.
+Declared selections may have no placements. Their attested
 base/LOD meshes are still resolved from the catalogs, and they emit no draws. Foliage and water are complete closed camel-case serializations
 of the candidate's `GroundCoverRenderOptions` and `WaterLook`, including nullable members and vector
 fields. Stable profiles/casting are model registration inputs. Frame policy excludes stable values.

@@ -174,15 +174,10 @@ internal sealed class ShippedSceneInputs
             correspondence.Owners(capture.Context!);
             Require(manifest.Foliage.All(f => result.FoliageBindings.Any(b => b.Row.SourceLayerId == f.SourceLayerId && b.Row.NativeLayerId == f.NativeLayerId)), "scene foliage mappings differ");
         }
-        result.AssetMappings = objects.Values.GroupBy(o => o.ArchetypeId).ToDictionary(g => g.Key,
-            g => g.Select(o => effective.Placements.Single(p => p.PlacementId == manifest.Placements.Single(m => m.SourceObjectId == o.Id).NativePlacementId).AssetId).Distinct(StringComparer.Ordinal).ToArray(), StringComparer.Ordinal);
-        foreach (var binding in result.FoliageBindings)
-            foreach (var model in binding.Models)
-                if (!result.AssetMappings.ContainsKey(model.Key)) ((Dictionary<string, string[]>)result.AssetMappings).Add(model.Key, [model.Value]);
+        result.AssetMappings = ShippedSceneSelections.Bind(result, closure, effective);
         var modelPaths = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var row in manifest.Placements) modelPaths.TryAdd(objects[row.SourceObjectId].ArchetypeId, row.Lods[0].SourcePath);
-        foreach (string id in sourcePolicy.ModelExtents.Keys.Concat(sourcePolicy.AnimatedAssets)
-            .Concat(sourcePolicy.Placements.Layers.SelectMany(l => l.AssetIds)).Distinct(StringComparer.Ordinal))
+        foreach (string id in ShippedSceneSelections.DeclaredSourceIds(sourcePolicy))
         {
             var archetype = catalogs.Archetype(id) ?? throw new InvalidDataException("unknown scene source selection");
             string path = SafePath(archetype.MeshRef);

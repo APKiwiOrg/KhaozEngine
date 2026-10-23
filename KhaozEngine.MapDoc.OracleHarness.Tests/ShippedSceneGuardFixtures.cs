@@ -237,6 +237,7 @@ internal static partial class ShippedSceneGuardFixtures
             ["buildingManifestPath"] = null,
             ["markerManifestPath"] = null,
             ["foliageManifestPath"] = null,
+            ["assetSelections"] = new JsonArray(SelectionCorrespondence("column", "native-column")),
             ["materials"] = new JsonArray(new JsonObject { ["sourceMaterialId"] = 1, ["nativeResourceId"] = "paint" }),
             ["placements"] = new JsonArray(new JsonObject
             {

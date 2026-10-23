@@ -39,7 +39,9 @@ internal static partial class ShippedSceneGuardFixtures
             tile["placements"]![0]!["x"] = 3;
             File.WriteAllText(path, tile.ToJsonString(ShippedScenePolicy.Json));
         }
-        if (variant == "unplaced-selection")
+        if (variant == "foliage-valid")
+            comparison["assetSelections"]!.AsArray().Add(SelectionCorrespondence("reed", "native-reed"));
+        if (variant.StartsWith("unplaced-selection", System.StringComparison.Ordinal))
         {
             string catalogPath = Path.Combine(root, "catalog.json");
             var catalog = JsonNode.Parse(File.ReadAllText(catalogPath))!;
@@ -53,8 +55,13 @@ internal static partial class ShippedSceneGuardFixtures
             File.Copy(Path.Combine(root, "assets/far.glb"), Path.Combine(root, "assets/unplaced-far.glb"));
             string assetPath = Path.Combine(root, "assets/root.json");
             var assets = JsonNode.Parse(File.ReadAllText(assetPath))!;
-            var asset = assets["assets"]![0]!.DeepClone(); asset["id"] = "unused-column";
+            var asset = assets["assets"]![0]!.DeepClone(); asset["id"] = "native-unused-column";
             assets["assets"]!.AsArray().Add(asset);
+            if (variant == "unplaced-selection-wrong-policy")
+            {
+                var other = asset.DeepClone(); other["id"] = "native-other-column";
+                assets["assets"]!.AsArray().Add(other);
+            }
             File.WriteAllText(assetPath, assets.ToJsonString(ShippedScenePolicy.Json));
             native.NativeAssets[0] = native.NativeAssets[0] with { Sha256 = Hash(File.ReadAllBytes(assetPath)) };
             MapDocumentFile.Save(native, Path.Combine(root, "native.json"));
@@ -64,12 +71,29 @@ internal static partial class ShippedSceneGuardFixtures
                 string path = Path.Combine(root, name);
                 var policy = JsonNode.Parse(File.ReadAllText(path))!;
                 var layer = policy["placements"]!["layers"]![0]!.DeepClone();
-                layer["id"] = "unplaced"; layer["assetIds"] = new JsonArray("unused-column");
+                layer["id"] = "unplaced";
+                layer["assetIds"] = new JsonArray(name == "source-policy.json" ? "unused-column" : "native-unused-column");
+                if (name == "native-policy.json" && variant == "unplaced-selection-wrong-policy")
+                    layer["assetIds"] = new JsonArray("native-other-column");
                 layer["hlodDistance"] = 20; layer["hlodCrossfadeWidth"] = 4; layer["hlodWeldCell"] = 1;
                 policy["placements"]!["layers"]!.AsArray().Add(layer);
                 File.WriteAllText(path, policy.ToJsonString(ShippedScenePolicy.Json));
             }
+            var selection = SelectionCorrespondence("unused-column", "native-unused-column");
+            comparison["assetSelections"]!.AsArray().Add(selection);
+            if (variant == "unplaced-selection-missing-mapping") comparison["assetSelections"]!.AsArray().Remove(selection);
+            if (variant == "unplaced-selection-unknown-source") selection["sourceArchetypeId"] = "unknown-column";
+            if (variant == "unplaced-selection-unknown-native") selection["nativeAssetIds"] = new JsonArray("unknown-column");
+            if (variant == "unplaced-selection-duplicate-source") comparison["assetSelections"]!.AsArray().Add(selection.DeepClone());
+            if (variant == "unplaced-selection-observed-mismatch")
+                comparison["assetSelections"]![0]!["nativeAssetIds"] = new JsonArray("native-unused-column");
         }
         return comparison;
     }
+
+    static JsonObject SelectionCorrespondence(string source, string native) => new()
+    {
+        ["sourceArchetypeId"] = source,
+        ["nativeAssetIds"] = new JsonArray(native),
+    };
 }

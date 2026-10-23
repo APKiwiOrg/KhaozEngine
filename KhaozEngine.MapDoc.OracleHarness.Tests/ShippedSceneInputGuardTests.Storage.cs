@@ -28,6 +28,29 @@ public sealed partial class ShippedSceneInputGuardTests
     }
 
     [Theory]
+    [InlineData("unplaced-selection-missing-mapping")]
+    [InlineData("unplaced-selection-unknown-source")]
+    [InlineData("unplaced-selection-unknown-native")]
+    [InlineData("unplaced-selection-duplicate-source")]
+    [InlineData("unplaced-selection-observed-mismatch")]
+    public void SceneSelection_RejectsIncompleteOrInvalidAttestedCorrespondence(string variant)
+    {
+        using var fixture = ShippedSceneGuardFixtures.Create(variant);
+        Assert.Throws<InvalidDataException>(() => ShippedSceneInputs.Read(PrivateOracleInputs.Require(fixture.Environment)));
+    }
+
+    [Fact]
+    public void SceneSelection_AttestedCorrespondenceCannotBeInferredFromComparedPolicies()
+    {
+        using var fixture = ShippedSceneGuardFixtures.Create("unplaced-selection-wrong-policy");
+        var inputs = ShippedSceneInputs.Read(PrivateOracleInputs.Require(fixture.Environment));
+        Assert.Throws<PrivateOracleFailure>(() => PrivateOracleEntry.Run(fixture.Environment,
+            (_, report) => ShippedSceneComparison.Compare(inputs, report)));
+        Assert.Contains("scene-policy", fixture.FailureCategories());
+        Assert.All(fixture.FailureCategories(), category => Assert.Equal("scene-policy", category));
+    }
+
+    [Theory]
     [InlineData("monolithic-mismatch")]
     [InlineData("monolithic-native-metadata-mismatch")]
     [InlineData("monolithic-surface-mismatch")]
@@ -47,6 +70,7 @@ public sealed partial class ShippedSceneInputGuardTests
         var inputs = ShippedSceneInputs.Read(PrivateOracleInputs.Require(fixture.Environment));
         var legacy = LegacySceneRecorder.Record(inputs.World, inputs.Catalogs, inputs);
         Assert.Single(legacy.Placements);
+        Assert.DoesNotContain(legacy.Placements, p => p.ArchetypeId == "unused-column");
         var document = inputs.Reload(true); var assets = inputs.Assets(document);
         using var docs = MapDocumentSource.FromDocument(document);
         var source = MapSceneSource.Capture(docs, assets).Source!;
@@ -54,7 +78,7 @@ public sealed partial class ShippedSceneInputGuardTests
         var routing = MapPlacementRouting.Create(scene, inputs.NativePolicy.Placements, inputs.NativePolicy.AnimatedAssets);
         Assert.Equal(MapSceneStatus.CompleteForScope, routing.Status);
         Assert.Single(routing.Routing!.Entries);
-        Assert.DoesNotContain(scene.Placements, p => p.AssetId == "unused-column");
+        Assert.DoesNotContain(scene.Placements, p => p.AssetId == "native-unused-column");
         PrivateOracleEntry.Run(fixture.Environment, (_, report) => ShippedSceneComparison.Compare(inputs, report));
         Assert.Empty(fixture.FailureCategories());
     }

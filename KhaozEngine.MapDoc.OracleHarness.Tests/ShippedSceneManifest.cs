@@ -13,6 +13,7 @@ internal sealed record SceneGenerator(string Path, IReadOnlyList<string> Helpers
 internal sealed record SceneMaterial(ushort SourceMaterialId, string NativeResourceId);
 internal sealed record SceneLod(string SourcePath, string NativeResourceId);
 internal sealed record ScenePlacement(long SourceObjectId, string NativePlacementId, IReadOnlyList<SceneLod> Lods);
+internal sealed record SceneAssetSelection(string SourceArchetypeId, IReadOnlyList<string> NativeAssetIds);
 internal sealed record SceneLight(long SourceObjectId, string SourceProfileId, string NativeLightId);
 internal sealed record SceneRoof(long SourceObjectId, string NativePlacementId);
 internal sealed record SceneWater(string SourceBodyKey, string NativeBodyId, IReadOnlyList<string> NativeSpaceIds);
@@ -28,6 +29,7 @@ internal sealed record SceneExpectations(long TerrainFaces, long Placements, lon
 /// <summary>Closed correspondence only. No expected meshes, bounds, matrices or draw lists are accepted here.</summary>
 internal sealed record ShippedSceneManifest(SceneGenerator Generator, string? NativeDocumentPath, string NativeTiledManifestPath,
     string? BuildingManifestPath, string? MarkerManifestPath, string? FoliageManifestPath,
+    IReadOnlyList<SceneAssetSelection> AssetSelections,
     IReadOnlyList<SceneMaterial> Materials, IReadOnlyList<ScenePlacement> Placements, IReadOnlyList<SceneLight> Lights,
     IReadOnlyList<SceneRoof> Roofs, IReadOnlyList<SceneWater> Water, IReadOnlyList<SceneFoliage> Foliage,
     IReadOnlyList<SceneWindow> Windows, IReadOnlyList<SceneStep> Sequence, ScenePolicyPaths Policy, SceneExpectations Expectations)
@@ -36,13 +38,21 @@ internal sealed record ShippedSceneManifest(SceneGenerator Generator, string? Na
     {
         UniqueMembers(json);
         Shape(json, "schemaVersion", "generator", "nativeDocumentPath", "nativeTiledManifestPath", "buildingManifestPath",
-            "markerManifestPath", "foliageManifestPath", "materials", "placements", "lights", "roofs", "water", "foliage",
+            "markerManifestPath", "foliageManifestPath", "assetSelections", "materials", "placements", "lights", "roofs", "water", "foliage",
             "windows", "sequence", "policy", "expectations");
         Require(json.GetProperty("schemaVersion").TryGetInt32(out int schema) && schema == 1, "unsupported scene schema");
         var generator = json.GetProperty("generator"); Shape(generator, "path", "helpers");
         string generatorPath = Path(generator, "path");
         string[] helpers = Strings(generator.GetProperty("helpers")).Select(SafePath).ToArray();
         Require(!helpers.Contains(generatorPath, StringComparer.Ordinal), "duplicate scene generator input");
+        var assetSelections = Rows(json, "assetSelections", r =>
+        {
+            Shape(r, "sourceArchetypeId", "nativeAssetIds");
+            var ids = Strings(r.GetProperty("nativeAssetIds"));
+            Require(ids.Length > 0, "scene selection needs native assets");
+            return new SceneAssetSelection(Text(r, "sourceArchetypeId"), ids);
+        });
+        Unique(assetSelections.Select(r => r.SourceArchetypeId), "scene selection source");
         var materials = Rows(json, "materials", r =>
         {
             Shape(r, "sourceMaterialId", "nativeResourceId");
@@ -98,7 +108,7 @@ internal sealed record ShippedSceneManifest(SceneGenerator Generator, string? Na
         long Count(string name) => Integer(counts, name, 0, long.MaxValue);
         return new(new(generatorPath, helpers), NullablePath(json, "nativeDocumentPath"), Path(json, "nativeTiledManifestPath"),
             NullablePath(json, "buildingManifestPath"), NullablePath(json, "markerManifestPath"), NullablePath(json, "foliageManifestPath"),
-            materials, placements, lights, roofs, water, foliage, windows, sequence, new(Path(policy, "sourcePolicyPath"), Path(policy, "nativePolicyPath"), probes),
+            assetSelections, materials, placements, lights, roofs, water, foliage, windows, sequence, new(Path(policy, "sourcePolicyPath"), Path(policy, "nativePolicyPath"), probes),
             new(Count("terrainFaces"), Count("placements"), Count("parts"), Count("lods"), Count("lights"), Count("roofs"), Count("waterRegions"), Count("foliageSamples"), Count("windows"), Count("sequenceSteps")));
     }
 

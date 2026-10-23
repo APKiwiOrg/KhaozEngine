@@ -76,7 +76,7 @@ public sealed partial class Scene3D
                 : replacementFor(mesh.SkinnedMaterialSet);
             _skinnedMeshes[i] = new SkinnedMeshEntry(mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat,
                 materialSet, skinnedMaterialSet, mesh.OutlineMaterialSet, mesh.AlphaCutoff,
-                mesh.InverseBind, in mesh.Bounds);
+                mesh.Source, mesh.SourceIdentity, mesh.DqBounds, mesh.LbsMotionBounds, in mesh.Bounds);
         }
 
         foreach (SplatMaterialEntry? material in _splatMaterials)

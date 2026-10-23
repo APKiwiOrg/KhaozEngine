@@ -1,6 +1,5 @@
 using System;
 using System.Numerics;
-using System.Runtime.InteropServices;
 using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D;
@@ -60,13 +59,33 @@ public sealed partial class Scene3D
         (_motionHistory ??= new MotionHistory()).RecordRigid(draw.Motion, draw.World);
     }
 
-    // Records the composed palette ComposeBonesIntoSlot just wrote for this draw's slot, which is what the renderer
-    // uploads, so a previous-palette skin pass reads the same kind of matrix as the current one.
-    void RecordSkinnedMotion(in SkinnedInstanceDraw draw, int slot, int boneCount)
+    static SkinnedMotionIdentity MotionIdentity(SkinnedMeshHandle handle, SkinnedMeshEntry entry)
+    {
+        // The upload allocates this slot/generation pair once per source snapshot. Layout rebuilds retain it.
+        SkinnedMeshHandle source = entry.SourceIdentity;
+        ulong sourceId = ((ulong)(uint)source.Generation << 32) | (uint)source.Index;
+        return new SkinnedMotionIdentity(handle.Index, handle.Generation, sourceId, entry.Profile);
+    }
+
+    MeshBounds SkinnedMotionBounds(SkinnedMeshEntry entry, in PreparedSkinningPose pose, in SkinnedInstanceDraw draw)
+    {
+        if (draw.Motion.IsNone || draw.ShadowOnly || !TemporalActive) return default;
+        if (pose.Profile.Method == SkinningMethod.DualQuaternionRigid)
+        {
+            if (!DualQuaternionBounds.TryBoundWorld(pose.ModelBounds, draw.Model, out MeshBounds bounds))
+                throw new ArgumentException("DQ motion history requires finite representable world bounds.", nameof(draw));
+            return bounds;
+        }
+        return entry.LbsMotionBounds.BoundWorld(pose.Owner.Lbs(pose), draw.Model);
+    }
+
+    // Copy the exact prepared words the current draw consumes. No previous pose is re-extracted from matrices.
+    void RecordSkinnedMotion(in SkinnedInstanceDraw draw, in PreparedSkinningPose pose, in MeshBounds worldBounds)
     {
         if (draw.Motion.IsNone || draw.ShadowOnly || !TemporalActive) return;
-        ReadOnlySpan<Matrix4x4> composed = CollectionsMarshal.AsSpan(_boneMatrices)
-            .Slice(slot * SkinningMath.MaxBonesPerDraw, boneCount);
-        (_motionHistory ??= new MotionHistory()).RecordSkinned(draw.Motion, draw.Model, composed);
+        SkinnedMotionIdentity identity = MotionIdentity(draw.Mesh, _skinnedMeshes[draw.Mesh.Index]!);
+        bool dq = pose.Profile.Method == SkinningMethod.DualQuaternionRigid;
+        (_motionHistory ??= new MotionHistory()).RecordSkinned(draw.Motion, draw.Model, identity,
+            dq ? default : pose.Owner.Lbs(pose), dq ? pose.Owner.Dq(pose) : default, worldBounds);
     }
 }

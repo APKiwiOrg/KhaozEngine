@@ -56,6 +56,28 @@ layout(location=11) out vec4 vPrevClip;"),
     vPrevClip = MotionParams.x > 0.5 ? PrevViewProj * (PrevModel * (prevSkin * vec4(Position, 1.0))) : vCurClip;
 ");
 
+    /// <summary>DQ current and previous positions use the same ordinary graph with separate prepared palettes.
+    /// PrevModel plus 256 interleaved real/dual vectors is a 4160-byte payload in a 4352-byte slot.</summary>
+    public static readonly string DqSkinnedModelMotionVert = ShaderText.BeforeEndOfMain(
+        ShaderText.After(DqSkinnedModelVert, "layout(location=9) out vec3 vDissolve;", @"
+layout(set=3, binding=0) uniform MotionFrame {" + MotionFrameMembersGlsl + @"};
+layout(set=3, binding=1) uniform PrevPalette {
+    mat4 PrevModel;
+    vec4 prevDqBones[256];
+};
+layout(location=10) out vec4 vCurClip;
+layout(location=11) out vec4 vPrevClip;
+" + DualQuaternionGlsl.Source("prevDqBones")),
+        @"    vec3 previousPosition; vec3 previousNormal; vec4 previousTangent;
+    if (!prevDqBonesSkin(Position, Normal, Tangent, BoneIndices, BoneWeights,
+        previousPosition, previousNormal, previousTangent)) {
+        gl_Position = vec4(0.0, 0.0, -1.0, 1.0);
+        return;
+    }
+    vCurClip = CurViewProj * world;
+    vPrevClip = MotionParams.x > 0.5 ? PrevViewProj * (PrevModel * vec4(previousPosition, 1.0)) : vCurClip;
+");
+
     /// <summary>ModelVert with motion for CPU-skinned draws. Their vertices are deformed on the CPU, so last frame's
     /// position arrives per vertex, already placed in this frame's render-relative world, at location 15 from a third
     /// vertex stream. Set 1 is the motion block alone.</summary>

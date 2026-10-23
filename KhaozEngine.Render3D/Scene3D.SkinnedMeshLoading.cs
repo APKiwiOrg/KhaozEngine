@@ -10,7 +10,8 @@ public sealed partial class Scene3D
     /// <summary>Upload a skinned mesh to the GPU once. Returns a handle to draw it with
     /// <see cref="DrawSkinned(KhaozEngine.Render3D.SkinnedMeshHandle, System.ReadOnlySpan{System.Numerics.Matrix4x4}, System.Numerics.Matrix4x4, KhaozEngine.Primitives.Color)"/>.
     /// Untextured meshes sample the 1x1 white default, so their colour is the baked vertex colour times any
-    /// per-instance tint.</summary>
+    /// per-instance tint. Every upload retains a private source snapshot and immutable profile. DQ sources are
+    /// validated, and draw submission refuses DQ while its rendering consumers are unavailable.</summary>
     public SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh) =>
         LoadSkinnedInternal(mesh, null, null, null, 0f);
 
@@ -43,7 +44,11 @@ public sealed partial class Scene3D
         IGpuTexture? roughness,
         float alphaCutoff)
     {
-        mesh = SnapshotCoverageMesh(mesh);
+        mesh = RetainSkinningSource(mesh);
+        DqBoundsSource? dqBounds = mesh.Profile.Method == SkinningMethod.DualQuaternionRigid
+            ? new DqBoundsSource(mesh.Vertices, mesh.BoneCount) : null;
+        LinearBlendMotionBounds lbsMotionBounds = mesh.Profile.Method == SkinningMethod.LinearBlend
+            ? new LinearBlendMotionBounds(mesh.Vertices) : default;
         IGpuBuffer? vertexBuffer = null;
         IGpuBuffer? indexBuffer = null;
         IGpuResourceSet? material = null;
@@ -54,7 +59,17 @@ public sealed partial class Scene3D
             vertexBuffer = _gd.Factory.CreateBuffer(new GpuBufferDescription(
                 (uint)(mesh.Vertices.Length * SkinnedVertex.SizeInBytes), GpuBufferUsage.VertexBuffer));
             _gd.UpdateBuffer(vertexBuffer, 0, mesh.Vertices);
-            indexBuffer = CreateIndexBuffer(mesh.Indices32, mesh.IndexFormat);
+            // Assign ownership before the upload, so an upload exception disposes both partial buffers.
+            bool wide = mesh.IndexFormat == GpuIndexFormat.UInt32;
+            indexBuffer = _gd.Factory.CreateBuffer(new GpuBufferDescription(
+                (uint)(mesh.Indices32.Length * (wide ? sizeof(uint) : sizeof(ushort))), GpuBufferUsage.IndexBuffer));
+            if (wide) _gd.UpdateBuffer(indexBuffer, 0, mesh.Indices32);
+            else
+            {
+                var narrow = new ushort[mesh.Indices32.Length];
+                for (int i = 0; i < narrow.Length; i++) narrow[i] = (ushort)mesh.Indices32[i];
+                _gd.UpdateBuffer(indexBuffer, 0, narrow);
+            }
 
             bool hasOrdinaryMap = albedo is not null || normal is not null || roughness is not null;
             material = hasOrdinaryMap ? _model.CreateMaterialSet(albedo, normal, roughness) : null;
@@ -62,10 +77,11 @@ public sealed partial class Scene3D
             outlineMaterial = albedo is null ? null : _targetOutlines.CreateMaterialSet(albedo);
 
             MeshBounds bounds = MeshBounds.FromVertices(mesh.Vertices);
+            int index = _skinnedSlots.Alloc(out int generation);
+            var handle = new SkinnedMeshHandle(index, generation);
             var entry = new SkinnedMeshEntry(
                 vertexBuffer, indexBuffer, mesh.Indices32.Length, mesh.IndexFormat,
-                material, skinnedMaterial, outlineMaterial, alphaCutoff, mesh.InverseBind, in bounds);
-            int index = _skinnedSlots.Alloc(out int generation);
+                material, skinnedMaterial, outlineMaterial, alphaCutoff, mesh, handle, dqBounds, lbsMotionBounds, in bounds);
             if (index < _skinnedMeshes.Count)
             {
                 _skinnedMeshes[index] = entry;
@@ -78,7 +94,7 @@ public sealed partial class Scene3D
             }
             if (mesh.Coverage is not null) _coverageHostUploads.Add((index, generation), mesh);
             CacheCoveragePaletteBounds(index, generation, mesh);
-            return new SkinnedMeshHandle(index, generation);
+            return handle;
         }
         catch
         {
@@ -117,6 +133,12 @@ public sealed partial class Scene3D
         public readonly float AlphaCutoff;
         public readonly Matrix4x4[] InverseBind;
         public readonly MeshBounds Bounds;
+        public readonly SkinningProfile Profile;
+        public readonly SkinnedMeshHandle SourceIdentity;
+        public readonly SkinnedGltfMesh Source;
+        public readonly DqBoundsSource? DqBounds;
+        public readonly LinearBlendMotionBounds LbsMotionBounds;
+        public readonly SkinningValidationContext ValidationContext;
 
         public SkinnedMeshEntry(
             IGpuBuffer vb,
@@ -127,7 +149,10 @@ public sealed partial class Scene3D
             IGpuResourceSet? skinnedMaterialSet,
             IGpuResourceSet? outlineMaterialSet,
             float alphaCutoff,
-            Matrix4x4[] inverseBind,
+            SkinnedGltfMesh source,
+            SkinnedMeshHandle sourceIdentity,
+            DqBoundsSource? dqBounds,
+            LinearBlendMotionBounds lbsMotionBounds,
             in MeshBounds bounds)
         {
             Vb = vb;
@@ -138,7 +163,14 @@ public sealed partial class Scene3D
             SkinnedMaterialSet = skinnedMaterialSet;
             OutlineMaterialSet = outlineMaterialSet;
             AlphaCutoff = alphaCutoff;
-            InverseBind = inverseBind;
+            Source = source;
+            Profile = source.Profile;
+            SourceIdentity = sourceIdentity;
+            DqBounds = dqBounds;
+            LbsMotionBounds = lbsMotionBounds;
+            InverseBind = source.InverseBind;
+            ValidationContext = new SkinningValidationContext(
+                $"skinned mesh {sourceIdentity.Index}:{sourceIdentity.Generation}", null, -1);
             Bounds = bounds;
         }
     }

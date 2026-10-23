@@ -251,7 +251,7 @@ namespace KhaozEngine.Render3D.Rendering
             // The frame's GPU-skinned bone palettes, built BEFORE the shadow map because the depth pass binds the
             // same buffer this pass does (#407) and takes it as a constructor dependency. Owned here, disposed here.
             _bonePalette = new SkinnedBonePalette(gd);
-
+            _dqPalette = new DualQuaternionPaletteBuffer(gd, retired);
             // The cascade atlas is allocated up front at a fixed per-cascade resolution x cascade count so its texture
             // handle stays stable and can be bound into every material set below. The shader gates on ShadowParams.y
             // (strength), so an inactive frame never taps it (byte-stable with ShadowMode.Off).
@@ -483,6 +483,7 @@ namespace KhaozEngine.Render3D.Rendering
                 VertexLayouts = new List<GpuVertexLayoutDescription> { skinnedVertexLayout },
                 Outputs = modelOutputs,
             });
+            SetDualQuaternionOutputs(modelOutputs, skinnedVertexLayout);
         }
 
         /// <summary>Bind + clear the model framebuffer once per frame, before drawing instances.</summary>
@@ -640,6 +641,7 @@ namespace KhaozEngine.Render3D.Rendering
             DisposeCoveragePulling();
             DisposeFoliageResources();
             DisposeMotionResources();
+            DisposeDualQuaternionMaterials();
             _shadowMap.Dispose();
             _pipeline.Dispose(); _defaultSet.Dispose(); _layout.Dispose();
             _white.Dispose(); _flatNormal.Dispose(); _defaultRough.Dispose(); // _sampler is the device built-in (non-owning); do not dispose it.
@@ -654,7 +656,7 @@ namespace KhaozEngine.Render3D.Rendering
             _skinnedShaders.Dispose(); _skinnedDissolveShaders.Dispose();
             _skinnedDefaultFragSet.Dispose(); _skinnedMainLayout.Dispose(); _skinnedFragLayout.Dispose();
             _skinnedMainUbo?.Dispose(); _skinnedMainSet?.Dispose();
-            _bonePalette.Dispose();   // after _shadowMap, which binds the same set
+            _bonePalette.Dispose(); _dqPalette.Dispose();   // after _shadowMap, which binds the LBS set
             _pointLightClusterBuffer.Dispose();
             _pointLightBuffer.Dispose();
             _ubo.Dispose();

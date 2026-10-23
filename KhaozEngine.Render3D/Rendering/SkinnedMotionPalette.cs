@@ -20,6 +20,10 @@ internal sealed class SkinnedMotionPalette : IDisposable
     /// <summary>One slot rounded up to the 256-byte dynamic-offset alignment: 8448 bytes, 528 D3D11 constants.</summary>
     internal const uint SlotBytes = (PayloadBytes + 255u) & ~255u;
 
+    internal const uint DqPayloadBytes = DualQuaternionPaletteBuffer.MotionPayloadBytes;
+    internal const uint DqSlotBytes = DualQuaternionPaletteBuffer.MotionSlotBytes;
+
+    readonly DualQuaternionPaletteBuffer? _dq;
     readonly IGpuDevice _gd;
     readonly IGpuBuffer _frame;
     readonly GpuRetireQueue _retired;
@@ -28,11 +32,19 @@ internal sealed class SkinnedMotionPalette : IDisposable
     uint _slots;
     byte[] _image = Array.Empty<byte>();
 
-    internal SkinnedMotionPalette(IGpuDevice gd, IGpuBuffer motionFrame, GpuRetireQueue retired)
+    internal SkinnedMotionPalette(IGpuDevice gd, IGpuBuffer motionFrame, GpuRetireQueue retired,
+        SkinningMethod method = SkinningMethod.LinearBlend)
     {
         _gd = gd;
         _frame = motionFrame;
         _retired = retired;
+        if (method == SkinningMethod.DualQuaternionRigid)
+        {
+            _dq = new DualQuaternionPaletteBuffer(gd, retired, motionFrame);
+            Layout = _dq.Layout;
+            return;
+        }
+        if (method != SkinningMethod.LinearBlend) throw new ArgumentOutOfRangeException(nameof(method));
         Layout = gd.Factory.CreateResourceLayout(new GpuResourceLayoutDescription(
             new GpuResourceLayoutElement("MotionFrame", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex),
             new GpuResourceLayoutElement("PrevPalette", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex, dynamic: true)));
@@ -42,19 +54,25 @@ internal sealed class SkinnedMotionPalette : IDisposable
     internal IGpuResourceLayout Layout { get; }
 
     /// <summary>The single-slot window set, rebased per draw by <see cref="OffsetFor"/>.</summary>
-    internal IGpuResourceSet Set => _set ?? throw new InvalidOperationException(
+    internal IGpuResourceSet Set => _dq?.Set ?? _set ?? throw new InvalidOperationException(
         "EnsureCapacity has not run, so no skinned motion slot exists to bind.");
 
     /// <summary>The slot buffer, null before <see cref="EnsureCapacity"/>. For tests.</summary>
-    internal IGpuBuffer? BufferForTests => _buffer;
+    internal IGpuBuffer? BufferForTests => _dq?.Buffer ?? _buffer;
 
     /// <summary>The dynamic offset that selects caster <paramref name="slot"/>.</summary>
     internal static uint OffsetFor(uint slot) => slot * SlotBytes;
+
+    internal static uint DqOffsetFor(uint slot) => checked(slot * DqSlotBytes);
+
+    /// <summary>Select the stride belonging to this palette's immutable deformation method.</summary>
+    internal uint OffsetForSlot(uint slot) => _dq?.OffsetFor(slot) ?? OffsetFor(slot);
 
     /// <summary>Hold at least <paramref name="slotCount"/> casters, growing geometrically and retiring what it
     /// replaces. The CPU image carries across a grow.</summary>
     internal void EnsureCapacity(uint slotCount)
     {
+        if (_dq is not null) { _dq.EnsureCapacity(slotCount); return; }
         if (_buffer != null && _slots >= slotCount) return;
         _retired.Retire(_buffer, _set, null);
         _slots = Math.Max(slotCount, _slots == 0 ? 8u : _slots * 2);
@@ -70,20 +88,29 @@ internal sealed class SkinnedMotionPalette : IDisposable
     /// its bone count, so the rest of the slot is never read.</summary>
     internal void Pack(uint slot, in Matrix4x4 previousWorld, ReadOnlySpan<Matrix4x4> previousBones)
     {
+        if (_dq is not null) throw new InvalidOperationException("DQ motion palettes require real/dual joint pairs.");
         Span<byte> destination = _image.AsSpan(checked((int)(slot * SlotBytes)), checked((int)PayloadBytes));
         MemoryMarshal.Write(destination, in previousWorld);
         MemoryMarshal.AsBytes(previousBones).CopyTo(destination[64..]);
     }
 
+    internal void Pack(uint slot, in Matrix4x4 previousWorld, ReadOnlySpan<RigidDualQuaternion> previousBones)
+    {
+        if (_dq is null) throw new InvalidOperationException("LBS motion palettes require matrix joints.");
+        _dq.PackPrevious(slot, previousWorld, previousBones);
+    }
+
     /// <summary>Upload every packed slot in one whole-buffer write. Returns the bytes uploaded.</summary>
     internal long Upload(IGpuCommandList cl)
     {
+        if (_dq is not null) return _dq.Upload(cl);
         cl.UpdateBuffer(_buffer!, 0, (ReadOnlySpan<byte>)_image);
         return _image.Length;
     }
 
     public void Dispose()
     {
+        if (_dq is not null) { _dq.Dispose(); return; }
         _set?.Dispose();
         _buffer?.Dispose();
         Layout.Dispose();

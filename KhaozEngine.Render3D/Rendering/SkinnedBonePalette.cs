@@ -94,7 +94,11 @@ namespace KhaozEngine.Render3D.Rendering
 
         /// <summary>Upload every packed palette in one whole-buffer write. Called once per frame, before either
         /// pass draws, so the main pass and all cascades read the same bytes.</summary>
-        internal void Upload(IGpuCommandList cl) => cl.UpdateBuffer(_ubo!, 0, (ReadOnlySpan<byte>)_image);
+        internal long Upload(IGpuCommandList cl)
+        {
+            cl.UpdateBuffer(_ubo!, 0, (ReadOnlySpan<byte>)_image);
+            return _image.Length;
+        }
 
         public void Dispose()
         {

@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
+using System.Security.Cryptography;
+using System.Text;
 using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Attachments.Render3D;
@@ -15,6 +17,7 @@ public sealed class AttachmentSetBinding
     readonly Dictionary<uint, int> _partIndices = [];
     readonly Matrix4x4[] _worlds;
     readonly Matrix4x4[]? _hostInverseBind;
+    readonly SkinningProfile _hostProfile;
 
     public AttachmentSetBinding(AttachmentSetDefinition definition, ContractJointMap map)
         : this(definition, map, null, null, null) { }
@@ -36,6 +39,7 @@ public sealed class AttachmentSetBinding
         ArgumentNullException.ThrowIfNull(definition);
         ArgumentNullException.ThrowIfNull(map);
         Skeleton = map.Skeleton;
+        _hostProfile = hostMesh?.Profile ?? SkinningProfile.LinearBlend;
         if (hostMesh is null)
         {
             foreach (AttachmentPartDefinition part in definition.Parts)
@@ -52,8 +56,8 @@ public sealed class AttachmentSetBinding
             {
                 _hostInverseBind ??= (Matrix4x4[])hostMesh!.InverseBind.Clone();
                 SkinnedAttachmentBinding skin = resources is null
-                    ? SkinnedAttachmentBinding.FromMesh(skinned, map, _hostInverseBind, skinnedMeshes!)
-                    : SkinnedAttachmentBinding.FromResources(skinned, map, _hostInverseBind, resources[i]);
+                    ? SkinnedAttachmentBinding.FromMesh(skinned, map, _hostInverseBind, hostMesh!.Profile, skinnedMeshes!)
+                    : SkinnedAttachmentBinding.FromResources(skinned, map, _hostInverseBind, hostMesh!.Profile, resources[i]);
                 _parts[i] = new ResolvedPart(skinned.Id, string.Empty, -1, Matrix4x4.Identity, skin);
                 continue;
             }
@@ -71,13 +75,22 @@ public sealed class AttachmentSetBinding
             }
         }
         _worlds = new Matrix4x4[_parts.Length];
+        SkinningProfile profile = hostMesh?.Profile ?? SkinningProfile.LinearBlend;
+        // Preserve the established LBS identity. A changed body surface invalidates fit and history even
+        // for a rigid-only set, although its socket composition remains unchanged.
+        FitIdentity = profile == SkinningProfile.LinearBlend ? definition.SemanticSha256
+            : Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
+                $"{definition.SemanticSha256}\nskinning:{(int)profile.Method}:{profile.AlgorithmVersion}")));
     }
 
     public Skeleton Skeleton { get; }
     public int PartCount => _parts.Length;
 
     internal bool MatchesHostSkin(SkinnedHostConformer conformer) =>
-        _hostInverseBind is null || conformer.MatchesHostSkin(_hostInverseBind);
+        _hostProfile == SkinningProfile.LinearBlend
+        && (_hostInverseBind is null || conformer.MatchesHostSkin(_hostInverseBind));
+    /// <summary>Canonical definition and host deformation identity for fit evidence and motion history.</summary>
+    public string FitIdentity { get; }
 
     /// <summary>The garment palette capacity for a named part, or zero for a rigid part.</summary>
     public int SkinnedJointCount(uint partId) => Part(partId).Skin?.JointCount ?? 0;

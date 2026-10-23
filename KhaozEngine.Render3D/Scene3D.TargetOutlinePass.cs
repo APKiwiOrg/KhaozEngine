@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Runtime.InteropServices;
 using System.Threading;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
+using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D;
 
@@ -41,17 +41,22 @@ public sealed partial class Scene3D
     /// </exception>
     public MeshOutlineGroup BeginMeshOutline(Color color, float widthPixels, MeshOutlineOcclusion occlusion)
     {
+        ValidateMeshOutlineStyle(widthPixels, occlusion);
+
+        int index = _meshOutlineGroupCount++;
+        if (index == _meshOutlineGroups.Count) _meshOutlineGroups.Add(new MeshOutlineDrawGroup());
+        _meshOutlineGroups[index].Reset(color, widthPixels, occlusion);
+        return new MeshOutlineGroup(_outlineOwner, _outlineFrame, index);
+    }
+
+    static void ValidateMeshOutlineStyle(float widthPixels, MeshOutlineOcclusion occlusion)
+    {
         if (!float.IsFinite(widthPixels) || widthPixels < 0.5f || widthPixels > 8f)
             throw new ArgumentOutOfRangeException(nameof(widthPixels), widthPixels,
                 "outline width must be finite and between 0.5 and 8 pixels.");
         // Explicit values, because Enum.IsDefined rebuilds a weakly held runtime cache after a collection reclaims it.
         if (occlusion is not (MeshOutlineOcclusion.SceneDepth or MeshOutlineOcclusion.None))
             throw new ArgumentOutOfRangeException(nameof(occlusion), occlusion, "unknown outline occlusion.");
-
-        int index = _meshOutlineGroupCount++;
-        if (index == _meshOutlineGroups.Count) _meshOutlineGroups.Add(new MeshOutlineDrawGroup());
-        _meshOutlineGroups[index].Reset(color, widthPixels, occlusion);
-        return new MeshOutlineGroup(_outlineOwner, _outlineFrame, index);
     }
 
     /// <summary>Adds one mesh part to a group returned by <see cref="BeginMeshOutline(Color, float, MeshOutlineOcclusion)"/> this frame.</summary>
@@ -151,6 +156,7 @@ public sealed partial class Scene3D
         public SkinnedCoverageFrame Coverage { get; init; }
 
         public bool InteriorCutRequested { get; init; }
+        public PreparedSkinningPose Pose { get; init; }
 
         public static MeshOutlinePart Rigid(
             MeshHandle mesh, Matrix4x4 world, float dissolve, bool complement, bool cutInsideInteriors) =>
@@ -190,25 +196,8 @@ public sealed partial class Scene3D
                     groupDraws++;
                     continue;
                 }
-                if (!_skinnedSlots.IsValid(part.SkinnedMesh.Index, part.SkinnedMesh.Generation)) continue;
-                if (_skinnedMeshes[part.SkinnedMesh.Index] is not { } skinned) continue;
-                if (EnqueueCoverageOutline(part, skinned, drawIndex))
-                { drawIndex++; groupDraws++; continue; }
-                ReadOnlySpan<Matrix4x4> pose = CollectionsMarshal.AsSpan(_outlineBoneMatrices)
-                    .Slice(part.BoneStart, part.BoneCount);
-                if (UseCoverageVertexSkinning(part.SkinnedMesh, part.Coverage.Preparation is not null))
-                {
-                    _targetOutlines.EnqueueSkinnedGpu(skinned.Vb, skinned.Ib, skinned.IndexCount,
-                        skinned.IndexFormat, skinned.OutlineMaterialSet, pose, drawIndex++, ToRender(part.World),
-                        skinned.AlphaCutoff, part.Dissolve, part.DissolveComplement, _frameOrigin);
-                }
-                else
-                {
-                    if (_skinnedCpuVerts[part.SkinnedMesh.Index] is not { } source) continue;
-                    _targetOutlines.EnqueueSkinnedCpu(source, skinned.Ib, skinned.IndexCount,
-                        skinned.IndexFormat, skinned.OutlineMaterialSet, pose, drawIndex++, ToRender(part.World),
-                        skinned.AlphaCutoff, part.Dissolve, part.DissolveComplement, _frameOrigin);
-                }
+                if (!EnqueueSkinnedOutlinePart(part, drawIndex)) continue;
+                drawIndex++;
                 groupDraws++;
             }
             if (!_targetOutlines.HasQueuedDraws) continue;

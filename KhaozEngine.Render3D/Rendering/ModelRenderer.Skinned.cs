@@ -3,6 +3,7 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
+using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D.Rendering;
 
@@ -12,8 +13,11 @@ namespace KhaozEngine.Render3D.Rendering;
 /// lighting work and the shared retirement queue landed in the same release.</summary>
 internal sealed partial class ModelRenderer
 {
+    readonly DualQuaternionPaletteBuffer _dqPalette;
+
     internal IGpuResourceLayout SkinnedBonePaletteLayout => _bonePalette.Layout;
     internal IGpuResourceSet SkinnedBonePaletteSet => _bonePalette.Set;
+    internal DualQuaternionPaletteBuffer SkinnedDualQuaternionPalette => _dqPalette;
     internal IGpuBuffer? CpuSkinnedVertexBuffer => _skinnedVertexBuffer;
     internal IGpuBuffer? CpuSkinnedInstanceBuffer => _skinnedInstanceBuffer;
 
@@ -149,12 +153,30 @@ internal sealed partial class ModelRenderer
     public void PackSkinnedBonePalette(uint slot, ReadOnlySpan<Matrix4x4> bones) => _bonePalette.Pack(slot, bones);
 
     /// <summary>Upload every packed palette in ONE whole-buffer write, before either pass draws.</summary>
-    public void UploadSkinnedBonePalette(IGpuCommandList cl) => _bonePalette.Upload(cl);
+    public long UploadSkinnedBonePalette(IGpuCommandList cl) => _bonePalette.Upload(cl);
+
+    internal void EnsureSkinnedBonePaletteCapacity(uint slots, SkinningMethod method)
+    {
+        if (method == SkinningMethod.DualQuaternionRigid) _dqPalette.EnsureCapacity(slots);
+        else _bonePalette.EnsureCapacity(slots);
+    }
+
+    internal void PackPreparedSkinningPalette(uint slot, in PreparedSkinningPose pose)
+    {
+        if (pose.Profile.Method == SkinningMethod.DualQuaternionRigid) _dqPalette.Pack(slot, pose.Owner.Dq(pose));
+        else _bonePalette.Pack(slot, pose.Owner.Lbs(pose));
+    }
+
+    internal long UploadSkinningPalette(IGpuCommandList commands, SkinningMethod method) =>
+        method == SkinningMethod.DualQuaternionRigid ? _dqPalette.Upload(commands) : _bonePalette.Upload(commands);
 
     /// <summary>Upload every packed GPU-skinned main slot in one whole-buffer write. Slots without a visible-main
     /// draw may retain old bytes because no draw binds them this frame.</summary>
-    public void UploadSkinnedMainSlots(IGpuCommandList cl)
-        => cl.UpdateBuffer(_skinnedMainUbo!, 0, (ReadOnlySpan<byte>)_skinnedMainImage);
+    public long UploadSkinnedMainSlots(IGpuCommandList cl)
+    {
+        cl.UpdateBuffer(_skinnedMainUbo!, 0, (ReadOnlySpan<byte>)_skinnedMainImage);
+        return _skinnedMainImage.Length;
+    }
 
     /// <summary>Bind the GPU-skinning model pipeline. Call after <see cref="BeginModelPass"/>/
     /// <see cref="SetFrameUniforms"/>, before the skinned draw loop.</summary>
@@ -178,14 +200,17 @@ internal sealed partial class ModelRenderer
     /// number, and it is the caller that knows so.
     /// </para></summary>
     public void DrawGpuSkinned(IGpuCommandList cl, IGpuBuffer restVb, IGpuBuffer ib, int indexCount,
-        GpuIndexFormat indexFormat, uint slot, uint paletteSlot, IGpuResourceSet? skinnedFragSet)
+        GpuIndexFormat indexFormat, uint slot, uint paletteSlot, IGpuResourceSet? skinnedFragSet,
+        SkinningProfile? profile = null)
     {
+        bool dq = profile?.Method == SkinningMethod.DualQuaternionRigid;
         cl.SetGraphicsResourceSet(0, _skinnedMainSet!, slot * SkinnedMainSlotBytes);
         cl.SetGraphicsResourceSet(1, skinnedFragSet ?? _skinnedDefaultFragSet);
-        cl.SetGraphicsResourceSet(2, _bonePalette.Set, SkinnedBonePalette.OffsetFor(paletteSlot));
+        if (dq) cl.SetGraphicsResourceSet(2, _dqPalette.Set, _dqPalette.OffsetFor(paletteSlot));
+        else cl.SetGraphicsResourceSet(2, _bonePalette.Set, SkinnedBonePalette.OffsetFor(paletteSlot));
         // The skinned variant's set 3: the motion block and this caster's last frame, at its own slot.
-        if (_motion is { } motion)
-            cl.SetGraphicsResourceSet(3, motion.SkinnedPalette.Set, SkinnedMotionPalette.OffsetFor(paletteSlot));
+        if (_motion is not null)
+            BindSkinnedMotion(cl, paletteSlot, profile ?? SkinningProfile.LinearBlend);
         cl.SetVertexBuffer(0, restVb);
         cl.SetIndexBuffer(ib, indexFormat);
         cl.DrawIndexed((uint)indexCount, 1, 0, 0, 0);
@@ -208,26 +233,44 @@ internal sealed partial class ModelRenderer
     /// <paramref name="dissolveComplement"/>. Forwards
     /// to <see cref="ShadowMapRenderer"/>.</summary>
     public void PackSkinnedShadowSlot(uint slot, in Matrix4x4 model, in Matrix4x4 cascadeDepthMat,
-        Vector3 renderOrigin, float noiseScale, float dissolveThreshold, float dissolveComplement = 0f) =>
+        Vector3 renderOrigin, float noiseScale, float dissolveThreshold, float dissolveComplement = 0f,
+        float alphaCutoff = 0f) =>
         _shadowMap.PackSkinnedShadowSlot(slot, model, cascadeDepthMat, renderOrigin, noiseScale, dissolveThreshold,
-            dissolveComplement);
+            dissolveComplement, alphaCutoff);
 
     /// <summary>Upload every packed GPU-skinned shadow slot in one whole-buffer write.</summary>
-    public void UploadSkinnedShadowSlots(IGpuCommandList cl) => _shadowMap.UploadSkinnedShadowSlots(cl);
+    public long UploadSkinnedShadowSlots(IGpuCommandList cl) => _shadowMap.UploadSkinnedShadowSlots(cl);
 
     /// <summary>Bind cascade <paramref name="cascade"/> for the GPU-skinning depth draws: scissor its atlas column
     /// and switch to the skinned depth pipeline, or its dissolve-aware sibling when <paramref name="dissolve"/> is
     /// set (issue #387), inverted when <paramref name="invertedDissolve"/> is set. Call per cascade after the
     /// rigid runs. Forwards to <see cref="ShadowMapRenderer"/>.</summary>
     public void BindShadowCascadeSkinned(IGpuCommandList cl, int cascade, bool dissolve = false,
-        bool invertedDissolve = false) =>
-        _shadowMap.BindCascadeSkinned(cl, cascade, dissolve, invertedDissolve);
+        bool invertedDissolve = false, SkinningProfile? profile = null, bool cutout = false) =>
+        _shadowMap.BindCascadeSkinned(cl, cascade, profile ?? SkinningProfile.LinearBlend, _dqPalette,
+            dissolve, invertedDissolve, cutout);
 
     /// <summary>Draw one GPU-skinned caster into the CURRENTLY-BOUND cascade (rest-pose vertex buffer, the
     /// caster-cascade light-matrix slot at <paramref name="slot"/>, and the shared per-caster palette at
     /// <paramref name="paletteSlot"/>). <see cref="BindShadowCascadeSkinned"/> must be bound. Forwards to
     /// <see cref="ShadowMapRenderer"/>.</summary>
     public void DrawGpuSkinnedShadowCaster(IGpuCommandList cl, IGpuBuffer restVb, IGpuBuffer ib, int indexCount,
-        GpuIndexFormat indexFormat, uint slot, uint paletteSlot) =>
-        _shadowMap.DrawGpuSkinnedCaster(cl, restVb, ib, indexCount, indexFormat, slot, paletteSlot);
+        GpuIndexFormat indexFormat, uint slot, uint paletteSlot, SkinningProfile? profile = null) =>
+        _shadowMap.DrawGpuSkinnedCaster(cl, restVb, ib, indexCount, indexFormat, slot, paletteSlot,
+            profile ?? SkinningProfile.LinearBlend, _dqPalette);
+
+    internal void BindDqShadowCutoutMaterial(IGpuCommandList commands, IGpuResourceSet? material, bool gpu)
+    {
+        material ??= gpu ? _skinnedDefaultFragSet : _defaultSet;
+        if (!_shadowSamplingBindings.TryGetValue(material, out ShadowSamplingBinding? binding))
+            throw new InvalidOperationException("A DQ cutout caster requires a tracked material.");
+        IGpuTexture? albedo = null;
+        IGpuSampler? sampler = null;
+        foreach (IGpuBindableResource resource in binding.MaterialResources)
+        {
+            if (resource is IGpuTexture texture) albedo ??= texture;
+            if (resource is IGpuSampler candidate) sampler ??= candidate;
+        }
+        _shadowMap.BindDqCutoutMaterial(commands, albedo ?? _white, sampler ?? _sampler, gpu);
+    }
 }

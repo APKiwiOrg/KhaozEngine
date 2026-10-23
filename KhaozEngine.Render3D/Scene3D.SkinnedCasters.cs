@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using KhaozEngine.Primitives;
+using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D
 {
@@ -43,6 +44,29 @@ namespace KhaozEngine.Render3D
                 DissolveEdgeColor = edgeColor,
                 CastsShadows = castsShadows,
             }, boneMatrices);
+
+        // DQ's certified posed sphere is already in the absolute frame used by camera, cascades and
+        // point requests. Never transform its sphere with the rest-bound scale shortcut, including shear.
+        static (bool VisibleMain, bool VisibleShadow) ClassifyPreparedSkinnedVisibility(
+            in PreparedSkinningPose pose, in MeshBounds restBounds, in Matrix4x4 world,
+            bool cullMain, in FrustumPlanes mainFrustum, bool shadowActive,
+            ReadOnlySpan<FrustumPlanes> shadowFrustums, out PointShadowCasterSphere pointSphere)
+        {
+            if (pose.Profile.Method == SkinningMethod.LinearBlend)
+            {
+                pointSphere = PointShadowCasterSphere.FromRestBounds(restBounds, world, SkinnedCullSafetyFactor);
+                return ClassifySkinnedVisibility(restBounds, world, cullMain, mainFrustum, shadowActive, shadowFrustums);
+            }
+            if (!DualQuaternionBounds.TryBoundWorld(pose.ModelBounds, world, out MeshBounds bounds))
+                throw new InvalidOperationException("An admitted DQ pose lost its finite world envelope.");
+            pointSphere = new PointShadowCasterSphere(bounds.Center, bounds.Radius);
+            bool main = !cullMain || mainFrustum.IntersectsSphere(bounds.Center, bounds.Radius);
+            bool shadow = false;
+            if (shadowActive)
+                for (int i = 0; i < shadowFrustums.Length && !shadow; i++)
+                    shadow = shadowFrustums[i].IntersectsSphereExceptPlane(bounds.Center, bounds.Radius, excludedPlane: 4);
+            return (main, shadow);
+        }
 
         /// <summary>The skinned draws recorded this frame that write into the depth pass: the active path's draw
         /// list minus the opted-out entries. Feeds the dirty check's <c>anySkinnedCaster</c> and the diagnostics'

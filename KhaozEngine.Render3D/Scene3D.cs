@@ -155,9 +155,8 @@ namespace KhaozEngine.Render3D
         readonly List<SkinnedMeshEntry?> _skinnedMeshes = new();
         readonly MeshSlotMap _skinnedSlots = new();
         readonly SkinnedSceneInstances _skinnedInstances = new();
-        // Per-frame composed bone palette for every skinned draw (cleared each Begin), and reused grouping buffers.
-        // Per-frame bone palette, slot-packed: draw i's composed matrices live at [i*MaxBonesPerDraw ..], padded to
-        // the per-draw window so each draw's dynamic-offset bind selects exactly its slice. Cleared each Begin().
+        readonly PreparedSkinningStore _preparedSkinning = new();
+        // LBS compatibility stream, slot-packed and cleared each Begin.
         readonly List<Matrix4x4> _boneMatrices = new();
         // CPU skinning (UseGpuSkinning false): _skinnedCpuVerts caches each loaded mesh's source vertices (parallel to
         // _skinnedMeshes). The three reused lists are the per-frame deformed-vertex stream, the per-draw instance
@@ -749,6 +748,7 @@ namespace KhaozEngine.Render3D
             BeginFoliageFrame();
             _skinnedInstances.Begin();
             _boneMatrices.Clear();
+            _preparedSkinning.Reset();
             BeginMotionFrame();                // swap or forget per-key motion history (Scene3D.MotionKeys.cs)
             _lights.Clear();
             _lineVerts.Clear();

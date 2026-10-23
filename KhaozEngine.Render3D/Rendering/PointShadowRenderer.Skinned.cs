@@ -61,7 +61,7 @@ internal sealed partial class PointShadowRenderer
     }
 
     IGpuPipeline BuildSkinnedPipeline(IGpuResourceFactory factory, GpuOutputDescription outputs,
-        IGpuShaderSet shaders)
+        IGpuShaderSet shaders, IGpuResourceLayout? paletteLayout = null)
     {
         var vertexLayout = new GpuVertexLayoutDescription(
             new GpuVertexElement("Position", GpuVertexElementFormat.Float3),
@@ -79,7 +79,7 @@ internal sealed partial class PointShadowRenderer
             Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid,
                 GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: true),
             Topology = GpuPrimitiveTopology.TriangleList,
-            ResourceLayouts = new[] { _layout, _skinnedCasterLayout, _paletteLayout },
+            ResourceLayouts = new[] { _layout, _skinnedCasterLayout, paletteLayout ?? _paletteLayout },
             ShaderSet = shaders,
             VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout },
             Outputs = outputs,
@@ -140,6 +140,11 @@ internal sealed partial class PointShadowRenderer
             ShadowCastKind.DissolvingInverted => _skinnedDissolveInvertedPipeline,
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "No caster pipeline exists for None."),
         });
+        BindSkinnedFaceWindow(cl, atlas, packedFaceIndex, face, row);
+    }
+
+    void BindSkinnedFaceWindow(IGpuCommandList cl, PointShadowAtlas atlas, int packedFaceIndex, int face, int row)
+    {
         uint res = (uint)atlas.FaceResolution;
         cl.SetScissorRect(0, (uint)Math.Clamp(face, 0, PointShadowMath.FaceCount - 1) * res,
             (uint)Math.Clamp(row, 0, atlas.Rows - 1) * res, res, res);

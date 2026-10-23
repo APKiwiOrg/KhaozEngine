@@ -34,8 +34,11 @@ then interpolates the posed triangles. Protected neighbors may gain conforming e
 piecewise-linear posed surface stays unchanged. Refinement is never adaptive per frame.
 
 Call `GltfLoader.LoadSkinnedPartsWithMaterials(glb, identity, map)` and upload those exact annotated parts.
-Keep every material slice and their shared exact `Skeleton`. Upload snapshots the annotated source and
-inverse binds. Caller mutation cannot rebind the upload. Passing another mesh, incomplete material list,
+Keep every material slice and their shared exact `Skeleton`. Coverage and ordinary consumers share the
+upload-time source, index, inverse-bind and rig snapshot. Caller mutation cannot rebind the upload.
+Coverage currently requires the linear-blend profile. Ordinary rigid DQ is available, while annotated DQ
+hosts refuse before upload until the separate precise coverage milestone is complete.
+Passing another mesh, incomplete material list,
 another map or a lookalike skeleton does not establish identity.
 
 `EquipmentCoverageJson.Read(utf8, identity)` reads the separate strict format-1 companion in the GPU-free

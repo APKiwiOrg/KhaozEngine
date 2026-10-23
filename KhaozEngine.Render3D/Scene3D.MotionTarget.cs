@@ -123,19 +123,36 @@ public sealed partial class Scene3D
     /// motion. The upload counts toward the GPU-skinning uniforms.</summary>
     void PrepareGpuSkinnedMotion(IGpuCommandList cl, ReadOnlySpan<Matrix4x4> boneSpan)
     {
-        _model.EnsureSkinnedMotionCapacity((uint)_gpuSkinnedDraws.Count);
+        uint lbsSlots = 0, dqSlots = 0;
+        foreach (GpuSkinnedDraw draw in _gpuSkinnedDraws)
+        {
+            if (draw.PreparedPose.Profile.Method == SkinningMethod.DualQuaternionRigid) dqSlots++;
+            else lbsSlots++;
+        }
+        if (lbsSlots > 0) _model.EnsureSkinnedMotionCapacity(lbsSlots);
+        if (dqSlots > 0) _model.EnsureSkinnedMotionCapacity(dqSlots, SkinningMethod.DualQuaternionRigid);
         MotionHistory? history = PreviousMotion;
         for (int d = 0; d < _gpuSkinnedDraws.Count; d++)
         {
             GpuSkinnedDraw dr = _gpuSkinnedDraws[d];
+            SkinnedMeshHandle mesh = _skinnedInstances.Items[dr.BoneSpanStart / SkinningMath.MaxBonesPerDraw].Mesh;
+            SkinnedMotionIdentity identity = MotionIdentity(mesh, _skinnedMeshes[mesh.Index]!);
+            bool dq = identity.Profile.Method == SkinningMethod.DualQuaternionRigid;
             if (history is not null && !dr.Motion.IsNone && !RestoringCoverageSurface(dr.Motion)
-                && history.TryGetPreviousSkinned(dr.Motion, out Matrix4x4 world, out ReadOnlySpan<Matrix4x4> palette)
-                && palette.Length == dr.BoneCount)
-                _model.PackSkinnedMotion(dr.Slot, ToRender(world), palette);
+                && history.TryGetPreviousSkinned(dr.Motion, identity, out Matrix4x4 world,
+                    out ReadOnlySpan<Matrix4x4> palette, out ReadOnlySpan<RigidDualQuaternion> previousDq)
+                && (dq ? previousDq.Length : palette.Length) == dr.BoneCount)
+            {
+                if (dq) _model.PackSkinnedMotion(dr.PaletteSlot, ToRender(world), previousDq);
+                else _model.PackSkinnedMotion(dr.PaletteSlot, ToRender(world), palette);
+            }
+            else if (dq)
+                _model.PackSkinnedMotion(dr.PaletteSlot, dr.World, dr.PreparedPose.Owner.Dq(dr.PreparedPose));
             else
-                _model.PackSkinnedMotion(dr.Slot, dr.World, boneSpan.Slice(dr.BoneSpanStart, dr.BoneCount));
+                _model.PackSkinnedMotion(dr.PaletteSlot, dr.World, boneSpan.Slice(dr.BoneSpanStart, dr.BoneCount));
         }
-        _frameStats.AddSkinnedUniformUpload(_model.UploadSkinnedMotion(cl));
+        if (lbsSlots > 0) _frameStats.AddSkinnedUniformUpload(_model.UploadSkinnedMotion(cl));
+        if (dqSlots > 0) _frameStats.AddSkinnedUniformUpload(_model.UploadSkinnedMotion(cl, SkinningMethod.DualQuaternionRigid));
     }
 
     // Last frame's position of every deformed CPU-skinned vertex, parallel to _cpuSkinnedVerts. Grow-only.
@@ -158,11 +175,14 @@ public sealed partial class Scene3D
         {
             CpuSkinnedDraw dr = _cpuSkinnedDraws[d];
             SkinnedVertex[]? source = dr.MeshIndex < 0 ? null : _skinnedCpuVerts[dr.MeshIndex];
-            int bones = dr.MeshIndex < 0 ? -1 : _skinnedMeshes[dr.MeshIndex]?.InverseBind.Length ?? -1;
-            if (history is not null && source is not null && !dr.Motion.IsNone && !RestoringCoverageSurface(dr.Motion)
-                && history.TryGetPreviousSkinned(dr.Motion, out Matrix4x4 world, out ReadOnlySpan<Matrix4x4> palette)
-                && palette.Length == bones)
-                CpuSkinnedMotion.AppendPrevious(source, palette, ToRender(world), _cpuSkinnedPrevious);
+            SkinnedMeshEntry? entry = dr.MeshIndex < 0 ? null : _skinnedMeshes[dr.MeshIndex];
+            SkinnedMotionIdentity identity = entry is null ? default : MotionIdentity(entry.SourceIdentity, entry);
+            if (history is not null && source is not null && entry is not null && !dr.Motion.IsNone && !RestoringCoverageSurface(dr.Motion)
+                && history.TryGetPreviousSkinned(dr.Motion, identity, out Matrix4x4 world,
+                    out ReadOnlySpan<Matrix4x4> palette, out ReadOnlySpan<RigidDualQuaternion> dq)
+                && (identity.Profile.Method == SkinningMethod.DualQuaternionRigid ? dq.Length : palette.Length)
+                    == entry.InverseBind.Length)
+                CpuSkinnedMotion.AppendPrevious(source, identity.Profile, palette, dq, ToRender(world), _cpuSkinnedPrevious);
             else
                 CpuSkinnedMotion.AppendCurrent(skinned.Slice(dr.BaseVertex, dr.VertexCount), _cpuSkinnedInstances[d].Model,
                     _cpuSkinnedPrevious);

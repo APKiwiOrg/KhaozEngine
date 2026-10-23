@@ -5049,8 +5049,8 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         light's base row number. The receiver selects one face and local UV for each hard or soft tap, reads both
         atlases there, and compares against the nearer stored depth. When no transient row is assigned it takes
         the original base-only path before any transient fetch. Skinned colour and target-outline alpha cutouts
-        are available, while skinned key-light cutout remains
-        [#1097](https://github.com/APKiwiOrg/KhaozEngine/issues/1097) and point-light MASK alpha testing remains
+        are available, while linear-blend skinned key-light cutout remains
+        [#1097](https://github.com/APKiwiOrg/KhaozEngine/issues/1097) (dual quaternion skins have it) and point-light MASK alpha testing remains
         [#1098](https://github.com/APKiwiOrg/KhaozEngine/issues/1098). This adds no point-shadow quality field
         and no new draw overload.
       - **A LAMP IS SHADOWED BY ITSELF UNLESS YOU CLEAR ITS FIXTURE** (issue #1010). The pass stores the nearest
@@ -5123,10 +5123,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     completely only when it is ALSO outside the active shadow map's own light-space ortho volume (tested with the
     exact same `FrustumPlanes.Extract` against the shadow pass's light view-projection, not an approximation), or
     opted out of casting - if it casts and is inside that volume it is still recorded and uploaded (so the shadow
-    depth pass can draw it), just not drawn in the main visible pass. Rest-pose bounds
-    (`MeshBounds`, computed once at `LoadSkinnedMesh`) are inflated by `Scene3D.SkinnedCullSafetyFactor` (1.5x)
-    before either test, since a pose can carry vertices outside the mesh's static rest-pose box (a swung limb, a
-    jump). Read the win from `Scene3D.DrawnSkinnedInstances` / `Scene3D.CulledSkinnedInstances`, the skinned
+    depth pass can draw it), just not drawn in the main visible pass. LBS retains rest-pose bounds
+    (`MeshBounds`, computed once at `LoadSkinnedMesh`) inflated by `Scene3D.SkinnedCullSafetyFactor` (1.5x).
+    That margin is a heuristic for ordinary limb excursions. DQ uses its conservative posed envelope,
+    transformed outward into absolute world space before camera, cascade and point retention. Read the win from `Scene3D.DrawnSkinnedInstances` / `Scene3D.CulledSkinnedInstances`, the skinned
     counterpart of `DrawnInstances`/`CulledInstances` above.
 - **Background** (`Post.Background`, a `BackgroundMode`: `Solid`, `Starfield`, `Sky`, **default `Starfield`**): one
   knob for what fills a pixel no scene geometry drew. It is a derived view over `Post.Starfield`,
@@ -5839,6 +5839,59 @@ limbs, cables, soft-body) without authored animation tracks. One skinned draw re
 rigid-segment draws. Skinning deforms on the GPU by default, with the CPU path one flag away
 (`Scene3D.UseGpuSkinning`, see below).
 
+**Select deformation before upload.** Existing constructors and import overloads select
+`SkinningProfile.LinearBlend`. Rigid dual quaternion skinning is an explicit immutable asset choice:
+
+```csharp
+SkinnedGltfMesh mesh = GltfLoader.LoadSkinned("creature.glb", SkinningProfile.DualQuaternionRigid);
+SkinnedMeshHandle handle = scene.LoadSkinnedMesh(mesh, albedoTex);
+scene.DrawSkinned(handle, jointWorld, model, Color.White);
+```
+
+The explicit-profile mesh constructors append `SkinningProfile profile` after the skeleton argument.
+`LoadSkinnedWithMaterial` and `LoadSkinnedPartsWithMaterials` also accept a profile. Every material part
+of one skin and each compatible garment binding must agree. glTF skins and arbitrary `extras` do not
+implicitly select Blender Preserve Volume. A method/version change requires a distinct mesh/handle and
+new attachment fit and motion identity. `UseGpuSkinning` selects CPU or GPU execution, leaving the method intact.
+
+Rigid DQ validates the composed `inverseBind * jointWorld` palette, including finite affine form,
+positive determinant and `max(abs(A*A_transpose - I)) <= 2^-16`. Animated uniform or nonuniform scale,
+reflection, shear, collapsed bases and projective transforms are unsupported beyond that rounding allowance.
+Bind scale that cancels in the composed transform is permitted. Separate finite affine model placement
+may scale, shear or reflect. Source validation requires four finite nonnegative weights, integer in-range
+indices even in zero-weight slots, and a left-associated weight total below `1e-8` or within `2^-20` of one.
+Import refuses more than four positive influences before reduction. Invalid source/pose data, missing retained
+source-envelope metadata or an unrepresentable posed/placed envelope refuses before palette, draw, outline
+or history mutation. There is no per-pose LBS fallback. Existing LBS scale and weight behavior is unchanged.
+
+Ordinary DQ supports colour/material maps, cutout, both dissolve senses, every directional cascade,
+point faces and transient/dynamic rows, shadow-only submission, independent outline-only submission,
+matching garments and previous-pose motion on both execution settings. It needs no compute capability.
+Point-light MASK alpha testing retains the existing [#1098](https://github.com/APKiwiOrg/KhaozEngine/issues/1098)
+limitation, independently of the selected deformation method.
+Source radius metadata and the prepared palette produce a finite conservative `DualQuaternionBounds`
+envelope without a per-frame vertex scan. Outward affine placement supplies the absolute camera, cascade,
+point-retention and temporal-rejection bounds. LBS culling retains its established rest-sphere heuristic,
+tracked separately as [#1538](https://github.com/APKiwiOrg/KhaozEngine/issues/1538).
+
+Previous poses retain exact prepared words and source/generation/profile identity. A missing correspondence
+seeds only that actor's current pose and rejects history over its old/current projected region, preserving
+other actors and render-origin handling. `SkinningMath`, including `BlendSkinMatrix`, remains LBS.
+Use `SkinningEvaluation` for profile-aware CPU vertex/position evaluation and `DualQuaternionPalette.Prepare`
+for a reusable rigid DQ palette. Ordinary CPU/GPU position agreement is componentwise `abs(cpu - gpu) <= 2e-5 * L`,
+where `L = max(1, maximum source-position norm, maximum prepared joint-translation norm)`. Nonzero normalized
+directions have vector error at most `2e-5` and angular error at most `1e-4` radians. These are ordinary
+presentation tolerances. They do not change coverage word equality.
+
+**Coverage adoption hold.** Covered actors, including covered Grimhollow bodies, remain gated on stage 4 NC2
+reconciliation, actual Preserve Volume/export comparisons, new fit/oracle evidence and owner look approval.
+Ordinary DQ rendering is not a coverage certificate or a wardrobe-completion claim.
+
+`LoadSkinnedMesh` copies the vertices, indices, inverse binds, rest pose and optional skeleton once at upload.
+CPU and GPU execution and temporal bounds share that private source snapshot. Later edits to the caller's
+mesh arrays do not change the uploaded mesh. Upload a new mesh to change its source. Joint matrices supplied
+to each draw remain the per-frame animation input.
+
 ```csharp
 // Procedural: a tube weighted to a bone chain.
 SkinnedGltfMesh tube = SkinnedMeshBuilder.BuildTube(radius: 0.4f, length: 5f,
@@ -5906,9 +5959,9 @@ tentacle, still far below the dozens of rigid-segment draws it replaces.
 the GPU: the vertex shader blends the bone palette, the rest-pose vertex buffer uploads once at load (no
 per-frame vertex deform), and only the per-draw palette + matrices upload each frame. Setting
 `scene.UseGpuSkinning = false` switches to CPU skinning, which deforms every skinned vertex on the CPU
-(`SkinningMath.SkinVertex`) each frame and draws the result through the same rigid, no-bone pipeline
-`ModelRenderer` uses for instanced meshes. The two are **pixel-parity** (the shader mirrors
-`SkinningMath.SkinVertex` exactly), respect the same frustum culling and shadow pass, and the flag is flippable
+(`SkinningEvaluation.Vertex`, retaining `SkinningMath.SkinVertex` for LBS) each frame and draws the result
+through the same rigid, no-bone pipeline `ModelRenderer` uses for instanced meshes. Both execution paths use
+the selected immutable profile, respect the same frustum culling and shadow pass, and the flag is flippable
 per frame. The CPU path stays supported, but the GPU one is the faster choice from a handful of characters up,
 because the CPU skin loop costs O(vertices x characters) per frame.
 
@@ -6636,7 +6689,7 @@ within an inclusive absolute `1e-4` per element over all 16 elements. Binding pr
 table. Rigid parts retain part-local correction, body alignment and scale-free joint composition.
 Rigid-only `loaded.Bind(map)` remains valid and refuses garments with `InvalidDataException`.
 
-One cache owns uploads for one scene, shares verified mesh revisions by key, hash and kind, and
+One cache owns uploads for one scene, shares verified garment revisions by key, hash, kind and profile, and
 refuses a mesh reference requested under both kinds even when its upload is warm. Dispose it before
 the scene. Loaded and bound views borrow resources and throw `ObjectDisposedException` after cache
 disposal. Use each cache and bound view on its scene's render thread without overlapping calls.
@@ -6656,6 +6709,14 @@ After GPU dispatch, the main pass and both outline masks share the selected fina
 corner range. Numerical refusal switches to original-pose triangles on the GPU without a CPU route switch.
 These covered draws bypass ordinary skinning under either `UseGpuSkinning` setting. Equipment retains its
 existing material and dissolve drawing policy.
+`Get(key, hash)` retains the LBS default. `Get(key, hash, profile)` selects one immutable profile for
+all garment materials before import and upload. Binding requires that profile to match the host,
+in addition to joint names and inverse binds. `FitIdentity` on the binding or bound view identifies
+the canonical definition and host profile for fit evidence and motion keys. A changed host profile
+invalidates rigid-item fit identity too, without changing socket matrices. `AttachmentDraw.Profile`
+retains the garment profile and is null for rigid draws. Matching ordinary DQ garments submit through
+public colour and outline APIs on both execution settings. Covered actors retain the stage 4 adoption hold.
+See the package README for the detailed cache contract.
 
 The convenience `Queue` overload uses opaque white tint, `Material.None`, no dissolve and shadow
 casting. Its `RigidInstanceDraw` template overload replaces mesh, world or model, and motion while
@@ -6925,6 +6986,9 @@ only `moved` names, and throws for a joint name the skeleton lacks. `Uncovered` 
 and the clip leaves unkeyed on a node the filter takes, and returns null without a stance. `Breach` reports the
 first `ClipHygiene` finding of a policy. Each check allocates, so run them at load.
 
+`ContractJointMap.SkinAtBase(mesh)` measures through `mesh.Profile`, so load-time body dimensions and fit
+queries use the same deformation method as rendering. It allocates at load. Rigid socket composition is unchanged.
+
 `SkinnedGrounding.MinimumY` returns the lowest world y of the DEFORMED skin, not its rest box, so a body lowered
 into a crouch or lifted on a stride can be set on its ground each frame:
 
@@ -6936,7 +7000,10 @@ Matrix4x4 grounded = model * Matrix4x4.CreateTranslation(0f, groundY - lowest, 0
 
 `pose` is the joint-WORLD palette `DrawSkinned` takes. The call allocates nothing. A vertex whose weights total
 under the threshold `SkinningMath.BlendSkinMatrix` and the skinned shader share draws through the model alone. An
-empty skin returns positive infinity.
+empty skin returns positive infinity. Those existing matrix/scratch overloads remain LBS. For DQ, allocate
+`RigidDualQuaternion[mesh.BoneCount]` once, call `DualQuaternionPalette.Prepare(pose, mesh.InverseBind,
+preparedDq, context)` and use `SkinnedGrounding.MinimumY(mesh.Vertices, mesh.Profile, [], preparedDq, model)`.
+The profile-aware overload consumes the already prepared palette without a per-call allocation.
 
 `MomentSchedule` decides when a standing body plays an idle moment and which one, as a pure function of the body's
 id and the clock. There is no random source to seed and no state to carry, so every machine agrees:
@@ -19345,7 +19412,9 @@ scene.DrawSkinnedOutlineDissolved(
 
 `Scene3D` copies the composed `currentPose` during each call, so the caller may reuse or mutate the array
 afterward. Outline submission is independent of ordinary `DrawSkinned` submission. No ordinary draw is required,
-and a different ordinary pose for the same handle does not affect the outline pose. The grouped plain and
+and a different ordinary pose for the same handle does not affect the outline pose. Both execution settings
+use the mesh's immutable deformation profile, and DQ validates its placed envelope before any queue mutation.
+The grouped plain and
 dissolved methods accept the frame-local `MeshOutlineGroup`. The convenience overloads
 `DrawSkinnedOutline(mesh, boneMatrices, world, color, widthPixels)` and its `MeshOutlineOcclusion` overload start
 a group and submit one skinned part. `Scene3D.Begin()` clears the group and invalidates its handle.
@@ -19357,7 +19426,8 @@ keep rule or its complement. Fully invisible endpoint phases contribute no mask 
 
 `SurfaceMaps.AlphaCutoff` is retained for skinned materials and reaches plain and dissolved ordinary colour draws
 as well as both target outline masks. The ordinary body and its outline therefore use the same albedo cutout
-coverage. Cascaded key-light skinned alpha cutout remains scoped follow-up [#1097](https://github.com/APKiwiOrg/KhaozEngine/issues/1097).
+coverage. Cascaded key-light alpha cutout for linear-blend skins remains scoped follow-up
+[#1097](https://github.com/APKiwiOrg/KhaozEngine/issues/1097). Dual quaternion skins already cut out in the cascades.
 
 For authored tile objects, `TileWorldView.SetOutlinedObject(objectId, color, widthPixels: 1.25f, occlusion)`
 queues all active parts in one group until `ClearOutlinedObject()`. `ITileWorldScene.BeginMeshOutline` and

@@ -21,17 +21,12 @@ public sealed partial class Scene3D
             throw new InvalidOperationException("Coverage must run on the scene render thread.");
     }
 
-    static SkinnedGltfMesh SnapshotCoverageMesh(SkinnedGltfMesh mesh)
+    static void ValidateCoverageSource(SkinnedGltfMesh mesh)
     {
-        if (mesh.Coverage is not { } part) return mesh;
+        if (mesh.Coverage is not { } part) return;
+        if (mesh.Profile.Method != SkinningMethod.LinearBlend)
+            throw new NotSupportedException("DQ coverage requires the separate precise coverage milestone.");
         if (!part.Matches(mesh)) throw new InvalidDataException($"Coverage asset '{part.Source.Identity}': uploaded host slice changed.");
-        Skeleton? skeleton = mesh.Skeleton;
-        var copy = skeleton is null ? null : new Skeleton((int[])skeleton.ParentIndices.Clone(),
-            (JointPose[])skeleton.RestLocal.Clone(), (int[])skeleton.NodeLogicalIndex.Clone(),
-            (int[])skeleton.JointToNode.Clone(), skeleton.NodeNames);
-        return new SkinnedGltfMesh((SkinnedVertex[])mesh.Vertices.Clone(), (uint[])mesh.Indices32.Clone(),
-            (Matrix4x4[])mesh.InverseBind.Clone(), (Matrix4x4[])mesh.RestPose.Clone(), copy)
-        { Coverage = part };
     }
 
     /// <summary>Creates an actor-owned conformer from every material slice of one exact host source and map.</summary>

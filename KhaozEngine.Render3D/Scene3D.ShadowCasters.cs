@@ -399,8 +399,12 @@ namespace KhaozEngine.Render3D
                     {
                         var dr = _cpuSkinnedDraws[d];
                         if (dr.ShadowKind == ShadowCastKind.None) continue;
-                        ShadowDepthVariant variant = ShadowDepthSelection.ForCpuSkinned(dr.ShadowKind);
+                        var entry = _skinnedMeshes[dr.MeshIndex];
+                        bool cutout = entry?.Profile.Method == SkinningMethod.DualQuaternionRigid && entry.AlphaCutoff > 0;
+                        ShadowDepthVariant variant = cutout ? ShadowDepthSelection.ForRigidSpan(dr.ShadowKind, true)
+                            : ShadowDepthSelection.ForCpuSkinned(dr.ShadowKind);
                         if (variant != bound) { BeginRigidDepthVariant(cl, c, variant); bound = variant; }
+                        if (cutout) _model.BindDqShadowCutoutMaterial(cl, dr.MaterialSet!, gpu: false);
                         _model.DrawShadowSkinnedCaster(cl, dr.Ib, dr.IndexCount, dr.IndexFormat, dr.BaseVertex, (uint)d);
                         _shadowPassSkinnedDraws++;
                         CountSkinnedDraw(dr.IndexCount);
@@ -428,39 +432,46 @@ namespace KhaozEngine.Render3D
                         var dr = _gpuSkinnedDraws[d];
                         if (dr.ShadowKind == ShadowCastKind.None) continue;   // opted out: no slot, no draw
                         uint slot = (uint)(c * gpuCount + d);
-                        if (dr.ShadowKind is ShadowCastKind.Dissolving or ShadowCastKind.DissolvingInverted)
+                        float cutoff = dr.PreparedPose.Profile.Method == SkinningMethod.DualQuaternionRigid ? dr.SpecParams.Z : 0;
+                        if (cutoff > 0 || dr.ShadowKind is ShadowCastKind.Dissolving or ShadowCastKind.DissolvingInverted)
                         {
                             // The dedicated dissolve vector carries the threshold, independently of alpha cutoff.
                             _model.PackSkinnedShadowSlot(slot, dr.World, _cascadeDepthVps[c], _frameOrigin,
-                                _cascadeNoiseScales[c], dr.DissolveParams.X, dr.DissolveComplement);
-                            _frameStats.AddSkinnedUniformUpload(ShadowMapRenderer.SkinnedDissolvePayloadBytes);
+                                _cascadeNoiseScales[c], dr.DissolveParams.X, dr.DissolveComplement, cutoff);
                         }
                         else
                         {
                             _model.PackSkinnedShadowSlot(slot, dr.World, _cascadeDepthVps[c]);
-                            _frameStats.AddSkinnedUniformUpload(64);
                         }
                         packedShadowSlots = true;
                     }
-                if (packedShadowSlots) _model.UploadSkinnedShadowSlots(cl);
+                if (packedShadowSlots) _frameStats.AddSkinnedUniformUpload(_model.UploadSkinnedShadowSlots(cl));
                 for (int c = 0; c < count; c++)
                 {
                     // Bound on the cascade's first casting draw, so the all-opaque frame binds exactly as before.
                     ShadowDepthVariant? boundSkinned = null;
+                    SkinningProfile? boundProfile = null;
+                    bool boundCutout = false;
                     for (int d = 0; d < gpuCount; d++)
                     {
                         var dr = _gpuSkinnedDraws[d];
                         if (dr.ShadowKind == ShadowCastKind.None) continue;
                         ShadowDepthVariant variant = ShadowDepthSelection.ForGpuSkinned(dr.ShadowKind);
-                        if (variant != boundSkinned)
+                        SkinningProfile profile = dr.PreparedPose.Profile;
+                        bool cutout = profile.Method == SkinningMethod.DualQuaternionRigid && dr.SpecParams.Z > 0;
+                        if (variant != boundSkinned || profile != boundProfile || cutout != boundCutout)
                         {
                             _model.BindShadowCascadeSkinned(cl, c,
                                 dissolve: variant != ShadowDepthVariant.Skinned,
-                                invertedDissolve: variant == ShadowDepthVariant.SkinnedDissolveInverted);
+                                invertedDissolve: variant == ShadowDepthVariant.SkinnedDissolveInverted,
+                                profile: profile, cutout: cutout);
                             boundSkinned = variant;
+                            boundProfile = profile;
+                            boundCutout = cutout;
                         }
+                        if (cutout) _model.BindDqShadowCutoutMaterial(cl, dr.SkinnedMaterialSet!, gpu: true);
                         _model.DrawGpuSkinnedShadowCaster(cl, dr.RestVb, dr.Ib, dr.IndexCount, dr.IndexFormat,
-                            (uint)(c * gpuCount + d), dr.Slot);
+                            (uint)(c * gpuCount + d), dr.PaletteSlot, profile);
                         _shadowPassSkinnedDraws++;
                         CountSkinnedDraw(dr.IndexCount);
                     }

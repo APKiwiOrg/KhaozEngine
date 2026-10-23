@@ -23,6 +23,9 @@
   </ItemGroup>
   <ItemGroup>
     <None Update="Fixtures/nameplate-legacy-draw-calls.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Fixtures/dual-quaternion/rigid-words.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Fixtures/dual-quaternion/blender-rigid/expected.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Fixtures/dual-quaternion/blender-rigid/rigid.glb" CopyToOutputDirectory="PreserveNewest" />
     <!-- Gpu/FaceSeamReachTests.cs replays two retained cube-face seam captures through the GPU case's own
          measurement: the shipped filter on WARP and the clamped-face control on Metal. -->
     <None Update="Fixtures/point-shadow-seam/*.red.gz" CopyToOutputDirectory="PreserveNewest" />

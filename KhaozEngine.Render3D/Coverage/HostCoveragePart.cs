@@ -40,6 +40,8 @@ public sealed class HostCoveragePart
 
     internal static HostCoveragePart CreateSlice(HostCoverageMap map, CoverageSourceTopology source, int materialSlice, SkinnedGltfMesh mesh)
     {
+        if (mesh.Profile.Method != SkinningMethod.LinearBlend)
+            throw new NotSupportedException("DQ coverage requires the separate precise coverage milestone.");
         var triangles = source.Triangles.Where(t => t.MaterialSlice == materialSlice).ToArray();
         var vertices = source.Vertices.Select((v, i) => (v, i)).Where(pair => pair.v.MaterialSlice == materialSlice).ToArray();
         if (vertices.Length == 0 || triangles.Length == 0 || vertices.Length != mesh.Vertices.Length || triangles.Length * 3 != mesh.Indices32.Length)

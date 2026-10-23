@@ -17,10 +17,11 @@ public readonly struct AttachmentDraw
         Rigid = rigid;
         Skinned = default;
         BoneMatrices = default;
+        Profile = null;
     }
 
     internal AttachmentDraw(uint partId, int materialIndex, in SkinnedInstanceDraw skinned,
-        ReadOnlyMemory<Matrix4x4> boneMatrices)
+        ReadOnlyMemory<Matrix4x4> boneMatrices, SkinningProfile profile)
     {
         PartId = partId;
         MaterialIndex = materialIndex;
@@ -28,6 +29,7 @@ public readonly struct AttachmentDraw
         Rigid = default;
         Skinned = skinned;
         BoneMatrices = boneMatrices;
+        Profile = profile;
     }
 
     public uint PartId { get; }
@@ -36,4 +38,6 @@ public readonly struct AttachmentDraw
     public RigidInstanceDraw Rigid { get; }
     public SkinnedInstanceDraw Skinned { get; }
     public ReadOnlyMemory<Matrix4x4> BoneMatrices { get; }
+    /// <summary>The immutable garment deformation profile, or null for a rigid draw.</summary>
+    public SkinningProfile? Profile { get; }
 }

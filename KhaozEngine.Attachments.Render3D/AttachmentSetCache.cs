@@ -13,7 +13,7 @@ public sealed partial class AttachmentSetCache : IDisposable
 {
     readonly IAttachmentAssetSource _source;
     readonly object? _coverageResourceOwner;
-    readonly Dictionary<AttachmentMeshRef, CachedDefinition> _definitions = [];
+    readonly Dictionary<DefinitionIdentity, CachedDefinition> _definitions = [];
     readonly Dictionary<MeshIdentity, CachedMesh> _meshes = [];
     bool _disposed;
 
@@ -31,15 +31,21 @@ public sealed partial class AttachmentSetCache : IDisposable
 
     internal IAttachmentScene Scene { get; }
 
-    public LoadedAttachmentSet Get(string key, string expectedSha256)
+    public LoadedAttachmentSet Get(string key, string expectedSha256) =>
+        Get(key, expectedSha256, SkinningProfile.LinearBlend);
+
+    /// <summary>Select one immutable profile for all garment material parts before importing or uploading.</summary>
+    public LoadedAttachmentSet Get(string key, string expectedSha256, SkinningProfile profile)
     {
         ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(profile);
         ValidateRequest(key, expectedSha256);
-        var identity = new AttachmentMeshRef(key, expectedSha256);
+        var reference = new AttachmentMeshRef(key, expectedSha256);
+        var identity = new DefinitionIdentity(reference, profile);
         _definitions.TryGetValue(identity, out CachedDefinition? cached);
-        byte[] definitionBytes = cached?.Bytes ?? ReadVerified(identity, key);
+        byte[] definitionBytes = cached?.Bytes ?? ReadVerified(reference, key);
         AttachmentSetDefinition definition = cached?.View.Definition ?? AttachmentSetJson.Parse(definitionBytes, key);
-        Dictionary<AttachmentMeshRef, MeshIdentity> requested = Classify(definition, key);
+        Dictionary<AttachmentMeshRef, MeshIdentity> requested = Classify(definition, key, profile);
         if (cached is not null) return cached.View;
 
         var pending = new List<PendingMesh>();
@@ -65,7 +71,7 @@ public sealed partial class AttachmentSetCache : IDisposable
                 CachedMesh upload = _meshes.TryGetValue(mesh, out CachedMesh? existing) ? existing : staged[mesh];
                 resources[i] = upload.Resources;
             }
-            var loaded = new LoadedAttachmentSet(this, definition, expectedSha256, resources);
+            var loaded = new LoadedAttachmentSet(this, definition, expectedSha256, profile, resources);
             foreach (KeyValuePair<MeshIdentity, CachedMesh> mesh in staged) _meshes.Add(mesh.Key, mesh.Value);
             _definitions.Add(identity, new CachedDefinition(definitionBytes, loaded));
             return loaded;
@@ -77,14 +83,15 @@ public sealed partial class AttachmentSetCache : IDisposable
         }
     }
 
-    Dictionary<AttachmentMeshRef, MeshIdentity> Classify(AttachmentSetDefinition definition, string key)
+    Dictionary<AttachmentMeshRef, MeshIdentity> Classify(AttachmentSetDefinition definition, string key, SkinningProfile profile)
     {
         var requested = new Dictionary<AttachmentMeshRef, MeshIdentity>();
         foreach (AttachmentPartDefinition part in definition.Parts)
         {
-            var identity = new MeshIdentity(part.Mesh, part is SkinnedAttachmentPartDefinition);
+            bool skinned = part is SkinnedAttachmentPartDefinition;
+            var identity = new MeshIdentity(part.Mesh, skinned, skinned ? profile : SkinningProfile.LinearBlend);
             if ((requested.TryGetValue(part.Mesh, out MeshIdentity previous) && previous != identity)
-                || _meshes.ContainsKey(identity with { Skinned = !identity.Skinned }))
+                || _meshes.Keys.Any(mesh => mesh.Reference == part.Mesh && mesh.Skinned != skinned))
                 throw new InvalidDataException($"{key}: attachment part {part.Id}, mesh '{part.Mesh.Key}' cannot use both rigid and skinned policies.");
             requested[part.Mesh] = identity;
         }
@@ -138,7 +145,7 @@ public sealed partial class AttachmentSetCache : IDisposable
         try
         {
             return identity.Skinned
-                ? new PendingMesh(identity, bytes, null, GltfLoader.LoadSkinnedPartsWithMaterials(bytes, context))
+                ? new PendingMesh(identity, bytes, null, GltfLoader.LoadSkinnedPartsWithMaterials(bytes, context, identity.Profile))
                 : new PendingMesh(identity, bytes, GltfLoader.LoadPartsWithMaterials(bytes, context), null);
         }
         catch (Exception error) when (error is InvalidDataException or IOException or InvalidOperationException
@@ -179,7 +186,8 @@ public sealed partial class AttachmentSetCache : IDisposable
         foreach (CachedMesh mesh in meshes) mesh.Lease.Dispose();
     }
 
-    readonly record struct MeshIdentity(AttachmentMeshRef Reference, bool Skinned);
+    readonly record struct DefinitionIdentity(AttachmentMeshRef Reference, SkinningProfile Profile);
+    readonly record struct MeshIdentity(AttachmentMeshRef Reference, bool Skinned, SkinningProfile Profile);
     sealed record PendingMesh(MeshIdentity Identity, byte[] Bytes,
         IReadOnlyList<GltfMeshPart>? RigidParts, IReadOnlyList<GltfSkinnedMeshPart>? SkinnedParts);
     sealed record CachedMesh(byte[] Bytes, IDisposable Lease, AttachmentPartResources Resources);

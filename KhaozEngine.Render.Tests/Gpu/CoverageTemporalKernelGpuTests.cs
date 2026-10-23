@@ -67,7 +67,8 @@ public sealed class CoverageTemporalKernelGpuTests(CoverageGpuScene scene) : ICl
                 TemporalTextureIo.Upload(device, history.Color(history.ReadIndex), old);
                 TemporalTextureIo.Upload(device, history.Confidence(history.ReadIndex), state);
                 TemporalTextureIo.Upload(device, history.PreviousDepth(history.ReadIndex), Enumerable.Repeat(2f, w * h).ToArray());
-                renderer.BindInputs(new TemporalResolveInputs(colour, colour, depth, motion, mask), history);
+                renderer.BindInputs(new TemporalResolveInputs(colour, colour, depth, motion)
+                { CoverageRejection = mask }, history);
                 var uniforms = TemporalResolveMath.BuildUniforms(view, view, Vector2.Zero, w, h, dw, dh, control == 0);
                 using (GpuRecording.Open(device, commands, "Coverage.KernelPrepare"))
                 {

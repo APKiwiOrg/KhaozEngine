@@ -27,6 +27,7 @@ public sealed partial class Scene3D
         {
             var boneSpan = CollectionsMarshal.AsSpan(_boneMatrices);
             const int cap = SkinningMath.MaxBonesPerDraw;
+            uint lbsSlots = 0, dqSlots = 0;
             for (int i = 0; i < skinnedItems.Count; i++)
             {
                 var it = skinnedItems[i];
@@ -38,14 +39,17 @@ public sealed partial class Scene3D
                 if (src is null) continue;
 
                 CoveragePreparation? staged = it.Coverage.Preparation;
-                var (visibleMain, visibleShadow) = staged is null
-                    ? ClassifySkinnedVisibility(entry.Bounds, it.World, FrustumCulling,
-                        camFrustum, shadowMapActive && it.CastsShadows, _shadowFrustums.AsSpan(0, shadowCascadeCount))
-                    : ClassifyCoverageVisibility(staged, camFrustum, shadowMapActive && it.CastsShadows, shadowCascadeCount);
+                PreparedSkinningPose prepared = _submittedSkinningPoses[i];
+                var (visibleMain, visibleShadow) = ClassifyPreparedSkinnedVisibility(prepared, entry.Bounds, it.World,
+                    FrustumCulling, camFrustum, shadowMapActive && it.CastsShadows,
+                    _shadowFrustums.AsSpan(0, shadowCascadeCount), out PointShadowCasterSphere pointSphere);
+                if (staged is not null)
+                {
+                    (visibleMain, visibleShadow) = ClassifyCoverageVisibility(staged, camFrustum,
+                        shadowMapActive && it.CastsShadows, shadowCascadeCount);
+                    pointSphere = CoverageSphere(staged);
+                }
                 visibleMain &= !it.ShadowOnly;
-                PointShadowCasterSphere pointSphere = staged is null
-                    ? PointShadowCasterSphere.FromRestBounds(entry.Bounds, it.World, SkinnedCullSafetyFactor)
-                    : CoverageSphere(staged);
                 bool visiblePointShadow = hasPointShadowRequests && it.CastsShadows
                     && PointRequestCanRetainSkinned(pointSphere, Post.Quality.Shadows.PointShadows);
                 if (!visibleMain && !visibleShadow && !visiblePointShadow)
@@ -68,10 +72,11 @@ public sealed partial class Scene3D
 
                 if (UseCoverageVertexSkinning(it.Mesh, staged is not null))
                 {
-                    // Record the draw. The GPU deforms the rest-pose buffer. The palette lives at slot i of
-                    // _boneMatrices (submission index), packed into the shared palette at the compacted slot.
+                    // Record the prepared pose after culling. Each method compacts its own palette slots.
+                    // Keep the submission-indexed LBS matrix slice for the existing motion-history path.
+                    var paletteSlot = new PreparedSkinningSlot(prepared, ref lbsSlots, ref dqSlots);
                     _gpuSkinnedDraws.Add(new GpuSkinnedDraw(entry.Vb, entry.Ib, entry.IndexCount, entry.IndexFormat,
-                        entry.SkinnedMaterialSet, i * cap, entry.InverseBind.Length, (uint)_gpuSkinnedDraws.Count,
+                        entry.SkinnedMaterialSet, i * cap, entry.InverseBind.Length, (uint)_gpuSkinnedDraws.Count, paletteSlot,
                         ToRender(it.World), it.Tint, emissive, specParams, dissolveParams, it.DissolveComplement,
                         visibleMain, dissolving, shadowKind, pointSphere, it.Motion));   // reduced after the absolute classify
                 }
@@ -79,8 +84,10 @@ public sealed partial class Scene3D
                 {
                     int baseVertex = _cpuSkinnedVerts.Count;
                     var palette = boneSpan.Slice(i * cap, cap);   // this draw's composed bone window (slot i)
+                    ReadOnlySpan<RigidDualQuaternion> dqPalette = prepared.Profile.Method == SkinningMethod.DualQuaternionRigid
+                        ? prepared.Owner.Dq(prepared) : default;
                     for (int v = 0; v < src.Length; v++)
-                        _cpuSkinnedVerts.Add(SkinningMath.SkinVertex(src[v], palette));
+                        _cpuSkinnedVerts.Add(SkinningEvaluation.Vertex(src[v], prepared.Profile, palette, dqPalette));
                     _cpuSkinnedInstances.Add(new ModelRenderer.InstanceData
                     {
                         Model = ToRender(it.World),   // reduced AFTER the absolute visibility classification above

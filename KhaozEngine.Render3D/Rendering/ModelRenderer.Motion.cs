@@ -41,6 +41,7 @@ internal sealed partial class ModelRenderer
             }
             return;
         }
+        RetireDualQuaternionMotion();
         ReleaseCpuPreviousReserve(retire: true);   // the target stayed or became non-temporal: no motion will adopt it
         if (_motion is null) return;
         _retired.Retire(_motion);
@@ -113,14 +114,20 @@ internal sealed partial class ModelRenderer
         => RequireMotion().UploadCpuPrevious(cl, positions);
 
     /// <summary>Hold a last-frame slot per GPU-skinned caster.</summary>
-    internal void EnsureSkinnedMotionCapacity(uint slotCount) => RequireMotion().SkinnedPalette.EnsureCapacity(slotCount);
+    internal void EnsureSkinnedMotionCapacity(uint slotCount, SkinningMethod method = SkinningMethod.LinearBlend)
+    {
+        if (method == SkinningMethod.DualQuaternionRigid) RequireDualQuaternionMotion().Palette.EnsureCapacity(slotCount);
+        else RequireMotion().SkinnedPalette.EnsureCapacity(slotCount);
+    }
 
     /// <summary>Pack one caster's last frame into its slot.</summary>
     internal void PackSkinnedMotion(uint slot, in Matrix4x4 previousWorld, ReadOnlySpan<Matrix4x4> previousBones)
         => RequireMotion().SkinnedPalette.Pack(slot, previousWorld, previousBones);
 
     /// <summary>Upload every packed last-frame slot, before any skinned draw. Returns the bytes uploaded.</summary>
-    internal long UploadSkinnedMotion(IGpuCommandList cl) => RequireMotion().SkinnedPalette.Upload(cl);
+    internal long UploadSkinnedMotion(IGpuCommandList cl, SkinningMethod method = SkinningMethod.LinearBlend) =>
+        method == SkinningMethod.DualQuaternionRigid ? RequireDualQuaternionMotion().Palette.Upload(cl)
+            : RequireMotion().SkinnedPalette.Upload(cl);
 
     /// <summary>Upload this frame's motion block. Once per temporal frame, before the model pass. Returns the bytes
     /// uploaded.</summary>
@@ -135,6 +142,8 @@ internal sealed partial class ModelRenderer
     {
         _cpuSkinnedMotionPipeline?.Dispose();
         _cpuSkinnedMotionPipeline = null;
+        _dqMotion?.Dispose();
+        _dqMotion = null;
         _motion?.Dispose();
         _motion = null;
         ReleaseCpuPreviousReserve(retire: false);

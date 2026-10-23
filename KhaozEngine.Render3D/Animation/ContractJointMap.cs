@@ -145,9 +145,9 @@ namespace KhaozEngine.Render3D
         public Matrix4x4 BodyAlignment(int node) => _bodyAlignment[ContractNode(node)];
 
         /// <summary>Every vertex of a skin on this map's skeleton, deformed to the base, in model space.</summary>
-        /// <remarks>The same deform the shader applies: the base composed into joint model matrices, each after its
-        /// bone's inverse bind, blended per vertex. Without a stance this is the bind pose, so the positions are the
-        /// skin's own to within a rounding. Allocates the result and two palettes, so call it at load, not per frame.
+        /// <remarks>Uses the mesh's deformation profile with a palette prepared once from the base joint frames
+        /// and inverse binds. Without a stance this is the bind pose, so the positions are the skin's own to within
+        /// a rounding. Allocates the result and two palettes, so call it at load, not per frame.
         /// </remarks>
         /// <param name="mesh">A skin whose skeleton is this map's.</param>
         /// <exception cref="ArgumentException">The mesh poses through another skeleton.</exception>
@@ -159,12 +159,24 @@ namespace KhaozEngine.Render3D
 
             var joints = new Matrix4x4[Skeleton.BoneCount];
             Skeleton.ComposeInto(_baseLocal, joints);
-            var skin = new Matrix4x4[joints.Length];
-            for (int bone = 0; bone < skin.Length; bone++)
-                skin[bone] = SkinningMath.Compose(joints[bone], mesh.InverseBind[bone]);
+            SkinningProfile profile = mesh.Profile;
+            Matrix4x4[] skin = Array.Empty<Matrix4x4>();
+            RigidDualQuaternion[] dq = Array.Empty<RigidDualQuaternion>();
+            if (profile.Method == SkinningMethod.DualQuaternionRigid)
+            {
+                dq = new RigidDualQuaternion[joints.Length];
+                DualQuaternionPalette.Prepare(joints, mesh.InverseBind, dq,
+                    new SkinningValidationContext(nameof(SkinAtBase), null, 0));
+            }
+            else
+            {
+                skin = new Matrix4x4[joints.Length];
+                for (int bone = 0; bone < skin.Length; bone++)
+                    skin[bone] = SkinningMath.Compose(joints[bone], mesh.InverseBind[bone]);
+            }
             var positions = new Vector3[mesh.Vertices.Length];
             for (int i = 0; i < positions.Length; i++)
-                positions[i] = SkinningMath.SkinVertex(mesh.Vertices[i], skin).Position;
+                positions[i] = SkinningEvaluation.Position(mesh.Vertices[i], profile, skin, dq);
             return positions;
         }
 

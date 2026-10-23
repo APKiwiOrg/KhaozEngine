@@ -16,11 +16,17 @@ namespace KhaozEngine.Render3D
         /// orthogonalized against the normal) so a normal-mapped skinned mesh perturbs correctly. A mesh with no UV
         /// gradient keeps a zero tangent (lit by the geometric normal). Material textures are NOT auto-read (bind a
         /// PNG albedo separately, as with <see cref="Load"/>, or opt into auto-read with
-        /// <see cref="LoadSkinnedWithMaterial"/>). Throws if the mesh has no skin/joint data (use
+        /// <see cref="LoadSkinnedWithMaterial(string)"/>). Throws if the mesh has no skin/joint data (use
         /// <see cref="Load"/> for rigid meshes). Indexed directly (no re-weld) so joints/weights stay aligned to
         /// their vertices. Emits 32-bit indices so rigs past the 65,536-vertex ceiling load
         /// (<see cref="SkinnedGltfMesh"/> picks the GPU index width).</summary>
-        public static SkinnedGltfMesh LoadSkinned(string path) => BuildSkinned(LoadModel(path), path);
+        public static SkinnedGltfMesh LoadSkinned(string path) => LoadSkinned(path, SkinningProfile.LinearBlend);
+
+        /// <summary>Load with an explicit deformation profile. DQ import validates raw influences and the
+        /// composed rest pose. Audit authored samples with <see cref="SkinningValidation.ValidatePose"/>.
+        /// Skins and arbitrary glTF extras never select DQ.</summary>
+        public static SkinnedGltfMesh LoadSkinned(string path, SkinningProfile profile) =>
+            ValidateSkinningImport(path, profile, () => BuildSkinned(LoadModel(path), path, profile));
 
         /// <summary>Load a flattened skinned mesh from binary glTF bytes without temporary files or source
         /// mutation. Uses the same decoder and skin joint order as the path overload. The caller's
@@ -31,7 +37,12 @@ namespace KhaozEngine.Render3D
         /// <exception cref="InvalidOperationException">The glTF has no skin, exceeds the bone cap or fails index
         /// validation.</exception>
         public static SkinnedGltfMesh LoadSkinned(ReadOnlyMemory<byte> glb, string identity) =>
-            TranslateModelErrors(identity, () => BuildSkinned(LoadModel(glb, identity), identity));
+            LoadSkinned(glb, identity, SkinningProfile.LinearBlend);
+
+        /// <summary>Load binary glTF with the same explicit profile and validation as the path overload.</summary>
+        public static SkinnedGltfMesh LoadSkinned(ReadOnlyMemory<byte> glb, string identity, SkinningProfile profile) =>
+            TranslateModelErrors(identity, () => ValidateSkinningImport(identity, profile,
+                () => BuildSkinned(LoadModel(glb, identity), identity, profile)));
 
         /// <summary>Opt-in convenience: load a rigged glb/glTF AND auto-read its first textured material's
         /// baseColor/normal/metallicRoughness textures, decoded to raw RGBA8 (no GPU). The
@@ -40,19 +51,24 @@ namespace KhaozEngine.Render3D
         /// the result to <see cref="Scene3D.LoadSkinnedMesh(SkinnedGltfMesh,Scene3D.SurfaceMaps)"/>. A material with
         /// no (or missing/undecodable) textures yields an all-absent <see cref="GltfMaterialMaps"/>, never a
         /// throw.</summary>
-        public static (SkinnedGltfMesh Mesh, GltfMaterialMaps Maps) LoadSkinnedWithMaterial(string path)
-        {
-            ModelRoot root = LoadModel(path);
-            SkinnedGltfMesh mesh = BuildSkinned(root, path);
-            return (mesh, ReadMaterialMaps(FirstTexturedMaterial(root)));
-        }
+        public static (SkinnedGltfMesh Mesh, GltfMaterialMaps Maps) LoadSkinnedWithMaterial(string path) =>
+            LoadSkinnedWithMaterial(path, SkinningProfile.LinearBlend);
 
-        static SkinnedGltfMesh BuildSkinned(ModelRoot root, string path) =>
-            DecodeSkinned(root, path, splitByMaterial: false)[0].Mesh;
+        /// <summary>Load skinned geometry and its first textured material with an explicit profile.</summary>
+        public static (SkinnedGltfMesh Mesh, GltfMaterialMaps Maps) LoadSkinnedWithMaterial(string path, SkinningProfile profile) =>
+            ValidateSkinningImport(path, profile, () =>
+            {
+                ModelRoot root = LoadModel(path);
+                SkinnedGltfMesh mesh = BuildSkinned(root, path, profile);
+                return (mesh, ReadMaterialMaps(FirstTexturedMaterial(root)));
+            });
+
+        static SkinnedGltfMesh BuildSkinned(ModelRoot root, string path, SkinningProfile profile) =>
+            DecodeSkinned(root, path, splitByMaterial: false, profile)[0].Mesh;
 
         // Both flattened and material-part imports use this decoder. Only the destination buffers differ.
         static IReadOnlyList<(SkinnedGltfMesh Mesh, GltfMaterial? Material)> DecodeSkinned(
-            ModelRoot root, string path, bool splitByMaterial, CoverageImportCollector? coverage = null)
+            ModelRoot root, string path, bool splitByMaterial, SkinningProfile profile, CoverageImportCollector? coverage = null)
         {
             var groups = new List<SkinnedGeometry>();
             Skin? skin = null;
@@ -84,6 +100,9 @@ namespace KhaozEngine.Render3D
                     skin ??= root.LogicalNodes.FirstOrDefault(n => n.Mesh == mesh && n.Skin != null)?.Skin
                              ?? root.LogicalSkins.FirstOrDefault();
 
+                    if (profile.Method == SkinningMethod.DualQuaternionRigid && skin != null)
+                        ValidateImportInfluences(prim, pos.Count, skin.JointsCount, path);
+
                     var normals = prim.GetVertexAccessor("NORMAL")?.AsVector3Array();
                     var texcoords = prim.GetVertexAccessor("TEXCOORD_0")?.AsVector2Array();
                     // TANGENT is a vec4 (xyz = tangent direction, w = bitangent sign per glTF spec). When absent,
@@ -108,6 +127,7 @@ namespace KhaozEngine.Render3D
                             Uv = texcoords != null && i < texcoords.Count ? texcoords[i] : Vector2.Zero,
                             BoneIndices = joints[i],
                             BoneWeights = w,
+                            Tangent = tangents != null && i < tangents.Count ? tangents[i] : Vector4.Zero,
                         });
                         srcTangent.Add(tangents != null && i < tangents.Count ? tangents[i] : (Vector4?)null);
                     }
@@ -125,7 +145,12 @@ namespace KhaozEngine.Render3D
                 throw new InvalidOperationException("glTF has no skinned mesh (JOINTS_0/WEIGHTS_0 + skin): " + path);
 
             foreach (SkinnedGeometry group in groups)
+            {
+                if (profile.Method == SkinningMethod.DualQuaternionRigid)
+                    SkinningValidation.ValidateSource(group.Vertices.ToArray(), skin.JointsCount, profile,
+                        new SkinningValidationContext(path, null, -1));
                 ComputeSkinnedTangents(group.Vertices, group.Indices, group.SourceTangents);
+            }
 
             int boneCount = skin.JointsCount;
 
@@ -153,8 +178,13 @@ namespace KhaozEngine.Render3D
             Skeleton skeleton = BuildSkeleton(skin);
             var meshes = new List<(SkinnedGltfMesh Mesh, GltfMaterial? Material)>(groups.Count);
             foreach (SkinnedGeometry group in groups)
-                meshes.Add((new SkinnedGltfMesh(group.Vertices.ToArray(), group.Indices.ToArray(),
-                    inverseBind, restPose, skeleton), group.Material));
+            {
+                SkinnedVertex[] vertices = group.Vertices.ToArray();
+                SkinningValidation.ValidateSource(vertices, boneCount, profile, new SkinningValidationContext(path, null, -1));
+                var mesh = new SkinnedGltfMesh(vertices, group.Indices.ToArray(), inverseBind, restPose, skeleton, profile);
+                SkinningValidation.ValidatePose(mesh, restPose, new SkinningValidationContext(path, null, -1));
+                meshes.Add((mesh, group.Material));
+            }
             return meshes;
         }
 

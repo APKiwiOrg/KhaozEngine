@@ -30,7 +30,14 @@ namespace KhaozEngine.Render3D
             _model.EnsureSkinnedMainCapacity((uint)_gpuSkinnedDraws.Count);
             // ONE palette slot per CASTER, whatever the cascade count. The depth slots stay one per (cascade,
             // caster) because each folds that cascade's own light matrix, and that is all they hold now.
-            _model.EnsureSkinnedBonePaletteCapacity((uint)_gpuSkinnedDraws.Count);
+            uint lbsSlots = 0, dqSlots = 0;
+            foreach (GpuSkinnedDraw draw in _gpuSkinnedDraws)
+            {
+                if (draw.PreparedPose.Profile.Method == SkinningMethod.DualQuaternionRigid) dqSlots++;
+                else lbsSlots++;
+            }
+            if (lbsSlots > 0) _model.EnsureSkinnedBonePaletteCapacity(lbsSlots, SkinningMethod.LinearBlend);
+            if (dqSlots > 0) _model.EnsureSkinnedBonePaletteCapacity(dqSlots, SkinningMethod.DualQuaternionRigid);
             if (shadowMapActive)
                 _model.EnsureSkinnedShadowCapacity((uint)(_gpuSkinnedDraws.Count * Math.Max(1, _cascadeCount)));
 
@@ -38,10 +45,10 @@ namespace KhaozEngine.Render3D
             for (int d = 0; d < _gpuSkinnedDraws.Count; d++)
             {
                 GpuSkinnedDraw dr = _gpuSkinnedDraws[d];
-                _model.PackSkinnedBonePalette(dr.Slot, boneSpan.Slice(dr.BoneSpanStart, dr.BoneCount));
-                _frameStats.AddSkinnedUniformUpload((long)dr.BoneCount * 64);
+                _model.PackPreparedSkinningPalette(dr.PaletteSlot, dr.PreparedPose);
             }
-            _model.UploadSkinnedBonePalette(cl);
+            if (lbsSlots > 0) _frameStats.AddSkinnedUniformUpload(_model.UploadSkinningPalette(cl, SkinningMethod.LinearBlend));
+            if (dqSlots > 0) _frameStats.AddSkinnedUniformUpload(_model.UploadSkinningPalette(cl, SkinningMethod.DualQuaternionRigid));
             if (_res.MotionAllocated) PrepareGpuSkinnedMotion(cl, boneSpan);   // Scene3D.MotionTarget.cs
         }
 
@@ -62,27 +69,25 @@ namespace KhaozEngine.Render3D
                 if (!dr.VisibleMain) continue;
                 _model.PackSkinnedMainSlot(dr.Slot, dr.World, dr.Tint, dr.Emissive, dr.SpecParams,
                     dr.DissolveParams, dissolveComplement: dr.DissolveComplement);
-                // Model + P alone: 1072 bytes left with #604's frame block and 3072 more with #407's palette.
-                _frameStats.AddSkinnedUniformUpload(ModelRenderer.SkinnedHeaderBytes);
                 packedMainSlots = true;
             }
-            if (packedMainSlots) _model.UploadSkinnedMainSlots(cl);
+            if (packedMainSlots) _frameStats.AddSkinnedUniformUpload(_model.UploadSkinnedMainSlots(cl));
 
             bool dissolveBound = false;
-            _model.BindSkinnedPass(cl);
+            SkinningProfile? profileBound = null;
             for (int d = 0; d < _gpuSkinnedDraws.Count; d++)
             {
                 GpuSkinnedDraw dr = _gpuSkinnedDraws[d];
                 if (!dr.VisibleMain) continue;
-                if (dr.Dissolve != dissolveBound)   // switch pipelines only when the dissolve state changes
+                if (dr.Dissolve != dissolveBound || dr.PreparedPose.Profile != profileBound)
                 {
-                    if (dr.Dissolve) _model.BindSkinnedDissolvePass(cl); else _model.BindSkinnedPass(cl);
+                    _model.BindSkinnedMaterialPass(cl, dr.PreparedPose.Profile, dr.Dissolve);
                     dissolveBound = dr.Dissolve;
+                    profileBound = dr.PreparedPose.Profile;
                 }
-                // Slot indexes the header window and paletteSlot the shared palette. They are the same number here
-                // (both are the caster's compacted index), which is exactly what the depth pass cannot say.
-                _model.DrawGpuSkinned(cl, dr.RestVb, dr.Ib, dr.IndexCount, dr.IndexFormat, dr.Slot, dr.Slot,
-                    dr.SkinnedMaterialSet);
+                // Headers compact all methods together. Each palette compacts only its own method.
+                _model.DrawGpuSkinned(cl, dr.RestVb, dr.Ib, dr.IndexCount, dr.IndexFormat, dr.Slot, dr.PaletteSlot,
+                    dr.SkinnedMaterialSet, dr.PreparedPose.Profile);
                 CountSkinnedDraw(dr.IndexCount);
             }
         }

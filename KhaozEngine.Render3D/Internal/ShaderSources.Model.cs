@@ -1,3 +1,5 @@
+using System;
+
 namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
@@ -447,6 +449,26 @@ void main() {
     vDynamic = P[3].x;   // dynamic-geometry decal mask (issue #235): GPU-skinned draws default to 1 (see PackSkinnedMainSlot)
     vDissolve = vec3(P[3].z, P[3].w, P[3].y);
 }";
+
+        public static readonly string DqSkinnedModelVert = CreateDqSkinnedModelVert();
+
+        static string CreateDqSkinnedModelVert()
+        {
+            // Share the existing input, world-transform and varying contract without changing any LBS source words.
+            int blendStart = SkinnedModelVert.IndexOf("    // 4-bone blend,", StringComparison.Ordinal);
+            int worldStart = SkinnedModelVert.IndexOf("    vec4 world = Model * localPos;", StringComparison.Ordinal);
+            string prefix = SkinnedModelVert[..blendStart]
+                .Replace("mat4 bones[128];", "vec4 dqBones[256];", StringComparison.Ordinal)
+                .Replace("void main() {", DualQuaternionGlsl.Source("dqBones") + "\nvoid main() {", StringComparison.Ordinal);
+            return prefix + @"
+    vec3 dqPosition; vec3 nLocal; vec4 tLocal;
+    if (!dqBonesSkin(Position, Normal, Tangent, BoneIndices, BoneWeights, dqPosition, nLocal, tLocal)) {
+        gl_Position = vec4(0.0, 0.0, -1.0, 1.0);
+        return;
+    }
+    vec4 localPos = vec4(dqPosition, 1.0);
+" + SkinnedModelVert[worldStart..];
+        }
 
         // Skinned fragment: byte-for-byte ModelFrag lighting, off byte-for-byte ModelFrag's frame block, which since
         // #604 is the SHARED per-frame buffer at set 0 binding 0 rather than a copy folded into the per-draw slot.

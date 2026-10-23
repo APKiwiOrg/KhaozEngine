@@ -70,9 +70,20 @@ checks the exact definition bytes and every distinct mesh revision, applies the 
 embedded GLB policy, and decodes all new geometry and material maps before uploading. The cache classifies
 all references before using warm uploads. A reference requested under both kinds is refused, including
 reuse after a different set warmed the cache. The cache copies source memory and shares each compatible
-`(key, hash, kind)` upload across its parts and sets. A failure releases newly acquired resources and
+`(key, hash, kind, profile)` garment upload across its parts and sets. Rigid geometry remains shared
+across profiles. A failure releases newly acquired resources and
 preserves earlier cached assets. Skinned material groups retain their skin-order joint names, inverse
-binds and rest poses as immutable metadata. Loading allocates no frame palettes.
+binds, rest poses and selected profile as immutable metadata. Loading allocates no frame palettes.
+
+The existing `Get(key, expectedSha256)` overload selects `SkinningProfile.LinearBlend`.
+`Get(key, expectedSha256, profile)` selects one immutable method/version before import and upload for
+every garment material part. Different profiles produce distinct cached views and garment leases.
+`LoadedAttachmentSet.Profile` reports that selection. Matching ordinary DQ garments can use public
+`Queue` and `QueueOutline` with either `UseGpuSkinning` setting. Every material part retains the same
+method/version as its host. Uniform/nonuniform scale, reflection and shear in the composed skin palette
+are unsupported by rigid DQ, with no per-pose LBS fallback. Finite affine model placement remains separate.
+Covered actors remain held for stage 4 NC2 reconciliation, Preserve Volume/export comparisons, new
+fit/oracle evidence and owner look approval. Ordinary garment rendering does not establish coverage fit.
 
 ```csharp
 using var scene = new Scene3D(device, output);
@@ -86,7 +97,14 @@ metadata without reading assets or importing geometry again. It retains both rig
 material handles, and `DrawCount` includes both kinds. `BoundAttachmentSet` allocates one garment
 palette per skinned part using `SkinnedJointCount`, shared by that part's material draws.
 
+Garment and host profiles must match, alongside joint names and inverse binds. A mismatch throws
+`InvalidDataException` with part, mesh and host profile context before returning a bound view.
+
 `DefinitionSha256` records the exact source bytes. `Definition.SemanticSha256` records canonical content.
+`AttachmentSetBinding.FitIdentity` and `BoundAttachmentSet.FitIdentity` additionally identify the host
+deformation profile. LBS retains its existing canonical identity and motion keys. Changing the host
+profile invalidates fit evidence and motion keys for rigid parts too, while `BoneSocket.ComposeRigid`
+and the resulting socket matrices remain unchanged.
 Binding resolves every joint before returning a view. `Skeleton` retains the exact bound skeleton and
 `DrawCount` counts every material group of every part. Loaded and bound views borrow resources and expose
 no disposal operation. Their properties and binding operations throw `ObjectDisposedException` after
@@ -146,7 +164,8 @@ for (int i = 0; i < count; i++)
 ```
 
 `WriteDraws` returns `DrawCount` descriptors in ascending part-ID order and stable material order.
-`PartId` and `MaterialIndex` identify each draw. `IsSkinned` selects `Rigid` or `Skinned`. Each
+`PartId` and `MaterialIndex` identify each draw. `IsSkinned` selects `Rigid` or `Skinned`.
+`Profile` retains the garment's method/version and is null for a rigid draw. Each
 `BoneMatrices` borrows its part's preallocated palette, shared by all its materials. Consume it
 synchronously before the bound view's next preparation, submission or cache disposal. The rigid
 `WriteDraws` overload taking `Span<RigidInstanceDraw>` remains supported for rigid-only sets and

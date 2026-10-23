@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Primitives;
+using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D;
 
@@ -45,8 +46,12 @@ public sealed partial class Scene3D
         float widthPixels,
         MeshOutlineOcclusion occlusion)
     {
+        ValidateMeshOutlineStyle(widthPixels, occlusion);
+        if (!_skinnedSlots.IsValid(mesh.Index, mesh.Generation)) return;
+        if (_skinnedMeshes[mesh.Index] is not { } entry) return;
+        PreparedSkinningPose prepared = PrepareSkinning(entry, boneMatrices, "independent target outline", world);
         MeshOutlineGroup group = BeginMeshOutline(color, widthPixels, occlusion);
-        DrawSkinnedOutline(group, mesh, boneMatrices, world);
+        AppendSkinnedOutlinePart(RequireMeshOutlineGroup(group), mesh, world, 0f, false, prepared);
     }
 
     void AddSkinnedOutlinePart(
@@ -61,30 +66,39 @@ public sealed partial class Scene3D
         if (!_skinnedSlots.IsValid(mesh.Index, mesh.Generation)) return;
         if (_skinnedMeshes[mesh.Index] is not { } entry) return;
 
-        (int start, int count) = AppendOutlinePose(_outlineBoneMatrices, boneMatrices, entry.InverseBind);
-        drawGroup.Parts.Add(MeshOutlinePart.Skinned(mesh, world, Math.Clamp(dissolve, 0f, 1f),
-            dissolveComplement, start, count));
+        PreparedSkinningPose prepared = PrepareSkinning(entry, boneMatrices, "independent target outline", world);
+        AppendSkinnedOutlinePart(drawGroup, mesh, world, dissolve, dissolveComplement, prepared);
+    }
+
+    void AppendSkinnedOutlinePart(MeshOutlineDrawGroup group, SkinnedMeshHandle mesh, Matrix4x4 world,
+        float dissolve, bool dissolveComplement, in PreparedSkinningPose prepared)
+    {
+        int start = _outlineBoneMatrices.Count;
+        if (prepared.Profile.Method == SkinningMethod.LinearBlend)
+            foreach (Matrix4x4 bone in prepared.Owner.Lbs(prepared)) _outlineBoneMatrices.Add(bone);
+        group.Parts.Add(MeshOutlinePart.Skinned(mesh, world, Math.Clamp(dissolve, 0f, 1f),
+            dissolveComplement, start, prepared.BoneCount) with
+        { Pose = prepared });
         _meshOutlinePartCount++;
     }
 
-    static (int Start, int Count) AppendOutlinePose(
-        List<Matrix4x4> destination,
-        ReadOnlySpan<Matrix4x4> boneMatrices,
-        Matrix4x4[] inverseBind)
+    bool EnqueueSkinnedOutlinePart(in MeshOutlinePart part, int drawIndex)
     {
-        if (boneMatrices.Length != inverseBind.Length)
-            throw new ArgumentException(
-                $"boneMatrices length {boneMatrices.Length} must equal the mesh bone count {inverseBind.Length}.",
-                nameof(boneMatrices));
-        if (boneMatrices.Length > SkinningMath.MaxBonesPerDraw)
-            throw new ArgumentException(
-                $"a skinned mesh has {boneMatrices.Length} bones, over the {SkinningMath.MaxBonesPerDraw}-bone per-draw cap.",
-                nameof(boneMatrices));
-
-        int start = destination.Count;
-        for (int i = 0; i < boneMatrices.Length; i++)
-            destination.Add(SkinningMath.Compose(boneMatrices[i], inverseBind[i]));
-        return (start, boneMatrices.Length);
+        if (!_skinnedSlots.IsValid(part.SkinnedMesh.Index, part.SkinnedMesh.Generation)) return false;
+        if (_skinnedMeshes[part.SkinnedMesh.Index] is not { } skinned) return false;
+        if (EnqueueCoverageOutline(part, skinned, drawIndex)) return true;
+        if (UseCoverageVertexSkinning(part.SkinnedMesh, part.Coverage.Preparation is not null))
+            _targetOutlines.EnqueueSkinnedGpu(skinned.Vb, skinned.Ib, skinned.IndexCount,
+                skinned.IndexFormat, skinned.OutlineMaterialSet, part.Pose, drawIndex, ToRender(part.World),
+                skinned.AlphaCutoff, part.Dissolve, part.DissolveComplement, _frameOrigin);
+        else
+        {
+            if (_skinnedCpuVerts[part.SkinnedMesh.Index] is not { } source) return false;
+            _targetOutlines.EnqueueSkinnedCpu(source, skinned.Ib, skinned.IndexCount,
+                skinned.IndexFormat, skinned.OutlineMaterialSet, part.Pose, drawIndex, ToRender(part.World),
+                skinned.AlphaCutoff, part.Dissolve, part.DissolveComplement, _frameOrigin);
+        }
+        return true;
     }
 
     internal int OutlinePoseMatrixCount => _outlineBoneMatrices.Count;

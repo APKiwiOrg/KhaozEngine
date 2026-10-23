@@ -37,7 +37,7 @@ public sealed partial class AttachmentSetCache
                 if (set.Definition.Parts[p].Id == command.PartId) part = p;
             if (part < 0 || set.Definition.Parts[part] is not RigidAttachmentPartDefinition rigid)
                 throw new InvalidDataException($"{key}: coverage command {command.Id} requires rigid attachment part {command.PartId}.");
-            var identity = new MeshIdentity(rigid.Mesh, false);
+            var identity = new MeshIdentity(rigid.Mesh, false, SkinningProfile.LinearBlend);
             if (!_coverageSources.TryGetValue(identity, out var source) && !pending.TryGetValue(identity, out source))
             {
                 source = GltfLoader.LoadCoverageSource(_meshes[identity].Bytes, rigid.Mesh.Key);

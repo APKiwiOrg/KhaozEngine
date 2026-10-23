@@ -74,6 +74,7 @@ namespace KhaozEngine.Render3D
         /// transform and composed palette are remembered for the next frame. Presentation only - never feed
         /// sim/RNG/netcode from bone state. Shadow-only without casting throws <see cref="ArgumentException"/>
         /// before changing either the palette or the queue.
+        /// DQ requires a validated rigid palette and a finite affine posed envelope before any queue changes.
         /// </summary>
         public void DrawSkinned(in SkinnedInstanceDraw draw, ReadOnlySpan<Matrix4x4> boneMatrices)
         {
@@ -90,10 +91,19 @@ namespace KhaozEngine.Render3D
             // dynamic-offset bind selects exactly this draw's palette. Slot N maps to bone byte offset
             // N * SlotBytes and to instance buffer element N in the render loop.
             int slot = _skinnedInstances.Items.Count;
-            ComposeBonesIntoSlot(_boneMatrices, slot, boneMatrices, entry.InverseBind);
+            var prepared = PrepareSkinning(entry, boneMatrices,
+                UseGpuSkinning ? "ordinary GPU colour/shadow/motion" : "ordinary CPU colour/shadow/motion", draw.Model);
+            MeshBounds worldBounds = SkinnedMotionBounds(entry, prepared, draw);
+            ReadOnlySpan<Matrix4x4> palette = prepared.Profile.Method == SkinningMethod.LinearBlend
+                ? _preparedSkinning.Lbs(prepared) : default;
+            for (int bone = 0; bone < SkinningMath.MaxBonesPerDraw; bone++)
+                _boneMatrices.Add(bone < palette.Length ? palette[bone] : Matrix4x4.Identity);
+            if (_submittedSkinningPoses.Length <= slot)
+                Array.Resize(ref _submittedSkinningPoses, Math.Max(slot + 1, _submittedSkinningPoses.Length * 2));
+            _submittedSkinningPoses[slot] = prepared;
             _skinnedInstances.Add(in draw);
             RecordCoverageDraw(coverage, draw, false);
-            RecordSkinnedMotion(in draw, slot, boneMatrices.Length);
+            RecordSkinnedMotion(in draw, in prepared, in worldBounds);
         }
 
         /// <summary>Queue one skinned draw. <paramref name="boneMatrices"/> are this frame's joint world

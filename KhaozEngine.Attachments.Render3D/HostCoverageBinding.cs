@@ -240,7 +240,7 @@ public sealed class HostCoverageBinding : IDisposable
                 var draw = draws[DrawOffset + d];
                 if (!draw.IsSkinned) continue;
                 draw.BoneMatrices.Span.CopyTo(_palettes[d]);
-                draws[DrawOffset + d] = new(draw.PartId, draw.MaterialIndex, draw.Skinned, _palettes[d]);
+                draws[DrawOffset + d] = new(draw.PartId, draw.MaterialIndex, draw.Skinned, _palettes[d], draw.Profile!);
             }
         }
     }

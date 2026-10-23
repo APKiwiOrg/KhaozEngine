@@ -7,12 +7,12 @@ namespace KhaozEngine.Render3D.Internal
     /// (<c>TemporalSurface</c>, <see cref="TemporalPrepareGlsl"/>): the fused resolve after preparing its 3x3 inline,
     /// the split's second pass (<see cref="TemporalAccumulateFrag"/>) after reading its first pass's targets.
     /// <para>A program that includes it declares <c>SceneColor</c>, <c>SceneDepth</c>, <c>MotionTex</c>,
-    /// <c>PrevDepth</c>, <c>HistoryColor</c>, <c>HistoryConfidence</c>, <c>LinearClamp</c> and the <c>Resolve</c>
-    /// block, and includes <see cref="TemporalPrepareGlsl"/> before it.</para>
+    /// <c>PrevDepth</c>, <c>HistoryColor</c>, <c>HistoryConfidence</c>, <c>HistoryRejection</c>, <c>LinearClamp</c> and the
+    /// <c>Resolve</c> block, and includes <see cref="TemporalPrepareGlsl"/> before it.</para>
     /// </summary>
     internal static partial class ShaderSources
     {
-        internal const string TemporalAccumulateGlsl = @"
+        internal const string TemporalAccumulateGlsl = HistoryRejectionReadGlsl + @"
 struct TemporalPixel {
     vec3 color; float confidence; float stability; float moved; float disocclusion; float reactive; float clip;
     float alpha;
@@ -266,7 +266,7 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     vec2 internalSize = Sizes.xy;
     vec2 displaySize = Sizes.zw;
     vec2 jitter = Jitter.xy;
-    bool historyValid = Jitter.w > 0.5;
+    bool historyValid = Jitter.w > 0.5 && !temporalHistoryRejected(uv);
     vec3 neighbourMin = toVec3(n.neighbourMin);
     vec3 neighbourMax = toVec3(n.neighbourMax);
     float alphaMin = toFloat(n.alphaMin);

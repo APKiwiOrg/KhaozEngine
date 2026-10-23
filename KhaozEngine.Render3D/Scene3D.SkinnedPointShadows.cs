@@ -125,10 +125,15 @@ public sealed partial class Scene3D
                 if (draw.ShadowKind == ShadowCastKind.None
                     || !draw.PointSphere.TouchesShadowingShell(request.Position, request.Radius,
                         request.NearRadius, request.ExclusionMin, request.ExclusionMax)) continue;
+                SkinningProfile profile = draw.PreparedPose.Profile;
+                DualQuaternionPaletteBuffer dqPalette = _model.SkinnedDualQuaternionPalette;
+                bool dq = profile.Method == SkinningMethod.DualQuaternionRigid;
                 renderer.BeginGpuSkinnedFace(cl, packed.Atlas,
-                    packed.PackedIndex * PointShadowMath.FaceCount + face, face, packed.Row, draw.ShadowKind);
+                    packed.PackedIndex * PointShadowMath.FaceCount + face, face, packed.Row, draw.ShadowKind,
+                    profile, dqPalette);
                 renderer.DrawGpuSkinnedCaster(cl, draw.RestVb, draw.Ib, draw.IndexCount, draw.IndexFormat,
-                    draw.Slot, _model.SkinnedBonePaletteSet, SkinnedBonePalette.OffsetFor(draw.Slot));
+                    draw.Slot, dq ? dqPalette.Set : _model.SkinnedBonePaletteSet,
+                    dq ? dqPalette.OffsetFor(draw.PaletteSlot) : SkinnedBonePalette.OffsetFor(draw.PaletteSlot));
                 draws++;
             }
         }

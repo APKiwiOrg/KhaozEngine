@@ -23,7 +23,7 @@ public static partial class GltfLoader
         {
             ModelRoot root = LoadModel(owned, identity);
             var collector = new CoverageImportCollector();
-            var decoded = DecodeSkinned(root, identity, splitByMaterial: true, collector);
+            var decoded = DecodeSkinned(root, identity, splitByMaterial: true, SkinningProfile.LinearBlend, collector);
             var source = collector.Build(identity, hash, decoded.Select(pair => pair.Mesh).ToArray());
             HostCoveragePart.Validate(hostCoverageMap, source);
             var parts = new List<GltfSkinnedMeshPart>();

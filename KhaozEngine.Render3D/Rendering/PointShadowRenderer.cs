@@ -8,8 +8,8 @@ using KhaozEngine.Render3D.Internal;
 namespace KhaozEngine.Render3D.Rendering
 {
     /// <summary>
-    /// The depth-only pass that fills either point-light shadow atlas: seven pipelines (three rigid casters,
-    /// three skinned casters and the row clear), aligned face and caster slot rings, and scissor bookkeeping that
+    /// The depth-only pass that fills either point-light shadow atlas: seven base pipelines plus lazy DQ variants,
+    /// aligned face and caster slot rings, and scissor bookkeeping that
     /// keeps one cell's geometry inside one cell.
     /// <para>
     /// It is <see cref="ShadowMapRenderer"/> one geometry over, and deliberately so: same R32F single-colour target,
@@ -103,6 +103,7 @@ namespace KhaozEngine.Render3D.Rendering
                 _interiorCutBinding = Built(built, new InteriorCutBinding(gd, _interiorCutLayout));
 
                 GpuOutputDescription outputs = new(GpuPixelFormat.D32FloatS8UInt, GpuPixelFormat.R32Float);
+                _skinnedOutputs = outputs;
                 _pipeline = Built(built, BuildCasterPipeline(f, outputs, _shaders, dissolve: false));
                 _dissolvePipeline = Built(built, BuildCasterPipeline(f, outputs, _dissolveShaders, dissolve: true));
                 _dissolveInvertedPipeline = Built(built,
@@ -354,6 +355,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         public void Dispose()
         {
+            DisposeDualQuaternionPointResources();
             DisposeSkinnedResources();
             _clearPipeline.Dispose();
             _dissolveInvertedPipeline.Dispose();

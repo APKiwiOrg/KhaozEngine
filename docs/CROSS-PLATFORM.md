@@ -1020,6 +1020,30 @@ under `gpu-hosted-bench-<leg>` or `stress-artifacts`, including setup identity a
 authorization SHAs on the GPU route. A hard job timeout can still prevent an upload. Ordinary solution,
 selective CI and GPU correctness discovery never select the Perf project. No executable authorization
 ships with the harness.
+## Ordinary rigid DQ verification
+
+`SkinningProfile.DualQuaternionRigid` is explicit opt-in. `UseGpuSkinning` selects execution location,
+with the same profile used for materials, every cascade, point faces, independent outlines and previous poses.
+`DqConsumerMatrixGpuTests` exercises public CPU/GPU colour, shadow-only and outline-only submission with a
+posed surface outside the rest-bound heuristic. It compares native material, cascade, point and outline
+readbacks with an independently preposed control, checks native positions inside the finite posed envelope,
+and compares reused/fresh scenes after view/origin changes. The focused `FullyQualifiedName~Dq` gate also
+covers material maps/cutout/dissolve, all cascade and point variants, garments, previous-pose motion,
+actor-local history rejection, source/profile identity, grounding and fitting queries.
+
+Run that gate on hosted Metal, Vulkan and Direct3D11 with nonzero matched counts and no skipped native
+witnesses. Record the actual execution headSha, runner labels, raw adapter and counts. Ordinary model-space
+position tolerance is componentwise `2e-5 * L`, where `L` is the maximum of one, source-position norm and
+prepared joint-translation norm. Nonzero normalized direction error is at most `2e-5`, with angular error
+at most `1e-4` radians. Fixed binary32 poses isolate arithmetic. Reused/fresh comparisons freeze inputs on
+one backend and do not assert portable scene hashes. Real animation/camera input differences remain
+[#1530](https://github.com/APKiwiOrg/KhaozEngine/issues/1530).
+
+Vulkan sync testing with validation requested cannot establish validation cleanliness while the runner
+has no debug messenger ([#1539](https://github.com/APKiwiOrg/KhaozEngine/issues/1539)). Record this limitation
+separately from native readback results. LBS results and frozen goldens remain unchanged. Covered actors
+remain gated on stage 4 NC2 reconciliation, Preserve Volume/export comparisons, new fit/oracle evidence
+and owner look approval. Ordinary DQ tolerances do not relax NC2 exact word equality or establish a carry domain.
 
 ## Authoring shaders that pass on all three backends
 

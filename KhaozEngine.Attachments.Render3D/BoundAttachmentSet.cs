@@ -41,7 +41,7 @@ public sealed class BoundAttachmentSet
             int joints = _binding.SkinnedJointCount(_definition.Parts[part].Id);
             _palettes[part] = joints == 0 ? Array.Empty<Matrix4x4>() : new Matrix4x4[joints];
         }
-        byte[] revision = Convert.FromHexString(definition.SemanticSha256.AsSpan(0, 16));
+        byte[] revision = Convert.FromHexString(binding.FitIdentity.AsSpan(0, 16));
         _revisionLow = BinaryPrimitives.ReadUInt32LittleEndian(revision);
         _revisionHigh = BinaryPrimitives.ReadUInt32LittleEndian(revision.AsSpan(4));
     }
@@ -55,6 +55,11 @@ public sealed class BoundAttachmentSet
     internal AttachmentSetDefinition Definition => _definition;
     internal IReadOnlyList<AttachmentPartResources> Resources => _resources;
     internal bool MatchesHostSkin(SkinnedHostConformer conformer) => _binding.MatchesHostSkin(conformer);
+    /// <summary>Canonical definition and host deformation identity for authored fit evidence.</summary>
+    public string FitIdentity
+    {
+        get { _owner.ThrowIfDisposed(); return _binding.FitIdentity; }
+    }
 
     /// <summary>One draw per material group of every canonical part.</summary>
     public int DrawCount
@@ -129,7 +134,7 @@ public sealed class BoundAttachmentSet
                         DissolveComplement = template.DissolveComplement,
                         Motion = MotionKey.Combine(partKey, (uint)material),
                     };
-                    _draws[draw++] = new AttachmentDraw(partId, material, skinned, _palettes[part]);
+                    _draws[draw++] = new AttachmentDraw(partId, material, skinned, _palettes[part], resources.Profile);
                 }
             }
             else

@@ -36,10 +36,12 @@ public sealed partial class Scene3D
             CountSkinnedDraw(draw.CornerCount);
         }
     }
+    // Indexed by this frame's submission index. Begin resets the queue, and each submitted index is overwritten.
+    PreparedSkinningPose[] _submittedSkinningPoses = System.Array.Empty<PreparedSkinningPose>();
 
     /// <summary>One GPU-skinned draw (built per frame in RenderInternal when <see cref="UseGpuSkinning"/> is on).
     /// Carries the mesh's rest-pose vertex + index buffers (uploaded once at load - the GPU deforms them), the
-    /// set-1 material set, the composed bone-palette slice (offset into <c>_boneMatrices</c> + bone count), the
+    /// set-1 material set, the prepared pose, the legacy LBS motion slice, the method-local palette slot, the
     /// compacted per-caster slot, and the per-draw matrices/material the vertex shader folds. The shadow depth
     /// pass packs + draws each casting entry reached by a key or point-light shadow volume. The
     /// main pass skips a <see cref="VisibleMain"/>-false entry (camera-culled or shadow-only).</summary>
@@ -51,7 +53,9 @@ public sealed partial class Scene3D
         public readonly IGpuResourceSet? SkinnedMaterialSet;
         public readonly int BoneSpanStart;   // into _boneMatrices (submission index * MaxBonesPerDraw)
         public readonly int BoneCount;
-        public readonly uint Slot;            // compacted per-caster slot: the main header window AND the shared palette
+        public readonly PreparedSkinningPose PreparedPose;
+        public readonly uint PaletteSlot;
+        public readonly uint Slot;            // compacted per-caster header slot, independent of method-local palettes
         public readonly Matrix4x4 World;
         public readonly PointShadowCasterSphere PointSphere;
         public readonly Vector4 Tint, Emissive, SpecParams;
@@ -63,12 +67,14 @@ public sealed partial class Scene3D
         public readonly MotionKey Motion;       // the submission's key, None when unkeyed (the skinned motion pass reads it)
         public GpuSkinnedDraw(IGpuBuffer restVb, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat,
             IGpuResourceSet? skinnedMaterialSet, int boneSpanStart, int boneCount, uint slot,
+            in PreparedSkinningSlot palette,
             in Matrix4x4 world, Vector4 tint, Vector4 emissive, Vector4 specParams, Vector2 dissolveParams,
             float dissolveComplement, bool visibleMain, bool dissolve,
             ShadowCastKind shadowKind, PointShadowCasterSphere pointSphere, MotionKey motion)
         {
             RestVb = restVb; Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat;
             SkinnedMaterialSet = skinnedMaterialSet; BoneSpanStart = boneSpanStart; BoneCount = boneCount; Slot = slot;
+            PreparedPose = palette.Pose; PaletteSlot = palette.Slot;
             World = world; Tint = tint; Emissive = emissive; SpecParams = specParams;
             DissolveParams = dissolveParams; VisibleMain = visibleMain; Dissolve = dissolve;
             DissolveComplement = dissolveComplement;
@@ -109,4 +115,18 @@ public sealed partial class Scene3D
         }
     }
 
+}
+
+/// <summary>Assigned only after visibility admission. Palette slots compact independently per method while
+/// draw headers keep their original compacted order.</summary>
+internal readonly struct PreparedSkinningSlot
+{
+    internal PreparedSkinningPose Pose { get; }
+    internal uint Slot { get; }
+
+    internal PreparedSkinningSlot(in PreparedSkinningPose pose, ref uint lbsSlots, ref uint dqSlots)
+    {
+        Pose = pose;
+        Slot = pose.Profile.Method == SkinningMethod.DualQuaternionRigid ? dqSlots++ : lbsSlots++;
+    }
 }

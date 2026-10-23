@@ -17518,9 +17518,13 @@ The existing `KE_D3D11_RECORD` choice and actual debug-layer state enter diagnos
 
 Invocation collection is a separate D3D11-only capability. Set `KE_D3D11_INVOCATION_DIAGNOSTICS=1`
 before creating the diagnostic device, then use `ID3D11InvocationDiagnostics.CaptureInvocations`.
-Its callback must synchronously record and submit all intended work. Read the returned
-`D3D11InvocationBlock` outside timing, after normal submission/completion. `TryRead` returns false and
-a null report for pending data. It uses one non-flushing read and never waits or retries internally.
+Its callback must synchronously record and submit all intended work. The query `End` is appended after
+the callback. After `CaptureInvocations` returns, arrange normal submission or progress covering that
+`End`. A fence submitted inside the callback precedes `End` and does not establish query completion.
+Any caller-owned completion wait belongs outside the callback and timing. Read the returned
+`D3D11InvocationBlock` outside timing. `TryRead` returns false and a null report for pending data, which
+must remain pending until post-return progress occurs. It uses one non-flushing read and never waits
+or retries internally.
 Dispose the block after reading. An unsupported block does not call the callback. No invocation query
 is automatically inserted into the production pipeline or timestamp path. See the
 [D3D11 package reference](../KhaozEngine.Gpu.D3D11/README.md#optional-compiler-and-memory-diagnostics).

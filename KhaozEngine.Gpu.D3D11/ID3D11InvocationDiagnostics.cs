@@ -21,8 +21,11 @@ public interface ID3D11InvocationDiagnostics
 public sealed record D3D11InvocationReport(GpuDiagnosticStatus Status, string? Reason, string RecordingMode,
     ImmutableArray<GpuPipelineStatistic> Statistics);
 
-/// <summary>One owned asynchronous diagnostic query. Poll outside timing after normal submission/completion.
-/// A pending read never flushes. Dispose releases the query. This is independent of timestamp/disjoint pools.</summary>
+/// <summary>One owned asynchronous diagnostic query. After CaptureInvocations returns, arrange normal
+/// progress covering the query End. Fences submitted inside the callback precede End and do not establish
+/// query completion. Keep pending results pending until post-return progress occurs. Caller-owned completion
+/// waits belong outside the callback and timing. A pending read never flushes. Dispose releases the query.
+/// This is independent of timestamp/disjoint pools.</summary>
 public sealed class D3D11InvocationBlock : IDisposable
 {
     readonly D3D11InvocationDiagnostics _owner;

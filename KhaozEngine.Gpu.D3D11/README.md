@@ -783,6 +783,11 @@ context, and the report retains the effective engine mode. Each explicit block o
 `D3D11_QUERY_PIPELINE_STATISTICS` query. It brackets the callback's native work without changing
 pipeline state or arming any timestamp/disjoint pool. A refused capture never calls the callback.
 
+After `CaptureInvocations` returns, arrange normal submission or progress covering the query `End`,
+which is appended after the callback. Fences submitted inside the callback precede `End` and do not
+establish query completion. Any caller-owned completion wait belongs outside the callback and timing.
+Keep pending results pending until that post-return progress occurs.
+
 The returned `D3D11InvocationBlock.TryRead` performs one `GetData` with
 `D3D11_ASYNC_GETDATA_DONOTFLUSH`, outside timed frames. S_FALSE returns false with a null report.
 S_OK preserves all eleven native UINT64 fields, including values above double's exact range. Failure

@@ -33,7 +33,7 @@ public sealed partial class ShippedSceneInputGuardTests
         catch (PrivateOracleFailure)
         {
             // Only this invented fixture is allowed through this public diagnostic path.
-            Assert.Fail(string.Join("\n", File.ReadLines(fixture.ReportPath).Take(3))
+            Assert.Fail(string.Join("\n", File.ReadLines(fixture.ReportPath).Where(line => !line.StartsWith("{\"category\":\"scene-buildings\"", StringComparison.Ordinal)).Take(3))
                 .Replace(fixture.SourceRoot, "<fixture>", StringComparison.Ordinal).Replace(fixture.PublicSecretMarker, "<sentinel>", StringComparison.Ordinal));
         }
         Assert.Empty(fixture.FailureCategories());

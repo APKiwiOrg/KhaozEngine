@@ -18,8 +18,11 @@ public sealed class NativeRoofWeldOutlineTests
     {
         var closure = NativeRenderAssetFixtures.Placements();
         using var fixture = NativeSceneFixtures.SeparatedPlacements(closure, 1, new(8, 0, 8, 0, 1), new(8.04, 0, 8, 0, 1));
-        fixture.Document.BuildingIntent = new(1, [], [], [], []) { Roofs = fixture.Document.Placements
-            .Select(p => new MapPrefabReference(MapPrefabReferenceScope.World, MapPrefabChildKind.Placement, p.Id)).ToArray() };
+        fixture.Document.BuildingIntent = new(1, [], [], [], [])
+        {
+            Roofs = fixture.Document.Placements
+            .Select(p => new MapPrefabReference(MapPrefabReferenceScope.World, MapPrefabChildKind.Placement, p.Id)).ToArray()
+        };
         var scene = NativeSceneFixtures.Open(fixture, false).Acquire(NativePresentationFixtures.Scope).Scene!;
         using var assets = NativeMapPlacementTests.Assets(closure);
         Vector3[] positions = [new(0, 0, 0), new(.01f, 0, 0), new(0, .2f, 0), new(0, 0, .2f), new(.2f, 0, .2f), new(0, .2f, .2f)];

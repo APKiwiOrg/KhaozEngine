@@ -23,8 +23,20 @@ public sealed class RoofHlodExitParityTests
             var probes = new JsonArray();
             foreach (float distance in new[] { 90f, 95f, 99f, 100f })
                 foreach (string mode in new[] { "AlwaysVisible", "AlwaysHidden" })
-                    probes.Add(new JsonObject { ["id"] = mode + distance, ["windowId"] = "A", ["observerX"] = 0, ["observerY"] = 2, ["observerZ"] = 0,
-                        ["roofMode"] = mode, ["timeSeconds"] = 1, ["windSeed"] = 17, ["focusX"] = 32 + distance, ["focusY"] = 2, ["focusZ"] = -32 });
+                    probes.Add(new JsonObject
+                    {
+                        ["id"] = mode + distance,
+                        ["windowId"] = "A",
+                        ["observerX"] = 0,
+                        ["observerY"] = 2,
+                        ["observerZ"] = 0,
+                        ["roofMode"] = mode,
+                        ["timeSeconds"] = 1,
+                        ["windSeed"] = 17,
+                        ["focusX"] = 32 + distance,
+                        ["focusY"] = 2,
+                        ["focusZ"] = -32
+                    });
             comparison["policy"]!["probes"] = probes;
         });
         var inputs = ShippedSceneInputs.Read(PrivateOracleInputs.Require(fixture.Environment));

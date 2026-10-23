@@ -22,8 +22,11 @@ public sealed class NativeRoofExitFadeTests
     {
         using var fixture = NativePresentationFixtures.Create(); var scheduler = new ResidencyScheduler();
         var state = NativeRoofHlodPolicyTests.State(fixture, NativePresentationFixtures.Scope);
-        state = state with { Policy = new(new([new("caps", new HashSet<string> { "roof" }, [], 0, 100, hlod, 10, 0, true)], 100),
-            state.Policy.AnimatedAssets, state.Policy.Foliage, state.Policy.Water, [], state.Policy.TerrainMaterials) };
+        state = state with
+        {
+            Policy = new(new([new("caps", new HashSet<string> { "roof" }, [], 0, 100, hlod, 10, 0, true)], 100),
+            state.Policy.AnimatedAssets, state.Policy.Foliage, state.Policy.Water, [], state.Policy.TerrainMaterials)
+        };
         using var residency = new MapRenderResidency(state, new ResidencyDevice(), null, scheduler);
         ResidencyFixture.Complete(residency, scheduler);
         foreach (var mode in new[] { MapRoofMode.AlwaysVisible, MapRoofMode.AlwaysHidden })
@@ -43,8 +46,11 @@ public sealed class NativeRoofExitFadeTests
     {
         using var fixture = NativePresentationFixtures.Create(); var scheduler = new ResidencyScheduler();
         var state = NativeRoofHlodPolicyTests.State(fixture, NativePresentationFixtures.Scope);
-        state = state with { Policy = new(new([new("caps", new HashSet<string> { "roof" }, [], 0, 100, 30, 10, empty ? 1000 : 0, true)], 100),
-            state.Policy.AnimatedAssets, state.Policy.Foliage, state.Policy.Water, [], state.Policy.TerrainMaterials) };
+        state = state with
+        {
+            Policy = new(new([new("caps", new HashSet<string> { "roof" }, [], 0, 100, 30, 10, empty ? 1000 : 0, true)], 100),
+            state.Policy.AnimatedAssets, state.Policy.Foliage, state.Policy.Water, [], state.Policy.TerrainMaterials)
+        };
         using var residency = new MapRenderResidency(state, new ResidencyDevice(), null, scheduler);
         ResidencyFixture.Complete(residency, scheduler);
         var frame = NativePresentationFixtures.Frame(9, empty ? MapRoofMode.AlwaysVisible : MapRoofMode.Auto) with { Focus = new(WorldFrame.Origin, new(95, 0, 2.5f)) };
@@ -59,8 +65,11 @@ public sealed class NativeRoofExitFadeTests
     public void NativeEmitter_ComposesPlacementExitBeforeLodCoverage()
     {
         var rows = new[] { new NativePropInstance("cap", 1, "cap", Matrix4x4.Identity, default) };
-        var tiers = new Dictionary<string, IReadOnlyList<NativePropLod>> { ["cap"] = new[] {
-            new NativePropLod(0, new[] { new MeshHandle(1) }), new NativePropLod(1, new[] { new MeshHandle(2) }) } };
+        var tiers = new Dictionary<string, IReadOnlyList<NativePropLod>>
+        {
+            ["cap"] = new[] {
+            new NativePropLod(0, new[] { new MeshHandle(1) }), new NativePropLod(1, new[] { new MeshHandle(2) }) }
+        };
         var layer = PropLayer.PlacementLayer(rows, tiers, 100, new float[] { 95 }, 10, true, 10);
         var draws = new List<RigidInstanceDraw>();
         PropRenderer.EmitNative(layer, new(95, 0, 0), draws, static (result, _, draw) => result.Add(draw));

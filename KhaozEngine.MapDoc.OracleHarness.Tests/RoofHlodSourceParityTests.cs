@@ -45,9 +45,20 @@ public sealed class RoofHlodSourceParityTests
                         ["focusY"] = 2,
                         ["focusZ"] = -32
                     });
-            probes.Add(new JsonObject { ["id"] = "placement-exit", ["windowId"] = "A", ["observerX"] = 10.5, ["observerY"] = 1,
-                ["observerZ"] = -2.5, ["roofMode"] = "Auto", ["timeSeconds"] = 1, ["windSeed"] = 17,
-                ["focusX"] = 97.5, ["focusY"] = 2, ["focusZ"] = -2.5 });
+            probes.Add(new JsonObject
+            {
+                ["id"] = "placement-exit",
+                ["windowId"] = "A",
+                ["observerX"] = 10.5,
+                ["observerY"] = 1,
+                ["observerZ"] = -2.5,
+                ["roofMode"] = "Auto",
+                ["timeSeconds"] = 1,
+                ["windSeed"] = 17,
+                ["focusX"] = 97.5,
+                ["focusY"] = 2,
+                ["focusZ"] = -2.5
+            });
             comparison["policy"]!["probes"] = probes;
         });
         var inputs = ShippedSceneInputs.Read(PrivateOracleInputs.Require(fixture.Environment));

@@ -61,8 +61,15 @@ public sealed class NativeRoofRemotePolicyTests
         doc.Surfaces = new(); var anchor = new MapPatchKey("ground", 0, 0); var parent = new MapRecordRef("outside", anchor);
         for (int slot = 0; slot < (missingSupport ? 3 : 4); slot++)
         {
-            var patch = new MapSurfacePatch { Key = new("ground", slot, 0), Width = 64, Depth = 1,
-                Heights = new int[130], Cells = new MapSurfaceCell[64], Presence = [ulong.MaxValue] };
+            var patch = new MapSurfacePatch
+            {
+                Key = new("ground", slot, 0),
+                Width = 64,
+                Depth = 1,
+                Heights = new int[130],
+                Cells = new MapSurfaceCell[64],
+                Presence = [ulong.MaxValue]
+            };
             var owner = slot == 0 ? parent : new MapRecordRef("outside-" + slot, patch.Key);
             if (slot != 0) patch.Records.Add(new MapSpaceDoc(owner.Id, MapSpaceKind.Exterior, null, parent, [], [], [], []));
             patch.Records.Add(new MapSpaceFootprint("parent-" + slot, owner, patch.Key, Enumerable.Range(0, 64).ToArray(),
@@ -77,8 +84,11 @@ public sealed class NativeRoofRemotePolicyTests
             doc.Surfaces.Patches.Add(patch.Key, patch);
         }
         var surface = new MapSurfaceRef("ground", MapLatticeFrame.ImportedMetreCentimetre, MapSurfaceRole.SupportFloor, MapPresencePolicy.Native, null, null, "");
-        doc.Surfaces.Refs.Add(surface with { SemanticSha256 = MapSurfaceSemantics.SurfaceDigest(surface,
-            doc.Surfaces.Patches.Select(p => KeyValuePair.Create(p.Key, MapSurfaceSemantics.PatchDigest(p.Value)))) });
+        doc.Surfaces.Refs.Add(surface with
+        {
+            SemanticSha256 = MapSurfaceSemantics.SurfaceDigest(surface,
+            doc.Surfaces.Patches.Select(p => KeyValuePair.Create(p.Key, MapSurfaceSemantics.PatchDigest(p.Value))))
+        });
         MapPrefabReference Ref(MapPrefabChildKind kind, string id) => new(MapPrefabReferenceScope.World, kind, id);
         var roofs = doc.Placements.Select(p => Ref(MapPrefabChildKind.Placement, p.Id)).ToArray();
         doc.BuildingIntent = new(1, roofs.Select(r => new MapRoofLinkDoc(r.Id + "-link", r,

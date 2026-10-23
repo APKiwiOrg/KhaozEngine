@@ -22,12 +22,14 @@ internal sealed class MapFoliageOwners
     readonly Dictionary<MapPrefabReference, MapSupportResult> _seats;
     readonly Func<string, MapFoliageRect, long>? _maskCandidates;
     readonly Func<MapSurfaceScope, MapScopedSurfaces> _acquire;
+    readonly MapQueryLimits? _queryLimits;
     readonly Dictionary<string, Dictionary<MapPrefabReference, MapSupportBinding>> _bindings;
     readonly Dictionary<string, Dictionary<string, int>> _ordinals;
 
     internal MapFoliageOwners(MapFoliageSet? set, MapEffectiveResolutionProduct resources,
-        Func<MapSurfaceScope, MapScopedSurfaces> acquire, bool scoped = false, Func<string, MapFoliageRect, long>? maskCandidates = null)
+        Func<MapSurfaceScope, MapScopedSurfaces> acquire, bool scoped = false, Func<string, MapFoliageRect, long>? maskCandidates = null, MapQueryLimits? queryLimits = null)
     {
+        _queryLimits = queryLimits;
         var present = scoped ? PresentOwners(resources) : null;
         _acquire = acquire;
         _maskCandidates = maskCandidates;
@@ -99,12 +101,12 @@ internal sealed class MapFoliageOwners
     }
 
     /// <summary>The released exceptional-owner read rectangle, shared with window dependency acquisition.</summary>
-    internal static MapSurfaceScope SeatScope(MapExactPoint point)
+    internal static MapSurfaceScope SeatScope(MapExactPoint point, MapQueryLimits? queryLimits = null)
     {
         var frame = WorldFrame.Nearest(point.X.ToSingle(), point.Z.ToSingle());
         float x = point.X.ToSingle() - frame.Anchor.X, z = point.Z.ToSingle() - frame.Anchor.Z;
         return new(frame, new(x - SeatReach, z - SeatReach), new(x + SeatReach, z + SeatReach), null, null,
-            Enum.GetValues<MapSurfaceRole>(), null, new MapQueryLimits());
+            Enum.GetValues<MapSurfaceRole>(), null, queryLimits ?? new MapQueryLimits());
     }
 
     internal string Seated(MapFoliageLayer layer, MapPrefabReference owner, MapEffectiveTransform pose,
@@ -125,7 +127,7 @@ internal sealed class MapFoliageOwners
         work = work with { PrepareScopes = checked(work.PrepareScopes + 1) };
         if (work.PrepareScopes > limits.MaxPrepareScopes) throw new MapFoliageRefusal(MapFoliageStatus.CapacityExceeded, work, "owner support scopes");
         var point = new MapResourceTransform(pose).Point(new(default, default, default));
-        var scope = SeatScope(point);
+        var scope = SeatScope(point, _queryLimits);
         MapScopedSurfaces view = _acquire(scope);
         var prepared = MapSupportPreparation.PrepareFoliage(view);
         var xz = new MapExactXz(point.X, point.Z);

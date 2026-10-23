@@ -57,7 +57,7 @@ internal sealed class MapEffectiveAcquisition
             return Finish(_facts.Complete ? MapAcquireStatus.Complete : MapAcquireStatus.Incomplete,
                 _facts.Complete ? null : _unknownIncidents ? "incomplete incident records" : "incomplete surface acquisition", _facts);
         }
-        catch (MapSurfaceCapacityException ex) { return Finish(MapAcquireStatus.CapacityExceeded, ex.Diagnostic ?? phase + " capacity exceeded", new()); }
+        catch (MapSurfaceCapacityException ex) { return Finish(MapAcquireStatus.CapacityExceeded, ex.Capacity is not null ? phase + " " + ex.Message : ex.Diagnostic ?? phase + " capacity exceeded", new()) with { Capacity = ex.Capacity }; }
         catch (MapExactOverflowException) { return Finish(MapAcquireStatus.NotRepresentable, "exact value overflow", new()); }
     }
     MapScopedAcquisition.Result Finish(MapAcquireStatus status, string? detail, MapAcquiredFacts facts) =>
@@ -98,14 +98,14 @@ internal sealed class MapEffectiveAcquisition
             long gross;
             try { gross = checked((slots.MaxXExclusive - slots.MinX) * (slots.MaxZExclusive - slots.MinZ)); }
             catch (OverflowException) { throw new MapSurfaceCapacityException(); }
-            if (gross > _scope.Limits.MaxCandidatePatches) throw new MapSurfaceCapacityException();
+            if (gross > _scope.Limits.MaxCandidatePatches) throw new MapSurfaceCapacityException(nameof(MapQueryLimits.MaxCandidatePatches), gross, _scope.Limits.MaxCandidatePatches);
             for (long z = slots.MinZ; z < slots.MaxZExclusive; z++)
                 for (long x = slots.MinX; x < slots.MaxXExclusive; x++)
                 {
                     var key = new MapPatchKey(id, x, z);
                     if (knownCoverage && _facts.IsKnownEmpty(key)) continue;
                     if (!_reserved.Contains(key)) keys.Add(key);
-                    if (keys.Count > _scope.Limits.MaxCandidatePatches - _reserved.Count) throw new MapSurfaceCapacityException();
+                    if (keys.Count > _scope.Limits.MaxCandidatePatches - _reserved.Count) throw new MapSurfaceCapacityException(nameof(MapQueryLimits.MaxCandidatePatches), (long)keys.Count + _reserved.Count, _scope.Limits.MaxCandidatePatches);
                 }
         }
     }
@@ -118,7 +118,7 @@ internal sealed class MapEffectiveAcquisition
         if (found.SnapshotId != _snapshot || found.Scope is null || found.Scope.Digest != _scope.Digest || !Enum.IsDefined(found.Status))
             throw new MapDocumentException("incoherent acquisition discovery snapshot or scope");
         foreach (MapPatchKey key in ReservationSnapshot()) _reserved.Add(key);
-        if (found.Status == MapFindStatus.CapacityExceeded) throw new MapSurfaceCapacityException(found.Diagnostic);
+        if (found.Status == MapFindStatus.CapacityExceeded) throw new MapSurfaceCapacityException(found.Diagnostic, found.Capacity);
         foreach (MapCoveredRange range in found.KnownEmpty)
         {
             Surface(range.SurfaceId);
@@ -162,7 +162,7 @@ internal sealed class MapEffectiveAcquisition
             if (_facts.HasRecord(reference)) continue;
             if (!_facts.HasRead(reference.Anchor))
             {
-                if (need.Depth > _scope.Limits.MaxRecordDepth) throw new MapSurfaceCapacityException();
+                if (need.Depth > _scope.Limits.MaxRecordDepth) throw new MapSurfaceCapacityException(nameof(MapQueryLimits.MaxRecordDepth), need.Depth, _scope.Limits.MaxRecordDepth);
                 Read(reference.Anchor, recordAnchor: true);
                 Expand(reference.Anchor, need.Depth);
             }
@@ -208,8 +208,8 @@ internal sealed class MapEffectiveAcquisition
     }
     void Read(MapPatchKey key, bool recordAnchor)
     {
-        if (!_reserved.Contains(key) && _reserved.Count >= _scope.Limits.MaxCandidatePatches) throw new MapSurfaceCapacityException();
-        if (recordAnchor && _recordReads >= _scope.Limits.MaxRecordReads) throw new MapSurfaceCapacityException();
+        if (!_reserved.Contains(key) && _reserved.Count >= _scope.Limits.MaxCandidatePatches) throw new MapSurfaceCapacityException(nameof(MapQueryLimits.MaxCandidatePatches), (long)_reserved.Count + 1, _scope.Limits.MaxCandidatePatches);
+        if (recordAnchor && _recordReads >= _scope.Limits.MaxRecordReads) throw new MapSurfaceCapacityException(nameof(MapQueryLimits.MaxRecordReads), (long)_recordReads + 1, _scope.Limits.MaxRecordReads);
         Surface(key.SurfaceId);
         _reserved.Add(key);
         int before = _session.PagesRead;

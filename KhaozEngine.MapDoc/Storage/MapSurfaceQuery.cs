@@ -17,7 +17,7 @@ internal static class MapSurfaceQuery
         scope.Validate();
         var budget = sharedBudget ?? new MapPageBudget(scope.Limits.MaxPageReads);
         try { return FindCore(source, index, scope, directory, page, payload, budget, null); }
-        catch (MapSurfaceCapacityException) { return Capacity(source, scope, budget); }
+        catch (MapSurfaceCapacityException error) { return Capacity(source, scope, budget) with { Capacity = error.Capacity, Diagnostic = error.Diagnostic }; }
         catch (Exception ex) when (ex is MapExactOverflowException or OverflowException)
         {
             throw new MapDocumentException("surface scope not representable", ex);
@@ -31,7 +31,7 @@ internal static class MapSurfaceQuery
     {
         int before = budget.Reads;
         try { return FindCore(source, index, scope, directory, page, payload, budget, reserve) with { PagesRead = budget.Reads - before }; }
-        catch (MapSurfaceCapacityException) { return Capacity(source, scope, budget) with { PagesRead = budget.Reads - before }; }
+        catch (MapSurfaceCapacityException error) { return Capacity(source, scope, budget) with { PagesRead = budget.Reads - before, Capacity = error.Capacity, Diagnostic = error.Diagnostic }; }
     }
 
     static IEnumerable<MapSurfaceRef> SceneDescriptors(IMapSurfaceSource source, MapSurfaceScope scope)
@@ -90,7 +90,7 @@ internal static class MapSurfaceQuery
                         Subtract(emptyRects, KeyRange(stored.Key), budget);
                         MapSurfaceIndexEntry entry = index.ByKey[stored.Key];
                         if (!entry.Cells.Overlaps(cells) || !HeightAndSpace(entry, surface, scope)) continue;
-                        if (candidates.Count >= scope.Limits.MaxCandidatePatches) throw new MapSurfaceCapacityException();
+                        if (candidates.Count >= scope.Limits.MaxCandidatePatches) throw new MapSurfaceCapacityException(nameof(MapQueryLimits.MaxCandidatePatches), (long)candidates.Count + 1, scope.Limits.MaxCandidatePatches);
                         candidates.Add(entry.Key, entry);
                     }
                 }

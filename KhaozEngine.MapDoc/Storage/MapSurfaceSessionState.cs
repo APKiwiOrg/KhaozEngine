@@ -50,7 +50,7 @@ internal sealed class MapSurfaceSessionState
     {
         RequireFound();
         if (_reserved.Contains(key)) return;
-        if (_reserved.Count >= Scope.Limits.MaxCandidatePatches) throw new MapSurfaceCapacityException();
+        if (_reserved.Count >= Scope.Limits.MaxCandidatePatches) throw new MapSurfaceCapacityException(nameof(MapQueryLimits.MaxCandidatePatches), (long)_reserved.Count + 1, Scope.Limits.MaxCandidatePatches);
         Scope.SceneAdmission?.BeforeResource(Scene.MapSceneAcquisition.PatchKey(key));
         _reserved.Add(key);
     }

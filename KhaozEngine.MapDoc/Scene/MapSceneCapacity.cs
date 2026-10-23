@@ -13,15 +13,17 @@ public sealed record MapSceneCapacity(string LimitName, decimal Requested, long 
     {
         MapSceneCapacityException capacity => capacity.Capacity,
         MapSceneSourceException source => source.Capacity,
+        Storage.MapSurfaceCapacityException surface => surface.Capacity,
         _ => error.InnerException is { } inner ? From(inner) : null,
     };
 }
 
 /// <summary>A capacity refusal that retains its limit and exact demand, including sums beyond Int64.</summary>
-public sealed class MapSceneCapacityException(string limitName, decimal requested, long allowance)
-    : Exception(new MapSceneCapacity(limitName, requested, allowance).Message)
+public sealed class MapSceneCapacityException : Exception
 {
-    public MapSceneCapacity Capacity { get; } = new(limitName, requested, allowance);
+    public MapSceneCapacityException(string limitName, decimal requested, long allowance) : this(new MapSceneCapacity(limitName, requested, allowance)) { }
+    internal MapSceneCapacityException(MapSceneCapacity capacity) : base(capacity.Message) => Capacity = capacity;
+    public MapSceneCapacity Capacity { get; }
     public string LimitName => Capacity.LimitName;
     public decimal Requested => Capacity.Requested;
     public long Allowance => Capacity.Allowance;

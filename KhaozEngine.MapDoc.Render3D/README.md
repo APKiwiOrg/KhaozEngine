@@ -10,7 +10,9 @@ typed light reach. Its `MapAssetExtentProofSet` retains bounds, source units and
 The encoded `MapAssetClosure` remains separate from decoded residency.
 
 `MapPreparedInputLease.LoadSelected` loads selected mesh tiers and required native material dependencies
-under one `GltfDecodeBudget`. Retain the input for each accepted or pending plan and dispose each lease.
+under one `GltfDecodeBudget`. Inner decoder reservations retain their named demand and allowance in
+asset and prepared-input results. Residency maps a decoder peak refusal back to the scene, plan or CPU
+allowance that bounded it. Retain the input for each accepted or pending plan and dispose each lease.
 Only the last lease releases decoded ownership. `MapRenderAssets` is independently disposable and owns
 mesh tiers only. Its exposed meshes and images are detached copies. Do not dispose a lease's Assets
 separately. Standalone `MapRenderMaterials.Load` results implement `IDisposable` and release their charge

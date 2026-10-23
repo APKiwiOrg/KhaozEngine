@@ -48,6 +48,7 @@ public sealed class MapWindowFoliageContext : IMapFoliageInputs
     IReadOnlyList<MapSurfaceRef> IMapFoliageInputs.DeclaredSurfaces => _inputs.DeclaredSurfaces;
     IReadOnlyDictionary<string, MapEffectiveTransform> IMapFoliageInputs.Transforms => _inputs.Transforms;
     MapFoliageOwners IMapFoliageInputs.ClearanceOwners => _inputs.ClearanceOwners;
+    MapQueryLimits? IMapFoliageInputs.QueryLimits => _inputs.QueryLimits;
     MapScopedSurfaces IMapFoliageInputs.Acquire(MapSurfaceScope scope) => _inputs.Acquire(scope);
     IReadOnlyDictionary<string, MapPaintRegionSet> IMapFoliageInputs.PaintFor(MapSurfaceScope scope) => _inputs.PaintFor(scope);
     IReadOnlyDictionary<MapFoliageChunkKey, string> IMapFoliageInputs.DensityDigests(MapFoliageLayer layer) => _inputs.DensityDigests(layer);

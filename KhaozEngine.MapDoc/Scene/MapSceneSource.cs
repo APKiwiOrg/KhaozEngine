@@ -312,7 +312,7 @@ public sealed class MapSceneSource
     }
     internal static MapSceneSourceStatus? Classify(Exception error) => error switch
     {
-        MapSceneCapacityException => MapSceneSourceStatus.CapacityExceeded,
+        MapSceneCapacityException or MapSurfaceCapacityException => MapSceneSourceStatus.CapacityExceeded,
         MapSceneSourceException e => Enum.Parse<MapSceneSourceStatus>(e.Status.ToString()),
         FileNotFoundException or DirectoryNotFoundException => MapSceneSourceStatus.Missing,
         IOException or UnauthorizedAccessException or System.Text.Json.JsonException => MapSceneSourceStatus.Corrupt,

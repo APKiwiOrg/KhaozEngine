@@ -49,7 +49,7 @@ internal static class MapFoliageWindowCapture
                     foreach (var owner in metadata.OwnersFor(layer, read))
                     {
                         owners.Add(owner);
-                        if (metadata.SeatFor(layer, owner) is { } seat) seats.TryAdd(owner, seat);
+                        if (metadata.SeatFor(layer, owner) is { } seat) seats.TryAdd(owner, seat with { Limits = scope.Surfaces.Limits });
                     }
                     Binding(layer.Support);
                 }

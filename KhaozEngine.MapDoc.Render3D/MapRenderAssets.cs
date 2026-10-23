@@ -12,11 +12,14 @@ namespace KhaozEngine.MapDoc.Render3D;
 
 public enum MapRenderAssetStatus { Complete, Missing, Stale, Unsupported, Invalid, CapacityExceeded, NotRepresentable }
 public sealed record MapRenderAssetLimits(long MaxDecodedBytes = 268435456, int MaxParts = 4096, int MaxLods = 16);
-public sealed record MapRenderAssetResult(MapRenderAssetStatus Status, MapRenderAssets? Assets, string? Detail);
+public sealed record MapRenderAssetResult(MapRenderAssetStatus Status, MapRenderAssets? Assets, string? Detail)
+{
+    public MapSceneCapacity? Capacity { get; init; }
+}
 public sealed class MapRenderAssetRefusal : Exception
 {
     public MapRenderAssetStatus Status { get; }
-    public MapSceneCapacity? Capacity => InnerException is { } error ? MapSceneCapacity.From(error) : null;
+    public MapSceneCapacity? Capacity => InnerException is { } error ? MapRenderDecodeCapacity.From(error) : null;
     public MapRenderAssetRefusal(MapRenderAssetStatus status, string detail) : base(detail) => Status = status;
     public MapRenderAssetRefusal(MapRenderAssetStatus status, string detail, Exception innerException) : base(detail, innerException) => Status = status;
 }
@@ -87,7 +90,7 @@ public sealed class MapRenderAssets : IDisposable
                     throw new MapRenderAssetRefusal(MapRenderAssetStatus.Stale, "Selected asset has no current extent proof.");
                 foreach (string materialId in asset.MaterialResourceIds) MapRenderMaterials.ReadDefinition(closure, materialId, budget);
                 string[] resources = new[] { asset.MeshResourceId }.Concat(asset.LodResourceIds).ToArray();
-                if (resources.Length > limits.MaxLods) throw Capacity();
+                if (resources.Length > limits.MaxLods) throw MapRenderDecodeCapacity.Refuse(nameof(MapRenderAssetLimits.MaxLods), resources.Length, limits.MaxLods);
                 var lods = new List<MapRenderLod>();
                 for (int lod = 0; lod < resources.Length; lod++)
                 {
@@ -96,11 +99,13 @@ public sealed class MapRenderAssets : IDisposable
                     if (!proof.Resources.Any(p => p.ResourceId == resourceId && p.Sha256 == resource.Reference.Sha256))
                         throw new MapRenderAssetRefusal(MapRenderAssetStatus.Stale, "Extent proof resource differs from the selected tier.");
                     var demand = GltfDecodeAdmission.Measure(closure.BorrowVerifiedResourceBytes(resourceId), budget);
-                    if (!demand.Allowed || demand.OwnedBytes > limits.MaxDecodedBytes - owned || demand.PartCount > limits.MaxParts - partCount)
-                        throw Capacity();
+                    if (!demand.Allowed) throw demand.Capacity is { } capacity
+                        ? MapRenderDecodeCapacity.Refuse(MapRenderDecodeCapacity.Convert(capacity)) : Capacity();
+                    if (demand.OwnedBytes > limits.MaxDecodedBytes - owned) throw MapRenderDecodeCapacity.Refuse(nameof(MapRenderAssetLimits.MaxDecodedBytes), (decimal)owned + demand.OwnedBytes, limits.MaxDecodedBytes);
+                    if (demand.PartCount > limits.MaxParts - partCount) throw MapRenderDecodeCapacity.Refuse(nameof(MapRenderAssetLimits.MaxParts), (long)partCount + demand.PartCount, limits.MaxParts);
                     var parts = NativeMapAssetLoader.LoadParts(asset, closure, budget, lod == 0 ? null : resourceId);
                     owned = checked(owned + demand.OwnedBytes); partCount = checked(partCount + parts.Count);
-                    if (!budget.TryReserve(0, demand.OwnedBytes)) throw Capacity();
+                    MapRenderDecodeCapacity.Reserve(budget, 0, demand.OwnedBytes);
                     try { lods.Add(new(lod, resourceId, parts)); }
                     finally { budget.ReleaseTemporary(demand.OwnedBytes); }
                 }
@@ -111,7 +116,7 @@ public sealed class MapRenderAssets : IDisposable
             return new(MapRenderAssetStatus.Complete, result, null);
         }
         catch (Exception ex) when (ex is MapRenderAssetRefusal or MapDocumentException or GltfDecodeRefusal or InvalidDataException or InvalidOperationException or OverflowException)
-        { return new(Status(ex), null, ex.Message); }
+        { return new(Status(ex), null, ex.Message) { Capacity = MapRenderDecodeCapacity.From(ex) }; }
         finally { if (owned != 0) budget.ReleaseOwned(owned); }
     }
 

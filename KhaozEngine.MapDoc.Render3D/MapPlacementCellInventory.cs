@@ -47,7 +47,7 @@ internal sealed class MapPlacementCellInventory
             Channels = MapSceneChannels.Placements | MapSceneChannels.Annotations,
             MotionPaddingMetres = 0
         });
-        var complete = result.Scene ?? throw new MapSceneSourceException(result.Status, "Native cluster cell discovery refused.");
+        var complete = result.Scene ?? throw new MapSceneSourceException(result.Status, "Native cluster cell discovery refused. " + string.Join("\n", result.Findings), result.Capacity);
         admission.ReserveBytes(checked(128L + 64L * complete.Placements.Count));
         var cellRouting = routing.ForScene(complete);
         var members = complete.Placements.Where(p => layer.AssetIds.Contains(p.AssetId) &&

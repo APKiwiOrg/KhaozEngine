@@ -58,7 +58,7 @@ internal static partial class ShippedSceneComparison
                 Require(bound.Source is not null, "scene extent binding refused " + string.Join("\n", bound.Findings));
                 var source = bound.Source!;
                 var policy = inputs.NativePolicy.Native(closure, manifest);
-                var windows = manifest.Windows.ToDictionary(w => w.Id, ShippedSceneInputs.Scope, StringComparer.Ordinal);
+                var windows = manifest.Windows.ToDictionary(w => w.Id, w => ShippedSceneInputs.Scope(w, manifest.Limits?.Queries), StringComparer.Ordinal);
                 var completeWindows = new Dictionary<string, IReadOnlyDictionary<MapRenderKey, string>>(StringComparer.Ordinal);
                 foreach (var window in manifest.Windows)
                 {
@@ -304,7 +304,7 @@ internal static partial class ShippedSceneComparison
         foreach (var step in inputs.Manifest.Sequence)
         {
             if (step.Operation == "Unload") active.Remove(step.WindowId);
-            else active[step.WindowId] = ShippedSceneInputs.Scope(inputs.Manifest.Windows.Single(w => w.Id == step.WindowId));
+            else active[step.WindowId] = ShippedSceneInputs.Scope(inputs.Manifest.Windows.Single(w => w.Id == step.WindowId), inputs.Manifest.Limits?.Queries);
             residency.SetWindows(active.Values.ToArray()); Complete(residency, scheduler);
             var recorder = new MapDrawRecorder(); var point = ShippedSceneInputs.Point(0, 0, 0);
             residency.Record(new(default, point, KhaozEngine.MapDoc.Interiors.MapRoofMode.AlwaysVisible, 0, 0, point), recorder);
@@ -323,9 +323,11 @@ internal static partial class ShippedSceneComparison
     internal static void Complete(MapRenderResidency residency, SceneOracleScheduler scheduler)
     {
         scheduler.RunAll(); residency.CompletePreparation();
+        var transition = residency.InspectReadiness().Transition;
         for (int i = 0; i < 1024; i++)
         {
             var ready = residency.Update(); scheduler.RunAll(); residency.CompletePreparation();
+            transition = ready.Transition;
             if (ready.Transition.Status != MapSceneStatus.Incomplete)
             {
                 if (ready.Transition.Status != MapSceneStatus.CompleteForScope && scheduler.LastFailure is { } error)
@@ -333,7 +335,9 @@ internal static partial class ShippedSceneComparison
                 Require(ready.Transition.Status == MapSceneStatus.CompleteForScope, "scene replacement refused " + ready.Transition.Status + " " + string.Join("\n", ready.Transition.Findings)); return;
             }
         }
-        throw new InvalidOperationException("scene replacement did not settle");
+        var findings = transition.Findings.Concat(transition.Capacity is { } capacity ? new[] { capacity.Message } : Array.Empty<string>());
+        throw new InvalidOperationException("scene replacement did not settle " + string.Join("\n", findings.Distinct(StringComparer.Ordinal)),
+            transition.Capacity is { } refused ? new MapSceneCapacityException(refused.LimitName, refused.Requested, refused.Allowance) : null);
     }
 
     internal static MapSceneSourceResult CaptureSource(MapDocumentSource document, MapAssetClosure closure, ShippedSceneManifest manifest)

@@ -61,6 +61,7 @@ public sealed class MapRenderAssetCache : IDisposable
                         long before = budget.OwnedBytes;
                         cancellation.ThrowIfCancellationRequested();
                         var loaded = MapRenderAssets.LoadSelected(closure, [id], proofs, budget);
+                        if (loaded.Capacity is { } refused) throw MapRenderDecodeCapacity.Refuse(refused);
                         if (loaded.Assets is not { } assets) throw new MapRenderAssetRefusal(loaded.Status, loaded.Detail ?? "Mesh decode refused.");
                         try { piece = MapPreparedInputLease.AssetOnly(assets, proofs.Digest, budget); }
                         catch { assets.Dispose(); throw; }
@@ -95,7 +96,7 @@ public sealed class MapRenderAssetCache : IDisposable
             catch (Exception error) when (error is MapRenderAssetRefusal or MapDocumentException or GltfDecodeRefusal or OverflowException)
             {
                 foreach (string pieceKey in added) { _pieces[pieceKey].Dispose(); _pieces.Remove(pieceKey); }
-                return new(MapRenderAssets.Status(error), null, error.Message);
+                return new(MapRenderAssets.Status(error), null, error.Message) { Capacity = MapRenderDecodeCapacity.From(error) };
             }
             finally { cpu?.Dispose(); }
         }

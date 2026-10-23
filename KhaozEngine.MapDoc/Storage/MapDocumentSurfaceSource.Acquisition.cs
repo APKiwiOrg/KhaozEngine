@@ -34,7 +34,7 @@ public sealed partial class MapDocumentSurfaceSource
             MapPatchFindResult known = Find(source._index);
             if (ReferenceEquals(source._index, source._residentIndex) || known.Status == MapFindStatus.CapacityExceeded) return known;
             MapPatchFindResult resident = Find(source._residentIndex);
-            if (resident.Status == MapFindStatus.CapacityExceeded) return Capacity(before);
+            if (resident.Status == MapFindStatus.CapacityExceeded) return resident with { PagesRead = state.Budget.Reads - before };
             try
             {
                 var patches = new SortedDictionary<MapPatchKey, MapPatchRead>();
@@ -55,7 +55,7 @@ public sealed partial class MapDocumentSurfaceSource
                     PagesRead = state.Budget.Reads - before,
                 };
             }
-            catch (MapSurfaceCapacityException) { return Capacity(before); }
+            catch (MapSurfaceCapacityException error) { return Capacity(before) with { Capacity = error.Capacity, Diagnostic = error.Diagnostic }; }
         }
 
         MapPatchFindResult Find(MapSurfaceStorageIndex index) => MapSurfaceQuery.FindAcquisition(source, index, state.Scope,

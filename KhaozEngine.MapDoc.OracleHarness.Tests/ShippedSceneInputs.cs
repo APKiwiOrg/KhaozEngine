@@ -12,6 +12,7 @@ using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Render3D;
 using KhaozEngine.MapDoc.Scene;
+using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.Primitives;
 using KhaozEngine.TileWorld;
@@ -228,12 +229,13 @@ internal sealed class ShippedSceneInputs
         _textures.TryGetValue(System.IO.Path.GetFullPath(path), out var bytes) ? KhaozEngine.Render2D.ImageRgba.Decode(bytes)
             : throw new InvalidDataException("unattested scene source texture");
     internal MapAssetClosure Assets(MapDocument document) => MapAssetClosure.Load(document.NativeAssets, _snapshot);
-    internal static MapSceneScope Scope(SceneWindow window)
+    internal static MapSceneScope Scope(SceneWindow window) => Scope(window, null);
+    internal static MapSceneScope Scope(SceneWindow window, MapQueryLimits? limits)
     {
         var b = window.Bounds; var centre = Point(b.MinX / 2 + b.MaxX / 2, 0, b.MinZ / 2 + b.MaxZ / 2);
         return new(new(centre.Frame, new((float)(b.MinX - centre.Frame.X * 128d), (float)(b.MinZ - centre.Frame.Z * 128d)),
             new((float)(b.MaxX - centre.Frame.X * 128d), (float)(b.MaxZ - centre.Frame.Z * 128d)), (float)b.MinY, (float)b.MaxY,
-            Enum.GetValues<MapSurfaceRole>(), window.SpaceIds, new()), b, MapSceneChannels.All, window.MotionPaddingMetres);
+            Enum.GetValues<MapSurfaceRole>(), window.SpaceIds, limits ?? new()), b, MapSceneChannels.All, window.MotionPaddingMetres);
     }
     internal static MapFramePoint Point(double x, double y, double z)
     {

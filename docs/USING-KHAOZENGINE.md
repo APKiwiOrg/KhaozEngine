@@ -11329,7 +11329,8 @@ vocabulary through `MapMarkerConsumerOptions`. Native editor and tool consumers 
 so they do not invent a role or fall back to the analytic terrain field.
 
 Doors remain AuthoredOpen. `MapRoofPolicy.Evaluate(scene, observer, mode)` returns detached roof intent.
-`MapRoofEvaluationBuffer.Prepare(scene)` admits reusable exact membership and returns a typed result. Auto uses room links/groups
+`MapRoofEvaluationBuffer.Prepare(scene)` admits reusable exact membership and returns a typed result.
+Its optional `Capacity` identifies a refused byte or face reservation, its demand and allowance. Auto uses room links/groups
 and leaves unlinked shelters visible. Hidden roofs cast shadows and block sky picking without changing statics.
 The optional MapDoc.Render3D package consumes roof drawing and presentation query channels.
 R8b retains cut-aware sky/camera policy. Live door state waits for [#1363](https://github.com/APKiwiOrg/KhaozEngine/issues/1363).

@@ -140,7 +140,7 @@ internal static class MapSceneAcquisition
             var foliage = AcquireFoliage(data, selectedFoliage, admission, required, present, empty, unavailable, foliageRequest);
             if (unavailable.Count != 0) throw new MapSceneSourceException(MapSceneStatus.Incomplete, "Required foliage density is unavailable.");
             var input = Merge(data, owners.Select(id => data.Owners[id]).ToArray());
-            var acquiredNative = AcquireNative(data, nativeNeeded, admission);
+            var acquiredNative = AcquireNative(data, nativeNeeded, admission, scope.Surfaces.Limits);
             foreach (var patch in acquiredNative.Patches) input.Surfaces.Patches.Add(patch.Key, patch.Value);
             foreach (var surface in acquiredNative.Refs.Where(s => s.Role == MapSurfaceRole.PaintOverride))
                 admission.BeforePaintTarget(surface.PaintTargetSurfaceId ?? surface.Id);
@@ -156,7 +156,7 @@ internal static class MapSceneAcquisition
             var product = MapEffectiveResolutionKernel.Resolve(input, data.Assets, foliageRequest is null ? nativeSource : null);
             var view = product.Acquire(scope.Surfaces with { SceneAdmission = admission });
             Record(view);
-            foreach (var seat in foliageRequest?.Seats ?? []) Record(product.Acquire(seat with { SceneAdmission = admission }));
+            foreach (var seat in foliageRequest?.Seats ?? []) Record(product.Acquire(seat with { SceneAdmission = admission, Limits = scope.Surfaces.Limits }));
             void Record(MapScopedSurfaces acquired)
             {
                 foreach (var patch in acquired.Witness.Present)
@@ -177,7 +177,7 @@ internal static class MapSceneAcquisition
                         _ => acquired.Witness.Unavailable.Any(u => u.Status == MapPatchStatus.Corrupt) ? MapSceneStatus.Corrupt
                             : acquired.Witness.Unavailable.Any(u => u.Status == MapPatchStatus.Missing) ? MapSceneStatus.Missing : MapSceneStatus.Incomplete,
                     };
-                    throw new MapSceneSourceException(status, acquired.Detail ?? "Incomplete surface dependencies.");
+                    throw new MapSceneSourceException(status, acquired.Detail ?? "Incomplete surface dependencies.", acquired.Capacity);
                 }
             }
             foreach (var key in required) if (!unavailable.Contains(key) && !empty.Contains(key)) present.Add(key);
@@ -220,7 +220,7 @@ internal static class MapSceneAcquisition
     static string RangeId(MapCoveredRange range) => FormattableString.Invariant(
         $"{range.SurfaceId}/{range.Slots.MinX}/{range.Slots.MinZ}/{range.Slots.MaxXExclusive}/{range.Slots.MaxZExclusive}");
 
-    static MapSurfaceSet AcquireNative(MapSceneData data, IReadOnlySet<MapPatchKey> needed, MapSceneAdmission admission)
+    static MapSurfaceSet AcquireNative(MapSceneData data, IReadOnlySet<MapPatchKey> needed, MapSceneAdmission admission, MapQueryLimits queries)
     {
         var surfaces = new MapSurfaceSet();
         var refs = new HashSet<string>(StringComparer.Ordinal);
@@ -233,14 +233,14 @@ internal static class MapSceneAcquisition
             var frame = KhaozEngine.Primitives.WorldFrame.Nearest((float)rect.MinX.ToDouble(), (float)rect.MinZ.ToDouble());
             double ax = (double)frame.X * KhaozEngine.Primitives.WorldFrame.Grid, az = (double)frame.Z * KhaozEngine.Primitives.WorldFrame.Grid;
             var request = new MapSurfaceScope(frame, new((float)(rect.MinX.ToDouble() - ax), (float)(rect.MinZ.ToDouble() - az)),
-                new((float)(rect.MaxX.ToDouble() - ax), (float)(rect.MaxZ.ToDouble() - az)), null, null, Enum.GetValues<MapSurfaceRole>(), null, new())
+                new((float)(rect.MaxX.ToDouble() - ax), (float)(rect.MaxZ.ToDouble() - az)), null, null, Enum.GetValues<MapSurfaceRole>(), null, queries)
             { DiscoverySurfaces = new HashSet<string>(StringComparer.Ordinal) { key.SurfaceId }, SceneAdmission = admission };
             var view = MapScopedSurfaces.Acquire(data.Surfaces, request, data.Assets.Roots.Select(a => a.Sha256).ToArray());
             if (view.Status != MapAcquireStatus.Complete) throw new MapSceneSourceException(view.Status == MapAcquireStatus.CapacityExceeded
                 ? MapSceneStatus.CapacityExceeded : view.Status == MapAcquireStatus.NotRepresentable ? MapSceneStatus.NotRepresentable :
                 view.Witness.Unavailable.Any(u => u.Status == MapPatchStatus.Corrupt) ? MapSceneStatus.Corrupt :
                 view.Witness.Unavailable.Any(u => u.Status == MapPatchStatus.Missing) ? MapSceneStatus.Missing : MapSceneStatus.Incomplete,
-                view.Detail ?? "Unavailable native dependency payload.");
+                view.Detail ?? "Unavailable native dependency payload.", view.Capacity);
             foreach (var descriptor in view.Surfaces) if (refs.Add(descriptor.Id)) surfaces.Refs.Add(descriptor);
             foreach (var entry in view.Witness.Present) if (!surfaces.Patches.ContainsKey(entry.Key)) surfaces.Patches.Add(entry.Key, view.Patch(entry.Key).Patch!);
         }

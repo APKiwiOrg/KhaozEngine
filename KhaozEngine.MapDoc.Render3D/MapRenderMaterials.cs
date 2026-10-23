@@ -48,7 +48,7 @@ public static class MapRenderMaterials
         {
             // Covers the dictionary and published collection even when no textures or material rows are selected.
             const long collectionCharge = 256;
-            if (!budget.TryReserve(collectionCharge, 0)) throw Capacity();
+            MapRenderDecodeCapacity.Reserve(budget, collectionCharge, 0);
             owned = collectionCharge;
             var result = new Dictionary<string, MapRenderMaterial>(StringComparer.Ordinal);
             foreach (string id in materialIds.Distinct(StringComparer.Ordinal))
@@ -56,7 +56,7 @@ public static class MapRenderMaterials
                 ArgumentNullException.ThrowIfNull(id);
                 // Covers material/definition objects, UTF-16 identity storage and conservative dictionary growth.
                 long materialCharge = checked(512L + 24 + 2L * id.Length);
-                if (!budget.TryReserve(materialCharge, 0)) throw Capacity();
+                MapRenderDecodeCapacity.Reserve(budget, materialCharge, 0);
                 owned = checked(owned + materialCharge);
                 long before = owned;
                 var definition = ReadDefinition(closure, id, budget);
@@ -64,7 +64,7 @@ public static class MapRenderMaterials
                 var maps = new GltfMaterialMaps(Decode(definition.Albedo, source), Decode(definition.Normal, source),
                     Decode(definition.RoughnessMap, source), definition.AlphaCutoff);
                 long copy = owned - before;
-                if (!budget.TryReserve(0, copy)) throw Capacity();
+                MapRenderDecodeCapacity.Reserve(budget, 0, copy);
                 try { result.Add(id, new(id, definition.BaseColour, definition.Roughness, definition.Metallic, definition.AlphaCutoff, maps)); }
                 finally { budget.ReleaseTemporary(copy); }
             }
@@ -79,20 +79,21 @@ public static class MapRenderMaterials
         DecodedImage? Decode(string? id, MapResolvedResource parent)
         {
             if (id is null) return null;
-            if (images >= budget.Limits.MaxImages) throw Capacity();
+            if (images >= budget.Limits.MaxImages) throw MapRenderDecodeCapacity.Refuse(nameof(GltfDecodeLimits.MaxImages), (long)images + 1, budget.Limits.MaxImages);
             images++;
             if (!parent.Dependencies.Contains(id, StringComparer.Ordinal))
                 throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, "Material texture is not a declared dependency.");
             var resource = closure.GetResource(id);
             if (resource.Kind != MapResourceKind.Material) throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, "Material texture dependency has the wrong resource role.");
-            if (!budget.TryReserve(0, resource.ByteLength)) throw Capacity();
+            MapRenderDecodeCapacity.Reserve(budget, 0, resource.ByteLength);
             try
             {
                 var info = ImageDecodeAdmission.Probe(closure.BorrowVerifiedResourceBytes(id).Span);
                 long pixels = checked((long)info.Width * info.Height);
-                if (pixels > budget.Limits.MaxImagePixels || pixels > Array.MaxLength / 4) throw Capacity();
+                if (pixels > budget.Limits.MaxImagePixels) throw MapRenderDecodeCapacity.Refuse(nameof(GltfDecodeLimits.MaxImagePixels), pixels, budget.Limits.MaxImagePixels);
+                if (pixels > Array.MaxLength / 4) throw MapRenderDecodeCapacity.Refuse("MaxImageBufferPixels", pixels, Array.MaxLength / 4);
                 long charge = checked(pixels * 4 + 24), temporary = checked(pixels * 8 + resource.ByteLength * 2L + 256);
-                if (!budget.TryReserve(charge, temporary)) throw Capacity();
+                MapRenderDecodeCapacity.Reserve(budget, charge, temporary);
                 bool success = false;
                 try
                 {
@@ -110,7 +111,7 @@ public static class MapRenderMaterials
     {
         var resource = closure.GetResource(id);
         if (resource.Kind != MapResourceKind.Material) throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, "Render material requires a Material resource.");
-        if (!budget.TryReserve(0, resource.ByteLength)) throw Capacity();
+        MapRenderDecodeCapacity.Reserve(budget, 0, resource.ByteLength);
         long metadata = 0;
         try
         {
@@ -119,7 +120,7 @@ public static class MapRenderMaterials
             try { while (reader.Read()) tokens = checked(tokens + 1); }
             catch (JsonException) { throw new MapRenderAssetRefusal(MapRenderAssetStatus.Unsupported, "Required native material is opaque."); }
             long demand = checked(512L + 2L * resource.ByteLength + 32 * tokens);
-            if (!budget.TryReserve(0, demand)) throw Capacity();
+            MapRenderDecodeCapacity.Reserve(budget, 0, demand);
             metadata = demand;
             return MapRenderMaterialJson.Read(resource.Bytes, id);
         }

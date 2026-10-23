@@ -27,7 +27,8 @@ public sealed record MapPatchFindResult(MapFindStatus Status, MapSurfaceScope Sc
     IReadOnlyList<MapPatchRead> Patches, IReadOnlyList<MapCoveredRange> KnownEmpty,
     IReadOnlyList<MapPatchRead> Unavailable, int PagesRead)
 {
-    // A composition refusal names its missing observation capability here. Ordinary capacity refusals leave it null.
+    public Scene.MapSceneCapacity? Capacity { get; init; }
+    // Specific composition refusals and named query allowances retain their diagnostic here.
     internal string? Diagnostic { get; init; }
 }
 

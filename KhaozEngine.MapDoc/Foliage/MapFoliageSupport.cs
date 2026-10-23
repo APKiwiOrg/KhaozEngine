@@ -69,7 +69,7 @@ public static class MapFoliageSupport
             throw new ArgumentException("the layer is not one of the context's captured layers", nameof(layer));
         IReadOnlyList<MapSurfaceRef> declared = context.DeclaredSurfaces;
         MapSurfaceScope scope;
-        try { scope = Scope(layer, chunk, context.SupportFloorsFor(layer, chunk), context.Transforms); }
+        try { scope = Scope(layer, chunk, context.SupportFloorsFor(layer, chunk), context.Transforms, context.QueryLimits); }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException or ArgumentException)
         { return MapPreparedFoliageSupport.Refused(layer, chunk, MapFoliageStatus.NotRepresentable, NoWork, "chunk scope is not representable"); }
         if (limits.MaxPrepareScopes < 1)
@@ -112,7 +112,7 @@ public static class MapFoliageSupport
     /// contributing support cells, which holds every neighbour corner a boundary normal reads. Every role is acquired, since
     /// membership reads ceilings and visible paint reads paint overrides.</summary>
     internal static MapSurfaceScope Scope(MapFoliageLayer layer, MapFoliageChunkKey chunk, IReadOnlyList<MapSurfaceRef> declared,
-        IReadOnlyDictionary<string, MapEffectiveTransform> transforms)
+        IReadOnlyDictionary<string, MapEffectiveTransform> transforms, MapQueryLimits? queryLimits = null)
     {
         (double minX, double minZ, double maxX, double maxZ) = Rect(layer, chunk);
         double cell = 0;
@@ -133,7 +133,7 @@ public static class MapFoliageSupport
         var max = new Vector2(Outward(maxX - ax, lower: false), Outward(maxZ - az, lower: false));
         if (!float.IsFinite(min.X) || !float.IsFinite(min.Y) || !float.IsFinite(max.X) || !float.IsFinite(max.Y))
             throw new MapExactOverflowException();
-        return new(frame, min, max, null, null, Enum.GetValues<MapSurfaceRole>(), null, new MapQueryLimits());
+        return new(frame, min, max, null, null, Enum.GetValues<MapSurfaceRole>(), null, queryLimits ?? new MapQueryLimits());
     }
 
     /// <summary>How far outside the chunk clearance reads support, the one reach the acquisition scope, the support grids,

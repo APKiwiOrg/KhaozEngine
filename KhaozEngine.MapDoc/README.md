@@ -658,7 +658,8 @@ collections and `Digest` hashes the same canonical bytes used by persistence.
 intent per inventoried roof, including unlinked shelters. `Auto` uses acquired room membership and world height.
 A link matches direct rooms and exactly its attached groups, including groups spanning instances. Unrelated groups,
 portals and parents never widen a link. Any eligible link may conceal its roof. Missing or ambiguous membership
-keeps Auto roofs visible. Always modes enumerate the inventory. `MapRoofEvaluationBuffer.Prepare(scene)` returns a
+keeps Auto roofs visible. Always modes enumerate the inventory. Roof preparation refusals expose the
+failed byte or face reservation in `Capacity`, including the active plan window and its declared allowance. `MapRoofEvaluationBuffer.Prepare(scene)` returns a
 typed result. Its admitted `Buffer.Evaluate(observer, mode)` reuses exact membership scratch and a live `Roofs` list.
 
 The four intent flags have separate consumers. Hidden roofs have `ColourVisible = false`, `CastShadows = true`,
@@ -1425,7 +1426,9 @@ global decoded inventory. `MapPreparedInputLease` owns selected decoded material
 present, known-empty and unavailable resources. `CompleteForScope` certifies the requested acquisition,
 not the whole world. Scope defaults admit 4096 selected resources, 256 patch scopes, 262,144 prepared
 faces and 67,108,864 prepared bytes before work. Point-query limits remain 256 patches, 4096 faces,
-64 intersections, 32 page reads, 64 record reads and depth 8. `IndexNodesVisited` counts rejected siblings.
+64 intersections, 32 page reads, 64 record reads and depth 8. Explicit `MapQueryLimits` propagate through
+nested native acquisition, dependency closure and retained foliage, water, cluster and membership scopes.
+Query capacity results preserve the declared limit, demand and allowance. `IndexNodesVisited` counts rejected siblings.
 Capacity refusals retain a typed `MapSceneCapacity` in the source or scoped result, with `LimitName`,
 `Requested` and `Allowance`. Requested demand uses decimal to retain byte sums beyond int64.
 The same values appear in `Findings`. `MapSceneCapacityException` exposes the same typed values. A bounded scan reports the first

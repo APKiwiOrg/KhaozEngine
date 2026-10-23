@@ -23,19 +23,25 @@ public sealed class GltfDecodeBudget
         Limits = limits;
     }
 
-    public bool TryReserve(long ownedBytes, long temporaryBytes)
+    public bool TryReserve(long ownedBytes, long temporaryBytes) => TryReserve(ownedBytes, temporaryBytes, out _);
+    public bool TryReserve(long ownedBytes, long temporaryBytes, out GltfDecodeCapacity? capacity)
     {
         if (ownedBytes < 0 || temporaryBytes < 0) throw new ArgumentOutOfRangeException(nameof(ownedBytes));
         lock (_gate)
         {
+            capacity = null;
             long remaining = Limits.MaxPeakBytes - _owned - _temporary;
-            if (ownedBytes > remaining || temporaryBytes > remaining - ownedBytes) return false;
+            if (ownedBytes > remaining || temporaryBytes > remaining - ownedBytes)
+            { capacity = PeakCapacity((decimal)ownedBytes + temporaryBytes); return false; }
             _owned += ownedBytes;
             _temporary += temporaryBytes;
             _peak = Math.Max(_peak, _owned + _temporary);
             return true;
         }
     }
+
+    internal GltfDecodeCapacity PeakCapacity(decimal additional)
+    { lock (_gate) return new(nameof(GltfDecodeLimits.MaxPeakBytes), (decimal)_owned + _temporary + additional, Limits.MaxPeakBytes); }
 
     public void ReleaseTemporary(long bytes)
     {

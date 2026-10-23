@@ -13,8 +13,9 @@ public static partial class GltfLoader
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(identity);
         var admission = GltfDecodeAdmission.Measure(glb, budget);
-        if (!admission.Allowed || !budget.TryReserve(admission.OwnedBytes, admission.PeakBytes - admission.OwnedBytes))
-            throw new GltfDecodeRefusal(GltfDecodeStatus.CapacityExceeded, "glTF decode allowance exceeded for " + identity);
+        var capacity = admission.Capacity;
+        if (!admission.Allowed || !budget.TryReserve(admission.OwnedBytes, admission.PeakBytes - admission.OwnedBytes, out capacity))
+            throw new GltfDecodeRefusal(GltfDecodeStatus.CapacityExceeded, capacity?.Message ?? "glTF decode allowance exceeded for " + identity) { Capacity = capacity };
         bool success = false;
         try
         {

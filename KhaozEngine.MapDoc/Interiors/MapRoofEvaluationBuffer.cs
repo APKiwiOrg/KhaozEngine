@@ -6,7 +6,10 @@ using KhaozEngine.MapDoc.Spaces;
 namespace KhaozEngine.MapDoc.Interiors;
 
 /// <summary>A complete prepared roof buffer or a typed refusal, with no partial buffer.</summary>
-public sealed record MapRoofEvaluationBufferResult(MapSceneStatus Status, MapRoofEvaluationBuffer? Buffer, string? Detail);
+public sealed record MapRoofEvaluationBufferResult(MapSceneStatus Status, MapRoofEvaluationBuffer? Buffer, string? Detail)
+{
+    public MapSceneCapacity? Capacity { get; init; }
+}
 
 /// <summary>Prepared scoped membership and reusable roof intent. Roofs is a live read-only view.</summary>
 public sealed class MapRoofEvaluationBuffer
@@ -33,11 +36,10 @@ public sealed class MapRoofEvaluationBuffer
         var status = MapMembershipPreparation.Measure(scene, out var demand, out string? detail);
         if (status != MapSceneStatus.CompleteForScope) return new(status, null, detail);
         var limits = scene.Source.Data.Limits;
-        if (demand.Bytes > limits.MaxPreparedBytes || demand.Faces > limits.MaxPreparedFaces)
-            return new(MapSceneStatus.CapacityExceeded, null, "Membership preparation exceeds the scene allowance.");
+        if (demand.Bytes > limits.MaxPreparedBytes) return Refused(new MapSceneCapacity(nameof(MapSceneLimits.MaxPreparedBytes), demand.Bytes, limits.MaxPreparedBytes));
+        if (demand.Faces > limits.MaxPreparedFaces) return Refused(new MapSceneCapacity(nameof(MapSceneLimits.MaxPreparedFaces), demand.Faces, limits.MaxPreparedFaces));
         status = MapMembershipPreflight.Check(scene, demand);
-        if (status != MapSceneStatus.CompleteForScope) return Refused(status);
-        return PrepareAdmitted(scene, new MapSceneAdmission(limits), demand);
+        return status == MapSceneStatus.CompleteForScope ? PrepareAdmitted(scene, new MapSceneAdmission(limits), demand) : Refused(status);
     }
     internal static MapRoofEvaluationBufferResult Prepare(MapScopedScene scene, MapSceneAdmission admission)
     {
@@ -45,19 +47,18 @@ public sealed class MapRoofEvaluationBuffer
         ArgumentNullException.ThrowIfNull(admission);
         var status = MapMembershipPreparation.Measure(scene, out var demand, out string? detail);
         if (status != MapSceneStatus.CompleteForScope) return new(status, null, detail);
-        if (!admission.CanReservePreparation(demand.Bytes, demand.Faces))
-            return new(MapSceneStatus.CapacityExceeded, null, "Membership preparation exceeds the scene allowance.");
+        if (admission.PreparationRefusal(demand.Bytes, demand.Faces) is { } capacity) return Refused(capacity);
         status = MapMembershipPreflight.Check(scene, demand);
         return status == MapSceneStatus.CompleteForScope ? PrepareAdmitted(scene, admission, demand) : Refused(status);
     }
     static MapRoofEvaluationBufferResult PrepareAdmitted(MapScopedScene scene, MapSceneAdmission admission, MapMembershipPreparation demand)
     {
-        if (!admission.TryReservePreparation(demand.Bytes, demand.Faces))
-            return new(MapSceneStatus.CapacityExceeded, null, "Membership preparation exceeds the scene allowance.");
+        if (!admission.TryReservePreparation(demand.Bytes, demand.Faces, out var capacity)) return Refused(capacity!);
         using var precharged = MapSceneAdmission.Suspend();
         var buffer = new MapRoofEvaluationBuffer(scene, demand);
         return new(scene.Witness.WholeWorldComplete ? MapSceneStatus.WholeWorldComplete : MapSceneStatus.CompleteForScope, buffer, null);
     }
+    static MapRoofEvaluationBufferResult Refused(MapSceneCapacity capacity) => new(MapSceneStatus.CapacityExceeded, null, capacity.Message) { Capacity = capacity };
     static MapRoofEvaluationBufferResult Refused(MapSceneStatus status) => new(status, null, status switch
     {
         MapSceneStatus.NotRepresentable => "Membership exact precision cannot be prepared.",

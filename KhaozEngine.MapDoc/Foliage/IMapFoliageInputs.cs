@@ -15,6 +15,7 @@ namespace KhaozEngine.MapDoc.Foliage;
 /// <summary>The exact captured inputs shared by complete and windowed foliage. No complete-resource claim crosses this seam.</summary>
 internal interface IMapFoliageInputs
 {
+    MapQueryLimits? QueryLimits => null;
     MapFoliageSet? Foliage { get; }
     MapAssetClosure Assets { get; }
     IReadOnlyList<MapSurfaceRef> DeclaredSurfaces { get; }
@@ -59,13 +60,14 @@ internal sealed class MapFoliageInputKernel : IMapFoliageInputs
         (_ownerPlacements, _ownerBounds, _owners) = Owners(foliage, resources);
         (_paintEntries, _paint) = Paint(resources);
         (_floorEntries, _floorIndex) = SupportInfluences(resources);
-        ClearanceOwners = new(foliage, resources, Acquire, retainedSource is not null, metadata is null ? null : metadata.MaskCandidates);
+        ClearanceOwners = new(foliage, resources, Acquire, retainedSource is not null, metadata is null ? null : metadata.MaskCandidates, queryLimits);
         SnapshotId = Snapshot(foliage, assets, resources, _paintEntries);
     }
     internal MapEffectiveResolutionProduct Resources { get; }
     internal string SnapshotId { get; }
     public MapFoliageSet? Foliage { get; }
     public MapAssetClosure Assets { get; }
+    public MapQueryLimits? QueryLimits => _queryLimits;
     public MapFoliageOwners ClearanceOwners { get; }
     public IReadOnlyList<MapSurfaceRef> DeclaredSurfaces => Resources.SurfaceSource.Surfaces;
     public IReadOnlyDictionary<string, MapEffectiveTransform> Transforms => Resources.Transforms;

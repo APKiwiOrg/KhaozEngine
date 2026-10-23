@@ -12,6 +12,7 @@ public enum GltfDecodeStatus { Invalid, Unsupported, CapacityExceeded }
 public sealed class GltfDecodeRefusal(GltfDecodeStatus status, string detail) : Exception(detail)
 {
     public GltfDecodeStatus Status { get; } = status;
+    public GltfDecodeCapacity? Capacity { get; init; }
 }
 
 public readonly record struct GltfAccessorFact(int Count, int ComponentBytes, int Components, int Stride);
@@ -27,6 +28,7 @@ public sealed class GltfDecodeAdmission
     internal static void EnterLargeAllocation() => _largeAllocationEntries++;
 
     public bool Allowed { get; }
+    public GltfDecodeCapacity? Capacity { get; }
     public long PeakBytes { get; }
     public long OwnedBytes { get; }
     public long ExpandedVertexReferences { get; }
@@ -36,9 +38,9 @@ public sealed class GltfDecodeAdmission
     public IReadOnlyList<ImageDecodeInfo> Images { get; }
 
     GltfDecodeAdmission(bool allowed, long peak, long owned = 0, long corners = 0, long indices = 0,
-        int parts = 0, GltfAccessorFact[]? accessors = null, ImageDecodeInfo[]? images = null)
+        int parts = 0, GltfAccessorFact[]? accessors = null, ImageDecodeInfo[]? images = null, GltfDecodeCapacity? capacity = null)
     {
-        Allowed = allowed; PeakBytes = peak; OwnedBytes = owned;
+        Allowed = allowed; Capacity = capacity; PeakBytes = peak; OwnedBytes = owned;
         ExpandedVertexReferences = corners; IndexCount = indices; PartCount = parts;
         Accessors = Array.AsReadOnly(accessors ?? []); Images = Array.AsReadOnly(images ?? []);
     }
@@ -47,7 +49,7 @@ public sealed class GltfDecodeAdmission
     {
         ArgumentNullException.ThrowIfNull(budget);
         try { return Scan(glb, budget); }
-        catch (GltfDecodeRefusal ex) when (ex.Status == GltfDecodeStatus.CapacityExceeded) { return new(false, long.MaxValue); }
+        catch (GltfDecodeRefusal ex) when (ex.Status == GltfDecodeStatus.CapacityExceeded) { return new(false, long.MaxValue, capacity: ex.Capacity); }
         catch (OverflowException) { return new(false, long.MaxValue); }
         catch (ImageDecodeRefusal ex) { throw new GltfDecodeRefusal((GltfDecodeStatus)ex.Status, ex.Message); }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException or KeyNotFoundException or ArgumentOutOfRangeException or FormatException)
@@ -61,7 +63,9 @@ public sealed class GltfDecodeAdmission
         var reader = new Utf8JsonReader(jsonBytes.Span);
         while (reader.Read()) tokens = checked(tokens + 1);
         long metadata = checked(512L + glb.Length * 2L + jsonBytes.Length * 6L + tokens * 32);
-        if (metadata > budget.RemainingBytes) return new(false, metadata);
+        long remaining = budget.RemainingBytes;
+        if (metadata > remaining) return new(false, metadata, capacity: new(nameof(GltfDecodeLimits.MaxPeakBytes),
+            (decimal)budget.Limits.MaxPeakBytes - remaining + metadata, budget.Limits.MaxPeakBytes));
         using var json = JsonDocument.Parse(jsonBytes);
         JsonElement root = json.RootElement;
         if (root.GetProperty("asset").GetProperty("version").GetString() != "2.0")
@@ -96,13 +100,15 @@ public sealed class GltfDecodeAdmission
             var a = accessors[i];
             int count = a.GetProperty("count").GetInt32();
             if (count < 0) throw Invalid("Negative accessor count.");
-            if (count > Math.Max(budget.Limits.MaxVertices, budget.Limits.MaxIndices)) throw Capacity();
+            if (count > Math.Max(budget.Limits.MaxVertices, budget.Limits.MaxIndices))
+                throw Refused(budget.Limits.MaxVertices >= budget.Limits.MaxIndices ? nameof(GltfDecodeLimits.MaxVertices) : nameof(GltfDecodeLimits.MaxIndices), count, Math.Max(budget.Limits.MaxVertices, budget.Limits.MaxIndices));
             if (a.TryGetProperty("sparse", out _)) throw new GltfDecodeRefusal(GltfDecodeStatus.Unsupported, "Sparse accessors are unsupported.");
             int bytes = a.GetProperty("componentType").GetInt32() switch
             { 5120 or 5121 => 1, 5122 or 5123 => 2, 5125 or 5126 => 4, _ => throw Invalid("Invalid accessor component type.") };
             int components = a.GetProperty("type").GetString() switch
             { "SCALAR" => 1, "VEC2" => 2, "VEC3" => 3, "VEC4" or "MAT2" => 4, "MAT3" => 9, "MAT4" => 16, _ => throw Invalid("Invalid accessor type.") };
-            if (count > (components == 1 ? budget.Limits.MaxIndices : budget.Limits.MaxVertices)) throw Capacity();
+            if (count > (components == 1 ? budget.Limits.MaxIndices : budget.Limits.MaxVertices))
+                throw Refused(components == 1 ? nameof(GltfDecodeLimits.MaxIndices) : nameof(GltfDecodeLimits.MaxVertices), count, components == 1 ? budget.Limits.MaxIndices : budget.Limits.MaxVertices);
             var view = views[a.GetProperty("bufferView").GetInt32()];
             int element = checked(bytes * components), stride = Int(view, "byteStride", element), offset = Int(a, "byteOffset", 0);
             if (stride < element || offset < 0 || (count > 0 && checked((long)(count - 1) * stride + element + offset) > view.GetProperty("byteLength").GetInt64()))
@@ -124,7 +130,7 @@ public sealed class GltfDecodeAdmission
                 if (Int(primitive, "mode", 4) != 4) throw new GltfDecodeRefusal(GltfDecodeStatus.Unsupported, "Strict rigid decoding requires triangles.");
                 int position = primitive.GetProperty("attributes").GetProperty("POSITION").GetInt32();
                 var positionFact = Accessor(facts, position);
-                if (positionFact.Count > budget.Limits.MaxVertices) throw Capacity();
+                if (positionFact.Count > budget.Limits.MaxVertices) throw Refused(nameof(GltfDecodeLimits.MaxVertices), positionFact.Count, budget.Limits.MaxVertices);
                 if (positionFact.Components != 3 || accessors[position].GetProperty("componentType").GetInt32() != 5126)
                     throw Invalid("POSITION must be floating VEC3.");
                 long n = primitive.TryGetProperty("indices", out var index) ? Accessor(facts, index.GetInt32()).Count : positionFact.Count;
@@ -134,7 +140,8 @@ public sealed class GltfDecodeAdmission
             }
         }
         if (corners == 0) throw Invalid("glTF has no triangles.");
-        if (corners > budget.Limits.MaxVertices || indices > budget.Limits.MaxIndices) throw Capacity();
+        if (corners > budget.Limits.MaxVertices) throw Refused(nameof(GltfDecodeLimits.MaxVertices), corners, budget.Limits.MaxVertices);
+        if (indices > budget.Limits.MaxIndices) throw Refused(nameof(GltfDecodeLimits.MaxIndices), indices, budget.Limits.MaxIndices);
         long pixels = 0, encodedImages = 0;
         var images = new List<ImageDecodeInfo>();
         foreach (int id in materials)
@@ -156,7 +163,9 @@ public sealed class GltfDecodeAdmission
         long arrayHeaders = checked(24L * (64 + 32L * materials.Count + 10L * facts.Length + nodeCount + 3L * images.Count));
         long peak = checked(metadata + owned + corners * (256 + weldPerCorner) + indices * 16 +
             nodeCount * 64L + pixels * 8 + encodedImages * 2 + arrayHeaders);
-        return new(peak <= budget.RemainingBytes, peak, owned, corners, indices, materials.Count, facts, images.ToArray());
+        remaining = budget.RemainingBytes;
+        return new(peak <= remaining, peak, owned, corners, indices, materials.Count, facts, images.ToArray(),
+            peak <= remaining ? null : new(nameof(GltfDecodeLimits.MaxPeakBytes), (decimal)budget.Limits.MaxPeakBytes - remaining + peak, budget.Limits.MaxPeakBytes));
 
         void AddImage(JsonElement material, string channel)
         {
@@ -173,7 +182,9 @@ public sealed class GltfDecodeAdmission
             }
             ImageDecodeInfo info = ImageDecodeAdmission.Probe(content.Span);
             long p = checked((long)info.Width * info.Height);
-            if (p > budget.Limits.MaxImagePixels || p > Array.MaxLength / 4 || images.Count >= budget.Limits.MaxImages) throw Capacity();
+            if (p > budget.Limits.MaxImagePixels) throw Refused(nameof(GltfDecodeLimits.MaxImagePixels), p, budget.Limits.MaxImagePixels);
+            if (p > Array.MaxLength / 4) throw Refused("MaxImageBufferPixels", p, Array.MaxLength / 4);
+            if (images.Count >= budget.Limits.MaxImages) throw Refused(nameof(GltfDecodeLimits.MaxImages), (long)images.Count + 1, budget.Limits.MaxImages);
             pixels = checked(pixels + p); encodedImages = checked(encodedImages + content.Length);
             images.Add(info);
         }
@@ -221,5 +232,6 @@ public sealed class GltfDecodeAdmission
     }
     static int Int(JsonElement item, string name, int fallback) => item.TryGetProperty(name, out var v) ? v.GetInt32() : fallback;
     static GltfDecodeRefusal Invalid(string detail) => new(GltfDecodeStatus.Invalid, detail);
-    static GltfDecodeRefusal Capacity() => new(GltfDecodeStatus.CapacityExceeded, "glTF decode allowance exceeded.");
+    static GltfDecodeRefusal Refused(string name, decimal requested, long allowance)
+    { var capacity = new GltfDecodeCapacity(name, requested, allowance); return new(GltfDecodeStatus.CapacityExceeded, capacity.Message) { Capacity = capacity }; }
 }

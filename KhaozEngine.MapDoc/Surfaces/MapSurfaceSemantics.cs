@@ -41,7 +41,8 @@ public static class MapSurfaceSemantics
     }
     public static string PatchDigest(MapSurfacePatch patch)
     {
-        byte[] bytes = MapSurfacePatchCodec.Encode(patch);
+        byte[] bytes = MapSurfacePatchCodec.Encode(patch, out var ownership);
+        using var retained = ownership;
         using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         hash.AppendData(Encoding.UTF8.GetBytes("kemap/surface-patch/1\0"));
         hash.AppendData(bytes);

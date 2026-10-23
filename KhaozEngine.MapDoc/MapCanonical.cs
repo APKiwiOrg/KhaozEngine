@@ -180,7 +180,14 @@ internal static class MapCanonical
     internal sealed class HashingBufferWriter : IBufferWriter<byte>, IDisposable
     {
         readonly IncrementalHash _hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        byte[] _buffer = new byte[8192];
+        readonly Scene.MapPreparationReservation? _workspace = Scene.MapSceneAdmission.Current?.Workspace();
+        byte[] _buffer;
+        internal HashingBufferWriter()
+        {
+            _workspace?.Reserve(8192);
+            try { _buffer = new byte[8192]; }
+            catch { _workspace?.Dispose(); _hash.Dispose(); throw; }
+        }
 
         public void Advance(int count) => _hash.AppendData(_buffer, 0, count);
 
@@ -192,12 +199,20 @@ internal static class MapCanonical
 
         public byte[] GetHashAndReset() => _hash.GetHashAndReset();
 
-        public void Dispose() => _hash.Dispose();
+        public void Dispose() { _hash.Dispose(); _workspace?.Dispose(); }
 
         byte[] Grow(int sizeHint)
         {
             if (sizeHint < 1) sizeHint = 1;
-            if (_buffer.Length < sizeHint) _buffer = new byte[Math.Max(sizeHint, _buffer.Length * 2)];
+            if (_buffer.Length < sizeHint)
+            {
+                int capacity = checked(Math.Max(sizeHint, _buffer.Length * 2));
+                _workspace?.Reserve(capacity);
+                byte[] next;
+                try { next = new byte[capacity]; }
+                catch { _workspace?.Release(capacity); throw; }
+                _workspace?.Release(_buffer.Length); _buffer = next;
+            }
             return _buffer;
         }
     }

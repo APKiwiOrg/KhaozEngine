@@ -148,8 +148,8 @@ internal static class MapPlacementDigest
 {
     internal static string Hash(Action<Utf8JsonWriter> write)
     {
-        using var stream = new System.IO.MemoryStream();
+        using var stream = new MapPreparationBuffer();
         using (var writer = new Utf8JsonWriter(stream, MapJsonTextOptions.IndentedWriter)) write(writer);
-        return Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(stream.GetBuffer().AsSpan(0, checked((int)stream.Length))));
+        return Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(stream.WrittenSpan));
     }
 }

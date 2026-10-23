@@ -17486,7 +17486,7 @@ needs a `SpriteBatch`. Like `UpdateOverlayView`, the widget never reads raw inpu
 
 ## Optional GPU compiler and memory diagnostics
 
-The GPU seam defines optional cold diagnostics for pipelines and devices. The Vulkan backend implements
+The GPU seam defines optional cold diagnostics for pipelines and devices. Vulkan and D3D11 implement
 both. Set `KE_VULKAN_PIPELINE_DIAGNOSTICS=1` before device creation to request executable compiler statistics
 on supported drivers. Read them outside frame timing and retain the configuration digests with the evidence.
 Keep the request unset on production timing devices. See the [Vulkan diagnostic configuration](../KhaozEngine.Gpu.Vulkan/README.md#optional-compiler-and-memory-diagnostics).
@@ -17509,6 +17509,21 @@ Unsupported or invalid values are null with a reason. DXBC temporary slots are i
 statistics, not physical registers. Execution width is a limit, not achieved occupancy. Unified memory
 and unsupported residency are not dedicated VRAM. See the [GPU package reference](../KhaozEngine.Gpu/README.md#optional-compiler-and-memory-diagnostics)
 for the accounting and typed-scalar contract.
+
+For D3D11, set `KE_D3D11_PIPELINE_DIAGNOSTICS=1` before creating a separate diagnostic device. Its
+pipeline reports retain the actual DXBC digest and `D3D11_SHADER_DESC` counts, including
+`TempRegisterCount` as intermediate-code slots. Physical registers, spills and achieved occupancy
+remain unsupported. Native committed memory, residency and budget also remain unsupported with reasons.
+The existing `KE_D3D11_RECORD` choice and actual debug-layer state enter diagnostic identity.
+
+Invocation collection is a separate D3D11-only capability. Set `KE_D3D11_INVOCATION_DIAGNOSTICS=1`
+before creating the diagnostic device, then use `ID3D11InvocationDiagnostics.CaptureInvocations`.
+Its callback must synchronously record and submit all intended work. Read the returned
+`D3D11InvocationBlock` outside timing, after normal submission/completion. `TryRead` returns false and
+a null report for pending data. It uses one non-flushing read and never waits or retries internally.
+Dispose the block after reading. An unsupported block does not call the callback. No invocation query
+is automatically inserted into the production pipeline or timestamp path. See the
+[D3D11 package reference](../KhaozEngine.Gpu.D3D11/README.md#optional-compiler-and-memory-diagnostics).
 
 ## Per-pass frame timing (`Scene3D.EnableTiming` / `PassTimings`)
 

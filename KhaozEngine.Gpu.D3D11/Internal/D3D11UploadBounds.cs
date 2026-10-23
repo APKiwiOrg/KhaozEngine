@@ -36,7 +36,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             uint layers = description.ArrayLayers == 0 ? 1 : description.ArrayLayers;
 
-            return (description.Usage & GpuTextureUsage.Cubemap) != 0 ? layers * 6 : layers;
+            return (description.Usage & GpuTextureUsage.Cubemap) != 0 ? checked(layers * 6) : layers;
         }
 
         /// <summary>

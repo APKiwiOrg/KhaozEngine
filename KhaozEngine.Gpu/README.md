@@ -583,7 +583,8 @@ umbrella would otherwise get nothing. One physical rule file, so the two copies 
 `IGpuResourceMemoryDiagnostics.ReadMemorySnapshot()` are optional cold interfaces. Query them outside
 measured frames. These contracts do not add members to `IGpuPipeline`, `IGpuComputePipeline` or
 `IGpuDevice`. The [Vulkan backend](../KhaozEngine.Gpu.Vulkan/README.md#optional-compiler-and-memory-diagnostics)
-implements both, with compiler capture enabled only on an explicitly requested diagnostic device.
+and [D3D11 backend](../KhaozEngine.Gpu.D3D11/README.md#optional-compiler-and-memory-diagnostics)
+implement both, with compiler capture enabled only on an explicitly requested diagnostic device.
 
 `GpuPipelineCompilerReport` identifies shader artifacts, pipeline state, compiler flags and diagnostic
 configuration by digest. Each executable retains vendor statistic names, descriptions and typed

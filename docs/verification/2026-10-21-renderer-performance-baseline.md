@@ -120,9 +120,11 @@ Scene3D shrink advisory. These checks establish consistency only, without supply
 
 ## Outstanding native and preparation gates
 
-Tasks 10 and 11 remain held. Neither D3D11 nor Metal implements the optional compiler/memory diagnostic
-interfaces. The Vulkan backend implements both, but the timed entrypoint rejects captured diagnostic
-pipelines and the driver currently constructs reports with an empty pipeline array. There is no separate
+Task10 adds D3D11 optional cold compiler/memory contracts and separate explicit invocation blocks.
+Its headless evidence still requires root's independent review and later native proof. Task11 remains
+held, and Metal does not implement these diagnostic interfaces. Vulkan also implements both contracts.
+The timed entrypoint rejects captured diagnostic pipelines, and the driver currently constructs
+reports with an empty pipeline array. There is no separate
 cold compiler-collection session in this entrypoint. A later preparation task must supply or explicitly
 scope that diagnostic stage before claiming compiler coverage. Native committed/resident/budget fields
 and achieved occupancy remain unsupported where unavailable. Process observations cannot replace them.

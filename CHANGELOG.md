@@ -14,6 +14,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   Disabled observation preserves commands and ordering.
 - Add optional cold pipeline compiler and resource memory diagnostic contracts, with Vulkan executable
   statistics and separate payload, committed allocation and unsupported residency evidence.
+- Add opt-in D3D11 cold DXBC reflection and exact pipeline identities, live resource payload and ring-capacity
+  diagnostics, and separate asynchronous invocation blocks. Reflection temporaries remain intermediate-code
+  facts, and unavailable native allocation, residency and budget fields retain their reasons.
 
 ## 21.12.1
 

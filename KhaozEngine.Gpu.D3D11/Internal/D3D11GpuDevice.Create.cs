@@ -245,6 +245,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 // 7a. CAPABILITIES, read off the live device and the adapter it runs on, and the single source both
                 // GpuDeviceContext.Capabilities and IGpuDevice.Capabilities take on this backend. It is here rather
                 // than after the factory because the factory validates a requested sample count against it.
+                var creation = D3D11CreationGate.For(threadingCaps);
+                var diagnosticOptions = D3D11DiagnosticOptions.FromEnvironment(recordMode, debugLayerActive);
+                _invocations = new D3D11InvocationDiagnostics(diagnosticOptions.Invocations, recordMode,
+                    new D3D11TimestampQueries(device, context), _submitLock, _liveness, _loss, creation);
                 var timestamps = new D3D11TimestampApi(new D3D11TimestampQueries(device, context), _liveness, _loss);
                 Capabilities = D3D11DxgiQueries.ReadCapabilitiesWindows(device, adapter,
                     _fences.SupportsCompletionFences, timestamps);
@@ -252,7 +256,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 // 5. THE FACTORY, with the creation gate the threading probe earned: a driver reporting
                 // DriverConcurrentCreates gets no lock at all, and no answer takes the serialized arm.
                 _factory = new D3D11ResourceFactory(device, context, _liveness, _rings, CreateCommandList,
-                    Capabilities, D3D11CreationGate.For(threadingCaps), _fences.CreateFence, _loss, timestamps, _fences, _submitLock);
+                    Capabilities, creation, _fences.CreateFence, _loss, timestamps, _fences, _submitLock, _memoryDiagnostics, diagnosticOptions);
                 log.Info(_factory.SerializesCreation
                     ? "D3D11 resource creation: SERIALIZED behind one lock, because this driver does not report "
                         + "DriverConcurrentCreates (or the threading probe had no answer)."
@@ -282,7 +286,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 {
                     _swapchain = scope.Track(new D3D11Swapchain(
                         D3D11DxgiSwapchain.CreateWindows(device, context, adapter, hwnd, width, height,
-                            depthFormat: null, _liveness),
+                            depthFormat: null, _liveness, _memoryDiagnostics),
                         _submitLock, width, height, syncToVerticalBlank));
                 }
 

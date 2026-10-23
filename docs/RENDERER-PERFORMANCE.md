@@ -35,6 +35,22 @@ Both warmed all-feature traces and cold MSAA/blob retirement traces are required
 The [integration verification record](verification/2026-10-21-renderer-performance-baseline.md) separates
 those proofs from outstanding native acceptance and diagnostic collection work.
 
+## Cold backend evidence
+
+Vulkan and D3D11 implement the optional pipeline/compiler and resource-memory contracts. The
+[D3D11 package reference](../KhaozEngine.Gpu.D3D11/README.md#optional-compiler-and-memory-diagnostics)
+owns its switches, exact artifact/state/configuration identities, reflection provenance, payload
+accounting and asynchronous invocation API. Reflection and invocation collection have separate opt-ins.
+Leave invocation queries out of both timed baseline layouts. Intermediate DXBC slots never supply
+physical register, spill or achieved-occupancy evidence. D3D11 committed allocation, residency and
+budget remain unavailable, independently of supported ordinary rendering and timestamps.
+
+The later cold compiler-collection session will consume reports from the actual created pipelines
+and device outside timing blocks, retaining all identities and unsupported/error reasons. Backend
+capability implementation does not implement that session, alter raw report schemas or authorize a
+workload manifest. Task11 and the later native acceptance gates remain separate. #1547 remains open,
+and no D3D11 native execution or performance claim follows from headless diagnostics tests.
+
 ## Raw artifact and strict reader
 
 `khaozengine.renderer-perf-report/1` JSON is canonical. Keep its exact manifest, workflow and source

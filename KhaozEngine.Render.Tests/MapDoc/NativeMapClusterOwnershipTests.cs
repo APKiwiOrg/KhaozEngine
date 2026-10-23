@@ -81,8 +81,11 @@ public sealed class NativeMapClusterOwnershipTests
     static MapRenderSourceState State(ResidencyFixture fixture, params MapSceneScope[] windows)
     {
         var state = fixture.State(windows);
-        return state with { Policy = new(NativeMapClusterCellTests.Policy(300), state.Policy.AnimatedAssets,
-            state.Policy.Foliage, state.Policy.Water, state.Policy.MaterialResourceIds, state.Policy.TerrainMaterials) };
+        return state with
+        {
+            Policy = new(NativeMapClusterCellTests.Policy(300), state.Policy.AnimatedAssets,
+                state.Policy.Foliage, state.Policy.Water, state.Policy.MaterialResourceIds, state.Policy.TerrainMaterials)
+        };
     }
     static MapDrawSet Draw(MapRenderResidency residency)
     {

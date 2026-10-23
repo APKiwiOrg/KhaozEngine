@@ -11,6 +11,12 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 - Preserve imported catalog IDs when ordinary publication also allocates new rows of the same type.
   Reserve carried maxima before issuing IDs, regardless of edit order (Closes #1550).
+- Defer Metal drawable acquisition until the current frame first binds its swapchain, preserving cached
+  framebuffer and capture behavior.
+- Add the default-off `RendererInitializesSwapchain` host option so a full-output renderer can avoid the
+  redundant initial swapchain bind and clear.
+- Filter exact point-shadow hits before sorting and index submitted foliage point casters once per frame,
+  preserving query order, signatures and draw runs.
 
 ## 21.12.1
 

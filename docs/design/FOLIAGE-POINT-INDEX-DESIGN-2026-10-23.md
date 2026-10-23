@@ -1,6 +1,9 @@
 # Foliage point-shadow query index
 
-Status: implemented under the owner's approved plan. Focused CPU and native Metal contracts passed, with independent review and runtime measurement still pending.
+Status: implemented at `465e16b27`, independently reviewed with no findings and pushed. Earlier focused CPU
+and strict Metal contracts passed. Private comparison does not establish significant gain or 144 FPS.
+Current main is reconciled at `c665943d3` for staged 21.12.2. Final post-merge verification, whole-branch
+review, main integration, release and released-engine game adoption remain pending.
 Date: 2026-10-23.
 
 ## Outcome and evidence
@@ -78,11 +81,12 @@ count proof, not a timing benchmark.
 
 Run focused CPU contracts and the existing native foliage/point-shadow GPU tests once through
 `build-slot`. Preserve zero warmed allocations. Review the change independently, then compare direct
-client frame intervals at the same quality and slow view. The 144 FPS target remains open until measured.
+client frame intervals at the same quality and slow view. The 144 FPS target requires direct evidence.
 
 The [implementation plan](../superpowers/plans/2026-10-23-foliage-point-index.md) assigns the code and
-tests. The parent owns final full verification, current-main reconciliation, version/changelog work,
-integration and released engine adoption. Private diagnostic archives never merge into `main`.
+tests. The parent owns final full verification, whole-branch review, main integration, release and released
+engine adoption. Current-main reconciliation is complete, and staged 21.12.2 is retained. Private diagnostic
+archives never merge into `main`.
 
 ## Implementation evidence
 
@@ -98,6 +102,29 @@ These results prove operation counts and correctness contracts, not a measured F
 
 Native Metal verification passed all 14 selected foliage and point-shadow byte-identity tests with no
 failures or skips, using the Metal validation layer. The worker ran only focused commands through
-`build-slot`. Full-suite verification and independent review remain with the parent.
+`build-slot`. These are earlier scoped results, not final post-merge verification.
 Whole-tree dash, prose, file-size, instruction-budget and doc-version guards also passed, along with
 the diff whitespace check. No baseline increase or guard bypass was used.
+
+## Parent verification and measurement status
+
+The parent independently checked the raw CPU and strict Metal evidence above. Implementation `465e16b27`
+received independent review with no findings and was pushed. The original baseline, source provenance and
+worker test results remain historical evidence. They are not results from the reconciled `c665943d3` branch.
+
+A private identical-quality direct comparison changed only `Render3D.dll` and measured 137.9666 FPS before
+and 139.2714 FPS after in one sequential 10-second pair. This does not establish a significant gain or
+144 FPS. The owner reports no visible foliage in the selected baseline view, so foliage visual look
+validation is inconclusive. Later CPU stacks show off-camera foliage paths, but no submission counts were
+measured. The [durable consumer evidence](https://github.com/APKiwiOrg/Grimhollow/blob/d279463f16b73200fc59cc7b908a2a7354c7fb6b/docs/verification/mac-frame-performance-2026-10-23.json)
+records the later comparison and investigation separately from the original baseline.
+
+Further investigation completed through the archived private native-pool probe. That experiment is
+**NOT ADOPTED**. Its off 148.09 FPS / on 138.15 FPS pair had 13.888% different local Metal scope entries and
+mode-dependent instrumentation overhead. It is not an isolated causal pooling result and does not establish
+that the target was achieved. Its source, counters and UI fields stay out of production.
+
+The target assessment is complete with an unmet result in the direct pair and an unproven overall outcome.
+Current main has been reconciled at `c665943d3`, with staged 21.12.2 and its 2026-10-24 catalog entry retained.
+Final full-suite and backend verification, whole-branch review, main integration, release and released-engine
+game adoption remain pending with the parent.

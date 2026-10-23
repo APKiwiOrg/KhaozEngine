@@ -153,14 +153,35 @@
 
 ## Parent verification and measurement
 
-- [ ] Independently inspect the returned diff and evidence, then request a fresh Codex code review.
-- [ ] Push the validated engine change before proceeding to runtime comparison.
-- [ ] Prepare a private client comparison with identical quality and recorder bytes, changing only the tested
-  renderer implementation. Use a human-launched client and direct diagnostics. Keep profiler attribution separate.
-- [ ] Assess the 144 FPS target from measured frame intervals. If still unmet, continue investigation rather
-  than lowering quality or claiming the operation-count fixture proves FPS.
-- [ ] Reconcile current main, select the staged version against current tags, run full required verification,
-  integrate and complete the released-engine game handoff. Never merge diagnostic archives.
+- [x] Independently inspect the returned diff and raw evidence, then complete independent code review.
+  Implementation `465e16b27` was reviewed with no findings.
+- [x] Push the validated engine change before proceeding to runtime comparison. Implementation `465e16b27`
+  was pushed.
+- [x] Complete a private identical-quality direct client comparison, changing only `Render3D.dll`.
+  One sequential 10-second pair measured 137.9666 FPS before and 139.2714 FPS after. Keep profiler attribution
+  separate. This pair does not establish a significant gain or 144 FPS.
+- [x] Assess the 144 FPS target from measured frame intervals. The direct pair is below target, and the
+  overall outcome remains unproven. Further investigation completed through the archived native-pool probe,
+  which is not adopted. Neither the operation-count fixture nor that probe establishes target success.
+- [ ] Complete final full-suite and backend verification, whole-branch review, main integration, release and
+  the released-engine game handoff. Current-main reconciliation is complete at `c665943d3`, with staged
+  21.12.2 and its 2026-10-24 catalog entry retained. Never merge diagnostic archives.
+
+### Parent evidence status
+
+- The parent independently checked raw results of 103 CPU passes and five expected GPU-only skips,
+  14 strict Metal passes without skips, sparse exact tests reduced from 4,096 to 1 and zero warmed allocation.
+  These are earlier scoped results, not final post-merge verification. The worker record and original baseline
+  hashes above remain historical provenance.
+- The owner reports no visible foliage in the selected baseline view, so foliage visual look validation is
+  inconclusive. Off-camera foliage paths appear in later CPU stacks, but no submission counts were measured.
+- The private native-pool experiment is **NOT ADOPTED**. Its off 148.09 FPS / on 138.15 FPS pair had 13.888%
+  different local Metal scope entries and mode-dependent instrumentation overhead. It is not an isolated
+  causal pooling result or evidence that the target was achieved. Its source, counters and UI fields must not
+  enter production.
+- [Durable consumer evidence](https://github.com/APKiwiOrg/Grimhollow/blob/d279463f16b73200fc59cc7b908a2a7354c7fb6b/docs/verification/mac-frame-performance-2026-10-23.json)
+  records the private comparison and subsequent investigation. Final verification and integration gates remain
+  pending with the parent.
 
 ## Plan self-review
 

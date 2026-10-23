@@ -22,6 +22,7 @@ public sealed partial class MapPlacementRenderBatch : IDisposable
     readonly int[] _clusterParts;
     readonly Dictionary<string, int> _roofOutlineParts = new(StringComparer.Ordinal);
     readonly MapRoofCohort?[] _roofCohorts;
+    readonly Dictionary<string, (MapRoofCohort Cohort, int Index)> _roofPolicies = new(StringComparer.Ordinal);
     readonly IReadOnlyList<MapPlacementPart> _parts;
     MapPreparedInputLease? _input;
     readonly PropClusterRenderer _clusters = PropClusterRenderer.CreateCpuOnly();
@@ -52,8 +53,12 @@ public sealed partial class MapPlacementRenderBatch : IDisposable
         for (int i = 0; i < Clusters.Count; i++)
         {
             if (Clusters[i].Request.Key.Cohort == 1)
-                _roofCohorts[i] = new(Clusters[i], cells.Get(Clusters[i].Request.Key).RoofEvaluation
+            {
+                var cohort = new MapRoofCohort(Clusters[i], cells.Get(Clusters[i].Request.Key).RoofEvaluation
                     ?? throw new MapDocumentException("Roof cohort requires admitted policy metadata."));
+                _roofCohorts[i] = cohort;
+                foreach (string id in Clusters[i].RepresentedIds) _roofPolicies.Add(id, (cohort, cohort.Indices[id]));
+            }
             string owner = MapPlacementCells.Owner(Clusters[i].Request.Key);
             _clusterParts[i] = -1;
             for (int p = 0; p < _parts.Count; p++)
@@ -117,6 +122,10 @@ public sealed partial class MapPlacementRenderBatch : IDisposable
         return _roofCohorts[index] is { } cohort ? PropClusterVisibilityDecision.Resolve(request.Key, state, cohort)
             : new(state, false, 0, false);
     }
+    internal void UpdateRoofs(MapFrameState frame)
+    { foreach (var cohort in _roofCohorts) cohort?.Evaluate(frame); }
+    internal MapRoofIntent? RoofIntent(string id) => _roofPolicies.TryGetValue(id, out var row)
+        ? row.Cohort.Evaluation.Roofs[row.Index] : null;
     internal void RecordRoofs(MapFrameState frame, MapRoofEvaluationBuffer roofs, IReadOnlyDictionary<string, int> indices, IMapDrawSink sink)
     {
         RequireRecord(sink);
@@ -125,7 +134,7 @@ public sealed partial class MapPlacementRenderBatch : IDisposable
         for (int i = 0; i < Clusters.Count; i++)
             if (_roofCohorts[i] is { } cohort)
             {
-                cohort.Evaluation.Evaluate(frame.Observer, frame.RoofMode);
+                cohort.Evaluate(frame);
                 RecordCluster(i, new(this, frame, sink, cohort.Evaluation, cohort.Indices));
             }
     }

@@ -18,7 +18,7 @@ public sealed partial class MapPlacementRenderBatch
         MapRoofEvaluationBuffer? roofs, IReadOnlyDictionary<string, int>? indices) where TSink : IMapDrawSink
     {
         ObjectDisposedException.ThrowIf(_disposed, this); ArgumentException.ThrowIfNullOrWhiteSpace(roofId);
-        ArgumentNullException.ThrowIfNull(sink);
+        if (sink is null) throw new ArgumentNullException(nameof(sink));
         if (_registered is null) throw new InvalidOperationException("Register placements before recording outlines.");
         var emission = new OutlineEmission<TSink>(this, roofId, frame, sink);
         if (roofs is not null && indices!.TryGetValue(roofId, out int roof) && roofs.Roofs[roof].ColourVisible)
@@ -30,7 +30,7 @@ public sealed partial class MapPlacementRenderBatch
             int member = -1;
             for (int j = 0; j < request.Instances.Count; j++) if (request.Instances[j].Id == roofId) { member = j; break; }
             if (member < 0) continue;
-            cohort.Evaluation.Evaluate(frame.Observer, frame.RoofMode);
+            cohort.Evaluate(frame);
             var decision = ResolveCluster(i, frame, out _);
             if (decision.DrawsIndividualColour(request.Key, member, cohort))
                 EmitOutline(request.BorrowLayer, emission, decision.State.IndividualDissolveFloor);

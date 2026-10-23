@@ -95,8 +95,12 @@ public sealed class MapPresentationPicker
     }
     bool AcceptRoof(string owner, MapPresentationChannel channel)
     {
-        if (!_plan.RoofIndices.TryGetValue(owner, out int index)) return true;
-        var roof = _plan.RoofEvaluation.Roofs[index];
+        var roof = _plan.Inventory.Placements.RoofIntent(owner);
+        if (roof is null)
+        {
+            if (!_plan.RoofIndices.TryGetValue(owner, out int index)) return true;
+            roof = _plan.RoofEvaluation.Roofs[index];
+        }
         return channel switch
         {
             MapPresentationChannel.Selection => roof.ColourVisible,

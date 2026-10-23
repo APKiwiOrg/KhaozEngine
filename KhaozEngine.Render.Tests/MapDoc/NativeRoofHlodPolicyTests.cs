@@ -14,8 +14,11 @@ public sealed class NativeRoofHlodPolicyTests
     internal static MapRenderSourceState State(ResidencyFixture fixture, params MapSceneScope[] windows)
     {
         var state = fixture.State(windows);
-        return state with { Policy = new(new([new("caps", new HashSet<string> { "roof" }, [], 0, 100, 30, 10, 0, true)], 100),
-            new HashSet<string>(), state.Policy.Foliage, state.Policy.Water, [], new Dictionary<ushort, string>()) };
+        return state with
+        {
+            Policy = new(new([new("caps", new HashSet<string> { "roof" }, [], 0, 100, 30, 10, 0, true)], 100),
+            new HashSet<string>(), state.Policy.Foliage, state.Policy.Water, [], new Dictionary<ushort, string>())
+        };
     }
     internal static MapSceneScope Window(float x) => NativePresentationFixtures.Scope with
     {
@@ -47,4 +50,21 @@ public sealed class NativeRoofHlodPolicyTests
             Assert.False(Assert.Single(roofs.Roofs, r => r.RoofPlacementId == "roof-b").ColourVisible);
         }
     }
+    [Fact]
+    public void PartialWindow_HiddenHlodRoofUsesCanonicalPolicyForEveryPickChannel()
+    {
+        using var fixture = NativePresentationFixtures.Create();
+        var window = Window(0) with { DrawBounds = new(-.25, 0, 2, .25, 5, 6) };
+        var scheduler = new ResidencyScheduler();
+        using var residency = new MapRenderResidency(State(fixture, window), new ResidencyDevice(), null, scheduler);
+        ResidencyFixture.Complete(residency, scheduler);
+        var picker = new MapPresentationPicker(Assert.Single(residency.AcceptedPlans));
+        var ray = new MapPresentationRay(new(WorldFrame.Origin, new(0, .5f, 0)), System.Numerics.Vector3.UnitZ, 10);
+        var frame = NativeRoofHlodRecordingTests.Frame(MapRoofMode.Auto);
+        Assert.Equal("object-behind", picker.Pick(ray, MapPresentationChannel.Selection, frame)?.OwnerId);
+        Assert.Equal("object-behind", picker.Pick(ray, MapPresentationChannel.Camera, frame)?.OwnerId);
+        Assert.Equal("roof-a", picker.Pick(ray, MapPresentationChannel.Sky, frame)?.OwnerId);
+        Assert.Equal("roof-a", picker.Pick(ray, MapPresentationChannel.Physical, frame)?.OwnerId);
+    }
+
 }

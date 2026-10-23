@@ -113,7 +113,7 @@ public sealed class MapRenderPlan : IDisposable
     public void Register(IMapDrawSink sink)
     { ObjectDisposedException.ThrowIf(_disposed, this); ArgumentNullException.ThrowIfNull(sink); foreach (var resource in _resources) sink.Register(resource); }
     public void Update(MapFrameState frame)
-    { ObjectDisposedException.ThrowIf(_disposed, this); RoofEvaluation.Evaluate(frame.Observer, frame.RoofMode); }
+    { ObjectDisposedException.ThrowIf(_disposed, this); RoofEvaluation.Evaluate(frame.Observer, frame.RoofMode); Inventory.Placements.UpdateRoofs(frame); }
     public void Record(MapFrameState frame, IMapDrawSink sink)
     {
         ObjectDisposedException.ThrowIf(_disposed, this); ArgumentNullException.ThrowIfNull(sink);

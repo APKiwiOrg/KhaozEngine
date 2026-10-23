@@ -19,6 +19,10 @@ public static partial class MapSurfacePatchCodec
         ArgumentNullException.ThrowIfNull(patch);
         IReadOnlyList<string> errors = patch.ValidateLocal();
         if (errors.Count != 0) throw new MapDocumentException(errors[0]);
+        using var sorting = Scene.MapSceneAdmission.Current?.Workspace();
+        long metadata = Scene.MapSceneAdmission.PatchBytes(patch) -
+            (4L * patch.Heights.Length + 8L * patch.Cells.Length + 8L * patch.Presence.Length);
+        sorting?.Reserve(checked(2L * metadata + 16L * patch.Records.Count));
         using var output = new Scene.MapPreparationBuffer(MaxEncodedBytes);
         using var packed = Scene.MapSceneAdmission.Current?.Workspace();
         using (var writer = new Utf8JsonWriter(output))

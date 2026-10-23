@@ -151,16 +151,18 @@ public static class MapWaterScopedCompiler
         MapScopedWaterResult Result(MapSceneStatus status, IReadOnlyList<MapWaterResourceCell> cells)
         {
             bool complete = status == MapSceneStatus.CompleteForScope;
+            // Failure witnesses are control-plane diagnostics, outside the exhausted preparation attempt.
+            using IDisposable? diagnostic = complete ? null : MapSceneAdmission.Suspend();
             var required = witnesses.SelectMany(w => w.Required).Concat(cellKeys).Distinct().OrderBy(k => k.Kind, StringComparer.Ordinal).ThenBy(k => k.Id, StringComparer.Ordinal).ToArray();
             var present = witnesses.SelectMany(w => w.Present).Concat(complete ? cellKeys : []).Distinct().OrderBy(k => k.Kind, StringComparer.Ordinal).ThenBy(k => k.Id, StringComparer.Ordinal).ToArray();
             var acquired = scene.Witness with
             {
-                ScopeDigest = complete ? MapCanonical.HashHex(w =>
+                ScopeDigest = MapCanonical.HashHex(w =>
                 {
                     w.WriteStartArray(); w.WriteStringValue(geometry);
                     foreach (var witness in witnesses.OrderBy(w => w.ScopeDigest, StringComparer.Ordinal)) w.WriteStringValue(witness.ScopeDigest);
                     foreach (var key in cellKeys.OrderBy(k => k.Id, StringComparer.Ordinal)) w.WriteStringValue(key.Id); w.WriteEndArray();
-                }) : scene.Witness.ScopeDigest,
+                }),
                 Required = Array.AsReadOnly(required),
                 Present = Array.AsReadOnly(present),
                 KnownEmpty = complete ? Array.AsReadOnly(witnesses.SelectMany(w => w.KnownEmpty).Distinct().ToArray()) : [],

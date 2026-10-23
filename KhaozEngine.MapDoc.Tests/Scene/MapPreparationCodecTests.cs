@@ -21,8 +21,12 @@ public sealed class MapPreparationCodecTests
 
     static MapSurfacePatch Patch() => new()
     {
-        Key = new("invented", 0, 0), Width = 1, Depth = 1,
-        Heights = new int[4], Cells = new MapSurfaceCell[1], Presence = [1UL],
+        Key = new("invented", 0, 0),
+        Width = 1,
+        Depth = 1,
+        Heights = new int[4],
+        Cells = new MapSurfaceCell[1],
+        Presence = [1UL],
     };
 
     [Fact]

@@ -44,7 +44,7 @@ effective paint regions. `MapTerrainRenderBatch.Register` registers typed `MapTe
 `Record` writes explicit rigid defaults and focus in each resource's anchor space. Keep the batch alive
 while consuming its registrations. It retains the prepared input independently of the original caller.
 `RetainedBytes` covers geometry and provenance. `InputRetainedBytes` reports the shared decoded charge,
-and `PreparationChargeBytes` includes intermediate work under the captured scene allowance.
+and `PreparationChargeBytes` reports the retained owned receipt after preparation workspace is released.
 
 Terrain uses Render3D's ground pipeline, without a TileWorld dependency. Its ordered material sets map
 numeric IDs to albedo layers. Vertex Color carries four underlay weights, Uv.xy and Tangent.xy carry their
@@ -224,14 +224,21 @@ only on the renderer's final `Released` callback. Published and retiring allocat
 The staging allowance and decoded upload borrow remain held through retirement. `MaxRetiredGpuBytes` never
 adds sharing credit. `MapRenderLifetime` reports the live charged ownership groups and actual transfer bytes.
 
-A queue entry is one atomic composite replacement. Its windows share the source's bounded preparation allowance,
-further narrowed by queue and plan budgets. Disposal cancels pending work without blocking a caller's scheduler.
-Any still-running worker retains its readers and CPU charges until its completion continuation unwinds them.
+A queue entry is one atomic composite replacement. Its windows share one live preparation ledger,
+further narrowed by queue and plan views. Live workspace, retained inventory and borrowed input obligations
+share the allowance. Sequential temporary work reuses credit. Growth admits old and new arrays together.
+Each plan view includes reused context and selected decoded pieces, while shared input counts once in the
+attempt's ownership ledger. Decoder reservations mirror actual owned and temporary demand before allocation.
+Original tighter decoder limits and their diagnostic identity remain binding. Disposal cancels pending work
+without blocking the scheduler. A running worker retains its readers and CPU reservation until unwind.
 
 A captured foliage context has a retained preparation lease. Policy-only replacements share that lease, including
 its density and effective dependency product. Cached generation retention is admitted before generation enters,
-then transferred to the context's lease. Charges remain conservative through context invalidation and end with
-its final reader. GPU handle owners retain identity and handle only. They do not retain obsolete CPU registrations,
+then attached to individual cache entries. Invalidation drops the cache owner, and the last sample reader
+releases its receipt and CPU lease. Settled CPU bytes are the unique retained source, input, context, sample,
+plan, recording and upload inventory. In-flight CPU additionally includes queue reservations and staging.
+Preparation peaks and cumulative allocation are not retained-size authorities. GPU handle owners retain
+identity and handle only. They do not retain obsolete CPU registrations,
 including while waiting in the bounded disposal queue.
 
 Each window narrows the shared allowance before acquisition and preparation. Foliage generation derives its
@@ -290,7 +297,8 @@ eye. TopDown focus uses `MapCaptureFocus.Resolve` over the declared support doma
 infers focus from the observer. A refused unresolved focus stays null in the transport result.
 `MapCaptureDependencies.Compute` expands directional and point-light caster coverage from frozen lighting.
 Its witness keeps requested, required and acquired scopes separate. `MapCapturePreparation.Prepare`
-proves dependency and focus admission without a device. `NativeMapSnapshot` uses the same residency and
+proves dependency and focus admission without a device. Its temporary probe scenes are not resident CPU.
+`NativeMapSnapshot` uses the same residency and
 submission path. Resources must be ready before the default 16 temporal warm-up frames. The default
 settle allowance is 1024 operations. Temporal warm-up never repairs incomplete dependency coverage.
 

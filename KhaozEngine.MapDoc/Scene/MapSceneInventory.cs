@@ -47,7 +47,8 @@ internal sealed class MapSceneInventory
     {
         if (water is null || !_seen.Add(water)) return 0;
         return checked(128L + 8L * water.Media.Count + water.Bodies.Sum(Body));
-    }    static long Body(MapWaterBodyDoc body) => checked(128L + 32L * body.Domain.Rects.Count +
+    }
+    static long Body(MapWaterBodyDoc body) => checked(128L + 32L * body.Domain.Rects.Count +
         32L * body.Covers.Count + body.Domain.Rings.Sum(r => 32L + 24L * r.Vertices.Count));
 
 }

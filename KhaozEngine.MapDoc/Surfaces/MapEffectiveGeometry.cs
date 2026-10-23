@@ -28,7 +28,14 @@ internal static class MapEffectiveGeometry
         using var admitted = view.Scope.SceneAdmission?.Enter();
         if (!view.TryAcquiredPatch(key, out var patch, out var status) || patch is null)
             throw new MapDocumentException($"Missing effective patch '{key}' ({status}).");
-        return TransformPatch(view, MapSurfaceCompiler.Compile(MapSpaceGeometry.Surface(view, key.SurfaceId), patch));
+        var local = MapSurfaceCompiler.Compile(MapSpaceGeometry.Surface(view, key.SurfaceId), patch);
+        try
+        {
+            var transformed = TransformPatch(view, local);
+            if (!ReferenceEquals(local, transformed)) local.PreparationOwnership?.Dispose();
+            return transformed;
+        }
+        catch { local.PreparationOwnership?.Dispose(); throw; }
     }
     internal static MapCompiledStrip Strip(MapScopedSurfaces view, MapWallStrip strip) => MapWallStripCompiler.Compile(strip,
         MapBoundaryGeometry.ResolveChain(MapSpaceGeometry.Record<MapBoundaryChain>(view, strip.LowerChain), view),
@@ -37,14 +44,15 @@ internal static class MapEffectiveGeometry
     {
         var kernel = view.EffectiveContext?.Transform(MapPrefabChildKind.Surface, local.Key.SurfaceId);
         if (kernel is null || local.ExactVertices.Count == 0) return local;
-        Scene.MapSceneAdmission.Current?.ReserveBytes(checked(local.ExactVertices.Count *
-            (long)(System.Runtime.CompilerServices.Unsafe.SizeOf<MapExactPoint>() + System.Runtime.CompilerServices.Unsafe.SizeOf<Vector3>()) +
-            local.Faces.Count * (long)System.Runtime.CompilerServices.Unsafe.SizeOf<MapCompiledFace>()));
+        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
+        Scene.MapSceneAdmission.Current?.ReserveBytes(checked(2L * local.InventoryBytes));
         var vertices = local.ExactVertices.Select(kernel.Point).ToArray();
         var anchor = new MapSubmissionAnchor(vertices.Min(v => v.X.Floor()), vertices.Min(v => v.Y.Floor()), vertices.Min(v => v.Z.Floor()));
         var faces = local.Faces.Select(f => f with { Normal = Normal(new(vertices[f.A], vertices[f.B], vertices[f.C])) }).ToArray();
-        return new(local.Key, local.Role, anchor, local.VertexIds, vertices, vertices.Select(v => MapSubmissionGeometry.Offset(v, anchor)),
+        var result = new MapCompiledPatch(local.Key, local.Role, anchor, local.VertexIds, vertices, vertices.Select(v => MapSubmissionGeometry.Offset(v, anchor)),
             faces, local.Paint, local.LegacyFallbackCells);
+        result.PreparationOwnership = preparation?.Complete(result.InventoryBytes);
+        return result;
     }
     internal static Vector3 Normal(MapExactTriangle t)
     {

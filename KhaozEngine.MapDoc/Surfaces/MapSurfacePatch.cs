@@ -67,6 +67,7 @@ public sealed partial class MapSurfacePatch
     }
     public MapSurfacePatch Clone()
     {
+        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
         Scene.MapSceneAdmission.Current?.BeforeClone(this);
         var copy = new MapSurfacePatch
         {
@@ -83,6 +84,7 @@ public sealed partial class MapSurfacePatch
         copy.CornerDependencies.AddRange(CornerDependencies);
         copy.EdgeSubdivisions.AddRange(EdgeSubdivisions);
         CloneRecordsTo(copy);
+        copy.PreparationOwnership = preparation?.Complete(Scene.MapSceneAdmission.PatchBytes(copy));
         return copy;
     }
 

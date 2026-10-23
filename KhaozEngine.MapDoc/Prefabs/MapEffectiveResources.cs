@@ -45,6 +45,7 @@ public sealed class MapEffectiveResources
 /// <summary>Owned local descriptors and unfrozen poses. Acquired views retain this captured context.</summary>
 internal sealed class MapEffectiveContext
 {
+    internal Scene.MapPreparationReservation? PreparationOwnership { get; }
     readonly IReadOnlyDictionary<string, MapSurfaceRef> _surfaces;
     readonly Dictionary<string, MapEffectiveTransform> _transformValues;
     internal MapSurfaceSet Surfaces { get; }
@@ -55,6 +56,8 @@ internal sealed class MapEffectiveContext
     internal MapEffectiveContext(MapSurfaceSet surfaces, IReadOnlyDictionary<string, MapEffectiveTransform> transforms, string digest,
         IReadOnlyList<MapStoreyDoc>? storeys = null, IReadOnlyList<MapWaterBodyDoc>? waterSources = null)
     {
+        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
+        Scene.MapSceneAdmission.Current?.ReserveBytes(checked(256L + 128L * surfaces.Refs.Count + 96L * transforms.Count + 8L * (storeys?.Count ?? 0)));
         Storeys = Array.AsReadOnly((storeys ?? Array.Empty<MapStoreyDoc>()).ToArray());
         var water = new MapWaterSet();
         water.Bodies.AddRange(waterSources ?? Array.Empty<MapWaterBodyDoc>());
@@ -64,6 +67,7 @@ internal sealed class MapEffectiveContext
         _transformValues = new(transforms, StringComparer.Ordinal);
         Transforms = new ReadOnlyDictionary<string, MapEffectiveTransform>(_transformValues);
         Digest = digest;
+        PreparationOwnership = preparation?.Complete(new Scene.MapSceneInventory().Context(this));
     }
     internal MapSurfaceRef Surface(string id) => _surfaces.TryGetValue(id, out var surface) ? surface : throw new MapDocumentException($"Missing effective surface '{id}'.");
     internal MapExactXz Xz(string id, MapExactXz local) => Transform(MapPrefabChildKind.Surface, id)?.Xz(local) ?? local;

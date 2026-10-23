@@ -187,6 +187,8 @@ internal static class MapEffectiveResolutionKernel
         IMapSurfaceSource? nativeSource = null, MapPrefabExpansionObserver? observer = null, MapQueryLimits? queryLimits = null)
     {
         queryLimits ??= new();
+        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
+        Scene.MapSceneAdmission.Current?.ReserveBytes(512);
         var captured = Enumerate(authored, assets, nativeSource, observer);
         var children = captured.Children;
         var transforms = captured.Transforms;
@@ -240,8 +242,10 @@ internal static class MapEffectiveResolutionKernel
         }
         if (supports.Count != 0)
         {
+            var previousContext = context;
             context = new(surfaces, transforms, Digest(), Storeys(), localWater);
             source = Source(context);
+            previousContext.PreparationOwnership?.Dispose();
         }
         var water = authored.Water?.Clone();
         foreach (var medium in children.OfType<MapPrefabMediumChild>()) (water ??= new()).Media.Add(medium.Value);
@@ -290,6 +294,7 @@ internal static class MapEffectiveResolutionKernel
         {
             SupportRequests = supportRequests,
         };
+        resources.PreparationOwnership = preparation?.Complete(new Scene.MapSceneInventory().Product(resources));
         return resources;
     }
 
@@ -310,6 +315,7 @@ internal static class MapEffectiveResolutionKernel
 
 internal sealed class MapEffectiveResolutionProduct
 {
+    internal Scene.MapPreparationReservation? PreparationOwnership { get; set; }
     internal MapEffectiveContext CapturedContext => _context;
     internal MapWaterSet? CapturedWater => _water;
     readonly MapEffectiveContext _context;

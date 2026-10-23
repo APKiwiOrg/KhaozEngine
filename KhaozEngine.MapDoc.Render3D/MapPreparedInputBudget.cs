@@ -24,7 +24,8 @@ internal sealed class MapPreparedInputBudget : IDisposable
         lock (_shared.Pieces)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            checked { _shared.Owners++; } return new(_shared);
+            checked { _shared.Owners++; }
+            return new(_shared);
         }
     }
     internal void Release() => Dispose();
@@ -46,46 +47,46 @@ internal sealed class MapPreparedInputBudget : IDisposable
         {
             lock (_gate)
             {
-            var parts = inventory.DistinctBy(i => i.Identity, ReferenceEqualityComparer.Instance).ToArray();
-            long newBytes = parts.Where(p => !_entries.ContainsKey(p.Identity)).Sum(p => p.Bytes);
-            if (workspace is not null && newBytes > workspace.Bytes)
-                throw new InvalidOperationException("Decoded inventory exceeds its admitted owned reservation.");
-            var leases = new List<IDisposable>();
-            try
-            {
-                foreach (var part in parts)
+                var parts = inventory.DistinctBy(i => i.Identity, ReferenceEqualityComparer.Instance).ToArray();
+                long newBytes = parts.Where(p => !_entries.ContainsKey(p.Identity)).Sum(p => p.Bytes);
+                if (workspace is not null && newBytes > workspace.Bytes)
+                    throw new InvalidOperationException("Decoded inventory exceeds its admitted owned reservation.");
+                var leases = new List<IDisposable>();
+                try
                 {
-                    if (!_entries.TryGetValue(part.Identity, out var entry))
+                    foreach (var part in parts)
                     {
-                        MapPreparationReservation retained;
-                        if (workspace is not null) retained = workspace.Transfer(part.Bytes);
-                        else
+                        if (!_entries.TryGetValue(part.Identity, out var entry))
                         {
-                            using var reserve = admission.Workspace(); reserve.Reserve(part.Bytes);
-                            retained = reserve.Transfer(part.Bytes);
+                            MapPreparationReservation retained;
+                            if (workspace is not null) retained = workspace.Transfer(part.Bytes);
+                            else
+                            {
+                                using var reserve = admission.Workspace(); reserve.Reserve(part.Bytes);
+                                retained = reserve.Transfer(part.Bytes);
+                            }
+                            entry = new(retained, admission.WindowIdentity);
+                            _entries.Add(part.Identity, entry);
                         }
-                        entry = new(retained, admission.WindowIdentity);
-                        _entries.Add(part.Identity, entry);
-                    }
-                    var window = admission.WindowIdentity;
-                    if (!entry.Views.TryGetValue(window, out var view))
-                    {
-                        view = new(window == entry.Origin ? null : admission.ReferenceWindow(entry.Reservation.Bytes, entry.Origin, entry.Views.Keys));
-                        entry.Views.Add(window, view);
-                    }
-                    view.Owners++; entry.Owners++;
-                    leases.Add(new PieceLease(() =>
-                    {
-                        lock (_gate)
+                        var window = admission.WindowIdentity;
+                        if (!entry.Views.TryGetValue(window, out var view))
                         {
-                        if (--view.Owners == 0) { view.Reference?.Dispose(); entry.Views.Remove(window); }
-                        if (--entry.Owners == 0) { entry.Reservation.Dispose(); _entries.Remove(part.Identity); }
+                            view = new(window == entry.Origin ? null : admission.ReferenceWindow(entry.Reservation.Bytes, entry.Origin, entry.Views.Keys));
+                            entry.Views.Add(window, view);
                         }
-                    }));
+                        view.Owners++; entry.Owners++;
+                        leases.Add(new PieceLease(() =>
+                        {
+                            lock (_gate)
+                            {
+                                if (--view.Owners == 0) { view.Reference?.Dispose(); entry.Views.Remove(window); }
+                                if (--entry.Owners == 0) { entry.Reservation.Dispose(); _entries.Remove(part.Identity); }
+                            }
+                        }));
+                    }
+                    return new(leases);
                 }
-                return new(leases);
-            }
-            catch { foreach (var lease in leases) lease.Dispose(); throw; }
+                catch { foreach (var lease in leases) lease.Dispose(); throw; }
             }
         }
     }

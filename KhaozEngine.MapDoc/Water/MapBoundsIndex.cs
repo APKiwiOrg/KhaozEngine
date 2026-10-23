@@ -26,6 +26,7 @@ internal sealed class MapBoundsIndex
 
     internal List<int> Overlapping(MapWaterPolygons.Bounds query, MapWaterWorkBudget? budget = null, MapSceneAdmission? admission = null)
     {
+        using var preparation = admission?.BeginPreparation();
         admission?.ReserveBytes(checked(128L + 64L * (1 + (int)Math.Log2(Math.Max(1, _boxes.Count)))));
         var result = new List<int>();
         if (_nodes.Count == 0) return result;
@@ -49,6 +50,7 @@ internal sealed class MapBoundsIndex
             }
         }
         result.Sort();
+        preparation?.Complete(checked(4L * result.Capacity));
         return result;
     }
 

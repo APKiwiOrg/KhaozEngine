@@ -9,6 +9,9 @@ namespace KhaozEngine.MapDoc.Surfaces;
 /// <summary>An immutable ruled wall strip with one owner and distinct face sides.</summary>
 public sealed class MapCompiledStrip
 {
+    internal Scene.MapPreparationReservation? PreparationOwnership { get; set; }
+    internal long InventoryBytes => checked(60L * ExactVertices.Count +
+        (long)System.Runtime.CompilerServices.Unsafe.SizeOf<MapCompiledFace>() * Faces.Count);
     public string StripId { get; }
     public MapSubmissionAnchor Anchor { get; }
     public IReadOnlyList<MapExactPoint> ExactVertices { get; }
@@ -40,6 +43,7 @@ public static class MapWallStripCompiler
         if (!Enum.IsDefined(strip.Facing)) throw new MapDocumentException("invalid strip facing");
         if (lower.Points.Count is < 2 or > 4097 || lower.Points.Count != upper.Points.Count)
             throw new MapDocumentException("wall strip vertex sequence mismatch");
+        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
         Scene.MapSceneAdmission.Current?.ReserveCompilation(checked(4L * (lower.Points.Count - 1)));
         try
         {
@@ -68,7 +72,9 @@ public static class MapWallStripCompiler
                 if (lower.Points[i + 1].Y != upper.Points[i + 1].Y) Emit(i, 0, i, i + 1, count + i + 1, normal);
                 if (lower.Points[i].Y != upper.Points[i].Y) Emit(i, 1, i, count + i + 1, count + i, normal);
             }
-            return new(strip.Id, anchor, vertices, offsets, faces);
+            var result = new MapCompiledStrip(strip.Id, anchor, vertices, offsets, faces);
+            result.PreparationOwnership = preparation?.Complete(result.InventoryBytes);
+            return result;
 
             void Emit(int segment, byte triangle, int a, int b, int c, Vector3 normal)
             {

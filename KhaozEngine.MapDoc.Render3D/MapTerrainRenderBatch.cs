@@ -25,8 +25,8 @@ internal sealed record MapTerrainPart(MapRenderKey Key, MapSubmissionAnchor Anch
 
 /// <summary>Immutable CPU terrain preparation. Keep the batch alive while using its registrations. Its input lease
 /// retains decoded material ownership independently of the caller's original lease. RetainedBytes charges owned
-/// geometry and provenance, InputRetainedBytes reports the shared decoded charge, and PreparationChargeBytes also
-/// includes all charged intermediate compilation work.</summary>
+/// geometry and provenance, InputRetainedBytes reports the shared decoded charge, and PreparationChargeBytes
+/// reports the retained ownership receipt after temporary compilation storage is released.</summary>
 public sealed class MapTerrainRenderBatch : IDisposable
 {
     const MapDrawChannels TerrainChannels = MapDrawChannels.Colour | MapDrawChannels.Shadow | MapDrawChannels.Camera |

@@ -12,6 +12,8 @@ internal static class MapSurfacePaintOverride
         ArgumentNullException.ThrowIfNull(surface);
         if (surface.Role != MapSurfaceRole.PaintOverride || surface.PaintTargetSurfaceId != target.Key.SurfaceId)
             throw new MapDocumentException("paint override must name its target surface");
+        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
+        Scene.MapSceneAdmission.Current?.ReserveBytes(checked(2L * target.InventoryBytes));
         // This temporary triangulation describes paint regions. No face from it is returned as support.
         MapCompiledPatch regions = MapSurfaceCompiler.Compile(surface with { Role = MapSurfaceRole.SupportFloor, PaintPriority = 0 }, patch);
         try
@@ -50,8 +52,10 @@ internal static class MapSurfacePaintOverride
                     throw new MapDocumentException("paint override presence boundary crosses physical face. Use MapPaintRegionSet for partial-face materials.");
                 paint[i] = selected ?? target.Paint[i];
             }
-            return new(target.Key, target.Role, target.Anchor, target.VertexIds, target.ExactVertices,
+            var result = new MapCompiledPatch(target.Key, target.Role, target.Anchor, target.VertexIds, target.ExactVertices,
                 target.Offsets, target.Faces, paint, target.LegacyFallbackCells);
+            result.PreparationOwnership = preparation?.Complete(result.InventoryBytes);
+            return result;
         }
         catch (MapExactOverflowException error)
         {

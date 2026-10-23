@@ -87,6 +87,7 @@ public static class NativeMapTerrain
 
     static List<MapTerrainCanonicalFace> Capture(MapScopedScene scene, MapSceneAdmission admission)
     {
+        using var preparation = admission.BeginPreparation();
         var result = new List<MapTerrainCanonicalFace>();
         if (!scene.Scope.Channels.HasFlag(MapSceneChannels.Terrain)) return result;
         var view = scene.SurfaceView;
@@ -130,7 +131,10 @@ public static class NativeMapTerrain
             }
             stripPreparation.Complete(checked(CanonicalRowBytes * (result.Count - start)));
         }
-        return result.OrderBy(f => f.Face.Key).ToList();
+        admission.ReserveBytes(checked(8L * result.Count));
+        var ordered = result.OrderBy(f => f.Face.Key).ToList();
+        preparation.Complete(checked(CanonicalRowBytes * ordered.Count));
+        return ordered;
     }
 
     static MapCompiledPatch Replace(MapCompiledPatch previous, MapCompiledPatch next)

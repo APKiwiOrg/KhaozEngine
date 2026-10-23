@@ -17,6 +17,7 @@ public static class MapPartialPaintCompiler
     {
         ArgumentNullException.ThrowIfNull(view);
         using var admitted = view.Scope.SceneAdmission?.Enter();
+        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
         ArgumentException.ThrowIfNullOrWhiteSpace(targetSurfaceId);
         var budget = limits ?? new();
         if (view.Capacity is { } capacity)
@@ -33,7 +34,12 @@ public static class MapPartialPaintCompiler
             .OrderByDescending(s => s.PaintPriority).ThenBy(s => s.Id, StringComparer.Ordinal).ToArray();
         foreach (var surface in view.Surfaces) MapSurfaceJson.RequirePaintPriority(surface);
         if (paints.Length == 0) return new([], Digest([]));
-        try { return CompileCore(view, target, paints, budget); }
+        try
+        {
+            var result = CompileCore(view, target, paints, budget);
+            result.PreparationOwnership = preparation?.Complete(checked(128L + result.Regions.Sum(r => 128L + 48L * r.Polygon.Count)));
+            return result;
+        }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         { throw new MapDocumentException("NotRepresentable: paint intersection cannot be emitted exactly. No regions were published.", error); }
     }

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Immutable;
-using System.IO;
 using System.Text.Json;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.D3D11.Internal;
@@ -44,7 +43,7 @@ public sealed partial class RendererPerfCompilerProtocolTests
         int rootIncrement = RendererPerfRawJson.Serialize(filled, RendererPerfReportJson.MaximumBytes).Length
             - RendererPerfRawJson.Serialize(root, RendererPerfReportJson.MaximumBytes).Length;
         Assert.InRange(rootIncrement, 1, charged);
-        File.AppendAllText("/tmp/khaozengine-renderer-cold-task1/boundary-sizes.jsonl", JsonSerializer.Serialize(new { Backend = "d3d11", independent, charged, rootIncrement, Maximum = reservation.MaximumEncodedBytes }) + "\n");
+        _output.WriteLine(JsonSerializer.Serialize(new { Backend = "d3d11", independent, charged, rootIncrement, Maximum = reservation.MaximumEncodedBytes }));
     }
 
     [Fact]

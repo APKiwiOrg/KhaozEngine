@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Immutable;
-using System.IO;
 using System.Linq;
 using System.Text.Json;
 using KhaozEngine.Gpu;
@@ -74,8 +73,7 @@ public sealed partial class RendererPerfCompilerProtocolTests
         };
         int refusalBytes = RendererPerfCompilerReadContract.EncodedResultBytes(refused);
         Assert.InRange(refusalBytes, 1, maximum);
-        File.AppendAllText("/tmp/khaozengine-renderer-cold-task1/boundary-sizes.jsonl",
-            JsonSerializer.Serialize(new { Backend = "vulkan", total, maximum, independent, charged, rootIncrement, refusalBytes }) + "\n");
+        _output.WriteLine(JsonSerializer.Serialize(new { Backend = "vulkan", total, maximum, independent, charged, rootIncrement, refusalBytes }));
     }
 
     [Fact]

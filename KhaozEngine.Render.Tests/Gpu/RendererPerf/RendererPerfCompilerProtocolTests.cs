@@ -5,11 +5,16 @@ using System.Text;
 using System.Text.Json.Nodes;
 using KhaozEngine.Gpu;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
 public sealed partial class RendererPerfCompilerProtocolTests
 {
+    readonly ITestOutputHelper _output;
+
+    public RendererPerfCompilerProtocolTests(ITestOutputHelper output) => _output = output;
+
     [Fact]
     public void Typed_availability_preserves_valid_companions()
     {

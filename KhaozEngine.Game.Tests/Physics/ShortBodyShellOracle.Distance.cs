@@ -9,12 +9,13 @@ internal static partial class ShortBodyShellOracle
     // Meridian reduction is independent of the production feature/KKT construction. A full
     // Cartesian box has independent height and radial intervals. Distance decreases with radial
     // approach to the axis. Below the shoulder it decreases with height toward that shoulder.
-    // Unsupported snapshots refuse rather than substituting their bounding box.
+    // Other installed convex snapshots use independently certified support and attained bounds.
     internal static ConvexOracleEvent Entry(in ConvexQueryShape shape, Pose pose, ConvexOracleTarget target, Vector3 displacement)
     {
         Validate(shape.Radius, shape.LowerY, shape.RingY, shape.UpperY, shape.Margin);
         if (pose.Orientation != Quaternion.Identity || displacement != Vector3.Zero ||
-            target.Vertices.Length != 8 || target.Faces.Length != 6) return default;
+            target.Vertices.Length < 4 || target.Faces.Length < 4) return default;
+        if (target.Vertices.Length != 8 || target.Faces.Length != 6) return GeneralEntry(shape, pose, target);
         R Copy(InstalledPoseOracle.R r) => new(r.Numerator, r.Denominator);
         R[] low = new R[3], high = new R[3];
         var points = new R[8][];
@@ -34,19 +35,27 @@ internal static partial class ShortBodyShellOracle
             int mask = 0;
             for (int j = 0; j < 3; j++)
                 if (p[j].CompareTo(high[j]) == 0) mask |= 1 << j;
-                else if (p[j].CompareTo(low[j]) != 0) return default;
-            if ((corners & (1 << mask)) != 0) return default;
+                else if (p[j].CompareTo(low[j]) != 0) return GeneralEntry(shape, pose, target);
+            if ((corners & (1 << mask)) != 0) return GeneralEntry(shape, pose, target);
             corners |= 1 << mask;
         }
-        if (corners != 255) return default;
+        if (corners != 255) return GeneralEntry(shape, pose, target);
         R Near(R a, R b) => a.N.Sign > 0 ? a : b.N.Sign < 0 ? b : R.Zero;
         R x = Near(low[0], high[0]), z = Near(low[2], high[2]);
-        R radialSquare = x * x + z * z;
         R y = R.Max(low[1], R.Min(high[1], R.From(shape.RingY)));
+        I best = MeridianDistance(shape, x, y, z);
+        R margin = R.From(shape.Margin);
+        var bounds = Outward(new(R.Max(R.Zero, best.Lower - margin), R.Max(R.Zero, best.Upper - margin)));
+        return new(true, bounds.Lower, bounds.Upper);
+    }
+
+    static I MeridianDistance(in ConvexQueryShape shape, R x, R y, R z)
+    {
+        R radialSquare = x * x + z * z;
         R radius = R.From(shape.Radius), lower = R.From(shape.LowerY), ring = R.From(shape.RingY), upper = R.From(shape.UpperY);
         R allowed = y.CompareTo(ring) < 0 ? radius * (y - lower) / (ring - lower) : radius;
         if (y.CompareTo(lower) >= 0 && y.CompareTo(upper) <= 0 && radialSquare.CompareTo(allowed * allowed) <= 0)
-            return new(true, 0, 0);
+            return I.Point(R.Zero);
         I radial = Root(radialSquare), yi = I.Point(y);
         I best = default;
         (R X, R Y)[] polygon = [(R.Zero, lower), (radius, ring), (radius, upper), (R.Zero, upper)];
@@ -61,16 +70,14 @@ internal static partial class ShortBodyShellOracle
             I distance = Sqrt(Square(rx) + Square(ry));
             best = i == 0 ? distance : new(R.Min(best.Lower, distance.Lower), R.Min(best.Upper, distance.Upper));
         }
-        R margin = R.From(shape.Margin);
-        var bounds = Outward(new(R.Max(R.Zero, best.Lower - margin), R.Max(R.Zero, best.Upper - margin)));
-        return new(true, bounds.Lower, bounds.Upper);
+        return best;
     }
 
     // Exact membership for represented witnesses. This intentionally does not repair a rounded
     // off-surface witness or accept a near-zero normal-cone residual with an epsilon.
     internal static bool NormalConeContains(in ConvexQueryShape shape, Vector3 queryWitness, Vector3 queryOutwardNormal)
     {
-        if (shape.Margin != 0) return false;
+        if (shape.Margin != 0) return MarginNormalConeContains(shape, queryWitness, queryOutwardNormal);
         R x = R.From(queryWitness.X), y = R.From(queryWitness.Y), z = R.From(queryWitness.Z);
         R nx = R.From(queryOutwardNormal.X), ny = R.From(queryOutwardNormal.Y), nz = R.From(queryOutwardNormal.Z);
         R radius = R.From(shape.Radius), lower = R.From(shape.LowerY), ring = R.From(shape.RingY), upper = R.From(shape.UpperY);

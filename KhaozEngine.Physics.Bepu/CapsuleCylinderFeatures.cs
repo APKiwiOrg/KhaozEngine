@@ -39,14 +39,8 @@ internal static class CapsuleCylinderFeatures
         FeaturePoint p = f.Point(t, s);
         double px = Mid(p.X), py = Mid(p.Y), pz = Mid(p.Z);
         double ex = Mid(f.CylinderAxis.X), ey = Mid(f.CylinderAxis.Y), ez = Mid(f.CylinderAxis.Z);
-        double axial = px * ex + py * ey + pz * ez;
-        double x = px - axial * ex, y = py - axial * ey, z = pz - axial * ez;
-        double radial = Math.Sqrt(x * x + y * y + z * z);
-        double scale = radial > f.Radius ? f.Radius / radial : 1;
-        double cap = Math.Clamp(axial, -f.HalfLength, f.HalfLength);
-        x = px - (x * scale + ex * cap);
-        y = py - (y * scale + ey * cap);
-        z = pz - (z * scale + ez * cap);
+        CircularProjection.Normal<double, CircularDoubleArithmetic>(px, py, pz, ex, ey, ez, f.Radius, f.HalfLength,
+            out double x, out double y, out double z, out _);
         normal = new(FeatureNumber.Exact(x), FeatureNumber.Exact(y), FeatureNumber.Exact(z));
         derivative = x * Mid(f.QueryAxis.X) + y * Mid(f.QueryAxis.Y) + z * Mid(f.QueryAxis.Z);
         return normal.IsResolved && double.IsFinite(derivative);

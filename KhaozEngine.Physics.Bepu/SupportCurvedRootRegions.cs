@@ -16,12 +16,17 @@ internal interface ISupportCurvedRootFunction
 internal sealed class SupportCurvedRootRegions
 {
     readonly SupportCurvedWork _work;
-    internal SupportCurvedRootRegions(SupportCurvedWork work) => _work = work;
+    internal SupportCurvedRootRegions(SupportCurvedWork work, int maximumLiveCells = MaximumLiveCells)
+    {
+        if (maximumLiveCells < 1 || maximumLiveCells > MaximumLiveCells) throw new ArgumentOutOfRangeException(nameof(maximumLiveCells));
+        _work = work;
+        _live = new Cell[maximumLiveCells]; _next = new Cell[maximumLiveCells];
+    }
 
     internal const int MaximumLiveCells = 1024;
     internal const int MaximumTerminalCells = 12;
     readonly record struct Cell(double Low, double High);
-    Cell[] _live = new Cell[MaximumLiveCells], _next = new Cell[MaximumLiveCells];
+    Cell[] _live, _next;
     readonly GeometryInterval[] _roots = new GeometryInterval[MaximumTerminalCells];
     readonly GeometryInterval[] _coefficients = new GeometryInterval[5];
     readonly Number[] _sourceCoefficients = new Number[5];
@@ -139,7 +144,7 @@ internal sealed class SupportCurvedRootRegions
                 }
                 if (_work.Failed) return Refuse();
                 if (!(middle > cell.Low && middle < cell.High)) return Refuse();
-                if (next + 2 > MaximumLiveCells)
+                if (next + 2 > _next.Length)
                 {
                     LiveHighWater = Math.Max(LiveHighWater, next);
                     _work.ObserveStorage(LiveHighWater, 0);

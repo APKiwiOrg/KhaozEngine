@@ -32,15 +32,25 @@ internal static class ConvexDistanceEncoding
             }
         }
         else query = target;
+        return TryEnclosed(request, query, target, normal, distance,
+            overlap ? ConvexShellFeature.Interior : ConvexPlanarFeatures.Classify(request.Shape, q), targetFeature, localFeatureId,
+            grownOverlap, out evidence);
+    }
+
+    internal static bool TryEnclosed(in ConvexQueryRequest request, GeometryVector query, GeometryVector target,
+        GeometryVector normal, GeometryInterval distance, ConvexShellFeature queryFeature, ConvexTargetFeature targetFeature,
+        int localFeatureId, bool overlap, out ConvexLeafEvidence evidence)
+    {
+        evidence = default;
         GeometryVector feet = P.From(request.Pose.Position).Bounds;
         query = Translate(query, feet); target = Translate(target, feet);
         if (!distance.IsResolved || !TryEncode(query, out var queryWitness, out double queryError) || !TryEncode(target, out var targetWitness, out double targetError) ||
             !TryEncode(normal, out var towardTarget, out _)) return false;
         float lower = Down(Math.Max(0, distance.Lower)), upper = Up(Math.Max(0, distance.Upper));
         if (!float.IsFinite(lower) || !float.IsFinite(upper) || GeometryInterval.Exact((double)upper - lower).Add(GeometryInterval.Exact(queryError)).Add(GeometryInterval.Exact(targetError)).Upper > 0.001f ||
-            (!grownOverlap && towardTarget == Vector3.Zero)) return false;
+            (!overlap && towardTarget == Vector3.Zero)) return false;
         evidence = new(true, true, true, lower, upper, queryWitness, targetWitness, -towardTarget,
-            overlap ? ConvexShellFeature.Interior : ConvexPlanarFeatures.Classify(request.Shape, q), targetFeature, localFeatureId,
+            queryFeature, targetFeature, localFeatureId,
             query, target, normal);
         return true;
     }

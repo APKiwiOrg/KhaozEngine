@@ -4,7 +4,7 @@ using P = KhaozEngine.Physics.Bepu.ConvexExactPoint;
 namespace KhaozEngine.Physics.Bepu;
 
 /// <summary>Finite line strata. Quadratic cone stationarity retains its original radical sign.
-/// A general oblique edge/circle stationary quartic is not constructed here and cannot certify.</summary>
+/// Oblique circular strata use the shared disc projection and certified root-region producer.</summary>
 internal static class ConvexPlanarEdges
 {
     internal static bool TryEvaluate(in ConvexQueryRequest request, in InstalledSweepLeaf leaf, P a, P v,

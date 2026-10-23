@@ -31,7 +31,7 @@ internal static class ConvexFeatureKernel
                 foreach (Q c in new[] { p.X, p.Y, p.Z })
                     if ((Q.From(2048) - c).Sign < 0 || (Q.From(2048) + c).Sign < 0) return false;
             }
-            return TryDistance(request, represented, ref work, out evidence);
+            return TryDistance(request, represented, ref work, scratch, out evidence);
         }
         catch (ConvexExactRefusalException)
         {
@@ -41,7 +41,7 @@ internal static class ConvexFeatureKernel
     }
 
     static bool TryDistance(in ConvexQueryRequest request, in InstalledSweepLeaf leaf,
-        ref ConvexQueryWork work, out ConvexLeafEvidence evidence)
+        ref ConvexQueryWork work, ConvexQueryScratch scratch, out ConvexLeafEvidence evidence)
     {
         evidence = default;
         var g = leaf.Geometry;
@@ -61,6 +61,17 @@ internal static class ConvexFeatureKernel
                     ConvexDistanceEncoding.TryCreate(request, t, t, ConvexTargetFeature.Face, face, true, out evidence)) return true;
                 if (TryPair(request, leaf, q, t, ConvexTargetFeature.Face, face, ref work, out evidence)) return true;
             }
+            // A plane section wholly inside a finite face has no edge crossing. The segment
+            // between opposing attained supports lies in the shell and crosses every such plane.
+            P opposite = Support(request.Shape, n * Q.From(-1)), across = q - opposite;
+            Q span = P.Dot(across, n);
+            if (span.Sign <= 0) return false;
+            Q fraction = P.Dot(a - opposite, n) / span;
+            if (fraction.Sign < 0 || (Q.From(1) - fraction).Sign < 0) continue;
+            P section = opposite + across * fraction;
+            if (ConvexPlanarFeatures.OnFace(leaf, face, request.Pose.Position, section) &&
+                ConvexPlanarFeatures.Member(request.Shape, section) &&
+                ConvexDistanceEncoding.TryCreate(request, section, section, ConvexTargetFeature.Face, face, true, out evidence)) return true;
         }
         for (int vertex = 0; vertex < g.VertexCount; vertex++)
         {
@@ -75,6 +86,8 @@ internal static class ConvexFeatureKernel
             P a = ConvexPlanarFeatures.Vertex(leaf, ends.A, request.Pose.Position);
             P v = ConvexPlanarFeatures.Vertex(leaf, ends.B, request.Pose.Position) - a;
             if (ConvexPlanarEdges.TryEvaluate(request, leaf, a, v, g.FaceCount + edge, ref work, out evidence)) return true;
+            if (work.Exhausted) return false;
+            if (scratch.CircularEdges.TryEvaluate(request, leaf, a, v, g.FaceCount + edge, ref work, out evidence)) return true;
             if (work.Exhausted) return false;
         }
         // Containment has an attained common point even when no target boundary meets the shell.

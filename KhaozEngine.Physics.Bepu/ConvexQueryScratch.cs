@@ -17,6 +17,7 @@ internal sealed class ConvexQueryScratch
     internal ConvexPolynomialWorkspace Polynomials { get; }
     internal ConvexRootCell[] RootCells { get; } = new ConvexRootCell[ConvexQueryPolicy.MaximumDepth + 1];
     internal Vector3[] ProposalSimplex { get; } = new Vector3[4];
+    internal ConvexCircularEdges CircularEdges { get; } = new();
     // Callers derive a fraction width from the actual path and the existing spatial encoding budget.
     internal double MaximumFractionWidth { get; set; } = 0.001f / 4d;
 }

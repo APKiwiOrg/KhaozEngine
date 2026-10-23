@@ -1,9 +1,10 @@
 # Short-body shell verification
 
-Task 1 and partial Task 2 of the [short-body shell plan](../superpowers/plans/2026-10-19-short-body-shell.md).
+Task 1 and Task 2a of the [short-body shell plan](../superpowers/plans/2026-10-19-short-body-shell.md).
 Requirements are [SB-2 to SB-4 and acceptance group A](../design/CONTACT-SHORT-BODY-SHELL-2026-10-19.md).
-This record covers value contracts, the independent shape oracle and partial root infrastructure. Backend query certification,
-controller adoption, navigation, the full suite and release acceptance remain later tasks.
+This record covers value contracts, independent oracles and finite planar Distance certificates.
+Sweep, Contacts, Penetration, selected-world traversal, controller adoption, navigation, the full
+suite and release acceptance remain later tasks. Earlier partial checkpoints below are historical.
 
 ## Task 1 requirements and tests
 
@@ -227,8 +228,8 @@ Task 2 source/test files and this verification record are staged. No capsule sou
 
 ## Task 2a partial planar distance construction
 
-This section records an incomplete 2a implementation. General oblique edge/circle stationary
-quartics and complete degenerate feature coverage remain required before Task 2a acceptance.
+This section records the historical incomplete 2a implementation at 447e3d8a5. The continuation
+below supplies the remaining circular edge construction, coverage lemma and oracle comparisons.
 A missing or unproved candidate returns false with default evidence. It never proves Clear.
 Sweep, Contacts and Penetration requests also return false with default evidence until 2b/2c.
 
@@ -330,3 +331,241 @@ Exit 0. All seven pinned degree-1 normalized file baselines passed with zero fai
 This run rebuilt the final Bepu source. No existing capsule, installed-geometry, locomotion,
 movement or navigation baseline source changed. No warnings or errors occurred in successful
 Release compilation. No full suite, stress run, timing proof, world bake or live run was used.
+
+## Task 2a continuation under SS-R8
+
+The continuation starts from clean feature/short-body-shell at 447e3d8a5. It reuses existing
+certified machinery instead of constructing another circle/line elimination polynomial.
+
+- CircularProjection factors the exact operation graph from CapsuleCylinderFeatures.Evaluate.
+  The existing capsule proposal calls its binary64 policy with the same operand order, radial
+  clamp and axial clamp. Exact quadratic and outward interval policies evaluate that same
+  projection for the new producer. Zero half length is the closed circular disc.
+- ConvexCircularEdges uses SupportCurvedRootRegions through its existing
+  ISupportCurvedRootFunction interface. It retains the original unsquared derivative. No
+  new quartic coefficients, squared-root sign conventions or copied boundary algebra are added.
+- SupportCurvedWork optionally admits each event through the enclosing primitive account.
+  Existing support callers have no callback. Their work policy and arithmetic are unchanged.
+  Root and refinement events charge shell cells, and evaluations charge shell features.
+- SupportCurvedRootRegions accepts a lower live-cell capacity. Its default remains 1024.
+  The shell uses its existing MaximumDepth + 1 pending-cell capacity. No ceiling increases.
+  The 4096-bit exact ceiling, sticky exhaustion and default-evidence refusal remain enforced.
+
+### Certified circular edge stationarity
+
+Let t(s) = a + s*v, 0 <= s <= 1, and let D be the closed radius-R disc at height H.
+The capsule projection supplies n(s) = t(s) - projection_D(t(s)). Define
+f(s) = dot(n(s), v), the derivative of half the squared distance to D.
+The projection onto a closed convex disc is firmly nonexpansive. Its horizontal residual is
+monotone and 1-Lipschitz, while its vertical residual is exactly t.Y-H. Consequently every
+one-sided slope of f lies between v.Y squared and dot(v,v). For v.Y != 0, f is strictly
+increasing on the whole closed segment, including the disc boundary and the axis. It has at
+most one zero. Exact endpoint signs establish absence or existence, and the existing root
+regions preserve that existence bracket during interval Newton refinement. The original
+radical sign is evaluated exactly at dyadic endpoints with the quadratic arithmetic policy.
+A double root of a squared elimination equation therefore cannot disappear through a missed
+sign crossing. The unsquared monotone function is the equation actually certified.
+
+At the enclosed root, t is attained on the original installed edge, q is attained on the
+entire circle when radial(t) > R, and n is their actual difference. The root identity gives
+dot(n,v) = 0 exactly, rather than a near-zero sampled residual. For the rim, n.Y >= 0 proves
+the shell normal cone. For the shoulder, n.Y <= 0 and
+(C-S)*n.Y + R*(radial(t)-R) >= 0 prove its cone. These are closed supporting inequalities
+for all three shell generators. Each target vertex satisfies dot(vertex-a,n) >= 0. Offsets
+parallel to v have exact zero residual by the root identity, including both edge endpoints.
+All other inequalities use outward enclosures. An undecided sign refuses the candidate.
+These two normal cones prove the global distance and the dual separating support plane.
+No root midpoint or point sampled around the circumference authorizes publication.
+
+Horizontal edges use the existing exact radial stationary parameter. Roots exactly at a
+dyadic endpoint also go through the exact point/KKT producer. Head-disc, cone-generator and
+cylinder-generator constructions own the corresponding closed ties. The encoded witness
+bounds enclose the attained root pair. Both witness encoding errors and the complete distance
+bracket still share the existing 0.001 m evidence budget.
+
+### Closed feature-pair completeness lemma
+
+Let K be the represented closed cone-cylinder and T the convex hull of the installed finite
+planar target's represented vertices. Both are compact convex solids. A positive minimum is
+attained at q in K and t in T with n = t-q. Global optimality is equivalent to n belonging
+to K's outward normal cone at q and -n belonging to T's outward normal cone at t.
+Thus it suffices to find one attained pair with these two support inequalities. The kernel
+can return the first such pair. Rejected proposals never establish a minimum or separation.
+
+The following table enumerates all six closed shell features against each target stratum.
+Feature boundaries are included in every incident construction, not discarded as open domains.
+
+| Closed query feature | Finite target face | Finite target edge | Target vertex |
+| --- | --- | --- | --- |
+| Apex | Axial support and plane projection, or incident boundary stratum | Closed projection onto the segment | Attained apex and exact support inequalities |
+| Lower cone | Exposed generator segment, with boundary reduction below | Original unsquared cone stationarity and its quadratic roots | Exact meridian projection onto the closed generator |
+| Shoulder circle | Continuous radial support in the face normal | Certified disc root for oblique edges, radial stationarity for horizontal edges | Exact radial projection at C |
+| Cylindrical side | Exposed vertical generator, with boundary reduction below | Radial stationarity plus closed C/T height crossings | Exact radial projection at the target height |
+| Head disc | Axial exposed disc, with boundary reduction below | Horizontal radial minimum inside the disc, or closed head-height intersection | Vertical projection inside the full disc |
+| Head rim | Continuous radial support in the face normal | Certified disc root for oblique edges, radial stationarity for horizontal edges | Exact radial projection at T |
+
+For a target vertex these are the complete point-to-meridian polygon projections. Their
+normal-cone predicates select the closed feasible projection without averaging seam normals.
+For a target edge an interior minimizing parameter has zero derivative. Apex projection,
+cone stationarity, cylinder radial stationarity, head-disc projection and the two certified
+disc roots exhaust the table. Segment endpoints reduce to target vertices. A constant cone
+stationary equation gives a flat minimizing interval. If an endpoint is in that interval its
+vertex certificate suffices. If both interval boundaries lie inside the edge, the closed apex
+projection is attained. The circular/cone or circular/cylinder ties also belong to the exact
+incident cone or cylinder construction. Axis-parallel edges reduce to radial constancy and
+the closed height crossings. An edge through the apex retains its exact closed intersection.
+
+For a target face, its inward normal exposes either one of the table's unique query points,
+a cone generator, a vertical generator or the head disc. A unique support point has one
+orthogonal projection onto the face plane, checked against the original finite polygon.
+If the chosen representative of an exposed generator misses the finite face, any nonempty
+intersection of their projected closed domains meets a polygon edge unless the whole generator
+is inside the polygon, in which case its midpoint is inside. Those edge or vertex pairs are
+already enumerated. For the head disc, either the projected centre is inside, a polygon vertex
+is in the disc, or a polygon edge crosses it. The radial segment minimum detects the last
+case. A target normal on a face/edge boundary has this same higher-dimensional face
+certificate, so an uncertain interval residual cannot require accepting a sampled equality.
+
+Zero distance needs a separate intersection argument. Target vertices inside K are attained
+common points. Target edges meet the cone/cylinder through closed quadratic intersections or
+the head/apex through closed height crossings, including repeated roots and tangencies.
+If no target edge meets K but a face meets it, the entire convex plane section of K lies
+inside that finite face. The segment between K's opposing attained supports crosses every
+plane between their support values. Its exact closed intersection with this plane is in K,
+and finite-polygon membership proves it is in T. This is the new plane-section candidate.
+If the two boundaries never meet, one solid contains the other. Target containment is detected
+by its vertices, and shell containment by an admitted axial point. This exhausts overlap.
+
+For a nonzero Margin m, the distance is max(0, distance(K,T)-m). When positive, moving q by
+m*n/|n| gives the attained grown witness with the same supporting normal. Otherwise t itself
+is an attained common point. This uses the exact admitted margin, not an additional skin.
+
+The lemma is about candidate coverage and certified answers. Existing finite arithmetic,
+work, installed-source and encoded-error limits can still refuse atomically. It does not
+promise success after an exhausted account or an undecided exact/interval predicate. Sweep,
+Contacts and Penetration remain atomic refusal under SS-R7, and world traversal remains Task 3.
+
+### Independent oracle coverage
+
+The Cartesian reduction remains unchanged in meaning. GeneralEntry handles arbitrary installed
+convex snapshots with their actual represented vertices and face topology. An independent
+numeric GJK proposes target barycentrics and separating directions only. Rational, normalized,
+nonnegative barycentrics give an attained target point. Its independently computed exact
+meridian-distance upper bound supplies the primal certificate. Exact continuous three-generator
+support and the minimum over all target vertices supply the dual lower bound. Installed face
+normals provide additional exact separating directions when the numeric simplex converges
+slowly at a broad face. Neither endpoint calls production support, feature, transform or root
+code. The oracle finishes when both endpoints fit the same outward binary32 encoding bracket,
+with no new distance tolerance. A failed proposal returns unavailable evidence. No AABB or
+sampled/inscribed circle stands in for the installed shape.
+
+All eighteen feature-pair cells in the preceding table have independent distance controls in
+ConvexFeaturePairCoverageTests. Their observed cell/feature maxima are diagnostic observations,
+never pinned expectations.
+
+| Query feature | Face cells/features | Edge cells/features | Vertex cells/features |
+| --- | --- | --- | --- |
+| Apex | 6/22 | 94/131 | 22/42 |
+| Lower cone | 2/18 | 94/134 | 24/44 |
+| Shoulder circle | 2/18 | 95/136 | 25/45 |
+| Cylindrical side | 2/18 | 70/95 | 12/28 |
+| Head disc | 4/20 | 71/99 | 9/25 |
+| Head rim | 5/21 | 75/103 | 13/29 |
+
+ConvexGeneralPlanarTests additionally checks both duck and cow at six regimes against boxes
+and non-box tetrahedral hulls, each rotated about the oblique (1,2,3) axis at two represented
+angles. These are 48 independent installed-target comparisons. ConvexCircularEdgeTests checks
+shoulder/rim edge roots for boxes and hulls with both base margin and the existing 0.001 m
+margin. The original much thinner oblique box regression now produces certified evidence too.
+
+The four requested degenerate controls cover an edge parallel to the axis, an edge through
+the apex, a face containing the rim plane and coincident shoulder tangency. A fifth control
+reproduces an oblique face section missed by all three axial samples and both orthogonal
+support projections. Its failing kernel assertion precedes the exact section construction.
+The lowered-work controls derive their limits from one same-run probe. They prove sticky
+root/refinement exhaustion and clean scratch reuse without CPU- or schedule-dependent pins.
+
+NormalConeContains now handles Margin by exactly subtracting m*n/|n| in an independent
+quadratic field, proving membership of the resulting base witness and all three complete
+support inequalities. Zero normals require exact grown membership from closed meridian
+features. Exact Pythagorean normal fixtures cover apex, cone, shoulder, cylinder, head and
+rim, including nonunit normals. Adjacent-float and wrong-cone inputs are rejected without
+repairing the supplied witness. Arbitrary irrational production witnesses remain interval
+encodings. This exact Vector3 oracle does not reinterpret rounded encodings as exact surfaces.
+
+### Continuation verification
+
+Every build/test command is synchronous through build-slot, one at a time, in Release.
+Logs are under /tmp/khaozengine-short-shell/. No full suite, timing/load run, live run,
+world bake, push, merge, branch change, reviewer or subagent dispatch was performed.
+
+The focused command form is below. Every row lists its actual label, selection and exit.
+The selection is passed as FullyQualifiedName~ followed by the listed test class names,
+joined with |FullyQualifiedName~. Test-only rows add -p:BuildProjectReferences=false.
+
+```bash
+build-slot --label LABEL -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-restore --filter 'SELECTION'
+```
+
+| Label and log suffix | Selection | Test-only | Exit and result |
+| --- | --- | --- | --- |
+| short-shell-2a-circular-red, continuation-circular-red.log | ConvexCircularEdgeTests | No | 1, two kernel refusals and two too-thin hull installation fixture errors |
+| short-shell-2a-circular-red-fixed, continuation-circular-red-fixed.log | ConvexCircularEdgeTests | Yes | 1, four intended kernel refusals after correcting hull thickness |
+| short-shell-2a-circular-first, continuation-circular-first.log | ConvexCircularEdgeTests | No | 1, four intended unavailable-oracle assertions after the kernel certified the roots |
+| short-shell-2a-oracle-first, continuation-oracle-first.log | ConvexCircularEdgeTests, ConvexPlanarDistanceTests | Yes | 0, 18 passed |
+| short-shell-2a-general-margin-red, continuation-general-margin-red.log | ConvexGeneralPlanarTests, ConvexMarginOracleTests | Yes | 1, five passed and three failed, two margin refusals and one fixture assertion incorrectly excluding a valid shoulder tie |
+| short-shell-2a-general-margin-green, continuation-general-margin-green.log | ConvexGeneralPlanarTests, ConvexMarginOracleTests, ConvexCircularEdgeTests, ConvexPlanarDistanceTests | No | 0, 26 passed |
+| short-shell-2a-face-section-red, continuation-face-section-red.log | FaceSectionOverlapDoesNotRequireAnAxisSampleOrSupportProjection | Yes | 1, one intended kernel refusal |
+| short-shell-2a-face-section-green, continuation-face-section-green.log | FaceSectionOverlapDoesNotRequireAnAxisSampleOrSupportProjection | No | 0, one passed |
+| short-shell-2a-pair-matrix, continuation-pair-matrix.log | ConvexFeaturePairCoverageTests, ConvexGeneralPlanarTests, ConvexMarginOracleTests, ConvexCircularEdgeTests, ConvexPlanarDistanceTests | Yes | 1, 27 passed and the shoulder/face oracle exhausted its proposal iterations |
+| short-shell-2a-oracle-diagnostic, continuation-oracle-diagnostic.log | ConvexFeaturePairCoverageTests | Yes | 1, temporary diagnostics confirmed proposal exhaustion, then were removed |
+| short-shell-2a-pair-matrix-green, continuation-pair-matrix-green.log | ConvexFeaturePairCoverageTests, ConvexCircularEdgeTests | Yes | 0, nine passed, with eight base/margin circular rows and all eighteen feature pairs |
+
+The three matrix/diagnostic commands enable detailed console logging. The final
+focused Game command below rebuilds all relevant references and includes SS-R2's capsule shell,
+general sweep and captured stair controls, curved support controls and every new planar test.
+
+```bash
+build-slot --label short-shell-2a-final-game --heavy -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-restore --filter 'FullyQualifiedName~ConvexPlanarDistanceTests|FullyQualifiedName~ConvexCircularEdgeTests|FullyQualifiedName~ConvexGeneralPlanarTests|FullyQualifiedName~ConvexMarginOracleTests|FullyQualifiedName~ConvexFeaturePairCoverageTests|FullyQualifiedName~ConvexFeatureKernelTests|FullyQualifiedName~ConvexQueryContractTests|FullyQualifiedName~ShellGeometryTests|FullyQualifiedName~GroundCoreTests|FullyQualifiedName~CapturedStairExplicitSweepTests|FullyQualifiedName~BepuCertifiedCapsuleSweepTests|FullyQualifiedName~CertifiedRotatedBoxSweepTests|FullyQualifiedName~CertifiedHullSweepTests|FullyQualifiedName~CertifiedCurvedSweep|FullyQualifiedName~CertifiedCompoundSweepTests|FullyQualifiedName~CertifiedMeshSweepTests|FullyQualifiedName~CapsuleSweepValueTests|FullyQualifiedName~SupportNeighborhoodCurvedTests|FullyQualifiedName~SupportCurvedWorkTests|FullyQualifiedName~SupportDiscEdgeTests|FullyQualifiedName~ExactCurvedInstallControlTests|FullyQualifiedName~InstalledSupportPoseTests' --logger 'console;verbosity=detailed'
+```
+
+Exit 0. All 382 passed, zero failed or skipped. Log continuation-game-final.log. Release
+compilation reported no warnings or errors. Existing capsule and support tests are unchanged.
+The capsule projection extraction preserves the original binary64 operation graph. No
+installed geometry, represented transform, locomotion or movement source changes are present.
+
+The final support-footprint selection exercises the shared tilted curved root and boundary
+families, certified footprint roles and bit-exact curved proof reuse. It uses the already
+rebuilt Game assembly, with no repeated selection from the preceding focused Game run.
+
+```bash
+build-slot --label short-shell-2a-final-footprint --heavy -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~SupportFootprintTests|FullyQualifiedName~SupportFootprintProofReuseGeometryTests|FullyQualifiedName~SupportFootprintProofReuseWorkTests' --logger 'console;verbosity=detailed'
+```
+
+Exit 0. All 741 passed, zero failed or skipped. Log continuation-footprint-final.log. This
+also selects the FootSupportFootprintTests name through the requested substring. Existing
+curved support tests, captured support fixtures and expected bits are unchanged.
+
+```bash
+build-slot --label short-shell-2a-final-navigation --heavy -- dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release --no-restore --filter 'FullyQualifiedName~ContactNavigationBaselineTests.SerialBakeMatchesNormalizedFullFileBaseline' --logger 'console;verbosity=detailed'
+```
+
+Exit 0. All seven pinned normalized full-file navigation baselines passed, zero failed or
+skipped. Log continuation-navigation-final.log. BuildFixture uses null execution and
+NavBakeExecution.Degree returns 1. Every baseline hash and all movement source remain unchanged.
+Release compilation has no warnings or errors. The independent 1 mm arrival ball, existing
+skin, roof and footprint protections and raw identity remain unchanged.
+
+Self-review checked the complete source diff, root existence and closed-domain reduction,
+attained witnesses, both support cones, unchanged capsule projection operation order, optional
+support-account callback defaults, bounded pending storage, scratch reuse, oracle independence
+and exact margin predicates. Task 2a has no remaining implementation item. Tasks 2b and 2c
+remain atomic refusal, and Task 3's selected-world traversal and lifetime remain separate work.
+No version, changelog, package or consumer changes belong to this intermediate task.
+
+All four final staged guards exited 0 after explicit staging and complete diff review:
+sh scripts/check-dashes.sh staged, sh scripts/check-prose.sh staged,
+sh scripts/check-file-size.sh staged and git diff --cached --check. The first prose pass
+rejected a console logger argument written in prose. Rewording that sentence resolved it.
+Whole-tree dash, prose and file-size guards and bash scripts/check-doc-versions.sh also
+exited 0. No source changed after the final test commands.

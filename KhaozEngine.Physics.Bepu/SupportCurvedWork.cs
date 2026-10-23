@@ -9,12 +9,14 @@ internal sealed class SupportCurvedWork
     // Pool one existing source graph's worth of work per existing raw member slot.
     internal const int MaximumWork = 1_048_576;
     readonly int _limit;
+    readonly Func<SupportCurvedWorkKind, bool>? _admit;
     SupportCurvedWorkObservation _snapshot;
 
-    internal SupportCurvedWork(int limit = MaximumWork)
+    internal SupportCurvedWork(int limit = MaximumWork, Func<SupportCurvedWorkKind, bool>? admit = null)
     {
         if (limit <= 0 || limit > MaximumWork) throw new ArgumentOutOfRangeException(nameof(limit));
         _limit = limit;
+        _admit = admit;
         Begin();
     }
 
@@ -43,6 +45,7 @@ internal sealed class SupportCurvedWork
     {
         if (Failed) return false;
         if (_snapshot.Consumed == _limit) { Fail(SupportCurvedWorkFailure.WorkLimit); return false; }
+        if (_admit is not null && !_admit(kind)) { Fail(SupportCurvedWorkFailure.WorkLimit); return false; }
         _snapshot = kind switch
         {
             SupportCurvedWorkKind.New => _snapshot with { New = _snapshot.New + 1 },

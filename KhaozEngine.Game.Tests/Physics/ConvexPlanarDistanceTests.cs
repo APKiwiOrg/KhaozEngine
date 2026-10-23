@@ -115,18 +115,18 @@ public sealed class ConvexPlanarDistanceTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void ObliqueCircularEdgeRefusesWithoutApproximatingTheQuartic()
+    public void ObliqueCircularEdgeUsesTheCertifiedContinuousDiscRoot()
     {
         using var fixture = new ConvexPlanarFixture(new(0.25f, 0.0001f, 0.0001f),
             new(new(0.5f, 1, 0.2f), new Quaternion(0, 0, -0.5f, 0.8660254f)));
         Assert.True(InstalledPoseOperator.TryCreateSupport(fixture.Leaf.Pose, out _));
         var request = new ConvexQueryRequest(Dyadic, Pose.Identity, Vector3.Zero, ConvexQueryOperation.Distance);
         var work = new ConvexQueryWork();
-        Assert.False(ConvexFeatureKernel.TryEvaluate(request, fixture.Leaf, ref work, new(), out var evidence));
-        Assert.Equal(default, evidence);
-        Assert.False(evidence.IsComplete);
-        // The independent oracle also refuses this non-Cartesian snapshot. Its AABB is not truth.
-        Assert.Equal(default, ShortBodyShellOracle.Entry(Dyadic, Pose.Identity, fixture.Oracle, Vector3.Zero));
+        Assert.True(ConvexFeatureKernel.TryEvaluate(request, fixture.Leaf, ref work, new(), out var evidence));
+        Assert.True(evidence.HasAttainedWitness && evidence.HasNormalConeCertificate);
+        var oracle = ShortBodyShellOracle.Entry(Dyadic, Pose.Identity, fixture.Oracle, Vector3.Zero);
+        Assert.True(oracle.IsComplete);
+        Assert.True(evidence.LowerDistance <= oracle.Lower && evidence.UpperDistance >= oracle.Upper);
     }
 
     [Fact]

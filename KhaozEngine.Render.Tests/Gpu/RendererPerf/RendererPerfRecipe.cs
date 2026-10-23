@@ -69,6 +69,9 @@ internal interface IRendererPerfRecipe : IDisposable
 /// <summary>Cold public construction and indexed inputs. Scene3D owns all uploaded resources.</summary>
 internal abstract class RendererPerfRecipe : IRendererPerfRecipe
 {
+    internal ImmutableArray<RendererPassWorkModel> WorkModels(RendererPerfFrameSample sample)
+        => RendererPerfWorkModels.ForFrame(sample, Facts.Id + "/" + Facts.Version);
+
     internal const int Width = 1920, Height = 1080, Period = 256;
     internal const float Dt = 1f / 60f;
     internal const uint Seed = 0x51AB_C0DE;

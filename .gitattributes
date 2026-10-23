@@ -7,3 +7,5 @@ KhaozEngine.Game.Tests/Locomotion/Contacts/Fixtures/*.json text eol=lf
 KhaozEngine.Game.Tests/Locomotion/Contacts/Fixtures/*.jsonl text eol=lf
 KhaozEngine.Game.Tests/Locomotion/Contacts/Fixtures/*.txt text eol=lf
 KhaozEngine.Game.Tests/Physics/Fixtures/*.jsonl text eol=lf
+# Renderer control identities hash exact embedded shader bytes on every host.
+KhaozEngine.Render.Tests/Gpu/RendererPerf/controls/*.glsl text eol=lf

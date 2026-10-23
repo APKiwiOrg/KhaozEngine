@@ -187,7 +187,7 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
     {
         Recipe = _work.Recipe,
         ControlStateSha256 = _work.ControlStateSha256,
-        Telemetry = RendererPerfSessionObservations.Telemetry(_telemetry?.Invoke() ?? _info.Telemetry),
+        Telemetry = RendererPerfSessionObservations.Telemetry(_telemetry?.Invoke() ?? _info.Telemetry).SetItems(_work.ControlMetrics),
         Memory = RendererPerfSessionObservations.Memory(_native),
         Failure = _failure ?? _ring.Failure ?? _native.Diagnostics.DeviceLossReason,
         Drain = _drain,

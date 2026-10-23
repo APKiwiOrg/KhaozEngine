@@ -30,6 +30,7 @@ internal interface IRendererPerfNativeWork : IDisposable
     Color ClearColor { get; }
     RendererPerfRecipeReport? Recipe { get; }
     string? ControlStateSha256 => null;
+    ImmutableDictionary<string, RendererPerfMetric> ControlMetrics => ImmutableDictionary<string, RendererPerfMetric>.Empty;
     void PrepareCold(int firstFrameIndex);
     void Prepare(int frameIndex);
     void Record(IGpuCommandList commands, int frameIndex);

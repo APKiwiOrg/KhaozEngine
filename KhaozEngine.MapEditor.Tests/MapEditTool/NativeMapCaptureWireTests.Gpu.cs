@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -8,6 +9,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using KhaozEngine.MapDoc;
+using KhaozEngine.Gpu.D3D11;
 using KhaozEngine.MapDoc.Render3D;
 using KhaozEngine.MapEdit;
 using KhaozEngine.Render2D;
@@ -29,6 +31,7 @@ public sealed partial class NativeMapCaptureWireTests(ITestOutputHelper testOutp
         long started = Stopwatch.GetTimestamp();
         object phaseGate = new();
         var phases = new List<(string Name, long Timestamp)>();
+        var compileDiagnostics = new D3D11ShaderCompileDiagnostics();
         void Stamp(string name)
         {
             lock (phaseGate) phases.Add((name, Stopwatch.GetTimestamp()));
@@ -48,13 +51,23 @@ public sealed partial class NativeMapCaptureWireTests(ITestOutputHelper testOutp
                 return table.AppendLine().Append(FormattableString.Invariant($"phase snapshot | {Stopwatch.GetElapsedTime(started, now).TotalMilliseconds:F1} | {Stopwatch.GetElapsedTime(previous, now).TotalMilliseconds:F1}")).ToString();
             }
         }
+        string CompileTable()
+        {
+            var records = compileDiagnostics.GetRecords();
+            var table = new StringBuilder(FormattableString.Invariant($"D3D11 FXC compile records: entries={records.Length}, attempts={records.Count(record => !record.CacheHit)}, cacheHits={records.Count(record => record.CacheHit)}, totalMs={records.Sum(record => record.Milliseconds):F3}"));
+            table.AppendLine().AppendLine("Top 20 by FXC milliseconds. HLSL metadata is unavailable for DXBC hits.");
+            table.Append("stage | cache | HLSL bytes | FXC ms | program | source key | HLSL SHA-256");
+            foreach (var record in records.OrderByDescending(record => record.Milliseconds).Take(20))
+                table.AppendLine().Append(FormattableString.Invariant($"{record.Stage} | {(record.CacheHit ? "hit" : "miss")} | {record.HlslByteLength?.ToString(CultureInfo.InvariantCulture) ?? "-"} | {record.Milliseconds:F3} | {record.Program} | {record.SourceKey} | {record.HlslSha256 ?? "-"}"));
+            return table.ToString();
+        }
         async Task<T> WithPhaseDiagnostics<T>(Task<T> call)
         {
             try { return await call; }
             catch (TimeoutException error)
             {
                 // Snapshot before harness disposal can wait for the timed-out capture to finish.
-                throw new TimeoutException($"{error.Message}{Environment.NewLine}{PhaseTable()}", error);
+                throw new TimeoutException($"{error.Message}{Environment.NewLine}{PhaseTable()}{Environment.NewLine}{CompileTable()}", error);
             }
         }
         Stamp("test entry");
@@ -70,6 +83,7 @@ public sealed partial class NativeMapCaptureWireTests(ITestOutputHelper testOutp
             {
                 int current = ++capture, frame = 0;
                 Stamp($"capture {current} entry");
+                using var compileScope = compileDiagnostics.Use();
                 var result = NativeMapSnapshot.Capture(request, scene =>
                 {
                     // The first callback follows setup, SettleForCapture and the first view.Draw.
@@ -111,6 +125,7 @@ public sealed partial class NativeMapCaptureWireTests(ITestOutputHelper testOutp
         finally
         {
             testOutput.WriteLine(PhaseTable());
+            testOutput.WriteLine(CompileTable());
             Directory.Delete(dir, true);
         }
     }

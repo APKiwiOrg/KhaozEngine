@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using KhaozEngine.Diagnostics;
 using Xunit;
+using static KhaozEngine.Tests.Diagnostics.ReportRedactionAdversarialCases;
 
 namespace KhaozEngine.Tests.Diagnostics;
 
@@ -15,16 +16,12 @@ public sealed class ReportRedactorTests
 {
     const string Mask = ReportRedactor.Mask;
 
-    // Every fact that checks an exact result runs without the production match timeout, so a loaded machine
-    // cannot turn a result into the mask (#1475). Only the two timeout facts set one.
-    static readonly ReportRedactor NoHome = Unbounded("");
-
-    static ReportRedactor Unbounded(string? homeDirectory) => new(homeDirectory, Regex.InfiniteMatchTimeout);
+    static readonly ReportRedactor NoHome = new("");
 
     [Fact]
     public void Home_becomes_tilde()
     {
-        var redactor = Unbounded("/Users/ann");
+        var redactor = new ReportRedactor("/Users/ann");
 
         Assert.Equal("open ~/Library/x.log", redactor.Redact("open /Users/ann/Library/x.log"));
         Assert.Equal("cwd ~", redactor.Redact("cwd /Users/ann"));
@@ -34,7 +31,7 @@ public sealed class ReportRedactorTests
     [Fact]
     public void Sibling_user_is_untouched()
     {
-        var redactor = Unbounded("/Users/ann");
+        var redactor = new ReportRedactor("/Users/ann");
 
         Assert.Equal("/Users/anna/x", redactor.Redact("/Users/anna/x"));
         Assert.Equal("/Users/ann.old/x", redactor.Redact("/Users/ann.old/x"));
@@ -44,7 +41,7 @@ public sealed class ReportRedactorTests
     [Fact]
     public void Windows_home_matches_both_separators()
     {
-        var redactor = Unbounded(@"C:\Users\Ann");
+        var redactor = new ReportRedactor(@"C:\Users\Ann");
 
         Assert.Equal(@"~\AppData", redactor.Redact(@"C:\Users\Ann\AppData"));
         Assert.Equal("~/x", redactor.Redact("c:/users/ann/x"));
@@ -54,9 +51,9 @@ public sealed class ReportRedactorTests
     [Fact]
     public void Short_home_is_ignored()
     {
-        Assert.Equal("/etc/hosts", Unbounded("/").Redact("/etc/hosts"));
-        Assert.Equal(@"C:\x", Unbounded(@"C:").Redact(@"C:\x"));
-        Assert.Equal("/etc/hosts", Unbounded("").Redact("/etc/hosts"));
+        Assert.Equal("/etc/hosts", new ReportRedactor("/").Redact("/etc/hosts"));
+        Assert.Equal(@"C:\x", new ReportRedactor(@"C:").Redact(@"C:\x"));
+        Assert.Equal("/etc/hosts", new ReportRedactor("").Redact("/etc/hosts"));
     }
 
     [Fact]
@@ -65,7 +62,7 @@ public sealed class ReportRedactorTests
         string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         if (home.Length < 3) return;
 
-        Assert.Equal("~", Unbounded(null).Redact(home));
+        Assert.Equal("~", new ReportRedactor(null).Redact(home));
     }
 
     [Fact]
@@ -132,7 +129,7 @@ public sealed class ReportRedactorTests
     [Fact]
     public void Ordinary_text_is_untouched()
     {
-        var redactor = Unbounded("/Users/ann");
+        var redactor = new ReportRedactor("/Users/ann");
         string[] clean =
         [
             "Loaded 12 tiles in 3.2 ms",
@@ -206,7 +203,7 @@ public sealed class ReportRedactorTests
     [Fact]
     public void Environment_values_lose_the_home_directory()
     {
-        var redactor = Unbounded("/Users/ann");
+        var redactor = new ReportRedactor("/Users/ann");
         var input = new List<KeyValuePair<string, string?>> { new("KE_CACHE", "/Users/ann/cache") };
 
         Assert.Equal("~/cache", Assert.Single(redactor.SelectEnvironment(input)).Value);
@@ -215,68 +212,17 @@ public sealed class ReportRedactorTests
     [Fact]
     public void Adjacent_homes_are_all_replaced()
     {
-        var redactor = Unbounded("/Users/ann");
+        var redactor = new ReportRedactor("/Users/ann");
 
         Assert.Equal("~~ ~", redactor.Redact("/Users/ann/Users/ann /Users/ann"));
         Assert.Equal("~/x:~/y", redactor.Redact("/Users/ann/x:/Users/ann/y"));
         Assert.Equal("~\n", redactor.Redact("/Users/ann\n"));
-        Assert.Equal(@"~\~", Unbounded(@"C:\Users\Ann").Redact(@"C:\Users\Ann\C:\Users\Ann"));
+        Assert.Equal(@"~\~", new ReportRedactor(@"C:\Users\Ann").Redact(@"C:\Users\Ann\C:\Users\Ann"));
     }
 
     [Fact]
-    public void Catastrophic_input_is_redacted_in_linear_time()
-    {
-        // Linear time is a property of how the rules are built, not of a clock: every secret rule runs on the
-        // non-backtracking engine, which scans in time linear in the input whatever the pattern. The home rule
-        // keeps backtracking for its look-ahead and is an escaped literal path. The exact results below run with
-        // no match timeout, so no backstop firing on a loaded machine can replace a result with the mask.
-        const int Length = 200_000;
-        var redactor = Unbounded("/Users/ann");
-
-        Assert.Equal(6, redactor.Rules.Count);
-        Assert.All(redactor.Rules, rule =>
-            Assert.True((rule.Pattern.Options & RegexOptions.NonBacktracking) != 0, rule.Pattern.ToString()));
-        Assert.Equal(RegexOptions.None, redactor.HomePattern!.Options & RegexOptions.NonBacktracking);
-
-        // Keys with no terminator: the first value takes the rest.
-        Assert.Equal("password=" + Mask, redactor.Redact(Repeat("password=", Length)));
-
-        // Every "eyJ" after a dash used to start a JWT attempt that scanned the run for a dot, which was
-        // quadratic and timed out. Only the start of the run may start one now. Nothing here is a JWT.
-        string jwtBomb = Repeat("eyJ-", Length);
-        Assert.Equal(jwtBomb, redactor.Redact(jwtBomb));
-
-        // A private key block with a 200,000 character body, closed and left open.
-        string body = Repeat("MIIBOgIBAAJBAKj34Gkx", Length);
-        Assert.Equal(Mask, redactor.Redact("-----BEGIN PRIVATE KEY-----\n" + body + "\n-----END PRIVATE KEY-----"));
-        string open = "-----BEGIN PRIVATE KEY-----" + new string('A', Length);
-        Assert.Equal(open, redactor.Redact(open));
-
-        // The other rules on their worst shapes.
-        foreach (string clean in new[]
-        {
-            Repeat("password ", Length),
-            "password" + new string(' ', Length),
-            Repeat("-----BEGIN PRIVATE KEY-----", Length),
-            Repeat("bearer ", Length),
-            Repeat("?token=&", Length),
-            Repeat(" eyJaaaaa.bbbbb", Length),
-            Repeat(" ghp_aaaa", Length),
-            Repeat("basic ", Length),
-            Repeat("&sig", Length),
-            Repeat("token ", Length),
-            Repeat("-----BEGIN PRIVATE KEY-----A-----END ", Length),
-        })
-        {
-            Assert.Equal(clean, redactor.Redact(clean));
-        }
-        // 22,224 dot-joined "eyJaaaaa" units, 200,016 characters, are 7,408 back to back JWTs of three segments each.
-        Assert.Equal(string.Concat(Enumerable.Repeat("." + Mask, 7_408)), redactor.Redact(Repeat(".eyJaaaaa", 200_016)));
-        Assert.Equal(string.Concat(Enumerable.Repeat(Mask + ".", 7_408)), redactor.Redact(Repeat("eyJaaaaa.", 200_016)));
-        Assert.Equal(Mask + "-", redactor.Redact(Repeat("sk-", Length)));
-        Assert.Equal("-" + Mask, redactor.Redact(Repeat("-sk", Length)));
-        Assert.Equal(new string('~', 20_000), redactor.Redact(Repeat("/Users/ann", Length)));
-    }
+    public void Catastrophic_input_is_redacted_in_linear_time() =>
+        ReportRedactionAdversarialCases.AssertCorrectness(new ReportRedactor("/Users/ann"));
 
     [Fact]
     public void Jwt_starts_only_at_the_start_of_a_token_run()
@@ -376,32 +322,13 @@ public sealed class ReportRedactorTests
                     backtracking.Replace(text, rule.Replacement), rule.Pattern.Replace(text, rule.Replacement));
             }
         }
-    }
 
-    [Fact]
-    public void Timeout_fails_closed_to_the_whole_string_mask()
-    {
-        var redactor = new ReportRedactor("/Users/ann", TimeSpan.FromTicks(1));
-        string text = Repeat("password ", 2_000_000) + "password=hunter22";
-
-        Assert.Equal(Mask, redactor.Redact(text));
-    }
-
-    [Fact]
-    public void Timeout_on_clean_text_fails_closed()
-    {
-        // Nothing here matches, so no rule reaches its replace step and only a match test can time out.
-        var redactor = new ReportRedactor("/Users/ann", TimeSpan.FromTicks(1));
-        string text = Repeat("password ", 2_000_000);
-
-        Assert.Equal(Mask, redactor.Redact(text));
-    }
-
-    static string Repeat(string unit, int totalChars)
-    {
-        var sb = new System.Text.StringBuilder(totalChars + unit.Length);
-        while (sb.Length < totalChars) sb.Append(unit);
-        return sb.ToString();
+        var originalKeyValues = new Regex(
+            @"(?i)((?:password|passwd|pwd|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|client[_-]?secret|connection[_-]?string|accountkey|sharedaccesskey)[""']?\s*[:=]\s*[""']?)[^\s""',;&]+",
+            RegexOptions.CultureInvariant, Regex.InfiniteMatchTimeout);
+        var keyValues = new ReportSecretValueRedaction(Regex.InfiniteMatchTimeout);
+        foreach (string text in corpus)
+            Assert.Equal(originalKeyValues.Replace(text, "$1" + Mask), keyValues.Redact(text));
     }
 }
 
@@ -416,8 +343,7 @@ public sealed class ReportRedactorAllocationTests
     [Fact]
     public void Clean_text_does_not_allocate()
     {
-        // No match timeout, so a timeout firing on a loaded machine cannot allocate inside the measurement (#1475).
-        var redactor = new ReportRedactor("/Users/ann", Regex.InfiniteMatchTimeout);
+        var redactor = new ReportRedactor("/Users/ann");
         const string text = "Loaded 12 tiles in 3.2 ms from /Users/anna/tiles with tokenizer=fast";
 
         void Run() => redactor.Redact(text);
@@ -432,7 +358,7 @@ public sealed class ReportRedactorAllocationTests
     {
         // A regex holds its parsed replacement only weakly, so a full collection drops it and the next replace
         // parses it again. Clean text must not reach a replace, or every full collection costs a report string.
-        var redactor = new ReportRedactor("/Users/ann", Regex.InfiniteMatchTimeout);
+        var redactor = new ReportRedactor("/Users/ann");
         const string text = "Loaded 12 tiles in 3.2 ms from /Users/anna/tiles with tokenizer=fast";
 
         void Run() => redactor.Redact(text);

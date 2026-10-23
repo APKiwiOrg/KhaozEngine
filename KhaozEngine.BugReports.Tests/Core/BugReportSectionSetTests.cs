@@ -216,8 +216,7 @@ public sealed class BugReportSectionSetTests
     [Fact]
     public void Section_with_budget_under_64_bytes_is_dropped()
     {
-        // {"lines":[ ... ]} costs 11 bytes and each string its length plus 3 for quotes and a comma. Strings stay
-        // short so no redaction rule reaches its match timeout.
+        // {"lines":[ ... ]} costs 11 bytes and each string its length plus 3 for quotes and a comma.
         const int Fill = BugReportLimits.MaxSectionBytesTotal - 40;
         string[] lines = Lines(1000, 1000);
         lines[^1] = lines[^1].PadRight(1000 + Fill - (11 + 1000 * 1003), 'x');

@@ -10,11 +10,13 @@ internal sealed class ReporterIdentityRedaction(Regex? pattern, bool maskAll = f
 {
     const int MinimumTermLength = 3;
 
-    // Bound pattern construction too, since the regex match timeout starts only after construction.
+    // Bound construction independently of the input-length bound used during matching.
     const int MaximumPatternLength = 4096;
 
     static readonly ReporterIdentityRedaction Failed = new(null, maskAll: true);
     static readonly ReporterIdentityRedaction Empty = new(null);
+
+    internal Regex? Pattern => pattern;
 
     /// <summary>Reads the source once. Any source or pattern construction failure masks every string.</summary>
     internal static ReporterIdentityRedaction Capture(Func<IEnumerable<string>> source, TimeSpan timeout)
@@ -53,13 +55,14 @@ internal sealed class ReporterIdentityRedaction(Regex? pattern, bool maskAll = f
         }
     }
 
-    /// <summary>Preserves clean instances without allocating and masks a whole string on timeout.</summary>
+    /// <summary>Preserves clean instances without allocating and fails closed on excessive size or matching failure.</summary>
     internal string Redact(string text)
     {
-        if (maskAll) return ReportRedactor.Mask;
+        if (maskAll || text.Length > ReportRedactor.MaximumInputLength) return ReportRedactor.Mask;
         try
         {
-            return pattern is not null && pattern.IsMatch(text) ? pattern.Replace(text, ReportRedactor.Mask) : text;
+            string result = pattern is not null && pattern.IsMatch(text) ? pattern.Replace(text, ReportRedactor.Mask) : text;
+            return result.Length > ReportRedactor.MaximumInputLength ? ReportRedactor.Mask : result;
         }
         catch (RegexMatchTimeoutException)
         {

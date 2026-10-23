@@ -519,7 +519,7 @@ public class PublishCommitTests
 
         await PublishFixtures.ApplyAsync(
             store,
-            ContentEdit.Add(Thing, new ContentKey("one"), PublishFixtures.Fields(1)),
+            ContentEdit.Import(Thing, 1, new ContentKey("one"), PublishFixtures.Fields(1)),
             ContentEdit.Import(Thing, PublishFixtures.SecondChunkId, new ContentKey("far"), PublishFixtures.Fields(2)));
         ContentPublishResult first = await store.PublishAsync(PublishFixtures.Request(0));
 

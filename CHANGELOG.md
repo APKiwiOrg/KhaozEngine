@@ -5,6 +5,13 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.12.2
+
+2026-10-24
+
+- Preserve imported catalog IDs when ordinary publication also allocates new rows of the same type.
+  Reserve carried maxima before issuing IDs, regardless of edit order (Closes #1550).
+
 ## 21.12.1
 
 2026-10-23

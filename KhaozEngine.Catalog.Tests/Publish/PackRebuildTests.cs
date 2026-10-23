@@ -34,8 +34,8 @@ public sealed class PackRebuildTests
 
         await PublishFixtures.ApplyAsync(
             store,
-            ContentEdit.Add(Thing, new ContentKey("one"), PublishFixtures.Fields(1)),
-            ContentEdit.Add(Thing, new ContentKey("two"), PublishFixtures.Fields(2)),
+            ContentEdit.Import(Thing, 1, new ContentKey("one"), PublishFixtures.Fields(1)),
+            ContentEdit.Import(Thing, 2, new ContentKey("two"), PublishFixtures.Fields(2)),
             ContentEdit.Import(Thing, PublishFixtures.SecondChunkId, new ContentKey("far"), PublishFixtures.Fields(3)));
         await store.PublishAsync(PublishFixtures.Request(0));
 
@@ -90,7 +90,7 @@ public sealed class PackRebuildTests
 
         await PublishFixtures.ApplyAsync(
             store,
-            ContentEdit.Add(Thing, new ContentKey("one"), PublishFixtures.Fields(1)),
+            ContentEdit.Import(Thing, 1, new ContentKey("one"), PublishFixtures.Fields(1)),
             ContentEdit.Import(Thing, PublishFixtures.SecondChunkId, new ContentKey("far"), PublishFixtures.Fields(2)));
         await store.PublishAsync(PublishFixtures.Request(0));
 

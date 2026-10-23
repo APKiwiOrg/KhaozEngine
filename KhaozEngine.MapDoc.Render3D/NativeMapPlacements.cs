@@ -37,6 +37,7 @@ public static class NativeMapPlacements
         foreach (var placement in scene.Placements)
             if (!assets.ById.ContainsKey(placement.AssetId)) throw new MapRenderAssetRefusal(MapRenderAssetStatus.Missing, "Placement has no selected asset: " + placement.AssetId);
         var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(scene.Source.Data.Limits);
+        using var activation = admission.Enter();
         try
         {
             var instances = new List<NativePropInstance>();
@@ -102,7 +103,7 @@ public static class NativeMapPlacements
                 foreach (var cell in selected.GroupBy(i => MapPlacementCells.Key(layer.Id, posesById[i.Id], scene.Source.Data.TileSize))
                     .OrderBy(c => c.Key.X).ThenBy(c => c.Key.Z))
                 {
-                    var members = cell.ToArray();
+                    var members = cell.OrderBy(i => i.Id, StringComparer.Ordinal).ToArray();
                     var domain = MapPlacementCells.Domain(cell.Key, scene.Source.Data.TileSize, members.Min(i => i.Anchor.Y));
                     var sources = new Dictionary<string, GltfMesh>(StringComparer.Ordinal);
                     foreach (string id in members.Select(i => i.AssetId).Distinct(StringComparer.Ordinal))
@@ -126,7 +127,7 @@ public static class NativeMapPlacements
                     parts.Add(new(key, new(nextHandle++), anchor, bounds, new MapRigidResource(mesh, default),
                         MapPlacementDigest.Hash(w =>
                         {
-                            w.WriteStartArray(); w.WriteStringValue(routing.SceneWitnessDigest); w.WriteStringValue(routing.PolicyDigest);
+                            w.WriteStartArray(); w.WriteStringValue(routing.PolicyDigest);
                             w.WriteStringValue(inventory); w.WriteEndArray();
                         })));
                 }
@@ -181,6 +182,7 @@ public static class NativeMapPlacements
             throw new MapDocumentException("Native cluster request disagrees with its region cell.");
         if (request.BorrowLayer.NativePlacements is not { } native || !native.SequenceEqual(request.Instances))
             throw new MapDocumentException("Native cluster request disagrees with its frozen layer inventory.");
+        MapPlacementCellInventory.RequireComplete(scene, routing, request);
         CertifyCluster(request);
         return build(request);
     }

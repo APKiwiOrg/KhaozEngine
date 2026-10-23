@@ -79,13 +79,13 @@ public sealed record MapPlacementRoutingResult(MapSceneStatus Status, MapPlaceme
 public sealed class MapPlacementRouting
 {
     readonly MapScopedScene _scene;
-    readonly string _policy;
+    readonly MapPlacementPolicy _policy;
     public string SceneWitnessDigest { get; }
     public string PolicyDigest { get; }
     public IReadOnlyDictionary<string, MapPlacementRoute> Entries { get; }
     MapPlacementRouting(MapScopedScene scene, MapPlacementPolicy policy, IReadOnlySet<string> animated, Dictionary<string, MapPlacementRoute> entries)
     {
-        _scene = scene; _policy = policy.Digest; SceneWitnessDigest = Witness(scene);
+        _scene = scene; _policy = policy; SceneWitnessDigest = Witness(scene);
         PolicyDigest = MapPlacementDigest.Hash(w =>
         {
             w.WriteStartArray(); w.WriteStringValue("kemap/placement-routing/1"); w.WriteStringValue(policy.Digest);
@@ -122,9 +122,10 @@ public sealed class MapPlacementRouting
     }
     internal void Validate(MapScopedScene scene, MapPlacementPolicy? policy = null)
     {
-        if (!ReferenceEquals(scene, _scene) || Witness(scene) != SceneWitnessDigest || policy is not null && policy.Digest != _policy)
+        if (!ReferenceEquals(scene, _scene) || Witness(scene) != SceneWitnessDigest || policy is not null && policy.Digest != _policy.Digest)
             throw new MapDocumentException("Placement routing belongs to another scene or caller policy.");
     }
+    internal MapPlacementLayer? ClusterLayer(string id) => _policy.Layers.FirstOrDefault(l => l.Id == id && l.HlodDistance > 0);
     static string Witness(MapScopedScene scene) => MapPlacementDigest.Hash(w =>
     {
         var witness = scene.Witness;

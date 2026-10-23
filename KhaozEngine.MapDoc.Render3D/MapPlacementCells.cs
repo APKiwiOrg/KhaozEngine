@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.Render3D;
 using KhaozEngine.Terrain;
@@ -41,6 +42,14 @@ internal static class MapPlacementCells
                 (float)(grid.Boundary((long)key.X + 1) - anchor.X), (float)(grid.Boundary((long)key.Z + 1) - anchor.Z)));
         }
         catch (OverflowException) { throw new MapRenderAssetRefusal(MapRenderAssetStatus.NotRepresentable, "Native placement cell anchor is not representable."); }
+    }
+
+    internal static MapBox3 Coverage(PropClusterKey key, float tileSize)
+    {
+        var grid = Grid(tileSize);
+        // Discovery uses exact binary64 cell boundaries, not the proxy's rounded local RectArea.
+        return new(grid.Boundary(key.X), 0, grid.Boundary(key.Z),
+            grid.Boundary((long)key.X + 1), 0, grid.Boundary((long)key.Z + 1));
     }
 
     static CellGrid Grid(float tileSize)

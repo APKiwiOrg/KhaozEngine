@@ -87,8 +87,11 @@ internal static class ShippedSceneGuardObservations
                 if (resources[i].Reference.Key.Kind == MapRenderKind.Roof && resources[i].Reference.Key.PartId == "hlod")
                 {
                     var mesh = ((MapRigidResource)resources[i].Payload).Mesh;
-                    resources[i] = resources[i] with { Payload = new MapRigidResource(new(mesh.Vertices.Take(mesh.Vertices.Length / 2).ToArray(),
-                        mesh.Indices32.Take(mesh.Indices32.Length / 2).ToArray()), default) };
+                    resources[i] = resources[i] with
+                    {
+                        Payload = new MapRigidResource(new(mesh.Vertices.Take(mesh.Vertices.Length / 2).ToArray(),
+                        mesh.Indices32.Take(mesh.Indices32.Length / 2).ToArray()), default)
+                    };
                 }
         }
         else if (variant.StartsWith("maps-", StringComparison.Ordinal))

@@ -25,7 +25,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.MapDoc;
 
-/// <summary>One lazily created native scene for the six invented families. Readiness precedes every temporal warm-up.</summary>
+/// <summary>One lazily created native scene for the invented capture families. Readiness precedes every temporal warm-up.</summary>
 public sealed class NativeMapGoldenScene : IDisposable
 {
     internal const int Width = 640, Height = 480, Warmup = 16;
@@ -319,7 +319,8 @@ internal sealed class NativeMapGoldenSetup : IDisposable
                         new(MapLatticeFrame.ImportedMetreCentimetre, [new(8, -4, 12, 0)], []), 0, 4));
                     var intent = doc.BuildingIntent;
                     doc.BuildingIntent = new(1, [.. intent.RoofLinks, new("roof-b-link", Ref("roof-b", MapPrefabChildKind.Placement), [Ref("room-b", MapPrefabChildKind.Record)], [], 4)],
-                        [], intent.Lights, []) { Roofs = [.. intent.Roofs, Ref("roof-b", MapPrefabChildKind.Placement)], Storeys = intent.Storeys };
+                        [], intent.Lights, [])
+                    { Roofs = [.. intent.Roofs, Ref("roof-b", MapPrefabChildKind.Placement)], Storeys = intent.Storeys };
                     placements = new([.. placements.Layers, new("caps", new HashSet<string> { "roof" }, [], 0, 256, 30, 10, 0, true)], 256);
                 }
                 framing = Camera(new(8, 20, 6), new(8, 0, 6), 14);

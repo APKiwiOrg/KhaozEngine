@@ -66,8 +66,11 @@ public sealed class NativeRoofHlodVisibilityTests
     {
         using var fixture = NativePresentationFixtures.Create(); var scheduler = new ResidencyScheduler();
         var state = NativeRoofHlodPolicyTests.State(fixture, NativePresentationFixtures.Scope);
-        state = state with { Policy = new(new([new("caps", new HashSet<string> { "roof" }, [], 0, 100, 30, 10, 0, false)], 100),
-            state.Policy.AnimatedAssets, state.Policy.Foliage, state.Policy.Water, [], state.Policy.TerrainMaterials) };
+        state = state with
+        {
+            Policy = new(new([new("caps", new HashSet<string> { "roof" }, [], 0, 100, 30, 10, 0, false)], 100),
+            state.Policy.AnimatedAssets, state.Policy.Foliage, state.Policy.Water, [], state.Policy.TerrainMaterials)
+        };
         using var residency = new MapRenderResidency(state, new ResidencyDevice(), null, scheduler);
         ResidencyFixture.Complete(residency, scheduler);
         foreach (float distance in new[] { 0f, 30f, 40f })

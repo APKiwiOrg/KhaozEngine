@@ -129,50 +129,50 @@ internal static class LegacySceneRecorder
             {
                 foreach (bool roofLayer in new[] { false, true })
                 {
-                var selected = (roofLayer ? roofProps.Select(r => r.Prop) : groundProps).Where(p => policy.AssetIds.Contains(p.Id) && !inputs.SourcePolicy.AnimatedAssets.Contains(p.Id)).ToArray();
-                if (selected.Length == 0) continue;
-                var layer = PropLayer.PlacementLayer(selected, full, policy.DrawRadius, lodPartMeshes: far,
-                    lodDistance: policy.LodDistances.FirstOrDefault(), castsShadows: policy.CastsShadows).WithLodCrossfade(policy.LodCrossfadeWidth);
-                if (policy.HlodDistance <= 0)
-                {
-                    foreach (var prop in selected.Where(Selected))
+                    var selected = (roofLayer ? roofProps.Select(r => r.Prop) : groundProps).Where(p => policy.AssetIds.Contains(p.Id) && !inputs.SourcePolicy.AnimatedAssets.Contains(p.Id)).ToArray();
+                    if (selected.Length == 0) continue;
+                    var layer = PropLayer.PlacementLayer(selected, full, policy.DrawRadius, lodPartMeshes: far,
+                        lodDistance: policy.LodDistances.FirstOrDefault(), castsShadows: policy.CastsShadows).WithLodCrossfade(policy.LodCrossfadeWidth);
+                    if (policy.HlodDistance <= 0)
                     {
-                        bool hidden = roofLayer && roofProps.Any(r => r.Prop.Equals(prop) && roofPolicy.IsRoofHidden(r.Footprint, r.Plane));
-                        scene.DrawLayer([prop], layer, focus, 0, hidden);
+                        foreach (var prop in selected.Where(Selected))
+                        {
+                            bool hidden = roofLayer && roofProps.Any(r => r.Prop.Equals(prop) && roofPolicy.IsRoofHidden(r.Footprint, r.Plane));
+                            scene.DrawLayer([prop], layer, focus, 0, hidden);
+                        }
+                        continue;
                     }
-                    continue;
-                }
-                var flat = policy.AssetIds.ToDictionary(id => id, id =>
-                {
-                    var archetype = catalogs.Archetype(id) ?? throw new System.IO.InvalidDataException("missing declared source archetype");
-                    string path = ShippedFoliageManifest.SafePath(archetype.LodMeshRef is { Length: > 0 } lod ? lod : archetype.MeshRef);
-                    return GltfLoader.LoadFlattenedAlbedo(inputs.OriginalMeshes[path], "attested source HLOD");
-                });
-                layer = layer.WithHlod(flat, policy.HlodDistance, policy.HlodWeldCell, policy.HlodCrossfadeWidth);
-                double edge = 64 * inputs.NativeTileSize, divisions = Math.Ceiling(edge / 1024);
-                double cellEdge = edge / divisions;
-                (int X, int Z) Cell(PropPlacement p) => (checked((int)Math.Floor(p.X / cellEdge)), checked((int)Math.Floor(p.Z / cellEdge)));
-                var requiredCells = selected.Where(Selected).Select(Cell).ToHashSet();
-                foreach (var cell in selected.GroupBy(Cell).Where(c => requiredCells.Contains(c.Key)))
-                {
-                    using var cluster = new LegacyClusterOwner(scene);
-                    var key = new PropClusterKey(policy.Id, cell.Key.X, cell.Key.Z, 0);
-                    var area = new RectArea((float)(edge * cell.Key.X / divisions), (float)(edge * cell.Key.Z / divisions),
-                        (float)(edge * ((long)cell.Key.X + 1) / divisions), (float)(edge * ((long)cell.Key.Z + 1) / divisions));
-                    scene.ClusterKey = new(roofLayer ? MapRenderKind.Roof : MapRenderKind.Placement, $"cluster/{key.LayerId}/{key.X}/{key.Z}/{key.Plane}", "hlod", 0);
-                    scene.ClusterAnchor = new((long)Math.Floor(area.MinX), (long)Math.Floor(cell.Min(p => p.Y)), (long)Math.Floor(area.MinZ));
-                    var members = cell.OrderBy(p => nativeOrder[(p.Id, LegacyRecordingScene.Transform(p))], StringComparer.Ordinal).ToArray();
-                    var build = cluster.BuildCpu(new(key, 1, area, layer, members));
-                    cluster.Apply(key, build);
-                    if (roofLayer)
+                    var flat = policy.AssetIds.ToDictionary(id => id, id =>
                     {
-                        var hidden = members.Select(p => roofProps.Any(r => r.Prop.Equals(p) && roofPolicy.IsRoofHidden(r.Footprint, r.Plane))).ToArray();
-                        cluster.DrawWithVisibility(focus, new LegacyRoofClusterVisibility(key, 1, hidden));
+                        var archetype = catalogs.Archetype(id) ?? throw new System.IO.InvalidDataException("missing declared source archetype");
+                        string path = ShippedFoliageManifest.SafePath(archetype.LodMeshRef is { Length: > 0 } lod ? lod : archetype.MeshRef);
+                        return GltfLoader.LoadFlattenedAlbedo(inputs.OriginalMeshes[path], "attested source HLOD");
+                    });
+                    layer = layer.WithHlod(flat, policy.HlodDistance, policy.HlodWeldCell, policy.HlodCrossfadeWidth);
+                    double edge = 64 * inputs.NativeTileSize, divisions = Math.Ceiling(edge / 1024);
+                    double cellEdge = edge / divisions;
+                    (int X, int Z) Cell(PropPlacement p) => (checked((int)Math.Floor(p.X / cellEdge)), checked((int)Math.Floor(p.Z / cellEdge)));
+                    var requiredCells = selected.Where(Selected).Select(Cell).ToHashSet();
+                    foreach (var cell in selected.GroupBy(Cell).Where(c => requiredCells.Contains(c.Key)))
+                    {
+                        using var cluster = new LegacyClusterOwner(scene);
+                        var key = new PropClusterKey(policy.Id, cell.Key.X, cell.Key.Z, 0);
+                        var area = new RectArea((float)(edge * cell.Key.X / divisions), (float)(edge * cell.Key.Z / divisions),
+                            (float)(edge * ((long)cell.Key.X + 1) / divisions), (float)(edge * ((long)cell.Key.Z + 1) / divisions));
+                        scene.ClusterKey = new(roofLayer ? MapRenderKind.Roof : MapRenderKind.Placement, $"cluster/{key.LayerId}/{key.X}/{key.Z}/{key.Plane}", "hlod", 0);
+                        scene.ClusterAnchor = new((long)Math.Floor(area.MinX), (long)Math.Floor(cell.Min(p => p.Y)), (long)Math.Floor(area.MinZ));
+                        var members = cell.OrderBy(p => nativeOrder[(p.Id, LegacyRecordingScene.Transform(p))], StringComparer.Ordinal).ToArray();
+                        var build = cluster.BuildCpu(new(key, 1, area, layer, members));
+                        cluster.Apply(key, build);
+                        if (roofLayer)
+                        {
+                            var hidden = members.Select(p => roofProps.Any(r => r.Prop.Equals(p) && roofPolicy.IsRoofHidden(r.Footprint, r.Plane))).ToArray();
+                            cluster.DrawWithVisibility(focus, new LegacyRoofClusterVisibility(key, 1, hidden));
+                        }
+                        else cluster.Draw(focus);
                     }
-                    else cluster.Draw(focus);
                 }
             }
-                }
             frames.Add(new(probe.Id, Array.AsReadOnly(scene.Draws.ToArray()), framedFocus));
         }
         return new(Array.AsReadOnly(placements.ToArray()), Array.AsReadOnly(ground.ToArray()), Array.AsReadOnly(water.ToArray()),

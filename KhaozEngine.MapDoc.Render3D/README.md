@@ -70,7 +70,8 @@ released queue, culling and zero-origin upload behavior.
 `MapPlacementPolicy` freezes disjoint caller asset selections and increasing positive LOD thresholds.
 An empty threshold list keeps base geometry. Otherwise each asset needs one threshold per declared far tier.
 `MapPlacementRouting.Create` freezes one ordinary, cluster or animated route for every placement. Cluster and
-animated selections cannot overlap. Every effective roof stays ordinary, including a shared roof/non-roof asset.
+animated selections cannot overlap. Animated roofs refuse. Roof and ordinary members of a shared asset
+enter distinct canonical cohorts and retain Roof versus Placement resource kinds.
 Invalid policies refuse before preparation. Pass the same partition object to the rigid and animated producers.
 Explicit animated placements use `MapPlacementPolicy.DefaultDrawRadius`, independently of generated cover's
 `DrawRadius`. Their frames retain the cover fade and wind settings with both density factors fixed to one.
@@ -107,9 +108,10 @@ refuses the plan with its typed source or capacity status. Partial proxies are n
 The shared `PropLayer.PlacementLayer` native overload freezes the actual instance inventory, every tier and
 caller thresholds. Both individual fallback and accepted proxies consume that shared layer. The released
 per-cluster centre-distance coverage remains unchanged and uses the complete cell area. Each cell is independent.
-`NativeMapPlacements.PrepareCluster` validates the scene, frozen routes, cell domain, layer inventory, roof exclusion and vertex precision before invoking
+`NativeMapPlacements.PrepareCluster` validates the scene, frozen routes, cell domain, layer inventory, homogeneous roof roles and vertex precision before invoking
 the internal shared CPU builder. That lower builder has no building intent and makes no independent roof promise.
-Ordinary roofs retain separate resources. Individuals remain active until `AcceptCluster` receives the exact
+Roof cohorts retain complete neutral membership geometry acquired and admitted before selected decode.
+Individual resources remain resident for mixed visibility fallback. Individuals remain active until `AcceptCluster` receives the exact
 prepared build and the externally published mesh. It retains metadata only and never uploads or frees that handle.
 An empty welded proxy cannot be accepted, so individuals remain active. Placement registration bounds are
 finite in all three dimensions and include all declared tiers and light reach, with the 0.0001 m local submission
@@ -246,11 +248,20 @@ that buffer for observer motion and roof mode changes. No detached roof result i
 Truncated collider or selection payloads refuse pending preparation with `Invalid`. Accepted draws and
 their witness stay live through the normal replacement refusal path.
 
-`NativeMapRoofs.Record` alone emits registered roof parts. Ordinary placement recording excludes them.
+`NativeMapRoofs.Record` alone emits unclustered roofs and roof cohorts. Ordinary placement recording excludes them.
+Roof cohorts share the legacy distance and visibility kernels. All-hidden proxies submit shadow-only.
+Mixed cohorts suppress merged colour and use retained individuals at zero HLOD floor.
+Shadow intent is conjoined with the configured layer's `CastsShadows`. A non-casting hidden roof emits no draw.
 Hidden roofs retain their registered references, bounds, meshes, draw ranges and shadow coverage. Their
 colour, selection and camera channels are absent. Sky and physical channels remain present. The device
 sink maps a roof with shadow and no colour to `ShadowOnly`. Neither concealment nor picking changes
 registration, uploads or accepted non-roof HLOD coverage.
+
+`MapPlacementRenderBatch.RecordRoofOutline` exposes effective clustered-roof colour descriptors to an
+optional consumer. Proxy descriptors reuse an admitted cached flattened HLOD-source mesh for only the selected roof.
+`MapScene3DSink.RecordRoofOutline` also handles unclustered roofs through the plan's admitted roof policy
+and submits them through the shared anchored mesh-outline primitive. Hidden roofs have no outline.
+Selection, camera, sky and physical queries continue to use original per-placement shapes.
 
 `MapPresentationPicker` selects raised interaction envelopes, preferring an explicit selection resource
 to the collider. The shared minimum height is 1 m. Camera, sky and physical queries use unchanged
@@ -328,7 +339,8 @@ must neither retain nor dispose it. Ordinary capture and `CaptureSequence` use t
 | `NativeMapPrecisionTests` | Exact anchor subtraction, per-location realization and origin-only submission precision |
 | `NativeMapAllocationTests`, `NativeResourceUploadAllocationTests` | Warm CPU work and upload admission before retained copies |
 | `NativeMapFoliageEvidenceTests` | Complete keyed source rows, model parts, patch membership and casting |
-| `NativeMapGoldenGpuTests` | Six native families with omission controls, origin pairs, prepared counts and fresh versus aged scene checks |
+| `NativeRoofHlodGpuTests` | Roof-HLOD visible, hidden, mixed, midpoint and shadow-omission goldens, plus aged scene parity |
+| `NativeMapGoldenGpuTests` | Original native families with omission controls, origin pairs, prepared counts and fresh versus aged scene checks |
 | `NativeMapSnapshotGpuTests`, `NativeMapCaptureWireTests` | Actual viewport/capture submission, derived light keys and foliage focus through the real wire |
 
 The full scene oracle consumes keyed source submissions one-to-one and rejects leftovers. Its source

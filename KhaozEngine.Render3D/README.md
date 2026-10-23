@@ -1028,11 +1028,11 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   stays fixed across model size, camera distance, MSAA and render scale. The one-part `DrawMeshOutline(mesh,
   world, color, widthPixels)` overload creates its own group. Mask targets allocate lazily. The older
   `DrawMeshSilhouette` metre-width hull remains available for world-space expansion effects.
-  `DrawMeshOutlineDissolved(group, mesh, world, dissolve, dissolveComplement)` applies the same world-anchored
-  coverage split as rigid LOD handoffs. Its full union still rejects strokes around individual dissolve holes.
-  The overload with trailing `bool cutInsideInteriors` applies the field to both rigid coverage masks, so the
-  border follows the cut boundary in either occlusion mode. `DrawMeshSilhouette` has the same trailing flag
-  and tests the extruded hull position. Existing overloads forward false, and skinned outlines remain uncut.
+  `DrawMeshOutlineDissolved(group, mesh, world, dissolve, dissolveComplement)` shares rigid LOD coverage.
+  `DrawMeshOutlineAnchored(group, mesh, local, anchor, dissolve, complement)` retains native anchor precision.
+  Union masks reject strokes around dissolve holes. The trailing `bool cutInsideInteriors` overload applies
+  the field to both coverage masks in either occlusion mode. `DrawMeshSilhouette` tests its extruded hull.
+  Existing overloads forward false. Skinned outlines remain uncut.
 - Posed skinned target outlines use the grouped `DrawSkinnedOutline(MeshOutlineGroup, SkinnedMeshHandle,
   ReadOnlySpan<Matrix4x4>, Matrix4x4)` and `DrawSkinnedOutlineDissolved` methods. The two convenience overloads
   start a group for one part, with the five-argument form using scene-depth occlusion and the six-argument form

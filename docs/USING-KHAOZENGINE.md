@@ -4453,7 +4453,7 @@ before rendering, including warm-up. The callback borrows the scene and must not
 Upload demand uses `SceneUploadDescription` before the aggregate reservation is claimed. Retained
 mesh/image copies and synthesized terrain images follow that claim. See the
 [native evidence table](../KhaozEngine.MapDoc.Render3D/README.md#native-scene-verification) for location
-pins, precision, warm allocation, complete foliage and six omission-sensitive native capture families.
+pins, precision, warm allocation, complete foliage and omission-sensitive native captures including roof HLOD.
 
 
 ```csharp

@@ -17,8 +17,11 @@ internal static partial class ShippedSceneGuardFixtures
         world.AddObject("column", 10, 2, 0, 0); TileWorldFile.Save(world, Path.Combine(root, "world"));
         native.TileSize = 1; native.TerrainOverrides = new(.03125f); native.NumericIdHighWaterMark = 2;
         native.Placements.Add(new() { Id = "native-second", AssetId = "native-column", Kind = "column", NumericId = 2, X = 10.5f, Y = 0, Z = -2.5f });
-        native.BuildingIntent = new(1, [], [], [], []) { Roofs = [new(MapPrefabReferenceScope.World, MapPrefabChildKind.Placement, "native-placement"),
-            new(MapPrefabReferenceScope.World, MapPrefabChildKind.Placement, "native-second")] };
+        native.BuildingIntent = new(1, [], [], [], [])
+        {
+            Roofs = [new(MapPrefabReferenceScope.World, MapPrefabChildKind.Placement, "native-placement"),
+            new(MapPrefabReferenceScope.World, MapPrefabChildKind.Placement, "native-second")]
+        };
         File.WriteAllText(Path.Combine(root, "native.json"), MapDocumentFile.SaveText(native));
         MapDocumentFile.SaveTiled(native, Path.Combine(root, "native-tiled"));
         string buildingPath = Path.Combine(root, "building.json");
@@ -48,8 +51,20 @@ internal static partial class ShippedSceneGuardFixtures
         var probes = new JsonArray();
         foreach (float distance in new[] { 0f, 30f, 40f, 100f })
             foreach (string mode in new[] { "AlwaysVisible", "AlwaysHidden" })
-                probes.Add(new JsonObject { ["id"] = mode + distance, ["windowId"] = "A", ["observerX"] = 0, ["observerY"] = 2, ["observerZ"] = 0,
-                    ["roofMode"] = mode, ["timeSeconds"] = 1, ["windSeed"] = 17, ["focusX"] = 32 + distance, ["focusY"] = 2, ["focusZ"] = -32 });
+                probes.Add(new JsonObject
+                {
+                    ["id"] = mode + distance,
+                    ["windowId"] = "A",
+                    ["observerX"] = 0,
+                    ["observerY"] = 2,
+                    ["observerZ"] = 0,
+                    ["roofMode"] = mode,
+                    ["timeSeconds"] = 1,
+                    ["windSeed"] = 17,
+                    ["focusX"] = 32 + distance,
+                    ["focusY"] = 2,
+                    ["focusZ"] = -32
+                });
         comparison["policy"]!["probes"] = probes;
     }
 }

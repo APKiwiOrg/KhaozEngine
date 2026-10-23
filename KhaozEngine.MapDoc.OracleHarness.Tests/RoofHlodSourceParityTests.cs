@@ -31,9 +31,20 @@ public sealed class RoofHlodSourceParityTests
             foreach (float distance in new[] { 0f, 30f, 40f })
                 foreach (var (id, x, y, mode) in new[] { ("house-a", 2.5f, 1f, "Auto"), ("house-b", 10.5f, 1f, "Auto"),
                     ("outdoors", 20f, 1f, "Auto"), ("above", 2.5f, 4f, "Auto"), ("hidden", 2.5f, 1f, "AlwaysHidden"), ("visible", 2.5f, 1f, "AlwaysVisible") })
-                    probes.Add(new JsonObject { ["id"] = id + distance, ["windowId"] = "A", ["observerX"] = x, ["observerY"] = y,
-                        ["observerZ"] = -2.5, ["roofMode"] = mode, ["timeSeconds"] = 1, ["windSeed"] = 17,
-                        ["focusX"] = 32 + distance, ["focusY"] = 2, ["focusZ"] = -32 });
+                    probes.Add(new JsonObject
+                    {
+                        ["id"] = id + distance,
+                        ["windowId"] = "A",
+                        ["observerX"] = x,
+                        ["observerY"] = y,
+                        ["observerZ"] = -2.5,
+                        ["roofMode"] = mode,
+                        ["timeSeconds"] = 1,
+                        ["windSeed"] = 17,
+                        ["focusX"] = 32 + distance,
+                        ["focusY"] = 2,
+                        ["focusZ"] = -32
+                    });
             comparison["policy"]!["probes"] = probes;
         });
         var inputs = ShippedSceneInputs.Read(PrivateOracleInputs.Require(fixture.Environment));
@@ -68,8 +79,11 @@ public sealed class RoofHlodSourceParityTests
                 new(MapLatticeFrame.ImportedMetreCentimetre, [new(x, 2, x + 1, 3)], []), 0, 3));
         }
         document.Surfaces = new(); document.Surfaces.Patches.Add(patch.Key, patch);
-        document.Surfaces.Refs.Add(converted.Surface with { SemanticSha256 = MapSurfaceSemantics.SurfaceDigest(converted.Surface,
-            [KeyValuePair.Create(patch.Key, MapSurfaceSemantics.PatchDigest(patch))]) });
+        document.Surfaces.Refs.Add(converted.Surface with
+        {
+            SemanticSha256 = MapSurfaceSemantics.SurfaceDigest(converted.Surface,
+            [KeyValuePair.Create(patch.Key, MapSurfaceSemantics.PatchDigest(patch))])
+        });
         MapPrefabReference Ref(MapPrefabChildKind kind, string id) => new(MapPrefabReferenceScope.World, kind, id);
         document.BuildingIntent = new(1,
             [new("a-link", Ref(MapPrefabChildKind.Placement, "native-placement"), [Ref(MapPrefabChildKind.Record, "a")], [], 3),
@@ -91,16 +105,16 @@ public sealed class RoofHlodSourceParityTests
             {
                 for (int order = 0; order < 2; order++)
                 {
-                if (order == 1) { residency.RequestReplacement(state with { Windows = windows.Reverse().ToArray() }); ShippedSceneComparison.Complete(residency, scheduler); }
-                foreach (var probe in inputs.Manifest.Policy.Probes)
-                {
-                    var sourceFrame = expected.Frames.Single(f => f.ProbeId == probe.Id);
-                    var observer = ShippedSceneInputs.Point(probe.ObserverX, probe.ObserverY, probe.ObserverZ);
-                    var sink = new MapDrawRecorder(); residency.Record(new(observer.Frame, observer, probe.RoofMode, 1, 17, sourceFrame.Focus), sink);
-                    var actual = sink.Snapshot(); actual = new(actual.Resources, actual.Draws.Where(d => d.Resource.Key.Kind == MapRenderKind.Roof).ToArray());
-                    var rows = ShippedSceneExpectedFrames.Capture(inputs, expected, sourceFrame, probe, windows[0], [], new Dictionary<MapRenderKey, MapSubmissionAnchor>(), new Dictionary<MapRenderKey, MapSubmissionAnchor>());
-                    ShippedSceneComparison.CompareDrawSets(rows, actual, report);
-                }
+                    if (order == 1) { residency.RequestReplacement(state with { Windows = windows.Reverse().ToArray() }); ShippedSceneComparison.Complete(residency, scheduler); }
+                    foreach (var probe in inputs.Manifest.Policy.Probes)
+                    {
+                        var sourceFrame = expected.Frames.Single(f => f.ProbeId == probe.Id);
+                        var observer = ShippedSceneInputs.Point(probe.ObserverX, probe.ObserverY, probe.ObserverZ);
+                        var sink = new MapDrawRecorder(); residency.Record(new(observer.Frame, observer, probe.RoofMode, 1, 17, sourceFrame.Focus), sink);
+                        var actual = sink.Snapshot(); actual = new(actual.Resources, actual.Draws.Where(d => d.Resource.Key.Kind == MapRenderKind.Roof).ToArray());
+                        var rows = ShippedSceneExpectedFrames.Capture(inputs, expected, sourceFrame, probe, windows[0], [], new Dictionary<MapRenderKey, MapSubmissionAnchor>(), new Dictionary<MapRenderKey, MapSubmissionAnchor>());
+                        ShippedSceneComparison.CompareDrawSets(rows, actual, report);
+                    }
                 }
             });
         }

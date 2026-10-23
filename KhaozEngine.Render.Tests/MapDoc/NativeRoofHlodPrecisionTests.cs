@@ -17,14 +17,18 @@ public sealed class NativeRoofHlodPrecisionTests
     [Theory]
     [InlineData(1)]
     [InlineData(20)]
+    [InlineData(35)]
     [InlineData(65536)]
     public void RoofCohorts_KeepBothEnvelopeSignsAndNonBinarySubdivisions(float tileSize)
     {
         var closure = NativeRenderAssetFixtures.Placements(originVertex: true);
         using var fixture = NativeSceneFixtures.SeparatedPlacements(closure, tileSize,
             new(-32000 + .0009, 0, 0, 0, 1), new(32000 + .0009, 0, 0, 0, 1));
-        fixture.Document.BuildingIntent = new(1, [], [], [], []) { Roofs = fixture.Document.Placements
-            .Select(p => new MapPrefabReference(MapPrefabReferenceScope.World, MapPrefabChildKind.Placement, p.Id)).ToArray() };
+        fixture.Document.BuildingIntent = new(1, [], [], [], [])
+        {
+            Roofs = fixture.Document.Placements
+            .Select(p => new MapPrefabReference(MapPrefabReferenceScope.World, MapPrefabChildKind.Placement, p.Id)).ToArray()
+        };
         var source = NativeSceneFixtures.Open(fixture, false);
         var scope = new MapSceneScope(new(WorldFrame.Origin, new(-32064), new(32064), null, null,
             Enum.GetValues<MapSurfaceRole>(), null, new()), new(-32064, -500, -32064, 32064, 500, 32064), MapSceneChannels.Placements | MapSceneChannels.Annotations);

@@ -40,4 +40,18 @@ public sealed class MapPreparationCodecTests
         }
         Assert.Equal(0, admission.WorkspaceBytes);
     }
+
+    [Fact]
+    public void Decode_OnlyRetainsPatchInventoryAndUnwindsInvalidPayload()
+    {
+        byte[] encoded = MapSurfacePatchCodec.Encode(Patch());
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 32_768));
+        using var active = admission.Enter();
+        var decoded = MapSurfacePatchCodec.Decode(encoded, Patch().Key);
+        Assert.Equal(32, admission.RetainedBytes);
+        Assert.Equal(0, admission.WorkspaceBytes);
+        Assert.Throws<MapDocumentException>(() => MapSurfacePatchCodec.Decode(encoded, new("wrong", 0, 0)));
+        Assert.Equal(32, admission.RetainedBytes);
+        Assert.Equal(0, admission.WorkspaceBytes);
+    }
 }

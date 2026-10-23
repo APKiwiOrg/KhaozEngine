@@ -6,6 +6,7 @@ namespace KhaozEngine.MapDoc.Surfaces;
 /// <summary>A bounded authored rectangle within a signed 64-cell patch slot.</summary>
 public sealed partial class MapSurfacePatch
 {
+    internal Scene.MapPreparationReservation? PreparationOwnership { get; set; }
     public MapPatchKey Key { get; set; }
     public int CellMinX { get; set; }
     public int CellMinZ { get; set; }

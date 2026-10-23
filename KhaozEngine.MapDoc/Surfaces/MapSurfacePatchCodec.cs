@@ -72,7 +72,8 @@ public static partial class MapSurfacePatchCodec
     public static MapSurfacePatch Decode(ReadOnlySpan<byte> bytes, MapPatchKey expectedKey)
     {
         if (bytes.Length > MaxEncodedBytes) throw Limit();
-        Scene.MapSceneAdmission.Current?.ReserveBytes(bytes.Length);
+        using var workspace = Scene.MapSceneAdmission.Current?.Workspace();
+        workspace?.Reserve(bytes.Length);
         try
         {
             // The parser's storage is bounded by the input cap. Size-based payload arrays follow dimension/length checks.
@@ -89,7 +90,7 @@ public static partial class MapSurfacePatchCodec
             if (!MapSurfacePatch.ValidRectangle(minX, minZ, width, depth))
                 throw new MapDocumentException("invalid patch width, depth or cell minimum");
             int cornerCount = (width + 1) * (depth + 1), cellCount = width * depth, wordCount = (cellCount + 63) / 64;
-            Scene.MapSceneAdmission.Current?.ReserveBytes(checked(2L * (cornerCount * 4L + cellCount * 8L + wordCount * 8L) + bytes.Length));
+            workspace?.Reserve(checked(2L * (cornerCount * 4L + cellCount * 8L + wordCount * 8L) + bytes.Length));
             byte[] heightBytes = Base64(root.GetProperty("heights"), cornerCount * 4, "heights");
             byte[] cellBytes = Base64(root.GetProperty("cells"), cellCount * 8, "cells");
             byte[] presenceBytes = Base64(root.GetProperty("presence"), wordCount * 8, "presence");
@@ -139,6 +140,12 @@ public static partial class MapSurfacePatchCodec
             }
             IReadOnlyList<string> errors = patch.ValidateLocal();
             if (errors.Count != 0) throw new MapDocumentException(errors[0]);
+            long owned = Scene.MapSceneAdmission.PatchBytes(patch);
+            if (workspace is not null)
+            {
+                if (owned > workspace.Bytes) workspace.Reserve(owned - workspace.Bytes);
+                patch.PreparationOwnership = workspace.Transfer(owned);
+            }
             return patch;
         }
         catch (Exception ex) when (ex is JsonException or FormatException or InvalidOperationException or OverflowException or KeyNotFoundException)

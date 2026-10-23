@@ -59,8 +59,8 @@ public static class MapFoliageDistribution
             if (area.MinX == area.MaxX || area.MinZ == area.MaxZ) return new(MapFoliageStatus.Complete, [], meter.Work());
             int x0 = ChunkIndex(layer, area.MinX, true), z0 = ChunkIndex(layer, area.MinZ, false);
             int x1 = ChunkIndex(layer, MathF.BitDecrement(area.MaxX), true), z1 = ChunkIndex(layer, MathF.BitDecrement(area.MaxZ), false);
-            int[] xs = MapFoliageRasterReads.Chunks(layer, x0, x1, true).Take(admitted.MaxQueryChunks + 1).ToArray();
-            int[] zs = MapFoliageRasterReads.Chunks(layer, z0, z1, false).Take(admitted.MaxQueryChunks + 1).ToArray();
+            int[] xs = QueryChunks(layer, x0, x1, true, admitted.MaxQueryChunks);
+            int[] zs = QueryChunks(layer, z0, z1, false, admitted.MaxQueryChunks);
             if ((long)xs.Length * zs.Length > admitted.MaxQueryChunks) throw Refuse(MapFoliageStatus.CapacityExceeded, "query chunks");
             var batches = new List<MapFoliageSampleBatch>();
             foreach (int z in zs)
@@ -76,6 +76,17 @@ public static class MapFoliageDistribution
             return new(MapFoliageStatus.Complete, batches, meter.Work(budget.Bytes));
         }
         catch (MapFoliageRefusal refusal) { return new(refusal.Status, [], meter.Work(budget.Bytes)); }
+    }
+
+    static int[] QueryChunks(MapFoliageLayer layer, int first, int last, bool x, int maxChunks)
+    {
+        var chunks = new List<int>();
+        foreach (int chunk in MapFoliageRasterReads.Chunks(layer, first, last, x))
+        {
+            if (chunks.Count >= maxChunks) throw Refuse(MapFoliageStatus.CapacityExceeded, "query chunks");
+            chunks.Add(chunk);
+        }
+        return chunks.ToArray();
     }
 
     static MapFoliageSampleBatch GenerateCore(IMapFoliageInputs context, MapFoliageLayer layer, MapFoliageChunkKey chunk,
@@ -155,22 +166,7 @@ public static class MapFoliageDistribution
             l.MaxMaskCandidates < 0 || l.MaxQueryChunks < 0 || l.MaxQuerySamples < 0 || l.MaxQueryRetainedBytes < 0 ||
             l.MaxDifferentialCandidates < 0 || l.MaxChangeRows < 0 || l.MaxComparisonPreparedChunks < 0 || l.MaxComparisonRetainedBytes < 0)
             throw new ArgumentOutOfRangeException(nameof(requested));
-        return l with
-        {
-            MaxCandidates = Math.Min(l.MaxCandidates, 4_000_000),
-            MaxSamples = Math.Min(l.MaxSamples, 262_144),
-            MaxPrepareScopes = Math.Min(l.MaxPrepareScopes, 256),
-            MaxFaces = Math.Min(l.MaxFaces, 262_144),
-            MaxRuleCandidates = Math.Min(l.MaxRuleCandidates, 4096),
-            MaxMaskCandidates = Math.Min(l.MaxMaskCandidates, 4096),
-            MaxQueryChunks = Math.Min(l.MaxQueryChunks, 64),
-            MaxQuerySamples = Math.Min(l.MaxQuerySamples, 262_144),
-            MaxQueryRetainedBytes = Math.Min(l.MaxQueryRetainedBytes, 67_108_864),
-            MaxDifferentialCandidates = Math.Min(l.MaxDifferentialCandidates, 64_000_000),
-            MaxChangeRows = Math.Min(l.MaxChangeRows, 4_000_000),
-            MaxComparisonPreparedChunks = Math.Min(l.MaxComparisonPreparedChunks, 64),
-            MaxComparisonRetainedBytes = Math.Min(l.MaxComparisonRetainedBytes, 134_217_728),
-        };
+        return l;
     }
 
     internal sealed class Meter

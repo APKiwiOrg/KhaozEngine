@@ -385,10 +385,11 @@ internal sealed class ResidencyFixture : IDisposable
         { UseGpuBatches = true, FadeMode = GroundCoverFadeMode.HeightScale }), new Dictionary<string, KhaozEngine.MapDoc.Foliage.MapFoliageModelExtent>()),
         MapFrozenWaterLook.Capture(new WaterLook { SwellAmplitude = 0, WaveSource = WaterWaveSource.Procedural }), materials ?? [],
         terrain ?? new Dictionary<ushort, string>());
-    internal MapRenderSourceState State(params MapSceneScope[] windows)
+    internal MapRenderSourceState State(params MapSceneScope[] windows) => StateWithLimits(new(), windows);
+    internal MapRenderSourceState StateWithLimits(MapSceneLimits limits, params MapSceneScope[] windows)
     {
         var document = MapDocumentSource.FromDocument(Document); _sources.Add(document);
-        var captured = MapSceneSource.Capture(document, Closure);
+        var captured = MapSceneSource.Capture(document, Closure, limits);
         Assert.Equal(MapSceneSourceStatus.Ready, captured.Status);
         var proofs = MapRenderExtentValidator.Validate(Closure, captured.Source!.RequiredAssetIds, new(new())).Proofs!;
         return new(captured.Source.WithRenderExtents(proofs).Source!, Closure, proofs, Policy(), windows);

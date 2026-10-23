@@ -13,6 +13,7 @@ namespace KhaozEngine.MapDoc.Scene;
 internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? entering = null, MapFoliageContextLimits? foliageLimits = null,
     string preparationLimitName = nameof(MapSceneLimits.MaxPreparedBytes))
 {
+    readonly MapFoliageContextLimits? _foliageLimits = foliageLimits ?? limits.Preparation?.FoliageContext;
     [ThreadStatic] static MapSceneAdmission? t_current;
     internal static MapSceneAdmission? Current => t_current;
     long _preparationCeiling = limits.MaxPreparedBytes;
@@ -75,7 +76,7 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
     internal void BeforePaintTarget(string id)
     {
         if (!_paintTargets.Add(id)) return;
-        if (foliageLimits is not null && FoliagePaintTargets >= foliageLimits.MaxPaintTargets) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxPaintTargets), (long)FoliagePaintTargets + 1, foliageLimits.MaxPaintTargets);
+        if (_foliageLimits is not null && FoliagePaintTargets >= _foliageLimits.MaxPaintTargets) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxPaintTargets), (long)FoliagePaintTargets + 1, _foliageLimits.MaxPaintTargets);
         FoliagePaintTargets++;
     }
     readonly HashSet<MapSceneResourceKey> _resources = new();
@@ -85,17 +86,17 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
         if (_resources.Count >= limits.MaxSelectedResources) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxSelectedResources), (long)_resources.Count + 1, limits.MaxSelectedResources);
         if (key.Kind == "Foliage")
         {
-            if (foliageLimits is not null && FoliageChunks >= foliageLimits.MaxChunkDescriptors) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxChunkDescriptors), (long)FoliageChunks + 1, foliageLimits.MaxChunkDescriptors);
+            if (_foliageLimits is not null && FoliageChunks >= _foliageLimits.MaxChunkDescriptors) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxChunkDescriptors), (long)FoliageChunks + 1, _foliageLimits.MaxChunkDescriptors);
             FoliageChunks++;
         }
         if (key.Kind == "Placement")
         {
-            if (foliageLimits is not null && FoliagePlacements >= foliageLimits.MaxPlacements) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxPlacements), (long)FoliagePlacements + 1, foliageLimits.MaxPlacements);
+            if (_foliageLimits is not null && FoliagePlacements >= _foliageLimits.MaxPlacements) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxPlacements), (long)FoliagePlacements + 1, _foliageLimits.MaxPlacements);
             FoliagePlacements++;
         }
         if (key.Kind == "Patch")
         {
-            if (foliageLimits is not null && FoliagePatches >= foliageLimits.MaxSurfacePatches) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxSurfacePatches), (long)FoliagePatches + 1, foliageLimits.MaxSurfacePatches);
+            if (_foliageLimits is not null && FoliagePatches >= _foliageLimits.MaxSurfacePatches) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxSurfacePatches), (long)FoliagePatches + 1, _foliageLimits.MaxSurfacePatches);
             FoliagePatches++;
         }
         _resources.Add(key);
@@ -157,7 +158,7 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
 
     internal void BeforeInputBytes(long bytes)
     {
-        if (foliageLimits is not null && bytes > foliageLimits.MaxSourceUtf8Bytes - FoliageSourceUtf8Bytes) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxSourceUtf8Bytes), (decimal)FoliageSourceUtf8Bytes + bytes, foliageLimits.MaxSourceUtf8Bytes);
+        if (_foliageLimits is not null && bytes > _foliageLimits.MaxSourceUtf8Bytes - FoliageSourceUtf8Bytes) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxSourceUtf8Bytes), (decimal)FoliageSourceUtf8Bytes + bytes, _foliageLimits.MaxSourceUtf8Bytes);
         ReserveBytes(bytes);
         FoliageSourceUtf8Bytes = checked(FoliageSourceUtf8Bytes + bytes);
     }

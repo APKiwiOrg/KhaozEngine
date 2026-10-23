@@ -19,6 +19,7 @@ public static class MapCaptureDependencies
         var scopes = new List<MapSceneScope>(); var keys = new HashSet<MapSceneResourceKey>();
         var lights = new Dictionary<string, MapEffectiveLight>(StringComparer.Ordinal);
         string digest = "";
+        int maxResources = request.Source.Data.Limits.MaxSelectedResources;
         try
         {
             request.Scope.Validate();
@@ -31,8 +32,8 @@ public static class MapCaptureDependencies
                 var scope = Scope(request.Scope, b);
                 if (scopes.Any(s => s.Digest == scope.Digest)) return;
                 if (scopes.Count == 256) throw new MapSceneCapacityException("MaxCaptureScopes", (long)scopes.Count + 1, 256);
-                foreach (var key in request.Source.Data.Index.Query(b, out _, 4096))
-                    if (keys.Add(key) && keys.Count > 4096) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxSelectedResources), keys.Count, 4096);
+                foreach (var key in request.Source.Data.Index.Query(b, out _, maxResources))
+                    if (keys.Add(key) && keys.Count > maxResources) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxSelectedResources), keys.Count, maxResources);
                 scopes.Add(scope);
             }
             var draw = request.Scope.DrawBounds;
@@ -62,7 +63,7 @@ public static class MapCaptureDependencies
                     Add(new(Math.Min(r.MinX, r.MinX + d.X), Math.Min(r.MinY, r.MinY + d.Y), Math.Min(r.MinZ, r.MinZ + d.Z),
                         Math.Max(r.MaxX, r.MaxX + d.X), Math.Max(r.MaxY, r.MaxY + d.Y), Math.Max(r.MaxZ, r.MaxZ + d.Z)));
                 }
-                foreach (var key in request.Source.Data.Index.Query(r, out _, 4096, k => k.Kind == "Light"))
+                foreach (var key in request.Source.Data.Index.Query(r, out _, maxResources, k => k.Kind == "Light"))
                 {
                     if (!lightCandidates.Add(key)) continue;
                     if (lightCandidates.Count > 256) throw new MapSceneCapacityException("MaxCaptureLights", lightCandidates.Count, 256);

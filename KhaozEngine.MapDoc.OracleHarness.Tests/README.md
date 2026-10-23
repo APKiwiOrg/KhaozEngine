@@ -789,7 +789,11 @@ retains its existing 67,108,864-byte per-plan allowance and its 256-active-windo
 with engine defaults for its other residency budgets and for omitted query limits. Each declared family
 supplies its complete set of values. Omitted preparation and decode families preserve existing per-call
 defaults, including allowances derived from remaining scene and residency memory. Explicit ceilings clamp
-those remaining allowances. The profile covers all 65 scalar limits in the nine registered families,
+those remaining allowances. Shared residency byte admission enforces the declared foliage-context
+policy. Foliage sample retention is aggregate across the captured context cache, with a 64 MiB default
+on omission. Explicit larger allowances remain available through distribution and cache admission.
+A cache retention refusal reports retained bytes plus the next reservation against the declared total.
+The profile covers all 65 scalar limits in the nine registered families,
 plus the extent-proof metadata byte allowance. Full input expansion and foliage correspondence capture
 use the same declared query and context limits as window preparation. Decode limits follow extent
 scratch work and every selected asset, material and composition decode into residency.

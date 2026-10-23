@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Metal.Diagnostics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using KhaozEngine.Tests.Windowing;
@@ -63,7 +64,8 @@ public sealed class RendererInitializationGpuTests(ITestOutputHelper log)
             + $"Alpha zero={zeroAlpha}, visible={visibleAlpha}. Capture matches every byte before present.");
     }
 
-    static byte[][] Render(IGpuDevice gd, bool rendererOwned, bool transparent, bool temporal, bool geometry, bool hdr)
+    internal static byte[][] Render(IGpuDevice gd, bool rendererOwned, bool transparent, bool temporal, bool geometry, bool hdr,
+        bool nativePoolBatching = false)
     {
         using var output = new PostChainRig.Output(gd, Width, Height);
         using var device = new FrameOutputDevice(gd, output);
@@ -90,6 +92,7 @@ public sealed class RendererInitializationGpuTests(ITestOutputHelper log)
             {
                 int current = index;
                 commands.Clear();
+                using (MetalFramePoolProbe.Enter(nativePoolBatching))
                 RendererFramePolicy.Run(frame, true, device, commands, Poison, _ =>
                 {
                     // Distinct stale contents prove the final composition overwrites the entire output.

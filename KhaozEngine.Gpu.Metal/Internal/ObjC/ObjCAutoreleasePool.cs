@@ -32,7 +32,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     /// pool moved up to the <c>MetalCommandList</c> members that reach the encoder seams, and the device-free
     /// tests on the Linux and Windows legs drive those members through fake sinks. There <see cref="Enter"/> hands
     /// back a scope that pushed nothing and <see cref="Dispose"/> pops nothing, so neither loads libobjc. On macOS
-    /// it is the same push and pop as before.
+    /// it is the same push and pop as before outside the private archive's explicit frame scope.
     /// </para>
     /// </summary>
     internal readonly ref struct ObjCAutoreleasePool
@@ -44,13 +44,13 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         /// <summary>
         /// Push a pool and hand back the scope that pops it. Always used as
         /// <c>using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();</c> at the TOP of the body, so the pop
-        /// happens on every exit including a throw. Off macOS the scope is empty and costs a branch.
+        /// happens on every exit including a throw. Off macOS the scope is empty. In this private archive only,
+        /// an explicitly active synchronous frame pool also makes the local scope empty and counts its bypass.
         /// </summary>
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static ObjCAutoreleasePool Enter()
         {
-            if (!OperatingSystem.IsMacOS()) return default;
-            return new(ObjCRuntime.AutoreleasePoolPush());
+            return new(MetalFramePoolState.EnterLocal());
         }
 
         /// <summary>
@@ -65,10 +65,8 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [MethodImpl(MethodImplOptions.NoInlining)]
         public void Dispose()
         {
-            if (!OperatingSystem.IsMacOS()) return;
             if (_pool == IntPtr.Zero) return;
-
-            ObjCRuntime.AutoreleasePoolPop(_pool);
+            MetalPoolNative.Pop(_pool);
         }
     }
 }

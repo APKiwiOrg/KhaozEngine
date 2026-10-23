@@ -4,11 +4,12 @@ using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Metal.Diagnostics;
 
 namespace KhaozEngine.Windowing;
 
 internal readonly record struct FrameDiagnosticsWindowState(bool Focused, bool Minimized, bool RenderSuppressed,
-    int Width, int Height, int EffectiveBaseCapHz, bool Vsync, bool RendererInitializesSwapchain = false);
+    int Width, int Height, int EffectiveBaseCapHz, bool Vsync, bool RendererInitializesSwapchain = false, bool NativePoolBatching = false);
 
 internal sealed class FrameDiagnosticsRecorder : IDisposable
 {
@@ -56,7 +57,8 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
 
     // Called before the next frame does any work. Counters include the entire PREVIOUS callback,
     // including prepare, update, render, UI, capture, submit and present. No SnapshotTool is involved.
-    internal void Observe(double dt, long timestamp, FrameDiagnosticsWindowState window, GpuDeviceCounters counters)
+    internal void Observe(double dt, long timestamp, FrameDiagnosticsWindowState window, GpuDeviceCounters counters,
+        MetalFramePoolCounters nativePools = default)
     {
         if (_phase == Phase.Stopped) return;
         if (_phase == Phase.Waiting)
@@ -65,7 +67,7 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
             return;
         }
 
-        var boundary = new FrameDiagnosticsBoundary(timestamp, window, counters);
+        var boundary = new FrameDiagnosticsBoundary(timestamp, window, counters, nativePools);
         if (_phase == Phase.Armed)
         {
             // Trigger I/O was on the previous callback. Its partial interval and dt are discarded.
@@ -80,7 +82,7 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
             return;
         }
         _samples[_count++] = new FrameDiagnosticsSample(_previous.Timestamp, timestamp,
-            (timestamp - _previous.Timestamp) / (double)_frequency, dt, _previous.Window, window, counters);
+            (timestamp - _previous.Timestamp) / (double)_frequency, dt, _previous.Window, window, counters, nativePools);
         _previous = boundary;
         bool durationReached = (timestamp - _baseline.Timestamp) / (double)_frequency >= 10;
         if (!durationReached && _count < _samples.Length) return;

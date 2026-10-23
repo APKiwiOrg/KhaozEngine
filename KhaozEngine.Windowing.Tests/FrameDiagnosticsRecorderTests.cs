@@ -3,6 +3,7 @@ using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Metal.Diagnostics;
 using KhaozEngine.Windowing;
 using Xunit;
 
@@ -14,7 +15,7 @@ public sealed class FrameDiagnosticsAllocationCollection { }
 [Collection("AllocSensitive")]
 public sealed class FrameDiagnosticsRecorderTests : IDisposable
 {
-    readonly string _directory = Path.Combine("/tmp/khaozengine-mac-frame-performance", "late-output-probe-tests-" + Guid.NewGuid().ToString("N"));
+    readonly string _directory = Path.Combine("/tmp/khaozengine-mac-frame-performance", "pool-probe/recorder-tests-" + Guid.NewGuid().ToString("N"));
     string ResultPath => Path.Combine(_directory, "result.json");
     static FrameDiagnosticsWindowState Foreground => new(true, false, false, 800, 600, 0, false);
 
@@ -28,7 +29,7 @@ public sealed class FrameDiagnosticsRecorderTests : IDisposable
 
     static void Observe(FrameDiagnosticsRecorder recorder, long timestamp, long count,
         double dt = 0.25, FrameDiagnosticsWindowState? window = null) =>
-        recorder.Observe(dt, timestamp, window ?? Foreground, Counters(count));
+        recorder.Observe(dt, timestamp, window ?? Foreground, Counters(count), new(count, count, count * 2, count));
 
     [Fact]
     public async Task Trigger_io_and_initial_partial_interval_are_excluded_and_previous_frame_counters_align()
@@ -166,7 +167,7 @@ public sealed class FrameDiagnosticsRecorderTests : IDisposable
     public async Task Sampling_boundaries_allocate_nothing_after_warmup(bool rendererInitializesSwapchain)
     {
         using var recorder = Recorder();
-        var window = Foreground with { RendererInitializesSwapchain = rendererInitializesSwapchain };
+        var window = Foreground with { RendererInitializesSwapchain = rendererInitializesSwapchain, NativePoolBatching = rendererInitializesSwapchain };
         Trigger();
         Observe(recorder, 0, 0);
         Observe(recorder, 1000, 1, window: window);
@@ -318,7 +319,7 @@ public sealed class FrameDiagnosticsRecorderTests : IDisposable
         Assert.True(recorder.Publication.IsCompletedSuccessfully);
         Assert.Null(recorder.Failure);
         using var json = JsonDocument.Parse(File.ReadAllText(ResultPath));
-        Assert.Equal(1, json.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(2, json.RootElement.GetProperty("schemaVersion").GetInt32());
         Assert.Equal(Environment.ProcessId, json.RootElement.GetProperty("processId").GetInt32());
         Assert.Equal(1000, json.RootElement.GetProperty("stopwatchFrequency").GetInt64());
         Assert.Contains("KhaozEngine.Windowing", json.RootElement.GetProperty("engineAssembly").GetString());
@@ -347,4 +348,51 @@ public sealed class FrameDiagnosticsRecorderTests : IDisposable
 
     [Fact]
     public void Relative_paths_are_rejected() => Assert.Throws<ArgumentException>(() => new FrameDiagnosticsRecorder("result.json", 1000));
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Native_pool_counters_pair_with_preceding_callback_and_serialize_exact_deltas(bool enabled)
+    {
+        using var recorder = Recorder(2);
+        var window = Foreground with { NativePoolBatching = enabled };
+        Trigger();
+        recorder.Observe(99, 0, window, Counters(99), new(99, 98, 97, 96));
+        recorder.Observe(88, 100, window, Counters(10), new(100, 90, 80, 70));
+        recorder.Observe(0.1, 200, window, Counters(11), new(103, 93, 85, 71));
+        recorder.Observe(0.2, 400, window, Counters(12), new(107, 97, 91, 73));
+        await recorder.Publication;
+        using var json = JsonDocument.Parse(File.ReadAllText(ResultPath));
+        var root = json.RootElement;
+        Assert.Equal(2, root.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(enabled, root.GetProperty("baseline").GetProperty("window").GetProperty("nativePoolBatching").GetBoolean());
+        Assert.Equal(enabled, root.GetProperty("end").GetProperty("window").GetProperty("nativePoolBatching").GetBoolean());
+        var sample = root.GetProperty("samples")[0];
+        Assert.Equal(enabled, sample.GetProperty("completedFrameWindow").GetProperty("nativePoolBatching").GetBoolean());
+        Assert.Equal(enabled, sample.GetProperty("boundaryWindow").GetProperty("nativePoolBatching").GetBoolean());
+        Assert.Equal(100, root.GetProperty("baseline").GetProperty("nativePools").GetProperty("nativePushCount").GetInt64());
+        Assert.Equal(103, sample.GetProperty("nativePools").GetProperty("nativePushCount").GetInt64());
+        Assert.Equal(107, root.GetProperty("end").GetProperty("nativePools").GetProperty("nativePushCount").GetInt64());
+        Assert.Equal(11, sample.GetProperty("counters").GetProperty("framesBegun").GetInt64());
+        var delta = root.GetProperty("summary").GetProperty("nativePoolDelta");
+        Assert.Equal(7, delta.GetProperty("nativePushCount").GetInt64());
+        Assert.Equal(7, delta.GetProperty("nativePopCount").GetInt64());
+        Assert.Equal(11, delta.GetProperty("bypassedLocalScopeCount").GetInt64());
+        Assert.Equal(3, delta.GetProperty("explicitFrameScopeCount").GetInt64());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Pool_mode_change_invalidates_comparison_even_when_it_returns_to_baseline(bool initial)
+    {
+        using var recorder = Recorder(2);
+        Trigger();
+        Observe(recorder, 0, 0);
+        Observe(recorder, 100, 1, window: Foreground with { NativePoolBatching = initial });
+        Observe(recorder, 200, 2, window: Foreground with { NativePoolBatching = !initial });
+        Observe(recorder, 300, 3, window: Foreground with { NativePoolBatching = initial });
+        await recorder.Publication;
+        using var json = JsonDocument.Parse(File.ReadAllText(ResultPath));
+        Assert.False(json.RootElement.GetProperty("summary").GetProperty("allForegroundRenderedStableSize").GetBoolean());
+    }
 }

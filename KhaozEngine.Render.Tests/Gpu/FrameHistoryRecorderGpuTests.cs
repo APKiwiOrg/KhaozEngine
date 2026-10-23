@@ -6,6 +6,7 @@ using KhaozEngine.BugReports.Client;
 using KhaozEngine.BugReports.Client.Internal;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Metal;
+using KhaozEngine.Gpu.Metal.Diagnostics;
 using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
 using KhaozEngine.Primitives;
@@ -43,13 +44,13 @@ namespace KhaozEngine.Tests.Gpu
         // Split out under the guard for the reason every Metal row in this assembly splits: CA1416 reads the
         // platform guard at the call site.
         [SupportedOSPlatform("macos")]
-        static void RecordThroughALayerBackedDevice(ITestOutputHelper output)
+        internal static (byte[] Screenshot, byte[] FirstClipFrame) RecordThroughALayerBackedDevice(ITestOutputHelper output,
+            bool nativePoolBatching = false)
         {
             CAMetalLayer layer = CAMetalLayer.New();
             if (layer.IsNull)
             {
-                output.WriteLine("dormant: this macOS would not create a CAMetalLayer, so no drawable can be copied.");
-                return;
+                throw new InvalidOperationException("This proof requires a real CAMetalLayer.");
             }
 
             const uint Width = 1280u;
@@ -108,6 +109,7 @@ namespace KhaozEngine.Tests.Gpu
                     }
 
                     int index = i;
+                    using (MetalFramePoolProbe.Enter(nativePoolBatching))
                     FramePhases.Run(NewFrame(commands), render: true, device, commands,
                         ClearColour(i), onPrepare: null,
                         onFrame: _ =>
@@ -164,6 +166,7 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.False(CentreMatches(image.Bytes, (int)Width, (int)Height, after, 8),
                     "the screenshot holds the frame after the trigger");
                 AssertOutline(image.Bytes, (int)Width, (int)Height, trigger, outline);
+                return (image.Bytes.ToArray(), clip.Frames[0].Jpeg.ToArray());
             }
             finally
             {

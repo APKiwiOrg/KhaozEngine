@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.Gpu.Metal.Diagnostics;
 using Silk.NET.Windowing;   // WindowExtensions.Run(this IView), the blocking loop entry point below
 
 namespace KhaozEngine.Windowing
@@ -52,6 +53,8 @@ namespace KhaozEngine.Windowing
         /// </summary>
         public void Run(Action<Frame> onFrame, Action<Frame>? onPrepare)
         {
+            bool nativePoolBatching = FrameDiagnosticsOptions.ReadNativePoolBatching(
+                Environment.GetEnvironmentVariable, _device.Backend, OperatingSystem.IsMacOS());
             // Private archive override, applied after GameApp has set the public property and before recording.
             RendererInitializesSwapchain = FrameDiagnosticsOptions.ResolveRendererInitializesSwapchain(
                 Environment.GetEnvironmentVariable("KE_FRAME_DIAGNOSTICS_RENDERER_INITIALIZES_SWAPCHAIN"),
@@ -75,8 +78,8 @@ namespace KhaozEngine.Windowing
                     new FrameDiagnosticsWindowState(_accumulator.IsFocused, _minimized,
                         !_backgroundThrottle.Plan(new WindowActivity(_accumulator.IsFocused, _minimized), _effectiveBaseCapHz).RenderAndPresent,
                         _window.FramebufferSize.X, _window.FramebufferSize.Y, _effectiveBaseCapHz, _presentMode == PresentMode.Vsync,
-                        RendererInitializesSwapchain),
-                    _device.Counters);
+                        RendererInitializesSwapchain, nativePoolBatching),
+                    _device.Counters, MetalFramePoolProbe.Counters);
                 float fdt = (float)Math.Min(dt, 0.1);
                 // Capture first, so the snapshot reports what GLFW was told this frame. See AppWindow.PointerCapture.cs.
                 ApplyPointerCapture();
@@ -99,8 +102,11 @@ namespace KhaozEngine.Windowing
                 // The frame's whole shape: prepare -> open + optional host clear -> record -> capture taps -> end +
                 // submit -> taps' after-submit -> present. Both callbacks always run, so update advances even on a
                 // render-suppressed frame. The taps get the unclamped delta (see AppWindow.CaptureTaps.cs).
-                FramePhases.Run(_frame, render, _device, _cl, ClearColor, onPrepare, record, _captureTaps,
-                    dt * 1000.0, RendererInitializesSwapchain);
+                using (MetalFramePoolProbe.Enter(nativePoolBatching && render))
+                {
+                    FramePhases.Run(_frame, render, _device, _cl, ClearColor, onPrepare, record, _captureTaps,
+                        dt * 1000.0, RendererInitializesSwapchain);
+                }
 
                 // Pace the loop to the plan's cap. Silk's own loop runs the callback as fast as the GPU allows (a
                 // Metal present does not throttle the CPU), so idle here to hold the target cadence - the base

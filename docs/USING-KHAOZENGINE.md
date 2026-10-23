@@ -23220,6 +23220,9 @@ invented contiguous interval per cascade. No draw is reordered to manufacture a 
 rows keep the existing packed scheduling order and separate base/transient atlas identity. Cached base
 rows announce skipped occurrences before the packed traversal. The recorder adapter defers these
 notifications and writes their skipped subtrees at the positions in its actual frozen row schedule.
+Transient demand not admitted to the live atlas announces skipped rows after the packed traversal and
+before point-shadow finish. Each skipped row covers its reserved subtree with `NotExecuted` and no
+GPU duration. This also covers the first base rebuild while the transient atlas is still pending.
 Admission sorts static requests by stable light key, followed by nearest-first dynamic requests, while
 static rebuilds run stalest first and transient rows follow base rows. Leaf keys use the stable atlas row
 and row kind rather than packed upload indices, so cache reuse cannot rename later dynamic or transient

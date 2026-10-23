@@ -51,6 +51,17 @@ public sealed class RendererPerfEntrypointTests
                     JsonSerializer.SerializeToUtf8Bytes(new { frame, defined = passes, observed = relay.Trace.Freeze(), sample.Errors, relay.FailureSite }));
             }
             Assert.Empty(sample.Errors);
+            if (scene == "S3" && frame == 1)
+            {
+                var transient = sample.Passes.Where(p => p.Id.StartsWith("shadow.point.transient", StringComparison.Ordinal)).ToArray();
+                Assert.Equal(26, transient.Length);
+                Assert.All(transient, pass =>
+                {
+                    Assert.Equal(RendererPerfMetricStatus.NotExecuted, pass.Duration.Status);
+                    Assert.Null(pass.ElapsedTicks);
+                    Assert.Null(pass.Duration.Value);
+                });
+            }
         }
     }
 

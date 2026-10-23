@@ -80,6 +80,7 @@ public sealed partial class Scene3D
                 else ProfilePointPass(cl, packed, PointProfilePass.Skinned, face, executed: false);
             }
         }
+        ReportSkippedTransientPointRows(cl);
         if (activeAtlas is not null)
             using (ProfilePass(cl, "shadow.point.finish")) renderer.EndPass(cl);
         return draws;

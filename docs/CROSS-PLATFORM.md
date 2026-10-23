@@ -284,6 +284,8 @@ and pipeline-cache identity. A disabled or unavailable cache identity refuses ad
 Layouts are frozen on inert headless devices, with no extra native discovery frames.
 Cold ocean setup records, submits and drains its prepared compute work before warm-up, without
 advancing a scene frame or changing the producer's unrecorded-preparation invalidation rule.
+Production point-shadow callbacks report unavailable transient rows as skipped subtrees before
+point-shadow finish, preserving the frozen order without a fabricated GPU interval.
 
 The existing driver owns every conditioned, warm and measured frame, three-frame completion,
 readback, drift check and publication deadline. Host telemetry uses `nvidia-smi` outside frame
@@ -304,7 +306,8 @@ Task 15 must reconcile and review integration, obtain each precise pilot approva
 control output and compiler retention including Windows FXC, inspect clocks and marker perturbation,
 confirm complete counts and End-tail ownership, check native artifact sizes under the 256 MiB cap,
 and record actual billed minutes. It must review the cold ocean recording, submission and drain as
-startup work and deadline cost. Its readers must retain `metric-vectors/2`, DeviceOnly rows,
+startup work and deadline cost. Review the production skipped-transient-row callbacks and their native
+command parity during Task 15. Its readers must retain `metric-vectors/2`, DeviceOnly rows,
 memory observations/peaks and the two-stage publication stamp. A full unit needs fresh approval
 after pilot review. Failure requires scoped correction and fresh approval. Windows Vulkan,
 profilers, consumer fit, optimization and release remain separate decisions.

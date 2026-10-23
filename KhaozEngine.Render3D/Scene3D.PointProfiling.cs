@@ -28,6 +28,14 @@ public sealed partial class Scene3D
         }
     }
 
+    // Transient rows follow base rows even while their atlas is pending or cannot admit every candidate.
+    void ReportSkippedTransientPointRows(IGpuCommandList cl)
+    {
+        if (_profiling is not { } profiling) return;
+        for (int row = _selectedPointTransientRequests.Count; row < _pointTransientDemandThisFrame; row++)
+            profiling.Pass(cl, "shadow.point.transient", row, executed: false);
+    }
+
     RenderProfilingScope ProfilePointPass(IGpuCommandList cl, in PackedPointShadowSlot packed,
         PointProfilePass pass, int face = -1, bool executed = true)
     {

@@ -177,10 +177,10 @@ public sealed class ConvexPlanarDistanceTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void LaterOperationsAndExhaustedDistanceRefuseAtomically()
+    public void UnfinishedOperationsAndExhaustedDistanceRefuseAtomically()
     {
         using var fixture = new ConvexPlanarFixture(new(0.125f), Pose.At(new(1, 0.625f, 0)));
-        foreach (var operation in new[] { ConvexQueryOperation.Sweep, ConvexQueryOperation.Contacts, ConvexQueryOperation.Penetration })
+        foreach (var operation in new[] { ConvexQueryOperation.Contacts, ConvexQueryOperation.Penetration })
         {
             var request = new ConvexQueryRequest(Dyadic, Pose.Identity, Vector3.Zero, operation);
             var work = new ConvexQueryWork();

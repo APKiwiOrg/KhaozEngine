@@ -11,4 +11,5 @@ internal enum ConvexTargetFeature { Face, Edge, Vertex, Interior }
 internal readonly record struct ConvexLeafEvidence(bool IsComplete, bool HasAttainedWitness,
     bool HasNormalConeCertificate, float LowerDistance, float UpperDistance, Vector3 QueryWitness,
     Vector3 TargetWitness, Vector3 Normal, ConvexShellFeature QueryFeature, ConvexTargetFeature TargetFeature,
-    int LocalFeatureId, GeometryVector QueryWitnessBounds, GeometryVector TargetWitnessBounds, GeometryVector TowardTargetBounds);
+    int LocalFeatureId, GeometryVector QueryWitnessBounds, GeometryVector TargetWitnessBounds, GeometryVector TowardTargetBounds,
+    ConvexSweepStatus SweepStatus = ConvexSweepStatus.Unresolved, float CertifiedErrorMetres = 0);

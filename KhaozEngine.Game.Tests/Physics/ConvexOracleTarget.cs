@@ -56,4 +56,5 @@ internal sealed record ConvexOracleTarget(V[] Vertices, int[][] Faces)
     }
 }
 
-internal readonly record struct ConvexOracleEvent(bool IsComplete, double Lower, double Upper);
+internal readonly record struct ConvexOracleEvent(bool IsComplete, double Lower, double Upper,
+    ConvexSweepStatus Status = ConvexSweepStatus.Unresolved);

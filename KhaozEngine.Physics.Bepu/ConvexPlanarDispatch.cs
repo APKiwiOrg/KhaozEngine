@@ -8,14 +8,16 @@ internal sealed class ConvexPlanarDispatch(InstalledSweepLeaf leaf, ConvexContac
     {
         internal ConvexPlanarDispatch? Owner { get; }
         internal ConvexLeafEvidence Local { get; }
-        Evidence(ConvexPlanarDispatch owner, ConvexLeafEvidence local) { Owner = owner; Local = local; }
+        internal ConvexQueryOperation Operation { get; }
+        Evidence(ConvexPlanarDispatch owner, ConvexLeafEvidence local, ConvexQueryOperation operation)
+        { Owner = owner; Local = local; Operation = operation; }
 
         internal static bool TryEvaluate(ConvexPlanarDispatch owner, in ConvexQueryRequest request,
             ref ConvexQueryWork work, ConvexQueryScratch scratch, out Evidence evidence)
         {
             evidence = default;
             if (!ConvexFeatureKernel.TryEvaluate(request, owner.Leaf, ref work, scratch, out var local)) return false;
-            evidence = new(owner, local);
+            evidence = new(owner, local, request.Operation);
             return true;
         }
     }
@@ -27,10 +29,28 @@ internal sealed class ConvexPlanarDispatch(InstalledSweepLeaf leaf, ConvexContac
     internal bool TryPublish(in Evidence evidence, out ConvexDistanceResult result)
     {
         result = default;
-        if (!ReferenceEquals(evidence.Owner, this) || !evidence.Local.IsComplete) return false;
+        if (!ReferenceEquals(evidence.Owner, this) || evidence.Operation != ConvexQueryOperation.Distance || !evidence.Local.IsComplete) return false;
         var local = evidence.Local;
         result = new(true, true, local.LowerDistance, local.UpperDistance, local.QueryWitness,
             local.TargetWitness, local.Normal, identity);
+        return true;
+    }
+
+    internal bool TryPublishSweep(in Evidence evidence, out ConvexSweepResult result)
+    {
+        result = default;
+        if (!ReferenceEquals(evidence.Owner, this) || evidence.Operation != ConvexQueryOperation.Sweep || !evidence.Local.IsComplete) return false;
+        var local = evidence.Local;
+        if (local.SweepStatus == ConvexSweepStatus.Clear)
+        {
+            result = new(ConvexSweepStatus.Clear, local.LowerDistance, null, 0, null, default);
+            return true;
+        }
+        if (local.SweepStatus != ConvexSweepStatus.Hit) return false;
+        SweepHit hit = new(local.UpperDistance, local.TargetWitness, local.Normal,
+            identity.Dynamic ? null : new StaticHandle(identity.BodyHandle));
+        result = new(ConvexSweepStatus.Hit, local.LowerDistance, local.UpperDistance,
+            local.CertifiedErrorMetres, hit, identity);
         return true;
     }
 }

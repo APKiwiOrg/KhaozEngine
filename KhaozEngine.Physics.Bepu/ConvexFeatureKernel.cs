@@ -12,7 +12,8 @@ internal static class ConvexFeatureKernel
         ref ConvexQueryWork work, ConvexQueryScratch scratch, out ConvexLeafEvidence evidence)
     {
         evidence = default;
-        if (request.Operation != ConvexQueryOperation.Distance || request.Displacement != Vector3.Zero || !ConvexQueryPolicy.Contains(request) ||
+        if (request.Operation is not (ConvexQueryOperation.Distance or ConvexQueryOperation.Sweep) ||
+            (request.Operation == ConvexQueryOperation.Distance && request.Displacement != Vector3.Zero) || !ConvexQueryPolicy.Contains(request) ||
             scratch is null || leaf.Geometry is not { } geometry || !leaf.Map.IsResolved ||
             geometry.Curved.HasValue || geometry.Children is not null || geometry.Mesh is not null || geometry.IsTriangle ||
             !geometry.Matches(geometry.Owner, geometry.Root) ||
@@ -31,7 +32,9 @@ internal static class ConvexFeatureKernel
                 foreach (Q c in new[] { p.X, p.Y, p.Z })
                     if ((Q.From(2048) - c).Sign < 0 || (Q.From(2048) + c).Sign < 0) return false;
             }
-            return TryDistance(request, represented, ref work, scratch, out evidence);
+            return request.Operation == ConvexQueryOperation.Sweep
+                ? ConvexPlanarSweep.TryEvaluate(request, represented, ref work, scratch, out evidence)
+                : TryDistance(request, represented, ref work, scratch, out evidence);
         }
         catch (ConvexExactRefusalException)
         {
@@ -40,7 +43,7 @@ internal static class ConvexFeatureKernel
         }
     }
 
-    static bool TryDistance(in ConvexQueryRequest request, in InstalledSweepLeaf leaf,
+    internal static bool TryDistance(in ConvexQueryRequest request, in InstalledSweepLeaf leaf,
         ref ConvexQueryWork work, ConvexQueryScratch scratch, out ConvexLeafEvidence evidence)
     {
         evidence = default;
@@ -103,7 +106,7 @@ internal static class ConvexFeatureKernel
         return false;
     }
 
-    static P Support(in ConvexQueryShape shape, P n)
+    internal static P Support(in ConvexQueryShape shape, P n)
     {
         Q r = Q.From(shape.Radius), lower = Q.From(shape.LowerY), ring = Q.From(shape.RingY), upper = Q.From(shape.UpperY);
         Q radial = Q.Root((n.X * n.X + n.Z * n.Z).A);

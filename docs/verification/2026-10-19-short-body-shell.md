@@ -1,10 +1,11 @@
 # Short-body shell verification
 
-Task 1 and Task 2a of the [short-body shell plan](../superpowers/plans/2026-10-19-short-body-shell.md).
+Task 1, Task 2a and partial Task 2b of the [short-body shell plan](../superpowers/plans/2026-10-19-short-body-shell.md).
 Requirements are [SB-2 to SB-4 and acceptance group A](../design/CONTACT-SHORT-BODY-SHELL-2026-10-19.md).
-This record covers value contracts, independent oracles and finite planar Distance certificates.
-Sweep, Contacts, Penetration, selected-world traversal, controller adoption, navigation, the full
-suite and release acceptance remain later tasks. Earlier partial checkpoints below are historical.
+This record covers value contracts, independent oracles, finite planar Distance certificates
+and the supported planar sweep strata recorded below. Complete Sweep coverage, Contacts,
+Penetration, selected-world traversal, controller adoption, navigation, the full suite and
+release acceptance remain unfinished. Earlier partial checkpoints below are historical.
 
 ## Task 1 requirements and tests
 
@@ -569,3 +570,123 @@ sh scripts/check-file-size.sh staged and git diff --cached --check. The first pr
 rejected a console logger argument written in prose. Rewording that sentence resolved it.
 Whole-tree dash, prose and file-size guards and bash scripts/check-doc-versions.sh also
 exited 0. No source changed after the final test commands.
+
+## Task 2b partial planar sweeps
+
+Task 2b is incomplete. The supported producers below can publish independently proved
+planar hits and full-path separation. Unimplemented moving feature pairs refuse atomically.
+Contacts and Penetration still refuse before geometric work. This is not the complete
+moving extension of the Task 2a enumeration lemma and does not unblock Task 3.
+
+### Contact and clear proofs
+
+Every accepted seed is an attained common point between the requested Minkowski-grown
+shell and the exact represented target. Closed shell membership, the query normal cone,
+the original finite face, vertex or segment domain, and support against every target
+vertex are checked exactly. The nonnegative margin offset is parallel to the common normal
+and has squared length equal to the exact requested margin squared.
+
+For a contact at fraction tau with common outward normal n and dot(n, displacement) > 0,
+the same dual plane strictly separates both complete solids at every earlier original-path
+fraction. Its gap is (tau - fraction) times dot(n, displacement). A nonpositive speed needs
+a separate strict dual separator over the whole earlier bracket prefix. A perturbed normal
+is only a direction proposal. Exact complete support and all represented target vertices
+decide whether its whole-prefix proof succeeds. Failure never publishes a hit or clear prefix.
+
+The exact quadratic feature solutions retain their original closed geometric predicates.
+Their algebraic time annihilators go through ConvexAlgebraicRoots.TryIsolate with both
+original unsquared radical signs. The committed square-free reduction, Sturm counts and
+dyadic isolation retain repeated roots. Exact quadratic time bounds intersect the root
+bracket before outward distance encoding. Neither a sign crossing nor a root midpoint is
+an existence witness. The exact attained time and point remain the witness.
+
+A whole-path Clear requires one strict dual support-plane proof over [0,1]. Direction
+proposals can come from a finite face or the distance kernel, but rounded proposal output
+never authorizes a miss. The original displacement is used throughout. Clear carries no
+identity, hit, contact point or normal. A path without a proved separator or contact refuses.
+
+The encoded impact bracket, both point-encoding errors and normal-encoding error share the
+existing 0.001 m evidence budget. The unchanged float skin subtraction must be strictly
+earlier than the lower bracket when it advances. The actual represented feet addition after
+Vector3.Normalize(displacement) times that advance must also satisfy a strict dual separating
+plane. The -1024 m fixture independently checks its resulting placement against the oracle.
+
+Opaque dispatch tickets retain their exact dispatch owner and operation. A foreign owner
+cannot publish a ticket, including the same geometry under another raw identity. Distance
+tickets cannot become sweep tickets or vice versa. Hit retains the exact SS-R5 identity
+supplied by its SS-R6 dispatcher. Coincident children and two dynamic bodies remain distinct.
+InstalledSweepLeaf, capsule code, existing support code and navigation hashes are unchanged.
+
+### Independent oracle coverage
+
+ShortBodyShellOracle.Entry now handles nonzero paths. Cartesian base-shell targets use a
+separate rational piecewise meridian ray construction, with exact discriminants and outward
+square roots. Closed breakpoints, stationary double roots and the final endpoint are retained.
+Other targets and requested margins use independently certified attained points and complete
+support planes, with convexity establishing the single contact-time interval. Numeric GJK is
+only a fallback proposal source. Missing samples and failed proposals cannot certify Clear.
+No production support, transform, normal-cone, polynomial or root helper supplies an answer.
+
+Face centroids alone do not cover the installed shoulder contact after Bepu centering
+rounding. The independent oracle now also certifies an exact face-plane point against every
+original target halfspace and its separate meridian membership test. This fixes the observed
+oracle refusal without changing a tolerance or treating a near-zero distance as overlap.
+
+| Closed query feature | Face | Interior edge | Vertex |
+| --- | --- | --- | --- |
+| Apex | Base and margin | Unfinished | Unfinished |
+| Lower cone | Base and margin | Base | Unfinished |
+| Shoulder circle | Base and margin | Unfinished | Unfinished |
+| Cylindrical side | Base and margin | Base | Base |
+| Head disc | Base and margin | Base | Unfinished |
+| Head rim | Base and margin | Unfinished | Unfinished |
+
+These ten base feature-pair cells and six margin face cells have direct independent sweep
+comparisons. Duck and cow each have independent wall, roof and floor comparisons for boxes
+and hulls with both admitted margins. The thin full-width blocker, dyadic tangent, adjacent
+floats, finite endpoint, zero path, initial boundary, raw identity and lowered-work controls
+are covered. Positive initial overlap currently refuses. A known margin/cone-edge contact
+is independently established and then explicitly checked for default production refusal.
+
+### Exact remaining scope
+
+- Complete moving apex, lower-cone, shoulder and rim vertex strata, including seam normal cones.
+- Complete moving apex, shoulder and rim interior-edge strata and their closed degeneracies.
+- Complete margin/cone and margin/circular edge and vertex algebra, including mixed quadratic
+  fields and the higher-degree radical equations. Current mixed fields are not rounded together.
+- Complete non-face zero-path and initial-overlap reporting and the full moving enumeration lemma.
+- Broaden the independent oracle matrix to every missing feature pair and general represented pose.
+
+Work and exact integer ceilings are unchanged. Exhaustion is sticky. Root arenas and fraction
+width are restored in finally paths. Counter observations are diagnostic, with no SIMD- or
+schedule-dependent absolute pins. Selected-world traversal, lifetime and whole-query publication
+remain later tasks. There is no version, changelog, package, world, consumer or release change.
+
+### Task 2b final focused checks
+
+All 22 new tests passed in the focused red-to-green selection. The final Game selection
+combines those three new classes with the exact Task 2a final-game filter above. Its command
+uses label short-shell-2b-final-game, Release, no restore and the detailed console logger.
+It exited 0 with 404 passed, zero failed or skipped. That includes every required SS-R2
+shell, core, general sweep, cylinder, curved and captured-stair control. No warnings or errors
+were reported. The test and command history is retained in the Task 2b implementation report.
+
+```bash
+build-slot --label short-shell-2b-final-footprint --heavy -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~SupportFootprintTests|FullyQualifiedName~SupportFootprintProofReuseGeometryTests|FullyQualifiedName~SupportFootprintProofReuseWorkTests' --logger 'console;verbosity=detailed'
+```
+
+Exit 0. All 741 passed, zero failed or skipped.
+
+```bash
+build-slot --label short-shell-2b-final-navigation --heavy -- dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release --no-restore --filter 'FullyQualifiedName~ContactNavigationBaselineTests.SerialBakeMatchesNormalizedFullFileBaseline' --logger 'console;verbosity=detailed'
+```
+
+Exit 0. All seven original normalized full-file baselines passed at degree 1. The source
+passes null execution and NavBakeExecution.Degree returns 1 for that value. The original
+hashes, capsule production/test files, support files and navigation sources are unchanged.
+The new focused tests observe maxima of 35 cells and 308 features, without pinning them.
+
+All builds and tests ran through build-slot, one at a time. No full suite, timing/load run,
+live run, push, merge, branch change, external write or delegation occurred. Explicit staging
+and self-review cover exactly fifteen task-owned paths. All four staged guards pass before
+the partial commit. Full solution verification and integration remain with the orchestrator.

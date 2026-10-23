@@ -13,8 +13,9 @@ internal static partial class ShortBodyShellOracle
     internal static ConvexOracleEvent Entry(in ConvexQueryShape shape, Pose pose, ConvexOracleTarget target, Vector3 displacement)
     {
         Validate(shape.Radius, shape.LowerY, shape.RingY, shape.UpperY, shape.Margin);
-        if (pose.Orientation != Quaternion.Identity || displacement != Vector3.Zero ||
+        if (pose.Orientation != Quaternion.Identity ||
             target.Vertices.Length < 4 || target.Faces.Length < 4) return default;
+        if (displacement != Vector3.Zero) return SweepEntry(shape, pose, target, displacement);
         if (target.Vertices.Length != 8 || target.Faces.Length != 6) return GeneralEntry(shape, pose, target);
         R Copy(InstalledPoseOracle.R r) => new(r.Numerator, r.Denominator);
         R[] low = new R[3], high = new R[3];

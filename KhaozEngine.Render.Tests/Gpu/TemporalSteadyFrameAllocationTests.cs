@@ -6,6 +6,7 @@ using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
+using KhaozEngine.Render3D.Internal;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -23,11 +24,15 @@ namespace KhaozEngine.Tests.Gpu
         const int Warm = 6, Measured = 20;
 
         [Theory]
-        [InlineData(SceneDebugView.None, false)]
-        [InlineData(SceneDebugView.None, true)]
-        [InlineData(SceneDebugView.History, false)]
-        [InlineData(SceneDebugView.History, true)]
-        public void ASteadyTemporalFrameAllocatesNothing(SceneDebugView view, bool bloom)
+        [InlineData(SceneDebugView.None, false, 0)]
+        [InlineData(SceneDebugView.None, false, 1)]
+        [InlineData(SceneDebugView.None, true, 0)]
+        [InlineData(SceneDebugView.None, true, 1)]
+        [InlineData(SceneDebugView.History, false, 0)]
+        [InlineData(SceneDebugView.History, false, 1)]
+        [InlineData(SceneDebugView.History, true, 0)]
+        [InlineData(SceneDebugView.History, true, 1)]
+        public void ASteadyTemporalFrameAllocatesNothing(SceneDebugView view, bool bloom, int choice)
         {
             using var device = new FakeGpuDevice();
             var factory = (FakeGpuResourceFactory)device.Factory;
@@ -39,6 +44,7 @@ namespace KhaozEngine.Tests.Gpu
             scene.Post.Temporal.Upscale = TemporalUpscale.Quality;
             scene.Post.Bloom.Enabled = bloom;
             scene.DebugView = view;
+            scene.TemporalResolveEntryForTests = (TemporalResolveEntry)choice;
             MeshHandle box = scene.LoadMesh(MeshPrimitives.Box(1f));
             using IGpuCommandList commands = factory.CreateCommandList();
             int frame = 0;
@@ -65,9 +71,11 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuTheory]
-        [InlineData(false)]
-        [InlineData(true)]
-        public void RecordingASteadyTemporalFrameOnTheDeviceAllocatesNothing(bool bloom)
+        [InlineData(false, 0)]
+        [InlineData(true, 0)]
+        [InlineData(false, 1)]
+        [InlineData(true, 1)]
+        public void RecordingASteadyTemporalFrameOnTheDeviceAllocatesNothing(bool bloom, int choice)
         {
             if (GpuBackendSelector.Select() != GpuBackendKind.MetalNative)
             {
@@ -82,6 +90,7 @@ namespace KhaozEngine.Tests.Gpu
                 s.Post.Bloom.Enabled = bloom;
             });
             Scene3D scene = fx.Scene;
+            scene.TemporalResolveEntryForTests = (TemporalResolveEntry)choice;
             IGpuDevice gd = fx.Device;
             using IGpuCommandList cl = gd.Factory.CreateCommandList();
             int n = 0;
@@ -207,6 +216,8 @@ namespace KhaozEngine.Tests.Gpu
         // bloom when it is on and the debug view pass when a view is set.
         static void AssertTheFrameIsTheMeasuredOne(Scene3D scene, SceneDebugView view, bool bloom)
         {
+            Assert.True(scene.TemporalResolveRendererForTests!.VisibilityHistory.Allocated);
+            Assert.Equal(GpuPixelFormat.R8UNorm, scene.TemporalResolveRendererForTests.VisibilityHistory.Texture(0).Format);
             Assert.True(scene.ResolvedLastRenderForTests, "the last warm frame did not run the resolve");
             Assert.True(scene.TemporalSharpenBuiltForTests, "the default sharpen is not in the display chain");
             Assert.Equal(bloom, scene.TemporalPostTargetsForTests!.BloomAllocated);

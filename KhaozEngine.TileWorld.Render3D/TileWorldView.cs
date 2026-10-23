@@ -310,13 +310,15 @@ public sealed partial class TileWorldView : IDisposable
         return tile.Plane == _interior.Plane && _interior.Contains(tile.X, tile.Z);
     }
 
-    /// <summary>How many prop placements the last <see cref="Draw"/> queued, roofs included when shown.
+    /// <summary>How many prop placements the last <see cref="Draw"/> queued, ordinary and layered roofs included when shown.
+    /// Merged layer handles count their represented placements once.
     /// Animated foliage contributes conservative submitted candidates, including model parts.</summary>
     public int LastDrawnProps { get; private set; }
 
     /// <summary>How many roof placements the last <see cref="Draw"/> queued as SHADOW-ONLY casters: hidden from
     /// the eye by <see cref="RoofMode"/> and still recording depth for the key light, so the room under them
-    /// stays shaded. Counted apart from <see cref="LastDrawnProps"/>, which stays the visible total.</summary>
+    /// stays shaded. Includes individual and merged roof layers. Counted apart from <see cref="LastDrawnProps"/>,
+    /// which stays the visible total.</summary>
     public int LastShadowOnlyProps { get; private set; }
 
     /// <summary>How many regions are loaded right now.</summary>
@@ -529,7 +531,9 @@ public sealed partial class TileWorldView : IDisposable
                 if (props.Roofs.Count > 0) drawn += DrawRoofs(props, plane, focus, ref shadowOnly);
             }
         }
-        _propClusters.Draw(focus);
+        PropClusterDrawCounts layerCounts = _propClusters.Draw(focus, RoofRule);
+        drawn += layerCounts.Visible;
+        shadowOnly += layerCounts.ShadowOnly;
         LastDrawnProps = drawn;
         LastShadowOnlyProps = shadowOnly;
         DrawCover(focus);

@@ -63,6 +63,8 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Every buffer barrier recorded, in order.</summary>
         internal List<FakeBufferBarrier> BufferBarriers { get; } = new();
 
+        internal List<(MemoryBarrier2 Barrier, int CopiesBefore)> MemoryBarriers { get; } = new();
+
         /// <summary>Every clear recorded, in order.</summary>
         internal List<FakeClear> Clears { get; } = new();
 
@@ -79,6 +81,8 @@ namespace KhaozEngine.Tests.Gpu
         /// <inheritdoc/>
         public void PipelineBarrier(ulong commandBuffer, in DependencyInfo dependency)
         {
+            for (uint i = 0; i < dependency.MemoryBarrierCount; i++)
+                MemoryBarriers.Add((dependency.PMemoryBarriers[i], BufferCopies.Count + ImageCopies.Count));
             for (uint i = 0; i < dependency.ImageMemoryBarrierCount; i++)
             {
                 ImageMemoryBarrier2 barrier = dependency.PImageMemoryBarriers[i];
@@ -147,6 +151,7 @@ namespace KhaozEngine.Tests.Gpu
             _log.Clear();
             ImageBarriers.Clear();
             BufferBarriers.Clear();
+            MemoryBarriers.Clear();
             Clears.Clear();
             ImageCopies.Clear();
             BufferCopies.Clear();

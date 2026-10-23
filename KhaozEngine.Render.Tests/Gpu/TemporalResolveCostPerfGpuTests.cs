@@ -224,7 +224,7 @@ namespace KhaozEngine.Tests.Gpu
         static readonly Color BoxTint = new(0.8f, 0.6f, 0.4f, 1f);
 
         // The flat wall and twelve keyed boxes drifting right.
-        static Action<Scene3D, int> BoxesScene(FrontStage stage) => (s, n) =>
+        internal static Action<Scene3D, int> BoxesScene(FrontStage stage) => (s, n) =>
         {
             stage.Wall(s);
             for (int i = 0; i < 12; i++)
@@ -242,7 +242,7 @@ namespace KhaozEngine.Tests.Gpu
         // The textured wall panning under a follow camera, a wide keyed box the camera follows, in front of the wall,
         // and in front of both a field of keyed bars one internal pixel wide at Quality, vertical ones swaying across
         // and horizontal ones swaying up and down, each on its own phase, so each moves against the wall and the box.
-        static Action<Scene3D, int> FieldScene(FrontStage stage)
+        internal static Action<Scene3D, int> FieldScene(FrontStage stage)
         {
             float px = stage.PixelWorld;
             float halfW = 0.5f * stage.W * px, halfH = 0.5f * stage.H * px;

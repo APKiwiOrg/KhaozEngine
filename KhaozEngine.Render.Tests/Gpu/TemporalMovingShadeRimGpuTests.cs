@@ -10,7 +10,10 @@ namespace KhaozEngine.Tests.Gpu
     /// Leading and trailing silhouettes of the M and MS shadow stage. Unlike its infinitely tall strips, finite
     /// strips expose real edges along their motion. The one to six display pixels inside each edge include pixels
     /// whose current 3x3 is object-only but whose reprojected history ring reaches the background. The full rim's
-    /// error, raw frame-to-frame change and temporal error are bounded against v21.2.0 on each device class.
+    /// error and temporal error are bounded against the frozen bilinear-input control on each device class. Raw
+    /// frame-to-frame change is reported alongside the reference change.
+    /// The PCF filter changed the scene input. These rows measure the unchanged 21.4.0 resolve on bilinear 3x3 PCF.
+    /// The signal is judged against this control, with the recorded owner-accepted Quality M 1.0 leading textured cost.
     /// </summary>
     public sealed class TemporalMovingShadeRimGpuTests(TemporalMovingShadeRimScene scene, ITestOutputHelper output)
         : IClassFixture<TemporalMovingShadeRimScene>
@@ -18,6 +21,9 @@ namespace KhaozEngine.Tests.Gpu
         [GpuFact]
         public void Moving_shadow_receivers_keep_their_leading_and_trailing_rims()
         {
+            // Owner accepted on 2026-10-19 after real-scene clips: the visibility lock release removes held shadow
+            // sparkle, and this synthetic value is the measured cost of that release. No large-change response ships.
+            // Owner accepted per driver on 2026-10-19 after hosted run 39215298727: WARP and lavapipe show the same lock-release costs.
             var failures = new List<string>();
             foreach (TemporalUpscale preset in new[] { TemporalUpscale.Quality, TemporalUpscale.Native })
                 foreach (float shadow in new[] { 0f, 1f })
@@ -29,6 +35,8 @@ namespace KhaozEngine.Tests.Gpu
                         foreach ((string rim, TemporalReviewFigures figures) in Measure(frames, reference, motion))
                         {
                             output.WriteLine($"RIM {TemporalDeviceClass.Name}|{name} {rim}|{figures}");
+                            output.WriteLine($"RIM-EXACT|{TemporalDeviceClass.Name}|{name} {rim}|{figures.Error:R}"
+                                + $"|{figures.Change:R}|{figures.Temporal:R}|{figures.Reference:R}");
                             TemporalReviewBaseline.Check("rim", $"{name} {rim}", figures, failures);
                         }
                     }

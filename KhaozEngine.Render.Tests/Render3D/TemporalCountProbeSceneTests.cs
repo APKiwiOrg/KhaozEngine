@@ -30,7 +30,8 @@ public sealed class TemporalCountProbeSceneTests
 
     static bool Is(IGpuPipeline? p, string fragment) => (p as FakePipeline)?.Request?.FragmentGlsl == fragment;
 
-    static bool IsProbe(IGpuPipeline? p) => Is(p, ShaderSources.TemporalProbeFrag);
+    static bool IsProbe(IGpuPipeline? p) => Is(p, ShaderSources.TemporalProbeFrag)
+        || Is(p, TemporalVisibilityPrograms.WithoutDecision(ShaderSources.TemporalProbeFrag));
 
     static bool IsGridCopy(ProbeCapture.Copy c) => c.Destination is FakeTexture
     {
@@ -63,8 +64,10 @@ public sealed class TemporalCountProbeSceneTests
         if (entry == TemporalResolveEntry.Fused) Assert.Same(capture.Draws[resolveDraw].Set0, probe.Set0);
         Assert.Same(resolve.CurrentSet, probe.Set0);
         FakeGraphicsPipelineRequest pipeline = Assert.Single(rig.Factory.GraphicsPipelines,
-            p => p.FragmentGlsl == ShaderSources.TemporalProbeFrag);
-        Assert.Same(resolve.ResolveLayout, Assert.Single(pipeline.Description.ResourceLayouts));
+            p => p.FragmentGlsl == (resolve.LastVisibilityDecisionSkipped
+                ? TemporalVisibilityPrograms.WithoutDecision(ShaderSources.TemporalProbeFrag) : ShaderSources.TemporalProbeFrag));
+        Assert.Same(resolve.LastVisibilityDecisionSkipped ? resolve.FullyLitResolveLayout : resolve.ResolveLayout,
+            Assert.Single(pipeline.Description.ResourceLayouts));
         // The grid goes to the staging copy straight after the probe draw, and nothing else is copied there.
         ProbeCapture.Copy copy = Assert.Single(capture.Copies, IsGridCopy);
         Assert.Equal(probeDraw + 1, copy.DrawsBefore);

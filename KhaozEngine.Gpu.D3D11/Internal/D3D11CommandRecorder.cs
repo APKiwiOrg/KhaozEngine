@@ -46,7 +46,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// list that was never ended.
     /// </para>
     /// </summary>
-    internal sealed class D3D11CommandRecorder<TEmitter> : IGpuCommandList, ID3D11SwapchainBindTracking
+    internal sealed partial class D3D11CommandRecorder<TEmitter> : IGpuCommandList, ID3D11SwapchainBindTracking
         where TEmitter : struct, ID3D11Emitter
     {
         TEmitter _emitter;
@@ -54,7 +54,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         bool _disposed;
         bool _boundSwapchain;
 
-        internal D3D11CommandRecorder(TEmitter emitter) => _emitter = emitter;
+        readonly D3D11FenceSubsystem? _timestampFences;
+
+        internal D3D11CommandRecorder(TEmitter emitter, D3D11FenceSubsystem? timestampFences = null)
+        {
+            _emitter = emitter;
+            _timestampFences = timestampFences;
+        }
 
         /// <summary>
         /// The emitter this list drives, by READONLY reference. An <see cref="ID3D11Emitter"/> implementation is
@@ -86,23 +92,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                     + "the recording to zero, so a second call would silently discard everything recorded since "
                     + "the first. Call End first.");
 
+            BeginTimestampRecording();
             _recording = true;
             IsSealed = false;
             _boundSwapchain = false;
             _emitter.Begin();
-        }
-
-        public void End()
-        {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            if (!_recording)
-                throw new InvalidOperationException(
-                    "End was called on a Direct3D 11 command list that is not recording. Every recording opens "
-                    + "with Begin, which is what resets the stream.");
-
-            _recording = false;
-            IsSealed = true;
-            _emitter.End();
         }
 
         /// <summary>
@@ -332,6 +326,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             if (_disposed) return;
             _disposed = true;
+            ClearTimestampEnd();
             _recording = false;
             IsSealed = false;
             if (_emitter is D3D11StreamEmitter stream) stream.Stream.Reset();

@@ -273,8 +273,11 @@ public sealed class TileWorldInteriorCutTests
 
     static TilePropLayerDefinition Trees() => new()
     {
-        Id = "trees", ArchetypeIds = new HashSet<string> { "tree" }, DrawRadius = 192f,
-        LodDistance = 64f, CutInsideInteriors = true,
+        Id = "trees",
+        ArchetypeIds = new HashSet<string> { "tree" },
+        DrawRadius = 192f,
+        LodDistance = 64f,
+        CutInsideInteriors = true,
     };
 
     sealed class Rig : IDisposable

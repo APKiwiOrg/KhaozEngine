@@ -59,7 +59,8 @@ internal sealed partial class ModelRenderer
         GpuVertexLayoutDescription vertexLayout, GpuVertexLayoutDescription instanceLayout)
     {
         ModelMotionResources motion = RequireMotion();
-        return OpaqueMotionPipeline(factory, outputs, motion.RigidShaders, new[] { _layout, motion.RigidLayout },
+        return OpaqueMotionPipeline(factory, outputs, _visibilityShaders.TrySelect(factory, outputs, ShaderSources.ModelMotionVert, ShaderSources.ModelMotionFrag, preserve: false, out IGpuShaderSet visibilityShaders)
+            ? visibilityShaders : motion.RigidShaders, new[] { _layout, motion.RigidLayout },
             new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout, ModelMotionResources.SlotLayout });
     }
 
@@ -69,7 +70,9 @@ internal sealed partial class ModelRenderer
         GpuVertexLayoutDescription skinnedVertexLayout, bool dissolve)
     {
         ModelMotionResources motion = RequireMotion();
-        return OpaqueMotionPipeline(factory, outputs, dissolve ? motion.SkinnedDissolveShaders : motion.SkinnedShaders,
+        return OpaqueMotionPipeline(factory, outputs, _visibilityShaders.TrySelect(factory, outputs, ShaderSources.SkinnedModelMotionVert,
+                dissolve ? ShaderSources.SkinnedModelDissolveMotionFrag : ShaderSources.SkinnedModelMotionFrag, preserve: false, out IGpuShaderSet visibilityShaders)
+            ? visibilityShaders : dissolve ? motion.SkinnedDissolveShaders : motion.SkinnedShaders,
             new[] { _skinnedMainLayout, _skinnedFragLayout, _bonePalette.Layout, motion.SkinnedPalette.Layout },
             new List<GpuVertexLayoutDescription> { skinnedVertexLayout });
     }
@@ -86,7 +89,9 @@ internal sealed partial class ModelRenderer
     {
         ModelMotionResources motion = RequireMotion();
         return OpaqueMotionPipeline(factory, outputs,
-            dissolve ? motion.CpuSkinnedDissolveShaders : motion.CpuSkinnedShaders,
+            _visibilityShaders.TrySelect(factory, outputs, ShaderSources.ModelCpuSkinnedMotionVert,
+                dissolve ? ShaderSources.ModelDissolveMotionFrag : ShaderSources.ModelMotionFrag, preserve: false, out IGpuShaderSet visibilityShaders)
+                ? visibilityShaders : dissolve ? motion.CpuSkinnedDissolveShaders : motion.CpuSkinnedShaders,
             new[] { _layout, motion.FrameLayout },
             new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout, ModelMotionResources.CpuPreviousLayout });
     }

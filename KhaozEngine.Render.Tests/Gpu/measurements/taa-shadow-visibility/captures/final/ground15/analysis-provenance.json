@@ -1,0 +1,8 @@
+{
+  "Width": 370,
+  "Height": 557,
+  "Frames": 16,
+  "Layout": "frame,y,x uint8. Character bit 0, ground bit 1, control bit 2, ground control bit 3.",
+  "RendererSha256": "7faf6dc3d41e12cb3727552dbe181f04c3f9ca4c0e2ffcebd9c93cb00b91a633",
+  "RendererVersion": "21.6.0-svfinal.1\u002Ba8aa66e37117c5fa7126def8739f87551d935827"
+}

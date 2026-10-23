@@ -99,7 +99,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             var transfers = new VulkanTransferSink(instance.Api);
 
             return new VulkanCommandList(
-                ring, _retired, uploads, assertBoundSetLayouts, render, bindPipeline, layouts, draws, transfers);
+                ring, _retired, uploads, assertBoundSetLayouts, render, bindPipeline, layouts, draws, transfers,
+                timestampTimeline: Capabilities.SupportsTimestamps ? _timeline : null);
         }
 
         /// <summary>How many frames this device pipelines at (MV3), resolved once at creation from
@@ -177,6 +178,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             FlushSetup();
 
             _submits.Submit(list, armed, TakeFrameSemaphores(list));
+        }
+
+        public void Submit(IGpuCommandList cl, ReadOnlySpan<IGpuFence> completions)
+        {
+            _submits.ValidateCompletions(completions);
+            VulkanCommandList list = Recording(cl);
+            FlushSetup();
+            _submits.Submit(list, null, TakeFrameSemaphores(list), completions);
         }
 
         // The list check, shared by both overloads. A foreign list is refused by NAME rather than by a cast

@@ -46,6 +46,8 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(scene.EnsurePointShadowAtlas(PointShadowAtlas.MinFaceResolution, 1));
             CaptureTargetOutlinePipelines(scene, framebuffer, commands);
             CaptureTemporalPipelines(device, commands);
+            CaptureTemporalPipelines(device, commands, KhaozEngine.Tests.Render3D.TemporalVisibilityLayoutTests.Layout(false, true));
+            CaptureTemporalPipelines(device, commands, KhaozEngine.Tests.Render3D.TemporalVisibilityLayoutTests.Layout(true, true));
             CaptureFoliageShadowPipelines(scene, framebuffer, commands);
             CapturePreparedFoliagePipelines(device);
 
@@ -101,10 +103,14 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuFramebuffer framebuffer = factory.CreateFramebuffer(null, target);
             using var scene = new Scene3D(device, framebuffer.Outputs);
             CaptureBoundedWaterPipeline(scene);
+            using IGpuCommandList commands = factory.CreateCommandList();
+            CaptureTemporalPipelines(device, commands);
+            CaptureTemporalPipelines(device, commands, KhaozEngine.Tests.Render3D.TemporalVisibilityLayoutTests.Layout(false, true));
             CapturePreparedFoliagePipelines(device);
 
             string[] programs = ["BoundedWater", "PreparedFoliage", "PreparedFoliageMotion",
-                "PreparedFoliageDepth", "PreparedFoliageDepthCutout", "PreparedFoliagePoint"];
+                "PreparedFoliageDepth", "PreparedFoliageDepthCutout", "PreparedFoliagePoint",
+                "PreparedFoliageVisibility", "PreparedFoliageMotionVisibility"];
             var catalog = ShippedShaderPrograms.GraphicsPrograms().ToDictionary(program => program.Name);
             foreach (string name in programs)
             {
@@ -219,15 +225,23 @@ namespace KhaozEngine.Tests.Gpu
 
         // The temporal variants are built only against a model target that carries the motion attachment, so a scene
         // that never renders temporally captures none of them. Building the renderers against that target captures all.
-        static void CaptureTemporalPipelines(FakeGpuDevice device, IGpuCommandList commands)
+        static void CaptureTemporalPipelines(FakeGpuDevice device, IGpuCommandList commands, GpuOutputDescription? outputs = null)
         {
-            using var model = new ModelRenderer(device, ModelTargets.Temporal, 64, 1);
+            GpuOutputDescription target = outputs ?? ModelTargets.Temporal;
+            using var model = new ModelRenderer(device, target, 64, 1);
             model.UploadFoliageUniforms(commands, [default]);
-            using var billboards = new TexturedBillboardRenderer(device, ModelTargets.Temporal);
-            using var beams = new BeamRenderer(device, ModelTargets.Temporal);
-            using var trails = new TrailRenderer(device, ModelTargets.Temporal);
-            using var overlays = new OverlayMeshRenderer(device, ModelTargets.Temporal);
-            using var silhouettes = new SilhouetteRenderer(device, ModelTargets.Temporal);
+            using var anchorBuffer = device.Factory.CreateBuffer(new(32, GpuBufferUsage.UniformBuffer));
+            using var anchor = model.CreatePreparedFoliageAnchorSet(anchorBuffer);
+            using var vertices = device.Factory.CreateBuffer(new(3 * ModelVertex.SizeInBytes, GpuBufferUsage.VertexBuffer));
+            using var instances = device.Factory.CreateBuffer(new(ModelRenderer.FoliageInstanceData.SizeInBytes, GpuBufferUsage.VertexBuffer));
+            using var indices = device.Factory.CreateBuffer(new(6, GpuBufferUsage.IndexBuffer));
+            model.DrawPreparedFoliageMesh(commands, vertices, indices, 3, GpuIndexFormat.UInt16,
+                instances, 0, 1, 0, null, anchor);
+            using var billboards = new TexturedBillboardRenderer(device, target);
+            using var beams = new BeamRenderer(device, target);
+            using var trails = new TrailRenderer(device, target);
+            using var overlays = new OverlayMeshRenderer(device, target);
+            using var silhouettes = new SilhouetteRenderer(device, target);
         }
 
         static void CaptureFoliageShadowPipelines(Scene3D scene, IGpuFramebuffer framebuffer,

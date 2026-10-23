@@ -68,7 +68,7 @@ public sealed partial class TileWorldView
         bool same = current.Count == _propLayerInputs.Length;
         for (int i = 0; same && i < current.Count; i++)
             same = current[i] == _propLayerInputs[i] &&
-                _propLayerArchetypes[i].SetEquals(current[i].ArchetypeIds);
+                TilePropLayerMembership.Matches(_propLayerArchetypes[i], current[i].ArchetypeIds);
         if (same) return;
         TileWorldPropClusters.ValidatedLayers validated = TileWorldPropClusters.Validate(_catalogs, current);
         // Build the replacement before retiring the live resources, so a resolver failure keeps them intact.

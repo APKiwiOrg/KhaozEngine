@@ -341,6 +341,9 @@ namespace KhaozEngine.Tests.Gpu
                 (nameof(IGpuCommandList.SetComputeResourceSet), l => l.SetComputeResourceSet(0, f.Set)),
                 (nameof(IGpuCommandList.SetComputeResourceSet), l => l.SetComputeResourceSet(0, f.Set, 256)),
                 (nameof(IGpuCommandList.Dispatch), l => l.Dispatch(1, 1, 1)),
+                (nameof(IGpuCommandList.BeginTimestamps), l => l.BeginTimestamps(null!, 2)),
+                (nameof(IGpuCommandList.WriteTimestamp), l => l.WriteTimestamp(null!, 0)),
+                (nameof(IGpuCommandList.EndTimestamps), l => l.EndTimestamps(null!)),
             };
 
         /// <summary>
@@ -409,6 +412,9 @@ namespace KhaozEngine.Tests.Gpu
                 => _inner.SetComputeResourceSet(slot, set);
             public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset)
                 => _inner.SetComputeResourceSet(slot, set, dynamicOffset);
+            public void BeginTimestamps(IGpuTimestampPool pool, uint count) => _inner.BeginTimestamps(pool, count);
+            public void WriteTimestamp(IGpuTimestampPool pool, uint index) => _inner.WriteTimestamp(pool, index);
+            public void EndTimestamps(IGpuTimestampPool pool) => _inner.EndTimestamps(pool);
             public void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ)
                 => _inner.Dispatch(groupCountX, groupCountY, groupCountZ);
         }

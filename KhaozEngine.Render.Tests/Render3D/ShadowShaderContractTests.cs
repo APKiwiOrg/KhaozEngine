@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using KhaozEngine.Render3D.Internal;
+using KhaozEngine.Tests.Gpu;
 using Xunit;
 
 namespace KhaozEngine.Tests.Render3D
@@ -187,6 +188,77 @@ namespace KhaozEngine.Tests.Render3D
             bool lod1Keeps = Keeps(mask, transition, complement: true);
 
             Assert.NotEqual(lod0Keeps, lod1Keeps);
+        }
+
+        [Fact]
+        public void TheCascadeFilter_WeightsTheSharedFootprintAndDividesByNine()
+        {
+            string filter = ShaderSources.CascadeShadowFilterGlsl;
+            Assert.Contains("vec4 wx = vec4(1.0 - f.x, 1.0, 1.0, f.x);", filter, StringComparison.Ordinal);
+            Assert.Contains("vec4 wy = vec4(1.0 - f.y, 1.0, 1.0, f.y);", filter, StringComparison.Ordinal);
+            Assert.Contains("lit += ((depth <= d) ? 1.0 : 0.0) * wx[x] * wy[y];", filter, StringComparison.Ordinal);
+            Assert.Contains("return lit / 9.0;", filter, StringComparison.Ordinal);
+            Assert.Contains("luv = clamp(luv, vec2(halfTexel), vec2(1.0 - halfTexel));", filter, StringComparison.Ordinal);
+            Assert.Contains(filter, ShaderSources.LightingCommonGlsl, StringComparison.Ordinal);
+        }
+
+        [Theory]
+        [InlineData(0f)]
+        [InlineData(0.25f)]
+        [InlineData(0.5f)]
+        [InlineData(0.75f)]
+        public void TheFootprintWeights_AreOneMinusF_One_One_F_AndSumToNine(float f)
+        {
+            float[] w = ShadowFilterOracle.Weights(f);
+            Assert.Equal(new[] { 1f - f, 1f, 1f, f }, w);
+            float total = 0f;
+            foreach (float wy in w)
+                foreach (float wx in w)
+                    total += wx * wy;
+            Assert.Equal(9f, total);
+        }
+
+        // On a texel centre the fraction is zero, the fourth texel carries no weight and the footprint is the old 3x3
+        // point kernel exactly, at the column borders too. Off a centre the point kernel is a step and the oracle is
+        // not, which is the staircase the bilinear filter removes.
+        [Fact]
+        public void ThePointFilter_MatchesTheOracleOnCentresAndMissesItOffThem()
+        {
+            float[] atlas = ShadowFilterOracle.Atlas();
+            int centres = 0;
+            var missedCascades = new bool[ShadowFilterOracle.Count];
+            foreach (ShadowFilterCase c in ShadowFilterOracle.Cases())
+            {
+                if (c.Blend) continue;
+                float point = ShadowFilterOracle.PointFilter(atlas, c.Cascade, c.Uv, c.Depth);
+                float filter = ShadowFilterOracle.Filter(atlas, c.Cascade, c.Uv, c.Depth);
+                float tx = c.Uv.X * ShadowFilterOracle.Resolution - 0.5f;
+                float ty = c.Uv.Y * ShadowFilterOracle.Resolution - 0.5f;
+                if (tx == MathF.Floor(tx) && ty == MathF.Floor(ty))
+                {
+                    centres++;
+                    Assert.True(point == filter, $"{c.Name}: point {point} differs from the oracle {filter} on a centre.");
+                }
+                else if (point != filter)
+                {
+                    missedCascades[c.Cascade] = true;
+                }
+            }
+            Assert.True(centres >= ShadowFilterOracle.Count * 3, $"Only {centres} centre cases.");
+            Assert.All(missedCascades, Assert.True);
+        }
+
+        [Fact]
+        public void TheEqualDepthCases_LandOnAnEqualStoredTexelThatCountsAsLit()
+        {
+            float[] atlas = ShadowFilterOracle.Atlas();
+            foreach (ShadowFilterCase c in ShadowFilterOracle.Cases())
+            {
+                if (!c.Name.Contains("equal to stored", StringComparison.Ordinal)) continue;
+                float equal = ShadowFilterOracle.Filter(atlas, c.Cascade, c.Uv, c.Depth);
+                float above = ShadowFilterOracle.Filter(atlas, c.Cascade, c.Uv, MathF.BitIncrement(c.Depth));
+                Assert.True(equal > above, $"{c.Name}: no weighted texel holds exactly {c.Depth}.");
+            }
         }
 
         static float ClipZ(in Matrix4x4 mat, Vector3 p)

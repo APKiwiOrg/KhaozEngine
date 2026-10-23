@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
+using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
@@ -25,7 +27,7 @@ namespace KhaozEngine.Tests.Gpu
     /// split's targets.
     /// </para>
     /// </summary>
-    public sealed class TemporalEntryFlipMemoryGpuTests(ITestOutputHelper output)
+    public sealed class TemporalEntryFlipMemoryGpuTests(ITestOutputHelper output) : TemporalResolveGpuFacts
     {
         const int W = 3456, H = 2234, Cycles = 4, FramesPerStep = 2;
 
@@ -64,6 +66,14 @@ namespace KhaozEngine.Tests.Gpu
                         ?? throw new InvalidOperationException("the resolve never ran");
                     // Only a frame that records the split holds its targets.
                     Assert.Equal(entry == TemporalResolveEntry.Split, renderer.SplitTargetsAllocated);
+                    Assert.Equal(entry is not null, renderer.VisibilityHistory.Allocated);
+                    if (entry is not null)
+                    {
+                        var visibility = renderer.VisibilityHistory.Texture(scene.TemporalHistory.WriteIndex);
+                        Assert.Equal(KhaozEngine.Gpu.GpuPixelFormat.R8UNorm, visibility.Format);
+                        Assert.Equal(((uint)scene.RenderTargetWidth, (uint)scene.RenderTargetHeight),
+                            (visibility.Width, visibility.Height));
+                    }
                     if (entry is { } e) Assert.Equal(e, renderer.LastEntry);
                 }
                 if (vulkan is null) continue;
@@ -84,6 +94,62 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.True(readings[c].Live <= readings[0].Live,
                     $"cycle {c + 1} ended on {readings[c].Live} live device allocations against {readings[0].Live} "
                     + "after the first");
+        }
+
+        [GpuFact]
+        public void EntryFlipKeepsVisibilityBytesExact()
+        {
+            using var rig = new Rig();
+            using GpuRetireQueue retired = GpuRetireQueue.Create(rig.Device);
+            using IGpuTexture signal = rig.Device.Factory.CreateTexture(
+                GpuTextureDescription.Texture2D(N, N, GpuPixelFormat.R8UNorm, GpuTextureUsage.Sampled));
+            output.WriteLine($"{rig.Device.Backend} on {rig.Device.Capabilities.DeviceName}");
+            (TemporalResolveEntry Entry, int Display)[] steps =
+            [
+                (TemporalResolveEntry.Fused, 8), (TemporalResolveEntry.Split, 8),
+                (TemporalResolveEntry.Split, 12), (TemporalResolveEntry.Fused, 12),
+                (TemporalResolveEntry.Split, 16), (TemporalResolveEntry.Fused, 16),
+            ];
+            byte[] previous = [];
+            Vector2 previousJitter = default;
+            int frame = 0;
+            foreach ((TemporalResolveEntry entry, int display) in steps)
+            {
+                bool resized = rig.ResizeDisplay(display, display);
+                for (int repeat = 0; repeat < 2; repeat++, frame++)
+                {
+                    rig.Renderer.SelectEntry(entry, retired);
+                    bool ready = !resized && frame > 0;
+                    if (resized) previousJitter = default;
+                    byte[] bytes = Enumerable.Range(0, N * N).Select(i => (byte)(i * 3 + frame * 29)).ToArray();
+                    rig.Device.UpdateTexture(signal, bytes, 0, 0, N, N);
+                    float[] current = Grey((x, _) => Ramp(x));
+                    rig.Fill(current, current, Motion((_, _) => Vector2.Zero));
+                    rig.BeginFrame();
+                    Vector2 jitter = new(0.03125f * frame, -0.015625f * frame);
+                    var uniforms = TemporalResolveMath.BuildUniforms(Still, Still, jitter, N, N, display, display, ready);
+                    rig.Resolve(uniforms, signal);
+                    var visibility = rig.Renderer.VisibilityHistory;
+                    var expectedJitter = new Vector4(previousJitter, ready ? 1f : 0f, 0f);
+                    Assert.Equal(expectedJitter, rig.Renderer.LastVisibilityUniforms.PreviousJitter);
+                    Assert.Equal(bytes, TemporalVisibilityHistoryGpuTests.Read(rig.Device, visibility.Texture(rig.History.WriteIndex)));
+                    if (ready)
+                        Assert.Equal(previous, TemporalVisibilityHistoryGpuTests.Read(rig.Device, visibility.Texture(rig.History.ReadIndex)));
+                    // Re-record the same frame through the other entry. Its copy and previous jitter stay frozen.
+                    rig.Renderer.SelectEntry(entry == TemporalResolveEntry.Fused ? TemporalResolveEntry.Split : TemporalResolveEntry.Fused, retired);
+                    rig.Device.UpdateTexture(signal, new byte[N * N], 0, 0, N, N);
+                    rig.Resolve(uniforms, signal);
+                    Assert.Equal(expectedJitter, rig.Renderer.LastVisibilityUniforms.PreviousJitter);
+                    Assert.Equal(bytes, TemporalVisibilityHistoryGpuTests.Read(rig.Device, visibility.Texture(rig.History.WriteIndex)));
+                    if (ready)
+                        Assert.Equal(previous, TemporalVisibilityHistoryGpuTests.Read(rig.Device, visibility.Texture(rig.History.ReadIndex)));
+                    rig.History.MarkValidAfterFrame();
+                    previous = bytes;
+                    previousJitter = jitter;
+                    resized = false;
+                }
+            }
+            output.WriteLine($"  {frame} resolving frames and {frame} repeated renders preserve exact R8 bytes and jitter");
         }
 
         static readonly Color BoxTint = new(0.8f, 0.6f, 0.4f, 1f);

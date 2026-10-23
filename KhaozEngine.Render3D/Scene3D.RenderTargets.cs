@@ -12,6 +12,7 @@ namespace KhaozEngine.Render3D
     /// </summary>
     public sealed partial class Scene3D
     {
+        readonly bool _requestLitVisibility;   // explicit visibility-only request from standalone readback fixtures
         /// <summary>The anti-aliasing selection resolved against THIS device's capabilities (never throws): an MSAA
         /// request is clamped to a member of <see cref="GpuCapabilities.SupportedMsaaSampleCounts"/> or falls back
         /// to FXAA if the device cannot satisfy it. SSAA, FXAA, Temporal and None pass through. Read fresh each frame
@@ -108,8 +109,8 @@ namespace KhaozEngine.Render3D
             bool hdrChanged = _res.HdrColor != Post.Hdr.Enabled;
             // The motion attachment changes the model framebuffer's attachment COUNT, which every pipeline drawing into
             // it bakes, so gaining or losing it rebuilds them exactly like a sample-count or colour-format change.
-            bool motion = TemporalActive;
-            bool motionChanged = _res.MotionAllocated != motion;
+            bool motion = TemporalActive, visibility = Internal.ShadowVisibilityTargets.Requested(motion || _requestLitVisibility, _gd);
+            bool motionChanged = _res.MotionAllocated != motion || _res.VisibilityAllocated != visibility;
             if (_res.Width != tw || _res.Height != th || _res.Mipped != wantMips || sampleChanged || bloomChanged || hdrChanged
                 || motionChanged)
             {
@@ -117,7 +118,7 @@ namespace KhaozEngine.Render3D
                 // temporal toggle is rare, so idling before recreating the MRT + rebuilding pipelines is cheap insurance.
                 bool rebuild = sampleChanged || hdrChanged || motionChanged;
                 if (rebuild) _gd.WaitForIdle();
-                _res.Resize(tw, th, wantMips, samples, bloom, Post.Hdr.Enabled, motion, pings);
+                _res.Resize(tw, th, wantMips, samples, bloom, Post.Hdr.Enabled, motion, pings, visibility);
                 if (!_frameResolves) _post.BindTargets(_res);   // a resolving frame keeps _post on the display targets
                 _transitions.BindTargets(_res);
                 if (rebuild) RebuildMrtRenderers();   // match the renderers' pipelines to the new MRT

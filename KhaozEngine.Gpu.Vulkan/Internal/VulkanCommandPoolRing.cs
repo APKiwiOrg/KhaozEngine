@@ -174,9 +174,20 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             return slot;
         }
 
-        /// <summary><c>vkEndCommandBuffer</c> on <paramref name="slot"/>'s buffer, sealing it for
-        /// submission.</summary>
-        internal void EndRecording(int slot) => _api.EndRecording(_buffers[slot]);
+        /// <summary>Release writes for pooled reuse, then seal the buffer. Both command lists and setup batches
+        /// finish here, after rendering and layout restoration and before the existing completion signal.</summary>
+        internal void EndRecording(int slot, VulkanTimestampRecording? timestampEnd = null, uint finalIndex = 0)
+        {
+            _api.ReleaseMemoryForReuse(_buffers[slot]);
+            // The final marker includes the release barrier. A lost device skips it, as it skips the barrier,
+            // and still reaches the existing native-end loss handling. The caller clears tail ownership.
+            if (timestampEnd is not null && !_timeline.IsDeviceDead)
+            {
+                timestampEnd.Write(_buffers[slot], finalIndex);
+                timestampEnd.End(_buffers[slot]);
+            }
+            _api.EndRecording(_buffers[slot]);
+        }
 
         /// <summary>The buffer belonging to <paramref name="slot"/>, which the submit path names in its
         /// <c>VkSubmitInfo</c>.</summary>

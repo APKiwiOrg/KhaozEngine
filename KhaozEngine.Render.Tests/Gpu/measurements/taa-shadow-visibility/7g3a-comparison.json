@@ -1,0 +1,439 @@
+{
+  "all_rows": [
+    {
+      "condition": "back15",
+      "mode": "taa-native",
+      "region": "character",
+      "shipping_D": {
+        "grain": 0.005474607155653376,
+        "p95": 0.029102745098039118,
+        "change": 0.017496411969800285,
+        "dots": 364,
+        "band_pixels": 39074,
+        "grain_samples": 39074,
+        "change_samples": 33557,
+        "locked_share": null,
+        "lock_status": "unavailable"
+      },
+      "7g3a": {
+        "grain": 0.005474607155653376,
+        "p95": 0.029102745098039118,
+        "change": 0.017496411969800285,
+        "dots": 364,
+        "band_pixels": 39074,
+        "grain_samples": 39074,
+        "change_samples": 33557,
+        "locked_share": null,
+        "lock_status": "unavailable"
+      },
+      "identical": true,
+      "delta": {
+        "grain": 0.0,
+        "p95": 0.0,
+        "change": 0.0,
+        "dots": 0
+      }
+    },
+    {
+      "condition": "back15",
+      "mode": "taa-native",
+      "region": "ground",
+      "shipping_D": {
+        "grain": 0.00526385609353138,
+        "p95": 0.020472941176470583,
+        "change": 0.012355875438918482,
+        "dots": 45,
+        "band_pixels": 225555,
+        "grain_samples": 225555,
+        "change_samples": 197751,
+        "locked_share": null,
+        "lock_status": "unavailable"
+      },
+      "7g3a": {
+        "grain": 0.00526385609353138,
+        "p95": 0.020472941176470583,
+        "change": 0.012355875438918482,
+        "dots": 45,
+        "band_pixels": 225555,
+        "grain_samples": 225555,
+        "change_samples": 197751,
+        "locked_share": null,
+        "lock_status": "unavailable"
+      },
+      "identical": true,
+      "delta": {
+        "grain": 0.0,
+        "p95": 0.0,
+        "change": 0.0,
+        "dots": 0
+      }
+    },
+    {
+      "condition": "back15",
+      "mode": "taa-quality",
+      "region": "character",
+      "shipping_D": {
+        "grain": 0.008704202242702883,
+        "p95": 0.04507215686274513,
+        "change": 0.017329273445767134,
+        "dots": 759,
+        "band_pixels": 39074,
+        "grain_samples": 39074,
+        "change_samples": 33557,
+        "locked_share": null,
+        "lock_status": "unavailable"
+      },
+      "7g3a": {
+        "grain": 0.008704202242702883,
+        "p95": 0.04507215686274513,
+        "change": 0.017329273445767134,
+        "dots": 759,
+        "band_pixels": 39074,
+        "grain_samples": 39074,
+        "change_samples": 33557,
+        "locked_share": null,
+        "lock_status": "unavailable"
+      },
+      "identical": true,
+      "delta": {
+        "grain": 0.0,
+        "p95": 0.0,
+        "change": 0.0,
+        "dots": 0
+      }
+    },
+    {
+      "condition": "back15",
+      "mode": "taa-quality",
+      "region": "ground",
+      "shipping_D": {
+        "grain": 0.0062244609736071465,
+        "p95": 0.024378823529411675,
+        "change": 0.01227338604965782,
+        "dots": 821,
+        "band_pixels": 225555,
+        "grain_samples": 225555,
+        "change_samples": 197751,
+        "locked_share": null,
+        "lock_status": "unavailable"
+      },
+      "7g3a": {
+        "grain": 0.0062244609736071465,
+        "p95": 0.024378823529411675,
+        "change": 0.01227338604965782,
+        "dots": 821,
+        "band_pixels": 225555,
+        "grain_samples": 225555,
+        "change_samples": 197751,
+        "locked_share": null,
+        "lock_status": "unavailable"
+      },
+      "identical": true,
+      "delta": {
+        "grain": 0.0,
+        "p95": 0.0,
+        "change": 0.0,
+        "dots": 0
+      }
+    },
+    {
+      "condition": "back15",
+      "mode": "fxaa",
+      "region": "character",
+      "shipping_D": {
+        "grain": 0.0026071029228602943,
+        "p95": 0.015403137254901944,
+        "change": 0.018394583895005687,
+        "dots": 0,
+        "band_pixels": 39074,
+        "grain_samples": 39074,
+        "change_samples": 33557,
+        "locked_share": null,
+        "lock_status": "not-applicable"
+      },
+      "7g3a": {
+        "grain": 0.0026071029228602943,
+        "p95": 0.015403137254901944,
+        "change": 0.018394583895005687,
+        "dots": 0,
+        "band_pixels": 39074,
+        "grain_samples": 39074,
+        "change_samples": 33557,
+        "locked_share": null,
+        "lock_status": "not-applicable"
+      },
+      "identical": true,
+      "delta": {
+        "grain": 0.0,
+        "p95": 0.0,
+        "change": 0.0,
+        "dots": 0
+      }
+    },
+    {
+      "condition": "back15",
+      "mode": "fxaa",
+      "region": "ground",
+      "shipping_D": {
+        "grain": 0.0016548521211947336,
+        "p95": 0.0075599999999999,
+        "change": 0.013100857420120631,
+        "dots": 0,
+        "band_pixels": 225555,
+        "grain_samples": 225555,
+        "change_samples": 197751,
+        "locked_share": null,
+        "lock_status": "not-applicable"
+      },
+      "7g3a": {
+        "grain": 0.0016548521211947336,
+        "p95": 0.0075599999999999,
+        "change": 0.013100857420120631,
+        "dots": 0,
+        "band_pixels": 225555,
+        "grain_samples": 225555,
+        "change_samples": 197751,
+        "locked_share": null,
+        "lock_status": "not-applicable"
+      },
+      "identical": true,
+      "delta": {
+        "grain": 0.0,
+        "p95": 0.0,
+        "change": 0.0,
+        "dots": 0
+      }
+    },
+    {
+      "condition": "ground15",
+      "mode": "taa-native",
+      "region": "character",
+      "shipping_D": {
+        "grain": 0.00293740035335003,
+        "p95": 0.01121411764705893,
+        "change": 0.0011689773847883102,
+        "dots": 371,
+        "band_pixels": 85845,
+        "grain_samples": 85845,
+        "change_samples": 78500,
+        "locked_share": null,
+        "lock_status": "unavailable"
+      },
+      "7g3a": {
+        "grain": 0.00293740035335003,
+        "p95": 0.01121411764705893,
+        "change": 0.0011689773847883102,
+        "dots": 371,
+        "band_pixels": 85845,
+        "grain_samples": 85845,
+        "change_samples": 78500,
+        "locked_share": null,
+        "lock_status": "unavailable"
+      },
+      "identical": true,
+      "delta": {
+        "grain": 0.0,
+        "p95": 0.0,
+        "change": 0.0,
+        "dots": 0
+      }
+    },
+    {
+      "condition": "ground15",
+      "mode": "taa-native",
+      "region": "ground",
+      "shipping_D": {
+        "grain": 0.004815313021091819,
+        "p95": 0.017416470588235367,
+        "change": 0.003688204569631017,
+        "dots": 262,
+        "band_pixels": 247242,
+        "grain_samples": 247242,
+        "change_samples": 228010,
+        "locked_share": null,
+        "lock_status": "unavailable"
+      },
+      "7g3a": {
+        "grain": 0.004815313021091819,
+        "p95": 0.017416470588235367,
+        "change": 0.003688204569631017,
+        "dots": 262,
+        "band_pixels": 247242,
+        "grain_samples": 247242,
+        "change_samples": 228010,
+        "locked_share": null,
+        "lock_status": "unavailable"
+      },
+      "identical": true,
+      "delta": {
+        "grain": 0.0,
+        "p95": 0.0,
+        "change": 0.0,
+        "dots": 0
+      }
+    },
+    {
+      "condition": "ground15",
+      "mode": "taa-quality",
+      "region": "character",
+      "shipping_D": {
+        "grain": 0.0030111794193593325,
+        "p95": 0.011816470588235206,
+        "change": 0.0011939310203571874,
+        "dots": 330,
+        "band_pixels": 85845,
+        "grain_samples": 85845,
+        "change_samples": 78500,
+        "locked_share": null,
+        "lock_status": "unavailable"
+      },
+      "7g3a": {
+        "grain": 0.0030111794193593325,
+        "p95": 0.011816470588235206,
+        "change": 0.0011939310203571874,
+        "dots": 330,
+        "band_pixels": 85845,
+        "grain_samples": 85845,
+        "change_samples": 78500,
+        "locked_share": null,
+        "lock_status": "unavailable"
+      },
+      "identical": true,
+      "delta": {
+        "grain": 0.0,
+        "p95": 0.0,
+        "change": 0.0,
+        "dots": 0
+      }
+    },
+    {
+      "condition": "ground15",
+      "mode": "taa-quality",
+      "region": "ground",
+      "shipping_D": {
+        "grain": 0.005046020977145357,
+        "p95": 0.020724705882352867,
+        "change": 0.0037393807392348626,
+        "dots": 782,
+        "band_pixels": 247242,
+        "grain_samples": 247242,
+        "change_samples": 228010,
+        "locked_share": null,
+        "lock_status": "unavailable"
+      },
+      "7g3a": {
+        "grain": 0.005046020977145357,
+        "p95": 0.020724705882352867,
+        "change": 0.0037393807392348626,
+        "dots": 782,
+        "band_pixels": 247242,
+        "grain_samples": 247242,
+        "change_samples": 228010,
+        "locked_share": null,
+        "lock_status": "unavailable"
+      },
+      "identical": true,
+      "delta": {
+        "grain": 0.0,
+        "p95": 0.0,
+        "change": 0.0,
+        "dots": 0
+      }
+    },
+    {
+      "condition": "ground15",
+      "mode": "fxaa",
+      "region": "character",
+      "shipping_D": {
+        "grain": 0.002280812938047255,
+        "p95": 0.012598431372548957,
+        "change": 0.0013507738528787314,
+        "dots": 0,
+        "band_pixels": 85845,
+        "grain_samples": 85845,
+        "change_samples": 78500,
+        "locked_share": null,
+        "lock_status": "not-applicable"
+      },
+      "7g3a": {
+        "grain": 0.002280812938047255,
+        "p95": 0.012598431372548957,
+        "change": 0.0013507738528787314,
+        "dots": 0,
+        "band_pixels": 85845,
+        "grain_samples": 85845,
+        "change_samples": 78500,
+        "locked_share": null,
+        "lock_status": "not-applicable"
+      },
+      "identical": true,
+      "delta": {
+        "grain": 0.0,
+        "p95": 0.0,
+        "change": 0.0,
+        "dots": 0
+      }
+    },
+    {
+      "condition": "ground15",
+      "mode": "fxaa",
+      "region": "ground",
+      "shipping_D": {
+        "grain": 0.0022932411255083716,
+        "p95": 0.007575686274509774,
+        "change": 0.003328692573683128,
+        "dots": 0,
+        "band_pixels": 247242,
+        "grain_samples": 247242,
+        "change_samples": 228010,
+        "locked_share": null,
+        "lock_status": "not-applicable"
+      },
+      "7g3a": {
+        "grain": 0.0022932411255083716,
+        "p95": 0.007575686274509774,
+        "change": 0.003328692573683128,
+        "dots": 0,
+        "band_pixels": 247242,
+        "grain_samples": 247242,
+        "change_samples": 228010,
+        "locked_share": null,
+        "lock_status": "not-applicable"
+      },
+      "identical": true,
+      "delta": {
+        "grain": 0.0,
+        "p95": 0.0,
+        "change": 0.0,
+        "dots": 0
+      }
+    }
+  ],
+  "pixel_identity": {
+    "back15": {
+      "normal_rgb_sha256": "42a6ad43168c03470b5138a51ea26ba6d1d3b2affd30ac4cd3e0314d448ecb94",
+      "shipping_D_normal_rgb_sha256": "42a6ad43168c03470b5138a51ea26ba6d1d3b2affd30ac4cd3e0314d448ecb94",
+      "region_bits_sha256": "adfbc3c6c2f74775770413f0290d8ac6f62fe717c8e294139e7e144888394986",
+      "shipping_D_region_bits_sha256": "adfbc3c6c2f74775770413f0290d8ac6f62fe717c8e294139e7e144888394986",
+      "masks_identical": true,
+      "differing_pixel_frames_by_mode": {
+        "taa-native": 0,
+        "taa-quality": 0,
+        "fxaa": 0
+      }
+    },
+    "ground15": {
+      "normal_rgb_sha256": "fac3d2356e5d35d4aa8a44bb71f89d9aa957a0e4444f373f493af0a1545bdc9c",
+      "shipping_D_normal_rgb_sha256": "fac3d2356e5d35d4aa8a44bb71f89d9aa957a0e4444f373f493af0a1545bdc9c",
+      "region_bits_sha256": "fe19a50ced8e1ce8100f896cfc14e82573291993588a08de0689b922890bd9cf",
+      "shipping_D_region_bits_sha256": "fe19a50ced8e1ce8100f896cfc14e82573291993588a08de0689b922890bd9cf",
+      "masks_identical": true,
+      "differing_pixel_frames_by_mode": {
+        "taa-native": 0,
+        "taa-quality": 0,
+        "fxaa": 0
+      }
+    }
+  },
+  "identical": true
+}

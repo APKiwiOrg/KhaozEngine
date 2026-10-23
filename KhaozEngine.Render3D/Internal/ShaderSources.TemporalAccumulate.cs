@@ -129,7 +129,7 @@ bool temporalStoredFollowed(float stored) { return stored < -4.5; }
 float temporalStoredLock(float stored) {
     return temporalStoredMoved(stored) ? mod(-1.0 - stored, 2.0) : stored;
 }
-
+" + TemporalLockReleaseGlsl + @"
 ivec2 temporalDisplaySize() { return ivec2(Sizes.zw); }
 
 // The display pixel centre in upright UV (row 0 at the top) and in internal pixels, and the texel whose jittered
@@ -451,10 +451,29 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     // sub-texel feature missed for a few frames keeps its luma, and it lets go over the rest of the lock.
     float lockValue = useHistory && !heldFromFarther ? max(historyState.y - LockDecay, 0.0) : 0.0;
     if (ridge) lockValue = 1.0;
-    float motionRelease = clamp((motionPixels - LockMotionStartPixels)
-        / (LockMotionEndPixels - LockMotionStartPixels), 0.0, 1.0);
-    lockValue *= (1.0 - motionRelease) * (1.0 - clamp(reactive * LockReactiveRelease, 0.0, 1.0))
-        * (1.0 - clamp((ownReprojected && useHistory ? 0.0 : edgeMotion) * LockEdgeRelease, 0.0, 1.0));
+    float releaseEdgeMotion = ownReprojected && useHistory ? 0.0 : edgeMotion;
+    // With positive width the ordered barriers preserve bits. Finite arguments cannot make a NaN factor:
+    // scaling may overflow, but each clamp returns [0, 1], so every keep factor and product is finite and
+    // nonnegative. The helper therefore maps +0 to +0 exactly. Test bits and the actual selected edge argument,
+    // keeping -0, nonzero locks and every non-finite argument on the unchanged ordered path.
+    // Keep this selection through SPIR-V and HLSL so FXC branches around the ordered release.
+    [[dont_flatten]] if (floatBitsToUint(lockValue) != 0u
+        || (floatBitsToUint(motionPixels) & 0x7f800000u) == 0x7f800000u
+        || (floatBitsToUint(reactive) & 0x7f800000u) == 0x7f800000u
+        || (floatBitsToUint(releaseEdgeMotion) & 0x7f800000u) == 0x7f800000u) {
+        lockValue = temporalReleaseLock(lockValue, motionPixels, reactive, releaseEdgeMotion);
+    }
+    // Preserve the colour release's carried-lock classification before visibility clears the stored lock.
+    bool carriedLock = !ridge && lockValue > 0.0;
+    // A visibility release only clears this lock and the hold it gives, so a lock whose bits are +0.0 runs no check:
+    // clearing it would store the same bits and its hold is +0.0 already. The bits are tested, not the value, so a
+    // -0.0, a denormal or a NaN lock still runs the check.
+    float signedVisibilityChange = 0.0;
+    uint visibilityPath = 0u;
+    bool visibilityReleased = floatBitsToUint(lockValue) != 0u && useHistory && !surface.background
+        && PreviousJitter.z > 0.5 && temporalVisibilityReleases(uv, centreTexel, maxTexel, previousUv, expectedDepth,
+            surface.visibilityMask, signedVisibilityChange, visibilityPath);
+    if (visibilityReleased) lockValue = 0.0;
     float hold = clamp(lockValue * LockHoldGain, 0.0, 1.0);
 
     // Step 5: variance clipping in luma-weighted YCoCg, from the box centre towards the history, which keeps its hue.
@@ -507,7 +526,6 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     float releaseExtent = max(boxExtent.x, ridgeStep);
     bool released = false;
     bool upscaled = Jitter.z > 1.0;
-    bool carriedLock = !ridge && lockValue > 0.0;
     bool strict = carriedLock || !(motionPixels < LockMotionStartPixels);
     if (useHistory && Jitter.z < ShadingMaxUpscale
         && (ridge || boxExtent.x > (carriedLock ? ShadingLockFlatShare : 1.0) * ridgeStep)
@@ -523,10 +541,8 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
                 && (!carriedLock || ringShift.y > ShadingLockPairExtents * releaseExtent);
         }
     }
-    if (released) {
-        hold = 0.0;
-        accumulated = 0.0;
-    }
+    if (released || visibilityReleased) hold = 0.0;
+    if (released) accumulated = 0.0;
     excess.x *= 1.0 - hold;
     float clipScale = max(excess.x, max(excess.y, excess.z));
     vec3 clipped = clipScale > 1.0 ? boxCentre + fromCentre / clipScale : historyYcc;

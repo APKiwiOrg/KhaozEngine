@@ -1,0 +1,685 @@
+Bilinear PCF, VulkanNative llvmpipe (LLVM 20.1.2, 256 bits), lavapipe
+Source 02f0bd1fc, cross-platform-gpu run 39173269032
+Job ubuntu-latest / vulkan-native, artifact filtered-render-measurements-vulkan-native
+
+  Passed KhaozEngine.Tests.Gpu.TemporalTextureLightGpuTests.Dark_texture_and_animated_local_light_keep_detail_stable [31 s]
+  Standard Output Messages:
+ Local-light metrics are report-only on software devices until unchanged-resolve controls are recorded.
+ Texture light dark Native, VulkanNative on llvmpipe (LLVM 20.1.2, 256 bits), lavapipe: error 0.000355, error grain 0.000353, change error 0.000045, mean luma 0.004196.
+ Texture light dark Quality, VulkanNative on llvmpipe (LLVM 20.1.2, 256 bits), lavapipe: error 0.000997, error grain 0.000872, change error 0.000085, mean luma 0.004196.
+ Texture light flicker Native, VulkanNative on llvmpipe (LLVM 20.1.2, 256 bits), lavapipe: error 0.014681, error grain 0.005498, change error 0.010685, mean luma 0.024635.
+ Texture light flicker Quality, VulkanNative on llvmpipe (LLVM 20.1.2, 256 bits), lavapipe: error 0.016047, error grain 0.005337, change error 0.011538, mean luma 0.024635.
+ Texture light moving Native, VulkanNative on llvmpipe (LLVM 20.1.2, 256 bits), lavapipe: error 0.010691, error grain 0.003822, change error 0.003290, mean luma 0.021644.
+ Texture light moving Quality, VulkanNative on llvmpipe (LLVM 20.1.2, 256 bits), lavapipe: error 0.012460, error grain 0.004421, change error 0.003294, mean luma 0.021644.
+
+
+[2026-10-18 22:47:14.802] [INFO] [VulkanGpuDevice] Vulkan device selection: device 0 ('llvmpipe (LLVM 20.1.2, 256 bits)', a SOFTWARE rasterizer), from KE_VULKAN_DEVICE='llvmpipe'.
+[2026-10-18 22:47:14.802] [INFO] [VulkanGpuDevice] Vulkan device features enabled by name: dynamicRendering, synchronization2, timelineSemaphore, samplerAnisotropy, fillModeNonSolid, depthClamp, independentBlend.
+[2026-10-18 22:47:14.811] [INFO] [VulkanGpuDevice] The native Vulkan backend runs 3 frames in flight, the default: 3 command pools per list and 3 segments per uniform ring. Set KE_VULKAN_FRAMES_IN_FLIGHT=<n> to change it, which is the MV3 lever.
+[2026-10-18 22:47:14.811] [INFO] [VulkanGpuDevice] The native Vulkan allocator is up: 64 MiB chunks pooled by (memory type, tiling), dedicated at or above 16 MiB or on driver preference, 1 memory types reported, nonCoherentAtomSize 64, maxMemoryAllocationCount 4294967295.
+[2026-10-18 22:47:14.811] [INFO] [VulkanMemoryAllocator] The native Vulkan allocator opened a pool for memory type 0 (DeviceLocal, HostVisible, HostCoherent, HostCached) with Optimal tiling, chosen at rung 1 of the DeviceLocal ladder. Linear and optimal tiling never share a chunk, which is how bufferImageGranularity is satisfied here without any granularity arithmetic.
+[2026-10-18 22:47:14.812] [INFO] [VulkanMemoryAllocator] The native Vulkan allocator opened a pool for memory type 0 (DeviceLocal, HostVisible, HostCoherent, HostCached) with Linear tiling, chosen at rung 0 of the Ring ladder. Linear and optimal tiling never share a chunk, which is how bufferImageGranularity is satisfied here without any granularity arithmetic.
+
+  Passed KhaozEngine.Tests.Gpu.TemporalTextureLightGpuTests.Local_light_state_leaves_the_shared_scene_equal_to_a_fresh_scene [16 s]
+[2026-10-18 22:47:19.977] [WARN] [VulkanDebugMessenger] KE_VULKAN_VALIDATION asked for Vulkan validation and this loader offers no VK_EXT_debug_utils entry points, so no messenger was created and this run reports no validation messages. The layer may still be installed: this is the loader half.
+[2026-10-18 22:47:19.977] [INFO] [VulkanInstance] Vulkan validation is ACTIVE and STRICT for this device (from KE_VULKAN_VALIDATION=strict): everything the 1 rung does, and the first error-severity message is latched and thrown at the next controlled point. The throw never happens inside the driver callback. Expect a large performance cost.
+[2026-10-18 22:47:19.978] [INFO] [VulkanGpuDevice] Vulkan device selection: device 0 ('llvmpipe (LLVM 20.1.2, 256 bits)', a SOFTWARE rasterizer), from KE_VULKAN_DEVICE='llvmpipe'.
+[2026-10-18 22:47:19.978] [INFO] [VulkanGpuDevice] Vulkan device features enabled by name: dynamicRendering, synchronization2, timelineSemaphore, samplerAnisotropy, fillModeNonSolid, depthClamp, independentBlend.
+[2026-10-18 22:47:19.985] [INFO] [VulkanGpuDevice] The native Vulkan backend runs 3 frames in flight, the default: 3 command pools per list and 3 segments per uniform ring. Set KE_VULKAN_FRAMES_IN_FLIGHT=<n> to change it, which is the MV3 lever.
+[2026-10-18 22:47:19.986] [INFO] [VulkanGpuDevice] The native Vulkan allocator is up: 64 MiB chunks pooled by (memory type, tiling), dedicated at or above 16 MiB or on driver preference, 1 memory types reported, nonCoherentAtomSize 64, maxMemoryAllocationCount 4294967295.
+[2026-10-18 22:47:19.986] [INFO] [VulkanMemoryAllocator] The native Vulkan allocator opened a pool for memory type 0 (DeviceLocal, HostVisible, HostCoherent, HostCached) with Optimal tiling, chosen at rung 1 of the DeviceLocal ladder. Linear and optimal tiling never share a chunk, which is how bufferImageGranularity is satisfied here without any granularity arithmetic.
+[2026-10-18 22:47:19.987] [INFO] [VulkanMemoryAllocator] The native Vulkan allocator opened a pool for memory type 0 (DeviceLocal, HostVisible, HostCoherent, HostCached) with Linear tiling, chosen at rung 0 of the Ring ladder. Linear and optimal tiling never share a chunk, which is how bufferImageGranularity is satisfied here without any granularity arithmetic.
+
+  Passed KhaozEngine.Tests.Gpu.TemporalMovingShadeLagGpuTests.Shadow_edge_lag_on_moving_pixels_and_fast_shadows_stays_within_its_bounds [3 m 24 s]
+  Standard Output Messages:
+ 320x180, device class lavapipe. Band 12 px, tail to 48 px behind, control 32 px ahead and beyond, frames 80 to 87.
+ Quality S 1.0 px advancing: edge travel over the receiver about 1.0 px a frame, reference edge contrast 0.309, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30612   0.0210   0.1255    0.0174  0.0201     0.0151     0.0116     0.0132   0.0126   0.0171
+   band flat        30613   0.0124   0.0852    0.0109  0.0025     0.0000     0.0061     0.0133   0.0131   0.0145
+   tail textured    45921   0.0033   0.0078    0.0006  0.0145     0.0139     0.0030     0.0007   0.0000   0.0007
+   tail flat        45732   0.0005   0.0008   -0.0005  0.0000     0.0000     0.0000     0.0002   0.0001   0.0001
+   far textured     39111   0.0046   0.0118   -0.0012  0.0171     0.0159     0.0035     0.0008   0.0001   0.0009
+   far flat         92585   0.0007   0.0028   -0.0007  0.0000     0.0000     0.0000     0.0004   0.0004   0.0008
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -0 0 0 1 1 2 3 4 7 54 41 -1 -1 -1
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 27 40 -1 -1 -1
+ Quality S 1.0 px retreating: edge travel over the receiver about 1.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30609   0.0270   0.1793   -0.0251  0.0222     0.0148     0.0141     0.0136   0.0127   0.0187
+   band flat        30609   0.0141   0.1129   -0.0136  0.0031     0.0000     0.0063     0.0135   0.0129   0.0160
+   tail textured    45912   0.0074   0.0157   -0.0067  0.0173     0.0157     0.0055     0.0009   0.0001   0.0009
+   tail flat        45915   0.0000   0.0000    0.0000  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   far textured     87166   0.0054   0.0120   -0.0040  0.0156     0.0143     0.0033     0.0007   0.0000   0.0007
+   far flat         33683   0.0001   0.0008   -0.0001  0.0000     0.0000     0.0000     0.0001   0.0000   0.0001
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -6 -6 -6 -6 -6 -6 -6 -8 -9 -10 -15 -85 -33 -4 -4 -4
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 0 0 0 0 0 0 0 0 0 0 -1 -50 -30 -0 -0 -0
+ Quality S 2.0 px advancing: edge travel over the receiver about 2.0 px a frame, reference edge contrast 0.309, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30612   0.0193   0.1098    0.0157  0.0196     0.0150     0.0114     0.0260   0.0252   0.0241
+   band flat        30612   0.0103   0.0773    0.0091  0.0021     0.0000     0.0047     0.0260   0.0259   0.0179
+   tail textured    45919   0.0035   0.0081    0.0016  0.0145     0.0140     0.0033     0.0008   0.0001   0.0008
+   tail flat        45806   0.0003   0.0008   -0.0003  0.0000     0.0000     0.0000     0.0002   0.0001   0.0001
+   far textured     34646   0.0047   0.0118    0.0011  0.0171     0.0159     0.0036     0.0008   0.0002   0.0010
+   far flat         88122   0.0004   0.0028   -0.0004  0.0000     0.0000     0.0000     0.0004   0.0004   0.0008
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 0 1 1 1 2 2 2 3 4 5 7 38 42 1 1 1
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 14 41 -0 -0 -0
+ Quality S 2.0 px retreating: edge travel over the receiver about 2.0 px a frame, reference edge contrast 0.309, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30609   0.0256   0.1650   -0.0228  0.0217     0.0147     0.0139     0.0264   0.0253   0.0289
+   band flat        30608   0.0132   0.1048   -0.0124  0.0027     0.0000     0.0058     0.0265   0.0260   0.0232
+   tail textured    45911   0.0082   0.0154   -0.0071  0.0184     0.0156     0.0070     0.0011   0.0002   0.0012
+   tail flat        45916   0.0001   0.0008   -0.0001  0.0000     0.0000     0.0000     0.0000   0.0002   0.0001
+   far textured     82701   0.0058   0.0129   -0.0047  0.0156     0.0143     0.0033     0.0007   0.0001   0.0008
+   far flat         29260   0.0001   0.0008   -0.0001  0.0000     0.0000     0.0000     0.0005   0.0004   0.0002
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -6 -6 -6 -6 -7 -7 -8 -8 -9 -10 -15 -69 -33 -5 -5 -5
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 -1 -43 -30 -0 -0 -0
+ Quality S 4.0 px advancing: edge travel over the receiver about 4.0 px a frame, reference edge contrast 0.308, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30611   0.0188   0.0980    0.0149  0.0183     0.0151     0.0105     0.0524   0.0502   0.0267
+   band flat        30611   0.0099   0.0706    0.0090  0.0020     0.0000     0.0046     0.0516   0.0515   0.0171
+   tail textured    45918   0.0035   0.0118    0.0013  0.0142     0.0141     0.0033     0.0015   0.0001   0.0016
+   tail flat        45837   0.0002   0.0008   -0.0002  0.0000     0.0000     0.0000     0.0000   0.0001   0.0001
+   far textured     26357   0.0065   0.0151    0.0054  0.0171     0.0160     0.0036     0.0009   0.0003   0.0011
+   far flat         79194   0.0000   0.0000    0.0000  0.0000     0.0000     0.0000     0.0005   0.0005   0.0000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 1 1 1 1 1 1 2 2 2 3 5 25 45 5 6 6
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 13 41 -0 0 0
+ Quality S 4.0 px retreating: edge travel over the receiver about 4.0 px a frame, reference edge contrast 0.308, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30610   0.0230   0.1417   -0.0194  0.0191     0.0146     0.0116     0.0527   0.0505   0.0332
+   band flat        30611   0.0133   0.1048   -0.0125  0.0029     0.0000     0.0060     0.0523   0.0516   0.0232
+   tail textured    45912   0.0062   0.0157   -0.0047  0.0170     0.0155     0.0053     0.0019   0.0003   0.0020
+   tail flat        45916   0.0000   0.0000    0.0000  0.0000     0.0000     0.0000     0.0002   0.0002   0.0000
+   far textured     73772   0.0067   0.0154   -0.0061  0.0156     0.0144     0.0033     0.0007   0.0001   0.0008
+   far flat         21617   0.0002   0.0008   -0.0002  0.0000     0.0000     0.0000     0.0007   0.0005   0.0002
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -4 -4 -4 -5 -5 -4 -5 -5 -6 -6 -8 -55 -34 -6 -6 -6
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 0 0 0 0 0 0 0 0 0 0 -1 -43 -30 -0 -0 -0
+ Quality S 8.0 px advancing: edge travel over the receiver about 8.0 px a frame, reference edge contrast 0.307, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    29218   0.0219   0.0969    0.0173  0.0183     0.0152     0.0112     0.1086   0.1034   0.0284
+   band flat        30610   0.0101   0.0734    0.0092  0.0020     0.0000     0.0046     0.1030   0.1029   0.0200
+   tail textured    45921   0.0043   0.0146    0.0012  0.0143     0.0141     0.0041     0.0034   0.0002   0.0035
+   tail flat        45847   0.0001   0.0008   -0.0001  0.0000     0.0000     0.0000     0.0000   0.0001   0.0001
+   far textured     15777   0.0139   0.0232    0.0137  0.0169     0.0159     0.0037     0.0010   0.0007   0.0013
+   far flat         61338   0.0005   0.0028    0.0005  0.0000     0.0000     0.0000     0.0008   0.0009   0.0012
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 0 2 -0 2 -0 3 -0 4 -0 6 -0 20 51 14 14 14
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 0 13 41 0 0 0
+ Quality S 8.0 px retreating: edge travel over the receiver about 8.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30610   0.0243   0.1420   -0.0200  0.0185     0.0146     0.0116     0.1035   0.1012   0.0342
+   band flat        28408   0.0139   0.1059   -0.0131  0.0030     0.0000     0.0062     0.1087   0.1078   0.0280
+   tail textured    45909   0.0063   0.0193   -0.0037  0.0166     0.0153     0.0056     0.0039   0.0007   0.0041
+   tail flat        45906   0.0004   0.0028   -0.0004  0.0000     0.0000     0.0000     0.0008   0.0006   0.0010
+   far textured     55949   0.0089   0.0168   -0.0087  0.0155     0.0144     0.0033     0.0008   0.0002   0.0009
+   far flat         12723   0.0008   0.0028   -0.0008  0.0000     0.0000     0.0000     0.0008   0.0008   0.0016
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -2 -6 -2 -5 -2 -6 -1 -7 -1 -9 -2 -56 -35 -9 -9 -9
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 -2 -45 -30 -1 -1 -1
+ Quality C pan 1.0 px: edge travel over the receiver about 1.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30608   0.0092   0.0235   -0.0029  0.0160     0.0147     0.0102     0.0423   0.0402   0.0156
+   band flat        30608   0.0021   0.0109   -0.0006  0.0001     0.0000     0.0019     0.0125   0.0125   0.0032
+   tail textured    45928   0.0076   0.0196   -0.0030  0.0146     0.0139     0.0082     0.0325   0.0307   0.0127
+   tail flat        45733   0.0008   0.0008   -0.0008  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   far textured     39264   0.0092   0.0235   -0.0033  0.0168     0.0159     0.0099     0.0371   0.0347   0.0153
+   far flat         92736   0.0000   0.0000    0.0000  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -2 -3 -2 -3 -3 -4 -3 -3 -3 -3 -3 -3 -2 -3 -2 -4
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 -2 -0 0 0
+ Quality C pan 2.0 px: edge travel over the receiver about 2.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30608   0.0043   0.0118   -0.0022  0.0132     0.0147     0.0032     0.0689   0.0722   0.0059
+   band flat        30608   0.0011   0.0039   -0.0005  0.0001     0.0000     0.0007     0.0250   0.0249   0.0012
+   tail textured    45928   0.0040   0.0118   -0.0023  0.0125     0.0139     0.0030     0.0509   0.0544   0.0056
+   tail flat        45806   0.0008   0.0008   -0.0008  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   far textured     34952   0.0051   0.0146   -0.0027  0.0140     0.0159     0.0036     0.0569   0.0615   0.0069
+   far flat         88424   0.0000   0.0000    0.0000  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -2 -2 -2 -2 -2 -3 -2 -2 -3 -2 -3 -2 -2 -2 -2 -2
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 0 -2 -0 0 0
+ Quality C pan 4.0 px: edge travel over the receiver about 4.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30608   0.0130   0.0389   -0.0001  0.0092     0.0147     0.0091     0.0881   0.1001   0.0199
+   band flat        30608   0.0016   0.0070   -0.0004  0.0001     0.0000     0.0010     0.0500   0.0498   0.0023
+   tail textured    45928   0.0120   0.0353   -0.0009  0.0089     0.0139     0.0083     0.0525   0.0655   0.0180
+   tail flat        45839   0.0008   0.0008   -0.0008  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   far textured     26873   0.0146   0.0429    0.0003  0.0095     0.0159     0.0099     0.0563   0.0720   0.0214
+   far flat         79800   0.0000   0.0000    0.0000  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -0 -1 -2 -0 -1 -2 -0 -1 4 -3 0 0 1
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 2 -2 -0 0 0
+ Quality C pan 8.0 px: edge travel over the receiver about 8.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    29488   0.0117   0.0353    0.0005  0.0090     0.0147     0.0081     0.1298   0.1387   0.0186
+   band flat        30608   0.0012   0.0048   -0.0004  0.0001     0.0000     0.0008     0.0999   0.0997   0.0019
+   tail textured    45928   0.0105   0.0322   -0.0004  0.0089     0.0139     0.0073     0.0539   0.0657   0.0165
+   tail flat        45848   0.0008   0.0008   -0.0008  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   far textured     16234   0.0132   0.0392    0.0010  0.0092     0.0159     0.0089     0.0567   0.0719   0.0204
+   far flat         62552   0.0000   0.0000    0.0000  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -0 -1 0 -0 -0 0 -0 -1 1 -1 4 -3 1 1 2
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 1 -2 -0 0 0
+ Quality M object 0.5 px: edge travel over the receiver about 0.5 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    25840   0.0324   0.1344    0.0246  0.0146     0.0152     0.0153     0.0193   0.0182   0.0184
+   band flat        25832   0.0141   0.0964    0.0133  0.0028     0.0000     0.0051     0.0080   0.0000   0.0080
+   tail textured    38768   0.0140   0.0392    0.0022  0.0088     0.0145     0.0080     0.0099   0.0170   0.0095
+   tail flat        38768   0.0008   0.0008   -0.0008  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   far textured     40136   0.0205   0.0546   -0.0004  0.0092     0.0163     0.0109     0.0097   0.0193   0.0117
+   far flat         78584   0.0000   0.0000    0.0000  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -2 0 1 1 2 5 6 10 14 23 73 40 -0 -2 -2
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 44 37 -0 0 0
+ Quality M object 1.0 px: edge travel over the receiver about 1.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    25840   0.0185   0.1022    0.0148  0.0194     0.0147     0.0115     0.0410   0.0328   0.0170
+   band flat        25832   0.0109   0.0706    0.0099  0.0033     0.0000     0.0057     0.0079   0.0000   0.0079
+   tail textured    38768   0.0030   0.0078    0.0002  0.0140     0.0139     0.0027     0.0314   0.0307   0.0044
+   tail flat        38768   0.0008   0.0008   -0.0008  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   far textured     40136   0.0024   0.0076   -0.0010  0.0153     0.0156     0.0021     0.0342   0.0344   0.0032
+   far flat         78584   0.0000   0.0000    0.0000  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 0 0 1 2 3 4 8 46 37 -3 -2 -3
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 25 36 -0 0 0
+ Quality M object 2.0 px: edge travel over the receiver about 2.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    25840   0.0162   0.0669    0.0092  0.0173     0.0149     0.0129     0.0575   0.0585   0.0199
+   band flat        25832   0.0067   0.0420    0.0054  0.0026     0.0000     0.0046     0.0067   0.0000   0.0067
+   tail textured    38768   0.0068   0.0185    0.0006  0.0136     0.0139     0.0067     0.0514   0.0547   0.0095
+   tail flat        38768   0.0008   0.0008   -0.0008  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   far textured     40136   0.0067   0.0193   -0.0007  0.0150     0.0156     0.0067     0.0580   0.0603   0.0087
+   far flat         78584   0.0000   0.0000    0.0000  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 -0 0 1 1 1 2 3 6 21 28 -2 -2 -2
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 11 23 0 0 0
+ Quality M object 4.0 px: edge travel over the receiver about 4.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    25840   0.0152   0.0479    0.0043  0.0122     0.0150     0.0116     0.0587   0.0694   0.0226
+   band flat        25832   0.0047   0.0305    0.0031  0.0019     0.0000     0.0034     0.0053   0.0000   0.0053
+   tail textured    38768   0.0109   0.0350   -0.0002  0.0096     0.0140     0.0077     0.0533   0.0652   0.0166
+   tail flat        38768   0.0008   0.0008   -0.0008  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   far textured     40136   0.0092   0.0311    0.0011  0.0113     0.0156     0.0071     0.0622   0.0718   0.0141
+   far flat         78584   0.0000   0.0000    0.0000  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -1 -0 -0 -0 -0 -0 -0 0 1 2 5 15 1 1 1
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 12 8 0 0 0
+ Quality M object 8.0 px: edge travel over the receiver about 8.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    25840   0.0154   0.0479    0.0042  0.0132     0.0150     0.0124     0.0601   0.0680   0.0226
+   band flat        25832   0.0048   0.0305    0.0032  0.0019     0.0000     0.0033     0.0054   0.0000   0.0054
+   tail textured    38768   0.0127   0.0364    0.0006  0.0107     0.0141     0.0092     0.0550   0.0659   0.0192
+   tail flat        38768   0.0008   0.0008   -0.0008  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   far textured     40136   0.0090   0.0272    0.0007  0.0126     0.0153     0.0078     0.0651   0.0712   0.0135
+   far flat         78584   0.0000   0.0000    0.0000  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 0 -0 1 -0 1 -0 1 1 2 2 3 5 14 1 1 1
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 14 7 0 0 0
+ Quality MS object 1.0 px, shadow 1.0 px: edge travel over the receiver about 2.0 px a frame, reference edge contrast 0.309, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    25838   0.0166   0.0874    0.0129  0.0192     0.0149     0.0112     0.0456   0.0397   0.0220
+   band flat        25840   0.0084   0.0585    0.0066  0.0019     0.0000     0.0042     0.0142   0.0128   0.0111
+   tail textured    38764   0.0034   0.0087    0.0014  0.0143     0.0139     0.0033     0.0318   0.0309   0.0057
+   tail flat        38764   0.0005   0.0008   -0.0005  0.0000     0.0000     0.0000     0.0002   0.0001   0.0001
+   far textured     36456   0.0022   0.0070   -0.0002  0.0153     0.0156     0.0020     0.0340   0.0342   0.0032
+   far flat         74909   0.0007   0.0028   -0.0007  0.0000     0.0000     0.0000     0.0004   0.0004   0.0008
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 0 0 1 1 1 2 2 2 3 4 7 30 37 -1 -1 -1
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -0 -0 -0 9 33 -1 -1 -1
+ Quality MS object 2.0 px, shadow 1.0 px: edge travel over the receiver about 3.0 px a frame, reference edge contrast 0.309, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    25838   0.0145   0.0543    0.0074  0.0165     0.0150     0.0116     0.0618   0.0630   0.0199
+   band flat        25840   0.0056   0.0353    0.0038  0.0016     0.0000     0.0035     0.0138   0.0128   0.0080
+   tail textured    38764   0.0064   0.0160    0.0003  0.0136     0.0139     0.0064     0.0518   0.0549   0.0087
+   tail flat        38764   0.0005   0.0008   -0.0005  0.0000     0.0000     0.0000     0.0002   0.0001   0.0001
+   far textured     36456   0.0067   0.0193   -0.0003  0.0150     0.0156     0.0067     0.0579   0.0601   0.0087
+   far flat         74909   0.0007   0.0028   -0.0007  0.0000     0.0000     0.0000     0.0004   0.0004   0.0008
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 -0 -0 0 1 1 2 2 4 11 28 -0 -1 -1
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -0 -0 -0 7 19 -1 -1 -1
+ Native S 1.0 px advancing: edge travel over the receiver about 1.0 px a frame, reference edge contrast 0.309, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30612   0.0147   0.0742    0.0118  0.0188     0.0151     0.0092     0.0123   0.0126   0.0121
+   band flat        30613   0.0072   0.0510    0.0056  0.0012     0.0000     0.0048     0.0130   0.0131   0.0099
+   tail textured    45921   0.0032   0.0078   -0.0001  0.0149     0.0139     0.0023     0.0002   0.0000   0.0003
+   tail flat        45732   0.0005   0.0008   -0.0005  0.0000     0.0000     0.0000     0.0002   0.0001   0.0001
+   far textured     39111   0.0036   0.0078   -0.0007  0.0172     0.0159     0.0024     0.0002   0.0001   0.0003
+   far flat         92585   0.0007   0.0028   -0.0007  0.0000     0.0000     0.0000     0.0004   0.0004   0.0008
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -0 -0 0 1 2 3 6 32 32 -1 -1 -1
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 15 22 -1 -1 -1
+ Native S 1.0 px retreating: edge travel over the receiver about 1.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30609   0.0186   0.1019   -0.0172  0.0193     0.0148     0.0107     0.0132   0.0127   0.0135
+   band flat        30609   0.0080   0.0507   -0.0075  0.0008     0.0000     0.0051     0.0136   0.0129   0.0110
+   tail textured    45912   0.0057   0.0120   -0.0050  0.0169     0.0157     0.0029     0.0003   0.0001   0.0004
+   tail flat        45915   0.0000   0.0000    0.0000  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   far textured     87166   0.0039   0.0081   -0.0027  0.0155     0.0143     0.0021     0.0002   0.0000   0.0002
+   far flat         33683   0.0001   0.0008   -0.0001  0.0000     0.0000     0.0000     0.0001   0.0000   0.0001
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -4 -4 -4 -5 -5 -5 -5 -6 -7 -8 -14 -48 -28 -3 -3 -3
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 0 0 0 0 0 0 0 0 0 0 -0 -19 -26 -0 -0 -0
+ Native S 2.0 px advancing: edge travel over the receiver about 2.0 px a frame, reference edge contrast 0.309, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30612   0.0128   0.0633    0.0098  0.0183     0.0150     0.0083     0.0251   0.0252   0.0157
+   band flat        30612   0.0050   0.0314    0.0036  0.0008     0.0000     0.0034     0.0260   0.0259   0.0093
+   tail textured    45919   0.0033   0.0078    0.0005  0.0151     0.0140     0.0024     0.0004   0.0001   0.0004
+   tail flat        45806   0.0003   0.0008   -0.0003  0.0000     0.0000     0.0000     0.0002   0.0001   0.0001
+   far textured     34646   0.0036   0.0078    0.0008  0.0172     0.0159     0.0023     0.0003   0.0002   0.0004
+   far flat         88122   0.0004   0.0028   -0.0004  0.0000     0.0000     0.0000     0.0004   0.0004   0.0008
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 0 0 1 1 1 2 3 5 18 31 1 1 1
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 3 20 -0 -0 -0
+ Native S 2.0 px retreating: edge travel over the receiver about 2.0 px a frame, reference edge contrast 0.309, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30609   0.0168   0.0863   -0.0150  0.0193     0.0147     0.0103     0.0257   0.0253   0.0184
+   band flat        30608   0.0066   0.0431   -0.0059  0.0008     0.0000     0.0043     0.0264   0.0260   0.0120
+   tail textured    45911   0.0056   0.0126   -0.0047  0.0170     0.0156     0.0032     0.0005   0.0002   0.0006
+   tail flat        45916   0.0001   0.0008   -0.0001  0.0000     0.0000     0.0000     0.0000   0.0002   0.0001
+   far textured     82701   0.0042   0.0090   -0.0032  0.0156     0.0143     0.0021     0.0002   0.0001   0.0002
+   far flat         29260   0.0001   0.0008   -0.0001  0.0000     0.0000     0.0000     0.0005   0.0004   0.0002
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -5 -5 -4 -4 -4 -4 -5 -5 -6 -7 -14 -34 -28 -3 -3 -3
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 -9 -26 -0 -0 -0
+ Native S 4.0 px advancing: edge travel over the receiver about 4.0 px a frame, reference edge contrast 0.308, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30611   0.0114   0.0515    0.0086  0.0174     0.0151     0.0068     0.0509   0.0502   0.0154
+   band flat        30611   0.0052   0.0400    0.0041  0.0014     0.0000     0.0037     0.0516   0.0515   0.0085
+   tail textured    45918   0.0038   0.0087    0.0009  0.0152     0.0141     0.0028     0.0007   0.0001   0.0008
+   tail flat        45837   0.0002   0.0008   -0.0002  0.0000     0.0000     0.0000     0.0000   0.0001   0.0001
+   far textured     26357   0.0045   0.0115    0.0037  0.0171     0.0160     0.0024     0.0004   0.0003   0.0006
+   far flat         79194   0.0000   0.0000    0.0000  0.0000     0.0000     0.0000     0.0005   0.0005   0.0000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 0 0 1 1 1 1 1 1 2 2 4 7 31 4 4 4
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 5 20 -0 0 0
+ Native S 4.0 px retreating: edge travel over the receiver about 4.0 px a frame, reference edge contrast 0.308, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30610   0.0141   0.0633   -0.0117  0.0179     0.0146     0.0086     0.0508   0.0505   0.0175
+   band flat        30611   0.0072   0.0510   -0.0065  0.0015     0.0000     0.0050     0.0522   0.0516   0.0124
+   tail textured    45912   0.0061   0.0165   -0.0045  0.0173     0.0155     0.0040     0.0011   0.0003   0.0012
+   tail flat        45916   0.0000   0.0000    0.0000  0.0000     0.0000     0.0000     0.0002   0.0002   0.0000
+   far textured     73772   0.0046   0.0115   -0.0041  0.0156     0.0144     0.0021     0.0002   0.0001   0.0003
+   far flat         21617   0.0002   0.0008   -0.0002  0.0000     0.0000     0.0000     0.0007   0.0005   0.0002
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -4 -4 -4 -4 -4 -4 -5 -5 -6 -7 -10 -17 -28 -4 -4 -4
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 0 0 0 0 0 0 0 0 0 0 -0 -13 -26 -0 -0 -0
+ Native S 8.0 px advancing: edge travel over the receiver about 8.0 px a frame, reference edge contrast 0.307, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    29218   0.0130   0.0507    0.0100  0.0174     0.0152     0.0069     0.1063   0.1034   0.0165
+   band flat        30610   0.0054   0.0400    0.0043  0.0014     0.0000     0.0037     0.1031   0.1029   0.0107
+   tail textured    45921   0.0045   0.0118    0.0008  0.0153     0.0141     0.0033     0.0014   0.0002   0.0016
+   tail flat        45847   0.0001   0.0008   -0.0001  0.0000     0.0000     0.0000     0.0000   0.0001   0.0001
+   far textured     15777   0.0092   0.0157    0.0090  0.0168     0.0159     0.0026     0.0006   0.0007   0.0010
+   far flat         61338   0.0005   0.0028    0.0005  0.0000     0.0000     0.0000     0.0008   0.0009   0.0012
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 0 1 0 1 0 2 0 2 0 4 1 5 33 9 9 9
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 5 20 0 0 0
+ Native S 8.0 px retreating: edge travel over the receiver about 8.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30610   0.0146   0.0630   -0.0120  0.0177     0.0146     0.0086     0.1012   0.1012   0.0183
+   band flat        28408   0.0077   0.0538   -0.0069  0.0015     0.0000     0.0051     0.1087   0.1078   0.0155
+   tail textured    45909   0.0072   0.0232   -0.0048  0.0174     0.0153     0.0049     0.0021   0.0007   0.0023
+   tail flat        45906   0.0004   0.0028   -0.0004  0.0000     0.0000     0.0000     0.0006   0.0006   0.0008
+   far textured     55949   0.0060   0.0118   -0.0058  0.0154     0.0144     0.0022     0.0003   0.0002   0.0005
+   far flat         12723   0.0008   0.0028   -0.0008  0.0000     0.0000     0.0000     0.0008   0.0008   0.0016
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -4 -6 -4 -6 -3 -6 -4 -8 -4 -10 -4 -17 -29 -6 -6 -6
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 -14 -26 -1 -1 -1
+ Native C pan 1.0 px: edge travel over the receiver about 1.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30608   0.0039   0.0087   -0.0020  0.0162     0.0147     0.0023     0.0423   0.0402   0.0040
+   band flat        30608   0.0009   0.0039   -0.0008  0.0001     0.0000     0.0004     0.0125   0.0125   0.0007
+   tail textured    45928   0.0036   0.0078   -0.0021  0.0152     0.0139     0.0021     0.0327   0.0307   0.0035
+   tail flat        45733   0.0008   0.0008   -0.0008  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   far textured     39264   0.0040   0.0106   -0.0020  0.0173     0.0159     0.0025     0.0370   0.0347   0.0041
+   far flat         92736   0.0000   0.0000    0.0000  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -3 -1 -2 -2 -2
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -2 -1 -0 0 0
+ Native C pan 2.0 px: edge travel over the receiver about 2.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30608   0.0038   0.0087   -0.0020  0.0156     0.0147     0.0027     0.0747   0.0722   0.0054
+   band flat        30608   0.0009   0.0039   -0.0007  0.0001     0.0000     0.0004     0.0250   0.0249   0.0008
+   tail textured    45928   0.0034   0.0078   -0.0019  0.0145     0.0139     0.0026     0.0564   0.0544   0.0047
+   tail flat        45806   0.0008   0.0008   -0.0008  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   far textured     34952   0.0040   0.0090   -0.0021  0.0167     0.0159     0.0029     0.0643   0.0615   0.0055
+   far flat         88424   0.0000   0.0000    0.0000  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -3 -1 -2 -2 -2
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -2 -1 -0 0 0
+ Native C pan 4.0 px: edge travel over the receiver about 4.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30608   0.0047   0.0154   -0.0007  0.0131     0.0147     0.0043     0.0976   0.1001   0.0070
+   band flat        30608   0.0008   0.0039   -0.0005  0.0001     0.0000     0.0005     0.0500   0.0498   0.0009
+   tail textured    45928   0.0045   0.0154   -0.0012  0.0122     0.0139     0.0040     0.0623   0.0655   0.0068
+   tail flat        45839   0.0008   0.0008   -0.0008  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   far textured     26873   0.0052   0.0157   -0.0008  0.0137     0.0159     0.0046     0.0686   0.0720   0.0075
+   far flat         79800   0.0000   0.0000    0.0000  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 0 -1 -1 -1 -0
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 0 0
+ Native C pan 8.0 px: edge travel over the receiver about 8.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    29488   0.0043   0.0129   -0.0004  0.0133     0.0147     0.0040     0.1372   0.1387   0.0067
+   band flat        30608   0.0008   0.0036   -0.0005  0.0001     0.0000     0.0004     0.0999   0.0997   0.0010
+   tail textured    45928   0.0038   0.0118   -0.0008  0.0125     0.0139     0.0035     0.0634   0.0657   0.0059
+   tail flat        45848   0.0008   0.0008   -0.0008  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   far textured     16234   0.0048   0.0154   -0.0004  0.0139     0.0159     0.0044     0.0688   0.0719   0.0073
+   far flat         62552   0.0000   0.0000    0.0000  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 -1 0 -0 -0 -0 0
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 -0 0 0
+ Native M object 0.5 px: edge travel over the receiver about 0.5 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    25840   0.0227   0.0991    0.0163  0.0147     0.0152     0.0119     0.0193   0.0182   0.0151
+   band flat        25832   0.0082   0.0608    0.0073  0.0017     0.0000     0.0034     0.0058   0.0000   0.0058
+   tail textured    38768   0.0106   0.0311   -0.0002  0.0101     0.0145     0.0067     0.0112   0.0170   0.0081
+   tail flat        38768   0.0008   0.0008   -0.0008  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   far textured     40136   0.0143   0.0392   -0.0001  0.0108     0.0163     0.0085     0.0119   0.0193   0.0097
+   far flat         78584   0.0000   0.0000    0.0000  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -2 -1 -1 -1 -1 0 1 3 6 12 48 33 0 -1 -0
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 20 25 -0 0 0
+ Native M object 1.0 px: edge travel over the receiver about 1.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    25840   0.0135   0.0622    0.0101  0.0182     0.0147     0.0091     0.0399   0.0328   0.0147
+   band flat        25832   0.0058   0.0392    0.0046  0.0009     0.0000     0.0040     0.0054   0.0000   0.0054
+   tail textured    38768   0.0031   0.0078   -0.0004  0.0148     0.0139     0.0023     0.0321   0.0307   0.0037
+   tail flat        38768   0.0008   0.0008   -0.0008  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   far textured     40136   0.0038   0.0084   -0.0012  0.0171     0.0156     0.0024     0.0367   0.0344   0.0040
+   far flat         78584   0.0000   0.0000    0.0000  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -2 -1 -1 -1 -1 -0 0 1 2 3 6 29 26 -2 -2 -2
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 13 16 0 0 0
+ Native M object 2.0 px: edge travel over the receiver about 2.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    25840   0.0093   0.0400    0.0051  0.0163     0.0149     0.0066     0.0615   0.0585   0.0117
+   band flat        25832   0.0035   0.0224    0.0021  0.0005     0.0000     0.0024     0.0032   0.0000   0.0032
+   tail textured    38768   0.0031   0.0078   -0.0005  0.0144     0.0139     0.0028     0.0560   0.0547   0.0047
+   tail flat        38768   0.0008   0.0008   -0.0008  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   far textured     40136   0.0036   0.0078   -0.0008  0.0166     0.0156     0.0026     0.0636   0.0603   0.0053
+   far flat         78584   0.0000   0.0000    0.0000  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -0 -0 0 1 1 3 9 21 -2 -2 -2
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 4 10 0 0 0
+ Native M object 4.0 px: edge travel over the receiver about 4.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    25840   0.0092   0.0339    0.0037  0.0141     0.0150     0.0072     0.0668   0.0694   0.0128
+   band flat        25832   0.0057   0.0392    0.0045  0.0010     0.0000     0.0034     0.0045   0.0000   0.0045
+   tail textured    38768   0.0054   0.0165   -0.0007  0.0122     0.0140     0.0046     0.0613   0.0652   0.0081
+   tail flat        38768   0.0008   0.0008   -0.0008  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   far textured     40136   0.0035   0.0090    0.0000  0.0151     0.0156     0.0033     0.0714   0.0718   0.0052
+   far flat         78584   0.0000   0.0000    0.0000  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -0 -0 0 2 7 13 -0 -0 -0
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 13 16 0 0 0
+ Native M object 8.0 px: edge travel over the receiver about 8.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    25840   0.0098   0.0353    0.0041  0.0143     0.0150     0.0075     0.0661   0.0680   0.0136
+   band flat        25832   0.0056   0.0389    0.0044  0.0009     0.0000     0.0033     0.0044   0.0000   0.0044
+   tail textured    38768   0.0069   0.0202    0.0003  0.0121     0.0141     0.0055     0.0615   0.0659   0.0102
+   tail flat        38768   0.0008   0.0008   -0.0008  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   far textured     40136   0.0033   0.0081    0.0001  0.0155     0.0153     0.0030     0.0723   0.0712   0.0050
+   far flat         78584   0.0000   0.0000    0.0000  0.0000     0.0000     0.0000     0.0000   0.0000   0.0000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 0 -0 0 -0 1 1 2 2 4 6 13 0 -0 0
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 13 15 0 0 0
+ Native MS object 1.0 px, shadow 1.0 px: edge travel over the receiver about 2.0 px a frame, reference edge contrast 0.309, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    25838   0.0112   0.0484    0.0075  0.0178     0.0149     0.0079     0.0451   0.0397   0.0153
+   band flat        25840   0.0040   0.0235    0.0022  0.0007     0.0000     0.0029     0.0132   0.0128   0.0061
+   tail textured    38764   0.0031   0.0078    0.0001  0.0149     0.0139     0.0024     0.0324   0.0309   0.0039
+   tail flat        38764   0.0005   0.0008   -0.0005  0.0000     0.0000     0.0000     0.0002   0.0001   0.0001
+   far textured     36456   0.0037   0.0078   -0.0004  0.0170     0.0156     0.0024     0.0364   0.0342   0.0041
+   far flat         74909   0.0007   0.0028   -0.0007  0.0000     0.0000     0.0000     0.0004   0.0004   0.0008
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -0 -0 -0 -0 0 0 1 1 2 5 14 26 -1 -1 -1
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 -0 3 13 -1 -1 -1
+ Native MS object 2.0 px, shadow 1.0 px: edge travel over the receiver about 3.0 px a frame, reference edge contrast 0.309, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    25838   0.0083   0.0322    0.0042  0.0164     0.0150     0.0061     0.0658   0.0630   0.0121
+   band flat        25840   0.0035   0.0196    0.0018  0.0008     0.0000     0.0025     0.0131   0.0128   0.0054
+   tail textured    38764   0.0033   0.0078   -0.0004  0.0144     0.0139     0.0028     0.0564   0.0549   0.0050
+   tail flat        38764   0.0005   0.0008   -0.0005  0.0000     0.0000     0.0000     0.0002   0.0001   0.0001
+   far textured     36456   0.0035   0.0078   -0.0004  0.0166     0.0156     0.0026     0.0635   0.0601   0.0054
+   far flat         74909   0.0007   0.0028   -0.0007  0.0000     0.0000     0.0000     0.0004   0.0004   0.0008
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -0 -0 -0 1 1 2 4 19 -1 -1 -1
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -0 -0 -0 5 8 -1 -1 -1
+
+ summary, mean absolute luma error, then the textured band's grain out, ref and error, the flat band's error grain, and each band's frame-to-frame change out, ref and error
+ case                                   bandT  tailT  farT    bandF  tailF  farF    grOutT grRefT grErrT  grErrF  chgT   chRefT chErrT  chgF   chRefF chErrF
+ Quality S 1.0 px advancing             0.0210 0.0033 0.0046  0.0124 0.0005 0.0007  0.0201 0.0151 0.0116  0.0061  0.0132 0.0126 0.0171  0.0133 0.0131 0.0145
+ Quality S 1.0 px retreating            0.0270 0.0074 0.0054  0.0141 0.0000 0.0001  0.0222 0.0148 0.0141  0.0063  0.0136 0.0127 0.0187  0.0135 0.0129 0.0160
+ Quality S 2.0 px advancing             0.0193 0.0035 0.0047  0.0103 0.0003 0.0004  0.0196 0.0150 0.0114  0.0047  0.0260 0.0252 0.0241  0.0260 0.0259 0.0179
+ Quality S 2.0 px retreating            0.0256 0.0082 0.0058  0.0132 0.0001 0.0001  0.0217 0.0147 0.0139  0.0058  0.0264 0.0253 0.0289  0.0265 0.0260 0.0232
+ Quality S 4.0 px advancing             0.0188 0.0035 0.0065  0.0099 0.0002 0.0000  0.0183 0.0151 0.0105  0.0046  0.0524 0.0502 0.0267  0.0516 0.0515 0.0171
+ Quality S 4.0 px retreating            0.0230 0.0062 0.0067  0.0133 0.0000 0.0002  0.0191 0.0146 0.0116  0.0060  0.0527 0.0505 0.0332  0.0523 0.0516 0.0232
+ Quality S 8.0 px advancing             0.0219 0.0043 0.0139  0.0101 0.0001 0.0005  0.0183 0.0152 0.0112  0.0046  0.1086 0.1034 0.0284  0.1030 0.1029 0.0200
+ Quality S 8.0 px retreating            0.0243 0.0063 0.0089  0.0139 0.0004 0.0008  0.0185 0.0146 0.0116  0.0062  0.1035 0.1012 0.0342  0.1087 0.1078 0.0280
+ Quality C pan 1.0 px                   0.0092 0.0076 0.0092  0.0021 0.0008 0.0000  0.0160 0.0147 0.0102  0.0019  0.0423 0.0402 0.0156  0.0125 0.0125 0.0032
+ Quality C pan 2.0 px                   0.0043 0.0040 0.0051  0.0011 0.0008 0.0000  0.0132 0.0147 0.0032  0.0007  0.0689 0.0722 0.0059  0.0250 0.0249 0.0012
+ Quality C pan 4.0 px                   0.0130 0.0120 0.0146  0.0016 0.0008 0.0000  0.0092 0.0147 0.0091  0.0010  0.0881 0.1001 0.0199  0.0500 0.0498 0.0023
+ Quality C pan 8.0 px                   0.0117 0.0105 0.0132  0.0012 0.0008 0.0000  0.0090 0.0147 0.0081  0.0008  0.1298 0.1387 0.0186  0.0999 0.0997 0.0019
+ Quality M object 0.5 px                0.0324 0.0140 0.0205  0.0141 0.0008 0.0000  0.0146 0.0152 0.0153  0.0051  0.0193 0.0182 0.0184  0.0080 0.0000 0.0080
+ Quality M object 1.0 px                0.0185 0.0030 0.0024  0.0109 0.0008 0.0000  0.0194 0.0147 0.0115  0.0057  0.0410 0.0328 0.0170  0.0079 0.0000 0.0079
+ Quality M object 2.0 px                0.0162 0.0068 0.0067  0.0067 0.0008 0.0000  0.0173 0.0149 0.0129  0.0046  0.0575 0.0585 0.0199  0.0067 0.0000 0.0067
+ Quality M object 4.0 px                0.0152 0.0109 0.0092  0.0047 0.0008 0.0000  0.0122 0.0150 0.0116  0.0034  0.0587 0.0694 0.0226  0.0053 0.0000 0.0053
+ Quality M object 8.0 px                0.0154 0.0127 0.0090  0.0048 0.0008 0.0000  0.0132 0.0150 0.0124  0.0033  0.0601 0.0680 0.0226  0.0054 0.0000 0.0054
+ Quality MS object 1.0 px, shadow 1.0 px 0.0166 0.0034 0.0022  0.0084 0.0005 0.0007  0.0192 0.0149 0.0112  0.0042  0.0456 0.0397 0.0220  0.0142 0.0128 0.0111
+ Quality MS object 2.0 px, shadow 1.0 px 0.0145 0.0064 0.0067  0.0056 0.0005 0.0007  0.0165 0.0150 0.0116  0.0035  0.0618 0.0630 0.0199  0.0138 0.0128 0.0080
+ Native S 1.0 px advancing              0.0147 0.0032 0.0036  0.0072 0.0005 0.0007  0.0188 0.0151 0.0092  0.0048  0.0123 0.0126 0.0121  0.0130 0.0131 0.0099
+ Native S 1.0 px retreating             0.0186 0.0057 0.0039  0.0080 0.0000 0.0001  0.0193 0.0148 0.0107  0.0051  0.0132 0.0127 0.0135  0.0136 0.0129 0.0110
+ Native S 2.0 px advancing              0.0128 0.0033 0.0036  0.0050 0.0003 0.0004  0.0183 0.0150 0.0083  0.0034  0.0251 0.0252 0.0157  0.0260 0.0259 0.0093
+ Native S 2.0 px retreating             0.0168 0.0056 0.0042  0.0066 0.0001 0.0001  0.0193 0.0147 0.0103  0.0043  0.0257 0.0253 0.0184  0.0264 0.0260 0.0120
+ Native S 4.0 px advancing              0.0114 0.0038 0.0045  0.0052 0.0002 0.0000  0.0174 0.0151 0.0068  0.0037  0.0509 0.0502 0.0154  0.0516 0.0515 0.0085
+ Native S 4.0 px retreating             0.0141 0.0061 0.0046  0.0072 0.0000 0.0002  0.0179 0.0146 0.0086  0.0050  0.0508 0.0505 0.0175  0.0522 0.0516 0.0124
+ Native S 8.0 px advancing              0.0130 0.0045 0.0092  0.0054 0.0001 0.0005  0.0174 0.0152 0.0069  0.0037  0.1063 0.1034 0.0165  0.1031 0.1029 0.0107
+ Native S 8.0 px retreating             0.0146 0.0072 0.0060  0.0077 0.0004 0.0008  0.0177 0.0146 0.0086  0.0051  0.1012 0.1012 0.0183  0.1087 0.1078 0.0155
+ Native C pan 1.0 px                    0.0039 0.0036 0.0040  0.0009 0.0008 0.0000  0.0162 0.0147 0.0023  0.0004  0.0423 0.0402 0.0040  0.0125 0.0125 0.0007
+ Native C pan 2.0 px                    0.0038 0.0034 0.0040  0.0009 0.0008 0.0000  0.0156 0.0147 0.0027  0.0004  0.0747 0.0722 0.0054  0.0250 0.0249 0.0008
+ Native C pan 4.0 px                    0.0047 0.0045 0.0052  0.0008 0.0008 0.0000  0.0131 0.0147 0.0043  0.0005  0.0976 0.1001 0.0070  0.0500 0.0498 0.0009
+ Native C pan 8.0 px                    0.0043 0.0038 0.0048  0.0008 0.0008 0.0000  0.0133 0.0147 0.0040  0.0004  0.1372 0.1387 0.0067  0.0999 0.0997 0.0010
+ Native M object 0.5 px                 0.0227 0.0106 0.0143  0.0082 0.0008 0.0000  0.0147 0.0152 0.0119  0.0034  0.0193 0.0182 0.0151  0.0058 0.0000 0.0058
+ Native M object 1.0 px                 0.0135 0.0031 0.0038  0.0058 0.0008 0.0000  0.0182 0.0147 0.0091  0.0040  0.0399 0.0328 0.0147  0.0054 0.0000 0.0054
+ Native M object 2.0 px                 0.0093 0.0031 0.0036  0.0035 0.0008 0.0000  0.0163 0.0149 0.0066  0.0024  0.0615 0.0585 0.0117  0.0032 0.0000 0.0032
+ Native M object 4.0 px                 0.0092 0.0054 0.0035  0.0057 0.0008 0.0000  0.0141 0.0150 0.0072  0.0034  0.0668 0.0694 0.0128  0.0045 0.0000 0.0045
+ Native M object 8.0 px                 0.0098 0.0069 0.0033  0.0056 0.0008 0.0000  0.0143 0.0150 0.0075  0.0033  0.0661 0.0680 0.0136  0.0044 0.0000 0.0044
+ Native MS object 1.0 px, shadow 1.0 px 0.0112 0.0031 0.0037  0.0040 0.0005 0.0007  0.0178 0.0149 0.0079  0.0029  0.0451 0.0397 0.0153  0.0132 0.0128 0.0061
+ Native MS object 2.0 px, shadow 1.0 px 0.0083 0.0033 0.0035  0.0035 0.0005 0.0007  0.0164 0.0150 0.0061  0.0025  0.0658 0.0630 0.0121  0.0131 0.0128 0.0054
+ device class lavapipe
+
+
+[2026-10-18 23:04:23.103] [WARN] [VulkanDebugMessenger] KE_VULKAN_VALIDATION asked for Vulkan validation and this loader offers no VK_EXT_debug_utils entry points, so no messenger was created and this run reports no validation messages. The layer may still be installed: this is the loader half.
+[2026-10-18 23:04:23.103] [INFO] [VulkanInstance] Vulkan validation is ACTIVE and STRICT for this device (from KE_VULKAN_VALIDATION=strict): everything the 1 rung does, and the first error-severity message is latched and thrown at the next controlled point. The throw never happens inside the driver callback. Expect a large performance cost.
+[2026-10-18 23:04:23.103] [INFO] [VulkanGpuDevice] Vulkan device selection: device 0 ('llvmpipe (LLVM 20.1.2, 256 bits)', a SOFTWARE rasterizer), from KE_VULKAN_DEVICE='llvmpipe'.
+[2026-10-18 23:04:23.103] [INFO] [VulkanGpuDevice] Vulkan device features enabled by name: dynamicRendering, synchronization2, timelineSemaphore, samplerAnisotropy, fillModeNonSolid, depthClamp, independentBlend.
+[2026-10-18 23:04:23.111] [INFO] [VulkanGpuDevice] The native Vulkan backend runs 3 frames in flight, the default: 3 command pools per list and 3 segments per uniform ring. Set KE_VULKAN_FRAMES_IN_FLIGHT=<n> to change it, which is the MV3 lever.
+[2026-10-18 23:04:23.111] [INFO] [VulkanGpuDevice] The native Vulkan allocator is up: 64 MiB chunks pooled by (memory type, tiling), dedicated at or above 16 MiB or on driver preference, 1 memory types reported, nonCoherentAtomSize 64, maxMemoryAllocationCount 4294967295.
+[2026-10-18 23:04:23.111] [INFO] [VulkanMemoryAllocator] The native Vulkan allocator opened a pool for memory type 0 (DeviceLocal, HostVisible, HostCoherent, HostCached) with Optimal tiling, chosen at rung 1 of the DeviceLocal ladder. Linear and optimal tiling never share a chunk, which is how bufferImageGranularity is satisfied here without any granularity arithmetic.
+[2026-10-18 23:04:23.112] [INFO] [VulkanMemoryAllocator] The native Vulkan allocator opened a pool for memory type 0 (DeviceLocal, HostVisible, HostCoherent, HostCached) with Linear tiling, chosen at rung 0 of the Ring ladder. Linear and optimal tiling never share a chunk, which is how bufferImageGranularity is satisfied here without any granularity arithmetic.
+[2026-10-18 23:04:24.165] [WARN] [VulkanDebugMessenger] KE_VULKAN_VALIDATION asked for Vulkan validation and this loader offers no VK_EXT_debug_utils entry points, so no messenger was created and this run reports no validation messages. The layer may still be installed: this is the loader half.
+[2026-10-18 23:04:24.165] [INFO] [VulkanInstance] Vulkan validation is ACTIVE and STRICT for this device (from KE_VULKAN_VALIDATION=strict): everything the 1 rung does, and the first error-severity message is latched and thrown at the next controlled point. The throw never happens inside the driver callback. Expect a large performance cost.
+[2026-10-18 23:04:24.165] [INFO] [VulkanGpuDevice] Vulkan device selection: device 0 ('llvmpipe (LLVM 20.1.2, 256 bits)', a SOFTWARE rasterizer), from KE_VULKAN_DEVICE='llvmpipe'.
+[2026-10-18 23:04:24.165] [INFO] [VulkanGpuDevice] Vulkan device features enabled by name: dynamicRendering, synchronization2, timelineSemaphore, samplerAnisotropy, fillModeNonSolid, depthClamp, independentBlend.
+[2026-10-18 23:04:24.173] [INFO] [VulkanGpuDevice] The native Vulkan backend runs 3 frames in flight, the default: 3 command pools per list and 3 segments per uniform ring. Set KE_VULKAN_FRAMES_IN_FLIGHT=<n> to change it, which is the MV3 lever.
+[2026-10-18 23:04:24.174] [INFO] [VulkanGpuDevice] The native Vulkan allocator is up: 64 MiB chunks pooled by (memory type, tiling), dedicated at or above 16 MiB or on driver preference, 1 memory types reported, nonCoherentAtomSize 64, maxMemoryAllocationCount 4294967295.
+[2026-10-18 23:04:24.174] [INFO] [VulkanMemoryAllocator] The native Vulkan allocator opened a pool for memory type 0 (DeviceLocal, HostVisible, HostCoherent, HostCached) with Optimal tiling, chosen at rung 1 of the DeviceLocal ladder. Linear and optimal tiling never share a chunk, which is how bufferImageGranularity is satisfied here without any granularity arithmetic.
+[2026-10-18 23:04:24.175] [INFO] [VulkanMemoryAllocator] The native Vulkan allocator opened a pool for memory type 0 (DeviceLocal, HostVisible, HostCoherent, HostCached) with Linear tiling, chosen at rung 0 of the Ring ladder. Linear and optimal tiling never share a chunk, which is how bufferImageGranularity is satisfied here without any granularity arithmetic.
+[2026-10-18 23:04:25.226] [WARN] [VulkanDebugMessenger] KE_VULKAN_VALIDATION asked for Vulkan validation and this loader offers no VK_EXT_debug_utils entry points, so no messenger was created and this run reports no validation messages. The layer may still be installed: this is the loader half.
+[2026-10-18 23:04:25.226] [INFO] [VulkanInstance] Vulkan validation is ACTIVE and STRICT for this device (from KE_VULKAN_VALIDATION=strict): everything the 1 rung does, and the first error-severity message is latched and thrown at the next controlled point. The throw never happens inside the driver callback. Expect a large performance cost.
+[2026-10-18 23:04:25.227] [INFO] [VulkanGpuDevice] Vulkan device selection: device 0 ('llvmpipe (LLVM 20.1.2, 256 bits)', a SOFTWARE rasterizer), from KE_VULKAN_DEVICE='llvmpipe'.
+[2026-10-18 23:04:25.227] [INFO] [VulkanGpuDevice] Vulkan device features enabled by name: dynamicRendering, synchronization2, timelineSemaphore, samplerAnisotropy, fillModeNonSolid, depthClamp, independentBlend.
+[2026-10-18 23:04:25.234] [INFO] [VulkanGpuDevice] The native Vulkan backend runs 3 frames in flight, the default: 3 command pools per list and 3 segments per uniform ring. Set KE_VULKAN_FRAMES_IN_FLIGHT=<n> to change it, which is the MV3 lever.
+[2026-10-18 23:04:25.235] [INFO] [VulkanGpuDevice] The native Vulkan allocator is up: 64 MiB chunks pooled by (memory type, tiling), dedicated at or above 16 MiB or on driver preference, 1 memory types reported, nonCoherentAtomSize 64, maxMemoryAllocationCount 4294967295.
+[2026-10-18 23:04:25.235] [INFO] [VulkanMemoryAllocator] The native Vulkan allocator opened a pool for memory type 0 (DeviceLocal, HostVisible, HostCoherent, HostCached) with Optimal tiling, chosen at rung 1 of the DeviceLocal ladder. Linear and optimal tiling never share a chunk, which is how bufferImageGranularity is satisfied here without any granularity arithmetic.
+[2026-10-18 23:04:25.235] [INFO] [VulkanMemoryAllocator] The native Vulkan allocator opened a pool for memory type 0 (DeviceLocal, HostVisible, HostCoherent, HostCached) with Linear tiling, chosen at rung 0 of the Ring ladder. Linear and optimal tiling never share a chunk, which is how bufferImageGranularity is satisfied here without any granularity arithmetic.
+
+  Passed KhaozEngine.Tests.Gpu.TemporalMovingShadeRimGpuTests.A_reused_rim_scene_matches_a_fresh_scene_after_other_configurations [15 s]
+[xUnit.net 00:32:11.38]     KhaozEngine.Tests.Gpu.TemporalMovingShadeRimGpuTests.Moving_shadow_receivers_keep_their_leading_and_trailing_rims [FAIL]
+[xUnit.net 00:32:11.38]       Quality M 0.5 leading flat: error 0.010496 above v21.2.0 0.009379 plus a tenth
+[xUnit.net 00:32:11.38]       Quality M 0.5 trailing textured: reference changed from 0.018923 to 0.018925
+[xUnit.net 00:32:11.38]       Quality M 1.0 trailing textured: reference changed from 0.035582 to 0.035597
+[xUnit.net 00:32:11.38]       Quality M 2.0 leading flat: reference changed from 0.006865 to 0.006928
+[xUnit.net 00:32:11.38]       Quality M 2.0 trailing textured: reference changed from 0.056094 to 0.056137
+[xUnit.net 00:32:11.38]       Quality M 4.0 leading flat: reference changed from 0.031935 to 0.032271
+[xUnit.net 00:32:11.38]       Quality M 4.0 trailing textured: reference changed from 0.066060 to 0.066091
+[xUnit.net 00:32:11.38]       Quality M 8.0 leading flat: reference changed from 0.088200 to 0.088301
+[xUnit.net 00:32:11.38]       Quality M 8.0 trailing textured: reference changed from 0.063028 to 0.063070
+[xUnit.net 00:32:11.38]       Quality MS 1.0 leading flat: reference changed from 0.008145 to 0.008075
+[xUnit.net 00:32:11.38]       Quality MS 1.0 trailing textured: reference changed from 0.038604 to 0.038654
+[xUnit.net 00:32:11.38]       Quality MS 2.0 leading flat: reference changed from 0.013941 to 0.014041
+[xUnit.net 00:32:11.38]       Quality MS 2.0 trailing textured: reference changed from 0.058566 to 0.058497
+[xUnit.net 00:32:11.38]       Native M 0.5 trailing textured: reference changed from 0.018923 to 0.018925
+[xUnit.net 00:32:11.38]       Native M 1.0 trailing textured: reference changed from 0.035582 to 0.035597
+[xUnit.net 00:32:11.38]       Native M 2.0 leading flat: reference changed from 0.006865 to 0.006928
+[xUnit.net 00:32:11.38]       Native M 2.0 trailing textured: reference changed from 0.056094 to 0.056137
+[xUnit.net 00:32:11.38]       Native M 4.0 leading flat: reference changed from 0.031935 to 0.032271
+[xUnit.net 00:32:11.38]       Native M 4.0 trailing textured: reference changed from 0.066060 to 0.066091
+[xUnit.net 00:32:11.38]       Native M 8.0 leading flat: reference changed from 0.088200 to 0.088301
+[xUnit.net 00:32:11.38]       Native M 8.0 trailing textured: reference changed from 0.063028 to 0.063070
+[xUnit.net 00:32:11.38]       Native MS 1.0 leading flat: reference changed from 0.008145 to 0.008075
+[xUnit.net 00:32:11.38]       Native MS 1.0 trailing textured: reference changed from 0.038604 to 0.038654
+[xUnit.net 00:32:11.38]       Native MS 2.0 leading flat: reference changed from 0.013941 to 0.014041
+[xUnit.net 00:32:11.38]       Native MS 2.0 trailing textured: reference changed from 0.058566 to 0.058497
+[xUnit.net 00:32:11.38]       Stack Trace:
+[xUnit.net 00:32:11.38]         KhaozEngine.Render.Tests/Gpu/TemporalMovingShadeRimGpuTests.cs(35,0): at KhaozEngine.Tests.Gpu.TemporalMovingShadeRimGpuTests.Moving_shadow_receivers_keep_their_leading_and_trailing_rims()
+[xUnit.net 00:32:11.38]            at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+[xUnit.net 00:32:11.38]            at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+[xUnit.net 00:32:11.38]       Output:
+[xUnit.net 00:32:11.38]         RIM lavapipe|Quality M 0.5 leading textured|0.015224|0.009950|0.010979|0.018464
+[xUnit.net 00:32:11.38]         RIM lavapipe|Quality M 0.5 leading flat|0.010496|0.005866|0.005866|0.000000
+[xUnit.net 00:32:11.38]         RIM lavapipe|Quality M 0.5 trailing textured|0.027013|0.016023|0.016376|0.018925
+[xUnit.net 00:32:11.38]         RIM lavapipe|Quality M 0.5 trailing flat|0.007421|0.005799|0.005799|0.000000
+[xUnit.net 00:32:11.38]         RIM lavapipe|Quality M 1.0 leading textured|0.002602|0.031936|0.003989|0.031734
+[xUnit.net 00:32:11.38]         RIM lavapipe|Quality M 1.0 leading flat|0.008154|0.006288|0.006288|0.000000
+[xUnit.net 00:32:11.38]         RIM lavapipe|Quality M 1.0 trailing textured|0.008846|0.038205|0.007701|0.035597
+[xUnit.net 00:32:11.38]         RIM lavapipe|Quality M 1.0 trailing flat|0.000223|0.000223|0.000223|0.000000
+[xUnit.net 00:32:11.38]         RIM lavapipe|Quality M 2.0 leading textured|0.007751|0.059269|0.013291|0.062134
+[xUnit.net 00:32:11.38]         RIM lavapipe|Quality M 2.0 leading flat|0.004861|0.012033|0.005157|0.006928
+[xUnit.net 00:32:11.38]         RIM lavapipe|Quality M 2.0 trailing textured|0.012030|0.053393|0.015260|0.056137
+[xUnit.net 00:32:11.38]         RIM lavapipe|Quality M 2.0 trailing flat|0.000969|0.000973|0.000973|0.000000
+[xUnit.net 00:32:11.38]         RIM lavapipe|Quality M 4.0 leading textured|0.012145|0.057368|0.020919|0.064834
+[xUnit.net 00:32:11.38]         RIM lavapipe|Quality M 4.0 leading flat|0.003642|0.046473|0.014395|0.032271
+[xUnit.net 00:32:11.38]         RIM lavapipe|Quality M 4.0 trailing textured|0.013757|0.052336|0.020739|0.066091
+[xUnit.net 00:32:11.38]         RIM lavapipe|Quality M 4.0 trailing flat|0.000272|0.000294|0.000294|0.000000
+[xUnit.net 00:32:11.38]         RIM lavapipe|Quality M 8.0 leading textured|0.012691|0.063446|0.013687|0.066235
+[xUnit.net 00:32:11.38]         RIM lavapipe|Quality M 8.0 leading flat|0.002270|0.090143|0.002218|0.088301
+[xUnit.net 00:32:11.38]         RIM lavapipe|Quality M 8.0 trailing textured|0.012163|0.054195|0.018557|0.063070
+[xUnit.net 00:32:11.38]         RIM lavapipe|Quality M 8.0 trailing flat|0.000965|0.000969|0.000969|0.000000
+[xUnit.net 00:32:11.38]         RIM lavapipe|Quality MS 1.0 leading textured|0.003225|0.032894|0.006344|0.031737
+[xUnit.net 00:32:11.38]         RIM lavapipe|Quality MS 1.0 leading flat|0.005424|0.010028|0.007799|0.008075
+[xUnit.net 00:32:11.38]         RIM lavapipe|Quality MS 1.0 trailing textured|0.007002|0.040009|0.009435|0.038654
+[xUnit.net 00:32:11.38]         RIM lavapipe|Quality MS 1.0 trailing flat|0.000291|0.000381|0.000381|0.000000
+[xUnit.net 00:32:11.38]         RIM lavapipe|Quality MS 2.0 leading textured|0.006954|0.059070|0.012402|0.062141
+[xUnit.net 00:32:11.38]         RIM lavapipe|Quality MS 2.0 leading flat|0.003673|0.017150|0.005669|0.014041
+[xUnit.net 00:32:11.38]         RIM lavapipe|Quality MS 2.0 trailing textured|0.012010|0.054876|0.016220|0.058497
+[xUnit.net 00:32:11.38]         RIM lavapipe|Quality MS 2.0 trailing flat|0.001078|0.001088|0.001088|0.000000
+[xUnit.net 00:32:11.38]         RIM lavapipe|Native M 0.5 leading textured|0.012631|0.011491|0.009843|0.018464
+[xUnit.net 00:32:11.38]         RIM lavapipe|Native M 0.5 leading flat|0.006047|0.004340|0.004340|0.000000
+[xUnit.net 00:32:11.38]         RIM lavapipe|Native M 0.5 trailing textured|0.017785|0.015437|0.013187|0.018925
+[xUnit.net 00:32:11.38]         RIM lavapipe|Native M 0.5 trailing flat|0.000904|0.000991|0.000991|0.000000
+[xUnit.net 00:32:11.38]         RIM lavapipe|Native M 1.0 leading textured|0.003241|0.033352|0.003613|0.031734
+[xUnit.net 00:32:11.38]         RIM lavapipe|Native M 1.0 leading flat|0.004461|0.004065|0.004065|0.000000
+[xUnit.net 00:32:11.38]         RIM lavapipe|Native M 1.0 trailing textured|0.007613|0.040091|0.008315|0.035597
+[xUnit.net 00:32:11.38]         RIM lavapipe|Native M 1.0 trailing flat|0.000057|0.000057|0.000057|0.000000
+[xUnit.net 00:32:11.38]         RIM lavapipe|Native M 2.0 leading textured|0.002968|0.064276|0.004689|0.062134
+[xUnit.net 00:32:11.38]         RIM lavapipe|Native M 2.0 leading flat|0.002736|0.010054|0.003144|0.006928
+[xUnit.net 00:32:11.38]         RIM lavapipe|Native M 2.0 trailing textured|0.005531|0.059110|0.007464|0.056137
+[xUnit.net 00:32:11.38]         RIM lavapipe|Native M 2.0 trailing flat|0.000057|0.000057|0.000057|0.000000
+[xUnit.net 00:32:11.38]         RIM lavapipe|Native M 4.0 leading textured|0.004913|0.063079|0.007566|0.064834
+[xUnit.net 00:32:11.38]         RIM lavapipe|Native M 4.0 leading flat|0.003507|0.035306|0.003177|0.032271
+[xUnit.net 00:32:11.38]         RIM lavapipe|Native M 4.0 trailing textured|0.005731|0.063433|0.008667|0.066091
+[xUnit.net 00:32:11.38]         RIM lavapipe|Native M 4.0 trailing flat|0.000028|0.000024|0.000024|0.000000
+[xUnit.net 00:32:11.38]         RIM lavapipe|Native M 8.0 leading textured|0.006691|0.066021|0.007617|0.066235
+[xUnit.net 00:32:11.38]         RIM lavapipe|Native M 8.0 leading flat|0.002776|0.090808|0.002828|0.088301
+[xUnit.net 00:32:11.38]         RIM lavapipe|Native M 8.0 trailing textured|0.005730|0.061433|0.008158|0.063070
+[xUnit.net 00:32:11.38]         RIM lavapipe|Native M 8.0 trailing flat|0.000077|0.000057|0.000057|0.000000
+[xUnit.net 00:32:11.38]         RIM lavapipe|Native MS 1.0 leading textured|0.003146|0.033330|0.003708|0.031737
+[xUnit.net 00:32:11.38]         RIM lavapipe|Native MS 1.0 leading flat|0.002627|0.008874|0.004200|0.008075
+[xUnit.net 00:32:11.38]         RIM lavapipe|Native MS 1.0 trailing textured|0.006531|0.041671|0.008542|0.038654
+[xUnit.net 00:32:11.38]         RIM lavapipe|Native MS 1.0 trailing flat|0.000140|0.000128|0.000128|0.000000
+[xUnit.net 00:32:11.38]         RIM lavapipe|Native MS 2.0 leading textured|0.003264|0.064433|0.005566|0.062141
+[xUnit.net 00:32:11.38]         RIM lavapipe|Native MS 2.0 leading flat|0.002460|0.016127|0.004231|0.014041
+[xUnit.net 00:32:11.38]         RIM lavapipe|Native MS 2.0 trailing textured|0.005293|0.061250|0.007911|0.058497
+[xUnit.net 00:32:11.38]         RIM lavapipe|Native MS 2.0 trailing flat|0.000140|0.000128|0.000128|0.000000
+
+  Failed KhaozEngine.Tests.Gpu.TemporalMovingShadeRimGpuTests.Moving_shadow_receivers_keep_their_leading_and_trailing_rims [47 s]
+  Error Message:
+   Quality M 0.5 leading flat: error 0.010496 above v21.2.0 0.009379 plus a tenth
+Quality M 0.5 trailing textured: reference changed from 0.018923 to 0.018925
+Quality M 1.0 trailing textured: reference changed from 0.035582 to 0.035597
+Quality M 2.0 leading flat: reference changed from 0.006865 to 0.006928
+Quality M 2.0 trailing textured: reference changed from 0.056094 to 0.056137
+Quality M 4.0 leading flat: reference changed from 0.031935 to 0.032271
+Quality M 4.0 trailing textured: reference changed from 0.066060 to 0.066091
+Quality M 8.0 leading flat: reference changed from 0.088200 to 0.088301
+Quality M 8.0 trailing textured: reference changed from 0.063028 to 0.063070
+Quality MS 1.0 leading flat: reference changed from 0.008145 to 0.008075
+Quality MS 1.0 trailing textured: reference changed from 0.038604 to 0.038654
+Quality MS 2.0 leading flat: reference changed from 0.013941 to 0.014041
+Quality MS 2.0 trailing textured: reference changed from 0.058566 to 0.058497
+Native M 0.5 trailing textured: reference changed from 0.018923 to 0.018925
+Native M 1.0 trailing textured: reference changed from 0.035582 to 0.035597
+Native M 2.0 leading flat: reference changed from 0.006865 to 0.006928
+Native M 2.0 trailing textured: reference changed from 0.056094 to 0.056137
+Native M 4.0 leading flat: reference changed from 0.031935 to 0.032271
+Native M 4.0 trailing textured: reference changed from 0.066060 to 0.066091
+Native M 8.0 leading flat: reference changed from 0.088200 to 0.088301
+Native M 8.0 trailing textured: reference changed from 0.063028 to 0.063070
+Native MS 1.0 leading flat: reference changed from 0.008145 to 0.008075
+Native MS 1.0 trailing textured: reference changed from 0.038604 to 0.038654
+Native MS 2.0 leading flat: reference changed from 0.013941 to 0.014041
+Native MS 2.0 trailing textured: reference changed from 0.058566 to 0.058497
+  Stack Trace:
+     at KhaozEngine.Tests.Gpu.TemporalMovingShadeRimGpuTests.Moving_shadow_receivers_keep_their_leading_and_trailing_rims() in KhaozEngine.Render.Tests/Gpu/TemporalMovingShadeRimGpuTests.cs:line 35
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  Standard Output Messages:
+ RIM lavapipe|Quality M 0.5 leading textured|0.015224|0.009950|0.010979|0.018464
+ RIM lavapipe|Quality M 0.5 leading flat|0.010496|0.005866|0.005866|0.000000
+ RIM lavapipe|Quality M 0.5 trailing textured|0.027013|0.016023|0.016376|0.018925
+ RIM lavapipe|Quality M 0.5 trailing flat|0.007421|0.005799|0.005799|0.000000
+ RIM lavapipe|Quality M 1.0 leading textured|0.002602|0.031936|0.003989|0.031734
+ RIM lavapipe|Quality M 1.0 leading flat|0.008154|0.006288|0.006288|0.000000
+ RIM lavapipe|Quality M 1.0 trailing textured|0.008846|0.038205|0.007701|0.035597
+ RIM lavapipe|Quality M 1.0 trailing flat|0.000223|0.000223|0.000223|0.000000
+ RIM lavapipe|Quality M 2.0 leading textured|0.007751|0.059269|0.013291|0.062134
+ RIM lavapipe|Quality M 2.0 leading flat|0.004861|0.012033|0.005157|0.006928
+ RIM lavapipe|Quality M 2.0 trailing textured|0.012030|0.053393|0.015260|0.056137
+ RIM lavapipe|Quality M 2.0 trailing flat|0.000969|0.000973|0.000973|0.000000
+ RIM lavapipe|Quality M 4.0 leading textured|0.012145|0.057368|0.020919|0.064834
+ RIM lavapipe|Quality M 4.0 leading flat|0.003642|0.046473|0.014395|0.032271
+ RIM lavapipe|Quality M 4.0 trailing textured|0.013757|0.052336|0.020739|0.066091
+ RIM lavapipe|Quality M 4.0 trailing flat|0.000272|0.000294|0.000294|0.000000
+ RIM lavapipe|Quality M 8.0 leading textured|0.012691|0.063446|0.013687|0.066235
+ RIM lavapipe|Quality M 8.0 leading flat|0.002270|0.090143|0.002218|0.088301
+ RIM lavapipe|Quality M 8.0 trailing textured|0.012163|0.054195|0.018557|0.063070
+ RIM lavapipe|Quality M 8.0 trailing flat|0.000965|0.000969|0.000969|0.000000
+ RIM lavapipe|Quality MS 1.0 leading textured|0.003225|0.032894|0.006344|0.031737
+ RIM lavapipe|Quality MS 1.0 leading flat|0.005424|0.010028|0.007799|0.008075
+ RIM lavapipe|Quality MS 1.0 trailing textured|0.007002|0.040009|0.009435|0.038654
+ RIM lavapipe|Quality MS 1.0 trailing flat|0.000291|0.000381|0.000381|0.000000
+ RIM lavapipe|Quality MS 2.0 leading textured|0.006954|0.059070|0.012402|0.062141
+ RIM lavapipe|Quality MS 2.0 leading flat|0.003673|0.017150|0.005669|0.014041
+ RIM lavapipe|Quality MS 2.0 trailing textured|0.012010|0.054876|0.016220|0.058497
+ RIM lavapipe|Quality MS 2.0 trailing flat|0.001078|0.001088|0.001088|0.000000
+ RIM lavapipe|Native M 0.5 leading textured|0.012631|0.011491|0.009843|0.018464
+ RIM lavapipe|Native M 0.5 leading flat|0.006047|0.004340|0.004340|0.000000
+ RIM lavapipe|Native M 0.5 trailing textured|0.017785|0.015437|0.013187|0.018925
+ RIM lavapipe|Native M 0.5 trailing flat|0.000904|0.000991|0.000991|0.000000
+ RIM lavapipe|Native M 1.0 leading textured|0.003241|0.033352|0.003613|0.031734
+ RIM lavapipe|Native M 1.0 leading flat|0.004461|0.004065|0.004065|0.000000
+ RIM lavapipe|Native M 1.0 trailing textured|0.007613|0.040091|0.008315|0.035597
+ RIM lavapipe|Native M 1.0 trailing flat|0.000057|0.000057|0.000057|0.000000
+ RIM lavapipe|Native M 2.0 leading textured|0.002968|0.064276|0.004689|0.062134
+ RIM lavapipe|Native M 2.0 leading flat|0.002736|0.010054|0.003144|0.006928
+ RIM lavapipe|Native M 2.0 trailing textured|0.005531|0.059110|0.007464|0.056137
+ RIM lavapipe|Native M 2.0 trailing flat|0.000057|0.000057|0.000057|0.000000
+ RIM lavapipe|Native M 4.0 leading textured|0.004913|0.063079|0.007566|0.064834
+ RIM lavapipe|Native M 4.0 leading flat|0.003507|0.035306|0.003177|0.032271
+ RIM lavapipe|Native M 4.0 trailing textured|0.005731|0.063433|0.008667|0.066091
+ RIM lavapipe|Native M 4.0 trailing flat|0.000028|0.000024|0.000024|0.000000
+ RIM lavapipe|Native M 8.0 leading textured|0.006691|0.066021|0.007617|0.066235
+ RIM lavapipe|Native M 8.0 leading flat|0.002776|0.090808|0.002828|0.088301
+ RIM lavapipe|Native M 8.0 trailing textured|0.005730|0.061433|0.008158|0.063070
+ RIM lavapipe|Native M 8.0 trailing flat|0.000077|0.000057|0.000057|0.000000
+ RIM lavapipe|Native MS 1.0 leading textured|0.003146|0.033330|0.003708|0.031737
+ RIM lavapipe|Native MS 1.0 leading flat|0.002627|0.008874|0.004200|0.008075
+ RIM lavapipe|Native MS 1.0 trailing textured|0.006531|0.041671|0.008542|0.038654
+ RIM lavapipe|Native MS 1.0 trailing flat|0.000140|0.000128|0.000128|0.000000
+ RIM lavapipe|Native MS 2.0 leading textured|0.003264|0.064433|0.005566|0.062141
+ RIM lavapipe|Native MS 2.0 leading flat|0.002460|0.016127|0.004231|0.014041
+ RIM lavapipe|Native MS 2.0 trailing textured|0.005293|0.061250|0.007911|0.058497
+ RIM lavapipe|Native MS 2.0 trailing flat|0.000140|0.000128|0.000128|0.000000
+
+
+[2026-10-18 23:17:18.275] [WARN] [VulkanDebugMessenger] KE_VULKAN_VALIDATION asked for Vulkan validation and this loader offers no VK_EXT_debug_utils entry points, so no messenger was created and this run reports no validation messages. The layer may still be installed: this is the loader half.
+[2026-10-18 23:17:18.275] [INFO] [VulkanInstance] Vulkan validation is ACTIVE and STRICT for this device (from KE_VULKAN_VALIDATION=strict): everything the 1 rung does, and the first error-severity message is latched and thrown at the next controlled point. The throw never happens inside the driver callback. Expect a large performance cost.
+[2026-10-18 23:17:18.275] [INFO] [VulkanGpuDevice] Vulkan device selection: device 0 ('llvmpipe (LLVM 20.1.2, 256 bits)', a SOFTWARE rasterizer), from KE_VULKAN_DEVICE='llvmpipe'.
+[2026-10-18 23:17:18.275] [INFO] [VulkanGpuDevice] Vulkan device features enabled by name: dynamicRendering, synchronization2, timelineSemaphore, samplerAnisotropy, fillModeNonSolid, depthClamp, independentBlend.
+[2026-10-18 23:17:18.283] [INFO] [VulkanGpuDevice] The native Vulkan backend runs 3 frames in flight, the default: 3 command pools per list and 3 segments per uniform ring. Set KE_VULKAN_FRAMES_IN_FLIGHT=<n> to change it, which is the MV3 lever.
+[2026-10-18 23:17:18.284] [INFO] [VulkanGpuDevice] The native Vulkan allocator is up: 64 MiB chunks pooled by (memory type, tiling), dedicated at or above 16 MiB or on driver preference, 1 memory types reported, nonCoherentAtomSize 64, maxMemoryAllocationCount 4294967295.
+[2026-10-18 23:17:18.284] [INFO] [VulkanMemoryAllocator] The native Vulkan allocator opened a pool for memory type 0 (DeviceLocal, HostVisible, HostCoherent, HostCached) with Optimal tiling, chosen at rung 1 of the DeviceLocal ladder. Linear and optimal tiling never share a chunk, which is how bufferImageGranularity is satisfied here without any granularity arithmetic.
+[2026-10-18 23:17:18.284] [INFO] [VulkanMemoryAllocator] The native Vulkan allocator opened a pool for memory type 0 (DeviceLocal, HostVisible, HostCoherent, HostCached) with Linear tiling, chosen at rung 0 of the Ring ladder. Linear and optimal tiling never share a chunk, which is how bufferImageGranularity is satisfied here without any granularity arithmetic.
+[2026-10-18 23:17:19.459] [WARN] [VulkanDebugMessenger] KE_VULKAN_VALIDATION asked for Vulkan validation and this loader offers no VK_EXT_debug_utils entry points, so no messenger was created and this run reports no validation messages. The layer may still be installed: this is the loader half.
+[2026-10-18 23:17:19.459] [INFO] [VulkanInstance] Vulkan validation is ACTIVE and STRICT for this device (from KE_VULKAN_VALIDATION=strict): everything the 1 rung does, and the first error-severity message is latched and thrown at the next controlled point. The throw never happens inside the driver callback. Expect a large performance cost.
+[2026-10-18 23:17:19.459] [INFO] [VulkanGpuDevice] Vulkan device selection: device 0 ('llvmpipe (LLVM 20.1.2, 256 bits)', a SOFTWARE rasterizer), from KE_VULKAN_DEVICE='llvmpipe'.
+[2026-10-18 23:17:19.459] [INFO] [VulkanGpuDevice] Vulkan device features enabled by name: dynamicRendering, synchronization2, timelineSemaphore, samplerAnisotropy, fillModeNonSolid, depthClamp, independentBlend.
+[2026-10-18 23:17:19.467] [INFO] [VulkanGpuDevice] The native Vulkan backend runs 3 frames in flight, the default: 3 command pools per list and 3 segments per uniform ring. Set KE_VULKAN_FRAMES_IN_FLIGHT=<n> to change it, which is the MV3 lever.
+[2026-10-18 23:17:19.468] [INFO] [VulkanGpuDevice] The native Vulkan allocator is up: 64 MiB chunks pooled by (memory type, tiling), dedicated at or above 16 MiB or on driver preference, 1 memory types reported, nonCoherentAtomSize 64, maxMemoryAllocationCount 4294967295.
+[2026-10-18 23:17:19.521] [WARN] [VulkanDebugMessenger] KE_VULKAN_VALIDATION asked for Vulkan validation and this loader offers no VK_EXT_debug_utils entry points, so no messenger was created and this run reports no validation messages. The layer may still be installed: this is the loader half.
+[2026-10-18 23:17:19.521] [INFO] [VulkanInstance] Vulkan validation is ACTIVE and STRICT for this device (from KE_VULKAN_VALIDATION=strict): everything the 1 rung does, and the first error-severity message is latched and thrown at the next controlled point. The throw never happens inside the driver callback. Expect a large performance cost.
+[2026-10-18 23:17:19.522] [INFO] [VulkanGpuDevice] Vulkan device selection: device 0 ('llvmpipe (LLVM 20.1.2, 256 bits)', a SOFTWARE rasterizer), from KE_VULKAN_DEVICE='llvmpipe'.
+[2026-10-18 23:17:19.522] [INFO] [VulkanGpuDevice] Vulkan device features enabled by name: dynamicRendering, synchronization2, timelineSemaphore, samplerAnisotropy, fillModeNonSolid, depthClamp, independentBlend.
+[2026-10-18 23:17:19.529] [INFO] [VulkanGpuDevice] The native Vulkan backend runs 3 frames in flight, the default: 3 command pools per list and 3 segments per uniform ring. Set KE_VULKAN_FRAMES_IN_FLIGHT=<n> to change it, which is the MV3 lever.
+[2026-10-18 23:17:19.530] [INFO] [VulkanGpuDevice] The native Vulkan allocator is up: 64 MiB chunks pooled by (memory type, tiling), dedicated at or above 16 MiB or on driver preference, 1 memory types reported, nonCoherentAtomSize 64, maxMemoryAllocationCount 4294967295.
+[2026-10-18 23:17:19.530] [INFO] [VulkanMemoryAllocator] The native Vulkan allocator opened a pool for memory type 0 (DeviceLocal, HostVisible, HostCoherent, HostCached) with Optimal tiling, chosen at rung 1 of the DeviceLocal ladder. Linear and optimal tiling never share a chunk, which is how bufferImageGranularity is satisfied here without any granularity arithmetic.
+[2026-10-18 23:17:19.530] [INFO] [VulkanMemoryAllocator] The native Vulkan allocator opened a pool for memory type 0 (DeviceLocal, HostVisible, HostCoherent, HostCached) with Linear tiling, chosen at rung 0 of the Ring ladder. Linear and optimal tiling never share a chunk, which is how bufferImageGranularity is satisfied here without any granularity arithmetic.

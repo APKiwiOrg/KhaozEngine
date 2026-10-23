@@ -66,6 +66,8 @@ An empty threshold list keeps base geometry. Otherwise each asset needs one thre
 `MapPlacementRouting.Create` freezes one ordinary, cluster or animated route for every placement. Cluster and
 animated selections cannot overlap. Every effective roof stays ordinary, including a shared roof/non-roof asset.
 Invalid policies refuse before preparation. Pass the same partition object to the rigid and animated producers.
+Explicit animated placements use `MapPlacementPolicy.DefaultDrawRadius`, independently of generated cover's
+`DrawRadius`. Their frames retain the cover fade and wind settings with both density factors fixed to one.
 
 `NativeMapPlacements.Prepare(scene, input, policy, routing)` retains the selected prepared input lease.
 The `MapRenderAssets` overload instead owns detached copies and has no lease on the caller's input.
@@ -165,7 +167,9 @@ while retaining original-domain clipping. Point sampling remains the separate #1
 
 `MapRenderPolicy` freezes placement routing, animated asset selection, stable foliage registration, water look
 and terrain material identities. It retains no decoded images. Its canonical digest includes vector fields and
-orders dictionary keys. `MapRenderSourceState` binds that policy to a source, its matching closure, complete
+orders dictionary keys. Both the placement default radius and generated cover radius participate in that
+identity. Replacing either updates its frame radius while reusing unchanged cover samples.
+`MapRenderSourceState` binds that policy to a source, its matching closure, complete
 render extent proofs and explicit windows. The selected-input closure must be the same immutable closure
 instance captured by the source. A hash-equal separate load is rejected before scheduling.
 

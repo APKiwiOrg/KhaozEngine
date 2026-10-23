@@ -184,8 +184,9 @@ internal static class MapEffectiveResolutionKernel
     }
 
     internal static MapEffectiveResolutionProduct Resolve(MapEffectiveResolutionInput authored, MapAssetClosure assets,
-        IMapSurfaceSource? nativeSource = null, MapPrefabExpansionObserver? observer = null)
+        IMapSurfaceSource? nativeSource = null, MapPrefabExpansionObserver? observer = null, MapQueryLimits? queryLimits = null)
     {
+        queryLimits ??= new();
         var captured = Enumerate(authored, assets, nativeSource, observer);
         var children = captured.Children;
         var transforms = captured.Transforms;
@@ -229,7 +230,7 @@ internal static class MapEffectiveResolutionKernel
             }
             effectivePlacements.Add(p);
         }
-        var placements = MapResolverV2.ResolveEffectivePlacements(assets, effectivePlacements, transforms, source, out var supports, owners);
+        var placements = MapResolverV2.ResolveEffectivePlacements(assets, effectivePlacements, transforms, source, queryLimits, out var supports, owners);
         foreach (var support in supports)
         {
             string key = MapEffectiveContext.Key(MapPrefabChildKind.Placement, support.PlacementId);
@@ -271,7 +272,7 @@ internal static class MapEffectiveResolutionKernel
         }
         // Markers resolve after the seat rebuild, so seated support placements and their owned floors are in the source.
         var markers = MapMarkerResolution.Resolve(MapMarkerExpansion.Capture(authored, assets), source,
-            assets.Roots.Select(a => a.Sha256).ToArray(), new MapQueryLimits());
+            assets.Roots.Select(a => a.Sha256).ToArray(), queryLimits);
         var livePlacementIds = placements.Select(p => p.PlacementId).ToHashSet(StringComparer.Ordinal);
         var inactivePlacementIds = (authored.Prefabs?.Instances ?? []).SelectMany(instance => instance.Bindings.Entries
             .Where(binding => binding.Child.Kind == MapPrefabChildKind.Placement && (instance.Removed || binding.Removed)).Select(binding => binding.WorldId))

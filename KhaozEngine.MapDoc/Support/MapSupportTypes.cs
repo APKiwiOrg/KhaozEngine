@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.MapDoc.Identity;
+using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Surfaces;
 
@@ -25,6 +26,7 @@ public sealed class MapSupportResult
     public string? SpaceId { get; }
     public MapRecordRef? Via { get; }
     public string? Detail { get; }
+    public MapSceneCapacity? Capacity { get; internal init; }
     public MapReadWitness Witness { get; }
 
     internal MapSupportResult(MapSupportStatus status, MapFaceKey? face, float worldY, Vector3? normal,
@@ -40,6 +42,12 @@ public sealed class MapSupportResult
         Via = via;
         Detail = detail;
         Witness = witness;
+    }
+
+    internal MapDocumentException ResolutionRefusal(string owner)
+    {
+        string message = $"{owner} support status {Status}: {Detail}";
+        return Capacity is { } capacity ? new(message, new MapSceneCapacityException(capacity)) : new(message);
     }
 }
 

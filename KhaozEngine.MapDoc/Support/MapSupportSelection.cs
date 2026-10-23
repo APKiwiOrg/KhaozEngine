@@ -38,7 +38,8 @@ internal static class MapSupportSelection
     }
 
     internal static MapSupportResult Refusal(MapScopedSurfaces view, MapSupportStatus status, string detail) =>
-        new(status, null, 0, null, null, null, null, detail, view.ReadWitness);
+        new(status, null, 0, null, null, null, null, detail, view.ReadWitness)
+        { Capacity = status == MapSupportStatus.CapacityExceeded ? view.Capacity : null };
 
     internal static Outcome Compute(MapPreparedSupport prepared, MapSupportRequest request, MapBoundFaceWork? work, bool sampleSurface,
         MapExactPoint? exactWorld = null) => Compute(prepared, request, work, sampleSurface, exactWorld, null);
@@ -218,7 +219,8 @@ internal static class MapSupportSelection
         Outcome Failure(MapSupportStatus status, string? detail) => new(Result(status, detail: detail), Array.Empty<Candidate>());
         MapSupportResult Result(MapSupportStatus status, MapFaceKey? face = null, float worldY = 0, Vector3? normal = null,
             MapLegacyCellTag? compatibility = null, string? spaceId = null, MapRecordRef? via = null, string? detail = null) =>
-            new(status, face, worldY, normal, compatibility, spaceId, via, detail, view.ReadWitness);
+            new(status, face, worldY, normal, compatibility, spaceId, via, detail, view.ReadWitness)
+            { Capacity = status == MapSupportStatus.CapacityExceeded ? view.Capacity : null };
     }
 
     internal static Dictionary<string, MapRecordRef?> Reachable(MapScopedSurfaces view, MapSpaceMembership spaces, string owner,

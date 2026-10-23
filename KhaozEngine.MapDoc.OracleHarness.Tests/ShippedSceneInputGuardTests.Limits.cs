@@ -14,6 +14,21 @@ namespace KhaozEngine.Tests.MapDocOracle;
 public sealed partial class ShippedSceneInputGuardTests
 {
     [Fact]
+    public void SceneLimits_UploadExhaustionPreservesDeclaredGpuAllowance()
+    {
+        using var fixture = ShippedSceneGuardFixtures.Create("valid", json =>
+        { var profile = LimitsProfile(); profile["residency"]!["maxResidentGpuBytes"] = 1; json["limits"] = profile; });
+        var inputs = ShippedSceneInputs.Read(PrivateOracleInputs.Require(fixture.Environment));
+        Assert.Throws<PrivateOracleFailure>(() => PrivateOracleEntry.Run(fixture.Environment,
+            (_, report) => ShippedSceneComparison.Compare(inputs, report)));
+        string detail = File.ReadAllText(fixture.ReportPath);
+        Assert.Contains("scene replacement did not settle", detail);
+        Assert.Contains("MaxResidentGpuBytes", detail);
+        Assert.Contains("requested 144", detail);
+        Assert.Contains("allowance 1", detail);
+    }
+
+    [Fact]
     public void SceneLimits_ResidencyRefusalPreservesBudgetDetail()
     {
         using var fixture = ShippedSceneGuardFixtures.Create("valid");

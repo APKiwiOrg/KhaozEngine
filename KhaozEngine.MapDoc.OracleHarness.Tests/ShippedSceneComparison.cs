@@ -323,9 +323,11 @@ internal static partial class ShippedSceneComparison
     internal static void Complete(MapRenderResidency residency, SceneOracleScheduler scheduler)
     {
         scheduler.RunAll(); residency.CompletePreparation();
+        var transition = residency.InspectReadiness().Transition;
         for (int i = 0; i < 1024; i++)
         {
             var ready = residency.Update(); scheduler.RunAll(); residency.CompletePreparation();
+            transition = ready.Transition;
             if (ready.Transition.Status != MapSceneStatus.Incomplete)
             {
                 if (ready.Transition.Status != MapSceneStatus.CompleteForScope && scheduler.LastFailure is { } error)
@@ -333,7 +335,9 @@ internal static partial class ShippedSceneComparison
                 Require(ready.Transition.Status == MapSceneStatus.CompleteForScope, "scene replacement refused " + ready.Transition.Status + " " + string.Join("\n", ready.Transition.Findings)); return;
             }
         }
-        throw new InvalidOperationException("scene replacement did not settle");
+        var findings = transition.Findings.Concat(transition.Capacity is { } capacity ? new[] { capacity.Message } : Array.Empty<string>());
+        throw new InvalidOperationException("scene replacement did not settle " + string.Join("\n", findings.Distinct(StringComparer.Ordinal)),
+            transition.Capacity is { } refused ? new MapSceneCapacityException(refused.LimitName, refused.Requested, refused.Allowance) : null);
     }
 
     internal static MapSceneSourceResult CaptureSource(MapDocumentSource document, MapAssetClosure closure, ShippedSceneManifest manifest)

@@ -35,13 +35,16 @@ public sealed class NativePropClusterRequest
 public sealed class NativePropClusterCpuBuild
 {
     readonly GltfMesh _mesh;
+    readonly GltfMesh[]? _contributions;
     public NativePropClusterRequest Request { get; }
     public GltfMesh MergedMesh => new(_mesh.Vertices.ToArray(), _mesh.Indices32.ToArray());
     internal GltfMesh BorrowMesh => _mesh;
+    internal GltfMesh BorrowContribution(int index) => _contributions?[index]
+        ?? throw new InvalidOperationException("Native build did not admit selected contributions.");
     public IReadOnlyList<string> RepresentedIds { get; }
-    internal NativePropClusterCpuBuild(NativePropClusterRequest request, GltfMesh mesh)
+    internal NativePropClusterCpuBuild(NativePropClusterRequest request, GltfMesh mesh, GltfMesh[]? contributions = null)
     {
-        Request = request; _mesh = mesh;
+        Request = request; _mesh = mesh; _contributions = contributions;
         RepresentedIds = Array.AsReadOnly(request.Instances.Select(i => i.Id).ToArray());
     }
 }

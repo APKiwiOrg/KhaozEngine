@@ -10,7 +10,7 @@ namespace KhaozEngine.MapDoc.Render3D;
 public sealed partial class MapPlacementRenderBatch
 {
     /// <summary>Records effective colour geometry for one clustered roof into an optional outline consumer.
-    /// Proxy outlines reuse only that roof's cached flattened HLOD source, never its neighbours' merged mesh.</summary>
+    /// Proxy outlines reuse only that roof's surviving contribution to the full cohort weld, never its neighbours' merged mesh.</summary>
     public void RecordRoofOutline<TSink>(string roofId, MapFrameState frame, TSink sink) where TSink : IMapDrawSink =>
         RecordRoofOutline(roofId, frame, sink, null, null);
 
@@ -34,12 +34,12 @@ public sealed partial class MapPlacementRenderBatch
             var decision = ResolveCluster(i, frame, out _);
             if (decision.DrawsIndividualColour(request.Key, member, cohort))
                 EmitOutline(request.BorrowLayer, emission, decision.State.IndividualDissolveFloor);
-            if (decision.DrawsMergedColour)
+            if (decision.DrawsMergedColour && _roofOutlineParts.TryGetValue(roofId, out int sourceIndex))
             {
                 var instance = request.Instances[member];
-                var source = _parts[_roofOutlineParts[roofId]];
-                WriteOutline(emission, instance, new(source.Handle, instance.LocalTransform)
-                { Dissolve = decision.State.MergedDissolve, DissolveComplement = decision.State.MergedComplement ? 1 : 0 });
+                var source = _parts[sourceIndex];
+                WriteOutline(emission, instance, new(source.Handle, System.Numerics.Matrix4x4.Identity)
+                { Dissolve = decision.State.MergedDissolve, DissolveComplement = decision.State.MergedComplement ? 1 : 0 }, source.Anchor);
             }
         }
     }
@@ -48,10 +48,10 @@ public sealed partial class MapPlacementRenderBatch
         PropRenderer.EmitNative(layer, default, emission, static (e, instance, draw) =>
         { if (instance.Id == e.Id) WriteOutline(e, instance, draw); }, floor,
         resolveFocus: static (e, anchor) => MapRenderTransform.FocusLocal(e.Frame.Focus, new(anchor.X, anchor.Y, anchor.Z)));
-    static void WriteOutline<TSink>(OutlineEmission<TSink> emission, NativePropInstance instance, RigidInstanceDraw draw) where TSink : IMapDrawSink
+    static void WriteOutline<TSink>(OutlineEmission<TSink> emission, NativePropInstance instance, RigidInstanceDraw draw, MapSubmissionAnchor? sourceAnchor = null) where TSink : IMapDrawSink
     {
         int part = emission.Batch._partIndices[(instance.Id, draw.Mesh.Index, draw.Mesh.Generation)];
-        var anchor = new MapSubmissionAnchor(instance.Anchor.X, instance.Anchor.Y, instance.Anchor.Z);
+        var anchor = sourceAnchor ?? new MapSubmissionAnchor(instance.Anchor.X, instance.Anchor.Y, instance.Anchor.Z);
         emission.Sink.Write(new(emission.Batch._registered![part].Reference, MapDrawChannels.Colour | MapDrawChannels.Selection,
             anchor, draw.World, MapRenderTransform.FocusLocal(emission.Frame.Focus, anchor),
             new MapRigidFrame(draw.Tint, draw.Material, draw.Dissolve, draw.DissolveEdgeWidth, draw.DissolveEdgeColor,

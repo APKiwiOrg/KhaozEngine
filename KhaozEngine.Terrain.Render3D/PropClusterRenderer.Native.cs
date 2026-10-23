@@ -13,7 +13,9 @@ public sealed partial class PropClusterRenderer
     /// <summary>Precondition: the upper scene/routing adapter validated every requested instance and effective
     /// roof role, frozen native inventory, bounded region cell and binary64 vertex precision before entry.
     /// This internal builder receives no building intent and makes no roof promise.</summary>
-    internal static NativePropClusterCpuBuild BuildNativeCpu(NativePropClusterRequest request)
+    internal static NativePropClusterCpuBuild BuildNativeCpu(NativePropClusterRequest request) => BuildNativeCpu(request, false);
+
+    internal static NativePropClusterCpuBuild BuildNativeCpu(NativePropClusterRequest request, bool retainContributions)
     {
         ArgumentNullException.ThrowIfNull(request);
         var sources = request.BorrowLayer.HlodSourceMeshes ?? throw new ArgumentException("Native cluster requires its source inventory.", nameof(request));
@@ -50,8 +52,20 @@ public sealed partial class PropClusterRenderer
             }
         }
         var mesh = new GltfMesh(vertices, indices);
+        GltfMesh[]? contributions = null;
+        if (retainContributions)
+        {
+            contributions = new GltfMesh[request.Instances.Count];
+            int firstIndex = 0;
+            for (int i = 0; i < contributions.Length; i++)
+            {
+                int count = sources[request.Instances[i].AssetId].Indices32.Length;
+                contributions[i] = PropHlod.SelectMergedContribution(mesh, firstIndex, count, request.BorrowLayer.HlodWeldCell);
+                firstIndex += count;
+            }
+        }
         if (request.BorrowLayer.HlodWeldCell > 0) mesh = PropHlod.Weld(mesh, request.BorrowLayer.HlodWeldCell);
-        return new(request, mesh);
+        return new(request, mesh, contributions);
     }
 
     /// <summary>Retain publication metadata and an externally owned handle. This never uploads or frees it.</summary>

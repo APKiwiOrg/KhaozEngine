@@ -107,11 +107,13 @@ refuses the plan with its typed source or capacity status. Partial proxies are n
 
 The shared `PropLayer.PlacementLayer` native overload freezes the actual instance inventory, every tier and
 caller thresholds. Both individual fallback and accepted proxies consume that shared layer. The released
-per-cluster centre-distance coverage remains unchanged and uses the complete cell area. Each cell is independent.
+per-cluster centre-distance coverage uses the complete cell area. Layer outer fade width equals
+`HlodCrossfadeWidth`, including placement fades composed before LOD coverage. Each cell is independent.
 `NativeMapPlacements.PrepareCluster` validates the scene, frozen routes, cell domain, layer inventory, homogeneous roof roles and vertex precision before invoking
 the internal shared CPU builder. That lower builder has no building intent and makes no independent roof promise.
 Roof cohorts retain complete neutral membership geometry acquired and admitted before selected decode.
-Individual resources remain resident for mixed visibility fallback. Individuals remain active until `AcceptCluster` receives the exact
+Closure follows admitted prism domains and their parent support, including native stored records.
+Incomplete full-room coverage refuses preparation. Individual resources remain resident for mixed visibility fallback. Individuals remain active until `AcceptCluster` receives the exact
 prepared build and the externally published mesh. It retains metadata only and never uploads or frees that handle.
 An empty welded proxy cannot be accepted, so individuals remain active. Placement registration bounds are
 finite in all three dimensions and include all declared tiers and light reach, with the 0.0001 m local submission
@@ -258,7 +260,9 @@ sink maps a roof with shadow and no colour to `ShadowOnly`. Neither concealment 
 registration, uploads or accepted non-roof HLOD coverage.
 
 `MapPlacementRenderBatch.RecordRoofOutline` exposes effective clustered-roof colour descriptors to an
-optional consumer. Proxy descriptors reuse an admitted cached flattened HLOD-source mesh for only the selected roof.
+optional consumer. Proxy descriptors cache the selected roof's surviving triangles from the full cohort merge and weld,
+including cross-member averaged vertices. Their anchor matches the cohort, and cache identity includes
+all members and the weld setting. Empty contributions have no proxy outline.
 `MapScene3DSink.RecordRoofOutline` also handles unclustered roofs through the plan's admitted roof policy
 and submits them through the shared anchored mesh-outline primitive. Hidden roofs have no outline.
 Selection, camera, sky and physical queries continue to use original per-placement shapes.

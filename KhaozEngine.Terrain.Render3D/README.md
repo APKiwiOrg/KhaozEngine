@@ -267,6 +267,7 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   `PropRenderer.DrawNative(scene, layer, focus)` and native typed recording consume the same frozen layer,
   including its casting policy. These native render-only layers do not enter the legacy analytic chunk sink.
   `NativePropClusterRequest` carries the same per-cell inventory to the internal CPU builder. The MapDoc adapter
+  preserves the configured native `fadeBandWidth`, composed with the HLOD floor before LOD coverage. It
   validates routing, the bounded native region-cell domain, homogeneous effective roof roles and every binary64
   anchor-relative vertex coordinate before the builder enters. Admission and merge share the same position
   kernel, with binary32 conversion only after certification. `ApplyNative` retains only publication metadata and an

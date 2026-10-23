@@ -124,31 +124,35 @@ public static class NativeMapPlacements
                         admission.ReserveBytes(checked(8 * source.BorrowParts.Sum(p => Bytes(p.Mesh, p.Maps))));
                         sources.Add(id, Flatten(source.BorrowParts));
                     }
-                    if (cell.Key.Cohort == 1)
-                        foreach (var member in members)
-                        {
-                            var source = sources[member.AssetId];
-                            admission.ReserveBytes(checked(512L + 4 * Bytes(source, default)));
-                            var outlineKey = new MapRenderKey(MapRenderKind.Roof, member.Id, "outline-hlod", 0);
-                            string digest = MapPlacementDigest.Hash(w =>
-                            {
-                                w.WriteStartArray(); w.WriteStringValue("kemap/roof-outline-source/1");
-                                w.WriteStringValue(assets.Closure.Hash); w.WriteStringValue(member.AssetId); w.WriteEndArray();
-                            });
-                            parts.Add(new(outlineKey, new(nextHandle++), Anchor(posesById[member.Id]), boundsById[member.Id], new MapRigidResource(source, default), digest));
-                        }
                     long mergeBytes = members.Sum(i => Bytes(sources[i.AssetId], default));
-                    admission.ReserveBytes(checked(8 * mergeBytes));
+                    // Each cached contribution runs the shared full-cohort range weld. Admit its scratch and
+                    // retained geometry before the lower builder allocates, including replacement overlap.
+                    admission.ReserveBytes(checked(8 * mergeBytes * (1L + (cell.Key.Cohort == 1 ? members.Length : 0))));
                     var shared = Shared(members, layer).WithHlod(sources, layer.HlodDistance, layer.HlodWeldCell, layer.HlodCrossfadeWidth);
                     var request = new NativePropClusterRequest(cell.Key, 0, domain.Area, shared, members, domain.Anchor);
                     var build = PrepareCluster(cells.Get(cell.Key), request);
                     clusters.Add(build);
                     var anchor = new MapSubmissionAnchor(domain.Anchor.X, domain.Anchor.Y, domain.Anchor.Z);
+                    string inventory = ClusterInventoryDigest(members, assets.Closure.Hash, layer.HlodWeldCell);
+                    if (cell.Key.Cohort == 1)
+                        for (int member = 0; member < members.Length; member++)
+                        {
+                            var contribution = build.BorrowContribution(member);
+                            if (contribution.TriangleCount == 0) continue;
+                            admission.ReserveBytes(checked(512L + 4 * Bytes(contribution, default)));
+                            var outlineKey = new MapRenderKey(MapRenderKind.Roof, members[member].Id, "outline-hlod", 0);
+                            string selectedId = members[member].Id;
+                            string digest = MapPlacementDigest.Hash(w =>
+                            {
+                                w.WriteStartArray(); w.WriteStringValue("kemap/roof-outline-contribution/2");
+                                w.WriteStringValue(inventory); w.WriteStringValue(selectedId); w.WriteEndArray();
+                            });
+                            parts.Add(new(outlineKey, new(nextHandle++), anchor, MeshBounds(contribution, anchor), new MapRigidResource(contribution, default), digest));
+                        }
                     var mesh = build.BorrowMesh;
                     if (mesh.TriangleCount == 0) continue;
                     var bounds = members.Select(i => boundsById[i.Id]).Aggregate(Union);
                     var key = new MapRenderKey(cell.Key.Cohort == 1 ? MapRenderKind.Roof : MapRenderKind.Placement, MapPlacementCells.Owner(cell.Key), "hlod", 0);
-                    string inventory = ClusterInventoryDigest(members, assets.Closure.Hash, layer.HlodWeldCell);
                     parts.Add(new(key, new(nextHandle++), anchor, bounds, new MapRigidResource(mesh, default),
                         MapPlacementDigest.Hash(w =>
                         {
@@ -186,7 +190,8 @@ public static class NativeMapPlacements
         PrepareCluster(scene, routing, request, PropClusterRenderer.BuildNativeCpu);
 
     internal static NativePropClusterCpuBuild PrepareCluster(MapPlacementCellInventory.Cell cell, NativePropClusterRequest request) =>
-        PrepareCluster(cell.Scene, cell.Routing, request, cell, PropClusterRenderer.BuildNativeCpu);
+        PrepareCluster(cell.Scene, cell.Routing, request, cell,
+            request.Key.Cohort == 1 ? static input => PropClusterRenderer.BuildNativeCpu(input, true) : PropClusterRenderer.BuildNativeCpu);
 
     internal static NativePropClusterCpuBuild PrepareCluster(MapScopedScene scene, MapPlacementRouting routing,
         NativePropClusterRequest request, Func<NativePropClusterRequest, NativePropClusterCpuBuild> build)
@@ -289,6 +294,13 @@ public static class NativeMapPlacements
             Math.BitIncrement(maxX + submissionAllowance), Math.BitIncrement(maxY + submissionAllowance), Math.BitIncrement(maxZ + submissionAllowance));
     }
 
+    static MapBox3 MeshBounds(GltfMesh mesh, MapSubmissionAnchor anchor)
+    {
+        var min = new Vector3(float.PositiveInfinity); var max = new Vector3(float.NegativeInfinity);
+        foreach (var vertex in mesh.Vertices) { min = Vector3.Min(min, vertex.Position); max = Vector3.Max(max, vertex.Position); }
+        return new(anchor.X + (double)min.X - .0001, anchor.Y + (double)min.Y - .0001, anchor.Z + (double)min.Z - .0001,
+            anchor.X + (double)max.X + .0001, anchor.Y + (double)max.Y + .0001, anchor.Z + (double)max.Z + .0001);
+    }
     static MapSubmissionAnchor Anchor(MapEffectiveTransform pose) => new(checked((long)Math.Floor(pose.X)), checked((long)Math.Floor(pose.Y)), checked((long)Math.Floor(pose.Z)));
     static long Bytes(GltfMesh mesh, GltfMaterialMaps maps) => checked(256L + (long)mesh.Vertices.Length * ModelVertex.SizeInBytes +
         4L * mesh.Indices32.Length + (maps.Albedo?.Rgba.LongLength ?? 0) + (maps.Normal?.Rgba.LongLength ?? 0) + (maps.Roughness?.Rgba.LongLength ?? 0));

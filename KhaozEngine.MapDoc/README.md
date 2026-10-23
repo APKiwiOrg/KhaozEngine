@@ -174,7 +174,8 @@ Placements, exact transforms, paint regions, water, building intent and foliage 
 `MapEffectiveAnnotations.Lights(scene)` and `Markers(scene)` read the captured annotations.
 The complete prefab, world and foliage builders still require complete documents.
 
-Discovery includes descriptor render bounds, every LOD, light reach and explicit finite nonnegative motion padding.
+Discovery includes each placement's effective origin, descriptor render bounds, every LOD, light reach and
+explicit finite nonnegative motion padding. Origin-owned cell queries remain conservative for offset geometry.
 Generated foliage bounds cover source-unit model bounds, maximum scale, root offset and support-aligned orientations.
 Y is unbounded during discovery until support seating. Padding participates in scope identity.
 `RequiredAssetIds` names every placement and foliage model in the source, including off-window owners.

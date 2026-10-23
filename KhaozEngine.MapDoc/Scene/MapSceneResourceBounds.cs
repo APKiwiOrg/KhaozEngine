@@ -31,7 +31,8 @@ internal static class MapSceneResourceBounds
         var bounds = Box(asset.RenderBounds, asset.SourceUnitsToMetres, pose);
         if (asset.LodBounds is { } lod) bounds = bounds.Union(Box(lod, asset.SourceUnitsToMetres, pose));
         if (asset.LightBounds is { } light) bounds = bounds.Union(Box(light, asset.SourceUnitsToMetres, pose));
-        return bounds;
+        // Logical cell ownership follows the effective origin, even when every model tier is offset.
+        return bounds.Union(Point(0, 0, pose));
     }
     static MapBox3 Box(MapLocalBounds bounds, double unit, MapEffectiveTransform pose)
     {

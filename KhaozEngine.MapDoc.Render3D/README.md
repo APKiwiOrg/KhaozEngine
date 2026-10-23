@@ -91,8 +91,10 @@ Merged vertices round once after certification, within the 0.0001 m binary32 sub
 Content digests retain inventory, transforms,
 closure and weld settings separately from the stable spatial owner key.
 Cell discovery acquires the complete layer inventory through the captured source and its existing admission
-before selected mesh decode. The complete cell supplies member poses and asset IDs for the merged proxy and
-its individual fallback. Members are ordered by identity, and proxy payload identity excludes window witnesses.
+before selected mesh decode. Discovery bounds include every effective placement origin, so a cell query contains
+every origin-owned member even when its geometry lies entirely outside the cell. Exact origin filtering selects
+members from those conservative candidates. The complete cell supplies member poses and asset IDs for the merged
+proxy and its individual fallback. Members are ordered by identity, and proxy payload identity excludes window witnesses.
 Windows touching different parts of one cell prepare the same complete payload, share one upload and draw, and
 release the owner after the last membership. A normal window edge does not refuse. Failed cell acquisition
 refuses the plan with its typed source or capacity status. Partial proxies are never published.

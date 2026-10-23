@@ -5,6 +5,71 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.12.1
+
+2026-10-23
+
+- Keep individual and merged HLOD colour, shadow and selected-outline coverage complementary throughout the
+  distance band. Roof layers use the same split for visible and hidden geometry, while exit fades remain ordinary.
+- Preserve flat material colour seams when source meshes are flattened for HLOD, including small colour
+  differences at coincident corners (#1540).
+
+## 21.12.0
+
+2026-10-23
+
+- Let roof-only TileWorld prop layers retain per-house roof visibility and shadows through individual LOD,
+  merged HLOD and Decor residency. Mixed roof and non-roof layers fail before upload.
+- Keep hidden layered roofs in the shadow pass with matching transforms and fades. Partly hidden clusters fall
+  back to individual roofs, or merged shadow-only when individual geometry is unavailable.
+- Keep selected outlines on the colour draw's roof representation, generation and fade floor, including
+  individual fallbacks after failed HLOD rebuilds.
+- Include prop-layer placements in the visible and shadow-only view counters.
+
+## 21.11.0
+
+2026-10-22
+
+- Add fixed GPU timestamp pools on Vulkan, Direct3D 11 and Metal, with nonblocking resolution and explicit
+  Pending, Ready and Invalid results. Completed-frame tails include command-list finalization.
+- Recover safely from failed command-list End calls, retaining unresolved timestamp batches through teardown.
+- Guarantee storage-buffer visibility between dependent dispatches and draws in one command list.
+- Add nonblocking completed staging-buffer reads and a fixed `GpuBufferReadbackRing`.
+- Add `GpuFrameSubmission`, completion consumers and participants, and multi-fence submission. Window frames
+  expose `Frame.Submission` and share one submission with capture taps while preserving independent fence lifetimes.
+- Fix grainy and sparkling sun-shadow edges under TAA, especially at low frame rates. Key shadows use bilinear
+  3x3 comparison PCF in every AA mode. Under TAA, lit draws export filtered key-shadow visibility, and a
+  visibility change releases the thin-feature lock and hold while preserving accumulated weight and display share.
+- Lit R8 visibility and its R8 history pair extend the rendering resource contract, at three bytes per internal
+  texel plus a 16-byte previous-jitter buffer. There is no new tuning API.
+- The fused and split resolve entry points produce identical visibility bytes and lock decisions. The carried-lock
+  release is ordered by a zero-valued bit barrier rather than `precise`. An exact positive-zero incoming lock
+  skips that release, preserving bit-for-bit results.
+- On the visibility fast path, Direct3D 11 and Vulkan gather the current block and both history blocks. Metal
+  gathers both history blocks and loads the current 3x3, which keeps its release decisions exact.
+- Certified fully lit current and history visibility select a compiled program without the visibility check,
+  for example with key shadows off. Visibility storage and history copies remain.
+- Devices with fewer than five colour attachments log the capability once and keep bilinear filtering without
+  visibility release.
+
+## 21.10.0
+
+2026-10-21
+
+- Add map-only material palettes to `TileWorldMapSource`, preserving catalog roles and the existing constructor.
+- Add opt-in `WorldMapContours` with pixel-width elevation lines, dry-ground filtering and cache invalidation reach.
+- Add immutable `WorldMapSymbolGeometry` outlines and detail strokes, with rotated coverage and silhouette shadows.
+- Add `WorldMapView` construction from `Render2DContext`, retaining snapshot-owned textures through capture submission.
+- Existing world-map styles retain their default raster bytes. These additions resolve #1520.
+- Fix thin lines along world-map chunk edges at fractional zoom. Linear filtering wrapped each chunk to its
+  own opposite edge. `WorldMapChunkCache` images now carry a one-pixel `WorldMapChunkImage.Border` of real
+  neighbouring map pixels, and `WorldMapView` uploads the whole texture and samples only the interior,
+  including parent fallback. `WorldMapRasterizer.Rasterize(source, style, chunk, border)` adds the gutter,
+  while the three-argument overload and positional constructor stay borderless. Read cache image pixels
+  through `ByteOffset` and upload `TextureSize` (#1524).
+- Keep each gutter owner's borderless surface query frame, preserving fractional source-cell ownership
+  and exact interior bytes. A cache image makes nine surface queries and paints only the clipped regions (#1524).
+
 ## 21.9.0
 
 2026-10-20

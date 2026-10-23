@@ -1,0 +1,416 @@
+{
+ "source_commit": "ef97639b6d2b33973715652a35858d55e0665a0f",
+ "build": {
+  "exit_code": 0,
+  "warnings": 0,
+  "errors": 0
+ },
+ "headless": {
+  "exit_code": 1,
+  "assemblies": [
+   {
+    "assembly": "KhaozEngine.Catalog.AzureBlob.Tests.dll",
+    "failed": 0,
+    "passed": 25,
+    "skipped": 7,
+    "total": 32
+   },
+   {
+    "assembly": "KhaozEngine.CodeHealth.Analyzers.Tests.dll",
+    "failed": 0,
+    "passed": 51,
+    "skipped": 0,
+    "total": 51
+   },
+   {
+    "assembly": "KhaozEngine.BugReports.Relay.Azure.Tests.dll",
+    "failed": 0,
+    "passed": 97,
+    "skipped": 15,
+    "total": 112
+   },
+   {
+    "assembly": "KhaozEngine.Audio.Tests.dll",
+    "failed": 0,
+    "passed": 206,
+    "skipped": 3,
+    "total": 209
+   },
+   {
+    "assembly": "KhaozEngine.Attachments.Tests.dll",
+    "failed": 0,
+    "passed": 261,
+    "skipped": 0,
+    "total": 261
+   },
+   {
+    "assembly": "KhaozEngine.BugReports.Relay.Tests.dll",
+    "failed": 0,
+    "passed": 494,
+    "skipped": 0,
+    "total": 494
+   },
+   {
+    "assembly": "KhaozEngine.Automation.Tests.dll",
+    "failed": 0,
+    "passed": 110,
+    "skipped": 0,
+    "total": 110
+   },
+   {
+    "assembly": "KhaozEngine.BugReports.Tests.dll",
+    "failed": 0,
+    "passed": 442,
+    "skipped": 0,
+    "total": 442
+   },
+   {
+    "assembly": "KhaozEngine.BugReports.Client.Tests.dll",
+    "failed": 0,
+    "passed": 205,
+    "skipped": 0,
+    "total": 205
+   },
+   {
+    "assembly": "KhaozEngine.Identity.Exchange.Tests.dll",
+    "failed": 0,
+    "passed": 177,
+    "skipped": 0,
+    "total": 177
+   },
+   {
+    "assembly": "KhaozEngine.Gui.Tests.dll",
+    "failed": 0,
+    "passed": 1532,
+    "skipped": 0,
+    "total": 1532
+   },
+   {
+    "assembly": "KhaozEngine.Localization.Analyzers.Tests.dll",
+    "failed": 0,
+    "passed": 46,
+    "skipped": 0,
+    "total": 46
+   },
+   {
+    "assembly": "KhaozEngine.MapDoc.Compatibility.Tests.dll",
+    "failed": 0,
+    "passed": 14,
+    "skipped": 0,
+    "total": 14
+   },
+   {
+    "assembly": "KhaozEngine.Accounts.Tests.dll",
+    "failed": 0,
+    "passed": 286,
+    "skipped": 46,
+    "total": 332
+   },
+   {
+    "assembly": "KhaozEngine.Foundation.Tests.dll",
+    "failed": 0,
+    "passed": 1585,
+    "skipped": 0,
+    "total": 1585
+   },
+   {
+    "assembly": "KhaozEngine.Physics.HeadlessLoaderTests.dll",
+    "failed": 0,
+    "passed": 5,
+    "skipped": 0,
+    "total": 5
+   },
+   {
+    "assembly": "KhaozEngine.Netcode.DecouplingTests.dll",
+    "failed": 0,
+    "passed": 4,
+    "skipped": 0,
+    "total": 4
+   },
+   {
+    "assembly": "KhaozEngine.Particles.Tests.dll",
+    "failed": 0,
+    "passed": 106,
+    "skipped": 0,
+    "total": 106
+   },
+   {
+    "assembly": "KhaozEngine.Netcode.Abstractions.DecouplingTests.dll",
+    "failed": 0,
+    "passed": 4,
+    "skipped": 0,
+    "total": 4
+   },
+   {
+    "assembly": "KhaozEngine.Showcase.Tests.dll",
+    "failed": 0,
+    "passed": 83,
+    "skipped": 0,
+    "total": 83
+   },
+   {
+    "assembly": "KhaozEngine.Simulation.Tests.dll",
+    "failed": 0,
+    "passed": 309,
+    "skipped": 0,
+    "total": 309
+   },
+   {
+    "assembly": "KhaozEngine.MapDoc.Tests.dll",
+    "failed": 0,
+    "passed": 1398,
+    "skipped": 0,
+    "total": 1398
+   },
+   {
+    "assembly": "KhaozEngine.TileWorld.Netcode.Tests.dll",
+    "failed": 0,
+    "passed": 1389,
+    "skipped": 0,
+    "total": 1389
+   },
+   {
+    "assembly": "KhaozEngine.TileWorld.Physics.Tests.dll",
+    "failed": 0,
+    "passed": 159,
+    "skipped": 0,
+    "total": 159
+   },
+   {
+    "assembly": "KhaozEngine.TileEdit.Tests.dll",
+    "failed": 0,
+    "passed": 110,
+    "skipped": 7,
+    "total": 117
+   },
+   {
+    "assembly": "KhaozEngine.Movement.Tests.dll",
+    "failed": 0,
+    "passed": 1463,
+    "skipped": 3,
+    "total": 1466
+   },
+   {
+    "assembly": "KhaozEngine.TileWorld.WorldMap.Tests.dll",
+    "failed": 0,
+    "passed": 30,
+    "skipped": 0,
+    "total": 30
+   },
+   {
+    "assembly": "KhaozEngine.TileWorld.Tests.dll",
+    "failed": 0,
+    "passed": 650,
+    "skipped": 0,
+    "total": 650
+   },
+   {
+    "assembly": "KhaozEngine.Windowing.Tests.dll",
+    "failed": 0,
+    "passed": 147,
+    "skipped": 0,
+    "total": 147
+   },
+   {
+    "assembly": "KhaozEngine.Game.Tests.dll",
+    "failed": 0,
+    "passed": 6329,
+    "skipped": 1,
+    "total": 6330
+   },
+   {
+    "assembly": "KhaozEngine.WorldMap.Gui.Tests.dll",
+    "failed": 0,
+    "passed": 66,
+    "skipped": 0,
+    "total": 66
+   },
+   {
+    "assembly": "KhaozEngine.WorldMap.Tests.dll",
+    "failed": 0,
+    "passed": 238,
+    "skipped": 0,
+    "total": 238
+   },
+   {
+    "assembly": "KhaozEngine.MapDoc.Physics.Tests.dll",
+    "failed": 0,
+    "passed": 242,
+    "skipped": 0,
+    "total": 242
+   },
+   {
+    "assembly": "KeDungeon.Tests.dll",
+    "failed": 0,
+    "passed": 13,
+    "skipped": 0,
+    "total": 13
+   },
+   {
+    "assembly": "PixelLabSheetAssembler.Tests.dll",
+    "failed": 0,
+    "passed": 32,
+    "skipped": 0,
+    "total": 32
+   },
+   {
+    "assembly": "KhaozEngine.ItemInstances.Tests.dll",
+    "failed": 0,
+    "passed": 895,
+    "skipped": 0,
+    "total": 895
+   },
+   {
+    "assembly": "KhaozEngine.Render.Tests.dll",
+    "failed": 0,
+    "passed": 10569,
+    "skipped": 1083,
+    "total": 11652
+   },
+   {
+    "assembly": "KhaozEngine.Catalog.Tests.dll",
+    "failed": 1,
+    "passed": 1520,
+    "skipped": 0,
+    "total": 1521
+   },
+   {
+    "assembly": "KhaozEngine.Tests.dll",
+    "failed": 0,
+    "passed": 88,
+    "skipped": 0,
+    "total": 88
+   },
+   {
+    "assembly": "KhaozEngine.Server.Tests.dll",
+    "failed": 0,
+    "passed": 4072,
+    "skipped": 317,
+    "total": 4389
+   },
+   {
+    "assembly": "KhaozEngine.MapEditor.Tests.dll",
+    "failed": 0,
+    "passed": 1706,
+    "skipped": 9,
+    "total": 1715
+   }
+  ],
+  "totals": {
+   "failed": 1,
+   "passed": 37158,
+   "skipped": 1491,
+   "total": 38650
+  },
+  "failures": [
+   {
+    "assembly": "KhaozEngine.Catalog.Tests.dll",
+    "test": "KhaozEngine.Tests.Catalog.Upgrade.ContentUpgradePublishCleanupTests.AnOlderPublishLeavesTheNextRunnersFrozenDraftOwnedByItsPublish(sqlite: True, sweepFails: False)",
+    "error": "System.OperationCanceledException after 43 s against the test's 20 s deadline under the full parallel suite",
+    "isolated_rerun": {
+     "command_label": "taa-7g3a-catalog-diag",
+     "exit_code": 0,
+     "passed": 4,
+     "failed": 0,
+     "duration_seconds": 6
+    },
+    "known_issue": null,
+    "related_to_change": false
+   }
+  ],
+  "physics_rebase_flake_1512_recurred": false
+ },
+ "metal": {
+  "exit_code": 0,
+  "inventory_exit_code": 0,
+  "inventory_count": 1692,
+  "executed": 1692,
+  "passed": 1692,
+  "failed": 0,
+  "skipped": 0,
+  "skipped_names": [],
+  "missing": 0,
+  "extra": 0,
+  "filter": "((FullyQualifiedName~KhaozEngine.Tests.Gpu.Temporal&FullyQualifiedName!~CostPerf)|((FullyQualifiedName~Shadow|FullyQualifiedName~Golden)&FullyQualifiedName!~Perf&FullyQualifiedName!~Bench)|FullyQualifiedName~MotionTargetLifecycleGpuTests|FullyQualifiedName~TemporalLockReleaseProbeGpuTests)",
+  "inventory_names_sha256": "01adc742168e5e8f3d184d461252d6ac6af9b4dc4ad802d48e24ffab13370b02",
+  "display_name_duplicates": {
+   "KhaozEngine.Tests.Gpu.TemporalVisibilityDxbcTests.ACopyInAnotherOrderReadsDifferently(copy: \"\\n  itof r5.xy, r6.xyxx\\n  add r5.xy, r5.xyxx, -cb\"\u00b7\u00b7\u00b7)": 3
+  },
+  "classes": 211,
+  "unique_test_ids": 1692,
+  "resolve_ab_production_vs_shipped_D_byte_identical_cases": 12
+ },
+ "allocation": {
+  "exit_code": 0,
+  "class": "MotionFrameAllocationTests",
+  "passed": 5,
+  "failed": 0,
+  "skipped": 0,
+  "bytes_per_steady_frame": 0
+ },
+ "pack": {
+  "exit_code": 0,
+  "package_files": 222,
+  "warnings": 0,
+  "errors": 0,
+  "scratch_worktree_removed": true
+ },
+ "probe_build": {
+  "exit_code": 0,
+  "warnings": 0,
+  "errors": 0
+ },
+ "raw_evidence": {
+  "root": "/tmp/grimhollow-taa-7g3a",
+  "metal_trx_sha256": "d0d14a64405f2427a06d534afe02905d341105b84d4297f66e7af66c3934f012",
+  "build_log_sha256": "3ced6ea85a6d51451b949114341842d8094c7fbc6746c165a2c1f8cf46212d0b",
+  "headless_log_sha256": "f4654e4a9df825b8a8a90cecd9955c1f16681ae439b1c5c3133f085f7d9a1f7d",
+  "metal_log_sha256": "c3551d50d39897073fdd9181306b10cf66943424bd63899cd71f39d58cbdd9e1"
+ },
+ "guards": {
+  "dashes": {
+   "command": [
+    "sh",
+    "scripts/check-dashes.sh",
+    "--tree"
+   ],
+   "exit_code": 0
+  },
+  "prose": {
+   "command": [
+    "sh",
+    "scripts/check-prose.sh",
+    "--tree"
+   ],
+   "exit_code": 0
+  },
+  "file-size": {
+   "command": [
+    "sh",
+    "scripts/check-file-size.sh",
+    "--tree"
+   ],
+   "exit_code": 0
+  },
+  "doc-versions": {
+   "command": [
+    "bash",
+    "scripts/check-doc-versions.sh"
+   ],
+   "exit_code": 0
+  },
+  "diff": {
+   "command": [
+    "git",
+    "diff",
+    "--check"
+   ],
+   "exit_code": 0
+  }
+ },
+ "format": {
+  "exit_code": 0,
+  "workspace_loading_warning": "Warnings were encountered while loading the workspace. Set the verbosity option to the 'diagnostic' level to log warnings.",
+  "warning_details_expanded": false
+ }
+}

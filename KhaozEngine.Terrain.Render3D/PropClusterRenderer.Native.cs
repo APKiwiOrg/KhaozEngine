@@ -79,16 +79,13 @@ public sealed partial class PropClusterRenderer
         }
     }
 
-    internal static RigidInstanceDraw MergedDraw(MeshHandle handle, PropLayer layer, float dissolve, bool invertShadowDissolve)
-    {
-        bool decorated = dissolve > 0 || !layer.CastsShadows;
-        return new(handle, Matrix4x4.Identity)
+    internal static RigidInstanceDraw MergedDraw(MeshHandle handle, PropLayer layer, float dissolve, bool complement) =>
+        new(handle, Matrix4x4.Identity)
         {
-            Dissolve = decorated ? dissolve : 0,
+            Dissolve = dissolve,
+            DissolveComplement = complement ? 1f : 0f,
             CastsShadows = layer.CastsShadows,
-            InvertShadowDissolve = decorated && invertShadowDissolve,
         };
-    }
 
     internal static PropClusterDrawState NativeDrawState(NativePropClusterRequest request, bool accepted, Vector3 localFocus)
     {
@@ -108,6 +105,10 @@ public sealed partial class PropClusterRenderer
         float start = MathF.Max(0, layer.DrawRadius - layer.FadeBandWidth);
         if (layer.FadeBandWidth > 0 && distance >= start)
             return new(individuals, t, true, Math.Clamp((distance - start) / (layer.DrawRadius - start), 0, 1), false, individualGeneration, mergedGeneration);
-        return new(individuals, t, PropHlod.DrawsHlodMerged(t), 1 - t, true, individualGeneration, mergedGeneration);
+        bool merged = PropHlod.DrawsHlodMerged(t);
+        // Only dissolve while both halves are submitted. A lone representation stays solid.
+        bool complement = individuals && merged;
+        float handoffDissolve = complement ? t : 0f;
+        return new(individuals, handoffDissolve, merged, handoffDissolve, complement, individualGeneration, mergedGeneration);
     }
 }

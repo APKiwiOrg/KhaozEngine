@@ -16,6 +16,7 @@ namespace KhaozEngine.Tests.Gpu
             var caps = new GpuCapabilities(clipY, depth01);
             Assert.Equal(clipY, caps.ClipSpaceYInverted);
             Assert.Equal(depth01, caps.DepthRangeZeroToOne);
+            Assert.False(caps.SupportsTimestamps);
         }
 
         [Fact]
@@ -24,6 +25,7 @@ namespace KhaozEngine.Tests.Gpu
             var caps = default(GpuCapabilities);
             Assert.False(caps.ClipSpaceYInverted);
             Assert.False(caps.DepthRangeZeroToOne);
+            Assert.False(caps.SupportsTimestamps);
             Assert.Equal(GpuSampleCounts.One, caps.SupportedMsaaSampleCounts);
             Assert.Equal(1, caps.MaxMsaaSampleCount);
             Assert.True(caps.SupportsMsaaSampleCount(1));
@@ -53,6 +55,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(caps.SupportsMsaaSampleCount(2));
             Assert.Equal(1, caps.HighestSupportedMsaaSampleCountAtMost(2));
             Assert.Equal(4, caps.HighestSupportedMsaaSampleCountAtMost(8));
+            Assert.False(caps.SupportsTimestamps);
         }
     }
 }

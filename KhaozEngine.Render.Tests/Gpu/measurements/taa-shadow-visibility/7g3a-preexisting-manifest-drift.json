@@ -1,0 +1,14 @@
+{
+  "source_commit": "9e3e2bb85",
+  "stale_artifact_hashes": [
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/benchmark-request.md",
+      "old_manifest_sha256": "bae7e9af9dca6028ae77e11f59a9a817ed3d022852e0c54116e9621bb8ae1f52",
+      "guarded_source_sha256": "a0e686ebb7f4e097bf63619d6cbdbded6a24ca81fd733780c0426c217ec481b9"
+    }
+  ],
+  "missing_artifact_paths": [
+    "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/benchmark-result-2.md",
+    "KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/mask-withdrawal.md"
+  ]
+}

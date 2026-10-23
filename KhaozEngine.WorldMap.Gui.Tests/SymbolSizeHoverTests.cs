@@ -10,13 +10,19 @@ namespace KhaozEngine.Tests.WorldMap.Gui;
 public sealed class SymbolSizeHoverTests
 {
     /// <summary>Hover uses fixed icon bounds rather than the symbol's enlarged map-space crown.</summary>
-    [Fact]
-    public void SizedSymbol_HoverKeepsIconAnchorAndScreenBounds()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SizedSymbol_HoverKeepsIconAnchorAndScreenBounds(bool customGeometry)
     {
         var anchor = new Vector2(96f, 96f);
         var source = new FlatTestSource();
         source.Footprints.Add(new(1, "tree", anchor, new(0.5f), 0f, ["tree"], false, WorldMapCollision.Solid));
-        var symbol = new WorldMapSymbol(WorldMapSymbolKind.Tree, Color.White, Color.Black) { SizeMetres = new(20f) };
+        var symbol = new WorldMapSymbol(WorldMapSymbolKind.Tree, Color.White, Color.Black)
+        {
+            SizeMetres = new(20f),
+            Geometry = customGeometry ? new([new(-1f), new(1f, -1f), new(0f, 1f)]) : null
+        };
         var style = new WorldMapStyle
         {
             SymbolRules = [new(new(), symbol)],

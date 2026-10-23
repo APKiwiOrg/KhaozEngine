@@ -8,6 +8,7 @@ using System.Security.Cryptography;
 using System.Text;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Internal;
+using KhaozEngine.Render3D.Internal;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -174,7 +175,8 @@ namespace KhaozEngine.Tests.Gpu
         static CrossCompiledPair PairMsl(ShippedGraphicsProgram program)
             => SpirvCrossCompile.VertexFragmentToMsl(
                 SpirvFrontEnd.ToSpirv(program.VertexGlsl, GpuShaderStages.Vertex, program.Name),
-                SpirvFrontEnd.ToSpirv(program.FragmentGlsl, GpuShaderStages.Fragment, program.Name),
+                SpirvFrontEnd.ToSpirv(TemporalVisibilityGatherPolicy.ForBackend(program.FragmentGlsl,
+                    GpuBackendKind.MetalNative), GpuShaderStages.Fragment, program.Name),
                 program.Name);
 
         static CrossCompiledCompute ComputeMsl(ShippedComputeKernel kernel)

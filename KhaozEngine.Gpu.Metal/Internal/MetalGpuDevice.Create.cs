@@ -160,7 +160,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 MetalCompletionHandler.Register(queue.Handle, new MetalCompletionErrorRoute(loss));
                 registered = true;
 
-                MetalGpuDevice created = new(device, queue, ReadCapabilities(selected.Facts, device), liveness, loss,
+                var timestamps = new MetalTimestampApi(new MTLTimestampInterop(device.Handle));
+                MetalGpuDevice created = new(device, queue, ReadCapabilities(selected.Facts, device, timestamps), liveness, loss,
                     timeline, new MetalUncommittedBuffers(framesInFlight), new MetalSetupNative(device, queue),
                     framesInFlight, new MetalStagingSource(device),
                     // M-N4's BUFFER-OFFSET ALIGNMENT, carried rather than re-read. The selection already refused
@@ -171,6 +172,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     // asked supportsFamily: for Mac2 to clear the floor, and a sampler cannot ask a device this
                     // question safely (building one to find out IS the abort under MTL_DEBUG_LAYER=1).
                     MetalSamplerPolicy.DeviceSupportsBorderColor(selected.Facts));
+                created.TimestampApi = timestamps;
 
                 // THE SHARED SAMPLER PAIR, from MetalSharedSamplers and not from the engine's same-named
                 // GpuSamplerDescription statics. Both are WRAP on all three axes, and reading the engine statics
@@ -252,11 +254,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // walk would otherwise fall through to).
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static GpuCapabilities ReadCapabilities(in MetalDeviceFacts facts, MTLDevice device)
+        static GpuCapabilities ReadCapabilities(in MetalDeviceFacts facts, MTLDevice device, IMetalTimestampApi timestamps)
             => MetalCapabilityRead.Assemble(
                 facts.DeviceName,
                 MetalCapabilityRead.HighestSupportedSampleCount(
-                    count => device.SupportsTextureSampleCount((nuint)count)));
+                    count => device.SupportsTextureSampleCount((nuint)count)), timestamps.SupportsTimestampCounters);
 
         // M-G3's report, taken before any device exists so it describes the PROCESS rather than the moment.
         [SupportedOSPlatform("macos")]

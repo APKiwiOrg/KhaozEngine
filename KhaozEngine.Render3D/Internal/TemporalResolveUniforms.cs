@@ -44,7 +44,10 @@ namespace KhaozEngine.Render3D.Internal
         /// <see cref="TemporalResolveTuning.MovingSurfaceMotionFraction"/> of that motion, from it is a moving surface,
         /// which skips the depth test. The current projection when history is not readable, so the block stays well defined.</summary>
         public Matrix4x4 PreviousProjection;
-        /// <summary>(internal width, internal height, display width, display height).</summary>
+        /// <summary>(internal width, internal height, display width, display height), each at least 1
+        /// (<see cref="TemporalResolveMath.BuildUniforms"/>). x is also the lock release's barrier source
+        /// (<c>ShaderSources.TemporalLockReleaseGlsl</c>): the release ORs x's sign bit into every intermediate, which
+        /// leaves it unchanged only while x is positive.</summary>
         public Vector4 Sizes;
         /// <summary>(jitter x, jitter y in internal pixels, the larger of the two axes' display over internal ratios,
         /// 1 when history may be read).</summary>

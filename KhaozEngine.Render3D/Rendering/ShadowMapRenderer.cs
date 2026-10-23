@@ -177,7 +177,7 @@ namespace KhaozEngine.Render3D.Rendering
             // clamps each tap inside the selected cascade's column, so a tap never bleeds into a neighbour cascade.
             //
             // POINT filtering, deliberately (issue #391). This atlas is a MANUAL-compare depth map: the receiver
-            // fetches a stored depth and compares it itself (pcfCascade in ShaderSources.Lighting), so filtering
+            // fetches a stored depth and compares it itself (pcfCascade in ShaderSources.ShadowVisibility), so filtering
             // belongs AFTER the compare, never before. A linear pre-filter averages stored DEPTHS, which is not a
             // meaningful operation on this map: the clear value is 1.0 = "no caster", so a tap next to a gap blends
             // a sentinel into a depth and lands wherever the numbers fall rather than where the geometry is. The
@@ -185,8 +185,8 @@ namespace KhaozEngine.Render3D.Rendering
             // percent in the far cascades, so which way a mixed tap resolves is set by the backend's filtering
             // support rather than by the scene. It was harmless while every caster was solid (only silhouette texels
             // mix) and became load-bearing once 17.10.0 started dithering depth, which punches gaps through the
-            // whole footprint. pcfCascade already averages nine COMPARISON results, which is the correct order, so
-            // the 3x3 kernel keeps giving a soft edge with point taps.
+            // whole footprint. pcfCascade bilinearly weights sixteen COMPARISON results, which is the correct order,
+            // so the 3x3 kernel keeps giving a soft edge with point taps.
             _sampler = f.CreateSampler(new GpuSamplerDescription(
                 GpuSamplerFilter.MinPointMagPointMipPoint,
                 GpuSamplerAddress.Clamp, GpuSamplerAddress.Clamp, GpuSamplerAddress.Clamp));

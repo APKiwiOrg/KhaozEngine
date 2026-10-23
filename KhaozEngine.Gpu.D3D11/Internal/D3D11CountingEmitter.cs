@@ -144,6 +144,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             => _log.Record(D3D11OpCode.SetComputeResourceSetDynamic,
                 $"{N(slot)},{_log.Id(set)},{N(dynamicOffset)}");
 
+        public void BeginTimestamps(IGpuTimestampPool pool, uint count)
+            => _log.Record(D3D11OpCode.BeginTimestamps, $"{_log.Id(pool)},{N(count)}");
+        public void WriteTimestamp(IGpuTimestampPool pool, uint index)
+            => _log.Record(D3D11OpCode.WriteTimestamp, $"{_log.Id(pool)},{N(index)}");
+        public void EndTimestamps(IGpuTimestampPool pool)
+            => _log.Record(D3D11OpCode.EndTimestamps, _log.Id(pool));
+
         public void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ)
             => _log.Record(D3D11OpCode.Dispatch, $"{N(groupCountX)},{N(groupCountY)},{N(groupCountZ)}");
 

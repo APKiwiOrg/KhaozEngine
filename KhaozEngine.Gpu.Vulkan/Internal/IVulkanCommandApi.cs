@@ -19,13 +19,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     }
 
     /// <summary>
-    /// THE SEVEN NATIVE CALLS THE COMMAND PATH IS, behind an interface so everything above them is device-free and
+    /// THE NATIVE CALLS THE COMMAND PATH IS, behind an interface so everything above them is device-free and
     /// testable: <c>vkCreateCommandPool</c>, <c>vkAllocateCommandBuffers</c>, <c>vkResetCommandPool</c>,
-    /// <c>vkBeginCommandBuffer</c>, <c>vkEndCommandBuffer</c>, <c>vkQueueSubmit</c> and
+    /// <c>vkBeginCommandBuffer</c>, <c>vkCmdPipelineBarrier2</c>, <c>vkEndCommandBuffer</c>, <c>vkQueueSubmit</c> and
     /// <c>vkDestroyCommandPool</c>.
     /// <para>
     /// The same split <see cref="IVulkanTimelineSemaphore"/> and <see cref="IVulkanDeviceMemoryApi"/> take, and for
-    /// the same reason. What is left below this line is seven driver calls with no ordering logic in them. What
+    /// the same reason. What is left below this line is the driver calls with no ordering logic in them. What
     /// sits above it is the part that can be WRONG: the slot advance and its wrap, the backpressure accounting,
     /// the recording state machine, the disposal-while-in-flight handover, and above all the SUBMIT ORDER (which
     /// timeline value is allocated where, which submit signals it, and what happens to it when the submit fails).
@@ -86,6 +86,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// buffer is recorded into again.
         /// </summary>
         void BeginOneTimeSubmit(ulong commandBuffer);
+
+        /// <summary>Release prior device writes to future device references and the host domain before the
+        /// recording's completion signal can permit pooled memory reuse. Called outside rendering, once per seal.
+        /// </summary>
+        void ReleaseMemoryForReuse(ulong commandBuffer);
 
         /// <summary><c>vkEndCommandBuffer</c>, sealing the record for submission.</summary>
         void EndRecording(ulong commandBuffer);

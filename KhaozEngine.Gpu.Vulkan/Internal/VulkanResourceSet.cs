@@ -81,6 +81,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly VulkanBoundImage[]? _images;
         readonly ulong[]? _storageBuffers;
 
+        // NEVER NULL, so a bind record built from this set never takes the conservative fallback. Empty for a set
+        // whose storage bindings are all read-only, which is what lets a read-only reader skip the barrier.
+        readonly ulong[] _writableStorageBuffers;
+
         bool _disposed;
 
         /// <param name="api">The native descriptor seam, used for the ONE update and NOT held. A set that kept it
@@ -121,14 +125,16 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             var dynamics = new List<VulkanDynamicUniform>(layout.DynamicUniformCount);
             var images = new List<VulkanBoundImage>();
             var storage = new List<ulong>();
+            var writable = new List<ulong>();
             for (int i = 0; i < layout.ElementCount; i++)
             {
-                writes[i] = Resolve(layout, resources[i], i, dynamics, images, storage);
+                writes[i] = Resolve(layout, resources[i], i, dynamics, images, storage, writable);
             }
 
             _dynamicUniforms = dynamics.ToArray();
             _images = images.Count == 0 ? null : images.ToArray();
             _storageBuffers = storage.Count == 0 ? null : storage.ToArray();
+            _writableStorageBuffers = writable.Count == 0 ? [] : writable.ToArray();
 
             _token = pools.Allocate(layout.SetLayout, _counts);
 
@@ -179,7 +185,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </para>
         /// </summary>
         internal VulkanBoundSet AsBound
-            => new(_token.Set, Layout.SetLayout, _dynamicUniforms, _images, _storageBuffers);
+            => new(_token.Set, Layout.SetLayout, _dynamicUniforms, _images, _storageBuffers, _writableStorageBuffers);
 
         /// <summary>
         /// Every image this set binds, with the layout that binding needs it in (row 15,
@@ -194,9 +200,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </summary>
         internal ReadOnlySpan<VulkanBoundImage> Images => _images;
 
-        /// <summary>The <c>VkBuffer</c> of every storage buffer this set binds, which is the buffer half of the
-        /// dependent-dispatch hazard set (V-C2).</summary>
+        /// <summary>The <c>VkBuffer</c> of every storage buffer this set binds, read-only or read-write, which is
+        /// what a command binding it reads (V-C2).</summary>
         internal ReadOnlySpan<ulong> StorageBuffers => _storageBuffers;
+
+        /// <summary>The storage buffers this set binds as <see cref="GpuResourceKind.StructuredBufferReadWrite"/>,
+        /// which is what a dispatch binding it can write. Empty when every storage binding is read-only.</summary>
+        internal ReadOnlySpan<ulong> WritableStorageBuffers => _writableStorageBuffers;
 
         /// <summary>What this set spends in its pool, restored in full when it is freed.</summary>
         internal VulkanDescriptorCounts Counts => _counts;
@@ -227,7 +237,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // ONE BINDING'S WRITE, fully resolved. Every refusal here names the element by its declared name, because
         // a message about "element 4" is unactionable in a seven-element material layout.
         VulkanDescriptorWrite Resolve(VulkanResourceLayout layout, IGpuBindableResource? resource, int index,
-            List<VulkanDynamicUniform> dynamics, List<VulkanBoundImage> images, List<ulong> storage)
+            List<VulkanDynamicUniform> dynamics, List<VulkanBoundImage> images, List<ulong> storage,
+            List<ulong> writable)
         {
             VulkanDescriptorBinding binding = layout.Bindings[index];
             GpuResourceLayoutElement element = layout.Elements[index];
@@ -242,7 +253,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             }
 
             if (VulkanDescriptorPolicy.IsBuffer(binding.Type))
-                return ResolveBuffer(binding, element, resource, index, dynamics, storage);
+                return ResolveBuffer(binding, element, resource, index, dynamics, storage, writable);
 
             if (binding.Type == VulkanDescriptorType.Sampler)
             {
@@ -256,7 +267,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         VulkanDescriptorWrite ResolveBuffer(in VulkanDescriptorBinding binding,
             in GpuResourceLayoutElement element, IGpuBindableResource resource, int index,
-            List<VulkanDynamicUniform> dynamics, List<ulong> storage)
+            List<VulkanDynamicUniform> dynamics, List<ulong> storage, List<ulong> writable)
         {
             ulong rangeOffset;
             ulong range;
@@ -327,11 +338,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     nameof(resource));
             }
 
-            // THE DEPENDENT-DISPATCH HAZARD SET'S BUFFER HALF (V-C2). Every storage buffer this set binds is
-            // treated as WRITTEN by any dispatch that binds it, because the seam carries no read-only storage
-            // flag: GpuResourceKind has one structured kind for both directions, so a read-only binding is not
-            // expressible and assuming a write is the only safe reading.
+            // THE HAZARD SET'S BUFFER HALF (V-C2), BY DIRECTION. Every storage binding is a READ, and only a
+            // StructuredBufferReadWrite element is a WRITE. A read-only element is the caller's statement that the
+            // shader does not write through it, and Direct3D 11 already holds it to that by binding a shader
+            // resource view rather than an unordered access view. So a command that only reads a buffer owes a
+            // later reader nothing.
             storage.Add(buffer.Handle);
+            if (element.Kind == GpuResourceKind.StructuredBufferReadWrite) writable.Add(buffer.Handle);
 
             // NON-DYNAMIC, so the range offset has nowhere else to go and goes into the descriptor's own offset.
             return new VulkanDescriptorWrite(binding.Binding, binding.Type, buffer.Handle, rangeOffset, range,

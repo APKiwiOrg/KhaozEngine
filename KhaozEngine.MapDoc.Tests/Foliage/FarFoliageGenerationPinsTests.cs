@@ -32,4 +32,13 @@ public sealed class FarFoliageGenerationPinsTests
         Assert.Equal(FarFoliageGenerationFixtures.Pins(x), FarFoliageGenerationFixtures.Capture(actual));
         Assert.Equal(full.Samples.Count, actual.Samples.Count);
     }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(32000)]
+    [InlineData(-32000)]
+    public void Pins_UseLfRegardlessOfCheckoutLineEndings(int x)
+    {
+        Assert.DoesNotContain('\r', FarFoliageGenerationFixtures.Pins(x));
+    }
 }

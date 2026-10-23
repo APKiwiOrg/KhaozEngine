@@ -46,9 +46,9 @@ public sealed partial class TileWorldView
             || handles.Residency != TileRegionResidencyState.Gameplay) return;
         string archetypeId = ArchetypeFor(o);
         if (_catalogs.Archetype(archetypeId) is not { } archetype) return;
-        if (archetype.IsRoof && IsRoofHidden(TileFootprint.Of(archetype, o.X, o.Z, o.Rotation), o.Plane)) return;
         if (_propClusters.DrawOutline(handles.Props[o.Plane], o.Id, focus, _outlineColor,
             _outlineWidthPixels, _outlineOcclusion)) return;
+        if (archetype.IsRoof && IsRoofHidden(TileFootprint.Of(archetype, o.X, o.Z, o.Rotation), o.Plane)) return;
         if (!_propMeshes.TryGetValue(archetypeId, out IReadOnlyList<MeshHandle>? parts)) return;
         Vector3 at = TileObjectProps.AnchorPosition(_doc, archetype, o);
         float dx = at.X - focus.X;

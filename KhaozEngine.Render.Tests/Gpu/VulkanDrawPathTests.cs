@@ -470,10 +470,8 @@ namespace KhaozEngine.Tests.Gpu
         /// before it, and two independent dispatches get none. The set of written resources is what makes that
         /// distinction, and a barrier per dispatch would serialise a run of unrelated ones.
         ///
-        /// <para><b>THIS IS EVIDENCE FOR THE AUTOMATIC-HAZARD SEAM CAPABILITY</b>
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/461) AND NOT A CONTRACT CHANGE. The seam's compute
-        /// rule 2 is unchanged: a portable consumer still separates dependent dispatches with <c>End</c>,
-        /// <c>Submit</c> and <c>WaitForIdle</c>, because the Veldrid legs needed the drain.</para>
+        /// <para><b>THIS IS THIS BACKEND'S HALF OF THE SEAM'S COMPUTE RULE 2</b>, which orders a dependent chain
+        /// inside one list on every backend with no barrier call on the seam.</para>
         /// </summary>
         [Fact]
         public void ADependentDispatch_GetsOneBarrierAndAnIndependentOneGetsNone()
@@ -519,16 +517,20 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// THE BARRIER NAMES BOTH STAGE MASKS AND BOTH ACCESS MASKS EXPLICITLY (V-F6), and its destination side
         /// carries the WRITE as well as the read: the ping-pong's second stage writes its own output, and a
-        /// write-after-write on one resource is the same hazard with the same answer.
+        /// write-after-write on one resource is the same hazard with the same answer. Both stage masks include
+        /// every graphics stage, covering graphics-to-compute dependencies as well as the reverse handoff.
+        /// Clearing the global hazard set requires publication to every later shader stage.
         /// </summary>
         [Fact]
         public void TheDependentDispatchBarrier_NamesEveryMaskAndOrdersWritesToo()
         {
             MemoryBarrier2 barrier = VulkanDispatchBarrier.ReadAfterWrite;
 
-            Assert.Equal(PipelineStageFlags2.ComputeShaderBit, barrier.SrcStageMask);
+            Assert.Equal(PipelineStageFlags2.ComputeShaderBit | PipelineStageFlags2.AllGraphicsBit,
+                barrier.SrcStageMask);
             Assert.Equal(AccessFlags2.ShaderWriteBit, barrier.SrcAccessMask);
-            Assert.Equal(PipelineStageFlags2.ComputeShaderBit, barrier.DstStageMask);
+            Assert.Equal(PipelineStageFlags2.ComputeShaderBit | PipelineStageFlags2.AllGraphicsBit,
+                barrier.DstStageMask);
             Assert.Equal(AccessFlags2.ShaderReadBit | AccessFlags2.ShaderWriteBit, barrier.DstAccessMask);
         }
 

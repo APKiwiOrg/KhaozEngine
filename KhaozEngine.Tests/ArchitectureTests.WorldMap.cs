@@ -89,13 +89,13 @@ public partial class ArchitectureTests
             Assert.DoesNotContain("KhaozEngine.WorldMap.Gui", TransitiveClosure(umbrella, graph));
     }
 
-    /// <summary>The headless widget tests reference only the widget package.</summary>
+    /// <summary>The widget tests reference only the widget and the opt-in native capture test kit.</summary>
     [Fact]
-    public void WorldMapGuiTests_ReferenceOnlyThePackage()
+    public void WorldMapGuiTests_ReferenceOnlyThePackageAndGpuTestKit()
     {
         Project tests = LoadGraph()["KhaozEngine.WorldMap.Gui.Tests"];
         Assert.False(tests.IsPackableLibrary);
-        Assert.Equal(new[] { "WorldMap.Gui" },
+        Assert.Equal(new[] { "Gpu.TestKit", "WorldMap.Gui" },
             tests.ProjectRefs.Select(Short).OrderBy(name => name, StringComparer.Ordinal).ToArray());
     }
 }

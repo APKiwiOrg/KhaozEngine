@@ -1,6 +1,12 @@
+using System;
+using System.Linq;
 using System.Numerics;
+using System.Runtime.InteropServices;
+using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
+using KhaozEngine.Render3D.Rendering;
+using KhaozEngine.Tests.Gpu;
 using Xunit;
 
 namespace KhaozEngine.Tests.Render3D;
@@ -147,5 +153,65 @@ public sealed class TemporalHistoryWiringTests
         Assert.False(scene.TemporalHistory.IsValid);
         Assert.Null(scene.PreviousFrameView);
         Assert.Equal(TemporalResetReason.FirstFrame, scene.TemporalHistory.LastReset);
+    }
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public void VisibilityAndSavedJitterFollowCompletedResolvesAndAllColourResets(int choice)
+    {
+        using var rig = new HeadlessSceneRig();
+        using var commands = new RecordingGpuCommandList(rig.Device.Factory.CreateCommandList()) { CapturePayloads = true };
+        Scene3D scene = rig.Scene;
+        scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
+        scene.TemporalResolveEntryForTests = (TemporalResolveEntry)choice;
+        rig.Frame(commands: commands);
+        TemporalResolveRenderer renderer = scene.TemporalResolveRendererForTests!;
+        IGpuBuffer visibilityBuffer = Assert.IsAssignableFrom<IGpuBuffer>(
+            Assert.IsType<FakeResourceSet>(renderer.CurrentSet).Resources[^1]);
+        void AssertJitter(Vector4 expected)
+        {
+            Assert.Equal(expected, renderer.LastVisibilityUniforms.PreviousJitter);
+            FakeResourceSet set = Assert.IsType<FakeResourceSet>(renderer.CurrentSet);
+            if (renderer.LastVisibilityDecisionSkipped) Assert.DoesNotContain(visibilityBuffer, set.Resources);
+            else Assert.Same(visibilityBuffer, set.Resources[^1]);
+            Assert.Equal(16u, visibilityBuffer.SizeInBytes);
+            RecordingGpuCommandList.Upload upload = commands.ToBuffersOfSize(16).Last(u => ReferenceEquals(u.Buffer, visibilityBuffer));
+            Assert.True(upload.IsWholeBuffer);
+            Assert.Equal(expected, MemoryMarshal.Read<Vector4>(upload.Data!));
+        }
+        Assert.True(renderer.VisibilityHistory.Allocated);
+        AssertJitter(Vector4.Zero);
+        Vector2 first = scene.CurrentFrameView.JitterPixels;
+        rig.Frame(commands: commands);
+        AssertJitter(new Vector4(first, 1f, 0f));
+        Vector2 second = scene.CurrentFrameView.JitterPixels;
+        Vector4 uploaded = renderer.LastVisibilityUniforms.PreviousJitter;
+        rig.Render(commands: commands);
+        AssertJitter(uploaded);
+        rig.Frame(commands: commands);
+        AssertJitter(new Vector4(second, 1f, 0f));
+
+        foreach (int reset in new[] { 0, 1, 2 })
+        {
+            if (reset == 0) scene.CameraCut();
+            if (reset == 1) scene.Post.Temporal.Upscale = TemporalUpscale.Quality;
+            int width = reset == 2 ? 72 : 64;
+            rig.Frame(width, 48, commands: commands);
+            Assert.Equal(0f, renderer.LastVisibilityUniforms.PreviousJitter.Z);
+            rig.Frame(width, 48, commands: commands);
+            Assert.Equal(1f, renderer.LastVisibilityUniforms.PreviousJitter.Z);
+        }
+
+        FakeTexture old = Assert.IsType<FakeTexture>(renderer.VisibilityHistory.Texture(0));
+        scene.Post.Quality.AntiAliasing = AntiAliasing.Off;
+        rig.Frame(commands: commands);
+        Assert.False(renderer.VisibilityHistory.Allocated);
+        Assert.Null(renderer.CurrentSet);
+        scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
+        rig.Frame(commands: commands);
+        Assert.NotSame(old, renderer.VisibilityHistory.Texture(0));
+        AssertJitter(Vector4.Zero);
+        rig.Frame(commands: commands);
+        Assert.Equal(1f, renderer.LastVisibilityUniforms.PreviousJitter.Z);
     }
 }

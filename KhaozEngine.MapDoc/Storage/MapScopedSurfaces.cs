@@ -119,7 +119,7 @@ public sealed class MapScopedSurfaces
             ListsEverySurface = true,
         };
     }
-    internal static MapScopedSurfaces CompleteEffective(MapEffectiveContext context)
+    internal static MapScopedSurfaces CompleteEffective(MapEffectiveContext context, MapQueryLimits? queryLimits = null)
     {
         var facts = new MapAcquiredFacts();
         foreach (var surface in context.Surfaces.Refs) facts.AddSurface(surface);
@@ -138,6 +138,7 @@ public sealed class MapScopedSurfaces
         long ax = (long)frame.X * (long)WorldFrame.Grid, az = (long)frame.Z * (long)WorldFrame.Grid;
         var scope = localScope with
         {
+            Limits = queryLimits ?? localScope.Limits,
             Frame = frame,
             LocalMin = corners.Length == 0 ? Vector2.Zero : new(Outward(corners.Min(c => c.X.Floor()) - ax, true), Outward(corners.Min(c => c.Z.Floor()) - az, true)),
             LocalMax = corners.Length == 0 ? Vector2.Zero : new(Outward(corners.Max(c => c.X.Ceiling()) - ax, false), Outward(corners.Max(c => c.Z.Ceiling()) - az, false)),

@@ -19,6 +19,8 @@ public static class MapPartialPaintCompiler
         using var admitted = view.Scope.SceneAdmission?.Enter();
         ArgumentException.ThrowIfNullOrWhiteSpace(targetSurfaceId);
         var budget = limits ?? new();
+        if (view.Capacity is { } capacity)
+            throw new MapDocumentException(capacity.Message, new Scene.MapSceneCapacityException(capacity));
         if (view.Status != MapAcquireStatus.Complete)
             throw new MapDocumentException((view.Status == MapAcquireStatus.Incomplete ? "MissingGeometry" : view.Status.ToString()) + ": " + view.Detail);
         if (!view.Scope.Roles.Contains(MapSurfaceRole.PaintOverride))

@@ -286,7 +286,7 @@ internal static class MapEffectiveResolutionKernel
             Storeys = Storeys(),
         };
         var resources = new MapEffectiveResolutionProduct(context, source, placements, supports, water, intent, lightPoints, waterCorners,
-            attachments, markers.Markers, markers.Supports)
+            attachments, markers.Markers, markers.Supports, queryLimits)
         {
             SupportRequests = supportRequests,
         };
@@ -311,6 +311,7 @@ internal static class MapEffectiveResolutionKernel
 internal sealed class MapEffectiveResolutionProduct
 {
     readonly MapEffectiveContext _context;
+    readonly MapQueryLimits _queryLimits;
     readonly MapWaterSet? _water;
     readonly MapBuildingIntent _intent;
     readonly IReadOnlyDictionary<string, MapSupportBinding> _supportRequests =
@@ -350,9 +351,10 @@ internal sealed class MapEffectiveResolutionProduct
         IReadOnlyList<MapResolvedPlacement> placements, IReadOnlyList<MapPlacementSupport> supports,
         MapWaterSet? water, MapBuildingIntent intent, IReadOnlyDictionary<string, MapExactPoint> lights,
         IReadOnlyDictionary<string, IReadOnlyList<MapExactPoint>> waterCorners, IReadOnlyList<MapPrefabAttachmentTransfer> attachments,
-        IReadOnlyList<MapEffectiveMarker> markers, IReadOnlyList<MapMarkerSupport> markerSupports)
+        IReadOnlyList<MapEffectiveMarker> markers, IReadOnlyList<MapMarkerSupport> markerSupports, MapQueryLimits queryLimits)
     {
         _context = context;
+        _queryLimits = queryLimits;
         SurfaceSource = source;
         Placements = Array.AsReadOnly(placements.ToArray());
         PlacementSupports = Array.AsReadOnly(supports.ToArray());
@@ -377,12 +379,12 @@ internal sealed class MapEffectiveResolutionProduct
         var paintRegions = new Dictionary<string, MapPaintRegionSet>(StringComparer.Ordinal);
         if (paintTargets.Length != 0)
         {
-            var scope = MapScopedSurfaces.CompleteEffective(context).Scope with
+            var scope = MapScopedSurfaces.CompleteEffective(context, _queryLimits).Scope with
             {
                 DiscoverySurfaces = context.Surfaces.Refs.Where(context.IsPartialPaint).Select(s => s.Id)
                     .Concat(paintTargets).ToHashSet(StringComparer.Ordinal),
             };
-            var view = SurfaceSource is MapComposedSurfaceSource ? Acquire(scope) : MapScopedSurfaces.CompleteEffective(context);
+            var view = SurfaceSource is MapComposedSurfaceSource ? Acquire(scope) : MapScopedSurfaces.CompleteEffective(context, _queryLimits);
             foreach (string target in paintTargets)
             {
                 Scene.MapSceneAdmission.Current?.BeforePaintTarget(target);
@@ -396,7 +398,7 @@ internal sealed class MapEffectiveResolutionProduct
         if (view.EffectiveContext?.Digest != Digest) throw new ArgumentException("Acquired view differs from effective resources.", nameof(view));
     }
     public MapScopedSurfaces CompleteView() => SurfaceSource is MapComposedSurfaceSource
-        ? Acquire(MapScopedSurfaces.CompleteEffective(_context).Scope) : MapScopedSurfaces.CompleteEffective(_context);
+        ? Acquire(MapScopedSurfaces.CompleteEffective(_context, _queryLimits).Scope) : MapScopedSurfaces.CompleteEffective(_context, _queryLimits);
     public MapScopedSurfaces Acquire(MapSurfaceScope scope) => MapScopedSurfaces.Acquire(SurfaceSource, scope, new[] { Digest },
         MapScopedSurfaces.EffectiveQueryPolicyVersion, MapScopedSurfaces.EffectiveBuildPolicyVersion);
 }

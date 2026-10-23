@@ -124,7 +124,7 @@ internal sealed partial class MapComposedSurfaceSource : IMapSurfaceAcquisitionS
                 foreach (var part in _parts)
                 {
                     var found = part.Session.FindPatches();
-                    if (found.Status == MapFindStatus.CapacityExceeded) throw new MapSurfaceCapacityException();
+                    if (found.Status == MapFindStatus.CapacityExceeded) throw new MapSurfaceCapacityException(found.Diagnostic, found.Capacity);
                     complete &= found.Status == MapFindStatus.Complete;
                     foreach (var key in part.Session.ReservedPatchKeys.Where(k => part.Ids.Contains(k.SurfaceId))) Reserve(key);
                     patches.AddRange(found.Patches.Where(p => part.Ids.Contains(p.Key.SurfaceId)));
@@ -136,12 +136,14 @@ internal sealed partial class MapComposedSurfaceSource : IMapSurfaceAcquisitionS
             }
             catch (MapSurfaceCapacityException ex)
             {
-                return new(MapFindStatus.CapacityExceeded, _scope, SnapshotId, [], [], [], PagesRead - before) { Diagnostic = ex.Diagnostic };
+                return new(MapFindStatus.CapacityExceeded, _scope, SnapshotId, [], [], [], PagesRead - before)
+                { Diagnostic = ex.Capacity?.Message ?? ex.Diagnostic, Capacity = ex.Capacity };
             }
         }
         void Reserve(MapPatchKey key)
         {
-            if (!_reserved.Contains(key) && _reserved.Count >= _scope.Limits.MaxCandidatePatches) throw new MapSurfaceCapacityException();
+            if (!_reserved.Contains(key) && _reserved.Count >= _scope.Limits.MaxCandidatePatches)
+                throw new MapSurfaceCapacityException(nameof(MapQueryLimits.MaxCandidatePatches), (long)_reserved.Count + 1, _scope.Limits.MaxCandidatePatches);
             _reserved.Add(key);
         }
         public MapPatchRead ReadPatch(MapPatchKey key)

@@ -81,7 +81,8 @@ internal sealed class D3D11ShaderCompileDiagnostics
             active--;
             records.Add(record with
             {
-                StartedTimestamp = started, EndedTimestamp = lastEnded,
+                StartedTimestamp = started,
+                EndedTimestamp = lastEnded,
                 Milliseconds = Stopwatch.GetElapsedTime(started, lastEnded).TotalMilliseconds
             });
         }

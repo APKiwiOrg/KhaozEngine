@@ -11,7 +11,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     [SupportedOSPlatform("windows")]
     internal sealed class D3D11GraphicsPipeline : IGpuPipeline, ID3D11PipelineState, ID3D11PipelineLayouts
     {
-        readonly D3D11DeferredResource<D3D11GraphicsPipelineNative.Shaders, D3D11GraphicsPipelineNative> _resource;
+        readonly D3D11DeferredResource<ReadOnlyMemory<byte>, D3D11GraphicsPipelineNative> _resource;
 
         // The topology's D3D_PRIMITIVE_TOPOLOGY value, resolved once here rather than read from Topology per
         // access. A uint field, not a Vortice enum one: a Vortice VALUE-TYPE field anywhere in this package makes
@@ -50,8 +50,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             snapshot.BlendAttachments = description.BlendAttachments is null ? []
                 : (GpuBlendAttachment[])description.BlendAttachments.Clone();
             _resource = new(liveness,
-                () => new(shaders.VertexShader, shaders.PixelShader, shaders.VertexShaderBytecode),
-                program => new(device, liveness, creation, snapshot, InputElements, program));
+                () => shaders.VertexShaderBytecode,
+                bytecode => new(device, liveness, creation, snapshot, InputElements,
+                    new(shaders.VertexShader, shaders.PixelShader, bytecode)));
         }
 
         /// <summary>The compiled vertex shader.</summary>

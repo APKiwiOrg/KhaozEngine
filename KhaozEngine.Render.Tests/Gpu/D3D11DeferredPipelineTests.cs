@@ -83,7 +83,11 @@ public sealed class D3D11DeferredPipelineTests
             release.Wait();
             return [1];
         }, bytes => { Interlocked.Increment(ref creates); return new Native(bytes); });
-        var bind = Task.Run(() => Assert.Throws<ObjectDisposedException>(() => pipeline.Value));
+        var bind = Task.Run(() =>
+        {
+            try { return Assert.Throws<ObjectDisposedException>(() => pipeline.Value); }
+            finally { entered.Set(); }
+        });
         try
         {
             entered.Wait();

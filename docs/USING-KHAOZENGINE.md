@@ -8637,7 +8637,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.12.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.12.1" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -9062,7 +9062,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.12.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.12.1" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9861,7 +9861,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.12.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.12.1" />
 ```
 
 ```csharp
@@ -10680,12 +10680,18 @@ that was already removed. Zero keeps the old hard swap.
 
 Beyond `hlodDistance` (chunk-centre to focus, in metres) the cluster draws its merged mesh instead of the props.
 Across `crossfadeWidth` the two crossfade - the props dissolve out and the merged mesh dissolves in, both through
-the 14.5.0 rigid-dissolve primitive, deterministic by distance with no per-frame randomness (a `crossfadeWidth` of
-0 is a hard swap). `weldCell` is the vertex-cluster weld size (metres): bigger cells decimate harder (trunks go
+the rigid-dissolve primitive. Both halves use the same threshold `t`: individuals keep `mask >= t`, and the merged
+half sets `DissolveComplement = 1` to keep `mask < t` in colour and shadow. Selected outlines use the same split.
+With one active representation handoff, coincident surfaces cover each noise value exactly once.
+Overlapping individual LOD and HLOD bands retain their existing three-way gap composition.
+Different silhouettes can still expose holes because
+they sample different world positions (#1296). The transition remains deterministic by distance with no
+per-frame randomness (a `crossfadeWidth` of 0 is a hard swap). `weldCell` is the vertex-cluster weld size (metres): bigger cells decimate harder (trunks go
 blobby, canopy shape and colour hold), 0 keeps the full-detail merge. Decor-ring chunks show the merged mesh too,
 so the far field is visible forest rather than bare terrain, while staying render-only for physics (no scatter, no
 prop colliders). The bake is a **runtime** merge+weld at chunk load (`PropHlod.BuildMergedMesh`, pure and
 deterministic), built through `PropClusterRenderer.BuildCpu` without GPU access and applied on the scene thread.
+Flattening preserves coincident corners with distinct flat material colours. Equal flat colours still weld.
 There is no offline artifact to generate and no manifest field to stamp. Everything defaults off, so a layer
 without `WithHlod` draws its props at every distance exactly as before. `PropHlod.Merge` / `Weld` /
 `CrossfadeAt` are public if you want the pieces directly (a bake tool, a custom sink).
@@ -10698,9 +10704,12 @@ the failed request's current individual placements and layer for near drawing. U
 invalidation, draw and unload stay on the scene thread. `Unload` is idempotent. `Dispose` releases
 every retained handle exactly once.
 
-Under `ShadowMode.ShadowMap`, both halves of the crossfade now cast in proportion to their dissolve (issue #287):
-the props' shadow thins out as the merged mesh's thins in, instead of both casting at full strength across the whole
-band. `castsShadows: false` on the layer covers both too - the merged mesh follows the layer's policy, so casting
+Under `ShadowMode.ShadowMap`, both halves use the same complementary coverage as colour, preserving the full
+caster at coincident surfaces (#391). The HLOD handoff does not use the independent shadow-only inversion flag.
+At `DrawRadius`, the merged exit fade is an ordinary dissolve with no complementary partner.
+The `Scene3D.Draw` overload ending in `castsShadows, invertShadowDissolve` remains available for independent
+shadow-only inversion, along with `RigidInstanceDraw.InvertShadowDissolve`.
+`castsShadows: false` on the layer covers both too, so casting
 does not switch back on at the HLOD swap.
 
 **Teardown / rebuild.** Both `Scene3DChunkSink` and `TerrainStreamer` are `IDisposable`. Steady-state
@@ -17887,7 +17896,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.12.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.12.1" />
 ```
 
 ```csharp
@@ -17923,7 +17932,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.12.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.12.1" />
 ```
 
 ```csharp
@@ -18167,7 +18176,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.12.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.12.1" />
 ```
 
 ```csharp
@@ -22538,7 +22547,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.12.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.12.1" />
 </ItemGroup>
 ```
 

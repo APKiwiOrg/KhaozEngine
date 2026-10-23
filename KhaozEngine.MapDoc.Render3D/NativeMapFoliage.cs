@@ -58,6 +58,8 @@ public static class NativeMapFoliage
             // Preparation consumes exactly the model-reaching generation owners admitted by window capture.
             foreach (var key in context.ChunksFor(layer.Id))
             {
+                // Known off-raster owners have no geometry and must not populate the generation cache.
+                if (MapFoliageDistribution.KnownOffRaster(layer, MapFoliageDistribution.Rectangle(layer, key))) continue;
                 if (samples.Count >= ceilings.MaxSelectedResources) throw Capacity();
                 long available = admission.RemainingPreparedBytes;
                 // Bound retention and support scratch by the active composite and current window, not source defaults.

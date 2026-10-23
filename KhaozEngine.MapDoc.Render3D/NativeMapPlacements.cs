@@ -142,7 +142,7 @@ public static class NativeMapPlacements
                             admission.ReserveBytes(checked(512L + 4 * Bytes(contribution, default)));
                             var outlineKey = new MapRenderKey(MapRenderKind.Roof, members[member].Id, "outline-hlod", 0);
                             string selectedId = members[member].Id;
-                            string digest = MapPlacementDigest.Hash(w =>
+                            string digest = MapAnchorRelativeDigest.Hash(anchor, w =>
                             {
                                 w.WriteStartArray(); w.WriteStringValue("kemap/roof-outline-contribution/2");
                                 w.WriteStringValue(inventory); w.WriteStringValue(selectedId); w.WriteEndArray();
@@ -154,7 +154,7 @@ public static class NativeMapPlacements
                     var bounds = members.Select(i => boundsById[i.Id]).Aggregate(Union);
                     var key = new MapRenderKey(cell.Key.Cohort == 1 ? MapRenderKind.Roof : MapRenderKind.Placement, MapPlacementCells.Owner(cell.Key), "hlod", 0);
                     parts.Add(new(key, new(nextHandle++), anchor, bounds, new MapRigidResource(mesh, default),
-                        MapPlacementDigest.Hash(w =>
+                        MapAnchorRelativeDigest.Hash(anchor, w =>
                         {
                             w.WriteStartArray(); w.WriteStringValue(routing.PolicyDigest);
                             w.WriteStringValue(inventory); w.WriteEndArray();

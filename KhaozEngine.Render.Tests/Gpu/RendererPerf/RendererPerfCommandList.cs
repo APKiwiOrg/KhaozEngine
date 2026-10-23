@@ -22,7 +22,7 @@ internal class RendererPerfCommandList : IGpuCommandList
 
     internal static IGpuCommandList Wrap(IGpuCommandList native, RendererPerfRecorder recorder)
     {
-        if (!recorder.Enabled) return native;
+        if (!recorder.Enabled && recorder.Capture is null) return native;
         int flags = (native is IGpuCommandListTimestampEnd ? 1 : 0) | (native is IVulkanRenderingScope ? 2 : 0)
             | (native is ID3D11SwapchainBindTracking ? 4 : 0);
         return flags switch
@@ -72,13 +72,13 @@ internal class RendererPerfCommandList : IGpuCommandList
     {
         Count(RendererPerfCounter.GraphicsPipelineBinds);
         if (ReferenceEquals(_pipeline, pipeline)) Count(RendererPerfCounter.RedundantGraphicsPipelines);
-        _pipeline = pipeline; _graphicsFacts = _recorder.Facts(pipeline); Native.SetPipeline(pipeline);
+        _pipeline = pipeline; _graphicsFacts = _recorder.PipelineFacts(pipeline, RendererPerfPipelineKind.Graphics); Native.SetPipeline(pipeline);
     }
     public void SetComputePipeline(IGpuComputePipeline pipeline)
     {
         Count(RendererPerfCounter.ComputePipelineBinds);
         if (ReferenceEquals(_computePipeline, pipeline)) Count(RendererPerfCounter.RedundantComputePipelines);
-        _computePipeline = pipeline; _computeFacts = _recorder.Facts(pipeline); Native.SetComputePipeline(pipeline);
+        _computePipeline = pipeline; _computeFacts = _recorder.PipelineFacts(pipeline, RendererPerfPipelineKind.Compute); Native.SetComputePipeline(pipeline);
     }
     void Bind(Binding[] bindings, uint slot, object resource, uint offset, RendererPerfCounter raw, RendererPerfCounter redundant)
     {

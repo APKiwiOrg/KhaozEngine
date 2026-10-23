@@ -75,6 +75,12 @@ internal sealed class RendererPerfRecorder
     }
 
     internal bool Enabled { get; }
+    internal RendererPerfConstructionCapture? Capture { get; private set; }
+    internal void AttachCapture(RendererPerfConstructionCapture capture) => Capture = capture;
+    internal ResourceFacts PipelineFacts(object resource, RendererPerfPipelineKind kind)
+    {
+        var facts = Facts(resource); Capture?.Bound(facts.OccurrenceId ?? -1, kind); return facts;
+    }
     internal IGpuCommandList? FrameCommands { get; set; }
     internal string? FrameFailure(int sampleId) => _frames[sampleId + 1].Error;
     internal void UseSubmission(GpuFrameSubmission submission)
@@ -484,7 +490,7 @@ internal sealed class RendererPerfRecorder
     }
 
     internal readonly record struct ResourceFacts(bool Known, uint Layers = 1, GpuPrimitiveTopology? Topology = null,
-        uint LocalX = 0, uint LocalY = 0, uint LocalZ = 0);
+        uint LocalX = 0, uint LocalY = 0, uint LocalZ = 0, int? OccurrenceId = null);
     readonly record struct DispatchSample(int Owner, uint X, uint Y, uint Z, ResourceFacts Facts);
     readonly record struct TargetSample(int Owner, uint Width, uint Height, int Samples, GpuPixelFormat? Depth, int Colours);
     readonly record struct CpuSegment(string Id, string Parent, long Start, long End);

@@ -12,6 +12,7 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
 {
     internal const string ConstructionCleanupErrors = "renderer-perf.construction-cleanup";
     readonly IGpuDevice _native, _device;
+    readonly RendererPerfConstructionCapture? _capture;
     readonly RendererPerfSessionInfo _info;
     readonly RendererPerfBlock _block;
     readonly RendererPerfClock _clock;
@@ -32,7 +33,8 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
     internal RendererPerfNativeSession(IGpuDevice device, RendererPerfSessionInfo info,
         RendererPerfBlock block, RendererPerfPassDefinition[] passes, RendererPerfClock clock,
         Func<IGpuDevice, IRenderPassObserver, IRendererPerfNativeWork> createWork,
-        Func<ImmutableDictionary<string, RendererPerfMetric>>? telemetry = null)
+        Func<ImmutableDictionary<string, RendererPerfMetric>>? telemetry = null,
+        RendererPerfConstructionCapture? capture = null, int operationOrdinal = 0)
     {
         RendererPerfAdmission.Device(device, info);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(clock.Frequency);
@@ -46,12 +48,14 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
         IRendererPerfNativeWork? work = null;
         IGpuCommandList? hostCommands = null;
         Frame? frame = null;
+        _capture = capture;
+        capture?.BeginOperation(operationOrdinal);
         try
         {
             _ring = ring = new(device, count, markerCount, (id, result) => _results[id] = result);
             _recorder = new(count, block.Layout, passes, clock.Now, clock.Frequency, _ring);
             _observer = new(_recorder, block.Layout, passes);
-            _device = RendererPerfDevice.Wrap(device, _recorder);
+            _device = capture is null ? RendererPerfDevice.Wrap(device, _recorder) : RendererPerfDevice.Wrap(device, _recorder, capture);
             _work = work = createWork(_device, _observer);
             ((RendererPerfDevice)_device).UseFrameTarget(work.Target);
             IGpuCommandList commands = hostCommands = _device.Factory.CreateCommandList();
@@ -87,6 +91,7 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
             Release(hostCommands is null ? null : hostCommands.Dispose);
             Release(work is null ? null : work.Dispose);
             Release(ring is null ? null : ring.Dispose);
+            Release(capture is null ? null : capture.EndOperation);
             if (cleanup.Count != 0) error.Data[ConstructionCleanupErrors] = cleanup.ToImmutable();
             throw;
         }
@@ -97,36 +102,42 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_next == _results.Length || _next - _consumed >= 3 || frameIndex != _next - _block.WarmupFrames)
             throw new InvalidOperationException("The fixed frame count, sequence or three-frame pacing was violated.");
-        _frameIndex = frameIndex;
-        _observer.BeginFrame();
-        long start = _clock.Now();
-        _recorder.BeginFrame(_next, _next, RendererPerfRecipe.SequenceIndex(frameIndex));
+        if (_capture?.Failure is { } captureFailure) throw new InvalidOperationException(captureFailure);
+        _capture?.EnterFrame(frameIndex < 0 ? RendererPerfConstructionStage.Warmup : RendererPerfConstructionStage.Measured, frameIndex);
         try
         {
-            FramePhases.Run(_frame, true, _device, _frame.Commands, _work.ClearColor, _prepare, _record);
+            _frameIndex = frameIndex;
+            _observer.BeginFrame();
+            long start = _clock.Now();
+            _recorder.BeginFrame(_next, _next, RendererPerfRecipe.SequenceIndex(frameIndex));
+            try
+            {
+                FramePhases.Run(_frame, true, _device, _frame.Commands, _work.ClearColor, _prepare, _record);
+            }
+            catch (Exception error)
+            {
+                _failure ??= error.Message;
+                _recorder.Fail(error.Message);
+                throw;
+            }
+            finally
+            {
+                if (_recorder.ReadCounter(_next, RendererPerfCounter.Submissions) != 1)
+                    _recorder.Fail("An unexpected production submission occurred, including preparation.");
+                if (_recorder.ReadCounter(_next, RendererPerfCounter.WaitForIdleCalls) != 0)
+                    _recorder.Fail("An unexpected production wait occurred.");
+                if (frameIndex >= 0 && !_block.SceneId.StartsWith("conditioning:", StringComparison.Ordinal) && _recorder.ReadCounter(_next, RendererPerfCounter.ResourceCreations) != 0)
+                    _recorder.Fail("Hot resource growth occurred in a steady frame.");
+                if (_native.Diagnostics.IsDeviceLost) _recorder.Fail(_native.Diagnostics.DeviceLossReason!);
+                _recorder.EndFrame();
+                string? error = _recorder.FrameFailure(_next);
+                sample = new(_next++, RendererPerfRecipe.SequenceIndex(frameIndex), start, _clock.Now(), _clock.Frequency,
+                    null, null, new(null, "ns", "native timestamp ring", RendererPerfMetricStatus.Unsupported,
+                        "Awaiting the one batch completion harvest."), [], [], ImmutableDictionary<string, RendererPerfMetric>.Empty,
+                        error is null ? [] : [error]);
+            }
         }
-        catch (Exception error)
-        {
-            _failure ??= error.Message;
-            _recorder.Fail(error.Message);
-            throw;
-        }
-        finally
-        {
-            if (_recorder.ReadCounter(_next, RendererPerfCounter.Submissions) != 1)
-                _recorder.Fail("An unexpected production submission occurred, including preparation.");
-            if (_recorder.ReadCounter(_next, RendererPerfCounter.WaitForIdleCalls) != 0)
-                _recorder.Fail("An unexpected production wait occurred.");
-            if (frameIndex >= 0 && !_block.SceneId.StartsWith("conditioning:", StringComparison.Ordinal) && _recorder.ReadCounter(_next, RendererPerfCounter.ResourceCreations) != 0)
-                _recorder.Fail("Hot resource growth occurred in a steady frame.");
-            if (_native.Diagnostics.IsDeviceLost) _recorder.Fail(_native.Diagnostics.DeviceLossReason!);
-            _recorder.EndFrame();
-            string? error = _recorder.FrameFailure(_next);
-            sample = new(_next++, RendererPerfRecipe.SequenceIndex(frameIndex), start, _clock.Now(), _clock.Frequency,
-                null, null, new(null, "ns", "native timestamp ring", RendererPerfMetricStatus.Unsupported,
-                    "Awaiting the one batch completion harvest."), [], [], ImmutableDictionary<string, RendererPerfMetric>.Empty,
-                    error is null ? [] : [error]);
-        }
+        finally { _capture?.LeaveFrame(); }
     }
 
     void Prepare(Frame frame)
@@ -189,7 +200,7 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
         ControlStateSha256 = _work.ControlStateSha256,
         Telemetry = RendererPerfSessionObservations.Telemetry(_telemetry?.Invoke() ?? _info.Telemetry).SetItems(_work.ControlMetrics),
         Memory = RendererPerfSessionObservations.Memory(_native),
-        Failure = _failure ?? _ring.Failure ?? _native.Diagnostics.DeviceLossReason,
+        Failure = _failure ?? _ring.Failure ?? _native.Diagnostics.DeviceLossReason ?? _capture?.Failure,
         Drain = _drain,
         Harvest = _harvest,
         Startup = _startup
@@ -210,6 +221,7 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
         Release(_ring.Dispose);
         Release(_frame.Commands.Dispose);
         Release(_work.Dispose);
+        if (_capture is not null) Release(_capture.EndOperation);
         if (failure is not null) throw new InvalidOperationException("Native session cleanup failed.", failure);
     }
 }

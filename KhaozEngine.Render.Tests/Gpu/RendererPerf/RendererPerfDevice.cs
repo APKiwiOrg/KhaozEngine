@@ -6,7 +6,7 @@ using KhaozEngine.Gpu.Internal;
 namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
 // Resources stay native handles. Only command lists need unwrapping at native submission/capture boundaries.
-internal class RendererPerfDevice : IGpuDevice, IGpuResourceFactory
+internal partial class RendererPerfDevice : IGpuDevice, IGpuResourceFactory
 {
     readonly IGpuDevice _native;
     readonly RendererPerfRecorder _recorder;
@@ -20,6 +20,11 @@ internal class RendererPerfDevice : IGpuDevice, IGpuResourceFactory
     internal static IGpuDevice Wrap(IGpuDevice native, RendererPerfRecorder recorder)
     {
         if (!recorder.Enabled) return native;
+        return CreateWrapper(native, recorder);
+    }
+
+    static RendererPerfDevice CreateWrapper(IGpuDevice native, RendererPerfRecorder recorder)
+    {
         int flags = (native is IGpuSwapchainCapture ? 1 : 0) | (native is IGpuFencedReadback ? 2 : 0)
             | (native is IGpuResourceMemoryDiagnostics ? 4 : 0) | (native is IGpuDeviceLifecycle ? 8 : 0)
             | (native is ID3D11RemovedReason ? 16 : 0);
@@ -141,25 +146,8 @@ internal class RendererPerfDevice : IGpuDevice, IGpuResourceFactory
     { var resource = _native.Factory.CreateFramebuffer(depth, colour); Created(); return resource; }
     public IGpuSampler CreateSampler(in GpuSamplerDescription d)
     { var resource = _native.Factory.CreateSampler(d); Created(); return resource; }
-    public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d)
-    { var resource = _native.Factory.CreateResourceLayout(d); Created(); return resource; }
     public IGpuResourceSet CreateResourceSet(in GpuResourceSetDescription d)
     { var resource = _native.Factory.CreateResourceSet(d); Created(); return resource; }
-    public IGpuShaderSet CreateShadersFromSpirv(string vertex, string fragment)
-    { var resource = _native.Factory.CreateShadersFromSpirv(vertex, fragment); Created(); return resource; }
-    public IGpuComputeShader CreateComputeShaderFromSpirv(string source)
-    { var resource = _native.Factory.CreateComputeShaderFromSpirv(source); Created(); return resource; }
-    public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d)
-    {
-        var resource = _native.Factory.CreateGraphicsPipeline(d); Created();
-        _recorder.Register(resource, new(true, Topology: d.Topology)); return resource;
-    }
-    public IGpuComputePipeline CreateComputePipeline(in GpuComputePipelineDescription d)
-    {
-        var resource = _native.Factory.CreateComputePipeline(d); Created();
-        _recorder.Register(resource, new(true, LocalX: d.Shader.ThreadGroupSizeX, LocalY: d.Shader.ThreadGroupSizeY, LocalZ: d.Shader.ThreadGroupSizeZ));
-        return resource;
-    }
     public IGpuCommandList CreateCommandList()
     { var resource = _native.Factory.CreateCommandList(); Created(); return RendererPerfCommandList.Wrap(resource, _recorder); }
     public IGpuFence CreateFence() { var resource = _native.Factory.CreateFence(); Created(); return resource; }

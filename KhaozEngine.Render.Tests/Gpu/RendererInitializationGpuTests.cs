@@ -16,20 +16,28 @@ public sealed class RendererInitializationGpuTests(ITestOutputHelper log)
     static readonly Color Poison = new(0.9f, 0.1f, 0.7f, 0.3f);
 
     [GpuTheory]
-    [InlineData(false, false, false)]
-    [InlineData(false, false, true)]
-    [InlineData(false, true, false)]
-    [InlineData(false, true, true)]
-    [InlineData(true, false, false)]
-    [InlineData(true, false, true)]
-    [InlineData(true, true, false)]
-    [InlineData(true, true, true)]
+    [InlineData(false, false, false, false)]
+    [InlineData(false, false, true, false)]
+    [InlineData(false, true, false, false)]
+    [InlineData(false, true, true, false)]
+    [InlineData(true, false, false, false)]
+    [InlineData(true, false, true, false)]
+    [InlineData(true, true, false, false)]
+    [InlineData(true, true, true, false)]
+    [InlineData(false, false, false, true)]
+    [InlineData(false, false, true, true)]
+    [InlineData(false, true, false, true)]
+    [InlineData(false, true, true, true)]
+    [InlineData(true, false, false, true)]
+    [InlineData(true, false, true, true)]
+    [InlineData(true, true, false, true)]
+    [InlineData(true, true, true, true)]
     public void Full_scene_output_and_same_frame_capture_are_identical_with_host_initialization_on_or_off(
-        bool transparent, bool temporal, bool geometry)
+        bool transparent, bool temporal, bool geometry, bool hdr)
     {
         using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
-        byte[][] host = Render(gpu.GpuDevice, false, transparent, temporal, geometry);
-        byte[][] renderer = Render(gpu.GpuDevice, true, transparent, temporal, geometry);
+        byte[][] host = Render(gpu.GpuDevice, false, transparent, temporal, geometry, hdr);
+        byte[][] renderer = Render(gpu.GpuDevice, true, transparent, temporal, geometry, hdr);
         int zeroAlpha = 0, visibleAlpha = 0;
         for (int frame = 0; frame < Frames; frame++)
         {
@@ -50,12 +58,12 @@ public sealed class RendererInitializationGpuTests(ITestOutputHelper log)
             else Assert.Equal(0, visibleAlpha);
         }
         if (geometry) Assert.NotEqual(renderer[0][..4], renderer[0][((Height / 2 * Width + Width / 2) * 4)..][..4]);
-        log.WriteLine($"{gpu.GpuDevice.Backend}: transparent={transparent}, temporal={temporal}, geometry={geometry}, "
+        log.WriteLine($"{gpu.GpuDevice.Backend}: transparent={transparent}, temporal={temporal}, geometry={geometry}, hdr={hdr}, "
             + $"{Frames} frames, {Frames * Width * Height} pixels, {Frames * Width * Height * 4} RGBA bytes identical. "
             + $"Alpha zero={zeroAlpha}, visible={visibleAlpha}. Capture matches every byte before present.");
     }
 
-    static byte[][] Render(IGpuDevice gd, bool rendererOwned, bool transparent, bool temporal, bool geometry)
+    static byte[][] Render(IGpuDevice gd, bool rendererOwned, bool transparent, bool temporal, bool geometry, bool hdr)
     {
         using var output = new PostChainRig.Output(gd, Width, Height);
         using var device = new FrameOutputDevice(gd, output);
@@ -64,7 +72,7 @@ public sealed class RendererInitializationGpuTests(ITestOutputHelper log)
         scene.Post.Quality.AntiAliasing = temporal ? AntiAliasing.Temporal : AntiAliasing.Off;
         scene.Post.Temporal.Upscale = TemporalUpscale.Native;
         scene.Post.Starfield = false;
-        scene.Post.Hdr.Enabled = true;
+        scene.Post.Hdr.Enabled = hdr;
         scene.Post.TransparentBackground = transparent;
         scene.Post.Bloom.Enabled = geometry;
         scene.Post.BackgroundColor = new Color(0.05f, 0.1f, 0.2f, 1f);

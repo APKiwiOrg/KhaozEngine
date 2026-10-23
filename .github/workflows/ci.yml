@@ -119,6 +119,7 @@ jobs:
           sh scripts/tests/check-agent-instructions.test.sh
           sh scripts/tests/ci-prior-gate.test.sh
           sh scripts/tests/gpu-test-shards.test.sh
+          python3 scripts/tests/gpu-test-evidence.test.py
           sh scripts/tests/hooks-file-change-guard.test.sh
           sh scripts/tests/hooks-filesize-guard.test.sh
           sh scripts/tests/pack-local-feed.test.sh

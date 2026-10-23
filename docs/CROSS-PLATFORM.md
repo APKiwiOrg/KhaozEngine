@@ -263,8 +263,24 @@ For diagnosis, a dispatch may set `renderTestFilter` to a vstest filter. That ta
 `KhaozEngine.Render.Tests` on the selected native legs while retaining their compiler and validation steps.
 Filtered dispatches retain detailed output from passing tests on every leg in the
 `filtered-render-measurements-<backend>` artifact, so per-device figures remain available on Windows too.
+They also write actual TRX under `TestResults/targeted-render/` and retain only those files in
+`targeted-render-trx-<backend>` for seven days. The upload runs on `always()`, including failures, and missing
+TRX fails the upload. This single-project invocation sets `RunConfiguration.TreatNoTestsAsError=true`, after
+the existing runsettings separator on Vulkan, so a zero-match filter fails. Full solution and sync runs keep
+their intentional no-match assemblies without that setting.
 Leave it empty for release verification and the standard full-suite policy. The filter is passed through
 a quoted environment value, never interpolated into shell source.
+
+A filtered dispatch retains all side correctness steps. Windows still checks FXC and struct layout, Metal
+collects its device facts, and Vulkan runs its shader-cache cold/warm/off probes. A selected non-bake Vulkan
+dispatch also runs the separate sync job with its fixed golden/compute/foliage selection, including timestamp
+API correctness facts. The matrix filter does not narrow that job. Sync writes actual per-assembly TRX under
+`TestResults/sync-trx/`, retained alone as `vulkan-sync-trx` for seven days on `always()`. Missing TRX fails
+that upload too. The existing validation logs remain separate. A native authorization must include these
+side steps and jobs explicitly. With `legs=all`, those are the selector, three matrix jobs and the sync job.
+The workflow has no shorter timeout override, so each job retains GitHub's default 360-minute limit.
+These correctness instruments do not establish performance or waive the
+[#1539](https://github.com/APKiwiOrg/KhaozEngine/issues/1539) validation limitation.
 
 **THREE LEGS SINCE `18.0.0`, not six.** The Veldrid incumbent backend was deleted
 ([#687](https://github.com/APKiwiOrg/KhaozEngine/issues/687)) and its three legs went with it

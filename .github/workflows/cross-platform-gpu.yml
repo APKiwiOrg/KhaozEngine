@@ -1309,7 +1309,8 @@ jobs:
           # test's duration, which is what the slice tables in scripts/gpu-test-shards.py are balanced from.
           #
           # A renderTestFilter dispatch logs detailed on every leg, because filtered diagnostics need passing
-          # tests' measurements on Windows too, where the pool watcher is off.
+          # tests' measurements on Windows too, where the pool watcher is off. The targeted branch below also
+          # adds TRX to its Render.Tests invocation, independently of sharding and the pool watcher.
           KE_TEST_LOGGER_ARGS: ${{ format('{0} {1}', (env.VULKAN_VALIDATION_ARMED != '' || matrix.backend == 'metal-native' || (github.event_name == 'workflow_dispatch' && inputs.renderTestFilter != '')) && '--logger console;verbosity=detailed' || '', (env.POOL_WATCH_ARMED != '' || matrix.shard != '') && '--logger trx' || '') }}
           # The watchdog itself (see POOL_WATCH_ARMED in the job env). Empty everywhere else, which leaves it off.
           # Absolute, because each test host runs from its own output directory.
@@ -1396,9 +1397,10 @@ jobs:
           fi
           read -r -a logger_args <<< "$KE_TEST_LOGGER_ARGS"
           read -r -a extra_args <<< "$KE_TEST_EXTRA_ARGS"
+          results_directory="$PWD/TestResults"
           suite_filter="$KE_TEST_FILTER"
           run_suite() {
-            dotnet test "$@" -c Release --no-build "${build_args[@]}" --filter "$suite_filter" --blame --results-directory "$PWD/TestResults" "${logger_args[@]}" "${extra_args[@]}" 2>&1 | tee -a TestResults/suite-output.log
+            dotnet test "$@" -c Release --no-build "${build_args[@]}" --filter "$suite_filter" --blame --results-directory "$results_directory" "${logger_args[@]}" "${extra_args[@]}" 2>&1 | tee -a TestResults/suite-output.log
           }
           write_non_render_solution() {
             # The root keeps exactly one solution. Rebase project paths into the generated solution's directory.
@@ -1429,6 +1431,14 @@ jobs:
             test_target=()
             if [ -n "$KE_RENDER_TEST_FILTER" ]; then
               test_target=(KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj)
+              logger_args+=(--logger trx)
+              results_directory="$PWD/TestResults/targeted-render"
+              # Only this single-project selection must match tests. Full and sync solution runs have
+              # intentionally empty assemblies. Vulkan already has a runsettings separator and serial settings.
+              if [ "${#extra_args[@]}" -eq 0 ]; then
+                extra_args=(--)
+              fi
+              extra_args+=(RunConfiguration.TreatNoTestsAsError=true)
             fi
             run_suite "${test_target[@]}" || status=$?
           fi
@@ -1683,6 +1693,17 @@ jobs:
           name: targeted-render-log-${{ matrix.backend }}
           path: TestResults/suite-output.log
           if-no-files-found: ignore
+
+      # Keep actual targeted names/outcomes separately from side checks and large coverage packets. Missing
+      # TRX must fail visibly even if setup failed or the test host died before writing its results.
+      - name: Upload targeted render TRX
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.renderTestFilter != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: targeted-render-trx-${{ matrix.backend }}
+          path: TestResults/targeted-render/*.trx
+          retention-days: 7
+          if-no-files-found: error
 
       # THE POOL WATCHDOG'S EVIDENCE, on always() and only where POOL_WATCH_ARMED armed it: a green run's
       # episode lines are as much a reading as a red run's. The watch directory holds one log per armed test host
@@ -1982,7 +2003,7 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p TestResults
-          dotnet test -c Release --no-build --filter "FullyQualifiedName~Golden|FullyQualifiedName~Compute|FullyQualifiedName~FoliageGpuTests" --blame --results-directory TestResults --logger "console;verbosity=detailed" 2>&1 | tee TestResults/sync-validation.log
+          dotnet test -c Release --no-build --filter "FullyQualifiedName~Golden|FullyQualifiedName~Compute|FullyQualifiedName~FoliageGpuTests" --blame --results-directory TestResults/sync-trx --logger "console;verbosity=detailed" --logger trx 2>&1 | tee TestResults/sync-validation.log
         shell: bash
 
       # WHAT MAKES TIER TWO A GATE. The engine does not fail a sync run on an error (the job header says why,
@@ -2048,6 +2069,17 @@ jobs:
           name: vulkan-validation-sync
           path: TestResults/sync-validation.log
           if-no-files-found: ignore
+
+      # The fixed solution-wide correctness selection may match no tests in unrelated assemblies. Retain its
+      # actual TRX without imposing the targeted single-project no-match refusal on those assemblies.
+      - name: Upload synchronisation validation TRX
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: vulkan-sync-trx
+          path: TestResults/sync-trx/*.trx
+          retention-days: 7
+          if-no-files-found: error
 
       # On a host crash or cancelled run: surface the --blame Sequence.xml from the sync host. Kilobytes, failure
       # or cancellation, no dumps.

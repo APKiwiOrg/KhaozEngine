@@ -99,7 +99,7 @@ internal static class ShippedSceneExpectedFrames
     static MapFoliageFrame Foliage(ShippedSceneInputs inputs, SceneProbe probe, MapSubmissionAnchor anchor, bool explicitlyPlaced)
     {
         var o = inputs.SourcePolicy.Foliage;
-        var options = new MapFoliageFrameOptions(o.DrawRadius, o.DensityRadius, o.FadeBandWidth,
+        var options = new MapFoliageFrameOptions(explicitlyPlaced ? inputs.SourcePolicy.Placements.DefaultDrawRadius : o.DrawRadius, o.DensityRadius, o.FadeBandWidth,
             explicitlyPlaced ? 1 : o.QualityDensity, explicitlyPlaced ? 1 : o.DistantDensity, o.InstanceFadeBandWidth, o.FadeMode, o.WindFadeBladePixels);
         FoliageInteractor Interactor(int i)
         {

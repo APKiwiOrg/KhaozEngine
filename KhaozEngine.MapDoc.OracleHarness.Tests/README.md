@@ -789,7 +789,8 @@ execute the source settings, which are checked against native settings after key
 Static shadow cache keys are ID-derived transport values. The mapped effective native light ID
 determines its key through the released mapper policy. Capture preparation, the sink and diagnostics
 preserve that key, without a persisted key field or a fixed illustrative numeric literal. Explicit plant
-frame draw radius remains the declared foliage radius, with both density factors fixed to one.
+frame draw radius uses `placements.defaultDrawRadius`, matching the legacy prop route, with both density
+factors fixed to one. Generated cover keeps `foliage.drawRadius`. Both retain the cover fade and wind settings.
 
 Probe focus coordinates are either all explicit or all null. Explicit values become a checked framed
 point and are compared as actual anchor-local submission inputs. Scope probes with omitted focus use the single TopDown

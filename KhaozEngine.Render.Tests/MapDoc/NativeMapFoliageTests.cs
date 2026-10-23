@@ -332,7 +332,7 @@ public sealed class NativeMapFoliageTests
         var plant = Assert.Single(set.Draws, d => d.Resource.Key.OwnerId == "plant");
         Assert.Equal(1, plant.Foliage!.Value.Options.QualityDensity);
         Assert.Equal(1, plant.Foliage.Value.Options.DistantDensity);
-        Assert.Equal(4, plant.Foliage.Value.Options.DrawRadius);
+        Assert.Equal(100, plant.Foliage.Value.Options.DrawRadius);
         Assert.Equal(.7f, plant.Foliage.Value.State.WindStrength);
         Assert.All(set.Draws.Where(d => d.Resource.Key.OwnerId != "plant"), draw =>
         {

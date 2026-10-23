@@ -82,10 +82,11 @@ public sealed class MapPlacementRouting
     readonly string _policy;
     public string SceneWitnessDigest { get; }
     public string PolicyDigest { get; }
+    internal float DefaultDrawRadius { get; }
     public IReadOnlyDictionary<string, MapPlacementRoute> Entries { get; }
     MapPlacementRouting(MapScopedScene scene, MapPlacementPolicy policy, IReadOnlySet<string> animated, Dictionary<string, MapPlacementRoute> entries)
     {
-        _scene = scene; _policy = policy.Digest; SceneWitnessDigest = Witness(scene);
+        _scene = scene; _policy = policy.Digest; SceneWitnessDigest = Witness(scene); DefaultDrawRadius = policy.DefaultDrawRadius;
         PolicyDigest = MapPlacementDigest.Hash(w =>
         {
             w.WriteStartArray(); w.WriteStringValue("kemap/placement-routing/1"); w.WriteStringValue(policy.Digest);

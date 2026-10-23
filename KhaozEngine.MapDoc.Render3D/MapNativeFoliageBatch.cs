@@ -113,8 +113,9 @@ public sealed class MapNativeFoliageBatch : IDisposable
             var channels = MapDrawChannels.Colour;
             if (group.CastsShadows) channels |= MapDrawChannels.Shadow;
             var local = LocalState(state, group.Anchor);
-            // Authored placements do not participate in generated density thinning.
-            var drawOptions = group.Explicit ? options with { QualityDensity = 1, DistantDensity = 1 } : options;
+            // Authored placements use the ordinary prop radius without generated density thinning.
+            var drawOptions = group.Explicit ? options with
+            { DrawRadius = Routing.DefaultDrawRadius, QualityDensity = 1, DistantDensity = 1 } : options;
             sink.Write(new(resource.Reference, channels, group.Anchor, Matrix4x4.Identity,
                 MapRenderTransform.FocusLocal(frame.Focus, group.Anchor), null, null, null,
                 new(drawOptions, local, frame.TimeSeconds, frame.WindSeed)));

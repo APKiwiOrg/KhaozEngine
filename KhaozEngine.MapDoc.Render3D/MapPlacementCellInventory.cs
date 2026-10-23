@@ -1,32 +1,68 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.Terrain;
 
 namespace KhaozEngine.MapDoc.Render3D;
 
-/// <summary>Certifies full logical cell membership before a window may publish its canonical proxy.</summary>
-internal static class MapPlacementCellInventory
+/// <summary>Acquires complete logical cells selected by a window before mesh decode and proxy preparation.</summary>
+internal sealed class MapPlacementCellInventory
 {
-    internal static void RequireComplete(MapScopedScene scene, MapPlacementRouting routing, NativePropClusterRequest request)
+    internal sealed record Cell(PropClusterKey Key, MapScopedScene Scene, MapPlacementRouting Routing,
+        IReadOnlyList<MapResolvedPlacement> Members);
+
+    readonly Dictionary<PropClusterKey, Cell> _cells;
+    MapPlacementCellInventory(Dictionary<PropClusterKey, Cell> cells) => _cells = cells;
+    internal IReadOnlyCollection<Cell> Cells => _cells.Values;
+    internal Cell Get(PropClusterKey key) => _cells[key];
+
+    internal static MapPlacementCellInventory Capture(MapScopedScene scene, MapPlacementRouting routing)
     {
-        var layer = routing.ClusterLayer(request.Key.LayerId)
+        routing.Validate(scene);
+        var layers = routing.ClusterLayers;
+        int selectedCount = scene.Placements.Count(p => routing.Entries[p.PlacementId] == MapPlacementRoute.Cluster);
+        if (selectedCount == 0) return new(new());
+        var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(scene.Source.Data.Limits);
+        using var activation = admission.Enter();
+        admission.ReserveBytes(checked(128L + 64L * selectedCount));
+        var keys = layers.SelectMany(layer => scene.Placements
+                .Where(p => layer.AssetIds.Contains(p.AssetId) && routing.Entries[p.PlacementId] == MapPlacementRoute.Cluster)
+                .Select(p => MapPlacementCells.Key(layer.Id, NativeMapPlacements.Pose(scene, p), scene.Source.Data.TileSize)))
+            .Distinct().OrderBy(k => k.LayerId, StringComparer.Ordinal).ThenBy(k => k.X).ThenBy(k => k.Z).ToArray();
+        var cells = new Dictionary<PropClusterKey, Cell>();
+        foreach (var key in keys) cells.Add(key, Acquire(scene, routing, key));
+        return new(cells);
+    }
+
+    internal static Cell Acquire(MapScopedScene scene, MapPlacementRouting routing, PropClusterKey key)
+    {
+        var layer = routing.ClusterLayer(key.LayerId)
             ?? throw new MapDocumentException("Native cluster has no matching caller layer.");
         var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(scene.Source.Data.Limits);
         using var activation = admission.Enter();
         var result = scene.AcquireDependencies(scene.Scope with
         {
-            DrawBounds = MapPlacementCells.Coverage(request.Key, scene.Source.Data.TileSize),
+            DrawBounds = MapPlacementCells.Coverage(key, scene.Source.Data.TileSize),
             Channels = MapSceneChannels.Placements | MapSceneChannels.Annotations,
             MotionPaddingMetres = 0
         });
         var complete = result.Scene ?? throw new MapSceneSourceException(result.Status, "Native cluster cell discovery refused.");
         admission.ReserveBytes(checked(128L + 64L * complete.Placements.Count));
-        var expected = complete.Placements.Where(p => layer.AssetIds.Contains(p.AssetId) &&
-                MapPlacementCells.Key(layer.Id, NativeMapPlacements.Pose(complete, p), scene.Source.Data.TileSize) == request.Key)
-            .Select(p => p.PlacementId).Order(StringComparer.Ordinal);
-        if (!expected.SequenceEqual(request.Instances.Select(i => i.Id)))
-            throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid,
-                "Native HLOD requires the complete canonical cell inventory. Acquire every cell member before merging.");
+        var cellRouting = routing.ForScene(complete);
+        var members = complete.Placements.Where(p => layer.AssetIds.Contains(p.AssetId) &&
+                cellRouting.Entries[p.PlacementId] == MapPlacementRoute.Cluster &&
+                MapPlacementCells.Key(layer.Id, NativeMapPlacements.Pose(complete, p), scene.Source.Data.TileSize) == key)
+            .OrderBy(p => p.PlacementId, StringComparer.Ordinal).ToArray();
+        if (members.Length == 0)
+            throw new MapSceneSourceException(MapSceneStatus.Invalid, "Native cluster cell discovery omitted its selected members.");
+        admission.ReserveBytes(checked(32L * members.Length));
+        return new(key, complete, cellRouting, Array.AsReadOnly(members));
+    }
+
+    internal static void RequireMembers(Cell cell, NativePropClusterRequest request)
+    {
+        if (!cell.Members.Select(p => p.PlacementId).SequenceEqual(request.Instances.Select(i => i.Id)))
+            throw new MapDocumentException("Native cluster request omits canonical cell members.");
     }
 }

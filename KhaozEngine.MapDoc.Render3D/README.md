@@ -90,11 +90,12 @@ preparation. It never silently drops the cluster or falls back to individual geo
 Merged vertices round once after certification, within the 0.0001 m binary32 submission allowance.
 Content digests retain inventory, transforms,
 closure and weld settings separately from the stable spatial owner key.
-Cell discovery certifies the full layer inventory through the captured source and its existing admission.
-Members are ordered by identity, and proxy payload identity excludes window witnesses. Windows containing
-the same complete cell share one upload and draw. A scope omitting any cell member refuses with `Invalid`
-before the shared merge builder or GPU upload. Acquire all cell members to enable HLOD. Partial proxies and
-individual fallbacks alongside another window's complete proxy are never published.
+Cell discovery acquires the complete layer inventory through the captured source and its existing admission
+before selected mesh decode. The complete cell supplies member poses and asset IDs for the merged proxy and
+its individual fallback. Members are ordered by identity, and proxy payload identity excludes window witnesses.
+Windows touching different parts of one cell prepare the same complete payload, share one upload and draw, and
+release the owner after the last membership. A normal window edge does not refuse. Failed cell acquisition
+refuses the plan with its typed source or capacity status. Partial proxies are never published.
 
 The shared `PropLayer.PlacementLayer` native overload freezes the actual instance inventory, every tier and
 caller thresholds. Both individual fallback and accepted proxies consume that shared layer. The released

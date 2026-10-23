@@ -46,7 +46,7 @@ public sealed class MapRenderPlan : IDisposable
     // Nested roof preparation can share this allowance before any retained allocation.
     internal static MapRenderPlan Prepare(MapSceneSource source, MapScopedScene scene, MapPreparedInputLease input,
         MapRenderPolicy policy, long generation, MapSceneAdmission admission, MapWindowFoliageContext? captured,
-        MapRenderContextLease? contextOwner = null, Action<long>? retainSamples = null)
+        MapRenderContextLease? contextOwner = null, Action<long>? retainSamples = null, MapPlacementCellInventory? cells = null)
     {
         ArgumentNullException.ThrowIfNull(input); ArgumentNullException.ThrowIfNull(policy);
         if (!ReferenceEquals(source, scene.Source) || !scene.Witness.CompleteForScope || input.ClosureHash != source.ClosureHash ||
@@ -60,9 +60,10 @@ public sealed class MapRenderPlan : IDisposable
             admission.ReserveBytes(1024);
             var routing = MapPlacementRouting.Create(scene, policy.Placements, policy.AnimatedAssets).Routing
                 ?? throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, "Native render routing refused caller policy.");
+            cells ??= MapPlacementCellInventory.Capture(scene, routing);
             var context = captured ?? CaptureFoliage(source, scene.Scope);
             terrain = NativeMapTerrain.Prepare(scene, input, policy.TerrainMaterials);
-            placements = NativeMapPlacements.Prepare(scene, input, policy.Placements, routing);
+            placements = NativeMapPlacements.Prepare(scene, input, policy.Placements, routing, cells);
             var water = NativeMapWater.Prepare(MapWaterScopedCompiler.Compile(scene), policy.Water.ToWaterLook(), new WaterSettings());
             foliage = NativeMapFoliage.Prepare(scene, context, input, policy.Foliage, routing, retainSamples);
             var geometry = MapPresentationGeometry.Prepare(scene, input.Assets.Closure, terrain.CanonicalFaces);
@@ -91,7 +92,8 @@ public sealed class MapRenderPlan : IDisposable
         return result.Context ?? throw new MapRenderAssetRefusal(result.Status == MapFoliageStatus.CapacityExceeded
             ? MapRenderAssetStatus.CapacityExceeded : MapRenderAssetStatus.Invalid, "Window foliage dependencies refused preparation.");
     }
-    internal static string[] SelectedAssets(MapScopedScene scene, MapWindowFoliageContext context) => scene.Placements.Select(p => p.AssetId)
+    internal static string[] SelectedAssets(MapScopedScene scene, MapWindowFoliageContext context, MapPlacementCellInventory? cells = null) => scene.Placements.Select(p => p.AssetId)
+        .Concat(cells?.Cells.SelectMany(c => c.Members.Select(p => p.AssetId)) ?? [])
         .Concat(scene.Scope.Channels.HasFlag(MapSceneChannels.Foliage)
             ? (((IMapFoliageInputs)context).Foliage?.Layers ?? []).Where(l => l.ChunkDigests.Count > 0).SelectMany(l => l.Models.Select(m => m.AssetId)) : [])
         .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();

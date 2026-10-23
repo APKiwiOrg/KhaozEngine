@@ -80,12 +80,13 @@ public sealed class MapPlacementRouting
 {
     readonly MapScopedScene _scene;
     readonly MapPlacementPolicy _policy;
+    readonly IReadOnlySet<string> _animated;
     public string SceneWitnessDigest { get; }
     public string PolicyDigest { get; }
     public IReadOnlyDictionary<string, MapPlacementRoute> Entries { get; }
     MapPlacementRouting(MapScopedScene scene, MapPlacementPolicy policy, IReadOnlySet<string> animated, Dictionary<string, MapPlacementRoute> entries)
     {
-        _scene = scene; _policy = policy; SceneWitnessDigest = Witness(scene);
+        _scene = scene; _policy = policy; _animated = animated; SceneWitnessDigest = Witness(scene);
         PolicyDigest = MapPlacementDigest.Hash(w =>
         {
             w.WriteStartArray(); w.WriteStringValue("kemap/placement-routing/1"); w.WriteStringValue(policy.Digest);
@@ -126,6 +127,9 @@ public sealed class MapPlacementRouting
             throw new MapDocumentException("Placement routing belongs to another scene or caller policy.");
     }
     internal MapPlacementLayer? ClusterLayer(string id) => _policy.Layers.FirstOrDefault(l => l.Id == id && l.HlodDistance > 0);
+    internal IReadOnlyList<MapPlacementLayer> ClusterLayers => _policy.Layers.Where(l => l.HlodDistance > 0).ToArray();
+    internal MapPlacementRouting ForScene(MapScopedScene scene) => Create(scene, _policy, _animated).Routing
+        ?? throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, "Canonical cluster cell routing refused caller policy.");
     static string Witness(MapScopedScene scene) => MapPlacementDigest.Hash(w =>
     {
         var witness = scene.Witness;

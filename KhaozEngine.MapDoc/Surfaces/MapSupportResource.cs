@@ -94,7 +94,8 @@ public static class MapSupportResourceFile
         {
             if (patch is null || patch.Key != key || !surfaces.Contains(key.SurfaceId))
                 throw new MapDocumentException("Support resource patches must belong to a declared surface.");
-            _ = MapSurfacePatchCodec.Encode(patch);
+            _ = MapSurfacePatchCodec.Encode(patch, out var encoding);
+            using var consumedEncoding = encoding;
             var surface = resource.Surfaces.Refs.Single(s => s.Id == key.SurfaceId);
             if (MapSurfaceCompiler.Compile(surface, patch).LegacyFallbackCells.Count != 0)
                 throw new MapDocumentException("Support resources cannot declare analytic fallback cells.");

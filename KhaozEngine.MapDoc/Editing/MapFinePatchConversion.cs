@@ -130,7 +130,8 @@ public static class MapFinePatchConversion
             RequireValid(MapSeamValidator.ValidateCornerDependencies(patch, view));
         foreach (MapSurfacePatch patch in patches)
         {
-            _ = MapSurfacePatchCodec.Encode(patch);
+            _ = MapSurfacePatchCodec.Encode(patch, out var encoding);
+            using var consumedEncoding = encoding;
             _ = MapSurfaceCompiler.Compile(fine, patch);
         }
         IReadOnlyList<MapAuthoredDifference> differences = MapConversionDifferences.Collect(surfaces, candidate,

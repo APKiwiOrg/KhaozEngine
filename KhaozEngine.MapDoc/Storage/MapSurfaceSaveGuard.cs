@@ -94,7 +94,11 @@ internal static class MapSurfaceSaveGuard
             // Compare canonical records without treating a permitted height or cell edit as a record edit.
             afterRecords.Heights = beforeRecords.Heights;
             afterRecords.Cells = beforeRecords.Cells;
-            if (!MapSurfacePatchCodec.Encode(beforeRecords).AsSpan().SequenceEqual(MapSurfacePatchCodec.Encode(afterRecords)))
+            byte[] beforeBytes = MapSurfacePatchCodec.Encode(beforeRecords, out var beforeEncoding);
+            using var consumedBefore = beforeEncoding;
+            byte[] afterBytes = MapSurfacePatchCodec.Encode(afterRecords, out var afterEncoding);
+            using var consumedAfter = afterEncoding;
+            if (!beforeBytes.AsSpan().SequenceEqual(afterBytes))
                 throw new MapDocumentException("unsupported partial edit: records");
         }
         if (surfaceChanged) throw new MapDocumentException("unsupported partial edit: surface");

@@ -238,7 +238,8 @@ public static class MapPrefabValidation
                 foreach (MapSurfacePatch patch in s.Patches)
                 {
                     if (patch.Key.SurfaceId != s.Surface.Id || patch.Records.Count != 0) Fail("Surface children must contain only their geometry and no embedded records.");
-                    _ = MapSurfacePatchCodec.Encode(patch);
+                    _ = MapSurfacePatchCodec.Encode(patch, out var encoding);
+                    using var consumedEncoding = encoding;
                 }
                 break;
             case MapPrefabRecordChild { Value: MapPrismDomain prism }:

@@ -86,7 +86,8 @@ internal static class MapSurfaceTiledStore
     }
     internal static MapSurfaceIndexEntry Entry(MapSurfacePatch patch, IReadOnlyList<MapRecordRef> incident, IReadOnlyList<string> spaces)
     {
-        byte[] bytes = MapSurfacePatchCodec.Encode(patch);
+        byte[] bytes = MapSurfacePatchCodec.Encode(patch, out var ownership);
+        using var consumed = ownership;
         return new(patch.Key, MapSurfaceRanges.Rectangle(patch), patch.Heights.Min(), patch.Heights.Max(),
             MapSurfaceStorageLayout.Digest(bytes), MapSurfaceSemantics.PatchDigest(patch),
             Array.AsReadOnly(patch.CornerDependencies.Select(d => d.Owner.Patch).Distinct().OrderBy(k => k).ToArray()),
@@ -214,7 +215,8 @@ internal static class MapSurfaceTiledStore
     {
         foreach (var payload in prepared.Payloads)
         {
-            byte[] bytes = MapSurfacePatchCodec.Encode(payload.Patch);
+            byte[] bytes = MapSurfacePatchCodec.Encode(payload.Patch, out var ownership);
+            using var consumed = ownership;
             if (MapSurfaceStorageLayout.Digest(bytes) != payload.Digest)
                 throw new MapDocumentException("document changed during surface save");
             WriteFile(root, 'p', bytes, save, touched);

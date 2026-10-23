@@ -1040,7 +1040,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   keep rule. `SurfaceMaps.AlphaCutoff` reaches plain and dissolved ordinary skinned colour draws and both target
   outline masks. `Scene3DTileWorldScene` forwards the grouped methods, while the `ITileWorldScene` defaults keep
   older implementations compiling and make dissolved submission fall back to plain submission. Cascaded
-  key-light skinned alpha cutout remains follow-up [#1097](https://github.com/APKiwiOrg/KhaozEngine/issues/1097).
+  key-light alpha cutout for linear-blend skins remains follow-up
+  [#1097](https://github.com/APKiwiOrg/KhaozEngine/issues/1097). Dual quaternion skins already cut out in the cascades.
 - Debug wire volumes: `Scene3D.DebugWireSphere` / `DebugWireDome` (hemisphere, flat side down) /
   `DebugWireCylinder` (vertical, `radius` + `halfHeight`) / `DebugWireCircle`, each `(..., Color color, float
   opacity = 1, DebugDepthMode depth = DepthTested, int segments = DebugWireSegments)`. Immediate-mode (cleared each

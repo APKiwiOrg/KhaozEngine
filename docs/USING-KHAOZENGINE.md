@@ -5041,8 +5041,8 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         light's base row number. The receiver selects one face and local UV for each hard or soft tap, reads both
         atlases there, and compares against the nearer stored depth. When no transient row is assigned it takes
         the original base-only path before any transient fetch. Skinned colour and target-outline alpha cutouts
-        are available, while skinned key-light cutout remains
-        [#1097](https://github.com/APKiwiOrg/KhaozEngine/issues/1097) and point-light MASK alpha testing remains
+        are available, while linear-blend skinned key-light cutout remains
+        [#1097](https://github.com/APKiwiOrg/KhaozEngine/issues/1097) (dual quaternion skins have it) and point-light MASK alpha testing remains
         [#1098](https://github.com/APKiwiOrg/KhaozEngine/issues/1098). This adds no point-shadow quality field
         and no new draw overload.
       - **A LAMP IS SHADOWED BY ITSELF UNLESS YOU CLEAR ITS FIXTURE** (issue #1010). The pass stores the nearest
@@ -19257,7 +19257,8 @@ keep rule or its complement. Fully invisible endpoint phases contribute no mask 
 
 `SurfaceMaps.AlphaCutoff` is retained for skinned materials and reaches plain and dissolved ordinary colour draws
 as well as both target outline masks. The ordinary body and its outline therefore use the same albedo cutout
-coverage. Cascaded key-light skinned alpha cutout remains scoped follow-up [#1097](https://github.com/APKiwiOrg/KhaozEngine/issues/1097).
+coverage. Cascaded key-light alpha cutout for linear-blend skins remains scoped follow-up
+[#1097](https://github.com/APKiwiOrg/KhaozEngine/issues/1097). Dual quaternion skins already cut out in the cascades.
 
 For authored tile objects, `TileWorldView.SetOutlinedObject(objectId, color, widthPixels: 1.25f, occlusion)`
 queues all active parts in one group until `ClearOutlinedObject()`. `ITileWorldScene.BeginMeshOutline` and

@@ -1,6 +1,6 @@
 # Metal frame label probe
 
-Permanent diagnostic archive on `probe/mac-frame-labels`, based on
+Permanent diagnostic archive on `fix/mac-frame-label-probe`, based on
 `66391b2d6fcadfe483849f5ffb8371bc13f55a78`. **Never merge this branch into main.**
 There is no version bump, public diagnostics API or portable backend change.
 

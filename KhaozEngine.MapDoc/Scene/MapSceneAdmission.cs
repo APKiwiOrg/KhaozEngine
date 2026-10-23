@@ -207,7 +207,7 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
         return bytes;
     }
 
-    static long CloneCapacity(int count, bool incremental)
+    internal static long CloneCapacity(int count, bool incremental)
     {
         if (count == 0) return 0;
         if (!incremental) return Math.Max(4L, count);

@@ -36,6 +36,9 @@ dispatch groups, local sizes, formats, samples, dimensions, seeds, serial edges 
 artifact hashes. Exact shader bytes use LF on all checkouts. Final output hashes describe the actual
 checked outputs and remain separate from the work definition digest.
 
+Arithmetic controls hash every uploaded seed byte. Generation, cold upload and output validation share
+the same private read-only seed data. A change to any input bit changes the authorized work identity.
+
 `RendererPerfControlShaderTests` validates SPIR-V, HLSL and MSL without a device and checks retained
 stores and arithmetic. The existing D3D11 validator also runs FXC when the test executes on Windows.
 The corpus describes intermediate compiler work, not physical registers, runtime occupancy or native

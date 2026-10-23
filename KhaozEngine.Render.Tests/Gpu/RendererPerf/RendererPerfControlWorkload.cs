@@ -118,10 +118,7 @@ internal sealed class RendererPerfControlWorkload : IRendererPerfNativeWork
         if (_input is { } input)
         {
             if (_control.Id is 9 or 10)
-            {
-                float[] seeds = Enumerable.Range(0, RendererPerfControls.ArithmeticInvocations).Select(RendererPerfControls.ArithmeticSeed).ToArray();
-                _device.UpdateBuffer(input, 0, seeds);
-            }
+                _device.UpdateBuffer<float>(input, 0, RendererPerfControls.ArithmeticSeeds);
             else
             {
                 uint[] chunk = Enumerable.Repeat(RendererPerfControls.Seed, (int)Math.Min(input.SizeInBytes / 4, 16384u)).ToArray();

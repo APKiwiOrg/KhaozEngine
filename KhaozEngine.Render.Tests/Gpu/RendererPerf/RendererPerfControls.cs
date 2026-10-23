@@ -19,14 +19,20 @@ internal static class RendererPerfControls
     internal const uint Seed = 0x12340000;
     internal const int ArithmeticInvocations = 65536;
     internal const int Width = 1920, Height = 1080;
+    static readonly float[] ArithmeticSeedData = Enumerable.Range(0, ArithmeticInvocations)
+        .Select(invocation => .25f + (invocation % 13) / 64f).ToArray();
+    internal static ReadOnlySpan<float> ArithmeticSeeds => ArithmeticSeedData;
     internal static readonly ImmutableArray<GpuPixelFormat> MrtFormats = [GpuPixelFormat.R16G16B16A16Float,
         GpuPixelFormat.R8G8B8A8UNorm, GpuPixelFormat.R32Float, GpuPixelFormat.R16G16Float];
     static readonly string[] Names = ["empty-frame", "empty-main-mrt", "empty-depth-only", "observable-dispatch",
         "dependent-dispatch-36", "independent-dispatch-36", "storage-256-mib", "storage-32-mib",
         "fp32-independent-fma", "dependent-divide-root", "fullscreen-write", "fullscreen-blend-depth-8"];
-    internal static RendererPerfControlFacts Definition(int id)
+    internal static RendererPerfControlFacts Definition(int id) => Definition(id, id is 9 or 10 ? ArithmeticSeeds : []);
+    internal static RendererPerfControlFacts Definition(int id, ReadOnlySpan<float> arithmeticSeeds)
     {
         if (id < 1 || id > 12) throw new ArgumentOutOfRangeException(nameof(id));
+        if (id is 9 or 10 && arithmeticSeeds.Length != ArithmeticInvocations)
+            throw new ArgumentException("The work identity requires every uploaded arithmetic seed.", nameof(arithmeticSeeds));
         long storage = id == 7 ? 256L * 1024 * 1024 : id == 8 ? 32L * 1024 * 1024 : 0;
         int dispatches = id is 5 or 6 ? 36 : id is >= 4 and <= 10 ? 1 : 0;
         long reads = storage != 0 ? storage : id is >= 4 and <= 6 ? dispatches * 4
@@ -39,7 +45,7 @@ internal static class RendererPerfControls
         var facts = new RendererPerfControlFacts(id, Names[id - 1], dispatches, id == 5 ? 35 : 0,
             reads, writes, ops, id == 9 ? "fp32-fma" : id == 10 ? "dependent-divide-root" : "none",
             id == 12 ? 8 : id == 11 ? 1 : 0, "");
-        string hash = RendererPerfRecipe.Digest(new
+        var work = new
         {
             Version = "1",
             Facts = facts,
@@ -65,7 +71,12 @@ internal static class RendererPerfControls
             Validation = "all output elements after final completion, no timed readback",
             CommonHost = "production initial RGBA8 clear and End tail included in outer duration",
             Graphics = "control 11 overrides four MRT outputs, control 12 alpha blends color and preserves normal/depth-color/motion, depth less-equal without writes",
-        });
+        };
+        string hash = id is 9 or 10 ? RendererPerfRecipe.Digest(new
+        {
+            Work = work,
+            ArithmeticSeedSha256 = RendererPerfRecipe.Hash(MemoryMarshal.AsBytes(arithmeticSeeds))
+        }) : RendererPerfRecipe.Digest(work);
         return facts with { WorkSha256 = hash };
     }
     internal static IRendererPerfNativeWork Create(IGpuDevice device, RendererPerfControl control)
@@ -114,7 +125,7 @@ internal static class RendererPerfControls
             .Add("fill.pixelsPerSecond", Rate((long)Width * Height * facts.Draws, "pixels/s", "matched fullscreen layers"));
     }
 
-    internal static float ArithmeticSeed(int invocation) => .25f + (invocation % 13) / 64f;
+    internal static float ArithmeticSeed(int invocation) => ArithmeticSeedData[invocation];
     internal static float[] ExpectedArithmetic(int id, int invocation)
     {
         if (id is not (9 or 10)) throw new ArgumentOutOfRangeException(nameof(id));

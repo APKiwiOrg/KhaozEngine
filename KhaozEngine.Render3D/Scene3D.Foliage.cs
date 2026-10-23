@@ -70,7 +70,7 @@ public sealed partial class Scene3D
         return mesh.Bounds;
     }
 
-    // Storage indices are recycled in free-list order. Keep cold-scene draw order for coplanar multipart foliage.
+    // Preparation order survives recycled indices and asynchronous publication of coplanar multipart foliage.
     long FoliageMeshOrder(MeshHandle handle) => _slots.AllocationOrder(handle.Index, handle.Generation);
 
     /// <summary>Queue conservative patch prefixes. Wind and exact distance fades run on the GPU.

@@ -6,10 +6,12 @@ namespace KhaozEngine.Render3D;
 
 public sealed partial class Scene3D
 {
+    internal long ReserveMeshOrder() => _slots.ReserveAllocationOrder();
+
     internal MeshHandle PublishUploadedMesh(GltfMesh source, IGpuBuffer vertices, IGpuBuffer normals, IGpuBuffer indices,
         IGpuTexture? albedo, IGpuTexture? normal, IGpuTexture? roughness, float alphaCutoff,
         SceneGroundMaterialData? ground, IGpuTexture? groundAlbedo, IGpuBuffer? groundParams,
-        List<IDisposable> owned)
+        List<IDisposable> owned, long meshOrder)
     {
         IGpuResourceSet? material = null, outline = null, cutout = null;
         int tileGround = -1;
@@ -28,16 +30,16 @@ public sealed partial class Scene3D
             { cutout = _model.ShadowMap.CreateCutoutMaterialSet(albedo); owned.Add(cutout); }
         }
         var published = PublishMesh(source, vertices, normals, indices, material, outline, alphaCutoff: alphaCutoff,
-            tileGroundMaterial: tileGround, shadowCutout: cutout);
+            tileGroundMaterial: tileGround, shadowCutout: cutout, meshOrder: meshOrder);
         _publishedResourceMeshes.Add(published);
         return published;
     }
     MeshHandle PublishMesh(GltfMesh source, IGpuBuffer vertices, IGpuBuffer normals, IGpuBuffer indices,
         IGpuResourceSet? material, IGpuResourceSet? outline, int splatMaterial = -1, float alphaCutoff = 0,
-        int tileGroundMaterial = -1, IGpuResourceSet? shadowCutout = null)
+        int tileGroundMaterial = -1, IGpuResourceSet? shadowCutout = null, long meshOrder = 0)
     {
         var bounds = MeshBounds.FromVertices(source.Vertices);
-        int index = _slots.Alloc(out int generation);
+        int index = _slots.Alloc(out int generation, meshOrder);
         var mesh = new Mesh(vertices, normals, indices, source.Indices32.Length, source.IndexFormat, bounds,
             material, outline, splatMaterial, alphaCutoff, tileGroundMaterial, shadowCutout);
         if (index < _meshes.Count) _meshes[index] = mesh;

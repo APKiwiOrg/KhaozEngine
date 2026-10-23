@@ -14,6 +14,7 @@ public sealed class SceneResourceUpload : IDisposable
     readonly Scene3D _scene;
     readonly IGpuDevice _device;
     readonly ISceneUploadReservation _reservation;
+    readonly long _meshOrder;
     SceneUploadData? _data;
     readonly List<Transfer> _transfers = new();
     readonly List<IDisposable> _owned = new();
@@ -30,7 +31,10 @@ public sealed class SceneResourceUpload : IDisposable
 
     internal SceneResourceUpload(Scene3D scene, IGpuDevice device, SceneUploadData data,
         SceneUploadDemand demand, ISceneUploadReservation reservation)
-    { _scene = scene; _device = device; _data = data; Demand = demand; _reservation = reservation; }
+    {
+        _scene = scene; _device = device; _data = data; Demand = demand; _reservation = reservation;
+        _meshOrder = data.BorrowMesh is null ? 0 : scene.ReserveMeshOrder();
+    }
 
     internal void Prepare()
     {
@@ -148,7 +152,7 @@ public sealed class SceneResourceUpload : IDisposable
             var data = _data!;
             if (data.BorrowMesh is { } mesh)
                 PublishedMesh = _scene.PublishUploadedMesh(mesh, _vertices!, _normals!, _indices!, _albedo, _normal, _roughness,
-                    data.BorrowMaps?.AlphaCutoff ?? 0, data.GroundMaterial, _groundAlbedo, _groundParams, _owned);
+                    data.BorrowMaps?.AlphaCutoff ?? 0, data.GroundMaterial, _groundAlbedo, _groundParams, _owned, _meshOrder);
             if (_clip is not null) _scene.PublishWaterDomain(PublishedMesh, _clip);
             if (PreparedFoliage is { } prepared) PublishedFoliage = _scene.PublishPreparedFoliage(prepared, _foliage, _anchor!, _owned);
             handle = _scene.PublishResource(this);

@@ -91,16 +91,10 @@ internal sealed class CoverageGpuResources : IDisposable
         if (!Available) return;
         var hostOffsets = new Dictionary<CoverageGpuHost, uint>();
         var supports = new Dictionary<CoverageSupportSurface, (CoverageGpuSupportUpload Upload, uint Offset)>();
-        var storageHosts = new Dictionary<CoverageGpuActor, CoverageGpuHostUpload>();
-        foreach (var actor in actors)
-        {
-            var requested = ReferenceEquals(actor, replacing) ? replacement! : actor.Supports;
-            int capacity = pipeline!.FilterPath == CoverageGpuFilterPath.Exact || requested.Length == 0
-                ? 0 : requested.Max(s => s.InwardTriangles.Count);
-            storageHosts.Add(actor, actor.Host.Upload with { FilterSupportCapacity = capacity });
-        }
-        if (storageHosts.Values.Sum(h => (long)CoverageGpuLayout.WorkWords(h)) > CoverageGpuFilterPolicy.MaximumWorkWords)
-            foreach (var actor in actors) storageHosts[actor] = storageHosts[actor] with { FilterSupportCapacity = 0 };
+        var reservedHosts = CoverageGpuFilterReservation.Fit(actors.Select(actor =>
+            CoverageGpuFilterReservation.ForSupports(actor.Host.Upload,
+                ReferenceEquals(actor, replacing) ? replacement! : actor.Supports, pipeline!.FilterPath)).ToArray());
+        var storageHosts = actors.Zip(reservedHosts).ToDictionary(pair => pair.First, pair => pair.Second);
         uint staticWords = 0, frames = 0, work = 0, surfaces = 0;
         foreach (var actor in actors)
         {

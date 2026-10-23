@@ -25,13 +25,10 @@ internal sealed class CoverageGpuTestSession : IDisposable
         if (topologies.Length != palettes.Length) throw new ArgumentException("One palette is required per actor.");
         this.device = device;
         hostIdentities = topologies.Select(t => t.HostIdentity).ToArray();
-        hosts = topologies.Select((t, i) => CoverageGpuUpload.Host(t, palettes[i].Length) with
-        {
-            FilterSupportCapacity = CoverageGpuFilterPolicy.Resolve(device.Backend, device.Capabilities) == CoverageGpuFilterPath.Exact
-                || commands is null || commands[i].Length == 0 ? 0 : commands[i].Max(c => c.Support.InwardTriangles.Count)
-        }).ToArray();
-        if (hosts.Sum(h => (long)CoverageGpuLayout.WorkWords(h)) > CoverageGpuFilterPolicy.MaximumWorkWords)
-            hosts = hosts.Select(h => h with { FilterSupportCapacity = 0 }).ToArray();
+        hosts = CoverageGpuFilterReservation.Fit(topologies.Select((t, i) =>
+            CoverageGpuFilterReservation.ForSupports(CoverageGpuUpload.Host(t, palettes[i].Length),
+                commands is null ? [] : commands[i].Select(c => c.Support).ToArray(),
+                CoverageGpuFilterPolicy.Resolve(device.Backend, device.Capabilities))).ToArray());
         headers = hosts.Select(CoverageGpuLayout.WorkHeader).ToArray();
         commandSupports = hosts.Select(_ => new uint[4]).ToArray();
         int frames = checked((int)hosts.Sum(h => (long)CoverageGpuLayout.FrameWords(h.BoneCount)));
@@ -82,6 +79,7 @@ internal sealed class CoverageGpuTestSession : IDisposable
     }
 
     internal CoverageGpuBatch Batch { get; }
+    internal uint SupportOffset(int actor, int slot) => commandSupports[actor][slot];
 
     void WriteCommands(Span<uint> frame, int actor, CoverageCommandPose[] commands, CoverageReferenceScratch scratch)
     {
@@ -148,6 +146,21 @@ internal sealed class CoverageGpuTestSession : IDisposable
                 Array.Fill(words, word);
                 device.UpdateBuffer(Batch.Work, CoverageGpuLayout.Bytes(Batch.Actors[actor].WorkBase + headers[actor][pair]), words);
             }
+    }
+
+    internal void PoisonFilterStorage(uint word)
+    {
+        for (int actor = 0; actor < hosts.Length; actor++)
+        {
+            foreach (int pair in new[] { 44, 46, 48, 50 })
+            {
+                var words = new uint[headers[actor][pair + 1] * (pair == 46 ? 3 : 1)];
+                if (words.Length == 0) continue;
+                Array.Fill(words, word);
+                device.UpdateBuffer(Batch.Work, CoverageGpuLayout.Bytes(Batch.Actors[actor].WorkBase + headers[actor][pair]), words);
+            }
+            device.UpdateBuffer(Batch.Work, CoverageGpuLayout.Bytes(Batch.Actors[actor].WorkBase + 52), new[] { word, word, word, word });
+        }
     }
 
     internal void PoisonNormalBases(uint word)

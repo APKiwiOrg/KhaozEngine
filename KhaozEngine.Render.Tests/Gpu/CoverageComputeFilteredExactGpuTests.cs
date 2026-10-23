@@ -44,6 +44,7 @@ public sealed class CoverageComputeFilteredExactGpuTests(ITestOutputHelper outpu
             using var pipeline = new CoverageGpuPipeline(device);
             Assert.Equal(CoverageGpuFilterPolicy.Resolve(device.Backend, device.Capabilities), pipeline.FilterPath);
             using var session = Session(device, cases, scratch);
+            CoverageFilterNativeEvidence.Batch(gpu.GpuDevice, pipeline, session.Batch, pattern, output);
             var actualPath = pipeline.PathFor(session.Batch);
             output.WriteLine($"FILTER PATH backend={gpu.Backend} adapter={gpu.Capabilities.DeviceName} path={actualPath} supported={pipeline.FilterPath} pattern={pattern}");
             session.PoisonContinuations(0x7fc00001u);
@@ -80,7 +81,7 @@ public sealed class CoverageComputeFilteredExactGpuTests(ITestOutputHelper outpu
                 if (pattern == "sparse") Assert.True(queuedPairs > 0 && queuedPairs < activePairs);
                 output.WriteLine($"FILTER QUEUE pattern={pattern} frozen=72 faces={queuedFaces}/{activeFaces} pairs={queuedPairs}/{activePairs} differences=0");
             }
-            else output.WriteLine($"FILTER QUEUE pattern={pattern} frozen=72 path=exact differences=0");
+            else output.WriteLine($"FILTER UNSUPPORTED filteredExecuted=false FILTER QUEUE pattern={pattern} frozen=72 path=exact differences=0");
             return observations;
         }
     }

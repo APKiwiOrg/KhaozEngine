@@ -25,6 +25,7 @@ public sealed class CoverageComputeEquivalenceGpuTests(ITestOutputHelper output)
         using var pipeline = new CoverageGpuPipeline(gpu.GpuDevice);
         Log(gpu, pipeline, output);
         using var session = Session(gpu.GpuDevice, cases, scratch);
+        CoverageFilterNativeEvidence.Batch(gpu.GpuDevice, pipeline, session.Batch, "frozen72", output);
         session.PoisonNormalBases(0x7fc00001u);
         for (int actor = 0; actor < cases.Length; actor++) session.UploadPosed(cases[actor].Posed, actor);
         Execute(gpu.GpuDevice, pipeline, session, CoverageGpuPhase.Select);

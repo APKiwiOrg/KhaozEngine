@@ -139,3 +139,38 @@ before a timing request. A different policy requires explicit root direction. No
 performance, compiler-statistics or stress run was made. The sync job succeeded, but validation
 cleanliness is not claimed because [#1539](https://github.com/APKiwiOrg/KhaozEngine/issues/1539)
 remains unresolved.
+
+## Fix round 1 verification scope
+
+The original native run above remains fallback evidence only. The follow-up test changes do not
+supply an admitted-adapter result and do not change FE-1, NC2, the arithmetic contract or frozen words.
+No additional native or timing dispatch is part of this fix.
+
+The targeted queue fact now uses two actors and two command regions. Height inputs at each region's
+sheet origin make deliberate empty, singleton and full face queues possible. A typed continuation
+copy at the overlay dispatch boundary activates 131 faces and 524 independent pairs. The pair queue
+populations are zero, one and 524, including a 12-item final group. Both queues check their complete
+stable index sequence. The stage inputs are controlled test data, with production producer,
+compaction, exact-consumer and replay modules. They are separate from the unchanged frozen inputs.
+
+The failure input has a successful maximum of 1 before the first failed pair. A later independent
+pair produces 9 and another pair fails. The direct reference query pins the prefix maximum of 1.
+The native fact compares every defined face continuation, event row, scalar row, failure and selected
+output with forced Exact. It checks ordinary and dense failure replay, reversed command order and
+actor-local queue ownership. Each capture is followed by a successful full construction on the same
+poisoned continuation, record, queue and count storage. Cold headless tests exercise the production
+reservation calculation, batch-wide 128 MiB fallback and actual support replacement ownership.
+
+The direct filter probe requests sign-only work and drives the production B30 crossing graph through
+the filtered worker. Independent integer polynomials choose the unrounded common exponent and both
+RN32 words before computing the downstream crossing parameter and all three constructed point words. Named rows pin binade neighbors, unequal sides,
+midpoints of both signs, cancellation, included guard edges, individually designated refusals,
+tiny raw sides, signed zero, endpoint and collinear behavior. Probe bodies enumerate every actually
+supported explicit denormal mode. The range and enclosure proof above remains the prerequisite.
+
+Future evidence prints the queried signed-zero/infinity/NaN, RTE, denormal-preservation and denormal-flush
+bits. Batch diagnostics print both the creation-fixed capability path and the actual reservation path.
+An unsupported adapter explicitly reports zero executed filter modes. A passing gated fact is not an
+executed certificate or queue proof. Admission, every supported mode, exact queue populations, accepted
+and refused certificate counts and zero differing words must be observed on the final immutable fix
+commit before timing or integration can become eligible.

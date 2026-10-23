@@ -58,6 +58,7 @@ internal static class CoverageGpuQueryProbe
         using IGpuResourceSet set = staticWords == null
             ? factory.CreateResourceSet(new(layout, source, result)) : factory.CreateResourceSet(new(layout, source, result, data));
         var precise = options ?? new GpuShaderCompileOptions(PreciseMath: true);
+        if (precise.RequireFloat32Eft) CoverageFilterNativeEvidence.Capabilities(device, output);
         byte[] spirv = SpirvFrontEnd.ToSpirv(text, GpuShaderStages.Compute, name, precise);
         CoverageSpirvAccessAudit.Validate(spirv, name, constantPrivateArrays: true);
         ShaderValidation.ValidateCompute(text, precise, name);

@@ -32,9 +32,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
     ///
     /// <para><b>THE SPLIT IS FORCED BY MM7 RATHER THAN CHOSEN FOR TIDINESS.</b> The design records that not one
     /// line of the incumbent's swapchain ran in CI on any leg, ever, and that zero automated coverage is what
-    /// this row is answering. A headless runner cannot drive a real layer, so the only coverage available for the
-    /// ORDER of a present boundary (present, then apply, then acquire, then publish), for the skipped present, for
-    /// the counters and for the coalescing is coverage taken against a fake. This interface is the line that makes
+    /// this row is answering. Native layer tests need macOS and a GPU. Cross-platform coverage for the
+    /// ORDER of frame resolution and a present boundary (acquire, publish, present, then apply), skipped presents,
+    /// counters and coalescing runs against a fake. This interface is the line that makes
     /// that possible, and <c>MetalSwapchainApi</c> is the seven-method implementation on the other side of
     /// it.</para>
     ///

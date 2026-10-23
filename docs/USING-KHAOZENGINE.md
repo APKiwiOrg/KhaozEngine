@@ -344,7 +344,8 @@ by default, so a client no longer free-runs a whole core plus the GPU out of the
   simplification. The question the arm asks is whether the backend's present throttles the CPU from vsync alone,
   and the only backend that ever answered no was the Veldrid Metal incumbent, deleted in 18.0.0. `D3D11Native`
   and `VulkanNative` throttle, and (measured 2026-08-11) so does the engine's own **`MetalNative`**, whose
-  present blocks the CPU in the drawable acquire for the whole vertical-blank wait. With `PresentMode.Immediate`
+  frame loop blocks the CPU in the drawable acquire at its first swapchain bind.
+  Preparation runs before that wait. With `PresentMode.Immediate`
   (any backend) it stays uncapped, respecting the lowest-latency intent. A
   consumer-set value always wins: `FrameCap.Uncapped` is an intentional free-run (the pre-10.96 default) and
   `FrameCap.Hz(n)` / a positive `FrameCapHz` is a fixed cap. A positive `GameAppOptions.FrameCapHz` overrides
@@ -397,11 +398,13 @@ app.Display.ApplyDisplay(s);
 framebuffer semantics are unchanged (the backbuffer always tracks the physical drawable). **Mac/Metal caveat,
 now history:** setting vsync engages `CAMetalLayer.displaySyncEnabled`, and the Veldrid Metal present did not
 throttle the CPU from vsync alone. That was measured on `GpuBackendKind.Metal` and applied to it alone. The
-engine's own `MetalNative` was measured on 2026-08-11 and its present DOES throttle: the drawable acquire blocks
+engine's own `MetalNative` was measured on 2026-08-11 with acquisition at present. That acquire blocked
 once per frame for 15.175 ms of a 16.669 ms frame, a display pinned to 120 Hz paces it at 120 fps, and turning
 vsync off mid-session free-runs past 700 fps with visible tearing. The incumbent was deleted in 18.0.0, so vsync
 with no software cap is a healthy configuration on every live backend and `FrameCap.Auto` resolves to uncapped
-everywhere. Nothing branches on `GameApp.Backend` to set a cap. The one-time `Console.Error` warning is GONE at 18.0.0:
+everywhere. Metal now acquires at the first swapchain bind, after preparation, with the same vsync policy.
+The historical timings above are not a measurement of this deferred acquisition. Nothing branches on
+`GameApp.Backend` to set a cap. The one-time `Console.Error` warning is GONE at 18.0.0:
 `AppWindow.WarnIfMetalVsyncUncapped` and its one-shot latch were deleted with the backend that tripped them, so
 nothing on the frame-cap path writes to `Console.Error` any more. The pure predicate
 `DisplaySettings.RequiresFrameCapWarning(backend, presentMode, frameCapHz)` STAYS, now a constant `false`, as
@@ -18214,9 +18217,13 @@ discards every draw in that frame. `SyncToVerticalBlank` always applies, where t
 on a machine outside that set. `ResizeSwapchain` and a `SyncToVerticalBlank` write both QUEUE and apply at the
 next `Present` after a drain, so they take no lock, make no native call and are safe from any thread, and a
 burst of thirty size events between two presents costs one apply. And the drawable acquire is counted and timed
-into `AcquireWaitCount` and `AcquireWaitMs`, one entry per boundary, because `-nextDrawable` BLOCKS and Metal
-offers no zero-timeout probe. Expect that pair to be non-zero under vsync: a vsync-paced frame SHOULD wait for a
-drawable.
+into `AcquireWaitCount` and `AcquireWaitMs`, one entry per acquired frame, because `-nextDrawable` BLOCKS and
+Metal offers no zero-timeout probe. Acquisition happens at the first swapchain framebuffer bind, including a
+cached wrapper, after `FramePhases` preparation. Repeated binds reuse the resolved frame, including nil.
+Construction publishes metadata only, and `Present` leaves the next frame unresolved. A present-only call
+acquires its own current drawable before presenting it. Resize dimensions still publish at the present boundary.
+This timing is an optimization candidate with no proven FPS gain. Expect that pair to be non-zero under vsync:
+a vsync-paced frame SHOULD wait for a drawable.
 
 **A fifth thing changes, and it is the one that touches resolution.** The layer's initial `drawableSize` is the
 content view's frame in POINTS multiplied by the window's backing scale factor, because a drawable size is in

@@ -12,7 +12,12 @@ namespace KhaozEngine.MapDoc.Prefabs;
 
 /// <summary>Payload-1 light in world metres, after one owner-frame composition and one point/radius freeze.</summary>
 public sealed record MapEffectiveLight(int PayloadVersion, string Id, string? OwnerPlacementId,
-    MapExactPoint Position, Vector3 Colour, float Intensity, float Radius, bool CastShadows);
+    MapExactPoint Position, Vector3 Colour, float Intensity, float Radius, bool CastShadows)
+{
+    /// <summary>The captured declaration retains owner-local box corners and world-metre clearances.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public MapLightShadowExclusion? ShadowExclusion { get; init; }
+}
 
 /// <summary>Resolved XYZ marker for role consumers. Ordered tags and optional instance provenance are retained. The
 /// position always carries the resolved height. Payload 2 adds the value-only height provenance and archetype, both
@@ -52,7 +57,8 @@ public static class MapEffectiveAnnotations
 
     internal static IReadOnlyList<MapEffectiveLight> CaptureLights(MapBuildingIntent intent, IReadOnlyDictionary<string, MapExactPoint> points) =>
         Array.AsReadOnly(intent.Lights.OrderBy(l => l.Id, StringComparer.Ordinal).Select(l =>
-            new MapEffectiveLight(l.PayloadVersion, l.Id, l.Owner?.Id, points[l.Id], l.Colour, l.Intensity, l.Radius, l.CastShadows)).ToArray());
+            new MapEffectiveLight(l.PayloadVersion, l.Id, l.Owner?.Id, points[l.Id], l.Colour, l.Intensity, l.Radius, l.CastShadows)
+            { ShadowExclusion = l.ShadowExclusion }).ToArray());
 
     // R6-P12. The released scheme stays unless a payload-2 marker is present. The witness channel is never digested.
     internal static string Digest(MapBuildingIntent intent, IReadOnlyList<MapEffectiveLight> lights, IReadOnlyList<MapEffectiveMarker> markers) =>

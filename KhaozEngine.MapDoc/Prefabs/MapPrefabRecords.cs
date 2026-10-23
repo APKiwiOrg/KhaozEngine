@@ -53,7 +53,12 @@ public sealed record MapPrefabBindingTransfer(string InstanceId, MapPrefabBindin
 }
 
 public sealed record MapLocalLightDoc(int PayloadVersion, string Id, MapPrefabReference? Owner,
-    Vector3 Position, Vector3 Colour, float Intensity, float Radius, bool CastShadows);
+    Vector3 Position, Vector3 Colour, float Intensity, float Radius, bool CastShadows)
+{
+    /// <summary>Absent retains the native owner-bounds exclusion. An explicit None disables that fallback.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public MapLightShadowExclusion? ShadowExclusion { get; init; }
+}
 /// <summary>An authored local marker. Payload 1 and payload-2 Explicit carry the authored height in Position.Y.
 /// Payload-2 Support carries Position.Y exactly +0 with no height meaning. Its resolved height is on
 /// MapEffectiveMarker.Position. The payload-2 members are omitted when null, so payload-1 bytes are unchanged.</summary>

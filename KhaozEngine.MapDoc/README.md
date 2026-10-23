@@ -676,6 +676,28 @@ distinct keys. Materialized transfers reuse the captured descriptor frame withou
 Markers retain exact XYZ, yaw, name, role, enabled state, ordered tags and optional instance provenance. They do
 not become `MapSpawn`. R8 renders lights.
 
+Light payload 1 accepts optional `shadowExclusion` on `MapLocalLightDoc` and retains it on
+`MapEffectiveLight`. It is an additive field in format 9, including monolithic and tiled building intent,
+prefab Light children, typed leaf light resources and materialized attachments. No format or payload
+migration is needed. Omitting it preserves released bytes, identities and the native owner render/LOD-bounds
+box. An unowned light without a declaration has no exclusion.
+
+The declaration is one closed choice:
+
+- `{"kind":"None"}` requests a static shadow with no exclusion.
+- `{"kind":"NearSphere","radius":0.625}` excludes a sphere around the emitter. Radius is finite,
+  nonnegative world metres, independent of owner scale.
+- `{"kind":"FixtureBox","min":{"x":-1,"y":-1,"z":-1},"max":{"x":1,"y":1,"z":1},"margin":0.125}`
+  requires an owner placement and finite corners strictly ordered on every axis. Corners are metres in
+  that owner's local frame, independent of asset source units and of any explicit light frame. Submission
+  transforms all eight corners by the effective owner pose, then grows the world-axis-aligned envelope
+  by the finite nonnegative margin in world metres. The margin does not scale with the owner.
+
+Only the selected kind's fields are accepted. `CastShadows = false` always submits no shadow. Explicit
+exclusions participate in annotation, render replacement and capture-lighting identity. Null declarations
+are omitted and have the same fallback as an absent field. Record edits, prefab expansion and extraction
+retain the declaration without converting its owner-local corners or scaling its world-metre settings.
+
 ### Marker payloads and height modes
 
 Format 8 keeps marker payload 1 byte for byte and adds payload 2, used by world markers and prefab Marker children

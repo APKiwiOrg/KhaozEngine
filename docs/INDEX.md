@@ -238,4 +238,7 @@ backlog here: a follow-up recorded only in a design doc is invisible to the ledg
   cost a repair commit each time. Documentation, tooling and governance ride a released version without
   bumping it, so those pushes are not refused, and a side branch may sit at an old release untouched. The
   rule is `tag_release_window` plus `tag_version_bearing` in `scripts/tag-standard.sh`, exercised by
-  `scripts/tests/version-push-guard.test.sh`. `git push --no-verify` is the deliberate exception.
+  `scripts/tests/version-push-guard.test.sh`. Non-packable test projects may import literal props paths
+  within `test-shared/` when the committed XML proves those files contain only false packability,
+  compile items and assembly attributes. Unknown or conditional XML stays version-bearing, and both
+  ends of the changed range are checked. `git push --no-verify` is the deliberate exception.

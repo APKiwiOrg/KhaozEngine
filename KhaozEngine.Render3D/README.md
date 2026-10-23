@@ -1533,3 +1533,10 @@ unchanged. They select existing patches with frame settings, without expansion, 
 Native colour, motion and shadow shaders adjust their view-projection matrices by anchor minus render origin.
 Point shadows reuse the published 96-byte instance stream at rest, with no lazy proxy upload or origin rebuild.
 Frame uniforms remain dynamic. The legacy `DrawFoliage` and `DrawGroundCover` paths retain lazy upload behavior.
+
+### Strict decoder capacity
+
+`GltfDecodeBudget.TryReserve(ownedBytes, temporaryBytes, out capacity)` preserves a refused peak's
+limit name, aggregate requested amount and allowance without charging the reservation.
+`GltfDecodeAdmission.Capacity` and `GltfDecodeRefusal.Capacity` retain byte, vertex, index and image
+refusals as `GltfDecodeCapacity`. Successful admission and decoding keep their existing limits.

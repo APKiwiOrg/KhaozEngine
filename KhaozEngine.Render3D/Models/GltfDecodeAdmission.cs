@@ -63,7 +63,9 @@ public sealed class GltfDecodeAdmission
         var reader = new Utf8JsonReader(jsonBytes.Span);
         while (reader.Read()) tokens = checked(tokens + 1);
         long metadata = checked(512L + glb.Length * 2L + jsonBytes.Length * 6L + tokens * 32);
-        if (metadata > budget.RemainingBytes) return new(false, metadata, capacity: budget.PeakCapacity(metadata));
+        long remaining = budget.RemainingBytes;
+        if (metadata > remaining) return new(false, metadata, capacity: new(nameof(GltfDecodeLimits.MaxPeakBytes),
+            (decimal)budget.Limits.MaxPeakBytes - remaining + metadata, budget.Limits.MaxPeakBytes));
         using var json = JsonDocument.Parse(jsonBytes);
         JsonElement root = json.RootElement;
         if (root.GetProperty("asset").GetProperty("version").GetString() != "2.0")
@@ -161,8 +163,9 @@ public sealed class GltfDecodeAdmission
         long arrayHeaders = checked(24L * (64 + 32L * materials.Count + 10L * facts.Length + nodeCount + 3L * images.Count));
         long peak = checked(metadata + owned + corners * (256 + weldPerCorner) + indices * 16 +
             nodeCount * 64L + pixels * 8 + encodedImages * 2 + arrayHeaders);
-        return new(peak <= budget.RemainingBytes, peak, owned, corners, indices, materials.Count, facts, images.ToArray(),
-            peak <= budget.RemainingBytes ? null : budget.PeakCapacity(peak));
+        remaining = budget.RemainingBytes;
+        return new(peak <= remaining, peak, owned, corners, indices, materials.Count, facts, images.ToArray(),
+            peak <= remaining ? null : new(nameof(GltfDecodeLimits.MaxPeakBytes), (decimal)budget.Limits.MaxPeakBytes - remaining + peak, budget.Limits.MaxPeakBytes));
 
         void AddImage(JsonElement material, string channel)
         {

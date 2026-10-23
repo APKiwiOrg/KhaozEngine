@@ -53,6 +53,7 @@ public sealed class MapRenderAssetCache : IDisposable
             var added = new List<string>();
             try
             {
+                using var decoderWorkspace = new MapRenderDecodeWorkspace(budget);
                 var pieces = new List<MapPreparedInputLease>();
                 foreach (string id in selected)
                 {
@@ -95,7 +96,7 @@ public sealed class MapRenderAssetCache : IDisposable
                 foreach (string pieceKey in added) { _pieces[pieceKey].Dispose(); _pieces.Remove(pieceKey); }
                 throw;
             }
-            catch (Exception error) when (error is MapRenderAssetRefusal or MapDocumentException or GltfDecodeRefusal or OverflowException)
+            catch (Exception error) when (error is MapSceneCapacityException or MapRenderAssetRefusal or MapDocumentException or GltfDecodeRefusal or OverflowException)
             {
                 foreach (string pieceKey in added) { _pieces[pieceKey].Dispose(); _pieces.Remove(pieceKey); }
                 return new(MapRenderAssets.Status(error), null, error.Message) { Capacity = MapRenderDecodeCapacity.From(error) };

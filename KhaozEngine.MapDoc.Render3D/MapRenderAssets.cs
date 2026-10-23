@@ -122,6 +122,7 @@ public sealed class MapRenderAssets : IDisposable
 
     internal static MapRenderAssetStatus Status(Exception ex) => ex switch
     {
+        MapSceneCapacityException => MapRenderAssetStatus.CapacityExceeded,
         MapRenderAssetRefusal refusal => refusal.Status,
         GltfDecodeRefusal { Status: GltfDecodeStatus.CapacityExceeded } => MapRenderAssetStatus.CapacityExceeded,
         GltfDecodeRefusal { Status: GltfDecodeStatus.Unsupported } => MapRenderAssetStatus.Unsupported,

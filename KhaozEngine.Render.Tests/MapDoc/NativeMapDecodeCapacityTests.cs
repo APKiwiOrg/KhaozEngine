@@ -9,6 +9,24 @@ namespace KhaozEngine.Tests.MapDoc;
 public sealed class NativeMapDecodeCapacityTests
 {
     [Fact]
+    public void CacheDecode_ReservesScenePeakBeforeModelEntry()
+    {
+        using var fixture = ResidencyFixture.Placement();
+        var state = fixture.State(ResidencyFixture.Window());
+        var scene = new MapSceneAdmission(new(MaxPreparedBytes: 8192));
+        using var active = scene.Enter();
+        using var cache = new MapRenderAssetCache();
+        int model = GltfDecodeAdmission.ModelDecodeEntries;
+        var result = cache.Acquire(state.Closure, ["prop-a"], [], state.Extents, new(new(MaxPeakBytes: 32768)));
+        Assert.Equal(MapRenderAssetStatus.CapacityExceeded, result.Status);
+        Assert.Null(result.Input);
+        Assert.Equal(new MapSceneCapacity("MaxPreparedBytes", 32768, 8192), result.Capacity);
+        Assert.Equal(model, GltfDecodeAdmission.ModelDecodeEntries);
+        Assert.Equal(0, scene.WorkspaceBytes);
+        Assert.Equal(0, scene.RetainedBytes);
+    }
+
+    [Fact]
     public void CompositionRefusal_RetainsTheCallerPlanWindow()
     {
         using var fixture = ResidencyFixture.Placement();

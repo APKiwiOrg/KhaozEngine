@@ -3,30 +3,44 @@ using System;
 namespace KhaozEngine.MapDoc.Scene;
 
 /// <summary>One operation or product owns its capacity until explicit release.</summary>
-internal sealed class MapPreparationReservation(MapPreparationLedger ledger, MapPreparationLedger.Window? window, bool retained) : IDisposable
+internal sealed class MapPreparationReservation : IDisposable
 {
+    readonly MapPreparationLedger _ledger;
+    readonly MapPreparationLedger.Window? _window;
+    readonly bool _retained;
+    internal MapPreparationReservation(MapPreparationLedger ledger, MapPreparationLedger.Window? window, bool retained)
+    { _ledger = ledger; _window = window; _retained = retained; }
     bool _disposed;
     internal long Bytes { get; private set; }
     internal void Reserve(long bytes)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        ledger.Add(window, bytes, retained);
+        _ledger.Add(_window, bytes, _retained);
         Bytes += bytes;
     }
     internal void Release(long bytes)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (bytes < 0 || bytes > Bytes) throw new ArgumentOutOfRangeException(nameof(bytes));
-        ledger.Remove(window, bytes, retained);
+        _ledger.Remove(_window, bytes, _retained);
         Bytes -= bytes;
     }
     internal MapPreparationReservation Transfer(long bytes)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (retained || bytes < 0 || bytes > Bytes) throw new ArgumentOutOfRangeException(nameof(bytes));
-        var owner = new MapPreparationReservation(ledger, window, true) { Bytes = bytes };
-        ledger.Transfer(bytes); Bytes -= bytes;
+        if (_retained || bytes < 0 || bytes > Bytes) throw new ArgumentOutOfRangeException(nameof(bytes));
+        var owner = new MapPreparationReservation(_ledger, _window, true) { Bytes = bytes };
+        _ledger.Transfer(bytes); Bytes -= bytes;
         return owner;
+    }
+    internal void Absorb(MapPreparationReservation product)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (product._disposed || product.Bytes == 0) return;
+        if (_retained || !product._retained || _ledger != product._ledger || _window != product._window)
+            throw new InvalidOperationException("An operation can only adopt its own unpublished products.");
+        _ledger.ReturnToWorkspace(product.Bytes);
+        Bytes += product.Bytes; product.Bytes = 0;
     }
     public void Dispose()
     {

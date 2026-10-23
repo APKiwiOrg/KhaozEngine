@@ -7,6 +7,20 @@ namespace KhaozEngine.Tests.MapDoc.Scene;
 public sealed class MapPreparationLifetimeTests
 {
     [Fact]
+    public void ParentFailure_ReleasesUnpublishedChildProducts()
+    {
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 100));
+        using (admission.BeginPreparation())
+        {
+            using var child = admission.BeginPreparation();
+            admission.ReserveBytes(60);
+            child.Complete(40);
+        }
+        Assert.Equal(0, admission.RetainedBytes);
+        Assert.Equal(0, admission.WorkspaceBytes);
+    }
+
+    [Fact]
     public void OperationScope_UnwindsFailureAndPublishesOnlyOwnedOutput()
     {
         var admission = new MapSceneAdmission(new(MaxPreparedBytes: 100));

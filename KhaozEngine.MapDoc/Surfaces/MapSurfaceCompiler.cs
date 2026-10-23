@@ -32,6 +32,7 @@ public static class MapSurfaceCompiler
         if (maxFaces < 0) throw new ArgumentOutOfRangeException(nameof(maxFaces));
         MapSurfaceRef surface = validated.Surface;
         MapSurfacePatch patch = validated.Patch;
+        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
         Scene.MapSceneAdmission.Current?.BeforeCompile(patch, cells, surface, logical);
         try
         {
@@ -39,7 +40,9 @@ public static class MapSurfaceCompiler
             if (count > maxFaces) throw new MapDocumentException($"compiled patch exceeds face budget {maxFaces}");
             if (surface.Role == MapSurfaceRole.PaintOverride)
                 throw new MapDocumentException("paint override has no physical faces. Use ApplyPaintOverride.");
-            return CompileCore(surface, patch, cells, (int)count, logical);
+            var result = CompileCore(surface, patch, cells, (int)count, logical);
+            result.PreparationOwnership = preparation?.Complete(result.InventoryBytes);
+            return result;
         }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         {
@@ -55,7 +58,8 @@ public static class MapSurfaceCompiler
         ArgumentNullException.ThrowIfNull(cells);
         MapSurfaceRef surface = validated.Surface;
         MapSurfacePatch patch = validated.Patch;
-        Scene.MapSceneAdmission.Current?.ReserveBytes(checked(16L * patch.Width * patch.Depth));
+        using var subdivisionWorkspace = Scene.MapSceneAdmission.Current?.Workspace();
+        subdivisionWorkspace?.Reserve(checked(16L * patch.Width * patch.Depth));
         int[] subdivisions = Subdivisions(patch);
         long count = 0;
         for (int z = 0; z < patch.Depth; z++)
@@ -105,7 +109,8 @@ public static class MapSurfaceCompiler
         var faces = new List<MapCompiledFace>(count);
         var paint = new List<MapPaintCoverage>(count);
         var fallback = new List<MapFallbackCell>();
-        Scene.MapSceneAdmission.Current?.ReserveBytes(checked(16L * patch.Width * patch.Depth));
+        using var subdivisionWorkspace = Scene.MapSceneAdmission.Current?.Workspace();
+        subdivisionWorkspace?.Reserve(checked(16L * patch.Width * patch.Depth));
         int[] subdivisions = Subdivisions(patch);
         Span<MapLatticeTriangle> parents = stackalloc MapLatticeTriangle[4];
         Span<MapSurfaceVertex> boundary = stackalloc MapSurfaceVertex[MaxChildrenPerParent];

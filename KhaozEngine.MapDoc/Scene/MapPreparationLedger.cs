@@ -63,6 +63,8 @@ internal sealed class MapPreparationLedger(long allowance, string limitName)
     }
     internal void Transfer(long bytes)
     { WorkspaceBytes -= bytes; RetainedBytes += bytes; }
+    internal void ReturnToWorkspace(long bytes)
+    { RetainedBytes -= bytes; WorkspaceBytes += bytes; }
     static void Adjust(Window? view, long bytes)
     { for (; view is not null; view = view.Parent) view.Live = checked(view.Live + bytes); }
 

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using KhaozEngine.MapDoc.Spaces;
 
 namespace KhaozEngine.MapDoc.Surfaces;
@@ -36,6 +37,11 @@ public sealed record MapFallbackCell(int SlotCell, int Sw, int Se, int Nw, int N
 /// <summary>An immutable canonical patch with exact world geometry and local submission positions.</summary>
 public sealed class MapCompiledPatch
 {
+    internal Scene.MapPreparationReservation? PreparationOwnership { get; set; }
+    internal long InventoryBytes => checked((long)VertexIds.Count * Unsafe.SizeOf<MapVertexId>() +
+        (long)ExactVertices.Count * Unsafe.SizeOf<MapExactPoint>() + (long)Offsets.Count * Unsafe.SizeOf<Vector3>() +
+        (long)Faces.Count * Unsafe.SizeOf<MapCompiledFace>() + (long)Paint.Count * Unsafe.SizeOf<MapPaintCoverage>() +
+        24L * LegacyFallbackCells.Count);
     public MapPatchKey Key { get; }
     public MapSurfaceRole Role { get; }
     public MapSubmissionAnchor Anchor { get; }

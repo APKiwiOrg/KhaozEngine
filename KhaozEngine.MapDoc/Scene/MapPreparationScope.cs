@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace KhaozEngine.MapDoc.Scene;
 
@@ -8,6 +9,7 @@ internal sealed class MapPreparationScope : IDisposable
     readonly MapSceneAdmission _admission;
     readonly MapPreparationScope? _previous;
     readonly MapPreparationReservation _workspace;
+    readonly List<MapPreparationReservation> _products = new();
     bool _completed, _disposed;
     internal long Bytes => _workspace.Bytes;
     internal MapPreparationScope(MapSceneAdmission admission)
@@ -17,11 +19,14 @@ internal sealed class MapPreparationScope : IDisposable
     }
     internal void Reserve(long bytes) => _workspace.Reserve(bytes);
     internal void Release(long bytes) => _workspace.Release(bytes);
+    internal void Track(MapPreparationReservation product) => _products.Add(product);
     internal MapPreparationReservation Complete(long bytes)
     {
         ObjectDisposedException.ThrowIf(_disposed || _completed, this);
+        foreach (var product in _products) _workspace.Absorb(product);
         if (bytes > Bytes) Reserve(bytes - Bytes);
         var result = _workspace.Transfer(bytes);
+        _previous?.Track(result);
         _completed = true;
         return result;
     }
@@ -29,6 +34,8 @@ internal sealed class MapPreparationScope : IDisposable
     {
         if (_disposed) return;
         if (_admission.PreparationScope != this) throw new InvalidOperationException("Preparation scopes must close in nesting order.");
-        _admission.PreparationScope = _previous; _disposed = true; _workspace.Dispose();
+        _admission.PreparationScope = _previous; _disposed = true;
+        foreach (var product in _products) product.Dispose();
+        _workspace.Dispose();
     }
 }

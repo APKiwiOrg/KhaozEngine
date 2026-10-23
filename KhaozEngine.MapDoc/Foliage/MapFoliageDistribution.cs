@@ -59,8 +59,8 @@ public static class MapFoliageDistribution
             if (area.MinX == area.MaxX || area.MinZ == area.MaxZ) return new(MapFoliageStatus.Complete, [], meter.Work());
             int x0 = ChunkIndex(layer, area.MinX, true), z0 = ChunkIndex(layer, area.MinZ, false);
             int x1 = ChunkIndex(layer, MathF.BitDecrement(area.MaxX), true), z1 = ChunkIndex(layer, MathF.BitDecrement(area.MaxZ), false);
-            int[] xs = MapFoliageRasterReads.Chunks(layer, x0, x1, true).Take(admitted.MaxQueryChunks + 1).ToArray();
-            int[] zs = MapFoliageRasterReads.Chunks(layer, z0, z1, false).Take(admitted.MaxQueryChunks + 1).ToArray();
+            int[] xs = QueryChunks(layer, x0, x1, true, admitted.MaxQueryChunks);
+            int[] zs = QueryChunks(layer, z0, z1, false, admitted.MaxQueryChunks);
             if ((long)xs.Length * zs.Length > admitted.MaxQueryChunks) throw Refuse(MapFoliageStatus.CapacityExceeded, "query chunks");
             var batches = new List<MapFoliageSampleBatch>();
             foreach (int z in zs)
@@ -76,6 +76,17 @@ public static class MapFoliageDistribution
             return new(MapFoliageStatus.Complete, batches, meter.Work(budget.Bytes));
         }
         catch (MapFoliageRefusal refusal) { return new(refusal.Status, [], meter.Work(budget.Bytes)); }
+    }
+
+    static int[] QueryChunks(MapFoliageLayer layer, int first, int last, bool x, int maxChunks)
+    {
+        var chunks = new List<int>();
+        foreach (int chunk in MapFoliageRasterReads.Chunks(layer, first, last, x))
+        {
+            if (chunks.Count >= maxChunks) throw Refuse(MapFoliageStatus.CapacityExceeded, "query chunks");
+            chunks.Add(chunk);
+        }
+        return chunks.ToArray();
     }
 
     static MapFoliageSampleBatch GenerateCore(IMapFoliageInputs context, MapFoliageLayer layer, MapFoliageChunkKey chunk,

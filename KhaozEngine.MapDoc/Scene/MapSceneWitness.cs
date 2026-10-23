@@ -9,10 +9,12 @@ public enum MapSceneStatus { CompleteForScope, WholeWorldComplete, Incomplete, M
 public enum MapSceneSourceStatus { Ready, Incomplete, Missing, Corrupt, Stale, CapacityExceeded, NotRepresentable, Invalid }
 public sealed record MapSceneSourceResult(MapSceneSourceStatus Status, MapSceneSource? Source, MapSceneWork Work)
 {
+    public MapSceneCapacity? Capacity { get; init; }
     public IReadOnlyList<string> Findings { get; init; } = System.Array.Empty<string>();
 }
 public sealed record MapScopedSceneResult(MapSceneStatus Status, MapScopedScene? Scene, MapSceneWitness Witness, MapSceneWork Work)
 {
+    public MapSceneCapacity? Capacity { get; init; }
     public IReadOnlyList<string> Findings { get; init; } = System.Array.Empty<string>();
 }
 

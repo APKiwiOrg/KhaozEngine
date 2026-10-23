@@ -60,7 +60,7 @@ internal sealed class MapWaterClipHalo
                     throw new MapRenderAssetRefusal(MapRenderAssetStatus.Missing, "Water clip dependencies contain an unresolved cell.");
                 if (region.Kind == MapWaterRegionKind.FreeSurface) count = checked(count + region.Triangles.Count);
             }
-        if (count == 0 || count > WaterSurfaceDomain.MaxVertices / 3) throw new MapSceneCapacityException();
+        if (count == 0 || count > WaterSurfaceDomain.MaxVertices / 3) throw new MapSceneCapacityException(nameof(WaterSurfaceDomain.MaxVertices), checked(count * 3L), WaterSurfaceDomain.MaxVertices);
         _admission.ReserveCompilation(count);
         _admission.ReserveBytes(checked(512L + count * (3 * 8L + 3 * 16L * 3)));
         var points = new Vector2[checked((int)count * 3)];

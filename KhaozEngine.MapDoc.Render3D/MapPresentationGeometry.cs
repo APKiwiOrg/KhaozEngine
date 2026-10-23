@@ -119,7 +119,7 @@ public sealed class MapPresentationGeometry
                 return shape;
             }
         }
-        catch (MapSceneCapacityException) { throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, "Presentation geometry exceeds scene admission."); }
+        catch (MapSceneCapacityException error) { throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, error.Message, error); }
         catch (EndOfStreamException) { throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, "Presentation shape is truncated."); }
     }
     static long CopyBytes(PhysicsShape? shape) => checked(shape switch

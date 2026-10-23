@@ -163,7 +163,7 @@ public static class NativeMapPlacements
                 return layer is null ? shared : shared.WithIdentity(layer.Id);
             }
         }
-        catch (MapSceneCapacityException) { throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, "Placement preparation exceeds its scene allowance."); }
+        catch (MapSceneCapacityException error) { throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, error.Message, error); }
     }
 
     /// <summary>The sole upper entry to native cluster merging. Validate the entire request before the lower

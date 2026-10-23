@@ -12,5 +12,9 @@ public sealed record MapRenderSourceState(MapSceneSource Source, MapAssetClosure
     public IReadOnlyList<MapSceneScope> Windows { get; init; } = Array.AsReadOnly(Windows.ToArray());
 }
 
-public sealed record MapRenderTransition(long Epoch, MapSceneStatus Status, MapSceneWitness? AcceptedWitness, MapSceneWitness? PendingWitness);
+public sealed record MapRenderTransition(long Epoch, MapSceneStatus Status, MapSceneWitness? AcceptedWitness, MapSceneWitness? PendingWitness)
+{
+    public MapSceneCapacity? Capacity { get; init; }
+    public IReadOnlyList<string> Findings { get; init; } = Array.Empty<string>();
+}
 public sealed record MapRenderReadiness(MapRenderTransition Transition, int Pending, int Ready, long CpuBytes, long GpuBytes, long QueuedBytes);

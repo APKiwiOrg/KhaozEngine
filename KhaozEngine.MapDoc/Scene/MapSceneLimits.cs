@@ -18,4 +18,3 @@ public sealed record MapSceneLimits(int MaxTiles = 65536, int MaxMetadataRows = 
 public sealed record MapSceneWork(long TileReads, long MetadataRows, long Memberships, long ScannedBytes,
     long RetainedBytes, long PreparedFaces, long PayloadReads, long IndexNodesVisited);
 
-internal sealed class MapSceneCapacityException : Exception;

@@ -193,6 +193,9 @@ admission. Terrain reads the passed input's selected materials. Placement and fo
 assets. Preparation succeeds by taking ownership of the input lease. A refusal leaves that lease with its caller.
 Register the plan before recording frames, and dispose it when its CPU inventory is no longer required.
 
+`MapRenderTransition.Findings` preserves refusal details. Its optional `Capacity` carries the limit name,
+requested amount and allowance from scene acquisition and residency admission.
+
 `MapRenderResidency` prepares replacement generations on a bounded worker queue. `RequestReplacement`,
 `Invalidate` and `SetWindows` share one epoch and cancellation owner. Validation and preparation refusals retain
 the accepted draws and witness, and restore the accepted desired state. A pending replacement reports Incomplete.

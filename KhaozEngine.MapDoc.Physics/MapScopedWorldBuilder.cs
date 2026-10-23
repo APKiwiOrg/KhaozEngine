@@ -121,7 +121,7 @@ public static class MapScopedWorldBuilder
             }
             foreach (var body in water)
             {
-                if (body.Status == MapWaterCompileStatus.CapacityExceeded) throw new MapSceneCapacityException();
+                if (body.Status == MapWaterCompileStatus.CapacityExceeded) throw new MapSceneSourceException(MapSceneStatus.CapacityExceeded, body.Detail ?? "Water compilation refused capacity.");
                 if (body.Status == MapWaterCompileStatus.Incomplete)
                     throw new MapSceneSourceException(MapSceneStatus.Incomplete, body.Detail ?? "Incomplete water dependencies.");
                 if (body.Status == MapWaterCompileStatus.NotRepresentable)

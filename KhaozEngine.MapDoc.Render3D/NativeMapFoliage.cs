@@ -140,7 +140,7 @@ public static class NativeMapFoliage
             }
             return new(scene.Witness, routing, policy, groups, parts, identities, explicitIds, generations, admission.RetainedBytes);
         }
-        catch (MapSceneCapacityException) { throw Capacity(); }
+        catch (MapSceneCapacityException error) { throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, error.Message, error); }
     }
 
     static MapNativeFoliageGroup Group(string owner, GroundCoverBatch cover, MapBox3 bounds, NativeFoliagePolicy policy, bool explicitlyPlaced = false, MapSubmissionAnchor? anchorOverride = null)

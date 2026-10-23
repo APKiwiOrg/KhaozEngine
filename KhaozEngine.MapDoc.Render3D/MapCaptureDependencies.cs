@@ -30,15 +30,15 @@ public static class MapCaptureDependencies
                 if (b.MaxX <= b.MinX || b.MaxZ <= b.MinZ) return;
                 var scope = Scope(request.Scope, b);
                 if (scopes.Any(s => s.Digest == scope.Digest)) return;
-                if (scopes.Count == 256) throw new MapSceneCapacityException();
+                if (scopes.Count == 256) throw new MapSceneCapacityException("MaxCaptureScopes", (long)scopes.Count + 1, 256);
                 foreach (var key in request.Source.Data.Index.Query(b, out _, 4096))
-                    if (keys.Add(key) && keys.Count > 4096) throw new MapSceneCapacityException();
+                    if (keys.Add(key) && keys.Count > 4096) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxSelectedResources), keys.Count, 4096);
                 scopes.Add(scope);
             }
             var draw = request.Scope.DrawBounds;
             // Compute the finite work count before stepping in world coordinates.
             double columns = Math.Ceiling((draw.MaxX - draw.MinX) / 64), rows = Math.Ceiling((draw.MaxZ - draw.MinZ) / 64);
-            if (columns < 1 || rows < 1 || columns * rows > 256) throw new MapSceneCapacityException();
+            if (columns < 1 || rows < 1 || columns * rows > 256) throw new MapSceneCapacityException("MaxCaptureScopes", (long)Math.Min(long.MaxValue, columns * rows), 256);
             for (int row = 0; row < (int)rows; row++)
                 for (int column = 0; column < (int)columns; column++)
                 {
@@ -65,7 +65,7 @@ public static class MapCaptureDependencies
                 foreach (var key in request.Source.Data.Index.Query(r, out _, 4096, k => k.Kind == "Light"))
                 {
                     if (!lightCandidates.Add(key)) continue;
-                    if (lightCandidates.Count > 256) throw new MapSceneCapacityException();
+                    if (lightCandidates.Count > 256) throw new MapSceneCapacityException("MaxCaptureLights", lightCandidates.Count, 256);
                     var bounds = request.Source.Data.MetadataByKey[key].Bounds;
                     var found = MapSceneAcquisition.Run(request.Source, Scope(request.Scope, bounds), admission);
                     if (found.Scene is null) return new(found.Status, request.Scope, scopes.AsReadOnly(), digest);

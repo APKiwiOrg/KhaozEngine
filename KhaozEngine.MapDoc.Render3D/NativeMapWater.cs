@@ -63,15 +63,17 @@ public static class NativeMapWater
                 admission.ReserveBytes(256); seen.Add(cell.Key, cell.PayloadDigest);
                 canonical.Add(cell);
                 long triangleCount = cell.Regions.Where(r => r.Kind == MapWaterRegionKind.FreeSurface).Sum(r => (long)r.Triangles.Count);
-                if (3L * triangleCount > MapWaterScopedCompiler.MaxEmittedVertices - emitted) throw new MapSceneCapacityException();
+                if (3L * triangleCount > MapWaterScopedCompiler.MaxEmittedVertices - emitted) throw new MapSceneCapacityException(nameof(MapWaterScopedCompiler.MaxEmittedVertices), checked(emitted + 3L * triangleCount), MapWaterScopedCompiler.MaxEmittedVertices);
                 admission.ReserveBytes(checked(triangleCount * 8));
                 var triangles = cell.Regions.Where(r => r.Kind == MapWaterRegionKind.FreeSurface).SelectMany(r => r.Triangles).ToArray();
                 if (cell.Regions.Any(r => r.Kind == MapWaterRegionKind.Unresolved))
                     throw new MapRenderAssetRefusal(MapRenderAssetStatus.Missing, "Unresolved water cannot be drawn.");
                 if (triangles.Length == 0) continue;
                 emitted = checked(emitted + 3L * triangles.Length);
-                if (emitted > MapWaterScopedCompiler.MaxEmittedVertices || parts.Count >= MapWaterScopedCompiler.MaxCells)
-                    throw new MapSceneCapacityException();
+                if (emitted > MapWaterScopedCompiler.MaxEmittedVertices)
+                    throw new MapSceneCapacityException(nameof(MapWaterScopedCompiler.MaxEmittedVertices), emitted, MapWaterScopedCompiler.MaxEmittedVertices);
+                if (parts.Count >= MapWaterScopedCompiler.MaxCells)
+                    throw new MapSceneCapacityException(nameof(MapWaterScopedCompiler.MaxCells), (long)parts.Count + 1, MapWaterScopedCompiler.MaxCells);
                 // List, dictionary, final arrays and the detached typed registration are all admitted before copies.
                 admission.ReserveCompilation(triangles.Length);
                 admission.ReserveBytes(checked(512L + 3L * triangles.Length * (192L + ModelVertex.SizeInBytes * 2L + 16L * 3)));
@@ -102,7 +104,7 @@ public static class NativeMapWater
             return new(canonical, parts, MapFrozenWaterLook.Capture(look), admission.RetainedBytes);
         }
         catch (Exception error) when (error is MapSceneCapacityException or MapWaterCapacityException)
-        { throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, "Water preparation exceeds its scene allowance."); }
+        { throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, error.Message, error); }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         { throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, "Water geometry is not representable."); }
         catch (ArgumentException error) { throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, error.Message); }

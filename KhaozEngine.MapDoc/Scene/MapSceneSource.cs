@@ -38,7 +38,7 @@ public sealed class MapSceneSource
         try
         {
             scan.Limits.Validate();
-            if (source.Tiles.Entries.Count > scan.Limits.MaxTiles) throw new MapSceneCapacityException();
+            if (source.Tiles.Entries.Count > scan.Limits.MaxTiles) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxTiles), source.Tiles.Entries.Count, scan.Limits.MaxTiles);
             string? manifestDigest = source.Tiles.ManifestSha256;
             CheckManifest(source.SceneDirectory, manifestDigest, scan);
             if (source.ScenePartial) throw new MapSceneSourceException(MapSceneStatus.Incomplete, "Unloaded tile metadata cannot attest a reverse index.");
@@ -120,7 +120,7 @@ public sealed class MapSceneSource
                 long prospective = input.Placements.Count + (input.Prefabs?.Instances.Sum(i => i.Bindings.Entries.Count) ?? 0) +
                     (input.BuildingIntent?.Lights.Count ?? 0) + (input.BuildingIntent?.Markers.Count ?? 0) +
                     (input.BuildingIntent?.RoofLinks.Count ?? 0) + (input.BuildingIntent?.RoofGroups.Count ?? 0) + (prepaidWater ? 0 : input.Water?.Bodies.Count ?? 0);
-                if (prospective > scan.Limits.MaxMetadataRows - scan.MetadataRows) throw new MapSceneCapacityException();
+                if (prospective > scan.Limits.MaxMetadataRows - scan.MetadataRows) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMetadataRows), scan.MetadataRows + prospective, scan.Limits.MaxMetadataRows);
                 var expanded = MapEffectiveResolutionKernel.Enumerate(input, assets, metadataOnly: true);
                 var ownerRows = new List<MapSceneResourceKey>();
                 MapBox3? groupBounds = null;
@@ -201,7 +201,7 @@ public sealed class MapSceneSource
             foreach (var instance in root.Prefabs?.Instances ?? [])
             {
                 if (instance.Removed) continue;
-                if (instance.Bindings.Entries.Count > scan.Limits.MaxMetadataRows - scan.MetadataRows) throw new MapSceneCapacityException();
+                if (instance.Bindings.Entries.Count > scan.Limits.MaxMetadataRows - scan.MetadataRows) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMetadataRows), scan.MetadataRows + instance.Bindings.Entries.Count, scan.Limits.MaxMetadataRows);
                 scan.RetainBytes(MapSceneResourceBounds.InstanceBytes(instance));
                 var resource = assets.GetResource(instance.ResourceId);
                 if (resource.Kind != MapResourceKind.Prefab || resource.Reference.Sha256 != instance.ResourceSha256)
@@ -273,7 +273,7 @@ public sealed class MapSceneSource
         }
         catch (Exception error) when (Classify(error) is not null)
         {
-            return new(Classify(error)!.Value, null, scan.Work(false)) { Findings = Array.AsReadOnly(new[] { error.Message }) };
+            return new(Classify(error)!.Value, null, scan.Work(false)) { Capacity = MapSceneCapacity.From(error), Findings = Array.AsReadOnly(new[] { error.Message }) };
         }
     }
 
@@ -291,7 +291,9 @@ public sealed class MapSceneSource
                 return new(MapSceneSourceStatus.Invalid, null, _data.CaptureWork with { RetainedBytes = 0 });
         }
         if (proofs.MetadataBytes > _data.Limits.MaxMetadataBytes - _data.CaptureWork.RetainedBytes)
-            return new(MapSceneSourceStatus.CapacityExceeded, null, _data.CaptureWork with { RetainedBytes = 0 });
+            return new(MapSceneSourceStatus.CapacityExceeded, null, _data.CaptureWork with { RetainedBytes = 0 })
+            { Capacity = new(nameof(MapSceneLimits.MaxMetadataBytes), checked(_data.CaptureWork.RetainedBytes + proofs.MetadataBytes), _data.Limits.MaxMetadataBytes),
+                Findings = [new MapSceneCapacity(nameof(MapSceneLimits.MaxMetadataBytes), checked(_data.CaptureWork.RetainedBytes + proofs.MetadataBytes), _data.Limits.MaxMetadataBytes).Message] };
         return new(MapSceneSourceStatus.Ready, new(_data, proofs), _data.CaptureWork with { RetainedBytes = checked(_data.CaptureWork.RetainedBytes + proofs.MetadataBytes) });
     }
     static bool Contains(MapLocalBounds declared, MapLocalBounds actual) => actual.Min.X >= declared.Min.X && actual.Min.Y >= declared.Min.Y &&

@@ -73,7 +73,7 @@ internal static class MapSceneAcquisition
             void AddOwner(string id)
             {
                 if (!owners.Add(id)) return;
-                if (owners.Count > data.Limits.MaxSelectedResources) throw new MapSceneCapacityException();
+                if (owners.Count > data.Limits.MaxSelectedResources) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxSelectedResources), owners.Count, data.Limits.MaxSelectedResources);
                 pending.Enqueue(id);
                 foreach (var key in data.Owners[id].Resources) AddKey(key);
             }
@@ -181,7 +181,7 @@ internal static class MapSceneAcquisition
                 }
             }
             foreach (var key in required) if (!unavailable.Contains(key) && !empty.Contains(key)) present.Add(key);
-            if (required.Count > data.Limits.MaxSelectedResources) throw new MapSceneCapacityException();
+            if (required.Count > data.Limits.MaxSelectedResources) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxSelectedResources), required.Count, data.Limits.MaxSelectedResources);
             if (required.Count == 0 && empty.Count == 0) empty.Add(new("Scene", digest));
             bool whole = scope.Channels == MapSceneChannels.All && scope.Surfaces.MinY is null && scope.Surfaces.MaxY is null &&
                 scope.Surfaces.SpaceIds is null &&
@@ -197,7 +197,7 @@ internal static class MapSceneAcquisition
         catch (Exception error) when (MapSceneSource.Classify(error) is not null)
         {
             var status = Enum.Parse<MapSceneStatus>(MapSceneSource.Classify(error)!.Value.ToString());
-            return new(status, null, Witness(false, false), Work(false)) { Findings = Array.AsReadOnly(new[] { error.Message }) };
+            return new(status, null, Witness(false, false), Work(false)) { Capacity = MapSceneCapacity.From(error), Findings = Array.AsReadOnly(new[] { error.Message }) };
         }
         MapSceneWork Work(bool accepted) => new(0, metadataRows, memberships, 0, accepted ? admission.RetainedBytes : 0,
             admission.PreparedFaces, admission.PayloadReads, visits);
@@ -286,7 +286,7 @@ internal static class MapSceneAcquisition
             foreach (var chunkKey in keys)
             {
                 var key = FoliageKey(layer.Id, chunkKey); admission.BeforeResource(key); required.Add(key);
-                if (required.Count > data.Limits.MaxSelectedResources) throw new MapSceneCapacityException();
+                if (required.Count > data.Limits.MaxSelectedResources) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxSelectedResources), required.Count, data.Limits.MaxSelectedResources);
                 if (!data.FoliageRows.ContainsKey(key)) { empty.Add(key); continue; }
                 // Pack decoding stages every contained chunk. Admit that exact density demand before the read.
                 long bytes = MapFoliageChunk.ByteLength;

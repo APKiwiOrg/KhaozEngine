@@ -70,7 +70,7 @@ public static class NativeMapTerrain
             admission.ReserveBytes(checked(8L * (canonical.Count + partitions.Length + parts.Count + findings.Count)));
             return new(input, canonical, partitions, parts, findings, admission.RetainedBytes);
         }
-        catch (MapSceneCapacityException) { throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, "Terrain preparation exceeds its scene allowance."); }
+        catch (MapSceneCapacityException error) { throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, error.Message, error); }
         catch (Exception ex) when (ex is MapExactOverflowException or OverflowException)
         { throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, "Terrain geometry is not exactly representable."); }
     }

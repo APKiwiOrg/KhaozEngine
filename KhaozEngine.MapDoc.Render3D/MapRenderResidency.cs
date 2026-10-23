@@ -67,7 +67,7 @@ public sealed partial class MapRenderResidency : IDisposable
                 Schedule();
             }
             catch (Exception error) when (Refusal(error) is not null)
-            { CancelPending(); Refuse(Refusal(error)!.Value, epoch); }
+            { CancelPending(); Refuse(Refusal(error)!.Value, epoch, error); }
             return _transition;
         }
     }
@@ -99,7 +99,7 @@ public sealed partial class MapRenderResidency : IDisposable
             }
             catch (Exception error) when (Refusal(error) is not null)
             {
-                long epoch = _transition.Epoch; CancelPending(); Refuse(Refusal(error)!.Value, epoch);
+                long epoch = _transition.Epoch; CancelPending(); Refuse(Refusal(error)!.Value, epoch, error);
             }
             DrainRetirement(); AssetCache.TryTrim(); TrimRetention();
             return SnapshotReadiness();
@@ -133,7 +133,7 @@ public sealed partial class MapRenderResidency : IDisposable
             state.Source.RenderExtentsDigest != state.Extents.Digest || state.Source.WithRenderExtents(state.Extents).Source is null)
             throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, "Replacement requires the exact complete proof-bound source and closure.");
         if (state.Windows.Count > _budgets.MaxActiveWindows)
-            throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, "Replacement exceeds active-window capacity.");
+            throw new MapSceneCapacityException(nameof(MapRenderBudgets.MaxActiveWindows), state.Windows.Count, _budgets.MaxActiveWindows);
         foreach (var window in state.Windows) window.Validate();
         foreach (string id in state.Policy.MaterialResourceIds.Concat(state.Policy.TerrainMaterials.Values)) state.Closure.GetResource(id);
         foreach (string id in state.Policy.AnimatedAssets) state.Closure.GetAsset(id);
@@ -150,7 +150,7 @@ public sealed partial class MapRenderResidency : IDisposable
         var source = pending.State.Source;
         var sourceCharge = RetainSource(pending.State);
         var charge = _admission.TryReserveCpu(bytes);
-        if (charge is null) { sourceCharge.Dispose(); throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, "Worker preparation exceeds aggregate CPU capacity."); }
+        if (charge is null) { sourceCharge.Dispose(); throw new MapSceneCapacityException(nameof(MapRenderBudgets.MaxResidentCpuBytes), checked(_admission.CpuBytes + bytes), _budgets.MaxResidentCpuBytes); }
         pending.SourceCharge = sourceCharge;
         pending.Job = _queue.Enqueue(1, bytes, token => Build(pending, bytes, charge, token), charge);
     }
@@ -179,7 +179,7 @@ public sealed partial class MapRenderResidency : IDisposable
                 {
                     using var window = admission.LimitPreparation(_budgets.MaxPlanBytes - reused);
                     var result = MapSceneAcquisition.Run(source, scope, admission);
-                    if (result.Scene is not { } scene) throw new MapSceneSourceException(result.Status, string.Join("\n", result.Findings));
+                    if (result.Scene is not { } scene) throw new MapSceneSourceException(result.Status, string.Join("\n", result.Findings), result.Capacity);
                     if (contextOwner is null)
                     {
                         long beforeCapture = admission.RetainedBytes;
@@ -207,7 +207,7 @@ public sealed partial class MapRenderResidency : IDisposable
                             retained => { contextOwner!.Own(charge.Split(retained)); transferred += retained; }, cells);
                         plans.Add(plan); contextOwner = null;
                         if (admission.RetainedBytes - beforeScope + input.RetainedBytes + reused > _budgets.MaxPlanBytes)
-                            throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, "Prepared plan exceeds its byte capacity.");
+                            throw new MapSceneCapacityException(nameof(MapRenderBudgets.MaxPlanBytes), checked(admission.RetainedBytes - beforeScope + input.RetainedBytes + reused), _budgets.MaxPlanBytes);
                     }
                     catch { if (!plans.Any(p => ReferenceEquals(p.Input, input))) input.Dispose(); throw; }
                 }
@@ -285,7 +285,7 @@ public sealed partial class MapRenderResidency : IDisposable
         if (references <= _recordingCapacity) return;
         // The old maps coexist with their replacements during growth. Reserve before allocating any buckets.
         using var charge = _admission.TryReserveCpu(checked(512L + references * 512L))
-            ?? throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, "Frame recording scratch exceeds aggregate CPU capacity.");
+            ?? throw new MapSceneCapacityException(nameof(MapRenderBudgets.MaxResidentCpuBytes), checked(_admission.CpuBytes + 512L + references * 512L), _budgets.MaxResidentCpuBytes);
         _recording.Prepare(references);
         _recordingCharge?.Dispose(); _recordingCharge = charge.Retain(); _recordingCapacity = references;
     }
@@ -336,8 +336,9 @@ public sealed partial class MapRenderResidency : IDisposable
     }
     void DrainRetirement()
     { for (int i = 0; i < _budgets.MaxDisposalsPerUpdate && _retired.TryDequeue(out var owner); i++) Device.Release(owner.Handle); }
-    void Refuse(MapSceneStatus status, long epoch)
-    { if (_acceptedState is not null) DesiredState = _acceptedState; _transition = new(epoch, status, _transition.AcceptedWitness, null); }
+    void Refuse(MapSceneStatus status, long epoch, Exception error)
+    { if (_acceptedState is not null) DesiredState = _acceptedState; _transition = new(epoch, status, _transition.AcceptedWitness, null)
+        { Capacity = MapSceneCapacity.From(error), Findings = Array.AsReadOnly(new[] { error.Message }) }; }
     static MapSceneStatus? Refusal(Exception error) => error switch
     {
         MapRenderAssetRefusal { Status: MapRenderAssetStatus.CapacityExceeded } or MapSceneCapacityException or OverflowException => MapSceneStatus.CapacityExceeded,
@@ -404,7 +405,7 @@ public sealed partial class MapRenderResidency : IDisposable
         {
             if (!entries.TryGetValue(key, out var lease))
             {
-                lease = _admission.TryReserveCpu(bytes) ?? throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, "Source retention exceeds aggregate CPU capacity.");
+                lease = _admission.TryReserveCpu(bytes) ?? throw new MapSceneCapacityException(nameof(MapRenderBudgets.MaxResidentCpuBytes), checked(_admission.CpuBytes + bytes), _budgets.MaxResidentCpuBytes);
                 entries.Add(key, lease);
             }
             return lease.Retain();

@@ -328,7 +328,7 @@ internal static partial class ShippedSceneComparison
             {
                 if (ready.Transition.Status != MapSceneStatus.CompleteForScope && scheduler.LastFailure is { } error)
                     System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error).Throw();
-                Require(ready.Transition.Status == MapSceneStatus.CompleteForScope, "scene replacement refused " + ready.Transition.Status); return;
+                Require(ready.Transition.Status == MapSceneStatus.CompleteForScope, "scene replacement refused " + ready.Transition.Status + " " + string.Join("\n", ready.Transition.Findings)); return;
             }
         }
         throw new InvalidOperationException("scene replacement did not settle");

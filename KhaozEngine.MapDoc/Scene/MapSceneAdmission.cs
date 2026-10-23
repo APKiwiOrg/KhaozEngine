@@ -26,15 +26,15 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
         long _ceiling;
         internal PreparationWindow(MapSceneAdmission owner, long bytes)
         {
-            if (bytes < 0) throw new MapSceneCapacityException();
+            if (bytes < 0) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxPreparedBytes), bytes, owner._preparationCeiling);
             _owner = owner; _start = owner.RetainedBytes; _previous = owner._preparationCeiling;
             _ceiling = Math.Min(_previous, checked(_start + bytes)); owner._preparationCeiling = _ceiling;
         }
         internal void ChargeExternal(long bytes)
         {
-            if (bytes < 0 || bytes > _ceiling - _start) throw new MapSceneCapacityException();
+            if (bytes < 0 || bytes > _ceiling - _start) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxPreparedBytes), checked(_start + bytes), _ceiling);
             _ceiling -= bytes;
-            if (_owner.RetainedBytes > _ceiling) throw new MapSceneCapacityException();
+            if (_owner.RetainedBytes > _ceiling) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxPreparedBytes), checked(_owner.RetainedBytes + bytes), checked(_ceiling + bytes));
             _owner._preparationCeiling = _ceiling;
         }
         public void Dispose() => _owner._preparationCeiling = _previous;
@@ -57,27 +57,27 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
     internal void BeforePaintTarget(string id)
     {
         if (!_paintTargets.Add(id)) return;
-        if (foliageLimits is not null && FoliagePaintTargets >= foliageLimits.MaxPaintTargets) throw new MapSceneCapacityException();
+        if (foliageLimits is not null && FoliagePaintTargets >= foliageLimits.MaxPaintTargets) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxPaintTargets), (long)FoliagePaintTargets + 1, foliageLimits.MaxPaintTargets);
         FoliagePaintTargets++;
     }
     readonly HashSet<MapSceneResourceKey> _resources = new();
     internal void BeforeResource(MapSceneResourceKey key)
     {
         if (_resources.Contains(key)) return;
-        if (_resources.Count >= limits.MaxSelectedResources) throw new MapSceneCapacityException();
+        if (_resources.Count >= limits.MaxSelectedResources) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxSelectedResources), (long)_resources.Count + 1, limits.MaxSelectedResources);
         if (key.Kind == "Foliage")
         {
-            if (foliageLimits is not null && FoliageChunks >= foliageLimits.MaxChunkDescriptors) throw new MapSceneCapacityException();
+            if (foliageLimits is not null && FoliageChunks >= foliageLimits.MaxChunkDescriptors) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxChunkDescriptors), (long)FoliageChunks + 1, foliageLimits.MaxChunkDescriptors);
             FoliageChunks++;
         }
         if (key.Kind == "Placement")
         {
-            if (foliageLimits is not null && FoliagePlacements >= foliageLimits.MaxPlacements) throw new MapSceneCapacityException();
+            if (foliageLimits is not null && FoliagePlacements >= foliageLimits.MaxPlacements) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxPlacements), (long)FoliagePlacements + 1, foliageLimits.MaxPlacements);
             FoliagePlacements++;
         }
         if (key.Kind == "Patch")
         {
-            if (foliageLimits is not null && FoliagePatches >= foliageLimits.MaxSurfacePatches) throw new MapSceneCapacityException();
+            if (foliageLimits is not null && FoliagePatches >= foliageLimits.MaxSurfacePatches) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxSurfacePatches), (long)FoliagePatches + 1, foliageLimits.MaxSurfacePatches);
             FoliagePatches++;
         }
         _resources.Add(key);
@@ -100,7 +100,7 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
     internal void BeforeScope(IMapSurfaceSource source)
     {
         if (!Supports(source)) throw new MapSceneSourceException(MapSceneStatus.Invalid, "Surface source cannot participate in scene admission.");
-        if (PatchScopes >= limits.MaxPatchScopes) throw new MapSceneCapacityException();
+        if (PatchScopes >= limits.MaxPatchScopes) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxPatchScopes), (long)PatchScopes + 1, limits.MaxPatchScopes);
         PatchScopes++;
     }
 
@@ -125,13 +125,13 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
 
     internal void ReserveBytes(long bytes)
     {
-        if (bytes < 0 || bytes > RemainingPreparedBytes) throw new MapSceneCapacityException();
+        if (bytes < 0 || bytes > RemainingPreparedBytes) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxPreparedBytes), checked(RetainedBytes + bytes), _preparationCeiling);
         RetainedBytes = checked(RetainedBytes + bytes);
     }
 
     internal void BeforeInputBytes(long bytes)
     {
-        if (foliageLimits is not null && bytes > foliageLimits.MaxSourceUtf8Bytes - FoliageSourceUtf8Bytes) throw new MapSceneCapacityException();
+        if (foliageLimits is not null && bytes > foliageLimits.MaxSourceUtf8Bytes - FoliageSourceUtf8Bytes) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxSourceUtf8Bytes), checked(FoliageSourceUtf8Bytes + bytes), foliageLimits.MaxSourceUtf8Bytes);
         ReserveBytes(bytes);
         FoliageSourceUtf8Bytes = checked(FoliageSourceUtf8Bytes + bytes);
     }
@@ -173,7 +173,7 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
 
     internal void ReserveCompilation(long faces)
     {
-        if (faces < 0 || faces > limits.MaxPreparedFaces - PreparedFaces) throw new MapSceneCapacityException();
+        if (faces < 0 || faces > limits.MaxPreparedFaces - PreparedFaces) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxPreparedFaces), checked(PreparedFaces + faces), limits.MaxPreparedFaces);
         long bytes = checked(faces * 1280);
         ReserveBytes(bytes);
         PreparedFaces = checked(PreparedFaces + faces);
@@ -211,7 +211,8 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
     }
 }
 
-internal sealed class MapSceneSourceException(MapSceneStatus status, string message) : Exception(message)
+internal sealed class MapSceneSourceException(MapSceneStatus status, string message, MapSceneCapacity? capacity = null) : Exception(message)
 {
     internal MapSceneStatus Status { get; } = status;
+    internal MapSceneCapacity? Capacity { get; } = capacity;
 }

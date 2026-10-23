@@ -57,7 +57,7 @@ internal static class MapSceneMetadataReader
                 {
                     // Bound the transient row before its JSON buffer or DTO is allocated.
                     if ((long)placements.Count + spawns.Count + players.Count >= scan.Limits.MaxMetadataRows)
-                        throw new MapSceneCapacityException();
+                        throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMetadataRows), (long)placements.Count + spawns.Count + players.Count + 1, scan.Limits.MaxMetadataRows);
                     var options = MapDocumentFile.CreateOptions(source.SceneRegistry, write: false);
                     if (name == "placements") placements.Add(tokens.Value<MapPlacement>(options));
                     else if (name == "spawns") spawns.Add(tokens.Value<MapSpawn>(options));
@@ -218,7 +218,7 @@ internal static class MapSceneMetadataReader
                 int left = _available - _used;
                 if (left == _buffer.Length)
                 {
-                    if (_buffer.Length >= _maxToken) throw new MapSceneCapacityException();
+                    if (_buffer.Length >= _maxToken) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMetadataBytes), (long)_buffer.Length + 1, _maxToken);
                     Array.Resize(ref _buffer, (int)Math.Min(_maxToken, (long)_buffer.Length * 2));
                 }
                 _buffer.AsSpan(_used, left).CopyTo(_buffer); _base += _used; _used = 0; _available = left;
@@ -284,8 +284,8 @@ internal static class MapSceneMetadataReader
 
     sealed class LimitedRow(int limit) : MemoryStream
     {
-        public override void Write(ReadOnlySpan<byte> buffer) { if (buffer.Length > limit - Length) throw new MapSceneCapacityException(); base.Write(buffer); }
-        public override void Write(byte[] buffer, int offset, int count) { if (count > limit - Length) throw new MapSceneCapacityException(); base.Write(buffer, offset, count); }
+        public override void Write(ReadOnlySpan<byte> buffer) { if (buffer.Length > limit - Length) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMetadataBytes), Length + buffer.Length, limit); base.Write(buffer); }
+        public override void Write(byte[] buffer, int offset, int count) { if (count > limit - Length) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMetadataBytes), Length + count, limit); base.Write(buffer, offset, count); }
     }
 }
 
@@ -295,12 +295,12 @@ internal sealed class MapSceneScan(MapSceneLimits limits)
     internal long TileReads, MetadataRows, Memberships, ScannedBytes, RetainedBytes;
     internal void Scan(long bytes)
     {
-        if (bytes < 0 || bytes > limits.MaxScannedBytes - ScannedBytes) throw new MapSceneCapacityException();
+        if (bytes < 0 || bytes > limits.MaxScannedBytes - ScannedBytes) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxScannedBytes), checked(ScannedBytes + bytes), limits.MaxScannedBytes);
         ScannedBytes = checked(ScannedBytes + bytes);
     }
     internal void Scratch(long bytes)
     {
-        if (bytes < 0 || bytes > limits.MaxMetadataBytes - RetainedBytes) throw new MapSceneCapacityException();
+        if (bytes < 0 || bytes > limits.MaxMetadataBytes - RetainedBytes) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMetadataBytes), checked(RetainedBytes + bytes), limits.MaxMetadataBytes);
     }
     internal void RetainBytes(long bytes)
     {
@@ -310,8 +310,10 @@ internal sealed class MapSceneScan(MapSceneLimits limits)
     internal void Retain(long bytes, int memberships = 1)
     {
         bytes = checked(bytes + 512 + memberships * 16L);
-        if (MetadataRows >= limits.MaxMetadataRows || memberships > limits.MaxMembershipsPerResource ||
-            memberships > limits.MaxMemberships - Memberships || bytes > limits.MaxMetadataBytes - RetainedBytes) throw new MapSceneCapacityException();
+        if (MetadataRows >= limits.MaxMetadataRows) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMetadataRows), MetadataRows + 1, limits.MaxMetadataRows);
+        if (memberships > limits.MaxMembershipsPerResource) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMembershipsPerResource), memberships, limits.MaxMembershipsPerResource);
+        if (memberships > limits.MaxMemberships - Memberships) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMemberships), Memberships + memberships, limits.MaxMemberships);
+        Scratch(bytes);
         MetadataRows++; Memberships += memberships; RetainedBytes += bytes;
     }
     internal MapSceneWork Work(bool accepted) => new(TileReads, MetadataRows, Memberships, ScannedBytes, accepted ? RetainedBytes : 0, 0, 0, 0);

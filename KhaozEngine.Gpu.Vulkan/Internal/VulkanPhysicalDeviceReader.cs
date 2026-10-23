@@ -44,6 +44,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <param name="TimestampValidBits">The selected graphics queue family's counter width.</param>
     /// <param name="TimestampPeriodNanoseconds">The physical device's limits.timestampPeriod.</param>
     /// <param name="DriverVersion">The queried driver strings or labelled raw version.</param>
+    /// <param name="Float32Rte">The queried binary32 RTE property.</param>
+    /// <param name="Float32DenormPreserve">The queried binary32 preservation property.</param>
+    /// <param name="Float32DenormFlush">The queried binary32 flush property.</param>
     internal readonly record struct VulkanPhysicalDeviceRead(
         VulkanDeviceFacts Facts,
         VulkanFeatureSupport Features,
@@ -59,7 +62,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         int TimestampValidBits = 0,
         double TimestampPeriodNanoseconds = 0d,
         bool SignedZeroInfNanPreserveFloat32 = false,
-        string? DriverVersion = null);
+        string? DriverVersion = null, bool Float32Rte = false,
+        bool Float32DenormPreserve = false, bool Float32DenormFlush = false);
 
     /// <summary>
     /// The one place a <c>VkPhysicalDevice</c> is turned into plain data, shared by the support probe and by
@@ -120,6 +124,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 // method with the flag set.
                 GraphicsFamilyPresents: false);
 
+            var floatControls = clearsVersionFloor ? ReadFloatControls(vk, device) : default;
             return new VulkanPhysicalDeviceRead(
                 facts,
                 features,
@@ -136,8 +141,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 VulkanCapabilityRead.ColorAttachmentLimit(properties.Limits.MaxColorAttachments,
                     properties.Limits.MaxFragmentOutputAttachments),
                 timestampValidBits, properties.Limits.TimestampPeriod,
-                clearsVersionFloor && ReadFloatControls(vk, device),
-                VulkanDriverIdentity.Read(vk, device, in properties, instanceApiVersion));
+                floatControls.SignedZero,
+                VulkanDriverIdentity.Read(vk, device, in properties, instanceApiVersion),
+                floatControls.Rte, floatControls.Preserve, floatControls.Flush);
         }
 
         /// <summary>
@@ -176,14 +182,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         // VK_KHR_shader_float_controls is core in 1.2, below this backend's 1.3 floor.
         // There is no enable bit in VkDeviceCreateInfo. The execution mode opts in per entry point.
-        static bool ReadFloatControls(Vk vk, PhysicalDevice device)
+        static (bool SignedZero, bool Rte, bool Preserve, bool Flush) ReadFloatControls(Vk vk, PhysicalDevice device)
         {
             var controls = new PhysicalDeviceFloatControlsProperties(
                 sType: StructureType.PhysicalDeviceFloatControlsProperties);
             var properties = new PhysicalDeviceProperties2(
                 sType: StructureType.PhysicalDeviceProperties2, pNext: &controls);
             vk.GetPhysicalDeviceProperties2(device, &properties);
-            return controls.ShaderSignedZeroInfNanPreserveFloat32;
+            return (controls.ShaderSignedZeroInfNanPreserveFloat32, controls.ShaderRoundingModeRtefloat32,
+                controls.ShaderDenormPreserveFloat32, controls.ShaderDenormFlushToZeroFloat32);
         }
 
         // Every feature bit, off ONE chained query. Asked only of a device that already clears the version floor,

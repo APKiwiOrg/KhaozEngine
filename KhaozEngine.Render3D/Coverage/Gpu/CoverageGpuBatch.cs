@@ -18,6 +18,7 @@ internal sealed partial class CoverageGpuBatch : IDisposable
 
     internal CoverageGpuBatch(IGpuDevice device) => this.device = device ?? throw new ArgumentNullException(nameof(device));
     internal int Count { get; private set; }
+    internal uint MaximumFilterSupportCount { get; set; }
     internal Action<IGpuCommandList, CoverageGpuPhase, bool>? DispatchObserverForTests { get; set; }
     internal ReadOnlySpan<CoverageGpuReservation> Actors => actors.AsSpan(0, Count);
     internal IGpuBuffer StaticData => staticData ?? throw new InvalidOperationException("Reserve coverage storage first.");

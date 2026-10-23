@@ -37,7 +37,7 @@ internal static class CoverageGpuConformTestData
 
     internal static void Log(GpuDeviceContext gpu, CoverageGpuPipeline pipeline, ITestOutputHelper output)
     {
-        output.WriteLine($"Native backend {gpu.Backend}, adapter {gpu.GpuDevice.Capabilities.DeviceName}");
+        output.WriteLine($"Native backend {gpu.Backend}, adapter {gpu.GpuDevice.Capabilities.DeviceName}, path {pipeline.FilterPath}");
         foreach (var (phase, p) in pipeline.Pipelines)
             if (OperatingSystem.IsMacOS() && p is MetalComputePipeline metal)
             {

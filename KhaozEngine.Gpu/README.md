@@ -506,6 +506,11 @@ What it owns today:
   `shaderSignedZeroInfNanPreserveFloat32`. Vulkan shader creation refuses a precise request without it.
   Other APIs leave this Vulkan-specific capability false. Every compiler cache separates default and precise
   requests, including the revised IEEE-preservation policy identity.
+  `RequireFloat32Eft` additionally requests binary32 RTE and an explicit denormal mode on Vulkan.
+  Read `SupportsFloat32Rte` and `SupportsFloat32DenormPreserve` before selecting preservation, or
+  `SupportsFloat32DenormFlush` before setting `FlushFloat32Denorms` for a normal-intermediate guarded EFT.
+  A missing property refuses creation. Metal and D3D11 refuse EFT compute requests. The flags do not
+  add GLSL `precise`, prove an algorithm's range guard or change ordinary precise shader behavior.
   Validation accepts the same options through `ShaderValidation.ValidateCompute` and `ValidatePair`.
   The option adds no source qualifiers and promises no cross-device transcendental or denormal equivalence.
   Factories without precision support throw `NotSupportedException` for precise requests.

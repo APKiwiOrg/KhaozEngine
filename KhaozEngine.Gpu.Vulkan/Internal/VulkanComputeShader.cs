@@ -34,6 +34,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             ArgumentNullException.ThrowIfNull(modules);
             ArgumentNullException.ThrowIfNull(computeGlsl);
 
+            Options = options;
             string tag = label ?? "compute shader";
 
             byte[] spirv = bytesCache?.GetOrCompile(
@@ -53,6 +54,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         /// <summary>The SHARED <c>VkShaderModule</c>, which a compute pipeline names.</summary>
         internal ulong Module { get; }
+
+        internal GpuShaderCompileOptions Options { get; }
 
         /// <inheritdoc/>
         public uint ThreadGroupSizeX { get; }

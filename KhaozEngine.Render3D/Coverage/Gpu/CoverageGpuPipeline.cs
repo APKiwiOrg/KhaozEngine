@@ -19,12 +19,15 @@ internal enum CoverageGpuPhase
 internal sealed class CoverageGpuPipeline : IDisposable
 {
     readonly IGpuResourceLayout layout;
+    readonly CoverageGpuFilteredPipeline? filtered;
+    internal CoverageGpuFilterPath FilterPath { get; }
     readonly IGpuComputeShader[] shaders;
     readonly IGpuComputePipeline[] pipelines;
 
     internal CoverageGpuPipeline(IGpuDevice device)
     {
         ArgumentNullException.ThrowIfNull(device);
+        FilterPath = CoverageGpuFilterPolicy.Resolve(device.Backend, device.Capabilities);
         CoverageGpuPhase[] phases = Enum.GetValues<CoverageGpuPhase>();
         shaders = new IGpuComputeShader[phases.Length];
         pipelines = new IGpuComputePipeline[phases.Length];
@@ -37,6 +40,7 @@ internal sealed class CoverageGpuPipeline : IDisposable
             new("CovResultsBuf", GpuResourceKind.StructuredBufferReadWrite, GpuShaderStages.Compute)));
         try
         {
+            if (FilterPath != CoverageGpuFilterPath.Exact) filtered = new(device, layout, FilterPath);
             foreach (CoverageGpuPhase phase in phases)
             {
                 shaders[(int)phase] = device.Factory.CreateComputeShaderFromSpirv(CoverageGpuSkinRefineGlsl.Source(phase), new(PreciseMath: true));
@@ -50,6 +54,9 @@ internal sealed class CoverageGpuPipeline : IDisposable
     {
         get { foreach (CoverageGpuPhase phase in Enum.GetValues<CoverageGpuPhase>()) yield return (phase, pipelines[(int)phase]); }
     }
+
+    internal CoverageGpuFilterPath PathFor(CoverageGpuBatch batch) =>
+        batch.MaximumFilterSupportCount > 0 ? FilterPath : CoverageGpuFilterPath.Exact;
 
     internal void Prepare(CoverageGpuBatch batch) => batch.Prepare(layout);
 
@@ -72,13 +79,17 @@ internal sealed class CoverageGpuPipeline : IDisposable
             commands.SetComputePipeline(pipelines[(int)phase]);
             commands.SetComputeResourceSet(0, set);
             batch.DispatchObserverForTests?.Invoke(commands, phase, true);
-            commands.Dispatch(reduce ? 1u : (elements + 63) / 64, (uint)batch.Count, 1);
+            if (filtered is not null && PathFor(batch) != CoverageGpuFilterPath.Exact
+                && phase is CoverageGpuPhase.CorrectFaces or CoverageGpuPhase.CorrectFacesOverlay)
+                filtered.Record(commands, batch, set, phase);
+            else commands.Dispatch(reduce ? 1u : (elements + 63) / 64, (uint)batch.Count, 1);
             batch.DispatchObserverForTests?.Invoke(commands, phase, false);
         }
     }
 
     public void Dispose()
     {
+        filtered?.Dispose();
         foreach (IGpuComputePipeline? pipeline in pipelines) pipeline?.Dispose();
         foreach (IGpuComputeShader? shader in shaders) shader?.Dispose();
         layout.Dispose();

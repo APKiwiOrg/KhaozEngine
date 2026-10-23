@@ -91,12 +91,22 @@ internal sealed class CoverageGpuResources : IDisposable
         if (!Available) return;
         var hostOffsets = new Dictionary<CoverageGpuHost, uint>();
         var supports = new Dictionary<CoverageSupportSurface, (CoverageGpuSupportUpload Upload, uint Offset)>();
+        var storageHosts = new Dictionary<CoverageGpuActor, CoverageGpuHostUpload>();
+        foreach (var actor in actors)
+        {
+            var requested = ReferenceEquals(actor, replacing) ? replacement! : actor.Supports;
+            int capacity = pipeline!.FilterPath == CoverageGpuFilterPath.Exact || requested.Length == 0
+                ? 0 : requested.Max(s => s.InwardTriangles.Count);
+            storageHosts.Add(actor, actor.Host.Upload with { FilterSupportCapacity = capacity });
+        }
+        if (storageHosts.Values.Sum(h => (long)CoverageGpuLayout.WorkWords(h)) > CoverageGpuFilterPolicy.MaximumWorkWords)
+            foreach (var actor in actors) storageHosts[actor] = storageHosts[actor] with { FilterSupportCapacity = 0 };
         uint staticWords = 0, frames = 0, work = 0, surfaces = 0;
         foreach (var actor in actors)
         {
             if (hostOffsets.TryAdd(actor.Host, staticWords)) staticWords = Add(staticWords, (uint)actor.Host.Upload.Words.Length);
             frames = Add(frames, CoverageGpuLayout.FrameWords(actor.Host.Upload.BoneCount));
-            work = Add(work, CoverageGpuLayout.WorkWords(actor.Host.Upload));
+            work = Add(work, CoverageGpuLayout.WorkWords(storageHosts[actor]));
             surfaces = Add(surfaces, CoverageGpuLayout.SurfaceWords(actor.Host.Upload));
         }
         foreach (var actor in actors)
@@ -112,7 +122,10 @@ internal sealed class CoverageGpuResources : IDisposable
         var reservations = new CoverageGpuReservation[actors.Count];
         var supportOffsets = new uint[actors.Count][];
         var leases = new CoverageGpuHistoryLease[actors.Count];
-        var next = new CoverageGpuBatch(device);
+        var next = new CoverageGpuBatch(device)
+        {
+            MaximumFilterSupportCount = (uint)storageHosts.Values.Max(h => h.FilterSupportCapacity)
+        };
         try
         {
             next.Reserve(actors.Count, checked((int)frames), checked((int)work), checked((int)surfaces));
@@ -120,13 +133,13 @@ internal sealed class CoverageGpuResources : IDisposable
             uint frameBase = (uint)actors.Count, workBase = 0, surfaceBase = 0;
             for (int i = 0; i < actors.Count; i++)
             {
-                var actor = actors[i]; var h = actor.Host.Upload;
+                var actor = actors[i]; var h = storageHosts[actor];
                 leases[i] = new(next, retired);
                 reservations[i] = CoverageGpuLayout.CreateReservation(i, hostOffsets[actor.Host], frameBase,
                     workBase, surfaceBase, surfaceBase, h);
                 var requested = ReferenceEquals(actor, replacing) ? replacement! : actor.Supports;
                 supportOffsets[i] = requested.Select(s => supports[s].Offset).ToArray();
-                device.UpdateBuffer(next.Work, CoverageGpuLayout.Bytes(workBase), actor.WorkHeader);
+                device.UpdateBuffer(next.Work, CoverageGpuLayout.Bytes(workBase), CoverageGpuLayout.WorkHeader(h));
                 frameBase = Add(frameBase, CoverageGpuLayout.FrameWords(h.BoneCount));
                 workBase = Add(workBase, CoverageGpuLayout.WorkWords(h));
                 surfaceBase = Add(surfaceBase, CoverageGpuLayout.SurfaceWords(h));
@@ -156,7 +169,6 @@ internal sealed partial class CoverageGpuActor(CoverageGpuHost host)
 {
     internal readonly CoverageGpuHost Host = host;
     internal readonly uint[] Frame = new uint[CoverageGpuLayout.FrameWords(host.Upload.BoneCount)];
-    internal readonly uint[] WorkHeader = CoverageGpuLayout.WorkHeader(host.Upload);
     internal CoverageSupportSurface[] Supports = [];
     internal uint[] SupportOffsets = [];
     internal CoverageGpuReservation Reservation;

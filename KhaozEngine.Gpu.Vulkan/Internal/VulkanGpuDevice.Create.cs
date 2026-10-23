@@ -378,7 +378,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 timestamps: new VulkanTimestampSupport(read.TimestampValidBits, read.TimestampPeriodNanoseconds),
                 signedZeroInfNanPreserveFloat32: read.SignedZeroInfNanPreserveFloat32,
                 pciVendorId: read.PipelineCacheIdentity.VendorId, pciDeviceId: read.PipelineCacheIdentity.DeviceId,
-                driverVersion: read.DriverVersion);
+                driverVersion: read.DriverVersion, float32Rte: read.Float32Rte,
+                float32DenormPreserve: read.Float32DenormPreserve, float32DenormFlush: read.Float32DenormFlush);
 
         static PhysicalDevice[] EnumeratePhysicalDevices(Vk vk, Instance instance)
         {

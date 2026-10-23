@@ -7,5 +7,10 @@ namespace KhaozEngine.Gpu
     /// which come from authored GLSL <c>precise</c> arithmetic. Coverage-style kernels must author
     /// <c>precise</c> on the arithmetic that matters and compile with <c>PreciseMath</c> enabled.
     /// It does not promise identical transcendental or denormal behavior across devices.</param>
-    public readonly record struct GpuShaderCompileOptions(bool PreciseMath = false);
+    /// <param name="RequireFloat32Eft">Require Vulkan RTE32 and an explicit denormal mode for compute error-free transforms.
+    /// Requires PreciseMath and the queried RTE and selected denormal capabilities.</param>
+    /// <param name="FlushFloat32Denorms">Select supported explicit FTZ instead of preservation for a guarded EFT.
+    /// Every nonzero EFT intermediate must stay normal when this is selected.</param>
+    public readonly record struct GpuShaderCompileOptions(bool PreciseMath = false, bool RequireFloat32Eft = false,
+        bool FlushFloat32Denorms = false);
 }

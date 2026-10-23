@@ -63,6 +63,10 @@ namespace KhaozEngine.Gpu.Internal
             GpuShaderCompileOptions options = default)
         {
             if (glsl is null) throw new ArgumentNullException(nameof(glsl));
+            if (options.RequireFloat32Eft && !options.PreciseMath || options.FlushFloat32Denorms && !options.RequireFloat32Eft)
+                throw new ShaderValidationException("Float32 EFT controls require precise math and an explicit EFT request.");
+            if (options.RequireFloat32Eft && stage != GpuShaderStages.Compute)
+                throw new ShaderValidationException("Float32 EFT controls are supported only for compute shaders.");
 
             string tag = label ?? "shader";
             ShaderKind kind = ToToolchainStage(stage);
@@ -152,7 +156,8 @@ namespace KhaozEngine.Gpu.Internal
                 nuint length = _shaderc.ResultGetLength(result);
                 var spirv = new byte[(int)length];
                 new ReadOnlySpan<byte>(_shaderc.ResultGetBytes(result), spirv.Length).CopyTo(spirv);
-                return compileOptions.PreciseMath ? SpirvPreciseMath.Declare(spirv) : spirv;
+                return compileOptions.PreciseMath ? SpirvPreciseMath.Declare(spirv,
+                    compileOptions.RequireFloat32Eft, compileOptions.FlushFloat32Denorms) : spirv;
             }
             finally
             {

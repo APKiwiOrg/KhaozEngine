@@ -298,6 +298,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         void RequireFloatControls(GpuShaderCompileOptions options)
         {
+            VulkanFloat32Eft.Require(_capabilities, options);
             if (options.PreciseMath && !_capabilities.SupportsShaderFloatControls)
                 throw new ShaderValidationException("Vulkan precise shaders require shaderSignedZeroInfNanPreserveFloat32, "
                     + "which this device does not report.");
@@ -329,6 +330,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <exception cref="ArgumentException">The compute shader or a resource layout came from another backend.
         /// </exception>
         public IGpuComputePipeline CreateComputePipeline(in GpuComputePipelineDescription d)
-            => _pipelines.CreateCompute(d);
+        {
+            RequireFloatControls(VulkanComputeShader.Require(d.Shader, "compute pipeline").Options);
+            return _pipelines.CreateCompute(d);
+        }
     }
 }

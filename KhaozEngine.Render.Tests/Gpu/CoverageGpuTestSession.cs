@@ -25,7 +25,13 @@ internal sealed class CoverageGpuTestSession : IDisposable
         if (topologies.Length != palettes.Length) throw new ArgumentException("One palette is required per actor.");
         this.device = device;
         hostIdentities = topologies.Select(t => t.HostIdentity).ToArray();
-        hosts = topologies.Select((t, i) => CoverageGpuUpload.Host(t, palettes[i].Length)).ToArray();
+        hosts = topologies.Select((t, i) => CoverageGpuUpload.Host(t, palettes[i].Length) with
+        {
+            FilterSupportCapacity = CoverageGpuFilterPolicy.Resolve(device.Backend, device.Capabilities) == CoverageGpuFilterPath.Exact
+                || commands is null || commands[i].Length == 0 ? 0 : commands[i].Max(c => c.Support.InwardTriangles.Count)
+        }).ToArray();
+        if (hosts.Sum(h => (long)CoverageGpuLayout.WorkWords(h)) > CoverageGpuFilterPolicy.MaximumWorkWords)
+            hosts = hosts.Select(h => h with { FilterSupportCapacity = 0 }).ToArray();
         headers = hosts.Select(CoverageGpuLayout.WorkHeader).ToArray();
         commandSupports = hosts.Select(_ => new uint[4]).ToArray();
         int frames = checked((int)hosts.Sum(h => (long)CoverageGpuLayout.FrameWords(h.BoneCount)));
@@ -33,7 +39,7 @@ internal sealed class CoverageGpuTestSession : IDisposable
         workWordCount = workWords;
         int surfaces = checked((int)hosts.Sum(h => (long)CoverageGpuLayout.SurfaceWords(h)));
         surfaceWordCount = surfaces;
-        Batch = new(device);
+        Batch = new(device) { MaximumFilterSupportCount = (uint)hosts.Max(h => h.FilterSupportCapacity) };
         Batch.Reserve(hosts.Length, frames, workWords, surfaces);
         int supportWords = commands is null ? 0 : commands.Sum(c => c.Sum(p => CoverageGpuUpload.Support(p.Support).Words.Length));
         uint[] cold = new uint[checked(17 + hosts.Sum(h => h.Words.Length) + supportWords)];
@@ -103,7 +109,7 @@ internal sealed class CoverageGpuTestSession : IDisposable
 
     internal uint[] ReadWords(int actor, int pair)
     {
-        int stride = pair switch { 0 or 2 or 4 or 6 or 8 or 10 or 32 => 16, 12 => 3, 22 => 2, 24 or 34 => 6, 36 => 12, 42 => 46, _ => 1 };
+        int stride = pair switch { 0 or 2 or 4 or 6 or 8 or 10 or 32 => 16, 12 => 3, 22 => 2, 24 or 34 => 6, 36 => 12, 42 => 46, 46 => 3, _ => 1 };
         int start = checked((int)(Batch.Actors[actor].WorkBase + headers[actor][pair]));
         return captured.AsSpan(start, checked((int)headers[actor][pair + 1] * stride)).ToArray();
     }

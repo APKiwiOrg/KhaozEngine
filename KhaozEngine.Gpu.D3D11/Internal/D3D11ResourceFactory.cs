@@ -229,6 +229,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <inheritdoc/>
         public IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl, GpuShaderCompileOptions options)
         {
+            if (options.RequireFloat32Eft) throw new ShaderValidationException("This backend has no verified Float32 EFT contract.");
             using (_creation.Enter()) return _shaders.CreateComputeShader(computeGlsl, options);
         }
 

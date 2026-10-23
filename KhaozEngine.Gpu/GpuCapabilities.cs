@@ -96,6 +96,15 @@ namespace KhaozEngine.Gpu
         /// and leave this Vulkan-specific capability false.</summary>
         public bool SupportsShaderFloatControls { get; init; }
 
+        /// <summary>Vulkan shaderRoundingModeRTEFloat32. False on APIs without a verified selectable RTE contract.</summary>
+        public bool SupportsFloat32Rte { get; init; }
+
+        /// <summary>Vulkan shaderDenormPreserveFloat32, used only with an explicit preservation declaration.</summary>
+        public bool SupportsFloat32DenormPreserve { get; init; }
+
+        /// <summary>Vulkan shaderDenormFlushToZeroFloat32, usable by a normal-intermediate guarded EFT.</summary>
+        public bool SupportsFloat32DenormFlush { get; init; }
+
         /// <summary>True if a fence handed to <see cref="IGpuDevice.Submit(IGpuCommandList,IGpuFence)"/> is signaled
         /// by GPU COMPLETION rather than by the CPU-side submit call returning. Only a fence with that property can
         /// stand in for <see cref="IGpuDevice.WaitForIdle"/>, which is what deferred GPU-resource destruction needs.

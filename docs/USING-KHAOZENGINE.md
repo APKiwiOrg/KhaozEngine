@@ -22924,6 +22924,13 @@ Vulkan requires `shaderSignedZeroInfNanPreserveFloat32` and reports it through t
 `GpuCapabilities.SupportsShaderFloatControls`. A precise shader request without support fails with
 `ShaderValidationException`. Float controls are core below the backend's Vulkan 1.3 floor, with no device
 enable bit. Other APIs leave that Vulkan-specific capability false.
+For a verified Vulkan error-free transform, `RequireFloat32Eft` additionally requests RTE32 and
+DenormPreserve32. Set `FlushFloat32Denorms` to select DenormFlushToZero32 only when every nonzero EFT
+intermediate is proved normal. Query `SupportsFloat32Rte` and the selected
+`SupportsFloat32DenormPreserve` or `SupportsFloat32DenormFlush` property first. Shader and compute-pipeline
+creation enforce those capabilities. Metal and D3D11 refuse EFT compute requests. An ordinary
+`PreciseMath` request continues to require authored `precise` and does not establish RTE.
+The [coverage prototype proof](verification/2026-10-23-coverage-filtered-exact.md) records its guarded domain.
 The resulting `NoContraction` decorations survive into HLSL `precise` and MSL `spvFMul` and `spvFAdd` helpers.
 Metal's guarded SPIRV-Cross 2.23.0 backport uses `T(-0.0)` multiplication-helper seeds so negative-zero
 products keep their sign. An unfamiliar helper fails compilation, tracked for removal in

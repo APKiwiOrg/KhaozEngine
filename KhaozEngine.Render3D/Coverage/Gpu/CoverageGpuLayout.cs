@@ -20,6 +20,7 @@ internal static class CoverageGpuLayout
 
     internal static uint WorkWords(CoverageGpuHostUpload h)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(h.FilterSupportCapacity);
         long events = Math.Max(Math.Max(h.SourceCount, h.AliasCount), Math.Max(Math.Max(h.PositionGroupCount, h.VertexCount),
             Math.Max(3L * h.TriangleCount, 2L * h.PositionGroupCount)));
         // Posed and flushed source, four refined rows and a private generated-attribute candidate,
@@ -27,7 +28,8 @@ internal static class CoverageGpuLayout
         // and typed group/face continuations for the split query phases.
         return Words(WorkHeaderWords + 2L * h.SourceCount * ModelWords + 5L * h.VertexCount * ModelWords
             + (6L + CoverageGpuQueryWorkLayout.ConformWords) * h.PositionGroupCount
-            + (3L + CoverageGpuQueryWorkLayout.FaceWords + CoverageGpuNormalWorkLayout.Words) * h.TriangleCount + 6L * events);
+            + (3L + CoverageGpuQueryWorkLayout.FaceWords + CoverageGpuNormalWorkLayout.Words) * h.TriangleCount + 6L * events
+            + (h.FilterSupportCapacity > 0 ? 2L * h.TriangleCount : 0L) + 4L * h.TriangleCount * h.FilterSupportCapacity);
     }
 
     internal static uint[] WorkHeader(CoverageGpuHostUpload h)
@@ -45,6 +47,11 @@ internal static class CoverageGpuLayout
         Row(ConformContinuations, h.PositionGroupCount, CoverageGpuQueryWorkLayout.ConformWords);
         Row(FaceContinuations, h.TriangleCount, CoverageGpuQueryWorkLayout.FaceWords);
         Row(CoverageGpuNormalWorkLayout.Pair, h.TriangleCount, CoverageGpuNormalWorkLayout.Words);
+        int filteredFaces = h.FilterSupportCapacity > 0 ? h.TriangleCount : 0;
+        Row(44, filteredFaces, 1);
+        int pairs = checked(h.TriangleCount * h.FilterSupportCapacity);
+        Row(46, pairs, 3); Row(48, filteredFaces, 1); Row(50, pairs, 1);
+        header[56] = checked((uint)h.FilterSupportCapacity);
         if (cursor != WorkWords(h)) throw new InvalidOperationException("Coverage work layout disagrees with its allocation.");
         return header;
         void Row(int pair, int count, int stride)
@@ -82,6 +89,8 @@ internal readonly record struct CoverageGpuReservation(int ActorSlot, uint Stati
 internal sealed record CoverageGpuHostUpload(uint[] Words, int SourceCount, int VertexCount, int TriangleCount,
     int PositionGroupCount, int AliasCount, int ShadingGroupCount, int BoneCount)
 {
+    // The maximum over this actor's currently reserved supports, fixed before recording.
+    internal int FilterSupportCapacity { get; init; }
     internal uint SourceAttributes => Words[8];
     internal uint SkinIndices => Words[10];
     internal uint RefinedVertices => Words[12];

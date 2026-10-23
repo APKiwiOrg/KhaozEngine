@@ -50,7 +50,7 @@ namespace KhaozEngine.Tests.Gpu
             foreach (ShippedComputeKernel kernel in ShippedShaderPrograms.ComputeKernels())
                 EmitCompute(kernel, rows, dump);
             foreach (ShippedComputeKernel kernel in CoverageKernels())
-                EmitCompute(kernel, rows, dump, new GpuShaderCompileOptions(PreciseMath: true));
+                EmitCompute(kernel, rows, dump, CoverageOptions(kernel.Name));
 
             rows.Sort((a, b) => string.CompareOrdinal(a.Key, b.Key));
             return rows;
@@ -114,7 +114,19 @@ namespace KhaozEngine.Tests.Gpu
             foreach (var kernel in CoverageGpuPredicateProbe.Kernels().Concat(CoverageGpuSupportProbe.Kernels())) yield return kernel;
             foreach (CoverageGpuPhase phase in Enum.GetValues<CoverageGpuPhase>())
                 yield return new(CoverageGpuSkinRefineGlsl.Name(phase), CoverageGpuSkinRefineGlsl.Source(phase));
+            foreach (var stage in Enum.GetValues<CoverageGpuFilteredStage>())
+            {
+                yield return new(CoverageGpuFilteredSources.Name(stage, CoverageGpuFilterPath.FilteredPreserve), CoverageGpuFilteredSources.Source(stage));
+                if (CoverageGpuFilteredSources.IsProducer(stage))
+                    yield return new(CoverageGpuFilteredSources.Name(stage, CoverageGpuFilterPath.FilteredFlush), CoverageGpuFilteredSources.Source(stage));
+            }
+            yield return new("CoverageFilteredEftPreserveProbe", CoverageGpuFilterProbe.Source);
+            yield return new("CoverageFilteredEftFlushProbe", CoverageGpuFilterProbe.Source);
         }
+
+        internal static GpuShaderCompileOptions CoverageOptions(string name) => new(PreciseMath: true,
+            RequireFloat32Eft: name.StartsWith("CoverageFilteredEft", StringComparison.Ordinal),
+            FlushFloat32Denorms: name.StartsWith("CoverageFilteredEftFlush", StringComparison.Ordinal));
 
         static void EmitCompute(ShippedComputeKernel kernel, List<ShaderCorpusRow> rows, Action<string, byte[]>? dump,
             GpuShaderCompileOptions options = default)

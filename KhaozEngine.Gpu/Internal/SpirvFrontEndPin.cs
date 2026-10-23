@@ -145,7 +145,8 @@ namespace KhaozEngine.Gpu.Internal
             + ";spirv=" + SpirvTarget.ToString()
             + ";macros=" + MacroCount.ToString(CultureInfo.InvariantCulture)
             + ";entryPoint=" + EntryPoint
-            + (options.PreciseMath ? ";ieee32=1;msl-zero-seed=1" : "");
+            + (options.PreciseMath ? ";ieee32=1;msl-zero-seed=1" : "")
+            + (options.RequireFloat32Eft ? ";rte32=1;denorm32=" + (options.FlushFloat32Denorms ? "flush" : "preserve") : "");
 
         // 1 / 0 rather than true / false, matching the shape HlslCrossCompilePin's token already uses.
         static string Bit(bool value) => value ? "1" : "0";

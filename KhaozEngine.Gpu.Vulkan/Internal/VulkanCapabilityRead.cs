@@ -128,6 +128,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="pciVendorId">The physical device's reported vendorID, including software vendors.</param>
         /// <param name="pciDeviceId">The physical device's reported deviceID, preserving zero.</param>
         /// <param name="driverVersion">The queried driver strings or labelled raw version.</param>
+        /// <param name="float32Rte">The queried binary32 RTE property.</param>
+        /// <param name="float32DenormPreserve">The queried binary32 preservation property.</param>
+        /// <param name="float32DenormFlush">The queried binary32 flush property.</param>
         internal static GpuCapabilities Assemble(
             string? deviceName,
             bool samplerAnisotropy,
@@ -135,7 +138,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             GpuSampleCounts supportedMsaaSampleCounts,
             int maxColorAttachments, VulkanTimestampSupport timestamps = default,
             bool signedZeroInfNanPreserveFloat32 = false, uint? pciVendorId = null,
-            uint? pciDeviceId = null, string? driverVersion = null)
+            uint? pciDeviceId = null, string? driverVersion = null, bool float32Rte = false,
+            bool float32DenormPreserve = false, bool float32DenormFlush = false)
             => GpuCapabilities.FromSupportedMsaaSampleCounts(
                 clipSpaceYInverted: ClipSpaceYInverted,
                 depthRangeZeroToOne: DepthRangeZeroToOne,
@@ -150,6 +154,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 MaxColorAttachments = maxColorAttachments,
                 SupportsTimestamps = timestamps.IsSupported,
                 SupportsShaderFloatControls = signedZeroInfNanPreserveFloat32,
+                SupportsFloat32Rte = float32Rte,
+                SupportsFloat32DenormPreserve = float32DenormPreserve,
+                SupportsFloat32DenormFlush = float32DenormFlush,
                 PciVendorId = pciVendorId,
                 PciDeviceId = pciDeviceId,
                 DriverVersion = driverVersion,

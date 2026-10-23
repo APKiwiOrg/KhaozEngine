@@ -33,7 +33,7 @@ internal static class CoverageGpuQueryProbe
         return combined;
     }
 
-    internal static uint[] Run(ITestOutputHelper output, string name, string text, uint[] inputs, int count, uint[]? staticWords = null)
+    internal static uint[] Run(ITestOutputHelper output, string name, string text, uint[] inputs, int count, uint[]? staticWords = null, GpuShaderCompileOptions? options = null)
     {
         using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
         IGpuDevice device = gpu.GpuDevice;
@@ -57,7 +57,7 @@ internal static class CoverageGpuQueryProbe
         using IGpuResourceLayout layout = factory.CreateResourceLayout(new(elements));
         using IGpuResourceSet set = staticWords == null
             ? factory.CreateResourceSet(new(layout, source, result)) : factory.CreateResourceSet(new(layout, source, result, data));
-        var precise = new GpuShaderCompileOptions(PreciseMath: true);
+        var precise = options ?? new GpuShaderCompileOptions(PreciseMath: true);
         byte[] spirv = SpirvFrontEnd.ToSpirv(text, GpuShaderStages.Compute, name, precise);
         CoverageSpirvAccessAudit.Validate(spirv, name, constantPrivateArrays: true);
         ShaderValidation.ValidateCompute(text, precise, name);

@@ -4,16 +4,17 @@ using KhaozEngine.Gpu;
 namespace KhaozEngine.Tests.Gpu;
 
 /// <summary>Identity-preserving native forwarding with actual wait, readback and resource creation counts.</summary>
-internal sealed class CoverageBatchDevice(IGpuDevice inner) : IGpuDevice
+internal sealed class CoverageBatchDevice(IGpuDevice inner, Func<string, string>? shaderTransform = null,
+    GpuCapabilities? capabilities = null) : IGpuDevice
 {
-    readonly FactoryCounts factory = new(inner.Factory);
+    readonly FactoryCounts factory = new(inner.Factory, shaderTransform);
     internal int Waits, Readbacks, Submissions;
     internal bool CaptureWaitSites;
     internal readonly string[] WaitSites = new string[8];
     internal int WaitSiteCount;
     internal int Creations => factory.Creations;
     public GpuBackendKind Backend => inner.Backend;
-    public GpuCapabilities Capabilities => inner.Capabilities;
+    public GpuCapabilities Capabilities => capabilities ?? inner.Capabilities;
     public IGpuResourceFactory Factory => factory;
     public IGpuFramebuffer? SwapchainFramebuffer => inner.SwapchainFramebuffer;
     public IGpuSampler PointSampler => inner.PointSampler;
@@ -42,7 +43,7 @@ internal sealed class CoverageBatchDevice(IGpuDevice inner) : IGpuDevice
     public void Present() => inner.Present();
     public void Dispose() { }
 
-    sealed class FactoryCounts(IGpuResourceFactory source) : IGpuResourceFactory
+    sealed class FactoryCounts(IGpuResourceFactory source, Func<string, string>? transform) : IGpuResourceFactory
     {
         internal int Creations;
         public IGpuBuffer CreateBuffer(in GpuBufferDescription description) { Creations++; return source.CreateBuffer(description); }
@@ -54,7 +55,7 @@ internal sealed class CoverageBatchDevice(IGpuDevice inner) : IGpuDevice
         public IGpuShaderSet CreateShadersFromSpirv(string vertex, string fragment) { Creations++; return source.CreateShadersFromSpirv(vertex, fragment); }
         public IGpuShaderSet CreateShadersFromSpirv(string vertex, string fragment, GpuShaderCompileOptions options) { Creations++; return source.CreateShadersFromSpirv(vertex, fragment, options); }
         public IGpuComputeShader CreateComputeShaderFromSpirv(string compute) { Creations++; return source.CreateComputeShaderFromSpirv(compute); }
-        public IGpuComputeShader CreateComputeShaderFromSpirv(string compute, GpuShaderCompileOptions options) { Creations++; return source.CreateComputeShaderFromSpirv(compute, options); }
+        public IGpuComputeShader CreateComputeShaderFromSpirv(string compute, GpuShaderCompileOptions options) { Creations++; return source.CreateComputeShaderFromSpirv(transform?.Invoke(compute) ?? compute, options); }
         public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription description) { Creations++; return source.CreateGraphicsPipeline(description); }
         public IGpuComputePipeline CreateComputePipeline(in GpuComputePipelineDescription description) { Creations++; return source.CreateComputePipeline(description); }
         public IGpuCommandList CreateCommandList() { Creations++; return source.CreateCommandList(); }

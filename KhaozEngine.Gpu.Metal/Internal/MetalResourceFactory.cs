@@ -183,6 +183,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <inheritdoc/>
         public IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl, GpuShaderCompileOptions options)
         {
+            if (options.RequireFloat32Eft) throw new ShaderValidationException("This backend has no verified Float32 EFT contract.");
             if (!KhaozEngineMetal.IsPlatformSupported) throw OffMacOs("A GPU compute shader");
             return CreateComputeShaderOnMacOs(computeGlsl, options);
         }

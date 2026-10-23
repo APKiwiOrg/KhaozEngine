@@ -113,13 +113,13 @@ public sealed class MapSceneSource
             var shapes = new MapSceneShapeReach(assets, scan);
             MapEffectiveResolutionInput Empty() => new(Array.Empty<MapPlacement>(), null, null, null, new(), null, rootDigest);
 
-            void AddOwner(string id, MapTileCoord storage, MapEffectiveResolutionInput input)
+            void AddOwner(string id, MapTileCoord storage, MapEffectiveResolutionInput input, bool prepaidWater = false)
             {
                 if (owners.ContainsKey(id)) throw new MapDocumentException("Duplicate scene owner.");
                 // Metadata row admission precedes effective remap/copy work.
                 long prospective = input.Placements.Count + (input.Prefabs?.Instances.Sum(i => i.Bindings.Entries.Count) ?? 0) +
                     (input.BuildingIntent?.Lights.Count ?? 0) + (input.BuildingIntent?.Markers.Count ?? 0) +
-                    (input.BuildingIntent?.RoofLinks.Count ?? 0) + (input.BuildingIntent?.RoofGroups.Count ?? 0) + (input.Water?.Bodies.Count ?? 0);
+                    (input.BuildingIntent?.RoofLinks.Count ?? 0) + (input.BuildingIntent?.RoofGroups.Count ?? 0) + (prepaidWater ? 0 : input.Water?.Bodies.Count ?? 0);
                 if (prospective > scan.Limits.MaxMetadataRows - scan.MetadataRows) throw new MapSceneCapacityException();
                 var expanded = MapEffectiveResolutionKernel.Enumerate(input, assets, metadataOnly: true);
                 var ownerRows = new List<MapSceneResourceKey>();
@@ -170,8 +170,12 @@ public sealed class MapSceneSource
                 {
                     foliageMetadata.Add(child, pose ?? transformsByKey[(child.Key.Kind, child.Key.Key)].FirstOrDefault()?.Transform ?? new(0, 0, 0, 0, 1), scan);
                     var dependencies = MapSceneResourceBounds.Dependencies(child).ToHashSet();
-                    long bytes = MapSceneResourceBounds.MetadataBytes(child);
-                    scan.Retain(checked(bytes + Encoding.UTF8.GetByteCount(id)), checked(dependencies.Count + 1));
+                    if (!prepaidWater || child is not MapPrefabWaterChild)
+                    {
+                        long bytes = MapSceneResourceBounds.MetadataBytes(child);
+                        if (child is MapPrefabWaterChild water) bytes = checked(bytes + MapSceneWaterCapture.BodyBytes(water.Value));
+                        scan.Retain(checked(bytes + Encoding.UTF8.GetByteCount(id)), checked(dependencies.Count + 1));
+                    }
                     if (!producing.TryAdd(key, id)) throw new MapDocumentException("Duplicate effective scene resource identity.");
                     ownerRows.Add(key);
                     dependencyEdges.Add(key, dependencies);
@@ -218,8 +222,8 @@ public sealed class MapSceneSource
                 Empty() with { BuildingIntent = new(1, [], new[] { MapPrefabJson.Copy(group) }, [], []) });
             foreach (var body in root.Water?.Bodies ?? [])
             {
-                var water = new MapWaterSet(); water.Media.AddRange(root.Water!.Media); water.Bodies.Add(body with { Domain = body.Domain with { Rects = body.Domain.Rects.ToArray(), Rings = body.Domain.Rings.Select(r => r with { Vertices = r.Vertices.ToArray() }).ToArray() }, Covers = body.Covers.ToArray() });
-                AddOwner("WaterBody:" + body.Id, default, Empty() with { Water = water });
+                var water = MapSceneWaterCapture.Copy(root.Water!, body, scan);
+                AddOwner("WaterBody:" + body.Id, default, Empty() with { Water = water }, prepaidWater: true);
             }
             foreach (var reach in externalLights)
             {

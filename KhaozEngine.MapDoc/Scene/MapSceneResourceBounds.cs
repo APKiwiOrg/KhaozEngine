@@ -16,9 +16,9 @@ namespace KhaozEngine.MapDoc.Scene;
 /// <summary>Descriptor-derived conservative discovery, independent of collision tags and unresolved support height.</summary>
 internal static class MapSceneResourceBounds
 {
-    internal static MapBox3? Child(MapPrefabChild child, MapEffectiveTransform pose, MapAssetClosure assets) => child switch
+    internal static MapBox3? Child(MapPrefabChild child, MapEffectiveTransform pose, MapAssetClosure assets, MapSceneShapeReach shapes) => child switch
     {
-        MapPrefabPlacementChild placement => Placement(assets.GetAsset(placement.Value.AssetId!), pose),
+        MapPrefabPlacementChild placement => Placement(assets.GetAsset(placement.Value.AssetId!), pose, shapes),
         MapPrefabLightChild light => Light(light.Value, pose),
         MapPrefabMarkerChild marker => Point(marker.Value.Position, pose),
         MapPrefabWaterChild water => Domain(water.Value.Domain, pose),
@@ -26,11 +26,13 @@ internal static class MapSceneResourceBounds
         MapPrefabRecordChild { Value: MapPrismDomain prism } => Domain(prism.Footprint, pose),
         _ => null,
     };
-    internal static MapBox3 Placement(MapResolvedAsset asset, MapEffectiveTransform pose)
+    static MapBox3 Placement(MapResolvedAsset asset, MapEffectiveTransform pose, MapSceneShapeReach shapes)
     {
         var bounds = Box(asset.RenderBounds, asset.SourceUnitsToMetres, pose);
         if (asset.LodBounds is { } lod) bounds = bounds.Union(Box(lod, asset.SourceUnitsToMetres, pose));
         if (asset.LightBounds is { } light) bounds = bounds.Union(Box(light, asset.SourceUnitsToMetres, pose));
+        double radius = shapes.Radius(asset) * asset.SourceUnitsToMetres * pose.Scale;
+        if (radius > 0) bounds = bounds.Union(Outward(pose.X - radius, pose.Z - radius, pose.X + radius, pose.Z + radius));
         return bounds;
     }
     static MapBox3 Box(MapLocalBounds bounds, double unit, MapEffectiveTransform pose)

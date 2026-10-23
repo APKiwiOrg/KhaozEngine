@@ -110,6 +110,7 @@ public sealed class MapSceneSource
             var externalLights = new List<(MapSceneResourceKey Key, string Owner, MapEffectiveTransform Local, MapLocalLightDoc Value)>();
             var numeric = new HashSet<long>();
             var allNames = new HashSet<string>(StringComparer.Ordinal);
+            var shapes = new MapSceneShapeReach(assets, scan);
             MapEffectiveResolutionInput Empty() => new(Array.Empty<MapPlacement>(), null, null, null, new(), null, rootDigest);
 
             void AddOwner(string id, MapTileCoord storage, MapEffectiveResolutionInput input)
@@ -135,7 +136,7 @@ public sealed class MapSceneSource
                     var key = Key(child.Key);
                     var pose = expanded.Transforms.GetValueOrDefault(MapEffectiveContext.Key(child.Key.Kind, child.Key.Key), new(0, 0, 0, 0, 1));
                     poses.TryAdd(MapEffectiveContext.Key(child.Key.Kind, child.Key.Key), pose);
-                    var bounds = MapSceneResourceBounds.Child(child, pose, assets);
+                    var bounds = MapSceneResourceBounds.Child(child, pose, assets, shapes);
                     if (bounds is { } b) groupBounds = groupBounds?.Union(b) ?? b;
                     AddRow(key, bounds, child, pose);
                     if (child is MapPrefabLightChild light && expanded.WorldLightFrames.TryGetValue(light.Value.Id, out var local) && light.Value.Owner is { } owner)

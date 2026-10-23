@@ -352,7 +352,9 @@ namespace KhaozEngine.Tests.Gpu
         /// <see cref="FakeGpuResourceFactory.ResourceSets"/> to pin the frame a retired set is destroyed on.</summary>
         internal bool Disposed { get; private set; }
 
-        public void Dispose() => Disposed = true;
+        internal int DisposeCount { get; private set; }
+
+        public void Dispose() { DisposeCount++; Disposed = true; }
     }
 
     internal sealed class FakeShaderSet : IGpuShaderSet

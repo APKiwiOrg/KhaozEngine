@@ -50,11 +50,13 @@ public sealed partial class ViewportWorld
     bool UpdateNative(Vector3 focus, float dt)
     {
         if (_nativeView is null) return false;
-        var next = NativeState(_nativeContext!, focus);
         // A window changes only after the focus leaves its accepted 64 metre domain.
         var b = _nativeState!.Windows[0].DrawBounds;
         if (_nativePendingState is null && (focus.X < b.MinX + 8 || focus.X > b.MaxX - 8 || focus.Z < b.MinZ + 8 || focus.Z > b.MaxZ - 8))
-        { _nativePendingState = next; _nativePendingContext = _nativeContext; _nativeView.Replace(next); }
+        {
+            var next = NativeState(_nativeContext!, focus);
+            _nativePendingState = next; _nativePendingContext = _nativeContext; _nativeView.Replace(next);
+        }
         _nativeFrame = Frame(focus, _nativeFrame.TimeSeconds + dt);
         AcceptNative(_nativeView.Update(_nativeFrame)); return true;
     }
@@ -88,11 +90,6 @@ public partial class MapEditorScene
     MapNativeRenderContext? _nativeLightingApplied;
     void BuildViewport()
     {
-        _viewport.NativeRenderHost = _options.NativeRenderHost;
-        _viewport.NativeDocumentPath = _options.DocumentPath;
-        _viewport.NativeStyleId = _options.NativeStyleId;
-        _viewport.NativeObserver = _options.NativeObserver;
-        _viewport.NativeObserverSpaceId = _options.NativeObserverSpaceId;
         _viewport.Build(_document.Doc, _document.Registry); _controller.Field = _viewport.Field;
     }
     void ApplyViewportEnvironment(Scene3D scene)

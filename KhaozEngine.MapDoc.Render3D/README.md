@@ -24,6 +24,7 @@ Numeric terrain IDs need explicit caller mappings. Prop material authority stays
 The strict glTF and bounded image APIs are opt-in. They admit model, expanded geometry, image and copy
 peaks before decoding and preserve typed capacity refusals. Bounded images currently support PNG and
 JPEG. Strict multipart loading supports core base-colour, normal and metallic-roughness textures.
+Invalid primitive accessor references return a typed invalid-input refusal before model decoding.
 Emissive/occlusion textures and nonempty material extensions refuse before model loading because the
 returned maps cannot represent them. Compatibility glTF and flattened native loading keep their
 released lenient behavior.

@@ -45,7 +45,7 @@ internal static partial class ShippedSceneComparison
         }
         var heads = new Dictionary<(string Window, string Probe), string>();
         int compared = 0;
-        foreach (bool tiled in new[] { false, true })
+        foreach (bool tiled in manifest.NativeDocumentPath is null ? new[] { true } : new[] { true, false })
             for (int load = 0; load < 2; load++)
             {
                 var document = inputs.Reload(tiled); var closure = inputs.Assets(document);
@@ -98,7 +98,7 @@ internal static partial class ShippedSceneComparison
                 }
                 Stream(source, closure, proof.Proofs!, policy, inputs, completeWindows, report);
             }
-        report.Record("scene-summary", JsonSerializer.Serialize(new { heads = 4, compared, scope = "draw sets and streaming, separate from appearance and import acceptance" }, ShippedScenePolicy.Json));
+        report.Record("scene-summary", JsonSerializer.Serialize(new { heads = manifest.NativeDocumentPath is null ? 2 : 4, compared, scope = "draw sets and streaming, separate from appearance and import acceptance" }, ShippedScenePolicy.Json));
     }
 
     static void CompareSource(LegacySceneInventory source, ShippedSceneInputs inputs, MapRenderPlan plan, PrivateOracleReport report)

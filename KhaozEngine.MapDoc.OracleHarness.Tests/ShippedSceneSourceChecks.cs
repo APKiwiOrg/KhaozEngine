@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.Versioning;
+using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Render3D;
 using KhaozEngine.MapDoc.Surfaces;
@@ -18,6 +19,16 @@ namespace KhaozEngine.Tests.MapDocOracle;
 [UnsupportedOSPlatform("windows")]
 internal static class ShippedSceneSourceChecks
 {
+    internal static void Storage(MapDocument tiled, MapDocument? monolithic)
+    {
+        ShippedFoliageManifest.Require(tiled.FormatVersion == 9 && tiled.Tiles is { IsPartial: false },
+            "scene comparison requires a complete format nine tiled document");
+        if (monolithic is null) return;
+        ShippedFoliageManifest.Require(monolithic.FormatVersion == 9 && monolithic.Tiles is null,
+            "scene comparison requires a complete format nine document");
+        ShippedFoliageManifest.Require(MapDocumentHash.OfWorld(tiled) == MapDocumentHash.OfWorld(monolithic), "scene storage forms disagree");
+    }
+
     internal static void Policy(ShippedSceneInputs inputs, PrivateOracleReport report)
     {
         var a = inputs.SourcePolicy; var b = inputs.NativePolicy;

@@ -32,7 +32,7 @@ internal sealed class ShippedSceneInputs
     internal IReadOnlyDictionary<string, string> SourceModelPaths { get; private set; } = new Dictionary<string, string>();
     internal IReadOnlyDictionary<string, string[]> AssetMappings { get; private set; } = new Dictionary<string, string[]>();
     readonly ShippedFoliageInputs.Snapshot _snapshot;
-    readonly byte[] _document;
+    readonly byte[]? _document;
     readonly Dictionary<string, byte[]> _textures = new(StringComparer.Ordinal);
     readonly string _tiledDirectory, _scratch;
     internal ShippedBuildingInputs? Buildings { get; private set; }
@@ -41,7 +41,7 @@ internal sealed class ShippedSceneInputs
 
     ShippedSceneInputs(ShippedSceneManifest manifest, TileWorldDocument world, TileWorldCatalogs catalogs,
         ShippedScenePolicy sourcePolicy, ShippedScenePolicy nativePolicy, IReadOnlyDictionary<string, byte[]> meshes,
-        ShippedFoliageInputs.Snapshot snapshot, byte[] document, string tiledDirectory, string scratch)
+        ShippedFoliageInputs.Snapshot snapshot, byte[]? document, string tiledDirectory, string scratch)
     {
         Manifest = manifest; World = world; Catalogs = catalogs; SourcePolicy = sourcePolicy; NativePolicy = nativePolicy;
         OriginalMeshes = meshes; _snapshot = snapshot; _document = document; _tiledDirectory = tiledDirectory; _scratch = scratch;
@@ -63,14 +63,15 @@ internal sealed class ShippedSceneInputs
         }
         var (world, catalogs) = ShippedSourceInventory.ReadWorld(inputs);
         Require(world.TileSize == 1, "scene comparison requires metre source tiles");
-        byte[] bytes = snapshot.Bytes(manifest.NativeDocumentPath).ToArray();
-        var native = MapDocumentFile.LoadText(Encoding.UTF8.GetString(bytes));
-        Require(native.FormatVersion == 9 && native.Tiles is null, "scene comparison requires a complete format nine document");
-        var closure = MapAssetClosure.Load(native.NativeAssets, snapshot);
-        var effective = MapPrefabResolver.Expand(native, closure);
         string directory = System.IO.Path.GetDirectoryName(manifest.NativeTiledManifestPath)!.Replace('\\', '/');
         Require(System.IO.Path.GetFileName(manifest.NativeTiledManifestPath) == "map.json" && directory.Length != 0, "invalid scene tiled manifest");
         snapshot.Json(manifest.NativeTiledManifestPath);
+        string scratch = System.IO.Path.GetDirectoryName(inputs.ReportPath)!;
+        var native = ReloadTiled(snapshot, directory, scratch);
+        byte[]? bytes = manifest.NativeDocumentPath is { } documentPath ? snapshot.Bytes(documentPath).ToArray() : null;
+        ShippedSceneSourceChecks.Storage(native, bytes is null ? null : MapDocumentFile.LoadText(Encoding.UTF8.GetString(bytes)));
+        var closure = MapAssetClosure.Load(native.NativeAssets, snapshot);
+        var effective = MapPrefabResolver.Expand(native, closure);
         var sourcePolicy = ShippedScenePolicy.Read(snapshot.Json(manifest.Policy.SourcePolicyPath));
         var nativePolicy = ShippedScenePolicy.Read(snapshot.Json(manifest.Policy.NativePolicyPath));
         var objects = world.AllObjects().ToDictionary(o => o.Id);
@@ -134,7 +135,7 @@ internal sealed class ShippedSceneInputs
         Require((manifest.BuildingManifestPath is not null) == (manifest.Roofs.Count > 0 || native.Prefabs?.Instances.Count > 0), "scene building manifest participation differs");
         Require((manifest.MarkerManifestPath is not null) == (world.AllMarkers().Any()), "scene marker manifest participation differs");
         Require((manifest.FoliageManifestPath is not null) == (manifest.Foliage.Count > 0), "scene foliage manifest participation differs");
-        var result = new ShippedSceneInputs(manifest, world, catalogs, sourcePolicy, nativePolicy, meshes, snapshot, bytes, directory, System.IO.Path.GetDirectoryName(inputs.ReportPath)!);
+        var result = new ShippedSceneInputs(manifest, world, catalogs, sourcePolicy, nativePolicy, meshes, snapshot, bytes, directory, scratch);
         result.NativeTileSize = native.TileSize;
         foreach (var pair in textures) result._textures.Add(pair.Key, pair.Value);
         if (manifest.BuildingManifestPath is { } building)
@@ -180,32 +181,39 @@ internal sealed class ShippedSceneInputs
                 if (!result.AssetMappings.ContainsKey(model.Key)) ((Dictionary<string, string[]>)result.AssetMappings).Add(model.Key, [model.Value]);
         var modelPaths = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var row in manifest.Placements) modelPaths.TryAdd(objects[row.SourceObjectId].ArchetypeId, row.Lods[0].SourcePath);
-        foreach (string id in sourcePolicy.ModelExtents.Keys)
+        foreach (string id in sourcePolicy.ModelExtents.Keys.Concat(sourcePolicy.AnimatedAssets)
+            .Concat(sourcePolicy.Placements.Layers.SelectMany(l => l.AssetIds)).Distinct(StringComparer.Ordinal))
         {
-            var archetype = catalogs.Archetype(id) ?? throw new InvalidDataException("unknown scene source foliage model");
+            var archetype = catalogs.Archetype(id) ?? throw new InvalidDataException("unknown scene source selection");
             string path = SafePath(archetype.MeshRef);
-            ValidateOriginalMesh(snapshot.Bytes(path));
-            modelPaths.TryAdd(id, path); meshes.TryAdd(path, snapshot.Bytes(path).ToArray());
+            modelPaths.TryAdd(id, path);
+            foreach (string meshPath in new[] { path }.Concat(archetype.LodMeshRef is { Length: > 0 } lod ? [SafePath(lod)] : []))
+            {
+                byte[] mesh = snapshot.Bytes(meshPath);
+                ValidateOriginalMesh(mesh); meshes.TryAdd(meshPath, mesh.ToArray());
+            }
         }
         result.SourceModelPaths = modelPaths;
-        result.Reload(true);
         Require(inputs.Provenance.Verify(inputs.SourceRoot) == 0, "scene extraction changed during load");
         return result;
     }
-    internal MapDocument Reload(bool tiled)
+    internal MapDocument Reload(bool tiled) => tiled ? ReloadTiled(_snapshot, _tiledDirectory, _scratch)
+        : _document is { } bytes ? MapDocumentFile.LoadText(Encoding.UTF8.GetString(bytes))
+        : throw new InvalidDataException("scene monolithic form was not declared");
+
+    static MapDocument ReloadTiled(ShippedFoliageInputs.Snapshot snapshot, string directory, string scratch)
     {
-        if (!tiled) return MapDocumentFile.LoadText(Encoding.UTF8.GetString(_document));
-        string root = System.IO.Path.Combine(_scratch, "scene-head-" + Guid.NewGuid().ToString("N"));
+        string root = System.IO.Path.Combine(scratch, "scene-head-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root, PrivateOracleFixtures.SecureDirectoryMode);
         try
         {
-            foreach (string path in _snapshot.Under(_tiledDirectory))
+            foreach (string path in snapshot.Under(directory))
             {
-                string target = System.IO.Path.Combine(root, path[(_tiledDirectory.Length + 1)..]);
-                Directory.CreateDirectory(System.IO.Path.GetDirectoryName(target)!); File.WriteAllBytes(target, _snapshot.Bytes(path));
+                string target = System.IO.Path.Combine(root, path[(directory.Length + 1)..]);
+                Directory.CreateDirectory(System.IO.Path.GetDirectoryName(target)!); File.WriteAllBytes(target, snapshot.Bytes(path));
             }
             Require(MapDocumentFile.VerifyTiled(root).Count == 0, "scene tiled store does not verify");
-            return MapDocumentFile.LoadTiled(root);
+            return MapDocumentFile.LoadTiled(root, new() { VerifyTileHashes = true });
         }
         finally { Directory.Delete(root, true); }
     }

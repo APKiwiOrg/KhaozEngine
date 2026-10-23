@@ -727,9 +727,10 @@ harness-only observation boundary. They never set process variables or invoke th
 The controller retains generator/helper sources, their build pin and all comparison inputs privately.
 Include exactly one attested source world manifest, every indexed region, catalogs, prefabs, membership,
 roles, foliage correspondence, original meshes and every LOD, texture, collider, selection and light
-input. Include the native monolithic document, tiled manifest, every page/patch/record/foliage pack and
-complete asset/material graph. Include live source render/roof/cluster/foliage/light policy and native
-policy. Every file participates in the existing ordinal path TAB SHA256 LF aggregate. Verify the
+input. Include the complete native tiled manifest, every page/patch/record/foliage pack and asset/material graph.
+The tiled store is the required, independently verified bootstrap. A native monolithic document is optional.
+Declare its attested path to require full authored identity and head parity, or set `nativeDocumentPath` to null.
+Include live source render/roof/cluster/foliage/light policy and native policy. Every file participates in the existing ordinal path TAB SHA256 LF aggregate. Verify the
 provenance byte digest before parsing. Reads use captured attested bytes with no ambient dependency
 lookup. The released file readers are followed by a complete source recheck. Missing inputs fail.
 
@@ -742,7 +743,7 @@ Source and native keys are unique, with complete source coverage checked before 
 
 | Row | Exact fields and constraints |
 | --- | --- |
-| Root | `schemaVersion`, `generator`, `nativeDocumentPath`, `nativeTiledManifestPath`, `buildingManifestPath`, `markerManifestPath`, `foliageManifestPath`, `materials`, `placements`, `lights`, `roofs`, `water`, `foliage`, `windows`, `sequence`, `policy`, `expectations`. `schemaVersion` is 1 |
+| Root | `schemaVersion`, `generator`, `nativeDocumentPath`, `nativeTiledManifestPath`, `buildingManifestPath`, `markerManifestPath`, `foliageManifestPath`, `materials`, `placements`, `lights`, `roofs`, `water`, `foliage`, `windows`, `sequence`, `policy`, `expectations`. `schemaVersion` is 1. `nativeDocumentPath` is an attested path or null, and `nativeTiledManifestPath` is required and non-null |
 | generator | `{path,helpers}` with unique attested paths, including every retained helper and pinned helper-build input |
 | materials | `{sourceMaterialId,nativeResourceId}`. Source IDs are positive ushort values |
 | placements | `{sourceObjectId,nativePlacementId,lods}`. Object IDs are positive canonical decimal int64 strings |
@@ -760,7 +761,7 @@ Source and native keys are unique, with complete source coverage checked before 
 Linked building and marker paths retain their existing full comparison objects and their transitive
 manifest dependencies. The foliage path retains the full R7 manifest. A participating category requires
 its linked correspondence, an absent category requires null. Retain accepted earlier scaffold format
-policies in those existing readers. The new scene document and tiled store use current format 9.
+policies in those existing readers. The required scene tiled store and any declared monolithic document use current format 9.
 
 Load introduces an inactive named window. Unload removes an active window. Recenter introduces the
 new named window while preserving other active memberships, so load A/load B/unload A/recenter C/
@@ -795,7 +796,8 @@ Geometry/translation tolerance is 0.00001 m, normal component and rotation-angle
 canonical terrain/material/paint coverage independently of render-only triangulation order, every
 placement part/LOD/pose, selected/HLOD identities, full light owner/descriptors, four roof channels,
 water body/space/free regions/area/level with closed regions excluded, and foliage keys/matrices/ranks/
-padded bounds/model bindings. Both native storage forms load independently twice. Stream successes
+padded bounds/model bindings. The complete tiled store loads and verifies independently for each head. It supplies two heads.
+When declared, the monolithic form also loads independently twice, supplying two additional parity heads. Stream successes
 into aggregates and retain bounded private discrepancy examples, never a full sample corpus.
 
 Before attestation, retain one non-attesting diagnostic draft with every discrepancy kind/count and

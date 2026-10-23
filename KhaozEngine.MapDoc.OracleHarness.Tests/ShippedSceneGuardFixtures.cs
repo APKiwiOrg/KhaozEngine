@@ -323,7 +323,7 @@ internal static partial class ShippedSceneGuardFixtures
             comparison["expectations"]!["roofs"] = 1;
             foreach (var probe in comparison["policy"]!["probes"]!.AsArray()) probe!["roofMode"] = "AlwaysHidden";
         }
-        return comparison;
+        return WithStorageAndSelections(root, native, comparison, variant);
     }
     internal static byte[] TriangleGlb()
     {

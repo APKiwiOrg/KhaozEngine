@@ -26,7 +26,7 @@ internal sealed record SceneExpectations(long TerrainFaces, long Placements, lon
     long WaterRegions, long FoliageSamples, long Windows, long SequenceSteps);
 
 /// <summary>Closed correspondence only. No expected meshes, bounds, matrices or draw lists are accepted here.</summary>
-internal sealed record ShippedSceneManifest(SceneGenerator Generator, string NativeDocumentPath, string NativeTiledManifestPath,
+internal sealed record ShippedSceneManifest(SceneGenerator Generator, string? NativeDocumentPath, string NativeTiledManifestPath,
     string? BuildingManifestPath, string? MarkerManifestPath, string? FoliageManifestPath,
     IReadOnlyList<SceneMaterial> Materials, IReadOnlyList<ScenePlacement> Placements, IReadOnlyList<SceneLight> Lights,
     IReadOnlyList<SceneRoof> Roofs, IReadOnlyList<SceneWater> Water, IReadOnlyList<SceneFoliage> Foliage,
@@ -96,7 +96,7 @@ internal sealed record ShippedSceneManifest(SceneGenerator Generator, string Nat
         var counts = json.GetProperty("expectations");
         Shape(counts, "terrainFaces", "placements", "parts", "lods", "lights", "roofs", "waterRegions", "foliageSamples", "windows", "sequenceSteps");
         long Count(string name) => Integer(counts, name, 0, long.MaxValue);
-        return new(new(generatorPath, helpers), Path(json, "nativeDocumentPath"), Path(json, "nativeTiledManifestPath"),
+        return new(new(generatorPath, helpers), NullablePath(json, "nativeDocumentPath"), Path(json, "nativeTiledManifestPath"),
             NullablePath(json, "buildingManifestPath"), NullablePath(json, "markerManifestPath"), NullablePath(json, "foliageManifestPath"),
             materials, placements, lights, roofs, water, foliage, windows, sequence, new(Path(policy, "sourcePolicyPath"), Path(policy, "nativePolicyPath"), probes),
             new(Count("terrainFaces"), Count("placements"), Count("parts"), Count("lods"), Count("lights"), Count("roofs"), Count("waterRegions"), Count("foliageSamples"), Count("windows"), Count("sequenceSteps")));

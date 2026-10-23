@@ -153,7 +153,8 @@ internal static class MapSceneAcquisition
             input = input with { NativeResourceTransforms = (input.NativeResourceTransforms ?? []).Concat(rootTransforms).DistinctBy(t => (t.Kind, t.OwnerId)).ToArray() };
             // Foliage has already acquired its complete native read closure. Resolve those admitted payloads directly,
             // so preparation never re-enters storage or spends one point query's page allowance over the whole closure.
-            var product = MapEffectiveResolutionKernel.Resolve(input, data.Assets, foliageRequest is null ? nativeSource : null);
+            var product = MapEffectiveResolutionKernel.Resolve(input, data.Assets, foliageRequest is null ? nativeSource : null,
+                queryLimits: scope.Surfaces.Limits);
             var view = product.Acquire(scope.Surfaces with { SceneAdmission = admission });
             Record(view);
             foreach (var seat in foliageRequest?.Seats ?? []) Record(product.Acquire(seat with { SceneAdmission = admission, Limits = scope.Surfaces.Limits }));

@@ -26,14 +26,16 @@ internal sealed class MapRenderDecodeAllowance
 {
     readonly MapSceneCapacity _bound;
     internal GltfDecodeBudget Budget { get; }
-    internal MapRenderDecodeAllowance(MapSceneAdmission scene, MapRenderAdmission residency, MapRenderBudgets limits)
+    internal MapRenderDecodeAllowance(MapSceneAdmission scene, MapRenderAdmission residency, MapRenderBudgets limits, GltfDecodeLimits? declared = null)
     {
         long cpu = residency.AvailableCpuBytes;
         long bytes = Math.Min(scene.RemainingPreparedBytes, cpu);
         _bound = cpu < scene.RemainingPreparedBytes
             ? new(nameof(MapRenderBudgets.MaxResidentCpuBytes), limits.MaxResidentCpuBytes - cpu, limits.MaxResidentCpuBytes)
             : scene.PreparedByteCapacity(0);
-        Budget = new(new(MaxPeakBytes: bytes));
+        if (declared is not null && declared.MaxPeakBytes <= bytes)
+            _bound = new(nameof(GltfDecodeLimits.MaxPeakBytes), 0, declared.MaxPeakBytes);
+        Budget = new((declared ?? new()) with { MaxPeakBytes = Math.Min(bytes, declared?.MaxPeakBytes ?? long.MaxValue) });
     }
     internal MapSceneCapacity Resolve(MapSceneCapacity capacity) => capacity.LimitName == nameof(GltfDecodeLimits.MaxPeakBytes)
         ? new(_bound.LimitName, _bound.Requested + capacity.Requested, _bound.Allowance) : capacity;

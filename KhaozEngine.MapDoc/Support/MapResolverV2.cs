@@ -28,7 +28,7 @@ public static class MapResolverV2
 
     internal static IReadOnlyList<MapResolvedPlacement> ResolveEffectivePlacements(MapAssetClosure assets,
         IReadOnlyList<MapPlacement> effective, IReadOnlyDictionary<string, MapEffectiveTransform> transforms,
-        IMapSurfaceSource surfaces, out IReadOnlyList<MapPlacementSupport> supports, IReadOnlyDictionary<string, string>? owners = null)
+        IMapSurfaceSource surfaces, MapQueryLimits limits, out IReadOnlyList<MapPlacementSupport> supports, IReadOnlyDictionary<string, string>? owners = null)
     {
         var result = new List<MapResolvedPlacement>();
         var selected = new List<MapPlacementSupport>();
@@ -46,8 +46,8 @@ public static class MapResolverV2
             {
                 var binding = RequireBinding(placement);
                 var support = SeatSupport(new MapResourceTransform(pose).Point(new(default, default, default)), binding, surfaces,
-                    assets.Roots.Select(a => a.Sha256).ToArray(), new());
-                if (support.Status != MapSupportStatus.Supported) throw new MapDocumentException($"Placement '{placement.Id}' support status {support.Status}: {support.Detail}");
+                    assets.Roots.Select(a => a.Sha256).ToArray(), limits);
+                if (support.Status != MapSupportStatus.Supported) throw support.ResolutionRefusal($"Placement '{placement.Id}'");
                 if (support.Face is { } face && owners is not null &&
                     owners.TryGetValue(MapEffectiveContext.Key(MapPrefabChildKind.Surface, face.OwnerId), out var provider) && missingY.Contains(provider))
                     throw new MapDocumentException($"Placement '{placement.Id}' with missing Y cannot bind support supplied by placement '{provider}' with missing Y.");
@@ -134,7 +134,7 @@ public static class MapResolverV2
             ? query.SampleSurface(point, binding.SurfaceId!)
             : query.Select(new(point, null, binding.SpaceId, null, binding.SearchAbove!.Value, binding.SearchBelow!.Value, null));
         if (support.Status != MapSupportStatus.Supported)
-            throw new MapDocumentException($"Placement '{id}' support status {support.Status}: {support.Detail}");
+            throw support.ResolutionRefusal($"Placement '{id}'");
         supports?.Add(new(id, support));
         return support.WorldY;
     }

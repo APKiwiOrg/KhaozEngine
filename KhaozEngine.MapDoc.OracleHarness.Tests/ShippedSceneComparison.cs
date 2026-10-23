@@ -52,8 +52,11 @@ internal static partial class ShippedSceneComparison
                 using var documentSource = MapDocumentSource.FromDocument(document);
                 var capture = CaptureSource(documentSource, closure, manifest);
                 Require(capture.Source is not null, "scene source capture refused " + string.Join("\n", capture.Findings));
-                var proof = MapRenderExtentValidator.Validate(closure, capture.Source!.RequiredAssetIds, new(new()));
-                Require(proof.Proofs is not null, "scene extent proof refused");
+                var scratch = new GltfDecodeBudget(manifest.Limits?.Decode ?? new());
+                var proof = manifest.Limits?.MaxProofBytes is { } proofBytes
+                    ? MapRenderExtentValidator.Validate(closure, capture.Source!.RequiredAssetIds, scratch, proofBytes)
+                    : MapRenderExtentValidator.Validate(closure, capture.Source!.RequiredAssetIds, scratch);
+                Require(proof.Proofs is not null, "scene extent proof refused " + proof.Detail);
                 var bound = capture.Source.WithRenderExtents(proof.Proofs!);
                 Require(bound.Source is not null, "scene extent binding refused " + string.Join("\n", bound.Findings));
                 var source = bound.Source!;
@@ -67,7 +70,7 @@ internal static partial class ShippedSceneComparison
                     CheckCoverage(acquired.Witness, report);
                     if (acquired.Scene is not { } scene) continue;
                     var scheduler = new SceneOracleScheduler(); var device = new SceneOracleDevice();
-                    using var residency = new MapRenderResidency(new(source, closure, proof.Proofs!, policy, [windows[window.Id]]), device, manifest.Limits?.Residency ?? new(MaxPlanBytes: 67108864), scheduler);
+                    using var residency = new MapRenderResidency(new(source, closure, proof.Proofs!, policy, [windows[window.Id]]) { DecodeLimits = manifest.Limits?.Decode, AssetLimits = manifest.Limits?.Assets }, device, manifest.Limits?.Residency ?? new(MaxPlanBytes: 67108864), scheduler);
                     Complete(residency, scheduler);
                     var plan = residency.AcceptedPlans.Single();
                     var inventory = new MapDrawRecorder(); plan.Register(inventory);
@@ -299,7 +302,7 @@ internal static partial class ShippedSceneComparison
     {
         var scheduler = new SceneOracleScheduler(); var device = new SceneOracleDevice();
         var active = new Dictionary<string, MapSceneScope>(StringComparer.Ordinal);
-        using var residency = new MapRenderResidency(new(source, closure, proof, policy, []), device, inputs.Manifest.Limits?.Residency ?? new(MaxActiveWindows: 256, MaxPlanBytes: 67108864), scheduler);
+        using var residency = new MapRenderResidency(new(source, closure, proof, policy, []) { DecodeLimits = inputs.Manifest.Limits?.Decode, AssetLimits = inputs.Manifest.Limits?.Assets }, device, inputs.Manifest.Limits?.Residency ?? new(MaxActiveWindows: 256, MaxPlanBytes: 67108864), scheduler);
         Complete(residency, scheduler);
         foreach (var step in inputs.Manifest.Sequence)
         {

@@ -99,7 +99,7 @@ internal static class LegacySceneRecorder
             var groundProps = new List<PropPlacement>();
             var frameOwners = new List<LegacyScenePlacement>();
             var byId = placements.ToDictionary(p => p.Id);
-            var scope = ShippedSceneInputs.Scope(window);
+            var scope = ShippedSceneInputs.Scope(window, inputs.Manifest.Limits?.Queries);
             var roofProps = new List<(PropPlacement Prop, TileRect Footprint, int Plane)>();
             foreach (var region in document.Regions.Keys)
                 for (int plane = 0; plane < document.PlaneCount; plane++)

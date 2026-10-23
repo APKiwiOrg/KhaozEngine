@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Markers;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Surfaces;
 
@@ -8,6 +10,27 @@ namespace KhaozEngine.Tests.MapDoc.Scene;
 
 internal static class MapSceneQueryFixtures
 {
+    internal static void AddNativeSeat(MapDocument document, bool marker, string assetId)
+    {
+        AddNativeChain(document);
+        var binding = new MapSupportBinding(MapSupportBindingKind.Surface, "chain", null, null, null, null);
+        if (marker)
+            document.BuildingIntent = new(1, [], [], [], [MapMarkerHeights.Apply(
+                new(1, "seat", "seat", new Vector3(.5f, 0, -.5f), 0, "test", true, []), new(null, binding))]);
+        else
+            document.Placements.Add(new()
+            {
+                Id = "seat",
+                Kind = "cosmetic",
+                AssetId = assetId,
+                NumericId = ++document.NumericIdHighWaterMark,
+                X = .5f,
+                Z = -.5f,
+                Scale = 1,
+                SupportBinding = binding
+            });
+    }
+
     internal static void AddNativeChain(MapDocument document)
     {
         document.Surfaces.Refs.Clear();

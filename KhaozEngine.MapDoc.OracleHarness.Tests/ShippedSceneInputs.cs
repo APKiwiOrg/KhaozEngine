@@ -72,7 +72,8 @@ internal sealed class ShippedSceneInputs
         byte[]? bytes = manifest.NativeDocumentPath is { } documentPath ? snapshot.Bytes(documentPath).ToArray() : null;
         var closure = MapAssetClosure.Load(native.NativeAssets, snapshot);
         ShippedSceneSourceChecks.Storage(native, bytes is null ? null : MapDocumentFile.LoadText(Encoding.UTF8.GetString(bytes)), closure);
-        var effective = MapPrefabResolver.Expand(native, closure);
+        var effective = manifest.Limits is { HasQueryProfile: true } declared
+            ? MapPrefabResolver.ExpandWithLimits(native, closure, declared.Queries) : MapPrefabResolver.Expand(native, closure);
         var sourcePolicy = ShippedScenePolicy.Read(snapshot.Json(manifest.Policy.SourcePolicyPath));
         var nativePolicy = ShippedScenePolicy.Read(snapshot.Json(manifest.Policy.NativePolicyPath));
         var objects = world.AllObjects().ToDictionary(o => o.Id);
@@ -170,7 +171,8 @@ internal sealed class ShippedSceneInputs
             foreach (string helper in foliageManifest.Helpers) snapshot.Bytes(helper);
             var correspondence = new ShippedFoliageCorrespondence(world, catalogs, foliageManifest, native, closure);
             result.FoliageBindings = correspondence.Layers();
-            var capture = MapFoliageGenerationContext.Capture(native, closure);
+            var capture = MapFoliageGenerationContext.Capture(native, closure, manifest.Limits?.Scene.Preparation?.FoliageContext, manifest.Limits is { HasQueryProfile: true } queryProfile ? queryProfile.Queries : null);
+            if (capture.Capacity is { } capacity) throw new KhaozEngine.MapDoc.Scene.MapSceneCapacityException(capacity.LimitName, capacity.Requested, capacity.Allowance);
             Require(capture.Context is not null, "scene foliage capture refused");
             correspondence.Owners(capture.Context!);
             Require(manifest.Foliage.All(f => result.FoliageBindings.Any(b => b.Row.SourceLayerId == f.SourceLayerId && b.Row.NativeLayerId == f.NativeLayerId)), "scene foliage mappings differ");

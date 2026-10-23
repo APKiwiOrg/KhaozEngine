@@ -52,6 +52,8 @@ public static class NativeMapFoliage
         var samples = new List<MapFoliageSampleBatch>();
         var cache = MapFoliageRenderCache.For(context);
         var ceilings = scene.Source.Data.Limits;
+        var declared = ceilings.Preparation?.Foliage;
+        long sampleLimit = declared?.MaxQuerySamples ?? 262_144;
         long count = 0;
         foreach (var layer in layers)
         {
@@ -63,13 +65,17 @@ public static class NativeMapFoliage
                 if (samples.Count >= ceilings.MaxSelectedResources) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxSelectedResources), (long)samples.Count + 1, ceilings.MaxSelectedResources);
                 long available = admission.RemainingPreparedBytes;
                 // Bound retention and support scratch by the active composite and current window, not source defaults.
-                var limits = new MapFoliageLimits(MaxPrepareScopes: admission.RemainingPatchScopes,
-                    MaxFaces: checked((int)Math.Min(admission.RemainingPreparedFaces, available / 2560)), MaxQuerySamples: 262_144 - count,
-                    MaxQueryRetainedBytes: available / 8)
-                { ChargePreparation = bytes => MapFoliageGenerationAdmission.Charge(admission, bytes) };
+                var limits = (declared ?? new MapFoliageLimits()) with
+                {
+                    MaxPrepareScopes = Math.Min(declared?.MaxPrepareScopes ?? int.MaxValue, admission.RemainingPatchScopes),
+                    MaxFaces = checked((int)Math.Min(declared?.MaxFaces ?? int.MaxValue, Math.Min(admission.RemainingPreparedFaces, available / 2560))),
+                    MaxQuerySamples = sampleLimit - count,
+                    MaxQueryRetainedBytes = Math.Min(declared?.MaxQueryRetainedBytes ?? long.MaxValue, available / 8),
+                    ChargePreparation = bytes => MapFoliageGenerationAdmission.Charge(admission, bytes),
+                };
                 var batch = cache.Get(layer.Id, key, limits, admission, retainSamples);
                 count += batch.Samples.Count;
-                if (count > 262_144) throw new MapSceneCapacityException(nameof(MapFoliageLimits.MaxQuerySamples), count, 262_144);
+                if (count > sampleLimit) throw new MapSceneCapacityException(nameof(MapFoliageLimits.MaxQuerySamples), count, sampleLimit);
                 samples.Add(batch);
             }
         }

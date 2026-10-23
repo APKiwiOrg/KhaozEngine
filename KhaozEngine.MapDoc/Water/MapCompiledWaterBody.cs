@@ -83,6 +83,8 @@ public sealed record MapCompiledWaterBody(string BodyId, float SurfaceY, MapWate
     IReadOnlyList<MapWaterRegion> Regions, float? DeepestBedY, MapBox3? Bounds, MapWaterCompileStatus Status, string? Detail,
     MapWaterWork Work, string Digest)
 {
+    public Scene.MapSceneCapacity? Capacity { get; init; }
+
     /// <summary>The compiled domain, or null when it did not compile.</summary>
     internal MapWaterDomain? Domain { get; init; }
 

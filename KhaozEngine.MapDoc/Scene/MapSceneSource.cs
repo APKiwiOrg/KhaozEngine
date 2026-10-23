@@ -318,6 +318,7 @@ public sealed class MapSceneSource
         IOException or UnauthorizedAccessException or System.Text.Json.JsonException => MapSceneSourceStatus.Corrupt,
         MapExactOverflowException or OverflowException => MapSceneSourceStatus.NotRepresentable,
         ArgumentException => MapSceneSourceStatus.Invalid,
+        MapDocumentException when MapSceneCapacity.From(error) is not null => MapSceneSourceStatus.CapacityExceeded,
         MapDocumentException => MapSceneSourceStatus.Corrupt,
         _ => null,
     };

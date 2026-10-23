@@ -12,7 +12,10 @@ using KhaozEngine.MapDoc.Surfaces;
 namespace KhaozEngine.MapDoc.Foliage;
 
 /// <summary>A capture outcome. Complete always carries a context, a refusal never does.</summary>
-public sealed record MapFoliageContextResult(MapFoliageStatus Status, MapFoliageGenerationContext? Context, MapFoliageContextWork Work);
+public sealed record MapFoliageContextResult(MapFoliageStatus Status, MapFoliageGenerationContext? Context, MapFoliageContextWork Work)
+{
+    public Scene.MapSceneCapacity? Capacity { get; init; }
+}
 
 /// <summary>One immutable foliage generation input per accepted document snapshot. Capture admits its budget from
 /// metadata, expands the effective resources exactly once, then copies the foliage and indexes owner and paint
@@ -25,7 +28,7 @@ public sealed class MapFoliageGenerationContext : IMapFoliageInputs
     [ThreadStatic] static long t_captures;
     readonly MapFoliageInputKernel _inputs;
     MapFoliageGenerationContext(MapFoliageSet? foliage, MapAssetClosure assets, MapEffectiveResources resources, MapFoliageContextWork work,
-        string sourceFingerprint)
+        string sourceFingerprint, MapQueryLimits? queryLimits = null)
     {
         SourceFingerprint = sourceFingerprint;
         ClosureHash = assets.Hash;
@@ -33,7 +36,7 @@ public sealed class MapFoliageGenerationContext : IMapFoliageInputs
         Assets = assets;
         Resources = resources;
         Work = work;
-        _inputs = new(foliage, assets, resources.Product);
+        _inputs = new(foliage, assets, resources.Product, queryLimits: queryLimits);
         SnapshotId = _inputs.SnapshotId;
         t_captures++;
     }
@@ -61,19 +64,24 @@ public sealed class MapFoliageGenerationContext : IMapFoliageInputs
     /// <summary>Captures a fully loaded document, reading it without editing it. Refuses before expansion when the
     /// document is partially resident, its preflight demand exceeds <paramref name="limits"/> or its foliage does not
     /// bind to the closure.</summary>
-    public static MapFoliageContextResult Capture(MapDocument document, MapAssetClosure assets, MapFoliageContextLimits? limits = null)
+    public static MapFoliageContextResult Capture(MapDocument document, MapAssetClosure assets, MapFoliageContextLimits? limits = null) =>
+        Capture(document, assets, limits, null);
+
+    /// <summary>Captures complete inputs under caller context and surface query allowances.</summary>
+    public static MapFoliageContextResult Capture(MapDocument document, MapAssetClosure assets, MapFoliageContextLimits? limits,
+        MapQueryLimits? queryLimits)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(assets);
         long expansions = MapPrefabResolver.ThreadExpansions, writes = MapFoliageJson.ThreadPayloadWrites;
         MapFoliageContextMeasure measure = MapFoliageContextPreflight.Measure(document, assets, limits ?? new());
-        if (measure.Status != MapFoliageStatus.Complete) return new(measure.Status, null, measure.Work);
+        if (measure.Status != MapFoliageStatus.Complete) return new(measure.Status, null, measure.Work) { Capacity = measure.Capacity };
         if (MapFoliageValidation.ValidateBound(document, assets).Count != 0) return new(MapFoliageStatus.Invalid, null, measure.Work);
         MapEffectiveResources resources;
-        try { resources = MapPrefabResolver.Expand(document, assets); }
+        try { resources = queryLimits is null ? MapPrefabResolver.Expand(document, assets) : MapPrefabResolver.ExpandWithLimits(document, assets, queryLimits); }
         catch (Exception error) when (Refusal(error) is { } status) { return new(status, null, Observed(measure.Work, expansions, writes)); }
         string baseline = resources.SourceFingerprint ?? Editing.MapDocumentEditFinalizer.BaseFingerprint(document);
-        return Build(document, assets, resources, measure.Work, expansions, writes, baseline);
+        return Build(document, assets, resources, measure.Work, expansions, writes, baseline, queryLimits);
     }
 
     /// <summary>Captures exact resources a pure or native transaction already expanded for this document and closure,
@@ -91,7 +99,7 @@ public sealed class MapFoliageGenerationContext : IMapFoliageInputs
         ArgumentNullException.ThrowIfNull(resources);
         long expansions = MapPrefabResolver.ThreadExpansions, writes = MapFoliageJson.ThreadPayloadWrites;
         MapFoliageContextMeasure measure = MapFoliageContextPreflight.Measure(document, assets, limits ?? new());
-        if (measure.Status != MapFoliageStatus.Complete) return new(measure.Status, null, measure.Work);
+        if (measure.Status != MapFoliageStatus.Complete) return new(measure.Status, null, measure.Work) { Capacity = measure.Capacity };
         if (MapFoliageValidation.ValidateBound(document, assets).Count != 0 || !Corresponds(document, assets, resources))
             return new(MapFoliageStatus.Invalid, null, measure.Work);
         // A snapshot expanded from another document or closure never stands in for this one. An expansion of a document
@@ -131,12 +139,12 @@ public sealed class MapFoliageGenerationContext : IMapFoliageInputs
         MapFoliageContextLimits? limits = null) => MapFoliageWindowCapture.Capture(source, scope, limits ?? new());
 
     static MapFoliageContextResult Build(MapDocument document, MapAssetClosure assets, MapEffectiveResources resources,
-        MapFoliageContextWork measured, long expansions, long writes, string baseline)
+        MapFoliageContextWork measured, long expansions, long writes, string baseline, MapQueryLimits? queryLimits = null)
     {
         // Copying and indexing neither expand nor serialize, so the observed work is final before staging begins.
         MapFoliageContextWork work = Observed(measured, expansions, writes);
         string fingerprint = Editing.MapDocumentEditFinalizer.Fingerprint(baseline, document.Foliage);
-        try { return new(MapFoliageStatus.Complete, new(document.Foliage?.Clone(), assets, resources, work, fingerprint), work); }
+        try { return new(MapFoliageStatus.Complete, new(document.Foliage?.Clone(), assets, resources, work, fingerprint, queryLimits), work); }
         catch (Exception error) when (Refusal(error) is { } status) { return new(status, null, work); }
     }
 

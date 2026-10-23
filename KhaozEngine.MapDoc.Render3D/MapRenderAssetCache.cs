@@ -25,7 +25,7 @@ public sealed class MapRenderAssetCache : IDisposable
         IReadOnlyList<string> materialIds, MapAssetExtentProofSet proofs, GltfDecodeBudget budget) =>
         Acquire(closure, assetIds, materialIds, proofs, budget, CancellationToken.None);
     internal MapPreparedInputResult Acquire(MapAssetClosure closure, IReadOnlyList<string> assetIds,
-        IReadOnlyList<string> materialIds, MapAssetExtentProofSet proofs, GltfDecodeBudget budget, CancellationToken cancellation, MapRenderAdmission.CpuLease? encoded = null)
+        IReadOnlyList<string> materialIds, MapAssetExtentProofSet proofs, GltfDecodeBudget budget, CancellationToken cancellation, MapRenderAdmission.CpuLease? encoded = null, MapRenderAssetLimits? assetLimits = null)
     {
         ArgumentNullException.ThrowIfNull(closure); ArgumentNullException.ThrowIfNull(assetIds);
         ArgumentNullException.ThrowIfNull(materialIds); ArgumentNullException.ThrowIfNull(proofs); ArgumentNullException.ThrowIfNull(budget);
@@ -38,12 +38,13 @@ public sealed class MapRenderAssetCache : IDisposable
             var required = materialIds.Concat(selected.SelectMany(id => closure.GetAsset(id).MaterialResourceIds)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
             foreach (string id in selected)
                 if (!proofs.ByAsset.ContainsKey(id)) return new(MapRenderAssetStatus.Stale, null, "Selected asset lacks an extent proof.");
-            string key = MapPlacementDigest.Hash(w =>
+            var allowance = new MapRenderAssetAllowance(assetLimits);
+            string key = allowance.Key(MapPlacementDigest.Hash(w =>
             {
                 w.WriteStartArray(); w.WriteStringValue(closure.Hash); w.WriteStringValue(proofs.Digest);
                 w.WriteStartArray(); foreach (string id in selected) w.WriteStringValue(id); w.WriteEndArray();
                 w.WriteStartArray(); foreach (string id in required) w.WriteStringValue(id); w.WriteEndArray(); w.WriteEndArray();
-            });
+            }));
             if (_inputs.TryGetValue(key, out var cached)) return new(MapRenderAssetStatus.Complete, cached.Retain(), null);
             // The full remaining decoder peak is admitted before any strict decode, including cached-set misses.
             MapSceneCapacity? capacity = null;
@@ -55,18 +56,19 @@ public sealed class MapRenderAssetCache : IDisposable
                 var pieces = new List<MapPreparedInputLease>();
                 foreach (string id in selected)
                 {
-                    string pieceKey = Fingerprint(closure, id, proofs);
+                    string pieceKey = allowance.Key(Fingerprint(closure, id, proofs));
                     if (!_pieces.TryGetValue(pieceKey, out var piece))
                     {
                         long before = budget.OwnedBytes;
                         cancellation.ThrowIfCancellationRequested();
-                        var loaded = MapRenderAssets.LoadSelected(closure, [id], proofs, budget);
-                        if (loaded.Capacity is { } refused) throw MapRenderDecodeCapacity.Refuse(refused);
+                        var loaded = MapRenderAssets.LoadSelected(closure, [id], proofs, budget, allowance.Remaining);
+                        if (loaded.Capacity is { } refused) throw allowance.Refuse(refused);
                         if (loaded.Assets is not { } assets) throw new MapRenderAssetRefusal(loaded.Status, loaded.Detail ?? "Mesh decode refused.");
                         try { piece = MapPreparedInputLease.AssetOnly(assets, proofs.Digest, budget); }
                         catch { assets.Dispose(); throw; }
                         Track(piece, budget.OwnedBytes - before, cpu, encoded); _pieces.Add(pieceKey, piece); added.Add(pieceKey);
                     }
+                    allowance.Record(piece.Assets);
                     pieces.Add(piece);
                 }
                 foreach (string id in required)

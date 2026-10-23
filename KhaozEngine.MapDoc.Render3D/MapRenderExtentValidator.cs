@@ -12,7 +12,10 @@ using KhaozEngine.Render3D;
 
 namespace KhaozEngine.MapDoc.Render3D;
 
-public sealed record MapExtentProofResult(MapRenderAssetStatus Status, MapAssetExtentProofSet? Proofs, long PeakTemporaryBytes, string? Detail = null);
+public sealed record MapExtentProofResult(MapRenderAssetStatus Status, MapAssetExtentProofSet? Proofs, long PeakTemporaryBytes, string? Detail = null)
+{
+    public KhaozEngine.MapDoc.Scene.MapSceneCapacity? Capacity { get; init; }
+}
 
 /// <summary>Streams source geometry for conservative bounds, retaining provenance only and never decoding an image.</summary>
 public static class MapRenderExtentValidator
@@ -25,7 +28,7 @@ public static class MapRenderExtentValidator
         var rows = new List<MapAssetExtentProof>();
         try
         {
-            if (maxProofBytes < metadata) throw Capacity();
+            if (maxProofBytes < metadata) throw MapRenderDecodeCapacity.Refuse("MaxProofBytes", metadata, maxProofBytes);
             foreach (string id in assetIds.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
             {
                 MapResolvedAsset asset;
@@ -33,7 +36,7 @@ public static class MapRenderExtentValidator
                 catch (MapDocumentException ex) { throw new MapRenderAssetRefusal(MapRenderAssetStatus.Missing, ex.Message); }
                 string[] resources = new[] { asset.MeshResourceId }.Concat(asset.LodResourceIds).ToArray();
                 long rowBytes = checked(512L + Encoding.UTF8.GetByteCount(id) + resources.Sum(r => 256L + Encoding.UTF8.GetByteCount(r)));
-                if (rowBytes > maxProofBytes - metadata) throw Capacity();
+                if (rowBytes > maxProofBytes - metadata) throw MapRenderDecodeCapacity.Refuse("MaxProofBytes", (decimal)metadata + rowBytes, maxProofBytes);
                 var proofs = new List<MapAssetResourceExtentProof>();
                 for (int i = 0; i < resources.Length; i++)
                 {
@@ -61,7 +64,8 @@ public static class MapRenderExtentValidator
             long hashStrings = rows.Count == 0 ? 0 : rows.Max(row => checked((long)Encoding.UTF8.GetByteCount(row.AssetId) +
                 row.Resources.Sum(resource => (long)Encoding.UTF8.GetByteCount(resource.ResourceId) + resource.Sha256.Length)));
             long hashCharge = checked(8192 + 12 * hashStrings);
-            if (hashCharge > Array.MaxLength || !scratch.TryReserve(0, hashCharge)) throw Capacity();
+            if (hashCharge > Array.MaxLength) throw MapRenderDecodeCapacity.Refuse("Array.MaxLength", hashCharge, Array.MaxLength);
+            MapRenderDecodeCapacity.Reserve(scratch, 0, hashCharge);
             peak = Math.Max(peak, hashCharge);
             string digest;
             try
@@ -93,7 +97,7 @@ public static class MapRenderExtentValidator
         }
         catch (Exception ex) when (ex is MapRenderAssetRefusal or MapDocumentException or JsonException or InvalidOperationException or
             KeyNotFoundException or ArgumentOutOfRangeException or OverflowException or FormatException)
-        { return new(MapRenderAssets.Status(ex), null, peak, ex.Message); }
+        { return new(MapRenderAssets.Status(ex), null, peak, ex.Message) { Capacity = MapRenderDecodeCapacity.From(ex) }; }
     }
 
     static MapLocalBounds Bounds(ReadOnlyMemory<byte> glb, GltfDecodeBudget scratch, ref long peak)
@@ -109,7 +113,7 @@ public static class MapRenderExtentValidator
         var reader = new Utf8JsonReader(jsonBytes.Span);
         while (reader.Read()) tokens = checked(tokens + 1);
         long charge = checked(512L + 6L * length + 64 * tokens);
-        if (!scratch.TryReserve(0, charge)) throw Capacity();
+        MapRenderDecodeCapacity.Reserve(scratch, 0, charge);
         peak = Math.Max(peak, charge);
         try
         {
@@ -215,5 +219,4 @@ public static class MapRenderExtentValidator
     static bool Contains(MapLocalBounds declared, MapLocalBounds actual) => actual.Min.X >= declared.Min.X && actual.Min.Y >= declared.Min.Y &&
         actual.Min.Z >= declared.Min.Z && actual.Max.X <= declared.Max.X && actual.Max.Y <= declared.Max.Y && actual.Max.Z <= declared.Max.Z;
     static MapRenderAssetRefusal Invalid(string detail) => new(MapRenderAssetStatus.Invalid, detail);
-    static MapRenderAssetRefusal Capacity() => new(MapRenderAssetStatus.CapacityExceeded, "Extent proof metadata or temporary allowance exceeded.");
 }

@@ -6,6 +6,8 @@ public sealed record MapSceneLimits(int MaxTiles = 65536, int MaxMetadataRows = 
     int MaxMembershipsPerResource = 4096, long MaxScannedBytes = 134217728, long MaxMetadataBytes = 67108864,
     int MaxSelectedResources = 4096, int MaxPatchScopes = 256, int MaxPreparedFaces = 262144, long MaxPreparedBytes = 67108864)
 {
+    public MapScenePreparationLimits? Preparation { get; init; }
+
     internal void Validate()
     {
         if (MaxTiles < 0 || MaxMetadataRows < 0 || MaxMemberships < 0 || MaxMembershipsPerResource < 0 ||

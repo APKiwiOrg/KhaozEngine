@@ -64,7 +64,7 @@ public sealed class MapRenderPlan : IDisposable
             var context = captured ?? CaptureFoliage(source, scene.Scope);
             terrain = NativeMapTerrain.Prepare(scene, input, policy.TerrainMaterials);
             placements = NativeMapPlacements.Prepare(scene, input, policy.Placements, routing, cells);
-            var water = NativeMapWater.Prepare(MapWaterScopedCompiler.Compile(scene), policy.Water.ToWaterLook(), new WaterSettings());
+            var water = NativeMapWater.Prepare(MapWaterScopedCompiler.Compile(scene, limits: source.Data.Limits.Preparation?.Water), policy.Water.ToWaterLook(), new WaterSettings());
             foliage = NativeMapFoliage.Prepare(scene, context, input, policy.Foliage, routing, retainSamples);
             var geometry = MapPresentationGeometry.Prepare(scene, input.Assets.Closure, terrain.CanonicalFaces);
             var roofResult = MapRoofEvaluationBuffer.Prepare(scene, admission);
@@ -88,7 +88,7 @@ public sealed class MapRenderPlan : IDisposable
     }
     internal static MapWindowFoliageContext CaptureFoliage(MapSceneSource source, MapSceneScope scope)
     {
-        var result = MapFoliageGenerationContext.CaptureWindow(source, scope);
+        var result = MapFoliageGenerationContext.CaptureWindow(source, scope, source.Data.Limits.Preparation?.FoliageContext);
         if (result.Capacity is { } capacity) throw new MapSceneCapacityException(capacity.LimitName, capacity.Requested, capacity.Allowance);
         return result.Context ?? throw new MapRenderAssetRefusal(result.Status == MapFoliageStatus.CapacityExceeded
             ? MapRenderAssetStatus.CapacityExceeded : MapRenderAssetStatus.Invalid, "Window foliage dependencies refused preparation. " + string.Join("\n", result.Findings));

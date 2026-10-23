@@ -9,6 +9,8 @@ namespace KhaozEngine.MapDoc.Render3D;
 public sealed record MapRenderSourceState(MapSceneSource Source, MapAssetClosure Closure,
     MapAssetExtentProofSet Extents, MapRenderPolicy Policy, IReadOnlyList<MapSceneScope> Windows)
 {
+    public KhaozEngine.Render3D.GltfDecodeLimits? DecodeLimits { get; init; }
+    public MapRenderAssetLimits? AssetLimits { get; init; }
     public IReadOnlyList<MapSceneScope> Windows { get; init; } = Array.AsReadOnly(Windows.ToArray());
 }
 

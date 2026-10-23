@@ -20,7 +20,10 @@ public sealed record MapFoliageContextWork(long SourceUtf8Bytes, long ChunkDescr
     long PaintTargets, long Expansions, long SnapshotSerializations);
 
 /// <summary>A preflight outcome. A refusal reports the charges counted up to the refused ceiling.</summary>
-public sealed record MapFoliageContextMeasure(MapFoliageStatus Status, MapFoliageContextWork Work);
+public sealed record MapFoliageContextMeasure(MapFoliageStatus Status, MapFoliageContextWork Work)
+{
+    public Scene.MapSceneCapacity? Capacity { get; init; }
+}
 
 /// <summary>Counts a document's context demand from metadata alone, refusing before expansion, cloning or staging.
 /// Residency is checked first, so a partial document refuses before any read. SourceUtf8Bytes is a conservative charge
@@ -49,18 +52,22 @@ internal static class MapFoliageContextPreflight
             return new(MapFoliageStatus.PartialResidency, work);
 
         work = work with { ChunkDescriptors = set?.Layers.Sum(l => (long)l.ChunkDigests.Count) ?? 0 };
-        if (work.ChunkDescriptors > limits.MaxChunkDescriptors) return new(MapFoliageStatus.CapacityExceeded, work);
+        if (work.ChunkDescriptors > limits.MaxChunkDescriptors) return new(MapFoliageStatus.CapacityExceeded, work)
+        { Capacity = new(nameof(MapFoliageContextLimits.MaxChunkDescriptors), work.ChunkDescriptors, limits.MaxChunkDescriptors) };
 
         var source = new SourceCharge(limits.MaxSourceUtf8Bytes);
         if (set is not null) Charge(source, set);
         work = work with { SourceUtf8Bytes = source.Bytes };
-        if (source.Exceeded) return new(MapFoliageStatus.CapacityExceeded, work);
+        if (source.Exceeded) return new(MapFoliageStatus.CapacityExceeded, work)
+        { Capacity = new(nameof(MapFoliageContextLimits.MaxSourceUtf8Bytes), work.SourceUtf8Bytes, limits.MaxSourceUtf8Bytes) };
 
         work = work with { Placements = PlacementDemand(document, assets) };
-        if (work.Placements > limits.MaxPlacements) return new(MapFoliageStatus.CapacityExceeded, work);
+        if (work.Placements > limits.MaxPlacements) return new(MapFoliageStatus.CapacityExceeded, work)
+        { Capacity = new(nameof(MapFoliageContextLimits.MaxPlacements), work.Placements, limits.MaxPlacements) };
 
         work = work with { PaintTargets = PaintTargetDemand(document, assets) };
-        if (work.PaintTargets > limits.MaxPaintTargets) return new(MapFoliageStatus.CapacityExceeded, work);
+        if (work.PaintTargets > limits.MaxPaintTargets) return new(MapFoliageStatus.CapacityExceeded, work)
+        { Capacity = new(nameof(MapFoliageContextLimits.MaxPaintTargets), work.PaintTargets, limits.MaxPaintTargets) };
 
         MapPrefabExpansionWork expansion;
         try { expansion = MapPrefabPreflight.Count(document, assets, new()); }
@@ -72,7 +79,8 @@ internal static class MapFoliageContextPreflight
         }
         catch (KeyNotFoundException) { return new(MapFoliageStatus.Invalid, work); }
         work = work with { SurfacePatches = expansion.Patches };
-        if (work.SurfacePatches > limits.MaxSurfacePatches) return new(MapFoliageStatus.CapacityExceeded, work);
+        if (work.SurfacePatches > limits.MaxSurfacePatches) return new(MapFoliageStatus.CapacityExceeded, work)
+        { Capacity = new(nameof(MapFoliageContextLimits.MaxSurfacePatches), work.SurfacePatches, limits.MaxSurfacePatches) };
         return new(MapFoliageStatus.Complete, work);
     }
 

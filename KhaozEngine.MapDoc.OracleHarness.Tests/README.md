@@ -729,7 +729,8 @@ Include exactly one attested source world manifest, every indexed region, catalo
 roles, foliage correspondence, original meshes and every LOD, texture, collider, selection and light
 input. Include the complete native tiled manifest, every page/patch/record/foliage pack and asset/material graph.
 The tiled store is the required, independently verified bootstrap. A native monolithic document is optional.
-Declare its attested path to require full authored identity and head parity, or set `nativeDocumentPath` to null.
+Declare its attested path to require full native authored identity and head parity, or set `nativeDocumentPath` to null.
+Parity covers native roots, authored tile content and surface payload facts without monolithic serialization.
 Include live source render/roof/cluster/foliage/light policy and native policy. Every file participates in the existing ordinal path TAB SHA256 LF aggregate. Verify the
 provenance byte digest before parsing. Reads use captured attested bytes with no ambient dependency
 lookup. The released file readers are followed by a complete source recheck. Missing inputs fail.

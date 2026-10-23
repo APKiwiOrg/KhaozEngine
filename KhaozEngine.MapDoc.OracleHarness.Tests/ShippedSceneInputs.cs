@@ -69,8 +69,8 @@ internal sealed class ShippedSceneInputs
         string scratch = System.IO.Path.GetDirectoryName(inputs.ReportPath)!;
         var native = ReloadTiled(snapshot, directory, scratch);
         byte[]? bytes = manifest.NativeDocumentPath is { } documentPath ? snapshot.Bytes(documentPath).ToArray() : null;
-        ShippedSceneSourceChecks.Storage(native, bytes is null ? null : MapDocumentFile.LoadText(Encoding.UTF8.GetString(bytes)));
         var closure = MapAssetClosure.Load(native.NativeAssets, snapshot);
+        ShippedSceneSourceChecks.Storage(native, bytes is null ? null : MapDocumentFile.LoadText(Encoding.UTF8.GetString(bytes)), closure);
         var effective = MapPrefabResolver.Expand(native, closure);
         var sourcePolicy = ShippedScenePolicy.Read(snapshot.Json(manifest.Policy.SourcePolicyPath));
         var nativePolicy = ShippedScenePolicy.Read(snapshot.Json(manifest.Policy.NativePolicyPath));

@@ -19,6 +19,16 @@ internal static partial class ShippedSceneGuardFixtures
             native.Placements[0].X += .125f;
             MapDocumentFile.Save(native, Path.Combine(root, "native.json"));
         }
+        if (variant == "monolithic-native-metadata-mismatch")
+        {
+            native.NumericIdHighWaterMark++;
+            MapDocumentFile.Save(native, Path.Combine(root, "native.json"));
+        }
+        if (variant == "monolithic-surface-mismatch")
+        {
+            native.Surfaces.Patches.First().Value.Heights[0] += 1;
+            MapDocumentFile.Save(native, Path.Combine(root, "native.json"));
+        }
         if (variant == "missing-tiled") comparison.Remove("nativeTiledManifestPath");
         if (variant == "null-tiled") comparison["nativeTiledManifestPath"] = null;
         if (variant == "corrupt-tiled")

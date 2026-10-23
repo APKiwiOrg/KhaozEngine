@@ -29,6 +29,8 @@ public sealed partial class ShippedSceneInputGuardTests
 
     [Theory]
     [InlineData("monolithic-mismatch")]
+    [InlineData("monolithic-native-metadata-mismatch")]
+    [InlineData("monolithic-surface-mismatch")]
     [InlineData("missing-tiled")]
     [InlineData("null-tiled")]
     [InlineData("corrupt-tiled")]

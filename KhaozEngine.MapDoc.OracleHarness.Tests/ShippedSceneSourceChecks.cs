@@ -4,7 +4,9 @@ using System.Linq;
 using System.Numerics;
 using System.Runtime.Versioning;
 using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Foliage;
+using KhaozEngine.MapDoc.Identity;
 using KhaozEngine.MapDoc.Render3D;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
@@ -19,14 +21,16 @@ namespace KhaozEngine.Tests.MapDocOracle;
 [UnsupportedOSPlatform("windows")]
 internal static class ShippedSceneSourceChecks
 {
-    internal static void Storage(MapDocument tiled, MapDocument? monolithic)
+    internal static void Storage(MapDocument tiled, MapDocument? monolithic, MapAssetClosure assets)
     {
         ShippedFoliageManifest.Require(tiled.FormatVersion == 9 && tiled.Tiles is { IsPartial: false },
             "scene comparison requires a complete format nine tiled document");
         if (monolithic is null) return;
         ShippedFoliageManifest.Require(monolithic.FormatVersion == 9 && monolithic.Tiles is null,
             "scene comparison requires a complete format nine document");
-        ShippedFoliageManifest.Require(MapDocumentHash.OfWorld(tiled) == MapDocumentHash.OfWorld(monolithic), "scene storage forms disagree");
+        var options = new MapResolveOptions("shipped-scene-storage", 1, "authored", 2);
+        ShippedFoliageManifest.Require(MapAuthoredIdentityV2.Compute(tiled, assets, options) ==
+            MapAuthoredIdentityV2.Compute(monolithic, assets, options), "scene storage forms disagree");
     }
 
     internal static void Policy(ShippedSceneInputs inputs, PrivateOracleReport report)

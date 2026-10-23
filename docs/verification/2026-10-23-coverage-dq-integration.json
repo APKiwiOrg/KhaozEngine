@@ -1,0 +1,1110 @@
+{
+  "formatVersion": 1,
+  "scope": "J0 headless reconciliation",
+  "integrationCommit": "2075584da1a84b77f1ac110b4b091df7db668ae6",
+  "parents": [
+    "27d5d0e20c316ef946762009698c49ef72716f8b",
+    "ad86b4a6193800de118ad9da9e824683aa3e7b9c"
+  ],
+  "dqR1": "c4c8b48a2bba9e58d829b95f93c5708207842d29",
+  "engineVersion": "21.11.0",
+  "toolchain": {
+    "sdk": "10.0.402",
+    "runtime": "10.0.13"
+  },
+  "conflicts": [
+    {
+      "path": "KhaozEngine.Attachments.Render3D/AttachmentSetBinding.cs",
+      "disposition": "Preserve coverage ownership, retained binds and conformer checks with DQ profile/cache/fit identity."
+    },
+    {
+      "path": "KhaozEngine.Attachments.Render3D/AttachmentSetCache.cs",
+      "disposition": "Preserve coverage ownership, retained binds and conformer checks with DQ profile/cache/fit identity."
+    },
+    {
+      "path": "KhaozEngine.Attachments.Render3D/BoundAttachmentSet.cs",
+      "disposition": "Preserve coverage ownership, retained binds and conformer checks with DQ profile/cache/fit identity."
+    },
+    {
+      "path": "KhaozEngine.Attachments.Render3D/SkinnedAttachmentBinding.cs",
+      "disposition": "Preserve coverage ownership, retained binds and conformer checks with DQ profile/cache/fit identity."
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/VulkanDescriptorLimitTests.cs",
+      "disposition": "Preserve both rejection producers and union their inputs at fused/split resolve. Defer owner unification to S4.5b."
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/hlsl-hashes/d3d11-hlsl.sha256.txt",
+      "disposition": "Union independently accepted shader entries. Resolve shared temporal entries against reconciled source with artifact proof left to root."
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/msl-hashes/metal-msl.sha256.txt",
+      "disposition": "Union independently accepted shader entries. Resolve shared temporal entries against reconciled source with artifact proof left to root."
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/spirv-hashes/vulkan-spirv.sha256.txt",
+      "disposition": "Union independently accepted shader entries. Resolve shared temporal entries against reconciled source with artifact proof left to root."
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Render3D/TemporalResolveShaderTests.cs",
+      "disposition": "Preserve both rejection producers and union their inputs at fused/split resolve. Defer owner unification to S4.5b."
+    },
+    {
+      "path": "KhaozEngine.Render3D/Internal/ShaderSources.TemporalResolve.cs",
+      "disposition": "Preserve both rejection producers and union their inputs at fused/split resolve. Defer owner unification to S4.5b."
+    },
+    {
+      "path": "KhaozEngine.Render3D/Internal/ShaderSources.TemporalSplit.cs",
+      "disposition": "Preserve both rejection producers and union their inputs at fused/split resolve. Defer owner unification to S4.5b."
+    },
+    {
+      "path": "KhaozEngine.Render3D/Models/GltfLoader.Skinned.cs",
+      "disposition": "Thread explicit profile alongside legacy optional coverage collector."
+    },
+    {
+      "path": "KhaozEngine.Render3D/Rendering/ModelRenderer.Motion.cs",
+      "disposition": "Compose coverage FINAL surface routing and restoration checks with accepted DQ prepared/source/profile consumer routing."
+    },
+    {
+      "path": "KhaozEngine.Render3D/Rendering/TargetOutlineRenderer.cs",
+      "disposition": "Compose coverage FINAL surface routing and restoration checks with accepted DQ prepared/source/profile consumer routing."
+    },
+    {
+      "path": "KhaozEngine.Render3D/Rendering/TemporalResolveRenderer.cs",
+      "disposition": "Preserve both rejection producers and union their inputs at fused/split resolve. Defer owner unification to S4.5b."
+    },
+    {
+      "path": "KhaozEngine.Render3D/Rendering/TemporalSplitResolve.cs",
+      "disposition": "Preserve both rejection producers and union their inputs at fused/split resolve. Defer owner unification to S4.5b."
+    },
+    {
+      "path": "KhaozEngine.Render3D/Scene3D.DrawDescriptors.cs",
+      "disposition": "Compose coverage FINAL surface routing and restoration checks with accepted DQ prepared/source/profile consumer routing."
+    },
+    {
+      "path": "KhaozEngine.Render3D/Scene3D.MotionTarget.cs",
+      "disposition": "Compose coverage FINAL surface routing and restoration checks with accepted DQ prepared/source/profile consumer routing."
+    },
+    {
+      "path": "KhaozEngine.Render3D/Scene3D.SkinnedDrawRecords.cs",
+      "disposition": "Compose coverage FINAL surface routing and restoration checks with accepted DQ prepared/source/profile consumer routing."
+    },
+    {
+      "path": "KhaozEngine.Render3D/Scene3D.SkinnedMeshLoading.cs",
+      "disposition": "Compose coverage FINAL surface routing and restoration checks with accepted DQ prepared/source/profile consumer routing."
+    },
+    {
+      "path": "KhaozEngine.Render3D/Scene3D.SkinnedSubmission.cs",
+      "disposition": "Compose coverage FINAL surface routing and restoration checks with accepted DQ prepared/source/profile consumer routing."
+    },
+    {
+      "path": "KhaozEngine.Render3D/Scene3D.TargetOutlinePass.cs",
+      "disposition": "Compose coverage FINAL surface routing and restoration checks with accepted DQ prepared/source/profile consumer routing."
+    },
+    {
+      "path": "KhaozEngine.Render3D/Scene3D.TemporalResolve.cs",
+      "disposition": "Preserve both rejection producers and union their inputs at fused/split resolve. Defer owner unification to S4.5b."
+    },
+    {
+      "path": "docs/CROSS-PLATFORM.md",
+      "disposition": "Retain coverage and ordinary DQ documentation and index entries."
+    },
+    {
+      "path": "docs/INDEX.md",
+      "disposition": "Retain coverage and ordinary DQ documentation and index entries."
+    },
+    {
+      "path": "docs/USING-KHAOZENGINE.md",
+      "disposition": "Retain coverage and ordinary DQ documentation and index entries."
+    }
+  ],
+  "protectedManifests": [
+    {
+      "path": "KhaozEngine.Render.Tests/Fixtures/coverage-reference-v1/outputs.sha256",
+      "sha256": "62f84ad4d131de458754d7b4ef69bbaaaf0dc38ed004ebe4d2f0695cbde66b5f",
+      "matchesAcceptedInput": true,
+      "parent": "27d5d0e20c316ef946762009698c49ef72716f8b"
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Fixtures/dual-quaternion/rigid-words.json",
+      "sha256": "c3b35761fea0f8da126ebe5d8dbf3d36ce700111bff964ea656911a7fda9eb82",
+      "matchesAcceptedInput": true,
+      "parent": "ad86b4a6193800de118ad9da9e824683aa3e7b9c"
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Fixtures/dual-quaternion/blender-rigid/expected.json",
+      "sha256": "c017b02ca9a0817e4648ef185c23057a7e157fcfd4cdf4cc173a0b69f2ab0ab2",
+      "matchesAcceptedInput": true,
+      "parent": "ad86b4a6193800de118ad9da9e824683aa3e7b9c"
+    }
+  ],
+  "compilerIdentities": [
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/hlsl-hashes/d3d11-hlsl.sha256.txt",
+      "changedSharedPrograms": {
+        "TemporalAccumulate.fragment": {
+          "coverage": "6f6b8b028fb0ed2716b2c44f365f6cd92cc6d8c69bfee3c19562f8c3ebb0fa32",
+          "dq": "23890f2b2f07386548b1b5a54056b0951afcb00c3ab9339b70133ec9f507f895",
+          "integrated": "562498d686befe4399a1f7ca4e23d60eb600a8f3e987b9e5d68c87bc4832d2d1"
+        },
+        "TemporalAccumulateAtDisplaySize.fragment": {
+          "coverage": "2602dc847174418f94854e8018d9f4504734bfd5c15aacfd89835f1ed8162efd",
+          "dq": "c4f93807c7d293296ddb49cf2a4a8f82f68c9f926c6359c6a970e037b2db9849",
+          "integrated": "a028c4ea6825c203e25df843f0cfd2025c4eeed18aacdb01828624035096a3e9"
+        },
+        "TemporalAccumulateAtDisplaySizeHalf.fragment": {
+          "coverage": "86edd581e233940ee80f9ae229d20e9343f6bdfa91366872fa74aeb89f81f863",
+          "dq": "d0451bcd5e661a3605ffb0fd55f696447e51045e4a7411793cd7d69836260eb5",
+          "integrated": "4f763b14cc0534eddc3ed57d6dd9113f357afa87f258b871f19c8b4d267d06dc"
+        },
+        "TemporalAccumulateHalf.fragment": {
+          "coverage": "d089bb726dbc672971d250dbd4c1804e60d43354da0dfe55198c502f5e305180",
+          "dq": "2bca421e9b431ee57c010e552a244b385aaa478b9857b9c45df38d11eb18f8b9",
+          "integrated": "ff9b4c529b8054bfe1cda2a0355a370d8b607e532ba1c205479a73aa3891c7de"
+        },
+        "TemporalCountProbe.fragment": {
+          "coverage": "3ff39edb3267b2758304e7dfd970f3cd1b04586b55e0478d5a32bbfc56fde26d",
+          "dq": "6ac84276f529960231872f3aa436ef1689224b2db3fcac4429f4b663ca59e20b",
+          "integrated": "fef08d3baeeaaf549ef3579ba4a1edb439435296d2e1d8c66cba7cf4a0b0a7e7"
+        },
+        "TemporalCountProbeHalf.fragment": {
+          "coverage": "2781d6a66552d77b791a6e9a5d733d292e52d8169c06ae7737fa27849fdf58d7",
+          "dq": "8056b63d6b0bbb04d3b644610742bd1a3cb704b47149742241588824d7fff290",
+          "integrated": "1506753ea6cb53ac161f9420c0488e7a0d760352b7e25c3be75fd8cc531daa6c"
+        },
+        "TemporalDebugView.fragment": {
+          "coverage": "32a266d4bec76d8eb0c05aef67bae42f292c20e23732d0123e27132064b9c67f",
+          "dq": "03c4fe1b3f20084ec69d588132c5e320d04a912d795e2036ce9e7424869966ea",
+          "integrated": "8b66c13d0616330d3fcb352f60e1b49e36cff144293d7487b81b6e78c67943ed"
+        },
+        "TemporalDebugViewHalf.fragment": {
+          "coverage": "fd49fe048750fbcb1723a4198edc50f6f93dbfed09403086a54f498f5012372f",
+          "dq": "7d8c42dd08e2e3aafd4bd0a69cc07741d397cc68788071cf6e6996673daee83d",
+          "integrated": "62f3c6b0c080106d5b777b4bc8fb714732cfda3497036bbfb89fac123fcd2cca"
+        },
+        "TemporalResolve.fragment": {
+          "coverage": "4df6e5400bc24c4516b658fe748fe77ac2f2a59625c6bbc7837808c7830d6a2d",
+          "dq": "c97b4388cc4f8082dc0875235ab61706cee704177a682c4ace1b08637ad4d372",
+          "integrated": "b4d754005282edd5cd706f0a970e99c89cb48a689e4fc158affecdae5a1ba74a"
+        },
+        "TemporalResolveHalf.fragment": {
+          "coverage": "825cffaaa694aa3e86bbc51343cffc0b1f1c617f4c0ae04ae48b33a4e82de402",
+          "dq": "9f65135cb49a933754ec2ab2832b3dd8a9d822258e1502009d631e2651e2da0f",
+          "integrated": "9928ea33e4a91ef7d42bf235f69178c01bb46a9e1d42a7c304d91d80c27d97c6"
+        }
+      },
+      "entryCount": 208
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/msl-hashes/metal-msl.sha256.txt",
+      "changedSharedPrograms": {
+        "TemporalAccumulate.fragment": {
+          "coverage": "d44119b1a84b06b5d9d96a6bfbea10ed021f60ef8d5c237a67c6ed52bf0004f4",
+          "dq": "5bbdcb4257653ba94567a8dd069f91bb4dafd2937a254806e68aa567cd4535ca",
+          "integrated": "fb62e96bfaa6c57d7657784528010d879debc3b0213d557203b1c23f55a6a90a"
+        },
+        "TemporalAccumulateAtDisplaySize.fragment": {
+          "coverage": "277fcd80b8f137f6d45ec17f5a15cbdc313c05bbc0a92b64c0a18df56ecaf3f5",
+          "dq": "d707236ae1f3da918b4b7aca441f5511346e022a0e1bf024858456202376676a",
+          "integrated": "9c6490e48872e199adc0d1b26f737d51feac701e88c6bc70a44bb300fdd6e57c"
+        },
+        "TemporalAccumulateAtDisplaySizeHalf.fragment": {
+          "coverage": "5088fb10d2c78e4876143820fe727d4563515626bb9ea2755b4a896581ae285b",
+          "dq": "b3b8ba13bcc5e4c39f5ec9f0936b41711bef8c4d4afd50fd54791dbfae8a1170",
+          "integrated": "598a3f864259982030dbe0543777077c1100cb665d62706b982084adf618beeb"
+        },
+        "TemporalAccumulateHalf.fragment": {
+          "coverage": "2d8b7a0ce26e0acb354d149b88d4d7a20cd9b74dc1ba13444bdb94424ca0da3e",
+          "dq": "513834c5a43ad90b6ec941cedb1d11d6b91fb85c41bf99e7a7bfc62b10a12547",
+          "integrated": "a80122e346ff2174aecdf79ffceeafbaeb367ab068ec5a7836e1132bcbf20854"
+        },
+        "TemporalCountProbe.fragment": {
+          "coverage": "3a54ed78e5d56fe976d5dd8ae26a465e78fc60e994349b1e4b57e617390552cf",
+          "dq": "c9b22768e9beaa5aa95772bc9aece021e559c113b6a5cd00cea4c1d82c0d8fe2",
+          "integrated": "1bca080d8443482bd062f12376681456a97743ecf93a6975c018e54f097ab96a"
+        },
+        "TemporalCountProbeHalf.fragment": {
+          "coverage": "cedc246907f5a114307fe10a78d5d2e9c40a00e88576d211f58eefedac45b0fb",
+          "dq": "5d2e5b77f32c4075b0b691632ecc1166c5b4b73a83a28a9aef8e8df1b0907b46",
+          "integrated": "a24f31646163984b80ec44c2dd6e30ff811dc1d35f72e059be8e80ee453991cd"
+        },
+        "TemporalDebugView.fragment": {
+          "coverage": "6592f32ff2a59055cbbd24dfce1b3d3bc643dcb9182fb8aedff4c037a97e296b",
+          "dq": "6f6902397108e3aae01d835fe7a27ffcadb276434442f0ddc5ac3166232edb52",
+          "integrated": "72b71f3b65b980751abb3589647408b0494bab9e60bfcab1ea993332f4a78554"
+        },
+        "TemporalDebugViewHalf.fragment": {
+          "coverage": "2dc43d91e6e44134d54fbed346c16432a181fc0ebd4ce8f4e0ed074881f18b87",
+          "dq": "c237266d53f06817c63ced38f81d484ec0a41a44d32a78f3562655e58cebe764",
+          "integrated": "70d09635cbe606e6b36df7b799d8675eeb9fa3c370ed4848335b51e0a4f42dc3"
+        },
+        "TemporalResolve.fragment": {
+          "coverage": "23a88ed56c2090a2fc8c38ae649e006d5e84521d20adb066c1ed5c7872d4b1f5",
+          "dq": "7ee1aad9fe59d66e973678141f2e052698464be3740556eeb88d9718745c7908",
+          "integrated": "00d645e241c88408183db5b6cf7026d2be898a1201bc928b8097b34e34d034e3"
+        },
+        "TemporalResolveHalf.fragment": {
+          "coverage": "8fccfd5e66dcfba2b0ffbeca0a6b0b07c85b498499098d09e3908e907df6e616",
+          "dq": "5bcbfd594a89f486834dc02e92cb971ed39d981fcf13d9be167e77d89c3e266e",
+          "integrated": "64cae4fe3d7e5d496135b2f9ca185b52df029d0cf9079827406c2b15346c2998"
+        }
+      },
+      "entryCount": 208
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/spirv-hashes/vulkan-spirv.sha256.txt",
+      "changedSharedPrograms": {
+        "TemporalAccumulate.fragment": {
+          "coverage": "717fd490ed384fe6e145d126eb5465e2bcc8a9ce17f5c14dd7bce2b2806d6953",
+          "dq": "d18aff3466b3fbb762637619b22c1b430ca2f898bfa201bbae044cc5d2219cfe",
+          "integrated": "cbef3a5f5e185d6dc8044e7a5e529b26c61abdeec694136fbae6cb8601f7f73b"
+        },
+        "TemporalAccumulateAtDisplaySize.fragment": {
+          "coverage": "2bf76764880beefb3268a1fbea5b1d65b434b37735007f9ef61c63bb83f91945",
+          "dq": "d931a11f7bfae8f8abc0646f44838f586c57754469d5761c2a5c619451a38112",
+          "integrated": "76f5b978dbe7b1e34e408e3a5bf123a25b039c700fb4b90085f48689e1d8e37c"
+        },
+        "TemporalAccumulateAtDisplaySizeHalf.fragment": {
+          "coverage": "d5696fa8d8e3565a5e1b94c88c0a8c1cfd1edda9b92beb0620d72d366d49a27d",
+          "dq": "1b8c04868e5c09c8f4dd6c792a58ff92df26e2c612a89f410f076dc6684c1e4c",
+          "integrated": "a19569ac6c43699338fe91e63978b1231ca38c5ec4fee8712e5829341a5c3ff4"
+        },
+        "TemporalAccumulateHalf.fragment": {
+          "coverage": "39cfe89285d64a00871260f4c6b39c049750df684200fcd55087966f0f6f2b5c",
+          "dq": "24fcb4e339d0845cded0e6e156638421815cf12b9c8694a1e5c3d5d9eaf811c1",
+          "integrated": "6d3002cd427cfc83624ce15fe515bb42134e3de842d6e0668a1606c018303053"
+        },
+        "TemporalCountProbe.fragment": {
+          "coverage": "5b667383b7e8d2435f7f2a48416556c11e6bb87687404ed652c02021d2a1db99",
+          "dq": "32f9aa2ba689d4336b9275ceb9d2443f7569b89f8c7b02d595311bb76484e53a",
+          "integrated": "f93325b0b650e35c2a6eee6384c660e7fe9385c16c43c858e2091ece767f7357"
+        },
+        "TemporalCountProbeHalf.fragment": {
+          "coverage": "6067a86bc41d93451a4ea693bbd5ac8ed6c1ddf52337c42817c0b4e1aa29fb12",
+          "dq": "f716e3de2e24b5240f8793af112556cafc8ade086ccde01dbe3236045d0f7c04",
+          "integrated": "b428eeda18a30a35c0ebcb7e53c6d95a81343971f1aab7b3aba3f1381c99602b"
+        },
+        "TemporalDebugView.fragment": {
+          "coverage": "22c8e852c39052b602d5382e2e5379ef3fe33b1ba053fbe68f0644f1a3e4670c",
+          "dq": "d1e813718307651f05136a1eef04da38a44cbcc464591d1d556dfc80e6b2467d",
+          "integrated": "4945500555882fa50d7c322738fa3ca1cab5fcd6f625a045a9cd705a19f47764"
+        },
+        "TemporalDebugViewHalf.fragment": {
+          "coverage": "78c677c336957c63d34a28266273aa70ecbe24a968413a6571714e7882933c5f",
+          "dq": "f610773df0faffc2aa97a69ab7ead3fd63677e1c76e02b31ecbc8ee9170ab0fa",
+          "integrated": "9d10b00cf5b2a00ddd5fd433331bc2ee703d48c18493cb3d01496335c9ffbdd3"
+        },
+        "TemporalResolve.fragment": {
+          "coverage": "82725530a121d027778f005e19e64d026e753b69ff29ebc4db79dde948b1d26f",
+          "dq": "8d8ea3b5606ddb8005e2d01c25518ec11a202b89b5ab74f8c9bbb44c49f1455b",
+          "integrated": "047ea84741329de3272eff14165ea06a8a0c865ea4bf26473515c881dae6b06a"
+        },
+        "TemporalResolveHalf.fragment": {
+          "coverage": "34c11f5b867cc621b74ab684fb42118f453628995f21201eb4f3f602e5ffa6bc",
+          "dq": "d7e424988ac60294cb9b4923b030bc2b0222df73078b06ce0707cfa64e9495e9",
+          "integrated": "3f8d0b0dfb2e0259b5a23f073924bd28e1c98e651f9ea28c4b8d8ab3c7e8074a"
+        }
+      },
+      "entryCount": 208
+    }
+  ],
+  "nonTemporalIdentities": [
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/hlsl-hashes/d3d11-hlsl.sha256.txt",
+      "nonTemporalMatchesAcceptedInputs": true
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/msl-hashes/metal-msl.sha256.txt",
+      "nonTemporalMatchesAcceptedInputs": true
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/spirv-hashes/vulkan-spirv.sha256.txt",
+      "nonTemporalMatchesAcceptedInputs": true
+    }
+  ],
+  "checks": [
+    {
+      "name": "baseline-coverage",
+      "command": [
+        "build-slot",
+        "--label",
+        "coverage-j0-baseline",
+        "--",
+        "dotnet",
+        "test",
+        "KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj",
+        "-c",
+        "Release",
+        "--filter",
+        "FullyQualifiedName~CoverageReferenceOutputTests",
+        "--logger",
+        "trx;LogFileName=baseline-coverage.trx",
+        "--results-directory",
+        "/tmp/khaozengine-coverage-dq-j0/baseline-results"
+      ],
+      "exit": 0,
+      "authorizationEnvironment": {},
+      "logSha256": "c597c18af71f1bb537dda36a8fe652945f904fc9bf983e97b18e3aafef13dde3"
+    },
+    {
+      "name": "regression-red",
+      "command": [
+        "build-slot",
+        "--label",
+        "coverage-j0-red",
+        "--",
+        "dotnet",
+        "test",
+        "KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj",
+        "-c",
+        "Release",
+        "--filter",
+        "FullyQualifiedName~DqCoverageIdentityTests",
+        "--logger",
+        "trx;LogFileName=regression-red.trx",
+        "--results-directory",
+        "/tmp/khaozengine-coverage-dq-j0/red-results"
+      ],
+      "exit": 1,
+      "authorizationEnvironment": {},
+      "logSha256": "b59e27c14b3f5c44e9c49b6de8377054e426552e78b574ed869a344fc5d7ee77"
+    },
+    {
+      "name": "regression-red-behavior",
+      "command": [
+        "build-slot",
+        "--label",
+        "coverage-j0-red-behavior",
+        "--",
+        "dotnet",
+        "test",
+        "KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj",
+        "-c",
+        "Release",
+        "--filter",
+        "FullyQualifiedName~DqCoverageIdentityTests",
+        "--logger",
+        "trx;LogFileName=regression-red-behavior.trx",
+        "--results-directory",
+        "/tmp/khaozengine-coverage-dq-j0/red-behavior-results"
+      ],
+      "exit": 1,
+      "authorizationEnvironment": {},
+      "logSha256": "91de9937be4a18d9b8e73555f87e56a83bf4bbd834aae2ac510ec9370fa64043"
+    },
+    {
+      "name": "regression-guards-red",
+      "command": [
+        "build-slot",
+        "--label",
+        "coverage-j0-guards-red",
+        "--",
+        "dotnet",
+        "test",
+        "KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj",
+        "-c",
+        "Release",
+        "--no-restore",
+        "--filter",
+        "FullyQualifiedName~DqCoverageIdentityTests",
+        "--logger",
+        "trx;LogFileName=regression-guards-red.trx",
+        "--results-directory",
+        "/tmp/khaozengine-coverage-dq-j0/red-guard-results"
+      ],
+      "exit": 1,
+      "authorizationEnvironment": {},
+      "logSha256": "f68f1e39ea95aa0b09060106de8726b8367c4a74be54188573c8851b12ca2473"
+    },
+    {
+      "name": "regression-green",
+      "command": [
+        "build-slot",
+        "--label",
+        "coverage-j0-green",
+        "--",
+        "dotnet",
+        "test",
+        "KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj",
+        "-c",
+        "Release",
+        "--no-restore",
+        "--filter",
+        "FullyQualifiedName~DqCoverageIdentityTests",
+        "--logger",
+        "trx;LogFileName=regression-green.trx",
+        "--results-directory",
+        "/tmp/khaozengine-coverage-dq-j0/green-results"
+      ],
+      "exit": 0,
+      "authorizationEnvironment": {},
+      "logSha256": "7681bfcc68a79e5035b6530980c3f44ab863e93a8b382460fd6614b812f5eafd"
+    },
+    {
+      "name": "focused-reconciliation",
+      "command": [
+        "build-slot",
+        "--heavy",
+        "--label",
+        "coverage-j0-focused",
+        "--",
+        "env",
+        "KE_UPDATE_SPIRV_HASHES=1",
+        "KE_UPDATE_MSL_HASHES=1",
+        "KE_UPDATE_HLSL_HASHES=1",
+        "dotnet",
+        "test",
+        "KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj",
+        "-c",
+        "Release",
+        "--no-restore",
+        "--filter",
+        "FullyQualifiedName~Dq|FullyQualifiedName~CoverageReferenceOutputTests|FullyQualifiedName~CoverageMotion|FullyQualifiedName~CoverageBinding|FullyQualifiedName~CoverageScene|FullyQualifiedName~TemporalResolveShaderTests|FullyQualifiedName~VulkanDescriptorLimitTests|FullyQualifiedName~ByteEqualityTests",
+        "--logger",
+        "trx;LogFileName=focused-reconciliation.trx",
+        "--results-directory",
+        "/tmp/khaozengine-coverage-dq-j0/focused-results"
+      ],
+      "exit": 1,
+      "authorizationEnvironment": {},
+      "logSha256": "246c918cb37a4cad2e5c676d6c466fde8fb12ed2bfe4ac76d00eab6af09e5aa3"
+    },
+    {
+      "name": "focused-reconciliation-fixed-import",
+      "command": [
+        "build-slot",
+        "--heavy",
+        "--label",
+        "coverage-j0-focused",
+        "--",
+        "env",
+        "KE_UPDATE_SPIRV_HASHES=1",
+        "KE_UPDATE_MSL_HASHES=1",
+        "KE_UPDATE_HLSL_HASHES=1",
+        "dotnet",
+        "test",
+        "KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj",
+        "-c",
+        "Release",
+        "--no-restore",
+        "--filter",
+        "FullyQualifiedName~Dq|FullyQualifiedName~CoverageReferenceOutputTests|FullyQualifiedName~CoverageMotion|FullyQualifiedName~CoverageBinding|FullyQualifiedName~CoverageScene|FullyQualifiedName~TemporalResolveShaderTests|FullyQualifiedName~VulkanDescriptorLimitTests|FullyQualifiedName~ByteEqualityTests",
+        "--logger",
+        "trx;LogFileName=focused-reconciliation.trx",
+        "--results-directory",
+        "/tmp/khaozengine-coverage-dq-j0/focused-results"
+      ],
+      "exit": 1,
+      "authorizationEnvironment": {},
+      "logSha256": "02aaa76a003000ad468933a47977f745bd55bb3bfa62b970fce1e6ca6fa4cf6f"
+    },
+    {
+      "name": "focused-reconciliation-import-corrected",
+      "command": [
+        "build-slot",
+        "--heavy",
+        "--label",
+        "coverage-j0-focused",
+        "--",
+        "env",
+        "KE_UPDATE_SPIRV_HASHES=1",
+        "KE_UPDATE_MSL_HASHES=1",
+        "KE_UPDATE_HLSL_HASHES=1",
+        "dotnet",
+        "test",
+        "KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj",
+        "-c",
+        "Release",
+        "--no-restore",
+        "--filter",
+        "FullyQualifiedName~Dq|FullyQualifiedName~CoverageReferenceOutputTests|FullyQualifiedName~CoverageMotion|FullyQualifiedName~CoverageBinding|FullyQualifiedName~CoverageScene|FullyQualifiedName~TemporalResolveShaderTests|FullyQualifiedName~VulkanDescriptorLimitTests|FullyQualifiedName~ByteEqualityTests",
+        "--logger",
+        "trx;LogFileName=focused-reconciliation.trx",
+        "--results-directory",
+        "/tmp/khaozengine-coverage-dq-j0/focused-results"
+      ],
+      "exit": 0,
+      "authorizationEnvironment": {},
+      "logSha256": "18ff73ba75ec5962d22671c035124ed6e3fa25d5c1b83aa7dc39b9bfe79eb022"
+    },
+    {
+      "name": "format-apply",
+      "command": [
+        "build-slot",
+        "--heavy",
+        "--label",
+        "coverage-j0-format",
+        "--",
+        "dotnet",
+        "format",
+        "KhaozEngine.slnx"
+      ],
+      "exit": 0,
+      "authorizationEnvironment": {},
+      "logSha256": "4c8d1e4e37daf947fb3fb4d329450e848edd800e62c6e86718d6ab6c063c72d8"
+    },
+    {
+      "name": "release-build",
+      "command": [
+        "build-slot",
+        "--label",
+        "coverage-j0-release-build",
+        "--",
+        "dotnet",
+        "build",
+        "KhaozEngine.slnx",
+        "-c",
+        "Release"
+      ],
+      "exit": 0,
+      "authorizationEnvironment": {},
+      "logSha256": "668e8ac7b072294d4e7792d62a450aa3e4dc941b6b7a57c9fe62b89024e47cd0"
+    },
+    {
+      "name": "full-headless",
+      "command": [
+        "build-slot",
+        "--heavy",
+        "--label",
+        "coverage-j0-full-headless",
+        "--",
+        "dotnet",
+        "test",
+        "KhaozEngine.slnx",
+        "-c",
+        "Release",
+        "--no-build",
+        "--filter",
+        "Category!=LiveSocket",
+        "--logger",
+        "trx",
+        "--results-directory",
+        "/tmp/khaozengine-coverage-dq-j0/full-results"
+      ],
+      "exit": 1,
+      "authorizationEnvironment": {},
+      "logSha256": "a1bd156cc027f3068c2cf38da139d6f3bdd1d4afa551b5337d0ca7c13a2f5768"
+    },
+    {
+      "name": "selected-slot-red",
+      "command": [
+        "build-slot",
+        "--label",
+        "coverage-j0-selected-slot-red",
+        "--",
+        "dotnet",
+        "test",
+        "KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj",
+        "-c",
+        "Release",
+        "--no-restore",
+        "--filter",
+        "FullyQualifiedName~DqCoverageHistoryInputsTests",
+        "--logger",
+        "trx;LogFileName=selected-slot-red.trx",
+        "--results-directory",
+        "/tmp/khaozengine-coverage-dq-j0/selected-slot-red-results"
+      ],
+      "exit": 1,
+      "authorizationEnvironment": {},
+      "logSha256": "f4b4690f8e9ab034c4981f86563505b9ed9717fc25a387082a849ac23f83e4ca"
+    },
+    {
+      "name": "correction-covering-green",
+      "command": [
+        "build-slot",
+        "--label",
+        "coverage-j0-correction-green",
+        "--",
+        "dotnet",
+        "test",
+        "KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj",
+        "-c",
+        "Release",
+        "--no-restore",
+        "--filter",
+        "FullyQualifiedName~CoverageTransitionTests|FullyQualifiedName~DqCoverage|FullyQualifiedName~DqHistoryRejectionTests|FullyQualifiedName~TemporalResolveShaderTests",
+        "--logger",
+        "trx;LogFileName=correction-covering-green.trx",
+        "--results-directory",
+        "/tmp/khaozengine-coverage-dq-j0/correction-results"
+      ],
+      "exit": 0,
+      "authorizationEnvironment": {},
+      "logSha256": "0a8d24b971fad34545aa7232738839550d69e49e0dbd7842883589331d2ebe2a"
+    },
+    {
+      "name": "format-verify",
+      "command": [
+        "build-slot",
+        "--heavy",
+        "--label",
+        "coverage-j0-format-verify",
+        "--",
+        "dotnet",
+        "format",
+        "KhaozEngine.slnx",
+        "--verify-no-changes",
+        "--no-restore",
+        "--verbosity",
+        "diagnostic"
+      ],
+      "exit": 0,
+      "authorizationEnvironment": {},
+      "logSha256": "29f701d34595346ca4eb22b3a3ed0cf707cdd8be2f923d39969039cf9be9b5b6"
+    },
+    {
+      "name": "guard-dashes",
+      "command": [
+        "build-slot",
+        "--label",
+        "coverage-j0-dashes",
+        "--",
+        "sh",
+        "scripts/check-dashes.sh",
+        "--tree"
+      ],
+      "exit": 0,
+      "authorizationEnvironment": {},
+      "logSha256": "321ac30308afb1378868fd9577d435558ebf26caf97a38db8b3d7e1a0fdaca5c"
+    },
+    {
+      "name": "guard-prose",
+      "command": [
+        "build-slot",
+        "--label",
+        "coverage-j0-prose",
+        "--",
+        "sh",
+        "scripts/check-prose.sh",
+        "--tree"
+      ],
+      "exit": 0,
+      "authorizationEnvironment": {},
+      "logSha256": "ce6483449533c0b0c5ac7275493f4ed015c310cf2ceb34adaf4245ce07212dda"
+    },
+    {
+      "name": "guard-file-size",
+      "command": [
+        "build-slot",
+        "--label",
+        "coverage-j0-file-size",
+        "--",
+        "sh",
+        "scripts/check-file-size.sh",
+        "--tree"
+      ],
+      "exit": 0,
+      "authorizationEnvironment": {},
+      "logSha256": "a79c03b84ee0ba3261b69b744d40195861a62d4cd26852eb35d3744dd0b3dc2f"
+    },
+    {
+      "name": "guard-instructions",
+      "command": [
+        "build-slot",
+        "--label",
+        "coverage-j0-instructions",
+        "--",
+        "sh",
+        "scripts/check-agent-instructions.sh",
+        "--tree"
+      ],
+      "exit": 0,
+      "authorizationEnvironment": {},
+      "logSha256": "40af82d055c16dd44628b7188fe6af1a2aac287c62527c9fa77682c006c37689"
+    },
+    {
+      "name": "guard-doc-versions",
+      "command": [
+        "build-slot",
+        "--label",
+        "coverage-j0-doc-versions",
+        "--",
+        "bash",
+        "scripts/check-doc-versions.sh"
+      ],
+      "exit": 0,
+      "authorizationEnvironment": {},
+      "logSha256": "3ea10c80666f745e47976e17704b81b8a680592091210e177968aef45c6722f7"
+    },
+    {
+      "name": "guard-diff",
+      "command": [
+        "build-slot",
+        "--label",
+        "coverage-j0-diff",
+        "--",
+        "git",
+        "diff",
+        "--check",
+        "HEAD"
+      ],
+      "exit": 0,
+      "authorizationEnvironment": {},
+      "logSha256": "7113a219ae08c0c8f2e1a8fe566539ffa08bdd48f3babf11ccc3400fc34e0b0a"
+    }
+  ],
+  "fullSuite": {
+    "assemblies": [
+      {
+        "failed": 0,
+        "passed": 25,
+        "skipped": 7,
+        "total": 32,
+        "assembly": "KhaozEngine.Catalog.AzureBlob.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 206,
+        "skipped": 3,
+        "total": 209,
+        "assembly": "KhaozEngine.Audio.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 112,
+        "skipped": 21,
+        "total": 133,
+        "assembly": "KhaozEngine.BugReports.Relay.Azure.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 623,
+        "skipped": 0,
+        "total": 623,
+        "assembly": "KhaozEngine.BugReports.Relay.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 275,
+        "skipped": 0,
+        "total": 275,
+        "assembly": "KhaozEngine.CodeHealth.Analyzers.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 328,
+        "skipped": 0,
+        "total": 328,
+        "assembly": "KhaozEngine.Attachments.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 110,
+        "skipped": 0,
+        "total": 110,
+        "assembly": "KhaozEngine.Automation.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 205,
+        "skipped": 0,
+        "total": 205,
+        "assembly": "KhaozEngine.BugReports.Client.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 442,
+        "skipped": 0,
+        "total": 442,
+        "assembly": "KhaozEngine.BugReports.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 1532,
+        "skipped": 0,
+        "total": 1532,
+        "assembly": "KhaozEngine.Gui.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 177,
+        "skipped": 0,
+        "total": 177,
+        "assembly": "KhaozEngine.Identity.Exchange.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 14,
+        "skipped": 0,
+        "total": 14,
+        "assembly": "KhaozEngine.MapDoc.Compatibility.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 46,
+        "skipped": 0,
+        "total": 46,
+        "assembly": "KhaozEngine.Localization.Analyzers.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 286,
+        "skipped": 46,
+        "total": 332,
+        "assembly": "KhaozEngine.Accounts.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 1590,
+        "skipped": 0,
+        "total": 1590,
+        "assembly": "KhaozEngine.Foundation.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 4,
+        "skipped": 0,
+        "total": 4,
+        "assembly": "KhaozEngine.Netcode.Abstractions.DecouplingTests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 4,
+        "skipped": 0,
+        "total": 4,
+        "assembly": "KhaozEngine.Netcode.DecouplingTests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 106,
+        "skipped": 0,
+        "total": 106,
+        "assembly": "KhaozEngine.Particles.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 5,
+        "skipped": 0,
+        "total": 5,
+        "assembly": "KhaozEngine.Physics.HeadlessLoaderTests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 83,
+        "skipped": 0,
+        "total": 83,
+        "assembly": "KhaozEngine.Showcase.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 6329,
+        "skipped": 1,
+        "total": 6330,
+        "assembly": "KhaozEngine.Game.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 247,
+        "skipped": 0,
+        "total": 247,
+        "assembly": "KhaozEngine.MapDoc.Physics.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 309,
+        "skipped": 0,
+        "total": 309,
+        "assembly": "KhaozEngine.Simulation.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 1463,
+        "skipped": 3,
+        "total": 1466,
+        "assembly": "KhaozEngine.Movement.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 1389,
+        "skipped": 0,
+        "total": 1389,
+        "assembly": "KhaozEngine.TileWorld.Netcode.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 159,
+        "skipped": 0,
+        "total": 159,
+        "assembly": "KhaozEngine.TileWorld.Physics.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 650,
+        "skipped": 0,
+        "total": 650,
+        "assembly": "KhaozEngine.TileWorld.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 110,
+        "skipped": 7,
+        "total": 117,
+        "assembly": "KhaozEngine.TileEdit.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 35,
+        "skipped": 0,
+        "total": 35,
+        "assembly": "KhaozEngine.TileWorld.WorldMap.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 73,
+        "skipped": 3,
+        "total": 76,
+        "assembly": "KhaozEngine.WorldMap.Gui.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 147,
+        "skipped": 0,
+        "total": 147,
+        "assembly": "KhaozEngine.Windowing.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 353,
+        "skipped": 0,
+        "total": 353,
+        "assembly": "KhaozEngine.WorldMap.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 13,
+        "skipped": 0,
+        "total": 13,
+        "assembly": "KeDungeon.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 32,
+        "skipped": 0,
+        "total": 32,
+        "assembly": "PixelLabSheetAssembler.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 895,
+        "skipped": 0,
+        "total": 895,
+        "assembly": "KhaozEngine.ItemInstances.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 1777,
+        "skipped": 0,
+        "total": 1777,
+        "assembly": "KhaozEngine.MapDoc.Tests.dll"
+      },
+      {
+        "failed": 9,
+        "passed": 13788,
+        "skipped": 1156,
+        "total": 14953,
+        "assembly": "KhaozEngine.Render.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 1521,
+        "skipped": 0,
+        "total": 1521,
+        "assembly": "KhaozEngine.Catalog.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 89,
+        "skipped": 0,
+        "total": 89,
+        "assembly": "KhaozEngine.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 4072,
+        "skipped": 317,
+        "total": 4389,
+        "assembly": "KhaozEngine.Server.Tests.dll"
+      },
+      {
+        "failed": 0,
+        "passed": 1748,
+        "skipped": 9,
+        "total": 1757,
+        "assembly": "KhaozEngine.MapEditor.Tests.dll"
+      }
+    ],
+    "totals": {
+      "failed": 9,
+      "passed": 41372,
+      "skipped": 1573,
+      "total": 42954
+    },
+    "trxOutcomes": {
+      "Passed": 41372,
+      "NotExecuted": 1573,
+      "Failed": 9
+    },
+    "failures": [
+      {
+        "name": "KhaozEngine.Tests.Render3D.CoverageTransitionTests.All_resolve_entries_bind_the_active_mask(metal: False, split: False, upscale: True)",
+        "trx": "_Mac_2026-10-23_23_13_07_net10.0.trx",
+        "message": "Assert.Same() Failure: Values are not the same instance\nExpected: FakeTexture { Format = R8UNorm, Height = 12, MipLevels = 1, SampleCount = 1, Width = 16 }\nActual:   FakeTexture { Format = R8UNorm, Height = 1, MipLevels = 1, SampleCount = 1, Width = 1 }"
+      },
+      {
+        "name": "KhaozEngine.Tests.Render3D.CoverageTransitionTests.All_resolve_entries_bind_the_active_mask(metal: False, split: False, upscale: False)",
+        "trx": "_Mac_2026-10-23_23_13_07_net10.0.trx",
+        "message": "Assert.Same() Failure: Values are not the same instance\nExpected: FakeTexture { Format = R8UNorm, Height = 24, MipLevels = 1, SampleCount = 1, Width = 32 }\nActual:   FakeTexture { Format = R8UNorm, Height = 1, MipLevels = 1, SampleCount = 1, Width = 1 }"
+      },
+      {
+        "name": "KhaozEngine.Tests.Render3D.CoverageTransitionTests.All_resolve_entries_bind_the_active_mask(metal: True, split: False, upscale: True)",
+        "trx": "_Mac_2026-10-23_23_13_07_net10.0.trx",
+        "message": "Assert.Same() Failure: Values are not the same instance\nExpected: FakeTexture { Format = R8UNorm, Height = 12, MipLevels = 1, SampleCount = 1, Width = 16 }\nActual:   FakeTexture { Format = R8UNorm, Height = 1, MipLevels = 1, SampleCount = 1, Width = 1 }"
+      },
+      {
+        "name": "KhaozEngine.Tests.Render3D.CoverageTransitionTests.All_resolve_entries_bind_the_active_mask(metal: False, split: True, upscale: True)",
+        "trx": "_Mac_2026-10-23_23_13_07_net10.0.trx",
+        "message": "Assert.Same() Failure: Values are not the same instance\nExpected: FakeTexture { Format = R8UNorm, Height = 12, MipLevels = 1, SampleCount = 1, Width = 16 }\nActual:   FakeTexture { Format = R8UNorm, Height = 1, MipLevels = 1, SampleCount = 1, Width = 1 }"
+      },
+      {
+        "name": "KhaozEngine.Tests.Render3D.CoverageTransitionTests.All_resolve_entries_bind_the_active_mask(metal: True, split: True, upscale: False)",
+        "trx": "_Mac_2026-10-23_23_13_07_net10.0.trx",
+        "message": "Assert.Same() Failure: Values are not the same instance\nExpected: FakeTexture { Format = R8UNorm, Height = 24, MipLevels = 1, SampleCount = 1, Width = 32 }\nActual:   FakeTexture { Format = R8UNorm, Height = 1, MipLevels = 1, SampleCount = 1, Width = 1 }"
+      },
+      {
+        "name": "KhaozEngine.Tests.Render3D.CoverageTransitionTests.Mask_is_reserved_before_recording_reused_and_retired_after_resize",
+        "trx": "_Mac_2026-10-23_23_13_07_net10.0.trx",
+        "message": "Assert.Same() Failure: Values are not the same instance\nExpected: FakeTexture { Format = R8UNorm, Height = 24, MipLevels = 1, SampleCount = 1, Width = 32 }\nActual:   FakeTexture { Format = R8UNorm, Height = 1, MipLevels = 1, SampleCount = 1, Width = 1 }"
+      },
+      {
+        "name": "KhaozEngine.Tests.Render3D.CoverageTransitionTests.All_resolve_entries_bind_the_active_mask(metal: False, split: True, upscale: False)",
+        "trx": "_Mac_2026-10-23_23_13_07_net10.0.trx",
+        "message": "Assert.Same() Failure: Values are not the same instance\nExpected: FakeTexture { Format = R8UNorm, Height = 24, MipLevels = 1, SampleCount = 1, Width = 32 }\nActual:   FakeTexture { Format = R8UNorm, Height = 1, MipLevels = 1, SampleCount = 1, Width = 1 }"
+      },
+      {
+        "name": "KhaozEngine.Tests.Render3D.CoverageTransitionTests.All_resolve_entries_bind_the_active_mask(metal: True, split: False, upscale: False)",
+        "trx": "_Mac_2026-10-23_23_13_07_net10.0.trx",
+        "message": "Assert.Same() Failure: Values are not the same instance\nExpected: FakeTexture { Format = R8UNorm, Height = 24, MipLevels = 1, SampleCount = 1, Width = 32 }\nActual:   FakeTexture { Format = R8UNorm, Height = 1, MipLevels = 1, SampleCount = 1, Width = 1 }"
+      },
+      {
+        "name": "KhaozEngine.Tests.Render3D.CoverageTransitionTests.All_resolve_entries_bind_the_active_mask(metal: True, split: True, upscale: True)",
+        "trx": "_Mac_2026-10-23_23_13_07_net10.0.trx",
+        "message": "Assert.Same() Failure: Values are not the same instance\nExpected: FakeTexture { Format = R8UNorm, Height = 12, MipLevels = 1, SampleCount = 1, Width = 16 }\nActual:   FakeTexture { Format = R8UNorm, Height = 1, MipLevels = 1, SampleCount = 1, Width = 1 }"
+      }
+    ],
+    "exit": 1
+  },
+  "correctiveSelection": {
+    "passed": 110,
+    "failed": 0,
+    "skipped": 0,
+    "allOriginalFailuresCovered": true,
+    "fullSuiteRepeated": false
+  },
+  "limitations": [
+    "Root review and push pending.",
+    "No exact-integration-SHA native GPU proof performed.",
+    "Vulkan validation limitation KhaozEngine issue 1539 remains.",
+    "No performance, carry, private fit, release, tag or consumer adoption proof."
+  ]
+}

@@ -52,6 +52,10 @@ namespace KhaozEngine.Windowing
         /// </summary>
         public void Run(Action<Frame> onFrame, Action<Frame>? onPrepare)
         {
+            // Private archive override, applied after GameApp has set the public property and before recording.
+            RendererInitializesSwapchain = FrameDiagnosticsOptions.ResolveRendererInitializesSwapchain(
+                Environment.GetEnvironmentVariable("KE_FRAME_DIAGNOSTICS_RENDERER_INITIALIZES_SWAPCHAIN"),
+                RendererInitializesSwapchain);
             Show(); // ensure visible even if the host never called Show() (GameApp calls it after SetIcon). Idempotent.
             // Launch monitor, applied here rather than at construction so it lands AFTER the game's boot restore
             // (GameApp calls OnLoad, where a game re-applies its saved placement, immediately before this). Idempotent,
@@ -70,7 +74,8 @@ namespace KhaozEngine.Windowing
                 diagnostics?.Observe(dt, System.Diagnostics.Stopwatch.GetTimestamp(),
                     new FrameDiagnosticsWindowState(_accumulator.IsFocused, _minimized,
                         !_backgroundThrottle.Plan(new WindowActivity(_accumulator.IsFocused, _minimized), _effectiveBaseCapHz).RenderAndPresent,
-                        _window.FramebufferSize.X, _window.FramebufferSize.Y, _effectiveBaseCapHz, _presentMode == PresentMode.Vsync),
+                        _window.FramebufferSize.X, _window.FramebufferSize.Y, _effectiveBaseCapHz, _presentMode == PresentMode.Vsync,
+                        RendererInitializesSwapchain),
                     _device.Counters);
                 float fdt = (float)Math.Min(dt, 0.1);
                 // Capture first, so the snapshot reports what GLFW was told this frame. See AppWindow.PointerCapture.cs.

@@ -1,15 +1,39 @@
-# Mac frame direct diagnostics probe
+# Private Mac late-output diagnostic archive
 
-Private diagnostic archive on `fix/mac-frame-direct-diagnostics-probe`, based on
-`17ed102da778386787140a8837d2c6ac8063de70`. NEVER merge this branch into `main`.
-It is not a release, an engine capability adoption or a performance change.
+NEVER MERGE this private diagnostic archive into `main`. Branch
+`fix/mac-frame-late-output-probe` starts at `b5c03b1ff7f54e2cb7475c95819a442847d13f93`,
+which supplies the approved renderer-owned swapchain initialization option. Only recorder commit
+`bb71187703ab913c5c24c0900070ac8ea2d24416` was cherry-picked from the earlier direct diagnostics
+archive. Its ancestors were not cherry-picked. This is not a release or production adoption.
 
 ## Use
 
-The parent copies the exact same built `KhaozEngine.Windowing.dll` into both existing private
-control and candidate clients. Keep their other binaries and settings under the parent's
-comparison manifest. The recorder does not collect graphics settings, environment dumps,
+Both runs use the same already-built Grimhollow Debug client on engine
+`17ed102da778386787140a8837d2c6ac8063de70`, retaining sort and deferred acquisition in both.
+The parent supplies one built `KhaozEngine.Windowing.dll` from this archive for both modes.
+Keep the other binaries and settings under the parent's comparison manifest.
+The recorder does not collect graphics settings, environment dumps,
 tokens, source hashes or client configuration. The parent supplies those comparison facts.
+
+The private environment override `KE_FRAME_DIAGNOSTICS_RENDERER_INITIALIZES_SWAPCHAIN` is read
+exactly once at the start of `AppWindow.Run`, after the already-built `GameApp` construction and before callback
+registration or recorder creation. Missing preserves the public `RendererInitializesSwapchain`
+property. Exact `0` sets it false, exact `1` sets it true. Every other supplied value, including an
+empty string, whitespace and `true` or `false`, throws `InvalidOperationException` naming the
+variable and accepted digits before recording can start. This configuration failure is deliberately
+not swallowed by the recorder's fail-soft initialization. The override applies even if recording
+is disabled. No environment variable is read per frame and no new public API is introduced.
+
+For the A/B, the parent prefixes its normal human-run launch commands with `0` for control and
+`1` for candidate. These lines show assignments only, not client launch commands:
+
+```sh
+KE_FRAME_DIAGNOSTICS_RENDERER_INITIALIZES_SWAPCHAIN=0
+KE_FRAME_DIAGNOSTICS_RENDERER_INITIALIZES_SWAPCHAIN=1
+```
+
+The mode changes only host output initialization. `FramePhases` forwarding remains intact, and
+the renderer remains responsible for fully initializing output when the mode is true.
 
 Create `/tmp/grimhollow-mac-frame-performance` before launching. Choose a different, nonexistent
 absolute result filename for each process and each run. Prefix the parent's normal, human-run
@@ -21,7 +45,7 @@ KE_FRAME_DIAGNOSTICS_PATH=/tmp/grimhollow-mac-frame-performance/control-01.json
 
 This line shows the variable assignment, not a client launch command. Keep it on the same line as
 the parent's actual command. The agent does not launch, attach to, inject input into or automate
-either client. With the variable absent or empty the hook is one null conditional. Its arguments,
+either client. With the path variable absent or empty the hook is one null conditional. Its arguments,
 including the clock read and counter snapshot, are not evaluated.
 
 After the human launches and positions the client, let it settle and keep it foreground at stable
@@ -81,12 +105,18 @@ pairing. `completedFrameWindow` describes the state latched at that callback's o
 AppWindow device, never an offscreen SnapshotTool.
 
 Window state includes focus, minimized and render-suppressed flags, framebuffer width and height,
-resolved effective base cap Hz, and vsync intent. The hook reads the existing latched fields and
-uses the same background-throttle policy as the loop. No setting or pacing behavior is changed.
-Boundary observations cannot prove that focus or size did not change and change back between
+resolved effective base cap Hz, vsync intent, and the actual public
+`AppWindow.RendererInitializesSwapchain` bool as `rendererInitializesSwapchain`. The bool is copied
+at every callback observation, including baseline and end, and appears in both per-sample window
+states. It is not derived from the environment string. All previous schema 1 fields and clock
+alignment are retained with this additive field. The hook reads the existing latched fields and
+uses the same background-throttle policy as the loop. No pacing behavior is changed.
+Boundary observations cannot prove that focus, size or mode did not change and change back between
 callbacks. `allForegroundRenderedStableSize` conservatively requires every observed endpoint,
 including baseline and end, to be focused, non-minimized, rendered, positive sized and the same
-size. `cadenceCapped` means at least one boundary had a positive base cap or vsync enabled. It is
+size and swapchain initialization mode as baseline. An observed mode transition invalidates the
+comparison even if it returns to the original mode before capture ends. The existing validity
+field keeps its name for compatibility. `cadenceCapped` means at least one boundary had a positive base cap or vsync enabled. It is
 not evidence that a vsync implementation actually paced the CPU. Background policy caps are
 visible through the focus and suppression flags, which invalidate the foreground comparison.
 
@@ -111,42 +141,38 @@ zero waits. Raw counter snapshots keep their `hasValue` flag.
 
 These GPU counter durations are CPU waiting durations, not GPU execution times. This recorder
 measures render-loop cadence, not display presentation. It adds no native labels, capture taps,
-GPU readbacks or drains, and does not change rendering, shaders, GC, settings, input or pacing.
+GPU readbacks or drains. The explicit private mode override is the only new rendering choice.
+Shaders, GC, input and pacing remain unchanged.
 
 ## Verification
 
 All local builds and CPU tests run through `build-slot`. No clients or GPU tests are used.
 Scratch logs and TRX files live only under `/tmp/khaozengine-mac-frame-performance`.
 
-The initial test-first run failed compilation with four missing-type errors and exit 1.
-After adding inert internal type shapes, runtime RED had 16 failed, 0 passed, 0 skipped, exit 1.
-The implemented recorder passed the same 16 focused tests in Release, exit 0. Expanded coverage
-distinguishes tail percentiles and unsupported counters between supported endpoints. An additional
-warmed `AllocationRegion` test caught a captured-lambda allocation, failing with 512 bytes across
-16 sampling boundaries, exit 1. Dispatch now uses a method group only after sampling stops.
-The allocation test then passed with zero measured-thread bytes. The Windowing test project imports
-the existing shared allocation props and defines the required serial `AllocSensitive` collection.
-The final focused run passed 22 tests, 0 failed, 0 skipped, exit 0. That includes 19 recorder tests
-and three shared allocation isolation contract tests. Tests use explicit timestamps and join
-publication tasks, without sleeps, retry loops or load tests. Coverage includes
-trigger/partial exclusion, exact duration boundary, capacity, counter alignment and subtraction,
-unsupported counters, focus/minimize/resize invalidation, caps, summary math, no-overwrite races,
-normal disposal joining publication and early-close refusal.
+New override and mode-stability tests were written before implementation. Inert parser and state
+shapes allow runtime RED against missing override behavior and missing mode comparison. Tests use
+explicit timestamps and join publication tasks, without sleeps, retry loops or load tests.
+The inherited contract coverage retains trigger/partial exclusion, exact duration boundary,
+capacity, counter alignment and subtraction, unsupported counters, focus/minimize/resize
+invalidation, caps, summary math, no-overwrite races, normal disposal and early-close refusal.
+The warmed `AllocationRegion` assertion covers both swapchain initialization modes. The project
+retains the shared allocation props and nonparallel `AllocSensitive` collection.
 
 The focused command is:
 
 ```sh
-build-slot --label mac-frame-diagnostics-tests -- dotnet test KhaozEngine.Windowing.Tests/KhaozEngine.Windowing.Tests.csproj -c Release --filter 'FullyQualifiedName~FrameDiagnosticsRecorderTests|FullyQualifiedName~AllocationIsolationContractTests'
+build-slot --label late-output-probe-tests -- dotnet test KhaozEngine.Windowing.Tests/KhaozEngine.Windowing.Tests.csproj -c Release --filter FullyQualifiedName~FrameDiagnostics --logger 'trx;LogFileName=late-output-probe-green.trx' --results-directory /tmp/khaozengine-mac-frame-performance
 ```
 
-Whole-tree dash, prose, file-size, instruction-size and doc-version guards passed, as did
-`git diff --cached --check`. No full suite, GPU test, package or release command was run.
-
-The final Windowing Release build passed with 0 warnings, 0 errors and exit 0:
+The focused Windowing Release build command is:
 
 ```sh
-build-slot --label mac-frame-diagnostics-windowing-verified -- dotnet build KhaozEngine.Windowing/KhaozEngine.Windowing.csproj -c Release
+build-slot --label late-output-probe-build -- dotnet build KhaozEngine.Windowing/KhaozEngine.Windowing.csproj -c Release
 ```
 
-The parent independently reviews the commit and DLL hash, copies identical bytes into both private
-clients, and owns the bounded human-run measurements. The diagnostic commit must remain an archive.
+`AppWindow.Run` requires a native window, so its environment-read timing and unchanged
+`FramePhases.Run(..., RendererInitializesSwapchain)` forwarding are checked by source inspection.
+The CPU tests prove the pure parser and recorder behavior, not window startup, GPU correctness or
+full-client performance. No full suite, GPU test, package, client or release command is authorized.
+The parent independently reviews the commit and DLL hash, supplies identical bytes for both modes,
+and owns the bounded human-run measurements. NEVER MERGE this diagnostic archive.

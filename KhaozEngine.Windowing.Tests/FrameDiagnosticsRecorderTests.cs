@@ -14,7 +14,7 @@ public sealed class FrameDiagnosticsAllocationCollection { }
 [Collection("AllocSensitive")]
 public sealed class FrameDiagnosticsRecorderTests : IDisposable
 {
-    readonly string _directory = Path.Combine("/tmp/khaozengine-mac-frame-performance", Guid.NewGuid().ToString("N"));
+    readonly string _directory = Path.Combine("/tmp/khaozengine-mac-frame-performance", "late-output-probe-tests-" + Guid.NewGuid().ToString("N"));
     string ResultPath => Path.Combine(_directory, "result.json");
     static FrameDiagnosticsWindowState Foreground => new(true, false, false, 800, 600, 0, false);
 
@@ -160,23 +160,26 @@ public sealed class FrameDiagnosticsRecorderTests : IDisposable
         Assert.Null(recorder.Failure);
     }
 
-    [Fact]
-    public async Task Sampling_boundaries_allocate_nothing_after_warmup()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Sampling_boundaries_allocate_nothing_after_warmup(bool rendererInitializesSwapchain)
     {
         using var recorder = Recorder();
+        var window = Foreground with { RendererInitializesSwapchain = rendererInitializesSwapchain };
         Trigger();
         Observe(recorder, 0, 0);
-        Observe(recorder, 1000, 1);
-        for (int i = 1; i <= 16; i++) Observe(recorder, 1000 + i, i + 1);
+        Observe(recorder, 1000, 1, window: window);
+        for (int i = 1; i <= 16; i++) Observe(recorder, 1000 + i, i + 1, window: window);
         long bytes;
         using (AllocationRegion.Start("direct diagnostics sampling boundaries"))
         {
             long before = GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 17; i <= 32; i++) Observe(recorder, 1000 + i, i + 1);
+            for (int i = 17; i <= 32; i++) Observe(recorder, 1000 + i, i + 1, window: window);
             bytes = GC.GetAllocatedBytesForCurrentThread() - before;
         }
         Assert.Equal(0, bytes);
-        Observe(recorder, 11000, 34);
+        Observe(recorder, 11000, 34, window: window);
         await recorder.Publication;
         Assert.Null(recorder.Failure);
     }
@@ -235,6 +238,55 @@ public sealed class FrameDiagnosticsRecorderTests : IDisposable
         await recorder.Publication;
         using var json = JsonDocument.Parse(File.ReadAllText(ResultPath));
         Assert.True(json.RootElement.GetProperty("summary").GetProperty("cadenceCapped").GetBoolean());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Actual_swapchain_mode_is_serialized_at_baseline_end_and_both_sample_boundaries(bool rendererOwned)
+    {
+        using var recorder = Recorder(1);
+        var window = Foreground with { RendererInitializesSwapchain = rendererOwned };
+        Trigger();
+        Observe(recorder, 0, 0);
+        Observe(recorder, 100, 1, window: window);
+        Observe(recorder, 200, 2, window: window);
+        await recorder.Publication;
+        using var json = JsonDocument.Parse(File.ReadAllText(ResultPath));
+        var root = json.RootElement;
+        Assert.Equal(rendererOwned, root.GetProperty("baseline").GetProperty("window").GetProperty("rendererInitializesSwapchain").GetBoolean());
+        Assert.Equal(rendererOwned, root.GetProperty("end").GetProperty("window").GetProperty("rendererInitializesSwapchain").GetBoolean());
+        var sample = root.GetProperty("samples")[0];
+        Assert.Equal(rendererOwned, sample.GetProperty("completedFrameWindow").GetProperty("rendererInitializesSwapchain").GetBoolean());
+        Assert.Equal(rendererOwned, sample.GetProperty("boundaryWindow").GetProperty("rendererInitializesSwapchain").GetBoolean());
+        Assert.True(root.GetProperty("summary").GetProperty("allForegroundRenderedStableSize").GetBoolean());
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task Any_observed_swapchain_mode_change_invalidates_comparison_including_a_return_to_baseline(
+        bool initialMode, bool changeOnlyAtEnd)
+    {
+        using var recorder = Recorder(2);
+        var baseline = Foreground with { RendererInitializesSwapchain = initialMode };
+        var changed = baseline with { RendererInitializesSwapchain = !initialMode };
+        Trigger();
+        Observe(recorder, 0, 0);
+        Observe(recorder, 100, 1, window: baseline);
+        Observe(recorder, 200, 2, window: changeOnlyAtEnd ? baseline : changed);
+        Observe(recorder, 300, 3, window: changeOnlyAtEnd ? changed : baseline);
+        await recorder.Publication;
+        using var json = JsonDocument.Parse(File.ReadAllText(ResultPath));
+        var root = json.RootElement;
+        Assert.False(root.GetProperty("summary").GetProperty("allForegroundRenderedStableSize").GetBoolean());
+        var sample = root.GetProperty("samples")[1];
+        Assert.Equal(changeOnlyAtEnd ? initialMode : !initialMode,
+            sample.GetProperty("completedFrameWindow").GetProperty("rendererInitializesSwapchain").GetBoolean());
+        Assert.Equal(changeOnlyAtEnd ? !initialMode : initialMode,
+            sample.GetProperty("boundaryWindow").GetProperty("rendererInitializesSwapchain").GetBoolean());
     }
 
     [Fact]

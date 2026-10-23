@@ -29,6 +29,37 @@ internal static partial class ShippedSceneGuardFixtures
             tile["placements"]![0]!["x"] = 3;
             File.WriteAllText(path, tile.ToJsonString(ShippedScenePolicy.Json));
         }
+        if (variant == "unplaced-selection")
+        {
+            string catalogPath = Path.Combine(root, "catalog.json");
+            var catalog = JsonNode.Parse(File.ReadAllText(catalogPath))!;
+            var archetype = catalog["archetypes"]![0]!.DeepClone();
+            archetype["id"] = "unused-column";
+            archetype["meshRef"] = "assets/unplaced.glb";
+            archetype["lodMeshRef"] = "assets/unplaced-far.glb";
+            catalog["archetypes"]!.AsArray().Add(archetype);
+            File.WriteAllText(catalogPath, catalog.ToJsonString(ShippedScenePolicy.Json));
+            File.Copy(Path.Combine(root, "assets/base.glb"), Path.Combine(root, "assets/unplaced.glb"));
+            File.Copy(Path.Combine(root, "assets/far.glb"), Path.Combine(root, "assets/unplaced-far.glb"));
+            string assetPath = Path.Combine(root, "assets/root.json");
+            var assets = JsonNode.Parse(File.ReadAllText(assetPath))!;
+            var asset = assets["assets"]![0]!.DeepClone(); asset["id"] = "unused-column";
+            assets["assets"]!.AsArray().Add(asset);
+            File.WriteAllText(assetPath, assets.ToJsonString(ShippedScenePolicy.Json));
+            native.NativeAssets[0] = native.NativeAssets[0] with { Sha256 = Hash(File.ReadAllBytes(assetPath)) };
+            MapDocumentFile.Save(native, Path.Combine(root, "native.json"));
+            MapDocumentFile.SaveTiled(native, Path.Combine(root, "native-tiled"));
+            foreach (string name in new[] { "source-policy.json", "native-policy.json" })
+            {
+                string path = Path.Combine(root, name);
+                var policy = JsonNode.Parse(File.ReadAllText(path))!;
+                var layer = policy["placements"]!["layers"]![0]!.DeepClone();
+                layer["id"] = "unplaced"; layer["assetIds"] = new JsonArray("unused-column");
+                layer["hlodDistance"] = 20; layer["hlodCrossfadeWidth"] = 4; layer["hlodWeldCell"] = 1;
+                policy["placements"]!["layers"]!.AsArray().Add(layer);
+                File.WriteAllText(path, policy.ToJsonString(ShippedScenePolicy.Json));
+            }
+        }
         return comparison;
     }
 }

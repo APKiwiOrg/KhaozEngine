@@ -770,8 +770,9 @@ unload B/unload C ends with zero live resources. The sequence must end empty.
 A policy file has exactly `placements`, `animatedAssets`, `foliage`, `water`, `lights`, `modelExtents`. Placements has
 `layers` and `defaultDrawRadius`. Layer rows have exactly the released `MapPlacementLayer` serialized
 properties `id`, `assetIds`, `lodDistances`, `lodCrossfadeWidth`, `drawRadius`, `hlodDistance`,
-`hlodCrossfadeWidth`, `hlodWeldCell`, `castsShadows`. Source selections name original archetypes and
-native selections name mapped assets. Foliage and water are complete closed camel-case serializations
+`hlodCrossfadeWidth`, `hlodWeldCell`, `castsShadows`. Source selections name original catalog archetypes and
+native selections name mapped catalog assets. Declared selections may have no placements. Their attested
+base/LOD meshes are still resolved from the catalogs, and they emit no draws. Foliage and water are complete closed camel-case serializations
 of the candidate's `GroundCoverRenderOptions` and `WaterLook`, including nullable members and vector
 fields. Stable profiles/casting are model registration inputs. Frame policy excludes stable values.
 `modelExtents` is the explicit list of released `MapFoliageModelExtent` rows with `assetId`,

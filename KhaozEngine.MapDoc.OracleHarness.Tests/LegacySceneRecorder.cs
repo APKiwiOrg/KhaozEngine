@@ -42,14 +42,12 @@ internal static class LegacySceneRecorder
                 if (!originalParts.ContainsKey(lod.SourcePath))
                     originalParts.Add(lod.SourcePath, GltfLoader.LoadPartsWithMaterials(inputs.OriginalMeshes[lod.SourcePath], "attested source mesh"));
         var mappings = inputs.Manifest.Placements.ToDictionary(p => p.SourceObjectId);
-        var pathsByArchetype = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var obj in document.AllObjects().OrderBy(o => o.Id))
         {
             var archetype = catalogs.Archetype(obj.ArchetypeId)!;
             var position = TileObjectProps.AnchorPosition(document, archetype, obj);
             var transform = Matrix4x4.CreateRotationY(TileObjectProps.YawRadians(archetype, obj.Rotation)) * Matrix4x4.CreateTranslation(position);
             var mapping = mappings[obj.Id];
-            pathsByArchetype.TryAdd(archetype.Id, mapping.Lods[^1].SourcePath);
             var tiers = mapping.Lods.Select(l => originalParts[l.SourcePath]).ToArray();
             var points = tiers.SelectMany(t => t).SelectMany(p => p.Mesh.Vertices).Select(v => Vector3.Transform(v.Position, transform));
             var min = new Vector3(float.PositiveInfinity); var max = new Vector3(float.NegativeInfinity);
@@ -132,7 +130,12 @@ internal static class LegacySceneRecorder
                 var layer = PropLayer.PlacementLayer(selected, full, policy.DrawRadius, lodPartMeshes: far,
                     lodDistance: policy.LodDistances.FirstOrDefault(), castsShadows: policy.CastsShadows).WithLodCrossfade(policy.LodCrossfadeWidth);
                 if (policy.HlodDistance <= 0) { scene.DrawLayer(selected, layer, focus, 0); continue; }
-                var flat = policy.AssetIds.ToDictionary(id => id, id => GltfLoader.LoadFlattenedAlbedo(inputs.OriginalMeshes[pathsByArchetype[id]], "attested source HLOD"));
+                var flat = policy.AssetIds.ToDictionary(id => id, id =>
+                {
+                    var archetype = catalogs.Archetype(id) ?? throw new System.IO.InvalidDataException("missing declared source archetype");
+                    string path = ShippedFoliageManifest.SafePath(archetype.LodMeshRef is { Length: > 0 } lod ? lod : archetype.MeshRef);
+                    return GltfLoader.LoadFlattenedAlbedo(inputs.OriginalMeshes[path], "attested source HLOD");
+                });
                 layer = layer.WithHlod(flat, policy.HlodDistance, policy.HlodWeldCell, policy.HlodCrossfadeWidth);
                 double edge = 64 * inputs.NativeTileSize, divisions = Math.Ceiling(edge / 1024);
                 double cellEdge = edge / divisions;

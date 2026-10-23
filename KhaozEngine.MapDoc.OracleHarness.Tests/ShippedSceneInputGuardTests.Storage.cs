@@ -1,6 +1,10 @@
+using System;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Render3D;
+using KhaozEngine.MapDoc.Scene;
 using Xunit;
 
 namespace KhaozEngine.Tests.MapDocOracle;
@@ -32,5 +36,24 @@ public sealed partial class ShippedSceneInputGuardTests
     {
         using var fixture = ShippedSceneGuardFixtures.Create(variant);
         Assert.Throws<InvalidDataException>(() => ShippedSceneInputs.Read(PrivateOracleInputs.Require(fixture.Environment)));
+    }
+
+    [Fact]
+    public void SceneSelection_CatalogedUnplacedHlodLoadsAndDrawsNothingOnBothHeads()
+    {
+        using var fixture = ShippedSceneGuardFixtures.Create("unplaced-selection");
+        var inputs = ShippedSceneInputs.Read(PrivateOracleInputs.Require(fixture.Environment));
+        var legacy = LegacySceneRecorder.Record(inputs.World, inputs.Catalogs, inputs);
+        Assert.Single(legacy.Placements);
+        var document = inputs.Reload(true); var assets = inputs.Assets(document);
+        using var docs = MapDocumentSource.FromDocument(document);
+        var source = MapSceneSource.Capture(docs, assets).Source!;
+        var scene = source.Acquire(ShippedSceneInputs.Scope(inputs.Manifest.Windows[0])).Scene!;
+        var routing = MapPlacementRouting.Create(scene, inputs.NativePolicy.Placements, inputs.NativePolicy.AnimatedAssets);
+        Assert.Equal(MapSceneStatus.CompleteForScope, routing.Status);
+        Assert.Single(routing.Routing!.Entries);
+        Assert.DoesNotContain(scene.Placements, p => p.AssetId == "unused-column");
+        PrivateOracleEntry.Run(fixture.Environment, (_, report) => ShippedSceneComparison.Compare(inputs, report));
+        Assert.Empty(fixture.FailureCategories());
     }
 }

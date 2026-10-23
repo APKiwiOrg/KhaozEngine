@@ -73,18 +73,25 @@ public sealed class MapRenderPlan : IDisposable
             admission.ReserveBytes(checked(128L + roofs.Roofs.Count * 128L));
             var roofIndices = roofs.Roofs.Select((r, i) => (r.RoofPlacementId, i)).ToDictionary(r => r.RoofPlacementId, r => r.i, StringComparer.Ordinal);
             var stamp = new MapResourceStamp(source.ClosureHash, source.SourceGeneration, scene.Scope.Digest, policy.Digest, generation);
-            var recorder = new MapDrawRecorder();
-            terrain.Register(stamp, recorder); placements.Register(stamp, recorder); water.Register(stamp, recorder); foliage.Register(stamp, recorder);
-            var point = new MapFramePoint(WorldFrame.Origin, default);
-            NativeMapLights.Record(scene, new(WorldFrame.Origin, point, MapRoofMode.AlwaysVisible, 0, 0, point), recorder, stamp);
-            var snapshot = recorder.Snapshot();
-            var resources = snapshot.Resources.ToArray();
-            admission.ReserveBytes(checked(128L * resources.Length));
+            MapPreparedResource[] resources;
+            MapDrawRecord[] lights;
+            using (var recording = admission.BeginPreparation())
+            {
+                admission.ReserveBytes(checked(128L * scene.EffectiveLights.Count));
+                var recorder = new MapDrawRecorder();
+                terrain.Register(stamp, recorder); placements.Register(stamp, recorder); water.Register(stamp, recorder); foliage.Register(stamp, recorder);
+                var point = new MapFramePoint(WorldFrame.Origin, default);
+                NativeMapLights.Record(scene, new(WorldFrame.Origin, point, MapRoofMode.AlwaysVisible, 0, 0, point), recorder, stamp);
+                var snapshot = recorder.Snapshot();
+                admission.ReserveBytes(checked(IntPtr.Size * (long)snapshot.Resources.Count + MapRecordingAdmission.DrawBytes * snapshot.Draws.Count));
+                resources = snapshot.Resources.ToArray(); lights = snapshot.Draws.ToArray();
+                recording.Complete(checked(128L * resources.Length + MapRecordingAdmission.DrawBytes * lights.Length));
+            }
             var inventory = new MapRenderInventory(scene.Witness, terrain, placements, MapEffectiveAnnotations.Lights(scene), water,
                 foliage, MapEffectiveAnnotations.Markers(scene));
-            var result = new MapRenderPlan(stamp, scene, input, routing, inventory, context, 0, resources, snapshot.Draws.ToArray(), geometry, roofs, roofIndices) { _contextOwner = contextOwner };
+            var result = new MapRenderPlan(stamp, scene, input, routing, inventory, context, 0, resources, lights, geometry, roofs, roofIndices) { _contextOwner = contextOwner };
             long retained = checked(1024L + terrain.RetainedBytes + placements.RetainedBytes + water.RetainedBytes + foliage.RetainedBytes +
-                geometry.RetainedBytes + roofs.RetainedBytes + 128L * roofIndices.Count + 128L * resources.Length + 128L * result._lights.Length +
+                geometry.RetainedBytes + roofs.RetainedBytes + 128L * roofIndices.Count + 128L * resources.Length + MapRecordingAdmission.DrawBytes * result._lights.Length +
                 (captured is null ? context.InventoryBytes : 0));
             result.PreparationOwnership = preparation.Complete(retained); result.PreparationBytes = retained;
             return result;

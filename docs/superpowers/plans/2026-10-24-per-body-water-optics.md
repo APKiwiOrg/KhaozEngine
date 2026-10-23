@@ -10,7 +10,9 @@
 
 **Spec:** [`WATER-OBJECT-OPTICS-DESIGN-2026-10-24.md`](../../design/WATER-OBJECT-OPTICS-DESIGN-2026-10-24.md), approved on 2026-10-24.
 
-**Status:** Ready for owner review. Implementation and an execution method have not been approved.
+**Status:** Approved by the owner on 2026-10-24 for subagent-driven execution. The engine
+orchestrator owns Tasks 1 through 7. The Grimhollow coordinator retains Task 8. Release authorization
+remains separate and requires approval of the exact tag.
 
 ## Global constraints
 
@@ -518,13 +520,10 @@ coverage to Tasks 3 and 4, TileWorld source and lifetime to Tasks 5 and 6, and b
 requirements to Tasks 7 and 8. Task 1 establishes the public control fixture. All five Review Focus rows
 have named tests. API names and defaults above are shared across tasks rather than redefined in briefs.
 
-Before execution, the owner reviews this plan and chooses subagent-driven or native execution. For this
-plan, subagent-driven execution is recommended because field preparation, GPU lifetime and terrain
-publication each merit an independent rejection gate. Do not start product code on approval of the spec
-alone. Keep every task's commit and review evidence with the plan's progress record.
+The owner approved this plan and selected subagent-driven execution on 2026-10-24. Field preparation,
+GPU lifetime and terrain publication each retain an independent rejection gate. Keep every task's
+commit and review evidence with the plan's progress record.
 
-For subagent-driven execution, use one engine-rooted thread bound to this existing engine worktree.
-It owns Tasks 1 through 7 and the engine release handoff. The Grimhollow coordinator retains Task 8.
-Creating that thread is part of the execution choice for the owner, not an automatic consequence of
-writing this plan. Native execution instead keeps implementation in the current session with explicit
-engine working directories and an independent final review.
+The engine-rooted execution thread is bound to this existing engine worktree and owns Tasks 1 through 7
+and the engine release handoff. The Grimhollow coordinator retains Task 8. Implementation proceeds
+sequentially with one implementer at a time, fresh scoped task reviews and a final whole-branch review.

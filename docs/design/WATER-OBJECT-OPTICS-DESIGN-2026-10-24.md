@@ -2,8 +2,9 @@
 
 Date: 2026-10-24
 
-Status: Approved by the owner on 2026-10-24. Implementation planning is authorized.
-The implementation plan and execution method still require review. Release authorization is separate.
+Status: Approved by the owner on 2026-10-24. The implementation plan and subagent-driven execution
+were also approved on 2026-10-24. Engine Tasks 1 through 7 are authorized, with consumer Task 8 owned
+by its Grimhollow coordinator. Release authorization is separate and requires approval of the exact tag.
 
 Implementation plan: [per-body water optics](../superpowers/plans/2026-10-24-per-body-water-optics.md).
 

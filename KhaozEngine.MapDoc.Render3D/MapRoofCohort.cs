@@ -7,16 +7,32 @@ using KhaozEngine.Terrain;
 namespace KhaozEngine.MapDoc.Render3D;
 
 /// <summary>Admitted canonical roof policy retained with one immutable cluster presentation generation.</summary>
-internal sealed class MapRoofCohort
+internal sealed class MapRoofCohort : IPropClusterVisibility
 {
+    readonly NativePropClusterCpuBuild _build;
+    readonly int[] _indices;
     internal MapRoofEvaluationBuffer Evaluation { get; }
     internal IReadOnlyDictionary<string, int> Indices { get; }
     internal MapRoofCohort(NativePropClusterCpuBuild build, MapRoofEvaluationBuffer evaluation)
     {
-        Evaluation = evaluation;
+        _build = build; Evaluation = evaluation;
         Indices = evaluation.Roofs.Select((r, i) => (r.RoofPlacementId, i))
             .ToDictionary(r => r.RoofPlacementId, r => r.i, StringComparer.Ordinal);
-        foreach (string id in build.RepresentedIds)
-            if (!Indices.ContainsKey(id)) throw new MapDocumentException("Canonical roof policy omitted a cohort member.");
+        _indices = new int[build.RepresentedIds.Count];
+        for (int i = 0; i < _indices.Length; i++)
+            _indices[i] = Indices.TryGetValue(build.RepresentedIds[i], out int index) ? index
+                : throw new MapDocumentException("Canonical roof policy omitted a cohort member.");
+    }
+    public bool Controls(PropClusterKey key) => key == _build.Request.Key;
+    public int PlacementCount(PropClusterKey key, long generation)
+    {
+        if (!Controls(key) || generation != _build.Request.Generation)
+            throw new MapDocumentException("Roof policy belongs to another presentation generation.");
+        return _indices.Length;
+    }
+    public bool IsHidden(PropClusterKey key, long generation, int placementIndex)
+    {
+        _ = PlacementCount(key, generation);
+        return !Evaluation.Roofs[_indices[placementIndex]].ColourVisible;
     }
 }

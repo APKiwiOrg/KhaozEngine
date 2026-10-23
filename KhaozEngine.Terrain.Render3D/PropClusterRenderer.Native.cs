@@ -89,11 +89,12 @@ public sealed partial class PropClusterRenderer
 
     internal static PropClusterDrawState NativeDrawState(NativePropClusterRequest request, bool accepted, Vector3 localFocus)
     {
-        if (!accepted) return new(true, 0, false, 0, false, request.Generation, -1);
+        if (!accepted) return new(true, 0, false, 0, false, request.Generation, -1) { HasIndividualGeometry = request.Instances.Count > 0 };
         var layer = request.BorrowLayer;
         float dx = (request.Area.MinX + request.Area.MaxX) * .5f - localFocus.X;
         float dz = (request.Area.MinZ + request.Area.MaxZ) * .5f - localFocus.Z;
-        return ResolveCoverage(MathF.Sqrt(dx * dx + dz * dz), layer, request.Generation, request.Generation);
+        return ResolveCoverage(MathF.Sqrt(dx * dx + dz * dz), layer, request.Generation, request.Generation) with
+        { HasIndividualGeometry = request.Instances.Count > 0 };
     }
 
     // Both retained legacy clusters and native typed recording consume this same coverage decision.

@@ -97,9 +97,17 @@ public sealed class MapPlacementRenderBatch : IDisposable
         var focus = MapRenderTransform.FocusLocal(emission.Frame.Focus, anchor);
         var state = _clusters.TryGetNativeEmission(request.Key, focus, out var accepted, out var mergedDraw) ? accepted
             : PropClusterRenderer.NativeDrawState(request, false, focus);
+        bool shadowOnly = false;
+        if (_roofCohorts[index] is { } cohort)
+        {
+            var decision = PropClusterVisibilityDecision.Resolve(request.Key, state, cohort);
+            state = decision.State; shadowOnly = decision.MergedShadowOnly;
+        }
         if (state.DrawsIndividuals) Emit(request.BorrowLayer, emission, state.IndividualDissolveFloor);
         int part = _clusterParts[index];
-        if (state.DrawsMerged && part >= 0) Write(_registered![part].Reference, anchor, mergedDraw, Channels(mergedDraw.CastsShadows), emission.Frame, emission.Sink);
+        if (state.DrawsMerged && part >= 0 && (!shadowOnly || mergedDraw.CastsShadows))
+            Write(_registered![part].Reference, anchor, mergedDraw,
+                shadowOnly ? MapDrawChannels.Shadow | MapDrawChannels.Sky | MapDrawChannels.Physical : Channels(mergedDraw.CastsShadows), emission.Frame, emission.Sink);
     }
     internal void RecordRoofs(MapFrameState frame, MapRoofEvaluationBuffer roofs, IReadOnlyDictionary<string, int> indices, IMapDrawSink sink)
     {
@@ -128,10 +136,11 @@ public sealed class MapPlacementRenderBatch : IDisposable
                 var intent = e.Roofs.Roofs[e.RoofIndices![instance.Id]];
                 channels = MapDrawChannels.Physical;
                 if (intent.ColourVisible) channels |= MapDrawChannels.Colour | MapDrawChannels.Selection;
-                if (intent.CastShadows) channels |= MapDrawChannels.Shadow;
+                if (intent.CastShadows && draw.CastsShadows) channels |= MapDrawChannels.Shadow;
                 if (intent.CameraBoomBlocks) channels |= MapDrawChannels.Camera;
                 if (intent.SkyPickingBlocks) channels |= MapDrawChannels.Sky;
             }
+            if ((channels & (MapDrawChannels.Colour | MapDrawChannels.Shadow)) == 0) return;
             int part = e.Batch._partIndices[(instance.Id, draw.Mesh.Index, draw.Mesh.Generation)];
             Write(e.Batch._registered![part].Reference, anchor, draw, channels, e.Frame, e.Sink);
         }, floor, resolveFocus: static (e, a) => MapRenderTransform.FocusLocal(e.Frame.Focus, new(a.X, a.Y, a.Z)));

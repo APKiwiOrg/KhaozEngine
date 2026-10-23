@@ -295,7 +295,10 @@ Production point-shadow callbacks report unavailable transient rows as skipped s
 point-shadow finish, preserving the frozen order without a fabricated GPU interval.
 
 The existing driver owns every conditioned, warm and measured frame, three-frame completion,
-readback, drift check and publication deadline. Host telemetry uses `nvidia-smi` outside frame
+readback, drift check and publication deadline. Publication elapsed time and estimated cost include
+work-model generation, sidecar serialization and hashing inside the publication clock interval,
+including failed measurements. The absolute deadline and two-stage final accounting stamp still apply.
+Host telemetry uses `nvidia-smi` outside frame
 brackets at a fixed interval of 64 session-info boundaries. Unsupported fields retain their reasons.
 Runtime identity retains the effective `KE_`, `DOTNET_`, `COMPlus_` and `VK_` environment, excluding
 the per-run `KE_RENDERER_PERF_` paths and tokens. These values and the exact .NET runtime version

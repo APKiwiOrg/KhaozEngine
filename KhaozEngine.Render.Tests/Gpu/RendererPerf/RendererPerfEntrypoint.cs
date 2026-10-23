@@ -153,6 +153,9 @@ internal static class RendererPerfEntrypoint
     sealed class EvidencePublication(string directory) : IRendererPerfPublication
     {
         public RendererPerfReport Publish(RendererPerfReport report, RendererPerfClock clock, long deadline)
+            => RendererPerfPublicationWriter.Files(directory, Prepare).Publish(report, clock, deadline);
+
+        RendererPerfReport Prepare(RendererPerfReport report)
         {
             // Preserve per-block model context. Task 14 owns canonical aggregation and comparisons.
             var models = report.Blocks.Select(block => new
@@ -165,8 +168,7 @@ internal static class RendererPerfEntrypoint
             var sidecars = Directory.EnumerateFiles(directory).Where(path => !path.EndsWith(".trx", StringComparison.Ordinal)
                 && !path.EndsWith(".log", StringComparison.Ordinal) && !path.EndsWith(".partial.json", StringComparison.Ordinal))
                 .Select(path => new RendererPerfSidecar(Path.GetFileName(path), RendererPerfRecipe.Hash(File.ReadAllBytes(path)))).ToImmutableArray();
-            report = report with { Sidecars = sidecars };
-            return RendererPerfPublicationWriter.Files(directory).Publish(report, clock, deadline);
+            return report with { Sidecars = sidecars };
         }
     }
 }

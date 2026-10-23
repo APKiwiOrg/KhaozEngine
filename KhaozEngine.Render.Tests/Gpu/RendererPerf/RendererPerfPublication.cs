@@ -6,13 +6,13 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
 // A separate partial artifact survives a final write failure. Publication never starts another measurement.
 internal sealed class RendererPerfPublicationWriter(Action<RendererPerfReport, bool> write,
-    Action<RendererPerfReport> recordCompletion) : IRendererPerfPublication
+    Action<RendererPerfReport> recordCompletion, Func<RendererPerfReport, RendererPerfReport>? prepare = null) : IRendererPerfPublication
 {
-    internal static RendererPerfPublicationWriter Files(string directory)
+    internal static RendererPerfPublicationWriter Files(string directory, Func<RendererPerfReport, RendererPerfReport>? prepare = null)
     {
         Directory.CreateDirectory(directory);
         var files = new RendererPerfPublicationFiles(directory);
-        return new(files.Write, files.RecordCompletion);
+        return new(files.Write, files.RecordCompletion, prepare);
     }
 
     public RendererPerfReport Publish(RendererPerfReport report, RendererPerfClock clock, long deadline)
@@ -22,6 +22,8 @@ internal sealed class RendererPerfPublicationWriter(Action<RendererPerfReport, b
         RendererPerfReport partial = Failure(report, report.Publication.OriginalFailure ?? "Final publication pending.", null);
         try
         {
+            report = prepare?.Invoke(report) ?? report;
+            partial = Failure(UpdateElapsed(report), report.Publication.OriginalFailure ?? "Final publication pending.", null);
             // Retain raw evidence before checking a deadline that may already have expired.
             write(partial, false);
             CheckDeadline();

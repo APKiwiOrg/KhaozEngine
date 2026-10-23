@@ -15,28 +15,38 @@ namespace KhaozEngine.MapDoc.Render3D;
 public static class NativeMapPlacements
 {
     public static MapPlacementRenderBatch Prepare(MapScopedScene scene, MapPreparedInputLease input,
-        MapPlacementPolicy policy, MapPlacementRouting routing)
+        MapPlacementPolicy policy, MapPlacementRouting routing) => Prepare(scene, input, policy, routing, null);
+
+    internal static MapPlacementRenderBatch Prepare(MapScopedScene scene, MapPreparedInputLease input,
+        MapPlacementPolicy policy, MapPlacementRouting routing, MapPlacementCellInventory? cells)
     {
         ArgumentNullException.ThrowIfNull(input);
         var retained = input.Retain();
         try
         {
-            var batch = Prepare(scene, retained.Assets, policy, routing);
+            var batch = PrepareCore(scene, retained.Assets, policy, routing, cells);
             batch.AttachInput(retained); return batch;
         }
         catch { retained.Dispose(); throw; }
     }
 
     public static MapPlacementRenderBatch Prepare(MapScopedScene scene, MapRenderAssets assets,
-        MapPlacementPolicy policy, MapPlacementRouting routing)
+        MapPlacementPolicy policy, MapPlacementRouting routing) => PrepareCore(scene, assets, policy, routing, null);
+
+    static MapPlacementRenderBatch PrepareCore(MapScopedScene scene, MapRenderAssets assets,
+        MapPlacementPolicy policy, MapPlacementRouting routing, MapPlacementCellInventory? cells)
     {
         ArgumentNullException.ThrowIfNull(scene); ArgumentNullException.ThrowIfNull(assets);
         ArgumentNullException.ThrowIfNull(policy); ArgumentNullException.ThrowIfNull(routing);
         routing.Validate(scene, policy);
         if (scene.Witness.ClosureHash != assets.Closure.Hash) throw new MapDocumentException("Placement assets belong to another closure.");
+        cells ??= MapPlacementCellInventory.Capture(scene, routing);
         foreach (var placement in scene.Placements)
             if (!assets.ById.ContainsKey(placement.AssetId)) throw new MapRenderAssetRefusal(MapRenderAssetStatus.Missing, "Placement has no selected asset: " + placement.AssetId);
+        foreach (var placement in cells.Cells.SelectMany(cell => cell.Members))
+            if (!assets.ById.ContainsKey(placement.AssetId)) throw new MapRenderAssetRefusal(MapRenderAssetStatus.Missing, "Canonical cell member has no selected asset: " + placement.AssetId);
         var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(scene.Source.Data.Limits);
+        using var activation = admission.Enter();
         try
         {
             var instances = new List<NativePropInstance>();
@@ -57,11 +67,13 @@ public static class NativeMapPlacements
                 handles.Add(asset.AssetId, Array.AsReadOnly(tiers.ToArray()));
             }
             var roofs = scene.BuildingIntent.Roofs.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
-            foreach (var placement in scene.Placements)
+            var selectedPlacements = scene.Placements.Where(p => routing.Entries[p.PlacementId] == MapPlacementRoute.Ordinary)
+                .Select(p => (Scene: scene, Placement: p))
+                .Concat(cells.Cells.SelectMany(cell => cell.Members.Select(p => (Scene: cell.Scene, Placement: p))));
+            foreach (var (placementScene, placement) in selectedPlacements)
             {
-                if (routing.Entries[placement.PlacementId] == MapPlacementRoute.Animated) continue;
                 admission.ReserveBytes(256);
-                var pose = Pose(scene, placement); var anchor = Anchor(pose);
+                var pose = Pose(placementScene, placement); var anchor = Anchor(pose);
                 posesById.Add(placement.PlacementId, pose);
                 var instance = new NativePropInstance(placement.PlacementId, placement.NumericId, placement.AssetId,
                     MapRenderTransform.ToLocal(pose, anchor), new(anchor.X, anchor.Y, anchor.Z));
@@ -102,7 +114,7 @@ public static class NativeMapPlacements
                 foreach (var cell in selected.GroupBy(i => MapPlacementCells.Key(layer.Id, posesById[i.Id], scene.Source.Data.TileSize))
                     .OrderBy(c => c.Key.X).ThenBy(c => c.Key.Z))
                 {
-                    var members = cell.ToArray();
+                    var members = cell.OrderBy(i => i.Id, StringComparer.Ordinal).ToArray();
                     var domain = MapPlacementCells.Domain(cell.Key, scene.Source.Data.TileSize, members.Min(i => i.Anchor.Y));
                     var sources = new Dictionary<string, GltfMesh>(StringComparer.Ordinal);
                     foreach (string id in members.Select(i => i.AssetId).Distinct(StringComparer.Ordinal))
@@ -115,7 +127,7 @@ public static class NativeMapPlacements
                     admission.ReserveBytes(checked(8 * mergeBytes));
                     var shared = Shared(members, layer).WithHlod(sources, layer.HlodDistance, layer.HlodWeldCell, layer.HlodCrossfadeWidth);
                     var request = new NativePropClusterRequest(cell.Key, 0, domain.Area, shared, members, domain.Anchor);
-                    var build = PrepareCluster(scene, routing, request);
+                    var build = PrepareCluster(cells.Get(cell.Key), request);
                     clusters.Add(build);
                     var anchor = new MapSubmissionAnchor(domain.Anchor.X, domain.Anchor.Y, domain.Anchor.Z);
                     var mesh = build.BorrowMesh;
@@ -126,7 +138,7 @@ public static class NativeMapPlacements
                     parts.Add(new(key, new(nextHandle++), anchor, bounds, new MapRigidResource(mesh, default),
                         MapPlacementDigest.Hash(w =>
                         {
-                            w.WriteStartArray(); w.WriteStringValue(routing.SceneWitnessDigest); w.WriteStringValue(routing.PolicyDigest);
+                            w.WriteStartArray(); w.WriteStringValue(routing.PolicyDigest);
                             w.WriteStringValue(inventory); w.WriteEndArray();
                         })));
                 }
@@ -138,7 +150,9 @@ public static class NativeMapPlacements
             if (roofDefaults.Length > 0) roofLayers.Add(Shared(roofDefaults, null));
             // Frozen bindings, cluster lookup slots and the batch's copied list storage.
             admission.ReserveBytes(checked(1024L + parts.Count * 192L + clusters.Count * 32L + (ordinary.Count + roofLayers.Count) * 32L));
-            return new(scene.Placements, MapEffectiveAnnotations.Markers(scene), ordinary, roofLayers, parts, routing, clusters, admission.RetainedBytes);
+            var preparedInventory = scene.Placements.Where(p => routing.Entries[p.PlacementId] != MapPlacementRoute.Cluster)
+                .Concat(cells.Cells.SelectMany(cell => cell.Members)).ToArray();
+            return new(preparedInventory, MapEffectiveAnnotations.Markers(scene), ordinary, roofLayers, parts, routing, clusters, admission.RetainedBytes);
 
             PropLayer Shared(IReadOnlyList<NativePropInstance> rows, MapPlacementLayer? layer)
             {
@@ -157,10 +171,23 @@ public static class NativeMapPlacements
     public static NativePropClusterCpuBuild PrepareCluster(MapScopedScene scene, MapPlacementRouting routing, NativePropClusterRequest request) =>
         PrepareCluster(scene, routing, request, PropClusterRenderer.BuildNativeCpu);
 
+    internal static NativePropClusterCpuBuild PrepareCluster(MapPlacementCellInventory.Cell cell, NativePropClusterRequest request) =>
+        PrepareCluster(cell.Scene, cell.Routing, request, cell, PropClusterRenderer.BuildNativeCpu);
+
     internal static NativePropClusterCpuBuild PrepareCluster(MapScopedScene scene, MapPlacementRouting routing,
         NativePropClusterRequest request, Func<NativePropClusterRequest, NativePropClusterCpuBuild> build)
     {
         ArgumentNullException.ThrowIfNull(scene); ArgumentNullException.ThrowIfNull(routing); ArgumentNullException.ThrowIfNull(request);
+        routing.Validate(scene);
+        var cell = MapPlacementCellInventory.Acquire(scene, routing, request.Key);
+        return PrepareCluster(cell.Scene, cell.Routing, request, cell, build);
+    }
+
+    static NativePropClusterCpuBuild PrepareCluster(MapScopedScene scene, MapPlacementRouting routing,
+        NativePropClusterRequest request, MapPlacementCellInventory.Cell cell,
+        Func<NativePropClusterRequest, NativePropClusterCpuBuild> build)
+    {
+        ArgumentNullException.ThrowIfNull(request); ArgumentNullException.ThrowIfNull(build);
         routing.Validate(scene);
         var roofs = scene.BuildingIntent.Roofs.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
         var placements = scene.Placements.ToDictionary(p => p.PlacementId, StringComparer.Ordinal);
@@ -181,6 +208,7 @@ public static class NativeMapPlacements
             throw new MapDocumentException("Native cluster request disagrees with its region cell.");
         if (request.BorrowLayer.NativePlacements is not { } native || !native.SequenceEqual(request.Instances))
             throw new MapDocumentException("Native cluster request disagrees with its frozen layer inventory.");
+        MapPlacementCellInventory.RequireMembers(cell, request);
         CertifyCluster(request);
         return build(request);
     }

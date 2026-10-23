@@ -93,7 +93,19 @@ public sealed class MapNativeFoliageBatch : IDisposable
                     : new MapFoliageResource(group.Anchor, transforms, ranks, group.Indices, models);
                 var key = new MapRenderKey(MapRenderKind.Foliage, group.OwnerId, "instances", 0);
                 string digest = MapPlacementDigest.Hash(w =>
-                { w.WriteStartArray(); w.WriteStringValue(RenderDigest); w.WriteStringValue(group.Digest); w.WriteEndArray(); });
+                {
+                    // Window and batch witnesses belong to aliases. Only this group's rows and bindings own the upload.
+                    w.WriteStartArray(); w.WriteStringValue("kemap/native-foliage-instances/1"); w.WriteStringValue(group.Digest);
+                    foreach (var model in models)
+                    {
+                        w.WriteStringValue(model.ModelId);
+                        foreach (float value in new[] { model.Motion.BendScale, model.Motion.MaxLean, model.Motion.WindScale, model.Motion.Shiver })
+                            w.WriteNumberValue(BitConverter.SingleToInt32Bits(value));
+                        w.WriteBooleanValue(model.CastShadows);
+                        foreach (var part in _parts.Where(p => p.Key.OwnerId == model.ModelId)) w.WriteStringValue(part.Digest);
+                    }
+                    w.WriteEndArray();
+                });
                 resources.Add(new(new(key, stamp), group.Bounds, payload, digest));
             }
             _registrations = resources.ToArray(); _stamp = stamp;

@@ -188,9 +188,10 @@ public sealed partial class MapRenderResidency : IDisposable
                         contextOwner = new(captured, charge.Split(retained)); transferred += retained;
                     }
                     var context = contextOwner.Context;
-                    if (MapPlacementRouting.Create(scene, pending.State.Policy.Placements, pending.State.Policy.AnimatedAssets).Routing is null)
-                        throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, "Composite routing refused before selected decode.");
-                    var selected = MapRenderPlan.SelectedAssets(scene, context);
+                    var routing = MapPlacementRouting.Create(scene, pending.State.Policy.Placements, pending.State.Policy.AnimatedAssets).Routing
+                        ?? throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, "Composite routing refused before selected decode.");
+                    var cells = MapPlacementCellInventory.Capture(scene, routing);
+                    var selected = MapRenderPlan.SelectedAssets(scene, context, cells);
                     var materials = MapRenderPlan.SelectedMaterials(scene, pending.State.Policy);
                     lock (_gate) Fence(pending);
                     token.ThrowIfCancellationRequested();
@@ -203,7 +204,7 @@ public sealed partial class MapRenderResidency : IDisposable
                         token.ThrowIfCancellationRequested();
                         window.ChargeExternal(input.RetainedBytes);
                         var plan = MapRenderPlan.Prepare(source, scene, input, pending.State.Policy, pending.Epoch, admission, context, contextOwner,
-                            retained => { contextOwner!.Own(charge.Split(retained)); transferred += retained; });
+                            retained => { contextOwner!.Own(charge.Split(retained)); transferred += retained; }, cells);
                         plans.Add(plan); contextOwner = null;
                         if (admission.RetainedBytes - beforeScope + input.RetainedBytes + reused > _budgets.MaxPlanBytes)
                             throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, "Prepared plan exceeds its byte capacity.");

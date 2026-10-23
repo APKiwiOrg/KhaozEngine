@@ -33,6 +33,9 @@ released lenient behavior.
 anchor-local transform and focus, channels and exactly one typed frame. `MapDrawRecorder` records these
 without a device. Frozen water and foliage policies capture the caller's mutable objects. Foliage model
 profiles and casting resolve into registration. Per-frame draw options exclude those stable values.
+Each foliage instance owner hashes only its own rows and resolved model bindings. Overlapping windows share
+one upload and submission for a complete generated chunk or explicit plant. Window stamps and batch witnesses
+remain alias provenance, so changing another group does not replace unchanged instance owners.
 
 `NativeMapTerrain.Prepare(scene, input, materialIds)` consumes the scene's acquired canonical faces and
 effective paint regions. `MapTerrainRenderBatch.Register` registers typed `MapTerrainResource` payloads.
@@ -88,6 +91,14 @@ preparation. It never silently drops the cluster or falls back to individual geo
 Merged vertices round once after certification, within the 0.0001 m binary32 submission allowance.
 Content digests retain inventory, transforms,
 closure and weld settings separately from the stable spatial owner key.
+Cell discovery acquires the complete layer inventory through the captured source and its existing admission
+before selected mesh decode. Discovery bounds include every effective placement origin, so a cell query contains
+every origin-owned member even when its geometry lies entirely outside the cell. Exact origin filtering selects
+members from those conservative candidates. The complete cell supplies member poses and asset IDs for the merged
+proxy and its individual fallback. Members are ordered by identity, and proxy payload identity excludes window witnesses.
+Windows touching different parts of one cell prepare the same complete payload, share one upload and draw, and
+release the owner after the last membership. A normal window edge does not refuse. Failed cell acquisition
+refuses the plan with its typed source or capacity status. Partial proxies are never published.
 
 The shared `PropLayer.PlacementLayer` native overload freezes the actual instance inventory, every tier and
 caller thresholds. Both individual fallback and accepted proxies consume that shared layer. The released
@@ -215,6 +226,8 @@ that cannot fit refuses before generation or cache retention. Query limits and g
 `MapRenderPlan` prepares `PresentationGeometry` and `RoofEvaluation` against the same aggregate admission
 as its terrain, placement and foliage products. `Update`, `Record` and `MapPresentationPicker.Pick` reuse
 that buffer for observer motion and roof mode changes. No detached roof result is built in a frame.
+Truncated collider or selection payloads refuse pending preparation with `Invalid`. Accepted draws and
+their witness stay live through the normal replacement refusal path.
 
 `NativeMapRoofs.Record` alone emits registered roof parts. Ordinary placement recording excludes them.
 Hidden roofs retain their registered references, bounds, meshes, draw ranges and shadow coverage. Their

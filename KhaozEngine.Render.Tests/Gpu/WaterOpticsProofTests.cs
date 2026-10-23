@@ -87,6 +87,43 @@ public sealed class WaterOpticsProofTests : IClassFixture<WaterOpticsProofScene>
             $"Aged/fresh grid difference {worst:F6} exceeds {GoldenCompare.InSessionTolerance:F6}.");
     }
 
+    // An upper-only change must not contaminate any of the lower body's 25 sampled pixels.
+    [GpuFact]
+    public void StackedLowerProbeIsIsolatedFromUpperWater()
+    {
+        var settings = new WaterOpticsCase();
+        WaterOpticsImage both = _fixture.Capture(WaterOpticsScenario.StackedBodies, settings);
+        WaterOpticsImage lowerOnly = _fixture.Capture(WaterOpticsScenario.StackedBodies, settings,
+            plane => plane.SurfaceY > 0f
+                ? new WaterPlane(plane.CenterX, plane.SurfaceY, plane.CenterZ,
+                    plane.HalfExtentX, plane.HalfExtentZ, new WaterLook { Opacity = 0f })
+                : plane);
+        Save("stacked-both", both);
+        Save("stacked-upper-off", lowerOnly);
+
+        Vector2 point = both.Samples["lower"];
+        int cx = (int)(point.X + 0.5f), cy = (int)(point.Y + 0.5f);
+        int changed = 0;
+        for (int y = cy - 2; y <= cy + 2; y++)
+            for (int x = cx - 2; x <= cx + 2; x++)
+                for (int channel = 0; channel < 4; channel++)
+                {
+                    int i = (y * both.Width + x) * 4 + channel;
+                    if (both.Rgba[i] != lowerOnly.Rgba[i]) changed++;
+                }
+        float upperDifference = Vector3.Distance(both.Sample("upper"), lowerOnly.Sample("upper"));
+        WriteMetrics("stacked-isolation", new
+        {
+            LowerPixel = new[] { point.X, point.Y },
+            FirstRow = cy - 2, LastRow = cy + 2,
+            ChangedLowerChannels = changed, UpperSampleDifference = upperDifference
+        });
+        Assert.True(upperDifference > 0.08f,
+            "The upper probe must respond to upper water being switched off, so isolation is not vacuous.");
+        Assert.True(changed == 0,
+            $"Changing only upper water changed {changed} channels in the lower body's 5 by 5 patch.");
+    }
+
     static void AssertVisible(WaterOpticsImage image)
     {
         Assert.Equal(384, image.Width);

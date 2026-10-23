@@ -225,7 +225,8 @@ public sealed class WaterOpticsProofScene : IDisposable
         };
         if (scenario == WaterOpticsScenario.StackedBodies)
         {
-            world["lower"] = new(1f, 0f, 1f);
+            // Keep the entire 5 by 5 patch in front of the upper water's projected front edge.
+            world["lower"] = new(1f, 0f, 2f);
             world["upper"] = new(1f, 1.4f, 1f);
         }
         var projected = new Dictionary<string, Vector2>();

@@ -251,7 +251,7 @@ internal static class NativePlacementEffects
         var otherLights = MapEffectiveAnnotations.Lights(other).ToDictionary(l => l.Id);
         foreach (var light in MapEffectiveAnnotations.Lights(resources).Where(l => named.LightIds.Contains(l.Id)))
             if (!otherLights.TryGetValue(light.Id, out var old) || light.Position != old.Position || light.Radius != old.Radius ||
-                light.Colour != old.Colour || light.Intensity != old.Intensity || light.CastShadows != old.CastShadows)
+                light.Colour != old.Colour || light.Intensity != old.Intensity || light.CastShadows != old.CastShadows || light.ShadowExclusion != old.ShadowExclusion)
             {
                 invalidates |= MapNativeInvalidation.Residency;
                 box = Union(box, MapEffectiveAnnotations.Bounds(light));

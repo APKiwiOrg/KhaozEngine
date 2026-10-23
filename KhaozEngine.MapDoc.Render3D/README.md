@@ -102,8 +102,11 @@ shared emitter, including shadow inversion and the unchanged solid endpoint.
 
 `NativeMapLights.Record` registers and records every effective resident emitter, with no nearest-N cap.
 It carries the full descriptor, scaled reach, exact local position, shadow intent and fixture owner exclusion.
-An optional stamp overload binds these registrations to a composite generation. Light shadow exclusion corners
-are anchor-local. `Scene3D.AddLightAnchored` retains that space through receiver buffers, the light cluster grid
+An optional stamp overload binds these registrations to a composite generation. The optional authored
+`shadowExclusion` selects none, a world-metre near sphere, or an owner-local metre fixture box with a
+world-metre margin. No declaration retains the owner render/LOD-bounds box. See the
+[light payload contract](../KhaozEngine.MapDoc/README.md#rigid-prefab-payloads-and-building-intent).
+Submitted light shadow exclusion corners are anchor-local. `Scene3D.AddLightAnchored` retains that space through receiver buffers, the light cluster grid
 and point-shadow binding. Released absolute light overloads keep their existing behavior. Device light capacity
 and overflow diagnostics remain authoritative.
 

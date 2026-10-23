@@ -32,7 +32,7 @@ internal static partial class NativeRenderAssetFixtures
         return Pack(root, bin);
     }
 
-    internal static MapAssetClosure Placements(bool sharedRoofAsset = false, bool originVertex = false)
+    internal static MapAssetClosure Placements(bool sharedRoofAsset = false, bool originVertex = false, string? shadowExclusionJson = null)
     {
         var source = new Source();
         var resources = new JsonArray();
@@ -76,7 +76,15 @@ internal static partial class NativeRenderAssetFixtures
             Roofs = new[] { new MapPrefabReference(MapPrefabReferenceScope.Local, MapPrefabChildKind.Placement, "roof-a"),
                 new MapPrefabReference(MapPrefabReferenceScope.Local, MapPrefabChildKind.Placement, "roof-b") }
         };
-        Resource("assembly", "Prefab", MapPrefabFile.Write(prefab), "mesh", "lod-1", "lod-2");
+        byte[] prefabBytes = MapPrefabFile.Write(prefab);
+        if (shadowExclusionJson is not null)
+        {
+            var json = JsonNode.Parse(prefabBytes)!;
+            foreach (var child in json["children"]!.AsArray().Where(c => c!["type"]!.GetValue<string>() == "Light"))
+                child!["value"]!["shadowExclusion"] = JsonNode.Parse(shadowExclusionJson);
+            prefabBytes = Encoding.UTF8.GetBytes(json.ToJsonString());
+        }
+        Resource("assembly", "Prefab", prefabBytes, "mesh", "lod-1", "lod-2");
         var assets = new JsonArray();
         foreach (string id in new[] { "prop-a", "prop-b", "cap-a" })
             assets.Add(new JsonObject

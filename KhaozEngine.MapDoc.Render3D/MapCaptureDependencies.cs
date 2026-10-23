@@ -94,6 +94,7 @@ public static class MapCaptureDependencies
                     w.WriteStringValue(light.Id); w.WriteNumberValue(light.Position.X.ToDouble()); w.WriteNumberValue(light.Position.Y.ToDouble());
                     w.WriteNumberValue(light.Position.Z.ToDouble()); w.WriteNumberValue(light.Radius); w.WriteNumberValue(light.Intensity); w.WriteBooleanValue(light.CastShadows);
                     w.WriteNumberValue(light.Colour.X); w.WriteNumberValue(light.Colour.Y); w.WriteNumberValue(light.Colour.Z); w.WriteStringValue(light.OwnerPlacementId);
+                    if (light.ShadowExclusion is { } exclusion) w.WriteStringValue(exclusion.Digest());
                 }
                 w.WriteEndArray();
             });

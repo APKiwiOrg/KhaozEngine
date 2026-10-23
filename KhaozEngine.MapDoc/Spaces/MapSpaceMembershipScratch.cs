@@ -84,7 +84,6 @@ internal sealed class MapSpaceMembershipScratch : IMapMembershipPointInput
     internal MapMembershipObservation Query(MapScopedSurfaces view, MapFramePoint point)
     {
         if (!ReferenceEquals(view, _view)) throw new ArgumentException("scratch view does not match", nameof(view));
-        if (point.Frame != _view.Scope.Frame) throw new ArgumentException("point frame differs from acquired frame", nameof(point));
         if (!float.IsFinite(point.Local.X) || !float.IsFinite(point.Local.Y) || !float.IsFinite(point.Local.Z))
             throw new ArgumentException("point must be finite", nameof(point));
         _status = MapMembershipStatus.Outside; _space = null; _world = default;
@@ -94,8 +93,10 @@ internal sealed class MapSpaceMembershipScratch : IMapMembershipPointInput
             if (!MapMembershipCoordinates.Observer(point, out _world)) return Result(MapMembershipStatus.NotRepresentable);
             _point = new(_world.X, _world.Z); _y = _world.Y;
             var scope = _view.Scope;
-            if (point.Local.X < scope.LocalMin.X || point.Local.X > scope.LocalMax.X || point.Local.Z < scope.LocalMin.Y ||
-                point.Local.Z > scope.LocalMax.Y || point.Local.Y < scope.MinY || point.Local.Y > scope.MaxY)
+            var rectangle = scope.WorldRectangle();
+            if (_world.X.CompareTo(rectangle.MinX) < 0 || _world.X.CompareTo(rectangle.MaxX) > 0 ||
+                _world.Z.CompareTo(rectangle.MinZ) < 0 || _world.Z.CompareTo(rectangle.MaxZ) > 0 ||
+                point.Local.Y < scope.MinY || point.Local.Y > scope.MaxY)
                 return Result(MapMembershipStatus.MissingGeometry);
             if (_view.Status == MapAcquireStatus.CapacityExceeded) return Result(MapMembershipStatus.CapacityExceeded);
             if (_view.Status == MapAcquireStatus.NotRepresentable) return Result(MapMembershipStatus.NotRepresentable);

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc.Scene;
+using KhaozEngine.MapDoc.Interiors;
 using KhaozEngine.Terrain;
 
 namespace KhaozEngine.MapDoc.Render3D;
@@ -10,7 +11,7 @@ namespace KhaozEngine.MapDoc.Render3D;
 internal sealed class MapPlacementCellInventory
 {
     internal sealed record Cell(PropClusterKey Key, MapScopedScene Scene, MapPlacementRouting Routing,
-        IReadOnlyList<MapResolvedPlacement> Members, IReadOnlySet<string> RoofIds);
+        IReadOnlyList<MapResolvedPlacement> Members, IReadOnlySet<string> RoofIds, MapRoofEvaluationBuffer? RoofEvaluation);
 
     readonly Dictionary<PropClusterKey, Cell> _cells;
     MapPlacementCellInventory(Dictionary<PropClusterKey, Cell> cells) => _cells = cells;
@@ -42,13 +43,22 @@ internal sealed class MapPlacementCellInventory
             ?? throw new MapDocumentException("Native cluster has no matching caller layer.");
         var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(scene.Source.Data.Limits);
         using var activation = admission.Enter();
+        var coverage = MapPlacementCells.Coverage(key, scene.Source.Data.TileSize);
         var result = scene.AcquireDependencies(scene.Scope with
         {
-            DrawBounds = MapPlacementCells.Coverage(key, scene.Source.Data.TileSize),
-            Channels = MapSceneChannels.Placements | MapSceneChannels.Annotations,
+            DrawBounds = coverage,
+            Surfaces = key.Cohort == 1 ? MapRoofPolicyAcquisition.Scope(coverage, scene.Scope.Surfaces.Limits) : scene.Scope.Surfaces,
+            Channels = MapSceneChannels.Placements | MapSceneChannels.Annotations | (key.Cohort == 1 ? MapSceneChannels.Rooms : 0),
             MotionPaddingMetres = 0
         });
         var complete = result.Scene ?? throw new MapSceneSourceException(result.Status, "Native cluster cell discovery refused. " + string.Join("\n", result.Findings), result.Capacity);
+        MapRoofEvaluationBuffer? evaluation = null;
+        if (key.Cohort == 1)
+        {
+            complete = MapRoofPolicyAcquisition.Complete(complete);
+            var prepared = MapRoofEvaluationBuffer.Prepare(complete, admission);
+            evaluation = prepared.Buffer ?? throw new MapSceneSourceException(prepared.Status, prepared.Detail ?? "Canonical roof policy refused.", prepared.Capacity);
+        }
         admission.ReserveBytes(checked(128L + 64L * complete.Placements.Count));
         var cellRouting = routing.ForScene(complete);
         var roofIds = complete.BuildingIntent.Roofs.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
@@ -59,7 +69,7 @@ internal sealed class MapPlacementCellInventory
         if (members.Length == 0)
             throw new MapSceneSourceException(MapSceneStatus.Invalid, "Native cluster cell discovery omitted its selected members.");
         admission.ReserveBytes(checked(32L * members.Length));
-        return new(key, complete, cellRouting, Array.AsReadOnly(members), roofIds);
+        return new(key, complete, cellRouting, Array.AsReadOnly(members), roofIds, evaluation);
     }
 
     internal static void RequireMembers(Cell cell, NativePropClusterRequest request)

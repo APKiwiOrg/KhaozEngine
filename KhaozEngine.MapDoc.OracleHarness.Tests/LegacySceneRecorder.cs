@@ -228,9 +228,9 @@ internal sealed class LegacyRecordingScene : ITileWorldScene, IPropClusterRender
         }
         return count;
     }
-    internal void DrawLayer(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus, float floor) =>
+    internal int DrawLayer(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus, float floor) =>
         Emit(placements, layer.PartMeshes!, layer.LodPartMeshes, layer.LodDistance, layer.LodCrossfadeWidth, focus, layer.DrawRadius, false, layer.CastsShadows, floor);
-    void IPropClusterRenderBackend.DrawProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus, float dissolveFloor) => DrawLayer(placements, layer, focus, dissolveFloor);
+    int IPropClusterRenderBackend.DrawProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus, float dissolveFloor) => DrawLayer(placements, layer, focus, dissolveFloor);
     public void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve, bool invertShadowDissolve)
     {
         var mesh = _meshes[handle]; var vertices = mesh.Vertices.ToArray();

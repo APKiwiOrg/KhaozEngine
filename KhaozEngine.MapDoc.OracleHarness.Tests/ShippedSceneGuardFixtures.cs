@@ -98,7 +98,7 @@ internal static partial class ShippedSceneGuardFixtures
         for (int x = 0; x < floorSize; x++) for (int z = 0; z < floorSize; z++) world.SetUnderlay(x, z, 0, 1);
         world.AddObject("column", 2, 2, 0, 0);
         if (variant == "coincident-valid") world.AddObject("column", 2, 2, 0, 0);
-        bool cover = variant == "foliage-valid", waterScene = variant == "water-valid", lightScene = variant == "light-valid";
+        bool cover = variant == "foliage-valid", waterScene = variant == "water-valid", lightScene = variant.StartsWith("light-", StringComparison.Ordinal);
         if (cover) AddFoliageSource(world);
         if (waterScene)
         {
@@ -147,7 +147,7 @@ internal static partial class ShippedSceneGuardFixtures
             """);
         var assets = new JsonArray(asset);
         if (cover) { var second = asset!.DeepClone(); second["id"] = "native-reed"; second["lodResourceIds"] = new JsonArray(); assets.Add(second); }
-        if (lightScene) AddLightAsset(root, asset!, resources);
+        if (lightScene) AddLightAsset(root, asset!, resources, LightExclusion(variant));
         if (variant == "roof-valid") AddRoofAsset(root, asset!, resources);
         byte[] manifest = Encoding.UTF8.GetBytes(new JsonObject { ["payloadVersion"] = 1, ["assets"] = assets, ["resources"] = resources }.ToJsonString(ShippedScenePolicy.Json));
         File.WriteAllBytes(Path.Combine(root, "assets/root.json"), manifest);
@@ -211,7 +211,7 @@ internal static partial class ShippedSceneGuardFixtures
             ["animatedAssets"] = variant == "animated-valid" ? new JsonArray(assetId) : new JsonArray(),
             ["foliage"] = JsonSerializer.SerializeToNode(cover ? CoverOptions(assetId == "native-column") : foliage, ShippedScenePolicy.Json),
             ["water"] = JsonSerializer.SerializeToNode(new WaterLook { WaveSource = WaterWaveSource.Procedural, SwellAmplitude = 0 }, ShippedScenePolicy.Json),
-            ["lights"] = lightScene ? JsonSerializer.SerializeToNode(new[] { new SceneSourceLight(1, "bulb", new(.25f, .5f, 0), new(1, .5f, .25f), 2, 3, true) }, ShippedScenePolicy.Json) : new JsonArray(),
+            ["lights"] = lightScene ? SourceLights(variant) : new JsonArray(),
             ["modelExtents"] = cover ? Extents(assetId == "native-column") : variant == "animated-valid" ? ExplicitExtent(assetId) : new JsonArray()
         };
         File.WriteAllText(Path.Combine(root, "source-policy.json"), Policy("column").ToJsonString(ShippedScenePolicy.Json));

@@ -778,6 +778,14 @@ fields. Stable profiles/casting are model registration inputs. Frame policy excl
 meshes and the retained source motion policy, native extents name mapped assets. No padding is inferred.
 Light extractor rows are `{sourceObjectId,sourceProfileId,offset,colour,intensity,radius,castShadows}`,
 with finite vectors, positive radius, nonnegative intensity and unique source object/profile pairs.
+An optional `shadowExclusion` retains the source emitter's declared rule. Its closed shapes are
+`{"kind":"None"}`, `{"kind":"NearSphere","radius":0.625}` or
+`{"kind":"FixtureBox","min":{"x":-1,"y":-1,"z":-1},"max":{"x":1,"y":1,"z":1},"margin":0.125}`.
+Sphere radius and box margin are finite nonnegative world metres. Box corners are finite, strictly
+ordered owner-local metres. Every source light has its mapped owner. The independent source expectation
+uses the declared sphere, no exclusion, or the eight transformed fixture corners padded after world
+transformation. It does not infer a fixture from owner meshes for an explicit rule. An absent or null
+declaration preserves the original owner-mesh envelope fallback. Non-shadow-casting emitters submit no shadow.
 The retained extractor derives them from the original live source policy. Legacy routes independently
 execute the source settings, which are checked against native settings after key mapping.
 Static shadow cache keys are ID-derived transport values. The mapped effective native light ID

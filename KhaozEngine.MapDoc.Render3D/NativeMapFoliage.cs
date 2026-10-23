@@ -103,6 +103,7 @@ public static class NativeMapFoliage
             var keys = new HashSet<MapFoliageCacheKey>();
             foreach (var source in samples)
             {
+                using var handoffPreparation = admission.BeginPreparation();
                 if (source.Status != MapFoliageStatus.Complete || !keys.Add(new(source.LayerId, source.Chunk)))
                     throw new MapDocumentException("Native foliage needs unique complete generated batches.");
                 admission.ReserveBytes(checked(512L + 4 * source.Work.RetainedBytes + 512L * source.Samples.Count));
@@ -112,13 +113,17 @@ public static class NativeMapFoliage
                 var handoff = MapFoliageRenderHandoff.Create(source, policy.Extents.Values.ToArray());
                 if (handoff.Status != MapFoliageStatus.Complete) throw new MapDocumentException("Native foliage has no complete model extent handoff.");
                 identities.AddRange(source.Samples.Select(s => s.Key));
-                if (handoff.Bounds is not { } bounds) continue;
+                if (handoff.Bounds is not { } bounds)
+                { handoffPreparation.Complete(checked(8L + 64L * source.Samples.Count)); continue; }
                 var cover = new GroundCoverBatch(source.Samples.Select(s => new GroundCoverInstance(s.AssetId, s.Position, s.Transform, s.ThinningRank)).ToArray());
-                groups.Add(Group(owner, cover, bounds, policy));
+                var group = Group(owner, cover, bounds, policy);
+                groups.Add(group);
+                handoffPreparation.Complete(checked(264L + 64L * source.Samples.Count + 240L * cover.Count + 128L * group.Models.Length));
             }
             foreach (var placement in scene.Placements)
             {
                 if (routing.Entries[placement.PlacementId] != MapPlacementRoute.Animated) continue;
+                using var placementPreparation = admission.BeginPreparation();
                 admission.ReserveBytes(1024);
                 explicitIds.Add(placement.PlacementId);
                 var pose = NativeMapPlacements.Pose(scene, placement);
@@ -127,6 +132,7 @@ public static class NativeMapFoliage
                 var cover = new GroundCoverBatch(new[] { new GroundCoverInstance(placement.AssetId, transform.Translation, transform, 0) });
                 var bounds = ExplicitBounds(policy.Extents[placement.AssetId], transform, anchor);
                 groups.Add(Group(placement.PlacementId, cover, bounds, policy, explicitlyPlaced: true, anchorOverride: anchor));
+                placementPreparation.Complete(checked(264L + 240L * cover.Count + 128L * groups[^1].Models.Length));
             }
             var parts = new List<MapNativeFoliagePart>();
             foreach (string id in groups.SelectMany(g => g.Cover.Select(i => i.ModelId)).Distinct(StringComparer.Ordinal))
@@ -135,6 +141,7 @@ public static class NativeMapFoliage
                 var bounds = groups.Where(g => g.Cover.Any(i => i.ModelId == id)).Select(g => g.Bounds).Aggregate((a, b) => a.Union(b));
                 for (int i = 0; i < lod.BorrowParts.Count; i++)
                 {
+                    using var copyPreparation = admission.BeginPreparation();
                     var part = lod.BorrowParts[i];
                     long bytes = checked(256L + (long)part.Mesh.Vertices.Length * ModelVertex.SizeInBytes + 4L * part.Mesh.Indices32.Length +
                         (part.Maps.Albedo?.Rgba.LongLength ?? 0) + (part.Maps.Normal?.Rgba.LongLength ?? 0) + (part.Maps.Roughness?.Rgba.LongLength ?? 0));
@@ -146,8 +153,10 @@ public static class NativeMapFoliage
                         w.WriteNumberValue(asset.Descriptor.SourceUnitsToMetres); w.WriteEndArray();
                     });
                     parts.Add(new(new(MapRenderKind.Foliage, id, "model-part/" + i, 0), bounds, new(part.Mesh, part.Maps), digest));
+                    copyPreparation.Complete(checked(256L + bytes));
                 }
             }
+            admission.ReserveBytes(checked(512L + 16L * (groups.Count + parts.Count + identities.Count + explicitIds.Count + generations.Count)));
             var result = new MapNativeFoliageBatch(scene.Witness, routing, policy, groups, parts, identities, explicitIds, generations, 0);
             result.Own(preparation.Complete(result.RetainedBytes));
             return result;

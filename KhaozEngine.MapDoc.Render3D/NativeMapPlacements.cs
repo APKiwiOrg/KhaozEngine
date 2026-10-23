@@ -67,7 +67,7 @@ public static class NativeMapPlacements
                 }
                 handles.Add(asset.AssetId, Array.AsReadOnly(tiers.ToArray()));
             }
-            var roofs = scene.BuildingIntent.Roofs.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
+            var roofs = scene.CapturedBuildingIntent.Roofs.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
             var selectedPlacements = scene.Placements.Where(p => routing.Entries[p.PlacementId] == MapPlacementRoute.Ordinary)
                 .Select(p => (Scene: scene, Placement: p))
                 .Concat(cells.Cells.SelectMany(cell => cell.Members.Select(p => (Scene: cell.Scene, Placement: p))));
@@ -85,6 +85,7 @@ public static class NativeMapPlacements
                 foreach (var lod in assets.ById[placement.AssetId].Lods)
                     for (int i = 0; i < lod.BorrowParts.Count; i++)
                     {
+                        using var copyPreparation = admission.BeginPreparation();
                         var part = lod.BorrowParts[i];
                         admission.ReserveBytes(checked(512L + 4 * Bytes(part.Mesh, part.Maps)));
                         var key = new MapRenderKey(kind, placement.PlacementId, "part/" + i, lod.Index);
@@ -95,6 +96,7 @@ public static class NativeMapPlacements
                             w.WriteNumberValue(assets.ById[placement.AssetId].Descriptor.SourceUnitsToMetres); w.WriteNumberValue(i); w.WriteEndArray();
                         });
                         parts.Add(new(key, handles[placement.AssetId][lod.Index].Parts[i], anchor, bounds, payload, digest));
+                        copyPreparation.Complete(checked(256L + MapNativeInventory.Mesh(payload.BorrowMesh, payload.BorrowMaps)));
                     }
             }
             var clusters = new List<NativePropClusterCpuBuild>();

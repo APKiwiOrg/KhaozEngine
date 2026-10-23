@@ -146,12 +146,12 @@ public static class MapWaterScopedCompiler
             var present = witnesses.SelectMany(w => w.Present).Concat(complete ? cellKeys : []).Distinct().OrderBy(k => k.Kind, StringComparer.Ordinal).ThenBy(k => k.Id, StringComparer.Ordinal).ToArray();
             var acquired = scene.Witness with
             {
-                ScopeDigest = MapCanonical.HashHex(w =>
+                ScopeDigest = complete ? MapCanonical.HashHex(w =>
                 {
                     w.WriteStartArray(); w.WriteStringValue(geometry);
                     foreach (var witness in witnesses.OrderBy(w => w.ScopeDigest, StringComparer.Ordinal)) w.WriteStringValue(witness.ScopeDigest);
                     foreach (var key in cellKeys.OrderBy(k => k.Id, StringComparer.Ordinal)) w.WriteStringValue(key.Id); w.WriteEndArray();
-                }),
+                }) : scene.Witness.ScopeDigest,
                 Required = Array.AsReadOnly(required),
                 Present = Array.AsReadOnly(present),
                 KnownEmpty = complete ? Array.AsReadOnly(witnesses.SelectMany(w => w.KnownEmpty).Distinct().ToArray()) : [],

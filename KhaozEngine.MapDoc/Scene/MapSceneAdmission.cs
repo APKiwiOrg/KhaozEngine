@@ -24,6 +24,8 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
     internal long RemainingPreparedFaces => limits.MaxPreparedFaces - PreparedFaces;
     internal int RemainingPatchScopes => limits.MaxPatchScopes - PatchScopes;
     internal MapPreparationReservation Workspace() => _bytes.Workspace();
+    internal MapPreparationScope? PreparationScope { get; set; }
+    internal MapPreparationScope BeginPreparation() => new(this);
     internal PreparationWindow LimitPreparation(long bytes, string limitName = nameof(MapSceneLimits.MaxPreparedBytes), long reused = 0)
         => new(_bytes.OpenWindow(bytes, limitName, reused));
     internal MapSceneCapacity PreparedByteCapacity(decimal bytes) => _bytes.Capacity(bytes);
@@ -32,7 +34,8 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
         internal void ChargeExternal(long bytes) => window.ChargeExternal(bytes);
         public void Dispose() => window.Dispose();
     }
-    internal void ReleaseUnusedBytes(long bytes) => _bytes.ReleaseLegacy(bytes);
+    internal void ReleaseUnusedBytes(long bytes)
+    { if (PreparationScope is { } scope) scope.Release(bytes); else _bytes.ReleaseLegacy(bytes); }
     internal long PreparedFaces { get; private set; }
     internal long PayloadReads { get; private set; }
     internal long FoliageSourceUtf8Bytes { get; private set; }
@@ -118,7 +121,8 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
         public void Dispose() => t_current = _previous;
     }
 
-    internal void ReserveBytes(long bytes) => _bytes.ReserveLegacy(bytes);
+    internal void ReserveBytes(long bytes)
+    { if (PreparationScope is { } scope) scope.Reserve(bytes); else _bytes.ReserveLegacy(bytes); }
 
     internal void BeforeInputBytes(long bytes)
     {

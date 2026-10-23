@@ -7,6 +7,21 @@ namespace KhaozEngine.Tests.MapDoc.Scene;
 public sealed class MapPreparationLifetimeTests
 {
     [Fact]
+    public void OperationScope_UnwindsFailureAndPublishesOnlyOwnedOutput()
+    {
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 100));
+        using (var operation = admission.BeginPreparation())
+        {
+            admission.ReserveBytes(70);
+            using (admission.BeginPreparation()) admission.ReserveBytes(20);
+            Assert.Equal(70, admission.WorkspaceBytes);
+            using var retained = operation.Complete(40);
+            Assert.Equal(40, admission.RetainedBytes);
+        }
+        Assert.Equal(100, admission.RemainingPreparedBytes);
+    }
+
+    [Fact]
     public void SequentialWorkspace_UsesPeakRatherThanCumulativeDemand()
     {
         var admission = new MapSceneAdmission(new(MaxPreparedBytes: 100));

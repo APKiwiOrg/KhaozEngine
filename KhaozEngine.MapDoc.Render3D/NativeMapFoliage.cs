@@ -51,32 +51,27 @@ public static class NativeMapFoliage
         using var activation = admission.Enter();
         var samples = new List<MapFoliageSampleBatch>();
         var cache = MapFoliageRenderCache.For(context);
-        var bounds = scene.Scope.DiscoveryBounds;
         var ceilings = scene.Source.Data.Limits;
         long count = 0;
         foreach (var layer in layers)
         {
-            if (bounds.MinX >= bounds.MaxX || bounds.MinZ >= bounds.MaxZ) continue;
-            // Use the released rounded ownership and chunk enumeration used by window capture.
-            int x0 = MapFoliageRasterReads.Owner(layer, MapFoliageSupport.Outward(bounds.MinX, true), true);
-            int z0 = MapFoliageRasterReads.Owner(layer, MapFoliageSupport.Outward(bounds.MinZ, true), false);
-            int x1 = MapFoliageRasterReads.Owner(layer, MathF.BitDecrement(MapFoliageSupport.Outward(bounds.MaxX, false)), true);
-            int z1 = MapFoliageRasterReads.Owner(layer, MathF.BitDecrement(MapFoliageSupport.Outward(bounds.MaxZ, false)), false);
-            foreach (int z in MapFoliageRasterReads.Chunks(layer, z0, z1, false))
-                foreach (int x in MapFoliageRasterReads.Chunks(layer, x0, x1, true))
-                {
-                    if (samples.Count >= ceilings.MaxSelectedResources) throw Capacity();
-                    long available = admission.RemainingPreparedBytes;
-                    // Bound retention and support scratch by the active composite and current window, not source defaults.
-                    var limits = new MapFoliageLimits(MaxPrepareScopes: admission.RemainingPatchScopes,
-                        MaxFaces: checked((int)Math.Min(admission.RemainingPreparedFaces, available / 2560)), MaxQuerySamples: 262_144 - count,
-                        MaxQueryRetainedBytes: available / 8)
-                    { ChargePreparation = bytes => MapFoliageGenerationAdmission.Charge(admission, bytes) };
-                    var batch = cache.Get(layer.Id, new(x, z), limits, admission, retainSamples);
-                    count += batch.Samples.Count;
-                    if (count > 262_144) throw Capacity();
-                    samples.Add(batch);
-                }
+            // Preparation consumes exactly the model-reaching generation owners admitted by window capture.
+            foreach (var key in context.ChunksFor(layer.Id))
+            {
+                // Known off-raster owners have no geometry and must not populate the generation cache.
+                if (MapFoliageDistribution.KnownOffRaster(layer, MapFoliageDistribution.Rectangle(layer, key))) continue;
+                if (samples.Count >= ceilings.MaxSelectedResources) throw Capacity();
+                long available = admission.RemainingPreparedBytes;
+                // Bound retention and support scratch by the active composite and current window, not source defaults.
+                var limits = new MapFoliageLimits(MaxPrepareScopes: admission.RemainingPatchScopes,
+                    MaxFaces: checked((int)Math.Min(admission.RemainingPreparedFaces, available / 2560)), MaxQuerySamples: 262_144 - count,
+                    MaxQueryRetainedBytes: available / 8)
+                { ChargePreparation = bytes => MapFoliageGenerationAdmission.Charge(admission, bytes) };
+                var batch = cache.Get(layer.Id, key, limits, admission, retainSamples);
+                count += batch.Samples.Count;
+                if (count > 262_144) throw Capacity();
+                samples.Add(batch);
+            }
         }
         return Assemble(scene, assets, policy, routing, samples);
     }
@@ -109,7 +104,7 @@ public static class NativeMapFoliage
                 identities.AddRange(source.Samples.Select(s => s.Key));
                 if (handoff.Bounds is not { } bounds) continue;
                 var cover = new GroundCoverBatch(source.Samples.Select(s => new GroundCoverInstance(s.AssetId, s.Position, s.Transform, s.ThinningRank)).ToArray());
-                groups.Add(Group(owner, cover, bounds, handoff.DependencyDigest, policy));
+                groups.Add(Group(owner, cover, bounds, policy));
             }
             foreach (var placement in scene.Placements)
             {
@@ -121,7 +116,7 @@ public static class NativeMapFoliage
                 Matrix4x4 transform = MapRenderTransform.ToLocal(pose, anchor);
                 var cover = new GroundCoverBatch(new[] { new GroundCoverInstance(placement.AssetId, transform.Translation, transform, 0) });
                 var bounds = ExplicitBounds(policy.Extents[placement.AssetId], transform, anchor);
-                groups.Add(Group(placement.PlacementId, cover, bounds, routing.SceneWitnessDigest, policy, explicitlyPlaced: true, anchorOverride: anchor));
+                groups.Add(Group(placement.PlacementId, cover, bounds, policy, explicitlyPlaced: true, anchorOverride: anchor));
             }
             var parts = new List<MapNativeFoliagePart>();
             foreach (string id in groups.SelectMany(g => g.Cover.Select(i => i.ModelId)).Distinct(StringComparer.Ordinal))
@@ -136,7 +131,7 @@ public static class NativeMapFoliage
                     admission.ReserveBytes(checked(512 + 4 * bytes));
                     string digest = MapPlacementDigest.Hash(w =>
                     {
-                        w.WriteStartArray(); w.WriteStringValue(assets.Closure.Hash);
+                        w.WriteStartArray(); w.WriteStringValue("kemap/native-foliage-model/1");
                         w.WriteStringValue(assets.Closure.GetResource(lod.ResourceId).Reference.Sha256); w.WriteNumberValue(i);
                         w.WriteNumberValue(asset.Descriptor.SourceUnitsToMetres); w.WriteEndArray();
                     });
@@ -148,7 +143,7 @@ public static class NativeMapFoliage
         catch (MapSceneCapacityException) { throw Capacity(); }
     }
 
-    static MapNativeFoliageGroup Group(string owner, GroundCoverBatch cover, MapBox3 bounds, string dependency, NativeFoliagePolicy policy, bool explicitlyPlaced = false, MapSubmissionAnchor? anchorOverride = null)
+    static MapNativeFoliageGroup Group(string owner, GroundCoverBatch cover, MapBox3 bounds, NativeFoliagePolicy policy, bool explicitlyPlaced = false, MapSubmissionAnchor? anchorOverride = null)
     {
         var models = new List<string>(); var indices = new int[cover.Count];
         var lookup = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -163,7 +158,7 @@ public static class NativeMapFoliage
             checked((long)Math.Floor(cover.Min(i => (double)i.Transform.M42))), checked((long)Math.Floor(cover.Min(i => (double)i.Transform.M43))));
         string digest = MapPlacementDigest.Hash(w =>
         {
-            w.WriteStartArray(); w.WriteStringValue("kemap/native-foliage-rows/2"); w.WriteStringValue(dependency); w.WriteStringValue(policy.Digest);
+            w.WriteStartArray(); w.WriteStringValue("kemap/native-foliage-rows/3");
             w.WriteStringValue(owner); w.WriteBooleanValue(explicitlyPlaced);
             w.WriteNumberValue((int)(explicitlyPlaced ? MapFoliageTransformSpace.AnchorLocal : MapFoliageTransformSpace.World)); w.WriteNumberValue(anchor.X); w.WriteNumberValue(anchor.Y); w.WriteNumberValue(anchor.Z);
             foreach (string id in models) w.WriteStringValue(id);

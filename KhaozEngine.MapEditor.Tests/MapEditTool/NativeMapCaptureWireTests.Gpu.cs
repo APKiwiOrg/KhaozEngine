@@ -1,11 +1,15 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using KhaozEngine.MapDoc;
+using KhaozEngine.Gpu.D3D11;
 using KhaozEngine.MapDoc.Render3D;
 using KhaozEngine.MapEdit;
 using KhaozEngine.Render2D;
@@ -13,24 +17,89 @@ using KhaozEngine.Tests.Gpu;
 using KhaozEngine.Tests.MapDoc;
 using ModelContextProtocol.Protocol;
 using Xunit;
+using Xunit.Abstractions;
 using KhaozEngine.Render3D;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace KhaozEngine.Tests.MapEditTool;
 
-public sealed partial class NativeMapCaptureWireTests
+public sealed partial class NativeMapCaptureWireTests(ITestOutputHelper testOutput)
 {
     [GpuFact]
     public async Task NativeRenderWire_TransportsExactRequest()
     {
+        long started = Stopwatch.GetTimestamp();
+        object phaseGate = new();
+        var phases = new List<(string Name, long Timestamp)>();
+        var compileDiagnostics = new D3D11ShaderCompileDiagnostics();
+        void Stamp(string name)
+        {
+            lock (phaseGate) phases.Add((name, Stopwatch.GetTimestamp()));
+        }
+        string PhaseTable()
+        {
+            lock (phaseGate)
+            {
+                var table = new StringBuilder("Native capture phases (monotonic milliseconds)\nphase | elapsed ms | delta ms");
+                long previous = started;
+                foreach (var phase in phases)
+                {
+                    table.AppendLine().Append(FormattableString.Invariant($"{phase.Name} | {Stopwatch.GetElapsedTime(started, phase.Timestamp).TotalMilliseconds:F1} | {Stopwatch.GetElapsedTime(previous, phase.Timestamp).TotalMilliseconds:F1}"));
+                    previous = phase.Timestamp;
+                }
+                long now = Stopwatch.GetTimestamp();
+                return table.AppendLine().Append(FormattableString.Invariant($"phase snapshot | {Stopwatch.GetElapsedTime(started, now).TotalMilliseconds:F1} | {Stopwatch.GetElapsedTime(previous, now).TotalMilliseconds:F1}")).ToString();
+            }
+        }
+        string CompileTable()
+        {
+            var records = compileDiagnostics.GetRecords();
+            var table = new StringBuilder(FormattableString.Invariant($"D3D11 FXC compile records: entries={records.Length}, attempts={records.Count(record => !record.CacheHit)}, cacheHits={records.Count(record => record.CacheHit)}, totalMs={records.Sum(record => record.Milliseconds):F3}"));
+            table.AppendLine().AppendLine("Top 20 by FXC milliseconds. HLSL metadata is unavailable for DXBC hits.");
+            table.Append("stage | cache | HLSL bytes | FXC ms | program | source key | HLSL SHA-256");
+            foreach (var record in records.OrderByDescending(record => record.Milliseconds).Take(20))
+                table.AppendLine().Append(FormattableString.Invariant($"{record.Stage} | {(record.CacheHit ? "hit" : "miss")} | {record.HlslByteLength?.ToString(CultureInfo.InvariantCulture) ?? "-"} | {record.Milliseconds:F3} | {record.Program} | {record.SourceKey} | {record.HlslSha256 ?? "-"}"));
+            return table.ToString();
+        }
+        async Task<T> WithPhaseDiagnostics<T>(Task<T> call)
+        {
+            try { return await call; }
+            catch (TimeoutException error)
+            {
+                // Snapshot before harness disposal can wait for the timed-out capture to finish.
+                throw new TimeoutException($"{error.Message}{Environment.NewLine}{PhaseTable()}{Environment.NewLine}{CompileTable()}", error);
+            }
+        }
+        Stamp("test entry");
         string dir = Temp();
         try
         {
             var (doc, _) = CaptureDependencyFixtures.Create(dir); string path = Path.Combine(dir, "world.map.json"); MapDocumentFile.Save(doc, path);
             string policyPath = Path.Combine(dir, "policy.json"); File.WriteAllText(policyPath, NativeRenderMaterialSchemaTests.PolicyJson());
-            await using var harness = await McpWire.StartAsync(policyPath);
-            var opened = await harness.Client.CallAsync("map_open", new Dictionary<string, object?> { ["path"] = path }); Assert.False(opened.IsError == true);
-            var output = await harness.Client.CallAsync("render_view", Arguments(NativeRenderRequestTests.Json)); Assert.False(output.IsError == true, WireText(output));
+            Stamp("harness start");
+            await using var harness = await WithPhaseDiagnostics(McpWire.StartAsync(policyPath));
+            int capture = 0;
+            harness.Services.GetRequiredService<RenderService>().NativeCapture = request =>
+            {
+                int current = ++capture, frame = 0;
+                Stamp($"capture {current} entry");
+                using var compileScope = compileDiagnostics.Use();
+                var result = NativeMapSnapshot.Capture(request, scene =>
+                {
+                    // The first callback follows setup, SettleForCapture and the first view.Draw.
+                    if (frame == 0) Stamp($"capture {current} setup/resources ready (first pre-render callback)");
+                    Stamp($"capture {current} pre-render {frame++}");
+                });
+                Stamp($"capture {current} return (readback/disposal complete)");
+                return result;
+            };
+            Stamp("wire map_open request");
+            var opened = await WithPhaseDiagnostics(harness.Client.CallAsync("map_open", new Dictionary<string, object?> { ["path"] = path })); Assert.False(opened.IsError == true);
+            Stamp("wire map_open response received");
+            Stamp("wire render_view request");
+            var output = await WithPhaseDiagnostics(harness.Client.CallAsync("render_view", Arguments(NativeRenderRequestTests.Json)));
+            Stamp("wire render_view response received");
+            Assert.False(output.IsError == true, WireText(output));
             var text = Assert.IsType<TextContentBlock>(output.Content[0]); var image = Assert.IsType<ImageContentBlock>(output.Content[1]);
             using var json = JsonDocument.Parse(text.Text); var root = json.RootElement;
             Assert.Equal("Incomplete", root.GetProperty("status").GetString()); Assert.True(root.GetProperty("capped").GetBoolean());
@@ -53,7 +122,12 @@ public sealed partial class NativeMapCaptureWireTests
             Assert.Equal(direct.Readiness.GpuBytes, root.GetProperty("readiness").GetProperty("gpuBytes").GetInt64());
             Assert.Equal(direct.Readiness.QueuedBytes, root.GetProperty("readiness").GetProperty("queuedBytes").GetInt64());
         }
-        finally { Directory.Delete(dir, true); }
+        finally
+        {
+            testOutput.WriteLine(PhaseTable());
+            testOutput.WriteLine(CompileTable());
+            Directory.Delete(dir, true);
+        }
     }
     [GpuFact]
     public async Task NativeWire_ExplicitFocusChangesSubmittedCoverage()

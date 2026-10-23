@@ -185,6 +185,11 @@ public sealed class SceneResourceUpload : IDisposable
         _scene.RetireUpload(this, new Retirement(_owned, _reservation));
         _transfers.Clear(); _data = null;
     }
+    internal void RebindMaterialSets(Func<IGpuResourceSet, IGpuResourceSet> replacementFor)
+    {
+        for (int i = 0; i < _owned.Count; i++)
+            if (_owned[i] is IGpuResourceSet set) _owned[i] = replacementFor(set);
+    }
     sealed class Retirement(List<IDisposable> owned, ISceneUploadReservation reservation) : IDisposable
     {
         bool _disposed;

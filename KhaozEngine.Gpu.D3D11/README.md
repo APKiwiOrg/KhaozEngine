@@ -961,6 +961,17 @@ too. Every failure is a miss: a cache that cannot be read or written is a slower
 alone because any OTHER value is taken as a directory path verbatim, so a narrower vocabulary would quietly turn
 `KE_D3D11_SHADER_CACHE=0` into a cache directory named `0` beside whatever the process's working directory is.
 
+**Per-stage FXC timings are opt-in.** Create `D3D11ShaderCompileDiagnostics`, activate `diagnostics.Use()`
+around the actual compile, render or capture call, then read `GetRecords()`. The scope follows the current
+execution flow and its workers. Activate on the server when a transport does not carry execution context.
+Each FXC attempt records the existing source/cache key, original program label, stage, UTF-8 HLSL byte length,
+HLSL SHA-256 and wall-clock milliseconds. The HLSL hash can be matched against the shader corpus. Timings
+exclude GLSL/SPIR-V cross-compilation, diagnostic fingerprinting, cache I/O and native shader creation.
+DXBC hits record zero FXC time with unavailable HLSL length/hash, without recreating HLSL to fill diagnostics.
+Failed FXC attempts are recorded while their original exceptions propagate. With no active scope, calls return
+before clock reads, encoding or hashing and allocate nothing. Snapshots can be read safely while compilation
+continues and nested scopes restore their parent in reverse creation order.
+
 **Old engine versions' folders are swept at cache open** ([#611](https://github.com/APKiwiOrg/KhaozEngine/issues/611)).
 The engine version is a path segment so an upgrade leaves one obviously prunable folder, and nothing used to
 prune one, so a machine kept a folder per engine version it had ever run. Opening the cache now deletes every

@@ -1521,6 +1521,8 @@ An empty light registration owns no mesh bytes and never resolves as a mesh. Unr
 and non-mesh handles refuse. A mesh returned by `MeshOf` is borrowed, so release it through `ReleaseResource`.
 Cancellation and release retain the aggregate lease until actual destruction behind the scene's retire queue.
 Scene disposal also cancels pending uploads and releases published resources.
+Shared material rebinding transfers disposal ownership to the replacement set. Released native terrain
+material slots are reused by later uploads, while legacy material handles retain stable indices.
 
 `SceneFoliageSource` freezes model/part indices, profiles and casting. World transforms subtract their integer
 anchor once during preparation. `SceneFoliageTransformSpace.AnchorLocal` preserves already-local transform bits.

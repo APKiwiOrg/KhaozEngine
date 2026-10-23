@@ -19,7 +19,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.MapDoc;
 
-public sealed class NativeMapFoliageTests
+public sealed partial class NativeMapFoliageTests
 {
     static readonly FoliageMotionProfile[] Profiles = [FoliageMotionProfile.Blade,
         new(.3f, .15f, .4f, .035f), new(.6f, .2f, .1f, .07f), new(.4f, .25f, .3f, .05f), new(.2f, .1f, .2f, .02f)];
@@ -478,9 +478,9 @@ public sealed class NativeMapFoliageTests
         internal MapPlacementPolicy PlacementPolicy { get; }
         internal MapPlacementRouting Routing { get; }
         internal MapResourceStamp Stamp { get; }
-        internal Fixture(bool plants = false, float units = 1, bool distantLayer = false, MapEffectiveTransform? plantPose = null)
+        internal Fixture(bool plants = false, float units = 1, bool distantLayer = false, MapEffectiveTransform? plantPose = null, MapAssetClosure? closure = null)
         {
-            Closure = NativeRenderAssetFixtures.Create(units == 1 ? "foliage" : "foliage-centimetres");
+            Closure = closure ?? NativeRenderAssetFixtures.Create(units == 1 ? "foliage" : "foliage-centimetres");
             using var empty = NativeSceneFixtures.Create("empty");
             var doc = empty.Document;
             doc.NativeAssets = Closure.Roots.ToList();

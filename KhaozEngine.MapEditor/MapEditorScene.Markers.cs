@@ -115,6 +115,11 @@ public partial class MapEditorScene
         PropCategoryResolver = _options.ResolvePropCategory,
         PropKindVisible = PropKindVisible,
         SpawnReadouts = () => MarkerReadouts,
+        NativeRenderHost = _options.NativeRenderHost,
+        NativeDocumentPath = _options.DocumentPath,
+        NativeStyleId = _options.NativeStyleId,
+        NativeObserver = _options.NativeObserver,
+        NativeObserverSpaceId = _options.NativeObserverSpaceId,
     };
 
     /// <summary>The camera start of an open document before the released offset. A windowed native open starts at its

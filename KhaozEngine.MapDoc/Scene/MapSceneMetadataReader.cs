@@ -232,8 +232,18 @@ internal static class MapSceneMetadataReader
             reader.Read(); return reader;
         }
         internal string String() { var reader = Scalar(); return reader.GetString()!; }
-        internal int Int32() { var reader = Scalar(); return reader.GetInt32(); }
-        internal float Single() { var reader = Scalar(); return reader.GetSingle(); }
+        internal int Int32()
+        {
+            var reader = Scalar();
+            return reader.TokenType == JsonTokenType.Number && reader.TryGetInt32(out int value)
+                ? value : throw new MapDocumentException("Invalid sculpt integer.");
+        }
+        internal float Single()
+        {
+            var reader = Scalar();
+            return reader.TokenType == JsonTokenType.Number && reader.TryGetSingle(out float value) && float.IsFinite(value)
+                ? value : throw new MapDocumentException("Invalid sculpt delta.");
+        }
         internal void ReadRequired() { if (!Read()) throw new MapDocumentException("Truncated tile metadata."); }
         internal void Require(JsonTokenType type) { ReadRequired(); if (Type != type) throw new MapDocumentException("Unexpected tile metadata token."); }
         internal void SkipValue()

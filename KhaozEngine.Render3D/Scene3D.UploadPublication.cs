@@ -6,6 +6,8 @@ namespace KhaozEngine.Render3D;
 
 public sealed partial class Scene3D
 {
+    readonly Stack<int> _freeUploadedGroundMaterials = new();
+
     internal long ReserveMeshOrder() => _slots.ReserveAllocationOrder();
 
     internal MeshHandle PublishUploadedMesh(GltfMesh source, IGpuBuffer vertices, IGpuBuffer normals, IGpuBuffer indices,
@@ -55,7 +57,11 @@ public sealed partial class Scene3D
             _publishedResourceMeshes.Remove(mesh);
             _slots.Free(mesh.Index, mesh.Generation);
             ForgetWaterAndInteriorRelevance(mesh); _silhouetteRelevance.Forget(mesh);
-            if (value.TileGroundMaterial >= 0) _tileGroundMaterials[value.TileGroundMaterial] = null;
+            if (value.TileGroundMaterial >= 0)
+            {
+                _tileGroundMaterials[value.TileGroundMaterial] = null;
+                _freeUploadedGroundMaterials.Push(value.TileGroundMaterial);
+            }
             _meshes[mesh.Index] = null;
         }
         if (foliage is not null)
@@ -76,6 +82,13 @@ public sealed partial class Scene3D
         var set = selected is null ? _model.CreateTileGroundMaterialSet(ubo, albedo)
             : _model.CreateTileGroundMaterialSet(ubo, albedo, selected);
         owned?.Add(set);
+        // Only upload-owned slots are reusable. Legacy handles keep their historical indices, including
+        // unloaded slots, so a stale public handle can never resolve a native resource's material.
+        if (owned is not null && _freeUploadedGroundMaterials.TryPop(out int index))
+        {
+            _tileGroundMaterials[index] = new(albedo, ubo, set, selected);
+            return new(index);
+        }
         _tileGroundMaterials.Add(new(albedo, ubo, set, selected));
         return new(_tileGroundMaterials.Count - 1);
     }

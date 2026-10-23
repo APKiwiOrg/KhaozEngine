@@ -18,8 +18,9 @@ internal static class ShippedSceneWaterCoverage
 {
     readonly record struct Point(double X, double Y, double Z);
     readonly record struct Cell(int TileX, int TileZ, long X, long Z);
-    internal static void Compare(ShippedSceneInputs inputs, MapRenderPlan plan, PrivateOracleReport report)
+    internal static IReadOnlyDictionary<MapRenderKey, MapSubmissionAnchor> Compare(ShippedSceneInputs inputs, MapRenderPlan plan, PrivateOracleReport report)
     {
+        var required = new Dictionary<MapRenderKey, MapSubmissionAnchor>();
         var recorder = new MapDrawRecorder(); plan.Register(recorder);
         foreach (var mapping in inputs.Manifest.Water)
         {
@@ -44,11 +45,34 @@ internal static class ShippedSceneWaterCoverage
                 double got = (actual.GetValueOrDefault(key) ?? []).SelectMany(c => c.Regions).Where(r => r.Kind == MapWaterRegionKind.FreeSurface).SelectMany(r => r.Triangles).Sum(Area);
                 Check(report, "scene-water-area", Math.Abs(want - got) <= GeometryTolerance, new { key, expected = want, actual = got });
                 total += got;
+                if (want > 0)
+                    foreach (var cell in actual.GetValueOrDefault(key) ?? [])
+                    {
+                        var points = cell.Regions.Where(r => r.Kind == MapWaterRegionKind.FreeSurface).SelectMany(r => r.Triangles)
+                            .SelectMany(t => new[] { t.A, t.B, t.C }).ToArray();
+                        if (points.Length == 0) continue;
+                        var renderKey = new MapRenderKey(MapRenderKind.Water, mapping.NativeBodyId, CellId(cell.Key), 0);
+                        var anchor = new MapSubmissionAnchor(points.Min(p => p.X).Floor(), KhaozEngine.MapDoc.Surfaces.MapExactValue.FromSingle(cell.SurfaceY).Floor(), points.Min(p => p.Z).Floor());
+                        Check(report, "scene-water-frame", required.TryAdd(renderKey, anchor), new { renderKey });
+                    }
             }
             double drawn = recorder.Snapshot().Resources.Where(r => r.Reference.Key.Kind == MapRenderKind.Water && r.Reference.Key.OwnerId == mapping.NativeBodyId)
                 .Select(r => ((MapWaterResource)r.Payload).Mesh).Sum(MeshArea);
             Check(report, "scene-water-closed", Math.Abs(drawn - total) <= GeometryTolerance, new { mapping.NativeBodyId, drawn, free = total });
         }
+        return required;
+    }
+    static string CellId(MapWaterCellKey key)
+    {
+        using var bytes = new System.IO.MemoryStream();
+        bytes.Write(System.Text.Encoding.UTF8.GetBytes("kemap/water-cell-key/1\0"));
+        using (var writer = new System.Text.Json.Utf8JsonWriter(bytes, MapJsonTextOptions.IndentedWriter with { Indented = false }))
+        {
+            writer.WriteStartArray(); writer.WriteStringValue(key.BodyId); writer.WriteStringValue(key.SpaceId); writer.WriteStringValue(key.FragmentId);
+            writer.WriteNumberValue(key.StorageOwner.X); writer.WriteNumberValue(key.StorageOwner.Z); writer.WriteNumberValue(key.X); writer.WriteNumberValue(key.Z);
+            writer.WriteStringValue(key.GeometryPolicy); writer.WriteEndArray();
+        }
+        return Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes.ToArray()));
     }
     static HashSet<Cell> Cells(TileWaterBody body, KhaozEngine.MapDoc.Scene.MapSceneScope scope, double tileSize)
     {

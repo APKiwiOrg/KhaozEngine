@@ -581,3 +581,7 @@ through registration-independent frame submission. Unresolved refusal returns nu
 carries required/acquired scopes, completeness, readiness, framing, observer, roofs, time, seed, style,
 lighting and AA. A capped Preview cannot claim `CompleteForScope` or `WholeWorldComplete`.
 See the [snapshot contract](../KhaozEngine.MapDoc.Render3D/README.md#native-view-and-snapshot-contract).
+Native result blocks pair the closed `NativeRenderWire` metadata with SDK-created PNG image blocks.
+Light shadow cache keys remain derived from effective IDs through preparation, submission and capture.
+The actual wire foliage-focus and capture GPU facts require a backend. CPU source-oracle guards
+remain separate and never certify appearance or actual-source import acceptance.

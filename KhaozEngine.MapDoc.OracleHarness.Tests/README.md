@@ -702,6 +702,28 @@ geometry, bounds, transforms or draw lists. Original catalogs and source routes 
 Native data never supplies the expected inventory. Each head validates its own closure/source/scope/
 policy/generation stamp. Local generation counters need not agree between independent heads.
 
+The full entry and the seam guards share `ShippedSceneComparison.CompareDrawSets` for keyed,
+consuming one-to-one submission matching. Legacy prop emission retains `GroundObjectIds` and
+`RoofObjectIds`, mapped owner/part/LOD keys, original meshes/material maps, transforms and all channels.
+No coincident owner can borrow another owner's draw. Missing, duplicate and unmatched submissions
+fail. Independent source canonical faces and water domains establish required batches, with prepared
+keys and anchors serving only as checked transport correspondences. Native Write output never
+selects the expected frame roster. Every expected terrain, light, water and foliage write is required
+before its complete typed frame values are compared.
+
+`LegacySceneRecorder.RecordFoliage` independently traces the source sampler for every logical
+generation intersecting the declared window and motion padding. Empty generations are retained in
+that roster. Generation multisets, complete sample key multisets and per-generation row counts are
+checked in both directions. Source matrices, ranks, model bindings and padded bounds are checked
+against observed payloads. Both explicit plants and generated models compare every original part's
+albedo, normal, roughness and alpha cutoff. Hidden roof expectations retain Shadow, Sky and Physical
+while removing Colour, Selection and Camera. Camera and sky flags are checked independently.
+
+Public full-entry guards omit a whole generation or one row, suppress each non-rigid category's Write
+while retaining registration/inventory, remove a coincident owner, add a distinct part, change only a
+roof camera/sky flag, and change each foliage material map. These guards use invented inputs and a
+harness-only observation boundary. They never set process variables or invoke the private fact.
+
 The controller retains generator/helper sources, their build pin and all comparison inputs privately.
 Include exactly one attested source world manifest, every indexed region, catalogs, prefabs, membership,
 roles, foliage correspondence, original meshes and every LOD, texture, collider, selection and light
@@ -758,6 +780,10 @@ Light extractor rows are `{sourceObjectId,sourceProfileId,offset,colour,intensit
 with finite vectors, positive radius, nonnegative intensity and unique source object/profile pairs.
 The retained extractor derives them from the original live source policy. Legacy routes independently
 execute the source settings, which are checked against native settings after key mapping.
+Static shadow cache keys are ID-derived transport values. The mapped effective native light ID
+determines its key through the released mapper policy. Capture preparation, the sink and diagnostics
+preserve that key, without a persisted key field or a fixed illustrative numeric literal. Explicit plant
+frame draw radius remains the declared foliage radius, with both density factors fixed to one.
 
 Probe focus coordinates are either all explicit or all null. Explicit values become a checked framed
 point and are compared as actual anchor-local submission inputs. Scope probes with omitted focus use the single TopDown
@@ -778,3 +804,10 @@ After correction, produce two fresh byte-identical extractions and audit closure
 after exact-candidate CI and the full three-backend gate does the controller run the private fact.
 Public evidence is pass/fail and the private record reference. No private paths, names, coordinates,
 counts, hashes, meshes, pixels or detailed reports enter public git, CI or logs.
+
+The consumer [native evidence table](../KhaozEngine.MapDoc.Render3D/README.md#native-scene-verification)
+names per-location frozen generation, precision, warm allocation, prepared foliage and six native
+capture families. Actual wire/capture tests exercise submitted foliage focus and derived light keys.
+The snapshot diagnostic callback borrows the submitted scene synchronously before rendering,
+including warm-up. CPU runs with skipped GPU cases do not replace the exact-candidate complete
+Metal, Direct3D 11 and Vulkan gate or the controller's private acceptance procedure.

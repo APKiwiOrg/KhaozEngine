@@ -249,6 +249,9 @@ identities move once. Foliage never creates collision, navigation or physical wo
 [MapDoc foliage contract](KhaozEngine.MapDoc/README.md#native-foliage-consumer-contract) owns storage limits,
 compatibility, refusal, invalidation and acceptance. R8a provides scoped rendering and residency. R8b
 retains optical, cave, interior-cut and appearance work, with importer and game cutover acceptance still separate.
+The [native verification contract](KhaozEngine.MapDoc.Render3D/README.md#native-scene-verification)
+distinguishes keyed source/submission comparisons, independent location pins, warm allocation checks
+and omission-sensitive backend captures. GPU skips in a CPU run do not establish backend acceptance.
 
 Published to GitHub Packages on tagged releases, and packed to a local file-feed for day-to-day development.
 The repo is public, so the Packages feed needs no authentication to restore from.

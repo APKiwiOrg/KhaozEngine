@@ -264,6 +264,9 @@ The [MapDoc foliage contract](../KhaozEngine.MapDoc/README.md#native-foliage-con
 canonical identity, ordinal fallback, typed refusal and atomic observer completion. Sparse storage does not prove
 partial-residency generation by itself. `MapWindowFoliageContext` now supplies the separate scoped closure
 and witness. `MapSimulationResidency` uses independent required-domain leases for statics and navigation.
+Scene-oracle submission checks and native capture/backend evidence do not replace those simulation
+leases. The [render verification contract](../KhaozEngine.MapDoc.Render3D/README.md#native-scene-verification)
+separates source roster, frame and pixel proofs from physical admission.
 
 ## Pick, reach and stances
 
@@ -352,7 +355,7 @@ than patch.
 `Affected` lists. A static or extent that reaches more refuses with `MapDocumentException` naming the count before
 any tile is listed.
 
-`MapTileResidency` remains the streaming loader keyed by storage tile. This index is the ownership R8 consumes.
+`MapTileResidency` remains the streaming loader keyed by storage tile. The GPU-free `MapSimulationResidency` consumes this ownership independently of visual windows.
 
 ## Navigation tiles
 
@@ -412,8 +415,8 @@ overreach and edge-only contact. The digest enters its capture identity, while i
 An edit flagged `MapNativeInvalidation.Medium` names bodies in `WaterBodyIds`, and `Affected` maps those ids to water
 owners while `AffectedTiles` invalidates their capture tiles. Body ids alone do not invalidate water residency.
 Each body digest covers only what that body read, so an edit elsewhere leaves its tiles alone.
-R4 supplies data and queries only. Native movement uses the G1b adapter after #438 phase 4. Rendering and optical
-algorithms remain with R8. Format 6 moves native root digests and resolver-2 authored identities once even without
+R4 supplies data and queries only. Native movement uses the G1b adapter after #438 phase 4. R8a supplies current-look native rendering. Optical
+algorithms remain with R8b. Format 6 moves native root digests and resolver-2 authored identities once even without
 water, so navigation captures and caches keyed on them rebuild once.
 
 ## Physical relations

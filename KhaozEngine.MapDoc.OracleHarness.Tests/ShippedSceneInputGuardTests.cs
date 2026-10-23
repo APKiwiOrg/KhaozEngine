@@ -13,7 +13,7 @@ using Xunit;
 namespace KhaozEngine.Tests.MapDocOracle;
 
 [UnsupportedOSPlatform("windows")]
-public sealed class ShippedSceneInputGuardTests
+public sealed partial class ShippedSceneInputGuardTests
 {
     [Fact]
     public void SceneInputs_RequireEveryDependencyAndCorrespondence()

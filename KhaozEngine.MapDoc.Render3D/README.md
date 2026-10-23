@@ -110,6 +110,9 @@ and overflow diagnostics remain authoritative.
 `IMapRenderDevice` measures upload demand before creation. An upload must claim its
 `ISceneUploadReservation` before running any allocation factory. Retirement stays charged until the
 renderer confirms release. Render3D now supplies admitted upload, publication and `SceneResourceAccess`.
+`MapScene3DSink` measures a borrowed `SceneUploadDescription`. Mesh/image copies, synthesized white
+terrain images and detached `SceneUploadData` are created only after the aggregate reservation is
+claimed. Measurement does not perform those retained allocations.
 The composite residency owner is `MapRenderResidency`. `MapScene3DSink` consumes the same typed registrations and frames in viewport and capture. Explicit plant resources convert to
 `SceneFoliageSource` with `SceneFoliageTransformSpace.AnchorLocal`. Generated world rows use `World`.
 `ScenePreparedFoliage` declares the immutable 96-byte packed product. It is produced by `Scene3D.PrepareResourceUpload`.
@@ -281,3 +284,28 @@ sky/camera domain policy and appearance acceptance remain R8b work. R9 consumes 
 R10 adds render findings and complete tool parity, and R11 consumes the independent draw-set comparison.
 G3 uses this view/snapshot contract and also needs the separate native CPU world-map source
 [#1370](https://github.com/APKiwiOrg/KhaozEngine/issues/1370). None of these interfaces claims that gate passed.
+
+Static shadow keys are derived from the effective light ID by `NativeMapLights`. The same derived key
+travels through capture preparation, typed submission, the scene sink and capture diagnostics. There
+is no persisted light-key field and no fixed numeric key promised by a fixture label.
+`NativeMapSnapshot.Capture(request, afterSubmit)` optionally exposes a synchronous diagnostic callback
+after each actual submission, including warm-up, before rendering. The callback borrows the scene and
+must neither retain nor dispose it. Ordinary capture and `CaptureSequence` use the same path.
+
+## Native scene verification
+
+| Evidence home | Contract exercised |
+| --- | --- |
+| `FarFoliageGenerationPinsTests` | Independent released generation literals at each location, with full and windowed generation |
+| `NativeMapPrecisionTests` | Exact anchor subtraction, per-location realization and origin-only submission precision |
+| `NativeMapAllocationTests`, `NativeResourceUploadAllocationTests` | Warm CPU work and upload admission before retained copies |
+| `NativeMapFoliageEvidenceTests` | Complete keyed source rows, model parts, patch membership and casting |
+| `NativeMapGoldenGpuTests` | Six native families with omission controls, origin pairs, prepared counts and fresh versus aged scene checks |
+| `NativeMapSnapshotGpuTests`, `NativeMapCaptureWireTests` | Actual viewport/capture submission, derived light keys and foliage focus through the real wire |
+
+The full scene oracle consumes keyed source submissions one-to-one and rejects leftovers. Its source
+foliage roster includes expected empty generations and complete per-generation row counts. Missing
+terrain/light/water/foliage writes, all four roof flags and every foliage part material map are checked.
+CPU runs with GPU skips do not certify a backend. Required native facts must execute without skips
+on Metal, Direct3D 11 and Vulkan at the exact integration candidate. These tests do not claim R8b
+appearance or R11 import acceptance.

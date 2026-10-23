@@ -303,7 +303,7 @@ internal sealed class ShippedBuildingInputs
         }
         var doorways = Array(Comparison, "doorways");
         Require(doorways.SelectMany(d => Strings(d, "recordIds")).Order().SequenceEqual(records.Keys.Order()), "incomplete doorway record correspondence");
-        Require(doorways.Length != 0 && doorways.Select(d => Text(d, "id")).Distinct().Count() == doorways.Length, "missing doorway inventory");
+        Require((doorways.Length != 0 || buildings.Count == 0) && doorways.Select(d => Text(d, "id")).Distinct().Count() == doorways.Length, "missing doorway inventory");
         foreach (var door in doorways)
         {
             Shape(door, "id", "buildingId", "leafIds", "recordIds", "radius", "length", "clear", "jamb");
@@ -315,8 +315,9 @@ internal sealed class ShippedBuildingInputs
             { var points = Array(door, name); Require(points.Length >= 2, "partial doorway path"); foreach (var point in points) Vector(point); }
         }
         var probes = Array(Comparison, "probes");
-        foreach (string required in new[] { "centre", "edge", "storey" })
-            Require(probes.Any(p => Text(p, "kind") == required), "missing membership probe class");
+        if (buildings.Count != 0)
+            foreach (string required in new[] { "centre", "edge", "storey" })
+                Require(probes.Any(p => Text(p, "kind") == required), "missing membership probe class");
         foreach (var probe in probes)
         {
             Shape(probe, "kind", "position", "sourceSpaceId", "spaceId", "hiddenRoofIds");

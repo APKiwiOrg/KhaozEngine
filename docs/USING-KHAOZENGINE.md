@@ -4407,6 +4407,14 @@ at most 0.0001 m error. It is not a content limit, dense allocation mandate, tim
 R8b retains bounded-water optics, caves, interior cuts, domain-aware sky/camera and private appearance.
 R9 owns interactive authoring, R10 findings/tool parity and R11 actual import acceptance. G3 also needs
 [#1370](https://github.com/APKiwiOrg/KhaozEngine/issues/1370), the separate native CPU world-map source.
+Static point-shadow keys are derived from the effective light ID, with no new persisted payload field.
+Capture preparation, typed submissions, the scene sink and diagnostics preserve that derived key.
+`NativeMapSnapshot.Capture(request, afterSubmit)` permits synchronous inspection after submission and
+before rendering, including warm-up. The callback borrows the scene and must not retain or dispose it.
+Upload demand uses `SceneUploadDescription` before the aggregate reservation is claimed. Retained
+mesh/image copies and synthesized terrain images follow that claim. See the
+[native evidence table](../KhaozEngine.MapDoc.Render3D/README.md#native-scene-verification) for location
+pins, precision, warm allocation, complete foliage and six omission-sensitive native capture families.
 
 
 ```csharp

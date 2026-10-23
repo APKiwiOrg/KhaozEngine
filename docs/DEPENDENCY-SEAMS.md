@@ -1089,6 +1089,11 @@ R8b consumes bounded water optical inputs, scoped room/roof/mesh inventory for `
 `IMapPresentationCut` and domain-aware sky/camera policy. R9 consumes the viewport and commands,
 R10 adds render findings and R11 consumes the draw-set contract. G3 also requires the separate native
 CPU world-map source [#1370](https://github.com/APKiwiOrg/KhaozEngine/issues/1370).
+The renderer measures borrowed `SceneUploadDescription` inputs before copying retained payloads.
+The source oracle has one keyed consuming submission matcher for its full entry and public guards.
+It independently enumerates scoped source foliage generations and rows, then checks all part material
+maps and required writes. CPU guards do not instantiate a device. Snapshot diagnostics and backend
+evidence use the actual sink, retaining ID-derived static light keys and explicit foliage focus.
 
 ## Content catalog package edges
 

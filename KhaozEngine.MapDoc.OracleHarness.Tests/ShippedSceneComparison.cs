@@ -16,10 +16,12 @@ namespace KhaozEngine.Tests.MapDocOracle;
 
 /// <summary>Full typed comparisons. Digests are transport evidence, never a substitute for payload inspection.</summary>
 [UnsupportedOSPlatform("windows")]
-internal static class ShippedSceneComparison
+internal static partial class ShippedSceneComparison
 {
     internal const double GeometryTolerance = .00001, NormalTolerance = .000001, AngleTolerance = .000001;
-    internal static void Compare(ShippedSceneInputs inputs, PrivateOracleReport report)
+    internal static void Compare(ShippedSceneInputs inputs, PrivateOracleReport report,
+        Func<SceneOracleObservation, SceneOracleObservation>? observe = null,
+        Func<IMapDrawSink, IMapDrawSink>? decorate = null)
     {
         ShippedSceneSourceChecks.Policy(inputs, report);
         var expected = LegacySceneRecorder.Record(inputs.World, inputs.Catalogs, inputs);
@@ -69,19 +71,25 @@ internal static class ShippedSceneComparison
                     var inventory = new MapDrawRecorder(); plan.Register(inventory);
                     completeWindows.Add(window.Id, inventory.Snapshot().Resources.ToDictionary(r => r.Reference.Key, Fingerprint));
                     CompareSource(expected, inputs, plan, report);
-                    ShippedSceneSourceChecks.Terrain(inputs, plan, report);
-                    ShippedSceneSourceChecks.Foliage(inputs, plan, report);
+                    var terrain = ShippedSceneSourceChecks.Terrain(inputs, plan, report);
+                    var foliage = LegacySceneRecorder.RecordFoliage(inputs, scene.Scope);
+                    ShippedSceneFoliageRoster.Compare(inputs, foliage, new(inventory.Snapshot(), plan.Inventory.Foliage.GenerationKeys, plan.Inventory.Foliage.GeneratedIdentities), report);
                     ShippedSceneSourceChecks.Water(inputs, plan, report);
-                    ShippedSceneWaterCoverage.Compare(inputs, plan, report);
+                    var water = ShippedSceneWaterCoverage.Compare(inputs, plan, report);
                     foreach (var probe in manifest.Policy.Probes.Where(p => p.WindowId == window.Id))
                     {
                         var recorder = new MapDrawRecorder(); plan.Register(recorder);
                         var frame = Frame(probe, plan, source, closure, policy);
-                        residency.Record(frame, recorder); var actual = recorder.Snapshot();
+                        residency.Record(frame, decorate?.Invoke(recorder) ?? recorder);
+                        var observation = new SceneOracleObservation(recorder.Snapshot(), plan.Inventory.Foliage.GenerationKeys, plan.Inventory.Foliage.GeneratedIdentities);
+                        observation = observe?.Invoke(observation) ?? observation;
+                        var actual = observation.DrawSet;
                         CheckStamp(actual, plan.Key, report);
-                        CompareSourceFrame(expected.Frames.Single(f => f.ProbeId == probe.Id), actual, plan.Scene.Scope, report);
-                        ShippedSceneSourceChecks.LightFrames(inputs, expected, actual, report);
-                        ShippedSceneSourceChecks.DynamicFrames(inputs, expected.Frames.Single(f => f.ProbeId == probe.Id), probe, actual, report);
+                        ShippedSceneFoliageRoster.Compare(inputs, foliage, observation, report);
+                        foreach (var placement in expected.Placements.Where(p => inputs.SourcePolicy.AnimatedAssets.Contains(p.ArchetypeId) && ShippedSceneExpectedFrames.InScope(p, scene.Scope)))
+                            ShippedSceneSourceChecks.ExplicitPlant(placement, manifest.Placements.Single(p => p.SourceObjectId == placement.Id).NativePlacementId, actual.Resources, inputs, report);
+                        var expectedFrame = expected.Frames.Single(f => f.ProbeId == probe.Id);
+                        CompareDrawSets(ShippedSceneExpectedFrames.Capture(inputs, expected, expectedFrame, probe, scene.Scope, foliage, terrain, water), actual, report);
                         string fingerprint = DrawFingerprint(actual);
                         if (heads.TryGetValue((window.Id, probe.Id), out var first)) Check(report, "scene-head", first == fingerprint, new { window = window.Id, probe = probe.Id });
                         else heads.Add((window.Id, probe.Id), fingerprint);
@@ -141,19 +149,6 @@ internal static class ShippedSceneComparison
                 Bits(light.Colour, native.Colour) && Bits(light.Intensity, native.Intensity) && Bits(light.Radius, native.Radius) && light.CastShadows == native.CastShadows && native.OwnerPlacementId == inputs.Manifest.Placements.Single(p => p.SourceObjectId == light.SourceObjectId).NativePlacementId, new { mapping.NativeLightId });
         }
     }
-    static void CompareSourceFrame(LegacySceneFrame expected, MapDrawSet actual, MapSceneScope scope, PrivateOracleReport report)
-    {
-        var draws = actual.Draws.Where(d => d.Rigid is not null && d.Resource.Key.Kind is MapRenderKind.Placement or MapRenderKind.Roof).ToArray();
-        foreach (var want in expected.Draws)
-        {
-            var bounds = scope.DrawBounds; double pad = scope.MotionPaddingMetres + .0001;
-            var points = want.Mesh.Vertices.Select(v => Vector3.Transform(v.Position, want.World)).ToArray();
-            if (points.Length == 0 || points.Max(p => p.X) < bounds.MinX - pad || points.Min(p => p.X) > bounds.MaxX + pad || points.Max(p => p.Z) < bounds.MinZ - pad || points.Min(p => p.Z) > bounds.MaxZ + pad) continue;
-            var matches = draws.Where(d => MatrixNear(want.World, Absolute(d)) && actual.Resources.Any(r => r.Reference == d.Resource && r.Payload is MapRigidResource rigid && MeshEqual(want.Mesh, rigid.Mesh))).ToArray();
-            Check(report, "scene-placement-frame", matches.Any(d => d.Rigid is { } f && Bits(f.Dissolve, want.Dissolve) && Bits(f.DissolveComplement, want.Complement) &&
-                f.InvertShadowDissolve == want.InvertShadow && d.Channels.HasFlag(MapDrawChannels.Shadow) == want.CastShadows && d.Channels.HasFlag(MapDrawChannels.Colour) != want.ShadowOnly), new { expected.ProbeId });
-        }
-    }
     internal static void CompareDrawSets(MapDrawSet expected, MapDrawSet actual, PrivateOracleReport report)
     {
         var expectedResources = expected.Resources.GroupBy(r => r.Reference.Key).ToDictionary(g => g.Key, g => g.ToArray());
@@ -168,24 +163,9 @@ internal static class ShippedSceneComparison
             var left = expectedResources[key][0]; var right = actualResources[key][0];
             Check(report, Category(key.Kind), Bits(left.Bounds, right.Bounds) && PayloadEqual(left.Payload, right.Payload), new { key });
         }
-        var expectedDraws = expected.Draws.GroupBy(d => d.Resource.Key).ToDictionary(g => g.Key, g => g.ToArray());
-        var actualDraws = actual.Draws.GroupBy(d => d.Resource.Key).ToDictionary(g => g.Key, g => g.ToArray());
-        foreach (var key in expectedDraws.Keys.Union(actualDraws.Keys))
-        {
-            var a = expectedDraws.GetValueOrDefault(key) ?? []; var b = actualDraws.GetValueOrDefault(key) ?? [];
-            Check(report, Category(key.Kind), a.Length == b.Length, new { key, expected = a.Length, actual = b.Length });
-            for (int i = 0; i < Math.Min(a.Length, b.Length); i++)
-            {
-                var left = a[i]; var right = b[i];
-                Check(report, key.Kind == MapRenderKind.Roof ? "scene-roof-channel" : Category(key.Kind), left.Channels == right.Channels, new { key });
-                Check(report, "scene-transform", left.Anchor == right.Anchor && MatrixNear(left.LocalTransform, right.LocalTransform), new { key });
-                Check(report, "scene-focus", Bits(left.LocalFocus, right.LocalFocus), new { key });
-                Check(report, "scene-rigid-frame", Bits(left.Rigid, right.Rigid), new { key });
-                Check(report, "scene-light-frame", Bits(left.Light, right.Light), new { key });
-                Check(report, "scene-water-frame", Bits(left.Water, right.Water), new { key });
-                Check(report, "scene-foliage-frame", Bits(left.Foliage, right.Foliage), new { key });
-            }
-        }
+        var submissions = expected.Draws.Select(draw => new SceneExpectedSubmission(draw,
+            expected.Resources.Single(r => r.Reference == draw.Resource).Payload as MapRigidResource)).ToArray();
+        CompareDrawSets(submissions, actual, report);
     }
     internal static bool PayloadEqual(MapResourcePayload a, MapResourcePayload b) => (a, b) switch
     {
@@ -213,9 +193,12 @@ internal static class ShippedSceneComparison
         if (!a.Indices32.SequenceEqual(b.Indices32) || a.Vertices.Length != b.Vertices.Length) return false;
         return a.Vertices.Zip(b.Vertices).All(p => Near(p.First.Position.X, p.Second.Position.X) && Near(p.First.Position.Y, p.Second.Position.Y) && Near(p.First.Position.Z, p.Second.Position.Z) &&
             Math.Abs(p.First.Normal.X - p.Second.Normal.X) <= NormalTolerance && Math.Abs(p.First.Normal.Y - p.Second.Normal.Y) <= NormalTolerance && Math.Abs(p.First.Normal.Z - p.Second.Normal.Z) <= NormalTolerance &&
-            Bits(p.First.Color, p.Second.Color) && Bits(p.First.Uv, p.Second.Uv) && Bits(p.First.Tangent, p.Second.Tangent));
+            VectorBits(p.First.Color, p.Second.Color) && VectorBits(p.First.Uv, p.Second.Uv) && VectorBits(p.First.Tangent, p.Second.Tangent));
     }
-    static bool MapsEqual(GltfMaterialMaps a, GltfMaterialMaps b) => Bits(a.Albedo, b.Albedo) && Bits(a.Normal, b.Normal) && Bits(a.Roughness, b.Roughness) && Bits(a.AlphaCutoff, b.AlphaCutoff);
+    static bool FloatBits(float a, float b) => BitConverter.SingleToInt32Bits(a) == BitConverter.SingleToInt32Bits(b);
+    static bool VectorBits(Vector2 a, Vector2 b) => FloatBits(a.X, b.X) && FloatBits(a.Y, b.Y);
+    static bool VectorBits(Vector4 a, Vector4 b) => FloatBits(a.X, b.X) && FloatBits(a.Y, b.Y) && FloatBits(a.Z, b.Z) && FloatBits(a.W, b.W);
+    internal static bool MapsEqual(GltfMaterialMaps a, GltfMaterialMaps b) => Bits(a.Albedo, b.Albedo) && Bits(a.Normal, b.Normal) && Bits(a.Roughness, b.Roughness) && Bits(a.AlphaCutoff, b.AlphaCutoff);
     internal static bool Bits<T>(T a, T b) => JsonSerializer.Serialize(a, ShippedScenePolicy.Json) == JsonSerializer.Serialize(b, ShippedScenePolicy.Json);
     internal static bool MatrixNear(Matrix4x4 a, Matrix4x4 b)
     {

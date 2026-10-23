@@ -343,6 +343,10 @@ complementary dissolve and cluster coverage. Profiles and casting belong to stab
 while frame submissions carry local focus, wind, time, seed and interactors. Stable edits require replacement.
 Consume the effective snapshot rather than re-expanding children in this leaf adapter. R8b retains interior
 cuts and domain-aware camera/sky policy.
+The native scene oracle checks original material maps for both explicit and generated foliage parts,
+including albedo, normal, roughness and alpha cutoff. Native part references or geometry alone do not
+prove those inputs. [Native verification](../KhaozEngine.MapDoc.Render3D/README.md#native-scene-verification)
+also covers recycled mesh-slot ordering, origin-only precision and complete prepared foliage.
 
 ## Usage
 

@@ -33,7 +33,7 @@ internal sealed class ShippedSceneGuardFixture(string root, Dictionary<string, s
     internal string SourceRoot => environment["KHAOZ_R2_SHIPPED_SOURCE"]!;
     internal string ReportPath => environment["KHAOZ_R2_ORACLE_REPORT"]!;
     internal IReadOnlyList<string> FailureCategories() => File.ReadAllLines(ReportPath).Select(line =>
-        JsonDocument.Parse(line).RootElement.GetProperty("category").GetString()!).Where(c => c != "scene-summary").ToArray();
+        JsonDocument.Parse(line).RootElement.GetProperty("category").GetString()!).Where(c => c is not "scene-summary" and not "scene-buildings" and not "scene-markers").ToArray();
     public void Dispose() => Directory.Delete(root, true);
 }
 
@@ -97,6 +97,7 @@ internal static partial class ShippedSceneGuardFixtures
         int floorSize = variant == "foliage-valid" ? 64 : 4;
         for (int x = 0; x < floorSize; x++) for (int z = 0; z < floorSize; z++) world.SetUnderlay(x, z, 0, 1);
         world.AddObject("column", 2, 2, 0, 0);
+        if (variant == "coincident-valid") world.AddObject("column", 2, 2, 0, 0);
         bool cover = variant == "foliage-valid", waterScene = variant == "water-valid", lightScene = variant == "light-valid";
         if (cover) AddFoliageSource(world);
         if (waterScene)
@@ -110,6 +111,7 @@ internal static partial class ShippedSceneGuardFixtures
              "archetypes":[{"id":"column","name":"Invented column","meshRef":"assets/base.glb","lodMeshRef":"assets/far.glb"}]}
             """);
         var catalog = JsonNode.Parse(File.ReadAllText(Path.Combine(root, "catalog.json")))!.AsObject();
+        if (variant == "roof-valid") catalog["archetypes"]![0]!["isRoof"] = true;
         if (cover) catalog["archetypes"]!.AsArray().Add(JsonNode.Parse("""{"id":"reed","name":"Invented reed","meshRef":"assets/base.glb"}"""));
         if (waterScene) catalog["materials"]!.AsArray().Add(JsonNode.Parse("""{"id":2,"name":"Invented water","color":"#ffffff","kind":"Water"}"""));
         File.WriteAllText(Path.Combine(root, "catalog.json"), catalog.ToJsonString(ShippedScenePolicy.Json));
@@ -146,6 +148,7 @@ internal static partial class ShippedSceneGuardFixtures
         var assets = new JsonArray(asset);
         if (cover) { var second = asset!.DeepClone(); second["id"] = "native-reed"; second["lodResourceIds"] = new JsonArray(); assets.Add(second); }
         if (lightScene) AddLightAsset(root, asset!, resources);
+        if (variant == "roof-valid") AddRoofAsset(root, asset!, resources);
         byte[] manifest = Encoding.UTF8.GetBytes(new JsonObject { ["payloadVersion"] = 1, ["assets"] = assets, ["resources"] = resources }.ToJsonString(ShippedScenePolicy.Json));
         File.WriteAllBytes(Path.Combine(root, "assets/root.json"), manifest);
         var native = MapDocumentFile.LoadText("""
@@ -163,6 +166,17 @@ internal static partial class ShippedSceneGuardFixtures
         native.Surfaces.Patches.Add(converted.Patch.Key, converted.Patch);
         native.NumericIdHighWaterMark = 1;
         native.Placements.Add(new() { Id = "native-placement", AssetId = "native-column", Kind = "column", NumericId = 1, X = variant == "native-transform" ? 3 : 2.5f, Y = world.HeightAt(2.5f, -2.5f, 0), Z = -2.5f });
+        if (variant == "coincident-valid")
+        {
+            native.NumericIdHighWaterMark = 2;
+            native.Placements.Add(new() { Id = "native-coincident", AssetId = "native-column", Kind = "column", NumericId = 2, X = 2.5f, Y = 0, Z = -2.5f });
+        }
+        if (variant == "roof-valid")
+        {
+            native.Prefabs = new(1, 1, [], []);
+            native.BuildingIntent = new(1, [], [], [], []) { Roofs = [new(MapPrefabReferenceScope.World, MapPrefabChildKind.Placement, "native-placement")] };
+            WriteRoofManifest(root);
+        }
         if (waterScene)
         {
             var convertedWater = LegacyWaterConverter.ToNative(world, TileWorldCatalogs.LoadJson(catalog.ToJsonString(ShippedScenePolicy.Json), "invented scene catalog"));
@@ -193,12 +207,12 @@ internal static partial class ShippedSceneGuardFixtures
         var foliage = new GroundCoverRenderOptions { UseGpuBatches = true, FadeMode = GroundCoverFadeMode.HeightScale };
         JsonObject Policy(string assetId) => new()
         {
-            ["placements"] = JsonSerializer.SerializeToNode(new MapPlacementPolicy([new("ordinary", new HashSet<string> { assetId }, new float[] { 10 }, 4, 100, 0, 0, 0, true)], 100), ShippedScenePolicy.Json),
-            ["animatedAssets"] = new JsonArray(),
+            ["placements"] = JsonSerializer.SerializeToNode(new MapPlacementPolicy(variant is "roof-valid" or "animated-valid" ? [] : [new("ordinary", new HashSet<string> { assetId }, new float[] { 10 }, 4, 100, 0, 0, 0, true)], 100), ShippedScenePolicy.Json),
+            ["animatedAssets"] = variant == "animated-valid" ? new JsonArray(assetId) : new JsonArray(),
             ["foliage"] = JsonSerializer.SerializeToNode(cover ? CoverOptions(assetId == "native-column") : foliage, ShippedScenePolicy.Json),
             ["water"] = JsonSerializer.SerializeToNode(new WaterLook { WaveSource = WaterWaveSource.Procedural, SwellAmplitude = 0 }, ShippedScenePolicy.Json),
             ["lights"] = lightScene ? JsonSerializer.SerializeToNode(new[] { new SceneSourceLight(1, "bulb", new(.25f, .5f, 0), new(1, .5f, .25f), 2, 3, true) }, ShippedScenePolicy.Json) : new JsonArray(),
-            ["modelExtents"] = cover ? Extents(assetId == "native-column") : new JsonArray()
+            ["modelExtents"] = cover ? Extents(assetId == "native-column") : variant == "animated-valid" ? ExplicitExtent(assetId) : new JsonArray()
         };
         File.WriteAllText(Path.Combine(root, "source-policy.json"), Policy("column").ToJsonString(ShippedScenePolicy.Json));
         File.WriteAllText(Path.Combine(root, "native-policy.json"), Policy("native-column").ToJsonString(ShippedScenePolicy.Json));
@@ -295,6 +309,19 @@ internal static partial class ShippedSceneGuardFixtures
         {
             comparison["lights"] = new JsonArray(new JsonObject { ["sourceObjectId"] = "1", ["sourceProfileId"] = "bulb", ["nativeLightId"] = "native-placement/bulb/bulb" });
             comparison["expectations"]!["lights"] = 1;
+        }
+        if (variant == "coincident-valid")
+        {
+            var second = comparison["placements"]![0]!.DeepClone(); second["sourceObjectId"] = "2"; second["nativePlacementId"] = "native-coincident";
+            comparison["placements"]!.AsArray().Add(second);
+            comparison["expectations"]!["placements"] = 2; comparison["expectations"]!["parts"] = 4; comparison["expectations"]!["lods"] = 4;
+        }
+        if (variant == "roof-valid")
+        {
+            comparison["buildingManifestPath"] = "building.json";
+            comparison["roofs"] = new JsonArray(new JsonObject { ["sourceObjectId"] = "1", ["nativePlacementId"] = "native-placement" });
+            comparison["expectations"]!["roofs"] = 1;
+            foreach (var probe in comparison["policy"]!["probes"]!.AsArray()) probe!["roofMode"] = "AlwaysHidden";
         }
         return comparison;
     }

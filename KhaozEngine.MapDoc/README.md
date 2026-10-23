@@ -967,8 +967,9 @@ not broaden invalidation. It is separate from distribution identity and never re
 
 Styling remains caller policy. Preserve live blade/shrub motion profiles and shadow flags. Use dependency digest plus
 generation to reject stale work. Keep one owned batch with every residency membership intersecting its padded bounds
-and release it only after its last membership leaves. Actual residency, upload, viewport drawing, captures and appearance
-belong to R8b appearance and G3 acceptance. R8a provides native residency and drawing. The bounds are cosmetic and never union into world/nav bounds or static descriptors.
+and release it only after its last membership leaves. R8a supplies windowed generation, residency, upload,
+viewport drawing and snapshots. R8b owns interior cuts and appearance, with G3 acceptance separate.
+The bounds are cosmetic and never union into world/nav bounds or static descriptors.
 
 ### Public foliage acceptance and deferred ownership
 
@@ -989,11 +990,12 @@ The private comparison boundary and its eight test-only references are defined o
 [oracle harness README](../KhaozEngine.MapDoc.OracleHarness.Tests/README.md). That harness is not an importer or actual
 source acceptance. Public CPU proofs certify no pixels or windowed acceptance.
 
-| Later owner | Remaining contract or proof |
+| Owner | Delivered capability or remaining proof |
 | --- | --- |
-| R8, R7-R1 | Windowed context constructor with immutable closure/completeness and full-request support semantics before streamed native generation |
-| R8 and [#1474](https://github.com/APKiwiOrg/KhaozEngine/issues/1474) | MapDoc interior-cut adapter, actual residency/upload and viewport rendering/captures |
-| R8 and G3 | Appearance with live motion profiles, styling and shadow flags |
+| R8a, R7-R1 | Delivered `MapWindowFoliageContext`, immutable scoped closure/completeness and full-request support semantics |
+| R8a | Delivered native residency/upload, viewport drawing, snapshots and independent source roster/submission comparison |
+| R8b and [#1474](https://github.com/APKiwiOrg/KhaozEngine/issues/1474) | MapDoc interior-cut adapter |
+| R8b and G3 | Appearance with live motion profiles, styling and shadow flags |
 | R9 | Interactive painting and native GUI input |
 | R9 and [#1516](https://github.com/APKiwiOrg/KhaozEngine/issues/1516) | Authoring decision for space footprints left over removed floor cells by presence edits |
 | R10 | Complete verb parity and native placement ID rename wire verb |

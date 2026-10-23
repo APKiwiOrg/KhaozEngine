@@ -1397,3 +1397,7 @@ replacement is pending. A refused replacement retains the accepted witness and d
 view and snapshot contract documented by [MapDoc.Render3D](../KhaozEngine.MapDoc.Render3D/README.md).
 R9 owns interactive authoring. R10 adds findings and tool parity. R8b retains optical, cave, cut and
 appearance work. Native capture is not R11 importer acceptance or a game cutover gate.
+Capture diagnostics preserve each effective light's ID-derived static key. The optional synchronous
+`NativeMapSnapshot.Capture` callback observes actual submitted state before rendering, including
+warm-up. It borrows the scene for the callback only. Native wire and snapshot GPU facts exercise this
+path and foliage focus. Default CPU skips do not replace the exact-candidate three-backend gate.

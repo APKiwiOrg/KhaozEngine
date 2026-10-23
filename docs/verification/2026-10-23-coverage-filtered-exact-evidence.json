@@ -1,0 +1,1275 @@
+{
+  "backendEvidence": [
+    {
+      "actualPath": "Exact",
+      "adapter": "Apple Paravirtual device",
+      "artifact": {
+        "digest": "sha256:13b1e989ea387a080dcfb2104816b1c58cb7414d05b09fef64a7f24603966092",
+        "id": 12491742848,
+        "name": "filtered-render-measurements-metal-native",
+        "size_in_bytes": 93921
+      },
+      "backend": "metal-native",
+      "differingWords": 0,
+      "frozenAggregateSha256": "01efa2d140c6ed6125802e65d753a0d12fa5afb6370171c2bf3bd822b57e3bb1",
+      "frozenCases": 72,
+      "frozenRows": {
+        "cost-limit-l2-bent-w0": {
+          "differences": 0,
+          "sha256": "a5005519d39b177d36d9aa25492b30839b7dafb23742253b156f24c40b41124e",
+          "words": 19584
+        },
+        "cost-limit-l2-bent-w05": {
+          "differences": 0,
+          "sha256": "5c7b7fbcdffdb2fdb0815d14375e293acfde98e3520016428b0d5d7bd3fda845",
+          "words": 19584
+        },
+        "cost-limit-l2-bent-w1": {
+          "differences": 0,
+          "sha256": "d623cd48525b99c21736875cb2bd8ee328647adca793d400c418448f0311a335",
+          "words": 19584
+        },
+        "cost-limit-l2-lifted-w0": {
+          "differences": 0,
+          "sha256": "b5789fc43672bfde45443b8e1cf8a93d0111047ff164cdf502cbf75aeded86a0",
+          "words": 19584
+        },
+        "cost-limit-l2-lifted-w05": {
+          "differences": 0,
+          "sha256": "74d979c3611819c1616f7a4618ddf032dd9a46a11fac949a5cbc4c85e22c7e03",
+          "words": 19584
+        },
+        "cost-limit-l2-lifted-w1": {
+          "differences": 0,
+          "sha256": "4104f7183967733e67ba34a2a8ccb8acbe1aaf2006fe0368fb6e78e47b9f5015",
+          "words": 19584
+        },
+        "cost-limit-l3-bent-w0": {
+          "differences": 0,
+          "sha256": "99f0688714ab4d0c813f03ca268cad941b177f780eb6c12cc34e4544645f6257",
+          "words": 22848
+        },
+        "cost-limit-l3-bent-w05": {
+          "differences": 0,
+          "sha256": "04de61d3d401f2c9902d5c2057179b9ac2898817445ed62a5ec14b3b47c3ccb4",
+          "words": 22848
+        },
+        "cost-limit-l3-bent-w1": {
+          "differences": 0,
+          "sha256": "493d240674051da48a1bc11ec12a4f72683fe2d5fa912161c2b86a7d0e3887ea",
+          "words": 22848
+        },
+        "cost-limit-l3-lifted-w0": {
+          "differences": 0,
+          "sha256": "598452919ad12cb8a7364d22cfcacab6b7d525185321c379b622db4ba050222b",
+          "words": 22848
+        },
+        "cost-limit-l3-lifted-w05": {
+          "differences": 0,
+          "sha256": "47dd12d933eaffc6675559224742e7447af96dc505c4f01295012394614553f4",
+          "words": 22848
+        },
+        "cost-limit-l3-lifted-w1": {
+          "differences": 0,
+          "sha256": "a6be35cc05eeb3c92b3b40a9b89f5530a74e475c4fed72525343d768908f5be8",
+          "words": 22848
+        },
+        "cost-limit-l4-bent-w0": {
+          "differences": 0,
+          "sha256": "ba0024e202b6aa83db374278b8eabc2ff4e54baf9403c64457d8d35a724e243e",
+          "words": 27264
+        },
+        "cost-limit-l4-bent-w05": {
+          "differences": 0,
+          "sha256": "2f9f98813eeca43b9286dbdbfe80737f679a5f4fab4802d5bb87df32fcbf158d",
+          "words": 27264
+        },
+        "cost-limit-l4-bent-w1": {
+          "differences": 0,
+          "sha256": "def0b8aab14b1670ba05cd5c480cb61caadeadc2e5318cc9b6dd5edbdb0604af",
+          "words": 27264
+        },
+        "cost-limit-l4-lifted-w0": {
+          "differences": 0,
+          "sha256": "a5bf9a6a6a80e599347321a0ca9a4924db02c1d165ef34a94e27774a1cca4f68",
+          "words": 27264
+        },
+        "cost-limit-l4-lifted-w05": {
+          "differences": 0,
+          "sha256": "76192a294a0c8863a56e452e7601d399dc823555c068fe5a1e68553e66c17b9b",
+          "words": 27264
+        },
+        "cost-limit-l4-lifted-w1": {
+          "differences": 0,
+          "sha256": "88a254eaa04f7232085d49f59ed5ab0eb01bb3dcd2b2e347923df0111443d952",
+          "words": 27264
+        },
+        "cost-typical-l2-bent-w0": {
+          "differences": 0,
+          "sha256": "011c1ba146ed8d4e55a1a11a11fd82b4d0459a4fb7f3a7b4e5c56ee1df261768",
+          "words": 20128
+        },
+        "cost-typical-l2-bent-w05": {
+          "differences": 0,
+          "sha256": "4fbda6369f468c3ae98d4a9c7303dc2088c2c3a28c3eca7a446796bdf533e80a",
+          "words": 20128
+        },
+        "cost-typical-l2-bent-w1": {
+          "differences": 0,
+          "sha256": "503d6d72817ca748798b145e0265f97b8c8544d18259c638580a4d06947ac73d",
+          "words": 20128
+        },
+        "cost-typical-l2-lifted-w0": {
+          "differences": 0,
+          "sha256": "cdb1f138b7457e3fedd1d62c2fdb1f82861783aa9b1b2a107728004604276635",
+          "words": 20128
+        },
+        "cost-typical-l2-lifted-w05": {
+          "differences": 0,
+          "sha256": "e11864fb6a7155781d9d819307d495956644a1312ea6f5d0c7e88d7575075eea",
+          "words": 20128
+        },
+        "cost-typical-l2-lifted-w1": {
+          "differences": 0,
+          "sha256": "ec69ec4217ed8511b76fd8211d8e34cc0b4ca2c4d9b7194c7eb24be01e46de96",
+          "words": 20128
+        },
+        "cost-typical-l3-bent-w0": {
+          "differences": 0,
+          "sha256": "950fbd93e29d08cb176ac72123a774d370f05818efc9f9a32bd6524a37f12f56",
+          "words": 24320
+        },
+        "cost-typical-l3-bent-w05": {
+          "differences": 0,
+          "sha256": "c3b630f387a42b63fcd8adf96f7adf5c5ce6304828a281057a257583bef0f727",
+          "words": 24320
+        },
+        "cost-typical-l3-bent-w1": {
+          "differences": 0,
+          "sha256": "2aedca9b4b0a3e5736576f404e822694de96f3d82e8d5c4fd07feaa4ca90681e",
+          "words": 24320
+        },
+        "cost-typical-l3-lifted-w0": {
+          "differences": 0,
+          "sha256": "818334620803d45edd134b94d7d83e02b53fff77497e60c3ddc1e506c232e89b",
+          "words": 24320
+        },
+        "cost-typical-l3-lifted-w05": {
+          "differences": 0,
+          "sha256": "0a50607174dc7fbf74fdba8aa36681c890d61c59e4096b4bd45a17a17884395f",
+          "words": 24320
+        },
+        "cost-typical-l3-lifted-w1": {
+          "differences": 0,
+          "sha256": "6d78bcaa8c81496eba91d4d7c3179474affcee274015ca52186abbc7c84bf8a0",
+          "words": 24320
+        },
+        "cost-typical-l4-bent-w0": {
+          "differences": 0,
+          "sha256": "21e9ded6f7400c2c728bee9a87e89bb21109c96ac0b0c1bc6b133803bdb53790",
+          "words": 30048
+        },
+        "cost-typical-l4-bent-w05": {
+          "differences": 0,
+          "sha256": "a6af296c0d1dc7454e9a50a0a6df8b5d12a98721b17ba96a280936d278485ce1",
+          "words": 30048
+        },
+        "cost-typical-l4-bent-w1": {
+          "differences": 0,
+          "sha256": "b0f352a4a3346daab1230f8e1883f7c52b89d8b9176caf77002976d2bf1f5ef3",
+          "words": 30048
+        },
+        "cost-typical-l4-lifted-w0": {
+          "differences": 0,
+          "sha256": "f69630a8623637a57aadcbfd1c6d25c16c4c865dec039f3fa0cd06831b5f091e",
+          "words": 30048
+        },
+        "cost-typical-l4-lifted-w05": {
+          "differences": 0,
+          "sha256": "1d1dbe48651f9042d6529614f282b08fb9dede4413677ed804beefc427765a8d",
+          "words": 30048
+        },
+        "cost-typical-l4-lifted-w1": {
+          "differences": 0,
+          "sha256": "54fd220be95262ebd37dfa39651065d9358c4855c790c45982b165914e95abe1",
+          "words": 30048
+        },
+        "curved-challenging-seams-l2-w0": {
+          "differences": 0,
+          "sha256": "1714464931fea3bc29b993f0848b6dbbe539b51c3aba67e1abbeb69b730b4e21",
+          "words": 1856
+        },
+        "curved-challenging-seams-l2-w05": {
+          "differences": 0,
+          "sha256": "be95f80f50ba2ed5f9d90d1e5e3c7bfd83e14b8523cb7985c6f9cf1270aa9e50",
+          "words": 1856
+        },
+        "curved-challenging-seams-l2-w1": {
+          "differences": 0,
+          "sha256": "129e23d29d8370951dd02553e31788853d5792c6a4059b9d87f5768dc631fe9b",
+          "words": 1856
+        },
+        "curved-challenging-seams-l3-w0": {
+          "differences": 0,
+          "sha256": "38e14319d74915a01bb37741b036a503eaa3a75ae22f6b80f814e30b73830a60",
+          "words": 3328
+        },
+        "curved-challenging-seams-l3-w05": {
+          "differences": 0,
+          "sha256": "bbdd1917e1bd80e9f338a0483fdfa9719c8a0f75b483574cf5bb96cb30576c22",
+          "words": 3328
+        },
+        "curved-challenging-seams-l3-w1": {
+          "differences": 0,
+          "sha256": "eb6acdf6a618bd011a53de55e1b4bf46d3124afa882752bd80d060e90a216b8f",
+          "words": 3328
+        },
+        "curved-challenging-seams-l4-w0": {
+          "differences": 0,
+          "sha256": "7cb48b3273e59ab195e29344047a8c51adca06f957a108fe2baa34ce4b4b8d32",
+          "words": 5312
+        },
+        "curved-challenging-seams-l4-w05": {
+          "differences": 0,
+          "sha256": "fa089fb44c5280b20a8b47b08b9398891b189e96adfe7a3b79698e1e63789e08",
+          "words": 5312
+        },
+        "curved-challenging-seams-l4-w1": {
+          "differences": 0,
+          "sha256": "84c623667dff3e5706e189a964d951f4f616796b098794b87a39234aed59de01",
+          "words": 5312
+        },
+        "curved-challenging-welded-l2-w0": {
+          "differences": 0,
+          "sha256": "0e8bd5751139dc42d0ca0c367f3962e46939b41749a2b2295c5f3c6e0bf36792",
+          "words": 1680
+        },
+        "curved-challenging-welded-l2-w05": {
+          "differences": 0,
+          "sha256": "05b67968fcc77620b36c00019d9886d3464f17aa07e2461ce2e4a51ba68d35fc",
+          "words": 1680
+        },
+        "curved-challenging-welded-l2-w1": {
+          "differences": 0,
+          "sha256": "7ba8e55c7eec86b5052208e323b9297730054732f9ba6a8eddf9f68b7cedec80",
+          "words": 1680
+        },
+        "curved-challenging-welded-l3-w0": {
+          "differences": 0,
+          "sha256": "3601e45a2bc15d79b15738ba4002c21c84bd93a50a14669ae95dcdcaf7cc95cc",
+          "words": 3088
+        },
+        "curved-challenging-welded-l3-w05": {
+          "differences": 0,
+          "sha256": "d3dd646aedcb1fee51688307c0a27a3a9d37294da161268e66573592d1d8ecbe",
+          "words": 3088
+        },
+        "curved-challenging-welded-l3-w1": {
+          "differences": 0,
+          "sha256": "608710262e231805e36a97e42ac3a23a2e354c8ffa9fb6e70783cfd52e3678d0",
+          "words": 3088
+        },
+        "curved-challenging-welded-l4-w0": {
+          "differences": 0,
+          "sha256": "42b2b001c09db2601791352da4527c5213f4b0592afeb965079dceba729db20d",
+          "words": 5008
+        },
+        "curved-challenging-welded-l4-w05": {
+          "differences": 0,
+          "sha256": "05848b96582bbec8421c9727164a9ed14e427eb8592c2c99bd54691478398711",
+          "words": 5008
+        },
+        "curved-challenging-welded-l4-w1": {
+          "differences": 0,
+          "sha256": "d834906404e69fe8defbd299d8726acf2924c02b500f9a0ea95391df74b45950",
+          "words": 5008
+        },
+        "curved-ordinary-seams-l2-w0": {
+          "differences": 0,
+          "sha256": "bbfd17eaf3df44f8ea74855c120aef2fcf7f0c2385358b4023f2359da63ce00d",
+          "words": 1856
+        },
+        "curved-ordinary-seams-l2-w05": {
+          "differences": 0,
+          "sha256": "0dcecf68332f5ba2b2e641478a2fbb841069bc34608c0e40b49cb4c38ac105eb",
+          "words": 1856
+        },
+        "curved-ordinary-seams-l2-w1": {
+          "differences": 0,
+          "sha256": "55cc63fa0a3c4261fa37d7447d25781bfbd6c565afdf8ef644a1fbdd6004a042",
+          "words": 1856
+        },
+        "curved-ordinary-seams-l3-w0": {
+          "differences": 0,
+          "sha256": "79606ddd4e306605d2c872222a9624318a678ade4979ba80b5d351513d1cacdf",
+          "words": 3328
+        },
+        "curved-ordinary-seams-l3-w05": {
+          "differences": 0,
+          "sha256": "ef4fe2e3b0f0653643e219fce5d435b4c3eacdfbcd1f2710f40b6b10f1592371",
+          "words": 3328
+        },
+        "curved-ordinary-seams-l3-w1": {
+          "differences": 0,
+          "sha256": "0772ff5cf19239a5db6fee4723a880761b82e44b582cb1c0a707fa855ce2ed83",
+          "words": 3328
+        },
+        "curved-ordinary-seams-l4-w0": {
+          "differences": 0,
+          "sha256": "b21ab37265ffd1de9da6d9096e23f6c3f20679f558b9dd9b700aecc164e18bda",
+          "words": 5312
+        },
+        "curved-ordinary-seams-l4-w05": {
+          "differences": 0,
+          "sha256": "5ff4bc4bb7419246b1b38e6740027bded67b6f34c74b65ebda5da59268478503",
+          "words": 5312
+        },
+        "curved-ordinary-seams-l4-w1": {
+          "differences": 0,
+          "sha256": "78142d8b9ba9e0abdeb396ceb9c422ed82eff79a1d2436e8b45e5d059b3f434b",
+          "words": 5312
+        },
+        "curved-ordinary-welded-l2-w0": {
+          "differences": 0,
+          "sha256": "b7b6e804bd51142793e4e7b00b1dc696ddd0f58f3ce84936fff623a576a6c2e5",
+          "words": 1680
+        },
+        "curved-ordinary-welded-l2-w05": {
+          "differences": 0,
+          "sha256": "604734033cdc7a4e10fc7c98fdd36ab3315826585f5a3b8be7825e43d51b16fa",
+          "words": 1680
+        },
+        "curved-ordinary-welded-l2-w1": {
+          "differences": 0,
+          "sha256": "d99d26d1e5ca00eee7c8206ec1ef12b9c5d218c553657ee73d15557d04651041",
+          "words": 1680
+        },
+        "curved-ordinary-welded-l3-w0": {
+          "differences": 0,
+          "sha256": "daf6f5ff6b1133ffb6588398f061e460741b947476452f919a19e7995ef4b2fb",
+          "words": 3088
+        },
+        "curved-ordinary-welded-l3-w05": {
+          "differences": 0,
+          "sha256": "68625b7fc7223ef0b2fdc8298a4891028854080e4836b723549da8cebf46fa12",
+          "words": 3088
+        },
+        "curved-ordinary-welded-l3-w1": {
+          "differences": 0,
+          "sha256": "3157370345587582fb51bbace18eb8d7580b8639c26429627b5b6c57bcf11cb2",
+          "words": 3088
+        },
+        "curved-ordinary-welded-l4-w0": {
+          "differences": 0,
+          "sha256": "18337d2f53a8b9a4ee69e9f0b4ee5e0cbbbe4ec82aee8c8c740c8c85a3110f53",
+          "words": 5008
+        },
+        "curved-ordinary-welded-l4-w05": {
+          "differences": 0,
+          "sha256": "03d611e00ddada41ddc5dba0efdddbd89e6fe863b33f9c6fa6edd7744f3f8a0a",
+          "words": 5008
+        },
+        "curved-ordinary-welded-l4-w1": {
+          "differences": 0,
+          "sha256": "4b909fb49aac6bae31a4ba8cba507baa29c60a43188b38a9bedc19787c6570d3",
+          "words": 5008
+        }
+      },
+      "headSha": "db38e4ca1aabfb43e0d66104a687b34493f12c0f",
+      "jobId": 120337319103,
+      "nativeEftBallProbeExecuted": false,
+      "patterns": {
+        "dense": {
+          "differences": 0,
+          "path": "Exact"
+        },
+        "exact": {
+          "differences": 0,
+          "path": "Exact"
+        },
+        "ordinary": {
+          "differences": 0,
+          "path": "Exact"
+        },
+        "sparse": {
+          "differences": 0,
+          "path": "Exact"
+        }
+      },
+      "payloadBytes": 982376,
+      "payloadSha256": "1774c02473b6806b94dad6f9c9340b864261a9598dfe074c45b38254ce3660e7",
+      "publishedWords": 986784,
+      "queueStatistics": null,
+      "refinedVertices": 61674,
+      "runnerGroup": "GitHub Actions",
+      "runnerLabels": [
+        "macos-26"
+      ],
+      "runnerName": "GitHub Actions 1000015904",
+      "supportedPath": "Exact",
+      "tests": {
+        "failed": 0,
+        "passed": 2641,
+        "skipped": 0,
+        "total": 2641
+      }
+    },
+    {
+      "actualPath": "Exact",
+      "adapter": "Microsoft Basic Render Driver",
+      "artifact": {
+        "digest": "sha256:cd71d2045b559ccd93adebc830ba348031a4b4fcca7c7d3ea5ee545d460b8488",
+        "id": 12492316158,
+        "name": "filtered-render-measurements-direct3d11-native",
+        "size_in_bytes": 80453
+      },
+      "backend": "direct3d11-native",
+      "differingWords": 0,
+      "frozenAggregateSha256": "01efa2d140c6ed6125802e65d753a0d12fa5afb6370171c2bf3bd822b57e3bb1",
+      "frozenCases": 72,
+      "frozenRows": {
+        "cost-limit-l2-bent-w0": {
+          "differences": 0,
+          "sha256": "a5005519d39b177d36d9aa25492b30839b7dafb23742253b156f24c40b41124e",
+          "words": 19584
+        },
+        "cost-limit-l2-bent-w05": {
+          "differences": 0,
+          "sha256": "5c7b7fbcdffdb2fdb0815d14375e293acfde98e3520016428b0d5d7bd3fda845",
+          "words": 19584
+        },
+        "cost-limit-l2-bent-w1": {
+          "differences": 0,
+          "sha256": "d623cd48525b99c21736875cb2bd8ee328647adca793d400c418448f0311a335",
+          "words": 19584
+        },
+        "cost-limit-l2-lifted-w0": {
+          "differences": 0,
+          "sha256": "b5789fc43672bfde45443b8e1cf8a93d0111047ff164cdf502cbf75aeded86a0",
+          "words": 19584
+        },
+        "cost-limit-l2-lifted-w05": {
+          "differences": 0,
+          "sha256": "74d979c3611819c1616f7a4618ddf032dd9a46a11fac949a5cbc4c85e22c7e03",
+          "words": 19584
+        },
+        "cost-limit-l2-lifted-w1": {
+          "differences": 0,
+          "sha256": "4104f7183967733e67ba34a2a8ccb8acbe1aaf2006fe0368fb6e78e47b9f5015",
+          "words": 19584
+        },
+        "cost-limit-l3-bent-w0": {
+          "differences": 0,
+          "sha256": "99f0688714ab4d0c813f03ca268cad941b177f780eb6c12cc34e4544645f6257",
+          "words": 22848
+        },
+        "cost-limit-l3-bent-w05": {
+          "differences": 0,
+          "sha256": "04de61d3d401f2c9902d5c2057179b9ac2898817445ed62a5ec14b3b47c3ccb4",
+          "words": 22848
+        },
+        "cost-limit-l3-bent-w1": {
+          "differences": 0,
+          "sha256": "493d240674051da48a1bc11ec12a4f72683fe2d5fa912161c2b86a7d0e3887ea",
+          "words": 22848
+        },
+        "cost-limit-l3-lifted-w0": {
+          "differences": 0,
+          "sha256": "598452919ad12cb8a7364d22cfcacab6b7d525185321c379b622db4ba050222b",
+          "words": 22848
+        },
+        "cost-limit-l3-lifted-w05": {
+          "differences": 0,
+          "sha256": "47dd12d933eaffc6675559224742e7447af96dc505c4f01295012394614553f4",
+          "words": 22848
+        },
+        "cost-limit-l3-lifted-w1": {
+          "differences": 0,
+          "sha256": "a6be35cc05eeb3c92b3b40a9b89f5530a74e475c4fed72525343d768908f5be8",
+          "words": 22848
+        },
+        "cost-limit-l4-bent-w0": {
+          "differences": 0,
+          "sha256": "ba0024e202b6aa83db374278b8eabc2ff4e54baf9403c64457d8d35a724e243e",
+          "words": 27264
+        },
+        "cost-limit-l4-bent-w05": {
+          "differences": 0,
+          "sha256": "2f9f98813eeca43b9286dbdbfe80737f679a5f4fab4802d5bb87df32fcbf158d",
+          "words": 27264
+        },
+        "cost-limit-l4-bent-w1": {
+          "differences": 0,
+          "sha256": "def0b8aab14b1670ba05cd5c480cb61caadeadc2e5318cc9b6dd5edbdb0604af",
+          "words": 27264
+        },
+        "cost-limit-l4-lifted-w0": {
+          "differences": 0,
+          "sha256": "a5bf9a6a6a80e599347321a0ca9a4924db02c1d165ef34a94e27774a1cca4f68",
+          "words": 27264
+        },
+        "cost-limit-l4-lifted-w05": {
+          "differences": 0,
+          "sha256": "76192a294a0c8863a56e452e7601d399dc823555c068fe5a1e68553e66c17b9b",
+          "words": 27264
+        },
+        "cost-limit-l4-lifted-w1": {
+          "differences": 0,
+          "sha256": "88a254eaa04f7232085d49f59ed5ab0eb01bb3dcd2b2e347923df0111443d952",
+          "words": 27264
+        },
+        "cost-typical-l2-bent-w0": {
+          "differences": 0,
+          "sha256": "011c1ba146ed8d4e55a1a11a11fd82b4d0459a4fb7f3a7b4e5c56ee1df261768",
+          "words": 20128
+        },
+        "cost-typical-l2-bent-w05": {
+          "differences": 0,
+          "sha256": "4fbda6369f468c3ae98d4a9c7303dc2088c2c3a28c3eca7a446796bdf533e80a",
+          "words": 20128
+        },
+        "cost-typical-l2-bent-w1": {
+          "differences": 0,
+          "sha256": "503d6d72817ca748798b145e0265f97b8c8544d18259c638580a4d06947ac73d",
+          "words": 20128
+        },
+        "cost-typical-l2-lifted-w0": {
+          "differences": 0,
+          "sha256": "cdb1f138b7457e3fedd1d62c2fdb1f82861783aa9b1b2a107728004604276635",
+          "words": 20128
+        },
+        "cost-typical-l2-lifted-w05": {
+          "differences": 0,
+          "sha256": "e11864fb6a7155781d9d819307d495956644a1312ea6f5d0c7e88d7575075eea",
+          "words": 20128
+        },
+        "cost-typical-l2-lifted-w1": {
+          "differences": 0,
+          "sha256": "ec69ec4217ed8511b76fd8211d8e34cc0b4ca2c4d9b7194c7eb24be01e46de96",
+          "words": 20128
+        },
+        "cost-typical-l3-bent-w0": {
+          "differences": 0,
+          "sha256": "950fbd93e29d08cb176ac72123a774d370f05818efc9f9a32bd6524a37f12f56",
+          "words": 24320
+        },
+        "cost-typical-l3-bent-w05": {
+          "differences": 0,
+          "sha256": "c3b630f387a42b63fcd8adf96f7adf5c5ce6304828a281057a257583bef0f727",
+          "words": 24320
+        },
+        "cost-typical-l3-bent-w1": {
+          "differences": 0,
+          "sha256": "2aedca9b4b0a3e5736576f404e822694de96f3d82e8d5c4fd07feaa4ca90681e",
+          "words": 24320
+        },
+        "cost-typical-l3-lifted-w0": {
+          "differences": 0,
+          "sha256": "818334620803d45edd134b94d7d83e02b53fff77497e60c3ddc1e506c232e89b",
+          "words": 24320
+        },
+        "cost-typical-l3-lifted-w05": {
+          "differences": 0,
+          "sha256": "0a50607174dc7fbf74fdba8aa36681c890d61c59e4096b4bd45a17a17884395f",
+          "words": 24320
+        },
+        "cost-typical-l3-lifted-w1": {
+          "differences": 0,
+          "sha256": "6d78bcaa8c81496eba91d4d7c3179474affcee274015ca52186abbc7c84bf8a0",
+          "words": 24320
+        },
+        "cost-typical-l4-bent-w0": {
+          "differences": 0,
+          "sha256": "21e9ded6f7400c2c728bee9a87e89bb21109c96ac0b0c1bc6b133803bdb53790",
+          "words": 30048
+        },
+        "cost-typical-l4-bent-w05": {
+          "differences": 0,
+          "sha256": "a6af296c0d1dc7454e9a50a0a6df8b5d12a98721b17ba96a280936d278485ce1",
+          "words": 30048
+        },
+        "cost-typical-l4-bent-w1": {
+          "differences": 0,
+          "sha256": "b0f352a4a3346daab1230f8e1883f7c52b89d8b9176caf77002976d2bf1f5ef3",
+          "words": 30048
+        },
+        "cost-typical-l4-lifted-w0": {
+          "differences": 0,
+          "sha256": "f69630a8623637a57aadcbfd1c6d25c16c4c865dec039f3fa0cd06831b5f091e",
+          "words": 30048
+        },
+        "cost-typical-l4-lifted-w05": {
+          "differences": 0,
+          "sha256": "1d1dbe48651f9042d6529614f282b08fb9dede4413677ed804beefc427765a8d",
+          "words": 30048
+        },
+        "cost-typical-l4-lifted-w1": {
+          "differences": 0,
+          "sha256": "54fd220be95262ebd37dfa39651065d9358c4855c790c45982b165914e95abe1",
+          "words": 30048
+        },
+        "curved-challenging-seams-l2-w0": {
+          "differences": 0,
+          "sha256": "1714464931fea3bc29b993f0848b6dbbe539b51c3aba67e1abbeb69b730b4e21",
+          "words": 1856
+        },
+        "curved-challenging-seams-l2-w05": {
+          "differences": 0,
+          "sha256": "be95f80f50ba2ed5f9d90d1e5e3c7bfd83e14b8523cb7985c6f9cf1270aa9e50",
+          "words": 1856
+        },
+        "curved-challenging-seams-l2-w1": {
+          "differences": 0,
+          "sha256": "129e23d29d8370951dd02553e31788853d5792c6a4059b9d87f5768dc631fe9b",
+          "words": 1856
+        },
+        "curved-challenging-seams-l3-w0": {
+          "differences": 0,
+          "sha256": "38e14319d74915a01bb37741b036a503eaa3a75ae22f6b80f814e30b73830a60",
+          "words": 3328
+        },
+        "curved-challenging-seams-l3-w05": {
+          "differences": 0,
+          "sha256": "bbdd1917e1bd80e9f338a0483fdfa9719c8a0f75b483574cf5bb96cb30576c22",
+          "words": 3328
+        },
+        "curved-challenging-seams-l3-w1": {
+          "differences": 0,
+          "sha256": "eb6acdf6a618bd011a53de55e1b4bf46d3124afa882752bd80d060e90a216b8f",
+          "words": 3328
+        },
+        "curved-challenging-seams-l4-w0": {
+          "differences": 0,
+          "sha256": "7cb48b3273e59ab195e29344047a8c51adca06f957a108fe2baa34ce4b4b8d32",
+          "words": 5312
+        },
+        "curved-challenging-seams-l4-w05": {
+          "differences": 0,
+          "sha256": "fa089fb44c5280b20a8b47b08b9398891b189e96adfe7a3b79698e1e63789e08",
+          "words": 5312
+        },
+        "curved-challenging-seams-l4-w1": {
+          "differences": 0,
+          "sha256": "84c623667dff3e5706e189a964d951f4f616796b098794b87a39234aed59de01",
+          "words": 5312
+        },
+        "curved-challenging-welded-l2-w0": {
+          "differences": 0,
+          "sha256": "0e8bd5751139dc42d0ca0c367f3962e46939b41749a2b2295c5f3c6e0bf36792",
+          "words": 1680
+        },
+        "curved-challenging-welded-l2-w05": {
+          "differences": 0,
+          "sha256": "05b67968fcc77620b36c00019d9886d3464f17aa07e2461ce2e4a51ba68d35fc",
+          "words": 1680
+        },
+        "curved-challenging-welded-l2-w1": {
+          "differences": 0,
+          "sha256": "7ba8e55c7eec86b5052208e323b9297730054732f9ba6a8eddf9f68b7cedec80",
+          "words": 1680
+        },
+        "curved-challenging-welded-l3-w0": {
+          "differences": 0,
+          "sha256": "3601e45a2bc15d79b15738ba4002c21c84bd93a50a14669ae95dcdcaf7cc95cc",
+          "words": 3088
+        },
+        "curved-challenging-welded-l3-w05": {
+          "differences": 0,
+          "sha256": "d3dd646aedcb1fee51688307c0a27a3a9d37294da161268e66573592d1d8ecbe",
+          "words": 3088
+        },
+        "curved-challenging-welded-l3-w1": {
+          "differences": 0,
+          "sha256": "608710262e231805e36a97e42ac3a23a2e354c8ffa9fb6e70783cfd52e3678d0",
+          "words": 3088
+        },
+        "curved-challenging-welded-l4-w0": {
+          "differences": 0,
+          "sha256": "42b2b001c09db2601791352da4527c5213f4b0592afeb965079dceba729db20d",
+          "words": 5008
+        },
+        "curved-challenging-welded-l4-w05": {
+          "differences": 0,
+          "sha256": "05848b96582bbec8421c9727164a9ed14e427eb8592c2c99bd54691478398711",
+          "words": 5008
+        },
+        "curved-challenging-welded-l4-w1": {
+          "differences": 0,
+          "sha256": "d834906404e69fe8defbd299d8726acf2924c02b500f9a0ea95391df74b45950",
+          "words": 5008
+        },
+        "curved-ordinary-seams-l2-w0": {
+          "differences": 0,
+          "sha256": "bbfd17eaf3df44f8ea74855c120aef2fcf7f0c2385358b4023f2359da63ce00d",
+          "words": 1856
+        },
+        "curved-ordinary-seams-l2-w05": {
+          "differences": 0,
+          "sha256": "0dcecf68332f5ba2b2e641478a2fbb841069bc34608c0e40b49cb4c38ac105eb",
+          "words": 1856
+        },
+        "curved-ordinary-seams-l2-w1": {
+          "differences": 0,
+          "sha256": "55cc63fa0a3c4261fa37d7447d25781bfbd6c565afdf8ef644a1fbdd6004a042",
+          "words": 1856
+        },
+        "curved-ordinary-seams-l3-w0": {
+          "differences": 0,
+          "sha256": "79606ddd4e306605d2c872222a9624318a678ade4979ba80b5d351513d1cacdf",
+          "words": 3328
+        },
+        "curved-ordinary-seams-l3-w05": {
+          "differences": 0,
+          "sha256": "ef4fe2e3b0f0653643e219fce5d435b4c3eacdfbcd1f2710f40b6b10f1592371",
+          "words": 3328
+        },
+        "curved-ordinary-seams-l3-w1": {
+          "differences": 0,
+          "sha256": "0772ff5cf19239a5db6fee4723a880761b82e44b582cb1c0a707fa855ce2ed83",
+          "words": 3328
+        },
+        "curved-ordinary-seams-l4-w0": {
+          "differences": 0,
+          "sha256": "b21ab37265ffd1de9da6d9096e23f6c3f20679f558b9dd9b700aecc164e18bda",
+          "words": 5312
+        },
+        "curved-ordinary-seams-l4-w05": {
+          "differences": 0,
+          "sha256": "5ff4bc4bb7419246b1b38e6740027bded67b6f34c74b65ebda5da59268478503",
+          "words": 5312
+        },
+        "curved-ordinary-seams-l4-w1": {
+          "differences": 0,
+          "sha256": "78142d8b9ba9e0abdeb396ceb9c422ed82eff79a1d2436e8b45e5d059b3f434b",
+          "words": 5312
+        },
+        "curved-ordinary-welded-l2-w0": {
+          "differences": 0,
+          "sha256": "b7b6e804bd51142793e4e7b00b1dc696ddd0f58f3ce84936fff623a576a6c2e5",
+          "words": 1680
+        },
+        "curved-ordinary-welded-l2-w05": {
+          "differences": 0,
+          "sha256": "604734033cdc7a4e10fc7c98fdd36ab3315826585f5a3b8be7825e43d51b16fa",
+          "words": 1680
+        },
+        "curved-ordinary-welded-l2-w1": {
+          "differences": 0,
+          "sha256": "d99d26d1e5ca00eee7c8206ec1ef12b9c5d218c553657ee73d15557d04651041",
+          "words": 1680
+        },
+        "curved-ordinary-welded-l3-w0": {
+          "differences": 0,
+          "sha256": "daf6f5ff6b1133ffb6588398f061e460741b947476452f919a19e7995ef4b2fb",
+          "words": 3088
+        },
+        "curved-ordinary-welded-l3-w05": {
+          "differences": 0,
+          "sha256": "68625b7fc7223ef0b2fdc8298a4891028854080e4836b723549da8cebf46fa12",
+          "words": 3088
+        },
+        "curved-ordinary-welded-l3-w1": {
+          "differences": 0,
+          "sha256": "3157370345587582fb51bbace18eb8d7580b8639c26429627b5b6c57bcf11cb2",
+          "words": 3088
+        },
+        "curved-ordinary-welded-l4-w0": {
+          "differences": 0,
+          "sha256": "18337d2f53a8b9a4ee69e9f0b4ee5e0cbbbe4ec82aee8c8c740c8c85a3110f53",
+          "words": 5008
+        },
+        "curved-ordinary-welded-l4-w05": {
+          "differences": 0,
+          "sha256": "03d611e00ddada41ddc5dba0efdddbd89e6fe863b33f9c6fa6edd7744f3f8a0a",
+          "words": 5008
+        },
+        "curved-ordinary-welded-l4-w1": {
+          "differences": 0,
+          "sha256": "4b909fb49aac6bae31a4ba8cba507baa29c60a43188b38a9bedc19787c6570d3",
+          "words": 5008
+        }
+      },
+      "headSha": "db38e4ca1aabfb43e0d66104a687b34493f12c0f",
+      "jobId": 120337319018,
+      "nativeEftBallProbeExecuted": false,
+      "patterns": {
+        "dense": {
+          "differences": 0,
+          "path": "Exact"
+        },
+        "exact": {
+          "differences": 0,
+          "path": "Exact"
+        },
+        "ordinary": {
+          "differences": 0,
+          "path": "Exact"
+        },
+        "sparse": {
+          "differences": 0,
+          "path": "Exact"
+        }
+      },
+      "payloadBytes": 708514,
+      "payloadSha256": "4c6e5d681f574a0592cfddc7dfd7722d7605a30295fec73b8c38dd3d452887e7",
+      "publishedWords": 986784,
+      "queueStatistics": null,
+      "refinedVertices": 61674,
+      "runnerGroup": "GitHub Actions",
+      "runnerLabels": [
+        "windows-latest"
+      ],
+      "runnerName": "GitHub Actions 1000015903",
+      "supportedPath": "Exact",
+      "tests": {
+        "failed": 0,
+        "passed": 2641,
+        "skipped": 0,
+        "total": 2641
+      }
+    },
+    {
+      "actualPath": "Exact",
+      "adapter": "llvmpipe (LLVM 20.1.2, 256 bits)",
+      "artifact": {
+        "digest": "sha256:944f3a9d9a13ce5f3c103fc96f854914ac4bcecb056c56a66f33f06d930966f2",
+        "id": 12490764331,
+        "name": "filtered-render-measurements-vulkan-native",
+        "size_in_bytes": 96871
+      },
+      "backend": "vulkan-native",
+      "differingWords": 0,
+      "frozenAggregateSha256": "01efa2d140c6ed6125802e65d753a0d12fa5afb6370171c2bf3bd822b57e3bb1",
+      "frozenCases": 72,
+      "frozenRows": {
+        "cost-limit-l2-bent-w0": {
+          "differences": 0,
+          "sha256": "a5005519d39b177d36d9aa25492b30839b7dafb23742253b156f24c40b41124e",
+          "words": 19584
+        },
+        "cost-limit-l2-bent-w05": {
+          "differences": 0,
+          "sha256": "5c7b7fbcdffdb2fdb0815d14375e293acfde98e3520016428b0d5d7bd3fda845",
+          "words": 19584
+        },
+        "cost-limit-l2-bent-w1": {
+          "differences": 0,
+          "sha256": "d623cd48525b99c21736875cb2bd8ee328647adca793d400c418448f0311a335",
+          "words": 19584
+        },
+        "cost-limit-l2-lifted-w0": {
+          "differences": 0,
+          "sha256": "b5789fc43672bfde45443b8e1cf8a93d0111047ff164cdf502cbf75aeded86a0",
+          "words": 19584
+        },
+        "cost-limit-l2-lifted-w05": {
+          "differences": 0,
+          "sha256": "74d979c3611819c1616f7a4618ddf032dd9a46a11fac949a5cbc4c85e22c7e03",
+          "words": 19584
+        },
+        "cost-limit-l2-lifted-w1": {
+          "differences": 0,
+          "sha256": "4104f7183967733e67ba34a2a8ccb8acbe1aaf2006fe0368fb6e78e47b9f5015",
+          "words": 19584
+        },
+        "cost-limit-l3-bent-w0": {
+          "differences": 0,
+          "sha256": "99f0688714ab4d0c813f03ca268cad941b177f780eb6c12cc34e4544645f6257",
+          "words": 22848
+        },
+        "cost-limit-l3-bent-w05": {
+          "differences": 0,
+          "sha256": "04de61d3d401f2c9902d5c2057179b9ac2898817445ed62a5ec14b3b47c3ccb4",
+          "words": 22848
+        },
+        "cost-limit-l3-bent-w1": {
+          "differences": 0,
+          "sha256": "493d240674051da48a1bc11ec12a4f72683fe2d5fa912161c2b86a7d0e3887ea",
+          "words": 22848
+        },
+        "cost-limit-l3-lifted-w0": {
+          "differences": 0,
+          "sha256": "598452919ad12cb8a7364d22cfcacab6b7d525185321c379b622db4ba050222b",
+          "words": 22848
+        },
+        "cost-limit-l3-lifted-w05": {
+          "differences": 0,
+          "sha256": "47dd12d933eaffc6675559224742e7447af96dc505c4f01295012394614553f4",
+          "words": 22848
+        },
+        "cost-limit-l3-lifted-w1": {
+          "differences": 0,
+          "sha256": "a6be35cc05eeb3c92b3b40a9b89f5530a74e475c4fed72525343d768908f5be8",
+          "words": 22848
+        },
+        "cost-limit-l4-bent-w0": {
+          "differences": 0,
+          "sha256": "ba0024e202b6aa83db374278b8eabc2ff4e54baf9403c64457d8d35a724e243e",
+          "words": 27264
+        },
+        "cost-limit-l4-bent-w05": {
+          "differences": 0,
+          "sha256": "2f9f98813eeca43b9286dbdbfe80737f679a5f4fab4802d5bb87df32fcbf158d",
+          "words": 27264
+        },
+        "cost-limit-l4-bent-w1": {
+          "differences": 0,
+          "sha256": "def0b8aab14b1670ba05cd5c480cb61caadeadc2e5318cc9b6dd5edbdb0604af",
+          "words": 27264
+        },
+        "cost-limit-l4-lifted-w0": {
+          "differences": 0,
+          "sha256": "a5bf9a6a6a80e599347321a0ca9a4924db02c1d165ef34a94e27774a1cca4f68",
+          "words": 27264
+        },
+        "cost-limit-l4-lifted-w05": {
+          "differences": 0,
+          "sha256": "76192a294a0c8863a56e452e7601d399dc823555c068fe5a1e68553e66c17b9b",
+          "words": 27264
+        },
+        "cost-limit-l4-lifted-w1": {
+          "differences": 0,
+          "sha256": "88a254eaa04f7232085d49f59ed5ab0eb01bb3dcd2b2e347923df0111443d952",
+          "words": 27264
+        },
+        "cost-typical-l2-bent-w0": {
+          "differences": 0,
+          "sha256": "011c1ba146ed8d4e55a1a11a11fd82b4d0459a4fb7f3a7b4e5c56ee1df261768",
+          "words": 20128
+        },
+        "cost-typical-l2-bent-w05": {
+          "differences": 0,
+          "sha256": "4fbda6369f468c3ae98d4a9c7303dc2088c2c3a28c3eca7a446796bdf533e80a",
+          "words": 20128
+        },
+        "cost-typical-l2-bent-w1": {
+          "differences": 0,
+          "sha256": "503d6d72817ca748798b145e0265f97b8c8544d18259c638580a4d06947ac73d",
+          "words": 20128
+        },
+        "cost-typical-l2-lifted-w0": {
+          "differences": 0,
+          "sha256": "cdb1f138b7457e3fedd1d62c2fdb1f82861783aa9b1b2a107728004604276635",
+          "words": 20128
+        },
+        "cost-typical-l2-lifted-w05": {
+          "differences": 0,
+          "sha256": "e11864fb6a7155781d9d819307d495956644a1312ea6f5d0c7e88d7575075eea",
+          "words": 20128
+        },
+        "cost-typical-l2-lifted-w1": {
+          "differences": 0,
+          "sha256": "ec69ec4217ed8511b76fd8211d8e34cc0b4ca2c4d9b7194c7eb24be01e46de96",
+          "words": 20128
+        },
+        "cost-typical-l3-bent-w0": {
+          "differences": 0,
+          "sha256": "950fbd93e29d08cb176ac72123a774d370f05818efc9f9a32bd6524a37f12f56",
+          "words": 24320
+        },
+        "cost-typical-l3-bent-w05": {
+          "differences": 0,
+          "sha256": "c3b630f387a42b63fcd8adf96f7adf5c5ce6304828a281057a257583bef0f727",
+          "words": 24320
+        },
+        "cost-typical-l3-bent-w1": {
+          "differences": 0,
+          "sha256": "2aedca9b4b0a3e5736576f404e822694de96f3d82e8d5c4fd07feaa4ca90681e",
+          "words": 24320
+        },
+        "cost-typical-l3-lifted-w0": {
+          "differences": 0,
+          "sha256": "818334620803d45edd134b94d7d83e02b53fff77497e60c3ddc1e506c232e89b",
+          "words": 24320
+        },
+        "cost-typical-l3-lifted-w05": {
+          "differences": 0,
+          "sha256": "0a50607174dc7fbf74fdba8aa36681c890d61c59e4096b4bd45a17a17884395f",
+          "words": 24320
+        },
+        "cost-typical-l3-lifted-w1": {
+          "differences": 0,
+          "sha256": "6d78bcaa8c81496eba91d4d7c3179474affcee274015ca52186abbc7c84bf8a0",
+          "words": 24320
+        },
+        "cost-typical-l4-bent-w0": {
+          "differences": 0,
+          "sha256": "21e9ded6f7400c2c728bee9a87e89bb21109c96ac0b0c1bc6b133803bdb53790",
+          "words": 30048
+        },
+        "cost-typical-l4-bent-w05": {
+          "differences": 0,
+          "sha256": "a6af296c0d1dc7454e9a50a0a6df8b5d12a98721b17ba96a280936d278485ce1",
+          "words": 30048
+        },
+        "cost-typical-l4-bent-w1": {
+          "differences": 0,
+          "sha256": "b0f352a4a3346daab1230f8e1883f7c52b89d8b9176caf77002976d2bf1f5ef3",
+          "words": 30048
+        },
+        "cost-typical-l4-lifted-w0": {
+          "differences": 0,
+          "sha256": "f69630a8623637a57aadcbfd1c6d25c16c4c865dec039f3fa0cd06831b5f091e",
+          "words": 30048
+        },
+        "cost-typical-l4-lifted-w05": {
+          "differences": 0,
+          "sha256": "1d1dbe48651f9042d6529614f282b08fb9dede4413677ed804beefc427765a8d",
+          "words": 30048
+        },
+        "cost-typical-l4-lifted-w1": {
+          "differences": 0,
+          "sha256": "54fd220be95262ebd37dfa39651065d9358c4855c790c45982b165914e95abe1",
+          "words": 30048
+        },
+        "curved-challenging-seams-l2-w0": {
+          "differences": 0,
+          "sha256": "1714464931fea3bc29b993f0848b6dbbe539b51c3aba67e1abbeb69b730b4e21",
+          "words": 1856
+        },
+        "curved-challenging-seams-l2-w05": {
+          "differences": 0,
+          "sha256": "be95f80f50ba2ed5f9d90d1e5e3c7bfd83e14b8523cb7985c6f9cf1270aa9e50",
+          "words": 1856
+        },
+        "curved-challenging-seams-l2-w1": {
+          "differences": 0,
+          "sha256": "129e23d29d8370951dd02553e31788853d5792c6a4059b9d87f5768dc631fe9b",
+          "words": 1856
+        },
+        "curved-challenging-seams-l3-w0": {
+          "differences": 0,
+          "sha256": "38e14319d74915a01bb37741b036a503eaa3a75ae22f6b80f814e30b73830a60",
+          "words": 3328
+        },
+        "curved-challenging-seams-l3-w05": {
+          "differences": 0,
+          "sha256": "bbdd1917e1bd80e9f338a0483fdfa9719c8a0f75b483574cf5bb96cb30576c22",
+          "words": 3328
+        },
+        "curved-challenging-seams-l3-w1": {
+          "differences": 0,
+          "sha256": "eb6acdf6a618bd011a53de55e1b4bf46d3124afa882752bd80d060e90a216b8f",
+          "words": 3328
+        },
+        "curved-challenging-seams-l4-w0": {
+          "differences": 0,
+          "sha256": "7cb48b3273e59ab195e29344047a8c51adca06f957a108fe2baa34ce4b4b8d32",
+          "words": 5312
+        },
+        "curved-challenging-seams-l4-w05": {
+          "differences": 0,
+          "sha256": "fa089fb44c5280b20a8b47b08b9398891b189e96adfe7a3b79698e1e63789e08",
+          "words": 5312
+        },
+        "curved-challenging-seams-l4-w1": {
+          "differences": 0,
+          "sha256": "84c623667dff3e5706e189a964d951f4f616796b098794b87a39234aed59de01",
+          "words": 5312
+        },
+        "curved-challenging-welded-l2-w0": {
+          "differences": 0,
+          "sha256": "0e8bd5751139dc42d0ca0c367f3962e46939b41749a2b2295c5f3c6e0bf36792",
+          "words": 1680
+        },
+        "curved-challenging-welded-l2-w05": {
+          "differences": 0,
+          "sha256": "05b67968fcc77620b36c00019d9886d3464f17aa07e2461ce2e4a51ba68d35fc",
+          "words": 1680
+        },
+        "curved-challenging-welded-l2-w1": {
+          "differences": 0,
+          "sha256": "7ba8e55c7eec86b5052208e323b9297730054732f9ba6a8eddf9f68b7cedec80",
+          "words": 1680
+        },
+        "curved-challenging-welded-l3-w0": {
+          "differences": 0,
+          "sha256": "3601e45a2bc15d79b15738ba4002c21c84bd93a50a14669ae95dcdcaf7cc95cc",
+          "words": 3088
+        },
+        "curved-challenging-welded-l3-w05": {
+          "differences": 0,
+          "sha256": "d3dd646aedcb1fee51688307c0a27a3a9d37294da161268e66573592d1d8ecbe",
+          "words": 3088
+        },
+        "curved-challenging-welded-l3-w1": {
+          "differences": 0,
+          "sha256": "608710262e231805e36a97e42ac3a23a2e354c8ffa9fb6e70783cfd52e3678d0",
+          "words": 3088
+        },
+        "curved-challenging-welded-l4-w0": {
+          "differences": 0,
+          "sha256": "42b2b001c09db2601791352da4527c5213f4b0592afeb965079dceba729db20d",
+          "words": 5008
+        },
+        "curved-challenging-welded-l4-w05": {
+          "differences": 0,
+          "sha256": "05848b96582bbec8421c9727164a9ed14e427eb8592c2c99bd54691478398711",
+          "words": 5008
+        },
+        "curved-challenging-welded-l4-w1": {
+          "differences": 0,
+          "sha256": "d834906404e69fe8defbd299d8726acf2924c02b500f9a0ea95391df74b45950",
+          "words": 5008
+        },
+        "curved-ordinary-seams-l2-w0": {
+          "differences": 0,
+          "sha256": "bbfd17eaf3df44f8ea74855c120aef2fcf7f0c2385358b4023f2359da63ce00d",
+          "words": 1856
+        },
+        "curved-ordinary-seams-l2-w05": {
+          "differences": 0,
+          "sha256": "0dcecf68332f5ba2b2e641478a2fbb841069bc34608c0e40b49cb4c38ac105eb",
+          "words": 1856
+        },
+        "curved-ordinary-seams-l2-w1": {
+          "differences": 0,
+          "sha256": "55cc63fa0a3c4261fa37d7447d25781bfbd6c565afdf8ef644a1fbdd6004a042",
+          "words": 1856
+        },
+        "curved-ordinary-seams-l3-w0": {
+          "differences": 0,
+          "sha256": "79606ddd4e306605d2c872222a9624318a678ade4979ba80b5d351513d1cacdf",
+          "words": 3328
+        },
+        "curved-ordinary-seams-l3-w05": {
+          "differences": 0,
+          "sha256": "ef4fe2e3b0f0653643e219fce5d435b4c3eacdfbcd1f2710f40b6b10f1592371",
+          "words": 3328
+        },
+        "curved-ordinary-seams-l3-w1": {
+          "differences": 0,
+          "sha256": "0772ff5cf19239a5db6fee4723a880761b82e44b582cb1c0a707fa855ce2ed83",
+          "words": 3328
+        },
+        "curved-ordinary-seams-l4-w0": {
+          "differences": 0,
+          "sha256": "b21ab37265ffd1de9da6d9096e23f6c3f20679f558b9dd9b700aecc164e18bda",
+          "words": 5312
+        },
+        "curved-ordinary-seams-l4-w05": {
+          "differences": 0,
+          "sha256": "5ff4bc4bb7419246b1b38e6740027bded67b6f34c74b65ebda5da59268478503",
+          "words": 5312
+        },
+        "curved-ordinary-seams-l4-w1": {
+          "differences": 0,
+          "sha256": "78142d8b9ba9e0abdeb396ceb9c422ed82eff79a1d2436e8b45e5d059b3f434b",
+          "words": 5312
+        },
+        "curved-ordinary-welded-l2-w0": {
+          "differences": 0,
+          "sha256": "b7b6e804bd51142793e4e7b00b1dc696ddd0f58f3ce84936fff623a576a6c2e5",
+          "words": 1680
+        },
+        "curved-ordinary-welded-l2-w05": {
+          "differences": 0,
+          "sha256": "604734033cdc7a4e10fc7c98fdd36ab3315826585f5a3b8be7825e43d51b16fa",
+          "words": 1680
+        },
+        "curved-ordinary-welded-l2-w1": {
+          "differences": 0,
+          "sha256": "d99d26d1e5ca00eee7c8206ec1ef12b9c5d218c553657ee73d15557d04651041",
+          "words": 1680
+        },
+        "curved-ordinary-welded-l3-w0": {
+          "differences": 0,
+          "sha256": "daf6f5ff6b1133ffb6588398f061e460741b947476452f919a19e7995ef4b2fb",
+          "words": 3088
+        },
+        "curved-ordinary-welded-l3-w05": {
+          "differences": 0,
+          "sha256": "68625b7fc7223ef0b2fdc8298a4891028854080e4836b723549da8cebf46fa12",
+          "words": 3088
+        },
+        "curved-ordinary-welded-l3-w1": {
+          "differences": 0,
+          "sha256": "3157370345587582fb51bbace18eb8d7580b8639c26429627b5b6c57bcf11cb2",
+          "words": 3088
+        },
+        "curved-ordinary-welded-l4-w0": {
+          "differences": 0,
+          "sha256": "18337d2f53a8b9a4ee69e9f0b4ee5e0cbbbe4ec82aee8c8c740c8c85a3110f53",
+          "words": 5008
+        },
+        "curved-ordinary-welded-l4-w05": {
+          "differences": 0,
+          "sha256": "03d611e00ddada41ddc5dba0efdddbd89e6fe863b33f9c6fa6edd7744f3f8a0a",
+          "words": 5008
+        },
+        "curved-ordinary-welded-l4-w1": {
+          "differences": 0,
+          "sha256": "4b909fb49aac6bae31a4ba8cba507baa29c60a43188b38a9bedc19787c6570d3",
+          "words": 5008
+        }
+      },
+      "headSha": "db38e4ca1aabfb43e0d66104a687b34493f12c0f",
+      "jobId": 120337319215,
+      "nativeEftBallProbeExecuted": false,
+      "patterns": {
+        "dense": {
+          "differences": 0,
+          "path": "Exact"
+        },
+        "exact": {
+          "differences": 0,
+          "path": "Exact"
+        },
+        "ordinary": {
+          "differences": 0,
+          "path": "Exact"
+        },
+        "sparse": {
+          "differences": 0,
+          "path": "Exact"
+        }
+      },
+      "payloadBytes": 1123423,
+      "payloadSha256": "42d466268899c1133672a7a420933e41b412834159166010ea29856f8d825f3a",
+      "publishedWords": 986784,
+      "queueStatistics": null,
+      "refinedVertices": 61674,
+      "runnerGroup": "GitHub Actions",
+      "runnerLabels": [
+        "ubuntu-24.04"
+      ],
+      "runnerName": "GitHub Actions 1000015902",
+      "supportedPath": "Exact",
+      "tests": {
+        "failed": 0,
+        "passed": 2641,
+        "skipped": 0,
+        "total": 2641
+      }
+    }
+  ],
+  "benchEligible": false,
+  "driverCapabilityExplanation": {
+    "advertisedFieldsInSource": {
+      "shaderDenormFlushToZeroFloat32": false,
+      "shaderDenormPreserveFloat32": false,
+      "shaderRoundingModeRTEFloat32": true,
+      "shaderSignedZeroInfNanPreserveFloat32": true
+    },
+    "evidenceKind": "matching-upstream-driver-source-not-a-native-property-dump",
+    "observedDriver": "llvmpipe: Mesa 25.2.8-0ubuntu0.24.04.4 (LLVM 20.1.2)",
+    "sourceSha256": "643e4f421ddd03a100b88bac7038d4713cabef0b1be49637c2a7414a8b52fde8",
+    "sourceUrl": "https://gitlab.freedesktop.org/mesa/mesa/-/blob/mesa-25.2.8/src/gallium/frontends/lavapipe/lvp_device.c#L1036"
+  },
+  "expectedSkippedAggregateJobs": 1,
+  "filteredNativeWorkloadsExecuted": 0,
+  "implementationSha": "db38e4ca1aabfb43e0d66104a687b34493f12c0f",
+  "nativeQueueStatisticsAvailable": false,
+  "nextRequiredEvidence": "Exactness on a Vulkan adapter admitted by the unchanged FE-1 gate, or explicit root policy direction. Timing remains unauthorized.",
+  "paidT4Runs": 0,
+  "performanceRuns": 0,
+  "runId": 39930493020,
+  "runUrl": "https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39930493020",
+  "schema": "khaozengine.coverage-filtered-exact.round-1/1",
+  "status": "NEEDS_NATIVE_FILTER_EVIDENCE",
+  "stressRuns": 0,
+  "successfulJobs": 5,
+  "vulkanValidationCleanlinessClaimed": false,
+  "vulkanValidationLimitation": "https://github.com/APKiwiOrg/KhaozEngine/issues/1539",
+  "workflowConclusion": "success"
+}

@@ -1,6 +1,7 @@
 # Coverage filtered-exact prototype
 
-This branch is an exactness prototype, pending native verification and separate performance approval.
+This branch is an exactness prototype. Native fallback words are verified. The filtered path still
+requires native verification on an admitted Vulkan adapter and separate performance approval.
 It does not change the NC2 word contract, the kernel contract or the exact reference.
 
 ## Backend admission
@@ -97,3 +98,44 @@ Face fallback latency and the initial one-invocation-per-actor compaction are pr
 No performance claim follows from the CPU study or these structures. Native word evidence, shader
 sizes and queue counts belong in the round report. Vulkan validation cleanliness is not claimed
 because [#1539](https://github.com/APKiwiOrg/KhaozEngine/issues/1539) remains unresolved.
+
+## Round 1 native evidence
+
+Status is NEEDS_NATIVE_FILTER_EVIDENCE. The implementation is committed and the authorized gate is
+green. No backend in that gate exercised filtering, so it does not establish filtered correctness or
+bench eligibility.
+
+[Cross-platform GPU run 39930493020](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39930493020)
+completed successfully at exact code SHA `db38e4ca1aabfb43e0d66104a687b34493f12c0f`. All five executed jobs
+used the GitHub Actions hosted runner group and passed. The unsharded filtered dispatch skipped its
+inapplicable full-suite aggregate job. This job skip is separate from the zero skipped selected tests.
+The dispatch used all three native legs, tier push, bake false and the Coverage excluding
+CoverageDispatchProfile plus ShaderCorpus filter. The
+[machine-readable evidence](2026-10-23-coverage-filtered-exact-evidence.json) retains job identities,
+runner labels, artifact identities, payload hashes and every frozen case hash.
+
+| Backend | Runner label | Adapter | Selected tests | Frozen published words | Differing words | Actual path |
+| --- | --- | --- | ---: | ---: | ---: | --- |
+| Metal | macos-26 | Apple Paravirtual device | 2,641 passed | 986,784 over 72 cases | 0 | Exact |
+| D3D11 | windows-latest | Microsoft Basic Render Driver | 2,641 passed | 986,784 over 72 cases | 0 | Exact |
+| Vulkan | ubuntu-24.04 | llvmpipe, LLVM 20.1.2 | 2,641 passed | 986,784 over 72 cases | 0 | Exact |
+
+Each backend has zero failed and zero skipped selected tests. Every frozen output hash matches its
+unchanged committed reference row. The new exact, ordinary, sparse and dense patterns also report
+zero differing words, but each selected Exact. No filtered queue was allocated or dispatched, and
+the native EFT-ball body returned at its explicit Exact-path gate. Native filtered acceptance and
+queue statistics are unavailable. CPU study rates are not substituted for them.
+
+The Vulkan creation-fixed supported path was already Exact. Its log identifies Mesa
+25.2.8-0ubuntu0.24.04.4. The matching
+[upstream Mesa 25.2.8 source](https://gitlab.freedesktop.org/mesa/mesa/-/blob/mesa-25.2.8/src/gallium/frontends/lavapipe/lvp_device.c#L1036)
+advertises RTE32 and signed-zero preservation but neither DenormPreserve32 nor DenormFlushToZero32.
+That source explains the observed admission result. The individual native property bits were not
+retained as a separate dump. The queried-field propagation was inspected without finding a lost
+field. The strict capability gate was left intact.
+
+A Vulkan adapter admitted by FE-1 must still execute the frozen, sparse, dense and EFT-ball proofs
+before a timing request. A different policy requires explicit root direction. No paid T4,
+performance, compiler-statistics or stress run was made. The sync job succeeded, but validation
+cleanliness is not claimed because [#1539](https://github.com/APKiwiOrg/KhaozEngine/issues/1539)
+remains unresolved.

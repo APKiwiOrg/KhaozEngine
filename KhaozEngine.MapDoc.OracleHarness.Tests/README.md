@@ -745,8 +745,9 @@ Source and native keys are unique, with complete source coverage checked before 
 | Row | Exact fields and constraints |
 | --- | --- |
 | Root | `schemaVersion`, `generator`, `nativeDocumentPath`, `nativeTiledManifestPath`, `buildingManifestPath`, `markerManifestPath`, `foliageManifestPath`, `assetSelections`, `materials`, `placements`, `lights`, `roofs`, `water`, `foliage`, `windows`, `sequence`, `policy`, `expectations`. `schemaVersion` is 1. `nativeDocumentPath` is an attested path or null, and `nativeTiledManifestPath` is required and non-null |
-| limits (optional) | Exactly `{scene,residency}`, with both complete objects below. Null refuses. Every value is a positive JSON integer within its field's range. Unknown, missing, duplicate and case-variant fields refuse |
+| limits (optional) | Exactly `{scene,residency}`, with optional `queries`. The scene and residency objects are complete. A declared queries object is complete. Null refuses. Every value is a positive JSON integer within its field's range. Unknown, missing, duplicate and case-variant fields refuse |
 | limits.scene | Exactly `maxTiles`, `maxMetadataRows`, `maxMemberships`, `maxMembershipsPerResource`, `maxScannedBytes`, `maxMetadataBytes`, `maxSelectedResources`, `maxPatchScopes`, `maxPreparedFaces`, `maxPreparedBytes`, matching `MapSceneLimits`. Byte fields are int64, all other fields are int32 |
+| limits.queries (optional) | Exactly `maxCandidatePatches`, `maxInspectedFaces`, `maxSupportIntersections`, `maxPageReads`, `maxRecordReads`, `maxRecordDepth`, matching `MapQueryLimits`. All fields are positive int32 values. Omission preserves the existing query defaults |
 | limits.residency | Exactly `maxWorkers`, `maxQueuedPlans`, `maxQueuedBytes`, `maxAppliesPerUpdate`, `maxUploadBytesPerUpdate`, `maxDisposalsPerUpdate`, `maxResidentCpuBytes`, `maxResidentGpuBytes`, `maxPlanBytes`, `maxActiveWindows`, matching `MapRenderBudgets`. Byte fields are int64, all other fields are int32 |
 | generator | `{path,helpers}` with unique attested paths, including every retained helper and pinned helper-build input |
 | assetSelections | `{sourceArchetypeId,nativeAssetIds}`. Unique source catalog IDs, each with nonempty unique native asset catalog IDs. Required for every declared source selection, including unplaced selections and foliage policy model IDs. Observed placement and foliage bindings must be included. Extra catalog mappings are permitted |
@@ -766,13 +767,17 @@ Source and native keys are unique, with complete source coverage checked before 
 The optional limits profile is part of the comparison object, covered by the provenance file's required
 SHA-256 attestation before parsing. Changing any allowance requires a fresh attestation. Its scene limits
 apply at source capture and every direct or streamed acquisition. Its residency budgets apply to every
-complete window and the streaming sequence. Refusals include the limit name, requested amount and
+complete window and the streaming sequence. Declared query limits follow every window into native dependency
+closure, foliage support and owner seats, water, cluster cells and roof membership. Query refusals retain
+their limit, demand and allowance through scene and residency results. Refusals include the limit name, requested amount and
 allowance in typed capacity findings and diagnostic messages. Bounded discovery reports the first excess
-demand, without scanning the remainder. No limit truncates a comparison to make it pass.
+demand, without scanning the remainder. No limit truncates a comparison to make it pass. Bounded completion exhaustion reports the final
+transition capacity and findings. Ordinary upload pressure remains pending while the existing completion
+loop can still make progress.
 
 Omitting `limits` preserves existing behavior. Scene limits use the unchanged engine defaults. The harness
 retains its existing 67,108,864-byte per-plan allowance and its 256-active-window streaming allowance,
-with engine defaults for its other residency budgets. An explicit profile supplies every value instead.
+with engine defaults for its other residency budgets and for omitted query limits. An explicit profile supplies every value instead.
 
 Linked building and marker paths retain their existing full comparison objects and their transitive
 manifest dependencies. The foliage path retains the full R7 manifest. A participating category requires

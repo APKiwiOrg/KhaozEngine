@@ -22,6 +22,7 @@ public sealed class MapScopedSurfaces
         _facts = result.Facts;
         Status = result.Status;
         Detail = result.Detail;
+        Capacity = result.Capacity;
         Scope = scope;
         Surfaces = Array.AsReadOnly(_facts.Surfaces.Select(MapAcquiredFacts.CopySurface).ToArray());
         bool complete = Status == MapAcquireStatus.Complete;
@@ -35,6 +36,7 @@ public sealed class MapScopedSurfaces
     }
     public MapAcquireStatus Status { get; }
     public string? Detail { get; }
+    public Scene.MapSceneCapacity? Capacity { get; }
     public MapSurfaceScope Scope { get; }
     public IReadOnlyList<MapSurfaceRef> Surfaces { get; }
     public MapCoverageWitness Witness { get; }

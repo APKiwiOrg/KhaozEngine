@@ -13,6 +13,7 @@ public sealed record MapSceneCapacity(string LimitName, decimal Requested, long 
     {
         MapSceneCapacityException capacity => capacity.Capacity,
         MapSceneSourceException source => source.Capacity,
+        Storage.MapSurfaceCapacityException surface => surface.Capacity,
         _ => error.InnerException is { } inner ? From(inner) : null,
     };
 }

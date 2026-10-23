@@ -58,7 +58,7 @@ internal static partial class ShippedSceneComparison
                 Require(bound.Source is not null, "scene extent binding refused " + string.Join("\n", bound.Findings));
                 var source = bound.Source!;
                 var policy = inputs.NativePolicy.Native(closure, manifest);
-                var windows = manifest.Windows.ToDictionary(w => w.Id, ShippedSceneInputs.Scope, StringComparer.Ordinal);
+                var windows = manifest.Windows.ToDictionary(w => w.Id, w => ShippedSceneInputs.Scope(w, manifest.Limits?.Queries), StringComparer.Ordinal);
                 var completeWindows = new Dictionary<string, IReadOnlyDictionary<MapRenderKey, string>>(StringComparer.Ordinal);
                 foreach (var window in manifest.Windows)
                 {
@@ -304,7 +304,7 @@ internal static partial class ShippedSceneComparison
         foreach (var step in inputs.Manifest.Sequence)
         {
             if (step.Operation == "Unload") active.Remove(step.WindowId);
-            else active[step.WindowId] = ShippedSceneInputs.Scope(inputs.Manifest.Windows.Single(w => w.Id == step.WindowId));
+            else active[step.WindowId] = ShippedSceneInputs.Scope(inputs.Manifest.Windows.Single(w => w.Id == step.WindowId), inputs.Manifest.Limits?.Queries);
             residency.SetWindows(active.Values.ToArray()); Complete(residency, scheduler);
             var recorder = new MapDrawRecorder(); var point = ShippedSceneInputs.Point(0, 0, 0);
             residency.Record(new(default, point, KhaozEngine.MapDoc.Interiors.MapRoofMode.AlwaysVisible, 0, 0, point), recorder);

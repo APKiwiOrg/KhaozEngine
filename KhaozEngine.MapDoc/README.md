@@ -1426,7 +1426,9 @@ global decoded inventory. `MapPreparedInputLease` owns selected decoded material
 present, known-empty and unavailable resources. `CompleteForScope` certifies the requested acquisition,
 not the whole world. Scope defaults admit 4096 selected resources, 256 patch scopes, 262,144 prepared
 faces and 67,108,864 prepared bytes before work. Point-query limits remain 256 patches, 4096 faces,
-64 intersections, 32 page reads, 64 record reads and depth 8. `IndexNodesVisited` counts rejected siblings.
+64 intersections, 32 page reads, 64 record reads and depth 8. Explicit `MapQueryLimits` propagate through
+nested native acquisition, dependency closure and retained foliage, water, cluster and membership scopes.
+Query capacity results preserve the declared limit, demand and allowance. `IndexNodesVisited` counts rejected siblings.
 Capacity refusals retain a typed `MapSceneCapacity` in the source or scoped result, with `LimitName`,
 `Requested` and `Allowance`. Requested demand uses decimal to retain byte sums beyond int64.
 The same values appear in `Findings`. `MapSceneCapacityException` exposes the same typed values. A bounded scan reports the first

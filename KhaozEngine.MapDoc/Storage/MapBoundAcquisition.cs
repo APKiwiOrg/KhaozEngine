@@ -36,7 +36,7 @@ internal static class MapBoundAcquisition
                     if (work is not null) work.LargestBoundSlotRange = Math.Max(work.LargestBoundSlotRange, gross);
                     long overlap = known.Count(k => k.SurfaceId == bound.SurfaceId && slots.Contains(k.SlotX, k.SlotZ));
                     long fresh = gross - overlap;
-                    if (fresh > scope.Limits.MaxCandidatePatches - known.Count) throw new MapSurfaceCapacityException();
+                    if (fresh > scope.Limits.MaxCandidatePatches - known.Count) throw new MapSurfaceCapacityException(nameof(MapQueryLimits.MaxCandidatePatches), (decimal)known.Count + fresh, scope.Limits.MaxCandidatePatches);
                     if (fresh == 0) continue;
                     for (long z = slots.MinZ; z < slots.MaxZExclusive; z++)
                         for (long x = slots.MinX; x < slots.MaxXExclusive; x++)

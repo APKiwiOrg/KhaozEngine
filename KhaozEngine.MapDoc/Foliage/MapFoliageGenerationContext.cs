@@ -104,6 +104,7 @@ public sealed class MapFoliageGenerationContext : IMapFoliageInputs
     }
 
     /// <summary>Acquires a chunk scope from the captured effective resources.</summary>
+    MapQueryLimits? IMapFoliageInputs.QueryLimits => _inputs.QueryLimits;
     public MapScopedSurfaces Acquire(MapSurfaceScope scope)
     {
         ArgumentNullException.ThrowIfNull(scope);

@@ -21,7 +21,7 @@ internal static class MapSceneWaterCapture
     internal static MapWaterSet Copy(MapWaterSet source, MapWaterBodyDoc body, MapSceneScan scan)
     {
         var child = new MapPrefabWaterChild(new(MapPrefabChildKind.WaterBody, body.Id), body);
-        long bytes = checked(MapSceneResourceBounds.MetadataBytes(child) + BodyBytes(body) +
+        long bytes = checked(MapSceneResourceBounds.MetadataBytes(child) +
             Encoding.UTF8.GetByteCount("WaterBody:" + body.Id) + 128L + source.Media.Count * 16L);
         foreach (var medium in source.Media) bytes = checked(bytes + 64L + Encoding.UTF8.GetByteCount(medium.Key));
         int memberships = checked(MapSceneResourceBounds.Dependencies(child).Distinct().Count() + 1);

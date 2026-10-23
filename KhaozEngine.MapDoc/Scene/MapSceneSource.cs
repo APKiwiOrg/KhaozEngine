@@ -173,7 +173,6 @@ public sealed class MapSceneSource
                     if (!prepaidWater || child is not MapPrefabWaterChild)
                     {
                         long bytes = MapSceneResourceBounds.MetadataBytes(child);
-                        if (child is MapPrefabWaterChild water) bytes = checked(bytes + MapSceneWaterCapture.BodyBytes(water.Value));
                         scan.Retain(checked(bytes + Encoding.UTF8.GetByteCount(id)), checked(dependencies.Count + 1));
                     }
                     if (!producing.TryAdd(key, id)) throw new MapDocumentException("Duplicate effective scene resource identity.");
@@ -203,7 +202,7 @@ public sealed class MapSceneSource
             {
                 if (instance.Removed) continue;
                 if (instance.Bindings.Entries.Count > scan.Limits.MaxMetadataRows - scan.MetadataRows) throw new MapSceneCapacityException();
-                scan.Scratch(MapSceneResourceBounds.InstanceBytes(instance));
+                scan.RetainBytes(MapSceneResourceBounds.InstanceBytes(instance));
                 var resource = assets.GetResource(instance.ResourceId);
                 if (resource.Kind != MapResourceKind.Prefab || resource.Reference.Sha256 != instance.ResourceSha256)
                     throw new MapDocumentException("Scene instance differs from its verified prefab pin.");

@@ -179,6 +179,7 @@ internal static class MapSceneResourceBounds
             count = checked(count + Encoding.UTF8.GetByteCount(m.Value.Name) + Encoding.UTF8.GetByteCount(m.Value.Role));
             foreach (string tag in m.Value.Tags) count = checked(count + Encoding.UTF8.GetByteCount(tag));
         }
+        if (child is MapPrefabWaterChild water) count = checked(count + MapSceneWaterCapture.BodyBytes(water.Value));
         return count;
     }
     internal static long InstanceBytes(MapPrefabInstance instance)

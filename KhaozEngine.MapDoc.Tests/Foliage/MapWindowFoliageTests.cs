@@ -164,7 +164,7 @@ public sealed class MapWindowFoliageTests
     [Fact]
     public void WindowedFoliage_UnrelatedGrowthKeepsScopedPayloadAndWork()
     {
-        var small = FoliageComparisonFixtures.Grown(2, 8, 1, 8);
+        var small = FoliageComparisonFixtures.Grown(3, 8, 1, 8);
         var large = FoliageComparisonFixtures.Grown(64, 128, 32, 128);
         foreach (bool tiled in new[] { false, true })
         {
@@ -177,7 +177,7 @@ public sealed class MapWindowFoliageTests
                 var captured = MapFoliageGenerationContext.CaptureWindow(source, WindowFoliageFixtures.Scope(layer, new(0, 0)));
                 Assert.Equal(MapFoliageStatus.Complete, captured.Status);
                 var selected = Assert.Single(((IMapFoliageInputs)captured.Context!).Foliage!.Layers);
-                Assert.Equal(2, selected.ChunkDigests.Count);
+                Assert.Equal(3, selected.ChunkDigests.Count);
                 results.Add(captured);
             }
             Assert.Equal(results[0].Work, results[1].Work);
@@ -254,7 +254,7 @@ public sealed class MapWindowFoliageTests
         foreach (var key in f.Document.Surfaces.Patches.Keys) SurfaceStorageFixtures.DeletePayload(directory, key);
         foreach (string path in FoliageStorageFixtures.Packs(directory)) File.Delete(path);
         var layer = f.Document.Foliage!.Layers[0];
-        var keyOutside = new MapFoliageChunkKey(-1, -1);
+        var keyOutside = new MapFoliageChunkKey(-2, -2);
         using var storage = MapFoliageStorageWork.Capture();
         var result = MapFoliageGenerationContext.CaptureWindow(source, WindowFoliageFixtures.Scope(layer, keyOutside));
         Assert.Equal(MapFoliageStatus.Complete, result.Status);
@@ -330,12 +330,15 @@ public sealed class MapWindowFoliageRetentionTests
     [MethodImpl(MethodImplOptions.NoInlining)]
     static (MapWindowFoliageContext Context, WeakReference<MapFoliageChunk> Producer) Capture()
     {
-        using var fixture = WindowFoliageFixtures.Scene(WindowFoliageFixtures.Rounded());
+        var original = WindowFoliageFixtures.Rounded();
+        var wider = FoliageFixtures.Layer("cover-a", FoliageFixtures.Surface("floor"), 0.1f, -1, 1, 97, 3,
+            Enumerable.Repeat((byte)255, 97 * 3).ToArray(), []);
+        using var fixture = WindowFoliageFixtures.Scene(FoliageComparisonFixtures.Set(original, wider));
         var source = NativeSceneFixtures.Open(fixture, false);
         var layer = fixture.Document.Foliage!.Layers[0];
         var captured = MapFoliageGenerationContext.CaptureWindow(source, WindowFoliageFixtures.Scope(layer, new(0, 0)));
         Assert.Equal(MapFoliageStatus.Complete, captured.Status);
         Assert.NotNull(source.Data.ResidentFoliage);
-        return (captured.Context!, new(source.Data.ResidentFoliage.Layers[0].Chunks.Single(c => c.Key == new MapFoliageChunkKey(2, 0))));
+        return (captured.Context!, new(source.Data.ResidentFoliage.Layers[0].Chunks.Single(c => c.Key == new MapFoliageChunkKey(3, 0))));
     }
 }

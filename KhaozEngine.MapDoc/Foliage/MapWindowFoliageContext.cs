@@ -15,7 +15,7 @@ public sealed record MapWindowFoliageContextResult(MapFoliageStatus Status, MapW
     internal IReadOnlyList<string> Findings { get; init; } = Array.Empty<string>();
 }
 
-/// <summary>Immutable foliage inputs for the generation chunks intersecting the captured draw window. Dependencies
+/// <summary>Immutable foliage inputs for generation chunks whose model reach intersects the captured draw window. Dependencies
 /// outside that window are retained only to answer those chunks. No complete-document Resources property is exposed.</summary>
 public sealed class MapWindowFoliageContext : IMapFoliageInputs
 {
@@ -40,6 +40,8 @@ public sealed class MapWindowFoliageContext : IMapFoliageInputs
     public string ClosureHash { get; }
     public MapSceneWitness Witness { get; }
     public MapFoliageContextWork Work { get; }
+    internal IEnumerable<MapFoliageChunkKey> ChunksFor(string layerId) => _chunks.Where(c => c.Layer == layerId)
+        .OrderBy(c => c.Chunk.Z).ThenBy(c => c.Chunk.X).Select(c => c.Chunk);
     MapFoliageSet? IMapFoliageInputs.Foliage => _inputs.Foliage;
     MapAssetClosure IMapFoliageInputs.Assets => _inputs.Assets;
     IReadOnlyList<MapSurfaceRef> IMapFoliageInputs.DeclaredSurfaces => _inputs.DeclaredSurfaces;

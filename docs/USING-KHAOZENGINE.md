@@ -11202,6 +11202,7 @@ Capture a complete immutable context once and reuse it across chunk calls. Compl
 `MapFoliageGenerationContext.CaptureWindow(sceneSource, sceneScope, limits?)` publishes a separate window context with
 `SnapshotId`, `ClosureHash` and an explicit dependency `Witness`. Its `Generate` and `Query` overloads preserve complete
 generation's exact keys, matrices, ranks, dependencies and atomic refusals within the captured generation window.
+The window includes adjacent generation chunks whose conservative model reach enters the requested bounds.
 
 ```csharp
 using KhaozEngine.MapDoc.Foliage;

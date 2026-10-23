@@ -105,6 +105,12 @@ internal static class MapSceneResourceBounds
     }
     internal static MapBox3 Foliage(MapFoliageLayer layer, MapFoliageChunkKey chunk, MapAssetClosure assets)
     {
+        double radius = FoliageRadius(layer, assets);
+        var rect = MapFoliageSupport.Rect(layer, chunk);
+        return Outward(rect.MinX - radius, rect.MinZ - radius, rect.MaxX + radius, rect.MaxZ + radius);
+    }
+    internal static double FoliageRadius(MapFoliageLayer layer, MapAssetClosure assets)
+    {
         double radius = Math.Abs(layer.RootOffset);
         foreach (var model in layer.Models)
         {
@@ -119,8 +125,7 @@ internal static class MapSceneResourceBounds
                     radius = Math.Max(radius, Math.Sqrt(x * x + y * y + z * z) * asset.SourceUnitsToMetres * layer.ScaleMax + Math.Abs(layer.RootOffset));
                 }
         }
-        var rect = MapFoliageSupport.Rect(layer, chunk);
-        return Outward(rect.MinX - radius, rect.MinZ - radius, rect.MaxX + radius, rect.MaxZ + radius);
+        return radius;
     }
 
     internal static IEnumerable<MapSceneResourceKey> Dependencies(MapPrefabChild child)

@@ -51,32 +51,25 @@ public static class NativeMapFoliage
         using var activation = admission.Enter();
         var samples = new List<MapFoliageSampleBatch>();
         var cache = MapFoliageRenderCache.For(context);
-        var bounds = scene.Scope.DiscoveryBounds;
         var ceilings = scene.Source.Data.Limits;
         long count = 0;
         foreach (var layer in layers)
         {
-            if (bounds.MinX >= bounds.MaxX || bounds.MinZ >= bounds.MaxZ) continue;
-            // Use the released rounded ownership and chunk enumeration used by window capture.
-            int x0 = MapFoliageRasterReads.Owner(layer, MapFoliageSupport.Outward(bounds.MinX, true), true);
-            int z0 = MapFoliageRasterReads.Owner(layer, MapFoliageSupport.Outward(bounds.MinZ, true), false);
-            int x1 = MapFoliageRasterReads.Owner(layer, MathF.BitDecrement(MapFoliageSupport.Outward(bounds.MaxX, false)), true);
-            int z1 = MapFoliageRasterReads.Owner(layer, MathF.BitDecrement(MapFoliageSupport.Outward(bounds.MaxZ, false)), false);
-            foreach (int z in MapFoliageRasterReads.Chunks(layer, z0, z1, false))
-                foreach (int x in MapFoliageRasterReads.Chunks(layer, x0, x1, true))
-                {
-                    if (samples.Count >= ceilings.MaxSelectedResources) throw Capacity();
-                    long available = admission.RemainingPreparedBytes;
-                    // Bound retention and support scratch by the active composite and current window, not source defaults.
-                    var limits = new MapFoliageLimits(MaxPrepareScopes: admission.RemainingPatchScopes,
-                        MaxFaces: checked((int)Math.Min(admission.RemainingPreparedFaces, available / 2560)), MaxQuerySamples: 262_144 - count,
-                        MaxQueryRetainedBytes: available / 8)
-                    { ChargePreparation = bytes => MapFoliageGenerationAdmission.Charge(admission, bytes) };
-                    var batch = cache.Get(layer.Id, new(x, z), limits, admission, retainSamples);
-                    count += batch.Samples.Count;
-                    if (count > 262_144) throw Capacity();
-                    samples.Add(batch);
-                }
+            // Preparation consumes exactly the model-reaching generation owners admitted by window capture.
+            foreach (var key in context.ChunksFor(layer.Id))
+            {
+                if (samples.Count >= ceilings.MaxSelectedResources) throw Capacity();
+                long available = admission.RemainingPreparedBytes;
+                // Bound retention and support scratch by the active composite and current window, not source defaults.
+                var limits = new MapFoliageLimits(MaxPrepareScopes: admission.RemainingPatchScopes,
+                    MaxFaces: checked((int)Math.Min(admission.RemainingPreparedFaces, available / 2560)), MaxQuerySamples: 262_144 - count,
+                    MaxQueryRetainedBytes: available / 8)
+                { ChargePreparation = bytes => MapFoliageGenerationAdmission.Charge(admission, bytes) };
+                var batch = cache.Get(layer.Id, key, limits, admission, retainSamples);
+                count += batch.Samples.Count;
+                if (count > 262_144) throw Capacity();
+                samples.Add(batch);
+            }
         }
         return Assemble(scene, assets, policy, routing, samples);
     }

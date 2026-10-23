@@ -879,7 +879,8 @@ Complete capture requires all terrain, content and foliage resident. Partial sna
 `MapFoliageGenerationContext.CaptureWindow(sceneSource, sceneScope, limits?)` instead publishes a distinct
 `MapWindowFoliageContext` with immutable `SnapshotId`, `ClosureHash` and a complete dependency `Witness`. Its
 `MapFoliageDistribution.Generate` and `Query` overloads share the released input and evaluation kernels. Generation
-chunks intersect the half-open draw bounds, including motion padding. Requests for other chunks refuse `Unavailable`.
+chunks include adjacent owners whose conservative model reach enters the draw bounds, including motion padding.
+Native foliage preparation consumes that same admitted chunk set. Requests for other chunks refuse `Unavailable`.
 Support scopes use the same derived read reach as complete generation. Actual rounded bilinear density reads include
 advertised absent zero chunks, while unavailable or stale inputs refuse atomically. Off-raster chunks bind raster
 facts alone. Context ceilings apply to selected input bytes and descriptors beside unchanged scene and point-query

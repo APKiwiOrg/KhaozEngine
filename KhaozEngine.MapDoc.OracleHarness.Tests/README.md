@@ -745,10 +745,17 @@ Source and native keys are unique, with complete source coverage checked before 
 | Row | Exact fields and constraints |
 | --- | --- |
 | Root | `schemaVersion`, `generator`, `nativeDocumentPath`, `nativeTiledManifestPath`, `buildingManifestPath`, `markerManifestPath`, `foliageManifestPath`, `assetSelections`, `materials`, `placements`, `lights`, `roofs`, `water`, `foliage`, `windows`, `sequence`, `policy`, `expectations`. `schemaVersion` is 1. `nativeDocumentPath` is an attested path or null, and `nativeTiledManifestPath` is required and non-null |
-| limits (optional) | Exactly `{scene,residency}`, with optional `queries`. The scene and residency objects are complete. A declared queries object is complete. Null refuses. Every value is a positive JSON integer within its field's range. Unknown, missing, duplicate and case-variant fields refuse |
+| limits (optional) | Required `scene` and `residency`, with optional `queries`, `decode`, `assets`, `foliage`, `foliageContext`, `water`, `refinement` and `maxProofBytes`. Every declared family object is complete. Null refuses. Every value is a positive JSON integer within its field's range. Unknown, missing, duplicate and case-variant fields refuse |
 | limits.scene | Exactly `maxTiles`, `maxMetadataRows`, `maxMemberships`, `maxMembershipsPerResource`, `maxScannedBytes`, `maxMetadataBytes`, `maxSelectedResources`, `maxPatchScopes`, `maxPreparedFaces`, `maxPreparedBytes`, matching `MapSceneLimits`. Byte fields are int64, all other fields are int32 |
 | limits.queries (optional) | Exactly `maxCandidatePatches`, `maxInspectedFaces`, `maxSupportIntersections`, `maxPageReads`, `maxRecordReads`, `maxRecordDepth`, matching `MapQueryLimits`. All fields are positive int32 values. Omission preserves the existing query defaults |
 | limits.residency | Exactly `maxWorkers`, `maxQueuedPlans`, `maxQueuedBytes`, `maxAppliesPerUpdate`, `maxUploadBytesPerUpdate`, `maxDisposalsPerUpdate`, `maxResidentCpuBytes`, `maxResidentGpuBytes`, `maxPlanBytes`, `maxActiveWindows`, matching `MapRenderBudgets`. Byte fields are int64, all other fields are int32 |
+| limits.decode (optional) | Exactly `maxPeakBytes`, `maxVertices`, `maxIndices`, `maxImagePixels`, `maxImages`, matching `GltfDecodeLimits`. Peak bytes are int64, counts are int32 |
+| limits.assets (optional) | Exactly `maxDecodedBytes`, `maxParts`, `maxLods`, matching `MapRenderAssetLimits`. Decoded bytes are int64, counts are int32. Applies to complete selected sets, including cached pieces |
+| limits.foliage (optional) | Exactly `maxCandidates`, `maxSamples`, `maxPrepareScopes`, `maxFaces`, `maxRuleCandidates`, `maxMaskCandidates`, `maxQueryChunks`, `maxQuerySamples`, `maxQueryRetainedBytes`, `maxDifferentialCandidates`, `maxChangeRows`, `maxComparisonPreparedChunks`, `maxComparisonRetainedBytes`, matching `MapFoliageLimits`. Query sample and byte totals, differential candidates and change rows are int64. Other values are int32 |
+| limits.foliageContext (optional) | Exactly `maxSourceUtf8Bytes`, `maxChunkDescriptors`, `maxPlacements`, `maxSurfacePatches`, `maxPaintTargets`, matching `MapFoliageContextLimits`. Source bytes are int64, other values are int32 |
+| limits.water (optional) | Exactly `maxPieces`, `maxPieceVertices`, `maxFootprintCells`, `maxBoundFaces`, `maxPairChecks`, `maxTriangles`, `maxBoundCells`, matching the scalar members of `MapWaterCompileLimits`. All are int32. Bound reads use `limits.refinement` when declared |
+| limits.refinement (optional) | Exactly `maxSourceFacesPerBound`, `maxPairChecks`, `maxRefinementFaces`, `maxRefinementVertices`, `maxContextPatches`, `maxContextFaces`, matching `MapRefinementLimits`. All are int32. Applies to partial paint, nested support membership and water bound reads |
+| limits.maxProofBytes (optional) | Positive int64 extent-proof metadata allowance. Omission retains the validator's default |
 | generator | `{path,helpers}` with unique attested paths, including every retained helper and pinned helper-build input |
 | assetSelections | `{sourceArchetypeId,nativeAssetIds}`. Unique source catalog IDs, each with nonempty unique native asset catalog IDs. Required for every declared source selection, including unplaced selections and foliage policy model IDs. Observed placement and foliage bindings must be included. Extra catalog mappings are permitted |
 | materials | `{sourceMaterialId,nativeResourceId}`. Source IDs are positive ushort values |
@@ -777,7 +784,13 @@ loop can still make progress.
 
 Omitting `limits` preserves existing behavior. Scene limits use the unchanged engine defaults. The harness
 retains its existing 67,108,864-byte per-plan allowance and its 256-active-window streaming allowance,
-with engine defaults for its other residency budgets and for omitted query limits. An explicit profile supplies every value instead.
+with engine defaults for its other residency budgets and for omitted query limits. Each declared family
+supplies its complete set of values. Omitted preparation and decode families preserve existing per-call
+defaults, including allowances derived from remaining scene and residency memory. Explicit ceilings clamp
+those remaining allowances. The profile covers all 65 scalar limits in the nine registered families,
+plus the extent-proof metadata byte allowance. Full input expansion and foliage correspondence capture
+use the same declared query and context limits as window preparation. Decode limits follow extent
+scratch work and every selected asset, material and composition decode into residency.
 
 Linked building and marker paths retain their existing full comparison objects and their transitive
 manifest dependencies. The foliage path retains the full R7 manifest. A participating category requires

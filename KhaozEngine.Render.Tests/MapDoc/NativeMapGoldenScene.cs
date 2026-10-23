@@ -75,7 +75,7 @@ public sealed class NativeMapGoldenScene : IDisposable
         if (focus is { } f) frame = frame with { Focus = new(frame.Frame, f) };
         Configure(setup.Framing, variant, farOrigin);
         long uploads = residency.Lifetime.UploadBytes, created = residency.Lifetime.Created;
-        var filter = new NativeMapGoldenSubmission(sink, variant.StartsWith("water-", StringComparison.Ordinal) ? "water" : variant, omitFeature, omitRoofShadow, omitFarLight);
+        var filter = new NativeMapGoldenSubmission(sink, variant.StartsWith("water-", StringComparison.Ordinal) ? "water" : variant == "roof-hlod" ? "roofs" : variant, omitFeature, omitRoofShadow, omitFarLight);
         var expectedFoliage = ValidatePreparedFoliage(Scene, residency, frame);
         var frames = new NativeMapGoldenFrame[Warmup + 1];
         for (int i = 0; i <= Warmup; i++)
@@ -281,10 +281,11 @@ internal sealed class NativeMapGoldenSetup : IDisposable
             doc.NativeResourceTransforms = [.. doc.NativeResourceTransforms, new(MapPrefabChildKind.Surface, "ceiling-edge", new(0, 0, 4.5, 0, 1), new string('d', 64))];
             framing = Camera(new(2, 8, 9), new(2, 0, 2), 7);
         }
-        else if (variant is "props" or "roofs" or "foliage" or "focus")
+        else if (variant is "props" or "roofs" or "roof-hlod" or "foliage" or "focus")
         {
             doc.Surfaces = new();
-            AddSurface(doc, "ground", MapSurfaceRole.SupportFloor, 16, 12, 0, (_, _) => new(10, 0, MapOverlayCut.Full, 0, 0, MapCellTopology.ForceSwNe));
+            int groundDepth = variant == "roof-hlod" ? 4 : 12;
+            AddSurface(doc, "ground", MapSurfaceRole.SupportFloor, 16, groundDepth, 0, (_, _) => new(10, 0, MapOverlayCut.Full, 0, 0, MapCellTopology.ForceSwNe));
             if (variant == "props")
             {
                 doc.Placements = [Placement("building-0", "building", 3, 0, 4, 1), Placement("building-1", "building", 8, 0, 4, 2),
@@ -292,7 +293,7 @@ internal sealed class NativeMapGoldenSetup : IDisposable
                 placements = new([new("buildings", new HashSet<string> { "building" }, [3, 8], 1, 256, 0, 0, 0, true)], 256);
                 framing = Camera(new(8, 9, 18), new(8, 1, 4), 12);
             }
-            else if (variant == "roofs")
+            else if (variant is "roofs" or "roof-hlod")
             {
                 doc.Placements = [Placement("solid", "building", 10, 0, 7, 1), Placement("roof-a", "roof", 2, 3, 2, 2)];
                 doc.NumericIdHighWaterMark = 2;
@@ -300,7 +301,7 @@ internal sealed class NativeMapGoldenSetup : IDisposable
                 patch.Records.Add(new MapSpaceDoc("outside", MapSpaceKind.Exterior, null, null, [], [], [], []));
                 var parent = new MapRecordRef("outside", patch.Key);
                 patch.Records.Add(new MapSpaceFootprint("outside-footprint", parent, patch.Key,
-                    Enumerable.Range(0, 12).SelectMany(z => Enumerable.Range(0, 16).Select(x => z * 64 + x)).ToArray(),
+                    Enumerable.Range(0, groundDepth).SelectMany(z => Enumerable.Range(0, 16).Select(x => z * 64 + x)).ToArray(),
                     new(MapBoundKind.SupportFloor, "ground", null), new(MapBoundKind.OpenTop, null, null)));
                 patch.Records.Add(new MapSpaceDoc("room", MapSpaceKind.Room, parent, null, [], [], [], []));
                 patch.Records.Add(new MapPrismDomain("room-domain", 1, new("room", patch.Key), parent, "", "storey",
@@ -310,6 +311,17 @@ internal sealed class NativeMapGoldenSetup : IDisposable
                     Enumerable.Range(0, 17).Select(i => new MapLocalLightDoc(1, "light-" + i, null, new(8 + i * .1f, 4, 6), new(.2f, .2f, .2f), .1f, 8, false)).ToArray(), [])
                 { Roofs = [Ref("roof-a", MapPrefabChildKind.Placement)], Storeys = [new(1, "storey", "Storey", null)] };
                 placements = new([new("buildings", new HashSet<string> { "building" }, [3, 8], 1, 256, 30, 10, 0, true)], 256);
+                if (variant == "roof-hlod")
+                {
+                    doc.Placements.Add(Placement("roof-b", "roof", 10, 3, 2, 3)); doc.NumericIdHighWaterMark = 3;
+                    patch.Records.Add(new MapSpaceDoc("room-b", MapSpaceKind.Room, parent, null, [], [], [], []));
+                    patch.Records.Add(new MapPrismDomain("room-b-domain", 1, new("room-b", patch.Key), parent, "", "storey",
+                        new(MapLatticeFrame.ImportedMetreCentimetre, [new(8, -4, 12, 0)], []), 0, 4));
+                    var intent = doc.BuildingIntent;
+                    doc.BuildingIntent = new(1, [.. intent.RoofLinks, new("roof-b-link", Ref("roof-b", MapPrefabChildKind.Placement), [Ref("room-b", MapPrefabChildKind.Record)], [], 4)],
+                        [], intent.Lights, []) { Roofs = [.. intent.Roofs, Ref("roof-b", MapPrefabChildKind.Placement)], Storeys = intent.Storeys };
+                    placements = new([.. placements.Layers, new("caps", new HashSet<string> { "roof" }, [], 0, 256, 30, 10, 0, true)], 256);
+                }
                 framing = Camera(new(8, 20, 6), new(8, 0, 6), 14);
             }
             else

@@ -87,3 +87,22 @@ capture, and verifies actual command-buffer labels, all three encoder kinds wher
 Release source frames and matching Begin counter lines. None of those native outcomes is established
 by a successful build. The parent archives and pushes only after that evidence. This worker does not
 push, merge, tag or change another checkout.
+
+## Observed native attribution
+
+A bounded Metal System Trace capture with probe code `8c0004e8b` completed successfully on an
+Apple M2 Max. The private client differed from its stock copy only in `KhaozEngine.Gpu.Metal.dll`.
+All 60 selected render recordings, 157 through 216 on list 2, contained 14 encoders. Their labelled
+opening stacks were stable across the window. Recording 217 was the closing render and was excluded.
+
+| Encoder ordinal | Observed source opening |
+| --- | --- |
+| 2 | `ModelRenderer.DrawShadowCasterRun` through `RenderShadowDepthPass` and `RenderCascadeShadowPass` |
+| 4 | `ModelRenderer.DrawMeshInstanced` through `Scene3D.RenderInternal` |
+| 9 | `TemporalSplitResolve.Run` through `TemporalResolveRenderer.RunSplit` |
+
+The source names survived Release optimization. Native render and blit labels were observed. No
+compute encoder was required by this fixture, so its label path remains unexercised. The log contained
+217 Begin records for the render list and cumulative backpressure counter values. These observations
+validate identity attribution only. Later logical work can share an encoder's opening label, and the
+instrumented timings do not establish a frame-rate improvement.

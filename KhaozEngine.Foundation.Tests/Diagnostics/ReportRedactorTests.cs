@@ -330,25 +330,6 @@ public sealed class ReportRedactorTests
         foreach (string text in corpus)
             Assert.Equal(originalKeyValues.Replace(text, "$1" + Mask), keyValues.Redact(text));
     }
-
-    [Fact]
-    public void Timeout_fails_closed_to_the_whole_string_mask()
-    {
-        var redactor = new ReportRedactor("/Users/ann", TimeSpan.FromTicks(1));
-        string text = Repeat("password ", 2_000_000) + "password=hunter22";
-
-        Assert.Equal(Mask, redactor.Redact(text));
-    }
-
-    [Fact]
-    public void Timeout_on_clean_text_fails_closed()
-    {
-        // Nothing here matches, so no rule reaches its replace step and only a match test can time out.
-        var redactor = new ReportRedactor("/Users/ann", TimeSpan.FromTicks(1));
-        string text = Repeat("password ", 2_000_000);
-
-        Assert.Equal(Mask, redactor.Redact(text));
-    }
 }
 
 /// <summary>

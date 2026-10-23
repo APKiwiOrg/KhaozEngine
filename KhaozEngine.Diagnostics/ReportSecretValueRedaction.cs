@@ -11,6 +11,8 @@ internal sealed class ReportSecretValueRedaction(TimeSpan timeout)
         @"(?:password|passwd|pwd|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|client[_-]?secret|connection[_-]?string|accountkey|sharedaccesskey)[""']?\s*[:=]\s*[""']?",
         RegexOptions.CultureInvariant | RegexOptions.IgnoreCase | RegexOptions.NonBacktracking, timeout);
 
+    internal Regex Pattern => prefix;
+
     internal string Redact(string text)
     {
         if (text.Length > ReportRedactor.MaximumInputLength) return ReportRedactor.Mask;

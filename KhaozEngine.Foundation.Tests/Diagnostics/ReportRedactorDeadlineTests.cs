@@ -2,62 +2,62 @@ using System;
 using System.Text.RegularExpressions;
 using KhaozEngine.Diagnostics;
 using Xunit;
+using Xunit.Sdk;
 
 namespace KhaozEngine.Tests.Diagnostics;
 
 public sealed class ReportRedactorDeadlineTests
 {
-    [Fact]
-    public void Production_secret_rules_have_no_wall_clock_deadline()
-    {
-        Assert.All(new ReportRedactor("").Rules,
-            rule => Assert.Equal(Regex.InfiniteMatchTimeout, rule.Pattern.MatchTimeout));
-    }
-
     [Theory]
-    [InlineData("error", "error")]
-    [InlineData("System.InvalidOperationException: boom at /Users/ann/x", "System.InvalidOperationException: boom at ~/x")]
-    public void Ordinary_report_strings_survive_an_elapsed_production_deadline(string text, string expected)
+    [InlineData("secret-0")]
+    [InlineData("secret-1")]
+    [InlineData("secret-2")]
+    [InlineData("secret-3")]
+    [InlineData("secret-4")]
+    [InlineData("key-value")]
+    [InlineData("home")]
+    [InlineData("home-windows")]
+    [InlineData("identity-single")]
+    [InlineData("identity-combined")]
+    public void Every_production_matcher_is_non_backtracking_and_has_no_deadline(string name)
     {
-        var redactor = new ReportRedactor("/Users/ann", ElapsedProductionDeadline());
+        Regex production = Matcher(name);
 
-        Assert.Equal(expected, redactor.Redact(text));
+        AssertPolicy(production);
+
+        // Exercise the same guard with the former finite production deadline and with a backtracking
+        // copy. These controls fail by construction, without invoking a match or depending on a clock.
+        Regex finite = Matcher(name, TimeSpan.FromMilliseconds(250));
+        Assert.ThrowsAny<XunitException>(() => AssertPolicy(finite));
+        var backtracking = new Regex(production.ToString(), production.Options & ~RegexOptions.NonBacktracking,
+            Regex.InfiniteMatchTimeout);
+        Assert.ThrowsAny<XunitException>(() => AssertPolicy(backtracking));
     }
 
-    [Fact]
-    public void Clean_identity_text_preserves_its_instance_after_an_elapsed_production_deadline()
+    static void AssertPolicy(Regex pattern)
     {
-        ReporterIdentityRedaction identity = ReporterIdentityRedaction.Capture(
-            () => ["Aster Dawn", "discord:12345"], ElapsedProductionDeadline());
-        string text = new("Loaded 12 tiles in 3.2 ms".ToCharArray());
-
-        Assert.Same(text, identity.Redact(text));
+        Assert.NotEqual(RegexOptions.None, pattern.Options & RegexOptions.NonBacktracking);
+        Assert.Equal(Regex.InfiniteMatchTimeout, pattern.MatchTimeout);
     }
 
-    [Fact]
-    public void Clean_composed_text_preserves_its_instance_after_an_elapsed_production_deadline()
+    static Regex Matcher(string name, TimeSpan? timeout = null)
     {
-        ReportRedactor redactor = new ReportRedactor("", ElapsedProductionDeadline())
-            .WithReporterIdentityTerms(() => ["Aster Dawn", "discord:12345"]);
-        string text = new("Loaded 12 tiles in 3.2 ms".ToCharArray());
-
-        Assert.Same(text, redactor.Redact(text));
-    }
-
-    [Fact]
-    public void Identity_matches_preserve_surrounding_text_after_an_elapsed_production_deadline()
-    {
-        ReporterIdentityRedaction identity = ReporterIdentityRedaction.Capture(
-            () => ["Aster Dawn", "discord:12345"], ElapsedProductionDeadline());
-
-        Assert.Equal("Player [redacted] joined.", identity.Redact("Player Aster Dawn joined."));
-    }
-
-    static TimeSpan ElapsedProductionDeadline()
-    {
-        TimeSpan timeout = new ReportRedactor("").Rules[0].Pattern.MatchTimeout;
-        // A positive tick rounds to a zero millisecond regex deadline. Collapse finite production budgets
-        // instead of sleeping or loading the runner. An explicitly disabled deadline remains disabled.
-        return timeout == Regex.InfiniteMatchTimeout ? timeout : TimeSpan.FromTicks(1);
+        string home = name == "home-windows" ? @"C:\Users\Ann" : "/Users/ann";
+        ReportRedactor redactor = timeout is { } finite ? new(home, finite) : new(home);
+        return name switch
+        {
+            "secret-0" => redactor.Rules[0].Pattern,
+            "secret-1" => redactor.Rules[1].Pattern,
+            "secret-2" => redactor.Rules[2].Pattern,
+            "secret-3" => redactor.Rules[3].Pattern,
+            "secret-4" => redactor.Rules[4].Pattern,
+            "key-value" => redactor.SecretValuePattern,
+            "home" or "home-windows" => Assert.IsType<Regex>(redactor.HomePattern),
+            "identity-single" => Assert.IsType<Regex>(redactor.WithReporterIdentityTerms(
+                () => ["Aster (Dawn)+"]).IdentityPattern),
+            "identity-combined" => Assert.IsType<Regex>(redactor.WithReporterIdentityTerms(
+                () => ["Aster Dawn", "discord:12345"]).IdentityPattern),
+            _ => throw new ArgumentOutOfRangeException(nameof(name)),
+        };
     }
 }

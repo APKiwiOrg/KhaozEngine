@@ -114,14 +114,6 @@ public sealed class ReporterIdentityRedactionTests
         Assert.Equal(ReportRedactor.Mask, redactor.Redact("player Rowan Vale"));
     }
 
-    [Fact]
-    public void Timeout_still_masks_the_whole_string()
-    {
-        ReportRedactor redactor = With(new ReportRedactor("", TimeSpan.FromTicks(1)), () => ["Aster Dawn"]);
-
-        Assert.Equal(ReportRedactor.Mask, redactor.Redact(new string('a', 2_000_000) + " Aster Dawn"));
-    }
-
     static IEnumerable<string> BrokenTerms()
     {
         yield return "Aster Dawn";

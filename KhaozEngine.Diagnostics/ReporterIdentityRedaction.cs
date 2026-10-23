@@ -16,6 +16,8 @@ internal sealed class ReporterIdentityRedaction(Regex? pattern, bool maskAll = f
     static readonly ReporterIdentityRedaction Failed = new(null, maskAll: true);
     static readonly ReporterIdentityRedaction Empty = new(null);
 
+    internal Regex? Pattern => pattern;
+
     /// <summary>Reads the source once. Any source or pattern construction failure masks every string.</summary>
     internal static ReporterIdentityRedaction Capture(Func<IEnumerable<string>> source, TimeSpan timeout)
     {

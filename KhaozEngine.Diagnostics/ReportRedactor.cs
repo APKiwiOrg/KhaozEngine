@@ -53,7 +53,7 @@ public sealed class ReportRedactor
     {
     }
 
-    /// <summary>A redactor whose rules use <paramref name="matchTimeout"/>, so a test can force a timeout or turn it off.</summary>
+    /// <summary>Creates isolated matchers with the supplied <paramref name="matchTimeout"/>.</summary>
     internal ReportRedactor(string? homeDirectory, TimeSpan matchTimeout)
         : this(homeDirectory, BuildRules(matchTimeout), new ReportSecretValueRedaction(matchTimeout), matchTimeout)
     {
@@ -98,6 +98,10 @@ public sealed class ReportRedactor
 
     /// <summary>The home rule, or null when absent or refused.</summary>
     internal Regex? HomePattern => home?.Pattern;
+
+    internal Regex SecretValuePattern => keyValues.Pattern;
+
+    internal Regex? IdentityPattern => identity?.Pattern;
 
     /// <summary>
     /// <paramref name="text"/> with every rule applied in order. Returns the same instance when nothing

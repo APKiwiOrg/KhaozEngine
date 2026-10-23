@@ -20,6 +20,7 @@ internal static class ReportRedactionAdversarialCases
         Assert.All(redactor.Rules, rule =>
             Assert.True((rule.Pattern.Options & RegexOptions.NonBacktracking) != 0, rule.Pattern.ToString()));
         Assert.NotEqual(RegexOptions.None, redactor.HomePattern!.Options & RegexOptions.NonBacktracking);
+        Assert.NotEqual(RegexOptions.None, redactor.SecretValuePattern.Options & RegexOptions.NonBacktracking);
 
         // Keys with no terminator: the first value takes the rest.
         Assert.Equal("password=" + Mask, redactor.Redact(Repeat("password=", Length)));

@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.MapDoc.Scene;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -40,7 +41,10 @@ public sealed class MapTerrainRenderBatch : IDisposable
     public IReadOnlyList<MapTerrainFinding> Findings { get; }
     public long RetainedBytes { get; }
     public long InputRetainedBytes => _input.RetainedBytes;
-    public long PreparationChargeBytes { get; }
+    internal MapPreparationReservation? PreparationOwnership { get; private set; }
+    internal void Own(MapPreparationReservation ownership)
+    { PreparationOwnership = ownership; PreparationChargeBytes = ownership.Bytes; }
+    public long PreparationChargeBytes { get; private set; }
     internal MapTerrainRenderBatch(MapPreparedInputLease input, IReadOnlyList<MapTerrainCanonicalFace> canonical,
         IReadOnlyList<MapTerrainPartition> partitions, IReadOnlyList<MapTerrainPart> parts,
         IReadOnlyList<MapTerrainFinding> findings, long charge)
@@ -78,5 +82,5 @@ public sealed class MapTerrainRenderBatch : IDisposable
         }
     }
 
-    public void Dispose() { if (_disposed) return; _disposed = true; _input.Dispose(); }
+    public void Dispose() { if (_disposed) return; _disposed = true; _input.Dispose(); PreparationOwnership?.Dispose(); }
 }

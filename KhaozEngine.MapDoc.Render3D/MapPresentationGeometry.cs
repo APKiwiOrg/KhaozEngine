@@ -23,6 +23,10 @@ public sealed class MapPresentationPlacement
         if (collider is not null) { admission.ReserveBytes(PreparedShapeRay.Bytes(collider)); _collider = new(collider, pose); ColliderBounds = Bounds(collider, pose); }
         if (selection is not null) { admission.ReserveBytes(PreparedShapeRay.Bytes(selection)); _selection = new(selection, selectionPose); SelectionBounds = Bounds(selection, selectionPose); }
     }
+    internal long InventoryBytes => checked(128L + MapPresentationGeometry.ShapeBytes(_colliderShape) +
+        (ReferenceEquals(_colliderShape, _selectionShape) ? 0 : MapPresentationGeometry.ShapeBytes(_selectionShape)) +
+        (_colliderShape is null ? 0 : PreparedShapeRay.Bytes(_colliderShape)) +
+        (_selectionShape is null ? 0 : PreparedShapeRay.Bytes(_selectionShape)));
     public string OwnerId { get; }
     public long? NumericId { get; }
     public MapSubmissionAnchor Anchor { get; }
@@ -56,6 +60,9 @@ internal readonly record struct MapPresentationFace(string OwnerId, double Ax, d
 /// <summary>One immutable scene's exact collider and canonical face inventory, prepared before any frame query.</summary>
 public sealed class MapPresentationGeometry
 {
+    internal MapPreparationReservation? PreparationOwnership { get; private set; }
+    public long RetainedBytes => checked(512L + 128L * Faces.Length + 128L * Placements.Count +
+        28L * (Faces.Length + Placements.Count) + Placements.Sum(p => p.InventoryBytes));
     public IReadOnlyList<MapPresentationPlacement> Placements { get; }
     internal MapPresentationFace[] Faces { get; }
     internal MapPresentationPicker.Workspace PickWorkspace { get; }
@@ -69,6 +76,7 @@ public sealed class MapPresentationGeometry
             throw new MapRenderAssetRefusal(MapRenderAssetStatus.Stale, "Presentation geometry requires the complete matching scoped closure.");
         var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(scene.Source.Data.Limits);
         using var activation = admission.Enter();
+        using var preparation = admission.BeginPreparation();
         try
         {
             admission.ReserveBytes(checked(512L + 128L * scene.Placements.Count + 128L * (faces?.Count ?? 0)));
@@ -104,7 +112,9 @@ public sealed class MapPresentationGeometry
                 canonical[i] = new(f.Face.Key.OwnerId, t.A.X.ToDouble(), t.A.Y.ToDouble(), t.A.Z.ToDouble(),
                     t.B.X.ToDouble(), t.B.Y.ToDouble(), t.B.Z.ToDouble(), t.C.X.ToDouble(), t.C.Y.ToDouble(), t.C.Z.ToDouble());
             }
-            return new(rows.ToArray(), canonical);
+            var result = new MapPresentationGeometry(rows.ToArray(), canonical);
+            result.PreparationOwnership = preparation.Complete(result.RetainedBytes);
+            return result;
 
             PhysicsShape? Read(string? id, MapResourceKind kind)
             {
@@ -122,6 +132,14 @@ public sealed class MapPresentationGeometry
         catch (MapSceneCapacityException error) { throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, error.Message, error); }
         catch (EndOfStreamException) { throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, "Presentation shape is truncated."); }
     }
+    internal static long ShapeBytes(PhysicsShape? shape) => checked(shape switch
+    {
+        null => 0,
+        ConvexHullShape hull => 128L + 12L * hull.Points.Length,
+        TriangleMeshShape mesh => 128L + 12L * mesh.Vertices.Length + 4L * mesh.Indices.Length,
+        CompoundShape compound => 128L + 64L * compound.Children.Length + compound.Children.Sum(c => ShapeBytes(c.Shape)),
+        _ => 64L,
+    });
     static long CopyBytes(PhysicsShape? shape) => checked(shape switch
     {
         null => 0,

@@ -40,6 +40,7 @@ public static class NativeMapWater
             throw new MapRenderAssetRefusal(MapRenderAssetStatus.Missing, "Water requires complete requested and canonical-cell coverage.");
         var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(water.Limits);
         using var admitted = admission.Enter();
+        using var preparation = admission.BeginPreparation();
         try
         {
             // Admit the scratch settings, explicit effective look and frozen frame copy before allocation.
@@ -102,7 +103,9 @@ public static class NativeMapWater
                 parts.Add(new(key, anchor, bounds, payload, clip.Digest));
             }
             admission.ReserveBytes(checked(8L * (parts.Count + water.Cells.Count)));
-            return new(canonical, parts, MapFrozenWaterLook.Capture(look), admission.RetainedBytes);
+            var result = new MapWaterRenderBatch(canonical, parts, MapFrozenWaterLook.Capture(look), 0);
+            result.Own(preparation.Complete(result.RetainedBytes));
+            return result;
         }
         catch (Exception error) when (error is MapSceneCapacityException or MapWaterCapacityException)
         { throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, error.Message, error); }

@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.MapDoc.Scene;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -30,7 +31,21 @@ public sealed class MapPlacementRenderBatch : IDisposable
     public MapPlacementRouting Routing { get; }
     public IReadOnlyList<MapEffectiveMarker> Markers { get; }
     public IReadOnlyList<NativePropClusterCpuBuild> Clusters { get; }
-    public long PreparationChargeBytes { get; }
+    internal MapPreparationReservation? PreparationOwnership { get; private set; }
+    internal void Own(MapPreparationReservation ownership)
+    { PreparationOwnership = ownership; PreparationChargeBytes = ownership.Bytes; }
+    public long PreparationChargeBytes { get; private set; }
+    public long RetainedBytes
+    {
+        get
+        {
+            var inventory = new MapNativeInventory();
+            return checked(1024L + 128L * (Inventory.Count + Markers.Count) + 256L * _parts.Count + 32L * Clusters.Count +
+                _parts.Sum(p => MapNativeInventory.Mesh(p.Payload.BorrowMesh, p.Payload.BorrowMaps)) +
+                _ordinary.Concat(_roofs).Sum(inventory.Layer) + Clusters.Sum(c => MapNativeInventory.Mesh(c.BorrowMesh) +
+                    inventory.Layer(c.Request.BorrowLayer) + 16L * c.Request.Instances.Count));
+        }
+    }
     public long InputRetainedBytes => _input?.RetainedBytes ?? 0;
     internal void AttachInput(MapPreparedInputLease input) => _input = input;
     internal MapPlacementRenderBatch(IReadOnlyList<MapResolvedPlacement> inventory, IReadOnlyList<MapEffectiveMarker> markers, IReadOnlyList<PropLayer> ordinary, IReadOnlyList<PropLayer> roofs,
@@ -127,5 +142,5 @@ public sealed class MapPlacementRenderBatch : IDisposable
                 draw.DissolveComplement, draw.Motion), null, null, null));
     static MapDrawChannels Channels(bool shadows) => MapDrawChannels.Colour | MapDrawChannels.Camera | MapDrawChannels.Sky |
         MapDrawChannels.Selection | MapDrawChannels.Physical | (shadows ? MapDrawChannels.Shadow : MapDrawChannels.None);
-    public void Dispose() { if (_disposed) return; _disposed = true; _clusters.Dispose(); _input?.Dispose(); }
+    public void Dispose() { if (_disposed) return; _disposed = true; _clusters.Dispose(); _input?.Dispose(); PreparationOwnership?.Dispose(); }
 }

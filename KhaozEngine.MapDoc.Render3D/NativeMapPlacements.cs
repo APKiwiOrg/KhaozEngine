@@ -39,14 +39,15 @@ public static class NativeMapPlacements
         ArgumentNullException.ThrowIfNull(scene); ArgumentNullException.ThrowIfNull(assets);
         ArgumentNullException.ThrowIfNull(policy); ArgumentNullException.ThrowIfNull(routing);
         routing.Validate(scene, policy);
+        var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(scene.Source.Data.Limits);
+        using var activation = admission.Enter();
+        using var preparation = admission.BeginPreparation();
         if (scene.Witness.ClosureHash != assets.Closure.Hash) throw new MapDocumentException("Placement assets belong to another closure.");
         cells ??= MapPlacementCellInventory.Capture(scene, routing);
         foreach (var placement in scene.Placements)
             if (!assets.ById.ContainsKey(placement.AssetId)) throw new MapRenderAssetRefusal(MapRenderAssetStatus.Missing, "Placement has no selected asset: " + placement.AssetId);
         foreach (var placement in cells.Cells.SelectMany(cell => cell.Members))
             if (!assets.ById.ContainsKey(placement.AssetId)) throw new MapRenderAssetRefusal(MapRenderAssetStatus.Missing, "Canonical cell member has no selected asset: " + placement.AssetId);
-        var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(scene.Source.Data.Limits);
-        using var activation = admission.Enter();
         try
         {
             var instances = new List<NativePropInstance>();
@@ -152,7 +153,9 @@ public static class NativeMapPlacements
             admission.ReserveBytes(checked(1024L + parts.Count * 192L + clusters.Count * 32L + (ordinary.Count + roofLayers.Count) * 32L));
             var preparedInventory = scene.Placements.Where(p => routing.Entries[p.PlacementId] != MapPlacementRoute.Cluster)
                 .Concat(cells.Cells.SelectMany(cell => cell.Members)).ToArray();
-            return new(preparedInventory, MapEffectiveAnnotations.Markers(scene), ordinary, roofLayers, parts, routing, clusters, admission.RetainedBytes);
+            var result = new MapPlacementRenderBatch(preparedInventory, MapEffectiveAnnotations.Markers(scene), ordinary, roofLayers, parts, routing, clusters, 0);
+            result.Own(preparation.Complete(result.RetainedBytes));
+            return result;
 
             PropLayer Shared(IReadOnlyList<NativePropInstance> rows, MapPlacementLayer? layer)
             {

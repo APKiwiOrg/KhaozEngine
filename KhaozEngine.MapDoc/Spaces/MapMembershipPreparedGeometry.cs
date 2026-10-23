@@ -12,6 +12,10 @@ internal sealed class MapMembershipPreparedGeometry
 {
     internal sealed class Cell
     {
+        internal long InventoryBytes => checked(256L + Polygon.InventoryBytes + 256L * Faces.Length +
+            Triangles.Sum(t => 8L + t.InventoryBytes) + (SpanLower?.Sum(t => 8L + t.InventoryBytes) ?? 0) +
+            (SpanUpper?.Sum(t => 8L + t.InventoryBytes) ?? 0) + (LegacyX?.Sum(t => 8L + t.InventoryBytes) ?? 0) +
+            (LegacyZ?.Sum(t => 8L + t.InventoryBytes) ?? 0));
         internal readonly int Id, PatchIndex;
         internal int FaceSet;
         internal readonly MapCellDemand Demand;
@@ -84,6 +88,17 @@ internal sealed class MapMembershipPreparedGeometry
         {
             for (int i = 0; i < Cells.Length; i++) if (Cells[i].Polygon.Contains(point, exact)) return Cells[i];
             return null;
+        }
+    }
+    internal long InventoryBytes
+    {
+        get
+        {
+            var cellSets = Cells.Select(c => c.Triangles).ToHashSet();
+            return checked(512L + Cells.Sum(c => 8L + c.InventoryBytes) +
+                Surfaces.Values.Sum(s => 128L + 8L * s.Cells.Length) + 64L * (ByCell.Count + Validated.Count) +
+                8L * FaceSets.Count + FaceSets.Where(f => !cellSets.Contains(f)).Sum(f => f.Sum(t => 8L + t.InventoryBytes)) +
+                OpeningSets.Values.Sum(s => 96L + 64L * s.Count));
         }
     }
     internal readonly Cell[] Cells;

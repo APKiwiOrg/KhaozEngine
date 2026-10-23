@@ -17,6 +17,12 @@ internal sealed class MapSpaceMembershipScratch : IMapMembershipPointInput
     readonly record struct Demand(MapMembershipPreparedGeometry.Cell Cell, int Opening);
     readonly record struct Prism(MapSpaceDoc Space, string Owner, string Parent, MapMembershipPolygon[] Rings,
         MapExactValue Lower, MapExactValue Upper);
+    internal long InventoryBytes => checked(512L + _geometry.InventoryBytes + MapMembershipExact.StorageBytes +
+        _footprints.Sum(f => 8L + f.InventoryBytes) + _portals.Sum(p => 8L + p.InventoryBytes) +
+        192L * _spaces.Count + _ancestors.Values.Sum(a => 96L + 8L * a.Length) +
+        _prisms.Sum(p => 128L + p.Rings.Sum(r => 8L + r.InventoryBytes)) + 32L * _active.Length + 16L * _demands.Length +
+        _validated.Length + _physical.Length + _opening.Length + 8L * _patchFaces.Length +
+        MapMembershipPointScratch.Bytes(_scratch.Raw.Length, _scratch.Prisms.Length));
     readonly MapScopedSurfaces _view;
     readonly MapMembershipPreparedGeometry _geometry;
     readonly MapMembershipPreparedFootprint[] _footprints;

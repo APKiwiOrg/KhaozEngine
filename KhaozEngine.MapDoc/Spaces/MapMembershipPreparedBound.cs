@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
 
@@ -18,6 +19,7 @@ internal readonly record struct MapMembershipBoundPlan(MapSpacePointBounds.Bound
 /// <summary>Released bound planning frozen per acquired cell, with only exact owner lookup at query time.</summary>
 internal sealed class MapMembershipPreparedBound
 {
+    internal long InventoryBytes => checked(128L + 192L * _plans.Length);
     readonly MapMembershipPreparedGeometry.Surface? _surface;
     readonly MapMembershipBoundPlan[] _plans;
     readonly MapMembershipBoundPlan _absent;
@@ -65,6 +67,7 @@ internal sealed class MapMembershipPreparedBound
 
 internal sealed class MapMembershipPreparedFootprint
 {
+    internal long InventoryBytes => checked(128L + _cells.Sum(c => 8L + c.InventoryBytes) + Lower.InventoryBytes + Upper.InventoryBytes);
     internal readonly MapSpaceFootprint Record;
     internal readonly MapMembershipPreparedBound Lower, Upper;
     readonly MapMembershipPolygon[] _cells;

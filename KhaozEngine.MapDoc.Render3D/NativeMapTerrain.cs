@@ -30,6 +30,7 @@ public static class NativeMapTerrain
         if (input.ClosureHash != scene.Witness.ClosureHash) throw new MapRenderAssetRefusal(MapRenderAssetStatus.Stale, "Terrain and prepared input closures differ.");
         var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(scene.Source.Data.Limits);
         using var admitted = admission.Enter();
+        using var preparation = admission.BeginPreparation();
         try
         {
             admission.ReserveBytes(512);
@@ -68,7 +69,9 @@ public static class NativeMapTerrain
                     Digest(mesh, input.ClosureHash, group.Key.Anchor)));
             }
             admission.ReserveBytes(checked(8L * (canonical.Count + partitions.Length + parts.Count + findings.Count)));
-            return new(input, canonical, partitions, parts, findings, admission.RetainedBytes);
+            var result = new MapTerrainRenderBatch(input, canonical, partitions, parts, findings, 0);
+            result.Own(preparation.Complete(result.RetainedBytes));
+            return result;
         }
         catch (MapSceneCapacityException error) { throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, error.Message, error); }
         catch (Exception ex) when (ex is MapExactOverflowException or OverflowException)

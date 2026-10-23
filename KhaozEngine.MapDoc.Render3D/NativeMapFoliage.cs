@@ -90,6 +90,8 @@ public static class NativeMapFoliage
         ArgumentNullException.ThrowIfNull(samples);
         Validate(scene, assets, policy, routing, samples.SelectMany(b => b.Samples.Select(s => s.AssetId)));
         var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(scene.Source.Data.Limits);
+        using var activation = admission.Enter();
+        using var preparation = admission.BeginPreparation();
         try
         {
             var groups = new List<MapNativeFoliageGroup>();
@@ -145,7 +147,9 @@ public static class NativeMapFoliage
                     parts.Add(new(new(MapRenderKind.Foliage, id, "model-part/" + i, 0), bounds, new(part.Mesh, part.Maps), digest));
                 }
             }
-            return new(scene.Witness, routing, policy, groups, parts, identities, explicitIds, generations, admission.RetainedBytes);
+            var result = new MapNativeFoliageBatch(scene.Witness, routing, policy, groups, parts, identities, explicitIds, generations, 0);
+            result.Own(preparation.Complete(result.RetainedBytes));
+            return result;
         }
         catch (MapSceneCapacityException error) { throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, error.Message, error); }
     }

@@ -19,45 +19,8 @@ internal static class NativeDocumentSnapshot
     internal static MapDocument Clone(MapDocument document, MapDocRegistry registry)
     {
         t_clones++;
-        if (document.Tiles is { IsPartial: true })
-            throw new MapDocumentException("Native snapshots require a complete document, not a windowed document.");
-        // Snapshotting a complete tiled world is independent of the small-file embedding limit.
-        var root = new MapDocument
-        {
-            Schema = document.Schema,
-            FormatVersion = document.FormatVersion,
-            Id = document.Id,
-            DisplayName = document.DisplayName,
-            Bounds = document.Bounds,
-            TileSize = document.TileSize,
-            Terrain = document.Terrain,
-            ScatterLayers = document.ScatterLayers,
-            CompanionLayers = document.CompanionLayers,
-            Exclusions = document.Exclusions,
-            ScatterOverrides = document.ScatterOverrides,
-            Placements = document.Placements,
-            Spawns = document.Spawns,
-            PlayerSpawns = document.PlayerSpawns,
-            Regions = document.Regions,
-            TerrainOverrides = document.TerrainOverrides,
-            PlayableBounds = document.PlayableBounds,
-            NativeAssets = document.NativeAssets,
-            NumericIdHighWaterMark = document.NumericIdHighWaterMark,
-            ResolverIdentity = document.ResolverIdentity,
-            SupportRecipe = document.SupportRecipe,
-            Prefabs = document.Prefabs?.Clone(),
-            BuildingIntent = document.BuildingIntent?.Clone(),
-            NativeResourceTransforms = document.NativeResourceTransforms?.ToArray(),
-        };
-        var metadata = new MapSurfaceSet();
-        // Metadata has no payload references to resolve during the temporary root round trip.
-        foreach (MapSurfaceRef surface in document.Surfaces.Refs)
-            metadata.Refs.Add(surface with { IndoorSpan = null });
-        root.Surfaces = metadata;
-        var candidate = MapDocumentFile.LoadText(MapDocumentFile.SaveText(root, registry),
-            new MapDocumentLoadOptions { Registry = registry });
-        candidate.Surfaces = document.Surfaces.Clone();
-        candidate.Water = document.Water?.Clone();
+        NativeSnapshotValidation.Validate(document, registry);
+        var candidate = MapDocumentSnapshot.DetachStructure(document, registry);
         candidate.Foliage = document.Foliage?.Clone();
         MapFoliageStorage.RequireComplete(candidate.Foliage);
         var foliageErrors = new List<string>();

@@ -1003,6 +1003,8 @@ validate every semantic root and publish the captured document with its matching
 without changing the live document or accepting command state. Publication precedes acceptance, closure
 rebinding and prepared history adoption. Partial documents refuse either mode. Complete undo retains
 removed instance inventories and retired transfers without recreating live standalone owners.
+Detached publication snapshots clone mutable roots structurally and share immutable payload members.
+They accept complete tiled worlds beyond the monolithic surface embedding envelope.
 
 `PrefabAssetEditCommand(edit, beforeAssets, afterAssets)` switches an immutable prefab version using
 `MapUpdatePrefabAsset`. Its first preparation receives both captured closures. Accepted undo and redo

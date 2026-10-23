@@ -614,6 +614,8 @@ In 20.40.0, `MapPrefabResolver.Expand` publishes one immutable `MapEffectiveReso
 `kemap/effective-resources/1` and query policy 2. Support, physical geometry, paint, water, membership and
 annotations consume that same captured closure and effective source. Authored, effective, scoped and build
 identities carry the policy, so a consumer cannot reuse a pre-R5 capture as equivalent evidence.
+Expansion and authored edit candidates use validated detached structural snapshots, sharing immutable foliage.
+Complete tiled worlds retain the expansion resource budgets without inheriting monolithic embedding limits.
 
 `MapPrefabSet` payload 1 and expansion version 1 retain instances, typed bindings, overrides and transfers.
 Instance poses use free XYZ, yaw radians and finite positive uniform scale. `ParentSpace` may be absent for a

@@ -451,8 +451,7 @@ public sealed partial class MapEditSession
             }
             else
             {
-                ValidationReport report = JsonSchemaValidator.Validate(
-                    MapDocumentFile.SaveText(_doc!, _registry), MapDocumentSchema.GetJson());
+                ValidationReport report = MapEditSchemaValidation.ValidateComplete(_doc!, _registry);
                 result = new ValidateResult(true, Array.Empty<string>(), SchemaChecked: true,
                     report.IsValid, report.Errors)
                 {

@@ -37,7 +37,7 @@ public static class MapPrefabResolver
         _ = MapNativeValidation.ValidateNumericIds(document, numericErrors);
         if (numericErrors.Count != 0) throw new MapDocumentException(string.Join("\n", numericErrors));
         // Expansion never reads foliage, so the authored copy shares it rather than encoding the density payload.
-        var authored = MapDocumentFile.CopyWithSharedFoliage(document);
+        var authored = MapDocumentSnapshot.Copy(document, MapDocRegistry.CreateDefault());
         var product = MapEffectiveResolutionKernel.Resolve(MapEffectiveResolutionInput.FromDocument(authored, MapSurfaceSemantics.RootDigest(authored)), assets, nativeSource, observer);
         var resources = new MapEffectiveResources(product)
         {

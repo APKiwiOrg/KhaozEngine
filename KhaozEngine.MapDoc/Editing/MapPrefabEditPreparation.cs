@@ -26,7 +26,7 @@ internal static class MapPrefabEditPreparation
     internal static MapDocument Copy(MapDocument document)
     {
         t_copies++;
-        return MapDocumentFile.CopyWithSharedFoliage(document);
+        return MapDocumentSnapshot.Copy(document, MapDocRegistry.CreateDefault());
     }
     internal static MapEffectiveResources Begin(MapDocument document, MapAssetClosure assets)
     {

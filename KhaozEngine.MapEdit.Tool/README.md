@@ -479,7 +479,9 @@ share the same id string with no collision.
 
 `map_validate(verifyWholeWorld?)` runs the structural checks (`MapDocumentValidator`) first. It then checks
 a whole document against the document schema, or checks each loaded tile of a windowed document against
-`MapDocumentSchema.GetTileJson()`. Tile errors name their tile coordinate. The result reports `SchemaScope`
+`MapDocumentSchema.GetTileJson()`. Complete tiled documents validate their semantic roots and each bounded
+surface payload separately, without embedding the patches into a monolithic document. Monolithic save
+limits still apply to monolithic documents. Tile errors name their tile coordinate. The result reports `SchemaScope`
 as `document`, `loadedTiles`, or `none`, so a partial check is never presented as whole-world coverage.
 Pass `verifyWholeWorld: true` for a tiled document to run `MapDocumentFile.VerifyTiled` against every tile and
 the native surface storage closure without loading cold content into the session. Surface checks include

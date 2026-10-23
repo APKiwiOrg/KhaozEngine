@@ -123,10 +123,11 @@ public sealed class GltfDecodeAdmission
             {
                 if (Int(primitive, "mode", 4) != 4) throw new GltfDecodeRefusal(GltfDecodeStatus.Unsupported, "Strict rigid decoding requires triangles.");
                 int position = primitive.GetProperty("attributes").GetProperty("POSITION").GetInt32();
-                if (facts[position].Count > budget.Limits.MaxVertices) throw Capacity();
-                if (facts[position].Components != 3 || accessors[position].GetProperty("componentType").GetInt32() != 5126)
+                var positionFact = Accessor(facts, position);
+                if (positionFact.Count > budget.Limits.MaxVertices) throw Capacity();
+                if (positionFact.Components != 3 || accessors[position].GetProperty("componentType").GetInt32() != 5126)
                     throw Invalid("POSITION must be floating VEC3.");
-                long n = primitive.TryGetProperty("indices", out var index) ? facts[index.GetInt32()].Count : facts[position].Count;
+                long n = primitive.TryGetProperty("indices", out var index) ? Accessor(facts, index.GetInt32()).Count : positionFact.Count;
                 if (n % 3 != 0) throw Invalid("Triangle corner count is not divisible by three.");
                 corners = checked(corners + n * instances); indices = checked(indices + n * instances);
                 materials.Add(Int(primitive, "material", -1));
@@ -212,6 +213,11 @@ public sealed class GltfDecodeAdmission
         if (comma < 0 || !uri.AsSpan(0, comma).EndsWith(";base64", StringComparison.Ordinal))
             throw new GltfDecodeRefusal(GltfDecodeStatus.Unsupported, "Only base64 embedded resources are supported.");
         return Convert.FromBase64String(uri[(comma + 1)..]);
+    }
+    static GltfAccessorFact Accessor(GltfAccessorFact[] facts, int index)
+    {
+        if ((uint)index >= (uint)facts.Length) throw Invalid("Primitive accessor reference is outside the accessor array.");
+        return facts[index];
     }
     static int Int(JsonElement item, string name, int fallback) => item.TryGetProperty(name, out var v) ? v.GetInt32() : fallback;
     static GltfDecodeRefusal Invalid(string detail) => new(GltfDecodeStatus.Invalid, detail);

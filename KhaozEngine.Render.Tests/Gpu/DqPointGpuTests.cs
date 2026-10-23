@@ -19,44 +19,44 @@ public sealed class DqPointGpuTests(DqPointScene fixture, ITestOutputHelper outp
     {
         int observedFaceMask = 0, observed = 0;
         foreach (int actor in new[] { 0, 1, 2 }) // visible, shadow-only, camera-culled
-        foreach (bool gpu in new[] { false, true })
-        {
-            output.WriteLine($"{fixture.Device.Backend} {fixture.Device.Capabilities.DeviceName}: actor={actor} gpu={gpu}");
-            float[][] solid = fixture.Capture(actor, gpu, 0);
-            float[][] lbs = fixture.Capture(actor, gpu, 0, lbs: true);
-            float[][] rest = fixture.Capture(actor, gpu, 0, rest: true);
-            float[][] plain = fixture.Capture(actor, gpu, 1);
-            float[][] complement = fixture.Capture(actor, gpu, 2);
-            float[][] inverted = fixture.Capture(actor, gpu, 3);
-            // The exact 50/50 identity/half-turn blend is a rigid quarter-turn about Z. This independent
-            // reference uses unskinned identity joints and an exact quarter-turn placement matrix.
-            float[][] reference = fixture.Capture(actor, false, 0, reference: true);
-            float[][] cpu = fixture.Capture(actor, false, 1);
-            for (int row = 0; row < 2; row++)
-            for (int face = 0; face < 6; face++)
+            foreach (bool gpu in new[] { false, true })
             {
-                int cell = row * 6 + face;
-                float[] dqDepthWords = solid[cell], lbsDepthWords = lbs[cell];
-                int written = dqDepthWords.Count(Written);
-                output.WriteLine($"row={row} face={face} DQ={written} LBS={lbsDepthWords.Count(Written)} dissolve={plain[cell].Count(Written)}/{complement[cell].Count(Written)}");
-                Assert.True(written > 0, $"Missing DQ face={face} row={row} actor={actor} gpu={gpu}");
-                Assert.False(dqDepthWords.SequenceEqual(lbsDepthWords));
-                Assert.Equal(0, lbsDepthWords.Count(Written));
-                AssertDepthNear(reference[cell], dqDepthWords);
-                Assert.InRange(plain[cell].Count(Written), 1, written - 1);
-                Assert.InRange(complement[cell].Count(Written), 1, written - 1);
-                for (int p = 0; p < dqDepthWords.Length; p++)
-                {
-                    Assert.Equal(Written(dqDepthWords[p]), Written(plain[cell][p]) || Written(complement[cell][p]));
-                    Assert.False(Written(plain[cell][p]) && Written(complement[cell][p]));
-                }
-                AssertDepthNear(complement[cell], inverted[cell]);
-                AssertDepthNear(cpu[cell], plain[cell]);
-                observedFaceMask |= 1 << face;
-                observed++;
+                output.WriteLine($"{fixture.Device.Backend} {fixture.Device.Capabilities.DeviceName}: actor={actor} gpu={gpu}");
+                float[][] solid = fixture.Capture(actor, gpu, 0);
+                float[][] lbs = fixture.Capture(actor, gpu, 0, lbs: true);
+                float[][] rest = fixture.Capture(actor, gpu, 0, rest: true);
+                float[][] plain = fixture.Capture(actor, gpu, 1);
+                float[][] complement = fixture.Capture(actor, gpu, 2);
+                float[][] inverted = fixture.Capture(actor, gpu, 3);
+                // The exact 50/50 identity/half-turn blend is a rigid quarter-turn about Z. This independent
+                // reference uses unskinned identity joints and an exact quarter-turn placement matrix.
+                float[][] reference = fixture.Capture(actor, false, 0, reference: true);
+                float[][] cpu = fixture.Capture(actor, false, 1);
+                for (int row = 0; row < 2; row++)
+                    for (int face = 0; face < 6; face++)
+                    {
+                        int cell = row * 6 + face;
+                        float[] dqDepthWords = solid[cell], lbsDepthWords = lbs[cell];
+                        int written = dqDepthWords.Count(Written);
+                        output.WriteLine($"row={row} face={face} DQ={written} LBS={lbsDepthWords.Count(Written)} dissolve={plain[cell].Count(Written)}/{complement[cell].Count(Written)}");
+                        Assert.True(written > 0, $"Missing DQ face={face} row={row} actor={actor} gpu={gpu}");
+                        Assert.False(dqDepthWords.SequenceEqual(lbsDepthWords));
+                        Assert.Equal(0, lbsDepthWords.Count(Written));
+                        AssertDepthNear(reference[cell], dqDepthWords);
+                        Assert.InRange(plain[cell].Count(Written), 1, written - 1);
+                        Assert.InRange(complement[cell].Count(Written), 1, written - 1);
+                        for (int p = 0; p < dqDepthWords.Length; p++)
+                        {
+                            Assert.Equal(Written(dqDepthWords[p]), Written(plain[cell][p]) || Written(complement[cell][p]));
+                            Assert.False(Written(plain[cell][p]) && Written(complement[cell][p]));
+                        }
+                        AssertDepthNear(complement[cell], inverted[cell]);
+                        AssertDepthNear(cpu[cell], plain[cell]);
+                        observedFaceMask |= 1 << face;
+                        observed++;
+                    }
+                Assert.False(solid.SelectMany(c => c).SequenceEqual(rest.SelectMany(c => c)));
             }
-            Assert.False(solid.SelectMany(c => c).SequenceEqual(rest.SelectMany(c => c)));
-        }
         Assert.Equal(0x3f, observedFaceMask);
         Assert.Equal(72, observed);
         output.WriteLine($"{fixture.Device.Backend} {fixture.Device.Capabilities.DeviceName}: matched 72/72 face/row/actor/execution witnesses");
@@ -117,8 +117,11 @@ public sealed class DqPointScene : IDisposable
             for (int i = 0; i < 4; i++) vertices.Add(new SkinnedVertex
             {
                 Position = axis * 3 + a * (i is 1 or 2 ? .8f : -.8f) + b * (i >= 2 ? .5f : -.5f),
-                Normal = axis, Color = Vector4.One, Tangent = Vector4.Zero,
-                BoneIndices = new Vector4(0, 1, 0, 0), BoneWeights = new Vector4(.5f, .5f, 0, 0),
+                Normal = axis,
+                Color = Vector4.One,
+                Tangent = Vector4.Zero,
+                BoneIndices = new Vector4(0, 1, 0, 0),
+                BoneWeights = new Vector4(.5f, .5f, 0, 0),
             });
             foreach (int index in new[] { 0, 1, 2, 0, 2, 3 }) indices.Add((ushort)(start + index));
         }
@@ -164,8 +167,10 @@ public sealed class DqPointScene : IDisposable
             world *= Matrix4x4.CreateTranslation(centre);
             DqGpuReadback.Queue(s, _meshes[method], new SkinnedInstanceDraw(_handles[method], world)
             {
-                ShadowOnly = actor == 1, Dissolve = variant == 0 ? 0 : .5f,
-                DissolveComplement = variant == 2 ? 1 : 0, InvertShadowDissolve = variant == 3,
+                ShadowOnly = actor == 1,
+                Dissolve = variant == 0 ? 0 : .5f,
+                DissolveComplement = variant == 2 ? 1 : 0,
+                InvertShadowDissolve = variant == 3,
             }, rest || reference ? _meshes[method].RestPose : DqCascadeScene.HalfTurn);
         }
         if (cold)
@@ -202,9 +207,9 @@ public sealed class DqPointScene : IDisposable
         try
         {
             for (int y = 0; y < resolution; y++)
-            for (int face = 0; face < 6; face++)
-                Marshal.Copy(IntPtr.Add(map.Data, checked((row * resolution + y) * (int)map.RowPitch + face * resolution * 4)),
-                    result[face], y * resolution, resolution);
+                for (int face = 0; face < 6; face++)
+                    Marshal.Copy(IntPtr.Add(map.Data, checked((row * resolution + y) * (int)map.RowPitch + face * resolution * 4)),
+                        result[face], y * resolution, resolution);
         }
         finally { Device.Unmap(staging); }
         return result;

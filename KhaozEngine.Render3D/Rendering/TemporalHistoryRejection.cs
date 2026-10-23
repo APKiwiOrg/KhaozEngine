@@ -146,7 +146,8 @@ internal sealed class TemporalHistoryRejection : IDisposable
             Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise,
                 depthClipEnabled: false, scissorTestEnabled: false),
             Topology = GpuPrimitiveTopology.TriangleList,
-            ResourceLayouts = [], ShaderSet = _shaders,
+            ResourceLayouts = [],
+            ShaderSet = _shaders,
             VertexLayouts = new List<GpuVertexLayoutDescription>
             {
                 new(new GpuVertexElement("Position", GpuVertexElementFormat.Float2)),

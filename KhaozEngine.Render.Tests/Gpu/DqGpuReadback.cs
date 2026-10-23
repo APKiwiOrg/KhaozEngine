@@ -150,9 +150,12 @@ void main() {
         var vertices = new SkinnedVertex[4];
         for (int i = 0; i < vertices.Length; i++) vertices[i] = new SkinnedVertex
         {
-            Position = positions[i], Normal = Vector3.UnitZ, Color = Vector4.One,
+            Position = positions[i],
+            Normal = Vector3.UnitZ,
+            Color = Vector4.One,
             Uv = new Vector2(i is 1 or 2 ? 1 : 0, i >= 2 ? 1 : 0),
-            BoneIndices = new Vector4(0, 1, 0, 0), BoneWeights = new Vector4(.5f, .5f, 0, 0),
+            BoneIndices = new Vector4(0, 1, 0, 0),
+            BoneWeights = new Vector4(.5f, .5f, 0, 0),
             Tangent = tangent ? new Vector4(1, 0, 0, -1) : Vector4.Zero,
         };
         return new SkinnedGltfMesh(vertices, new ushort[] { 0, 1, 2, 0, 2, 3 },

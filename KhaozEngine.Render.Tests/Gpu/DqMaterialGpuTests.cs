@@ -27,40 +27,46 @@ public sealed class DqMaterialGpuTests(DqMaterialScene fixture, ITestOutputHelpe
             var palette = matrices.Select((m, i) => DualQuaternionPalette.FromComposed(m, new("native synthetic", null, 0), i)).ToArray();
             foreach (Vector4 weights in new[] { new Vector4(.5f, .5f, 0, 0), new Vector4(.1f, .2f, .3f, .4f),
                 Vector4.UnitX, Vector4.UnitZ, Vector4.Zero })
-            foreach (bool tangent in new[] { false, true })
-            {
-                var source = new SkinnedVertex
+                foreach (bool tangent in new[] { false, true })
                 {
-                    Position = new Vector3(1, -.25f, .5f) * scale,
-                    Normal = Vector3.Normalize(new Vector3(.2f, -.4f, .9f)), Color = Vector4.One,
-                    Uv = new Vector2(.2f, .7f), BoneIndices = new Vector4(0, 1, 2, 3), BoneWeights = weights,
-                    Tangent = tangent ? new Vector4(.8f, .3f, -.1f, -1) : Vector4.Zero,
-                };
-                ModelVertex native = DqGpuReadback.Capture(device, source, palette, matrices);
-                ModelVertex expected = SkinningEvaluation.Vertex(source, SkinningProfile.DualQuaternionRigid, [], palette);
-                float L = MathF.Max(1, MathF.Max(source.Position.Length(), matrices.Max(m => m.Translation.Length())));
-                for (int axis = 0; axis < 3; axis++)
-                    Assert.InRange(MathF.Abs(native.Position[axis] - expected.Position[axis]), 0f, 2e-5f * L);
-                AssertDirection(native.Normal, expected.Normal);
-                if (tangent)
-                {
-                    AssertDirection(new Vector3(native.Tangent.X, native.Tangent.Y, native.Tangent.Z),
-                        new Vector3(expected.Tangent.X, expected.Tangent.Y, expected.Tangent.Z));
-                    Assert.Equal(BitConverter.SingleToInt32Bits(source.Tangent.W), BitConverter.SingleToInt32Bits(native.Tangent.W));
+                    var source = new SkinnedVertex
+                    {
+                        Position = new Vector3(1, -.25f, .5f) * scale,
+                        Normal = Vector3.Normalize(new Vector3(.2f, -.4f, .9f)),
+                        Color = Vector4.One,
+                        Uv = new Vector2(.2f, .7f),
+                        BoneIndices = new Vector4(0, 1, 2, 3),
+                        BoneWeights = weights,
+                        Tangent = tangent ? new Vector4(.8f, .3f, -.1f, -1) : Vector4.Zero,
+                    };
+                    ModelVertex native = DqGpuReadback.Capture(device, source, palette, matrices);
+                    ModelVertex expected = SkinningEvaluation.Vertex(source, SkinningProfile.DualQuaternionRigid, [], palette);
+                    float L = MathF.Max(1, MathF.Max(source.Position.Length(), matrices.Max(m => m.Translation.Length())));
+                    for (int axis = 0; axis < 3; axis++)
+                        Assert.InRange(MathF.Abs(native.Position[axis] - expected.Position[axis]), 0f, 2e-5f * L);
+                    AssertDirection(native.Normal, expected.Normal);
+                    if (tangent)
+                    {
+                        AssertDirection(new Vector3(native.Tangent.X, native.Tangent.Y, native.Tangent.Z),
+                            new Vector3(expected.Tangent.X, expected.Tangent.Y, expected.Tangent.Z));
+                        Assert.Equal(BitConverter.SingleToInt32Bits(source.Tangent.W), BitConverter.SingleToInt32Bits(native.Tangent.W));
+                    }
+                    else AssertWords(Vector4.Zero, native.Tangent);
+                    if (weights == Vector4.Zero || weights == Vector4.UnitX) AssertWords(source.Position, native.Position);
+                    if (weights.X == .5f)
+                        Assert.True(Vector3.Distance(native.Position, SkinningMath.SkinVertex(source, matrices).Position) > .2f * scale,
+                            "The half-twist witness must separate DQ from LBS.");
+                    draws++;
                 }
-                else AssertWords(Vector4.Zero, native.Tangent);
-                if (weights == Vector4.Zero || weights == Vector4.UnitX) AssertWords(source.Position, native.Position);
-                if (weights.X == .5f)
-                    Assert.True(Vector3.Distance(native.Position, SkinningMath.SkinVertex(source, matrices).Position) > .2f * scale,
-                        "The half-twist witness must separate DQ from LBS.");
-                draws++;
-            }
         }
         // Exact identity bypass preserves source signed zeros, and absent tangents ignore even a nonzero W.
         var identitySource = new SkinnedVertex
         {
-            Position = new Vector3(-0f, 2, -0f), Normal = Vector3.UnitY, Color = Vector4.One,
-            BoneWeights = Vector4.UnitX, Tangent = new Vector4(0, 0, 0, -1),
+            Position = new Vector3(-0f, 2, -0f),
+            Normal = Vector3.UnitY,
+            Color = Vector4.One,
+            BoneWeights = Vector4.UnitX,
+            Tangent = new Vector4(0, 0, 0, -1),
         };
         ModelVertex identity = DqGpuReadback.Capture(device, identitySource,
             [new RigidDualQuaternion(new Vector4(0, 0, 0, 1), Vector4.Zero)], [Matrix4x4.Identity]);
@@ -198,9 +204,13 @@ public sealed class DqMaterialScene : IDisposable
                 var draw = new SkinnedInstanceDraw(_handles[i, cutout ? 2 : normalMap ? 0 : 1],
                     Matrix4x4.CreateScale(1.1f, .9f, 1) * Matrix4x4.CreateTranslation(.1f, -.1f, 0))
                 {
-                    CastsShadows = false, Tint = Color.White, Material = Material.None,
-                    Dissolve = dissolve, DissolveComplement = complement ? 1 : 0,
-                    DissolveEdgeColor = new Color(0, 1, 0, 1), DissolveEdgeWidth = .1f,
+                    CastsShadows = false,
+                    Tint = Color.White,
+                    Material = Material.None,
+                    Dissolve = dissolve,
+                    DissolveComplement = complement ? 1 : 0,
+                    DissolveEdgeColor = new Color(0, 1, 0, 1),
+                    DissolveEdgeWidth = .1f,
                 };
                 DqGpuReadback.Queue(scene, _meshes[i], draw, DqGpuReadback.Twist);
             }

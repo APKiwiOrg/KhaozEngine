@@ -52,9 +52,13 @@ namespace KhaozEngine.Tests.Render3D
 
         internal static SkinnedVertex Vertex(Vector3 position, Vector4 weights) => new()
         {
-            Position = position, Normal = Vector3.UnitX, Tangent = new Vector4(0, 1, 0, -1),
-            Color = new Vector4(.2f, .4f, .6f, .8f), Uv = new Vector2(.25f, .75f),
-            BoneIndices = new Vector4(0, 1, 0, 0), BoneWeights = weights,
+            Position = position,
+            Normal = Vector3.UnitX,
+            Tangent = new Vector4(0, 1, 0, -1),
+            Color = new Vector4(.2f, .4f, .6f, .8f),
+            Uv = new Vector2(.25f, .75f),
+            BoneIndices = new Vector4(0, 1, 0, 0),
+            BoneWeights = weights,
         };
     }
 }

@@ -19,58 +19,58 @@ public sealed class DqCascadeGpuTests(DqCascadeScene fixture, ITestOutputHelper 
     {
         int observedCascadeCount = 0, requestedCascadeCount = 0;
         foreach (int cascades in new[] { 1, 2, 3, 4 })
-        foreach (int actor in new[] { 0, 1, 2 }) // visible, shadow-only, behind the camera but up-light
-        foreach (bool gpu in new[] { false, true })
-        foreach (bool cutout in new[] { false, true })
-        {
-            output.WriteLine($"{fixture.Device.Backend} {fixture.Device.Capabilities.DeviceName}: " +
-                $"checking count={cascades} actor={actor} gpu={gpu} cutout={cutout}");
-            float[][] solid = fixture.Capture(cascades, actor, gpu, cutout, 0, false);
-            float[][] lbs = fixture.Capture(cascades, actor, gpu, cutout, 0, false, lbs: true);
-            float[][] plain = fixture.Capture(cascades, actor, gpu, cutout, 1, false);
-            float[][] complement = fixture.Capture(cascades, actor, gpu, cutout, 2, false);
-            float[][] inverted = fixture.Capture(cascades, actor, gpu, cutout, 3, false);
-            float[][] shifted = fixture.Capture(cascades, actor, gpu, cutout, 1, true);
-            float[][] shiftedCpu = fixture.Capture(cascades, actor, false, cutout, 1, true);
-            float[][] shiftedSolid = fixture.Capture(cascades, actor, gpu, cutout, 0, true);
-            float[][] shiftedLbs = fixture.Capture(cascades, actor, gpu, cutout, 0, true, lbs: true);
-            float[][] cpu = fixture.Capture(cascades, actor, false, cutout, 1, false);
-            requestedCascadeCount += cascades;
-            for (int c = 0; c < cascades; c++)
-            {
-                float[] dqDepthWords = solid[c], lbsDepthWords = lbs[c];
-                int dqWitnessPixelCount = dqDepthWords.Count(Written);
-                Assert.True(dqWitnessPixelCount > 0, $"Missing witness cascade={c}, actor={actor}, gpu={gpu}, cutout={cutout}");
-                Assert.False(dqDepthWords.SequenceEqual(lbsDepthWords));
-                Assert.Equal(0, lbsDepthWords.Count(Written)); // exact half-turn LBS collapses this entire quad
-                Assert.InRange(plain[c].Count(Written), 1, dqWitnessPixelCount - 1);
-                Assert.InRange(complement[c].Count(Written), 1, dqWitnessPixelCount - 1);
-                for (int p = 0; p < dqDepthWords.Length; p++)
-                {
-                    Assert.Equal(Written(dqDepthWords[p]), Written(plain[c][p]) || Written(complement[c][p]));
-                    Assert.False(Written(plain[c][p]) && Written(complement[c][p]));
-                }
-                AssertDepthNear(complement[c], inverted[c]);
-                // FitCascade snaps in render-relative light space. Different origins can move the atlas grid
-                // by a fraction of a texel. Compare execution methods at each origin's own grid, not raw pixels
-                // from two different projections. The CPU rigid-depth path supplies the independent reference.
-                AssertDepthNear(shiftedCpu[c], shifted[c]);
-                Assert.True(shiftedSolid[c].Count(Written) > 0);
-                Assert.Equal(0, shiftedLbs[c].Count(Written));
-                Assert.False(shiftedSolid[c].SequenceEqual(shiftedLbs[c]));
-                Assert.InRange(shifted[c].Count(Written), 1, shiftedSolid[c].Count(Written) - 1);
-                AssertDepthNear(plain[c], cpu[c]);
-                observedCascadeCount++;
-                output.WriteLine($"{fixture.Device.Backend} {fixture.Device.Capabilities.DeviceName}: " +
-                    $"count={cascades} cascade={c} actor={actor} gpu={gpu} cutout={cutout} " +
-                    $"DQ={dqWitnessPixelCount} LBS=0 dissolve={plain[c].Count(Written)}/{complement[c].Count(Written)}");
-            }
-            if (cutout)
-            {
-                float[][] uncut = fixture.Capture(cascades, actor, gpu, false, 0, false);
-                for (int c = 0; c < cascades; c++) Assert.True(solid[c].Count(Written) < uncut[c].Count(Written));
-            }
-        }
+            foreach (int actor in new[] { 0, 1, 2 }) // visible, shadow-only, behind the camera but up-light
+                foreach (bool gpu in new[] { false, true })
+                    foreach (bool cutout in new[] { false, true })
+                    {
+                        output.WriteLine($"{fixture.Device.Backend} {fixture.Device.Capabilities.DeviceName}: " +
+                            $"checking count={cascades} actor={actor} gpu={gpu} cutout={cutout}");
+                        float[][] solid = fixture.Capture(cascades, actor, gpu, cutout, 0, false);
+                        float[][] lbs = fixture.Capture(cascades, actor, gpu, cutout, 0, false, lbs: true);
+                        float[][] plain = fixture.Capture(cascades, actor, gpu, cutout, 1, false);
+                        float[][] complement = fixture.Capture(cascades, actor, gpu, cutout, 2, false);
+                        float[][] inverted = fixture.Capture(cascades, actor, gpu, cutout, 3, false);
+                        float[][] shifted = fixture.Capture(cascades, actor, gpu, cutout, 1, true);
+                        float[][] shiftedCpu = fixture.Capture(cascades, actor, false, cutout, 1, true);
+                        float[][] shiftedSolid = fixture.Capture(cascades, actor, gpu, cutout, 0, true);
+                        float[][] shiftedLbs = fixture.Capture(cascades, actor, gpu, cutout, 0, true, lbs: true);
+                        float[][] cpu = fixture.Capture(cascades, actor, false, cutout, 1, false);
+                        requestedCascadeCount += cascades;
+                        for (int c = 0; c < cascades; c++)
+                        {
+                            float[] dqDepthWords = solid[c], lbsDepthWords = lbs[c];
+                            int dqWitnessPixelCount = dqDepthWords.Count(Written);
+                            Assert.True(dqWitnessPixelCount > 0, $"Missing witness cascade={c}, actor={actor}, gpu={gpu}, cutout={cutout}");
+                            Assert.False(dqDepthWords.SequenceEqual(lbsDepthWords));
+                            Assert.Equal(0, lbsDepthWords.Count(Written)); // exact half-turn LBS collapses this entire quad
+                            Assert.InRange(plain[c].Count(Written), 1, dqWitnessPixelCount - 1);
+                            Assert.InRange(complement[c].Count(Written), 1, dqWitnessPixelCount - 1);
+                            for (int p = 0; p < dqDepthWords.Length; p++)
+                            {
+                                Assert.Equal(Written(dqDepthWords[p]), Written(plain[c][p]) || Written(complement[c][p]));
+                                Assert.False(Written(plain[c][p]) && Written(complement[c][p]));
+                            }
+                            AssertDepthNear(complement[c], inverted[c]);
+                            // FitCascade snaps in render-relative light space. Different origins can move the atlas grid
+                            // by a fraction of a texel. Compare execution methods at each origin's own grid, not raw pixels
+                            // from two different projections. The CPU rigid-depth path supplies the independent reference.
+                            AssertDepthNear(shiftedCpu[c], shifted[c]);
+                            Assert.True(shiftedSolid[c].Count(Written) > 0);
+                            Assert.Equal(0, shiftedLbs[c].Count(Written));
+                            Assert.False(shiftedSolid[c].SequenceEqual(shiftedLbs[c]));
+                            Assert.InRange(shifted[c].Count(Written), 1, shiftedSolid[c].Count(Written) - 1);
+                            AssertDepthNear(plain[c], cpu[c]);
+                            observedCascadeCount++;
+                            output.WriteLine($"{fixture.Device.Backend} {fixture.Device.Capabilities.DeviceName}: " +
+                                $"count={cascades} cascade={c} actor={actor} gpu={gpu} cutout={cutout} " +
+                                $"DQ={dqWitnessPixelCount} LBS=0 dissolve={plain[c].Count(Written)}/{complement[c].Count(Written)}");
+                        }
+                        if (cutout)
+                        {
+                            float[][] uncut = fixture.Capture(cascades, actor, gpu, false, 0, false);
+                            for (int c = 0; c < cascades; c++) Assert.True(solid[c].Count(Written) < uncut[c].Count(Written));
+                        }
+                    }
         Assert.Equal(requestedCascadeCount, observedCascadeCount);
         output.WriteLine($"requested={requestedCascadeCount} observed={observedCascadeCount}, all cascade witnesses checked");
     }
@@ -173,8 +173,10 @@ public sealed class DqCascadeScene : IDisposable
             DqGpuReadback.Queue(s, _meshes[method], new SkinnedInstanceDraw(_handles[method, cutout ? 1 : 0],
                 Matrix4x4.CreateTranslation(0, 0, actor == 2 ? 12 : 0))
             {
-                ShadowOnly = actor == 1, Dissolve = variant == 0 ? 0 : .5f,
-                DissolveComplement = variant == 2 ? 1 : 0, InvertShadowDissolve = variant == 3,
+                ShadowOnly = actor == 1,
+                Dissolve = variant == 0 ? 0 : .5f,
+                DissolveComplement = variant == 2 ? 1 : 0,
+                InvertShadowDissolve = variant == 3,
             }, HalfTurn);
         });
         Assert.Equal(actor == 0 ? 1 : 0, scene.DrawnSkinnedInstances);
@@ -198,8 +200,8 @@ public sealed class DqCascadeScene : IDisposable
         try
         {
             for (int y = 0; y < 256; y++)
-            for (int c = 0; c < cascades; c++)
-                Marshal.Copy(IntPtr.Add(map.Data, checked(y * (int)map.RowPitch + c * 256 * 4)), result[c], y * 256, 256);
+                for (int c = 0; c < cascades; c++)
+                    Marshal.Copy(IntPtr.Add(map.Data, checked(y * (int)map.RowPitch + c * 256 * 4)), result[c], y * 256, 256);
         }
         finally { device.Unmap(staging); }
         return result;

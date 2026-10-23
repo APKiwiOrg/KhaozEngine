@@ -23,18 +23,20 @@ public sealed class DqCascadeContractTests
         scene.ReplaceShadowLayout(256, 4);
         scene.Begin();
         foreach (int variant in new[] { 0, 1, 2 })
-        foreach (SkinningProfile profile in new[] { SkinningProfile.LinearBlend, SkinningProfile.DualQuaternionRigid })
-        {
-            SkinnedGltfMesh mesh = DqCascadeScene.Patch(profile);
-            var handle = scene.LoadSkinnedMesh(mesh);
-            DqGpuReadback.Queue(scene, mesh, new SkinnedInstanceDraw(handle, Matrix4x4.Identity)
+            foreach (SkinningProfile profile in new[] { SkinningProfile.LinearBlend, SkinningProfile.DualQuaternionRigid })
             {
-                ShadowOnly = true, Dissolve = variant == 0 ? 0 : .5f, InvertShadowDissolve = variant == 2,
-            }, DqCascadeScene.HalfTurn);
-        }
+                SkinnedGltfMesh mesh = DqCascadeScene.Patch(profile);
+                var handle = scene.LoadSkinnedMesh(mesh);
+                DqGpuReadback.Queue(scene, mesh, new SkinnedInstanceDraw(handle, Matrix4x4.Identity)
+                {
+                    ShadowOnly = true,
+                    Dissolve = variant == 0 ? 0 : .5f,
+                    InvertShadowDissolve = variant == 2,
+                }, DqCascadeScene.HalfTurn);
+            }
         scene.PrepareFrame();
         using var commands = new RecordingGpuCommandList(new NullGpuCommandList())
-            { CaptureBindings = true, CapturePayloads = true };
+        { CaptureBindings = true, CapturePayloads = true };
         scene.RenderInternal(commands, MotionTestScene.Width, MotionTestScene.Height, harness.Target);
         var draws = commands.Bindings.Where(d => d.Pipeline is FakePipeline { Request: { } p }
             && p.VertexGlsl.Contains("uniform Palette", StringComparison.Ordinal)
@@ -43,22 +45,22 @@ public sealed class DqCascadeContractTests
         string helper = Assert.IsType<string>(DqGpuReadback.Helper("dqBones"));
         uint[] paletteOffsets = [0, 0, 8192, 4096, 16384, 8192];
         for (int c = 0; c < 4; c++)
-        for (int d = 0; d < 6; d++)
-        {
-            var draw = draws[c * 6 + d];
-            var request = Assert.IsType<FakePipeline>(draw.Pipeline).Request!.Value;
-            Assert.Equal((uint)((c * 6 + d) * 256), draw.Sets[0].DynamicOffset);
-            Assert.Equal(paletteOffsets[d], draw.Sets[1].DynamicOffset);
-            bool dq = d % 2 == 1;
-            if (dq) Assert.Contains(helper, request.VertexGlsl);
-            else Assert.Equal(d < 2 ? ShaderSources.SkinnedShadowDepthVert : ShaderSources.SkinnedShadowDepthDissolveVert,
-                request.VertexGlsl);
-            Assert.Equal(d < 2 ? ShaderSources.ShadowDepthFrag : d < 4
-                ? ShaderSources.SkinnedShadowDepthDissolveFrag : ShaderSources.SkinnedShadowDepthDissolveInvertedFrag,
-                request.FragmentGlsl);
-            Assert.Same(draws[dq ? 1 : 0].Sets[1].Set, draw.Sets[1].Set);
-            Assert.NotSame(draws[dq ? 0 : 1].Sets[1].Set, draw.Sets[1].Set);
-        }
+            for (int d = 0; d < 6; d++)
+            {
+                var draw = draws[c * 6 + d];
+                var request = Assert.IsType<FakePipeline>(draw.Pipeline).Request!.Value;
+                Assert.Equal((uint)((c * 6 + d) * 256), draw.Sets[0].DynamicOffset);
+                Assert.Equal(paletteOffsets[d], draw.Sets[1].DynamicOffset);
+                bool dq = d % 2 == 1;
+                if (dq) Assert.Contains(helper, request.VertexGlsl);
+                else Assert.Equal(d < 2 ? ShaderSources.SkinnedShadowDepthVert : ShaderSources.SkinnedShadowDepthDissolveVert,
+                    request.VertexGlsl);
+                Assert.Equal(d < 2 ? ShaderSources.ShadowDepthFrag : d < 4
+                    ? ShaderSources.SkinnedShadowDepthDissolveFrag : ShaderSources.SkinnedShadowDepthDissolveInvertedFrag,
+                    request.FragmentGlsl);
+                Assert.Same(draws[dq ? 1 : 0].Sets[1].Set, draw.Sets[1].Set);
+                Assert.NotSame(draws[dq ? 0 : 1].Sets[1].Set, draw.Sets[1].Set);
+            }
         foreach (var palette in draws.Take(2).Select(d => Assert.IsType<FakeResourceSet>(d.Sets[1].Set)))
         {
             var buffer = Assert.Single(palette.Resources.OfType<GpuBufferRange>()).Buffer;
@@ -95,7 +97,8 @@ public sealed class DqCascadeContractTests
             scene.Begin();
             DqGpuReadback.Queue(scene, mesh, new SkinnedInstanceDraw(handle, Matrix4x4.CreateTranslation(0, 0, 12))
             {
-                Dissolve = variant == 0 ? 0 : .5f, DissolveComplement = variant == 2 ? 1 : 0,
+                Dissolve = variant == 0 ? 0 : .5f,
+                DissolveComplement = variant == 2 ? 1 : 0,
                 InvertShadowDissolve = variant == 3,
             }, DqCascadeScene.HalfTurn);
             scene.PrepareFrame();
@@ -171,7 +174,7 @@ public sealed class DqCascadeContractTests
 
         scene.ForceTemporalForTests = true;
         scene.DrawSkinned(new SkinnedInstanceDraw(handle, Matrix4x4.Identity)
-            { CastsShadows = false, Motion = MotionKey.From(32) }, DqCascadeScene.HalfTurn);
+        { CastsShadows = false, Motion = MotionKey.From(32) }, DqCascadeScene.HalfTurn);
         harness.Render();
         Assert.Equal(2, scene.DrawnSkinnedInstances);
         Assert.Equal(1, scene.MotionKeyCounts.KeyedSkinned);

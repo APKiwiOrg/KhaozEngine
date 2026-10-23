@@ -28,34 +28,34 @@ public sealed class DqConsumerMatrixGpuTests(DqConsumerMatrixScene fixture, ITes
         bool mainObserved = false, cascadeObserved = false, pointObserved = false, outlineObserved = false;
         int cases = 0;
         foreach (bool gpu in new[] { false, true })
-        foreach (bool shifted in new[] { false, true })
-        foreach (int submission in new[] { 0, 1, 2 }) // colour, shadow-only, outline-only
-        {
-            var actual = fixture.Capture(gpu, shifted, submission);
-            var reference = fixture.Capture(false, shifted, submission, reference: true);
-            Assert.Equal(submission == 0 ? 1 : 0, actual.Drawn);
-            if (submission == 0)
-            {
-                Assert.True(actual.Colour.Count(p => p > 0) > 0);
-                Assert.InRange(actual.Colour.Zip(reference.Colour).Count(p => Math.Abs(p.First - p.Second) > 3), 0, 16);
-                mainObserved = true;
-            }
-            if (submission != 2)
-            {
-                AssertDepth(reference.Cascades, actual.Cascades, "cascade");
-                AssertDepth(reference.Points, actual.Points, "point");
-                cascadeObserved = pointObserved = true;
-            }
-            if (submission != 1)
-            {
-                Assert.Contains(actual.Outline, p => p != 0);
-                Assert.InRange(actual.Outline.Zip(reference.Outline).Count(p => (p.First > 0) != (p.Second > 0)), 0, 8);
-                outlineObserved = true;
-            }
-            output.WriteLine($"gpu={gpu} shifted={shifted} submission={submission} colour={actual.Drawn} " +
-                $"cascade={actual.Cascades.Count(Written)} point={actual.Points.Count(Written)} outline={actual.Outline.Count(p => p > 0)}");
-            cases++;
-        }
+            foreach (bool shifted in new[] { false, true })
+                foreach (int submission in new[] { 0, 1, 2 }) // colour, shadow-only, outline-only
+                {
+                    var actual = fixture.Capture(gpu, shifted, submission);
+                    var reference = fixture.Capture(false, shifted, submission, reference: true);
+                    Assert.Equal(submission == 0 ? 1 : 0, actual.Drawn);
+                    if (submission == 0)
+                    {
+                        Assert.True(actual.Colour.Count(p => p > 0) > 0);
+                        Assert.InRange(actual.Colour.Zip(reference.Colour).Count(p => Math.Abs(p.First - p.Second) > 3), 0, 16);
+                        mainObserved = true;
+                    }
+                    if (submission != 2)
+                    {
+                        AssertDepth(reference.Cascades, actual.Cascades, "cascade");
+                        AssertDepth(reference.Points, actual.Points, "point");
+                        cascadeObserved = pointObserved = true;
+                    }
+                    if (submission != 1)
+                    {
+                        Assert.Contains(actual.Outline, p => p != 0);
+                        Assert.InRange(actual.Outline.Zip(reference.Outline).Count(p => (p.First > 0) != (p.Second > 0)), 0, 8);
+                        outlineObserved = true;
+                    }
+                    output.WriteLine($"gpu={gpu} shifted={shifted} submission={submission} colour={actual.Drawn} " +
+                        $"cascade={actual.Cascades.Count(Written)} point={actual.Points.Count(Written)} outline={actual.Outline.Count(p => p > 0)}");
+                    cases++;
+                }
         SkinnedGltfMesh mesh = DqCullingTests.Patch();
         Matrix4x4[] joints = DqCullingTests.Joints();
         var store = new PreparedSkinningStore();
@@ -63,25 +63,25 @@ public sealed class DqConsumerMatrixGpuTests(DqConsumerMatrixScene fixture, ITes
         Matrix4x4 world = Matrix4x4.CreateTranslation(-39.1f, 0, 0);
         Assert.True(DualQuaternionBounds.TryBoundWorld(pose.ModelBounds, world, out MeshBounds worldBounds));
         foreach (bool gpu in new[] { false, true })
-        foreach (SkinnedVertex vertex in mesh.Vertices)
-        {
-            SkinnedVertex input = vertex;
-            if (!gpu)
+            foreach (SkinnedVertex vertex in mesh.Vertices)
             {
-                // Transport the production CPU evaluator's output through the exact unweighted GPU path.
-                // The scene readbacks above independently exercise its actual CPU stream and placement.
-                ModelVertex cpu = SkinningEvaluation.Vertex(vertex, mesh.Profile, [], store.Dq(pose));
-                input.Position = cpu.Position;
-                input.BoneWeights = Vector4.Zero;
+                SkinnedVertex input = vertex;
+                if (!gpu)
+                {
+                    // Transport the production CPU evaluator's output through the exact unweighted GPU path.
+                    // The scene readbacks above independently exercise its actual CPU stream and placement.
+                    ModelVertex cpu = SkinningEvaluation.Vertex(vertex, mesh.Profile, [], store.Dq(pose));
+                    input.Position = cpu.Position;
+                    input.BoneWeights = Vector4.Zero;
+                }
+                Vector3 nativeModel = DqGpuReadback.Capture(fixture.Device, input, store.Dq(pose).ToArray(), joints).Position;
+                DqCullingTests.Contains(pose.ModelBounds, nativeModel);
+                Vector3 nativePosition = Vector3.Transform(nativeModel, world);
+                Vector3 independent = new(.9f - vertex.Position.Y, vertex.Position.X, 0);
+                Assert.InRange(Vector3.Distance(independent, nativePosition), 0, 2e-5f * 40);
+                for (int axis = 0; axis < 3; axis++)
+                    Assert.InRange(nativePosition[axis], worldBounds.Min[axis], worldBounds.Max[axis]);
             }
-            Vector3 nativeModel = DqGpuReadback.Capture(fixture.Device, input, store.Dq(pose).ToArray(), joints).Position;
-            DqCullingTests.Contains(pose.ModelBounds, nativeModel);
-            Vector3 nativePosition = Vector3.Transform(nativeModel, world);
-            Vector3 independent = new(.9f - vertex.Position.Y, vertex.Position.X, 0);
-            Assert.InRange(Vector3.Distance(independent, nativePosition), 0, 2e-5f * 40);
-            for (int axis = 0; axis < 3; axis++)
-                Assert.InRange(nativePosition[axis], worldBounds.Min[axis], worldBounds.Max[axis]);
-        }
         Assert.True(mainObserved && cascadeObserved && pointObserved && outlineObserved);
         Assert.Equal(12, cases);
         output.WriteLine("12/12 public consumer cases and eight CPU/GPU native position readbacks inside the finite posed envelope");

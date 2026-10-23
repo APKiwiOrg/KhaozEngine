@@ -20,18 +20,18 @@ public sealed class DqAttachmentGpuTests(DqAttachmentScene fixture, ITestOutputH
     {
         int matched = 0;
         foreach (bool gpu in new[] { false, true })
-        foreach (bool outline in new[] { false, true })
-        foreach (int material in new[] { 0, 1 })
-        {
-            output.WriteLine($"{fixture.Device.Backend} {fixture.Device.Capabilities.DeviceName}: gpu={gpu} outline={outline} material={material}");
-            bool[] dq = fixture.Capture(gpu, outline, material);
-            bool[] lbs = fixture.Capture(gpu, outline, material, lbs: true);
-            bool[] reference = fixture.Capture(false, outline, material, reference: true);
-            Assert.True(dq.Count(p => p) > 20, "DQ garment witness must have a visible surface or outline rim.");
-            Assert.Equal(0, lbs.Count(p => p));
-            Assert.InRange(dq.Zip(reference).Count(p => p.First != p.Second), 0, 8);
-            matched++;
-        }
+            foreach (bool outline in new[] { false, true })
+                foreach (int material in new[] { 0, 1 })
+                {
+                    output.WriteLine($"{fixture.Device.Backend} {fixture.Device.Capabilities.DeviceName}: gpu={gpu} outline={outline} material={material}");
+                    bool[] dq = fixture.Capture(gpu, outline, material);
+                    bool[] lbs = fixture.Capture(gpu, outline, material, lbs: true);
+                    bool[] reference = fixture.Capture(false, outline, material, reference: true);
+                    Assert.True(dq.Count(p => p) > 20, "DQ garment witness must have a visible surface or outline rim.");
+                    Assert.Equal(0, lbs.Count(p => p));
+                    Assert.InRange(dq.Zip(reference).Count(p => p.First != p.Second), 0, 8);
+                    matched++;
+                }
         Assert.Equal(8, matched);
         output.WriteLine($"{fixture.Device.Backend} {fixture.Device.Capabilities.DeviceName}: matched {matched}/8 garment witnesses, skipped 0");
     }

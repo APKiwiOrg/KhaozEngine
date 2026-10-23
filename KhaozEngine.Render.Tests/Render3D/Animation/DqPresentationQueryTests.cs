@@ -122,8 +122,11 @@ namespace KhaozEngine.Tests.Render3D.Animation
 
         static SkinnedVertex Vertex(Vector3 position, Vector4 weights) => new()
         {
-            Position = position, Normal = Vector3.UnitY, Color = Vector4.One,
-            BoneIndices = new Vector4(0f, 1f, 0f, 0f), BoneWeights = weights,
+            Position = position,
+            Normal = Vector3.UnitY,
+            Color = Vector4.One,
+            BoneIndices = new Vector4(0f, 1f, 0f, 0f),
+            BoneWeights = weights,
         };
 
     }

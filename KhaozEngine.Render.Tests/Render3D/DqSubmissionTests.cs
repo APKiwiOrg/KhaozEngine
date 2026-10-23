@@ -217,7 +217,10 @@ public sealed class DqSubmissionTests
 
         static SkinnedVertex Vertex(Vector3 position) => new()
         {
-            Position = position, Normal = Vector3.UnitZ, Color = Vector4.One, BoneWeights = Vector4.UnitX,
+            Position = position,
+            Normal = Vector3.UnitZ,
+            Color = Vector4.One,
+            BoneWeights = Vector4.UnitX,
         };
         static void Contains(MeshBounds bounds, Vector3 position)
         {

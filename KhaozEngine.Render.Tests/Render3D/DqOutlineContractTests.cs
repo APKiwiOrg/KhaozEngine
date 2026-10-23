@@ -134,7 +134,7 @@ public sealed class DqOutlineContractTests
         SkinnedMeshHandle handle = scene.LoadSkinnedMesh(mesh);
         scene.Begin();
         scene.DrawSkinned(new SkinnedInstanceDraw(handle, Matrix4x4.Identity)
-            { Motion = MotionKey.From(12) }, DqCascadeScene.HalfTurn);
+        { Motion = MotionKey.From(12) }, DqCascadeScene.HalfTurn);
         harness.Render();
         Assert.Equal(1, scene.DrawnSkinnedInstances);
         Assert.True(scene.ActiveMotionHistory!.TryGetCurrentBounds(MotionKey.From(12), out MeshBounds bounds));

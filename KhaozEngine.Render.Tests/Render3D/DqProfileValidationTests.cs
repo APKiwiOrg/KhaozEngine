@@ -295,8 +295,13 @@ namespace KhaozEngine.Tests.Render3D
         {
             int offset = field switch
             {
-                "Position" => 0, "Normal" => 3, "Color" => 6, "Uv" => 10,
-                "BoneIndices" => 12, "BoneWeights" => 16, "Tangent" => 20,
+                "Position" => 0,
+                "Normal" => 3,
+                "Color" => 6,
+                "Uv" => 10,
+                "BoneIndices" => 12,
+                "BoneWeights" => 16,
+                "Tangent" => 20,
                 _ => throw new ArgumentException("Unknown vertex attribute.", nameof(field)),
             };
             Span<SkinnedVertex> storage = stackalloc SkinnedVertex[1];

@@ -322,7 +322,9 @@ public sealed class DqImportValidationTests
         fixture.Accessors.Add(new JsonObject
         {
             ["bufferView"] = fixture.AddView(new byte[values.Length * values[0].Length * size]),
-            ["componentType"] = componentType, ["count"] = values.Length, ["type"] = type,
+            ["componentType"] = componentType,
+            ["count"] = values.Length,
+            ["type"] = type,
         });
         for (int element = 0; element < values.Length; element++) fixture.SetElement(index, element, values[element]);
         return index;

@@ -25,27 +25,30 @@ public sealed class DqMotionGpuTests(DqMotionScene fixture, ITestOutputHelper ou
         output.WriteLine($"backend={device.Backend} adapter={device.Capabilities.DeviceName}");
         var vertex = new SkinnedVertex
         {
-            Position = new Vector3(.25f, -.5f, .125f), Normal = Vector3.UnitZ, Color = Vector4.One,
-            BoneIndices = new Vector4(0, 1, 0, 0), BoneWeights = new Vector4(.5f, .5f, 0, 0),
+            Position = new Vector3(.25f, -.5f, .125f),
+            Normal = Vector3.UnitZ,
+            Color = Vector4.One,
+            BoneIndices = new Vector4(0, 1, 0, 0),
+            BoneWeights = new Vector4(.5f, .5f, 0, 0),
         };
         // Identity plus an exact half-turn blends to a quarter-turn under DQ. LBS collapses XY to zero.
         // Current identity is deliberate: the red witness isolates missing PREVIOUS DQ evaluation.
         Vector3 expectedPrevious = new(.5f, .25f, .125f);
         foreach (bool rotatedCurrent in new[] { false, true })
-        foreach (bool history in new[] { true, false })
-        {
-            var native = DqMotionWitness.Capture(device, vertex, history, rotatedCurrent);
-            Vector3 expectedCurrent = rotatedCurrent ? new Vector3(-.25f, .5f, .125f) : vertex.Position;
-            AssertPosition(expectedCurrent, native.Current);
-            AssertPosition(history ? expectedPrevious : expectedCurrent, native.Previous);
-            Vector2 expectedMotion = !history ? Vector2.Zero : rotatedCurrent
-                ? new Vector2(-.375f, -.125f) : new Vector2(-.125f, .375f);
-            Assert.InRange(Vector2.Distance(expectedMotion, native.Motion), 0f, 2e-5f);
-            if (!history) Assert.Equal(Vector2.Zero, native.Motion);
-            Vector3 cpu = SkinningEvaluation.Position(vertex, SkinningProfile.DualQuaternionRigid, [],
-                DqMotionWitness.Prepare(DqMotionWitness.Previous));
-            AssertPosition(expectedPrevious, cpu);
-        }
+            foreach (bool history in new[] { true, false })
+            {
+                var native = DqMotionWitness.Capture(device, vertex, history, rotatedCurrent);
+                Vector3 expectedCurrent = rotatedCurrent ? new Vector3(-.25f, .5f, .125f) : vertex.Position;
+                AssertPosition(expectedCurrent, native.Current);
+                AssertPosition(history ? expectedPrevious : expectedCurrent, native.Previous);
+                Vector2 expectedMotion = !history ? Vector2.Zero : rotatedCurrent
+                    ? new Vector2(-.375f, -.125f) : new Vector2(-.125f, .375f);
+                Assert.InRange(Vector2.Distance(expectedMotion, native.Motion), 0f, 2e-5f);
+                if (!history) Assert.Equal(Vector2.Zero, native.Motion);
+                Vector3 cpu = SkinningEvaluation.Position(vertex, SkinningProfile.DualQuaternionRigid, [],
+                    DqMotionWitness.Prepare(DqMotionWitness.Previous));
+                AssertPosition(expectedPrevious, cpu);
+            }
 
         int cases = 0;
         foreach (bool gpu in new[] { false, true })
@@ -158,11 +161,14 @@ void main() {
         device.UpdateBuffer(vertices, 0, new[] { vertex, vertex, vertex });
         using var pipeline = f.CreateGraphicsPipeline(new GpuPipelineDescription
         {
-            BlendAttachments = [GpuBlendAttachment.OverrideBlend], DepthStencil = GpuDepthStencilState.Disabled,
+            BlendAttachments = [GpuBlendAttachment.OverrideBlend],
+            DepthStencil = GpuDepthStencilState.Disabled,
             Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, true, false),
-            Topology = GpuPrimitiveTopology.TriangleList, ShaderSet = shaders,
+            Topology = GpuPrimitiveTopology.TriangleList,
+            ShaderSet = shaders,
             ResourceLayouts = [currentLayout, previousLayout],
-            VertexLayouts = new List<GpuVertexLayoutDescription> { DqGpuReadback.VertexLayout }, Outputs = target.Outputs,
+            VertexLayouts = new List<GpuVertexLayoutDescription> { DqGpuReadback.VertexLayout },
+            Outputs = target.Outputs,
         });
         using var commands = f.CreateCommandList();
         using (GpuRecording.Open(device, commands, "DQ previous/current word capture"))
@@ -194,8 +200,13 @@ void main() {
         Assert.Equal(mesh.Profile, source.Profile);
         var draw = new SkinnedInstanceDraw(handle, world)
         {
-            Motion = key, CastsShadows = false, Tint = Color.White, Material = Material.None,
-            Dissolve = dissolve, DissolveEdgeWidth = .01f, DissolveEdgeColor = Color.White,
+            Motion = key,
+            CastsShadows = false,
+            Tint = Color.White,
+            Material = Material.None,
+            Dissolve = dissolve,
+            DissolveEdgeWidth = .01f,
+            DissolveEdgeColor = Color.White,
         };
         PreparedSkinningPose pose = DqGpuReadback.Queue(scene, source, draw, joints);
         const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;

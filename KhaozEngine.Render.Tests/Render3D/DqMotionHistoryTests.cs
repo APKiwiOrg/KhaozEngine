@@ -422,8 +422,11 @@ public sealed class DqMotionHistoryTests
 
     static SkinnedVertex Vertex(Vector3 position) => new()
     {
-        Position = position, Normal = Vector3.UnitZ, Color = Vector4.One,
-        BoneIndices = Vector4.Zero, BoneWeights = new Vector4(1, 0, 0, 0),
+        Position = position,
+        Normal = Vector3.UnitZ,
+        Color = Vector4.One,
+        BoneIndices = Vector4.Zero,
+        BoneWeights = new Vector4(1, 0, 0, 0),
     };
 
     static Vector3[] PreviousPositions(Scene3D scene) => ((List<Vector3>)typeof(Scene3D)

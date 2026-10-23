@@ -10,12 +10,12 @@ namespace KhaozEngine.Gpu.D3D11;
 
 /// <summary>One FXC attempt or DXBC cache hit. HLSL metadata is unavailable for cache hits, which do not
 /// recreate HLSL or invoke FXC. Milliseconds excludes cross-compilation, fingerprinting and cache I/O.</summary>
-public readonly record struct D3D11ShaderCompileRecord(string SourceKey, string Program, GpuShaderStages Stage,
+internal readonly record struct D3D11ShaderCompileRecord(string SourceKey, string Program, GpuShaderStages Stage,
     int? HlslByteLength, string? HlslSha256, bool CacheHit, double Milliseconds);
 
 /// <summary>Opt-in shader compile records for the current execution flow and its workers. Without an active
 /// scope, diagnostic calls return before reading the clock, encoding or hashing, and allocate nothing.</summary>
-public sealed class D3D11ShaderCompileDiagnostics
+internal sealed class D3D11ShaderCompileDiagnostics
 {
     static AsyncLocal<Scope?>? current;
     readonly object gate = new();

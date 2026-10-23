@@ -961,7 +961,7 @@ too. Every failure is a miss: a cache that cannot be read or written is a slower
 alone because any OTHER value is taken as a directory path verbatim, so a narrower vocabulary would quietly turn
 `KE_D3D11_SHADER_CACHE=0` into a cache directory named `0` beside whatever the process's working directory is.
 
-**Per-stage FXC timings are opt-in.** Create `D3D11ShaderCompileDiagnostics`, activate `diagnostics.Use()`
+**Per-stage FXC timings are opt-in internal diagnostics.** Engine tests create `D3D11ShaderCompileDiagnostics` and activate `diagnostics.Use()`
 around the actual compile, render or capture call, then read `GetRecords()`. The scope follows the current
 execution flow and its workers. Activate on the server when a transport does not carry execution context.
 Each FXC attempt records the existing source/cache key, original program label, stage, UTF-8 HLSL byte length,

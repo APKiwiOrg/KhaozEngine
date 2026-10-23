@@ -24,12 +24,15 @@ public sealed class RendererPerfSceneWorkloadTests
         Assert.Equal(0, work.Scene.CurrentFrameView.FrameIndex);
         Assert.DoesNotContain(device.Lists.SelectMany(l => l.Events), e => e.Op.StartsWith("draw", StringComparison.Ordinal));
         Assert.Empty(observer.Passes);
+        int coldSubmits = device.Native.Submits;
         work.Prepare(-64);
+        Assert.Equal(coldSubmits, device.Native.Submits);
         Assert.Equal(192 * RendererPerfRecipe.Dt, work.Scene.EffectTimeSeconds);
         trace.Begin();
         work.Record(trace, -64);
         trace.End();
         Assert.Equal(1, work.Scene.CurrentFrameView.FrameIndex);
+        Assert.Equal(0, work.Scene.LastWaterStats.OceanStalls);
         Assert.Contains(observer.Passes, p => p.Key == new RenderPassKey("post.blit"));
         Assert.NotNull(work.Recipe);
         Assert.Equal(identity, work.Recipe.Identity);

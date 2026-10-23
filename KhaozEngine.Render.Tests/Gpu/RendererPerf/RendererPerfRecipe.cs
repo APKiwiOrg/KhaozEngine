@@ -274,7 +274,7 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
         Load(scene);
     }
 
-    internal virtual void PrepareCold(Scene3D scene, int firstFrameIndex) { }
+    internal virtual void PrepareCold(Scene3D scene, IGpuDevice device, int firstFrameIndex) { }
 
     internal void StartBlockClock(int firstFrameIndex) => _blockOrdinal = SequenceIndex(firstFrameIndex);
 

@@ -282,6 +282,8 @@ driver, recording mode and timestamp capability. D3D11 uses one cold two-query c
 submission, with no scene frame and no retry. Vulkan reads the selected device's timestamp limits
 and pipeline-cache identity. A disabled or unavailable cache identity refuses admission.
 Layouts are frozen on inert headless devices, with no extra native discovery frames.
+Cold ocean setup records, submits and drains its prepared compute work before warm-up, without
+advancing a scene frame or changing the producer's unrecorded-preparation invalidation rule.
 
 The existing driver owns every conditioned, warm and measured frame, three-frame completion,
 readback, drift check and publication deadline. Host telemetry uses `nvidia-smi` outside frame
@@ -301,7 +303,8 @@ Implementation ships no executable approval manifest and authorizes no dispatch 
 Task 15 must reconcile and review integration, obtain each precise pilot approval, verify native
 control output and compiler retention including Windows FXC, inspect clocks and marker perturbation,
 confirm complete counts and End-tail ownership, check native artifact sizes under the 256 MiB cap,
-and record actual billed minutes. Its readers must retain `metric-vectors/2`, DeviceOnly rows,
+and record actual billed minutes. It must review the cold ocean recording, submission and drain as
+startup work and deadline cost. Its readers must retain `metric-vectors/2`, DeviceOnly rows,
 memory observations/peaks and the two-stage publication stamp. A full unit needs fresh approval
 after pilot review. Failure requires scoped correction and fresh approval. Windows Vulkan,
 profilers, consumer fit, optimization and release remain separate decisions.

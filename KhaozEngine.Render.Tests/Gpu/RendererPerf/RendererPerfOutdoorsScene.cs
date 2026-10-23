@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Numerics;
+using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D.Internal;
@@ -152,12 +153,13 @@ internal sealed class RendererPerfOutdoorsScene : RendererPerfVillageScene
         MeshHandle mesh = scene.LoadMesh(_shrub, new Scene3D.SurfaceMaps(texture, _surface.Normal, _surface.Roughness, _surface.AlphaCutoff));
         _batch = scene.CreateFoliageBatch(_instances.Select(i => i with { Mesh = mesh }).ToArray(), PatchSize);
     }
-    internal override void PrepareCold(Scene3D scene, int firstFrameIndex)
+    internal override void PrepareCold(Scene3D scene, IGpuDevice device, int firstFrameIndex)
     {
-        // Prime only the preparer. Do not consume a Scene3D Begin, pose or foliage history index.
+        // Prepare and record only ocean compute. Do not consume Begin, pose or foliage history indices.
         scene.EffectTimeSeconds = SequenceIndex(firstFrameIndex) * Dt;
         foreach (WaterPlane plane in _water) scene.DrawWater(plane);
         scene.PrepareFrame();
+        RendererPerfColdOcean.Record(scene, device);
     }
     protected override void QueueContent(Scene3D scene, int frameIndex)
     {

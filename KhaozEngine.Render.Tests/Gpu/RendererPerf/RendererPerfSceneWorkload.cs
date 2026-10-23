@@ -85,9 +85,9 @@ internal sealed class RendererPerfSceneWorkload : IRendererPerfNativeWork
     {
         if (_cold) throw new InvalidOperationException("Cold preparation runs once per fresh scene.");
         _firstIndex = firstFrameIndex;
-        // Prime the ocean without Begin or rendering. The first counted warm frame still owns
-        // frame index one, motion, TAA history and first-draw cache construction.
-        _recipe.PrepareCold(Scene, firstFrameIndex);
+        // Pair cold ocean preparation with its compute recording, without Begin or scene rendering.
+        // The first counted warm frame still owns frame index one, motion, TAA history and caches.
+        _recipe.PrepareCold(Scene, _device, firstFrameIndex);
         _recipe.StartBlockClock(firstFrameIndex);
         Scene.PassObserver = _observer;
         _cold = true;
